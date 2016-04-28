@@ -16,6 +16,9 @@ import (
 	mh "github.com/jbenet/go-multihash"
 )
 
+// DefaultIpfsHash is the current default hash function used by IPFS.
+const DefaultIpfsHash = mh.SHA2_256
+
 // Debug is a global flag for debugging.
 var Debug bool
 
@@ -115,7 +118,7 @@ func RPartition(subject string, sep string) (string, string, string) {
 
 // Hash is the global IPFS hash function. uses multihash SHA2_256, 256 bits
 func Hash(data []byte) mh.Multihash {
-	h, err := mh.Sum(data, mh.SHA2_256, -1)
+	h, err := mh.Sum(data, DefaultIpfsHash, -1)
 	if err != nil {
 		// this error can be safely ignored (panic) because multihash only fails
 		// from the selection of hash function. If the fn + length are valid, it
