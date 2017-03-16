@@ -28,7 +28,7 @@ var ErrNotImplemented = errors.New("Error: not implemented yet.")
 // ErrTimeout implies that a timeout has been triggered
 var ErrTimeout = errors.New("Error: Call timed out.")
 
-// ErrSeErrSearchIncomplete implies that a search type operation didnt
+// ErrSearchIncomplete implies that a search type operation didnt
 // find the expected node, but did find 'a' node.
 var ErrSearchIncomplete = errors.New("Error: Search Incomplete.")
 
@@ -57,6 +57,8 @@ type randGen struct {
 	rand.Rand
 }
 
+// NewTimeSeededRand returns a random bytes reader
+// which has been initialized with the current time.
 func NewTimeSeededRand() io.Reader {
 	src := rand.NewSource(time.Now().UnixNano())
 	return &randGen{
@@ -64,6 +66,8 @@ func NewTimeSeededRand() io.Reader {
 	}
 }
 
+// NewSeededRand returns a random bytes reader
+// initialized with the given seed.
 func NewSeededRand(seed int64) io.Reader {
 	src := rand.NewSource(seed)
 	return &randGen{
@@ -102,6 +106,9 @@ func (m MultiErr) Error() string {
 	return s
 }
 
+// Partition splits a subject 3 parts: prefix, separator, suffix.
+// The first occurrence of the separator will be matched.
+// ie. Partition("Ready, steady, go!", ", ") -> ["Ready", ", ", "steady, go!"]
 func Partition(subject string, sep string) (string, string, string) {
 	if i := strings.Index(subject, sep); i != -1 {
 		return subject[:i], subject[i : i+len(sep)], subject[i+len(sep):]
@@ -109,6 +116,9 @@ func Partition(subject string, sep string) (string, string, string) {
 	return subject, "", ""
 }
 
+// RPartition splits a subject 3 parts: prefix, separator, suffix.
+// The last occurrence of the separator will be matched.
+// ie. RPartition("Ready, steady, go!", ", ") -> ["Ready, steady", ", ", "go!"]
 func RPartition(subject string, sep string) (string, string, string) {
 	if i := strings.LastIndex(subject, sep); i != -1 {
 		return subject[:i], subject[i : i+len(sep)], subject[i+len(sep):]

@@ -10,7 +10,25 @@
 
 ## Install
 
+This is a Go module which can be installed with `go get github.com/ipfs/go-ipfs-util`. `go-ipfs-util` is however packaged with Gx, so it is recommended to use Gx to install it (see Usage section).
+
 ## Usage
+
+This module is packaged with [Gx](https://github.com/whyrusleeping/gx).
+In order to use it in your own project do:
+
+```
+go get -u github.com/whyrusleeping/gx
+go get -u github.com/whyrusleeping/gx-go
+cd <your-project-repository>
+gx init
+gx import github.com/ipfs/go-ipfs-util
+gx install --global
+gx-go --rewrite
+```
+
+Please check [Gx](https://github.com/whyrusleeping/gx) and [Gx-go](https://github.com/whyrusleeping/gx-go) documentation for more information.
+
 
 ## Contribute
 
