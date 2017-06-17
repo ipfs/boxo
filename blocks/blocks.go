@@ -1,4 +1,4 @@
-// Package blocks contains the lowest level of IPFS data structures.
+// Package blocks contains the lowest level of IPLD data structures.
 // A block is raw data accompanied by a CID. The CID contains the multihash
 // corresponding to the block.
 package blocks
@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 
-	mh "gx/ipfs/QmVGtdTZdTFaLsaj2RwdVG8jcjNNcp1DE914DKZ2kHmXHw/go-multihash"
-	u "gx/ipfs/QmWbjfz3u6HkAdPh34dgPchGbQjob6LXLhAeCGii2TX69n/go-ipfs-util"
-	cid "gx/ipfs/QmYhQaCYEcaPPjxJX7YcPcVKkQfRy6sJ7B3XmGFk82XYdQ/go-cid"
+	cid "github.com/ipfs/go-cid"
+	u "github.com/ipfs/go-ipfs-util"
+	mh "github.com/multiformats/go-multihash"
 )
 
 // ErrWrongHash is returned when the Cid of a block is not the expected
