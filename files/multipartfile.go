@@ -46,6 +46,8 @@ func NewFileFromPart(part *multipart.Part) (File, error) {
 			Target: string(out),
 			name:   f.FileName(),
 		}, nil
+	case "": // default to application/octet-stream
+		fallthrough
 	case applicationFile:
 		return &ReaderFile{
 			reader:   part,
