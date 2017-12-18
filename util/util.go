@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	b58 "github.com/jbenet/go-base58"
+	b58 "github.com/mr-tron/base58/base58"
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -140,15 +140,12 @@ func Hash(data []byte) mh.Multihash {
 
 // IsValidHash checks whether a given hash is valid (b58 decodable, len > 0)
 func IsValidHash(s string) bool {
-	out := b58.Decode(s)
-	if out == nil || len(out) == 0 {
-		return false
-	}
-	_, err := mh.Cast(out)
+	out, err := b58.Decode(s)
 	if err != nil {
 		return false
 	}
-	return true
+	_, err = mh.Cast(out)
+	return err == nil
 }
 
 // XOR takes two byte slices, XORs them together, returns the resulting slice.
