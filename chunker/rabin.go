@@ -4,7 +4,7 @@ import (
 	"hash/fnv"
 	"io"
 
-	"github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/whyrusleeping/chunker"
+	"github.com/whyrusleeping/chunker"
 )
 
 // IpfsRabinPoly is the irreducible polynomial of degree 53 used by for Rabin.
