@@ -6,7 +6,7 @@ import (
 	"errors"
 
 	cid "github.com/ipfs/go-cid"
-	repo "github.com/ipfs/go-ipfs/repo"
+	ds "github.com/ipfs/go-datastore"
 	p2phost "github.com/libp2p/go-libp2p-host"
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
@@ -47,7 +47,7 @@ func (c *nilclient) Bootstrap(_ context.Context) error {
 }
 
 // ConstructNilRouting creates an IpfsRouting client which does nothing.
-func ConstructNilRouting(_ context.Context, _ p2phost.Host, _ repo.Datastore) (routing.IpfsRouting, error) {
+func ConstructNilRouting(_ context.Context, _ p2phost.Host, _ ds.Batching) (routing.IpfsRouting, error) {
 	return &nilclient{}, nil
 }
 
