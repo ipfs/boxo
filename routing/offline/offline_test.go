@@ -5,8 +5,8 @@ import (
 	"context"
 	"testing"
 
-	ds "gx/ipfs/QmPpegoMqhAEqjncrzArm7KVWAkCm78rqL2DPuNjhPrshg/go-datastore"
-	"gx/ipfs/QmVvkK7s5imCiq3JVbL3pGfnhcCnf3LrFJPF4GE2sAoGZf/go-testutil"
+	ds "github.com/ipfs/go-datastore"
+	"github.com/libp2p/go-testutil"
 )
 
 func TestOfflineRouterStorage(t *testing.T) {
