@@ -1,11 +1,10 @@
 package blockstore
 
 import (
+	"context"
 	"errors"
 
-	context "context"
-
-	"gx/ipfs/QmRg1gKTHzc3CZXSKzem8aR4E3TubFhbgXwfVuWnSK5CC5/go-metrics-interface"
+	metrics "github.com/ipfs/go-metrics-interface"
 )
 
 // CacheOpts wraps options for CachedBlockStore().
