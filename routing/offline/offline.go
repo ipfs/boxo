@@ -42,10 +42,7 @@ type offlineRouting struct {
 }
 
 func (c *offlineRouting) PutValue(ctx context.Context, key string, val []byte) error {
-	rec, err := record.MakePutRecord(c.sk, key, val, false)
-	if err != nil {
-		return err
-	}
+	rec := record.MakePutRecord(key, val)
 	data, err := proto.Marshal(rec)
 	if err != nil {
 		return err
