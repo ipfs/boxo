@@ -2,6 +2,7 @@ package tar
 
 import (
 	"archive/tar"
+	"fmt"
 	"io"
 	"os"
 	gopath "path"
@@ -10,7 +11,8 @@ import (
 )
 
 type Extractor struct {
-	Path string
+	Path     string
+	Progress func(int64) int64
 }
 
 func (te *Extractor) Extract(reader io.Reader) error {
@@ -39,15 +41,21 @@ func (te *Extractor) Extract(reader io.Reader) error {
 			break
 		}
 
-		if header.Typeflag == tar.TypeDir {
+		switch header.Typeflag {
+		case tar.TypeDir:
 			if err := te.extractDir(header, i); err != nil {
 				return err
 			}
-			continue
-		}
-
-		if err := te.extractFile(header, tarReader, i, rootExists, rootIsDir); err != nil {
-			return err
+		case tar.TypeReg:
+			if err := te.extractFile(header, tarReader, i, rootExists, rootIsDir); err != nil {
+				return err
+			}
+		case tar.TypeSymlink:
+			if err := te.extractSymlink(header); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unrecognized tar header type: %d", header.Typeflag)
 		}
 	}
 	return nil
@@ -71,12 +79,11 @@ func (te *Extractor) extractDir(h *tar.Header, depth int) error {
 		te.Path = path
 	}
 
-	err := os.MkdirAll(path, 0755)
-	if err != nil {
-		return err
-	}
+	return os.MkdirAll(path, 0755)
+}
 
-	return nil
+func (te *Extractor) extractSymlink(h *tar.Header) error {
+	return os.Symlink(h.Linkname, te.outputPath(h.Name))
 }
 
 func (te *Extractor) extractFile(h *tar.Header, r *tar.Reader, depth int, rootExists bool, rootIsDir bool) error {
@@ -100,10 +107,26 @@ func (te *Extractor) extractFile(h *tar.Header, r *tar.Reader, depth int, rootEx
 	}
 	defer file.Close()
 
-	_, err = io.Copy(file, r)
-	if err != nil {
-		return err
+	return copyWithProgress(file, r, te.Progress)
+}
+
+func copyWithProgress(to io.Writer, from io.Reader, cb func(int64) int64) error {
+	buf := make([]byte, 4096)
+	for {
+		n, err := from.Read(buf)
+		if n != 0 {
+			cb(int64(n))
+			_, err2 := to.Write(buf[:n])
+			if err2 != nil {
+				return err2
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
 	}
 
-	return nil
 }
