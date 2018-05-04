@@ -5,8 +5,10 @@ import (
 	"context"
 	"testing"
 
+	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
-	"github.com/libp2p/go-testutil"
+	testutil "github.com/libp2p/go-testutil"
+	mh "github.com/multiformats/go-multihash"
 )
 
 func TestOfflineRouterStorage(t *testing.T) {
@@ -62,15 +64,17 @@ func TestOfflineRouterLocal(t *testing.T) {
 		t.Fatal("OfflineRouting should alert that its offline")
 	}
 
-	cid, _ := testutil.RandCidV0()
-	pChan := offline.FindProvidersAsync(ctx, cid, 1)
+	h, _ := mh.Sum([]byte("test data1"), mh.SHA2_256, -1)
+	c1 := cid.NewCidV0(h)
+	pChan := offline.FindProvidersAsync(ctx, c1, 1)
 	p, ok := <-pChan
 	if ok {
 		t.Fatalf("FindProvidersAsync did not return a closed channel. Instead we got %+v !", p)
 	}
 
-	cid, _ = testutil.RandCidV0()
-	err = offline.Provide(ctx, cid, true)
+	h2, _ := mh.Sum([]byte("test data1"), mh.SHA2_256, -1)
+	c2 := cid.NewCidV0(h2)
+	err = offline.Provide(ctx, c2, true)
 	if err != ErrOffline {
 		t.Fatal("OfflineRouting should alert that its offline")
 	}
