@@ -15,6 +15,7 @@ import (
 	pstore "github.com/libp2p/go-libp2p-peerstore"
 	dhtpb "github.com/libp2p/go-libp2p-record/pb"
 	routing "github.com/libp2p/go-libp2p-routing"
+	ropts "github.com/libp2p/go-libp2p-routing/options"
 	"github.com/libp2p/go-testutil"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -28,7 +29,7 @@ type client struct {
 }
 
 // FIXME(brian): is this method meant to simulate putting a value into the network?
-func (c *client) PutValue(ctx context.Context, key string, val []byte) error {
+func (c *client) PutValue(ctx context.Context, key string, val []byte, opts ...ropts.Option) error {
 	log.Debugf("PutValue: %s", key)
 	rec := new(dhtpb.Record)
 	rec.Value = val
@@ -43,7 +44,7 @@ func (c *client) PutValue(ctx context.Context, key string, val []byte) error {
 }
 
 // FIXME(brian): is this method meant to simulate getting a value from the network?
-func (c *client) GetValue(ctx context.Context, key string) ([]byte, error) {
+func (c *client) GetValue(ctx context.Context, key string, opts ...ropts.Option) ([]byte, error) {
 	log.Debugf("GetValue: %s", key)
 	v, err := c.datastore.Get(dshelp.NewKeyFromBinary([]byte(key)))
 	if err != nil {
@@ -62,16 +63,6 @@ func (c *client) GetValue(ctx context.Context, key string) ([]byte, error) {
 	}
 
 	return rec.GetValue(), nil
-}
-
-func (c *client) GetValues(ctx context.Context, key string, count int) ([]routing.RecvdVal, error) {
-	log.Debugf("GetValues: %s", key)
-	data, err := c.GetValue(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-
-	return []routing.RecvdVal{{Val: data, From: c.peer.ID()}}, nil
 }
 
 func (c *client) FindProviders(ctx context.Context, key *cid.Cid) ([]pstore.PeerInfo, error) {
