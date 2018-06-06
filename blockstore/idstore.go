@@ -13,7 +13,7 @@ type idstore struct {
 	bs Blockstore
 }
 
-func IdStore(bs Blockstore) Blockstore {
+func NewIdStore(bs Blockstore) Blockstore {
 	return &idstore{bs}
 }
 

@@ -12,7 +12,7 @@ import (
 
 func createTestStores() (Blockstore, *callbackDatastore) {
 	cd := &callbackDatastore{f: func() {}, ds: ds.NewMapDatastore()}
-	ids := IdStore(NewBlockstore(cd))
+	ids := NewIdStore(NewBlockstore(cd))
 	return ids, cd
 }
 
