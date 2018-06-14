@@ -12,6 +12,8 @@ import (
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
 	"github.com/libp2p/go-testutil"
+
+	offline "github.com/ipfs/go-ipfs-routing/offline"
 )
 
 // server is the mockrouting.Client's private interface to the routing server
@@ -84,8 +86,8 @@ func (rs *s) Client(p testutil.Identity) Client {
 
 func (rs *s) ClientWithDatastore(_ context.Context, p testutil.Identity, datastore ds.Datastore) Client {
 	return &client{
-		peer:      p,
-		datastore: datastore,
-		server:    rs,
+		peer:   p,
+		vs:     offline.NewOfflineRouter(datastore, MockValidator{}),
+		server: rs,
 	}
 }

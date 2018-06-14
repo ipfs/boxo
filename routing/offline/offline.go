@@ -3,6 +3,7 @@
 package offline
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"time"
@@ -11,7 +12,6 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dshelp "github.com/ipfs/go-ipfs-ds-help"
-	ci "github.com/libp2p/go-libp2p-crypto"
 	"github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
 	record "github.com/libp2p/go-libp2p-record"
@@ -27,10 +27,10 @@ var ErrOffline = errors.New("routing system in offline mode")
 // NewOfflineRouter returns an IpfsRouting implementation which only performs
 // offline operations. It allows to Put and Get signed dht
 // records to and from the local datastore.
-func NewOfflineRouter(dstore ds.Datastore, privkey ci.PrivKey) routing.IpfsRouting {
+func NewOfflineRouter(dstore ds.Datastore, validator record.Validator) routing.IpfsRouting {
 	return &offlineRouting{
 		datastore: dstore,
-		sk:        privkey,
+		validator: validator,
 	}
 }
 
@@ -39,10 +39,28 @@ func NewOfflineRouter(dstore ds.Datastore, privkey ci.PrivKey) routing.IpfsRouti
 // records to and from the local datastore.
 type offlineRouting struct {
 	datastore ds.Datastore
-	sk        ci.PrivKey
+	validator record.Validator
 }
 
 func (c *offlineRouting) PutValue(ctx context.Context, key string, val []byte, _ ...ropts.Option) error {
+	if err := c.validator.Validate(key, val); err != nil {
+		return err
+	}
+	if old, err := c.GetValue(ctx, key); err == nil {
+		// be idempotent to be nice.
+		if bytes.Equal(old, val) {
+			return nil
+		}
+		// check to see if the older record is better
+		i, err := c.validator.Select(key, [][]byte{val, old})
+		if err != nil {
+			// this shouldn't happen for validated records.
+			return err
+		}
+		if i != 0 {
+			return errors.New("can't replace a newer record with an older one")
+		}
+	}
 	rec := record.MakePutRecord(key, val)
 	data, err := proto.Marshal(rec)
 	if err != nil {
@@ -67,8 +85,13 @@ func (c *offlineRouting) GetValue(ctx context.Context, key string, _ ...ropts.Op
 	if err != nil {
 		return nil, err
 	}
+	val := rec.GetValue()
 
-	return rec.GetValue(), nil
+	err = c.validator.Validate(key, val)
+	if err != nil {
+		return nil, err
+	}
+	return val, nil
 }
 
 func (c *offlineRouting) FindPeer(ctx context.Context, pid peer.ID) (pstore.PeerInfo, error) {

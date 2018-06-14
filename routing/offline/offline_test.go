@@ -12,12 +12,16 @@ import (
 	mh "github.com/multiformats/go-multihash"
 )
 
+type blankValidator struct{}
+
+func (blankValidator) Validate(_ string, _ []byte) error        { return nil }
+func (blankValidator) Select(_ string, _ [][]byte) (int, error) { return 0, nil }
+
 func TestOfflineRouterStorage(t *testing.T) {
 	ctx := context.Background()
 
 	nds := ds.NewMapDatastore()
-	privkey, _, _ := testutil.RandTestKeyPair(128)
-	offline := NewOfflineRouter(nds, privkey)
+	offline := NewOfflineRouter(nds, blankValidator{})
 
 	if err := offline.PutValue(ctx, "key", []byte("testing 1 2 3")); err != nil {
 		t.Fatal(err)
@@ -55,8 +59,7 @@ func TestOfflineRouterLocal(t *testing.T) {
 	ctx := context.Background()
 
 	nds := ds.NewMapDatastore()
-	privkey, _, _ := testutil.RandTestKeyPair(128)
-	offline := NewOfflineRouter(nds, privkey)
+	offline := NewOfflineRouter(nds, blankValidator{})
 
 	id, _ := testutil.RandPeerID()
 	_, err := offline.FindPeer(ctx, id)
