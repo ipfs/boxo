@@ -14,6 +14,12 @@ import (
 	"github.com/libp2p/go-testutil"
 )
 
+// MockValidator is a record validator that always returns success.
+type MockValidator struct{}
+
+func (MockValidator) Validate(_ string, _ []byte) error        { return nil }
+func (MockValidator) Select(_ string, _ [][]byte) (int, error) { return 0, nil }
+
 // Server provides mockrouting Clients
 type Server interface {
 	Client(p testutil.Identity) Client
