@@ -42,20 +42,25 @@ func Validate(pk ic.PubKey, entry *pb.IpnsEntry) error {
 		return ErrSignature
 	}
 
-	// Check that record has not expired
-	switch entry.GetValidityType() {
-	case pb.IpnsEntry_EOL:
-		t, err := u.ParseRFC3339(string(entry.GetValidity()))
-		if err != nil {
-			return err
-		}
-		if time.Now().After(t) {
-			return ErrExpiredRecord
-		}
-	default:
-		return ErrUnrecognizedValidity
+	eol, err := GetEOL(entry)
+	if err != nil {
+		return err
+	}
+	if time.Now().After(eol) {
+		return ErrExpiredRecord
 	}
 	return nil
+}
+
+// GetEOL returns the EOL of this IPNS entry
+//
+// This function returns ErrUnrecognizedValidity if the validity type of the
+// record isn't EOL. Otherwise, it returns an error if it can't parse the EOL.
+func GetEOL(entry *pb.IpnsEntry) (time.Time, error) {
+	if entry.GetValidityType() != pb.IpnsEntry_EOL {
+		return time.Time{}, ErrUnrecognizedValidity
+	}
+	return u.ParseRFC3339(string(entry.GetValidity()))
 }
 
 // EmbedPublicKey embeds the given public key in the given ipns entry. While not
