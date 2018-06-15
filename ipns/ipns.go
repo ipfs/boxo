@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	pb "github.com/ipfs/go-ipns/pb"
+
 	proto "github.com/gogo/protobuf/proto"
 	u "github.com/ipfs/go-ipfs-util"
 	ic "github.com/libp2p/go-libp2p-crypto"
 	peer "github.com/libp2p/go-libp2p-peer"
-
-	pb "github.com/ipfs/go-ipns/pb"
 )
 
 // Create creates a new IPNS entry and signs it with the given private key.

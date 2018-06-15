@@ -4,14 +4,14 @@ import (
 	"bytes"
 	"errors"
 
+	pb "github.com/ipfs/go-ipns/pb"
+
 	proto "github.com/gogo/protobuf/proto"
 	logging "github.com/ipfs/go-log"
 	ic "github.com/libp2p/go-libp2p-crypto"
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
 	record "github.com/libp2p/go-libp2p-record"
-
-	pb "github.com/ipfs/go-ipns/pb"
 )
 
 var log = logging.Logger("ipns")
