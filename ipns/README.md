@@ -26,6 +26,9 @@ import (
 // however, you'll want to retrieve an already-existing key from IPFS using the
 // go-ipfs/core/coreapi CoreAPI.KeyAPI() interface.
 privateKey, publicKey, err := crypto.GenerateKeyPair(crypto.RSA, 2048)
+if err != nil {
+  panic(err)
+}
 
 // Create an IPNS record that expires in one hour and points to the IPFS address
 // /ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5

@@ -1,6 +1,7 @@
 package ipns
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -46,7 +47,10 @@ func ExampleCreate() {
 	// Generate a private key to sign the IPNS record with. Most of the time,
 	// however, you'll want to retrieve an already-existing key from IPFS using
 	// go-ipfs/core/coreapi CoreAPI.KeyAPI() interface.
-	privateKey, publicKey, err := ic.GenerateKeyPair(ic.RSA, 2048)
+	privateKey, _, err := ci.GenerateKeyPair(ci.RSA, 2048)
+	if err != nil {
+		panic(err)
+	}
 
 	// Create an IPNS record that expires in one hour and points to the IPFS address
 	// /ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5
@@ -54,4 +58,6 @@ func ExampleCreate() {
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println(ipnsRecord)
 }
