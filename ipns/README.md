@@ -27,5 +27,4 @@ This repository falls under the IPFS [Code of Conduct](https://github.com/ipfs/c
 
 ## License
 
-MIT
-
+Copyright (c) Protocol Labs, Inc. under the **MIT license**. See [LICENSE file](./LICENSE) for details.
