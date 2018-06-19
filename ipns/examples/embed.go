@@ -21,7 +21,7 @@ func CreateEntryWithEmbed(ipfsPath string, publicKey crypto.PubKey, privateKey c
 	}
 	err = ipns.EmbedPublicKey(publicKey, entry)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	return entry, nil
 }
