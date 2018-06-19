@@ -3,7 +3,7 @@ package examples_test
 import (
 	"testing"
 
-	"github.com/RTradeLtd/go-ipns/examples"
+	"github.com/ipfs/go-ipns/examples"
 	crypto "github.com/libp2p/go-libp2p-crypto"
 )
 
