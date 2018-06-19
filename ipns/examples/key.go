@@ -4,32 +4,21 @@ import (
 	crypto "github.com/libp2p/go-libp2p-crypto"
 )
 
-// KeyPair is a helper struct used to contain the parts of a key
-type KeyPair struct {
-	Private crypto.PrivKey
-	Public  crypto.PubKey
-}
-
 // GenerateRSAKeyPair is used to generate an RSA key pair
-func GenerateRSAKeyPair(bits int) (*KeyPair, error) {
-	var kp KeyPair
-	priv, pub, err := crypto.GenerateKeyPair(crypto.RSA, bits)
+func GenerateRSAKeyPair(bits int) (crypto.PrivKey, error) {
+	priv, _, err := crypto.GenerateKeyPair(crypto.RSA, bits)
 	if err != nil {
 		return nil, err
 	}
-	kp.Private = priv
-	kp.Public = pub
-	return &kp, nil
+	return priv, nil
 }
 
 // GenerateEDKeyPair is used to generate an ED25519 keypair
-func GenerateEDKeyPair(bits int) (*KeyPair, error) {
-	var kp KeyPair
-	priv, pub, err := crypto.GenerateKeyPair(crypto.Ed25519, bits)
+func GenerateEDKeyPair() (crypto.PrivKey, error) {
+	// ED25519 ignores the bit param and uses 256bit keys
+	priv, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 256)
 	if err != nil {
 		return nil, err
 	}
-	kp.Private = priv
-	kp.Public = pub
-	return &kp, nil
+	return priv, nil
 }
