@@ -68,17 +68,22 @@ func GetEOL(entry *pb.IpnsEntry) (time.Time, error) {
 // that don't embed their public keys as they may not be able to validate them
 // efficiently.
 func EmbedPublicKey(pk ic.PubKey, entry *pb.IpnsEntry) error {
+	// Try extracting the public key from the ID. If we can, *don't* embed
+	// it.
 	id, err := peer.IDFromPublicKey(pk)
 	if err != nil {
 		return err
 	}
-	extraced, err := id.ExtractPublicKey()
+	extracted, err := id.ExtractPublicKey()
 	if err != nil {
 		return err
 	}
-	if extraced != nil {
+	if extracted != nil {
 		return nil
 	}
+
+	// We failed to extract the public key from the peer ID, embed it in the
+	// record.
 	pkBytes, err := pk.Bytes()
 	if err != nil {
 		return err
