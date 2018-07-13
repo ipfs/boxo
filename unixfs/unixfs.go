@@ -5,9 +5,9 @@ package unixfs
 
 import (
 	"errors"
+	"fmt"
 
 	proto "github.com/gogo/protobuf/proto"
-
 	dag "github.com/ipfs/go-merkledag"
 
 	ipld "github.com/ipfs/go-ipld-format"
@@ -354,4 +354,55 @@ func BytesForMetadata(m *Metadata) ([]byte, error) {
 // EmptyDirNode creates an empty folder Protonode.
 func EmptyDirNode() *dag.ProtoNode {
 	return dag.NodeWithData(FolderPBData())
+}
+
+// ReadUnixFSNodeData extracts the UnixFS data from an IPLD node.
+// Raw nodes are (also) processed because they are used as leaf
+// nodes containing (only) UnixFS data.
+func ReadUnixFSNodeData(node ipld.Node) (data []byte, err error) {
+	switch node := node.(type) {
+
+	case *dag.ProtoNode:
+		fsNode, err := FSNodeFromBytes(node.Data())
+		if err != nil {
+			return nil, fmt.Errorf("incorrectly formatted protobuf: %s", err)
+		}
+
+		switch fsNode.Type() {
+		case pb.Data_File, pb.Data_Raw:
+			return fsNode.Data(), nil
+			// Only leaf nodes (of type `Data_Raw`) contain data but due to a
+			// bug the `Data_File` type (normally used for internal nodes) is
+			// also used for leaf nodes, so both types are accepted here
+			// (see the `balanced` package for more details).
+		default:
+			return nil, fmt.Errorf("found %s node in unexpected place",
+				fsNode.Type().String())
+		}
+
+	case *dag.RawNode:
+		return node.RawData(), nil
+
+	default:
+		return nil, ErrUnrecognizedType
+		// TODO: To avoid rewriting the error message, but a different error from
+		// `unixfs.ErrUnrecognizedType` should be used (defining it in the
+		// `merkledag` or `go-ipld-format` packages).
+	}
+}
+
+// Extract the `unixfs.FSNode` from the `ipld.Node` (assuming this
+// was implemented by a `mdag.ProtoNode`).
+func ExtractFSNode(node ipld.Node) (*FSNode, error) {
+	protoNode, ok := node.(*dag.ProtoNode)
+	if !ok {
+		return nil, errors.New("expected a ProtoNode as internal node")
+	}
+
+	fsNode, err := FSNodeFromBytes(protoNode.Data())
+	if err != nil {
+		return nil, err
+	}
+
+	return fsNode, nil
 }
