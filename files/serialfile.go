@@ -143,7 +143,7 @@ func (f *serialFile) Size() (int64, error) {
 			return err
 		}
 
-		if fi != nil && fi.Mode()&(os.ModeSymlink|os.ModeNamedPipe) == 0 {
+		if fi != nil && fi.Mode().IsRegular() {
 			du += fi.Size()
 		}
 		return nil
