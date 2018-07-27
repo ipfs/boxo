@@ -4,16 +4,16 @@ import (
 	"context"
 	"time"
 
-	tn "github.com/ipfs/go-ipfs/exchange/bitswap/testnet"
+	tn "github.com/ipfs/go-bitswap/testnet"
 
-	delay "gx/ipfs/QmRJVNatYJwTAHgdSM1Xef9QVQ1Ch3XHdmcrykjP5Y4soL/go-ipfs-delay"
-	blockstore "gx/ipfs/QmadMhXJLHMFjpRmh85XjpmVDkEtQpNYEZNRpWRvYVLrvb/go-ipfs-blockstore"
-	testutil "gx/ipfs/QmcW4FGAt24fdK1jBgWQn3yP4R9ZLyWQqjozv9QK7epRhL/go-testutil"
-	p2ptestutil "gx/ipfs/QmcxUtMB5sJrXR3znSvkrDd2ghvwGM8rLRqwJiPUdgQwat/go-libp2p-netutil"
-	peer "gx/ipfs/QmdVrMn1LhB4ybb8hMVaMLXnA8XRSewMnK6YqXKXoTcRvN/go-libp2p-peer"
-	ds "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore"
-	delayed "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore/delayed"
-	ds_sync "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore/sync"
+	ds "github.com/ipfs/go-datastore"
+	delayed "github.com/ipfs/go-datastore/delayed"
+	ds_sync "github.com/ipfs/go-datastore/sync"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	delay "github.com/ipfs/go-ipfs-delay"
+	p2ptestutil "github.com/libp2p/go-libp2p-netutil"
+	peer "github.com/libp2p/go-libp2p-peer"
+	testutil "github.com/libp2p/go-testutil"
 )
 
 // WARNING: this uses RandTestBogusIdentity DO NOT USE for NON TESTS!
