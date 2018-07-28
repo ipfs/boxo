@@ -13,17 +13,17 @@ import (
 	"testing"
 	"time"
 
-	bserv "github.com/ipfs/go-ipfs/blockservice"
-	bstest "github.com/ipfs/go-ipfs/blockservice/test"
-	. "github.com/ipfs/go-ipfs/merkledag"
-	mdpb "github.com/ipfs/go-ipfs/merkledag/pb"
-	dstest "github.com/ipfs/go-ipfs/merkledag/test"
+	. "github.com/ipfs/go-merkledag"
+	mdpb "github.com/ipfs/go-merkledag/pb"
+	dstest "github.com/ipfs/go-merkledag/test"
 
-	u "gx/ipfs/QmPdKqUcHGFdeSpvjVoaTRPPstGif9GBZb5Q56RVw9o69A/go-ipfs-util"
-	offline "gx/ipfs/QmS6mo1dPpHdYsVkm27BRZDLxpKBCiJKUH8fHX15XFfMez/go-ipfs-exchange-offline"
-	blocks "gx/ipfs/QmVzK524a2VWLqyvtBeiHKsUAWYgeAk4DBeZoY7vpNPNRx/go-block-format"
-	cid "gx/ipfs/QmYVNvtQkeZ6AKSwDrjQTs432QtL6umrrK41EBq3cu7iSP/go-cid"
-	ipld "gx/ipfs/QmZtNq8dArGfnpCZfx2pUNY7UcjGhVp5qqwQ4hH6mpTMRQ/go-ipld-format"
+	blocks "github.com/ipfs/go-block-format"
+	bserv "github.com/ipfs/go-blockservice"
+	bstest "github.com/ipfs/go-blockservice/test"
+	cid "github.com/ipfs/go-cid"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	u "github.com/ipfs/go-ipfs-util"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 func TestNode(t *testing.T) {

@@ -5,10 +5,10 @@ import (
 	"context"
 	"testing"
 
-	. "github.com/ipfs/go-ipfs/merkledag"
-	mdtest "github.com/ipfs/go-ipfs/merkledag/test"
+	. "github.com/ipfs/go-merkledag"
+	mdtest "github.com/ipfs/go-merkledag/test"
 
-	ipld "gx/ipfs/QmZtNq8dArGfnpCZfx2pUNY7UcjGhVp5qqwQ4hH6mpTMRQ/go-ipld-format"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 func TestRemoveLink(t *testing.T) {
