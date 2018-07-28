@@ -9,13 +9,12 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ipfs/go-ipfs/thirdparty/verifcid"
-
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	logging "github.com/ipfs/go-log"
+	"github.com/ipfs/go-verifcid"
 )
 
 var log = logging.Logger("blockservice")
