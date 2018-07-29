@@ -9,10 +9,10 @@ import (
 
 	path "github.com/ipfs/go-ipfs/path"
 	"github.com/ipfs/go-ipfs/path/resolver"
-	merkledag "gx/ipfs/QmRy4Qk9hbgFX9NGJRm8rBThrA8PZhNCitMgeRYyZ67s59/go-merkledag"
-	dagmock "gx/ipfs/QmRy4Qk9hbgFX9NGJRm8rBThrA8PZhNCitMgeRYyZ67s59/go-merkledag/test"
+	merkledag "github.com/ipfs/go-merkledag"
+	dagmock "github.com/ipfs/go-merkledag/test"
 
-	ipld "gx/ipfs/QmZtNq8dArGfnpCZfx2pUNY7UcjGhVp5qqwQ4hH6mpTMRQ/go-ipld-format"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 func randNode() *merkledag.ProtoNode {
