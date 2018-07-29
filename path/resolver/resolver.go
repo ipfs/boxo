@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"time"
 
-	path "github.com/ipfs/go-ipfs/path"
-	dag "github.com/ipfs/go-merkledag"
+	path "github.com/ipfs/go-path"
 
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
+	dag "github.com/ipfs/go-merkledag"
 )
 
 var log = logging.Logger("pathresolv")

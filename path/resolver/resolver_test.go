@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	path "github.com/ipfs/go-ipfs/path"
-	"github.com/ipfs/go-ipfs/path/resolver"
-	merkledag "github.com/ipfs/go-merkledag"
-	dagmock "github.com/ipfs/go-merkledag/test"
+	path "github.com/ipfs/go-path"
+	"github.com/ipfs/go-path/resolver"
 
 	ipld "github.com/ipfs/go-ipld-format"
+	merkledag "github.com/ipfs/go-merkledag"
+	dagmock "github.com/ipfs/go-merkledag/test"
 )
 
 func randNode() *merkledag.ProtoNode {
