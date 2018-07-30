@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-ipfs/dagutils"
 	dag "github.com/ipfs/go-merkledag"
 	mdtest "github.com/ipfs/go-merkledag/test"
 	ft "github.com/ipfs/go-unixfs"
@@ -213,7 +212,6 @@ func TestShardReload(t *testing.T) {
 	ndk := nd.Cid()
 
 	if !outk.Equals(ndk) {
-		printDiff(ds, nd.(*dag.ProtoNode), ond.(*dag.ProtoNode))
 		t.Fatal("roundtrip serialization failed")
 	}
 }
@@ -509,17 +507,6 @@ func TestSetHamtChild(t *testing.T) {
 	err = assertLink(hs, "foo", true)
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-func printDiff(ds ipld.DAGService, a, b *dag.ProtoNode) {
-	diff, err := dagutils.Diff(context.TODO(), ds, a, b)
-	if err != nil {
-		panic(err)
-	}
-
-	for _, d := range diff {
-		fmt.Println(d)
 	}
 }
 
