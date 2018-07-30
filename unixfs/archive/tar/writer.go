@@ -10,12 +10,12 @@ import (
 	"path"
 	"time"
 
-	ft "github.com/ipfs/go-ipfs/unixfs"
-	uio "github.com/ipfs/go-ipfs/unixfs/io"
-	upb "github.com/ipfs/go-ipfs/unixfs/pb"
-	mdag "gx/ipfs/QmRy4Qk9hbgFX9NGJRm8rBThrA8PZhNCitMgeRYyZ67s59/go-merkledag"
+	mdag "github.com/ipfs/go-merkledag"
+	ft "github.com/ipfs/go-unixfs"
+	uio "github.com/ipfs/go-unixfs/io"
+	upb "github.com/ipfs/go-unixfs/pb"
 
-	ipld "gx/ipfs/QmZtNq8dArGfnpCZfx2pUNY7UcjGhVp5qqwQ4hH6mpTMRQ/go-ipld-format"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 // Writer is a utility structure that helps to write
