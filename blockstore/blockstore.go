@@ -40,6 +40,9 @@ type Blockstore interface {
 	Has(*cid.Cid) (bool, error)
 	Get(*cid.Cid) (blocks.Block, error)
 
+	// GetSize returns the CIDs mapped BlockSize
+	GetSize(*cid.Cid) (int, error)
+
 	// Put puts a given block to the underlying datastore
 	Put(blocks.Block) error
 
@@ -181,6 +184,18 @@ func (bs *blockstore) PutMany(blocks []blocks.Block) error {
 
 func (bs *blockstore) Has(k *cid.Cid) (bool, error) {
 	return bs.datastore.Has(dshelp.CidToDsKey(k))
+}
+
+func (bs *blockstore) GetSize(k *cid.Cid) (int, error) {
+	maybeData, err := bs.datastore.Get(dshelp.CidToDsKey(k))
+	if err != nil {
+		return -1, err
+	}
+	bdata, ok := maybeData.([]byte)
+	if !ok {
+		return -1, ErrValueTypeMismatch
+	}
+	return len(bdata), nil
 }
 
 func (bs *blockstore) DeleteBlock(k *cid.Cid) error {

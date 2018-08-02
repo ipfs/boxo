@@ -133,6 +133,10 @@ func (b *bloomcache) Has(k *cid.Cid) (bool, error) {
 	return b.blockstore.Has(k)
 }
 
+func (b *bloomcache) GetSize(k *cid.Cid) (int, error) {
+  return b.blockstore.GetSize(k)
+}
+
 func (b *bloomcache) Get(k *cid.Cid) (blocks.Block, error) {
 	if has, ok := b.hasCached(k); ok && !has {
 		return nil, ErrNotFound

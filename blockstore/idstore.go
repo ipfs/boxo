@@ -41,6 +41,14 @@ func (b *idstore) Has(k *cid.Cid) (bool, error) {
 	return b.bs.Has(k)
 }
 
+func (b *idstore) GetSize(k *cid.Cid) (int, error) {
+	isId, bdata := extractContents(k)
+	if isId {
+		return len(bdata), nil
+	}
+	return b.bs.GetSize(k)
+}
+
 func (b *idstore) Get(k *cid.Cid) (blocks.Block, error) {
 	isId, bdata := extractContents(k)
 	if isId {

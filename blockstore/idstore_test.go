@@ -21,6 +21,8 @@ func TestIdStore(t *testing.T) {
 	idblock1, _ := blk.NewBlockWithCid([]byte("idhash1"), idhash1)
 	hash1, _ := cid.NewPrefixV1(cid.Raw, mh.SHA2_256).Sum([]byte("hash1"))
 	block1, _ := blk.NewBlockWithCid([]byte("hash1"), hash1)
+	emptyHash, _ := cid.NewPrefixV1(cid.Raw, mh.SHA2_256).Sum([]byte("emptyHash"))
+	emptyBlock, _ := blk.NewBlockWithCid([]byte{}, emptyHash)
 
 	ids, cb := createTestStores()
 
@@ -56,9 +58,29 @@ func TestIdStore(t *testing.T) {
 		t.Fatal("normal block not added to datastore")
 	}
 
+	blockSize, _ := ids.GetSize(hash1)
+	if blockSize == -1 {
+		t.Fatal("normal block not added to datastore")
+	}
+
 	_, err = ids.Get(hash1)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	err = ids.Put(emptyBlock)
+	if err != nil {
+		t.Fatalf("Put() failed on normal block: %v", err)
+	}
+
+	have, _ = ids.Has(emptyHash)
+	if !have {
+		t.Fatal("normal block not added to datastore")
+	}
+
+	blockSize, _ = ids.GetSize(emptyHash)
+	if blockSize != 0 {
+		t.Fatal("normal block not added to datastore")
 	}
 
 	cb.f = failIfPassThough
@@ -76,6 +98,16 @@ func TestIdStore(t *testing.T) {
 	have, _ = ids.Has(hash1)
 	if have {
 		t.Fatal("normal block not deleted from datastore")
+	}
+
+	blockSize, _ = ids.GetSize(hash1)
+	if blockSize > -1 {
+		t.Fatal("normal block not deleted from datastore")
+	}
+
+	err = ids.DeleteBlock(emptyHash)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	idhash2, _ := cid.NewPrefixV1(cid.Raw, mh.ID).Sum([]byte("idhash2"))

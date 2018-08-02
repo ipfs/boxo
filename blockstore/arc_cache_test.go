@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	syncds "github.com/ipfs/go-datastore/sync"
@@ -107,6 +107,9 @@ func TestGetFillsCache(t *testing.T) {
 	if has, err := arc.Has(exampleBlock.Cid()); has || err != nil {
 		t.Fatal("has was true but there is no such block")
 	}
+	if blockSize, err := arc.GetSize(exampleBlock.Cid()); blockSize > -1 || err != nil {
+		t.Fatal("getsize was true but there is no such block")
+	}
 
 	untrap(cd)
 
@@ -119,12 +122,16 @@ func TestGetFillsCache(t *testing.T) {
 	if has, err := arc.Has(exampleBlock.Cid()); !has || err != nil {
 		t.Fatal("has returned invalid result")
 	}
+	if blockSize, err := arc.GetSize(exampleBlock.Cid()); blockSize == -1 || err != nil {
+		t.Fatal("getsize returned invalid result")
+	}
 }
 
 func TestGetAndDeleteFalseShortCircuit(t *testing.T) {
 	arc, _, cd := createStores(t)
 
 	arc.Has(exampleBlock.Cid())
+	arc.GetSize(exampleBlock.Cid())
 
 	trap("get hit datastore", cd, t)
 
@@ -167,6 +174,41 @@ func TestHasAfterSucessfulGetIsCached(t *testing.T) {
 	arc.Has(exampleBlock.Cid())
 }
 
+func TestGetSizeAfterSucessfulGetIsCached(t *testing.T) {
+	arc, bs, cd := createStores(t)
+
+	bs.Put(exampleBlock)
+
+	arc.Get(exampleBlock.Cid())
+
+	trap("has hit datastore", cd, t)
+	arc.GetSize(exampleBlock.Cid())
+}
+
+func TestGetSizeMissingZeroSizeBlock(t *testing.T) {
+	arc, bs, cd := createStores(t)
+	emptyBlock := blocks.NewBlock([]byte{})
+	missingBlock := blocks.NewBlock([]byte("missingBlock"))
+
+	bs.Put(emptyBlock)
+
+	arc.Get(emptyBlock.Cid())
+
+	trap("has hit datastore", cd, t)
+	if blockSize, err := arc.GetSize(emptyBlock.Cid()); blockSize != 0 || err != nil {
+		t.Fatal("getsize returned invalid result")
+	}
+	untrap(cd)
+
+	arc.Get(missingBlock.Cid())
+
+	trap("has hit datastore", cd, t)
+	if blockSize, err := arc.GetSize(missingBlock.Cid()); blockSize != -1 || err != nil {
+		t.Fatal("getsize returned invalid result")
+	}
+}
+
+
 func TestDifferentKeyObjectsWork(t *testing.T) {
 	arc, bs, cd := createStores(t)
 
@@ -191,6 +233,7 @@ func TestPutManyCaches(t *testing.T) {
 
 	trap("has hit datastore", cd, t)
 	arc.Has(exampleBlock.Cid())
+	arc.GetSize(exampleBlock.Cid())
 	untrap(cd)
 	arc.DeleteBlock(exampleBlock.Cid())
 
