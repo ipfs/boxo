@@ -69,4 +69,40 @@ func TestRecurivePathResolution(t *testing.T) {
 			"recursive path resolution failed for %s: %s != %s",
 			p.String(), key.String(), cKey.String()))
 	}
+
+	rCid, rest, err := resolver.ResolveToLastNode(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(rest) != 0 {
+		t.Error("expected rest to be empty")
+	}
+
+	if rCid.String() != cKey.String() {
+		t.Fatal(fmt.Errorf(
+			"ResolveToLastNode failed for %s: %s != %s",
+			p.String(), rCid.String(), cKey.String()))
+	}
+
+	p2, err := path.FromSegments("/ipfs/", aKey.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rCid, rest, err = resolver.ResolveToLastNode(ctx, p2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+
+	if len(rest) != 0 {
+		t.Error("expected rest to be empty")
+	}
+
+	if rCid.String() != aKey.String() {
+		t.Fatal(fmt.Errorf(
+			"ResolveToLastNode failed for %s: %s != %s",
+			p.String(), rCid.String(), cKey.String()))
+	}
 }

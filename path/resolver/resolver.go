@@ -55,12 +55,16 @@ func NewBasicResolver(ds ipld.DAGService) *Resolver {
 	}
 }
 
-// ResolveToLastNode walks the given path and returns the ipld.Node
-// referenced by the last element in it.
-func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (ipld.Node, []string, error) {
+// ResolveToLastNode walks the given path and returns the cid of the last node
+// referenced by the path
+func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (*cid.Cid, []string, error) {
 	c, p, err := path.SplitAbsPath(fpath)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	if len(p) == 0 {
+		return c, nil, nil
 	}
 
 	nd, err := r.DAG.Get(ctx, c)
@@ -91,7 +95,7 @@ func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (ipld
 	}
 
 	if len(p) == 0 {
-		return nd, nil, nil
+		return nd.Cid(), nil, nil
 	}
 
 	// Confirm the path exists within the object
@@ -107,7 +111,7 @@ func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (ipld
 	case *ipld.Link:
 		return nil, nil, errors.New("inconsistent ResolveOnce / nd.Resolve")
 	default:
-		return nd, p, nil
+		return nd.Cid(), p, nil
 	}
 }
 
