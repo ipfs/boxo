@@ -158,25 +158,57 @@ func (n *dagService) Session(ctx context.Context) ipld.NodeGetter {
 
 // FetchGraph fetches all nodes that are children of the given node
 func FetchGraph(ctx context.Context, root *cid.Cid, serv ipld.DAGService) error {
+	return FetchGraphWithDepthLimit(ctx, root, -1, serv)
+}
+
+// FetchGraphWithDepthLimit fetches all nodes that are children to the given
+// node down to the given depth. maxDetph=0 means "only fetch root",
+// maxDepth=1 means "fetch root and its direct children" and so on...
+// maxDepth=-1 means unlimited.
+func FetchGraphWithDepthLimit(ctx context.Context, root *cid.Cid, depthLim int, serv ipld.DAGService) error {
 	var ng ipld.NodeGetter = serv
 	ds, ok := serv.(*dagService)
 	if ok {
 		ng = &sesGetter{bserv.NewSession(ctx, ds.Blocks)}
 	}
 
+	set := make(map[string]int)
+
+	// Visit function returns true when:
+	// * The element is not in the set and we're not over depthLim
+	// * The element is in the set but recorded depth is deeper
+	//   than currently seen (if we find it higher in the tree we'll need
+	//   to explore deeper than before).
+	// depthLim = -1 means we only return true if the element is not in the
+	// set.
+	visit := func(c *cid.Cid, depth int) bool {
+		key := string(c.Bytes())
+		oldDepth, ok := set[key]
+
+		if (ok && depthLim < 0) || (depthLim >= 0 && depth > depthLim) {
+			return false
+		}
+
+		if !ok || oldDepth > depth {
+			set[key] = depth
+			return true
+		}
+		return false
+	}
+
 	v, _ := ctx.Value(progressContextKey).(*ProgressTracker)
 	if v == nil {
-		return EnumerateChildrenAsync(ctx, GetLinksDirect(ng), root, cid.NewSet().Visit)
+		return EnumerateChildrenAsyncDepth(ctx, GetLinksDirect(ng), root, 0, visit)
 	}
-	set := cid.NewSet()
-	visit := func(c *cid.Cid) bool {
-		if set.Visit(c) {
+
+	visitProgress := func(c *cid.Cid, depth int) bool {
+		if visit(c, depth) {
 			v.Increment()
 			return true
 		}
 		return false
 	}
-	return EnumerateChildrenAsync(ctx, GetLinksDirect(ng), root, visit)
+	return EnumerateChildrenAsyncDepth(ctx, GetLinksDirect(ng), root, 0, visitProgress)
 }
 
 // GetMany gets many nodes from the DAG at once.
@@ -254,14 +286,26 @@ func GetLinksWithDAG(ng ipld.NodeGetter) GetLinks {
 // unseen children to the passed in set.
 // TODO: parallelize to avoid disk latency perf hits?
 func EnumerateChildren(ctx context.Context, getLinks GetLinks, root *cid.Cid, visit func(*cid.Cid) bool) error {
+	visitDepth := func(c *cid.Cid, depth int) bool {
+		return visit(c)
+	}
+
+	return EnumerateChildrenDepth(ctx, getLinks, root, 0, visitDepth)
+}
+
+// EnumerateChildrenDepth walks the dag below the given root and passes the
+// current depth to a given visit function. The visit function can be used to
+// limit DAG exploration.
+func EnumerateChildrenDepth(ctx context.Context, getLinks GetLinks, root *cid.Cid, depth int, visit func(*cid.Cid, int) bool) error {
 	links, err := getLinks(ctx, root)
 	if err != nil {
 		return err
 	}
+
 	for _, lnk := range links {
 		c := lnk.Cid
-		if visit(c) {
-			err = EnumerateChildren(ctx, getLinks, c, visit)
+		if visit(c, depth+1) {
+			err = EnumerateChildrenDepth(ctx, getLinks, c, depth+1, visit)
 			if err != nil {
 				return err
 			}
@@ -305,8 +349,30 @@ var FetchGraphConcurrency = 8
 //
 // NOTE: It *does not* make multiple concurrent calls to the passed `visit` function.
 func EnumerateChildrenAsync(ctx context.Context, getLinks GetLinks, c *cid.Cid, visit func(*cid.Cid) bool) error {
-	feed := make(chan *cid.Cid)
-	out := make(chan []*ipld.Link)
+	visitDepth := func(c *cid.Cid, depth int) bool {
+		return visit(c)
+	}
+
+	return EnumerateChildrenAsyncDepth(ctx, getLinks, c, 0, visitDepth)
+}
+
+// EnumerateChildrenAsyncDepth is equivalent to EnumerateChildrenDepth *except*
+// that it fetches children in parallel (down to a maximum depth in the graph).
+//
+// NOTE: It *does not* make multiple concurrent calls to the passed `visit` function.
+func EnumerateChildrenAsyncDepth(ctx context.Context, getLinks GetLinks, c *cid.Cid, startDepth int, visit func(*cid.Cid, int) bool) error {
+	type cidDepth struct {
+		cid   *cid.Cid
+		depth int
+	}
+
+	type linksDepth struct {
+		links []*ipld.Link
+		depth int
+	}
+
+	feed := make(chan *cidDepth)
+	out := make(chan *linksDepth)
 	done := make(chan struct{})
 
 	var setlk sync.Mutex
@@ -318,20 +384,28 @@ func EnumerateChildrenAsync(ctx context.Context, getLinks GetLinks, c *cid.Cid, 
 
 	for i := 0; i < FetchGraphConcurrency; i++ {
 		go func() {
-			for ic := range feed {
+			for cdepth := range feed {
+				ci := cdepth.cid
+				depth := cdepth.depth
+
 				setlk.Lock()
-				shouldVisit := visit(ic)
+				shouldVisit := visit(ci, depth)
 				setlk.Unlock()
 
 				if shouldVisit {
-					links, err := getLinks(ctx, ic)
+					links, err := getLinks(ctx, ci)
 					if err != nil {
 						errChan <- err
 						return
 					}
 
+					outLinks := &linksDepth{
+						links: links,
+						depth: depth + 1,
+					}
+
 					select {
-					case out <- links:
+					case out <- outLinks:
 					case <-fetchersCtx.Done():
 						return
 					}
@@ -346,10 +420,13 @@ func EnumerateChildrenAsync(ctx context.Context, getLinks GetLinks, c *cid.Cid, 
 	defer close(feed)
 
 	send := feed
-	var todobuffer []*cid.Cid
+	var todobuffer []*cidDepth
 	var inProgress int
 
-	next := c
+	next := &cidDepth{
+		cid:   c,
+		depth: startDepth,
+	}
 	for {
 		select {
 		case send <- next:
@@ -366,13 +443,18 @@ func EnumerateChildrenAsync(ctx context.Context, getLinks GetLinks, c *cid.Cid, 
 			if inProgress == 0 && next == nil {
 				return nil
 			}
-		case links := <-out:
-			for _, lnk := range links {
+		case linksDepth := <-out:
+			for _, lnk := range linksDepth.links {
+				cd := &cidDepth{
+					cid:   lnk.Cid,
+					depth: linksDepth.depth,
+				}
+
 				if next == nil {
-					next = lnk.Cid
+					next = cd
 					send = feed
 				} else {
-					todobuffer = append(todobuffer, lnk.Cid)
+					todobuffer = append(todobuffer, cd)
 				}
 			}
 		case err := <-errChan:

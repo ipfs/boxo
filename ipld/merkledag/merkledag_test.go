@@ -26,6 +26,52 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
+// makeDepthTestingGraph makes a small DAG with two levels. The level-two
+// nodes are both children of the root and of one of the level 1 nodes.
+// This is meant to test the EnumerateChildren*Depth functions.
+func makeDepthTestingGraph(t *testing.T, ds ipld.DAGService) ipld.Node {
+	root := NodeWithData(nil)
+	l11 := NodeWithData([]byte("leve1_node1"))
+	l12 := NodeWithData([]byte("leve1_node2"))
+	l21 := NodeWithData([]byte("leve2_node1"))
+	l22 := NodeWithData([]byte("leve2_node2"))
+	l23 := NodeWithData([]byte("leve2_node3"))
+
+	l11.AddNodeLink(l21.Cid().String(), l21)
+	l11.AddNodeLink(l22.Cid().String(), l22)
+	l11.AddNodeLink(l23.Cid().String(), l23)
+
+	root.AddNodeLink(l11.Cid().String(), l11)
+	root.AddNodeLink(l12.Cid().String(), l12)
+	root.AddNodeLink(l23.Cid().String(), l23)
+
+	ctx := context.Background()
+	for _, n := range []ipld.Node{l23, l22, l21, l12, l11, root} {
+		err := ds.Add(ctx, n)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	return root
+}
+
+// Check that all children of root are in the given set and in the datastore
+func traverseAndCheck(t *testing.T, root ipld.Node, ds ipld.DAGService, hasF func(c *cid.Cid) bool) {
+	// traverse dag and check
+	for _, lnk := range root.Links() {
+		c := lnk.Cid
+		if !hasF(c) {
+			t.Fatal("missing key in set! ", lnk.Cid.String())
+		}
+		child, err := ds.Get(context.Background(), c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		traverseAndCheck(t, child, ds, hasF)
+	}
+}
+
 func TestNode(t *testing.T) {
 
 	n1 := NodeWithData([]byte("beep"))
@@ -293,6 +339,66 @@ func TestFetchGraph(t *testing.T) {
 	}
 }
 
+func TestFetchGraphWithDepthLimit(t *testing.T) {
+	type testcase struct {
+		depthLim int
+		setLen   int
+	}
+
+	tests := []testcase{
+		testcase{1, 3},
+		testcase{0, 0},
+		testcase{-1, 5},
+		testcase{2, 5},
+		testcase{3, 5},
+	}
+
+	testF := func(t *testing.T, tc testcase) {
+		var dservs []ipld.DAGService
+		bsis := bstest.Mocks(2)
+		for _, bsi := range bsis {
+			dservs = append(dservs, NewDAGService(bsi))
+		}
+
+		root := makeDepthTestingGraph(t, dservs[0])
+
+		err := FetchGraphWithDepthLimit(context.TODO(), root.Cid(), tc.depthLim, dservs[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// create an offline dagstore and ensure all blocks were fetched
+		bs := bserv.New(bsis[1].Blockstore(), offline.Exchange(bsis[1].Blockstore()))
+
+		offlineDS := NewDAGService(bs)
+
+		set := make(map[string]int)
+		visitF := func(c *cid.Cid, depth int) bool {
+			if tc.depthLim < 0 || depth <= tc.depthLim {
+				set[string(c.Bytes())] = depth
+				return true
+			}
+			return false
+
+		}
+
+		err = EnumerateChildrenDepth(context.Background(), offlineDS.GetLinks, root.Cid(), 0, visitF)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(set) != tc.setLen {
+			t.Fatalf("expected %d nodes but visited %d", tc.setLen, len(set))
+		}
+	}
+
+	for _, tc := range tests {
+		t.Run(fmt.Sprintf("depth limit %d", tc.depthLim), func(t *testing.T) {
+			testF(t, tc)
+		})
+	}
+}
+
 func TestEnumerateChildren(t *testing.T) {
 	bsi := bstest.Mocks(1)
 	ds := NewDAGService(bsi[0])
@@ -307,23 +413,7 @@ func TestEnumerateChildren(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var traverse func(n ipld.Node)
-	traverse = func(n ipld.Node) {
-		// traverse dag and check
-		for _, lnk := range n.Links() {
-			c := lnk.Cid
-			if !set.Has(c) {
-				t.Fatal("missing key in set! ", lnk.Cid.String())
-			}
-			child, err := ds.Get(context.Background(), c)
-			if err != nil {
-				t.Fatal(err)
-			}
-			traverse(child)
-		}
-	}
-
-	traverse(root)
+	traverseAndCheck(t, root, ds, set.Has)
 }
 
 func TestFetchFailure(t *testing.T) {
