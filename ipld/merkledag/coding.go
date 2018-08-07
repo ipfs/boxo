@@ -13,6 +13,11 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
+// Make sure the user doesn't upgrade this file.
+// We need to check *here* as well as inside the `pb` package *just* in case the
+// user replaces *all* go files in that package.
+const _ = pb.DoNotUpgradeFileEverItWillChangeYourHashes
+
 // for now, we use a PBNode intermediate thing.
 // because native go objects are nice.
 
