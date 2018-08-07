@@ -65,7 +65,7 @@ func TestPutManyAddsToBloom(t *testing.T) {
 		t.Fatal(err)
 	}
 	blockSize, err = cachedbs.GetSize(block2.Cid())
-	if err != nil && err != ds.ErrNotFound {
+	if err != nil && err != ErrNotFound {
 		t.Fatal(err)
 	}
 	if blockSize > -1 || has {

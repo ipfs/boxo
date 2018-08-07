@@ -188,6 +188,9 @@ func (bs *blockstore) Has(k *cid.Cid) (bool, error) {
 
 func (bs *blockstore) GetSize(k *cid.Cid) (int, error) {
 	maybeData, err := bs.datastore.Get(dshelp.CidToDsKey(k))
+	if err == ds.ErrNotFound {
+		return -1, ErrNotFound
+	}
 	if err != nil {
 		return -1, err
 	}

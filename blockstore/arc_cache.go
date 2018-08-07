@@ -6,7 +6,6 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	ds "github.com/ipfs/go-datastore"
 	metrics "github.com/ipfs/go-metrics-interface"
 )
 
@@ -41,7 +40,7 @@ func (b *arccache) DeleteBlock(k *cid.Cid) error {
 	b.arc.Remove(k) // Invalidate cache before deleting.
 	err := b.blockstore.DeleteBlock(k)
 	switch err {
-	case nil, ds.ErrNotFound, ErrNotFound:
+	case nil, ErrNotFound:
 		b.addCache(k, -1)
 		return err
 	default:
@@ -74,7 +73,7 @@ func (b *arccache) hasCached(k *cid.Cid) (has bool, size int, ok bool) {
 
 func (b *arccache) Has(k *cid.Cid) (bool, error) {
 	blockSize, err := b.GetSize(k)
-	if err == ds.ErrNotFound {
+	if err == ErrNotFound {
 		return false, nil
 	}
 	return blockSize > -1, err
@@ -85,7 +84,7 @@ func (b *arccache) GetSize(k *cid.Cid) (int, error) {
 		return blockSize, nil
 	}
 	blockSize, err := b.blockstore.GetSize(k)
-	if err == ds.ErrNotFound {
+	if err == ErrNotFound {
 		b.addCache(k, -1)
 	} else if err == nil {
 		b.addCache(k, blockSize)
