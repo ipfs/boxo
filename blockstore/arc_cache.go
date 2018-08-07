@@ -6,9 +6,11 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	ds "github.com/ipfs/go-datastore"
 	metrics "github.com/ipfs/go-metrics-interface"
 )
+
+type cacheHave bool
+type cacheSize int
 
 // arccache wraps a BlockStore with an Adaptive Replacement Cache (ARC) for
 // block Cids. This provides block access-time improvements, allowing
@@ -41,8 +43,8 @@ func (b *arccache) DeleteBlock(k *cid.Cid) error {
 	b.arc.Remove(k) // Invalidate cache before deleting.
 	err := b.blockstore.DeleteBlock(k)
 	switch err {
-	case nil, ds.ErrNotFound, ErrNotFound:
-		b.addCache(k, -1)
+	case nil, ErrNotFound:
+		b.cacheHave(k, false)
 		return err
 	default:
 		return err
@@ -63,21 +65,26 @@ func (b *arccache) hasCached(k *cid.Cid) (has bool, size int, ok bool) {
 	h, ok := b.arc.Get(k.KeyString())
 	if ok {
 		b.hits.Inc()
-		if h.(int) > -1 {
-			return true, h.(int), true
-		} else {
-			return false, h.(int), true
+		switch h := h.(type) {
+		case cacheHave:
+			return bool(h), -1, true
+		case cacheSize:
+			return true, int(h), true
 		}
 	}
 	return false, -1, false
 }
 
 func (b *arccache) Has(k *cid.Cid) (bool, error) {
-	blockSize, err := b.GetSize(k)
-	if err == ds.ErrNotFound {
-		return false, nil
+	if has, _, ok := b.hasCached(k); ok {
+		return has, nil
 	}
-	return blockSize > -1, err
+	has, err := b.blockstore.Has(k)
+	if err != nil {
+		return false, err
+	}
+	b.cacheHave(k, has)
+	return has, nil
 }
 
 func (b *arccache) GetSize(k *cid.Cid) (int, error) {
@@ -85,10 +92,10 @@ func (b *arccache) GetSize(k *cid.Cid) (int, error) {
 		return blockSize, nil
 	}
 	blockSize, err := b.blockstore.GetSize(k)
-	if err == ds.ErrNotFound {
-		b.addCache(k, -1)
+	if err == ErrNotFound {
+		b.cacheHave(k, false)
 	} else if err == nil {
-		b.addCache(k, blockSize)
+		b.cacheSize(k, blockSize)
 	}
 	return blockSize, err
 }
@@ -105,9 +112,9 @@ func (b *arccache) Get(k *cid.Cid) (blocks.Block, error) {
 
 	bl, err := b.blockstore.Get(k)
 	if bl == nil && err == ErrNotFound {
-		b.addCache(k, -1)
+		b.cacheHave(k, false)
 	} else if bl != nil {
-		b.addCache(k, len(bl.RawData()))
+		b.cacheSize(k, len(bl.RawData()))
 	}
 	return bl, err
 }
@@ -119,7 +126,7 @@ func (b *arccache) Put(bl blocks.Block) error {
 
 	err := b.blockstore.Put(bl)
 	if err == nil {
-		b.addCache(bl.Cid(), len(bl.RawData()))
+		b.cacheSize(bl.Cid(), len(bl.RawData()))
 	}
 	return err
 }
@@ -138,7 +145,7 @@ func (b *arccache) PutMany(bs []blocks.Block) error {
 		return err
 	}
 	for _, block := range good {
-		b.addCache(block.Cid(), len(block.RawData()))
+		b.cacheSize(block.Cid(), len(block.RawData()))
 	}
 	return nil
 }
@@ -147,8 +154,12 @@ func (b *arccache) HashOnRead(enabled bool) {
 	b.blockstore.HashOnRead(enabled)
 }
 
-func (b *arccache) addCache(c *cid.Cid, blockSize int) {
-	b.arc.Add(c.KeyString(), blockSize)
+func (b *arccache) cacheHave(c *cid.Cid, have bool) {
+	b.arc.Add(c.KeyString(), cacheHave(have))
+}
+
+func (b *arccache) cacheSize(c *cid.Cid, blockSize int) {
+	b.arc.Add(c.KeyString(), cacheSize(blockSize))
 }
 
 func (b *arccache) AllKeysChan(ctx context.Context) (<-chan *cid.Cid, error) {
