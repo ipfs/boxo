@@ -54,6 +54,39 @@ func TestPutThenGetBlock(t *testing.T) {
 	}
 }
 
+func TestPutThenGetSizeBlock(t *testing.T) {
+	bs := NewBlockstore(ds_sync.MutexWrap(ds.NewMapDatastore()))
+	block := blocks.NewBlock([]byte("some data"))
+	missingBlock := blocks.NewBlock([]byte("missingBlock"))
+	emptyBlock := blocks.NewBlock([]byte{})
+
+	err := bs.Put(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blockSize, err := bs.GetSize(block.Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(block.RawData()) != blockSize {
+		t.Fail()
+	}
+
+	err = bs.Put(emptyBlock)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if blockSize, err := bs.GetSize(emptyBlock.Cid()); blockSize != 0 || err != nil {
+		t.Fatal(err)
+	}
+
+	if blockSize, err := bs.GetSize(missingBlock.Cid()); blockSize != -1 || err == nil {
+		t.Fatal("getsize returned invalid result")
+	}
+}
+
 func TestHashOnRead(t *testing.T) {
 	orginalDebug := u.Debug
 	defer (func() {

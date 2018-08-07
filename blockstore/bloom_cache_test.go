@@ -45,13 +45,18 @@ func TestPutManyAddsToBloom(t *testing.T) {
 
 	block1 := blocks.NewBlock([]byte("foo"))
 	block2 := blocks.NewBlock([]byte("bar"))
+	emptyBlock := blocks.NewBlock([]byte{})
 
-	cachedbs.PutMany([]blocks.Block{block1})
+	cachedbs.PutMany([]blocks.Block{block1, emptyBlock})
 	has, err := cachedbs.Has(block1.Cid())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !has {
+	blockSize, err := cachedbs.GetSize(block1.Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blockSize == -1 || !has {
 		t.Fatal("added block is reported missing")
 	}
 
@@ -59,8 +64,24 @@ func TestPutManyAddsToBloom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if has {
+	blockSize, err = cachedbs.GetSize(block2.Cid())
+	if err != nil && err != ds.ErrNotFound {
+		t.Fatal(err)
+	}
+	if blockSize > -1 || has {
 		t.Fatal("not added block is reported to be in blockstore")
+	}
+
+	has, err = cachedbs.Has(emptyBlock.Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockSize, err = cachedbs.GetSize(emptyBlock.Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blockSize != 0 || !has {
+		t.Fatal("added block is reported missing")
 	}
 }
 
