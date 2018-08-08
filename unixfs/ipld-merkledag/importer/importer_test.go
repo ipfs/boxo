@@ -7,12 +7,13 @@ import (
 	"io/ioutil"
 	"testing"
 
-	mdtest "github.com/ipfs/go-merkledag/test"
 	uio "github.com/ipfs/go-unixfs/io"
 
+	cid "github.com/ipfs/go-cid"
 	chunker "github.com/ipfs/go-ipfs-chunker"
 	u "github.com/ipfs/go-ipfs-util"
 	ipld "github.com/ipfs/go-ipld-format"
+	mdtest "github.com/ipfs/go-merkledag/test"
 )
 
 func getBalancedDag(t testing.TB, size int64, blksize int64) (ipld.Node, ipld.DAGService) {
@@ -33,6 +34,40 @@ func getTrickleDag(t testing.TB, size int64, blksize int64) (ipld.Node, ipld.DAG
 		t.Fatal(err)
 	}
 	return nd, ds
+}
+
+func TestStableCid(t *testing.T) {
+	ds := mdtest.Mock()
+	buf := make([]byte, 10 * 1024 * 1024)
+	u.NewSeededRand(0xdeadbeef).Read(buf)
+	r := bytes.NewReader(buf)
+
+	nd, err := BuildDagFromReader(ds, chunker.DefaultSplitter(r))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected, err := cid.Decode("QmZN1qquw84zhV4j6vT56tCcmFxaDaySL1ezTXFvMdNmrK")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !expected.Equals(nd.Cid()) {
+		t.Fatalf("expected CID %s, got CID %s", expected, nd)
+	}
+
+	dr, err := uio.NewDagReader(context.Background(), nd, ds)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := ioutil.ReadAll(dr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(out, buf) {
+		t.Fatal("bad read")
+	}
 }
 
 func TestBalancedDag(t *testing.T) {
