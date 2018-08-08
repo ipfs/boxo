@@ -1,8 +1,11 @@
-# TODO(brian): add proto tasks
-all: message.pb.go
+PB = $(wildcard *.proto)
+GO = $(PB:.proto=.pb.go)
 
-message.pb.go: message.proto
-	protoc --gogo_out=. --proto_path=../../../../../:/usr/local/opt/protobuf/include:. $<
+all: $(GO)
+
+%.pb.go: %.proto
+		protoc --proto_path=$(GOPATH)/src:. --gogofast_out=. $<
 
 clean:
-	rm message.pb.go
+		rm -f *.pb.go
+		rm -f *.go

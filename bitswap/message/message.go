@@ -9,7 +9,6 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 
 	ggio "github.com/gogo/protobuf/io"
-	proto "github.com/gogo/protobuf/proto"
 	cid "github.com/ipfs/go-cid"
 	inet "github.com/libp2p/go-libp2p-net"
 )
@@ -185,12 +184,12 @@ func (m *impl) ToProtoV0() *pb.Message {
 	pbm.Wantlist.Entries = make([]*pb.Message_Wantlist_Entry, 0, len(m.wantlist))
 	for _, e := range m.wantlist {
 		pbm.Wantlist.Entries = append(pbm.Wantlist.Entries, &pb.Message_Wantlist_Entry{
-			Block:    proto.String(e.Cid.KeyString()),
-			Priority: proto.Int32(int32(e.Priority)),
-			Cancel:   proto.Bool(e.Cancel),
+			Block:    e.Cid.Bytes(),
+			Priority: int32(e.Priority),
+			Cancel:   e.Cancel,
 		})
 	}
-	pbm.Wantlist.Full = proto.Bool(m.full)
+	pbm.Wantlist.Full = m.full
 
 	blocks := m.Blocks()
 	pbm.Blocks = make([][]byte, 0, len(blocks))
@@ -206,12 +205,12 @@ func (m *impl) ToProtoV1() *pb.Message {
 	pbm.Wantlist.Entries = make([]*pb.Message_Wantlist_Entry, 0, len(m.wantlist))
 	for _, e := range m.wantlist {
 		pbm.Wantlist.Entries = append(pbm.Wantlist.Entries, &pb.Message_Wantlist_Entry{
-			Block:    proto.String(e.Cid.KeyString()),
-			Priority: proto.Int32(int32(e.Priority)),
-			Cancel:   proto.Bool(e.Cancel),
+			Block:    e.Cid.Bytes(),
+			Priority: int32(e.Priority),
+			Cancel:   e.Cancel,
 		})
 	}
-	pbm.Wantlist.Full = proto.Bool(m.full)
+	pbm.Wantlist.Full = m.full
 
 	blocks := m.Blocks()
 	pbm.Payload = make([]*pb.Message_Block, 0, len(blocks))
