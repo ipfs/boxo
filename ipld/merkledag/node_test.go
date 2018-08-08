@@ -8,8 +8,8 @@ import (
 	. "github.com/ipfs/go-merkledag"
 	mdtest "github.com/ipfs/go-merkledag/test"
 
-	ipld "github.com/ipfs/go-ipld-format"
 	cid "github.com/ipfs/go-cid"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 func TestStableCID(t *testing.T) {
