@@ -7,7 +7,6 @@ import (
 
 	pb "github.com/ipfs/go-ipns/pb"
 
-	proto "github.com/gogo/protobuf/proto"
 	u "github.com/ipfs/go-ipfs-util"
 	ic "github.com/libp2p/go-libp2p-crypto"
 	peer "github.com/libp2p/go-libp2p-peer"
@@ -23,7 +22,7 @@ func Create(sk ic.PrivKey, val []byte, seq uint64, eol time.Time) (*pb.IpnsEntry
 	entry.Value = val
 	typ := pb.IpnsEntry_EOL
 	entry.ValidityType = &typ
-	entry.Sequence = proto.Uint64(seq)
+	entry.Sequence = &seq
 	entry.Validity = []byte(u.FormatRFC3339(eol))
 
 	sig, err := sk.Sign(ipnsEntryDataForSig(entry))
