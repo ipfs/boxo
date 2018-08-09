@@ -6,7 +6,6 @@ import (
 
 	pb "github.com/ipfs/go-bitswap/message/pb"
 
-	proto "github.com/gogo/protobuf/proto"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	u "github.com/ipfs/go-ipfs-util"
@@ -31,7 +30,7 @@ func TestNewMessageFromProto(t *testing.T) {
 	protoMessage := new(pb.Message)
 	protoMessage.Wantlist = new(pb.Message_Wantlist)
 	protoMessage.Wantlist.Entries = []*pb.Message_Wantlist_Entry{
-		{Block: proto.String(str.KeyString())},
+		{Block: str.Bytes()},
 	}
 	if !wantlistContains(protoMessage.Wantlist, str) {
 		t.Fail()
@@ -166,7 +165,7 @@ func TestToAndFromNetMessage(t *testing.T) {
 
 func wantlistContains(wantlist *pb.Message_Wantlist, c *cid.Cid) bool {
 	for _, e := range wantlist.GetEntries() {
-		if e.GetBlock() == c.KeyString() {
+		if bytes.Equal(e.GetBlock(), c.Bytes()) {
 			return true
 		}
 	}
