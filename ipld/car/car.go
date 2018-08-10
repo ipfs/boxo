@@ -117,6 +117,7 @@ func (cw *carWriter) writeNode(ctx context.Context, nd format.Node) error {
 	hdr := &tar.Header{
 		Name:     nd.Cid().String(),
 		Typeflag: tar.TypeReg,
+		Size:     int64(len(nd.RawData())),
 	}
 
 	if err := cw.tw.WriteHeader(hdr); err != nil {
