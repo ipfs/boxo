@@ -36,11 +36,8 @@ var _ ipld.DecodeBlockFunc = DecodeRawBlock
 
 // NewRawNodeWPrefix creates a RawNode with the hash function
 // specified in prefix.
-func NewRawNodeWPrefix(data []byte, prefix cid.Prefix) (*RawNode, error) {
-	prefix.Codec = cid.Raw
-	if prefix.Version == 0 {
-		prefix.Version = 1
-	}
+func NewRawNodeWPrefix(data []byte, prefix cid.Builder) (*RawNode, error) {
+	prefix = prefix.WithCodec(cid.Raw)
 	c, err := prefix.Sum(data)
 	if err != nil {
 		return nil, err
