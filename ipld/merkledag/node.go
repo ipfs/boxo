@@ -63,21 +63,21 @@ func PrefixForCidVersion(version int) (cid.Prefix, error) {
 	}
 }
 
-// Prefix returns the CID Prefix for this ProtoNode, it is never nil
-func (n *ProtoNode) Prefix() cid.Builder {
+// CidBuilder returns the CID Builder for this ProtoNode, it is never nil
+func (n *ProtoNode) CidBuilder() cid.Builder {
 	if n.builder == nil {
 		n.builder = v0CidPrefix
 	}
 	return n.builder
 }
 
-// SetPrefix sets the CID prefix if it is non nil, if prefix is nil then
-// it resets it the default value
-func (n *ProtoNode) SetPrefix(prefix cid.Builder) {
-	if prefix == nil {
+// SetCidBuilder sets the CID builder if it is non nil, if nil then it
+// is reset to the default value
+func (n *ProtoNode) SetCidBuilder(builder cid.Builder) {
+	if builder == nil {
 		n.builder = v0CidPrefix
 	} else {
-		n.builder = prefix.WithCodec(cid.DagProtobuf)
+		n.builder = builder.WithCodec(cid.DagProtobuf)
 		n.encoded = nil
 		n.cached = nil
 	}

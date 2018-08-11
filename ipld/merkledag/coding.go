@@ -93,7 +93,7 @@ func (n *ProtoNode) EncodeProtobuf(force bool) ([]byte, error) {
 	}
 
 	if n.cached == nil {
-		c, err := n.Prefix().Sum(n.encoded)
+		c, err := n.CidBuilder().Sum(n.encoded)
 		if err != nil {
 			return nil, err
 		}
@@ -131,7 +131,7 @@ func DecodeProtobufBlock(b blocks.Block) (ipld.Node, error) {
 	}
 
 	decnd.cached = c
-	decnd.SetPrefix(c.Prefix())
+	decnd.SetCidBuilder(c.Prefix())
 	return decnd, nil
 }
 
