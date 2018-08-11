@@ -26,7 +26,7 @@ type DagBuilderHelper struct {
 	nextData  []byte // the next item to return.
 	maxlinks  int
 	batch     *ipld.Batch
-	prefix    *cid.Prefix
+	prefix    cid.Builder
 
 	// Filestore support variables.
 	// ----------------------------
@@ -54,7 +54,7 @@ type DagBuilderParams struct {
 	RawLeaves bool
 
 	// CID Prefix to use if set
-	Prefix *cid.Prefix
+	Prefix cid.Builder
 
 	// DAGService to write blocks to (required)
 	Dagserv ipld.DAGService
@@ -146,7 +146,7 @@ func (db *DagBuilderHelper) NewUnixfsNode() *UnixfsNode {
 }
 
 // GetPrefix returns the internal `cid.Prefix` set in the builder.
-func (db *DagBuilderHelper) GetPrefix() *cid.Prefix {
+func (db *DagBuilderHelper) GetPrefix() cid.Builder {
 	return db.prefix
 }
 
@@ -166,7 +166,7 @@ func (db *DagBuilderHelper) NewLeaf(data []byte) (*UnixfsNode, error) {
 				raw:     true,
 			}, nil
 		}
-		rawnode, err := dag.NewRawNodeWPrefix(data, *db.prefix)
+		rawnode, err := dag.NewRawNodeWPrefix(data, db.prefix)
 		if err != nil {
 			return nil, err
 		}
@@ -197,7 +197,7 @@ func (db *DagBuilderHelper) NewLeafNode(data []byte) (ipld.Node, error) {
 		if db.prefix == nil {
 			return dag.NewRawNode(data), nil
 		}
-		rawnode, err := dag.NewRawNodeWPrefix(data, *db.prefix)
+		rawnode, err := dag.NewRawNodeWPrefix(data, db.prefix)
 		if err != nil {
 			return nil, err
 		}
@@ -401,7 +401,7 @@ type FSNodeOverDag struct {
 func (db *DagBuilderHelper) NewFSNodeOverDag(fsNodeType pb.Data_DataType) *FSNodeOverDag {
 	node := new(FSNodeOverDag)
 	node.dag = new(dag.ProtoNode)
-	node.dag.SetPrefix(db.GetPrefix())
+	node.dag.SetCidBuilder(db.GetPrefix())
 
 	node.file = ft.NewFSNode(fsNodeType)
 

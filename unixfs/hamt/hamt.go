@@ -52,7 +52,7 @@ type Shard struct {
 	tableSize    int
 	tableSizeLg2 int
 
-	prefix   *cid.Prefix
+	prefix   cid.Builder
 	hashFunc uint64
 
 	prefixPadStr string
@@ -124,25 +124,25 @@ func NewHamtFromDag(dserv ipld.DAGService, nd ipld.Node) (*Shard, error) {
 	ds.children = make([]child, len(pbnd.Links()))
 	ds.bitfield.SetBytes(pbd.GetData())
 	ds.hashFunc = pbd.GetHashType()
-	ds.prefix = &ds.nd.Prefix
+	ds.prefix = ds.nd.CidBuilder()
 
 	return ds, nil
 }
 
 // SetPrefix sets the CID Prefix
-func (ds *Shard) SetPrefix(prefix *cid.Prefix) {
+func (ds *Shard) SetPrefix(prefix cid.Builder) {
 	ds.prefix = prefix
 }
 
 // Prefix gets the CID Prefix, may be nil if unset
-func (ds *Shard) Prefix() *cid.Prefix {
+func (ds *Shard) Prefix() cid.Builder {
 	return ds.prefix
 }
 
 // Node serializes the HAMT structure into a merkledag node with unixfs formatting
 func (ds *Shard) Node() (ipld.Node, error) {
 	out := new(dag.ProtoNode)
-	out.SetPrefix(ds.prefix)
+	out.SetCidBuilder(ds.prefix)
 
 	cindex := 0
 	// TODO: optimized 'for each set bit'

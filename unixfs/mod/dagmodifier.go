@@ -256,7 +256,7 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (*cid.Cid, error) {
 
 			nd := new(mdag.ProtoNode)
 			nd.SetData(b)
-			nd.SetPrefix(&nd0.Prefix)
+			nd.SetCidBuilder(nd0.CidBuilder())
 			err = dm.dagserv.Add(dm.ctx, nd)
 			if err != nil {
 				return nil, err

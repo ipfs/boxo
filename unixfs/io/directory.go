@@ -30,7 +30,7 @@ var DefaultShardWidth = 256
 type Directory interface {
 
 	// SetPrefix sets the CID prefix of the root node.
-	SetPrefix(*cid.Prefix)
+	SetPrefix(cid.Builder)
 
 	// AddChild adds a (name, key) pair to the root node.
 	AddChild(context.Context, string, ipld.Node) error
@@ -52,7 +52,7 @@ type Directory interface {
 	GetNode() (ipld.Node, error)
 
 	// GetPrefix returns the CID Prefix used.
-	GetPrefix() *cid.Prefix
+	GetPrefix() cid.Builder
 }
 
 // TODO: Evaluate removing `dserv` from this layer and providing it in MFS.
@@ -128,8 +128,8 @@ func NewDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (Directory, err
 }
 
 // SetPrefix implements the `Directory` interface.
-func (d *BasicDirectory) SetPrefix(prefix *cid.Prefix) {
-	d.node.SetPrefix(prefix)
+func (d *BasicDirectory) SetPrefix(prefix cid.Builder) {
+	d.node.SetCidBuilder(prefix)
 }
 
 // AddChild implements the `Directory` interface. It adds (or replaces)
@@ -180,8 +180,8 @@ func (d *BasicDirectory) GetNode() (ipld.Node, error) {
 }
 
 // GetPrefix implements the `Directory` interface.
-func (d *BasicDirectory) GetPrefix() *cid.Prefix {
-	return &d.node.Prefix
+func (d *BasicDirectory) GetPrefix() cid.Builder {
+	return d.node.CidBuilder()
 }
 
 // SwitchToSharding returns a HAMT implementation of this directory.
@@ -193,7 +193,7 @@ func (d *BasicDirectory) SwitchToSharding(ctx context.Context) (Directory, error
 	if err != nil {
 		return nil, err
 	}
-	shard.SetPrefix(&d.node.Prefix)
+	shard.SetPrefix(d.node.CidBuilder())
 	hamtDir.shard = shard
 
 	for _, lnk := range d.node.Links() {
@@ -212,7 +212,7 @@ func (d *BasicDirectory) SwitchToSharding(ctx context.Context) (Directory, error
 }
 
 // SetPrefix implements the `Directory` interface.
-func (d *HAMTDirectory) SetPrefix(prefix *cid.Prefix) {
+func (d *HAMTDirectory) SetPrefix(prefix cid.Builder) {
 	d.shard.SetPrefix(prefix)
 }
 
@@ -252,6 +252,6 @@ func (d *HAMTDirectory) GetNode() (ipld.Node, error) {
 }
 
 // GetPrefix implements the `Directory` interface.
-func (d *HAMTDirectory) GetPrefix() *cid.Prefix {
+func (d *HAMTDirectory) GetPrefix() cid.Builder {
 	return d.shard.Prefix()
 }

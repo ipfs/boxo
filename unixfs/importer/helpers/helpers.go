@@ -61,8 +61,8 @@ func NewUnixfsNodeFromDag(nd *dag.ProtoNode) (*UnixfsNode, error) {
 }
 
 // SetPrefix sets the CID Prefix
-func (n *UnixfsNode) SetPrefix(prefix *cid.Prefix) {
-	n.node.SetPrefix(prefix)
+func (n *UnixfsNode) SetPrefix(prefix cid.Builder) {
+	n.node.SetCidBuilder(prefix)
 }
 
 // NumChildren returns the number of children referenced by this UnixfsNode.
