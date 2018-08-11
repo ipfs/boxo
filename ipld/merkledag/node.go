@@ -27,8 +27,8 @@ type ProtoNode struct {
 
 	cached *cid.Cid
 
-	// Prefix specifies cid version and hashing function
-	Prefix cid.Prefix
+	// builder specifies cid version and hashing function
+	builder cid.Builder
 }
 
 var v0CidPrefix = cid.Prefix{
@@ -63,14 +63,21 @@ func PrefixForCidVersion(version int) (cid.Prefix, error) {
 	}
 }
 
-// SetPrefix sets the CID prefix if it is non nil, if prefix is nil then
-// it resets it the default value
-func (n *ProtoNode) SetPrefix(prefix *cid.Prefix) {
-	if prefix == nil {
-		n.Prefix = v0CidPrefix
+// CidBuilder returns the CID Builder for this ProtoNode, it is never nil
+func (n *ProtoNode) CidBuilder() cid.Builder {
+	if n.builder == nil {
+		n.builder = v0CidPrefix
+	}
+	return n.builder
+}
+
+// SetCidBuilder sets the CID builder if it is non nil, if nil then it
+// is reset to the default value
+func (n *ProtoNode) SetCidBuilder(builder cid.Builder) {
+	if builder == nil {
+		n.builder = v0CidPrefix
 	} else {
-		n.Prefix = *prefix
-		n.Prefix.Codec = cid.DagProtobuf
+		n.builder = builder.WithCodec(cid.DagProtobuf)
 		n.encoded = nil
 		n.cached = nil
 	}
@@ -191,7 +198,7 @@ func (n *ProtoNode) Copy() ipld.Node {
 		copy(nnode.links, n.links)
 	}
 
-	nnode.Prefix = n.Prefix
+	nnode.builder = n.builder
 
 	return nnode
 }
@@ -301,11 +308,7 @@ func (n *ProtoNode) Cid() *cid.Cid {
 		return n.cached
 	}
 
-	if n.Prefix.Codec == 0 {
-		n.SetPrefix(nil)
-	}
-
-	c, err := n.Prefix.Sum(n.RawData())
+	c, err := n.builder.Sum(n.RawData())
 	if err != nil {
 		// programmer error
 		err = fmt.Errorf("invalid CID of length %d: %x: %v", len(n.RawData()), n.RawData(), err)
