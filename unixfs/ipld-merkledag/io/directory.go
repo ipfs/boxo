@@ -29,8 +29,8 @@ var DefaultShardWidth = 256
 // (which is the main consumer of this interface).
 type Directory interface {
 
-	// SetPrefix sets the CID prefix of the root node.
-	SetPrefix(*cid.Prefix)
+	// SetCidBuilder sets the CID Builder of the root node.
+	SetCidBuilder(cid.Builder)
 
 	// AddChild adds a (name, key) pair to the root node.
 	AddChild(context.Context, string, ipld.Node) error
@@ -51,8 +51,8 @@ type Directory interface {
 	// GetNode returns the root of this directory.
 	GetNode() (ipld.Node, error)
 
-	// GetPrefix returns the CID Prefix used.
-	GetPrefix() *cid.Prefix
+	// GetCidBuilder returns the CID Builder used.
+	GetCidBuilder() cid.Builder
 }
 
 // TODO: Evaluate removing `dserv` from this layer and providing it in MFS.
@@ -127,9 +127,9 @@ func NewDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (Directory, err
 	return nil, ErrNotADir
 }
 
-// SetPrefix implements the `Directory` interface.
-func (d *BasicDirectory) SetPrefix(prefix *cid.Prefix) {
-	d.node.SetPrefix(prefix)
+// SetCidBuilder implements the `Directory` interface.
+func (d *BasicDirectory) SetCidBuilder(builder cid.Builder) {
+	d.node.SetCidBuilder(builder)
 }
 
 // AddChild implements the `Directory` interface. It adds (or replaces)
@@ -179,9 +179,9 @@ func (d *BasicDirectory) GetNode() (ipld.Node, error) {
 	return d.node, nil
 }
 
-// GetPrefix implements the `Directory` interface.
-func (d *BasicDirectory) GetPrefix() *cid.Prefix {
-	return &d.node.Prefix
+// GetCidBuilder implements the `Directory` interface.
+func (d *BasicDirectory) GetCidBuilder() cid.Builder {
+	return d.node.CidBuilder()
 }
 
 // SwitchToSharding returns a HAMT implementation of this directory.
@@ -193,7 +193,7 @@ func (d *BasicDirectory) SwitchToSharding(ctx context.Context) (Directory, error
 	if err != nil {
 		return nil, err
 	}
-	shard.SetPrefix(&d.node.Prefix)
+	shard.SetCidBuilder(d.node.CidBuilder())
 	hamtDir.shard = shard
 
 	for _, lnk := range d.node.Links() {
@@ -211,9 +211,9 @@ func (d *BasicDirectory) SwitchToSharding(ctx context.Context) (Directory, error
 	return hamtDir, nil
 }
 
-// SetPrefix implements the `Directory` interface.
-func (d *HAMTDirectory) SetPrefix(prefix *cid.Prefix) {
-	d.shard.SetPrefix(prefix)
+// SetCidBuilder implements the `Directory` interface.
+func (d *HAMTDirectory) SetCidBuilder(builder cid.Builder) {
+	d.shard.SetCidBuilder(builder)
 }
 
 // AddChild implements the `Directory` interface.
@@ -251,7 +251,7 @@ func (d *HAMTDirectory) GetNode() (ipld.Node, error) {
 	return d.shard.Node()
 }
 
-// GetPrefix implements the `Directory` interface.
-func (d *HAMTDirectory) GetPrefix() *cid.Prefix {
-	return d.shard.Prefix()
+// GetCidBuilder implements the `Directory` interface.
+func (d *HAMTDirectory) GetCidBuilder() cid.Builder {
+	return d.shard.CidBuilder()
 }

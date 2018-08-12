@@ -38,7 +38,7 @@ func getTrickleDag(t testing.TB, size int64, blksize int64) (ipld.Node, ipld.DAG
 
 func TestStableCid(t *testing.T) {
 	ds := mdtest.Mock()
-	buf := make([]byte, 10 * 1024 * 1024)
+	buf := make([]byte, 10*1024*1024)
 	u.NewSeededRand(0xdeadbeef).Read(buf)
 	r := bytes.NewReader(buf)
 
