@@ -256,7 +256,7 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (*cid.Cid, error) {
 
 			nd := new(mdag.ProtoNode)
 			nd.SetData(b)
-			nd.SetPrefix(&nd0.Prefix)
+			nd.SetCidBuilder(nd0.CidBuilder())
 			err = dm.dagserv.Add(dm.ctx, nd)
 			if err != nil {
 				return nil, err
@@ -345,10 +345,10 @@ func (dm *DagModifier) appendData(nd ipld.Node, spl chunker.Splitter) (ipld.Node
 	switch nd := nd.(type) {
 	case *mdag.ProtoNode, *mdag.RawNode:
 		dbp := &help.DagBuilderParams{
-			Dagserv:   dm.dagserv,
-			Maxlinks:  help.DefaultLinksPerBlock,
-			Prefix:    &dm.Prefix,
-			RawLeaves: dm.RawLeaves,
+			Dagserv:    dm.dagserv,
+			Maxlinks:   help.DefaultLinksPerBlock,
+			CidBuilder: dm.Prefix,
+			RawLeaves:  dm.RawLeaves,
 		}
 		return trickle.Append(dm.ctx, nd, dbp.New(spl))
 	default:

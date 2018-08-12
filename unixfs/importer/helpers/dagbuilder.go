@@ -19,14 +19,14 @@ import (
 // DagBuilderHelper wraps together a bunch of objects needed to
 // efficiently create unixfs dag trees
 type DagBuilderHelper struct {
-	dserv     ipld.DAGService
-	spl       chunker.Splitter
-	recvdErr  error
-	rawLeaves bool
-	nextData  []byte // the next item to return.
-	maxlinks  int
-	batch     *ipld.Batch
-	prefix    *cid.Prefix
+	dserv      ipld.DAGService
+	spl        chunker.Splitter
+	recvdErr   error
+	rawLeaves  bool
+	nextData   []byte // the next item to return.
+	maxlinks   int
+	batch      *ipld.Batch
+	cidBuilder cid.Builder
 
 	// Filestore support variables.
 	// ----------------------------
@@ -53,8 +53,8 @@ type DagBuilderParams struct {
 	// instead of using the unixfs TRaw type
 	RawLeaves bool
 
-	// CID Prefix to use if set
-	Prefix *cid.Prefix
+	// CID Builder to use if set
+	CidBuilder cid.Builder
 
 	// DAGService to write blocks to (required)
 	Dagserv ipld.DAGService
@@ -73,12 +73,12 @@ type DagBuilderParams struct {
 // chunker.Splitter as data source.
 func (dbp *DagBuilderParams) New(spl chunker.Splitter) *DagBuilderHelper {
 	db := &DagBuilderHelper{
-		dserv:     dbp.Dagserv,
-		spl:       spl,
-		rawLeaves: dbp.RawLeaves,
-		prefix:    dbp.Prefix,
-		maxlinks:  dbp.Maxlinks,
-		batch:     ipld.NewBatch(context.TODO(), dbp.Dagserv),
+		dserv:      dbp.Dagserv,
+		spl:        spl,
+		rawLeaves:  dbp.RawLeaves,
+		cidBuilder: dbp.CidBuilder,
+		maxlinks:   dbp.Maxlinks,
+		batch:      ipld.NewBatch(context.TODO(), dbp.Dagserv),
 	}
 	if fi, ok := spl.Reader().(files.FileInfo); dbp.NoCopy && ok {
 		db.fullPath = fi.AbsPath()
@@ -141,13 +141,13 @@ func (db *DagBuilderHelper) NewUnixfsNode() *UnixfsNode {
 		node: new(dag.ProtoNode),
 		ufmt: ft.NewFSNode(ft.TFile),
 	}
-	n.SetPrefix(db.prefix)
+	n.SetCidBuilder(db.cidBuilder)
 	return n
 }
 
-// GetPrefix returns the internal `cid.Prefix` set in the builder.
-func (db *DagBuilderHelper) GetPrefix() *cid.Prefix {
-	return db.prefix
+// GetCidBuilder returns the internal `cid.CidBuilder` set in the builder.
+func (db *DagBuilderHelper) GetCidBuilder() cid.Builder {
+	return db.cidBuilder
 }
 
 // NewLeaf creates a leaf node filled with data.  If rawLeaves is
@@ -160,13 +160,13 @@ func (db *DagBuilderHelper) NewLeaf(data []byte) (*UnixfsNode, error) {
 	}
 
 	if db.rawLeaves {
-		if db.prefix == nil {
+		if db.cidBuilder == nil {
 			return &UnixfsNode{
 				rawnode: dag.NewRawNode(data),
 				raw:     true,
 			}, nil
 		}
-		rawnode, err := dag.NewRawNodeWPrefix(data, *db.prefix)
+		rawnode, err := dag.NewRawNodeWPrefix(data, db.cidBuilder)
 		if err != nil {
 			return nil, err
 		}
@@ -194,10 +194,10 @@ func (db *DagBuilderHelper) NewLeafNode(data []byte) (ipld.Node, error) {
 
 	if db.rawLeaves {
 		// Encapsulate the data in a raw node.
-		if db.prefix == nil {
+		if db.cidBuilder == nil {
 			return dag.NewRawNode(data), nil
 		}
-		rawnode, err := dag.NewRawNodeWPrefix(data, *db.prefix)
+		rawnode, err := dag.NewRawNodeWPrefix(data, db.cidBuilder)
 		if err != nil {
 			return nil, err
 		}
@@ -229,7 +229,7 @@ func (db *DagBuilderHelper) newUnixfsBlock() *UnixfsNode {
 		node: new(dag.ProtoNode),
 		ufmt: ft.NewFSNode(ft.TRaw),
 	}
-	n.SetPrefix(db.prefix)
+	n.SetCidBuilder(db.cidBuilder)
 	return n
 }
 
@@ -401,7 +401,7 @@ type FSNodeOverDag struct {
 func (db *DagBuilderHelper) NewFSNodeOverDag(fsNodeType pb.Data_DataType) *FSNodeOverDag {
 	node := new(FSNodeOverDag)
 	node.dag = new(dag.ProtoNode)
-	node.dag.SetPrefix(db.GetPrefix())
+	node.dag.SetCidBuilder(db.GetCidBuilder())
 
 	node.file = ft.NewFSNode(fsNodeType)
 

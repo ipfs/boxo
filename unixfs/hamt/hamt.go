@@ -52,7 +52,7 @@ type Shard struct {
 	tableSize    int
 	tableSizeLg2 int
 
-	prefix   *cid.Prefix
+	builder  cid.Builder
 	hashFunc uint64
 
 	prefixPadStr string
@@ -124,25 +124,25 @@ func NewHamtFromDag(dserv ipld.DAGService, nd ipld.Node) (*Shard, error) {
 	ds.children = make([]child, len(pbnd.Links()))
 	ds.bitfield.SetBytes(pbd.GetData())
 	ds.hashFunc = pbd.GetHashType()
-	ds.prefix = &ds.nd.Prefix
+	ds.builder = ds.nd.CidBuilder()
 
 	return ds, nil
 }
 
-// SetPrefix sets the CID Prefix
-func (ds *Shard) SetPrefix(prefix *cid.Prefix) {
-	ds.prefix = prefix
+// SetCidBuilder sets the CID Builder
+func (ds *Shard) SetCidBuilder(builder cid.Builder) {
+	ds.builder = builder
 }
 
-// Prefix gets the CID Prefix, may be nil if unset
-func (ds *Shard) Prefix() *cid.Prefix {
-	return ds.prefix
+// CidBuilder gets the CID Builder, may be nil if unset
+func (ds *Shard) CidBuilder() cid.Builder {
+	return ds.builder
 }
 
 // Node serializes the HAMT structure into a merkledag node with unixfs formatting
 func (ds *Shard) Node() (ipld.Node, error) {
 	out := new(dag.ProtoNode)
-	out.SetPrefix(ds.prefix)
+	out.SetCidBuilder(ds.builder)
 
 	cindex := 0
 	// TODO: optimized 'for each set bit'
@@ -494,7 +494,7 @@ func (ds *Shard) modifyValue(ctx context.Context, hv *hashBits, key string, val 
 		if err != nil {
 			return err
 		}
-		ns.prefix = ds.prefix
+		ns.builder = ds.builder
 		chhv := &hashBits{
 			b:        hash([]byte(child.key)),
 			consumed: hv.consumed,

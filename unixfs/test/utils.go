@@ -61,10 +61,10 @@ func GetNode(t testing.TB, dserv ipld.DAGService, data []byte, opts NodeOpts) ip
 	in := bytes.NewReader(data)
 
 	dbp := h.DagBuilderParams{
-		Dagserv:   dserv,
-		Maxlinks:  h.DefaultLinksPerBlock,
-		Prefix:    &opts.Prefix,
-		RawLeaves: opts.RawLeavesUsed,
+		Dagserv:    dserv,
+		Maxlinks:   h.DefaultLinksPerBlock,
+		CidBuilder: opts.Prefix,
+		RawLeaves:  opts.RawLeavesUsed,
 	}
 
 	node, err := trickle.Layout(dbp.New(SizeSplitterGen(500)(in)))
