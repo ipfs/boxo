@@ -170,12 +170,12 @@ func (c *callbackDatastore) CallF() {
 	c.f()
 }
 
-func (c *callbackDatastore) Put(key ds.Key, value interface{}) (err error) {
+func (c *callbackDatastore) Put(key ds.Key, value []byte) (err error) {
 	c.CallF()
 	return c.ds.Put(key, value)
 }
 
-func (c *callbackDatastore) Get(key ds.Key) (value interface{}, err error) {
+func (c *callbackDatastore) Get(key ds.Key) (value []byte, err error) {
 	c.CallF()
 	return c.ds.Get(key)
 }
