@@ -11,7 +11,6 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	dsq "github.com/ipfs/go-datastore/query"
 	ds_sync "github.com/ipfs/go-datastore/sync"
-	dshelp "github.com/ipfs/go-ipfs-ds-help"
 	u "github.com/ipfs/go-ipfs-util"
 )
 
@@ -218,21 +217,6 @@ func TestAllKeysRespectsContext(t *testing.T) {
 
 }
 
-func TestErrValueTypeMismatch(t *testing.T) {
-	block := blocks.NewBlock([]byte("some data"))
-
-	datastore := ds.NewMapDatastore()
-	k := BlockPrefix.Child(dshelp.CidToDsKey(block.Cid()))
-	datastore.Put(k, "data that isn't a block!")
-
-	blockstore := NewBlockstore(ds_sync.MutexWrap(datastore))
-
-	_, err := blockstore.Get(block.Cid())
-	if err != ErrValueTypeMismatch {
-		t.Fatal(err)
-	}
-}
-
 func expectMatches(t *testing.T, expect, actual []*cid.Cid) {
 
 	if len(expect) != len(actual) {
@@ -258,11 +242,11 @@ type queryTestDS struct {
 
 func (c *queryTestDS) SetFunc(f func(dsq.Query) (dsq.Results, error)) { c.cb = f }
 
-func (c *queryTestDS) Put(key ds.Key, value interface{}) (err error) {
+func (c *queryTestDS) Put(key ds.Key, value []byte) (err error) {
 	return c.ds.Put(key, value)
 }
 
-func (c *queryTestDS) Get(key ds.Key) (value interface{}, err error) {
+func (c *queryTestDS) Get(key ds.Key) (value []byte, err error) {
 	return c.ds.Get(key)
 }
 

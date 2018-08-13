@@ -22,10 +22,6 @@ var log = logging.Logger("blockstore")
 // BlockPrefix namespaces blockstore datastores
 var BlockPrefix = ds.NewKey("blocks")
 
-// ErrValueTypeMismatch is an error returned when the item retrieved from
-// the datatstore is not a block.
-var ErrValueTypeMismatch = errors.New("the retrieved value is not a Block")
-
 // ErrHashMismatch is an error returned when the hash of a block
 // is different than expected.
 var ErrHashMismatch = errors.New("block in storage has different hash than requested")
@@ -124,18 +120,13 @@ func (bs *blockstore) Get(k *cid.Cid) (blocks.Block, error) {
 		return nil, ErrNotFound
 	}
 
-	maybeData, err := bs.datastore.Get(dshelp.CidToDsKey(k))
+	bdata, err := bs.datastore.Get(dshelp.CidToDsKey(k))
 	if err == ds.ErrNotFound {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	bdata, ok := maybeData.([]byte)
-	if !ok {
-		return nil, ErrValueTypeMismatch
-	}
-
 	if bs.rehash {
 		rbcid, err := k.Prefix().Sum(bdata)
 		if err != nil {
@@ -187,16 +178,12 @@ func (bs *blockstore) Has(k *cid.Cid) (bool, error) {
 }
 
 func (bs *blockstore) GetSize(k *cid.Cid) (int, error) {
-	maybeData, err := bs.datastore.Get(dshelp.CidToDsKey(k))
+	bdata, err := bs.datastore.Get(dshelp.CidToDsKey(k))
 	if err == ds.ErrNotFound {
 		return -1, ErrNotFound
 	}
 	if err != nil {
 		return -1, err
-	}
-	bdata, ok := maybeData.([]byte)
-	if !ok {
-		return -1, ErrValueTypeMismatch
 	}
 	return len(bdata), nil
 }
