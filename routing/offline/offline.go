@@ -71,17 +71,13 @@ func (c *offlineRouting) PutValue(ctx context.Context, key string, val []byte, _
 }
 
 func (c *offlineRouting) GetValue(ctx context.Context, key string, _ ...ropts.Option) ([]byte, error) {
-	v, err := c.datastore.Get(dshelp.NewKeyFromBinary([]byte(key)))
+	buf, err := c.datastore.Get(dshelp.NewKeyFromBinary([]byte(key)))
 	if err != nil {
 		return nil, err
 	}
 
-	byt, ok := v.([]byte)
-	if !ok {
-		return nil, errors.New("value stored in datastore not []byte")
-	}
 	rec := new(pb.Record)
-	err = proto.Unmarshal(byt, rec)
+	err = proto.Unmarshal(buf, rec)
 	if err != nil {
 		return nil, err
 	}
