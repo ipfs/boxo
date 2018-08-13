@@ -1,103 +1,77 @@
 package car
 
 import (
-	"archive/tar"
+	"bufio"
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 
-	"github.com/ipfs/go-block-format"
-	cid "github.com/ipfs/go-cid"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
-	format "github.com/ipfs/go-ipld-format"
-	dag "github.com/ipfs/go-merkledag"
+	util "github.com/ipfs/go-car/util"
+
+	cbor "gx/ipfs/QmSyK1ZiAP98YvnxsTfQpb669V2xeTHRbG4Y6fgKS3vVSd/go-ipld-cbor"
+	"gx/ipfs/QmVzK524a2VWLqyvtBeiHKsUAWYgeAk4DBeZoY7vpNPNRx/go-block-format"
+	cid "gx/ipfs/QmYVNvtQkeZ6AKSwDrjQTs432QtL6umrrK41EBq3cu7iSP/go-cid"
+	format "gx/ipfs/QmZtNq8dArGfnpCZfx2pUNY7UcjGhVp5qqwQ4hH6mpTMRQ/go-ipld-format"
+	bstore "gx/ipfs/QmcD7SqfyQyA91TZUQ7VPRYbGarxmY7EsQewVYMuN5LNSv/go-ipfs-blockstore"
+	dag "gx/ipfs/QmeCaeBmCCEJrZahwXY4G2G8zRaNBWskrfKWoQ6Xv6c1DR/go-merkledag"
 )
 
-func WriteCar(ctx context.Context, ds format.DAGService, root *cid.Cid, w io.Writer) error {
-	tw := tar.NewWriter(w)
-
-	rh := &tar.Header{
-		Typeflag: tar.TypeSymlink,
-		Name:     "root",
-		Linkname: root.String(),
-	}
-	if err := tw.WriteHeader(rh); err != nil {
-		return err
-	}
-
-	cw := &carWriter{ds: ds, tw: tw}
-
-	seen := cid.NewSet()
-	if err := dag.EnumerateChildren(ctx, cw.enumGetLinks, root, seen.Visit); err != nil {
-		return err
-	}
-
-	return tw.Flush()
+func init() {
+	cbor.RegisterCborType(CarHeader{})
 }
 
-func LoadCar(ctx context.Context, bs bstore.Blockstore, r io.Reader) (*cid.Cid, error) {
-	tr := tar.NewReader(r)
-	root, err := tr.Next()
-	if err != nil {
-		return nil, err
-	}
-
-	if root.Name != "root" || root.Typeflag != tar.TypeSymlink {
-		return nil, fmt.Errorf("expected first entry in CAR to by symlink named 'root'")
-	}
-
-	rootcid, err := cid.Decode(root.Linkname)
-	if err != nil {
-		return nil, err
-	}
-
-	for {
-		obj, err := tr.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, err
-		}
-
-		c, err := cid.Decode(obj.Name)
-		if err != nil {
-			return nil, err
-		}
-
-		// safety 1st
-		limr := io.LimitReader(tr, 2<<20)
-		data, err := ioutil.ReadAll(limr)
-		if err != nil {
-			return nil, err
-		}
-
-		hashed, err := c.Prefix().Sum(data)
-		if err != nil {
-			return nil, err
-		}
-
-		if !hashed.Equals(c) {
-			return nil, fmt.Errorf("mismatch in content integrity, name: %s, data: %s", c, hashed)
-		}
-
-		blk, err := blocks.NewBlockWithCid(data, c)
-		if err != nil {
-			return nil, err
-		}
-
-		if err := bs.Put(blk); err != nil {
-			return nil, err
-		}
-	}
-
-	return rootcid, nil
+type CarHeader struct {
+	Roots   []*cid.Cid
+	Version uint64
 }
 
 type carWriter struct {
 	ds format.DAGService
-	tw *tar.Writer
+	w  io.Writer
+}
+
+func WriteCar(ctx context.Context, ds format.DAGService, roots []*cid.Cid, w io.Writer) error {
+	cw := &carWriter{ds: ds, w: w}
+
+	h := &CarHeader{
+		Roots:   roots,
+		Version: 1,
+	}
+
+	if err := cw.WriteHeader(h); err != nil {
+		return fmt.Errorf("failed to write car header: %s", err)
+	}
+
+	seen := cid.NewSet()
+	for _, r := range roots {
+		if err := dag.EnumerateChildren(ctx, cw.enumGetLinks, r, seen.Visit); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ReadHeader(br *bufio.Reader) (*CarHeader, error) {
+	hb, err := util.LdRead(br)
+	if err != nil {
+		return nil, err
+	}
+
+	var ch CarHeader
+	if err := cbor.DecodeInto(hb, &ch); err != nil {
+		return nil, err
+	}
+
+	return &ch, nil
+}
+
+func (cw *carWriter) WriteHeader(h *CarHeader) error {
+	hb, err := cbor.DumpObject(h)
+	if err != nil {
+		return err
+	}
+
+	return util.LdWrite(cw.w, hb)
 }
 
 func (cw *carWriter) enumGetLinks(ctx context.Context, c *cid.Cid) ([]*format.Link, error) {
@@ -114,19 +88,71 @@ func (cw *carWriter) enumGetLinks(ctx context.Context, c *cid.Cid) ([]*format.Li
 }
 
 func (cw *carWriter) writeNode(ctx context.Context, nd format.Node) error {
-	hdr := &tar.Header{
-		Name:     nd.Cid().String(),
-		Typeflag: tar.TypeReg,
-		Size:     int64(len(nd.RawData())),
+	return util.LdWrite(cw.w, nd.Cid().Bytes(), nd.RawData())
+}
+
+type carReader struct {
+	br     *bufio.Reader
+	Header *CarHeader
+}
+
+func NewCarReader(r io.Reader) (*carReader, error) {
+	br := bufio.NewReader(r)
+	ch, err := ReadHeader(br)
+	if err != nil {
+		return nil, err
 	}
 
-	if err := cw.tw.WriteHeader(hdr); err != nil {
-		return err
+	if len(ch.Roots) == 0 {
+		return nil, fmt.Errorf("empty car")
 	}
 
-	if _, err := cw.tw.Write(nd.RawData()); err != nil {
-		return err
+	if ch.Version != 1 {
+		return nil, fmt.Errorf("invalid car version: %d", ch.Version)
 	}
 
-	return nil
+	return &carReader{
+		br:     br,
+		Header: ch,
+	}, nil
+}
+
+func (cr *carReader) Next() (blocks.Block, error) {
+	c, data, err := util.ReadNode(cr.br)
+	if err != nil {
+		return nil, err
+	}
+
+	hashed, err := c.Prefix().Sum(data)
+	if err != nil {
+		return nil, err
+	}
+
+	if !hashed.Equals(c) {
+		return nil, fmt.Errorf("mismatch in content integrity, name: %s, data: %s", c, hashed)
+	}
+
+	return blocks.NewBlockWithCid(data, c)
+}
+
+func LoadCar(bs bstore.Blockstore, r io.Reader) (*CarHeader, error) {
+	cr, err := NewCarReader(r)
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		blk, err := cr.Next()
+		switch err {
+		case io.EOF:
+			return cr.Header, nil
+		default:
+			return nil, err
+		case nil:
+		}
+
+		if err := bs.Put(blk); err != nil {
+			return nil, err
+		}
+	}
 }
