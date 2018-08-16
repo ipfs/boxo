@@ -16,6 +16,15 @@
 // mentioned. This is the only scenario where the root can be of a type different
 // that the UnixFS node.
 //
+// Notes:
+// 1. In the implementation. `FSNodeOverDag` structure is used for representing
+//    the UnixFS node encoded inside the DAG node.
+//    (see https://github.com/ipfs/go-ipfs/pull/5118.)
+// 2. `TFile` is used for backwards-compatibility. It was a bug causing the leaf
+//    nodes to be generated with this type instead of `TRaw`. The former one
+//    should be used (like the trickle builder does).
+//    (See https://github.com/ipfs/go-ipfs/pull/5120.)
+//
 //                                                 +-------------+
 //                                                 |   Root 4    |
 //                                                 +-------------+

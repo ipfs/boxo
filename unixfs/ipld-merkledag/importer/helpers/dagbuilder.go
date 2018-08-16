@@ -213,11 +213,6 @@ func (db *DagBuilderHelper) NewLeafNode(data []byte, fsNodeType pb.Data_DataType
 	// TODO: Encapsulate this sequence of calls into a function that
 	// just returns the final `ipld.Node` avoiding going through
 	// `FSNodeOverDag`.
-	// TODO: Using `TFile` for backwards-compatibility, a bug in the
-	// balanced builder was causing the leaf nodes to be generated
-	// with this type instead of `TRaw`, the one that should be used
-	// (like the trickle builder does).
-	// (See https://github.com/ipfs/go-ipfs/pull/5120.)
 
 	return node, nil
 }
