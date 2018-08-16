@@ -37,12 +37,13 @@ const layerRepeat = 4
 // DagBuilderHelper. See the module's description for a more detailed
 // explanation.
 func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
-	root := db.NewUnixfsNode()
-	if err := fillTrickleRec(db, root, -1); err != nil {
+	newRoot := db.NewFSNodeOverDag(ft.TFile)
+	root, _, err := fillTrickleRecFSNode(db, newRoot, -1)
+	if err != nil {
 		return nil, err
 	}
 
-	return db.AddUnixfsNode(root)
+	return root, db.Add(root)
 }
 
 // fillTrickleRec creates a trickle (sub-)tree with an optional maximum specified depth
@@ -74,6 +75,47 @@ func fillTrickleRec(db *h.DagBuilderHelper, node *h.UnixfsNode, maxDepth int) er
 			}
 		}
 	}
+}
+
+// fillTrickleRecFSNode creates a trickle (sub-)tree with an optional maximum specified depth
+// in the case maxDepth is greater than zero, or with unlimited depth otherwise
+// (where the DAG builder will signal the end of data to end the function).
+func fillTrickleRecFSNode(db *h.DagBuilderHelper, node *h.FSNodeOverDag, maxDepth int) (filledNode ipld.Node, nodeFileSize uint64, err error) {
+	// Always do this, even in the base case
+	if err := db.FillFSNodeLayer(node); err != nil {
+		return nil, 0, err
+	}
+
+	for depth := 1; ; depth++ {
+		// Apply depth limit only if the parameter is set (> 0).
+		if db.Done() || (maxDepth > 0 && depth == maxDepth) {
+			break
+		}
+		for layer := 0; layer < layerRepeat; layer++ {
+			if db.Done() {
+				break
+			}
+
+			nextChild := db.NewFSNodeOverDag(ft.TFile)
+			childNode, childFileSize, err := fillTrickleRecFSNode(db, nextChild, depth)
+			if err != nil {
+				return nil, 0, err
+			}
+
+			if err := node.AddChild(childNode, childFileSize, db); err != nil {
+				return nil, 0, err
+			}
+		}
+	}
+	nodeFileSize = node.FileSize()
+
+	// Get the final `dag.ProtoNode` with the `FSNode` data encoded inside.
+	filledNode, err = node.Commit()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return filledNode, nodeFileSize, nil
 }
 
 // Append appends the data in `db` to the dag, using the Trickledag format
