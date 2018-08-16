@@ -123,7 +123,7 @@ import (
 func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 	if db.Done() {
 		// No data, return just an empty node.
-		root, err := db.NewLeafNode(nil)
+		root, err := db.NewLeafNode(nil, ft.TFile)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +137,7 @@ func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 	// (corner case), after that subsequent `root` nodes will
 	// always be internal nodes (with a depth > 0) that can
 	// be handled by the loop.
-	root, fileSize, err := db.NewLeafDataNode()
+	root, fileSize, err := db.NewLeafDataNode(ft.TFile)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +224,7 @@ func fillNodeRec(db *h.DagBuilderHelper, node *h.FSNodeOverDag, depth int) (fill
 
 		if depth == 1 {
 			// Base case: add leaf node with data.
-			childNode, childFileSize, err = db.NewLeafDataNode()
+			childNode, childFileSize, err = db.NewLeafDataNode(ft.TFile)
 			if err != nil {
 				return nil, 0, err
 			}
