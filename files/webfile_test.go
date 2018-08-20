@@ -3,8 +3,8 @@ package files
 import (
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 )
@@ -13,17 +13,13 @@ func TestWebFile(t *testing.T) {
 	http.HandleFunc("/my/url/content.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello world!")
 	})
-	listener, err := net.Listen("tcp", ":18281")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
 
-	go func() {
-		http.Serve(listener, nil)
-	}()
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "Hello world!")
+	}))
+	defer s.Close()
 
-	u, err := url.Parse("http://127.0.0.1:18281/my/url/content.txt")
+	u, err := url.Parse(s.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
