@@ -66,7 +66,7 @@ type GCLocker interface {
 
 	// PinLock locks the blockstore for sequences of puts expected to finish
 	// with a pin (before GC). Multiple put->pin sequences can write through
-	// at the same time, but no GC should not happen simulatenously.
+	// at the same time, but no GC should happen simulatenously.
 	// Reading during Pinning is safe, and requires no lock.
 	PinLock() Unlocker
 
