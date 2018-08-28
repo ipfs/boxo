@@ -5,10 +5,10 @@ import (
 	"context"
 	"testing"
 
-	cid "gx/ipfs/QmYVNvtQkeZ6AKSwDrjQTs432QtL6umrrK41EBq3cu7iSP/go-cid"
-	format "gx/ipfs/QmZtNq8dArGfnpCZfx2pUNY7UcjGhVp5qqwQ4hH6mpTMRQ/go-ipld-format"
-	dag "gx/ipfs/QmeCaeBmCCEJrZahwXY4G2G8zRaNBWskrfKWoQ6Xv6c1DR/go-merkledag"
-	dstest "gx/ipfs/QmeCaeBmCCEJrZahwXY4G2G8zRaNBWskrfKWoQ6Xv6c1DR/go-merkledag/test"
+	cid "github.com/ipfs/go-cid"
+	format "github.com/ipfs/go-ipld-format"
+	dag "github.com/ipfs/go-merkledag"
+	dstest "github.com/ipfs/go-merkledag/test"
 )
 
 func assertAddNodes(t *testing.T, ds format.DAGService, nds ...format.Node) {
