@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"gx/ipfs/QmU9oYpqJsNWwAAJju8CzE7mv4NHAJUDWhoKHqgnhMCBy5/go-car"
+	"github.com/ipfs/go-car"
 
 	cli "github.com/urfave/cli"
 )
