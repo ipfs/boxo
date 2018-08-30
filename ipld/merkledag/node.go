@@ -127,14 +127,12 @@ func (n *ProtoNode) AddRawLink(name string, l *ipld.Link) error {
 func (n *ProtoNode) RemoveNodeLink(name string) error {
 	n.encoded = nil
 
-	ref := &n.links
-	filterPos := 0
+	ref := n.links[:0]
 	found := false
 
-	for i := 0; i < len(*ref); i++ {
-		if v := (*ref)[i]; v.Name != name {
-			(*ref)[filterPos] = v
-			filterPos++
+	for _, v := range n.links {
+		if v.Name != name {
+			ref = append(ref, v)
 		} else {
 			found = true
 		}
@@ -144,7 +142,7 @@ func (n *ProtoNode) RemoveNodeLink(name string) error {
 		return ipld.ErrNotFound
 	}
 
-	n.links = (*ref)[:filterPos]
+	n.links = ref
 
 	return nil
 }
