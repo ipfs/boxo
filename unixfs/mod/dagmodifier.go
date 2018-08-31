@@ -490,7 +490,7 @@ func (dm *DagModifier) Truncate(size int64) error {
 		return dm.expandSparse(int64(size) - realSize)
 	}
 
-	nnode, err := dagTruncate(dm.ctx, dm.curNode, uint64(size), dm.dagserv)
+	nnode, err := dm.dagTruncate(dm.ctx, dm.curNode, uint64(size))
 	if err != nil {
 		return err
 	}
@@ -505,7 +505,7 @@ func (dm *DagModifier) Truncate(size int64) error {
 }
 
 // dagTruncate truncates the given node to 'size' and returns the modified Node
-func dagTruncate(ctx context.Context, n ipld.Node, size uint64, ds ipld.DAGService) (ipld.Node, error) {
+func (dm *DagModifier) dagTruncate(ctx context.Context, n ipld.Node, size uint64) (ipld.Node, error) {
 	if len(n.Links()) == 0 {
 		switch nd := n.(type) {
 		case *mdag.ProtoNode:
@@ -537,7 +537,7 @@ func dagTruncate(ctx context.Context, n ipld.Node, size uint64, ds ipld.DAGServi
 	// with the new values of the truncated children.
 	ndata.RemoveAllBlockSizes()
 	for i, lnk := range nd.Links() {
-		child, err := lnk.GetNode(ctx, ds)
+		child, err := lnk.GetNode(ctx, dm.dagserv)
 		if err != nil {
 			return nil, err
 		}
@@ -549,7 +549,7 @@ func dagTruncate(ctx context.Context, n ipld.Node, size uint64, ds ipld.DAGServi
 
 		// found the child we want to cut
 		if size < cur+childsize {
-			nchild, err := dagTruncate(ctx, child, size-cur, ds)
+			nchild, err := dm.dagTruncate(ctx, child, size-cur)
 			if err != nil {
 				return nil, err
 			}
@@ -564,7 +564,7 @@ func dagTruncate(ctx context.Context, n ipld.Node, size uint64, ds ipld.DAGServi
 		ndata.AddBlockSize(childsize)
 	}
 
-	err = ds.Add(ctx, modified)
+	err = dm.dagserv.Add(ctx, modified)
 	if err != nil {
 		return nil, err
 	}
