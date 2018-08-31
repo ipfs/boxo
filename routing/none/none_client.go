@@ -26,6 +26,10 @@ func (c *nilclient) GetValue(_ context.Context, _ string, _ ...ropts.Option) ([]
 	return nil, errors.New("tried GetValue from nil routing")
 }
 
+func (c *nilclient) SearchValue(_ context.Context, _ string, _ ...ropts.Option) (<-chan []byte, error) {
+	return nil, errors.New("tried SearchValue from nil routing")
+}
+
 func (c *nilclient) FindPeer(_ context.Context, _ peer.ID) (pstore.PeerInfo, error) {
 	return pstore.PeerInfo{}, nil
 }
