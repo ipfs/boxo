@@ -91,13 +91,12 @@ func (c *offlineRouting) GetValue(ctx context.Context, key string, _ ...ropts.Op
 }
 
 func (c *offlineRouting) SearchValue(ctx context.Context, key string, _ ...ropts.Option) (<-chan []byte, error) {
-	out := make(chan []byte)
+	out := make(chan []byte, 1)
 	go func() {
 		defer close(out)
-		v, _ := c.GetValue(ctx, key)
-		select {
-		case out <- v:
-		case <-ctx.Done():
+		v, err := c.GetValue(ctx, key)
+		if err == nil {
+			out <- v
 		}
 	}()
 	return out, nil
