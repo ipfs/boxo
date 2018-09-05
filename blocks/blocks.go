@@ -19,7 +19,7 @@ var ErrWrongHash = errors.New("data did not match given hash")
 // Block provides abstraction for blocks implementations.
 type Block interface {
 	RawData() []byte
-	Cid() *cid.Cid
+	Cid() cid.Cid
 	String() string
 	Loggable() map[string]interface{}
 }
@@ -27,7 +27,7 @@ type Block interface {
 // A BasicBlock is a singular block of data in ipfs. It implements the Block
 // interface.
 type BasicBlock struct {
-	cid  *cid.Cid
+	cid  cid.Cid
 	data []byte
 }
 
@@ -40,7 +40,7 @@ func NewBlock(data []byte) *BasicBlock {
 // NewBlockWithCid creates a new block when the hash of the data
 // is already known, this is used to save time in situations where
 // we are able to be confident that the data is correct.
-func NewBlockWithCid(data []byte, c *cid.Cid) (*BasicBlock, error) {
+func NewBlockWithCid(data []byte, c cid.Cid) (*BasicBlock, error) {
 	if u.Debug {
 		chkc, err := c.Prefix().Sum(data)
 		if err != nil {
@@ -65,7 +65,7 @@ func (b *BasicBlock) RawData() []byte {
 }
 
 // Cid returns the content identifier of the block.
-func (b *BasicBlock) Cid() *cid.Cid {
+func (b *BasicBlock) Cid() cid.Cid {
 	return b.cid
 }
 
