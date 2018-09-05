@@ -32,7 +32,7 @@ func TestValidateCids(t *testing.T) {
 
 	assertFalse(IsGoodHash(mh.BLAKE2B_MIN + 5))
 
-	mhcid := func(code uint64, length int) *cid.Cid {
+	mhcid := func(code uint64, length int) cid.Cid {
 		mhash, err := mh.Sum([]byte{}, code, length)
 		if err != nil {
 			t.Fatal(err)
@@ -41,7 +41,7 @@ func TestValidateCids(t *testing.T) {
 	}
 
 	cases := []struct {
-		cid *cid.Cid
+		cid cid.Cid
 		err error
 	}{
 		{mhcid(mh.SHA2_256, 32), nil},

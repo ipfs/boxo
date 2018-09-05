@@ -48,7 +48,7 @@ func IsGoodHash(code uint64) bool {
 	return false
 }
 
-func ValidateCid(c *cid.Cid) error {
+func ValidateCid(c cid.Cid) error {
 	pref := c.Prefix()
 	if !IsGoodHash(pref.MhType) {
 		return ErrPossiblyInsecureHashFunction
