@@ -71,7 +71,7 @@ func TestGetBlocksSequential(t *testing.T) {
 	}
 	objs := makeObjects(50)
 
-	var cids []*cid.Cid
+	var cids []cid.Cid
 	for _, o := range objs {
 		cids = append(cids, o.Cid())
 		servs[0].AddBlock(o)

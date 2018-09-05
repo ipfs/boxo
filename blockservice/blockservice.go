@@ -25,7 +25,7 @@ var ErrNotFound = errors.New("blockservice: key not found")
 // the blockservice.
 type BlockGetter interface {
 	// GetBlock gets the requested block.
-	GetBlock(ctx context.Context, c *cid.Cid) (blocks.Block, error)
+	GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error)
 
 	// GetBlocks does a batch request for the given cids, returning blocks as
 	// they are found, in no particular order.
@@ -34,7 +34,7 @@ type BlockGetter interface {
 	// be canceled). In that case, it will close the channel early. It is up
 	// to the consumer to detect this situation and keep track which blocks
 	// it has received and which it hasn't.
-	GetBlocks(ctx context.Context, ks []*cid.Cid) <-chan blocks.Block
+	GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block
 }
 
 // BlockService is a hybrid block datastore. It stores data in a local
@@ -58,7 +58,7 @@ type BlockService interface {
 	AddBlocks(bs []blocks.Block) error
 
 	// DeleteBlock deletes the given block from the blockservice.
-	DeleteBlock(o *cid.Cid) error
+	DeleteBlock(o cid.Cid) error
 }
 
 type blockService struct {
@@ -196,7 +196,7 @@ func (s *blockService) AddBlocks(bs []blocks.Block) error {
 
 // GetBlock retrieves a particular block from the service,
 // Getting it from the datastore using the key (hash).
-func (s *blockService) GetBlock(ctx context.Context, c *cid.Cid) (blocks.Block, error) {
+func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
 	log.Debugf("BlockService GetBlock: '%s'", c)
 
 	var f exchange.Fetcher
@@ -207,7 +207,7 @@ func (s *blockService) GetBlock(ctx context.Context, c *cid.Cid) (blocks.Block, 
 	return getBlock(ctx, c, s.blockstore, f) // hash security
 }
 
-func getBlock(ctx context.Context, c *cid.Cid, bs blockstore.Blockstore, f exchange.Fetcher) (blocks.Block, error) {
+func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, f exchange.Fetcher) (blocks.Block, error) {
 	err := verifcid.ValidateCid(c) // hash security
 	if err != nil {
 		return nil, err
@@ -244,11 +244,11 @@ func getBlock(ctx context.Context, c *cid.Cid, bs blockstore.Blockstore, f excha
 // GetBlocks gets a list of blocks asynchronously and returns through
 // the returned channel.
 // NB: No guarantees are made about order.
-func (s *blockService) GetBlocks(ctx context.Context, ks []*cid.Cid) <-chan blocks.Block {
+func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
 	return getBlocks(ctx, ks, s.blockstore, s.exchange) // hash security
 }
 
-func getBlocks(ctx context.Context, ks []*cid.Cid, bs blockstore.Blockstore, f exchange.Fetcher) <-chan blocks.Block {
+func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, f exchange.Fetcher) <-chan blocks.Block {
 	out := make(chan blocks.Block)
 
 	go func() {
@@ -266,7 +266,7 @@ func getBlocks(ctx context.Context, ks []*cid.Cid, bs blockstore.Blockstore, f e
 		}
 		ks = ks[:k]
 
-		var misses []*cid.Cid
+		var misses []cid.Cid
 		for _, c := range ks {
 			hit, err := bs.Get(c)
 			if err != nil {
@@ -303,7 +303,7 @@ func getBlocks(ctx context.Context, ks []*cid.Cid, bs blockstore.Blockstore, f e
 }
 
 // DeleteBlock deletes a block in the blockservice from the datastore
-func (s *blockService) DeleteBlock(c *cid.Cid) error {
+func (s *blockService) DeleteBlock(c cid.Cid) error {
 	err := s.blockstore.DeleteBlock(c)
 	if err == nil {
 		log.Event(context.TODO(), "BlockService.BlockDeleted", c)
@@ -323,12 +323,12 @@ type Session struct {
 }
 
 // GetBlock gets a block in the context of a request session
-func (s *Session) GetBlock(ctx context.Context, c *cid.Cid) (blocks.Block, error) {
+func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
 	return getBlock(ctx, c, s.bs, s.ses) // hash security
 }
 
 // GetBlocks gets blocks in the context of a request session
-func (s *Session) GetBlocks(ctx context.Context, ks []*cid.Cid) <-chan blocks.Block {
+func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
 	return getBlocks(ctx, ks, s.bs, s.ses) // hash security
 }
 
