@@ -6,7 +6,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 )
 
-var testcids []*cid.Cid
+var testcids []cid.Cid
 
 func init() {
 	strs := []string{
@@ -25,10 +25,10 @@ func init() {
 }
 
 type wli interface {
-	Contains(*cid.Cid) (*Entry, bool)
+	Contains(cid.Cid) (*Entry, bool)
 }
 
-func assertHasCid(t *testing.T, w wli, c *cid.Cid) {
+func assertHasCid(t *testing.T, w wli, c cid.Cid) {
 	e, ok := w.Contains(c)
 	if !ok {
 		t.Fatal("expected to have ", c)
@@ -38,7 +38,7 @@ func assertHasCid(t *testing.T, w wli, c *cid.Cid) {
 	}
 }
 
-func assertNotHasCid(t *testing.T, w wli, c *cid.Cid) {
+func assertNotHasCid(t *testing.T, w wli, c cid.Cid) {
 	_, ok := w.Contains(c)
 	if ok {
 		t.Fatal("expected not to have ", c)

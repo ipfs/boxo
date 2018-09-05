@@ -151,8 +151,8 @@ func TestDoesNotDeadLockIfContextCancelledBeforePublish(t *testing.T) {
 
 	t.Log("generate a large number of blocks. exceed default buffer")
 	bs := g.Blocks(1000)
-	ks := func() []*cid.Cid {
-		var keys []*cid.Cid
+	ks := func() []cid.Cid {
+		var keys []cid.Cid
 		for _, b := range bs {
 			keys = append(keys, b.Cid())
 		}

@@ -13,7 +13,7 @@ const bufferSize = 16
 
 type PubSub interface {
 	Publish(block blocks.Block)
-	Subscribe(ctx context.Context, keys ...*cid.Cid) <-chan blocks.Block
+	Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Block
 	Shutdown()
 }
 
@@ -61,7 +61,7 @@ func (ps *impl) Shutdown() {
 // Subscribe returns a channel of blocks for the given |keys|. |blockChannel|
 // is closed if the |ctx| times out or is cancelled, or after sending len(keys)
 // blocks.
-func (ps *impl) Subscribe(ctx context.Context, keys ...*cid.Cid) <-chan blocks.Block {
+func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Block {
 
 	blocksCh := make(chan blocks.Block, len(keys))
 	valuesCh := make(chan interface{}, len(keys)) // provide our own channel to control buffer, prevent blocking
@@ -121,7 +121,7 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...*cid.Cid) <-chan blocks.B
 	return blocksCh
 }
 
-func toStrings(keys []*cid.Cid) []string {
+func toStrings(keys []cid.Cid) []string {
 	strs := make([]string, 0, len(keys))
 	for _, key := range keys {
 		strs = append(strs, key.KeyString())

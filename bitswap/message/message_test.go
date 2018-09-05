@@ -11,7 +11,7 @@ import (
 	u "github.com/ipfs/go-ipfs-util"
 )
 
-func mkFakeCid(s string) *cid.Cid {
+func mkFakeCid(s string) cid.Cid {
 	return cid.NewCidV0(u.Hash([]byte(s)))
 }
 
@@ -67,7 +67,7 @@ func TestAppendBlock(t *testing.T) {
 }
 
 func TestWantlist(t *testing.T) {
-	keystrs := []*cid.Cid{mkFakeCid("foo"), mkFakeCid("bar"), mkFakeCid("baz"), mkFakeCid("bat")}
+	keystrs := []cid.Cid{mkFakeCid("foo"), mkFakeCid("bar"), mkFakeCid("baz"), mkFakeCid("bat")}
 	m := New(true)
 	for _, s := range keystrs {
 		m.AddEntry(s, 1)
@@ -163,7 +163,7 @@ func TestToAndFromNetMessage(t *testing.T) {
 	}
 }
 
-func wantlistContains(wantlist *pb.Message_Wantlist, c *cid.Cid) bool {
+func wantlistContains(wantlist *pb.Message_Wantlist, c cid.Cid) bool {
 	for _, e := range wantlist.GetEntries() {
 		if bytes.Equal(e.GetBlock(), c.Bytes()) {
 			return true

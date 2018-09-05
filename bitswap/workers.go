@@ -91,7 +91,7 @@ func (bs *Bitswap) provideWorker(px process.Process) {
 
 	limit := make(chan struct{}, provideWorkerMax)
 
-	limitedGoProvide := func(k *cid.Cid, wid int) {
+	limitedGoProvide := func(k cid.Cid, wid int) {
 		defer func() {
 			// replace token when done
 			<-limit
@@ -135,9 +135,9 @@ func (bs *Bitswap) provideWorker(px process.Process) {
 
 func (bs *Bitswap) provideCollector(ctx context.Context) {
 	defer close(bs.provideKeys)
-	var toProvide []*cid.Cid
-	var nextKey *cid.Cid
-	var keysOut chan *cid.Cid
+	var toProvide []cid.Cid
+	var nextKey cid.Cid
+	var keysOut chan cid.Cid
 
 	for {
 		select {

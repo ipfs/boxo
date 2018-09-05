@@ -138,7 +138,7 @@ func (bsnet *impl) ConnectTo(ctx context.Context, p peer.ID) error {
 }
 
 // FindProvidersAsync returns a channel of providers for the given key
-func (bsnet *impl) FindProvidersAsync(ctx context.Context, k *cid.Cid, max int) <-chan peer.ID {
+func (bsnet *impl) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.ID {
 
 	// Since routing queries are expensive, give bitswap the peers to which we
 	// have open connections. Note that this may cause issues if bitswap starts
@@ -174,7 +174,7 @@ func (bsnet *impl) FindProvidersAsync(ctx context.Context, k *cid.Cid, max int) 
 }
 
 // Provide provides the key to the network
-func (bsnet *impl) Provide(ctx context.Context, k *cid.Cid) error {
+func (bsnet *impl) Provide(ctx context.Context, k cid.Cid) error {
 	return bsnet.routing.Provide(ctx, k, true)
 }
 

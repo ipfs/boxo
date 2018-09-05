@@ -131,7 +131,7 @@ func (nc *networkClient) SendMessage(
 }
 
 // FindProvidersAsync returns a channel of providers for the given key
-func (nc *networkClient) FindProvidersAsync(ctx context.Context, k *cid.Cid, max int) <-chan peer.ID {
+func (nc *networkClient) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.ID {
 
 	// NB: this function duplicates the PeerInfo -> ID transformation in the
 	// bitswap network adapter. Not to worry. This network client will be
@@ -185,7 +185,7 @@ func (n *networkClient) NewMessageSender(ctx context.Context, p peer.ID) (bsnet.
 }
 
 // Provide provides the key to the network
-func (nc *networkClient) Provide(ctx context.Context, k *cid.Cid) error {
+func (nc *networkClient) Provide(ctx context.Context, k cid.Cid) error {
 	return nc.routing.Provide(ctx, k, true)
 }
 

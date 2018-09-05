@@ -11,11 +11,11 @@ import (
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 )
 
-type getBlocksFunc func(context.Context, []*cid.Cid) (<-chan blocks.Block, error)
+type getBlocksFunc func(context.Context, []cid.Cid) (<-chan blocks.Block, error)
 
-func getBlock(p context.Context, k *cid.Cid, gb getBlocksFunc) (blocks.Block, error) {
-	if k == nil {
-		log.Error("nil cid in GetBlock")
+func getBlock(p context.Context, k cid.Cid, gb getBlocksFunc) (blocks.Block, error) {
+	if !k.Defined() {
+		log.Error("undefined cid in GetBlock")
 		return nil, blockstore.ErrNotFound
 	}
 
@@ -28,7 +28,7 @@ func getBlock(p context.Context, k *cid.Cid, gb getBlocksFunc) (blocks.Block, er
 	ctx, cancel := context.WithCancel(p)
 	defer cancel()
 
-	promise, err := gb(ctx, []*cid.Cid{k})
+	promise, err := gb(ctx, []cid.Cid{k})
 	if err != nil {
 		return nil, err
 	}
@@ -49,9 +49,9 @@ func getBlock(p context.Context, k *cid.Cid, gb getBlocksFunc) (blocks.Block, er
 	}
 }
 
-type wantFunc func(context.Context, []*cid.Cid)
+type wantFunc func(context.Context, []cid.Cid)
 
-func getBlocksImpl(ctx context.Context, keys []*cid.Cid, notif notifications.PubSub, want wantFunc, cwants func([]*cid.Cid)) (<-chan blocks.Block, error) {
+func getBlocksImpl(ctx context.Context, keys []cid.Cid, notif notifications.PubSub, want wantFunc, cwants func([]cid.Cid)) (<-chan blocks.Block, error) {
 	if len(keys) == 0 {
 		out := make(chan blocks.Block)
 		close(out)
@@ -72,7 +72,7 @@ func getBlocksImpl(ctx context.Context, keys []*cid.Cid, notif notifications.Pub
 	return out, nil
 }
 
-func handleIncoming(ctx context.Context, remaining *cid.Set, in <-chan blocks.Block, out chan blocks.Block, cfun func([]*cid.Cid)) {
+func handleIncoming(ctx context.Context, remaining *cid.Set, in <-chan blocks.Block, out chan blocks.Block, cfun func([]cid.Cid)) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer func() {
 		cancel()

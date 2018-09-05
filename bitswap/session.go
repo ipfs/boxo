@@ -28,8 +28,8 @@ type Session struct {
 
 	bs           *Bitswap
 	incoming     chan blkRecv
-	newReqs      chan []*cid.Cid
-	cancelKeys   chan []*cid.Cid
+	newReqs      chan []cid.Cid
+	cancelKeys   chan []cid.Cid
 	interestReqs chan interestReq
 
 	interest  *lru.Cache
@@ -55,8 +55,8 @@ func (bs *Bitswap) NewSession(ctx context.Context) *Session {
 	s := &Session{
 		activePeers:   make(map[peer.ID]struct{}),
 		liveWants:     make(map[string]time.Time),
-		newReqs:       make(chan []*cid.Cid),
-		cancelKeys:    make(chan []*cid.Cid),
+		newReqs:       make(chan []cid.Cid),
+		cancelKeys:    make(chan []cid.Cid),
 		tofetch:       newCidQueue(),
 		interestReqs:  make(chan interestReq),
 		ctx:           ctx,
@@ -85,7 +85,7 @@ func (bs *Bitswap) NewSession(ctx context.Context) *Session {
 func (bs *Bitswap) removeSession(s *Session) {
 	s.notif.Shutdown()
 
-	live := make([]*cid.Cid, 0, len(s.liveWants))
+	live := make([]cid.Cid, 0, len(s.liveWants))
 	for c := range s.liveWants {
 		cs, _ := cid.Cast([]byte(c))
 		live = append(live, cs)
@@ -116,7 +116,7 @@ func (s *Session) receiveBlockFrom(from peer.ID, blk blocks.Block) {
 }
 
 type interestReq struct {
-	c    *cid.Cid
+	c    cid.Cid
 	resp chan bool
 }
 
@@ -127,7 +127,7 @@ type interestReq struct {
 // note that in the average case (where this session *is* interested in the
 // block we received) this function will not be called, as the cid will likely
 // still be in the interest cache.
-func (s *Session) isLiveWant(c *cid.Cid) bool {
+func (s *Session) isLiveWant(c cid.Cid) bool {
 	resp := make(chan bool, 1)
 	select {
 	case s.interestReqs <- interestReq{
@@ -146,7 +146,7 @@ func (s *Session) isLiveWant(c *cid.Cid) bool {
 	}
 }
 
-func (s *Session) interestedIn(c *cid.Cid) bool {
+func (s *Session) interestedIn(c cid.Cid) bool {
 	return s.interest.Contains(c.KeyString()) || s.isLiveWant(c)
 }
 
@@ -208,7 +208,7 @@ func (s *Session) run(ctx context.Context) {
 			s.cancel(keys)
 
 		case <-s.tick.C:
-			live := make([]*cid.Cid, 0, len(s.liveWants))
+			live := make([]cid.Cid, 0, len(s.liveWants))
 			now := time.Now()
 			for c := range s.liveWants {
 				cs, _ := cid.Cast([]byte(c))
@@ -220,7 +220,7 @@ func (s *Session) run(ctx context.Context) {
 			s.bs.wm.WantBlocks(ctx, live, nil, s.id)
 
 			if len(live) > 0 {
-				go func(k *cid.Cid) {
+				go func(k cid.Cid) {
 					// TODO: have a task queue setup for this to:
 					// - rate limit
 					// - manage timeouts
@@ -249,7 +249,7 @@ func (s *Session) run(ctx context.Context) {
 	}
 }
 
-func (s *Session) cidIsWanted(c *cid.Cid) bool {
+func (s *Session) cidIsWanted(c cid.Cid) bool {
 	_, ok := s.liveWants[c.KeyString()]
 	if !ok {
 		ok = s.tofetch.Has(c)
@@ -272,13 +272,13 @@ func (s *Session) receiveBlock(ctx context.Context, blk blocks.Block) {
 		s.fetchcnt++
 		s.notif.Publish(blk)
 
-		if next := s.tofetch.Pop(); next != nil {
-			s.wantBlocks(ctx, []*cid.Cid{next})
+		if next := s.tofetch.Pop(); next.Defined() {
+			s.wantBlocks(ctx, []cid.Cid{next})
 		}
 	}
 }
 
-func (s *Session) wantBlocks(ctx context.Context, ks []*cid.Cid) {
+func (s *Session) wantBlocks(ctx context.Context, ks []cid.Cid) {
 	now := time.Now()
 	for _, c := range ks {
 		s.liveWants[c.KeyString()] = now
@@ -286,20 +286,20 @@ func (s *Session) wantBlocks(ctx context.Context, ks []*cid.Cid) {
 	s.bs.wm.WantBlocks(ctx, ks, s.activePeersArr, s.id)
 }
 
-func (s *Session) cancel(keys []*cid.Cid) {
+func (s *Session) cancel(keys []cid.Cid) {
 	for _, c := range keys {
 		s.tofetch.Remove(c)
 	}
 }
 
-func (s *Session) cancelWants(keys []*cid.Cid) {
+func (s *Session) cancelWants(keys []cid.Cid) {
 	select {
 	case s.cancelKeys <- keys:
 	case <-s.ctx.Done():
 	}
 }
 
-func (s *Session) fetch(ctx context.Context, keys []*cid.Cid) {
+func (s *Session) fetch(ctx context.Context, keys []cid.Cid) {
 	select {
 	case s.newReqs <- keys:
 	case <-ctx.Done():
@@ -310,18 +310,18 @@ func (s *Session) fetch(ctx context.Context, keys []*cid.Cid) {
 // GetBlocks fetches a set of blocks within the context of this session and
 // returns a channel that found blocks will be returned on. No order is
 // guaranteed on the returned blocks.
-func (s *Session) GetBlocks(ctx context.Context, keys []*cid.Cid) (<-chan blocks.Block, error) {
+func (s *Session) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error) {
 	ctx = logging.ContextWithLoggable(ctx, s.uuid)
 	return getBlocksImpl(ctx, keys, s.notif, s.fetch, s.cancelWants)
 }
 
 // GetBlock fetches a single block
-func (s *Session) GetBlock(parent context.Context, k *cid.Cid) (blocks.Block, error) {
+func (s *Session) GetBlock(parent context.Context, k cid.Cid) (blocks.Block, error) {
 	return getBlock(parent, k, s.GetBlocks)
 }
 
 type cidQueue struct {
-	elems []*cid.Cid
+	elems []cid.Cid
 	eset  *cid.Set
 }
 
@@ -329,10 +329,10 @@ func newCidQueue() *cidQueue {
 	return &cidQueue{eset: cid.NewSet()}
 }
 
-func (cq *cidQueue) Pop() *cid.Cid {
+func (cq *cidQueue) Pop() cid.Cid {
 	for {
 		if len(cq.elems) == 0 {
-			return nil
+			return cid.Cid{}
 		}
 
 		out := cq.elems[0]
@@ -345,17 +345,17 @@ func (cq *cidQueue) Pop() *cid.Cid {
 	}
 }
 
-func (cq *cidQueue) Push(c *cid.Cid) {
+func (cq *cidQueue) Push(c cid.Cid) {
 	if cq.eset.Visit(c) {
 		cq.elems = append(cq.elems, c)
 	}
 }
 
-func (cq *cidQueue) Remove(c *cid.Cid) {
+func (cq *cidQueue) Remove(c cid.Cid) {
 	cq.eset.Remove(c)
 }
 
-func (cq *cidQueue) Has(c *cid.Cid) bool {
+func (cq *cidQueue) Has(c cid.Cid) bool {
 	return cq.eset.Has(c)
 }
 

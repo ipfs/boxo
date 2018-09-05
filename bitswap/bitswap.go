@@ -96,8 +96,8 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		network:       network,
 		findKeys:      make(chan *blockRequest, sizeBatchRequestChan),
 		process:       px,
-		newBlocks:     make(chan *cid.Cid, HasBlockBufferSize),
-		provideKeys:   make(chan *cid.Cid, provideKeysBufferSize),
+		newBlocks:     make(chan cid.Cid, HasBlockBufferSize),
+		provideKeys:   make(chan cid.Cid, provideKeysBufferSize),
 		wm:            NewWantManager(ctx, network),
 		counters:      new(counters),
 
@@ -146,9 +146,9 @@ type Bitswap struct {
 	// newBlocks is a channel for newly added blocks to be provided to the
 	// network.  blocks pushed down this channel get buffered and fed to the
 	// provideKeys channel later on to avoid too much network activity
-	newBlocks chan *cid.Cid
+	newBlocks chan cid.Cid
 	// provideKeys directly feeds provide workers
-	provideKeys chan *cid.Cid
+	provideKeys chan cid.Cid
 
 	process process.Process
 
@@ -179,18 +179,18 @@ type counters struct {
 }
 
 type blockRequest struct {
-	Cid *cid.Cid
+	Cid cid.Cid
 	Ctx context.Context
 }
 
 // GetBlock attempts to retrieve a particular block from peers within the
 // deadline enforced by the context.
-func (bs *Bitswap) GetBlock(parent context.Context, k *cid.Cid) (blocks.Block, error) {
+func (bs *Bitswap) GetBlock(parent context.Context, k cid.Cid) (blocks.Block, error) {
 	return getBlock(parent, k, bs.GetBlocks)
 }
 
-func (bs *Bitswap) WantlistForPeer(p peer.ID) []*cid.Cid {
-	var out []*cid.Cid
+func (bs *Bitswap) WantlistForPeer(p peer.ID) []cid.Cid {
+	var out []cid.Cid
 	for _, e := range bs.engine.WantlistForPeer(p) {
 		out = append(out, e.Cid)
 	}
@@ -208,7 +208,7 @@ func (bs *Bitswap) LedgerForPeer(p peer.ID) *decision.Receipt {
 // NB: Your request remains open until the context expires. To conserve
 // resources, provide a context with a reasonably short deadline (ie. not one
 // that lasts throughout the lifetime of the server)
-func (bs *Bitswap) GetBlocks(ctx context.Context, keys []*cid.Cid) (<-chan blocks.Block, error) {
+func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error) {
 	if len(keys) == 0 {
 		out := make(chan blocks.Block)
 		close(out)
@@ -259,7 +259,7 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []*cid.Cid) (<-chan block
 					return
 				}
 
-				bs.CancelWants([]*cid.Cid{blk.Cid()}, mses)
+				bs.CancelWants([]cid.Cid{blk.Cid()}, mses)
 				remaining.Remove(blk.Cid())
 				select {
 				case out <- blk:
@@ -288,7 +288,7 @@ func (bs *Bitswap) getNextSessionID() uint64 {
 }
 
 // CancelWant removes a given key from the wantlist
-func (bs *Bitswap) CancelWants(cids []*cid.Cid, ses uint64) {
+func (bs *Bitswap) CancelWants(cids []cid.Cid, ses uint64) {
 	if len(cids) == 0 {
 		return
 	}
@@ -326,7 +326,7 @@ func (bs *Bitswap) receiveBlockFrom(blk blocks.Block, from peer.ID) error {
 	bs.notifications.Publish(blk)
 
 	k := blk.Cid()
-	ks := []*cid.Cid{k}
+	ks := []cid.Cid{k}
 	for _, s := range bs.SessionsForBlock(k) {
 		s.receiveBlockFrom(from, blk)
 		bs.CancelWants(ks, s.id)
@@ -344,7 +344,7 @@ func (bs *Bitswap) receiveBlockFrom(blk blocks.Block, from peer.ID) error {
 }
 
 // SessionsForBlock returns a slice of all sessions that may be interested in the given cid
-func (bs *Bitswap) SessionsForBlock(c *cid.Cid) []*Session {
+func (bs *Bitswap) SessionsForBlock(c cid.Cid) []*Session {
 	bs.sessLk.Lock()
 	defer bs.sessLk.Unlock()
 
@@ -440,9 +440,9 @@ func (bs *Bitswap) Close() error {
 	return bs.process.Close()
 }
 
-func (bs *Bitswap) GetWantlist() []*cid.Cid {
+func (bs *Bitswap) GetWantlist() []cid.Cid {
 	entries := bs.wm.wl.Entries()
-	out := make([]*cid.Cid, 0, len(entries))
+	out := make([]cid.Cid, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, e.Cid)
 	}

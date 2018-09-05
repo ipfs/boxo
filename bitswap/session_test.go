@@ -76,7 +76,7 @@ func TestSessionBetweenPeers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var cids []*cid.Cid
+	var cids []cid.Cid
 	for _, blk := range blks {
 		cids = append(cids, blk.Cid())
 	}
@@ -127,7 +127,7 @@ func TestSessionSplitFetch(t *testing.T) {
 		}
 	}
 
-	var cids []*cid.Cid
+	var cids []cid.Cid
 	for _, blk := range blks {
 		cids = append(cids, blk.Cid())
 	}
@@ -167,12 +167,12 @@ func TestInterestCacheOverflow(t *testing.T) {
 	b := inst[1]
 
 	ses := a.Exchange.NewSession(ctx)
-	zeroch, err := ses.GetBlocks(ctx, []*cid.Cid{blks[0].Cid()})
+	zeroch, err := ses.GetBlocks(ctx, []cid.Cid{blks[0].Cid()})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var restcids []*cid.Cid
+	var restcids []cid.Cid
 	for _, blk := range blks[1:] {
 		restcids = append(restcids, blk.Cid())
 	}
@@ -219,7 +219,7 @@ func TestPutAfterSessionCacheEvict(t *testing.T) {
 
 	ses := a.Exchange.NewSession(ctx)
 
-	var allcids []*cid.Cid
+	var allcids []cid.Cid
 	for _, blk := range blks[1:] {
 		allcids = append(allcids, blk.Cid())
 	}
@@ -261,14 +261,14 @@ func TestMultipleSessions(t *testing.T) {
 	ctx1, cancel1 := context.WithCancel(ctx)
 	ses := a.Exchange.NewSession(ctx1)
 
-	blkch, err := ses.GetBlocks(ctx, []*cid.Cid{blk.Cid()})
+	blkch, err := ses.GetBlocks(ctx, []cid.Cid{blk.Cid()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	cancel1()
 
 	ses2 := a.Exchange.NewSession(ctx)
-	blkch2, err := ses2.GetBlocks(ctx, []*cid.Cid{blk.Cid()})
+	blkch2, err := ses2.GetBlocks(ctx, []cid.Cid{blk.Cid()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestWantlistClearsOnCancel(t *testing.T) {
 	bgen := blocksutil.NewBlockGenerator()
 
 	blks := bgen.Blocks(10)
-	var cids []*cid.Cid
+	var cids []cid.Cid
 	for _, blk := range blks {
 		cids = append(cids, blk.Cid())
 	}

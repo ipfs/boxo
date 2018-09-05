@@ -15,7 +15,7 @@ type peerRequestQueue interface {
 	// Pop returns the next peerRequestTask. Returns nil if the peerRequestQueue is empty.
 	Pop() *peerRequestTask
 	Push(entry *wantlist.Entry, to peer.ID)
-	Remove(k *cid.Cid, p peer.ID)
+	Remove(k cid.Cid, p peer.ID)
 
 	// NB: cannot expose simply expose taskQueue.Len because trashed elements
 	// may exist. These trashed elements should not contribute to the count.
@@ -114,7 +114,7 @@ func (tl *prq) Pop() *peerRequestTask {
 }
 
 // Remove removes a task from the queue
-func (tl *prq) Remove(k *cid.Cid, p peer.ID) {
+func (tl *prq) Remove(k cid.Cid, p peer.ID) {
 	tl.lock.Lock()
 	t, ok := tl.taskMap[taskKey(p, k)]
 	if ok {
@@ -195,7 +195,7 @@ func (t *peerRequestTask) SetIndex(i int) {
 }
 
 // taskKey returns a key that uniquely identifies a task.
-func taskKey(p peer.ID, k *cid.Cid) string {
+func taskKey(p peer.ID, k cid.Cid) string {
 	return string(p) + k.KeyString()
 }
 
@@ -281,7 +281,7 @@ func partnerCompare(a, b pq.Elem) bool {
 }
 
 // StartTask signals that a task was started for this partner
-func (p *activePartner) StartTask(k *cid.Cid) {
+func (p *activePartner) StartTask(k cid.Cid) {
 	p.activelk.Lock()
 	p.activeBlocks.Add(k)
 	p.active++
@@ -289,7 +289,7 @@ func (p *activePartner) StartTask(k *cid.Cid) {
 }
 
 // TaskDone signals that a task was completed for this partner
-func (p *activePartner) TaskDone(k *cid.Cid) {
+func (p *activePartner) TaskDone(k cid.Cid) {
 	p.activelk.Lock()
 	p.activeBlocks.Remove(k)
 	p.active--
