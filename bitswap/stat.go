@@ -8,7 +8,7 @@ import (
 
 type Stat struct {
 	ProvideBufLen   int
-	Wantlist        []*cid.Cid
+	Wantlist        []cid.Cid
 	Peers           []string
 	BlocksReceived  uint64
 	DataReceived    uint64

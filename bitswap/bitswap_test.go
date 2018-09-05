@@ -179,7 +179,7 @@ func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
 		}
 	}
 
-	var blkeys []*cid.Cid
+	var blkeys []cid.Cid
 	first := instances[0]
 	for _, b := range blocks {
 		blkeys = append(blkeys, b.Cid())
@@ -253,7 +253,7 @@ func TestSendToWantingPeer(t *testing.T) {
 	// peerA requests and waits for block alpha
 	ctx, cancel := context.WithTimeout(context.Background(), waitTime)
 	defer cancel()
-	alphaPromise, err := peerA.Exchange.GetBlocks(ctx, []*cid.Cid{alpha.Cid()})
+	alphaPromise, err := peerA.Exchange.GetBlocks(ctx, []cid.Cid{alpha.Cid()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestEmptyKey(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
-	_, err := bs.GetBlock(ctx, nil)
+	_, err := bs.GetBlock(ctx, cid.Cid{})
 	if err != blockstore.ErrNotFound {
 		t.Error("empty str key should return ErrNotFound")
 	}
@@ -393,7 +393,7 @@ func TestDoubleGet(t *testing.T) {
 	// through before the peers even get connected. This is okay, bitswap
 	// *should* be able to handle this.
 	ctx1, cancel1 := context.WithCancel(context.Background())
-	blkch1, err := instances[1].Exchange.GetBlocks(ctx1, []*cid.Cid{blocks[0].Cid()})
+	blkch1, err := instances[1].Exchange.GetBlocks(ctx1, []cid.Cid{blocks[0].Cid()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +401,7 @@ func TestDoubleGet(t *testing.T) {
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
 
-	blkch2, err := instances[1].Exchange.GetBlocks(ctx2, []*cid.Cid{blocks[0].Cid()})
+	blkch2, err := instances[1].Exchange.GetBlocks(ctx2, []cid.Cid{blocks[0].Cid()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +456,7 @@ func TestWantlistCleanup(t *testing.T) {
 	bswap := instances.Exchange
 	blocks := bg.Blocks(20)
 
-	var keys []*cid.Cid
+	var keys []cid.Cid
 	for _, b := range blocks {
 		keys = append(keys, b.Cid())
 	}

@@ -77,13 +77,13 @@ type msgQueue struct {
 }
 
 // WantBlocks adds the given cids to the wantlist, tracked by the given session
-func (pm *WantManager) WantBlocks(ctx context.Context, ks []*cid.Cid, peers []peer.ID, ses uint64) {
+func (pm *WantManager) WantBlocks(ctx context.Context, ks []cid.Cid, peers []peer.ID, ses uint64) {
 	log.Infof("want blocks: %s", ks)
 	pm.addEntries(ctx, ks, peers, false, ses)
 }
 
 // CancelWants removes the given cids from the wantlist, tracked by the given session
-func (pm *WantManager) CancelWants(ctx context.Context, ks []*cid.Cid, peers []peer.ID, ses uint64) {
+func (pm *WantManager) CancelWants(ctx context.Context, ks []cid.Cid, peers []peer.ID, ses uint64) {
 	pm.addEntries(context.Background(), ks, peers, true, ses)
 }
 
@@ -93,7 +93,7 @@ type wantSet struct {
 	from    uint64
 }
 
-func (pm *WantManager) addEntries(ctx context.Context, ks []*cid.Cid, targets []peer.ID, cancel bool, ses uint64) {
+func (pm *WantManager) addEntries(ctx context.Context, ks []cid.Cid, targets []peer.ID, cancel bool, ses uint64) {
 	entries := make([]*bsmsg.Entry, 0, len(ks))
 	for i, k := range ks {
 		entries = append(entries, &bsmsg.Entry{

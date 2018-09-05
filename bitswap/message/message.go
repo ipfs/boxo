@@ -25,9 +25,9 @@ type BitSwapMessage interface {
 	Blocks() []blocks.Block
 
 	// AddEntry adds an entry to the Wantlist.
-	AddEntry(key *cid.Cid, priority int)
+	AddEntry(key cid.Cid, priority int)
 
-	Cancel(key *cid.Cid)
+	Cancel(key cid.Cid)
 
 	Empty() bool
 
@@ -134,16 +134,16 @@ func (m *impl) Blocks() []blocks.Block {
 	return bs
 }
 
-func (m *impl) Cancel(k *cid.Cid) {
+func (m *impl) Cancel(k cid.Cid) {
 	delete(m.wantlist, k.KeyString())
 	m.addEntry(k, 0, true)
 }
 
-func (m *impl) AddEntry(k *cid.Cid, priority int) {
+func (m *impl) AddEntry(k cid.Cid, priority int) {
 	m.addEntry(k, priority, false)
 }
 
-func (m *impl) addEntry(c *cid.Cid, priority int, cancel bool) {
+func (m *impl) addEntry(c cid.Cid, priority int, cancel bool) {
 	k := c.KeyString()
 	e, exists := m.wantlist[k]
 	if exists {
