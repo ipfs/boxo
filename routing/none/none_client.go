@@ -30,13 +30,13 @@ func (c *nilclient) FindPeer(_ context.Context, _ peer.ID) (pstore.PeerInfo, err
 	return pstore.PeerInfo{}, nil
 }
 
-func (c *nilclient) FindProvidersAsync(_ context.Context, _ *cid.Cid, _ int) <-chan pstore.PeerInfo {
+func (c *nilclient) FindProvidersAsync(_ context.Context, _ cid.Cid, _ int) <-chan pstore.PeerInfo {
 	out := make(chan pstore.PeerInfo)
 	defer close(out)
 	return out
 }
 
-func (c *nilclient) Provide(_ context.Context, _ *cid.Cid, _ bool) error {
+func (c *nilclient) Provide(_ context.Context, _ cid.Cid, _ bool) error {
 	return nil
 }
 

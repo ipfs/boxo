@@ -18,8 +18,8 @@ import (
 
 // server is the mockrouting.Client's private interface to the routing server
 type server interface {
-	Announce(pstore.PeerInfo, *cid.Cid) error
-	Providers(*cid.Cid) []pstore.PeerInfo
+	Announce(pstore.PeerInfo, cid.Cid) error
+	Providers(cid.Cid) []pstore.PeerInfo
 
 	Server
 }
@@ -37,7 +37,7 @@ type providerRecord struct {
 	Created time.Time
 }
 
-func (rs *s) Announce(p pstore.PeerInfo, c *cid.Cid) error {
+func (rs *s) Announce(p pstore.PeerInfo, c cid.Cid) error {
 	rs.lock.Lock()
 	defer rs.lock.Unlock()
 
@@ -54,7 +54,7 @@ func (rs *s) Announce(p pstore.PeerInfo, c *cid.Cid) error {
 	return nil
 }
 
-func (rs *s) Providers(c *cid.Cid) []pstore.PeerInfo {
+func (rs *s) Providers(c cid.Cid) []pstore.PeerInfo {
 	rs.delayConf.Query.Wait() // before locking
 
 	rs.lock.RLock()

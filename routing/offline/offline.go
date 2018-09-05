@@ -94,13 +94,13 @@ func (c *offlineRouting) FindPeer(ctx context.Context, pid peer.ID) (pstore.Peer
 	return pstore.PeerInfo{}, ErrOffline
 }
 
-func (c *offlineRouting) FindProvidersAsync(ctx context.Context, k *cid.Cid, max int) <-chan pstore.PeerInfo {
+func (c *offlineRouting) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan pstore.PeerInfo {
 	out := make(chan pstore.PeerInfo)
 	close(out)
 	return out
 }
 
-func (c *offlineRouting) Provide(_ context.Context, k *cid.Cid, _ bool) error {
+func (c *offlineRouting) Provide(_ context.Context, k cid.Cid, _ bool) error {
 	return ErrOffline
 }
 
