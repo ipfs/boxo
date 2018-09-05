@@ -24,7 +24,7 @@ type offlineExchange struct {
 // GetBlock returns nil to signal that a block could not be retrieved for the
 // given key.
 // NB: This function may return before the timeout expires.
-func (e *offlineExchange) GetBlock(_ context.Context, k *cid.Cid) (blocks.Block, error) {
+func (e *offlineExchange) GetBlock(_ context.Context, k cid.Cid) (blocks.Block, error) {
 	return e.bs.Get(k)
 }
 
@@ -40,11 +40,11 @@ func (_ *offlineExchange) Close() error {
 	return nil
 }
 
-func (e *offlineExchange) GetBlocks(ctx context.Context, ks []*cid.Cid) (<-chan blocks.Block, error) {
+func (e *offlineExchange) GetBlocks(ctx context.Context, ks []cid.Cid) (<-chan blocks.Block, error) {
 	out := make(chan blocks.Block)
 	go func() {
 		defer close(out)
-		var misses []*cid.Cid
+		var misses []cid.Cid
 		for _, k := range ks {
 			hit, err := e.bs.Get(k)
 			if err != nil {

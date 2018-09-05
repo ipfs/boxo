@@ -51,8 +51,8 @@ func TestGetBlocks(t *testing.T) {
 		}
 	}
 
-	request := func() []*cid.Cid {
-		var ks []*cid.Cid
+	request := func() []cid.Cid {
+		var ks []cid.Cid
 
 		for _, b := range expected {
 			ks = append(ks, b.Cid())
