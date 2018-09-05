@@ -29,7 +29,7 @@ func TestGetWhenKeyNotPresent(t *testing.T) {
 
 func TestGetWhenKeyIsNil(t *testing.T) {
 	bs := NewBlockstore(ds_sync.MutexWrap(ds.NewMapDatastore()))
-	_, err := bs.Get(nil)
+	_, err := bs.Get(cid.Cid{})
 	if err != ErrNotFound {
 		t.Fail()
 	}
@@ -113,13 +113,13 @@ func TestHashOnRead(t *testing.T) {
 	}
 }
 
-func newBlockStoreWithKeys(t *testing.T, d ds.Datastore, N int) (Blockstore, []*cid.Cid) {
+func newBlockStoreWithKeys(t *testing.T, d ds.Datastore, N int) (Blockstore, []cid.Cid) {
 	if d == nil {
 		d = ds.NewMapDatastore()
 	}
 	bs := NewBlockstore(ds_sync.MutexWrap(d))
 
-	keys := make([]*cid.Cid, N)
+	keys := make([]cid.Cid, N)
 	for i := 0; i < N; i++ {
 		block := blocks.NewBlock([]byte(fmt.Sprintf("some data %d", i)))
 		err := bs.Put(block)
@@ -131,8 +131,8 @@ func newBlockStoreWithKeys(t *testing.T, d ds.Datastore, N int) (Blockstore, []*
 	return bs, keys
 }
 
-func collect(ch <-chan *cid.Cid) []*cid.Cid {
-	var keys []*cid.Cid
+func collect(ch <-chan cid.Cid) []cid.Cid {
+	var keys []cid.Cid
 	for k := range ch {
 		keys = append(keys, k)
 	}
@@ -217,7 +217,7 @@ func TestAllKeysRespectsContext(t *testing.T) {
 
 }
 
-func expectMatches(t *testing.T, expect, actual []*cid.Cid) {
+func expectMatches(t *testing.T, expect, actual []cid.Cid) {
 
 	if len(expect) != len(actual) {
 		t.Errorf("expect and actual differ: %d != %d", len(expect), len(actual))

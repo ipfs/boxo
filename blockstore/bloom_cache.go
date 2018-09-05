@@ -97,7 +97,7 @@ func (b *bloomcache) Rebuild(ctx context.Context) {
 	atomic.StoreInt32(&b.active, 1)
 }
 
-func (b *bloomcache) DeleteBlock(k *cid.Cid) error {
+func (b *bloomcache) DeleteBlock(k cid.Cid) error {
 	if has, ok := b.hasCached(k); ok && !has {
 		return ErrNotFound
 	}
@@ -107,10 +107,10 @@ func (b *bloomcache) DeleteBlock(k *cid.Cid) error {
 
 // if ok == false has is inconclusive
 // if ok == true then has respons to question: is it contained
-func (b *bloomcache) hasCached(k *cid.Cid) (has bool, ok bool) {
+func (b *bloomcache) hasCached(k cid.Cid) (has bool, ok bool) {
 	b.total.Inc()
-	if k == nil {
-		log.Error("nil cid in bloom cache")
+	if !k.Defined() {
+		log.Error("undefined in bloom cache")
 		// Return cache invalid so call to blockstore
 		// in case of invalid key is forwarded deeper
 		return false, false
@@ -125,7 +125,7 @@ func (b *bloomcache) hasCached(k *cid.Cid) (has bool, ok bool) {
 	return false, false
 }
 
-func (b *bloomcache) Has(k *cid.Cid) (bool, error) {
+func (b *bloomcache) Has(k cid.Cid) (bool, error) {
 	if has, ok := b.hasCached(k); ok {
 		return has, nil
 	}
@@ -133,11 +133,11 @@ func (b *bloomcache) Has(k *cid.Cid) (bool, error) {
 	return b.blockstore.Has(k)
 }
 
-func (b *bloomcache) GetSize(k *cid.Cid) (int, error) {
+func (b *bloomcache) GetSize(k cid.Cid) (int, error) {
   return b.blockstore.GetSize(k)
 }
 
-func (b *bloomcache) Get(k *cid.Cid) (blocks.Block, error) {
+func (b *bloomcache) Get(k cid.Cid) (blocks.Block, error) {
 	if has, ok := b.hasCached(k); ok && !has {
 		return nil, ErrNotFound
 	}
@@ -173,7 +173,7 @@ func (b *bloomcache) HashOnRead(enabled bool) {
 	b.blockstore.HashOnRead(enabled)
 }
 
-func (b *bloomcache) AllKeysChan(ctx context.Context) (<-chan *cid.Cid, error) {
+func (b *bloomcache) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return b.blockstore.AllKeysChan(ctx)
 }
 

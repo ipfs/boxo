@@ -35,7 +35,7 @@ func newARCCachedBS(ctx context.Context, bs Blockstore, lruSize int) (*arccache,
 	return c, nil
 }
 
-func (b *arccache) DeleteBlock(k *cid.Cid) error {
+func (b *arccache) DeleteBlock(k cid.Cid) error {
 	if has, _, ok := b.hasCached(k); ok && !has {
 		return ErrNotFound
 	}
@@ -53,10 +53,10 @@ func (b *arccache) DeleteBlock(k *cid.Cid) error {
 
 // if ok == false has is inconclusive
 // if ok == true then has respons to question: is it contained
-func (b *arccache) hasCached(k *cid.Cid) (has bool, size int, ok bool) {
+func (b *arccache) hasCached(k cid.Cid) (has bool, size int, ok bool) {
 	b.total.Inc()
-	if k == nil {
-		log.Error("nil cid in arccache")
+	if !k.Defined() {
+		log.Error("undefined cid in arccache")
 		// Return cache invalid so the call to blockstore happens
 		// in case of invalid key and correct error is created.
 		return false, -1, false
@@ -75,7 +75,7 @@ func (b *arccache) hasCached(k *cid.Cid) (has bool, size int, ok bool) {
 	return false, -1, false
 }
 
-func (b *arccache) Has(k *cid.Cid) (bool, error) {
+func (b *arccache) Has(k cid.Cid) (bool, error) {
 	if has, _, ok := b.hasCached(k); ok {
 		return has, nil
 	}
@@ -87,7 +87,7 @@ func (b *arccache) Has(k *cid.Cid) (bool, error) {
 	return has, nil
 }
 
-func (b *arccache) GetSize(k *cid.Cid) (int, error) {
+func (b *arccache) GetSize(k cid.Cid) (int, error) {
 	if _, blockSize, ok := b.hasCached(k); ok {
 		return blockSize, nil
 	}
@@ -100,9 +100,9 @@ func (b *arccache) GetSize(k *cid.Cid) (int, error) {
 	return blockSize, err
 }
 
-func (b *arccache) Get(k *cid.Cid) (blocks.Block, error) {
-	if k == nil {
-		log.Error("nil cid in arc cache")
+func (b *arccache) Get(k cid.Cid) (blocks.Block, error) {
+	if !k.Defined() {
+		log.Error("undefined cid in arc cache")
 		return nil, ErrNotFound
 	}
 
@@ -154,15 +154,15 @@ func (b *arccache) HashOnRead(enabled bool) {
 	b.blockstore.HashOnRead(enabled)
 }
 
-func (b *arccache) cacheHave(c *cid.Cid, have bool) {
+func (b *arccache) cacheHave(c cid.Cid, have bool) {
 	b.arc.Add(c.KeyString(), cacheHave(have))
 }
 
-func (b *arccache) cacheSize(c *cid.Cid, blockSize int) {
+func (b *arccache) cacheSize(c cid.Cid, blockSize int) {
 	b.arc.Add(c.KeyString(), cacheSize(blockSize))
 }
 
-func (b *arccache) AllKeysChan(ctx context.Context) (<-chan *cid.Cid, error) {
+func (b *arccache) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return b.blockstore.AllKeysChan(ctx)
 }
 

@@ -17,7 +17,7 @@ func NewIdStore(bs Blockstore) Blockstore {
 	return &idstore{bs}
 }
 
-func extractContents(k *cid.Cid) (bool, []byte) {
+func extractContents(k cid.Cid) (bool, []byte) {
 	dmh, err := mh.Decode(k.Hash())
 	if err != nil || dmh.Code != mh.ID {
 		return false, nil
@@ -25,7 +25,7 @@ func extractContents(k *cid.Cid) (bool, []byte) {
 	return true, dmh.Digest
 }
 
-func (b *idstore) DeleteBlock(k *cid.Cid) error {
+func (b *idstore) DeleteBlock(k cid.Cid) error {
 	isId, _ := extractContents(k)
 	if isId {
 		return nil
@@ -33,7 +33,7 @@ func (b *idstore) DeleteBlock(k *cid.Cid) error {
 	return b.bs.DeleteBlock(k)
 }
 
-func (b *idstore) Has(k *cid.Cid) (bool, error) {
+func (b *idstore) Has(k cid.Cid) (bool, error) {
 	isId, _ := extractContents(k)
 	if isId {
 		return true, nil
@@ -41,7 +41,7 @@ func (b *idstore) Has(k *cid.Cid) (bool, error) {
 	return b.bs.Has(k)
 }
 
-func (b *idstore) GetSize(k *cid.Cid) (int, error) {
+func (b *idstore) GetSize(k cid.Cid) (int, error) {
 	isId, bdata := extractContents(k)
 	if isId {
 		return len(bdata), nil
@@ -49,7 +49,7 @@ func (b *idstore) GetSize(k *cid.Cid) (int, error) {
 	return b.bs.GetSize(k)
 }
 
-func (b *idstore) Get(k *cid.Cid) (blocks.Block, error) {
+func (b *idstore) Get(k cid.Cid) (blocks.Block, error) {
 	isId, bdata := extractContents(k)
 	if isId {
 		return blocks.NewBlockWithCid(bdata, k)
@@ -81,6 +81,6 @@ func (b *idstore) HashOnRead(enabled bool) {
 	b.bs.HashOnRead(enabled)
 }
 
-func (b *idstore) AllKeysChan(ctx context.Context) (<-chan *cid.Cid, error) {
+func (b *idstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return b.bs.AllKeysChan(ctx)
 }

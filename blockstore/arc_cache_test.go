@@ -153,7 +153,7 @@ func TestArcCreationFailure(t *testing.T) {
 func TestInvalidKey(t *testing.T) {
 	arc, _, _ := createStores(t)
 
-	bl, err := arc.Get(nil)
+	bl, err := arc.Get(cid.Cid{})
 
 	if bl != nil {
 		t.Fatal("blocks should be nil")

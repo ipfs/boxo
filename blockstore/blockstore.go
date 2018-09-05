@@ -32,12 +32,12 @@ var ErrNotFound = errors.New("blockstore: block not found")
 // Blockstore wraps a Datastore block-centered methods and provides a layer
 // of abstraction which allows to add different caching strategies.
 type Blockstore interface {
-	DeleteBlock(*cid.Cid) error
-	Has(*cid.Cid) (bool, error)
-	Get(*cid.Cid) (blocks.Block, error)
+	DeleteBlock(cid.Cid) error
+	Has(cid.Cid) (bool, error)
+	Get(cid.Cid) (blocks.Block, error)
 
 	// GetSize returns the CIDs mapped BlockSize
-	GetSize(*cid.Cid) (int, error)
+	GetSize(cid.Cid) (int, error)
 
 	// Put puts a given block to the underlying datastore
 	Put(blocks.Block) error
@@ -49,7 +49,7 @@ type Blockstore interface {
 	// AllKeysChan returns a channel from which
 	// the CIDs in the Blockstore can be read. It should respect
 	// the given context, closing the channel if it becomes Done.
-	AllKeysChan(ctx context.Context) (<-chan *cid.Cid, error)
+	AllKeysChan(ctx context.Context) (<-chan cid.Cid, error)
 
 	// HashOnRead specifies if every read block should be
 	// rehashed to make sure it matches its CID.
@@ -114,9 +114,9 @@ func (bs *blockstore) HashOnRead(enabled bool) {
 	bs.rehash = enabled
 }
 
-func (bs *blockstore) Get(k *cid.Cid) (blocks.Block, error) {
-	if k == nil {
-		log.Error("nil cid in blockstore")
+func (bs *blockstore) Get(k cid.Cid) (blocks.Block, error) {
+	if !k.Defined() {
+		log.Error("undefined cid in blockstore")
 		return nil, ErrNotFound
 	}
 
@@ -173,11 +173,11 @@ func (bs *blockstore) PutMany(blocks []blocks.Block) error {
 	return t.Commit()
 }
 
-func (bs *blockstore) Has(k *cid.Cid) (bool, error) {
+func (bs *blockstore) Has(k cid.Cid) (bool, error) {
 	return bs.datastore.Has(dshelp.CidToDsKey(k))
 }
 
-func (bs *blockstore) GetSize(k *cid.Cid) (int, error) {
+func (bs *blockstore) GetSize(k cid.Cid) (int, error) {
 	bdata, err := bs.datastore.Get(dshelp.CidToDsKey(k))
 	if err == ds.ErrNotFound {
 		return -1, ErrNotFound
@@ -188,7 +188,7 @@ func (bs *blockstore) GetSize(k *cid.Cid) (int, error) {
 	return len(bdata), nil
 }
 
-func (bs *blockstore) DeleteBlock(k *cid.Cid) error {
+func (bs *blockstore) DeleteBlock(k cid.Cid) error {
 	err := bs.datastore.Delete(dshelp.CidToDsKey(k))
 	if err == ds.ErrNotFound {
 		return ErrNotFound
@@ -200,7 +200,7 @@ func (bs *blockstore) DeleteBlock(k *cid.Cid) error {
 // this is very simplistic, in the future, take dsq.Query as a param?
 //
 // AllKeysChan respects context.
-func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan *cid.Cid, error) {
+func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 
 	// KeysOnly, because that would be _a lot_ of data.
 	q := dsq.Query{KeysOnly: true}
@@ -209,7 +209,7 @@ func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan *cid.Cid, error) 
 		return nil, err
 	}
 
-	output := make(chan *cid.Cid, dsq.KeysOnlyBufSize)
+	output := make(chan cid.Cid, dsq.KeysOnlyBufSize)
 	go func() {
 		defer func() {
 			res.Close() // ensure exit (signals early exit, too)
