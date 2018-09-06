@@ -22,15 +22,15 @@ func BinaryFromDsKey(k datastore.Key) ([]byte, error) {
 }
 
 // CidToDsKey creates a Key from the given Cid.
-func CidToDsKey(k *cid.Cid) datastore.Key {
+func CidToDsKey(k cid.Cid) datastore.Key {
 	return NewKeyFromBinary(k.Bytes())
 }
 
 // DsKeyToCid converts the given Key to its corresponding Cid.
-func DsKeyToCid(dsKey datastore.Key) (*cid.Cid, error) {
+func DsKeyToCid(dsKey datastore.Key) (cid.Cid, error) {
 	kb, err := BinaryFromDsKey(dsKey)
 	if err != nil {
-		return nil, err
+		return cid.Cid{}, err
 	}
 	return cid.Cast(kb)
 }
