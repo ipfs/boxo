@@ -1,8 +1,8 @@
 package chunk
 
 import (
-	"testing"
 	"bytes"
+	"testing"
 )
 
 func TestParse(t *testing.T) {
@@ -15,7 +15,7 @@ func TestParse(t *testing.T) {
 		t.Errorf(err.Error())
 	}
 	_, err = parseRabinString(r, chk2)
-	if err == nil ||  err.Error() != ErrRabinMin.Error() {
-		t.Errorf("it should be a ErrRabinMin here.")
+	if err == ErrRabinMin {
+		t.Log("it should be ErrRabinMin here.")
 	}
 }

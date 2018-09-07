@@ -55,7 +55,7 @@ func parseRabinString(r io.Reader, chunker string) (Splitter, error) {
 			return nil, err
 		}
 		if min < 16 {
-			return nil,ErrRabinMin
+			return nil, ErrRabinMin
 		}
 		sub = strings.Split(parts[2], ":")
 		if len(sub) > 1 && sub[0] != "avg" {
