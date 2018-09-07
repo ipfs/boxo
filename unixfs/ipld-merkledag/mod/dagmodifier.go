@@ -233,25 +233,25 @@ func (dm *DagModifier) Sync() error {
 
 // modifyDag writes the data in 'dm.wrBuf' over the data in 'node' starting at 'offset'
 // returns the new key of the passed in node.
-func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (*cid.Cid, error) {
+func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (cid.Cid, error) {
 	// If we've reached a leaf node.
 	if len(n.Links()) == 0 {
 		switch nd0 := n.(type) {
 		case *mdag.ProtoNode:
 			f, err := ft.FromBytes(nd0.Data())
 			if err != nil {
-				return nil, err
+				return cid.Cid{}, err
 			}
 
 			_, err = dm.wrBuf.Read(f.Data[offset:])
 			if err != nil && err != io.EOF {
-				return nil, err
+				return cid.Cid{}, err
 			}
 
 			// Update newly written node..
 			b, err := proto.Marshal(f)
 			if err != nil {
-				return nil, err
+				return cid.Cid{}, err
 			}
 
 			nd := new(mdag.ProtoNode)
@@ -259,7 +259,7 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (*cid.Cid, error) {
 			nd.SetCidBuilder(nd0.CidBuilder())
 			err = dm.dagserv.Add(dm.ctx, nd)
 			if err != nil {
-				return nil, err
+				return cid.Cid{}, err
 			}
 
 			return nd.Cid(), nil
@@ -273,7 +273,7 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (*cid.Cid, error) {
 			// copy in new data
 			n, err := dm.wrBuf.Read(bytes[offset:])
 			if err != nil && err != io.EOF {
-				return nil, err
+				return cid.Cid{}, err
 			}
 
 			// copy remaining data
@@ -284,11 +284,11 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (*cid.Cid, error) {
 
 			nd, err := mdag.NewRawNodeWPrefix(bytes, nd0.Cid().Prefix())
 			if err != nil {
-				return nil, err
+				return cid.Cid{}, err
 			}
 			err = dm.dagserv.Add(dm.ctx, nd)
 			if err != nil {
-				return nil, err
+				return cid.Cid{}, err
 			}
 
 			return nd.Cid(), nil
@@ -297,12 +297,12 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (*cid.Cid, error) {
 
 	node, ok := n.(*mdag.ProtoNode)
 	if !ok {
-		return nil, ErrNotUnixfs
+		return cid.Cid{}, ErrNotUnixfs
 	}
 
 	f, err := ft.FromBytes(node.Data())
 	if err != nil {
-		return nil, err
+		return cid.Cid{}, err
 	}
 
 	var cur uint64
@@ -311,12 +311,12 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (*cid.Cid, error) {
 		if cur+bs > offset {
 			child, err := node.Links()[i].GetNode(dm.ctx, dm.dagserv)
 			if err != nil {
-				return nil, err
+				return cid.Cid{}, err
 			}
 
 			k, err := dm.modifyDag(child, offset-cur)
 			if err != nil {
-				return nil, err
+				return cid.Cid{}, err
 			}
 
 			node.Links()[i].Cid = k
@@ -324,7 +324,7 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (*cid.Cid, error) {
 			// Recache serialized node
 			_, err = node.EncodeProtobuf(true)
 			if err != nil {
-				return nil, err
+				return cid.Cid{}, err
 			}
 
 			if dm.wrBuf.Len() == 0 {

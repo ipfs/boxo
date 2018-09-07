@@ -29,7 +29,7 @@ type PBDagReader struct {
 	promises []*ipld.NodePromise
 
 	// the cid of each child of the current node
-	links []*cid.Cid
+	links []cid.Cid
 
 	// the index of the child link currently being read from
 	linkPosition int
@@ -151,9 +151,9 @@ func (dr *PBDagReader) loadBufNode(node ipld.Node) error {
 	}
 }
 
-func getLinkCids(n ipld.Node) []*cid.Cid {
+func getLinkCids(n ipld.Node) []cid.Cid {
 	links := n.Links()
-	out := make([]*cid.Cid, 0, len(links))
+	out := make([]cid.Cid, 0, len(links))
 	for _, l := range links {
 		out = append(out, l.Cid)
 	}
