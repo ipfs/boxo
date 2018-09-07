@@ -58,7 +58,7 @@ type Root struct {
 }
 
 // PubFunc is the function used by the `publish()` method.
-type PubFunc func(context.Context, *cid.Cid) error
+type PubFunc func(context.Context, cid.Cid) error
 
 // NewRoot creates a new Root and starts up a republisher routine for it.
 func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc) (*Root, error) {
@@ -182,8 +182,8 @@ type Republisher struct {
 	cancel func()
 
 	lk      sync.Mutex
-	val     *cid.Cid
-	lastpub *cid.Cid
+	val     cid.Cid
+	lastpub cid.Cid
 }
 
 // NewRepublisher creates a new Republisher object to republish the given root
@@ -201,7 +201,7 @@ func NewRepublisher(ctx context.Context, pf PubFunc, tshort, tlong time.Duration
 	}
 }
 
-func (p *Republisher) setVal(c *cid.Cid) {
+func (p *Republisher) setVal(c cid.Cid) {
 	p.lk.Lock()
 	defer p.lk.Unlock()
 	p.val = c
@@ -231,7 +231,7 @@ func (p *Republisher) Close() error {
 // Touch signals that an update has occurred since the last publish.
 // Multiple consecutive touches may extend the time period before
 // the next Publish occurs in order to more efficiently batch updates.
-func (np *Republisher) Update(c *cid.Cid) {
+func (np *Republisher) Update(c cid.Cid) {
 	np.setVal(c)
 	select {
 	case np.Publish <- struct{}{}:

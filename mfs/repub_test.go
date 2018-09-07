@@ -18,7 +18,7 @@ func TestRepublisher(t *testing.T) {
 
 	pub := make(chan struct{})
 
-	pf := func(ctx context.Context, c *cid.Cid) error {
+	pf := func(ctx context.Context, c cid.Cid) error {
 		pub <- struct{}{}
 		return nil
 	}
@@ -29,7 +29,7 @@ func TestRepublisher(t *testing.T) {
 	rp := NewRepublisher(ctx, pf, tshort, tlong)
 	go rp.Run()
 
-	rp.Update(nil)
+	rp.Update(cid.Undef)
 
 	// should hit short timeout
 	select {
@@ -42,7 +42,7 @@ func TestRepublisher(t *testing.T) {
 
 	go func() {
 		for {
-			rp.Update(nil)
+			rp.Update(cid.Undef)
 			time.Sleep(time.Millisecond * 10)
 			select {
 			case <-cctx.Done():
