@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+var ErrRabinMin = errors.New("rabin min must be greater than 16")
+
 // FromString returns a Splitter depending on the given string:
 // it supports "default" (""), "size-{size}", "rabin", "rabin-{blocksize}" and
 // "rabin-{min}-{avg}-{max}".
@@ -52,7 +54,9 @@ func parseRabinString(r io.Reader, chunker string) (Splitter, error) {
 		if err != nil {
 			return nil, err
 		}
-
+		if min < 16 {
+			return nil, ErrRabinMin
+		}
 		sub = strings.Split(parts[2], ":")
 		if len(sub) > 1 && sub[0] != "avg" {
 			log.Error("sub == ", sub)
