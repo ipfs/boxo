@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var ErrRabinMin = errors.New("the rabin min should not less not 16")
+var ErrRabinMin = errors.New("rabin min must be greater than 16")
 
 // FromString returns a Splitter depending on the given string:
 // it supports "default" (""), "size-{size}", "rabin", "rabin-{blocksize}" and
