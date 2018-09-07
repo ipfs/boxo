@@ -36,7 +36,7 @@ func FromString(s string) Path {
 }
 
 // FromCid safely converts a cid.Cid type to a Path type.
-func FromCid(c *cid.Cid) Path {
+func FromCid(c cid.Cid) Path {
 	return Path("/ipfs/" + c.String())
 }
 
@@ -160,7 +160,7 @@ func SplitList(pth string) []string {
 
 // SplitAbsPath clean up and split fpath. It extracts the first component (which
 // must be a Multihash) and return it separately.
-func SplitAbsPath(fpath Path) (*cid.Cid, []string, error) {
+func SplitAbsPath(fpath Path) (cid.Cid, []string, error) {
 	parts := fpath.Segments()
 	if parts[0] == "ipfs" || parts[0] == "ipld" {
 		parts = parts[1:]
@@ -168,13 +168,13 @@ func SplitAbsPath(fpath Path) (*cid.Cid, []string, error) {
 
 	// if nothing, bail.
 	if len(parts) == 0 {
-		return nil, nil, ErrNoComponents
+		return cid.Cid{}, nil, ErrNoComponents
 	}
 
 	c, err := cid.Decode(parts[0])
 	// first element in the path is a cid
 	if err != nil {
-		return nil, nil, err
+		return cid.Cid{}, nil, err
 	}
 
 	return c, parts[1:], nil

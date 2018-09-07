@@ -25,7 +25,7 @@ var ErrNoComponents = errors.New(
 // ErrNoLink is returned when a link is not found in a path
 type ErrNoLink struct {
 	Name string
-	Node *cid.Cid
+	Node cid.Cid
 }
 
 // Error implements the Error interface for ErrNoLink with a useful
@@ -57,10 +57,10 @@ func NewBasicResolver(ds ipld.DAGService) *Resolver {
 
 // ResolveToLastNode walks the given path and returns the cid of the last node
 // referenced by the path
-func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (*cid.Cid, []string, error) {
+func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (cid.Cid, []string, error) {
 	c, p, err := path.SplitAbsPath(fpath)
 	if err != nil {
-		return nil, nil, err
+		return cid.Cid{}, nil, err
 	}
 
 	if len(p) == 0 {
@@ -69,7 +69,7 @@ func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (*cid
 
 	nd, err := r.DAG.Get(ctx, c)
 	if err != nil {
-		return nil, nil, err
+		return cid.Cid{}, nil, err
 	}
 
 	for len(p) > 0 {
@@ -83,12 +83,12 @@ func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (*cid
 		}
 
 		if err != nil {
-			return nil, nil, err
+			return cid.Cid{}, nil, err
 		}
 
 		next, err := lnk.GetNode(ctx, r.DAG)
 		if err != nil {
-			return nil, nil, err
+			return cid.Cid{}, nil, err
 		}
 		nd = next
 		p = rest
@@ -101,15 +101,15 @@ func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (*cid
 	// Confirm the path exists within the object
 	val, rest, err := nd.Resolve(p)
 	if err != nil {
-		return nil, nil, err
+		return cid.Cid{}, nil, err
 	}
 
 	if len(rest) > 0 {
-		return nil, nil, errors.New("path failed to resolve fully")
+		return cid.Cid{}, nil, errors.New("path failed to resolve fully")
 	}
 	switch val.(type) {
 	case *ipld.Link:
-		return nil, nil, errors.New("inconsistent ResolveOnce / nd.Resolve")
+		return cid.Cid{}, nil, errors.New("inconsistent ResolveOnce / nd.Resolve")
 	default:
 		return nd.Cid(), p, nil
 	}
