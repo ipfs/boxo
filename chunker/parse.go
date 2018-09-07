@@ -49,13 +49,15 @@ func parseRabinString(r io.Reader, chunker string) (Splitter, error) {
 			return nil, errors.New("first label must be min")
 		}
 		min, err := strconv.Atoi(sub[len(sub)-1])
-		if err != nil {
+		if err != nil || min < 16{
 			return nil, err
 		}
-
+		if min < 16 {
+			return nil,errors.New("the rabin min should not less not 16")
+		}
 		sub = strings.Split(parts[2], ":")
 		if len(sub) > 1 && sub[0] != "avg" {
-			log.Error("sub == ", sub)
+			//log.Error("sub == ", sub)
 			return nil, errors.New("second label must be avg")
 		}
 		avg, err := strconv.Atoi(sub[len(sub)-1])
