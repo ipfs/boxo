@@ -14,6 +14,7 @@ import (
 	ci "github.com/libp2p/go-libp2p-crypto"
 	peer "github.com/libp2p/go-libp2p-peer"
 	pstore "github.com/libp2p/go-libp2p-peerstore"
+	pstoremem "github.com/libp2p/go-libp2p-peerstore/pstoremem"
 )
 
 func testValidatorCase(t *testing.T, priv ci.PrivKey, kbook pstore.KeyBook, key string, val []byte, eol time.Time, exp error) {
@@ -62,9 +63,9 @@ func TestValidator(t *testing.T) {
 
 	priv, id, _ := genKeys(t)
 	priv2, id2, _ := genKeys(t)
-	kbook := pstore.NewPeerstore()
+	kbook := pstoremem.NewPeerstore()
 	kbook.AddPubKey(id, priv.GetPublic())
-	emptyKbook := pstore.NewPeerstore()
+	emptyKbook := pstoremem.NewPeerstore()
 
 	testValidatorCase(t, priv, kbook, "/ipns/"+string(id), nil, ts.Add(time.Hour), nil)
 	testValidatorCase(t, priv, kbook, "/ipns/"+string(id), nil, ts.Add(time.Hour*-1), ErrExpiredRecord)
@@ -88,7 +89,7 @@ func mustMarshal(t *testing.T, entry *pb.IpnsEntry) []byte {
 
 func TestEmbeddedPubKeyValidate(t *testing.T) {
 	goodeol := time.Now().Add(time.Hour)
-	kbook := pstore.NewPeerstore()
+	kbook := pstoremem.NewPeerstore()
 
 	pth := []byte("/ipfs/QmfM2r8seH2GiRaC4esTjeraXEachRt8ZsSeGaWTPLyMoG")
 
@@ -128,7 +129,7 @@ func TestEmbeddedPubKeyValidate(t *testing.T) {
 
 func TestPeerIDPubKeyValidate(t *testing.T) {
 	goodeol := time.Now().Add(time.Hour)
-	kbook := pstore.NewPeerstore()
+	kbook := pstoremem.NewPeerstore()
 
 	pth := []byte("/ipfs/QmfM2r8seH2GiRaC4esTjeraXEachRt8ZsSeGaWTPLyMoG")
 
