@@ -25,7 +25,7 @@ type ProtoNode struct {
 	// cache encoded/marshaled value
 	encoded []byte
 
-	cached *cid.Cid
+	cached cid.Cid
 
 	// builder specifies cid version and hashing function
 	builder cid.Builder
@@ -79,7 +79,7 @@ func (n *ProtoNode) SetCidBuilder(builder cid.Builder) {
 	} else {
 		n.builder = builder.WithCodec(cid.DagProtobuf)
 		n.encoded = nil
-		n.cached = nil
+		n.cached = cid.Undef
 	}
 }
 
@@ -219,7 +219,7 @@ func (n *ProtoNode) Data() []byte {
 // SetData stores data in this nodes.
 func (n *ProtoNode) SetData(d []byte) {
 	n.encoded = nil
-	n.cached = nil
+	n.cached = cid.Undef
 	n.data = d
 }
 
@@ -305,8 +305,8 @@ func (n *ProtoNode) MarshalJSON() ([]byte, error) {
 
 // Cid returns the node's Cid, calculated according to its prefix
 // and raw data contents.
-func (n *ProtoNode) Cid() *cid.Cid {
-	if n.encoded != nil && n.cached != nil {
+func (n *ProtoNode) Cid() cid.Cid {
+	if n.encoded != nil && n.cached.Defined() {
 		return n.cached
 	}
 

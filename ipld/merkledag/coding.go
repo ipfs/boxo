@@ -68,7 +68,7 @@ func (n *ProtoNode) getPBNode() *pb.PBNode {
 		pbn.Links[i] = &pb.PBLink{}
 		pbn.Links[i].Name = &l.Name
 		pbn.Links[i].Tsize = &l.Size
-		if l.Cid != nil {
+		if l.Cid.Defined() {
 			pbn.Links[i].Hash = l.Cid.Bytes()
 		}
 	}
@@ -84,7 +84,7 @@ func (n *ProtoNode) getPBNode() *pb.PBNode {
 func (n *ProtoNode) EncodeProtobuf(force bool) ([]byte, error) {
 	sort.Stable(LinkSlice(n.links)) // keep links sorted
 	if n.encoded == nil || force {
-		n.cached = nil
+		n.cached = cid.Undef
 		var err error
 		n.encoded, err = n.Marshal()
 		if err != nil {
@@ -92,7 +92,7 @@ func (n *ProtoNode) EncodeProtobuf(force bool) ([]byte, error) {
 		}
 	}
 
-	if n.cached == nil {
+	if !n.cached.Defined() {
 		c, err := n.CidBuilder().Sum(n.encoded)
 		if err != nil {
 			return nil, err

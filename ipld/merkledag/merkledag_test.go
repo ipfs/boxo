@@ -57,7 +57,7 @@ func makeDepthTestingGraph(t *testing.T, ds ipld.DAGService) ipld.Node {
 }
 
 // Check that all children of root are in the given set and in the datastore
-func traverseAndCheck(t *testing.T, root ipld.Node, ds ipld.DAGService, hasF func(c *cid.Cid) bool) {
+func traverseAndCheck(t *testing.T, root ipld.Node, ds ipld.DAGService, hasF func(c cid.Cid) bool) {
 	// traverse dag and check
 	for _, lnk := range root.Links() {
 		c := lnk.Cid
@@ -333,7 +333,7 @@ func TestFetchGraph(t *testing.T) {
 
 	offlineDS := NewDAGService(bs)
 
-	err = EnumerateChildren(context.Background(), offlineDS.GetLinks, root.Cid(), func(_ *cid.Cid) bool { return true })
+	err = EnumerateChildren(context.Background(), offlineDS.GetLinks, root.Cid(), func(_ cid.Cid) bool { return true })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +373,7 @@ func TestFetchGraphWithDepthLimit(t *testing.T) {
 		offlineDS := NewDAGService(bs)
 
 		set := make(map[string]int)
-		visitF := func(c *cid.Cid, depth int) bool {
+		visitF := func(c cid.Cid, depth int) bool {
 			if tc.depthLim < 0 || depth <= tc.depthLim {
 				set[string(c.Bytes())] = depth
 				return true
@@ -649,7 +649,7 @@ func TestGetManyDuplicate(t *testing.T) {
 	if err := srv.Add(ctx, nd); err != nil {
 		t.Fatal(err)
 	}
-	nds := srv.GetMany(ctx, []*cid.Cid{nd.Cid(), nd.Cid(), nd.Cid()})
+	nds := srv.GetMany(ctx, []cid.Cid{nd.Cid(), nd.Cid(), nd.Cid()})
 	out, ok := <-nds
 	if !ok {
 		t.Fatal("expecting node foo")
@@ -742,7 +742,7 @@ func testProgressIndicator(t *testing.T, depth int) {
 	}
 }
 
-func mkDag(ds ipld.DAGService, depth int) (*cid.Cid, int) {
+func mkDag(ds ipld.DAGService, depth int) (cid.Cid, int) {
 	ctx := context.Background()
 
 	totalChildren := 0

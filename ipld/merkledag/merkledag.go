@@ -60,7 +60,7 @@ func (n *dagService) AddMany(ctx context.Context, nds []ipld.Node) error {
 }
 
 // Get retrieves a node from the dagService, fetching the block in the BlockService
-func (n *dagService) Get(ctx context.Context, c *cid.Cid) (ipld.Node, error) {
+func (n *dagService) Get(ctx context.Context, c cid.Cid) (ipld.Node, error) {
 	if n == nil {
 		return nil, fmt.Errorf("dagService is nil")
 	}
@@ -81,7 +81,7 @@ func (n *dagService) Get(ctx context.Context, c *cid.Cid) (ipld.Node, error) {
 
 // GetLinks return the links for the node, the node doesn't necessarily have
 // to exist locally.
-func (n *dagService) GetLinks(ctx context.Context, c *cid.Cid) ([]*ipld.Link, error) {
+func (n *dagService) GetLinks(ctx context.Context, c cid.Cid) ([]*ipld.Link, error) {
 	if c.Type() == cid.Raw {
 		return nil, nil
 	}
@@ -92,7 +92,7 @@ func (n *dagService) GetLinks(ctx context.Context, c *cid.Cid) ([]*ipld.Link, er
 	return node.Links(), nil
 }
 
-func (n *dagService) Remove(ctx context.Context, c *cid.Cid) error {
+func (n *dagService) Remove(ctx context.Context, c cid.Cid) error {
 	return n.Blocks.DeleteBlock(c)
 }
 
@@ -101,7 +101,7 @@ func (n *dagService) Remove(ctx context.Context, c *cid.Cid) error {
 //
 // This operation is not atomic. If it returns an error, some nodes may or may
 // not have been removed.
-func (n *dagService) RemoveMany(ctx context.Context, cids []*cid.Cid) error {
+func (n *dagService) RemoveMany(ctx context.Context, cids []cid.Cid) error {
 	// TODO(#4608): make this batch all the way down.
 	for _, c := range cids {
 		if err := n.Blocks.DeleteBlock(c); err != nil {
@@ -115,7 +115,7 @@ func (n *dagService) RemoveMany(ctx context.Context, cids []*cid.Cid) error {
 // the node, bypassing the LinkService.  If the node does not exist
 // locally (and can not be retrieved) an error will be returned.
 func GetLinksDirect(serv ipld.NodeGetter) GetLinks {
-	return func(ctx context.Context, c *cid.Cid) ([]*ipld.Link, error) {
+	return func(ctx context.Context, c cid.Cid) ([]*ipld.Link, error) {
 		nd, err := serv.Get(ctx, c)
 		if err != nil {
 			if err == bserv.ErrNotFound {
@@ -132,7 +132,7 @@ type sesGetter struct {
 }
 
 // Get gets a single node from the DAG.
-func (sg *sesGetter) Get(ctx context.Context, c *cid.Cid) (ipld.Node, error) {
+func (sg *sesGetter) Get(ctx context.Context, c cid.Cid) (ipld.Node, error) {
 	blk, err := sg.bs.GetBlock(ctx, c)
 	switch err {
 	case bserv.ErrNotFound:
@@ -147,7 +147,7 @@ func (sg *sesGetter) Get(ctx context.Context, c *cid.Cid) (ipld.Node, error) {
 }
 
 // GetMany gets many nodes at once, batching the request if possible.
-func (sg *sesGetter) GetMany(ctx context.Context, keys []*cid.Cid) <-chan *ipld.NodeOption {
+func (sg *sesGetter) GetMany(ctx context.Context, keys []cid.Cid) <-chan *ipld.NodeOption {
 	return getNodesFromBG(ctx, sg.bs, keys)
 }
 
@@ -157,7 +157,7 @@ func (n *dagService) Session(ctx context.Context) ipld.NodeGetter {
 }
 
 // FetchGraph fetches all nodes that are children of the given node
-func FetchGraph(ctx context.Context, root *cid.Cid, serv ipld.DAGService) error {
+func FetchGraph(ctx context.Context, root cid.Cid, serv ipld.DAGService) error {
 	return FetchGraphWithDepthLimit(ctx, root, -1, serv)
 }
 
@@ -165,7 +165,7 @@ func FetchGraph(ctx context.Context, root *cid.Cid, serv ipld.DAGService) error 
 // node down to the given depth. maxDetph=0 means "only fetch root",
 // maxDepth=1 means "fetch root and its direct children" and so on...
 // maxDepth=-1 means unlimited.
-func FetchGraphWithDepthLimit(ctx context.Context, root *cid.Cid, depthLim int, serv ipld.DAGService) error {
+func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, serv ipld.DAGService) error {
 	var ng ipld.NodeGetter = serv
 	ds, ok := serv.(*dagService)
 	if ok {
@@ -181,7 +181,7 @@ func FetchGraphWithDepthLimit(ctx context.Context, root *cid.Cid, depthLim int, 
 	//   to explore deeper than before).
 	// depthLim = -1 means we only return true if the element is not in the
 	// set.
-	visit := func(c *cid.Cid, depth int) bool {
+	visit := func(c cid.Cid, depth int) bool {
 		key := string(c.Bytes())
 		oldDepth, ok := set[key]
 
@@ -201,7 +201,7 @@ func FetchGraphWithDepthLimit(ctx context.Context, root *cid.Cid, depthLim int, 
 		return EnumerateChildrenAsyncDepth(ctx, GetLinksDirect(ng), root, 0, visit)
 	}
 
-	visitProgress := func(c *cid.Cid, depth int) bool {
+	visitProgress := func(c cid.Cid, depth int) bool {
 		if visit(c, depth) {
 			v.Increment()
 			return true
@@ -216,11 +216,11 @@ func FetchGraphWithDepthLimit(ctx context.Context, root *cid.Cid, depthLim int, 
 // This method may not return all requested nodes (and may or may not return an
 // error indicating that it failed to do so. It is up to the caller to verify
 // that it received all nodes.
-func (n *dagService) GetMany(ctx context.Context, keys []*cid.Cid) <-chan *ipld.NodeOption {
+func (n *dagService) GetMany(ctx context.Context, keys []cid.Cid) <-chan *ipld.NodeOption {
 	return getNodesFromBG(ctx, n.Blocks, keys)
 }
 
-func dedupKeys(keys []*cid.Cid) []*cid.Cid {
+func dedupKeys(keys []cid.Cid) []cid.Cid {
 	set := cid.NewSet()
 	for _, c := range keys {
 		set.Add(c)
@@ -231,7 +231,7 @@ func dedupKeys(keys []*cid.Cid) []*cid.Cid {
 	return set.Keys()
 }
 
-func getNodesFromBG(ctx context.Context, bs bserv.BlockGetter, keys []*cid.Cid) <-chan *ipld.NodeOption {
+func getNodesFromBG(ctx context.Context, bs bserv.BlockGetter, keys []cid.Cid) <-chan *ipld.NodeOption {
 	keys = dedupKeys(keys)
 
 	out := make(chan *ipld.NodeOption, len(keys))
@@ -270,14 +270,14 @@ func getNodesFromBG(ctx context.Context, bs bserv.BlockGetter, keys []*cid.Cid) 
 
 // GetLinks is the type of function passed to the EnumerateChildren function(s)
 // for getting the children of an IPLD node.
-type GetLinks func(context.Context, *cid.Cid) ([]*ipld.Link, error)
+type GetLinks func(context.Context, cid.Cid) ([]*ipld.Link, error)
 
 // GetLinksWithDAG returns a GetLinks function that tries to use the given
 // NodeGetter as a LinkGetter to get the children of a given IPLD node. This may
 // allow us to traverse the DAG without actually loading and parsing the node in
 // question (if we already have the links cached).
 func GetLinksWithDAG(ng ipld.NodeGetter) GetLinks {
-	return func(ctx context.Context, c *cid.Cid) ([]*ipld.Link, error) {
+	return func(ctx context.Context, c cid.Cid) ([]*ipld.Link, error) {
 		return ipld.GetLinks(ctx, ng, c)
 	}
 }
@@ -285,8 +285,8 @@ func GetLinksWithDAG(ng ipld.NodeGetter) GetLinks {
 // EnumerateChildren will walk the dag below the given root node and add all
 // unseen children to the passed in set.
 // TODO: parallelize to avoid disk latency perf hits?
-func EnumerateChildren(ctx context.Context, getLinks GetLinks, root *cid.Cid, visit func(*cid.Cid) bool) error {
-	visitDepth := func(c *cid.Cid, depth int) bool {
+func EnumerateChildren(ctx context.Context, getLinks GetLinks, root cid.Cid, visit func(cid.Cid) bool) error {
+	visitDepth := func(c cid.Cid, depth int) bool {
 		return visit(c)
 	}
 
@@ -296,7 +296,7 @@ func EnumerateChildren(ctx context.Context, getLinks GetLinks, root *cid.Cid, vi
 // EnumerateChildrenDepth walks the dag below the given root and passes the
 // current depth to a given visit function. The visit function can be used to
 // limit DAG exploration.
-func EnumerateChildrenDepth(ctx context.Context, getLinks GetLinks, root *cid.Cid, depth int, visit func(*cid.Cid, int) bool) error {
+func EnumerateChildrenDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, depth int, visit func(cid.Cid, int) bool) error {
 	links, err := getLinks(ctx, root)
 	if err != nil {
 		return err
@@ -348,8 +348,8 @@ var FetchGraphConcurrency = 8
 // fetches children in parallel.
 //
 // NOTE: It *does not* make multiple concurrent calls to the passed `visit` function.
-func EnumerateChildrenAsync(ctx context.Context, getLinks GetLinks, c *cid.Cid, visit func(*cid.Cid) bool) error {
-	visitDepth := func(c *cid.Cid, depth int) bool {
+func EnumerateChildrenAsync(ctx context.Context, getLinks GetLinks, c cid.Cid, visit func(cid.Cid) bool) error {
+	visitDepth := func(c cid.Cid, depth int) bool {
 		return visit(c)
 	}
 
@@ -360,9 +360,9 @@ func EnumerateChildrenAsync(ctx context.Context, getLinks GetLinks, c *cid.Cid, 
 // that it fetches children in parallel (down to a maximum depth in the graph).
 //
 // NOTE: It *does not* make multiple concurrent calls to the passed `visit` function.
-func EnumerateChildrenAsyncDepth(ctx context.Context, getLinks GetLinks, c *cid.Cid, startDepth int, visit func(*cid.Cid, int) bool) error {
+func EnumerateChildrenAsyncDepth(ctx context.Context, getLinks GetLinks, c cid.Cid, startDepth int, visit func(cid.Cid, int) bool) error {
 	type cidDepth struct {
-		cid   *cid.Cid
+		cid   cid.Cid
 		depth int
 	}
 

@@ -22,7 +22,7 @@ func TestReadonlyProperties(t *testing.T) {
 		NewRawNode([]byte("foo3")),
 		NewRawNode([]byte("foo4")),
 	}
-	cids := []*cid.Cid{
+	cids := []cid.Cid{
 		nds[0].Cid(),
 		nds[1].Cid(),
 		nds[2].Cid(),
