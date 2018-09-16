@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -116,8 +117,9 @@ func NewSession(ctx context.Context, bs BlockService) *Session {
 	if sessEx, ok := exch.(exchange.SessionExchange); ok {
 		ses := sessEx.NewSession(ctx)
 		return &Session{
-			ses: ses,
-			bs:  bs.Blockstore(),
+			ses:    ses,
+			sessEx: sessEx,
+			bs:     bs.Blockstore(),
 		}
 	}
 	return &Session{
@@ -199,15 +201,19 @@ func (s *blockService) AddBlocks(bs []blocks.Block) error {
 func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
 	log.Debugf("BlockService GetBlock: '%s'", c)
 
-	var f exchange.Fetcher
+	var f func() exchange.Fetcher
 	if s.exchange != nil {
-		f = s.exchange
+		f = s.getExchange
 	}
 
 	return getBlock(ctx, c, s.blockstore, f) // hash security
 }
 
-func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, f exchange.Fetcher) (blocks.Block, error) {
+func (s *blockService) getExchange() exchange.Fetcher {
+	return s.exchange
+}
+
+func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget func() exchange.Fetcher) (blocks.Block, error) {
 	err := verifcid.ValidateCid(c) // hash security
 	if err != nil {
 		return nil, err
@@ -218,7 +224,9 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, f exchan
 		return block, nil
 	}
 
-	if err == blockstore.ErrNotFound && f != nil {
+	if err == blockstore.ErrNotFound && fget != nil {
+		f := fget() // Don't load the exchange until we have to
+
 		// TODO be careful checking ErrNotFound. If the underlying
 		// implementation changes, this will break.
 		log.Debug("Blockservice: Searching bitswap")
@@ -245,10 +253,10 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, f exchan
 // the returned channel.
 // NB: No guarantees are made about order.
 func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
-	return getBlocks(ctx, ks, s.blockstore, s.exchange) // hash security
+	return getBlocks(ctx, ks, s.blockstore, s.getExchange) // hash security
 }
 
-func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, f exchange.Fetcher) <-chan blocks.Block {
+func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget func() exchange.Fetcher) <-chan blocks.Block {
 	out := make(chan blocks.Block)
 
 	go func() {
@@ -284,6 +292,7 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, f ex
 			return
 		}
 
+		f := fget() // don't load exchange unless we have to
 		rblocks, err := f.GetBlocks(ctx, misses)
 		if err != nil {
 			log.Debugf("Error with GetBlocks: %s", err)
@@ -318,18 +327,31 @@ func (s *blockService) Close() error {
 
 // Session is a helper type to provide higher level access to bitswap sessions
 type Session struct {
-	bs  blockstore.Blockstore
-	ses exchange.Fetcher
+	bs      blockstore.Blockstore
+	ses     exchange.Fetcher
+	sessEx  exchange.SessionExchange
+	sessCtx context.Context
+	lk      sync.Mutex
+}
+
+func (s *Session) getSession() exchange.Fetcher {
+	s.lk.Lock()
+	defer s.lk.Unlock()
+	if s.ses == nil {
+		s.ses = s.sessEx.NewSession(s.sessCtx)
+	}
+
+	return s.ses
 }
 
 // GetBlock gets a block in the context of a request session
 func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	return getBlock(ctx, c, s.bs, s.ses) // hash security
+	return getBlock(ctx, c, s.bs, s.getSession) // hash security
 }
 
 // GetBlocks gets blocks in the context of a request session
 func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
-	return getBlocks(ctx, ks, s.bs, s.ses) // hash security
+	return getBlocks(ctx, ks, s.bs, s.getSession) // hash security
 }
 
 var _ BlockGetter = (*Session)(nil)
