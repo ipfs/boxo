@@ -33,5 +33,5 @@ type Fetcher interface {
 // sessions.
 type SessionExchange interface {
 	Interface
-	NewSession(context.Context) Interface
+	NewSession(context.Context) Fetcher
 }
