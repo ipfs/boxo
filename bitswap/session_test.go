@@ -132,7 +132,7 @@ func TestSessionSplitFetch(t *testing.T) {
 		cids = append(cids, blk.Cid())
 	}
 
-	ses := inst[10].Exchange.NewSession(ctx)
+	ses := inst[10].Exchange.NewSession(ctx).(*Session)
 	ses.baseTickDelay = time.Millisecond * 10
 
 	for i := 0; i < 10; i++ {
