@@ -107,7 +107,7 @@ func ArrComp(a, b []byte) error {
 
 // PrintDag pretty-prints the given dag to stdout.
 func PrintDag(nd *mdag.ProtoNode, ds ipld.DAGService, indent int) {
-	pbd, err := ft.FromBytes(nd.Data())
+	fsn, err := ft.FSNodeFromBytes(nd.Data())
 	if err != nil {
 		panic(err)
 	}
@@ -115,7 +115,7 @@ func PrintDag(nd *mdag.ProtoNode, ds ipld.DAGService, indent int) {
 	for i := 0; i < indent; i++ {
 		fmt.Print(" ")
 	}
-	fmt.Printf("{size = %d, type = %s, children = %d", pbd.GetFilesize(), pbd.GetType().String(), len(pbd.GetBlocksizes()))
+	fmt.Printf("{size = %d, type = %s, children = %d", fsn.FileSize(), fsn.Type().String(), fsn.NumChildren())
 	if len(nd.Links()) > 0 {
 		fmt.Println()
 	}

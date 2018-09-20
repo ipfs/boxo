@@ -102,28 +102,29 @@ func NewHamtFromDag(dserv ipld.DAGService, nd ipld.Node) (*Shard, error) {
 		return nil, dag.ErrNotProtobuf
 	}
 
-	pbd, err := format.FromBytes(pbnd.Data())
+	fsn, err := format.FSNodeFromBytes(pbnd.Data())
 	if err != nil {
 		return nil, err
 	}
 
-	if pbd.GetType() != upb.Data_HAMTShard {
+
+	if fsn.Type() != upb.Data_HAMTShard {
 		return nil, fmt.Errorf("node was not a dir shard")
 	}
 
-	if pbd.GetHashType() != HashMurmur3 {
+	if fsn.HashType() != HashMurmur3 {
 		return nil, fmt.Errorf("only murmur3 supported as hash function")
 	}
 
-	ds, err := makeShard(dserv, int(pbd.GetFanout()))
+	ds, err := makeShard(dserv, int(fsn.Fanout()))
 	if err != nil {
 		return nil, err
 	}
 
 	ds.nd = pbnd.Copy().(*dag.ProtoNode)
 	ds.children = make([]child, len(pbnd.Links()))
-	ds.bitfield.SetBytes(pbd.GetData())
-	ds.hashFunc = pbd.GetHashType()
+	ds.bitfield.SetBytes(fsn.Data())
+	ds.hashFunc = fsn.HashType()
 	ds.builder = ds.nd.CidBuilder()
 
 	return ds, nil

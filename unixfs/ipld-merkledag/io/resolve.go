@@ -15,7 +15,7 @@ import (
 func ResolveUnixfsOnce(ctx context.Context, ds ipld.NodeGetter, nd ipld.Node, names []string) (*ipld.Link, []string, error) {
 	switch nd := nd.(type) {
 	case *dag.ProtoNode:
-		upb, err := ft.FromBytes(nd.Data())
+		fsn, err := ft.FSNodeFromBytes(nd.Data())
 		if err != nil {
 			// Not a unixfs node, use standard object traversal code
 			lnk, err := nd.GetNodeLink(names[0])
@@ -26,7 +26,7 @@ func ResolveUnixfsOnce(ctx context.Context, ds ipld.NodeGetter, nd ipld.Node, na
 			return lnk, names[1:], nil
 		}
 
-		switch upb.GetType() {
+		switch fsn.Type() {
 		case ft.THAMTShard:
 			rods := dag.NewReadOnlyDagService(ds)
 			s, err := hamt.NewHamtFromDag(rods, nd)
