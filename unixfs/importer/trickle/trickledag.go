@@ -277,12 +277,12 @@ func verifyTDagRec(n ipld.Node, depth int, p VerifyParams) error {
 		// zero depth dag is raw data block
 		switch nd := n.(type) {
 		case *dag.ProtoNode:
-			pbn, err := ft.FromBytes(nd.Data())
+			fsn, err := ft.FSNodeFromBytes(nd.Data())
 			if err != nil {
 				return err
 			}
 
-			if pbn.GetType() != ft.TRaw {
+			if fsn.Type() != ft.TRaw {
 				return errors.New("expected raw block")
 			}
 
@@ -325,16 +325,16 @@ func verifyTDagRec(n ipld.Node, depth int, p VerifyParams) error {
 	}
 
 	// Verify this is a branch node
-	pbn, err := ft.FromBytes(nd.Data())
+	fsn, err := ft.FSNodeFromBytes(nd.Data())
 	if err != nil {
 		return err
 	}
 
-	if pbn.GetType() != ft.TFile {
-		return fmt.Errorf("expected file as branch node, got: %s", pbn.GetType())
+	if fsn.Type() != ft.TFile {
+		return fmt.Errorf("expected file as branch node, got: %s", fsn.Type())
 	}
 
-	if len(pbn.Data) > 0 {
+	if len(fsn.Data()) > 0 {
 		return errors.New("branch node should not have data")
 	}
 

@@ -76,12 +76,12 @@ func TestPBdataTools(t *testing.T) {
 		t.Fatal("Unwrap failed to produce the correct wrapped data.")
 	}
 
-	rawPBdata, err := FromBytes(rawPB)
+	rawPBdata, err := FSNodeFromBytes(rawPB)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	isRaw := rawPBdata.GetType() == TRaw
+	isRaw := rawPBdata.Type() == TRaw
 	if !isRaw {
 		t.Fatal("WrapData does not create pb.Data_Raw!")
 	}
@@ -97,8 +97,8 @@ func TestPBdataTools(t *testing.T) {
 	}
 
 	dirPB := FolderPBData()
-	dir, err := FromBytes(dirPB)
-	isDir := dir.GetType() == TDirectory
+	dir, err := FSNodeFromBytes(dirPB)
+	isDir := dir.Type() == TDirectory
 	if !isDir {
 		t.Fatal("FolderPBData does not create a directory!")
 	}
@@ -115,8 +115,8 @@ func TestPBdataTools(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	catSymPB, err := FromBytes(catSym)
-	isSym := catSymPB.GetType() == TSymlink
+	catSymPB, err := FSNodeFromBytes(catSym)
+	isSym := catSymPB.Type() == TSymlink
 	if !isSym {
 		t.Fatal("Failed to make a Symlink.")
 	}
