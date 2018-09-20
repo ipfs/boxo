@@ -247,6 +247,16 @@ func (n *FSNode) Type() pb.Data_DataType {
 	return n.format.GetType()
 }
 
+// IsDir checks whether the node represents a directory
+func (n *FSNode) IsDir() bool {
+	switch n.Type() {
+	case pb.Data_Directory, pb.Data_HAMTShard:
+		return true
+	default:
+		return false
+	}
+}
+
 // Metadata is used to store additional FSNode information.
 type Metadata struct {
 	MimeType string

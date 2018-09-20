@@ -158,3 +158,20 @@ func TestMetadata(t *testing.T) {
 	}
 
 }
+
+func TestIsDir(t *testing.T) {
+	prepares := map[pb.Data_DataType]bool{
+		TDirectory: true,
+		THAMTShard: true,
+		TFile:      false,
+		TMetadata:  false,
+		TRaw:       false,
+		TSymlink:   false,
+	}
+	for typ, v := range prepares {
+		fsn := NewFSNode(typ)
+		if fsn.IsDir() != v {
+			t.Fatalf("type %v, IsDir() should be %v, but %v", typ, v, fsn.IsDir())
+		}
+	}
+}
