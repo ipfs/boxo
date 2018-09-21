@@ -37,10 +37,8 @@ func TestPutManyAddsToBloom(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	select {
-	case <-cachedbs.rebuildChan:
-	case <-ctx.Done():
-		t.Fatalf("Timeout wating for rebuild: %d", cachedbs.bloom.ElementsAdded())
+	if err := cachedbs.Wait(ctx); err != nil {
+		t.Fatalf("Failed while waiting for the filter to build: %d", cachedbs.bloom.ElementsAdded())
 	}
 
 	block1 := blocks.NewBlock([]byte("foo"))
@@ -107,10 +105,8 @@ func TestHasIsBloomCached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	select {
-	case <-cachedbs.rebuildChan:
-	case <-ctx.Done():
-		t.Fatalf("Timeout wating for rebuild: %d", cachedbs.bloom.ElementsAdded())
+	if err := cachedbs.Wait(ctx); err != nil {
+		t.Fatalf("Failed while waiting for the filter to build: %d", cachedbs.bloom.ElementsAdded())
 	}
 
 	cacheFails := 0
@@ -123,7 +119,7 @@ func TestHasIsBloomCached(t *testing.T) {
 	}
 
 	if float64(cacheFails)/float64(1000) > float64(0.05) {
-		t.Fatal("Bloom filter has cache miss rate of more than 5%")
+		t.Fatalf("Bloom filter has cache miss rate of more than 5%%")
 	}
 
 	cacheFails = 0
