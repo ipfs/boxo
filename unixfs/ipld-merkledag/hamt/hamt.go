@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 
 	bitfield "github.com/Stebalien/go-bitfield"
 	cid "github.com/ipfs/go-cid"
@@ -383,10 +384,16 @@ func (ds *Shard) getValue(ctx context.Context, hv *hashBits, key string, cb func
 // EnumLinks collects all links in the Shard.
 func (ds *Shard) EnumLinks(ctx context.Context) ([]*ipld.Link, error) {
 	var links []*ipld.Link
-	err := ds.ForEachLink(ctx, func(l *ipld.Link) error {
+	var setlk sync.Mutex
+
+	getLinks := ds.makeAsyncTrieGetLinks(func(l *ipld.Link) error {
+		setlk.Lock()
 		links = append(links, l)
+		setlk.Unlock()
 		return nil
 	})
+
+	err := dag.EnumerateChildrenAsync(ctx, getLinks, ds.nd.Cid(), func(c cid.Cid) bool { return true })
 	return links, err
 }
 
@@ -398,6 +405,35 @@ func (ds *Shard) ForEachLink(ctx context.Context, f func(*ipld.Link) error) erro
 
 		return f(lnk)
 	})
+}
+
+func (ds *Shard) makeAsyncTrieGetLinks(cb func(*ipld.Link) error) dag.GetLinks {
+
+	return func(ctx context.Context, c cid.Cid) ([]*ipld.Link, error) {
+		node, err := ds.dserv.Get(ctx, c)
+		if err != nil {
+			return nil, err
+		}
+		cds, err := NewHamtFromDag(ds.dserv, node)
+		if err != nil {
+			return nil, err
+		}
+
+		childShards := make([]*ipld.Link, 0, len(cds.children))
+		for idx := range cds.children {
+			lnk := cds.nd.Links()[idx]
+
+			if len(lnk.Name) < cds.maxpadlen {
+				return nil, fmt.Errorf("invalid link name '%s'", lnk.Name)
+			}
+			if len(lnk.Name) == cds.maxpadlen {
+				childShards = append(childShards, lnk)
+			} else {
+				cb(lnk)
+			}
+		}
+		return childShards, nil
+	}
 }
 
 func (ds *Shard) walkTrie(ctx context.Context, cb func(*shardValue) error) error {
