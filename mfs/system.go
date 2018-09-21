@@ -74,13 +74,13 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 		repub: repub,
 	}
 
-	pbn, err := ft.FromBytes(node.Data())
+	fsn, err := ft.FSNodeFromBytes(node.Data())
 	if err != nil {
 		log.Error("IPNS pointer was not unixfs node")
 		return nil, err
 	}
 
-	switch pbn.GetType() {
+	switch fsn.Type() {
 	case ft.TDirectory, ft.THAMTShard:
 		newDir, err := NewDirectory(parent, node.String(), node, root, ds)
 		if err != nil {
@@ -89,9 +89,9 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 
 		root.dir = newDir
 	case ft.TFile, ft.TMetadata, ft.TRaw:
-		return nil, fmt.Errorf("root can't be a file (unixfs type: %s)", pbn.GetType())
+		return nil, fmt.Errorf("root can't be a file (unixfs type: %s)", fsn.Type())
 	default:
-		return nil, fmt.Errorf("unrecognized unixfs type: %s", pbn.GetType())
+		return nil, fmt.Errorf("unrecognized unixfs type: %s", fsn.Type())
 	}
 	return root, nil
 }

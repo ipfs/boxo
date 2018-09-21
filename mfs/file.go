@@ -102,11 +102,11 @@ func (fi *File) Size() (int64, error) {
 	defer fi.nodelk.Unlock()
 	switch nd := fi.node.(type) {
 	case *dag.ProtoNode:
-		pbd, err := ft.FromBytes(nd.Data())
+		fsn, err := ft.FSNodeFromBytes(nd.Data())
 		if err != nil {
 			return 0, err
 		}
-		return int64(pbd.GetFilesize()), nil
+		return int64(fsn.FileSize()), nil
 	case *dag.RawNode:
 		return int64(len(nd.RawData())), nil
 	default:
