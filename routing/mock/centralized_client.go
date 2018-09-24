@@ -39,7 +39,7 @@ func (c *client) SearchValue(ctx context.Context, key string, opts ...ropts.Opti
 	return c.vs.SearchValue(ctx, key, opts...)
 }
 
-func (c *client) FindProviders(ctx context.Context, key *cid.Cid) ([]pstore.PeerInfo, error) {
+func (c *client) FindProviders(ctx context.Context, key cid.Cid) ([]pstore.PeerInfo, error) {
 	return c.server.Providers(key), nil
 }
 
