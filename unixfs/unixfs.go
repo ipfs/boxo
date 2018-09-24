@@ -29,6 +29,7 @@ var (
 )
 
 // FromBytes unmarshals a byte slice as protobuf Data.
+// Deprecated: Use `FSNodeFromBytes` instead to avoid direct manipulation of `pb.Data`.
 func FromBytes(data []byte) (*pb.Data, error) {
 	pbdata := new(pb.Data)
 	err := proto.Unmarshal(data, pbdata)
@@ -182,6 +183,16 @@ func NewFSNode(dataType pb.Data_DataType) *FSNode {
 	return n
 }
 
+// HashType gets hash type of format
+func (n *FSNode) HashType() uint64 {
+	return n.format.GetHashType()
+}
+
+// Fanout gets fanout of format
+func (n *FSNode) Fanout() uint64 {
+	return n.format.GetFanout()
+}
+
 // AddBlockSize adds the size of the next child block of this node
 func (n *FSNode) AddBlockSize(s uint64) {
 	n.UpdateFilesize(int64(s))
@@ -198,6 +209,11 @@ func (n *FSNode) RemoveBlockSize(i int) {
 // TODO: Evaluate if this function should be bounds checking.
 func (n *FSNode) BlockSize(i int) uint64 {
 	return n.format.Blocksizes[i]
+}
+
+// BlockSizes gets blocksizes of format
+func (n *FSNode) BlockSizes() []uint64 {
+	return n.format.GetBlocksizes()
 }
 
 // RemoveAllBlockSizes removes all the child block sizes of this node.
