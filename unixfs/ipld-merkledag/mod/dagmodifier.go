@@ -13,7 +13,6 @@ import (
 	trickle "github.com/ipfs/go-unixfs/importer/trickle"
 	uio "github.com/ipfs/go-unixfs/io"
 
-	proto "github.com/gogo/protobuf/proto"
 	cid "github.com/ipfs/go-cid"
 	chunker "github.com/ipfs/go-ipfs-chunker"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -173,11 +172,11 @@ func (dm *DagModifier) Size() (int64, error) {
 func fileSize(n ipld.Node) (uint64, error) {
 	switch nd := n.(type) {
 	case *mdag.ProtoNode:
-		f, err := ft.FromBytes(nd.Data())
+		fsn, err := ft.FSNodeFromBytes(nd.Data())
 		if err != nil {
 			return 0, err
 		}
-		return f.GetFilesize(), nil
+		return fsn.FileSize(), nil
 	case *mdag.RawNode:
 		return uint64(len(nd.RawData())), nil
 	default:
@@ -238,18 +237,18 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (cid.Cid, error) {
 	if len(n.Links()) == 0 {
 		switch nd0 := n.(type) {
 		case *mdag.ProtoNode:
-			f, err := ft.FromBytes(nd0.Data())
+			fsn, err := ft.FSNodeFromBytes(nd0.Data())
 			if err != nil {
 				return cid.Cid{}, err
 			}
 
-			_, err = dm.wrBuf.Read(f.Data[offset:])
+			_, err = dm.wrBuf.Read(fsn.Data()[offset:])
 			if err != nil && err != io.EOF {
 				return cid.Cid{}, err
 			}
 
 			// Update newly written node..
-			b, err := proto.Marshal(f)
+			b, err := fsn.GetBytes()
 			if err != nil {
 				return cid.Cid{}, err
 			}
@@ -300,13 +299,13 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (cid.Cid, error) {
 		return cid.Cid{}, ErrNotUnixfs
 	}
 
-	f, err := ft.FromBytes(node.Data())
+	fsn, err := ft.FSNodeFromBytes(node.Data())
 	if err != nil {
 		return cid.Cid{}, err
 	}
 
 	var cur uint64
-	for i, bs := range f.GetBlocksizes() {
+	for i, bs := range fsn.BlockSizes() {
 		// We found the correct child to write into
 		if cur+bs > offset {
 			child, err := node.Links()[i].GetNode(dm.ctx, dm.dagserv)
@@ -510,11 +509,11 @@ func (dm *DagModifier) dagTruncate(ctx context.Context, n ipld.Node, size uint64
 		switch nd := n.(type) {
 		case *mdag.ProtoNode:
 			// TODO: this can likely be done without marshaling and remarshaling
-			pbn, err := ft.FromBytes(nd.Data())
+			fsn, err := ft.FSNodeFromBytes(nd.Data())
 			if err != nil {
 				return nil, err
 			}
-			nd.SetData(ft.WrapData(pbn.Data[:size]))
+			nd.SetData(ft.WrapData(fsn.Data()[:size]))
 			return nd, nil
 		case *mdag.RawNode:
 			return mdag.NewRawNodeWPrefix(nd.RawData()[:size], nd.Cid().Prefix())
