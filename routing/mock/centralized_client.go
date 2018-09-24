@@ -34,6 +34,11 @@ func (c *client) GetValue(ctx context.Context, key string, opts ...ropts.Option)
 	return c.vs.GetValue(ctx, key, opts...)
 }
 
+func (c *client) SearchValue(ctx context.Context, key string, opts ...ropts.Option) (<-chan []byte, error) {
+	log.Debugf("SearchValue: %s", key)
+	return c.vs.SearchValue(ctx, key, opts...)
+}
+
 func (c *client) FindProviders(ctx context.Context, key cid.Cid) ([]pstore.PeerInfo, error) {
 	return c.server.Providers(key), nil
 }
