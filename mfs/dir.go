@@ -152,12 +152,12 @@ func (d *Directory) childNode(name string) (FSNode, error) {
 func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 	switch nd := nd.(type) {
 	case *dag.ProtoNode:
-		i, err := ft.FromBytes(nd.Data())
+		fsn, err := ft.FSNodeFromBytes(nd.Data())
 		if err != nil {
 			return nil, err
 		}
 
-		switch i.GetType() {
+		switch fsn.Type() {
 		case ufspb.Data_Directory, ufspb.Data_HAMTShard:
 			ndir, err := NewDirectory(d.ctx, name, nd, d, d.dserv)
 			if err != nil {
