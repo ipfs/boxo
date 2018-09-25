@@ -8,7 +8,7 @@ import (
 	"io"
 
 	logging "github.com/ipfs/go-log"
-	mpool "github.com/libp2p/go-msgio/mpool"
+	pool "github.com/libp2p/go-buffer-pool"
 )
 
 var log = logging.Logger("chunk")
@@ -82,19 +82,19 @@ func (ss *sizeSplitterv2) NextBytes() ([]byte, error) {
 		return nil, ss.err
 	}
 
-	full := mpool.ByteSlicePool.Get(ss.size).([]byte)[:ss.size]
+	full := pool.Get(int(ss.size))
 	n, err := io.ReadFull(ss.r, full)
 	switch err {
 	case io.ErrUnexpectedEOF:
 		ss.err = io.EOF
 		small := make([]byte, n)
 		copy(small, full)
-		mpool.ByteSlicePool.Put(ss.size, full)
+		pool.Put(full)
 		return small, nil
 	case nil:
 		return full, nil
 	default:
-		mpool.ByteSlicePool.Put(ss.size, full)
+		pool.Put(full)
 		return nil, err
 	}
 }
