@@ -12,7 +12,6 @@ import (
 	dag "github.com/ipfs/go-merkledag"
 	ft "github.com/ipfs/go-unixfs"
 	uio "github.com/ipfs/go-unixfs/io"
-	ufspb "github.com/ipfs/go-unixfs/pb"
 
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -158,7 +157,7 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 		}
 
 		switch fsn.Type() {
-		case ufspb.Data_Directory, ufspb.Data_HAMTShard:
+		case ft.TDirectory, ft.THAMTShard:
 			ndir, err := NewDirectory(d.ctx, name, nd, d, d.dserv)
 			if err != nil {
 				return nil, err
@@ -166,14 +165,14 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 
 			d.childDirs[name] = ndir
 			return ndir, nil
-		case ufspb.Data_File, ufspb.Data_Raw, ufspb.Data_Symlink:
+		case ft.TFile, ft.TRaw, ft.TSymlink:
 			nfi, err := NewFile(name, nd, d, d.dserv)
 			if err != nil {
 				return nil, err
 			}
 			d.files[name] = nfi
 			return nfi, nil
-		case ufspb.Data_Metadata:
+		case ft.TMetadata:
 			return nil, ErrNotYetImplemented
 		default:
 			return nil, ErrInvalidChild
