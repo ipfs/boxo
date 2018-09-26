@@ -8,8 +8,6 @@ import (
 
 	mdag "github.com/ipfs/go-merkledag"
 	ft "github.com/ipfs/go-unixfs"
-	ftpb "github.com/ipfs/go-unixfs/pb"
-
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 )
@@ -134,10 +132,10 @@ func (dr *PBDagReader) loadBufNode(node ipld.Node) error {
 		}
 
 		switch fsNode.Type() {
-		case ftpb.Data_File:
+		case ft.TFile:
 			dr.buf = NewPBFileReader(dr.ctx, node, fsNode, dr.serv)
 			return nil
-		case ftpb.Data_Raw:
+		case ft.TRaw:
 			dr.buf = NewBufDagReader(fsNode.Data())
 			return nil
 		default:
@@ -318,7 +316,7 @@ func (dr *PBDagReader) Seek(offset int64, whence int) (int64, error) {
 		// for this seems to be good(-enough) solution as it's only returned by
 		// precalcNextBuf when we step out of file range.
 		// This is needed for gateway to function properly
-		if err == io.EOF && dr.file.Type() == ftpb.Data_File {
+		if err == io.EOF && dr.file.Type() == ft.TFile {
 			return -1, nil
 		}
 		return n, err

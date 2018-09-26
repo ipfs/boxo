@@ -7,8 +7,6 @@ import (
 
 	mdag "github.com/ipfs/go-merkledag"
 	ft "github.com/ipfs/go-unixfs"
-	ftpb "github.com/ipfs/go-unixfs/pb"
-
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
@@ -49,12 +47,12 @@ func NewDagReader(ctx context.Context, n ipld.Node, serv ipld.NodeGetter) (DagRe
 		}
 
 		switch fsNode.Type() {
-		case ftpb.Data_Directory, ftpb.Data_HAMTShard:
+		case ft.TDirectory, ft.THAMTShard:
 			// Dont allow reading directories
 			return nil, ErrIsDir
-		case ftpb.Data_File, ftpb.Data_Raw:
+		case ft.TFile, ft.TRaw:
 			return NewPBFileReader(ctx, n, fsNode, serv), nil
-		case ftpb.Data_Metadata:
+		case ft.TMetadata:
 			if len(n.Links()) == 0 {
 				return nil, errors.New("incorrectly formatted metadata object")
 			}
@@ -68,7 +66,7 @@ func NewDagReader(ctx context.Context, n ipld.Node, serv ipld.NodeGetter) (DagRe
 				return nil, mdag.ErrNotProtobuf
 			}
 			return NewDagReader(ctx, childpb, serv)
-		case ftpb.Data_Symlink:
+		case ft.TSymlink:
 			return nil, ErrCantReadSymlinks
 		default:
 			return nil, ft.ErrUnrecognizedType
