@@ -13,7 +13,6 @@ import (
 	mdag "github.com/ipfs/go-merkledag"
 	ft "github.com/ipfs/go-unixfs"
 	uio "github.com/ipfs/go-unixfs/io"
-	upb "github.com/ipfs/go-unixfs/pb"
 
 	ipld "github.com/ipfs/go-ipld-format"
 )
@@ -79,15 +78,15 @@ func (w *Writer) WriteNode(nd ipld.Node, fpath string) error {
 		}
 
 		switch fsNode.Type() {
-		case upb.Data_Metadata:
+		case ft.TMetadata:
 			fallthrough
-		case upb.Data_Directory, upb.Data_HAMTShard:
+		case ft.TDirectory, ft.THAMTShard:
 			return w.writeDir(nd, fpath)
-		case upb.Data_Raw:
+		case ft.TRaw:
 			fallthrough
-		case upb.Data_File:
+		case ft.TFile:
 			return w.writeFile(nd, fsNode, fpath)
-		case upb.Data_Symlink:
+		case ft.TSymlink:
 			return writeSymlinkHeader(w.TarW, string(fsNode.Data()), fpath)
 		default:
 			return ft.ErrUnrecognizedType

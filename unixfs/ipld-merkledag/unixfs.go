@@ -106,6 +106,23 @@ func SymlinkData(path string) ([]byte, error) {
 	return out, nil
 }
 
+// HAMTShardData return a `Data_HAMTShard` protobuf message
+func HAMTShardData(data []byte, fanout uint64, hashType uint64) ([]byte, error) {
+	pbdata := new(pb.Data)
+	typ := pb.Data_HAMTShard
+	pbdata.Type = &typ
+	pbdata.HashType = proto.Uint64(hashType)
+	pbdata.Data = data
+	pbdata.Fanout = proto.Uint64(fanout)
+
+	out, err := proto.Marshal(pbdata)
+	if err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
 // UnwrapData unmarshals a protobuf messages and returns the contents.
 func UnwrapData(data []byte) ([]byte, error) {
 	pbdata := new(pb.Data)
