@@ -29,10 +29,11 @@ var roughLinkSize = 34 + 8 + 5   // sha256 multihash + size + no name + protobuf
 // For now, we use:
 //
 //   var roughLinkBlockSize = 1 << 13 // 8KB
-//   var roughLinkSize = 288          // sha256 + framing + name
+//   var roughLinkSize = 34 + 8 + 5   // sha256 multihash + size + no name
+//                                    // + protobuf framing
 //   var DefaultLinksPerBlock = (roughLinkBlockSize / roughLinkSize)
-//
-// See calc_test.go
+//                            = ( 8192 / 47 )
+//                            = (approximately) 174
 var DefaultLinksPerBlock = roughLinkBlockSize / roughLinkSize
 
 // ErrSizeLimitExceeded signals that a block is larger than BlockSizeLimit.
