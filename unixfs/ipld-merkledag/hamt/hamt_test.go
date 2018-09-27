@@ -11,6 +11,7 @@ import (
 
 	dag "github.com/ipfs/go-merkledag"
 	mdtest "github.com/ipfs/go-merkledag/test"
+
 	ft "github.com/ipfs/go-unixfs"
 
 	ipld "github.com/ipfs/go-ipld-format"
@@ -100,6 +101,8 @@ func assertSerializationWorks(ds ipld.DAGService, s *Shard) error {
 		return fmt.Errorf("links arrays are different sizes")
 	}
 
+	sort.Stable(dag.LinkSlice(linksA))
+	sort.Stable(dag.LinkSlice(linksB))
 	for i, a := range linksA {
 		b := linksB[i]
 		if a.Name != b.Name {
@@ -280,13 +283,16 @@ func TestSetAfterMarshal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	empty := ft.EmptyDirNode()
 	for i := 0; i < 100; i++ {
+		empty := ft.EmptyDirNode()
 		err := nds.Set(ctx, fmt.Sprintf("moredirs%d", i), empty)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
+
+	nd, err = nds.Node()
+	nds, err = NewHamtFromDag(ds, nd)
 
 	links, err := nds.EnumLinks(ctx)
 	if err != nil {
@@ -318,6 +324,9 @@ func TestDuplicateAddShard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	node, err := dir.Node()
+	dir, err = NewHamtFromDag(ds, node)
 
 	lnks, err := dir.EnumLinks(ctx)
 	if err != nil {
@@ -410,6 +419,9 @@ func TestRemoveElemsAfterMarshal(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	nd, err = nds.Node()
+	nds, err = NewHamtFromDag(ds, nd)
 
 	links, err := nds.EnumLinks(ctx)
 	if err != nil {
