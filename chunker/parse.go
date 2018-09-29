@@ -8,7 +8,10 @@ import (
 	"strings"
 )
 
-var ErrRabinMin = errors.New("rabin min must be greater than 16")
+var (
+	ErrRabinMin = errors.New("rabin min must be greater than 16")
+	ErrSize     = errors.New("chunker size muster greater than 0")
+)
 
 // FromString returns a Splitter depending on the given string:
 // it supports "default" (""), "size-{size}", "rabin", "rabin-{blocksize}" and
@@ -23,6 +26,8 @@ func FromString(r io.Reader, chunker string) (Splitter, error) {
 		size, err := strconv.Atoi(sizeStr)
 		if err != nil {
 			return nil, err
+		} else if size <= 0 {
+			return nil, ErrSize
 		}
 		return NewSizeSplitter(r, int64(size)), nil
 
