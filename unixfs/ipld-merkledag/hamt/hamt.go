@@ -393,7 +393,9 @@ func (ds *Shard) EnumLinks(ctx context.Context) ([]*ipld.Link, error) {
 		return nil
 	})
 
-	err := dag.EnumerateChildrenAsync(ctx, getLinks, ds.nd.Cid(), func(c cid.Cid) bool { return true })
+	cset := cid.NewSet()
+
+	err := dag.EnumerateChildrenAsync(ctx, getLinks, ds.nd.Cid(), cset.Visit)
 	return links, err
 }
 
