@@ -6,6 +6,7 @@ package bitswap_message_pb
 import proto "github.com/gogo/protobuf/proto"
 import fmt "fmt"
 import math "math"
+import _ "github.com/gogo/protobuf/gogoproto"
 
 import io "io"
 
@@ -21,19 +22,18 @@ var _ = math.Inf
 const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
 type Message struct {
-	Wantlist             *Message_Wantlist `protobuf:"bytes,1,opt,name=wantlist" json:"wantlist,omitempty"`
-	Blocks               [][]byte          `protobuf:"bytes,2,rep,name=blocks" json:"blocks,omitempty"`
-	Payload              []*Message_Block  `protobuf:"bytes,3,rep,name=payload" json:"payload,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}          `json:"-"`
-	XXX_unrecognized     []byte            `json:"-"`
-	XXX_sizecache        int32             `json:"-"`
+	Wantlist             Message_Wantlist `protobuf:"bytes,1,opt,name=wantlist" json:"wantlist"`
+	Blocks               [][]byte         `protobuf:"bytes,2,rep,name=blocks" json:"blocks,omitempty"`
+	Payload              []Message_Block  `protobuf:"bytes,3,rep,name=payload" json:"payload"`
+	XXX_NoUnkeyedLiteral struct{}         `json:"-"`
+	XXX_sizecache        int32            `json:"-"`
 }
 
 func (m *Message) Reset()         { *m = Message{} }
 func (m *Message) String() string { return proto.CompactTextString(m) }
 func (*Message) ProtoMessage()    {}
 func (*Message) Descriptor() ([]byte, []int) {
-	return fileDescriptor_message_1e228ff77b8fb7b4, []int{0}
+	return fileDescriptor_message_c28309e4affd853b, []int{0}
 }
 func (m *Message) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -62,11 +62,11 @@ func (m *Message) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_Message proto.InternalMessageInfo
 
-func (m *Message) GetWantlist() *Message_Wantlist {
+func (m *Message) GetWantlist() Message_Wantlist {
 	if m != nil {
 		return m.Wantlist
 	}
-	return nil
+	return Message_Wantlist{}
 }
 
 func (m *Message) GetBlocks() [][]byte {
@@ -76,7 +76,7 @@ func (m *Message) GetBlocks() [][]byte {
 	return nil
 }
 
-func (m *Message) GetPayload() []*Message_Block {
+func (m *Message) GetPayload() []Message_Block {
 	if m != nil {
 		return m.Payload
 	}
@@ -84,18 +84,17 @@ func (m *Message) GetPayload() []*Message_Block {
 }
 
 type Message_Wantlist struct {
-	Entries              []*Message_Wantlist_Entry `protobuf:"bytes,1,rep,name=entries" json:"entries,omitempty"`
-	Full                 bool                      `protobuf:"varint,2,opt,name=full,proto3" json:"full,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}                  `json:"-"`
-	XXX_unrecognized     []byte                    `json:"-"`
-	XXX_sizecache        int32                     `json:"-"`
+	Entries              []Message_Wantlist_Entry `protobuf:"bytes,1,rep,name=entries" json:"entries"`
+	Full                 bool                     `protobuf:"varint,2,opt,name=full,proto3" json:"full,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                 `json:"-"`
+	XXX_sizecache        int32                    `json:"-"`
 }
 
 func (m *Message_Wantlist) Reset()         { *m = Message_Wantlist{} }
 func (m *Message_Wantlist) String() string { return proto.CompactTextString(m) }
 func (*Message_Wantlist) ProtoMessage()    {}
 func (*Message_Wantlist) Descriptor() ([]byte, []int) {
-	return fileDescriptor_message_1e228ff77b8fb7b4, []int{0, 0}
+	return fileDescriptor_message_c28309e4affd853b, []int{0, 0}
 }
 func (m *Message_Wantlist) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -124,7 +123,7 @@ func (m *Message_Wantlist) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_Message_Wantlist proto.InternalMessageInfo
 
-func (m *Message_Wantlist) GetEntries() []*Message_Wantlist_Entry {
+func (m *Message_Wantlist) GetEntries() []Message_Wantlist_Entry {
 	if m != nil {
 		return m.Entries
 	}
@@ -143,7 +142,6 @@ type Message_Wantlist_Entry struct {
 	Priority             int32    `protobuf:"varint,2,opt,name=priority,proto3" json:"priority,omitempty"`
 	Cancel               bool     `protobuf:"varint,3,opt,name=cancel,proto3" json:"cancel,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
@@ -151,7 +149,7 @@ func (m *Message_Wantlist_Entry) Reset()         { *m = Message_Wantlist_Entry{}
 func (m *Message_Wantlist_Entry) String() string { return proto.CompactTextString(m) }
 func (*Message_Wantlist_Entry) ProtoMessage()    {}
 func (*Message_Wantlist_Entry) Descriptor() ([]byte, []int) {
-	return fileDescriptor_message_1e228ff77b8fb7b4, []int{0, 0, 0}
+	return fileDescriptor_message_c28309e4affd853b, []int{0, 0, 0}
 }
 func (m *Message_Wantlist_Entry) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -205,7 +203,6 @@ type Message_Block struct {
 	Prefix               []byte   `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`
 	Data                 []byte   `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
@@ -213,7 +210,7 @@ func (m *Message_Block) Reset()         { *m = Message_Block{} }
 func (m *Message_Block) String() string { return proto.CompactTextString(m) }
 func (*Message_Block) ProtoMessage()    {}
 func (*Message_Block) Descriptor() ([]byte, []int) {
-	return fileDescriptor_message_1e228ff77b8fb7b4, []int{0, 1}
+	return fileDescriptor_message_c28309e4affd853b, []int{0, 1}
 }
 func (m *Message_Block) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -277,16 +274,14 @@ func (m *Message) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.Wantlist != nil {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintMessage(dAtA, i, uint64(m.Wantlist.Size()))
-		n1, err := m.Wantlist.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n1
+	dAtA[i] = 0xa
+	i++
+	i = encodeVarintMessage(dAtA, i, uint64(m.Wantlist.Size()))
+	n1, err := m.Wantlist.MarshalTo(dAtA[i:])
+	if err != nil {
+		return 0, err
 	}
+	i += n1
 	if len(m.Blocks) > 0 {
 		for _, b := range m.Blocks {
 			dAtA[i] = 0x12
@@ -306,9 +301,6 @@ func (m *Message) MarshalTo(dAtA []byte) (int, error) {
 			}
 			i += n
 		}
-	}
-	if m.XXX_unrecognized != nil {
-		i += copy(dAtA[i:], m.XXX_unrecognized)
 	}
 	return i, nil
 }
@@ -350,9 +342,6 @@ func (m *Message_Wantlist) MarshalTo(dAtA []byte) (int, error) {
 		}
 		i++
 	}
-	if m.XXX_unrecognized != nil {
-		i += copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	return i, nil
 }
 
@@ -392,9 +381,6 @@ func (m *Message_Wantlist_Entry) MarshalTo(dAtA []byte) (int, error) {
 		}
 		i++
 	}
-	if m.XXX_unrecognized != nil {
-		i += copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	return i, nil
 }
 
@@ -425,9 +411,6 @@ func (m *Message_Block) MarshalTo(dAtA []byte) (int, error) {
 		i = encodeVarintMessage(dAtA, i, uint64(len(m.Data)))
 		i += copy(dAtA[i:], m.Data)
 	}
-	if m.XXX_unrecognized != nil {
-		i += copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	return i, nil
 }
 
@@ -443,10 +426,8 @@ func encodeVarintMessage(dAtA []byte, offset int, v uint64) int {
 func (m *Message) Size() (n int) {
 	var l int
 	_ = l
-	if m.Wantlist != nil {
-		l = m.Wantlist.Size()
-		n += 1 + l + sovMessage(uint64(l))
-	}
+	l = m.Wantlist.Size()
+	n += 1 + l + sovMessage(uint64(l))
 	if len(m.Blocks) > 0 {
 		for _, b := range m.Blocks {
 			l = len(b)
@@ -458,9 +439,6 @@ func (m *Message) Size() (n int) {
 			l = e.Size()
 			n += 1 + l + sovMessage(uint64(l))
 		}
-	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -476,9 +454,6 @@ func (m *Message_Wantlist) Size() (n int) {
 	}
 	if m.Full {
 		n += 2
-	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -496,9 +471,6 @@ func (m *Message_Wantlist_Entry) Size() (n int) {
 	if m.Cancel {
 		n += 2
 	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
 	return n
 }
 
@@ -512,9 +484,6 @@ func (m *Message_Block) Size() (n int) {
 	l = len(m.Data)
 	if l > 0 {
 		n += 1 + l + sovMessage(uint64(l))
-	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -587,9 +556,6 @@ func (m *Message) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Wantlist == nil {
-				m.Wantlist = &Message_Wantlist{}
-			}
 			if err := m.Wantlist.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -649,7 +615,7 @@ func (m *Message) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Payload = append(m.Payload, &Message_Block{})
+			m.Payload = append(m.Payload, Message_Block{})
 			if err := m.Payload[len(m.Payload)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -666,7 +632,6 @@ func (m *Message) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -731,7 +696,7 @@ func (m *Message_Wantlist) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Entries = append(m.Entries, &Message_Wantlist_Entry{})
+			m.Entries = append(m.Entries, Message_Wantlist_Entry{})
 			if err := m.Entries[len(m.Entries)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -768,7 +733,6 @@ func (m *Message_Wantlist) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -889,7 +853,6 @@ func (m *Message_Wantlist_Entry) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -1002,7 +965,6 @@ func (m *Message_Block) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -1117,26 +1079,29 @@ var (
 	ErrIntOverflowMessage   = fmt.Errorf("proto: integer overflow")
 )
 
-func init() { proto.RegisterFile("message.proto", fileDescriptor_message_1e228ff77b8fb7b4) }
+func init() { proto.RegisterFile("message.proto", fileDescriptor_message_c28309e4affd853b) }
 
-var fileDescriptor_message_1e228ff77b8fb7b4 = []byte{
-	// 287 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x91, 0xb1, 0x4e, 0xf3, 0x30,
-	0x14, 0x85, 0xe5, 0xe6, 0x4f, 0x1b, 0xdd, 0xe6, 0x5f, 0x2c, 0x84, 0xac, 0x0c, 0x55, 0x40, 0x0c,
-	0x11, 0x83, 0x87, 0x76, 0x64, 0x41, 0x15, 0x8c, 0x0c, 0x78, 0x61, 0x76, 0x52, 0x17, 0x59, 0x98,
-	0x24, 0xb2, 0x8d, 0x4a, 0x9e, 0x82, 0xc7, 0xe1, 0x15, 0x18, 0x79, 0x04, 0x94, 0x27, 0x41, 0xb9,
-	0x75, 0xb2, 0x20, 0x21, 0xb6, 0x7b, 0xac, 0xf3, 0x1d, 0x9f, 0x6b, 0xc3, 0xff, 0x67, 0xe5, 0x9c,
-	0x7c, 0x54, 0xbc, 0xb5, 0x8d, 0x6f, 0x28, 0x2d, 0xb5, 0x77, 0x07, 0xd9, 0xf2, 0xe9, 0xb8, 0x3c,
-	0x7f, 0x8b, 0x60, 0x71, 0x77, 0x94, 0xf4, 0x1a, 0x92, 0x83, 0xac, 0xbd, 0xd1, 0xce, 0x33, 0x92,
-	0x93, 0x62, 0xb9, 0xbe, 0xe0, 0x3f, 0x11, 0x1e, 0xec, 0xfc, 0x21, 0x78, 0xc5, 0x44, 0xd1, 0x53,
-	0x98, 0x97, 0xa6, 0xa9, 0x9e, 0x1c, 0x9b, 0xe5, 0x51, 0x91, 0x8a, 0xa0, 0xe8, 0x15, 0x2c, 0x5a,
-	0xd9, 0x99, 0x46, 0xee, 0x58, 0x94, 0x47, 0xc5, 0x72, 0x7d, 0xf6, 0x5b, 0xf0, 0x76, 0x80, 0xc4,
-	0x48, 0x64, 0xef, 0x04, 0x92, 0xf1, 0x2e, 0x7a, 0x03, 0x0b, 0x55, 0x7b, 0xab, 0x95, 0x63, 0x04,
-	0x93, 0x2e, 0xff, 0x52, 0x91, 0xdf, 0xd6, 0xde, 0x76, 0x62, 0x44, 0x29, 0x85, 0x7f, 0xfb, 0x17,
-	0x63, 0xd8, 0x2c, 0x27, 0x45, 0x22, 0x70, 0xce, 0xee, 0x21, 0x46, 0x17, 0x3d, 0x81, 0x18, 0x6b,
-	0xe3, 0x1b, 0xa4, 0xe2, 0x28, 0x68, 0x06, 0x49, 0x6b, 0x75, 0x63, 0xb5, 0xef, 0x10, 0x8b, 0xc5,
-	0xa4, 0x87, 0xb5, 0x2b, 0x59, 0x57, 0xca, 0xb0, 0x08, 0x03, 0x83, 0xca, 0x36, 0x10, 0xe3, 0x2e,
-	0x83, 0xa1, 0xb5, 0x6a, 0xaf, 0x5f, 0x43, 0x66, 0x50, 0x43, 0x8f, 0x9d, 0xf4, 0x12, 0x03, 0x53,
-	0x81, 0xf3, 0x36, 0xfd, 0xe8, 0x57, 0xe4, 0xb3, 0x5f, 0x91, 0xaf, 0x7e, 0x45, 0xca, 0x39, 0x7e,
-	0xdd, 0xe6, 0x3b, 0x00, 0x00, 0xff, 0xff, 0xd2, 0x95, 0x9b, 0xc1, 0xcb, 0x01, 0x00, 0x00,
+var fileDescriptor_message_c28309e4affd853b = []byte{
+	// 328 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x91, 0xcf, 0x4a, 0xf3, 0x40,
+	0x14, 0xc5, 0x3b, 0x4d, 0xd3, 0x86, 0xdb, 0x7e, 0xf0, 0x31, 0x88, 0x84, 0x2c, 0x62, 0x14, 0x17,
+	0x41, 0x70, 0x0a, 0xed, 0x13, 0x58, 0xd0, 0x85, 0xe0, 0xc2, 0x6c, 0x5c, 0x4f, 0xd2, 0x34, 0x0e,
+	0xa6, 0x99, 0x30, 0x33, 0xa5, 0xf6, 0x2d, 0x7c, 0x05, 0x1f, 0xc4, 0x7d, 0x97, 0x3e, 0x81, 0x48,
+	0x7d, 0x11, 0xc9, 0xed, 0x34, 0x1b, 0x41, 0xdc, 0xdd, 0x33, 0x9c, 0xf3, 0xbb, 0x7f, 0x06, 0xfe,
+	0x2d, 0x73, 0xad, 0x79, 0x91, 0xb3, 0x5a, 0x49, 0x23, 0x29, 0x4d, 0x85, 0xd1, 0x6b, 0x5e, 0xb3,
+	0xf6, 0x39, 0x0d, 0x2e, 0x0b, 0x61, 0x1e, 0x57, 0x29, 0xcb, 0xe4, 0x72, 0x5c, 0xc8, 0x42, 0x8e,
+	0xd1, 0x9a, 0xae, 0x16, 0xa8, 0x50, 0x60, 0xb5, 0x47, 0x9c, 0xbd, 0x3a, 0x30, 0xb8, 0xdb, 0xa7,
+	0xe9, 0x0d, 0x78, 0x6b, 0x5e, 0x99, 0x52, 0x68, 0xe3, 0x93, 0x88, 0xc4, 0xc3, 0xc9, 0x39, 0xfb,
+	0xd9, 0x81, 0x59, 0x3b, 0x7b, 0xb0, 0xde, 0x59, 0x6f, 0xfb, 0x71, 0xd2, 0x49, 0xda, 0x2c, 0x3d,
+	0x86, 0x7e, 0x5a, 0xca, 0xec, 0x49, 0xfb, 0xdd, 0xc8, 0x89, 0x47, 0x89, 0x55, 0xf4, 0x0a, 0x06,
+	0x35, 0xdf, 0x94, 0x92, 0xcf, 0x7d, 0x27, 0x72, 0xe2, 0xe1, 0xe4, 0xf4, 0x37, 0xfc, 0xac, 0x09,
+	0x59, 0xf6, 0x21, 0x17, 0xbc, 0x11, 0xf0, 0x0e, 0x7d, 0xe9, 0x2d, 0x0c, 0xf2, 0xca, 0x28, 0x91,
+	0x6b, 0x9f, 0x20, 0xef, 0xe2, 0x2f, 0xe3, 0xb2, 0xeb, 0xca, 0xa8, 0xcd, 0x01, 0x6c, 0x01, 0x94,
+	0x42, 0x6f, 0xb1, 0x2a, 0x4b, 0xbf, 0x1b, 0x91, 0xd8, 0x4b, 0xb0, 0x0e, 0xee, 0xc1, 0x45, 0x2f,
+	0x3d, 0x02, 0x17, 0x57, 0xc0, 0xab, 0x8c, 0x92, 0xbd, 0xa0, 0x01, 0x78, 0xb5, 0x12, 0x52, 0x09,
+	0xb3, 0xc1, 0x98, 0x9b, 0xb4, 0xba, 0x39, 0x41, 0xc6, 0xab, 0x2c, 0x2f, 0x7d, 0x07, 0x81, 0x56,
+	0x05, 0x53, 0x70, 0x71, 0xaf, 0xc6, 0x50, 0xab, 0x7c, 0x21, 0x9e, 0x2d, 0xd3, 0xaa, 0x66, 0x8e,
+	0x39, 0x37, 0x1c, 0x81, 0xa3, 0x04, 0xeb, 0xd9, 0xff, 0xed, 0x2e, 0x24, 0xef, 0xbb, 0x90, 0x7c,
+	0xee, 0x42, 0xf2, 0xf2, 0x15, 0x76, 0xd2, 0x3e, 0x7e, 0xde, 0xf4, 0x3b, 0x00, 0x00, 0xff, 0xff,
+	0xd1, 0x6a, 0x3a, 0xa2, 0x10, 0x02, 0x00, 0x00,
 }

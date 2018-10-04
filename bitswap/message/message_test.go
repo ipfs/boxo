@@ -20,7 +20,7 @@ func TestAppendWanted(t *testing.T) {
 	m := New(true)
 	m.AddEntry(str, 1)
 
-	if !wantlistContains(m.ToProtoV0().GetWantlist(), str) {
+	if !wantlistContains(&m.ToProtoV0().Wantlist, str) {
 		t.Fail()
 	}
 }
@@ -28,11 +28,10 @@ func TestAppendWanted(t *testing.T) {
 func TestNewMessageFromProto(t *testing.T) {
 	str := mkFakeCid("a_key")
 	protoMessage := new(pb.Message)
-	protoMessage.Wantlist = new(pb.Message_Wantlist)
-	protoMessage.Wantlist.Entries = []*pb.Message_Wantlist_Entry{
+	protoMessage.Wantlist.Entries = []pb.Message_Wantlist_Entry{
 		{Block: str.Bytes()},
 	}
-	if !wantlistContains(protoMessage.Wantlist, str) {
+	if !wantlistContains(&protoMessage.Wantlist, str) {
 		t.Fail()
 	}
 	m, err := newMessageFromProto(*protoMessage)
@@ -40,7 +39,7 @@ func TestNewMessageFromProto(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !wantlistContains(m.ToProtoV0().GetWantlist(), str) {
+	if !wantlistContains(&m.ToProtoV0().Wantlist, str) {
 		t.Fail()
 	}
 }
@@ -94,7 +93,7 @@ func TestCopyProtoByValue(t *testing.T) {
 	m := New(true)
 	protoBeforeAppend := m.ToProtoV0()
 	m.AddEntry(str, 1)
-	if wantlistContains(protoBeforeAppend.GetWantlist(), str) {
+	if wantlistContains(&protoBeforeAppend.Wantlist, str) {
 		t.Fail()
 	}
 }

@@ -71,17 +71,17 @@ type Entry struct {
 }
 
 func newMessageFromProto(pbm pb.Message) (BitSwapMessage, error) {
-	m := newMsg(pbm.GetWantlist().GetFull())
-	for _, e := range pbm.GetWantlist().GetEntries() {
-		c, err := cid.Cast([]byte(e.GetBlock()))
+	m := newMsg(pbm.Wantlist.Full)
+	for _, e := range pbm.Wantlist.Entries {
+		c, err := cid.Cast([]byte(e.Block))
 		if err != nil {
 			return nil, fmt.Errorf("incorrectly formatted cid in wantlist: %s", err)
 		}
-		m.addEntry(c, int(e.GetPriority()), e.GetCancel())
+		m.addEntry(c, int(e.Priority), e.Cancel)
 	}
 
 	// deprecated
-	for _, d := range pbm.GetBlocks() {
+	for _, d := range pbm.Blocks {
 		// CIDv0, sha256, protobuf only
 		b := blocks.NewBlock(d)
 		m.AddBlock(b)
@@ -179,10 +179,9 @@ func FromPBReader(pbr ggio.Reader) (BitSwapMessage, error) {
 
 func (m *impl) ToProtoV0() *pb.Message {
 	pbm := new(pb.Message)
-	pbm.Wantlist = new(pb.Message_Wantlist)
-	pbm.Wantlist.Entries = make([]*pb.Message_Wantlist_Entry, 0, len(m.wantlist))
+	pbm.Wantlist.Entries = make([]pb.Message_Wantlist_Entry, 0, len(m.wantlist))
 	for _, e := range m.wantlist {
-		pbm.Wantlist.Entries = append(pbm.Wantlist.Entries, &pb.Message_Wantlist_Entry{
+		pbm.Wantlist.Entries = append(pbm.Wantlist.Entries, pb.Message_Wantlist_Entry{
 			Block:    e.Cid.Bytes(),
 			Priority: int32(e.Priority),
 			Cancel:   e.Cancel,
@@ -200,10 +199,9 @@ func (m *impl) ToProtoV0() *pb.Message {
 
 func (m *impl) ToProtoV1() *pb.Message {
 	pbm := new(pb.Message)
-	pbm.Wantlist = new(pb.Message_Wantlist)
-	pbm.Wantlist.Entries = make([]*pb.Message_Wantlist_Entry, 0, len(m.wantlist))
+	pbm.Wantlist.Entries = make([]pb.Message_Wantlist_Entry, 0, len(m.wantlist))
 	for _, e := range m.wantlist {
-		pbm.Wantlist.Entries = append(pbm.Wantlist.Entries, &pb.Message_Wantlist_Entry{
+		pbm.Wantlist.Entries = append(pbm.Wantlist.Entries, pb.Message_Wantlist_Entry{
 			Block:    e.Cid.Bytes(),
 			Priority: int32(e.Priority),
 			Cancel:   e.Cancel,
@@ -212,13 +210,12 @@ func (m *impl) ToProtoV1() *pb.Message {
 	pbm.Wantlist.Full = m.full
 
 	blocks := m.Blocks()
-	pbm.Payload = make([]*pb.Message_Block, 0, len(blocks))
+	pbm.Payload = make([]pb.Message_Block, 0, len(blocks))
 	for _, b := range blocks {
-		blk := &pb.Message_Block{
+		pbm.Payload = append(pbm.Payload, pb.Message_Block{
 			Data:   b.RawData(),
 			Prefix: b.Cid().Prefix().Bytes(),
-		}
-		pbm.Payload = append(pbm.Payload, blk)
+		})
 	}
 	return pbm
 }
