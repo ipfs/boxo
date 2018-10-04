@@ -33,7 +33,7 @@ type Session struct {
 	interestReqs chan interestReq
 
 	interest  *lru.Cache
-	liveWants map[string]time.Time
+	liveWants map[cid.Cid]time.Time
 
 	tick          *time.Timer
 	baseTickDelay time.Duration
@@ -54,7 +54,7 @@ type Session struct {
 func (bs *Bitswap) NewSession(ctx context.Context) *Session {
 	s := &Session{
 		activePeers:   make(map[peer.ID]struct{}),
-		liveWants:     make(map[string]time.Time),
+		liveWants:     make(map[cid.Cid]time.Time),
 		newReqs:       make(chan []cid.Cid),
 		cancelKeys:    make(chan []cid.Cid),
 		tofetch:       newCidQueue(),
@@ -87,8 +87,7 @@ func (bs *Bitswap) removeSession(s *Session) {
 
 	live := make([]cid.Cid, 0, len(s.liveWants))
 	for c := range s.liveWants {
-		cs, _ := cid.Cast([]byte(c))
-		live = append(live, cs)
+		live = append(live, c)
 	}
 	bs.CancelWants(live, s.id)
 
@@ -147,7 +146,7 @@ func (s *Session) isLiveWant(c cid.Cid) bool {
 }
 
 func (s *Session) interestedIn(c cid.Cid) bool {
-	return s.interest.Contains(c.KeyString()) || s.isLiveWant(c)
+	return s.interest.Contains(c) || s.isLiveWant(c)
 }
 
 const provSearchDelay = time.Second * 10
@@ -188,7 +187,7 @@ func (s *Session) run(ctx context.Context) {
 			s.resetTick()
 		case keys := <-s.newReqs:
 			for _, k := range keys {
-				s.interest.Add(k.KeyString(), nil)
+				s.interest.Add(k, nil)
 			}
 			if len(s.liveWants) < activeWantsLimit {
 				toadd := activeWantsLimit - len(s.liveWants)
@@ -211,8 +210,7 @@ func (s *Session) run(ctx context.Context) {
 			live := make([]cid.Cid, 0, len(s.liveWants))
 			now := time.Now()
 			for c := range s.liveWants {
-				cs, _ := cid.Cast([]byte(c))
-				live = append(live, cs)
+				live = append(live, c)
 				s.liveWants[c] = now
 			}
 
@@ -250,7 +248,7 @@ func (s *Session) run(ctx context.Context) {
 }
 
 func (s *Session) cidIsWanted(c cid.Cid) bool {
-	_, ok := s.liveWants[c.KeyString()]
+	_, ok := s.liveWants[c]
 	if !ok {
 		ok = s.tofetch.Has(c)
 	}
@@ -261,11 +259,10 @@ func (s *Session) cidIsWanted(c cid.Cid) bool {
 func (s *Session) receiveBlock(ctx context.Context, blk blocks.Block) {
 	c := blk.Cid()
 	if s.cidIsWanted(c) {
-		ks := c.KeyString()
-		tval, ok := s.liveWants[ks]
+		tval, ok := s.liveWants[c]
 		if ok {
 			s.latTotal += time.Since(tval)
-			delete(s.liveWants, ks)
+			delete(s.liveWants, c)
 		} else {
 			s.tofetch.Remove(c)
 		}
@@ -281,7 +278,7 @@ func (s *Session) receiveBlock(ctx context.Context, blk blocks.Block) {
 func (s *Session) wantBlocks(ctx context.Context, ks []cid.Cid) {
 	now := time.Now()
 	for _, c := range ks {
-		s.liveWants[c.KeyString()] = now
+		s.liveWants[c] = now
 	}
 	s.bs.wm.WantBlocks(ctx, ks, s.activePeersArr, s.id)
 }

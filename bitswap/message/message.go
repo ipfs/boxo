@@ -49,8 +49,8 @@ type Exportable interface {
 
 type impl struct {
 	full     bool
-	wantlist map[string]*Entry
-	blocks   map[string]blocks.Block
+	wantlist map[cid.Cid]*Entry
+	blocks   map[cid.Cid]blocks.Block
 }
 
 func New(full bool) BitSwapMessage {
@@ -59,8 +59,8 @@ func New(full bool) BitSwapMessage {
 
 func newMsg(full bool) *impl {
 	return &impl{
-		blocks:   make(map[string]blocks.Block),
-		wantlist: make(map[string]*Entry),
+		blocks:   make(map[cid.Cid]blocks.Block),
+		wantlist: make(map[cid.Cid]*Entry),
 		full:     full,
 	}
 }
@@ -135,7 +135,7 @@ func (m *impl) Blocks() []blocks.Block {
 }
 
 func (m *impl) Cancel(k cid.Cid) {
-	delete(m.wantlist, k.KeyString())
+	delete(m.wantlist, k)
 	m.addEntry(k, 0, true)
 }
 
@@ -144,13 +144,12 @@ func (m *impl) AddEntry(k cid.Cid, priority int) {
 }
 
 func (m *impl) addEntry(c cid.Cid, priority int, cancel bool) {
-	k := c.KeyString()
-	e, exists := m.wantlist[k]
+	e, exists := m.wantlist[c]
 	if exists {
 		e.Priority = priority
 		e.Cancel = cancel
 	} else {
-		m.wantlist[k] = &Entry{
+		m.wantlist[c] = &Entry{
 			Entry: &wantlist.Entry{
 				Cid:      c,
 				Priority: priority,
@@ -161,7 +160,7 @@ func (m *impl) addEntry(c cid.Cid, priority int, cancel bool) {
 }
 
 func (m *impl) AddBlock(b blocks.Block) {
-	m.blocks[b.Cid().KeyString()] = b
+	m.blocks[b.Cid()] = b
 }
 
 func FromNet(r io.Reader) (BitSwapMessage, error) {

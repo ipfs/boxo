@@ -121,13 +121,13 @@ func TestToNetFromNetPreservesWantList(t *testing.T) {
 		t.Fatal("fullness attribute got dropped on marshal")
 	}
 
-	keys := make(map[string]bool)
+	keys := make(map[cid.Cid]bool)
 	for _, k := range copied.Wantlist() {
-		keys[k.Cid.KeyString()] = true
+		keys[k.Cid] = true
 	}
 
 	for _, k := range original.Wantlist() {
-		if _, ok := keys[k.Cid.KeyString()]; !ok {
+		if _, ok := keys[k.Cid]; !ok {
 			t.Fatalf("Key Missing: \"%v\"", k)
 		}
 	}
@@ -151,13 +151,13 @@ func TestToAndFromNetMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	keys := make(map[string]bool)
+	keys := make(map[cid.Cid]bool)
 	for _, b := range m2.Blocks() {
-		keys[b.Cid().KeyString()] = true
+		keys[b.Cid()] = true
 	}
 
 	for _, b := range original.Blocks() {
-		if _, ok := keys[b.Cid().KeyString()]; !ok {
+		if _, ok := keys[b.Cid()]; !ok {
 			t.Fail()
 		}
 	}

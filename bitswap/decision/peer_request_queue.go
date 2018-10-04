@@ -23,7 +23,7 @@ type peerRequestQueue interface {
 
 func newPRQ() *prq {
 	return &prq{
-		taskMap:  make(map[string]*peerRequestTask),
+		taskMap:  make(map[taskEntryKey]*peerRequestTask),
 		partners: make(map[peer.ID]*activePartner),
 		frozen:   make(map[peer.ID]*activePartner),
 		pQueue:   pq.New(partnerCompare),
@@ -39,7 +39,7 @@ var _ peerRequestQueue = &prq{}
 type prq struct {
 	lock     sync.Mutex
 	pQueue   pq.PQ
-	taskMap  map[string]*peerRequestTask
+	taskMap  map[taskEntryKey]*peerRequestTask
 	partners map[peer.ID]*activePartner
 
 	frozen map[peer.ID]*activePartner
@@ -65,7 +65,7 @@ func (tl *prq) Push(to peer.ID, entries ...*wantlist.Entry) {
 		if partner.activeBlocks.Has(entry.Cid) {
 			continue
 		}
-		if task, ok := tl.taskMap[taskEntryKey(to, entry.Cid)]; ok {
+		if task, ok := tl.taskMap[taskEntryKey{to, entry.Cid}]; ok {
 			if entry.Priority > task.Priority {
 				task.Priority = entry.Priority
 				partner.taskQueue.Update(task.index)
@@ -98,7 +98,7 @@ func (tl *prq) Push(to peer.ID, entries ...*wantlist.Entry) {
 	task.Priority = priority
 	partner.taskQueue.Push(task)
 	for _, entry := range newEntries {
-		tl.taskMap[taskEntryKey(to, entry.Cid)] = task
+		tl.taskMap[taskEntryKey{to, entry.Cid}] = task
 	}
 	partner.requests += len(newEntries)
 	tl.pQueue.Update(partner.Index())
@@ -119,7 +119,7 @@ func (tl *prq) Pop() *peerRequestTask {
 
 		newEntries := make([]*wantlist.Entry, 0, len(out.Entries))
 		for _, entry := range out.Entries {
-			delete(tl.taskMap, taskEntryKey(out.Target, entry.Cid))
+			delete(tl.taskMap, taskEntryKey{out.Target, entry.Cid})
 			if entry.Trash {
 				continue
 			}
@@ -143,7 +143,7 @@ func (tl *prq) Pop() *peerRequestTask {
 // Remove removes a task from the queue
 func (tl *prq) Remove(k cid.Cid, p peer.ID) {
 	tl.lock.Lock()
-	t, ok := tl.taskMap[taskEntryKey(p, k)]
+	t, ok := tl.taskMap[taskEntryKey{p, k}]
 	if ok {
 		for _, entry := range t.Entries {
 			if entry.Cid.Equals(k) {
@@ -220,9 +220,10 @@ func (t *peerRequestTask) SetIndex(i int) {
 	t.index = i
 }
 
-// taskEntryKey returns a key that uniquely identifies a task.
-func taskEntryKey(p peer.ID, k cid.Cid) string {
-	return string(p) + k.KeyString()
+// taskEntryKey is a key identifying a task.
+type taskEntryKey struct {
+	p peer.ID
+	k cid.Cid
 }
 
 // FIFO is a basic task comparator that returns tasks in the order created.
