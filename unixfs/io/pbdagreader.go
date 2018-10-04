@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 
-	mdag "github.com/ipfs/go-merkledag"
-	ft "github.com/ipfs/go-unixfs"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
+	mdag "github.com/ipfs/go-merkledag"
+	ft "github.com/ipfs/go-unixfs"
 )
 
 // PBDagReader provides a way to easily read the data contained in a dag.
