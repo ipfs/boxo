@@ -222,7 +222,7 @@ func (e *Engine) Peers() []peer.ID {
 // MessageReceived performs book-keeping. Returns error if passed invalid
 // arguments.
 func (e *Engine) MessageReceived(p peer.ID, m bsmsg.BitSwapMessage) error {
-	if len(m.Wantlist()) == 0 && len(m.Blocks()) == 0 {
+	if m.Empty() {
 		log.Debugf("received empty message from %s", p)
 	}
 
@@ -257,9 +257,9 @@ func (e *Engine) MessageReceived(p peer.ID, m bsmsg.BitSwapMessage) error {
 				}
 				log.Error(err)
 			} else {
-		// we have the block
+				// we have the block
 				newWorkExists = true
-				if msgSize + blockSize > maxMessageSize {
+				if msgSize+blockSize > maxMessageSize {
 					e.peerRequestQueue.Push(p, activeEntries...)
 					activeEntries = []*wl.Entry{}
 					msgSize = 0
