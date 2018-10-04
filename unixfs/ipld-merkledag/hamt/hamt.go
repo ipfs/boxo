@@ -25,11 +25,11 @@ import (
 	"fmt"
 	"os"
 
-	dag "github.com/ipfs/go-merkledag"
-	format "github.com/ipfs/go-unixfs"
 	bitfield "github.com/Stebalien/go-bitfield"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
+	dag "github.com/ipfs/go-merkledag"
+	format "github.com/ipfs/go-unixfs"
 	"github.com/spaolacci/murmur3"
 )
 

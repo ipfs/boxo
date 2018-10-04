@@ -5,9 +5,9 @@ import (
 	"errors"
 	"io"
 
+	ipld "github.com/ipfs/go-ipld-format"
 	mdag "github.com/ipfs/go-merkledag"
 	ft "github.com/ipfs/go-unixfs"
-	ipld "github.com/ipfs/go-ipld-format"
 )
 
 // Common errors
