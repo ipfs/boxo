@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -139,6 +138,19 @@ func TestPartnerWantsThenCancels(t *testing.T) {
 		},
 		{
 			alphabet, stringsComplement(alphabet, vowels),
+			alphabet[1:25], stringsComplement(alphabet[1:25], vowels), alphabet[2:25], stringsComplement(alphabet[2:25], vowels),
+			alphabet[3:25], stringsComplement(alphabet[3:25], vowels), alphabet[4:25], stringsComplement(alphabet[4:25], vowels),
+			alphabet[5:25], stringsComplement(alphabet[5:25], vowels), alphabet[6:25], stringsComplement(alphabet[6:25], vowels),
+			alphabet[7:25], stringsComplement(alphabet[7:25], vowels), alphabet[8:25], stringsComplement(alphabet[8:25], vowels),
+			alphabet[9:25], stringsComplement(alphabet[9:25], vowels), alphabet[10:25], stringsComplement(alphabet[10:25], vowels),
+			alphabet[11:25], stringsComplement(alphabet[11:25], vowels), alphabet[12:25], stringsComplement(alphabet[12:25], vowels),
+			alphabet[13:25], stringsComplement(alphabet[13:25], vowels), alphabet[14:25], stringsComplement(alphabet[14:25], vowels),
+			alphabet[15:25], stringsComplement(alphabet[15:25], vowels), alphabet[16:25], stringsComplement(alphabet[16:25], vowels),
+			alphabet[17:25], stringsComplement(alphabet[17:25], vowels), alphabet[18:25], stringsComplement(alphabet[18:25], vowels),
+			alphabet[19:25], stringsComplement(alphabet[19:25], vowels), alphabet[20:25], stringsComplement(alphabet[20:25], vowels),
+			alphabet[21:25], stringsComplement(alphabet[21:25], vowels), alphabet[22:25], stringsComplement(alphabet[22:25], vowels),
+			alphabet[23:25], stringsComplement(alphabet[23:25], vowels), alphabet[24:25], stringsComplement(alphabet[24:25], vowels),
+			alphabet[25:25], stringsComplement(alphabet[25:25], vowels),
 		},
 	}
 
@@ -151,20 +163,22 @@ func TestPartnerWantsThenCancels(t *testing.T) {
 	}
 
 	for i := 0; i < numRounds; i++ {
+		expected := make([][]string, 0, len(testcases))
+		e := NewEngine(context.Background(), bs)
 		for _, testcase := range testcases {
 			set := testcase[0]
 			cancels := testcase[1]
 			keeps := stringsComplement(set, cancels)
+			expected = append(expected, keeps)
 
-			e := NewEngine(context.Background(), bs)
 			partner := testutil.RandPeerIDFatal(t)
 
 			partnerWants(e, set, partner)
 			partnerCancels(e, cancels, partner)
-			if err := checkHandledInOrder(t, e, keeps); err != nil {
-				t.Logf("run #%d of %d", i, numRounds)
-				t.Fatal(err)
-			}
+		}
+		if err := checkHandledInOrder(t, e, expected); err != nil {
+			t.Logf("run #%d of %d", i, numRounds)
+			t.Fatal(err)
 		}
 	}
 }
@@ -173,7 +187,7 @@ func partnerWants(e *Engine, keys []string, partner peer.ID) {
 	add := message.New(false)
 	for i, letter := range keys {
 		block := blocks.NewBlock([]byte(letter))
-		add.AddEntry(block.Cid(), math.MaxInt32-i)
+		add.AddEntry(block.Cid(), len(keys)-i)
 	}
 	e.MessageReceived(partner, add)
 }
@@ -187,14 +201,28 @@ func partnerCancels(e *Engine, keys []string, partner peer.ID) {
 	e.MessageReceived(partner, cancels)
 }
 
-func checkHandledInOrder(t *testing.T, e *Engine, keys []string) error {
-	for _, k := range keys {
+func checkHandledInOrder(t *testing.T, e *Engine, expected [][]string) error {
+	for _, keys := range expected {
 		next := <-e.Outbox()
 		envelope := <-next
-		received := envelope.Block
-		expected := blocks.NewBlock([]byte(k))
-		if !received.Cid().Equals(expected.Cid()) {
-			return errors.New(fmt.Sprintln("received", string(received.RawData()), "expected", string(expected.RawData())))
+		received := envelope.Message.Blocks()
+		// Verify payload message length
+		if len(received) != len(keys) {
+			return errors.New(fmt.Sprintln("# blocks received", len(received), "# blocks expected", len(keys)))
+		}
+		// Verify payload message contents
+		for _, k := range keys {
+			found := false
+			expected := blocks.NewBlock([]byte(k))
+			for _, block := range received {
+				if block.Cid().Equals(expected.Cid()) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return errors.New(fmt.Sprintln("received", received, "expected", string(expected.RawData())))
+			}
 		}
 	}
 	return nil
