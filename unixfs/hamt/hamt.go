@@ -449,8 +449,9 @@ func makeAsyncTrieGetLinks(dagService ipld.DAGService, onShardValue func(*shardV
 		}
 
 		childShards := make([]*ipld.Link, 0, len(directoryShard.children))
+		links := directoryShard.nd.Links()
 		for idx := range directoryShard.children {
-			lnk := directoryShard.nd.Links()[idx]
+			lnk := links[idx]
 			lnkLinkType, err := directoryShard.childLinkType(lnk)
 
 			if err != nil {
@@ -460,7 +461,10 @@ func makeAsyncTrieGetLinks(dagService ipld.DAGService, onShardValue func(*shardV
 				childShards = append(childShards, lnk)
 			} else {
 				sv := directoryShard.makeShardValue(lnk)
-				onShardValue(sv)
+				err := onShardValue(sv)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 		return childShards, nil
