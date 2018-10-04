@@ -107,7 +107,7 @@ func TestGetFillsCache(t *testing.T) {
 	if has, err := arc.Has(exampleBlock.Cid()); has || err != nil {
 		t.Fatal("has was true but there is no such block")
 	}
-	if blockSize, err := arc.GetSize(exampleBlock.Cid()); blockSize > -1 || err != nil {
+	if _, err := arc.GetSize(exampleBlock.Cid()); err != ErrNotFound {
 		t.Fatal("getsize was true but there is no such block")
 	}
 
@@ -203,11 +203,10 @@ func TestGetSizeMissingZeroSizeBlock(t *testing.T) {
 	arc.Get(missingBlock.Cid())
 
 	trap("has hit datastore", cd, t)
-	if blockSize, err := arc.GetSize(missingBlock.Cid()); blockSize != -1 || err != nil {
+	if _, err := arc.GetSize(missingBlock.Cid()); err != ErrNotFound {
 		t.Fatal("getsize returned invalid result")
 	}
 }
-
 
 func TestDifferentKeyObjectsWork(t *testing.T) {
 	arc, bs, cd := createStores(t)
