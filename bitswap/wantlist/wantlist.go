@@ -24,6 +24,8 @@ type Entry struct {
 	Priority int
 
 	SesTrk map[uint64]struct{}
+	// Trash in a book-keeping field
+	Trash bool
 }
 
 // NewRefEntry creates a new reference tracked wantlist entry

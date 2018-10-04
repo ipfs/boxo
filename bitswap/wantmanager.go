@@ -114,16 +114,20 @@ func (pm *WantManager) ConnectedPeers() []peer.ID {
 	return <-resp
 }
 
-func (pm *WantManager) SendBlock(ctx context.Context, env *engine.Envelope) {
+func (pm *WantManager) SendBlocks(ctx context.Context, env *engine.Envelope) {
 	// Blocks need to be sent synchronously to maintain proper backpressure
 	// throughout the network stack
 	defer env.Sent()
 
-	pm.sentHistogram.Observe(float64(len(env.Block.RawData())))
-
+	msgSize := 0
 	msg := bsmsg.New(false)
-	msg.AddBlock(env.Block)
-	log.Infof("Sending block %s to %s", env.Block, env.Peer)
+	for _, block := range env.Message.Blocks() {
+		msgSize += len(block.RawData())
+		msg.AddBlock(block)
+		log.Infof("Sending block %s to %s", block, env.Peer)
+	}
+
+	pm.sentHistogram.Observe(float64(msgSize))
 	err := pm.network.SendMessage(ctx, env.Peer, msg)
 	if err != nil {
 		log.Infof("sendblock error: %s", err)

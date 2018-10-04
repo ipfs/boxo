@@ -59,24 +59,27 @@ func (bs *Bitswap) taskWorker(ctx context.Context, id int) {
 				if !ok {
 					continue
 				}
-				log.Event(ctx, "Bitswap.TaskWorker.Work", logging.LoggableF(func() map[string]interface{} {
-					return logging.LoggableMap{
-						"ID":     id,
-						"Target": envelope.Peer.Pretty(),
-						"Block":  envelope.Block.Cid().String(),
-					}
-				}))
-
 				// update the BS ledger to reflect sent message
 				// TODO: Should only track *useful* messages in ledger
 				outgoing := bsmsg.New(false)
-				outgoing.AddBlock(envelope.Block)
+				for _, block := range envelope.Message.Blocks() {
+					log.Event(ctx, "Bitswap.TaskWorker.Work", logging.LoggableF(func() map[string]interface{} {
+						return logging.LoggableMap{
+							"ID":     id,
+							"Target": envelope.Peer.Pretty(),
+							"Block":  block.Cid().String(),
+						}
+					}))
+					outgoing.AddBlock(block)
+				}
 				bs.engine.MessageSent(envelope.Peer, outgoing)
 
-				bs.wm.SendBlock(ctx, envelope)
+				bs.wm.SendBlocks(ctx, envelope)
 				bs.counterLk.Lock()
-				bs.counters.blocksSent++
-				bs.counters.dataSent += uint64(len(envelope.Block.RawData()))
+				for _, block := range envelope.Message.Blocks() {
+					bs.counters.blocksSent++
+					bs.counters.dataSent += uint64(len(block.RawData()))
+				}
 				bs.counterLk.Unlock()
 			case <-ctx.Done():
 				return
