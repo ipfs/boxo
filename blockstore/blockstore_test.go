@@ -254,6 +254,10 @@ func (c *queryTestDS) Has(key ds.Key) (exists bool, err error) {
 	return c.ds.Has(key)
 }
 
+func (c *queryTestDS) GetSize(key ds.Key) (size int, err error) {
+	return c.ds.GetSize(key)
+}
+
 func (c *queryTestDS) Delete(key ds.Key) (err error) {
 	return c.ds.Delete(key)
 }
