@@ -181,6 +181,11 @@ func (c *callbackDatastore) Has(key ds.Key) (exists bool, err error) {
 	return c.ds.Has(key)
 }
 
+func (c *callbackDatastore) GetSize(key ds.Key) (size int, err error) {
+	c.CallF()
+	return c.ds.GetSize(key)
+}
+
 func (c *callbackDatastore) Delete(key ds.Key) (err error) {
 	c.CallF()
 	return c.ds.Delete(key)
