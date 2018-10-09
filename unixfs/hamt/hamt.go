@@ -39,13 +39,20 @@ const (
 	HashMurmur3 uint64 = 0x22
 )
 
+func (ds *Shard) isValueNode() bool {
+	if ds.key != "" && ds.val != nil {
+		return true
+	}
+	return false
+}
+
 // A Shard represents the HAMT. It should be initialized with NewShard().
 type Shard struct {
 	nd *dag.ProtoNode
 
 	bitfield bitfield.Bitfield
 
-	children []child
+	children []*Shard
 
 	tableSize    int
 	tableSizeLg2 int
@@ -57,12 +64,10 @@ type Shard struct {
 	maxpadlen    int
 
 	dserv ipld.DAGService
-}
 
-// child can either be another shard, or a leaf node value
-type child interface {
-	Link() (*ipld.Link, error)
-	Label() string
+	// leaf node
+	key string
+	val *ipld.Link
 }
 
 // NewShard creates a new, empty HAMT shard with the given size.
@@ -119,7 +124,7 @@ func NewHamtFromDag(dserv ipld.DAGService, nd ipld.Node) (*Shard, error) {
 	}
 
 	ds.nd = pbnd.Copy().(*dag.ProtoNode)
-	ds.children = make([]child, len(pbnd.Links()))
+	ds.children = make([]*Shard, len(pbnd.Links()))
 	ds.bitfield.SetBytes(fsn.Data())
 	ds.hashFunc = fsn.HashType()
 	ds.builder = ds.nd.CidBuilder()
@@ -156,7 +161,7 @@ func (ds *Shard) Node() (ipld.Node, error) {
 				return nil, err
 			}
 
-			err = out.AddRawLink(ds.linkNamePrefix(i)+ch.Label(), clnk)
+			err = out.AddRawLink(ds.linkNamePrefix(i)+ch.key, clnk)
 			if err != nil {
 				return nil, err
 			}
@@ -188,38 +193,20 @@ func (ds *Shard) Node() (ipld.Node, error) {
 	return out, nil
 }
 
-type shardValue struct {
-	key string
-	val *ipld.Link
-}
-
-// Link returns a link to this node
-func (sv *shardValue) Link() (*ipld.Link, error) {
-	return sv.val, nil
-}
-
-func (sv *shardValue) Label() string {
-	return sv.key
-}
-
-func (ds *Shard) makeShardValue(lnk *ipld.Link) *shardValue {
+func (ds *Shard) makeShardValue(lnk *ipld.Link) *Shard {
 	lnk2 := *lnk
-	return &shardValue{
-		key: lnk.Name[ds.maxpadlen:],
-		val: &lnk2,
-	}
+	s, _ := makeShard(ds.dserv, ds.tableSize)
+
+	s.key = lnk.Name[ds.maxpadlen:]
+	s.val = &lnk2
+
+	return s
 }
 
 func hash(val []byte) []byte {
 	h := murmur3.New64()
 	h.Write(val)
 	return h.Sum(nil)
-}
-
-// Label for Shards is the empty string, this is used to differentiate them from
-// value entries
-func (ds *Shard) Label() string {
-	return ""
 }
 
 // Set sets 'name' = nd in the HAMT
@@ -250,7 +237,7 @@ func (ds *Shard) Find(ctx context.Context, name string) (*ipld.Link, error) {
 	hv := &hashBits{b: hash([]byte(name))}
 
 	var out *ipld.Link
-	err := ds.getValue(ctx, hv, name, func(sv *shardValue) error {
+	err := ds.getValue(ctx, hv, name, func(sv *Shard) error {
 		out = sv.val
 		return nil
 	})
@@ -282,7 +269,7 @@ func (ds *Shard) childLinkType(lnk *ipld.Link) (linkType, error) {
 // getChild returns the i'th child of this shard. If it is cached in the
 // children array, it will return it from there. Otherwise, it loads the child
 // node from disk.
-func (ds *Shard) getChild(ctx context.Context, i int) (child, error) {
+func (ds *Shard) getChild(ctx context.Context, i int) (*Shard, error) {
 	if i >= len(ds.children) || i < 0 {
 		return nil, fmt.Errorf("invalid index passed to getChild (likely corrupt bitfield)")
 	}
@@ -301,14 +288,14 @@ func (ds *Shard) getChild(ctx context.Context, i int) (child, error) {
 
 // loadChild reads the i'th child node of this shard from disk and returns it
 // as a 'child' interface
-func (ds *Shard) loadChild(ctx context.Context, i int) (child, error) {
+func (ds *Shard) loadChild(ctx context.Context, i int) (*Shard, error) {
 	lnk := ds.nd.Links()[i]
 	lnkLinkType, err := ds.childLinkType(lnk)
 	if err != nil {
 		return nil, err
 	}
 
-	var c child
+	var c *Shard
 	if lnkLinkType == shardLink {
 		nd, err := lnk.GetNode(ctx, ds.dserv)
 		if err != nil {
@@ -328,12 +315,16 @@ func (ds *Shard) loadChild(ctx context.Context, i int) (child, error) {
 	return c, nil
 }
 
-func (ds *Shard) setChild(i int, c child) {
+func (ds *Shard) setChild(i int, c *Shard) {
 	ds.children[i] = c
 }
 
 // Link returns a merklelink to this shard node
 func (ds *Shard) Link() (*ipld.Link, error) {
+	if ds.isValueNode() {
+		return ds.val, nil
+	}
+
 	nd, err := ds.Node()
 	if err != nil {
 		return nil, err
@@ -356,12 +347,12 @@ func (ds *Shard) insertChild(idx int, key string, lnk *ipld.Link) error {
 	ds.bitfield.SetBit(idx)
 
 	lnk.Name = ds.linkNamePrefix(idx) + key
-	sv := &shardValue{
+	sv := &Shard{
 		key: key,
 		val: lnk,
 	}
 
-	ds.children = append(ds.children[:i], append([]child{sv}, ds.children[i:]...)...)
+	ds.children = append(ds.children[:i], append([]*Shard{sv}, ds.children[i:]...)...)
 	ds.nd.SetLinks(append(ds.nd.Links()[:i], append([]*ipld.Link{nil}, ds.nd.Links()[i:]...)...))
 	return nil
 }
@@ -380,7 +371,7 @@ func (ds *Shard) rmChild(i int) error {
 	return nil
 }
 
-func (ds *Shard) getValue(ctx context.Context, hv *hashBits, key string, cb func(*shardValue) error) error {
+func (ds *Shard) getValue(ctx context.Context, hv *hashBits, key string, cb func(*Shard) error) error {
 	idx := hv.Next(ds.tableSizeLg2)
 	if ds.bitfield.Bit(int(idx)) {
 		cindex := ds.indexForBitPos(idx)
@@ -390,13 +381,12 @@ func (ds *Shard) getValue(ctx context.Context, hv *hashBits, key string, cb func
 			return err
 		}
 
-		switch child := child.(type) {
-		case *Shard:
-			return child.getValue(ctx, hv, key, cb)
-		case *shardValue:
+		if child.isValueNode() {
 			if child.key == key {
 				return cb(child)
 			}
+		} else {
+			return child.getValue(ctx, hv, key, cb)
 		}
 	}
 
@@ -408,7 +398,7 @@ func (ds *Shard) EnumLinks(ctx context.Context) ([]*ipld.Link, error) {
 	var links []*ipld.Link
 	var setlk sync.Mutex
 
-	getLinks := makeAsyncTrieGetLinks(ds.dserv, func(sv *shardValue) error {
+	getLinks := makeAsyncTrieGetLinks(ds.dserv, func(sv *Shard) error {
 		lnk := sv.val
 		lnk.Name = sv.key
 		setlk.Lock()
@@ -425,7 +415,7 @@ func (ds *Shard) EnumLinks(ctx context.Context) ([]*ipld.Link, error) {
 
 // ForEachLink walks the Shard and calls the given function.
 func (ds *Shard) ForEachLink(ctx context.Context, f func(*ipld.Link) error) error {
-	return ds.walkTrie(ctx, func(sv *shardValue) error {
+	return ds.walkTrie(ctx, func(sv *Shard) error {
 		lnk := sv.val
 		lnk.Name = sv.key
 
@@ -436,7 +426,7 @@ func (ds *Shard) ForEachLink(ctx context.Context, f func(*ipld.Link) error) erro
 // makeAsyncTrieGetLinks builds a getLinks function that can be used with EnumerateChildrenAsync
 // to iterate a HAMT shard. It takes an IPLD Dag Service to fetch nodes, and a call back that will get called
 // on all links to leaf nodes in a HAMT tree, so they can be collected for an EnumLinks operation
-func makeAsyncTrieGetLinks(dagService ipld.DAGService, onShardValue func(*shardValue) error) dag.GetLinks {
+func makeAsyncTrieGetLinks(dagService ipld.DAGService, onShardValue func(shard *Shard) error) dag.GetLinks {
 
 	return func(ctx context.Context, currentCid cid.Cid) ([]*ipld.Link, error) {
 		node, err := dagService.Get(ctx, currentCid)
@@ -471,25 +461,21 @@ func makeAsyncTrieGetLinks(dagService ipld.DAGService, onShardValue func(*shardV
 	}
 }
 
-func (ds *Shard) walkTrie(ctx context.Context, cb func(*shardValue) error) error {
+func (ds *Shard) walkTrie(ctx context.Context, cb func(*Shard) error) error {
 	for idx := range ds.children {
 		c, err := ds.getChild(ctx, idx)
 		if err != nil {
 			return err
 		}
 
-		switch c := c.(type) {
-		case *shardValue:
+		if c.isValueNode() {
 			if err := cb(c); err != nil {
 				return err
 			}
-
-		case *Shard:
+		} else {
 			if err := c.walkTrie(ctx, cb); err != nil {
 				return err
 			}
-		default:
-			return fmt.Errorf("unexpected child type: %#v", c)
 		}
 	}
 	return nil
@@ -497,7 +483,6 @@ func (ds *Shard) walkTrie(ctx context.Context, cb func(*shardValue) error) error
 
 func (ds *Shard) modifyValue(ctx context.Context, hv *hashBits, key string, val *ipld.Link) error {
 	idx := hv.Next(ds.tableSizeLg2)
-
 	if !ds.bitfield.Bit(idx) {
 		return ds.insertChild(idx, key, val)
 	}
@@ -509,34 +494,7 @@ func (ds *Shard) modifyValue(ctx context.Context, hv *hashBits, key string, val 
 		return err
 	}
 
-	switch child := child.(type) {
-	case *Shard:
-		err := child.modifyValue(ctx, hv, key, val)
-		if err != nil {
-			return err
-		}
-
-		if val == nil {
-			switch len(child.children) {
-			case 0:
-				// empty sub-shard, prune it
-				// Note: this shouldnt normally ever happen
-				//       in the event of another implementation creates flawed
-				//       structures, this will help to normalize them.
-				ds.bitfield.UnsetBit(idx)
-				return ds.rmChild(cindex)
-			case 1:
-				nchild, ok := child.children[0].(*shardValue)
-				if ok {
-					// sub-shard with a single value element, collapse it
-					ds.setChild(cindex, nchild)
-				}
-				return nil
-			}
-		}
-
-		return nil
-	case *shardValue:
+	if child.isValueNode() {
 		if child.key == key {
 			// value modification
 			if val == nil {
@@ -575,8 +533,32 @@ func (ds *Shard) modifyValue(ctx context.Context, hv *hashBits, key string, val 
 
 		ds.setChild(cindex, ns)
 		return nil
-	default:
-		return fmt.Errorf("unexpected type for child: %#v", child)
+	} else {
+		err := child.modifyValue(ctx, hv, key, val)
+		if err != nil {
+			return err
+		}
+
+		if val == nil {
+			switch len(child.children) {
+			case 0:
+				// empty sub-shard, prune it
+				// Note: this shouldnt normally ever happen
+				//       in the event of another implementation creates flawed
+				//       structures, this will help to normalize them.
+				ds.bitfield.UnsetBit(idx)
+				return ds.rmChild(cindex)
+			case 1:
+				nchild := child.children[0]
+				if nchild.isValueNode() {
+					// sub-shard with a single value element, collapse it
+					ds.setChild(cindex, nchild)
+				}
+				return nil
+			}
+		}
+
+		return nil
 	}
 }
 
