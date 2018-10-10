@@ -18,12 +18,7 @@ func ResolveUnixfsOnce(ctx context.Context, ds ipld.NodeGetter, nd ipld.Node, na
 		fsn, err := ft.FSNodeFromBytes(nd.Data())
 		if err != nil {
 			// Not a unixfs node, use standard object traversal code
-			lnk, err := nd.GetNodeLink(names[0])
-			if err != nil {
-				return nil, nil, err
-			}
-
-			return lnk, names[1:], nil
+			return nd.ResolveLink(names)
 		}
 
 		switch fsn.Type() {
@@ -40,19 +35,7 @@ func ResolveUnixfsOnce(ctx context.Context, ds ipld.NodeGetter, nd ipld.Node, na
 			}
 
 			return out, names[1:], nil
-		default:
-			lnk, err := nd.GetNodeLink(names[0])
-			if err != nil {
-				return nil, nil, err
-			}
-
-			return lnk, names[1:], nil
 		}
-	default:
-		lnk, rest, err := nd.ResolveLink(names)
-		if err != nil {
-			return nil, nil, err
-		}
-		return lnk, rest, nil
 	}
+	return nd.ResolveLink(names)
 }
