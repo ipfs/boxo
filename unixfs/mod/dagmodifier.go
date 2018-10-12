@@ -200,6 +200,16 @@ func (dm *DagModifier) Sync() error {
 	// Number of bytes we're going to write
 	buflen := dm.wrBuf.Len()
 
+	fs, err := fileSize(dm.curNode)
+	if err != nil {
+		return err
+	}
+	if fs < dm.writeStart {
+		if err := dm.expandSparse(int64(dm.writeStart - fs)); err != nil {
+			return err
+		}
+	}
+
 	// overwrite existing dag nodes
 	thisc, err := dm.modifyDag(dm.curNode, dm.writeStart)
 	if err != nil {
@@ -225,8 +235,8 @@ func (dm *DagModifier) Sync() error {
 	}
 
 	dm.writeStart += uint64(buflen)
-
 	dm.wrBuf = nil
+
 	return nil
 }
 
