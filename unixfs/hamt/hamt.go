@@ -40,10 +40,7 @@ const (
 )
 
 func (ds *Shard) isValueNode() bool {
-	if ds.key != "" && ds.val != nil {
-		return true
-	}
-	return false
+	return ds.key != "" && ds.val != nil
 }
 
 // A Shard represents the HAMT. It should be initialized with NewShard().
