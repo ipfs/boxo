@@ -73,12 +73,9 @@ func EmbedPublicKey(pk ic.PubKey, entry *pb.IpnsEntry) error {
 	if err != nil {
 		return err
 	}
-	extracted, err := id.ExtractPublicKey()
-	if err != nil {
+	if _, err := id.ExtractPublicKey(); err != peer.ErrNoPublicKey {
+		// Either a *real* error or nil.
 		return err
-	}
-	if extracted != nil {
-		return nil
 	}
 
 	// We failed to extract the public key from the peer ID, embed it in the

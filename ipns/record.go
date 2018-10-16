@@ -61,12 +61,12 @@ func (v Validator) Validate(key string, value []byte) error {
 }
 
 func (v Validator) getPublicKey(pid peer.ID, entry *pb.IpnsEntry) (ic.PubKey, error) {
-	pk, err := ExtractPublicKey(pid, entry)
-	if err != nil {
-		return nil, err
-	}
-	if pk != nil {
+	switch pk, err := ExtractPublicKey(pid, entry); err {
+	case peer.ErrNoPublicKey:
+	case nil:
 		return pk, nil
+	default:
+		return nil, err
 	}
 
 	if v.KeyBook == nil {
