@@ -190,14 +190,17 @@ func (ds *Shard) Node() (ipld.Node, error) {
 	return out, nil
 }
 
-func (ds *Shard) makeShardValue(lnk *ipld.Link) *Shard {
+func (ds *Shard) makeShardValue(lnk *ipld.Link) (*Shard, error) {
 	lnk2 := *lnk
-	s, _ := makeShard(ds.dserv, ds.tableSize)
+	s, err := makeShard(ds.dserv, ds.tableSize)
+	if err != nil {
+		return nil, err
+	}
 
 	s.key = lnk.Name[ds.maxpadlen:]
 	s.val = &lnk2
 
-	return s
+	return s, nil
 }
 
 func hash(val []byte) []byte {
@@ -305,7 +308,11 @@ func (ds *Shard) loadChild(ctx context.Context, i int) (*Shard, error) {
 
 		c = cds
 	} else {
-		c = ds.makeShardValue(lnk)
+		s, err := ds.makeShardValue(lnk)
+		if err != nil {
+			return nil, err
+		}
+		c = s
 	}
 
 	ds.children[i] = c
@@ -447,8 +454,11 @@ func makeAsyncTrieGetLinks(dagService ipld.DAGService, onShardValue func(shard *
 			if lnkLinkType == shardLink {
 				childShards = append(childShards, lnk)
 			} else {
-				sv := directoryShard.makeShardValue(lnk)
-				err := onShardValue(sv)
+				sv, err := directoryShard.makeShardValue(lnk)
+				if err != nil {
+					return nil, err
+				}
+				err = onShardValue(sv)
 				if err != nil {
 					return nil, err
 				}
