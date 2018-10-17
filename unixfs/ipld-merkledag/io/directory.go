@@ -153,9 +153,13 @@ func (d *BasicDirectory) EnumLinksAsync(ctx context.Context) (<-chan format.Link
 	go func() {
 		defer close(linkResults)
 		for _, l := range d.node.Links() {
-			linkResults <- format.LinkResult{
+			select {
+			case linkResults <- format.LinkResult{
 				Link: l,
 				Err:  nil,
+			}:
+			case <-ctx.Done():
+				return
 			}
 		}
 	}()
