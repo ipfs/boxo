@@ -6,6 +6,7 @@ import (
 	"os"
 
 	mdag "github.com/ipfs/go-merkledag"
+
 	format "github.com/ipfs/go-unixfs"
 	hamt "github.com/ipfs/go-unixfs/hamt"
 
@@ -37,6 +38,10 @@ type Directory interface {
 
 	// ForEachLink applies the given function to Links in the directory.
 	ForEachLink(context.Context, func(*ipld.Link) error) error
+
+	// EnumLinksAsync returns a channel which will receive Links in the directory
+	// as they are enumerated, where order is not gauranteed
+	EnumLinksAsync(context.Context) (<-chan format.LinkResult, error)
 
 	// Links returns the all the links in the directory node.
 	Links(context.Context) ([]*ipld.Link, error)
@@ -141,6 +146,22 @@ func (d *BasicDirectory) AddChild(ctx context.Context, name string, node ipld.No
 	return d.node.AddNodeLink(name, node)
 }
 
+// EnumLinksAsync returns a channel which will receive Links in the directory
+// as they are enumerated, where order is not gauranteed
+func (d *BasicDirectory) EnumLinksAsync(ctx context.Context) (<-chan format.LinkResult, error) {
+	linkResults := make(chan format.LinkResult)
+	go func() {
+		defer close(linkResults)
+		for _, l := range d.node.Links() {
+			linkResults <- format.LinkResult{
+				Link: l,
+				Err:  nil,
+			}
+		}
+	}()
+	return linkResults, nil
+}
+
 // ForEachLink implements the `Directory` interface.
 func (d *BasicDirectory) ForEachLink(ctx context.Context, f func(*ipld.Link) error) error {
 	for _, l := range d.node.Links() {
@@ -224,6 +245,12 @@ func (d *HAMTDirectory) AddChild(ctx context.Context, name string, nd ipld.Node)
 // ForEachLink implements the `Directory` interface.
 func (d *HAMTDirectory) ForEachLink(ctx context.Context, f func(*ipld.Link) error) error {
 	return d.shard.ForEachLink(ctx, f)
+}
+
+// EnumLinksAsync returns a channel which will receive Links in the directory
+// as they are enumerated, where order is not gauranteed
+func (d *HAMTDirectory) EnumLinksAsync(ctx context.Context) (<-chan format.LinkResult, error) {
+	return d.shard.EnumLinksAsync(ctx)
 }
 
 // Links implements the `Directory` interface.
