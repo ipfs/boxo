@@ -24,14 +24,14 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sync"
 
 	bitfield "github.com/Stebalien/go-bitfield"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
-	format "github.com/ipfs/go-unixfs"
 	"github.com/spaolacci/murmur3"
+
+	format "github.com/ipfs/go-unixfs"
 )
 
 const (
@@ -400,21 +400,18 @@ func (ds *Shard) getValue(ctx context.Context, hv *hashBits, key string, cb func
 // EnumLinks collects all links in the Shard.
 func (ds *Shard) EnumLinks(ctx context.Context) ([]*ipld.Link, error) {
 	var links []*ipld.Link
-	var setlk sync.Mutex
 
-	getLinks := makeAsyncTrieGetLinks(ds.dserv, func(sv *Shard) error {
-		lnk := sv.val
-		lnk.Name = sv.key
-		setlk.Lock()
-		links = append(links, lnk)
-		setlk.Unlock()
-		return nil
-	})
-
-	cset := cid.NewSet()
-
-	err := dag.EnumerateChildrenAsync(ctx, getLinks, ds.nd.Cid(), cset.Visit)
-	return links, err
+	linkResults, err := ds.EnumLinksAsync(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for linkResult := range linkResults {
+		if linkResult.Err != nil {
+			return links, linkResult.Err
+		}
+		links = append(links, linkResult.Link)
+	}
+	return links, nil
 }
 
 // ForEachLink walks the Shard and calls the given function.
@@ -427,18 +424,33 @@ func (ds *Shard) ForEachLink(ctx context.Context, f func(*ipld.Link) error) erro
 	})
 }
 
+// EnumLinksAsync returns a channel which will receive Links in the directory
+// as they are enumerated, where order is not gauranteed
+func (ds *Shard) EnumLinksAsync(ctx context.Context) (<-chan format.LinkResult, error) {
+	linkResults := make(chan format.LinkResult)
+	go func() {
+		defer close(linkResults)
+		getLinks := makeAsyncTrieGetLinks(ds.dserv, linkResults)
+		cset := cid.NewSet()
+		dag.EnumerateChildrenAsync(ctx, getLinks, ds.nd.Cid(), cset.Visit)
+	}()
+	return linkResults, nil
+}
+
 // makeAsyncTrieGetLinks builds a getLinks function that can be used with EnumerateChildrenAsync
 // to iterate a HAMT shard. It takes an IPLD Dag Service to fetch nodes, and a call back that will get called
 // on all links to leaf nodes in a HAMT tree, so they can be collected for an EnumLinks operation
-func makeAsyncTrieGetLinks(dagService ipld.DAGService, onShardValue func(shard *Shard) error) dag.GetLinks {
+func makeAsyncTrieGetLinks(dagService ipld.DAGService, linkResults chan<- format.LinkResult) dag.GetLinks {
 
 	return func(ctx context.Context, currentCid cid.Cid) ([]*ipld.Link, error) {
 		node, err := dagService.Get(ctx, currentCid)
 		if err != nil {
+			linkResults <- format.LinkResult{Link: nil, Err: err}
 			return nil, err
 		}
 		directoryShard, err := NewHamtFromDag(dagService, node)
 		if err != nil {
+			linkResults <- format.LinkResult{Link: nil, Err: err}
 			return nil, err
 		}
 
@@ -449,19 +461,13 @@ func makeAsyncTrieGetLinks(dagService ipld.DAGService, onShardValue func(shard *
 			lnkLinkType, err := directoryShard.childLinkType(lnk)
 
 			if err != nil {
+				linkResults <- format.LinkResult{Link: nil, Err: err}
 				return nil, err
 			}
 			if lnkLinkType == shardLink {
 				childShards = append(childShards, lnk)
 			} else {
-				sv, err := directoryShard.makeShardValue(lnk)
-				if err != nil {
-					return nil, err
-				}
-				err = onShardValue(sv)
-				if err != nil {
-					return nil, err
-				}
+				linkResults <- format.LinkResult{Link: lnk, Err: nil}
 			}
 		}
 		return childShards, nil
