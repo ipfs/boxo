@@ -483,6 +483,15 @@ func makeAsyncTrieGetLinks(dagService ipld.DAGService, linkResults chan<- format
 }
 
 func emitResult(ctx context.Context, linkResults chan<- format.LinkResult, r format.LinkResult) {
+	// make sure that context cancel is processed first
+	// the reason is due to the concurrency of EnumerateChildrenAsync
+	// it's possible for EnumLinksAsync to complete and close the linkResults
+	// channel before this code runs
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
 	select {
 	case linkResults <- r:
 	case <-ctx.Done():
