@@ -1,6 +1,7 @@
 package network
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -70,24 +71,30 @@ func msgToStream(ctx context.Context, s inet.Stream, msg bsmsg.BitSwapMessage) e
 	if dl, ok := ctx.Deadline(); ok {
 		deadline = dl
 	}
-
 	if err := s.SetWriteDeadline(deadline); err != nil {
 		log.Warningf("error setting deadline: %s", err)
 	}
 
+	w := bufio.NewWriter(s)
+
 	switch s.Protocol() {
 	case ProtocolBitswap:
-		if err := msg.ToNetV1(s); err != nil {
+		if err := msg.ToNetV1(w); err != nil {
 			log.Debugf("error: %s", err)
 			return err
 		}
 	case ProtocolBitswapOne, ProtocolBitswapNoVers:
-		if err := msg.ToNetV0(s); err != nil {
+		if err := msg.ToNetV0(w); err != nil {
 			log.Debugf("error: %s", err)
 			return err
 		}
 	default:
 		return fmt.Errorf("unrecognized protocol on remote: %s", s.Protocol())
+	}
+
+	if err := w.Flush(); err != nil {
+		log.Debugf("error: %s", err)
+		return err
 	}
 
 	if err := s.SetWriteDeadline(time.Time{}); err != nil {
