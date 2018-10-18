@@ -469,7 +469,13 @@ func makeAsyncTrieGetLinks(dagService ipld.DAGService, linkResults chan<- format
 			if lnkLinkType == shardLink {
 				childShards = append(childShards, lnk)
 			} else {
-				emitResult(ctx, linkResults, format.LinkResult{Link: lnk, Err: nil})
+				sv, err := directoryShard.makeShardValue(lnk)
+				if err != nil {
+					return nil, err
+				}
+				formattedLink := sv.val
+				formattedLink.Name = sv.key
+				emitResult(ctx, linkResults, format.LinkResult{Link: formattedLink, Err: nil})
 			}
 		}
 		return childShards, nil
