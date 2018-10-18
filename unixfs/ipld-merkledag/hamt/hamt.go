@@ -434,7 +434,10 @@ func (ds *Shard) EnumLinksAsync(ctx context.Context) (<-chan format.LinkResult, 
 		defer cancel()
 		getLinks := makeAsyncTrieGetLinks(ds.dserv, linkResults)
 		cset := cid.NewSet()
-		dag.EnumerateChildrenAsync(ctx, getLinks, ds.nd.Cid(), cset.Visit)
+		err := dag.EnumerateChildrenAsync(ctx, getLinks, ds.nd.Cid(), cset.Visit)
+		if err != nil {
+			emitResult(ctx, linkResults, format.LinkResult{Link: nil, Err: err})
+		}
 	}()
 	return linkResults, nil
 }
@@ -447,12 +450,10 @@ func makeAsyncTrieGetLinks(dagService ipld.DAGService, linkResults chan<- format
 	return func(ctx context.Context, currentCid cid.Cid) ([]*ipld.Link, error) {
 		node, err := dagService.Get(ctx, currentCid)
 		if err != nil {
-			emitResult(ctx, linkResults, format.LinkResult{Link: nil, Err: err})
 			return nil, err
 		}
 		directoryShard, err := NewHamtFromDag(dagService, node)
 		if err != nil {
-			emitResult(ctx, linkResults, format.LinkResult{Link: nil, Err: err})
 			return nil, err
 		}
 
@@ -463,7 +464,6 @@ func makeAsyncTrieGetLinks(dagService ipld.DAGService, linkResults chan<- format
 			lnkLinkType, err := directoryShard.childLinkType(lnk)
 
 			if err != nil {
-				emitResult(ctx, linkResults, format.LinkResult{Link: nil, Err: err})
 				return nil, err
 			}
 			if lnkLinkType == shardLink {
