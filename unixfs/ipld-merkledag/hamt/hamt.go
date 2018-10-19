@@ -44,10 +44,11 @@ func (ds *Shard) isValueNode() bool {
 
 // A Shard represents the HAMT. It should be initialized with NewShard().
 type Shard struct {
-	nd *dag.ProtoNode
+	cid cid.Cid
 
 	bitfield bitfield.Bitfield
 
+	links    []*ipld.Link
 	children []*Shard
 
 	tableSize    int
@@ -73,7 +74,7 @@ func NewShard(dserv ipld.DAGService, size int) (*Shard, error) {
 		return nil, err
 	}
 
-	ds.nd = new(dag.ProtoNode)
+	ds.links = make([]*ipld.Link, 0)
 	ds.hashFunc = HashMurmur3
 	return ds, nil
 }
@@ -119,11 +120,16 @@ func NewHamtFromDag(dserv ipld.DAGService, nd ipld.Node) (*Shard, error) {
 		return nil, err
 	}
 
-	ds.nd = pbnd.Copy().(*dag.ProtoNode)
+	if len(pbnd.Links()) > 0 {
+		ds.links = make([]*ipld.Link, len(pbnd.Links()))
+		copy(ds.links, pbnd.Links())
+	}
+
+	ds.cid = pbnd.Cid()
 	ds.children = make([]*Shard, len(pbnd.Links()))
 	ds.bitfield.SetBytes(fsn.Data())
 	ds.hashFunc = fsn.HashType()
-	ds.builder = ds.nd.CidBuilder()
+	ds.builder = pbnd.CidBuilder()
 
 	return ds, nil
 }
@@ -163,7 +169,7 @@ func (ds *Shard) Node() (ipld.Node, error) {
 			}
 		} else {
 			// child unloaded, just copy in link with updated name
-			lnk := ds.nd.Links()[cindex]
+			lnk := ds.links[cindex]
 			label := lnk.Name[ds.maxpadlen:]
 
 			err := out.AddRawLink(ds.linkNamePrefix(i)+label, lnk)
@@ -273,7 +279,7 @@ func (ds *Shard) getChild(ctx context.Context, i int) (*Shard, error) {
 		return nil, fmt.Errorf("invalid index passed to getChild (likely corrupt bitfield)")
 	}
 
-	if len(ds.children) != len(ds.nd.Links()) {
+	if len(ds.children) != len(ds.links) {
 		return nil, fmt.Errorf("inconsistent lengths between children array and Links array")
 	}
 
@@ -288,7 +294,7 @@ func (ds *Shard) getChild(ctx context.Context, i int) (*Shard, error) {
 // loadChild reads the i'th child node of this shard from disk and returns it
 // as a 'child' interface
 func (ds *Shard) loadChild(ctx context.Context, i int) (*Shard, error) {
-	lnk := ds.nd.Links()[i]
+	lnk := ds.links[i]
 	lnkLinkType, err := ds.childLinkType(lnk)
 	if err != nil {
 		return nil, err
@@ -356,20 +362,20 @@ func (ds *Shard) insertChild(idx int, key string, lnk *ipld.Link) error {
 	}
 
 	ds.children = append(ds.children[:i], append([]*Shard{sv}, ds.children[i:]...)...)
-	ds.nd.SetLinks(append(ds.nd.Links()[:i], append([]*ipld.Link{nil}, ds.nd.Links()[i:]...)...))
+	ds.links = append(ds.links[:i], append([]*ipld.Link{nil}, ds.links[i:]...)...)
 	return nil
 }
 
 func (ds *Shard) rmChild(i int) error {
-	if i < 0 || i >= len(ds.children) || i >= len(ds.nd.Links()) {
+	if i < 0 || i >= len(ds.children) || i >= len(ds.links) {
 		return fmt.Errorf("hamt: attempted to remove child with out of range index")
 	}
 
 	copy(ds.children[i:], ds.children[i+1:])
 	ds.children = ds.children[:len(ds.children)-1]
 
-	copy(ds.nd.Links()[i:], ds.nd.Links()[i+1:])
-	ds.nd.SetLinks(ds.nd.Links()[:len(ds.nd.Links())-1])
+	copy(ds.links[i:], ds.links[i+1:])
+	ds.links = ds.links[:len(ds.links)-1]
 
 	return nil
 }
@@ -458,7 +464,7 @@ func makeAsyncTrieGetLinks(dagService ipld.DAGService, linkResults chan<- format
 		}
 
 		childShards := make([]*ipld.Link, 0, len(directoryShard.children))
-		links := directoryShard.nd.Links()
+		links := directoryShard.links
 		for idx := range directoryShard.children {
 			lnk := links[idx]
 			lnkLinkType, err := directoryShard.childLinkType(lnk)
