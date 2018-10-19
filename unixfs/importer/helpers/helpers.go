@@ -6,6 +6,7 @@ import (
 	"os"
 
 	dag "github.com/ipfs/go-merkledag"
+
 	ft "github.com/ipfs/go-unixfs"
 
 	cid "github.com/ipfs/go-cid"
@@ -103,8 +104,7 @@ func (n *UnixfsNode) AddChild(child *UnixfsNode, db *DagBuilderHelper) error {
 		return err
 	}
 
-	err = db.batch.Add(childnode)
-
+	_, err = db.AddUnixfsNode(child)
 	return err
 }
 

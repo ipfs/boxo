@@ -6,6 +6,7 @@ import (
 	"os"
 
 	dag "github.com/ipfs/go-merkledag"
+
 	ft "github.com/ipfs/go-unixfs"
 	pb "github.com/ipfs/go-unixfs/pb"
 
@@ -25,7 +26,6 @@ type DagBuilderHelper struct {
 	rawLeaves  bool
 	nextData   []byte // the next item to return.
 	maxlinks   int
-	batch      *ipld.Batch
 	cidBuilder cid.Builder
 
 	// Filestore support variables.
@@ -78,7 +78,6 @@ func (dbp *DagBuilderParams) New(spl chunker.Splitter) *DagBuilderHelper {
 		rawLeaves:  dbp.RawLeaves,
 		cidBuilder: dbp.CidBuilder,
 		maxlinks:   dbp.Maxlinks,
-		batch:      ipld.NewBatch(context.TODO(), dbp.Dagserv),
 	}
 	if fi, ok := spl.Reader().(files.FileInfo); dbp.NoCopy && ok {
 		db.fullPath = fi.AbsPath()
@@ -327,8 +326,8 @@ func (db *DagBuilderHelper) ProcessFileStore(node ipld.Node, dataSize uint64) ip
 	return node
 }
 
-// Add sends a node to the DAGService, and returns it.
-func (db *DagBuilderHelper) Add(node *UnixfsNode) (ipld.Node, error) {
+// AddUnixfsNode sends a node to the DAGService, and returns it as ipld.Node.
+func (db *DagBuilderHelper) AddUnixfsNode(node *UnixfsNode) (ipld.Node, error) {
 	dn, err := node.GetDagNode()
 	if err != nil {
 		return nil, err
@@ -342,34 +341,15 @@ func (db *DagBuilderHelper) Add(node *UnixfsNode) (ipld.Node, error) {
 	return dn, nil
 }
 
+// Add inserts the given node in the DAGService.
+func (db *DagBuilderHelper) Add(node ipld.Node) error {
+	return db.dserv.Add(context.TODO(), node)
+}
+
 // Maxlinks returns the configured maximum number for links
 // for nodes built with this helper.
 func (db *DagBuilderHelper) Maxlinks() int {
 	return db.maxlinks
-}
-
-// Close has the DAGService perform a batch Commit operation.
-// It should be called at the end of the building process to make
-// sure all data is persisted.
-func (db *DagBuilderHelper) Close() error {
-	return db.batch.Commit()
-}
-
-// AddNodeAndClose adds the last `ipld.Node` from the DAG and
-// closes the builder. It returns the same `node` passed as
-// argument.
-func (db *DagBuilderHelper) AddNodeAndClose(node ipld.Node) (ipld.Node, error) {
-	err := db.batch.Add(node)
-	if err != nil {
-		return nil, err
-	}
-
-	err = db.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	return node, nil
 }
 
 // FSNodeOverDag encapsulates an `unixfs.FSNode` that will be stored in a
@@ -421,7 +401,7 @@ func (n *FSNodeOverDag) AddChild(child ipld.Node, fileSize uint64, db *DagBuilde
 
 	n.file.AddBlockSize(fileSize)
 
-	return db.batch.Add(child)
+	return db.Add(child)
 }
 
 // Commit unifies (resolves) the cache nodes into a single `ipld.Node`
