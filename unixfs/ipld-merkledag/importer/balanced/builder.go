@@ -130,7 +130,7 @@ func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 		// This works without Filestore support (`ProcessFileStore`).
 		// TODO: Why? Is there a test case missing?
 
-		return db.AddNodeAndClose(root)
+		return root, db.Add(root)
 	}
 
 	// The first `root` will be a single leaf node with data
@@ -160,7 +160,7 @@ func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 		}
 	}
 
-	return db.AddNodeAndClose(root)
+	return root, db.Add(root)
 }
 
 // fillNodeRec will "fill" the given internal (non-leaf) `node` with data by
