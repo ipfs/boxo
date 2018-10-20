@@ -1183,15 +1183,14 @@ func TestTruncateAndWrite(t *testing.T) {
 	}
 }
 
-func TestIsDir(t *testing.T) {
+func TestFSNodeType(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ds, rt := setupRoot(ctx, t)
 
-	dir := rt.GetDirectory()
-
+	// check for IsDir
 	nd := dag.NodeWithData(ft.FolderPBData())
-	di, err := NewDirectory(ctx, "test", nd, dir, ds)
+	di, err := NewDirectory(ctx, "test", nd, rt.GetDirectory(), ds)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1199,22 +1198,14 @@ func TestIsDir(t *testing.T) {
 	if !ret {
 		t.Fatal("FSNode type should be dir, but not")
 	}
-}
 
-func TestIsFile(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ds, rt := setupRoot(ctx, t)
-
-	dir := rt.GetDirectory()
-
-	nd := dag.NodeWithData(ft.FilePBData(nil, 0))
-	fi, err := NewFile("test", nd, dir, ds)
+	// check for IsFile
+	fnd := dag.NodeWithData(ft.FilePBData(nil, 0))
+	fi, err := NewFile("test", fnd, rt.GetDirectory(), ds)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	ret := IsFile(fi)
+	ret = IsFile(fi)
 	if !ret {
 		t.Fatal("FSNode type should be file, but not")
 	}
