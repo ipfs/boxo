@@ -36,6 +36,7 @@ const (
 	// results.
 	// TODO: if a 'non-nice' strategy is implemented, consider increasing this value
 	maxProvidersPerRequest = 3
+	findProviderDelay      = 1 * time.Second
 	providerRequestTimeout = time.Second * 10
 	provideTimeout         = time.Second * 15
 	sizeBatchRequestChan   = 32
@@ -230,14 +231,6 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 
 	bs.wm.WantBlocks(ctx, keys, nil, mses)
 
-	// NB: Optimization. Assumes that providers of key[0] are likely to
-	// be able to provide for all keys. This currently holds true in most
-	// every situation. Later, this assumption may not hold as true.
-	req := &blockRequest{
-		Cid: keys[0],
-		Ctx: ctx,
-	}
-
 	remaining := cid.NewSet()
 	for _, k := range keys {
 		remaining.Add(k)
@@ -252,12 +245,36 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 			// can't just defer this call on its own, arguments are resolved *when* the defer is created
 			bs.CancelWants(remaining.Keys(), mses)
 		}()
+		findProvsDelay := time.NewTimer(findProviderDelay)
+		defer findProvsDelay.Stop()
+
+		findProvsDelayCh := findProvsDelay.C
+		req := &blockRequest{
+			Cid: keys[0],
+			Ctx: ctx,
+		}
+
+		var findProvsReqCh chan<- *blockRequest
+
 		for {
 			select {
+			case <-findProvsDelayCh:
+				// NB: Optimization. Assumes that providers of key[0] are likely to
+				// be able to provide for all keys. This currently holds true in most
+				// every situation. Later, this assumption may not hold as true.
+				findProvsReqCh = bs.findKeys
+				findProvsDelayCh = nil
+			case findProvsReqCh <- req:
+				findProvsReqCh = nil
 			case blk, ok := <-promise:
 				if !ok {
 					return
 				}
+
+				// No need to find providers now.
+				findProvsDelay.Stop()
+				findProvsDelayCh = nil
+				findProvsReqCh = nil
 
 				bs.CancelWants([]cid.Cid{blk.Cid()}, mses)
 				remaining.Remove(blk.Cid())
@@ -272,12 +289,7 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 		}
 	}()
 
-	select {
-	case bs.findKeys <- req:
-		return out, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+	return out, nil
 }
 
 func (bs *Bitswap) getNextSessionID() uint64 {
