@@ -48,6 +48,16 @@ type FSNode interface {
 	Type() NodeType
 }
 
+// IsDir checks whether the FSNode is dir type
+func IsDir(fsn FSNode) bool {
+	return fsn.Type() == TDir
+}
+
+// IsFile checks whether the FSNode is file type
+func IsFile(fsn FSNode) bool {
+	return fsn.Type() == TFile
+}
+
 // Root represents the root of a filesystem tree.
 type Root struct {
 
