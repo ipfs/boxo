@@ -19,7 +19,7 @@ type BytesReader interface {
 }
 
 // TODO: this belongs in the go-cid package
-func ReadCid(buf []byte) (*cid.Cid, int, error) {
+func ReadCid(buf []byte) (cid.Cid, int, error) {
 	if bytes.Equal(buf[:2], cidv0Pref) {
 		c, err := cid.Cast(buf[:34])
 		return c, 34, err
@@ -30,37 +30,37 @@ func ReadCid(buf []byte) (*cid.Cid, int, error) {
 	// assume cidv1
 	vers, err := binary.ReadUvarint(br)
 	if err != nil {
-		return nil, 0, err
+		return cid.Cid{}, 0, err
 	}
 
 	// TODO: the go-cid package allows version 0 here as well
 	if vers != 1 {
-		return nil, 0, fmt.Errorf("invalid cid version number")
+		return cid.Cid{}, 0, fmt.Errorf("invalid cid version number")
 	}
 
 	codec, err := binary.ReadUvarint(br)
 	if err != nil {
-		return nil, 0, err
+		return cid.Cid{}, 0, err
 	}
 
 	mhr := mh.NewReader(br)
 	h, err := mhr.ReadMultihash()
 	if err != nil {
-		return nil, 0, err
+		return cid.Cid{}, 0, err
 	}
 
 	return cid.NewCidV1(codec, h), len(buf) - br.Len(), nil
 }
 
-func ReadNode(br *bufio.Reader) (*cid.Cid, []byte, error) {
+func ReadNode(br *bufio.Reader) (cid.Cid, []byte, error) {
 	data, err := LdRead(br)
 	if err != nil {
-		return nil, nil, err
+		return cid.Cid{}, nil, err
 	}
 
 	c, n, err := ReadCid(data)
 	if err != nil {
-		return nil, nil, err
+		return cid.Cid{}, nil, err
 	}
 
 	return c, data[n:], nil

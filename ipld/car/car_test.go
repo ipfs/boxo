@@ -39,7 +39,7 @@ func TestRoundtrip(t *testing.T) {
 	assertAddNodes(t, dserv, a, b, c, nd1, nd2, nd3)
 
 	buf := new(bytes.Buffer)
-	if err := WriteCar(context.Background(), dserv, []*cid.Cid{nd3.Cid()}, buf); err != nil {
+	if err := WriteCar(context.Background(), dserv, []cid.Cid{nd3.Cid()}, buf); err != nil {
 		t.Fatal(err)
 	}
 

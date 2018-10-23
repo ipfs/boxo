@@ -21,7 +21,7 @@ func init() {
 }
 
 type CarHeader struct {
-	Roots   []*cid.Cid
+	Roots   []cid.Cid
 	Version uint64
 }
 
@@ -30,7 +30,7 @@ type carWriter struct {
 	w  io.Writer
 }
 
-func WriteCar(ctx context.Context, ds format.DAGService, roots []*cid.Cid, w io.Writer) error {
+func WriteCar(ctx context.Context, ds format.DAGService, roots []cid.Cid, w io.Writer) error {
 	cw := &carWriter{ds: ds, w: w}
 
 	h := &CarHeader{
@@ -74,7 +74,7 @@ func (cw *carWriter) WriteHeader(h *CarHeader) error {
 	return util.LdWrite(cw.w, hb)
 }
 
-func (cw *carWriter) enumGetLinks(ctx context.Context, c *cid.Cid) ([]*format.Link, error) {
+func (cw *carWriter) enumGetLinks(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
 	nd, err := cw.ds.Get(ctx, c)
 	if err != nil {
 		return nil, err
