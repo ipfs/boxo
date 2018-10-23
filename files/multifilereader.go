@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/textproto"
 	"net/url"
+	"path"
 	"sync"
 )
 
@@ -15,7 +16,10 @@ import (
 type MultiFileReader struct {
 	io.Reader
 
-	files       []File
+	// directory stack for NextFile
+	files []File
+	path  []string
+
 	currentFile io.Reader
 	buf         bytes.Buffer
 	mpWriter    *multipart.Writer
@@ -33,6 +37,7 @@ type MultiFileReader struct {
 func NewMultiFileReader(file File, form bool) *MultiFileReader {
 	mfr := &MultiFileReader{
 		files: []File{file},
+		path:  []string{""},
 		form:  form,
 		mutex: &sync.Mutex{},
 	}
@@ -53,6 +58,8 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 	// if the current file isn't set, advance to the next file
 	if mfr.currentFile == nil {
 		var file File
+		var name string
+
 		for file == nil {
 			if len(mfr.files) == 0 {
 				mfr.mpWriter.Close()
@@ -60,40 +67,43 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 				return mfr.buf.Read(buf)
 			}
 
-			nextfile, err := mfr.files[len(mfr.files)-1].NextFile()
+			nextName, nextFile, err := mfr.files[len(mfr.files)-1].NextFile()
 			if err == io.EOF {
 				mfr.files = mfr.files[:len(mfr.files)-1]
+				mfr.path = mfr.path[:len(mfr.path)-1]
 				continue
 			} else if err != nil {
 				return 0, err
 			}
 
-			file = nextfile
+			file = nextFile
+			name = nextName
 		}
 
 		// handle starting a new file part
 		if !mfr.closed {
+
+			mfr.currentFile = file
+
+			// write the boundary and headers
+			header := make(textproto.MIMEHeader)
+			filename := url.QueryEscape(path.Join(path.Join(mfr.path...), name))
+			header.Set("Content-Disposition", fmt.Sprintf("file; filename=\"%s\"", filename))
 
 			var contentType string
 			if _, ok := file.(*Symlink); ok {
 				contentType = "application/symlink"
 			} else if file.IsDirectory() {
 				mfr.files = append(mfr.files, file)
+				mfr.path = append(mfr.path, name)
 				contentType = "application/x-directory"
 			} else {
 				// otherwise, use the file as a reader to read its contents
 				contentType = "application/octet-stream"
 			}
 
-			mfr.currentFile = file
-
-			// write the boundary and headers
-			header := make(textproto.MIMEHeader)
-			filename := url.QueryEscape(file.FileName())
-			header.Set("Content-Disposition", fmt.Sprintf("file; filename=\"%s\"", filename))
-
 			header.Set("Content-Type", contentType)
-			if rf, ok := file.(*ReaderFile); ok {
+			if rf, ok := file.(FileInfo); ok {
 				header.Set("abspath", rf.AbsPath())
 			}
 

@@ -10,40 +10,30 @@ import (
 // ReaderFile is a implementation of File created from an `io.Reader`.
 // ReaderFiles are never directories, and can be read from and closed.
 type ReaderFile struct {
-	filename string
-	fullpath string
-	abspath  string
-	reader   io.ReadCloser
-	stat     os.FileInfo
+	abspath string
+	reader  io.ReadCloser
+	stat    os.FileInfo
 }
 
-func NewReaderFile(filename, path string, reader io.ReadCloser, stat os.FileInfo) *ReaderFile {
-	return &ReaderFile{filename, path, path, reader, stat}
+func NewReaderFile(reader io.ReadCloser, stat os.FileInfo) File {
+	return &ReaderFile{"", reader, stat}
 }
 
-func NewReaderPathFile(filename, path string, reader io.ReadCloser, stat os.FileInfo) (*ReaderFile, error) {
+func NewReaderPathFile(path string, reader io.ReadCloser, stat os.FileInfo) (*ReaderFile, error) {
 	abspath, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
 	}
 
-	return &ReaderFile{filename, path, abspath, reader, stat}, nil
+	return &ReaderFile{abspath, reader, stat}, nil
 }
 
 func (f *ReaderFile) IsDirectory() bool {
 	return false
 }
 
-func (f *ReaderFile) NextFile() (File, error) {
-	return nil, ErrNotDirectory
-}
-
-func (f *ReaderFile) FileName() string {
-	return f.filename
-}
-
-func (f *ReaderFile) FullPath() string {
-	return f.fullpath
+func (f *ReaderFile) NextFile() (string, File, error) {
+	return "", nil, ErrNotDirectory
 }
 
 func (f *ReaderFile) AbsPath() string {
@@ -64,7 +54,15 @@ func (f *ReaderFile) Stat() os.FileInfo {
 
 func (f *ReaderFile) Size() (int64, error) {
 	if f.stat == nil {
-		return 0, errors.New("File size unknown")
+		return 0, errors.New("file size unknown")
 	}
 	return f.stat.Size(), nil
+}
+
+func (f *ReaderFile) Seek(offset int64, whence int) (int64, error) {
+	if s, ok := f.reader.(io.Seeker); ok {
+		return s.Seek(offset, whence)
+	}
+
+	return 0, ErrNotSupported
 }

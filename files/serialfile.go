@@ -7,29 +7,26 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 )
 
 // serialFile implements File, and reads from a path on the OS filesystem.
 // No more than one file will be opened at a time (directories will advance
 // to the next file when NextFile() is called).
 type serialFile struct {
-	name              string
 	path              string
 	files             []os.FileInfo
 	stat              os.FileInfo
-	current           *File
 	handleHiddenFiles bool
 }
 
-func NewSerialFile(name, path string, hidden bool, stat os.FileInfo) (File, error) {
+func NewSerialFile(path string, hidden bool, stat os.FileInfo) (File, error) {
 	switch mode := stat.Mode(); {
 	case mode.IsRegular():
 		file, err := os.Open(path)
 		if err != nil {
 			return nil, err
 		}
-		return NewReaderPathFile(name, path, file, stat)
+		return NewReaderPathFile(path, file, stat)
 	case mode.IsDir():
 		// for directories, stat all of the contents first, so we know what files to
 		// open when NextFile() is called
@@ -37,15 +34,15 @@ func NewSerialFile(name, path string, hidden bool, stat os.FileInfo) (File, erro
 		if err != nil {
 			return nil, err
 		}
-		return &serialFile{name, path, contents, stat, nil, hidden}, nil
+		return &serialFile{path, contents, stat, hidden}, nil
 	case mode&os.ModeSymlink != 0:
 		target, err := os.Readlink(path)
 		if err != nil {
 			return nil, err
 		}
-		return NewLinkFile(name, path, target, stat), nil
+		return NewLinkFile(path, target, stat), nil
 	default:
-		return nil, fmt.Errorf("Unrecognized file type for %s: %s", name, mode.String())
+		return nil, fmt.Errorf("unrecognized file type for %s: %s", path, mode.String())
 	}
 }
 
@@ -55,23 +52,23 @@ func (f *serialFile) IsDirectory() bool {
 	return true
 }
 
-func (f *serialFile) NextFile() (File, error) {
+func (f *serialFile) NextFile() (string, File, error) {
 	// if a file was opened previously, close it
 	err := f.Close()
 	if err != nil {
 		switch err2 := err.(type) {
 		case *os.PathError:
 			if err2.Err != os.ErrClosed {
-				return nil, err
+				return "", nil, err
 			}
 		default:
-			return nil, err
+			return "", nil, err
 		}
 	}
 
 	// if there aren't any files left in the root directory, we're done
 	if len(f.files) == 0 {
-		return nil, io.EOF
+		return "", nil, io.EOF
 	}
 
 	stat := f.files[0]
@@ -79,7 +76,7 @@ func (f *serialFile) NextFile() (File, error) {
 
 	for !f.handleHiddenFiles && strings.HasPrefix(stat.Name(), ".") {
 		if len(f.files) == 0 {
-			return nil, io.EOF
+			return "", nil, io.EOF
 		}
 
 		stat = f.files[0]
@@ -87,28 +84,17 @@ func (f *serialFile) NextFile() (File, error) {
 	}
 
 	// open the next file
-	fileName := filepath.ToSlash(filepath.Join(f.name, stat.Name()))
 	filePath := filepath.ToSlash(filepath.Join(f.path, stat.Name()))
 
 	// recursively call the constructor on the next file
 	// if it's a regular file, we will open it as a ReaderFile
 	// if it's a directory, files in it will be opened serially
-	sf, err := NewSerialFile(fileName, filePath, f.handleHiddenFiles, stat)
+	sf, err := NewSerialFile(filePath, f.handleHiddenFiles, stat)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
-	f.current = &sf
-
-	return sf, nil
-}
-
-func (f *serialFile) FileName() string {
-	return f.name
-}
-
-func (f *serialFile) FullPath() string {
-	return f.path
+	return stat.Name(), sf, nil
 }
 
 func (f *serialFile) Read(p []byte) (int, error) {
@@ -116,16 +102,11 @@ func (f *serialFile) Read(p []byte) (int, error) {
 }
 
 func (f *serialFile) Close() error {
-	// close the current file if there is one
-	if f.current != nil {
-		err := (*f.current).Close()
-		// ignore EINVAL error, the file might have already been closed
-		if err != nil && err != syscall.EINVAL {
-			return err
-		}
-	}
-
 	return nil
+}
+
+func (f *serialFile) Seek(offset int64, whence int) (int64, error) {
+	return 0, ErrNotReader
 }
 
 func (f *serialFile) Stat() os.FileInfo {
@@ -138,7 +119,7 @@ func (f *serialFile) Size() (int64, error) {
 	}
 
 	var du int64
-	err := filepath.Walk(f.FullPath(), func(p string, fi os.FileInfo, err error) error {
+	err := filepath.Walk(f.path, func(p string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}

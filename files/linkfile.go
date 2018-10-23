@@ -7,7 +7,6 @@ import (
 )
 
 type Symlink struct {
-	name   string
 	path   string
 	Target string
 	stat   os.FileInfo
@@ -15,9 +14,8 @@ type Symlink struct {
 	reader io.Reader
 }
 
-func NewLinkFile(name, path, target string, stat os.FileInfo) File {
+func NewLinkFile(path, target string, stat os.FileInfo) File {
 	return &Symlink{
-		name:   name,
 		path:   path,
 		Target: target,
 		stat:   stat,
@@ -29,22 +27,30 @@ func (lf *Symlink) IsDirectory() bool {
 	return false
 }
 
-func (lf *Symlink) NextFile() (File, error) {
-	return nil, io.EOF
+func (lf *Symlink) NextFile() (string, File, error) {
+	return "", nil, ErrNotDirectory
 }
 
-func (f *Symlink) FileName() string {
-	return f.name
-}
+func (lf *Symlink) Close() error {
+	if c, ok := lf.reader.(io.Closer); ok {
+		return c.Close()
+	}
 
-func (f *Symlink) Close() error {
 	return nil
 }
 
-func (f *Symlink) FullPath() string {
-	return f.path
+func (lf *Symlink) Read(b []byte) (int, error) {
+	return lf.reader.Read(b)
 }
 
-func (f *Symlink) Read(b []byte) (int, error) {
-	return f.reader.Read(b)
+func (lf *Symlink) Seek(offset int64, whence int) (int64, error) {
+	if s, ok := lf.reader.(io.Seeker); ok {
+		return s.Seek(offset, whence)
+	}
+
+	return 0, ErrNotSupported
+}
+
+func (lf *Symlink) Size() (int64, error) {
+	return 0, ErrNotSupported
 }

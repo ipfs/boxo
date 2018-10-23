@@ -9,15 +9,14 @@ import (
 )
 
 func TestSliceFiles(t *testing.T) {
-	name := "testname"
-	files := []File{
-		NewReaderFile("file.txt", "file.txt", ioutil.NopCloser(strings.NewReader("Some text!\n")), nil),
-		NewReaderFile("beep.txt", "beep.txt", ioutil.NopCloser(strings.NewReader("beep")), nil),
-		NewReaderFile("boop.txt", "boop.txt", ioutil.NopCloser(strings.NewReader("boop")), nil),
+	files := []FileEntry{
+		{NewReaderFile(ioutil.NopCloser(strings.NewReader("Some text!\n")), nil), ""},
+		{NewReaderFile(ioutil.NopCloser(strings.NewReader("beep")), nil), ""},
+		{NewReaderFile(ioutil.NopCloser(strings.NewReader("boop")), nil), ""},
 	}
 	buf := make([]byte, 20)
 
-	sf := NewSliceFile(name, name, files)
+	sf := NewSliceFile(files)
 
 	if !sf.IsDirectory() {
 		t.Fatal("SliceFile should always be a directory")
@@ -31,7 +30,7 @@ func TestSliceFiles(t *testing.T) {
 		t.Fatal("Shouldn't be able to call `Close` on a SliceFile")
 	}
 
-	file, err := sf.NextFile()
+	_, file, err := sf.NextFile()
 	if file == nil || err != nil {
 		t.Fatal("Expected a file and nil error")
 	}
@@ -40,16 +39,16 @@ func TestSliceFiles(t *testing.T) {
 		t.Fatal("NextFile got a file in the wrong order")
 	}
 
-	file, err = sf.NextFile()
+	_, file, err = sf.NextFile()
 	if file == nil || err != nil {
 		t.Fatal("Expected a file and nil error")
 	}
-	file, err = sf.NextFile()
+	_, file, err = sf.NextFile()
 	if file == nil || err != nil {
 		t.Fatal("Expected a file and nil error")
 	}
 
-	file, err = sf.NextFile()
+	_, file, err = sf.NextFile()
 	if file != nil || err != io.EOF {
 		t.Fatal("Expected a nil file and io.EOF")
 	}
@@ -57,13 +56,13 @@ func TestSliceFiles(t *testing.T) {
 
 func TestReaderFiles(t *testing.T) {
 	message := "beep boop"
-	rf := NewReaderFile("file.txt", "file.txt", ioutil.NopCloser(strings.NewReader(message)), nil)
+	rf := NewReaderFile(ioutil.NopCloser(strings.NewReader(message)), nil)
 	buf := make([]byte, len(message))
 
 	if rf.IsDirectory() {
 		t.Fatal("ReaderFile should never be a directory")
 	}
-	file, err := rf.NextFile()
+	_, file, err := rf.NextFile()
 	if file != nil || err != ErrNotDirectory {
 		t.Fatal("Expected a nil file and ErrNotDirectory")
 	}
@@ -114,17 +113,17 @@ anotherfile
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	mpf, err := NewFileFromPart(part)
+	mpname, mpf, err := newFileFromPart("", part, mpReader)
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil MultipartFile, nil error")
 	}
 	if mpf.IsDirectory() {
 		t.Fatal("Expected file to not be a directory")
 	}
-	if mpf.FileName() != "name" {
+	if mpname != "name" {
 		t.Fatal("Expected filename to be \"name\"")
 	}
-	if file, err := mpf.NextFile(); file != nil || err != ErrNotDirectory {
+	if _, file, err := mpf.NextFile(); file != nil || err != ErrNotDirectory {
 		t.Fatal("Expected a nil file and ErrNotDirectory")
 	}
 	if n, err := mpf.Read(buf); n != 4 || !(err == io.EOF || err == nil) {
@@ -139,14 +138,14 @@ anotherfile
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	mpf, err = NewFileFromPart(part)
+	mpname, mpf, err = newFileFromPart("", part, mpReader)
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil MultipartFile, nil error")
 	}
 	if !mpf.IsDirectory() {
 		t.Fatal("Expected file to be a directory")
 	}
-	if mpf.FileName() != "dir" {
+	if mpname != "dir" {
 		t.Fatal("Expected filename to be \"dir\"")
 	}
 	if n, err := mpf.Read(buf); n > 0 || err != ErrNotReader {
@@ -161,15 +160,15 @@ anotherfile
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	mpf, err = NewFileFromPart(part)
+	mpname, mpf, err = newFileFromPart("dir/", part, mpReader)
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil MultipartFile, nil error")
 	}
 	if mpf.IsDirectory() {
 		t.Fatal("Expected file, got directory")
 	}
-	if mpf.FileName() != "dir/nested" {
-		t.Fatalf("Expected filename to be \"nested\", got %s", mpf.FileName())
+	if mpname != "nested" {
+		t.Fatalf("Expected filename to be \"nested\", got %s", mpname)
 	}
 	if n, err := mpf.Read(buf); n != 12 || !(err == nil || err == io.EOF) {
 		t.Fatalf("expected to be able to read 12 bytes from file: %s (got %d)", err, n)
@@ -183,14 +182,14 @@ anotherfile
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	mpf, err = NewFileFromPart(part)
+	mpname, mpf, err = newFileFromPart("dir/", part, mpReader)
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil MultipartFile, nil error")
 	}
 	if mpf.IsDirectory() {
 		t.Fatal("Expected file to be a symlink")
 	}
-	if mpf.FileName() != "dir/simlynk" {
+	if mpname != "simlynk" {
 		t.Fatal("Expected filename to be \"dir/simlynk\"")
 	}
 	slink, ok := mpf.(*Symlink)

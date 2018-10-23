@@ -4,7 +4,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path/filepath"
 )
 
 // WebFile is an implementation of File which reads it
@@ -46,17 +45,6 @@ func (wf *WebFile) Close() error {
 	return wf.body.Close()
 }
 
-// FullPath returns the "Host+Path" for this WebFile.
-func (wf *WebFile) FullPath() string {
-	return wf.url.Host + wf.url.Path
-}
-
-// FileName returns the last element of the URL
-// path for this file.
-func (wf *WebFile) FileName() string {
-	return filepath.Base(wf.url.Path)
-}
-
 // IsDirectory returns false.
 func (wf *WebFile) IsDirectory() bool {
 	return false
@@ -65,4 +53,9 @@ func (wf *WebFile) IsDirectory() bool {
 // NextFile always returns an ErrNotDirectory error.
 func (wf *WebFile) NextFile() (File, error) {
 	return nil, ErrNotDirectory
+}
+
+// TODO: implement
+func (wf *WebFile) Seek(offset int64, whence int) (int64, error) {
+	return 0, ErrNotSupported
 }
