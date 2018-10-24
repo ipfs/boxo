@@ -20,7 +20,7 @@ type MultiFileReader struct {
 	files []File
 	path  []string
 
-	currentFile io.Reader
+	currentFile File
 	buf         bytes.Buffer
 	mpWriter    *multipart.Writer
 	closed      bool
@@ -121,7 +121,11 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 
 	// otherwise, read from file data
 	written, err = mfr.currentFile.Read(buf)
-	if err == io.EOF {
+	if err == io.EOF || err == ErrNotReader {
+		if err := mfr.currentFile.Close(); err != nil {
+			return written, err
+		}
+
 		mfr.currentFile = nil
 		return written, nil
 	}

@@ -15,11 +15,10 @@ var (
 
 // File is an interface that provides functionality for handling
 // files/directories as values that can be supplied to commands. For
-// directories, child files are accessed serially by calling `Files()`
-// or `Walk()`.
+// directories, child files are accessed serially by calling `NextFile()`
 //
-// Read/Seek/Close methods are only valid for files
-// Files/Walk methods are only valid for directories
+// Read/Seek methods are only valid for files
+// NextFile method is only valid for directories
 type File interface {
 	io.Reader
 	io.Closer
@@ -37,6 +36,16 @@ type File interface {
 	// directory). It will return io.EOF if no more files are
 	// available. If the file is a regular file (not a directory), NextFile
 	// will return a non-nil error.
+	//
+	// Note:
+	// - Some implementations may only allow reading in order - if a
+	//   child directory is returned, you need to read all it's children
+	//   first before calling NextFile on parent again. Before doing parallel
+	//   reading or reading entire level at once, make sure the implementation
+	//   you are using allows that
+	// - Returned files may not be sorted
+	// - Depending on implementation it may not be safe to iterate multiple
+	//   children in parallel
 	NextFile() (string, File, error)
 }
 
@@ -44,7 +53,7 @@ type File interface {
 type FileInfo interface {
 	File
 
-	// AbsPath returns full/real file path.
+	// AbsPath returns full real file path.
 	AbsPath() string
 
 	// Stat returns os.Stat of this file

@@ -35,11 +35,11 @@ func (f *SliceFile) NextFile() (string, File, error) {
 }
 
 func (f *SliceFile) Read(p []byte) (int, error) {
-	return 0, io.EOF
+	return 0, ErrNotReader
 }
 
 func (f *SliceFile) Close() error {
-	return ErrNotReader
+	return nil
 }
 
 func (f *SliceFile) Seek(offset int64, whence int) (int64, error) {

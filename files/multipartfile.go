@@ -136,9 +136,6 @@ func (f *MultipartFile) Read(p []byte) (int, error) {
 }
 
 func (f *MultipartFile) Close() error {
-	if f.IsDirectory() {
-		return ErrNotReader
-	}
 	return f.Part.Close()
 }
 
@@ -146,11 +143,11 @@ func (f *MultipartFile) Seek(offset int64, whence int) (int64, error) {
 	if f.IsDirectory() {
 		return 0, ErrNotReader
 	}
-	return 0, ErrNotReader
+	return 0, ErrNotSupported
 }
 
 func (f *MultipartFile) Size() (int64, error) {
-	return 0, ErrNotReader
+	return 0, ErrNotSupported
 }
 
 type PartReader interface {

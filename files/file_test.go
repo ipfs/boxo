@@ -22,12 +22,12 @@ func TestSliceFiles(t *testing.T) {
 		t.Fatal("SliceFile should always be a directory")
 	}
 
-	if n, err := sf.Read(buf); n > 0 || err != io.EOF {
+	if n, err := sf.Read(buf); n > 0 || err != ErrNotReader {
 		t.Fatal("Shouldn't be able to read data from a SliceFile")
 	}
 
-	if err := sf.Close(); err != ErrNotReader {
-		t.Fatal("Shouldn't be able to call `Close` on a SliceFile")
+	if err := sf.Close(); err != nil {
+		t.Fatal("Should be able to call `Close` on a SliceFile")
 	}
 
 	_, file, err := sf.NextFile()
@@ -151,8 +151,8 @@ anotherfile
 	if n, err := mpf.Read(buf); n > 0 || err != ErrNotReader {
 		t.Fatal("Shouldn't be able to call `Read` on a directory")
 	}
-	if err := mpf.Close(); err != ErrNotReader {
-		t.Fatal("Shouldn't be able to call `Close` on a directory")
+	if err := mpf.Close(); err != nil {
+		t.Fatal("Should be able to call `Close` on a directory")
 	}
 
 	// test properties of file created from third part (nested file)

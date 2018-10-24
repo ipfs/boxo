@@ -98,7 +98,7 @@ func (f *serialFile) NextFile() (string, File, error) {
 }
 
 func (f *serialFile) Read(p []byte) (int, error) {
-	return 0, io.EOF
+	return 0, ErrNotReader
 }
 
 func (f *serialFile) Close() error {
