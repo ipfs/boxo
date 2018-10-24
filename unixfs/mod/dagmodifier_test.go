@@ -412,6 +412,8 @@ func testDagTruncate(t *testing.T, opts testu.NodeOpts) {
 	}
 }
 
+// TestDagSync tests that a DAG will expand sparse during sync
+// if offset > curNode's size.
 func TestDagSync(t *testing.T) {
 	dserv := testu.GetDAGServ()
 	nd := dag.NodeWithData(unixfs.FilePBData(nil, 0))
@@ -434,6 +436,7 @@ func TestDagSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Truncate leave the offset at 5 and filesize at 0
 	err = dagmod.Truncate(0)
 	if err != nil {
 		t.Fatal(err)
@@ -444,6 +447,7 @@ func TestDagSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// When Offset > filesize , Sync will call enpandSparse
 	err = dagmod.Sync()
 	if err != nil {
 		t.Fatal(err)
