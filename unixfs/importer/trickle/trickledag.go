@@ -42,16 +42,7 @@ func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 		return nil, err
 	}
 
-	out, err := db.Add(root)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := db.Close(); err != nil {
-		return nil, err
-	}
-
-	return out, nil
+	return db.AddUnixfsNode(root)
 }
 
 // fillTrickleRec creates a trickle (sub-)tree with an optional maximum specified depth
@@ -91,14 +82,6 @@ func Append(ctx context.Context, basen ipld.Node, db *h.DagBuilderHelper) (out i
 	if !ok {
 		return nil, dag.ErrNotProtobuf
 	}
-
-	defer func() {
-		if errOut == nil {
-			if err := db.Close(); err != nil {
-				errOut = err
-			}
-		}
-	}()
 
 	// Convert to unixfs node for working with easily
 	ufsn, err := h.NewUnixfsNodeFromDag(base)
