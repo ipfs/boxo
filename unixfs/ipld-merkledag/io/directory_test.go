@@ -158,10 +158,7 @@ func TestDirBuilder(t *testing.T) {
 		t.Fatal("wrong number of links", len(links), count)
 	}
 
-	linkResults, err := dir.EnumLinksAsync(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	linkResults := dir.EnumLinksAsync(ctx)
 
 	asyncNames := make(map[string]bool)
 	var asyncLinks []*ipld.Link

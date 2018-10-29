@@ -41,7 +41,7 @@ type Directory interface {
 
 	// EnumLinksAsync returns a channel which will receive Links in the directory
 	// as they are enumerated, where order is not gauranteed
-	EnumLinksAsync(context.Context) (<-chan format.LinkResult, error)
+	EnumLinksAsync(context.Context) <-chan format.LinkResult
 
 	// Links returns the all the links in the directory node.
 	Links(context.Context) ([]*ipld.Link, error)
@@ -148,7 +148,7 @@ func (d *BasicDirectory) AddChild(ctx context.Context, name string, node ipld.No
 
 // EnumLinksAsync returns a channel which will receive Links in the directory
 // as they are enumerated, where order is not gauranteed
-func (d *BasicDirectory) EnumLinksAsync(ctx context.Context) (<-chan format.LinkResult, error) {
+func (d *BasicDirectory) EnumLinksAsync(ctx context.Context) <-chan format.LinkResult {
 	linkResults := make(chan format.LinkResult)
 	go func() {
 		defer close(linkResults)
@@ -163,7 +163,7 @@ func (d *BasicDirectory) EnumLinksAsync(ctx context.Context) (<-chan format.Link
 			}
 		}
 	}()
-	return linkResults, nil
+	return linkResults
 }
 
 // ForEachLink implements the `Directory` interface.
@@ -253,7 +253,7 @@ func (d *HAMTDirectory) ForEachLink(ctx context.Context, f func(*ipld.Link) erro
 
 // EnumLinksAsync returns a channel which will receive Links in the directory
 // as they are enumerated, where order is not gauranteed
-func (d *HAMTDirectory) EnumLinksAsync(ctx context.Context) (<-chan format.LinkResult, error) {
+func (d *HAMTDirectory) EnumLinksAsync(ctx context.Context) <-chan format.LinkResult {
 	return d.shard.EnumLinksAsync(ctx)
 }
 

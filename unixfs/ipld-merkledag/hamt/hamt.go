@@ -29,9 +29,8 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
-	"github.com/spaolacci/murmur3"
-
 	format "github.com/ipfs/go-unixfs"
+	"github.com/spaolacci/murmur3"
 )
 
 const (
@@ -401,10 +400,8 @@ func (ds *Shard) getValue(ctx context.Context, hv *hashBits, key string, cb func
 func (ds *Shard) EnumLinks(ctx context.Context) ([]*ipld.Link, error) {
 	var links []*ipld.Link
 
-	linkResults, err := ds.EnumLinksAsync(ctx)
-	if err != nil {
-		return nil, err
-	}
+	linkResults := ds.EnumLinksAsync(ctx)
+
 	for linkResult := range linkResults {
 		if linkResult.Err != nil {
 			return links, linkResult.Err
@@ -426,7 +423,7 @@ func (ds *Shard) ForEachLink(ctx context.Context, f func(*ipld.Link) error) erro
 
 // EnumLinksAsync returns a channel which will receive Links in the directory
 // as they are enumerated, where order is not gauranteed
-func (ds *Shard) EnumLinksAsync(ctx context.Context) (<-chan format.LinkResult, error) {
+func (ds *Shard) EnumLinksAsync(ctx context.Context) <-chan format.LinkResult {
 	linkResults := make(chan format.LinkResult)
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
@@ -439,7 +436,7 @@ func (ds *Shard) EnumLinksAsync(ctx context.Context) (<-chan format.LinkResult, 
 			emitResult(ctx, linkResults, format.LinkResult{Link: nil, Err: err})
 		}
 	}()
-	return linkResults, nil
+	return linkResults
 }
 
 // makeAsyncTrieGetLinks builds a getLinks function that can be used with EnumerateChildrenAsync
