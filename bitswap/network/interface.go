@@ -38,6 +38,8 @@ type BitSwapNetwork interface {
 
 	ConnectionManager() ifconnmgr.ConnManager
 
+	Stats() NetworkStats
+
 	Routing
 }
 
@@ -67,4 +69,12 @@ type Routing interface {
 
 	// Provide provides the key to the network
 	Provide(context.Context, cid.Cid) error
+}
+
+// NetworkStats is a container for statistics about the bitswap network
+// the numbers inside are specific to bitswap, and not any other protocols
+// using the same underlying network.
+type NetworkStats struct {
+	MessagesSent  uint64
+	MessagesRecvd uint64
 }

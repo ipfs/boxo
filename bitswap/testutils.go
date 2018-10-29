@@ -81,7 +81,7 @@ func (i *Instance) SetBlockstoreLatency(t time.Duration) time.Duration {
 	return i.blockstoreDelay.Set(t)
 }
 
-// session creates a test bitswap session.
+// session creates a test bitswap instance.
 //
 // NB: It's easy make mistakes by providing the same peer ID to two different
 // sessions. To safeguard, use the SessionGenerator to generate sessions. It's

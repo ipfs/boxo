@@ -30,6 +30,8 @@ import (
 
 var log = logging.Logger("bitswap")
 
+var _ exchange.SessionExchange = (*Bitswap)(nil)
+
 const (
 	// maxProvidersPerRequest specifies the maximum number of providers desired
 	// from the network. This value is specified because the network streams
