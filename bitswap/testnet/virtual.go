@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
@@ -48,7 +49,7 @@ type message struct {
 // order* with their delays respected as much as sending them in order allows
 // for
 type receiverQueue struct {
-	receiver bsnet.Receiver
+	receiver *networkClient
 	queue    []*message
 	active   bool
 	lk       sync.Mutex
@@ -104,30 +105,30 @@ func (n *network) SendMessage(
 	return nil
 }
 
-func (n *network) deliver(
-	r bsnet.Receiver, from peer.ID, message bsmsg.BitSwapMessage) error {
-	if message == nil || from == "" {
-		return errors.New("invalid input")
-	}
-
-	n.delay.Wait()
-
-	r.ReceiveMessage(context.TODO(), from, message)
-	return nil
-}
-
 type networkClient struct {
 	local peer.ID
 	bsnet.Receiver
 	network *network
 	routing routing.IpfsRouting
+	stats   bsnet.NetworkStats
 }
 
 func (nc *networkClient) SendMessage(
 	ctx context.Context,
 	to peer.ID,
 	message bsmsg.BitSwapMessage) error {
-	return nc.network.SendMessage(ctx, nc.local, to, message)
+	if err := nc.network.SendMessage(ctx, nc.local, to, message); err != nil {
+		return err
+	}
+	atomic.AddUint64(&nc.stats.MessagesSent, 1)
+	return nil
+}
+
+func (nc *networkClient) Stats() bsnet.NetworkStats {
+	return bsnet.NetworkStats{
+		MessagesRecvd: atomic.LoadUint64(&nc.stats.MessagesRecvd),
+		MessagesSent:  atomic.LoadUint64(&nc.stats.MessagesSent),
+	}
 }
 
 // FindProvidersAsync returns a channel of providers for the given key
@@ -157,14 +158,14 @@ func (nc *networkClient) ConnectionManager() ifconnmgr.ConnManager {
 }
 
 type messagePasser struct {
-	net    *network
+	net    *networkClient
 	target peer.ID
 	local  peer.ID
 	ctx    context.Context
 }
 
 func (mp *messagePasser) SendMsg(ctx context.Context, m bsmsg.BitSwapMessage) error {
-	return mp.net.SendMessage(ctx, mp.local, mp.target, m)
+	return mp.net.SendMessage(ctx, mp.target, m)
 }
 
 func (mp *messagePasser) Close() error {
@@ -177,7 +178,7 @@ func (mp *messagePasser) Reset() error {
 
 func (n *networkClient) NewMessageSender(ctx context.Context, p peer.ID) (bsnet.MessageSender, error) {
 	return &messagePasser{
-		net:    n.network,
+		net:    n,
 		target: p,
 		local:  n.local,
 		ctx:    ctx,
@@ -241,6 +242,7 @@ func (rq *receiverQueue) process() {
 		rq.lk.Unlock()
 
 		time.Sleep(time.Until(m.shouldSend))
+		atomic.AddUint64(&rq.receiver.stats.MessagesRecvd, 1)
 		rq.receiver.ReceiveMessage(context.TODO(), m.from, m.msg)
 	}
 }

@@ -7,15 +7,16 @@ import (
 )
 
 type Stat struct {
-	ProvideBufLen   int
-	Wantlist        []cid.Cid
-	Peers           []string
-	BlocksReceived  uint64
-	DataReceived    uint64
-	BlocksSent      uint64
-	DataSent        uint64
-	DupBlksReceived uint64
-	DupDataReceived uint64
+	ProvideBufLen    int
+	Wantlist         []cid.Cid
+	Peers            []string
+	BlocksReceived   uint64
+	DataReceived     uint64
+	BlocksSent       uint64
+	DataSent         uint64
+	DupBlksReceived  uint64
+	DupDataReceived  uint64
+	MessagesReceived uint64
 }
 
 func (bs *Bitswap) Stat() (*Stat, error) {
@@ -30,6 +31,7 @@ func (bs *Bitswap) Stat() (*Stat, error) {
 	st.BlocksSent = c.blocksSent
 	st.DataSent = c.dataSent
 	st.DataReceived = c.dataRecvd
+	st.MessagesReceived = c.messagesRecvd
 	bs.counterLk.Unlock()
 
 	peers := bs.engine.Peers()
