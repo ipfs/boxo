@@ -337,10 +337,8 @@ func TestEnumLinksAsync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	linkResults, err := nds.EnumLinksAsync(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	linkResults := nds.EnumLinksAsync(ctx)
+
 	var linksB []*ipld.Link
 
 	for linkResult := range linkResults {
