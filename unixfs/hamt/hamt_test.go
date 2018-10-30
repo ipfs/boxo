@@ -74,28 +74,7 @@ func assertLink(s *Shard, name string, found bool) error {
 	}
 }
 
-func assertSerializationWorks(ds ipld.DAGService, s *Shard) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	nd, err := s.Node()
-	if err != nil {
-		return err
-	}
-
-	nds, err := NewHamtFromDag(ds, nd)
-	if err != nil {
-		return err
-	}
-
-	linksA, err := s.EnumLinks(ctx)
-	if err != nil {
-		return err
-	}
-
-	linksB, err := nds.EnumLinks(ctx)
-	if err != nil {
-		return err
-	}
+func assertLinksEqual(linksA []*ipld.Link, linksB []*ipld.Link) error {
 
 	if len(linksA) != len(linksB) {
 		return fmt.Errorf("links arrays are different sizes")
@@ -119,6 +98,32 @@ func assertSerializationWorks(ds ipld.DAGService, s *Shard) error {
 	}
 
 	return nil
+}
+
+func assertSerializationWorks(ds ipld.DAGService, s *Shard) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	nd, err := s.Node()
+	if err != nil {
+		return err
+	}
+
+	nds, err := NewHamtFromDag(ds, nd)
+	if err != nil {
+		return err
+	}
+
+	linksA, err := s.EnumLinks(ctx)
+	if err != nil {
+		return err
+	}
+
+	linksB, err := nds.EnumLinks(ctx)
+	if err != nil {
+		return err
+	}
+
+	return assertLinksEqual(linksA, linksB)
 }
 
 func TestBasicSet(t *testing.T) {
@@ -304,6 +309,46 @@ func TestSetAfterMarshal(t *testing.T) {
 	}
 
 	err = assertSerializationWorks(ds, nds)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnumLinksAsync(t *testing.T) {
+	ds := mdtest.Mock()
+	_, s, err := makeDir(ds, 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	nd, err := s.Node()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nds, err := NewHamtFromDag(ds, nd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	linksA, err := nds.EnumLinks(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	linkResults := nds.EnumLinksAsync(ctx)
+
+	var linksB []*ipld.Link
+
+	for linkResult := range linkResults {
+		if linkResult.Err != nil {
+			t.Fatal(linkResult.Err)
+		}
+		linksB = append(linksB, linkResult.Link)
+	}
+
+	err = assertLinksEqual(linksA, linksB)
 	if err != nil {
 		t.Fatal(err)
 	}

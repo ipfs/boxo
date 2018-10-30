@@ -24,7 +24,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sync"
 
 	bitfield "github.com/Stebalien/go-bitfield"
 	cid "github.com/ipfs/go-cid"
@@ -400,21 +399,16 @@ func (ds *Shard) getValue(ctx context.Context, hv *hashBits, key string, cb func
 // EnumLinks collects all links in the Shard.
 func (ds *Shard) EnumLinks(ctx context.Context) ([]*ipld.Link, error) {
 	var links []*ipld.Link
-	var setlk sync.Mutex
 
-	getLinks := makeAsyncTrieGetLinks(ds.dserv, func(sv *Shard) error {
-		lnk := sv.val
-		lnk.Name = sv.key
-		setlk.Lock()
-		links = append(links, lnk)
-		setlk.Unlock()
-		return nil
-	})
+	linkResults := ds.EnumLinksAsync(ctx)
 
-	cset := cid.NewSet()
-
-	err := dag.EnumerateChildrenAsync(ctx, getLinks, ds.nd.Cid(), cset.Visit)
-	return links, err
+	for linkResult := range linkResults {
+		if linkResult.Err != nil {
+			return links, linkResult.Err
+		}
+		links = append(links, linkResult.Link)
+	}
+	return links, nil
 }
 
 // ForEachLink walks the Shard and calls the given function.
@@ -427,10 +421,28 @@ func (ds *Shard) ForEachLink(ctx context.Context, f func(*ipld.Link) error) erro
 	})
 }
 
+// EnumLinksAsync returns a channel which will receive Links in the directory
+// as they are enumerated, where order is not gauranteed
+func (ds *Shard) EnumLinksAsync(ctx context.Context) <-chan format.LinkResult {
+	linkResults := make(chan format.LinkResult)
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		defer close(linkResults)
+		defer cancel()
+		getLinks := makeAsyncTrieGetLinks(ds.dserv, linkResults)
+		cset := cid.NewSet()
+		err := dag.EnumerateChildrenAsync(ctx, getLinks, ds.nd.Cid(), cset.Visit)
+		if err != nil {
+			emitResult(ctx, linkResults, format.LinkResult{Link: nil, Err: err})
+		}
+	}()
+	return linkResults
+}
+
 // makeAsyncTrieGetLinks builds a getLinks function that can be used with EnumerateChildrenAsync
 // to iterate a HAMT shard. It takes an IPLD Dag Service to fetch nodes, and a call back that will get called
 // on all links to leaf nodes in a HAMT tree, so they can be collected for an EnumLinks operation
-func makeAsyncTrieGetLinks(dagService ipld.DAGService, onShardValue func(shard *Shard) error) dag.GetLinks {
+func makeAsyncTrieGetLinks(dagService ipld.DAGService, linkResults chan<- format.LinkResult) dag.GetLinks {
 
 	return func(ctx context.Context, currentCid cid.Cid) ([]*ipld.Link, error) {
 		node, err := dagService.Get(ctx, currentCid)
@@ -458,13 +470,28 @@ func makeAsyncTrieGetLinks(dagService ipld.DAGService, onShardValue func(shard *
 				if err != nil {
 					return nil, err
 				}
-				err = onShardValue(sv)
-				if err != nil {
-					return nil, err
-				}
+				formattedLink := sv.val
+				formattedLink.Name = sv.key
+				emitResult(ctx, linkResults, format.LinkResult{Link: formattedLink, Err: nil})
 			}
 		}
 		return childShards, nil
+	}
+}
+
+func emitResult(ctx context.Context, linkResults chan<- format.LinkResult, r format.LinkResult) {
+	// make sure that context cancel is processed first
+	// the reason is due to the concurrency of EnumerateChildrenAsync
+	// it's possible for EnumLinksAsync to complete and close the linkResults
+	// channel before this code runs
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
+	select {
+	case linkResults <- r:
+	case <-ctx.Done():
 	}
 }
 

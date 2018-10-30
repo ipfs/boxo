@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"testing"
 
+	ipld "github.com/ipfs/go-ipld-format"
 	mdtest "github.com/ipfs/go-merkledag/test"
+
 	ft "github.com/ipfs/go-unixfs"
 )
 
@@ -154,5 +156,29 @@ func TestDirBuilder(t *testing.T) {
 
 	if len(links) != count {
 		t.Fatal("wrong number of links", len(links), count)
+	}
+
+	linkResults := dir.EnumLinksAsync(ctx)
+
+	asyncNames := make(map[string]bool)
+	var asyncLinks []*ipld.Link
+
+	for linkResult := range linkResults {
+		if linkResult.Err != nil {
+			t.Fatal(linkResult.Err)
+		}
+		asyncNames[linkResult.Link.Name] = true
+		asyncLinks = append(asyncLinks, linkResult.Link)
+	}
+
+	for i := 0; i < count; i++ {
+		n := fmt.Sprintf("entry %d", i)
+		if !asyncNames[n] {
+			t.Fatal("COULDNT FIND: ", n)
+		}
+	}
+
+	if len(asyncLinks) != count {
+		t.Fatal("wrong number of links", len(asyncLinks), count)
 	}
 }
