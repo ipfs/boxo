@@ -9,8 +9,17 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 
 	dag "github.com/ipfs/go-merkledag"
+
+	ipld "github.com/ipfs/go-ipld-format"
 	pb "github.com/ipfs/go-unixfs/pb"
 )
+
+// A LinkResult for any parallel enumeration of links
+// TODO: Should this live in go-ipld-format?
+type LinkResult struct {
+	Link *ipld.Link
+	Err  error
+}
 
 // Shorthands for protobuffer types
 const (
