@@ -12,7 +12,13 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
+// TODO: Evaluate moving all this operations to as `Root`
+// methods, since all of them use it as its first argument
+// and there is no clear documentation that explains this
+// separation.
+
 // Mv moves the file or directory at 'src' to 'dst'
+// TODO: Document what the strings 'src' and 'dst' represent.
 func Mv(r *Root, src, dst string) error {
 	srcDir, srcFname := gopath.Split(src)
 
@@ -83,6 +89,15 @@ func lookupDir(r *Root, path string) (*Directory, error) {
 }
 
 // PutNode inserts 'nd' at 'path' in the given mfs
+// TODO: Rename or clearly document that this is not about nodes but actually
+// MFS files/directories (that in the underlying representation can be
+// considered as just nodes).
+// TODO: Document why are we handling IPLD nodes in the first place when we
+// are actually referring to files/directories (that is, it can't be any
+// node, it has to have a specific format).
+// TODO: Can this function add directories or just files? What would be the
+// difference between adding a directory with this method and creating it
+// with `Mkdir`.
 func PutNode(r *Root, path string, nd ipld.Node) error {
 	dirp, filename := gopath.Split(path)
 	if filename == "" {
@@ -207,6 +222,8 @@ func DirLookup(d *Directory, pth string) (FSNode, error) {
 	return cur, nil
 }
 
+// TODO: Document this function and link its functionality
+// with the republisher.
 func FlushPath(rt *Root, pth string) error {
 	nd, err := Lookup(rt, pth)
 	if err != nil {

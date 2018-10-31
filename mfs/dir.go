@@ -21,13 +21,20 @@ var ErrNotYetImplemented = errors.New("not yet implemented")
 var ErrInvalidChild = errors.New("invalid child node")
 var ErrDirExists = errors.New("directory already has entry by that name")
 
+// TODO: There's too much functionality associated with this structure,
+// let's organize it (and if possible extract part of it elsewhere)
+// and document the main features of `Directory` here.
 type Directory struct {
 	inode
 
+	// Cache.
+	// TODO: Should this be a single cache of `FSNode`s?
 	childDirs map[string]*Directory
 	files     map[string]*File
 
 	lock sync.Mutex
+	// TODO: What content is being protected here exactly? The entire directory?
+
 	ctx  context.Context
 
 	// UnixFS directory implementation used for creating,
@@ -73,11 +80,23 @@ func (d *Directory) SetCidBuilder(b cid.Builder) {
 
 // closeChild updates the child by the given name to the dag node 'nd'
 // and changes its own dag node
+// `sync` (alias `fullsync`): has two uses, propagate the update upwards
+// (in which case we wouldn't want this?) and in `closeChildUpdate`.
+// TODO: Find *all* the places where `sync`/`fullsync` is evaluated.
 func (d *Directory) closeChild(name string, nd ipld.Node, sync bool) error {
+
+	// There's a local flush (`closeChildUpdate`) and a propagated flush (`closeChild`).
+
 	mynd, err := d.closeChildUpdate(name, nd, sync)
 	if err != nil {
 		return err
 	}
+
+	// TODO: The `sync` seems to be tightly coupling this two pieces of code,
+	// we use the node returned by `closeChildUpdate` (which entails a copy)
+	// only if `sync` is set, and we are discarding it otherwise. At the very
+	// least the `if sync {` clause at the end of `closeChildUpdate` should
+	// be merged with this one.
 
 	if sync {
 		return d.parent.closeChild(d.name, mynd, true)
@@ -86,10 +105,22 @@ func (d *Directory) closeChild(name string, nd ipld.Node, sync bool) error {
 }
 
 // closeChildUpdate is the portion of closeChild that needs to be locked around
+// TODO: Definitely document this.
+// Updates the child entry under `name` with the node `nd` and if `sync`
+// is set it "flushes" the node (adding it to the `DAGService`) that
+// represents this directory.
+// TODO: As mentioned elsewhere "flush" sometimes means persist the node in the
+// DAG service and other update the parent node pointing to it.
+//
+// So, calling this with `sync`/`fullsync` off (this is pretty much the only
+// place where `fullsync` seems to matter) will just update the file entry in
+// this directory without updating the parent and without saving the node.
 func (d *Directory) closeChildUpdate(name string, nd ipld.Node, sync bool) (*dag.ProtoNode, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
+	// TODO: Clearly define how are we propagating changes to lower layers
+	// like UnixFS.
 	err := d.updateChild(name, nd)
 	if err != nil {
 		return nil, err
@@ -118,6 +149,7 @@ func (d *Directory) flushCurrentNode() (*dag.ProtoNode, error) {
 	}
 
 	return pbnd.Copy().(*dag.ProtoNode), nil
+	// TODO: Why do we need a copy?
 }
 
 func (d *Directory) updateChild(name string, nd ipld.Node) error {
@@ -200,6 +232,8 @@ func (d *Directory) Uncache(name string) {
 	defer d.lock.Unlock()
 	delete(d.files, name)
 	delete(d.childDirs, name)
+	// TODO: We definitely need to join these maps if we are manipulating
+	// them like this.
 }
 
 // childFromDag searches through this directories dag node for a child link
@@ -392,6 +426,9 @@ func (d *Directory) AddUnixFSChild(name string, node ipld.Node) error {
 	return nil
 }
 
+// TODO: Difference between `sync` and `Flush`? This seems
+// to be related to the internal cache and not to the MFS
+// hierarchy update.
 func (d *Directory) sync() error {
 	for name, dir := range d.childDirs {
 		nd, err := dir.GetNode()
