@@ -2,6 +2,8 @@ package hamt
 
 import (
 	"fmt"
+
+	"github.com/spaolacci/murmur3"
 	"math/bits"
 )
 
@@ -57,4 +59,10 @@ func logtwo(v int) (int, error) {
 		return 0, fmt.Errorf("hamt size should be a power of two")
 	}
 	return lg2, nil
+}
+
+func hash(val []byte) []byte {
+	h := murmur3.New64()
+	h.Write(val)
+	return h.Sum(nil)
 }

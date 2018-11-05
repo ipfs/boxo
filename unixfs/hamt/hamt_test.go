@@ -9,12 +9,10 @@ import (
 	"testing"
 	"time"
 
+	ipld "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
 	mdtest "github.com/ipfs/go-merkledag/test"
-
 	ft "github.com/ipfs/go-unixfs"
-
-	ipld "github.com/ipfs/go-ipld-format"
 )
 
 func shuffle(seed int64, arr []string) {
@@ -488,11 +486,11 @@ func TestBitfieldIndexing(t *testing.T) {
 	s, _ := NewShard(ds, 256)
 
 	set := func(i int) {
-		s.bitfield.SetBit(i)
+		s.childer.bitfield.SetBit(i)
 	}
 
 	assert := func(i int, val int) {
-		if s.indexForBitPos(i) != val {
+		if s.childer.index(i) != val {
 			t.Fatalf("expected index %d to be %d", i, val)
 		}
 	}
