@@ -11,7 +11,7 @@ import (
 
 func IsHidden(name string, f File) bool {
 
-	fName := filepath.Base(f.FileName())
+	fName := filepath.Base(name)
 
 	if strings.HasPrefix(fName, ".") && len(fName) > 1 {
 		return true
