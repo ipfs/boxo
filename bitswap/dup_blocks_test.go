@@ -33,71 +33,102 @@ type runStats struct {
 var benchmarkLog []runStats
 
 func BenchmarkDups2Nodes(b *testing.B) {
+	fixedDelay := delay.Fixed(10 * time.Millisecond)
 	b.Run("AllToAll-OneAtATime", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, allToAll, oneAtATime)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, allToAll, oneAtATime)
 	})
 	b.Run("AllToAll-BigBatch", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, allToAll, batchFetchAll)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, allToAll, batchFetchAll)
 	})
 
 	b.Run("Overlap1-OneAtATime", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, overlap1, oneAtATime)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap1, oneAtATime)
 	})
 
 	b.Run("Overlap2-BatchBy10", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, overlap2, batchFetchBy10)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap2, batchFetchBy10)
 	})
 
 	b.Run("Overlap3-OneAtATime", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, overlap3, oneAtATime)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap3, oneAtATime)
 	})
 	b.Run("Overlap3-BatchBy10", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, overlap3, batchFetchBy10)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap3, batchFetchBy10)
 	})
 	b.Run("Overlap3-AllConcurrent", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, overlap3, fetchAllConcurrent)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap3, fetchAllConcurrent)
 	})
 	b.Run("Overlap3-BigBatch", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, overlap3, batchFetchAll)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap3, batchFetchAll)
 	})
 	b.Run("Overlap3-UnixfsFetch", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, overlap3, unixfsFileFetch)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap3, unixfsFileFetch)
 	})
 	b.Run("10Nodes-AllToAll-OneAtATime", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 10, 100, allToAll, oneAtATime)
+		subtestDistributeAndFetch(b, 10, 100, fixedDelay, allToAll, oneAtATime)
 	})
 	b.Run("10Nodes-AllToAll-BatchFetchBy10", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 10, 100, allToAll, batchFetchBy10)
+		subtestDistributeAndFetch(b, 10, 100, fixedDelay, allToAll, batchFetchBy10)
 	})
 	b.Run("10Nodes-AllToAll-BigBatch", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 10, 100, allToAll, batchFetchAll)
+		subtestDistributeAndFetch(b, 10, 100, fixedDelay, allToAll, batchFetchAll)
 	})
 	b.Run("10Nodes-AllToAll-AllConcurrent", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 10, 100, allToAll, fetchAllConcurrent)
+		subtestDistributeAndFetch(b, 10, 100, fixedDelay, allToAll, fetchAllConcurrent)
 	})
 	b.Run("10Nodes-AllToAll-UnixfsFetch", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 10, 100, allToAll, unixfsFileFetch)
+		subtestDistributeAndFetch(b, 10, 100, fixedDelay, allToAll, unixfsFileFetch)
 	})
 	b.Run("10Nodes-OnePeerPerBlock-OneAtATime", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 10, 100, onePeerPerBlock, oneAtATime)
+		subtestDistributeAndFetch(b, 10, 100, fixedDelay, onePeerPerBlock, oneAtATime)
 	})
 	b.Run("10Nodes-OnePeerPerBlock-BigBatch", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 10, 100, onePeerPerBlock, batchFetchAll)
+		subtestDistributeAndFetch(b, 10, 100, fixedDelay, onePeerPerBlock, batchFetchAll)
 	})
 	b.Run("10Nodes-OnePeerPerBlock-UnixfsFetch", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 10, 100, onePeerPerBlock, unixfsFileFetch)
+		subtestDistributeAndFetch(b, 10, 100, fixedDelay, onePeerPerBlock, unixfsFileFetch)
 	})
 	b.Run("200Nodes-AllToAll-BigBatch", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 200, 20, allToAll, batchFetchAll)
+		subtestDistributeAndFetch(b, 200, 20, fixedDelay, allToAll, batchFetchAll)
 	})
-
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
 	ioutil.WriteFile("benchmark.json", out, 0666)
 }
 
-func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, df distFunc, ff fetchFunc) {
+const fastSpeed = 60 * time.Millisecond
+const mediumSpeed = 200 * time.Millisecond
+const slowSpeed = 800 * time.Millisecond
+const superSlowSpeed = 4000 * time.Millisecond
+const distribution = 20 * time.Millisecond
+
+func BenchmarkDupsManyNodesRealWorldNetwork(b *testing.B) {
+	fastNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
+		mediumSpeed-fastSpeed, slowSpeed-fastSpeed,
+		0.0, 0.0, distribution, nil)
+	fastNetworkDelay := delay.Delay(fastSpeed, fastNetworkDelayGenerator)
+	averageNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
+		mediumSpeed-fastSpeed, slowSpeed-fastSpeed,
+		0.3, 0.3, distribution, nil)
+	averageNetworkDelay := delay.Delay(fastSpeed, averageNetworkDelayGenerator)
+	slowNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
+		mediumSpeed-fastSpeed, superSlowSpeed-fastSpeed,
+		0.3, 0.3, distribution, nil)
+	slowNetworkDelay := delay.Delay(fastSpeed, slowNetworkDelayGenerator)
+
+	b.Run("200Nodes-AllToAll-BigBatch-FastNetwork", func(b *testing.B) {
+		subtestDistributeAndFetch(b, 300, 200, fastNetworkDelay, allToAll, batchFetchAll)
+	})
+	b.Run("200Nodes-AllToAll-BigBatch-AverageVariableSpeedNetwork", func(b *testing.B) {
+		subtestDistributeAndFetch(b, 300, 200, averageNetworkDelay, allToAll, batchFetchAll)
+	})
+	b.Run("200Nodes-AllToAll-BigBatch-SlowVariableSpeedNetwork", func(b *testing.B) {
+		subtestDistributeAndFetch(b, 300, 200, slowNetworkDelay, allToAll, batchFetchAll)
+	})
+}
+
+func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, df distFunc, ff fetchFunc) {
 	start := time.Now()
-	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(10*time.Millisecond))
+	net := tn.VirtualNetwork(mockrouting.NewServer(), d)
 	sg := NewTestSessionGenerator(net)
 	defer sg.Close()
 
