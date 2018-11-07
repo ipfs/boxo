@@ -7,28 +7,18 @@ import (
 )
 
 type Symlink struct {
-	path   string
 	Target string
 	stat   os.FileInfo
 
 	reader io.Reader
 }
 
-func NewLinkFile(path, target string, stat os.FileInfo) File {
+func NewLinkFile(target string, stat os.FileInfo) Regular {
 	return &Symlink{
-		path:   path,
 		Target: target,
 		stat:   stat,
 		reader: strings.NewReader(target),
 	}
-}
-
-func (lf *Symlink) IsDirectory() bool {
-	return false
-}
-
-func (lf *Symlink) NextFile() (string, File, error) {
-	return "", nil, ErrNotDirectory
 }
 
 func (lf *Symlink) Close() error {
@@ -54,3 +44,5 @@ func (lf *Symlink) Seek(offset int64, whence int) (int64, error) {
 func (lf *Symlink) Size() (int64, error) {
 	return 0, ErrNotSupported
 }
+
+var _ Regular = &Symlink{}

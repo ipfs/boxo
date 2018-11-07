@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	ErrNotDirectory = errors.New("couldn't call NextFile(), this isn't a directory")
-	ErrNotReader    = errors.New("this file is a directory, can't use Reader functions")
+	ErrNotDirectory = errors.New("file isn't a directory")
+	ErrNotReader    = errors.New("file isn't a regular file")
 
 	ErrNotSupported = errors.New("operation not supported")
 )
@@ -20,22 +20,29 @@ var (
 // Read/Seek methods are only valid for files
 // NextFile method is only valid for directories
 type File interface {
-	io.Reader
 	io.Closer
-	io.Seeker
 
-	// Size returns size of the
+	// Size returns size of this file (if this file is a directory, total size of
+	// all files stored in the tree should be returned). Some implementations may
+	// choose not to implement this
 	Size() (int64, error)
+}
 
-	// IsDirectory returns true if the File is a directory (and therefore
-	// supports calling `Files`/`Walk`) and false if the File is a normal file
-	// (and therefore supports calling `Read`/`Close`/`Seek`)
-	IsDirectory() bool
+// Regular represents the regular Unix file
+type Regular interface {
+	File
+
+	io.Reader
+	io.Seeker
+}
+
+// Directory is a special file which can link to any number of files
+type Directory interface {
+	File
 
 	// NextFile returns the next child file available (if the File is a
 	// directory). It will return io.EOF if no more files are
-	// available. If the file is a regular file (not a directory), NextFile
-	// will return a non-nil error.
+	// available.
 	//
 	// Note:
 	// - Some implementations may only allow reading in order - if a

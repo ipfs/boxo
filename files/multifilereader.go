@@ -17,7 +17,7 @@ type MultiFileReader struct {
 	io.Reader
 
 	// directory stack for NextFile
-	files []File
+	files []Directory
 	path  []string
 
 	currentFile File
@@ -31,12 +31,12 @@ type MultiFileReader struct {
 	form bool
 }
 
-// NewMultiFileReader constructs a MultiFileReader. `file` can be any `commands.File`.
+// NewMultiFileReader constructs a MultiFileReader. `file` can be any `commands.Directory`.
 // If `form` is set to true, the multipart data will have a Content-Type of 'multipart/form-data',
 // if `form` is false, the Content-Type will be 'multipart/mixed'.
-func NewMultiFileReader(file File, form bool) *MultiFileReader {
+func NewMultiFileReader(file Directory, form bool) *MultiFileReader {
 	mfr := &MultiFileReader{
-		files: []File{file},
+		files: []Directory{file},
 		path:  []string{""},
 		form:  form,
 		mutex: &sync.Mutex{},
@@ -91,15 +91,19 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 			header.Set("Content-Disposition", fmt.Sprintf("file; filename=\"%s\"", filename))
 
 			var contentType string
-			if _, ok := file.(*Symlink); ok {
+
+			switch f := file.(type) {
+			case *Symlink:
 				contentType = "application/symlink"
-			} else if file.IsDirectory() {
-				mfr.files = append(mfr.files, file)
+			case Directory:
+				mfr.files = append(mfr.files, f)
 				mfr.path = append(mfr.path, name)
 				contentType = "application/x-directory"
-			} else {
+			case Regular:
 				// otherwise, use the file as a reader to read its contents
 				contentType = "application/octet-stream"
+			default:
+				return 0, ErrNotSupported
 			}
 
 			header.Set("Content-Type", contentType)
@@ -120,16 +124,20 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 	}
 
 	// otherwise, read from file data
-	written, err = mfr.currentFile.Read(buf)
-	if err == io.EOF || err == ErrNotReader {
-		if err := mfr.currentFile.Close(); err != nil {
+	switch f := mfr.currentFile.(type) {
+	case Regular:
+		written, err = f.Read(buf)
+		if err != io.EOF {
 			return written, err
 		}
-
-		mfr.currentFile = nil
-		return written, nil
 	}
-	return written, err
+
+	if err := mfr.currentFile.Close(); err != nil {
+		return written, err
+	}
+
+	mfr.currentFile = nil
+	return written, nil
 }
 
 // Boundary returns the boundary string to be used to separate files in the multipart data

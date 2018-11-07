@@ -14,7 +14,7 @@ type ReaderFile struct {
 	stat    os.FileInfo
 }
 
-func NewReaderFile(reader io.ReadCloser, stat os.FileInfo) File {
+func NewReaderFile(reader io.ReadCloser, stat os.FileInfo) Regular {
 	return &ReaderFile{"", reader, stat}
 }
 
@@ -25,14 +25,6 @@ func NewReaderPathFile(path string, reader io.ReadCloser, stat os.FileInfo) (*Re
 	}
 
 	return &ReaderFile{abspath, reader, stat}, nil
-}
-
-func (f *ReaderFile) IsDirectory() bool {
-	return false
-}
-
-func (f *ReaderFile) NextFile() (string, File, error) {
-	return "", nil, ErrNotDirectory
 }
 
 func (f *ReaderFile) AbsPath() string {
@@ -65,3 +57,6 @@ func (f *ReaderFile) Seek(offset int64, whence int) (int64, error) {
 
 	return 0, ErrNotSupported
 }
+
+var _ Regular = &ReaderFile{}
+var _ FileInfo = &ReaderFile{}

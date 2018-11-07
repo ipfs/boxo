@@ -33,46 +33,48 @@ func TestMultiFileReaderToMultiFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !mf.IsDirectory() {
+	md, ok := mf.(Directory)
+	if !ok {
 		t.Fatal("Expected a directory")
 	}
 
-	fn, f, err := mf.NextFile()
+	fn, f, err := md.NextFile()
 	if fn != "file.txt" || f == nil || err != nil {
 		t.Fatal("NextFile returned unexpected data")
 	}
 
-	dn, d, err := mf.NextFile()
+	dn, d, err := md.NextFile()
 	if dn != "boop" || d == nil || err != nil {
 		t.Fatal("NextFile returned unexpected data")
 	}
 
-	if !d.IsDirectory() {
+	df, ok := d.(Directory)
+	if !ok {
 		t.Fatal("Expected a directory")
 	}
 
-	cfn, cf, err := d.NextFile()
+	cfn, cf, err := df.NextFile()
 	if cfn != "a.txt" || cf == nil || err != nil {
 		t.Fatal("NextFile returned unexpected data")
 	}
 
-	cfn, cf, err = d.NextFile()
+	cfn, cf, err = df.NextFile()
 	if cfn != "b.txt" || cf == nil || err != nil {
 		t.Fatal("NextFile returned unexpected data")
 	}
 
-	cfn, cf, err = d.NextFile()
+	cfn, cf, err = df.NextFile()
 	if cfn != "" || cf != nil || err != io.EOF {
 		t.Fatal("NextFile returned unexpected data")
 	}
 
 	// try to break internal state
-	cfn, cf, err = d.NextFile()
+	cfn, cf, err = df.NextFile()
 	if cfn != "" || cf != nil || err != io.EOF {
 		t.Fatal("NextFile returned unexpected data")
 	}
 
-	fn, f, err = mf.NextFile()
+	fn, f, err = md.NextFile()
 	if fn != "beep.txt" || f == nil || err != nil {
 		t.Fatal("NextFile returned unexpected data")
 	}
@@ -91,13 +93,14 @@ func TestOutput(t *testing.T) {
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil MultipartFile, nil error")
 	}
-	if mpf.IsDirectory() {
-		t.Fatal("Expected file to not be a directory")
+	mpr, ok := mpf.(Regular)
+	if !ok {
+		t.Fatal("Expected file to be a regular file")
 	}
 	if mpname != "file.txt" {
 		t.Fatal("Expected filename to be \"file.txt\"")
 	}
-	if n, err := mpf.Read(buf); n != len(text) || err != nil {
+	if n, err := mpr.Read(buf); n != len(text) || err != nil {
 		t.Fatal("Expected to read from file", n, err)
 	}
 	if string(buf[:len(text)]) != text {
@@ -112,7 +115,8 @@ func TestOutput(t *testing.T) {
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil MultipartFile, nil error")
 	}
-	if !mpf.IsDirectory() {
+	mpd, ok := mpf.(Directory)
+	if !ok {
 		t.Fatal("Expected file to be a directory")
 	}
 	if mpname != "boop" {
@@ -127,7 +131,7 @@ func TestOutput(t *testing.T) {
 	if child == nil || err != nil {
 		t.Fatal("Expected to be able to read a child file")
 	}
-	if child.IsDirectory() {
+	if _, ok := child.(Regular); !ok {
 		t.Fatal("Expected file to not be a directory")
 	}
 	if cname != "a.txt" {
@@ -142,14 +146,14 @@ func TestOutput(t *testing.T) {
 	if child == nil || err != nil {
 		t.Fatal("Expected to be able to read a child file")
 	}
-	if child.IsDirectory() {
+	if _, ok := child.(Regular); !ok {
 		t.Fatal("Expected file to not be a directory")
 	}
 	if cname != "b.txt" {
 		t.Fatal("Expected filename to be \"b.txt\"")
 	}
 
-	cname, child, err = mpf.NextFile()
+	cname, child, err = mpd.NextFile()
 	if child != nil || err != io.EOF {
 		t.Fatal("Expected to get (nil, io.EOF)")
 	}

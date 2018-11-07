@@ -40,16 +40,10 @@ func NewSerialFile(path string, hidden bool, stat os.FileInfo) (File, error) {
 		if err != nil {
 			return nil, err
 		}
-		return NewLinkFile(path, target, stat), nil
+		return NewLinkFile(target, stat), nil
 	default:
 		return nil, fmt.Errorf("unrecognized file type for %s: %s", path, mode.String())
 	}
-}
-
-func (f *serialFile) IsDirectory() bool {
-	// non-directories get created as a ReaderFile, so serialFiles should only
-	// represent directories
-	return true
 }
 
 func (f *serialFile) NextFile() (string, File, error) {
@@ -97,16 +91,8 @@ func (f *serialFile) NextFile() (string, File, error) {
 	return stat.Name(), sf, nil
 }
 
-func (f *serialFile) Read(p []byte) (int, error) {
-	return 0, ErrNotReader
-}
-
 func (f *serialFile) Close() error {
 	return nil
-}
-
-func (f *serialFile) Seek(offset int64, whence int) (int64, error) {
-	return 0, ErrNotReader
 }
 
 func (f *serialFile) Stat() os.FileInfo {
@@ -132,3 +118,5 @@ func (f *serialFile) Size() (int64, error) {
 
 	return du, err
 }
+
+var _ Directory = &serialFile{}

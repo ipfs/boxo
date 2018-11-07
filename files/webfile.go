@@ -1,6 +1,7 @@
 package files
 
 import (
+	"github.com/pkg/errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 type WebFile struct {
 	body io.ReadCloser
 	url  *url.URL
+	contentLength int64
 }
 
 // NewWebFile creates a WebFile with the given URL, which
@@ -33,6 +35,7 @@ func (wf *WebFile) Read(b []byte) (int, error) {
 			return 0, err
 		}
 		wf.body = resp.Body
+		wf.contentLength = resp.ContentLength
 	}
 	return wf.body.Read(b)
 }
@@ -45,17 +48,18 @@ func (wf *WebFile) Close() error {
 	return wf.body.Close()
 }
 
-// IsDirectory returns false.
-func (wf *WebFile) IsDirectory() bool {
-	return false
-}
-
-// NextFile always returns an ErrNotDirectory error.
-func (wf *WebFile) NextFile() (File, error) {
-	return nil, ErrNotDirectory
-}
-
 // TODO: implement
 func (wf *WebFile) Seek(offset int64, whence int) (int64, error) {
 	return 0, ErrNotSupported
 }
+
+func (wf *WebFile) Size() (int64, error) {
+	if wf.contentLength < 0 {
+		return -1, errors.New("Content-Length hearer was not set")
+	}
+
+	return wf.contentLength, nil
+}
+
+
+var _ Regular = &WebFile{}

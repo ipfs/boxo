@@ -34,6 +34,10 @@ type MultipartFile struct {
 }
 
 func NewFileFromPartReader(reader *multipart.Reader, mediatype string) (File, error) {
+	if !isDirectory(mediatype) {
+		return nil, ErrNotDirectory
+	}
+
 	f := &MultipartFile{
 		Reader: &peekReader{r: reader},
 		Mediatype: mediatype,
@@ -61,9 +65,7 @@ func newFileFromPart(parent string, part *multipart.Part, reader PartReader) (st
 			return "", nil, err
 		}
 
-		return base, &Symlink{
-			Target: string(out),
-		}, nil
+		return base, NewLinkFile(string(out), nil), nil
 	case "": // default to application/octet-stream
 		fallthrough
 	case applicationFile:
@@ -79,17 +81,21 @@ func newFileFromPart(parent string, part *multipart.Part, reader PartReader) (st
 		return "", nil, err
 	}
 
+	if !isDirectory(f.Mediatype) {
+		return base, &ReaderFile{
+			reader:  part,
+			abspath: part.Header.Get("abspath"),
+		}, nil
+	}
+
 	return base, f, nil
 }
 
-func (f *MultipartFile) IsDirectory() bool {
-	return f.Mediatype == multipartFormdataType || f.Mediatype == applicationDirectory
+func isDirectory(mediatype string) bool {
+	return mediatype == multipartFormdataType || mediatype == applicationDirectory
 }
 
 func (f *MultipartFile) NextFile() (string, File, error) {
-	if !f.IsDirectory() {
-		return "", nil, ErrNotDirectory
-	}
 	if f.Reader == nil {
 		return "", nil, io.EOF
 	}
@@ -128,22 +134,8 @@ func (f *MultipartFile) fileName() string {
 	return filename
 }
 
-func (f *MultipartFile) Read(p []byte) (int, error) {
-	if f.IsDirectory() {
-		return 0, ErrNotReader
-	}
-	return f.Part.Read(p)
-}
-
 func (f *MultipartFile) Close() error {
 	return f.Part.Close()
-}
-
-func (f *MultipartFile) Seek(offset int64, whence int) (int64, error) {
-	if f.IsDirectory() {
-		return 0, ErrNotReader
-	}
-	return 0, ErrNotSupported
 }
 
 func (f *MultipartFile) Size() (int64, error) {
@@ -176,3 +168,5 @@ func (pr *peekReader) put(p *multipart.Part) error {
 	pr.next = p
 	return nil
 }
+
+var _ Directory = &MultipartFile{}

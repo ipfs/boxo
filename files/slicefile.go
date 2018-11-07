@@ -17,12 +17,8 @@ type SliceFile struct {
 	n     int
 }
 
-func NewSliceFile(files []FileEntry) File {
+func NewSliceFile(files []FileEntry) Directory {
 	return &SliceFile{files, 0}
-}
-
-func (f *SliceFile) IsDirectory() bool {
-	return true
 }
 
 func (f *SliceFile) NextFile() (string, File, error) {
@@ -34,16 +30,8 @@ func (f *SliceFile) NextFile() (string, File, error) {
 	return file.Name, file.File, nil
 }
 
-func (f *SliceFile) Read(p []byte) (int, error) {
-	return 0, ErrNotReader
-}
-
 func (f *SliceFile) Close() error {
 	return nil
-}
-
-func (f *SliceFile) Seek(offset int64, whence int) (int64, error) {
-	return 0, ErrNotReader
 }
 
 func (f *SliceFile) Length() int {
@@ -63,3 +51,5 @@ func (f *SliceFile) Size() (int64, error) {
 
 	return size, nil
 }
+
+var _ Directory = &SliceFile{}
