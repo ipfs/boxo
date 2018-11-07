@@ -11,8 +11,8 @@ import (
 // from a Web URL (http). A GET request will be performed
 // against the source when calling Read().
 type WebFile struct {
-	body io.ReadCloser
-	url  *url.URL
+	body          io.ReadCloser
+	url           *url.URL
 	contentLength int64
 }
 
@@ -60,6 +60,5 @@ func (wf *WebFile) Size() (int64, error) {
 
 	return wf.contentLength, nil
 }
-
 
 var _ Regular = &WebFile{}

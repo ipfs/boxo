@@ -9,21 +9,24 @@ import (
 )
 
 func TestSliceFiles(t *testing.T) {
-	files := []FileEntry{
-		{NewReaderFile(ioutil.NopCloser(strings.NewReader("Some text!\n")), nil), ""},
-		{NewReaderFile(ioutil.NopCloser(strings.NewReader("beep")), nil), ""},
-		{NewReaderFile(ioutil.NopCloser(strings.NewReader("boop")), nil), ""},
+	files := []DirEntry{
+		FileEntry("", NewReaderFile(ioutil.NopCloser(strings.NewReader("Some text!\n")), nil)),
+		FileEntry("", NewReaderFile(ioutil.NopCloser(strings.NewReader("beep")), nil)),
+		FileEntry("", NewReaderFile(ioutil.NopCloser(strings.NewReader("boop")), nil)),
 	}
 	buf := make([]byte, 20)
 
 	sf := NewSliceFile(files)
-
-	_, file, err := sf.NextFile()
-	if file == nil || err != nil {
-		t.Fatal("Expected a file and nil error")
+	it, err := sf.Entries()
+	if err != nil {
+		t.Fatal(err)
 	}
-	rf, ok := file.(Regular)
-	if !ok {
+
+	if !it.Next() {
+		t.Fatal("Expected a file")
+	}
+	rf := it.Regular()
+	if rf == nil {
 		t.Fatal("Expected a regular file")
 	}
 	read, err := rf.Read(buf)
@@ -31,18 +34,14 @@ func TestSliceFiles(t *testing.T) {
 		t.Fatal("NextFile got a file in the wrong order")
 	}
 
-	_, file, err = sf.NextFile()
-	if file == nil || err != nil {
-		t.Fatal("Expected a file and nil error")
+	if !it.Next() {
+		t.Fatal("Expected a file")
 	}
-	_, file, err = sf.NextFile()
-	if file == nil || err != nil {
-		t.Fatal("Expected a file and nil error")
+	if !it.Next() {
+		t.Fatal("Expected a file")
 	}
-
-	_, file, err = sf.NextFile()
-	if file != nil || err != io.EOF {
-		t.Fatal("Expected a nil file and io.EOF")
+	if it.Next() {
+		t.Fatal("Wild file appeared!")
 	}
 
 	if err := sf.Close(); err != nil {

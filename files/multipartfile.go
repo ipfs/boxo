@@ -2,7 +2,6 @@ package files
 
 import (
 	"errors"
-	"io"
 	"io/ioutil"
 	"mime"
 	"mime/multipart"
@@ -39,7 +38,7 @@ func NewFileFromPartReader(reader *multipart.Reader, mediatype string) (File, er
 	}
 
 	f := &MultipartFile{
-		Reader: &peekReader{r: reader},
+		Reader:    &peekReader{r: reader},
 		Mediatype: mediatype,
 	}
 
@@ -95,30 +94,65 @@ func isDirectory(mediatype string) bool {
 	return mediatype == multipartFormdataType || mediatype == applicationDirectory
 }
 
-func (f *MultipartFile) NextFile() (string, File, error) {
-	if f.Reader == nil {
-		return "", nil, io.EOF
+type multipartIterator struct {
+	f *MultipartFile
+
+	curFile File
+	curName string
+	err     error
+}
+
+func (it *multipartIterator) Name() string {
+	return it.curName
+}
+
+func (it *multipartIterator) File() File {
+	return it.curFile
+}
+
+func (it *multipartIterator) Regular() Regular {
+	return castRegular(it.File())
+}
+
+func (it *multipartIterator) Dir() Directory {
+	return castDir(it.File())
+}
+
+func (it *multipartIterator) Next() bool {
+	if it.f.Reader == nil {
+		return false
 	}
-	part, err := f.Reader.NextPart()
+	part, err := it.f.Reader.NextPart()
 	if err != nil {
-		return "", nil, err
+		it.err = err
+		return false
 	}
 
-	name, cf, err := newFileFromPart(f.fileName(), part, f.Reader)
+	name, cf, err := newFileFromPart(it.f.fileName(), part, it.f.Reader)
 	if err != ErrPartOutsideParent {
-		return name, cf, err
+		it.curFile = cf
+		it.curName = name
+		it.err = err
+		return err == nil
 	}
 
 	// we read too much, try to fix this
-	pr, ok := f.Reader.(*peekReader)
+	pr, ok := it.f.Reader.(*peekReader)
 	if !ok {
-		return "", nil, errors.New("cannot undo NextPart")
+		it.err = errors.New("cannot undo NextPart")
+		return false
 	}
 
-	if err := pr.put(part); err != nil {
-		return "", nil, err
-	}
-	return "", nil, io.EOF
+	it.err = pr.put(part)
+	return false
+}
+
+func (it *multipartIterator) Err() error {
+	panic("implement me")
+}
+
+func (f *MultipartFile) Entries() (DirIterator, error) {
+	return &multipartIterator{f: f}, nil
 }
 
 func (f *MultipartFile) fileName() string {
@@ -135,7 +169,10 @@ func (f *MultipartFile) fileName() string {
 }
 
 func (f *MultipartFile) Close() error {
-	return f.Part.Close()
+	if f.Part != nil {
+		return f.Part.Close()
+	}
+	return nil
 }
 
 func (f *MultipartFile) Size() (int64, error) {

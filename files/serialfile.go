@@ -1,6 +1,7 @@
 package files
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -19,6 +20,18 @@ type serialFile struct {
 	handleHiddenFiles bool
 }
 
+type serialIterator struct {
+	files             []os.FileInfo
+	handleHiddenFiles bool
+	path              string
+
+	curName string
+	curFile File
+
+	err error
+}
+
+// TODO: test/document limitations
 func NewSerialFile(path string, hidden bool, stat os.FileInfo) (File, error) {
 	switch mode := stat.Mode(); {
 	case mode.IsRegular():
@@ -46,20 +59,69 @@ func NewSerialFile(path string, hidden bool, stat os.FileInfo) (File, error) {
 	}
 }
 
-func (f *serialFile) NextFile() (string, File, error) {
-	// if a file was opened previously, close it
-	err := f.Close()
-	if err != nil {
-		switch err2 := err.(type) {
-		case *os.PathError:
-			if err2.Err != os.ErrClosed {
-				return "", nil, err
-			}
-		default:
-			return "", nil, err
-		}
+func (it *serialIterator) Name() string {
+	return it.curName
+}
+
+func (it *serialIterator) File() File {
+	return it.curFile
+}
+
+func (it *serialIterator) Regular() Regular {
+	return castRegular(it.File())
+}
+
+func (it *serialIterator) Dir() Directory {
+	return castDir(it.File())
+}
+
+func (it *serialIterator) Next() bool {
+	// if there aren't any files left in the root directory, we're done
+	if len(it.files) == 0 {
+		return false
 	}
 
+	stat := it.files[0]
+	it.files = it.files[1:]
+	for !it.handleHiddenFiles && strings.HasPrefix(stat.Name(), ".") {
+		if len(it.files) == 0 {
+			return false
+		}
+
+		stat = it.files[0]
+		it.files = it.files[1:]
+	}
+
+	// open the next file
+	filePath := filepath.ToSlash(filepath.Join(it.path, stat.Name()))
+
+	// recursively call the constructor on the next file
+	// if it's a regular file, we will open it as a ReaderFile
+	// if it's a directory, files in it will be opened serially
+	sf, err := NewSerialFile(filePath, it.handleHiddenFiles, stat)
+	if err != nil {
+		it.err = err
+		return false
+	}
+
+	it.curName = stat.Name()
+	it.curFile = sf
+	return true
+}
+
+func (it *serialIterator) Err() error {
+	return it.err
+}
+
+func (f *serialFile) Entries() (DirIterator, error) {
+	return &serialIterator{
+		path:              f.path,
+		files:             f.files,
+		handleHiddenFiles: f.handleHiddenFiles,
+	}, nil
+}
+
+func (f *serialFile) NextFile() (string, File, error) {
 	// if there aren't any files left in the root directory, we're done
 	if len(f.files) == 0 {
 		return "", nil, io.EOF
@@ -101,7 +163,8 @@ func (f *serialFile) Stat() os.FileInfo {
 
 func (f *serialFile) Size() (int64, error) {
 	if !f.stat.IsDir() {
-		return f.stat.Size(), nil
+		//something went terribly, terribly wrong
+		return 0, errors.New("serialFile is not a directory")
 	}
 
 	var du int64
@@ -119,4 +182,15 @@ func (f *serialFile) Size() (int64, error) {
 	return du, err
 }
 
+func castRegular(f File) Regular {
+	r, _ := f.(Regular)
+	return r
+}
+
+func castDir(f File) Directory {
+	d, _ := f.(Directory)
+	return d
+}
+
 var _ Directory = &serialFile{}
+var _ DirIterator = &serialIterator{}

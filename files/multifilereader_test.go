@@ -10,23 +10,27 @@ import (
 
 var text = "Some text! :)"
 
-func getTestMultiFileReader() *MultiFileReader {
-	fileset := []FileEntry{
-		{NewReaderFile(ioutil.NopCloser(strings.NewReader(text)), nil), "file.txt"},
-		{NewSliceFile([]FileEntry{
-			{NewReaderFile(ioutil.NopCloser(strings.NewReader("bleep")), nil), "a.txt"},
-			{NewReaderFile(ioutil.NopCloser(strings.NewReader("bloop")), nil), "b.txt"},
-		}), "boop"},
-		{NewReaderFile(ioutil.NopCloser(strings.NewReader("beep")), nil), "beep.txt"},
+func getTestMultiFileReader(t *testing.T) *MultiFileReader {
+	fileset := []DirEntry{
+		FileEntry("file.txt", NewReaderFile(ioutil.NopCloser(strings.NewReader(text)), nil)),
+		FileEntry("boop", NewSliceFile([]DirEntry{
+			FileEntry("a.txt", NewReaderFile(ioutil.NopCloser(strings.NewReader("bleep")), nil)),
+			FileEntry("b.txt", NewReaderFile(ioutil.NopCloser(strings.NewReader("bloop")), nil)),
+		})),
+		FileEntry("beep.txt", NewReaderFile(ioutil.NopCloser(strings.NewReader("beep")), nil)),
 	}
 	sf := NewSliceFile(fileset)
 
 	// testing output by reading it with the go stdlib "mime/multipart" Reader
-	return NewMultiFileReader(sf, true)
+	r, err := NewMultiFileReader(sf, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }
 
 func TestMultiFileReaderToMultiFile(t *testing.T) {
-	mfr := getTestMultiFileReader()
+	mfr := getTestMultiFileReader(t)
 	mpReader := multipart.NewReader(mfr, mfr.Boundary())
 	mf, err := NewFileFromPartReader(mpReader, multipartFormdataType)
 	if err != nil {
@@ -37,51 +41,48 @@ func TestMultiFileReaderToMultiFile(t *testing.T) {
 	if !ok {
 		t.Fatal("Expected a directory")
 	}
-
-	fn, f, err := md.NextFile()
-	if fn != "file.txt" || f == nil || err != nil {
-		t.Fatal("NextFile returned unexpected data")
+	it, err := md.Entries()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	dn, d, err := md.NextFile()
-	if dn != "boop" || d == nil || err != nil {
-		t.Fatal("NextFile returned unexpected data")
+	if !it.Next() || it.Name() != "file.txt" {
+		t.Fatal("iterator didn't work as expected")
 	}
 
-	df, ok := d.(Directory)
-	if !ok {
-		t.Fatal("Expected a directory")
+	if !it.Next() || it.Name() != "boop" || it.Dir() == nil {
+		t.Fatal("iterator didn't work as expected")
 	}
 
-	cfn, cf, err := df.NextFile()
-	if cfn != "a.txt" || cf == nil || err != nil {
-		t.Fatal("NextFile returned unexpected data")
+	subIt, err := it.Dir().Entries()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	cfn, cf, err = df.NextFile()
-	if cfn != "b.txt" || cf == nil || err != nil {
-		t.Fatal("NextFile returned unexpected data")
+	if !subIt.Next() || subIt.Name() != "a.txt" || subIt.Dir() != nil {
+		t.Fatal("iterator didn't work as expected")
 	}
 
-	cfn, cf, err = df.NextFile()
-	if cfn != "" || cf != nil || err != io.EOF {
-		t.Fatal("NextFile returned unexpected data")
+	if !subIt.Next() || subIt.Name() != "b.txt" || subIt.Dir() != nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if subIt.Next() {
+		t.Fatal("iterator didn't work as expected")
 	}
 
 	// try to break internal state
-	cfn, cf, err = df.NextFile()
-	if cfn != "" || cf != nil || err != io.EOF {
-		t.Fatal("NextFile returned unexpected data")
+	if subIt.Next() {
+		t.Fatal("iterator didn't work as expected")
 	}
 
-	fn, f, err = md.NextFile()
-	if fn != "beep.txt" || f == nil || err != nil {
-		t.Fatal("NextFile returned unexpected data")
+	if !it.Next() || it.Name() != "beep.txt" || it.Dir() != nil {
+		t.Fatal("iterator didn't work as expected")
 	}
 }
 
 func TestOutput(t *testing.T) {
-	mfr := getTestMultiFileReader()
+	mfr := getTestMultiFileReader(t)
 	mpReader := &peekReader{r: multipart.NewReader(mfr, mfr.Boundary())}
 	buf := make([]byte, 20)
 
@@ -153,9 +154,9 @@ func TestOutput(t *testing.T) {
 		t.Fatal("Expected filename to be \"b.txt\"")
 	}
 
-	cname, child, err = mpd.NextFile()
-	if child != nil || err != io.EOF {
-		t.Fatal("Expected to get (nil, io.EOF)")
+	it, err := mpd.Entries()
+	if it.Next() {
+		t.Fatal("Expected to get false")
 	}
 
 	part, err = mpReader.NextPart()
