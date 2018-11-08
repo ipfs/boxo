@@ -376,14 +376,16 @@ func EnumerateChildrenAsyncDepth(ctx context.Context, getLinks GetLinks, c cid.C
 	done := make(chan struct{})
 
 	var setlk sync.Mutex
+	var wg sync.WaitGroup
 
 	errChan := make(chan error)
 	fetchersCtx, cancel := context.WithCancel(ctx)
-
+	defer wg.Wait()
 	defer cancel()
-
 	for i := 0; i < FetchGraphConcurrency; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			for cdepth := range feed {
 				ci := cdepth.cid
 				depth := cdepth.depth
