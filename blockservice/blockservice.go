@@ -181,6 +181,10 @@ func (s *blockService) AddBlocks(bs []blocks.Block) error {
 		toput = bs
 	}
 
+	if len(toput) == 0 {
+		return nil
+	}
+
 	err := s.blockstore.PutMany(toput)
 	if err != nil {
 		return err
