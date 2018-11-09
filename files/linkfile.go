@@ -13,7 +13,7 @@ type Symlink struct {
 	reader io.Reader
 }
 
-func NewLinkFile(target string, stat os.FileInfo) Regular {
+func NewLinkFile(target string, stat os.FileInfo) File {
 	return &Symlink{
 		Target: target,
 		stat:   stat,
@@ -45,4 +45,4 @@ func (lf *Symlink) Size() (int64, error) {
 	return 0, ErrNotSupported
 }
 
-var _ Regular = &Symlink{}
+var _ File = &Symlink{}

@@ -13,13 +13,8 @@ var (
 	ErrNotSupported = errors.New("operation not supported")
 )
 
-// File is an interface that provides functionality for handling
-// files/directories as values that can be supplied to commands. For
-// directories, child files are accessed serially by calling `NextFile()`
-//
-// Read/Seek methods are only valid for files
-// NextFile method is only valid for directories
-type File interface {
+// Node is a common interface for files, directories and other special files
+type Node interface {
 	io.Closer
 
 	// Size returns size of this file (if this file is a directory, total size of
@@ -28,9 +23,9 @@ type File interface {
 	Size() (int64, error)
 }
 
-// Regular represents a regular Unix file
-type Regular interface {
-	File
+// Node represents a regular Unix file
+type File interface {
+	Node
 
 	io.Reader
 	io.Seeker
@@ -38,18 +33,18 @@ type Regular interface {
 
 // DirEntry exposes information about a directory entry
 type DirEntry interface {
-	// Name returns the base name of this entry, which is the base name of
-	// the referenced file
+	// Name returns base name of this entry, which is the base name of referenced
+	// file
 	Name() string
 
-	// File returns the file referenced by this DirEntry
+	// Node returns the file referenced by this DirEntry
+	Node() Node
+
+	// File is an alias for ent.Node().(File). If the file isn't a regular
+	// file, nil value will be returned
 	File() File
 
-	// Regular is an alias for ent.File().(Regular). If the file isn't a regular
-	// file, nil value will be returned
-	Regular() Regular
-
-	// Dir is an alias for ent.File().(directory). If the file isn't a directory,
+	// Dir is an alias for ent.Node().(directory). If the file isn't a directory,
 	// nil value will be returned
 	Dir() Directory
 }
@@ -63,18 +58,18 @@ type DirIterator interface {
 	// to Next() and after Next() returned false may result in undefined behavior
 	DirEntry
 
-	// Next advances the iterator to the next file.
+	// Next advances iterator to the next file.
 	Next() bool
 
-	// Err may return an error after the previous call to Next() returned `false`.
-	// If the previous call to Next() returned `true`, Err() is guaranteed to
+	// Err may return an error after previous call to Next() returned `false`.
+	// If previous call to Next() returned `true`, Err() is guaranteed to
 	// return nil
 	Err() error
 }
 
 // Directory is a special file which can link to any number of files.
 type Directory interface {
-	File
+	Node
 
 	// Entries returns a stateful iterator over directory entries.
 	//
@@ -83,7 +78,7 @@ type Directory interface {
 	// it := dir.Entries()
 	// for it.Next() {
 	//   name := it.Name()
-	//   file := it.File()
+	//   file := it.Node()
 	//   [...]
 	// }
 	// if it.Err() != nil {
@@ -105,7 +100,7 @@ type Directory interface {
 
 // FileInfo exposes information on files in local filesystem
 type FileInfo interface {
-	File
+	Node
 
 	// AbsPath returns full real file path.
 	AbsPath() string

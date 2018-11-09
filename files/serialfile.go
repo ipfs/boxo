@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// serialFile implements File, and reads from a path on the OS filesystem.
+// serialFile implements Node, and reads from a path on the OS filesystem.
 // No more than one file will be opened at a time (directories will advance
 // to the next file when NextFile() is called).
 type serialFile struct {
@@ -26,13 +26,13 @@ type serialIterator struct {
 	path              string
 
 	curName string
-	curFile File
+	curFile Node
 
 	err error
 }
 
 // TODO: test/document limitations
-func NewSerialFile(path string, hidden bool, stat os.FileInfo) (File, error) {
+func NewSerialFile(path string, hidden bool, stat os.FileInfo) (Node, error) {
 	switch mode := stat.Mode(); {
 	case mode.IsRegular():
 		file, err := os.Open(path)
@@ -63,11 +63,11 @@ func (it *serialIterator) Name() string {
 	return it.curName
 }
 
-func (it *serialIterator) File() File {
+func (it *serialIterator) File() Node {
 	return it.curFile
 }
 
-func (it *serialIterator) Regular() Regular {
+func (it *serialIterator) Regular() File {
 	return castRegular(it.File())
 }
 
@@ -121,7 +121,7 @@ func (f *serialFile) Entries() (DirIterator, error) {
 	}, nil
 }
 
-func (f *serialFile) NextFile() (string, File, error) {
+func (f *serialFile) NextFile() (string, Node, error) {
 	// if there aren't any files left in the root directory, we're done
 	if len(f.files) == 0 {
 		return "", nil, io.EOF
@@ -182,12 +182,12 @@ func (f *serialFile) Size() (int64, error) {
 	return du, err
 }
 
-func castRegular(f File) Regular {
-	r, _ := f.(Regular)
+func castRegular(f Node) File {
+	r, _ := f.(File)
 	return r
 }
 
-func castDir(f File) Directory {
+func castDir(f Node) Directory {
 	d, _ := f.(Directory)
 	return d
 }

@@ -94,7 +94,7 @@ func TestOutput(t *testing.T) {
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil MultipartFile, nil error")
 	}
-	mpr, ok := mpf.(Regular)
+	mpr, ok := mpf.(File)
 	if !ok {
 		t.Fatal("Expected file to be a regular file")
 	}
@@ -132,7 +132,7 @@ func TestOutput(t *testing.T) {
 	if child == nil || err != nil {
 		t.Fatal("Expected to be able to read a child file")
 	}
-	if _, ok := child.(Regular); !ok {
+	if _, ok := child.(File); !ok {
 		t.Fatal("Expected file to not be a directory")
 	}
 	if cname != "a.txt" {
@@ -147,7 +147,7 @@ func TestOutput(t *testing.T) {
 	if child == nil || err != nil {
 		t.Fatal("Expected to be able to read a child file")
 	}
-	if _, ok := child.(Regular); !ok {
+	if _, ok := child.(File); !ok {
 		t.Fatal("Expected file to not be a directory")
 	}
 	if cname != "b.txt" {

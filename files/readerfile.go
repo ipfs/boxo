@@ -14,7 +14,7 @@ type ReaderFile struct {
 	stat    os.FileInfo
 }
 
-func NewReaderFile(reader io.ReadCloser, stat os.FileInfo) Regular {
+func NewReaderFile(reader io.ReadCloser, stat os.FileInfo) File {
 	return &ReaderFile{"", reader, stat}
 }
 
@@ -58,5 +58,5 @@ func (f *ReaderFile) Seek(offset int64, whence int) (int64, error) {
 	return 0, ErrNotSupported
 }
 
-var _ Regular = &ReaderFile{}
+var _ File = &ReaderFile{}
 var _ FileInfo = &ReaderFile{}

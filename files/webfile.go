@@ -61,4 +61,4 @@ func (wf *WebFile) Size() (int64, error) {
 	return wf.contentLength, nil
 }
 
-var _ Regular = &WebFile{}
+var _ File = &WebFile{}

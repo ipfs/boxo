@@ -9,7 +9,7 @@ import (
 	windows "golang.org/x/sys/windows"
 )
 
-func IsHidden(name string, f File) bool {
+func IsHidden(name string, f Node) bool {
 
 	fName := filepath.Base(name)
 

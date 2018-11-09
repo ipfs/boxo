@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-// MultiFileReader reads from a `commands.File` (which can be a directory of files
+// MultiFileReader reads from a `commands.Node` (which can be a directory of files
 // or a regular file) as HTTP multipart encoded data.
 type MultiFileReader struct {
 	io.Reader
@@ -20,7 +20,7 @@ type MultiFileReader struct {
 	files []DirIterator
 	path  []string
 
-	currentFile File
+	currentFile Node
 	buf         bytes.Buffer
 	mpWriter    *multipart.Writer
 	closed      bool
@@ -86,7 +86,7 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 		// handle starting a new file part
 		if !mfr.closed {
 
-			mfr.currentFile = entry.File()
+			mfr.currentFile = entry.Node()
 
 			// write the boundary and headers
 			header := make(textproto.MIMEHeader)
@@ -95,7 +95,7 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 
 			var contentType string
 
-			switch f := entry.File().(type) {
+			switch f := entry.Node().(type) {
 			case *Symlink:
 				contentType = "application/symlink"
 			case Directory:
@@ -107,7 +107,7 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 				mfr.files = append(mfr.files, newIt)
 				mfr.path = append(mfr.path, entry.Name())
 				contentType = "application/x-directory"
-			case Regular:
+			case File:
 				// otherwise, use the file as a reader to read its contents
 				contentType = "application/octet-stream"
 			default:
@@ -115,7 +115,7 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 			}
 
 			header.Set("Content-Type", contentType)
-			if rf, ok := entry.File().(FileInfo); ok {
+			if rf, ok := entry.Node().(FileInfo); ok {
 				header.Set("abspath", rf.AbsPath())
 			}
 
@@ -133,7 +133,7 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 
 	// otherwise, read from file data
 	switch f := mfr.currentFile.(type) {
-	case Regular:
+	case File:
 		written, err = f.Read(buf)
 		if err != io.EOF {
 			return written, err

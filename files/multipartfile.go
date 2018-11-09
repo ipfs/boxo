@@ -22,17 +22,17 @@ const (
 
 var ErrPartOutsideParent = errors.New("file outside parent dir")
 
-// MultipartFile implements File, and is created from a `multipart.Part`.
+// MultipartFile implements Node, and is created from a `multipart.Part`.
 // It can be either a directory or file (checked by calling `IsDirectory()`).
 type MultipartFile struct {
-	File
+	Node
 
 	Part      *multipart.Part
 	Reader    PartReader
 	Mediatype string
 }
 
-func NewFileFromPartReader(reader *multipart.Reader, mediatype string) (File, error) {
+func NewFileFromPartReader(reader *multipart.Reader, mediatype string) (Node, error) {
 	if !isDirectory(mediatype) {
 		return nil, ErrNotDirectory
 	}
@@ -45,7 +45,7 @@ func NewFileFromPartReader(reader *multipart.Reader, mediatype string) (File, er
 	return f, nil
 }
 
-func newFileFromPart(parent string, part *multipart.Part, reader PartReader) (string, File, error) {
+func newFileFromPart(parent string, part *multipart.Part, reader PartReader) (string, Node, error) {
 	f := &MultipartFile{
 		Part:   part,
 		Reader: reader,
@@ -97,7 +97,7 @@ func isDirectory(mediatype string) bool {
 type multipartIterator struct {
 	f *MultipartFile
 
-	curFile File
+	curFile Node
 	curName string
 	err     error
 }
@@ -106,11 +106,11 @@ func (it *multipartIterator) Name() string {
 	return it.curName
 }
 
-func (it *multipartIterator) File() File {
+func (it *multipartIterator) File() Node {
 	return it.curFile
 }
 
-func (it *multipartIterator) Regular() Regular {
+func (it *multipartIterator) Regular() File {
 	return castRegular(it.File())
 }
 

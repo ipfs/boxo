@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func IsHidden(name string, f File) bool {
+func IsHidden(name string, f Node) bool {
 	fName := filepath.Base(name)
 
 	if strings.HasPrefix(fName, ".") && len(fName) > 1 {

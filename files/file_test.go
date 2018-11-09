@@ -25,7 +25,7 @@ func TestSliceFiles(t *testing.T) {
 	if !it.Next() {
 		t.Fatal("Expected a file")
 	}
-	rf := it.Regular()
+	rf := it.File()
 	if rf == nil {
 		t.Fatal("Expected a regular file")
 	}
@@ -104,7 +104,7 @@ anotherfile
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil MultipartFile, nil error")
 	}
-	mf, ok := mpf.(Regular)
+	mf, ok := mpf.(File)
 	if !ok {
 		t.Fatal("Expected file to not be a directory")
 	}
@@ -147,7 +147,7 @@ anotherfile
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil MultipartFile, nil error")
 	}
-	mf, ok = mpf.(Regular)
+	mf, ok = mpf.(File)
 	if !ok {
 		t.Fatal("Expected file to not be a directory")
 	}
