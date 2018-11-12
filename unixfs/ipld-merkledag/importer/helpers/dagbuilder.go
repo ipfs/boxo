@@ -402,6 +402,24 @@ func (db *DagBuilderHelper) NewFSNodeOverDag(fsNodeType pb.Data_DataType) *FSNod
 	return node
 }
 
+// NewFSNFromDag reconstructs a FSNodeOverDag node from a given dag node
+func (db *DagBuilderHelper) NewFSNFromDag(nd *dag.ProtoNode) (*FSNodeOverDag, error) {
+	return NewFSNFromDag(nd)
+}
+
+// NewFSNFromDag reconstructs a FSNodeOverDag node from a given dag node
+func NewFSNFromDag(nd *dag.ProtoNode) (*FSNodeOverDag, error) {
+	mb, err := ft.FSNodeFromBytes(nd.Data())
+	if err != nil {
+		return nil, err
+	}
+
+	return &FSNodeOverDag{
+		dag:  nd,
+		file: mb,
+	}, nil
+}
+
 // AddChild adds a `child` `ipld.Node` to both node layers. The
 // `dag.ProtoNode` creates a link to the child node while the
 // `ft.FSNode` stores its file size (that is, not the size of the
@@ -449,4 +467,25 @@ func (n *FSNodeOverDag) FileSize() uint64 {
 // node (internal nodes don't carry data, just file sizes).
 func (n *FSNodeOverDag) SetFileData(fileData []byte) {
 	n.file.SetData(fileData)
+}
+
+// GetDagNode fills out the proper formatting for the FSNodeOverDag node
+// inside of a DAG node and returns the dag node.
+func (n *FSNodeOverDag) GetDagNode() (ipld.Node, error) {
+	return n.dag, nil
+}
+
+// GetChild gets the ith child of this node from the given DAGService.
+func (n *FSNodeOverDag) GetChild(ctx context.Context, i int, ds ipld.DAGService) (*FSNodeOverDag, error) {
+	nd, err := n.dag.Links()[i].GetNode(ctx, ds)
+	if err != nil {
+		return nil, err
+	}
+
+	pbn, ok := nd.(*dag.ProtoNode)
+	if !ok {
+		return nil, dag.ErrNotProtobuf
+	}
+
+	return NewFSNFromDag(pbn)
 }

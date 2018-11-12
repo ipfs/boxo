@@ -277,6 +277,15 @@ func trickleDepthInfo(node *h.UnixfsNode, maxlinks int) (int, int) {
 	return ((n - maxlinks) / layerRepeat) + 1, (n - maxlinks) % layerRepeat
 }
 
+func trickleDepthInfoFSNode(node *h.FSNodeOverDag, maxlinks int) (int, int) {
+	n := node.NumChildren()
+	if n < maxlinks {
+		return 0, 0
+	}
+
+	return ((n - maxlinks) / layerRepeat) + 1, (n - maxlinks) % layerRepeat
+}
+
 // VerifyParams is used by VerifyTrickleDagStructure
 type VerifyParams struct {
 	Getter      ipld.NodeGetter
