@@ -9,6 +9,7 @@ import (
 	"time"
 
 	decision "github.com/ipfs/go-bitswap/decision"
+	"github.com/ipfs/go-bitswap/message"
 	tn "github.com/ipfs/go-bitswap/testnet"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -95,6 +96,38 @@ func TestGetBlockFromPeerAfterPeerAnnounces(t *testing.T) {
 
 	if !bytes.Equal(block.RawData(), received.RawData()) {
 		t.Fatal("Data doesn't match")
+	}
+}
+
+func TestUnwantedBlockNotAdded(t *testing.T) {
+
+	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
+	block := blocks.NewBlock([]byte("block"))
+	bsMessage := message.New(true)
+	bsMessage.AddBlock(block)
+
+	g := NewTestSessionGenerator(net)
+	defer g.Close()
+
+	peers := g.Instances(2)
+	hasBlock := peers[0]
+	defer hasBlock.Exchange.Close()
+
+	if err := hasBlock.Exchange.HasBlock(block); err != nil {
+		t.Fatal(err)
+	}
+
+	doesNotWantBlock := peers[1]
+	defer doesNotWantBlock.Exchange.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	doesNotWantBlock.Exchange.ReceiveMessage(ctx, hasBlock.Peer, bsMessage)
+
+	blockInStore, err := doesNotWantBlock.blockstore.Has(block.Cid())
+	if err != nil || blockInStore {
+		t.Fatal("Unwanted block added to block store")
 	}
 }
 
