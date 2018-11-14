@@ -86,15 +86,8 @@ type Directory interface {
 	// }
 	//
 	// Note:
-	// - Below limitations aren't applicable to all implementations, consult
-	//   your implementations manual before using this interface in a way that
-	//   doesn't meet these constraints
-	// - Some implementations may only allow reading in order - so if the iterator
-	//   returns a directory you must iterate over it's entries first before
-	//   calling Next again
-	// - Order is not guaranteed
-	// - Depending on implementation it may not be safe to iterate multiple
-	//   'branches' in parallel
+	// - Some implementations of this functions may define some constraints in how
+	//   it can be used
 	Entries() (DirIterator, error)
 }
 
