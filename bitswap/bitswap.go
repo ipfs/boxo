@@ -5,7 +5,6 @@ package bitswap
 import (
 	"context"
 	"errors"
-	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,6 +13,8 @@ import (
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	bsnet "github.com/ipfs/go-bitswap/network"
 	notifications "github.com/ipfs/go-bitswap/notifications"
+	bssm "github.com/ipfs/go-bitswap/sessionmanager"
+	bswm "github.com/ipfs/go-bitswap/wantmanager"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -42,8 +43,6 @@ const (
 	providerRequestTimeout = time.Second * 10
 	provideTimeout         = time.Second * 15
 	sizeBatchRequestChan   = 32
-	// kMaxPriority is the max priority as defined by the bitswap protocol
-	kMaxPriority = math.MaxInt32
 )
 
 var (
@@ -101,7 +100,8 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		process:       px,
 		newBlocks:     make(chan cid.Cid, HasBlockBufferSize),
 		provideKeys:   make(chan cid.Cid, provideKeysBufferSize),
-		wm:            NewWantManager(ctx, network),
+		wm:            bswm.New(ctx, network),
+		sm:            bssm.New(),
 		counters:      new(counters),
 
 		dupMetric: dupHist,
@@ -128,7 +128,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 type Bitswap struct {
 	// the peermanager manages sending messages to peers in a way that
 	// wont block bitswap operation
-	wm *WantManager
+	wm *bswm.WantManager
 
 	// the engine is the bit of logic that decides who to send which blocks to
 	engine *decision.Engine
@@ -163,12 +163,8 @@ type Bitswap struct {
 	dupMetric metrics.Histogram
 	allMetric metrics.Histogram
 
-	// Sessions
-	sessions []*Session
-	sessLk   sync.Mutex
-
-	sessID   uint64
-	sessIDLk sync.Mutex
+	// the sessionmanager manages tracking sessions
+	sm *bssm.SessionManager
 }
 
 type counters struct {
@@ -229,7 +225,7 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 		log.Event(ctx, "Bitswap.GetBlockRequest.Start", k)
 	}
 
-	mses := bs.getNextSessionID()
+	mses := bs.sm.GetNextSessionID()
 
 	bs.wm.WantBlocks(ctx, keys, nil, mses)
 
@@ -294,13 +290,6 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 	return out, nil
 }
 
-func (bs *Bitswap) getNextSessionID() uint64 {
-	bs.sessIDLk.Lock()
-	defer bs.sessIDLk.Unlock()
-	bs.sessID++
-	return bs.sessID
-}
-
 // CancelWant removes a given key from the wantlist
 func (bs *Bitswap) CancelWants(cids []cid.Cid, ses uint64) {
 	if len(cids) == 0 {
@@ -359,15 +348,13 @@ func (bs *Bitswap) receiveBlockFrom(blk blocks.Block, from peer.ID) error {
 
 // SessionsForBlock returns a slice of all sessions that may be interested in the given cid
 func (bs *Bitswap) SessionsForBlock(c cid.Cid) []*Session {
-	bs.sessLk.Lock()
-	defer bs.sessLk.Unlock()
-
 	var out []*Session
-	for _, s := range bs.sessions {
+	bs.sm.IterateSessions(func(session exchange.Fetcher) {
+		s := session.(*Session)
 		if s.interestedIn(c) {
 			out = append(out, s)
 		}
-	}
+	})
 	return out
 }
 
@@ -398,7 +385,7 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 			log.Debugf("got block %s from %s", b, p)
 
 			// skip received blocks that are not in the wantlist
-			if _, contains := bs.wm.wl.Contains(b.Cid()); !contains {
+			if !bs.wm.IsWanted(b.Cid()) {
 				return
 			}
 
@@ -461,7 +448,7 @@ func (bs *Bitswap) Close() error {
 }
 
 func (bs *Bitswap) GetWantlist() []cid.Cid {
-	entries := bs.wm.wl.Entries()
+	entries := bs.wm.CurrentWants()
 	out := make([]cid.Cid, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, e.Cid)
