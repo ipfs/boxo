@@ -3,6 +3,7 @@ package bitswap
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,6 +25,7 @@ var log = logging.Logger("bstestnet")
 
 func VirtualNetwork(rs mockrouting.Server, d delay.D) Network {
 	return &network{
+		latencies:     make(map[peer.ID]map[peer.ID]time.Duration),
 		clients:       make(map[peer.ID]*receiverQueue),
 		delay:         d,
 		routingserver: rs,
@@ -33,6 +35,7 @@ func VirtualNetwork(rs mockrouting.Server, d delay.D) Network {
 
 type network struct {
 	mu            sync.Mutex
+	latencies     map[peer.ID]map[peer.ID]time.Duration
 	clients       map[peer.ID]*receiverQueue
 	routingserver mockrouting.Server
 	delay         delay.D
@@ -87,6 +90,18 @@ func (n *network) SendMessage(
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
+	latencies, ok := n.latencies[from]
+	if !ok {
+		latencies = make(map[peer.ID]time.Duration)
+		n.latencies[from] = latencies
+	}
+
+	latency, ok := latencies[to]
+	if !ok {
+		latency = n.delay.NextWaitTime()
+		latencies[to] = latency
+	}
+
 	receiver, ok := n.clients[to]
 	if !ok {
 		return errors.New("cannot locate peer on network")
@@ -98,7 +113,7 @@ func (n *network) SendMessage(
 	msg := &message{
 		from:       from,
 		msg:        mes,
-		shouldSend: time.Now().Add(n.delay.Get()),
+		shouldSend: time.Now().Add(latency),
 	}
 	receiver.enqueue(msg)
 
@@ -229,21 +244,38 @@ func (rq *receiverQueue) enqueue(m *message) {
 	}
 }
 
+func (rq *receiverQueue) Swap(i, j int) {
+	rq.queue[i], rq.queue[j] = rq.queue[j], rq.queue[i]
+}
+
+func (rq *receiverQueue) Len() int {
+	return len(rq.queue)
+}
+
+func (rq *receiverQueue) Less(i, j int) bool {
+	return rq.queue[i].shouldSend.UnixNano() < rq.queue[j].shouldSend.UnixNano()
+}
+
 func (rq *receiverQueue) process() {
 	for {
 		rq.lk.Lock()
+		sort.Sort(rq)
 		if len(rq.queue) == 0 {
 			rq.active = false
 			rq.lk.Unlock()
 			return
 		}
 		m := rq.queue[0]
-		rq.queue = rq.queue[1:]
-		rq.lk.Unlock()
-
-		time.Sleep(time.Until(m.shouldSend))
-		atomic.AddUint64(&rq.receiver.stats.MessagesRecvd, 1)
-		rq.receiver.ReceiveMessage(context.TODO(), m.from, m.msg)
+		if time.Until(m.shouldSend).Seconds() < 0.1 {
+			rq.queue = rq.queue[1:]
+			rq.lk.Unlock()
+			time.Sleep(time.Until(m.shouldSend))
+			atomic.AddUint64(&rq.receiver.stats.MessagesRecvd, 1)
+			rq.receiver.ReceiveMessage(context.TODO(), m.from, m.msg)
+		} else {
+			rq.lk.Unlock()
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 }
 
