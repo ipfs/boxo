@@ -388,6 +388,7 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 
 	wg := sync.WaitGroup{}
 	for _, block := range iblocks {
+
 		wg.Add(1)
 		go func(b blocks.Block) { // TODO: this probably doesnt need to be a goroutine...
 			defer wg.Done()
@@ -395,6 +396,11 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 			bs.updateReceiveCounters(b)
 
 			log.Debugf("got block %s from %s", b, p)
+
+			// skip received blocks that are not in the wantlist
+			if _, contains := bs.wm.wl.Contains(b.Cid()); !contains {
+				return
+			}
 
 			if err := bs.receiveBlockFrom(b, p); err != nil {
 				log.Warningf("ReceiveMessage recvBlockFrom error: %s", err)
