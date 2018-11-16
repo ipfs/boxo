@@ -63,16 +63,16 @@ func (it *serialIterator) Name() string {
 	return it.curName
 }
 
-func (it *serialIterator) File() Node {
+func (it *serialIterator) Node() Node {
 	return it.curFile
 }
 
-func (it *serialIterator) Regular() File {
-	return castRegular(it.File())
+func (it *serialIterator) File() File {
+	return castRegular(it.Node())
 }
 
 func (it *serialIterator) Dir() Directory {
-	return castDir(it.File())
+	return castDir(it.Node())
 }
 
 func (it *serialIterator) Next() bool {

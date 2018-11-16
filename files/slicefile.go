@@ -9,11 +9,11 @@ func (e fileEntry) Name() string {
 	return e.name
 }
 
-func (e fileEntry) File() Node {
+func (e fileEntry) Node() Node {
 	return e.file
 }
 
-func (e fileEntry) Regular() File {
+func (e fileEntry) File() File {
 	return castRegular(e.file)
 }
 
@@ -37,11 +37,11 @@ func (it *sliceIterator) Name() string {
 	return it.files[it.n].Name()
 }
 
-func (it *sliceIterator) File() Node {
+func (it *sliceIterator) Node() Node {
 	return it.files[it.n].Node()
 }
 
-func (it *sliceIterator) Regular() File {
+func (it *sliceIterator) File() File {
 	return it.files[it.n].File()
 }
 

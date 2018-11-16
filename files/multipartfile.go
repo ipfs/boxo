@@ -109,16 +109,16 @@ func (it *multipartIterator) Name() string {
 	return it.curName
 }
 
-func (it *multipartIterator) File() Node {
+func (it *multipartIterator) Node() Node {
 	return it.curFile
 }
 
-func (it *multipartIterator) Regular() File {
-	return castRegular(it.File())
+func (it *multipartIterator) File() File {
+	return castRegular(it.Node())
 }
 
 func (it *multipartIterator) Dir() Directory {
-	return castDir(it.File())
+	return castDir(it.Node())
 }
 
 func (it *multipartIterator) Next() bool {
