@@ -1,7 +1,7 @@
 package files
 
 import (
-	"github.com/pkg/errors"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
