@@ -10,6 +10,7 @@ import (
 
 	decision "github.com/ipfs/go-bitswap/decision"
 	"github.com/ipfs/go-bitswap/message"
+	bssession "github.com/ipfs/go-bitswap/session"
 	tn "github.com/ipfs/go-bitswap/testnet"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -96,6 +97,42 @@ func TestGetBlockFromPeerAfterPeerAnnounces(t *testing.T) {
 
 	if !bytes.Equal(block.RawData(), received.RawData()) {
 		t.Fatal("Data doesn't match")
+	}
+}
+
+func TestDoesNotProvideWhenConfiguredNotTo(t *testing.T) {
+	ProvideEnabled = false
+	defer func() { ProvideEnabled = true }()
+
+	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
+	block := blocks.NewBlock([]byte("block"))
+	g := NewTestSessionGenerator(net)
+	defer g.Close()
+
+	hasBlock := g.Next()
+	defer hasBlock.Exchange.Close()
+
+	if err := hasBlock.Exchange.HasBlock(block); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	wantsBlock := g.Next()
+	defer wantsBlock.Exchange.Close()
+
+	ns := wantsBlock.Exchange.NewSession(ctx).(*bssession.Session)
+	// set find providers delay to less than timeout context of this test
+	ns.SetBaseTickDelay(10 * time.Millisecond)
+
+	received, err := ns.GetBlock(ctx, block.Cid())
+	if received != nil {
+		t.Fatalf("Expected to find nothing, found %s", received)
+	}
+
+	if err != context.DeadlineExceeded {
+		t.Fatal("Expected deadline exceeded")
 	}
 }
 

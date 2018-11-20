@@ -23,15 +23,17 @@ func (bs *Bitswap) startWorkers(px process.Process, ctx context.Context) {
 		})
 	}
 
-	// Start up a worker to manage sending out provides messages
-	px.Go(func(px process.Process) {
-		bs.provideCollector(ctx)
-	})
+	if ProvideEnabled {
+		// Start up a worker to manage sending out provides messages
+		px.Go(func(px process.Process) {
+			bs.provideCollector(ctx)
+		})
 
-	// Spawn up multiple workers to handle incoming blocks
-	// consider increasing number if providing blocks bottlenecks
-	// file transfers
-	px.Go(bs.provideWorker)
+		// Spawn up multiple workers to handle incoming blocks
+		// consider increasing number if providing blocks bottlenecks
+		// file transfers
+		px.Go(bs.provideWorker)
+	}
 }
 
 func (bs *Bitswap) taskWorker(ctx context.Context, id int) {
