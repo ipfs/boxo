@@ -88,7 +88,7 @@ type Directory interface {
 	// Note:
 	// - Some implementations of this functions may define some constraints in how
 	//   it can be used
-	Entries() (DirIterator, error)
+	Entries() DirIterator
 }
 
 // FileInfo exposes information on files in local filesystem

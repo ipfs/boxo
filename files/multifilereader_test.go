@@ -41,10 +41,7 @@ func TestMultiFileReaderToMultiFile(t *testing.T) {
 	if !ok {
 		t.Fatal("Expected a directory")
 	}
-	it, err := md.Entries()
-	if err != nil {
-		t.Fatal(err)
-	}
+	it := md.Entries()
 
 	if !it.Next() || it.Name() != "file.txt" {
 		t.Fatal("iterator didn't work as expected")
@@ -54,10 +51,7 @@ func TestMultiFileReaderToMultiFile(t *testing.T) {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	subIt, err := it.Dir().Entries()
-	if err != nil {
-		t.Fatal(err)
-	}
+	subIt := it.Dir().Entries()
 
 	if !subIt.Next() || subIt.Name() != "a.txt" || subIt.Dir() != nil {
 		t.Fatal("iterator didn't work as expected")
@@ -154,7 +148,7 @@ func TestOutput(t *testing.T) {
 		t.Fatal("Expected filename to be \"b.txt\"")
 	}
 
-	it, err := mpd.Entries()
+	it := mpd.Entries()
 	if it.Next() {
 		t.Fatal("Expected to get false")
 	}

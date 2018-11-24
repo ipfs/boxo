@@ -69,8 +69,8 @@ func NewSliceFile(files []DirEntry) Directory {
 	return &SliceFile{files}
 }
 
-func (f *SliceFile) Entries() (DirIterator, error) {
-	return &sliceIterator{files: f.files, n: -1}, nil
+func (f *SliceFile) Entries() DirIterator {
+	return &sliceIterator{files: f.files, n: -1}
 }
 
 func (f *SliceFile) Close() error {

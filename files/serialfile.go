@@ -113,12 +113,12 @@ func (it *serialIterator) Err() error {
 	return it.err
 }
 
-func (f *serialFile) Entries() (DirIterator, error) {
+func (f *serialFile) Entries() DirIterator {
 	return &serialIterator{
 		path:              f.path,
 		files:             f.files,
 		handleHiddenFiles: f.handleHiddenFiles,
-	}, nil
+	}
 }
 
 func (f *serialFile) NextFile() (string, Node, error) {

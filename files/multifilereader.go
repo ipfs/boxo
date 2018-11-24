@@ -35,10 +35,7 @@ type MultiFileReader struct {
 // If `form` is set to true, the multipart data will have a Content-Type of 'multipart/form-data',
 // if `form` is false, the Content-Type will be 'multipart/mixed'.
 func NewMultiFileReader(file Directory, form bool) (*MultiFileReader, error) {
-	it, err := file.Entries()
-	if err != nil {
-		return nil, err
-	}
+	it := file.Entries()
 
 	mfr := &MultiFileReader{
 		files: []DirIterator{it},
@@ -72,12 +69,12 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 			}
 
 			if !mfr.files[len(mfr.files)-1].Next() {
+				if mfr.files[len(mfr.files)-1].Err() != nil {
+					return 0, err
+				}
 				mfr.files = mfr.files[:len(mfr.files)-1]
 				mfr.path = mfr.path[:len(mfr.path)-1]
 				continue
-			}
-			if mfr.files[len(mfr.files)-1].Err() != nil {
-				return 0, mfr.files[len(mfr.files)-1].Err()
 			}
 
 			entry = mfr.files[len(mfr.files)-1]
@@ -99,11 +96,7 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 			case *Symlink:
 				contentType = "application/symlink"
 			case Directory:
-				newIt, err := f.Entries()
-				if err != nil {
-					return 0, err
-				}
-
+				newIt := f.Entries()
 				mfr.files = append(mfr.files, newIt)
 				mfr.path = append(mfr.path, entry.Name())
 				contentType = "application/x-directory"

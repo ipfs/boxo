@@ -154,8 +154,8 @@ func (it *multipartIterator) Err() error {
 	panic("implement me")
 }
 
-func (f *MultipartFile) Entries() (DirIterator, error) {
-	return &multipartIterator{f: f}, nil
+func (f *MultipartFile) Entries() DirIterator {
+	return &multipartIterator{f: f}
 }
 
 func (f *MultipartFile) fileName() string {

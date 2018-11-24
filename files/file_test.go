@@ -17,10 +17,7 @@ func TestSliceFiles(t *testing.T) {
 	buf := make([]byte, 20)
 
 	sf := NewSliceFile(files)
-	it, err := sf.Entries()
-	if err != nil {
-		t.Fatal(err)
-	}
+	it := sf.Entries()
 
 	if !it.Next() {
 		t.Fatal("Expected a file")
