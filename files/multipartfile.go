@@ -151,7 +151,7 @@ func (it *multipartIterator) Next() bool {
 }
 
 func (it *multipartIterator) Err() error {
-	panic("implement me")
+	return it.err
 }
 
 func (f *MultipartFile) Entries() DirIterator {
