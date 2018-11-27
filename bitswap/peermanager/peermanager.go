@@ -16,32 +16,7 @@ var (
 	metricsBuckets = []float64{1 << 6, 1 << 10, 1 << 14, 1 << 18, 1<<18 + 15, 1 << 22}
 )
 
-type sendMessageParams struct {
-	entries []*bsmsg.Entry
-	targets []peer.ID
-	from    uint64
-}
-
-type connectParams struct {
-	peer           peer.ID
-	initialEntries []*wantlist.Entry
-}
-
-type peerMessageType int
-
-const (
-	connect peerMessageType = iota + 1
-	disconnect
-	getPeers
-	sendMessage
-)
-
-type peerMessage struct {
-	messageType peerMessageType
-	params      interface{}
-	resultsChan chan interface{}
-}
-
+// PeerQueue provides a queer of messages to be sent for a single peer
 type PeerQueue interface {
 	RefIncrement()
 	RefDecrement() bool
@@ -50,8 +25,14 @@ type PeerQueue interface {
 	Shutdown()
 }
 
+// PeerQueueFactory provides a function that will create a PeerQueue
 type PeerQueueFactory func(p peer.ID) PeerQueue
 
+type peerMessage interface {
+	handle(pm *PeerManager)
+}
+
+// PeerManager manages a pool of peers and sends messages to peers in the pool
 type PeerManager struct {
 	// sync channel for Run loop
 	peerMessages chan peerMessage
@@ -64,6 +45,7 @@ type PeerManager struct {
 	cancel          func()
 }
 
+// New creates a new PeerManager, given a context and a peerQueueFactory
 func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &PeerManager{
@@ -75,11 +57,102 @@ func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
 	}
 }
 
+// ConnectedPeers returns a list of peers this PeerManager is managing
 func (pm *PeerManager) ConnectedPeers() []peer.ID {
-	resp := make(chan interface{})
-	pm.peerMessages <- peerMessage{getPeers, nil, resp}
-	peers := <-resp
-	return peers.([]peer.ID)
+	resp := make(chan []peer.ID)
+	pm.peerMessages <- &getPeersMessage{resp}
+	return <-resp
+}
+
+// Connected is called to add a new peer to the pool, and send it an initial set
+// of wants
+func (pm *PeerManager) Connected(p peer.ID, initialEntries []*wantlist.Entry) {
+	select {
+	case pm.peerMessages <- &connectPeerMessage{p, initialEntries}:
+	case <-pm.ctx.Done():
+	}
+}
+
+// Disconnected is called to remove a peer from the pool
+func (pm *PeerManager) Disconnected(p peer.ID) {
+	select {
+	case pm.peerMessages <- &disconnectPeerMessage{p}:
+	case <-pm.ctx.Done():
+	}
+}
+
+// SendMessage is called to send a message to all or some peers in the pool
+// if targets is nil, it sends to all
+func (pm *PeerManager) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64) {
+	select {
+	case pm.peerMessages <- &sendPeerMessage{entries: entries, targets: targets, from: from}:
+	case <-pm.ctx.Done():
+	}
+}
+
+// Startup enables the run loop for the PeerManager - no processing will occur
+// if startup is not called
+func (pm *PeerManager) Startup() {
+	go pm.run()
+}
+
+// Shutdown shutsdown processing for the PeerManager
+func (pm *PeerManager) Shutdown() {
+	pm.cancel()
+}
+
+func (pm *PeerManager) run() {
+	for {
+		select {
+		case message := <-pm.peerMessages:
+			message.handle(pm)
+		case <-pm.ctx.Done():
+			return
+		}
+	}
+}
+
+type sendPeerMessage struct {
+	entries []*bsmsg.Entry
+	targets []peer.ID
+	from    uint64
+}
+
+func (s *sendPeerMessage) handle(pm *PeerManager) {
+	pm.sendMessage(s)
+}
+
+type connectPeerMessage struct {
+	p              peer.ID
+	initialEntries []*wantlist.Entry
+}
+
+func (c *connectPeerMessage) handle(pm *PeerManager) {
+	pm.startPeerHandler(c.p, c.initialEntries)
+}
+
+type disconnectPeerMessage struct {
+	p peer.ID
+}
+
+func (dc *disconnectPeerMessage) handle(pm *PeerManager) {
+	pm.stopPeerHandler(dc.p)
+}
+
+type getPeersMessage struct {
+	peerResp chan<- []peer.ID
+}
+
+func (gp *getPeersMessage) handle(pm *PeerManager) {
+	pm.getPeers(gp.peerResp)
+}
+
+func (pm *PeerManager) getPeers(peerResp chan<- []peer.ID) {
+	peers := make([]peer.ID, 0, len(pm.peerQueues))
+	for p := range pm.peerQueues {
+		peers = append(peers, p)
+	}
+	peerResp <- peers
 }
 
 func (pm *PeerManager) startPeerHandler(p peer.ID, initialEntries []*wantlist.Entry) PeerQueue {
@@ -110,83 +183,19 @@ func (pm *PeerManager) stopPeerHandler(p peer.ID) {
 	delete(pm.peerQueues, p)
 }
 
-func (pm *PeerManager) Connected(p peer.ID, initialEntries []*wantlist.Entry) {
-	select {
-	case pm.peerMessages <- peerMessage{connect, connectParams{peer: p, initialEntries: initialEntries}, nil}:
-	case <-pm.ctx.Done():
-	}
-}
-
-func (pm *PeerManager) Disconnected(p peer.ID) {
-	select {
-	case pm.peerMessages <- peerMessage{disconnect, p, nil}:
-	case <-pm.ctx.Done():
-	}
-}
-
-func (pm *PeerManager) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64) {
-	select {
-	case pm.peerMessages <- peerMessage{
-		sendMessage,
-		&sendMessageParams{entries: entries, targets: targets, from: from},
-		nil,
-	}:
-	case <-pm.ctx.Done():
-	}
-}
-
-func (pm *PeerManager) Startup() {
-	go pm.run()
-}
-
-func (pm *PeerManager) Shutdown() {
-	pm.cancel()
-}
-
-// TODO: use goprocess here once i trust it
-func (pm *PeerManager) run() {
-	// NOTE: Do not open any streams or connections from anywhere in this
-	// event loop. Really, just don't do anything likely to block.
-	for {
-		select {
-		case message := <-pm.peerMessages:
-			pm.handleMessage(message)
-		case <-pm.ctx.Done():
-			return
+func (pm *PeerManager) sendMessage(ms *sendPeerMessage) {
+	if len(ms.targets) == 0 {
+		for _, p := range pm.peerQueues {
+			p.AddMessage(ms.entries, ms.from)
 		}
-	}
-}
-
-func (pm *PeerManager) handleMessage(message peerMessage) {
-
-	switch message.messageType {
-	case sendMessage:
-		ms := message.params.(*sendMessageParams)
-		if len(ms.targets) == 0 {
-			for _, p := range pm.peerQueues {
-				p.AddMessage(ms.entries, ms.from)
+	} else {
+		for _, t := range ms.targets {
+			p, ok := pm.peerQueues[t]
+			if !ok {
+				log.Infof("tried sending wantlist change to non-partner peer: %s", t)
+				continue
 			}
-		} else {
-			for _, t := range ms.targets {
-				p, ok := pm.peerQueues[t]
-				if !ok {
-					log.Infof("tried sending wantlist change to non-partner peer: %s", t)
-					continue
-				}
-				p.AddMessage(ms.entries, ms.from)
-			}
+			p.AddMessage(ms.entries, ms.from)
 		}
-	case connect:
-		p := message.params.(connectParams)
-		pm.startPeerHandler(p.peer, p.initialEntries)
-	case disconnect:
-		disconnectPeer := message.params.(peer.ID)
-		pm.stopPeerHandler(disconnectPeer)
-	case getPeers:
-		peers := make([]peer.ID, 0, len(pm.peerQueues))
-		for p := range pm.peerQueues {
-			peers = append(peers, p)
-		}
-		message.resultsChan <- peers
 	}
 }
