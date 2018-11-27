@@ -202,10 +202,10 @@ func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
 	nump := len(instances) - 1
 	// assert we're properly connected
 	for _, inst := range instances {
-		peers := inst.Exchange.wm.ConnectedPeers()
+		peers := inst.Exchange.pm.ConnectedPeers()
 		for i := 0; i < 10 && len(peers) != nump; i++ {
 			time.Sleep(time.Millisecond * 50)
-			peers = inst.Exchange.wm.ConnectedPeers()
+			peers = inst.Exchange.pm.ConnectedPeers()
 		}
 		if len(peers) != nump {
 			t.Fatal("not enough peers connected to instance")

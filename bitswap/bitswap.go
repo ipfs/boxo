@@ -11,8 +11,10 @@ import (
 
 	decision "github.com/ipfs/go-bitswap/decision"
 	bsmsg "github.com/ipfs/go-bitswap/message"
+	bsmq "github.com/ipfs/go-bitswap/messagequeue"
 	bsnet "github.com/ipfs/go-bitswap/network"
 	notifications "github.com/ipfs/go-bitswap/notifications"
+	bspm "github.com/ipfs/go-bitswap/peermanager"
 	bssm "github.com/ipfs/go-bitswap/sessionmanager"
 	bswm "github.com/ipfs/go-bitswap/wantmanager"
 
@@ -85,11 +87,18 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	allHist := metrics.NewCtx(ctx, "recv_all_blocks_bytes", "Summary of all"+
 		" data blocks recived").Histogram(metricsBuckets)
 
+	sentHistogram := metrics.NewCtx(ctx, "sent_all_blocks_bytes", "Histogram of blocks sent by"+
+		" this bitswap").Histogram(metricsBuckets)
+
 	notif := notifications.New()
 	px := process.WithTeardown(func() error {
 		notif.Shutdown()
 		return nil
 	})
+
+	peerQueueFactory := func(p peer.ID) bspm.PeerQueue {
+		return bsmq.New(p, network)
+	}
 
 	bs := &Bitswap{
 		blockstore:    bstore,
@@ -100,14 +109,18 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		process:       px,
 		newBlocks:     make(chan cid.Cid, HasBlockBufferSize),
 		provideKeys:   make(chan cid.Cid, provideKeysBufferSize),
-		wm:            bswm.New(ctx, network),
+		wm:            bswm.New(ctx),
+		pm:            bspm.New(ctx, peerQueueFactory),
 		sm:            bssm.New(),
 		counters:      new(counters),
-
-		dupMetric: dupHist,
-		allMetric: allHist,
+		dupMetric:     dupHist,
+		allMetric:     allHist,
+		sentHistogram: sentHistogram,
 	}
-	go bs.wm.Run()
+
+	bs.wm.SetDelegate(bs.pm)
+	bs.pm.Startup()
+	bs.wm.Startup()
 	network.SetDelegate(bs)
 
 	// Start up bitswaps async worker routines
@@ -128,6 +141,9 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 type Bitswap struct {
 	// the peermanager manages sending messages to peers in a way that
 	// wont block bitswap operation
+	pm *bspm.PeerManager
+
+	// the wantlist tracks global wants for bitswap
 	wm *bswm.WantManager
 
 	// the engine is the bit of logic that decides who to send which blocks to
@@ -160,8 +176,9 @@ type Bitswap struct {
 	counters  *counters
 
 	// Metrics interface metrics
-	dupMetric metrics.Histogram
-	allMetric metrics.Histogram
+	dupMetric     metrics.Histogram
+	allMetric     metrics.Histogram
+	sentHistogram metrics.Histogram
 
 	// the sessionmanager manages tracking sessions
 	sm *bssm.SessionManager
@@ -427,13 +444,14 @@ func (bs *Bitswap) updateReceiveCounters(b blocks.Block) {
 
 // Connected/Disconnected warns bitswap about peer connections
 func (bs *Bitswap) PeerConnected(p peer.ID) {
-	bs.wm.Connected(p)
+	initialWants := bs.wm.CurrentBroadcastWants()
+	bs.pm.Connected(p, initialWants)
 	bs.engine.PeerConnected(p)
 }
 
 // Connected/Disconnected warns bitswap about peer connections
 func (bs *Bitswap) PeerDisconnected(p peer.ID) {
-	bs.wm.Disconnected(p)
+	bs.pm.Disconnected(p)
 	bs.engine.PeerDisconnected(p)
 }
 
