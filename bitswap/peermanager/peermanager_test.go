@@ -2,24 +2,30 @@ package peermanager
 
 import (
 	"context"
+	"reflect"
 	"testing"
+	"time"
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	wantlist "github.com/ipfs/go-bitswap/wantlist"
-	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-ipfs-blocksutil"
 	"github.com/libp2p/go-libp2p-peer"
 )
 
 var blockGenerator = blocksutil.NewBlockGenerator()
+var prioritySeq int
 
-func generateCids(n int) []cid.Cid {
-	cids := make([]cid.Cid, 0, n)
+func generateEntries(n int, isCancel bool) []*bsmsg.Entry {
+	bsmsgs := make([]*bsmsg.Entry, 0, n)
 	for i := 0; i < n; i++ {
-		c := blockGenerator.Next().Cid()
-		cids = append(cids, c)
+		prioritySeq++
+		msg := &bsmsg.Entry{
+			Entry:  wantlist.NewRefEntry(blockGenerator.Next().Cid(), prioritySeq),
+			Cancel: isCancel,
+		}
+		bsmsgs = append(bsmsgs, msg)
 	}
-	return cids
+	return bsmsgs
 }
 
 var peerSeq int
@@ -83,6 +89,32 @@ func makePeerQueueFactory(messagesSent chan messageSent) PeerQueueFactory {
 	}
 }
 
+func collectAndCheckMessages(
+	ctx context.Context,
+	t *testing.T,
+	messagesSent <-chan messageSent,
+	entries []*bsmsg.Entry,
+	ses uint64,
+	timeout time.Duration) []peer.ID {
+	var peersReceived []peer.ID
+	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	for {
+		select {
+		case nextMessage := <-messagesSent:
+			if nextMessage.ses != ses {
+				t.Fatal("Message enqueued with wrong session")
+			}
+			if !reflect.DeepEqual(nextMessage.entries, entries) {
+				t.Fatal("Message enqueued with wrong wants")
+			}
+			peersReceived = append(peersReceived, nextMessage.p)
+		case <-timeoutCtx.Done():
+			return peersReceived
+		}
+	}
+}
+
 func TestAddingAndRemovingPeers(t *testing.T) {
 	ctx := context.Background()
 	peerQueueFactory := makePeerQueueFactory(nil)
@@ -124,5 +156,67 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 
 	if !containsPeer(connectedPeers, peer2) {
 		t.Fatal("Peer was disconnected but should not have been")
+	}
+}
+
+func TestSendingMessagesToPeers(t *testing.T) {
+	ctx := context.Background()
+	messagesSent := make(chan messageSent)
+	peerQueueFactory := makePeerQueueFactory(messagesSent)
+
+	tp := generatePeers(5)
+
+	peer1, peer2, peer3, peer4, peer5 := tp[0], tp[1], tp[2], tp[3], tp[4]
+	peerManager := New(ctx, peerQueueFactory)
+	peerManager.Startup()
+
+	peerManager.Connected(peer1, nil)
+	peerManager.Connected(peer2, nil)
+	peerManager.Connected(peer3, nil)
+
+	entries := generateEntries(5, false)
+	ses := generateSessionID()
+
+	peerManager.SendMessage(entries, nil, ses)
+
+	peersReceived := collectAndCheckMessages(
+		ctx, t, messagesSent, entries, ses, 200*time.Millisecond)
+	if len(peersReceived) != 3 {
+		t.Fatal("Incorrect number of peers received messages")
+	}
+
+	if !containsPeer(peersReceived, peer1) ||
+		!containsPeer(peersReceived, peer2) ||
+		!containsPeer(peersReceived, peer3) {
+		t.Fatal("Peers should have received message but did not")
+	}
+
+	if containsPeer(peersReceived, peer4) ||
+		containsPeer(peersReceived, peer5) {
+		t.Fatal("Peers received message but should not have")
+	}
+
+	var peersToSendTo []peer.ID
+	peersToSendTo = append(peersToSendTo, peer1, peer3, peer4)
+	peerManager.SendMessage(entries, peersToSendTo, ses)
+	peersReceived = collectAndCheckMessages(
+		ctx, t, messagesSent, entries, ses, 200*time.Millisecond)
+
+	if len(peersReceived) != 2 {
+		t.Fatal("Incorrect number of peers received messages")
+	}
+
+	if !containsPeer(peersReceived, peer1) ||
+		!containsPeer(peersReceived, peer3) {
+		t.Fatal("Peers should have received message but did not")
+	}
+
+	if containsPeer(peersReceived, peer2) ||
+		containsPeer(peersReceived, peer5) {
+		t.Fatal("Peers received message but should not have")
+	}
+
+	if containsPeer(peersReceived, peer4) {
+		t.Fatal("Peers targeted received message but was not connected")
 	}
 }

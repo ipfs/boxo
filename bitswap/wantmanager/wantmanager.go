@@ -26,20 +26,8 @@ type WantSender interface {
 	SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64)
 }
 
-type wantMessageType int
-
-const (
-	isWanted wantMessageType = iota + 1
-	addWants
-	currentWants
-	currentBroadcastWants
-	wantCount
-)
-
-type wantMessage struct {
-	messageType wantMessageType
-	params      interface{}
-	resultsChan chan interface{}
+type wantMessage interface {
+	handle(wm *WantManager)
 }
 
 // WantManager manages a global want list. It tracks two seperate want lists -
@@ -49,7 +37,7 @@ type WantManager struct {
 	// channel requests to the run loop
 	// to get predictable behavior while running this in a go routine
 	// having only one channel is neccesary, so requests are processed serially
-	messageReqs chan wantMessage
+	wantMessages chan wantMessage
 
 	// synchronized by Run loop, only touch inside there
 	wl   *wantlist.ThreadSafe
@@ -62,13 +50,13 @@ type WantManager struct {
 	wantlistGauge metrics.Gauge
 }
 
-// New initializes a new WantManager
+// New initializes a new WantManager for a given context
 func New(ctx context.Context) *WantManager {
 	ctx, cancel := context.WithCancel(ctx)
 	wantlistGauge := metrics.NewCtx(ctx, "wantlist_total",
 		"Number of items in wantlist.").Gauge()
 	return &WantManager{
-		messageReqs:   make(chan wantMessage, 10),
+		wantMessages:  make(chan wantMessage, 10),
 		wl:            wantlist.NewThreadSafe(),
 		bcwl:          wantlist.NewThreadSafe(),
 		ctx:           ctx,
@@ -93,10 +81,55 @@ func (wm *WantManager) CancelWants(ctx context.Context, ks []cid.Cid, peers []pe
 	wm.addEntries(context.Background(), ks, peers, true, ses)
 }
 
-type wantSet struct {
-	entries []*bsmsg.Entry
-	targets []peer.ID
-	from    uint64
+// IsWanted returns whether a CID is currently wanted
+func (wm *WantManager) IsWanted(c cid.Cid) bool {
+	resp := make(chan bool)
+	wm.wantMessages <- &isWantedMessage{c, resp}
+	return <-resp
+}
+
+// CurrentWants returns the list of current wants
+func (wm *WantManager) CurrentWants() []*wantlist.Entry {
+	resp := make(chan []*wantlist.Entry)
+	wm.wantMessages <- &currentWantsMessage{resp}
+	return <-resp
+}
+
+// CurrentBroadcastWants returns the current list of wants that are broadcasts
+func (wm *WantManager) CurrentBroadcastWants() []*wantlist.Entry {
+	resp := make(chan []*wantlist.Entry)
+	wm.wantMessages <- &currentBroadcastWantsMessage{resp}
+	return <-resp
+}
+
+// WantCount returns the total count of wants
+func (wm *WantManager) WantCount() int {
+	resp := make(chan int)
+	wm.wantMessages <- &wantCountMessage{resp}
+	return <-resp
+}
+
+// Startup starts processing for the WantManager
+func (wm *WantManager) Startup() {
+	go wm.run()
+}
+
+// Shutdown ends processing for the want manager
+func (wm *WantManager) Shutdown() {
+	wm.cancel()
+}
+
+func (wm *WantManager) run() {
+	// NOTE: Do not open any streams or connections from anywhere in this
+	// event loop. Really, just don't do anything likely to block.
+	for {
+		select {
+		case message := <-wm.wantMessages:
+			message.handle(wm)
+		case <-wm.ctx.Done():
+			return
+		}
+	}
 }
 
 func (wm *WantManager) addEntries(ctx context.Context, ks []cid.Cid, targets []peer.ID, cancel bool, ses uint64) {
@@ -108,115 +141,76 @@ func (wm *WantManager) addEntries(ctx context.Context, ks []cid.Cid, targets []p
 		})
 	}
 	select {
-	case wm.messageReqs <- wantMessage{
-		messageType: addWants,
-		params:      &wantSet{entries: entries, targets: targets, from: ses},
-	}:
+	case wm.wantMessages <- &wantSet{entries: entries, targets: targets, from: ses}:
 	case <-wm.ctx.Done():
 	case <-ctx.Done():
 	}
 }
 
-func (wm *WantManager) Startup() {
-	go wm.run()
+type wantSet struct {
+	entries []*bsmsg.Entry
+	targets []peer.ID
+	from    uint64
 }
 
-func (wm *WantManager) Shutdown() {
-	wm.cancel()
-}
+func (ws *wantSet) handle(wm *WantManager) {
+	// is this a broadcast or not?
+	brdc := len(ws.targets) == 0
 
-func (wm *WantManager) run() {
-	// NOTE: Do not open any streams or connections from anywhere in this
-	// event loop. Really, just don't do anything likely to block.
-	for {
-		select {
-		case message := <-wm.messageReqs:
-			wm.handleMessage(message)
-		case <-wm.ctx.Done():
-			return
-		}
-	}
-}
+	// add changes to our wantlist
+	for _, e := range ws.entries {
+		if e.Cancel {
+			if brdc {
+				wm.bcwl.Remove(e.Cid, ws.from)
+			}
 
-func (wm *WantManager) handleMessage(message wantMessage) {
-	switch message.messageType {
-	case addWants:
-		ws := message.params.(*wantSet)
-		// is this a broadcast or not?
-		brdc := len(ws.targets) == 0
-
-		// add changes to our wantlist
-		for _, e := range ws.entries {
-			if e.Cancel {
-				if brdc {
-					wm.bcwl.Remove(e.Cid, ws.from)
-				}
-
-				if wm.wl.Remove(e.Cid, ws.from) {
-					wm.wantlistGauge.Dec()
-				}
-			} else {
-				if brdc {
-					wm.bcwl.AddEntry(e.Entry, ws.from)
-				}
-				if wm.wl.AddEntry(e.Entry, ws.from) {
-					wm.wantlistGauge.Inc()
-				}
+			if wm.wl.Remove(e.Cid, ws.from) {
+				wm.wantlistGauge.Dec()
+			}
+		} else {
+			if brdc {
+				wm.bcwl.AddEntry(e.Entry, ws.from)
+			}
+			if wm.wl.AddEntry(e.Entry, ws.from) {
+				wm.wantlistGauge.Inc()
 			}
 		}
-
-		// broadcast those wantlist changes
-		wm.wantSender.SendMessage(ws.entries, ws.targets, ws.from)
-	case isWanted:
-		c := message.params.(cid.Cid)
-		_, isWanted := wm.wl.Contains(c)
-		message.resultsChan <- isWanted
-	case currentWants:
-		message.resultsChan <- wm.wl.Entries()
-	case currentBroadcastWants:
-		message.resultsChan <- wm.bcwl.Entries()
-	case wantCount:
-		message.resultsChan <- wm.wl.Len()
 	}
+
+	// broadcast those wantlist changes
+	wm.wantSender.SendMessage(ws.entries, ws.targets, ws.from)
 }
 
-func (wm *WantManager) IsWanted(c cid.Cid) bool {
-	resp := make(chan interface{})
-	wm.messageReqs <- wantMessage{
-		messageType: isWanted,
-		params:      c,
-		resultsChan: resp,
-	}
-	result := <-resp
-	return result.(bool)
+type isWantedMessage struct {
+	c    cid.Cid
+	resp chan<- bool
 }
 
-func (wm *WantManager) CurrentWants() []*wantlist.Entry {
-	resp := make(chan interface{})
-	wm.messageReqs <- wantMessage{
-		messageType: currentWants,
-		resultsChan: resp,
-	}
-	result := <-resp
-	return result.([]*wantlist.Entry)
+func (iwm *isWantedMessage) handle(wm *WantManager) {
+	_, isWanted := wm.wl.Contains(iwm.c)
+	iwm.resp <- isWanted
 }
 
-func (wm *WantManager) CurrentBroadcastWants() []*wantlist.Entry {
-	resp := make(chan interface{})
-	wm.messageReqs <- wantMessage{
-		messageType: currentBroadcastWants,
-		resultsChan: resp,
-	}
-	result := <-resp
-	return result.([]*wantlist.Entry)
+type currentWantsMessage struct {
+	resp chan<- []*wantlist.Entry
 }
 
-func (wm *WantManager) WantCount() int {
-	resp := make(chan interface{})
-	wm.messageReqs <- wantMessage{
-		messageType: wantCount,
-		resultsChan: resp,
-	}
-	result := <-resp
-	return result.(int)
+func (cwm *currentWantsMessage) handle(wm *WantManager) {
+	cwm.resp <- wm.wl.Entries()
+}
+
+type currentBroadcastWantsMessage struct {
+	resp chan<- []*wantlist.Entry
+}
+
+func (cbcwm *currentBroadcastWantsMessage) handle(wm *WantManager) {
+	cbcwm.resp <- wm.bcwl.Entries()
+}
+
+type wantCountMessage struct {
+	resp chan<- int
+}
+
+func (wcm *wantCountMessage) handle(wm *WantManager) {
+	wcm.resp <- wm.wl.Len()
 }
