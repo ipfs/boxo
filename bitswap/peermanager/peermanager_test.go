@@ -6,46 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/go-bitswap/testutil"
+
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	wantlist "github.com/ipfs/go-bitswap/wantlist"
-	"github.com/ipfs/go-ipfs-blocksutil"
 	"github.com/libp2p/go-libp2p-peer"
 )
-
-var blockGenerator = blocksutil.NewBlockGenerator()
-var prioritySeq int
-
-func generateEntries(n int, isCancel bool) []*bsmsg.Entry {
-	bsmsgs := make([]*bsmsg.Entry, 0, n)
-	for i := 0; i < n; i++ {
-		prioritySeq++
-		msg := &bsmsg.Entry{
-			Entry:  wantlist.NewRefEntry(blockGenerator.Next().Cid(), prioritySeq),
-			Cancel: isCancel,
-		}
-		bsmsgs = append(bsmsgs, msg)
-	}
-	return bsmsgs
-}
-
-var peerSeq int
-
-func generatePeers(n int) []peer.ID {
-	peerIds := make([]peer.ID, 0, n)
-	for i := 0; i < n; i++ {
-		peerSeq++
-		p := peer.ID(peerSeq)
-		peerIds = append(peerIds, p)
-	}
-	return peerIds
-}
-
-var nextSession uint64
-
-func generateSessionID() uint64 {
-	nextSession++
-	return uint64(nextSession)
-}
 
 type messageSent struct {
 	p       peer.ID
@@ -57,15 +23,6 @@ type fakePeer struct {
 	refcnt       int
 	p            peer.ID
 	messagesSent chan messageSent
-}
-
-func containsPeer(peers []peer.ID, p peer.ID) bool {
-	for _, n := range peers {
-		if p == n {
-			return true
-		}
-	}
-	return false
 }
 
 func (fp *fakePeer) Startup(ctx context.Context, initialEntries []*wantlist.Entry) {}
@@ -119,7 +76,7 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 	ctx := context.Background()
 	peerQueueFactory := makePeerQueueFactory(nil)
 
-	tp := generatePeers(5)
+	tp := testutil.GeneratePeers(5)
 	peer1, peer2, peer3, peer4, peer5 := tp[0], tp[1], tp[2], tp[3], tp[4]
 	peerManager := New(ctx, peerQueueFactory)
 	peerManager.Startup()
@@ -130,14 +87,14 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 
 	connectedPeers := peerManager.ConnectedPeers()
 
-	if !containsPeer(connectedPeers, peer1) ||
-		!containsPeer(connectedPeers, peer2) ||
-		!containsPeer(connectedPeers, peer3) {
+	if !testutil.ContainsPeer(connectedPeers, peer1) ||
+		!testutil.ContainsPeer(connectedPeers, peer2) ||
+		!testutil.ContainsPeer(connectedPeers, peer3) {
 		t.Fatal("Peers not connected that should be connected")
 	}
 
-	if containsPeer(connectedPeers, peer4) ||
-		containsPeer(connectedPeers, peer5) {
+	if testutil.ContainsPeer(connectedPeers, peer4) ||
+		testutil.ContainsPeer(connectedPeers, peer5) {
 		t.Fatal("Peers connected that shouldn't be connected")
 	}
 
@@ -145,7 +102,7 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 	peerManager.Disconnected(peer1)
 	connectedPeers = peerManager.ConnectedPeers()
 
-	if containsPeer(connectedPeers, peer1) {
+	if testutil.ContainsPeer(connectedPeers, peer1) {
 		t.Fatal("Peer should have been disconnected but was not")
 	}
 
@@ -154,7 +111,7 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 	peerManager.Disconnected(peer2)
 	connectedPeers = peerManager.ConnectedPeers()
 
-	if !containsPeer(connectedPeers, peer2) {
+	if !testutil.ContainsPeer(connectedPeers, peer2) {
 		t.Fatal("Peer was disconnected but should not have been")
 	}
 }
@@ -164,7 +121,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	messagesSent := make(chan messageSent)
 	peerQueueFactory := makePeerQueueFactory(messagesSent)
 
-	tp := generatePeers(5)
+	tp := testutil.GeneratePeers(5)
 
 	peer1, peer2, peer3, peer4, peer5 := tp[0], tp[1], tp[2], tp[3], tp[4]
 	peerManager := New(ctx, peerQueueFactory)
@@ -174,8 +131,8 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	peerManager.Connected(peer2, nil)
 	peerManager.Connected(peer3, nil)
 
-	entries := generateEntries(5, false)
-	ses := generateSessionID()
+	entries := testutil.GenerateEntries(5, false)
+	ses := testutil.GenerateSessionID()
 
 	peerManager.SendMessage(entries, nil, ses)
 
@@ -185,14 +142,14 @@ func TestSendingMessagesToPeers(t *testing.T) {
 		t.Fatal("Incorrect number of peers received messages")
 	}
 
-	if !containsPeer(peersReceived, peer1) ||
-		!containsPeer(peersReceived, peer2) ||
-		!containsPeer(peersReceived, peer3) {
+	if !testutil.ContainsPeer(peersReceived, peer1) ||
+		!testutil.ContainsPeer(peersReceived, peer2) ||
+		!testutil.ContainsPeer(peersReceived, peer3) {
 		t.Fatal("Peers should have received message but did not")
 	}
 
-	if containsPeer(peersReceived, peer4) ||
-		containsPeer(peersReceived, peer5) {
+	if testutil.ContainsPeer(peersReceived, peer4) ||
+		testutil.ContainsPeer(peersReceived, peer5) {
 		t.Fatal("Peers received message but should not have")
 	}
 
@@ -206,17 +163,17 @@ func TestSendingMessagesToPeers(t *testing.T) {
 		t.Fatal("Incorrect number of peers received messages")
 	}
 
-	if !containsPeer(peersReceived, peer1) ||
-		!containsPeer(peersReceived, peer3) {
+	if !testutil.ContainsPeer(peersReceived, peer1) ||
+		!testutil.ContainsPeer(peersReceived, peer3) {
 		t.Fatal("Peers should have received message but did not")
 	}
 
-	if containsPeer(peersReceived, peer2) ||
-		containsPeer(peersReceived, peer5) {
+	if testutil.ContainsPeer(peersReceived, peer2) ||
+		testutil.ContainsPeer(peersReceived, peer5) {
 		t.Fatal("Peers received message but should not have")
 	}
 
-	if containsPeer(peersReceived, peer4) {
+	if testutil.ContainsPeer(peersReceived, peer4) {
 		t.Fatal("Peers targeted received message but was not connected")
 	}
 }

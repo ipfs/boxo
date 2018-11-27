@@ -6,41 +6,12 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/ipfs/go-bitswap/testutil"
+
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-ipfs-blocksutil"
 	"github.com/libp2p/go-libp2p-peer"
 )
-
-var blockGenerator = blocksutil.NewBlockGenerator()
-
-func generateCids(n int) []cid.Cid {
-	cids := make([]cid.Cid, 0, n)
-	for i := 0; i < n; i++ {
-		c := blockGenerator.Next().Cid()
-		cids = append(cids, c)
-	}
-	return cids
-}
-
-var peerSeq int
-
-func generatePeers(n int) []peer.ID {
-	peerIds := make([]peer.ID, 0, n)
-	for i := 0; i < n; i++ {
-		peerSeq++
-		p := peer.ID(peerSeq)
-		peerIds = append(peerIds, p)
-	}
-	return peerIds
-}
-
-var nextSession uint64
-
-func generateSessionID() uint64 {
-	nextSession++
-	return uint64(nextSession)
-}
 
 type fakeWantSender struct {
 	lk          sync.RWMutex
@@ -66,11 +37,11 @@ func setupTestFixturesAndInitialWantList() (
 	// setup fixtures
 	wantSender := &fakeWantSender{}
 	wantManager := New(ctx)
-	keys := generateCids(10)
-	otherKeys := generateCids(5)
-	peers := generatePeers(10)
-	session := generateSessionID()
-	otherSession := generateSessionID()
+	keys := testutil.GenerateCids(10)
+	otherKeys := testutil.GenerateCids(5)
+	peers := testutil.GeneratePeers(10)
+	session := testutil.GenerateSessionID()
+	otherSession := testutil.GenerateSessionID()
 
 	// startup wantManager
 	wantManager.SetDelegate(wantSender)
