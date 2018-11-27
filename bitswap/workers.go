@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
+	engine "github.com/ipfs/go-bitswap/decision"
 	bsmsg "github.com/ipfs/go-bitswap/message"
-
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
 	process "github.com/jbenet/goprocess"
@@ -74,7 +74,7 @@ func (bs *Bitswap) taskWorker(ctx context.Context, id int) {
 				}
 				bs.engine.MessageSent(envelope.Peer, outgoing)
 
-				bs.wm.SendBlocks(ctx, envelope)
+				bs.sendBlocks(ctx, envelope)
 				bs.counterLk.Lock()
 				for _, block := range envelope.Message.Blocks() {
 					bs.counters.blocksSent++
@@ -87,6 +87,26 @@ func (bs *Bitswap) taskWorker(ctx context.Context, id int) {
 		case <-ctx.Done():
 			return
 		}
+	}
+}
+
+func (bs *Bitswap) sendBlocks(ctx context.Context, env *engine.Envelope) {
+	// Blocks need to be sent synchronously to maintain proper backpressure
+	// throughout the network stack
+	defer env.Sent()
+
+	msgSize := 0
+	msg := bsmsg.New(false)
+	for _, block := range env.Message.Blocks() {
+		msgSize += len(block.RawData())
+		msg.AddBlock(block)
+		log.Infof("Sending block %s to %s", block, env.Peer)
+	}
+
+	bs.sentHistogram.Observe(float64(msgSize))
+	err := bs.network.SendMessage(ctx, env.Peer, msg)
+	if err != nil {
+		log.Infof("sendblock error: %s", err)
 	}
 }
 
