@@ -14,12 +14,17 @@ import (
 
 var log = logging.Logger("bitswap")
 
+type MessageNetwork interface {
+	ConnectTo(context.Context, peer.ID) error
+	NewMessageSender(context.Context, peer.ID) (bsnet.MessageSender, error)
+}
+
 type MessageQueue struct {
 	p peer.ID
 
 	outlk   sync.Mutex
 	out     bsmsg.BitSwapMessage
-	network bsnet.BitSwapNetwork
+	network MessageNetwork
 	wl      *wantlist.ThreadSafe
 
 	sender bsnet.MessageSender
@@ -30,7 +35,7 @@ type MessageQueue struct {
 	done chan struct{}
 }
 
-func New(p peer.ID, network bsnet.BitSwapNetwork) *MessageQueue {
+func New(p peer.ID, network MessageNetwork) *MessageQueue {
 	return &MessageQueue{
 		done:    make(chan struct{}),
 		work:    make(chan struct{}, 1),
@@ -90,22 +95,25 @@ func (mq *MessageQueue) AddMessage(entries []*bsmsg.Entry, ses uint64) {
 func (mq *MessageQueue) Startup(ctx context.Context, initialEntries []*wantlist.Entry) {
 
 	// new peer, we will want to give them our full wantlist
-	fullwantlist := bsmsg.New(true)
-	for _, e := range initialEntries {
-		for k := range e.SesTrk {
-			mq.wl.AddEntry(e, k)
+	if len(initialEntries) > 0 {
+		fullwantlist := bsmsg.New(true)
+		for _, e := range initialEntries {
+			for k := range e.SesTrk {
+				mq.wl.AddEntry(e, k)
+			}
+			fullwantlist.AddEntry(e.Cid, e.Priority)
 		}
-		fullwantlist.AddEntry(e.Cid, e.Priority)
+		mq.out = fullwantlist
+		mq.work <- struct{}{}
 	}
-	mq.out = fullwantlist
-	mq.work <- struct{}{}
-
 	go mq.runQueue(ctx)
+
 }
 
 func (mq *MessageQueue) Shutdown() {
 	close(mq.done)
 }
+
 func (mq *MessageQueue) runQueue(ctx context.Context) {
 	for {
 		select {

@@ -131,13 +131,13 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	peerManager.Connected(peer2, nil)
 	peerManager.Connected(peer3, nil)
 
-	entries := testutil.GenerateEntries(5, false)
+	entries := testutil.GenerateMessageEntries(5, false)
 	ses := testutil.GenerateSessionID()
 
 	peerManager.SendMessage(entries, nil, ses)
 
 	peersReceived := collectAndCheckMessages(
-		ctx, t, messagesSent, entries, ses, 200*time.Millisecond)
+		ctx, t, messagesSent, entries, ses, 10*time.Millisecond)
 	if len(peersReceived) != 3 {
 		t.Fatal("Incorrect number of peers received messages")
 	}
@@ -157,7 +157,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	peersToSendTo = append(peersToSendTo, peer1, peer3, peer4)
 	peerManager.SendMessage(entries, peersToSendTo, ses)
 	peersReceived = collectAndCheckMessages(
-		ctx, t, messagesSent, entries, ses, 200*time.Millisecond)
+		ctx, t, messagesSent, entries, ses, 10*time.Millisecond)
 
 	if len(peersReceived) != 2 {
 		t.Fatal("Incorrect number of peers received messages")
