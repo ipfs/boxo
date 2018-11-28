@@ -677,6 +677,7 @@ func TestEnumerateAsyncFailsNotFound(t *testing.T) {
 	b := NodeWithData([]byte("foo2"))
 	c := NodeWithData([]byte("foo3"))
 	d := NodeWithData([]byte("foo4"))
+	e := NodeWithData([]byte("foo5"))
 
 	ds := dstest.Mock()
 	for _, n := range []ipld.Node{a, b, c} {
@@ -700,6 +701,10 @@ func TestEnumerateAsyncFailsNotFound(t *testing.T) {
 	}
 
 	if err := parent.AddNodeLink("d", d); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := parent.AddNodeLink("e", e); err != nil {
 		t.Fatal(err)
 	}
 
