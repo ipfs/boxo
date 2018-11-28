@@ -7,22 +7,26 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 
-	bsnet "github.com/ipfs/go-bitswap/network"
 	bssession "github.com/ipfs/go-bitswap/session"
-	bswm "github.com/ipfs/go-bitswap/wantmanager"
+	bsspm "github.com/ipfs/go-bitswap/sessionpeermanager"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 
+type sesTrk struct {
+	session *bssession.Session
+	pm      *bsspm.SessionPeerManager
+}
+
 // SessionManager is responsible for creating, managing, and dispatching to
 // sessions.
 type SessionManager struct {
-	wm      *bswm.WantManager
-	network bsnet.BitSwapNetwork
+	wm      bssession.WantManager
+	network bsspm.PeerNetwork
 	ctx     context.Context
 	// Sessions
 	sessLk   sync.Mutex
-	sessions []*bssession.Session
+	sessions []sesTrk
 
 	// Session Index
 	sessIDLk sync.Mutex
@@ -30,7 +34,7 @@ type SessionManager struct {
 }
 
 // New creates a new SessionManager.
-func New(ctx context.Context, wm *bswm.WantManager, network bsnet.BitSwapNetwork) *SessionManager {
+func New(ctx context.Context, wm bssession.WantManager, network bsspm.PeerNetwork) *SessionManager {
 	return &SessionManager{
 		ctx:     ctx,
 		wm:      wm,
@@ -44,24 +48,26 @@ func (sm *SessionManager) NewSession(ctx context.Context) exchange.Fetcher {
 	id := sm.GetNextSessionID()
 	sessionctx, cancel := context.WithCancel(ctx)
 
-	session := bssession.New(sessionctx, id, sm.wm, sm.network)
+	pm := bsspm.New(sessionctx, id, sm.network)
+	session := bssession.New(sessionctx, id, sm.wm, pm)
+	tracked := sesTrk{session, pm}
 	sm.sessLk.Lock()
-	sm.sessions = append(sm.sessions, session)
+	sm.sessions = append(sm.sessions, tracked)
 	sm.sessLk.Unlock()
 	go func() {
 		defer cancel()
 		select {
 		case <-sm.ctx.Done():
-			sm.removeSession(session)
+			sm.removeSession(tracked)
 		case <-ctx.Done():
-			sm.removeSession(session)
+			sm.removeSession(tracked)
 		}
 	}()
 
 	return session
 }
 
-func (sm *SessionManager) removeSession(session exchange.Fetcher) {
+func (sm *SessionManager) removeSession(session sesTrk) {
 	sm.sessLk.Lock()
 	defer sm.sessLk.Unlock()
 	for i := 0; i < len(sm.sessions); i++ {
@@ -90,9 +96,9 @@ func (sm *SessionManager) ReceiveBlockFrom(from peer.ID, blk blocks.Block) {
 	k := blk.Cid()
 	ks := []cid.Cid{k}
 	for _, s := range sm.sessions {
-		if s.InterestedIn(k) {
-			s.ReceiveBlockFrom(from, blk)
-			sm.wm.CancelWants(sm.ctx, ks, nil, s.ID())
+		if s.session.InterestedIn(k) {
+			s.session.ReceiveBlockFrom(from, blk)
+			sm.wm.CancelWants(sm.ctx, ks, nil, s.session.ID())
 		}
 	}
 }
