@@ -397,7 +397,10 @@ func EnumerateChildrenAsyncDepth(ctx context.Context, getLinks GetLinks, c cid.C
 				if shouldVisit {
 					links, err := getLinks(ctx, ci)
 					if err != nil {
-						errChan <- err
+						select {
+						case errChan <- err:
+						case <-fetchersCtx.Done():
+						}
 						return
 					}
 
