@@ -2,12 +2,10 @@ package session
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
 	bsgetter "github.com/ipfs/go-bitswap/getter"
-	bsnet "github.com/ipfs/go-bitswap/network"
 	notifications "github.com/ipfs/go-bitswap/notifications"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -18,11 +16,18 @@ import (
 
 const activeWantsLimit = 16
 
-// SessionWantManager is an interface that can be used to request blocks
+// Wantmanager is an interface that can be used to request blocks
 // from given peers.
-type SessionWantManager interface {
+type WantManager interface {
 	WantBlocks(ctx context.Context, ks []cid.Cid, peers []peer.ID, ses uint64)
 	CancelWants(ctx context.Context, ks []cid.Cid, peers []peer.ID, ses uint64)
+}
+
+type PeerManager interface {
+	FindMorePeers(context.Context, cid.Cid)
+	GetOptimizedPeers() []peer.ID
+	RecordPeerRequests([]peer.ID, []cid.Cid)
+	RecordPeerResponse(peer.ID, cid.Cid)
 }
 
 type interestReq struct {
@@ -40,9 +45,9 @@ type blkRecv struct {
 // info to, and who to request blocks from.
 type Session struct {
 	// dependencies
-	ctx     context.Context
-	wm      SessionWantManager
-	network bsnet.BitSwapNetwork
+	ctx context.Context
+	wm  WantManager
+	pm  PeerManager
 
 	// channels
 	incoming      chan blkRecv
@@ -53,28 +58,24 @@ type Session struct {
 	tickDelayReqs chan time.Duration
 
 	// do not touch outside run loop
-	tofetch        *cidQueue
-	activePeers    map[peer.ID]struct{}
-	activePeersArr []peer.ID
-	interest       *lru.Cache
-	liveWants      map[cid.Cid]time.Time
-	tick           *time.Timer
-	baseTickDelay  time.Duration
-	latTotal       time.Duration
-	fetchcnt       int
+	tofetch       *cidQueue
+	interest      *lru.Cache
+	liveWants     map[cid.Cid]time.Time
+	tick          *time.Timer
+	baseTickDelay time.Duration
+	latTotal      time.Duration
+	fetchcnt      int
 
 	// identifiers
 	notif notifications.PubSub
 	uuid  logging.Loggable
 	id    uint64
-	tag   string
 }
 
 // New creates a new bitswap session whose lifetime is bounded by the
 // given context.
-func New(ctx context.Context, id uint64, wm SessionWantManager, network bsnet.BitSwapNetwork) *Session {
+func New(ctx context.Context, id uint64, wm WantManager, pm PeerManager) *Session {
 	s := &Session{
-		activePeers:   make(map[peer.ID]struct{}),
 		liveWants:     make(map[cid.Cid]time.Time),
 		newReqs:       make(chan []cid.Cid),
 		cancelKeys:    make(chan []cid.Cid),
@@ -84,15 +85,13 @@ func New(ctx context.Context, id uint64, wm SessionWantManager, network bsnet.Bi
 		tickDelayReqs: make(chan time.Duration),
 		ctx:           ctx,
 		wm:            wm,
-		network:       network,
+		pm:            pm,
 		incoming:      make(chan blkRecv),
 		notif:         notifications.New(),
 		uuid:          loggables.Uuid("GetBlockRequest"),
 		baseTickDelay: time.Millisecond * 500,
 		id:            id,
 	}
-
-	s.tag = fmt.Sprint("bs-ses-", s.id)
 
 	cache, _ := lru.New(2048)
 	s.interest = cache
@@ -203,7 +202,6 @@ const provSearchDelay = time.Second * 10
 // of this loop
 func (s *Session) run(ctx context.Context) {
 	s.tick = time.NewTimer(provSearchDelay)
-	newpeers := make(chan peer.ID, 16)
 	for {
 		select {
 		case blk := <-s.incoming:
@@ -213,9 +211,7 @@ func (s *Session) run(ctx context.Context) {
 		case keys := <-s.cancelKeys:
 			s.handleCancel(keys)
 		case <-s.tick.C:
-			s.handleTick(ctx, newpeers)
-		case p := <-newpeers:
-			s.addActivePeer(p)
+			s.handleTick(ctx)
 		case lwchk := <-s.interestReqs:
 			lwchk.resp <- s.cidIsWanted(lwchk.c)
 		case resp := <-s.latencyReqs:
@@ -233,7 +229,7 @@ func (s *Session) handleIncomingBlock(ctx context.Context, blk blkRecv) {
 	s.tick.Stop()
 
 	if blk.from != "" {
-		s.addActivePeer(blk.from)
+		s.pm.RecordPeerResponse(blk.from, blk.blk.Cid())
 	}
 
 	s.receiveBlock(ctx, blk.blk)
@@ -267,7 +263,7 @@ func (s *Session) handleCancel(keys []cid.Cid) {
 	}
 }
 
-func (s *Session) handleTick(ctx context.Context, newpeers chan<- peer.ID) {
+func (s *Session) handleTick(ctx context.Context) {
 	live := make([]cid.Cid, 0, len(s.liveWants))
 	now := time.Now()
 	for c := range s.liveWants {
@@ -276,31 +272,13 @@ func (s *Session) handleTick(ctx context.Context, newpeers chan<- peer.ID) {
 	}
 
 	// Broadcast these keys to everyone we're connected to
+	s.pm.RecordPeerRequests(nil, live)
 	s.wm.WantBlocks(ctx, live, nil, s.id)
 
 	if len(live) > 0 {
-		go func(k cid.Cid) {
-			// TODO: have a task queue setup for this to:
-			// - rate limit
-			// - manage timeouts
-			// - ensure two 'findprovs' calls for the same block don't run concurrently
-			// - share peers between sessions based on interest set
-			for p := range s.network.FindProvidersAsync(ctx, k, 10) {
-				newpeers <- p
-			}
-		}(live[0])
+		s.pm.FindMorePeers(ctx, live[0])
 	}
 	s.resetTick()
-}
-
-func (s *Session) addActivePeer(p peer.ID) {
-	if _, ok := s.activePeers[p]; !ok {
-		s.activePeers[p] = struct{}{}
-		s.activePeersArr = append(s.activePeersArr, p)
-
-		cmgr := s.network.ConnectionManager()
-		cmgr.TagPeer(p, s.tag, 10)
-	}
 }
 
 func (s *Session) handleShutdown() {
@@ -312,10 +290,6 @@ func (s *Session) handleShutdown() {
 		live = append(live, c)
 	}
 	s.wm.CancelWants(s.ctx, live, nil, s.id)
-	cmgr := s.network.ConnectionManager()
-	for _, p := range s.activePeersArr {
-		cmgr.UntagPeer(p, s.tag)
-	}
 }
 
 func (s *Session) cidIsWanted(c cid.Cid) bool {
@@ -350,7 +324,10 @@ func (s *Session) wantBlocks(ctx context.Context, ks []cid.Cid) {
 	for _, c := range ks {
 		s.liveWants[c] = now
 	}
-	s.wm.WantBlocks(ctx, ks, s.activePeersArr, s.id)
+	peers := s.pm.GetOptimizedPeers()
+	// right now we're requesting each block from every peer, but soon, maybe not
+	s.pm.RecordPeerRequests(peers, ks)
+	s.wm.WantBlocks(ctx, ks, peers, s.id)
 }
 
 func (s *Session) averageLatency() time.Duration {
