@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	bssession "github.com/ipfs/go-bitswap/session"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
@@ -132,8 +133,8 @@ func TestSessionSplitFetch(t *testing.T) {
 		cids = append(cids, blk.Cid())
 	}
 
-	ses := inst[10].Exchange.NewSession(ctx).(*Session)
-	ses.baseTickDelay = time.Millisecond * 10
+	ses := inst[10].Exchange.NewSession(ctx).(*bssession.Session)
+	ses.SetBaseTickDelay(time.Millisecond * 10)
 
 	for i := 0; i < 10; i++ {
 		ch, err := ses.GetBlocks(ctx, cids[i*10:(i+1)*10])

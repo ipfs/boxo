@@ -10,6 +10,7 @@ import (
 	"time"
 
 	decision "github.com/ipfs/go-bitswap/decision"
+	bsgetter "github.com/ipfs/go-bitswap/getter"
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	bsmq "github.com/ipfs/go-bitswap/messagequeue"
 	bsnet "github.com/ipfs/go-bitswap/network"
@@ -100,6 +101,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		return bsmq.New(p, network)
 	}
 
+	wm := bswm.New(ctx)
 	bs := &Bitswap{
 		blockstore:    bstore,
 		notifications: notif,
@@ -109,9 +111,9 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		process:       px,
 		newBlocks:     make(chan cid.Cid, HasBlockBufferSize),
 		provideKeys:   make(chan cid.Cid, provideKeysBufferSize),
-		wm:            bswm.New(ctx),
+		wm:            wm,
 		pm:            bspm.New(ctx, peerQueueFactory),
-		sm:            bssm.New(),
+		sm:            bssm.New(ctx, wm, network),
 		counters:      new(counters),
 		dupMetric:     dupHist,
 		allMetric:     allHist,
@@ -202,7 +204,7 @@ type blockRequest struct {
 // GetBlock attempts to retrieve a particular block from peers within the
 // deadline enforced by the context.
 func (bs *Bitswap) GetBlock(parent context.Context, k cid.Cid) (blocks.Block, error) {
-	return getBlock(parent, k, bs.GetBlocks)
+	return bsgetter.SyncGetBlock(parent, k, bs.GetBlocks)
 }
 
 func (bs *Bitswap) WantlistForPeer(p peer.ID) []cid.Cid {
@@ -307,7 +309,7 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 	return out, nil
 }
 
-// CancelWant removes a given key from the wantlist.
+// CancelWants removes a given key from the wantlist.
 func (bs *Bitswap) CancelWants(cids []cid.Cid, ses uint64) {
 	if len(cids) == 0 {
 		return
@@ -345,12 +347,7 @@ func (bs *Bitswap) receiveBlockFrom(blk blocks.Block, from peer.ID) error {
 	// it now as it requires more thought and isnt causing immediate problems.
 	bs.notifications.Publish(blk)
 
-	k := blk.Cid()
-	ks := []cid.Cid{k}
-	for _, s := range bs.SessionsForBlock(k) {
-		s.receiveBlockFrom(from, blk)
-		bs.CancelWants(ks, s.id)
-	}
+	bs.sm.ReceiveBlockFrom(from, blk)
 
 	bs.engine.AddBlock(blk)
 
@@ -361,18 +358,6 @@ func (bs *Bitswap) receiveBlockFrom(blk blocks.Block, from peer.ID) error {
 		return bs.process.Close()
 	}
 	return nil
-}
-
-// SessionsForBlock returns a slice of all sessions that may be interested in the given cid.
-func (bs *Bitswap) SessionsForBlock(c cid.Cid) []*Session {
-	var out []*Session
-	bs.sm.IterateSessions(func(session exchange.Fetcher) {
-		s := session.(*Session)
-		if s.interestedIn(c) {
-			out = append(out, s)
-		}
-	})
-	return out
 }
 
 func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg.BitSwapMessage) {
@@ -476,4 +461,8 @@ func (bs *Bitswap) GetWantlist() []cid.Cid {
 
 func (bs *Bitswap) IsOnline() bool {
 	return true
+}
+
+func (bs *Bitswap) NewSession(ctx context.Context) exchange.Fetcher {
+	return bs.sm.NewSession(ctx)
 }

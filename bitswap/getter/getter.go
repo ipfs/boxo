@@ -1,19 +1,27 @@
-package bitswap
+package getter
 
 import (
 	"context"
 	"errors"
 
 	notifications "github.com/ipfs/go-bitswap/notifications"
+	logging "github.com/ipfs/go-log"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 )
 
-type getBlocksFunc func(context.Context, []cid.Cid) (<-chan blocks.Block, error)
+var log = logging.Logger("bitswap")
 
-func getBlock(p context.Context, k cid.Cid, gb getBlocksFunc) (blocks.Block, error) {
+// GetBlocksFunc is any function that can take an array of CIDs and return a
+// channel of incoming blocks.
+type GetBlocksFunc func(context.Context, []cid.Cid) (<-chan blocks.Block, error)
+
+// SyncGetBlock takes a block cid and an async function for getting several
+// blocks that returns a channel, and uses that function to return the
+// block syncronously.
+func SyncGetBlock(p context.Context, k cid.Cid, gb GetBlocksFunc) (blocks.Block, error) {
 	if !k.Defined() {
 		log.Error("undefined cid in GetBlock")
 		return nil, blockstore.ErrNotFound
@@ -49,9 +57,13 @@ func getBlock(p context.Context, k cid.Cid, gb getBlocksFunc) (blocks.Block, err
 	}
 }
 
-type wantFunc func(context.Context, []cid.Cid)
+// WantFunc is any function that can express a want for set of blocks.
+type WantFunc func(context.Context, []cid.Cid)
 
-func getBlocksImpl(ctx context.Context, keys []cid.Cid, notif notifications.PubSub, want wantFunc, cwants func([]cid.Cid)) (<-chan blocks.Block, error) {
+// AsyncGetBlocks take a set of block cids, a pubsub channel for incoming
+// blocks, a want function, and a close function,
+// and returns a channel of incoming blocks.
+func AsyncGetBlocks(ctx context.Context, keys []cid.Cid, notif notifications.PubSub, want WantFunc, cwants func([]cid.Cid)) (<-chan blocks.Block, error) {
 	if len(keys) == 0 {
 		out := make(chan blocks.Block)
 		close(out)
