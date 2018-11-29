@@ -9,11 +9,14 @@ import (
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 
+// PeerNetwork is an interface for finding providers and managing connections
 type PeerNetwork interface {
 	ConnectionManager() ifconnmgr.ConnManager
 	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.ID
 }
 
+// SessionPeerManager tracks and manages peers for a session, and provides
+// the best ones to the session
 type SessionPeerManager struct {
 	ctx     context.Context
 	network PeerNetwork
@@ -27,6 +30,7 @@ type SessionPeerManager struct {
 	activePeersArr []peer.ID
 }
 
+// New creates a new SessionPeerManager
 func New(ctx context.Context, id uint64, network PeerNetwork) *SessionPeerManager {
 	spm := &SessionPeerManager{
 		ctx:         ctx,
@@ -42,7 +46,10 @@ func New(ctx context.Context, id uint64, network PeerNetwork) *SessionPeerManage
 	return spm
 }
 
+// RecordPeerResponse records that a peer received a block, and adds to it
+// the list of peers if it wasn't already added
 func (spm *SessionPeerManager) RecordPeerResponse(p peer.ID, k cid.Cid) {
+
 	// at the moment, we're just adding peers here
 	// in the future, we'll actually use this to record metrics
 	select {
@@ -51,11 +58,13 @@ func (spm *SessionPeerManager) RecordPeerResponse(p peer.ID, k cid.Cid) {
 	}
 }
 
+// RecordPeerRequests records that a given set of peers requested the given cids
 func (spm *SessionPeerManager) RecordPeerRequests(p []peer.ID, ks []cid.Cid) {
 	// at the moment, we're not doing anything here
 	// soon we'll use this to track latency by peer
 }
 
+// GetOptimizedPeers returns the best peers available for a session
 func (spm *SessionPeerManager) GetOptimizedPeers() []peer.ID {
 	// right now this just returns all peers, but soon we might return peers
 	// ordered by optimization, or only a subset
@@ -74,6 +83,8 @@ func (spm *SessionPeerManager) GetOptimizedPeers() []peer.ID {
 	}
 }
 
+// FindMorePeers attempts to find more peers for a session by searching for
+// providers for the given Cid
 func (spm *SessionPeerManager) FindMorePeers(ctx context.Context, c cid.Cid) {
 	go func(k cid.Cid) {
 		// TODO: have a task queue setup for this to:
