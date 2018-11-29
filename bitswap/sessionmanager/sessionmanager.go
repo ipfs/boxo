@@ -8,22 +8,34 @@ import (
 	cid "github.com/ipfs/go-cid"
 
 	bssession "github.com/ipfs/go-bitswap/session"
-	bsspm "github.com/ipfs/go-bitswap/sessionpeermanager"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 
-type sesTrk struct {
-	session *bssession.Session
-	pm      *bsspm.SessionPeerManager
+// Session is a session that is managed by the session manager
+type Session interface {
+	exchange.Fetcher
+	InterestedIn(cid.Cid) bool
+	ReceiveBlockFrom(peer.ID, blocks.Block)
 }
+
+type sesTrk struct {
+	session Session
+	pm      bssession.PeerManager
+}
+
+// SessionFactory generates a new session for the SessionManager to track.
+type SessionFactory func(ctx context.Context, id uint64, pm bssession.PeerManager) Session
+
+// PeerManagerFactory generates a new peer manager for a session.
+type PeerManagerFactory func(ctx context.Context, id uint64) bssession.PeerManager
 
 // SessionManager is responsible for creating, managing, and dispatching to
 // sessions.
 type SessionManager struct {
-	wm      bssession.WantManager
-	network bsspm.PeerNetwork
-	ctx     context.Context
+	ctx                context.Context
+	sessionFactory     SessionFactory
+	peerManagerFactory PeerManagerFactory
 	// Sessions
 	sessLk   sync.Mutex
 	sessions []sesTrk
@@ -34,11 +46,11 @@ type SessionManager struct {
 }
 
 // New creates a new SessionManager.
-func New(ctx context.Context, wm bssession.WantManager, network bsspm.PeerNetwork) *SessionManager {
+func New(ctx context.Context, sessionFactory SessionFactory, peerManagerFactory PeerManagerFactory) *SessionManager {
 	return &SessionManager{
-		ctx:     ctx,
-		wm:      wm,
-		network: network,
+		ctx:                ctx,
+		sessionFactory:     sessionFactory,
+		peerManagerFactory: peerManagerFactory,
 	}
 }
 
@@ -48,8 +60,8 @@ func (sm *SessionManager) NewSession(ctx context.Context) exchange.Fetcher {
 	id := sm.GetNextSessionID()
 	sessionctx, cancel := context.WithCancel(ctx)
 
-	pm := bsspm.New(sessionctx, id, sm.network)
-	session := bssession.New(sessionctx, id, sm.wm, pm)
+	pm := sm.peerManagerFactory(sessionctx, id)
+	session := sm.sessionFactory(sessionctx, id, pm)
 	tracked := sesTrk{session, pm}
 	sm.sessLk.Lock()
 	sm.sessions = append(sm.sessions, tracked)
@@ -94,11 +106,9 @@ func (sm *SessionManager) ReceiveBlockFrom(from peer.ID, blk blocks.Block) {
 	defer sm.sessLk.Unlock()
 
 	k := blk.Cid()
-	ks := []cid.Cid{k}
 	for _, s := range sm.sessions {
 		if s.session.InterestedIn(k) {
 			s.session.ReceiveBlockFrom(from, blk)
-			sm.wm.CancelWants(sm.ctx, ks, nil, s.session.ID())
 		}
 	}
 }
