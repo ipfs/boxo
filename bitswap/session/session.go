@@ -116,7 +116,32 @@ func (s *Session) ReceiveBlockFrom(from peer.ID, blk blocks.Block) {
 
 // InterestedIn returns true if this session is interested in the given Cid.
 func (s *Session) InterestedIn(c cid.Cid) bool {
-	return s.interest.Contains(c) || s.isLiveWant(c)
+	if s.interest.Contains(c) {
+		return true
+	}
+	// TODO: PERF: this is using a channel to guard a map access against race
+	// conditions. This is definitely much slower than a mutex, though its unclear
+	// if it will actually induce any noticeable slowness. This is implemented this
+	// way to avoid adding a more complex set of mutexes around the liveWants map.
+	// note that in the average case (where this session *is* interested in the
+	// block we received) this function will not be called, as the cid will likely
+	// still be in the interest cache.
+	resp := make(chan bool, 1)
+	select {
+	case s.interestReqs <- interestReq{
+		c:    c,
+		resp: resp,
+	}:
+	case <-s.ctx.Done():
+		return false
+	}
+
+	select {
+	case want := <-resp:
+		return want
+	case <-s.ctx.Done():
+		return false
+	}
 }
 
 // GetBlock fetches a single block.
@@ -129,12 +154,21 @@ func (s *Session) GetBlock(parent context.Context, k cid.Cid) (blocks.Block, err
 // guaranteed on the returned blocks.
 func (s *Session) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error) {
 	ctx = logging.ContextWithLoggable(ctx, s.uuid)
-	return bsgetter.AsyncGetBlocks(ctx, keys, s.notif, s.fetch, s.cancel)
-}
-
-// ID returns the sessions identifier.
-func (s *Session) ID() uint64 {
-	return s.id
+	return bsgetter.AsyncGetBlocks(ctx, keys, s.notif,
+		func(ctx context.Context, keys []cid.Cid) {
+			select {
+			case s.newReqs <- keys:
+			case <-ctx.Done():
+			case <-s.ctx.Done():
+			}
+		},
+		func(keys []cid.Cid) {
+			select {
+			case s.cancelKeys <- keys:
+			case <-s.ctx.Done():
+			}
+		},
+	)
 }
 
 // GetAverageLatency returns the average latency for block requests.
@@ -158,47 +192,6 @@ func (s *Session) GetAverageLatency() time.Duration {
 func (s *Session) SetBaseTickDelay(baseTickDelay time.Duration) {
 	select {
 	case s.tickDelayReqs <- baseTickDelay:
-	case <-s.ctx.Done():
-	}
-}
-
-// TODO: PERF: this is using a channel to guard a map access against race
-// conditions. This is definitely much slower than a mutex, though its unclear
-// if it will actually induce any noticeable slowness. This is implemented this
-// way to avoid adding a more complex set of mutexes around the liveWants map.
-// note that in the average case (where this session *is* interested in the
-// block we received) this function will not be called, as the cid will likely
-// still be in the interest cache.
-func (s *Session) isLiveWant(c cid.Cid) bool {
-	resp := make(chan bool, 1)
-	select {
-	case s.interestReqs <- interestReq{
-		c:    c,
-		resp: resp,
-	}:
-	case <-s.ctx.Done():
-		return false
-	}
-
-	select {
-	case want := <-resp:
-		return want
-	case <-s.ctx.Done():
-		return false
-	}
-}
-
-func (s *Session) fetch(ctx context.Context, keys []cid.Cid) {
-	select {
-	case s.newReqs <- keys:
-	case <-ctx.Done():
-	case <-s.ctx.Done():
-	}
-}
-
-func (s *Session) cancel(keys []cid.Cid) {
-	select {
-	case s.cancelKeys <- keys:
 	case <-s.ctx.Done():
 	}
 }
@@ -340,6 +333,7 @@ func (s *Session) wantBlocks(ctx context.Context, ks []cid.Cid) {
 func (s *Session) averageLatency() time.Duration {
 	return s.latTotal / time.Duration(s.fetchcnt)
 }
+
 func (s *Session) resetTick() {
 	if s.latTotal == 0 {
 		s.tick.Reset(provSearchDelay)
