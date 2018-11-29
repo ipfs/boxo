@@ -70,7 +70,7 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 
 			if !mfr.files[len(mfr.files)-1].Next() {
 				if mfr.files[len(mfr.files)-1].Err() != nil {
-					return 0, err
+					return 0, mfr.files[len(mfr.files)-1].Err()
 				}
 				mfr.files = mfr.files[:len(mfr.files)-1]
 				mfr.path = mfr.path[:len(mfr.path)-1]

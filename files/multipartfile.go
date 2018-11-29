@@ -2,6 +2,7 @@ package files
 
 import (
 	"errors"
+	"io"
 	"io/ioutil"
 	"mime"
 	"mime/multipart"
@@ -127,6 +128,9 @@ func (it *multipartIterator) Next() bool {
 	}
 	part, err := it.f.Reader.NextPart()
 	if err != nil {
+		if err == io.EOF {
+			return false
+		}
 		it.err = err
 		return false
 	}
@@ -198,7 +202,15 @@ func (pr *peekReader) NextPart() (*multipart.Part, error) {
 		return p, nil
 	}
 
-	return pr.r.NextPart()
+	if pr.r == nil {
+		return nil, io.EOF
+	}
+
+	p, err := pr.r.NextPart()
+	if err == io.EOF {
+		pr.r = nil
+	}
+	return p, err
 }
 
 func (pr *peekReader) put(p *multipart.Part) error {

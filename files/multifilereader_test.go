@@ -61,16 +61,20 @@ func TestMultiFileReaderToMultiFile(t *testing.T) {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	if subIt.Next() {
+	if subIt.Next() || it.Err() != nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 
 	// try to break internal state
-	if subIt.Next() {
+	if subIt.Next() || it.Err() != nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	if !it.Next() || it.Name() != "beep.txt" || it.Dir() != nil {
+	if !it.Next() || it.Name() != "beep.txt" || it.Dir() != nil || it.Err() != nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if it.Next() || it.Err() != nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 }
