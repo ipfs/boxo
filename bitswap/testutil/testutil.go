@@ -3,6 +3,7 @@ package testutil
 import (
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	"github.com/ipfs/go-bitswap/wantlist"
+	"github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	peer "github.com/libp2p/go-libp2p-peer"
@@ -71,6 +72,16 @@ func GenerateSessionID() uint64 {
 func ContainsPeer(peers []peer.ID, p peer.ID) bool {
 	for _, n := range peers {
 		if p == n {
+			return true
+		}
+	}
+	return false
+}
+
+// ContainsBlock returns true if a block is found n a list of blocks
+func ContainsBlock(blks []blocks.Block, block blocks.Block) bool {
+	for _, n := range blks {
+		if block.Cid() == n.Cid() {
 			return true
 		}
 	}
