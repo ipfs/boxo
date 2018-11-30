@@ -130,6 +130,7 @@ func TestUntaggingPeers(t *testing.T) {
 		t.Fatal("Peers were not tagged!")
 	}
 	<-ctx.Done()
+	time.Sleep(5 * time.Millisecond)
 	if len(fcm.taggedPeers) != 0 {
 		t.Fatal("Peers were not untagged!")
 	}

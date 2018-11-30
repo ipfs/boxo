@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -16,50 +15,54 @@ import (
 )
 
 type wantReq struct {
-	cids     []cid.Cid
-	peers    []peer.ID
-	isCancel bool
+	cids  []cid.Cid
+	peers []peer.ID
 }
 
 type fakeWantManager struct {
-	lk       sync.RWMutex
-	wantReqs []wantReq
+	wantReqs   chan wantReq
+	cancelReqs chan wantReq
 }
 
 func (fwm *fakeWantManager) WantBlocks(ctx context.Context, cids []cid.Cid, peers []peer.ID, ses uint64) {
-	fwm.lk.Lock()
-	fwm.wantReqs = append(fwm.wantReqs, wantReq{cids, peers, false})
-	fwm.lk.Unlock()
+	fwm.wantReqs <- wantReq{cids, peers}
 }
 
 func (fwm *fakeWantManager) CancelWants(ctx context.Context, cids []cid.Cid, peers []peer.ID, ses uint64) {
-	fwm.lk.Lock()
-	fwm.wantReqs = append(fwm.wantReqs, wantReq{cids, peers, true})
-	fwm.lk.Unlock()
+	fwm.cancelReqs <- wantReq{cids, peers}
 }
 
 type fakePeerManager struct {
+	lk                     sync.RWMutex
 	peers                  []peer.ID
 	findMorePeersRequested bool
 }
 
 func (fpm *fakePeerManager) FindMorePeers(context.Context, cid.Cid) {
+	fpm.lk.Lock()
 	fpm.findMorePeersRequested = true
+	fpm.lk.Unlock()
 }
 
 func (fpm *fakePeerManager) GetOptimizedPeers() []peer.ID {
+	fpm.lk.Lock()
+	defer fpm.lk.Unlock()
 	return fpm.peers
 }
 
 func (fpm *fakePeerManager) RecordPeerRequests([]peer.ID, []cid.Cid) {}
 func (fpm *fakePeerManager) RecordPeerResponse(p peer.ID, c cid.Cid) {
+	fpm.lk.Lock()
 	fpm.peers = append(fpm.peers, p)
+	fpm.lk.Unlock()
 }
 
 func TestSessionGetBlocks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
-	fwm := &fakeWantManager{}
+	wantReqs := make(chan wantReq, 1)
+	cancelReqs := make(chan wantReq, 1)
+	fwm := &fakeWantManager{wantReqs, cancelReqs}
 	fpm := &fakePeerManager{}
 	id := testutil.GenerateSessionID()
 	session := New(ctx, id, fwm, fpm)
@@ -69,24 +72,15 @@ func TestSessionGetBlocks(t *testing.T) {
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
 	}
-	var receivedBlocks []blocks.Block
 	getBlocksCh, err := session.GetBlocks(ctx, cids)
-	go func() {
-		for block := range getBlocksCh {
-			receivedBlocks = append(receivedBlocks, block)
-		}
-	}()
+
 	if err != nil {
 		t.Fatal("error getting blocks")
 	}
 
 	// check initial want request
-	time.Sleep(3 * time.Millisecond)
-	if len(fwm.wantReqs) != 1 {
-		t.Fatal("failed to enqueue wants")
-	}
-	fwm.lk.Lock()
-	receivedWantReq := fwm.wantReqs[0]
+	receivedWantReq := <-fwm.wantReqs
+
 	if len(receivedWantReq.cids) != activeWantsLimit {
 		t.Fatal("did not enqueue correct initial number of wants")
 	}
@@ -94,17 +88,23 @@ func TestSessionGetBlocks(t *testing.T) {
 		t.Fatal("first want request should be a broadcast")
 	}
 
-	fwm.wantReqs = nil
-	fwm.lk.Unlock()
-
 	// now receive the first set of blocks
 	peers := testutil.GeneratePeers(activeWantsLimit)
+	var newCancelReqs []wantReq
+	var newBlockReqs []wantReq
+	var receivedBlocks []blocks.Block
 	for i, p := range peers {
-		session.ReceiveBlockFrom(p, blks[i])
+		session.ReceiveBlockFrom(p, blks[testutil.IndexOf(blks, receivedWantReq.cids[i])])
+		receivedBlock := <-getBlocksCh
+		receivedBlocks = append(receivedBlocks, receivedBlock)
+		cancelBlock := <-cancelReqs
+		newCancelReqs = append(newCancelReqs, cancelBlock)
+		wantBlock := <-wantReqs
+		newBlockReqs = append(newBlockReqs, wantBlock)
 	}
-	time.Sleep(3 * time.Millisecond)
 
 	// verify new peers were recorded
+	fpm.lk.Lock()
 	if len(fpm.peers) != activeWantsLimit {
 		t.Fatal("received blocks not recorded by the peer manager")
 	}
@@ -113,21 +113,12 @@ func TestSessionGetBlocks(t *testing.T) {
 			t.Fatal("incorrect peer recorded to peer manager")
 		}
 	}
+	fpm.lk.Unlock()
 
 	// look at new interactions with want manager
-	var cancelReqs []wantReq
-	var newBlockReqs []wantReq
 
-	fwm.lk.Lock()
-	for _, w := range fwm.wantReqs {
-		if w.isCancel {
-			cancelReqs = append(cancelReqs, w)
-		} else {
-			newBlockReqs = append(newBlockReqs, w)
-		}
-	}
 	// should have cancelled each received block
-	if len(cancelReqs) != activeWantsLimit {
+	if len(newCancelReqs) != activeWantsLimit {
 		t.Fatal("did not cancel each block once it was received")
 	}
 	// new session reqs should be targeted
@@ -138,7 +129,6 @@ func TestSessionGetBlocks(t *testing.T) {
 		}
 		totalEnqueued += len(w.cids)
 	}
-	fwm.lk.Unlock()
 
 	// full new round of cids should be requested
 	if totalEnqueued != activeWantsLimit {
@@ -147,14 +137,12 @@ func TestSessionGetBlocks(t *testing.T) {
 
 	// receive remaining blocks
 	for i, p := range peers {
-		session.ReceiveBlockFrom(p, blks[i+activeWantsLimit])
+		session.ReceiveBlockFrom(p, blks[testutil.IndexOf(blks, newBlockReqs[i].cids[0])])
+		receivedBlock := <-getBlocksCh
+		receivedBlocks = append(receivedBlocks, receivedBlock)
+		cancelBlock := <-cancelReqs
+		newCancelReqs = append(newCancelReqs, cancelBlock)
 	}
-
-	// wait for everything to wrap up
-	<-ctx.Done()
-
-	// check that we got everything
-	fmt.Printf("%d\n", len(receivedBlocks))
 
 	if len(receivedBlocks) != len(blks) {
 		t.Fatal("did not receive enough blocks")
@@ -170,60 +158,52 @@ func TestSessionFindMorePeers(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
-	fwm := &fakeWantManager{}
+	wantReqs := make(chan wantReq, 1)
+	cancelReqs := make(chan wantReq, 1)
+	fwm := &fakeWantManager{wantReqs, cancelReqs}
 	fpm := &fakePeerManager{}
 	id := testutil.GenerateSessionID()
 	session := New(ctx, id, fwm, fpm)
-	session.SetBaseTickDelay(1 * time.Millisecond)
+	session.SetBaseTickDelay(200 * time.Microsecond)
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(activeWantsLimit * 2)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
 	}
-	var receivedBlocks []blocks.Block
 	getBlocksCh, err := session.GetBlocks(ctx, cids)
-	go func() {
-		for block := range getBlocksCh {
-			receivedBlocks = append(receivedBlocks, block)
-		}
-	}()
 	if err != nil {
 		t.Fatal("error getting blocks")
 	}
 
+	// clear the initial block of wants
+	<-wantReqs
+
 	// receive a block to trigger a tick reset
-	time.Sleep(1 * time.Millisecond)
+	time.Sleep(200 * time.Microsecond)
 	p := testutil.GeneratePeers(1)[0]
 	session.ReceiveBlockFrom(p, blks[0])
-
-	// wait then clear the want list
-	time.Sleep(1 * time.Millisecond)
-	fwm.lk.Lock()
-	fwm.wantReqs = nil
-	fwm.lk.Unlock()
+	<-getBlocksCh
+	<-wantReqs
+	<-cancelReqs
 
 	// wait long enough for a tick to occur
-	// baseTickDelay + 3 * latency = 4ms
-	time.Sleep(6 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 
 	// trigger to find providers should have happened
+	fpm.lk.Lock()
 	if fpm.findMorePeersRequested != true {
 		t.Fatal("should have attempted to find more peers but didn't")
 	}
+	fpm.lk.Unlock()
 
 	// verify a broadcast was made
-	fwm.lk.Lock()
-	if len(fwm.wantReqs) != 1 {
-		t.Fatal("did not make a new broadcast")
-	}
-	receivedWantReq := fwm.wantReqs[0]
+	receivedWantReq := <-wantReqs
 	if len(receivedWantReq.cids) != activeWantsLimit {
 		t.Fatal("did not rebroadcast whole live list")
 	}
 	if receivedWantReq.peers != nil {
 		t.Fatal("did not make a broadcast")
 	}
-	fwm.wantReqs = nil
-	fwm.lk.Unlock()
+	<-ctx.Done()
 }
