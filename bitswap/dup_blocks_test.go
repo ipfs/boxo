@@ -34,6 +34,7 @@ type runStats struct {
 var benchmarkLog []runStats
 
 func BenchmarkDups2Nodes(b *testing.B) {
+	benchmarkLog = nil
 	fixedDelay := delay.Fixed(10 * time.Millisecond)
 	b.Run("AllToAll-OneAtATime", func(b *testing.B) {
 		subtestDistributeAndFetch(b, 3, 100, fixedDelay, allToAll, oneAtATime)
@@ -93,7 +94,7 @@ func BenchmarkDups2Nodes(b *testing.B) {
 		subtestDistributeAndFetch(b, 200, 20, fixedDelay, allToAll, batchFetchAll)
 	})
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	ioutil.WriteFile("benchmark.json", out, 0666)
+	ioutil.WriteFile("tmp/benchmark.json", out, 0666)
 }
 
 const fastSpeed = 60 * time.Millisecond
@@ -103,6 +104,7 @@ const superSlowSpeed = 4000 * time.Millisecond
 const distribution = 20 * time.Millisecond
 
 func BenchmarkDupsManyNodesRealWorldNetwork(b *testing.B) {
+	benchmarkLog = nil
 	fastNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
 		mediumSpeed-fastSpeed, slowSpeed-fastSpeed,
 		0.0, 0.0, distribution, nil)
@@ -125,6 +127,8 @@ func BenchmarkDupsManyNodesRealWorldNetwork(b *testing.B) {
 	b.Run("200Nodes-AllToAll-BigBatch-SlowVariableSpeedNetwork", func(b *testing.B) {
 		subtestDistributeAndFetch(b, 300, 200, slowNetworkDelay, allToAll, batchFetchAll)
 	})
+	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
+	ioutil.WriteFile("tmp/rw-benchmark.json", out, 0666)
 }
 
 func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, df distFunc, ff fetchFunc) {
