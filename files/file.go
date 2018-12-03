@@ -39,14 +39,6 @@ type DirEntry interface {
 
 	// Node returns the file referenced by this DirEntry
 	Node() Node
-
-	// File is an alias for ent.Node().(File). If the file isn't a regular
-	// file, nil value will be returned
-	File() File
-
-	// Dir is an alias for ent.Node().(directory). If the file isn't a directory,
-	// nil value will be returned
-	Dir() Directory
 }
 
 // DirIterator is a iterator over directory entries.

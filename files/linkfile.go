@@ -45,4 +45,9 @@ func (lf *Symlink) Size() (int64, error) {
 	return 0, ErrNotSupported
 }
 
+func ToSymlink(n Node) *Symlink {
+	l, _ := n.(*Symlink)
+	return l
+}
+
 var _ File = &Symlink{}

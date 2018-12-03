@@ -13,14 +13,6 @@ func (e fileEntry) Node() Node {
 	return e.file
 }
 
-func (e fileEntry) File() File {
-	return castRegular(e.file)
-}
-
-func (e fileEntry) Dir() Directory {
-	return castDir(e.file)
-}
-
 func FileEntry(name string, file Node) DirEntry {
 	return fileEntry{
 		name: name,
@@ -39,14 +31,6 @@ func (it *sliceIterator) Name() string {
 
 func (it *sliceIterator) Node() Node {
 	return it.files[it.n].Node()
-}
-
-func (it *sliceIterator) File() File {
-	return it.files[it.n].File()
-}
-
-func (it *sliceIterator) Dir() Directory {
-	return it.files[it.n].Dir()
 }
 
 func (it *sliceIterator) Next() bool {

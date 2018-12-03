@@ -114,14 +114,6 @@ func (it *multipartIterator) Node() Node {
 	return it.curFile
 }
 
-func (it *multipartIterator) File() File {
-	return castRegular(it.Node())
-}
-
-func (it *multipartIterator) Dir() Directory {
-	return castDir(it.Node())
-}
-
 func (it *multipartIterator) Next() bool {
 	if it.f.Reader == nil {
 		return false

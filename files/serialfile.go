@@ -67,14 +67,6 @@ func (it *serialIterator) Node() Node {
 	return it.curFile
 }
 
-func (it *serialIterator) File() File {
-	return castRegular(it.Node())
-}
-
-func (it *serialIterator) Dir() Directory {
-	return castDir(it.Node())
-}
-
 func (it *serialIterator) Next() bool {
 	// if there aren't any files left in the root directory, we're done
 	if len(it.files) == 0 {
@@ -180,16 +172,6 @@ func (f *serialFile) Size() (int64, error) {
 	})
 
 	return du, err
-}
-
-func castRegular(f Node) File {
-	r, _ := f.(File)
-	return r
-}
-
-func castDir(f Node) Directory {
-	d, _ := f.(Directory)
-	return d
 }
 
 var _ Directory = &serialFile{}

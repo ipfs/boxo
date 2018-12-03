@@ -2,24 +2,21 @@ package files
 
 import (
 	"io"
-	"io/ioutil"
 	"mime/multipart"
-	"strings"
 	"testing"
 )
 
 var text = "Some text! :)"
 
 func getTestMultiFileReader(t *testing.T) *MultiFileReader {
-	fileset := []DirEntry{
-		FileEntry("file.txt", NewReaderFile(ioutil.NopCloser(strings.NewReader(text)), nil)),
-		FileEntry("boop", NewSliceFile([]DirEntry{
-			FileEntry("a.txt", NewReaderFile(ioutil.NopCloser(strings.NewReader("bleep")), nil)),
-			FileEntry("b.txt", NewReaderFile(ioutil.NopCloser(strings.NewReader("bloop")), nil)),
-		})),
-		FileEntry("beep.txt", NewReaderFile(ioutil.NopCloser(strings.NewReader("beep")), nil)),
-	}
-	sf := NewSliceFile(fileset)
+	sf := DirFrom(map[string]Node{
+		"file.txt": FileFrom([]byte(text)),
+		"boop": DirFrom(map[string]Node{
+			"a.txt": FileFrom([]byte("bleep")),
+			"b.txt": FileFrom([]byte("bloop")),
+		}),
+		"beep.txt": FileFrom([]byte("beep")),
+	})
 
 	// testing output by reading it with the go stdlib "mime/multipart" Reader
 	r, err := NewMultiFileReader(sf, true)
@@ -43,21 +40,21 @@ func TestMultiFileReaderToMultiFile(t *testing.T) {
 	}
 	it := md.Entries()
 
-	if !it.Next() || it.Name() != "file.txt" {
+	if !it.Next() || it.Name() != "beep.txt" {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	if !it.Next() || it.Name() != "boop" || it.Dir() == nil {
+	if !it.Next() || it.Name() != "boop" || DirFrom(it) == nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	subIt := it.Dir().Entries()
+	subIt := DirFrom(it).Entries()
 
-	if !subIt.Next() || subIt.Name() != "a.txt" || subIt.Dir() != nil {
+	if !subIt.Next() || subIt.Name() != "a.txt" || DirFrom(subIt) != nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	if !subIt.Next() || subIt.Name() != "b.txt" || subIt.Dir() != nil {
+	if !subIt.Next() || subIt.Name() != "b.txt" || DirFrom(subIt) != nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 
@@ -70,7 +67,7 @@ func TestMultiFileReaderToMultiFile(t *testing.T) {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	if !it.Next() || it.Name() != "beep.txt" || it.Dir() != nil || it.Err() != nil {
+	if !it.Next() || it.Name() != "file.txt" || DirFrom(it) != nil || it.Err() != nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 
@@ -96,13 +93,13 @@ func TestOutput(t *testing.T) {
 	if !ok {
 		t.Fatal("Expected file to be a regular file")
 	}
-	if mpname != "file.txt" {
+	if mpname != "beep.txt" {
 		t.Fatal("Expected filename to be \"file.txt\"")
 	}
-	if n, err := mpr.Read(buf); n != len(text) || err != nil {
+	if n, err := mpr.Read(buf); n != 4 || err != nil {
 		t.Fatal("Expected to read from file", n, err)
 	}
-	if string(buf[:len(text)]) != text {
+	if string(buf[:4]) != "beep" {
 		t.Fatal("Data read was different than expected")
 	}
 
@@ -165,7 +162,7 @@ func TestOutput(t *testing.T) {
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil MultipartFile, nil error")
 	}
-	if mpname != "beep.txt" {
+	if mpname != "file.txt" {
 		t.Fatal("Expected filename to be \"b.txt\"")
 	}
 

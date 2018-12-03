@@ -2,27 +2,25 @@ package files
 
 import (
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"strings"
 	"testing"
 )
 
 func TestSliceFiles(t *testing.T) {
-	files := []DirEntry{
-		FileEntry("", NewReaderFile(ioutil.NopCloser(strings.NewReader("Some text!\n")), nil)),
-		FileEntry("", NewReaderFile(ioutil.NopCloser(strings.NewReader("beep")), nil)),
-		FileEntry("", NewReaderFile(ioutil.NopCloser(strings.NewReader("boop")), nil)),
-	}
+	sf := DirFrom(map[string]Node{
+		"1": FileFrom([]byte("Some text!\n")),
+		"2": FileFrom([]byte("beep")),
+		"3": FileFrom([]byte("boop")),
+	})
 	buf := make([]byte, 20)
 
-	sf := NewSliceFile(files)
 	it := sf.Entries()
 
 	if !it.Next() {
 		t.Fatal("Expected a file")
 	}
-	rf := it.File()
+	rf := ToFile(it.Node())
 	if rf == nil {
 		t.Fatal("Expected a regular file")
 	}
@@ -48,7 +46,7 @@ func TestSliceFiles(t *testing.T) {
 
 func TestReaderFiles(t *testing.T) {
 	message := "beep boop"
-	rf := NewReaderFile(ioutil.NopCloser(strings.NewReader(message)), nil)
+	rf := FileFrom([]byte(message))
 	buf := make([]byte, len(message))
 
 	if n, err := rf.Read(buf); n == 0 || err != nil {
