@@ -34,7 +34,7 @@ type MultiFileReader struct {
 // NewMultiFileReader constructs a MultiFileReader. `file` can be any `commands.Directory`.
 // If `form` is set to true, the multipart data will have a Content-Type of 'multipart/form-data',
 // if `form` is false, the Content-Type will be 'multipart/mixed'.
-func NewMultiFileReader(file Directory, form bool) (*MultiFileReader, error) {
+func NewMultiFileReader(file Directory, form bool) *MultiFileReader {
 	it := file.Entries()
 
 	mfr := &MultiFileReader{
@@ -45,7 +45,7 @@ func NewMultiFileReader(file Directory, form bool) (*MultiFileReader, error) {
 	}
 	mfr.mpWriter = multipart.NewWriter(&mfr.buf)
 
-	return mfr, nil
+	return mfr
 }
 
 func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {

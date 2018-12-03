@@ -19,11 +19,7 @@ func getTestMultiFileReader(t *testing.T) *MultiFileReader {
 	})
 
 	// testing output by reading it with the go stdlib "mime/multipart" Reader
-	r, err := NewMultiFileReader(sf, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
+	return NewMultiFileReader(sf, true)
 }
 
 func TestMultiFileReaderToMultiFile(t *testing.T) {
