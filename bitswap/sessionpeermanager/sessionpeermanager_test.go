@@ -3,6 +3,7 @@ package sessionpeermanager
 import (
 	"context"
 	"sync"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -120,6 +121,69 @@ func TestRecordingReceivedBlocks(t *testing.T) {
 	}
 }
 
+func TestOrderingPeers(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	peers := testutil.GeneratePeers(100)
+	fcm := &fakeConnManager{}
+	fpn := &fakePeerNetwork{peers, fcm}
+	c := testutil.GenerateCids(1)
+	id := testutil.GenerateSessionID()
+	sessionPeerManager := New(ctx, id, fpn)
+
+	// add all peers to session
+	sessionPeerManager.FindMorePeers(ctx, c[0])
+
+	// record broadcast
+	sessionPeerManager.RecordPeerRequests(nil, c)
+
+	// record receives
+	peer1 := peers[rand.Intn(100)]
+	peer2 := peers[rand.Intn(100)]
+	peer3 := peers[rand.Intn(100)]
+	time.Sleep(1 * time.Millisecond)
+	sessionPeerManager.RecordPeerResponse(peer1, c[0])
+	time.Sleep(1 * time.Millisecond)
+	sessionPeerManager.RecordPeerResponse(peer2, c[0])
+	time.Sleep(1 * time.Millisecond)
+	sessionPeerManager.RecordPeerResponse(peer3, c[0])
+
+	sessionPeers := sessionPeerManager.GetOptimizedPeers()
+	if len(sessionPeers) != maxOptimizedPeers {
+		t.Fatal("Should not return more than the max of optimized peers")
+	}
+
+	// should prioritize peers which have received blocks
+	if (sessionPeers[0] != peer3) || (sessionPeers[1] != peer2) || (sessionPeers[2] != peer1) {
+		t.Fatal("Did not prioritize peers that received blocks")
+	}
+
+	// Receive a second time from same node
+	sessionPeerManager.RecordPeerResponse(peer3, c[0])
+
+	// call again
+	nextSessionPeers := sessionPeerManager.GetOptimizedPeers()
+	if len(nextSessionPeers) != maxOptimizedPeers {
+		t.Fatal("Should not return more than the max of optimized peers")
+	}
+
+	// should not duplicate
+	if (nextSessionPeers[0] != peer3) || (nextSessionPeers[1] != peer2) || (nextSessionPeers[2] != peer1) {
+		t.Fatal("Did dedup peers which received multiple blocks")
+	}
+
+	// should randomize other peers
+	totalSame := 0
+	for i := 3; i < maxOptimizedPeers; i++ {
+		if sessionPeers[i] == nextSessionPeers[i] {
+			totalSame++
+		}
+	}
+	if totalSame >= maxOptimizedPeers-3 {
+		t.Fatal("should not return the same random peers each time")
+	}
+}
 func TestUntaggingPeers(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)

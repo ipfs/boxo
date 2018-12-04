@@ -3,16 +3,26 @@ package sessionpeermanager
 import (
 	"context"
 	"fmt"
+	"math/rand"
 
 	cid "github.com/ipfs/go-cid"
 	ifconnmgr "github.com/libp2p/go-libp2p-interface-connmgr"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 
+const (
+	maxOptimizedPeers = 25
+	reservePeers      = 2
+)
+
 // PeerNetwork is an interface for finding providers and managing connections
 type PeerNetwork interface {
 	ConnectionManager() ifconnmgr.ConnManager
 	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.ID
+}
+
+type peerMessage interface {
+	handle(spm *SessionPeerManager)
 }
 
 // SessionPeerManager tracks and manages peers for a session, and provides
@@ -22,22 +32,21 @@ type SessionPeerManager struct {
 	network PeerNetwork
 	tag     string
 
-	newPeers chan peer.ID
-	peerReqs chan chan []peer.ID
+	peerMessages chan peerMessage
 
 	// do not touch outside of run loop
-	activePeers    map[peer.ID]struct{}
-	activePeersArr []peer.ID
+	activePeers         map[peer.ID]bool
+	unoptimizedPeersArr []peer.ID
+	optimizedPeersArr   []peer.ID
 }
 
 // New creates a new SessionPeerManager
 func New(ctx context.Context, id uint64, network PeerNetwork) *SessionPeerManager {
 	spm := &SessionPeerManager{
-		ctx:         ctx,
-		network:     network,
-		newPeers:    make(chan peer.ID, 16),
-		peerReqs:    make(chan chan []peer.ID),
-		activePeers: make(map[peer.ID]struct{}),
+		ctx:          ctx,
+		network:      network,
+		peerMessages: make(chan peerMessage, 16),
+		activePeers:  make(map[peer.ID]bool),
 	}
 
 	spm.tag = fmt.Sprint("bs-ses-", id)
@@ -53,7 +62,7 @@ func (spm *SessionPeerManager) RecordPeerResponse(p peer.ID, k cid.Cid) {
 	// at the moment, we're just adding peers here
 	// in the future, we'll actually use this to record metrics
 	select {
-	case spm.newPeers <- p:
+	case spm.peerMessages <- &peerResponseMessage{p}:
 	case <-spm.ctx.Done():
 	}
 }
@@ -70,7 +79,7 @@ func (spm *SessionPeerManager) GetOptimizedPeers() []peer.ID {
 	// ordered by optimization, or only a subset
 	resp := make(chan []peer.ID)
 	select {
-	case spm.peerReqs <- resp:
+	case spm.peerMessages <- &peerReqMessage{resp}:
 	case <-spm.ctx.Done():
 		return nil
 	}
@@ -93,7 +102,7 @@ func (spm *SessionPeerManager) FindMorePeers(ctx context.Context, c cid.Cid) {
 		// - ensure two 'findprovs' calls for the same block don't run concurrently
 		// - share peers between sessions based on interest set
 		for p := range spm.network.FindProvidersAsync(ctx, k, 10) {
-			spm.newPeers <- p
+			spm.peerMessages <- &peerFoundMessage{p}
 		}
 	}(c)
 }
@@ -101,29 +110,100 @@ func (spm *SessionPeerManager) FindMorePeers(ctx context.Context, c cid.Cid) {
 func (spm *SessionPeerManager) run(ctx context.Context) {
 	for {
 		select {
-		case p := <-spm.newPeers:
-			spm.addActivePeer(p)
-		case resp := <-spm.peerReqs:
-			resp <- spm.activePeersArr
+		case pm := <-spm.peerMessages:
+			pm.handle(spm)
 		case <-ctx.Done():
 			spm.handleShutdown()
 			return
 		}
 	}
 }
-func (spm *SessionPeerManager) addActivePeer(p peer.ID) {
-	if _, ok := spm.activePeers[p]; !ok {
-		spm.activePeers[p] = struct{}{}
-		spm.activePeersArr = append(spm.activePeersArr, p)
 
-		cmgr := spm.network.ConnectionManager()
-		cmgr.TagPeer(p, spm.tag, 10)
+func (spm *SessionPeerManager) tagPeer(p peer.ID) {
+	cmgr := spm.network.ConnectionManager()
+	cmgr.TagPeer(p, spm.tag, 10)
+}
+
+func (spm *SessionPeerManager) insertOptimizedPeer(p peer.ID) {
+	if len(spm.optimizedPeersArr) >= (maxOptimizedPeers - reservePeers) {
+		tailPeer := spm.optimizedPeersArr[len(spm.optimizedPeersArr)-1]
+		spm.optimizedPeersArr = spm.optimizedPeersArr[:len(spm.optimizedPeersArr)-1]
+		spm.unoptimizedPeersArr = append(spm.unoptimizedPeersArr, tailPeer)
 	}
+
+	spm.optimizedPeersArr = append([]peer.ID{p}, spm.optimizedPeersArr...)
+}
+
+type peerFoundMessage struct {
+	p peer.ID
+}
+
+func (pfm *peerFoundMessage) handle(spm *SessionPeerManager) {
+	p := pfm.p
+	if _, ok := spm.activePeers[p]; !ok {
+		spm.activePeers[p] = false
+		spm.unoptimizedPeersArr = append(spm.unoptimizedPeersArr, p)
+		spm.tagPeer(p)
+	}
+}
+
+type peerResponseMessage struct {
+	p peer.ID
+}
+
+func (prm *peerResponseMessage) handle(spm *SessionPeerManager) {
+
+	p := prm.p
+	isOptimized, ok := spm.activePeers[p]
+	if !ok {
+		spm.activePeers[p] = true
+		spm.tagPeer(p)
+	} else {
+		if isOptimized {
+			if spm.optimizedPeersArr[0] == p {
+				return
+			}
+			for i := 0; i < len(spm.optimizedPeersArr); i++ {
+				if spm.optimizedPeersArr[i] == p {
+					spm.optimizedPeersArr = append(spm.optimizedPeersArr[:i], spm.optimizedPeersArr[i+1:]...)
+					break
+				}
+			}
+		} else {
+			spm.activePeers[p] = true
+			for i := 0; i < len(spm.unoptimizedPeersArr); i++ {
+				if spm.unoptimizedPeersArr[i] == p {
+					spm.unoptimizedPeersArr[i] = spm.unoptimizedPeersArr[len(spm.unoptimizedPeersArr)-1]
+					spm.unoptimizedPeersArr = spm.unoptimizedPeersArr[:len(spm.unoptimizedPeersArr)-1]
+					break
+				}
+			}
+		}
+	}
+	spm.insertOptimizedPeer(p)
+}
+
+type peerReqMessage struct {
+	resp chan<- []peer.ID
+}
+
+func (prm *peerReqMessage) handle(spm *SessionPeerManager) {
+	randomOrder := rand.Perm(len(spm.unoptimizedPeersArr))
+	maxPeers := len(spm.unoptimizedPeersArr) + len(spm.optimizedPeersArr)
+	if maxPeers > maxOptimizedPeers {
+		maxPeers = maxOptimizedPeers
+	}
+
+	extraPeers := make([]peer.ID, maxPeers-len(spm.optimizedPeersArr))
+	for i := range extraPeers {
+		extraPeers[i] = spm.unoptimizedPeersArr[randomOrder[i]]
+	}
+	prm.resp <- append(spm.optimizedPeersArr, extraPeers...)
 }
 
 func (spm *SessionPeerManager) handleShutdown() {
 	cmgr := spm.network.ConnectionManager()
-	for _, p := range spm.activePeersArr {
+	for p := range spm.activePeers {
 		cmgr.UntagPeer(p, spm.tag)
 	}
 }
