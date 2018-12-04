@@ -88,7 +88,7 @@ func (n *UnixfsNode) GetChild(ctx context.Context, i int, ds ipld.DAGService) (*
 }
 
 // AddChild adds the given UnixfsNode as a child of the receiver.
-// The passed in DagBuilderHelper is used to store the child node an
+// The passed in DagBuilderHelper is used to store the child node and
 // pin it locally so it doesnt get lost.
 func (n *UnixfsNode) AddChild(child *UnixfsNode, db *DagBuilderHelper) error {
 	n.ufmt.AddBlockSize(child.FileSize())
