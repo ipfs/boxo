@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	maxOptimizedPeers = 25
+	maxOptimizedPeers = 32
 	reservePeers      = 2
 )
 

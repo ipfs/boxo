@@ -65,7 +65,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	id := testutil.GenerateSessionID()
 	session := New(ctx, id, fwm, fpm)
 	blockGenerator := blocksutil.NewBlockGenerator()
-	blks := blockGenerator.Blocks(activeWantsLimit * 2)
+	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
@@ -79,7 +79,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	// check initial want request
 	receivedWantReq := <-fwm.wantReqs
 
-	if len(receivedWantReq.cids) != activeWantsLimit {
+	if len(receivedWantReq.cids) != broadcastLiveWantsLimit {
 		t.Fatal("did not enqueue correct initial number of wants")
 	}
 	if receivedWantReq.peers != nil {
@@ -87,7 +87,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	}
 
 	// now receive the first set of blocks
-	peers := testutil.GeneratePeers(activeWantsLimit)
+	peers := testutil.GeneratePeers(broadcastLiveWantsLimit)
 	var newCancelReqs []wantReq
 	var newBlockReqs []wantReq
 	var receivedBlocks []blocks.Block
@@ -103,7 +103,7 @@ func TestSessionGetBlocks(t *testing.T) {
 
 	// verify new peers were recorded
 	fpm.lk.Lock()
-	if len(fpm.peers) != activeWantsLimit {
+	if len(fpm.peers) != broadcastLiveWantsLimit {
 		t.Fatal("received blocks not recorded by the peer manager")
 	}
 	for _, p := range fpm.peers {
@@ -116,7 +116,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	// look at new interactions with want manager
 
 	// should have cancelled each received block
-	if len(newCancelReqs) != activeWantsLimit {
+	if len(newCancelReqs) != broadcastLiveWantsLimit {
 		t.Fatal("did not cancel each block once it was received")
 	}
 	// new session reqs should be targeted
@@ -129,7 +129,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	}
 
 	// full new round of cids should be requested
-	if totalEnqueued != activeWantsLimit {
+	if totalEnqueued != broadcastLiveWantsLimit {
 		t.Fatal("new blocks were not requested")
 	}
 
@@ -164,7 +164,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 	session := New(ctx, id, fwm, fpm)
 	session.SetBaseTickDelay(200 * time.Microsecond)
 	blockGenerator := blocksutil.NewBlockGenerator()
-	blks := blockGenerator.Blocks(activeWantsLimit * 2)
+	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
@@ -190,7 +190,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 
 	// verify a broadcast was made
 	receivedWantReq := <-wantReqs
-	if len(receivedWantReq.cids) != activeWantsLimit {
+	if len(receivedWantReq.cids) != broadcastLiveWantsLimit {
 		t.Fatal("did not rebroadcast whole live list")
 	}
 	if receivedWantReq.peers != nil {

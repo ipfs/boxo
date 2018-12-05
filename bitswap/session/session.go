@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"math/rand"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -14,7 +15,15 @@ import (
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 
-const activeWantsLimit = 16
+const (
+	minReceivedToSplit       = 2
+	maxSplit                 = 32
+	maxAcceptableDupes       = 0.4
+	minDuplesToTryLessSplits = 0.2
+	initialSplit             = 2
+	broadcastLiveWantsLimit  = 4
+	targetedLiveWantsLimit   = 32
+)
 
 // WantManager is an interface that can be used to request blocks
 // from given peers.
@@ -38,8 +47,9 @@ type interestReq struct {
 }
 
 type blkRecv struct {
-	from peer.ID
-	blk  blocks.Block
+	from           peer.ID
+	blk            blocks.Block
+	counterMessage bool
 }
 
 // Session holds state for an individual bitswap transfer operation.
@@ -60,14 +70,17 @@ type Session struct {
 	tickDelayReqs chan time.Duration
 
 	// do not touch outside run loop
-	tofetch       *cidQueue
-	interest      *lru.Cache
-	liveWants     map[cid.Cid]time.Time
-	tick          *time.Timer
-	baseTickDelay time.Duration
-	latTotal      time.Duration
-	fetchcnt      int
-
+	tofetch                *cidQueue
+	interest               *lru.Cache
+	pastWants              *cidQueue
+	liveWants              map[cid.Cid]time.Time
+	tick                   *time.Timer
+	baseTickDelay          time.Duration
+	latTotal               time.Duration
+	fetchcnt               int
+	receivedCount          int
+	split                  int
+	duplicateReceivedCount int
 	// identifiers
 	notif notifications.PubSub
 	uuid  logging.Loggable
@@ -82,12 +95,14 @@ func New(ctx context.Context, id uint64, wm WantManager, pm PeerManager) *Sessio
 		newReqs:       make(chan []cid.Cid),
 		cancelKeys:    make(chan []cid.Cid),
 		tofetch:       newCidQueue(),
+		pastWants:     newCidQueue(),
 		interestReqs:  make(chan interestReq),
 		latencyReqs:   make(chan chan time.Duration),
 		tickDelayReqs: make(chan time.Duration),
 		ctx:           ctx,
 		wm:            wm,
 		pm:            pm,
+		split:         initialSplit,
 		incoming:      make(chan blkRecv),
 		notif:         notifications.New(),
 		uuid:          loggables.Uuid("GetBlockRequest"),
@@ -106,12 +121,21 @@ func New(ctx context.Context, id uint64, wm WantManager, pm PeerManager) *Sessio
 // ReceiveBlockFrom receives an incoming block from the given peer.
 func (s *Session) ReceiveBlockFrom(from peer.ID, blk blocks.Block) {
 	select {
-	case s.incoming <- blkRecv{from: from, blk: blk}:
+	case s.incoming <- blkRecv{from: from, blk: blk, counterMessage: false}:
 	case <-s.ctx.Done():
 	}
 	ks := []cid.Cid{blk.Cid()}
 	s.wm.CancelWants(s.ctx, ks, nil, s.id)
 
+}
+
+// UpdateReceiveCounters updates receive counters for a block,
+// which may be a duplicate and adjusts the split factor based on that.
+func (s *Session) UpdateReceiveCounters(blk blocks.Block) {
+	select {
+	case s.incoming <- blkRecv{from: "", blk: blk, counterMessage: true}:
+	case <-s.ctx.Done():
+	}
 }
 
 // InterestedIn returns true if this session is interested in the given Cid.
@@ -205,7 +229,11 @@ func (s *Session) run(ctx context.Context) {
 	for {
 		select {
 		case blk := <-s.incoming:
-			s.handleIncomingBlock(ctx, blk)
+			if blk.counterMessage {
+				s.updateReceiveCounters(ctx, blk.blk)
+			} else {
+				s.handleIncomingBlock(ctx, blk)
+			}
 		case keys := <-s.newReqs:
 			s.handleNewRequest(ctx, keys)
 		case keys := <-s.cancelKeys:
@@ -241,8 +269,7 @@ func (s *Session) handleNewRequest(ctx context.Context, keys []cid.Cid) {
 	for _, k := range keys {
 		s.interest.Add(k, nil)
 	}
-	if len(s.liveWants) < activeWantsLimit {
-		toadd := activeWantsLimit - len(s.liveWants)
+	if toadd := s.wantBudget(); toadd > 0 {
 		if toadd > len(keys) {
 			toadd = len(keys)
 		}
@@ -264,6 +291,7 @@ func (s *Session) handleCancel(keys []cid.Cid) {
 }
 
 func (s *Session) handleTick(ctx context.Context) {
+
 	live := make([]cid.Cid, 0, len(s.liveWants))
 	now := time.Now()
 	for c := range s.liveWants {
@@ -316,6 +344,28 @@ func (s *Session) receiveBlock(ctx context.Context, blk blocks.Block) {
 		if next := s.tofetch.Pop(); next.Defined() {
 			s.wantBlocks(ctx, []cid.Cid{next})
 		}
+
+		s.pastWants.Push(c)
+	}
+}
+
+func (s *Session) duplicateRatio() float64 {
+	return float64(s.duplicateReceivedCount) / float64(s.receivedCount)
+}
+func (s *Session) updateReceiveCounters(ctx context.Context, blk blocks.Block) {
+	if s.pastWants.Has(blk.Cid()) {
+		s.receivedCount++
+		s.duplicateReceivedCount++
+		if (s.receivedCount > minReceivedToSplit) && (s.duplicateRatio() > maxAcceptableDupes) && (s.split < maxSplit) {
+			s.split++
+		}
+	} else {
+		if s.cidIsWanted(blk.Cid()) {
+			s.receivedCount++
+			if (s.split > 1) && (s.duplicateRatio() < minDuplesToTryLessSplits) {
+				s.split--
+			}
+		}
 	}
 }
 
@@ -325,9 +375,18 @@ func (s *Session) wantBlocks(ctx context.Context, ks []cid.Cid) {
 		s.liveWants[c] = now
 	}
 	peers := s.pm.GetOptimizedPeers()
-	// right now we're requesting each block from every peer, but soon, maybe not
-	s.pm.RecordPeerRequests(peers, ks)
-	s.wm.WantBlocks(ctx, ks, peers, s.id)
+	if len(peers) > 0 {
+		splitRequests := split(ks, peers, s.split)
+		for i, currentKeys := range splitRequests.ks {
+			currentPeers := splitRequests.peers[i]
+			// right now we're requesting each block from every peer, but soon, maybe not
+			s.pm.RecordPeerRequests(currentPeers, currentKeys)
+			s.wm.WantBlocks(ctx, currentKeys, currentPeers, s.id)
+		}
+	} else {
+		s.pm.RecordPeerRequests(nil, ks)
+		s.wm.WantBlocks(ctx, ks, nil, s.id)
+	}
 }
 
 func (s *Session) averageLatency() time.Duration {
@@ -341,4 +400,51 @@ func (s *Session) resetTick() {
 		avLat := s.averageLatency()
 		s.tick.Reset(s.baseTickDelay + (3 * avLat))
 	}
+}
+
+type splitRec struct {
+	ks    [][]cid.Cid
+	peers [][]peer.ID
+}
+
+func split(ks []cid.Cid, peers []peer.ID, split int) *splitRec {
+	peerSplit := split
+	if len(peers) < peerSplit {
+		peerSplit = len(peers)
+	}
+	keySplit := split
+	if len(ks) < keySplit {
+		keySplit = len(ks)
+	}
+	if keySplit > peerSplit {
+		keySplit = peerSplit
+	}
+	out := &splitRec{
+		ks:    make([][]cid.Cid, keySplit),
+		peers: make([][]peer.ID, peerSplit),
+	}
+	for i, c := range ks {
+		pos := i % keySplit
+		out.ks[pos] = append(out.ks[pos], c)
+	}
+	peerOrder := rand.Perm(len(peers))
+	for i, po := range peerOrder {
+		pos := i % peerSplit
+		out.peers[pos] = append(out.peers[pos], peers[po])
+	}
+	return out
+}
+
+func (s *Session) wantBudget() int {
+	live := len(s.liveWants)
+	var budget int
+	if len(s.pm.GetOptimizedPeers()) > 0 {
+		budget = targetedLiveWantsLimit - live
+	} else {
+		budget = broadcastLiveWantsLimit - live
+	}
+	if budget < 0 {
+		budget = 0
+	}
+	return budget
 }
