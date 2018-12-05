@@ -17,6 +17,7 @@ type Session interface {
 	exchange.Fetcher
 	InterestedIn(cid.Cid) bool
 	ReceiveBlockFrom(peer.ID, blocks.Block)
+	UpdateReceiveCounters(blocks.Block)
 }
 
 type sesTrk struct {
@@ -110,5 +111,16 @@ func (sm *SessionManager) ReceiveBlockFrom(from peer.ID, blk blocks.Block) {
 		if s.session.InterestedIn(k) {
 			s.session.ReceiveBlockFrom(from, blk)
 		}
+	}
+}
+
+// UpdateReceiveCounters records the fact that a block was received, allowing
+// sessions to track duplicates
+func (sm *SessionManager) UpdateReceiveCounters(blk blocks.Block) {
+	sm.sessLk.Lock()
+	defer sm.sessLk.Unlock()
+
+	for _, s := range sm.sessions {
+		s.session.UpdateReceiveCounters(blk)
 	}
 }
