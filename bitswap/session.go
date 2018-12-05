@@ -66,7 +66,7 @@ func (bs *Bitswap) NewSession(ctx context.Context) exchange.Fetcher {
 		notif:         notifications.New(),
 		uuid:          loggables.Uuid("GetBlockRequest"),
 		baseTickDelay: time.Millisecond * 500,
-		id:            bs.getNextSessionID(),
+		id:            bs.sm.GetNextSessionID(),
 	}
 
 	s.tag = fmt.Sprint("bs-ses-", s.id)
@@ -74,10 +74,7 @@ func (bs *Bitswap) NewSession(ctx context.Context) exchange.Fetcher {
 	cache, _ := lru.New(2048)
 	s.interest = cache
 
-	bs.sessLk.Lock()
-	bs.sessions = append(bs.sessions, s)
-	bs.sessLk.Unlock()
-
+	bs.sm.AddSession(s)
 	go s.run(ctx)
 
 	return s
@@ -92,15 +89,7 @@ func (bs *Bitswap) removeSession(s *Session) {
 	}
 	bs.CancelWants(live, s.id)
 
-	bs.sessLk.Lock()
-	defer bs.sessLk.Unlock()
-	for i := 0; i < len(bs.sessions); i++ {
-		if bs.sessions[i] == s {
-			bs.sessions[i] = bs.sessions[len(bs.sessions)-1]
-			bs.sessions = bs.sessions[:len(bs.sessions)-1]
-			return
-		}
-	}
+	bs.sm.RemoveSession(s)
 }
 
 type blkRecv struct {
