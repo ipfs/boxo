@@ -45,7 +45,7 @@ type prq struct {
 	frozen map[peer.ID]*activePartner
 }
 
-// Push currently adds a new peerRequestTask to the end of the list
+// Push currently adds a new peerRequestTask to the end of the list.
 func (tl *prq) Push(to peer.ID, entries ...*wantlist.Entry) {
 	tl.lock.Lock()
 	defer tl.lock.Unlock()
@@ -140,7 +140,7 @@ func (tl *prq) Pop() *peerRequestTask {
 	return out
 }
 
-// Remove removes a task from the queue
+// Remove removes a task from the queue.
 func (tl *prq) Remove(k cid.Cid, p peer.ID) {
 	tl.lock.Lock()
 	t, ok := tl.taskMap[taskEntryKey{p, k}]
@@ -210,12 +210,12 @@ type peerRequestTask struct {
 	index   int // book-keeping field used by the pq container
 }
 
-// Index implements pq.Elem
+// Index implements pq.Elem.
 func (t *peerRequestTask) Index() int {
 	return t.index
 }
 
-// SetIndex implements pq.Elem
+// SetIndex implements pq.Elem.
 func (t *peerRequestTask) SetIndex(i int) {
 	t.index = i
 }
@@ -307,7 +307,7 @@ func partnerCompare(a, b pq.Elem) bool {
 	return pa.active < pb.active
 }
 
-// StartTask signals that a task was started for this partner
+// StartTask signals that a task was started for this partner.
 func (p *activePartner) StartTask(k cid.Cid) {
 	p.activelk.Lock()
 	p.activeBlocks.Add(k)
@@ -315,7 +315,7 @@ func (p *activePartner) StartTask(k cid.Cid) {
 	p.activelk.Unlock()
 }
 
-// TaskDone signals that a task was completed for this partner
+// TaskDone signals that a task was completed for this partner.
 func (p *activePartner) TaskDone(k cid.Cid) {
 	p.activelk.Lock()
 	p.activeBlocks.Remove(k)
@@ -326,12 +326,12 @@ func (p *activePartner) TaskDone(k cid.Cid) {
 	p.activelk.Unlock()
 }
 
-// Index implements pq.Elem
+// Index implements pq.Elem.
 func (p *activePartner) Index() int {
 	return p.index
 }
 
-// SetIndex implements pq.Elem
+// SetIndex implements pq.Elem.
 func (p *activePartner) SetIndex(i int) {
 	p.index = i
 }

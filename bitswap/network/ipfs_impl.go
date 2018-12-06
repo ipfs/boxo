@@ -26,7 +26,7 @@ var log = logging.Logger("bitswap_network")
 
 var sendMessageTimeout = time.Minute * 10
 
-// NewFromIpfsHost returns a BitSwapNetwork supported by underlying IPFS host
+// NewFromIpfsHost returns a BitSwapNetwork supported by underlying IPFS host.
 func NewFromIpfsHost(host host.Host, r routing.ContentRouting) BitSwapNetwork {
 	bitswapNetwork := impl{
 		host:    host,
@@ -149,7 +149,7 @@ func (bsnet *impl) ConnectTo(ctx context.Context, p peer.ID) error {
 	return bsnet.host.Connect(ctx, pstore.PeerInfo{ID: p})
 }
 
-// FindProvidersAsync returns a channel of providers for the given key
+// FindProvidersAsync returns a channel of providers for the given key.
 func (bsnet *impl) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.ID {
 
 	// Since routing queries are expensive, give bitswap the peers to which we

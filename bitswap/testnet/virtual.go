@@ -146,7 +146,7 @@ func (nc *networkClient) Stats() bsnet.NetworkStats {
 	}
 }
 
-// FindProvidersAsync returns a channel of providers for the given key
+// FindProvidersAsync returns a channel of providers for the given key.
 func (nc *networkClient) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.ID {
 
 	// NB: this function duplicates the PeerInfo -> ID transformation in the
@@ -200,7 +200,7 @@ func (n *networkClient) NewMessageSender(ctx context.Context, p peer.ID) (bsnet.
 	}, nil
 }
 
-// Provide provides the key to the network
+// Provide provides the key to the network.
 func (nc *networkClient) Provide(ctx context.Context, k cid.Cid) error {
 	return nc.routing.Provide(ctx, k, true)
 }
