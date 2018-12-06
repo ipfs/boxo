@@ -28,7 +28,7 @@ type Entry struct {
 	Trash bool
 }
 
-// NewRefEntry creates a new reference tracked wantlist entry
+// NewRefEntry creates a new reference tracked wantlist entry.
 func NewRefEntry(c cid.Cid, p int) *Entry {
 	return &Entry{
 		Cid:      c,
@@ -59,10 +59,10 @@ func New() *Wantlist {
 // by the session ID 'ses'.  if a cid is added under multiple session IDs, then
 // it must be removed by each of those sessions before it is no longer 'in the
 // wantlist'. Calls to Add are idempotent given the same arguments. Subsequent
-// calls with different values for priority will not update the priority
+// calls with different values for priority will not update the priority.
 // TODO: think through priority changes here
 // Add returns true if the cid did not exist in the wantlist before this call
-// (even if it was under a different session)
+// (even if it was under a different session).
 func (w *ThreadSafe) Add(c cid.Cid, priority int, ses uint64) bool {
 	w.lk.Lock()
 	defer w.lk.Unlock()
@@ -114,7 +114,7 @@ func (w *ThreadSafe) Remove(c cid.Cid, ses uint64) bool {
 }
 
 // Contains returns true if the given cid is in the wantlist tracked by one or
-// more sessions
+// more sessions.
 func (w *ThreadSafe) Contains(k cid.Cid) (*Entry, bool) {
 	w.lk.RLock()
 	defer w.lk.RUnlock()

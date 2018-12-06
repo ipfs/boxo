@@ -20,7 +20,7 @@ const activeWantsLimit = 16
 
 // Session holds state for an individual bitswap transfer operation.
 // This allows bitswap to make smarter decisions about who to send wantlist
-// info to, and who to request blocks from
+// info to, and who to request blocks from.
 type Session struct {
 	ctx            context.Context
 	tofetch        *cidQueue
@@ -51,7 +51,7 @@ type Session struct {
 }
 
 // NewSession creates a new bitswap session whose lifetime is bounded by the
-// given context
+// given context.
 func (bs *Bitswap) NewSession(ctx context.Context) exchange.Fetcher {
 	s := &Session{
 		activePeers:   make(map[peer.ID]struct{}),
@@ -302,7 +302,7 @@ func (s *Session) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 	return getBlocksImpl(ctx, keys, s.notif, s.fetch, s.cancelWants)
 }
 
-// GetBlock fetches a single block
+// GetBlock fetches a single block.
 func (s *Session) GetBlock(parent context.Context, k cid.Cid) (blocks.Block, error) {
 	return getBlock(parent, k, s.GetBlocks)
 }

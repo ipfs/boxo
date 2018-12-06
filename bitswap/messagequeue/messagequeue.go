@@ -15,13 +15,13 @@ import (
 var log = logging.Logger("bitswap")
 
 // MessageNetwork is any network that can connect peers and generate a message
-// sender
+// sender.
 type MessageNetwork interface {
 	ConnectTo(context.Context, peer.ID) error
 	NewMessageSender(context.Context, peer.ID) (bsnet.MessageSender, error)
 }
 
-// MessageQueue implements queuee of want messages to send to peers
+// MessageQueue implements queue of want messages to send to peers.
 type MessageQueue struct {
 	p peer.ID
 
@@ -38,7 +38,7 @@ type MessageQueue struct {
 	done chan struct{}
 }
 
-// New creats a new MessageQueues
+// New creats a new MessageQueue.
 func New(p peer.ID, network MessageNetwork) *MessageQueue {
 	return &MessageQueue{
 		done:    make(chan struct{}),
@@ -50,19 +50,19 @@ func New(p peer.ID, network MessageNetwork) *MessageQueue {
 	}
 }
 
-// RefIncrement increments the refcount for a message queue
+// RefIncrement increments the refcount for a message queue.
 func (mq *MessageQueue) RefIncrement() {
 	mq.refcnt++
 }
 
 // RefDecrement decrements the refcount for a message queue and returns true
-// if the refcount is now 0
+// if the refcount is now 0.
 func (mq *MessageQueue) RefDecrement() bool {
 	mq.refcnt--
 	return mq.refcnt > 0
 }
 
-// AddMessage adds new entries to an outgoing message for a given session
+// AddMessage adds new entries to an outgoing message for a given session.
 func (mq *MessageQueue) AddMessage(entries []*bsmsg.Entry, ses uint64) {
 	if !mq.addEntries(entries, ses) {
 		return
@@ -74,7 +74,7 @@ func (mq *MessageQueue) AddMessage(entries []*bsmsg.Entry, ses uint64) {
 }
 
 // Startup starts the processing of messages, and creates an initial message
-// based on the given initial wantlist
+// based on the given initial wantlist.
 func (mq *MessageQueue) Startup(ctx context.Context, initialEntries []*wantlist.Entry) {
 
 	// new peer, we will want to give them our full wantlist
@@ -93,7 +93,7 @@ func (mq *MessageQueue) Startup(ctx context.Context, initialEntries []*wantlist.
 
 }
 
-// Shutdown stops the processing of messages for a message queue
+// Shutdown stops the processing of messages for a message queue.
 func (mq *MessageQueue) Shutdown() {
 	close(mq.done)
 }

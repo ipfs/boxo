@@ -21,7 +21,7 @@ type BitSwapMessage interface {
 	// the sender.
 	Wantlist() []Entry
 
-	// Blocks returns a slice of unique blocks
+	// Blocks returns a slice of unique blocks.
 	Blocks() []blocks.Block
 
 	// AddEntry adds an entry to the Wantlist.

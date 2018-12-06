@@ -21,7 +21,7 @@ const (
 )
 
 // WantSender sends changes out to the network as they get added to the wantlist
-// managed by the WantManager
+// managed by the WantManager.
 type WantSender interface {
 	SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64)
 }
@@ -32,7 +32,7 @@ type wantMessage interface {
 
 // WantManager manages a global want list. It tracks two seperate want lists -
 // one for all wants, and one for wants that are specifically broadcast to the
-// internet
+// internet.
 type WantManager struct {
 	// channel requests to the run loop
 	// to get predictable behavior while running this in a go routine
@@ -50,7 +50,7 @@ type WantManager struct {
 	wantlistGauge metrics.Gauge
 }
 
-// New initializes a new WantManager for a given context
+// New initializes a new WantManager for a given context.
 func New(ctx context.Context) *WantManager {
 	ctx, cancel := context.WithCancel(ctx)
 	wantlistGauge := metrics.NewCtx(ctx, "wantlist_total",
@@ -65,56 +65,56 @@ func New(ctx context.Context) *WantManager {
 	}
 }
 
-// SetDelegate specifies who will send want changes out to the internet
+// SetDelegate specifies who will send want changes out to the internet.
 func (wm *WantManager) SetDelegate(wantSender WantSender) {
 	wm.wantSender = wantSender
 }
 
-// WantBlocks adds the given cids to the wantlist, tracked by the given session
+// WantBlocks adds the given cids to the wantlist, tracked by the given session.
 func (wm *WantManager) WantBlocks(ctx context.Context, ks []cid.Cid, peers []peer.ID, ses uint64) {
 	log.Infof("want blocks: %s", ks)
 	wm.addEntries(ctx, ks, peers, false, ses)
 }
 
-// CancelWants removes the given cids from the wantlist, tracked by the given session
+// CancelWants removes the given cids from the wantlist, tracked by the given session.
 func (wm *WantManager) CancelWants(ctx context.Context, ks []cid.Cid, peers []peer.ID, ses uint64) {
 	wm.addEntries(context.Background(), ks, peers, true, ses)
 }
 
-// IsWanted returns whether a CID is currently wanted
+// IsWanted returns whether a CID is currently wanted.
 func (wm *WantManager) IsWanted(c cid.Cid) bool {
 	resp := make(chan bool)
 	wm.wantMessages <- &isWantedMessage{c, resp}
 	return <-resp
 }
 
-// CurrentWants returns the list of current wants
+// CurrentWants returns the list of current wants.
 func (wm *WantManager) CurrentWants() []*wantlist.Entry {
 	resp := make(chan []*wantlist.Entry)
 	wm.wantMessages <- &currentWantsMessage{resp}
 	return <-resp
 }
 
-// CurrentBroadcastWants returns the current list of wants that are broadcasts
+// CurrentBroadcastWants returns the current list of wants that are broadcasts.
 func (wm *WantManager) CurrentBroadcastWants() []*wantlist.Entry {
 	resp := make(chan []*wantlist.Entry)
 	wm.wantMessages <- &currentBroadcastWantsMessage{resp}
 	return <-resp
 }
 
-// WantCount returns the total count of wants
+// WantCount returns the total count of wants.
 func (wm *WantManager) WantCount() int {
 	resp := make(chan int)
 	wm.wantMessages <- &wantCountMessage{resp}
 	return <-resp
 }
 
-// Startup starts processing for the WantManager
+// Startup starts processing for the WantManager.
 func (wm *WantManager) Startup() {
 	go wm.run()
 }
 
-// Shutdown ends processing for the want manager
+// Shutdown ends processing for the want manager.
 func (wm *WantManager) Shutdown() {
 	wm.cancel()
 }
