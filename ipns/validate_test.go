@@ -128,6 +128,8 @@ func TestEmbeddedPubKeyValidate(t *testing.T) {
 }
 
 func TestPeerIDPubKeyValidate(t *testing.T) {
+	t.Skip("disabled until libp2p/go-libp2p-crypto#51 is fixed")
+
 	goodeol := time.Now().Add(time.Hour)
 	kbook := pstoremem.NewPeerstore()
 
