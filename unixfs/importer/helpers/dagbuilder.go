@@ -436,6 +436,12 @@ func (n *FSNodeOverDag) AddChild(child ipld.Node, fileSize uint64, db *DagBuilde
 	return db.Add(child)
 }
 
+// RemoveChild deletes the child node at the given index.
+func (n *FSNodeOverDag) RemoveChild(index int, dbh *DagBuilderHelper) {
+	n.file.RemoveBlockSize(index)
+	n.dag.SetLinks(append(n.dag.Links()[:index], n.dag.Links()[index+1:]...))
+}
+
 // Commit unifies (resolves) the cache nodes into a single `ipld.Node`
 // that represents them: the `ft.FSNode` is encoded inside the
 // `dag.ProtoNode`.
