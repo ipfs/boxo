@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/url"
 	"path"
+	"strings"
 )
 
 const (
@@ -22,6 +23,7 @@ const (
 )
 
 var ErrPartOutsideParent = errors.New("file outside parent dir")
+var ErrPartInChildTree = errors.New("file in child tree")
 
 // MultipartFile implements Node, and is created from a `multipart.Part`.
 //
@@ -56,7 +58,19 @@ func newFileFromPart(parent string, part *multipart.Part, reader PartReader) (st
 	}
 
 	dir, base := path.Split(f.fileName())
-	if path.Clean(dir) != path.Clean(parent) {
+	dir = path.Clean(dir)
+	parent = path.Clean(parent)
+	if dir == "." {
+		dir = ""
+	}
+	if parent == "." {
+		parent = ""
+	}
+
+	if dir != parent {
+		if strings.HasPrefix(dir, parent) {
+			return "", nil, ErrPartInChildTree
+		}
 		return "", nil, ErrPartOutsideParent
 	}
 
@@ -118,21 +132,28 @@ func (it *multipartIterator) Next() bool {
 	if it.f.Reader == nil {
 		return false
 	}
-	part, err := it.f.Reader.NextPart()
-	if err != nil {
-		if err == io.EOF {
+	var part *multipart.Part
+	for {
+		var err error
+		part, err = it.f.Reader.NextPart()
+		if err != nil {
+			if err == io.EOF {
+				return false
+			}
+			it.err = err
 			return false
 		}
-		it.err = err
-		return false
-	}
 
-	name, cf, err := newFileFromPart(it.f.fileName(), part, it.f.Reader)
-	if err != ErrPartOutsideParent {
-		it.curFile = cf
-		it.curName = name
-		it.err = err
-		return err == nil
+		name, cf, err := newFileFromPart(it.f.fileName(), part, it.f.Reader)
+		if err == ErrPartOutsideParent {
+			break
+		}
+		if err != ErrPartInChildTree {
+			it.curFile = cf
+			it.curName = name
+			it.err = err
+			return err == nil
+		}
 	}
 
 	// we read too much, try to fix this

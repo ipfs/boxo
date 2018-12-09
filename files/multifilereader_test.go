@@ -72,6 +72,37 @@ func TestMultiFileReaderToMultiFile(t *testing.T) {
 	}
 }
 
+func TestMultiFileReaderToMultiFileSkip(t *testing.T) {
+	mfr := getTestMultiFileReader(t)
+	mpReader := multipart.NewReader(mfr, mfr.Boundary())
+	mf, err := NewFileFromPartReader(mpReader, multipartFormdataType)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	md, ok := mf.(Directory)
+	if !ok {
+		t.Fatal("Expected a directory")
+	}
+	it := md.Entries()
+
+	if !it.Next() || it.Name() != "beep.txt" {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if !it.Next() || it.Name() != "boop" || DirFrom(it) == nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if !it.Next() || it.Name() != "file.txt" || DirFrom(it) != nil || it.Err() != nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if it.Next() || it.Err() != nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+}
+
 func TestOutput(t *testing.T) {
 	mfr := getTestMultiFileReader(t)
 	mpReader := &peekReader{r: multipart.NewReader(mfr, mfr.Boundary())}
