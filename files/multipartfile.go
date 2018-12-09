@@ -26,10 +26,6 @@ var ErrPartOutsideParent = errors.New("file outside parent dir")
 var ErrPartInChildTree = errors.New("file in child tree")
 
 // MultipartFile implements Node, and is created from a `multipart.Part`.
-//
-// Note: iterating entries can be done only once and must be done in order,
-// meaning that when iterator returns a directory, you MUST read all it's
-// children before calling Next again
 type MultipartFile struct {
 	Node
 

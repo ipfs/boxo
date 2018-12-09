@@ -80,6 +80,18 @@ type Directory interface {
 	// Note:
 	// - Some implementations of this functions may define some constraints in how
 	//   it can be used
+	// - Each implementation MUST support:
+	//   - Pre-order sequential iteration:
+	//     - Meaning that after calling `Next` you can call `Next` if the returned
+	//       node is a directory or read the returned file
+	//   - Skipping entries:
+	//     - Meaning that if `Next` returns a directory, you can skip reading it's
+	//       entries and skip to next entry. Files don't have to be read in full.
+	//       Note that you can't go back to unread entries, this only allows
+	//       skipping parts of a directory tree
+	//     - This is to allow listing files in a directory without having to read
+	//       the entire tree
+	// - Entries may not be sorted
 	Entries() DirIterator
 }
 
