@@ -9,13 +9,13 @@ import (
 var text = "Some text! :)"
 
 func getTestMultiFileReader(t *testing.T) *MultiFileReader {
-	sf := DirFrom(map[string]Node{
-		"file.txt": FileFrom([]byte(text)),
-		"boop": DirFrom(map[string]Node{
-			"a.txt": FileFrom([]byte("bleep")),
-			"b.txt": FileFrom([]byte("bloop")),
+	sf := NewMapDirectory(map[string]Node{
+		"file.txt": NewBytesFile([]byte(text)),
+		"boop": NewMapDirectory(map[string]Node{
+			"a.txt": NewBytesFile([]byte("bleep")),
+			"b.txt": NewBytesFile([]byte("bloop")),
 		}),
-		"beep.txt": FileFrom([]byte("beep")),
+		"beep.txt": NewBytesFile([]byte("beep")),
 	})
 
 	// testing output by reading it with the go stdlib "mime/multipart" Reader
@@ -40,17 +40,17 @@ func TestMultiFileReaderToMultiFile(t *testing.T) {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	if !it.Next() || it.Name() != "boop" || DirFrom(it) == nil {
+	if !it.Next() || it.Name() != "boop" || DirFromEntry(it) == nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	subIt := DirFrom(it).Entries()
+	subIt := DirFromEntry(it).Entries()
 
-	if !subIt.Next() || subIt.Name() != "a.txt" || DirFrom(subIt) != nil {
+	if !subIt.Next() || subIt.Name() != "a.txt" || DirFromEntry(subIt) != nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	if !subIt.Next() || subIt.Name() != "b.txt" || DirFrom(subIt) != nil {
+	if !subIt.Next() || subIt.Name() != "b.txt" || DirFromEntry(subIt) != nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 
@@ -63,7 +63,7 @@ func TestMultiFileReaderToMultiFile(t *testing.T) {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	if !it.Next() || it.Name() != "file.txt" || DirFrom(it) != nil || it.Err() != nil {
+	if !it.Next() || it.Name() != "file.txt" || DirFromEntry(it) != nil || it.Err() != nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 
@@ -90,11 +90,11 @@ func TestMultiFileReaderToMultiFileSkip(t *testing.T) {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	if !it.Next() || it.Name() != "boop" || DirFrom(it) == nil {
+	if !it.Next() || it.Name() != "boop" || DirFromEntry(it) == nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 
-	if !it.Next() || it.Name() != "file.txt" || DirFrom(it) != nil || it.Err() != nil {
+	if !it.Next() || it.Name() != "file.txt" || DirFromEntry(it) != nil || it.Err() != nil {
 		t.Fatal("iterator didn't work as expected")
 	}
 

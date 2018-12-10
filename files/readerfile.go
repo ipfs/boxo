@@ -1,7 +1,9 @@
 package files
 
 import (
+	"bytes"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -14,8 +16,21 @@ type ReaderFile struct {
 	stat    os.FileInfo
 }
 
-func NewReaderFile(reader io.ReadCloser, stat os.FileInfo) File {
-	return &ReaderFile{"", reader, stat}
+func NewBytesFile(b []byte) File {
+	return NewReaderFile(bytes.NewReader(b))
+}
+
+func NewReaderFile(reader io.Reader) File {
+	return NewReaderStatFile(reader, nil)
+}
+
+func NewReaderStatFile(reader io.Reader, stat os.FileInfo) File {
+	rc, ok := reader.(io.ReadCloser)
+	if !ok {
+		rc = ioutil.NopCloser(reader)
+	}
+
+	return &ReaderFile{"", rc, stat}
 }
 
 func NewReaderPathFile(path string, reader io.ReadCloser, stat os.FileInfo) (*ReaderFile, error) {

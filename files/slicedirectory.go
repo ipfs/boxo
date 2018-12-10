@@ -1,5 +1,7 @@
 package files
 
+import "sort"
+
 type fileEntry struct {
 	name string
 	file Node
@@ -49,7 +51,19 @@ type SliceFile struct {
 	files []DirEntry
 }
 
-func NewSliceFile(files []DirEntry) Directory {
+func NewMapDirectory(f map[string]Node) Directory {
+	ents := make([]DirEntry, 0, len(f))
+	for name, nd := range f {
+		ents = append(ents, FileEntry(name, nd))
+	}
+	sort.Slice(ents, func(i, j int) bool {
+		return ents[i].Name() < ents[j].Name()
+	})
+
+	return NewSliceDirectory(ents)
+}
+
+func NewSliceDirectory(files []DirEntry) Directory {
 	return &SliceFile{files}
 }
 

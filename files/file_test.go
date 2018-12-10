@@ -8,10 +8,10 @@ import (
 )
 
 func TestSliceFiles(t *testing.T) {
-	sf := DirFrom(map[string]Node{
-		"1": FileFrom([]byte("Some text!\n")),
-		"2": FileFrom([]byte("beep")),
-		"3": FileFrom([]byte("boop")),
+	sf := NewMapDirectory(map[string]Node{
+		"1": NewBytesFile([]byte("Some text!\n")),
+		"2": NewBytesFile([]byte("beep")),
+		"3": NewBytesFile([]byte("boop")),
 	})
 	buf := make([]byte, 20)
 
@@ -46,7 +46,7 @@ func TestSliceFiles(t *testing.T) {
 
 func TestReaderFiles(t *testing.T) {
 	message := "beep boop"
-	rf := FileFrom([]byte(message))
+	rf := NewBytesFile([]byte(message))
 	buf := make([]byte, len(message))
 
 	if n, err := rf.Read(buf); n == 0 || err != nil {
