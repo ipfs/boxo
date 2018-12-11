@@ -155,7 +155,7 @@ func (kr *Root) FlushMemFree(ctx context.Context) error {
 // closeChild implements the childCloser interface, and signals to the publisher that
 // there are changes ready to be published.
 func (kr *Root) closeChild(name string, nd ipld.Node, sync bool) error {
-	err := kr.GetDirectory().dserv.Add(context.TODO(), nd)
+	err := kr.GetDirectory().dagService.Add(context.TODO(), nd)
 	if err != nil {
 		return err
 	}

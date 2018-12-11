@@ -122,7 +122,7 @@ func (fi *fileDescriptor) flushUp(fullsync bool) error {
 		return err
 	}
 
-	err = fi.inode.dserv.Add(context.TODO(), nd)
+	err = fi.inode.dagService.Add(context.TODO(), nd)
 	if err != nil {
 		return err
 	}
