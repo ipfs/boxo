@@ -307,7 +307,7 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 	return out, nil
 }
 
-// CancelWant removes a given key from the wantlist
+// CancelWant removes a given key from the wantlist.
 func (bs *Bitswap) CancelWants(cids []cid.Cid, ses uint64) {
 	if len(cids) == 0 {
 		return
@@ -363,7 +363,7 @@ func (bs *Bitswap) receiveBlockFrom(blk blocks.Block, from peer.ID) error {
 	return nil
 }
 
-// SessionsForBlock returns a slice of all sessions that may be interested in the given cid
+// SessionsForBlock returns a slice of all sessions that may be interested in the given cid.
 func (bs *Bitswap) SessionsForBlock(c cid.Cid) []*Session {
 	var out []*Session
 	bs.sm.IterateSessions(func(session exchange.Fetcher) {
@@ -442,14 +442,14 @@ func (bs *Bitswap) updateReceiveCounters(b blocks.Block) {
 	}
 }
 
-// Connected/Disconnected warns bitswap about peer connections
+// Connected/Disconnected warns bitswap about peer connections.
 func (bs *Bitswap) PeerConnected(p peer.ID) {
 	initialWants := bs.wm.CurrentBroadcastWants()
 	bs.pm.Connected(p, initialWants)
 	bs.engine.PeerConnected(p)
 }
 
-// Connected/Disconnected warns bitswap about peer connections
+// Connected/Disconnected warns bitswap about peer connections.
 func (bs *Bitswap) PeerDisconnected(p peer.ID) {
 	bs.pm.Disconnected(p)
 	bs.engine.PeerDisconnected(p)
