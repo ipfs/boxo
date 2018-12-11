@@ -4,10 +4,7 @@ import (
 	"context"
 	"math"
 
-	engine "github.com/ipfs/go-bitswap/decision"
 	bsmsg "github.com/ipfs/go-bitswap/message"
-	bsmq "github.com/ipfs/go-bitswap/messagequeue"
-	bsnet "github.com/ipfs/go-bitswap/network"
 	wantlist "github.com/ipfs/go-bitswap/wantlist"
 	logging "github.com/ipfs/go-log"
 
@@ -19,57 +16,58 @@ import (
 var log = logging.Logger("bitswap")
 
 const (
-	// kMaxPriority is the max priority as defined by the bitswap protocol
-	kMaxPriority = math.MaxInt32
+	// maxPriority is the max priority as defined by the bitswap protocol
+	maxPriority = math.MaxInt32
 )
 
-var (
-	metricsBuckets = []float64{1 << 6, 1 << 10, 1 << 14, 1 << 18, 1<<18 + 15, 1 << 22}
-)
+// WantSender sends changes out to the network as they get added to the wantlist
+// managed by the WantManager
+type WantSender interface {
+	SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64)
+}
 
+type wantMessage interface {
+	handle(wm *WantManager)
+}
+
+// WantManager manages a global want list. It tracks two seperate want lists -
+// one for all wants, and one for wants that are specifically broadcast to the
+// internet
 type WantManager struct {
-	// sync channels for Run loop
-	incoming     chan *wantSet
-	connectEvent chan peerStatus     // notification channel for peers connecting/disconnecting
-	peerReqs     chan chan []peer.ID // channel to request connected peers on
+	// channel requests to the run loop
+	// to get predictable behavior while running this in a go routine
+	// having only one channel is neccesary, so requests are processed serially
+	wantMessages chan wantMessage
 
 	// synchronized by Run loop, only touch inside there
-	peers map[peer.ID]*bsmq.MessageQueue
-	wl    *wantlist.ThreadSafe
-	bcwl  *wantlist.ThreadSafe
+	wl   *wantlist.ThreadSafe
+	bcwl *wantlist.ThreadSafe
 
-	network bsnet.BitSwapNetwork
-	ctx     context.Context
-	cancel  func()
+	ctx    context.Context
+	cancel func()
 
+	wantSender    WantSender
 	wantlistGauge metrics.Gauge
-	sentHistogram metrics.Histogram
 }
 
-type peerStatus struct {
-	connect bool
-	peer    peer.ID
-}
-
-func New(ctx context.Context, network bsnet.BitSwapNetwork) *WantManager {
+// New initializes a new WantManager for a given context
+func New(ctx context.Context) *WantManager {
 	ctx, cancel := context.WithCancel(ctx)
 	wantlistGauge := metrics.NewCtx(ctx, "wantlist_total",
 		"Number of items in wantlist.").Gauge()
-	sentHistogram := metrics.NewCtx(ctx, "sent_all_blocks_bytes", "Histogram of blocks sent by"+
-		" this bitswap").Histogram(metricsBuckets)
 	return &WantManager{
-		incoming:      make(chan *wantSet, 10),
-		connectEvent:  make(chan peerStatus, 10),
-		peerReqs:      make(chan chan []peer.ID),
-		peers:         make(map[peer.ID]*bsmq.MessageQueue),
+		wantMessages:  make(chan wantMessage, 10),
 		wl:            wantlist.NewThreadSafe(),
 		bcwl:          wantlist.NewThreadSafe(),
-		network:       network,
 		ctx:           ctx,
 		cancel:        cancel,
 		wantlistGauge: wantlistGauge,
-		sentHistogram: sentHistogram,
 	}
+}
+
+// SetDelegate specifies who will send want changes out to the internet
+func (wm *WantManager) SetDelegate(wantSender WantSender) {
+	wm.wantSender = wantSender
 }
 
 // WantBlocks adds the given cids to the wantlist, tracked by the given session
@@ -83,10 +81,55 @@ func (wm *WantManager) CancelWants(ctx context.Context, ks []cid.Cid, peers []pe
 	wm.addEntries(context.Background(), ks, peers, true, ses)
 }
 
-type wantSet struct {
-	entries []*bsmsg.Entry
-	targets []peer.ID
-	from    uint64
+// IsWanted returns whether a CID is currently wanted
+func (wm *WantManager) IsWanted(c cid.Cid) bool {
+	resp := make(chan bool)
+	wm.wantMessages <- &isWantedMessage{c, resp}
+	return <-resp
+}
+
+// CurrentWants returns the list of current wants
+func (wm *WantManager) CurrentWants() []*wantlist.Entry {
+	resp := make(chan []*wantlist.Entry)
+	wm.wantMessages <- &currentWantsMessage{resp}
+	return <-resp
+}
+
+// CurrentBroadcastWants returns the current list of wants that are broadcasts
+func (wm *WantManager) CurrentBroadcastWants() []*wantlist.Entry {
+	resp := make(chan []*wantlist.Entry)
+	wm.wantMessages <- &currentBroadcastWantsMessage{resp}
+	return <-resp
+}
+
+// WantCount returns the total count of wants
+func (wm *WantManager) WantCount() int {
+	resp := make(chan int)
+	wm.wantMessages <- &wantCountMessage{resp}
+	return <-resp
+}
+
+// Startup starts processing for the WantManager
+func (wm *WantManager) Startup() {
+	go wm.run()
+}
+
+// Shutdown ends processing for the want manager
+func (wm *WantManager) Shutdown() {
+	wm.cancel()
+}
+
+func (wm *WantManager) run() {
+	// NOTE: Do not open any streams or connections from anywhere in this
+	// event loop. Really, just don't do anything likely to block.
+	for {
+		select {
+		case message := <-wm.wantMessages:
+			message.handle(wm)
+		case <-wm.ctx.Done():
+			return
+		}
+	}
 }
 
 func (wm *WantManager) addEntries(ctx context.Context, ks []cid.Cid, targets []peer.ID, cancel bool, ses uint64) {
@@ -94,158 +137,80 @@ func (wm *WantManager) addEntries(ctx context.Context, ks []cid.Cid, targets []p
 	for i, k := range ks {
 		entries = append(entries, &bsmsg.Entry{
 			Cancel: cancel,
-			Entry:  wantlist.NewRefEntry(k, kMaxPriority-i),
+			Entry:  wantlist.NewRefEntry(k, maxPriority-i),
 		})
 	}
 	select {
-	case wm.incoming <- &wantSet{entries: entries, targets: targets, from: ses}:
+	case wm.wantMessages <- &wantSet{entries: entries, targets: targets, from: ses}:
 	case <-wm.ctx.Done():
 	case <-ctx.Done():
 	}
 }
 
-func (wm *WantManager) ConnectedPeers() []peer.ID {
-	resp := make(chan []peer.ID)
-	wm.peerReqs <- resp
-	return <-resp
+type wantSet struct {
+	entries []*bsmsg.Entry
+	targets []peer.ID
+	from    uint64
 }
 
-func (wm *WantManager) SendBlocks(ctx context.Context, env *engine.Envelope) {
-	// Blocks need to be sent synchronously to maintain proper backpressure
-	// throughout the network stack
-	defer env.Sent()
+func (ws *wantSet) handle(wm *WantManager) {
+	// is this a broadcast or not?
+	brdc := len(ws.targets) == 0
 
-	msgSize := 0
-	msg := bsmsg.New(false)
-	for _, block := range env.Message.Blocks() {
-		msgSize += len(block.RawData())
-		msg.AddBlock(block)
-		log.Infof("Sending block %s to %s", block, env.Peer)
-	}
-
-	wm.sentHistogram.Observe(float64(msgSize))
-	err := wm.network.SendMessage(ctx, env.Peer, msg)
-	if err != nil {
-		log.Infof("sendblock error: %s", err)
-	}
-}
-
-func (wm *WantManager) startPeerHandler(p peer.ID) *bsmq.MessageQueue {
-	mq, ok := wm.peers[p]
-	if ok {
-		mq.RefIncrement()
-		return nil
-	}
-
-	mq = bsmq.New(p, wm.network)
-	wm.peers[p] = mq
-	mq.Startup(wm.ctx, wm.bcwl.Entries())
-	return mq
-}
-
-func (wm *WantManager) stopPeerHandler(p peer.ID) {
-	pq, ok := wm.peers[p]
-	if !ok {
-		// TODO: log error?
-		return
-	}
-
-	if pq.RefDecrement() {
-		return
-	}
-
-	pq.Shutdown()
-	delete(wm.peers, p)
-}
-
-func (wm *WantManager) Connected(p peer.ID) {
-	select {
-	case wm.connectEvent <- peerStatus{peer: p, connect: true}:
-	case <-wm.ctx.Done():
-	}
-}
-
-func (wm *WantManager) Disconnected(p peer.ID) {
-	select {
-	case wm.connectEvent <- peerStatus{peer: p, connect: false}:
-	case <-wm.ctx.Done():
-	}
-}
-
-// TODO: use goprocess here once i trust it
-func (wm *WantManager) Run() {
-	// NOTE: Do not open any streams or connections from anywhere in this
-	// event loop. Really, just don't do anything likely to block.
-	for {
-		select {
-		case ws := <-wm.incoming:
-
-			// is this a broadcast or not?
-			brdc := len(ws.targets) == 0
-
-			// add changes to our wantlist
-			for _, e := range ws.entries {
-				if e.Cancel {
-					if brdc {
-						wm.bcwl.Remove(e.Cid, ws.from)
-					}
-
-					if wm.wl.Remove(e.Cid, ws.from) {
-						wm.wantlistGauge.Dec()
-					}
-				} else {
-					if brdc {
-						wm.bcwl.AddEntry(e.Entry, ws.from)
-					}
-					if wm.wl.AddEntry(e.Entry, ws.from) {
-						wm.wantlistGauge.Inc()
-					}
-				}
+	// add changes to our wantlist
+	for _, e := range ws.entries {
+		if e.Cancel {
+			if brdc {
+				wm.bcwl.Remove(e.Cid, ws.from)
 			}
 
-			// broadcast those wantlist changes
-			if len(ws.targets) == 0 {
-				for _, p := range wm.peers {
-					p.AddMessage(ws.entries, ws.from)
-				}
-			} else {
-				for _, t := range ws.targets {
-					p, ok := wm.peers[t]
-					if !ok {
-						log.Infof("tried sending wantlist change to non-partner peer: %s", t)
-						continue
-					}
-					p.AddMessage(ws.entries, ws.from)
-				}
+			if wm.wl.Remove(e.Cid, ws.from) {
+				wm.wantlistGauge.Dec()
 			}
-
-		case p := <-wm.connectEvent:
-			if p.connect {
-				wm.startPeerHandler(p.peer)
-			} else {
-				wm.stopPeerHandler(p.peer)
+		} else {
+			if brdc {
+				wm.bcwl.AddEntry(e.Entry, ws.from)
 			}
-		case req := <-wm.peerReqs:
-			peers := make([]peer.ID, 0, len(wm.peers))
-			for p := range wm.peers {
-				peers = append(peers, p)
+			if wm.wl.AddEntry(e.Entry, ws.from) {
+				wm.wantlistGauge.Inc()
 			}
-			req <- peers
-		case <-wm.ctx.Done():
-			return
 		}
 	}
+
+	// broadcast those wantlist changes
+	wm.wantSender.SendMessage(ws.entries, ws.targets, ws.from)
 }
 
-func (wm *WantManager) IsWanted(c cid.Cid) bool {
-	_, isWanted := wm.wl.Contains(c)
-	return isWanted
+type isWantedMessage struct {
+	c    cid.Cid
+	resp chan<- bool
 }
 
-func (wm *WantManager) CurrentWants() []*wantlist.Entry {
-	return wm.wl.Entries()
+func (iwm *isWantedMessage) handle(wm *WantManager) {
+	_, isWanted := wm.wl.Contains(iwm.c)
+	iwm.resp <- isWanted
 }
 
-func (wm *WantManager) WantCount() int {
-	return wm.wl.Len()
+type currentWantsMessage struct {
+	resp chan<- []*wantlist.Entry
+}
+
+func (cwm *currentWantsMessage) handle(wm *WantManager) {
+	cwm.resp <- wm.wl.Entries()
+}
+
+type currentBroadcastWantsMessage struct {
+	resp chan<- []*wantlist.Entry
+}
+
+func (cbcwm *currentBroadcastWantsMessage) handle(wm *WantManager) {
+	cbcwm.resp <- wm.bcwl.Entries()
+}
+
+type wantCountMessage struct {
+	resp chan<- int
+}
+
+func (wcm *wantCountMessage) handle(wm *WantManager) {
+	wcm.resp <- wm.wl.Len()
 }
