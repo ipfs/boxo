@@ -97,8 +97,11 @@ func TestSessionGetBlocks(t *testing.T) {
 		receivedBlocks = append(receivedBlocks, receivedBlock)
 		cancelBlock := <-cancelReqs
 		newCancelReqs = append(newCancelReqs, cancelBlock)
-		wantBlock := <-wantReqs
-		newBlockReqs = append(newBlockReqs, wantBlock)
+		select {
+		case wantBlock := <-wantReqs:
+			newBlockReqs = append(newBlockReqs, wantBlock)
+		default:
+		}
 	}
 
 	// verify new peers were recorded
@@ -120,22 +123,22 @@ func TestSessionGetBlocks(t *testing.T) {
 		t.Fatal("did not cancel each block once it was received")
 	}
 	// new session reqs should be targeted
-	totalEnqueued := 0
+	var newCidsRequested []cid.Cid
 	for _, w := range newBlockReqs {
 		if len(w.peers) == 0 {
 			t.Fatal("should not have broadcast again after initial broadcast")
 		}
-		totalEnqueued += len(w.cids)
+		newCidsRequested = append(newCidsRequested, w.cids...)
 	}
 
 	// full new round of cids should be requested
-	if totalEnqueued != broadcastLiveWantsLimit {
+	if len(newCidsRequested) != broadcastLiveWantsLimit {
 		t.Fatal("new blocks were not requested")
 	}
 
 	// receive remaining blocks
 	for i, p := range peers {
-		session.ReceiveBlockFrom(p, blks[testutil.IndexOf(blks, newBlockReqs[i].cids[0])])
+		session.ReceiveBlockFrom(p, blks[testutil.IndexOf(blks, newCidsRequested[i])])
 		receivedBlock := <-getBlocksCh
 		receivedBlocks = append(receivedBlocks, receivedBlock)
 		cancelBlock := <-cancelReqs
@@ -190,7 +193,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 
 	// verify a broadcast was made
 	receivedWantReq := <-wantReqs
-	if len(receivedWantReq.cids) != broadcastLiveWantsLimit {
+	if len(receivedWantReq.cids) < broadcastLiveWantsLimit {
 		t.Fatal("did not rebroadcast whole live list")
 	}
 	if receivedWantReq.peers != nil {

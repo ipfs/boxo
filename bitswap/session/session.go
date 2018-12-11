@@ -341,8 +341,16 @@ func (s *Session) receiveBlock(ctx context.Context, blk blocks.Block) {
 		s.fetchcnt++
 		s.notif.Publish(blk)
 
-		if next := s.tofetch.Pop(); next.Defined() {
-			s.wantBlocks(ctx, []cid.Cid{next})
+		toAdd := s.wantBudget()
+		if toAdd > s.tofetch.Len() {
+			toAdd = s.tofetch.Len()
+		}
+		if toAdd > 0 {
+			var keys []cid.Cid
+			for i := 0; i < toAdd; i++ {
+				keys = append(keys, s.tofetch.Pop())
+			}
+			s.wantBlocks(ctx, keys)
 		}
 
 		s.pastWants.Push(c)
