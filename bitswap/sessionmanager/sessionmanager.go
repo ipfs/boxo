@@ -48,7 +48,7 @@ func (sm *SessionManager) GetNextSessionID() uint64 {
 type IterateSessionFunc func(session exchange.Fetcher)
 
 // IterateSessions loops through all managed sessions and applies the given
-// IterateSessionFunc
+// IterateSessionFunc.
 func (sm *SessionManager) IterateSessions(iterate IterateSessionFunc) {
 	sm.sessLk.Lock()
 	defer sm.sessLk.Unlock()

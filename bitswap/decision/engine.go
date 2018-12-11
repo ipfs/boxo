@@ -56,12 +56,12 @@ const (
 	maxMessageSize = 512 * 1024
 )
 
-// Envelope contains a message for a Peer
+// Envelope contains a message for a Peer.
 type Envelope struct {
-	// Peer is the intended recipient
+	// Peer is the intended recipient.
 	Peer peer.ID
 
-	// Message is the payload
+	// Message is the payload.
 	Message bsmsg.BitSwapMessage
 
 	// A callback to notify the decision queue that the task is complete
@@ -206,7 +206,7 @@ func (e *Engine) Outbox() <-chan (<-chan *Envelope) {
 	return e.outbox
 }
 
-// Returns a slice of Peers with whom the local node has active sessions
+// Peers returns a slice of Peers with whom the local node has active sessions.
 func (e *Engine) Peers() []peer.ID {
 	e.lock.Lock()
 	defer e.lock.Unlock()

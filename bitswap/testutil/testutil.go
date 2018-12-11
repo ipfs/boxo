@@ -11,7 +11,7 @@ import (
 var blockGenerator = blocksutil.NewBlockGenerator()
 var prioritySeq int
 
-// GenerateCids produces n content identifiers
+// GenerateCids produces n content identifiers.
 func GenerateCids(n int) []cid.Cid {
 	cids := make([]cid.Cid, 0, n)
 	for i := 0; i < n; i++ {
@@ -21,7 +21,7 @@ func GenerateCids(n int) []cid.Cid {
 	return cids
 }
 
-// GenerateWantlist makes a populated wantlist
+// GenerateWantlist makes a populated wantlist.
 func GenerateWantlist(n int, ses uint64) *wantlist.ThreadSafe {
 	wl := wantlist.NewThreadSafe()
 	for i := 0; i < n; i++ {
@@ -32,7 +32,7 @@ func GenerateWantlist(n int, ses uint64) *wantlist.ThreadSafe {
 	return wl
 }
 
-// GenerateMessageEntries makes fake bitswap message entries
+// GenerateMessageEntries makes fake bitswap message entries.
 func GenerateMessageEntries(n int, isCancel bool) []*bsmsg.Entry {
 	bsmsgs := make([]*bsmsg.Entry, 0, n)
 	for i := 0; i < n; i++ {
@@ -48,7 +48,7 @@ func GenerateMessageEntries(n int, isCancel bool) []*bsmsg.Entry {
 
 var peerSeq int
 
-// GeneratePeers creates n peer ids
+// GeneratePeers creates n peer ids.
 func GeneratePeers(n int) []peer.ID {
 	peerIds := make([]peer.ID, 0, n)
 	for i := 0; i < n; i++ {
@@ -61,13 +61,13 @@ func GeneratePeers(n int) []peer.ID {
 
 var nextSession uint64
 
-// GenerateSessionID make a unit session identifier
+// GenerateSessionID make a unit session identifier.
 func GenerateSessionID() uint64 {
 	nextSession++
 	return uint64(nextSession)
 }
 
-// ContainsPeer returns true if a peer is found n a list of peers
+// ContainsPeer returns true if a peer is found n a list of peers.
 func ContainsPeer(peers []peer.ID, p peer.ID) bool {
 	for _, n := range peers {
 		if p == n {

@@ -10,7 +10,7 @@ import (
 var sharedRNG = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 // InternetLatencyDelayGenerator generates three clusters of delays,
-// typical of the type of peers you would encounter on the interenet
+// typical of the type of peers you would encounter on the interenet.
 // Given a base delay time T, the wait time generated will be either:
 // 1. A normalized distribution around the base time
 // 2. A normalized distribution around the base time plus a "medium" delay
@@ -18,9 +18,9 @@ var sharedRNG = rand.New(rand.NewSource(time.Now().UnixNano()))
 // The size of the medium & large delays are determined when the generator
 // is constructed, as well as the relative percentages with which delays fall
 // into each of the three different clusters, and the standard deviation for
-// the normalized distribution
+// the normalized distribution.
 // This can be used to generate a number of scenarios typical of latency
-// distribution among peers on the internet
+// distribution among peers on the internet.
 func InternetLatencyDelayGenerator(
 	mediumDelay time.Duration,
 	largeDelay time.Duration,

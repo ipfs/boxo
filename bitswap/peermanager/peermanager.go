@@ -16,7 +16,7 @@ var (
 	metricsBuckets = []float64{1 << 6, 1 << 10, 1 << 14, 1 << 18, 1<<18 + 15, 1 << 22}
 )
 
-// PeerQueue provides a queer of messages to be sent for a single peer
+// PeerQueue provides a queer of messages to be sent for a single peer.
 type PeerQueue interface {
 	RefIncrement()
 	RefDecrement() bool
@@ -25,14 +25,14 @@ type PeerQueue interface {
 	Shutdown()
 }
 
-// PeerQueueFactory provides a function that will create a PeerQueue
+// PeerQueueFactory provides a function that will create a PeerQueue.
 type PeerQueueFactory func(p peer.ID) PeerQueue
 
 type peerMessage interface {
 	handle(pm *PeerManager)
 }
 
-// PeerManager manages a pool of peers and sends messages to peers in the pool
+// PeerManager manages a pool of peers and sends messages to peers in the pool.
 type PeerManager struct {
 	// sync channel for Run loop
 	peerMessages chan peerMessage
@@ -45,7 +45,7 @@ type PeerManager struct {
 	cancel          func()
 }
 
-// New creates a new PeerManager, given a context and a peerQueueFactory
+// New creates a new PeerManager, given a context and a peerQueueFactory.
 func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
 	ctx, cancel := context.WithCancel(ctx)
 	return &PeerManager{
@@ -57,7 +57,7 @@ func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
 	}
 }
 
-// ConnectedPeers returns a list of peers this PeerManager is managing
+// ConnectedPeers returns a list of peers this PeerManager is managing.
 func (pm *PeerManager) ConnectedPeers() []peer.ID {
 	resp := make(chan []peer.ID)
 	pm.peerMessages <- &getPeersMessage{resp}
@@ -65,7 +65,7 @@ func (pm *PeerManager) ConnectedPeers() []peer.ID {
 }
 
 // Connected is called to add a new peer to the pool, and send it an initial set
-// of wants
+// of wants.
 func (pm *PeerManager) Connected(p peer.ID, initialEntries []*wantlist.Entry) {
 	select {
 	case pm.peerMessages <- &connectPeerMessage{p, initialEntries}:
@@ -73,7 +73,7 @@ func (pm *PeerManager) Connected(p peer.ID, initialEntries []*wantlist.Entry) {
 	}
 }
 
-// Disconnected is called to remove a peer from the pool
+// Disconnected is called to remove a peer from the pool.
 func (pm *PeerManager) Disconnected(p peer.ID) {
 	select {
 	case pm.peerMessages <- &disconnectPeerMessage{p}:
@@ -81,8 +81,8 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 	}
 }
 
-// SendMessage is called to send a message to all or some peers in the pool
-// if targets is nil, it sends to all
+// SendMessage is called to send a message to all or some peers in the pool;
+// if targets is nil, it sends to all.
 func (pm *PeerManager) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64) {
 	select {
 	case pm.peerMessages <- &sendPeerMessage{entries: entries, targets: targets, from: from}:
@@ -91,12 +91,12 @@ func (pm *PeerManager) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, fr
 }
 
 // Startup enables the run loop for the PeerManager - no processing will occur
-// if startup is not called
+// if startup is not called.
 func (pm *PeerManager) Startup() {
 	go pm.run()
 }
 
-// Shutdown shutsdown processing for the PeerManager
+// Shutdown shutsdown processing for the PeerManager.
 func (pm *PeerManager) Shutdown() {
 	pm.cancel()
 }
