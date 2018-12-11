@@ -14,7 +14,7 @@ import (
 )
 
 type File struct {
-	*inode
+	inode
 
 	desclock sync.RWMutex
 
@@ -28,7 +28,7 @@ type File struct {
 // Cid version is non-zero RawLeaves will be enabled.
 func NewFile(name string, node ipld.Node, parent childCloser, dserv ipld.DAGService) (*File, error) {
 	fi := &File{
-		inode: &inode{
+		inode: inode{
 			name:       name,
 			parent:     parent,
 			dagService: dserv,

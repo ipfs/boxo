@@ -22,7 +22,7 @@ var ErrInvalidChild = errors.New("invalid child node")
 var ErrDirExists = errors.New("directory already has entry by that name")
 
 type Directory struct {
-	*inode
+	inode
 
 	childDirs map[string]*Directory
 	files     map[string]*File
@@ -48,7 +48,7 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent child
 	}
 
 	return &Directory{
-		inode: &inode{
+		inode: inode{
 			name:       name,
 			parent:     parent,
 			dagService: dserv,
