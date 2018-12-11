@@ -19,12 +19,3 @@ type inode struct {
 	// of the file or directory the `inode` belongs to.
 	dagService ipld.DAGService
 }
-
-// NewInode creates a new `inode` structure and return it's pointer.
-func NewInode(name string, parent childCloser, dagService ipld.DAGService) *inode {
-	return &inode{
-		name:       name,
-		parent:     parent,
-		dagService: dagService,
-	}
-}

@@ -28,8 +28,12 @@ type File struct {
 // Cid version is non-zero RawLeaves will be enabled.
 func NewFile(name string, node ipld.Node, parent childCloser, dserv ipld.DAGService) (*File, error) {
 	fi := &File{
-		inode: NewInode(name, parent, dserv),
-		node:  node,
+		inode: &inode{
+			name:       name,
+			parent:     parent,
+			dagService: dserv,
+		},
+		node: node,
 	}
 	if node.Cid().Prefix().Version > 0 {
 		fi.RawLeaves = true

@@ -48,7 +48,11 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent child
 	}
 
 	return &Directory{
-		inode:     NewInode(name, parent, dserv),
+		inode: &inode{
+			name:       name,
+			parent:     parent,
+			dagService: dserv,
+		},
 		ctx:       ctx,
 		unixfsDir: db,
 		childDirs: make(map[string]*Directory),
