@@ -25,13 +25,13 @@ const (
 var ErrPartOutsideParent = errors.New("file outside parent dir")
 var ErrPartInChildTree = errors.New("file in child tree")
 
-// MultipartFile implements Node, and is created from a `multipart.Part`.
-type MultipartFile struct {
+// multipartFile implements Node, and is created from a `multipart.Part`.
+type multipartFile struct {
 	Node
 
-	Part      *multipart.Part
-	Reader    PartReader
-	Mediatype string
+	part      *multipart.Part
+	reader    *peekReader
+	mediatype string
 }
 
 func NewFileFromPartReader(reader *multipart.Reader, mediatype string) (Directory, error) {
@@ -39,18 +39,18 @@ func NewFileFromPartReader(reader *multipart.Reader, mediatype string) (Director
 		return nil, ErrNotDirectory
 	}
 
-	f := &MultipartFile{
-		Reader:    &peekReader{r: reader},
-		Mediatype: mediatype,
+	f := &multipartFile{
+		reader:    &peekReader{r: reader},
+		mediatype: mediatype,
 	}
 
 	return f, nil
 }
 
-func newFileFromPart(parent string, part *multipart.Part, reader PartReader) (string, Node, error) {
-	f := &MultipartFile{
-		Part:   part,
-		Reader: reader,
+func newFileFromPart(parent string, part *multipart.Part, reader *peekReader) (string, Node, error) {
+	f := &multipartFile{
+		part:   part,
+		reader: reader,
 	}
 
 	dir, base := path.Split(f.fileName())
@@ -89,12 +89,12 @@ func newFileFromPart(parent string, part *multipart.Part, reader PartReader) (st
 	}
 
 	var err error
-	f.Mediatype, _, err = mime.ParseMediaType(contentType)
+	f.mediatype, _, err = mime.ParseMediaType(contentType)
 	if err != nil {
 		return "", nil, err
 	}
 
-	if !isDirectory(f.Mediatype) {
+	if !isDirectory(f.mediatype) {
 		return base, &ReaderFile{
 			reader:  part,
 			abspath: part.Header.Get("abspath"),
@@ -109,7 +109,7 @@ func isDirectory(mediatype string) bool {
 }
 
 type multipartIterator struct {
-	f *MultipartFile
+	f *multipartFile
 
 	curFile Node
 	curName string
@@ -125,13 +125,13 @@ func (it *multipartIterator) Node() Node {
 }
 
 func (it *multipartIterator) Next() bool {
-	if it.f.Reader == nil {
+	if it.f.reader == nil {
 		return false
 	}
 	var part *multipart.Part
 	for {
 		var err error
-		part, err = it.f.Reader.NextPart()
+		part, err = it.f.reader.NextPart()
 		if err != nil {
 			if err == io.EOF {
 				return false
@@ -140,7 +140,7 @@ func (it *multipartIterator) Next() bool {
 			return false
 		}
 
-		name, cf, err := newFileFromPart(it.f.fileName(), part, it.f.Reader)
+		name, cf, err := newFileFromPart(it.f.fileName(), part, it.f.reader)
 		if err == ErrPartOutsideParent {
 			break
 		}
@@ -152,14 +152,7 @@ func (it *multipartIterator) Next() bool {
 		}
 	}
 
-	// we read too much, try to fix this
-	pr, ok := it.f.Reader.(*peekReader)
-	if !ok {
-		it.err = errors.New("cannot undo NextPart")
-		return false
-	}
-
-	it.err = pr.put(part)
+	it.err = it.f.reader.put(part)
 	return false
 }
 
@@ -167,31 +160,31 @@ func (it *multipartIterator) Err() error {
 	return it.err
 }
 
-func (f *MultipartFile) Entries() DirIterator {
+func (f *multipartFile) Entries() DirIterator {
 	return &multipartIterator{f: f}
 }
 
-func (f *MultipartFile) fileName() string {
-	if f == nil || f.Part == nil {
+func (f *multipartFile) fileName() string {
+	if f == nil || f.part == nil {
 		return ""
 	}
 
-	filename, err := url.QueryUnescape(f.Part.FileName())
+	filename, err := url.QueryUnescape(f.part.FileName())
 	if err != nil {
 		// if there is a unescape error, just treat the name as unescaped
-		return f.Part.FileName()
+		return f.part.FileName()
 	}
 	return filename
 }
 
-func (f *MultipartFile) Close() error {
-	if f.Part != nil {
-		return f.Part.Close()
+func (f *multipartFile) Close() error {
+	if f.part != nil {
+		return f.part.Close()
 	}
 	return nil
 }
 
-func (f *MultipartFile) Size() (int64, error) {
+func (f *multipartFile) Size() (int64, error) {
 	return 0, ErrNotSupported
 }
 
@@ -230,4 +223,4 @@ func (pr *peekReader) put(p *multipart.Part) error {
 	return nil
 }
 
-var _ Directory = &MultipartFile{}
+var _ Directory = &multipartFile{}

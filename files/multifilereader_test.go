@@ -114,7 +114,7 @@ func TestOutput(t *testing.T) {
 	}
 	mpname, mpf, err := newFileFromPart("", part, mpReader)
 	if mpf == nil || err != nil {
-		t.Fatal("Expected non-nil MultipartFile, nil error")
+		t.Fatal("Expected non-nil multipartFile, nil error")
 	}
 	mpr, ok := mpf.(File)
 	if !ok {
@@ -136,7 +136,7 @@ func TestOutput(t *testing.T) {
 	}
 	mpname, mpf, err = newFileFromPart("", part, mpReader)
 	if mpf == nil || err != nil {
-		t.Fatal("Expected non-nil MultipartFile, nil error")
+		t.Fatal("Expected non-nil multipartFile, nil error")
 	}
 	mpd, ok := mpf.(Directory)
 	if !ok {
@@ -187,7 +187,7 @@ func TestOutput(t *testing.T) {
 	}
 	mpname, mpf, err = newFileFromPart("", part, mpReader)
 	if mpf == nil || err != nil {
-		t.Fatal("Expected non-nil MultipartFile, nil error")
+		t.Fatal("Expected non-nil multipartFile, nil error")
 	}
 	if mpname != "file.txt" {
 		t.Fatal("Expected filename to be \"b.txt\"")

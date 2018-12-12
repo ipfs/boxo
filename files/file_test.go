@@ -95,9 +95,9 @@ anotherfile
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	mpname, mpf, err := newFileFromPart("", part, mpReader)
+	mpname, mpf, err := newFileFromPart("", part, &peekReader{r: mpReader})
 	if mpf == nil || err != nil {
-		t.Fatal("Expected non-nil MultipartFile, nil error")
+		t.Fatal("Expected non-nil multipartFile, nil error")
 	}
 	mf, ok := mpf.(File)
 	if !ok {
@@ -118,9 +118,9 @@ anotherfile
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	mpname, mpf, err = newFileFromPart("", part, mpReader)
+	mpname, mpf, err = newFileFromPart("", part, &peekReader{r: mpReader})
 	if mpf == nil || err != nil {
-		t.Fatal("Expected non-nil MultipartFile, nil error")
+		t.Fatal("Expected non-nil multipartFile, nil error")
 	}
 	md, ok := mpf.(Directory)
 	if !ok {
@@ -138,9 +138,9 @@ anotherfile
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	mpname, mpf, err = newFileFromPart("dir/", part, mpReader)
+	mpname, mpf, err = newFileFromPart("dir/", part, &peekReader{r: mpReader})
 	if mpf == nil || err != nil {
-		t.Fatal("Expected non-nil MultipartFile, nil error")
+		t.Fatal("Expected non-nil multipartFile, nil error")
 	}
 	mf, ok = mpf.(File)
 	if !ok {
@@ -161,9 +161,9 @@ anotherfile
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	mpname, mpf, err = newFileFromPart("dir/", part, mpReader)
+	mpname, mpf, err = newFileFromPart("dir/", part, &peekReader{r: mpReader})
 	if mpf == nil || err != nil {
-		t.Fatal("Expected non-nil MultipartFile, nil error")
+		t.Fatal("Expected non-nil multipartFile, nil error")
 	}
 	ms, ok := mpf.(*Symlink)
 	if !ok {
