@@ -205,7 +205,7 @@ func (bs *Bitswap) rebroadcastWorker(parent context.Context) {
 		case <-tick.C:
 			n := bs.wm.WantCount()
 			if n > 0 {
-				log.Debug(n, " keys in bitswap wantlist")
+				log.Debugf("%d keys in bitswap wantlist", n)
 			}
 		case <-broadcastSignal.C: // resend unfulfilled wantlist keys
 			log.Event(ctx, "Bitswap.Rebroadcast.active")
@@ -259,7 +259,7 @@ func (bs *Bitswap) providerQueryManager(ctx context.Context) {
 						defer wg.Done()
 						err := bs.network.ConnectTo(child, p)
 						if err != nil {
-							log.Debug("failed to connect to provider %s: %s", p, err)
+							log.Debugf("failed to connect to provider %s: %s", p, err)
 						}
 					}(p)
 				}
