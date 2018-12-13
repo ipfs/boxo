@@ -77,17 +77,8 @@ type Directory interface {
 	//   return err
 	// }
 	//
-	// Note:
-	// - Each implementation MUST support:
-	//   - Pre-order sequential iteration:
-	//     - After calling `Next` you can call `Next` if the returned
-	//       node is a directory or read the returned file
-	//   - Skipping entries:
-	//     - You can skip a file/directory by calling Next without reading it
-	//     - You can't use skipped files/directories
-	//     - This is to allow listing files in a directory without having to read
-	//       the entire tree
-	// - Entries may not be sorted
+	// Note that you can't store the result of it.Node() and use it after
+	// advancing the iterator
 	Entries() DirIterator
 }
 
