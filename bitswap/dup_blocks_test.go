@@ -11,6 +11,7 @@ import (
 
 	tn "github.com/ipfs/go-bitswap/testnet"
 
+	bssession "github.com/ipfs/go-bitswap/session"
 	"github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
@@ -248,14 +249,14 @@ func onePeerPerBlock(b *testing.B, provs []Instance, blks []blocks.Block) {
 }
 
 func oneAtATime(b *testing.B, bs *Bitswap, ks []cid.Cid) {
-	ses := bs.NewSession(context.Background()).(*Session)
+	ses := bs.NewSession(context.Background()).(*bssession.Session)
 	for _, c := range ks {
 		_, err := ses.GetBlock(context.Background(), c)
 		if err != nil {
 			b.Fatal(err)
 		}
 	}
-	b.Logf("Session fetch latency: %s", ses.latTotal/time.Duration(ses.fetchcnt))
+	b.Logf("Session fetch latency: %s", ses.GetAverageLatency())
 }
 
 // fetch data in batches, 10 at a time
