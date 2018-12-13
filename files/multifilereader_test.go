@@ -2,47 +2,131 @@ package files
 
 import (
 	"io"
-	"io/ioutil"
 	"mime/multipart"
-	"strings"
 	"testing"
 )
 
-func TestOutput(t *testing.T) {
-	text := "Some text! :)"
-	fileset := []File{
-		NewReaderFile("file.txt", "file.txt", ioutil.NopCloser(strings.NewReader(text)), nil),
-		NewSliceFile("boop", "boop", []File{
-			NewReaderFile("boop/a.txt", "boop/a.txt", ioutil.NopCloser(strings.NewReader("bleep")), nil),
-			NewReaderFile("boop/b.txt", "boop/b.txt", ioutil.NopCloser(strings.NewReader("bloop")), nil),
+var text = "Some text! :)"
+
+func getTestMultiFileReader(t *testing.T) *MultiFileReader {
+	sf := NewMapDirectory(map[string]Node{
+		"file.txt": NewBytesFile([]byte(text)),
+		"boop": NewMapDirectory(map[string]Node{
+			"a.txt": NewBytesFile([]byte("bleep")),
+			"b.txt": NewBytesFile([]byte("bloop")),
 		}),
-		NewReaderFile("beep.txt", "beep.txt", ioutil.NopCloser(strings.NewReader("beep")), nil),
-	}
-	sf := NewSliceFile("", "", fileset)
-	buf := make([]byte, 20)
+		"beep.txt": NewBytesFile([]byte("beep")),
+	})
 
 	// testing output by reading it with the go stdlib "mime/multipart" Reader
-	mfr := NewMultiFileReader(sf, true)
+	return NewMultiFileReader(sf, true)
+}
+
+func TestMultiFileReaderToMultiFile(t *testing.T) {
+	mfr := getTestMultiFileReader(t)
 	mpReader := multipart.NewReader(mfr, mfr.Boundary())
+	mf, err := NewFileFromPartReader(mpReader, multipartFormdataType)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	md, ok := mf.(Directory)
+	if !ok {
+		t.Fatal("Expected a directory")
+	}
+	it := md.Entries()
+
+	if !it.Next() || it.Name() != "beep.txt" {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if !it.Next() || it.Name() != "boop" || DirFromEntry(it) == nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	subIt := DirFromEntry(it).Entries()
+
+	if !subIt.Next() || subIt.Name() != "a.txt" || DirFromEntry(subIt) != nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if !subIt.Next() || subIt.Name() != "b.txt" || DirFromEntry(subIt) != nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if subIt.Next() || it.Err() != nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	// try to break internal state
+	if subIt.Next() || it.Err() != nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if !it.Next() || it.Name() != "file.txt" || DirFromEntry(it) != nil || it.Err() != nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if it.Next() || it.Err() != nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+}
+
+func TestMultiFileReaderToMultiFileSkip(t *testing.T) {
+	mfr := getTestMultiFileReader(t)
+	mpReader := multipart.NewReader(mfr, mfr.Boundary())
+	mf, err := NewFileFromPartReader(mpReader, multipartFormdataType)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	md, ok := mf.(Directory)
+	if !ok {
+		t.Fatal("Expected a directory")
+	}
+	it := md.Entries()
+
+	if !it.Next() || it.Name() != "beep.txt" {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if !it.Next() || it.Name() != "boop" || DirFromEntry(it) == nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if !it.Next() || it.Name() != "file.txt" || DirFromEntry(it) != nil || it.Err() != nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+
+	if it.Next() || it.Err() != nil {
+		t.Fatal("iterator didn't work as expected")
+	}
+}
+
+func TestOutput(t *testing.T) {
+	mfr := getTestMultiFileReader(t)
+	mpReader := &peekReader{r: multipart.NewReader(mfr, mfr.Boundary())}
+	buf := make([]byte, 20)
 
 	part, err := mpReader.NextPart()
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	mpf, err := NewFileFromPart(part)
+	mpname, mpf, err := newFileFromPart("", part, mpReader)
 	if mpf == nil || err != nil {
-		t.Fatal("Expected non-nil MultipartFile, nil error")
+		t.Fatal("Expected non-nil multipartFile, nil error")
 	}
-	if mpf.IsDirectory() {
-		t.Fatal("Expected file to not be a directory")
+	mpr, ok := mpf.(File)
+	if !ok {
+		t.Fatal("Expected file to be a regular file")
 	}
-	if mpf.FileName() != "file.txt" {
+	if mpname != "beep.txt" {
 		t.Fatal("Expected filename to be \"file.txt\"")
 	}
-	if n, err := mpf.Read(buf); n != len(text) || err != nil {
+	if n, err := mpr.Read(buf); n != 4 || err != nil {
 		t.Fatal("Expected to read from file", n, err)
 	}
-	if string(buf[:len(text)]) != text {
+	if string(buf[:4]) != "beep" {
 		t.Fatal("Data read was different than expected")
 	}
 
@@ -50,14 +134,15 @@ func TestOutput(t *testing.T) {
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	mpf, err = NewFileFromPart(part)
+	mpname, mpf, err = newFileFromPart("", part, mpReader)
 	if mpf == nil || err != nil {
-		t.Fatal("Expected non-nil MultipartFile, nil error")
+		t.Fatal("Expected non-nil multipartFile, nil error")
 	}
-	if !mpf.IsDirectory() {
+	mpd, ok := mpf.(Directory)
+	if !ok {
 		t.Fatal("Expected file to be a directory")
 	}
-	if mpf.FileName() != "boop" {
+	if mpname != "boop" {
 		t.Fatal("Expected filename to be \"boop\"")
 	}
 
@@ -65,44 +150,47 @@ func TestOutput(t *testing.T) {
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	child, err := NewFileFromPart(part)
+	cname, child, err := newFileFromPart("boop", part, mpReader)
 	if child == nil || err != nil {
 		t.Fatal("Expected to be able to read a child file")
 	}
-	if child.IsDirectory() {
+	if _, ok := child.(File); !ok {
 		t.Fatal("Expected file to not be a directory")
 	}
-	if child.FileName() != "boop/a.txt" {
-		t.Fatal("Expected filename to be \"some/file/path\"")
+	if cname != "a.txt" {
+		t.Fatal("Expected filename to be \"a.txt\"")
 	}
 
 	part, err = mpReader.NextPart()
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	child, err = NewFileFromPart(part)
+	cname, child, err = newFileFromPart("boop", part, mpReader)
 	if child == nil || err != nil {
 		t.Fatal("Expected to be able to read a child file")
 	}
-	if child.IsDirectory() {
+	if _, ok := child.(File); !ok {
 		t.Fatal("Expected file to not be a directory")
 	}
-	if child.FileName() != "boop/b.txt" {
-		t.Fatal("Expected filename to be \"some/file/path\"")
+	if cname != "b.txt" {
+		t.Fatal("Expected filename to be \"b.txt\"")
 	}
 
-	child, err = mpf.NextFile()
-	if child != nil || err != io.EOF {
-		t.Fatal("Expected to get (nil, io.EOF)")
+	it := mpd.Entries()
+	if it.Next() {
+		t.Fatal("Expected to get false")
 	}
 
 	part, err = mpReader.NextPart()
 	if part == nil || err != nil {
 		t.Fatal("Expected non-nil part, nil error")
 	}
-	mpf, err = NewFileFromPart(part)
+	mpname, mpf, err = newFileFromPart("", part, mpReader)
 	if mpf == nil || err != nil {
-		t.Fatal("Expected non-nil MultipartFile, nil error")
+		t.Fatal("Expected non-nil multipartFile, nil error")
+	}
+	if mpname != "file.txt" {
+		t.Fatal("Expected filename to be \"b.txt\"")
 	}
 
 	part, err = mpReader.NextPart()

@@ -9,15 +9,20 @@ import (
 	windows "golang.org/x/sys/windows"
 )
 
-func IsHidden(f File) bool {
+func IsHidden(name string, f Node) bool {
 
-	fName := filepath.Base(f.FileName())
+	fName := filepath.Base(name)
 
 	if strings.HasPrefix(fName, ".") && len(fName) > 1 {
 		return true
 	}
 
-	p, e := windows.UTF16PtrFromString(f.FullPath())
+	fi, ok := f.(FileInfo)
+	if !ok {
+		return false
+	}
+
+	p, e := windows.UTF16PtrFromString(fi.AbsPath())
 	if e != nil {
 		return false
 	}

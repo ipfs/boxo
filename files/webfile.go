@@ -1,18 +1,19 @@
 package files
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
-	"path/filepath"
 )
 
 // WebFile is an implementation of File which reads it
 // from a Web URL (http). A GET request will be performed
 // against the source when calling Read().
 type WebFile struct {
-	body io.ReadCloser
-	url  *url.URL
+	body          io.ReadCloser
+	url           *url.URL
+	contentLength int64
 }
 
 // NewWebFile creates a WebFile with the given URL, which
@@ -34,6 +35,7 @@ func (wf *WebFile) Read(b []byte) (int, error) {
 			return 0, err
 		}
 		wf.body = resp.Body
+		wf.contentLength = resp.ContentLength
 	}
 	return wf.body.Read(b)
 }
@@ -46,23 +48,17 @@ func (wf *WebFile) Close() error {
 	return wf.body.Close()
 }
 
-// FullPath returns the "Host+Path" for this WebFile.
-func (wf *WebFile) FullPath() string {
-	return wf.url.Host + wf.url.Path
+// TODO: implement
+func (wf *WebFile) Seek(offset int64, whence int) (int64, error) {
+	return 0, ErrNotSupported
 }
 
-// FileName returns the last element of the URL
-// path for this file.
-func (wf *WebFile) FileName() string {
-	return filepath.Base(wf.url.Path)
+func (wf *WebFile) Size() (int64, error) {
+	if wf.contentLength < 0 {
+		return -1, errors.New("Content-Length hearer was not set")
+	}
+
+	return wf.contentLength, nil
 }
 
-// IsDirectory returns false.
-func (wf *WebFile) IsDirectory() bool {
-	return false
-}
-
-// NextFile always returns an ErrNotDirectory error.
-func (wf *WebFile) NextFile() (File, error) {
-	return nil, ErrNotDirectory
-}
+var _ File = &WebFile{}

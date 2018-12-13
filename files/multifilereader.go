@@ -7,16 +7,20 @@ import (
 	"mime/multipart"
 	"net/textproto"
 	"net/url"
+	"path"
 	"sync"
 )
 
-// MultiFileReader reads from a `commands.File` (which can be a directory of files
+// MultiFileReader reads from a `commands.Node` (which can be a directory of files
 // or a regular file) as HTTP multipart encoded data.
 type MultiFileReader struct {
 	io.Reader
 
-	files       []File
-	currentFile io.Reader
+	// directory stack for NextFile
+	files []DirIterator
+	path  []string
+
+	currentFile Node
 	buf         bytes.Buffer
 	mpWriter    *multipart.Writer
 	closed      bool
@@ -27,12 +31,15 @@ type MultiFileReader struct {
 	form bool
 }
 
-// NewMultiFileReader constructs a MultiFileReader. `file` can be any `commands.File`.
+// NewMultiFileReader constructs a MultiFileReader. `file` can be any `commands.Directory`.
 // If `form` is set to true, the multipart data will have a Content-Type of 'multipart/form-data',
 // if `form` is false, the Content-Type will be 'multipart/mixed'.
-func NewMultiFileReader(file File, form bool) *MultiFileReader {
+func NewMultiFileReader(file Directory, form bool) *MultiFileReader {
+	it := file.Entries()
+
 	mfr := &MultiFileReader{
-		files: []File{file},
+		files: []DirIterator{it},
+		path:  []string{""},
 		form:  form,
 		mutex: &sync.Mutex{},
 	}
@@ -52,48 +59,56 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 
 	// if the current file isn't set, advance to the next file
 	if mfr.currentFile == nil {
-		var file File
-		for file == nil {
+		var entry DirEntry
+
+		for entry == nil {
 			if len(mfr.files) == 0 {
 				mfr.mpWriter.Close()
 				mfr.closed = true
 				return mfr.buf.Read(buf)
 			}
 
-			nextfile, err := mfr.files[len(mfr.files)-1].NextFile()
-			if err == io.EOF {
+			if !mfr.files[len(mfr.files)-1].Next() {
+				if mfr.files[len(mfr.files)-1].Err() != nil {
+					return 0, mfr.files[len(mfr.files)-1].Err()
+				}
 				mfr.files = mfr.files[:len(mfr.files)-1]
+				mfr.path = mfr.path[:len(mfr.path)-1]
 				continue
-			} else if err != nil {
-				return 0, err
 			}
 
-			file = nextfile
+			entry = mfr.files[len(mfr.files)-1]
 		}
 
 		// handle starting a new file part
 		if !mfr.closed {
 
-			var contentType string
-			if _, ok := file.(*Symlink); ok {
-				contentType = "application/symlink"
-			} else if file.IsDirectory() {
-				mfr.files = append(mfr.files, file)
-				contentType = "application/x-directory"
-			} else {
-				// otherwise, use the file as a reader to read its contents
-				contentType = "application/octet-stream"
-			}
-
-			mfr.currentFile = file
+			mfr.currentFile = entry.Node()
 
 			// write the boundary and headers
 			header := make(textproto.MIMEHeader)
-			filename := url.QueryEscape(file.FileName())
+			filename := url.QueryEscape(path.Join(path.Join(mfr.path...), entry.Name()))
 			header.Set("Content-Disposition", fmt.Sprintf("file; filename=\"%s\"", filename))
 
+			var contentType string
+
+			switch f := entry.Node().(type) {
+			case *Symlink:
+				contentType = "application/symlink"
+			case Directory:
+				newIt := f.Entries()
+				mfr.files = append(mfr.files, newIt)
+				mfr.path = append(mfr.path, entry.Name())
+				contentType = "application/x-directory"
+			case File:
+				// otherwise, use the file as a reader to read its contents
+				contentType = "application/octet-stream"
+			default:
+				return 0, ErrNotSupported
+			}
+
 			header.Set("Content-Type", contentType)
-			if rf, ok := file.(*ReaderFile); ok {
+			if rf, ok := entry.Node().(FileInfo); ok {
 				header.Set("abspath", rf.AbsPath())
 			}
 
@@ -110,12 +125,20 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 	}
 
 	// otherwise, read from file data
-	written, err = mfr.currentFile.Read(buf)
-	if err == io.EOF {
-		mfr.currentFile = nil
-		return written, nil
+	switch f := mfr.currentFile.(type) {
+	case File:
+		written, err = f.Read(buf)
+		if err != io.EOF {
+			return written, err
+		}
 	}
-	return written, err
+
+	if err := mfr.currentFile.Close(); err != nil {
+		return written, err
+	}
+
+	mfr.currentFile = nil
+	return written, nil
 }
 
 // Boundary returns the boundary string to be used to separate files in the multipart data
