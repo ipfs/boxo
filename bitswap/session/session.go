@@ -18,7 +18,7 @@ import (
 
 const activeWantsLimit = 16
 
-// SessionWantmanager is an interface that can be used to request blocks
+// SessionWantManager is an interface that can be used to request blocks
 // from given peers.
 type SessionWantManager interface {
 	WantBlocks(ctx context.Context, ks []cid.Cid, peers []peer.ID, ses uint64)

@@ -49,16 +49,12 @@ func (sm *SessionManager) NewSession(ctx context.Context) exchange.Fetcher {
 	sm.sessions = append(sm.sessions, session)
 	sm.sessLk.Unlock()
 	go func() {
-		for {
-			defer cancel()
-			select {
-			case <-sm.ctx.Done():
-				sm.removeSession(session)
-				return
-			case <-ctx.Done():
-				sm.removeSession(session)
-				return
-			}
+		defer cancel()
+		select {
+		case <-sm.ctx.Done():
+			sm.removeSession(session)
+		case <-ctx.Done():
+			sm.removeSession(session)
 		}
 	}()
 
