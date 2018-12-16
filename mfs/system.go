@@ -52,7 +52,7 @@ type child struct {
 // nodes in the DAG service) and one in the UnixFS/MFS level (when I modify
 // the entry/link of the directory that pointed to the modified node).
 type childCloser interface {
-	closeChild(string, ipld.Node, bool) error
+	closeChild(child, bool) error
 }
 
 type NodeType int
@@ -186,14 +186,14 @@ func (kr *Root) FlushMemFree(ctx context.Context) error {
 // TODO: The `sync` argument isn't used here (we've already reached
 // the top), document it and maybe make it an anonymous variable (if
 // that's possible).
-func (kr *Root) closeChild(name string, nd ipld.Node, sync bool) error {
-	err := kr.GetDirectory().dagService.Add(context.TODO(), nd)
+func (kr *Root) closeChild(c child, sync bool) error {
+	err := kr.GetDirectory().dagService.Add(context.TODO(), c.Node)
 	if err != nil {
 		return err
 	}
 
 	if kr.repub != nil {
-		kr.repub.Update(nd.Cid())
+		kr.repub.Update(c.Node.Cid())
 	}
 	return nil
 }

@@ -35,7 +35,7 @@ type Directory struct {
 	lock sync.Mutex
 	// TODO: What content is being protected here exactly? The entire directory?
 
-	ctx  context.Context
+	ctx context.Context
 
 	// UnixFS directory implementation used for creating,
 	// reading and editing directories.
@@ -83,11 +83,11 @@ func (d *Directory) SetCidBuilder(b cid.Builder) {
 // `sync` (alias `fullsync`): has two uses, propagate the update upwards
 // (in which case we wouldn't want this?) and in `closeChildUpdate`.
 // TODO: Find *all* the places where `sync`/`fullsync` is evaluated.
-func (d *Directory) closeChild(name string, nd ipld.Node, sync bool) error {
+func (d *Directory) closeChild(c child, sync bool) error {
 
 	// There's a local flush (`closeChildUpdate`) and a propagated flush (`closeChild`).
 
-	mynd, err := d.closeChildUpdate(name, nd, sync)
+	mynd, err := d.closeChildUpdate(c, sync)
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func (d *Directory) closeChild(name string, nd ipld.Node, sync bool) error {
 	// be merged with this one.
 
 	if sync {
-		return d.parent.closeChild(d.name, mynd, true)
+		return d.parent.closeChild(child{d.name, mynd}, true)
 	}
 	return nil
 }
@@ -115,13 +115,13 @@ func (d *Directory) closeChild(name string, nd ipld.Node, sync bool) error {
 // So, calling this with `sync`/`fullsync` off (this is pretty much the only
 // place where `fullsync` seems to matter) will just update the file entry in
 // this directory without updating the parent and without saving the node.
-func (d *Directory) closeChildUpdate(name string, nd ipld.Node, sync bool) (*dag.ProtoNode, error) {
+func (d *Directory) closeChildUpdate(c child, sync bool) (*dag.ProtoNode, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
 	// TODO: Clearly define how are we propagating changes to lower layers
 	// like UnixFS.
-	err := d.updateChild(name, nd)
+	err := d.updateChild(c)
 	if err != nil {
 		return nil, err
 	}
@@ -152,8 +152,8 @@ func (d *Directory) flushCurrentNode() (*dag.ProtoNode, error) {
 	// TODO: Why do we need a copy?
 }
 
-func (d *Directory) updateChild(name string, nd ipld.Node) error {
-	err := d.AddUnixFSChild(name, nd)
+func (d *Directory) updateChild(c child) error {
+	err := d.AddUnixFSChild(c)
 	if err != nil {
 		return err
 	}
@@ -346,7 +346,7 @@ func (d *Directory) Mkdir(name string) (*Directory, error) {
 		return nil, err
 	}
 
-	err = d.AddUnixFSChild(name, ndir)
+	err = d.AddUnixFSChild(child{name, ndir})
 	if err != nil {
 		return nil, err
 	}
@@ -376,7 +376,7 @@ func (d *Directory) Flush() error {
 		return err
 	}
 
-	return d.parent.closeChild(d.name, nd, true)
+	return d.parent.closeChild(child{d.name, nd}, true)
 }
 
 // AddChild adds the node 'nd' under this directory giving it the name 'name'
@@ -394,7 +394,7 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 		return err
 	}
 
-	err = d.AddUnixFSChild(name, nd)
+	err = d.AddUnixFSChild(child{name, nd})
 	if err != nil {
 		return err
 	}
@@ -405,7 +405,7 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 
 // AddUnixFSChild adds a child to the inner UnixFS directory
 // and transitions to a HAMT implementation if needed.
-func (d *Directory) AddUnixFSChild(name string, node ipld.Node) error {
+func (d *Directory) AddUnixFSChild(c child) error {
 	if uio.UseHAMTSharding {
 		// If the directory HAMT implementation is being used and this
 		// directory is actually a basic implementation switch it to HAMT.
@@ -418,7 +418,7 @@ func (d *Directory) AddUnixFSChild(name string, node ipld.Node) error {
 		}
 	}
 
-	err := d.unixfsDir.AddChild(d.ctx, name, node)
+	err := d.unixfsDir.AddChild(d.ctx, c.Name, c.Node)
 	if err != nil {
 		return err
 	}
@@ -436,7 +436,7 @@ func (d *Directory) sync() error {
 			return err
 		}
 
-		err = d.updateChild(name, nd)
+		err = d.updateChild(child{name, nd})
 		if err != nil {
 			return err
 		}
@@ -448,7 +448,7 @@ func (d *Directory) sync() error {
 			return err
 		}
 
-		err = d.updateChild(name, nd)
+		err = d.updateChild(child{name, nd})
 		if err != nil {
 			return err
 		}
