@@ -36,7 +36,7 @@ type File struct {
 
 // NewFile returns a NewFile object with the given parameters.  If the
 // Cid version is non-zero RawLeaves will be enabled.
-func NewFile(name string, node ipld.Node, parent childCloser, dserv ipld.DAGService) (*File, error) {
+func NewFile(name string, node ipld.Node, parent mutableParent, dserv ipld.DAGService) (*File, error) {
 	fi := &File{
 		inode: inode{
 			name:       name,

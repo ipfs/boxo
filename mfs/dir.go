@@ -48,7 +48,7 @@ type Directory struct {
 //
 // You probably don't want to call this directly. Instead, construct a new root
 // using NewRoot.
-func NewDirectory(ctx context.Context, name string, node ipld.Node, parent childCloser, dserv ipld.DAGService) (*Directory, error) {
+func NewDirectory(ctx context.Context, name string, node ipld.Node, parent mutableParent, dserv ipld.DAGService) (*Directory, error) {
 	db, err := uio.NewDirectoryFromNode(dserv, node)
 	if err != nil {
 		return nil, err
@@ -78,16 +78,16 @@ func (d *Directory) SetCidBuilder(b cid.Builder) {
 	d.unixfsDir.SetCidBuilder(b)
 }
 
-// closeChild updates the child by the given name to the dag node 'nd'
+// updateChildEntry updates the child by the given name to the dag node 'nd'
 // and changes its own dag node
 // `sync` (alias `fullsync`): has two uses, propagate the update upwards
 // (in which case we wouldn't want this?) and in `closeChildUpdate`.
 // TODO: Find *all* the places where `sync`/`fullsync` is evaluated.
-func (d *Directory) closeChild(c child, sync bool) error {
+func (d *Directory) updateChildEntry(c child, fullSync bool) error {
 
-	// There's a local flush (`closeChildUpdate`) and a propagated flush (`closeChild`).
+	// There's a local flush (`closeChildUpdate`) and a propagated flush (`updateChildEntry`).
 
-	mynd, err := d.closeChildUpdate(c, sync)
+	mynd, err := d.closeChildUpdate(c, fullSync)
 	if err != nil {
 		return err
 	}
@@ -98,13 +98,13 @@ func (d *Directory) closeChild(c child, sync bool) error {
 	// least the `if sync {` clause at the end of `closeChildUpdate` should
 	// be merged with this one.
 
-	if sync {
-		return d.parent.closeChild(child{d.name, mynd}, true)
+	if fullSync {
+		return d.parent.updateChildEntry(child{d.name, mynd}, true)
 	}
 	return nil
 }
 
-// closeChildUpdate is the portion of closeChild that needs to be locked around
+// closeChildUpdate is the portion of updateChildEntry that needs to be locked around
 // TODO: Definitely document this.
 // Updates the child entry under `name` with the node `nd` and if `sync`
 // is set it "flushes" the node (adding it to the `DAGService`) that
@@ -376,7 +376,7 @@ func (d *Directory) Flush() error {
 		return err
 	}
 
-	return d.parent.closeChild(child{d.name, nd}, true)
+	return d.parent.updateChildEntry(child{d.name, nd}, true)
 }
 
 // AddChild adds the node 'nd' under this directory giving it the name 'name'

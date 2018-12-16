@@ -149,7 +149,7 @@ func (fi *fileDescriptor) flushUp(fullsync bool) error {
 	fi.inode.nodelk.Unlock()
 	// TODO: Maybe all this logic should happen in `File`.
 
-	return parent.closeChild(child{name, nd}, fullsync)
+	return parent.updateChildEntry(child{name, nd}, fullsync)
 }
 
 // Seek implements io.Seeker

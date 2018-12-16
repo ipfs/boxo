@@ -42,17 +42,25 @@ type child struct {
 	Node ipld.Node
 }
 
-// TODO: Rename (avoid "close" terminology, if anything
-// we are persisting/flushing changes).
-// This is always a directory (since we are referring to the parent),
-// can be an intermediate directory in the filesystem or the `Root`.
+// This interface represents the basic property of MFS directories of updating
+// children entries with modified content. Implemented by both the MFS
+// `Directory` and `Root` (which is basically a `Directory` with republishing
+// support).
+//
 // TODO: What is `fullsync`? (unnamed `bool` argument)
 // TODO: There are two types of persistence/flush that need to be
 // distinguished here, one at the DAG level (when I store the modified
 // nodes in the DAG service) and one in the UnixFS/MFS level (when I modify
 // the entry/link of the directory that pointed to the modified node).
-type childCloser interface {
-	closeChild(child, bool) error
+type mutableParent interface {
+	// Method called by a child to its parent to signal to update the content
+	// pointed to in the entry by that child's name. The child sends as
+	// arguments its own information (under the `child` structure) and a flag
+	// (`fullsync`) indicating whether or not to propagate the update upwards:
+	// modifying a directory entry entails modifying its contents which means
+	// that its parent (the parent's parent) will also need to be updated (and
+	// so on).
+	updateChildEntry(c child, fullSync bool) error
 }
 
 type NodeType int
@@ -179,18 +187,20 @@ func (kr *Root) FlushMemFree(ctx context.Context) error {
 	return nil
 }
 
-// closeChild implements the childCloser interface, and signals to the publisher that
+// updateChildEntry implements the mutableParent interface, and signals to the publisher that
 // there are changes ready to be published.
 // This is the only thing that separates a `Root` from a `Directory`.
 // TODO: Evaluate merging both.
 // TODO: The `sync` argument isn't used here (we've already reached
 // the top), document it and maybe make it an anonymous variable (if
 // that's possible).
-func (kr *Root) closeChild(c child, sync bool) error {
+func (kr *Root) updateChildEntry(c child, fullSync bool) error {
 	err := kr.GetDirectory().dagService.Add(context.TODO(), c.Node)
 	if err != nil {
 		return err
 	}
+	// TODO: Why are we not using the inner directory lock nor
+	// applying the same procedure as `Directory.updateChildEntry`?
 
 	if kr.repub != nil {
 		kr.repub.Update(c.Node.Cid())
