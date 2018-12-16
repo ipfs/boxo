@@ -27,7 +27,6 @@ type FileDescriptor interface {
 
 	Truncate(int64) error
 	Size() (int64, error)
-	Sync() error
 	Flush() error
 }
 
@@ -114,12 +113,10 @@ func (fi *fileDescriptor) Close() error {
 	return nil
 }
 
-// TODO: Who uses `Sync` and who `Flush`? Do the consumers of this API
-// know about the (undocumented) `fullsync` argument?
-func (fi *fileDescriptor) Sync() error {
-	return fi.flushUp(false)
-}
-
+// Flush generates a new version of the node of the underlying
+// UnixFS directory (adding it to the DAG service) and updates
+// the entry in the parent directory (setting `fullSync` to
+// propagate the update all the way to the root).
 func (fi *fileDescriptor) Flush() error {
 	return fi.flushUp(true)
 }
@@ -129,7 +126,7 @@ func (fi *fileDescriptor) Flush() error {
 // TODO: What is `fullsync`? Propagate the changes upward
 // to the root flushing every node in the path (the "up"
 // part of `flushUp`).
-func (fi *fileDescriptor) flushUp(fullsync bool) error {
+func (fi *fileDescriptor) flushUp(fullSync bool) error {
 	nd, err := fi.mod.GetNode()
 	if err != nil {
 		return err
@@ -139,6 +136,11 @@ func (fi *fileDescriptor) flushUp(fullsync bool) error {
 	if err != nil {
 		return err
 	}
+	// TODO: Very similar logic to the update process in
+	// `Directory`, the logic should be unified, both structures
+	// (`File` and `Directory`) are backed by a IPLD node with
+	// a UnixFS format that is the actual target of the update
+	// (regenerating it and adding it to the DAG service).
 
 	fi.inode.nodelk.Lock()
 	fi.inode.node = nd
@@ -149,7 +151,7 @@ func (fi *fileDescriptor) flushUp(fullsync bool) error {
 	fi.inode.nodelk.Unlock()
 	// TODO: Maybe all this logic should happen in `File`.
 
-	return parent.updateChildEntry(child{name, nd}, fullsync)
+	return parent.updateChildEntry(child{name, nd}, fullSync)
 }
 
 // Seek implements io.Seeker
