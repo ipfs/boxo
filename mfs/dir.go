@@ -78,16 +78,20 @@ func (d *Directory) SetCidBuilder(b cid.Builder) {
 	d.unixfsDir.SetCidBuilder(b)
 }
 
-// updateChildEntry updates the child by the given name to the dag node 'nd'
-// and changes its own dag node
-// `sync` (alias `fullsync`): has two uses, propagate the update upwards
-// (in which case we wouldn't want this?) and in `closeChildUpdate`.
-// TODO: Find *all* the places where `sync`/`fullsync` is evaluated.
+// This method implements the `mutableParent` interface. It first updates
+// the child entry in the underlying UnixFS directory and then if `fullSync`
+// is set it saves the new content through the internal DAG service. Then,
+// also if `fullSync` is set, it propagates the update to its parent (through
+// this same interface) with the new node already updated with the new entry.
+// So, `fullSync` entails operations at two different layers:
+//   1. DAG: save the newly created directory node with the updated entry.
+//   2. MFS: propagate the update upwards repeating the whole process in the
+//           parent.
 func (d *Directory) updateChildEntry(c child, fullSync bool) error {
 
 	// There's a local flush (`closeChildUpdate`) and a propagated flush (`updateChildEntry`).
 
-	mynd, err := d.closeChildUpdate(c, fullSync)
+	newDirNode, err := d.closeChildUpdate(c, fullSync)
 	if err != nil {
 		return err
 	}
@@ -96,42 +100,43 @@ func (d *Directory) updateChildEntry(c child, fullSync bool) error {
 	// we use the node returned by `closeChildUpdate` (which entails a copy)
 	// only if `sync` is set, and we are discarding it otherwise. At the very
 	// least the `if sync {` clause at the end of `closeChildUpdate` should
-	// be merged with this one.
+	// be merged with this one (the use of the `lock` is stopping this at the
+	// moment, re-evaluate when its purpose has been better understood).
 
 	if fullSync {
-		return d.parent.updateChildEntry(child{d.name, mynd}, true)
+		return d.parent.updateChildEntry(child{d.name, newDirNode}, true)
+		// Setting `fullSync` to true here means, if the original child that
+		// initiated the update process wanted to propagate it upwards then
+		// continue to do so all the way up to the root, that is, the only
+		// time `fullSync` can be false is in the first call (which will be
+		// the *only* call), we either update the first parent entry or *all*
+		// the parent's.
 	}
+
 	return nil
 }
 
-// closeChildUpdate is the portion of updateChildEntry that needs to be locked around
-// TODO: Definitely document this.
-// Updates the child entry under `name` with the node `nd` and if `sync`
-// is set it "flushes" the node (adding it to the `DAGService`) that
-// represents this directory.
-// TODO: As mentioned elsewhere "flush" sometimes means persist the node in the
-// DAG service and other update the parent node pointing to it.
-//
-// So, calling this with `sync`/`fullsync` off (this is pretty much the only
-// place where `fullsync` seems to matter) will just update the file entry in
-// this directory without updating the parent and without saving the node.
-func (d *Directory) closeChildUpdate(c child, sync bool) (*dag.ProtoNode, error) {
+// This method implements the part of `updateChildEntry` that needs
+// to be locked around: in charge of updating the UnixFS layer and
+// generating the new node reflecting the update.
+func (d *Directory) closeChildUpdate(c child, fullSync bool) (*dag.ProtoNode, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	// TODO: Clearly define how are we propagating changes to lower layers
-	// like UnixFS.
 	err := d.updateChild(c)
 	if err != nil {
 		return nil, err
 	}
+	// TODO: Clearly define how are we propagating changes to lower layers
+	// like UnixFS.
 
-	if sync {
+	if fullSync {
 		return d.flushCurrentNode()
 	}
 	return nil, nil
 }
 
+// Recreate the underlying UnixFS directory node and save it in the DAG layer.
 func (d *Directory) flushCurrentNode() (*dag.ProtoNode, error) {
 	nd, err := d.unixfsDir.GetNode()
 	if err != nil {
@@ -142,16 +147,23 @@ func (d *Directory) flushCurrentNode() (*dag.ProtoNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	// TODO: This method is called in `closeChildUpdate` while the lock is
+	// taken, we need the lock while operating on `unixfsDir` to create the
+	// new node but do we also need to keep the lock while adding it to the
+	// DAG service? Evaluate refactoring these two methods together and better
+	// redistributing the node.
 
 	pbnd, ok := nd.(*dag.ProtoNode)
 	if !ok {
 		return nil, dag.ErrNotProtobuf
 	}
+	// TODO: Why do we check the node *after* adding it to the DAG service?
 
 	return pbnd.Copy().(*dag.ProtoNode), nil
 	// TODO: Why do we need a copy?
 }
 
+// Update child entry in the underlying UnixFS directory.
 func (d *Directory) updateChild(c child) error {
 	err := d.AddUnixFSChild(c)
 	if err != nil {
