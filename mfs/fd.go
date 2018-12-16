@@ -9,6 +9,12 @@ import (
 	context "context"
 )
 
+// One `File` can have many `FileDescriptor`s associated to it
+// (only one if it's RW, many if they are RO, see `File.desclock`).
+// A `FileDescriptor` contains the "view" of the file (through an
+// instance of a `DagModifier`), that's why it (and not the `File`)
+// has the responsibility to `Flush` (which crystallizes that view
+// in the `File`'s `Node`).
 type FileDescriptor interface {
 	io.Reader
 	CtxReadFull(context.Context, []byte) (int, error)
@@ -32,6 +38,7 @@ type fileDescriptor struct {
 	sync       bool
 	hasChanges bool
 
+	// TODO: Where is this variable set?
 	closed bool
 }
 
@@ -84,6 +91,7 @@ func (fi *fileDescriptor) Close() error {
 		case OpenWriteOnly, OpenReadWrite:
 			fi.inode.desclock.Unlock()
 		}
+		// TODO: `closed` should be set here.
 	}()
 
 	if fi.closed {
@@ -106,6 +114,8 @@ func (fi *fileDescriptor) Close() error {
 	return nil
 }
 
+// TODO: Who uses `Sync` and who `Flush`? Do the consumers of this API
+// know about the (undocumented) `fullsync` argument?
 func (fi *fileDescriptor) Sync() error {
 	return fi.flushUp(false)
 }
@@ -116,6 +126,9 @@ func (fi *fileDescriptor) Flush() error {
 
 // flushUp syncs the file and adds it to the dagservice
 // it *must* be called with the File's lock taken
+// TODO: What is `fullsync`? Propagate the changes upward
+// to the root flushing every node in the path (the "up"
+// part of `flushUp`).
 func (fi *fileDescriptor) flushUp(fullsync bool) error {
 	nd, err := fi.mod.GetNode()
 	if err != nil {
@@ -129,9 +142,12 @@ func (fi *fileDescriptor) flushUp(fullsync bool) error {
 
 	fi.inode.nodelk.Lock()
 	fi.inode.node = nd
+	// TODO: Create a `SetNode` method.
 	name := fi.inode.name
 	parent := fi.inode.parent
+	// TODO: Can the parent be modified? Do we need to do this inside the lock?
 	fi.inode.nodelk.Unlock()
+	// TODO: Maybe all this logic should happen in `File`.
 
 	return parent.closeChild(name, nd, fullsync)
 }

@@ -1,4 +1,5 @@
 // package mfs implements an in memory model of a mutable IPFS filesystem.
+// TODO: Develop on this line (and move it elsewhere), delete the rest.
 //
 // It consists of four main structs:
 // 1) The Filesystem
@@ -24,12 +25,23 @@ import (
 	logging "github.com/ipfs/go-log"
 )
 
+// TODO: Remove if not used.
 var ErrNotExist = errors.New("no such rootfs")
 
 var log = logging.Logger("mfs")
 
+// TODO: Remove if not used.
 var ErrIsDirectory = errors.New("error: is a directory")
 
+// TODO: Rename (avoid "close" terminology, if anything
+// we are persisting/flushing changes).
+// This is always a directory (since we are referring to the parent),
+// can be an intermediate directory in the filesystem or the `Root`.
+// TODO: What is `fullsync`? (unnamed `bool` argument)
+// TODO: There are two types of persistence/flush that need to be
+// distinguished here, one at the DAG level (when I store the modified
+// nodes in the DAG service) and one in the UnixFS/MFS level (when I modify
+// the entry/link of the directory that pointed to the modified node).
 type childCloser interface {
 	closeChild(string, ipld.Node, bool) error
 }
@@ -41,7 +53,8 @@ const (
 	TDir
 )
 
-// FSNode represents any node (directory, root, or file) in the mfs filesystem.
+// FSNode represents any node (directory, or file) in the MFS filesystem.
+// Not to be confused with the `unixfs.FSNode`.
 type FSNode interface {
 	GetNode() (ipld.Node, error)
 	Flush() error
@@ -67,9 +80,6 @@ type Root struct {
 	repub *Republisher
 }
 
-// PubFunc is the function used by the `publish()` method.
-type PubFunc func(context.Context, cid.Cid) error
-
 // NewRoot creates a new Root and starts up a republisher routine for it.
 func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc) (*Root, error) {
 
@@ -87,6 +97,7 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 	fsn, err := ft.FSNodeFromBytes(node.Data())
 	if err != nil {
 		log.Error("IPNS pointer was not unixfs node")
+		// TODO: IPNS pointer?
 		return nil, err
 	}
 
@@ -100,6 +111,8 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 		root.dir = newDir
 	case ft.TFile, ft.TMetadata, ft.TRaw:
 		return nil, fmt.Errorf("root can't be a file (unixfs type: %s)", fsn.Type())
+		// TODO: This special error reporting case doesn't seem worth it, we either
+		// have a UnixFS directory or we don't.
 	default:
 		return nil, fmt.Errorf("unrecognized unixfs type: %s", fsn.Type())
 	}
@@ -113,6 +126,7 @@ func (kr *Root) GetDirectory() *Directory {
 
 // Flush signals that an update has occurred since the last publish,
 // and updates the Root republisher.
+// TODO: We are definitely abusing the "flush" terminology here.
 func (kr *Root) Flush() error {
 	nd, err := kr.GetDirectory().GetNode()
 	if err != nil {
@@ -133,6 +147,8 @@ func (kr *Root) Flush() error {
 // may have unintended racy side effects.
 // A better implemented mfs system (one that does smarter internal caching and
 // refcounting) shouldnt need this method.
+// TODO: Review the motivation behind this method once the cache system is
+// refactored.
 func (kr *Root) FlushMemFree(ctx context.Context) error {
 	dir := kr.GetDirectory()
 
@@ -142,18 +158,25 @@ func (kr *Root) FlushMemFree(ctx context.Context) error {
 
 	dir.lock.Lock()
 	defer dir.lock.Unlock()
+
 	for name := range dir.files {
 		delete(dir.files, name)
 	}
 	for name := range dir.childDirs {
 		delete(dir.childDirs, name)
 	}
+	// TODO: Can't we just create new maps?
 
 	return nil
 }
 
 // closeChild implements the childCloser interface, and signals to the publisher that
 // there are changes ready to be published.
+// This is the only thing that separates a `Root` from a `Directory`.
+// TODO: Evaluate merging both.
+// TODO: The `sync` argument isn't used here (we've already reached
+// the top), document it and maybe make it an anonymous variable (if
+// that's possible).
 func (kr *Root) closeChild(name string, nd ipld.Node, sync bool) error {
 	err := kr.GetDirectory().dagService.Add(context.TODO(), nd)
 	if err != nil {
@@ -179,6 +202,11 @@ func (kr *Root) Close() error {
 
 	return nil
 }
+
+// TODO: Separate the remaining code in another file: `repub.go`.
+
+// PubFunc is the function used by the `publish()` method.
+type PubFunc func(context.Context, cid.Cid) error
 
 // Republisher manages when to publish a given entry.
 type Republisher struct {
@@ -250,6 +278,8 @@ func (np *Republisher) Update(c cid.Cid) {
 }
 
 // Run is the main republisher loop.
+// TODO: Document according to:
+// https://github.com/ipfs/go-ipfs/issues/5092#issuecomment-398524255.
 func (np *Republisher) Run() {
 	for {
 		select {

@@ -13,12 +13,22 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
+// File represents a file in the MFS, its logic its mainly targeted
+// to coordinating (potentially many) `FileDescriptor`s pointing to
+// it.
 type File struct {
 	inode
 
+	// Lock to coordinate the `FileDescriptor`s associated to this file.
 	desclock sync.RWMutex
 
+	// This isn't any node, it's the root node that represents the
+	// entire DAG of nodes that comprise the file.
+	// TODO: Rename, there should be an explicit term for these root nodes
+	// of a particular sub-DAG that abstract an upper layer's entity.
 	node   ipld.Node
+
+	// TODO: Rename.
 	nodelk sync.Mutex
 
 	RawLeaves bool
@@ -52,6 +62,10 @@ func (fi *File) Open(flags int, sync bool) (FileDescriptor, error) {
 	node := fi.node
 	fi.nodelk.Unlock()
 
+	// TODO: Move this `switch` logic outside (maybe even
+	// to another package, this seems like a job of UnixFS),
+	// `NewDagModifier` uses the IPLD node, we're not
+	// extracting anything just doing a safety check.
 	switch node := node.(type) {
 	case *dag.ProtoNode:
 		fsn, err := ft.FSNodeFromBytes(node.Data())
@@ -82,6 +96,8 @@ func (fi *File) Open(flags int, sync bool) (FileDescriptor, error) {
 	}
 
 	dmod, err := mod.NewDagModifier(context.TODO(), node, fi.dagService, chunker.DefaultSplitter)
+	// TODO: Remove the use of the `chunker` package here, add a new `NewDagModifier` in
+	// `go-unixfs` with the `DefaultSplitter` already included.
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +112,11 @@ func (fi *File) Open(flags int, sync bool) (FileDescriptor, error) {
 }
 
 // Size returns the size of this file
+// TODO: Should we be providing this API?
+// TODO: There's already a `FileDescriptor.Size()` that
+// through the `DagModifier`'s `fileSize` function is doing
+// pretty much the same thing as here, we should at least call
+// that function and wrap the `ErrNotUnixfs` with an MFS text.
 func (fi *File) Size() (int64, error) {
 	fi.nodelk.Lock()
 	defer fi.nodelk.Unlock()
@@ -114,12 +135,21 @@ func (fi *File) Size() (int64, error) {
 }
 
 // GetNode returns the dag node associated with this file
+// TODO: Use this method and do not access the `nodelk` directly anywhere else.
 func (fi *File) GetNode() (ipld.Node, error) {
 	fi.nodelk.Lock()
 	defer fi.nodelk.Unlock()
 	return fi.node, nil
 }
 
+// TODO: Tight coupling with the `FileDescriptor`, at the
+// very least this should be an independent function that
+// takes a `File` argument and automates the open/flush/close
+// operations.
+// TODO: Why do we need to flush a file that isn't opened?
+// (the `OpenWriteOnly` seems to implicitly be targeting a
+// closed file, a file we forgot to flush? can we close
+// a file without flushing?)
 func (fi *File) Flush() error {
 	// open the file in fullsync mode
 	fd, err := fi.Open(OpenWriteOnly, true)
@@ -134,6 +164,7 @@ func (fi *File) Flush() error {
 
 func (fi *File) Sync() error {
 	// just being able to take the writelock means the descriptor is synced
+	// TODO: Why?
 	fi.desclock.Lock()
 	fi.desclock.Unlock()
 	return nil
