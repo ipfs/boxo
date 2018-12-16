@@ -33,6 +33,15 @@ var log = logging.Logger("mfs")
 // TODO: Remove if not used.
 var ErrIsDirectory = errors.New("error: is a directory")
 
+// The information that an MFS `Directory` has about its children
+// when updating one of its entries: when a child mutates it signals
+// its parent directory to update its entry (under `Name`) with the
+// new content (in `Node`).
+type child struct {
+	Name string
+	Node ipld.Node
+}
+
 // TODO: Rename (avoid "close" terminology, if anything
 // we are persisting/flushing changes).
 // This is always a directory (since we are referring to the parent),
