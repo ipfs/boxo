@@ -167,7 +167,7 @@ func TestOrderingPeers(t *testing.T) {
 	peer3 := peers[rand.Intn(100)]
 	time.Sleep(1 * time.Millisecond)
 	sessionPeerManager.RecordPeerResponse(peer1, c[0])
-	time.Sleep(1 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 	sessionPeerManager.RecordPeerResponse(peer2, c[0])
 	time.Sleep(1 * time.Millisecond)
 	sessionPeerManager.RecordPeerResponse(peer3, c[0])
@@ -177,13 +177,18 @@ func TestOrderingPeers(t *testing.T) {
 		t.Fatal("Should not return more than the max of optimized peers")
 	}
 
-	// should prioritize peers which have received blocks
-	if (sessionPeers[0] != peer3) || (sessionPeers[1] != peer2) || (sessionPeers[2] != peer1) {
+	// should prioritize peers which are fastest
+	if (sessionPeers[0] != peer1) || (sessionPeers[1] != peer2) || (sessionPeers[2] != peer3) {
 		t.Fatal("Did not prioritize peers that received blocks")
 	}
 
-	// Receive a second time from same node
-	sessionPeerManager.RecordPeerResponse(peer3, c[0])
+	c2 := testutil.GenerateCids(1)
+
+	// Request again
+	sessionPeerManager.RecordPeerRequests(nil, c2)
+
+	// Receive a second time
+	sessionPeerManager.RecordPeerResponse(peer3, c2[0])
 
 	// call again
 	nextSessionPeers := sessionPeerManager.GetOptimizedPeers()
@@ -191,9 +196,9 @@ func TestOrderingPeers(t *testing.T) {
 		t.Fatal("Should not return more than the max of optimized peers")
 	}
 
-	// should not duplicate
-	if (nextSessionPeers[0] != peer3) || (nextSessionPeers[1] != peer2) || (nextSessionPeers[2] != peer1) {
-		t.Fatal("Did dedup peers which received multiple blocks")
+	// should sort by average latency
+	if (nextSessionPeers[0] != peer1) || (nextSessionPeers[1] != peer3) || (nextSessionPeers[2] != peer2) {
+		t.Fatal("Did not dedup peers which received multiple blocks")
 	}
 
 	// should randomize other peers
