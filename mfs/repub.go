@@ -45,35 +45,35 @@ func NewRepublisher(ctx context.Context, pf PubFunc, tshort, tlong time.Duration
 
 // WaitPub waits for the current value to be published (or returns early
 // if it already has).
-func (p *Republisher) WaitPub() {
-	p.valueLock.Lock()
-	valueHasBeenPublished := p.lastValuePublished == p.valueToPublish
-	p.valueLock.Unlock()
+func (rp *Republisher) WaitPub() {
+	rp.valueLock.Lock()
+	valueHasBeenPublished := rp.lastValuePublished == rp.valueToPublish
+	rp.valueLock.Unlock()
 	if valueHasBeenPublished {
 		return
 	}
 
 	wait := make(chan struct{})
-	p.immediatePublish <- wait
+	rp.immediatePublish <- wait
 	<-wait
 }
 
-func (p *Republisher) Close() error {
-	err := p.publish(p.ctx)
-	p.cancel()
+func (rp *Republisher) Close() error {
+	err := rp.publish(rp.ctx)
+	rp.cancel()
 	return err
 }
 
 // Update the `valueToPublish` and signal it in the `valueHasBeenUpdated`
 // channel. Multiple consecutive updates may extend the time period before
 // the next publish occurs in order to more efficiently batch updates.
-func (np *Republisher) Update(c cid.Cid) {
-	np.valueLock.Lock()
-	np.valueToPublish = c
-	np.valueLock.Unlock()
+func (rp *Republisher) Update(c cid.Cid) {
+	rp.valueLock.Lock()
+	rp.valueToPublish = c
+	rp.valueLock.Unlock()
 
 	select {
-	case np.valueHasBeenUpdated <- struct{}{}:
+	case rp.valueHasBeenUpdated <- struct{}{}:
 	default:
 	}
 }
@@ -90,41 +90,41 @@ func (np *Republisher) Update(c cid.Cid) {
 // The `longer` timer ensures that we delay publishing by at most
 // `TimeoutLong`. The `quick` timer allows us to publish sooner if
 // it looks like there are no more updates coming down the pipe.
-func (np *Republisher) Run() {
+func (rp *Republisher) Run() {
 	for {
 		select {
-		case <-np.ctx.Done():
+		case <-rp.ctx.Done():
 			return
-		case <-np.valueHasBeenUpdated:
+		case <-rp.valueHasBeenUpdated:
 			// Fast timeout, a `publish` will be issued if there are
 			// no more updates before it expires (restarted every time
 			// the `valueHasBeenUpdated` is signaled).
-			quick := time.After(np.TimeoutShort)
+			quick := time.After(rp.TimeoutShort)
 			// Long timeout that guarantees a `publish` after it expires
 			// even if the value keeps being updated (and `quick` is
 			// restarted).
-			longer := time.After(np.TimeoutLong)
+			longer := time.After(rp.TimeoutLong)
 
 		wait:
 			var valueHasBeenPublished chan struct{}
 
 			select {
-			case <-np.ctx.Done():
+			case <-rp.ctx.Done():
 				return
-			case <-np.valueHasBeenUpdated:
+			case <-rp.valueHasBeenUpdated:
 				// The `valueToPublish` has been updated *again* since
 				// the last time we checked and we still haven't published
 				// it, restart the `quick` timer allowing for some more
 				// time to see if the `valueToPublish` changes again.
-				quick = time.After(np.TimeoutShort)
+				quick = time.After(rp.TimeoutShort)
 				goto wait
 
 			case <-quick:
 			case <-longer:
-			case valueHasBeenPublished = <-np.immediatePublish:
+			case valueHasBeenPublished = <-rp.immediatePublish:
 			}
 
-			err := np.publish(np.ctx)
+			err := rp.publish(rp.ctx)
 			if valueHasBeenPublished != nil {
 				// The user is waiting in `WaitPub` with this channel, signal
 				// that the `publish` has happened.
@@ -139,17 +139,17 @@ func (np *Republisher) Run() {
 
 // Wrapper function around the user-defined `pubfunc`. It publishes
 // the (last) `valueToPublish` set and registers it in `lastValuePublished`.
-func (np *Republisher) publish(ctx context.Context) error {
-	np.valueLock.Lock()
-	topub := np.valueToPublish
-	np.valueLock.Unlock()
+func (rp *Republisher) publish(ctx context.Context) error {
+	rp.valueLock.Lock()
+	topub := rp.valueToPublish
+	rp.valueLock.Unlock()
 
-	err := np.pubfunc(ctx, topub)
+	err := rp.pubfunc(ctx, topub)
 	if err != nil {
 		return err
 	}
-	np.valueLock.Lock()
-	np.lastValuePublished = topub
-	np.valueLock.Unlock()
+	rp.valueLock.Lock()
+	rp.lastValuePublished = topub
+	rp.valueLock.Unlock()
 	return nil
 }
