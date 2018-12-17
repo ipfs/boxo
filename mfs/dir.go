@@ -27,10 +27,9 @@ var ErrDirExists = errors.New("directory already has entry by that name")
 type Directory struct {
 	inode
 
-	// Cache.
-	// TODO: Should this be a single cache of `FSNode`s?
-	childDirs map[string]*Directory
-	files     map[string]*File
+	// Internal cache with added entries to the directory, its cotents
+	// are synched with the underlying `unixfsDir` node in `sync()`.
+	entriesCache map[string]FSNode
 
 	lock sync.Mutex
 	// TODO: What content is being protected here exactly? The entire directory?
@@ -60,11 +59,10 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent mutab
 			parent:     parent,
 			dagService: dserv,
 		},
-		ctx:       ctx,
-		unixfsDir: db,
-		childDirs: make(map[string]*Directory),
-		files:     make(map[string]*File),
-		modTime:   time.Now(),
+		ctx:          ctx,
+		unixfsDir:    db,
+		entriesCache: make(map[string]FSNode),
+		modTime:      time.Now(),
 	}, nil
 }
 
@@ -206,14 +204,14 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 				return nil, err
 			}
 
-			d.childDirs[name] = ndir
+			d.entriesCache[name] = ndir
 			return ndir, nil
 		case ft.TFile, ft.TRaw, ft.TSymlink:
 			nfi, err := NewFile(name, nd, d, d.dagService)
 			if err != nil {
 				return nil, err
 			}
-			d.files[name] = nfi
+			d.entriesCache[name] = nfi
 			return nfi, nil
 		case ft.TMetadata:
 			return nil, ErrNotYetImplemented
@@ -225,7 +223,7 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		d.files[name] = nfi
+		d.entriesCache[name] = nfi
 		return nfi, nil
 	default:
 		return nil, fmt.Errorf("unrecognized node type in cache node")
@@ -242,10 +240,7 @@ func (d *Directory) Child(name string) (FSNode, error) {
 func (d *Directory) Uncache(name string) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	delete(d.files, name)
-	delete(d.childDirs, name)
-	// TODO: We definitely need to join these maps if we are manipulating
-	// them like this.
+	delete(d.entriesCache, name)
 }
 
 // childFromDag searches through this directories dag node for a child link
@@ -257,14 +252,9 @@ func (d *Directory) childFromDag(name string) (ipld.Node, error) {
 // childUnsync returns the child under this directory by the given name
 // without locking, useful for operations which already hold a lock
 func (d *Directory) childUnsync(name string) (FSNode, error) {
-	cdir, ok := d.childDirs[name]
+	entry, ok := d.entriesCache[name]
 	if ok {
-		return cdir, nil
-	}
-
-	cfile, ok := d.files[name]
-	if ok {
-		return cfile, nil
+		return entry, nil
 	}
 
 	return d.childNode(name)
@@ -368,7 +358,7 @@ func (d *Directory) Mkdir(name string) (*Directory, error) {
 		return nil, err
 	}
 
-	d.childDirs[name] = dirobj
+	d.entriesCache[name] = dirobj
 	return dirobj, nil
 }
 
@@ -376,8 +366,7 @@ func (d *Directory) Unlink(name string) error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	delete(d.childDirs, name)
-	delete(d.files, name)
+	delete(d.entriesCache, name)
 
 	return d.unixfsDir.RemoveChild(d.ctx, name)
 }
@@ -438,12 +427,9 @@ func (d *Directory) AddUnixFSChild(c child) error {
 	return nil
 }
 
-// TODO: Difference between `sync` and `Flush`? This seems
-// to be related to the internal cache and not to the MFS
-// hierarchy update.
 func (d *Directory) sync() error {
-	for name, dir := range d.childDirs {
-		nd, err := dir.GetNode()
+	for name, entry := range d.entriesCache {
+		nd, err := entry.GetNode()
 		if err != nil {
 			return err
 		}
@@ -454,17 +440,7 @@ func (d *Directory) sync() error {
 		}
 	}
 
-	for name, file := range d.files {
-		nd, err := file.GetNode()
-		if err != nil {
-			return err
-		}
-
-		err = d.updateChild(child{name, nd})
-		if err != nil {
-			return err
-		}
-	}
+	// TODO: Should we clean the cache here?
 
 	return nil
 }

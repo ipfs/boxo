@@ -61,8 +61,11 @@ const (
 	TDir
 )
 
-// FSNode represents any node (directory, or file) in the MFS filesystem.
-// Not to be confused with the `unixfs.FSNode`.
+// FSNode abstracts the `Directory` and `File` structures, it represents
+// any child node in the MFS (i.e., all the nodes besides the `Root`). It
+// is the counterpart of the `mutableParent` interface which represents any
+// parent node in the MFS (`Root` and `Directory`).
+// (Not to be confused with the `unixfs.FSNode`.)
 type FSNode interface {
 	GetNode() (ipld.Node, error)
 	Flush() error
@@ -167,11 +170,8 @@ func (kr *Root) FlushMemFree(ctx context.Context) error {
 	dir.lock.Lock()
 	defer dir.lock.Unlock()
 
-	for name := range dir.files {
-		delete(dir.files, name)
-	}
-	for name := range dir.childDirs {
-		delete(dir.childDirs, name)
+	for name := range dir.entriesCache {
+		delete(dir.entriesCache, name)
 	}
 	// TODO: Can't we just create new maps?
 
