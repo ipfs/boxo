@@ -3,6 +3,7 @@ package testutil
 import (
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	"github.com/ipfs/go-bitswap/wantlist"
+	"github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	peer "github.com/libp2p/go-libp2p-peer"
@@ -75,4 +76,19 @@ func ContainsPeer(peers []peer.ID, p peer.ID) bool {
 		}
 	}
 	return false
+}
+
+// IndexOf returns the index of a given cid in an array of blocks
+func IndexOf(blks []blocks.Block, c cid.Cid) int {
+	for i, n := range blks {
+		if n.Cid() == c {
+			return i
+		}
+	}
+	return -1
+}
+
+// ContainsBlock returns true if a block is found n a list of blocks
+func ContainsBlock(blks []blocks.Block, block blocks.Block) bool {
+	return IndexOf(blks, block.Cid()) != -1
 }
