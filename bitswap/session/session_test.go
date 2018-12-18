@@ -35,13 +35,11 @@ func (fwm *fakeWantManager) CancelWants(ctx context.Context, cids []cid.Cid, pee
 type fakePeerManager struct {
 	lk                     sync.RWMutex
 	peers                  []peer.ID
-	findMorePeersRequested bool
+	findMorePeersRequested chan struct{}
 }
 
 func (fpm *fakePeerManager) FindMorePeers(context.Context, cid.Cid) {
-	fpm.lk.Lock()
-	fpm.findMorePeersRequested = true
-	fpm.lk.Unlock()
+	fpm.findMorePeersRequested <- struct{}{}
 }
 
 func (fpm *fakePeerManager) GetOptimizedPeers() []peer.ID {
@@ -161,7 +159,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 	wantReqs := make(chan wantReq, 1)
 	cancelReqs := make(chan wantReq, 1)
 	fwm := &fakeWantManager{wantReqs, cancelReqs}
-	fpm := &fakePeerManager{}
+	fpm := &fakePeerManager{findMorePeersRequested: make(chan struct{})}
 	id := testutil.GenerateSessionID()
 	session := New(ctx, id, fwm, fpm)
 	session.SetBaseTickDelay(200 * time.Microsecond)
@@ -188,14 +186,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 	<-cancelReqs
 
 	// wait long enough for a tick to occur
-	time.Sleep(20 * time.Millisecond)
-
-	// trigger to find providers should have happened
-	fpm.lk.Lock()
-	if fpm.findMorePeersRequested != true {
-		t.Fatal("should have attempted to find more peers but didn't")
-	}
-	fpm.lk.Unlock()
+	<-fpm.findMorePeersRequested
 
 	// verify a broadcast was made
 	receivedWantReq := <-wantReqs
