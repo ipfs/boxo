@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	tn "github.com/ipfs/go-bitswap/testnet"
+	"github.com/ipfs/go-bitswap/testutil"
 
 	bssession "github.com/ipfs/go-bitswap/session"
+	tn "github.com/ipfs/go-bitswap/testnet"
 	"github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
@@ -102,6 +103,13 @@ const mediumSpeed = 200 * time.Millisecond
 const slowSpeed = 800 * time.Millisecond
 const superSlowSpeed = 4000 * time.Millisecond
 const distribution = 20 * time.Millisecond
+const fastBandwidth = 1250000.0
+const fastBandwidthDeviation = 300000.0
+const mediumBandwidth = 500000.0
+const mediumBandwidthDeviation = 80000.0
+const slowBandwidth = 100000.0
+const slowBandwidthDeviation = 16500.0
+const stdBlockSize = 8000
 
 func BenchmarkDupsManyNodesRealWorldNetwork(b *testing.B) {
 	benchmarkLog = nil
@@ -109,23 +117,26 @@ func BenchmarkDupsManyNodesRealWorldNetwork(b *testing.B) {
 		mediumSpeed-fastSpeed, slowSpeed-fastSpeed,
 		0.0, 0.0, distribution, nil)
 	fastNetworkDelay := delay.Delay(fastSpeed, fastNetworkDelayGenerator)
+	fastBandwidthGenerator := tn.VariableRateLimitGenerator(fastBandwidth, fastBandwidthDeviation, nil)
 	averageNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
 		mediumSpeed-fastSpeed, slowSpeed-fastSpeed,
 		0.3, 0.3, distribution, nil)
 	averageNetworkDelay := delay.Delay(fastSpeed, averageNetworkDelayGenerator)
+	averageBandwidthGenerator := tn.VariableRateLimitGenerator(mediumBandwidth, mediumBandwidthDeviation, nil)
 	slowNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
 		mediumSpeed-fastSpeed, superSlowSpeed-fastSpeed,
 		0.3, 0.3, distribution, nil)
 	slowNetworkDelay := delay.Delay(fastSpeed, slowNetworkDelayGenerator)
+	slowBandwidthGenerator := tn.VariableRateLimitGenerator(slowBandwidth, slowBandwidthDeviation, nil)
 
 	b.Run("200Nodes-AllToAll-BigBatch-FastNetwork", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 300, 200, fastNetworkDelay, allToAll, batchFetchAll)
+		subtestDistributeAndFetchRateLimited(b, 300, 200, fastNetworkDelay, fastBandwidthGenerator, stdBlockSize, allToAll, batchFetchAll)
 	})
 	b.Run("200Nodes-AllToAll-BigBatch-AverageVariableSpeedNetwork", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 300, 200, averageNetworkDelay, allToAll, batchFetchAll)
+		subtestDistributeAndFetchRateLimited(b, 300, 200, averageNetworkDelay, averageBandwidthGenerator, stdBlockSize, allToAll, batchFetchAll)
 	})
 	b.Run("200Nodes-AllToAll-BigBatch-SlowVariableSpeedNetwork", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 300, 200, slowNetworkDelay, allToAll, batchFetchAll)
+		subtestDistributeAndFetchRateLimited(b, 300, 200, slowNetworkDelay, slowBandwidthGenerator, stdBlockSize, allToAll, batchFetchAll)
 	})
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
 	ioutil.WriteFile("tmp/rw-benchmark.json", out, 0666)
@@ -134,6 +145,7 @@ func BenchmarkDupsManyNodesRealWorldNetwork(b *testing.B) {
 func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, df distFunc, ff fetchFunc) {
 	start := time.Now()
 	net := tn.VirtualNetwork(mockrouting.NewServer(), d)
+
 	sg := NewTestSessionGenerator(net)
 	defer sg.Close()
 
@@ -141,6 +153,25 @@ func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, d
 
 	instances := sg.Instances(numnodes)
 	blocks := bg.Blocks(numblks)
+	runDistribution(b, instances, blocks, df, ff, start)
+}
+
+func subtestDistributeAndFetchRateLimited(b *testing.B, numnodes, numblks int, d delay.D, rateLimitGenerator tn.RateLimitGenerator, blockSize int64, df distFunc, ff fetchFunc) {
+	start := time.Now()
+	net := tn.RateLimitedVirtualNetwork(mockrouting.NewServer(), d, rateLimitGenerator)
+
+	sg := NewTestSessionGenerator(net)
+	defer sg.Close()
+
+	instances := sg.Instances(numnodes)
+	blocks := testutil.GenerateBlocksOfSize(numblks, blockSize)
+
+	runDistribution(b, instances, blocks, df, ff, start)
+}
+
+func runDistribution(b *testing.B, instances []Instance, blocks []blocks.Block, df distFunc, ff fetchFunc, start time.Time) {
+
+	numnodes := len(instances)
 
 	fetcher := instances[numnodes-1]
 
