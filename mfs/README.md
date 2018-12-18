@@ -33,6 +33,14 @@ import "github.com/ipfs/go-mfs"
 
 Check the [GoDoc documentation](https://godoc.org/github.com/ipfs/go-mfs)
 
+## Documentation
+
+Documentation around the MFS and the Files API in general around IPFS is a work in progress the following links may be of use:
+
+* [UnixFS](https://docs.ipfs.io/guides/concepts/unixfs/)
+* [MFS](https://docs.ipfs.io/guides/concepts/mfs/)
+* [General concept document about how are files handled in IPFS (WIP)](https://github.com/ipfs/docs/issues/133)
+
 ## Repository Structure
 This repository contains many files, all belonging to the root `mfs` package.
 
