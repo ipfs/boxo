@@ -36,10 +36,6 @@ func VirtualNetwork(rs mockrouting.Server, d delay.D) Network {
 	}
 }
 
-type rateLimiter interface {
-	Limit(dataSize int) time.Duration
-}
-
 type RateLimitGenerator interface {
 	NextRateLimit() float64
 }
@@ -47,7 +43,7 @@ type RateLimitGenerator interface {
 func RateLimitedVirtualNetwork(rs mockrouting.Server, d delay.D, rateLimitGenerator RateLimitGenerator) Network {
 	return &network{
 		latencies:          make(map[peer.ID]map[peer.ID]time.Duration),
-		rateLimiters:       make(map[peer.ID]map[peer.ID]rateLimiter),
+		rateLimiters:       make(map[peer.ID]map[peer.ID]*mocknet.RateLimiter),
 		clients:            make(map[peer.ID]*receiverQueue),
 		delay:              d,
 		routingserver:      rs,
@@ -60,7 +56,7 @@ func RateLimitedVirtualNetwork(rs mockrouting.Server, d delay.D, rateLimitGenera
 type network struct {
 	mu                 sync.Mutex
 	latencies          map[peer.ID]map[peer.ID]time.Duration
-	rateLimiters       map[peer.ID]map[peer.ID]rateLimiter
+	rateLimiters       map[peer.ID]map[peer.ID]*mocknet.RateLimiter
 	clients            map[peer.ID]*receiverQueue
 	routingserver      mockrouting.Server
 	delay              delay.D
@@ -133,18 +129,18 @@ func (n *network) SendMessage(
 	if n.isRateLimited {
 		rateLimiters, ok := n.rateLimiters[from]
 		if !ok {
-			rateLimiters = make(map[peer.ID]rateLimiter)
+			rateLimiters = make(map[peer.ID]*mocknet.RateLimiter)
 			n.rateLimiters[from] = rateLimiters
 		}
 
-		rl, ok := rateLimiters[to]
+		rateLimiter, ok := rateLimiters[to]
 		if !ok {
-			rl = mocknet.NewRatelimiter(n.rateLimitGenerator.NextRateLimit())
-			rateLimiters[to] = rl
+			rateLimiter = mocknet.NewRateLimiter(n.rateLimitGenerator.NextRateLimit())
+			rateLimiters[to] = rateLimiter
 		}
 
 		size := mes.ToProtoV1().Size()
-		bandwidthDelay = rl.Limit(size)
+		bandwidthDelay = rateLimiter.Limit(size)
 	} else {
 		bandwidthDelay = 0
 	}
