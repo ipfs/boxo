@@ -77,14 +77,11 @@ func (d *Directory) SetCidBuilder(b cid.Builder) {
 }
 
 // This method implements the `parent` interface. It first updates
-// the child entry in the underlying UnixFS directory and then if `fullSync`
-// is set it saves the new content through the internal DAG service. Then,
-// also if `fullSync` is set, it propagates the update to its parent (through
-// this same interface) with the new node already updated with the new entry.
-// So, `fullSync` entails operations at two different layers:
-//   1. DAG: save the newly created directory node with the updated entry.
-//   2. MFS: propagate the update upwards repeating the whole process in the
-//           parent.
+// the child entry in the underlying UnixFS directory and then, if `fullSync`
+// is set, it:
+//   1. DAG: saves the newly created directory node with the updated entry.
+//   2. MFS: propagates the update upwards (through this same interface)
+//           repeating the whole process in the parent.
 func (d *Directory) updateChildEntry(c child, fullSync bool) error {
 
 	// There's a local flush (`closeChildUpdate`) and a propagated flush (`updateChildEntry`).
