@@ -47,7 +47,7 @@ type Directory struct {
 //
 // You probably don't want to call this directly. Instead, construct a new root
 // using NewRoot.
-func NewDirectory(ctx context.Context, name string, node ipld.Node, parent mutableParent, dserv ipld.DAGService) (*Directory, error) {
+func NewDirectory(ctx context.Context, name string, node ipld.Node, parent parent, dserv ipld.DAGService) (*Directory, error) {
 	db, err := uio.NewDirectoryFromNode(dserv, node)
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (d *Directory) SetCidBuilder(b cid.Builder) {
 	d.unixfsDir.SetCidBuilder(b)
 }
 
-// This method implements the `mutableParent` interface. It first updates
+// This method implements the `parent` interface. It first updates
 // the child entry in the underlying UnixFS directory and then if `fullSync`
 // is set it saves the new content through the internal DAG service. Then,
 // also if `fullSync` is set, it propagates the update to its parent (through

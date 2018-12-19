@@ -43,7 +43,7 @@ type child struct {
 // distinguished here, one at the DAG level (when I store the modified
 // nodes in the DAG service) and one in the UnixFS/MFS level (when I modify
 // the entry/link of the directory that pointed to the modified node).
-type mutableParent interface {
+type parent interface {
 	// Method called by a child to its parent to signal to update the content
 	// pointed to in the entry by that child's name. The child sends as
 	// arguments its own information (under the `child` structure) and a flag
@@ -63,7 +63,7 @@ const (
 
 // FSNode abstracts the `Directory` and `File` structures, it represents
 // any child node in the MFS (i.e., all the nodes besides the `Root`). It
-// is the counterpart of the `mutableParent` interface which represents any
+// is the counterpart of the `parent` interface which represents any
 // parent node in the MFS (`Root` and `Directory`).
 // (Not to be confused with the `unixfs.FSNode`.)
 type FSNode interface {
@@ -182,8 +182,8 @@ func (kr *Root) FlushMemFree(ctx context.Context) error {
 	return nil
 }
 
-// updateChildEntry implements the mutableParent interface, and signals to the publisher that
-// there are changes ready to be published.
+// updateChildEntry implements the `parent` interface, and signals
+// to the publisher that there are changes ready to be published.
 // This is the only thing that separates a `Root` from a `Directory`.
 // TODO: Evaluate merging both.
 // TODO: The `sync` argument isn't used here (we've already reached
