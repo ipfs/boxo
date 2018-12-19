@@ -2,6 +2,7 @@ package sessionpeermanager
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,12 +40,17 @@ func (fpn *fakePeerNetwork) FindProvidersAsync(ctx context.Context, c cid.Cid, n
 
 type fakeConnManager struct {
 	taggedPeers []peer.ID
+	wait        sync.WaitGroup
 }
 
 func (fcm *fakeConnManager) TagPeer(p peer.ID, tag string, n int) {
+	fcm.wait.Add(1)
 	fcm.taggedPeers = append(fcm.taggedPeers, p)
 }
+
 func (fcm *fakeConnManager) UntagPeer(p peer.ID, tag string) {
+	defer fcm.wait.Done()
+
 	for i := 0; i < len(fcm.taggedPeers); i++ {
 		if fcm.taggedPeers[i] == p {
 			fcm.taggedPeers[i] = fcm.taggedPeers[len(fcm.taggedPeers)-1]
@@ -52,7 +58,9 @@ func (fcm *fakeConnManager) UntagPeer(p peer.ID, tag string) {
 			return
 		}
 	}
+
 }
+
 func (*fakeConnManager) GetTagInfo(p peer.ID) *ifconnmgr.TagInfo { return nil }
 func (*fakeConnManager) TrimOpenConns(ctx context.Context)       {}
 func (*fakeConnManager) Notifee() inet.Notifiee                  { return nil }
@@ -130,7 +138,8 @@ func TestUntaggingPeers(t *testing.T) {
 		t.Fatal("Peers were not tagged!")
 	}
 	<-ctx.Done()
-	time.Sleep(5 * time.Millisecond)
+	fcm.wait.Wait()
+
 	if len(fcm.taggedPeers) != 0 {
 		t.Fatal("Peers were not untagged!")
 	}
