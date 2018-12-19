@@ -30,7 +30,7 @@ type File struct {
 
 	// Lock around the `node` that represents this file, necessary because
 	// there may be many `FileDescriptor`s operating on this `File`.
-	nodeLock sync.Mutex
+	nodeLock sync.RWMutex
 
 	RawLeaves bool
 }
@@ -59,9 +59,9 @@ const (
 )
 
 func (fi *File) Open(flags int, sync bool) (FileDescriptor, error) {
-	fi.nodeLock.Lock()
+	fi.nodeLock.RLock()
 	node := fi.node
-	fi.nodeLock.Unlock()
+	fi.nodeLock.RUnlock()
 
 	// TODO: Move this `switch` logic outside (maybe even
 	// to another package, this seems like a job of UnixFS),
@@ -119,8 +119,8 @@ func (fi *File) Open(flags int, sync bool) (FileDescriptor, error) {
 // pretty much the same thing as here, we should at least call
 // that function and wrap the `ErrNotUnixfs` with an MFS text.
 func (fi *File) Size() (int64, error) {
-	fi.nodeLock.Lock()
-	defer fi.nodeLock.Unlock()
+	fi.nodeLock.RLock()
+	defer fi.nodeLock.RUnlock()
 	switch nd := fi.node.(type) {
 	case *dag.ProtoNode:
 		fsn, err := ft.FSNodeFromBytes(nd.Data())
@@ -138,8 +138,8 @@ func (fi *File) Size() (int64, error) {
 // GetNode returns the dag node associated with this file
 // TODO: Use this method and do not access the `nodeLock` directly anywhere else.
 func (fi *File) GetNode() (ipld.Node, error) {
-	fi.nodeLock.Lock()
-	defer fi.nodeLock.Unlock()
+	fi.nodeLock.RLock()
+	defer fi.nodeLock.RUnlock()
 	return fi.node, nil
 }
 
