@@ -185,7 +185,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 	<-wantReqs
 	<-cancelReqs
 
-	// wait long enough for a tick to occur
+	// wait for a request to get more peers to occur
 	<-fpm.findMorePeersRequested
 
 	// verify a broadcast was made

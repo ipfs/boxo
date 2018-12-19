@@ -49,7 +49,7 @@ func (fcm *fakeConnManager) TagPeer(p peer.ID, tag string, n int) {
 }
 
 func (fcm *fakeConnManager) UntagPeer(p peer.ID, tag string) {
-	fcm.wait.Done()
+	defer fcm.wait.Done()
 
 	for i := 0; i < len(fcm.taggedPeers); i++ {
 		if fcm.taggedPeers[i] == p {
