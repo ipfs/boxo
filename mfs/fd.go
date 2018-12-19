@@ -140,13 +140,13 @@ func (fi *fileDescriptor) flushUp(fullsync bool) error {
 		return err
 	}
 
-	fi.inode.nodelk.Lock()
+	fi.inode.nodeLock.Lock()
 	fi.inode.node = nd
 	// TODO: Create a `SetNode` method.
 	name := fi.inode.name
 	parent := fi.inode.parent
 	// TODO: Can the parent be modified? Do we need to do this inside the lock?
-	fi.inode.nodelk.Unlock()
+	fi.inode.nodeLock.Unlock()
 	// TODO: Maybe all this logic should happen in `File`.
 
 	return parent.closeChild(name, nd, fullsync)
