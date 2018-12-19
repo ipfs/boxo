@@ -48,7 +48,8 @@ This repository contains many files, all belonging to the root `mfs` package.
 * `dir.go`: MFS `Directory`.
 * `fd.go`: `FileDescriptor` used to operate on `File`s.
 * `ops.go`: Functions that do not belong to either `File` nor `Directory` (although they mostly operate on them) that contain common operations to the MFS, e.g., find, move, add a file, make a directory.
-* `system.go`: Made up of two parts, the MFS `Root` and the `Republisher`.
+* `root.go`: MFS `Root` (a `Directory` with republishing support).
+* `repub.go`: `Republisher`.
 * `mfs_test.go`: General tests (needs a [revision](https://github.com/ipfs/go-mfs/issues/9)).
 * `repub_test.go`: Republisher-specific tests (contains only the `TestRepublisher` function).
 

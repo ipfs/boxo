@@ -419,12 +419,6 @@ func TestMfsFile(t *testing.T) {
 		t.Fatal("didnt write correct number of bytes")
 	}
 
-	// sync file
-	err = wfd.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// make sure size hasnt changed
 	size, err = wfd.Size()
 	if err != nil {

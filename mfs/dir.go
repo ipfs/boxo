@@ -27,15 +27,14 @@ var ErrDirExists = errors.New("directory already has entry by that name")
 type Directory struct {
 	inode
 
-	// Cache.
-	// TODO: Should this be a single cache of `FSNode`s?
-	childDirs map[string]*Directory
-	files     map[string]*File
+	// Internal cache with added entries to the directory, its cotents
+	// are synched with the underlying `unixfsDir` node in `sync()`.
+	entriesCache map[string]FSNode
 
 	lock sync.Mutex
 	// TODO: What content is being protected here exactly? The entire directory?
 
-	ctx  context.Context
+	ctx context.Context
 
 	// UnixFS directory implementation used for creating,
 	// reading and editing directories.
@@ -48,7 +47,7 @@ type Directory struct {
 //
 // You probably don't want to call this directly. Instead, construct a new root
 // using NewRoot.
-func NewDirectory(ctx context.Context, name string, node ipld.Node, parent childCloser, dserv ipld.DAGService) (*Directory, error) {
+func NewDirectory(ctx context.Context, name string, node ipld.Node, parent parent, dserv ipld.DAGService) (*Directory, error) {
 	db, err := uio.NewDirectoryFromNode(dserv, node)
 	if err != nil {
 		return nil, err
@@ -60,11 +59,10 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent child
 			parent:     parent,
 			dagService: dserv,
 		},
-		ctx:       ctx,
-		unixfsDir: db,
-		childDirs: make(map[string]*Directory),
-		files:     make(map[string]*File),
-		modTime:   time.Now(),
+		ctx:          ctx,
+		unixfsDir:    db,
+		entriesCache: make(map[string]FSNode),
+		modTime:      time.Now(),
 	}, nil
 }
 
@@ -78,16 +76,17 @@ func (d *Directory) SetCidBuilder(b cid.Builder) {
 	d.unixfsDir.SetCidBuilder(b)
 }
 
-// closeChild updates the child by the given name to the dag node 'nd'
-// and changes its own dag node
-// `sync` (alias `fullsync`): has two uses, propagate the update upwards
-// (in which case we wouldn't want this?) and in `closeChildUpdate`.
-// TODO: Find *all* the places where `sync`/`fullsync` is evaluated.
-func (d *Directory) closeChild(name string, nd ipld.Node, sync bool) error {
+// This method implements the `parent` interface. It first updates
+// the child entry in the underlying UnixFS directory and then, if `fullSync`
+// is set, it:
+//   1. DAG: saves the newly created directory node with the updated entry.
+//   2. MFS: propagates the update upwards (through this same interface)
+//           repeating the whole process in the parent.
+func (d *Directory) updateChildEntry(c child, fullSync bool) error {
 
-	// There's a local flush (`closeChildUpdate`) and a propagated flush (`closeChild`).
+	// There's a local flush (`closeChildUpdate`) and a propagated flush (`updateChildEntry`).
 
-	mynd, err := d.closeChildUpdate(name, nd, sync)
+	newDirNode, err := d.closeChildUpdate(c, fullSync)
 	if err != nil {
 		return err
 	}
@@ -96,42 +95,43 @@ func (d *Directory) closeChild(name string, nd ipld.Node, sync bool) error {
 	// we use the node returned by `closeChildUpdate` (which entails a copy)
 	// only if `sync` is set, and we are discarding it otherwise. At the very
 	// least the `if sync {` clause at the end of `closeChildUpdate` should
-	// be merged with this one.
+	// be merged with this one (the use of the `lock` is stopping this at the
+	// moment, re-evaluate when its purpose has been better understood).
 
-	if sync {
-		return d.parent.closeChild(d.name, mynd, true)
+	if fullSync {
+		return d.parent.updateChildEntry(child{d.name, newDirNode}, true)
+		// Setting `fullSync` to true here means, if the original child that
+		// initiated the update process wanted to propagate it upwards then
+		// continue to do so all the way up to the root, that is, the only
+		// time `fullSync` can be false is in the first call (which will be
+		// the *only* call), we either update the first parent entry or *all*
+		// the parent's.
 	}
+
 	return nil
 }
 
-// closeChildUpdate is the portion of closeChild that needs to be locked around
-// TODO: Definitely document this.
-// Updates the child entry under `name` with the node `nd` and if `sync`
-// is set it "flushes" the node (adding it to the `DAGService`) that
-// represents this directory.
-// TODO: As mentioned elsewhere "flush" sometimes means persist the node in the
-// DAG service and other update the parent node pointing to it.
-//
-// So, calling this with `sync`/`fullsync` off (this is pretty much the only
-// place where `fullsync` seems to matter) will just update the file entry in
-// this directory without updating the parent and without saving the node.
-func (d *Directory) closeChildUpdate(name string, nd ipld.Node, sync bool) (*dag.ProtoNode, error) {
+// This method implements the part of `updateChildEntry` that needs
+// to be locked around: in charge of updating the UnixFS layer and
+// generating the new node reflecting the update.
+func (d *Directory) closeChildUpdate(c child, fullSync bool) (*dag.ProtoNode, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	// TODO: Clearly define how are we propagating changes to lower layers
-	// like UnixFS.
-	err := d.updateChild(name, nd)
+	err := d.updateChild(c)
 	if err != nil {
 		return nil, err
 	}
+	// TODO: Clearly define how are we propagating changes to lower layers
+	// like UnixFS.
 
-	if sync {
+	if fullSync {
 		return d.flushCurrentNode()
 	}
 	return nil, nil
 }
 
+// Recreate the underlying UnixFS directory node and save it in the DAG layer.
 func (d *Directory) flushCurrentNode() (*dag.ProtoNode, error) {
 	nd, err := d.unixfsDir.GetNode()
 	if err != nil {
@@ -142,18 +142,25 @@ func (d *Directory) flushCurrentNode() (*dag.ProtoNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	// TODO: This method is called in `closeChildUpdate` while the lock is
+	// taken, we need the lock while operating on `unixfsDir` to create the
+	// new node but do we also need to keep the lock while adding it to the
+	// DAG service? Evaluate refactoring these two methods together and better
+	// redistributing the node.
 
 	pbnd, ok := nd.(*dag.ProtoNode)
 	if !ok {
 		return nil, dag.ErrNotProtobuf
 	}
+	// TODO: Why do we check the node *after* adding it to the DAG service?
 
 	return pbnd.Copy().(*dag.ProtoNode), nil
 	// TODO: Why do we need a copy?
 }
 
-func (d *Directory) updateChild(name string, nd ipld.Node) error {
-	err := d.AddUnixFSChild(name, nd)
+// Update child entry in the underlying UnixFS directory.
+func (d *Directory) updateChild(c child) error {
+	err := d.addUnixFSChild(c)
 	if err != nil {
 		return err
 	}
@@ -194,14 +201,14 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 				return nil, err
 			}
 
-			d.childDirs[name] = ndir
+			d.entriesCache[name] = ndir
 			return ndir, nil
 		case ft.TFile, ft.TRaw, ft.TSymlink:
 			nfi, err := NewFile(name, nd, d, d.dagService)
 			if err != nil {
 				return nil, err
 			}
-			d.files[name] = nfi
+			d.entriesCache[name] = nfi
 			return nfi, nil
 		case ft.TMetadata:
 			return nil, ErrNotYetImplemented
@@ -213,7 +220,7 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		d.files[name] = nfi
+		d.entriesCache[name] = nfi
 		return nfi, nil
 	default:
 		return nil, fmt.Errorf("unrecognized node type in cache node")
@@ -230,10 +237,7 @@ func (d *Directory) Child(name string) (FSNode, error) {
 func (d *Directory) Uncache(name string) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	delete(d.files, name)
-	delete(d.childDirs, name)
-	// TODO: We definitely need to join these maps if we are manipulating
-	// them like this.
+	delete(d.entriesCache, name)
 }
 
 // childFromDag searches through this directories dag node for a child link
@@ -245,14 +249,9 @@ func (d *Directory) childFromDag(name string) (ipld.Node, error) {
 // childUnsync returns the child under this directory by the given name
 // without locking, useful for operations which already hold a lock
 func (d *Directory) childUnsync(name string) (FSNode, error) {
-	cdir, ok := d.childDirs[name]
+	entry, ok := d.entriesCache[name]
 	if ok {
-		return cdir, nil
-	}
-
-	cfile, ok := d.files[name]
-	if ok {
-		return cfile, nil
+		return entry, nil
 	}
 
 	return d.childNode(name)
@@ -346,7 +345,7 @@ func (d *Directory) Mkdir(name string) (*Directory, error) {
 		return nil, err
 	}
 
-	err = d.AddUnixFSChild(name, ndir)
+	err = d.addUnixFSChild(child{name, ndir})
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +355,7 @@ func (d *Directory) Mkdir(name string) (*Directory, error) {
 		return nil, err
 	}
 
-	d.childDirs[name] = dirobj
+	d.entriesCache[name] = dirobj
 	return dirobj, nil
 }
 
@@ -364,8 +363,7 @@ func (d *Directory) Unlink(name string) error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	delete(d.childDirs, name)
-	delete(d.files, name)
+	delete(d.entriesCache, name)
 
 	return d.unixfsDir.RemoveChild(d.ctx, name)
 }
@@ -376,7 +374,7 @@ func (d *Directory) Flush() error {
 		return err
 	}
 
-	return d.parent.closeChild(d.name, nd, true)
+	return d.parent.updateChildEntry(child{d.name, nd}, true)
 }
 
 // AddChild adds the node 'nd' under this directory giving it the name 'name'
@@ -394,7 +392,7 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 		return err
 	}
 
-	err = d.AddUnixFSChild(name, nd)
+	err = d.addUnixFSChild(child{name, nd})
 	if err != nil {
 		return err
 	}
@@ -403,9 +401,9 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 	return nil
 }
 
-// AddUnixFSChild adds a child to the inner UnixFS directory
+// addUnixFSChild adds a child to the inner UnixFS directory
 // and transitions to a HAMT implementation if needed.
-func (d *Directory) AddUnixFSChild(name string, node ipld.Node) error {
+func (d *Directory) addUnixFSChild(c child) error {
 	if uio.UseHAMTSharding {
 		// If the directory HAMT implementation is being used and this
 		// directory is actually a basic implementation switch it to HAMT.
@@ -418,7 +416,7 @@ func (d *Directory) AddUnixFSChild(name string, node ipld.Node) error {
 		}
 	}
 
-	err := d.unixfsDir.AddChild(d.ctx, name, node)
+	err := d.unixfsDir.AddChild(d.ctx, c.Name, c.Node)
 	if err != nil {
 		return err
 	}
@@ -426,33 +424,20 @@ func (d *Directory) AddUnixFSChild(name string, node ipld.Node) error {
 	return nil
 }
 
-// TODO: Difference between `sync` and `Flush`? This seems
-// to be related to the internal cache and not to the MFS
-// hierarchy update.
 func (d *Directory) sync() error {
-	for name, dir := range d.childDirs {
-		nd, err := dir.GetNode()
+	for name, entry := range d.entriesCache {
+		nd, err := entry.GetNode()
 		if err != nil {
 			return err
 		}
 
-		err = d.updateChild(name, nd)
+		err = d.updateChild(child{name, nd})
 		if err != nil {
 			return err
 		}
 	}
 
-	for name, file := range d.files {
-		nd, err := file.GetNode()
-		if err != nil {
-			return err
-		}
-
-		err = d.updateChild(name, nd)
-		if err != nil {
-			return err
-		}
-	}
+	// TODO: Should we clean the cache here?
 
 	return nil
 }

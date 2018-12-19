@@ -1,26 +1,17 @@
 // package mfs implements an in memory model of a mutable IPFS filesystem.
-// TODO: Develop on this line (and move it elsewhere), delete the rest.
-//
-// It consists of four main structs:
-// 1) The Filesystem
-//        The filesystem serves as a container and entry point for various mfs filesystems
-// 2) Root
-//        Root represents an individual filesystem mounted within the mfs system as a whole
-// 3) Directories
-// 4) Files
+// TODO: Develop on this line (and move it to `doc.go`).
+
 package mfs
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	dag "github.com/ipfs/go-merkledag"
 	ft "github.com/ipfs/go-unixfs"
 
-	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
 )
@@ -33,17 +24,34 @@ var log = logging.Logger("mfs")
 // TODO: Remove if not used.
 var ErrIsDirectory = errors.New("error: is a directory")
 
-// TODO: Rename (avoid "close" terminology, if anything
-// we are persisting/flushing changes).
-// This is always a directory (since we are referring to the parent),
-// can be an intermediate directory in the filesystem or the `Root`.
+// The information that an MFS `Directory` has about its children
+// when updating one of its entries: when a child mutates it signals
+// its parent directory to update its entry (under `Name`) with the
+// new content (in `Node`).
+type child struct {
+	Name string
+	Node ipld.Node
+}
+
+// This interface represents the basic property of MFS directories of updating
+// children entries with modified content. Implemented by both the MFS
+// `Directory` and `Root` (which is basically a `Directory` with republishing
+// support).
+//
 // TODO: What is `fullsync`? (unnamed `bool` argument)
 // TODO: There are two types of persistence/flush that need to be
 // distinguished here, one at the DAG level (when I store the modified
 // nodes in the DAG service) and one in the UnixFS/MFS level (when I modify
 // the entry/link of the directory that pointed to the modified node).
-type childCloser interface {
-	closeChild(string, ipld.Node, bool) error
+type parent interface {
+	// Method called by a child to its parent to signal to update the content
+	// pointed to in the entry by that child's name. The child sends as
+	// arguments its own information (under the `child` structure) and a flag
+	// (`fullsync`) indicating whether or not to propagate the update upwards:
+	// modifying a directory entry entails modifying its contents which means
+	// that its parent (the parent's parent) will also need to be updated (and
+	// so on).
+	updateChildEntry(c child, fullSync bool) error
 }
 
 type NodeType int
@@ -53,8 +61,11 @@ const (
 	TDir
 )
 
-// FSNode represents any node (directory, or file) in the MFS filesystem.
-// Not to be confused with the `unixfs.FSNode`.
+// FSNode abstracts the `Directory` and `File` structures, it represents
+// any child node in the MFS (i.e., all the nodes besides the `Root`). It
+// is the counterpart of the `parent` interface which represents any
+// parent node in the MFS (`Root` and `Directory`).
+// (Not to be confused with the `unixfs.FSNode`.)
 type FSNode interface {
 	GetNode() (ipld.Node, error)
 	Flush() error
@@ -86,7 +97,11 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 	var repub *Republisher
 	if pf != nil {
 		repub = NewRepublisher(parent, pf, time.Millisecond*300, time.Second*3)
-		repub.setVal(node.Cid())
+
+		repub.valueToPublish = node.Cid()
+		// No need to take the lock here since we just created
+		// the `Republisher` and no one has access to it yet.
+
 		go repub.Run()
 	}
 
@@ -159,32 +174,31 @@ func (kr *Root) FlushMemFree(ctx context.Context) error {
 	dir.lock.Lock()
 	defer dir.lock.Unlock()
 
-	for name := range dir.files {
-		delete(dir.files, name)
-	}
-	for name := range dir.childDirs {
-		delete(dir.childDirs, name)
+	for name := range dir.entriesCache {
+		delete(dir.entriesCache, name)
 	}
 	// TODO: Can't we just create new maps?
 
 	return nil
 }
 
-// closeChild implements the childCloser interface, and signals to the publisher that
-// there are changes ready to be published.
+// updateChildEntry implements the `parent` interface, and signals
+// to the publisher that there are changes ready to be published.
 // This is the only thing that separates a `Root` from a `Directory`.
 // TODO: Evaluate merging both.
 // TODO: The `sync` argument isn't used here (we've already reached
 // the top), document it and maybe make it an anonymous variable (if
 // that's possible).
-func (kr *Root) closeChild(name string, nd ipld.Node, sync bool) error {
-	err := kr.GetDirectory().dagService.Add(context.TODO(), nd)
+func (kr *Root) updateChildEntry(c child, fullSync bool) error {
+	err := kr.GetDirectory().dagService.Add(context.TODO(), c.Node)
 	if err != nil {
 		return err
 	}
+	// TODO: Why are we not using the inner directory lock nor
+	// applying the same procedure as `Directory.updateChildEntry`?
 
 	if kr.repub != nil {
-		kr.repub.Update(nd.Cid())
+		kr.repub.Update(c.Node.Cid())
 	}
 	return nil
 }
@@ -200,133 +214,5 @@ func (kr *Root) Close() error {
 		return kr.repub.Close()
 	}
 
-	return nil
-}
-
-// TODO: Separate the remaining code in another file: `repub.go`.
-
-// PubFunc is the function used by the `publish()` method.
-type PubFunc func(context.Context, cid.Cid) error
-
-// Republisher manages when to publish a given entry.
-type Republisher struct {
-	TimeoutLong  time.Duration
-	TimeoutShort time.Duration
-	Publish      chan struct{}
-	pubfunc      PubFunc
-	pubnowch     chan chan struct{}
-
-	ctx    context.Context
-	cancel func()
-
-	lk      sync.Mutex
-	val     cid.Cid
-	lastpub cid.Cid
-}
-
-// NewRepublisher creates a new Republisher object to republish the given root
-// using the given short and long time intervals.
-func NewRepublisher(ctx context.Context, pf PubFunc, tshort, tlong time.Duration) *Republisher {
-	ctx, cancel := context.WithCancel(ctx)
-	return &Republisher{
-		TimeoutShort: tshort,
-		TimeoutLong:  tlong,
-		Publish:      make(chan struct{}, 1),
-		pubfunc:      pf,
-		pubnowch:     make(chan chan struct{}),
-		ctx:          ctx,
-		cancel:       cancel,
-	}
-}
-
-func (p *Republisher) setVal(c cid.Cid) {
-	p.lk.Lock()
-	defer p.lk.Unlock()
-	p.val = c
-}
-
-// WaitPub Returns immediately if `lastpub` value is consistent with the
-// current value `val`, else will block until `val` has been published.
-func (p *Republisher) WaitPub() {
-	p.lk.Lock()
-	consistent := p.lastpub == p.val
-	p.lk.Unlock()
-	if consistent {
-		return
-	}
-
-	wait := make(chan struct{})
-	p.pubnowch <- wait
-	<-wait
-}
-
-func (p *Republisher) Close() error {
-	err := p.publish(p.ctx)
-	p.cancel()
-	return err
-}
-
-// Touch signals that an update has occurred since the last publish.
-// Multiple consecutive touches may extend the time period before
-// the next Publish occurs in order to more efficiently batch updates.
-func (np *Republisher) Update(c cid.Cid) {
-	np.setVal(c)
-	select {
-	case np.Publish <- struct{}{}:
-	default:
-	}
-}
-
-// Run is the main republisher loop.
-// TODO: Document according to:
-// https://github.com/ipfs/go-ipfs/issues/5092#issuecomment-398524255.
-func (np *Republisher) Run() {
-	for {
-		select {
-		case <-np.Publish:
-			quick := time.After(np.TimeoutShort)
-			longer := time.After(np.TimeoutLong)
-
-		wait:
-			var pubnowresp chan struct{}
-
-			select {
-			case <-np.ctx.Done():
-				return
-			case <-np.Publish:
-				quick = time.After(np.TimeoutShort)
-				goto wait
-			case <-quick:
-			case <-longer:
-			case pubnowresp = <-np.pubnowch:
-			}
-
-			err := np.publish(np.ctx)
-			if pubnowresp != nil {
-				pubnowresp <- struct{}{}
-			}
-			if err != nil {
-				log.Errorf("republishRoot error: %s", err)
-			}
-
-		case <-np.ctx.Done():
-			return
-		}
-	}
-}
-
-// publish calls the `PubFunc`.
-func (np *Republisher) publish(ctx context.Context) error {
-	np.lk.Lock()
-	topub := np.val
-	np.lk.Unlock()
-
-	err := np.pubfunc(ctx, topub)
-	if err != nil {
-		return err
-	}
-	np.lk.Lock()
-	np.lastpub = topub
-	np.lk.Unlock()
 	return nil
 }

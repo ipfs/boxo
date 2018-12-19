@@ -13,7 +13,7 @@ type inode struct {
 	name string
 
 	// parent directory of this `inode` (which may be the `Root`).
-	parent childCloser
+	parent parent
 
 	// dagService used to store modifications made to the contents
 	// of the file or directory the `inode` belongs to.
