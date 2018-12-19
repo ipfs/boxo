@@ -28,8 +28,9 @@ type File struct {
 	// of a particular sub-DAG that abstract an upper layer's entity.
 	node   ipld.Node
 
-	// TODO: Rename.
-	nodelk sync.Mutex
+	// Lock around the `node` that represents this file, necessary because
+	// there may be many `FileDescriptor`s operating on this `File`.
+	nodeLock sync.Mutex
 
 	RawLeaves bool
 }
@@ -58,9 +59,9 @@ const (
 )
 
 func (fi *File) Open(flags int, sync bool) (FileDescriptor, error) {
-	fi.nodelk.Lock()
+	fi.nodeLock.Lock()
 	node := fi.node
-	fi.nodelk.Unlock()
+	fi.nodeLock.Unlock()
 
 	// TODO: Move this `switch` logic outside (maybe even
 	// to another package, this seems like a job of UnixFS),
@@ -118,8 +119,8 @@ func (fi *File) Open(flags int, sync bool) (FileDescriptor, error) {
 // pretty much the same thing as here, we should at least call
 // that function and wrap the `ErrNotUnixfs` with an MFS text.
 func (fi *File) Size() (int64, error) {
-	fi.nodelk.Lock()
-	defer fi.nodelk.Unlock()
+	fi.nodeLock.Lock()
+	defer fi.nodeLock.Unlock()
 	switch nd := fi.node.(type) {
 	case *dag.ProtoNode:
 		fsn, err := ft.FSNodeFromBytes(nd.Data())
@@ -135,10 +136,10 @@ func (fi *File) Size() (int64, error) {
 }
 
 // GetNode returns the dag node associated with this file
-// TODO: Use this method and do not access the `nodelk` directly anywhere else.
+// TODO: Use this method and do not access the `nodeLock` directly anywhere else.
 func (fi *File) GetNode() (ipld.Node, error) {
-	fi.nodelk.Lock()
-	defer fi.nodelk.Unlock()
+	fi.nodeLock.Lock()
+	defer fi.nodeLock.Unlock()
 	return fi.node, nil
 }
 
