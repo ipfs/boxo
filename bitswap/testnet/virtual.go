@@ -18,6 +18,7 @@ import (
 	ifconnmgr "github.com/libp2p/go-libp2p-interface-connmgr"
 	peer "github.com/libp2p/go-libp2p-peer"
 	routing "github.com/libp2p/go-libp2p-routing"
+	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	testutil "github.com/libp2p/go-testutil"
 )
 
@@ -25,21 +26,43 @@ var log = logging.Logger("bstestnet")
 
 func VirtualNetwork(rs mockrouting.Server, d delay.D) Network {
 	return &network{
-		latencies:     make(map[peer.ID]map[peer.ID]time.Duration),
-		clients:       make(map[peer.ID]*receiverQueue),
-		delay:         d,
-		routingserver: rs,
-		conns:         make(map[string]struct{}),
+		latencies:          make(map[peer.ID]map[peer.ID]time.Duration),
+		clients:            make(map[peer.ID]*receiverQueue),
+		delay:              d,
+		routingserver:      rs,
+		isRateLimited:      false,
+		rateLimitGenerator: nil,
+		conns:              make(map[string]struct{}),
+	}
+}
+
+type RateLimitGenerator interface {
+	NextRateLimit() float64
+}
+
+func RateLimitedVirtualNetwork(rs mockrouting.Server, d delay.D, rateLimitGenerator RateLimitGenerator) Network {
+	return &network{
+		latencies:          make(map[peer.ID]map[peer.ID]time.Duration),
+		rateLimiters:       make(map[peer.ID]map[peer.ID]*mocknet.RateLimiter),
+		clients:            make(map[peer.ID]*receiverQueue),
+		delay:              d,
+		routingserver:      rs,
+		isRateLimited:      true,
+		rateLimitGenerator: rateLimitGenerator,
+		conns:              make(map[string]struct{}),
 	}
 }
 
 type network struct {
-	mu            sync.Mutex
-	latencies     map[peer.ID]map[peer.ID]time.Duration
-	clients       map[peer.ID]*receiverQueue
-	routingserver mockrouting.Server
-	delay         delay.D
-	conns         map[string]struct{}
+	mu                 sync.Mutex
+	latencies          map[peer.ID]map[peer.ID]time.Duration
+	rateLimiters       map[peer.ID]map[peer.ID]*mocknet.RateLimiter
+	clients            map[peer.ID]*receiverQueue
+	routingserver      mockrouting.Server
+	delay              delay.D
+	isRateLimited      bool
+	rateLimitGenerator RateLimitGenerator
+	conns              map[string]struct{}
 }
 
 type message struct {
@@ -102,6 +125,26 @@ func (n *network) SendMessage(
 		latencies[to] = latency
 	}
 
+	var bandwidthDelay time.Duration
+	if n.isRateLimited {
+		rateLimiters, ok := n.rateLimiters[from]
+		if !ok {
+			rateLimiters = make(map[peer.ID]*mocknet.RateLimiter)
+			n.rateLimiters[from] = rateLimiters
+		}
+
+		rateLimiter, ok := rateLimiters[to]
+		if !ok {
+			rateLimiter = mocknet.NewRateLimiter(n.rateLimitGenerator.NextRateLimit())
+			rateLimiters[to] = rateLimiter
+		}
+
+		size := mes.ToProtoV1().Size()
+		bandwidthDelay = rateLimiter.Limit(size)
+	} else {
+		bandwidthDelay = 0
+	}
+
 	receiver, ok := n.clients[to]
 	if !ok {
 		return errors.New("cannot locate peer on network")
@@ -113,7 +156,7 @@ func (n *network) SendMessage(
 	msg := &message{
 		from:       from,
 		msg:        mes,
-		shouldSend: time.Now().Add(latency),
+		shouldSend: time.Now().Add(latency).Add(bandwidthDelay),
 	}
 	receiver.enqueue(msg)
 
