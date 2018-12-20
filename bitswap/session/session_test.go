@@ -174,7 +174,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 	wantReqs := make(chan wantReq, 1)
 	cancelReqs := make(chan wantReq, 1)
 	fwm := &fakeWantManager{wantReqs, cancelReqs}
-	fpm := &fakePeerManager{findMorePeersRequested: make(chan struct{})}
+	fpm := &fakePeerManager{findMorePeersRequested: make(chan struct{}, 1)}
 	frs := &fakeRequestSplitter{}
 	id := testutil.GenerateSessionID()
 	session := New(ctx, id, fwm, fpm, frs)
