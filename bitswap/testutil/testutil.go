@@ -1,6 +1,10 @@
 package testutil
 
 import (
+	"bytes"
+
+	random "github.com/jbenet/go-random"
+
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	"github.com/ipfs/go-bitswap/wantlist"
 	"github.com/ipfs/go-block-format"
@@ -11,6 +15,25 @@ import (
 
 var blockGenerator = blocksutil.NewBlockGenerator()
 var prioritySeq int
+var seedSeq int64
+
+func randomBytes(n int64, seed int64) []byte {
+	data := new(bytes.Buffer)
+	random.WritePseudoRandomBytes(n, data, seed)
+	return data.Bytes()
+}
+
+// GenerateBlocksOfSize generates a series of blocks of the given byte size
+func GenerateBlocksOfSize(n int, size int64) []blocks.Block {
+	generatedBlocks := make([]blocks.Block, 0, n)
+	for i := 0; i < n; i++ {
+		seedSeq++
+		b := blocks.NewBlock(randomBytes(size, seedSeq))
+		generatedBlocks = append(generatedBlocks, b)
+
+	}
+	return generatedBlocks
+}
 
 // GenerateCids produces n content identifiers.
 func GenerateCids(n int) []cid.Cid {
