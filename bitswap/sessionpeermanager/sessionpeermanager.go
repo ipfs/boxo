@@ -134,6 +134,25 @@ func (spm *SessionPeerManager) insertOptimizedPeer(p peer.ID) {
 	spm.optimizedPeersArr = append([]peer.ID{p}, spm.optimizedPeersArr...)
 }
 
+func (spm *SessionPeerManager) removeOptimizedPeer(p peer.ID) {
+	for i := 0; i < len(spm.optimizedPeersArr); i++ {
+		if spm.optimizedPeersArr[i] == p {
+			spm.optimizedPeersArr = append(spm.optimizedPeersArr[:i], spm.optimizedPeersArr[i+1:]...)
+			return
+		}
+	}
+}
+
+func (spm *SessionPeerManager) removeUnoptimizedPeer(p peer.ID) {
+	for i := 0; i < len(spm.unoptimizedPeersArr); i++ {
+		if spm.unoptimizedPeersArr[i] == p {
+			spm.unoptimizedPeersArr[i] = spm.unoptimizedPeersArr[len(spm.unoptimizedPeersArr)-1]
+			spm.unoptimizedPeersArr = spm.unoptimizedPeersArr[:len(spm.unoptimizedPeersArr)-1]
+			return
+		}
+	}
+}
+
 type peerFoundMessage struct {
 	p peer.ID
 }
@@ -160,24 +179,10 @@ func (prm *peerResponseMessage) handle(spm *SessionPeerManager) {
 		spm.tagPeer(p)
 	} else {
 		if isOptimized {
-			if spm.optimizedPeersArr[0] == p {
-				return
-			}
-			for i := 0; i < len(spm.optimizedPeersArr); i++ {
-				if spm.optimizedPeersArr[i] == p {
-					spm.optimizedPeersArr = append(spm.optimizedPeersArr[:i], spm.optimizedPeersArr[i+1:]...)
-					break
-				}
-			}
+			spm.removeOptimizedPeer(p)
 		} else {
 			spm.activePeers[p] = true
-			for i := 0; i < len(spm.unoptimizedPeersArr); i++ {
-				if spm.unoptimizedPeersArr[i] == p {
-					spm.unoptimizedPeersArr[i] = spm.unoptimizedPeersArr[len(spm.unoptimizedPeersArr)-1]
-					spm.unoptimizedPeersArr = spm.unoptimizedPeersArr[:len(spm.unoptimizedPeersArr)-1]
-					break
-				}
-			}
+			spm.removeUnoptimizedPeer(p)
 		}
 	}
 	spm.insertOptimizedPeer(p)

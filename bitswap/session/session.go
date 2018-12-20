@@ -333,6 +333,7 @@ func (s *Session) cidIsWanted(c cid.Cid) bool {
 func (s *Session) receiveBlock(ctx context.Context, blk blocks.Block) {
 	c := blk.Cid()
 	if s.cidIsWanted(c) {
+		s.srs.RecordUniqueBlock()
 		tval, ok := s.liveWants[c]
 		if ok {
 			s.latTotal += time.Since(tval)
@@ -363,10 +364,6 @@ func (s *Session) updateReceiveCounters(ctx context.Context, blk blkRecv) {
 	ks := blk.blk.Cid()
 	if s.pastWants.Has(ks) {
 		s.srs.RecordDuplicateBlock()
-	} else {
-		if s.cidIsWanted(ks) {
-			s.srs.RecordUniqueBlock()
-		}
 	}
 }
 
