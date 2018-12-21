@@ -377,7 +377,7 @@ func (ds *Shard) rmChild(i int) error {
 func (ds *Shard) getValue(ctx context.Context, hv *hashBits, key string, cb func(*Shard) error) error {
 	idx, err := hv.Next(ds.tableSizeLg2)
 	if err != nil {
-		return fmt.Errorf("sharded directory too deep")
+		return err
 	}
 	if ds.bitfield.Bit(int(idx)) {
 		cindex := ds.indexForBitPos(idx)
@@ -521,7 +521,7 @@ func (ds *Shard) walkTrie(ctx context.Context, cb func(*Shard) error) error {
 func (ds *Shard) modifyValue(ctx context.Context, hv *hashBits, key string, val *ipld.Link) error {
 	idx, err := hv.Next(ds.tableSizeLg2)
 	if err != nil {
-		return fmt.Errorf("sharded directory too deep")
+		return err
 	}
 	if !ds.bitfield.Bit(idx) {
 		return ds.insertChild(idx, key, val)
