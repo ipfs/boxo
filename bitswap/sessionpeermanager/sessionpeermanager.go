@@ -6,6 +6,8 @@ import (
 	"math/rand"
 	"sort"
 
+	bssd "github.com/ipfs/go-bitswap/sessiondata"
+
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
@@ -78,7 +80,7 @@ func (spm *SessionPeerManager) RecordPeerResponse(p peer.ID, k cid.Cid) {
 	}
 }
 
-// RecordPeerRequests records that a given set of peers requested the given cids
+// RecordPeerRequests records that a given set of peers requested the given cids.
 func (spm *SessionPeerManager) RecordPeerRequests(p []peer.ID, ks []cid.Cid) {
 	// at the moment, we're not doing anything here
 	// soon we'll use this to track latency by peer
@@ -88,11 +90,12 @@ func (spm *SessionPeerManager) RecordPeerRequests(p []peer.ID, ks []cid.Cid) {
 	}
 }
 
-// GetOptimizedPeers returns the best peers available for a session
-func (spm *SessionPeerManager) GetOptimizedPeers() []peer.ID {
+// GetOptimizedPeers returns the best peers available for a session, along with
+// a rating for how good they are, in comparison to the best peer.
+func (spm *SessionPeerManager) GetOptimizedPeers() []bssd.OptimizedPeer {
 	// right now this just returns all peers, but soon we might return peers
 	// ordered by optimization, or only a subset
-	resp := make(chan []peer.ID, 1)
+	resp := make(chan []bssd.OptimizedPeer, 1)
 	select {
 	case spm.peerMessages <- &getPeersMessage{resp}:
 	case <-spm.ctx.Done():
@@ -191,19 +194,28 @@ func (prm *peerResponseMessage) handle(spm *SessionPeerManager) {
 	p := prm.p
 	k := prm.k
 	data, ok := spm.activePeers[p]
-	if !ok {
-		data = newPeerData()
-		spm.activePeers[p] = data
-		spm.tagPeer(p)
+	wasOptimized := ok && data.hasLatency
+	if wasOptimized {
+		spm.removeOptimizedPeer(p)
 	} else {
-                if data.hasLatency {
-			spm.removeOptimizedPeer(p)
-		} else {
+		if ok {
 			spm.removeUnoptimizedPeer(p)
+		} else {
+			data = newPeerData()
+			spm.activePeers[p] = data
 		}
 	}
 	fallbackLatency, hasFallbackLatency := spm.broadcastLatency.CheckDuration(k)
 	data.AdjustLatency(k, hasFallbackLatency, fallbackLatency)
+	var tagValue int
+	if data.hasLatency {
+		tagValue = optimizedTagValue
+	} else {
+		tagValue = unoptimizedTagValue
+	}
+	if !ok || wasOptimized != data.hasLatency {
+		spm.tagPeer(p, tagValue)
+	}
 	spm.insertPeer(p, data)
 }
 
@@ -231,7 +243,7 @@ func (prm *peerRequestMessage) handle(spm *SessionPeerManager) {
 }
 
 type getPeersMessage struct {
-	resp chan<- []peer.ID
+	resp chan<- []bssd.OptimizedPeer
 }
 
 func (prm *getPeersMessage) handle(spm *SessionPeerManager) {
@@ -240,12 +252,26 @@ func (prm *getPeersMessage) handle(spm *SessionPeerManager) {
 	if maxPeers > maxOptimizedPeers {
 		maxPeers = maxOptimizedPeers
 	}
-
-	extraPeers := make([]peer.ID, maxPeers-len(spm.optimizedPeersArr))
-	for i := range extraPeers {
-		extraPeers[i] = spm.unoptimizedPeersArr[randomOrder[i]]
+	var bestPeerLatency float64
+	if len(spm.optimizedPeersArr) > 0 {
+		bestPeerLatency = float64(spm.activePeers[spm.optimizedPeersArr[0]].latency)
+	} else {
+		bestPeerLatency = 0
 	}
-	prm.resp <- append(spm.optimizedPeersArr, extraPeers...)
+	optimizedPeers := make([]bssd.OptimizedPeer, 0, maxPeers)
+	for i := 0; i < maxPeers; i++ {
+		if i < len(spm.optimizedPeersArr) {
+			p := spm.optimizedPeersArr[i]
+			optimizedPeers = append(optimizedPeers, bssd.OptimizedPeer{
+				Peer:               p,
+				OptimizationRating: bestPeerLatency / float64(spm.activePeers[p].latency),
+			})
+		} else {
+			p := spm.unoptimizedPeersArr[randomOrder[i-len(spm.optimizedPeersArr)]]
+			optimizedPeers = append(optimizedPeers, bssd.OptimizedPeer{Peer: p, OptimizationRating: 0.0})
+		}
+	}
+	prm.resp <- optimizedPeers
 }
 
 func (spm *SessionPeerManager) handleShutdown() {

@@ -3,6 +3,8 @@ package sessionrequestsplitter
 import (
 	"context"
 
+	bssd "github.com/ipfs/go-bitswap/sessiondata"
+
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
@@ -14,12 +16,6 @@ const (
 	minDuplesToTryLessSplits = 0.2
 	initialSplit             = 2
 )
-
-// PartialRequest is represents one slice of an over request split among peers
-type PartialRequest struct {
-	Peers []peer.ID
-	Keys  []cid.Cid
-}
 
 type srsMessage interface {
 	handle(srs *SessionRequestSplitter)
@@ -50,11 +46,11 @@ func New(ctx context.Context) *SessionRequestSplitter {
 
 // SplitRequest splits a request for the given cids one or more times among the
 // given peers.
-func (srs *SessionRequestSplitter) SplitRequest(peers []peer.ID, ks []cid.Cid) []*PartialRequest {
-	resp := make(chan []*PartialRequest, 1)
+func (srs *SessionRequestSplitter) SplitRequest(optimizedPeers []bssd.OptimizedPeer, ks []cid.Cid) []bssd.PartialRequest {
+	resp := make(chan []bssd.PartialRequest, 1)
 
 	select {
-	case srs.messages <- &splitRequestMessage{peers, ks, resp}:
+	case srs.messages <- &splitRequestMessage{optimizedPeers, ks, resp}:
 	case <-srs.ctx.Done():
 		return nil
 	}
@@ -101,14 +97,18 @@ func (srs *SessionRequestSplitter) duplicateRatio() float64 {
 }
 
 type splitRequestMessage struct {
-	peers []peer.ID
-	ks    []cid.Cid
-	resp  chan []*PartialRequest
+	optimizedPeers []bssd.OptimizedPeer
+	ks             []cid.Cid
+	resp           chan []bssd.PartialRequest
 }
 
 func (s *splitRequestMessage) handle(srs *SessionRequestSplitter) {
 	split := srs.split
-	peers := s.peers
+	// first iteration ignore optimization ratings
+	peers := make([]peer.ID, len(s.optimizedPeers))
+	for i, optimizedPeer := range s.optimizedPeers {
+		peers[i] = optimizedPeer.Peer
+	}
 	ks := s.ks
 	if len(peers) < split {
 		split = len(peers)
@@ -118,9 +118,9 @@ func (s *splitRequestMessage) handle(srs *SessionRequestSplitter) {
 		split = len(ks)
 	}
 	keySplits := splitKeys(ks, split)
-	splitRequests := make([]*PartialRequest, len(keySplits))
-	for i := range splitRequests {
-		splitRequests[i] = &PartialRequest{peerSplits[i], keySplits[i]}
+	splitRequests := make([]bssd.PartialRequest, 0, len(keySplits))
+	for i, keySplit := range keySplits {
+		splitRequests = append(splitRequests, bssd.PartialRequest{Peers: peerSplits[i], Keys: keySplit})
 	}
 	s.resp <- splitRequests
 }
