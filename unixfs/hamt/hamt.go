@@ -203,9 +203,9 @@ func (ds *Shard) makeShardValue(lnk *ipld.Link) (*Shard, error) {
 }
 
 func hash(val []byte) []byte {
-	h := murmur3.New64()
+	h := murmur3.New128()
 	h.Write(val)
-	return h.Sum(nil)
+	return h.Sum(make([]byte, 0, 128/8))
 }
 
 // Set sets 'name' = nd in the HAMT
