@@ -76,26 +76,16 @@ func (d *Directory) SetCidBuilder(b cid.Builder) {
 	d.unixfsDir.SetCidBuilder(b)
 }
 
-// This method implements the `parent` interface. It first updates
-// the child entry in the underlying UnixFS directory and then it:
-//   1. DAG: saves the newly created directory node with the updated entry.
-//   2. MFS: propagates the update upwards (through this same interface)
-//           repeating the whole process in the parent.
+// This method implements the `parent` interface. It first does the local
+// update of the child entry in the underlying UnixFS directory and saves
+// the newly created directory node with the updated entry in the DAG
+// service. Then it propagates the update upwards (through this same
+// interface) repeating the whole process in the parent.
 func (d *Directory) updateChildEntry(c child) error {
-
-	// There's a local flush (`closeChildUpdate`) and a propagated flush (`updateChildEntry`).
-
-	newDirNode, err := d.closeChildUpdate(c)
+	newDirNode, err := d.localUpdate(c)
 	if err != nil {
 		return err
 	}
-
-	// TODO: The `sync` seems to be tightly coupling this two pieces of code,
-	// we use the node returned by `closeChildUpdate` (which entails a copy)
-	// only if `sync` is set, and we are discarding it otherwise. At the very
-	// least the `if sync {` clause at the end of `closeChildUpdate` should
-	// be merged with this one (the use of the `lock` is stopping this at the
-	// moment, re-evaluate when its purpose has been better understood).
 
 	// Continue to propagate the update process upwards
 	// (all the way up to the root).
@@ -104,8 +94,9 @@ func (d *Directory) updateChildEntry(c child) error {
 
 // This method implements the part of `updateChildEntry` that needs
 // to be locked around: in charge of updating the UnixFS layer and
-// generating the new node reflecting the update.
-func (d *Directory) closeChildUpdate(c child) (*dag.ProtoNode, error) {
+// generating the new node reflecting the update. It also stores the
+// new node in the DAG layer.
+func (d *Directory) localUpdate(c child) (*dag.ProtoNode, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
@@ -116,31 +107,20 @@ func (d *Directory) closeChildUpdate(c child) (*dag.ProtoNode, error) {
 	// TODO: Clearly define how are we propagating changes to lower layers
 	// like UnixFS.
 
-	return d.flushCurrentNode()
-}
-
-// Recreate the underlying UnixFS directory node and save it in the DAG layer.
-func (d *Directory) flushCurrentNode() (*dag.ProtoNode, error) {
 	nd, err := d.unixfsDir.GetNode()
 	if err != nil {
 		return nil, err
+	}
+
+	pbnd, ok := nd.(*dag.ProtoNode)
+	if !ok {
+		return nil, dag.ErrNotProtobuf
 	}
 
 	err = d.dagService.Add(d.ctx, nd)
 	if err != nil {
 		return nil, err
 	}
-	// TODO: This method is called in `closeChildUpdate` while the lock is
-	// taken, we need the lock while operating on `unixfsDir` to create the
-	// new node but do we also need to keep the lock while adding it to the
-	// DAG service? Evaluate refactoring these two methods together and better
-	// redistributing the node.
-
-	pbnd, ok := nd.(*dag.ProtoNode)
-	if !ok {
-		return nil, dag.ErrNotProtobuf
-	}
-	// TODO: Why do we check the node *after* adding it to the DAG service?
 
 	return pbnd.Copy().(*dag.ProtoNode), nil
 	// TODO: Why do we need a copy?
