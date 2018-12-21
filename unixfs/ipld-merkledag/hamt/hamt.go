@@ -203,9 +203,9 @@ func (ds *Shard) makeShardValue(lnk *ipld.Link) (*Shard, error) {
 }
 
 func hash(val []byte) []byte {
-	h := murmur3.New64()
+	h := murmur3.New128()
 	h.Write(val)
-	return h.Sum(nil)
+	return h.Sum(make([]byte, 0, 128/8))
 }
 
 // Set sets 'name' = nd in the HAMT
@@ -375,7 +375,10 @@ func (ds *Shard) rmChild(i int) error {
 }
 
 func (ds *Shard) getValue(ctx context.Context, hv *hashBits, key string, cb func(*Shard) error) error {
-	idx := hv.Next(ds.tableSizeLg2)
+	idx, err := hv.Next(ds.tableSizeLg2)
+	if err != nil {
+		return err
+	}
 	if ds.bitfield.Bit(int(idx)) {
 		cindex := ds.indexForBitPos(idx)
 
@@ -516,7 +519,10 @@ func (ds *Shard) walkTrie(ctx context.Context, cb func(*Shard) error) error {
 }
 
 func (ds *Shard) modifyValue(ctx context.Context, hv *hashBits, key string, val *ipld.Link) error {
-	idx := hv.Next(ds.tableSizeLg2)
+	idx, err := hv.Next(ds.tableSizeLg2)
+	if err != nil {
+		return err
+	}
 	if !ds.bitfield.Bit(idx) {
 		return ds.insertChild(idx, key, val)
 	}

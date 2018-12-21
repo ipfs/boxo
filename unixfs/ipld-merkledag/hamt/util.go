@@ -15,8 +15,16 @@ func mkmask(n int) byte {
 	return (1 << uint(n)) - 1
 }
 
-// Next returns the next 'i' bits of the hashBits value as an integer
-func (hb *hashBits) Next(i int) int {
+// Next returns the next 'i' bits of the hashBits value as an integer, or an
+// error if there aren't enough bits.
+func (hb *hashBits) Next(i int) (int, error) {
+	if hb.consumed+i > len(hb.b)*8 {
+		return 0, fmt.Errorf("sharded directory too deep")
+	}
+	return hb.next(i), nil
+}
+
+func (hb *hashBits) next(i int) int {
 	curbi := hb.consumed / 8
 	leftb := 8 - (hb.consumed % 8)
 
@@ -35,7 +43,7 @@ func (hb *hashBits) Next(i int) int {
 		out := int(mkmask(leftb) & curb)
 		out <<= uint(i - leftb)
 		hb.consumed += leftb
-		out += hb.Next(i - leftb)
+		out += hb.next(i - leftb)
 		return out
 	}
 }
