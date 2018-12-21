@@ -77,16 +77,15 @@ func (d *Directory) SetCidBuilder(b cid.Builder) {
 }
 
 // This method implements the `parent` interface. It first updates
-// the child entry in the underlying UnixFS directory and then, if `fullSync`
-// is set, it:
+// the child entry in the underlying UnixFS directory and then it:
 //   1. DAG: saves the newly created directory node with the updated entry.
 //   2. MFS: propagates the update upwards (through this same interface)
 //           repeating the whole process in the parent.
-func (d *Directory) updateChildEntry(c child, fullSync bool) error {
+func (d *Directory) updateChildEntry(c child) error {
 
 	// There's a local flush (`closeChildUpdate`) and a propagated flush (`updateChildEntry`).
 
-	newDirNode, err := d.closeChildUpdate(c, fullSync)
+	newDirNode, err := d.closeChildUpdate(c)
 	if err != nil {
 		return err
 	}
@@ -98,23 +97,15 @@ func (d *Directory) updateChildEntry(c child, fullSync bool) error {
 	// be merged with this one (the use of the `lock` is stopping this at the
 	// moment, re-evaluate when its purpose has been better understood).
 
-	if fullSync {
-		return d.parent.updateChildEntry(child{d.name, newDirNode}, true)
-		// Setting `fullSync` to true here means, if the original child that
-		// initiated the update process wanted to propagate it upwards then
-		// continue to do so all the way up to the root, that is, the only
-		// time `fullSync` can be false is in the first call (which will be
-		// the *only* call), we either update the first parent entry or *all*
-		// the parent's.
-	}
-
-	return nil
+	// Continue to propagate the update process upwards
+	// (all the way up to the root).
+	return d.parent.updateChildEntry(child{d.name, newDirNode})
 }
 
 // This method implements the part of `updateChildEntry` that needs
 // to be locked around: in charge of updating the UnixFS layer and
 // generating the new node reflecting the update.
-func (d *Directory) closeChildUpdate(c child, fullSync bool) (*dag.ProtoNode, error) {
+func (d *Directory) closeChildUpdate(c child) (*dag.ProtoNode, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
@@ -125,10 +116,7 @@ func (d *Directory) closeChildUpdate(c child, fullSync bool) (*dag.ProtoNode, er
 	// TODO: Clearly define how are we propagating changes to lower layers
 	// like UnixFS.
 
-	if fullSync {
-		return d.flushCurrentNode()
-	}
-	return nil, nil
+	return d.flushCurrentNode()
 }
 
 // Recreate the underlying UnixFS directory node and save it in the DAG layer.
@@ -374,7 +362,7 @@ func (d *Directory) Flush() error {
 		return err
 	}
 
-	return d.parent.updateChildEntry(child{d.name, nd}, true)
+	return d.parent.updateChildEntry(child{d.name, nd})
 }
 
 // AddChild adds the node 'nd' under this directory giving it the name 'name'

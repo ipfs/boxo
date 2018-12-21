@@ -123,9 +123,8 @@ func (fi *fileDescriptor) Flush() error {
 
 // flushUp syncs the file and adds it to the dagservice
 // it *must* be called with the File's lock taken
-// TODO: What is `fullsync`? Propagate the changes upward
-// to the root flushing every node in the path (the "up"
-// part of `flushUp`).
+// If `fullSync` is set the changes are propagated upwards
+// (the `Up` part of `flushUp`).
 func (fi *fileDescriptor) flushUp(fullSync bool) error {
 	nd, err := fi.mod.GetNode()
 	if err != nil {
@@ -151,7 +150,11 @@ func (fi *fileDescriptor) flushUp(fullSync bool) error {
 	fi.inode.nodeLock.Unlock()
 	// TODO: Maybe all this logic should happen in `File`.
 
-	return parent.updateChildEntry(child{name, nd}, fullSync)
+	if fullSync {
+		return parent.updateChildEntry(child{name, nd})
+	}
+
+	return nil
 }
 
 // Seek implements io.Seeker
