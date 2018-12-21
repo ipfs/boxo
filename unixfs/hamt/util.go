@@ -19,7 +19,7 @@ func mkmask(n int) byte {
 // error if there aren't enough bits.
 func (hb *hashBits) Next(i int) (int, error) {
 	if hb.consumed+i > len(hb.b)*8 {
-		return 0, fmt.Errorf("not enough bits remaining")
+		return 0, fmt.Errorf("sharded directory too deep")
 	}
 	return hb.next(i), nil
 }
