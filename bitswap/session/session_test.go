@@ -8,6 +8,7 @@ import (
 
 	"github.com/ipfs/go-block-format"
 
+	bssrs "github.com/ipfs/go-bitswap/sessionrequestsplitter"
 	"github.com/ipfs/go-bitswap/testutil"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
@@ -55,6 +56,16 @@ func (fpm *fakePeerManager) RecordPeerResponse(p peer.ID, c cid.Cid) {
 	fpm.lk.Unlock()
 }
 
+type fakeRequestSplitter struct {
+}
+
+func (frs *fakeRequestSplitter) SplitRequest(peers []peer.ID, keys []cid.Cid) []*bssrs.PartialRequest {
+	return []*bssrs.PartialRequest{&bssrs.PartialRequest{Peers: peers, Keys: keys}}
+}
+
+func (frs *fakeRequestSplitter) RecordDuplicateBlock() {}
+func (frs *fakeRequestSplitter) RecordUniqueBlock()    {}
+
 func TestSessionGetBlocks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
@@ -62,10 +73,11 @@ func TestSessionGetBlocks(t *testing.T) {
 	cancelReqs := make(chan wantReq, 1)
 	fwm := &fakeWantManager{wantReqs, cancelReqs}
 	fpm := &fakePeerManager{}
+	frs := &fakeRequestSplitter{}
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm)
+	session := New(ctx, id, fwm, fpm, frs)
 	blockGenerator := blocksutil.NewBlockGenerator()
-	blks := blockGenerator.Blocks(activeWantsLimit * 2)
+	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
@@ -79,7 +91,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	// check initial want request
 	receivedWantReq := <-fwm.wantReqs
 
-	if len(receivedWantReq.cids) != activeWantsLimit {
+	if len(receivedWantReq.cids) != broadcastLiveWantsLimit {
 		t.Fatal("did not enqueue correct initial number of wants")
 	}
 	if receivedWantReq.peers != nil {
@@ -87,7 +99,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	}
 
 	// now receive the first set of blocks
-	peers := testutil.GeneratePeers(activeWantsLimit)
+	peers := testutil.GeneratePeers(broadcastLiveWantsLimit)
 	var newCancelReqs []wantReq
 	var newBlockReqs []wantReq
 	var receivedBlocks []blocks.Block
@@ -97,13 +109,16 @@ func TestSessionGetBlocks(t *testing.T) {
 		receivedBlocks = append(receivedBlocks, receivedBlock)
 		cancelBlock := <-cancelReqs
 		newCancelReqs = append(newCancelReqs, cancelBlock)
-		wantBlock := <-wantReqs
-		newBlockReqs = append(newBlockReqs, wantBlock)
+		select {
+		case wantBlock := <-wantReqs:
+			newBlockReqs = append(newBlockReqs, wantBlock)
+		default:
+		}
 	}
 
 	// verify new peers were recorded
 	fpm.lk.Lock()
-	if len(fpm.peers) != activeWantsLimit {
+	if len(fpm.peers) != broadcastLiveWantsLimit {
 		t.Fatal("received blocks not recorded by the peer manager")
 	}
 	for _, p := range fpm.peers {
@@ -116,26 +131,26 @@ func TestSessionGetBlocks(t *testing.T) {
 	// look at new interactions with want manager
 
 	// should have cancelled each received block
-	if len(newCancelReqs) != activeWantsLimit {
+	if len(newCancelReqs) != broadcastLiveWantsLimit {
 		t.Fatal("did not cancel each block once it was received")
 	}
 	// new session reqs should be targeted
-	totalEnqueued := 0
+	var newCidsRequested []cid.Cid
 	for _, w := range newBlockReqs {
 		if len(w.peers) == 0 {
 			t.Fatal("should not have broadcast again after initial broadcast")
 		}
-		totalEnqueued += len(w.cids)
+		newCidsRequested = append(newCidsRequested, w.cids...)
 	}
 
 	// full new round of cids should be requested
-	if totalEnqueued != activeWantsLimit {
+	if len(newCidsRequested) != broadcastLiveWantsLimit {
 		t.Fatal("new blocks were not requested")
 	}
 
 	// receive remaining blocks
 	for i, p := range peers {
-		session.ReceiveBlockFrom(p, blks[testutil.IndexOf(blks, newBlockReqs[i].cids[0])])
+		session.ReceiveBlockFrom(p, blks[testutil.IndexOf(blks, newCidsRequested[i])])
 		receivedBlock := <-getBlocksCh
 		receivedBlocks = append(receivedBlocks, receivedBlock)
 		cancelBlock := <-cancelReqs
@@ -159,12 +174,13 @@ func TestSessionFindMorePeers(t *testing.T) {
 	wantReqs := make(chan wantReq, 1)
 	cancelReqs := make(chan wantReq, 1)
 	fwm := &fakeWantManager{wantReqs, cancelReqs}
-	fpm := &fakePeerManager{findMorePeersRequested: make(chan struct{})}
+	fpm := &fakePeerManager{findMorePeersRequested: make(chan struct{}, 1)}
+	frs := &fakeRequestSplitter{}
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm)
+	session := New(ctx, id, fwm, fpm, frs)
 	session.SetBaseTickDelay(200 * time.Microsecond)
 	blockGenerator := blocksutil.NewBlockGenerator()
-	blks := blockGenerator.Blocks(activeWantsLimit * 2)
+	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
@@ -190,7 +206,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 
 	// verify a broadcast was made
 	receivedWantReq := <-wantReqs
-	if len(receivedWantReq.cids) != activeWantsLimit {
+	if len(receivedWantReq.cids) < broadcastLiveWantsLimit {
 		t.Fatal("did not rebroadcast whole live list")
 	}
 	if receivedWantReq.peers != nil {

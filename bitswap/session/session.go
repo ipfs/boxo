@@ -12,9 +12,14 @@ import (
 	logging "github.com/ipfs/go-log"
 	loggables "github.com/libp2p/go-libp2p-loggables"
 	peer "github.com/libp2p/go-libp2p-peer"
+
+	bssrs "github.com/ipfs/go-bitswap/sessionrequestsplitter"
 )
 
-const activeWantsLimit = 16
+const (
+	broadcastLiveWantsLimit = 4
+	targetedLiveWantsLimit  = 32
+)
 
 // WantManager is an interface that can be used to request blocks
 // from given peers.
@@ -32,14 +37,23 @@ type PeerManager interface {
 	RecordPeerResponse(peer.ID, cid.Cid)
 }
 
+// RequestSplitter provides an interface for splitting
+// a request for Cids up among peers.
+type RequestSplitter interface {
+	SplitRequest([]peer.ID, []cid.Cid) []*bssrs.PartialRequest
+	RecordDuplicateBlock()
+	RecordUniqueBlock()
+}
+
 type interestReq struct {
 	c    cid.Cid
 	resp chan bool
 }
 
 type blkRecv struct {
-	from peer.ID
-	blk  blocks.Block
+	from           peer.ID
+	blk            blocks.Block
+	counterMessage bool
 }
 
 // Session holds state for an individual bitswap transfer operation.
@@ -50,6 +64,7 @@ type Session struct {
 	ctx context.Context
 	wm  WantManager
 	pm  PeerManager
+	srs RequestSplitter
 
 	// channels
 	incoming      chan blkRecv
@@ -62,12 +77,12 @@ type Session struct {
 	// do not touch outside run loop
 	tofetch       *cidQueue
 	interest      *lru.Cache
+	pastWants     *cidQueue
 	liveWants     map[cid.Cid]time.Time
 	tick          *time.Timer
 	baseTickDelay time.Duration
 	latTotal      time.Duration
 	fetchcnt      int
-
 	// identifiers
 	notif notifications.PubSub
 	uuid  logging.Loggable
@@ -76,18 +91,20 @@ type Session struct {
 
 // New creates a new bitswap session whose lifetime is bounded by the
 // given context.
-func New(ctx context.Context, id uint64, wm WantManager, pm PeerManager) *Session {
+func New(ctx context.Context, id uint64, wm WantManager, pm PeerManager, srs RequestSplitter) *Session {
 	s := &Session{
 		liveWants:     make(map[cid.Cid]time.Time),
 		newReqs:       make(chan []cid.Cid),
 		cancelKeys:    make(chan []cid.Cid),
 		tofetch:       newCidQueue(),
+		pastWants:     newCidQueue(),
 		interestReqs:  make(chan interestReq),
 		latencyReqs:   make(chan chan time.Duration),
 		tickDelayReqs: make(chan time.Duration),
 		ctx:           ctx,
 		wm:            wm,
 		pm:            pm,
+		srs:           srs,
 		incoming:      make(chan blkRecv),
 		notif:         notifications.New(),
 		uuid:          loggables.Uuid("GetBlockRequest"),
@@ -106,12 +123,21 @@ func New(ctx context.Context, id uint64, wm WantManager, pm PeerManager) *Sessio
 // ReceiveBlockFrom receives an incoming block from the given peer.
 func (s *Session) ReceiveBlockFrom(from peer.ID, blk blocks.Block) {
 	select {
-	case s.incoming <- blkRecv{from: from, blk: blk}:
+	case s.incoming <- blkRecv{from: from, blk: blk, counterMessage: false}:
 	case <-s.ctx.Done():
 	}
 	ks := []cid.Cid{blk.Cid()}
 	s.wm.CancelWants(s.ctx, ks, nil, s.id)
 
+}
+
+// UpdateReceiveCounters updates receive counters for a block,
+// which may be a duplicate and adjusts the split factor based on that.
+func (s *Session) UpdateReceiveCounters(blk blocks.Block) {
+	select {
+	case s.incoming <- blkRecv{from: "", blk: blk, counterMessage: true}:
+	case <-s.ctx.Done():
+	}
 }
 
 // InterestedIn returns true if this session is interested in the given Cid.
@@ -205,7 +231,11 @@ func (s *Session) run(ctx context.Context) {
 	for {
 		select {
 		case blk := <-s.incoming:
-			s.handleIncomingBlock(ctx, blk)
+			if blk.counterMessage {
+				s.updateReceiveCounters(ctx, blk)
+			} else {
+				s.handleIncomingBlock(ctx, blk)
+			}
 		case keys := <-s.newReqs:
 			s.handleNewRequest(ctx, keys)
 		case keys := <-s.cancelKeys:
@@ -241,8 +271,7 @@ func (s *Session) handleNewRequest(ctx context.Context, keys []cid.Cid) {
 	for _, k := range keys {
 		s.interest.Add(k, nil)
 	}
-	if len(s.liveWants) < activeWantsLimit {
-		toadd := activeWantsLimit - len(s.liveWants)
+	if toadd := s.wantBudget(); toadd > 0 {
 		if toadd > len(keys) {
 			toadd = len(keys)
 		}
@@ -264,6 +293,7 @@ func (s *Session) handleCancel(keys []cid.Cid) {
 }
 
 func (s *Session) handleTick(ctx context.Context) {
+
 	live := make([]cid.Cid, 0, len(s.liveWants))
 	now := time.Now()
 	for c := range s.liveWants {
@@ -303,6 +333,7 @@ func (s *Session) cidIsWanted(c cid.Cid) bool {
 func (s *Session) receiveBlock(ctx context.Context, blk blocks.Block) {
 	c := blk.Cid()
 	if s.cidIsWanted(c) {
+		s.srs.RecordUniqueBlock()
 		tval, ok := s.liveWants[c]
 		if ok {
 			s.latTotal += time.Since(tval)
@@ -313,9 +344,26 @@ func (s *Session) receiveBlock(ctx context.Context, blk blocks.Block) {
 		s.fetchcnt++
 		s.notif.Publish(blk)
 
-		if next := s.tofetch.Pop(); next.Defined() {
-			s.wantBlocks(ctx, []cid.Cid{next})
+		toAdd := s.wantBudget()
+		if toAdd > s.tofetch.Len() {
+			toAdd = s.tofetch.Len()
 		}
+		if toAdd > 0 {
+			var keys []cid.Cid
+			for i := 0; i < toAdd; i++ {
+				keys = append(keys, s.tofetch.Pop())
+			}
+			s.wantBlocks(ctx, keys)
+		}
+
+		s.pastWants.Push(c)
+	}
+}
+
+func (s *Session) updateReceiveCounters(ctx context.Context, blk blkRecv) {
+	ks := blk.blk.Cid()
+	if s.pastWants.Has(ks) {
+		s.srs.RecordDuplicateBlock()
 	}
 }
 
@@ -325,9 +373,16 @@ func (s *Session) wantBlocks(ctx context.Context, ks []cid.Cid) {
 		s.liveWants[c] = now
 	}
 	peers := s.pm.GetOptimizedPeers()
-	// right now we're requesting each block from every peer, but soon, maybe not
-	s.pm.RecordPeerRequests(peers, ks)
-	s.wm.WantBlocks(ctx, ks, peers, s.id)
+	if len(peers) > 0 {
+		splitRequests := s.srs.SplitRequest(peers, ks)
+		for _, splitRequest := range splitRequests {
+			s.pm.RecordPeerRequests(splitRequest.Peers, splitRequest.Keys)
+			s.wm.WantBlocks(ctx, splitRequest.Keys, splitRequest.Peers, s.id)
+		}
+	} else {
+		s.pm.RecordPeerRequests(nil, ks)
+		s.wm.WantBlocks(ctx, ks, nil, s.id)
+	}
 }
 
 func (s *Session) averageLatency() time.Duration {
@@ -341,4 +396,18 @@ func (s *Session) resetTick() {
 		avLat := s.averageLatency()
 		s.tick.Reset(s.baseTickDelay + (3 * avLat))
 	}
+}
+
+func (s *Session) wantBudget() int {
+	live := len(s.liveWants)
+	var budget int
+	if len(s.pm.GetOptimizedPeers()) > 0 {
+		budget = targetedLiveWantsLimit - live
+	} else {
+		budget = broadcastLiveWantsLimit - live
+	}
+	if budget < 0 {
+		budget = 0
+	}
+	return budget
 }
