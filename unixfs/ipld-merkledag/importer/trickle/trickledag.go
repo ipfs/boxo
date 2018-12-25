@@ -102,7 +102,7 @@ func Append(ctx context.Context, basen ipld.Node, db *h.DagBuilderHelper) (out i
 	}
 
 	// Get depth of this 'tree'
-	n, layerProgress := trickleDepthInfoFSNode(fsn, db.Maxlinks())
+	n, layerProgress := trickleDepthInfo(fsn, db.Maxlinks())
 	if n == 0 {
 		// If direct blocks not filled...
 		if err := db.FillFSNodeLayer(fsn); err != nil {
@@ -201,7 +201,7 @@ func appendRec(ctx context.Context, fsn *h.FSNodeOverDag, db *h.DagBuilderHelper
 	}
 
 	// Get depth of this 'tree'
-	n, layerProgress := trickleDepthInfoFSNode(fsn, db.Maxlinks())
+	n, layerProgress := trickleDepthInfo(fsn, db.Maxlinks())
 	if n == 0 {
 		// If direct blocks not filled...
 		if err := db.FillFSNodeLayer(fsn); err != nil {
@@ -241,16 +241,8 @@ func appendRec(ctx context.Context, fsn *h.FSNodeOverDag, db *h.DagBuilderHelper
 
 	return fsn, fsn.FileSize(), nil
 }
-func trickleDepthInfo(node *h.UnixfsNode, maxlinks int) (int, int) {
-	n := node.NumChildren()
-	if n < maxlinks {
-		return 0, 0
-	}
 
-	return ((n - maxlinks) / layerRepeat) + 1, (n - maxlinks) % layerRepeat
-}
-
-func trickleDepthInfoFSNode(node *h.FSNodeOverDag, maxlinks int) (int, int) {
+func trickleDepthInfo(node *h.FSNodeOverDag, maxlinks int) (int, int) {
 	n := node.NumChildren()
 	if n < maxlinks {
 		return 0, 0
