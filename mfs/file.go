@@ -26,7 +26,7 @@ type File struct {
 	// entire DAG of nodes that comprise the file.
 	// TODO: Rename, there should be an explicit term for these root nodes
 	// of a particular sub-DAG that abstract an upper layer's entity.
-	node   ipld.Node
+	node ipld.Node
 
 	// Lock around the `node` that represents this file, necessary because
 	// there may be many `FileDescriptor`s operating on this `File`.
@@ -52,13 +52,25 @@ func NewFile(name string, node ipld.Node, parent parent, dserv ipld.DAGService) 
 	return fi, nil
 }
 
-const (
-	OpenReadOnly = iota
-	OpenWriteOnly
-	OpenReadWrite
-)
+func (fi *File) Open(flags Flags) (_ FileDescriptor, _retErr error) {
+	if flags.Write {
+		fi.desclock.Lock()
+		defer func() {
+			if _retErr != nil {
+				fi.desclock.Unlock()
+			}
+		}()
+	} else if flags.Read {
+		fi.desclock.RLock()
+		defer func() {
+			if _retErr != nil {
+				fi.desclock.Unlock()
+			}
+		}()
+	} else {
+		return nil, fmt.Errorf("file opened for neither reading nor writing")
+	}
 
-func (fi *File) Open(flags int, sync bool) (FileDescriptor, error) {
 	fi.nodeLock.RLock()
 	node := fi.node
 	fi.nodeLock.RUnlock()
@@ -86,16 +98,6 @@ func (fi *File) Open(flags int, sync bool) (FileDescriptor, error) {
 		// Ok as well.
 	}
 
-	switch flags {
-	case OpenReadOnly:
-		fi.desclock.RLock()
-	case OpenWriteOnly, OpenReadWrite:
-		fi.desclock.Lock()
-	default:
-		// TODO: support other modes
-		return nil, fmt.Errorf("mode not supported")
-	}
-
 	dmod, err := mod.NewDagModifier(context.TODO(), node, fi.dagService, chunker.DefaultSplitter)
 	// TODO: Remove the use of the `chunker` package here, add a new `NewDagModifier` in
 	// `go-unixfs` with the `DefaultSplitter` already included.
@@ -106,8 +108,7 @@ func (fi *File) Open(flags int, sync bool) (FileDescriptor, error) {
 
 	return &fileDescriptor{
 		inode: fi,
-		perms: flags,
-		sync:  sync,
+		flags: flags,
 		mod:   dmod,
 	}, nil
 }
@@ -153,7 +154,7 @@ func (fi *File) GetNode() (ipld.Node, error) {
 // a file without flushing?)
 func (fi *File) Flush() error {
 	// open the file in fullsync mode
-	fd, err := fi.Open(OpenWriteOnly, true)
+	fd, err := fi.Open(Flags{Write: true, Sync: true})
 	if err != nil {
 		return err
 	}

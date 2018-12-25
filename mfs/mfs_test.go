@@ -14,9 +14,10 @@ import (
 	"testing"
 	"time"
 
+	path "github.com/ipfs/go-path"
+
 	bserv "github.com/ipfs/go-blockservice"
 	dag "github.com/ipfs/go-merkledag"
-	"github.com/ipfs/go-path"
 	ft "github.com/ipfs/go-unixfs"
 	importer "github.com/ipfs/go-unixfs/importer"
 	uio "github.com/ipfs/go-unixfs/io"
@@ -161,7 +162,7 @@ func assertFileAtPath(ds ipld.DAGService, root *Directory, expn ipld.Node, pth s
 		return fmt.Errorf("%s was not a file", pth)
 	}
 
-	rfd, err := file.Open(OpenReadOnly, false)
+	rfd, err := file.Open(Flags{Read: true})
 	if err != nil {
 		return err
 	}
@@ -394,7 +395,7 @@ func TestMfsFile(t *testing.T) {
 		t.Fatal("some is seriously wrong here")
 	}
 
-	wfd, err := fi.Open(OpenReadWrite, true)
+	wfd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,7 +555,7 @@ func actorMakeFile(d *Directory) error {
 		return err
 	}
 
-	wfd, err := f.Open(OpenWriteOnly, true)
+	wfd, err := f.Open(Flags{Write: true, Sync: true})
 	if err != nil {
 		return err
 	}
@@ -634,7 +635,7 @@ func actorWriteFile(d *Directory) error {
 		return err
 	}
 
-	wfd, err := fi.Open(OpenWriteOnly, true)
+	wfd, err := fi.Open(Flags{Write: true, Sync: true})
 	if err != nil {
 		return err
 	}
@@ -666,7 +667,7 @@ func actorReadFile(d *Directory) error {
 		return err
 	}
 
-	rfd, err := fi.Open(OpenReadOnly, false)
+	rfd, err := fi.Open(Flags{Read: true})
 	if err != nil {
 		return err
 	}
@@ -868,7 +869,7 @@ func readFile(rt *Root, path string, offset int64, buf []byte) error {
 		return fmt.Errorf("%s was not a file", path)
 	}
 
-	fd, err := fi.Open(OpenReadOnly, false)
+	fd, err := fi.Open(Flags{Read: true})
 	if err != nil {
 		return err
 	}
@@ -946,7 +947,7 @@ func writeFile(rt *Root, path string, data []byte) error {
 		return fmt.Errorf("expected to receive a file, but didnt get one")
 	}
 
-	fd, err := fi.Open(OpenWriteOnly, true)
+	fd, err := fi.Open(Flags{Write: true, Sync: true})
 	if err != nil {
 		return err
 	}
@@ -1014,7 +1015,7 @@ func TestFileDescriptors(t *testing.T) {
 	}
 
 	// test read only
-	rfd1, err := fi.Open(OpenReadOnly, false)
+	rfd1, err := fi.Open(Flags{Read: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1038,7 +1039,7 @@ func TestFileDescriptors(t *testing.T) {
 	go func() {
 		defer close(done)
 		// can open second readonly file descriptor
-		rfd2, err := fi.Open(OpenReadOnly, false)
+		rfd2, err := fi.Open(Flags{Read: true})
 		if err != nil {
 			t.Error(err)
 			return
@@ -1061,7 +1062,7 @@ func TestFileDescriptors(t *testing.T) {
 	done = make(chan struct{})
 	go func() {
 		defer close(done)
-		wfd1, err := fi.Open(OpenWriteOnly, true)
+		wfd1, err := fi.Open(Flags{Write: true, Sync: true})
 		if err != nil {
 			t.Error(err)
 		}
@@ -1090,7 +1091,7 @@ func TestFileDescriptors(t *testing.T) {
 	case <-done:
 	}
 
-	wfd, err := fi.Open(OpenWriteOnly, true)
+	wfd, err := fi.Open(Flags{Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1119,7 +1120,7 @@ func TestTruncateAtSize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fd, err := fi.Open(OpenReadWrite, true)
+	fd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1144,7 +1145,7 @@ func TestTruncateAndWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fd, err := fi.Open(OpenReadWrite, true)
+	fd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
 	defer fd.Close()
 	if err != nil {
 		t.Fatal(err)
