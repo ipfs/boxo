@@ -38,7 +38,7 @@ const layerRepeat = 4
 // explanation.
 func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 	newRoot := db.NewFSNodeOverDag(ft.TFile)
-	root, _, err := fillTrickleRecFSNode(db, newRoot, -1)
+	root, _, err := fillTrickleRec(db, newRoot, -1)
 	if err != nil {
 		return nil, err
 	}
@@ -49,38 +49,7 @@ func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 // fillTrickleRec creates a trickle (sub-)tree with an optional maximum specified depth
 // in the case maxDepth is greater than zero, or with unlimited depth otherwise
 // (where the DAG builder will signal the end of data to end the function).
-func fillTrickleRec(db *h.DagBuilderHelper, node *h.UnixfsNode, maxDepth int) error {
-	// Always do this, even in the base case
-	if err := db.FillNodeLayer(node); err != nil {
-		return err
-	}
-
-	for depth := 1; ; depth++ {
-		// Apply depth limit only if the parameter is set (> 0).
-		if maxDepth > 0 && depth == maxDepth {
-			return nil
-		}
-		for layer := 0; layer < layerRepeat; layer++ {
-			if db.Done() {
-				return nil
-			}
-
-			nextChild := db.NewUnixfsNode()
-			if err := fillTrickleRec(db, nextChild, depth); err != nil {
-				return err
-			}
-
-			if err := node.AddChild(nextChild, db); err != nil {
-				return err
-			}
-		}
-	}
-}
-
-// fillTrickleRecFSNode creates a trickle (sub-)tree with an optional maximum specified depth
-// in the case maxDepth is greater than zero, or with unlimited depth otherwise
-// (where the DAG builder will signal the end of data to end the function).
-func fillTrickleRecFSNode(db *h.DagBuilderHelper, node *h.FSNodeOverDag, maxDepth int) (filledNode ipld.Node, nodeFileSize uint64, err error) {
+func fillTrickleRec(db *h.DagBuilderHelper, node *h.FSNodeOverDag, maxDepth int) (filledNode ipld.Node, nodeFileSize uint64, err error) {
 	// Always do this, even in the base case
 	if err := db.FillFSNodeLayer(node); err != nil {
 		return nil, 0, err
@@ -97,7 +66,7 @@ func fillTrickleRecFSNode(db *h.DagBuilderHelper, node *h.FSNodeOverDag, maxDept
 			}
 
 			nextChild := db.NewFSNodeOverDag(ft.TFile)
-			childNode, childFileSize, err := fillTrickleRecFSNode(db, nextChild, depth)
+			childNode, childFileSize, err := fillTrickleRec(db, nextChild, depth)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -162,7 +131,7 @@ func Append(ctx context.Context, basen ipld.Node, db *h.DagBuilderHelper) (out i
 	for i := n; !db.Done(); i++ {
 		for j := 0; j < layerRepeat && !db.Done(); j++ {
 			nextChild := db.NewFSNodeOverDag(ft.TFile)
-			childNode, childFileSize, err := fillTrickleRecFSNode(db, nextChild, i)
+			childNode, childFileSize, err := fillTrickleRec(db, nextChild, i)
 			if err != nil {
 				return nil, err
 			}
@@ -211,7 +180,7 @@ func appendFillLastChild(ctx context.Context, fsn *h.FSNodeOverDag, depth int, l
 	if layerFill != 0 {
 		for ; layerFill < layerRepeat && !db.Done(); layerFill++ {
 			nextChild := db.NewFSNodeOverDag(ft.TFile)
-			childNode, childFileSize, err := fillTrickleRecFSNode(db, nextChild, depth)
+			childNode, childFileSize, err := fillTrickleRec(db, nextChild, depth)
 			if err != nil {
 				return err
 			}
@@ -259,7 +228,7 @@ func appendRec(ctx context.Context, fsn *h.FSNodeOverDag, db *h.DagBuilderHelper
 	for i := n; i < depth && !db.Done(); i++ {
 		for j := 0; j < layerRepeat && !db.Done(); j++ {
 			nextChild := db.NewFSNodeOverDag(ft.TFile)
-			childNode, childFileSize, err := fillTrickleRecFSNode(db, nextChild, i)
+			childNode, childFileSize, err := fillTrickleRec(db, nextChild, i)
 			if err != nil {
 				return nil, 0, err
 			}
