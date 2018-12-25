@@ -14,7 +14,8 @@ import (
 type state uint8
 
 const (
-	stateFlushed state = iota
+	stateCreated state = iota
+	stateFlushed
 	stateDirty
 	stateClosed
 )
@@ -153,7 +154,7 @@ func (fi *fileDescriptor) flushUp(fullSync bool) error {
 		fi.inode.node = nd
 		fi.inode.nodeLock.Unlock()
 		fallthrough
-	case stateFlushed:
+	case stateCreated:
 		if !fullSync {
 			return nil
 		}
@@ -168,6 +169,8 @@ func (fi *fileDescriptor) flushUp(fullSync bool) error {
 			return err
 		}
 		fi.state = stateFlushed
+		return nil
+	case stateFlushed:
 		return nil
 	default:
 		panic("invalid state")

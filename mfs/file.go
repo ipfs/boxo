@@ -110,6 +110,7 @@ func (fi *File) Open(flags Flags) (_ FileDescriptor, _retErr error) {
 		inode: fi,
 		flags: flags,
 		mod:   dmod,
+		state: stateCreated,
 	}, nil
 }
 

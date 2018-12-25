@@ -68,6 +68,7 @@ const (
 // (Not to be confused with the `unixfs.FSNode`.)
 type FSNode interface {
 	GetNode() (ipld.Node, error)
+
 	Flush() error
 	Type() NodeType
 }
