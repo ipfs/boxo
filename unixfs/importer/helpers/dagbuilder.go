@@ -134,58 +134,14 @@ func (db *DagBuilderHelper) GetDagServ() ipld.DAGService {
 	return db.dserv
 }
 
-// NewUnixfsNode creates a new Unixfs node to represent a file.
-func (db *DagBuilderHelper) NewUnixfsNode() *UnixfsNode {
-	n := &UnixfsNode{
-		node: new(dag.ProtoNode),
-		ufmt: ft.NewFSNode(ft.TFile),
-	}
-	n.SetCidBuilder(db.cidBuilder)
-	return n
-}
-
 // GetCidBuilder returns the internal `cid.CidBuilder` set in the builder.
 func (db *DagBuilderHelper) GetCidBuilder() cid.Builder {
 	return db.cidBuilder
 }
 
-// NewLeaf creates a leaf node filled with data.  If rawLeaves is
-// defined than a raw leaf will be returned.  Otherwise, if data is
-// nil the type field will be TRaw (for backwards compatibility), if
-// data is defined (but possibly empty) the type field will be TRaw.
-func (db *DagBuilderHelper) NewLeaf(data []byte) (*UnixfsNode, error) {
-	if len(data) > BlockSizeLimit {
-		return nil, ErrSizeLimitExceeded
-	}
-
-	if db.rawLeaves {
-		if db.cidBuilder == nil {
-			return &UnixfsNode{
-				rawnode: dag.NewRawNode(data),
-				raw:     true,
-			}, nil
-		}
-		rawnode, err := dag.NewRawNodeWPrefix(data, db.cidBuilder)
-		if err != nil {
-			return nil, err
-		}
-		return &UnixfsNode{
-			rawnode: rawnode,
-			raw:     true,
-		}, nil
-	}
-
-	if data == nil {
-		return db.NewUnixfsNode(), nil
-	}
-
-	blk := db.newUnixfsBlock()
-	blk.SetData(data)
-	return blk, nil
-}
-
-// NewLeafNode is a variation from `NewLeaf` (see its description) that
-// returns an `ipld.Node` instead.
+// NewLeafNode creates a leaf node filled with data.  If rawLeaves is
+// defined then a raw leaf will be returned.  Otherwise, it will create
+// and return `FSNodeOverDag` with `fsNodeType`.
 func (db *DagBuilderHelper) NewLeafNode(data []byte, fsNodeType pb.Data_DataType) (ipld.Node, error) {
 	if len(data) > BlockSizeLimit {
 		return nil, ErrSizeLimitExceeded
@@ -217,16 +173,6 @@ func (db *DagBuilderHelper) NewLeafNode(data []byte, fsNodeType pb.Data_DataType
 	return node, nil
 }
 
-// newUnixfsBlock creates a new Unixfs node to represent a raw data block
-func (db *DagBuilderHelper) newUnixfsBlock() *UnixfsNode {
-	n := &UnixfsNode{
-		node: new(dag.ProtoNode),
-		ufmt: ft.NewFSNode(ft.TRaw),
-	}
-	n.SetCidBuilder(db.cidBuilder)
-	return n
-}
-
 // FillNodeLayer will add datanodes as children to the give node until
 // it is full in this layer or no more data.
 func (db *DagBuilderHelper) FillNodeLayer(node *FSNodeOverDag) error {
@@ -247,28 +193,13 @@ func (db *DagBuilderHelper) FillNodeLayer(node *FSNodeOverDag) error {
 	return nil
 }
 
-// GetNextDataNode builds a UnixFsNode with the data obtained from the
-// Splitter, given the constraints (BlockSizeLimit, RawLeaves) specified
-// when creating the DagBuilderHelper.
-func (db *DagBuilderHelper) GetNextDataNode() (*UnixfsNode, error) {
-	data, err := db.Next()
-	if err != nil {
-		return nil, err
-	}
-
-	if data == nil { // we're done!
-		return nil, nil
-	}
-
-	return db.NewLeaf(data)
-}
-
-// NewLeafDataNode is a variation of `GetNextDataNode` that returns
-// an `ipld.Node` instead. It builds the `node` with the data obtained
-// from the Splitter and returns it with the `dataSize` (that will be
-// used to keep track of the DAG file size). The size of the data is
-// computed here because after that it will be hidden by `NewLeafNode`
-// inside a generic `ipld.Node` representation.
+// NewLeafDataNode builds the `node` with the data obtained from the
+// Splitter with the given constraints (BlockSizeLimit, RawLeaves)
+// specified when creating the DagBuilderHelper. It returns
+// `ipld.Node` with the `dataSize` (that will be used to keep track of
+// the DAG file size). The size of the data is computed here because
+// after that it will be hidden by `NewLeafNode` inside a generic
+// `ipld.Node` representation.
 func (db *DagBuilderHelper) NewLeafDataNode(fsNodeType pb.Data_DataType) (node ipld.Node, dataSize uint64, err error) {
 	fileData, err := db.Next()
 	if err != nil {
@@ -320,21 +251,6 @@ func (db *DagBuilderHelper) ProcessFileStore(node ipld.Node, dataSize uint64) ip
 
 	// Filestore is not used, return the same `node` argument.
 	return node
-}
-
-// AddUnixfsNode sends a node to the DAGService, and returns it as ipld.Node.
-func (db *DagBuilderHelper) AddUnixfsNode(node *UnixfsNode) (ipld.Node, error) {
-	dn, err := node.GetDagNode()
-	if err != nil {
-		return nil, err
-	}
-
-	err = db.dserv.Add(context.TODO(), dn)
-	if err != nil {
-		return nil, err
-	}
-
-	return dn, nil
 }
 
 // Add inserts the given node in the DAGService.
