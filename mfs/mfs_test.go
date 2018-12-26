@@ -561,7 +561,7 @@ func actorMakeFile(d *Directory) error {
 	}
 
 	rread := rand.New(rand.NewSource(time.Now().UnixNano()))
-	r := io.LimitReader(rread, int64(77*rand.Intn(123)))
+	r := io.LimitReader(rread, int64(77*rand.Intn(123)+1))
 	_, err = io.Copy(wfd, r)
 	if err != nil {
 		return err
