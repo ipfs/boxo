@@ -139,8 +139,7 @@ func (fi *fileDescriptor) Flush() error {
 func (fi *fileDescriptor) flushUp(fullSync bool) error {
 	var nd ipld.Node
 	switch fi.state {
-	case stateDirty:
-		// calls mod.Sync internally.
+	case stateCreated, stateDirty:
 		var err error
 		nd, err = fi.mod.GetNode()
 		if err != nil {
@@ -150,15 +149,17 @@ func (fi *fileDescriptor) flushUp(fullSync bool) error {
 		if err != nil {
 			return err
 		}
+
+		// Always update the file descriptor's inode with the created/modified node.
 		fi.inode.nodeLock.Lock()
 		fi.inode.node = nd
 		fi.inode.nodeLock.Unlock()
-		fallthrough
-	case stateCreated:
+
 		if !fullSync {
 			return nil
 		}
 
+		// Bubble up the update's to the parent, only if fullSync is set to true.
 		fi.inode.nodeLock.Lock()
 		nd = fi.inode.node
 		parent := fi.inode.parent
