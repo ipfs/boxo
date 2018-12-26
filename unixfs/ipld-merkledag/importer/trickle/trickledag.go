@@ -51,7 +51,7 @@ func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 // (where the DAG builder will signal the end of data to end the function).
 func fillTrickleRec(db *h.DagBuilderHelper, node *h.FSNodeOverDag, maxDepth int) (filledNode ipld.Node, nodeFileSize uint64, err error) {
 	// Always do this, even in the base case
-	if err := db.FillFSNodeLayer(node); err != nil {
+	if err := db.FillNodeLayer(node); err != nil {
 		return nil, 0, err
 	}
 
@@ -105,7 +105,7 @@ func Append(ctx context.Context, basen ipld.Node, db *h.DagBuilderHelper) (out i
 	n, layerProgress := trickleDepthInfo(fsn, db.Maxlinks())
 	if n == 0 {
 		// If direct blocks not filled...
-		if err := db.FillFSNodeLayer(fsn); err != nil {
+		if err := db.FillNodeLayer(fsn); err != nil {
 			return nil, err
 		}
 
@@ -204,7 +204,7 @@ func appendRec(ctx context.Context, fsn *h.FSNodeOverDag, db *h.DagBuilderHelper
 	n, layerProgress := trickleDepthInfo(fsn, db.Maxlinks())
 	if n == 0 {
 		// If direct blocks not filled...
-		if err := db.FillFSNodeLayer(fsn); err != nil {
+		if err := db.FillNodeLayer(fsn); err != nil {
 			return nil, 0, err
 		}
 		n++
