@@ -228,26 +228,8 @@ func (db *DagBuilderHelper) newUnixfsBlock() *UnixfsNode {
 }
 
 // FillNodeLayer will add datanodes as children to the give node until
-// at most db.indirSize nodes are added.
-func (db *DagBuilderHelper) FillNodeLayer(node *UnixfsNode) error {
-
-	// while we have room AND we're not done
-	for node.NumChildren() < db.maxlinks && !db.Done() {
-		child, err := db.GetNextDataNode()
-		if err != nil {
-			return err
-		}
-
-		if err := node.AddChild(child, db); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// FillFSNodeLayer do the same thing as FillNodeLayer.
-func (db *DagBuilderHelper) FillFSNodeLayer(node *FSNodeOverDag) error {
+// it is full in this layer or no more data.
+func (db *DagBuilderHelper) FillNodeLayer(node *FSNodeOverDag) error {
 
 	// while we have room AND we're not done
 	for node.NumChildren() < db.maxlinks && !db.Done() {
