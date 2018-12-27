@@ -45,13 +45,12 @@ type child struct {
 // the entry/link of the directory that pointed to the modified node).
 type parent interface {
 	// Method called by a child to its parent to signal to update the content
-	// pointed to in the entry by that child's name. The child sends as
-	// arguments its own information (under the `child` structure) and a flag
-	// (`fullsync`) indicating whether or not to propagate the update upwards:
-	// modifying a directory entry entails modifying its contents which means
-	// that its parent (the parent's parent) will also need to be updated (and
-	// so on).
-	updateChildEntry(c child, fullSync bool) error
+	// pointed to in the entry by that child's name. The child sends its own
+	// information in the `child` structure. As modifying a directory entry
+	// entails modifying its contents the parent will also call *its* parent's
+	// `updateChildEntry` to update the entry pointing to the new directory,
+	// this mechanism is in turn repeated until reaching the `Root`.
+	updateChildEntry(c child) error
 }
 
 type NodeType int
@@ -189,7 +188,7 @@ func (kr *Root) FlushMemFree(ctx context.Context) error {
 // TODO: The `sync` argument isn't used here (we've already reached
 // the top), document it and maybe make it an anonymous variable (if
 // that's possible).
-func (kr *Root) updateChildEntry(c child, fullSync bool) error {
+func (kr *Root) updateChildEntry(c child) error {
 	err := kr.GetDirectory().dagService.Add(context.TODO(), c.Node)
 	if err != nil {
 		return err
