@@ -150,25 +150,26 @@ func (fi *fileDescriptor) flushUp(fullSync bool) error {
 			return err
 		}
 
+		// TODO: Very similar logic to the update process in
+		// `Directory`, the logic should be unified, both structures
+		// (`File` and `Directory`) are backed by a IPLD node with
+		// a UnixFS format that is the actual target of the update
+		// (regenerating it and adding it to the DAG service).
+		fi.inode.nodeLock.Lock()
 		// Always update the file descriptor's inode with the created/modified node.
-		fi.inode.nodeLock.Lock()
 		fi.inode.node = nd
-		fi.inode.nodeLock.Unlock()
-
-		if !fullSync {
-			return nil
-		}
-
-		// Bubble up the update's to the parent, only if fullSync is set to true.
-		fi.inode.nodeLock.Lock()
-		nd = fi.inode.node
+		// Save the members to be used for subsequent calls
 		parent := fi.inode.parent
 		name := fi.inode.name
 		fi.inode.nodeLock.Unlock()
 
-		if err := parent.updateChildEntry(child{name, nd}); err != nil {
-			return err
+		// Bubble up the update's to the parent, only if fullSync is set to true.
+		if fullSync {
+			if err := parent.updateChildEntry(child{name, nd}); err != nil {
+				return err
+			}
 		}
+
 		fi.state = stateFlushed
 		return nil
 	case stateFlushed:
