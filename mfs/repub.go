@@ -46,13 +46,6 @@ func NewRepublisher(ctx context.Context, pf PubFunc, tshort, tlong time.Duration
 // WaitPub waits for the current value to be published (or returns early
 // if it already has).
 func (rp *Republisher) WaitPub() {
-	rp.valueLock.Lock()
-	valueHasBeenPublished := rp.lastValuePublished == rp.valueToPublish
-	rp.valueLock.Unlock()
-	if valueHasBeenPublished {
-		return
-	}
-
 	wait := make(chan struct{})
 	rp.immediatePublish <- wait
 	<-wait

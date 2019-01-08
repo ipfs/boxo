@@ -18,6 +18,7 @@ import (
 
 // TODO: Remove if not used.
 var ErrNotExist = errors.New("no such rootfs")
+var ErrClosed = errors.New("file closed")
 
 var log = logging.Logger("mfs")
 
@@ -67,6 +68,7 @@ const (
 // (Not to be confused with the `unixfs.FSNode`.)
 type FSNode interface {
 	GetNode() (ipld.Node, error)
+
 	Flush() error
 	Type() NodeType
 }

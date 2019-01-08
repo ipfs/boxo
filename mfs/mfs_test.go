@@ -3,6 +3,7 @@ package mfs
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -14,9 +15,10 @@ import (
 	"testing"
 	"time"
 
+	path "github.com/ipfs/go-path"
+
 	bserv "github.com/ipfs/go-blockservice"
 	dag "github.com/ipfs/go-merkledag"
-	"github.com/ipfs/go-path"
 	ft "github.com/ipfs/go-unixfs"
 	importer "github.com/ipfs/go-unixfs/importer"
 	uio "github.com/ipfs/go-unixfs/io"
@@ -161,7 +163,7 @@ func assertFileAtPath(ds ipld.DAGService, root *Directory, expn ipld.Node, pth s
 		return fmt.Errorf("%s was not a file", pth)
 	}
 
-	rfd, err := file.Open(OpenReadOnly, false)
+	rfd, err := file.Open(Flags{Read: true})
 	if err != nil {
 		return err
 	}
@@ -394,7 +396,7 @@ func TestMfsFile(t *testing.T) {
 		t.Fatal("some is seriously wrong here")
 	}
 
-	wfd, err := fi.Open(OpenReadWrite, true)
+	wfd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,13 +556,13 @@ func actorMakeFile(d *Directory) error {
 		return err
 	}
 
-	wfd, err := f.Open(OpenWriteOnly, true)
+	wfd, err := f.Open(Flags{Write: true, Sync: true})
 	if err != nil {
 		return err
 	}
 
 	rread := rand.New(rand.NewSource(time.Now().UnixNano()))
-	r := io.LimitReader(rread, int64(77*rand.Intn(123)))
+	r := io.LimitReader(rread, int64(77*rand.Intn(123)+1))
 	_, err = io.Copy(wfd, r)
 	if err != nil {
 		return err
@@ -634,7 +636,7 @@ func actorWriteFile(d *Directory) error {
 		return err
 	}
 
-	wfd, err := fi.Open(OpenWriteOnly, true)
+	wfd, err := fi.Open(Flags{Write: true, Sync: true})
 	if err != nil {
 		return err
 	}
@@ -666,7 +668,7 @@ func actorReadFile(d *Directory) error {
 		return err
 	}
 
-	rfd, err := fi.Open(OpenReadOnly, false)
+	rfd, err := fi.Open(Flags{Read: true})
 	if err != nil {
 		return err
 	}
@@ -764,14 +766,14 @@ func TestConcurrentWriteAndFlush(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nloops := 5000
+	nloops := 500
 
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for i := 0; i < nloops; i++ {
-			err := writeFile(rt, "/foo/bar/baz/file", []byte("STUFF"))
+			err := writeFile(rt, "/foo/bar/baz/file", func(_ []byte) []byte { return []byte("STUFF") })
 			if err != nil {
 				t.Error("file write failed: ", err)
 				return
@@ -868,7 +870,7 @@ func readFile(rt *Root, path string, offset int64, buf []byte) error {
 		return fmt.Errorf("%s was not a file", path)
 	}
 
-	fd, err := fi.Open(OpenReadOnly, false)
+	fd, err := fi.Open(Flags{Read: true})
 	if err != nil {
 		return err
 	}
@@ -935,7 +937,7 @@ func TestConcurrentReads(t *testing.T) {
 	wg.Wait()
 }
 
-func writeFile(rt *Root, path string, data []byte) error {
+func writeFile(rt *Root, path string, transform func([]byte) []byte) error {
 	n, err := Lookup(rt, path)
 	if err != nil {
 		return err
@@ -946,11 +948,26 @@ func writeFile(rt *Root, path string, data []byte) error {
 		return fmt.Errorf("expected to receive a file, but didnt get one")
 	}
 
-	fd, err := fi.Open(OpenWriteOnly, true)
+	fd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
 	if err != nil {
 		return err
 	}
 	defer fd.Close()
+
+	data, err := ioutil.ReadAll(fd)
+	if err != nil {
+		return err
+	}
+	data = transform(data)
+
+	_, err = fd.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+	err = fd.Truncate(0)
+	if err != nil {
+		return err
+	}
 
 	nw, err := fd.Write(data)
 	if err != nil {
@@ -985,19 +1002,48 @@ func TestConcurrentWrites(t *testing.T) {
 	nloops := 100
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
-		go func(me int) {
+		go func() {
 			defer wg.Done()
-			mybuf := bytes.Repeat([]byte{byte(me)}, 10)
+			var lastSeen uint64
 			for j := 0; j < nloops; j++ {
-				err := writeFile(rt, "a/b/c/afile", mybuf)
+				err := writeFile(rt, "a/b/c/afile", func(buf []byte) []byte {
+					if len(buf) == 0 {
+						if lastSeen > 0 {
+							t.Fatalf("file corrupted, last seen: %d", lastSeen)
+						}
+						buf = make([]byte, 8)
+					} else if len(buf) != 8 {
+						t.Fatal("buf not the right size")
+					}
+
+					num := binary.LittleEndian.Uint64(buf)
+					if num < lastSeen {
+						t.Fatalf("count decreased: was %d, is %d", lastSeen, num)
+					} else {
+						t.Logf("count correct: was %d, is %d", lastSeen, num)
+					}
+					num++
+					binary.LittleEndian.PutUint64(buf, num)
+					lastSeen = num
+					return buf
+				})
 				if err != nil {
 					t.Error("writefile failed: ", err)
 					return
 				}
 			}
-		}(i)
+		}()
 	}
 	wg.Wait()
+	buf := make([]byte, 8)
+	if err := readFile(rt, "a/b/c/afile", 0, buf); err != nil {
+		t.Fatal(err)
+	}
+	actual := binary.LittleEndian.Uint64(buf)
+	expected := uint64(10 * nloops)
+	if actual != expected {
+		t.Fatalf("iteration mismatch: expect %d, got %d", expected, actual)
+	}
 }
 
 func TestFileDescriptors(t *testing.T) {
@@ -1014,7 +1060,7 @@ func TestFileDescriptors(t *testing.T) {
 	}
 
 	// test read only
-	rfd1, err := fi.Open(OpenReadOnly, false)
+	rfd1, err := fi.Open(Flags{Read: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1038,7 +1084,7 @@ func TestFileDescriptors(t *testing.T) {
 	go func() {
 		defer close(done)
 		// can open second readonly file descriptor
-		rfd2, err := fi.Open(OpenReadOnly, false)
+		rfd2, err := fi.Open(Flags{Read: true})
 		if err != nil {
 			t.Error(err)
 			return
@@ -1061,7 +1107,7 @@ func TestFileDescriptors(t *testing.T) {
 	done = make(chan struct{})
 	go func() {
 		defer close(done)
-		wfd1, err := fi.Open(OpenWriteOnly, true)
+		wfd1, err := fi.Open(Flags{Write: true, Sync: true})
 		if err != nil {
 			t.Error(err)
 		}
@@ -1090,7 +1136,7 @@ func TestFileDescriptors(t *testing.T) {
 	case <-done:
 	}
 
-	wfd, err := fi.Open(OpenWriteOnly, true)
+	wfd, err := fi.Open(Flags{Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1119,7 +1165,7 @@ func TestTruncateAtSize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fd, err := fi.Open(OpenReadWrite, true)
+	fd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1144,7 +1190,7 @@ func TestTruncateAndWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fd, err := fi.Open(OpenReadWrite, true)
+	fd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
 	defer fd.Close()
 	if err != nil {
 		t.Fatal(err)
