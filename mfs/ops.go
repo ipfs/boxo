@@ -1,6 +1,7 @@
 package mfs
 
 import (
+	"context"
 	"fmt"
 	"os"
 	gopath "path"
@@ -235,6 +236,6 @@ func FlushPath(rt *Root, pth string) error {
 		return err
 	}
 
-	rt.repub.WaitPub()
+	rt.repub.WaitPub(context.TODO())
 	return nil
 }
