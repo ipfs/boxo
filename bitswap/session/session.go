@@ -222,7 +222,7 @@ func (s *Session) SetBaseTickDelay(baseTickDelay time.Duration) {
 	}
 }
 
-const provSearchDelay = time.Second * 10
+const provSearchDelay = time.Second
 
 // Session run loop -- everything function below here should not be called
 // of this loop
