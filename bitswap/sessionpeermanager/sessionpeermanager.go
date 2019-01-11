@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"sync"
 
 	logging "github.com/ipfs/go-log"
 
@@ -107,11 +106,8 @@ func (spm *SessionPeerManager) FindMorePeers(ctx context.Context, c cid.Cid) {
 		// - manage timeouts
 		// - ensure two 'findprovs' calls for the same block don't run concurrently
 		// - share peers between sessions based on interest set
-		wg := &sync.WaitGroup{}
 		for p := range spm.network.FindProvidersAsync(ctx, k, 10) {
-			wg.Add(1)
 			go func(p peer.ID) {
-				defer wg.Done()
 				err := spm.network.ConnectTo(ctx, p)
 				if err != nil {
 					log.Debugf("failed to connect to provider %s: %s", p, err)
@@ -119,7 +115,6 @@ func (spm *SessionPeerManager) FindMorePeers(ctx context.Context, c cid.Cid) {
 				spm.peerMessages <- &peerFoundMessage{p}
 			}(p)
 		}
-		wg.Wait()
 	}(c)
 }
 
