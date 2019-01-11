@@ -222,7 +222,12 @@ func (s *Session) SetBaseTickDelay(baseTickDelay time.Duration) {
 	}
 }
 
-const provSearchDelay = time.Second * 10
+var provSearchDelay = time.Second
+
+// SetProviderSearchDelay overwrites the global provider search delay
+func SetProviderSearchDelay(newProvSearchDelay time.Duration) {
+	provSearchDelay = newProvSearchDelay
+}
 
 // Session run loop -- everything function below here should not be called
 // of this loop

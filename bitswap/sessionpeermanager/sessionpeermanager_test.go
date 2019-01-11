@@ -2,8 +2,8 @@ package sessionpeermanager
 
 import (
 	"context"
-	"sync"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +22,10 @@ type fakePeerNetwork struct {
 
 func (fpn *fakePeerNetwork) ConnectionManager() ifconnmgr.ConnManager {
 	return fpn.connManager
+}
+
+func (fpn *fakePeerNetwork) ConnectTo(context.Context, peer.ID) error {
+	return nil
 }
 
 func (fpn *fakePeerNetwork) FindProvidersAsync(ctx context.Context, c cid.Cid, num int) <-chan peer.ID {
