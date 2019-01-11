@@ -152,6 +152,47 @@ func TestSessionSplitFetch(t *testing.T) {
 	}
 }
 
+func TestFetchNotConnected(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	bssession.SetProviderSearchDelay(10 * time.Millisecond)
+	vnet := getVirtualNetwork()
+	sesgen := NewTestSessionGenerator(vnet)
+	defer sesgen.Close()
+	bgen := blocksutil.NewBlockGenerator()
+
+	other := sesgen.Next()
+
+	blks := bgen.Blocks(10)
+	for _, block := range blks {
+		if err := other.Exchange.HasBlock(block); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var cids []cid.Cid
+	for _, blk := range blks {
+		cids = append(cids, blk.Cid())
+	}
+
+	thisNode := sesgen.Next()
+	ses := thisNode.Exchange.NewSession(ctx).(*bssession.Session)
+	ses.SetBaseTickDelay(time.Millisecond * 10)
+
+	ch, err := ses.GetBlocks(ctx, cids)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got []blocks.Block
+	for b := range ch {
+		got = append(got, b)
+	}
+	if err := assertBlockLists(got, blks); err != nil {
+		t.Fatal(err)
+	}
+}
 func TestInterestCacheOverflow(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
