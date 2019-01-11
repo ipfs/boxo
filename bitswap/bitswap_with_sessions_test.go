@@ -156,6 +156,7 @@ func TestFetchNotConnected(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
+	bssession.SetProviderSearchDelay(10 * time.Millisecond)
 	vnet := getVirtualNetwork()
 	sesgen := NewTestSessionGenerator(vnet)
 	defer sesgen.Close()
