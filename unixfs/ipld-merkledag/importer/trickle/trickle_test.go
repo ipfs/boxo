@@ -39,7 +39,12 @@ func buildTestDag(ds ipld.DAGService, spl chunker.Splitter, rawLeaves UseRawLeav
 		RawLeaves: bool(rawLeaves),
 	}
 
-	nd, err := Layout(dbp.New(spl))
+	db, err := dbp.New(spl)
+	if err != nil {
+		return nil, err
+	}
+
+	nd, err := Layout(db)
 	if err != nil {
 		return nil, err
 	}
@@ -503,7 +508,13 @@ func testAppend(t *testing.T, rawLeaves UseRawLeaves) {
 	r := bytes.NewReader(should[nbytes/2:])
 
 	ctx := context.Background()
-	nnode, err := Append(ctx, nd, dbp.New(chunker.NewSizeSplitter(r, 500)))
+
+	db, err := dbp.New(chunker.NewSizeSplitter(r, 500))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nnode, err := Append(ctx, nd, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -564,7 +575,12 @@ func testMultipleAppends(t *testing.T, rawLeaves UseRawLeaves) {
 	ctx := context.Background()
 	for i := 0; i < len(should); i++ {
 
-		nnode, err := Append(ctx, nd, dbp.New(spl(bytes.NewReader(should[i:i+1]))))
+		db, err := dbp.New(spl(bytes.NewReader(should[i : i+1])))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		nnode, err := Append(ctx, nd, db)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -612,12 +628,23 @@ func TestAppendSingleBytesToEmpty(t *testing.T) {
 	spl := chunker.SizeSplitterGen(500)
 
 	ctx := context.Background()
-	nnode, err := Append(ctx, nd, dbp.New(spl(bytes.NewReader(data[:1]))))
+
+	db, err := dbp.New(spl(bytes.NewReader(data[:1])))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	nnode, err = Append(ctx, nnode, dbp.New(spl(bytes.NewReader(data[1:]))))
+	nnode, err := Append(ctx, nd, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = dbp.New(spl(bytes.NewReader(data[1:])))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nnode, err = Append(ctx, nnode, db)
 	if err != nil {
 		t.Fatal(err)
 	}
