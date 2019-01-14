@@ -27,7 +27,12 @@ func buildTestDag(ds ipld.DAGService, spl chunker.Splitter) (*dag.ProtoNode, err
 		Maxlinks: h.DefaultLinksPerBlock,
 	}
 
-	nd, err := Layout(dbp.New(spl))
+	db, err := dbp.New(spl)
+	if err != nil {
+		return nil, err
+	}
+
+	nd, err := Layout(db)
 	if err != nil {
 		return nil, err
 	}
