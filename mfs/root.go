@@ -99,11 +99,10 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 	if pf != nil {
 		repub = NewRepublisher(parent, pf, time.Millisecond*300, time.Second*3)
 
-		repub.valueToPublish = node.Cid()
 		// No need to take the lock here since we just created
 		// the `Republisher` and no one has access to it yet.
 
-		go repub.Run()
+		go repub.Run(node.Cid())
 	}
 
 	root := &Root{

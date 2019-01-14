@@ -23,13 +23,16 @@ func TestRepublisher(t *testing.T) {
 		return nil
 	}
 
+	testCid1, _ := cid.Parse("QmeomffUNfmQy76CQGy9NdmqEnnHU9soCexBnGU3ezPHVH")
+	testCid2, _ := cid.Parse("QmeomffUNfmQy76CQGy9NdmqEnnHU9soCexBnGU3ezPHVX")
+
 	tshort := time.Millisecond * 50
 	tlong := time.Second / 2
 
 	rp := NewRepublisher(ctx, pf, tshort, tlong)
-	go rp.Run()
+	go rp.Run(cid.Undef)
 
-	rp.Update(cid.Undef)
+	rp.Update(testCid1)
 
 	// should hit short timeout
 	select {
@@ -42,7 +45,7 @@ func TestRepublisher(t *testing.T) {
 
 	go func() {
 		for {
-			rp.Update(cid.Undef)
+			rp.Update(testCid2)
 			time.Sleep(time.Millisecond * 10)
 			select {
 			case <-cctx.Done():
@@ -65,13 +68,8 @@ func TestRepublisher(t *testing.T) {
 
 	cancel()
 
-	go func() {
-		err := rp.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	// final pub from closing
-	<-pub
+	err := rp.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 }
