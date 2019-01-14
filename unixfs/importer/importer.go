@@ -18,8 +18,11 @@ func BuildDagFromReader(ds ipld.DAGService, spl chunker.Splitter) (ipld.Node, er
 		Dagserv:  ds,
 		Maxlinks: h.DefaultLinksPerBlock,
 	}
-
-	return bal.Layout(dbp.New(spl))
+	db, err := dbp.New(spl)
+	if err != nil {
+		return nil, err
+	}
+	return bal.Layout(db)
 }
 
 // BuildTrickleDagFromReader creates a DAG given a DAGService and a Splitter
@@ -30,5 +33,9 @@ func BuildTrickleDagFromReader(ds ipld.DAGService, spl chunker.Splitter) (ipld.N
 		Maxlinks: h.DefaultLinksPerBlock,
 	}
 
-	return trickle.Layout(dbp.New(spl))
+	db, err := dbp.New(spl)
+	if err != nil {
+		return nil, err
+	}
+	return trickle.Layout(db)
 }
