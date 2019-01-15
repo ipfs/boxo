@@ -145,35 +145,35 @@ func (ds *Shard) Node() (ipld.Node, error) {
 	out := new(dag.ProtoNode)
 	out.SetCidBuilder(ds.builder)
 
-	cindex := 0
+	sliceIndex := 0
 	// TODO: optimized 'for each set bit'
-	for i := 0; i < ds.tableSize; i++ {
-		if !ds.childer.has(i) {
+	for childIndex := 0; childIndex < ds.tableSize; childIndex++ {
+		if !ds.childer.has(childIndex) {
 			continue
 		}
 
-		ch := ds.childer.child(cindex)
+		ch := ds.childer.child(sliceIndex)
 		if ch != nil {
 			clnk, err := ch.Link()
 			if err != nil {
 				return nil, err
 			}
 
-			err = out.AddRawLink(ds.linkNamePrefix(i)+ch.key, clnk)
+			err = out.AddRawLink(ds.linkNamePrefix(childIndex)+ch.key, clnk)
 			if err != nil {
 				return nil, err
 			}
 		} else {
 			// child unloaded, just copy in link with updated name
-			lnk := ds.childer.link(cindex)
+			lnk := ds.childer.link(sliceIndex)
 			label := lnk.Name[ds.maxpadlen:]
 
-			err := out.AddRawLink(ds.linkNamePrefix(i)+label, lnk)
+			err := out.AddRawLink(ds.linkNamePrefix(childIndex)+label, lnk)
 			if err != nil {
 				return nil, err
 			}
 		}
-		cindex++
+		sliceIndex++
 	}
 
 	data, err := format.HAMTShardData(ds.childer.bitfield.Bytes(), uint64(ds.tableSize), HashMurmur3)
@@ -281,12 +281,13 @@ func (ds *Shard) Link() (*ipld.Link, error) {
 }
 
 func (ds *Shard) getValue(ctx context.Context, hv *hashBits, key string, cb func(*Shard) error) error {
-	idx, err := hv.Next(ds.tableSizeLg2)
+	childIndex, err := hv.Next(ds.tableSizeLg2)
 	if err != nil {
 		return err
 	}
-	if ds.childer.has(idx) {
-		child, err := ds.childer.get(ctx, ds.childer.index(idx))
+
+	if ds.childer.has(childIndex) {
+		child, err := ds.childer.get(ctx, ds.childer.sliceIndex(childIndex))
 		if err != nil {
 			return err
 		}
@@ -427,7 +428,7 @@ func (ds *Shard) modifyValue(ctx context.Context, hv *hashBits, key string, val 
 		return ds.childer.insert(key, val, idx)
 	}
 
-	i := ds.childer.index(idx)
+	i := ds.childer.sliceIndex(idx)
 
 	child, err := ds.childer.get(ctx, i)
 	if err != nil {
@@ -507,6 +508,10 @@ func (ds *Shard) linkNamePrefix(idx int) string {
 
 // childer wraps the links, children and bitfield
 // and provides basic operation (get, rm, insert and set) of manipulating children.
+// The slices `links` and `children` are always coordinated to have the entries
+// in the same index. A `childIndex` belonging to one of the original `Shard.size`
+// entries corresponds to a `sliceIndex` in `links` and `children` (the conversion
+// is done through `bitfield`).
 type childer struct {
 	sd       *Shard
 	dserv    ipld.DAGService
@@ -533,16 +538,17 @@ func (s *childer) makeChilder(data []byte, links []*ipld.Link) *childer {
 	return s
 }
 
-func (s *childer) index(idx int) int {
-	return s.bitfield.OnesBefore(idx)
+// Return the `sliceIndex` associated with a child.
+func (s *childer) sliceIndex(childIndex int) (sliceIndex int) {
+	return s.bitfield.OnesBefore(childIndex)
 }
 
-func (s *childer) child(i int) *Shard {
-	return s.children[i]
+func (s *childer) child(sliceIndex int) *Shard {
+	return s.children[sliceIndex]
 }
 
-func (s *childer) link(i int) *ipld.Link {
-	return s.links[i]
+func (s *childer) link(sliceIndex int) *ipld.Link {
+	return s.links[sliceIndex]
 }
 
 func (s *childer) insert(key string, lnk *ipld.Link, idx int) error {
@@ -551,11 +557,13 @@ func (s *childer) insert(key string, lnk *ipld.Link, idx int) error {
 	}
 
 	lnk.Name = s.sd.linkNamePrefix(idx) + key
-	i := s.index(idx)
+	i := s.sliceIndex(idx)
 	sd := &Shard{key: key, val: lnk}
 
 	s.children = append(s.children[:i], append([]*Shard{sd}, s.children[i:]...)...)
 	s.links = append(s.links[:i], append([]*ipld.Link{nil}, s.links[i:]...)...)
+	// Add a `nil` placeholder in `links` so the rest of the entries keep the same
+	// index as `children`.
 	s.bitfield.SetBit(idx)
 
 	return nil
@@ -565,8 +573,8 @@ func (s *childer) set(sd *Shard, i int) {
 	s.children[i] = sd
 }
 
-func (s *childer) rm(idx int) error {
-	i := s.index(idx)
+func (s *childer) rm(childIndex int) error {
+	i := s.sliceIndex(childIndex)
 
 	if err := s.check(i); err != nil {
 		return err
@@ -578,7 +586,7 @@ func (s *childer) rm(idx int) error {
 	copy(s.links[i:], s.links[i+1:])
 	s.links = s.links[:len(s.links)-1]
 
-	s.bitfield.UnsetBit(idx)
+	s.bitfield.UnsetBit(childIndex)
 
 	return nil
 }
@@ -586,23 +594,23 @@ func (s *childer) rm(idx int) error {
 // get returns the i'th child of this shard. If it is cached in the
 // children array, it will return it from there. Otherwise, it loads the child
 // node from disk.
-func (s *childer) get(ctx context.Context, i int) (*Shard, error) {
-	if err := s.check(i); err != nil {
+func (s *childer) get(ctx context.Context, sliceIndex int) (*Shard, error) {
+	if err := s.check(sliceIndex); err != nil {
 		return nil, err
 	}
 
-	c := s.child(i)
+	c := s.child(sliceIndex)
 	if c != nil {
 		return c, nil
 	}
 
-	return s.loadChild(ctx, i)
+	return s.loadChild(ctx, sliceIndex)
 }
 
 // loadChild reads the i'th child node of this shard from disk and returns it
 // as a 'child' interface
-func (s *childer) loadChild(ctx context.Context, i int) (*Shard, error) {
-	lnk := s.link(i)
+func (s *childer) loadChild(ctx context.Context, sliceIndex int) (*Shard, error) {
+	lnk := s.link(sliceIndex)
 	lnkLinkType, err := s.sd.childLinkType(lnk)
 	if err != nil {
 		return nil, err
@@ -628,13 +636,13 @@ func (s *childer) loadChild(ctx context.Context, i int) (*Shard, error) {
 		c = s
 	}
 
-	s.set(c, i)
+	s.set(c, sliceIndex)
 
 	return c, nil
 }
 
-func (s *childer) has(idx int) bool {
-	return s.bitfield.Bit(idx)
+func (s *childer) has(childIndex int) bool {
+	return s.bitfield.Bit(childIndex)
 }
 
 func (s *childer) length() int {
@@ -656,8 +664,8 @@ func (s *childer) each(ctx context.Context, cb func(*Shard) error) error {
 	return nil
 }
 
-func (s *childer) check(i int) error {
-	if i >= len(s.children) || i < 0 {
+func (s *childer) check(sliceIndex int) error {
+	if sliceIndex >= len(s.children) || sliceIndex < 0 {
 		return fmt.Errorf("invalid index passed to operate children (likely corrupt bitfield)")
 	}
 

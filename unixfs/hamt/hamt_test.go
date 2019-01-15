@@ -490,7 +490,7 @@ func TestBitfieldIndexing(t *testing.T) {
 	}
 
 	assert := func(i int, val int) {
-		if s.childer.index(i) != val {
+		if s.childer.sliceIndex(i) != val {
 			t.Fatalf("expected index %d to be %d", i, val)
 		}
 	}
