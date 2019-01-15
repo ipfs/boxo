@@ -52,7 +52,7 @@ func buildTestDag(ds ipld.DAGService, spl chunker.Splitter, rawLeaves UseRawLeav
 	return pbnd, VerifyTrickleDagStructure(pbnd, VerifyParams{
 		Getter:      ds,
 		Direct:      dbp.Maxlinks,
-		LayerRepeat: layerRepeat,
+		LayerRepeat: depthRepeat,
 		RawLeaves:   bool(rawLeaves),
 	})
 }
@@ -511,7 +511,7 @@ func testAppend(t *testing.T, rawLeaves UseRawLeaves) {
 	err = VerifyTrickleDagStructure(nnode, VerifyParams{
 		Getter:      ds,
 		Direct:      dbp.Maxlinks,
-		LayerRepeat: layerRepeat,
+		LayerRepeat: depthRepeat,
 		RawLeaves:   bool(rawLeaves),
 	})
 	if err != nil {
@@ -572,7 +572,7 @@ func testMultipleAppends(t *testing.T, rawLeaves UseRawLeaves) {
 		err = VerifyTrickleDagStructure(nnode, VerifyParams{
 			Getter:      ds,
 			Direct:      dbp.Maxlinks,
-			LayerRepeat: layerRepeat,
+			LayerRepeat: depthRepeat,
 			RawLeaves:   bool(rawLeaves),
 		})
 		if err != nil {

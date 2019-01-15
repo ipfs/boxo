@@ -28,10 +28,10 @@ import (
 	dag "github.com/ipfs/go-merkledag"
 )
 
-// layerRepeat specifies how many times to append a child tree of a
+// depthRepeat specifies how many times to append a child tree of a
 // given depth. Higher values increase the width of a given node, which
 // improves seek speeds.
-const layerRepeat = 4
+const depthRepeat = 4
 
 // Layout builds a new DAG with the trickle format using the provided
 // DagBuilderHelper. See the module's description for a more detailed
@@ -55,18 +55,18 @@ func fillTrickleRec(db *h.DagBuilderHelper, node *h.FSNodeOverDag, maxDepth int)
 		return nil, 0, err
 	}
 
-	for depth := 1; ; depth++ {
-		// Apply depth limit only if the parameter is set (> 0).
-		if db.Done() || (maxDepth > 0 && depth == maxDepth) {
+	// For each depth in [1, `maxDepth`) (or without limit if `maxDepth` is -1,
+	// initial call from `Layout`) add `depthRepeat` sub-graphs of that depth.
+	for depth := 1; maxDepth == -1 || depth < maxDepth; depth++ {
+		if db.Done() {
 			break
+			// No more data, stop here, posterior append calls will figure out
+			// where we left off.
 		}
-		for layer := 0; layer < layerRepeat; layer++ {
-			if db.Done() {
-				break
-			}
 
-			nextChild := db.NewFSNodeOverDag(ft.TFile)
-			childNode, childFileSize, err := fillTrickleRec(db, nextChild, depth)
+		for repeatIndex := 0; repeatIndex < depthRepeat && !db.Done(); repeatIndex++ {
+
+			childNode, childFileSize, err := fillTrickleRec(db, db.NewFSNodeOverDag(ft.TFile), depth)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -76,7 +76,6 @@ func fillTrickleRec(db *h.DagBuilderHelper, node *h.FSNodeOverDag, maxDepth int)
 			}
 		}
 	}
-	nodeFileSize = node.FileSize()
 
 	// Get the final `dag.ProtoNode` with the `FSNode` data encoded inside.
 	filledNode, err = node.Commit()
@@ -84,7 +83,7 @@ func fillTrickleRec(db *h.DagBuilderHelper, node *h.FSNodeOverDag, maxDepth int)
 		return nil, 0, err
 	}
 
-	return filledNode, nodeFileSize, nil
+	return filledNode, node.FileSize(), nil
 }
 
 // Append appends the data in `db` to the dag, using the Trickledag format
@@ -129,7 +128,7 @@ func Append(ctx context.Context, basen ipld.Node, db *h.DagBuilderHelper) (out i
 
 	// Now, continue filling out tree like normal
 	for i := n; !db.Done(); i++ {
-		for j := 0; j < layerRepeat && !db.Done(); j++ {
+		for j := 0; j < depthRepeat && !db.Done(); j++ {
 			nextChild := db.NewFSNodeOverDag(ft.TFile)
 			childNode, childFileSize, err := fillTrickleRec(db, nextChild, i)
 			if err != nil {
@@ -178,7 +177,7 @@ func appendFillLastChild(ctx context.Context, fsn *h.FSNodeOverDag, depth int, l
 
 	// Partially filled depth layer
 	if layerFill != 0 {
-		for ; layerFill < layerRepeat && !db.Done(); layerFill++ {
+		for ; layerFill < depthRepeat && !db.Done(); layerFill++ {
 			nextChild := db.NewFSNodeOverDag(ft.TFile)
 			childNode, childFileSize, err := fillTrickleRec(db, nextChild, depth)
 			if err != nil {
@@ -226,7 +225,7 @@ func appendRec(ctx context.Context, fsn *h.FSNodeOverDag, db *h.DagBuilderHelper
 
 	// Now, continue filling out tree like normal
 	for i := n; i < depth && !db.Done(); i++ {
-		for j := 0; j < layerRepeat && !db.Done(); j++ {
+		for j := 0; j < depthRepeat && !db.Done(); j++ {
 			nextChild := db.NewFSNodeOverDag(ft.TFile)
 			childNode, childFileSize, err := fillTrickleRec(db, nextChild, i)
 			if err != nil {
@@ -242,13 +241,32 @@ func appendRec(ctx context.Context, fsn *h.FSNodeOverDag, db *h.DagBuilderHelper
 	return fsn, fsn.FileSize(), nil
 }
 
-func trickleDepthInfo(node *h.FSNodeOverDag, maxlinks int) (int, int) {
+// Deduce where we left off in `fillTrickleRec`, returns the `depth`
+// with which new sub-graphs were being added and, within that depth,
+// in which `repeatNumber` of the total `depthRepeat` we should add.
+func trickleDepthInfo(node *h.FSNodeOverDag, maxlinks int) (depth int, repeatNumber int) {
 	n := node.NumChildren()
+
 	if n < maxlinks {
+		// We didn't even added the initial `maxlinks` leaf nodes (`FillNodeLayer`).
 		return 0, 0
 	}
 
-	return ((n - maxlinks) / layerRepeat) + 1, (n - maxlinks) % layerRepeat
+	nonLeafChildren := n - maxlinks
+	// The number of non-leaf child nodes added in `fillTrickleRec` (after
+	// the `FillNodeLayer` call).
+
+	depth = nonLeafChildren/depthRepeat + 1
+	// "Deduplicate" the added `depthRepeat` sub-graphs at each depth
+	// (rounding it up since we may be on an unfinished depth with less
+	// than `depthRepeat` sub-graphs).
+
+	repeatNumber = nonLeafChildren % depthRepeat
+	// What's left after taking full depths of `depthRepeat` sub-graphs
+	// is the current `repeatNumber` we're at (this fractional part is
+	// what we rounded up before).
+
+	return
 }
 
 // VerifyParams is used by VerifyTrickleDagStructure
