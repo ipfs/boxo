@@ -143,7 +143,7 @@ func (rp *Republisher) Run(lastPublished cid.Cid) {
 			}
 
 			// Avoid publishing duplicate values
-			if !lastPublished.Equals(toPublish) {
+			if lastPublished.Equals(toPublish) {
 				toPublish = cid.Undef
 			}
 		case <-quick.C:
