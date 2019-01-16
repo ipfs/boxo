@@ -101,33 +101,35 @@ func Append(ctx context.Context, basen ipld.Node, db *h.DagBuilderHelper) (out i
 	}
 
 	// Get depth of this 'tree'
-	n, layerProgress := trickleDepthInfo(fsn, db.Maxlinks())
-	if n == 0 {
+	depth, repeatNumber := trickleDepthInfo(fsn, db.Maxlinks())
+	if depth == 0 {
 		// If direct blocks not filled...
 		if err := db.FillNodeLayer(fsn); err != nil {
 			return nil, err
 		}
 
 		if db.Done() {
+			// TODO: If `FillNodeLayer` stop `Commit`ing this should be
+			// the place (besides the function end) to call it.
 			return fsn.GetDagNode()
 		}
 
 		// If continuing, our depth has increased by one
-		n++
+		depth++
 	}
 
-	// Last child in this node may not be a full tree, lets file it up
-	if err := appendFillLastChild(ctx, fsn, n-1, layerProgress, db); err != nil {
+	// Last child in this node may not be a full tree, lets fill it up.
+	if err := appendFillLastChild(ctx, fsn, depth-1, repeatNumber, db); err != nil {
 		return nil, err
 	}
 
 	// after appendFillLastChild, our depth is now increased by one
 	if !db.Done() {
-		n++
+		depth++
 	}
 
 	// Now, continue filling out tree like normal
-	for i := n; !db.Done(); i++ {
+	for i := depth; !db.Done(); i++ {
 		for j := 0; j < depthRepeat && !db.Done(); j++ {
 			nextChild := db.NewFSNodeOverDag(ft.TFile)
 			childNode, childFileSize, err := fillTrickleRec(db, nextChild, i)
@@ -147,10 +149,13 @@ func Append(ctx context.Context, basen ipld.Node, db *h.DagBuilderHelper) (out i
 	return fsn.GetDagNode()
 }
 
-func appendFillLastChild(ctx context.Context, fsn *h.FSNodeOverDag, depth int, layerFill int, db *h.DagBuilderHelper) error {
+func appendFillLastChild(ctx context.Context, fsn *h.FSNodeOverDag, depth int, repeatNumber int, db *h.DagBuilderHelper) error {
 	if fsn.NumChildren() <= db.Maxlinks() {
 		return nil
 	}
+	// TODO: Why do we need this check, didn't the caller already take
+	// care of this?
+
 	// Recursive step, grab last child
 	last := fsn.NumChildren() - 1
 	lastChild, err := fsn.GetChild(ctx, last, db.GetDagServ())
@@ -159,14 +164,14 @@ func appendFillLastChild(ctx context.Context, fsn *h.FSNodeOverDag, depth int, l
 	}
 
 	// Fill out last child (may not be full tree)
-	nchild, nchildSize, err := appendRec(ctx, lastChild, db, depth-1)
+	newChild, nchildSize, err := appendRec(ctx, lastChild, db, depth-1)
 	if err != nil {
 		return err
 	}
 
 	// Update changed child in parent node
 	fsn.RemoveChild(last, db)
-	filledNode, err := nchild.Commit()
+	filledNode, err := newChild.Commit()
 	if err != nil {
 		return err
 	}
@@ -176,8 +181,8 @@ func appendFillLastChild(ctx context.Context, fsn *h.FSNodeOverDag, depth int, l
 	}
 
 	// Partially filled depth layer
-	if layerFill != 0 {
-		for ; layerFill < depthRepeat && !db.Done(); layerFill++ {
+	if repeatNumber != 0 {
+		for ; repeatNumber < depthRepeat && !db.Done(); repeatNumber++ {
 			nextChild := db.NewFSNodeOverDag(ft.TFile)
 			childNode, childFileSize, err := fillTrickleRec(db, nextChild, depth)
 			if err != nil {
@@ -194,37 +199,38 @@ func appendFillLastChild(ctx context.Context, fsn *h.FSNodeOverDag, depth int, l
 }
 
 // recursive call for Append
-func appendRec(ctx context.Context, fsn *h.FSNodeOverDag, db *h.DagBuilderHelper, depth int) (*h.FSNodeOverDag, uint64, error) {
-	if depth == 0 || db.Done() {
+func appendRec(ctx context.Context, fsn *h.FSNodeOverDag, db *h.DagBuilderHelper, maxDepth int) (*h.FSNodeOverDag, uint64, error) {
+	if maxDepth == 0 || db.Done() {
 		return fsn, fsn.FileSize(), nil
 	}
 
 	// Get depth of this 'tree'
-	n, layerProgress := trickleDepthInfo(fsn, db.Maxlinks())
-	if n == 0 {
+	depth, repeatNumber := trickleDepthInfo(fsn, db.Maxlinks())
+	if depth == 0 {
 		// If direct blocks not filled...
 		if err := db.FillNodeLayer(fsn); err != nil {
 			return nil, 0, err
 		}
-		n++
+		depth++
 	}
+	// TODO: Same as `appendFillLastChild`, when is this case possible?
 
 	// If at correct depth, no need to continue
-	if n == depth {
+	if depth == maxDepth {
 		return fsn, fsn.FileSize(), nil
 	}
 
-	if err := appendFillLastChild(ctx, fsn, n, layerProgress, db); err != nil {
+	if err := appendFillLastChild(ctx, fsn, depth, repeatNumber, db); err != nil {
 		return nil, 0, err
 	}
 
 	// after appendFillLastChild, our depth is now increased by one
 	if !db.Done() {
-		n++
+		depth++
 	}
 
 	// Now, continue filling out tree like normal
-	for i := n; i < depth && !db.Done(); i++ {
+	for i := depth; i < maxDepth && !db.Done(); i++ {
 		for j := 0; j < depthRepeat && !db.Done(); j++ {
 			nextChild := db.NewFSNodeOverDag(ft.TFile)
 			childNode, childFileSize, err := fillTrickleRec(db, nextChild, i)
