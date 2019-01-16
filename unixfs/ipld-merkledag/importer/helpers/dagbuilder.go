@@ -175,6 +175,8 @@ func (db *DagBuilderHelper) NewLeafNode(data []byte, fsNodeType pb.Data_DataType
 
 // FillNodeLayer will add datanodes as children to the give node until
 // it is full in this layer or no more data.
+// NOTE: This function creates raw data nodes so it only works
+// for the `trickle.Layout`.
 func (db *DagBuilderHelper) FillNodeLayer(node *FSNodeOverDag) error {
 
 	// while we have room AND we're not done
@@ -189,6 +191,8 @@ func (db *DagBuilderHelper) FillNodeLayer(node *FSNodeOverDag) error {
 		}
 	}
 	node.Commit()
+	// TODO: Do we need to commit here? The caller who created the
+	// `FSNodeOverDag` should be in charge of that.
 
 	return nil
 }
@@ -344,7 +348,7 @@ func (n *FSNodeOverDag) RemoveChild(index int, dbh *DagBuilderHelper) {
 // that represents them: the `ft.FSNode` is encoded inside the
 // `dag.ProtoNode`.
 //
-// TODO: Evaluate making it read-only after committing.
+// TODO: Make it read-only after committing, allow to commit only once.
 func (n *FSNodeOverDag) Commit() (ipld.Node, error) {
 	fileData, err := n.file.GetBytes()
 	if err != nil {
@@ -375,6 +379,8 @@ func (n *FSNodeOverDag) SetFileData(fileData []byte) {
 
 // GetDagNode fills out the proper formatting for the FSNodeOverDag node
 // inside of a DAG node and returns the dag node.
+// TODO: Check if we have committed (passed the UnixFS information
+// to the DAG layer) before returning this.
 func (n *FSNodeOverDag) GetDagNode() (ipld.Node, error) {
 	return n.dag, nil
 }
