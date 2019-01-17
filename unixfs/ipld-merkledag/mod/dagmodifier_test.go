@@ -453,6 +453,11 @@ func TestDagSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	_, err = dagmod.Seek(0, io.SeekStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	out, err := ioutil.ReadAll(dagmod)
 	if err != nil {
 		t.Fatal(err)
