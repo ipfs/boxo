@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"io/ioutil"
 
 	ipld "github.com/ipfs/go-ipld-format"
 	mdag "github.com/ipfs/go-merkledag"
@@ -247,21 +246,89 @@ func (dr *dagReader) readNodeDataBuffer(out []byte) int {
 	return n
 }
 
-// WriteTo writes to the given writer.
+// Similar to `readNodeDataBuffer` but it writes the contents to
+// an `io.Writer` argument.
 //
-// TODO: Improve performance. It would be better to progressively
-// write each node to the writer on every visit instead of allocating
-// a huge buffer, that would imply defining a `Visitor` very similar
-// to the one used in `CtxReadFull` (that would write to the `io.Writer`
-// instead of the reading into the `currentNodeData` buffer). More
-// consideration is needed to restructure those two `Visitor` functions
-// to avoid repeating code.
-func (dr *dagReader) WriteTo(w io.Writer) (int64, error) {
-	writeBuf, err := ioutil.ReadAll(dr)
+// TODO: Check what part of the logic between the two functions
+// can be extracted away.
+func (dr *dagReader) writeNodeDataBuffer(w io.Writer) (int64, error) {
+
+	n, err := dr.currentNodeData.WriteTo(w)
 	if err != nil {
-		return 0, err
+		return n, err
 	}
-	return bytes.NewReader(writeBuf).WriteTo(w)
+
+	if dr.currentNodeData.Len() == 0 {
+		dr.currentNodeData = nil
+		// Signal that the buffer was consumed (for later `Read` calls).
+		// This shouldn't return an EOF error as it's just the end of a
+		// single node's data, not the entire DAG.
+	}
+
+	dr.offset += int64(n)
+	return n, nil
+}
+
+// WriteTo writes to the given writer.
+// This follows the `bytes.Reader.WriteTo` implementation
+// where it starts from the internal index that may have
+// been modified by other `Read` calls.
+//
+// TODO: This implementation is very similar to `CtxReadFull`,
+// the common parts should be abstracted away.
+func (dr *dagReader) WriteTo(w io.Writer) (n int64, err error) {
+	// Use the internal reader's context to fetch the child node promises
+	// (see `ipld.NavigableIPLDNode.FetchChild` for details).
+	dr.dagWalker.SetContext(dr.ctx)
+
+	// If there was a partially read buffer from the last visited
+	// node read it before visiting a new one.
+	if dr.currentNodeData != nil {
+		n, err = dr.writeNodeDataBuffer(w)
+		if err != nil {
+			return n, err
+		}
+	}
+
+	// Iterate the DAG calling the passed `Visitor` function on every node
+	// to read its data into the `out` buffer, stop if there is an error or
+	// if the entire DAG is traversed (`EndOfDag`).
+	err = dr.dagWalker.Iterate(func(visitedNode ipld.NavigableNode) error {
+		node := ipld.ExtractIPLDNode(visitedNode)
+
+		// Skip internal nodes, they shouldn't have any file data
+		// (see the `balanced` package for more details).
+		if len(node.Links()) > 0 {
+			return nil
+		}
+
+		err = dr.saveNodeData(node)
+		if err != nil {
+			return err
+		}
+		// Save the leaf node file data in a buffer in case it is only
+		// partially read now and future `CtxReadFull` calls reclaim the
+		// rest (as each node is visited only once during `Iterate`).
+
+		written, err := dr.writeNodeDataBuffer(w)
+		n += written
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err == ipld.EndOfDag {
+		return n, io.EOF
+		// Reached the end of the (DAG) file, no more data to read.
+		// TODO: Is this a correct return error for `WriteTo`?
+	} else if err != nil {
+		return n, err
+		// Pass along any other errors from the `Visitor`.
+	}
+
+	return n, nil
 }
 
 // Close the reader (cancelling fetch node operations requested with
