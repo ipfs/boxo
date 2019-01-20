@@ -6,7 +6,6 @@ package blockservice
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 
@@ -150,8 +149,7 @@ func (s *blockService) AddBlock(o blocks.Block) error {
 	log.Event(context.TODO(), "BlockService.BlockAdded", c)
 
 	if err := s.exchange.HasBlock(o); err != nil {
-		// TODO(#4623): really an error?
-		return errors.New("blockservice is closed")
+		log.Errorf("HasBlock: %s", err.Error())
 	}
 
 	return nil
@@ -189,8 +187,7 @@ func (s *blockService) AddBlocks(bs []blocks.Block) error {
 	for _, o := range toput {
 		log.Event(context.TODO(), "BlockService.BlockAdded", o.Cid())
 		if err := s.exchange.HasBlock(o); err != nil {
-			// TODO(#4623): Should this really *return*?
-			return fmt.Errorf("blockservice is closed (%s)", err)
+			log.Errorf("HasBlock: %s", err.Error())
 		}
 	}
 	return nil
