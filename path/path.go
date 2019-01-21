@@ -106,7 +106,7 @@ func ParsePath(txt string) (Path, error) {
 	// if the path doesnt begin with a '/'
 	// we expect this to start with a hash, and be an 'ipfs' path
 	if parts[0] != "" {
-		if _, err := ParseCidToPath(parts[0]); err != nil {
+		if _, err := cid.Decode(parts[0]); err != nil {
 			return "", ErrBadPath
 		}
 		// The case when the path starts with hash without a protocol prefix
@@ -117,11 +117,17 @@ func ParsePath(txt string) (Path, error) {
 		return "", ErrBadPath
 	}
 
-	if parts[1] == "ipfs" {
-		if _, err := ParseCidToPath(parts[2]); err != nil {
+	//TODO: make this smarter
+	switch parts[1] {
+	case "ipfs", "ipld":
+		// Validate Cid.
+		_, err := cid.Decode(parts[2])
+		if err != nil {
 			return "", err
 		}
-	} else if parts[1] != "ipns" && parts[1] != "ipld" { //TODO: make this smarter
+	case "ipns":
+		// No validation.
+	default:
 		return "", ErrBadPath
 	}
 

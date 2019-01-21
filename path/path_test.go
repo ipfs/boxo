@@ -18,9 +18,14 @@ func TestPathParsing(t *testing.T) {
 		"QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":                   true,
 		"/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":                  false,
 		"/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a":                false,
-		"/ipfs/": false,
-		"ipfs/":  false,
+		"/ipfs/foo": false,
+		"/ipfs/":    false,
+		"ipfs/":     false,
 		"ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n": false,
+		"/ipld/foo": false,
+		"/ipld/":    false,
+		"ipld/":     false,
+		"ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n": false,
 	}
 
 	for p, expected := range cases {
