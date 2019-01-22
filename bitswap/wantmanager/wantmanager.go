@@ -83,30 +83,66 @@ func (wm *WantManager) CancelWants(ctx context.Context, ks []cid.Cid, peers []pe
 
 // IsWanted returns whether a CID is currently wanted.
 func (wm *WantManager) IsWanted(c cid.Cid) bool {
-	resp := make(chan bool)
-	wm.wantMessages <- &isWantedMessage{c, resp}
-	return <-resp
+	resp := make(chan bool, 1)
+	select {
+	case wm.wantMessages <- &isWantedMessage{c, resp}:
+	case <-wm.ctx.Done():
+		return false
+	}
+	select {
+	case wanted := <-resp:
+		return wanted
+	case <-wm.ctx.Done():
+		return false
+	}
 }
 
 // CurrentWants returns the list of current wants.
 func (wm *WantManager) CurrentWants() []*wantlist.Entry {
-	resp := make(chan []*wantlist.Entry)
-	wm.wantMessages <- &currentWantsMessage{resp}
-	return <-resp
+	resp := make(chan []*wantlist.Entry, 1)
+	select {
+	case wm.wantMessages <- &currentWantsMessage{resp}:
+	case <-wm.ctx.Done():
+		return nil
+	}
+	select {
+	case wantlist := <-resp:
+		return wantlist
+	case <-wm.ctx.Done():
+		return nil
+	}
 }
 
 // CurrentBroadcastWants returns the current list of wants that are broadcasts.
 func (wm *WantManager) CurrentBroadcastWants() []*wantlist.Entry {
-	resp := make(chan []*wantlist.Entry)
-	wm.wantMessages <- &currentBroadcastWantsMessage{resp}
-	return <-resp
+	resp := make(chan []*wantlist.Entry, 1)
+	select {
+	case wm.wantMessages <- &currentBroadcastWantsMessage{resp}:
+	case <-wm.ctx.Done():
+		return nil
+	}
+	select {
+	case wl := <-resp:
+		return wl
+	case <-wm.ctx.Done():
+		return nil
+	}
 }
 
 // WantCount returns the total count of wants.
 func (wm *WantManager) WantCount() int {
-	resp := make(chan int)
-	wm.wantMessages <- &wantCountMessage{resp}
-	return <-resp
+	resp := make(chan int, 1)
+	select {
+	case wm.wantMessages <- &wantCountMessage{resp}:
+	case <-wm.ctx.Done():
+		return 0
+	}
+	select {
+	case count := <-resp:
+		return count
+	case <-wm.ctx.Done():
+		return 0
+	}
 }
 
 // Startup starts processing for the WantManager.

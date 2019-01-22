@@ -51,7 +51,7 @@ func New(ctx context.Context) *SessionRequestSplitter {
 // SplitRequest splits a request for the given cids one or more times among the
 // given peers.
 func (srs *SessionRequestSplitter) SplitRequest(peers []peer.ID, ks []cid.Cid) []*PartialRequest {
-	resp := make(chan []*PartialRequest)
+	resp := make(chan []*PartialRequest, 1)
 
 	select {
 	case srs.messages <- &splitRequestMessage{peers, ks, resp}:
