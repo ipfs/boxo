@@ -2,6 +2,7 @@ package providerquerymanager
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -31,6 +32,7 @@ type ProviderQueryNetwork interface {
 }
 
 type providerQueryMessage interface {
+	debugMessage() string
 	handle(pqm *ProviderQueryManager)
 }
 
@@ -192,6 +194,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 				return
 			}
 
+			log.Debugf("Beginning Find Provider Request for cid: %s", k.String())
 			pqm.timeoutMutex.RLock()
 			findProviderCtx, cancel := context.WithTimeout(pqm.ctx, pqm.findProviderTimeout)
 			pqm.timeoutMutex.RUnlock()
@@ -273,8 +276,6 @@ func (pqm *ProviderQueryManager) cleanupInProcessRequests() {
 }
 
 func (pqm *ProviderQueryManager) run() {
-	defer close(pqm.incomingFindProviderRequests)
-	defer close(pqm.providerRequestsProcessing)
 	defer pqm.cleanupInProcessRequests()
 
 	go pqm.providerRequestBufferWorker()
@@ -285,11 +286,16 @@ func (pqm *ProviderQueryManager) run() {
 	for {
 		select {
 		case nextMessage := <-pqm.providerQueryMessages:
+			log.Debug(nextMessage.debugMessage())
 			nextMessage.handle(pqm)
 		case <-pqm.ctx.Done():
 			return
 		}
 	}
+}
+
+func (rpm *receivedProviderMessage) debugMessage() string {
+	return fmt.Sprintf("Received provider (%s) for cid (%s)", rpm.p.String(), rpm.k.String())
 }
 
 func (rpm *receivedProviderMessage) handle(pqm *ProviderQueryManager) {
@@ -308,6 +314,10 @@ func (rpm *receivedProviderMessage) handle(pqm *ProviderQueryManager) {
 	}
 }
 
+func (fpqm *finishedProviderQueryMessage) debugMessage() string {
+	return fmt.Sprintf("Finished Provider Query on cid: %s", fpqm.k.String())
+}
+
 func (fpqm *finishedProviderQueryMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[fpqm.k]
 	if !ok {
@@ -318,6 +328,10 @@ func (fpqm *finishedProviderQueryMessage) handle(pqm *ProviderQueryManager) {
 		close(listener)
 	}
 	delete(pqm.inProgressRequestStatuses, fpqm.k)
+}
+
+func (npqm *newProvideQueryMessage) debugMessage() string {
+	return fmt.Sprintf("New Provider Query on cid: %s from session: %d", npqm.k.String(), npqm.ses)
 }
 
 func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
@@ -341,6 +355,10 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 	}:
 	case <-pqm.ctx.Done():
 	}
+}
+
+func (crm *cancelRequestMessage) debugMessage() string {
+	return fmt.Sprintf("Cancel provider query on cid: %s from session: %d", crm.k.String(), crm.ses)
 }
 
 func (crm *cancelRequestMessage) handle(pqm *ProviderQueryManager) {
