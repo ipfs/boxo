@@ -82,7 +82,7 @@ func (spm *SessionPeerManager) RecordPeerRequests(p []peer.ID, ks []cid.Cid) {
 func (spm *SessionPeerManager) GetOptimizedPeers() []peer.ID {
 	// right now this just returns all peers, but soon we might return peers
 	// ordered by optimization, or only a subset
-	resp := make(chan []peer.ID)
+	resp := make(chan []peer.ID, 1)
 	select {
 	case spm.peerMessages <- &peerReqMessage{resp}:
 	case <-spm.ctx.Done():
@@ -108,11 +108,16 @@ func (spm *SessionPeerManager) FindMorePeers(ctx context.Context, c cid.Cid) {
 		// - share peers between sessions based on interest set
 		for p := range spm.network.FindProvidersAsync(ctx, k, 10) {
 			go func(p peer.ID) {
+				// TODO: Also use context from spm.
 				err := spm.network.ConnectTo(ctx, p)
 				if err != nil {
 					log.Debugf("failed to connect to provider %s: %s", p, err)
 				}
-				spm.peerMessages <- &peerFoundMessage{p}
+				select {
+				case spm.peerMessages <- &peerFoundMessage{p}:
+				case <-ctx.Done():
+				case <-spm.ctx.Done():
+				}
 			}(p)
 		}
 	}(c)
