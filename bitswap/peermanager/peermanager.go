@@ -59,9 +59,18 @@ func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
 
 // ConnectedPeers returns a list of peers this PeerManager is managing.
 func (pm *PeerManager) ConnectedPeers() []peer.ID {
-	resp := make(chan []peer.ID)
-	pm.peerMessages <- &getPeersMessage{resp}
-	return <-resp
+	resp := make(chan []peer.ID, 1)
+	select {
+	case pm.peerMessages <- &getPeersMessage{resp}:
+	case <-pm.ctx.Done():
+		return nil
+	}
+	select {
+	case peers := <-resp:
+		return peers
+	case <-pm.ctx.Done():
+		return nil
+	}
 }
 
 // Connected is called to add a new peer to the pool, and send it an initial set

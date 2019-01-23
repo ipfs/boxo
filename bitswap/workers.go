@@ -217,11 +217,15 @@ func (bs *Bitswap) rebroadcastWorker(parent context.Context) {
 			// TODO: come up with a better strategy for determining when to search
 			// for new providers for blocks.
 			i := rand.Intn(len(entries))
-			bs.findKeys <- &blockRequest{
+			select {
+			case bs.findKeys <- &blockRequest{
 				Cid: entries[i].Cid,
 				Ctx: ctx,
+			}:
+			case <-ctx.Done():
+				return
 			}
-		case <-parent.Done():
+		case <-ctx.Done():
 			return
 		}
 	}
