@@ -37,6 +37,19 @@ func TestPathParsing(t *testing.T) {
 	}
 }
 
+func TestNoComponents(t *testing.T) {
+	for _, s := range []string{
+		"/ipfs/",
+		"/ipns/",
+		"/ipld/",
+	} {
+		_, err := ParsePath(s)
+		if err != ErrNoComponents {
+			t.Errorf("expected ErrNoComponents, got %s", err)
+		}
+	}
+}
+
 func TestIsJustAKey(t *testing.T) {
 	cases := map[string]bool{
 		"QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":           true,
