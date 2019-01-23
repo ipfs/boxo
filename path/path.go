@@ -120,13 +120,18 @@ func ParsePath(txt string) (Path, error) {
 	//TODO: make this smarter
 	switch parts[1] {
 	case "ipfs", "ipld":
+		if parts[2] == "" {
+			return "", ErrNoComponents
+		}
 		// Validate Cid.
 		_, err := cid.Decode(parts[2])
 		if err != nil {
 			return "", err
 		}
 	case "ipns":
-		// No validation.
+		if parts[2] == "" {
+			return "", ErrNoComponents
+		}
 	default:
 		return "", ErrBadPath
 	}
