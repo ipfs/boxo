@@ -272,3 +272,29 @@ func TestRateLimitingRequests(t *testing.T) {
 		t.Fatal("Did not make all seperate requests")
 	}
 }
+
+func TestFindProviderTimeout(t *testing.T) {
+	peers := testutil.GeneratePeers(10)
+	fpn := &fakeProviderNetwork{
+		peersFound: peers,
+		delay:      1 * time.Millisecond,
+	}
+	ctx := context.Background()
+	providerQueryManager := New(ctx, fpn)
+	providerQueryManager.Startup()
+	providerQueryManager.SetFindProviderTimeout(3 * time.Millisecond)
+	keys := testutil.GenerateCids(1)
+	sessionID1 := testutil.GenerateSessionID()
+
+	sessionCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[0], sessionID1)
+	var firstPeersReceived []peer.ID
+	for p := range firstRequestChan {
+		firstPeersReceived = append(firstPeersReceived, p)
+	}
+	if len(firstPeersReceived) <= 0 ||
+		len(firstPeersReceived) >= len(peers) {
+		t.Fatal("Find provider request should have timed out, did not")
+	}
+}

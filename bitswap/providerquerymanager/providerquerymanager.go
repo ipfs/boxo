@@ -3,6 +3,7 @@ package providerquerymanager
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
@@ -14,6 +15,7 @@ var log = logging.Logger("bitswap")
 const (
 	maxProviders         = 10
 	maxInProcessRequests = 6
+	defaultTimeout       = 10 * time.Second
 )
 
 type inProgressRequestStatus struct {
@@ -58,17 +60,19 @@ type cancelRequestMessage struct {
 // simultaneously
 // - connect to found peers and filter them if it can't connect
 // - ensure two findprovider calls for the same block don't run concurrently
-// TODO:
 // - manage timeouts
 type ProviderQueryManager struct {
-	ctx                   context.Context
-	network               ProviderQueryNetwork
-	providerQueryMessages chan providerQueryMessage
-
-	// do not touch outside the run loop
+	ctx                          context.Context
+	network                      ProviderQueryNetwork
+	providerQueryMessages        chan providerQueryMessage
 	providerRequestsProcessing   chan cid.Cid
 	incomingFindProviderRequests chan cid.Cid
-	inProgressRequestStatuses    map[cid.Cid]*inProgressRequestStatus
+
+	findProviderTimeout time.Duration
+	timeoutMutex        sync.RWMutex
+
+	// do not touch outside the run loop
+	inProgressRequestStatuses map[cid.Cid]*inProgressRequestStatus
 }
 
 // New initializes a new ProviderQueryManager for a given context and a given
@@ -81,6 +85,7 @@ func New(ctx context.Context, network ProviderQueryNetwork) *ProviderQueryManage
 		providerRequestsProcessing:   make(chan cid.Cid),
 		incomingFindProviderRequests: make(chan cid.Cid),
 		inProgressRequestStatuses:    make(map[cid.Cid]*inProgressRequestStatus),
+		findProviderTimeout:          defaultTimeout,
 	}
 }
 
@@ -92,6 +97,13 @@ func (pqm *ProviderQueryManager) Startup() {
 type inProgressRequest struct {
 	providersSoFar []peer.ID
 	incoming       <-chan peer.ID
+}
+
+// SetFindProviderTimeout changes the timeout for finding providers
+func (pqm *ProviderQueryManager) SetFindProviderTimeout(findProviderTimeout time.Duration) {
+	pqm.timeoutMutex.Lock()
+	pqm.findProviderTimeout = findProviderTimeout
+	pqm.timeoutMutex.Unlock()
 }
 
 // FindProvidersAsync finds providers for the given block.
@@ -180,7 +192,11 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 				return
 			}
 
-			providers := pqm.network.FindProvidersAsync(pqm.ctx, k, maxProviders)
+			pqm.timeoutMutex.RLock()
+			findProviderCtx, cancel := context.WithTimeout(pqm.ctx, pqm.findProviderTimeout)
+			pqm.timeoutMutex.RUnlock()
+			defer cancel()
+			providers := pqm.network.FindProvidersAsync(findProviderCtx, k, maxProviders)
 			wg := &sync.WaitGroup{}
 			for p := range providers {
 				wg.Add(1)
