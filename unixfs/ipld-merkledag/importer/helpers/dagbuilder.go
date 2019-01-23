@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 
@@ -16,6 +17,8 @@ import (
 	pi "github.com/ipfs/go-ipfs-posinfo"
 	ipld "github.com/ipfs/go-ipld-format"
 )
+
+var ErrMissingFsRef = errors.New("missing file path or URL, can't create filestore reference")
 
 // DagBuilderHelper wraps together a bunch of objects needed to
 // efficiently create unixfs dag trees
@@ -71,7 +74,7 @@ type DagBuilderParams struct {
 
 // New generates a new DagBuilderHelper from the given params and a given
 // chunker.Splitter as data source.
-func (dbp *DagBuilderParams) New(spl chunker.Splitter) *DagBuilderHelper {
+func (dbp *DagBuilderParams) New(spl chunker.Splitter) (*DagBuilderHelper, error) {
 	db := &DagBuilderHelper{
 		dserv:      dbp.Dagserv,
 		spl:        spl,
@@ -87,7 +90,12 @@ func (dbp *DagBuilderParams) New(spl chunker.Splitter) *DagBuilderHelper {
 	if dbp.URL != "" && dbp.NoCopy {
 		db.fullPath = dbp.URL
 	}
-	return db
+
+	if dbp.NoCopy && db.fullPath == "" { // Enforce NoCopy
+		return nil, ErrMissingFsRef
+	}
+
+	return db, nil
 }
 
 // prepareNext consumes the next item from the splitter and puts it
