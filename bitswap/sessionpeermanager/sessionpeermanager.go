@@ -8,7 +8,6 @@ import (
 	logging "github.com/ipfs/go-log"
 
 	cid "github.com/ipfs/go-cid"
-	ifconnmgr "github.com/libp2p/go-libp2p-interface-connmgr"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 
@@ -19,11 +18,15 @@ const (
 	reservePeers      = 2
 )
 
-// PeerNetwork is an interface for finding providers and managing connections
-type PeerNetwork interface {
-	ConnectionManager() ifconnmgr.ConnManager
-	ConnectTo(context.Context, peer.ID) error
-	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.ID
+// PeerTagger is an interface for tagging peers with metadata
+type PeerTagger interface {
+	TagPeer(peer.ID, string, int)
+	UntagPeer(p peer.ID, tag string)
+}
+
+// PeerProviderFinder is an interface for finding providers
+type PeerProviderFinder interface {
+	FindProvidersAsync(context.Context, cid.Cid, uint64) <-chan peer.ID
 }
 
 type peerMessage interface {
@@ -33,9 +36,11 @@ type peerMessage interface {
 // SessionPeerManager tracks and manages peers for a session, and provides
 // the best ones to the session
 type SessionPeerManager struct {
-	ctx     context.Context
-	network PeerNetwork
-	tag     string
+	ctx            context.Context
+	tagger         PeerTagger
+	providerFinder PeerProviderFinder
+	tag            string
+	id             uint64
 
 	peerMessages chan peerMessage
 
@@ -46,12 +51,14 @@ type SessionPeerManager struct {
 }
 
 // New creates a new SessionPeerManager
-func New(ctx context.Context, id uint64, network PeerNetwork) *SessionPeerManager {
+func New(ctx context.Context, id uint64, tagger PeerTagger, providerFinder PeerProviderFinder) *SessionPeerManager {
 	spm := &SessionPeerManager{
-		ctx:          ctx,
-		network:      network,
-		peerMessages: make(chan peerMessage, 16),
-		activePeers:  make(map[peer.ID]bool),
+		id:             id,
+		ctx:            ctx,
+		tagger:         tagger,
+		providerFinder: providerFinder,
+		peerMessages:   make(chan peerMessage, 16),
+		activePeers:    make(map[peer.ID]bool),
 	}
 
 	spm.tag = fmt.Sprint("bs-ses-", id)
@@ -101,24 +108,13 @@ func (spm *SessionPeerManager) GetOptimizedPeers() []peer.ID {
 // providers for the given Cid
 func (spm *SessionPeerManager) FindMorePeers(ctx context.Context, c cid.Cid) {
 	go func(k cid.Cid) {
-		// TODO: have a task queue setup for this to:
-		// - rate limit
-		// - manage timeouts
-		// - ensure two 'findprovs' calls for the same block don't run concurrently
-		// - share peers between sessions based on interest set
-		for p := range spm.network.FindProvidersAsync(ctx, k, 10) {
-			go func(p peer.ID) {
-				// TODO: Also use context from spm.
-				err := spm.network.ConnectTo(ctx, p)
-				if err != nil {
-					log.Debugf("failed to connect to provider %s: %s", p, err)
-				}
-				select {
-				case spm.peerMessages <- &peerFoundMessage{p}:
-				case <-ctx.Done():
-				case <-spm.ctx.Done():
-				}
-			}(p)
+		for p := range spm.providerFinder.FindProvidersAsync(ctx, k, spm.id) {
+			
+			select {
+			case spm.peerMessages <- &peerFoundMessage{p}:
+			case <-ctx.Done():
+			case <-spm.ctx.Done():
+			}
 		}
 	}(c)
 }
@@ -136,8 +132,7 @@ func (spm *SessionPeerManager) run(ctx context.Context) {
 }
 
 func (spm *SessionPeerManager) tagPeer(p peer.ID) {
-	cmgr := spm.network.ConnectionManager()
-	cmgr.TagPeer(p, spm.tag, 10)
+	spm.tagger.TagPeer(p, spm.tag, 10)
 }
 
 func (spm *SessionPeerManager) insertOptimizedPeer(p peer.ID) {
@@ -223,8 +218,7 @@ func (prm *peerReqMessage) handle(spm *SessionPeerManager) {
 }
 
 func (spm *SessionPeerManager) handleShutdown() {
-	cmgr := spm.network.ConnectionManager()
 	for p := range spm.activePeers {
-		cmgr.UntagPeer(p, spm.tag)
+		spm.tagger.UntagPeer(p, spm.tag)
 	}
 }
