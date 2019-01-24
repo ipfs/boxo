@@ -14,10 +14,12 @@ type ReaderFile struct {
 	abspath string
 	reader  io.ReadCloser
 	stat    os.FileInfo
+
+	fsize   int64
 }
 
 func NewBytesFile(b []byte) File {
-	return NewReaderFile(bytes.NewReader(b))
+	return &ReaderFile{"", NewReaderFile(bytes.NewReader(b)), nil, int64(len(b))}
 }
 
 func NewReaderFile(reader io.Reader) File {
@@ -30,7 +32,7 @@ func NewReaderStatFile(reader io.Reader, stat os.FileInfo) File {
 		rc = ioutil.NopCloser(reader)
 	}
 
-	return &ReaderFile{"", rc, stat}
+	return &ReaderFile{"", rc, stat, -1}
 }
 
 func NewReaderPathFile(path string, reader io.ReadCloser, stat os.FileInfo) (*ReaderFile, error) {
@@ -39,7 +41,7 @@ func NewReaderPathFile(path string, reader io.ReadCloser, stat os.FileInfo) (*Re
 		return nil, err
 	}
 
-	return &ReaderFile{abspath, reader, stat}, nil
+	return &ReaderFile{abspath, reader, stat, -1}, nil
 }
 
 func (f *ReaderFile) AbsPath() string {
@@ -60,6 +62,9 @@ func (f *ReaderFile) Stat() os.FileInfo {
 
 func (f *ReaderFile) Size() (int64, error) {
 	if f.stat == nil {
+		if f.fsize >= 0 {
+			return f.fsize, nil
+		}
 		return 0, ErrNotSupported
 	}
 	return f.stat.Size(), nil
