@@ -26,11 +26,17 @@ type fakeWantManager struct {
 }
 
 func (fwm *fakeWantManager) WantBlocks(ctx context.Context, cids []cid.Cid, peers []peer.ID, ses uint64) {
-	fwm.wantReqs <- wantReq{cids, peers}
+	select {
+	case fwm.wantReqs <- wantReq{cids, peers}:
+	case <-ctx.Done():
+	}
 }
 
 func (fwm *fakeWantManager) CancelWants(ctx context.Context, cids []cid.Cid, peers []peer.ID, ses uint64) {
-	fwm.cancelReqs <- wantReq{cids, peers}
+	select {
+	case fwm.cancelReqs <- wantReq{cids, peers}:
+	case <-ctx.Done():
+	}
 }
 
 type fakePeerManager struct {
@@ -39,8 +45,11 @@ type fakePeerManager struct {
 	findMorePeersRequested chan struct{}
 }
 
-func (fpm *fakePeerManager) FindMorePeers(context.Context, cid.Cid) {
-	fpm.findMorePeersRequested <- struct{}{}
+func (fpm *fakePeerManager) FindMorePeers(ctx context.Context, k cid.Cid) {
+	select {
+	case fpm.findMorePeersRequested <- struct{}{}:
+	case <-ctx.Done():
+	}
 }
 
 func (fpm *fakePeerManager) GetOptimizedPeers() []peer.ID {
@@ -105,10 +114,20 @@ func TestSessionGetBlocks(t *testing.T) {
 	var receivedBlocks []blocks.Block
 	for i, p := range peers {
 		session.ReceiveBlockFrom(p, blks[testutil.IndexOf(blks, receivedWantReq.cids[i])])
-		receivedBlock := <-getBlocksCh
-		receivedBlocks = append(receivedBlocks, receivedBlock)
-		cancelBlock := <-cancelReqs
-		newCancelReqs = append(newCancelReqs, cancelBlock)
+		select {
+		case cancelBlock := <-cancelReqs:
+			newCancelReqs = append(newCancelReqs, cancelBlock)
+		case <-ctx.Done():
+			t.Fatal("did not cancel block want")
+		}
+
+		select {
+		case receivedBlock := <-getBlocksCh:
+			receivedBlocks = append(receivedBlocks, receivedBlock)
+		case <-ctx.Done():
+			t.Fatal("Did not receive block!")
+		}
+
 		select {
 		case wantBlock := <-wantReqs:
 			newBlockReqs = append(newBlockReqs, wantBlock)
@@ -169,7 +188,7 @@ func TestSessionGetBlocks(t *testing.T) {
 
 func TestSessionFindMorePeers(t *testing.T) {
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 900*time.Millisecond)
 	defer cancel()
 	wantReqs := make(chan wantReq, 1)
 	cancelReqs := make(chan wantReq, 1)
@@ -191,26 +210,51 @@ func TestSessionFindMorePeers(t *testing.T) {
 	}
 
 	// clear the initial block of wants
-	<-wantReqs
+	select {
+	case <-wantReqs:
+	case <-ctx.Done():
+		t.Fatal("Did not make first want request ")
+	}
 
 	// receive a block to trigger a tick reset
-	time.Sleep(200 * time.Microsecond)
+	time.Sleep(20 * time.Millisecond) // need to make sure some latency registers
+	// or there will be no tick set -- time precision on Windows in go is in the
+	// millisecond range
 	p := testutil.GeneratePeers(1)[0]
 	session.ReceiveBlockFrom(p, blks[0])
-	<-getBlocksCh
-	<-wantReqs
-	<-cancelReqs
-
-	// wait for a request to get more peers to occur
-	<-fpm.findMorePeersRequested
+	select {
+	case <-cancelReqs:
+	case <-ctx.Done():
+		t.Fatal("Did not cancel block")
+	}
+	select {
+	case <-getBlocksCh:
+	case <-ctx.Done():
+		t.Fatal("Did not get block")
+	}
+	select {
+	case <-wantReqs:
+	case <-ctx.Done():
+		t.Fatal("Did not make second want request ")
+	}
 
 	// verify a broadcast was made
-	receivedWantReq := <-wantReqs
-	if len(receivedWantReq.cids) < broadcastLiveWantsLimit {
-		t.Fatal("did not rebroadcast whole live list")
+	select {
+	case receivedWantReq := <-wantReqs:
+		if len(receivedWantReq.cids) < broadcastLiveWantsLimit {
+			t.Fatal("did not rebroadcast whole live list")
+		}
+		if receivedWantReq.peers != nil {
+			t.Fatal("did not make a broadcast")
+		}
+	case <-ctx.Done():
+		t.Fatal("Never rebroadcast want list")
 	}
-	if receivedWantReq.peers != nil {
-		t.Fatal("did not make a broadcast")
+
+	// wait for a request to get more peers to occur
+	select {
+	case <-fpm.findMorePeersRequested:
+	case <-ctx.Done():
+		t.Fatal("Did not find more peers")
 	}
-	<-ctx.Done()
 }
