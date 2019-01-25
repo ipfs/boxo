@@ -8,18 +8,18 @@ import (
 	"time"
 )
 
-type Writer struct {
+type TarWriter struct {
 	TarW *tar.Writer
 }
 
 // NewTarWriter wraps given io.Writer into a new tar writer
-func NewTarWriter(w io.Writer) (*Writer, error) {
-	return &Writer{
+func NewTarWriter(w io.Writer) (*TarWriter, error) {
+	return &TarWriter{
 		TarW: tar.NewWriter(w),
 	}, nil
 }
 
-func (w *Writer) writeDir(f Directory, fpath string) error {
+func (w *TarWriter) writeDir(f Directory, fpath string) error {
 	if err := writeDirHeader(w.TarW, fpath); err != nil {
 		return err
 	}
@@ -33,7 +33,7 @@ func (w *Writer) writeDir(f Directory, fpath string) error {
 	return it.Err()
 }
 
-func (w *Writer) writeFile(f File, fpath string) error {
+func (w *TarWriter) writeFile(f File, fpath string) error {
 	size, err := f.Size()
 	if err != nil {
 		return err
@@ -51,7 +51,7 @@ func (w *Writer) writeFile(f File, fpath string) error {
 }
 
 // WriteNode adds a node to the archive.
-func (w *Writer) WriteFile(nd Node, fpath string) error {
+func (w *TarWriter) WriteFile(nd Node, fpath string) error {
 	switch nd := nd.(type) {
 	case *Symlink:
 		return writeSymlinkHeader(w.TarW, nd.Target, fpath)
@@ -65,7 +65,7 @@ func (w *Writer) WriteFile(nd Node, fpath string) error {
 }
 
 // Close closes the tar writer.
-func (w *Writer) Close() error {
+func (w *TarWriter) Close() error {
 	return w.TarW.Close()
 }
 
