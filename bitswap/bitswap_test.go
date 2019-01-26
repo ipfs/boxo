@@ -533,8 +533,8 @@ func TestWantlistCleanup(t *testing.T) {
 	}
 
 	time.Sleep(time.Millisecond * 50)
-	if len(bswap.GetWantlist()) != 11 {
-		t.Fatal("should have 11 keys in wantlist")
+	if len(bswap.GetWantlist()) != 5 {
+		t.Fatal("should have 5 keys in wantlist")
 	}
 
 	cancel()
