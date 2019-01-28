@@ -472,7 +472,7 @@ func (dr *dagReader) Seek(offset int64, whence int) (int64, error) {
 		// searches in the `Walker` (see `Walker.Seek`).
 
 	case io.SeekEnd:
-		return dr.Seek(int64(dr.Size())-offset, io.SeekStart)
+		return dr.Seek(int64(dr.Size())+offset, io.SeekStart)
 
 	default:
 		return 0, errors.New("invalid whence")
