@@ -320,15 +320,10 @@ func (dr *dagReader) WriteTo(w io.Writer) (n int64, err error) {
 	})
 
 	if err == ipld.EndOfDag {
-		return n, io.EOF
-		// Reached the end of the (DAG) file, no more data to read.
-		// TODO: Is this a correct return error for `WriteTo`?
-	} else if err != nil {
-		return n, err
-		// Pass along any other errors from the `Visitor`.
+		return n, nil
 	}
 
-	return n, nil
+	return n, err
 }
 
 // Close the reader (cancelling fetch node operations requested with
