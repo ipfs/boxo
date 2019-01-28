@@ -107,7 +107,7 @@ func TestRelativeSeek(t *testing.T) {
 		}
 	}
 
-	_, err = reader.Seek(4, io.SeekEnd)
+	_, err = reader.Seek(-4, io.SeekEnd)
 	if err != nil {
 		t.Fatal(err)
 	}
