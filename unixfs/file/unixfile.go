@@ -20,6 +20,7 @@ type ufsDirectory struct {
 	ctx   context.Context
 	dserv ipld.DAGService
 	dir   uio.Directory
+	size  int64
 }
 
 type ufsIterator struct {
@@ -118,12 +119,7 @@ func (d *ufsDirectory) Entries() files.DirIterator {
 }
 
 func (d *ufsDirectory) Size() (int64, error) {
-	n, err := d.dir.GetNode()
-	if err != nil {
-		return 0, err
-	}
-	s, err := n.Size()
-	return int64(s), err
+	return d.size, nil
 }
 
 type ufsFile struct {
@@ -134,8 +130,13 @@ func (f *ufsFile) Size() (int64, error) {
 	return int64(f.DagReader.Size()), nil
 }
 
-func newUnixfsDir(ctx context.Context, dserv ipld.DAGService, nd ipld.Node) (files.Directory, error) {
+func newUnixfsDir(ctx context.Context, dserv ipld.DAGService, nd *dag.ProtoNode) (files.Directory, error) {
 	dir, err := uio.NewDirectoryFromNode(dserv, nd)
+	if err != nil {
+		return nil, err
+	}
+
+	size, err := nd.Size()
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +145,8 @@ func newUnixfsDir(ctx context.Context, dserv ipld.DAGService, nd ipld.Node) (fil
 		ctx:   ctx,
 		dserv: dserv,
 
-		dir: dir,
+		dir:  dir,
+		size: int64(size),
 	}, nil
 }
 
@@ -156,7 +158,7 @@ func NewUnixfsFile(ctx context.Context, dserv ipld.DAGService, nd ipld.Node) (fi
 			return nil, err
 		}
 		if fsn.IsDir() {
-			return newUnixfsDir(ctx, dserv, nd)
+			return newUnixfsDir(ctx, dserv, dn)
 		}
 		if fsn.Type() == ft.TSymlink {
 			return files.NewLinkFile(string(fsn.Data()), nil), nil
