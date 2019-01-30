@@ -211,9 +211,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 		secondPeersReceived = append(secondPeersReceived, p)
 	}
 
-	if len(firstPeersReceived) <= 0 ||
-		len(firstPeersReceived) >= len(peers) ||
-		len(secondPeersReceived) <= 0 ||
+	if len(firstPeersReceived) >= len(peers) ||
 		len(secondPeersReceived) >= len(peers) {
 		t.Fatal("Did not cancel requests in progress correctly")
 	}
