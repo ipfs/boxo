@@ -2,6 +2,7 @@ package sessionpeermanager
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"sync"
 	"testing"
@@ -18,26 +19,39 @@ import (
 type fakePeerNetwork struct {
 	peers       []peer.ID
 	connManager ifconnmgr.ConnManager
+	completed   chan struct{}
+	connect     chan struct{}
 }
 
 func (fpn *fakePeerNetwork) ConnectionManager() ifconnmgr.ConnManager {
 	return fpn.connManager
 }
 
-func (fpn *fakePeerNetwork) ConnectTo(context.Context, peer.ID) error {
-	return nil
+func (fpn *fakePeerNetwork) ConnectTo(ctx context.Context, p peer.ID) error {
+	select {
+	case fpn.connect <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return errors.New("Timeout Occurred")
+	}
 }
 
 func (fpn *fakePeerNetwork) FindProvidersAsync(ctx context.Context, c cid.Cid, num int) <-chan peer.ID {
 	peerCh := make(chan peer.ID)
 	go func() {
-		defer close(peerCh)
 		for _, p := range fpn.peers {
 			select {
 			case peerCh <- p:
 			case <-ctx.Done():
+				close(peerCh)
 				return
 			}
+		}
+		close(peerCh)
+
+		select {
+		case fpn.completed <- struct{}{}:
+		case <-ctx.Done():
 		}
 	}()
 	return peerCh
@@ -55,7 +69,6 @@ func (fcm *fakeConnManager) TagPeer(p peer.ID, tag string, n int) {
 
 func (fcm *fakeConnManager) UntagPeer(p peer.ID, tag string) {
 	defer fcm.wait.Done()
-
 	for i := 0; i < len(fcm.taggedPeers); i++ {
 		if fcm.taggedPeers[i] == p {
 			fcm.taggedPeers[i] = fcm.taggedPeers[len(fcm.taggedPeers)-1]
@@ -63,7 +76,6 @@ func (fcm *fakeConnManager) UntagPeer(p peer.ID, tag string) {
 			return
 		}
 	}
-
 }
 
 func (*fakeConnManager) GetTagInfo(p peer.ID) *ifconnmgr.TagInfo { return nil }
@@ -74,9 +86,12 @@ func TestFindingMorePeers(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	completed := make(chan struct{})
+	connect := make(chan struct{})
+
 	peers := testutil.GeneratePeers(5)
 	fcm := &fakeConnManager{}
-	fpn := &fakePeerNetwork{peers, fcm}
+	fpn := &fakePeerNetwork{peers, fcm, completed, connect}
 	c := testutil.GenerateCids(1)[0]
 	id := testutil.GenerateSessionID()
 
@@ -85,7 +100,20 @@ func TestFindingMorePeers(t *testing.T) {
 	findCtx, findCancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer findCancel()
 	sessionPeerManager.FindMorePeers(ctx, c)
-	<-findCtx.Done()
+	select {
+	case <-completed:
+	case <-findCtx.Done():
+		t.Fatal("Did not finish finding providers")
+	}
+	for range peers {
+		select {
+		case <-connect:
+		case <-findCtx.Done():
+			t.Fatal("Did not connect to peer")
+		}
+	}
+	time.Sleep(2 * time.Millisecond)
+
 	sessionPeers := sessionPeerManager.GetOptimizedPeers()
 	if len(sessionPeers) != len(peers) {
 		t.Fatal("incorrect number of peers found")
@@ -106,7 +134,7 @@ func TestRecordingReceivedBlocks(t *testing.T) {
 	defer cancel()
 	p := testutil.GeneratePeers(1)[0]
 	fcm := &fakeConnManager{}
-	fpn := &fakePeerNetwork{nil, fcm}
+	fpn := &fakePeerNetwork{nil, fcm, nil, nil}
 	c := testutil.GenerateCids(1)[0]
 	id := testutil.GenerateSessionID()
 
@@ -127,17 +155,32 @@ func TestRecordingReceivedBlocks(t *testing.T) {
 
 func TestOrderingPeers(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
 	defer cancel()
 	peers := testutil.GeneratePeers(100)
+	completed := make(chan struct{})
+	connect := make(chan struct{})
 	fcm := &fakeConnManager{}
-	fpn := &fakePeerNetwork{peers, fcm}
+	fpn := &fakePeerNetwork{peers, fcm, completed, connect}
 	c := testutil.GenerateCids(1)
 	id := testutil.GenerateSessionID()
 	sessionPeerManager := New(ctx, id, fpn)
 
 	// add all peers to session
 	sessionPeerManager.FindMorePeers(ctx, c[0])
+	select {
+	case <-completed:
+	case <-ctx.Done():
+		t.Fatal("Did not finish finding providers")
+	}
+	for range peers {
+		select {
+		case <-connect:
+		case <-ctx.Done():
+			t.Fatal("Did not connect to peer")
+		}
+	}
+	time.Sleep(2 * time.Millisecond)
 
 	// record broadcast
 	sessionPeerManager.RecordPeerRequests(nil, c)
@@ -193,15 +236,30 @@ func TestUntaggingPeers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 	defer cancel()
 	peers := testutil.GeneratePeers(5)
+	completed := make(chan struct{})
+	connect := make(chan struct{})
 	fcm := &fakeConnManager{}
-	fpn := &fakePeerNetwork{peers, fcm}
+	fpn := &fakePeerNetwork{peers, fcm, completed, connect}
 	c := testutil.GenerateCids(1)[0]
 	id := testutil.GenerateSessionID()
 
 	sessionPeerManager := New(ctx, id, fpn)
 
 	sessionPeerManager.FindMorePeers(ctx, c)
-	time.Sleep(5 * time.Millisecond)
+	select {
+	case <-completed:
+	case <-ctx.Done():
+		t.Fatal("Did not finish finding providers")
+	}
+	for range peers {
+		select {
+		case <-connect:
+		case <-ctx.Done():
+			t.Fatal("Did not connect to peer")
+		}
+	}
+	time.Sleep(2 * time.Millisecond)
+
 	if len(fcm.taggedPeers) != len(peers) {
 		t.Fatal("Peers were not tagged!")
 	}
