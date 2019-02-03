@@ -60,6 +60,7 @@ func Mv(r *Root, src, dst string) error {
 			_ = dstDir.Unlink(filename)
 		case *Directory:
 			dstDir = n
+			filename = srcFname
 		default:
 			return fmt.Errorf("unexpected type at path: %s", dst)
 		}
