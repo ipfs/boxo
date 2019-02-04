@@ -62,13 +62,11 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	providerQueryManager := New(ctx, fpn)
 	providerQueryManager.Startup()
 	keys := testutil.GenerateCids(2)
-	sessionID1 := testutil.GenerateSessionID()
-	sessionID2 := testutil.GenerateSessionID()
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer cancel()
-	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[0], sessionID1)
-	secondRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[1], sessionID2)
+	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[0])
+	secondRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[1])
 
 	var firstPeersReceived []peer.ID
 	for p := range firstRequestChan {
@@ -102,13 +100,11 @@ func TestDedupingProviderRequests(t *testing.T) {
 	providerQueryManager := New(ctx, fpn)
 	providerQueryManager.Startup()
 	key := testutil.GenerateCids(1)[0]
-	sessionID1 := testutil.GenerateSessionID()
-	sessionID2 := testutil.GenerateSessionID()
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer cancel()
-	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key, sessionID1)
-	secondRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key, sessionID2)
+	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key)
+	secondRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key)
 
 	var firstPeersReceived []peer.ID
 	for p := range firstRequestChan {
@@ -145,16 +141,14 @@ func TestCancelOneRequestDoesNotTerminateAnother(t *testing.T) {
 	providerQueryManager.Startup()
 
 	key := testutil.GenerateCids(1)[0]
-	sessionID1 := testutil.GenerateSessionID()
-	sessionID2 := testutil.GenerateSessionID()
 
 	// first session will cancel before done
 	firstSessionCtx, firstCancel := context.WithTimeout(ctx, 3*time.Millisecond)
 	defer firstCancel()
-	firstRequestChan := providerQueryManager.FindProvidersAsync(firstSessionCtx, key, sessionID1)
+	firstRequestChan := providerQueryManager.FindProvidersAsync(firstSessionCtx, key)
 	secondSessionCtx, secondCancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer secondCancel()
-	secondRequestChan := providerQueryManager.FindProvidersAsync(secondSessionCtx, key, sessionID2)
+	secondRequestChan := providerQueryManager.FindProvidersAsync(secondSessionCtx, key)
 
 	var firstPeersReceived []peer.ID
 	for p := range firstRequestChan {
@@ -193,13 +187,11 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	providerQueryManager.Startup()
 
 	key := testutil.GenerateCids(1)[0]
-	sessionID1 := testutil.GenerateSessionID()
-	sessionID2 := testutil.GenerateSessionID()
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
 	defer cancel()
-	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key, sessionID1)
-	secondRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key, sessionID2)
+	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key)
+	secondRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key)
 
 	var firstPeersReceived []peer.ID
 	for p := range firstRequestChan {
@@ -229,13 +221,11 @@ func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
 	providerQueryManager.Startup()
 
 	key := testutil.GenerateCids(1)[0]
-	sessionID1 := testutil.GenerateSessionID()
-	sessionID2 := testutil.GenerateSessionID()
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
 	defer cancel()
-	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key, sessionID1)
-	secondRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key, sessionID2)
+	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key)
+	secondRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key)
 
 	var firstPeersReceived []peer.ID
 	for p := range firstRequestChan {
@@ -266,12 +256,11 @@ func TestRateLimitingRequests(t *testing.T) {
 	providerQueryManager.Startup()
 
 	keys := testutil.GenerateCids(maxInProcessRequests + 1)
-	sessionID := testutil.GenerateSessionID()
 	sessionCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer cancel()
 	var requestChannels []<-chan peer.ID
 	for i := 0; i < maxInProcessRequests+1; i++ {
-		requestChannels = append(requestChannels, providerQueryManager.FindProvidersAsync(sessionCtx, keys[i], sessionID))
+		requestChannels = append(requestChannels, providerQueryManager.FindProvidersAsync(sessionCtx, keys[i]))
 	}
 	time.Sleep(9 * time.Millisecond)
 	fpn.queriesMadeMutex.Lock()
@@ -303,11 +292,10 @@ func TestFindProviderTimeout(t *testing.T) {
 	providerQueryManager.Startup()
 	providerQueryManager.SetFindProviderTimeout(2 * time.Millisecond)
 	keys := testutil.GenerateCids(1)
-	sessionID1 := testutil.GenerateSessionID()
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer cancel()
-	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[0], sessionID1)
+	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[0])
 	var firstPeersReceived []peer.ID
 	for p := range firstRequestChan {
 		firstPeersReceived = append(firstPeersReceived, p)

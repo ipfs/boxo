@@ -21,7 +21,7 @@ const (
 
 type inProgressRequestStatus struct {
 	providersSoFar []peer.ID
-	listeners      map[uint64]chan peer.ID
+	listeners      map[chan peer.ID]struct{}
 }
 
 // ProviderQueryNetwork is an interface for finding providers and connecting to
@@ -46,14 +46,13 @@ type finishedProviderQueryMessage struct {
 }
 
 type newProvideQueryMessage struct {
-	ses                   uint64
 	k                     cid.Cid
 	inProgressRequestChan chan<- inProgressRequest
 }
 
 type cancelRequestMessage struct {
-	ses uint64
-	k   cid.Cid
+	incomingProviders chan peer.ID
+	k                 cid.Cid
 }
 
 // ProviderQueryManager manages requests to find more providers for blocks
@@ -98,7 +97,7 @@ func (pqm *ProviderQueryManager) Startup() {
 
 type inProgressRequest struct {
 	providersSoFar []peer.ID
-	incoming       <-chan peer.ID
+	incoming       chan peer.ID
 }
 
 // SetFindProviderTimeout changes the timeout for finding providers
@@ -109,12 +108,11 @@ func (pqm *ProviderQueryManager) SetFindProviderTimeout(findProviderTimeout time
 }
 
 // FindProvidersAsync finds providers for the given block.
-func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, k cid.Cid, ses uint64) <-chan peer.ID {
+func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, k cid.Cid) <-chan peer.ID {
 	inProgressRequestChan := make(chan inProgressRequest)
 
 	select {
 	case pqm.providerQueryMessages <- &newProvideQueryMessage{
-		ses:                   ses,
 		k:                     k,
 		inProgressRequestChan: inProgressRequestChan,
 	}:
@@ -131,10 +129,10 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 	case receivedInProgressRequest = <-inProgressRequestChan:
 	}
 
-	return pqm.receiveProviders(sessionCtx, k, ses, receivedInProgressRequest)
+	return pqm.receiveProviders(sessionCtx, k, receivedInProgressRequest)
 }
 
-func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k cid.Cid, ses uint64, receivedInProgressRequest inProgressRequest) <-chan peer.ID {
+func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k cid.Cid, receivedInProgressRequest inProgressRequest) <-chan peer.ID {
 	// maintains an unbuffered queue for incoming providers for given request for a given session
 	// essentially, as a provider comes in, for a given CID, we want to immediately broadcast to all
 	// sessions that queried that CID, without worrying about whether the client code is actually
@@ -162,8 +160,8 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 			select {
 			case <-sessionCtx.Done():
 				pqm.providerQueryMessages <- &cancelRequestMessage{
-					ses: ses,
-					k:   k,
+					incomingProviders: incomingProviders,
+					k:                 k,
 				}
 				// clear out any remaining providers
 				for range incomingProviders {
@@ -269,7 +267,7 @@ func (pqm *ProviderQueryManager) providerRequestBufferWorker() {
 
 func (pqm *ProviderQueryManager) cleanupInProcessRequests() {
 	for _, requestStatus := range pqm.inProgressRequestStatuses {
-		for _, listener := range requestStatus.listeners {
+		for listener := range requestStatus.listeners {
 			close(listener)
 		}
 	}
@@ -305,7 +303,7 @@ func (rpm *receivedProviderMessage) handle(pqm *ProviderQueryManager) {
 		return
 	}
 	requestStatus.providersSoFar = append(requestStatus.providersSoFar, rpm.p)
-	for _, listener := range requestStatus.listeners {
+	for listener := range requestStatus.listeners {
 		select {
 		case listener <- rpm.p:
 		case <-pqm.ctx.Done():
@@ -324,21 +322,21 @@ func (fpqm *finishedProviderQueryMessage) handle(pqm *ProviderQueryManager) {
 		log.Errorf("Ended request for cid (%s) not in progress", fpqm.k.String())
 		return
 	}
-	for _, listener := range requestStatus.listeners {
+	for listener := range requestStatus.listeners {
 		close(listener)
 	}
 	delete(pqm.inProgressRequestStatuses, fpqm.k)
 }
 
 func (npqm *newProvideQueryMessage) debugMessage() string {
-	return fmt.Sprintf("New Provider Query on cid: %s from session: %d", npqm.k.String(), npqm.ses)
+	return fmt.Sprintf("New Provider Query on cid: %s", npqm.k.String())
 }
 
 func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[npqm.k]
 	if !ok {
 		requestStatus = &inProgressRequestStatus{
-			listeners: make(map[uint64]chan peer.ID),
+			listeners: make(map[chan peer.ID]struct{}),
 		}
 		pqm.inProgressRequestStatuses[npqm.k] = requestStatus
 		select {
@@ -347,31 +345,32 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 			return
 		}
 	}
-	requestStatus.listeners[npqm.ses] = make(chan peer.ID)
+	inProgressChan := make(chan peer.ID)
+	requestStatus.listeners[inProgressChan] = struct{}{}
 	select {
 	case npqm.inProgressRequestChan <- inProgressRequest{
 		providersSoFar: requestStatus.providersSoFar,
-		incoming:       requestStatus.listeners[npqm.ses],
+		incoming:       inProgressChan,
 	}:
 	case <-pqm.ctx.Done():
 	}
 }
 
 func (crm *cancelRequestMessage) debugMessage() string {
-	return fmt.Sprintf("Cancel provider query on cid: %s from session: %d", crm.k.String(), crm.ses)
+	return fmt.Sprintf("Cancel provider query on cid: %s", crm.k.String())
 }
 
 func (crm *cancelRequestMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[crm.k]
 	if !ok {
-		log.Errorf("Attempt to cancel request for session (%d) for cid (%s) not in progress", crm.ses, crm.k.String())
+		log.Errorf("Attempt to cancel request for cid (%s) not in progress", crm.k.String())
 		return
 	}
-	listener, ok := requestStatus.listeners[crm.ses]
+	listener := crm.incomingProviders
 	if !ok {
-		log.Errorf("Attempt to cancel request for session (%d) for cid (%s) this is not a listener", crm.ses, crm.k.String())
+		log.Errorf("Attempt to cancel request for for cid (%s) this is not a listener", crm.k.String())
 		return
 	}
 	close(listener)
-	delete(requestStatus.listeners, crm.ses)
+	delete(requestStatus.listeners, listener)
 }
