@@ -18,7 +18,7 @@ type fakePeerProviderFinder struct {
 	completed chan struct{}
 }
 
-func (fppf *fakePeerProviderFinder) FindProvidersAsync(ctx context.Context, c cid.Cid, ses uint64) <-chan peer.ID {
+func (fppf *fakePeerProviderFinder) FindProvidersAsync(ctx context.Context, c cid.Cid) <-chan peer.ID {
 	peerCh := make(chan peer.ID)
 	go func() {
 

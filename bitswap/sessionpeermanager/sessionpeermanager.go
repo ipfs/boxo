@@ -26,7 +26,7 @@ type PeerTagger interface {
 
 // PeerProviderFinder is an interface for finding providers
 type PeerProviderFinder interface {
-	FindProvidersAsync(context.Context, cid.Cid, uint64) <-chan peer.ID
+	FindProvidersAsync(context.Context, cid.Cid) <-chan peer.ID
 }
 
 type peerMessage interface {
@@ -108,8 +108,8 @@ func (spm *SessionPeerManager) GetOptimizedPeers() []peer.ID {
 // providers for the given Cid
 func (spm *SessionPeerManager) FindMorePeers(ctx context.Context, c cid.Cid) {
 	go func(k cid.Cid) {
-		for p := range spm.providerFinder.FindProvidersAsync(ctx, k, spm.id) {
-			
+		for p := range spm.providerFinder.FindProvidersAsync(ctx, k) {
+
 			select {
 			case spm.peerMessages <- &peerFoundMessage{p}:
 			case <-ctx.Done():
