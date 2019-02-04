@@ -124,6 +124,8 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 
 	var receivedInProgressRequest inProgressRequest
 	select {
+	case <-pqm.ctx.Done():
+		return nil
 	case <-sessionCtx.Done():
 		return nil
 	case receivedInProgressRequest = <-inProgressRequestChan:
@@ -158,15 +160,25 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 		}
 		for len(receivedProviders) > 0 || incomingProviders != nil {
 			select {
+			case <-pqm.ctx.Done():
+				return
 			case <-sessionCtx.Done():
 				pqm.providerQueryMessages <- &cancelRequestMessage{
 					incomingProviders: incomingProviders,
 					k:                 k,
 				}
-				// clear out any remaining providers
-				for range incomingProviders {
+				// clear out any remaining providers, in case and "incoming provider"
+				// messages get processed before our cancel message
+				for {
+					select {
+					case _, ok := <-incomingProviders:
+						if !ok {
+							return
+						}
+					case <-pqm.ctx.Done():
+						return
+					}
 				}
-				return
 			case provider, ok := <-incomingProviders:
 				if !ok {
 					incomingProviders = nil
@@ -362,15 +374,15 @@ func (crm *cancelRequestMessage) debugMessage() string {
 
 func (crm *cancelRequestMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[crm.k]
-	if !ok {
+	if ok {
+		_, ok := requestStatus.listeners[crm.incomingProviders]
+		if ok {
+			delete(requestStatus.listeners, crm.incomingProviders)
+		} else {
+			log.Errorf("Attempt to cancel request for for cid (%s) this is not a listener", crm.k.String())
+		}
+	} else {
 		log.Errorf("Attempt to cancel request for cid (%s) not in progress", crm.k.String())
-		return
 	}
-	listener := crm.incomingProviders
-	if !ok {
-		log.Errorf("Attempt to cancel request for for cid (%s) this is not a listener", crm.k.String())
-		return
-	}
-	close(listener)
-	delete(requestStatus.listeners, listener)
+	close(crm.incomingProviders)
 }
