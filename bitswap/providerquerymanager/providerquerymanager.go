@@ -20,8 +20,15 @@ const (
 )
 
 type inProgressRequestStatus struct {
+	ctx            context.Context
+	cancelFn       func()
 	providersSoFar []peer.ID
 	listeners      map[chan peer.ID]struct{}
+}
+
+type findProviderRequest struct {
+	k   cid.Cid
+	ctx context.Context
 }
 
 // ProviderQueryNetwork is an interface for finding providers and connecting to
@@ -66,8 +73,8 @@ type ProviderQueryManager struct {
 	ctx                          context.Context
 	network                      ProviderQueryNetwork
 	providerQueryMessages        chan providerQueryMessage
-	providerRequestsProcessing   chan cid.Cid
-	incomingFindProviderRequests chan cid.Cid
+	providerRequestsProcessing   chan *findProviderRequest
+	incomingFindProviderRequests chan *findProviderRequest
 
 	findProviderTimeout time.Duration
 	timeoutMutex        sync.RWMutex
@@ -83,8 +90,8 @@ func New(ctx context.Context, network ProviderQueryNetwork) *ProviderQueryManage
 		ctx:                          ctx,
 		network:                      network,
 		providerQueryMessages:        make(chan providerQueryMessage, 16),
-		providerRequestsProcessing:   make(chan cid.Cid),
-		incomingFindProviderRequests: make(chan cid.Cid),
+		providerRequestsProcessing:   make(chan *findProviderRequest),
+		incomingFindProviderRequests: make(chan *findProviderRequest),
 		inProgressRequestStatuses:    make(map[cid.Cid]*inProgressRequestStatus),
 		findProviderTimeout:          defaultTimeout,
 	}
@@ -199,14 +206,14 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 	// to let requests go in parallel but keep them rate limited
 	for {
 		select {
-		case k, ok := <-pqm.providerRequestsProcessing:
+		case fpr, ok := <-pqm.providerRequestsProcessing:
 			if !ok {
 				return
 			}
-
+			k := fpr.k
 			log.Debugf("Beginning Find Provider Request for cid: %s", k.String())
 			pqm.timeoutMutex.RLock()
-			findProviderCtx, cancel := context.WithTimeout(pqm.ctx, pqm.findProviderTimeout)
+			findProviderCtx, cancel := context.WithTimeout(fpr.ctx, pqm.findProviderTimeout)
 			pqm.timeoutMutex.RUnlock()
 			defer cancel()
 			providers := pqm.network.FindProvidersAsync(findProviderCtx, k, maxProviders)
@@ -248,14 +255,14 @@ func (pqm *ProviderQueryManager) providerRequestBufferWorker() {
 	// buffer for incoming provider queries and dispatches to the find
 	// provider workers as they become available
 	// based on: https://medium.com/capital-one-tech/building-an-unbounded-channel-in-go-789e175cd2cd
-	var providerQueryRequestBuffer []cid.Cid
-	nextProviderQuery := func() cid.Cid {
+	var providerQueryRequestBuffer []*findProviderRequest
+	nextProviderQuery := func() *findProviderRequest {
 		if len(providerQueryRequestBuffer) == 0 {
-			return cid.Cid{}
+			return nil
 		}
 		return providerQueryRequestBuffer[0]
 	}
-	outgoingRequests := func() chan<- cid.Cid {
+	outgoingRequests := func() chan<- *findProviderRequest {
 		if len(providerQueryRequestBuffer) == 0 {
 			return nil
 		}
@@ -282,6 +289,7 @@ func (pqm *ProviderQueryManager) cleanupInProcessRequests() {
 		for listener := range requestStatus.listeners {
 			close(listener)
 		}
+		requestStatus.cancelFn()
 	}
 }
 
@@ -338,6 +346,7 @@ func (fpqm *finishedProviderQueryMessage) handle(pqm *ProviderQueryManager) {
 		close(listener)
 	}
 	delete(pqm.inProgressRequestStatuses, fpqm.k)
+	requestStatus.cancelFn()
 }
 
 func (npqm *newProvideQueryMessage) debugMessage() string {
@@ -347,12 +356,18 @@ func (npqm *newProvideQueryMessage) debugMessage() string {
 func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[npqm.k]
 	if !ok {
+		ctx, cancelFn := context.WithCancel(pqm.ctx)
 		requestStatus = &inProgressRequestStatus{
 			listeners: make(map[chan peer.ID]struct{}),
+			ctx:       ctx,
+			cancelFn:  cancelFn,
 		}
 		pqm.inProgressRequestStatuses[npqm.k] = requestStatus
 		select {
-		case pqm.incomingFindProviderRequests <- npqm.k:
+		case pqm.incomingFindProviderRequests <- &findProviderRequest{
+			k:   npqm.k,
+			ctx: ctx,
+		}:
 		case <-pqm.ctx.Done():
 			return
 		}
@@ -378,6 +393,10 @@ func (crm *cancelRequestMessage) handle(pqm *ProviderQueryManager) {
 		_, ok := requestStatus.listeners[crm.incomingProviders]
 		if ok {
 			delete(requestStatus.listeners, crm.incomingProviders)
+			if len(requestStatus.listeners) == 0 {
+				delete(pqm.inProgressRequestStatuses, crm.k)
+				requestStatus.cancelFn()
+			}
 		} else {
 			log.Errorf("Attempt to cancel request for for cid (%s) this is not a listener", crm.k.String())
 		}
