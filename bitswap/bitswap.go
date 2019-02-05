@@ -18,6 +18,7 @@ import (
 	bsnet "github.com/ipfs/go-bitswap/network"
 	notifications "github.com/ipfs/go-bitswap/notifications"
 	bspm "github.com/ipfs/go-bitswap/peermanager"
+	bspqm "github.com/ipfs/go-bitswap/providerquerymanager"
 	bssession "github.com/ipfs/go-bitswap/session"
 	bssm "github.com/ipfs/go-bitswap/sessionmanager"
 	bsspm "github.com/ipfs/go-bitswap/sessionpeermanager"
@@ -105,11 +106,13 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	}
 
 	wm := bswm.New(ctx)
+	pqm := bspqm.New(ctx, network)
+
 	sessionFactory := func(ctx context.Context, id uint64, pm bssession.PeerManager, srs bssession.RequestSplitter) bssm.Session {
 		return bssession.New(ctx, id, wm, pm, srs)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.PeerManager {
-		return bsspm.New(ctx, id, network)
+		return bsspm.New(ctx, id, network.ConnectionManager(), pqm)
 	}
 	sessionRequestSplitterFactory := func(ctx context.Context) bssession.RequestSplitter {
 		return bssrs.New(ctx)
@@ -125,6 +128,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		newBlocks:     make(chan cid.Cid, HasBlockBufferSize),
 		provideKeys:   make(chan cid.Cid, provideKeysBufferSize),
 		wm:            wm,
+		pqm:           pqm,
 		pm:            bspm.New(ctx, peerQueueFactory),
 		sm:            bssm.New(ctx, sessionFactory, sessionPeerManagerFactory, sessionRequestSplitterFactory),
 		counters:      new(counters),
@@ -136,6 +140,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	bs.wm.SetDelegate(bs.pm)
 	bs.pm.Startup()
 	bs.wm.Startup()
+	bs.pqm.Startup()
 	network.SetDelegate(bs)
 
 	// Start up bitswaps async worker routines
@@ -160,6 +165,9 @@ type Bitswap struct {
 
 	// the wantlist tracks global wants for bitswap
 	wm *bswm.WantManager
+
+	// the provider query manager manages requests to find providers
+	pqm *bspqm.ProviderQueryManager
 
 	// the engine is the bit of logic that decides who to send which blocks to
 	engine *decision.Engine
