@@ -170,22 +170,8 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 			case <-pqm.ctx.Done():
 				return
 			case <-sessionCtx.Done():
-				pqm.providerQueryMessages <- &cancelRequestMessage{
-					incomingProviders: incomingProviders,
-					k:                 k,
-				}
-				// clear out any remaining providers, in case and "incoming provider"
-				// messages get processed before our cancel message
-				for {
-					select {
-					case _, ok := <-incomingProviders:
-						if !ok {
-							return
-						}
-					case <-pqm.ctx.Done():
-						return
-					}
-				}
+				pqm.cancelProviderRequest(k, incomingProviders)
+				return
 			case provider, ok := <-incomingProviders:
 				if !ok {
 					incomingProviders = nil
@@ -198,6 +184,27 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 		}
 	}()
 	return returnedProviders
+}
+
+func (pqm *ProviderQueryManager) cancelProviderRequest(k cid.Cid, incomingProviders chan peer.ID) {
+	cancelMessageChannel := pqm.providerQueryMessages
+	for {
+		select {
+		case cancelMessageChannel <- &cancelRequestMessage{
+			incomingProviders: incomingProviders,
+			k:                 k,
+		}:
+			cancelMessageChannel = nil
+		// clear out any remaining providers, in case and "incoming provider"
+		// messages get processed before our cancel message
+		case _, ok := <-incomingProviders:
+			if !ok {
+				return
+			}
+		case <-pqm.ctx.Done():
+			return
+		}
+	}
 }
 
 func (pqm *ProviderQueryManager) findProviderWorker() {
@@ -215,7 +222,6 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 			pqm.timeoutMutex.RLock()
 			findProviderCtx, cancel := context.WithTimeout(fpr.ctx, pqm.findProviderTimeout)
 			pqm.timeoutMutex.RUnlock()
-			defer cancel()
 			providers := pqm.network.FindProvidersAsync(findProviderCtx, k, maxProviders)
 			wg := &sync.WaitGroup{}
 			for p := range providers {
@@ -237,6 +243,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 					}
 				}(p)
 			}
+			cancel()
 			wg.Wait()
 			select {
 			case pqm.providerQueryMessages <- &finishedProviderQueryMessage{
@@ -389,19 +396,19 @@ func (crm *cancelRequestMessage) debugMessage() string {
 
 func (crm *cancelRequestMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[crm.k]
-	if ok {
-		_, ok := requestStatus.listeners[crm.incomingProviders]
-		if ok {
-			delete(requestStatus.listeners, crm.incomingProviders)
-			if len(requestStatus.listeners) == 0 {
-				delete(pqm.inProgressRequestStatuses, crm.k)
-				requestStatus.cancelFn()
-			}
-		} else {
-			log.Errorf("Attempt to cancel request for for cid (%s) this is not a listener", crm.k.String())
-		}
-	} else {
+	if !ok {
 		log.Errorf("Attempt to cancel request for cid (%s) not in progress", crm.k.String())
+		return
 	}
+	_, ok = requestStatus.listeners[crm.incomingProviders]
+	if !ok {
+		log.Errorf("Attempt to cancel request for for cid (%s) this is not a listener", crm.k.String())
+		return
+	}
+	delete(requestStatus.listeners, crm.incomingProviders)
 	close(crm.incomingProviders)
+	if len(requestStatus.listeners) == 0 {
+		delete(pqm.inProgressRequestStatuses, crm.k)
+		requestStatus.cancelFn()
+	}
 }
