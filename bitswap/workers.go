@@ -2,9 +2,6 @@ package bitswap
 
 import (
 	"context"
-	"math/rand"
-	"sync"
-	"time"
 
 	engine "github.com/ipfs/go-bitswap/decision"
 	bsmsg "github.com/ipfs/go-bitswap/message"
@@ -12,16 +9,11 @@ import (
 	logging "github.com/ipfs/go-log"
 	process "github.com/jbenet/goprocess"
 	procctx "github.com/jbenet/goprocess/context"
-	peer "github.com/libp2p/go-libp2p-peer"
 )
 
 var TaskWorkerCount = 8
 
 func (bs *Bitswap) startWorkers(px process.Process, ctx context.Context) {
-	// Start up a worker to handle block requests this node is making
-	px.Go(func(px process.Process) {
-		bs.providerQueryManager(ctx)
-	})
 
 	// Start up workers to handle requests from other nodes for the data on this node
 	for i := 0; i < TaskWorkerCount; i++ {
@@ -30,11 +22,6 @@ func (bs *Bitswap) startWorkers(px process.Process, ctx context.Context) {
 			bs.taskWorker(ctx, i)
 		})
 	}
-
-	// Start up a worker to manage periodically resending our wantlist out to peers
-	px.Go(func(px process.Process) {
-		bs.rebroadcastWorker(ctx)
-	})
 
 	// Start up a worker to manage sending out provides messages
 	px.Go(func(px process.Process) {
@@ -183,96 +170,6 @@ func (bs *Bitswap) provideCollector(ctx context.Context) {
 			} else {
 				keysOut = nil
 			}
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-func (bs *Bitswap) rebroadcastWorker(parent context.Context) {
-	ctx, cancel := context.WithCancel(parent)
-	defer cancel()
-
-	broadcastSignal := time.NewTicker(rebroadcastDelay.Get())
-	defer broadcastSignal.Stop()
-
-	tick := time.NewTicker(10 * time.Second)
-	defer tick.Stop()
-
-	for {
-		log.Event(ctx, "Bitswap.Rebroadcast.idle")
-		select {
-		case <-tick.C:
-			n := bs.wm.WantCount()
-			if n > 0 {
-				log.Debugf("%d keys in bitswap wantlist", n)
-			}
-		case <-broadcastSignal.C: // resend unfulfilled wantlist keys
-			log.Event(ctx, "Bitswap.Rebroadcast.active")
-			entries := bs.wm.CurrentWants()
-			if len(entries) == 0 {
-				continue
-			}
-
-			// TODO: come up with a better strategy for determining when to search
-			// for new providers for blocks.
-			i := rand.Intn(len(entries))
-			select {
-			case bs.findKeys <- &blockRequest{
-				Cid: entries[i].Cid,
-				Ctx: ctx,
-			}:
-			case <-ctx.Done():
-				return
-			}
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-func (bs *Bitswap) providerQueryManager(ctx context.Context) {
-	var activeLk sync.Mutex
-	kset := cid.NewSet()
-
-	for {
-		select {
-		case e := <-bs.findKeys:
-			select { // make sure its not already cancelled
-			case <-e.Ctx.Done():
-				continue
-			default:
-			}
-
-			activeLk.Lock()
-			if kset.Has(e.Cid) {
-				activeLk.Unlock()
-				continue
-			}
-			kset.Add(e.Cid)
-			activeLk.Unlock()
-
-			go func(e *blockRequest) {
-				child, cancel := context.WithTimeout(e.Ctx, providerRequestTimeout)
-				defer cancel()
-				providers := bs.network.FindProvidersAsync(child, e.Cid, maxProvidersPerRequest)
-				wg := &sync.WaitGroup{}
-				for p := range providers {
-					wg.Add(1)
-					go func(p peer.ID) {
-						defer wg.Done()
-						err := bs.network.ConnectTo(child, p)
-						if err != nil {
-							log.Debugf("failed to connect to provider %s: %s", p, err)
-						}
-					}(p)
-				}
-				wg.Wait()
-				activeLk.Lock()
-				kset.Remove(e.Cid)
-				activeLk.Unlock()
-			}(e)
-
 		case <-ctx.Done():
 			return
 		}
