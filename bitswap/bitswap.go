@@ -16,7 +16,6 @@ import (
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	bsmq "github.com/ipfs/go-bitswap/messagequeue"
 	bsnet "github.com/ipfs/go-bitswap/network"
-	notifications "github.com/ipfs/go-bitswap/notifications"
 	bspm "github.com/ipfs/go-bitswap/peermanager"
 	bspqm "github.com/ipfs/go-bitswap/providerquerymanager"
 	bssession "github.com/ipfs/go-bitswap/session"
@@ -95,9 +94,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	sentHistogram := metrics.NewCtx(ctx, "sent_all_blocks_bytes", "Histogram of blocks sent by"+
 		" this bitswap").Histogram(metricsBuckets)
 
-	notif := notifications.New()
 	px := process.WithTeardown(func() error {
-		notif.Shutdown()
 		return nil
 	})
 
@@ -120,10 +117,8 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 
 	bs := &Bitswap{
 		blockstore:    bstore,
-		notifications: notif,
 		engine:        decision.NewEngine(ctx, bstore), // TODO close the engine with Close() method
 		network:       network,
-		findKeys:      make(chan *blockRequest, sizeBatchRequestChan),
 		process:       px,
 		newBlocks:     make(chan cid.Cid, HasBlockBufferSize),
 		provideKeys:   make(chan cid.Cid, provideKeysBufferSize),
@@ -179,12 +174,6 @@ type Bitswap struct {
 	// NB: ensure threadsafety
 	blockstore blockstore.Blockstore
 
-	// notifications engine for receiving new blocks and routing them to the
-	// appropriate user requests
-	notifications notifications.PubSub
-
-	// findKeys sends keys to a worker to find and connect to providers for them
-	findKeys chan *blockRequest
 	// newBlocks is a channel for newly added blocks to be provided to the
 	// network.  blocks pushed down this channel get buffered and fed to the
 	// provideKeys channel later on to avoid too much network activity
@@ -248,86 +237,8 @@ func (bs *Bitswap) LedgerForPeer(p peer.ID) *decision.Receipt {
 // resources, provide a context with a reasonably short deadline (ie. not one
 // that lasts throughout the lifetime of the server)
 func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error) {
-	if len(keys) == 0 {
-		out := make(chan blocks.Block)
-		close(out)
-		return out, nil
-	}
-
-	select {
-	case <-bs.process.Closing():
-		return nil, errors.New("bitswap is closed")
-	default:
-	}
-	promise := bs.notifications.Subscribe(ctx, keys...)
-
-	for _, k := range keys {
-		log.Event(ctx, "Bitswap.GetBlockRequest.Start", k)
-	}
-
-	mses := bs.sm.GetNextSessionID()
-
-	bs.wm.WantBlocks(ctx, keys, nil, mses)
-
-	remaining := cid.NewSet()
-	for _, k := range keys {
-		remaining.Add(k)
-	}
-
-	out := make(chan blocks.Block)
-	go func() {
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-		defer close(out)
-		defer func() {
-			// can't just defer this call on its own, arguments are resolved *when* the defer is created
-			bs.CancelWants(remaining.Keys(), mses)
-		}()
-		findProvsDelay := time.NewTimer(findProviderDelay)
-		defer findProvsDelay.Stop()
-
-		findProvsDelayCh := findProvsDelay.C
-		req := &blockRequest{
-			Cid: keys[0],
-			Ctx: ctx,
-		}
-
-		var findProvsReqCh chan<- *blockRequest
-
-		for {
-			select {
-			case <-findProvsDelayCh:
-				// NB: Optimization. Assumes that providers of key[0] are likely to
-				// be able to provide for all keys. This currently holds true in most
-				// every situation. Later, this assumption may not hold as true.
-				findProvsReqCh = bs.findKeys
-				findProvsDelayCh = nil
-			case findProvsReqCh <- req:
-				findProvsReqCh = nil
-			case blk, ok := <-promise:
-				if !ok {
-					return
-				}
-
-				// No need to find providers now.
-				findProvsDelay.Stop()
-				findProvsDelayCh = nil
-				findProvsReqCh = nil
-
-				bs.CancelWants([]cid.Cid{blk.Cid()}, mses)
-				remaining.Remove(blk.Cid())
-				select {
-				case out <- blk:
-				case <-ctx.Done():
-					return
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	return out, nil
+	session := bs.sm.NewSession(ctx)
+	return session.GetBlocks(ctx, keys)
 }
 
 // CancelWants removes a given key from the wantlist.
@@ -366,7 +277,6 @@ func (bs *Bitswap) receiveBlockFrom(blk blocks.Block, from peer.ID) error {
 	// is waiting on a GetBlock for that object, they will receive a reference
 	// to the same node. We should address this soon, but i'm not going to do
 	// it now as it requires more thought and isnt causing immediate problems.
-	bs.notifications.Publish(blk)
 
 	bs.sm.ReceiveBlockFrom(from, blk)
 
