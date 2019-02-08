@@ -95,7 +95,6 @@ func TestRecurivePathResolution(t *testing.T) {
 		t.Fatal(err)
 	}
 
-
 	if len(rest) != 0 {
 		t.Error("expected rest to be empty")
 	}
