@@ -111,6 +111,7 @@ func (w *multipartWalker) nextFile() (Node, error) {
 	}, nil
 }
 
+// fileName returns a normalized filename from a part.
 func fileName(part *multipart.Part) string {
 	filename := part.FileName()
 	if escaped, err := url.QueryUnescape(filename); err == nil {
@@ -120,8 +121,30 @@ func fileName(part *multipart.Part) string {
 	return path.Clean("/" + filename)
 }
 
+// dirName appends a slash to the end of the filename, if not present.
+// expects a _cleaned_ path.
+func dirName(filename string) string {
+	if !strings.HasSuffix(filename, "/") {
+		filename += "/"
+	}
+	return filename
+}
+
+// isDirectory checks if the media type is a valid directory media type.
 func isDirectory(mediatype string) bool {
 	return mediatype == multipartFormdataType || mediatype == applicationDirectory
+}
+
+// isChild checks if child is a child of parent directory.
+// expects a _cleaned_ path.
+func isChild(child, parent string) bool {
+	return strings.HasPrefix(child, dirName(parent))
+}
+
+// makeRelative makes the child path relative to the parent path.
+// expects a _cleaned_ path.
+func makeRelative(child, parent string) string {
+	return strings.TrimPrefix(child, dirName(parent))
 }
 
 type multipartIterator struct {
@@ -154,18 +177,18 @@ func (it *multipartIterator) Next() bool {
 		name := fileName(part)
 
 		// Is the file in a different directory?
-		if !strings.HasPrefix(name, it.f.path) {
+		if !isChild(name, it.f.path) {
 			return false
 		}
 
 		// Have we already entered this directory?
-		if it.curName != "" && strings.HasPrefix(name, path.Join(it.f.path, it.curName)) {
+		if it.curName != "" && isChild(name, path.Join(it.f.path, it.curName)) {
 			it.f.walker.consumePart()
 			continue
 		}
 
 		// Make the path relative to the current directory.
-		name = strings.TrimLeft(name[len(it.f.path):], "/")
+		name = makeRelative(name, it.f.path)
 
 		// Check if we need to create a fake directory (more than one
 		// path component).

@@ -163,3 +163,43 @@ func TestOutput(t *testing.T) {
 		t.Fatal("Expected to get (nil, io.EOF)")
 	}
 }
+
+func TestCommonPrefix(t *testing.T) {
+	sf := NewMapDirectory(map[string]Node{
+		"boop": NewMapDirectory(map[string]Node{
+			"a":   NewBytesFile([]byte("bleep")),
+			"aa":  NewBytesFile([]byte("bleep")),
+			"aaa": NewBytesFile([]byte("bleep")),
+		}),
+	})
+	mfr := NewMultiFileReader(sf, true)
+	reader, err := NewFileFromPartReader(multipart.NewReader(mfr, mfr.Boundary()), multipartFormdataType)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	CheckDir(t, reader, []Event{
+		{
+			kind: TDirStart,
+			name: "boop",
+		},
+		{
+			kind:  TFile,
+			name:  "a",
+			value: "bleep",
+		},
+		{
+			kind:  TFile,
+			name:  "aa",
+			value: "bleep",
+		},
+		{
+			kind:  TFile,
+			name:  "aaa",
+			value: "bleep",
+		},
+		{
+			kind: TDirEnd,
+		},
+	})
+}
