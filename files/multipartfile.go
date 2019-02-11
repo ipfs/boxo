@@ -1,7 +1,6 @@
 package files
 
 import (
-	"errors"
 	"io"
 	"io/ioutil"
 	"mime"
@@ -22,16 +21,37 @@ const (
 	contentTypeHeader = "Content-Type"
 )
 
-var ErrPartOutsideParent = errors.New("file outside parent dir")
-var ErrPartInChildTree = errors.New("file in child tree")
+type multipartDirectory struct {
+	path   string
+	walker *multipartWalker
 
-// multipartFile implements Node, and is created from a `multipart.Part`.
-type multipartFile struct {
-	Node
+	// part is the part describing the directory. It's nil when implicit.
+	part *multipart.Part
+}
 
-	part      *multipart.Part
-	reader    *peekReader
-	mediatype string
+type multipartWalker struct {
+	part   *multipart.Part
+	reader *multipart.Reader
+}
+
+func (m *multipartWalker) consumePart() {
+	m.part = nil
+}
+
+func (m *multipartWalker) getPart() (*multipart.Part, error) {
+	if m.part != nil {
+		return m.part, nil
+	}
+	if m.reader == nil {
+		return nil, io.EOF
+	}
+
+	var err error
+	m.part, err = m.reader.NextPart()
+	if err == io.EOF {
+		m.reader = nil
+	}
+	return m.part, err
 }
 
 func NewFileFromPartReader(reader *multipart.Reader, mediatype string) (Directory, error) {
@@ -39,69 +59,65 @@ func NewFileFromPartReader(reader *multipart.Reader, mediatype string) (Director
 		return nil, ErrNotDirectory
 	}
 
-	f := &multipartFile{
-		reader:    &peekReader{r: reader},
-		mediatype: mediatype,
-	}
-
-	return f, nil
+	return &multipartDirectory{
+		path: "/",
+		walker: &multipartWalker{
+			reader: reader,
+		},
+	}, nil
 }
 
-func newFileFromPart(parent string, part *multipart.Part, reader *peekReader) (string, Node, error) {
-	f := &multipartFile{
-		part:   part,
-		reader: reader,
+func (w *multipartWalker) nextFile() (Node, error) {
+	part, err := w.getPart()
+	if err != nil {
+		return nil, err
 	}
-
-	dir, base := path.Split(f.fileName())
-	dir = path.Clean(dir)
-	parent = path.Clean(parent)
-	if dir == "." {
-		dir = ""
-	}
-	if parent == "." {
-		parent = ""
-	}
-
-	if dir != parent {
-		if strings.HasPrefix(dir, parent) {
-			return "", nil, ErrPartInChildTree
-		}
-		return "", nil, ErrPartOutsideParent
-	}
+	w.consumePart()
 
 	contentType := part.Header.Get(contentTypeHeader)
 	switch contentType {
 	case applicationSymlink:
 		out, err := ioutil.ReadAll(part)
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
 
-		return base, NewLinkFile(string(out), nil), nil
+		return NewLinkFile(string(out), nil), nil
 	case "": // default to application/octet-stream
 		fallthrough
 	case applicationFile:
-		return base, &ReaderFile{
+		return &ReaderFile{
 			reader:  part,
 			abspath: part.Header.Get("abspath"),
 		}, nil
 	}
 
-	var err error
-	f.mediatype, _, err = mime.ParseMediaType(contentType)
+	mediatype, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 
-	if !isDirectory(f.mediatype) {
-		return base, &ReaderFile{
+	if !isDirectory(mediatype) {
+		return &ReaderFile{
 			reader:  part,
 			abspath: part.Header.Get("abspath"),
 		}, nil
 	}
 
-	return base, f, nil
+	return &multipartDirectory{
+		part:   part,
+		path:   fileName(part),
+		walker: w,
+	}, nil
+}
+
+func fileName(part *multipart.Part) string {
+	filename := part.FileName()
+	if escaped, err := url.QueryUnescape(filename); err == nil {
+		filename = escaped
+	} // if there is a unescape error, just treat the name as unescaped
+
+	return path.Clean("/" + filename)
 }
 
 func isDirectory(mediatype string) bool {
@@ -109,7 +125,7 @@ func isDirectory(mediatype string) bool {
 }
 
 type multipartIterator struct {
-	f *multipartFile
+	f *multipartDirectory
 
 	curFile Node
 	curName string
@@ -125,102 +141,73 @@ func (it *multipartIterator) Node() Node {
 }
 
 func (it *multipartIterator) Next() bool {
-	if it.f.reader == nil {
+	if it.f.walker.reader == nil || it.err != nil {
 		return false
 	}
 	var part *multipart.Part
 	for {
-		var err error
-		part, err = it.f.reader.NextPart()
-		if err != nil {
-			if err == io.EOF {
-				return false
-			}
-			it.err = err
+		part, it.err = it.f.walker.getPart()
+		if it.err != nil {
 			return false
 		}
 
-		name, cf, err := newFileFromPart(it.f.fileName(), part, it.f.reader)
-		if err == ErrPartOutsideParent {
-			break
-		}
-		if err != ErrPartInChildTree {
-			it.curFile = cf
-			it.curName = name
-			it.err = err
-			return err == nil
-		}
-	}
+		name := fileName(part)
 
-	it.err = it.f.reader.put(part)
-	return false
+		// Is the file in a different directory?
+		if !strings.HasPrefix(name, it.f.path) {
+			return false
+		}
+
+		// Have we already entered this directory?
+		if it.curName != "" && strings.HasPrefix(name, path.Join(it.f.path, it.curName)) {
+			it.f.walker.consumePart()
+			continue
+		}
+
+		// Make the path relative to the current directory.
+		name = strings.TrimLeft(name[len(it.f.path):], "/")
+
+		// Check if we need to create a fake directory (more than one
+		// path component).
+		if idx := strings.IndexByte(name, '/'); idx >= 0 {
+			it.curName = name[:idx]
+			it.curFile = &multipartDirectory{
+				path:   path.Join(it.f.path, it.curName),
+				walker: it.f.walker,
+			}
+			return true
+		}
+		it.curName = name
+
+		// Finally, advance to the next file.
+		it.curFile, it.err = it.f.walker.nextFile()
+
+		return it.err == nil
+	}
 }
 
 func (it *multipartIterator) Err() error {
+	// We use EOF to signal that this iterator is done. That way, we don't
+	// need to check every time `Next` is called.
+	if it.err == io.EOF {
+		return nil
+	}
 	return it.err
 }
 
-func (f *multipartFile) Entries() DirIterator {
+func (f *multipartDirectory) Entries() DirIterator {
 	return &multipartIterator{f: f}
 }
 
-func (f *multipartFile) fileName() string {
-	if f == nil || f.part == nil {
-		return ""
-	}
-
-	filename, err := url.QueryUnescape(f.part.FileName())
-	if err != nil {
-		// if there is a unescape error, just treat the name as unescaped
-		return f.part.FileName()
-	}
-	return filename
-}
-
-func (f *multipartFile) Close() error {
+func (f *multipartDirectory) Close() error {
 	if f.part != nil {
 		return f.part.Close()
 	}
 	return nil
 }
 
-func (f *multipartFile) Size() (int64, error) {
+func (f *multipartDirectory) Size() (int64, error) {
 	return 0, ErrNotSupported
 }
 
-type PartReader interface {
-	NextPart() (*multipart.Part, error)
-}
-
-type peekReader struct {
-	r    PartReader
-	next *multipart.Part
-}
-
-func (pr *peekReader) NextPart() (*multipart.Part, error) {
-	if pr.next != nil {
-		p := pr.next
-		pr.next = nil
-		return p, nil
-	}
-
-	if pr.r == nil {
-		return nil, io.EOF
-	}
-
-	p, err := pr.r.NextPart()
-	if err == io.EOF {
-		pr.r = nil
-	}
-	return p, err
-}
-
-func (pr *peekReader) put(p *multipart.Part) error {
-	if pr.next != nil {
-		return errors.New("cannot put multiple parts")
-	}
-	pr.next = p
-	return nil
-}
-
-var _ Directory = &multipartFile{}
+var _ Directory = &multipartDirectory{}
