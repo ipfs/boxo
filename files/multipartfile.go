@@ -67,7 +67,7 @@ func NewFileFromPartReader(reader *multipart.Reader, mediatype string) (Director
 	}, nil
 }
 
-func nextFile(w *multipartWalker) (Node, error) {
+func (w *multipartWalker) nextFile() (Node, error) {
 	part, err := w.getPart()
 	if err != nil {
 		return nil, err
@@ -180,7 +180,7 @@ func (it *multipartIterator) Next() bool {
 		it.curName = name
 
 		// Finally, advance to the next file.
-		it.curFile, it.err = nextFile(it.f.walker)
+		it.curFile, it.err = it.f.walker.nextFile()
 
 		return it.err == nil
 	}

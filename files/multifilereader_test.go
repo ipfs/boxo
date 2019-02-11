@@ -108,7 +108,7 @@ func TestOutput(t *testing.T) {
 	walker := &multipartWalker{reader: multipart.NewReader(mfr, mfr.Boundary())}
 	buf := make([]byte, 20)
 
-	mpf, err := nextFile(walker)
+	mpf, err := walker.nextFile()
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil multipartFile, nil error")
 	}
@@ -123,7 +123,7 @@ func TestOutput(t *testing.T) {
 		t.Fatal("Data read was different than expected")
 	}
 
-	mpf, err = nextFile(walker)
+	mpf, err = walker.nextFile()
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil multipartFile, nil error")
 	}
@@ -132,7 +132,7 @@ func TestOutput(t *testing.T) {
 		t.Fatal("Expected file to be a directory")
 	}
 
-	child, err := nextFile(walker)
+	child, err := walker.nextFile()
 	if child == nil || err != nil {
 		t.Fatal("Expected to be able to read a child file")
 	}
@@ -140,7 +140,7 @@ func TestOutput(t *testing.T) {
 		t.Fatal("Expected file to not be a directory")
 	}
 
-	child, err = nextFile(walker)
+	child, err = walker.nextFile()
 	if child == nil || err != nil {
 		t.Fatal("Expected to be able to read a child file")
 	}
@@ -153,7 +153,7 @@ func TestOutput(t *testing.T) {
 		t.Fatal("Expected to get false")
 	}
 
-	mpf, err = nextFile(walker)
+	mpf, err = walker.nextFile()
 	if mpf == nil || err != nil {
 		t.Fatal("Expected non-nil multipartFile, nil error")
 	}
