@@ -187,6 +187,8 @@ func (it *multipartIterator) Next() bool {
 }
 
 func (it *multipartIterator) Err() error {
+	// We use EOF to signal that this iterator is done. That way, we don't
+	// need to check every time `Next` is called.
 	if it.err == io.EOF {
 		return nil
 	}
