@@ -342,7 +342,7 @@ func (p *ProgressTracker) Value() int {
 
 // FetchGraphConcurrency is total number of concurrent fetches that
 // 'fetchNodes' will start at a time
-var FetchGraphConcurrency = 8
+var FetchGraphConcurrency = 32
 
 // EnumerateChildrenAsync is equivalent to EnumerateChildren *except* that it
 // fetches children in parallel.
