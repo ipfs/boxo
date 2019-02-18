@@ -272,3 +272,6 @@ func (c *queryTestDS) Query(q dsq.Query) (dsq.Results, error) {
 func (c *queryTestDS) Batch() (ds.Batch, error) {
 	return ds.NewBasicBatch(c), nil
 }
+func (c *queryTestDS) Close() error {
+	return nil
+}

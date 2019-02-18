@@ -148,6 +148,8 @@ func TestHasIsBloomCached(t *testing.T) {
 	}
 }
 
+var _ ds.Batching = (*callbackDatastore)(nil)
+
 type callbackDatastore struct {
 	sync.Mutex
 	f  func()
@@ -184,6 +186,10 @@ func (c *callbackDatastore) Has(key ds.Key) (exists bool, err error) {
 func (c *callbackDatastore) GetSize(key ds.Key) (size int, err error) {
 	c.CallF()
 	return c.ds.GetSize(key)
+}
+
+func (c *callbackDatastore) Close() error {
+	return nil
 }
 
 func (c *callbackDatastore) Delete(key ds.Key) (err error) {
