@@ -3,13 +3,13 @@
 
 package ipns_pb
 
-import proto "github.com/gogo/protobuf/proto"
-import fmt "fmt"
-import math "math"
-
-import github_com_gogo_protobuf_proto "github.com/gogo/protobuf/proto"
-
-import io "io"
+import (
+	fmt "fmt"
+	github_com_gogo_protobuf_proto "github.com/gogo/protobuf/proto"
+	proto "github.com/gogo/protobuf/proto"
+	io "io"
+	math "math"
+)
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
@@ -32,6 +32,7 @@ const (
 var IpnsEntry_ValidityType_name = map[int32]string{
 	0: "EOL",
 }
+
 var IpnsEntry_ValidityType_value = map[string]int32{
 	"EOL": 0,
 }
@@ -41,9 +42,11 @@ func (x IpnsEntry_ValidityType) Enum() *IpnsEntry_ValidityType {
 	*p = x
 	return p
 }
+
 func (x IpnsEntry_ValidityType) String() string {
 	return proto.EnumName(IpnsEntry_ValidityType_name, int32(x))
 }
+
 func (x *IpnsEntry_ValidityType) UnmarshalJSON(data []byte) error {
 	value, err := proto.UnmarshalJSONEnum(IpnsEntry_ValidityType_value, data, "IpnsEntry_ValidityType")
 	if err != nil {
@@ -52,8 +55,9 @@ func (x *IpnsEntry_ValidityType) UnmarshalJSON(data []byte) error {
 	*x = IpnsEntry_ValidityType(value)
 	return nil
 }
+
 func (IpnsEntry_ValidityType) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_ipns_02f6be73595bcc54, []int{0, 0}
+	return fileDescriptor_4d5b16fb32bfe8ea, []int{0, 0}
 }
 
 type IpnsEntry struct {
@@ -77,7 +81,7 @@ func (m *IpnsEntry) Reset()         { *m = IpnsEntry{} }
 func (m *IpnsEntry) String() string { return proto.CompactTextString(m) }
 func (*IpnsEntry) ProtoMessage()    {}
 func (*IpnsEntry) Descriptor() ([]byte, []int) {
-	return fileDescriptor_ipns_02f6be73595bcc54, []int{0}
+	return fileDescriptor_4d5b16fb32bfe8ea, []int{0}
 }
 func (m *IpnsEntry) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -94,8 +98,8 @@ func (m *IpnsEntry) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (dst *IpnsEntry) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_IpnsEntry.Merge(dst, src)
+func (m *IpnsEntry) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_IpnsEntry.Merge(m, src)
 }
 func (m *IpnsEntry) XXX_Size() int {
 	return m.Size()
@@ -156,9 +160,30 @@ func (m *IpnsEntry) GetPubKey() []byte {
 }
 
 func init() {
-	proto.RegisterType((*IpnsEntry)(nil), "ipns.pb.IpnsEntry")
 	proto.RegisterEnum("ipns.pb.IpnsEntry_ValidityType", IpnsEntry_ValidityType_name, IpnsEntry_ValidityType_value)
+	proto.RegisterType((*IpnsEntry)(nil), "ipns.pb.IpnsEntry")
 }
+
+func init() { proto.RegisterFile("ipns.proto", fileDescriptor_4d5b16fb32bfe8ea) }
+
+var fileDescriptor_4d5b16fb32bfe8ea = []byte{
+	// 221 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xca, 0x2c, 0xc8, 0x2b,
+	0xd6, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0x87, 0xb0, 0x93, 0x94, 0xfe, 0x33, 0x72, 0x71,
+	0x7a, 0x16, 0xe4, 0x15, 0xbb, 0xe6, 0x95, 0x14, 0x55, 0x0a, 0x89, 0x70, 0xb1, 0x96, 0x25, 0xe6,
+	0x94, 0xa6, 0x4a, 0x30, 0x2a, 0x30, 0x69, 0xf0, 0x04, 0x41, 0x38, 0x42, 0x32, 0x5c, 0x9c, 0xc5,
+	0x99, 0xe9, 0x79, 0x89, 0x25, 0xa5, 0x45, 0xa9, 0x12, 0x4c, 0x60, 0x19, 0x84, 0x80, 0x90, 0x33,
+	0x17, 0x4f, 0x59, 0x62, 0x4e, 0x66, 0x4a, 0x66, 0x49, 0x65, 0x48, 0x65, 0x41, 0xaa, 0x04, 0xb3,
+	0x02, 0xa3, 0x06, 0x9f, 0x91, 0xbc, 0x1e, 0xd4, 0x06, 0x3d, 0xb8, 0xe9, 0x7a, 0x61, 0x48, 0xca,
+	0x82, 0x50, 0x34, 0x09, 0x49, 0x71, 0x71, 0xc0, 0xf8, 0x12, 0x2c, 0x0a, 0x8c, 0x1a, 0x3c, 0x41,
+	0x70, 0x3e, 0x48, 0xae, 0x38, 0xb5, 0xb0, 0x34, 0x35, 0x2f, 0x39, 0x55, 0x82, 0x55, 0x81, 0x51,
+	0x83, 0x25, 0x08, 0xce, 0x17, 0x12, 0xe0, 0x62, 0x2e, 0x29, 0xc9, 0x91, 0x60, 0x03, 0x0b, 0x83,
+	0x98, 0x42, 0x62, 0x5c, 0x6c, 0x05, 0xa5, 0x49, 0xde, 0xa9, 0x95, 0x12, 0xec, 0x60, 0x73, 0xa0,
+	0x3c, 0x25, 0x71, 0x2e, 0x1e, 0x64, 0xfb, 0x85, 0xd8, 0xb9, 0x98, 0x5d, 0xfd, 0x7d, 0x04, 0x18,
+	0x9c, 0x78, 0x4e, 0x3c, 0x92, 0x63, 0xbc, 0xf0, 0x48, 0x8e, 0xf1, 0xc1, 0x23, 0x39, 0x46, 0x40,
+	0x00, 0x00, 0x00, 0xff, 0xff, 0x32, 0x35, 0xc7, 0xf2, 0x25, 0x01, 0x00, 0x00,
+}
+
 func (m *IpnsEntry) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -233,6 +258,9 @@ func encodeVarintIpns(dAtA []byte, offset int, v uint64) int {
 	return offset + 1
 }
 func (m *IpnsEntry) Size() (n int) {
+	if m == nil {
+		return 0
+	}
 	var l int
 	_ = l
 	if m.Value != nil {
@@ -295,7 +323,7 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 			}
 			b := dAtA[iNdEx]
 			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
+			wire |= uint64(b&0x7F) << shift
 			if b < 0x80 {
 				break
 			}
@@ -323,7 +351,7 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -332,6 +360,9 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthIpns
 			}
 			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthIpns
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -355,7 +386,7 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -364,6 +395,9 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthIpns
 			}
 			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthIpns
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -387,7 +421,7 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= (IpnsEntry_ValidityType(b) & 0x7F) << shift
+				v |= IpnsEntry_ValidityType(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -407,7 +441,7 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -416,6 +450,9 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthIpns
 			}
 			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthIpns
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -438,7 +475,7 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= (uint64(b) & 0x7F) << shift
+				v |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -458,7 +495,7 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= (uint64(b) & 0x7F) << shift
+				v |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -478,7 +515,7 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				byteLen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -487,6 +524,9 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 				return ErrInvalidLengthIpns
 			}
 			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthIpns
+			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
@@ -502,6 +542,9 @@ func (m *IpnsEntry) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			if skippy < 0 {
+				return ErrInvalidLengthIpns
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthIpns
 			}
 			if (iNdEx + skippy) > l {
@@ -577,8 +620,11 @@ func skipIpns(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
-			iNdEx += length
 			if length < 0 {
+				return 0, ErrInvalidLengthIpns
+			}
+			iNdEx += length
+			if iNdEx < 0 {
 				return 0, ErrInvalidLengthIpns
 			}
 			return iNdEx, nil
@@ -609,6 +655,9 @@ func skipIpns(dAtA []byte) (n int, err error) {
 					return 0, err
 				}
 				iNdEx = start + next
+				if iNdEx < 0 {
+					return 0, ErrInvalidLengthIpns
+				}
 			}
 			return iNdEx, nil
 		case 4:
@@ -627,23 +676,3 @@ var (
 	ErrInvalidLengthIpns = fmt.Errorf("proto: negative length found during unmarshaling")
 	ErrIntOverflowIpns   = fmt.Errorf("proto: integer overflow")
 )
-
-func init() { proto.RegisterFile("ipns.proto", fileDescriptor_ipns_02f6be73595bcc54) }
-
-var fileDescriptor_ipns_02f6be73595bcc54 = []byte{
-	// 221 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xca, 0x2c, 0xc8, 0x2b,
-	0xd6, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0x87, 0xb0, 0x93, 0x94, 0xfe, 0x33, 0x72, 0x71,
-	0x7a, 0x16, 0xe4, 0x15, 0xbb, 0xe6, 0x95, 0x14, 0x55, 0x0a, 0x89, 0x70, 0xb1, 0x96, 0x25, 0xe6,
-	0x94, 0xa6, 0x4a, 0x30, 0x2a, 0x30, 0x69, 0xf0, 0x04, 0x41, 0x38, 0x42, 0x32, 0x5c, 0x9c, 0xc5,
-	0x99, 0xe9, 0x79, 0x89, 0x25, 0xa5, 0x45, 0xa9, 0x12, 0x4c, 0x60, 0x19, 0x84, 0x80, 0x90, 0x33,
-	0x17, 0x4f, 0x59, 0x62, 0x4e, 0x66, 0x4a, 0x66, 0x49, 0x65, 0x48, 0x65, 0x41, 0xaa, 0x04, 0xb3,
-	0x02, 0xa3, 0x06, 0x9f, 0x91, 0xbc, 0x1e, 0xd4, 0x06, 0x3d, 0xb8, 0xe9, 0x7a, 0x61, 0x48, 0xca,
-	0x82, 0x50, 0x34, 0x09, 0x49, 0x71, 0x71, 0xc0, 0xf8, 0x12, 0x2c, 0x0a, 0x8c, 0x1a, 0x3c, 0x41,
-	0x70, 0x3e, 0x48, 0xae, 0x38, 0xb5, 0xb0, 0x34, 0x35, 0x2f, 0x39, 0x55, 0x82, 0x55, 0x81, 0x51,
-	0x83, 0x25, 0x08, 0xce, 0x17, 0x12, 0xe0, 0x62, 0x2e, 0x29, 0xc9, 0x91, 0x60, 0x03, 0x0b, 0x83,
-	0x98, 0x42, 0x62, 0x5c, 0x6c, 0x05, 0xa5, 0x49, 0xde, 0xa9, 0x95, 0x12, 0xec, 0x60, 0x73, 0xa0,
-	0x3c, 0x25, 0x71, 0x2e, 0x1e, 0x64, 0xfb, 0x85, 0xd8, 0xb9, 0x98, 0x5d, 0xfd, 0x7d, 0x04, 0x18,
-	0x9c, 0x78, 0x4e, 0x3c, 0x92, 0x63, 0xbc, 0xf0, 0x48, 0x8e, 0xf1, 0xc1, 0x23, 0x39, 0x46, 0x40,
-	0x00, 0x00, 0x00, 0xff, 0xff, 0x32, 0x35, 0xc7, 0xf2, 0x25, 0x01, 0x00, 0x00,
-}
