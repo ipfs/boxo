@@ -77,7 +77,7 @@ func (mq *MessageQueue) AddMessage(entries []*bsmsg.Entry, ses uint64) {
 
 // Startup starts the processing of messages, and creates an initial message
 // based on the given initial wantlist.
-func (mq *MessageQueue) Startup(ctx context.Context, initialEntries []*wantlist.Entry) {
+func (mq *MessageQueue) Startup(ctx context.Context, initialEntries []*wantlist.Entry, entries []*bsmsg.Entry, ses uint64) {
 
 	// new peer, we will want to give them our full wantlist
 	if len(initialEntries) > 0 {
@@ -89,8 +89,16 @@ func (mq *MessageQueue) Startup(ctx context.Context, initialEntries []*wantlist.
 			fullwantlist.AddEntry(e.Cid, e.Priority)
 		}
 		mq.out = fullwantlist
-		mq.work <- struct{}{}
 	}
+
+	if len(initialEntries) > 0 || mq.addEntries(entries, ses) {
+		select {
+		case <-ctx.Done():
+			return
+		case mq.work <- struct{}{}:
+		}
+	}
+
 	go mq.runQueue(ctx)
 
 }

@@ -25,9 +25,13 @@ type fakePeer struct {
 	messagesSent chan messageSent
 }
 
-func (fp *fakePeer) Startup(ctx context.Context, initialEntries []*wantlist.Entry) {}
-func (fp *fakePeer) Shutdown()                                                     {}
-func (fp *fakePeer) RefIncrement()                                                 { fp.refcnt++ }
+func (fp *fakePeer) Startup(ctx context.Context, initialEntries []*wantlist.Entry, entries []*bsmsg.Entry, ses uint64) {
+	if entries != nil {
+		fp.AddMessage(entries, ses)
+	}
+}
+func (fp *fakePeer) Shutdown()     {}
+func (fp *fakePeer) RefIncrement() { fp.refcnt++ }
 func (fp *fakePeer) RefDecrement() bool {
 	fp.refcnt--
 	return fp.refcnt > 0

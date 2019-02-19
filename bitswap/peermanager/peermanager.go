@@ -22,7 +22,7 @@ type PeerQueue interface {
 	RefIncrement()
 	RefDecrement() bool
 	AddMessage(entries []*bsmsg.Entry, ses uint64)
-	Startup(ctx context.Context, initialEntries []*wantlist.Entry)
+	Startup(ctx context.Context, initialEntries []*wantlist.Entry, entries []*bsmsg.Entry, ses uint64)
 	Shutdown()
 }
 
@@ -77,7 +77,7 @@ func (pm *PeerManager) Connected(p peer.ID, initialEntries []*wantlist.Entry) {
 
 	mq = pm.createPeerQueue(p)
 	pm.peerQueues[p] = mq
-	mq.Startup(pm.ctx, initialEntries)
+	mq.Startup(pm.ctx, initialEntries, nil, 0)
 }
 
 // Disconnected is called to remove a peer from the pool.
@@ -115,12 +115,13 @@ func (pm *PeerManager) SendMessage(initialEntries []*wantlist.Entry, entries []*
 			if !ok {
 				p = pm.createPeerQueue(t)
 				pm.peerQueues[t] = p
-				p.Startup(pm.ctx, initialEntries)
+				p.Startup(pm.ctx, initialEntries, entries, from)
 				// this is a "0 reference" queue because we haven't actually connected to it
 				// sending the first message will cause it to connect
 				p.RefDecrement()
+			} else {
+				p.AddMessage(entries, from)
 			}
-			p.AddMessage(entries, from)
 		}
 	}
 }
