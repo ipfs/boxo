@@ -25,9 +25,9 @@ func (fmn *fakeMessageNetwork) ConnectTo(context.Context, peer.ID) error {
 func (fmn *fakeMessageNetwork) NewMessageSender(context.Context, peer.ID) (bsnet.MessageSender, error) {
 	if fmn.messageSenderError == nil {
 		return fmn.messageSender, nil
-	} else {
-		return nil, fmn.messageSenderError
 	}
+	return nil, fmn.messageSenderError
+
 }
 
 type fakeMessageSender struct {
@@ -81,7 +81,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	ses := testutil.GenerateSessionID()
 	wl := testutil.GenerateWantlist(10, ses)
 
-	messageQueue.Startup(ctx, wl.Entries())
+	messageQueue.Startup(ctx, wl.Entries(), nil, 0)
 
 	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
 	if len(messages) != 1 {
@@ -123,9 +123,8 @@ func TestSendingMessagesDeduped(t *testing.T) {
 	ses1 := testutil.GenerateSessionID()
 	ses2 := testutil.GenerateSessionID()
 	entries := testutil.GenerateMessageEntries(10, false)
-	messageQueue.Startup(ctx, nil)
+	messageQueue.Startup(ctx, nil, entries, ses1)
 
-	messageQueue.AddMessage(entries, ses1)
 	messageQueue.AddMessage(entries, ses2)
 	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
 
@@ -148,9 +147,8 @@ func TestSendingMessagesPartialDupe(t *testing.T) {
 	entries := testutil.GenerateMessageEntries(10, false)
 	moreEntries := testutil.GenerateMessageEntries(5, false)
 	secondEntries := append(entries[5:], moreEntries...)
-	messageQueue.Startup(ctx, nil)
+	messageQueue.Startup(ctx, nil, entries, ses1)
 
-	messageQueue.AddMessage(entries, ses1)
 	messageQueue.AddMessage(secondEntries, ses2)
 	messages := collectMessages(ctx, t, messagesSent, 20*time.Millisecond)
 
