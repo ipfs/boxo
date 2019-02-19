@@ -14,6 +14,8 @@ import (
 
 var log = logging.Logger("bitswap")
 
+const maxRetries = 10
+
 // MessageNetwork is any network that can connect peers and generate a message
 // sender.
 type MessageNetwork interface {
@@ -162,7 +164,7 @@ func (mq *MessageQueue) doWork(ctx context.Context) {
 	}
 
 	// send wantlist updates
-	for { // try to send this message until we fail.
+	for i := 0; i < maxRetries; i++ { // try to send this message until we fail.
 		if mq.attemptSendAndRecovery(ctx, wlm) {
 			return
 		}
