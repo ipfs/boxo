@@ -79,7 +79,6 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 	tp := testutil.GeneratePeers(5)
 	peer1, peer2, peer3, peer4, peer5 := tp[0], tp[1], tp[2], tp[3], tp[4]
 	peerManager := New(ctx, peerQueueFactory)
-	peerManager.Startup()
 
 	peerManager.Connected(peer1, nil)
 	peerManager.Connected(peer2, nil)
@@ -118,14 +117,13 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 
 func TestSendingMessagesToPeers(t *testing.T) {
 	ctx := context.Background()
-	messagesSent := make(chan messageSent)
+	messagesSent := make(chan messageSent, 16)
 	peerQueueFactory := makePeerQueueFactory(messagesSent)
 
 	tp := testutil.GeneratePeers(5)
 
 	peer1, peer2, peer3, peer4, peer5 := tp[0], tp[1], tp[2], tp[3], tp[4]
 	peerManager := New(ctx, peerQueueFactory)
-	peerManager.Startup()
 
 	peerManager.Connected(peer1, nil)
 	peerManager.Connected(peer2, nil)
@@ -134,7 +132,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	entries := testutil.GenerateMessageEntries(5, false)
 	ses := testutil.GenerateSessionID()
 
-	peerManager.SendMessage(entries, nil, ses)
+	peerManager.SendMessage(nil, entries, nil, ses)
 
 	peersReceived := collectAndCheckMessages(
 		ctx, t, messagesSent, entries, ses, 10*time.Millisecond)
@@ -155,11 +153,11 @@ func TestSendingMessagesToPeers(t *testing.T) {
 
 	var peersToSendTo []peer.ID
 	peersToSendTo = append(peersToSendTo, peer1, peer3, peer4)
-	peerManager.SendMessage(entries, peersToSendTo, ses)
+	peerManager.SendMessage(nil, entries, peersToSendTo, ses)
 	peersReceived = collectAndCheckMessages(
 		ctx, t, messagesSent, entries, ses, 10*time.Millisecond)
 
-	if len(peersReceived) != 2 {
+	if len(peersReceived) != 3 {
 		t.Fatal("Incorrect number of peers received messages")
 	}
 
@@ -173,7 +171,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 		t.Fatal("Peers received message but should not have")
 	}
 
-	if testutil.ContainsPeer(peersReceived, peer4) {
-		t.Fatal("Peers targeted received message but was not connected")
+	if !testutil.ContainsPeer(peersReceived, peer4) {
+		t.Fatal("Peer should have autoconnected on message send")
 	}
 }

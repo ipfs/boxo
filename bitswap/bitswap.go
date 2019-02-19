@@ -132,7 +132,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	}
 
 	bs.wm.SetDelegate(bs.pm)
-	bs.pm.Startup()
 	bs.wm.Startup()
 	bs.pqm.Startup()
 	network.SetDelegate(bs)
@@ -361,14 +360,13 @@ func (bs *Bitswap) updateReceiveCounters(b blocks.Block) {
 
 // Connected/Disconnected warns bitswap about peer connections.
 func (bs *Bitswap) PeerConnected(p peer.ID) {
-	initialWants := bs.wm.CurrentBroadcastWants()
-	bs.pm.Connected(p, initialWants)
+	bs.wm.Connected(p)
 	bs.engine.PeerConnected(p)
 }
 
 // Connected/Disconnected warns bitswap about peer connections.
 func (bs *Bitswap) PeerDisconnected(p peer.ID) {
-	bs.pm.Disconnected(p)
+	bs.wm.Disconnected(p)
 	bs.engine.PeerDisconnected(p)
 }
 

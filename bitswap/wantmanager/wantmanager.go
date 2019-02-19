@@ -20,10 +20,12 @@ const (
 	maxPriority = math.MaxInt32
 )
 
-// WantSender sends changes out to the network as they get added to the wantlist
+// PeerHandler sends changes out to the network as they get added to the wantlist
 // managed by the WantManager.
-type WantSender interface {
-	SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64)
+type PeerHandler interface {
+	Disconnected(p peer.ID)
+	Connected(p peer.ID, initialEntries []*wantlist.Entry)
+	SendMessage(initialEntries []*wantlist.Entry, entries []*bsmsg.Entry, targets []peer.ID, from uint64)
 }
 
 type wantMessage interface {
@@ -46,7 +48,7 @@ type WantManager struct {
 	ctx    context.Context
 	cancel func()
 
-	wantSender    WantSender
+	peerHandler   PeerHandler
 	wantlistGauge metrics.Gauge
 }
 
@@ -66,8 +68,8 @@ func New(ctx context.Context) *WantManager {
 }
 
 // SetDelegate specifies who will send want changes out to the internet.
-func (wm *WantManager) SetDelegate(wantSender WantSender) {
-	wm.wantSender = wantSender
+func (wm *WantManager) SetDelegate(peerHandler PeerHandler) {
+	wm.peerHandler = peerHandler
 }
 
 // WantBlocks adds the given cids to the wantlist, tracked by the given session.
@@ -145,6 +147,22 @@ func (wm *WantManager) WantCount() int {
 	}
 }
 
+// Connected is called when a new peer is connected
+func (wm *WantManager) Connected(p peer.ID) {
+	select {
+	case wm.wantMessages <- &connectedMessage{p}:
+	case <-wm.ctx.Done():
+	}
+}
+
+// Disconnected is called when a peer is disconnected
+func (wm *WantManager) Disconnected(p peer.ID) {
+	select {
+	case wm.wantMessages <- &disconnectedMessage{p}:
+	case <-wm.ctx.Done():
+	}
+}
+
 // Startup starts processing for the WantManager.
 func (wm *WantManager) Startup() {
 	go wm.run()
@@ -214,7 +232,7 @@ func (ws *wantSet) handle(wm *WantManager) {
 	}
 
 	// broadcast those wantlist changes
-	wm.wantSender.SendMessage(ws.entries, ws.targets, ws.from)
+	wm.peerHandler.SendMessage(wm.bcwl.Entries(), ws.entries, ws.targets, ws.from)
 }
 
 type isWantedMessage struct {
@@ -249,4 +267,20 @@ type wantCountMessage struct {
 
 func (wcm *wantCountMessage) handle(wm *WantManager) {
 	wcm.resp <- wm.wl.Len()
+}
+
+type connectedMessage struct {
+	p peer.ID
+}
+
+func (cm *connectedMessage) handle(wm *WantManager) {
+	wm.peerHandler.Connected(cm.p, wm.bcwl.Entries())
+}
+
+type disconnectedMessage struct {
+	p peer.ID
+}
+
+func (dm *disconnectedMessage) handle(wm *WantManager) {
+	wm.peerHandler.Disconnected(dm.p)
 }
