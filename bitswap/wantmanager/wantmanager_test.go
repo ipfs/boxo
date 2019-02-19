@@ -7,35 +7,41 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-bitswap/testutil"
+	wantlist "github.com/ipfs/go-bitswap/wantlist"
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p-peer"
 )
 
-type fakeWantSender struct {
-	lk          sync.RWMutex
-	lastWantSet wantSet
+type fakePeerHandler struct {
+	lk             sync.RWMutex
+	lastWantSet    wantSet
+	initialEntries []*wantlist.Entry
 }
 
-func (fws *fakeWantSender) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64) {
-	fws.lk.Lock()
-	fws.lastWantSet = wantSet{entries, targets, from}
-	fws.lk.Unlock()
+func (fph *fakePeerHandler) SendMessage(initialEntries []*wantlist.Entry, entries []*bsmsg.Entry, targets []peer.ID, from uint64) {
+	fph.lk.Lock()
+	fph.lastWantSet = wantSet{entries, targets, from}
+	fph.initialEntries = initialEntries
+	fph.lk.Unlock()
 }
 
-func (fws *fakeWantSender) getLastWantSet() wantSet {
-	fws.lk.Lock()
-	defer fws.lk.Unlock()
-	return fws.lastWantSet
+func (fph *fakePeerHandler) Connected(p peer.ID, initialEntries []*wantlist.Entry) {}
+func (fph *fakePeerHandler) Disconnected(p peer.ID)                                {}
+
+func (fph *fakePeerHandler) getLastWantSet() wantSet {
+	fph.lk.Lock()
+	defer fph.lk.Unlock()
+	return fph.lastWantSet
 }
 
 func setupTestFixturesAndInitialWantList() (
-	context.Context, *fakeWantSender, *WantManager, []cid.Cid, []cid.Cid, []peer.ID, uint64, uint64) {
+	context.Context, *fakePeerHandler, *WantManager, []cid.Cid, []cid.Cid, []peer.ID, uint64, uint64) {
 	ctx := context.Background()
 
 	// setup fixtures
-	wantSender := &fakeWantSender{}
+	wantSender := &fakePeerHandler{}
 	wantManager := New(ctx)
 	keys := testutil.GenerateCids(10)
 	otherKeys := testutil.GenerateCids(5)
