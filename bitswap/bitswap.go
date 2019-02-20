@@ -97,8 +97,8 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		return nil
 	})
 
-	peerQueueFactory := func(p peer.ID) bspm.PeerQueue {
-		return bsmq.New(p, network)
+	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
+		return bsmq.New(ctx, p, network)
 	}
 
 	wm := bswm.New(ctx)
