@@ -20,6 +20,7 @@ type PubSub interface {
 func New() PubSub {
 	return &impl{
 		wrapped: *pubsub.New(bufferSize),
+		closed:  make(chan struct{}),
 	}
 }
 
@@ -27,28 +28,31 @@ type impl struct {
 	lk      sync.RWMutex
 	wrapped pubsub.PubSub
 
-	closed bool
+	closed chan struct{}
 }
 
 func (ps *impl) Publish(block blocks.Block) {
 	ps.lk.RLock()
 	defer ps.lk.RUnlock()
-	if ps.closed {
+	select {
+	case <-ps.closed:
 		return
+	default:
 	}
 
 	ps.wrapped.Pub(block, block.Cid().KeyString())
 }
 
-// Not safe to call more than once.
 func (ps *impl) Shutdown() {
 	ps.lk.Lock()
 	defer ps.lk.Unlock()
-	if ps.closed {
+	select {
+	case <-ps.closed:
 		return
+	default:
 	}
+	close(ps.closed)
 	ps.wrapped.Shutdown()
-	ps.closed = true
 }
 
 // Subscribe returns a channel of blocks for the given |keys|. |blockChannel|
@@ -67,9 +71,11 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 	ps.lk.RLock()
 	defer ps.lk.RUnlock()
 
-	if ps.closed {
+	select {
+	case <-ps.closed:
 		close(blocksCh)
 		return blocksCh
+	default:
 	}
 
 	ps.wrapped.AddSubOnceEach(valuesCh, toStrings(keys)...)
@@ -79,10 +85,12 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 
 			ps.lk.RLock()
 			defer ps.lk.RUnlock()
-			if ps.closed {
-				// Don't touch the pubsub instance if we're
-				// already closed.
+			// Don't touch the pubsub instance if we're
+			// already closed.
+			select {
+			case <-ps.closed:
 				return
+			default:
 			}
 
 			ps.wrapped.Unsub(valuesCh)
@@ -92,6 +100,7 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 			select {
 			case <-ctx.Done():
 				return
+			case <-ps.closed:
 			case val, ok := <-valuesCh:
 				if !ok {
 					return
@@ -100,13 +109,11 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 				if !ok {
 					return
 				}
-				// We could end up blocking here if the client
-				// forgets to cancel the context but that's not
-				// our problem.
 				select {
 				case <-ctx.Done():
 					return
 				case blocksCh <- block: // continue
+				case <-ps.closed:
 				}
 			}
 		}
