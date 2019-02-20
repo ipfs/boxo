@@ -2,7 +2,6 @@ package messagequeue
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
@@ -23,68 +22,72 @@ type MessageNetwork interface {
 	NewMessageSender(context.Context, peer.ID) (bsnet.MessageSender, error)
 }
 
+type request interface {
+	handle(mq *MessageQueue)
+}
+
 // MessageQueue implements queue of want messages to send to peers.
 type MessageQueue struct {
-	p peer.ID
-
-	outlk   sync.Mutex
-	out     bsmsg.BitSwapMessage
+	ctx     context.Context
+	p       peer.ID
 	network MessageNetwork
-	wl      *wantlist.ThreadSafe
 
-	sender bsnet.MessageSender
+	newRequests      chan request
+	outgoingMessages chan bsmsg.BitSwapMessage
+	done             chan struct{}
 
-	work chan struct{}
-	done chan struct{}
+	// do not touch out of run loop
+	wl          *wantlist.SessionTrackedWantlist
+	nextMessage bsmsg.BitSwapMessage
+	sender      bsnet.MessageSender
+}
+
+type messageRequest struct {
+	entries []*bsmsg.Entry
+	ses     uint64
+}
+
+type wantlistRequest struct {
+	wl *wantlist.SessionTrackedWantlist
 }
 
 // New creats a new MessageQueue.
-func New(p peer.ID, network MessageNetwork) *MessageQueue {
+func New(ctx context.Context, p peer.ID, network MessageNetwork) *MessageQueue {
 	return &MessageQueue{
-		done:    make(chan struct{}),
-		work:    make(chan struct{}, 1),
-		wl:      wantlist.NewThreadSafe(),
-		network: network,
-		p:       p,
+		ctx:              ctx,
+		wl:               wantlist.NewSessionTrackedWantlist(),
+		network:          network,
+		p:                p,
+		newRequests:      make(chan request, 16),
+		outgoingMessages: make(chan bsmsg.BitSwapMessage),
+		done:             make(chan struct{}),
 	}
 }
 
 // AddMessage adds new entries to an outgoing message for a given session.
 func (mq *MessageQueue) AddMessage(entries []*bsmsg.Entry, ses uint64) {
-	if !mq.addEntries(entries, ses) {
-		return
-	}
 	select {
-	case mq.work <- struct{}{}:
-	default:
+	case mq.newRequests <- &messageRequest{entries, ses}:
+	case <-mq.ctx.Done():
 	}
 }
 
 // AddWantlist adds a complete session tracked want list to a message queue
-func (mq *MessageQueue) AddWantlist(initialEntries []*wantlist.Entry) {
-	if len(initialEntries) > 0 {
-		if mq.out == nil {
-			mq.out = bsmsg.New(false)
-		}
+func (mq *MessageQueue) AddWantlist(initialWants *wantlist.SessionTrackedWantlist) {
+	wl := wantlist.NewSessionTrackedWantlist()
+	initialWants.CopyWants(wl)
 
-		for _, e := range initialEntries {
-			for k := range e.SesTrk {
-				mq.wl.AddEntry(e, k)
-			}
-			mq.out.AddEntry(e.Cid, e.Priority)
-		}
-
-		select {
-		case mq.work <- struct{}{}:
-		default:
-		}
+	select {
+	case mq.newRequests <- &wantlistRequest{wl}:
+	case <-mq.ctx.Done():
 	}
 }
 
 // Startup starts the processing of messages, and creates an initial message
 // based on the given initial wantlist.
-func (mq *MessageQueue) Startup(ctx context.Context) {
-	go mq.runQueue(ctx)
+func (mq *MessageQueue) Startup() {
+	go mq.runQueue()
+	go mq.sendMessages()
 }
 
 // Shutdown stops the processing of messages for a message queue.
@@ -92,17 +95,26 @@ func (mq *MessageQueue) Shutdown() {
 	close(mq.done)
 }
 
-func (mq *MessageQueue) runQueue(ctx context.Context) {
+func (mq *MessageQueue) runQueue() {
+	outgoingMessages := func() chan bsmsg.BitSwapMessage {
+		if mq.nextMessage == nil {
+			return nil
+		}
+		return mq.outgoingMessages
+	}
+
 	for {
 		select {
-		case <-mq.work: // there is work to be done
-			mq.doWork(ctx)
+		case newRequest := <-mq.newRequests:
+			newRequest.handle(mq)
+		case outgoingMessages() <- mq.nextMessage:
+			mq.nextMessage = nil
 		case <-mq.done:
 			if mq.sender != nil {
 				mq.sender.Close()
 			}
 			return
-		case <-ctx.Done():
+		case <-mq.ctx.Done():
 			if mq.sender != nil {
 				mq.sender.Reset()
 			}
@@ -111,63 +123,77 @@ func (mq *MessageQueue) runQueue(ctx context.Context) {
 	}
 }
 
-func (mq *MessageQueue) addEntries(entries []*bsmsg.Entry, ses uint64) bool {
-	var work bool
-	mq.outlk.Lock()
-	defer mq.outlk.Unlock()
-	// if we have no message held allocate a new one
-	if mq.out == nil {
-		mq.out = bsmsg.New(false)
-	}
+func (mr *messageRequest) handle(mq *MessageQueue) {
+	mq.addEntries(mr.entries, mr.ses)
+}
 
-	// TODO: add a msg.Combine(...) method
-	// otherwise, combine the one we are holding with the
-	// one passed in
+func (wr *wantlistRequest) handle(mq *MessageQueue) {
+	initialWants := wr.wl
+	initialWants.CopyWants(mq.wl)
+	if initialWants.Len() > 0 {
+		if mq.nextMessage == nil {
+			mq.nextMessage = bsmsg.New(false)
+		}
+		for _, e := range initialWants.Entries() {
+			mq.nextMessage.AddEntry(e.Cid, e.Priority)
+		}
+	}
+}
+
+func (mq *MessageQueue) addEntries(entries []*bsmsg.Entry, ses uint64) {
 	for _, e := range entries {
 		if e.Cancel {
 			if mq.wl.Remove(e.Cid, ses) {
-				work = true
-				mq.out.Cancel(e.Cid)
+				if mq.nextMessage == nil {
+					mq.nextMessage = bsmsg.New(false)
+				}
+				mq.nextMessage.Cancel(e.Cid)
 			}
 		} else {
 			if mq.wl.Add(e.Cid, e.Priority, ses) {
-				work = true
-				mq.out.AddEntry(e.Cid, e.Priority)
+				if mq.nextMessage == nil {
+					mq.nextMessage = bsmsg.New(false)
+				}
+				mq.nextMessage.AddEntry(e.Cid, e.Priority)
 			}
 		}
 	}
-
-	return work
 }
 
-func (mq *MessageQueue) doWork(ctx context.Context) {
-
-	wlm := mq.extractOutgoingMessage()
-	if wlm == nil || wlm.Empty() {
-		return
+func (mq *MessageQueue) sendMessages() {
+	for {
+		select {
+		case nextMessage := <-mq.outgoingMessages:
+			mq.sendMessage(nextMessage)
+		case <-mq.done:
+			return
+		case <-mq.ctx.Done():
+			return
+		}
 	}
+}
 
-	// NB: only open a stream if we actually have data to send
-	err := mq.initializeSender(ctx)
+func (mq *MessageQueue) sendMessage(message bsmsg.BitSwapMessage) {
+
+	err := mq.initializeSender()
 	if err != nil {
 		log.Infof("cant open message sender to peer %s: %s", mq.p, err)
 		// TODO: cant connect, what now?
 		return
 	}
 
-	// send wantlist updates
 	for i := 0; i < maxRetries; i++ { // try to send this message until we fail.
-		if mq.attemptSendAndRecovery(ctx, wlm) {
+		if mq.attemptSendAndRecovery(message) {
 			return
 		}
 	}
 }
 
-func (mq *MessageQueue) initializeSender(ctx context.Context) error {
+func (mq *MessageQueue) initializeSender() error {
 	if mq.sender != nil {
 		return nil
 	}
-	nsender, err := openSender(ctx, mq.network, mq.p)
+	nsender, err := openSender(mq.ctx, mq.network, mq.p)
 	if err != nil {
 		return err
 	}
@@ -175,8 +201,8 @@ func (mq *MessageQueue) initializeSender(ctx context.Context) error {
 	return nil
 }
 
-func (mq *MessageQueue) attemptSendAndRecovery(ctx context.Context, wlm bsmsg.BitSwapMessage) bool {
-	err := mq.sender.SendMsg(ctx, wlm)
+func (mq *MessageQueue) attemptSendAndRecovery(message bsmsg.BitSwapMessage) bool {
+	err := mq.sender.SendMsg(mq.ctx, message)
 	if err == nil {
 		return true
 	}
@@ -188,14 +214,14 @@ func (mq *MessageQueue) attemptSendAndRecovery(ctx context.Context, wlm bsmsg.Bi
 	select {
 	case <-mq.done:
 		return true
-	case <-ctx.Done():
+	case <-mq.ctx.Done():
 		return true
 	case <-time.After(time.Millisecond * 100):
 		// wait 100ms in case disconnect notifications are still propogating
 		log.Warning("SendMsg errored but neither 'done' nor context.Done() were set")
 	}
 
-	err = mq.initializeSender(ctx)
+	err = mq.initializeSender()
 	if err != nil {
 		log.Infof("couldnt open sender again after SendMsg(%s) failed: %s", mq.p, err)
 		// TODO(why): what do we do now?
@@ -213,15 +239,6 @@ func (mq *MessageQueue) attemptSendAndRecovery(ctx context.Context, wlm bsmsg.Bi
 		}
 	*/
 	return false
-}
-
-func (mq *MessageQueue) extractOutgoingMessage() bsmsg.BitSwapMessage {
-	// grab outgoing message
-	mq.outlk.Lock()
-	wlm := mq.out
-	mq.out = nil
-	mq.outlk.Unlock()
-	return wlm
 }
 
 func openSender(ctx context.Context, network MessageNetwork, p peer.ID) (bsnet.MessageSender, error) {

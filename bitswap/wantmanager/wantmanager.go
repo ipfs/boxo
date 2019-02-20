@@ -24,7 +24,7 @@ const (
 // managed by the WantManager.
 type PeerHandler interface {
 	Disconnected(p peer.ID)
-	Connected(p peer.ID, initialEntries []*wantlist.Entry)
+	Connected(p peer.ID, initialWants *wantlist.SessionTrackedWantlist)
 	SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64)
 }
 
@@ -42,8 +42,8 @@ type WantManager struct {
 	wantMessages chan wantMessage
 
 	// synchronized by Run loop, only touch inside there
-	wl   *wantlist.ThreadSafe
-	bcwl *wantlist.ThreadSafe
+	wl   *wantlist.SessionTrackedWantlist
+	bcwl *wantlist.SessionTrackedWantlist
 
 	ctx    context.Context
 	cancel func()
@@ -59,8 +59,8 @@ func New(ctx context.Context) *WantManager {
 		"Number of items in wantlist.").Gauge()
 	return &WantManager{
 		wantMessages:  make(chan wantMessage, 10),
-		wl:            wantlist.NewThreadSafe(),
-		bcwl:          wantlist.NewThreadSafe(),
+		wl:            wantlist.NewSessionTrackedWantlist(),
+		bcwl:          wantlist.NewSessionTrackedWantlist(),
 		ctx:           ctx,
 		cancel:        cancel,
 		wantlistGauge: wantlistGauge,
@@ -274,7 +274,7 @@ type connectedMessage struct {
 }
 
 func (cm *connectedMessage) handle(wm *WantManager) {
-	wm.peerHandler.Connected(cm.p, wm.bcwl.Entries())
+	wm.peerHandler.Connected(cm.p, wm.bcwl)
 }
 
 type disconnectedMessage struct {

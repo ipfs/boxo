@@ -25,8 +25,8 @@ func (fph *fakePeerHandler) SendMessage(entries []*bsmsg.Entry, targets []peer.I
 	fph.lk.Unlock()
 }
 
-func (fph *fakePeerHandler) Connected(p peer.ID, initialEntries []*wantlist.Entry) {}
-func (fph *fakePeerHandler) Disconnected(p peer.ID)                                {}
+func (fph *fakePeerHandler) Connected(p peer.ID, initialWants *wantlist.SessionTrackedWantlist) {}
+func (fph *fakePeerHandler) Disconnected(p peer.ID)                                             {}
 
 func (fph *fakePeerHandler) getLastWantSet() wantSet {
 	fph.lk.Lock()
