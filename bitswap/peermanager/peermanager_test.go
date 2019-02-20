@@ -25,13 +25,10 @@ type fakePeer struct {
 	messagesSent chan messageSent
 }
 
-func (fp *fakePeer) Startup(ctx context.Context, initialEntries []*wantlist.Entry, entries []*bsmsg.Entry, ses uint64) {
-	if entries != nil {
-		fp.AddMessage(entries, ses)
-	}
-}
-func (fp *fakePeer) Shutdown()     {}
-func (fp *fakePeer) RefIncrement() { fp.refcnt++ }
+func (fp *fakePeer) Startup(ctx context.Context) {}
+func (fp *fakePeer) Shutdown()                   {}
+func (fp *fakePeer) RefCount() int               { return fp.refcnt }
+func (fp *fakePeer) RefIncrement()               { fp.refcnt++ }
 func (fp *fakePeer) RefDecrement() bool {
 	fp.refcnt--
 	return fp.refcnt > 0
@@ -39,7 +36,7 @@ func (fp *fakePeer) RefDecrement() bool {
 func (fp *fakePeer) AddMessage(entries []*bsmsg.Entry, ses uint64) {
 	fp.messagesSent <- messageSent{fp.p, entries, ses}
 }
-
+func (fp *fakePeer) AddWantlist(initialEntries []*wantlist.Entry) {}
 func makePeerQueueFactory(messagesSent chan messageSent) PeerQueueFactory {
 	return func(p peer.ID) PeerQueue {
 		return &fakePeer{
@@ -136,7 +133,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	entries := testutil.GenerateMessageEntries(5, false)
 	ses := testutil.GenerateSessionID()
 
-	peerManager.SendMessage(nil, entries, nil, ses)
+	peerManager.SendMessage(entries, nil, ses)
 
 	peersReceived := collectAndCheckMessages(
 		ctx, t, messagesSent, entries, ses, 10*time.Millisecond)
@@ -157,7 +154,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 
 	var peersToSendTo []peer.ID
 	peersToSendTo = append(peersToSendTo, peer1, peer3, peer4)
-	peerManager.SendMessage(nil, entries, peersToSendTo, ses)
+	peerManager.SendMessage(entries, peersToSendTo, ses)
 	peersReceived = collectAndCheckMessages(
 		ctx, t, messagesSent, entries, ses, 10*time.Millisecond)
 

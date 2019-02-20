@@ -15,15 +15,13 @@ import (
 )
 
 type fakePeerHandler struct {
-	lk             sync.RWMutex
-	lastWantSet    wantSet
-	initialEntries []*wantlist.Entry
+	lk          sync.RWMutex
+	lastWantSet wantSet
 }
 
-func (fph *fakePeerHandler) SendMessage(initialEntries []*wantlist.Entry, entries []*bsmsg.Entry, targets []peer.ID, from uint64) {
+func (fph *fakePeerHandler) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64) {
 	fph.lk.Lock()
 	fph.lastWantSet = wantSet{entries, targets, from}
-	fph.initialEntries = initialEntries
 	fph.lk.Unlock()
 }
 

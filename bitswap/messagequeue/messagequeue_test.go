@@ -81,8 +81,8 @@ func TestStartupAndShutdown(t *testing.T) {
 	ses := testutil.GenerateSessionID()
 	wl := testutil.GenerateWantlist(10, ses)
 
-	messageQueue.Startup(ctx, wl.Entries(), nil, 0)
-
+	messageQueue.Startup(ctx)
+	messageQueue.AddWantlist(wl.Entries())
 	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
 	if len(messages) != 1 {
 		t.Fatal("wrong number of messages were sent for initial wants")
@@ -123,8 +123,9 @@ func TestSendingMessagesDeduped(t *testing.T) {
 	ses1 := testutil.GenerateSessionID()
 	ses2 := testutil.GenerateSessionID()
 	entries := testutil.GenerateMessageEntries(10, false)
-	messageQueue.Startup(ctx, nil, entries, ses1)
+	messageQueue.Startup(ctx)
 
+	messageQueue.AddMessage(entries, ses1)
 	messageQueue.AddMessage(entries, ses2)
 	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
 
@@ -147,8 +148,9 @@ func TestSendingMessagesPartialDupe(t *testing.T) {
 	entries := testutil.GenerateMessageEntries(10, false)
 	moreEntries := testutil.GenerateMessageEntries(5, false)
 	secondEntries := append(entries[5:], moreEntries...)
-	messageQueue.Startup(ctx, nil, entries, ses1)
+	messageQueue.Startup(ctx)
 
+	messageQueue.AddMessage(entries, ses1)
 	messageQueue.AddMessage(secondEntries, ses2)
 	messages := collectMessages(ctx, t, messagesSent, 20*time.Millisecond)
 
