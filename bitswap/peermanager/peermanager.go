@@ -21,8 +21,10 @@ var (
 type PeerQueue interface {
 	RefIncrement()
 	RefDecrement() bool
+	RefCount() int
 	AddMessage(entries []*bsmsg.Entry, ses uint64)
-	Startup(ctx context.Context, initialEntries []*wantlist.Entry, entries []*bsmsg.Entry, ses uint64)
+	Startup(ctx context.Context)
+	AddWantlist(initialEntries []*wantlist.Entry)
 	Shutdown()
 }
 
@@ -71,13 +73,17 @@ func (pm *PeerManager) Connected(p peer.ID, initialEntries []*wantlist.Entry) {
 
 	mq, ok := pm.peerQueues[p]
 	if ok {
+		if mq.RefCount() == 0 {
+			mq.AddWantlist(initialEntries)
+		}
 		mq.RefIncrement()
 		return
 	}
 
 	mq = pm.createPeerQueue(p)
 	pm.peerQueues[p] = mq
-	mq.Startup(pm.ctx, initialEntries, nil, 0)
+	mq.Startup(pm.ctx)
+	mq.AddWantlist(initialEntries)
 }
 
 // Disconnected is called to remove a peer from the pool.
@@ -101,7 +107,7 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 
 // SendMessage is called to send a message to all or some peers in the pool;
 // if targets is nil, it sends to all.
-func (pm *PeerManager) SendMessage(initialEntries []*wantlist.Entry, entries []*bsmsg.Entry, targets []peer.ID, from uint64) {
+func (pm *PeerManager) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64) {
 	pm.lk.Lock()
 	defer pm.lk.Unlock()
 
@@ -115,13 +121,12 @@ func (pm *PeerManager) SendMessage(initialEntries []*wantlist.Entry, entries []*
 			if !ok {
 				p = pm.createPeerQueue(t)
 				pm.peerQueues[t] = p
-				p.Startup(pm.ctx, initialEntries, entries, from)
+				p.Startup(pm.ctx)
 				// this is a "0 reference" queue because we haven't actually connected to it
 				// sending the first message will cause it to connect
 				p.RefDecrement()
-			} else {
-				p.AddMessage(entries, from)
 			}
+			p.AddMessage(entries, from)
 		}
 	}
 }

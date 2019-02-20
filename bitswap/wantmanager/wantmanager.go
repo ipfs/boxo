@@ -25,7 +25,7 @@ const (
 type PeerHandler interface {
 	Disconnected(p peer.ID)
 	Connected(p peer.ID, initialEntries []*wantlist.Entry)
-	SendMessage(initialEntries []*wantlist.Entry, entries []*bsmsg.Entry, targets []peer.ID, from uint64)
+	SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64)
 }
 
 type wantMessage interface {
@@ -232,7 +232,7 @@ func (ws *wantSet) handle(wm *WantManager) {
 	}
 
 	// broadcast those wantlist changes
-	wm.peerHandler.SendMessage(wm.bcwl.Entries(), ws.entries, ws.targets, ws.from)
+	wm.peerHandler.SendMessage(ws.entries, ws.targets, ws.from)
 }
 
 type isWantedMessage struct {

@@ -52,6 +52,11 @@ func New(p peer.ID, network MessageNetwork) *MessageQueue {
 	}
 }
 
+// RefCount returns the number of open connections for this queue.
+func (mq *MessageQueue) RefCount() int {
+	return mq.refcnt
+}
+
 // RefIncrement increments the refcount for a message queue.
 func (mq *MessageQueue) RefIncrement() {
 	mq.refcnt++
@@ -75,32 +80,31 @@ func (mq *MessageQueue) AddMessage(entries []*bsmsg.Entry, ses uint64) {
 	}
 }
 
-// Startup starts the processing of messages, and creates an initial message
-// based on the given initial wantlist.
-func (mq *MessageQueue) Startup(ctx context.Context, initialEntries []*wantlist.Entry, entries []*bsmsg.Entry, ses uint64) {
-
-	// new peer, we will want to give them our full wantlist
+// AddWantlist adds a complete session tracked want list to a message queue
+func (mq *MessageQueue) AddWantlist(initialEntries []*wantlist.Entry) {
 	if len(initialEntries) > 0 {
-		fullwantlist := bsmsg.New(true)
+		if mq.out == nil {
+			mq.out = bsmsg.New(false)
+		}
+
 		for _, e := range initialEntries {
 			for k := range e.SesTrk {
 				mq.wl.AddEntry(e, k)
 			}
-			fullwantlist.AddEntry(e.Cid, e.Priority)
+			mq.out.AddEntry(e.Cid, e.Priority)
 		}
-		mq.out = fullwantlist
-	}
 
-	if len(initialEntries) > 0 || mq.addEntries(entries, ses) {
 		select {
-		case <-ctx.Done():
-			return
 		case mq.work <- struct{}{}:
+		default:
 		}
 	}
+}
 
+// Startup starts the processing of messages, and creates an initial message
+// based on the given initial wantlist.
+func (mq *MessageQueue) Startup(ctx context.Context) {
 	go mq.runQueue(ctx)
-
 }
 
 // Shutdown stops the processing of messages for a message queue.
