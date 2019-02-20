@@ -102,7 +102,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		return bsmq.New(ctx, p, network)
 	}
 
-	wm := bswm.New(ctx)
+	wm := bswm.New(ctx, bspm.New(ctx, peerQueueFactory))
 	pqm := bspqm.New(ctx, network)
 
 	sessionFactory := func(ctx context.Context, id uint64, pm bssession.PeerManager, srs bssession.RequestSplitter) bssm.Session {
@@ -124,7 +124,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		provideKeys:   make(chan cid.Cid, provideKeysBufferSize),
 		wm:            wm,
 		pqm:           pqm,
-		pm:            bspm.New(ctx, peerQueueFactory),
 		sm:            bssm.New(ctx, sessionFactory, sessionPeerManagerFactory, sessionRequestSplitterFactory),
 		counters:      new(counters),
 		dupMetric:     dupHist,
@@ -132,7 +131,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		sentHistogram: sentHistogram,
 	}
 
-	bs.wm.SetDelegate(bs.pm)
 	bs.wm.Startup()
 	bs.pqm.Startup()
 	network.SetDelegate(bs)
@@ -153,10 +151,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 
 // Bitswap instances implement the bitswap protocol.
 type Bitswap struct {
-	// the peermanager manages sending messages to peers in a way that
-	// wont block bitswap operation
-	pm *bspm.PeerManager
-
 	// the wantlist tracks global wants for bitswap
 	wm *bswm.WantManager
 
