@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	bssrs "github.com/ipfs/go-bitswap/sessionrequestsplitter"
@@ -292,7 +291,9 @@ func (bs *Bitswap) receiveBlockFrom(blk blocks.Block, from peer.ID) error {
 }
 
 func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg.BitSwapMessage) {
-	atomic.AddUint64(&bs.counters.messagesRecvd, 1)
+	bs.counterLk.Lock()
+	bs.counters.messagesRecvd++
+	bs.counterLk.Unlock()
 
 	// This call records changes to wantlists, blocks received,
 	// and number of bytes transfered.

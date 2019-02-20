@@ -104,7 +104,11 @@ func TestSessionBetweenPeers(t *testing.T) {
 		}
 	}
 	for _, is := range inst[2:] {
-		if is.Exchange.counters.messagesRecvd > 2 {
+		stat, err := is.Exchange.Stat()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stat.MessagesReceived > 2 {
 			t.Fatal("uninvolved nodes should only receive two messages", is.Exchange.counters.messagesRecvd)
 		}
 	}
