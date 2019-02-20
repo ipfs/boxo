@@ -66,7 +66,7 @@ func newMsg(full bool) *impl {
 }
 
 type Entry struct {
-	*wantlist.Entry
+	wantlist.Entry
 	Cancel bool
 }
 
@@ -150,7 +150,7 @@ func (m *impl) addEntry(c cid.Cid, priority int, cancel bool) {
 		e.Cancel = cancel
 	} else {
 		m.wantlist[c] = &Entry{
-			Entry: &wantlist.Entry{
+			Entry: wantlist.Entry{
 				Cid:      c,
 				Priority: priority,
 			},

@@ -25,7 +25,7 @@ func init() {
 }
 
 type wli interface {
-	Contains(cid.Cid) (*Entry, bool)
+	Contains(cid.Cid) (Entry, bool)
 }
 
 func assertHasCid(t *testing.T, w wli, c cid.Cid) {

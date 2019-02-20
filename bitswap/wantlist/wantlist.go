@@ -13,7 +13,7 @@ type SessionTrackedWantlist struct {
 }
 
 type Wantlist struct {
-	set map[cid.Cid]*Entry
+	set map[cid.Cid]Entry
 }
 
 type Entry struct {
@@ -22,19 +22,19 @@ type Entry struct {
 }
 
 type sessionTrackedEntry struct {
-	*Entry
+	Entry
 	sesTrk map[uint64]struct{}
 }
 
 // NewRefEntry creates a new reference tracked wantlist entry.
-func NewRefEntry(c cid.Cid, p int) *Entry {
-	return &Entry{
+func NewRefEntry(c cid.Cid, p int) Entry {
+	return Entry{
 		Cid:      c,
 		Priority: p,
 	}
 }
 
-type entrySlice []*Entry
+type entrySlice []Entry
 
 func (es entrySlice) Len() int           { return len(es) }
 func (es entrySlice) Swap(i, j int)      { es[i], es[j] = es[j], es[i] }
@@ -48,7 +48,7 @@ func NewSessionTrackedWantlist() *SessionTrackedWantlist {
 
 func New() *Wantlist {
 	return &Wantlist{
-		set: make(map[cid.Cid]*Entry),
+		set: make(map[cid.Cid]Entry),
 	}
 }
 
@@ -68,7 +68,7 @@ func (w *SessionTrackedWantlist) Add(c cid.Cid, priority int, ses uint64) bool {
 	}
 
 	w.set[c] = &sessionTrackedEntry{
-		Entry:  &Entry{Cid: c, Priority: priority},
+		Entry:  Entry{Cid: c, Priority: priority},
 		sesTrk: map[uint64]struct{}{ses: struct{}{}},
 	}
 
@@ -76,7 +76,7 @@ func (w *SessionTrackedWantlist) Add(c cid.Cid, priority int, ses uint64) bool {
 }
 
 // AddEntry adds given Entry to the wantlist. For more information see Add method.
-func (w *SessionTrackedWantlist) AddEntry(e *Entry, ses uint64) bool {
+func (w *SessionTrackedWantlist) AddEntry(e Entry, ses uint64) bool {
 	if ex, ok := w.set[e.Cid]; ok {
 		ex.sesTrk[ses] = struct{}{}
 		return false
@@ -108,23 +108,23 @@ func (w *SessionTrackedWantlist) Remove(c cid.Cid, ses uint64) bool {
 
 // Contains returns true if the given cid is in the wantlist tracked by one or
 // more sessions.
-func (w *SessionTrackedWantlist) Contains(k cid.Cid) (*Entry, bool) {
+func (w *SessionTrackedWantlist) Contains(k cid.Cid) (Entry, bool) {
 	e, ok := w.set[k]
 	if !ok {
-		return nil, false
+		return Entry{}, false
 	}
 	return e.Entry, true
 }
 
-func (w *SessionTrackedWantlist) Entries() []*Entry {
-	es := make([]*Entry, 0, len(w.set))
+func (w *SessionTrackedWantlist) Entries() []Entry {
+	es := make([]Entry, 0, len(w.set))
 	for _, e := range w.set {
 		es = append(es, e.Entry)
 	}
 	return es
 }
 
-func (w *SessionTrackedWantlist) SortedEntries() []*Entry {
+func (w *SessionTrackedWantlist) SortedEntries() []Entry {
 	es := w.Entries()
 	sort.Sort(entrySlice(es))
 	return es
@@ -151,7 +151,7 @@ func (w *Wantlist) Add(c cid.Cid, priority int) bool {
 		return false
 	}
 
-	w.set[c] = &Entry{
+	w.set[c] = Entry{
 		Cid:      c,
 		Priority: priority,
 	}
@@ -159,7 +159,7 @@ func (w *Wantlist) Add(c cid.Cid, priority int) bool {
 	return true
 }
 
-func (w *Wantlist) AddEntry(e *Entry) bool {
+func (w *Wantlist) AddEntry(e Entry) bool {
 	if _, ok := w.set[e.Cid]; ok {
 		return false
 	}
@@ -177,20 +177,20 @@ func (w *Wantlist) Remove(c cid.Cid) bool {
 	return true
 }
 
-func (w *Wantlist) Contains(c cid.Cid) (*Entry, bool) {
+func (w *Wantlist) Contains(c cid.Cid) (Entry, bool) {
 	e, ok := w.set[c]
 	return e, ok
 }
 
-func (w *Wantlist) Entries() []*Entry {
-	es := make([]*Entry, 0, len(w.set))
+func (w *Wantlist) Entries() []Entry {
+	es := make([]Entry, 0, len(w.set))
 	for _, e := range w.set {
 		es = append(es, e)
 	}
 	return es
 }
 
-func (w *Wantlist) SortedEntries() []*Entry {
+func (w *Wantlist) SortedEntries() []Entry {
 	es := w.Entries()
 	sort.Sort(entrySlice(es))
 	return es
