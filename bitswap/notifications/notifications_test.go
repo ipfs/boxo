@@ -114,7 +114,7 @@ func TestShutdownBeforeUnsubscribe(t *testing.T) {
 		if ok {
 			t.Fatal("channel should have been closed")
 		}
-	default:
+	case <-time.After(5 * time.Second):
 		t.Fatal("channel should have been closed")
 	}
 }
