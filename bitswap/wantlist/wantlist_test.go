@@ -82,8 +82,8 @@ func TestBasicWantlist(t *testing.T) {
 	}
 }
 
-func TestSesRefWantlist(t *testing.T) {
-	wl := NewThreadSafe()
+func TestSessionTrackedWantlist(t *testing.T) {
+	wl := NewSessionTrackedWantlist()
 
 	if !wl.Add(testcids[0], 5, 1) {
 		t.Fatal("should have added")
