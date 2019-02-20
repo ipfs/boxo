@@ -48,7 +48,7 @@ func New(p peer.ID, network MessageNetwork) *MessageQueue {
 		wl:      wantlist.NewThreadSafe(),
 		network: network,
 		p:       p,
-		refcnt:  1,
+		refcnt:  0,
 	}
 }
 

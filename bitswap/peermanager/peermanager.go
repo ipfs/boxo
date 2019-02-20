@@ -67,22 +67,12 @@ func (pm *PeerManager) ConnectedPeers() []peer.ID {
 // Connected is called to add a new peer to the pool, and send it an initial set
 // of wants.
 func (pm *PeerManager) Connected(p peer.ID, initialEntries []*wantlist.Entry) {
-	mq, ok := pm.get(p)
+	mq := pm.getOrCreate(p)
 
-	if ok {
-		if mq.RefCount() == 0 {
-			mq.AddWantlist(initialEntries)
-		}
-		mq.RefIncrement()
-		return
+	if mq.RefCount() == 0 {
+		mq.AddWantlist(initialEntries)
 	}
-
-	mq = pm.createPeerQueue(p)
-
-	pm.set(p, mq)
-
-	mq.Startup(pm.ctx)
-	mq.AddWantlist(initialEntries)
+	mq.RefIncrement()
 }
 
 // Disconnected is called to remove a peer from the pool.
@@ -112,15 +102,7 @@ func (pm *PeerManager) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, fr
 		})
 	} else {
 		for _, t := range targets {
-			p, ok := pm.get(t)
-			if !ok {
-				p = pm.createPeerQueue(t)
-				pm.set(t, p)
-				p.Startup(pm.ctx)
-				// this is a "0 reference" queue because we haven't actually connected to it
-				// sending the first message will cause it to connect
-				p.RefDecrement()
-			}
+			p := pm.getOrCreate(t)
 			p.AddMessage(entries, from)
 		}
 	}
@@ -133,10 +115,16 @@ func (pm *PeerManager) get(p peer.ID) (PeerQueue, bool) {
 	return pq, ok
 }
 
-func (pm *PeerManager) set(p peer.ID, pq PeerQueue) {
+func (pm *PeerManager) getOrCreate(p peer.ID) PeerQueue {
 	pm.peerQueuesLk.Lock()
-	pm.peerQueues[p] = pq
+	pq, ok := pm.peerQueues[p]
+	if !ok {
+		pq = pm.createPeerQueue(p)
+		pq.Startup(pm.ctx)
+		pm.peerQueues[p] = pq
+	}
 	pm.peerQueuesLk.Unlock()
+	return pq
 }
 
 func (pm *PeerManager) remove(p peer.ID) {
