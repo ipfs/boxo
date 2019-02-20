@@ -34,8 +34,6 @@ type MessageQueue struct {
 
 	sender bsnet.MessageSender
 
-	refcnt int
-
 	work chan struct{}
 	done chan struct{}
 }
@@ -48,25 +46,7 @@ func New(p peer.ID, network MessageNetwork) *MessageQueue {
 		wl:      wantlist.NewThreadSafe(),
 		network: network,
 		p:       p,
-		refcnt:  0,
 	}
-}
-
-// RefCount returns the number of open connections for this queue.
-func (mq *MessageQueue) RefCount() int {
-	return mq.refcnt
-}
-
-// RefIncrement increments the refcount for a message queue.
-func (mq *MessageQueue) RefIncrement() {
-	mq.refcnt++
-}
-
-// RefDecrement decrements the refcount for a message queue and returns true
-// if the refcount is now 0.
-func (mq *MessageQueue) RefDecrement() bool {
-	mq.refcnt--
-	return mq.refcnt > 0
 }
 
 // AddMessage adds new entries to an outgoing message for a given session.

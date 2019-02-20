@@ -19,9 +19,6 @@ var (
 
 // PeerQueue provides a queer of messages to be sent for a single peer.
 type PeerQueue interface {
-	RefIncrement()
-	RefDecrement() bool
-	RefCount() int
 	AddMessage(entries []*bsmsg.Entry, ses uint64)
 	Startup(ctx context.Context)
 	AddWantlist(initialEntries []*wantlist.Entry)
@@ -35,10 +32,15 @@ type peerMessage interface {
 	handle(pm *PeerManager)
 }
 
+type peerQueueInstance struct {
+	refcnt int
+	pq     PeerQueue
+}
+
 // PeerManager manages a pool of peers and sends messages to peers in the pool.
 type PeerManager struct {
 	// peerQueues -- interact through internal utility functions get/set/remove/iterate
-	peerQueues   map[peer.ID]PeerQueue
+	peerQueues   map[peer.ID]*peerQueueInstance
 	peerQueuesLk sync.RWMutex
 
 	createPeerQueue PeerQueueFactory
@@ -48,7 +50,7 @@ type PeerManager struct {
 // New creates a new PeerManager, given a context and a peerQueueFactory.
 func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
 	return &PeerManager{
-		peerQueues:      make(map[peer.ID]PeerQueue),
+		peerQueues:      make(map[peer.ID]*peerQueueInstance),
 		createPeerQueue: createPeerQueue,
 		ctx:             ctx,
 	}
@@ -68,12 +70,17 @@ func (pm *PeerManager) ConnectedPeers() []peer.ID {
 // Connected is called to add a new peer to the pool, and send it an initial set
 // of wants.
 func (pm *PeerManager) Connected(p peer.ID, initialEntries []*wantlist.Entry) {
-	mq := pm.getOrCreate(p)
+	pm.peerQueuesLk.Lock()
 
-	if mq.RefCount() == 0 {
-		mq.AddWantlist(initialEntries)
+	pq := pm.getOrCreate(p)
+
+	if pq.refcnt == 0 {
+		pq.pq.AddWantlist(initialEntries)
 	}
-	mq.RefIncrement()
+
+	pq.refcnt++
+
+	pm.peerQueuesLk.Unlock()
 }
 
 // Disconnected is called to remove a peer from the pool.
@@ -81,7 +88,13 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 	pm.peerQueuesLk.Lock()
 	pq, ok := pm.peerQueues[p]
 
-	if !ok || pq.RefDecrement() {
+	if !ok {
+		pm.peerQueuesLk.Unlock()
+		return
+	}
+
+	pq.refcnt--
+	if pq.refcnt > 0 {
 		pm.peerQueuesLk.Unlock()
 		return
 	}
@@ -89,7 +102,7 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 	delete(pm.peerQueues, p)
 	pm.peerQueuesLk.Unlock()
 
-	pq.Shutdown()
+	pq.pq.Shutdown()
 
 }
 
@@ -99,25 +112,26 @@ func (pm *PeerManager) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, fr
 	if len(targets) == 0 {
 		pm.peerQueuesLk.RLock()
 		for _, p := range pm.peerQueues {
-			p.AddMessage(entries, from)
+			p.pq.AddMessage(entries, from)
 		}
 		pm.peerQueuesLk.RUnlock()
 	} else {
 		for _, t := range targets {
-			p := pm.getOrCreate(t)
-			p.AddMessage(entries, from)
+			pm.peerQueuesLk.Lock()
+			pqi := pm.getOrCreate(t)
+			pm.peerQueuesLk.Unlock()
+			pqi.pq.AddMessage(entries, from)
 		}
 	}
 }
 
-func (pm *PeerManager) getOrCreate(p peer.ID) PeerQueue {
-	pm.peerQueuesLk.Lock()
-	pq, ok := pm.peerQueues[p]
+func (pm *PeerManager) getOrCreate(p peer.ID) *peerQueueInstance {
+	pqi, ok := pm.peerQueues[p]
 	if !ok {
-		pq = pm.createPeerQueue(p)
+		pq := pm.createPeerQueue(p)
 		pq.Startup(pm.ctx)
-		pm.peerQueues[p] = pq
+		pqi = &peerQueueInstance{0, pq}
+		pm.peerQueues[p] = pqi
 	}
-	pm.peerQueuesLk.Unlock()
-	return pq
+	return pqi
 }

@@ -20,19 +20,13 @@ type messageSent struct {
 }
 
 type fakePeer struct {
-	refcnt       int
 	p            peer.ID
 	messagesSent chan messageSent
 }
 
 func (fp *fakePeer) Startup(ctx context.Context) {}
 func (fp *fakePeer) Shutdown()                   {}
-func (fp *fakePeer) RefCount() int               { return fp.refcnt }
-func (fp *fakePeer) RefIncrement()               { fp.refcnt++ }
-func (fp *fakePeer) RefDecrement() bool {
-	fp.refcnt--
-	return fp.refcnt > 0
-}
+
 func (fp *fakePeer) AddMessage(entries []*bsmsg.Entry, ses uint64) {
 	fp.messagesSent <- messageSent{fp.p, entries, ses}
 }
@@ -41,7 +35,6 @@ func makePeerQueueFactory(messagesSent chan messageSent) PeerQueueFactory {
 	return func(p peer.ID) PeerQueue {
 		return &fakePeer{
 			p:            p,
-			refcnt:       0,
 			messagesSent: messagesSent,
 		}
 	}
