@@ -14,6 +14,8 @@ import (
 
 var log = logging.Logger("bitswap")
 
+const maxRetries = 10
+
 // MessageNetwork is any network that can connect peers and generate a message
 // sender.
 type MessageNetwork interface {
@@ -32,8 +34,6 @@ type MessageQueue struct {
 
 	sender bsnet.MessageSender
 
-	refcnt int
-
 	work chan struct{}
 	done chan struct{}
 }
@@ -46,20 +46,7 @@ func New(p peer.ID, network MessageNetwork) *MessageQueue {
 		wl:      wantlist.NewThreadSafe(),
 		network: network,
 		p:       p,
-		refcnt:  1,
 	}
-}
-
-// RefIncrement increments the refcount for a message queue.
-func (mq *MessageQueue) RefIncrement() {
-	mq.refcnt++
-}
-
-// RefDecrement decrements the refcount for a message queue and returns true
-// if the refcount is now 0.
-func (mq *MessageQueue) RefDecrement() bool {
-	mq.refcnt--
-	return mq.refcnt > 0
 }
 
 // AddMessage adds new entries to an outgoing message for a given session.
@@ -73,24 +60,31 @@ func (mq *MessageQueue) AddMessage(entries []*bsmsg.Entry, ses uint64) {
 	}
 }
 
-// Startup starts the processing of messages, and creates an initial message
-// based on the given initial wantlist.
-func (mq *MessageQueue) Startup(ctx context.Context, initialEntries []*wantlist.Entry) {
-
-	// new peer, we will want to give them our full wantlist
+// AddWantlist adds a complete session tracked want list to a message queue
+func (mq *MessageQueue) AddWantlist(initialEntries []*wantlist.Entry) {
 	if len(initialEntries) > 0 {
-		fullwantlist := bsmsg.New(true)
+		if mq.out == nil {
+			mq.out = bsmsg.New(false)
+		}
+
 		for _, e := range initialEntries {
 			for k := range e.SesTrk {
 				mq.wl.AddEntry(e, k)
 			}
-			fullwantlist.AddEntry(e.Cid, e.Priority)
+			mq.out.AddEntry(e.Cid, e.Priority)
 		}
-		mq.out = fullwantlist
-		mq.work <- struct{}{}
-	}
-	go mq.runQueue(ctx)
 
+		select {
+		case mq.work <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// Startup starts the processing of messages, and creates an initial message
+// based on the given initial wantlist.
+func (mq *MessageQueue) Startup(ctx context.Context) {
+	go mq.runQueue(ctx)
 }
 
 // Shutdown stops the processing of messages for a message queue.
@@ -162,7 +156,7 @@ func (mq *MessageQueue) doWork(ctx context.Context) {
 	}
 
 	// send wantlist updates
-	for { // try to send this message until we fail.
+	for i := 0; i < maxRetries; i++ { // try to send this message until we fail.
 		if mq.attemptSendAndRecovery(ctx, wlm) {
 			return
 		}

@@ -20,27 +20,21 @@ type messageSent struct {
 }
 
 type fakePeer struct {
-	refcnt       int
 	p            peer.ID
 	messagesSent chan messageSent
 }
 
-func (fp *fakePeer) Startup(ctx context.Context, initialEntries []*wantlist.Entry) {}
-func (fp *fakePeer) Shutdown()                                                     {}
-func (fp *fakePeer) RefIncrement()                                                 { fp.refcnt++ }
-func (fp *fakePeer) RefDecrement() bool {
-	fp.refcnt--
-	return fp.refcnt > 0
-}
+func (fp *fakePeer) Startup(ctx context.Context) {}
+func (fp *fakePeer) Shutdown()                   {}
+
 func (fp *fakePeer) AddMessage(entries []*bsmsg.Entry, ses uint64) {
 	fp.messagesSent <- messageSent{fp.p, entries, ses}
 }
-
+func (fp *fakePeer) AddWantlist(initialEntries []*wantlist.Entry) {}
 func makePeerQueueFactory(messagesSent chan messageSent) PeerQueueFactory {
 	return func(p peer.ID) PeerQueue {
 		return &fakePeer{
 			p:            p,
-			refcnt:       1,
 			messagesSent: messagesSent,
 		}
 	}
@@ -79,7 +73,6 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 	tp := testutil.GeneratePeers(5)
 	peer1, peer2, peer3, peer4, peer5 := tp[0], tp[1], tp[2], tp[3], tp[4]
 	peerManager := New(ctx, peerQueueFactory)
-	peerManager.Startup()
 
 	peerManager.Connected(peer1, nil)
 	peerManager.Connected(peer2, nil)
@@ -118,14 +111,13 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 
 func TestSendingMessagesToPeers(t *testing.T) {
 	ctx := context.Background()
-	messagesSent := make(chan messageSent)
+	messagesSent := make(chan messageSent, 16)
 	peerQueueFactory := makePeerQueueFactory(messagesSent)
 
 	tp := testutil.GeneratePeers(5)
 
 	peer1, peer2, peer3, peer4, peer5 := tp[0], tp[1], tp[2], tp[3], tp[4]
 	peerManager := New(ctx, peerQueueFactory)
-	peerManager.Startup()
 
 	peerManager.Connected(peer1, nil)
 	peerManager.Connected(peer2, nil)
@@ -159,7 +151,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 	peersReceived = collectAndCheckMessages(
 		ctx, t, messagesSent, entries, ses, 10*time.Millisecond)
 
-	if len(peersReceived) != 2 {
+	if len(peersReceived) != 3 {
 		t.Fatal("Incorrect number of peers received messages")
 	}
 
@@ -173,7 +165,7 @@ func TestSendingMessagesToPeers(t *testing.T) {
 		t.Fatal("Peers received message but should not have")
 	}
 
-	if testutil.ContainsPeer(peersReceived, peer4) {
-		t.Fatal("Peers targeted received message but was not connected")
+	if !testutil.ContainsPeer(peersReceived, peer4) {
+		t.Fatal("Peer should have autoconnected on message send")
 	}
 }
