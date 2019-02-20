@@ -41,18 +41,24 @@ func (fppf *fakePeerProviderFinder) FindProvidersAsync(ctx context.Context, c ci
 }
 
 type fakePeerTagger struct {
+	lk          sync.Mutex
 	taggedPeers []peer.ID
 	wait        sync.WaitGroup
 }
 
 func (fpt *fakePeerTagger) TagPeer(p peer.ID, tag string, n int) {
 	fpt.wait.Add(1)
+
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
 	fpt.taggedPeers = append(fpt.taggedPeers, p)
 }
 
 func (fpt *fakePeerTagger) UntagPeer(p peer.ID, tag string) {
 	defer fpt.wait.Done()
 
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
 	for i := 0; i < len(fpt.taggedPeers); i++ {
 		if fpt.taggedPeers[i] == p {
 			fpt.taggedPeers[i] = fpt.taggedPeers[len(fpt.taggedPeers)-1]
@@ -60,6 +66,12 @@ func (fpt *fakePeerTagger) UntagPeer(p peer.ID, tag string) {
 			return
 		}
 	}
+}
+
+func (fpt *fakePeerTagger) count() int {
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+	return len(fpt.taggedPeers)
 }
 
 func TestFindingMorePeers(t *testing.T) {
@@ -195,6 +207,7 @@ func TestOrderingPeers(t *testing.T) {
 		t.Fatal("should not return the same random peers each time")
 	}
 }
+
 func TestUntaggingPeers(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
@@ -216,13 +229,13 @@ func TestUntaggingPeers(t *testing.T) {
 	}
 	time.Sleep(2 * time.Millisecond)
 
-	if len(fpt.taggedPeers) != len(peers) {
+	if fpt.count() != len(peers) {
 		t.Fatal("Peers were not tagged!")
 	}
 	<-ctx.Done()
 	fpt.wait.Wait()
 
-	if len(fpt.taggedPeers) != 0 {
+	if fpt.count() != 0 {
 		t.Fatal("Peers were not untagged!")
 	}
 }
