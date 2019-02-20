@@ -140,7 +140,7 @@ func TestLargeSwarm(t *testing.T) {
 	if detectrace.WithRace() {
 		// when running with the race detector, 500 instances launches
 		// well over 8k goroutines. This hits a race detector limit.
-		numInstances = 75
+		numInstances = 50
 	} else if travis.IsRunning() {
 		numInstances = 200
 	} else {
