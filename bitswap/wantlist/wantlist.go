@@ -1,20 +1,17 @@
-// package wantlist implements an object for bitswap that contains the keys
+// Package wantlist implements an object for bitswap that contains the keys
 // that a given peer wants.
 package wantlist
 
 import (
 	"sort"
-	"sync"
 
 	cid "github.com/ipfs/go-cid"
 )
 
-type ThreadSafe struct {
-	lk  sync.RWMutex
-	set map[cid.Cid]*Entry
+type SessionTrackedWantlist struct {
+	set map[cid.Cid]*sessionTrackedEntry
 }
 
-// not threadsafe
 type Wantlist struct {
 	set map[cid.Cid]*Entry
 }
@@ -23,9 +20,13 @@ type Entry struct {
 	Cid      cid.Cid
 	Priority int
 
-	SesTrk map[uint64]struct{}
 	// Trash in a book-keeping field
 	Trash bool
+}
+
+type sessionTrackedEntry struct {
+	*Entry
+	sesTrk map[uint64]struct{}
 }
 
 // NewRefEntry creates a new reference tracked wantlist entry.
@@ -33,7 +34,6 @@ func NewRefEntry(c cid.Cid, p int) *Entry {
 	return &Entry{
 		Cid:      c,
 		Priority: p,
-		SesTrk:   make(map[uint64]struct{}),
 	}
 }
 
@@ -43,9 +43,9 @@ func (es entrySlice) Len() int           { return len(es) }
 func (es entrySlice) Swap(i, j int)      { es[i], es[j] = es[j], es[i] }
 func (es entrySlice) Less(i, j int) bool { return es[i].Priority > es[j].Priority }
 
-func NewThreadSafe() *ThreadSafe {
-	return &ThreadSafe{
-		set: make(map[cid.Cid]*Entry),
+func NewSessionTrackedWantlist() *SessionTrackedWantlist {
+	return &SessionTrackedWantlist{
+		set: make(map[cid.Cid]*sessionTrackedEntry),
 	}
 }
 
@@ -63,33 +63,31 @@ func New() *Wantlist {
 // TODO: think through priority changes here
 // Add returns true if the cid did not exist in the wantlist before this call
 // (even if it was under a different session).
-func (w *ThreadSafe) Add(c cid.Cid, priority int, ses uint64) bool {
-	w.lk.Lock()
-	defer w.lk.Unlock()
+func (w *SessionTrackedWantlist) Add(c cid.Cid, priority int, ses uint64) bool {
+
 	if e, ok := w.set[c]; ok {
-		e.SesTrk[ses] = struct{}{}
+		e.sesTrk[ses] = struct{}{}
 		return false
 	}
 
-	w.set[c] = &Entry{
-		Cid:      c,
-		Priority: priority,
-		SesTrk:   map[uint64]struct{}{ses: struct{}{}},
+	w.set[c] = &sessionTrackedEntry{
+		Entry:  &Entry{Cid: c, Priority: priority},
+		sesTrk: map[uint64]struct{}{ses: struct{}{}},
 	}
 
 	return true
 }
 
 // AddEntry adds given Entry to the wantlist. For more information see Add method.
-func (w *ThreadSafe) AddEntry(e *Entry, ses uint64) bool {
-	w.lk.Lock()
-	defer w.lk.Unlock()
+func (w *SessionTrackedWantlist) AddEntry(e *Entry, ses uint64) bool {
 	if ex, ok := w.set[e.Cid]; ok {
-		ex.SesTrk[ses] = struct{}{}
+		ex.sesTrk[ses] = struct{}{}
 		return false
 	}
-	w.set[e.Cid] = e
-	e.SesTrk[ses] = struct{}{}
+	w.set[e.Cid] = &sessionTrackedEntry{
+		Entry:  e,
+		sesTrk: map[uint64]struct{}{ses: struct{}{}},
+	}
 	return true
 }
 
@@ -97,16 +95,14 @@ func (w *ThreadSafe) AddEntry(e *Entry, ses uint64) bool {
 // 'true' is returned if this call to Remove removed the final session ID
 // tracking the cid. (meaning true will be returned iff this call caused the
 // value of 'Contains(c)' to change from true to false)
-func (w *ThreadSafe) Remove(c cid.Cid, ses uint64) bool {
-	w.lk.Lock()
-	defer w.lk.Unlock()
+func (w *SessionTrackedWantlist) Remove(c cid.Cid, ses uint64) bool {
 	e, ok := w.set[c]
 	if !ok {
 		return false
 	}
 
-	delete(e.SesTrk, ses)
-	if len(e.SesTrk) == 0 {
+	delete(e.sesTrk, ses)
+	if len(e.sesTrk) == 0 {
 		delete(w.set, c)
 		return true
 	}
@@ -115,33 +111,38 @@ func (w *ThreadSafe) Remove(c cid.Cid, ses uint64) bool {
 
 // Contains returns true if the given cid is in the wantlist tracked by one or
 // more sessions.
-func (w *ThreadSafe) Contains(k cid.Cid) (*Entry, bool) {
-	w.lk.RLock()
-	defer w.lk.RUnlock()
+func (w *SessionTrackedWantlist) Contains(k cid.Cid) (*Entry, bool) {
 	e, ok := w.set[k]
-	return e, ok
+	if !ok {
+		return nil, false
+	}
+	return e.Entry, true
 }
 
-func (w *ThreadSafe) Entries() []*Entry {
-	w.lk.RLock()
-	defer w.lk.RUnlock()
+func (w *SessionTrackedWantlist) Entries() []*Entry {
 	es := make([]*Entry, 0, len(w.set))
 	for _, e := range w.set {
-		es = append(es, e)
+		es = append(es, e.Entry)
 	}
 	return es
 }
 
-func (w *ThreadSafe) SortedEntries() []*Entry {
+func (w *SessionTrackedWantlist) SortedEntries() []*Entry {
 	es := w.Entries()
 	sort.Sort(entrySlice(es))
 	return es
 }
 
-func (w *ThreadSafe) Len() int {
-	w.lk.RLock()
-	defer w.lk.RUnlock()
+func (w *SessionTrackedWantlist) Len() int {
 	return len(w.set)
+}
+
+func (w *SessionTrackedWantlist) CopyWants(to *SessionTrackedWantlist) {
+	for _, e := range w.set {
+		for k := range e.sesTrk {
+			to.AddEntry(e.Entry, k)
+		}
+	}
 }
 
 func (w *Wantlist) Len() int {

@@ -39,8 +39,8 @@ func GenerateCids(n int) []cid.Cid {
 }
 
 // GenerateWantlist makes a populated wantlist.
-func GenerateWantlist(n int, ses uint64) *wantlist.ThreadSafe {
-	wl := wantlist.NewThreadSafe()
+func GenerateWantlist(n int, ses uint64) *wantlist.SessionTrackedWantlist {
+	wl := wantlist.NewSessionTrackedWantlist()
 	for i := 0; i < n; i++ {
 		prioritySeq++
 		entry := wantlist.NewRefEntry(blockGenerator.Next().Cid(), prioritySeq)

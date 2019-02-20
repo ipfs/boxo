@@ -24,15 +24,15 @@ type fakePeer struct {
 	messagesSent chan messageSent
 }
 
-func (fp *fakePeer) Startup(ctx context.Context) {}
-func (fp *fakePeer) Shutdown()                   {}
+func (fp *fakePeer) Startup()  {}
+func (fp *fakePeer) Shutdown() {}
 
 func (fp *fakePeer) AddMessage(entries []*bsmsg.Entry, ses uint64) {
 	fp.messagesSent <- messageSent{fp.p, entries, ses}
 }
-func (fp *fakePeer) AddWantlist(initialEntries []*wantlist.Entry) {}
+func (fp *fakePeer) AddWantlist(initialWants *wantlist.SessionTrackedWantlist) {}
 func makePeerQueueFactory(messagesSent chan messageSent) PeerQueueFactory {
-	return func(p peer.ID) PeerQueue {
+	return func(ctx context.Context, p peer.ID) PeerQueue {
 		return &fakePeer{
 			p:            p,
 			messagesSent: messagesSent,

@@ -20,13 +20,13 @@ var (
 // PeerQueue provides a queer of messages to be sent for a single peer.
 type PeerQueue interface {
 	AddMessage(entries []*bsmsg.Entry, ses uint64)
-	Startup(ctx context.Context)
-	AddWantlist(initialEntries []*wantlist.Entry)
+	Startup()
+	AddWantlist(initialWants *wantlist.SessionTrackedWantlist)
 	Shutdown()
 }
 
 // PeerQueueFactory provides a function that will create a PeerQueue.
-type PeerQueueFactory func(p peer.ID) PeerQueue
+type PeerQueueFactory func(ctx context.Context, p peer.ID) PeerQueue
 
 type peerMessage interface {
 	handle(pm *PeerManager)
@@ -69,13 +69,13 @@ func (pm *PeerManager) ConnectedPeers() []peer.ID {
 
 // Connected is called to add a new peer to the pool, and send it an initial set
 // of wants.
-func (pm *PeerManager) Connected(p peer.ID, initialEntries []*wantlist.Entry) {
+func (pm *PeerManager) Connected(p peer.ID, initialWants *wantlist.SessionTrackedWantlist) {
 	pm.peerQueuesLk.Lock()
 
 	pq := pm.getOrCreate(p)
 
 	if pq.refcnt == 0 {
-		pq.pq.AddWantlist(initialEntries)
+		pq.pq.AddWantlist(initialWants)
 	}
 
 	pq.refcnt++
@@ -128,8 +128,8 @@ func (pm *PeerManager) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, fr
 func (pm *PeerManager) getOrCreate(p peer.ID) *peerQueueInstance {
 	pqi, ok := pm.peerQueues[p]
 	if !ok {
-		pq := pm.createPeerQueue(p)
-		pq.Startup(pm.ctx)
+		pq := pm.createPeerQueue(pm.ctx, p)
+		pq.Startup()
 		pqi = &peerQueueInstance{0, pq}
 		pm.peerQueues[p] = pqi
 	}
