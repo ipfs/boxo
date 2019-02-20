@@ -20,27 +20,22 @@ type PubSub interface {
 func New() PubSub {
 	return &impl{
 		wrapped: *pubsub.New(bufferSize),
-		cancel:  make(chan struct{}),
+		closed:  make(chan struct{}),
 	}
 }
 
 type impl struct {
+	lk      sync.RWMutex
 	wrapped pubsub.PubSub
 
-	// These two fields make up a shutdown "lock".
-	// We need them as calling, e.g., `Unsubscribe` after calling `Shutdown`
-	// blocks forever and fixing this in pubsub would be rather invasive.
-	cancel chan struct{}
-	wg     sync.WaitGroup
+	closed chan struct{}
 }
 
 func (ps *impl) Publish(block blocks.Block) {
-	ps.wg.Add(1)
-	defer ps.wg.Done()
-
+	ps.lk.RLock()
+	defer ps.lk.RUnlock()
 	select {
-	case <-ps.cancel:
-		// Already shutdown, bail.
+	case <-ps.closed:
 		return
 	default:
 	}
@@ -48,13 +43,15 @@ func (ps *impl) Publish(block blocks.Block) {
 	ps.wrapped.Pub(block, block.Cid().KeyString())
 }
 
-// Not safe to call more than once.
 func (ps *impl) Shutdown() {
-	// Interrupt in-progress subscriptions.
-	close(ps.cancel)
-	// Wait for them to finish.
-	ps.wg.Wait()
-	// shutdown the pubsub.
+	ps.lk.Lock()
+	defer ps.lk.Unlock()
+	select {
+	case <-ps.closed:
+		return
+	default:
+	}
+	close(ps.closed)
 	ps.wrapped.Shutdown()
 }
 
@@ -71,13 +68,11 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 	}
 
 	// prevent shutdown
-	ps.wg.Add(1)
+	ps.lk.RLock()
+	defer ps.lk.RUnlock()
 
-	// check if shutdown *after* preventing shutdowns.
 	select {
-	case <-ps.cancel:
-		// abort, allow shutdown to continue.
-		ps.wg.Done()
+	case <-ps.closed:
 		close(blocksCh)
 		return blocksCh
 	default:
@@ -86,19 +81,26 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 	ps.wrapped.AddSubOnceEach(valuesCh, toStrings(keys)...)
 	go func() {
 		defer func() {
-			ps.wrapped.Unsub(valuesCh)
 			close(blocksCh)
 
-			// Unblock shutdown.
-			ps.wg.Done()
+			ps.lk.RLock()
+			defer ps.lk.RUnlock()
+			// Don't touch the pubsub instance if we're
+			// already closed.
+			select {
+			case <-ps.closed:
+				return
+			default:
+			}
+
+			ps.wrapped.Unsub(valuesCh)
 		}()
 
 		for {
 			select {
-			case <-ps.cancel:
-				return
 			case <-ctx.Done():
 				return
+			case <-ps.closed:
 			case val, ok := <-valuesCh:
 				if !ok {
 					return
@@ -108,11 +110,10 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 					return
 				}
 				select {
-				case <-ps.cancel:
-					return
 				case <-ctx.Done():
 					return
 				case blocksCh <- block: // continue
+				case <-ps.closed:
 				}
 			}
 		}
