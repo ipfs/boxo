@@ -19,9 +19,6 @@ type Wantlist struct {
 type Entry struct {
 	Cid      cid.Cid
 	Priority int
-
-	// Trash in a book-keeping field
-	Trash bool
 }
 
 type sessionTrackedEntry struct {
