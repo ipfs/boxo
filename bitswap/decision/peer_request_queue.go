@@ -60,7 +60,7 @@ func (tl *prq) Push(to peer.ID, entries ...wantlist.Entry) {
 	defer partner.activelk.Unlock()
 
 	var priority int
-	newEntries := make([]*peerRequestTaskEntry, 0, len(entries))
+	newEntries := make([]peerRequestTaskEntry, 0, len(entries))
 	for _, entry := range entries {
 		if partner.activeBlocks.Has(entry.Cid) {
 			continue
@@ -75,7 +75,7 @@ func (tl *prq) Push(to peer.ID, entries ...wantlist.Entry) {
 		if entry.Priority > priority {
 			priority = entry.Priority
 		}
-		newEntries = append(newEntries, &peerRequestTaskEntry{entry, false})
+		newEntries = append(newEntries, peerRequestTaskEntry{entry, false})
 	}
 
 	if len(newEntries) == 0 {
@@ -86,7 +86,7 @@ func (tl *prq) Push(to peer.ID, entries ...wantlist.Entry) {
 		Entries: newEntries,
 		Target:  to,
 		created: time.Now(),
-		Done: func(e []*peerRequestTaskEntry) {
+		Done: func(e []peerRequestTaskEntry) {
 			tl.lock.Lock()
 			for _, entry := range e {
 				partner.TaskDone(entry.Cid)
@@ -117,7 +117,7 @@ func (tl *prq) Pop() *peerRequestTask {
 	for partner.taskQueue.Len() > 0 && partner.freezeVal == 0 {
 		out = partner.taskQueue.Pop().(*peerRequestTask)
 
-		newEntries := make([]*peerRequestTaskEntry, 0, len(out.Entries))
+		newEntries := make([]peerRequestTaskEntry, 0, len(out.Entries))
 		for _, entry := range out.Entries {
 			delete(tl.taskMap, taskEntryKey{out.Target, entry.Cid})
 			if entry.trash {
@@ -145,12 +145,12 @@ func (tl *prq) Remove(k cid.Cid, p peer.ID) {
 	tl.lock.Lock()
 	t, ok := tl.taskMap[taskEntryKey{p, k}]
 	if ok {
-		for _, entry := range t.Entries {
-			if entry.Cid.Equals(k) {
+		for i := range t.Entries {
+			if t.Entries[i].Cid.Equals(k) {
 				// remove the task "lazily"
 				// simply mark it as trash, so it'll be dropped when popped off the
 				// queue.
-				entry.trash = true
+				t.Entries[i].trash = true
 				break
 			}
 		}
@@ -203,12 +203,12 @@ type peerRequestTaskEntry struct {
 	trash bool
 }
 type peerRequestTask struct {
-	Entries  []*peerRequestTaskEntry
+	Entries  []peerRequestTaskEntry
 	Priority int
 	Target   peer.ID
 
 	// A callback to signal that this task has been completed
-	Done func([]*peerRequestTaskEntry)
+	Done func([]peerRequestTaskEntry)
 
 	// created marks the time that the task was added to the queue
 	created time.Time
