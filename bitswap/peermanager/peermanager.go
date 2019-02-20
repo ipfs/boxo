@@ -77,20 +77,19 @@ func (pm *PeerManager) Connected(p peer.ID, initialEntries []*wantlist.Entry) {
 
 // Disconnected is called to remove a peer from the pool.
 func (pm *PeerManager) Disconnected(p peer.ID) {
-	pq, ok := pm.get(p)
+	pm.peerQueuesLk.Lock()
+	pq, ok := pm.peerQueues[p]
 
-	if !ok {
-		// TODO: log error?
+	if !ok || pq.RefDecrement() {
+		pm.peerQueuesLk.Unlock()
 		return
 	}
 
-	if pq.RefDecrement() {
-		return
-	}
+	delete(pm.peerQueues, p)
+	pm.peerQueuesLk.Unlock()
 
 	pq.Shutdown()
 
-	pm.remove(p)
 }
 
 // SendMessage is called to send a message to all or some peers in the pool;
@@ -108,13 +107,6 @@ func (pm *PeerManager) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, fr
 	}
 }
 
-func (pm *PeerManager) get(p peer.ID) (PeerQueue, bool) {
-	pm.peerQueuesLk.RLock()
-	pq, ok := pm.peerQueues[p]
-	pm.peerQueuesLk.RUnlock()
-	return pq, ok
-}
-
 func (pm *PeerManager) getOrCreate(p peer.ID) PeerQueue {
 	pm.peerQueuesLk.Lock()
 	pq, ok := pm.peerQueues[p]
@@ -125,12 +117,6 @@ func (pm *PeerManager) getOrCreate(p peer.ID) PeerQueue {
 	}
 	pm.peerQueuesLk.Unlock()
 	return pq
-}
-
-func (pm *PeerManager) remove(p peer.ID) {
-	pm.peerQueuesLk.Lock()
-	delete(pm.peerQueues, p)
-	pm.peerQueuesLk.Unlock()
 }
 
 func (pm *PeerManager) iterate(iterateFn func(peer.ID, PeerQueue)) {
