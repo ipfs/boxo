@@ -107,7 +107,7 @@ func NewEngine(ctx context.Context, bs bstore.Blockstore) *Engine {
 	return e
 }
 
-func (e *Engine) WantlistForPeer(p peer.ID) (out []*wl.Entry) {
+func (e *Engine) WantlistForPeer(p peer.ID) (out []wl.Entry) {
 	partner := e.findOrCreate(p)
 	partner.lk.Lock()
 	defer partner.lk.Unlock()
@@ -241,7 +241,7 @@ func (e *Engine) MessageReceived(p peer.ID, m bsmsg.BitSwapMessage) error {
 	}
 
 	var msgSize int
-	var activeEntries []*wl.Entry
+	var activeEntries []wl.Entry
 	for _, entry := range m.Wantlist() {
 		if entry.Cancel {
 			log.Debugf("%s cancel %s", p, entry.Cid)
@@ -261,7 +261,7 @@ func (e *Engine) MessageReceived(p peer.ID, m bsmsg.BitSwapMessage) error {
 				newWorkExists = true
 				if msgSize+blockSize > maxMessageSize {
 					e.peerRequestQueue.Push(p, activeEntries...)
-					activeEntries = []*wl.Entry{}
+					activeEntries = []wl.Entry{}
 					msgSize = 0
 				}
 				activeEntries = append(activeEntries, entry.Entry)

@@ -45,7 +45,7 @@ func TestPushPop(t *testing.T) {
 		t.Log(partner.String())
 
 		c := cid.NewCidV0(u.Hash([]byte(letter)))
-		prq.Push(partner, &wantlist.Entry{Cid: c, Priority: math.MaxInt32 - index})
+		prq.Push(partner, wantlist.Entry{Cid: c, Priority: math.MaxInt32 - index})
 	}
 	for _, consonant := range consonants {
 		c := cid.NewCidV0(u.Hash([]byte(consonant)))
@@ -87,10 +87,10 @@ func TestPeerRepeats(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		elcid := cid.NewCidV0(u.Hash([]byte(fmt.Sprint(i))))
-		prq.Push(a, &wantlist.Entry{Cid: elcid})
-		prq.Push(b, &wantlist.Entry{Cid: elcid})
-		prq.Push(c, &wantlist.Entry{Cid: elcid})
-		prq.Push(d, &wantlist.Entry{Cid: elcid})
+		prq.Push(a, wantlist.Entry{Cid: elcid})
+		prq.Push(b, wantlist.Entry{Cid: elcid})
+		prq.Push(c, wantlist.Entry{Cid: elcid})
+		prq.Push(d, wantlist.Entry{Cid: elcid})
 	}
 
 	// now, pop off four entries, there should be one from each

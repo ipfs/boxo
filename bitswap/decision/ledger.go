@@ -85,7 +85,7 @@ func (l *ledger) CancelWant(k cid.Cid) {
 	l.wantList.Remove(k)
 }
 
-func (l *ledger) WantListContains(k cid.Cid) (*wl.Entry, bool) {
+func (l *ledger) WantListContains(k cid.Cid) (wl.Entry, bool) {
 	return l.wantList.Contains(k)
 }
 

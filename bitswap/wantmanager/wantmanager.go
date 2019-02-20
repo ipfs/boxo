@@ -100,8 +100,8 @@ func (wm *WantManager) IsWanted(c cid.Cid) bool {
 }
 
 // CurrentWants returns the list of current wants.
-func (wm *WantManager) CurrentWants() []*wantlist.Entry {
-	resp := make(chan []*wantlist.Entry, 1)
+func (wm *WantManager) CurrentWants() []wantlist.Entry {
+	resp := make(chan []wantlist.Entry, 1)
 	select {
 	case wm.wantMessages <- &currentWantsMessage{resp}:
 	case <-wm.ctx.Done():
@@ -116,8 +116,8 @@ func (wm *WantManager) CurrentWants() []*wantlist.Entry {
 }
 
 // CurrentBroadcastWants returns the current list of wants that are broadcasts.
-func (wm *WantManager) CurrentBroadcastWants() []*wantlist.Entry {
-	resp := make(chan []*wantlist.Entry, 1)
+func (wm *WantManager) CurrentBroadcastWants() []wantlist.Entry {
+	resp := make(chan []wantlist.Entry, 1)
 	select {
 	case wm.wantMessages <- &currentBroadcastWantsMessage{resp}:
 	case <-wm.ctx.Done():
@@ -246,7 +246,7 @@ func (iwm *isWantedMessage) handle(wm *WantManager) {
 }
 
 type currentWantsMessage struct {
-	resp chan<- []*wantlist.Entry
+	resp chan<- []wantlist.Entry
 }
 
 func (cwm *currentWantsMessage) handle(wm *WantManager) {
@@ -254,7 +254,7 @@ func (cwm *currentWantsMessage) handle(wm *WantManager) {
 }
 
 type currentBroadcastWantsMessage struct {
-	resp chan<- []*wantlist.Entry
+	resp chan<- []wantlist.Entry
 }
 
 func (cbcwm *currentBroadcastWantsMessage) handle(wm *WantManager) {
