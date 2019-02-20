@@ -56,11 +56,12 @@ func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
 
 // ConnectedPeers returns a list of peers this PeerManager is managing.
 func (pm *PeerManager) ConnectedPeers() []peer.ID {
-
+	pm.peerQueuesLk.RLock()
+	defer pm.peerQueuesLk.RUnlock()
 	peers := make([]peer.ID, 0, len(pm.peerQueues))
-	pm.iterate(func(p peer.ID, _ PeerQueue) {
+	for p := range pm.peerQueues {
 		peers = append(peers, p)
-	})
+	}
 	return peers
 }
 
@@ -96,9 +97,11 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 // if targets is nil, it sends to all.
 func (pm *PeerManager) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64) {
 	if len(targets) == 0 {
-		pm.iterate(func(_ peer.ID, p PeerQueue) {
+		pm.peerQueuesLk.RLock()
+		for _, p := range pm.peerQueues {
 			p.AddMessage(entries, from)
-		})
+		}
+		pm.peerQueuesLk.RUnlock()
 	} else {
 		for _, t := range targets {
 			p := pm.getOrCreate(t)
@@ -117,12 +120,4 @@ func (pm *PeerManager) getOrCreate(p peer.ID) PeerQueue {
 	}
 	pm.peerQueuesLk.Unlock()
 	return pq
-}
-
-func (pm *PeerManager) iterate(iterateFn func(peer.ID, PeerQueue)) {
-	pm.peerQueuesLk.RLock()
-	for p, pq := range pm.peerQueues {
-		iterateFn(p, pq)
-	}
-	pm.peerQueuesLk.RUnlock()
 }
