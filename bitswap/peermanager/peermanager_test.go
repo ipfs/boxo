@@ -41,7 +41,7 @@ func makePeerQueueFactory(messagesSent chan messageSent) PeerQueueFactory {
 	return func(p peer.ID) PeerQueue {
 		return &fakePeer{
 			p:            p,
-			refcnt:       1,
+			refcnt:       0,
 			messagesSent: messagesSent,
 		}
 	}
