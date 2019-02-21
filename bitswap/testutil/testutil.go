@@ -50,11 +50,11 @@ func GenerateWantlist(n int, ses uint64) *wantlist.SessionTrackedWantlist {
 }
 
 // GenerateMessageEntries makes fake bitswap message entries.
-func GenerateMessageEntries(n int, isCancel bool) []*bsmsg.Entry {
-	bsmsgs := make([]*bsmsg.Entry, 0, n)
+func GenerateMessageEntries(n int, isCancel bool) []bsmsg.Entry {
+	bsmsgs := make([]bsmsg.Entry, 0, n)
 	for i := 0; i < n; i++ {
 		prioritySeq++
-		msg := &bsmsg.Entry{
+		msg := bsmsg.Entry{
 			Entry:  wantlist.NewRefEntry(blockGenerator.Next().Cid(), prioritySeq),
 			Cancel: isCancel,
 		}
