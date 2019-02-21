@@ -19,7 +19,7 @@ var (
 
 // PeerQueue provides a queer of messages to be sent for a single peer.
 type PeerQueue interface {
-	AddMessage(entries []*bsmsg.Entry, ses uint64)
+	AddMessage(entries []bsmsg.Entry, ses uint64)
 	Startup()
 	AddWantlist(initialWants *wantlist.SessionTrackedWantlist)
 	Shutdown()
@@ -108,7 +108,7 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 
 // SendMessage is called to send a message to all or some peers in the pool;
 // if targets is nil, it sends to all.
-func (pm *PeerManager) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64) {
+func (pm *PeerManager) SendMessage(entries []bsmsg.Entry, targets []peer.ID, from uint64) {
 	if len(targets) == 0 {
 		pm.peerQueuesLk.RLock()
 		for _, p := range pm.peerQueues {

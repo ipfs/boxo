@@ -25,7 +25,7 @@ const (
 type PeerHandler interface {
 	Disconnected(p peer.ID)
 	Connected(p peer.ID, initialWants *wantlist.SessionTrackedWantlist)
-	SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64)
+	SendMessage(entries []bsmsg.Entry, targets []peer.ID, from uint64)
 }
 
 type wantMessage interface {
@@ -187,9 +187,9 @@ func (wm *WantManager) run() {
 }
 
 func (wm *WantManager) addEntries(ctx context.Context, ks []cid.Cid, targets []peer.ID, cancel bool, ses uint64) {
-	entries := make([]*bsmsg.Entry, 0, len(ks))
+	entries := make([]bsmsg.Entry, 0, len(ks))
 	for i, k := range ks {
-		entries = append(entries, &bsmsg.Entry{
+		entries = append(entries, bsmsg.Entry{
 			Cancel: cancel,
 			Entry:  wantlist.NewRefEntry(k, maxPriority-i),
 		})
@@ -202,7 +202,7 @@ func (wm *WantManager) addEntries(ctx context.Context, ks []cid.Cid, targets []p
 }
 
 type wantSet struct {
-	entries []*bsmsg.Entry
+	entries []bsmsg.Entry
 	targets []peer.ID
 	from    uint64
 }

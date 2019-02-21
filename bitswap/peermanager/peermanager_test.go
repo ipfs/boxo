@@ -15,7 +15,7 @@ import (
 
 type messageSent struct {
 	p       peer.ID
-	entries []*bsmsg.Entry
+	entries []bsmsg.Entry
 	ses     uint64
 }
 
@@ -27,7 +27,7 @@ type fakePeer struct {
 func (fp *fakePeer) Startup()  {}
 func (fp *fakePeer) Shutdown() {}
 
-func (fp *fakePeer) AddMessage(entries []*bsmsg.Entry, ses uint64) {
+func (fp *fakePeer) AddMessage(entries []bsmsg.Entry, ses uint64) {
 	fp.messagesSent <- messageSent{fp.p, entries, ses}
 }
 func (fp *fakePeer) AddWantlist(initialWants *wantlist.SessionTrackedWantlist) {}
@@ -44,7 +44,7 @@ func collectAndCheckMessages(
 	ctx context.Context,
 	t *testing.T,
 	messagesSent <-chan messageSent,
-	entries []*bsmsg.Entry,
+	entries []bsmsg.Entry,
 	ses uint64,
 	timeout time.Duration) []peer.ID {
 	var peersReceived []peer.ID

@@ -19,7 +19,7 @@ type fakePeerHandler struct {
 	lastWantSet wantSet
 }
 
-func (fph *fakePeerHandler) SendMessage(entries []*bsmsg.Entry, targets []peer.ID, from uint64) {
+func (fph *fakePeerHandler) SendMessage(entries []bsmsg.Entry, targets []peer.ID, from uint64) {
 	fph.lk.Lock()
 	fph.lastWantSet = wantSet{entries, targets, from}
 	fph.lk.Unlock()
