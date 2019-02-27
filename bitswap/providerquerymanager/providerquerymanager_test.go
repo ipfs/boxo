@@ -304,3 +304,28 @@ func TestFindProviderTimeout(t *testing.T) {
 		t.Fatal("Find provider request should have timed out, did not")
 	}
 }
+
+func TestFindProviderPreCanceled(t *testing.T) {
+	peers := testutil.GeneratePeers(10)
+	fpn := &fakeProviderNetwork{
+		peersFound: peers,
+		delay:      1 * time.Millisecond,
+	}
+	ctx := context.Background()
+	providerQueryManager := New(ctx, fpn)
+	providerQueryManager.Startup()
+	providerQueryManager.SetFindProviderTimeout(100 * time.Millisecond)
+	keys := testutil.GenerateCids(1)
+
+	sessionCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[0])
+	if firstRequestChan == nil {
+		t.Fatal("expected non-nil channel")
+	}
+	select {
+	case <-firstRequestChan:
+	case <-time.After(10 * time.Millisecond):
+		t.Fatal("shouldn't have blocked waiting on a closed context")
+	}
+}
