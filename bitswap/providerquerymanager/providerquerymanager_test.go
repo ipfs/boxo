@@ -329,3 +329,35 @@ func TestFindProviderPreCanceled(t *testing.T) {
 		t.Fatal("shouldn't have blocked waiting on a closed context")
 	}
 }
+
+func TestCancelFindProvidersAfterCompletion(t *testing.T) {
+	peers := testutil.GeneratePeers(2)
+	fpn := &fakeProviderNetwork{
+		peersFound: peers,
+		delay:      1 * time.Millisecond,
+	}
+	ctx := context.Background()
+	providerQueryManager := New(ctx, fpn)
+	providerQueryManager.Startup()
+	providerQueryManager.SetFindProviderTimeout(100 * time.Millisecond)
+	keys := testutil.GenerateCids(1)
+
+	sessionCtx, cancel := context.WithCancel(ctx)
+	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[0])
+	<-firstRequestChan                // wait for everything to start.
+	time.Sleep(10 * time.Millisecond) // wait for the incoming providres to stop.
+	cancel()                          // cancel the context.
+
+	timer := time.NewTimer(10 * time.Millisecond)
+	defer timer.Stop()
+	for {
+		select {
+		case _, ok := <-firstRequestChan:
+			if !ok {
+				return
+			}
+		case <-timer.C:
+			t.Fatal("should have finished receiving responses within timeout")
+		}
+	}
+}
