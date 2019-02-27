@@ -177,7 +177,9 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 			case <-pqm.ctx.Done():
 				return
 			case <-sessionCtx.Done():
-				pqm.cancelProviderRequest(k, incomingProviders)
+				if incomingProviders != nil {
+					pqm.cancelProviderRequest(k, incomingProviders)
+				}
 				return
 			case provider, ok := <-incomingProviders:
 				if !ok {
