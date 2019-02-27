@@ -237,7 +237,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 				wg.Add(1)
 				go func(p peer.ID) {
 					defer wg.Done()
-					err := pqm.network.ConnectTo(pqm.ctx, p)
+					err := pqm.network.ConnectTo(findProviderCtx, p)
 					if err != nil {
 						log.Debugf("failed to connect to provider %s: %s", p, err)
 						return
