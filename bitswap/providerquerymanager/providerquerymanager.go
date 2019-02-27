@@ -133,13 +133,12 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 		return ch
 	}
 
+	// DO NOT select on sessionCtx. We only want to abort here if we're
+	// shutting down because we can't actually _cancel_ the request till we
+	// get to receiveProviders.
 	var receivedInProgressRequest inProgressRequest
 	select {
 	case <-pqm.ctx.Done():
-		ch := make(chan peer.ID)
-		close(ch)
-		return ch
-	case <-sessionCtx.Done():
 		ch := make(chan peer.ID)
 		close(ch)
 		return ch
