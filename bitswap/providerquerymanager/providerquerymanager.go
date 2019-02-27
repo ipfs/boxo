@@ -124,17 +124,25 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 		inProgressRequestChan: inProgressRequestChan,
 	}:
 	case <-pqm.ctx.Done():
-		return nil
+		ch := make(chan peer.ID)
+		close(ch)
+		return ch
 	case <-sessionCtx.Done():
-		return nil
+		ch := make(chan peer.ID)
+		close(ch)
+		return ch
 	}
 
 	var receivedInProgressRequest inProgressRequest
 	select {
 	case <-pqm.ctx.Done():
-		return nil
+		ch := make(chan peer.ID)
+		close(ch)
+		return ch
 	case <-sessionCtx.Done():
-		return nil
+		ch := make(chan peer.ID)
+		close(ch)
+		return ch
 	case receivedInProgressRequest = <-inProgressRequestChan:
 	}
 
