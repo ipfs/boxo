@@ -406,12 +406,12 @@ func (crm *cancelRequestMessage) debugMessage() string {
 func (crm *cancelRequestMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[crm.k]
 	if !ok {
-		log.Errorf("Attempt to cancel request for cid (%s) not in progress", crm.k.String())
+		// Request finished while queued.
 		return
 	}
 	_, ok = requestStatus.listeners[crm.incomingProviders]
 	if !ok {
-		log.Errorf("Attempt to cancel request for for cid (%s) this is not a listener", crm.k.String())
+		// Request finished and _restarted_ while queued.
 		return
 	}
 	delete(requestStatus.listeners, crm.incomingProviders)
