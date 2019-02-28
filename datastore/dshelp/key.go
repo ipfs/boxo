@@ -5,7 +5,7 @@ package dshelp
 import (
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
-	"github.com/whyrusleeping/base32"
+	"github.com/multiformats/go-base32"
 )
 
 // NewKeyFromBinary creates a new key from a byte slice.
