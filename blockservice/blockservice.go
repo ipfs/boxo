@@ -14,6 +14,7 @@ import (
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	logging "github.com/ipfs/go-log"
+	"github.com/ipfs/go-verifcid"
 )
 
 var log = logging.Logger("blockservice")
@@ -130,6 +131,11 @@ func NewSession(ctx context.Context, bs BlockService) *Session {
 // TODO pass a context into this if the remote.HasBlock is going to remain here.
 func (s *blockService) AddBlock(o blocks.Block) error {
 	c := o.Cid()
+	// hash security
+	err := verifcid.ValidateCid(c)
+	if err != nil {
+		return err
+	}
 	if s.checkFirst {
 		if has, err := s.blockstore.Has(c); has || err != nil {
 			return err
@@ -150,6 +156,13 @@ func (s *blockService) AddBlock(o blocks.Block) error {
 }
 
 func (s *blockService) AddBlocks(bs []blocks.Block) error {
+	// hash security
+	for _, b := range bs {
+		err := verifcid.ValidateCid(b.Cid())
+		if err != nil {
+			return err
+		}
+	}
 	var toput []blocks.Block
 	if s.checkFirst {
 		toput = make([]blocks.Block, 0, len(bs))
@@ -198,6 +211,11 @@ func (s *blockService) getExchange() exchange.Fetcher {
 }
 
 func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget func() exchange.Fetcher) (blocks.Block, error) {
+	err := verifcid.ValidateCid(c) // hash security
+	if err != nil {
+		return nil, err
+	}
+
 	block, err := bs.Get(c)
 	if err == nil {
 		return block, nil
@@ -240,6 +258,18 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 
 	go func() {
 		defer close(out)
+
+		k := 0
+		for _, c := range ks {
+			// hash security
+			if err := verifcid.ValidateCid(c); err == nil {
+				ks[k] = c
+				k++
+			} else {
+				log.Errorf("unsafe CID (%s) passed to blockService.GetBlocks: %s", c, err)
+			}
+		}
+		ks = ks[:k]
 
 		var misses []cid.Cid
 		for _, c := range ks {
