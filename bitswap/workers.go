@@ -98,6 +98,15 @@ func (bs *Bitswap) sendBlocks(ctx context.Context, env *engine.Envelope) {
 }
 
 func (bs *Bitswap) provideWorker(px process.Process) {
+	// FIXME: OnClosingContext returns a _custom_ context type.
+	// Unfortunately, deriving a new cancelable context from this custom
+	// type fires off a goroutine. To work around this, we create a single
+	// cancelable context up-front and derive all sub-contexts from that.
+	//
+	// See: https://github.com/ipfs/go-ipfs/issues/5810
+	ctx := procctx.OnClosingContext(px)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	limit := make(chan struct{}, provideWorkerMax)
 
@@ -108,7 +117,6 @@ func (bs *Bitswap) provideWorker(px process.Process) {
 		}()
 		ev := logging.LoggableMap{"ID": wid}
 
-		ctx := procctx.OnClosingContext(px) // derive ctx from px
 		defer log.EventBegin(ctx, "Bitswap.ProvideWorker.Work", ev, k).Done()
 
 		ctx, cancel := context.WithTimeout(ctx, provideTimeout) // timeout ctx
@@ -123,7 +131,7 @@ func (bs *Bitswap) provideWorker(px process.Process) {
 	// _ratelimited_ number of workers to handle each key.
 	for wid := 2; ; wid++ {
 		ev := logging.LoggableMap{"ID": 1}
-		log.Event(procctx.OnClosingContext(px), "Bitswap.ProvideWorker.Loop", ev)
+		log.Event(ctx, "Bitswap.ProvideWorker.Loop", ev)
 
 		select {
 		case <-px.Closing():
