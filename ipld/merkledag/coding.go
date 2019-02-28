@@ -131,7 +131,7 @@ func DecodeProtobufBlock(b blocks.Block) (ipld.Node, error) {
 	}
 
 	decnd.cached = c
-	decnd.SetCidBuilder(c.Prefix())
+	decnd.builder = c.Prefix()
 	return decnd, nil
 }
 
