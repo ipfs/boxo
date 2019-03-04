@@ -355,7 +355,7 @@ func (fpqm *finishedProviderQueryMessage) debugMessage() string {
 func (fpqm *finishedProviderQueryMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[fpqm.k]
 	if !ok {
-		log.Errorf("Ended request for cid (%s) not in progress", fpqm.k.String())
+		// we canceled the request as it finished.
 		return
 	}
 	for listener := range requestStatus.listeners {
