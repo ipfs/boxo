@@ -53,7 +53,7 @@ const (
 var (
 	HasBlockBufferSize    = 256
 	provideKeysBufferSize = 2048
-	provideWorkerMax      = 512
+	provideWorkerMax      = 6
 
 	// the 1<<18+15 is to observe old file chunks that are 1<<18 + 14 in size
 	metricsBuckets = []float64{1 << 6, 1 << 10, 1 << 14, 1 << 18, 1<<18 + 15, 1 << 22}
