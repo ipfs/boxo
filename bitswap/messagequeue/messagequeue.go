@@ -23,17 +23,12 @@ type MessageNetwork interface {
 	NewMessageSender(context.Context, peer.ID) (bsnet.MessageSender, error)
 }
 
-type request interface {
-	handle(mq *MessageQueue)
-}
-
 // MessageQueue implements queue of want messages to send to peers.
 type MessageQueue struct {
 	ctx     context.Context
 	p       peer.ID
 	network MessageNetwork
 
-	newRequests  chan request
 	outgoingWork chan struct{}
 	done         chan struct{}
 
@@ -44,15 +39,6 @@ type MessageQueue struct {
 	sender        bsnet.MessageSender
 }
 
-type messageRequest struct {
-	entries []bsmsg.Entry
-	ses     uint64
-}
-
-type wantlistRequest struct {
-	wl *wantlist.SessionTrackedWantlist
-}
-
 // New creats a new MessageQueue.
 func New(ctx context.Context, p peer.ID, network MessageNetwork) *MessageQueue {
 	return &MessageQueue{
@@ -60,7 +46,6 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork) *MessageQueue {
 		wl:           wantlist.NewSessionTrackedWantlist(),
 		network:      network,
 		p:            p,
-		newRequests:  make(chan request, 16),
 		outgoingWork: make(chan struct{}, 1),
 		done:         make(chan struct{}),
 	}
