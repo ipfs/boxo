@@ -3,6 +3,7 @@ package merkledag_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -637,6 +638,27 @@ func TestCidRawDoesnNeedData(t *testing.T) {
 	}
 	if len(links) != 0 {
 		t.Fatal("raw node shouldn't have any links")
+	}
+}
+
+func TestRawToJson(t *testing.T) {
+	rawData := []byte{1, 2, 3, 4}
+	nd := NewRawNode(rawData)
+	encoded, err := nd.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var res interface{}
+	err = json.Unmarshal(encoded, &res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resBytes, ok := res.(string)
+	if !ok {
+		t.Fatal("expected to marshal to a string")
+	}
+	if string(rawData) != resBytes {
+		t.Fatal("failed to round-trip bytes")
 	}
 }
 
