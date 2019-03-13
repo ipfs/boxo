@@ -1,6 +1,7 @@
 package merkledag
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/ipfs/go-block-format"
 
@@ -92,6 +93,11 @@ func (rn *RawNode) Stat() (*ipld.NodeStat, error) {
 		CumulativeSize: len(rn.RawData()),
 		DataSize:       len(rn.RawData()),
 	}, nil
+}
+
+// MarshalJSON is required for our "ipfs dag" commands.
+func (rn *RawNode) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(rn.RawData()))
 }
 
 var _ ipld.Node = (*RawNode)(nil)
