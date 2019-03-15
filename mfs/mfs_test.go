@@ -817,19 +817,19 @@ func TestFlushing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := FlushPath(rt, "/a/b/c/TEST"); err != nil {
+	if err := FlushPath(ctx, rt, "/a/b/c/TEST"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := FlushPath(rt, "/a/b/d/TEST"); err != nil {
+	if err := FlushPath(ctx, rt, "/a/b/d/TEST"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := FlushPath(rt, "/a/b/e/TEST"); err != nil {
+	if err := FlushPath(ctx, rt, "/a/b/e/TEST"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := FlushPath(rt, "/FILE"); err != nil {
+	if err := FlushPath(ctx, rt, "/FILE"); err != nil {
 		t.Fatal(err)
 	}
 
