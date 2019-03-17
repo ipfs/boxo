@@ -10,10 +10,6 @@ import (
 )
 
 func TestWebFile(t *testing.T) {
-	http.HandleFunc("/my/url/content.txt", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello world!")
-	})
-
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello world!")
 	}))
