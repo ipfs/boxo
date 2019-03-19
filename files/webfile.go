@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 )
 
 // WebFile is an implementation of File which reads it
@@ -61,4 +62,13 @@ func (wf *WebFile) Size() (int64, error) {
 	return wf.contentLength, nil
 }
 
+func (wf *WebFile) AbsPath() string {
+	return wf.url.String()
+}
+
+func (wf *WebFile) Stat() os.FileInfo {
+	return nil
+}
+
 var _ File = &WebFile{}
+var _ FileInfo = &WebFile{}
