@@ -226,17 +226,17 @@ func DirLookup(d *Directory, pth string) (FSNode, error) {
 
 // TODO: Document this function and link its functionality
 // with the republisher.
-func FlushPath(ctx context.Context, rt *Root, pth string) error {
+func FlushPath(ctx context.Context, rt *Root, pth string) (ipld.Node, error) {
 	nd, err := Lookup(rt, pth)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = nd.Flush()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	rt.repub.WaitPub(ctx)
-	return nil
+	return nd.GetNode()
 }
