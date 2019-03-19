@@ -817,19 +817,23 @@ func TestFlushing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := FlushPath(ctx, rt, "/a/b/c/TEST"); err != nil {
+	nd, err := FlushPath(ctx, rt, "/a/b/c/TEST")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nd.Cid().String() != "QmYi7wrRFKVCcTB56A6Pep2j31Q5mHfmmu21RzHXu25RVR" {
+		t.Fatalf("unexpected node from FlushPath: %s", nd.Cid())
+	}
+
+	if _, err := FlushPath(ctx, rt, "/a/b/d/TEST"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := FlushPath(ctx, rt, "/a/b/d/TEST"); err != nil {
+	if _, err := FlushPath(ctx, rt, "/a/b/e/TEST"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := FlushPath(ctx, rt, "/a/b/e/TEST"); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := FlushPath(ctx, rt, "/FILE"); err != nil {
+	if _, err := FlushPath(ctx, rt, "/FILE"); err != nil {
 		t.Fatal(err)
 	}
 
