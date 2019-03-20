@@ -54,8 +54,11 @@ func (m *multipartWalker) getPart() (*multipart.Part, error) {
 	return m.part, err
 }
 
+// NewFileFromPartReader creates a Directory from a multipart reader.
 func NewFileFromPartReader(reader *multipart.Reader, mediatype string) (Directory, error) {
-	if !isDirectory(mediatype) {
+	switch mediatype {
+	case applicationDirectory, multipartFormdataType:
+	default:
 		return nil, ErrNotDirectory
 	}
 
@@ -75,7 +78,21 @@ func (w *multipartWalker) nextFile() (Node, error) {
 	w.consumePart()
 
 	contentType := part.Header.Get(contentTypeHeader)
+	if contentType != "" {
+		var err error
+		contentType, _, err = mime.ParseMediaType(contentType)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	switch contentType {
+	case multipartFormdataType, applicationDirectory:
+		return &multipartDirectory{
+			part:   part,
+			path:   fileName(part),
+			walker: w,
+		}, nil
 	case applicationSymlink:
 		out, err := ioutil.ReadAll(part)
 		if err != nil {
@@ -83,32 +100,12 @@ func (w *multipartWalker) nextFile() (Node, error) {
 		}
 
 		return NewLinkFile(string(out), nil), nil
-	case "": // default to application/octet-stream
-		fallthrough
-	case applicationFile:
+	default:
 		return &ReaderFile{
 			reader:  part,
 			abspath: part.Header.Get("abspath"),
 		}, nil
 	}
-
-	mediatype, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return nil, err
-	}
-
-	if !isDirectory(mediatype) {
-		return &ReaderFile{
-			reader:  part,
-			abspath: part.Header.Get("abspath"),
-		}, nil
-	}
-
-	return &multipartDirectory{
-		part:   part,
-		path:   fileName(part),
-		walker: w,
-	}, nil
 }
 
 // fileName returns a normalized filename from a part.
@@ -128,11 +125,6 @@ func dirName(filename string) string {
 		filename += "/"
 	}
 	return filename
-}
-
-// isDirectory checks if the media type is a valid directory media type.
-func isDirectory(mediatype string) bool {
-	return mediatype == multipartFormdataType || mediatype == applicationDirectory
 }
 
 // isChild checks if child is a child of parent directory.
