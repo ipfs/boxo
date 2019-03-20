@@ -88,7 +88,12 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 			// write the boundary and headers
 			header := make(textproto.MIMEHeader)
 			filename := url.QueryEscape(path.Join(path.Join(mfr.path...), entry.Name()))
-			header.Set("Content-Disposition", fmt.Sprintf("file; filename=\"%s\"", filename))
+			dispositionPrefix := "attachment"
+			if mfr.form {
+				dispositionPrefix = "form-data; name=\"file\""
+			}
+
+			header.Set("Content-Disposition", fmt.Sprintf("%s; filename=\"%s\"", dispositionPrefix, filename))
 
 			var contentType string
 
