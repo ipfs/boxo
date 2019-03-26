@@ -73,7 +73,7 @@ func Mv(r *Root, src, dst string) error {
 		return err
 	}
 
-	if srcDirObj == dstDir && srcFname == filename {
+	if srcDir == dstDirStr && srcFname == filename {
 		return nil
 	}
 
