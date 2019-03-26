@@ -73,6 +73,10 @@ func Mv(r *Root, src, dst string) error {
 		return err
 	}
 
+	if srcDirObj == dstDir && srcFname == filename {
+		return nil
+	}
+
 	return srcDirObj.Unlink(srcFname)
 }
 
