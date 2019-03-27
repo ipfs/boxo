@@ -46,8 +46,9 @@ const (
 	maxProvidersPerRequest = 3
 	findProviderDelay      = 1 * time.Second
 	providerRequestTimeout = time.Second * 10
-	provideTimeout         = time.Second * 15
-	sizeBatchRequestChan   = 32
+	// these requests take at _least_ two minutes at the moment.
+	provideTimeout       = time.Minute * 3
+	sizeBatchRequestChan = 32
 )
 
 var (
