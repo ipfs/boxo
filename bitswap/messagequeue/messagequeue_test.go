@@ -158,3 +158,40 @@ func TestSendingMessagesPartialDupe(t *testing.T) {
 	}
 
 }
+
+func TestWantlistRebroadcast(t *testing.T) {
+
+	ctx := context.Background()
+	messagesSent := make(chan bsmsg.BitSwapMessage)
+	resetChan := make(chan struct{}, 1)
+	fullClosedChan := make(chan struct{}, 1)
+	fakeSender := &fakeMessageSender{nil, fullClosedChan, resetChan, messagesSent}
+	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
+	peerID := testutil.GeneratePeers(1)[0]
+	messageQueue := New(ctx, peerID, fakenet)
+	ses := testutil.GenerateSessionID()
+	wl := testutil.GenerateWantlist(10, ses)
+
+	messageQueue.Startup()
+	messageQueue.AddWantlist(wl)
+	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	if len(messages) != 1 {
+		t.Fatal("wrong number of messages were sent for initial wants")
+	}
+
+	messageQueue.SetRebroadcastInterval(5 * time.Millisecond)
+	messages = collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	if len(messages) != 1 {
+		t.Fatal("wrong number of messages were sent for initial wants")
+	}
+
+	firstMessage := messages[0]
+	if len(firstMessage.Wantlist()) != wl.Len() {
+		t.Fatal("did not add all wants to want list")
+	}
+	for _, entry := range firstMessage.Wantlist() {
+		if entry.Cancel {
+			t.Fatal("initial add sent cancel entry when it should not have")
+		}
+	}
+}
