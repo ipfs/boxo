@@ -79,7 +79,9 @@ func (mq *MessageQueue) AddWantlist(initialWants *wantlist.SessionTrackedWantlis
 func (mq *MessageQueue) SetRebroadcastInterval(delay time.Duration) {
 	mq.rebroadcastIntervalLk.Lock()
 	mq.rebroadcastInterval = delay
-	mq.rebroadcastTimer.Reset(delay)
+	if mq.rebroadcastTimer != nil {
+		mq.rebroadcastTimer.Reset(delay)
+	}
 	mq.rebroadcastIntervalLk.Unlock()
 }
 
