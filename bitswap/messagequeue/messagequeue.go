@@ -14,7 +14,10 @@ import (
 
 var log = logging.Logger("bitswap")
 
-const maxRetries = 10
+const (
+	defaultRebroadcastInterval = 30 * time.Second
+	maxRetries                 = 10
+)
 
 // MessageNetwork is any network that can connect peers and generate a message
 // sender.
@@ -33,21 +36,25 @@ type MessageQueue struct {
 	done         chan struct{}
 
 	// do not touch out of run loop
-	wl            *wantlist.SessionTrackedWantlist
-	nextMessage   bsmsg.BitSwapMessage
-	nextMessageLk sync.RWMutex
-	sender        bsnet.MessageSender
+	wl                    *wantlist.SessionTrackedWantlist
+	nextMessage           bsmsg.BitSwapMessage
+	nextMessageLk         sync.RWMutex
+	sender                bsnet.MessageSender
+	rebroadcastIntervalLk sync.RWMutex
+	rebroadcastInterval   time.Duration
+	rebroadcastTimer      *time.Timer
 }
 
 // New creats a new MessageQueue.
 func New(ctx context.Context, p peer.ID, network MessageNetwork) *MessageQueue {
 	return &MessageQueue{
-		ctx:          ctx,
-		wl:           wantlist.NewSessionTrackedWantlist(),
-		network:      network,
-		p:            p,
-		outgoingWork: make(chan struct{}, 1),
-		done:         make(chan struct{}),
+		ctx:                 ctx,
+		wl:                  wantlist.NewSessionTrackedWantlist(),
+		network:             network,
+		p:                   p,
+		outgoingWork:        make(chan struct{}, 1),
+		done:                make(chan struct{}),
+		rebroadcastInterval: defaultRebroadcastInterval,
 	}
 }
 
@@ -64,27 +71,26 @@ func (mq *MessageQueue) AddMessage(entries []bsmsg.Entry, ses uint64) {
 
 // AddWantlist adds a complete session tracked want list to a message queue
 func (mq *MessageQueue) AddWantlist(initialWants *wantlist.SessionTrackedWantlist) {
-	mq.nextMessageLk.Lock()
-	defer mq.nextMessageLk.Unlock()
-
 	initialWants.CopyWants(mq.wl)
-	if initialWants.Len() > 0 {
-		if mq.nextMessage == nil {
-			mq.nextMessage = bsmsg.New(false)
-		}
-		for _, e := range initialWants.Entries() {
-			mq.nextMessage.AddEntry(e.Cid, e.Priority)
-		}
-		select {
-		case mq.outgoingWork <- struct{}{}:
-		default:
-		}
+	mq.addWantlist()
+}
+
+// SetRebroadcastInterval sets a new interval on which to rebroadcast the full wantlist
+func (mq *MessageQueue) SetRebroadcastInterval(delay time.Duration) {
+	mq.rebroadcastIntervalLk.Lock()
+	mq.rebroadcastInterval = delay
+	if mq.rebroadcastTimer != nil {
+		mq.rebroadcastTimer.Reset(delay)
 	}
+	mq.rebroadcastIntervalLk.Unlock()
 }
 
 // Startup starts the processing of messages, and creates an initial message
 // based on the given initial wantlist.
 func (mq *MessageQueue) Startup() {
+	mq.rebroadcastIntervalLk.RLock()
+	mq.rebroadcastTimer = time.NewTimer(mq.rebroadcastInterval)
+	mq.rebroadcastIntervalLk.RUnlock()
 	go mq.runQueue()
 }
 
@@ -96,6 +102,8 @@ func (mq *MessageQueue) Shutdown() {
 func (mq *MessageQueue) runQueue() {
 	for {
 		select {
+		case <-mq.rebroadcastTimer.C:
+			mq.rebroadcastWantlist()
 		case <-mq.outgoingWork:
 			mq.sendMessage()
 		case <-mq.done:
@@ -110,6 +118,33 @@ func (mq *MessageQueue) runQueue() {
 			return
 		}
 	}
+}
+
+func (mq *MessageQueue) addWantlist() {
+
+	mq.nextMessageLk.Lock()
+	defer mq.nextMessageLk.Unlock()
+
+	if mq.wl.Len() > 0 {
+		if mq.nextMessage == nil {
+			mq.nextMessage = bsmsg.New(false)
+		}
+		for _, e := range mq.wl.Entries() {
+			mq.nextMessage.AddEntry(e.Cid, e.Priority)
+		}
+		select {
+		case mq.outgoingWork <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (mq *MessageQueue) rebroadcastWantlist() {
+	mq.rebroadcastIntervalLk.RLock()
+	mq.rebroadcastTimer.Reset(mq.rebroadcastInterval)
+	mq.rebroadcastIntervalLk.RUnlock()
+
+	mq.addWantlist()
 }
 
 func (mq *MessageQueue) addEntries(entries []bsmsg.Entry, ses uint64) bool {
