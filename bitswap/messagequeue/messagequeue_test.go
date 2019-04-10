@@ -180,9 +180,9 @@ func TestWantlistRebroadcast(t *testing.T) {
 	}
 
 	messageQueue.SetRebroadcastInterval(5 * time.Millisecond)
-	messages = collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	messages = collectMessages(ctx, t, messagesSent, 8*time.Millisecond)
 	if len(messages) != 1 {
-		t.Fatal("wrong number of messages were sent for initial wants")
+		t.Fatal("wrong number of messages were rebroadcast")
 	}
 
 	firstMessage := messages[0]
