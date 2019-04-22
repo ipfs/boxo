@@ -10,8 +10,9 @@ import (
 )
 
 func TestWebFile(t *testing.T) {
+	const content = "Hello world!"
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello world!")
+		fmt.Fprintf(w, content)
 	}))
 	defer s.Close()
 
@@ -24,7 +25,24 @@ func TestWebFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(body) != "Hello world!" {
-		t.Fatal("should have read the web file")
+	if string(body) != content {
+		t.Fatalf("expected %q but got %q", content, string(body))
+	}
+}
+
+func TestWebFile_notFound(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "File not found.", http.StatusNotFound)
+	}))
+	defer s.Close()
+
+	u, err := url.Parse(s.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wf := NewWebFile(u)
+	_, err = ioutil.ReadAll(wf)
+	if err == nil {
+		t.Fatal("expected error")
 	}
 }

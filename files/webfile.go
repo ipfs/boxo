@@ -2,6 +2,7 @@ package files
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -31,9 +32,13 @@ func NewWebFile(url *url.URL) *WebFile {
 // reads will keep reading from the HTTP Request body.
 func (wf *WebFile) Read(b []byte) (int, error) {
 	if wf.body == nil {
-		resp, err := http.Get(wf.url.String())
+		s := wf.url.String()
+		resp, err := http.Get(s)
 		if err != nil {
 			return 0, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode > 299 {
+			return 0, fmt.Errorf("got non-2XX status code %d: %s", resp.StatusCode, s)
 		}
 		wf.body = resp.Body
 		wf.contentLength = resp.ContentLength
