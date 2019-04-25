@@ -5,13 +5,9 @@ import (
 	"fmt"
 	"math/rand"
 
-	logging "github.com/ipfs/go-log"
-
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
-
-var log = logging.Logger("bitswap")
 
 const (
 	maxOptimizedPeers   = 32

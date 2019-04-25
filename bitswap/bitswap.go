@@ -38,16 +38,8 @@ var log = logging.Logger("bitswap")
 var _ exchange.SessionExchange = (*Bitswap)(nil)
 
 const (
-	// maxProvidersPerRequest specifies the maximum number of providers desired
-	// from the network. This value is specified because the network streams
-	// results.
-	// TODO: if a 'non-nice' strategy is implemented, consider increasing this value
-	maxProvidersPerRequest = 3
-	findProviderDelay      = 1 * time.Second
-	providerRequestTimeout = time.Second * 10
 	// these requests take at _least_ two minutes at the moment.
-	provideTimeout       = time.Minute * 3
-	sizeBatchRequestChan = 32
+	provideTimeout = time.Minute * 3
 )
 
 var (
@@ -188,11 +180,6 @@ type counters struct {
 	dataSent       uint64
 	dataRecvd      uint64
 	messagesRecvd  uint64
-}
-
-type blockRequest struct {
-	Cid cid.Cid
-	Ctx context.Context
 }
 
 // GetBlock attempts to retrieve a particular block from peers within the
