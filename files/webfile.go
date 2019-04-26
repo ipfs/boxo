@@ -26,22 +26,29 @@ func NewWebFile(url *url.URL) *WebFile {
 	}
 }
 
+func (wf *WebFile) start() error {
+	if wf.body == nil {
+		s := wf.url.String()
+		resp, err := http.Get(s)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode > 299 {
+			return fmt.Errorf("got non-2XX status code %d: %s", resp.StatusCode, s)
+		}
+		wf.body = resp.Body
+		wf.contentLength = resp.ContentLength
+	}
+	return nil
+}
+
 // Read reads the File from it's web location. On the first
 // call to Read, a GET request will be performed against the
 // WebFile's URL, using Go's default HTTP client. Any further
 // reads will keep reading from the HTTP Request body.
 func (wf *WebFile) Read(b []byte) (int, error) {
-	if wf.body == nil {
-		s := wf.url.String()
-		resp, err := http.Get(s)
-		if err != nil {
-			return 0, err
-		}
-		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			return 0, fmt.Errorf("got non-2XX status code %d: %s", resp.StatusCode, s)
-		}
-		wf.body = resp.Body
-		wf.contentLength = resp.ContentLength
+	if err := wf.start(); err != nil {
+		return 0, err
 	}
 	return wf.body.Read(b)
 }
@@ -60,6 +67,9 @@ func (wf *WebFile) Seek(offset int64, whence int) (int64, error) {
 }
 
 func (wf *WebFile) Size() (int64, error) {
+	if err := wf.start(); err != nil {
+		return 0, err
+	}
 	if wf.contentLength < 0 {
 		return -1, errors.New("Content-Length hearer was not set")
 	}
