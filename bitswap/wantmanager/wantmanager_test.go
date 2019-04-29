@@ -40,7 +40,7 @@ func setupTestFixturesAndInitialWantList() (
 
 	// setup fixtures
 	wantSender := &fakePeerHandler{}
-	wantManager := New(ctx)
+	wantManager := New(ctx, wantSender)
 	keys := testutil.GenerateCids(10)
 	otherKeys := testutil.GenerateCids(5)
 	peers := testutil.GeneratePeers(10)
@@ -48,7 +48,6 @@ func setupTestFixturesAndInitialWantList() (
 	otherSession := testutil.GenerateSessionID()
 
 	// startup wantManager
-	wantManager.SetDelegate(wantSender)
 	wantManager.Startup()
 
 	// add initial wants

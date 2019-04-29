@@ -53,7 +53,7 @@ type WantManager struct {
 }
 
 // New initializes a new WantManager for a given context.
-func New(ctx context.Context) *WantManager {
+func New(ctx context.Context, peerHandler PeerHandler) *WantManager {
 	ctx, cancel := context.WithCancel(ctx)
 	wantlistGauge := metrics.NewCtx(ctx, "wantlist_total",
 		"Number of items in wantlist.").Gauge()
@@ -63,13 +63,9 @@ func New(ctx context.Context) *WantManager {
 		bcwl:          wantlist.NewSessionTrackedWantlist(),
 		ctx:           ctx,
 		cancel:        cancel,
+		peerHandler:   peerHandler,
 		wantlistGauge: wantlistGauge,
 	}
-}
-
-// SetDelegate specifies who will send want changes out to the internet.
-func (wm *WantManager) SetDelegate(peerHandler PeerHandler) {
-	wm.peerHandler = peerHandler
 }
 
 // WantBlocks adds the given cids to the wantlist, tracked by the given session.
