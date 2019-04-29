@@ -130,7 +130,7 @@ func (spm *SessionPeerManager) run(ctx context.Context) {
 }
 
 func (spm *SessionPeerManager) tagPeer(p peer.ID, value int) {
-	spm.tagger.TagPeer(p, spm.tag, 10)
+	spm.tagger.TagPeer(p, spm.tag, value)
 }
 
 func (spm *SessionPeerManager) insertOptimizedPeer(p peer.ID) {
