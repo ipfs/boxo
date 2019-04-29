@@ -26,7 +26,6 @@ import (
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	delay "github.com/ipfs/go-ipfs-delay"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
-	flags "github.com/ipfs/go-ipfs-flags"
 	logging "github.com/ipfs/go-log"
 	metrics "github.com/ipfs/go-metrics-interface"
 	process "github.com/jbenet/goprocess"
@@ -59,14 +58,6 @@ var (
 	// the 1<<18+15 is to observe old file chunks that are 1<<18 + 14 in size
 	metricsBuckets = []float64{1 << 6, 1 << 10, 1 << 14, 1 << 18, 1<<18 + 15, 1 << 22}
 )
-
-func init() {
-	if flags.LowMemMode {
-		HasBlockBufferSize = 64
-		provideKeysBufferSize = 512
-		provideWorkerMax = 16
-	}
-}
 
 var rebroadcastDelay = delay.Fixed(time.Minute)
 
