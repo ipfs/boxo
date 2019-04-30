@@ -5,17 +5,15 @@ import (
 	"fmt"
 	"math/rand"
 
-	logging "github.com/ipfs/go-log"
-
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 
-var log = logging.Logger("bitswap")
-
 const (
-	maxOptimizedPeers = 32
-	reservePeers      = 2
+	maxOptimizedPeers   = 32
+	reservePeers        = 2
+	unoptimizedTagValue = 5  // tag value for "unoptimized" session peers.
+	optimizedTagValue   = 10 // tag value for "optimized" session peers.
 )
 
 // PeerTagger is an interface for tagging peers with metadata
@@ -131,8 +129,8 @@ func (spm *SessionPeerManager) run(ctx context.Context) {
 	}
 }
 
-func (spm *SessionPeerManager) tagPeer(p peer.ID) {
-	spm.tagger.TagPeer(p, spm.tag, 10)
+func (spm *SessionPeerManager) tagPeer(p peer.ID, value int) {
+	spm.tagger.TagPeer(p, spm.tag, value)
 }
 
 func (spm *SessionPeerManager) insertOptimizedPeer(p peer.ID) {
@@ -173,7 +171,7 @@ func (pfm *peerFoundMessage) handle(spm *SessionPeerManager) {
 	if _, ok := spm.activePeers[p]; !ok {
 		spm.activePeers[p] = false
 		spm.unoptimizedPeersArr = append(spm.unoptimizedPeersArr, p)
-		spm.tagPeer(p)
+		spm.tagPeer(p, unoptimizedTagValue)
 	}
 }
 
@@ -182,17 +180,16 @@ type peerResponseMessage struct {
 }
 
 func (prm *peerResponseMessage) handle(spm *SessionPeerManager) {
-
 	p := prm.p
 	isOptimized, ok := spm.activePeers[p]
-	if !ok {
-		spm.activePeers[p] = true
-		spm.tagPeer(p)
+	if isOptimized {
+		spm.removeOptimizedPeer(p)
 	} else {
-		if isOptimized {
-			spm.removeOptimizedPeer(p)
-		} else {
-			spm.activePeers[p] = true
+		spm.activePeers[p] = true
+		spm.tagPeer(p, optimizedTagValue)
+
+		// transition from unoptimized.
+		if ok {
 			spm.removeUnoptimizedPeer(p)
 		}
 	}

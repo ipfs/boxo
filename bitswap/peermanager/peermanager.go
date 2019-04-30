@@ -5,15 +5,8 @@ import (
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	wantlist "github.com/ipfs/go-bitswap/wantlist"
-	logging "github.com/ipfs/go-log"
 
 	peer "github.com/libp2p/go-libp2p-peer"
-)
-
-var log = logging.Logger("bitswap")
-
-var (
-	metricsBuckets = []float64{1 << 6, 1 << 10, 1 << 14, 1 << 18, 1<<18 + 15, 1 << 22}
 )
 
 // PeerQueue provides a queer of messages to be sent for a single peer.
@@ -26,10 +19,6 @@ type PeerQueue interface {
 
 // PeerQueueFactory provides a function that will create a PeerQueue.
 type PeerQueueFactory func(ctx context.Context, p peer.ID) PeerQueue
-
-type peerMessage interface {
-	handle(pm *PeerManager)
-}
 
 type peerQueueInstance struct {
 	refcnt int
