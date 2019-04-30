@@ -221,7 +221,7 @@ func (e *Engine) Peers() []peer.ID {
 
 // MessageReceived performs book-keeping. Returns error if passed invalid
 // arguments.
-func (e *Engine) MessageReceived(p peer.ID, m bsmsg.BitSwapMessage) error {
+func (e *Engine) MessageReceived(p peer.ID, m bsmsg.BitSwapMessage) {
 	if m.Empty() {
 		log.Debugf("received empty message from %s", p)
 	}
@@ -276,7 +276,6 @@ func (e *Engine) MessageReceived(p peer.ID, m bsmsg.BitSwapMessage) error {
 		log.Debugf("got block %s %d bytes", block, len(block.RawData()))
 		l.ReceivedBytes(len(block.RawData()))
 	}
-	return nil
 }
 
 func (e *Engine) addBlock(block blocks.Block) {
@@ -309,7 +308,7 @@ func (e *Engine) AddBlock(block blocks.Block) {
 // inconsistent. Would need to ensure that Sends and acknowledgement of the
 // send happen atomically
 
-func (e *Engine) MessageSent(p peer.ID, m bsmsg.BitSwapMessage) error {
+func (e *Engine) MessageSent(p peer.ID, m bsmsg.BitSwapMessage) {
 	l := e.findOrCreate(p)
 	l.lk.Lock()
 	defer l.lk.Unlock()
@@ -320,7 +319,6 @@ func (e *Engine) MessageSent(p peer.ID, m bsmsg.BitSwapMessage) error {
 		e.peerRequestQueue.Remove(block.Cid(), p)
 	}
 
-	return nil
 }
 
 func (e *Engine) PeerConnected(p peer.ID) {
