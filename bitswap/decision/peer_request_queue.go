@@ -136,7 +136,17 @@ func (tl *prq) Pop() *peerRequestTask {
 		break // and return |out|
 	}
 
-	tl.pQueue.Push(partner)
+	if partner.IsIdle() {
+		for target, testPartner := range tl.partners {
+			if testPartner == partner {
+				delete(tl.partners, target)
+				delete(tl.frozen, target)
+				break
+			}
+		}
+	} else {
+		tl.pQueue.Push(partner)
+	}
 	return out
 }
 
@@ -323,12 +333,19 @@ func (p *activePartner) StartTask(k cid.Cid) {
 // TaskDone signals that a task was completed for this partner.
 func (p *activePartner) TaskDone(k cid.Cid) {
 	p.activelk.Lock()
+
 	p.activeBlocks.Remove(k)
 	p.active--
 	if p.active < 0 {
 		panic("more tasks finished than started!")
 	}
 	p.activelk.Unlock()
+}
+
+func (p *activePartner) IsIdle() bool {
+	p.activelk.Lock()
+	defer p.activelk.Unlock()
+	return p.requests == 0 && p.active == 0
 }
 
 // Index implements pq.Elem.
