@@ -51,7 +51,7 @@ func (tl *prq) Push(to peer.ID, entries ...wantlist.Entry) {
 	defer tl.lock.Unlock()
 	partner, ok := tl.partners[to]
 	if !ok {
-		partner = newActivePartner()
+		partner = newActivePartner(to)
 		tl.pQueue.Push(partner)
 		tl.partners[to] = partner
 	}
@@ -137,13 +137,9 @@ func (tl *prq) Pop() *peerRequestTask {
 	}
 
 	if partner.IsIdle() {
-		for target, testPartner := range tl.partners {
-			if testPartner == partner {
-				delete(tl.partners, target)
-				delete(tl.frozen, target)
-				break
-			}
-		}
+		target := partner.target
+		delete(tl.partners, target)
+		delete(tl.frozen, target)
 	} else {
 		tl.pQueue.Push(partner)
 	}
@@ -262,7 +258,7 @@ func wrapCmp(f func(a, b *peerRequestTask) bool) func(a, b pq.Elem) bool {
 }
 
 type activePartner struct {
-
+	target peer.ID
 	// Active is the number of blocks this peer is currently being sent
 	// active must be locked around as it will be updated externally
 	activelk sync.Mutex
@@ -284,8 +280,9 @@ type activePartner struct {
 	taskQueue pq.PQ
 }
 
-func newActivePartner() *activePartner {
+func newActivePartner(target peer.ID) *activePartner {
 	return &activePartner{
+		target:       target,
 		taskQueue:    pq.New(wrapCmp(V1)),
 		activeBlocks: cid.NewSet(),
 	}
