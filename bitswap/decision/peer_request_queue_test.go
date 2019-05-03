@@ -128,3 +128,35 @@ func TestPeerRepeats(t *testing.T) {
 		}
 	}
 }
+
+func TestCleaningUpQueues(t *testing.T) {
+	partner := testutil.RandPeerIDFatal(t)
+	var entries []wantlist.Entry
+	for i := 0; i < 5; i++ {
+		entries = append(entries, wantlist.Entry{Cid: cid.NewCidV0(u.Hash([]byte(fmt.Sprint(i))))})
+	}
+
+	prq := newPRQ()
+
+	// push a block, pop a block, complete everything, should be removed
+	prq.Push(partner, entries...)
+	task := prq.Pop()
+	task.Done(task.Entries)
+	task = prq.Pop()
+
+	if task != nil || len(prq.partners) > 0 || prq.pQueue.Len() > 0 {
+		t.Fatal("Partner should have been removed because it's idle")
+	}
+
+	// push a block, remove each of its entries, should be removed
+	prq.Push(partner, entries...)
+	for _, entry := range entries {
+		prq.Remove(entry.Cid, partner)
+	}
+	task = prq.Pop()
+
+	if task != nil || len(prq.partners) > 0 || prq.pQueue.Len() > 0 {
+		t.Fatal("Partner should have been removed because it's idle")
+	}
+
+}
