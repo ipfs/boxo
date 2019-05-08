@@ -83,6 +83,14 @@ func mkdirP(t *testing.T, root *Directory, pth string) *Directory {
 	return cur
 }
 
+func assertDirNotAtPath(root *Directory, pth string) error {
+	_, err := DirLookup(root, pth)
+	if err == nil {
+		return fmt.Errorf("%s exists in %s", pth, root.name)
+	}
+	return nil
+}
+
 func assertDirAtPath(root *Directory, pth string, children []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -365,6 +373,114 @@ func TestDirectoryLoadFromDag(t *testing.T) {
 	}
 
 	err = assertDirAtPath(rootdir, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMvFile(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	dagService, rt := setupRoot(ctx, t)
+	rootDir := rt.GetDirectory()
+
+	fi := getRandFile(t, dagService, 1000)
+
+	err := rootDir.AddChild("afile", fi)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = Mv(rt, "/afile", "/bfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = assertFileAtPath(dagService, rootDir, fi, "bfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMvFileToSubdir(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	dagService, rt := setupRoot(ctx, t)
+	rootDir := rt.GetDirectory()
+
+	_ = mkdirP(t, rootDir, "test1")
+
+	fi := getRandFile(t, dagService, 1000)
+
+	err := rootDir.AddChild("afile", fi)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = Mv(rt, "/afile", "/test1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = assertFileAtPath(dagService, rootDir, fi, "test1/afile")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMvFileToSubdirWithRename(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	dagService, rt := setupRoot(ctx, t)
+	rootDir := rt.GetDirectory()
+
+	_ = mkdirP(t, rootDir, "test1")
+
+	fi := getRandFile(t, dagService, 1000)
+
+	err := rootDir.AddChild("afile", fi)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = Mv(rt, "/afile", "/test1/bfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = assertFileAtPath(dagService, rootDir, fi, "test1/bfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMvDir(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	dagService, rt := setupRoot(ctx, t)
+	rootDir := rt.GetDirectory()
+
+	_ = mkdirP(t, rootDir, "test1")
+	d2 := mkdirP(t, rootDir, "test2")
+
+	fi := getRandFile(t, dagService, 1000)
+
+	err := d2.AddChild("afile", fi)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = Mv(rt, "/test2", "/test1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = assertDirNotAtPath(rootDir, "test2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = assertFileAtPath(dagService, rootDir, fi, "test1/test2/afile")
 	if err != nil {
 		t.Fatal(err)
 	}

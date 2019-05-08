@@ -21,29 +21,29 @@ import (
 // Mv moves the file or directory at 'src' to 'dst'
 // TODO: Document what the strings 'src' and 'dst' represent.
 func Mv(r *Root, src, dst string) error {
-	srcDir, srcFname := gopath.Split(src)
+	srcDirName, srcFname := gopath.Split(src)
 
-	var dstDirStr string
-	var filename string
+	var dstDirName string
+	var dstFname string
 	if dst[len(dst)-1] == '/' {
-		dstDirStr = dst
-		filename = srcFname
+		dstDirName = dst
+		dstFname = srcFname
 	} else {
-		dstDirStr, filename = gopath.Split(dst)
+		dstDirName, dstFname = gopath.Split(dst)
 	}
 
 	// get parent directories of both src and dest first
-	dstDir, err := lookupDir(r, dstDirStr)
+	dstDir, err := lookupDir(r, dstDirName)
 	if err != nil {
 		return err
 	}
 
-	srcDirObj, err := lookupDir(r, srcDir)
+	srcDir, err := lookupDir(r, srcDirName)
 	if err != nil {
 		return err
 	}
 
-	srcObj, err := srcDirObj.Child(srcFname)
+	srcObj, err := srcDir.Child(srcFname)
 	if err != nil {
 		return err
 	}
@@ -53,14 +53,14 @@ func Mv(r *Root, src, dst string) error {
 		return err
 	}
 
-	fsn, err := dstDir.Child(filename)
+	fsn, err := dstDir.Child(dstFname)
 	if err == nil {
 		switch n := fsn.(type) {
 		case *File:
-			_ = dstDir.Unlink(filename)
+			_ = dstDir.Unlink(dstFname)
 		case *Directory:
 			dstDir = n
-			filename = srcFname
+			dstFname = srcFname
 		default:
 			return fmt.Errorf("unexpected type at path: %s", dst)
 		}
@@ -68,16 +68,16 @@ func Mv(r *Root, src, dst string) error {
 		return err
 	}
 
-	err = dstDir.AddChild(filename, nd)
+	err = dstDir.AddChild(dstFname, nd)
 	if err != nil {
 		return err
 	}
 
-	if srcDir == dstDirStr && srcFname == filename {
+	if srcDir.name == dstDir.name && srcFname == dstFname {
 		return nil
 	}
 
-	return srcDirObj.Unlink(srcFname)
+	return srcDir.Unlink(srcFname)
 }
 
 func lookupDir(r *Root, path string) (*Directory, error) {
