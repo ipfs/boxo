@@ -1,4 +1,4 @@
-// package decision implements the decision engine for the bitswap service.
+// Package decision implements the decision engine for the bitswap service.
 package decision
 
 import (
@@ -68,6 +68,7 @@ type Envelope struct {
 	Sent func()
 }
 
+// Engine manages sending requested blocks to peers.
 type Engine struct {
 	// peerRequestQueue is a priority queue of requests received from peers.
 	// Requests are popped from the queue, packaged up, and placed in the
@@ -94,6 +95,7 @@ type Engine struct {
 	ticker *time.Ticker
 }
 
+// NewEngine creates a new block sending engine for the given block store
 func NewEngine(ctx context.Context, bs bstore.Blockstore) *Engine {
 	e := &Engine{
 		ledgerMap:        make(map[peer.ID]*ledger),
@@ -107,6 +109,7 @@ func NewEngine(ctx context.Context, bs bstore.Blockstore) *Engine {
 	return e
 }
 
+// WantlistForPeer returns the currently understood want list for a given peer
 func (e *Engine) WantlistForPeer(p peer.ID) (out []wl.Entry) {
 	partner := e.findOrCreate(p)
 	partner.lk.Lock()
@@ -114,6 +117,8 @@ func (e *Engine) WantlistForPeer(p peer.ID) (out []wl.Entry) {
 	return partner.wantList.SortedEntries()
 }
 
+// LedgerForPeer returns aggregated data about blocks swapped and communication
+// with a given peer.
 func (e *Engine) LedgerForPeer(p peer.ID) *Receipt {
 	ledger := e.findOrCreate(p)
 
@@ -295,6 +300,8 @@ func (e *Engine) addBlock(block blocks.Block) {
 	}
 }
 
+// AddBlock is called to when a new block is received and added to a block store
+// meaning there may be peers who want that block that we should send it to.
 func (e *Engine) AddBlock(block blocks.Block) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
@@ -308,6 +315,8 @@ func (e *Engine) AddBlock(block blocks.Block) {
 // inconsistent. Would need to ensure that Sends and acknowledgement of the
 // send happen atomically
 
+// MessageSent is called when a message has successfully been sent out, to record
+// changes.
 func (e *Engine) MessageSent(p peer.ID, m bsmsg.BitSwapMessage) {
 	l := e.findOrCreate(p)
 	l.lk.Lock()
@@ -321,6 +330,8 @@ func (e *Engine) MessageSent(p peer.ID, m bsmsg.BitSwapMessage) {
 
 }
 
+// PeerConnected is called when a new peer connects, meaning we should start
+// sending blocks.
 func (e *Engine) PeerConnected(p peer.ID) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
@@ -334,6 +345,7 @@ func (e *Engine) PeerConnected(p peer.ID) {
 	l.ref++
 }
 
+// PeerDisconnected is called when a peer disconnects.
 func (e *Engine) PeerDisconnected(p peer.ID) {
 	e.lock.Lock()
 	defer e.lock.Unlock()

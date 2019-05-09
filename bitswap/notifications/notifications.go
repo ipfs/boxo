@@ -11,12 +11,16 @@ import (
 
 const bufferSize = 16
 
+// PubSub is a simple interface for publishing blocks and being able to subscribe
+// for cids. It's used internally by bitswap to decouple receiving blocks
+// and actually providing them back to the GetBlocks caller.
 type PubSub interface {
 	Publish(block blocks.Block)
 	Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Block
 	Shutdown()
 }
 
+// New generates a new PubSub interface.
 func New() PubSub {
 	return &impl{
 		wrapped: *pubsub.New(bufferSize),

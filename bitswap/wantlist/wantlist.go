@@ -8,14 +8,18 @@ import (
 	cid "github.com/ipfs/go-cid"
 )
 
+// SessionTrackedWantlist is a list of wants that also track which bitswap
+// sessions have requested them
 type SessionTrackedWantlist struct {
 	set map[cid.Cid]*sessionTrackedEntry
 }
 
+// Wantlist is a raw list of wanted blocks and their priorities
 type Wantlist struct {
 	set map[cid.Cid]Entry
 }
 
+// Entry is an entry in a want list, consisting of a cid and its priority
 type Entry struct {
 	Cid      cid.Cid
 	Priority int
@@ -40,12 +44,14 @@ func (es entrySlice) Len() int           { return len(es) }
 func (es entrySlice) Swap(i, j int)      { es[i], es[j] = es[j], es[i] }
 func (es entrySlice) Less(i, j int) bool { return es[i].Priority > es[j].Priority }
 
+// NewSessionTrackedWantlist generates a new SessionTrackedWantList.
 func NewSessionTrackedWantlist() *SessionTrackedWantlist {
 	return &SessionTrackedWantlist{
 		set: make(map[cid.Cid]*sessionTrackedEntry),
 	}
 }
 
+// New generates a new raw Wantlist
 func New() *Wantlist {
 	return &Wantlist{
 		set: make(map[cid.Cid]Entry),
@@ -116,6 +122,7 @@ func (w *SessionTrackedWantlist) Contains(k cid.Cid) (Entry, bool) {
 	return e.Entry, true
 }
 
+// Entries returns all wantlist entries for a given session tracked want list.
 func (w *SessionTrackedWantlist) Entries() []Entry {
 	es := make([]Entry, 0, len(w.set))
 	for _, e := range w.set {
@@ -124,16 +131,20 @@ func (w *SessionTrackedWantlist) Entries() []Entry {
 	return es
 }
 
+// SortedEntries returns wantlist entries ordered by priority.
 func (w *SessionTrackedWantlist) SortedEntries() []Entry {
 	es := w.Entries()
 	sort.Sort(entrySlice(es))
 	return es
 }
 
+// Len returns the number of entries in a wantlist.
 func (w *SessionTrackedWantlist) Len() int {
 	return len(w.set)
 }
 
+// CopyWants copies all wants from one SessionTrackWantlist to another (along with
+// the session data)
 func (w *SessionTrackedWantlist) CopyWants(to *SessionTrackedWantlist) {
 	for _, e := range w.set {
 		for k := range e.sesTrk {
@@ -142,10 +153,12 @@ func (w *SessionTrackedWantlist) CopyWants(to *SessionTrackedWantlist) {
 	}
 }
 
+// Len returns the number of entries in a wantlist.
 func (w *Wantlist) Len() int {
 	return len(w.set)
 }
 
+// Add adds an entry in a wantlist from CID & Priority, if not already present.
 func (w *Wantlist) Add(c cid.Cid, priority int) bool {
 	if _, ok := w.set[c]; ok {
 		return false
@@ -159,6 +172,7 @@ func (w *Wantlist) Add(c cid.Cid, priority int) bool {
 	return true
 }
 
+// AddEntry adds an entry to a wantlist if not already present.
 func (w *Wantlist) AddEntry(e Entry) bool {
 	if _, ok := w.set[e.Cid]; ok {
 		return false
@@ -167,6 +181,7 @@ func (w *Wantlist) AddEntry(e Entry) bool {
 	return true
 }
 
+// Remove removes the given cid from the wantlist.
 func (w *Wantlist) Remove(c cid.Cid) bool {
 	_, ok := w.set[c]
 	if !ok {
@@ -177,11 +192,14 @@ func (w *Wantlist) Remove(c cid.Cid) bool {
 	return true
 }
 
+// Contains returns the entry, if present, for the given CID, plus whether it
+// was present.
 func (w *Wantlist) Contains(c cid.Cid) (Entry, bool) {
 	e, ok := w.set[c]
 	return e, ok
 }
 
+// Entries returns all wantlist entries for a want list.
 func (w *Wantlist) Entries() []Entry {
 	es := make([]Entry, 0, len(w.set))
 	for _, e := range w.set {
@@ -190,6 +208,7 @@ func (w *Wantlist) Entries() []Entry {
 	return es
 }
 
+// SortedEntries returns wantlist entries ordered by priority.
 func (w *Wantlist) SortedEntries() []Entry {
 	es := w.Entries()
 	sort.Sort(entrySlice(es))

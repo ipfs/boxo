@@ -1,4 +1,4 @@
-package bitswap
+package bitswap_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	bssession "github.com/ipfs/go-bitswap/session"
+	testinstance "github.com/ipfs/go-bitswap/testinstance"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
@@ -18,7 +19,7 @@ func TestBasicSessions(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := NewTestSessionGenerator(vnet)
+	sesgen := testinstance.NewTestSessionGenerator(vnet)
 	defer sesgen.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -66,7 +67,7 @@ func TestSessionBetweenPeers(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := NewTestSessionGenerator(vnet)
+	sesgen := testinstance.NewTestSessionGenerator(vnet)
 	defer sesgen.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -109,7 +110,7 @@ func TestSessionBetweenPeers(t *testing.T) {
 			t.Fatal(err)
 		}
 		if stat.MessagesReceived > 2 {
-			t.Fatal("uninvolved nodes should only receive two messages", is.Exchange.counters.messagesRecvd)
+			t.Fatal("uninvolved nodes should only receive two messages", stat.MessagesReceived)
 		}
 	}
 }
@@ -119,7 +120,7 @@ func TestSessionSplitFetch(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := NewTestSessionGenerator(vnet)
+	sesgen := testinstance.NewTestSessionGenerator(vnet)
 	defer sesgen.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -162,7 +163,7 @@ func TestFetchNotConnected(t *testing.T) {
 
 	bssession.SetProviderSearchDelay(10 * time.Millisecond)
 	vnet := getVirtualNetwork()
-	sesgen := NewTestSessionGenerator(vnet)
+	sesgen := testinstance.NewTestSessionGenerator(vnet)
 	defer sesgen.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -202,7 +203,7 @@ func TestInterestCacheOverflow(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := NewTestSessionGenerator(vnet)
+	sesgen := testinstance.NewTestSessionGenerator(vnet)
 	defer sesgen.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -254,7 +255,7 @@ func TestPutAfterSessionCacheEvict(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := NewTestSessionGenerator(vnet)
+	sesgen := testinstance.NewTestSessionGenerator(vnet)
 	defer sesgen.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -294,7 +295,7 @@ func TestMultipleSessions(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := NewTestSessionGenerator(vnet)
+	sesgen := testinstance.NewTestSessionGenerator(vnet)
 	defer sesgen.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -337,7 +338,7 @@ func TestWantlistClearsOnCancel(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := NewTestSessionGenerator(vnet)
+	sesgen := testinstance.NewTestSessionGenerator(vnet)
 	defer sesgen.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
