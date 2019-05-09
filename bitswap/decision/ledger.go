@@ -47,6 +47,9 @@ type ledger struct {
 	lk sync.Mutex
 }
 
+// Receipt is a summary of the ledger for a given peer
+// collecting various pieces of aggregated data for external
+// reporting purposes.
 type Receipt struct {
 	Peer      string
 	Value     float64

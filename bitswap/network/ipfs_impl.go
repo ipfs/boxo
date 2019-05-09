@@ -49,7 +49,7 @@ type impl struct {
 	// inbound messages from the network are forwarded to the receiver
 	receiver Receiver
 
-	stats NetworkStats
+	stats Stats
 }
 
 type streamMessageSender struct {
@@ -201,8 +201,8 @@ func (bsnet *impl) ConnectionManager() ifconnmgr.ConnManager {
 	return bsnet.host.ConnManager()
 }
 
-func (bsnet *impl) Stats() NetworkStats {
-	return NetworkStats{
+func (bsnet *impl) Stats() Stats {
+	return Stats{
 		MessagesRecvd: atomic.LoadUint64(&bsnet.stats.MessagesRecvd),
 		MessagesSent:  atomic.LoadUint64(&bsnet.stats.MessagesSent),
 	}

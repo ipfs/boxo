@@ -6,6 +6,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 )
 
+// Stat is a struct that provides various statistics on bitswap operations
 type Stat struct {
 	ProvideBufLen    int
 	Wantlist         []cid.Cid
@@ -19,6 +20,7 @@ type Stat struct {
 	MessagesReceived uint64
 }
 
+// Stat returns aggregated statistics about bitswap operations
 func (bs *Bitswap) Stat() (*Stat, error) {
 	st := new(Stat)
 	st.ProvideBufLen = len(bs.newBlocks)

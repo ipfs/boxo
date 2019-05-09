@@ -1,11 +1,12 @@
-package bitswap
+package testsession
 
 import (
 	"context"
 	"time"
 
+	bitswap "github.com/ipfs/go-bitswap"
+	bsnet "github.com/ipfs/go-bitswap/network"
 	tn "github.com/ipfs/go-bitswap/testnet"
-
 	ds "github.com/ipfs/go-datastore"
 	delayed "github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"
@@ -16,7 +17,8 @@ import (
 	testutil "github.com/libp2p/go-testutil"
 )
 
-// WARNING: this uses RandTestBogusIdentity DO NOT USE for NON TESTS!
+// NewTestSessionGenerator generates a new SessionGenerator for the given
+// testnet
 func NewTestSessionGenerator(
 	net tn.Network) SessionGenerator {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -28,7 +30,7 @@ func NewTestSessionGenerator(
 	}
 }
 
-// TODO move this SessionGenerator to the core package and export it as the core generator
+// SessionGenerator generates new test instances of bitswap+dependencies
 type SessionGenerator struct {
 	seq    int
 	net    tn.Network
@@ -36,11 +38,13 @@ type SessionGenerator struct {
 	cancel context.CancelFunc
 }
 
+// Close closes the clobal context, shutting down all test instances
 func (g *SessionGenerator) Close() error {
 	g.cancel()
 	return nil // for Closer interface
 }
 
+// Next generates a new instance of bitswap + dependencies
 func (g *SessionGenerator) Next() Instance {
 	g.seq++
 	p, err := p2ptestutil.RandTestBogusIdentity()
@@ -50,6 +54,7 @@ func (g *SessionGenerator) Next() Instance {
 	return MkSession(g.ctx, g.net, p)
 }
 
+// Instances creates N test instances of bitswap + dependencies
 func (g *SessionGenerator) Instances(n int) []Instance {
 	var instances []Instance
 	for j := 0; j < n; j++ {
@@ -59,29 +64,33 @@ func (g *SessionGenerator) Instances(n int) []Instance {
 	for i, inst := range instances {
 		for j := i + 1; j < len(instances); j++ {
 			oinst := instances[j]
-			inst.Exchange.network.ConnectTo(context.Background(), oinst.Peer)
+			inst.Adapter.ConnectTo(context.Background(), oinst.Peer)
 		}
 	}
 	return instances
 }
 
+// Instance is a test instance of bitswap + dependencies for integration testing
 type Instance struct {
-	Peer       peer.ID
-	Exchange   *Bitswap
-	blockstore blockstore.Blockstore
-
+	Peer            peer.ID
+	Exchange        *bitswap.Bitswap
+	blockstore      blockstore.Blockstore
+	Adapter         bsnet.BitSwapNetwork
 	blockstoreDelay delay.D
 }
 
+// Blockstore returns the block store for this test instance
 func (i *Instance) Blockstore() blockstore.Blockstore {
 	return i.blockstore
 }
 
+// SetBlockstoreLatency customizes the artificial delay on receiving blocks
+// from a blockstore test instance.
 func (i *Instance) SetBlockstoreLatency(t time.Duration) time.Duration {
 	return i.blockstoreDelay.Set(t)
 }
 
-// session creates a test bitswap instance.
+// MkSession creates a test bitswap instance.
 //
 // NB: It's easy make mistakes by providing the same peer ID to two different
 // sessions. To safeguard, use the SessionGenerator to generate sessions. It's
@@ -99,9 +108,10 @@ func MkSession(ctx context.Context, net tn.Network, p testutil.Identity) Instanc
 		panic(err.Error()) // FIXME perhaps change signature and return error.
 	}
 
-	bs := New(ctx, adapter, bstore).(*Bitswap)
+	bs := bitswap.New(ctx, adapter, bstore).(*bitswap.Bitswap)
 
 	return Instance{
+		Adapter:         adapter,
 		Peer:            p.ID(),
 		Exchange:        bs,
 		blockstore:      bstore,

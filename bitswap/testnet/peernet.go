@@ -17,6 +17,7 @@ type peernet struct {
 	routingserver mockrouting.Server
 }
 
+// StreamNet is a testnet that uses libp2p's MockNet
 func StreamNet(ctx context.Context, net mockpeernet.Mocknet, rs mockrouting.Server) (Network, error) {
 	return &peernet{net, rs}, nil
 }

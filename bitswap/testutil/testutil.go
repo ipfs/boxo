@@ -5,7 +5,7 @@ import (
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	"github.com/ipfs/go-bitswap/wantlist"
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	peer "github.com/libp2p/go-libp2p-peer"

@@ -24,6 +24,8 @@ import (
 
 var log = logging.Logger("bstestnet")
 
+// VirtualNetwork generates a new testnet instance - a fake network that
+// is used to simulate sending messages.
 func VirtualNetwork(rs mockrouting.Server, d delay.D) Network {
 	return &network{
 		latencies:          make(map[peer.ID]map[peer.ID]time.Duration),
@@ -36,10 +38,13 @@ func VirtualNetwork(rs mockrouting.Server, d delay.D) Network {
 	}
 }
 
+// RateLimitGenerator is an interface for generating rate limits across peers
 type RateLimitGenerator interface {
 	NextRateLimit() float64
 }
 
+// RateLimitedVirtualNetwork generates a testnet instance where nodes are rate
+// limited in the upload/download speed.
 func RateLimitedVirtualNetwork(rs mockrouting.Server, d delay.D, rateLimitGenerator RateLimitGenerator) Network {
 	return &network{
 		latencies:          make(map[peer.ID]map[peer.ID]time.Duration),
@@ -168,7 +173,7 @@ type networkClient struct {
 	bsnet.Receiver
 	network *network
 	routing routing.IpfsRouting
-	stats   bsnet.NetworkStats
+	stats   bsnet.Stats
 }
 
 func (nc *networkClient) SendMessage(
@@ -182,8 +187,8 @@ func (nc *networkClient) SendMessage(
 	return nil
 }
 
-func (nc *networkClient) Stats() bsnet.NetworkStats {
-	return bsnet.NetworkStats{
+func (nc *networkClient) Stats() bsnet.Stats {
+	return bsnet.Stats{
 		MessagesRecvd: atomic.LoadUint64(&nc.stats.MessagesRecvd),
 		MessagesSent:  atomic.LoadUint64(&nc.stats.MessagesSent),
 	}
@@ -234,11 +239,11 @@ func (mp *messagePasser) Reset() error {
 	return nil
 }
 
-func (n *networkClient) NewMessageSender(ctx context.Context, p peer.ID) (bsnet.MessageSender, error) {
+func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID) (bsnet.MessageSender, error) {
 	return &messagePasser{
-		net:    n,
+		net:    nc,
 		target: p,
-		local:  n.local,
+		local:  nc.local,
 		ctx:    ctx,
 	}, nil
 }
