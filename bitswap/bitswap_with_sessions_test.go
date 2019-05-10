@@ -19,12 +19,12 @@ func TestBasicSessions(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := testinstance.NewTestSessionGenerator(vnet)
-	defer sesgen.Close()
+	ig := testinstance.NewTestInstanceGenerator(vnet)
+	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
 	block := bgen.Next()
-	inst := sesgen.Instances(2)
+	inst := ig.Instances(2)
 
 	a := inst[0]
 	b := inst[1]
@@ -67,11 +67,11 @@ func TestSessionBetweenPeers(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := testinstance.NewTestSessionGenerator(vnet)
-	defer sesgen.Close()
+	ig := testinstance.NewTestInstanceGenerator(vnet)
+	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
-	inst := sesgen.Instances(10)
+	inst := ig.Instances(10)
 
 	blks := bgen.Blocks(101)
 	if err := inst[0].Blockstore().PutMany(blks); err != nil {
@@ -120,11 +120,11 @@ func TestSessionSplitFetch(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := testinstance.NewTestSessionGenerator(vnet)
-	defer sesgen.Close()
+	ig := testinstance.NewTestInstanceGenerator(vnet)
+	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
-	inst := sesgen.Instances(11)
+	inst := ig.Instances(11)
 
 	blks := bgen.Blocks(100)
 	for i := 0; i < 10; i++ {
@@ -163,11 +163,11 @@ func TestFetchNotConnected(t *testing.T) {
 
 	bssession.SetProviderSearchDelay(10 * time.Millisecond)
 	vnet := getVirtualNetwork()
-	sesgen := testinstance.NewTestSessionGenerator(vnet)
-	defer sesgen.Close()
+	ig := testinstance.NewTestInstanceGenerator(vnet)
+	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
-	other := sesgen.Next()
+	other := ig.Next()
 
 	blks := bgen.Blocks(10)
 	for _, block := range blks {
@@ -181,7 +181,7 @@ func TestFetchNotConnected(t *testing.T) {
 		cids = append(cids, blk.Cid())
 	}
 
-	thisNode := sesgen.Next()
+	thisNode := ig.Next()
 	ses := thisNode.Exchange.NewSession(ctx).(*bssession.Session)
 	ses.SetBaseTickDelay(time.Millisecond * 10)
 
@@ -203,12 +203,12 @@ func TestInterestCacheOverflow(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := testinstance.NewTestSessionGenerator(vnet)
-	defer sesgen.Close()
+	ig := testinstance.NewTestInstanceGenerator(vnet)
+	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
 	blks := bgen.Blocks(2049)
-	inst := sesgen.Instances(2)
+	inst := ig.Instances(2)
 
 	a := inst[0]
 	b := inst[1]
@@ -255,12 +255,12 @@ func TestPutAfterSessionCacheEvict(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := testinstance.NewTestSessionGenerator(vnet)
-	defer sesgen.Close()
+	ig := testinstance.NewTestInstanceGenerator(vnet)
+	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
 	blks := bgen.Blocks(2500)
-	inst := sesgen.Instances(1)
+	inst := ig.Instances(1)
 
 	a := inst[0]
 
@@ -295,12 +295,12 @@ func TestMultipleSessions(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := testinstance.NewTestSessionGenerator(vnet)
-	defer sesgen.Close()
+	ig := testinstance.NewTestInstanceGenerator(vnet)
+	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
 	blk := bgen.Blocks(1)[0]
-	inst := sesgen.Instances(2)
+	inst := ig.Instances(2)
 
 	a := inst[0]
 	b := inst[1]
@@ -338,8 +338,8 @@ func TestWantlistClearsOnCancel(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	sesgen := testinstance.NewTestSessionGenerator(vnet)
-	defer sesgen.Close()
+	ig := testinstance.NewTestInstanceGenerator(vnet)
+	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
 	blks := bgen.Blocks(10)
@@ -348,7 +348,7 @@ func TestWantlistClearsOnCancel(t *testing.T) {
 		cids = append(cids, blk.Cid())
 	}
 
-	inst := sesgen.Instances(1)
+	inst := ig.Instances(1)
 
 	a := inst[0]
 

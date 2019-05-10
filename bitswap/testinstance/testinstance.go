@@ -17,12 +17,12 @@ import (
 	testutil "github.com/libp2p/go-testutil"
 )
 
-// NewTestSessionGenerator generates a new SessionGenerator for the given
+// NewTestInstanceGenerator generates a new InstanceGenerator for the given
 // testnet
-func NewTestSessionGenerator(
-	net tn.Network) SessionGenerator {
+func NewTestInstanceGenerator(
+	net tn.Network) InstanceGenerator {
 	ctx, cancel := context.WithCancel(context.Background())
-	return SessionGenerator{
+	return InstanceGenerator{
 		net:    net,
 		seq:    0,
 		ctx:    ctx, // TODO take ctx as param to Next, Instances
@@ -30,8 +30,8 @@ func NewTestSessionGenerator(
 	}
 }
 
-// SessionGenerator generates new test instances of bitswap+dependencies
-type SessionGenerator struct {
+// InstanceGenerator generates new test instances of bitswap+dependencies
+type InstanceGenerator struct {
 	seq    int
 	net    tn.Network
 	ctx    context.Context
@@ -39,23 +39,23 @@ type SessionGenerator struct {
 }
 
 // Close closes the clobal context, shutting down all test instances
-func (g *SessionGenerator) Close() error {
+func (g *InstanceGenerator) Close() error {
 	g.cancel()
 	return nil // for Closer interface
 }
 
 // Next generates a new instance of bitswap + dependencies
-func (g *SessionGenerator) Next() Instance {
+func (g *InstanceGenerator) Next() Instance {
 	g.seq++
 	p, err := p2ptestutil.RandTestBogusIdentity()
 	if err != nil {
 		panic("FIXME") // TODO change signature
 	}
-	return MkSession(g.ctx, g.net, p)
+	return NewInstance(g.ctx, g.net, p)
 }
 
 // Instances creates N test instances of bitswap + dependencies
-func (g *SessionGenerator) Instances(n int) []Instance {
+func (g *InstanceGenerator) Instances(n int) []Instance {
 	var instances []Instance
 	for j := 0; j < n; j++ {
 		inst := g.Next()
@@ -90,12 +90,12 @@ func (i *Instance) SetBlockstoreLatency(t time.Duration) time.Duration {
 	return i.blockstoreDelay.Set(t)
 }
 
-// MkSession creates a test bitswap instance.
+// NewInstance creates a test bitswap instance.
 //
 // NB: It's easy make mistakes by providing the same peer ID to two different
-// sessions. To safeguard, use the SessionGenerator to generate sessions. It's
+// instances. To safeguard, use the InstanceGenerator to generate instances. It's
 // just a much better idea.
-func MkSession(ctx context.Context, net tn.Network, p testutil.Identity) Instance {
+func NewInstance(ctx context.Context, net tn.Network, p testutil.Identity) Instance {
 	bsdelay := delay.Fixed(0)
 
 	adapter := net.Adapter(p)
