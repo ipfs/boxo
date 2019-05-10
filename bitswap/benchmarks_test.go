@@ -148,12 +148,12 @@ func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, d
 	start := time.Now()
 	net := tn.VirtualNetwork(mockrouting.NewServer(), d)
 
-	sg := testinstance.NewTestSessionGenerator(net)
-	defer sg.Close()
+	ig := testinstance.NewTestInstanceGenerator(net)
+	defer ig.Close()
 
 	bg := blocksutil.NewBlockGenerator()
 
-	instances := sg.Instances(numnodes)
+	instances := ig.Instances(numnodes)
 	blocks := bg.Blocks(numblks)
 	runDistribution(b, instances, blocks, df, ff, start)
 }
@@ -162,10 +162,10 @@ func subtestDistributeAndFetchRateLimited(b *testing.B, numnodes, numblks int, d
 	start := time.Now()
 	net := tn.RateLimitedVirtualNetwork(mockrouting.NewServer(), d, rateLimitGenerator)
 
-	sg := testinstance.NewTestSessionGenerator(net)
-	defer sg.Close()
+	ig := testinstance.NewTestInstanceGenerator(net)
+	defer ig.Close()
 
-	instances := sg.Instances(numnodes)
+	instances := ig.Instances(numnodes)
 	blocks := testutil.GenerateBlocksOfSize(numblks, blockSize)
 
 	runDistribution(b, instances, blocks, df, ff, start)
