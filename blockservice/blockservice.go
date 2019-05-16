@@ -114,9 +114,8 @@ func (s *blockService) Exchange() exchange.Interface {
 func NewSession(ctx context.Context, bs BlockService) *Session {
 	exch := bs.Exchange()
 	if sessEx, ok := exch.(exchange.SessionExchange); ok {
-		ses := sessEx.NewSession(ctx)
 		return &Session{
-			ses:    ses,
+			ses:    nil,
 			sessEx: sessEx,
 			bs:     bs.Blockstore(),
 		}

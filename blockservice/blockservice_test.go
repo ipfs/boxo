@@ -1,6 +1,7 @@
 package blockservice
 
 import (
+	"context"
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -8,6 +9,7 @@ import (
 	dssync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	butil "github.com/ipfs/go-ipfs-blocksutil"
+	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 )
 
@@ -35,6 +37,52 @@ func TestWriteThroughWorks(t *testing.T) {
 	}
 }
 
+func TestLazySessionInitialization(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	bstore := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	bstore2 := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	bstore3 := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	session := offline.Exchange(bstore2)
+	exchange := offline.Exchange(bstore3)
+	sessionExch := &fakeSessionExchange{Interface: exchange, session: session}
+	bservSessEx := NewWriteThrough(bstore, sessionExch)
+	bgen := butil.NewBlockGenerator()
+
+	block := bgen.Next()
+	bstore.Put(block)
+
+	block2 := bgen.Next()
+	session.HasBlock(block2)
+
+	bsession := NewSession(ctx, bservSessEx)
+	if bsession.ses != nil {
+		t.Fatal("Session exchange should not instantiated session immediately")
+	}
+	returnedBlock, err := bsession.GetBlock(ctx, block.Cid())
+	if err != nil {
+		t.Fatal("Should have fetched block locally")
+	}
+	if returnedBlock.Cid() != block.Cid() {
+		t.Fatal("Got incorrect block")
+	}
+	if bsession.ses != nil {
+		t.Fatal("Session exchange should not instantiated session if local store had block")
+	}
+	returnedBlock, err = bsession.GetBlock(ctx, block2.Cid())
+	if err != nil {
+		t.Fatal("Should have fetched block remotely")
+	}
+	if returnedBlock.Cid() != block2.Cid() {
+		t.Fatal("Got incorrect block")
+	}
+	if bsession.ses != session {
+		t.Fatal("Should have initialized session to fetch block")
+	}
+}
+
 var _ blockstore.Blockstore = (*PutCountingBlockstore)(nil)
 
 type PutCountingBlockstore struct {
@@ -45,4 +93,15 @@ type PutCountingBlockstore struct {
 func (bs *PutCountingBlockstore) Put(block blocks.Block) error {
 	bs.PutCounter++
 	return bs.Blockstore.Put(block)
+}
+
+var _ exchange.SessionExchange = (*fakeSessionExchange)(nil)
+
+type fakeSessionExchange struct {
+	exchange.Interface
+	session exchange.Fetcher
+}
+
+func (fe *fakeSessionExchange) NewSession(context.Context) exchange.Fetcher {
+	return fe.session
 }
