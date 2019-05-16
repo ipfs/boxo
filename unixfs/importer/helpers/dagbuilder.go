@@ -65,11 +65,6 @@ type DagBuilderParams struct {
 	// NoCopy signals to the chunker that it should track fileinfo for
 	// filestore adds
 	NoCopy bool
-
-	// URL if non-empty (and NoCopy is also true) indicates that the
-	// file will not be stored in the datastore but instead retrieved
-	// from this location via the urlstore.
-	URL string
 }
 
 // New generates a new DagBuilderHelper from the given params and a given
@@ -85,10 +80,6 @@ func (dbp *DagBuilderParams) New(spl chunker.Splitter) (*DagBuilderHelper, error
 	if fi, ok := spl.Reader().(files.FileInfo); dbp.NoCopy && ok {
 		db.fullPath = fi.AbsPath()
 		db.stat = fi.Stat()
-	}
-
-	if dbp.URL != "" && dbp.NoCopy {
-		db.fullPath = dbp.URL
 	}
 
 	if dbp.NoCopy && db.fullPath == "" { // Enforce NoCopy
