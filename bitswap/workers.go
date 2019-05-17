@@ -25,7 +25,7 @@ func (bs *Bitswap) startWorkers(ctx context.Context, px process.Process) {
 		})
 	}
 
-	if ProvideEnabled {
+	if bs.provideEnabled {
 		// Start up a worker to manage sending out provides messages
 		px.Go(func(px process.Process) {
 			bs.provideCollector(ctx)
