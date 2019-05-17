@@ -1,6 +1,7 @@
 package path
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -44,8 +45,8 @@ func TestNoComponents(t *testing.T) {
 		"/ipld/",
 	} {
 		_, err := ParsePath(s)
-		if err != ErrNoComponents {
-			t.Errorf("expected ErrNoComponents, got %s", err)
+		if err == nil || !strings.Contains(err.Error(), "not enough path components") || !strings.Contains(err.Error(), s) {
+			t.Error("wrong error")
 		}
 	}
 }
