@@ -2,21 +2,11 @@
 package path
 
 import (
-	"errors"
+	"fmt"
 	"path"
 	"strings"
 
 	cid "github.com/ipfs/go-cid"
-)
-
-var (
-	// ErrBadPath is returned when a given path is incorrectly formatted
-	ErrBadPath = errors.New("invalid 'ipfs ref' path")
-
-	// ErrNoComponents is used when Paths after a protocol
-	// do not contain at least one component
-	ErrNoComponents = errors.New(
-		"path must contain at least one component")
 )
 
 // A Path represents an ipfs content path:
@@ -107,33 +97,33 @@ func ParsePath(txt string) (Path, error) {
 	// we expect this to start with a hash, and be an 'ipfs' path
 	if parts[0] != "" {
 		if _, err := cid.Decode(parts[0]); err != nil {
-			return "", ErrBadPath
+			return "", &pathError{error: err, path: txt}
 		}
 		// The case when the path starts with hash without a protocol prefix
 		return Path("/ipfs/" + txt), nil
 	}
 
 	if len(parts) < 3 {
-		return "", ErrBadPath
+		return "", &pathError{error: fmt.Errorf("path does not begin with '/'"), path: txt}
 	}
 
 	//TODO: make this smarter
 	switch parts[1] {
 	case "ipfs", "ipld":
 		if parts[2] == "" {
-			return "", ErrNoComponents
+			return "", &pathError{error: fmt.Errorf("not enough path components"), path: txt}
 		}
 		// Validate Cid.
 		_, err := cid.Decode(parts[2])
 		if err != nil {
-			return "", err
+			return "", &pathError{error: fmt.Errorf("invalid CID: %s", err), path: txt}
 		}
 	case "ipns":
 		if parts[2] == "" {
-			return "", ErrNoComponents
+			return "", &pathError{error: fmt.Errorf("not enough path components"), path: txt}
 		}
 	default:
-		return "", ErrBadPath
+		return "", &pathError{error: fmt.Errorf("unknown namespace %q", parts[1]), path: txt}
 	}
 
 	return Path(txt), nil
@@ -142,12 +132,12 @@ func ParsePath(txt string) (Path, error) {
 // ParseCidToPath takes a CID in string form and returns a valid ipfs Path.
 func ParseCidToPath(txt string) (Path, error) {
 	if txt == "" {
-		return "", ErrNoComponents
+		return "", &pathError{error: fmt.Errorf("empty"), path: txt}
 	}
 
 	c, err := cid.Decode(txt)
 	if err != nil {
-		return "", err
+		return "", &pathError{error: err, path: txt}
 	}
 
 	return FromCid(c), nil
@@ -179,13 +169,13 @@ func SplitAbsPath(fpath Path) (cid.Cid, []string, error) {
 
 	// if nothing, bail.
 	if len(parts) == 0 {
-		return cid.Cid{}, nil, ErrNoComponents
+		return cid.Cid{}, nil, &pathError{error: fmt.Errorf("empty"), path: string(fpath)}
 	}
 
 	c, err := cid.Decode(parts[0])
 	// first element in the path is a cid
 	if err != nil {
-		return cid.Cid{}, nil, err
+		return cid.Cid{}, nil, &pathError{error: fmt.Errorf("invalid CID: %s", err), path: string(fpath)}
 	}
 
 	return c, parts[1:], nil
