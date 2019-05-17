@@ -42,10 +42,6 @@ const (
 )
 
 var (
-	// ProvideEnabled is a variable that tells Bitswap whether or not
-	// to handle providing blocks (see experimental provider system)
-	ProvideEnabled = true
-
 	// HasBlockBufferSize is the buffer size of the channel for new blocks
 	// that need to be provided. They should get pulled over by the
 	// provideCollector even before they are actually provided.
@@ -58,11 +54,22 @@ var (
 	metricsBuckets = []float64{1 << 6, 1 << 10, 1 << 14, 1 << 18, 1<<18 + 15, 1 << 22}
 )
 
+// Option defines the functional option type that can be used to configure
+// bitswap instances
+type Option func(*Bitswap)
+
+// ProvideEnabled is an option for enabling/disabling provide announcements
+func ProvideEnabled(enabled bool) Option {
+	return func(bs *Bitswap) {
+		bs.provideEnabled = enabled
+	}
+}
+
 // New initializes a BitSwap instance that communicates over the provided
 // BitSwapNetwork. This function registers the returned instance as the network
 // delegate. Runs until context is cancelled or bitswap.Close is called.
 func New(parent context.Context, network bsnet.BitSwapNetwork,
-	bstore blockstore.Blockstore) exchange.Interface {
+	bstore blockstore.Blockstore, options ...Option) exchange.Interface {
 
 	// important to use provided parent context (since it may include important
 	// loggable data). It's probably not a good idea to allow bitswap to be
@@ -103,19 +110,25 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	}
 
 	bs := &Bitswap{
-		blockstore:    bstore,
-		engine:        decision.NewEngine(ctx, bstore), // TODO close the engine with Close() method
-		network:       network,
-		process:       px,
-		newBlocks:     make(chan cid.Cid, HasBlockBufferSize),
-		provideKeys:   make(chan cid.Cid, provideKeysBufferSize),
-		wm:            wm,
-		pqm:           pqm,
-		sm:            bssm.New(ctx, sessionFactory, sessionPeerManagerFactory, sessionRequestSplitterFactory),
-		counters:      new(counters),
-		dupMetric:     dupHist,
-		allMetric:     allHist,
-		sentHistogram: sentHistogram,
+		blockstore:     bstore,
+		engine:         decision.NewEngine(ctx, bstore), // TODO close the engine with Close() method
+		network:        network,
+		process:        px,
+		newBlocks:      make(chan cid.Cid, HasBlockBufferSize),
+		provideKeys:    make(chan cid.Cid, provideKeysBufferSize),
+		wm:             wm,
+		pqm:            pqm,
+		sm:             bssm.New(ctx, sessionFactory, sessionPeerManagerFactory, sessionRequestSplitterFactory),
+		counters:       new(counters),
+		dupMetric:      dupHist,
+		allMetric:      allHist,
+		sentHistogram:  sentHistogram,
+		provideEnabled: true,
+	}
+
+	// apply functional options before starting and running bitswap
+	for _, option := range options {
+		option(bs)
 	}
 
 	bs.wm.Startup()
@@ -174,6 +187,9 @@ type Bitswap struct {
 
 	// the sessionmanager manages tracking sessions
 	sm *bssm.SessionManager
+
+	// whether or not to make provide announcements
+	provideEnabled bool
 }
 
 type counters struct {
@@ -253,7 +269,7 @@ func (bs *Bitswap) receiveBlockFrom(blk blocks.Block, from peer.ID) error {
 
 	bs.engine.AddBlock(blk)
 
-	if ProvideEnabled {
+	if bs.provideEnabled {
 		select {
 		case bs.newBlocks <- blk.Cid():
 			// send block off to be reprovided
