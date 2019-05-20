@@ -19,23 +19,24 @@ import (
 
 // NewTestInstanceGenerator generates a new InstanceGenerator for the given
 // testnet
-func NewTestInstanceGenerator(
-	net tn.Network) InstanceGenerator {
+func NewTestInstanceGenerator(net tn.Network, bsOptions ...bitswap.Option) InstanceGenerator {
 	ctx, cancel := context.WithCancel(context.Background())
 	return InstanceGenerator{
-		net:    net,
-		seq:    0,
-		ctx:    ctx, // TODO take ctx as param to Next, Instances
-		cancel: cancel,
+		net:       net,
+		seq:       0,
+		ctx:       ctx, // TODO take ctx as param to Next, Instances
+		cancel:    cancel,
+		bsOptions: bsOptions,
 	}
 }
 
 // InstanceGenerator generates new test instances of bitswap+dependencies
 type InstanceGenerator struct {
-	seq    int
-	net    tn.Network
-	ctx    context.Context
-	cancel context.CancelFunc
+	seq       int
+	net       tn.Network
+	ctx       context.Context
+	cancel    context.CancelFunc
+	bsOptions []bitswap.Option
 }
 
 // Close closes the clobal context, shutting down all test instances
@@ -51,7 +52,7 @@ func (g *InstanceGenerator) Next() Instance {
 	if err != nil {
 		panic("FIXME") // TODO change signature
 	}
-	return NewInstance(g.ctx, g.net, p)
+	return NewInstance(g.ctx, g.net, p, g.bsOptions...)
 }
 
 // Instances creates N test instances of bitswap + dependencies
@@ -95,7 +96,7 @@ func (i *Instance) SetBlockstoreLatency(t time.Duration) time.Duration {
 // NB: It's easy make mistakes by providing the same peer ID to two different
 // instances. To safeguard, use the InstanceGenerator to generate instances. It's
 // just a much better idea.
-func NewInstance(ctx context.Context, net tn.Network, p testutil.Identity) Instance {
+func NewInstance(ctx context.Context, net tn.Network, p testutil.Identity, options ...bitswap.Option) Instance {
 	bsdelay := delay.Fixed(0)
 
 	adapter := net.Adapter(p)
@@ -108,7 +109,7 @@ func NewInstance(ctx context.Context, net tn.Network, p testutil.Identity) Insta
 		panic(err.Error()) // FIXME perhaps change signature and return error.
 	}
 
-	bs := bitswap.New(ctx, adapter, bstore).(*bitswap.Bitswap)
+	bs := bitswap.New(ctx, adapter, bstore, options...).(*bitswap.Bitswap)
 
 	return Instance{
 		Adapter:         adapter,
