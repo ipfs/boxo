@@ -102,7 +102,8 @@ func TestGetBlockFromPeerAfterPeerAnnounces(t *testing.T) {
 }
 
 func TestDoesNotProvideWhenConfiguredNotTo(t *testing.T) {
-	bssession.SetProviderSearchDelay(10 * time.Millisecond)
+	bssession.SetProviderSearchDelay(50 * time.Millisecond)
+	defer bssession.SetProviderSearchDelay(time.Second)
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	block := blocks.NewBlock([]byte("block"))
 	ig := testinstance.NewTestInstanceGenerator(net, bitswap.ProvideEnabled(false))
@@ -118,12 +119,10 @@ func TestDoesNotProvideWhenConfiguredNotTo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
 	defer cancel()
 
 	ns := wantsBlock.Exchange.NewSession(ctx).(*bssession.Session)
-	// set find providers delay to less than timeout context of this test
-	ns.SetBaseTickDelay(10 * time.Millisecond)
 
 	received, err := ns.GetBlock(ctx, block.Cid())
 	if received != nil {
