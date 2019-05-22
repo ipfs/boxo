@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	message "github.com/ipfs/go-bitswap/message"
 
@@ -18,17 +19,57 @@ import (
 	testutil "github.com/libp2p/go-testutil"
 )
 
-type peerAndEngine struct {
-	Peer   peer.ID
-	Engine *Engine
+type fakePeerTagger struct {
+	lk          sync.Mutex
+	wait        sync.WaitGroup
+	taggedPeers []peer.ID
 }
 
-func newEngine(ctx context.Context, idStr string) peerAndEngine {
-	return peerAndEngine{
+func (fpt *fakePeerTagger) TagPeer(p peer.ID, tag string, n int) {
+	fpt.wait.Add(1)
+
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+	fpt.taggedPeers = append(fpt.taggedPeers, p)
+}
+
+func (fpt *fakePeerTagger) UntagPeer(p peer.ID, tag string) {
+	defer fpt.wait.Done()
+
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+	for i := 0; i < len(fpt.taggedPeers); i++ {
+		if fpt.taggedPeers[i] == p {
+			fpt.taggedPeers[i] = fpt.taggedPeers[len(fpt.taggedPeers)-1]
+			fpt.taggedPeers = fpt.taggedPeers[:len(fpt.taggedPeers)-1]
+			return
+		}
+	}
+}
+
+func (fpt *fakePeerTagger) count() int {
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+	return len(fpt.taggedPeers)
+}
+
+type engineSet struct {
+	PeerTagger *fakePeerTagger
+	Peer       peer.ID
+	Engine     *Engine
+	Blockstore blockstore.Blockstore
+}
+
+func newEngine(ctx context.Context, idStr string) engineSet {
+	fpt := &fakePeerTagger{}
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	return engineSet{
 		Peer: peer.ID(idStr),
 		//Strategy: New(true),
+		PeerTagger: fpt,
+		Blockstore: bs,
 		Engine: NewEngine(ctx,
-			blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))),
+			bs, fpt),
 	}
 }
 
@@ -107,7 +148,7 @@ func peerIsPartner(p peer.ID, e *Engine) bool {
 
 func TestOutboxClosedWhenEngineClosed(t *testing.T) {
 	t.SkipNow() // TODO implement *Engine.Close
-	e := NewEngine(context.Background(), blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())))
+	e := NewEngine(context.Background(), blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), &fakePeerTagger{})
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -164,7 +205,7 @@ func TestPartnerWantsThenCancels(t *testing.T) {
 
 	for i := 0; i < numRounds; i++ {
 		expected := make([][]string, 0, len(testcases))
-		e := NewEngine(context.Background(), bs)
+		e := NewEngine(context.Background(), bs, &fakePeerTagger{})
 		for _, testcase := range testcases {
 			set := testcase[0]
 			cancels := testcase[1]
@@ -183,6 +224,33 @@ func TestPartnerWantsThenCancels(t *testing.T) {
 	}
 }
 
+func TestTaggingPeers(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	sanfrancisco := newEngine(ctx, "sf")
+	seattle := newEngine(ctx, "sea")
+
+	keys := []string{"a", "b", "c", "d", "e"}
+	for _, letter := range keys {
+		block := blocks.NewBlock([]byte(letter))
+		if err := sanfrancisco.Blockstore.Put(block); err != nil {
+			t.Fatal(err)
+		}
+	}
+	partnerWants(sanfrancisco.Engine, keys, seattle.Peer)
+	next := <-sanfrancisco.Engine.Outbox()
+	envelope := <-next
+
+	if sanfrancisco.PeerTagger.count() != 1 {
+		t.Fatal("Incorrect number of peers tagged")
+	}
+	envelope.Sent()
+	next = <-sanfrancisco.Engine.Outbox()
+	sanfrancisco.PeerTagger.wait.Wait()
+	if sanfrancisco.PeerTagger.count() != 0 {
+		t.Fatal("Peers should be untagged but weren't")
+	}
+}
 func partnerWants(e *Engine, keys []string, partner peer.ID) {
 	add := message.New(false)
 	for i, letter := range keys {

@@ -3,18 +3,19 @@ package decision
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	wl "github.com/ipfs/go-bitswap/wantlist"
-	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-peertaskqueue"
-	"github.com/ipfs/go-peertaskqueue/peertask"
-
 	blocks "github.com/ipfs/go-block-format"
+	cid "github.com/ipfs/go-cid"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	logging "github.com/ipfs/go-log"
+	"github.com/ipfs/go-peertaskqueue"
+	"github.com/ipfs/go-peertaskqueue/peertask"
 	peer "github.com/libp2p/go-libp2p-peer"
 )
 
@@ -57,6 +58,11 @@ const (
 	outboxChanBuffer = 0
 	// maxMessageSize is the maximum size of the batched payload
 	maxMessageSize = 512 * 1024
+	// tagPrefix is the tag given to peers associated an engine
+	tagPrefix = "bs-engine-%s"
+
+	// tagWeight is the default weight for peers associated with an engine
+	tagWeight = 5
 )
 
 // Envelope contains a message for a Peer.
@@ -69,6 +75,13 @@ type Envelope struct {
 
 	// A callback to notify the decision queue that the task is complete
 	Sent func()
+}
+
+// PeerTagger covers the methods on the connection manager used by the decision
+// engine to tag peers
+type PeerTagger interface {
+	TagPeer(peer.ID, string, int)
+	UntagPeer(p peer.ID, tag string)
 }
 
 // Engine manages sending requested blocks to peers.
@@ -91,6 +104,9 @@ type Engine struct {
 
 	bs bstore.Blockstore
 
+	peerTagger PeerTagger
+
+	tag  string
 	lock sync.Mutex // protects the fields immediatly below
 	// ledgerMap lists Ledgers by their Partner key.
 	ledgerMap map[peer.ID]*ledger
@@ -99,17 +115,27 @@ type Engine struct {
 }
 
 // NewEngine creates a new block sending engine for the given block store
-func NewEngine(ctx context.Context, bs bstore.Blockstore) *Engine {
+func NewEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger) *Engine {
 	e := &Engine{
-		ledgerMap:        make(map[peer.ID]*ledger),
-		bs:               bs,
-		peerRequestQueue: peertaskqueue.New(),
-		outbox:           make(chan (<-chan *Envelope), outboxChanBuffer),
-		workSignal:       make(chan struct{}, 1),
-		ticker:           time.NewTicker(time.Millisecond * 100),
+		ledgerMap:  make(map[peer.ID]*ledger),
+		bs:         bs,
+		peerTagger: peerTagger,
+		outbox:     make(chan (<-chan *Envelope), outboxChanBuffer),
+		workSignal: make(chan struct{}, 1),
+		ticker:     time.NewTicker(time.Millisecond * 100),
 	}
+	e.tag = fmt.Sprintf(tagPrefix, uuid.New().String())
+	e.peerRequestQueue = peertaskqueue.New(peertaskqueue.OnPeerAddedHook(e.onPeerAdded), peertaskqueue.OnPeerRemovedHook(e.onPeerRemoved))
 	go e.taskWorker(ctx)
 	return e
+}
+
+func (e *Engine) onPeerAdded(p peer.ID) {
+	e.peerTagger.TagPeer(p, e.tag, tagWeight)
+}
+
+func (e *Engine) onPeerRemoved(p peer.ID) {
+	e.peerTagger.UntagPeer(p, e.tag)
 }
 
 // WantlistForPeer returns the currently understood want list for a given peer
