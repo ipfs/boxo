@@ -31,12 +31,6 @@ func NewFromIpfsHost(host host.Host, r routing.ContentRouting) BitSwapNetwork {
 		host:    host,
 		routing: r,
 	}
-	host.SetStreamHandler(ProtocolBitswap, bitswapNetwork.handleNewStream)
-	host.SetStreamHandler(ProtocolBitswapOne, bitswapNetwork.handleNewStream)
-	host.SetStreamHandler(ProtocolBitswapNoVers, bitswapNetwork.handleNewStream)
-	host.Network().Notify((*netNotifiee)(&bitswapNetwork))
-	// TODO: StopNotify.
-
 	return &bitswapNetwork
 }
 
@@ -136,6 +130,12 @@ func (bsnet *impl) SendMessage(
 
 func (bsnet *impl) SetDelegate(r Receiver) {
 	bsnet.receiver = r
+	bsnet.host.SetStreamHandler(ProtocolBitswap, bsnet.handleNewStream)
+	bsnet.host.SetStreamHandler(ProtocolBitswapOne, bsnet.handleNewStream)
+	bsnet.host.SetStreamHandler(ProtocolBitswapNoVers, bsnet.handleNewStream)
+	bsnet.host.Network().Notify((*netNotifiee)(bsnet))
+	// TODO: StopNotify.
+
 }
 
 func (bsnet *impl) ConnectTo(ctx context.Context, p peer.ID) error {
