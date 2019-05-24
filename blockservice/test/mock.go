@@ -3,7 +3,7 @@ package bstest
 import (
 	. "github.com/ipfs/go-blockservice"
 
-	bitswap "github.com/ipfs/go-bitswap"
+	testinstance "github.com/ipfs/go-bitswap/testinstance"
 	tn "github.com/ipfs/go-bitswap/testnet"
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
@@ -12,7 +12,7 @@ import (
 // Mocks returns |n| connected mock Blockservices
 func Mocks(n int) []BlockService {
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0))
-	sg := bitswap.NewTestSessionGenerator(net)
+	sg := testinstance.NewTestInstanceGenerator(net)
 
 	instances := sg.Instances(n)
 
