@@ -102,6 +102,9 @@ type fakeSessionExchange struct {
 	session exchange.Fetcher
 }
 
-func (fe *fakeSessionExchange) NewSession(context.Context) exchange.Fetcher {
+func (fe *fakeSessionExchange) NewSession(ctx context.Context) exchange.Fetcher {
+	if ctx == nil {
+		panic("nil context")
+	}
 	return fe.session
 }
