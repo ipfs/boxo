@@ -115,14 +115,16 @@ func NewSession(ctx context.Context, bs BlockService) *Session {
 	exch := bs.Exchange()
 	if sessEx, ok := exch.(exchange.SessionExchange); ok {
 		return &Session{
-			ses:    nil,
-			sessEx: sessEx,
-			bs:     bs.Blockstore(),
+			sessCtx: ctx,
+			ses:     nil,
+			sessEx:  sessEx,
+			bs:      bs.Blockstore(),
 		}
 	}
 	return &Session{
-		ses: exch,
-		bs:  bs.Blockstore(),
+		ses:     exch,
+		sessCtx: ctx,
+		bs:      bs.Blockstore(),
 	}
 }
 
