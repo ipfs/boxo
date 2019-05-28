@@ -9,9 +9,10 @@ import (
 	tn "github.com/ipfs/go-bitswap/testnet"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
-	peer "github.com/libp2p/go-libp2p-peer"
+
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-testing/net"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
-	testutil "github.com/libp2p/go-testutil"
 )
 
 // Receiver is an interface for receiving messages from the GraphSyncNetwork.
@@ -62,8 +63,8 @@ func TestMessageSendAndReceive(t *testing.T) {
 	if err != nil {
 		t.Fatal("Unable to setup network")
 	}
-	p1 := testutil.RandIdentityOrFatal(t)
-	p2 := testutil.RandIdentityOrFatal(t)
+	p1 := tnet.RandIdentityOrFatal(t)
+	p2 := tnet.RandIdentityOrFatal(t)
 
 	bsnet1 := streamNet.Adapter(p1)
 	bsnet2 := streamNet.Adapter(p2)

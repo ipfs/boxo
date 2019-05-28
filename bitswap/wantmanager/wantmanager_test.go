@@ -11,7 +11,7 @@ import (
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	"github.com/ipfs/go-cid"
-	"github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 type fakePeerHandler struct {

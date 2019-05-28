@@ -8,16 +8,17 @@ import (
 	"time"
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
+	"github.com/libp2p/go-libp2p-core/helpers"
 
 	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
-	host "github.com/libp2p/go-libp2p-host"
-	ifconnmgr "github.com/libp2p/go-libp2p-interface-connmgr"
-	inet "github.com/libp2p/go-libp2p-net"
-	peer "github.com/libp2p/go-libp2p-peer"
-	pstore "github.com/libp2p/go-libp2p-peerstore"
-	routing "github.com/libp2p/go-libp2p-routing"
+	"github.com/libp2p/go-libp2p-core/connmgr"
+	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p-core/peer"
+	peerstore "github.com/libp2p/go-libp2p-core/peerstore"
+	"github.com/libp2p/go-libp2p-core/routing"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -47,11 +48,11 @@ type impl struct {
 }
 
 type streamMessageSender struct {
-	s inet.Stream
+	s network.Stream
 }
 
 func (s *streamMessageSender) Close() error {
-	return inet.FullClose(s.s)
+	return helpers.FullClose(s.s)
 }
 
 func (s *streamMessageSender) Reset() error {
@@ -62,7 +63,7 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMess
 	return msgToStream(ctx, s.s, msg)
 }
 
-func msgToStream(ctx context.Context, s inet.Stream, msg bsmsg.BitSwapMessage) error {
+func msgToStream(ctx context.Context, s network.Stream, msg bsmsg.BitSwapMessage) error {
 	deadline := time.Now().Add(sendMessageTimeout)
 	if dl, ok := ctx.Deadline(); ok {
 		deadline = dl
@@ -102,7 +103,7 @@ func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID) (MessageSend
 	return &streamMessageSender{s: s}, nil
 }
 
-func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (inet.Stream, error) {
+func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stream, error) {
 	return bsnet.host.NewStream(ctx, p, ProtocolBitswap, ProtocolBitswapOne, ProtocolBitswapNoVers)
 }
 
@@ -123,7 +124,7 @@ func (bsnet *impl) SendMessage(
 	atomic.AddUint64(&bsnet.stats.MessagesSent, 1)
 
 	// TODO(https://github.com/libp2p/go-libp2p-net/issues/28): Avoid this goroutine.
-	go inet.AwaitEOF(s)
+	go helpers.AwaitEOF(s)
 	return s.Close()
 
 }
@@ -139,7 +140,7 @@ func (bsnet *impl) SetDelegate(r Receiver) {
 }
 
 func (bsnet *impl) ConnectTo(ctx context.Context, p peer.ID) error {
-	return bsnet.host.Connect(ctx, pstore.PeerInfo{ID: p})
+	return bsnet.host.Connect(ctx, peer.AddrInfo{ID: p})
 }
 
 // FindProvidersAsync returns a channel of providers for the given key.
@@ -152,7 +153,7 @@ func (bsnet *impl) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <
 			if info.ID == bsnet.host.ID() {
 				continue // ignore self as provider
 			}
-			bsnet.host.Peerstore().AddAddrs(info.ID, info.Addrs, pstore.TempAddrTTL)
+			bsnet.host.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.TempAddrTTL)
 			select {
 			case <-ctx.Done():
 				return
@@ -169,7 +170,7 @@ func (bsnet *impl) Provide(ctx context.Context, k cid.Cid) error {
 }
 
 // handleNewStream receives a new stream from the network.
-func (bsnet *impl) handleNewStream(s inet.Stream) {
+func (bsnet *impl) handleNewStream(s network.Stream) {
 	defer s.Close()
 
 	if bsnet.receiver == nil {
@@ -177,7 +178,7 @@ func (bsnet *impl) handleNewStream(s inet.Stream) {
 		return
 	}
 
-	reader := ggio.NewDelimitedReader(s, inet.MessageSizeMax)
+	reader := ggio.NewDelimitedReader(s, network.MessageSizeMax)
 	for {
 		received, err := bsmsg.FromPBReader(reader)
 		if err != nil {
@@ -197,7 +198,7 @@ func (bsnet *impl) handleNewStream(s inet.Stream) {
 	}
 }
 
-func (bsnet *impl) ConnectionManager() ifconnmgr.ConnManager {
+func (bsnet *impl) ConnectionManager() connmgr.ConnManager {
 	return bsnet.host.ConnManager()
 }
 
@@ -214,15 +215,15 @@ func (nn *netNotifiee) impl() *impl {
 	return (*impl)(nn)
 }
 
-func (nn *netNotifiee) Connected(n inet.Network, v inet.Conn) {
+func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
 	nn.impl().receiver.PeerConnected(v.RemotePeer())
 }
 
-func (nn *netNotifiee) Disconnected(n inet.Network, v inet.Conn) {
+func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
 	nn.impl().receiver.PeerDisconnected(v.RemotePeer())
 }
 
-func (nn *netNotifiee) OpenedStream(n inet.Network, v inet.Stream) {}
-func (nn *netNotifiee) ClosedStream(n inet.Network, v inet.Stream) {}
-func (nn *netNotifiee) Listen(n inet.Network, a ma.Multiaddr)      {}
-func (nn *netNotifiee) ListenClose(n inet.Network, a ma.Multiaddr) {}
+func (nn *netNotifiee) OpenedStream(n network.Network, v network.Stream) {}
+func (nn *netNotifiee) ClosedStream(n network.Network, v network.Stream) {}
+func (nn *netNotifiee) Listen(n network.Network, a ma.Multiaddr)         {}
+func (nn *netNotifiee) ListenClose(n network.Network, a ma.Multiaddr)    {}
