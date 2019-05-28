@@ -6,9 +6,10 @@ import (
 	bsmsg "github.com/ipfs/go-bitswap/message"
 
 	cid "github.com/ipfs/go-cid"
-	ifconnmgr "github.com/libp2p/go-libp2p-interface-connmgr"
-	peer "github.com/libp2p/go-libp2p-peer"
-	protocol "github.com/libp2p/go-libp2p-protocol"
+
+	"github.com/libp2p/go-libp2p-core/connmgr"
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/protocol"
 )
 
 var (
@@ -38,7 +39,7 @@ type BitSwapNetwork interface {
 
 	NewMessageSender(context.Context, peer.ID) (MessageSender, error)
 
-	ConnectionManager() ifconnmgr.ConnManager
+	ConnectionManager() connmgr.ConnManager
 
 	Stats() Stats
 

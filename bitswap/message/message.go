@@ -10,7 +10,8 @@ import (
 
 	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
-	inet "github.com/libp2p/go-libp2p-net"
+
+	"github.com/libp2p/go-libp2p-core/network"
 )
 
 // BitSwapMessage is the basic interface for interacting building, encoding,
@@ -169,7 +170,7 @@ func (m *impl) AddBlock(b blocks.Block) {
 
 // FromNet generates a new BitswapMessage from incoming data on an io.Reader.
 func FromNet(r io.Reader) (BitSwapMessage, error) {
-	pbr := ggio.NewDelimitedReader(r, inet.MessageSizeMax)
+	pbr := ggio.NewDelimitedReader(r, network.MessageSizeMax)
 	return FromPBReader(pbr)
 }
 

@@ -15,11 +15,12 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 	logging "github.com/ipfs/go-log"
-	ifconnmgr "github.com/libp2p/go-libp2p-interface-connmgr"
-	peer "github.com/libp2p/go-libp2p-peer"
-	routing "github.com/libp2p/go-libp2p-routing"
+
+	"github.com/libp2p/go-libp2p-core/connmgr"
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/routing"
+	"github.com/libp2p/go-libp2p-testing/net"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
-	testutil "github.com/libp2p/go-testutil"
 )
 
 var log = logging.Logger("bstestnet")
@@ -86,7 +87,7 @@ type receiverQueue struct {
 	lk       sync.Mutex
 }
 
-func (n *network) Adapter(p testutil.Identity) bsnet.BitSwapNetwork {
+func (n *network) Adapter(p tnet.Identity) bsnet.BitSwapNetwork {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -172,7 +173,7 @@ type networkClient struct {
 	local peer.ID
 	bsnet.Receiver
 	network *network
-	routing routing.IpfsRouting
+	routing routing.Routing
 	stats   bsnet.Stats
 }
 
@@ -197,7 +198,7 @@ func (nc *networkClient) Stats() bsnet.Stats {
 // FindProvidersAsync returns a channel of providers for the given key.
 func (nc *networkClient) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.ID {
 
-	// NB: this function duplicates the PeerInfo -> ID transformation in the
+	// NB: this function duplicates the AddrInfo -> ID transformation in the
 	// bitswap network adapter. Not to worry. This network client will be
 	// deprecated once the ipfsnet.Mock is added. The code below is only
 	// temporary.
@@ -216,8 +217,8 @@ func (nc *networkClient) FindProvidersAsync(ctx context.Context, k cid.Cid, max 
 	return out
 }
 
-func (nc *networkClient) ConnectionManager() ifconnmgr.ConnManager {
-	return &ifconnmgr.NullConnMgr{}
+func (nc *networkClient) ConnectionManager() connmgr.ConnManager {
+	return &connmgr.NullConnMgr{}
 }
 
 type messagePasser struct {

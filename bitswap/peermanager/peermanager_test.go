@@ -10,7 +10,7 @@ import (
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	wantlist "github.com/ipfs/go-bitswap/wantlist"
-	"github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 type messageSent struct {
