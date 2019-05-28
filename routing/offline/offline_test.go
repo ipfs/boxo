@@ -7,8 +7,10 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
-	ropt "github.com/libp2p/go-libp2p-routing/options"
-	testutil "github.com/libp2p/go-testutil"
+
+	"github.com/libp2p/go-libp2p-core/routing"
+	"github.com/libp2p/go-libp2p-core/test"
+
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -40,12 +42,12 @@ func TestOfflineRouterStorage(t *testing.T) {
 		t.Fatal("Router should throw errors for unfound records")
 	}
 
-	local, err := offline.GetValue(ctx, "key", ropt.Offline)
+	local, err := offline.GetValue(ctx, "key", routing.Offline)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = offline.GetValue(ctx, "notHere", ropt.Offline)
+	_, err = offline.GetValue(ctx, "notHere", routing.Offline)
 	if err == nil {
 		t.Fatal("Router should throw errors for unfound records")
 	}
@@ -61,7 +63,7 @@ func TestOfflineRouterLocal(t *testing.T) {
 	nds := ds.NewMapDatastore()
 	offline := NewOfflineRouter(nds, blankValidator{})
 
-	id, _ := testutil.RandPeerID()
+	id, _ := test.RandPeerID()
 	_, err := offline.FindPeer(ctx, id)
 	if err != ErrOffline {
 		t.Fatal("OfflineRouting should alert that its offline")

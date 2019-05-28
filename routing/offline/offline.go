@@ -1,4 +1,4 @@
-// Package offline implements IpfsRouting with a client which
+// Package offline implements Routing with a client which
 // is only able to perform offline operations.
 package offline
 
@@ -12,29 +12,29 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dshelp "github.com/ipfs/go-ipfs-ds-help"
-	"github.com/libp2p/go-libp2p-peer"
-	pstore "github.com/libp2p/go-libp2p-peerstore"
+
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/routing"
+
 	record "github.com/libp2p/go-libp2p-record"
 	pb "github.com/libp2p/go-libp2p-record/pb"
-	routing "github.com/libp2p/go-libp2p-routing"
-	ropts "github.com/libp2p/go-libp2p-routing/options"
 )
 
 // ErrOffline is returned when trying to perform operations that
 // require connectivity.
 var ErrOffline = errors.New("routing system in offline mode")
 
-// NewOfflineRouter returns an IpfsRouting implementation which only performs
+// NewOfflineRouter returns an Routing implementation which only performs
 // offline operations. It allows to Put and Get signed dht
 // records to and from the local datastore.
-func NewOfflineRouter(dstore ds.Datastore, validator record.Validator) routing.IpfsRouting {
+func NewOfflineRouter(dstore ds.Datastore, validator record.Validator) routing.Routing {
 	return &offlineRouting{
 		datastore: dstore,
 		validator: validator,
 	}
 }
 
-// offlineRouting implements the IpfsRouting interface,
+// offlineRouting implements the Routing interface,
 // but only provides the capability to Put and Get signed dht
 // records to and from the local datastore.
 type offlineRouting struct {
@@ -42,7 +42,7 @@ type offlineRouting struct {
 	validator record.Validator
 }
 
-func (c *offlineRouting) PutValue(ctx context.Context, key string, val []byte, _ ...ropts.Option) error {
+func (c *offlineRouting) PutValue(ctx context.Context, key string, val []byte, _ ...routing.Option) error {
 	if err := c.validator.Validate(key, val); err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (c *offlineRouting) PutValue(ctx context.Context, key string, val []byte, _
 	return c.datastore.Put(dshelp.NewKeyFromBinary([]byte(key)), data)
 }
 
-func (c *offlineRouting) GetValue(ctx context.Context, key string, _ ...ropts.Option) ([]byte, error) {
+func (c *offlineRouting) GetValue(ctx context.Context, key string, _ ...routing.Option) ([]byte, error) {
 	buf, err := c.datastore.Get(dshelp.NewKeyFromBinary([]byte(key)))
 	if err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func (c *offlineRouting) GetValue(ctx context.Context, key string, _ ...ropts.Op
 	return val, nil
 }
 
-func (c *offlineRouting) SearchValue(ctx context.Context, key string, _ ...ropts.Option) (<-chan []byte, error) {
+func (c *offlineRouting) SearchValue(ctx context.Context, key string, _ ...routing.Option) (<-chan []byte, error) {
 	out := make(chan []byte, 1)
 	go func() {
 		defer close(out)
@@ -102,12 +102,12 @@ func (c *offlineRouting) SearchValue(ctx context.Context, key string, _ ...ropts
 	return out, nil
 }
 
-func (c *offlineRouting) FindPeer(ctx context.Context, pid peer.ID) (pstore.PeerInfo, error) {
-	return pstore.PeerInfo{}, ErrOffline
+func (c *offlineRouting) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInfo, error) {
+	return peer.AddrInfo{}, ErrOffline
 }
 
-func (c *offlineRouting) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan pstore.PeerInfo {
-	out := make(chan pstore.PeerInfo)
+func (c *offlineRouting) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.AddrInfo {
+	out := make(chan peer.AddrInfo)
 	close(out)
 	return out
 }
@@ -124,5 +124,5 @@ func (c *offlineRouting) Bootstrap(context.Context) error {
 	return nil
 }
 
-// ensure offlineRouting matches the IpfsRouting interface
-var _ routing.IpfsRouting = &offlineRouting{}
+// ensure offlineRouting matches the Routing interface
+var _ routing.Routing = &offlineRouting{}
