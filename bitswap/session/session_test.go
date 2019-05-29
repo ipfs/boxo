@@ -260,8 +260,12 @@ func TestSessionFindMorePeers(t *testing.T) {
 }
 
 func TestSessionFailingToGetFirstBlock(t *testing.T) {
+	SetProviderSearchDelay(10 * time.Millisecond)
+	defer SetProviderSearchDelay(1 * time.Second)
+	SetRebroadcastDelay(delay.Fixed(100 * time.Millisecond))
+	defer SetRebroadcastDelay(delay.Fixed(1 * time.Minute))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 900*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	wantReqs := make(chan wantReq, 1)
 	cancelReqs := make(chan wantReq, 1)
@@ -269,10 +273,7 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	fpm := &fakePeerManager{findMorePeersRequested: make(chan cid.Cid, 1)}
 	frs := &fakeRequestSplitter{}
 	id := testutil.GenerateSessionID()
-	SetProviderSearchDelay(10 * time.Millisecond)
-	defer SetProviderSearchDelay(1 * time.Second)
-	SetRebroadcastDelay(delay.Fixed(100 * time.Millisecond))
-	defer SetRebroadcastDelay(delay.Fixed(1 * time.Minute))
+
 	session := New(ctx, id, fwm, fpm, frs)
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(4)

@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"time"
 
@@ -341,7 +340,6 @@ func (s *Session) handleTick(ctx context.Context) {
 }
 
 func (s *Session) handleRebroadcast(ctx context.Context) {
-	fmt.Println("Rebroadcast")
 
 	if len(s.liveWants) == 0 {
 		return
