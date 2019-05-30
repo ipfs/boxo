@@ -314,10 +314,12 @@ func (s *Session) handleCancel(keys []cid.Cid) {
 
 func (s *Session) handleTick(ctx context.Context) {
 
-	if s.fetchcnt == s.lastFetchCount {
-		s.consecutiveTicks++
-	} else {
-		s.lastFetchCount = s.fetchcnt
+	if len(s.liveWants) > 0 {
+		if s.fetchcnt == s.lastFetchCount {
+			s.consecutiveTicks++
+		} else {
+			s.lastFetchCount = s.fetchcnt
+		}
 	}
 
 	live := make([]cid.Cid, 0, len(s.liveWants))
