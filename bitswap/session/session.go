@@ -87,7 +87,6 @@ type Session struct {
 	latTotal         time.Duration
 	fetchcnt         int
 	consecutiveTicks int
-	lastFetchCount   int
 	// identifiers
 	notif notifications.PubSub
 	uuid  logging.Loggable
@@ -98,24 +97,23 @@ type Session struct {
 // given context.
 func New(ctx context.Context, id uint64, wm WantManager, pm PeerManager, srs RequestSplitter) *Session {
 	s := &Session{
-		liveWants:      make(map[cid.Cid]time.Time),
-		newReqs:        make(chan []cid.Cid),
-		cancelKeys:     make(chan []cid.Cid),
-		tofetch:        newCidQueue(),
-		pastWants:      newCidQueue(),
-		interestReqs:   make(chan interestReq),
-		latencyReqs:    make(chan chan time.Duration),
-		tickDelayReqs:  make(chan time.Duration),
-		ctx:            ctx,
-		wm:             wm,
-		pm:             pm,
-		srs:            srs,
-		incoming:       make(chan blkRecv),
-		notif:          notifications.New(),
-		uuid:           loggables.Uuid("GetBlockRequest"),
-		baseTickDelay:  time.Millisecond * 500,
-		lastFetchCount: -1,
-		id:             id,
+		liveWants:     make(map[cid.Cid]time.Time),
+		newReqs:       make(chan []cid.Cid),
+		cancelKeys:    make(chan []cid.Cid),
+		tofetch:       newCidQueue(),
+		pastWants:     newCidQueue(),
+		interestReqs:  make(chan interestReq),
+		latencyReqs:   make(chan chan time.Duration),
+		tickDelayReqs: make(chan time.Duration),
+		ctx:           ctx,
+		wm:            wm,
+		pm:            pm,
+		srs:           srs,
+		incoming:      make(chan blkRecv),
+		notif:         notifications.New(),
+		uuid:          loggables.Uuid("GetBlockRequest"),
+		baseTickDelay: time.Millisecond * 500,
+		id:            id,
 	}
 
 	cache, _ := lru.New(2048)
@@ -314,14 +312,6 @@ func (s *Session) handleCancel(keys []cid.Cid) {
 
 func (s *Session) handleTick(ctx context.Context) {
 
-	if len(s.liveWants) > 0 {
-		if s.fetchcnt == s.lastFetchCount {
-			s.consecutiveTicks++
-		} else {
-			s.lastFetchCount = s.fetchcnt
-		}
-	}
-
 	live := make([]cid.Cid, 0, len(s.liveWants))
 	now := time.Now()
 	for c := range s.liveWants {
@@ -339,6 +329,10 @@ func (s *Session) handleTick(ctx context.Context) {
 		s.pm.FindMorePeers(ctx, live[0])
 	}
 	s.resetTick()
+
+	if len(s.liveWants) > 0 {
+		s.consecutiveTicks++
+	}
 }
 
 func (s *Session) handleRebroadcast(ctx context.Context) {
