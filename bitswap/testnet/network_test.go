@@ -11,14 +11,15 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
-	peer "github.com/libp2p/go-libp2p-peer"
-	testutil "github.com/libp2p/go-testutil"
+
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-testing/net"
 )
 
 func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 	net := VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0))
-	responderPeer := testutil.RandIdentityOrFatal(t)
-	waiter := net.Adapter(testutil.RandIdentityOrFatal(t))
+	responderPeer := tnet.RandIdentityOrFatal(t)
+	waiter := net.Adapter(tnet.RandIdentityOrFatal(t))
 	responder := net.Adapter(responderPeer)
 
 	var wg sync.WaitGroup

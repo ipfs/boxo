@@ -7,9 +7,10 @@ import (
 
 	ds "github.com/ipfs/go-datastore"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
-	peer "github.com/libp2p/go-libp2p-peer"
+
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-testing/net"
 	mockpeernet "github.com/libp2p/go-libp2p/p2p/net/mock"
-	testutil "github.com/libp2p/go-testutil"
 )
 
 type peernet struct {
@@ -22,7 +23,7 @@ func StreamNet(ctx context.Context, net mockpeernet.Mocknet, rs mockrouting.Serv
 	return &peernet{net, rs}, nil
 }
 
-func (pn *peernet) Adapter(p testutil.Identity) bsnet.BitSwapNetwork {
+func (pn *peernet) Adapter(p tnet.Identity) bsnet.BitSwapNetwork {
 	client, err := pn.Mocknet.AddPeer(p.PrivateKey(), p.Address())
 	if err != nil {
 		panic(err.Error())

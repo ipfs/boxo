@@ -9,7 +9,7 @@ import (
 	bsnet "github.com/ipfs/go-bitswap/network"
 	wantlist "github.com/ipfs/go-bitswap/wantlist"
 	logging "github.com/ipfs/go-log"
-	peer "github.com/libp2p/go-libp2p-peer"
+	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
 var log = logging.Logger("bitswap")
