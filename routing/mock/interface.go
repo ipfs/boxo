@@ -1,6 +1,6 @@
 // Package mockrouting provides a virtual routing server. To use it,
 // create a virtual routing server and use the Client() method to get a
-// routing client (IpfsRouting). The server quacks like a DHT but is
+// routing client (Routing). The server quacks like a DHT but is
 // really a local in-memory hash table.
 package mockrouting
 
@@ -9,9 +9,10 @@ import (
 
 	ds "github.com/ipfs/go-datastore"
 	delay "github.com/ipfs/go-ipfs-delay"
-	peer "github.com/libp2p/go-libp2p-peer"
-	routing "github.com/libp2p/go-libp2p-routing"
-	"github.com/libp2p/go-testutil"
+
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/routing"
+	"github.com/libp2p/go-libp2p-testing/net"
 )
 
 // MockValidator is a record validator that always returns success.
@@ -22,13 +23,13 @@ func (MockValidator) Select(_ string, _ [][]byte) (int, error) { return 0, nil }
 
 // Server provides mockrouting Clients
 type Server interface {
-	Client(p testutil.Identity) Client
-	ClientWithDatastore(context.Context, testutil.Identity, ds.Datastore) Client
+	Client(p tnet.Identity) Client
+	ClientWithDatastore(context.Context, tnet.Identity, ds.Datastore) Client
 }
 
-// Client implements IpfsRouting
+// Client implements Routing
 type Client interface {
-	routing.IpfsRouting
+	routing.Routing
 }
 
 // NewServer returns a mockrouting Server

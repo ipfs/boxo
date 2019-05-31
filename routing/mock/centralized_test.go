@@ -8,13 +8,14 @@ import (
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 	u "github.com/ipfs/go-ipfs-util"
-	pstore "github.com/libp2p/go-libp2p-peerstore"
-	testutil "github.com/libp2p/go-testutil"
+
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-testing/net"
 )
 
 func TestKeyNotFound(t *testing.T) {
 
-	var pi = testutil.RandIdentityOrFatal(t)
+	var pi = tnet.RandIdentityOrFatal(t)
 	var key = cid.NewCidV0(u.Hash([]byte("mock key")))
 	var ctx = context.Background()
 
@@ -27,7 +28,7 @@ func TestKeyNotFound(t *testing.T) {
 }
 
 func TestClientFindProviders(t *testing.T) {
-	pi := testutil.RandIdentityOrFatal(t)
+	pi := tnet.RandIdentityOrFatal(t)
 	rs := NewServer()
 	client := rs.Client(pi)
 
@@ -58,7 +59,7 @@ func TestClientOverMax(t *testing.T) {
 	k := cid.NewCidV0(u.Hash([]byte("hello")))
 	numProvidersForHelloKey := 100
 	for i := 0; i < numProvidersForHelloKey; i++ {
-		pi := testutil.RandIdentityOrFatal(t)
+		pi := tnet.RandIdentityOrFatal(t)
 		err := rs.Client(pi).Provide(context.Background(), k, true)
 		if err != nil {
 			t.Fatal(err)
@@ -66,7 +67,7 @@ func TestClientOverMax(t *testing.T) {
 	}
 
 	max := 10
-	pi := testutil.RandIdentityOrFatal(t)
+	pi := tnet.RandIdentityOrFatal(t)
 	client := rs.Client(pi)
 
 	providersFromClient := client.FindProvidersAsync(context.Background(), k, max)
@@ -101,7 +102,7 @@ func TestCanceledContext(t *testing.T) {
 			default:
 			}
 
-			pi, err := testutil.RandIdentity()
+			pi, err := tnet.RandIdentity()
 			if err != nil {
 				t.Error(err)
 			}
@@ -113,7 +114,7 @@ func TestCanceledContext(t *testing.T) {
 		}
 	}()
 
-	local := testutil.RandIdentityOrFatal(t)
+	local := tnet.RandIdentityOrFatal(t)
 	client := rs.Client(local)
 
 	t.Log("warning: max is finite so this test is non-deterministic")
@@ -141,7 +142,7 @@ func TestValidAfter(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pi := testutil.RandIdentityOrFatal(t)
+	pi := tnet.RandIdentityOrFatal(t)
 	key := cid.NewCidV0(u.Hash([]byte("mock key")))
 	conf := DelayConfig{
 		ValueVisibility: delay.Fixed(1 * time.Hour),
@@ -152,7 +153,7 @@ func TestValidAfter(t *testing.T) {
 
 	rs.Client(pi).Provide(ctx, key, true)
 
-	var providers []pstore.PeerInfo
+	var providers []peer.AddrInfo
 	max := 100
 	providersChan := rs.Client(pi).FindProvidersAsync(ctx, key, max)
 	for p := range providersChan {

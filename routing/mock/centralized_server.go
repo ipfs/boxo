@@ -9,17 +9,17 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
-	peer "github.com/libp2p/go-libp2p-peer"
-	pstore "github.com/libp2p/go-libp2p-peerstore"
-	"github.com/libp2p/go-testutil"
+
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-testing/net"
 
 	offline "github.com/ipfs/go-ipfs-routing/offline"
 )
 
 // server is the mockrouting.Client's private interface to the routing server
 type server interface {
-	Announce(pstore.PeerInfo, cid.Cid) error
-	Providers(cid.Cid) []pstore.PeerInfo
+	Announce(peer.AddrInfo, cid.Cid) error
+	Providers(cid.Cid) []peer.AddrInfo
 
 	Server
 }
@@ -33,11 +33,11 @@ type s struct {
 }
 
 type providerRecord struct {
-	Peer    pstore.PeerInfo
+	Peer    peer.AddrInfo
 	Created time.Time
 }
 
-func (rs *s) Announce(p pstore.PeerInfo, c cid.Cid) error {
+func (rs *s) Announce(p peer.AddrInfo, c cid.Cid) error {
 	rs.lock.Lock()
 	defer rs.lock.Unlock()
 
@@ -54,14 +54,14 @@ func (rs *s) Announce(p pstore.PeerInfo, c cid.Cid) error {
 	return nil
 }
 
-func (rs *s) Providers(c cid.Cid) []pstore.PeerInfo {
+func (rs *s) Providers(c cid.Cid) []peer.AddrInfo {
 	rs.delayConf.Query.Wait() // before locking
 
 	rs.lock.RLock()
 	defer rs.lock.RUnlock()
 	k := c.KeyString()
 
-	var ret []pstore.PeerInfo
+	var ret []peer.AddrInfo
 	records, ok := rs.providers[k]
 	if !ok {
 		return ret
@@ -80,11 +80,11 @@ func (rs *s) Providers(c cid.Cid) []pstore.PeerInfo {
 	return ret
 }
 
-func (rs *s) Client(p testutil.Identity) Client {
+func (rs *s) Client(p tnet.Identity) Client {
 	return rs.ClientWithDatastore(context.Background(), p, dssync.MutexWrap(ds.NewMapDatastore()))
 }
 
-func (rs *s) ClientWithDatastore(_ context.Context, p testutil.Identity, datastore ds.Datastore) Client {
+func (rs *s) ClientWithDatastore(_ context.Context, p tnet.Identity, datastore ds.Datastore) Client {
 	return &client{
 		peer:   p,
 		vs:     offline.NewOfflineRouter(datastore, MockValidator{}),
