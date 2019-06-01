@@ -14,7 +14,7 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	p2ptestutil "github.com/libp2p/go-libp2p-netutil"
-	testutil "github.com/libp2p/go-testutil"
+	tnet "github.com/libp2p/go-libp2p-testing/net"
 )
 
 // NewTestInstanceGenerator generates a new InstanceGenerator for the given
@@ -96,7 +96,7 @@ func (i *Instance) SetBlockstoreLatency(t time.Duration) time.Duration {
 // NB: It's easy make mistakes by providing the same peer ID to two different
 // instances. To safeguard, use the InstanceGenerator to generate instances. It's
 // just a much better idea.
-func NewInstance(ctx context.Context, net tn.Network, p testutil.Identity, options ...bitswap.Option) Instance {
+func NewInstance(ctx context.Context, net tn.Network, p tnet.Identity, options ...bitswap.Option) Instance {
 	bsdelay := delay.Fixed(0)
 
 	adapter := net.Adapter(p)
