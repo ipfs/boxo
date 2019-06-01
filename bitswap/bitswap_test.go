@@ -22,8 +22,8 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 	p2ptestutil "github.com/libp2p/go-libp2p-netutil"
-	tu "github.com/libp2p/go-testutil"
-	travis "github.com/libp2p/go-testutil/ci/travis"
+	travis "github.com/libp2p/go-libp2p-testing/ci/travis"
+	tu "github.com/libp2p/go-libp2p-testing/etc"
 )
 
 // FIXME the tests are really sensitive to the network delay. fix them to work

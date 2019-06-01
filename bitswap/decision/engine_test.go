@@ -16,7 +16,7 @@ import (
 	dssync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	peer "github.com/libp2p/go-libp2p-core/peer"
-	testutil "github.com/libp2p/go-testutil"
+	testutil "github.com/libp2p/go-libp2p-core/test"
 )
 
 type fakePeerTagger struct {
