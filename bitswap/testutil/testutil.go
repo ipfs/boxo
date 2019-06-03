@@ -17,9 +17,9 @@ var prioritySeq int
 // GenerateBlocksOfSize generates a series of blocks of the given byte size
 func GenerateBlocksOfSize(n int, size int64) []blocks.Block {
 	generatedBlocks := make([]blocks.Block, 0, n)
-	buf := make([]byte, size)
 	for i := 0; i < n; i++ {
 		// rand.Read never errors
+		buf := make([]byte, size)
 		rand.Read(buf)
 		b := blocks.NewBlock(buf)
 		generatedBlocks = append(generatedBlocks, b)
