@@ -87,6 +87,8 @@ type Session struct {
 	latTotal         time.Duration
 	fetchcnt         int
 	consecutiveTicks int
+	provSearchDelay  time.Duration
+	rebroadcastDelay delay.D
 	// identifiers
 	notif notifications.PubSub
 	uuid  logging.Loggable
@@ -95,25 +97,33 @@ type Session struct {
 
 // New creates a new bitswap session whose lifetime is bounded by the
 // given context.
-func New(ctx context.Context, id uint64, wm WantManager, pm PeerManager, srs RequestSplitter) *Session {
+func New(ctx context.Context,
+	id uint64,
+	wm WantManager,
+	pm PeerManager,
+	srs RequestSplitter,
+	provSearchDelay time.Duration,
+	rebroadcastDelay delay.D) *Session {
 	s := &Session{
-		liveWants:     make(map[cid.Cid]time.Time),
-		newReqs:       make(chan []cid.Cid),
-		cancelKeys:    make(chan []cid.Cid),
-		tofetch:       newCidQueue(),
-		pastWants:     newCidQueue(),
-		interestReqs:  make(chan interestReq),
-		latencyReqs:   make(chan chan time.Duration),
-		tickDelayReqs: make(chan time.Duration),
-		ctx:           ctx,
-		wm:            wm,
-		pm:            pm,
-		srs:           srs,
-		incoming:      make(chan blkRecv),
-		notif:         notifications.New(),
-		uuid:          loggables.Uuid("GetBlockRequest"),
-		baseTickDelay: time.Millisecond * 500,
-		id:            id,
+		liveWants:        make(map[cid.Cid]time.Time),
+		newReqs:          make(chan []cid.Cid),
+		cancelKeys:       make(chan []cid.Cid),
+		tofetch:          newCidQueue(),
+		pastWants:        newCidQueue(),
+		interestReqs:     make(chan interestReq),
+		latencyReqs:      make(chan chan time.Duration),
+		tickDelayReqs:    make(chan time.Duration),
+		ctx:              ctx,
+		wm:               wm,
+		pm:               pm,
+		srs:              srs,
+		incoming:         make(chan blkRecv),
+		notif:            notifications.New(),
+		uuid:             loggables.Uuid("GetBlockRequest"),
+		baseTickDelay:    time.Millisecond * 500,
+		id:               id,
+		provSearchDelay:  provSearchDelay,
+		rebroadcastDelay: rebroadcastDelay,
 	}
 
 	cache, _ := lru.New(2048)
@@ -226,24 +236,11 @@ func (s *Session) SetBaseTickDelay(baseTickDelay time.Duration) {
 	}
 }
 
-var provSearchDelay = time.Second
-var rebroadcastDelay = delay.Fixed(time.Minute)
-
-// SetProviderSearchDelay overwrites the global provider search delay
-func SetProviderSearchDelay(newProvSearchDelay time.Duration) {
-	provSearchDelay = newProvSearchDelay
-}
-
-// SetRebroadcastDelay overwrites the global provider rebroadcast delay
-func SetRebroadcastDelay(newRebroadcastDelay delay.D) {
-	rebroadcastDelay = newRebroadcastDelay
-}
-
 // Session run loop -- everything function below here should not be called
 // of this loop
 func (s *Session) run(ctx context.Context) {
-	s.tick = time.NewTimer(provSearchDelay)
-	s.rebroadcast = time.NewTimer(rebroadcastDelay.Get())
+	s.tick = time.NewTimer(s.provSearchDelay)
+	s.rebroadcast = time.NewTimer(s.rebroadcastDelay.Get())
 	for {
 		select {
 		case blk := <-s.incoming:
@@ -345,7 +342,7 @@ func (s *Session) handleRebroadcast(ctx context.Context) {
 	// for new providers for blocks.
 	s.pm.FindMorePeers(ctx, s.randomLiveWant())
 
-	s.rebroadcast.Reset(rebroadcastDelay.Get())
+	s.rebroadcast.Reset(s.rebroadcastDelay.Get())
 }
 
 func (s *Session) randomLiveWant() cid.Cid {
@@ -442,7 +439,7 @@ func (s *Session) averageLatency() time.Duration {
 func (s *Session) resetTick() {
 	var tickDelay time.Duration
 	if s.latTotal == 0 {
-		tickDelay = provSearchDelay
+		tickDelay = s.provSearchDelay
 	} else {
 		avLat := s.averageLatency()
 		tickDelay = s.baseTickDelay + (3 * avLat)
