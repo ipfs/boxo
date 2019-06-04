@@ -3,9 +3,11 @@ package sessionmanager
 import (
 	"context"
 	"sync"
+	"time"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	delay "github.com/ipfs/go-ipfs-delay"
 
 	bssession "github.com/ipfs/go-bitswap/session"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
@@ -27,7 +29,7 @@ type sesTrk struct {
 }
 
 // SessionFactory generates a new session for the SessionManager to track.
-type SessionFactory func(ctx context.Context, id uint64, pm bssession.PeerManager, srs bssession.RequestSplitter) Session
+type SessionFactory func(ctx context.Context, id uint64, pm bssession.PeerManager, srs bssession.RequestSplitter, provSearchDelay time.Duration, rebroadcastDelay delay.D) Session
 
 // RequestSplitterFactory generates a new request splitter for a session.
 type RequestSplitterFactory func(ctx context.Context) bssession.RequestSplitter
@@ -64,13 +66,15 @@ func New(ctx context.Context, sessionFactory SessionFactory, peerManagerFactory 
 
 // NewSession initializes a session with the given context, and adds to the
 // session manager.
-func (sm *SessionManager) NewSession(ctx context.Context) exchange.Fetcher {
+func (sm *SessionManager) NewSession(ctx context.Context,
+	provSearchDelay time.Duration,
+	rebroadcastDelay delay.D) exchange.Fetcher {
 	id := sm.GetNextSessionID()
 	sessionctx, cancel := context.WithCancel(ctx)
 
 	pm := sm.peerManagerFactory(sessionctx, id)
 	srs := sm.requestSplitterFactory(sessionctx)
-	session := sm.sessionFactory(sessionctx, id, pm, srs)
+	session := sm.sessionFactory(sessionctx, id, pm, srs, provSearchDelay, rebroadcastDelay)
 	tracked := sesTrk{session, pm, srs}
 	sm.sessLk.Lock()
 	sm.sessions = append(sm.sessions, tracked)

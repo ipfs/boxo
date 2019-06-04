@@ -6,6 +6,7 @@ import (
 	"time"
 
 	bssrs "github.com/ipfs/go-bitswap/sessionrequestsplitter"
+	delay "github.com/ipfs/go-ipfs-delay"
 
 	bssession "github.com/ipfs/go-bitswap/session"
 
@@ -53,7 +54,12 @@ func (frs *fakeRequestSplitter) RecordUniqueBlock()    {}
 
 var nextInterestedIn bool
 
-func sessionFactory(ctx context.Context, id uint64, pm bssession.PeerManager, srs bssession.RequestSplitter) Session {
+func sessionFactory(ctx context.Context,
+	id uint64,
+	pm bssession.PeerManager,
+	srs bssession.RequestSplitter,
+	provSearchDelay time.Duration,
+	rebroadcastDelay delay.D) Session {
 	return &fakeSession{
 		interested:    nextInterestedIn,
 		receivedBlock: false,
@@ -83,18 +89,18 @@ func TestAddingSessions(t *testing.T) {
 	nextInterestedIn = true
 
 	currentID := sm.GetNextSessionID()
-	firstSession := sm.NewSession(ctx).(*fakeSession)
+	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 	if firstSession.id != firstSession.pm.id ||
 		firstSession.id != currentID+1 {
 		t.Fatal("session does not have correct id set")
 	}
-	secondSession := sm.NewSession(ctx).(*fakeSession)
+	secondSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 	if secondSession.id != secondSession.pm.id ||
 		secondSession.id != firstSession.id+1 {
 		t.Fatal("session does not have correct id set")
 	}
 	sm.GetNextSessionID()
-	thirdSession := sm.NewSession(ctx).(*fakeSession)
+	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 	if thirdSession.id != thirdSession.pm.id ||
 		thirdSession.id != secondSession.id+2 {
 		t.Fatal("session does not have correct id set")
@@ -117,11 +123,11 @@ func TestReceivingBlocksWhenNotInterested(t *testing.T) {
 	block := blocks.NewBlock([]byte("block"))
 	// we'll be interested in all blocks for this test
 	nextInterestedIn = false
-	firstSession := sm.NewSession(ctx).(*fakeSession)
+	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 	nextInterestedIn = true
-	secondSession := sm.NewSession(ctx).(*fakeSession)
+	secondSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 	nextInterestedIn = false
-	thirdSession := sm.NewSession(ctx).(*fakeSession)
+	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 
 	sm.ReceiveBlockFrom(p, block)
 	if firstSession.receivedBlock ||
@@ -140,9 +146,9 @@ func TestRemovingPeersWhenManagerContextCancelled(t *testing.T) {
 	block := blocks.NewBlock([]byte("block"))
 	// we'll be interested in all blocks for this test
 	nextInterestedIn = true
-	firstSession := sm.NewSession(ctx).(*fakeSession)
-	secondSession := sm.NewSession(ctx).(*fakeSession)
-	thirdSession := sm.NewSession(ctx).(*fakeSession)
+	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	secondSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 
 	cancel()
 	// wait for sessions to get removed
@@ -165,10 +171,10 @@ func TestRemovingPeersWhenSessionContextCancelled(t *testing.T) {
 	block := blocks.NewBlock([]byte("block"))
 	// we'll be interested in all blocks for this test
 	nextInterestedIn = true
-	firstSession := sm.NewSession(ctx).(*fakeSession)
+	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 	sessionCtx, sessionCancel := context.WithCancel(ctx)
-	secondSession := sm.NewSession(sessionCtx).(*fakeSession)
-	thirdSession := sm.NewSession(ctx).(*fakeSession)
+	secondSession := sm.NewSession(sessionCtx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 
 	sessionCancel()
 	// wait for sessions to get removed
