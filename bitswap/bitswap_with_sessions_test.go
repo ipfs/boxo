@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	bitswap "github.com/ipfs/go-bitswap"
 	bssession "github.com/ipfs/go-bitswap/session"
 	testinstance "github.com/ipfs/go-bitswap/testinstance"
 	blocks "github.com/ipfs/go-block-format"
@@ -161,9 +162,8 @@ func TestFetchNotConnected(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	bssession.SetProviderSearchDelay(10 * time.Millisecond)
 	vnet := getVirtualNetwork()
-	ig := testinstance.NewTestInstanceGenerator(vnet)
+	ig := testinstance.NewTestInstanceGenerator(vnet, bitswap.ProviderSearchDelay(10*time.Millisecond))
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
