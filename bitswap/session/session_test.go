@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-block-format"
-
 	bssrs "github.com/ipfs/go-bitswap/sessionrequestsplitter"
 	"github.com/ipfs/go-bitswap/testutil"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
+	delay "github.com/ipfs/go-ipfs-delay"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -42,12 +42,12 @@ func (fwm *fakeWantManager) CancelWants(ctx context.Context, cids []cid.Cid, pee
 type fakePeerManager struct {
 	lk                     sync.RWMutex
 	peers                  []peer.ID
-	findMorePeersRequested chan struct{}
+	findMorePeersRequested chan cid.Cid
 }
 
 func (fpm *fakePeerManager) FindMorePeers(ctx context.Context, k cid.Cid) {
 	select {
-	case fpm.findMorePeersRequested <- struct{}{}:
+	case fpm.findMorePeersRequested <- k:
 	case <-ctx.Done():
 	}
 }
@@ -84,7 +84,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	fpm := &fakePeerManager{}
 	frs := &fakeRequestSplitter{}
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm, frs)
+	session := New(ctx, id, fwm, fpm, frs, time.Second, delay.Fixed(time.Minute))
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
 	var cids []cid.Cid
@@ -193,10 +193,10 @@ func TestSessionFindMorePeers(t *testing.T) {
 	wantReqs := make(chan wantReq, 1)
 	cancelReqs := make(chan wantReq, 1)
 	fwm := &fakeWantManager{wantReqs, cancelReqs}
-	fpm := &fakePeerManager{findMorePeersRequested: make(chan struct{}, 1)}
+	fpm := &fakePeerManager{findMorePeersRequested: make(chan cid.Cid, 1)}
 	frs := &fakeRequestSplitter{}
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm, frs)
+	session := New(ctx, id, fwm, fpm, frs, time.Second, delay.Fixed(time.Minute))
 	session.SetBaseTickDelay(200 * time.Microsecond)
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
@@ -256,5 +256,126 @@ func TestSessionFindMorePeers(t *testing.T) {
 	case <-fpm.findMorePeersRequested:
 	case <-ctx.Done():
 		t.Fatal("Did not find more peers")
+	}
+}
+
+func TestSessionFailingToGetFirstBlock(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	wantReqs := make(chan wantReq, 1)
+	cancelReqs := make(chan wantReq, 1)
+	fwm := &fakeWantManager{wantReqs, cancelReqs}
+	fpm := &fakePeerManager{findMorePeersRequested: make(chan cid.Cid, 1)}
+	frs := &fakeRequestSplitter{}
+	id := testutil.GenerateSessionID()
+
+	session := New(ctx, id, fwm, fpm, frs, 10*time.Millisecond, delay.Fixed(100*time.Millisecond))
+	blockGenerator := blocksutil.NewBlockGenerator()
+	blks := blockGenerator.Blocks(4)
+	var cids []cid.Cid
+	for _, block := range blks {
+		cids = append(cids, block.Cid())
+	}
+	startTick := time.Now()
+	_, err := session.GetBlocks(ctx, cids)
+	if err != nil {
+		t.Fatal("error getting blocks")
+	}
+
+	// clear the initial block of wants
+	select {
+	case <-wantReqs:
+	case <-ctx.Done():
+		t.Fatal("Did not make first want request ")
+	}
+
+	// verify a broadcast is made
+	select {
+	case receivedWantReq := <-wantReqs:
+		if len(receivedWantReq.cids) < len(cids) {
+			t.Fatal("did not rebroadcast whole live list")
+		}
+		if receivedWantReq.peers != nil {
+			t.Fatal("did not make a broadcast")
+		}
+	case <-ctx.Done():
+		t.Fatal("Never rebroadcast want list")
+	}
+
+	// wait for a request to get more peers to occur
+	select {
+	case k := <-fpm.findMorePeersRequested:
+		if testutil.IndexOf(blks, k) == -1 {
+			t.Fatal("did not rebroadcast an active want")
+		}
+	case <-ctx.Done():
+		t.Fatal("Did not find more peers")
+	}
+	firstTickLength := time.Since(startTick)
+
+	// wait for another broadcast to occur
+	select {
+	case receivedWantReq := <-wantReqs:
+		if len(receivedWantReq.cids) < len(cids) {
+			t.Fatal("did not rebroadcast whole live list")
+		}
+		if receivedWantReq.peers != nil {
+			t.Fatal("did not make a broadcast")
+		}
+	case <-ctx.Done():
+		t.Fatal("Never rebroadcast want list")
+	}
+	startTick = time.Now()
+	// wait for another broadcast to occur
+	select {
+	case receivedWantReq := <-wantReqs:
+		if len(receivedWantReq.cids) < len(cids) {
+			t.Fatal("did not rebroadcast whole live list")
+		}
+		if receivedWantReq.peers != nil {
+			t.Fatal("did not make a broadcast")
+		}
+	case <-ctx.Done():
+		t.Fatal("Never rebroadcast want list")
+	}
+	consecutiveTickLength := time.Since(startTick)
+	// tick should take longer
+	if firstTickLength > consecutiveTickLength {
+		t.Fatal("Should have increased tick length after first consecutive tick")
+	}
+	startTick = time.Now()
+	// wait for another broadcast to occur
+	select {
+	case receivedWantReq := <-wantReqs:
+		if len(receivedWantReq.cids) < len(cids) {
+			t.Fatal("did not rebroadcast whole live list")
+		}
+		if receivedWantReq.peers != nil {
+			t.Fatal("did not make a broadcast")
+		}
+	case <-ctx.Done():
+		t.Fatal("Never rebroadcast want list")
+	}
+	secondConsecutiveTickLength := time.Since(startTick)
+	// tick should take longer
+	if consecutiveTickLength > secondConsecutiveTickLength {
+		t.Fatal("Should have increased tick length after first consecutive tick")
+	}
+
+	// should not have looked for peers on consecutive ticks
+	select {
+	case <-fpm.findMorePeersRequested:
+		t.Fatal("Should not have looked for peers on consecutive tick")
+	default:
+	}
+
+	// wait for rebroadcast to occur
+	select {
+	case k := <-fpm.findMorePeersRequested:
+		if testutil.IndexOf(blks, k) == -1 {
+			t.Fatal("did not rebroadcast an active want")
+		}
+	case <-ctx.Done():
+		t.Fatal("Did not rebroadcast to find more peers")
 	}
 }

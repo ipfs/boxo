@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"math/rand"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -9,6 +10,7 @@ import (
 	notifications "github.com/ipfs/go-bitswap/notifications"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	loggables "github.com/libp2p/go-libp2p-loggables"
@@ -75,14 +77,18 @@ type Session struct {
 	tickDelayReqs chan time.Duration
 
 	// do not touch outside run loop
-	tofetch       *cidQueue
-	interest      *lru.Cache
-	pastWants     *cidQueue
-	liveWants     map[cid.Cid]time.Time
-	tick          *time.Timer
-	baseTickDelay time.Duration
-	latTotal      time.Duration
-	fetchcnt      int
+	tofetch          *cidQueue
+	interest         *lru.Cache
+	pastWants        *cidQueue
+	liveWants        map[cid.Cid]time.Time
+	tick             *time.Timer
+	rebroadcast      *time.Timer
+	baseTickDelay    time.Duration
+	latTotal         time.Duration
+	fetchcnt         int
+	consecutiveTicks int
+	provSearchDelay  time.Duration
+	rebroadcastDelay delay.D
 	// identifiers
 	notif notifications.PubSub
 	uuid  logging.Loggable
@@ -91,25 +97,33 @@ type Session struct {
 
 // New creates a new bitswap session whose lifetime is bounded by the
 // given context.
-func New(ctx context.Context, id uint64, wm WantManager, pm PeerManager, srs RequestSplitter) *Session {
+func New(ctx context.Context,
+	id uint64,
+	wm WantManager,
+	pm PeerManager,
+	srs RequestSplitter,
+	provSearchDelay time.Duration,
+	rebroadcastDelay delay.D) *Session {
 	s := &Session{
-		liveWants:     make(map[cid.Cid]time.Time),
-		newReqs:       make(chan []cid.Cid),
-		cancelKeys:    make(chan []cid.Cid),
-		tofetch:       newCidQueue(),
-		pastWants:     newCidQueue(),
-		interestReqs:  make(chan interestReq),
-		latencyReqs:   make(chan chan time.Duration),
-		tickDelayReqs: make(chan time.Duration),
-		ctx:           ctx,
-		wm:            wm,
-		pm:            pm,
-		srs:           srs,
-		incoming:      make(chan blkRecv),
-		notif:         notifications.New(),
-		uuid:          loggables.Uuid("GetBlockRequest"),
-		baseTickDelay: time.Millisecond * 500,
-		id:            id,
+		liveWants:        make(map[cid.Cid]time.Time),
+		newReqs:          make(chan []cid.Cid),
+		cancelKeys:       make(chan []cid.Cid),
+		tofetch:          newCidQueue(),
+		pastWants:        newCidQueue(),
+		interestReqs:     make(chan interestReq),
+		latencyReqs:      make(chan chan time.Duration),
+		tickDelayReqs:    make(chan time.Duration),
+		ctx:              ctx,
+		wm:               wm,
+		pm:               pm,
+		srs:              srs,
+		incoming:         make(chan blkRecv),
+		notif:            notifications.New(),
+		uuid:             loggables.Uuid("GetBlockRequest"),
+		baseTickDelay:    time.Millisecond * 500,
+		id:               id,
+		provSearchDelay:  provSearchDelay,
+		rebroadcastDelay: rebroadcastDelay,
 	}
 
 	cache, _ := lru.New(2048)
@@ -222,17 +236,11 @@ func (s *Session) SetBaseTickDelay(baseTickDelay time.Duration) {
 	}
 }
 
-var provSearchDelay = time.Second
-
-// SetProviderSearchDelay overwrites the global provider search delay
-func SetProviderSearchDelay(newProvSearchDelay time.Duration) {
-	provSearchDelay = newProvSearchDelay
-}
-
 // Session run loop -- everything function below here should not be called
 // of this loop
 func (s *Session) run(ctx context.Context) {
-	s.tick = time.NewTimer(provSearchDelay)
+	s.tick = time.NewTimer(s.provSearchDelay)
+	s.rebroadcast = time.NewTimer(s.rebroadcastDelay.Get())
 	for {
 		select {
 		case blk := <-s.incoming:
@@ -247,6 +255,8 @@ func (s *Session) run(ctx context.Context) {
 			s.handleCancel(keys)
 		case <-s.tick.C:
 			s.handleTick(ctx)
+		case <-s.rebroadcast.C:
+			s.handleRebroadcast(ctx)
 		case lwchk := <-s.interestReqs:
 			lwchk.resp <- s.cidIsWanted(lwchk.c)
 		case resp := <-s.latencyReqs:
@@ -310,12 +320,42 @@ func (s *Session) handleTick(ctx context.Context) {
 	s.pm.RecordPeerRequests(nil, live)
 	s.wm.WantBlocks(ctx, live, nil, s.id)
 
-	if len(live) > 0 {
+	// do no find providers on consecutive ticks
+	// -- just rely on periodic rebroadcast
+	if len(live) > 0 && (s.consecutiveTicks == 0) {
 		s.pm.FindMorePeers(ctx, live[0])
 	}
 	s.resetTick()
+
+	if len(s.liveWants) > 0 {
+		s.consecutiveTicks++
+	}
 }
 
+func (s *Session) handleRebroadcast(ctx context.Context) {
+
+	if len(s.liveWants) == 0 {
+		return
+	}
+
+	// TODO: come up with a better strategy for determining when to search
+	// for new providers for blocks.
+	s.pm.FindMorePeers(ctx, s.randomLiveWant())
+
+	s.rebroadcast.Reset(s.rebroadcastDelay.Get())
+}
+
+func (s *Session) randomLiveWant() cid.Cid {
+	i := rand.Intn(len(s.liveWants))
+	// picking a random live want
+	for k := range s.liveWants {
+		if i == 0 {
+			return k
+		}
+		i--
+	}
+	return cid.Cid{}
+}
 func (s *Session) handleShutdown() {
 	s.tick.Stop()
 	s.notif.Shutdown()
@@ -347,6 +387,8 @@ func (s *Session) receiveBlock(ctx context.Context, blk blocks.Block) {
 			s.tofetch.Remove(c)
 		}
 		s.fetchcnt++
+		// we've received new wanted blocks, so future ticks are not consecutive
+		s.consecutiveTicks = 0
 		s.notif.Publish(blk)
 
 		toAdd := s.wantBudget()
@@ -395,12 +437,15 @@ func (s *Session) averageLatency() time.Duration {
 }
 
 func (s *Session) resetTick() {
+	var tickDelay time.Duration
 	if s.latTotal == 0 {
-		s.tick.Reset(provSearchDelay)
+		tickDelay = s.provSearchDelay
 	} else {
 		avLat := s.averageLatency()
-		s.tick.Reset(s.baseTickDelay + (3 * avLat))
+		tickDelay = s.baseTickDelay + (3 * avLat)
 	}
+	tickDelay = tickDelay * time.Duration(1+s.consecutiveTicks)
+	s.tick.Reset(tickDelay)
 }
 
 func (s *Session) wantBudget() int {
