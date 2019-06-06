@@ -5,16 +5,15 @@ import (
 	"fmt"
 	"time"
 
-	backoff "github.com/cenkalti/backoff"
-	cid "github.com/ipfs/go-cid"
-	cidutil "github.com/ipfs/go-cidutil"
+	"github.com/cenkalti/backoff"
+	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cidutil"
 	blocks "github.com/ipfs/go-ipfs-blockstore"
-	pin "github.com/ipfs/go-ipfs/pin"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
-	merkledag "github.com/ipfs/go-merkledag"
-	verifcid "github.com/ipfs/go-verifcid"
-	routing "github.com/libp2p/go-libp2p-core/routing"
+	"github.com/ipfs/go-merkledag"
+	"github.com/ipfs/go-verifcid"
+	"github.com/libp2p/go-libp2p-core/routing"
 )
 
 var logR = logging.Logger("reprovider.simple")
@@ -169,9 +168,16 @@ func NewBlockstoreProvider(bstore blocks.Blockstore) KeyChanFunc {
 	}
 }
 
+// Pinner interface defines how the simple.Reprovider wants to interact
+// with a Pinning service
+type Pinner interface {
+	DirectKeys() []cid.Cid
+	RecursiveKeys() []cid.Cid
+}
+
 // NewPinnedProvider returns provider supplying pinned keys
-func NewPinnedProvider(onlyRoots bool) func(pin.Pinner, ipld.DAGService) KeyChanFunc {
-	return func(pinning pin.Pinner, dag ipld.DAGService) KeyChanFunc {
+func NewPinnedProvider(onlyRoots bool) func(Pinner, ipld.DAGService) KeyChanFunc {
+	return func(pinning Pinner, dag ipld.DAGService) KeyChanFunc {
 		return func(ctx context.Context) (<-chan cid.Cid, error) {
 			set, err := pinSet(ctx, pinning, dag, onlyRoots)
 			if err != nil {
@@ -196,7 +202,7 @@ func NewPinnedProvider(onlyRoots bool) func(pin.Pinner, ipld.DAGService) KeyChan
 	}
 }
 
-func pinSet(ctx context.Context, pinning pin.Pinner, dag ipld.DAGService, onlyRoots bool) (*cidutil.StreamingSet, error) {
+func pinSet(ctx context.Context, pinning Pinner, dag ipld.DAGService, onlyRoots bool) (*cidutil.StreamingSet, error) {
 	set := cidutil.NewStreamingSet()
 
 	go func() {
