@@ -13,7 +13,7 @@ import (
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	testutil "github.com/libp2p/go-libp2p-testing/net"
 
-	. "github.com/ipfs/go-ipfs/provider/simple"
+	. "github.com/ipfs/go-ipfs-provider/simple"
 )
 
 func TestReprovide(t *testing.T) {

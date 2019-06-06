@@ -7,7 +7,7 @@ import (
 	"context"
 
 	cid "github.com/ipfs/go-cid"
-	q "github.com/ipfs/go-ipfs/provider/queue"
+	q "github.com/ipfs/go-ipfs-provider/queue"
 	logging "github.com/ipfs/go-log"
 	routing "github.com/libp2p/go-libp2p-core/routing"
 )

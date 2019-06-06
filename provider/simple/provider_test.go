@@ -12,9 +12,9 @@ import (
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 
-	q "github.com/ipfs/go-ipfs/provider/queue"
+	q "github.com/ipfs/go-ipfs-provider/queue"
 
-	. "github.com/ipfs/go-ipfs/provider/simple"
+	. "github.com/ipfs/go-ipfs-provider/simple"
 )
 
 var blockGenerator = blocksutil.NewBlockGenerator()
