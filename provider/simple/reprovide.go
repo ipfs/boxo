@@ -176,29 +176,27 @@ type Pinner interface {
 }
 
 // NewPinnedProvider returns provider supplying pinned keys
-func NewPinnedProvider(onlyRoots bool) func(Pinner, ipld.DAGService) KeyChanFunc {
-	return func(pinning Pinner, dag ipld.DAGService) KeyChanFunc {
-		return func(ctx context.Context) (<-chan cid.Cid, error) {
-			set, err := pinSet(ctx, pinning, dag, onlyRoots)
-			if err != nil {
-				return nil, err
+func NewPinnedProvider(onlyRoots bool, pinning Pinner, dag ipld.DAGService) KeyChanFunc {
+	return func(ctx context.Context) (<-chan cid.Cid, error) {
+		set, err := pinSet(ctx, pinning, dag, onlyRoots)
+		if err != nil {
+			return nil, err
+		}
+
+		outCh := make(chan cid.Cid)
+		go func() {
+			defer close(outCh)
+			for c := range set.New {
+				select {
+				case <-ctx.Done():
+					return
+				case outCh <- c:
+				}
 			}
 
-			outCh := make(chan cid.Cid)
-			go func() {
-				defer close(outCh)
-				for c := range set.New {
-					select {
-					case <-ctx.Done():
-						return
-					case outCh <- c:
-					}
-				}
+		}()
 
-			}()
-
-			return outCh, nil
-		}
+		return outCh, nil
 	}
 }
 
