@@ -24,7 +24,11 @@ type mockRouting struct {
 }
 
 func (r *mockRouting) Provide(ctx context.Context, cid cid.Cid, recursive bool) error {
-	r.provided <- cid
+	select {
+	case r.provided <- cid:
+	case <-ctx.Done():
+		panic("context cancelled, but shouldn't have")
+	}
 	return nil
 }
 
@@ -51,6 +55,50 @@ func TestAnnouncement(t *testing.T) {
 	r := mockContentRouting()
 
 	prov := NewProvider(ctx, queue, r)
+	prov.Run()
+
+	cids := cid.NewSet()
+
+	for i := 0; i < 100; i++ {
+		c := blockGenerator.Next().Cid()
+		cids.Add(c)
+	}
+
+	go func() {
+		for _, c := range cids.Keys() {
+			err = prov.Provide(c)
+			// A little goroutine stirring to exercise some different states
+			r := rand.Intn(10)
+			time.Sleep(time.Microsecond * time.Duration(r))
+		}
+	}()
+
+	for cids.Len() > 0 {
+		select {
+		case cp := <-r.provided:
+			if !cids.Has(cp) {
+				t.Fatal("Wrong CID provided")
+			}
+			cids.Remove(cp)
+		case <-time.After(time.Second * 5):
+			t.Fatal("Timeout waiting for cids to be provided.")
+		}
+	}
+}
+
+func TestAnnouncementTimeout(t *testing.T) {
+	ctx := context.Background()
+	defer ctx.Done()
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	queue, err := q.NewQueue(ctx, "test", ds)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := mockContentRouting()
+
+	prov := NewProvider(ctx, queue, r, WithTimeout(1*time.Second))
 	prov.Run()
 
 	cids := cid.NewSet()
