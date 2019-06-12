@@ -240,7 +240,7 @@ func (s *Session) SetBaseTickDelay(baseTickDelay time.Duration) {
 // of this loop
 func (s *Session) run(ctx context.Context) {
 	s.tick = time.NewTimer(s.provSearchDelay)
-	s.rebroadcast = time.NewTimer(s.rebroadcastDelay.Get())
+	s.rebroadcast = time.NewTimer(s.rebroadcastDelay.NextWaitTime())
 	for {
 		select {
 		case blk := <-s.incoming:
@@ -342,7 +342,7 @@ func (s *Session) handleRebroadcast(ctx context.Context) {
 	// for new providers for blocks.
 	s.pm.FindMorePeers(ctx, s.randomLiveWant())
 
-	s.rebroadcast.Reset(s.rebroadcastDelay.Get())
+	s.rebroadcast.Reset(s.rebroadcastDelay.NextWaitTime())
 }
 
 func (s *Session) randomLiveWant() cid.Cid {
