@@ -333,14 +333,15 @@ func (s *Session) handleIdleTick(ctx context.Context) {
 }
 
 func (s *Session) handlePeriodicSearch(ctx context.Context) {
-
-	if len(s.liveWants) == 0 {
+	randomWant := s.randomLiveWant()
+	if !randomWant.Defined() {
 		return
 	}
 
 	// TODO: come up with a better strategy for determining when to search
 	// for new providers for blocks.
-	s.pm.FindMorePeers(ctx, s.randomLiveWant())
+	s.pm.FindMorePeers(ctx, randomWant)
+	s.wm.WantBlocks(ctx, []cid.Cid{randomWant}, nil, s.id)
 
 	s.periodicSearchTimer.Reset(s.periodicSearchDelay.NextWaitTime())
 }
