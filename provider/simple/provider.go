@@ -5,6 +5,7 @@ package simple
 
 import (
 	"context"
+	"time"
 
 	cid "github.com/ipfs/go-cid"
 	q "github.com/ipfs/go-ipfs-provider/queue"
@@ -14,7 +15,10 @@ import (
 
 var logP = logging.Logger("provider.simple")
 
-const provideOutgoingWorkerLimit = 8
+const (
+	provideOutgoingWorkerLimit = 8
+	provideTimeout             = 3 * time.Minute
+)
 
 // Provider announces blocks to the network
 type Provider struct {
@@ -60,8 +64,10 @@ func (p *Provider) handleAnnouncements() {
 				case <-p.ctx.Done():
 					return
 				case c := <-p.queue.Dequeue():
+					ctx, cancel := context.WithTimeout(p.ctx, provideTimeout)
+					defer cancel()
 					logP.Info("announce - start - ", c)
-					if err := p.contentRouting.Provide(p.ctx, c, true); err != nil {
+					if err := p.contentRouting.Provide(ctx, c, true); err != nil {
 						logP.Warningf("Unable to provide entry: %s, %s", c, err)
 					}
 					logP.Info("announce - end - ", c)
