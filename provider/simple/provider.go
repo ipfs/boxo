@@ -15,10 +15,6 @@ import (
 
 var logP = logging.Logger("provider.simple")
 
-const (
-	provideOutgoingWorkerLimit = 8
-)
-
 // Provider announces blocks to the network
 type Provider struct {
 	ctx context.Context
@@ -28,13 +24,25 @@ type Provider struct {
 	contentRouting routing.ContentRouting
 	// how long to wait for announce to complete before giving up
 	timeout time.Duration
+	// how many workers concurrently work through thhe queue
+	workerLimit int
 }
 
+// Option defines the functional option type that can be used to configure
+// provider instances
 type Option func(*Provider)
 
+// WithTimeout is an option to set a timeout on a provider
 func WithTimeout(timeout time.Duration) Option {
 	return func(p *Provider) {
 		p.timeout = timeout
+	}
+}
+
+// MaxWorkers is an option to set the max workers on a provider
+func MaxWorkers(count int) Option {
+	return func(p *Provider) {
+		p.workerLimit = count
 	}
 }
 
@@ -44,6 +52,7 @@ func NewProvider(ctx context.Context, queue *q.Queue, contentRouting routing.Con
 		ctx:            ctx,
 		queue:          queue,
 		contentRouting: contentRouting,
+		workerLimit:    8,
 	}
 
 	for _, option := range options {
@@ -72,7 +81,7 @@ func (p *Provider) Provide(root cid.Cid) error {
 
 // Handle all outgoing cids by providing (announcing) them
 func (p *Provider) handleAnnouncements() {
-	for workers := 0; workers < provideOutgoingWorkerLimit; workers++ {
+	for workers := 0; workers < p.workerLimit; workers++ {
 		go func() {
 			for p.ctx.Err() == nil {
 				select {
