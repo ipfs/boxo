@@ -1,6 +1,7 @@
 package message
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -8,8 +9,9 @@ import (
 	wantlist "github.com/ipfs/go-bitswap/wantlist"
 	blocks "github.com/ipfs/go-block-format"
 
-	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
+	pool "github.com/libp2p/go-buffer-pool"
+	msgio "github.com/libp2p/go-msgio"
 
 	"github.com/libp2p/go-libp2p-core/network"
 )
@@ -170,18 +172,22 @@ func (m *impl) AddBlock(b blocks.Block) {
 
 // FromNet generates a new BitswapMessage from incoming data on an io.Reader.
 func FromNet(r io.Reader) (BitSwapMessage, error) {
-	pbr := ggio.NewDelimitedReader(r, network.MessageSizeMax)
-	return FromPBReader(pbr)
+	reader := msgio.NewVarintReaderSize(r, network.MessageSizeMax)
+	return FromMsgReader(reader)
 }
 
 // FromPBReader generates a new Bitswap message from a gogo-protobuf reader
-func FromPBReader(pbr ggio.Reader) (BitSwapMessage, error) {
-	pb := new(pb.Message)
-	if err := pbr.ReadMsg(pb); err != nil {
+func FromMsgReader(r msgio.Reader) (BitSwapMessage, error) {
+	msg, err := r.ReadMsg()
+	if err != nil {
 		return nil, err
 	}
-
-	return newMessageFromProto(*pb)
+	var pb pb.Message
+	if err := pb.Unmarshal(msg); err != nil {
+		return nil, err
+	}
+	r.ReleaseMsg(msg)
+	return newMessageFromProto(pb)
 }
 
 func (m *impl) ToProtoV0() *pb.Message {
@@ -228,15 +234,25 @@ func (m *impl) ToProtoV1() *pb.Message {
 }
 
 func (m *impl) ToNetV0(w io.Writer) error {
-	pbw := ggio.NewDelimitedWriter(w)
-
-	return pbw.WriteMsg(m.ToProtoV0())
+	return write(w, m.ToProtoV0())
 }
 
 func (m *impl) ToNetV1(w io.Writer) error {
-	pbw := ggio.NewDelimitedWriter(w)
+	return write(w, m.ToProtoV1())
+}
 
-	return pbw.WriteMsg(m.ToProtoV1())
+func write(w io.Writer, m *pb.Message) error {
+	size := m.Size()
+	buf := pool.Get(size + binary.MaxVarintLen64)
+	defer pool.Put(buf)
+	n := binary.PutUvarint(buf, uint64(size))
+	if written, err := m.MarshalTo(buf[n:]); err != nil {
+		return err
+	} else {
+		n += written
+	}
+	_, err := w.Write(buf[:n])
+	return err
 }
 
 func (m *impl) Loggable() map[string]interface{} {

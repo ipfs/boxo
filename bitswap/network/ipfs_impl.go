@@ -10,7 +10,6 @@ import (
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	"github.com/libp2p/go-libp2p-core/helpers"
 
-	ggio "github.com/gogo/protobuf/io"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
 	"github.com/libp2p/go-libp2p-core/connmgr"
@@ -19,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	peerstore "github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/routing"
+	msgio "github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -178,9 +178,9 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 		return
 	}
 
-	reader := ggio.NewDelimitedReader(s, network.MessageSizeMax)
+	reader := msgio.NewVarintReaderSize(s, network.MessageSizeMax)
 	for {
-		received, err := bsmsg.FromPBReader(reader)
+		received, err := bsmsg.FromMsgReader(reader)
 		if err != nil {
 			if err != io.EOF {
 				s.Reset()
