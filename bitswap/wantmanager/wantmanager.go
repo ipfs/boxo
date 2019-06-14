@@ -70,12 +70,13 @@ func New(ctx context.Context, peerHandler PeerHandler) *WantManager {
 
 // WantBlocks adds the given cids to the wantlist, tracked by the given session.
 func (wm *WantManager) WantBlocks(ctx context.Context, ks []cid.Cid, peers []peer.ID, ses uint64) {
-	log.Infof("want blocks: %s", ks)
+	log.Debugf("[wantlist] want blocks; cids=%s, peers=%s, ses=%d", ks, peers, ses)
 	wm.addEntries(ctx, ks, peers, false, ses)
 }
 
 // CancelWants removes the given cids from the wantlist, tracked by the given session.
 func (wm *WantManager) CancelWants(ctx context.Context, ks []cid.Cid, peers []peer.ID, ses uint64) {
+	log.Debugf("[wantlist] unwant blocks; cids=%s, peers=%s, ses=%d", ks, peers, ses)
 	wm.addEntries(context.Background(), ks, peers, true, ses)
 }
 
