@@ -347,6 +347,9 @@ func (s *Session) handlePeriodicSearch(ctx context.Context) {
 }
 
 func (s *Session) randomLiveWant() cid.Cid {
+	if len(s.liveWants) == 0 {
+		return cid.Cid{}
+	}
 	i := rand.Intn(len(s.liveWants))
 	// picking a random live want
 	for k := range s.liveWants {
