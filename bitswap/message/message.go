@@ -182,11 +182,14 @@ func FromMsgReader(r msgio.Reader) (BitSwapMessage, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var pb pb.Message
-	if err := pb.Unmarshal(msg); err != nil {
+	err = pb.Unmarshal(msg)
+	r.ReleaseMsg(msg)
+	if err != nil {
 		return nil, err
 	}
-	r.ReleaseMsg(msg)
+
 	return newMessageFromProto(pb)
 }
 
@@ -243,15 +246,19 @@ func (m *impl) ToNetV1(w io.Writer) error {
 
 func write(w io.Writer, m *pb.Message) error {
 	size := m.Size()
+
 	buf := pool.Get(size + binary.MaxVarintLen64)
 	defer pool.Put(buf)
+
 	n := binary.PutUvarint(buf, uint64(size))
-	if written, err := m.MarshalTo(buf[n:]); err != nil {
+
+	written, err := m.MarshalTo(buf[n:])
+	if err != nil {
 		return err
-	} else {
-		n += written
 	}
-	_, err := w.Write(buf[:n])
+	n += written
+
+	_, err = w.Write(buf[:n])
 	return err
 }
 
