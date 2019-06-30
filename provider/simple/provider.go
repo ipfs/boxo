@@ -88,22 +88,26 @@ func (p *Provider) handleAnnouncements() {
 				case <-p.ctx.Done():
 					return
 				case c := <-p.queue.Dequeue():
-					var ctx context.Context
-					var cancel context.CancelFunc
-					if p.timeout > 0 {
-						ctx, cancel = context.WithTimeout(p.ctx, p.timeout)
-						defer cancel()
-					} else {
-						ctx = p.ctx
-					}
-
-					logP.Info("announce - start - ", c)
-					if err := p.contentRouting.Provide(ctx, c, true); err != nil {
-						logP.Warningf("Unable to provide entry: %s, %s", c, err)
-					}
-					logP.Info("announce - end - ", c)
+					p.doProvide(c)
 				}
 			}
 		}()
 	}
+}
+
+func (p *Provider) doProvide(c cid.Cid) {
+	ctx := p.ctx
+	if p.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, p.timeout)
+		defer cancel()
+	} else {
+		ctx = p.ctx
+	}
+
+	logP.Info("announce - start - ", c)
+	if err := p.contentRouting.Provide(ctx, c, true); err != nil {
+		logP.Warningf("Unable to provide entry: %s, %s", c, err)
+	}
+	logP.Info("announce - end - ", c)
 }
