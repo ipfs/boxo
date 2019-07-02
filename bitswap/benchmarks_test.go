@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"math/rand"
+	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -115,21 +117,27 @@ const stdBlockSize = 8000
 
 func BenchmarkDupsManyNodesRealWorldNetwork(b *testing.B) {
 	benchmarkLog = nil
+	benchmarkSeed, err := strconv.ParseInt(os.Getenv("BENCHMARK_SEED"), 10, 64)
+	var randomGen *rand.Rand = nil
+	if err == nil {
+		randomGen = rand.New(rand.NewSource(benchmarkSeed))
+	}
+
 	fastNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
 		mediumSpeed-fastSpeed, slowSpeed-fastSpeed,
-		0.0, 0.0, distribution, nil)
+		0.0, 0.0, distribution, randomGen)
 	fastNetworkDelay := delay.Delay(fastSpeed, fastNetworkDelayGenerator)
-	fastBandwidthGenerator := tn.VariableRateLimitGenerator(fastBandwidth, fastBandwidthDeviation, nil)
+	fastBandwidthGenerator := tn.VariableRateLimitGenerator(fastBandwidth, fastBandwidthDeviation, randomGen)
 	averageNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
 		mediumSpeed-fastSpeed, slowSpeed-fastSpeed,
-		0.3, 0.3, distribution, nil)
+		0.3, 0.3, distribution, randomGen)
 	averageNetworkDelay := delay.Delay(fastSpeed, averageNetworkDelayGenerator)
-	averageBandwidthGenerator := tn.VariableRateLimitGenerator(mediumBandwidth, mediumBandwidthDeviation, nil)
+	averageBandwidthGenerator := tn.VariableRateLimitGenerator(mediumBandwidth, mediumBandwidthDeviation, randomGen)
 	slowNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
 		mediumSpeed-fastSpeed, superSlowSpeed-fastSpeed,
-		0.3, 0.3, distribution, nil)
+		0.3, 0.3, distribution, randomGen)
 	slowNetworkDelay := delay.Delay(fastSpeed, slowNetworkDelayGenerator)
-	slowBandwidthGenerator := tn.VariableRateLimitGenerator(slowBandwidth, slowBandwidthDeviation, nil)
+	slowBandwidthGenerator := tn.VariableRateLimitGenerator(slowBandwidth, slowBandwidthDeviation, randomGen)
 
 	b.Run("200Nodes-AllToAll-BigBatch-FastNetwork", func(b *testing.B) {
 		subtestDistributeAndFetchRateLimited(b, 300, 200, fastNetworkDelay, fastBandwidthGenerator, stdBlockSize, allToAll, batchFetchAll)
@@ -145,30 +153,35 @@ func BenchmarkDupsManyNodesRealWorldNetwork(b *testing.B) {
 }
 
 func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, df distFunc, ff fetchFunc) {
-	start := time.Now()
-	net := tn.VirtualNetwork(mockrouting.NewServer(), d)
+	for i := 0; i < b.N; i++ {
+		start := time.Now()
+		net := tn.VirtualNetwork(mockrouting.NewServer(), d)
 
-	ig := testinstance.NewTestInstanceGenerator(net)
-	defer ig.Close()
+		ig := testinstance.NewTestInstanceGenerator(net)
+		defer ig.Close()
 
-	bg := blocksutil.NewBlockGenerator()
+		bg := blocksutil.NewBlockGenerator()
 
-	instances := ig.Instances(numnodes)
-	blocks := bg.Blocks(numblks)
-	runDistribution(b, instances, blocks, df, ff, start)
+		instances := ig.Instances(numnodes)
+		blocks := bg.Blocks(numblks)
+		runDistribution(b, instances, blocks, df, ff, start)
+	}
 }
 
 func subtestDistributeAndFetchRateLimited(b *testing.B, numnodes, numblks int, d delay.D, rateLimitGenerator tn.RateLimitGenerator, blockSize int64, df distFunc, ff fetchFunc) {
-	start := time.Now()
-	net := tn.RateLimitedVirtualNetwork(mockrouting.NewServer(), d, rateLimitGenerator)
+	for i := 0; i < b.N; i++ {
 
-	ig := testinstance.NewTestInstanceGenerator(net)
-	defer ig.Close()
+		start := time.Now()
+		net := tn.RateLimitedVirtualNetwork(mockrouting.NewServer(), d, rateLimitGenerator)
 
-	instances := ig.Instances(numnodes)
-	blocks := testutil.GenerateBlocksOfSize(numblks, blockSize)
+		ig := testinstance.NewTestInstanceGenerator(net)
+		defer ig.Close()
 
-	runDistribution(b, instances, blocks, df, ff, start)
+		instances := ig.Instances(numnodes)
+		blocks := testutil.GenerateBlocksOfSize(numblks, blockSize)
+
+		runDistribution(b, instances, blocks, df, ff, start)
+	}
 }
 
 func runDistribution(b *testing.B, instances []testinstance.Instance, blocks []blocks.Block, df distFunc, ff fetchFunc, start time.Time) {
@@ -201,9 +214,6 @@ func runDistribution(b *testing.B, instances []testinstance.Instance, blocks []b
 	}
 	benchmarkLog = append(benchmarkLog, stats)
 	b.Logf("send/recv: %d / %d", nst.MessagesSent, nst.MessagesRecvd)
-	//if st.DupBlksReceived != 0 {
-	//	b.Fatalf("got %d duplicate blocks!", st.DupBlksReceived)
-	//}
 }
 
 func allToAll(b *testing.B, provs []testinstance.Instance, blocks []blocks.Block) {
