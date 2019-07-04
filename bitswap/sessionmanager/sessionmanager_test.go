@@ -42,6 +42,7 @@ func (*fakePeerManager) FindMorePeers(context.Context, cid.Cid)  {}
 func (*fakePeerManager) GetOptimizedPeers() []bssd.OptimizedPeer { return nil }
 func (*fakePeerManager) RecordPeerRequests([]peer.ID, []cid.Cid) {}
 func (*fakePeerManager) RecordPeerResponse(peer.ID, cid.Cid)     {}
+func (*fakePeerManager) RecordCancel(c cid.Cid)                  {}
 
 type fakeRequestSplitter struct {
 }

@@ -6,13 +6,10 @@ import (
 	"github.com/ipfs/go-cid"
 )
 
-const (
-	timeoutDuration = 5 * time.Second
-)
-
 type requestData struct {
-	startedAt   time.Time
-	timeoutFunc *time.Timer
+	startedAt    time.Time
+	wasCancelled bool
+	timeoutFunc  *time.Timer
 }
 
 type latencyTracker struct {
@@ -25,11 +22,15 @@ func newLatencyTracker() *latencyTracker {
 
 type afterTimeoutFunc func(cid.Cid)
 
-func (lt *latencyTracker) SetupRequests(keys []cid.Cid, afterTimeout afterTimeoutFunc) {
+func (lt *latencyTracker) SetupRequests(keys []cid.Cid, timeoutDuration time.Duration, afterTimeout afterTimeoutFunc) {
 	startedAt := time.Now()
 	for _, k := range keys {
 		if _, ok := lt.requests[k]; !ok {
-			lt.requests[k] = &requestData{startedAt, time.AfterFunc(timeoutDuration, makeAfterTimeout(afterTimeout, k))}
+			lt.requests[k] = &requestData{
+				startedAt,
+				false,
+				time.AfterFunc(timeoutDuration, makeAfterTimeout(afterTimeout, k)),
+			}
 		}
 	}
 }
@@ -47,15 +48,24 @@ func (lt *latencyTracker) CheckDuration(key cid.Cid) (time.Duration, bool) {
 	return latency, ok
 }
 
-func (lt *latencyTracker) RecordResponse(key cid.Cid) (time.Duration, bool) {
+func (lt *latencyTracker) RemoveRequest(key cid.Cid) {
 	request, ok := lt.requests[key]
-	var latency time.Duration
 	if ok {
-		latency = time.Now().Sub(request.startedAt)
 		request.timeoutFunc.Stop()
 		delete(lt.requests, key)
 	}
-	return latency, ok
+}
+
+func (lt *latencyTracker) RecordCancel(key cid.Cid) {
+	request, ok := lt.requests[key]
+	if ok {
+		request.wasCancelled = true
+	}
+}
+
+func (lt *latencyTracker) WasCancelled(key cid.Cid) bool {
+	request, ok := lt.requests[key]
+	return ok && request.wasCancelled
 }
 
 func (lt *latencyTracker) Shutdown() {

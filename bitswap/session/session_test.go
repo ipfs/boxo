@@ -68,6 +68,7 @@ func (fpm *fakePeerManager) RecordPeerResponse(p peer.ID, c cid.Cid) {
 	fpm.peers = append(fpm.peers, p)
 	fpm.lk.Unlock()
 }
+func (fpm *fakePeerManager) RecordCancel(c cid.Cid) {}
 
 type fakeRequestSplitter struct {
 }

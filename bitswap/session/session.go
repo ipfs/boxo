@@ -15,7 +15,6 @@ import (
 	logging "github.com/ipfs/go-log"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	loggables "github.com/libp2p/go-libp2p-loggables"
-
 )
 
 const (
@@ -37,6 +36,7 @@ type PeerManager interface {
 	GetOptimizedPeers() []bssd.OptimizedPeer
 	RecordPeerRequests([]peer.ID, []cid.Cid)
 	RecordPeerResponse(peer.ID, cid.Cid)
+	RecordCancel(cid.Cid)
 }
 
 // RequestSplitter provides an interface for splitting
@@ -141,8 +141,8 @@ func (s *Session) ReceiveBlockFrom(from peer.ID, blk blocks.Block) {
 	case <-s.ctx.Done():
 	}
 	ks := []cid.Cid{blk.Cid()}
+	s.pm.RecordCancel(blk.Cid())
 	s.wm.CancelWants(s.ctx, ks, nil, s.id)
-
 }
 
 // UpdateReceiveCounters updates receive counters for a block,

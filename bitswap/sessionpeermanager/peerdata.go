@@ -25,8 +25,8 @@ func newPeerData() *peerData {
 }
 
 func (pd *peerData) AdjustLatency(k cid.Cid, hasFallbackLatency bool, fallbackLatency time.Duration) {
-
-	latency, hasLatency := pd.lt.RecordResponse(k)
+	latency, hasLatency := pd.lt.CheckDuration(k)
+	pd.lt.RemoveRequest(k)
 	if !hasLatency {
 		latency, hasLatency = fallbackLatency, hasFallbackLatency
 	}
