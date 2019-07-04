@@ -30,9 +30,9 @@ func (*fakeSession) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
 func (*fakeSession) GetBlocks(context.Context, []cid.Cid) (<-chan blocks.Block, error) {
 	return nil, nil
 }
-func (fs *fakeSession) InterestedIn(cid.Cid) bool              { return fs.interested }
-func (fs *fakeSession) ReceiveBlockFrom(peer.ID, blocks.Block) { fs.receivedBlock = true }
-func (fs *fakeSession) UpdateReceiveCounters(blocks.Block)     { fs.updateReceiveCounters = true }
+func (fs *fakeSession) InterestedIn(cid.Cid) bool                   { return fs.interested }
+func (fs *fakeSession) ReceiveBlockFrom(peer.ID, blocks.Block)      { fs.receivedBlock = true }
+func (fs *fakeSession) UpdateReceiveCounters(peer.ID, blocks.Block) { fs.updateReceiveCounters = true }
 
 type fakePeerManager struct {
 	id uint64
