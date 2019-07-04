@@ -147,9 +147,9 @@ func (s *Session) ReceiveBlockFrom(from peer.ID, blk blocks.Block) {
 
 // UpdateReceiveCounters updates receive counters for a block,
 // which may be a duplicate and adjusts the split factor based on that.
-func (s *Session) UpdateReceiveCounters(blk blocks.Block) {
+func (s *Session) UpdateReceiveCounters(from peer.ID, blk blocks.Block) {
 	select {
-	case s.incoming <- blkRecv{from: "", blk: blk, counterMessage: true}:
+	case s.incoming <- blkRecv{from: from, blk: blk, counterMessage: true}:
 	case <-s.ctx.Done():
 	}
 }
@@ -308,7 +308,6 @@ func (s *Session) handleCancel(keys []cid.Cid) {
 }
 
 func (s *Session) handleIdleTick(ctx context.Context) {
-
 	live := make([]cid.Cid, 0, len(s.liveWants))
 	now := time.Now()
 	for c := range s.liveWants {
@@ -415,6 +414,9 @@ func (s *Session) updateReceiveCounters(ctx context.Context, blk blkRecv) {
 	ks := blk.blk.Cid()
 	if s.pastWants.Has(ks) {
 		s.srs.RecordDuplicateBlock()
+		if blk.from != "" {
+			s.pm.RecordPeerResponse(blk.from, ks)
+		}
 	}
 }
 
