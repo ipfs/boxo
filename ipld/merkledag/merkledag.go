@@ -172,7 +172,7 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 		ng = &sesGetter{bserv.NewSession(ctx, ds.Blocks)}
 	}
 
-	set := make(map[string]int)
+	set := make(map[cid.Cid]int)
 
 	// Visit function returns true when:
 	// * The element is not in the set and we're not over depthLim
@@ -182,15 +182,14 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 	// depthLim = -1 means we only return true if the element is not in the
 	// set.
 	visit := func(c cid.Cid, depth int) bool {
-		key := string(c.Bytes())
-		oldDepth, ok := set[key]
+		oldDepth, ok := set[c]
 
 		if (ok && depthLim < 0) || (depthLim >= 0 && depth > depthLim) {
 			return false
 		}
 
 		if !ok || oldDepth > depth {
-			set[key] = depth
+			set[c] = depth
 			return true
 		}
 		return false
@@ -198,7 +197,7 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 
 	v, _ := ctx.Value(progressContextKey).(*ProgressTracker)
 	if v == nil {
-		return EnumerateChildrenAsyncDepth(ctx, GetLinksDirect(ng), root, 0, visit)
+		return WalkParallelDepth(ctx, GetLinksDirect(ng), root, 0, visit)
 	}
 
 	visitProgress := func(c cid.Cid, depth int) bool {
@@ -208,7 +207,7 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 		}
 		return false
 	}
-	return EnumerateChildrenAsyncDepth(ctx, GetLinksDirect(ng), root, 0, visitProgress)
+	return WalkParallelDepth(ctx, GetLinksDirect(ng), root, 0, visitProgress)
 }
 
 // GetMany gets many nodes from the DAG at once.
@@ -282,33 +281,31 @@ func GetLinksWithDAG(ng ipld.NodeGetter) GetLinks {
 	}
 }
 
-// EnumerateChildren will walk the dag below the given root node and add all
-// unseen children to the passed in set.
-// TODO: parallelize to avoid disk latency perf hits?
-func EnumerateChildren(ctx context.Context, getLinks GetLinks, root cid.Cid, visit func(cid.Cid) bool) error {
+// WalkGraph will walk the dag in order (depth first) starting at the given root.
+func Walk(ctx context.Context, getLinks GetLinks, root cid.Cid, visit func(cid.Cid) bool) error {
 	visitDepth := func(c cid.Cid, depth int) bool {
 		return visit(c)
 	}
 
-	return EnumerateChildrenDepth(ctx, getLinks, root, 0, visitDepth)
+	return WalkDepth(ctx, getLinks, root, 0, visitDepth)
 }
 
-// EnumerateChildrenDepth walks the dag below the given root and passes the
-// current depth to a given visit function. The visit function can be used to
-// limit DAG exploration.
-func EnumerateChildrenDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, depth int, visit func(cid.Cid, int) bool) error {
+// WalkDepth walks the dag starting at the given root and passes the current
+// depth to a given visit function. The visit function can be used to limit DAG
+// exploration.
+func WalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, depth int, visit func(cid.Cid, int) bool) error {
+	if !visit(root, depth) {
+		return nil
+	}
+
 	links, err := getLinks(ctx, root)
 	if err != nil {
 		return err
 	}
 
 	for _, lnk := range links {
-		c := lnk.Cid
-		if visit(c, depth+1) {
-			err = EnumerateChildrenDepth(ctx, getLinks, c, depth+1, visit)
-			if err != nil {
-				return err
-			}
+		if err := WalkDepth(ctx, getLinks, lnk.Cid, depth+1, visit); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -344,23 +341,23 @@ func (p *ProgressTracker) Value() int {
 // 'fetchNodes' will start at a time
 var FetchGraphConcurrency = 32
 
-// EnumerateChildrenAsync is equivalent to EnumerateChildren *except* that it
-// fetches children in parallel.
+// WalkParallel is equivalent to Walk *except* that it explores multiple paths
+// in parallel.
 //
 // NOTE: It *does not* make multiple concurrent calls to the passed `visit` function.
-func EnumerateChildrenAsync(ctx context.Context, getLinks GetLinks, c cid.Cid, visit func(cid.Cid) bool) error {
+func WalkParallel(ctx context.Context, getLinks GetLinks, c cid.Cid, visit func(cid.Cid) bool) error {
 	visitDepth := func(c cid.Cid, depth int) bool {
 		return visit(c)
 	}
 
-	return EnumerateChildrenAsyncDepth(ctx, getLinks, c, 0, visitDepth)
+	return WalkParallelDepth(ctx, getLinks, c, 0, visitDepth)
 }
 
-// EnumerateChildrenAsyncDepth is equivalent to EnumerateChildrenDepth *except*
-// that it fetches children in parallel (down to a maximum depth in the graph).
+// WalkParallelDepth is equivalent to WalkDepth *except* that it fetches
+// children in parallel.
 //
 // NOTE: It *does not* make multiple concurrent calls to the passed `visit` function.
-func EnumerateChildrenAsyncDepth(ctx context.Context, getLinks GetLinks, c cid.Cid, startDepth int, visit func(cid.Cid, int) bool) error {
+func WalkParallelDepth(ctx context.Context, getLinks GetLinks, c cid.Cid, startDepth int, visit func(cid.Cid, int) bool) error {
 	type cidDepth struct {
 		cid   cid.Cid
 		depth int
