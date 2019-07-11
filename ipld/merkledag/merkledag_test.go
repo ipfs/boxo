@@ -29,7 +29,7 @@ import (
 
 // makeDepthTestingGraph makes a small DAG with two levels. The level-two
 // nodes are both children of the root and of one of the level 1 nodes.
-// This is meant to test the EnumerateChildren*Depth functions.
+// This is meant to test the Walk*Depth functions.
 func makeDepthTestingGraph(t *testing.T, ds ipld.DAGService) ipld.Node {
 	root := NodeWithData(nil)
 	l11 := NodeWithData([]byte("leve1_node1"))
@@ -334,7 +334,7 @@ func TestFetchGraph(t *testing.T) {
 
 	offlineDS := NewDAGService(bs)
 
-	err = EnumerateChildren(context.Background(), offlineDS.GetLinks, root.Cid(), func(_ cid.Cid) bool { return true })
+	err = Walk(context.Background(), offlineDS.GetLinks, root.Cid(), func(_ cid.Cid) bool { return true })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,11 +347,11 @@ func TestFetchGraphWithDepthLimit(t *testing.T) {
 	}
 
 	tests := []testcase{
-		testcase{1, 3},
-		testcase{0, 0},
-		testcase{-1, 5},
-		testcase{2, 5},
-		testcase{3, 5},
+		testcase{1, 4},
+		testcase{0, 1},
+		testcase{-1, 6},
+		testcase{2, 6},
+		testcase{3, 6},
 	}
 
 	testF := func(t *testing.T, tc testcase) {
@@ -383,7 +383,7 @@ func TestFetchGraphWithDepthLimit(t *testing.T) {
 
 		}
 
-		err = EnumerateChildrenDepth(context.Background(), offlineDS.GetLinks, root.Cid(), 0, visitF)
+		err = WalkDepth(context.Background(), offlineDS.GetLinks, root.Cid(), 0, visitF)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -400,7 +400,7 @@ func TestFetchGraphWithDepthLimit(t *testing.T) {
 	}
 }
 
-func TestEnumerateChildren(t *testing.T) {
+func TestWalk(t *testing.T) {
 	bsi := bstest.Mocks(1)
 	ds := NewDAGService(bsi[0])
 
@@ -409,7 +409,7 @@ func TestEnumerateChildren(t *testing.T) {
 
 	set := cid.NewSet()
 
-	err := EnumerateChildren(context.Background(), ds.GetLinks, root.Cid(), set.Visit)
+	err := Walk(context.Background(), ds.GetLinks, root.Cid(), set.Visit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -736,7 +736,7 @@ func TestEnumerateAsyncFailsNotFound(t *testing.T) {
 	}
 
 	cset := cid.NewSet()
-	err = EnumerateChildrenAsync(ctx, GetLinksDirect(ds), parent.Cid(), cset.Visit)
+	err = WalkParallel(ctx, GetLinksDirect(ds), parent.Cid(), cset.Visit)
 	if err == nil {
 		t.Fatal("this should have failed")
 	}
