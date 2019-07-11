@@ -172,7 +172,7 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 		ng = &sesGetter{bserv.NewSession(ctx, ds.Blocks)}
 	}
 
-	set := make(map[string]int)
+	set := make(map[cid.Cid]int)
 
 	// Visit function returns true when:
 	// * The element is not in the set and we're not over depthLim
@@ -182,15 +182,14 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 	// depthLim = -1 means we only return true if the element is not in the
 	// set.
 	visit := func(c cid.Cid, depth int) bool {
-		key := string(c.Bytes())
-		oldDepth, ok := set[key]
+		oldDepth, ok := set[c]
 
 		if (ok && depthLim < 0) || (depthLim >= 0 && depth > depthLim) {
 			return false
 		}
 
 		if !ok || oldDepth > depth {
-			set[key] = depth
+			set[c] = depth
 			return true
 		}
 		return false
