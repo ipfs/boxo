@@ -339,7 +339,7 @@ func (ds *Shard) EnumLinksAsync(ctx context.Context) <-chan format.LinkResult {
 		defer cancel()
 		getLinks := makeAsyncTrieGetLinks(ds.dserv, linkResults)
 		cset := cid.NewSet()
-		err := dag.EnumerateChildrenAsync(ctx, getLinks, ds.cid, cset.Visit)
+		err := dag.WalkParallel(ctx, getLinks, ds.cid, cset.Visit)
 		if err != nil {
 			emitResult(ctx, linkResults, format.LinkResult{Link: nil, Err: err})
 		}
