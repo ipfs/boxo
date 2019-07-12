@@ -213,7 +213,9 @@ func pinSet(ctx context.Context, pinning Pinner, dag ipld.DAGService, onlyRoots 
 		}
 
 		for _, key := range pinning.RecursiveKeys() {
-			if !onlyRoots {
+			if onlyRoots {
+				set.Visitor(ctx)(key)
+			} else {
 				err := merkledag.Walk(ctx, merkledag.GetLinksWithDAG(dag), key, set.Visitor(ctx))
 				if err != nil {
 					logR.Errorf("reprovide indirect pins: %s", err)
