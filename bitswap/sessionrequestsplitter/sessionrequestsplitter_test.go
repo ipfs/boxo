@@ -7,14 +7,16 @@ import (
 	"github.com/ipfs/go-bitswap/testutil"
 )
 
+func quadEaseOut(t float64) float64 { return t * t }
+
 func TestSplittingRequests(t *testing.T) {
 	ctx := context.Background()
-	peers := testutil.GeneratePeers(10)
+	optimizedPeers := testutil.GenerateOptimizedPeers(10, 5, quadEaseOut)
 	keys := testutil.GenerateCids(6)
 
 	srs := New(ctx)
 
-	partialRequests := srs.SplitRequest(peers, keys)
+	partialRequests := srs.SplitRequest(optimizedPeers, keys)
 	if len(partialRequests) != 2 {
 		t.Fatal("Did not generate right number of partial requests")
 	}
@@ -27,12 +29,12 @@ func TestSplittingRequests(t *testing.T) {
 
 func TestSplittingRequestsTooFewKeys(t *testing.T) {
 	ctx := context.Background()
-	peers := testutil.GeneratePeers(10)
+	optimizedPeers := testutil.GenerateOptimizedPeers(10, 5, quadEaseOut)
 	keys := testutil.GenerateCids(1)
 
 	srs := New(ctx)
 
-	partialRequests := srs.SplitRequest(peers, keys)
+	partialRequests := srs.SplitRequest(optimizedPeers, keys)
 	if len(partialRequests) != 1 {
 		t.Fatal("Should only generate as many requests as keys")
 	}
@@ -45,12 +47,12 @@ func TestSplittingRequestsTooFewKeys(t *testing.T) {
 
 func TestSplittingRequestsTooFewPeers(t *testing.T) {
 	ctx := context.Background()
-	peers := testutil.GeneratePeers(1)
+	optimizedPeers := testutil.GenerateOptimizedPeers(1, 1, quadEaseOut)
 	keys := testutil.GenerateCids(6)
 
 	srs := New(ctx)
 
-	partialRequests := srs.SplitRequest(peers, keys)
+	partialRequests := srs.SplitRequest(optimizedPeers, keys)
 	if len(partialRequests) != 1 {
 		t.Fatal("Should only generate as many requests as peers")
 	}
@@ -63,7 +65,7 @@ func TestSplittingRequestsTooFewPeers(t *testing.T) {
 
 func TestSplittingRequestsIncreasingSplitDueToDupes(t *testing.T) {
 	ctx := context.Background()
-	peers := testutil.GeneratePeers(maxSplit)
+	optimizedPeers := testutil.GenerateOptimizedPeers(maxSplit, maxSplit, quadEaseOut)
 	keys := testutil.GenerateCids(maxSplit)
 
 	srs := New(ctx)
@@ -72,7 +74,7 @@ func TestSplittingRequestsIncreasingSplitDueToDupes(t *testing.T) {
 		srs.RecordDuplicateBlock()
 	}
 
-	partialRequests := srs.SplitRequest(peers, keys)
+	partialRequests := srs.SplitRequest(optimizedPeers, keys)
 	if len(partialRequests) != maxSplit {
 		t.Fatal("Did not adjust split up as duplicates came in")
 	}
@@ -80,7 +82,7 @@ func TestSplittingRequestsIncreasingSplitDueToDupes(t *testing.T) {
 
 func TestSplittingRequestsDecreasingSplitDueToNoDupes(t *testing.T) {
 	ctx := context.Background()
-	peers := testutil.GeneratePeers(maxSplit)
+	optimizedPeers := testutil.GenerateOptimizedPeers(maxSplit, maxSplit, quadEaseOut)
 	keys := testutil.GenerateCids(maxSplit)
 
 	srs := New(ctx)
@@ -89,7 +91,7 @@ func TestSplittingRequestsDecreasingSplitDueToNoDupes(t *testing.T) {
 		srs.RecordUniqueBlock()
 	}
 
-	partialRequests := srs.SplitRequest(peers, keys)
+	partialRequests := srs.SplitRequest(optimizedPeers, keys)
 	if len(partialRequests) != 1 {
 		t.Fatal("Did not adjust split down as unique blocks came in")
 	}

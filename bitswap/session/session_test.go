@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	bssrs "github.com/ipfs/go-bitswap/sessionrequestsplitter"
+	bssd "github.com/ipfs/go-bitswap/sessiondata"
 	"github.com/ipfs/go-bitswap/testutil"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -52,10 +52,14 @@ func (fpm *fakePeerManager) FindMorePeers(ctx context.Context, k cid.Cid) {
 	}
 }
 
-func (fpm *fakePeerManager) GetOptimizedPeers() []peer.ID {
+func (fpm *fakePeerManager) GetOptimizedPeers() []bssd.OptimizedPeer {
 	fpm.lk.Lock()
 	defer fpm.lk.Unlock()
-	return fpm.peers
+	optimizedPeers := make([]bssd.OptimizedPeer, 0, len(fpm.peers))
+	for _, peer := range fpm.peers {
+		optimizedPeers = append(optimizedPeers, bssd.OptimizedPeer{Peer: peer, OptimizationRating: 1.0})
+	}
+	return optimizedPeers
 }
 
 func (fpm *fakePeerManager) RecordPeerRequests([]peer.ID, []cid.Cid) {}
@@ -64,12 +68,17 @@ func (fpm *fakePeerManager) RecordPeerResponse(p peer.ID, c cid.Cid) {
 	fpm.peers = append(fpm.peers, p)
 	fpm.lk.Unlock()
 }
+func (fpm *fakePeerManager) RecordCancel(c cid.Cid) {}
 
 type fakeRequestSplitter struct {
 }
 
-func (frs *fakeRequestSplitter) SplitRequest(peers []peer.ID, keys []cid.Cid) []*bssrs.PartialRequest {
-	return []*bssrs.PartialRequest{&bssrs.PartialRequest{Peers: peers, Keys: keys}}
+func (frs *fakeRequestSplitter) SplitRequest(optimizedPeers []bssd.OptimizedPeer, keys []cid.Cid) []bssd.PartialRequest {
+	peers := make([]peer.ID, len(optimizedPeers))
+	for i, optimizedPeer := range optimizedPeers {
+		peers[i] = optimizedPeer.Peer
+	}
+	return []bssd.PartialRequest{bssd.PartialRequest{Peers: peers, Keys: keys}}
 }
 
 func (frs *fakeRequestSplitter) RecordDuplicateBlock() {}

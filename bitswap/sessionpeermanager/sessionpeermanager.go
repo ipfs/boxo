@@ -4,16 +4,20 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sort"
+	"time"
+
+	bssd "github.com/ipfs/go-bitswap/sessiondata"
 
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
 const (
-	maxOptimizedPeers   = 32
-	reservePeers        = 2
-	unoptimizedTagValue = 5  // tag value for "unoptimized" session peers.
-	optimizedTagValue   = 10 // tag value for "optimized" session peers.
+	defaultTimeoutDuration = 5 * time.Second
+	maxOptimizedPeers      = 32
+	unoptimizedTagValue    = 5  // tag value for "unoptimized" session peers.
+	optimizedTagValue      = 10 // tag value for "optimized" session peers.
 )
 
 // PeerTagger is an interface for tagging peers with metadata
@@ -43,20 +47,23 @@ type SessionPeerManager struct {
 	peerMessages chan peerMessage
 
 	// do not touch outside of run loop
-	activePeers         map[peer.ID]bool
+	activePeers         map[peer.ID]*peerData
 	unoptimizedPeersArr []peer.ID
 	optimizedPeersArr   []peer.ID
+	broadcastLatency    *latencyTracker
+	timeoutDuration     time.Duration
 }
 
 // New creates a new SessionPeerManager
 func New(ctx context.Context, id uint64, tagger PeerTagger, providerFinder PeerProviderFinder) *SessionPeerManager {
 	spm := &SessionPeerManager{
-		id:             id,
-		ctx:            ctx,
-		tagger:         tagger,
-		providerFinder: providerFinder,
-		peerMessages:   make(chan peerMessage, 16),
-		activePeers:    make(map[peer.ID]bool),
+		ctx:              ctx,
+		tagger:           tagger,
+		providerFinder:   providerFinder,
+		peerMessages:     make(chan peerMessage, 16),
+		activePeers:      make(map[peer.ID]*peerData),
+		broadcastLatency: newLatencyTracker(),
+		timeoutDuration:  defaultTimeoutDuration,
 	}
 
 	spm.tag = fmt.Sprint("bs-ses-", id)
@@ -69,27 +76,39 @@ func New(ctx context.Context, id uint64, tagger PeerTagger, providerFinder PeerP
 // the list of peers if it wasn't already added
 func (spm *SessionPeerManager) RecordPeerResponse(p peer.ID, k cid.Cid) {
 
-	// at the moment, we're just adding peers here
-	// in the future, we'll actually use this to record metrics
 	select {
-	case spm.peerMessages <- &peerResponseMessage{p}:
+	case spm.peerMessages <- &peerResponseMessage{p, k}:
 	case <-spm.ctx.Done():
 	}
 }
 
-// RecordPeerRequests records that a given set of peers requested the given cids
-func (spm *SessionPeerManager) RecordPeerRequests(p []peer.ID, ks []cid.Cid) {
-	// at the moment, we're not doing anything here
-	// soon we'll use this to track latency by peer
+// RecordCancel records the fact that cancellations were sent to peers,
+// so if not blocks come in, don't let it affect peers timeout
+func (spm *SessionPeerManager) RecordCancel(k cid.Cid) {
+	// at the moment, we're just adding peers here
+	// in the future, we'll actually use this to record metrics
+	select {
+	case spm.peerMessages <- &cancelMessage{k}:
+	case <-spm.ctx.Done():
+	}
 }
 
-// GetOptimizedPeers returns the best peers available for a session
-func (spm *SessionPeerManager) GetOptimizedPeers() []peer.ID {
+// RecordPeerRequests records that a given set of peers requested the given cids.
+func (spm *SessionPeerManager) RecordPeerRequests(p []peer.ID, ks []cid.Cid) {
+	select {
+	case spm.peerMessages <- &peerRequestMessage{p, ks}:
+	case <-spm.ctx.Done():
+	}
+}
+
+// GetOptimizedPeers returns the best peers available for a session, along with
+// a rating for how good they are, in comparison to the best peer.
+func (spm *SessionPeerManager) GetOptimizedPeers() []bssd.OptimizedPeer {
 	// right now this just returns all peers, but soon we might return peers
 	// ordered by optimization, or only a subset
-	resp := make(chan []peer.ID, 1)
+	resp := make(chan []bssd.OptimizedPeer, 1)
 	select {
-	case spm.peerMessages <- &peerReqMessage{resp}:
+	case spm.peerMessages <- &getPeersMessage{resp}:
 	case <-spm.ctx.Done():
 		return nil
 	}
@@ -117,6 +136,15 @@ func (spm *SessionPeerManager) FindMorePeers(ctx context.Context, c cid.Cid) {
 	}(c)
 }
 
+// SetTimeoutDuration changes the length of time used to timeout recording of
+// requests
+func (spm *SessionPeerManager) SetTimeoutDuration(timeoutDuration time.Duration) {
+	select {
+	case spm.peerMessages <- &setTimeoutMessage{timeoutDuration}:
+	case <-spm.ctx.Done():
+	}
+}
+
 func (spm *SessionPeerManager) run(ctx context.Context) {
 	for {
 		select {
@@ -129,18 +157,26 @@ func (spm *SessionPeerManager) run(ctx context.Context) {
 	}
 }
 
-func (spm *SessionPeerManager) tagPeer(p peer.ID, value int) {
+func (spm *SessionPeerManager) tagPeer(p peer.ID, data *peerData) {
+	var value int
+	if data.hasLatency {
+		value = optimizedTagValue
+	} else {
+		value = unoptimizedTagValue
+	}
 	spm.tagger.TagPeer(p, spm.tag, value)
 }
 
-func (spm *SessionPeerManager) insertOptimizedPeer(p peer.ID) {
-	if len(spm.optimizedPeersArr) >= (maxOptimizedPeers - reservePeers) {
-		tailPeer := spm.optimizedPeersArr[len(spm.optimizedPeersArr)-1]
-		spm.optimizedPeersArr = spm.optimizedPeersArr[:len(spm.optimizedPeersArr)-1]
-		spm.unoptimizedPeersArr = append(spm.unoptimizedPeersArr, tailPeer)
+func (spm *SessionPeerManager) insertPeer(p peer.ID, data *peerData) {
+	if data.hasLatency {
+		insertPos := sort.Search(len(spm.optimizedPeersArr), func(i int) bool {
+			return spm.activePeers[spm.optimizedPeersArr[i]].latency > data.latency
+		})
+		spm.optimizedPeersArr = append(spm.optimizedPeersArr[:insertPos],
+			append([]peer.ID{p}, spm.optimizedPeersArr[insertPos:]...)...)
+	} else {
+		spm.unoptimizedPeersArr = append(spm.unoptimizedPeersArr, p)
 	}
-
-	spm.optimizedPeersArr = append([]peer.ID{p}, spm.optimizedPeersArr...)
 }
 
 func (spm *SessionPeerManager) removeOptimizedPeer(p peer.ID) {
@@ -162,6 +198,27 @@ func (spm *SessionPeerManager) removeUnoptimizedPeer(p peer.ID) {
 	}
 }
 
+func (spm *SessionPeerManager) recordResponse(p peer.ID, k cid.Cid) {
+	data, ok := spm.activePeers[p]
+	wasOptimized := ok && data.hasLatency
+	if wasOptimized {
+		spm.removeOptimizedPeer(p)
+	} else {
+		if ok {
+			spm.removeUnoptimizedPeer(p)
+		} else {
+			data = newPeerData()
+			spm.activePeers[p] = data
+		}
+	}
+	fallbackLatency, hasFallbackLatency := spm.broadcastLatency.CheckDuration(k)
+	data.AdjustLatency(k, hasFallbackLatency, fallbackLatency)
+	if !ok || wasOptimized != data.hasLatency {
+		spm.tagPeer(p, data)
+	}
+	spm.insertPeer(p, data)
+}
+
 type peerFoundMessage struct {
 	p peer.ID
 }
@@ -169,53 +226,125 @@ type peerFoundMessage struct {
 func (pfm *peerFoundMessage) handle(spm *SessionPeerManager) {
 	p := pfm.p
 	if _, ok := spm.activePeers[p]; !ok {
-		spm.activePeers[p] = false
-		spm.unoptimizedPeersArr = append(spm.unoptimizedPeersArr, p)
-		spm.tagPeer(p, unoptimizedTagValue)
+		spm.activePeers[p] = newPeerData()
+		spm.insertPeer(p, spm.activePeers[p])
+		spm.tagPeer(p, spm.activePeers[p])
 	}
 }
 
 type peerResponseMessage struct {
 	p peer.ID
+	k cid.Cid
 }
 
 func (prm *peerResponseMessage) handle(spm *SessionPeerManager) {
-	p := prm.p
-	isOptimized, ok := spm.activePeers[p]
-	if isOptimized {
-		spm.removeOptimizedPeer(p)
-	} else {
-		spm.activePeers[p] = true
-		spm.tagPeer(p, optimizedTagValue)
+	spm.recordResponse(prm.p, prm.k)
+}
 
-		// transition from unoptimized.
-		if ok {
-			spm.removeUnoptimizedPeer(p)
+type peerRequestMessage struct {
+	peers []peer.ID
+	keys  []cid.Cid
+}
+
+func (spm *SessionPeerManager) makeTimeout(p peer.ID) afterTimeoutFunc {
+	return func(k cid.Cid) {
+		select {
+		case spm.peerMessages <- &peerTimeoutMessage{p, k}:
+		case <-spm.ctx.Done():
 		}
 	}
-	spm.insertOptimizedPeer(p)
 }
 
-type peerReqMessage struct {
-	resp chan<- []peer.ID
+func (prm *peerRequestMessage) handle(spm *SessionPeerManager) {
+	if prm.peers == nil {
+		spm.broadcastLatency.SetupRequests(prm.keys, spm.timeoutDuration, func(k cid.Cid) {
+			select {
+			case spm.peerMessages <- &broadcastTimeoutMessage{k}:
+			case <-spm.ctx.Done():
+			}
+		})
+	} else {
+		for _, p := range prm.peers {
+			if data, ok := spm.activePeers[p]; ok {
+				data.lt.SetupRequests(prm.keys, spm.timeoutDuration, spm.makeTimeout(p))
+			}
+		}
+	}
 }
 
-func (prm *peerReqMessage) handle(spm *SessionPeerManager) {
+type getPeersMessage struct {
+	resp chan<- []bssd.OptimizedPeer
+}
+
+func (prm *getPeersMessage) handle(spm *SessionPeerManager) {
 	randomOrder := rand.Perm(len(spm.unoptimizedPeersArr))
 	maxPeers := len(spm.unoptimizedPeersArr) + len(spm.optimizedPeersArr)
 	if maxPeers > maxOptimizedPeers {
 		maxPeers = maxOptimizedPeers
 	}
-
-	extraPeers := make([]peer.ID, maxPeers-len(spm.optimizedPeersArr))
-	for i := range extraPeers {
-		extraPeers[i] = spm.unoptimizedPeersArr[randomOrder[i]]
+	var bestPeerLatency float64
+	if len(spm.optimizedPeersArr) > 0 {
+		bestPeerLatency = float64(spm.activePeers[spm.optimizedPeersArr[0]].latency)
+	} else {
+		bestPeerLatency = 0
 	}
-	prm.resp <- append(spm.optimizedPeersArr, extraPeers...)
+	optimizedPeers := make([]bssd.OptimizedPeer, 0, maxPeers)
+	for i := 0; i < maxPeers; i++ {
+		if i < len(spm.optimizedPeersArr) {
+			p := spm.optimizedPeersArr[i]
+			optimizedPeers = append(optimizedPeers, bssd.OptimizedPeer{
+				Peer:               p,
+				OptimizationRating: bestPeerLatency / float64(spm.activePeers[p].latency),
+			})
+		} else {
+			p := spm.unoptimizedPeersArr[randomOrder[i-len(spm.optimizedPeersArr)]]
+			optimizedPeers = append(optimizedPeers, bssd.OptimizedPeer{Peer: p, OptimizationRating: 0.0})
+		}
+	}
+	prm.resp <- optimizedPeers
+}
+
+type cancelMessage struct {
+	k cid.Cid
+}
+
+func (cm *cancelMessage) handle(spm *SessionPeerManager) {
+	for _, data := range spm.activePeers {
+		data.lt.RecordCancel(cm.k)
+	}
 }
 
 func (spm *SessionPeerManager) handleShutdown() {
-	for p := range spm.activePeers {
+	for p, data := range spm.activePeers {
 		spm.tagger.UntagPeer(p, spm.tag)
+		data.lt.Shutdown()
 	}
+}
+
+type peerTimeoutMessage struct {
+	p peer.ID
+	k cid.Cid
+}
+
+func (ptm *peerTimeoutMessage) handle(spm *SessionPeerManager) {
+	data, ok := spm.activePeers[ptm.p]
+	if !ok || !data.lt.WasCancelled(ptm.k) {
+		spm.recordResponse(ptm.p, ptm.k)
+	}
+}
+
+type broadcastTimeoutMessage struct {
+	k cid.Cid
+}
+
+func (btm *broadcastTimeoutMessage) handle(spm *SessionPeerManager) {
+	spm.broadcastLatency.RemoveRequest(btm.k)
+}
+
+type setTimeoutMessage struct {
+	timeoutDuration time.Duration
+}
+
+func (stm *setTimeoutMessage) handle(spm *SessionPeerManager) {
+	spm.timeoutDuration = stm.timeoutDuration
 }

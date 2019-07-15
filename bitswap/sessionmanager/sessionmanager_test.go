@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	bssrs "github.com/ipfs/go-bitswap/sessionrequestsplitter"
 	delay "github.com/ipfs/go-ipfs-delay"
 
 	bssession "github.com/ipfs/go-bitswap/session"
+	bssd "github.com/ipfs/go-bitswap/sessiondata"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -30,23 +30,24 @@ func (*fakeSession) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
 func (*fakeSession) GetBlocks(context.Context, []cid.Cid) (<-chan blocks.Block, error) {
 	return nil, nil
 }
-func (fs *fakeSession) InterestedIn(cid.Cid) bool              { return fs.interested }
-func (fs *fakeSession) ReceiveBlockFrom(peer.ID, blocks.Block) { fs.receivedBlock = true }
-func (fs *fakeSession) UpdateReceiveCounters(blocks.Block)     { fs.updateReceiveCounters = true }
+func (fs *fakeSession) InterestedIn(cid.Cid) bool                   { return fs.interested }
+func (fs *fakeSession) ReceiveBlockFrom(peer.ID, blocks.Block)      { fs.receivedBlock = true }
+func (fs *fakeSession) UpdateReceiveCounters(peer.ID, blocks.Block) { fs.updateReceiveCounters = true }
 
 type fakePeerManager struct {
 	id uint64
 }
 
 func (*fakePeerManager) FindMorePeers(context.Context, cid.Cid)  {}
-func (*fakePeerManager) GetOptimizedPeers() []peer.ID            { return nil }
+func (*fakePeerManager) GetOptimizedPeers() []bssd.OptimizedPeer { return nil }
 func (*fakePeerManager) RecordPeerRequests([]peer.ID, []cid.Cid) {}
 func (*fakePeerManager) RecordPeerResponse(peer.ID, cid.Cid)     {}
+func (*fakePeerManager) RecordCancel(c cid.Cid)                  {}
 
 type fakeRequestSplitter struct {
 }
 
-func (frs *fakeRequestSplitter) SplitRequest(peers []peer.ID, keys []cid.Cid) []*bssrs.PartialRequest {
+func (frs *fakeRequestSplitter) SplitRequest(optimizedPeers []bssd.OptimizedPeer, keys []cid.Cid) []bssd.PartialRequest {
 	return nil
 }
 func (frs *fakeRequestSplitter) RecordDuplicateBlock() {}
