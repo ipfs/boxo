@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	pb "github.com/ipfs/go-ipfs/filestore/pb"
+	pb "github.com/ipfs/go-filestore/pb"
 
 	proto "github.com/gogo/protobuf/proto"
 	blocks "github.com/ipfs/go-block-format"
