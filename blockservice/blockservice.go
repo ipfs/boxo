@@ -148,8 +148,10 @@ func (s *blockService) AddBlock(o blocks.Block) error {
 
 	log.Event(context.TODO(), "BlockService.BlockAdded", c)
 
-	if err := s.exchange.HasBlock(o); err != nil {
-		log.Errorf("HasBlock: %s", err.Error())
+	if s.exchange != nil {
+		if err := s.exchange.HasBlock(o); err != nil {
+			log.Errorf("HasBlock: %s", err.Error())
+		}
 	}
 
 	return nil
@@ -184,10 +186,12 @@ func (s *blockService) AddBlocks(bs []blocks.Block) error {
 		return err
 	}
 
-	for _, o := range toput {
-		log.Event(context.TODO(), "BlockService.BlockAdded", o.Cid())
-		if err := s.exchange.HasBlock(o); err != nil {
-			log.Errorf("HasBlock: %s", err.Error())
+	if s.exchange != nil {
+		for _, o := range toput {
+			log.Event(context.TODO(), "BlockService.BlockAdded", o.Cid())
+			if err := s.exchange.HasBlock(o); err != nil {
+				log.Errorf("HasBlock: %s", err.Error())
+			}
 		}
 	}
 	return nil
@@ -250,7 +254,12 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget fun
 // the returned channel.
 // NB: No guarantees are made about order.
 func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
-	return getBlocks(ctx, ks, s.blockstore, s.getExchange) // hash security
+	var f func() exchange.Fetcher
+	if s.exchange != nil {
+		f = s.getExchange
+	}
+
+	return getBlocks(ctx, ks, s.blockstore, f) // hash security
 }
 
 func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget func() exchange.Fetcher) <-chan blocks.Block {
@@ -285,7 +294,7 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 			}
 		}
 
-		if len(misses) == 0 {
+		if len(misses) == 0 || fget == nil {
 			return
 		}
 
