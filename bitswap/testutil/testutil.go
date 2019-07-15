@@ -4,6 +4,7 @@ import (
 	"math/rand"
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
+	bssd "github.com/ipfs/go-bitswap/sessiondata"
 	"github.com/ipfs/go-bitswap/wantlist"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -74,6 +75,24 @@ func GeneratePeers(n int) []peer.ID {
 		peerIds = append(peerIds, p)
 	}
 	return peerIds
+}
+
+// GenerateOptimizedPeers creates n peer ids,
+// with optimization fall off up to optCount, curveFunc to scale it
+func GenerateOptimizedPeers(n int, optCount int, curveFunc func(float64) float64) []bssd.OptimizedPeer {
+	peers := GeneratePeers(n)
+	optimizedPeers := make([]bssd.OptimizedPeer, 0, n)
+	for i, peer := range peers {
+		var optimizationRating float64
+		if i <= optCount {
+			optimizationRating = 1.0 - float64(i)/float64(optCount)
+		} else {
+			optimizationRating = 0.0
+		}
+		optimizationRating = curveFunc(optimizationRating)
+		optimizedPeers = append(optimizedPeers, bssd.OptimizedPeer{Peer: peer, OptimizationRating: optimizationRating})
+	}
+	return optimizedPeers
 }
 
 var nextSession uint64
