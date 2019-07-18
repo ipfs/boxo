@@ -288,9 +288,9 @@ const defaultConcurrentFetch = 32
 
 // WalkOptions represent the parameters of a graph walking algorithm
 type WalkOptions struct {
-	WithRoot       bool
-	IgnoreBadBlock bool
-	Concurrency    int
+	WithRoot     bool
+	IgnoreErrors bool
+	Concurrency  int
 }
 
 // WalkOption is a setter for WalkOptions
@@ -320,6 +320,14 @@ func Concurrent() WalkOption {
 func Concurrency(worker int) WalkOption {
 	return func(walkOptions *WalkOptions) {
 		walkOptions.Concurrency = worker
+	}
+}
+
+// IgnoreErrors is a WalkOption indicating that the walk should attempt to
+// continue even when an error occur.
+func IgnoreErrors() WalkOption {
+	return func(walkOptions *WalkOptions) {
+		walkOptions.IgnoreErrors = true
 	}
 }
 
@@ -356,7 +364,7 @@ func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, d
 	}
 
 	links, err := getLinks(ctx, root)
-	if err != nil {
+	if err != nil && !options.IgnoreErrors {
 		return err
 	}
 
@@ -437,7 +445,7 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 
 				if shouldVisit {
 					links, err := getLinks(ctx, ci)
-					if err != nil {
+					if err != nil && !options.IgnoreErrors {
 						select {
 						case errChan <- err:
 						case <-fetchersCtx.Done():
