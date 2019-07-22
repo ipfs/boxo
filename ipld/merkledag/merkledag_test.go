@@ -203,8 +203,11 @@ func makeTestDAG(t *testing.T, read io.Reader, ds ipld.DAGService) ipld.Node {
 	// Add a root referencing all created nodes
 	root := NodeWithData(nil)
 	for _, n := range nodes {
-		root.AddNodeLink(n.Cid().String(), n)
-		err := ds.Add(ctx, n)
+		err := root.AddNodeLink(n.Cid().String(), n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ds.Add(ctx, n)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -383,7 +386,7 @@ func TestFetchGraphWithDepthLimit(t *testing.T) {
 
 		}
 
-		err = WalkDepth(context.Background(), offlineDS.GetLinks, root.Cid(), 0, visitF)
+		err = WalkDepth(context.Background(), offlineDS.GetLinks, root.Cid(), visitF, WithRoot())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -736,7 +739,7 @@ func TestEnumerateAsyncFailsNotFound(t *testing.T) {
 	}
 
 	cset := cid.NewSet()
-	err = WalkParallel(ctx, GetLinksDirect(ds), parent.Cid(), cset.Visit)
+	err = Walk(ctx, GetLinksDirect(ds), parent.Cid(), cset.Visit)
 	if err == nil {
 		t.Fatal("this should have failed")
 	}
