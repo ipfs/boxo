@@ -9,7 +9,7 @@ import (
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
-// PeerQueue provides a queer of messages to be sent for a single peer.
+// PeerQueue provides a queue of messages to be sent for a single peer.
 type PeerQueue interface {
 	AddMessage(entries []bsmsg.Entry, ses uint64)
 	Startup()
