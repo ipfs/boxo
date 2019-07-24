@@ -18,7 +18,7 @@ import (
 
 var logR = logging.Logger("reprovider.simple")
 
-//KeyChanFunc is function streaming CIDs to pass to content routing
+// KeyChanFunc is function streaming CIDs to pass to content routing
 type KeyChanFunc func(context.Context) (<-chan cid.Cid, error)
 type doneFunc func(error)
 
