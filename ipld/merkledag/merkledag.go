@@ -198,7 +198,7 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 	// If we have a ProgressTracker, we wrap the visit function to handle it
 	v, _ := ctx.Value(progressContextKey).(*ProgressTracker)
 	if v == nil {
-		return WalkDepth(ctx, GetLinksDirect(ng), root, visit, Concurrent(), WithRoot())
+		return WalkDepth(ctx, GetLinksDirect(ng), root, visit, Concurrent())
 	}
 
 	visitProgress := func(c cid.Cid, depth int) bool {
@@ -208,7 +208,7 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 		}
 		return false
 	}
-	return WalkDepth(ctx, GetLinksDirect(ng), root, visitProgress, Concurrent(), WithRoot())
+	return WalkDepth(ctx, GetLinksDirect(ng), root, visitProgress, Concurrent())
 }
 
 // GetMany gets many nodes from the DAG at once.
@@ -288,7 +288,7 @@ const defaultConcurrentFetch = 32
 
 // walkOptions represent the parameters of a graph walking algorithm
 type walkOptions struct {
-	WithRoot     bool
+	SkipRoot     bool
 	Concurrency  int
 	ErrorHandler func(c cid.Cid, err error) error
 }
@@ -306,10 +306,10 @@ func (wo *walkOptions) addHandler(handler func(c cid.Cid, err error) error) {
 	}
 }
 
-// WithRoot is a WalkOption indicating that the root node should be visited
-func WithRoot() WalkOption {
+// SkipRoot is a WalkOption indicating that the root node should skipped
+func SkipRoot() WalkOption {
 	return func(walkOptions *walkOptions) {
-		walkOptions.WithRoot = true
+		walkOptions.SkipRoot = true
 	}
 }
 
@@ -403,7 +403,7 @@ func WalkDepth(ctx context.Context, getLinks GetLinks, c cid.Cid, visit func(cid
 }
 
 func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, depth int, visit func(cid.Cid, int) bool, options *walkOptions) error {
-	if depth != 0 || options.WithRoot {
+	if !(options.SkipRoot && depth == 0) {
 		if !visit(root, depth) {
 			return nil
 		}
@@ -484,7 +484,7 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 				var shouldVisit bool
 
 				// bypass the root if needed
-				if depth != 0 || options.WithRoot {
+				if !(options.SkipRoot && depth == 0) {
 					visitlk.Lock()
 					shouldVisit = visit(ci, depth)
 					visitlk.Unlock()

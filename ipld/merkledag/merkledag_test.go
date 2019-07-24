@@ -386,7 +386,7 @@ func TestFetchGraphWithDepthLimit(t *testing.T) {
 
 		}
 
-		err = WalkDepth(context.Background(), offlineDS.GetLinks, root.Cid(), visitF, WithRoot())
+		err = WalkDepth(context.Background(), offlineDS.GetLinks, root.Cid(), visitF)
 		if err != nil {
 			t.Fatal(err)
 		}
