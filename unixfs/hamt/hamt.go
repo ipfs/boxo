@@ -330,7 +330,7 @@ func (ds *Shard) ForEachLink(ctx context.Context, f func(*ipld.Link) error) erro
 }
 
 // EnumLinksAsync returns a channel which will receive Links in the directory
-// as they are enumerated, where order is not gauranteed
+// as they are enumerated, where order is not guaranteed
 func (ds *Shard) EnumLinksAsync(ctx context.Context) <-chan format.LinkResult {
 	linkResults := make(chan format.LinkResult)
 	ctx, cancel := context.WithCancel(ctx)
@@ -339,7 +339,7 @@ func (ds *Shard) EnumLinksAsync(ctx context.Context) <-chan format.LinkResult {
 		defer cancel()
 		getLinks := makeAsyncTrieGetLinks(ds.dserv, linkResults)
 		cset := cid.NewSet()
-		err := dag.WalkParallel(ctx, getLinks, ds.cid, cset.Visit)
+		err := dag.Walk(ctx, getLinks, ds.cid, cset.Visit, dag.Concurrent())
 		if err != nil {
 			emitResult(ctx, linkResults, format.LinkResult{Link: nil, Err: err})
 		}
