@@ -4,7 +4,7 @@
 [![](https://img.shields.io/badge/project-IPFS-blue.svg?style=flat-square)](http://ipfs.io/)
 [![standard-readme compliant](https://img.shields.io/badge/standard--readme-OK-green.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
 [![GoDoc](https://godoc.org/github.com/ipfs/go-mfs?status.svg)](https://godoc.org/github.com/ipfs/go-mfs)
-[![Build Status](https://travis-ci.org/ipfs/go-mfs.svg?branch=master)](https://travis-ci.org/ipfs/go-mfs)
+[![Build Status](https://travis-ci.com/ipfs/go-mfs.svg?branch=master)](https://travis-ci.com/ipfs/go-mfs)
 
 > go-mfs implements an in-memory model of a mutable IPFS filesystem.
 
