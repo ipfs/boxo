@@ -138,7 +138,7 @@ func (n *ProtoNode) RemoveNodeLink(name string) error {
 	}
 
 	if !found {
-		return ipld.ErrNotFound
+		return ErrLinkNotFound
 	}
 
 	n.links = ref
