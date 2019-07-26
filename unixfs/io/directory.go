@@ -48,9 +48,13 @@ type Directory interface {
 
 	// Find returns the root node of the file named 'name' within this directory.
 	// In the case of HAMT-directories, it will traverse the tree.
+	//
+	// Returns os.ErrNotExist if the child does not exist.
 	Find(context.Context, string) (ipld.Node, error)
 
 	// RemoveChild removes the child with the given name.
+	//
+	// Returns os.ErrNotExist if the child doesn't exist.
 	RemoveChild(context.Context, string) error
 
 	// GetNode returns the root of this directory.
@@ -196,7 +200,11 @@ func (d *BasicDirectory) Find(ctx context.Context, name string) (ipld.Node, erro
 
 // RemoveChild implements the `Directory` interface.
 func (d *BasicDirectory) RemoveChild(ctx context.Context, name string) error {
-	return d.node.RemoveNodeLink(name)
+	err := d.node.RemoveNodeLink(name)
+	if err == mdag.ErrLinkNotFound {
+		err = os.ErrNotExist
+	}
+	return err
 }
 
 // GetNode implements the `Directory` interface.
