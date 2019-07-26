@@ -221,7 +221,8 @@ func (ds *Shard) Set(ctx context.Context, name string, nd ipld.Node) error {
 	return ds.modifyValue(ctx, hv, name, lnk)
 }
 
-// Remove deletes the named entry if it exists, this operation is idempotent.
+// Remove deletes the named entry if it exists. Otherwise, it returns
+// os.ErrNotExist.
 func (ds *Shard) Remove(ctx context.Context, name string) error {
 	hv := &hashBits{b: hash([]byte(name))}
 	return ds.modifyValue(ctx, hv, name, nil)
