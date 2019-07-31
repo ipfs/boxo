@@ -342,11 +342,17 @@ func TestTimeoutsAndCancels(t *testing.T) {
 	sessionPeerManager.RecordCancel(c4[0])
 	time.Sleep(2 * time.Millisecond)
 	sessionPeerManager.RecordPeerResponse(peer2, c4[0])
+	time.Sleep(2 * time.Millisecond)
 
 	// call again
 	fourthSessionPeers := sessionPeerManager.GetOptimizedPeers()
 	if thirdSessionPeers[1].OptimizationRating >= fourthSessionPeers[1].OptimizationRating {
 		t.Fatal("Timeout should have affected optimization rating but did not")
+	}
+
+	// ensure all peer latency tracking has been cleaned up
+	if len(sessionPeerManager.activePeers[peer2].lt.requests) > 0 {
+		t.Fatal("Latency request tracking should have been cleaned up but was not")
 	}
 }
 
