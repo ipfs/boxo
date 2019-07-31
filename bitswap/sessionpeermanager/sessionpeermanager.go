@@ -328,7 +328,12 @@ type peerTimeoutMessage struct {
 
 func (ptm *peerTimeoutMessage) handle(spm *SessionPeerManager) {
 	data, ok := spm.activePeers[ptm.p]
-	if !ok || !data.lt.WasCancelled(ptm.k) {
+	// If the request was cancelled, make sure we clean up the request tracker
+	if ok && data.lt.WasCancelled(ptm.k) {
+		data.lt.RemoveRequest(ptm.k)
+	} else {
+		// If the request was not cancelled, record the latency. Note that we
+		// do this even if we didn't previously know about this peer.
 		spm.recordResponse(ptm.p, ptm.k)
 	}
 }
