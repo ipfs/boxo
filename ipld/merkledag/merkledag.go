@@ -462,8 +462,8 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 		depth int
 	}
 
-	feed := make(chan *cidDepth)
-	out := make(chan *linksDepth)
+	feed := make(chan cidDepth)
+	out := make(chan linksDepth)
 	done := make(chan struct{})
 
 	var visitlk sync.Mutex
@@ -505,7 +505,7 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 						return
 					}
 
-					outLinks := &linksDepth{
+					outLinks := linksDepth{
 						links: links,
 						depth: depth + 1,
 					}
@@ -526,10 +526,10 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 	defer close(feed)
 
 	send := feed
-	var todoQueue []*cidDepth
+	var todoQueue []cidDepth
 	var inProgress int
 
-	next := &cidDepth{
+	next := cidDepth{
 		cid:   root,
 		depth: 0,
 	}
@@ -542,22 +542,22 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 				next = todoQueue[0]
 				todoQueue = todoQueue[1:]
 			} else {
-				next = nil
+				next = cidDepth{}
 				send = nil
 			}
 		case <-done:
 			inProgress--
-			if inProgress == 0 && next == nil {
+			if inProgress == 0 && !next.cid.Defined() {
 				return nil
 			}
 		case linksDepth := <-out:
 			for _, lnk := range linksDepth.links {
-				cd := &cidDepth{
+				cd := cidDepth{
 					cid:   lnk.Cid,
 					depth: linksDepth.depth,
 				}
 
-				if next == nil {
+				if !next.cid.Defined() {
 					next = cd
 					send = feed
 				} else {
