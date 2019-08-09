@@ -26,14 +26,14 @@ type MultiFileReader struct {
 	closed      bool
 	mutex       *sync.Mutex
 
-	// if true, the data will be type 'multipart/form-data'
-	// if false, the data will be type 'multipart/mixed'
+	// if true, the content disposition will be "form-data"
+	// if false, the content disposition will be "attachment"
 	form bool
 }
 
 // NewMultiFileReader constructs a MultiFileReader. `file` can be any `commands.Directory`.
-// If `form` is set to true, the multipart data will have a Content-Type of 'multipart/form-data',
-// if `form` is false, the Content-Type will be 'multipart/mixed'.
+// If `form` is set to true, the Content-Disposition will be "form-data".
+// Otherwise, it will be "attachment".
 func NewMultiFileReader(file Directory, form bool) *MultiFileReader {
 	it := file.Entries()
 
