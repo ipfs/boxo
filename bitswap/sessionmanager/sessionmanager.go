@@ -131,3 +131,17 @@ func (sm *SessionManager) ReceiveFrom(from peer.ID, ks []cid.Cid) {
 		s.session.ReceiveFrom(from, sessKs)
 	}
 }
+
+// InterestedIn indicates whether any of the sessions are waiting to receive
+// the block with the given CID.
+func (sm *SessionManager) InterestedIn(cid cid.Cid) bool {
+	sm.sessLk.Lock()
+	defer sm.sessLk.Unlock()
+
+	for _, s := range sm.sessions {
+		if s.session.InterestedIn(cid) {
+			return true
+		}
+	}
+	return false
+}

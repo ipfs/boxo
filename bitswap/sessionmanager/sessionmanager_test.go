@@ -176,6 +176,33 @@ func TestReceivingBlocksWhenNotInterested(t *testing.T) {
 	}
 }
 
+func TestInterestedIn(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory)
+
+	blks := testutil.GenerateBlocksOfSize(4, 1024)
+	var cids []cid.Cid
+	for _, b := range blks {
+		cids = append(cids, b.Cid())
+	}
+
+	nextInterestedIn = []cid.Cid{cids[0], cids[1]}
+	_ = sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	nextInterestedIn = []cid.Cid{cids[0], cids[2]}
+	_ = sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+
+	if !sm.InterestedIn(cids[0]) ||
+		!sm.InterestedIn(cids[1]) ||
+		!sm.InterestedIn(cids[2]) {
+		t.Fatal("expected interest but session manager was not interested")
+	}
+	if sm.InterestedIn(cids[3]) {
+		t.Fatal("expected no interest but session manager was interested")
+	}
+}
+
 func TestRemovingPeersWhenManagerContextCancelled(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
