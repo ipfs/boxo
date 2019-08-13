@@ -132,7 +132,7 @@ func TestRecordingReceivedBlocks(t *testing.T) {
 	id := testutil.GenerateSessionID()
 
 	sessionPeerManager := New(ctx, id, fpt, fppf)
-	sessionPeerManager.RecordPeerResponse(p, c)
+	sessionPeerManager.RecordPeerResponse(p, []cid.Cid{c})
 	time.Sleep(10 * time.Millisecond)
 	sessionPeers := getPeers(sessionPeerManager)
 	if len(sessionPeers) != 1 {
@@ -175,11 +175,11 @@ func TestOrderingPeers(t *testing.T) {
 	peer2 := peers[rand.Intn(100)]
 	peer3 := peers[rand.Intn(100)]
 	time.Sleep(1 * time.Millisecond)
-	sessionPeerManager.RecordPeerResponse(peer1, c[0])
+	sessionPeerManager.RecordPeerResponse(peer1, []cid.Cid{c[0]})
 	time.Sleep(5 * time.Millisecond)
-	sessionPeerManager.RecordPeerResponse(peer2, c[0])
+	sessionPeerManager.RecordPeerResponse(peer2, []cid.Cid{c[0]})
 	time.Sleep(1 * time.Millisecond)
-	sessionPeerManager.RecordPeerResponse(peer3, c[0])
+	sessionPeerManager.RecordPeerResponse(peer3, []cid.Cid{c[0]})
 
 	sessionPeers := sessionPeerManager.GetOptimizedPeers()
 	if len(sessionPeers) != maxOptimizedPeers {
@@ -215,7 +215,7 @@ func TestOrderingPeers(t *testing.T) {
 	sessionPeerManager.RecordPeerRequests(nil, c2)
 
 	// Receive a second time
-	sessionPeerManager.RecordPeerResponse(peer3, c2[0])
+	sessionPeerManager.RecordPeerResponse(peer3, []cid.Cid{c2[0]})
 
 	// call again
 	nextSessionPeers := sessionPeerManager.GetOptimizedPeers()
@@ -272,11 +272,11 @@ func TestTimeoutsAndCancels(t *testing.T) {
 	peer2 := peers[1]
 	peer3 := peers[2]
 	time.Sleep(1 * time.Millisecond)
-	sessionPeerManager.RecordPeerResponse(peer1, c[0])
+	sessionPeerManager.RecordPeerResponse(peer1, []cid.Cid{c[0]})
 	time.Sleep(2 * time.Millisecond)
-	sessionPeerManager.RecordPeerResponse(peer2, c[0])
+	sessionPeerManager.RecordPeerResponse(peer2, []cid.Cid{c[0]})
 	time.Sleep(40 * time.Millisecond)
-	sessionPeerManager.RecordPeerResponse(peer3, c[0])
+	sessionPeerManager.RecordPeerResponse(peer3, []cid.Cid{c[0]})
 
 	sessionPeers := sessionPeerManager.GetOptimizedPeers()
 
@@ -322,7 +322,7 @@ func TestTimeoutsAndCancels(t *testing.T) {
 
 	// Request again
 	sessionPeerManager.RecordPeerRequests([]peer.ID{peer2}, c3)
-	sessionPeerManager.RecordCancel(c3[0])
+	sessionPeerManager.RecordCancels([]cid.Cid{c3[0]})
 	// wait for a timeout
 	time.Sleep(40 * time.Millisecond)
 
@@ -339,9 +339,9 @@ func TestTimeoutsAndCancels(t *testing.T) {
 
 	// Request again
 	sessionPeerManager.RecordPeerRequests([]peer.ID{peer2}, c4)
-	sessionPeerManager.RecordCancel(c4[0])
+	sessionPeerManager.RecordCancels([]cid.Cid{c4[0]})
 	time.Sleep(2 * time.Millisecond)
-	sessionPeerManager.RecordPeerResponse(peer2, c4[0])
+	sessionPeerManager.RecordPeerResponse(peer2, []cid.Cid{c4[0]})
 	time.Sleep(2 * time.Millisecond)
 
 	// call again

@@ -56,10 +56,12 @@ func (lt *latencyTracker) RemoveRequest(key cid.Cid) {
 	}
 }
 
-func (lt *latencyTracker) RecordCancel(key cid.Cid) {
-	request, ok := lt.requests[key]
-	if ok {
-		request.wasCancelled = true
+func (lt *latencyTracker) RecordCancel(keys []cid.Cid) {
+	for _, key := range keys {
+		request, ok := lt.requests[key]
+		if ok {
+			request.wasCancelled = true
+		}
 	}
 }
 

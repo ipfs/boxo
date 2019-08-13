@@ -357,6 +357,8 @@ func TestBasicBitswap(t *testing.T) {
 
 	instances := ig.Instances(3)
 	blocks := bg.Blocks(1)
+
+	// First peer has block
 	err := instances[0].Exchange.HasBlock(blocks[0])
 	if err != nil {
 		t.Fatal(err)
@@ -364,11 +366,16 @@ func TestBasicBitswap(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
+
+	// Second peer broadcasts want for block CID
+	// (Received by first and third peers)
 	blk, err := instances[1].Exchange.GetBlock(ctx, blocks[0].Cid())
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// When second peer receives block, it should send out a cancel, so third
+	// peer should no longer keep second peer's want
 	if err = tu.WaitFor(ctx, func() error {
 		if len(instances[2].Exchange.WantlistForPeer(instances[1].Peer)) != 0 {
 			return fmt.Errorf("should have no items in other peers wantlist")

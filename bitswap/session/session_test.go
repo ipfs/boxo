@@ -63,12 +63,12 @@ func (fpm *fakePeerManager) GetOptimizedPeers() []bssd.OptimizedPeer {
 }
 
 func (fpm *fakePeerManager) RecordPeerRequests([]peer.ID, []cid.Cid) {}
-func (fpm *fakePeerManager) RecordPeerResponse(p peer.ID, c cid.Cid) {
+func (fpm *fakePeerManager) RecordPeerResponse(p peer.ID, c []cid.Cid) {
 	fpm.lk.Lock()
 	fpm.peers = append(fpm.peers, p)
 	fpm.lk.Unlock()
 }
-func (fpm *fakePeerManager) RecordCancel(c cid.Cid) {}
+func (fpm *fakePeerManager) RecordCancels(c []cid.Cid) {}
 
 type fakeRequestSplitter struct {
 }
@@ -122,7 +122,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	var newBlockReqs []wantReq
 	var receivedBlocks []blocks.Block
 	for i, p := range peers {
-		session.ReceiveBlockFrom(p, blks[testutil.IndexOf(blks, receivedWantReq.cids[i])])
+		session.ReceiveBlocksFrom(p, []blocks.Block{blks[testutil.IndexOf(blks, receivedWantReq.cids[i])]})
 		select {
 		case cancelBlock := <-cancelReqs:
 			newCancelReqs = append(newCancelReqs, cancelBlock)
@@ -178,7 +178,7 @@ func TestSessionGetBlocks(t *testing.T) {
 
 	// receive remaining blocks
 	for i, p := range peers {
-		session.ReceiveBlockFrom(p, blks[testutil.IndexOf(blks, newCidsRequested[i])])
+		session.ReceiveBlocksFrom(p, []blocks.Block{blks[testutil.IndexOf(blks, newCidsRequested[i])]})
 		receivedBlock := <-getBlocksCh
 		receivedBlocks = append(receivedBlocks, receivedBlock)
 		cancelBlock := <-cancelReqs
@@ -230,7 +230,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 	// or there will be no tick set -- time precision on Windows in go is in the
 	// millisecond range
 	p := testutil.GeneratePeers(1)[0]
-	session.ReceiveBlockFrom(p, blks[0])
+	session.ReceiveBlocksFrom(p, []blocks.Block{blks[0]})
 	select {
 	case <-cancelReqs:
 	case <-ctx.Done():

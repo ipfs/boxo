@@ -72,7 +72,7 @@ func (srs *SessionRequestSplitter) RecordDuplicateBlock() {
 	}
 }
 
-// RecordUniqueBlock records the fact that the session received unique block
+// RecordUniqueBlock records the fact that the session received a unique block
 // and adjusts the split factor as neccesary.
 func (srs *SessionRequestSplitter) RecordUniqueBlock() {
 	select {
