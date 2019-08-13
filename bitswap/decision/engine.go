@@ -312,17 +312,19 @@ func (e *Engine) MessageReceived(p peer.ID, m bsmsg.BitSwapMessage) {
 	}
 }
 
-func (e *Engine) addBlock(block blocks.Block) {
+func (e *Engine) addBlocks(blocks []blocks.Block) {
 	work := false
 
 	for _, l := range e.ledgerMap {
 		l.lk.Lock()
-		if entry, ok := l.WantListContains(block.Cid()); ok {
-			e.peerRequestQueue.PushBlock(l.Partner, peertask.Task{
-				Identifier: entry.Cid,
-				Priority:   entry.Priority,
-			})
-			work = true
+		for _, block := range blocks {
+			if entry, ok := l.WantListContains(block.Cid()); ok {
+				e.peerRequestQueue.PushBlock(l.Partner, peertask.Task{
+					Identifier: entry.Cid,
+					Priority:   entry.Priority,
+				})
+				work = true
+			}
 		}
 		l.lk.Unlock()
 	}
@@ -332,13 +334,14 @@ func (e *Engine) addBlock(block blocks.Block) {
 	}
 }
 
-// AddBlock is called to when a new block is received and added to a block store
-// meaning there may be peers who want that block that we should send it to.
-func (e *Engine) AddBlock(block blocks.Block) {
+// AddBlocks is called when new blocks are received and added to a block store,
+// meaning there may be peers who want those blocks, so we should send the blocks
+// to them.
+func (e *Engine) AddBlocks(blocks []blocks.Block) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
-	e.addBlock(block)
+	e.addBlocks(blocks)
 }
 
 // TODO add contents of m.WantList() to my local wantlist? NB: could introduce

@@ -265,23 +265,39 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 // HasBlock announces the existence of a block to this bitswap service. The
 // service will potentially notify its peers.
 func (bs *Bitswap) HasBlock(blk blocks.Block) error {
-	return bs.receiveBlockFrom(blk, "")
+	return bs.receiveBlocksFrom("", []blocks.Block{blk})
 }
 
 // TODO: Some of this stuff really only needs to be done when adding a block
 // from the user, not when receiving it from the network.
 // In case you run `git blame` on this comment, I'll save you some time: ask
 // @whyrusleeping, I don't know the answers you seek.
-func (bs *Bitswap) receiveBlockFrom(blk blocks.Block, from peer.ID) error {
+func (bs *Bitswap) receiveBlocksFrom(from peer.ID, blks []blocks.Block) error {
 	select {
 	case <-bs.process.Closing():
 		return errors.New("bitswap is closed")
 	default:
 	}
 
-	err := bs.blockstore.Put(blk)
+	wanted := blks
+
+	// If blocks came from the network
+	if from != "" {
+		// Split blocks into wanted blocks vs duplicates
+		wanted = make([]blocks.Block, 0, len(blks))
+		for _, b := range blks {
+			if bs.wm.IsWanted(b.Cid()) {
+				wanted = append(wanted, b)
+			} else {
+				log.Debugf("[recv] block not in wantlist; cid=%s, peer=%s", b.Cid(), from)
+			}
+		}
+	}
+
+	// Put wanted blocks into blockstore
+	err := bs.blockstore.PutMany(wanted)
 	if err != nil {
-		log.Errorf("Error writing block to datastore: %s", err)
+		log.Errorf("Error writing %d blocks to datastore: %s", len(wanted), err)
 		return err
 	}
 
@@ -291,18 +307,25 @@ func (bs *Bitswap) receiveBlockFrom(blk blocks.Block, from peer.ID) error {
 	// to the same node. We should address this soon, but i'm not going to do
 	// it now as it requires more thought and isnt causing immediate problems.
 
-	bs.sm.ReceiveBlockFrom(from, blk)
+	// Send all blocks (including duplicates) to any sessions that want them.
+	// (The duplicates are needed by sessions for accounting purposes)
+	bs.sm.ReceiveBlocksFrom(from, blks)
 
-	bs.engine.AddBlock(blk)
+	// Send wanted blocks to decision engine
+	bs.engine.AddBlocks(wanted)
 
+	// If the reprovider is enabled, send wanted blocks to reprovider
 	if bs.provideEnabled {
-		select {
-		case bs.newBlocks <- blk.Cid():
-			// send block off to be reprovided
-		case <-bs.process.Closing():
-			return bs.process.Close()
+		for _, b := range wanted {
+			select {
+			case bs.newBlocks <- b.Cid():
+				// send block off to be reprovided
+			case <-bs.process.Closing():
+				return bs.process.Close()
+			}
 		}
 	}
+
 	return nil
 }
 
@@ -325,54 +348,76 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 		return
 	}
 
-	wg := sync.WaitGroup{}
-	for _, block := range iblocks {
-
-		wg.Add(1)
-		go func(b blocks.Block) { // TODO: this probably doesnt need to be a goroutine...
-			defer wg.Done()
-
-			bs.updateReceiveCounters(b)
-			bs.sm.UpdateReceiveCounters(p, b)
-			log.Debugf("[recv] block; cid=%s, peer=%s", b.Cid(), p)
-			// skip received blocks that are not in the wantlist
-			if !bs.wm.IsWanted(b.Cid()) {
-				log.Debugf("[recv] block not in wantlist; cid=%s, peer=%s", b.Cid(), p)
-				return
-			}
-
-			if err := bs.receiveBlockFrom(b, p); err != nil {
-				log.Warningf("ReceiveMessage recvBlockFrom error: %s", err)
-			}
-			log.Event(ctx, "Bitswap.GetBlockRequest.End", b.Cid())
-		}(block)
+	bs.updateReceiveCounters(iblocks)
+	for _, b := range iblocks {
+		log.Debugf("[recv] block; cid=%s, peer=%s", b.Cid(), p)
 	}
-	wg.Wait()
-}
 
-func (bs *Bitswap) updateReceiveCounters(b blocks.Block) {
-	blkLen := len(b.RawData())
-	has, err := bs.blockstore.Has(b.Cid())
+	// Process blocks
+	err := bs.receiveBlocksFrom(p, iblocks)
 	if err != nil {
-		log.Infof("blockstore.Has error: %s", err)
+		log.Warningf("ReceiveMessage recvBlockFrom error: %s", err)
 		return
 	}
 
-	bs.allMetric.Observe(float64(blkLen))
-	if has {
-		bs.dupMetric.Observe(float64(blkLen))
+	for _, b := range iblocks {
+		if bs.wm.IsWanted(b.Cid()) {
+			log.Event(ctx, "Bitswap.GetBlockRequest.End", b.Cid())
+		}
 	}
+}
+
+func (bs *Bitswap) updateReceiveCounters(blocks []blocks.Block) {
+	// Check which blocks are in the datastore
+	// (Note: any errors from the blockstore are simply logged out in
+	// blockstoreHas())
+	blocksHas := bs.blockstoreHas(blocks)
 
 	bs.counterLk.Lock()
 	defer bs.counterLk.Unlock()
-	c := bs.counters
 
-	c.blocksRecvd++
-	c.dataRecvd += uint64(len(b.RawData()))
-	if has {
-		c.dupBlocksRecvd++
-		c.dupDataRecvd += uint64(blkLen)
+	// Do some accounting for each block
+	for i, b := range blocks {
+		has := blocksHas[i]
+
+		blkLen := len(b.RawData())
+		bs.allMetric.Observe(float64(blkLen))
+		if has {
+			bs.dupMetric.Observe(float64(blkLen))
+		}
+
+		c := bs.counters
+
+		c.blocksRecvd++
+		c.dataRecvd += uint64(blkLen)
+		if has {
+			c.dupBlocksRecvd++
+			c.dupDataRecvd += uint64(blkLen)
+		}
 	}
+}
+
+func (bs *Bitswap) blockstoreHas(blks []blocks.Block) []bool {
+	res := make([]bool, len(blks))
+
+	wg := sync.WaitGroup{}
+	for i, block := range blks {
+		wg.Add(1)
+		go func(i int, b blocks.Block) {
+			defer wg.Done()
+
+			has, err := bs.blockstore.Has(b.Cid())
+			if err != nil {
+				log.Infof("blockstore.Has error: %s", err)
+				has = false
+			}
+
+			res[i] = has
+		}(i, block)
+	}
+	wg.Wait()
+
+	return res
 }
 
 // PeerConnected is called by the network interface

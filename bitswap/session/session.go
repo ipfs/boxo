@@ -35,8 +35,8 @@ type PeerManager interface {
 	FindMorePeers(context.Context, cid.Cid)
 	GetOptimizedPeers() []bssd.OptimizedPeer
 	RecordPeerRequests([]peer.ID, []cid.Cid)
-	RecordPeerResponse(peer.ID, cid.Cid)
-	RecordCancel(cid.Cid)
+	RecordPeerResponse(peer.ID, []cid.Cid)
+	RecordCancels([]cid.Cid)
 }
 
 // RequestSplitter provides an interface for splitting
@@ -52,10 +52,9 @@ type interestReq struct {
 	resp chan bool
 }
 
-type blkRecv struct {
-	from           peer.ID
-	blk            blocks.Block
-	counterMessage bool
+type blksRecv struct {
+	from peer.ID
+	blks []blocks.Block
 }
 
 // Session holds state for an individual bitswap transfer operation.
@@ -69,7 +68,7 @@ type Session struct {
 	srs RequestSplitter
 
 	// channels
-	incoming      chan blkRecv
+	incoming      chan blksRecv
 	newReqs       chan []cid.Cid
 	cancelKeys    chan []cid.Cid
 	interestReqs  chan interestReq
@@ -117,7 +116,7 @@ func New(ctx context.Context,
 		wm:                  wm,
 		pm:                  pm,
 		srs:                 srs,
-		incoming:            make(chan blkRecv),
+		incoming:            make(chan blksRecv),
 		notif:               notifications.New(),
 		uuid:                loggables.Uuid("GetBlockRequest"),
 		baseTickDelay:       time.Millisecond * 500,
@@ -134,22 +133,10 @@ func New(ctx context.Context,
 	return s
 }
 
-// ReceiveBlockFrom receives an incoming block from the given peer.
-func (s *Session) ReceiveBlockFrom(from peer.ID, blk blocks.Block) {
+// ReceiveBlocksFrom receives incoming blocks from the given peer.
+func (s *Session) ReceiveBlocksFrom(from peer.ID, blocks []blocks.Block) {
 	select {
-	case s.incoming <- blkRecv{from: from, blk: blk, counterMessage: false}:
-	case <-s.ctx.Done():
-	}
-	ks := []cid.Cid{blk.Cid()}
-	s.pm.RecordCancel(blk.Cid())
-	s.wm.CancelWants(s.ctx, ks, nil, s.id)
-}
-
-// UpdateReceiveCounters updates receive counters for a block,
-// which may be a duplicate and adjusts the split factor based on that.
-func (s *Session) UpdateReceiveCounters(from peer.ID, blk blocks.Block) {
-	select {
-	case s.incoming <- blkRecv{from: from, blk: blk, counterMessage: true}:
+	case s.incoming <- blksRecv{from: from, blks: blocks}:
 	case <-s.ctx.Done():
 	}
 }
@@ -243,12 +230,14 @@ func (s *Session) run(ctx context.Context) {
 	s.periodicSearchTimer = time.NewTimer(s.periodicSearchDelay.NextWaitTime())
 	for {
 		select {
-		case blk := <-s.incoming:
-			if blk.counterMessage {
-				s.updateReceiveCounters(ctx, blk)
-			} else {
-				s.handleIncomingBlock(ctx, blk)
+		case rcv := <-s.incoming:
+			s.cancelIncomingBlocks(ctx, rcv)
+			// Record statistics only if the blocks came from the network
+			// (blocks can also be received from the local node)
+			if rcv.from != "" {
+				s.updateReceiveCounters(ctx, rcv)
 			}
+			s.handleIncomingBlocks(ctx, rcv)
 		case keys := <-s.newReqs:
 			s.handleNewRequest(ctx, keys)
 		case keys := <-s.cancelKeys:
@@ -270,14 +259,23 @@ func (s *Session) run(ctx context.Context) {
 	}
 }
 
-func (s *Session) handleIncomingBlock(ctx context.Context, blk blkRecv) {
+func (s *Session) cancelIncomingBlocks(ctx context.Context, rcv blksRecv) {
+	// We've received the blocks so we can cancel any outstanding wants for them
+	ks := make([]cid.Cid, 0, len(rcv.blks))
+	for _, b := range rcv.blks {
+		if s.cidIsWanted(b.Cid()) {
+			ks = append(ks, b.Cid())
+		}
+	}
+	s.pm.RecordCancels(ks)
+	s.wm.CancelWants(s.ctx, ks, nil, s.id)
+}
+
+func (s *Session) handleIncomingBlocks(ctx context.Context, rcv blksRecv) {
 	s.idleTick.Stop()
 
-	if blk.from != "" {
-		s.pm.RecordPeerResponse(blk.from, blk.blk.Cid())
-	}
-
-	s.receiveBlock(ctx, blk.blk)
+	// Process the received blocks
+	s.receiveBlocks(ctx, rcv.blks)
 
 	s.resetIdleTick()
 }
@@ -378,45 +376,64 @@ func (s *Session) cidIsWanted(c cid.Cid) bool {
 	return ok
 }
 
-func (s *Session) receiveBlock(ctx context.Context, blk blocks.Block) {
-	c := blk.Cid()
-	if s.cidIsWanted(c) {
-		s.srs.RecordUniqueBlock()
-		tval, ok := s.liveWants[c]
-		if ok {
-			s.latTotal += time.Since(tval)
-			delete(s.liveWants, c)
-		} else {
-			s.tofetch.Remove(c)
-		}
-		s.fetchcnt++
-		// we've received new wanted blocks, so future ticks are not consecutive
-		s.consecutiveTicks = 0
-		s.notif.Publish(blk)
-
-		toAdd := s.wantBudget()
-		if toAdd > s.tofetch.Len() {
-			toAdd = s.tofetch.Len()
-		}
-		if toAdd > 0 {
-			var keys []cid.Cid
-			for i := 0; i < toAdd; i++ {
-				keys = append(keys, s.tofetch.Pop())
+func (s *Session) receiveBlocks(ctx context.Context, blocks []blocks.Block) {
+	for _, blk := range blocks {
+		c := blk.Cid()
+		if s.cidIsWanted(c) {
+			// If the block CID was in the live wants queue, remove it
+			tval, ok := s.liveWants[c]
+			if ok {
+				s.latTotal += time.Since(tval)
+				delete(s.liveWants, c)
+			} else {
+				// Otherwise remove it from the tofetch queue, if it was there
+				s.tofetch.Remove(c)
 			}
-			s.wantBlocks(ctx, keys)
-		}
+			s.fetchcnt++
 
-		s.pastWants.Push(c)
+			// We've received new wanted blocks, so reset the number of ticks
+			// that have occurred since the last new block
+			s.consecutiveTicks = 0
+
+			s.notif.Publish(blk)
+
+			// Keep track of CIDs we've successfully fetched
+			s.pastWants.Push(c)
+		}
+	}
+
+	// Transfer as many CIDs as possible from the tofetch queue into the
+	// live wants queue
+	toAdd := s.wantBudget()
+	if toAdd > s.tofetch.Len() {
+		toAdd = s.tofetch.Len()
+	}
+	if toAdd > 0 {
+		var keys []cid.Cid
+		for i := 0; i < toAdd; i++ {
+			keys = append(keys, s.tofetch.Pop())
+		}
+		s.wantBlocks(ctx, keys)
 	}
 }
 
-func (s *Session) updateReceiveCounters(ctx context.Context, blk blkRecv) {
-	ks := blk.blk.Cid()
-	if s.pastWants.Has(ks) {
-		s.srs.RecordDuplicateBlock()
-		if blk.from != "" {
-			s.pm.RecordPeerResponse(blk.from, ks)
+func (s *Session) updateReceiveCounters(ctx context.Context, rcv blksRecv) {
+	ks := make([]cid.Cid, len(rcv.blks))
+
+	for _, blk := range rcv.blks {
+		// Inform the request splitter of unique / duplicate blocks
+		if s.cidIsWanted(blk.Cid()) {
+			s.srs.RecordUniqueBlock()
+		} else if s.pastWants.Has(blk.Cid()) {
+			s.srs.RecordDuplicateBlock()
 		}
+
+		ks = append(ks, blk.Cid())
+	}
+
+	// Record response (to be able to time latency)
+	if len(ks) > 0 {
+		s.pm.RecordPeerResponse(rcv.from, ks)
 	}
 }
 

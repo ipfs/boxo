@@ -72,23 +72,21 @@ func New(ctx context.Context, id uint64, tagger PeerTagger, providerFinder PeerP
 	return spm
 }
 
-// RecordPeerResponse records that a peer received a block, and adds to it
-// the list of peers if it wasn't already added
-func (spm *SessionPeerManager) RecordPeerResponse(p peer.ID, k cid.Cid) {
+// RecordPeerResponse records that a peer received some blocks, and adds the
+// peer to the list of peers if it wasn't already added
+func (spm *SessionPeerManager) RecordPeerResponse(p peer.ID, ks []cid.Cid) {
 
 	select {
-	case spm.peerMessages <- &peerResponseMessage{p, k}:
+	case spm.peerMessages <- &peerResponseMessage{p, ks}:
 	case <-spm.ctx.Done():
 	}
 }
 
-// RecordCancel records the fact that cancellations were sent to peers,
-// so if not blocks come in, don't let it affect peers timeout
-func (spm *SessionPeerManager) RecordCancel(k cid.Cid) {
-	// at the moment, we're just adding peers here
-	// in the future, we'll actually use this to record metrics
+// RecordCancels records the fact that cancellations were sent to peers,
+// so if blocks don't arrive, don't let it affect the peer's timeout
+func (spm *SessionPeerManager) RecordCancels(ks []cid.Cid) {
 	select {
-	case spm.peerMessages <- &cancelMessage{k}:
+	case spm.peerMessages <- &cancelMessage{ks}:
 	case <-spm.ctx.Done():
 	}
 }
@@ -198,7 +196,7 @@ func (spm *SessionPeerManager) removeUnoptimizedPeer(p peer.ID) {
 	}
 }
 
-func (spm *SessionPeerManager) recordResponse(p peer.ID, k cid.Cid) {
+func (spm *SessionPeerManager) recordResponse(p peer.ID, ks []cid.Cid) {
 	data, ok := spm.activePeers[p]
 	wasOptimized := ok && data.hasLatency
 	if wasOptimized {
@@ -211,8 +209,10 @@ func (spm *SessionPeerManager) recordResponse(p peer.ID, k cid.Cid) {
 			spm.activePeers[p] = data
 		}
 	}
-	fallbackLatency, hasFallbackLatency := spm.broadcastLatency.CheckDuration(k)
-	data.AdjustLatency(k, hasFallbackLatency, fallbackLatency)
+	for _, k := range ks {
+		fallbackLatency, hasFallbackLatency := spm.broadcastLatency.CheckDuration(k)
+		data.AdjustLatency(k, hasFallbackLatency, fallbackLatency)
+	}
 	if !ok || wasOptimized != data.hasLatency {
 		spm.tagPeer(p, data)
 	}
@@ -233,12 +233,12 @@ func (pfm *peerFoundMessage) handle(spm *SessionPeerManager) {
 }
 
 type peerResponseMessage struct {
-	p peer.ID
-	k cid.Cid
+	p  peer.ID
+	ks []cid.Cid
 }
 
 func (prm *peerResponseMessage) handle(spm *SessionPeerManager) {
-	spm.recordResponse(prm.p, prm.k)
+	spm.recordResponse(prm.p, prm.ks)
 }
 
 type peerRequestMessage struct {
@@ -305,12 +305,12 @@ func (prm *getPeersMessage) handle(spm *SessionPeerManager) {
 }
 
 type cancelMessage struct {
-	k cid.Cid
+	ks []cid.Cid
 }
 
 func (cm *cancelMessage) handle(spm *SessionPeerManager) {
 	for _, data := range spm.activePeers {
-		data.lt.RecordCancel(cm.k)
+		data.lt.RecordCancel(cm.ks)
 	}
 }
 
@@ -334,7 +334,7 @@ func (ptm *peerTimeoutMessage) handle(spm *SessionPeerManager) {
 	} else {
 		// If the request was not cancelled, record the latency. Note that we
 		// do this even if we didn't previously know about this peer.
-		spm.recordResponse(ptm.p, ptm.k)
+		spm.recordResponse(ptm.p, []cid.Cid{ptm.k})
 	}
 }
 
