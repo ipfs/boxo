@@ -141,8 +141,8 @@ func TestMessageSendAndReceive(t *testing.T) {
 	}
 	receivedWant := receivedWants[0]
 	if receivedWant.Cid != sentWant.Cid ||
-		receivedWant.Priority != receivedWant.Priority ||
-		receivedWant.Cancel != receivedWant.Cancel {
+		receivedWant.Priority != sentWant.Priority ||
+		receivedWant.Cancel != sentWant.Cancel {
 		t.Fatal("Sent message wants did not match received message wants")
 	}
 	sentBlocks := sent.Blocks()
