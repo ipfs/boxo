@@ -41,16 +41,12 @@ func (r *receiver) ReceiveError(err error) {
 
 func (r *receiver) PeerConnected(p peer.ID) {
 	r.peers[p] = struct{}{}
-	select {
-	case r.connectionEvent <- struct{}{}:
-	}
+	r.connectionEvent <- struct{}{}
 }
 
 func (r *receiver) PeerDisconnected(p peer.ID) {
 	delete(r.peers, p)
-	select {
-	case r.connectionEvent <- struct{}{}:
-	}
+	r.connectionEvent <- struct{}{}
 }
 func TestMessageSendAndReceive(t *testing.T) {
 	// create network
