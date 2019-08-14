@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	wl "github.com/ipfs/go-bitswap/wantlist"
-	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	logging "github.com/ipfs/go-log"
@@ -312,13 +311,13 @@ func (e *Engine) MessageReceived(p peer.ID, m bsmsg.BitSwapMessage) {
 	}
 }
 
-func (e *Engine) addBlocks(blocks []blocks.Block) {
+func (e *Engine) addBlocks(ks []cid.Cid) {
 	work := false
 
 	for _, l := range e.ledgerMap {
 		l.lk.Lock()
-		for _, block := range blocks {
-			if entry, ok := l.WantListContains(block.Cid()); ok {
+		for _, k := range ks {
+			if entry, ok := l.WantListContains(k); ok {
 				e.peerRequestQueue.PushBlock(l.Partner, peertask.Task{
 					Identifier: entry.Cid,
 					Priority:   entry.Priority,
@@ -337,11 +336,11 @@ func (e *Engine) addBlocks(blocks []blocks.Block) {
 // AddBlocks is called when new blocks are received and added to a block store,
 // meaning there may be peers who want those blocks, so we should send the blocks
 // to them.
-func (e *Engine) AddBlocks(blocks []blocks.Block) {
+func (e *Engine) AddBlocks(ks []cid.Cid) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
-	e.addBlocks(blocks)
+	e.addBlocks(ks)
 }
 
 // TODO add contents of m.WantList() to my local wantlist? NB: could introduce

@@ -315,12 +315,25 @@ func (bs *Bitswap) receiveBlocksFrom(from peer.ID, blks []blocks.Block) error {
 	// to the same node. We should address this soon, but i'm not going to do
 	// it now as it requires more thought and isnt causing immediate problems.
 
-	// Send all blocks (including duplicates) to any sessions that want them.
-	// (The duplicates are needed by sessions for accounting purposes)
-	bs.sm.ReceiveBlocksFrom(from, blks)
+	allKs := make([]cid.Cid, 0, len(blks))
+	for _, b := range blks {
+		allKs = append(allKs, b.Cid())
+	}
 
-	// Send wanted blocks to decision engine
-	bs.engine.AddBlocks(wanted)
+	wantedKs := allKs
+	if len(blks) != len(wanted) {
+		wantedKs = make([]cid.Cid, 0, len(wanted))
+		for _, b := range wanted {
+			wantedKs = append(wantedKs, b.Cid())
+		}
+	}
+
+	// Send all block keys (including duplicates) to any sessions that want them.
+	// (The duplicates are needed by sessions for accounting purposes)
+	bs.sm.ReceiveBlocksFrom(from, allKs)
+
+	// Send wanted block keys to decision engine
+	bs.engine.AddBlocks(wantedKs)
 
 	// Publish the block to any Bitswap clients that had requested blocks.
 	// (the sessions use this pubsub mechanism to inform clients of received
@@ -331,9 +344,9 @@ func (bs *Bitswap) receiveBlocksFrom(from peer.ID, blks []blocks.Block) error {
 
 	// If the reprovider is enabled, send wanted blocks to reprovider
 	if bs.provideEnabled {
-		for _, b := range wanted {
+		for _, k := range wantedKs {
 			select {
-			case bs.newBlocks <- b.Cid():
+			case bs.newBlocks <- k:
 				// send block off to be reprovided
 			case <-bs.process.Closing():
 				return bs.process.Close()

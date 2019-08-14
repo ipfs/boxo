@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 
@@ -19,7 +18,7 @@ import (
 type Session interface {
 	exchange.Fetcher
 	InterestedIn(cid.Cid) bool
-	ReceiveBlocksFrom(peer.ID, []blocks.Block)
+	ReceiveBlocksFrom(peer.ID, []cid.Cid)
 }
 
 type sesTrk struct {
@@ -117,18 +116,18 @@ func (sm *SessionManager) GetNextSessionID() uint64 {
 
 // ReceiveBlocksFrom receives blocks from a peer and dispatches to interested
 // sessions.
-func (sm *SessionManager) ReceiveBlocksFrom(from peer.ID, blks []blocks.Block) {
+func (sm *SessionManager) ReceiveBlocksFrom(from peer.ID, ks []cid.Cid) {
 	sm.sessLk.Lock()
 	defer sm.sessLk.Unlock()
 
 	// Only give each session the blocks / dups that it is interested in
 	for _, s := range sm.sessions {
-		sessBlks := make([]blocks.Block, 0, len(blks))
-		for _, b := range blks {
-			if s.session.InterestedIn(b.Cid()) {
-				sessBlks = append(sessBlks, b)
+		sessKs := make([]cid.Cid, 0, len(ks))
+		for _, k := range ks {
+			if s.session.InterestedIn(k) {
+				sessKs = append(sessKs, k)
 			}
 		}
-		s.session.ReceiveBlocksFrom(from, sessBlks)
+		s.session.ReceiveBlocksFrom(from, sessKs)
 	}
 }
