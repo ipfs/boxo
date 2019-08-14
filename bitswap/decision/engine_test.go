@@ -245,7 +245,7 @@ func TestTaggingPeers(t *testing.T) {
 		t.Fatal("Incorrect number of peers tagged")
 	}
 	envelope.Sent()
-	next = <-sanfrancisco.Engine.Outbox()
+	<-sanfrancisco.Engine.Outbox()
 	sanfrancisco.PeerTagger.wait.Wait()
 	if sanfrancisco.PeerTagger.count() != 0 {
 		t.Fatal("Peers should be untagged but weren't")

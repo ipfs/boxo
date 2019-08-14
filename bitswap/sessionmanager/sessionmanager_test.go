@@ -17,14 +17,11 @@ import (
 )
 
 type fakeSession struct {
-	interested            []cid.Cid
-	blks                  []blocks.Block
-	fromNetwork           bool
-	receivedBlock         bool
-	updateReceiveCounters bool
-	id                    uint64
-	pm                    *fakePeerManager
-	srs                   *fakeRequestSplitter
+	interested []cid.Cid
+	blks       []blocks.Block
+	id         uint64
+	pm         *fakePeerManager
+	srs        *fakeRequestSplitter
 }
 
 func (*fakeSession) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
