@@ -202,7 +202,7 @@ func runDistribution(b *testing.B, instances []testinstance.Instance, blocks []b
 
 	nst := fetcher.Adapter.Stats()
 	stats := runStats{
-		Time:    time.Now().Sub(start),
+		Time:    time.Since(start),
 		MsgRecd: nst.MessagesRecvd,
 		MsgSent: nst.MessagesSent,
 		Dups:    st.DupBlksReceived,

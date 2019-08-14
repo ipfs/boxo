@@ -43,7 +43,7 @@ func (lt *latencyTracker) CheckDuration(key cid.Cid) (time.Duration, bool) {
 	request, ok := lt.requests[key]
 	var latency time.Duration
 	if ok {
-		latency = time.Now().Sub(request.startedAt)
+		latency = time.Since(request.startedAt)
 	}
 	return latency, ok
 }
