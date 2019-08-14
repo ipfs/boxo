@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	notifications "github.com/ipfs/go-bitswap/notifications"
 	bssd "github.com/ipfs/go-bitswap/sessiondata"
 	"github.com/ipfs/go-bitswap/testutil"
 	blocks "github.com/ipfs/go-block-format"
@@ -92,8 +93,10 @@ func TestSessionGetBlocks(t *testing.T) {
 	fwm := &fakeWantManager{wantReqs, cancelReqs}
 	fpm := &fakePeerManager{}
 	frs := &fakeRequestSplitter{}
+	notif := notifications.New()
+	defer notif.Shutdown()
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm, frs, time.Second, delay.Fixed(time.Minute))
+	session := New(ctx, id, fwm, fpm, frs, notif, time.Second, delay.Fixed(time.Minute))
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
 	var cids []cid.Cid
@@ -122,7 +125,13 @@ func TestSessionGetBlocks(t *testing.T) {
 	var newBlockReqs []wantReq
 	var receivedBlocks []blocks.Block
 	for i, p := range peers {
-		session.ReceiveBlocksFrom(p, []blocks.Block{blks[testutil.IndexOf(blks, receivedWantReq.cids[i])]})
+		// simulate what bitswap does on receiving a message:
+		// - calls ReceiveBlocksFrom() on session
+		// - publishes block to pubsub channel
+		blk := blks[testutil.IndexOf(blks, receivedWantReq.cids[i])]
+		session.ReceiveBlocksFrom(p, []blocks.Block{blk})
+		notif.Publish(blk)
+
 		select {
 		case cancelBlock := <-cancelReqs:
 			newCancelReqs = append(newCancelReqs, cancelBlock)
@@ -178,7 +187,13 @@ func TestSessionGetBlocks(t *testing.T) {
 
 	// receive remaining blocks
 	for i, p := range peers {
-		session.ReceiveBlocksFrom(p, []blocks.Block{blks[testutil.IndexOf(blks, newCidsRequested[i])]})
+		// simulate what bitswap does on receiving a message:
+		// - calls ReceiveBlocksFrom() on session
+		// - publishes block to pubsub channel
+		blk := blks[testutil.IndexOf(blks, newCidsRequested[i])]
+		session.ReceiveBlocksFrom(p, []blocks.Block{blk})
+		notif.Publish(blk)
+
 		receivedBlock := <-getBlocksCh
 		receivedBlocks = append(receivedBlocks, receivedBlock)
 		cancelBlock := <-cancelReqs
@@ -207,8 +222,10 @@ func TestSessionFindMorePeers(t *testing.T) {
 	fwm := &fakeWantManager{wantReqs, cancelReqs}
 	fpm := &fakePeerManager{findMorePeersRequested: make(chan cid.Cid, 1)}
 	frs := &fakeRequestSplitter{}
+	notif := notifications.New()
+	defer notif.Shutdown()
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm, frs, time.Second, delay.Fixed(time.Minute))
+	session := New(ctx, id, fwm, fpm, frs, notif, time.Second, delay.Fixed(time.Minute))
 	session.SetBaseTickDelay(200 * time.Microsecond)
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
@@ -233,7 +250,13 @@ func TestSessionFindMorePeers(t *testing.T) {
 	// or there will be no tick set -- time precision on Windows in go is in the
 	// millisecond range
 	p := testutil.GeneratePeers(1)[0]
-	session.ReceiveBlocksFrom(p, []blocks.Block{blks[0]})
+
+	// simulate what bitswap does on receiving a message:
+	// - calls ReceiveBlocksFrom() on session
+	// - publishes block to pubsub channel
+	blk := blks[0]
+	session.ReceiveBlocksFrom(p, []blocks.Block{blk})
+	notif.Publish(blk)
 	select {
 	case <-cancelReqs:
 	case <-ctx.Done():
@@ -279,9 +302,11 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	fwm := &fakeWantManager{wantReqs, cancelReqs}
 	fpm := &fakePeerManager{findMorePeersRequested: make(chan cid.Cid, 1)}
 	frs := &fakeRequestSplitter{}
+	notif := notifications.New()
+	defer notif.Shutdown()
 	id := testutil.GenerateSessionID()
 
-	session := New(ctx, id, fwm, fpm, frs, 10*time.Millisecond, delay.Fixed(100*time.Millisecond))
+	session := New(ctx, id, fwm, fpm, frs, notif, 10*time.Millisecond, delay.Fixed(100*time.Millisecond))
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(4)
 	var cids []cid.Cid

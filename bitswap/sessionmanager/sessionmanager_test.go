@@ -7,6 +7,7 @@ import (
 
 	delay "github.com/ipfs/go-ipfs-delay"
 
+	notifications "github.com/ipfs/go-bitswap/notifications"
 	bssession "github.com/ipfs/go-bitswap/session"
 	bssd "github.com/ipfs/go-bitswap/sessiondata"
 	"github.com/ipfs/go-bitswap/testutil"
@@ -22,6 +23,7 @@ type fakeSession struct {
 	id         uint64
 	pm         *fakePeerManager
 	srs        *fakeRequestSplitter
+	notif      notifications.PubSub
 }
 
 func (*fakeSession) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
@@ -67,6 +69,7 @@ func sessionFactory(ctx context.Context,
 	id uint64,
 	pm bssession.PeerManager,
 	srs bssession.RequestSplitter,
+	notif notifications.PubSub,
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D) Session {
 	return &fakeSession{
@@ -74,6 +77,7 @@ func sessionFactory(ctx context.Context,
 		id:         id,
 		pm:         pm.(*fakePeerManager),
 		srs:        srs.(*fakeRequestSplitter),
+		notif:      notif,
 	}
 }
 
@@ -111,7 +115,9 @@ func TestAddingSessions(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory)
+	notif := notifications.New()
+	defer notif.Shutdown()
+	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory, notif)
 
 	p := peer.ID(123)
 	block := blocks.NewBlock([]byte("block"))
@@ -147,7 +153,9 @@ func TestReceivingBlocksWhenNotInterested(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory)
+	notif := notifications.New()
+	defer notif.Shutdown()
+	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory, notif)
 
 	p := peer.ID(123)
 	blks := testutil.GenerateBlocksOfSize(3, 1024)
@@ -175,7 +183,9 @@ func TestReceivingBlocksWhenNotInterested(t *testing.T) {
 func TestRemovingPeersWhenManagerContextCancelled(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
-	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory)
+	notif := notifications.New()
+	defer notif.Shutdown()
+	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory, notif)
 
 	p := peer.ID(123)
 	block := blocks.NewBlock([]byte("block"))
@@ -200,7 +210,9 @@ func TestRemovingPeersWhenSessionContextCancelled(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory)
+	notif := notifications.New()
+	defer notif.Shutdown()
+	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory, notif)
 
 	p := peer.ID(123)
 	block := blocks.NewBlock([]byte("block"))
