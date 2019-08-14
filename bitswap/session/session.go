@@ -101,6 +101,7 @@ func New(ctx context.Context,
 	wm WantManager,
 	pm PeerManager,
 	srs RequestSplitter,
+	notif notifications.PubSub,
 	initialSearchDelay time.Duration,
 	periodicSearchDelay delay.D) *Session {
 	s := &Session{
@@ -117,7 +118,7 @@ func New(ctx context.Context,
 		pm:                  pm,
 		srs:                 srs,
 		incoming:            make(chan blksRecv),
-		notif:               notifications.New(),
+		notif:               notif,
 		uuid:                loggables.Uuid("GetBlockRequest"),
 		baseTickDelay:       time.Millisecond * 500,
 		id:                  id,
@@ -359,7 +360,6 @@ func (s *Session) randomLiveWant() cid.Cid {
 }
 func (s *Session) handleShutdown() {
 	s.idleTick.Stop()
-	s.notif.Shutdown()
 
 	live := make([]cid.Cid, 0, len(s.liveWants))
 	for c := range s.liveWants {
@@ -394,8 +394,6 @@ func (s *Session) receiveBlocks(ctx context.Context, blocks []blocks.Block) {
 			// We've received new wanted blocks, so reset the number of ticks
 			// that have occurred since the last new block
 			s.consecutiveTicks = 0
-
-			s.notif.Publish(blk)
 
 			// Keep track of CIDs we've successfully fetched
 			s.pastWants.Push(c)

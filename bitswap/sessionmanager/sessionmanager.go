@@ -9,6 +9,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 
+	notifications "github.com/ipfs/go-bitswap/notifications"
 	bssession "github.com/ipfs/go-bitswap/session"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -28,7 +29,7 @@ type sesTrk struct {
 }
 
 // SessionFactory generates a new session for the SessionManager to track.
-type SessionFactory func(ctx context.Context, id uint64, pm bssession.PeerManager, srs bssession.RequestSplitter, provSearchDelay time.Duration, rebroadcastDelay delay.D) Session
+type SessionFactory func(ctx context.Context, id uint64, pm bssession.PeerManager, srs bssession.RequestSplitter, notif notifications.PubSub, provSearchDelay time.Duration, rebroadcastDelay delay.D) Session
 
 // RequestSplitterFactory generates a new request splitter for a session.
 type RequestSplitterFactory func(ctx context.Context) bssession.RequestSplitter
@@ -43,6 +44,7 @@ type SessionManager struct {
 	sessionFactory         SessionFactory
 	peerManagerFactory     PeerManagerFactory
 	requestSplitterFactory RequestSplitterFactory
+	notif                  notifications.PubSub
 
 	// Sessions
 	sessLk   sync.Mutex
@@ -54,12 +56,14 @@ type SessionManager struct {
 }
 
 // New creates a new SessionManager.
-func New(ctx context.Context, sessionFactory SessionFactory, peerManagerFactory PeerManagerFactory, requestSplitterFactory RequestSplitterFactory) *SessionManager {
+func New(ctx context.Context, sessionFactory SessionFactory, peerManagerFactory PeerManagerFactory,
+	requestSplitterFactory RequestSplitterFactory, notif notifications.PubSub) *SessionManager {
 	return &SessionManager{
 		ctx:                    ctx,
 		sessionFactory:         sessionFactory,
 		peerManagerFactory:     peerManagerFactory,
 		requestSplitterFactory: requestSplitterFactory,
+		notif:                  notif,
 	}
 }
 
@@ -73,7 +77,7 @@ func (sm *SessionManager) NewSession(ctx context.Context,
 
 	pm := sm.peerManagerFactory(sessionctx, id)
 	srs := sm.requestSplitterFactory(sessionctx)
-	session := sm.sessionFactory(sessionctx, id, pm, srs, provSearchDelay, rebroadcastDelay)
+	session := sm.sessionFactory(sessionctx, id, pm, srs, sm.notif, provSearchDelay, rebroadcastDelay)
 	tracked := sesTrk{session, pm, srs}
 	sm.sessLk.Lock()
 	sm.sessions = append(sm.sessions, tracked)
