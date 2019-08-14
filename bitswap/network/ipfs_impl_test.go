@@ -41,16 +41,12 @@ func (r *receiver) ReceiveError(err error) {
 
 func (r *receiver) PeerConnected(p peer.ID) {
 	r.peers[p] = struct{}{}
-	select {
-	case r.connectionEvent <- struct{}{}:
-	}
+	r.connectionEvent <- struct{}{}
 }
 
 func (r *receiver) PeerDisconnected(p peer.ID) {
 	delete(r.peers, p)
-	select {
-	case r.connectionEvent <- struct{}{}:
-	}
+	r.connectionEvent <- struct{}{}
 }
 func TestMessageSendAndReceive(t *testing.T) {
 	// create network
@@ -81,14 +77,23 @@ func TestMessageSendAndReceive(t *testing.T) {
 	bsnet1.SetDelegate(r1)
 	bsnet2.SetDelegate(r2)
 
-	mn.LinkAll()
-	bsnet1.ConnectTo(ctx, p2.ID())
+	err = mn.LinkAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = bsnet1.ConnectTo(ctx, p2.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case <-ctx.Done():
 		t.Fatal("did not connect peer")
 	case <-r1.connectionEvent:
 	}
-	bsnet2.ConnectTo(ctx, p1.ID())
+	err = bsnet2.ConnectTo(ctx, p1.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case <-ctx.Done():
 		t.Fatal("did not connect peer")
@@ -107,7 +112,10 @@ func TestMessageSendAndReceive(t *testing.T) {
 	sent.AddEntry(block1.Cid(), 1)
 	sent.AddBlock(block2)
 
-	bsnet1.SendMessage(ctx, p2.ID(), sent)
+	err = bsnet1.SendMessage(ctx, p2.ID(), sent)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case <-ctx.Done():
@@ -133,8 +141,8 @@ func TestMessageSendAndReceive(t *testing.T) {
 	}
 	receivedWant := receivedWants[0]
 	if receivedWant.Cid != sentWant.Cid ||
-		receivedWant.Priority != receivedWant.Priority ||
-		receivedWant.Cancel != receivedWant.Cancel {
+		receivedWant.Priority != sentWant.Priority ||
+		receivedWant.Cancel != sentWant.Cancel {
 		t.Fatal("Sent message wants did not match received message wants")
 	}
 	sentBlocks := sent.Blocks()

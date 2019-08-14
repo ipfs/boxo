@@ -35,7 +35,10 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 
 		msgToWaiter := bsmsg.New(true)
 		msgToWaiter.AddBlock(blocks.NewBlock([]byte(expectedStr)))
-		waiter.SendMessage(ctx, fromWaiter, msgToWaiter)
+		err := waiter.SendMessage(ctx, fromWaiter, msgToWaiter)
+		if err != nil {
+			t.Error(err)
+		}
 	}))
 
 	waiter.SetDelegate(lambda(func(

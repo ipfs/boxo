@@ -113,7 +113,7 @@ func (mq *MessageQueue) runQueue() {
 			return
 		case <-mq.ctx.Done():
 			if mq.sender != nil {
-				mq.sender.Reset()
+				_ = mq.sender.Reset()
 			}
 			return
 		}
@@ -220,7 +220,7 @@ func (mq *MessageQueue) attemptSendAndRecovery(message bsmsg.BitSwapMessage) boo
 	}
 
 	log.Infof("bitswap send error: %s", err)
-	mq.sender.Reset()
+	_ = mq.sender.Reset()
 	mq.sender = nil
 
 	select {

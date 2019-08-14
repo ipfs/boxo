@@ -133,12 +133,13 @@ func (bsnet *impl) SendMessage(
 	}
 
 	if err = bsnet.msgToStream(ctx, s, outgoing); err != nil {
-		s.Reset()
+		_ = s.Reset()
 		return err
 	}
 	atomic.AddUint64(&bsnet.stats.MessagesSent, 1)
 
 	// TODO(https://github.com/libp2p/go-libp2p-net/issues/28): Avoid this goroutine.
+	//nolint
 	go helpers.AwaitEOF(s)
 	return s.Close()
 
@@ -189,7 +190,7 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 	defer s.Close()
 
 	if bsnet.receiver == nil {
-		s.Reset()
+		_ = s.Reset()
 		return
 	}
 
@@ -198,7 +199,7 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 		received, err := bsmsg.FromMsgReader(reader)
 		if err != nil {
 			if err != io.EOF {
-				s.Reset()
+				_ = s.Reset()
 				go bsnet.receiver.ReceiveError(err)
 				log.Debugf("bitswap net handleNewStream from %s error: %s", s.Conn().RemotePeer(), err)
 			}
