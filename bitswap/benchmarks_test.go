@@ -95,7 +95,7 @@ func BenchmarkDups2Nodes(b *testing.B) {
 		subtestDistributeAndFetch(b, 200, 20, fixedDelay, allToAll, batchFetchAll)
 	})
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	ioutil.WriteFile("tmp/benchmark.json", out, 0666)
+	_ = ioutil.WriteFile("tmp/benchmark.json", out, 0666)
 }
 
 const fastSpeed = 60 * time.Millisecond
@@ -145,7 +145,7 @@ func BenchmarkDupsManyNodesRealWorldNetwork(b *testing.B) {
 		subtestDistributeAndFetchRateLimited(b, 300, 200, slowNetworkDelay, slowBandwidthGenerator, stdBlockSize, allToAll, batchFetchAll)
 	})
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	ioutil.WriteFile("tmp/rw-benchmark.json", out, 0666)
+	_ = ioutil.WriteFile("tmp/rw-benchmark.json", out, 0666)
 }
 
 func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, df distFunc, ff fetchFunc) {
@@ -267,7 +267,10 @@ func overlap2(b *testing.B, provs []testinstance.Instance, blks []blocks.Block) 
 // but we're mostly just testing performance of the sync algorithm
 func onePeerPerBlock(b *testing.B, provs []testinstance.Instance, blks []blocks.Block) {
 	for _, blk := range blks {
-		provs[rand.Intn(len(provs))].Blockstore().Put(blk)
+		err := provs[rand.Intn(len(provs))].Blockstore().Put(blk)
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

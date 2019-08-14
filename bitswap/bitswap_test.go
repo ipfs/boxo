@@ -44,7 +44,10 @@ func TestClose(t *testing.T) {
 	bitswap := ig.Next()
 
 	bitswap.Exchange.Close()
-	bitswap.Exchange.GetBlock(context.Background(), block.Cid())
+	_, err := bitswap.Exchange.GetBlock(context.Background(), block.Cid())
+	if err == nil {
+		t.Fatal("expected GetBlock to fail")
+	}
 }
 
 func TestProviderForKeyButNetworkCannotFind(t *testing.T) { // TODO revisit this
@@ -56,14 +59,17 @@ func TestProviderForKeyButNetworkCannotFind(t *testing.T) { // TODO revisit this
 
 	block := blocks.NewBlock([]byte("block"))
 	pinfo := p2ptestutil.RandTestBogusIdentityOrFatal(t)
-	rs.Client(pinfo).Provide(context.Background(), block.Cid(), true) // but not on network
+	err := rs.Client(pinfo).Provide(context.Background(), block.Cid(), true) // but not on network
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	solo := ig.Next()
 	defer solo.Exchange.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
-	_, err := solo.Exchange.GetBlock(ctx, block.Cid())
+	_, err = solo.Exchange.GetBlock(ctx, block.Cid())
 
 	if err != context.DeadlineExceeded {
 		t.Fatal("Expected DeadlineExceeded error")
@@ -224,7 +230,10 @@ func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
 	first := instances[0]
 	for _, b := range blocks {
 		blkeys = append(blkeys, b.Cid())
-		first.Exchange.HasBlock(b)
+		err := first.Exchange.HasBlock(b)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	t.Log("Distribute!")
