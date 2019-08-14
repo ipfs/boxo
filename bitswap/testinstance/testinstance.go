@@ -65,7 +65,10 @@ func (g *InstanceGenerator) Instances(n int) []Instance {
 	for i, inst := range instances {
 		for j := i + 1; j < len(instances); j++ {
 			oinst := instances[j]
-			inst.Adapter.ConnectTo(context.Background(), oinst.Peer)
+			err := inst.Adapter.ConnectTo(context.Background(), oinst.Peer)
+			if err != nil {
+				panic(err.Error())
+			}
 		}
 	}
 	return instances

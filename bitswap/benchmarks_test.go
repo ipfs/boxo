@@ -52,24 +52,20 @@ func BenchmarkDups2Nodes(b *testing.B) {
 		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap1, oneAtATime)
 	})
 
-	b.Run("Overlap2-BatchBy10", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap2, batchFetchBy10)
-	})
-
 	b.Run("Overlap3-OneAtATime", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap3, oneAtATime)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap2, oneAtATime)
 	})
 	b.Run("Overlap3-BatchBy10", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap3, batchFetchBy10)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap2, batchFetchBy10)
 	})
 	b.Run("Overlap3-AllConcurrent", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap3, fetchAllConcurrent)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap2, fetchAllConcurrent)
 	})
 	b.Run("Overlap3-BigBatch", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap3, batchFetchAll)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap2, batchFetchAll)
 	})
 	b.Run("Overlap3-UnixfsFetch", func(b *testing.B) {
-		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap3, unixfsFileFetch)
+		subtestDistributeAndFetch(b, 3, 100, fixedDelay, overlap2, unixfsFileFetch)
 	})
 	b.Run("10Nodes-AllToAll-OneAtATime", func(b *testing.B) {
 		subtestDistributeAndFetch(b, 10, 100, fixedDelay, allToAll, oneAtATime)
@@ -99,7 +95,7 @@ func BenchmarkDups2Nodes(b *testing.B) {
 		subtestDistributeAndFetch(b, 200, 20, fixedDelay, allToAll, batchFetchAll)
 	})
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	ioutil.WriteFile("tmp/benchmark.json", out, 0666)
+	_ = ioutil.WriteFile("tmp/benchmark.json", out, 0666)
 }
 
 const fastSpeed = 60 * time.Millisecond
@@ -149,7 +145,7 @@ func BenchmarkDupsManyNodesRealWorldNetwork(b *testing.B) {
 		subtestDistributeAndFetchRateLimited(b, 300, 200, slowNetworkDelay, slowBandwidthGenerator, stdBlockSize, allToAll, batchFetchAll)
 	})
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	ioutil.WriteFile("tmp/rw-benchmark.json", out, 0666)
+	_ = ioutil.WriteFile("tmp/rw-benchmark.json", out, 0666)
 }
 
 func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, df distFunc, ff fetchFunc) {
@@ -206,7 +202,7 @@ func runDistribution(b *testing.B, instances []testinstance.Instance, blocks []b
 
 	nst := fetcher.Adapter.Stats()
 	stats := runStats{
-		Time:    time.Now().Sub(start),
+		Time:    time.Since(start),
 		MsgRecd: nst.MessagesRecvd,
 		MsgSent: nst.MessagesSent,
 		Dups:    st.DupBlksReceived,
@@ -250,38 +246,18 @@ func overlap2(b *testing.B, provs []testinstance.Instance, blks []blocks.Block) 
 	bill := provs[0]
 	jeff := provs[1]
 
-	bill.Blockstore().Put(blks[0])
-	jeff.Blockstore().Put(blks[0])
 	for i, blk := range blks {
-		if i%3 == 0 {
-			bill.Blockstore().Put(blk)
-			jeff.Blockstore().Put(blk)
-		} else if i%2 == 1 {
-			bill.Blockstore().Put(blk)
-		} else {
-			jeff.Blockstore().Put(blk)
+		even := i%2 == 0
+		third := i%3 == 0
+		if third || even {
+			if err := bill.Blockstore().Put(blk); err != nil {
+				b.Fatal(err)
+			}
 		}
-	}
-}
-
-func overlap3(b *testing.B, provs []testinstance.Instance, blks []blocks.Block) {
-	if len(provs) != 2 {
-		b.Fatal("overlap3 only works with 2 provs")
-	}
-
-	bill := provs[0]
-	jeff := provs[1]
-
-	bill.Blockstore().Put(blks[0])
-	jeff.Blockstore().Put(blks[0])
-	for i, blk := range blks {
-		if i%3 == 0 {
-			bill.Blockstore().Put(blk)
-			jeff.Blockstore().Put(blk)
-		} else if i%2 == 1 {
-			bill.Blockstore().Put(blk)
-		} else {
-			jeff.Blockstore().Put(blk)
+		if third || !even {
+			if err := jeff.Blockstore().Put(blk); err != nil {
+				b.Fatal(err)
+			}
 		}
 	}
 }
@@ -291,7 +267,10 @@ func overlap3(b *testing.B, provs []testinstance.Instance, blks []blocks.Block) 
 // but we're mostly just testing performance of the sync algorithm
 func onePeerPerBlock(b *testing.B, provs []testinstance.Instance, blks []blocks.Block) {
 	for _, blk := range blks {
-		provs[rand.Intn(len(provs))].Blockstore().Put(blk)
+		err := provs[rand.Intn(len(provs))].Blockstore().Put(blk)
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
@@ -330,7 +309,7 @@ func fetchAllConcurrent(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
 			defer wg.Done()
 			_, err := ses.GetBlock(context.Background(), c)
 			if err != nil {
-				b.Fatal(err)
+				b.Error(err)
 			}
 		}(c)
 	}
