@@ -129,7 +129,7 @@ func TestSessionGetBlocks(t *testing.T) {
 		// - calls ReceiveBlocksFrom() on session
 		// - publishes block to pubsub channel
 		blk := blks[testutil.IndexOf(blks, receivedWantReq.cids[i])]
-		session.ReceiveBlocksFrom(p, []blocks.Block{blk})
+		session.ReceiveBlocksFrom(p, []cid.Cid{blk.Cid()})
 		notif.Publish(blk)
 
 		select {
@@ -191,7 +191,7 @@ func TestSessionGetBlocks(t *testing.T) {
 		// - calls ReceiveBlocksFrom() on session
 		// - publishes block to pubsub channel
 		blk := blks[testutil.IndexOf(blks, newCidsRequested[i])]
-		session.ReceiveBlocksFrom(p, []blocks.Block{blk})
+		session.ReceiveBlocksFrom(p, []cid.Cid{blk.Cid()})
 		notif.Publish(blk)
 
 		receivedBlock := <-getBlocksCh
@@ -255,7 +255,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 	// - calls ReceiveBlocksFrom() on session
 	// - publishes block to pubsub channel
 	blk := blks[0]
-	session.ReceiveBlocksFrom(p, []blocks.Block{blk})
+	session.ReceiveBlocksFrom(p, []cid.Cid{blk.Cid()})
 	notif.Publish(blk)
 	select {
 	case <-cancelReqs:

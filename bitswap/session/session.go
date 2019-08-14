@@ -54,7 +54,7 @@ type interestReq struct {
 
 type blksRecv struct {
 	from peer.ID
-	blks []blocks.Block
+	ks []cid.Cid
 }
 
 // Session holds state for an individual bitswap transfer operation.
@@ -135,9 +135,9 @@ func New(ctx context.Context,
 }
 
 // ReceiveBlocksFrom receives incoming blocks from the given peer.
-func (s *Session) ReceiveBlocksFrom(from peer.ID, blocks []blocks.Block) {
+func (s *Session) ReceiveBlocksFrom(from peer.ID, ks []cid.Cid) {
 	select {
-	case s.incoming <- blksRecv{from: from, blks: blocks}:
+	case s.incoming <- blksRecv{from: from, ks: ks}:
 	case <-s.ctx.Done():
 	}
 }
@@ -262,21 +262,21 @@ func (s *Session) run(ctx context.Context) {
 
 func (s *Session) cancelIncomingBlocks(ctx context.Context, rcv blksRecv) {
 	// We've received the blocks so we can cancel any outstanding wants for them
-	ks := make([]cid.Cid, 0, len(rcv.blks))
-	for _, b := range rcv.blks {
-		if s.cidIsWanted(b.Cid()) {
-			ks = append(ks, b.Cid())
+	wanted := make([]cid.Cid, 0, len(rcv.ks))
+	for _, k := range rcv.ks {
+		if s.cidIsWanted(k) {
+			wanted = append(wanted, k)
 		}
 	}
-	s.pm.RecordCancels(ks)
-	s.wm.CancelWants(s.ctx, ks, nil, s.id)
+	s.pm.RecordCancels(wanted)
+	s.wm.CancelWants(s.ctx, wanted, nil, s.id)
 }
 
 func (s *Session) handleIncomingBlocks(ctx context.Context, rcv blksRecv) {
 	s.idleTick.Stop()
 
 	// Process the received blocks
-	s.receiveBlocks(ctx, rcv.blks)
+	s.receiveBlocks(ctx, rcv.ks)
 
 	s.resetIdleTick()
 }
@@ -376,9 +376,8 @@ func (s *Session) cidIsWanted(c cid.Cid) bool {
 	return ok
 }
 
-func (s *Session) receiveBlocks(ctx context.Context, blocks []blocks.Block) {
-	for _, blk := range blocks {
-		c := blk.Cid()
+func (s *Session) receiveBlocks(ctx context.Context, ks []cid.Cid) {
+	for _, c := range ks {
 		if s.cidIsWanted(c) {
 			// If the block CID was in the live wants queue, remove it
 			tval, ok := s.liveWants[c]
@@ -416,22 +415,18 @@ func (s *Session) receiveBlocks(ctx context.Context, blocks []blocks.Block) {
 }
 
 func (s *Session) updateReceiveCounters(ctx context.Context, rcv blksRecv) {
-	ks := make([]cid.Cid, len(rcv.blks))
-
-	for _, blk := range rcv.blks {
+	for _, k := range rcv.ks {
 		// Inform the request splitter of unique / duplicate blocks
-		if s.cidIsWanted(blk.Cid()) {
+		if s.cidIsWanted(k) {
 			s.srs.RecordUniqueBlock()
-		} else if s.pastWants.Has(blk.Cid()) {
+		} else if s.pastWants.Has(k) {
 			s.srs.RecordDuplicateBlock()
 		}
-
-		ks = append(ks, blk.Cid())
 	}
 
 	// Record response (to be able to time latency)
-	if len(ks) > 0 {
-		s.pm.RecordPeerResponse(rcv.from, ks)
+	if len(rcv.ks) > 0 {
+		s.pm.RecordPeerResponse(rcv.from, rcv.ks)
 	}
 }
 
