@@ -309,7 +309,7 @@ func fetchAllConcurrent(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
 			defer wg.Done()
 			_, err := ses.GetBlock(context.Background(), c)
 			if err != nil {
-				b.Fatal(err)
+				b.Error(err)
 			}
 		}(c)
 	}
