@@ -58,6 +58,7 @@ type SessionPeerManager struct {
 func New(ctx context.Context, id uint64, tagger PeerTagger, providerFinder PeerProviderFinder) *SessionPeerManager {
 	spm := &SessionPeerManager{
 		ctx:              ctx,
+		id:               id,
 		tagger:           tagger,
 		providerFinder:   providerFinder,
 		peerMessages:     make(chan peerMessage, 16),
