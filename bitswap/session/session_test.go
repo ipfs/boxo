@@ -188,6 +188,9 @@ func TestSessionGetBlocks(t *testing.T) {
 	if len(receivedBlocks) != len(blks) {
 		t.Fatal("did not receive enough blocks")
 	}
+	if len(newCancelReqs) != len(receivedBlocks) {
+		t.Fatal("expected an equal number of received blocks and cancels")
+	}
 	for _, block := range receivedBlocks {
 		if !testutil.ContainsBlock(blks, block) {
 			t.Fatal("received incorrect block")
