@@ -416,3 +416,45 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 		t.Fatal("Did not rebroadcast to find more peers")
 	}
 }
+
+func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
+	wantReqs := make(chan wantReq, 1)
+	cancelReqs := make(chan wantReq, 1)
+	fwm := &fakeWantManager{wantReqs, cancelReqs}
+	fpm := &fakePeerManager{}
+	frs := &fakeRequestSplitter{}
+	notif := notifications.New()
+	defer notif.Shutdown()
+	id := testutil.GenerateSessionID()
+
+	// Create a new session with its own context
+	sessctx, sesscancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	session := New(sessctx, id, fwm, fpm, frs, notif, time.Second, delay.Fixed(time.Minute))
+
+	timerCtx, timerCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer timerCancel()
+
+	// Request a block with a new context
+	blockGenerator := blocksutil.NewBlockGenerator()
+	blks := blockGenerator.Blocks(1)
+	getctx, getcancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer getcancel()
+
+	getBlocksCh, err := session.GetBlocks(getctx, []cid.Cid{blks[0].Cid()})
+	if err != nil {
+		t.Fatal("error getting blocks")
+	}
+
+	// Cancel the session context
+	sesscancel()
+
+	// Expect the GetBlocks() channel to be closed
+	select {
+	case _, ok := <-getBlocksCh:
+		if ok {
+			t.Fatal("expected channel to be closed but was not closed")
+		}
+	case <-timerCtx.Done():
+		t.Fatal("expected channel to be closed before timeout")
+	}
+}
