@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	notifications "github.com/ipfs/go-bitswap/notifications"
 	bssd "github.com/ipfs/go-bitswap/sessiondata"
 	"github.com/ipfs/go-bitswap/testutil"
 	blocks "github.com/ipfs/go-block-format"
@@ -92,8 +93,10 @@ func TestSessionGetBlocks(t *testing.T) {
 	fwm := &fakeWantManager{wantReqs, cancelReqs}
 	fpm := &fakePeerManager{}
 	frs := &fakeRequestSplitter{}
+	notif := notifications.New()
+	defer notif.Shutdown()
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm, frs, time.Second, delay.Fixed(time.Minute))
+	session := New(ctx, id, fwm, fpm, frs, notif, time.Second, delay.Fixed(time.Minute))
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
 	var cids []cid.Cid
@@ -122,7 +125,13 @@ func TestSessionGetBlocks(t *testing.T) {
 	var newBlockReqs []wantReq
 	var receivedBlocks []blocks.Block
 	for i, p := range peers {
-		session.ReceiveBlocksFrom(p, []blocks.Block{blks[testutil.IndexOf(blks, receivedWantReq.cids[i])]})
+		// simulate what bitswap does on receiving a message:
+		// - calls ReceiveFrom() on session
+		// - publishes block to pubsub channel
+		blk := blks[testutil.IndexOf(blks, receivedWantReq.cids[i])]
+		session.ReceiveFrom(p, []cid.Cid{blk.Cid()})
+		notif.Publish(blk)
+
 		select {
 		case cancelBlock := <-cancelReqs:
 			newCancelReqs = append(newCancelReqs, cancelBlock)
@@ -178,7 +187,13 @@ func TestSessionGetBlocks(t *testing.T) {
 
 	// receive remaining blocks
 	for i, p := range peers {
-		session.ReceiveBlocksFrom(p, []blocks.Block{blks[testutil.IndexOf(blks, newCidsRequested[i])]})
+		// simulate what bitswap does on receiving a message:
+		// - calls ReceiveFrom() on session
+		// - publishes block to pubsub channel
+		blk := blks[testutil.IndexOf(blks, newCidsRequested[i])]
+		session.ReceiveFrom(p, []cid.Cid{blk.Cid()})
+		notif.Publish(blk)
+
 		receivedBlock := <-getBlocksCh
 		receivedBlocks = append(receivedBlocks, receivedBlock)
 		cancelBlock := <-cancelReqs
@@ -207,8 +222,10 @@ func TestSessionFindMorePeers(t *testing.T) {
 	fwm := &fakeWantManager{wantReqs, cancelReqs}
 	fpm := &fakePeerManager{findMorePeersRequested: make(chan cid.Cid, 1)}
 	frs := &fakeRequestSplitter{}
+	notif := notifications.New()
+	defer notif.Shutdown()
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm, frs, time.Second, delay.Fixed(time.Minute))
+	session := New(ctx, id, fwm, fpm, frs, notif, time.Second, delay.Fixed(time.Minute))
 	session.SetBaseTickDelay(200 * time.Microsecond)
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
@@ -233,7 +250,13 @@ func TestSessionFindMorePeers(t *testing.T) {
 	// or there will be no tick set -- time precision on Windows in go is in the
 	// millisecond range
 	p := testutil.GeneratePeers(1)[0]
-	session.ReceiveBlocksFrom(p, []blocks.Block{blks[0]})
+
+	// simulate what bitswap does on receiving a message:
+	// - calls ReceiveFrom() on session
+	// - publishes block to pubsub channel
+	blk := blks[0]
+	session.ReceiveFrom(p, []cid.Cid{blk.Cid()})
+	notif.Publish(blk)
 	select {
 	case <-cancelReqs:
 	case <-ctx.Done():
@@ -279,9 +302,11 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	fwm := &fakeWantManager{wantReqs, cancelReqs}
 	fpm := &fakePeerManager{findMorePeersRequested: make(chan cid.Cid, 1)}
 	frs := &fakeRequestSplitter{}
+	notif := notifications.New()
+	defer notif.Shutdown()
 	id := testutil.GenerateSessionID()
 
-	session := New(ctx, id, fwm, fpm, frs, 10*time.Millisecond, delay.Fixed(100*time.Millisecond))
+	session := New(ctx, id, fwm, fpm, frs, notif, 10*time.Millisecond, delay.Fixed(100*time.Millisecond))
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(4)
 	var cids []cid.Cid
@@ -389,5 +414,47 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("Did not rebroadcast to find more peers")
+	}
+}
+
+func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
+	wantReqs := make(chan wantReq, 1)
+	cancelReqs := make(chan wantReq, 1)
+	fwm := &fakeWantManager{wantReqs, cancelReqs}
+	fpm := &fakePeerManager{}
+	frs := &fakeRequestSplitter{}
+	notif := notifications.New()
+	defer notif.Shutdown()
+	id := testutil.GenerateSessionID()
+
+	// Create a new session with its own context
+	sessctx, sesscancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	session := New(sessctx, id, fwm, fpm, frs, notif, time.Second, delay.Fixed(time.Minute))
+
+	timerCtx, timerCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer timerCancel()
+
+	// Request a block with a new context
+	blockGenerator := blocksutil.NewBlockGenerator()
+	blks := blockGenerator.Blocks(1)
+	getctx, getcancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer getcancel()
+
+	getBlocksCh, err := session.GetBlocks(getctx, []cid.Cid{blks[0].Cid()})
+	if err != nil {
+		t.Fatal("error getting blocks")
+	}
+
+	// Cancel the session context
+	sesscancel()
+
+	// Expect the GetBlocks() channel to be closed
+	select {
+	case _, ok := <-getBlocksCh:
+		if ok {
+			t.Fatal("expected channel to be closed but was not closed")
+		}
+	case <-timerCtx.Done():
+		t.Fatal("expected channel to be closed before timeout")
 	}
 }

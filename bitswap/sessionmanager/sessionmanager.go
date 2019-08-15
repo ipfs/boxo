@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
-	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 
+	notifications "github.com/ipfs/go-bitswap/notifications"
 	bssession "github.com/ipfs/go-bitswap/session"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -18,7 +18,7 @@ import (
 type Session interface {
 	exchange.Fetcher
 	InterestedIn(cid.Cid) bool
-	ReceiveBlocksFrom(peer.ID, []blocks.Block)
+	ReceiveFrom(peer.ID, []cid.Cid)
 }
 
 type sesTrk struct {
@@ -28,7 +28,7 @@ type sesTrk struct {
 }
 
 // SessionFactory generates a new session for the SessionManager to track.
-type SessionFactory func(ctx context.Context, id uint64, pm bssession.PeerManager, srs bssession.RequestSplitter, provSearchDelay time.Duration, rebroadcastDelay delay.D) Session
+type SessionFactory func(ctx context.Context, id uint64, pm bssession.PeerManager, srs bssession.RequestSplitter, notif notifications.PubSub, provSearchDelay time.Duration, rebroadcastDelay delay.D) Session
 
 // RequestSplitterFactory generates a new request splitter for a session.
 type RequestSplitterFactory func(ctx context.Context) bssession.RequestSplitter
@@ -43,6 +43,7 @@ type SessionManager struct {
 	sessionFactory         SessionFactory
 	peerManagerFactory     PeerManagerFactory
 	requestSplitterFactory RequestSplitterFactory
+	notif                  notifications.PubSub
 
 	// Sessions
 	sessLk   sync.Mutex
@@ -54,12 +55,14 @@ type SessionManager struct {
 }
 
 // New creates a new SessionManager.
-func New(ctx context.Context, sessionFactory SessionFactory, peerManagerFactory PeerManagerFactory, requestSplitterFactory RequestSplitterFactory) *SessionManager {
+func New(ctx context.Context, sessionFactory SessionFactory, peerManagerFactory PeerManagerFactory,
+	requestSplitterFactory RequestSplitterFactory, notif notifications.PubSub) *SessionManager {
 	return &SessionManager{
 		ctx:                    ctx,
 		sessionFactory:         sessionFactory,
 		peerManagerFactory:     peerManagerFactory,
 		requestSplitterFactory: requestSplitterFactory,
+		notif:                  notif,
 	}
 }
 
@@ -73,7 +76,7 @@ func (sm *SessionManager) NewSession(ctx context.Context,
 
 	pm := sm.peerManagerFactory(sessionctx, id)
 	srs := sm.requestSplitterFactory(sessionctx)
-	session := sm.sessionFactory(sessionctx, id, pm, srs, provSearchDelay, rebroadcastDelay)
+	session := sm.sessionFactory(sessionctx, id, pm, srs, sm.notif, provSearchDelay, rebroadcastDelay)
 	tracked := sesTrk{session, pm, srs}
 	sm.sessLk.Lock()
 	sm.sessions = append(sm.sessions, tracked)
@@ -111,20 +114,20 @@ func (sm *SessionManager) GetNextSessionID() uint64 {
 	return sm.sessID
 }
 
-// ReceiveBlocksFrom receives blocks from a peer and dispatches to interested
+// ReceiveFrom receives blocks from a peer and dispatches to interested
 // sessions.
-func (sm *SessionManager) ReceiveBlocksFrom(from peer.ID, blks []blocks.Block) {
+func (sm *SessionManager) ReceiveFrom(from peer.ID, ks []cid.Cid) {
 	sm.sessLk.Lock()
 	defer sm.sessLk.Unlock()
 
 	// Only give each session the blocks / dups that it is interested in
 	for _, s := range sm.sessions {
-		sessBlks := make([]blocks.Block, 0, len(blks))
-		for _, b := range blks {
-			if s.session.InterestedIn(b.Cid()) {
-				sessBlks = append(sessBlks, b)
+		sessKs := make([]cid.Cid, 0, len(ks))
+		for _, k := range ks {
+			if s.session.InterestedIn(k) {
+				sessKs = append(sessKs, k)
 			}
 		}
-		s.session.ReceiveBlocksFrom(from, sessBlks)
+		s.session.ReceiveFrom(from, sessKs)
 	}
 }

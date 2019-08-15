@@ -16,6 +16,7 @@ import (
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	bsmq "github.com/ipfs/go-bitswap/messagequeue"
 	bsnet "github.com/ipfs/go-bitswap/network"
+	notifications "github.com/ipfs/go-bitswap/notifications"
 	bspm "github.com/ipfs/go-bitswap/peermanager"
 	bspqm "github.com/ipfs/go-bitswap/providerquerymanager"
 	bssession "github.com/ipfs/go-bitswap/session"
@@ -116,9 +117,10 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	pqm := bspqm.New(ctx, network)
 
 	sessionFactory := func(ctx context.Context, id uint64, pm bssession.PeerManager, srs bssession.RequestSplitter,
+		notif notifications.PubSub,
 		provSearchDelay time.Duration,
 		rebroadcastDelay delay.D) bssm.Session {
-		return bssession.New(ctx, id, wm, pm, srs, provSearchDelay, rebroadcastDelay)
+		return bssession.New(ctx, id, wm, pm, srs, notif, provSearchDelay, rebroadcastDelay)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.PeerManager {
 		return bsspm.New(ctx, id, network.ConnectionManager(), pqm)
@@ -126,6 +128,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	sessionRequestSplitterFactory := func(ctx context.Context) bssession.RequestSplitter {
 		return bssrs.New(ctx)
 	}
+	notif := notifications.New()
 
 	bs := &Bitswap{
 		blockstore:       bstore,
@@ -136,7 +139,8 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		provideKeys:      make(chan cid.Cid, provideKeysBufferSize),
 		wm:               wm,
 		pqm:              pqm,
-		sm:               bssm.New(ctx, sessionFactory, sessionPeerManagerFactory, sessionRequestSplitterFactory),
+		sm:               bssm.New(ctx, sessionFactory, sessionPeerManagerFactory, sessionRequestSplitterFactory, notif),
+		notif:            notif,
 		counters:         new(counters),
 		dupMetric:        dupHist,
 		allMetric:        allHist,
@@ -163,6 +167,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	go func() {
 		<-px.Closing() // process closes first
 		cancelFunc()
+		notif.Shutdown()
 	}()
 	procctx.CloseAfterContext(px, ctx) // parent cancelled first
 
@@ -186,6 +191,9 @@ type Bitswap struct {
 	// blockstore is the local database
 	// NB: ensure threadsafety
 	blockstore blockstore.Blockstore
+
+	// manages channels of outgoing blocks for sessions
+	notif notifications.PubSub
 
 	// newBlocks is a channel for newly added blocks to be provided to the
 	// network.  blocks pushed down this channel get buffered and fed to the
@@ -307,18 +315,38 @@ func (bs *Bitswap) receiveBlocksFrom(from peer.ID, blks []blocks.Block) error {
 	// to the same node. We should address this soon, but i'm not going to do
 	// it now as it requires more thought and isnt causing immediate problems.
 
-	// Send all blocks (including duplicates) to any sessions that want them.
-	// (The duplicates are needed by sessions for accounting purposes)
-	bs.sm.ReceiveBlocksFrom(from, blks)
+	allKs := make([]cid.Cid, 0, len(blks))
+	for _, b := range blks {
+		allKs = append(allKs, b.Cid())
+	}
 
-	// Send wanted blocks to decision engine
-	bs.engine.AddBlocks(wanted)
+	wantedKs := allKs
+	if len(blks) != len(wanted) {
+		wantedKs = make([]cid.Cid, 0, len(wanted))
+		for _, b := range wanted {
+			wantedKs = append(wantedKs, b.Cid())
+		}
+	}
+
+	// Send all block keys (including duplicates) to any sessions that want them.
+	// (The duplicates are needed by sessions for accounting purposes)
+	bs.sm.ReceiveFrom(from, allKs)
+
+	// Send wanted block keys to decision engine
+	bs.engine.AddBlocks(wantedKs)
+
+	// Publish the block to any Bitswap clients that had requested blocks.
+	// (the sessions use this pubsub mechanism to inform clients of received
+	// blocks)
+	for _, b := range wanted {
+		bs.notif.Publish(b)
+	}
 
 	// If the reprovider is enabled, send wanted blocks to reprovider
 	if bs.provideEnabled {
-		for _, b := range wanted {
+		for _, k := range wantedKs {
 			select {
-			case bs.newBlocks <- b.Cid():
+			case bs.newBlocks <- k:
 				// send block off to be reprovided
 			case <-bs.process.Closing():
 				return bs.process.Close()
