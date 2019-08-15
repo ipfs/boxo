@@ -330,7 +330,7 @@ func (bs *Bitswap) receiveBlocksFrom(from peer.ID, blks []blocks.Block) error {
 
 	// Send all block keys (including duplicates) to any sessions that want them.
 	// (The duplicates are needed by sessions for accounting purposes)
-	bs.sm.ReceiveBlocksFrom(from, allKs)
+	bs.sm.ReceiveFrom(from, allKs)
 
 	// Send wanted block keys to decision engine
 	bs.engine.AddBlocks(wantedKs)

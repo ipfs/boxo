@@ -18,7 +18,7 @@ import (
 type Session interface {
 	exchange.Fetcher
 	InterestedIn(cid.Cid) bool
-	ReceiveBlocksFrom(peer.ID, []cid.Cid)
+	ReceiveFrom(peer.ID, []cid.Cid)
 }
 
 type sesTrk struct {
@@ -114,9 +114,9 @@ func (sm *SessionManager) GetNextSessionID() uint64 {
 	return sm.sessID
 }
 
-// ReceiveBlocksFrom receives blocks from a peer and dispatches to interested
+// ReceiveFrom receives blocks from a peer and dispatches to interested
 // sessions.
-func (sm *SessionManager) ReceiveBlocksFrom(from peer.ID, ks []cid.Cid) {
+func (sm *SessionManager) ReceiveFrom(from peer.ID, ks []cid.Cid) {
 	sm.sessLk.Lock()
 	defer sm.sessLk.Unlock()
 
@@ -128,6 +128,6 @@ func (sm *SessionManager) ReceiveBlocksFrom(from peer.ID, ks []cid.Cid) {
 				sessKs = append(sessKs, k)
 			}
 		}
-		s.session.ReceiveBlocksFrom(from, sessKs)
+		s.session.ReceiveFrom(from, sessKs)
 	}
 }

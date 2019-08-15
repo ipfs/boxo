@@ -40,7 +40,7 @@ func (fs *fakeSession) InterestedIn(c cid.Cid) bool {
 	}
 	return false
 }
-func (fs *fakeSession) ReceiveBlocksFrom(p peer.ID, ks []cid.Cid) {
+func (fs *fakeSession) ReceiveFrom(p peer.ID, ks []cid.Cid) {
 	fs.ks = append(fs.ks, ks...)
 }
 
@@ -137,7 +137,7 @@ func TestAddingSessions(t *testing.T) {
 		thirdSession.id != secondSession.id+2 {
 		t.Fatal("session does not have correct id set")
 	}
-	sm.ReceiveBlocksFrom(p, []cid.Cid{block.Cid()})
+	sm.ReceiveFrom(p, []cid.Cid{block.Cid()})
 	if len(firstSession.ks) == 0 ||
 		len(secondSession.ks) == 0 ||
 		len(thirdSession.ks) == 0 {
@@ -167,7 +167,7 @@ func TestReceivingBlocksWhenNotInterested(t *testing.T) {
 	nextInterestedIn = []cid.Cid{}
 	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 
-	sm.ReceiveBlocksFrom(p, []cid.Cid{blks[0].Cid(), blks[1].Cid()})
+	sm.ReceiveFrom(p, []cid.Cid{blks[0].Cid(), blks[1].Cid()})
 
 	if !cmpSessionCids(firstSession, []cid.Cid{cids[0], cids[1]}) ||
 		!cmpSessionCids(secondSession, []cid.Cid{cids[0]}) ||
@@ -194,7 +194,7 @@ func TestRemovingPeersWhenManagerContextCancelled(t *testing.T) {
 	cancel()
 	// wait for sessions to get removed
 	time.Sleep(10 * time.Millisecond)
-	sm.ReceiveBlocksFrom(p, []cid.Cid{block.Cid()})
+	sm.ReceiveFrom(p, []cid.Cid{block.Cid()})
 	if len(firstSession.ks) > 0 ||
 		len(secondSession.ks) > 0 ||
 		len(thirdSession.ks) > 0 {
@@ -222,7 +222,7 @@ func TestRemovingPeersWhenSessionContextCancelled(t *testing.T) {
 	sessionCancel()
 	// wait for sessions to get removed
 	time.Sleep(10 * time.Millisecond)
-	sm.ReceiveBlocksFrom(p, []cid.Cid{block.Cid()})
+	sm.ReceiveFrom(p, []cid.Cid{block.Cid()})
 	if len(firstSession.ks) == 0 ||
 		len(secondSession.ks) > 0 ||
 		len(thirdSession.ks) == 0 {
