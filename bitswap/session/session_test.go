@@ -126,10 +126,10 @@ func TestSessionGetBlocks(t *testing.T) {
 	var receivedBlocks []blocks.Block
 	for i, p := range peers {
 		// simulate what bitswap does on receiving a message:
-		// - calls ReceiveBlocksFrom() on session
+		// - calls ReceiveFrom() on session
 		// - publishes block to pubsub channel
 		blk := blks[testutil.IndexOf(blks, receivedWantReq.cids[i])]
-		session.ReceiveBlocksFrom(p, []cid.Cid{blk.Cid()})
+		session.ReceiveFrom(p, []cid.Cid{blk.Cid()})
 		notif.Publish(blk)
 
 		select {
@@ -188,10 +188,10 @@ func TestSessionGetBlocks(t *testing.T) {
 	// receive remaining blocks
 	for i, p := range peers {
 		// simulate what bitswap does on receiving a message:
-		// - calls ReceiveBlocksFrom() on session
+		// - calls ReceiveFrom() on session
 		// - publishes block to pubsub channel
 		blk := blks[testutil.IndexOf(blks, newCidsRequested[i])]
-		session.ReceiveBlocksFrom(p, []cid.Cid{blk.Cid()})
+		session.ReceiveFrom(p, []cid.Cid{blk.Cid()})
 		notif.Publish(blk)
 
 		receivedBlock := <-getBlocksCh
@@ -252,10 +252,10 @@ func TestSessionFindMorePeers(t *testing.T) {
 	p := testutil.GeneratePeers(1)[0]
 
 	// simulate what bitswap does on receiving a message:
-	// - calls ReceiveBlocksFrom() on session
+	// - calls ReceiveFrom() on session
 	// - publishes block to pubsub channel
 	blk := blks[0]
-	session.ReceiveBlocksFrom(p, []cid.Cid{blk.Cid()})
+	session.ReceiveFrom(p, []cid.Cid{blk.Cid()})
 	notif.Publish(blk)
 	select {
 	case <-cancelReqs:
