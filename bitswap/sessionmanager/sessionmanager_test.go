@@ -7,6 +7,7 @@ import (
 
 	delay "github.com/ipfs/go-ipfs-delay"
 
+	notifications "github.com/ipfs/go-bitswap/notifications"
 	bssession "github.com/ipfs/go-bitswap/session"
 	bssd "github.com/ipfs/go-bitswap/sessiondata"
 	"github.com/ipfs/go-bitswap/testutil"
@@ -18,10 +19,11 @@ import (
 
 type fakeSession struct {
 	interested []cid.Cid
-	blks       []blocks.Block
+	ks         []cid.Cid
 	id         uint64
 	pm         *fakePeerManager
 	srs        *fakeRequestSplitter
+	notif      notifications.PubSub
 }
 
 func (*fakeSession) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
@@ -38,8 +40,8 @@ func (fs *fakeSession) InterestedIn(c cid.Cid) bool {
 	}
 	return false
 }
-func (fs *fakeSession) ReceiveBlocksFrom(p peer.ID, blks []blocks.Block) {
-	fs.blks = append(fs.blks, blks...)
+func (fs *fakeSession) ReceiveFrom(p peer.ID, ks []cid.Cid) {
+	fs.ks = append(fs.ks, ks...)
 }
 
 type fakePeerManager struct {
@@ -67,6 +69,7 @@ func sessionFactory(ctx context.Context,
 	id uint64,
 	pm bssession.PeerManager,
 	srs bssession.RequestSplitter,
+	notif notifications.PubSub,
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D) Session {
 	return &fakeSession{
@@ -74,6 +77,7 @@ func sessionFactory(ctx context.Context,
 		id:         id,
 		pm:         pm.(*fakePeerManager),
 		srs:        srs.(*fakeRequestSplitter),
+		notif:      notif,
 	}
 }
 
@@ -86,17 +90,13 @@ func requestSplitterFactory(ctx context.Context) bssession.RequestSplitter {
 }
 
 func cmpSessionCids(s *fakeSession, cids []cid.Cid) bool {
-	return cmpBlockCids(s.blks, cids)
-}
-
-func cmpBlockCids(blks []blocks.Block, cids []cid.Cid) bool {
-	if len(blks) != len(cids) {
+	if len(s.ks) != len(cids) {
 		return false
 	}
-	for _, b := range blks {
+	for _, bk := range s.ks {
 		has := false
 		for _, c := range cids {
-			if c == b.Cid() {
+			if c == bk {
 				has = true
 			}
 		}
@@ -111,7 +111,9 @@ func TestAddingSessions(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory)
+	notif := notifications.New()
+	defer notif.Shutdown()
+	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory, notif)
 
 	p := peer.ID(123)
 	block := blocks.NewBlock([]byte("block"))
@@ -135,10 +137,10 @@ func TestAddingSessions(t *testing.T) {
 		thirdSession.id != secondSession.id+2 {
 		t.Fatal("session does not have correct id set")
 	}
-	sm.ReceiveBlocksFrom(p, []blocks.Block{block})
-	if len(firstSession.blks) == 0 ||
-		len(secondSession.blks) == 0 ||
-		len(thirdSession.blks) == 0 {
+	sm.ReceiveFrom(p, []cid.Cid{block.Cid()})
+	if len(firstSession.ks) == 0 ||
+		len(secondSession.ks) == 0 ||
+		len(thirdSession.ks) == 0 {
 		t.Fatal("should have received blocks but didn't")
 	}
 }
@@ -147,7 +149,9 @@ func TestReceivingBlocksWhenNotInterested(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory)
+	notif := notifications.New()
+	defer notif.Shutdown()
+	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory, notif)
 
 	p := peer.ID(123)
 	blks := testutil.GenerateBlocksOfSize(3, 1024)
@@ -163,7 +167,7 @@ func TestReceivingBlocksWhenNotInterested(t *testing.T) {
 	nextInterestedIn = []cid.Cid{}
 	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 
-	sm.ReceiveBlocksFrom(p, []blocks.Block{blks[0], blks[1]})
+	sm.ReceiveFrom(p, []cid.Cid{blks[0].Cid(), blks[1].Cid()})
 
 	if !cmpSessionCids(firstSession, []cid.Cid{cids[0], cids[1]}) ||
 		!cmpSessionCids(secondSession, []cid.Cid{cids[0]}) ||
@@ -175,7 +179,9 @@ func TestReceivingBlocksWhenNotInterested(t *testing.T) {
 func TestRemovingPeersWhenManagerContextCancelled(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
-	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory)
+	notif := notifications.New()
+	defer notif.Shutdown()
+	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory, notif)
 
 	p := peer.ID(123)
 	block := blocks.NewBlock([]byte("block"))
@@ -188,10 +194,10 @@ func TestRemovingPeersWhenManagerContextCancelled(t *testing.T) {
 	cancel()
 	// wait for sessions to get removed
 	time.Sleep(10 * time.Millisecond)
-	sm.ReceiveBlocksFrom(p, []blocks.Block{block})
-	if len(firstSession.blks) > 0 ||
-		len(secondSession.blks) > 0 ||
-		len(thirdSession.blks) > 0 {
+	sm.ReceiveFrom(p, []cid.Cid{block.Cid()})
+	if len(firstSession.ks) > 0 ||
+		len(secondSession.ks) > 0 ||
+		len(thirdSession.ks) > 0 {
 		t.Fatal("received blocks for sessions after manager is shutdown")
 	}
 }
@@ -200,7 +206,9 @@ func TestRemovingPeersWhenSessionContextCancelled(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory)
+	notif := notifications.New()
+	defer notif.Shutdown()
+	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory, notif)
 
 	p := peer.ID(123)
 	block := blocks.NewBlock([]byte("block"))
@@ -214,10 +222,10 @@ func TestRemovingPeersWhenSessionContextCancelled(t *testing.T) {
 	sessionCancel()
 	// wait for sessions to get removed
 	time.Sleep(10 * time.Millisecond)
-	sm.ReceiveBlocksFrom(p, []blocks.Block{block})
-	if len(firstSession.blks) == 0 ||
-		len(secondSession.blks) > 0 ||
-		len(thirdSession.blks) == 0 {
+	sm.ReceiveFrom(p, []cid.Cid{block.Cid()})
+	if len(firstSession.ks) == 0 ||
+		len(secondSession.ks) > 0 ||
+		len(thirdSession.ks) == 0 {
 		t.Fatal("received blocks for sessions that are canceled")
 	}
 }

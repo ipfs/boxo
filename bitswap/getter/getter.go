@@ -61,15 +61,19 @@ func SyncGetBlock(p context.Context, k cid.Cid, gb GetBlocksFunc) (blocks.Block,
 type WantFunc func(context.Context, []cid.Cid)
 
 // AsyncGetBlocks take a set of block cids, a pubsub channel for incoming
-// blocks, a want function, and a close function,
-// and returns a channel of incoming blocks.
-func AsyncGetBlocks(ctx context.Context, keys []cid.Cid, notif notifications.PubSub, want WantFunc, cwants func([]cid.Cid)) (<-chan blocks.Block, error) {
+// blocks, a want function, and a close function, and returns a channel of
+// incoming blocks.
+func AsyncGetBlocks(ctx context.Context, sessctx context.Context, keys []cid.Cid, notif notifications.PubSub,
+	want WantFunc, cwants func([]cid.Cid)) (<-chan blocks.Block, error) {
+
+	// If there are no keys supplied, just return a closed channel
 	if len(keys) == 0 {
 		out := make(chan blocks.Block)
 		close(out)
 		return out, nil
 	}
 
+	// Use a PubSub notifier to listen for incoming blocks for each key
 	remaining := cid.NewSet()
 	promise := notif.Subscribe(ctx, keys...)
 	for _, k := range keys {
@@ -77,24 +81,36 @@ func AsyncGetBlocks(ctx context.Context, keys []cid.Cid, notif notifications.Pub
 		remaining.Add(k)
 	}
 
+	// Send the want request for the keys to the network
 	want(ctx, keys)
 
 	out := make(chan blocks.Block)
-	go handleIncoming(ctx, remaining, promise, out, cwants)
+	go handleIncoming(ctx, sessctx, remaining, promise, out, cwants)
 	return out, nil
 }
 
-func handleIncoming(ctx context.Context, remaining *cid.Set, in <-chan blocks.Block, out chan blocks.Block, cfun func([]cid.Cid)) {
+// Listens for incoming blocks, passing them to the out channel.
+// If the context is cancelled or the incoming channel closes, calls cfun with
+// any keys corresponding to blocks that were never received.
+func handleIncoming(ctx context.Context, sessctx context.Context, remaining *cid.Set,
+	in <-chan blocks.Block, out chan blocks.Block, cfun func([]cid.Cid)) {
+
 	ctx, cancel := context.WithCancel(ctx)
+
+	// Clean up before exiting this function, and call the cancel function on
+	// any remaining keys
 	defer func() {
 		cancel()
 		close(out)
 		// can't just defer this call on its own, arguments are resolved *when* the defer is created
 		cfun(remaining.Keys())
 	}()
+
 	for {
 		select {
 		case blk, ok := <-in:
+			// If the channel is closed, we're done (note that PubSub closes
+			// the channel once all the keys have been received)
 			if !ok {
 				return
 			}
@@ -104,8 +120,12 @@ func handleIncoming(ctx context.Context, remaining *cid.Set, in <-chan blocks.Bl
 			case out <- blk:
 			case <-ctx.Done():
 				return
+			case <-sessctx.Done():
+				return
 			}
 		case <-ctx.Done():
+			return
+		case <-sessctx.Done():
 			return
 		}
 	}

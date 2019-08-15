@@ -52,9 +52,9 @@ type interestReq struct {
 	resp chan bool
 }
 
-type blksRecv struct {
+type rcvFrom struct {
 	from peer.ID
-	blks []blocks.Block
+	ks   []cid.Cid
 }
 
 // Session holds state for an individual bitswap transfer operation.
@@ -68,7 +68,7 @@ type Session struct {
 	srs RequestSplitter
 
 	// channels
-	incoming      chan blksRecv
+	incoming      chan rcvFrom
 	newReqs       chan []cid.Cid
 	cancelKeys    chan []cid.Cid
 	interestReqs  chan interestReq
@@ -101,6 +101,7 @@ func New(ctx context.Context,
 	wm WantManager,
 	pm PeerManager,
 	srs RequestSplitter,
+	notif notifications.PubSub,
 	initialSearchDelay time.Duration,
 	periodicSearchDelay delay.D) *Session {
 	s := &Session{
@@ -116,8 +117,8 @@ func New(ctx context.Context,
 		wm:                  wm,
 		pm:                  pm,
 		srs:                 srs,
-		incoming:            make(chan blksRecv),
-		notif:               notifications.New(),
+		incoming:            make(chan rcvFrom),
+		notif:               notif,
 		uuid:                loggables.Uuid("GetBlockRequest"),
 		baseTickDelay:       time.Millisecond * 500,
 		id:                  id,
@@ -133,10 +134,10 @@ func New(ctx context.Context,
 	return s
 }
 
-// ReceiveBlocksFrom receives incoming blocks from the given peer.
-func (s *Session) ReceiveBlocksFrom(from peer.ID, blocks []blocks.Block) {
+// ReceiveFrom receives incoming blocks from the given peer.
+func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid) {
 	select {
-	case s.incoming <- blksRecv{from: from, blks: blocks}:
+	case s.incoming <- rcvFrom{from: from, ks: ks}:
 	case <-s.ctx.Done():
 	}
 }
@@ -181,7 +182,8 @@ func (s *Session) GetBlock(parent context.Context, k cid.Cid) (blocks.Block, err
 // guaranteed on the returned blocks.
 func (s *Session) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error) {
 	ctx = logging.ContextWithLoggable(ctx, s.uuid)
-	return bsgetter.AsyncGetBlocks(ctx, keys, s.notif,
+
+	return bsgetter.AsyncGetBlocks(ctx, s.ctx, keys, s.notif,
 		func(ctx context.Context, keys []cid.Cid) {
 			select {
 			case s.newReqs <- keys:
@@ -231,13 +233,13 @@ func (s *Session) run(ctx context.Context) {
 	for {
 		select {
 		case rcv := <-s.incoming:
-			s.cancelIncomingBlocks(ctx, rcv)
+			s.cancelIncoming(ctx, rcv)
 			// Record statistics only if the blocks came from the network
 			// (blocks can also be received from the local node)
 			if rcv.from != "" {
 				s.updateReceiveCounters(ctx, rcv)
 			}
-			s.handleIncomingBlocks(ctx, rcv)
+			s.handleIncoming(ctx, rcv)
 		case keys := <-s.newReqs:
 			s.handleNewRequest(ctx, keys)
 		case keys := <-s.cancelKeys:
@@ -259,23 +261,23 @@ func (s *Session) run(ctx context.Context) {
 	}
 }
 
-func (s *Session) cancelIncomingBlocks(ctx context.Context, rcv blksRecv) {
+func (s *Session) cancelIncoming(ctx context.Context, rcv rcvFrom) {
 	// We've received the blocks so we can cancel any outstanding wants for them
-	ks := make([]cid.Cid, 0, len(rcv.blks))
-	for _, b := range rcv.blks {
-		if s.cidIsWanted(b.Cid()) {
-			ks = append(ks, b.Cid())
+	wanted := make([]cid.Cid, 0, len(rcv.ks))
+	for _, k := range rcv.ks {
+		if s.cidIsWanted(k) {
+			wanted = append(wanted, k)
 		}
 	}
-	s.pm.RecordCancels(ks)
-	s.wm.CancelWants(s.ctx, ks, nil, s.id)
+	s.pm.RecordCancels(wanted)
+	s.wm.CancelWants(s.ctx, wanted, nil, s.id)
 }
 
-func (s *Session) handleIncomingBlocks(ctx context.Context, rcv blksRecv) {
+func (s *Session) handleIncoming(ctx context.Context, rcv rcvFrom) {
 	s.idleTick.Stop()
 
 	// Process the received blocks
-	s.receiveBlocks(ctx, rcv.blks)
+	s.processIncoming(ctx, rcv.ks)
 
 	s.resetIdleTick()
 }
@@ -359,7 +361,6 @@ func (s *Session) randomLiveWant() cid.Cid {
 }
 func (s *Session) handleShutdown() {
 	s.idleTick.Stop()
-	s.notif.Shutdown()
 
 	live := make([]cid.Cid, 0, len(s.liveWants))
 	for c := range s.liveWants {
@@ -376,9 +377,8 @@ func (s *Session) cidIsWanted(c cid.Cid) bool {
 	return ok
 }
 
-func (s *Session) receiveBlocks(ctx context.Context, blocks []blocks.Block) {
-	for _, blk := range blocks {
-		c := blk.Cid()
+func (s *Session) processIncoming(ctx context.Context, ks []cid.Cid) {
+	for _, c := range ks {
 		if s.cidIsWanted(c) {
 			// If the block CID was in the live wants queue, remove it
 			tval, ok := s.liveWants[c]
@@ -394,8 +394,6 @@ func (s *Session) receiveBlocks(ctx context.Context, blocks []blocks.Block) {
 			// We've received new wanted blocks, so reset the number of ticks
 			// that have occurred since the last new block
 			s.consecutiveTicks = 0
-
-			s.notif.Publish(blk)
 
 			// Keep track of CIDs we've successfully fetched
 			s.pastWants.Push(c)
@@ -417,23 +415,19 @@ func (s *Session) receiveBlocks(ctx context.Context, blocks []blocks.Block) {
 	}
 }
 
-func (s *Session) updateReceiveCounters(ctx context.Context, rcv blksRecv) {
-	ks := make([]cid.Cid, len(rcv.blks))
-
-	for _, blk := range rcv.blks {
+func (s *Session) updateReceiveCounters(ctx context.Context, rcv rcvFrom) {
+	for _, k := range rcv.ks {
 		// Inform the request splitter of unique / duplicate blocks
-		if s.cidIsWanted(blk.Cid()) {
+		if s.cidIsWanted(k) {
 			s.srs.RecordUniqueBlock()
-		} else if s.pastWants.Has(blk.Cid()) {
+		} else if s.pastWants.Has(k) {
 			s.srs.RecordDuplicateBlock()
 		}
-
-		ks = append(ks, blk.Cid())
 	}
 
 	// Record response (to be able to time latency)
-	if len(ks) > 0 {
-		s.pm.RecordPeerResponse(rcv.from, ks)
+	if len(rcv.ks) > 0 {
+		s.pm.RecordPeerResponse(rcv.from, rcv.ks)
 	}
 }
 
