@@ -3,33 +3,26 @@
 package files
 
 import (
-	"path/filepath"
-	"strings"
+	"os"
 
 	windows "golang.org/x/sys/windows"
 )
 
-func IsHidden(name string, f Node) bool {
+func isHidden(fi os.FileInfo) bool {
+	fName := fi.Name()
+	switch fName {
+	case "", ".", "..":
+		return false
+	}
 
-	fName := filepath.Base(name)
-
-	if strings.HasPrefix(fName, ".") && len(fName) > 1 {
+	if fName[0] == '.' {
 		return true
 	}
 
-	fi, ok := f.(FileInfo)
+	wi, ok := fi.Sys().(*windows.Win32FileAttributeData)
 	if !ok {
 		return false
 	}
 
-	p, e := windows.UTF16PtrFromString(fi.AbsPath())
-	if e != nil {
-		return false
-	}
-
-	attrs, e := windows.GetFileAttributes(p)
-	if e != nil {
-		return false
-	}
-	return attrs&windows.FILE_ATTRIBUTE_HIDDEN != 0
+	return wi.FileAttributes&windows.FILE_ATTRIBUTE_HIDDEN != 0
 }
