@@ -273,7 +273,7 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 // HasBlock announces the existence of a block to this bitswap service. The
 // service will potentially notify its peers.
 func (bs *Bitswap) HasBlock(blk blocks.Block) error {
-	return bs.receiveBlocksFrom(nil, "", []blocks.Block{blk})
+	return bs.receiveBlocksFrom(context.Background(), "", []blocks.Block{blk})
 }
 
 // TODO: Some of this stuff really only needs to be done when adding a block
