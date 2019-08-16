@@ -40,6 +40,9 @@ func TestWriteTo(t *testing.T) {
 		"5/a": "foobar",
 	}
 	err = filepath.Walk(path, func(cpath string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		rpath, err := filepath.Rel(path, cpath)
 		if err != nil {
 			return err
