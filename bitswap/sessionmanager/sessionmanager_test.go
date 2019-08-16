@@ -180,7 +180,9 @@ func TestInterestedIn(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory)
+	notif := notifications.New()
+	defer notif.Shutdown()
+	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory, notif)
 
 	blks := testutil.GenerateBlocksOfSize(4, 1024)
 	var cids []cid.Cid
