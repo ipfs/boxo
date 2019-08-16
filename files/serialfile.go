@@ -75,7 +75,7 @@ func (it *serialIterator) Next() bool {
 
 	stat := it.files[0]
 	it.files = it.files[1:]
-	for !it.handleHiddenFiles && strings.HasPrefix(stat.Name(), ".") {
+	for !it.handleHiddenFiles && isHidden(stat) {
 		if len(it.files) == 0 {
 			return false
 		}

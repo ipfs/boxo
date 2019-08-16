@@ -1,18 +1,17 @@
-// +build !windows
+//+build !windows
 
 package files
 
 import (
-	"path/filepath"
-	"strings"
+	"os"
 )
 
-func IsHidden(name string, f Node) bool {
-	fName := filepath.Base(name)
-
-	if strings.HasPrefix(fName, ".") && len(fName) > 1 {
-		return true
+func isHidden(fi os.FileInfo) bool {
+	fName := fi.Name()
+	switch fName {
+	case "", ".", "..":
+		return false
+	default:
+		return fName[0] == '.'
 	}
-
-	return false
 }
