@@ -179,7 +179,7 @@ func TestReceivingBlocksWhenNotInterested(t *testing.T) {
 	}
 }
 
-func TestInterestedIn(t *testing.T) {
+func TestIsWanted(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -201,10 +201,10 @@ func TestInterestedIn(t *testing.T) {
 	if !sm.IsWanted(cids[0]) ||
 		!sm.IsWanted(cids[1]) ||
 		!sm.IsWanted(cids[2]) {
-		t.Fatal("expected interest but session manager was not interested")
+		t.Fatal("expected unwanted but session manager did want cid")
 	}
 	if sm.IsWanted(cids[3]) {
-		t.Fatal("expected no interest but session manager was interested")
+		t.Fatal("expected wanted but session manager did not want cid")
 	}
 }
 
