@@ -2,6 +2,7 @@ package sessionpeermanager
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"sync"
 	"testing"
@@ -185,10 +186,13 @@ func TestOrderingPeers(t *testing.T) {
 
 	sessionPeers := sessionPeerManager.GetOptimizedPeers()
 	if len(sessionPeers) != maxOptimizedPeers {
-		t.Fatal("Should not return more than the max of optimized peers")
+		t.Fatal(fmt.Sprintf("Should not return more (%d) than the max of optimized peers (%d)", len(sessionPeers), maxOptimizedPeers))
 	}
 
 	// should prioritize peers which are fastest
+	// peer1: ~10ms
+	// peer2: 10 + 50 = ~60ms
+	// peer3: 10 + 50 + 10 = ~70ms
 	if (sessionPeers[0].Peer != peer1) || (sessionPeers[1].Peer != peer2) || (sessionPeers[2].Peer != peer3) {
 		t.Fatal("Did not prioritize peers that received blocks")
 	}
@@ -204,7 +208,7 @@ func TestOrderingPeers(t *testing.T) {
 		t.Fatal("Did not assign rating to other optimized peers correctly")
 	}
 
-	// should other peers rating of zero
+	// should give other non-optimized peers rating of zero
 	for i := 3; i < maxOptimizedPeers; i++ {
 		if sessionPeers[i].OptimizationRating != 0.0 {
 			t.Fatal("Did not assign rating to unoptimized peer correctly")
@@ -222,10 +226,13 @@ func TestOrderingPeers(t *testing.T) {
 	// call again
 	nextSessionPeers := sessionPeerManager.GetOptimizedPeers()
 	if len(nextSessionPeers) != maxOptimizedPeers {
-		t.Fatal("Should not return more than the max of optimized peers")
+		t.Fatal(fmt.Sprintf("Should not return more (%d) than the max of optimized peers (%d)", len(nextSessionPeers), maxOptimizedPeers))
 	}
 
 	// should sort by average latency
+	// peer1: ~10ms
+	// peer3: (~70ms + ~0ms) / 2 = ~35ms
+	// peer2: ~60ms
 	if (nextSessionPeers[0].Peer != peer1) || (nextSessionPeers[1].Peer != peer3) ||
 		(nextSessionPeers[2].Peer != peer2) {
 		t.Fatal("Did not correctly update order of peers sorted by average latency")
