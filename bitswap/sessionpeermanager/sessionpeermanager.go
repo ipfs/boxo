@@ -280,6 +280,8 @@ type getPeersMessage struct {
 // Get all optimized peers in order followed by randomly ordered unoptimized
 // peers, with a limit of maxOptimizedPeers
 func (prm *getPeersMessage) handle(spm *SessionPeerManager) {
+	randomOrder := rand.Perm(len(spm.unoptimizedPeersArr))
+
 	// Number of peers to get in total: unoptimized + optimized
 	// limited by maxOptimizedPeers
 	maxPeers := len(spm.unoptimizedPeersArr) + len(spm.optimizedPeersArr)
@@ -287,8 +289,8 @@ func (prm *getPeersMessage) handle(spm *SessionPeerManager) {
 		maxPeers = maxOptimizedPeers
 	}
 
-	// The best peer latency is 1 if we have recorded at least one peer's
-	// latency, 0 otherwise
+	// The best peer latency is the first optimized peer's latency.
+	// If we haven't recorded any peer's latency, use 0.
 	var bestPeerLatency float64
 	if len(spm.optimizedPeersArr) > 0 {
 		bestPeerLatency = float64(spm.activePeers[spm.optimizedPeersArr[0]].latency)
@@ -297,22 +299,19 @@ func (prm *getPeersMessage) handle(spm *SessionPeerManager) {
 	}
 
 	optimizedPeers := make([]bssd.OptimizedPeer, 0, maxPeers)
-
-	// Add optimized peers in order
-	for i := 0; i < maxPeers && i < len(spm.optimizedPeersArr); i++ {
-		p := spm.optimizedPeersArr[i]
-		optimizedPeers = append(optimizedPeers, bssd.OptimizedPeer{
-			Peer:               p,
-			OptimizationRating: bestPeerLatency / float64(spm.activePeers[p].latency),
-		})
-	}
-
-	// Add unoptimized peers in random order
-	randomOrder := rand.Perm(len(spm.unoptimizedPeersArr))
-	remaining := maxPeers - len(optimizedPeers)
-	for i := 0; i < remaining; i++ {
-		p := spm.unoptimizedPeersArr[randomOrder[i]]
-		optimizedPeers = append(optimizedPeers, bssd.OptimizedPeer{Peer: p, OptimizationRating: 0.0})
+	for i := 0; i < maxPeers; i++ {
+		// First add optimized peers in order
+		if i < len(spm.optimizedPeersArr) {
+			p := spm.optimizedPeersArr[i]
+			optimizedPeers = append(optimizedPeers, bssd.OptimizedPeer{
+				Peer:               p,
+				OptimizationRating: bestPeerLatency / float64(spm.activePeers[p].latency),
+			})
+		} else {
+			// Then add unoptimized peers in random order
+			p := spm.unoptimizedPeersArr[randomOrder[i-len(spm.optimizedPeersArr)]]
+			optimizedPeers = append(optimizedPeers, bssd.OptimizedPeer{Peer: p, OptimizationRating: 0.0})
+		}
 	}
 	prm.resp <- optimizedPeers
 }
