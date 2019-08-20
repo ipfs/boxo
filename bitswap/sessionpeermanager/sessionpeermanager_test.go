@@ -149,7 +149,7 @@ func TestRecordingReceivedBlocks(t *testing.T) {
 
 func TestOrderingPeers(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Millisecond)
 	defer cancel()
 	peerCount := 100
 	peers := testutil.GeneratePeers(peerCount)
@@ -183,8 +183,6 @@ func TestOrderingPeers(t *testing.T) {
 	sessionPeerManager.RecordPeerResponse(peer2, []cid.Cid{c[0]})
 	time.Sleep(5 * time.Millisecond)
 	sessionPeerManager.RecordPeerResponse(peer3, []cid.Cid{c[0]})
-
-	time.Sleep(5 * time.Millisecond)
 
 	sessionPeers := sessionPeerManager.GetOptimizedPeers()
 	if len(sessionPeers) != maxOptimizedPeers {
@@ -225,8 +223,6 @@ func TestOrderingPeers(t *testing.T) {
 	// Receive a second time
 	sessionPeerManager.RecordPeerResponse(peer3, []cid.Cid{c2[0]})
 
-	time.Sleep(5 * time.Millisecond)
-
 	// call again
 	nextSessionPeers := sessionPeerManager.GetOptimizedPeers()
 	if len(nextSessionPeers) != maxOptimizedPeers {
@@ -235,7 +231,7 @@ func TestOrderingPeers(t *testing.T) {
 
 	// should sort by average latency
 	// peer1: ~5ms
-	// peer3: (~35ms + ~5ms + ~5ms) / 2 = ~23ms
+	// peer3: (~35ms + ~5ms) / 2 = ~20ms
 	// peer2: ~30ms
 	if (nextSessionPeers[0].Peer != peer1) || (nextSessionPeers[1].Peer != peer3) ||
 		(nextSessionPeers[2].Peer != peer2) {
