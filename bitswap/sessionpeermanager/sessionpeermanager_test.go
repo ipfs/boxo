@@ -177,12 +177,14 @@ func TestOrderingPeers(t *testing.T) {
 	peer1 := peers[randi[0]]
 	peer2 := peers[randi[1]]
 	peer3 := peers[randi[2]]
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 	sessionPeerManager.RecordPeerResponse(peer1, []cid.Cid{c[0]})
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(25 * time.Millisecond)
 	sessionPeerManager.RecordPeerResponse(peer2, []cid.Cid{c[0]})
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 	sessionPeerManager.RecordPeerResponse(peer3, []cid.Cid{c[0]})
+
+	time.Sleep(5 * time.Millisecond)
 
 	sessionPeers := sessionPeerManager.GetOptimizedPeers()
 	if len(sessionPeers) != maxOptimizedPeers {
@@ -190,9 +192,9 @@ func TestOrderingPeers(t *testing.T) {
 	}
 
 	// should prioritize peers which are fastest
-	// peer1: ~10ms
-	// peer2: 10 + 50 = ~60ms
-	// peer3: 10 + 50 + 10 = ~70ms
+	// peer1: ~5ms
+	// peer2: 5 + 25 = ~30ms
+	// peer3: 5 + 25 + 5 = ~35ms
 	if (sessionPeers[0].Peer != peer1) || (sessionPeers[1].Peer != peer2) || (sessionPeers[2].Peer != peer3) {
 		t.Fatal("Did not prioritize peers that received blocks")
 	}
@@ -223,6 +225,8 @@ func TestOrderingPeers(t *testing.T) {
 	// Receive a second time
 	sessionPeerManager.RecordPeerResponse(peer3, []cid.Cid{c2[0]})
 
+	time.Sleep(5 * time.Millisecond)
+
 	// call again
 	nextSessionPeers := sessionPeerManager.GetOptimizedPeers()
 	if len(nextSessionPeers) != maxOptimizedPeers {
@@ -230,9 +234,9 @@ func TestOrderingPeers(t *testing.T) {
 	}
 
 	// should sort by average latency
-	// peer1: ~10ms
-	// peer3: (~70ms + ~0ms) / 2 = ~35ms
-	// peer2: ~60ms
+	// peer1: ~5ms
+	// peer3: (~35ms + ~5ms + ~5ms) / 2 = ~23ms
+	// peer2: ~30ms
 	if (nextSessionPeers[0].Peer != peer1) || (nextSessionPeers[1].Peer != peer3) ||
 		(nextSessionPeers[2].Peer != peer2) {
 		t.Fatal("Did not correctly update order of peers sorted by average latency")
