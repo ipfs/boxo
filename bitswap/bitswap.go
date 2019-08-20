@@ -294,7 +294,7 @@ func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []b
 		// Split blocks into wanted blocks vs duplicates
 		wanted = make([]blocks.Block, 0, len(blks))
 		for _, b := range blks {
-			if bs.sm.InterestedIn(b.Cid()) {
+			if bs.sm.IsWanted(b.Cid()) {
 				wanted = append(wanted, b)
 			} else {
 				log.Debugf("[recv] block not in wantlist; cid=%s, peer=%s", b.Cid(), from)
