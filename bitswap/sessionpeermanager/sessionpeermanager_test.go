@@ -166,7 +166,7 @@ func TestOrderingPeers(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("Did not finish finding providers")
 	}
-	time.Sleep(2 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 
 	// record broadcast
 	sessionPeerManager.RecordPeerRequests(nil, c)
@@ -176,11 +176,11 @@ func TestOrderingPeers(t *testing.T) {
 	peer1 := peers[randi[0]]
 	peer2 := peers[randi[1]]
 	peer3 := peers[randi[2]]
-	time.Sleep(1 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 	sessionPeerManager.RecordPeerResponse(peer1, []cid.Cid{c[0]})
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	sessionPeerManager.RecordPeerResponse(peer2, []cid.Cid{c[0]})
-	time.Sleep(1 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 	sessionPeerManager.RecordPeerResponse(peer3, []cid.Cid{c[0]})
 
 	sessionPeers := sessionPeerManager.GetOptimizedPeers()
@@ -228,7 +228,7 @@ func TestOrderingPeers(t *testing.T) {
 	// should sort by average latency
 	if (nextSessionPeers[0].Peer != peer1) || (nextSessionPeers[1].Peer != peer3) ||
 		(nextSessionPeers[2].Peer != peer2) {
-		t.Fatal("Did not dedup peers which received multiple blocks")
+		t.Fatal("Did not correctly update order of peers sorted by average latency")
 	}
 
 	// should randomize other peers
