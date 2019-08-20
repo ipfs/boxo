@@ -118,6 +118,14 @@ func TestSessionGetBlocks(t *testing.T) {
 	if receivedWantReq.peers != nil {
 		t.Fatal("first want request should be a broadcast")
 	}
+	for _, c := range cids {
+		if !session.IsWanted(c) {
+			t.Fatal("expected session to want cids")
+		}
+		if !session.InterestedIn(c) {
+			t.Fatal("expected session to be interested in cids")
+		}
+	}
 
 	// now receive the first set of blocks
 	peers := testutil.GeneratePeers(broadcastLiveWantsLimit)
@@ -209,6 +217,14 @@ func TestSessionGetBlocks(t *testing.T) {
 	for _, block := range receivedBlocks {
 		if !testutil.ContainsBlock(blks, block) {
 			t.Fatal("received incorrect block")
+		}
+	}
+	for _, c := range cids {
+		if session.IsWanted(c) {
+			t.Fatal("expected session NOT to want cids")
+		}
+		if !session.InterestedIn(c) {
+			t.Fatal("expected session to still be interested in cids")
 		}
 	}
 }

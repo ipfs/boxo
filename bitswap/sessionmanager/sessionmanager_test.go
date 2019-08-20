@@ -40,6 +40,9 @@ func (fs *fakeSession) InterestedIn(c cid.Cid) bool {
 	}
 	return false
 }
+func (fs *fakeSession) IsWanted(c cid.Cid) bool {
+	return fs.InterestedIn(c)
+}
 func (fs *fakeSession) ReceiveFrom(p peer.ID, ks []cid.Cid) {
 	fs.ks = append(fs.ks, ks...)
 }
@@ -195,12 +198,12 @@ func TestInterestedIn(t *testing.T) {
 	nextInterestedIn = []cid.Cid{cids[0], cids[2]}
 	_ = sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 
-	if !sm.InterestedIn(cids[0]) ||
-		!sm.InterestedIn(cids[1]) ||
-		!sm.InterestedIn(cids[2]) {
+	if !sm.IsWanted(cids[0]) ||
+		!sm.IsWanted(cids[1]) ||
+		!sm.IsWanted(cids[2]) {
 		t.Fatal("expected interest but session manager was not interested")
 	}
-	if sm.InterestedIn(cids[3]) {
+	if sm.IsWanted(cids[3]) {
 		t.Fatal("expected no interest but session manager was interested")
 	}
 }

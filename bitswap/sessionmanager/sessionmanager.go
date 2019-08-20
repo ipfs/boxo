@@ -19,6 +19,7 @@ type Session interface {
 	exchange.Fetcher
 	InterestedIn(cid.Cid) bool
 	ReceiveFrom(peer.ID, []cid.Cid)
+	IsWanted(cid.Cid) bool
 }
 
 type sesTrk struct {
@@ -132,14 +133,14 @@ func (sm *SessionManager) ReceiveFrom(from peer.ID, ks []cid.Cid) {
 	}
 }
 
-// InterestedIn indicates whether any of the sessions are waiting to receive
+// IsWanted indicates whether any of the sessions are waiting to receive
 // the block with the given CID.
-func (sm *SessionManager) InterestedIn(cid cid.Cid) bool {
+func (sm *SessionManager) IsWanted(cid cid.Cid) bool {
 	sm.sessLk.Lock()
 	defer sm.sessLk.Unlock()
 
 	for _, s := range sm.sessions {
-		if s.session.InterestedIn(cid) {
+		if s.session.IsWanted(cid) {
 			return true
 		}
 	}
