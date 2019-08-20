@@ -150,7 +150,8 @@ func TestOrderingPeers(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
 	defer cancel()
-	peers := testutil.GeneratePeers(100)
+	peerCount := 100
+	peers := testutil.GeneratePeers(peerCount)
 	completed := make(chan struct{})
 	fpt := &fakePeerTagger{}
 	fppf := &fakePeerProviderFinder{peers, completed}
@@ -171,9 +172,10 @@ func TestOrderingPeers(t *testing.T) {
 	sessionPeerManager.RecordPeerRequests(nil, c)
 
 	// record receives
-	peer1 := peers[rand.Intn(100)]
-	peer2 := peers[rand.Intn(100)]
-	peer3 := peers[rand.Intn(100)]
+	randi := rand.Perm(peerCount)
+	peer1 := peers[randi[0]]
+	peer2 := peers[randi[1]]
+	peer3 := peers[randi[2]]
 	time.Sleep(1 * time.Millisecond)
 	sessionPeerManager.RecordPeerResponse(peer1, []cid.Cid{c[0]})
 	time.Sleep(5 * time.Millisecond)
@@ -358,7 +360,7 @@ func TestTimeoutsAndCancels(t *testing.T) {
 
 func TestUntaggingPeers(t *testing.T) {
 	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
 	defer cancel()
 	peers := testutil.GeneratePeers(5)
 	completed := make(chan struct{})
@@ -375,7 +377,7 @@ func TestUntaggingPeers(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("Did not finish finding providers")
 	}
-	time.Sleep(2 * time.Millisecond)
+	time.Sleep(15 * time.Millisecond)
 
 	if fpt.count() != len(peers) {
 		t.Fatal("Peers were not tagged!")
