@@ -16,7 +16,7 @@ type cacheSize int
 // block Cids. This provides block access-time improvements, allowing
 // to short-cut many searches without query-ing the underlying datastore.
 type arccache struct {
-	arc        *lru.ARCCache
+	arc        *lru.TwoQueueCache
 	blockstore Blockstore
 
 	hits  metrics.Counter
@@ -24,7 +24,7 @@ type arccache struct {
 }
 
 func newARCCachedBS(ctx context.Context, bs Blockstore, lruSize int) (*arccache, error) {
-	arc, err := lru.NewARC(lruSize)
+	arc, err := lru.New2Q(lruSize)
 	if err != nil {
 		return nil, err
 	}
