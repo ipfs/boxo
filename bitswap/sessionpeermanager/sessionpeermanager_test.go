@@ -167,7 +167,7 @@ func TestOrderingPeers(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("Did not finish finding providers")
 	}
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 
 	// record broadcast
 	sessionPeerManager.RecordPeerRequests(nil, c)
