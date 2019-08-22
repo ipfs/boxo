@@ -122,9 +122,6 @@ func TestSessionGetBlocks(t *testing.T) {
 		if !session.IsWanted(c) {
 			t.Fatal("expected session to want cids")
 		}
-		if !session.InterestedIn(c) {
-			t.Fatal("expected session to be interested in cids")
-		}
 	}
 
 	// now receive the first set of blocks
@@ -222,9 +219,6 @@ func TestSessionGetBlocks(t *testing.T) {
 	for _, c := range cids {
 		if session.IsWanted(c) {
 			t.Fatal("expected session NOT to want cids")
-		}
-		if !session.InterestedIn(c) {
-			t.Fatal("expected session to still be interested in cids")
 		}
 	}
 }

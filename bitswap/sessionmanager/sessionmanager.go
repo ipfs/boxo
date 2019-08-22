@@ -17,7 +17,6 @@ import (
 // Session is a session that is managed by the session manager
 type Session interface {
 	exchange.Fetcher
-	InterestedIn(cid.Cid) bool
 	ReceiveFrom(peer.ID, []cid.Cid)
 	IsWanted(cid.Cid) bool
 }
@@ -115,22 +114,20 @@ func (sm *SessionManager) GetNextSessionID() uint64 {
 	return sm.sessID
 }
 
-// ReceiveFrom receives blocks from a peer and dispatches to interested
-// sessions.
+// ReceiveFrom receives block CIDs from a peer and dispatches to sessions.
 func (sm *SessionManager) ReceiveFrom(from peer.ID, ks []cid.Cid) {
 	sm.sessLk.Lock()
 	defer sm.sessLk.Unlock()
 
-	// Only give each session the blocks / dups that it is interested in
+	var wg sync.WaitGroup
 	for _, s := range sm.sessions {
-		sessKs := make([]cid.Cid, 0, len(ks))
-		for _, k := range ks {
-			if s.session.InterestedIn(k) {
-				sessKs = append(sessKs, k)
-			}
-		}
-		s.session.ReceiveFrom(from, sessKs)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.session.ReceiveFrom(from, ks)
+		}()
 	}
+	wg.Wait()
 }
 
 // IsWanted indicates whether any of the sessions are waiting to receive
