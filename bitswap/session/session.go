@@ -2,8 +2,6 @@ package session
 
 import (
 	"context"
-	"math/rand"
-	"sync"
 	"time"
 
 	bsgetter "github.com/ipfs/go-bitswap/getter"
@@ -50,13 +48,6 @@ type RequestSplitter interface {
 type rcvFrom struct {
 	from peer.ID
 	ks   []cid.Cid
-}
-
-type sessionWants struct {
-	sync.RWMutex
-	toFetch   *cidQueue
-	liveWants map[cid.Cid]time.Time
-	pastWants *cid.Set
 }
 
 // Session holds state for an individual bitswap transfer operation.
@@ -133,26 +124,20 @@ func New(ctx context.Context,
 
 // ReceiveFrom receives incoming blocks from the given peer.
 func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid) {
+	interested := s.sw.FilterInteresting(ks)
+	if len(interested) == 0 {
+		return
+	}
+
 	select {
-	case s.incoming <- rcvFrom{from: from, ks: ks}:
+	case s.incoming <- rcvFrom{from: from, ks: interested}:
 	case <-s.ctx.Done():
 	}
 }
 
 // IsWanted returns true if this session is waiting to receive the given Cid.
 func (s *Session) IsWanted(c cid.Cid) bool {
-	s.sw.RLock()
-	defer s.sw.RUnlock()
-
-	return s.unlockedIsWanted(c)
-}
-
-// InterestedIn returns true if this session has ever requested the given Cid.
-func (s *Session) InterestedIn(c cid.Cid) bool {
-	s.sw.RLock()
-	defer s.sw.RUnlock()
-
-	return s.unlockedIsWanted(c) || s.sw.pastWants.Has(c)
+	return s.sw.IsWanted(c)
 }
 
 // GetBlock fetches a single block.
@@ -220,7 +205,7 @@ func (s *Session) run(ctx context.Context) {
 		case keys := <-s.newReqs:
 			s.wantBlocks(ctx, keys)
 		case keys := <-s.cancelKeys:
-			s.handleCancel(keys)
+			s.sw.CancelPending(keys)
 		case <-s.idleTick.C:
 			s.handleIdleTick(ctx)
 		case <-s.periodicSearchTimer.C:
@@ -236,17 +221,8 @@ func (s *Session) run(ctx context.Context) {
 	}
 }
 
-func (s *Session) handleCancel(keys []cid.Cid) {
-	s.sw.Lock()
-	defer s.sw.Unlock()
-
-	for _, k := range keys {
-		s.sw.toFetch.Remove(k)
-	}
-}
-
 func (s *Session) handleIdleTick(ctx context.Context) {
-	live := s.prepareBroadcast()
+	live := s.sw.PrepareBroadcast()
 
 	// Broadcast these keys to everyone we're connected to
 	s.pm.RecordPeerRequests(nil, live)
@@ -259,29 +235,13 @@ func (s *Session) handleIdleTick(ctx context.Context) {
 	}
 	s.resetIdleTick()
 
-	s.sw.RLock()
-	defer s.sw.RUnlock()
-
-	if len(s.sw.liveWants) > 0 {
+	if s.sw.HasLiveWants() {
 		s.consecutiveTicks++
 	}
 }
 
-func (s *Session) prepareBroadcast() []cid.Cid {
-	s.sw.Lock()
-	defer s.sw.Unlock()
-
-	live := make([]cid.Cid, 0, len(s.sw.liveWants))
-	now := time.Now()
-	for c := range s.sw.liveWants {
-		live = append(live, c)
-		s.sw.liveWants[c] = now
-	}
-	return live
-}
-
 func (s *Session) handlePeriodicSearch(ctx context.Context) {
-	randomWant := s.randomLiveWant()
+	randomWant := s.sw.RandomLiveWant()
 	if !randomWant.Defined() {
 		return
 	}
@@ -294,48 +254,11 @@ func (s *Session) handlePeriodicSearch(ctx context.Context) {
 	s.periodicSearchTimer.Reset(s.periodicSearchDelay.NextWaitTime())
 }
 
-func (s *Session) randomLiveWant() cid.Cid {
-	s.sw.RLock()
-	defer s.sw.RUnlock()
-
-	if len(s.sw.liveWants) == 0 {
-		return cid.Cid{}
-	}
-	i := rand.Intn(len(s.sw.liveWants))
-	// picking a random live want
-	for k := range s.sw.liveWants {
-		if i == 0 {
-			return k
-		}
-		i--
-	}
-	return cid.Cid{}
-}
-
 func (s *Session) handleShutdown() {
 	s.idleTick.Stop()
 
-	live := s.liveWants()
+	live := s.sw.LiveWants()
 	s.wm.CancelWants(s.ctx, live, nil, s.id)
-}
-
-func (s *Session) liveWants() []cid.Cid {
-	s.sw.RLock()
-	defer s.sw.RUnlock()
-
-	live := make([]cid.Cid, 0, len(s.sw.liveWants))
-	for c := range s.sw.liveWants {
-		live = append(live, c)
-	}
-	return live
-}
-
-func (s *Session) unlockedIsWanted(c cid.Cid) bool {
-	_, ok := s.sw.liveWants[c]
-	if !ok {
-		ok = s.sw.toFetch.Has(c)
-	}
-	return ok
 }
 
 func (s *Session) handleIncoming(ctx context.Context, rcv rcvFrom) {
@@ -346,7 +269,7 @@ func (s *Session) handleIncoming(ctx context.Context, rcv rcvFrom) {
 	}
 
 	// Update the want list
-	wanted, totalLatency := s.blocksReceived(rcv.ks)
+	wanted, totalLatency := s.sw.BlocksReceived(rcv.ks)
 	if len(wanted) == 0 {
 		return
 	}
@@ -363,50 +286,13 @@ func (s *Session) handleIncoming(ctx context.Context, rcv rcvFrom) {
 }
 
 func (s *Session) updateReceiveCounters(ctx context.Context, rcv rcvFrom) {
-	s.sw.RLock()
-
-	for _, c := range rcv.ks {
-		if s.unlockedIsWanted(c) {
-			s.srs.RecordUniqueBlock()
-		} else if s.sw.pastWants.Has(c) {
-			s.srs.RecordDuplicateBlock()
-		}
-	}
-
-	s.sw.RUnlock()
+	// Record unique vs duplicate blocks
+	s.sw.ForEachUniqDup(rcv.ks, s.srs.RecordUniqueBlock, s.srs.RecordDuplicateBlock)
 
 	// Record response (to be able to time latency)
 	if len(rcv.ks) > 0 {
 		s.pm.RecordPeerResponse(rcv.from, rcv.ks)
 	}
-}
-
-func (s *Session) blocksReceived(cids []cid.Cid) ([]cid.Cid, time.Duration) {
-	s.sw.Lock()
-	defer s.sw.Unlock()
-
-	totalLatency := time.Duration(0)
-	wanted := make([]cid.Cid, 0, len(cids))
-	for _, c := range cids {
-		if s.unlockedIsWanted(c) {
-			wanted = append(wanted, c)
-
-			// If the block CID was in the live wants queue, remove it
-			tval, ok := s.sw.liveWants[c]
-			if ok {
-				totalLatency += time.Since(tval)
-				delete(s.sw.liveWants, c)
-			} else {
-				// Otherwise remove it from the toFetch queue, if it was there
-				s.sw.toFetch.Remove(c)
-			}
-
-			// Keep track of CIDs we've successfully fetched
-			s.sw.pastWants.Add(c)
-		}
-	}
-
-	return wanted, totalLatency
 }
 
 func (s *Session) cancelIncoming(ctx context.Context, ks []cid.Cid) {
@@ -427,7 +313,9 @@ func (s *Session) processIncoming(ctx context.Context, ks []cid.Cid, totalLatenc
 }
 
 func (s *Session) wantBlocks(ctx context.Context, newks []cid.Cid) {
-	ks := s.getNextWants(s.wantLimit(), newks)
+	// Given the want limit and any newly received blocks, get as many wants as
+	// we can to send out
+	ks := s.sw.GetNextWants(s.wantLimit(), newks)
 	if len(ks) == 0 {
 		return
 	}
@@ -443,29 +331,6 @@ func (s *Session) wantBlocks(ctx context.Context, newks []cid.Cid) {
 		s.pm.RecordPeerRequests(nil, ks)
 		s.wm.WantBlocks(ctx, ks, nil, s.id)
 	}
-}
-
-func (s *Session) getNextWants(limit int, newWants []cid.Cid) []cid.Cid {
-	s.sw.Lock()
-	defer s.sw.Unlock()
-
-	now := time.Now()
-
-	for _, k := range newWants {
-		s.sw.toFetch.Push(k)
-	}
-
-	currentLiveCount := len(s.sw.liveWants)
-	toAdd := limit - currentLiveCount
-
-	var live []cid.Cid
-	for ; toAdd > 0 && s.sw.toFetch.Len() > 0; toAdd-- {
-		c := s.sw.toFetch.Pop()
-		live = append(live, c)
-		s.sw.liveWants[c] = now
-	}
-
-	return live
 }
 
 func (s *Session) averageLatency() time.Duration {
