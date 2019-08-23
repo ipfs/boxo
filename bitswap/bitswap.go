@@ -273,14 +273,14 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 // HasBlock announces the existence of a block to this bitswap service. The
 // service will potentially notify its peers.
 func (bs *Bitswap) HasBlock(blk blocks.Block) error {
-	return bs.receiveBlocksFrom("", []blocks.Block{blk})
+	return bs.receiveBlocksFrom(context.Background(), "", []blocks.Block{blk})
 }
 
 // TODO: Some of this stuff really only needs to be done when adding a block
 // from the user, not when receiving it from the network.
 // In case you run `git blame` on this comment, I'll save you some time: ask
 // @whyrusleeping, I don't know the answers you seek.
-func (bs *Bitswap) receiveBlocksFrom(from peer.ID, blks []blocks.Block) error {
+func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []blocks.Block) error {
 	select {
 	case <-bs.process.Closing():
 		return errors.New("bitswap is closed")
@@ -294,7 +294,7 @@ func (bs *Bitswap) receiveBlocksFrom(from peer.ID, blks []blocks.Block) error {
 		// Split blocks into wanted blocks vs duplicates
 		wanted = make([]blocks.Block, 0, len(blks))
 		for _, b := range blks {
-			if bs.wm.IsWanted(b.Cid()) {
+			if bs.sm.IsWanted(b.Cid()) {
 				wanted = append(wanted, b)
 			} else {
 				log.Debugf("[recv] block not in wantlist; cid=%s, peer=%s", b.Cid(), from)
@@ -354,6 +354,12 @@ func (bs *Bitswap) receiveBlocksFrom(from peer.ID, blks []blocks.Block) error {
 		}
 	}
 
+	if from != "" {
+		for _, b := range wanted {
+			log.Event(ctx, "Bitswap.GetBlockRequest.End", b.Cid())
+		}
+	}
+
 	return nil
 }
 
@@ -382,16 +388,10 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 	}
 
 	// Process blocks
-	err := bs.receiveBlocksFrom(p, iblocks)
+	err := bs.receiveBlocksFrom(ctx, p, iblocks)
 	if err != nil {
 		log.Warningf("ReceiveMessage recvBlockFrom error: %s", err)
 		return
-	}
-
-	for _, b := range iblocks {
-		if bs.wm.IsWanted(b.Cid()) {
-			log.Event(ctx, "Bitswap.GetBlockRequest.End", b.Cid())
-		}
 	}
 }
 

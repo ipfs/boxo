@@ -80,22 +80,6 @@ func (wm *WantManager) CancelWants(ctx context.Context, ks []cid.Cid, peers []pe
 	wm.addEntries(context.Background(), ks, peers, true, ses)
 }
 
-// IsWanted returns whether a CID is currently wanted.
-func (wm *WantManager) IsWanted(c cid.Cid) bool {
-	resp := make(chan bool, 1)
-	select {
-	case wm.wantMessages <- &isWantedMessage{c, resp}:
-	case <-wm.ctx.Done():
-		return false
-	}
-	select {
-	case wanted := <-resp:
-		return wanted
-	case <-wm.ctx.Done():
-		return false
-	}
-}
-
 // CurrentWants returns the list of current wants.
 func (wm *WantManager) CurrentWants() []wantlist.Entry {
 	resp := make(chan []wantlist.Entry, 1)
@@ -230,16 +214,6 @@ func (ws *wantSet) handle(wm *WantManager) {
 
 	// broadcast those wantlist changes
 	wm.peerHandler.SendMessage(ws.entries, ws.targets, ws.from)
-}
-
-type isWantedMessage struct {
-	c    cid.Cid
-	resp chan<- bool
-}
-
-func (iwm *isWantedMessage) handle(wm *WantManager) {
-	_, isWanted := wm.wl.Contains(iwm.c)
-	iwm.resp <- isWanted
 }
 
 type currentWantsMessage struct {
