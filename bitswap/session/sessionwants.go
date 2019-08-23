@@ -19,6 +19,8 @@ type sessionWants struct {
 // measures latency. It returns the CIDs of blocks that were actually wanted
 // (as opposed to duplicates) and the total latency for all incoming blocks.
 func (sw *sessionWants) BlocksReceived(cids []cid.Cid) ([]cid.Cid, time.Duration) {
+	now := time.Now()
+
 	sw.Lock()
 	defer sw.Unlock()
 
@@ -31,7 +33,7 @@ func (sw *sessionWants) BlocksReceived(cids []cid.Cid) ([]cid.Cid, time.Duration
 			// If the block CID was in the live wants queue, remove it
 			tval, ok := sw.liveWants[c]
 			if ok {
-				totalLatency += time.Since(tval)
+				totalLatency += now.Sub(tval)
 				delete(sw.liveWants, c)
 			} else {
 				// Otherwise remove it from the toFetch queue, if it was there
