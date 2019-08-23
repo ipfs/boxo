@@ -1,6 +1,7 @@
 package session
 
 import (
+	"math"
 	"math/rand"
 	"sync"
 	"time"
@@ -133,13 +134,15 @@ func (sw *sessionWants) LiveWants() []cid.Cid {
 
 // RandomLiveWant returns a randomly selected live want
 func (sw *sessionWants) RandomLiveWant() cid.Cid {
+	r := rand.Float64()
+
 	sw.RLock()
 	defer sw.RUnlock()
 
 	if len(sw.liveWants) == 0 {
 		return cid.Cid{}
 	}
-	i := rand.Intn(len(sw.liveWants))
+	i := math.Floor(r * float64(len(sw.liveWants)))
 	// picking a random live want
 	for k := range sw.liveWants {
 		if i == 0 {
