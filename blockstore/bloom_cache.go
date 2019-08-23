@@ -51,7 +51,7 @@ func bloomCached(ctx context.Context, bs Blockstore, bloomSize, hashCount int) (
 				case <-ctx.Done():
 					return
 				case <-t.C:
-					fill.Set(bc.bloom.FillRatio())
+					fill.Set(bc.bloom.FillRatioTS())
 				}
 			}
 		}
