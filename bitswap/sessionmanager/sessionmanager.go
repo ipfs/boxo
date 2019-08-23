@@ -119,15 +119,9 @@ func (sm *SessionManager) ReceiveFrom(from peer.ID, ks []cid.Cid) {
 	sm.sessLk.Lock()
 	defer sm.sessLk.Unlock()
 
-	var wg sync.WaitGroup
 	for _, s := range sm.sessions {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.session.ReceiveFrom(from, ks)
-		}()
+		s.session.ReceiveFrom(from, ks)
 	}
-	wg.Wait()
 }
 
 // IsWanted indicates whether any of the sessions are waiting to receive
