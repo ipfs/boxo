@@ -171,7 +171,7 @@ func (sw *sessionWants) FilterInteresting(ks []cid.Cid) []cid.Cid {
 	sw.RLock()
 	defer sw.RUnlock()
 
-	interested := make([]cid.Cid, 0, len(ks))
+	var interested []cid.Cid
 	for _, k := range ks {
 		if sw.unlockedIsWanted(k) || sw.pastWants.Has(k) {
 			interested = append(interested, k)
