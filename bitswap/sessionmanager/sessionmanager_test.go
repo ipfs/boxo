@@ -145,37 +145,6 @@ func TestAddingSessions(t *testing.T) {
 	}
 }
 
-func TestReceivingBlocksWhenNotInterested(t *testing.T) {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	notif := notifications.New()
-	defer notif.Shutdown()
-	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory, notif)
-
-	p := peer.ID(123)
-	blks := testutil.GenerateBlocksOfSize(3, 1024)
-	var cids []cid.Cid
-	for _, b := range blks {
-		cids = append(cids, b.Cid())
-	}
-
-	nextWanted = []cid.Cid{cids[0], cids[1]}
-	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	nextWanted = []cid.Cid{cids[0]}
-	secondSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	nextWanted = []cid.Cid{}
-	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-
-	sm.ReceiveFrom(p, []cid.Cid{blks[0].Cid(), blks[1].Cid()})
-
-	if !cmpSessionCids(firstSession, []cid.Cid{cids[0], cids[1]}) ||
-		!cmpSessionCids(secondSession, []cid.Cid{cids[0]}) ||
-		!cmpSessionCids(thirdSession, []cid.Cid{}) {
-		t.Fatal("did not receive correct blocks for sessions")
-	}
-}
-
 func TestIsWanted(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
