@@ -89,24 +89,6 @@ func requestSplitterFactory(ctx context.Context) bssession.RequestSplitter {
 	return &fakeRequestSplitter{}
 }
 
-func cmpSessionCids(s *fakeSession, cids []cid.Cid) bool {
-	if len(s.ks) != len(cids) {
-		return false
-	}
-	for _, bk := range s.ks {
-		has := false
-		for _, c := range cids {
-			if c == bk {
-				has = true
-			}
-		}
-		if !has {
-			return false
-		}
-	}
-	return true
-}
-
 func TestAddingSessions(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
