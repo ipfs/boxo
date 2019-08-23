@@ -18,12 +18,12 @@ import (
 )
 
 type fakeSession struct {
-	interested []cid.Cid
-	ks         []cid.Cid
-	id         uint64
-	pm         *fakePeerManager
-	srs        *fakeRequestSplitter
-	notif      notifications.PubSub
+	wanted []cid.Cid
+	ks     []cid.Cid
+	id     uint64
+	pm     *fakePeerManager
+	srs    *fakeRequestSplitter
+	notif  notifications.PubSub
 }
 
 func (*fakeSession) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
@@ -32,8 +32,8 @@ func (*fakeSession) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
 func (*fakeSession) GetBlocks(context.Context, []cid.Cid) (<-chan blocks.Block, error) {
 	return nil, nil
 }
-func (fs *fakeSession) InterestedIn(c cid.Cid) bool {
-	for _, ic := range fs.interested {
+func (fs *fakeSession) IsWanted(c cid.Cid) bool {
+	for _, ic := range fs.wanted {
 		if c == ic {
 			return true
 		}
@@ -63,7 +63,7 @@ func (frs *fakeRequestSplitter) SplitRequest(optimizedPeers []bssd.OptimizedPeer
 func (frs *fakeRequestSplitter) RecordDuplicateBlock() {}
 func (frs *fakeRequestSplitter) RecordUniqueBlock()    {}
 
-var nextInterestedIn []cid.Cid
+var nextWanted []cid.Cid
 
 func sessionFactory(ctx context.Context,
 	id uint64,
@@ -73,11 +73,11 @@ func sessionFactory(ctx context.Context,
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D) Session {
 	return &fakeSession{
-		interested: nextInterestedIn,
-		id:         id,
-		pm:         pm.(*fakePeerManager),
-		srs:        srs.(*fakeRequestSplitter),
-		notif:      notif,
+		wanted: nextWanted,
+		id:     id,
+		pm:     pm.(*fakePeerManager),
+		srs:    srs.(*fakeRequestSplitter),
+		notif:  notif,
 	}
 }
 
@@ -87,24 +87,6 @@ func peerManagerFactory(ctx context.Context, id uint64) bssession.PeerManager {
 
 func requestSplitterFactory(ctx context.Context) bssession.RequestSplitter {
 	return &fakeRequestSplitter{}
-}
-
-func cmpSessionCids(s *fakeSession, cids []cid.Cid) bool {
-	if len(s.ks) != len(cids) {
-		return false
-	}
-	for _, bk := range s.ks {
-		has := false
-		for _, c := range cids {
-			if c == bk {
-				has = true
-			}
-		}
-		if !has {
-			return false
-		}
-	}
-	return true
 }
 
 func TestAddingSessions(t *testing.T) {
@@ -118,7 +100,7 @@ func TestAddingSessions(t *testing.T) {
 	p := peer.ID(123)
 	block := blocks.NewBlock([]byte("block"))
 	// we'll be interested in all blocks for this test
-	nextInterestedIn = []cid.Cid{block.Cid()}
+	nextWanted = []cid.Cid{block.Cid()}
 
 	currentID := sm.GetNextSessionID()
 	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
@@ -145,7 +127,7 @@ func TestAddingSessions(t *testing.T) {
 	}
 }
 
-func TestReceivingBlocksWhenNotInterested(t *testing.T) {
+func TestIsWanted(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -153,26 +135,24 @@ func TestReceivingBlocksWhenNotInterested(t *testing.T) {
 	defer notif.Shutdown()
 	sm := New(ctx, sessionFactory, peerManagerFactory, requestSplitterFactory, notif)
 
-	p := peer.ID(123)
-	blks := testutil.GenerateBlocksOfSize(3, 1024)
+	blks := testutil.GenerateBlocksOfSize(4, 1024)
 	var cids []cid.Cid
 	for _, b := range blks {
 		cids = append(cids, b.Cid())
 	}
 
-	nextInterestedIn = []cid.Cid{cids[0], cids[1]}
-	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	nextInterestedIn = []cid.Cid{cids[0]}
-	secondSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	nextInterestedIn = []cid.Cid{}
-	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	nextWanted = []cid.Cid{cids[0], cids[1]}
+	_ = sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	nextWanted = []cid.Cid{cids[0], cids[2]}
+	_ = sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 
-	sm.ReceiveFrom(p, []cid.Cid{blks[0].Cid(), blks[1].Cid()})
-
-	if !cmpSessionCids(firstSession, []cid.Cid{cids[0], cids[1]}) ||
-		!cmpSessionCids(secondSession, []cid.Cid{cids[0]}) ||
-		!cmpSessionCids(thirdSession, []cid.Cid{}) {
-		t.Fatal("did not receive correct blocks for sessions")
+	if !sm.IsWanted(cids[0]) ||
+		!sm.IsWanted(cids[1]) ||
+		!sm.IsWanted(cids[2]) {
+		t.Fatal("expected unwanted but session manager did want cid")
+	}
+	if sm.IsWanted(cids[3]) {
+		t.Fatal("expected wanted but session manager did not want cid")
 	}
 }
 
@@ -186,7 +166,7 @@ func TestRemovingPeersWhenManagerContextCancelled(t *testing.T) {
 	p := peer.ID(123)
 	block := blocks.NewBlock([]byte("block"))
 	// we'll be interested in all blocks for this test
-	nextInterestedIn = []cid.Cid{block.Cid()}
+	nextWanted = []cid.Cid{block.Cid()}
 	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 	secondSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
@@ -213,7 +193,7 @@ func TestRemovingPeersWhenSessionContextCancelled(t *testing.T) {
 	p := peer.ID(123)
 	block := blocks.NewBlock([]byte("block"))
 	// we'll be interested in all blocks for this test
-	nextInterestedIn = []cid.Cid{block.Cid()}
+	nextWanted = []cid.Cid{block.Cid()}
 	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
 	sessionCtx, sessionCancel := context.WithCancel(ctx)
 	secondSession := sm.NewSession(sessionCtx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
