@@ -113,7 +113,7 @@ func (b *bloomcache) build(ctx context.Context) error {
 
 func (b *bloomcache) DeleteBlock(k cid.Cid) error {
 	if has, ok := b.hasCached(k); ok && !has {
-		return ErrNotFound
+		return nil
 	}
 
 	return b.blockstore.DeleteBlock(k)

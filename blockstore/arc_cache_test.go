@@ -139,8 +139,8 @@ func TestGetAndDeleteFalseShortCircuit(t *testing.T) {
 		t.Fatal("get returned invalid result")
 	}
 
-	if arc.DeleteBlock(exampleBlock.Cid()) != ErrNotFound {
-		t.Fatal("expected ErrNotFound error")
+	if arc.DeleteBlock(exampleBlock.Cid()) != nil {
+		t.Fatal("expected deletes to be idempotent")
 	}
 }
 

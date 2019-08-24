@@ -186,11 +186,7 @@ func (bs *blockstore) GetSize(k cid.Cid) (int, error) {
 }
 
 func (bs *blockstore) DeleteBlock(k cid.Cid) error {
-	err := bs.datastore.Delete(dshelp.CidToDsKey(k))
-	if err == ds.ErrNotFound {
-		return ErrNotFound
-	}
-	return err
+	return bs.datastore.Delete(dshelp.CidToDsKey(k))
 }
 
 // AllKeysChan runs a query for keys from the blockstore.
