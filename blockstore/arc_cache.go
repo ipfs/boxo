@@ -37,18 +37,15 @@ func newARCCachedBS(ctx context.Context, bs Blockstore, lruSize int) (*arccache,
 
 func (b *arccache) DeleteBlock(k cid.Cid) error {
 	if has, _, ok := b.hasCached(k); ok && !has {
-		return ErrNotFound
+		return nil
 	}
 
 	b.arc.Remove(k) // Invalidate cache before deleting.
 	err := b.blockstore.DeleteBlock(k)
-	switch err {
-	case nil, ErrNotFound:
+	if err == nil {
 		b.cacheHave(k, false)
-		return err
-	default:
-		return err
 	}
+	return err
 }
 
 // if ok == false has is inconclusive
