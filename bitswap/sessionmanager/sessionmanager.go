@@ -100,6 +100,7 @@ func (sm *SessionManager) removeSession(session sesTrk) {
 	for i := 0; i < len(sm.sessions); i++ {
 		if sm.sessions[i] == session {
 			sm.sessions[i] = sm.sessions[len(sm.sessions)-1]
+			sm.sessions[len(sm.sessions)-1] = sesTrk{} // free memory.
 			sm.sessions = sm.sessions[:len(sm.sessions)-1]
 			return
 		}
