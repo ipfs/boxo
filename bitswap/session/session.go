@@ -45,9 +45,18 @@ type RequestSplitter interface {
 	RecordUniqueBlock()
 }
 
-type rcvFrom struct {
+type opType int
+
+const (
+	opReceive opType = iota
+	opWant
+	opCancel
+)
+
+type op struct {
+	op   opType
 	from peer.ID
-	ks   []cid.Cid
+	keys []cid.Cid
 }
 
 // Session holds state for an individual bitswap transfer operation.
@@ -63,9 +72,7 @@ type Session struct {
 	sw sessionWants
 
 	// channels
-	incoming      chan rcvFrom
-	newReqs       chan []cid.Cid
-	cancelKeys    chan []cid.Cid
+	incoming      chan op
 	latencyReqs   chan chan time.Duration
 	tickDelayReqs chan time.Duration
 
@@ -100,15 +107,13 @@ func New(ctx context.Context,
 			liveWants: make(map[cid.Cid]time.Time),
 			pastWants: cid.NewSet(),
 		},
-		newReqs:             make(chan []cid.Cid),
-		cancelKeys:          make(chan []cid.Cid),
 		latencyReqs:         make(chan chan time.Duration),
 		tickDelayReqs:       make(chan time.Duration),
 		ctx:                 ctx,
 		wm:                  wm,
 		pm:                  pm,
 		srs:                 srs,
-		incoming:            make(chan rcvFrom),
+		incoming:            make(chan op, 16),
 		notif:               notif,
 		uuid:                loggables.Uuid("GetBlockRequest"),
 		baseTickDelay:       time.Millisecond * 500,
@@ -130,7 +135,7 @@ func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid) {
 	}
 
 	select {
-	case s.incoming <- rcvFrom{from: from, ks: interested}:
+	case s.incoming <- op{op: opReceive, from: from, keys: interested}:
 	case <-s.ctx.Done():
 	}
 }
@@ -154,14 +159,14 @@ func (s *Session) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 	return bsgetter.AsyncGetBlocks(ctx, s.ctx, keys, s.notif,
 		func(ctx context.Context, keys []cid.Cid) {
 			select {
-			case s.newReqs <- keys:
+			case s.incoming <- op{op: opWant, keys: keys}:
 			case <-ctx.Done():
 			case <-s.ctx.Done():
 			}
 		},
 		func(keys []cid.Cid) {
 			select {
-			case s.cancelKeys <- keys:
+			case s.incoming <- op{op: opCancel, keys: keys}:
 			case <-s.ctx.Done():
 			}
 		},
@@ -200,12 +205,17 @@ func (s *Session) run(ctx context.Context) {
 	s.periodicSearchTimer = time.NewTimer(s.periodicSearchDelay.NextWaitTime())
 	for {
 		select {
-		case rcv := <-s.incoming:
-			s.handleIncoming(ctx, rcv)
-		case keys := <-s.newReqs:
-			s.wantBlocks(ctx, keys)
-		case keys := <-s.cancelKeys:
-			s.sw.CancelPending(keys)
+		case oper := <-s.incoming:
+			switch oper.op {
+			case opReceive:
+				s.handleReceive(ctx, oper.from, oper.keys)
+			case opWant:
+				s.wantBlocks(ctx, oper.keys)
+			case opCancel:
+				s.sw.CancelPending(oper.keys)
+			default:
+				panic("unhandled operation")
+			}
 		case <-s.idleTick.C:
 			s.handleIdleTick(ctx)
 		case <-s.periodicSearchTimer.C:
@@ -261,15 +271,15 @@ func (s *Session) handleShutdown() {
 	s.wm.CancelWants(s.ctx, live, nil, s.id)
 }
 
-func (s *Session) handleIncoming(ctx context.Context, rcv rcvFrom) {
+func (s *Session) handleReceive(ctx context.Context, from peer.ID, keys []cid.Cid) {
 	// Record statistics only if the blocks came from the network
 	// (blocks can also be received from the local node)
-	if rcv.from != "" {
-		s.updateReceiveCounters(ctx, rcv)
+	if from != "" {
+		s.updateReceiveCounters(ctx, from, keys)
 	}
 
 	// Update the want list
-	wanted, totalLatency := s.sw.BlocksReceived(rcv.ks)
+	wanted, totalLatency := s.sw.BlocksReceived(keys)
 	if len(wanted) == 0 {
 		return
 	}
@@ -280,18 +290,18 @@ func (s *Session) handleIncoming(ctx context.Context, rcv rcvFrom) {
 	s.idleTick.Stop()
 
 	// Process the received blocks
-	s.processIncoming(ctx, wanted, totalLatency)
+	s.processReceive(ctx, wanted, totalLatency)
 
 	s.resetIdleTick()
 }
 
-func (s *Session) updateReceiveCounters(ctx context.Context, rcv rcvFrom) {
+func (s *Session) updateReceiveCounters(ctx context.Context, from peer.ID, keys []cid.Cid) {
 	// Record unique vs duplicate blocks
-	s.sw.ForEachUniqDup(rcv.ks, s.srs.RecordUniqueBlock, s.srs.RecordDuplicateBlock)
+	s.sw.ForEachUniqDup(keys, s.srs.RecordUniqueBlock, s.srs.RecordDuplicateBlock)
 
 	// Record response (to be able to time latency)
-	if len(rcv.ks) > 0 {
-		s.pm.RecordPeerResponse(rcv.from, rcv.ks)
+	if len(keys) > 0 {
+		s.pm.RecordPeerResponse(from, keys)
 	}
 }
 
@@ -300,7 +310,7 @@ func (s *Session) cancelIncoming(ctx context.Context, ks []cid.Cid) {
 	s.wm.CancelWants(s.ctx, ks, nil, s.id)
 }
 
-func (s *Session) processIncoming(ctx context.Context, ks []cid.Cid, totalLatency time.Duration) {
+func (s *Session) processReceive(ctx context.Context, ks []cid.Cid, totalLatency time.Duration) {
 	// Keep track of the total number of blocks received and total latency
 	s.fetchcnt += len(ks)
 	s.latTotal += totalLatency
