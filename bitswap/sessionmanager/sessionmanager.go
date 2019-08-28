@@ -46,7 +46,7 @@ type SessionManager struct {
 	notif                  notifications.PubSub
 
 	// Sessions
-	sessLk   sync.Mutex
+	sessLk   sync.RWMutex
 	sessions []sesTrk
 
 	// Session Index
@@ -100,6 +100,7 @@ func (sm *SessionManager) removeSession(session sesTrk) {
 	for i := 0; i < len(sm.sessions); i++ {
 		if sm.sessions[i] == session {
 			sm.sessions[i] = sm.sessions[len(sm.sessions)-1]
+			sm.sessions[len(sm.sessions)-1] = sesTrk{} // free memory.
 			sm.sessions = sm.sessions[:len(sm.sessions)-1]
 			return
 		}
@@ -116,8 +117,8 @@ func (sm *SessionManager) GetNextSessionID() uint64 {
 
 // ReceiveFrom receives block CIDs from a peer and dispatches to sessions.
 func (sm *SessionManager) ReceiveFrom(from peer.ID, ks []cid.Cid) {
-	sm.sessLk.Lock()
-	defer sm.sessLk.Unlock()
+	sm.sessLk.RLock()
+	defer sm.sessLk.RUnlock()
 
 	for _, s := range sm.sessions {
 		s.session.ReceiveFrom(from, ks)
@@ -127,8 +128,8 @@ func (sm *SessionManager) ReceiveFrom(from peer.ID, ks []cid.Cid) {
 // IsWanted indicates whether any of the sessions are waiting to receive
 // the block with the given CID.
 func (sm *SessionManager) IsWanted(cid cid.Cid) bool {
-	sm.sessLk.Lock()
-	defer sm.sessLk.Unlock()
+	sm.sessLk.RLock()
+	defer sm.sessLk.RUnlock()
 
 	for _, s := range sm.sessions {
 		if s.session.IsWanted(cid) {
