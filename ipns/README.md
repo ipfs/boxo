@@ -10,6 +10,10 @@
 
 This package contains all of the components necessary to create, understand, and validate IPNS records. It does *not* publish or resolve those records. [`go-ipfs`](https://github.com/ipfs/go-ipfs) uses this package internally to manipulate records.
 
+## Lead Maintainer
+
+[Adin Schmahmann](https://github.com/aschmahmann)
+
 ## Usage
 
 To create a new IPNS record:
