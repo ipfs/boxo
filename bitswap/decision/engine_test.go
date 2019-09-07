@@ -276,6 +276,46 @@ func TestTaggingPeers(t *testing.T) {
 		t.Fatal("Peers should be untagged but weren't")
 	}
 }
+
+func TestTaggingUseful(t *testing.T) {
+	oldShortTerm := shortTerm
+	shortTerm = 1 * time.Millisecond
+	defer func() { shortTerm = oldShortTerm }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	me := newEngine(ctx, "engine")
+	friend := peer.ID("friend")
+
+	block := blocks.NewBlock([]byte("foobar"))
+	msg := message.New(false)
+	msg.AddBlock(block)
+
+	for i := 0; i < 3; i++ {
+		if me.PeerTagger.count(me.Engine.tagUseful) != 0 {
+			t.Fatal("Peers should be untagged but weren't")
+		}
+		me.Engine.MessageSent(friend, msg)
+		time.Sleep(shortTerm * 2)
+		if me.PeerTagger.count(me.Engine.tagUseful) != 1 {
+			t.Fatal("Peers should be tagged but weren't")
+		}
+		time.Sleep(shortTerm * 8)
+	}
+
+	if me.PeerTagger.count(me.Engine.tagUseful) == 0 {
+		t.Fatal("peers should still be tagged due to long-term usefulness")
+	}
+	time.Sleep(shortTerm * 2)
+	if me.PeerTagger.count(me.Engine.tagUseful) == 0 {
+		t.Fatal("peers should still be tagged due to long-term usefulness")
+	}
+	time.Sleep(shortTerm * 10)
+	if me.PeerTagger.count(me.Engine.tagUseful) != 0 {
+		t.Fatal("peers should finally be untagged")
+	}
+}
+
 func partnerWants(e *Engine, keys []string, partner peer.ID) {
 	add := message.New(false)
 	for i, letter := range keys {
