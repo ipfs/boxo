@@ -72,7 +72,7 @@ type blockService struct {
 // NewBlockService creates a BlockService with given datastore instance.
 func New(bs blockstore.Blockstore, rem exchange.Interface) BlockService {
 	if rem == nil {
-		log.Warning("blockservice running in local (offline) mode.")
+		log.Debug("blockservice running in local (offline) mode.")
 	}
 
 	return &blockService{
@@ -86,7 +86,7 @@ func New(bs blockstore.Blockstore, rem exchange.Interface) BlockService {
 // through to the blockstore and are not skipped by cache checks.
 func NewWriteThrough(bs blockstore.Blockstore, rem exchange.Interface) BlockService {
 	if rem == nil {
-		log.Warning("blockservice running in local (offline) mode.")
+		log.Debug("blockservice running in local (offline) mode.")
 	}
 
 	return &blockService{
