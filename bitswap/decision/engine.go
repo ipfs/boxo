@@ -171,7 +171,8 @@ func NewEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger)
 // longTermRatio*shortTerm period.
 //
 // To calculate the final score, we sum the short-term and long-term scores then
-// adjust it ±25% based on our debt ratio. Peers that have historically been more useful to us than we are to them get the highest score.
+// adjust it ±25% based on our debt ratio. Peers that have historically been
+// more useful to us than we are to them get the highest score.
 func (e *Engine) scoreWorker(ctx context.Context) {
 	ticker := time.NewTicker(shortTerm)
 	defer ticker.Stop()
@@ -218,6 +219,10 @@ func (e *Engine) scoreWorker(ctx context.Context) {
 			}
 
 			// Calculate the new score.
+			//
+			// The accounting score adjustment prefers peers _we_
+			// need over peers that need us. This doesn't help with
+			// leeching.
 			score := int((ledger.shortScore + ledger.longScore) * ((ledger.Accounting.Score())*.5 + .75))
 
 			// Avoid updating the connection manager unless there's a change. This can be expensive.
