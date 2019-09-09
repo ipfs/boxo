@@ -19,38 +19,63 @@ import (
 	testutil "github.com/libp2p/go-libp2p-core/test"
 )
 
+type peerTag struct {
+	done  chan struct{}
+	peers map[peer.ID]int
+}
+
 type fakePeerTagger struct {
-	lk          sync.Mutex
-	wait        sync.WaitGroup
-	taggedPeers []peer.ID
+	lk   sync.Mutex
+	tags map[string]*peerTag
 }
 
 func (fpt *fakePeerTagger) TagPeer(p peer.ID, tag string, n int) {
-	fpt.wait.Add(1)
-
 	fpt.lk.Lock()
 	defer fpt.lk.Unlock()
-	fpt.taggedPeers = append(fpt.taggedPeers, p)
+	if fpt.tags == nil {
+		fpt.tags = make(map[string]*peerTag, 1)
+	}
+	pt, ok := fpt.tags[tag]
+	if !ok {
+		pt = &peerTag{peers: make(map[peer.ID]int, 1), done: make(chan struct{})}
+		fpt.tags[tag] = pt
+	}
+	pt.peers[p] = n
 }
 
 func (fpt *fakePeerTagger) UntagPeer(p peer.ID, tag string) {
-	defer fpt.wait.Done()
-
 	fpt.lk.Lock()
 	defer fpt.lk.Unlock()
-	for i := 0; i < len(fpt.taggedPeers); i++ {
-		if fpt.taggedPeers[i] == p {
-			fpt.taggedPeers[i] = fpt.taggedPeers[len(fpt.taggedPeers)-1]
-			fpt.taggedPeers = fpt.taggedPeers[:len(fpt.taggedPeers)-1]
-			return
-		}
+	pt := fpt.tags[tag]
+	if pt == nil {
+		return
+	}
+	delete(pt.peers, p)
+	if len(pt.peers) == 0 {
+		close(pt.done)
+		delete(fpt.tags, tag)
 	}
 }
 
-func (fpt *fakePeerTagger) count() int {
+func (fpt *fakePeerTagger) count(tag string) int {
 	fpt.lk.Lock()
 	defer fpt.lk.Unlock()
-	return len(fpt.taggedPeers)
+	if pt, ok := fpt.tags[tag]; ok {
+		return len(pt.peers)
+	}
+	return 0
+}
+
+func (fpt *fakePeerTagger) wait(tag string) {
+	fpt.lk.Lock()
+	pt := fpt.tags[tag]
+	if pt == nil {
+		fpt.lk.Unlock()
+		return
+	}
+	doneCh := pt.done
+	fpt.lk.Unlock()
+	<-doneCh
 }
 
 type engineSet struct {
@@ -241,16 +266,56 @@ func TestTaggingPeers(t *testing.T) {
 	next := <-sanfrancisco.Engine.Outbox()
 	envelope := <-next
 
-	if sanfrancisco.PeerTagger.count() != 1 {
+	if sanfrancisco.PeerTagger.count(sanfrancisco.Engine.tagQueued) != 1 {
 		t.Fatal("Incorrect number of peers tagged")
 	}
 	envelope.Sent()
 	<-sanfrancisco.Engine.Outbox()
-	sanfrancisco.PeerTagger.wait.Wait()
-	if sanfrancisco.PeerTagger.count() != 0 {
+	sanfrancisco.PeerTagger.wait(sanfrancisco.Engine.tagQueued)
+	if sanfrancisco.PeerTagger.count(sanfrancisco.Engine.tagQueued) != 0 {
 		t.Fatal("Peers should be untagged but weren't")
 	}
 }
+
+func TestTaggingUseful(t *testing.T) {
+	oldShortTerm := shortTerm
+	shortTerm = 1 * time.Millisecond
+	defer func() { shortTerm = oldShortTerm }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	me := newEngine(ctx, "engine")
+	friend := peer.ID("friend")
+
+	block := blocks.NewBlock([]byte("foobar"))
+	msg := message.New(false)
+	msg.AddBlock(block)
+
+	for i := 0; i < 3; i++ {
+		if me.PeerTagger.count(me.Engine.tagUseful) != 0 {
+			t.Fatal("Peers should be untagged but weren't")
+		}
+		me.Engine.MessageSent(friend, msg)
+		time.Sleep(shortTerm * 2)
+		if me.PeerTagger.count(me.Engine.tagUseful) != 1 {
+			t.Fatal("Peers should be tagged but weren't")
+		}
+		time.Sleep(shortTerm * 8)
+	}
+
+	if me.PeerTagger.count(me.Engine.tagUseful) == 0 {
+		t.Fatal("peers should still be tagged due to long-term usefulness")
+	}
+	time.Sleep(shortTerm * 2)
+	if me.PeerTagger.count(me.Engine.tagUseful) == 0 {
+		t.Fatal("peers should still be tagged due to long-term usefulness")
+	}
+	time.Sleep(shortTerm * 10)
+	if me.PeerTagger.count(me.Engine.tagUseful) != 0 {
+		t.Fatal("peers should finally be untagged")
+	}
+}
+
 func partnerWants(e *Engine, keys []string, partner peer.ID) {
 	add := message.New(false)
 	for i, letter := range keys {
