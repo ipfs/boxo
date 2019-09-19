@@ -9,6 +9,9 @@ go-path
 
 > go-path is a helper package that provides utilities for parsing and using ipfs paths
 
+## Lead Maintainer
+
+[Steven Allen](https://github.com/Stebalien)
 
 ## Table of Contents
 
