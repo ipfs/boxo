@@ -9,6 +9,9 @@ go-unixfs
 
 > go-unixfs implements unix-like filesystem utilities on top of an ipld merkledag
 
+## Lead Maintainer
+
+[Steven Allen](https://github.com/Stebalien)
 
 ## Table of Contents
 
