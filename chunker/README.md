@@ -12,6 +12,10 @@
 
 The package provides a `SizeSplitter` which creates chunks of equal size and it is used by default in most cases, and a `rabin` fingerprint chunker. This chunker will attempt to split data in a way that the resulting blocks are the same when the data has repetitive patterns, thus optimizing the resulting DAGs.
 
+## Lead Maintainer
+
+[Steven Allen](https://github.com/Stebalien)
+
 ## Table of Contents
 
 - [Install](#install)
