@@ -8,6 +8,10 @@
 
 > go-ipfs-exchange-interface defines the IPFS exchange interface
 
+## Lead Maintainer
+
+[Steven Allen](https://github.com/Stebalien)
+
 ## Table of Contents
 
 - [Install](#install)
