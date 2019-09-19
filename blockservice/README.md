@@ -9,6 +9,9 @@ go-blockservice
 
 > go-blockservice provides a seamless interface to both local and remote storage backends.
 
+## Lead Maintainer
+
+[Steven Allen](https://github.com/Stebalien)
 
 ## Table of Contents
 
