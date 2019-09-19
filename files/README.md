@@ -7,6 +7,10 @@
 
 > File interfaces and utils used in IPFS
 
+## Lead Maintainer
+
+[Steven Allen](https://github.com/Stebalien)
+
 ## Documentation
 
 https://godoc.org/github.com/ipfs/go-ipfs-files
