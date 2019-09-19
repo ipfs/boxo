@@ -8,6 +8,11 @@
 
 > go-ipfs-blockstore implements a thin wrapper over a datastore, giving a clean interface for Getting and Putting block objects.
 
+## Lead Maintainer
+
+[Steven Allen](https://github.com/Stebalien)
+
+
 ## Table of Contents
 
 - [Install](#install)
