@@ -77,7 +77,7 @@ func (rp *Reprovider) Run() {
 
 		err := rp.Reprovide()
 		if err != nil {
-			logR.Debug(err)
+			logR.Errorf("failed to reprovide: %s", err)
 		}
 
 		if done != nil {
