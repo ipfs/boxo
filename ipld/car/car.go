@@ -8,7 +8,6 @@ import (
 
 	"github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
@@ -18,6 +17,10 @@ import (
 
 func init() {
 	cbor.RegisterCborType(CarHeader{})
+}
+
+type Store interface {
+	Put(blocks.Block) error
 }
 
 type CarHeader struct {
@@ -135,7 +138,7 @@ func (cr *carReader) Next() (blocks.Block, error) {
 	return blocks.NewBlockWithCid(data, c)
 }
 
-func LoadCar(bs bstore.Blockstore, r io.Reader) (*CarHeader, error) {
+func LoadCar(s Store, r io.Reader) (*CarHeader, error) {
 	cr, err := NewCarReader(r)
 	if err != nil {
 		return nil, err
@@ -151,7 +154,7 @@ func LoadCar(bs bstore.Blockstore, r io.Reader) (*CarHeader, error) {
 		case nil:
 		}
 
-		if err := bs.Put(blk); err != nil {
+		if err := s.Put(blk); err != nil {
 			return nil, err
 		}
 	}
