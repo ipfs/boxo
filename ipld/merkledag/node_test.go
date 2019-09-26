@@ -59,7 +59,7 @@ func TestRemoveLink(t *testing.T) {
 
 	// should fail
 	err = nd.RemoveNodeLink("a")
-	if err != ipld.ErrNotFound {
+	if err != ErrLinkNotFound {
 		t.Fatal("should have failed to remove link")
 	}
 

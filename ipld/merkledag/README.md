@@ -9,7 +9,9 @@ go-merkledag
 
 > go-merkledag implements the 'DAGService' interface and adds two ipld node types, Protobuf and Raw 
 
+## Lead Maintainer
 
+[Steven Allen](https://github.com/Stebalien)
 
 ## Table of Contents
 
