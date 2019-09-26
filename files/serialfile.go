@@ -53,7 +53,7 @@ func NewSerialFile(path string, hidden bool, stat os.FileInfo) (Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		return NewLinkFile(target), nil
+		return NewLinkFile(target, stat), nil
 	default:
 		return nil, fmt.Errorf("unrecognized file type for %s: %s", path, mode.String())
 	}

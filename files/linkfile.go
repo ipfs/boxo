@@ -1,17 +1,19 @@
 package files
 
 import (
+	"os"
 	"strings"
 )
 
 type Symlink struct {
 	Target string
 
+	stat   os.FileInfo
 	reader strings.Reader
 }
 
-func NewLinkFile(target string) File {
-	lf := &Symlink{Target: target}
+func NewLinkFile(target string, stat os.FileInfo) File {
+	lf := &Symlink{Target: target, stat: stat}
 	lf.reader.Reset(lf.Target)
 	return lf
 }
