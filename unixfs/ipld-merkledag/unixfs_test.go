@@ -123,12 +123,21 @@ func TestPBdataTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
 
-	_, sizeErr := DataSize(catSym)
-	if sizeErr == nil {
-		t.Fatal("DataSize didn't throw an error when taking the size of a Symlink.")
+func TestSymlinkFilesize(t *testing.T) {
+	path := "/ipfs/adad123123/meowgie.gif"
+	sym, err := SymlinkData(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-
+	size, err := DataSize(sym)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if int(size) != len(path) {
+		t.Fatalf("size mismatch: %d != %d", size, len(path))
+	}
 }
 
 func TestMetadata(t *testing.T) {

@@ -152,13 +152,16 @@ func DataSize(data []byte) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
+	return size(pbdata)
+}
 
+func size(pbdata *pb.Data) (uint64, error) {
 	switch pbdata.GetType() {
-	case pb.Data_Directory:
+	case pb.Data_Directory, pb.Data_HAMTShard:
 		return 0, errors.New("can't get data size of directory")
 	case pb.Data_File:
 		return pbdata.GetFilesize(), nil
-	case pb.Data_Raw:
+	case pb.Data_Symlink, pb.Data_Raw:
 		return uint64(len(pbdata.GetData())), nil
 	default:
 		return 0, errors.New("unrecognized node data type")
@@ -253,10 +256,12 @@ func (n *FSNode) GetBytes() ([]byte, error) {
 	return proto.Marshal(&n.format)
 }
 
-// FileSize returns the total size of this tree. That is, the size of
-// the data in this node plus the size of all its children.
+// FileSize returns the size of the file.
 func (n *FSNode) FileSize() uint64 {
-	return n.format.GetFilesize()
+	// XXX: This needs to be able to return an error when we don't know the
+	// size.
+	size, _ := size(&n.format)
+	return size
 }
 
 // NumChildren returns the number of child blocks of this node
