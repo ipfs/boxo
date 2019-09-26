@@ -99,7 +99,7 @@ func (w *multipartWalker) nextFile() (Node, error) {
 			return nil, err
 		}
 
-		return NewLinkFile(string(out), nil), nil
+		return NewLinkFile(string(out)), nil
 	default:
 		return &ReaderFile{
 			reader:  part,
