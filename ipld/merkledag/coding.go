@@ -5,8 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ipfs/go-block-format"
-
+	blocks "github.com/ipfs/go-block-format"
 	pb "github.com/ipfs/go-merkledag/pb"
 
 	cid "github.com/ipfs/go-cid"
@@ -49,7 +48,7 @@ func (n *ProtoNode) unmarshal(encoded []byte) error {
 // Marshal encodes a *Node instance into a new byte slice.
 // The conversion uses an intermediate PBNode.
 func (n *ProtoNode) Marshal() ([]byte, error) {
-	pbn := n.getPBNode()
+	pbn := n.GetPBNode()
 	data, err := pbn.Marshal()
 	if err != nil {
 		return data, fmt.Errorf("marshal failed. %v", err)
@@ -57,7 +56,10 @@ func (n *ProtoNode) Marshal() ([]byte, error) {
 	return data, nil
 }
 
-func (n *ProtoNode) getPBNode() *pb.PBNode {
+// GetPBNode converts *ProtoNode into it's protocol buffer variant.
+// If you plan on mutating the data of the original node, it is recommended
+// that you call ProtoNode.Copy() before calling ProtoNode.GetPBNode()
+func (n *ProtoNode) GetPBNode() *pb.PBNode {
 	pbn := &pb.PBNode{}
 	if len(n.links) > 0 {
 		pbn.Links = make([]*pb.PBLink, len(n.links))
