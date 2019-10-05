@@ -7,6 +7,7 @@ import (
 
 	u "github.com/ipfs/go-ipfs-util"
 	util "github.com/ipfs/go-ipfs-util"
+	pool "github.com/libp2p/go-buffer-pool"
 )
 
 func randBuf(t *testing.T, size int) []byte {
@@ -142,6 +143,7 @@ func BenchmarkDefault(b *testing.B) {
 				b.Fatal(err)
 			}
 			res = res + uint64(len(chunk))
+			pool.Put(chunk)
 		}
 	}
 	Res = Res + res
