@@ -96,10 +96,11 @@ func TestRabinChunkReuse(t *testing.T) {
 var Res uint64
 
 func BenchmarkRabin(b *testing.B) {
-	data := make([]byte, 16<<20)
+	const size = 1 << 10
+	data := make([]byte, size)
 	util.NewTimeSeededRand().Read(data)
 
-	b.SetBytes(16 << 20)
+	b.SetBytes(size)
 	b.ReportAllocs()
 	b.ResetTimer()
 

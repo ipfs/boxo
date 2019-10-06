@@ -7,7 +7,6 @@ import (
 
 	u "github.com/ipfs/go-ipfs-util"
 	util "github.com/ipfs/go-ipfs-util"
-	pool "github.com/libp2p/go-buffer-pool"
 )
 
 func randBuf(t *testing.T, size int) []byte {
@@ -122,10 +121,11 @@ func (s *clipReader) Read(buf []byte) (int, error) {
 }
 
 func BenchmarkDefault(b *testing.B) {
-	data := make([]byte, 16<<20)
+	const size = 1 << 10
+	data := make([]byte, size)
 	util.NewTimeSeededRand().Read(data)
 
-	b.SetBytes(16 << 20)
+	b.SetBytes(size)
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -143,7 +143,6 @@ func BenchmarkDefault(b *testing.B) {
 				b.Fatal(err)
 			}
 			res = res + uint64(len(chunk))
-			pool.Put(chunk)
 		}
 	}
 	Res = Res + res

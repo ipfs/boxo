@@ -38,7 +38,12 @@ func (b *Buzhash) NextBytes() ([]byte, error) {
 	if err != nil {
 		if err == io.ErrUnexpectedEOF {
 			b.err = io.EOF
-			return buf[:n+b.n], nil
+			res := make([]byte, n+b.n)
+			copy(res, buf)
+
+			pool.Put(b.buf)
+			b.buf = nil
+			return res, nil
 		} else {
 			b.err = err
 			pool.Put(buf)
@@ -60,8 +65,9 @@ func (b *Buzhash) NextBytes() ([]byte, error) {
 		state = bits.RotateLeft32(state, 1) ^ bytehash[buf[i-32]] ^ bytehash[buf[i]]
 	}
 
-	res := buf[:i]
-	b.buf = pool.Get(buzMax)
+	res := make([]byte, i)
+	copy(res, b.buf)
+
 	b.n = copy(b.buf, buf[i:])
 
 	return res, nil

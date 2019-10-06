@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	util "github.com/ipfs/go-ipfs-util"
-	pool "github.com/libp2p/go-buffer-pool"
 )
 
 func TestBuzhashChunking(t *testing.T) {
@@ -49,10 +48,10 @@ func TestBuzhashChunkReuse(t *testing.T) {
 }
 
 func BenchmarkBuzhash(b *testing.B) {
-	data := make([]byte, 16<<20)
+	data := make([]byte, 1<<10)
 	util.NewTimeSeededRand().Read(data)
 
-	b.SetBytes(16 << 20)
+	b.SetBytes(int64(len(data)))
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -70,7 +69,6 @@ func BenchmarkBuzhash(b *testing.B) {
 				b.Fatal(err)
 			}
 			res = res + uint64(len(chunk))
-			pool.Put(chunk)
 		}
 	}
 	Res = Res + res
