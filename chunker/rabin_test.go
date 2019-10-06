@@ -39,8 +39,14 @@ func TestRabinChunking(t *testing.T) {
 	}
 }
 
-func chunkData(t *testing.T, data []byte) map[string]blocks.Block {
-	r := NewRabin(bytes.NewReader(data), 1024*256)
+type cher interface {
+	NextBytes() ([]byte, error)
+}
+
+type newChunker func(io.Reader) cher
+
+func chunkData(t *testing.T, newC newChunker, data []byte) map[string]blocks.Block {
+	r := newC(bytes.NewReader(data))
 
 	blkmap := make(map[string]blocks.Block)
 
@@ -60,12 +66,12 @@ func chunkData(t *testing.T, data []byte) map[string]blocks.Block {
 	return blkmap
 }
 
-func TestRabinChunkReuse(t *testing.T) {
+func testReuse(t *testing.T, cr newChunker) {
 	data := make([]byte, 1024*1024*16)
 	util.NewTimeSeededRand().Read(data)
 
-	ch1 := chunkData(t, data[1000:])
-	ch2 := chunkData(t, data)
+	ch1 := chunkData(t, cr, data[1000:])
+	ch2 := chunkData(t, cr, data)
 
 	var extra int
 	for k := range ch2 {
@@ -76,8 +82,15 @@ func TestRabinChunkReuse(t *testing.T) {
 	}
 
 	if extra > 2 {
-		t.Log("too many spare chunks made")
+		t.Logf("too many spare chunks made: %d", extra)
 	}
+}
+
+func TestRabinChunkReuse(t *testing.T) {
+	newRabin := func(r io.Reader) cher {
+		return NewRabin(r, 256*1024)
+	}
+	testReuse(t, newRabin)
 }
 
 var Res uint64
