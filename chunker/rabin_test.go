@@ -79,3 +79,32 @@ func TestRabinChunkReuse(t *testing.T) {
 		t.Log("too many spare chunks made")
 	}
 }
+
+var Res uint64
+
+func BenchmarkRabin(b *testing.B) {
+	data := make([]byte, 16<<20)
+	util.NewTimeSeededRand().Read(data)
+
+	b.SetBytes(16 << 20)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var res uint64
+
+	for i := 0; i < b.N; i++ {
+		r := NewRabin(bytes.NewReader(data), 1024*256)
+
+		for {
+			chunk, err := r.NextBytes()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				b.Fatal(err)
+			}
+			res = res + uint64(len(chunk))
+		}
+	}
+	Res = Res + res
+}
