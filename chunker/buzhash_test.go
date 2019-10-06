@@ -41,37 +41,16 @@ func TestBuzhashChunking(t *testing.T) {
 }
 
 func TestBuzhashChunkReuse(t *testing.T) {
-	newBuzhash := func(r io.Reader) cher {
+	newBuzhash := func(r io.Reader) Splitter {
 		return NewBuzhash(r)
 	}
 	testReuse(t, newBuzhash)
 }
 
-func BenchmarkBuzhash(b *testing.B) {
-	data := make([]byte, 1<<10)
-	util.NewTimeSeededRand().Read(data)
-
-	b.SetBytes(int64(len(data)))
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	var res uint64
-
-	for i := 0; i < b.N; i++ {
-		r := NewBuzhash(bytes.NewReader(data))
-
-		for {
-			chunk, err := r.NextBytes()
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				b.Fatal(err)
-			}
-			res = res + uint64(len(chunk))
-		}
-	}
-	Res = Res + res
+func BenchmarkBuzhash2(b *testing.B) {
+	benchmarkChunker(b, func(r io.Reader) Splitter {
+		return NewBuzhash(r)
+	})
 }
 
 func TestBuzhashBitsHash(t *testing.T) {

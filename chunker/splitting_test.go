@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	u "github.com/ipfs/go-ipfs-util"
-	util "github.com/ipfs/go-ipfs-util"
 )
 
 func randBuf(t *testing.T, size int) []byte {
@@ -121,29 +120,7 @@ func (s *clipReader) Read(buf []byte) (int, error) {
 }
 
 func BenchmarkDefault(b *testing.B) {
-	const size = 1 << 10
-	data := make([]byte, size)
-	util.NewTimeSeededRand().Read(data)
-
-	b.SetBytes(size)
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	var res uint64
-
-	for i := 0; i < b.N; i++ {
-		r := DefaultSplitter(bytes.NewReader(data))
-
-		for {
-			chunk, err := r.NextBytes()
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				b.Fatal(err)
-			}
-			res = res + uint64(len(chunk))
-		}
-	}
-	Res = Res + res
+	benchmarkChunker(b, func(r io.Reader) Splitter {
+		return DefaultSplitter(r)
+	})
 }
