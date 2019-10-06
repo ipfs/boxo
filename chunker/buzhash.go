@@ -42,6 +42,7 @@ func (b *Buzhash) NextBytes() ([]byte, error) {
 		} else {
 			b.err = err
 			pool.Put(buf)
+			b.buf = nil
 			return nil, err
 		}
 	}
