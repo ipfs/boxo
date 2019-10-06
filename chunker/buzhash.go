@@ -55,10 +55,7 @@ func (b *Buzhash) NextBytes() ([]byte, error) {
 		state = state ^ bytehash[buf[i]]
 	}
 
-	for ; state&buzMask != 0; i++ {
-		if i >= buzMax {
-			break
-		}
+	for ; state&buzMask != 0 && i < buzMax; i++ {
 		state = bits.RotateLeft32(state, 1) ^ bytehash[buf[i-32]] ^ bytehash[buf[i]]
 	}
 
