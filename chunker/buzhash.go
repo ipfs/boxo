@@ -40,14 +40,16 @@ func (b *Buzhash) NextBytes() ([]byte, error) {
 	buf := b.buf
 	n, err := io.ReadFull(b.r, buf[b.n:])
 	if err != nil {
-		if err == io.ErrUnexpectedEOF {
-			b.err = io.EOF
-			res := make([]byte, n+b.n)
-			copy(res, buf)
+		if err == io.ErrUnexpectedEOF || err == io.EOF {
+			if b.n+n < buzMin {
+				b.err = io.EOF
+				res := make([]byte, b.n+n)
+				copy(res, buf)
 
-			pool.Put(b.buf)
-			b.buf = nil
-			return res, nil
+				pool.Put(b.buf)
+				b.buf = nil
+				return res, nil
+			}
 		} else {
 			b.err = err
 			pool.Put(buf)
@@ -65,14 +67,18 @@ func (b *Buzhash) NextBytes() ([]byte, error) {
 		state = state ^ bytehash[buf[i]]
 	}
 
-	for ; state&buzMask != 0 && i < buzMax; i++ {
+	if b.n+n > len(buf) {
+		panic("this is impossible, but gives +9 to performance")
+	}
+
+	for ; state&buzMask != 0 && i < b.n+n; i++ {
 		state = bits.RotateLeft32(state, 1) ^ bytehash[buf[i-32]] ^ bytehash[buf[i]]
 	}
 
 	res := make([]byte, i)
 	copy(res, b.buf)
 
-	b.n = copy(b.buf, buf[i:])
+	b.n = copy(b.buf, buf[i:b.n+n])
 
 	return res, nil
 }
