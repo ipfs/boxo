@@ -14,8 +14,8 @@ var (
 )
 
 // FromString returns a Splitter depending on the given string:
-// it supports "default" (""), "size-{size}", "rabin", "rabin-{blocksize}" and
-// "rabin-{min}-{avg}-{max}".
+// it supports "default" (""), "size-{size}", "rabin", "rabin-{blocksize}",
+// "rabin-{min}-{avg}-{max}" and "buzhash".
 func FromString(r io.Reader, chunker string) (Splitter, error) {
 	switch {
 	case chunker == "" || chunker == "default":
@@ -33,6 +33,9 @@ func FromString(r io.Reader, chunker string) (Splitter, error) {
 
 	case strings.HasPrefix(chunker, "rabin"):
 		return parseRabinString(r, chunker)
+
+	case chunker == "buzhash":
+		return NewBuzhash(r), nil
 
 	default:
 		return nil, fmt.Errorf("unrecognized chunker option: %s", chunker)
