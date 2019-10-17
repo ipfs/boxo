@@ -100,12 +100,12 @@ type mockPinner struct {
 	direct    []cid.Cid
 }
 
-func (mp *mockPinner) DirectKeys() []cid.Cid {
-	return mp.direct
+func (mp *mockPinner) DirectKeys(ctx context.Context) ([]cid.Cid, error) {
+	return mp.direct, nil
 }
 
-func (mp *mockPinner) RecursiveKeys() []cid.Cid {
-	return mp.recursive
+func (mp *mockPinner) RecursiveKeys(ctx context.Context) ([]cid.Cid, error) {
+	return mp.recursive, nil
 }
 
 func TestReprovidePinned(t *testing.T) {
