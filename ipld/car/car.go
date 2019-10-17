@@ -47,7 +47,7 @@ func WriteCar(ctx context.Context, ds format.DAGService, roots []cid.Cid, w io.W
 
 	seen := cid.NewSet()
 	for _, r := range roots {
-		if err := dag.EnumerateChildren(ctx, cw.enumGetLinks, r, seen.Visit); err != nil {
+		if err := dag.Walk(ctx, cw.enumGetLinks, r, seen.Visit); err != nil {
 			return err
 		}
 	}
