@@ -61,17 +61,33 @@ func (b *Buzhash) NextBytes() ([]byte, error) {
 
 	var state uint32 = 0
 
+	if buzMin > len(b.buf) {
+		panic("this is impossible")
+	}
+
 	for ; i < buzMin; i++ {
 		state = bits.RotateLeft32(state, 1)
 		state = state ^ bytehash[b.buf[i]]
 	}
 
-	if b.n+n > len(b.buf) {
-		panic("this is impossible, but gives +9 to performance")
-	}
+	{
+		max := b.n + n - 32 - 1
 
-	for ; state&buzMask != 0 && i < b.n+n; i++ {
-		state = bits.RotateLeft32(state, 1) ^ bytehash[b.buf[i-32]] ^ bytehash[b.buf[i]]
+		buf := b.buf
+		bufshf := b.buf[32:]
+		i = buzMin - 32
+		_ = buf[max]
+		_ = bufshf[max]
+
+		for ; i <= max; i++ {
+			if state&buzMask == 0 {
+				break
+			}
+			state = bits.RotateLeft32(state, 1) ^
+				bytehash[buf[i]] ^
+				bytehash[bufshf[i]]
+		}
+		i += 32
 	}
 
 	res := make([]byte, i)
