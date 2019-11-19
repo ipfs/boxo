@@ -6,13 +6,12 @@ import (
 	"testing"
 
 	bserv "github.com/ipfs/go-blockservice"
-	dag "github.com/ipfs/go-merkledag"
-
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dsq "github.com/ipfs/go-datastore/query"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	dag "github.com/ipfs/go-merkledag"
 )
 
 func ignoreCids(_ cid.Cid) {}

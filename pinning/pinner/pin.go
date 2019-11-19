@@ -9,13 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ipfs/go-ipfs/dagutils"
-	mdag "github.com/ipfs/go-merkledag"
-
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-ipfs/dagutils"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
+	mdag "github.com/ipfs/go-merkledag"
 )
 
 var log = logging.Logger("pin")

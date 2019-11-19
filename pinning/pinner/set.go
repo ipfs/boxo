@@ -9,12 +9,12 @@ import (
 	"hash/fnv"
 	"sort"
 
-	"github.com/ipfs/go-ipfs/pin/internal/pb"
-	"github.com/ipfs/go-merkledag"
-
 	"github.com/gogo/protobuf/proto"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-merkledag"
+
+	"github.com/ipfs/go-ipfs-pinner/internal/pb"
 )
 
 const (
