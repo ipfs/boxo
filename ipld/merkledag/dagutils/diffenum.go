@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	mdag "github.com/ipfs/go-merkledag"
-
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
+
+	mdag "github.com/ipfs/go-merkledag"
 )
 
 // DiffEnumerate fetches every object in the graph pointed to by 'to' that is

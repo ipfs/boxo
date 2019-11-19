@@ -3,16 +3,16 @@ package dagutils
 import (
 	"context"
 	"errors"
+	"strings"
 
 	bserv "github.com/ipfs/go-blockservice"
-	dag "github.com/ipfs/go-merkledag"
-	path "github.com/ipfs/go-path"
-
 	ds "github.com/ipfs/go-datastore"
 	syncds "github.com/ipfs/go-datastore/sync"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	ipld "github.com/ipfs/go-ipld-format"
+
+	dag "github.com/ipfs/go-merkledag"
 )
 
 // Editor represents a ProtoNode tree editor and provides methods to
@@ -87,7 +87,7 @@ func addLink(ctx context.Context, ds ipld.DAGService, root *dag.ProtoNode, child
 
 // InsertNodeAtPath inserts a new node in the tree and replaces the current root with the new one.
 func (e *Editor) InsertNodeAtPath(ctx context.Context, pth string, toinsert ipld.Node, create func() *dag.ProtoNode) error {
-	splpath := path.SplitList(pth)
+	splpath := strings.Split(pth, "/")
 	nd, err := e.insertNodeAtPath(ctx, e.root, splpath, toinsert, create)
 	if err != nil {
 		return err
@@ -143,7 +143,7 @@ func (e *Editor) insertNodeAtPath(ctx context.Context, root *dag.ProtoNode, path
 // RmLink removes the link with the given name and updates the root node of
 // the editor.
 func (e *Editor) RmLink(ctx context.Context, pth string) error {
-	splpath := path.SplitList(pth)
+	splpath := strings.Split(pth, "/")
 	nd, err := e.rmLink(ctx, e.root, splpath)
 	if err != nil {
 		return err

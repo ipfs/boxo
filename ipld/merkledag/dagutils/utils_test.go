@@ -2,14 +2,14 @@ package dagutils
 
 import (
 	"context"
+	"strings"
 	"testing"
+
+	"github.com/ipfs/go-cid"
+	ipld "github.com/ipfs/go-ipld-format"
 
 	dag "github.com/ipfs/go-merkledag"
 	mdtest "github.com/ipfs/go-merkledag/test"
-	path "github.com/ipfs/go-path"
-
-	cid "github.com/ipfs/go-cid"
-	ipld "github.com/ipfs/go-ipld-format"
 )
 
 func TestAddLink(t *testing.T) {
@@ -42,7 +42,7 @@ func TestAddLink(t *testing.T) {
 }
 
 func assertNodeAtPath(t *testing.T, ds ipld.DAGService, root *dag.ProtoNode, pth string, exp cid.Cid) {
-	parts := path.SplitList(pth)
+	parts := strings.Split(pth, "/")
 	cur := root
 	for _, e := range parts {
 		nxt, err := cur.GetLinkedProtoNode(context.Background(), ds, e)

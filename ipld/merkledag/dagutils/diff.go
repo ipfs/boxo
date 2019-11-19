@@ -7,13 +7,16 @@ import (
 
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
+
 	dag "github.com/ipfs/go-merkledag"
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
 )
+
+// ChangeType denotes type of change in Change
+type ChangeType int
 
 // These constants define the changes that can be applied to a DAG.
 const (
-	Add = iota
+	Add ChangeType = iota
 	Remove
 	Mod
 )
@@ -21,7 +24,7 @@ const (
 // Change represents a change to a DAG and contains a reference to the old and
 // new CIDs.
 type Change struct {
-	Type   coreiface.ChangeType
+	Type   ChangeType
 	Path   string
 	Before cid.Cid
 	After  cid.Cid
