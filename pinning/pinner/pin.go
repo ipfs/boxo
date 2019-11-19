@@ -11,10 +11,10 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-ipfs/dagutils"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
 	mdag "github.com/ipfs/go-merkledag"
+	"github.com/ipfs/go-merkledag/dagutils"
 )
 
 var log = logging.Logger("pin")
