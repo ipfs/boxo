@@ -6,14 +6,14 @@ import (
 	"time"
 
 	u "github.com/ipfs/go-ipfs-util"
-	ci "github.com/libp2p/go-libp2p-crypto"
-	peer "github.com/libp2p/go-libp2p-peer"
+	ci "github.com/libp2p/go-libp2p-core/crypto"
+	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
 func TestEmbedPublicKey(t *testing.T) {
 
 	sr := u.NewTimeSeededRand()
-	priv, pub, err := ci.GenerateKeyPairWithReader(ci.RSA, 1024, sr)
+	priv, pub, err := ci.GenerateKeyPairWithReader(ci.RSA, 2048, sr)
 	if err != nil {
 		t.Fatal(err)
 	}

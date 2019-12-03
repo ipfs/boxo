@@ -8,8 +8,8 @@ import (
 	pb "github.com/ipfs/go-ipns/pb"
 
 	u "github.com/ipfs/go-ipfs-util"
-	ic "github.com/libp2p/go-libp2p-crypto"
-	peer "github.com/libp2p/go-libp2p-peer"
+	ic "github.com/libp2p/go-libp2p-core/crypto"
+	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
 // Create creates a new IPNS entry and signs it with the given private key.
