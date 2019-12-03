@@ -579,6 +579,9 @@ func (p *pinner) Flush(ctx context.Context) error {
 	if err := p.dstore.Put(pinDatastoreKey, k.Bytes()); err != nil {
 		return fmt.Errorf("cannot store pin state: %v", err)
 	}
+	if err := p.dstore.Sync(pinDatastoreKey); err != nil {
+		return fmt.Errorf("cannot sync pin state: %v", err)
+	}
 	p.internalPin = internalset
 	return nil
 }
