@@ -10,7 +10,7 @@ import (
 
 	proto "github.com/gogo/protobuf/proto"
 	u "github.com/ipfs/go-ipfs-util"
-	ci "github.com/libp2p/go-libp2p-crypto"
+	ci "github.com/libp2p/go-libp2p-core/crypto"
 )
 
 func shuffle(a []*pb.IpnsEntry) {
@@ -51,7 +51,7 @@ func TestOrdering(t *testing.T) {
 
 	// generate a key for signing the records
 	r := u.NewSeededRand(15) // generate deterministic keypair
-	priv, _, err := ci.GenerateKeyPairWithReader(ci.RSA, 1024, r)
+	priv, _, err := ci.GenerateKeyPairWithReader(ci.RSA, 2048, r)
 	if err != nil {
 		t.Fatal(err)
 	}

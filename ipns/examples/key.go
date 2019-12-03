@@ -1,7 +1,7 @@
 package examples
 
 import (
-	crypto "github.com/libp2p/go-libp2p-crypto"
+	crypto "github.com/libp2p/go-libp2p-core/crypto"
 )
 
 // GenerateRSAKeyPair is used to generate an RSA key pair

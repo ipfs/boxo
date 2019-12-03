@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-ipns/examples"
-	crypto "github.com/libp2p/go-libp2p-crypto"
+	crypto "github.com/libp2p/go-libp2p-core/crypto"
 )
 
 var testPath = "/ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5"
@@ -43,9 +43,7 @@ func TestEmbeddedEntryCreation(t *testing.T) {
 
 }
 func generateRSAKey() (crypto.PrivKey, error) {
-	// DO NOT USE 1024 BITS IN PRODUCTION
-	// THIS IS ONLY FOR TESTING PURPOSES
-	k, err := examples.GenerateRSAKeyPair(1024)
+	k, err := examples.GenerateRSAKeyPair(2048)
 	if err != nil {
 		return nil, err
 	}

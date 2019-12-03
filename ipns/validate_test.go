@@ -11,9 +11,9 @@ import (
 
 	proto "github.com/gogo/protobuf/proto"
 	u "github.com/ipfs/go-ipfs-util"
-	ci "github.com/libp2p/go-libp2p-crypto"
-	peer "github.com/libp2p/go-libp2p-peer"
-	pstore "github.com/libp2p/go-libp2p-peerstore"
+	ci "github.com/libp2p/go-libp2p-core/crypto"
+	peer "github.com/libp2p/go-libp2p-core/peer"
+	pstore "github.com/libp2p/go-libp2p-core/peerstore"
 	pstoremem "github.com/libp2p/go-libp2p-peerstore/pstoremem"
 )
 
@@ -162,7 +162,7 @@ func TestPeerIDPubKeyValidate(t *testing.T) {
 
 func genKeys(t *testing.T) (ci.PrivKey, peer.ID, string) {
 	sr := u.NewTimeSeededRand()
-	priv, _, err := ci.GenerateKeyPairWithReader(ci.RSA, 1024, sr)
+	priv, _, err := ci.GenerateKeyPairWithReader(ci.RSA, 2048, sr)
 	if err != nil {
 		t.Fatal(err)
 	}
