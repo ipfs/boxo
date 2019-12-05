@@ -252,8 +252,8 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 					}
 				}(p)
 			}
-			cancel()
 			wg.Wait()
+			cancel()
 			select {
 			case pqm.providerQueryMessages <- &finishedProviderQueryMessage{
 				k: k,
