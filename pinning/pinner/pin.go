@@ -192,6 +192,11 @@ type pinner struct {
 	dstore      ds.Datastore
 }
 
+type syncDAGService interface {
+	ipld.DAGService
+	Sync() error
+}
+
 // NewPinner creates a new pinner using the given datastore as a backend
 func NewPinner(dstore ds.Datastore, serv, internal ipld.DAGService) Pinner {
 
@@ -576,6 +581,19 @@ func (p *pinner) Flush(ctx context.Context) error {
 	k := root.Cid()
 
 	internalset.Add(k)
+
+	if syncDServ, ok := p.dserv.(syncDAGService); ok {
+		if err := syncDServ.Sync(); err != nil {
+			return fmt.Errorf("cannot sync pinned data: %v", err)
+		}
+	}
+
+	if syncInternal, ok := p.internal.(syncDAGService); ok {
+		if err := syncInternal.Sync(); err != nil {
+			return fmt.Errorf("cannot sync pinning data: %v", err)
+		}
+	}
+
 	if err := p.dstore.Put(pinDatastoreKey, k.Bytes()); err != nil {
 		return fmt.Errorf("cannot store pin state: %v", err)
 	}
