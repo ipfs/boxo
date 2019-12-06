@@ -25,8 +25,6 @@ This is an offline exchange implementation which will not perform any request.
 > go get github.com/ipfs/go-ipfs-exchange-offline
 ```
 
-It uses [Gx](https://github.com/whyrusleeping/gx) to manage dependencies. You can use `make all` to build it with the `gx` dependencies.
-
 ## Usage
 
 ```
