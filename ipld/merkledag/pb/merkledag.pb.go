@@ -6,13 +6,13 @@ package merkledag_pb
 import (
 	bytes "bytes"
 	fmt "fmt"
-	io "io"
-	math "math"
-	reflect "reflect"
-	strings "strings"
-
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
+	io "io"
+	math "math"
+	math_bits "math/bits"
+	reflect "reflect"
+	strings "strings"
 )
 
 // DoNotUpgradeFileEverItWillChangeYourHashes warns users about not breaking
@@ -33,7 +33,7 @@ var _ = math.Inf
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 // An IPFS MerkleDAG Link
 type PBLink struct {
@@ -61,7 +61,7 @@ func (m *PBLink) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_PBLink.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -125,7 +125,7 @@ func (m *PBNode) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_PBNode.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -406,7 +406,7 @@ func valueToGoStringMerkledag(v interface{}, typ string) string {
 func (m *PBLink) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -414,37 +414,45 @@ func (m *PBLink) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *PBLink) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PBLink) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if m.Hash != nil {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintMerkledag(dAtA, i, uint64(len(m.Hash)))
-		i += copy(dAtA[i:], m.Hash)
-	}
-	if m.Name != nil {
-		dAtA[i] = 0x12
-		i++
-		i = encodeVarintMerkledag(dAtA, i, uint64(len(*m.Name)))
-		i += copy(dAtA[i:], *m.Name)
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
 	}
 	if m.Tsize != nil {
-		dAtA[i] = 0x18
-		i++
 		i = encodeVarintMerkledag(dAtA, i, uint64(*m.Tsize))
+		i--
+		dAtA[i] = 0x18
 	}
-	if m.XXX_unrecognized != nil {
-		i += copy(dAtA[i:], m.XXX_unrecognized)
+	if m.Name != nil {
+		i -= len(*m.Name)
+		copy(dAtA[i:], *m.Name)
+		i = encodeVarintMerkledag(dAtA, i, uint64(len(*m.Name)))
+		i--
+		dAtA[i] = 0x12
 	}
-	return i, nil
+	if m.Hash != nil {
+		i -= len(m.Hash)
+		copy(dAtA[i:], m.Hash)
+		i = encodeVarintMerkledag(dAtA, i, uint64(len(m.Hash)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *PBNode) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -452,57 +460,68 @@ func (m *PBNode) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *PBNode) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PBNode) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Links) > 0 {
-		for _, msg := range m.Links {
-			dAtA[i] = 0x12
-			i++
-			i = encodeVarintMerkledag(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
-		}
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
 	}
 	if m.Data != nil {
-		dAtA[i] = 0xa
-		i++
+		i -= len(m.Data)
+		copy(dAtA[i:], m.Data)
 		i = encodeVarintMerkledag(dAtA, i, uint64(len(m.Data)))
-		i += copy(dAtA[i:], m.Data)
+		i--
+		dAtA[i] = 0xa
 	}
-	if m.XXX_unrecognized != nil {
-		i += copy(dAtA[i:], m.XXX_unrecognized)
+	if len(m.Links) > 0 {
+		for iNdEx := len(m.Links) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Links[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintMerkledag(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func encodeVarintMerkledag(dAtA []byte, offset int, v uint64) int {
+	offset -= sovMerkledag(v)
+	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return offset + 1
+	return base
 }
 func NewPopulatedPBLink(r randyMerkledag, easy bool) *PBLink {
 	this := &PBLink{}
-	if r.Intn(10) != 0 {
+	if r.Intn(5) != 0 {
 		v1 := r.Intn(100)
 		this.Hash = make([]byte, v1)
 		for i := 0; i < v1; i++ {
 			this.Hash[i] = byte(r.Intn(256))
 		}
 	}
-	if r.Intn(10) != 0 {
+	if r.Intn(5) != 0 {
 		v2 := string(randStringMerkledag(r))
 		this.Name = &v2
 	}
-	if r.Intn(10) != 0 {
+	if r.Intn(5) != 0 {
 		v3 := uint64(uint64(r.Uint32()))
 		this.Tsize = &v3
 	}
@@ -514,14 +533,14 @@ func NewPopulatedPBLink(r randyMerkledag, easy bool) *PBLink {
 
 func NewPopulatedPBNode(r randyMerkledag, easy bool) *PBNode {
 	this := &PBNode{}
-	if r.Intn(10) != 0 {
+	if r.Intn(5) != 0 {
 		v4 := r.Intn(100)
 		this.Data = make([]byte, v4)
 		for i := 0; i < v4; i++ {
 			this.Data[i] = byte(r.Intn(256))
 		}
 	}
-	if r.Intn(10) != 0 {
+	if r.Intn(5) != 0 {
 		v5 := r.Intn(5)
 		this.Links = make([]*PBLink, v5)
 		for i := 0; i < v5; i++ {
@@ -652,14 +671,7 @@ func (m *PBNode) Size() (n int) {
 }
 
 func sovMerkledag(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
-		}
-	}
-	return n
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozMerkledag(x uint64) (n int) {
 	return sovMerkledag(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -681,9 +693,14 @@ func (this *PBNode) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForLinks := "[]*PBLink{"
+	for _, f := range this.Links {
+		repeatedStringForLinks += strings.Replace(f.String(), "PBLink", "PBLink", 1) + ","
+	}
+	repeatedStringForLinks += "}"
 	s := strings.Join([]string{`&PBNode{`,
 		`Data:` + valueToStringMerkledag(this.Data) + `,`,
-		`Links:` + strings.Replace(fmt.Sprintf("%v", this.Links), "PBLink", "PBLink", 1) + `,`,
+		`Links:` + repeatedStringForLinks + `,`,
 		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
@@ -963,6 +980,7 @@ func (m *PBNode) Unmarshal(dAtA []byte) error {
 func skipMerkledag(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0
+	depth := 0
 	for iNdEx < l {
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
@@ -994,10 +1012,8 @@ func skipMerkledag(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
-			return iNdEx, nil
 		case 1:
 			iNdEx += 8
-			return iNdEx, nil
 		case 2:
 			var length int
 			for shift := uint(0); ; shift += 7 {
@@ -1021,52 +1037,27 @@ func skipMerkledag(dAtA []byte) (n int, err error) {
 			if iNdEx < 0 {
 				return 0, ErrInvalidLengthMerkledag
 			}
-			return iNdEx, nil
 		case 3:
-			for {
-				var innerWire uint64
-				var start int = iNdEx
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return 0, ErrIntOverflowMerkledag
-					}
-					if iNdEx >= l {
-						return 0, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					innerWire |= (uint64(b) & 0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				innerWireType := int(innerWire & 0x7)
-				if innerWireType == 4 {
-					break
-				}
-				next, err := skipMerkledag(dAtA[start:])
-				if err != nil {
-					return 0, err
-				}
-				iNdEx = start + next
-				if iNdEx < 0 {
-					return 0, ErrInvalidLengthMerkledag
-				}
-			}
-			return iNdEx, nil
+			depth++
 		case 4:
-			return iNdEx, nil
+			if depth == 0 {
+				return 0, ErrUnexpectedEndOfGroupMerkledag
+			}
+			depth--
 		case 5:
 			iNdEx += 4
-			return iNdEx, nil
 		default:
 			return 0, fmt.Errorf("proto: illegal wireType %d", wireType)
 		}
+		if depth == 0 {
+			return iNdEx, nil
+		}
 	}
-	panic("unreachable")
+	return 0, io.ErrUnexpectedEOF
 }
 
 var (
-	ErrInvalidLengthMerkledag = fmt.Errorf("proto: negative length found during unmarshaling")
-	ErrIntOverflowMerkledag   = fmt.Errorf("proto: integer overflow")
+	ErrInvalidLengthMerkledag        = fmt.Errorf("proto: negative length found during unmarshaling")
+	ErrIntOverflowMerkledag          = fmt.Errorf("proto: integer overflow")
+	ErrUnexpectedEndOfGroupMerkledag = fmt.Errorf("proto: unexpected end of group")
 )
