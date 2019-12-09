@@ -86,10 +86,15 @@ func (b *arccache) Has(k cid.Cid) (bool, error) {
 
 func (b *arccache) GetSize(k cid.Cid) (int, error) {
 	if has, blockSize, ok := b.hasCached(k); ok {
-		if has {
+		if !has {
+			// don't have it, return
+			return -1, ErrNotFound
+		}
+		if blockSize >= 0 {
+			// have it and we know the size
 			return blockSize, nil
 		}
-		return -1, ErrNotFound
+		// we have it but don't know the size, ask the datastore.
 	}
 	blockSize, err := b.blockstore.GetSize(k)
 	if err == ErrNotFound {

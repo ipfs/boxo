@@ -123,7 +123,7 @@ func TestGetFillsCache(t *testing.T) {
 		t.Fatal("has returned invalid result")
 	}
 	if blockSize, err := arc.GetSize(exampleBlock.Cid()); blockSize == -1 || err != nil {
-		t.Fatal("getsize returned invalid result")
+		t.Fatal("getsize returned invalid result", blockSize, err)
 	}
 }
 
@@ -183,6 +183,25 @@ func TestGetSizeAfterSucessfulGetIsCached(t *testing.T) {
 
 	trap("has hit datastore", cd, t)
 	arc.GetSize(exampleBlock.Cid())
+}
+
+func TestGetSizeAfterSucessfulHas(t *testing.T) {
+	arc, bs, _ := createStores(t)
+
+	bs.Put(exampleBlock)
+	has, err := arc.Has(exampleBlock.Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has {
+		t.Fatal("expected to have block")
+	}
+
+	if size, err := arc.GetSize(exampleBlock.Cid()); err != nil {
+		t.Fatal(err)
+	} else if size != len(exampleBlock.RawData()) {
+		t.Fatalf("expected size %d, got %d", len(exampleBlock.RawData()), size)
+	}
 }
 
 func TestGetSizeMissingZeroSizeBlock(t *testing.T) {
