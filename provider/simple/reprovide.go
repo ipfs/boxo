@@ -110,9 +110,7 @@ func (rp *Reprovider) Reprovide() error {
 			return err
 		}
 
-		// TODO: this backoff library does not respect our context, we should
-		// eventually work contexts into it. low priority.
-		err := backoff.Retry(op, backoff.NewExponentialBackOff())
+		err := backoff.Retry(op, backoff.WithContext(backoff.NewExponentialBackOff(), rp.ctx))
 		if err != nil {
 			logR.Debugf("Providing failed after number of retries: %s", err)
 			return err
