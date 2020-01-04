@@ -16,6 +16,7 @@ var (
 	ErrIsDir            = errors.New("this dag node is a directory")
 	ErrCantReadSymlinks = errors.New("cannot currently read symlinks")
 	ErrUnkownNodeType   = errors.New("unknown node type")
+	ErrSeekNotSupported = errors.New("file does not support seeking")
 )
 
 // TODO: Rename the `DagReader` interface, this doesn't read *any* DAG, just
@@ -345,7 +346,7 @@ func (dr *dagReader) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case io.SeekStart:
 		if offset < 0 {
-			return -1, errors.New("invalid offset")
+			return dr.offset, errors.New("invalid offset")
 		}
 
 		if offset == dr.offset {
@@ -358,6 +359,11 @@ func (dr *dagReader) Seek(offset int64, whence int) (int64, error) {
 
 		// Seek from the beginning of the DAG.
 		dr.resetPosition()
+
+		// Shortcut seeking to the beginning, we're already there.
+		if offset == 0 {
+			return 0, nil
+		}
 
 		// Use the internal reader's context to fetch the child node promises
 		// (see `ipld.NavigableIPLDNode.FetchChild` for details).
@@ -388,7 +394,7 @@ func (dr *dagReader) Seek(offset int64, whence int) (int64, error) {
 				// If there aren't enough size hints don't seek
 				// (see the `io.EOF` handling error comment below).
 				if fsNode.NumChildren() != len(node.Links()) {
-					return io.EOF
+					return ErrSeekNotSupported
 				}
 
 				// Internal nodes have no data, so just iterate through the
@@ -444,16 +450,6 @@ func (dr *dagReader) Seek(offset int64, whence int) (int64, error) {
 				// In the leaf node case the search will stop here.
 			}
 		})
-
-		if err == io.EOF {
-			// TODO: Taken from https://github.com/ipfs/go-ipfs/pull/4320,
-			// check if still valid.
-			//   Return negative number if we can't figure out the file size. Using io.EOF
-			//   for this seems to be good(-enough) solution as it's only returned by
-			//   precalcNextBuf when we step out of file range.
-			//   This is needed for gateway to function properly
-			return -1, nil
-		}
 
 		if err != nil {
 			return 0, err
