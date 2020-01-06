@@ -72,6 +72,71 @@ func TestSeekAndRead(t *testing.T) {
 	}
 }
 
+func TestSeekWithoutBlocksizes(t *testing.T) {
+	dserv := testu.GetDAGServ()
+	ctx, closer := context.WithCancel(context.Background())
+	defer closer()
+
+	inbuf := make([]byte, 1024)
+
+	for i := 0; i < 256; i++ {
+		inbuf[i*4] = byte(i)
+	}
+
+	inbuf[1023] = 1 // force the reader to be 1024 bytes
+	node := testu.GetNode(t, dserv, inbuf, testu.UseProtoBufLeaves)
+
+	// remove the blocksizes
+	pbnode := node.Copy().(*mdag.ProtoNode)
+	fsnode, err := unixfs.FSNodeFromBytes(pbnode.Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsnode.RemoveAllBlockSizes()
+	newData, err := fsnode.GetBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pbnode.SetData(newData)
+	err = dserv.Add(ctx, pbnode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node = pbnode
+
+	reader, err := NewDagReader(ctx, node, dserv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = reader.Seek(-4, io.SeekEnd)
+	if err == nil {
+		t.Fatal("seeking shouldn't work without blocksizes")
+	}
+
+	_, err = reader.Seek(4, io.SeekStart)
+	if err == nil {
+		t.Fatal("seeking shouldn't work without blocksizes")
+	}
+
+	_, err = reader.Seek(4, io.SeekCurrent)
+	if err == nil {
+		t.Fatal("seeking shouldn't work without blocksizes")
+	}
+
+	// Seeking to the current position or the end should still work.
+
+	_, err = reader.Seek(0, io.SeekCurrent)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = reader.Seek(0, io.SeekStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRelativeSeek(t *testing.T) {
 	dserv := testu.GetDAGServ()
 	ctx, closer := context.WithCancel(context.Background())
