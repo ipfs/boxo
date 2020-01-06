@@ -480,6 +480,7 @@ func (dr *dagReader) Seek(offset int64, whence int) (int64, error) {
 // in the `SeekStart` case.
 func (dr *dagReader) resetPosition() {
 	dr.currentNodeData = nil
+	dr.offset = 0
 
 	dr.dagWalker = ipld.NewWalker(dr.ctx, ipld.NewNavigableIPLDNode(dr.rootNode, dr.serv))
 	// TODO: This could be avoided (along with storing the `dr.rootNode` and
