@@ -103,7 +103,7 @@ func (b *bloomcache) build(ctx context.Context) error {
 				atomic.StoreInt32(&b.active, 1)
 				return nil
 			}
-			b.bloom.AddTS(key.Bytes()) // Use binary key, the more compact the better
+			b.bloom.AddTS(key.Hash()) // Use binary key, the more compact the better
 		case <-ctx.Done():
 			b.buildErr = ctx.Err()
 			return b.buildErr
@@ -130,7 +130,7 @@ func (b *bloomcache) hasCached(k cid.Cid) (has bool, ok bool) {
 		return false, false
 	}
 	if b.BloomActive() {
-		blr := b.bloom.HasTS(k.Bytes())
+		blr := b.bloom.HasTS(k.Hash())
 		if !blr { // not contained in bloom is only conclusive answer bloom gives
 			b.hits.Inc()
 			return false, true
@@ -163,7 +163,7 @@ func (b *bloomcache) Put(bl blocks.Block) error {
 	// See comment in PutMany
 	err := b.blockstore.Put(bl)
 	if err == nil {
-		b.bloom.AddTS(bl.Cid().Bytes())
+		b.bloom.AddTS(bl.Cid().Hash())
 	}
 	return err
 }
@@ -178,7 +178,7 @@ func (b *bloomcache) PutMany(bs []blocks.Block) error {
 		return err
 	}
 	for _, bl := range bs {
-		b.bloom.AddTS(bl.Cid().Bytes())
+		b.bloom.AddTS(bl.Cid().Hash())
 	}
 	return nil
 }

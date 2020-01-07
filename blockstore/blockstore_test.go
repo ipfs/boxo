@@ -53,6 +53,24 @@ func TestPutThenGetBlock(t *testing.T) {
 	}
 }
 
+func TestCidv0v1(t *testing.T) {
+	bs := NewBlockstore(ds_sync.MutexWrap(ds.NewMapDatastore()))
+	block := blocks.NewBlock([]byte("some data"))
+
+	err := bs.Put(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blockFromBlockstore, err := bs.Get(cid.NewCidV1(cid.DagProtobuf, block.Cid().Hash()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(block.RawData(), blockFromBlockstore.RawData()) {
+		t.Fail()
+	}
+}
+
 func TestPutThenGetSizeBlock(t *testing.T) {
 	bs := NewBlockstore(ds_sync.MutexWrap(ds.NewMapDatastore()))
 	block := blocks.NewBlock([]byte("some data"))
@@ -218,18 +236,19 @@ func TestAllKeysRespectsContext(t *testing.T) {
 }
 
 func expectMatches(t *testing.T, expect, actual []cid.Cid) {
+	t.Helper()
 
 	if len(expect) != len(actual) {
 		t.Errorf("expect and actual differ: %d != %d", len(expect), len(actual))
 	}
+
+	actualSet := make(map[string]bool, len(actual))
+	for _, k := range actual {
+		actualSet[string(k.Hash())] = true
+	}
+
 	for _, ek := range expect {
-		found := false
-		for _, ak := range actual {
-			if ek.Equals(ak) {
-				found = true
-			}
-		}
-		if !found {
+		if !actualSet[string(ek.Hash())] {
 			t.Error("expected key not found: ", ek)
 		}
 	}

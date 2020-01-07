@@ -59,7 +59,7 @@ func (b *arccache) hasCached(k cid.Cid) (has bool, size int, ok bool) {
 		return false, -1, false
 	}
 
-	h, ok := b.arc.Get(k.KeyString())
+	h, ok := b.arc.Get(string(k.Hash()))
 	if ok {
 		b.hits.Inc()
 		switch h := h.(type) {
@@ -160,11 +160,11 @@ func (b *arccache) HashOnRead(enabled bool) {
 }
 
 func (b *arccache) cacheHave(c cid.Cid, have bool) {
-	b.arc.Add(c.KeyString(), cacheHave(have))
+	b.arc.Add(string(c.Hash()), cacheHave(have))
 }
 
 func (b *arccache) cacheSize(c cid.Cid, blockSize int) {
-	b.arc.Add(c.KeyString(), cacheSize(blockSize))
+	b.arc.Add(string(c.Hash()), cacheSize(blockSize))
 }
 
 func (b *arccache) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
