@@ -6,6 +6,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/multiformats/go-base32"
+	mh "github.com/multiformats/go-multihash"
 )
 
 // NewKeyFromBinary creates a new key from a byte slice.
@@ -21,16 +22,30 @@ func BinaryFromDsKey(k datastore.Key) ([]byte, error) {
 	return base32.RawStdEncoding.DecodeString(k.String()[1:])
 }
 
+// MultihashToDsKey creates a Key from the given Multihash.
+func MultihashToDsKey(k mh.Multihash) datastore.Key {
+	return NewKeyFromBinary(k)
+}
+
+// DsKeyToMultihash converts a dsKey to the corresponding Multihash.
+func DsKeyToMultihash(dsKey datastore.Key) (mh.Multihash, error) {
+	kb, err := BinaryFromDsKey(dsKey)
+	if err != nil {
+		return nil, err
+	}
+	return mh.Cast(kb)
+}
+
 // CidToDsKey creates a Key from the given Cid.
 func CidToDsKey(k cid.Cid) datastore.Key {
-	return NewKeyFromBinary(k.Bytes())
+	return MultihashToDsKey(k.Hash())
 }
 
 // DsKeyToCid converts the given Key to its corresponding Cid.
 func DsKeyToCid(dsKey datastore.Key) (cid.Cid, error) {
-	kb, err := BinaryFromDsKey(dsKey)
+	hash, err := DsKeyToMultihash(dsKey)
 	if err != nil {
-		return cid.Cid{}, err
+		return cid.Cid{}, nil
 	}
-	return cid.Cast(kb)
+	return cid.NewCidV1(cid.Raw, hash), nil
 }

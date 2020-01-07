@@ -13,7 +13,10 @@ func TestKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.String() != c2.String() {
+	if string(c.Hash()) != string(c2.Hash()) {
 		t.Fatal("should have parsed the same key")
+	}
+	if c.Equals(c2) || c2.Type() != cid.Raw || c2.Version() != 1 {
+		t.Fatal("should have been converted to CIDv1-raw")
 	}
 }
