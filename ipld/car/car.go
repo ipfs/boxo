@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
@@ -29,12 +29,19 @@ type CarHeader struct {
 }
 
 type carWriter struct {
-	ds format.DAGService
-	w  io.Writer
+	ds   format.DAGService
+	w    io.Writer
+	walk WalkFunc
 }
 
+type WalkFunc func(format.Node) ([]*format.Link, error)
+
 func WriteCar(ctx context.Context, ds format.DAGService, roots []cid.Cid, w io.Writer) error {
-	cw := &carWriter{ds: ds, w: w}
+	return WriteCarWithWalker(ctx, ds, roots, w, DefaultWalkFunc)
+}
+
+func WriteCarWithWalker(ctx context.Context, ds format.DAGService, roots []cid.Cid, w io.Writer, walk WalkFunc) error {
+	cw := &carWriter{ds: ds, w: w, walk: walk}
 
 	h := &CarHeader{
 		Roots:   roots,
@@ -52,6 +59,10 @@ func WriteCar(ctx context.Context, ds format.DAGService, roots []cid.Cid, w io.W
 		}
 	}
 	return nil
+}
+
+func DefaultWalkFunc(nd format.Node) ([]*format.Link, error) {
+	return nd.Links(), nil
 }
 
 func ReadHeader(br *bufio.Reader) (*CarHeader, error) {
