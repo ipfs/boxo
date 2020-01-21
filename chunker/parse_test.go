@@ -15,8 +15,8 @@ func TestParseRabin(t *testing.T) {
 		t.Errorf(err.Error())
 	}
 	_, err = parseRabinString(r, chk2)
-	if err == ErrRabinMin {
-		t.Log("it should be ErrRabinMin here.")
+	if err != ErrRabinMin {
+		t.Fatalf("Expected an 'ErrRabinMin' error, got: %#v", err)
 	}
 }
 
@@ -26,11 +26,11 @@ func TestParseSize(t *testing.T) {
 	size1 := "size-0"
 	size2 := "size-32"
 	_, err := FromString(r, size1)
-	if err == ErrSize {
-		t.Log("it should be ErrSize here.")
+	if err != ErrSize {
+		t.Fatalf("Expected an 'ErrSize' error, got: %#v", err)
 	}
 	_, err = FromString(r, size2)
-	if err == ErrSize {
+	if err != nil {
 		t.Fatal(err)
 	}
 }
