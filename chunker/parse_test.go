@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	testTwoThirdsOfBlockPayloadLimit = 2 * (float32(BlockPayloadLimit) / float32(3))
+	testTwoThirdsOfChunkLimit = 2 * (float32(ChunkSizeLimit) / float32(3))
 )
 
 func TestParseRabin(t *testing.T) {
@@ -33,22 +33,22 @@ func TestParseRabin(t *testing.T) {
 		t.Fatalf("Expected an arg-out-of-order error, got: %#v", err)
 	}
 
-	_, err = FromString(r, fmt.Sprintf("rabin-19-21-%d", BlockPayloadLimit))
+	_, err = FromString(r, fmt.Sprintf("rabin-19-21-%d", ChunkSizeLimit))
 	if err != nil {
 		t.Fatalf("Expected success, got: %#v", err)
 	}
 
-	_, err = FromString(r, fmt.Sprintf("rabin-19-21-%d", 1+BlockPayloadLimit))
+	_, err = FromString(r, fmt.Sprintf("rabin-19-21-%d", 1+ChunkSizeLimit))
 	if err != ErrSizeMax {
 		t.Fatalf("Expected 'ErrSizeMax', got: %#v", err)
 	}
 
-	_, err = FromString(r, fmt.Sprintf("rabin-%.0f", testTwoThirdsOfBlockPayloadLimit))
+	_, err = FromString(r, fmt.Sprintf("rabin-%.0f", testTwoThirdsOfChunkLimit))
 	if err != nil {
 		t.Fatalf("Expected success, got: %#v", err)
 	}
 
-	_, err = FromString(r, fmt.Sprintf("rabin-%.0f", 1+testTwoThirdsOfBlockPayloadLimit))
+	_, err = FromString(r, fmt.Sprintf("rabin-%.0f", 1+testTwoThirdsOfChunkLimit))
 	if err != ErrSizeMax {
 		t.Fatalf("Expected 'ErrSizeMax', got: %#v", err)
 	}
@@ -68,12 +68,12 @@ func TestParseSize(t *testing.T) {
 		t.Fatalf("Expected success, got: %#v", err)
 	}
 
-	_, err = FromString(r, fmt.Sprintf("size-%d", BlockPayloadLimit))
+	_, err = FromString(r, fmt.Sprintf("size-%d", ChunkSizeLimit))
 	if err != nil {
 		t.Fatalf("Expected success, got: %#v", err)
 	}
 
-	_, err = FromString(r, fmt.Sprintf("size-%d", 1+BlockPayloadLimit))
+	_, err = FromString(r, fmt.Sprintf("size-%d", 1+ChunkSizeLimit))
 	if err != ErrSizeMax {
 		t.Fatalf("Expected 'ErrSizeMax', got: %#v", err)
 	}
