@@ -149,11 +149,60 @@ func (cr *carReader) Next() (blocks.Block, error) {
 	return blocks.NewBlockWithCid(data, c)
 }
 
+type batchStore interface {
+	PutMany([]blocks.Block) error
+}
+
 func LoadCar(s Store, r io.Reader) (*CarHeader, error) {
 	cr, err := NewCarReader(r)
 	if err != nil {
 		return nil, err
 	}
+
+	if bs, ok := s.(batchStore); ok {
+		return loadCarFast(bs, cr)
+	}
+
+	return loadCarSlow(s, cr)
+}
+
+func loadCarFast(s batchStore, cr *carReader) (*CarHeader, error) {
+	var buf []blocks.Block
+	for {
+		blk, err := cr.Next()
+		switch err {
+		case io.EOF:
+			if len(buf) > 0 {
+				if err := s.PutMany(buf); err != nil {
+					return nil, err
+				}
+			}
+			return cr.Header, nil
+		default:
+			return nil, err
+		case nil:
+		}
+
+		buf = append(buf, blk)
+
+		if len(buf) > 1000 {
+			if err := s.PutMany(buf); err != nil {
+				return nil, err
+			}
+			buf = buf[:0]
+		}
+	}
+
+	if len(buf) > 0 {
+		if err := s.PutMany(buf); err != nil {
+			return nil, err
+		}
+	}
+
+	return cr.Header, nil
+}
+
+func loadCarSlow(s Store, cr *carReader) (*CarHeader, error) {
 
 	for {
 		blk, err := cr.Next()
