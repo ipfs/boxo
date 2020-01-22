@@ -8,9 +8,20 @@ import (
 	"strings"
 )
 
+const (
+	// DefaultBlockSize is the chunk size that splitters produce (or aim to).
+	DefaultBlockSize int64 = 1024 * 256
+
+	// No leaf block should contain more than 1MiB of payload data ( wrapping overhead aside )
+	// This effectively mandates the maximum chunk size
+	// See discussion at https://github.com/ipfs/go-ipfs-chunker/pull/21#discussion_r369124879 for background
+	ChunkSizeLimit int = 1048576
+)
+
 var (
 	ErrRabinMin = errors.New("rabin min must be greater than 16")
-	ErrSize     = errors.New("chunker size muster greater than 0")
+	ErrSize     = errors.New("chunker size must be greater than 0")
+	ErrSizeMax  = fmt.Errorf("chunker parameters may not exceed the maximum chunk size of %d", ChunkSizeLimit)
 )
 
 // FromString returns a Splitter depending on the given string:
@@ -28,6 +39,8 @@ func FromString(r io.Reader, chunker string) (Splitter, error) {
 			return nil, err
 		} else if size <= 0 {
 			return nil, ErrSize
+		} else if size > ChunkSizeLimit {
+			return nil, ErrSizeMax
 		}
 		return NewSizeSplitter(r, int64(size)), nil
 
@@ -51,6 +64,8 @@ func parseRabinString(r io.Reader, chunker string) (Splitter, error) {
 		size, err := strconv.Atoi(parts[1])
 		if err != nil {
 			return nil, err
+		} else if int(float32(size)*1.5) > ChunkSizeLimit { // FIXME - this will be addressed in a subsequent PR
+			return nil, ErrSizeMax
 		}
 		return NewRabin(r, uint64(size)), nil
 	case 4:
@@ -82,6 +97,14 @@ func parseRabinString(r io.Reader, chunker string) (Splitter, error) {
 		max, err := strconv.Atoi(sub[len(sub)-1])
 		if err != nil {
 			return nil, err
+		}
+
+		if min >= avg {
+			return nil, errors.New("incorrect format: rabin-min must be smaller than rabin-avg")
+		} else if avg >= max {
+			return nil, errors.New("incorrect format: rabin-avg must be smaller than rabin-max")
+		} else if max > ChunkSizeLimit {
+			return nil, ErrSizeMax
 		}
 
 		return NewRabinMinMax(r, uint64(min), uint64(avg), uint64(max)), nil

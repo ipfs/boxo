@@ -31,8 +31,6 @@ The package provides a `SizeSplitter` which creates chunks of equal size and it 
 > go get github.com/ipfs/go-ipfs-chunker
 ```
 
-It uses [Gx](https://github.com/whyrusleeping/gx) to manage dependencies. You can use `make all` to build it with the `gx` dependencies.
-
 ## Usage
 
 ```
