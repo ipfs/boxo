@@ -2,6 +2,7 @@ package decision
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -50,25 +51,29 @@ func (bsm *blockstoreManager) worker() {
 	}
 }
 
-func (bsm *blockstoreManager) addJob(ctx context.Context, job func()) {
+func (bsm *blockstoreManager) addJob(ctx context.Context, job func()) error {
 	select {
 	case <-ctx.Done():
+		return ctx.Err()
 	case <-bsm.px.Closing():
+		return fmt.Errorf("shutting down")
 	case bsm.jobs <- job:
+		return nil
 	}
 }
 
-func (bsm *blockstoreManager) getBlockSizes(ctx context.Context, ks []cid.Cid) map[cid.Cid]int {
+func (bsm *blockstoreManager) getBlockSizes(ctx context.Context, ks []cid.Cid) (map[cid.Cid]int, error) {
 	res := make(map[cid.Cid]int)
 	if len(ks) == 0 {
-		return res
+		return res, nil
 	}
 
 	var lk sync.Mutex
-	bsm.jobPerKey(ctx, ks, func(c cid.Cid) {
+	return res, bsm.jobPerKey(ctx, ks, func(c cid.Cid) {
 		size, err := bsm.bs.GetSize(c)
 		if err != nil {
 			if err != bstore.ErrNotFound {
+				// Note: this isn't a fatal error. We shouldn't abort the request
 				log.Errorf("blockstore.GetSize(%s) error: %s", c, err)
 			}
 		} else {
@@ -77,21 +82,20 @@ func (bsm *blockstoreManager) getBlockSizes(ctx context.Context, ks []cid.Cid) m
 			lk.Unlock()
 		}
 	})
-
-	return res
 }
 
-func (bsm *blockstoreManager) getBlocks(ctx context.Context, ks []cid.Cid) map[cid.Cid]blocks.Block {
+func (bsm *blockstoreManager) getBlocks(ctx context.Context, ks []cid.Cid) (map[cid.Cid]blocks.Block, error) {
 	res := make(map[cid.Cid]blocks.Block)
 	if len(ks) == 0 {
-		return res
+		return res, nil
 	}
 
 	var lk sync.Mutex
-	bsm.jobPerKey(ctx, ks, func(c cid.Cid) {
+	return res, bsm.jobPerKey(ctx, ks, func(c cid.Cid) {
 		blk, err := bsm.bs.Get(c)
 		if err != nil {
 			if err != bstore.ErrNotFound {
+				// Note: this isn't a fatal error. We shouldn't abort the request
 				log.Errorf("blockstore.Get(%s) error: %s", c, err)
 			}
 		} else {
@@ -100,19 +104,23 @@ func (bsm *blockstoreManager) getBlocks(ctx context.Context, ks []cid.Cid) map[c
 			lk.Unlock()
 		}
 	})
-
-	return res
 }
 
-func (bsm *blockstoreManager) jobPerKey(ctx context.Context, ks []cid.Cid, jobFn func(c cid.Cid)) {
+func (bsm *blockstoreManager) jobPerKey(ctx context.Context, ks []cid.Cid, jobFn func(c cid.Cid)) error {
+	var err error
 	wg := sync.WaitGroup{}
 	for _, k := range ks {
 		c := k
 		wg.Add(1)
-		bsm.addJob(ctx, func() {
+		err = bsm.addJob(ctx, func() {
 			jobFn(c)
 			wg.Done()
 		})
+		if err != nil {
+			wg.Done()
+			break
+		}
 	}
 	wg.Wait()
+	return err
 }

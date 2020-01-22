@@ -3,7 +3,6 @@ package decision
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -30,7 +29,10 @@ func TestBlockstoreManagerNotFoundKey(t *testing.T) {
 	bsm.start(process.WithTeardown(func() error { return nil }))
 
 	cids := testutil.GenerateCids(4)
-	sizes := bsm.getBlockSizes(ctx, cids)
+	sizes, err := bsm.getBlockSizes(ctx, cids)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(sizes) != 0 {
 		t.Fatal("Wrong response length")
 	}
@@ -41,7 +43,10 @@ func TestBlockstoreManagerNotFoundKey(t *testing.T) {
 		}
 	}
 
-	blks := bsm.getBlocks(ctx, cids)
+	blks, err := bsm.getBlocks(ctx, cids)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(blks) != 0 {
 		t.Fatal("Wrong response length")
 	}
@@ -82,7 +87,10 @@ func TestBlockstoreManager(t *testing.T) {
 		cids = append(cids, b.Cid())
 	}
 
-	sizes := bsm.getBlockSizes(ctx, cids)
+	sizes, err := bsm.getBlockSizes(ctx, cids)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(sizes) != len(blks)-1 {
 		t.Fatal("Wrong response length")
 	}
@@ -106,7 +114,10 @@ func TestBlockstoreManager(t *testing.T) {
 		}
 	}
 
-	fetched := bsm.getBlocks(ctx, cids)
+	fetched, err := bsm.getBlocks(ctx, cids)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(fetched) != len(blks)-1 {
 		t.Fatal("Wrong response length")
 	}
@@ -160,17 +171,16 @@ func TestBlockstoreManagerConcurrency(t *testing.T) {
 		go func(t *testing.T) {
 			defer wg.Done()
 
-			sizes := bsm.getBlockSizes(ctx, ks)
+			sizes, err := bsm.getBlockSizes(ctx, ks)
+			if err != nil {
+				t.Error(err)
+			}
 			if len(sizes) != len(blks) {
-				err = errors.New("Wrong response length")
+				t.Error("Wrong response length")
 			}
 		}(t)
 	}
 	wg.Wait()
-
-	if err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestBlockstoreManagerClose(t *testing.T) {
@@ -184,7 +194,7 @@ func TestBlockstoreManagerClose(t *testing.T) {
 	px := process.WithTeardown(func() error { return nil })
 	bsm.start(px)
 
-	blks := testutil.GenerateBlocksOfSize(3, 1024)
+	blks := testutil.GenerateBlocksOfSize(10, 1024)
 	var ks []cid.Cid
 	for _, b := range blks {
 		ks = append(ks, b.Cid())
@@ -199,34 +209,29 @@ func TestBlockstoreManagerClose(t *testing.T) {
 
 	time.Sleep(5 * time.Millisecond)
 
-	fnCallDone := make(chan struct{})
-	go func() {
-		bsm.getBlockSizes(ctx, ks)
-		fnCallDone <- struct{}{}
-	}()
-
-	select {
-	case <-fnCallDone:
-		t.Fatal("call to BlockstoreManager should be cancelled")
-	case <-px.Closed():
+	before := time.Now()
+	_, err = bsm.getBlockSizes(ctx, ks)
+	if err == nil {
+		t.Error("expected an error")
+	}
+	// would expect to wait delayTime*10 if we didn't cancel.
+	if time.Since(before) > delayTime*2 {
+		t.Error("expected a fast timeout")
 	}
 }
 
 func TestBlockstoreManagerCtxDone(t *testing.T) {
 	delayTime := 20 * time.Millisecond
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(context.Background(), delayTime/2)
-	defer cancel()
 	bsdelay := delay.Fixed(delayTime)
 
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
 	bstore := blockstore.NewBlockstore(ds_sync.MutexWrap(dstore))
 
-	bsm := newBlockstoreManager(ctx, bstore, 3)
+	bsm := newBlockstoreManager(context.Background(), bstore, 3)
 	proc := process.WithTeardown(func() error { return nil })
 	bsm.start(proc)
 
-	blks := testutil.GenerateBlocksOfSize(3, 1024)
+	blks := testutil.GenerateBlocksOfSize(10, 1024)
 	var ks []cid.Cid
 	for _, b := range blks {
 		ks = append(ks, b.Cid())
@@ -237,15 +242,17 @@ func TestBlockstoreManagerCtxDone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fnCallDone := make(chan struct{})
-	go func() {
-		bsm.getBlockSizes(ctx, ks)
-		fnCallDone <- struct{}{}
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), delayTime/2)
+	defer cancel()
 
-	select {
-	case <-fnCallDone:
-		t.Fatal("call to BlockstoreManager should be cancelled")
-	case <-ctx.Done():
+	before := time.Now()
+	_, err = bsm.getBlockSizes(ctx, ks)
+	if err == nil {
+		t.Error("expected an error")
+	}
+
+	// would expect to wait delayTime*10 if we didn't cancel.
+	if time.Since(before) > delayTime*2 {
+		t.Error("expected a fast timeout")
 	}
 }
