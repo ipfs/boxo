@@ -367,7 +367,11 @@ func (e *Engine) nextEnvelope(ctx context.Context) (*Envelope, error) {
 		for _, t := range nextTask.Tasks {
 			blockCids.Add(t.Identifier.(cid.Cid))
 		}
-		blks := e.bsm.getBlocks(ctx, blockCids.Keys())
+		blks, err := e.bsm.getBlocks(ctx, blockCids.Keys())
+		if err != nil {
+			// we're dropping the envelope but that's not an issue in practice.
+			return nil, err
+		}
 
 		msg := bsmsg.New(true)
 		for _, b := range blks {
@@ -437,7 +441,11 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 			wantKs.Add(entry.Cid)
 		}
 	}
-	blockSizes := e.bsm.getBlockSizes(ctx, wantKs.Keys())
+	blockSizes, err := e.bsm.getBlockSizes(ctx, wantKs.Keys())
+	if err != nil {
+		log.Info("aborting message processing", err)
+		return
+	}
 
 	l := e.findOrCreate(p)
 	l.lk.Lock()
