@@ -8,8 +8,10 @@ import (
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 
+	bsbpm "github.com/ipfs/go-bitswap/blockpresencemanager"
 	notifications "github.com/ipfs/go-bitswap/notifications"
 	bssession "github.com/ipfs/go-bitswap/session"
+	bssim "github.com/ipfs/go-bitswap/sessioninterestmanager"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
@@ -17,52 +19,51 @@ import (
 // Session is a session that is managed by the session manager
 type Session interface {
 	exchange.Fetcher
-	ReceiveFrom(peer.ID, []cid.Cid)
-	IsWanted(cid.Cid) bool
-}
-
-type sesTrk struct {
-	session Session
-	pm      bssession.PeerManager
-	srs     bssession.RequestSplitter
+	ID() uint64
+	ReceiveFrom(peer.ID, []cid.Cid, []cid.Cid, []cid.Cid)
 }
 
 // SessionFactory generates a new session for the SessionManager to track.
-type SessionFactory func(ctx context.Context, id uint64, pm bssession.PeerManager, srs bssession.RequestSplitter, notif notifications.PubSub, provSearchDelay time.Duration, rebroadcastDelay delay.D) Session
-
-// RequestSplitterFactory generates a new request splitter for a session.
-type RequestSplitterFactory func(ctx context.Context) bssession.RequestSplitter
+type SessionFactory func(ctx context.Context, id uint64, sprm bssession.SessionPeerManager, sim *bssim.SessionInterestManager, pm bssession.PeerManager, bpm *bsbpm.BlockPresenceManager, notif notifications.PubSub, provSearchDelay time.Duration, rebroadcastDelay delay.D, self peer.ID) Session
 
 // PeerManagerFactory generates a new peer manager for a session.
-type PeerManagerFactory func(ctx context.Context, id uint64) bssession.PeerManager
+type PeerManagerFactory func(ctx context.Context, id uint64) bssession.SessionPeerManager
 
 // SessionManager is responsible for creating, managing, and dispatching to
 // sessions.
 type SessionManager struct {
 	ctx                    context.Context
 	sessionFactory         SessionFactory
+	sessionInterestManager *bssim.SessionInterestManager
 	peerManagerFactory     PeerManagerFactory
-	requestSplitterFactory RequestSplitterFactory
+	blockPresenceManager   *bsbpm.BlockPresenceManager
+	peerManager            bssession.PeerManager
 	notif                  notifications.PubSub
 
 	// Sessions
 	sessLk   sync.RWMutex
-	sessions []sesTrk
+	sessions map[uint64]Session
 
 	// Session Index
 	sessIDLk sync.Mutex
 	sessID   uint64
+
+	self peer.ID
 }
 
 // New creates a new SessionManager.
-func New(ctx context.Context, sessionFactory SessionFactory, peerManagerFactory PeerManagerFactory,
-	requestSplitterFactory RequestSplitterFactory, notif notifications.PubSub) *SessionManager {
+func New(ctx context.Context, sessionFactory SessionFactory, sessionInterestManager *bssim.SessionInterestManager, peerManagerFactory PeerManagerFactory,
+	blockPresenceManager *bsbpm.BlockPresenceManager, peerManager bssession.PeerManager, notif notifications.PubSub, self peer.ID) *SessionManager {
 	return &SessionManager{
 		ctx:                    ctx,
 		sessionFactory:         sessionFactory,
+		sessionInterestManager: sessionInterestManager,
 		peerManagerFactory:     peerManagerFactory,
-		requestSplitterFactory: requestSplitterFactory,
+		blockPresenceManager:   blockPresenceManager,
+		peerManager:            peerManager,
 		notif:                  notif,
+		sessions:               make(map[uint64]Session),
+		self:                   self,
 	}
 }
 
@@ -75,66 +76,53 @@ func (sm *SessionManager) NewSession(ctx context.Context,
 	sessionctx, cancel := context.WithCancel(ctx)
 
 	pm := sm.peerManagerFactory(sessionctx, id)
-	srs := sm.requestSplitterFactory(sessionctx)
-	session := sm.sessionFactory(sessionctx, id, pm, srs, sm.notif, provSearchDelay, rebroadcastDelay)
-	tracked := sesTrk{session, pm, srs}
+	session := sm.sessionFactory(sessionctx, id, pm, sm.sessionInterestManager, sm.peerManager, sm.blockPresenceManager, sm.notif, provSearchDelay, rebroadcastDelay, sm.self)
 	sm.sessLk.Lock()
-	sm.sessions = append(sm.sessions, tracked)
+	sm.sessions[id] = session
 	sm.sessLk.Unlock()
 	go func() {
 		defer cancel()
 		select {
 		case <-sm.ctx.Done():
-			sm.removeSession(tracked)
+			sm.removeSession(id)
 		case <-ctx.Done():
-			sm.removeSession(tracked)
+			sm.removeSession(id)
 		}
 	}()
 
 	return session
 }
 
-func (sm *SessionManager) removeSession(session sesTrk) {
+func (sm *SessionManager) removeSession(sesid uint64) {
 	sm.sessLk.Lock()
 	defer sm.sessLk.Unlock()
-	for i := 0; i < len(sm.sessions); i++ {
-		if sm.sessions[i] == session {
-			sm.sessions[i] = sm.sessions[len(sm.sessions)-1]
-			sm.sessions[len(sm.sessions)-1] = sesTrk{} // free memory.
-			sm.sessions = sm.sessions[:len(sm.sessions)-1]
-			return
-		}
-	}
+
+	delete(sm.sessions, sesid)
 }
 
-// GetNextSessionID returns the next sequentional identifier for a session.
+// GetNextSessionID returns the next sequential identifier for a session.
 func (sm *SessionManager) GetNextSessionID() uint64 {
 	sm.sessIDLk.Lock()
 	defer sm.sessIDLk.Unlock()
+
 	sm.sessID++
 	return sm.sessID
 }
 
-// ReceiveFrom receives block CIDs from a peer and dispatches to sessions.
-func (sm *SessionManager) ReceiveFrom(from peer.ID, ks []cid.Cid) {
-	sm.sessLk.RLock()
-	defer sm.sessLk.RUnlock()
+func (sm *SessionManager) ReceiveFrom(p peer.ID, blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) []Session {
+	sessions := make([]Session, 0)
 
-	for _, s := range sm.sessions {
-		s.session.ReceiveFrom(from, ks)
-	}
-}
+	// Notify each session that is interested in the blocks / HAVEs / DONT_HAVEs
+	for _, id := range sm.sessionInterestManager.InterestedSessions(blks, haves, dontHaves) {
+		sm.sessLk.RLock()
+		sess, ok := sm.sessions[id]
+		sm.sessLk.RUnlock()
 
-// IsWanted indicates whether any of the sessions are waiting to receive
-// the block with the given CID.
-func (sm *SessionManager) IsWanted(cid cid.Cid) bool {
-	sm.sessLk.RLock()
-	defer sm.sessLk.RUnlock()
-
-	for _, s := range sm.sessions {
-		if s.session.IsWanted(cid) {
-			return true
+		if ok {
+			sess.ReceiveFrom(p, blks, haves, dontHaves)
+			sessions = append(sessions, sess)
 		}
 	}
-	return false
+
+	return sessions
 }

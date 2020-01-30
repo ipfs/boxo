@@ -27,6 +27,23 @@ func (cq *cidQueue) Pop() cid.Cid {
 	}
 }
 
+func (cq *cidQueue) Cids() []cid.Cid {
+	// Lazily delete from the list any cids that were removed from the set
+	if len(cq.elems) > cq.eset.Len() {
+		i := 0
+		for _, c := range cq.elems {
+			if cq.eset.Has(c) {
+				cq.elems[i] = c
+				i++
+			}
+		}
+		cq.elems = cq.elems[:i]
+	}
+
+	// Make a copy of the cids
+	return append([]cid.Cid{}, cq.elems...)
+}
+
 func (cq *cidQueue) Push(c cid.Cid) {
 	if cq.eset.Visit(c) {
 		cq.elems = append(cq.elems, c)

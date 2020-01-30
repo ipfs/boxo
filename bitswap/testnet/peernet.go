@@ -9,7 +9,7 @@ import (
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-testing/net"
+	tnet "github.com/libp2p/go-libp2p-testing/net"
 	mockpeernet "github.com/libp2p/go-libp2p/p2p/net/mock"
 )
 
@@ -23,13 +23,13 @@ func StreamNet(ctx context.Context, net mockpeernet.Mocknet, rs mockrouting.Serv
 	return &peernet{net, rs}, nil
 }
 
-func (pn *peernet) Adapter(p tnet.Identity) bsnet.BitSwapNetwork {
+func (pn *peernet) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) bsnet.BitSwapNetwork {
 	client, err := pn.Mocknet.AddPeer(p.PrivateKey(), p.Address())
 	if err != nil {
 		panic(err.Error())
 	}
 	routing := pn.routingserver.ClientWithDatastore(context.TODO(), p, ds.NewMapDatastore())
-	return bsnet.NewFromIpfsHost(client, routing)
+	return bsnet.NewFromIpfsHost(client, routing, opts...)
 }
 
 func (pn *peernet) HasPeer(p peer.ID) bool {
