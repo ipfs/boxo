@@ -2,217 +2,236 @@ package wantmanager
 
 import (
 	"context"
-	"reflect"
-	"sync"
 	"testing"
 
+	bsbpm "github.com/ipfs/go-bitswap/blockpresencemanager"
+	bssim "github.com/ipfs/go-bitswap/sessioninterestmanager"
+	"github.com/ipfs/go-bitswap/sessionmanager"
 	"github.com/ipfs/go-bitswap/testutil"
-	wantlist "github.com/ipfs/go-bitswap/wantlist"
 
-	bsmsg "github.com/ipfs/go-bitswap/message"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 type fakePeerHandler struct {
-	lk          sync.RWMutex
-	lastWantSet wantSet
+	lastInitialWants []cid.Cid
+	lastBcstWants    []cid.Cid
+	lastCancels      []cid.Cid
 }
 
-func (fph *fakePeerHandler) SendMessage(entries []bsmsg.Entry, targets []peer.ID, from uint64) {
-	fph.lk.Lock()
-	fph.lastWantSet = wantSet{entries, targets, from}
-	fph.lk.Unlock()
+func (fph *fakePeerHandler) Connected(p peer.ID, initialWants []cid.Cid) {
+	fph.lastInitialWants = initialWants
+}
+func (fph *fakePeerHandler) Disconnected(p peer.ID) {
+
+}
+func (fph *fakePeerHandler) BroadcastWantHaves(ctx context.Context, wantHaves []cid.Cid) {
+	fph.lastBcstWants = wantHaves
+}
+func (fph *fakePeerHandler) SendCancels(ctx context.Context, cancels []cid.Cid) {
+	fph.lastCancels = cancels
 }
 
-func (fph *fakePeerHandler) Connected(p peer.ID, initialWants *wantlist.SessionTrackedWantlist) {}
-func (fph *fakePeerHandler) Disconnected(p peer.ID)                                             {}
-
-func (fph *fakePeerHandler) getLastWantSet() wantSet {
-	fph.lk.Lock()
-	defer fph.lk.Unlock()
-	return fph.lastWantSet
+type fakeSessionManager struct {
 }
 
-func setupTestFixturesAndInitialWantList() (
-	context.Context, *fakePeerHandler, *WantManager, []cid.Cid, []cid.Cid, []peer.ID, uint64, uint64) {
+func (*fakeSessionManager) ReceiveFrom(p peer.ID, blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) []sessionmanager.Session {
+	return nil
+}
+
+func TestInitialBroadcastWantsAddedCorrectly(t *testing.T) {
 	ctx := context.Background()
+	ph := &fakePeerHandler{}
+	sim := bssim.New()
+	bpm := bsbpm.New()
+	wm := New(context.Background(), ph, sim, bpm)
+	sm := &fakeSessionManager{}
+	wm.SetSessionManager(sm)
 
-	// setup fixtures
-	wantSender := &fakePeerHandler{}
-	wantManager := New(ctx, wantSender)
-	keys := testutil.GenerateCids(10)
-	otherKeys := testutil.GenerateCids(5)
-	peers := testutil.GeneratePeers(10)
-	session := testutil.GenerateSessionID()
-	otherSession := testutil.GenerateSessionID()
+	peers := testutil.GeneratePeers(3)
 
-	// startup wantManager
-	wantManager.Startup()
+	// Connect peer 0. Should not receive anything yet.
+	wm.Connected(peers[0])
+	if len(ph.lastInitialWants) != 0 {
+		t.Fatal("expected no initial wants")
+	}
 
-	// add initial wants
-	wantManager.WantBlocks(
-		ctx,
-		keys,
-		peers,
-		session)
+	// Broadcast 2 wants
+	wantHaves := testutil.GenerateCids(2)
+	wm.BroadcastWantHaves(ctx, 1, wantHaves)
+	if len(ph.lastBcstWants) != 2 {
+		t.Fatal("expected broadcast wants")
+	}
 
-	return ctx, wantSender, wantManager, keys, otherKeys, peers, session, otherSession
+	// Connect peer 1. Should receive all wants broadcast so far.
+	wm.Connected(peers[1])
+	if len(ph.lastInitialWants) != 2 {
+		t.Fatal("expected broadcast wants")
+	}
+
+	// Broadcast 3 more wants
+	wantHaves2 := testutil.GenerateCids(3)
+	wm.BroadcastWantHaves(ctx, 2, wantHaves2)
+	if len(ph.lastBcstWants) != 3 {
+		t.Fatal("expected broadcast wants")
+	}
+
+	// Connect peer 2. Should receive all wants broadcast so far.
+	wm.Connected(peers[2])
+	if len(ph.lastInitialWants) != 5 {
+		t.Fatal("expected all wants to be broadcast")
+	}
 }
 
-func TestInitialWantsAddedCorrectly(t *testing.T) {
+func TestReceiveFromRemovesBroadcastWants(t *testing.T) {
+	ctx := context.Background()
+	ph := &fakePeerHandler{}
+	sim := bssim.New()
+	bpm := bsbpm.New()
+	wm := New(context.Background(), ph, sim, bpm)
+	sm := &fakeSessionManager{}
+	wm.SetSessionManager(sm)
 
-	_, wantSender, wantManager, keys, _, peers, session, _ :=
-		setupTestFixturesAndInitialWantList()
+	peers := testutil.GeneratePeers(3)
 
-	bcwl := wantManager.CurrentBroadcastWants()
-	wl := wantManager.CurrentWants()
-
-	if len(bcwl) > 0 {
-		t.Fatal("should not create broadcast wants when peers are specified")
+	// Broadcast 2 wants
+	cids := testutil.GenerateCids(2)
+	wm.BroadcastWantHaves(ctx, 1, cids)
+	if len(ph.lastBcstWants) != 2 {
+		t.Fatal("expected broadcast wants")
 	}
 
-	if len(wl) != len(keys) {
-		t.Fatal("did not add correct number of wants to want lsit")
+	// Connect peer 0. Should receive all wants.
+	wm.Connected(peers[0])
+	if len(ph.lastInitialWants) != 2 {
+		t.Fatal("expected broadcast wants")
 	}
 
-	generatedWantSet := wantSender.getLastWantSet()
+	// Receive block for first want
+	ks := cids[0:1]
+	haves := []cid.Cid{}
+	dontHaves := []cid.Cid{}
+	wm.ReceiveFrom(ctx, peers[1], ks, haves, dontHaves)
 
-	if len(generatedWantSet.entries) != len(keys) {
-		t.Fatal("incorrect wants sent")
+	// Connect peer 2. Should get remaining want (the one that the block has
+	// not yet been received for).
+	wm.Connected(peers[2])
+	if len(ph.lastInitialWants) != 1 {
+		t.Fatal("expected remaining wants")
 	}
-
-	for _, entry := range generatedWantSet.entries {
-		if entry.Cancel {
-			t.Fatal("did not send only non-cancel messages")
-		}
-	}
-
-	if generatedWantSet.from != session {
-		t.Fatal("incorrect session used in sending")
-	}
-
-	if !reflect.DeepEqual(generatedWantSet.targets, peers) {
-		t.Fatal("did not setup peers correctly")
-	}
-
-	wantManager.Shutdown()
 }
 
-func TestCancellingWants(t *testing.T) {
-	ctx, wantSender, wantManager, keys, _, peers, session, _ :=
-		setupTestFixturesAndInitialWantList()
+func TestRemoveSessionRemovesBroadcastWants(t *testing.T) {
+	ctx := context.Background()
+	ph := &fakePeerHandler{}
+	sim := bssim.New()
+	bpm := bsbpm.New()
+	wm := New(context.Background(), ph, sim, bpm)
+	sm := &fakeSessionManager{}
+	wm.SetSessionManager(sm)
 
-	wantManager.CancelWants(ctx, keys, peers, session)
+	peers := testutil.GeneratePeers(2)
 
-	wl := wantManager.CurrentWants()
+	// Broadcast 2 wants for session 0 and 2 wants for session 1
+	ses0 := uint64(0)
+	ses1 := uint64(1)
+	ses0wants := testutil.GenerateCids(2)
+	ses1wants := testutil.GenerateCids(2)
+	wm.BroadcastWantHaves(ctx, ses0, ses0wants)
+	wm.BroadcastWantHaves(ctx, ses1, ses1wants)
 
-	if len(wl) != 0 {
-		t.Fatal("did not remove blocks from want list")
+	// Connect peer 0. Should receive all wants.
+	wm.Connected(peers[0])
+	if len(ph.lastInitialWants) != 4 {
+		t.Fatal("expected broadcast wants")
 	}
 
-	generatedWantSet := wantSender.getLastWantSet()
+	// Remove session 0
+	wm.RemoveSession(ctx, ses0)
 
-	if len(generatedWantSet.entries) != len(keys) {
-		t.Fatal("incorrect wants sent")
+	// Connect peer 1. Should receive all wants from session that has not been
+	// removed.
+	wm.Connected(peers[1])
+	if len(ph.lastInitialWants) != 2 {
+		t.Fatal("expected broadcast wants")
 	}
-
-	for _, entry := range generatedWantSet.entries {
-		if !entry.Cancel {
-			t.Fatal("did not send only cancel messages")
-		}
-	}
-
-	if generatedWantSet.from != session {
-		t.Fatal("incorrect session used in sending")
-	}
-
-	if !reflect.DeepEqual(generatedWantSet.targets, peers) {
-		t.Fatal("did not setup peers correctly")
-	}
-
-	wantManager.Shutdown()
-
 }
 
-func TestCancellingWantsFromAnotherSessionHasNoEffect(t *testing.T) {
-	ctx, _, wantManager, keys, _, peers, _, otherSession :=
-		setupTestFixturesAndInitialWantList()
+func TestReceiveFrom(t *testing.T) {
+	ctx := context.Background()
+	ph := &fakePeerHandler{}
+	sim := bssim.New()
+	bpm := bsbpm.New()
+	wm := New(context.Background(), ph, sim, bpm)
+	sm := &fakeSessionManager{}
+	wm.SetSessionManager(sm)
 
-	// cancelling wants from another session has no effect
-	wantManager.CancelWants(ctx, keys, peers, otherSession)
+	p := testutil.GeneratePeers(1)[0]
+	ks := testutil.GenerateCids(2)
+	haves := testutil.GenerateCids(2)
+	dontHaves := testutil.GenerateCids(2)
+	wm.ReceiveFrom(ctx, p, ks, haves, dontHaves)
 
-	wl := wantManager.CurrentWants()
-
-	if len(wl) != len(keys) {
-		t.Fatal("should not cancel wants unless they match session that made them")
+	if !bpm.PeerHasBlock(p, haves[0]) {
+		t.Fatal("expected block presence manager to be invoked")
 	}
-
-	wantManager.Shutdown()
+	if !bpm.PeerDoesNotHaveBlock(p, dontHaves[0]) {
+		t.Fatal("expected block presence manager to be invoked")
+	}
+	if len(ph.lastCancels) != len(ks) {
+		t.Fatal("expected received blocks to be cancelled")
+	}
 }
 
-func TestAddingWantsWithNoPeersAddsToBroadcastAndRegularWantList(t *testing.T) {
-	ctx, _, wantManager, keys, otherKeys, _, session, _ :=
-		setupTestFixturesAndInitialWantList()
+func TestRemoveSession(t *testing.T) {
+	ctx := context.Background()
+	ph := &fakePeerHandler{}
+	sim := bssim.New()
+	bpm := bsbpm.New()
+	wm := New(context.Background(), ph, sim, bpm)
+	sm := &fakeSessionManager{}
+	wm.SetSessionManager(sm)
 
-	wantManager.WantBlocks(ctx, otherKeys, nil, session)
+	// Record session interest in 2 keys for session 0 and 2 keys for session 1
+	// with 1 overlapping key
+	cids := testutil.GenerateCids(3)
+	ses0 := uint64(0)
+	ses1 := uint64(1)
+	ses0ks := cids[:2]
+	ses1ks := cids[1:]
+	sim.RecordSessionInterest(ses0, ses0ks)
+	sim.RecordSessionInterest(ses1, ses1ks)
 
-	bcwl := wantManager.CurrentBroadcastWants()
-	wl := wantManager.CurrentWants()
+	// Receive HAVE for all keys
+	p := testutil.GeneratePeers(1)[0]
+	ks := []cid.Cid{}
+	haves := append(ses0ks, ses1ks...)
+	dontHaves := []cid.Cid{}
+	wm.ReceiveFrom(ctx, p, ks, haves, dontHaves)
 
-	if len(bcwl) != len(otherKeys) {
-		t.Fatal("want requests with no peers should get added to broadcast list")
+	// Remove session 0
+	wm.RemoveSession(ctx, ses0)
+
+	// Expect session 0 interest to be removed and session 1 interest to be
+	// unchanged
+	if len(sim.FilterSessionInterested(ses0, ses0ks)[0]) != 0 {
+		t.Fatal("expected session 0 interest to be removed")
+	}
+	if len(sim.FilterSessionInterested(ses1, ses1ks)[0]) != len(ses1ks) {
+		t.Fatal("expected session 1 interest to be unchanged")
 	}
 
-	if len(wl) != len(otherKeys)+len(keys) {
-		t.Fatal("want requests with no peers should get added to regular want list")
+	// Should clear block presence for key that was in session 0 and not
+	// in session 1
+	if bpm.PeerHasBlock(p, ses0ks[0]) {
+		t.Fatal("expected block presence manager to be cleared")
+	}
+	if !bpm.PeerHasBlock(p, ses0ks[1]) {
+		t.Fatal("expected block presence manager to be unchanged for overlapping key")
 	}
 
-	wantManager.Shutdown()
-}
-
-func TestAddingRequestFromSecondSessionPreventsCancel(t *testing.T) {
-	ctx, wantSender, wantManager, keys, _, peers, session, otherSession :=
-		setupTestFixturesAndInitialWantList()
-
-	// add a second session requesting the first key
-	firstKeys := append([]cid.Cid(nil), keys[0])
-	wantManager.WantBlocks(ctx, firstKeys, peers, otherSession)
-
-	wl := wantManager.CurrentWants()
-
-	if len(wl) != len(keys) {
-		t.Fatal("wants from other sessions should not get added seperately")
+	// Should cancel key that was in session 0 and not session 1
+	if len(ph.lastCancels) != 1 || !ph.lastCancels[0].Equals(cids[0]) {
+		t.Fatal("expected removed want-have to be cancelled")
 	}
-
-	generatedWantSet := wantSender.getLastWantSet()
-	if len(generatedWantSet.entries) != len(firstKeys) &&
-		generatedWantSet.from != otherSession &&
-		generatedWantSet.entries[0].Cid != firstKeys[0] &&
-		generatedWantSet.entries[0].Cancel != false {
-		t.Fatal("should send additional message requesting want for new session")
-	}
-
-	// cancel block from first session
-	wantManager.CancelWants(ctx, firstKeys, peers, session)
-
-	wl = wantManager.CurrentWants()
-
-	// want should still be on want list
-	if len(wl) != len(keys) {
-		t.Fatal("wants should not be removed until all sessions cancel wants")
-	}
-
-	// cancel other block from first session
-	secondKeys := append([]cid.Cid(nil), keys[1])
-	wantManager.CancelWants(ctx, secondKeys, peers, session)
-
-	wl = wantManager.CurrentWants()
-
-	// want should not be on want list, cause it was only tracked by one session
-	if len(wl) != len(keys)-1 {
-		t.Fatal("wants should be removed if all sessions have cancelled")
-	}
-
-	wantManager.Shutdown()
 }

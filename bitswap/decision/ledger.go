@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	pb "github.com/ipfs/go-bitswap/message/pb"
 	wl "github.com/ipfs/go-bitswap/wantlist"
 
 	cid "github.com/ipfs/go-cid"
@@ -46,7 +47,7 @@ type ledger struct {
 	// don't drop the reference to this ledger in multi-connection scenarios
 	ref int
 
-	lk sync.Mutex
+	lk sync.RWMutex
 }
 
 // Receipt is a summary of the ledger for a given peer
@@ -90,13 +91,13 @@ func (l *ledger) ReceivedBytes(n int) {
 	l.Accounting.BytesRecv += uint64(n)
 }
 
-func (l *ledger) Wants(k cid.Cid, priority int) {
+func (l *ledger) Wants(k cid.Cid, priority int, wantType pb.Message_Wantlist_WantType) {
 	log.Debugf("peer %s wants %s", l.Partner, k)
-	l.wantList.Add(k, priority)
+	l.wantList.Add(k, priority, wantType)
 }
 
-func (l *ledger) CancelWant(k cid.Cid) {
-	l.wantList.Remove(k)
+func (l *ledger) CancelWant(k cid.Cid) bool {
+	return l.wantList.Remove(k)
 }
 
 func (l *ledger) WantListContains(k cid.Cid) (wl.Entry, bool) {

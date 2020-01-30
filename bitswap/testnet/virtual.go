@@ -14,16 +14,13 @@ import (
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
-	logging "github.com/ipfs/go-log"
 
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/routing"
-	"github.com/libp2p/go-libp2p-testing/net"
+	tnet "github.com/libp2p/go-libp2p-testing/net"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 )
-
-var log = logging.Logger("bstestnet")
 
 // VirtualNetwork generates a new testnet instance - a fake network that
 // is used to simulate sending messages.
@@ -87,7 +84,7 @@ type receiverQueue struct {
 	lk       sync.Mutex
 }
 
-func (n *network) Adapter(p tnet.Identity) bsnet.BitSwapNetwork {
+func (n *network) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) bsnet.BitSwapNetwork {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -177,6 +174,10 @@ type networkClient struct {
 	stats   bsnet.Stats
 }
 
+func (nc *networkClient) Self() peer.ID {
+	return nc.local
+}
+
 func (nc *networkClient) SendMessage(
 	ctx context.Context,
 	to peer.ID,
@@ -197,7 +198,6 @@ func (nc *networkClient) Stats() bsnet.Stats {
 
 // FindProvidersAsync returns a channel of providers for the given key.
 func (nc *networkClient) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.ID {
-
 	// NB: this function duplicates the AddrInfo -> ID transformation in the
 	// bitswap network adapter. Not to worry. This network client will be
 	// deprecated once the ipfsnet.Mock is added. The code below is only
@@ -240,6 +240,10 @@ func (mp *messagePasser) Reset() error {
 	return nil
 }
 
+func (mp *messagePasser) SupportsHave() bool {
+	return true
+}
+
 func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID) (bsnet.MessageSender, error) {
 	return &messagePasser{
 		net:    nc,
@@ -260,7 +264,6 @@ func (nc *networkClient) SetDelegate(r bsnet.Receiver) {
 
 func (nc *networkClient) ConnectTo(_ context.Context, p peer.ID) error {
 	nc.network.mu.Lock()
-
 	otherClient, ok := nc.network.clients[p]
 	if !ok {
 		nc.network.mu.Unlock()
@@ -270,16 +273,35 @@ func (nc *networkClient) ConnectTo(_ context.Context, p peer.ID) error {
 	tag := tagForPeers(nc.local, p)
 	if _, ok := nc.network.conns[tag]; ok {
 		nc.network.mu.Unlock()
-		log.Warning("ALREADY CONNECTED TO PEER (is this a reconnect? test lib needs fixing)")
+		// log.Warning("ALREADY CONNECTED TO PEER (is this a reconnect? test lib needs fixing)")
 		return nil
 	}
 	nc.network.conns[tag] = struct{}{}
 	nc.network.mu.Unlock()
 
-	// TODO: add handling for disconnects
-
 	otherClient.receiver.PeerConnected(nc.local)
 	nc.Receiver.PeerConnected(p)
+	return nil
+}
+
+func (nc *networkClient) DisconnectFrom(_ context.Context, p peer.ID) error {
+	nc.network.mu.Lock()
+	defer nc.network.mu.Unlock()
+
+	otherClient, ok := nc.network.clients[p]
+	if !ok {
+		return errors.New("no such peer in network")
+	}
+
+	tag := tagForPeers(nc.local, p)
+	if _, ok := nc.network.conns[tag]; !ok {
+		// Already disconnected
+		return nil
+	}
+	delete(nc.network.conns, tag)
+
+	otherClient.receiver.PeerDisconnected(nc.local)
+	nc.Receiver.PeerDisconnected(p)
 	return nil
 }
 

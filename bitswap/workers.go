@@ -2,9 +2,11 @@ package bitswap
 
 import (
 	"context"
+	"fmt"
 
 	engine "github.com/ipfs/go-bitswap/decision"
 	bsmsg "github.com/ipfs/go-bitswap/message"
+	pb "github.com/ipfs/go-bitswap/message/pb"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
 	process "github.com/jbenet/goprocess"
@@ -50,6 +52,7 @@ func (bs *Bitswap) taskWorker(ctx context.Context, id int) {
 				if !ok {
 					continue
 				}
+
 				// update the BS ledger to reflect sent message
 				// TODO: Should only track *useful* messages in ledger
 				outgoing := bsmsg.New(false)
@@ -63,6 +66,10 @@ func (bs *Bitswap) taskWorker(ctx context.Context, id int) {
 					}))
 					outgoing.AddBlock(block)
 				}
+				for _, blockPresence := range envelope.Message.BlockPresences() {
+					outgoing.AddBlockPresence(blockPresence.Cid, blockPresence.Type)
+				}
+				// TODO: Only record message as sent if there was no error?
 				bs.engine.MessageSent(envelope.Peer, outgoing)
 
 				bs.sendBlocks(ctx, envelope)
@@ -88,6 +95,21 @@ func (bs *Bitswap) sendBlocks(ctx context.Context, env *engine.Envelope) {
 
 	msgSize := 0
 	msg := bsmsg.New(false)
+
+	for _, blockPresence := range env.Message.BlockPresences() {
+		c := blockPresence.Cid
+		switch blockPresence.Type {
+		case pb.Message_Have:
+			log.Infof("Sending HAVE %s to %s", c.String()[2:8], env.Peer)
+		case pb.Message_DontHave:
+			log.Infof("Sending DONT_HAVE %s to %s", c.String()[2:8], env.Peer)
+		default:
+			panic(fmt.Sprintf("unrecognized BlockPresence type %v", blockPresence.Type))
+		}
+
+		msgSize += bsmsg.BlockPresenceSize(c)
+		msg.AddBlockPresence(c, blockPresence.Type)
+	}
 	for _, block := range env.Message.Blocks() {
 		msgSize += len(block.RawData())
 		msg.AddBlock(block)
@@ -97,8 +119,10 @@ func (bs *Bitswap) sendBlocks(ctx context.Context, env *engine.Envelope) {
 	bs.sentHistogram.Observe(float64(msgSize))
 	err := bs.network.SendMessage(ctx, env.Peer, msg)
 	if err != nil {
-		log.Infof("sendblock error: %s", err)
+		// log.Infof("sendblock error: %s", err)
+		log.Errorf("SendMessage error: %s. size: %d. block-presence length: %d", err, msg.Size(), len(env.Message.BlockPresences()))
 	}
+	log.Infof("Sent message to %s", env.Peer)
 }
 
 func (bs *Bitswap) provideWorker(px process.Process) {

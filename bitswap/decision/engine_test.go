@@ -1,6 +1,7 @@
 package decision
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,15 +10,19 @@ import (
 	"testing"
 	"time"
 
+	lu "github.com/ipfs/go-bitswap/logutil"
 	message "github.com/ipfs/go-bitswap/message"
+	pb "github.com/ipfs/go-bitswap/message/pb"
+	"github.com/ipfs/go-bitswap/testutil"
 
 	blocks "github.com/ipfs/go-block-format"
+	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	process "github.com/jbenet/goprocess"
 	peer "github.com/libp2p/go-libp2p-core/peer"
-	testutil "github.com/libp2p/go-libp2p-core/test"
+	libp2ptest "github.com/libp2p/go-libp2p-core/test"
 )
 
 type peerTag struct {
@@ -86,10 +91,10 @@ type engineSet struct {
 	Blockstore blockstore.Blockstore
 }
 
-func newEngine(ctx context.Context, idStr string) engineSet {
+func newTestEngine(ctx context.Context, idStr string) engineSet {
 	fpt := &fakePeerTagger{}
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	e := NewEngine(ctx, bs, fpt)
+	e := newEngine(ctx, bs, fpt, "localhost", 0)
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 	return engineSet{
 		Peer: peer.ID(idStr),
@@ -103,8 +108,8 @@ func newEngine(ctx context.Context, idStr string) engineSet {
 func TestConsistentAccounting(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sender := newEngine(ctx, "Ernie")
-	receiver := newEngine(ctx, "Bert")
+	sender := newTestEngine(ctx, "Ernie")
+	receiver := newTestEngine(ctx, "Bert")
 
 	// Send messages from Ernie to Bert
 	for i := 0; i < 1000; i++ {
@@ -138,8 +143,8 @@ func TestPeerIsAddedToPeersWhenMessageReceivedOrSent(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sanfrancisco := newEngine(ctx, "sf")
-	seattle := newEngine(ctx, "sea")
+	sanfrancisco := newTestEngine(ctx, "sf")
+	seattle := newTestEngine(ctx, "sea")
 
 	m := message.New(true)
 
@@ -176,7 +181,7 @@ func peerIsPartner(p peer.ID, e *Engine) bool {
 func TestOutboxClosedWhenEngineClosed(t *testing.T) {
 	ctx := context.Background()
 	t.SkipNow() // TODO implement *Engine.Close
-	e := NewEngine(ctx, blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), &fakePeerTagger{})
+	e := newEngine(ctx, blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), &fakePeerTagger{}, "localhost", 0)
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -191,6 +196,616 @@ func TestOutboxClosedWhenEngineClosed(t *testing.T) {
 	if _, ok := <-e.Outbox(); ok {
 		t.Fatal("channel should be closed")
 	}
+}
+
+func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
+	alphabet := "abcdefghijklmnopqrstuvwxyz"
+	vowels := "aeiou"
+
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	for _, letter := range strings.Split(alphabet, "") {
+		block := blocks.NewBlock([]byte(letter))
+		if err := bs.Put(block); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	partner := libp2ptest.RandPeerIDFatal(t)
+	// partnerWantBlocks(e, vowels, partner)
+
+	type testCaseEntry struct {
+		wantBlks     string
+		wantHaves    string
+		sendDontHave bool
+	}
+
+	type testCaseExp struct {
+		blks      string
+		haves     string
+		dontHaves string
+	}
+
+	type testCase struct {
+		only bool
+		wls  []testCaseEntry
+		exp  []testCaseExp
+	}
+
+	testCases := []testCase{
+		// Just send want-blocks
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     vowels,
+					sendDontHave: false,
+				},
+			},
+			exp: []testCaseExp{
+				testCaseExp{
+					blks: vowels,
+				},
+			},
+		},
+
+		// Send want-blocks and want-haves
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     vowels,
+					wantHaves:    "fgh",
+					sendDontHave: false,
+				},
+			},
+			exp: []testCaseExp{
+				testCaseExp{
+					blks:  vowels,
+					haves: "fgh",
+				},
+			},
+		},
+
+		// Send want-blocks and want-haves, with some want-haves that are not
+		// present, but without requesting DONT_HAVES
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     vowels,
+					wantHaves:    "fgh123",
+					sendDontHave: false,
+				},
+			},
+			exp: []testCaseExp{
+				testCaseExp{
+					blks:  vowels,
+					haves: "fgh",
+				},
+			},
+		},
+
+		// Send want-blocks and want-haves, with some want-haves that are not
+		// present, and request DONT_HAVES
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     vowels,
+					wantHaves:    "fgh123",
+					sendDontHave: true,
+				},
+			},
+			exp: []testCaseExp{
+				testCaseExp{
+					blks:      vowels,
+					haves:     "fgh",
+					dontHaves: "123",
+				},
+			},
+		},
+
+		// Send want-blocks and want-haves, with some want-blocks and want-haves that are not
+		// present, but without requesting DONT_HAVES
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     "aeiou123",
+					wantHaves:    "fgh456",
+					sendDontHave: false,
+				},
+			},
+			exp: []testCaseExp{
+				testCaseExp{
+					blks:      "aeiou",
+					haves:     "fgh",
+					dontHaves: "",
+				},
+			},
+		},
+
+		// Send want-blocks and want-haves, with some want-blocks and want-haves that are not
+		// present, and request DONT_HAVES
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     "aeiou123",
+					wantHaves:    "fgh456",
+					sendDontHave: true,
+				},
+			},
+			exp: []testCaseExp{
+				testCaseExp{
+					blks:      "aeiou",
+					haves:     "fgh",
+					dontHaves: "123456",
+				},
+			},
+		},
+
+		// Send repeated want-blocks
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     "ae",
+					sendDontHave: false,
+				},
+				testCaseEntry{
+					wantBlks:     "io",
+					sendDontHave: false,
+				},
+				testCaseEntry{
+					wantBlks:     "u",
+					sendDontHave: false,
+				},
+			},
+			exp: []testCaseExp{
+				testCaseExp{
+					blks: "aeiou",
+				},
+			},
+		},
+
+		// Send repeated want-blocks and want-haves
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     "ae",
+					wantHaves:    "jk",
+					sendDontHave: false,
+				},
+				testCaseEntry{
+					wantBlks:     "io",
+					wantHaves:    "lm",
+					sendDontHave: false,
+				},
+				testCaseEntry{
+					wantBlks:     "u",
+					sendDontHave: false,
+				},
+			},
+			exp: []testCaseExp{
+				testCaseExp{
+					blks:  "aeiou",
+					haves: "jklm",
+				},
+			},
+		},
+
+		// Send repeated want-blocks and want-haves, with some want-blocks and want-haves that are not
+		// present, and request DONT_HAVES
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     "ae12",
+					wantHaves:    "jk5",
+					sendDontHave: true,
+				},
+				testCaseEntry{
+					wantBlks:     "io34",
+					wantHaves:    "lm",
+					sendDontHave: true,
+				},
+				testCaseEntry{
+					wantBlks:     "u",
+					wantHaves:    "6",
+					sendDontHave: true,
+				},
+			},
+			exp: []testCaseExp{
+				testCaseExp{
+					blks:      "aeiou",
+					haves:     "jklm",
+					dontHaves: "123456",
+				},
+			},
+		},
+
+		// Send want-block then want-have for same CID
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     "a",
+					sendDontHave: true,
+				},
+				testCaseEntry{
+					wantHaves:    "a",
+					sendDontHave: true,
+				},
+			},
+			// want-have should be ignored because there was already a
+			// want-block for the same CID in the queue
+			exp: []testCaseExp{
+				testCaseExp{
+					blks: "a",
+				},
+			},
+		},
+
+		// Send want-have then want-block for same CID
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantHaves:    "b",
+					sendDontHave: true,
+				},
+				testCaseEntry{
+					wantBlks:     "b",
+					sendDontHave: true,
+				},
+			},
+			// want-block should overwrite existing want-have
+			exp: []testCaseExp{
+				testCaseExp{
+					blks: "b",
+				},
+			},
+		},
+
+		// Send want-block then want-block for same CID
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     "a",
+					sendDontHave: true,
+				},
+				testCaseEntry{
+					wantBlks:     "a",
+					sendDontHave: true,
+				},
+			},
+			// second want-block should be ignored
+			exp: []testCaseExp{
+				testCaseExp{
+					blks: "a",
+				},
+			},
+		},
+
+		// Send want-have then want-have for same CID
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantHaves:    "a",
+					sendDontHave: true,
+				},
+				testCaseEntry{
+					wantHaves:    "a",
+					sendDontHave: true,
+				},
+			},
+			// second want-have should be ignored
+			exp: []testCaseExp{
+				testCaseExp{
+					haves: "a",
+				},
+			},
+		},
+	}
+
+	var onlyTestCases []testCase
+	for _, testCase := range testCases {
+		if testCase.only {
+			onlyTestCases = append(onlyTestCases, testCase)
+		}
+	}
+	if len(onlyTestCases) > 0 {
+		testCases = onlyTestCases
+	}
+
+	e := newEngine(context.Background(), bs, &fakePeerTagger{}, "localhost", 0)
+	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
+	for i, testCase := range testCases {
+		t.Logf("Test case %d:", i)
+		for _, wl := range testCase.wls {
+			t.Logf("  want-blocks '%s' / want-haves '%s' / sendDontHave %t",
+				wl.wantBlks, wl.wantHaves, wl.sendDontHave)
+			wantBlks := strings.Split(wl.wantBlks, "")
+			wantHaves := strings.Split(wl.wantHaves, "")
+			partnerWantBlocksHaves(e, wantBlks, wantHaves, wl.sendDontHave, partner)
+		}
+
+		for _, exp := range testCase.exp {
+			expBlks := strings.Split(exp.blks, "")
+			expHaves := strings.Split(exp.haves, "")
+			expDontHaves := strings.Split(exp.dontHaves, "")
+
+			next := <-e.Outbox()
+			env := <-next
+			err := checkOutput(t, e, env, expBlks, expHaves, expDontHaves)
+			if err != nil {
+				t.Fatal(err)
+			}
+			env.Sent()
+		}
+	}
+}
+
+func TestPartnerWantHaveWantBlockActive(t *testing.T) {
+	alphabet := "abcdefghijklmnopqrstuvwxyz"
+
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	for _, letter := range strings.Split(alphabet, "") {
+		block := blocks.NewBlock([]byte(letter))
+		if err := bs.Put(block); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	partner := libp2ptest.RandPeerIDFatal(t)
+
+	type testCaseEntry struct {
+		wantBlks     string
+		wantHaves    string
+		sendDontHave bool
+	}
+
+	type testCaseExp struct {
+		blks      string
+		haves     string
+		dontHaves string
+	}
+
+	type testCase struct {
+		only bool
+		wls  []testCaseEntry
+		exp  []testCaseExp
+	}
+
+	testCases := []testCase{
+		// Send want-block then want-have for same CID
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     "a",
+					sendDontHave: true,
+				},
+				testCaseEntry{
+					wantHaves:    "a",
+					sendDontHave: true,
+				},
+			},
+			// want-have should be ignored because there was already a
+			// want-block for the same CID in the queue
+			exp: []testCaseExp{
+				testCaseExp{
+					blks: "a",
+				},
+			},
+		},
+
+		// Send want-have then want-block for same CID
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantHaves:    "b",
+					sendDontHave: true,
+				},
+				testCaseEntry{
+					wantBlks:     "b",
+					sendDontHave: true,
+				},
+			},
+			// want-have is active when want-block is added, so want-have
+			// should get sent, then want-block
+			exp: []testCaseExp{
+				testCaseExp{
+					haves: "b",
+				},
+				testCaseExp{
+					blks: "b",
+				},
+			},
+		},
+
+		// Send want-block then want-block for same CID
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantBlks:     "a",
+					sendDontHave: true,
+				},
+				testCaseEntry{
+					wantBlks:     "a",
+					sendDontHave: true,
+				},
+			},
+			// second want-block should be ignored
+			exp: []testCaseExp{
+				testCaseExp{
+					blks: "a",
+				},
+			},
+		},
+
+		// Send want-have then want-have for same CID
+		testCase{
+			wls: []testCaseEntry{
+				testCaseEntry{
+					wantHaves:    "a",
+					sendDontHave: true,
+				},
+				testCaseEntry{
+					wantHaves:    "a",
+					sendDontHave: true,
+				},
+			},
+			// second want-have should be ignored
+			exp: []testCaseExp{
+				testCaseExp{
+					haves: "a",
+				},
+			},
+		},
+	}
+
+	var onlyTestCases []testCase
+	for _, testCase := range testCases {
+		if testCase.only {
+			onlyTestCases = append(onlyTestCases, testCase)
+		}
+	}
+	if len(onlyTestCases) > 0 {
+		testCases = onlyTestCases
+	}
+
+	e := newEngine(context.Background(), bs, &fakePeerTagger{}, "localhost", 0)
+	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
+
+	var next envChan
+	for i, testCase := range testCases {
+		envs := make([]*Envelope, 0)
+
+		t.Logf("Test case %d:", i)
+		for _, wl := range testCase.wls {
+			t.Logf("  want-blocks '%s' / want-haves '%s' / sendDontHave %t",
+				wl.wantBlks, wl.wantHaves, wl.sendDontHave)
+			wantBlks := strings.Split(wl.wantBlks, "")
+			wantHaves := strings.Split(wl.wantHaves, "")
+			partnerWantBlocksHaves(e, wantBlks, wantHaves, wl.sendDontHave, partner)
+
+			var env *Envelope
+			next, env = getNextEnvelope(e, next, 5*time.Millisecond)
+			if env != nil {
+				envs = append(envs, env)
+			}
+		}
+
+		if len(envs) != len(testCase.exp) {
+			t.Fatalf("Expected %d envelopes but received %d", len(testCase.exp), len(envs))
+		}
+
+		for i, exp := range testCase.exp {
+			expBlks := strings.Split(exp.blks, "")
+			expHaves := strings.Split(exp.haves, "")
+			expDontHaves := strings.Split(exp.dontHaves, "")
+
+			err := checkOutput(t, e, envs[i], expBlks, expHaves, expDontHaves)
+			if err != nil {
+				t.Fatal(err)
+			}
+			envs[i].Sent()
+		}
+	}
+}
+
+func checkOutput(t *testing.T, e *Engine, envelope *Envelope, expBlks []string, expHaves []string, expDontHaves []string) error {
+	blks := envelope.Message.Blocks()
+	presences := envelope.Message.BlockPresences()
+
+	// Verify payload message length
+	if len(blks) != len(expBlks) {
+		blkDiff := formatBlocksDiff(blks, expBlks)
+		msg := fmt.Sprintf("Received %d blocks. Expected %d blocks:\n%s", len(blks), len(expBlks), blkDiff)
+		return errors.New(msg)
+	}
+
+	// Verify block presences message length
+	expPresencesCount := len(expHaves) + len(expDontHaves)
+	if len(presences) != expPresencesCount {
+		presenceDiff := formatPresencesDiff(presences, expHaves, expDontHaves)
+		return fmt.Errorf("Received %d BlockPresences. Expected %d BlockPresences:\n%s",
+			len(presences), expPresencesCount, presenceDiff)
+	}
+
+	// Verify payload message contents
+	for _, k := range expBlks {
+		found := false
+		expected := blocks.NewBlock([]byte(k))
+		for _, block := range blks {
+			if block.Cid().Equals(expected.Cid()) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return errors.New(formatBlocksDiff(blks, expBlks))
+		}
+	}
+
+	// Verify HAVEs
+	if err := checkPresence(presences, expHaves, pb.Message_Have); err != nil {
+		return errors.New(formatPresencesDiff(presences, expHaves, expDontHaves))
+	}
+
+	// Verify DONT_HAVEs
+	if err := checkPresence(presences, expDontHaves, pb.Message_DontHave); err != nil {
+		return errors.New(formatPresencesDiff(presences, expHaves, expDontHaves))
+	}
+
+	return nil
+}
+
+func checkPresence(presences []message.BlockPresence, expPresence []string, presenceType pb.Message_BlockPresenceType) error {
+	for _, k := range expPresence {
+		found := false
+		expected := blocks.NewBlock([]byte(k))
+		for _, p := range presences {
+			if p.Cid.Equals(expected.Cid()) {
+				found = true
+				if p.Type != presenceType {
+					return errors.New("type mismatch")
+				}
+				break
+			}
+		}
+		if !found {
+			return errors.New("not found")
+		}
+	}
+	return nil
+}
+
+func formatBlocksDiff(blks []blocks.Block, expBlks []string) string {
+	var out bytes.Buffer
+	out.WriteString(fmt.Sprintf("Blocks (%d):\n", len(blks)))
+	for _, b := range blks {
+		out.WriteString(fmt.Sprintf("  %s: %s\n", lu.C(b.Cid()), b.RawData()))
+	}
+	out.WriteString(fmt.Sprintf("Expected (%d):\n", len(expBlks)))
+	for _, k := range expBlks {
+		expected := blocks.NewBlock([]byte(k))
+		out.WriteString(fmt.Sprintf("  %s: %s\n", lu.C(expected.Cid()), k))
+	}
+	return out.String()
+}
+
+func formatPresencesDiff(presences []message.BlockPresence, expHaves []string, expDontHaves []string) string {
+	var out bytes.Buffer
+	out.WriteString(fmt.Sprintf("BlockPresences (%d):\n", len(presences)))
+	for _, p := range presences {
+		t := "HAVE"
+		if p.Type == pb.Message_DontHave {
+			t = "DONT_HAVE"
+		}
+		out.WriteString(fmt.Sprintf("  %s - %s\n", lu.C(p.Cid), t))
+	}
+	out.WriteString(fmt.Sprintf("Expected (%d):\n", len(expHaves)+len(expDontHaves)))
+	for _, k := range expHaves {
+		expected := blocks.NewBlock([]byte(k))
+		out.WriteString(fmt.Sprintf("  %s: %s - HAVE\n", lu.C(expected.Cid()), k))
+	}
+	for _, k := range expDontHaves {
+		expected := blocks.NewBlock([]byte(k))
+		out.WriteString(fmt.Sprintf("  %s: %s - DONT_HAVE\n", lu.C(expected.Cid()), k))
+	}
+	return out.String()
 }
 
 func TestPartnerWantsThenCancels(t *testing.T) {
@@ -235,7 +850,7 @@ func TestPartnerWantsThenCancels(t *testing.T) {
 	ctx := context.Background()
 	for i := 0; i < numRounds; i++ {
 		expected := make([][]string, 0, len(testcases))
-		e := NewEngine(ctx, bs, &fakePeerTagger{})
+		e := newEngine(ctx, bs, &fakePeerTagger{}, "localhost", 0)
 		e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 		for _, testcase := range testcases {
 			set := testcase[0]
@@ -243,9 +858,9 @@ func TestPartnerWantsThenCancels(t *testing.T) {
 			keeps := stringsComplement(set, cancels)
 			expected = append(expected, keeps)
 
-			partner := testutil.RandPeerIDFatal(t)
+			partner := libp2ptest.RandPeerIDFatal(t)
 
-			partnerWants(e, set, partner)
+			partnerWantBlocks(e, set, partner)
 			partnerCancels(e, cancels, partner)
 		}
 		if err := checkHandledInOrder(t, e, expected); err != nil {
@@ -255,11 +870,119 @@ func TestPartnerWantsThenCancels(t *testing.T) {
 	}
 }
 
+func TestSendReceivedBlocksToPeersThatWantThem(t *testing.T) {
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	partner := libp2ptest.RandPeerIDFatal(t)
+	otherPeer := libp2ptest.RandPeerIDFatal(t)
+
+	e := newEngine(context.Background(), bs, &fakePeerTagger{}, "localhost", 0)
+	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
+
+	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
+	msg := message.New(false)
+	msg.AddEntry(blks[0].Cid(), 4, pb.Message_Wantlist_Have, false)
+	msg.AddEntry(blks[1].Cid(), 3, pb.Message_Wantlist_Have, false)
+	msg.AddEntry(blks[2].Cid(), 2, pb.Message_Wantlist_Block, false)
+	msg.AddEntry(blks[3].Cid(), 1, pb.Message_Wantlist_Block, false)
+	e.MessageReceived(context.Background(), partner, msg)
+
+	// Nothing in blockstore, so shouldn't get any envelope
+	var next envChan
+	next, env := getNextEnvelope(e, next, 5*time.Millisecond)
+	if env != nil {
+		t.Fatal("expected no envelope yet")
+	}
+
+	if err := bs.PutMany([]blocks.Block{blks[0], blks[2]}); err != nil {
+		t.Fatal(err)
+	}
+	e.ReceiveFrom(otherPeer, []blocks.Block{blks[0], blks[2]}, []cid.Cid{})
+	_, env = getNextEnvelope(e, next, 5*time.Millisecond)
+	if env == nil {
+		t.Fatal("expected envelope")
+	}
+	if env.Peer != partner {
+		t.Fatal("expected message to peer")
+	}
+	sentBlk := env.Message.Blocks()
+	if len(sentBlk) != 1 || !sentBlk[0].Cid().Equals(blks[2].Cid()) {
+		t.Fatal("expected 1 block")
+	}
+	sentHave := env.Message.BlockPresences()
+	if len(sentHave) != 1 || !sentHave[0].Cid.Equals(blks[0].Cid()) || sentHave[0].Type != pb.Message_Have {
+		t.Fatal("expected 1 HAVE")
+	}
+}
+
+func TestSendDontHave(t *testing.T) {
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	partner := libp2ptest.RandPeerIDFatal(t)
+	otherPeer := libp2ptest.RandPeerIDFatal(t)
+
+	e := newEngine(context.Background(), bs, &fakePeerTagger{}, "localhost", 0)
+	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
+
+	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
+	msg := message.New(false)
+	msg.AddEntry(blks[0].Cid(), 4, pb.Message_Wantlist_Have, false)
+	msg.AddEntry(blks[1].Cid(), 3, pb.Message_Wantlist_Have, true)
+	msg.AddEntry(blks[2].Cid(), 2, pb.Message_Wantlist_Block, false)
+	msg.AddEntry(blks[3].Cid(), 1, pb.Message_Wantlist_Block, true)
+	e.MessageReceived(context.Background(), partner, msg)
+
+	// Nothing in blockstore, should get DONT_HAVE for entries that wanted it
+	var next envChan
+	next, env := getNextEnvelope(e, next, 5*time.Millisecond)
+	if env == nil {
+		t.Fatal("expected envelope")
+	}
+	if env.Peer != partner {
+		t.Fatal("expected message to peer")
+	}
+	if len(env.Message.Blocks()) > 0 {
+		t.Fatal("expected no blocks")
+	}
+	sentDontHaves := env.Message.BlockPresences()
+	if len(sentDontHaves) != 2 {
+		t.Fatal("expected 2 DONT_HAVEs")
+	}
+	if !sentDontHaves[0].Cid.Equals(blks[1].Cid()) &&
+		!sentDontHaves[1].Cid.Equals(blks[1].Cid()) {
+		t.Fatal("expected DONT_HAVE for want-have")
+	}
+	if !sentDontHaves[0].Cid.Equals(blks[3].Cid()) &&
+		!sentDontHaves[1].Cid.Equals(blks[3].Cid()) {
+		t.Fatal("expected DONT_HAVE for want-block")
+	}
+
+	// Receive all the blocks
+	if err := bs.PutMany(blks); err != nil {
+		t.Fatal(err)
+	}
+	e.ReceiveFrom(otherPeer, blks, []cid.Cid{})
+
+	// Envelope should contain 2 HAVEs / 2 blocks
+	_, env = getNextEnvelope(e, next, 5*time.Millisecond)
+	if env == nil {
+		t.Fatal("expected envelope")
+	}
+	if env.Peer != partner {
+		t.Fatal("expected message to peer")
+	}
+	if len(env.Message.Blocks()) != 2 {
+		t.Fatal("expected 2 blocks")
+	}
+	sentHave := env.Message.BlockPresences()
+	if len(sentHave) != 2 || sentHave[0].Type != pb.Message_Have || sentHave[1].Type != pb.Message_Have {
+		t.Fatal("expected 2 HAVEs")
+	}
+}
+
 func TestTaggingPeers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	sanfrancisco := newEngine(ctx, "sf")
-	seattle := newEngine(ctx, "sea")
+	sanfrancisco := newTestEngine(ctx, "sf")
+	seattle := newTestEngine(ctx, "sea")
 
 	keys := []string{"a", "b", "c", "d", "e"}
 	for _, letter := range keys {
@@ -268,7 +991,7 @@ func TestTaggingPeers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	partnerWants(sanfrancisco.Engine, keys, seattle.Peer)
+	partnerWantBlocks(sanfrancisco.Engine, keys, seattle.Peer)
 	next := <-sanfrancisco.Engine.Outbox()
 	envelope := <-next
 
@@ -285,12 +1008,12 @@ func TestTaggingPeers(t *testing.T) {
 
 func TestTaggingUseful(t *testing.T) {
 	oldShortTerm := shortTerm
-	shortTerm = 1 * time.Millisecond
+	shortTerm = 2 * time.Millisecond
 	defer func() { shortTerm = oldShortTerm }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	me := newEngine(ctx, "engine")
+	me := newTestEngine(ctx, "engine")
 	friend := peer.ID("friend")
 
 	block := blocks.NewBlock([]byte("foobar"))
@@ -322,11 +1045,27 @@ func TestTaggingUseful(t *testing.T) {
 	}
 }
 
-func partnerWants(e *Engine, keys []string, partner peer.ID) {
+func partnerWantBlocks(e *Engine, keys []string, partner peer.ID) {
 	add := message.New(false)
 	for i, letter := range keys {
 		block := blocks.NewBlock([]byte(letter))
-		add.AddEntry(block.Cid(), len(keys)-i)
+		add.AddEntry(block.Cid(), len(keys)-i, pb.Message_Wantlist_Block, true)
+	}
+	e.MessageReceived(context.Background(), partner, add)
+}
+
+func partnerWantBlocksHaves(e *Engine, keys []string, wantHaves []string, sendDontHave bool, partner peer.ID) {
+	add := message.New(false)
+	priority := len(wantHaves) + len(keys)
+	for _, letter := range wantHaves {
+		block := blocks.NewBlock([]byte(letter))
+		add.AddEntry(block.Cid(), priority, pb.Message_Wantlist_Have, sendDontHave)
+		priority--
+	}
+	for _, letter := range keys {
+		block := blocks.NewBlock([]byte(letter))
+		add.AddEntry(block.Cid(), priority, pb.Message_Wantlist_Block, sendDontHave)
+		priority--
 	}
 	e.MessageReceived(context.Background(), partner, add)
 }
@@ -338,6 +1077,29 @@ func partnerCancels(e *Engine, keys []string, partner peer.ID) {
 		cancels.Cancel(block.Cid())
 	}
 	e.MessageReceived(context.Background(), partner, cancels)
+}
+
+type envChan <-chan *Envelope
+
+func getNextEnvelope(e *Engine, next envChan, t time.Duration) (envChan, *Envelope) {
+	ctx, cancel := context.WithTimeout(context.Background(), t)
+	defer cancel()
+
+	if next == nil {
+		next = <-e.Outbox() // returns immediately
+	}
+
+	select {
+	case env, ok := <-next: // blocks till next envelope ready
+		if !ok {
+			log.Warningf("got closed channel")
+			return nil, nil
+		}
+		return nil, env
+	case <-ctx.Done():
+		// log.Warningf("got timeout")
+	}
+	return next, nil
 }
 
 func checkHandledInOrder(t *testing.T, e *Engine, expected [][]string) error {

@@ -30,12 +30,15 @@ func TestBasicSessions(t *testing.T) {
 	a := inst[0]
 	b := inst[1]
 
+	// Add a block to Peer B
 	if err := b.Blockstore().Put(block); err != nil {
 		t.Fatal(err)
 	}
 
+	// Create a session on Peer A
 	sesa := a.Exchange.NewSession(ctx)
 
+	// Get the block
 	blkout, err := sesa.GetBlock(ctx, block.Cid())
 	if err != nil {
 		t.Fatal(err)
@@ -74,6 +77,7 @@ func TestSessionBetweenPeers(t *testing.T) {
 
 	inst := ig.Instances(10)
 
+	// Add 101 blocks to Peer A
 	blks := bgen.Blocks(101)
 	if err := inst[0].Blockstore().PutMany(blks); err != nil {
 		t.Fatal(err)
@@ -84,6 +88,7 @@ func TestSessionBetweenPeers(t *testing.T) {
 		cids = append(cids, blk.Cid())
 	}
 
+	// Create a session on Peer B
 	ses := inst[1].Exchange.NewSession(ctx)
 	if _, err := ses.GetBlock(ctx, cids[0]); err != nil {
 		t.Fatal(err)
@@ -91,6 +96,7 @@ func TestSessionBetweenPeers(t *testing.T) {
 	blks = blks[1:]
 	cids = cids[1:]
 
+	// Fetch blocks with the session, 10 at a time
 	for i := 0; i < 10; i++ {
 		ch, err := ses.GetBlocks(ctx, cids[i*10:(i+1)*10])
 		if err != nil {
@@ -127,6 +133,7 @@ func TestSessionSplitFetch(t *testing.T) {
 
 	inst := ig.Instances(11)
 
+	// Add 10 distinct blocks to each of 10 peers
 	blks := bgen.Blocks(100)
 	for i := 0; i < 10; i++ {
 		if err := inst[i].Blockstore().PutMany(blks[i*10 : (i+1)*10]); err != nil {
@@ -139,6 +146,7 @@ func TestSessionSplitFetch(t *testing.T) {
 		cids = append(cids, blk.Cid())
 	}
 
+	// Create a session on the remaining peer and fetch all the blocks 10 at a time
 	ses := inst[10].Exchange.NewSession(ctx).(*bssession.Session)
 	ses.SetBaseTickDelay(time.Millisecond * 10)
 
@@ -169,6 +177,7 @@ func TestFetchNotConnected(t *testing.T) {
 
 	other := ig.Next()
 
+	// Provide 10 blocks on Peer A
 	blks := bgen.Blocks(10)
 	for _, block := range blks {
 		if err := other.Exchange.HasBlock(block); err != nil {
@@ -181,6 +190,9 @@ func TestFetchNotConnected(t *testing.T) {
 		cids = append(cids, blk.Cid())
 	}
 
+	// Request blocks with Peer B
+	// Note: Peer A and Peer B are not initially connected, so this tests
+	// that Peer B will search for and find Peer A
 	thisNode := ig.Next()
 	ses := thisNode.Exchange.NewSession(ctx).(*bssession.Session)
 	ses.SetBaseTickDelay(time.Millisecond * 10)
@@ -198,6 +210,81 @@ func TestFetchNotConnected(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFetchAfterDisconnect(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	vnet := getVirtualNetwork()
+	ig := testinstance.NewTestInstanceGenerator(vnet, bitswap.ProviderSearchDelay(10*time.Millisecond))
+	defer ig.Close()
+	bgen := blocksutil.NewBlockGenerator()
+
+	inst := ig.Instances(2)
+	peerA := inst[0]
+	peerB := inst[1]
+
+	// Provide 5 blocks on Peer A
+	blks := bgen.Blocks(10)
+	var cids []cid.Cid
+	for _, blk := range blks {
+		cids = append(cids, blk.Cid())
+	}
+
+	firstBlks := blks[:5]
+	for _, block := range firstBlks {
+		if err := peerA.Exchange.HasBlock(block); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Request all blocks with Peer B
+	ses := peerB.Exchange.NewSession(ctx).(*bssession.Session)
+	ses.SetBaseTickDelay(time.Millisecond * 10)
+
+	ch, err := ses.GetBlocks(ctx, cids)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should get first 5 blocks
+	var got []blocks.Block
+	for i := 0; i < 5; i++ {
+		b := <-ch
+		got = append(got, b)
+	}
+
+	if err := assertBlockLists(got, blks[:5]); err != nil {
+		t.Fatal(err)
+	}
+
+	// Break connection
+	err = peerA.Adapter.DisconnectFrom(ctx, peerB.Peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Provide remaining blocks
+	lastBlks := blks[5:]
+	for _, block := range lastBlks {
+		if err := peerA.Exchange.HasBlock(block); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Peer B should call FindProviders() and find Peer A
+
+	// Should get last 5 blocks
+	for i := 0; i < 5; i++ {
+		b := <-ch
+		got = append(got, b)
+	}
+
+	if err := assertBlockLists(got, blks); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestInterestCacheOverflow(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
