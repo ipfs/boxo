@@ -12,6 +12,7 @@ import (
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	"github.com/stretchr/testify/require"
 )
 
 func assertAddNodes(t *testing.T, ds format.DAGService, nds ...format.Node) {
@@ -94,54 +95,38 @@ func TestRoundtripSelective(t *testing.T) {
 
 	assertAddNodes(t, dserv, a, b, c, nd1, nd2, nd3)
 
-	buf := new(bytes.Buffer)
 	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
 	selector, err := ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
 		efsb.Insert("Links",
 			ssb.ExploreIndex(1, ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreAll(ssb.ExploreRecursiveEdge()))))
 	}).Selector()
+	require.NoError(t, err)
 
-	if err != nil {
-		t.Fatal("Did not build selector")
-	}
-	if err := WriteSelectiveCar(context.Background(), sourceBs, []CarDag{CarDag{Root: nd3.Cid(), Selector: selector}}, buf); err != nil {
-		t.Fatal(err)
-	}
+	sc := NewSelectiveCar(context.Background(), sourceBs, []CarDag{CarDag{Root: nd3.Cid(), Selector: selector}})
+	scr, err := sc.Traverse()
+	require.NoError(t, err)
 
+	buf := new(bytes.Buffer)
+	err = scr.Write(buf)
+	require.NoError(t, err)
+	require.Equal(t, scr.Size(), uint64(buf.Len()))
 	bserv := dstest.Bserv()
 	ch, err := LoadCar(bserv.Blockstore(), buf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, len(ch.Roots), 1)
 
-	if len(ch.Roots) != 1 {
-		t.Fatal("should have one root")
-	}
-
-	if !ch.Roots[0].Equals(nd3.Cid()) {
-		t.Fatal("got wrong cid")
-	}
+	require.True(t, ch.Roots[0].Equals(nd3.Cid()))
 
 	bs := bserv.Blockstore()
 	for _, nd := range []format.Node{a, b, nd1, nd2, nd3} {
 		has, err := bs.Has(nd.Cid())
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !has {
-			t.Fatal("should have cid in blockstore")
-		}
+		require.NoError(t, err)
+		require.True(t, has)
 	}
 
 	for _, nd := range []format.Node{c} {
 		has, err := bs.Has(nd.Cid())
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if has {
-			t.Fatal("should NOT have cid in blockstore")
-		}
+		require.NoError(t, err)
+		require.False(t, has)
 	}
 }

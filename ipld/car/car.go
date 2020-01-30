@@ -2,23 +2,15 @@ package car
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
-
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
-	"github.com/ipld/go-ipld-prime/traversal"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
-	"github.com/ipld/go-ipld-prime"
-	dagpb "github.com/ipld/go-ipld-prime-proto"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 
 	util "github.com/ipld/go-car/util"
@@ -60,7 +52,6 @@ func WriteCar(ctx context.Context, ds format.DAGService, roots []cid.Cid, w io.W
 
 func WriteCarWithWalker(ctx context.Context, ds format.DAGService, roots []cid.Cid, w io.Writer, walk WalkFunc) error {
 
-
 	h := &CarHeader{
 		Roots:   roots,
 		Version: 1,
@@ -84,66 +75,6 @@ func DefaultWalkFunc(nd format.Node) ([]*format.Link, error) {
 	return nd.Links(), nil
 }
 
-func WriteSelectiveCar(ctx context.Context, store ReadStore, dags []CarDag, w io.Writer) error {
-
-	roots := make([]cid.Cid, 0, len(dags))
-	for _, carDag := range dags {
-		roots = append(roots, carDag.Root)
-	}
-
-	h := &CarHeader{
-		Roots:   roots,
-		Version: 1,
-	}
-
-	if err := WriteHeader(h, w); err != nil {
-		return fmt.Errorf("failed to write car header: %s", err)
-	}
-
-	var loader ipld.Loader = func(lnk ipld.Link, ctx ipld.LinkContext) (io.Reader, error) {
-		cl, ok := lnk.(cidlink.Link)
-		if !ok {
-			return nil, errors.New("Incorrect Link Type")
-		}
-		c := cl.Cid
-		fmt.Println(c)
-		blk, err := store.Get(c)
-		if err != nil {
-			return nil, err
-		}
-		raw := blk.RawData()
-		err = util.LdWrite(w, c.Bytes(), raw)
-		if err != nil {
-			return nil, err
-		}
-		return bytes.NewReader(raw), nil
-	}
-
-	nbc := dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) ipld.NodeBuilder {
-		return ipldfree.NodeBuilder()
-	})
-
-	for _, carDag := range dags {
-		lnk := cidlink.Link{Cid: carDag.Root}
-		nb := nbc(lnk, ipld.LinkContext{})
-		nd, err := lnk.Load(ctx, ipld.LinkContext{}, nb, loader)
-		if err != nil {
-			return err
-		}
-		err = traversal.Progress{
-			Cfg: &traversal.Config{
-				Ctx:                    ctx,
-				LinkLoader:             loader,
-				LinkNodeBuilderChooser: nbc,
-			},
-		}.WalkAdv(nd, carDag.Selector, func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil })
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func ReadHeader(br *bufio.Reader) (*CarHeader, error) {
 	hb, err := util.LdRead(br)
 	if err != nil {
@@ -165,6 +96,15 @@ func WriteHeader(h *CarHeader, w io.Writer) error {
 	}
 
 	return util.LdWrite(w, hb)
+}
+
+func SizeHeader(h *CarHeader) (uint64, error) {
+	hb, err := cbor.DumpObject(h)
+	if err != nil {
+		return 0, err
+	}
+
+	return util.LdSize(hb), nil
 }
 
 func (cw *carWriter) enumGetLinks(ctx context.Context, c cid.Cid) ([]*format.Link, error) {

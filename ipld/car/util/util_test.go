@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/ipfs/go-car/util"
+	"github.com/ipld/go-car/util"
 	"github.com/stretchr/testify/require"
 )
 
