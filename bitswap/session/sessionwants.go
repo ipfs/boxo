@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -8,59 +9,42 @@ import (
 	cid "github.com/ipfs/go-cid"
 )
 
+// sessionWants keeps track of which cids are waiting to be sent out, and which
+// peers are "live" - ie, we've sent a request but haven't received a block yet
 type sessionWants struct {
 	sync.RWMutex
 	toFetch   *cidQueue
 	liveWants map[cid.Cid]time.Time
-	pastWants *cid.Set
 }
 
-// BlocksReceived moves received block CIDs from live to past wants and
-// measures latency. It returns the CIDs of blocks that were actually wanted
-// (as opposed to duplicates) and the total latency for all incoming blocks.
-func (sw *sessionWants) BlocksReceived(cids []cid.Cid) ([]cid.Cid, time.Duration) {
-	now := time.Now()
-
-	sw.Lock()
-	defer sw.Unlock()
-
-	totalLatency := time.Duration(0)
-	wanted := make([]cid.Cid, 0, len(cids))
-	for _, c := range cids {
-		if sw.unlockedIsWanted(c) {
-			wanted = append(wanted, c)
-
-			// If the block CID was in the live wants queue, remove it
-			tval, ok := sw.liveWants[c]
-			if ok {
-				totalLatency += now.Sub(tval)
-				delete(sw.liveWants, c)
-			} else {
-				// Otherwise remove it from the toFetch queue, if it was there
-				sw.toFetch.Remove(c)
-			}
-
-			// Keep track of CIDs we've successfully fetched
-			sw.pastWants.Add(c)
-		}
+func newSessionWants() sessionWants {
+	return sessionWants{
+		toFetch:   newCidQueue(),
+		liveWants: make(map[cid.Cid]time.Time),
 	}
-
-	return wanted, totalLatency
 }
 
-// GetNextWants adds any new wants to the list of CIDs to fetch, then moves as
-// many CIDs from the fetch queue to the live wants list as possible (given the
-// limit). Returns the newly live wants.
-func (sw *sessionWants) GetNextWants(limit int, newWants []cid.Cid) []cid.Cid {
-	now := time.Now()
+func (sw *sessionWants) String() string {
+	return fmt.Sprintf("%d pending / %d live", sw.toFetch.Len(), len(sw.liveWants))
+}
 
+// BlocksRequested is called when the client makes a request for blocks
+func (sw *sessionWants) BlocksRequested(newWants []cid.Cid) {
 	sw.Lock()
 	defer sw.Unlock()
 
-	// Add new wants to the fetch queue
 	for _, k := range newWants {
 		sw.toFetch.Push(k)
 	}
+}
+
+// GetNextWants moves as many CIDs from the fetch queue to the live wants
+// list as possible (given the limit). Returns the newly live wants.
+func (sw *sessionWants) GetNextWants(limit int) []cid.Cid {
+	now := time.Now()
+
+	sw.Lock()
+	defer sw.Unlock()
 
 	// Move CIDs from fetch queue to the live wants queue (up to the limit)
 	currentLiveCount := len(sw.liveWants)
@@ -74,6 +58,55 @@ func (sw *sessionWants) GetNextWants(limit int, newWants []cid.Cid) []cid.Cid {
 	}
 
 	return live
+}
+
+// WantsSent is called when wants are sent to a peer
+func (sw *sessionWants) WantsSent(ks []cid.Cid) {
+	now := time.Now()
+
+	sw.Lock()
+	defer sw.Unlock()
+
+	for _, c := range ks {
+		if _, ok := sw.liveWants[c]; !ok {
+			sw.toFetch.Remove(c)
+			sw.liveWants[c] = now
+		}
+	}
+}
+
+// BlocksReceived removes received block CIDs from the live wants list and
+// measures latency. It returns the CIDs of blocks that were actually
+// wanted (as opposed to duplicates) and the total latency for all incoming blocks.
+func (sw *sessionWants) BlocksReceived(ks []cid.Cid) ([]cid.Cid, time.Duration) {
+	wanted := make([]cid.Cid, 0, len(ks))
+	totalLatency := time.Duration(0)
+	if len(ks) == 0 {
+		return wanted, totalLatency
+	}
+
+	now := time.Now()
+
+	sw.Lock()
+	defer sw.Unlock()
+
+	for _, c := range ks {
+		if sw.unlockedIsWanted(c) {
+			wanted = append(wanted, c)
+
+			sentAt, ok := sw.liveWants[c]
+			if ok && !sentAt.IsZero() {
+				totalLatency += now.Sub(sentAt)
+			}
+
+			// Remove the CID from the live wants / toFetch queue and add it
+			// to the past wants
+			delete(sw.liveWants, c)
+			sw.toFetch.Remove(c)
+		}
+	}
+
+	return wanted, totalLatency
 }
 
 // PrepareBroadcast saves the current time for each live want and returns the
@@ -102,23 +135,6 @@ func (sw *sessionWants) CancelPending(keys []cid.Cid) {
 	}
 }
 
-// ForEachUniqDup iterates over each of the given CIDs and calls isUniqFn
-// if the session is expecting a block for the CID, or isDupFn if the session
-// has already received the block.
-func (sw *sessionWants) ForEachUniqDup(ks []cid.Cid, isUniqFn, isDupFn func()) {
-	sw.RLock()
-
-	for _, k := range ks {
-		if sw.unlockedIsWanted(k) {
-			isUniqFn()
-		} else if sw.pastWants.Has(k) {
-			isDupFn()
-		}
-	}
-
-	sw.RUnlock()
-}
-
 // LiveWants returns a list of live wants
 func (sw *sessionWants) LiveWants() []cid.Cid {
 	sw.RLock()
@@ -131,7 +147,6 @@ func (sw *sessionWants) LiveWants() []cid.Cid {
 	return live
 }
 
-// RandomLiveWant returns a randomly selected live want
 func (sw *sessionWants) RandomLiveWant() cid.Cid {
 	i := rand.Uint64()
 
@@ -158,31 +173,6 @@ func (sw *sessionWants) HasLiveWants() bool {
 	defer sw.RUnlock()
 
 	return len(sw.liveWants) > 0
-}
-
-// IsWanted indicates if the session is expecting to receive the block with the
-// given CID
-func (sw *sessionWants) IsWanted(c cid.Cid) bool {
-	sw.RLock()
-	defer sw.RUnlock()
-
-	return sw.unlockedIsWanted(c)
-}
-
-// FilterInteresting filters the list so that it only contains keys for
-// blocks that the session is waiting to receive or has received in the past
-func (sw *sessionWants) FilterInteresting(ks []cid.Cid) []cid.Cid {
-	sw.RLock()
-	defer sw.RUnlock()
-
-	var interested []cid.Cid
-	for _, k := range ks {
-		if sw.unlockedIsWanted(k) || sw.pastWants.Has(k) {
-			interested = append(interested, k)
-		}
-	}
-
-	return interested
 }
 
 func (sw *sessionWants) unlockedIsWanted(c cid.Cid) bool {

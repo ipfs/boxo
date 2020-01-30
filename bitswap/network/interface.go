@@ -13,18 +13,19 @@ import (
 )
 
 var (
-	// ProtocolBitswapOne is the prefix for the legacy bitswap protocol
-	ProtocolBitswapOne protocol.ID = "/ipfs/bitswap/1.0.0"
 	// ProtocolBitswapNoVers is equivalent to the legacy bitswap protocol
 	ProtocolBitswapNoVers protocol.ID = "/ipfs/bitswap"
-
-	// ProtocolBitswap is the current version of bitswap protocol, 1.1.0
-	ProtocolBitswap protocol.ID = "/ipfs/bitswap/1.1.0"
+	// ProtocolBitswapOneZero is the prefix for the legacy bitswap protocol
+	ProtocolBitswapOneZero protocol.ID = "/ipfs/bitswap/1.0.0"
+	// ProtocolBitswapOneOne is the the prefix for version 1.1.0
+	ProtocolBitswapOneOne protocol.ID = "/ipfs/bitswap/1.1.0"
+	// ProtocolBitswap is the current version of the bitswap protocol: 1.2.0
+	ProtocolBitswap protocol.ID = "/ipfs/bitswap/1.2.0"
 )
 
 // BitSwapNetwork provides network connectivity for BitSwap sessions.
 type BitSwapNetwork interface {
-
+	Self() peer.ID
 	// SendMessage sends a BitSwap message to a peer.
 	SendMessage(
 		context.Context,
@@ -36,6 +37,7 @@ type BitSwapNetwork interface {
 	SetDelegate(Receiver)
 
 	ConnectTo(context.Context, peer.ID) error
+	DisconnectFrom(context.Context, peer.ID) error
 
 	NewMessageSender(context.Context, peer.ID) (MessageSender, error)
 
@@ -52,6 +54,8 @@ type MessageSender interface {
 	SendMsg(context.Context, bsmsg.BitSwapMessage) error
 	Close() error
 	Reset() error
+	// Indicates whether the remote peer supports HAVE / DONT_HAVE messages
+	SupportsHave() bool
 }
 
 // Receiver is an interface that can receive messages from the BitSwapNetwork.
