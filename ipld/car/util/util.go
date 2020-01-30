@@ -89,6 +89,16 @@ func LdWrite(w io.Writer, d ...[]byte) error {
 	return nil
 }
 
+func LdSize(d ...[]byte) uint64 {
+	var sum uint64
+	for _, s := range d {
+		sum += uint64(len(s))
+	}
+	buf := make([]byte, 8)
+	n := binary.PutUvarint(buf, sum)
+	return sum + uint64(n)
+}
+
 func LdRead(r *bufio.Reader) ([]byte, error) {
 	l, err := binary.ReadUvarint(r)
 	if err != nil {
