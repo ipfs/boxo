@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	engine "github.com/ipfs/go-bitswap/decision"
+	engine "github.com/ipfs/go-bitswap/internal/decision"
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	cid "github.com/ipfs/go-cid"
