@@ -14,7 +14,13 @@ import (
 	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/traversal"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 )
+
+type CarDag struct {
+	Root     cid.Cid
+	Selector ipld.Node
+}
 
 type CarBlock struct {
 	BlockCID cid.Cid
@@ -123,6 +129,10 @@ func (sct *selectiveCarTraverser) traverseBlocks() ([]CarBlock, error) {
 	})
 
 	for _, carDag := range sct.sc.dags {
+		parsed, err := selector.ParseSelector(carDag.Selector)
+		if err != nil {
+			return nil, err
+		}
 		lnk := cidlink.Link{Cid: carDag.Root}
 		nb := nbc(lnk, ipld.LinkContext{})
 		nd, err := lnk.Load(sct.sc.ctx, ipld.LinkContext{}, nb, loader)
@@ -135,7 +145,7 @@ func (sct *selectiveCarTraverser) traverseBlocks() ([]CarBlock, error) {
 				LinkLoader:             loader,
 				LinkNodeBuilderChooser: nbc,
 			},
-		}.WalkAdv(nd, carDag.Selector, func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil })
+		}.WalkAdv(nd, parsed, func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil })
 		if err != nil {
 			return nil, err
 		}

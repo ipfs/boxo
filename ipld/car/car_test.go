@@ -96,11 +96,10 @@ func TestRoundtripSelective(t *testing.T) {
 	assertAddNodes(t, dserv, a, b, c, nd1, nd2, nd3)
 
 	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
-	selector, err := ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
+	selector := ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
 		efsb.Insert("Links",
 			ssb.ExploreIndex(1, ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreAll(ssb.ExploreRecursiveEdge()))))
-	}).Selector()
-	require.NoError(t, err)
+	}).Node()
 
 	sc := NewSelectiveCar(context.Background(), sourceBs, []CarDag{CarDag{Root: nd3.Cid(), Selector: selector}})
 	scr, err := sc.Traverse()

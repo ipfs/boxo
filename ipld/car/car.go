@@ -11,7 +11,6 @@ import (
 	cbor "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
-	"github.com/ipld/go-ipld-prime/traversal/selector"
 
 	util "github.com/ipld/go-car/util"
 )
@@ -26,11 +25,6 @@ type Store interface {
 
 type ReadStore interface {
 	Get(cid.Cid) (blocks.Block, error)
-}
-
-type CarDag struct {
-	Root     cid.Cid
-	Selector selector.Selector
 }
 
 type CarHeader struct {
