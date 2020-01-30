@@ -571,8 +571,9 @@ func TestWantlistCleanup(t *testing.T) {
 	defer ig.Close()
 	bg := blocksutil.NewBlockGenerator()
 
-	instances := ig.Instances(1)[0]
-	bswap := instances.Exchange
+	instances := ig.Instances(2)
+	instance := instances[0]
+	bswap := instance.Exchange
 	blocks := bg.Blocks(20)
 
 	var keys []cid.Cid
@@ -580,6 +581,7 @@ func TestWantlistCleanup(t *testing.T) {
 		keys = append(keys, b.Cid())
 	}
 
+	// Once context times out, key should be removed from wantlist
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*50)
 	defer cancel()
 	_, err := bswap.GetBlock(ctx, keys[0])
@@ -589,10 +591,11 @@ func TestWantlistCleanup(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 50)
 
-	if len(bswap.GetWantlist()) > 0 {
+	if len(bswap.GetWantHaves()) > 0 {
 		t.Fatal("should not have anyting in wantlist")
 	}
 
+	// Once context times out, keys should be removed from wantlist
 	ctx, cancel = context.WithTimeout(context.Background(), time.Millisecond*50)
 	defer cancel()
 	_, err = bswap.GetBlocks(ctx, keys[:10])
@@ -603,29 +606,37 @@ func TestWantlistCleanup(t *testing.T) {
 	<-ctx.Done()
 	time.Sleep(time.Millisecond * 50)
 
-	if len(bswap.GetWantlist()) > 0 {
+	if len(bswap.GetWantHaves()) > 0 {
 		t.Fatal("should not have anyting in wantlist")
 	}
 
+	// Send want for single block, with no timeout
 	_, err = bswap.GetBlocks(context.Background(), keys[:1])
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// Send want for 10 blocks
 	ctx, cancel = context.WithCancel(context.Background())
 	_, err = bswap.GetBlocks(ctx, keys[10:])
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// Even after 50 milli-seconds we haven't explicitly cancelled anything
+	// and no timeouts have expired, so we should have 11 want-haves
 	time.Sleep(time.Millisecond * 50)
-	if len(bswap.GetWantlist()) != 5 {
-		t.Fatal("should have 5 keys in wantlist")
+	if len(bswap.GetWantHaves()) != 11 {
+		t.Fatal("should have 11 keys in wantlist")
 	}
 
+	// Cancel the timeout for the request for 10 blocks. This should remove
+	// the want-haves
 	cancel()
+
+	// Once the cancel is processed, we are left with the request for 1 block
 	time.Sleep(time.Millisecond * 50)
-	if !(len(bswap.GetWantlist()) == 1 && bswap.GetWantlist()[0] == keys[0]) {
+	if !(len(bswap.GetWantHaves()) == 1 && bswap.GetWantHaves()[0] == keys[0]) {
 		t.Fatal("should only have keys[0] in wantlist")
 	}
 }

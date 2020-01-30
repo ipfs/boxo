@@ -55,7 +55,8 @@ func (g *InstanceGenerator) Next() Instance {
 	return NewInstance(g.ctx, g.net, p, g.bsOptions...)
 }
 
-// Instances creates N test instances of bitswap + dependencies
+// Instances creates N test instances of bitswap + dependencies and connects
+// them to each other
 func (g *InstanceGenerator) Instances(n int) []Instance {
 	var instances []Instance
 	for j := 0; j < n; j++ {

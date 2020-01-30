@@ -2,256 +2,112 @@ package wantmanager
 
 import (
 	"context"
-	"math"
 
-	bsmsg "github.com/ipfs/go-bitswap/message"
-	wantlist "github.com/ipfs/go-bitswap/wantlist"
-	logging "github.com/ipfs/go-log"
+	bsbpm "github.com/ipfs/go-bitswap/blockpresencemanager"
+	bssim "github.com/ipfs/go-bitswap/sessioninterestmanager"
+	"github.com/ipfs/go-bitswap/sessionmanager"
+	bsswl "github.com/ipfs/go-bitswap/sessionwantlist"
 
 	cid "github.com/ipfs/go-cid"
-	metrics "github.com/ipfs/go-metrics-interface"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
-var log = logging.Logger("bitswap")
-
-const (
-	// maxPriority is the max priority as defined by the bitswap protocol
-	maxPriority = math.MaxInt32
-)
-
-// PeerHandler sends changes out to the network as they get added to the wantlist
-// managed by the WantManager.
+// PeerHandler sends wants / cancels to other peers
 type PeerHandler interface {
+	// Connected is called when a peer connects, with any initial want-haves
+	// that have been broadcast to all peers (as part of session discovery)
+	Connected(p peer.ID, initialWants []cid.Cid)
+	// Disconnected is called when a peer disconnects
 	Disconnected(p peer.ID)
-	Connected(p peer.ID, initialWants *wantlist.SessionTrackedWantlist)
-	SendMessage(entries []bsmsg.Entry, targets []peer.ID, from uint64)
+	// BroadcastWantHaves sends want-haves to all connected peers
+	BroadcastWantHaves(ctx context.Context, wantHaves []cid.Cid)
+	// SendCancels sends cancels to all peers that had previously been sent
+	// a want-block or want-have for the given key
+	SendCancels(context.Context, []cid.Cid)
 }
 
-type wantMessage interface {
-	handle(wm *WantManager)
+// SessionManager receives incoming messages and distributes them to sessions
+type SessionManager interface {
+	ReceiveFrom(p peer.ID, blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) []sessionmanager.Session
 }
 
-// WantManager manages a global want list. It tracks two seperate want lists -
-// one for all wants, and one for wants that are specifically broadcast to the
-// internet.
+// WantManager
+// - informs the SessionManager and BlockPresenceManager of incoming information
+//   and cancelled sessions
+// - informs the PeerManager of connects and disconnects
+// - manages the list of want-haves that are broadcast to the internet
+//   (as opposed to being sent to specific peers)
 type WantManager struct {
-	// channel requests to the run loop
-	// to get predictable behavior while running this in a go routine
-	// having only one channel is neccesary, so requests are processed serially
-	wantMessages chan wantMessage
+	bcwl *bsswl.SessionWantlist
 
-	// synchronized by Run loop, only touch inside there
-	wl   *wantlist.SessionTrackedWantlist
-	bcwl *wantlist.SessionTrackedWantlist
-
-	ctx    context.Context
-	cancel func()
-
-	peerHandler   PeerHandler
-	wantlistGauge metrics.Gauge
+	peerHandler PeerHandler
+	sim         *bssim.SessionInterestManager
+	bpm         *bsbpm.BlockPresenceManager
+	sm          SessionManager
 }
 
 // New initializes a new WantManager for a given context.
-func New(ctx context.Context, peerHandler PeerHandler) *WantManager {
-	ctx, cancel := context.WithCancel(ctx)
-	wantlistGauge := metrics.NewCtx(ctx, "wantlist_total",
-		"Number of items in wantlist.").Gauge()
+func New(ctx context.Context, peerHandler PeerHandler, sim *bssim.SessionInterestManager, bpm *bsbpm.BlockPresenceManager) *WantManager {
 	return &WantManager{
-		wantMessages:  make(chan wantMessage, 10),
-		wl:            wantlist.NewSessionTrackedWantlist(),
-		bcwl:          wantlist.NewSessionTrackedWantlist(),
-		ctx:           ctx,
-		cancel:        cancel,
-		peerHandler:   peerHandler,
-		wantlistGauge: wantlistGauge,
+		bcwl:        bsswl.NewSessionWantlist(),
+		peerHandler: peerHandler,
+		sim:         sim,
+		bpm:         bpm,
 	}
 }
 
-// WantBlocks adds the given cids to the wantlist, tracked by the given session.
-func (wm *WantManager) WantBlocks(ctx context.Context, ks []cid.Cid, peers []peer.ID, ses uint64) {
-	log.Debugf("[wantlist] want blocks; cids=%s, peers=%s, ses=%d", ks, peers, ses)
-	wm.addEntries(ctx, ks, peers, false, ses)
+func (wm *WantManager) SetSessionManager(sm SessionManager) {
+	wm.sm = sm
 }
 
-// CancelWants removes the given cids from the wantlist, tracked by the given session.
-func (wm *WantManager) CancelWants(ctx context.Context, ks []cid.Cid, peers []peer.ID, ses uint64) {
-	log.Debugf("[wantlist] unwant blocks; cids=%s, peers=%s, ses=%d", ks, peers, ses)
-	wm.addEntries(context.Background(), ks, peers, true, ses)
+// ReceiveFrom is called when a new message is received
+func (wm *WantManager) ReceiveFrom(ctx context.Context, p peer.ID, blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
+	// Record block presence for HAVE / DONT_HAVE
+	wm.bpm.ReceiveFrom(p, haves, dontHaves)
+	// Inform interested sessions
+	wm.sm.ReceiveFrom(p, blks, haves, dontHaves)
+	// Remove received blocks from broadcast wantlist
+	wm.bcwl.RemoveKeys(blks)
+	// Send CANCEL to all peers with want-have / want-block
+	wm.peerHandler.SendCancels(ctx, blks)
 }
 
-// CurrentWants returns the list of current wants.
-func (wm *WantManager) CurrentWants() []wantlist.Entry {
-	resp := make(chan []wantlist.Entry, 1)
-	select {
-	case wm.wantMessages <- &currentWantsMessage{resp}:
-	case <-wm.ctx.Done():
-		return nil
-	}
-	select {
-	case wantlist := <-resp:
-		return wantlist
-	case <-wm.ctx.Done():
-		return nil
-	}
+// BroadcastWantHaves is called when want-haves should be broadcast to all
+// connected peers (as part of session discovery)
+func (wm *WantManager) BroadcastWantHaves(ctx context.Context, ses uint64, wantHaves []cid.Cid) {
+	// log.Warningf("BroadcastWantHaves session%d: %s", ses, wantHaves)
+
+	// Record broadcast wants
+	wm.bcwl.Add(wantHaves, ses)
+
+	// Send want-haves to all peers
+	wm.peerHandler.BroadcastWantHaves(ctx, wantHaves)
 }
 
-// CurrentBroadcastWants returns the current list of wants that are broadcasts.
-func (wm *WantManager) CurrentBroadcastWants() []wantlist.Entry {
-	resp := make(chan []wantlist.Entry, 1)
-	select {
-	case wm.wantMessages <- &currentBroadcastWantsMessage{resp}:
-	case <-wm.ctx.Done():
-		return nil
-	}
-	select {
-	case wl := <-resp:
-		return wl
-	case <-wm.ctx.Done():
-		return nil
-	}
+// RemoveSession is called when the session is shut down
+func (wm *WantManager) RemoveSession(ctx context.Context, ses uint64) {
+	// Remove session's interest in the given blocks
+	cancelKs := wm.sim.RemoveSessionInterest(ses)
+
+	// Remove broadcast want-haves for session
+	wm.bcwl.RemoveSession(ses)
+
+	// Free up block presence tracking for keys that no session is interested
+	// in anymore
+	wm.bpm.RemoveKeys(cancelKs)
+
+	// Send CANCEL to all peers for blocks that no session is interested in anymore
+	wm.peerHandler.SendCancels(ctx, cancelKs)
 }
 
-// WantCount returns the total count of wants.
-func (wm *WantManager) WantCount() int {
-	resp := make(chan int, 1)
-	select {
-	case wm.wantMessages <- &wantCountMessage{resp}:
-	case <-wm.ctx.Done():
-		return 0
-	}
-	select {
-	case count := <-resp:
-		return count
-	case <-wm.ctx.Done():
-		return 0
-	}
-}
-
-// Connected is called when a new peer is connected
+// Connected is called when a new peer connects
 func (wm *WantManager) Connected(p peer.ID) {
-	select {
-	case wm.wantMessages <- &connectedMessage{p}:
-	case <-wm.ctx.Done():
-	}
+	// Tell the peer handler that there is a new connection and give it the
+	// list of outstanding broadcast wants
+	wm.peerHandler.Connected(p, wm.bcwl.Keys())
 }
 
-// Disconnected is called when a peer is disconnected
+// Disconnected is called when a peer disconnects
 func (wm *WantManager) Disconnected(p peer.ID) {
-	select {
-	case wm.wantMessages <- &disconnectedMessage{p}:
-	case <-wm.ctx.Done():
-	}
-}
-
-// Startup starts processing for the WantManager.
-func (wm *WantManager) Startup() {
-	go wm.run()
-}
-
-// Shutdown ends processing for the want manager.
-func (wm *WantManager) Shutdown() {
-	wm.cancel()
-}
-
-func (wm *WantManager) run() {
-	// NOTE: Do not open any streams or connections from anywhere in this
-	// event loop. Really, just don't do anything likely to block.
-	for {
-		select {
-		case message := <-wm.wantMessages:
-			message.handle(wm)
-		case <-wm.ctx.Done():
-			return
-		}
-	}
-}
-
-func (wm *WantManager) addEntries(ctx context.Context, ks []cid.Cid, targets []peer.ID, cancel bool, ses uint64) {
-	entries := make([]bsmsg.Entry, 0, len(ks))
-	for i, k := range ks {
-		entries = append(entries, bsmsg.Entry{
-			Cancel: cancel,
-			Entry:  wantlist.NewRefEntry(k, maxPriority-i),
-		})
-	}
-	select {
-	case wm.wantMessages <- &wantSet{entries: entries, targets: targets, from: ses}:
-	case <-wm.ctx.Done():
-	case <-ctx.Done():
-	}
-}
-
-type wantSet struct {
-	entries []bsmsg.Entry
-	targets []peer.ID
-	from    uint64
-}
-
-func (ws *wantSet) handle(wm *WantManager) {
-	// is this a broadcast or not?
-	brdc := len(ws.targets) == 0
-
-	// add changes to our wantlist
-	for _, e := range ws.entries {
-		if e.Cancel {
-			if brdc {
-				wm.bcwl.Remove(e.Cid, ws.from)
-			}
-
-			if wm.wl.Remove(e.Cid, ws.from) {
-				wm.wantlistGauge.Dec()
-			}
-		} else {
-			if brdc {
-				wm.bcwl.AddEntry(e.Entry, ws.from)
-			}
-			if wm.wl.AddEntry(e.Entry, ws.from) {
-				wm.wantlistGauge.Inc()
-			}
-		}
-	}
-
-	// broadcast those wantlist changes
-	wm.peerHandler.SendMessage(ws.entries, ws.targets, ws.from)
-}
-
-type currentWantsMessage struct {
-	resp chan<- []wantlist.Entry
-}
-
-func (cwm *currentWantsMessage) handle(wm *WantManager) {
-	cwm.resp <- wm.wl.Entries()
-}
-
-type currentBroadcastWantsMessage struct {
-	resp chan<- []wantlist.Entry
-}
-
-func (cbcwm *currentBroadcastWantsMessage) handle(wm *WantManager) {
-	cbcwm.resp <- wm.bcwl.Entries()
-}
-
-type wantCountMessage struct {
-	resp chan<- int
-}
-
-func (wcm *wantCountMessage) handle(wm *WantManager) {
-	wcm.resp <- wm.wl.Len()
-}
-
-type connectedMessage struct {
-	p peer.ID
-}
-
-func (cm *connectedMessage) handle(wm *WantManager) {
-	wm.peerHandler.Connected(cm.p, wm.bcwl)
-}
-
-type disconnectedMessage struct {
-	p peer.ID
-}
-
-func (dm *disconnectedMessage) handle(wm *WantManager) {
-	wm.peerHandler.Disconnected(dm.p)
+	wm.peerHandler.Disconnected(p)
 }

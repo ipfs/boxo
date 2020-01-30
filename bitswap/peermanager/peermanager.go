@@ -2,19 +2,26 @@ package peermanager
 
 import (
 	"context"
+	"sync"
 
-	bsmsg "github.com/ipfs/go-bitswap/message"
-	wantlist "github.com/ipfs/go-bitswap/wantlist"
+	"github.com/ipfs/go-metrics-interface"
 
+	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
 // PeerQueue provides a queue of messages to be sent for a single peer.
 type PeerQueue interface {
-	AddMessage(entries []bsmsg.Entry, ses uint64)
+	AddBroadcastWantHaves([]cid.Cid)
+	AddWants([]cid.Cid, []cid.Cid)
+	AddCancels([]cid.Cid)
 	Startup()
-	AddWantlist(initialWants *wantlist.SessionTrackedWantlist)
 	Shutdown()
+}
+
+type Session interface {
+	ID() uint64
+	SignalAvailability(peer.ID, bool)
 }
 
 // PeerQueueFactory provides a function that will create a PeerQueue.
@@ -27,24 +34,47 @@ type peerQueueInstance struct {
 
 // PeerManager manages a pool of peers and sends messages to peers in the pool.
 type PeerManager struct {
+	// sync access to peerQueues and peerWantManager
+	pqLk sync.RWMutex
 	// peerQueues -- interact through internal utility functions get/set/remove/iterate
 	peerQueues map[peer.ID]*peerQueueInstance
+	pwm        *peerWantManager
 
 	createPeerQueue PeerQueueFactory
 	ctx             context.Context
+
+	psLk         sync.RWMutex
+	sessions     map[uint64]Session
+	peerSessions map[peer.ID]map[uint64]struct{}
+
+	self peer.ID
 }
 
 // New creates a new PeerManager, given a context and a peerQueueFactory.
-func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
+func New(ctx context.Context, createPeerQueue PeerQueueFactory, self peer.ID) *PeerManager {
+	wantGauge := metrics.NewCtx(ctx, "wantlist_total", "Number of items in wantlist.").Gauge()
 	return &PeerManager{
 		peerQueues:      make(map[peer.ID]*peerQueueInstance),
+		pwm:             newPeerWantManager(wantGauge),
 		createPeerQueue: createPeerQueue,
 		ctx:             ctx,
+		self:            self,
+
+		sessions:     make(map[uint64]Session),
+		peerSessions: make(map[peer.ID]map[uint64]struct{}),
 	}
+}
+
+func (pm *PeerManager) AvailablePeers() []peer.ID {
+	// TODO: Rate-limit peers
+	return pm.ConnectedPeers()
 }
 
 // ConnectedPeers returns a list of peers this PeerManager is managing.
 func (pm *PeerManager) ConnectedPeers() []peer.ID {
+	pm.pqLk.RLock()
+	defer pm.pqLk.RUnlock()
+
 	peers := make([]peer.ID, 0, len(pm.peerQueues))
 	for p := range pm.peerQueues {
 		peers = append(peers, p)
@@ -54,18 +84,31 @@ func (pm *PeerManager) ConnectedPeers() []peer.ID {
 
 // Connected is called to add a new peer to the pool, and send it an initial set
 // of wants.
-func (pm *PeerManager) Connected(p peer.ID, initialWants *wantlist.SessionTrackedWantlist) {
+func (pm *PeerManager) Connected(p peer.ID, initialWantHaves []cid.Cid) {
+	pm.pqLk.Lock()
+	defer pm.pqLk.Unlock()
+
 	pq := pm.getOrCreate(p)
-
-	if pq.refcnt == 0 {
-		pq.pq.AddWantlist(initialWants)
-	}
-
 	pq.refcnt++
+
+	// If this is the first connection to the peer
+	if pq.refcnt == 1 {
+		// Inform the peer want manager that there's a new peer
+		pm.pwm.AddPeer(p)
+		// Record that the want-haves are being sent to the peer
+		pm.pwm.PrepareSendWants(p, nil, initialWantHaves)
+		// Broadcast any live want-haves to the newly connected peers
+		pq.pq.AddBroadcastWantHaves(initialWantHaves)
+		// Inform the sessions that the peer has connected
+		pm.signalAvailability(p, true)
+	}
 }
 
 // Disconnected is called to remove a peer from the pool.
 func (pm *PeerManager) Disconnected(p peer.ID) {
+	pm.pqLk.Lock()
+	defer pm.pqLk.Unlock()
+
 	pq, ok := pm.peerQueues[p]
 
 	if !ok {
@@ -77,23 +120,60 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 		return
 	}
 
+	// Inform the sessions that the peer has disconnected
+	pm.signalAvailability(p, false)
+
+	// Clean up the peer
 	delete(pm.peerQueues, p)
 	pq.pq.Shutdown()
+	pm.pwm.RemovePeer(p)
 }
 
-// SendMessage is called to send a message to all or some peers in the pool;
-// if targets is nil, it sends to all.
-func (pm *PeerManager) SendMessage(entries []bsmsg.Entry, targets []peer.ID, from uint64) {
-	if len(targets) == 0 {
-		for _, p := range pm.peerQueues {
-			p.pq.AddMessage(entries, from)
-		}
-	} else {
-		for _, t := range targets {
-			pqi := pm.getOrCreate(t)
-			pqi.pq.AddMessage(entries, from)
+func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.Cid) {
+	pm.pqLk.Lock()
+	defer pm.pqLk.Unlock()
+
+	for p, ks := range pm.pwm.PrepareBroadcastWantHaves(wantHaves) {
+		if pqi, ok := pm.peerQueues[p]; ok {
+			pqi.pq.AddBroadcastWantHaves(ks)
 		}
 	}
+}
+
+func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) {
+	pm.pqLk.Lock()
+	defer pm.pqLk.Unlock()
+
+	if pqi, ok := pm.peerQueues[p]; ok {
+		wblks, whvs := pm.pwm.PrepareSendWants(p, wantBlocks, wantHaves)
+		pqi.pq.AddWants(wblks, whvs)
+	}
+}
+
+func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid) {
+	pm.pqLk.Lock()
+	defer pm.pqLk.Unlock()
+
+	// Send a CANCEL to each peer that has been sent a want-block or want-have
+	for p, ks := range pm.pwm.PrepareSendCancels(cancelKs) {
+		if pqi, ok := pm.peerQueues[p]; ok {
+			pqi.pq.AddCancels(ks)
+		}
+	}
+}
+
+func (pm *PeerManager) CurrentWants() []cid.Cid {
+	pm.pqLk.RLock()
+	defer pm.pqLk.RUnlock()
+
+	return pm.pwm.GetWantBlocks()
+}
+
+func (pm *PeerManager) CurrentWantHaves() []cid.Cid {
+	pm.pqLk.RLock()
+	defer pm.pqLk.RUnlock()
+
+	return pm.pwm.GetWantHaves()
 }
 
 func (pm *PeerManager) getOrCreate(p peer.ID) *peerQueueInstance {
@@ -105,4 +185,45 @@ func (pm *PeerManager) getOrCreate(p peer.ID) *peerQueueInstance {
 		pm.peerQueues[p] = pqi
 	}
 	return pqi
+}
+
+func (pm *PeerManager) RegisterSession(p peer.ID, s Session) bool {
+	pm.psLk.Lock()
+	defer pm.psLk.Unlock()
+
+	if _, ok := pm.sessions[s.ID()]; !ok {
+		pm.sessions[s.ID()] = s
+	}
+
+	if _, ok := pm.peerSessions[p]; !ok {
+		pm.peerSessions[p] = make(map[uint64]struct{})
+	}
+	pm.peerSessions[p][s.ID()] = struct{}{}
+
+	_, ok := pm.peerQueues[p]
+	return ok
+}
+
+func (pm *PeerManager) UnregisterSession(ses uint64) {
+	pm.psLk.Lock()
+	defer pm.psLk.Unlock()
+
+	for p := range pm.peerSessions {
+		delete(pm.peerSessions[p], ses)
+		if len(pm.peerSessions[p]) == 0 {
+			delete(pm.peerSessions, p)
+		}
+	}
+
+	delete(pm.sessions, ses)
+}
+
+func (pm *PeerManager) signalAvailability(p peer.ID, isConnected bool) {
+	for p, sesIds := range pm.peerSessions {
+		for sesId := range sesIds {
+			if s, ok := pm.sessions[sesId]; ok {
+				s.SignalAvailability(p, isConnected)
+			}
+		}
+	}
 }

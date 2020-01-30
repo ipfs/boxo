@@ -13,7 +13,7 @@ import (
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-testing/net"
+	tnet "github.com/libp2p/go-libp2p-testing/net"
 )
 
 func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
