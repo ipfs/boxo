@@ -1092,12 +1092,12 @@ func getNextEnvelope(e *Engine, next envChan, t time.Duration) (envChan, *Envelo
 	select {
 	case env, ok := <-next: // blocks till next envelope ready
 		if !ok {
-			log.Warningf("got closed channel")
+			log.Warnf("got closed channel")
 			return nil, nil
 		}
 		return nil, env
 	case <-ctx.Done():
-		// log.Warningf("got timeout")
+		// log.Warnf("got timeout")
 	}
 	return next, nil
 }
