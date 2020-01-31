@@ -272,8 +272,8 @@ func TestSessionRegistration(t *testing.T) {
 	msgs := make(chan msg, 16)
 	peerQueueFactory := makePeerQueueFactory(msgs)
 
-	tp := testutil.GeneratePeers(2)
-	self, p1 := tp[0], tp[1]
+	tp := testutil.GeneratePeers(3)
+	self, p1, p2 := tp[0], tp[1], tp[2]
 	peerManager := New(ctx, peerQueueFactory, self)
 
 	id := uint64(1)
@@ -282,15 +282,26 @@ func TestSessionRegistration(t *testing.T) {
 	if s.available[p1] {
 		t.Fatal("Expected peer not be available till connected")
 	}
+	peerManager.RegisterSession(p2, s)
+	if s.available[p2] {
+		t.Fatal("Expected peer not be available till connected")
+	}
 
 	peerManager.Connected(p1, nil)
 	if !s.available[p1] {
+		t.Fatal("Expected signal callback")
+	}
+	peerManager.Connected(p2, nil)
+	if !s.available[p2] {
 		t.Fatal("Expected signal callback")
 	}
 
 	peerManager.Disconnected(p1)
 	if s.available[p1] {
 		t.Fatal("Expected signal callback")
+	}
+	if !s.available[p2] {
+		t.Fatal("Expected signal callback only for disconnected peer")
 	}
 
 	peerManager.UnregisterSession(id)
