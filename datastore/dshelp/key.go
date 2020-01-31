@@ -40,11 +40,12 @@ func DsKeyToMultihash(dsKey datastore.Key) (mh.Multihash, error) {
 }
 
 // DsKeyToCidV1Raw converts the given Key (which should be a raw multihash
-// key) to a Cid V1 of raw type.
-func DsKeyToCidV1Raw(dsKey datastore.Key) (cid.Cid, error) {
+// key) to a Cid V1 of the given type (see
+// https://godoc.org/github.com/ipfs/go-cid#pkg-constants).
+func DsKeyToCidV1(dsKey datastore.Key, codecType uint64) (cid.Cid, error) {
 	hash, err := DsKeyToMultihash(dsKey)
 	if err != nil {
 		return cid.Cid{}, err
 	}
-	return cid.NewCidV1(cid.Raw, hash), nil
+	return cid.NewCidV1(codecType, hash), nil
 }
