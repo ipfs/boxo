@@ -121,8 +121,10 @@ func TestRoundtripSelective(t *testing.T) {
 	err = scp.Dump(buf2)
 	require.NoError(t, err)
 
-	// verify preparation step correctly assesed length
-	require.Equal(t, scp.Size, uint64(buf.Len()))
+	// verify preparation step correctly assesed length and blocks
+	require.Equal(t, scp.Size(), uint64(buf.Len()))
+	require.Equal(t, len(scp.Cids()), blockCount)
+
 	// verify equal data written by both methods
 	require.Equal(t, buf.Bytes(), buf2.Bytes())
 

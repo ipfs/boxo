@@ -50,9 +50,9 @@ type OnNewCarBlockFunc func(Block) error
 // the Car file like size and number of blocks that go into it
 type SelectiveCarPrepared struct {
 	SelectiveCar
-	Size   uint64
-	Header CarHeader
-	Cids   []cid.Cid
+	size   uint64
+	header CarHeader
+	cids   []cid.Cid
 }
 
 // NewSelectiveCar creates a new SelectiveCar for the given car file based
@@ -115,13 +115,28 @@ func (sc SelectiveCar) Write(w io.Writer, userOnNewCarBlocks ...OnNewCarBlockFun
 	return err
 }
 
+// Size returns the total size in bytes of the car file that will be written
+func (sc SelectiveCarPrepared) Size() uint64 {
+	return sc.size
+}
+
+// Header returns the header for the car file that will be written
+func (sc SelectiveCarPrepared) Header() CarHeader {
+	return sc.header
+}
+
+// Cids returns the list of unique block cids that will be written to the car file
+func (sc SelectiveCarPrepared) Cids() []cid.Cid {
+	return sc.cids
+}
+
 // Dump writes the car file as quickly as possible based on information already
 // collected
 func (sc SelectiveCarPrepared) Dump(w io.Writer) error {
-	if err := WriteHeader(&sc.Header, w); err != nil {
+	if err := WriteHeader(&sc.header, w); err != nil {
 		return fmt.Errorf("failed to write car header: %s", err)
 	}
-	for _, c := range sc.Cids {
+	for _, c := range sc.cids {
 		blk, err := sc.store.Get(c)
 		if err != nil {
 			return err
