@@ -129,6 +129,10 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 	pm.pwm.RemovePeer(p)
 }
 
+// BroadcastWantHaves broadcasts want-haves to all peers (used by the session
+// to discover seeds).
+// For each peer it filters out want-haves that have previously been sent to
+// the peer.
 func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.Cid) {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
@@ -140,6 +144,8 @@ func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.C
 	}
 }
 
+// SendWants sends the given want-blocks and want-haves to the given peer.
+// It filters out wants that have previously been sent to the peer.
 func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
@@ -150,6 +156,8 @@ func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []ci
 	}
 }
 
+// SendCancels sends cancels for the given keys to all peers who had previously
+// received a want for those keys.
 func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid) {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
@@ -162,6 +170,7 @@ func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid) {
 	}
 }
 
+// CurrentWants returns the list of pending want-blocks
 func (pm *PeerManager) CurrentWants() []cid.Cid {
 	pm.pqLk.RLock()
 	defer pm.pqLk.RUnlock()
@@ -169,6 +178,7 @@ func (pm *PeerManager) CurrentWants() []cid.Cid {
 	return pm.pwm.GetWantBlocks()
 }
 
+// CurrentWantHaves returns the list of pending want-haves
 func (pm *PeerManager) CurrentWantHaves() []cid.Cid {
 	pm.pqLk.RLock()
 	defer pm.pqLk.RUnlock()
@@ -187,6 +197,8 @@ func (pm *PeerManager) getOrCreate(p peer.ID) *peerQueueInstance {
 	return pqi
 }
 
+// RegisterSession tells the PeerManager that the given session is interested
+// in events about the given peer.
 func (pm *PeerManager) RegisterSession(p peer.ID, s Session) bool {
 	pm.psLk.Lock()
 	defer pm.psLk.Unlock()
@@ -204,6 +216,8 @@ func (pm *PeerManager) RegisterSession(p peer.ID, s Session) bool {
 	return ok
 }
 
+// UnregisterSession tells the PeerManager that the given session is no longer
+// interested in PeerManager events.
 func (pm *PeerManager) UnregisterSession(ses uint64) {
 	pm.psLk.Lock()
 	defer pm.psLk.Unlock()
@@ -218,12 +232,16 @@ func (pm *PeerManager) UnregisterSession(ses uint64) {
 	delete(pm.sessions, ses)
 }
 
+// signalAvailability is called when a peer's connectivity changes.
+// It informs interested sessions.
 func (pm *PeerManager) signalAvailability(p peer.ID, isConnected bool) {
-	for p, sesIds := range pm.peerSessions {
-		for sesId := range sesIds {
-			if s, ok := pm.sessions[sesId]; ok {
-				s.SignalAvailability(p, isConnected)
-			}
+	sesIds, ok := pm.peerSessions[p]
+	if !ok {
+		return
+	}
+	for sesId := range sesIds {
+		if s, ok := pm.sessions[sesId]; ok {
+			s.SignalAvailability(p, isConnected)
 		}
 	}
 }
