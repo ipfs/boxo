@@ -88,6 +88,7 @@ func TestRoundtripSelective(t *testing.T) {
 	nd2 := &dag.ProtoNode{}
 	nd2.AddNodeLink("first", nd1)
 	nd2.AddNodeLink("dog", b)
+	nd2.AddNodeLink("repeat", nd1)
 
 	nd3 := &dag.ProtoNode{}
 	nd3.AddNodeLink("second", nd2)
@@ -101,14 +102,31 @@ func TestRoundtripSelective(t *testing.T) {
 			ssb.ExploreIndex(1, ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreAll(ssb.ExploreRecursiveEdge()))))
 	}).Node()
 
-	sc := NewSelectiveCar(context.Background(), sourceBs, []CarDag{CarDag{Root: nd3.Cid(), Selector: selector}})
-	scr, err := sc.Traverse()
+	sc := NewSelectiveCar(context.Background(), sourceBs, []Dag{Dag{Root: nd3.Cid(), Selector: selector}})
+
+	// write car in one step
+	buf := new(bytes.Buffer)
+	blockCount := 0
+	err := sc.Write(buf, func(block Block) error {
+		blockCount++
+		return nil
+	})
+	require.Equal(t, blockCount, 5)
 	require.NoError(t, err)
 
-	buf := new(bytes.Buffer)
-	err = scr.Write(buf)
+	// write car in two steps
+	scp, err := sc.Prepare()
 	require.NoError(t, err)
-	require.Equal(t, scr.Size(), uint64(buf.Len()))
+	buf2 := new(bytes.Buffer)
+	err = scp.Dump(buf2)
+	require.NoError(t, err)
+
+	// verify preparation step correctly assesed length
+	require.Equal(t, scp.Size, uint64(buf.Len()))
+	// verify equal data written by both methods
+	require.Equal(t, buf.Bytes(), buf2.Bytes())
+
+	// readout car and verify contents
 	bserv := dstest.Bserv()
 	ch, err := LoadCar(bserv.Blockstore(), buf)
 	require.NoError(t, err)
