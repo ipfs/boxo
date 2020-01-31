@@ -3,7 +3,7 @@
 package dshelp
 
 import (
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/multiformats/go-base32"
 	mh "github.com/multiformats/go-multihash"
@@ -23,6 +23,9 @@ func BinaryFromDsKey(k datastore.Key) ([]byte, error) {
 }
 
 // MultihashToDsKey creates a Key from the given Multihash.
+// If working with Cids, you can call cid.Hash() to obtain
+// the multihash. Note that different CIDs might represent
+// the same multihash.
 func MultihashToDsKey(k mh.Multihash) datastore.Key {
 	return NewKeyFromBinary(k)
 }
@@ -36,16 +39,12 @@ func DsKeyToMultihash(dsKey datastore.Key) (mh.Multihash, error) {
 	return mh.Cast(kb)
 }
 
-// CidToDsKey creates a Key from the given Cid.
-func CidToDsKey(k cid.Cid) datastore.Key {
-	return MultihashToDsKey(k.Hash())
-}
-
-// DsKeyToCid converts the given Key to its corresponding Cid.
-func DsKeyToCid(dsKey datastore.Key) (cid.Cid, error) {
+// DsKeyToCidV1Raw converts the given Key (which should be a raw multihash
+// key) to a Cid V1 of raw type.
+func DsKeyToCidV1Raw(dsKey datastore.Key) (cid.Cid, error) {
 	hash, err := DsKeyToMultihash(dsKey)
 	if err != nil {
-		return cid.Cid{}, nil
+		return cid.Cid{}, err
 	}
 	return cid.NewCidV1(cid.Raw, hash), nil
 }

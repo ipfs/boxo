@@ -8,15 +8,17 @@ import (
 
 func TestKey(t *testing.T) {
 	c, _ := cid.Decode("QmP63DkAFEnDYNjDYBpyNDfttu1fvUw99x1brscPzpqmmq")
-	dsKey := CidToDsKey(c)
-	c2, err := DsKeyToCid(dsKey)
+	dsKey := MultihashToDsKey(c.Hash())
+	mh, err := DsKeyToMultihash(dsKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(c.Hash()) != string(c2.Hash()) {
-		t.Fatal("should have parsed the same key")
+	if string(c.Hash()) != string(mh) {
+		t.Fatal("should have parsed the same multihash")
 	}
-	if c.Equals(c2) || c2.Type() != cid.Raw || c2.Version() != 1 {
+
+	c2, err := DsKeyToCidV1Raw(dsKey)
+	if err != nil || c.Equals(c2) || c2.Type() != cid.Raw || c2.Version() != 1 {
 		t.Fatal("should have been converted to CIDv1-raw")
 	}
 }
