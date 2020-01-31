@@ -75,7 +75,7 @@ func (wm *WantManager) ReceiveFrom(ctx context.Context, p peer.ID, blks []cid.Ci
 // BroadcastWantHaves is called when want-haves should be broadcast to all
 // connected peers (as part of session discovery)
 func (wm *WantManager) BroadcastWantHaves(ctx context.Context, ses uint64, wantHaves []cid.Cid) {
-	// log.Warningf("BroadcastWantHaves session%d: %s", ses, wantHaves)
+	// log.Warnf("BroadcastWantHaves session%d: %s", ses, wantHaves)
 
 	// Record broadcast wants
 	wm.bcwl.Add(wantHaves, ses)
