@@ -269,6 +269,10 @@ func (c *queryTestDS) Query(q dsq.Query) (dsq.Results, error) {
 	return c.ds.Query(q)
 }
 
+func (c *queryTestDS) Sync(key ds.Key) error {
+	return c.ds.Sync(key)
+}
+
 func (c *queryTestDS) Batch() (ds.Batch, error) {
 	return ds.NewBasicBatch(c), nil
 }
