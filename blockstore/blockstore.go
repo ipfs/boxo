@@ -119,8 +119,7 @@ func (bs *blockstore) Get(k cid.Cid) (blocks.Block, error) {
 		log.Error("undefined cid in blockstore")
 		return nil, ErrNotFound
 	}
-
-	bdata, err := bs.datastore.Get(dshelp.CidToDsKey(k))
+	bdata, err := bs.datastore.Get(dshelp.MultihashToDsKey(k.Hash()))
 	if err == ds.ErrNotFound {
 		return nil, ErrNotFound
 	}
@@ -143,7 +142,7 @@ func (bs *blockstore) Get(k cid.Cid) (blocks.Block, error) {
 }
 
 func (bs *blockstore) Put(block blocks.Block) error {
-	k := dshelp.CidToDsKey(block.Cid())
+	k := dshelp.MultihashToDsKey(block.Cid().Hash())
 
 	// Has is cheaper than Put, so see if we already have it
 	exists, err := bs.datastore.Has(k)
@@ -159,7 +158,7 @@ func (bs *blockstore) PutMany(blocks []blocks.Block) error {
 		return err
 	}
 	for _, b := range blocks {
-		k := dshelp.CidToDsKey(b.Cid())
+		k := dshelp.MultihashToDsKey(b.Cid().Hash())
 		exists, err := bs.datastore.Has(k)
 		if err == nil && exists {
 			continue
@@ -174,11 +173,11 @@ func (bs *blockstore) PutMany(blocks []blocks.Block) error {
 }
 
 func (bs *blockstore) Has(k cid.Cid) (bool, error) {
-	return bs.datastore.Has(dshelp.CidToDsKey(k))
+	return bs.datastore.Has(dshelp.MultihashToDsKey(k.Hash()))
 }
 
 func (bs *blockstore) GetSize(k cid.Cid) (int, error) {
-	size, err := bs.datastore.GetSize(dshelp.CidToDsKey(k))
+	size, err := bs.datastore.GetSize(dshelp.MultihashToDsKey(k.Hash()))
 	if err == ds.ErrNotFound {
 		return -1, ErrNotFound
 	}
@@ -186,7 +185,7 @@ func (bs *blockstore) GetSize(k cid.Cid) (int, error) {
 }
 
 func (bs *blockstore) DeleteBlock(k cid.Cid) error {
-	return bs.datastore.Delete(dshelp.CidToDsKey(k))
+	return bs.datastore.Delete(dshelp.MultihashToDsKey(k.Hash()))
 }
 
 // AllKeysChan runs a query for keys from the blockstore.
@@ -220,12 +219,12 @@ func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 			}
 
 			// need to convert to key.Key using key.KeyFromDsKey.
-			k, err := dshelp.DsKeyToCid(ds.RawKey(e.Key))
+			bk, err := dshelp.BinaryFromDsKey(ds.RawKey(e.Key))
 			if err != nil {
-				log.Warningf("error parsing key from DsKey: %s", err)
+				log.Warningf("error parsing key from binary: %s", err)
 				continue
 			}
-
+			k := cid.NewCidV1(cid.Raw, bk)
 			select {
 			case <-ctx.Done():
 				return

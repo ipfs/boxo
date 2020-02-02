@@ -202,6 +202,11 @@ func (c *callbackDatastore) Query(q dsq.Query) (dsq.Results, error) {
 	return c.ds.Query(q)
 }
 
+func (c *callbackDatastore) Sync(key ds.Key) error {
+	c.CallF()
+	return c.ds.Sync(key)
+}
+
 func (c *callbackDatastore) Batch() (ds.Batch, error) {
 	return ds.NewBasicBatch(c), nil
 }
