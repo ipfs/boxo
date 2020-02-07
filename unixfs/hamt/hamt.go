@@ -489,10 +489,28 @@ func (ds *Shard) modifyValue(ctx context.Context, hv *hashBits, key string, val 
 				//       structures, this will help to normalize them.
 				return ds.childer.rm(idx)
 			case 1:
-				nchild := child.childer.children[0]
-				if nchild.isValueNode() {
+				// The single child _should_ be a value by
+				// induction. However, we allow for it to be a
+				// shard in case an implementation is broken.
+
+				// Have we loaded the child? Prefer that.
+				schild := child.childer.child(0)
+				if schild != nil {
+					if schild.isValueNode() {
+						ds.childer.set(schild, i)
+					}
+					return nil
+				}
+
+				// Otherwise, work with the link.
+				slnk := child.childer.link(0)
+				lnkType, err := child.childer.sd.childLinkType(slnk)
+				if err != nil {
+					return err
+				}
+				if lnkType == shardValueLink {
 					// sub-shard with a single value element, collapse it
-					ds.childer.set(nchild, i)
+					ds.childer.setLink(slnk, i)
 				}
 				return nil
 			}
@@ -517,6 +535,8 @@ type childer struct {
 	sd       *Shard
 	dserv    ipld.DAGService
 	bitfield bitfield.Bitfield
+
+	// Only one of links/children will be non-nil for every child/link.
 	links    []*ipld.Link
 	children []*Shard
 }
@@ -572,6 +592,12 @@ func (s *childer) insert(key string, lnk *ipld.Link, idx int) error {
 
 func (s *childer) set(sd *Shard, i int) {
 	s.children[i] = sd
+	s.links[i] = nil
+}
+
+func (s *childer) setLink(lnk *ipld.Link, i int) {
+	s.children[i] = nil
+	s.links[i] = lnk
 }
 
 func (s *childer) rm(childIndex int) error {
