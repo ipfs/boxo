@@ -268,6 +268,45 @@ func TestRemoveElems(t *testing.T) {
 	}
 }
 
+func TestRemoveAfterMarshal(t *testing.T) {
+	ds := mdtest.Mock()
+	dirs, s, err := makeDir(ds, 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nd, err := s.Node()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err = NewHamtFromDag(ds, nd)
+
+	ctx := context.Background()
+
+	shuffle(time.Now().UnixNano(), dirs)
+
+	for i, d := range dirs {
+		err := s.Remove(ctx, d)
+		if err != nil {
+			t.Fatalf("%d/%d: %s", i, len(dirs), err)
+		}
+	}
+
+	nd, err = s.Node()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(nd.Links()) > 0 {
+		t.Fatal("shouldnt have any links here")
+	}
+
+	err = s.Remove(ctx, "doesnt exist")
+	if err != os.ErrNotExist {
+		t.Fatal("expected error does not exist")
+	}
+}
+
 func TestSetAfterMarshal(t *testing.T) {
 	ds := mdtest.Mock()
 	_, s, err := makeDir(ds, 300)
