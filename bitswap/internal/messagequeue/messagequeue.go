@@ -15,6 +15,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
 	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
 var log = logging.Logger("bitswap")
@@ -40,7 +41,8 @@ const (
 type MessageNetwork interface {
 	ConnectTo(context.Context, peer.ID) error
 	NewMessageSender(context.Context, peer.ID) (bsnet.MessageSender, error)
-	Self() peer.ID
+	Latency(peer.ID) time.Duration
+	Ping(context.Context, peer.ID) ping.Result
 }
 
 // MessageQueue implements queue of want messages to send to peers.
@@ -48,6 +50,7 @@ type MessageQueue struct {
 	ctx              context.Context
 	p                peer.ID
 	network          MessageNetwork
+	dhTimeoutMgr     DontHaveTimeoutManager
 	maxMessageSize   int
 	sendErrorBackoff time.Duration
 
@@ -104,17 +107,60 @@ func (r *recallWantlist) RemoveType(c cid.Cid, wtype pb.Message_Wantlist_WantTyp
 	r.pending.RemoveType(c, wtype)
 }
 
-// New creats a new MessageQueue.
-func New(ctx context.Context, p peer.ID, network MessageNetwork) *MessageQueue {
-	return newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff)
+type peerConn struct {
+	p       peer.ID
+	network MessageNetwork
+}
+
+func newPeerConnection(p peer.ID, network MessageNetwork) *peerConn {
+	return &peerConn{p, network}
+}
+
+func (pc *peerConn) Ping(ctx context.Context) ping.Result {
+	return pc.network.Ping(ctx, pc.p)
+}
+
+func (pc *peerConn) Latency() time.Duration {
+	return pc.network.Latency(pc.p)
+}
+
+// Fires when a timeout occurs waiting for a response from a peer running an
+// older version of Bitswap that doesn't support DONT_HAVE messages.
+type OnDontHaveTimeout func(peer.ID, []cid.Cid)
+
+// DontHaveTimeoutManager pings a peer to estimate latency so it can set a reasonable
+// upper bound on when to consider a DONT_HAVE request as timed out (when connected to
+// a peer that doesn't support DONT_HAVE messages)
+type DontHaveTimeoutManager interface {
+	// Start the manager (idempotent)
+	Start()
+	// Shutdown the manager (Shutdown is final, manager cannot be restarted)
+	Shutdown()
+	// AddPending adds the wants as pending a response. If the are not
+	// cancelled before the timeout, the OnDontHaveTimeout method will be called.
+	AddPending([]cid.Cid)
+	// CancelPending removes the wants
+	CancelPending([]cid.Cid)
+}
+
+// New creates a new MessageQueue.
+func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeout OnDontHaveTimeout) *MessageQueue {
+	onTimeout := func(ks []cid.Cid) {
+		onDontHaveTimeout(p, ks)
+	}
+	dhTimeoutMgr := newDontHaveTimeoutMgr(ctx, newPeerConnection(p, network), onTimeout)
+	return newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff, dhTimeoutMgr)
 }
 
 // This constructor is used by the tests
-func newMessageQueue(ctx context.Context, p peer.ID, network MessageNetwork, maxMsgSize int, sendErrorBackoff time.Duration) *MessageQueue {
+func newMessageQueue(ctx context.Context, p peer.ID, network MessageNetwork,
+	maxMsgSize int, sendErrorBackoff time.Duration, dhTimeoutMgr DontHaveTimeoutManager) *MessageQueue {
+
 	mq := &MessageQueue{
 		ctx:                 ctx,
 		p:                   p,
 		network:             network,
+		dhTimeoutMgr:        dhTimeoutMgr,
 		maxMessageSize:      maxMsgSize,
 		bcstWants:           newRecallWantList(),
 		peerWants:           newRecallWantList(),
@@ -191,9 +237,13 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 		return
 	}
 
+	// Cancel any outstanding DONT_HAVE timers
+	mq.dhTimeoutMgr.CancelPending(cancelKs)
+
 	mq.wllock.Lock()
 	defer mq.wllock.Unlock()
 
+	// Remove keys from broadcast and peer wants, and add to cancels
 	for _, c := range cancelKs {
 		mq.bcstWants.Remove(c)
 		mq.peerWants.Remove(c)
@@ -227,7 +277,14 @@ func (mq *MessageQueue) Shutdown() {
 	close(mq.done)
 }
 
+func (mq *MessageQueue) onShutdown() {
+	// Shut down the DONT_HAVE timeout manager
+	mq.dhTimeoutMgr.Shutdown()
+}
+
 func (mq *MessageQueue) runQueue() {
+	defer mq.onShutdown()
+
 	for {
 		select {
 		case <-mq.rebroadcastTimer.C:
@@ -301,6 +358,12 @@ func (mq *MessageQueue) sendMessage() {
 		return
 	}
 
+	// Make sure the DONT_HAVE timeout manager has started
+	if !mq.sender.SupportsHave() {
+		// Note: Start is idempotent
+		mq.dhTimeoutMgr.Start()
+	}
+
 	// Convert want lists to a Bitswap Message
 	message, onSent := mq.extractOutgoingMessage(mq.sender.SupportsHave())
 	if message == nil || message.Empty() {
@@ -315,6 +378,8 @@ func (mq *MessageQueue) sendMessage() {
 			// We were able to send successfully.
 			onSent()
 
+			mq.simulateDontHaveWithTimeout(message)
+
 			// If the message was too big and only a subset of wants could be
 			// sent, schedule sending the rest of the wants in the next
 			// iteration of the event loop.
@@ -325,6 +390,37 @@ func (mq *MessageQueue) sendMessage() {
 			return
 		}
 	}
+}
+
+// If the peer is running an older version of Bitswap that doesn't support the
+// DONT_HAVE response, watch for timeouts on any want-blocks we sent the peer,
+// and if there is a timeout simulate a DONT_HAVE response.
+func (mq *MessageQueue) simulateDontHaveWithTimeout(msg bsmsg.BitSwapMessage) {
+	// If the peer supports DONT_HAVE responses, we don't need to simulate
+	if mq.sender.SupportsHave() {
+		return
+	}
+
+	mq.wllock.Lock()
+
+	// Get the CID of each want-block that expects a DONT_HAVE response
+	wantlist := msg.Wantlist()
+	wants := make([]cid.Cid, 0, len(wantlist))
+	for _, entry := range wantlist {
+		if entry.WantType == pb.Message_Wantlist_Block && entry.SendDontHave {
+			// Unlikely, but just in case check that the block hasn't been
+			// received in the interim
+			c := entry.Cid
+			if _, ok := mq.peerWants.allWants.Contains(c); ok {
+				wants = append(wants, c)
+			}
+		}
+	}
+
+	mq.wllock.Unlock()
+
+	// Add wants to DONT_HAVE timeout manager
+	mq.dhTimeoutMgr.AddPending(wants)
 }
 
 // func (mq *MessageQueue) logOutgoingMessage(msg bsmsg.BitSwapMessage) {
@@ -420,6 +516,7 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 
 	return msg, onSent
 }
+
 func (mq *MessageQueue) initializeSender() error {
 	if mq.sender != nil {
 		return nil

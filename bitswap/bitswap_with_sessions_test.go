@@ -20,7 +20,7 @@ func TestBasicSessions(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	ig := testinstance.NewTestInstanceGenerator(vnet)
+	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -71,7 +71,7 @@ func TestSessionBetweenPeers(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	ig := testinstance.NewTestInstanceGenerator(vnet)
+	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -127,7 +127,7 @@ func TestSessionSplitFetch(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	ig := testinstance.NewTestInstanceGenerator(vnet)
+	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -171,7 +171,7 @@ func TestFetchNotConnected(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	ig := testinstance.NewTestInstanceGenerator(vnet, bitswap.ProviderSearchDelay(10*time.Millisecond))
+	ig := testinstance.NewTestInstanceGenerator(vnet, nil, []bitswap.Option{bitswap.ProviderSearchDelay(10 * time.Millisecond)})
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -216,7 +216,7 @@ func TestFetchAfterDisconnect(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	ig := testinstance.NewTestInstanceGenerator(vnet, bitswap.ProviderSearchDelay(10*time.Millisecond))
+	ig := testinstance.NewTestInstanceGenerator(vnet, nil, []bitswap.Option{bitswap.ProviderSearchDelay(10 * time.Millisecond)})
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -290,7 +290,7 @@ func TestInterestCacheOverflow(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	ig := testinstance.NewTestInstanceGenerator(vnet)
+	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -342,7 +342,7 @@ func TestPutAfterSessionCacheEvict(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	ig := testinstance.NewTestInstanceGenerator(vnet)
+	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -382,7 +382,7 @@ func TestMultipleSessions(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	ig := testinstance.NewTestInstanceGenerator(vnet)
+	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -425,7 +425,7 @@ func TestWantlistClearsOnCancel(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	ig := testinstance.NewTestInstanceGenerator(vnet)
+	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 

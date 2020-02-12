@@ -161,6 +161,8 @@ type Engine struct {
 	// bytes up to which we will replace a want-have with a want-block
 	maxBlockSizeReplaceHasWithBlock int
 
+	sendDontHaves bool
+
 	self peer.ID
 }
 
@@ -180,6 +182,7 @@ func newEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger,
 		ticker:                          time.NewTicker(time.Millisecond * 100),
 		maxBlockSizeReplaceHasWithBlock: maxReplaceSize,
 		taskWorkerCount:                 taskWorkerCount,
+		sendDontHaves:                   true,
 		self:                            self,
 	}
 	e.tagQueued = fmt.Sprintf(tagFormat, "queued", uuid.New().String())
@@ -191,6 +194,16 @@ func newEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger,
 		peertaskqueue.IgnoreFreezing(true))
 	go e.scoreWorker(ctx)
 	return e
+}
+
+// SetSendDontHaves indicates what to do when the engine receives a want-block
+// for a block that is not in the blockstore. Either
+// - Send a DONT_HAVE message
+// - Simply don't respond
+// Older versions of Bitswap did not respond, so this allows us to simulate
+// those older versions for testing.
+func (e *Engine) SetSendDontHaves(send bool) {
+	e.sendDontHaves = send
 }
 
 // Start up workers to handle requests from other nodes for the data on this node
@@ -563,7 +576,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		// If the block was not found
 		if !found {
 			// Only add the task to the queue if the requester wants a DONT_HAVE
-			if entry.SendDontHave {
+			if e.sendDontHaves && entry.SendDontHave {
 				newWorkExists = true
 				isWantBlock := false
 				if entry.WantType == pb.Message_Wantlist_Block {

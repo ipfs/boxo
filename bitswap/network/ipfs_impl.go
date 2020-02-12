@@ -19,6 +19,7 @@ import (
 	peerstore "github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-core/routing"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	msgio "github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -105,6 +106,17 @@ func (s *streamMessageSender) SupportsHave() bool {
 
 func (bsnet *impl) Self() peer.ID {
 	return bsnet.host.ID()
+}
+
+func (bsnet *impl) Ping(ctx context.Context, p peer.ID) ping.Result {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	res := <-ping.Ping(ctx, bsnet.host, p)
+	return res
+}
+
+func (bsnet *impl) Latency(p peer.ID) time.Duration {
+	return bsnet.host.Peerstore().LatencyEWMA(p)
 }
 
 // Indicates whether the given protocol supports HAVE / DONT_HAVE messages
