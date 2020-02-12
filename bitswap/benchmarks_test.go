@@ -15,11 +15,13 @@ import (
 
 	"github.com/ipfs/go-bitswap/internal/testutil"
 	blocks "github.com/ipfs/go-block-format"
+	protocol "github.com/libp2p/go-libp2p-core/protocol"
 
 	bitswap "github.com/ipfs/go-bitswap"
 	bssession "github.com/ipfs/go-bitswap/internal/session"
 	testinstance "github.com/ipfs/go-bitswap/internal/testinstance"
 	tn "github.com/ipfs/go-bitswap/internal/testnet"
+	bsnet "github.com/ipfs/go-bitswap/network"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
@@ -110,6 +112,74 @@ func BenchmarkFixedDelay(b *testing.B) {
 	for _, bch := range benches {
 		b.Run(bch.name, func(b *testing.B) {
 			subtestDistributeAndFetch(b, bch.nodeCount, bch.blockCount, fixedDelay, bstoreLatency, bch.distFn, bch.fetchFn)
+		})
+	}
+
+	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
+	_ = ioutil.WriteFile("tmp/benchmark.json", out, 0666)
+	printResults(benchmarkLog)
+}
+
+type mixedBench struct {
+	bench
+	fetcherCount int // number of nodes that fetch data
+	oldSeedCount int // number of seed nodes running old version of Bitswap
+}
+
+var mixedBenches = []mixedBench{
+	mixedBench{bench{"3Nodes-Overlap3-OneAtATime", 3, 10, overlap2, oneAtATime}, 1, 2},
+	mixedBench{bench{"3Nodes-AllToAll-OneAtATime", 3, 10, allToAll, oneAtATime}, 1, 2},
+	mixedBench{bench{"3Nodes-Overlap3-AllConcurrent", 3, 10, overlap2, fetchAllConcurrent}, 1, 2},
+	mixedBench{bench{"3Nodes-Overlap3-UnixfsFetch", 3, 100, overlap2, unixfsFileFetch}, 1, 2},
+}
+
+func BenchmarkFetchFromOldBitswap(b *testing.B) {
+	benchmarkLog = nil
+	fixedDelay := delay.Fixed(10 * time.Millisecond)
+	bstoreLatency := time.Duration(0)
+
+	for _, bch := range mixedBenches {
+		b.Run(bch.name, func(b *testing.B) {
+			fetcherCount := bch.fetcherCount
+			oldSeedCount := bch.oldSeedCount
+			newSeedCount := bch.nodeCount - (fetcherCount + oldSeedCount)
+
+			net := tn.VirtualNetwork(mockrouting.NewServer(), fixedDelay)
+
+			// Simulate an older Bitswap node (old protocol ID) that doesn't
+			// send DONT_HAVE responses
+			oldProtocol := []protocol.ID{bsnet.ProtocolBitswapOneOne}
+			oldNetOpts := []bsnet.NetOpt{bsnet.SupportedProtocols(oldProtocol)}
+			oldBsOpts := []bitswap.Option{bitswap.SetSendDontHaves(false)}
+			oldNodeGenerator := testinstance.NewTestInstanceGenerator(net, oldNetOpts, oldBsOpts)
+
+			// Regular new Bitswap node
+			newNodeGenerator := testinstance.NewTestInstanceGenerator(net, nil, nil)
+			var instances []testinstance.Instance
+
+			// Create new nodes (fetchers + seeds)
+			for i := 0; i < fetcherCount+newSeedCount; i++ {
+				inst := newNodeGenerator.Next()
+				instances = append(instances, inst)
+			}
+			// Create old nodes (just seeds)
+			for i := 0; i < oldSeedCount; i++ {
+				inst := oldNodeGenerator.Next()
+				instances = append(instances, inst)
+			}
+			// Connect all the nodes together
+			testinstance.ConnectInstances(instances)
+
+			// Generate blocks, with a smaller root block
+			rootBlock := testutil.GenerateBlocksOfSize(1, rootBlockSize)
+			blocks := testutil.GenerateBlocksOfSize(bch.blockCount, stdBlockSize)
+			blocks[0] = rootBlock[0]
+
+			// Run the distribution
+			runDistributionMulti(b, instances[:fetcherCount], instances[fetcherCount:], blocks, bstoreLatency, bch.distFn, bch.fetchFn)
+
+			newNodeGenerator.Close()
+			oldNodeGenerator.Close()
 		})
 	}
 
@@ -226,12 +296,12 @@ func BenchmarkDatacenterMultiLeechMultiSeed(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			net := tn.RateLimitedVirtualNetwork(mockrouting.NewServer(), d, rateLimitGenerator)
 
-			ig := testinstance.NewTestInstanceGenerator(net)
+			ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 			defer ig.Close()
 
 			instances := ig.Instances(numnodes)
 			blocks := testutil.GenerateBlocksOfSize(numblks, blockSize)
-			runDistributionMulti(b, instances, 3, blocks, bstoreLatency, df, ff)
+			runDistributionMulti(b, instances[:3], instances[3:], blocks, bstoreLatency, df, ff)
 		}
 	})
 
@@ -244,7 +314,7 @@ func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, b
 	for i := 0; i < b.N; i++ {
 		net := tn.VirtualNetwork(mockrouting.NewServer(), d)
 
-		ig := testinstance.NewTestInstanceGenerator(net)
+		ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 
 		instances := ig.Instances(numnodes)
 		rootBlock := testutil.GenerateBlocksOfSize(1, rootBlockSize)
@@ -252,7 +322,6 @@ func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, b
 		blocks[0] = rootBlock[0]
 		runDistribution(b, instances, blocks, bstoreLatency, df, ff)
 		ig.Close()
-		// panic("done")
 	}
 }
 
@@ -260,7 +329,7 @@ func subtestDistributeAndFetchRateLimited(b *testing.B, numnodes, numblks int, d
 	for i := 0; i < b.N; i++ {
 		net := tn.RateLimitedVirtualNetwork(mockrouting.NewServer(), d, rateLimitGenerator)
 
-		ig := testinstance.NewTestInstanceGenerator(net)
+		ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 		defer ig.Close()
 
 		instances := ig.Instances(numnodes)
@@ -271,12 +340,8 @@ func subtestDistributeAndFetchRateLimited(b *testing.B, numnodes, numblks int, d
 	}
 }
 
-func runDistributionMulti(b *testing.B, instances []testinstance.Instance, numFetchers int, blocks []blocks.Block, bstoreLatency time.Duration, df distFunc, ff fetchFunc) {
-	numnodes := len(instances)
-	fetchers := instances[numnodes-numFetchers:]
-
+func runDistributionMulti(b *testing.B, fetchers []testinstance.Instance, seeds []testinstance.Instance, blocks []blocks.Block, bstoreLatency time.Duration, df distFunc, ff fetchFunc) {
 	// Distribute blocks to seed nodes
-	seeds := instances[:numnodes-numFetchers]
 	df(b, seeds, blocks)
 
 	// Set the blockstore latency on seed nodes

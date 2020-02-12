@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"time"
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
 var (
@@ -26,6 +28,7 @@ var (
 // BitSwapNetwork provides network connectivity for BitSwap sessions.
 type BitSwapNetwork interface {
 	Self() peer.ID
+
 	// SendMessage sends a BitSwap message to a peer.
 	SendMessage(
 		context.Context,
@@ -46,6 +49,8 @@ type BitSwapNetwork interface {
 	Stats() Stats
 
 	Routing
+
+	Pinger
 }
 
 // MessageSender is an interface for sending a series of messages over the bitswap
@@ -80,6 +85,14 @@ type Routing interface {
 
 	// Provide provides the key to the network.
 	Provide(context.Context, cid.Cid) error
+}
+
+// Pinger is an interface to ping a peer and get the average latency of all pings
+type Pinger interface {
+	// Ping a peer
+	Ping(context.Context, peer.ID) ping.Result
+	// Get the average latency of all pings
+	Latency(peer.ID) time.Duration
 }
 
 // Stats is a container for statistics about the bitswap network

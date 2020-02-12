@@ -14,9 +14,7 @@ import (
 	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
 	decision "github.com/ipfs/go-bitswap/internal/decision"
 	bsgetter "github.com/ipfs/go-bitswap/internal/getter"
-	bsmsg "github.com/ipfs/go-bitswap/message"
 	bsmq "github.com/ipfs/go-bitswap/internal/messagequeue"
-	bsnet "github.com/ipfs/go-bitswap/network"
 	notifications "github.com/ipfs/go-bitswap/internal/notifications"
 	bspm "github.com/ipfs/go-bitswap/internal/peermanager"
 	bspqm "github.com/ipfs/go-bitswap/internal/providerquerymanager"
@@ -25,6 +23,8 @@ import (
 	bssm "github.com/ipfs/go-bitswap/internal/sessionmanager"
 	bsspm "github.com/ipfs/go-bitswap/internal/sessionpeermanager"
 	bswm "github.com/ipfs/go-bitswap/internal/wantmanager"
+	bsmsg "github.com/ipfs/go-bitswap/message"
+	bsnet "github.com/ipfs/go-bitswap/network"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
@@ -84,6 +84,17 @@ func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
 	}
 }
 
+// SetSendDontHaves indicates what to do when the engine receives a want-block
+// for a block that is not in the blockstore. Either
+// - Send a DONT_HAVE message
+// - Simply don't respond
+// This option is only used for testing.
+func SetSendDontHaves(send bool) Option {
+	return func(bs *Bitswap) {
+		bs.engine.SetSendDontHaves(send)
+	}
+}
+
 // New initializes a BitSwap instance that communicates over the provided
 // BitSwapNetwork. This function registers the returned instance as the network
 // delegate. Runs until context is cancelled or bitswap.Close is called.
@@ -111,14 +122,22 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		return nil
 	})
 
+	var wm *bswm.WantManager
+	// onDontHaveTimeout is called when a want-block is sent to a peer that
+	// has an old version of Bitswap that doesn't support DONT_HAVE messages,
+	// and no response is received within a timeout.
+	onDontHaveTimeout := func(p peer.ID, dontHaves []cid.Cid) {
+		// Simulate a DONT_HAVE message arriving to the WantManager
+		wm.ReceiveFrom(ctx, p, nil, nil, dontHaves)
+	}
 	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
-		return bsmq.New(ctx, p, network)
+		return bsmq.New(ctx, p, network, onDontHaveTimeout)
 	}
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := bspm.New(ctx, peerQueueFactory, network.Self())
-	wm := bswm.New(ctx, pm, sim, bpm)
+	wm = bswm.New(ctx, pm, sim, bpm)
 	pqm := bspqm.New(ctx, network)
 
 	sessionFactory := func(ctx context.Context, id uint64, spm bssession.SessionPeerManager,
