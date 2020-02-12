@@ -77,7 +77,7 @@ func AsyncGetBlocks(ctx context.Context, sessctx context.Context, keys []cid.Cid
 	remaining := cid.NewSet()
 	promise := notif.Subscribe(ctx, keys...)
 	for _, k := range keys {
-		log.Event(ctx, "Bitswap.GetBlockRequest.Start", k)
+		log.Debugw("Bitswap.GetBlockRequest.Start", "cid", k)
 		remaining.Add(k)
 	}
 
