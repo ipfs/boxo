@@ -210,13 +210,13 @@ func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontH
 // 	// log.Infof("Ses%d<-%s: %d blocks, %d haves, %d dont haves\n",
 // 	// 	s.id, from, len(interestedKs), len(wantedHaves), len(wantedDontHaves))
 // 	for _, c := range interestedKs {
-// 		log.Warningf("Ses%d %s<-%s: block %s\n", s.id, lu.P(s.self), lu.P(from), lu.C(c))
+// 		log.Warnf("Ses%d %s<-%s: block %s\n", s.id, lu.P(s.self), lu.P(from), lu.C(c))
 // 	}
 // 	for _, c := range haves {
-// 		log.Warningf("Ses%d %s<-%s: HAVE %s\n", s.id, lu.P(s.self), lu.P(from), lu.C(c))
+// 		log.Warnf("Ses%d %s<-%s: HAVE %s\n", s.id, lu.P(s.self), lu.P(from), lu.C(c))
 // 	}
 // 	for _, c := range dontHaves {
-// 		log.Warningf("Ses%d %s<-%s: DONT_HAVE %s\n", s.id, lu.P(s.self), lu.P(from), lu.C(c))
+// 		log.Warnf("Ses%d %s<-%s: DONT_HAVE %s\n", s.id, lu.P(s.self), lu.P(from), lu.C(c))
 // 	}
 // }
 
@@ -306,9 +306,9 @@ func (s *Session) run(ctx context.Context) {
 
 func (s *Session) handleIdleTick(ctx context.Context) {
 	live := s.sw.PrepareBroadcast()
-	// log.Warningf("\n\n\n\n\nSes%d: broadcast %d keys\n\n\n\n\n", s.id, len(live))
+	// log.Warnf("\n\n\n\n\nSes%d: broadcast %d keys\n\n\n\n\n", s.id, len(live))
 	// log.Infof("Ses%d: broadcast %d keys\n", s.id, len(live))
-	log.Warningf("Ses%d: broadcast %d keys", s.id, len(live))
+	log.Warnf("Ses%d: broadcast %d keys", s.id, len(live))
 
 	// Broadcast a want-have for the live wants to everyone we're connected to
 	s.sprm.RecordPeerRequests(nil, live)
@@ -387,7 +387,7 @@ func (s *Session) resetIdleTick() {
 		tickDelay = s.initialSearchDelay
 	} else {
 		avLat := s.latencyTrkr.averageLatency()
-		// log.Warningf("averageLatency %s", avLat)
+		// log.Warnf("averageLatency %s", avLat)
 		tickDelay = s.baseTickDelay + (3 * avLat)
 	}
 	tickDelay = tickDelay * time.Duration(1+s.consecutiveTicks)

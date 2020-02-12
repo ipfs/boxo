@@ -382,7 +382,7 @@ func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []b
 
 	if from != "" {
 		for _, b := range wanted {
-			log.Event(ctx, "Bitswap.GetBlockRequest.End", b.Cid())
+			log.Debugw("Bitswap.GetBlockRequest.End", "cid", b.Cid())
 		}
 	}
 
@@ -417,7 +417,7 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 		// Process blocks
 		err := bs.receiveBlocksFrom(ctx, p, iblocks, haves, dontHaves)
 		if err != nil {
-			log.Warningf("ReceiveMessage recvBlockFrom error: %s", err)
+			log.Warnf("ReceiveMessage recvBlockFrom error: %s", err)
 			return
 		}
 	}
