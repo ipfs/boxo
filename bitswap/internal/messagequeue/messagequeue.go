@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	debounce "github.com/bep/debounce"
-
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	bsnet "github.com/ipfs/go-bitswap/network"
@@ -34,6 +32,11 @@ const (
 	maxPriority = math.MaxInt32
 	// sendMessageDebounce is the debounce duration when calling sendMessage()
 	sendMessageDebounce = time.Millisecond
+	// when we reach sendMessageCutoff wants/cancels, we'll send the message immediately.
+	sendMessageCutoff = 256
+	// when we debounce for more than sendMessageMaxDelay, we'll send the
+	// message immediately.
+	sendMessageMaxDelay = 20 * time.Millisecond
 )
 
 // MessageNetwork is any network that can connect peers and generate a message
@@ -54,9 +57,8 @@ type MessageQueue struct {
 	maxMessageSize   int
 	sendErrorBackoff time.Duration
 
-	signalWorkReady func()
-	outgoingWork    chan struct{}
-	done            chan struct{}
+	outgoingWork chan time.Time
+	done         chan struct{}
 
 	// Take lock whenever any of these variables are modified
 	wllock    sync.Mutex
@@ -165,16 +167,12 @@ func newMessageQueue(ctx context.Context, p peer.ID, network MessageNetwork,
 		bcstWants:           newRecallWantList(),
 		peerWants:           newRecallWantList(),
 		cancels:             cid.NewSet(),
-		outgoingWork:        make(chan struct{}, 1),
+		outgoingWork:        make(chan time.Time, 1),
 		done:                make(chan struct{}),
 		rebroadcastInterval: defaultRebroadcastInterval,
 		sendErrorBackoff:    sendErrorBackoff,
 		priority:            maxPriority,
 	}
-
-	// Apply debounce to the work ready signal (which triggers sending a message)
-	debounced := debounce.New(sendMessageDebounce)
-	mq.signalWorkReady = func() { debounced(mq.onWorkReady) }
 
 	return mq
 }
@@ -285,11 +283,45 @@ func (mq *MessageQueue) onShutdown() {
 func (mq *MessageQueue) runQueue() {
 	defer mq.onShutdown()
 
+	// Create a timer for debouncing scheduled work.
+	scheduleWork := time.NewTimer(0)
+	if !scheduleWork.Stop() {
+		// Need to drain the timer if Stop() returns false
+		// See: https://golang.org/pkg/time/#Timer.Stop
+		<-scheduleWork.C
+	}
+
+	var workScheduled time.Time
 	for {
 		select {
 		case <-mq.rebroadcastTimer.C:
 			mq.rebroadcastWantlist()
-		case <-mq.outgoingWork:
+		case when := <-mq.outgoingWork:
+			// If we have work scheduled, cancel the timer. If we
+			// don't, record when the work was scheduled.
+			// We send the time on the channel so we accurately
+			// track delay.
+			if workScheduled.IsZero() {
+				workScheduled = when
+			} else if !scheduleWork.Stop() {
+				// Need to drain the timer if Stop() returns false
+				<-scheduleWork.C
+			}
+
+			// If we have too many updates and/or we've waited too
+			// long, send immediately.
+			if mq.pendingWorkCount() > sendMessageCutoff ||
+				time.Since(workScheduled) >= sendMessageMaxDelay {
+				mq.sendIfReady()
+				workScheduled = time.Time{}
+			} else {
+				// Otherwise, extend the timer.
+				scheduleWork.Reset(sendMessageDebounce)
+			}
+		case <-scheduleWork.C:
+			// We have work scheduled and haven't seen any updates
+			// in sendMessageDebounce. Send immediately.
+			workScheduled = time.Time{}
 			mq.sendIfReady()
 		case <-mq.done:
 			if mq.sender != nil {
@@ -335,9 +367,9 @@ func (mq *MessageQueue) transferRebroadcastWants() bool {
 	return true
 }
 
-func (mq *MessageQueue) onWorkReady() {
+func (mq *MessageQueue) signalWorkReady() {
 	select {
-	case mq.outgoingWork <- struct{}{}:
+	case mq.outgoingWork <- time.Now():
 	default:
 	}
 }
@@ -443,10 +475,14 @@ func (mq *MessageQueue) simulateDontHaveWithTimeout(msg bsmsg.BitSwapMessage) {
 // }
 
 func (mq *MessageQueue) hasPendingWork() bool {
+	return mq.pendingWorkCount() > 0
+}
+
+func (mq *MessageQueue) pendingWorkCount() int {
 	mq.wllock.Lock()
 	defer mq.wllock.Unlock()
 
-	return mq.bcstWants.pending.Len() > 0 || mq.peerWants.pending.Len() > 0 || mq.cancels.Len() > 0
+	return mq.bcstWants.pending.Len() + mq.peerWants.pending.Len() + mq.cancels.Len()
 }
 
 func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwapMessage, func()) {
