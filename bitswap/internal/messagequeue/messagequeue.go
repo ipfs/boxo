@@ -32,11 +32,11 @@ const (
 	maxPriority = math.MaxInt32
 	// sendMessageDebounce is the debounce duration when calling sendMessage()
 	sendMessageDebounce = time.Millisecond
-	// when we reach sendMessaageCuttoff wants/cancels, we'll send the message immediately.
-	sendMessageCuttoff = 100
+	// when we reach sendMessageCutoff wants/cancels, we'll send the message immediately.
+	sendMessageCutoff = 256
 	// when we debounce for more than sendMessageMaxDelay, we'll send the
 	// message immediately.
-	sendMessageMaxDelay = 100 * time.Millisecond
+	sendMessageMaxDelay = 20 * time.Millisecond
 )
 
 // MessageNetwork is any network that can connect peers and generate a message
@@ -286,6 +286,8 @@ func (mq *MessageQueue) runQueue() {
 	// Create a timer for debouncing scheduled work.
 	scheduleWork := time.NewTimer(0)
 	if !scheduleWork.Stop() {
+		// Need to drain the timer if Stop() returns false
+		// See: https://golang.org/pkg/time/#Timer.Stop
 		<-scheduleWork.C
 	}
 
@@ -302,12 +304,13 @@ func (mq *MessageQueue) runQueue() {
 			if workScheduled.IsZero() {
 				workScheduled = when
 			} else if !scheduleWork.Stop() {
+				// Need to drain the timer if Stop() returns false
 				<-scheduleWork.C
 			}
 
 			// If we have too many updates and/or we've waited too
 			// long, send immediately.
-			if mq.pendingWorkCount() > sendMessageCuttoff ||
+			if mq.pendingWorkCount() > sendMessageCutoff ||
 				time.Since(workScheduled) >= sendMessageMaxDelay {
 				mq.sendIfReady()
 				workScheduled = time.Time{}
