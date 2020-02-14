@@ -9,8 +9,13 @@ import (
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
-// Maximum number of changes to accept before blocking
-const changesBufferSize = 128
+const (
+	// Maximum number of changes to accept before blocking
+	changesBufferSize = 128
+	// If the session receives this many DONT_HAVEs in a row from a peer,
+	// it prunes the peer from the session
+	peerDontHaveLimit = 16
+)
 
 // BlockPresence indicates whether a peer has a block.
 // Note that the order is important, we decide which peer to send a want to
@@ -76,13 +81,14 @@ type sessionWantSender struct {
 	changes chan change
 	// Information about each want indexed by CID
 	wants map[cid.Cid]*wantInfo
+	// Keeps track of how many consecutive DONT_HAVEs a peer has sent
+	peerConsecutiveDontHaves map[peer.ID]int
 	// Tracks which peers we have send want-block to
 	swbt *sentWantBlocksTracker
 	// Maintains a list of peers and whether they are connected
 	peerAvlMgr *peerAvailabilityManager
 	// Tracks the number of blocks each peer sent us
 	peerRspTrkr *peerResponseTracker
-
 	// Sends wants to peers
 	pm PeerManager
 	// Keeps track of which peer has / doesn't have a block
@@ -97,13 +103,14 @@ func newSessionWantSender(ctx context.Context, sid uint64, pm PeerManager, bpm *
 	onSend onSendFn, onPeersExhausted onPeersExhaustedFn) sessionWantSender {
 
 	spm := sessionWantSender{
-		ctx:         ctx,
-		sessionID:   sid,
-		changes:     make(chan change, changesBufferSize),
-		wants:       make(map[cid.Cid]*wantInfo),
-		swbt:        newSentWantBlocksTracker(),
-		peerAvlMgr:  newPeerAvailabilityManager(),
-		peerRspTrkr: newPeerResponseTracker(),
+		ctx:                      ctx,
+		sessionID:                sid,
+		changes:                  make(chan change, changesBufferSize),
+		wants:                    make(map[cid.Cid]*wantInfo),
+		peerConsecutiveDontHaves: make(map[peer.ID]int),
+		swbt:                     newSentWantBlocksTracker(),
+		peerAvlMgr:               newPeerAvailabilityManager(),
+		peerRspTrkr:              newPeerResponseTracker(),
 
 		pm:               pm,
 		bpm:              bpm,
@@ -258,11 +265,20 @@ func (spm *sessionWantSender) processAvailability(availability map[peer.ID]bool)
 				if isNowAvailable {
 					newlyAvailable = append(newlyAvailable, p)
 				}
+				// Reset the count of consecutive DONT_HAVEs received from the
+				// peer
+				delete(spm.peerConsecutiveDontHaves, p)
 			}
 		}
 	}
 
 	return newlyAvailable
+}
+
+// isAvailable indicates whether the peer is available and whether
+// it's been tracked by the Session (used by the tests)
+func (spm *sessionWantSender) isAvailable(p peer.ID) (bool, bool) {
+	return spm.peerAvlMgr.isAvailable(p)
 }
 
 // trackWant creates a new entry in the map of CID -> want info
@@ -285,6 +301,7 @@ func (spm *sessionWantSender) trackWant(c cid.Cid) {
 
 // processUpdates processes incoming blocks and HAVE / DONT_HAVEs
 func (spm *sessionWantSender) processUpdates(updates []update) {
+	prunePeers := make(map[peer.ID]struct{})
 	dontHaves := cid.NewSet()
 	for _, upd := range updates {
 		// TODO: If there is a timeout for the want from the peer, remove want.sentTo
@@ -308,12 +325,20 @@ func (spm *sessionWantSender) processUpdates(updates []update) {
 					spm.setWantSentTo(c, "")
 				}
 			}
+
+			// Track the number of consecutive DONT_HAVEs each peer receives
+			if spm.peerConsecutiveDontHaves[upd.from] == peerDontHaveLimit {
+				prunePeers[upd.from] = struct{}{}
+			} else {
+				spm.peerConsecutiveDontHaves[upd.from]++
+			}
 		}
 
 		// For each HAVE
 		for _, c := range upd.haves {
 			// Update the block presence for the peer
 			spm.updateWantBlockPresence(c, upd.from)
+			delete(spm.peerConsecutiveDontHaves, upd.from)
 		}
 
 		// For each received block
@@ -325,6 +350,7 @@ func (spm *sessionWantSender) processUpdates(updates []update) {
 				// us the block
 				spm.peerRspTrkr.receivedBlockFrom(upd.from)
 			}
+			delete(spm.peerConsecutiveDontHaves, upd.from)
 		}
 	}
 
@@ -336,6 +362,12 @@ func (spm *sessionWantSender) processUpdates(updates []update) {
 		if len(newlyExhausted) > 0 {
 			spm.onPeersExhausted(newlyExhausted)
 		}
+	}
+
+	// If any peers have sent us too many consecutive DONT_HAVEs, remove them
+	// from the session
+	for p := range prunePeers {
+		spm.SignalAvailability(p, false)
 	}
 }
 

@@ -346,3 +346,198 @@ func TestPeersExhausted(t *testing.T) {
 		t.Fatal("Wrong keys")
 	}
 }
+
+func TestConsecutiveDontHaveLimit(t *testing.T) {
+	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
+	p := testutil.GeneratePeers(1)[0]
+	sid := uint64(1)
+	pm := newMockPeerManager()
+	bpm := bsbpm.New()
+	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
+	onPeersExhausted := func([]cid.Cid) {}
+	spm := newSessionWantSender(context.Background(), sid, pm, bpm, onSend, onPeersExhausted)
+
+	go spm.Run()
+
+	// Add all cids as wants
+	spm.Add(cids)
+
+	// Receive a HAVE from peer (adds it to the session)
+	bpm.ReceiveFrom(p, cids[:1], []cid.Cid{})
+	spm.Update(p, []cid.Cid{}, cids[:1], []cid.Cid{}, true)
+
+	// Wait for processing to complete
+	time.Sleep(5 * time.Millisecond)
+
+	// Peer should be available
+	if avail, ok := spm.isAvailable(p); !ok || !avail {
+		t.Fatal("Expected peer to be available")
+	}
+
+	// Receive DONT_HAVEs from peer that do not exceed limit
+	for _, c := range cids[1:peerDontHaveLimit] {
+		bpm.ReceiveFrom(p, []cid.Cid{}, []cid.Cid{c})
+		spm.Update(p, []cid.Cid{}, []cid.Cid{}, []cid.Cid{c}, false)
+	}
+
+	// Wait for processing to complete
+	time.Sleep(5 * time.Millisecond)
+
+	// Peer should be available
+	if avail, ok := spm.isAvailable(p); !ok || !avail {
+		t.Fatal("Expected peer to be available")
+	}
+
+	// Receive DONT_HAVEs from peer that exceed limit
+	for _, c := range cids[peerDontHaveLimit:] {
+		bpm.ReceiveFrom(p, []cid.Cid{}, []cid.Cid{c})
+		spm.Update(p, []cid.Cid{}, []cid.Cid{}, []cid.Cid{c}, false)
+	}
+
+	// Wait for processing to complete
+	time.Sleep(5 * time.Millisecond)
+
+	// Session should remove peer
+	if avail, _ := spm.isAvailable(p); avail {
+		t.Fatal("Expected peer not to be available")
+	}
+}
+
+func TestConsecutiveDontHaveLimitInterrupted(t *testing.T) {
+	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
+	p := testutil.GeneratePeers(1)[0]
+	sid := uint64(1)
+	pm := newMockPeerManager()
+	bpm := bsbpm.New()
+	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
+	onPeersExhausted := func([]cid.Cid) {}
+	spm := newSessionWantSender(context.Background(), sid, pm, bpm, onSend, onPeersExhausted)
+
+	go spm.Run()
+
+	// Add all cids as wants
+	spm.Add(cids)
+
+	// Receive a HAVE from peer (adds it to the session)
+	bpm.ReceiveFrom(p, cids[:1], []cid.Cid{})
+	spm.Update(p, []cid.Cid{}, cids[:1], []cid.Cid{}, true)
+
+	// Wait for processing to complete
+	time.Sleep(5 * time.Millisecond)
+
+	// Peer should be available
+	if avail, ok := spm.isAvailable(p); !ok || !avail {
+		t.Fatal("Expected peer to be available")
+	}
+
+	// Receive DONT_HAVE then HAVE then DONT_HAVE from peer,
+	// where consecutive DONT_HAVEs would have exceeded limit
+	// (but they are not consecutive)
+	for _, c := range cids[1:peerDontHaveLimit] {
+		// DONT_HAVEs
+		bpm.ReceiveFrom(p, []cid.Cid{}, []cid.Cid{c})
+		spm.Update(p, []cid.Cid{}, []cid.Cid{}, []cid.Cid{c}, false)
+	}
+	for _, c := range cids[peerDontHaveLimit : peerDontHaveLimit+1] {
+		// HAVEs
+		bpm.ReceiveFrom(p, []cid.Cid{c}, []cid.Cid{})
+		spm.Update(p, []cid.Cid{}, []cid.Cid{c}, []cid.Cid{}, false)
+	}
+	for _, c := range cids[peerDontHaveLimit+1:] {
+		// DONT_HAVEs
+		bpm.ReceiveFrom(p, []cid.Cid{}, []cid.Cid{c})
+		spm.Update(p, []cid.Cid{}, []cid.Cid{}, []cid.Cid{c}, false)
+	}
+
+	// Wait for processing to complete
+	time.Sleep(5 * time.Millisecond)
+
+	// Peer should be available
+	if avail, ok := spm.isAvailable(p); !ok || !avail {
+		t.Fatal("Expected peer to be available")
+	}
+}
+
+func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
+	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
+	p := testutil.GeneratePeers(1)[0]
+	sid := uint64(1)
+	pm := newMockPeerManager()
+	bpm := bsbpm.New()
+	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
+	onPeersExhausted := func([]cid.Cid) {}
+	spm := newSessionWantSender(context.Background(), sid, pm, bpm, onSend, onPeersExhausted)
+
+	go spm.Run()
+
+	// Add all cids as wants
+	spm.Add(cids)
+
+	// Receive a HAVE from peer (adds it to the session)
+	bpm.ReceiveFrom(p, cids[:1], []cid.Cid{})
+	spm.Update(p, []cid.Cid{}, cids[:1], []cid.Cid{}, true)
+
+	// Wait for processing to complete
+	time.Sleep(5 * time.Millisecond)
+
+	// Peer should be available
+	if avail, ok := spm.isAvailable(p); !ok || !avail {
+		t.Fatal("Expected peer to be available")
+	}
+
+	// Receive DONT_HAVEs from peer that exceed limit
+	for _, c := range cids[1 : peerDontHaveLimit+2] {
+		bpm.ReceiveFrom(p, []cid.Cid{}, []cid.Cid{c})
+		spm.Update(p, []cid.Cid{}, []cid.Cid{}, []cid.Cid{c}, false)
+	}
+
+	// Wait for processing to complete
+	time.Sleep(5 * time.Millisecond)
+
+	// Session should remove peer
+	if avail, _ := spm.isAvailable(p); avail {
+		t.Fatal("Expected peer not to be available")
+	}
+
+	// Receive a HAVE from peer (adds it back into the session)
+	bpm.ReceiveFrom(p, cids[:1], []cid.Cid{})
+	spm.Update(p, []cid.Cid{}, cids[:1], []cid.Cid{}, true)
+
+	// Wait for processing to complete
+	time.Sleep(5 * time.Millisecond)
+
+	// Peer should be available
+	if avail, ok := spm.isAvailable(p); !ok || !avail {
+		t.Fatal("Expected peer to be available")
+	}
+
+	cids2 := testutil.GenerateCids(peerDontHaveLimit + 10)
+
+	// Receive DONT_HAVEs from peer that don't exceed limit
+	for _, c := range cids2[1:peerDontHaveLimit] {
+		bpm.ReceiveFrom(p, []cid.Cid{}, []cid.Cid{c})
+		spm.Update(p, []cid.Cid{}, []cid.Cid{}, []cid.Cid{c}, false)
+	}
+
+	// Wait for processing to complete
+	time.Sleep(5 * time.Millisecond)
+
+	// Peer should be available
+	if avail, ok := spm.isAvailable(p); !ok || !avail {
+		t.Fatal("Expected peer to be available")
+	}
+
+	// Receive DONT_HAVEs from peer that exceed limit
+	for _, c := range cids2[peerDontHaveLimit:] {
+		bpm.ReceiveFrom(p, []cid.Cid{}, []cid.Cid{c})
+		spm.Update(p, []cid.Cid{}, []cid.Cid{}, []cid.Cid{c}, false)
+	}
+
+	// Wait for processing to complete
+	time.Sleep(5 * time.Millisecond)
+
+	// Session should remove peer
+	if avail, _ := spm.isAvailable(p); avail {
+		t.Fatal("Expected peer not to be available")
+	}
+}
