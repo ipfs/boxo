@@ -4,7 +4,7 @@
 [![](https://img.shields.io/badge/project-IPFS-blue.svg?style=flat-square)](http://ipfs.io/)
 [![standard-readme compliant](https://img.shields.io/badge/standard--readme-OK-green.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
 [![GoDoc](https://godoc.org/github.com/ipfs/go-ipfs-blockstore?status.svg)](https://godoc.org/github.com/ipfs/go-ipfs-blockstore)
-[![Build Status](https://travis-ci.org/ipfs/go-ipfs-blockstore.svg?branch=master)](https://travis-ci.org/ipfs/go-ipfs-blockstore)
+[![Build Status](https://travis-ci.com/ipfs/go-ipfs-blockstore.svg?branch=master)](https://travis-ci.com/ipfs/go-ipfs-blockstore)
 
 > go-ipfs-blockstore implements a thin wrapper over a datastore, giving a clean interface for Getting and Putting block objects.
 
@@ -35,8 +35,6 @@ import "github.com/ipfs/go-ipfs-blockstore"
 ```
 
 Check the [GoDoc documentation](https://godoc.org/github.com/ipfs/go-ipfs-blockstore)
-
-This module uses [Gx](https://github.com/whyrusleeping/gx) to manage dependencies. You can use `make all` to build it with the `gx` dependencies.
 
 ## Contribute
 
