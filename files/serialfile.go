@@ -11,16 +11,16 @@ import (
 // serialFile implements Node, and reads from a path on the OS filesystem.
 // No more than one file will be opened at a time.
 type serialFile struct {
-	path              string
-	files             []os.FileInfo
-	stat              os.FileInfo
-	handleHiddenFiles bool
+	path   string
+	files  []os.FileInfo
+	stat   os.FileInfo
+	filter *Filter
 }
 
 type serialIterator struct {
-	files             []os.FileInfo
-	handleHiddenFiles bool
-	path              string
+	files  []os.FileInfo
+	path   string
+	filter *Filter
 
 	curName string
 	curFile Node
@@ -28,8 +28,20 @@ type serialIterator struct {
 	err error
 }
 
-// TODO: test/document limitations
-func NewSerialFile(path string, hidden bool, stat os.FileInfo) (Node, error) {
+// NewSerialFile takes a filepath, a bool specifying if hidden files should be included,
+// and a fileInfo and returns a Node representing file, directory or special file.
+func NewSerialFile(path string, includeHidden bool, stat os.FileInfo) (Node, error) {
+	filter, err := NewFilter("", nil, includeHidden)
+	if err != nil {
+		return nil, err
+	}
+	return NewSerialFileWithFilter(path, filter, stat)
+}
+
+// NewSerialFileWith takes a filepath, a filter for determining which files should be
+// operated upon if the filepath is a directory, and a fileInfo and returns a
+// Node representing file, directory or special file.
+func NewSerialFileWithFilter(path string, filter *Filter, stat os.FileInfo) (Node, error) {
 	switch mode := stat.Mode(); {
 	case mode.IsRegular():
 		file, err := os.Open(path)
@@ -44,7 +56,7 @@ func NewSerialFile(path string, hidden bool, stat os.FileInfo) (Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &serialFile{path, contents, stat, hidden}, nil
+		return &serialFile{path, contents, stat, filter}, nil
 	case mode&os.ModeSymlink != 0:
 		target, err := os.Readlink(path)
 		if err != nil {
@@ -72,7 +84,7 @@ func (it *serialIterator) Next() bool {
 
 	stat := it.files[0]
 	it.files = it.files[1:]
-	for !it.handleHiddenFiles && isHidden(stat) {
+	for it.filter.ShouldExclude(stat) {
 		if len(it.files) == 0 {
 			return false
 		}
@@ -87,7 +99,7 @@ func (it *serialIterator) Next() bool {
 	// recursively call the constructor on the next file
 	// if it's a regular file, we will open it as a ReaderFile
 	// if it's a directory, files in it will be opened serially
-	sf, err := NewSerialFile(filePath, it.handleHiddenFiles, stat)
+	sf, err := NewSerialFileWithFilter(filePath, it.filter, stat)
 	if err != nil {
 		it.err = err
 		return false
@@ -104,9 +116,9 @@ func (it *serialIterator) Err() error {
 
 func (f *serialFile) Entries() DirIterator {
 	return &serialIterator{
-		path:              f.path,
-		files:             f.files,
-		handleHiddenFiles: f.handleHiddenFiles,
+		path:   f.path,
+		files:  f.files,
+		filter: f.filter,
 	}
 }
 
