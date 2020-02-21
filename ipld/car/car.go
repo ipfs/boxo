@@ -111,7 +111,7 @@ func (cw *carWriter) enumGetLinks(ctx context.Context, c cid.Cid) ([]*format.Lin
 		return nil, err
 	}
 
-	return nd.Links(), nil
+	return cw.walk(nd)
 }
 
 func (cw *carWriter) writeNode(ctx context.Context, nd format.Node) error {
