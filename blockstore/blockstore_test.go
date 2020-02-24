@@ -104,6 +104,38 @@ func TestPutThenGetSizeBlock(t *testing.T) {
 	}
 }
 
+type countHasDS struct {
+	ds.Datastore
+	hasCount int
+}
+
+func (ds *countHasDS) Has(key ds.Key) (exists bool, err error) {
+	ds.hasCount += 1
+	return ds.Datastore.Has(key)
+}
+
+func TestPutUsesHas(t *testing.T) {
+	// Some datastores rely on the implementation detail that Put checks Has
+	// first, to avoid overriding existing objects' metadata. This test ensures
+	// that Blockstore continues to behave this way.
+	// Please ping https://github.com/ipfs/go-ipfs-blockstore/pull/47 if this
+	// behavior is being removed.
+	ds := &countHasDS{
+		Datastore: ds.NewMapDatastore(),
+	}
+	bs := NewBlockstore(ds_sync.MutexWrap(ds))
+	bl := blocks.NewBlock([]byte("some data"))
+	if err := bs.Put(bl); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.Put(bl); err != nil {
+		t.Fatal(err)
+	}
+	if ds.hasCount != 2 {
+		t.Errorf("Blockstore did not call Has before attempting Put, this breaks compatibility")
+	}
+}
+
 func TestHashOnRead(t *testing.T) {
 	orginalDebug := u.Debug
 	defer (func() {
