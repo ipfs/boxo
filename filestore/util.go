@@ -11,6 +11,7 @@ import (
 	dsq "github.com/ipfs/go-datastore/query"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	dshelp "github.com/ipfs/go-ipfs-ds-help"
+	mh "github.com/multiformats/go-multihash"
 )
 
 // Status is used to identify the state of the block data referenced
@@ -86,7 +87,7 @@ func (r *ListRes) FormatLong(enc func(cid.Cid) string) string {
 // List does not verify that the reference is valid or whether the
 // raw data is accesible. See Verify().
 func List(fs *Filestore, key cid.Cid) *ListRes {
-	return list(fs, false, key)
+	return list(fs, false, key.Hash())
 }
 
 // ListAll returns a function as an iterator which, once invoked, returns
@@ -105,7 +106,7 @@ func ListAll(fs *Filestore, fileOrder bool) (func() *ListRes, error) {
 // Verify makes sure that the reference is valid and the block data can be
 // read.
 func Verify(fs *Filestore, key cid.Cid) *ListRes {
-	return list(fs, true, key)
+	return list(fs, true, key.Hash())
 }
 
 // VerifyAll returns a function as an iterator which, once invoked,
@@ -119,7 +120,7 @@ func VerifyAll(fs *Filestore, fileOrder bool) (func() *ListRes, error) {
 	return listAll(fs, true)
 }
 
-func list(fs *Filestore, verify bool, key cid.Cid) *ListRes {
+func list(fs *Filestore, verify bool, key mh.Multihash) *ListRes {
 	dobj, err := fs.fm.getDataObj(key)
 	if err != nil {
 		return mkListRes(key, nil, err)
@@ -138,34 +139,34 @@ func listAll(fs *Filestore, verify bool) (func() *ListRes, error) {
 	}
 
 	return func() *ListRes {
-		cid, dobj, err := next(qr)
+		mhash, dobj, err := next(qr)
 		if dobj == nil && err == nil {
 			return nil
 		} else if err == nil && verify {
-			_, err = fs.fm.readDataObj(cid, dobj)
+			_, err = fs.fm.readDataObj(mhash, dobj)
 		}
-		return mkListRes(cid, dobj, err)
+		return mkListRes(mhash, dobj, err)
 	}, nil
 }
 
-func next(qr dsq.Results) (cid.Cid, *pb.DataObj, error) {
+func next(qr dsq.Results) (mh.Multihash, *pb.DataObj, error) {
 	v, ok := qr.NextSync()
 	if !ok {
-		return cid.Cid{}, nil, nil
+		return nil, nil, nil
 	}
 
 	k := ds.RawKey(v.Key)
-	c, err := dshelp.DsKeyToCid(k)
+	mhash, err := dshelp.DsKeyToMultihash(k)
 	if err != nil {
-		return cid.Cid{}, nil, fmt.Errorf("decoding cid from filestore: %s", err)
+		return nil, nil, fmt.Errorf("decoding multihash from filestore: %s", err)
 	}
 
 	dobj, err := unmarshalDataObj(v.Value)
 	if err != nil {
-		return c, nil, err
+		return mhash, nil, err
 	}
 
-	return c, dobj, nil
+	return mhash, dobj, nil
 }
 
 func listAllFileOrder(fs *Filestore, verify bool) (func() *ListRes, error) {
@@ -206,12 +207,12 @@ func listAllFileOrder(fs *Filestore, verify bool) (func() *ListRes, error) {
 		}
 		v := entries[i]
 		i++
-		// attempt to convert the datastore key to a CID,
+		// attempt to convert the datastore key to a Multihash,
 		// store the error but don't use it yet
-		cid, keyErr := dshelp.DsKeyToCid(ds.RawKey(v.dsKey))
+		mhash, keyErr := dshelp.DsKeyToMultihash(ds.RawKey(v.dsKey))
 		// first if they listRes already had an error return that error
 		if v.err != nil {
-			return mkListRes(cid, nil, v.err)
+			return mkListRes(mhash, nil, v.err)
 		}
 		// now reconstruct the DataObj
 		dobj := pb.DataObj{
@@ -222,14 +223,14 @@ func listAllFileOrder(fs *Filestore, verify bool) (func() *ListRes, error) {
 		// now if we could not convert the datastore key return that
 		// error
 		if keyErr != nil {
-			return mkListRes(cid, &dobj, keyErr)
+			return mkListRes(mhash, &dobj, keyErr)
 		}
 		// finally verify the dataobj if requested
 		var err error
 		if verify {
-			_, err = fs.fm.readDataObj(cid, &dobj)
+			_, err = fs.fm.readDataObj(mhash, &dobj)
 		}
-		return mkListRes(cid, &dobj, err)
+		return mkListRes(mhash, &dobj, err)
 	}, nil
 }
 
@@ -255,7 +256,7 @@ func (l listEntries) Less(i, j int) bool {
 	return l[i].filePath < l[j].filePath
 }
 
-func mkListRes(c cid.Cid, d *pb.DataObj, err error) *ListRes {
+func mkListRes(m mh.Multihash, d *pb.DataObj, err error) *ListRes {
 	status := StatusOk
 	errorMsg := ""
 	if err != nil {
@@ -268,6 +269,9 @@ func mkListRes(c cid.Cid, d *pb.DataObj, err error) *ListRes {
 		}
 		errorMsg = err.Error()
 	}
+
+	c := cid.NewCidV1(cid.Raw, m)
+
 	if d == nil {
 		return &ListRes{
 			Status:   status,

@@ -19,7 +19,7 @@ import (
 	logging "github.com/ipfs/go-log"
 )
 
-var log = logging.Logger("filestore")
+var logger = logging.Logger("filestore")
 
 var ErrFilestoreNotEnabled = errors.New("filestore is not enabled, see https://git.io/vNItf")
 var ErrUrlstoreNotEnabled = errors.New("urlstore is not enabled")
@@ -86,7 +86,7 @@ func (f *Filestore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 		// cant query leveldb concurrently
 		b, err := f.fm.AllKeysChan(ctx)
 		if err != nil {
-			log.Error("error querying filestore: ", err)
+			logger.Error("error querying filestore: ", err)
 			return
 		}
 
