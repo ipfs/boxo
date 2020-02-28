@@ -366,8 +366,12 @@ func (spm *sessionWantSender) processUpdates(updates []update) {
 
 	// If any peers have sent us too many consecutive DONT_HAVEs, remove them
 	// from the session
-	for p := range prunePeers {
-		spm.SignalAvailability(p, false)
+	if len(prunePeers) > 0 {
+		go func() {
+			for p := range prunePeers {
+				spm.SignalAvailability(p, false)
+			}
+		}()
 	}
 }
 
