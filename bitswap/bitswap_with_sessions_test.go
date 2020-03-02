@@ -12,6 +12,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
+	delay "github.com/ipfs/go-ipfs-delay"
 	tu "github.com/libp2p/go-libp2p-testing/etc"
 )
 
@@ -216,7 +217,10 @@ func TestFetchAfterDisconnect(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
-	ig := testinstance.NewTestInstanceGenerator(vnet, nil, []bitswap.Option{bitswap.ProviderSearchDelay(10 * time.Millisecond)})
+	ig := testinstance.NewTestInstanceGenerator(vnet, nil, []bitswap.Option{
+		bitswap.ProviderSearchDelay(10 * time.Millisecond),
+		bitswap.RebroadcastDelay(delay.Fixed(15 * time.Millisecond)),
+	})
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
@@ -264,6 +268,8 @@ func TestFetchAfterDisconnect(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	time.Sleep(20 * time.Millisecond)
+
 	// Provide remaining blocks
 	lastBlks := blks[5:]
 	for _, block := range lastBlks {
@@ -276,8 +282,11 @@ func TestFetchAfterDisconnect(t *testing.T) {
 
 	// Should get last 5 blocks
 	for i := 0; i < 5; i++ {
-		b := <-ch
-		got = append(got, b)
+		select {
+		case b := <-ch:
+			got = append(got, b)
+		case <-ctx.Done():
+		}
 	}
 
 	if err := assertBlockLists(got, blks); err != nil {

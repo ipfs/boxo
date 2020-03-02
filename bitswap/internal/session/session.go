@@ -227,9 +227,18 @@ func (s *Session) onWantsSent(p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.C
 }
 
 func (s *Session) onPeersExhausted(ks []cid.Cid) {
+	// We don't want to block the sessionWantSender if the incoming channel
+	// is full. So if we can't immediately send on the incoming channel spin
+	// it off into a go-routine.
 	select {
 	case s.incoming <- op{op: opBroadcast, keys: ks}:
-	case <-s.ctx.Done():
+	default:
+		go func() {
+			select {
+			case s.incoming <- op{op: opBroadcast, keys: ks}:
+			case <-s.ctx.Done():
+			}
+		}()
 	}
 }
 
@@ -287,12 +296,12 @@ func (s *Session) run(ctx context.Context) {
 			case opCancel:
 				s.sw.CancelPending(oper.keys)
 			case opBroadcast:
-				s.handleIdleTick(ctx)
+				s.broadcastWantHaves(ctx, oper.keys)
 			default:
 				panic("unhandled operation")
 			}
 		case <-s.idleTick.C:
-			s.handleIdleTick(ctx)
+			s.broadcastWantHaves(ctx, nil)
 		case <-s.periodicSearchTimer.C:
 			s.handlePeriodicSearch(ctx)
 		case baseTickDelay := <-s.tickDelayReqs:
@@ -304,24 +313,35 @@ func (s *Session) run(ctx context.Context) {
 	}
 }
 
-func (s *Session) handleIdleTick(ctx context.Context) {
-	live := s.sw.PrepareBroadcast()
+// Called when the session hasn't received any blocks for some time, or when
+// all peers in the session have sent DONT_HAVE for a particular set of CIDs.
+// Send want-haves to all connected peers, and search for new peers with the CID.
+func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
+	// If this broadcast is because of an idle timeout (we haven't received
+	// any blocks for a while) then broadcast all pending wants
+	if wants == nil {
+		wants = s.sw.PrepareBroadcast()
+	}
+
 	// log.Warnf("\n\n\n\n\nSes%d: broadcast %d keys\n\n\n\n\n", s.id, len(live))
 	// log.Infof("Ses%d: broadcast %d keys\n", s.id, len(live))
-	log.Warnf("Ses%d: broadcast %d keys", s.id, len(live))
 
 	// Broadcast a want-have for the live wants to everyone we're connected to
-	s.sprm.RecordPeerRequests(nil, live)
-	s.wm.BroadcastWantHaves(ctx, s.id, live)
+	s.sprm.RecordPeerRequests(nil, wants)
+	s.wm.BroadcastWantHaves(ctx, s.id, wants)
 
 	// do not find providers on consecutive ticks
 	// -- just rely on periodic search widening
-	if len(live) > 0 && (s.consecutiveTicks == 0) {
-		s.sprm.FindMorePeers(ctx, live[0])
+	if len(wants) > 0 && (s.consecutiveTicks == 0) {
+		// Search for providers who have the first want in the list.
+		// Typically if the provider has the first block they will have
+		// the rest of the blocks also.
+		log.Warnf("Ses%d: FindMorePeers with want 0 of %d wants", s.id, len(wants))
+		s.sprm.FindMorePeers(ctx, wants[0])
 	}
 	s.resetIdleTick()
 
-	// If we have live wants
+	// If we have live wants record a consecutive tick
 	if s.sw.HasLiveWants() {
 		s.consecutiveTicks++
 	}

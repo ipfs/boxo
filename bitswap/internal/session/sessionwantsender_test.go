@@ -347,6 +347,103 @@ func TestPeersExhausted(t *testing.T) {
 	}
 }
 
+// Tests that when
+// - all the peers except one have sent a DONT_HAVE for a CID
+// - the remaining peer becomes unavailable
+// onPeersExhausted should be sent for that CID
+func TestPeersExhaustedLastWaitingPeerUnavailable(t *testing.T) {
+	cids := testutil.GenerateCids(2)
+	peers := testutil.GeneratePeers(2)
+	peerA := peers[0]
+	peerB := peers[1]
+	sid := uint64(1)
+	pm := newMockPeerManager()
+	bpm := bsbpm.New()
+	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
+
+	var exhausted []cid.Cid
+	onPeersExhausted := func(ks []cid.Cid) {
+		exhausted = append(exhausted, ks...)
+	}
+	spm := newSessionWantSender(context.Background(), sid, pm, bpm, onSend, onPeersExhausted)
+
+	go spm.Run()
+
+	// add cid0, cid1
+	spm.Add(cids)
+
+	// peerA: HAVE cid0
+	bpm.ReceiveFrom(peerA, []cid.Cid{cids[0]}, []cid.Cid{})
+	// Note: this also registers peer A as being available
+	spm.Update(peerA, []cid.Cid{}, []cid.Cid{cids[0]}, []cid.Cid{}, true)
+	// peerB: HAVE cid0
+	bpm.ReceiveFrom(peerB, []cid.Cid{cids[0]}, []cid.Cid{})
+	// Note: this also registers peer B as being available
+	spm.Update(peerB, []cid.Cid{}, []cid.Cid{cids[0]}, []cid.Cid{}, true)
+
+	// peerA: DONT_HAVE cid1
+	bpm.ReceiveFrom(peerA, []cid.Cid{}, []cid.Cid{cids[1]})
+	spm.Update(peerA, []cid.Cid{}, []cid.Cid{}, []cid.Cid{cids[0]}, false)
+
+	time.Sleep(5 * time.Millisecond)
+
+	// peerB: becomes unavailable
+	spm.SignalAvailability(peerB, false)
+
+	time.Sleep(5 * time.Millisecond)
+
+	// All remaining peers (peer A) have sent us a DONT_HAVE for cid1,
+	// so expect that onPeersExhausted() will be called with cid1
+	if !testutil.MatchKeysIgnoreOrder(exhausted, []cid.Cid{cids[1]}) {
+		t.Fatal("Wrong keys")
+	}
+}
+
+// Tests that when all the peers are removed from the session
+// onPeersExhausted should be called with all outstanding CIDs
+func TestPeersExhaustedAllPeersUnavailable(t *testing.T) {
+	cids := testutil.GenerateCids(3)
+	peers := testutil.GeneratePeers(2)
+	peerA := peers[0]
+	peerB := peers[1]
+	sid := uint64(1)
+	pm := newMockPeerManager()
+	bpm := bsbpm.New()
+	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
+
+	var exhausted []cid.Cid
+	onPeersExhausted := func(ks []cid.Cid) {
+		exhausted = append(exhausted, ks...)
+	}
+	spm := newSessionWantSender(context.Background(), sid, pm, bpm, onSend, onPeersExhausted)
+
+	go spm.Run()
+
+	// add cid0, cid1, cid2
+	spm.Add(cids)
+
+	// peerA: receive block for cid0 (and register peer A with sessionWantSender)
+	spm.Update(peerA, []cid.Cid{cids[0]}, []cid.Cid{}, []cid.Cid{}, true)
+	// peerB: HAVE cid1
+	bpm.ReceiveFrom(peerB, []cid.Cid{cids[0]}, []cid.Cid{})
+	// Note: this also registers peer B as being available
+	spm.Update(peerB, []cid.Cid{}, []cid.Cid{cids[0]}, []cid.Cid{}, true)
+
+	time.Sleep(5 * time.Millisecond)
+
+	// peerA and peerB: become unavailable
+	spm.SignalAvailability(peerA, false)
+	spm.SignalAvailability(peerB, false)
+
+	time.Sleep(5 * time.Millisecond)
+
+	// Expect that onPeersExhausted() will be called with all cids for blocks
+	// that have not been received
+	if !testutil.MatchKeysIgnoreOrder(exhausted, []cid.Cid{cids[1], cids[2]}) {
+		t.Fatal("Wrong keys")
+	}
+}
+
 func TestConsecutiveDontHaveLimit(t *testing.T) {
 	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
 	p := testutil.GeneratePeers(1)[0]

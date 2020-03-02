@@ -236,10 +236,14 @@ func (spm *sessionWantSender) onChange(changes []change) {
 	}
 
 	// Update peer availability
-	newlyAvailable := spm.processAvailability(availability)
+	newlyAvailable, newlyUnavailable := spm.processAvailability(availability)
 
 	// Update wants
-	spm.processUpdates(updates)
+	dontHaves := spm.processUpdates(updates)
+
+	// Check if there are any wants for which all peers have indicated they
+	// don't have the want
+	spm.checkForExhaustedWants(dontHaves, newlyUnavailable)
 
 	// If there are some connected peers, send any pending wants
 	if spm.peerAvlMgr.haveAvailablePeers() {
@@ -251,8 +255,12 @@ func (spm *sessionWantSender) onChange(changes []change) {
 
 // processAvailability updates the want queue with any changes in
 // peer availability
-func (spm *sessionWantSender) processAvailability(availability map[peer.ID]bool) []peer.ID {
+// It returns the peers that have become
+// - newly available
+// - newly unavailable
+func (spm *sessionWantSender) processAvailability(availability map[peer.ID]bool) (avail []peer.ID, unavail []peer.ID) {
 	var newlyAvailable []peer.ID
+	var newlyUnavailable []peer.ID
 	for p, isNowAvailable := range availability {
 		// Make sure this is a peer that the session is actually interested in
 		if wasAvailable, ok := spm.peerAvlMgr.isAvailable(p); ok {
@@ -264,6 +272,8 @@ func (spm *sessionWantSender) processAvailability(availability map[peer.ID]bool)
 				spm.updateWantsPeerAvailability(p, isNowAvailable)
 				if isNowAvailable {
 					newlyAvailable = append(newlyAvailable, p)
+				} else {
+					newlyUnavailable = append(newlyUnavailable, p)
 				}
 				// Reset the count of consecutive DONT_HAVEs received from the
 				// peer
@@ -272,7 +282,7 @@ func (spm *sessionWantSender) processAvailability(availability map[peer.ID]bool)
 		}
 	}
 
-	return newlyAvailable
+	return newlyAvailable, newlyUnavailable
 }
 
 // isAvailable indicates whether the peer is available and whether
@@ -299,8 +309,9 @@ func (spm *sessionWantSender) trackWant(c cid.Cid) {
 	}
 }
 
-// processUpdates processes incoming blocks and HAVE / DONT_HAVEs
-func (spm *sessionWantSender) processUpdates(updates []update) {
+// processUpdates processes incoming blocks and HAVE / DONT_HAVEs.
+// It returns all DONT_HAVEs.
+func (spm *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 	prunePeers := make(map[peer.ID]struct{})
 	dontHaves := cid.NewSet()
 	for _, upd := range updates {
@@ -354,16 +365,6 @@ func (spm *sessionWantSender) processUpdates(updates []update) {
 		}
 	}
 
-	// If all available peers for a cid sent a DONT_HAVE, signal to the session
-	// that we've exhausted available peers
-	if dontHaves.Len() > 0 {
-		exhausted := spm.bpm.AllPeersDoNotHaveBlock(spm.peerAvlMgr.availablePeers(), dontHaves.Keys())
-		newlyExhausted := spm.newlyExhausted(exhausted)
-		if len(newlyExhausted) > 0 {
-			spm.onPeersExhausted(newlyExhausted)
-		}
-	}
-
 	// If any peers have sent us too many consecutive DONT_HAVEs, remove them
 	// from the session
 	if len(prunePeers) > 0 {
@@ -372,6 +373,54 @@ func (spm *sessionWantSender) processUpdates(updates []update) {
 				spm.SignalAvailability(p, false)
 			}
 		}()
+	}
+
+	return dontHaves.Keys()
+}
+
+// checkForExhaustedWants checks if there are any wants for which all peers
+// have sent a DONT_HAVE. We call these "exhausted" wants.
+func (spm *sessionWantSender) checkForExhaustedWants(dontHaves []cid.Cid, newlyUnavailable []peer.ID) {
+	// If there are no new DONT_HAVEs, and no peers became unavailable, then
+	// we don't need to check for exhausted wants
+	if len(dontHaves) == 0 && len(newlyUnavailable) == 0 {
+		return
+	}
+
+	// We need to check each want for which we just received a DONT_HAVE
+	wants := dontHaves
+
+	// If a peer just became unavailable, then we need to check all wants
+	// (because it may be the last peer who hadn't sent a DONT_HAVE for a CID)
+	if len(newlyUnavailable) > 0 {
+		// Collect all pending wants
+		wants = make([]cid.Cid, len(spm.wants))
+		for c := range spm.wants {
+			wants = append(wants, c)
+		}
+
+		// If the last available peer in the session has become unavailable
+		// then we need to broadcast all pending wants
+		if len(spm.peerAvlMgr.availablePeers()) == 0 {
+			spm.processExhaustedWants(wants)
+			return
+		}
+	}
+
+	// If all available peers for a cid sent a DONT_HAVE, signal to the session
+	// that we've exhausted available peers
+	if len(wants) > 0 {
+		exhausted := spm.bpm.AllPeersDoNotHaveBlock(spm.peerAvlMgr.availablePeers(), wants)
+		spm.processExhaustedWants(exhausted)
+	}
+}
+
+// processExhaustedWants filters the list so that only those wants that haven't
+// already been marked as exhausted are passed to onPeersExhausted()
+func (spm *sessionWantSender) processExhaustedWants(exhausted []cid.Cid) {
+	newlyExhausted := spm.newlyExhausted(exhausted)
+	if len(newlyExhausted) > 0 {
+		spm.onPeersExhausted(newlyExhausted)
 	}
 }
 
