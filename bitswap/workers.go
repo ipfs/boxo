@@ -147,7 +147,7 @@ func (bs *Bitswap) provideWorker(px process.Process) {
 		defer cancel()
 
 		if err := bs.network.Provide(ctx, k); err != nil {
-			log.Warning(err)
+			log.Warn(err)
 		}
 	}
 

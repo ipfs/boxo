@@ -229,6 +229,49 @@ func TestSessionFindMorePeers(t *testing.T) {
 	}
 }
 
+func TestSessionOnPeersExhausted(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	fwm := newFakeWantManager()
+	fpm := newFakeSessionPeerManager()
+	sim := bssim.New()
+	bpm := bsbpm.New()
+	notif := notifications.New()
+	defer notif.Shutdown()
+	id := testutil.GenerateSessionID()
+	session := New(ctx, id, fwm, fpm, sim, newFakePeerManager(), bpm, notif, time.Second, delay.Fixed(time.Minute), "")
+	blockGenerator := blocksutil.NewBlockGenerator()
+	blks := blockGenerator.Blocks(broadcastLiveWantsLimit + 5)
+	var cids []cid.Cid
+	for _, block := range blks {
+		cids = append(cids, block.Cid())
+	}
+	_, err := session.GetBlocks(ctx, cids)
+
+	if err != nil {
+		t.Fatal("error getting blocks")
+	}
+
+	// Wait for initial want request
+	receivedWantReq := <-fwm.wantReqs
+
+	// Should have sent out broadcast request for wants
+	if len(receivedWantReq.cids) != broadcastLiveWantsLimit {
+		t.Fatal("did not enqueue correct initial number of wants")
+	}
+
+	// Signal that all peers have send DONT_HAVE for two of the wants
+	session.onPeersExhausted(cids[len(cids)-2:])
+
+	// Wait for want request
+	receivedWantReq = <-fwm.wantReqs
+
+	// Should have sent out broadcast request for wants
+	if len(receivedWantReq.cids) != 2 {
+		t.Fatal("did not enqueue correct initial number of wants")
+	}
+}
+
 func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
