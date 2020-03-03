@@ -620,6 +620,48 @@ func TestMfsFile(t *testing.T) {
 	}
 }
 
+func TestMfsDirListNames(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ds, rt := setupRoot(ctx, t)
+
+	rootdir := rt.GetDirectory()
+
+	rand.Seed(time.Now().UTC().UnixNano())
+
+	total := rand.Intn(10) + 1
+	fNames := make([]string, 0, total)
+
+	for i := 0; i < total; i++ {
+		fn := randomName()
+		fNames = append(fNames, fn)
+		nd := getRandFile(t, ds, rand.Int63n(1000)+1)
+		err := rootdir.AddChild(fn, nd)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	list, err := rootdir.ListNames(ctx)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, lName := range list {
+		found := false
+		for _, fName := range fNames {
+			if lName == fName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal(lName + " not found in directory listing")
+		}
+	}
+}
+
 func randomWalk(d *Directory, n int) (*Directory, error) {
 	for i := 0; i < n; i++ {
 		dirents, err := d.List(context.Background())
