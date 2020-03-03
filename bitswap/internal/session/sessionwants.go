@@ -3,7 +3,6 @@ package session
 import (
 	"fmt"
 	"math/rand"
-	"sync"
 	"time"
 
 	cid "github.com/ipfs/go-cid"
@@ -12,7 +11,6 @@ import (
 // sessionWants keeps track of which cids are waiting to be sent out, and which
 // peers are "live" - ie, we've sent a request but haven't received a block yet
 type sessionWants struct {
-	sync.RWMutex
 	toFetch   *cidQueue
 	liveWants map[cid.Cid]time.Time
 }
@@ -30,9 +28,6 @@ func (sw *sessionWants) String() string {
 
 // BlocksRequested is called when the client makes a request for blocks
 func (sw *sessionWants) BlocksRequested(newWants []cid.Cid) {
-	sw.Lock()
-	defer sw.Unlock()
-
 	for _, k := range newWants {
 		sw.toFetch.Push(k)
 	}
@@ -42,9 +37,6 @@ func (sw *sessionWants) BlocksRequested(newWants []cid.Cid) {
 // list as possible (given the limit). Returns the newly live wants.
 func (sw *sessionWants) GetNextWants(limit int) []cid.Cid {
 	now := time.Now()
-
-	sw.Lock()
-	defer sw.Unlock()
 
 	// Move CIDs from fetch queue to the live wants queue (up to the limit)
 	currentLiveCount := len(sw.liveWants)
@@ -63,10 +55,6 @@ func (sw *sessionWants) GetNextWants(limit int) []cid.Cid {
 // WantsSent is called when wants are sent to a peer
 func (sw *sessionWants) WantsSent(ks []cid.Cid) {
 	now := time.Now()
-
-	sw.Lock()
-	defer sw.Unlock()
-
 	for _, c := range ks {
 		if _, ok := sw.liveWants[c]; !ok {
 			sw.toFetch.Remove(c)
@@ -86,12 +74,8 @@ func (sw *sessionWants) BlocksReceived(ks []cid.Cid) ([]cid.Cid, time.Duration) 
 	}
 
 	now := time.Now()
-
-	sw.Lock()
-	defer sw.Unlock()
-
 	for _, c := range ks {
-		if sw.unlockedIsWanted(c) {
+		if sw.isWanted(c) {
 			wanted = append(wanted, c)
 
 			sentAt, ok := sw.liveWants[c]
@@ -113,10 +97,6 @@ func (sw *sessionWants) BlocksReceived(ks []cid.Cid) ([]cid.Cid, time.Duration) 
 // live want CIDs.
 func (sw *sessionWants) PrepareBroadcast() []cid.Cid {
 	now := time.Now()
-
-	sw.Lock()
-	defer sw.Unlock()
-
 	live := make([]cid.Cid, 0, len(sw.liveWants))
 	for c := range sw.liveWants {
 		live = append(live, c)
@@ -127,9 +107,6 @@ func (sw *sessionWants) PrepareBroadcast() []cid.Cid {
 
 // CancelPending removes the given CIDs from the fetch queue.
 func (sw *sessionWants) CancelPending(keys []cid.Cid) {
-	sw.Lock()
-	defer sw.Unlock()
-
 	for _, k := range keys {
 		sw.toFetch.Remove(k)
 	}
@@ -137,9 +114,6 @@ func (sw *sessionWants) CancelPending(keys []cid.Cid) {
 
 // LiveWants returns a list of live wants
 func (sw *sessionWants) LiveWants() []cid.Cid {
-	sw.RLock()
-	defer sw.RUnlock()
-
 	live := make([]cid.Cid, 0, len(sw.liveWants))
 	for c := range sw.liveWants {
 		live = append(live, c)
@@ -148,16 +122,12 @@ func (sw *sessionWants) LiveWants() []cid.Cid {
 }
 
 func (sw *sessionWants) RandomLiveWant() cid.Cid {
-	i := rand.Uint64()
-
-	sw.RLock()
-	defer sw.RUnlock()
-
 	if len(sw.liveWants) == 0 {
 		return cid.Cid{}
 	}
-	i %= uint64(len(sw.liveWants))
+
 	// picking a random live want
+	i := rand.Intn(len(sw.liveWants))
 	for k := range sw.liveWants {
 		if i == 0 {
 			return k
@@ -169,13 +139,11 @@ func (sw *sessionWants) RandomLiveWant() cid.Cid {
 
 // Has live wants indicates if there are any live wants
 func (sw *sessionWants) HasLiveWants() bool {
-	sw.RLock()
-	defer sw.RUnlock()
-
 	return len(sw.liveWants) > 0
 }
 
-func (sw *sessionWants) unlockedIsWanted(c cid.Cid) bool {
+// Indicates whether the want is in either of the fetch or live queues
+func (sw *sessionWants) isWanted(c cid.Cid) bool {
 	_, ok := sw.liveWants[c]
 	if !ok {
 		ok = sw.toFetch.Has(c)
