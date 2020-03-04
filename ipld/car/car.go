@@ -192,14 +192,6 @@ func loadCarFast(s batchStore, cr *CarReader) (*CarHeader, error) {
 			buf = buf[:0]
 		}
 	}
-
-	if len(buf) > 0 {
-		if err := s.PutMany(buf); err != nil {
-			return nil, err
-		}
-	}
-
-	return cr.Header, nil
 }
 
 func loadCarSlow(s Store, cr *CarReader) (*CarHeader, error) {
