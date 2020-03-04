@@ -36,50 +36,6 @@ func (fpt *fakePeerTagger) UntagPeer(p peer.ID, tag string) {
 	}
 }
 
-func (fpt *fakePeerTagger) count() int {
-	fpt.lk.Lock()
-	defer fpt.lk.Unlock()
-	return len(fpt.taggedPeers)
-}
-
-// func TestFindingMorePeers(t *testing.T) {
-// 	ctx := context.Background()
-// 	ctx, cancel := context.WithCancel(ctx)
-// 	defer cancel()
-// 	completed := make(chan struct{})
-
-// 	peers := testutil.GeneratePeers(5)
-// 	fpt := &fakePeerTagger{}
-// 	fppf := &fakePeerProviderFinder{peers, completed}
-// 	c := testutil.GenerateCids(1)[0]
-// 	id := testutil.GenerateSessionID()
-
-// 	sessionPeerManager := New(ctx, id, fpt, fppf)
-
-// 	findCtx, findCancel := context.WithTimeout(ctx, 10*time.Millisecond)
-// 	defer findCancel()
-// 	sessionPeerManager.FindMorePeers(ctx, c)
-// 	select {
-// 	case <-completed:
-// 	case <-findCtx.Done():
-// 		t.Fatal("Did not finish finding providers")
-// 	}
-// 	time.Sleep(2 * time.Millisecond)
-
-// 	sessionPeers := getPeers(sessionPeerManager)
-// 	if len(sessionPeers) != len(peers) {
-// 		t.Fatal("incorrect number of peers found")
-// 	}
-// 	for _, p := range sessionPeers {
-// 		if !testutil.ContainsPeer(peers, p) {
-// 			t.Fatal("incorrect peer found through finding providers")
-// 		}
-// 	}
-// 	if len(fpt.taggedPeers) != len(peers) {
-// 		t.Fatal("Peers were not tagged!")
-// 	}
-// }
-
 func TestAddPeers(t *testing.T) {
 	peers := testutil.GeneratePeers(2)
 	spm := New(1, &fakePeerTagger{})
