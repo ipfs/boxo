@@ -109,6 +109,14 @@ func (spm *SessionPeerManager) HasPeers() bool {
 	return len(spm.peers) > 0
 }
 
+func (spm *SessionPeerManager) HasPeer(p peer.ID) bool {
+	spm.plk.RLock()
+	defer spm.plk.RUnlock()
+
+	_, ok := spm.peers[p]
+	return ok
+}
+
 // Shutdown untags all the peers
 func (spm *SessionPeerManager) Shutdown() {
 	spm.plk.Lock()
