@@ -162,7 +162,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	// Simulate receiving block for a CID
 	session.ReceiveFrom(peers[1], []cid.Cid{blks[0].Cid()}, []cid.Cid{}, []cid.Cid{})
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Verify session no longer wants received block
 	wanted, unwanted := sim.SplitWantedUnwanted(blks)
