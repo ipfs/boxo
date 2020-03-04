@@ -105,12 +105,12 @@ func (cw *carWriter) writeNode(ctx context.Context, nd format.Node) error {
 	return util.LdWrite(cw.w, nd.Cid().Bytes(), nd.RawData())
 }
 
-type carReader struct {
+type CarReader struct {
 	br     *bufio.Reader
 	Header *CarHeader
 }
 
-func NewCarReader(r io.Reader) (*carReader, error) {
+func NewCarReader(r io.Reader) (*CarReader, error) {
 	br := bufio.NewReader(r)
 	ch, err := ReadHeader(br)
 	if err != nil {
@@ -125,13 +125,13 @@ func NewCarReader(r io.Reader) (*carReader, error) {
 		return nil, fmt.Errorf("invalid car version: %d", ch.Version)
 	}
 
-	return &carReader{
+	return &CarReader{
 		br:     br,
 		Header: ch,
 	}, nil
 }
 
-func (cr *carReader) Next() (blocks.Block, error) {
+func (cr *CarReader) Next() (blocks.Block, error) {
 	c, data, err := util.ReadNode(cr.br)
 	if err != nil {
 		return nil, err
@@ -166,7 +166,7 @@ func LoadCar(s Store, r io.Reader) (*CarHeader, error) {
 	return loadCarSlow(s, cr)
 }
 
-func loadCarFast(s batchStore, cr *carReader) (*CarHeader, error) {
+func loadCarFast(s batchStore, cr *CarReader) (*CarHeader, error) {
 	var buf []blocks.Block
 	for {
 		blk, err := cr.Next()
@@ -192,17 +192,9 @@ func loadCarFast(s batchStore, cr *carReader) (*CarHeader, error) {
 			buf = buf[:0]
 		}
 	}
-
-	if len(buf) > 0 {
-		if err := s.PutMany(buf); err != nil {
-			return nil, err
-		}
-	}
-
-	return cr.Header, nil
 }
 
-func loadCarSlow(s Store, cr *carReader) (*CarHeader, error) {
+func loadCarSlow(s Store, cr *CarReader) (*CarHeader, error) {
 
 	for {
 		blk, err := cr.Next()
