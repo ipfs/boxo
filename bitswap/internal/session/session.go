@@ -440,6 +440,13 @@ func (s *Session) wantBlocks(ctx context.Context, newks []cid.Cid) {
 	}
 }
 
+// The session will broadcast if it has outstanding wants and doesn't receive
+// any blocks for some time.
+// The length of time is calculated
+// - initially
+//   as a fixed delay
+// - once some blocks are received
+//   from a base delay and average latency, with a backoff
 func (s *Session) resetIdleTick() {
 	var tickDelay time.Duration
 	if !s.latencyTrkr.hasLatency() {
@@ -453,6 +460,8 @@ func (s *Session) resetIdleTick() {
 	s.idleTick.Reset(tickDelay)
 }
 
+// latencyTracker keeps track of the average latency between sending a want
+// and receiving the corresponding block
 type latencyTracker struct {
 	totalLatency time.Duration
 	count        int
