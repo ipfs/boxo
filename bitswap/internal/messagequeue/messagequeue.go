@@ -46,6 +46,7 @@ type MessageNetwork interface {
 	NewMessageSender(context.Context, peer.ID) (bsnet.MessageSender, error)
 	Latency(peer.ID) time.Duration
 	Ping(context.Context, peer.ID) ping.Result
+	Self() peer.ID
 }
 
 // MessageQueue implements queue of want messages to send to peers.
