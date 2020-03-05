@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	lu "github.com/ipfs/go-bitswap/internal/logutil"
 	logging "github.com/ipfs/go-log"
 
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -61,7 +62,7 @@ func (spm *SessionPeerManager) AddPeer(p peer.ID) bool {
 	// connection
 	spm.tagger.TagPeer(p, spm.tag, sessionPeerTagValue)
 
-	log.Infof("Added peer %s to session: %d peers\n", p, len(spm.peers))
+	log.Debugf("Added peer %s to session (%d peers)\n", p, len(spm.peers))
 	return true
 }
 
@@ -77,6 +78,8 @@ func (spm *SessionPeerManager) RemovePeer(p peer.ID) bool {
 
 	delete(spm.peers, p)
 	spm.tagger.UntagPeer(p, spm.tag)
+
+	log.Debugf("Removed peer %s from session (%d peers)", lu.P(p), len(spm.peers))
 	return true
 }
 

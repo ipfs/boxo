@@ -476,9 +476,8 @@ func TestConsecutiveDontHaveLimit(t *testing.T) {
 	// Add all cids as wants
 	spm.Add(cids)
 
-	// Receive a HAVE from peer (adds it to the session)
-	bpm.ReceiveFrom(p, cids[:1], []cid.Cid{})
-	spm.Update(p, []cid.Cid{}, cids[:1], []cid.Cid{})
+	// Receive a block from peer (adds it to the session)
+	spm.Update(p, cids[:1], []cid.Cid{}, []cid.Cid{})
 
 	// Wait for processing to complete
 	time.Sleep(10 * time.Millisecond)
@@ -533,9 +532,8 @@ func TestConsecutiveDontHaveLimitInterrupted(t *testing.T) {
 	// Add all cids as wants
 	spm.Add(cids)
 
-	// Receive a HAVE from peer (adds it to the session)
-	bpm.ReceiveFrom(p, cids[:1], []cid.Cid{})
-	spm.Update(p, []cid.Cid{}, cids[:1], []cid.Cid{})
+	// Receive a block from peer (adds it to the session)
+	spm.Update(p, cids[:1], []cid.Cid{}, []cid.Cid{})
 
 	// Wait for processing to complete
 	time.Sleep(5 * time.Millisecond)
@@ -589,9 +587,8 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	// Add all cids as wants
 	spm.Add(cids)
 
-	// Receive a HAVE from peer (adds it to the session)
-	bpm.ReceiveFrom(p, cids[:1], []cid.Cid{})
-	spm.Update(p, []cid.Cid{}, cids[:1], []cid.Cid{})
+	// Receive a block from peer (adds it to the session)
+	spm.Update(p, cids[:1], []cid.Cid{}, []cid.Cid{})
 
 	// Wait for processing to complete
 	time.Sleep(5 * time.Millisecond)
@@ -655,5 +652,49 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	// Session should remove peer
 	if has := fpm.HasPeer(p); has {
 		t.Fatal("Expected peer not to be available")
+	}
+}
+
+func TestConsecutiveDontHaveDontRemoveIfHasWantedBlock(t *testing.T) {
+	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
+	p := testutil.GeneratePeers(1)[0]
+	sid := uint64(1)
+	pm := newMockPeerManager()
+	fpm := newFakeSessionPeerManager()
+	bpm := bsbpm.New()
+	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
+	onPeersExhausted := func([]cid.Cid) {}
+	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, onPeersExhausted)
+
+	go spm.Run()
+
+	// Add all cids as wants
+	spm.Add(cids)
+
+	// Receive a HAVE from peer (adds it to the session)
+	bpm.ReceiveFrom(p, cids[:1], []cid.Cid{})
+	spm.Update(p, []cid.Cid{}, cids[:1], []cid.Cid{})
+
+	// Wait for processing to complete
+	time.Sleep(10 * time.Millisecond)
+
+	// Peer should be available
+	if has := fpm.HasPeer(p); !has {
+		t.Fatal("Expected peer to be available")
+	}
+
+	// Receive DONT_HAVEs from peer that exceed limit
+	for _, c := range cids[1 : peerDontHaveLimit+5] {
+		bpm.ReceiveFrom(p, []cid.Cid{}, []cid.Cid{c})
+		spm.Update(p, []cid.Cid{}, []cid.Cid{}, []cid.Cid{c})
+	}
+
+	// Wait for processing to complete
+	time.Sleep(20 * time.Millisecond)
+
+	// Peer should still be available because it has a block that we want.
+	// (We received a HAVE for cid 0 but didn't yet receive the block)
+	if has := fpm.HasPeer(p); !has {
+		t.Fatal("Expected peer to be available")
 	}
 }
