@@ -97,6 +97,14 @@ func TestRoundtripSelective(t *testing.T) {
 	assertAddNodes(t, dserv, a, b, c, nd1, nd2, nd3)
 
 	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+
+	// the graph assembled above looks as follows, in order:
+	// nd3 -> [c, nd2 -> [nd1 -> a, b, nd1 -> a]]
+	// this selector starts at n3, and traverses a link at index 1 (nd2, the second link, zero indexed)
+	// it then recursively traverses all of its children
+	// the only node skipped is 'c' -- link at index 0 immediately below nd3
+	// the purpose is simply to show we are not writing the entire dag underneath
+	// nd3
 	selector := ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
 		efsb.Insert("Links",
 			ssb.ExploreIndex(1, ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreAll(ssb.ExploreRecursiveEdge()))))
@@ -114,8 +122,11 @@ func TestRoundtripSelective(t *testing.T) {
 	require.Equal(t, blockCount, 5)
 	require.NoError(t, err)
 
+	// create a new builder for two-step write
+	sc2 := NewSelectiveCar(context.Background(), sourceBs, []Dag{Dag{Root: nd3.Cid(), Selector: selector}})
+
 	// write car in two steps
-	scp, err := sc.Prepare()
+	scp, err := sc2.Prepare()
 	require.NoError(t, err)
 	buf2 := new(bytes.Buffer)
 	err = scp.Dump(buf2)

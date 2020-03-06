@@ -92,7 +92,7 @@ func WriteHeader(h *CarHeader, w io.Writer) error {
 	return util.LdWrite(w, hb)
 }
 
-func SizeHeader(h *CarHeader) (uint64, error) {
+func HeaderSize(h *CarHeader) (uint64, error) {
 	hb, err := cbor.DumpObject(h)
 	if err != nil {
 		return 0, err

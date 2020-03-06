@@ -181,7 +181,7 @@ func (sct *selectiveCarTraverser) traverseHeader() error {
 		Version: 1,
 	}
 
-	size, err := SizeHeader(&header)
+	size, err := HeaderSize(&header)
 	if err != nil {
 		return err
 	}
