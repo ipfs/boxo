@@ -14,31 +14,16 @@ import (
 )
 
 type sentWants struct {
+	sync.Mutex
 	p          peer.ID
 	wantHaves  *cid.Set
 	wantBlocks *cid.Set
 }
 
-type mockPeerManager struct {
-	peerSessions sync.Map
-	peerSends    sync.Map
-}
+func (sw *sentWants) add(wantBlocks []cid.Cid, wantHaves []cid.Cid) {
+	sw.Lock()
+	defer sw.Unlock()
 
-func newMockPeerManager() *mockPeerManager {
-	return &mockPeerManager{}
-}
-
-func (pm *mockPeerManager) RegisterSession(p peer.ID, sess bspm.Session) bool {
-	pm.peerSessions.Store(p, sess)
-	return true
-}
-
-func (pm *mockPeerManager) UnregisterSession(sesid uint64) {
-}
-
-func (pm *mockPeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) {
-	swi, _ := pm.peerSends.LoadOrStore(p, sentWants{p, cid.NewSet(), cid.NewSet()})
-	sw := swi.(sentWants)
 	for _, c := range wantBlocks {
 		sw.wantBlocks.Add(c)
 	}
@@ -47,23 +32,100 @@ func (pm *mockPeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks 
 			sw.wantHaves.Add(c)
 		}
 	}
+
+}
+func (sw *sentWants) wantHavesKeys() []cid.Cid {
+	sw.Lock()
+	defer sw.Unlock()
+	return sw.wantHaves.Keys()
+}
+func (sw *sentWants) wantBlocksKeys() []cid.Cid {
+	sw.Lock()
+	defer sw.Unlock()
+	return sw.wantBlocks.Keys()
 }
 
-func (pm *mockPeerManager) waitNextWants() map[peer.ID]sentWants {
+type mockPeerManager struct {
+	lk           sync.Mutex
+	peerSessions map[peer.ID]bspm.Session
+	peerSends    map[peer.ID]*sentWants
+}
+
+func newMockPeerManager() *mockPeerManager {
+	return &mockPeerManager{
+		peerSessions: make(map[peer.ID]bspm.Session),
+		peerSends:    make(map[peer.ID]*sentWants),
+	}
+}
+
+func (pm *mockPeerManager) RegisterSession(p peer.ID, sess bspm.Session) bool {
+	pm.lk.Lock()
+	defer pm.lk.Unlock()
+
+	pm.peerSessions[p] = sess
+	return true
+}
+
+func (pm *mockPeerManager) UnregisterSession(sesid uint64) {
+}
+
+func (pm *mockPeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) {
+	pm.lk.Lock()
+	defer pm.lk.Unlock()
+
+	sw, ok := pm.peerSends[p]
+	if !ok {
+		sw = &sentWants{p: p, wantHaves: cid.NewSet(), wantBlocks: cid.NewSet()}
+		pm.peerSends[p] = sw
+	}
+	sw.add(wantBlocks, wantHaves)
+}
+
+func (pm *mockPeerManager) waitNextWants() map[peer.ID]*sentWants {
 	time.Sleep(5 * time.Millisecond)
-	nw := make(map[peer.ID]sentWants)
-	pm.peerSends.Range(func(k, v interface{}) bool {
-		nw[k.(peer.ID)] = v.(sentWants)
-		return true
-	})
+
+	pm.lk.Lock()
+	defer pm.lk.Unlock()
+	nw := make(map[peer.ID]*sentWants)
+	for p, sentWants := range pm.peerSends {
+		nw[p] = sentWants
+	}
 	return nw
 }
 
 func (pm *mockPeerManager) clearWants() {
-	pm.peerSends.Range(func(k, v interface{}) bool {
-		pm.peerSends.Delete(k)
-		return true
-	})
+	pm.lk.Lock()
+	defer pm.lk.Unlock()
+
+	for p := range pm.peerSends {
+		delete(pm.peerSends, p)
+	}
+}
+
+type exhaustedPeers struct {
+	lk sync.Mutex
+	ks []cid.Cid
+}
+
+func (ep *exhaustedPeers) onPeersExhausted(ks []cid.Cid) {
+	ep.lk.Lock()
+	defer ep.lk.Unlock()
+
+	ep.ks = append(ep.ks, ks...)
+}
+
+func (ep *exhaustedPeers) clear() {
+	ep.lk.Lock()
+	defer ep.lk.Unlock()
+
+	ep.ks = nil
+}
+
+func (ep *exhaustedPeers) exhausted() []cid.Cid {
+	ep.lk.Lock()
+	defer ep.lk.Unlock()
+
+	return append([]cid.Cid{}, ep.ks...)
 }
 
 func TestSendWants(t *testing.T) {
@@ -95,10 +157,10 @@ func TestSendWants(t *testing.T) {
 	if !ok {
 		t.Fatal("Nothing sent to peer")
 	}
-	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocks.Keys(), blkCids0) {
+	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocksKeys(), blkCids0) {
 		t.Fatal("Wrong keys")
 	}
-	if sw.wantHaves.Len() > 0 {
+	if len(sw.wantHavesKeys()) > 0 {
 		t.Fatal("Expecting no want-haves")
 	}
 }
@@ -133,7 +195,7 @@ func TestSendsWantBlockToOnePeerOnly(t *testing.T) {
 	if !ok {
 		t.Fatal("Nothing sent to peer")
 	}
-	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocks.Keys(), blkCids0) {
+	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocksKeys(), blkCids0) {
 		t.Fatal("Wrong keys")
 	}
 
@@ -156,7 +218,7 @@ func TestSendsWantBlockToOnePeerOnly(t *testing.T) {
 	if sw.wantBlocks.Len() > 0 {
 		t.Fatal("Expecting no want-blocks")
 	}
-	if !testutil.MatchKeysIgnoreOrder(sw.wantHaves.Keys(), blkCids0) {
+	if !testutil.MatchKeysIgnoreOrder(sw.wantHavesKeys(), blkCids0) {
 		t.Fatal("Wrong keys")
 	}
 }
@@ -190,7 +252,7 @@ func TestReceiveBlock(t *testing.T) {
 	if !ok {
 		t.Fatal("Nothing sent to peer")
 	}
-	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocks.Keys(), cids) {
+	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocksKeys(), cids) {
 		t.Fatal("Wrong keys")
 	}
 
@@ -215,7 +277,7 @@ func TestReceiveBlock(t *testing.T) {
 	if !ok {
 		t.Fatal("Nothing sent to peer")
 	}
-	wb := sw.wantBlocks.Keys()
+	wb := sw.wantBlocksKeys()
 	if len(wb) != 1 || !wb[0].Equals(cids[1]) {
 		t.Fatal("Wrong keys", wb)
 	}
@@ -250,7 +312,7 @@ func TestPeerUnavailable(t *testing.T) {
 	if !ok {
 		t.Fatal("Nothing sent to peer")
 	}
-	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocks.Keys(), cids) {
+	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocksKeys(), cids) {
 		t.Fatal("Wrong keys")
 	}
 
@@ -281,7 +343,7 @@ func TestPeerUnavailable(t *testing.T) {
 	if !ok {
 		t.Fatal("Nothing sent to peer")
 	}
-	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocks.Keys(), cids) {
+	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocksKeys(), cids) {
 		t.Fatal("Wrong keys")
 	}
 }
@@ -297,11 +359,8 @@ func TestPeersExhausted(t *testing.T) {
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 
-	var exhausted []cid.Cid
-	onPeersExhausted := func(ks []cid.Cid) {
-		exhausted = append(exhausted, ks...)
-	}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	ep := exhaustedPeers{}
+	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, ep.onPeersExhausted)
 
 	go spm.Run()
 
@@ -321,12 +380,12 @@ func TestPeersExhausted(t *testing.T) {
 
 	// All available peers (peer A) have sent us a DONT_HAVE for cid1,
 	// so expect that onPeersExhausted() will be called with cid1
-	if !testutil.MatchKeysIgnoreOrder(exhausted, []cid.Cid{cids[1]}) {
+	if !testutil.MatchKeysIgnoreOrder(ep.exhausted(), []cid.Cid{cids[1]}) {
 		t.Fatal("Wrong keys")
 	}
 
 	// Clear exhausted cids
-	exhausted = []cid.Cid{}
+	ep.clear()
 
 	// peerB: HAVE cid0
 	bpm.ReceiveFrom(peerB, []cid.Cid{cids[0]}, []cid.Cid{})
@@ -343,7 +402,7 @@ func TestPeersExhausted(t *testing.T) {
 	// All available peers (peer A and peer B) have sent us a DONT_HAVE
 	// for cid1, but we already called onPeersExhausted with cid1, so it
 	// should not be called again
-	if len(exhausted) > 0 {
+	if len(ep.exhausted()) > 0 {
 		t.Fatal("Wrong keys")
 	}
 
@@ -356,7 +415,7 @@ func TestPeersExhausted(t *testing.T) {
 
 	// All available peers (peer A and peer B) have sent us a DONT_HAVE for
 	// cid2, so expect that onPeersExhausted() will be called with cid2
-	if !testutil.MatchKeysIgnoreOrder(exhausted, []cid.Cid{cids[2]}) {
+	if !testutil.MatchKeysIgnoreOrder(ep.exhausted(), []cid.Cid{cids[2]}) {
 		t.Fatal("Wrong keys")
 	}
 }
@@ -376,11 +435,8 @@ func TestPeersExhaustedLastWaitingPeerUnavailable(t *testing.T) {
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 
-	var exhausted []cid.Cid
-	onPeersExhausted := func(ks []cid.Cid) {
-		exhausted = append(exhausted, ks...)
-	}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	ep := exhaustedPeers{}
+	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, ep.onPeersExhausted)
 
 	go spm.Run()
 
@@ -409,7 +465,7 @@ func TestPeersExhaustedLastWaitingPeerUnavailable(t *testing.T) {
 
 	// All remaining peers (peer A) have sent us a DONT_HAVE for cid1,
 	// so expect that onPeersExhausted() will be called with cid1
-	if !testutil.MatchKeysIgnoreOrder(exhausted, []cid.Cid{cids[1]}) {
+	if !testutil.MatchKeysIgnoreOrder(ep.exhausted(), []cid.Cid{cids[1]}) {
 		t.Fatal("Wrong keys")
 	}
 }
@@ -427,11 +483,8 @@ func TestPeersExhaustedAllPeersUnavailable(t *testing.T) {
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 
-	var exhausted []cid.Cid
-	onPeersExhausted := func(ks []cid.Cid) {
-		exhausted = append(exhausted, ks...)
-	}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	ep := exhaustedPeers{}
+	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, ep.onPeersExhausted)
 
 	go spm.Run()
 
@@ -455,7 +508,7 @@ func TestPeersExhaustedAllPeersUnavailable(t *testing.T) {
 
 	// Expect that onPeersExhausted() will be called with all cids for blocks
 	// that have not been received
-	if !testutil.MatchKeysIgnoreOrder(exhausted, []cid.Cid{cids[1], cids[2]}) {
+	if !testutil.MatchKeysIgnoreOrder(ep.exhausted(), []cid.Cid{cids[1], cids[2]}) {
 		t.Fatal("Wrong keys")
 	}
 }
