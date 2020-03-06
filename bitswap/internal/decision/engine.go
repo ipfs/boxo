@@ -76,6 +76,10 @@ const (
 	// the alpha for the EWMA used to track long term usefulness
 	longTermAlpha = 0.05
 
+	// how frequently the engine should sample usefulness. Peers that
+	// interact every shortTerm time period are considered "active".
+	shortTerm = 10 * time.Second
+
 	// long term ratio defines what "long term" means in terms of the
 	// shortTerm duration. Peers that interact once every longTermRatio are
 	// considered useful over the long term.
@@ -94,14 +98,6 @@ const (
 
 	// Number of concurrent workers that process requests to the blockstore
 	blockstoreWorkerCount = 128
-)
-
-var (
-	// how frequently the engine should sample usefulness. Peers that
-	// interact every shortTerm time period are considered "active".
-	//
-	// this is only a variable to make testing easier.
-	shortTerm = 10 * time.Second
 )
 
 // Envelope contains a message for a Peer.
@@ -161,6 +157,9 @@ type Engine struct {
 	// bytes up to which we will replace a want-have with a want-block
 	maxBlockSizeReplaceHasWithBlock int
 
+	// how frequently the engine should sample peer usefulness
+	peerSampleInterval time.Duration
+
 	sendDontHaves bool
 
 	self peer.ID
@@ -168,11 +167,13 @@ type Engine struct {
 
 // NewEngine creates a new block sending engine for the given block store
 func NewEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger, self peer.ID) *Engine {
-	return newEngine(ctx, bs, peerTagger, self, maxBlockSizeReplaceHasWithBlock)
+	return newEngine(ctx, bs, peerTagger, self, maxBlockSizeReplaceHasWithBlock, shortTerm)
 }
 
 // This constructor is used by the tests
-func newEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger, self peer.ID, maxReplaceSize int) *Engine {
+func newEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger, self peer.ID,
+	maxReplaceSize int, peerSampleInterval time.Duration) *Engine {
+
 	e := &Engine{
 		ledgerMap:                       make(map[peer.ID]*ledger),
 		bsm:                             newBlockstoreManager(ctx, bs, blockstoreWorkerCount),
@@ -181,6 +182,7 @@ func newEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger,
 		workSignal:                      make(chan struct{}, 1),
 		ticker:                          time.NewTicker(time.Millisecond * 100),
 		maxBlockSizeReplaceHasWithBlock: maxReplaceSize,
+		peerSampleInterval:              peerSampleInterval,
 		taskWorkerCount:                 taskWorkerCount,
 		sendDontHaves:                   true,
 		self:                            self,
@@ -236,7 +238,7 @@ func (e *Engine) StartWorkers(ctx context.Context, px process.Process) {
 // adjust it ±25% based on our debt ratio. Peers that have historically been
 // more useful to us than we are to them get the highest score.
 func (e *Engine) scoreWorker(ctx context.Context) {
-	ticker := time.NewTicker(shortTerm)
+	ticker := time.NewTicker(e.peerSampleInterval)
 	defer ticker.Stop()
 
 	type update struct {
