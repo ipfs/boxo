@@ -45,12 +45,12 @@ func (fs *fakeSession) ReceiveFrom(p peer.ID, ks []cid.Cid, wantBlocks []cid.Cid
 type fakeSesPeerManager struct {
 }
 
-func (*fakeSesPeerManager) ReceiveFrom(peer.ID, []cid.Cid, []cid.Cid) bool { return true }
-func (*fakeSesPeerManager) Peers() *peer.Set                               { return nil }
-func (*fakeSesPeerManager) FindMorePeers(context.Context, cid.Cid)         {}
-func (*fakeSesPeerManager) RecordPeerRequests([]peer.ID, []cid.Cid)        {}
-func (*fakeSesPeerManager) RecordPeerResponse(peer.ID, []cid.Cid)          {}
-func (*fakeSesPeerManager) RecordCancels(c []cid.Cid)                      {}
+func (*fakeSesPeerManager) Peers() []peer.ID        { return nil }
+func (*fakeSesPeerManager) PeersDiscovered() bool   { return false }
+func (*fakeSesPeerManager) Shutdown()               {}
+func (*fakeSesPeerManager) AddPeer(peer.ID) bool    { return false }
+func (*fakeSesPeerManager) RemovePeer(peer.ID) bool { return false }
+func (*fakeSesPeerManager) HasPeers() bool          { return false }
 
 type fakePeerManager struct {
 }
