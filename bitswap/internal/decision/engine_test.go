@@ -1007,7 +1007,7 @@ func TestTaggingPeers(t *testing.T) {
 }
 
 func TestTaggingUseful(t *testing.T) {
-	peerSampleInterval := 2 * time.Millisecond
+	peerSampleInterval := 5 * time.Millisecond
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -1027,7 +1027,7 @@ func TestTaggingUseful(t *testing.T) {
 		if me.PeerTagger.count(me.Engine.tagUseful) != 1 {
 			t.Fatal("Peers should be tagged but weren't")
 		}
-		time.Sleep(peerSampleInterval * 8)
+		time.Sleep(peerSampleInterval * 10)
 	}
 
 	if me.PeerTagger.count(me.Engine.tagUseful) == 0 {
