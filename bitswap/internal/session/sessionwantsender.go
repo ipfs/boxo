@@ -368,17 +368,17 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 
 	// If any peers have sent us too many consecutive DONT_HAVEs, remove them
 	// from the session
-	if len(prunePeers) > 0 {
-		for p := range prunePeers {
-			// Before removing the peer from the session, check if the peer
-			// sent us a HAVE for a block that we want
-			for c := range sws.wants {
-				if sws.bpm.PeerHasBlock(p, c) {
-					delete(prunePeers, p)
-					break
-				}
+	for p := range prunePeers {
+		// Before removing the peer from the session, check if the peer
+		// sent us a HAVE for a block that we want
+		for c := range sws.wants {
+			if sws.bpm.PeerHasBlock(p, c) {
+				delete(prunePeers, p)
+				break
 			}
 		}
+	}
+	if len(prunePeers) > 0 {
 		go func() {
 			for p := range prunePeers {
 				// Peer doesn't have anything we want, so remove it
