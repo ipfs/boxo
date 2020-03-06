@@ -658,7 +658,7 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	}
 
 	// Wait for processing to complete
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Session should remove peer
 	if has := fpm.HasPeer(p); has {
@@ -670,7 +670,7 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	spm.Update(p, []cid.Cid{}, cids[:1], []cid.Cid{})
 
 	// Wait for processing to complete
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Peer should be available
 	if has := fpm.HasPeer(p); !has {
@@ -686,7 +686,7 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	}
 
 	// Wait for processing to complete
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Peer should be available
 	if has := fpm.HasPeer(p); !has {
@@ -700,7 +700,7 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	}
 
 	// Wait for processing to complete
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Session should remove peer
 	if has := fpm.HasPeer(p); has {
