@@ -4,6 +4,7 @@ import (
 	"context"
 
 	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
+	lu "github.com/ipfs/go-bitswap/internal/logutil"
 
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -298,16 +299,41 @@ func (sws *sessionWantSender) trackWant(c cid.Cid) {
 // processUpdates processes incoming blocks and HAVE / DONT_HAVEs.
 // It returns all DONT_HAVEs.
 func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
-	prunePeers := make(map[peer.ID]struct{})
-	dontHaves := cid.NewSet()
+	// Process received blocks keys
+	blkCids := cid.NewSet()
 	for _, upd := range updates {
-		// TODO: If there is a timeout for the want from the peer, remove want.sentTo
-		// so the want can be sent to another peer (and blacklist the peer?)
-		// TODO: If a peer is no longer available, check if all providers of
-		// each CID have been exhausted
+		for _, c := range upd.ks {
+			blkCids.Add(c)
+			log.Warnf("received block %s", lu.C(c))
+			// Remove the want
+			removed := sws.removeWant(c)
+			if removed != nil {
+				// Inform the peer tracker that this peer was the first to send
+				// us the block
+				sws.peerRspTrkr.receivedBlockFrom(upd.from)
+			}
+			delete(sws.peerConsecutiveDontHaves, upd.from)
+		}
+	}
 
-		// For each DONT_HAVE
+	// Process received DONT_HAVEs
+	dontHaves := cid.NewSet()
+	prunePeers := make(map[peer.ID]struct{})
+	for _, upd := range updates {
 		for _, c := range upd.dontHaves {
+			// Track the number of consecutive DONT_HAVEs each peer receives
+			if sws.peerConsecutiveDontHaves[upd.from] == peerDontHaveLimit {
+				prunePeers[upd.from] = struct{}{}
+			} else {
+				sws.peerConsecutiveDontHaves[upd.from]++
+			}
+
+			// If we already received a block for the want, there's no need to
+			// update block presence etc
+			if blkCids.Has(c) {
+				continue
+			}
+
 			dontHaves.Add(c)
 
 			// Update the block presence for the peer
@@ -322,40 +348,41 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 					sws.setWantSentTo(c, "")
 				}
 			}
-
-			// Track the number of consecutive DONT_HAVEs each peer receives
-			if sws.peerConsecutiveDontHaves[upd.from] == peerDontHaveLimit {
-				prunePeers[upd.from] = struct{}{}
-			} else {
-				sws.peerConsecutiveDontHaves[upd.from]++
-			}
 		}
+	}
 
-		// For each HAVE
+	// Process received HAVEs
+	for _, upd := range updates {
 		for _, c := range upd.haves {
-			// Update the block presence for the peer
-			sws.updateWantBlockPresence(c, upd.from)
-			delete(sws.peerConsecutiveDontHaves, upd.from)
-		}
-
-		// For each received block
-		for _, c := range upd.ks {
-			// Remove the want
-			removed := sws.removeWant(c)
-			if removed != nil {
-				// Inform the peer tracker that this peer was the first to send
-				// us the block
-				sws.peerRspTrkr.receivedBlockFrom(upd.from)
+			// If we haven't already received a block for the want
+			if !blkCids.Has(c) {
+				// Update the block presence for the peer
+				sws.updateWantBlockPresence(c, upd.from)
 			}
+
+			// Clear the consecutive DONT_HAVE count for the peer
 			delete(sws.peerConsecutiveDontHaves, upd.from)
+			delete(prunePeers, upd.from)
 		}
 	}
 
 	// If any peers have sent us too many consecutive DONT_HAVEs, remove them
 	// from the session
+	for p := range prunePeers {
+		// Before removing the peer from the session, check if the peer
+		// sent us a HAVE for a block that we want
+		for c := range sws.wants {
+			if sws.bpm.PeerHasBlock(p, c) {
+				delete(prunePeers, p)
+				break
+			}
+		}
+	}
 	if len(prunePeers) > 0 {
 		go func() {
 			for p := range prunePeers {
+				// Peer doesn't have anything we want, so remove it
+				log.Infof("peer %s sent too many dont haves", lu.P(p))
 				sws.SignalAvailability(p, false)
 			}
 		}()

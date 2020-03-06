@@ -56,7 +56,7 @@ func (sw *sessionWants) GetNextWants(limit int) []cid.Cid {
 func (sw *sessionWants) WantsSent(ks []cid.Cid) {
 	now := time.Now()
 	for _, c := range ks {
-		if _, ok := sw.liveWants[c]; !ok {
+		if _, ok := sw.liveWants[c]; !ok && sw.toFetch.Has(c) {
 			sw.toFetch.Remove(c)
 			sw.liveWants[c] = now
 		}
@@ -83,8 +83,7 @@ func (sw *sessionWants) BlocksReceived(ks []cid.Cid) ([]cid.Cid, time.Duration) 
 				totalLatency += now.Sub(sentAt)
 			}
 
-			// Remove the CID from the live wants / toFetch queue and add it
-			// to the past wants
+			// Remove the CID from the live wants / toFetch queue
 			delete(sw.liveWants, c)
 			sw.toFetch.Remove(c)
 		}
@@ -96,6 +95,9 @@ func (sw *sessionWants) BlocksReceived(ks []cid.Cid) ([]cid.Cid, time.Duration) 
 // PrepareBroadcast saves the current time for each live want and returns the
 // live want CIDs.
 func (sw *sessionWants) PrepareBroadcast() []cid.Cid {
+	// TODO: Change this to return wants in order so that the session will
+	// send out Find Providers request for the first want
+	// (Note that maps return keys in random order)
 	now := time.Now()
 	live := make([]cid.Cid, 0, len(sw.liveWants))
 	for c := range sw.liveWants {
