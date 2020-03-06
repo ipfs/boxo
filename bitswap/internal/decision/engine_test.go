@@ -1009,7 +1009,7 @@ func TestTaggingPeers(t *testing.T) {
 func TestTaggingUseful(t *testing.T) {
 	peerSampleInterval := 5 * time.Millisecond
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	me := newTestEngine(ctx, "engine", peerSampleInterval)
 	friend := peer.ID("friend")
@@ -1023,7 +1023,7 @@ func TestTaggingUseful(t *testing.T) {
 			t.Fatal("Peers should be untagged but weren't")
 		}
 		me.Engine.MessageSent(friend, msg)
-		time.Sleep(peerSampleInterval * 2)
+		time.Sleep(8 * time.Millisecond)
 		if me.PeerTagger.count(me.Engine.tagUseful) != 1 {
 			t.Fatal("Peers should be tagged but weren't")
 		}
