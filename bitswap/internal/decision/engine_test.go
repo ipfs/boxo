@@ -91,10 +91,10 @@ type engineSet struct {
 	Blockstore blockstore.Blockstore
 }
 
-func newTestEngine(ctx context.Context, idStr string) engineSet {
+func newTestEngine(ctx context.Context, idStr string, peerSampleInterval time.Duration) engineSet {
 	fpt := &fakePeerTagger{}
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	e := newEngine(ctx, bs, fpt, "localhost", 0)
+	e := newEngine(ctx, bs, fpt, "localhost", 0, peerSampleInterval)
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 	return engineSet{
 		Peer: peer.ID(idStr),
@@ -108,8 +108,8 @@ func newTestEngine(ctx context.Context, idStr string) engineSet {
 func TestConsistentAccounting(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sender := newTestEngine(ctx, "Ernie")
-	receiver := newTestEngine(ctx, "Bert")
+	sender := newTestEngine(ctx, "Ernie", shortTerm)
+	receiver := newTestEngine(ctx, "Bert", shortTerm)
 
 	// Send messages from Ernie to Bert
 	for i := 0; i < 1000; i++ {
@@ -143,8 +143,8 @@ func TestPeerIsAddedToPeersWhenMessageReceivedOrSent(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sanfrancisco := newTestEngine(ctx, "sf")
-	seattle := newTestEngine(ctx, "sea")
+	sanfrancisco := newTestEngine(ctx, "sf", shortTerm)
+	seattle := newTestEngine(ctx, "sea", shortTerm)
 
 	m := message.New(true)
 
@@ -181,7 +181,7 @@ func peerIsPartner(p peer.ID, e *Engine) bool {
 func TestOutboxClosedWhenEngineClosed(t *testing.T) {
 	ctx := context.Background()
 	t.SkipNow() // TODO implement *Engine.Close
-	e := newEngine(ctx, blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), &fakePeerTagger{}, "localhost", 0)
+	e := newEngine(ctx, blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), &fakePeerTagger{}, "localhost", 0, shortTerm)
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -509,7 +509,7 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 		testCases = onlyTestCases
 	}
 
-	e := newEngine(context.Background(), bs, &fakePeerTagger{}, "localhost", 0)
+	e := newEngine(context.Background(), bs, &fakePeerTagger{}, "localhost", 0, shortTerm)
 	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
 	for i, testCase := range testCases {
 		t.Logf("Test case %d:", i)
@@ -665,7 +665,7 @@ func TestPartnerWantHaveWantBlockActive(t *testing.T) {
 		testCases = onlyTestCases
 	}
 
-	e := newEngine(context.Background(), bs, &fakePeerTagger{}, "localhost", 0)
+	e := newEngine(context.Background(), bs, &fakePeerTagger{}, "localhost", 0, shortTerm)
 	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
 
 	var next envChan
@@ -850,7 +850,7 @@ func TestPartnerWantsThenCancels(t *testing.T) {
 	ctx := context.Background()
 	for i := 0; i < numRounds; i++ {
 		expected := make([][]string, 0, len(testcases))
-		e := newEngine(ctx, bs, &fakePeerTagger{}, "localhost", 0)
+		e := newEngine(ctx, bs, &fakePeerTagger{}, "localhost", 0, shortTerm)
 		e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 		for _, testcase := range testcases {
 			set := testcase[0]
@@ -875,7 +875,7 @@ func TestSendReceivedBlocksToPeersThatWantThem(t *testing.T) {
 	partner := libp2ptest.RandPeerIDFatal(t)
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
 
-	e := newEngine(context.Background(), bs, &fakePeerTagger{}, "localhost", 0)
+	e := newEngine(context.Background(), bs, &fakePeerTagger{}, "localhost", 0, shortTerm)
 	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
 
 	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
@@ -919,7 +919,7 @@ func TestSendDontHave(t *testing.T) {
 	partner := libp2ptest.RandPeerIDFatal(t)
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
 
-	e := newEngine(context.Background(), bs, &fakePeerTagger{}, "localhost", 0)
+	e := newEngine(context.Background(), bs, &fakePeerTagger{}, "localhost", 0, shortTerm)
 	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
 
 	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
@@ -981,8 +981,8 @@ func TestSendDontHave(t *testing.T) {
 func TestTaggingPeers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	sanfrancisco := newTestEngine(ctx, "sf")
-	seattle := newTestEngine(ctx, "sea")
+	sanfrancisco := newTestEngine(ctx, "sf", shortTerm)
+	seattle := newTestEngine(ctx, "sea", shortTerm)
 
 	keys := []string{"a", "b", "c", "d", "e"}
 	for _, letter := range keys {
@@ -1007,13 +1007,11 @@ func TestTaggingPeers(t *testing.T) {
 }
 
 func TestTaggingUseful(t *testing.T) {
-	oldShortTerm := shortTerm
-	shortTerm = 2 * time.Millisecond
-	defer func() { shortTerm = oldShortTerm }()
+	peerSampleInterval := 2 * time.Millisecond
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	me := newTestEngine(ctx, "engine")
+	me := newTestEngine(ctx, "engine", peerSampleInterval)
 	friend := peer.ID("friend")
 
 	block := blocks.NewBlock([]byte("foobar"))
@@ -1025,21 +1023,21 @@ func TestTaggingUseful(t *testing.T) {
 			t.Fatal("Peers should be untagged but weren't")
 		}
 		me.Engine.MessageSent(friend, msg)
-		time.Sleep(shortTerm * 2)
+		time.Sleep(peerSampleInterval * 2)
 		if me.PeerTagger.count(me.Engine.tagUseful) != 1 {
 			t.Fatal("Peers should be tagged but weren't")
 		}
-		time.Sleep(shortTerm * 8)
+		time.Sleep(peerSampleInterval * 8)
 	}
 
 	if me.PeerTagger.count(me.Engine.tagUseful) == 0 {
 		t.Fatal("peers should still be tagged due to long-term usefulness")
 	}
-	time.Sleep(shortTerm * 2)
+	time.Sleep(peerSampleInterval * 2)
 	if me.PeerTagger.count(me.Engine.tagUseful) == 0 {
 		t.Fatal("peers should still be tagged due to long-term usefulness")
 	}
-	time.Sleep(shortTerm * 20)
+	time.Sleep(peerSampleInterval * 30)
 	if me.PeerTagger.count(me.Engine.tagUseful) != 0 {
 		t.Fatal("peers should finally be untagged")
 	}
