@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	// lu "github.com/ipfs/go-bitswap/internal/logutil"
 	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
 	bsgetter "github.com/ipfs/go-bitswap/internal/getter"
+	lu "github.com/ipfs/go-bitswap/internal/logutil"
 	notifications "github.com/ipfs/go-bitswap/internal/notifications"
 	bspm "github.com/ipfs/go-bitswap/internal/peermanager"
 	bssim "github.com/ipfs/go-bitswap/internal/sessioninterestmanager"
@@ -340,7 +340,7 @@ func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
 		// Search for providers who have the first want in the list.
 		// Typically if the provider has the first block they will have
 		// the rest of the blocks also.
-		log.Warnf("Ses%d: FindMorePeers with want 0 of %d wants", s.id, len(wants))
+		log.Warnf("Ses%d: FindMorePeers with want %s (1st of %d wants)", s.id, lu.C(wants[0]), len(wants))
 		s.findMorePeers(ctx, wants[0])
 	}
 	s.resetIdleTick()
