@@ -321,8 +321,15 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 	prunePeers := make(map[peer.ID]struct{})
 	for _, upd := range updates {
 		for _, c := range upd.dontHaves {
-			// If we already received a block for the want, ignore any
-			// DONT_HAVE for the want
+			// Track the number of consecutive DONT_HAVEs each peer receives
+			if sws.peerConsecutiveDontHaves[upd.from] == peerDontHaveLimit {
+				prunePeers[upd.from] = struct{}{}
+			} else {
+				sws.peerConsecutiveDontHaves[upd.from]++
+			}
+
+			// If we already received a block for the want, there's no need to
+			// update block presence etc
 			if blkCids.Has(c) {
 				continue
 			}
@@ -341,27 +348,17 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 					sws.setWantSentTo(c, "")
 				}
 			}
-
-			// Track the number of consecutive DONT_HAVEs each peer receives
-			if sws.peerConsecutiveDontHaves[upd.from] == peerDontHaveLimit {
-				prunePeers[upd.from] = struct{}{}
-			} else {
-				sws.peerConsecutiveDontHaves[upd.from]++
-			}
 		}
 	}
 
 	// Process received HAVEs
 	for _, upd := range updates {
 		for _, c := range upd.haves {
-			// If we already received a block for the want, ignore any HAVE for
-			// the want
-			if blkCids.Has(c) {
-				continue
+			// If we haven't already received a block for the want
+			if !blkCids.Has(c) {
+				// Update the block presence for the peer
+				sws.updateWantBlockPresence(c, upd.from)
 			}
-
-			// Update the block presence for the peer
-			sws.updateWantBlockPresence(c, upd.from)
 
 			// Clear the consecutive DONT_HAVE count for the peer
 			delete(sws.peerConsecutiveDontHaves, upd.from)
@@ -372,23 +369,21 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 	// If any peers have sent us too many consecutive DONT_HAVEs, remove them
 	// from the session
 	if len(prunePeers) > 0 {
+		for p := range prunePeers {
+			// Before removing the peer from the session, check if the peer
+			// sent us a HAVE for a block that we want
+			for c := range sws.wants {
+				if sws.bpm.PeerHasBlock(p, c) {
+					delete(prunePeers, p)
+					break
+				}
+			}
+		}
 		go func() {
 			for p := range prunePeers {
-				// Before removing the peer from the session, check if the peer
-				// sent us a HAVE for a block that we want
-				peerHasWantedBlock := false
-				for c := range sws.wants {
-					if sws.bpm.PeerHasBlock(p, c) {
-						peerHasWantedBlock = true
-						break
-					}
-				}
-
 				// Peer doesn't have anything we want, so remove it
-				if !peerHasWantedBlock {
-					log.Infof("peer %s sent too many dont haves", lu.P(p))
-					sws.SignalAvailability(p, false)
-				}
+				log.Infof("peer %s sent too many dont haves", lu.P(p))
+				sws.SignalAvailability(p, false)
 			}
 		}()
 	}
