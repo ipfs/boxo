@@ -394,9 +394,9 @@ func TestWantlistRebroadcast(t *testing.T) {
 		t.Fatal("wrong number of wants")
 	}
 
-	// Tell message queue to rebroadcast after 5ms, then wait 8ms
-	messageQueue.SetRebroadcastInterval(5 * time.Millisecond)
-	messages = collectMessages(ctx, t, messagesSent, 8*time.Millisecond)
+	// Tell message queue to rebroadcast after 10ms, then wait 15ms
+	messageQueue.SetRebroadcastInterval(10 * time.Millisecond)
+	messages = collectMessages(ctx, t, messagesSent, 15*time.Millisecond)
 	firstMessage = messages[0]
 
 	// Both original and new wants should have been rebroadcast
@@ -425,9 +425,9 @@ func TestWantlistRebroadcast(t *testing.T) {
 		}
 	}
 
-	// Tell message queue to rebroadcast after 5ms, then wait 8ms
-	messageQueue.SetRebroadcastInterval(5 * time.Millisecond)
-	messages = collectMessages(ctx, t, messagesSent, 8*time.Millisecond)
+	// Tell message queue to rebroadcast after 10ms, then wait 15ms
+	messageQueue.SetRebroadcastInterval(10 * time.Millisecond)
+	messages = collectMessages(ctx, t, messagesSent, 15*time.Millisecond)
 	firstMessage = messages[0]
 	if len(firstMessage.Wantlist()) != totalWants-len(cancels) {
 		t.Fatal("did not rebroadcast all wants")
