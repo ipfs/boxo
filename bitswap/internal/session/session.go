@@ -340,7 +340,7 @@ func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
 		// Search for providers who have the first want in the list.
 		// Typically if the provider has the first block they will have
 		// the rest of the blocks also.
-		log.Warnf("Ses%d: FindMorePeers with want %s (1st of %d wants)", s.id, lu.C(wants[0]), len(wants))
+		log.Infof("Ses%d: FindMorePeers with want %s (1st of %d wants)", s.id, lu.C(wants[0]), len(wants))
 		s.findMorePeers(ctx, wants[0])
 	}
 	s.resetIdleTick()
