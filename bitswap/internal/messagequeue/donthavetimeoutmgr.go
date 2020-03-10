@@ -11,7 +11,8 @@ import (
 
 const (
 	// dontHaveTimeout is used to simulate a DONT_HAVE when communicating with
-	// a peer whose Bitswap client doesn't support the DONT_HAVE response.
+	// a peer whose Bitswap client doesn't support the DONT_HAVE response,
+	// or when the peer takes too long to respond.
 	// If the peer doesn't respond to a want-block within the timeout, the
 	// local node assumes that the peer doesn't have the block.
 	dontHaveTimeout = 5 * time.Second
@@ -45,7 +46,7 @@ type pendingWant struct {
 
 // dontHaveTimeoutMgr pings the peer to measure latency. It uses the latency to
 // set a reasonable timeout for simulating a DONT_HAVE message for peers that
-// don't support DONT_HAVE
+// don't support DONT_HAVE or that take to long to respond.
 type dontHaveTimeoutMgr struct {
 	ctx                        context.Context
 	shutdown                   func()
