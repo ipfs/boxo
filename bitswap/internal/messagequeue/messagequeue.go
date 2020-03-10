@@ -392,10 +392,8 @@ func (mq *MessageQueue) sendMessage() {
 	}
 
 	// Make sure the DONT_HAVE timeout manager has started
-	if !mq.sender.SupportsHave() {
-		// Note: Start is idempotent
-		mq.dhTimeoutMgr.Start()
-	}
+	// Note: Start is idempotent
+	mq.dhTimeoutMgr.Start()
 
 	// Convert want lists to a Bitswap Message
 	message, onSent := mq.extractOutgoingMessage(mq.sender.SupportsHave())
@@ -425,15 +423,11 @@ func (mq *MessageQueue) sendMessage() {
 	}
 }
 
-// If the peer is running an older version of Bitswap that doesn't support the
-// DONT_HAVE response, watch for timeouts on any want-blocks we sent the peer,
-// and if there is a timeout simulate a DONT_HAVE response.
+// If want-block times out, simulate a DONT_HAVE reponse.
+// This is necessary when making requests to peers running an older version of
+// Bitswap that doesn't support the DONT_HAVE response, and is also useful to
+// mitigate getting blocked by a peer that takes a long time to respond.
 func (mq *MessageQueue) simulateDontHaveWithTimeout(msg bsmsg.BitSwapMessage) {
-	// If the peer supports DONT_HAVE responses, we don't need to simulate
-	if mq.sender.SupportsHave() {
-		return
-	}
-
 	mq.wllock.Lock()
 
 	// Get the CID of each want-block that expects a DONT_HAVE response
