@@ -109,7 +109,7 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	tr.clear()
 
 	// Sleep until the second set of keys should have timed out
-	time.Sleep(expectedTimeout)
+	time.Sleep(expectedTimeout + 10*time.Millisecond)
 
 	// At this stage all keys should have timed out. The second set included
 	// the first set of keys, but they were added before the first set timed
