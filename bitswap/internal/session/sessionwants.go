@@ -11,19 +11,27 @@ import (
 // sessionWants keeps track of which cids are waiting to be sent out, and which
 // peers are "live" - ie, we've sent a request but haven't received a block yet
 type sessionWants struct {
-	toFetch   *cidQueue
-	liveWants map[cid.Cid]time.Time
+	// The wants that have not yet been sent out
+	toFetch *cidQueue
+	// Wants that have been sent but have not received a response
+	liveWants *cidQueue
+	// The time at which live wants were sent
+	sentAt map[cid.Cid]time.Time
+	// The maximum number of want-haves to send in a broadcast
+	broadcastLimit int
 }
 
-func newSessionWants() sessionWants {
+func newSessionWants(broadcastLimit int) sessionWants {
 	return sessionWants{
-		toFetch:   newCidQueue(),
-		liveWants: make(map[cid.Cid]time.Time),
+		toFetch:        newCidQueue(),
+		liveWants:      newCidQueue(),
+		sentAt:         make(map[cid.Cid]time.Time),
+		broadcastLimit: broadcastLimit,
 	}
 }
 
 func (sw *sessionWants) String() string {
-	return fmt.Sprintf("%d pending / %d live", sw.toFetch.Len(), len(sw.liveWants))
+	return fmt.Sprintf("%d pending / %d live", sw.toFetch.Len(), sw.liveWants.Len())
 }
 
 // BlocksRequested is called when the client makes a request for blocks
@@ -33,20 +41,23 @@ func (sw *sessionWants) BlocksRequested(newWants []cid.Cid) {
 	}
 }
 
-// GetNextWants moves as many CIDs from the fetch queue to the live wants
-// list as possible (given the limit). Returns the newly live wants.
-func (sw *sessionWants) GetNextWants(limit int) []cid.Cid {
+// GetNextWants is called when the session has not yet discovered peers with
+// the blocks that it wants. It moves as many CIDs from the fetch queue to
+// the live wants queue as possible (given the broadcast limit).
+// Returns the newly live wants.
+func (sw *sessionWants) GetNextWants() []cid.Cid {
 	now := time.Now()
 
 	// Move CIDs from fetch queue to the live wants queue (up to the limit)
-	currentLiveCount := len(sw.liveWants)
-	toAdd := limit - currentLiveCount
+	currentLiveCount := sw.liveWants.Len()
+	toAdd := sw.broadcastLimit - currentLiveCount
 
 	var live []cid.Cid
 	for ; toAdd > 0 && sw.toFetch.Len() > 0; toAdd-- {
 		c := sw.toFetch.Pop()
 		live = append(live, c)
-		sw.liveWants[c] = now
+		sw.liveWants.Push(c)
+		sw.sentAt[c] = now
 	}
 
 	return live
@@ -56,9 +67,10 @@ func (sw *sessionWants) GetNextWants(limit int) []cid.Cid {
 func (sw *sessionWants) WantsSent(ks []cid.Cid) {
 	now := time.Now()
 	for _, c := range ks {
-		if _, ok := sw.liveWants[c]; !ok && sw.toFetch.Has(c) {
+		if _, ok := sw.sentAt[c]; !ok && sw.toFetch.Has(c) {
 			sw.toFetch.Remove(c)
-			sw.liveWants[c] = now
+			sw.liveWants.Push(c)
+			sw.sentAt[c] = now
 		}
 	}
 }
@@ -78,13 +90,15 @@ func (sw *sessionWants) BlocksReceived(ks []cid.Cid) ([]cid.Cid, time.Duration) 
 		if sw.isWanted(c) {
 			wanted = append(wanted, c)
 
-			sentAt, ok := sw.liveWants[c]
+			// Measure latency
+			sentAt, ok := sw.sentAt[c]
 			if ok && !sentAt.IsZero() {
 				totalLatency += now.Sub(sentAt)
 			}
 
 			// Remove the CID from the live wants / toFetch queue
-			delete(sw.liveWants, c)
+			sw.liveWants.Remove(c)
+			delete(sw.sentAt, c)
 			sw.toFetch.Remove(c)
 		}
 	}
@@ -93,16 +107,15 @@ func (sw *sessionWants) BlocksReceived(ks []cid.Cid) ([]cid.Cid, time.Duration) 
 }
 
 // PrepareBroadcast saves the current time for each live want and returns the
-// live want CIDs.
+// live want CIDs up to the broadcast limit.
 func (sw *sessionWants) PrepareBroadcast() []cid.Cid {
-	// TODO: Change this to return wants in order so that the session will
-	// send out Find Providers request for the first want
-	// (Note that maps return keys in random order)
 	now := time.Now()
-	live := make([]cid.Cid, 0, len(sw.liveWants))
-	for c := range sw.liveWants {
-		live = append(live, c)
-		sw.liveWants[c] = now
+	live := sw.liveWants.Cids()
+	if len(live) > sw.broadcastLimit {
+		live = live[:sw.broadcastLimit]
+	}
+	for _, c := range live {
+		sw.sentAt[c] = now
 	}
 	return live
 }
@@ -116,21 +129,18 @@ func (sw *sessionWants) CancelPending(keys []cid.Cid) {
 
 // LiveWants returns a list of live wants
 func (sw *sessionWants) LiveWants() []cid.Cid {
-	live := make([]cid.Cid, 0, len(sw.liveWants))
-	for c := range sw.liveWants {
-		live = append(live, c)
-	}
-	return live
+	return sw.liveWants.Cids()
 }
 
+// RandomLiveWant returns a randomly selected live want
 func (sw *sessionWants) RandomLiveWant() cid.Cid {
-	if len(sw.liveWants) == 0 {
+	if len(sw.sentAt) == 0 {
 		return cid.Cid{}
 	}
 
 	// picking a random live want
-	i := rand.Intn(len(sw.liveWants))
-	for k := range sw.liveWants {
+	i := rand.Intn(len(sw.sentAt))
+	for k := range sw.sentAt {
 		if i == 0 {
 			return k
 		}
@@ -141,12 +151,12 @@ func (sw *sessionWants) RandomLiveWant() cid.Cid {
 
 // Has live wants indicates if there are any live wants
 func (sw *sessionWants) HasLiveWants() bool {
-	return len(sw.liveWants) > 0
+	return sw.liveWants.Len() > 0
 }
 
 // Indicates whether the want is in either of the fetch or live queues
 func (sw *sessionWants) isWanted(c cid.Cid) bool {
-	_, ok := sw.liveWants[c]
+	ok := sw.liveWants.Has(c)
 	if !ok {
 		ok = sw.toFetch.Has(c)
 	}

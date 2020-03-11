@@ -222,11 +222,18 @@ func TestSessionFindMorePeers(t *testing.T) {
 		t.Fatal("Did not make second want request ")
 	}
 
-	// Verify a broadcast was made
+	// The session should keep broadcasting periodically until it receives a response
 	select {
 	case receivedWantReq := <-fwm.wantReqs:
-		if len(receivedWantReq.cids) < broadcastLiveWantsLimit {
+		if len(receivedWantReq.cids) != broadcastLiveWantsLimit {
 			t.Fatal("did not rebroadcast whole live list")
+		}
+		// Make sure the first block is not included because it has already
+		// been received
+		for _, c := range receivedWantReq.cids {
+			if c.Equals(cids[0]) {
+				t.Fatal("should not braodcast block that was already received")
+			}
 		}
 	case <-ctx.Done():
 		t.Fatal("Never rebroadcast want list")
