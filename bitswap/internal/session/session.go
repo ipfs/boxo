@@ -141,7 +141,7 @@ func New(ctx context.Context,
 	periodicSearchDelay delay.D,
 	self peer.ID) *Session {
 	s := &Session{
-		sw:                  newSessionWants(),
+		sw:                  newSessionWants(broadcastLiveWantsLimit),
 		tickDelayReqs:       make(chan time.Duration),
 		ctx:                 ctx,
 		wm:                  wm,
@@ -433,7 +433,7 @@ func (s *Session) wantBlocks(ctx context.Context, newks []cid.Cid) {
 	}
 
 	// No peers discovered yet, broadcast some want-haves
-	ks := s.sw.GetNextWants(broadcastLiveWantsLimit)
+	ks := s.sw.GetNextWants()
 	if len(ks) > 0 {
 		log.Infof("Ses%d: No peers - broadcasting %d want HAVE requests\n", s.id, len(ks))
 		s.wm.BroadcastWantHaves(ctx, s.id, ks)
