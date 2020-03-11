@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	tn "github.com/ipfs/go-bitswap/internal/testnet"
+	tn "github.com/ipfs/go-bitswap/testnet"
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	bsnet "github.com/ipfs/go-bitswap/network"
