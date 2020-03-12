@@ -253,7 +253,7 @@ func TestRateLimitingRequests(t *testing.T) {
 	peers := testutil.GeneratePeers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
-		delay:      1 * time.Millisecond,
+		delay:      5 * time.Millisecond,
 	}
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -268,7 +268,7 @@ func TestRateLimitingRequests(t *testing.T) {
 	for i := 0; i < maxInProcessRequests+1; i++ {
 		requestChannels = append(requestChannels, providerQueryManager.FindProvidersAsync(sessionCtx, keys[i]))
 	}
-	time.Sleep(9 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 	fpn.queriesMadeMutex.Lock()
 	if fpn.liveQueries != maxInProcessRequests {
 		t.Logf("Queries made: %d\n", fpn.liveQueries)
