@@ -159,6 +159,8 @@ type Engine struct {
 
 	// how frequently the engine should sample peer usefulness
 	peerSampleInterval time.Duration
+	// used by the tests to detect when a sample is taken
+	sampleCh chan struct{}
 
 	sendDontHaves bool
 
@@ -167,12 +169,12 @@ type Engine struct {
 
 // NewEngine creates a new block sending engine for the given block store
 func NewEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger, self peer.ID) *Engine {
-	return newEngine(ctx, bs, peerTagger, self, maxBlockSizeReplaceHasWithBlock, shortTerm)
+	return newEngine(ctx, bs, peerTagger, self, maxBlockSizeReplaceHasWithBlock, shortTerm, nil)
 }
 
 // This constructor is used by the tests
 func newEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger, self peer.ID,
-	maxReplaceSize int, peerSampleInterval time.Duration) *Engine {
+	maxReplaceSize int, peerSampleInterval time.Duration, sampleCh chan struct{}) *Engine {
 
 	e := &Engine{
 		ledgerMap:                       make(map[peer.ID]*ledger),
@@ -183,6 +185,7 @@ func newEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger,
 		ticker:                          time.NewTicker(time.Millisecond * 100),
 		maxBlockSizeReplaceHasWithBlock: maxReplaceSize,
 		peerSampleInterval:              peerSampleInterval,
+		sampleCh:                        sampleCh,
 		taskWorkerCount:                 taskWorkerCount,
 		sendDontHaves:                   true,
 		self:                            self,
@@ -315,6 +318,11 @@ func (e *Engine) scoreWorker(ctx context.Context) {
 		}
 		// Keep the memory. It's not much and it saves us from having to allocate.
 		updates = updates[:0]
+
+		// Used by the tests
+		if e.sampleCh != nil {
+			e.sampleCh <- struct{}{}
+		}
 	}
 }
 
