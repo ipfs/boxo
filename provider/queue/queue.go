@@ -56,10 +56,12 @@ func (q *Queue) Close() error {
 }
 
 // Enqueue puts a cid in the queue
-func (q *Queue) Enqueue(cid cid.Cid) {
+func (q *Queue) Enqueue(cid cid.Cid) error {
 	select {
 	case q.enqueue <- cid:
+		return nil
 	case <-q.ctx.Done():
+		return fmt.Errorf("failed to enqueue CID: shutting down")
 	}
 }
 
@@ -75,6 +77,11 @@ func (q *Queue) work() {
 		var c cid.Cid = cid.Undef
 
 		defer func() {
+			// also cancels any in-progess enqueue tasks.
+			q.close()
+			// unblocks anyone waiting
+			close(q.dequeue)
+			// unblocks the close call
 			close(q.closed)
 		}()
 
