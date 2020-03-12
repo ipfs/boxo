@@ -80,17 +80,17 @@ func (q *Queue) work() {
 
 		for {
 			if c == cid.Undef {
-				head, e := q.getQueueHead()
+				head, err := q.getQueueHead()
 
-				if e != nil {
-					log.Errorf("error querying for head of queue: %s, stopping provider", e)
+				if err != nil {
+					log.Errorf("error querying for head of queue: %s, stopping provider", err)
 					return
 				} else if head != nil {
 					k = datastore.NewKey(head.Key)
-					c, e = cid.Parse(head.Value)
-					if e != nil {
-						log.Warningf("error parsing queue entry cid with key (%s), removing it from queue: %s", head.Key, e)
-						err := q.ds.Delete(k)
+					c, err = cid.Parse(head.Value)
+					if err != nil {
+						log.Warningf("error parsing queue entry cid with key (%s), removing it from queue: %s", head.Key, err)
+						err = q.ds.Delete(k)
 						if err != nil {
 							log.Errorf("error deleting queue entry with key (%s), due to error (%s), stopping provider", head.Key, err)
 							return
