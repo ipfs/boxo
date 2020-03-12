@@ -64,8 +64,7 @@ func NewProvider(ctx context.Context, queue *q.Queue, contentRouting routing.Con
 
 // Close stops the provider
 func (p *Provider) Close() error {
-	p.queue.Close()
-	return nil
+	return p.queue.Close()
 }
 
 // Run workers to handle provide requests.
@@ -75,8 +74,7 @@ func (p *Provider) Run() {
 
 // Provide the given cid using specified strategy.
 func (p *Provider) Provide(root cid.Cid) error {
-	p.queue.Enqueue(root)
-	return nil
+	return p.queue.Enqueue(root)
 }
 
 // Handle all outgoing cids by providing (announcing) them
