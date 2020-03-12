@@ -116,7 +116,7 @@ func TestPrepareBroadcast(t *testing.T) {
 	// Add 6 new wants
 	//  toFetch    Live
 	//  543210
-	sw.BlocksRequested(cids[0:6])
+	sw.BlocksRequested(cids[:6])
 
 	// Get next wants with a limit of 3
 	// The first 3 cids should go move into the live queue
@@ -139,7 +139,7 @@ func TestPrepareBroadcast(t *testing.T) {
 
 	// One block received
 	// Remove a cid from the live queue
-	sw.BlocksReceived(cids[0:1])
+	sw.BlocksReceived(cids[:1])
 	//  toFetch    Live
 	//  543        21_
 
@@ -164,6 +164,26 @@ func TestPrepareBroadcast(t *testing.T) {
 			if !c.Equals(cids[idx]) {
 				t.Fatal("broadcast should always return wants in order")
 			}
+		}
+	}
+}
+
+// Test that even after GC broadcast returns correct wants
+func TestPrepareBroadcastAfterGC(t *testing.T) {
+	sw := newSessionWants(5)
+	cids := testutil.GenerateCids(liveWantsOrderGCLimit * 2)
+
+	sw.BlocksRequested(cids)
+
+	// Trigger a sessionWants internal GC of the live wants
+	sw.BlocksReceived(cids[:liveWantsOrderGCLimit+1])
+	cids = cids[:liveWantsOrderGCLimit+1]
+
+	// Broadcast should contain wants in order
+	ws := sw.PrepareBroadcast()
+	for i, c := range ws {
+		if !c.Equals(cids[i]) {
+			t.Fatal("broadcast should always return wants in order")
 		}
 	}
 }
