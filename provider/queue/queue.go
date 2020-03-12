@@ -132,7 +132,7 @@ func (q *Queue) work() {
 	}()
 }
 
-func (q *Queue) getQueueHead() (*query.Result, error) {
+func (q *Queue) getQueueHead() (*query.Entry, error) {
 	qry := query.Query{Orders: []query.Order{query.OrderByKey{}}, Limit: 1}
 	results, err := q.ds.Query(qry)
 	if err != nil {
@@ -144,5 +144,5 @@ func (q *Queue) getQueueHead() (*query.Result, error) {
 		return nil, nil
 	}
 
-	return &r, nil
+	return &r.Entry, r.Error
 }
