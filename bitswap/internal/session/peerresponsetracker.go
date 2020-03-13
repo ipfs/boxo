@@ -18,10 +18,14 @@ func newPeerResponseTracker() *peerResponseTracker {
 	}
 }
 
+// receivedBlockFrom is called when a block is received from a peer
+// (only called first time block is received)
 func (prt *peerResponseTracker) receivedBlockFrom(from peer.ID) {
 	prt.firstResponder[from]++
 }
 
+// choose picks a peer from the list of candidate peers, favouring those peers
+// that were first to send us previous blocks
 func (prt *peerResponseTracker) choose(peers []peer.ID) peer.ID {
 	if len(peers) == 0 {
 		return ""
@@ -41,8 +45,6 @@ func (prt *peerResponseTracker) choose(peers []peer.ID) peer.ID {
 	for _, p := range peers {
 		counted += float64(prt.getPeerCount(p)) / float64(total)
 		if counted > rnd {
-			// log.Warnf("  chose %s from %s (%d) / %s (%d) with pivot %.2f",
-			// 	lu.P(p), lu.P(peers[0]), prt.firstResponder[peers[0]], lu.P(peers[1]), prt.firstResponder[peers[1]], rnd)
 			return p
 		}
 	}
@@ -51,11 +53,11 @@ func (prt *peerResponseTracker) choose(peers []peer.ID) peer.ID {
 	// math that doesn't quite cover the whole range of peers in the for loop
 	// so just choose the last peer.
 	index := len(peers) - 1
-	// log.Warnf("  chose last (indx %d) %s from %s (%d) / %s (%d) with pivot %.2f",
-	// 	index, lu.P(peers[index]), lu.P(peers[0]), prt.firstResponder[peers[0]], lu.P(peers[1]), prt.firstResponder[peers[1]], rnd)
 	return peers[index]
 }
 
+// getPeerCount returns the number of times the peer was first to send us a
+// block
 func (prt *peerResponseTracker) getPeerCount(p peer.ID) int {
 	count, ok := prt.firstResponder[p]
 	if ok {

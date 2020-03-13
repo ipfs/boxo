@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	lu "github.com/ipfs/go-bitswap/internal/logutil"
 	"github.com/ipfs/go-bitswap/internal/testutil"
 	message "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
@@ -780,12 +779,12 @@ func formatBlocksDiff(blks []blocks.Block, expBlks []string) string {
 	var out bytes.Buffer
 	out.WriteString(fmt.Sprintf("Blocks (%d):\n", len(blks)))
 	for _, b := range blks {
-		out.WriteString(fmt.Sprintf("  %s: %s\n", lu.C(b.Cid()), b.RawData()))
+		out.WriteString(fmt.Sprintf("  %s: %s\n", b.Cid(), b.RawData()))
 	}
 	out.WriteString(fmt.Sprintf("Expected (%d):\n", len(expBlks)))
 	for _, k := range expBlks {
 		expected := blocks.NewBlock([]byte(k))
-		out.WriteString(fmt.Sprintf("  %s: %s\n", lu.C(expected.Cid()), k))
+		out.WriteString(fmt.Sprintf("  %s: %s\n", expected.Cid(), k))
 	}
 	return out.String()
 }
@@ -798,16 +797,16 @@ func formatPresencesDiff(presences []message.BlockPresence, expHaves []string, e
 		if p.Type == pb.Message_DontHave {
 			t = "DONT_HAVE"
 		}
-		out.WriteString(fmt.Sprintf("  %s - %s\n", lu.C(p.Cid), t))
+		out.WriteString(fmt.Sprintf("  %s - %s\n", p.Cid, t))
 	}
 	out.WriteString(fmt.Sprintf("Expected (%d):\n", len(expHaves)+len(expDontHaves)))
 	for _, k := range expHaves {
 		expected := blocks.NewBlock([]byte(k))
-		out.WriteString(fmt.Sprintf("  %s: %s - HAVE\n", lu.C(expected.Cid()), k))
+		out.WriteString(fmt.Sprintf("  %s: %s - HAVE\n", expected.Cid(), k))
 	}
 	for _, k := range expDontHaves {
 		expected := blocks.NewBlock([]byte(k))
-		out.WriteString(fmt.Sprintf("  %s: %s - DONT_HAVE\n", lu.C(expected.Cid()), k))
+		out.WriteString(fmt.Sprintf("  %s: %s - DONT_HAVE\n", expected.Cid(), k))
 	}
 	return out.String()
 }
