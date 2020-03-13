@@ -4,7 +4,6 @@ import (
 	"context"
 
 	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
-	lu "github.com/ipfs/go-bitswap/internal/logutil"
 
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -135,7 +134,6 @@ func (sws *sessionWantSender) Add(ks []cid.Cid) {
 // Update is called when the session receives a message with incoming blocks
 // or HAVE / DONT_HAVE
 func (sws *sessionWantSender) Update(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
-	// fmt.Printf("Update(%s, %d, %d, %d, %t)\n", lu.P(from), len(ks), len(haves), len(dontHaves))
 	hasUpdate := len(ks) > 0 || len(haves) > 0 || len(dontHaves) > 0
 	if !hasUpdate {
 		return
@@ -149,7 +147,6 @@ func (sws *sessionWantSender) Update(from peer.ID, ks []cid.Cid, haves []cid.Cid
 // SignalAvailability is called by the PeerManager to signal that a peer has
 // connected / disconnected
 func (sws *sessionWantSender) SignalAvailability(p peer.ID, isAvailable bool) {
-	// fmt.Printf("SignalAvailability(%s, %t)\n", lu.P(p), isAvailable)
 	availability := peerAvailability{p, isAvailable}
 	sws.addChange(change{availability: availability})
 }
@@ -236,9 +233,7 @@ func (sws *sessionWantSender) onChange(changes []change) {
 
 	// If there are some connected peers, send any pending wants
 	if sws.spm.HasPeers() {
-		// fmt.Printf("sendNextWants()\n")
 		sws.sendNextWants(newlyAvailable)
-		// fmt.Println(sws)
 	}
 }
 
@@ -280,7 +275,6 @@ func (sws *sessionWantSender) processAvailability(availability map[peer.ID]bool)
 
 // trackWant creates a new entry in the map of CID -> want info
 func (sws *sessionWantSender) trackWant(c cid.Cid) {
-	// fmt.Printf("trackWant %s\n", lu.C(c))
 	if _, ok := sws.wants[c]; ok {
 		return
 	}
@@ -304,7 +298,7 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 	for _, upd := range updates {
 		for _, c := range upd.ks {
 			blkCids.Add(c)
-			log.Warnf("received block %s", lu.C(c))
+
 			// Remove the want
 			removed := sws.removeWant(c)
 			if removed != nil {
@@ -382,7 +376,7 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 		go func() {
 			for p := range prunePeers {
 				// Peer doesn't have anything we want, so remove it
-				log.Infof("peer %s sent too many dont haves", lu.P(p))
+				log.Infof("peer %s sent too many dont haves, removing from session %d", p, sws.ID())
 				sws.SignalAvailability(p, false)
 			}
 		}()
@@ -469,7 +463,6 @@ func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.ID) {
 		// We already sent a want-block to a peer and haven't yet received a
 		// response yet
 		if wi.sentTo != "" {
-			// fmt.Printf("  q - already sent want-block %s to %s\n", lu.C(c), lu.P(wi.sentTo))
 			continue
 		}
 
@@ -477,11 +470,8 @@ func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.ID) {
 		// corresponding to this want, so we must wait to discover more peers
 		if wi.bestPeer == "" {
 			// TODO: work this out in real time instead of using bestP?
-			// fmt.Printf("  q - no best peer for %s\n", lu.C(c))
 			continue
 		}
-
-		// fmt.Printf("  q - send best: %s: %s\n", lu.C(c), lu.P(wi.bestPeer))
 
 		// Record that we are sending a want-block for this want to the peer
 		sws.setWantSentTo(c, wi.bestPeer)
@@ -503,12 +493,8 @@ func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.ID) {
 
 // sendWants sends want-have and want-blocks to the appropriate peers
 func (sws *sessionWantSender) sendWants(sends allWants) {
-	// fmt.Printf(" send wants to %d peers\n", len(sends))
-
 	// For each peer we're sending a request to
 	for p, snd := range sends {
-		// fmt.Printf(" send %d wants to %s\n", snd.wantBlocks.Len(), lu.P(p))
-
 		// Piggyback some other want-haves onto the request to the peer
 		for _, c := range sws.getPiggybackWantHaves(p, snd.wantBlocks) {
 			snd.wantHaves.Add(c)
