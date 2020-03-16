@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sync"
 
-	lu "github.com/ipfs/go-bitswap/internal/logutil"
 	logging "github.com/ipfs/go-log"
 
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -30,6 +29,7 @@ type SessionPeerManager struct {
 	tagger PeerTagger
 	tag    string
 
+	id              uint64
 	plk             sync.RWMutex
 	peers           map[peer.ID]struct{}
 	peersDiscovered bool
@@ -38,6 +38,7 @@ type SessionPeerManager struct {
 // New creates a new SessionPeerManager
 func New(id uint64, tagger PeerTagger) *SessionPeerManager {
 	return &SessionPeerManager{
+		id:     id,
 		tag:    fmt.Sprint("bs-ses-", id),
 		tagger: tagger,
 		peers:  make(map[peer.ID]struct{}),
@@ -62,7 +63,7 @@ func (spm *SessionPeerManager) AddPeer(p peer.ID) bool {
 	// connection
 	spm.tagger.TagPeer(p, spm.tag, sessionPeerTagValue)
 
-	log.Debugf("Added peer %s to session (%d peers)\n", p, len(spm.peers))
+	log.Debugw("Bitswap: Added peer to session", "session", spm.id, "peer", p, "peerCount", len(spm.peers))
 	return true
 }
 
@@ -79,7 +80,7 @@ func (spm *SessionPeerManager) RemovePeer(p peer.ID) bool {
 	delete(spm.peers, p)
 	spm.tagger.UntagPeer(p, spm.tag)
 
-	log.Debugf("Removed peer %s from session (%d peers)", lu.P(p), len(spm.peers))
+	log.Debugw("Bitswap: removed peer from session", "session", spm.id, "peer", p, "peerCount", len(spm.peers))
 	return true
 }
 

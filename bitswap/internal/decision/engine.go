@@ -418,7 +418,7 @@ func (e *Engine) nextEnvelope(ctx context.Context) (*Envelope, error) {
 		// Create a new message
 		msg := bsmsg.New(true)
 
-		// log.Debugf("  %s got %d tasks", lu.P(e.self), len(nextTasks))
+		log.Debugw("Bitswap process tasks", "local", e.self, "taskCount", len(nextTasks))
 
 		// Amount of data in the request queue still waiting to be popped
 		msg.SetPendingBytes(int32(pendingBytes))
@@ -456,12 +456,11 @@ func (e *Engine) nextEnvelope(ctx context.Context) (*Envelope, error) {
 			if blk == nil {
 				// If the client requested DONT_HAVE, add DONT_HAVE to the message
 				if t.SendDontHave {
-					// log.Debugf("  make evlp %s->%s DONT_HAVE (expected block) %s", lu.P(e.self), lu.P(p), lu.C(c))
 					msg.AddDontHave(c)
 				}
 			} else {
 				// Add the block to the message
-				// log.Debugf("  make evlp %s->%s block: %s (%d bytes)", lu.P(e.self), lu.P(p), lu.C(c), len(blk.RawData()))
+				// log.Debugf("  make evlp %s->%s block: %s (%d bytes)", e.self, p, c, len(blk.RawData()))
 				msg.AddBlock(blk)
 			}
 		}
@@ -472,7 +471,7 @@ func (e *Engine) nextEnvelope(ctx context.Context) (*Envelope, error) {
 			continue
 		}
 
-		// log.Debugf("  sending message %s->%s (%d blks / %d presences / %d bytes)\n", lu.P(e.self), lu.P(p), blkCount, presenceCount, msg.Size())
+		log.Debugw("Bitswap engine -> msg", "local", e.self, "to", p, "blockCount", len(msg.Blocks()), "presenceCount", len(msg.BlockPresences()), "size", msg.Size())
 		return &Envelope{
 			Peer:    p,
 			Message: msg,
@@ -512,21 +511,21 @@ func (e *Engine) Peers() []peer.ID {
 func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwapMessage) {
 	entries := m.Wantlist()
 
-	// if len(entries) > 0 {
-	// 	log.Debugf("engine-%s received message from %s with %d entries\n", lu.P(e.self), lu.P(p), len(entries))
-	// 	for _, et := range entries {
-	// 		if !et.Cancel {
-	// 			if et.WantType == pb.Message_Wantlist_Have {
-	// 				log.Debugf("  recv %s<-%s: want-have %s\n", lu.P(e.self), lu.P(p), lu.C(et.Cid))
-	// 			} else {
-	// 				log.Debugf("  recv %s<-%s: want-block %s\n", lu.P(e.self), lu.P(p), lu.C(et.Cid))
-	// 			}
-	// 		}
-	// 	}
-	// }
+	if len(entries) > 0 {
+		log.Debugw("Bitswap engine <- msg", "local", e.self, "from", p, "entryCount", len(entries))
+		for _, et := range entries {
+			if !et.Cancel {
+				if et.WantType == pb.Message_Wantlist_Have {
+					log.Debugw("Bitswap engine <- want-have", "local", e.self, "from", p, "cid", et.Cid)
+				} else {
+					log.Debugw("Bitswap engine <- want-block", "local", e.self, "from", p, "cid", et.Cid)
+				}
+			}
+		}
+	}
 
 	if m.Empty() {
-		log.Debugf("received empty message from %s", p)
+		log.Infof("received empty message from %s", p)
 	}
 
 	newWorkExists := false
@@ -556,7 +555,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	// Record how many bytes were received in the ledger
 	blks := m.Blocks()
 	for _, block := range blks {
-		log.Debugf("got block %s %d bytes", block, len(block.RawData()))
+		log.Debugw("Bitswap engine <- block", "local", e.self, "from", p, "cid", block.Cid(), "size", len(block.RawData()))
 		l.ReceivedBytes(len(block.RawData()))
 	}
 
@@ -569,7 +568,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 
 	// Remove cancelled blocks from the queue
 	for _, entry := range cancels {
-		// log.Debugf("%s<-%s cancel %s", lu.P(e.self), lu.P(p), lu.C(entry.Cid))
+		log.Debugw("Bitswap engine <- cancel", "local", e.self, "from", p, "cid", entry.Cid)
 		if l.CancelWant(entry.Cid) {
 			e.peerRequestQueue.Remove(entry.Cid, p)
 		}
@@ -585,6 +584,8 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 
 		// If the block was not found
 		if !found {
+			log.Debugw("Bitswap engine: block not found", "local", e.self, "from", p, "cid", entry.Cid, "sendDontHave", entry.SendDontHave)
+
 			// Only add the task to the queue if the requester wants a DONT_HAVE
 			if e.sendDontHaves && entry.SendDontHave {
 				newWorkExists = true
@@ -592,12 +593,6 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 				if entry.WantType == pb.Message_Wantlist_Block {
 					isWantBlock = true
 				}
-
-				// if isWantBlock {
-				// 	log.Debugf("  put rq %s->%s %s as want-block (not found)\n", lu.P(e.self), lu.P(p), lu.C(entry.Cid))
-				// } else {
-				// 	log.Debugf("  put rq %s->%s %s as want-have (not found)\n", lu.P(e.self), lu.P(p), lu.C(entry.Cid))
-				// }
 
 				activeEntries = append(activeEntries, peertask.Task{
 					Topic:    c,
@@ -611,18 +606,13 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 					},
 				})
 			}
-			// log.Debugf("  not putting rq %s->%s %s (not found, SendDontHave false)\n", lu.P(e.self), lu.P(p), lu.C(entry.Cid))
 		} else {
 			// The block was found, add it to the queue
 			newWorkExists = true
 
 			isWantBlock := e.sendAsBlock(entry.WantType, blockSize)
 
-			// if isWantBlock {
-			// 	log.Debugf("  put rq %s->%s %s as want-block (%d bytes)\n", lu.P(e.self), lu.P(p), lu.C(entry.Cid), blockSize)
-			// } else {
-			// 	log.Debugf("  put rq %s->%s %s as want-have (%d bytes)\n", lu.P(e.self), lu.P(p), lu.C(entry.Cid), blockSize)
-			// }
+			log.Debugw("Bitswap engine: block found", "local", e.self, "from", p, "cid", entry.Cid, "isWantBlock", isWantBlock)
 
 			// entrySize is the amount of space the entry takes up in the
 			// message we send to the recipient. If we're sending a block, the
@@ -694,12 +684,6 @@ func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block, haves []cid.Cid)
 
 				blockSize := blockSizes[k]
 				isWantBlock := e.sendAsBlock(entry.WantType, blockSize)
-
-				// if isWantBlock {
-				// 	log.Debugf("  add-block put rq %s->%s %s as want-block (%d bytes)\n", lu.P(e.self), lu.P(l.Partner), lu.C(k), blockSize)
-				// } else {
-				// 	log.Debugf("  add-block put rq %s->%s %s as want-have (%d bytes)\n", lu.P(e.self), lu.P(l.Partner), lu.C(k), blockSize)
-				// }
 
 				entrySize := blockSize
 				if !isWantBlock {

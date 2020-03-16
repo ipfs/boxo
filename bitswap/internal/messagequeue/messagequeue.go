@@ -14,9 +14,11 @@ import (
 	logging "github.com/ipfs/go-log"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"go.uber.org/zap"
 )
 
 var log = logging.Logger("bitswap")
+var sflog = log.Desugar()
 
 const (
 	defaultRebroadcastInterval = 30 * time.Second
@@ -149,6 +151,7 @@ type DontHaveTimeoutManager interface {
 // New creates a new MessageQueue.
 func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeout OnDontHaveTimeout) *MessageQueue {
 	onTimeout := func(ks []cid.Cid) {
+		log.Infow("Bitswap: timeout waiting for blocks", "cids", ks, "peer", p)
 		onDontHaveTimeout(p, ks)
 	}
 	dhTimeoutMgr := newDontHaveTimeoutMgr(ctx, newPeerConnection(p, network), onTimeout)
@@ -401,7 +404,7 @@ func (mq *MessageQueue) sendMessage() {
 		return
 	}
 
-	// mq.logOutgoingMessage(message)
+	mq.logOutgoingMessage(message)
 
 	// Try to send this message repeatedly
 	for i := 0; i < maxRetries; i++ {
@@ -450,24 +453,30 @@ func (mq *MessageQueue) simulateDontHaveWithTimeout(msg bsmsg.BitSwapMessage) {
 	mq.dhTimeoutMgr.AddPending(wants)
 }
 
-// func (mq *MessageQueue) logOutgoingMessage(msg bsmsg.BitSwapMessage) {
-// 	entries := msg.Wantlist()
-// 	for _, e := range entries {
-// 		if e.Cancel {
-// 			if e.WantType == pb.Message_Wantlist_Have {
-// 				log.Debugf("send %s->%s: cancel-have %s\n", lu.P(mq.network.Self()), lu.P(mq.p), lu.C(e.Cid))
-// 			} else {
-// 				log.Debugf("send %s->%s: cancel-block %s\n", lu.P(mq.network.Self()), lu.P(mq.p), lu.C(e.Cid))
-// 			}
-// 		} else {
-// 			if e.WantType == pb.Message_Wantlist_Have {
-// 				log.Debugf("send %s->%s: want-have %s\n", lu.P(mq.network.Self()), lu.P(mq.p), lu.C(e.Cid))
-// 			} else {
-// 				log.Debugf("send %s->%s: want-block %s\n", lu.P(mq.network.Self()), lu.P(mq.p), lu.C(e.Cid))
-// 			}
-// 		}
-// 	}
-// }
+func (mq *MessageQueue) logOutgoingMessage(msg bsmsg.BitSwapMessage) {
+	// Save some CPU cycles and allocations if log level is higher than debug
+	if ce := sflog.Check(zap.DebugLevel, "Bitswap -> send wants"); ce == nil {
+		return
+	}
+
+	self := mq.network.Self()
+	entries := msg.Wantlist()
+	for _, e := range entries {
+		if e.Cancel {
+			if e.WantType == pb.Message_Wantlist_Have {
+				log.Debugw("Bitswap -> cancel-have", "local", self, "to", mq.p, "cid", e.Cid)
+			} else {
+				log.Debugw("Bitswap -> cancel-block", "local", self, "to", mq.p, "cid", e.Cid)
+			}
+		} else {
+			if e.WantType == pb.Message_Wantlist_Have {
+				log.Debugw("Bitswap -> want-have", "local", self, "to", mq.p, "cid", e.Cid)
+			} else {
+				log.Debugw("Bitswap -> want-block", "local", self, "to", mq.p, "cid", e.Cid)
+			}
+		}
+	}
+}
 
 func (mq *MessageQueue) hasPendingWork() bool {
 	return mq.pendingWorkCount() > 0
