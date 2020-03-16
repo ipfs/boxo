@@ -14,9 +14,11 @@ import (
 	logging "github.com/ipfs/go-log"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"go.uber.org/zap"
 )
 
 var log = logging.Logger("bitswap")
+var sflog = log.Desugar()
 
 const (
 	defaultRebroadcastInterval = 30 * time.Second
@@ -452,6 +454,11 @@ func (mq *MessageQueue) simulateDontHaveWithTimeout(msg bsmsg.BitSwapMessage) {
 }
 
 func (mq *MessageQueue) logOutgoingMessage(msg bsmsg.BitSwapMessage) {
+	// Save some CPU cycles and allocations if log level is higher than debug
+	if ce := sflog.Check(zap.DebugLevel, "Bitswap -> send wants"); ce == nil {
+		return
+	}
+
 	self := mq.network.Self()
 	entries := msg.Wantlist()
 	for _, e := range entries {

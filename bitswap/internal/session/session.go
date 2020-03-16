@@ -15,9 +15,11 @@ import (
 	logging "github.com/ipfs/go-log"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	loggables "github.com/libp2p/go-libp2p-loggables"
+	"go.uber.org/zap"
 )
 
 var log = logging.Logger("bs:sess")
+var sflog = log.Desugar()
 
 const (
 	broadcastLiveWantsLimit = 64
@@ -194,8 +196,11 @@ func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontH
 }
 
 func (s *Session) logReceiveFrom(from peer.ID, interestedKs []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
-	// log.Debugf("Ses%d<-%s: %d blocks, %d haves, %d dont haves\n",
-	// 	s.id, from, len(interestedKs), len(wantedHaves), len(wantedDontHaves))
+	// Save some CPU cycles if log level is higher than debug
+	if ce := sflog.Check(zap.DebugLevel, "Bitswap <- rcv message"); ce == nil {
+		return
+	}
+
 	for _, c := range interestedKs {
 		log.Debugw("Bitswap <- block", "local", s.self, "from", from, "cid", c, "session", s.id)
 	}
@@ -336,7 +341,7 @@ func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
 		// Search for providers who have the first want in the list.
 		// Typically if the provider has the first block they will have
 		// the rest of the blocks also.
-		log.Infof("Ses%d: FindMorePeers with want %s (1st of %d wants)", s.id, wants[0], len(wants))
+		log.Debugf("Ses%d: FindMorePeers with want %s (1st of %d wants)", s.id, wants[0], len(wants))
 		s.findMorePeers(ctx, wants[0])
 	}
 	s.resetIdleTick()
