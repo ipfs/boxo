@@ -170,8 +170,16 @@ func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid) {
 	}
 }
 
-// CurrentWants returns the list of pending want-blocks
+// CurrentWants returns the list of pending wants (both want-haves and want-blocks).
 func (pm *PeerManager) CurrentWants() []cid.Cid {
+	pm.pqLk.RLock()
+	defer pm.pqLk.RUnlock()
+
+	return pm.pwm.GetWants()
+}
+
+// CurrentWantBlocks returns the list of pending want-blocks
+func (pm *PeerManager) CurrentWantBlocks() []cid.Cid {
 	pm.pqLk.RLock()
 	defer pm.pqLk.RUnlock()
 
