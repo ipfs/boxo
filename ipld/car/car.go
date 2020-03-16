@@ -23,6 +23,10 @@ type Store interface {
 	Put(blocks.Block) error
 }
 
+type ReadStore interface {
+	Get(cid.Cid) (blocks.Block, error)
+}
+
 type CarHeader struct {
 	Roots   []cid.Cid
 	Version uint64
@@ -41,17 +45,17 @@ func WriteCar(ctx context.Context, ds format.DAGService, roots []cid.Cid, w io.W
 }
 
 func WriteCarWithWalker(ctx context.Context, ds format.DAGService, roots []cid.Cid, w io.Writer, walk WalkFunc) error {
-	cw := &carWriter{ds: ds, w: w, walk: walk}
 
 	h := &CarHeader{
 		Roots:   roots,
 		Version: 1,
 	}
 
-	if err := cw.WriteHeader(h); err != nil {
+	if err := WriteHeader(h, w); err != nil {
 		return fmt.Errorf("failed to write car header: %s", err)
 	}
 
+	cw := &carWriter{ds: ds, w: w, walk: walk}
 	seen := cid.NewSet()
 	for _, r := range roots {
 		if err := dag.Walk(ctx, cw.enumGetLinks, r, seen.Visit); err != nil {
@@ -79,13 +83,22 @@ func ReadHeader(br *bufio.Reader) (*CarHeader, error) {
 	return &ch, nil
 }
 
-func (cw *carWriter) WriteHeader(h *CarHeader) error {
+func WriteHeader(h *CarHeader, w io.Writer) error {
 	hb, err := cbor.DumpObject(h)
 	if err != nil {
 		return err
 	}
 
-	return util.LdWrite(cw.w, hb)
+	return util.LdWrite(w, hb)
+}
+
+func HeaderSize(h *CarHeader) (uint64, error) {
+	hb, err := cbor.DumpObject(h)
+	if err != nil {
+		return 0, err
+	}
+
+	return util.LdSize(hb), nil
 }
 
 func (cw *carWriter) enumGetLinks(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
@@ -98,7 +111,7 @@ func (cw *carWriter) enumGetLinks(ctx context.Context, c cid.Cid) ([]*format.Lin
 		return nil, err
 	}
 
-	return nd.Links(), nil
+	return cw.walk(nd)
 }
 
 func (cw *carWriter) writeNode(ctx context.Context, nd format.Node) error {
