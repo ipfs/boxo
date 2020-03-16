@@ -503,9 +503,15 @@ func (bs *Bitswap) Close() error {
 	return bs.process.Close()
 }
 
-// GetWantlist returns the current local wantlist.
+// GetWantlist returns the current local wantlist (both want-blocks and
+// want-haves).
 func (bs *Bitswap) GetWantlist() []cid.Cid {
 	return bs.pm.CurrentWants()
+}
+
+// GetWantBlocks returns the current list of want-blocks.
+func (bs *Bitswap) GetWantBlocks() []cid.Cid {
+	return bs.pm.CurrentWantBlocks()
 }
 
 // GetWanthaves returns the current list of want-haves.

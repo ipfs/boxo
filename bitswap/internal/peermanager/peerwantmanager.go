@@ -189,6 +189,28 @@ func (pwm *peerWantManager) GetWantHaves() []cid.Cid {
 	return res.Keys()
 }
 
+// GetWants returns the set of all wants (both want-blocks and want-haves).
+func (pwm *peerWantManager) GetWants() []cid.Cid {
+	res := cid.NewSet()
+
+	// Iterate over all known peers
+	for _, pws := range pwm.peerWants {
+		// Iterate over all want-blocks
+		for _, c := range pws.wantBlocks.Keys() {
+			// Add the CID to the results
+			res.Add(c)
+		}
+
+		// Iterate over all want-haves
+		for _, c := range pws.wantHaves.Keys() {
+			// Add the CID to the results
+			res.Add(c)
+		}
+	}
+
+	return res.Keys()
+}
+
 func (pwm *peerWantManager) String() string {
 	var b bytes.Buffer
 	for p, ws := range pwm.peerWants {
