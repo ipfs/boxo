@@ -6,7 +6,6 @@ import (
 
 	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
 	bsgetter "github.com/ipfs/go-bitswap/internal/getter"
-	lu "github.com/ipfs/go-bitswap/internal/logutil"
 	notifications "github.com/ipfs/go-bitswap/internal/notifications"
 	bspm "github.com/ipfs/go-bitswap/internal/peermanager"
 	bssim "github.com/ipfs/go-bitswap/internal/sessioninterestmanager"
@@ -16,9 +15,11 @@ import (
 	logging "github.com/ipfs/go-log"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	loggables "github.com/libp2p/go-libp2p-loggables"
+	"go.uber.org/zap"
 )
 
 var log = logging.Logger("bs:sess")
+var sflog = log.Desugar()
 
 const (
 	broadcastLiveWantsLimit = 64
@@ -178,7 +179,7 @@ func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontH
 	ks = interestedRes[0]
 	haves = interestedRes[1]
 	dontHaves = interestedRes[2]
-	// s.logReceiveFrom(from, ks, haves, dontHaves)
+	s.logReceiveFrom(from, ks, haves, dontHaves)
 
 	// Inform the session want sender that a message has been received
 	s.sws.Update(from, ks, haves, dontHaves)
@@ -194,19 +195,22 @@ func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontH
 	}
 }
 
-// func (s *Session) logReceiveFrom(from peer.ID, interestedKs []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
-// 	// log.Infof("Ses%d<-%s: %d blocks, %d haves, %d dont haves\n",
-// 	// 	s.id, from, len(interestedKs), len(wantedHaves), len(wantedDontHaves))
-// 	for _, c := range interestedKs {
-// 		log.Warnf("Ses%d %s<-%s: block %s\n", s.id, lu.P(s.self), lu.P(from), lu.C(c))
-// 	}
-// 	for _, c := range haves {
-// 		log.Warnf("Ses%d %s<-%s: HAVE %s\n", s.id, lu.P(s.self), lu.P(from), lu.C(c))
-// 	}
-// 	for _, c := range dontHaves {
-// 		log.Warnf("Ses%d %s<-%s: DONT_HAVE %s\n", s.id, lu.P(s.self), lu.P(from), lu.C(c))
-// 	}
-// }
+func (s *Session) logReceiveFrom(from peer.ID, interestedKs []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
+	// Save some CPU cycles if log level is higher than debug
+	if ce := sflog.Check(zap.DebugLevel, "Bitswap <- rcv message"); ce == nil {
+		return
+	}
+
+	for _, c := range interestedKs {
+		log.Debugw("Bitswap <- block", "local", s.self, "from", from, "cid", c, "session", s.id)
+	}
+	for _, c := range haves {
+		log.Debugw("Bitswap <- HAVE", "local", s.self, "from", from, "cid", c, "session", s.id)
+	}
+	for _, c := range dontHaves {
+		log.Debugw("Bitswap <- DONT_HAVE", "local", s.self, "from", from, "cid", c, "session", s.id)
+	}
+}
 
 // GetBlock fetches a single block.
 func (s *Session) GetBlock(parent context.Context, k cid.Cid) (blocks.Block, error) {
@@ -328,9 +332,6 @@ func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
 		wants = s.sw.PrepareBroadcast()
 	}
 
-	// log.Warnf("\n\n\n\n\nSes%d: broadcast %d keys\n\n\n\n\n", s.id, len(live))
-	// log.Infof("Ses%d: broadcast %d keys\n", s.id, len(live))
-
 	// Broadcast a want-have for the live wants to everyone we're connected to
 	s.wm.BroadcastWantHaves(ctx, s.id, wants)
 
@@ -340,7 +341,7 @@ func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
 		// Search for providers who have the first want in the list.
 		// Typically if the provider has the first block they will have
 		// the rest of the blocks also.
-		log.Infof("Ses%d: FindMorePeers with want %s (1st of %d wants)", s.id, lu.C(wants[0]), len(wants))
+		log.Debugf("Ses%d: FindMorePeers with want %s (1st of %d wants)", s.id, wants[0], len(wants))
 		s.findMorePeers(ctx, wants[0])
 	}
 	s.resetIdleTick()
@@ -453,7 +454,6 @@ func (s *Session) resetIdleTick() {
 		tickDelay = s.initialSearchDelay
 	} else {
 		avLat := s.latencyTrkr.averageLatency()
-		// log.Warnf("averageLatency %s", avLat)
 		tickDelay = s.baseTickDelay + (3 * avLat)
 	}
 	tickDelay = tickDelay * time.Duration(1+s.consecutiveTicks)

@@ -7,10 +7,13 @@ import (
 	bssim "github.com/ipfs/go-bitswap/internal/sessioninterestmanager"
 	"github.com/ipfs/go-bitswap/internal/sessionmanager"
 	bsswl "github.com/ipfs/go-bitswap/internal/sessionwantlist"
+	logging "github.com/ipfs/go-log"
 
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
+
+var log = logging.Logger("bitswap")
 
 // PeerHandler sends wants / cancels to other peers
 type PeerHandler interface {
@@ -75,7 +78,7 @@ func (wm *WantManager) ReceiveFrom(ctx context.Context, p peer.ID, blks []cid.Ci
 // BroadcastWantHaves is called when want-haves should be broadcast to all
 // connected peers (as part of session discovery)
 func (wm *WantManager) BroadcastWantHaves(ctx context.Context, ses uint64, wantHaves []cid.Cid) {
-	// log.Warnf("BroadcastWantHaves session%d: %s", ses, wantHaves)
+	log.Debugf("BroadcastWantHaves session%d: %s", ses, wantHaves)
 
 	// Record broadcast wants
 	wm.bcwl.Add(wantHaves, ses)
