@@ -154,7 +154,7 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeo
 		log.Infow("Bitswap: timeout waiting for blocks", "cids", ks, "peer", p)
 		onDontHaveTimeout(p, ks)
 	}
-	dhTimeoutMgr := newDontHaveTimeoutMgr(ctx, newPeerConnection(p, network), onTimeout)
+	dhTimeoutMgr := newDontHaveTimeoutMgr(newPeerConnection(p, network), onTimeout)
 	return newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff, dhTimeoutMgr)
 }
 
