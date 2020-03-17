@@ -3,16 +3,13 @@ package files
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // serialFile implements Node, and reads from a path on the OS filesystem.
-// No more than one file will be opened at a time (directories will advance
-// to the next file when NextFile() is called).
+// No more than one file will be opened at a time.
 type serialFile struct {
 	path              string
 	files             []os.FileInfo
@@ -42,7 +39,7 @@ func NewSerialFile(path string, hidden bool, stat os.FileInfo) (Node, error) {
 		return NewReaderPathFile(path, file, stat)
 	case mode.IsDir():
 		// for directories, stat all of the contents first, so we know what files to
-		// open when NextFile() is called
+		// open when Entries() is called
 		contents, err := ioutil.ReadDir(path)
 		if err != nil {
 			return nil, err
@@ -111,38 +108,6 @@ func (f *serialFile) Entries() DirIterator {
 		files:             f.files,
 		handleHiddenFiles: f.handleHiddenFiles,
 	}
-}
-
-func (f *serialFile) NextFile() (string, Node, error) {
-	// if there aren't any files left in the root directory, we're done
-	if len(f.files) == 0 {
-		return "", nil, io.EOF
-	}
-
-	stat := f.files[0]
-	f.files = f.files[1:]
-
-	for !f.handleHiddenFiles && strings.HasPrefix(stat.Name(), ".") {
-		if len(f.files) == 0 {
-			return "", nil, io.EOF
-		}
-
-		stat = f.files[0]
-		f.files = f.files[1:]
-	}
-
-	// open the next file
-	filePath := filepath.ToSlash(filepath.Join(f.path, stat.Name()))
-
-	// recursively call the constructor on the next file
-	// if it's a regular file, we will open it as a ReaderFile
-	// if it's a directory, files in it will be opened serially
-	sf, err := NewSerialFile(filePath, f.handleHiddenFiles, stat)
-	if err != nil {
-		return "", nil, err
-	}
-
-	return stat.Name(), sf, nil
 }
 
 func (f *serialFile) Close() error {
