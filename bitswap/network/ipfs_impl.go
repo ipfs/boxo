@@ -67,6 +67,10 @@ func processSettings(opts ...NetOpt) Settings {
 // impl transforms the ipfs network interface, which sends and receives
 // NetMessage objects, into the bitswap network interface.
 type impl struct {
+	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
+	// alignment.
+	stats Stats
+
 	host    host.Host
 	routing routing.ContentRouting
 
@@ -79,8 +83,6 @@ type impl struct {
 
 	// inbound messages from the network are forwarded to the receiver
 	receiver Receiver
-
-	stats Stats
 }
 
 type streamMessageSender struct {
