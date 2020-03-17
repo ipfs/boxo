@@ -72,17 +72,17 @@ type dontHaveTimeoutMgr struct {
 
 // newDontHaveTimeoutMgr creates a new dontHaveTimeoutMgr
 // onDontHaveTimeout is called when pending keys expire (not cancelled before timeout)
-func newDontHaveTimeoutMgr(ctx context.Context, pc PeerConnection, onDontHaveTimeout func([]cid.Cid)) *dontHaveTimeoutMgr {
-	return newDontHaveTimeoutMgrWithParams(ctx, pc, onDontHaveTimeout, dontHaveTimeout,
+func newDontHaveTimeoutMgr(pc PeerConnection, onDontHaveTimeout func([]cid.Cid)) *dontHaveTimeoutMgr {
+	return newDontHaveTimeoutMgrWithParams(pc, onDontHaveTimeout, dontHaveTimeout,
 		latencyMultiplier, maxExpectedWantProcessTime)
 }
 
 // newDontHaveTimeoutMgrWithParams is used by the tests
-func newDontHaveTimeoutMgrWithParams(ctx context.Context, pc PeerConnection, onDontHaveTimeout func([]cid.Cid),
+func newDontHaveTimeoutMgrWithParams(pc PeerConnection, onDontHaveTimeout func([]cid.Cid),
 	defaultTimeout time.Duration, latencyMultiplier int,
 	maxExpectedWantProcessTime time.Duration) *dontHaveTimeoutMgr {
 
-	ctx, shutdown := context.WithCancel(ctx)
+	ctx, shutdown := context.WithCancel(context.Background())
 	mqp := &dontHaveTimeoutMgr{
 		ctx:                        ctx,
 		shutdown:                   shutdown,
@@ -101,10 +101,7 @@ func newDontHaveTimeoutMgrWithParams(ctx context.Context, pc PeerConnection, onD
 // Shutdown the dontHaveTimeoutMgr. Any subsequent call to Start() will be ignored
 func (dhtm *dontHaveTimeoutMgr) Shutdown() {
 	dhtm.shutdown()
-}
 
-// onShutdown is called when the dontHaveTimeoutMgr shuts down
-func (dhtm *dontHaveTimeoutMgr) onShutdown() {
 	dhtm.lk.Lock()
 	defer dhtm.lk.Unlock()
 
@@ -112,13 +109,6 @@ func (dhtm *dontHaveTimeoutMgr) onShutdown() {
 	if dhtm.checkForTimeoutsTimer != nil {
 		dhtm.checkForTimeoutsTimer.Stop()
 	}
-}
-
-// closeAfterContext is called when the dontHaveTimeoutMgr starts.
-// It monitors for the context being cancelled.
-func (dhtm *dontHaveTimeoutMgr) closeAfterContext() {
-	<-dhtm.ctx.Done()
-	dhtm.onShutdown()
 }
 
 // Start the dontHaveTimeoutMgr. This method is idempotent
@@ -131,8 +121,6 @@ func (dhtm *dontHaveTimeoutMgr) Start() {
 		return
 	}
 	dhtm.started = true
-
-	go dhtm.closeAfterContext()
 
 	// If we already have a measure of latency to the peer, use it to
 	// calculate a reasonable timeout
