@@ -18,12 +18,12 @@ type Wantlist struct {
 // Entry is an entry in a want list, consisting of a cid and its priority
 type Entry struct {
 	Cid      cid.Cid
-	Priority int
+	Priority int32
 	WantType pb.Message_Wantlist_WantType
 }
 
 // NewRefEntry creates a new reference tracked wantlist entry.
-func NewRefEntry(c cid.Cid, p int) Entry {
+func NewRefEntry(c cid.Cid, p int32) Entry {
 	return Entry{
 		Cid:      c,
 		Priority: p,
@@ -50,7 +50,7 @@ func (w *Wantlist) Len() int {
 }
 
 // Add adds an entry in a wantlist from CID & Priority, if not already present.
-func (w *Wantlist) Add(c cid.Cid, priority int, wantType pb.Message_Wantlist_WantType) bool {
+func (w *Wantlist) Add(c cid.Cid, priority int32, wantType pb.Message_Wantlist_WantType) bool {
 	e, ok := w.set[c]
 
 	// Adding want-have should not override want-block

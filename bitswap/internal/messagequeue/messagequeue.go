@@ -68,7 +68,7 @@ type MessageQueue struct {
 	bcstWants recallWantlist
 	peerWants recallWantlist
 	cancels   *cid.Set
-	priority  int
+	priority  int32
 
 	// Dont touch any of these variables outside of run loop
 	sender                bsnet.MessageSender
@@ -95,7 +95,7 @@ func newRecallWantList() recallWantlist {
 }
 
 // Add want to both the pending list and the list of all wants
-func (r *recallWantlist) Add(c cid.Cid, priority int, wtype pb.Message_Wantlist_WantType) {
+func (r *recallWantlist) Add(c cid.Cid, priority int32, wtype pb.Message_Wantlist_WantType) {
 	r.allWants.Add(c, priority, wtype)
 	r.pending.Add(c, priority, wtype)
 }

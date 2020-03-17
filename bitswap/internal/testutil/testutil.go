@@ -13,7 +13,7 @@ import (
 )
 
 var blockGenerator = blocksutil.NewBlockGenerator()
-var prioritySeq int
+var prioritySeq int32
 
 // GenerateBlocksOfSize generates a series of blocks of the given byte size
 func GenerateBlocksOfSize(n int, size int64) []blocks.Block {

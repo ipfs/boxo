@@ -1068,14 +1068,14 @@ func partnerWantBlocks(e *Engine, keys []string, partner peer.ID) {
 	add := message.New(false)
 	for i, letter := range keys {
 		block := blocks.NewBlock([]byte(letter))
-		add.AddEntry(block.Cid(), len(keys)-i, pb.Message_Wantlist_Block, true)
+		add.AddEntry(block.Cid(), int32(len(keys)-i), pb.Message_Wantlist_Block, true)
 	}
 	e.MessageReceived(context.Background(), partner, add)
 }
 
 func partnerWantBlocksHaves(e *Engine, keys []string, wantHaves []string, sendDontHave bool, partner peer.ID) {
 	add := message.New(false)
-	priority := len(wantHaves) + len(keys)
+	priority := int32(len(wantHaves) + len(keys))
 	for _, letter := range wantHaves {
 		block := blocks.NewBlock([]byte(letter))
 		add.AddEntry(block.Cid(), priority, pb.Message_Wantlist_Have, sendDontHave)
