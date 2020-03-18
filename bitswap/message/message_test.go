@@ -29,7 +29,7 @@ func TestNewMessageFromProto(t *testing.T) {
 	str := mkFakeCid("a_key")
 	protoMessage := new(pb.Message)
 	protoMessage.Wantlist.Entries = []pb.Message_Wantlist_Entry{
-		{Block: str.Bytes()},
+		{Block: pb.Cid{Cid: str}},
 	}
 	if !wantlistContains(&protoMessage.Wantlist, str) {
 		t.Fail()
@@ -164,7 +164,7 @@ func TestToAndFromNetMessage(t *testing.T) {
 
 func wantlistContains(wantlist *pb.Message_Wantlist, c cid.Cid) bool {
 	for _, e := range wantlist.GetEntries() {
-		if bytes.Equal(e.GetBlock(), c.Bytes()) {
+		if e.Block.Cid.Defined() && c.Equals(e.Block.Cid) {
 			return true
 		}
 	}
