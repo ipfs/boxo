@@ -4,16 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/ipfs/go-bitswap/internal/testutil"
 	"github.com/ipfs/go-bitswap/message"
+	pb "github.com/ipfs/go-bitswap/message/pb"
 	cid "github.com/ipfs/go-cid"
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
-	pb "github.com/ipfs/go-bitswap/message/pb"
 	bsnet "github.com/ipfs/go-bitswap/network"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -704,4 +706,61 @@ func filterWantTypes(wantlist []bsmsg.Entry) ([]cid.Cid, []cid.Cid, []cid.Cid) {
 		}
 	}
 	return wbs, whs, cls
+}
+
+// Simplistic benchmark to allow us to simulate conditions on the gateways
+func BenchmarkMessageQueue(b *testing.B) {
+	ctx := context.Background()
+
+	createQueue := func() *MessageQueue {
+		messagesSent := make(chan bsmsg.BitSwapMessage)
+		sendErrors := make(chan error)
+		resetChan := make(chan struct{}, 1)
+		fullClosedChan := make(chan struct{}, 1)
+		fakeSender := newFakeMessageSender(nil, fullClosedChan, resetChan, messagesSent, sendErrors, true)
+		fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
+		dhtm := &fakeDontHaveTimeoutMgr{}
+		peerID := testutil.GeneratePeers(1)[0]
+
+		messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, dhtm)
+		messageQueue.Startup()
+
+		go func() {
+			for {
+				<-messagesSent
+				time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
+			}
+		}()
+
+		return messageQueue
+	}
+
+	// Create a handful of message queues to start with
+	var qs []*MessageQueue
+	for i := 0; i < 5; i++ {
+		qs = append(qs, createQueue())
+	}
+
+	for n := 0; n < b.N; n++ {
+		// Create a new message queue every 10 ticks
+		if n%10 == 0 {
+			qs = append(qs, createQueue())
+		}
+
+		// Pick a random message queue, favoring those created later
+		qn := len(qs)
+		i := int(math.Floor(float64(qn) * float64(1-rand.Float32()*rand.Float32())))
+		if i >= qn { // because of floating point math
+			i = qn - 1
+		}
+
+		// Alternately add either a few wants or a lot of broadcast wants
+		if rand.Intn(2) == 0 {
+			wants := testutil.GenerateCids(10)
+			qs[i].AddWants(wants[:2], wants[2:])
+		} else {
+			wants := testutil.GenerateCids(60)
+			qs[i].AddBroadcastWantHaves(wants)
+		}
+	}
 }
