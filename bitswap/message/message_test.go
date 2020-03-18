@@ -2,9 +2,12 @@ package message
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 
 	pb "github.com/ipfs/go-bitswap/message/pb"
+	"github.com/ipfs/go-bitswap/wantlist"
+	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -287,5 +290,25 @@ func TestAddWantlistEntry(t *testing.T) {
 	msg.AddEntry(b.Cid(), 10, pb.Message_Wantlist_Block, true)
 	if !e.Cancel {
 		t.Fatal("want should not override cancel")
+	}
+}
+
+func TestEntrySize(t *testing.T) {
+	blockGenerator := blocksutil.NewBlockGenerator()
+	c := blockGenerator.Next().Cid()
+	e := Entry{
+		Entry: wantlist.Entry{
+			Cid:      c,
+			Priority: 10,
+			WantType: pb.Message_Wantlist_Have,
+		},
+		SendDontHave: true,
+		Cancel:       false,
+	}
+	fmt.Println(len(c.Bytes()))
+	fmt.Println(len(c.KeyString()))
+	epb := e.ToPB()
+	if e.Size() != epb.Size() {
+		t.Fatal("entry size calculation incorrect", e.Size(), epb.Size())
 	}
 }
