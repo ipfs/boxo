@@ -13,7 +13,7 @@ message Message {
     }
 
     message Entry {
-			bytes block = 1;		// the block cid (cidV0 in bitswap 1.0.0, cidV1 in bitswap 1.1.0)
+			bytes block = 1 [(gogoproto.customtype) = "Cid", (gogoproto.nullable) = false];		// the block cid (cidV0 in bitswap 1.0.0, cidV1 in bitswap 1.1.0)
 			int32 priority = 2;	// the priority (normalized). default to 1
 			bool cancel = 3;		// whether this revokes an entry
       WantType wantType = 4; // Note: defaults to enum 0, ie Block
@@ -34,7 +34,7 @@ message Message {
     DontHave = 1;
   }
   message BlockPresence {
-    bytes cid = 1;
+    bytes cid = 1 [(gogoproto.customtype) = "Cid", (gogoproto.nullable) = false];
     BlockPresenceType type = 2;
   }
 
