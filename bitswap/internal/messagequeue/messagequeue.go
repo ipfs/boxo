@@ -75,6 +75,9 @@ type MessageQueue struct {
 	rebroadcastIntervalLk sync.RWMutex
 	rebroadcastInterval   time.Duration
 	rebroadcastTimer      *time.Timer
+	// For performance reasons we just clear out the fields of the message
+	// instead of creating a new one every time.
+	msg bsmsg.BitSwapMessage
 }
 
 // recallWantlist keeps a list of pending wants, and a list of all wants that
@@ -410,9 +413,10 @@ func (mq *MessageQueue) sendMessage() {
 	for i := 0; i < maxRetries; i++ {
 		if mq.attemptSendAndRecovery(message) {
 			// We were able to send successfully.
-			onSent()
+			wantlist := message.Wantlist()
+			onSent(wantlist)
 
-			mq.simulateDontHaveWithTimeout(message)
+			mq.simulateDontHaveWithTimeout(wantlist)
 
 			// If the message was too big and only a subset of wants could be
 			// sent, schedule sending the rest of the wants in the next
@@ -430,12 +434,12 @@ func (mq *MessageQueue) sendMessage() {
 // This is necessary when making requests to peers running an older version of
 // Bitswap that doesn't support the DONT_HAVE response, and is also useful to
 // mitigate getting blocked by a peer that takes a long time to respond.
-func (mq *MessageQueue) simulateDontHaveWithTimeout(msg bsmsg.BitSwapMessage) {
+func (mq *MessageQueue) simulateDontHaveWithTimeout(wantlist []bsmsg.Entry) {
+	// Get the CID of each want-block that expects a DONT_HAVE response
+	wants := make([]cid.Cid, 0, len(wantlist))
+
 	mq.wllock.Lock()
 
-	// Get the CID of each want-block that expects a DONT_HAVE response
-	wantlist := msg.Wantlist()
-	wants := make([]cid.Cid, 0, len(wantlist))
 	for _, entry := range wantlist {
 		if entry.WantType == pb.Message_Wantlist_Block && entry.SendDontHave {
 			// Unlikely, but just in case check that the block hasn't been
@@ -489,9 +493,17 @@ func (mq *MessageQueue) pendingWorkCount() int {
 	return mq.bcstWants.pending.Len() + mq.peerWants.pending.Len() + mq.cancels.Len()
 }
 
-func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwapMessage, func()) {
-	// Create a new message
-	msg := bsmsg.New(false)
+func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwapMessage, func([]bsmsg.Entry)) {
+	// For performance reasons we just clear out the fields of the message
+	// instead of creating a new one every time.
+	if mq.msg == nil {
+		// Create a new message
+		mq.msg = bsmsg.New(false)
+	} else {
+		// If there's already a message, reset it
+		mq.msg.Reset(false)
+	}
+	msg := mq.msg
 
 	mq.wllock.Lock()
 	defer mq.wllock.Unlock()
@@ -544,11 +556,11 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 
 	// Called when the message has been successfully sent.
 	// Remove the sent keys from the broadcast and regular wantlists.
-	onSent := func() {
+	onSent := func(wantlist []bsmsg.Entry) {
 		mq.wllock.Lock()
 		defer mq.wllock.Unlock()
 
-		for _, e := range msg.Wantlist() {
+		for _, e := range wantlist {
 			mq.bcstWants.pending.Remove(e.Cid)
 			mq.peerWants.pending.RemoveType(e.Cid, e.WantType)
 		}
