@@ -488,10 +488,12 @@ func (mq *MessageQueue) logOutgoingMessage(wantlist []bsmsg.Entry) {
 	}
 }
 
+// Whether there is work to be processed
 func (mq *MessageQueue) hasPendingWork() bool {
 	return mq.pendingWorkCount() > 0
 }
 
+// The amount of work that is waiting to be processed
 func (mq *MessageQueue) pendingWorkCount() int {
 	mq.wllock.Lock()
 	defer mq.wllock.Unlock()
@@ -499,9 +501,8 @@ func (mq *MessageQueue) pendingWorkCount() int {
 	return mq.bcstWants.pending.Len() + mq.peerWants.pending.Len() + mq.cancels.Len()
 }
 
+// Convert the lists of wants into a Bitswap message
 func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) bsmsg.BitSwapMessage {
-	msg := mq.msg
-
 	mq.wllock.Lock()
 	defer mq.wllock.Unlock()
 
@@ -524,7 +525,7 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) bsmsg.BitSwapM
 		}
 
 		e := bcstEntries[i]
-		msgSize += msg.AddEntry(e.Cid, e.Priority, wantType, false)
+		msgSize += mq.msg.AddEntry(e.Cid, e.Priority, wantType, false)
 	}
 
 	// Add each regular want-have / want-block to the message
@@ -535,7 +536,7 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) bsmsg.BitSwapM
 		if !supportsHave && e.WantType == pb.Message_Wantlist_Have {
 			mq.peerWants.RemoveType(e.Cid, pb.Message_Wantlist_Have)
 		} else {
-			msgSize += msg.AddEntry(e.Cid, e.Priority, e.WantType, true)
+			msgSize += mq.msg.AddEntry(e.Cid, e.Priority, e.WantType, true)
 		}
 	}
 
@@ -544,14 +545,14 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) bsmsg.BitSwapM
 	for i := 0; i < len(cancels) && msgSize < mq.maxMessageSize; i++ {
 		c := cancels[i]
 
-		msgSize += msg.Cancel(c)
+		msgSize += mq.msg.Cancel(c)
 
 		// Clear the cancel - we make a best effort to let peers know about
 		// cancels but won't save them to resend if there's a failure.
 		mq.cancels.Remove(c)
 	}
 
-	return msg
+	return mq.msg
 }
 
 // Called when the message has been successfully sent.
