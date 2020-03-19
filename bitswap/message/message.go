@@ -68,6 +68,9 @@ type BitSwapMessage interface {
 
 	// Reset the values in the message back to defaults, so it can be reused
 	Reset(bool)
+
+	// Clone the message fields
+	Clone() BitSwapMessage
 }
 
 // Exportable is an interface for structures than can be
@@ -130,11 +133,27 @@ func New(full bool) BitSwapMessage {
 
 func newMsg(full bool) *impl {
 	return &impl{
+		full:           full,
+		wantlist:       make(map[cid.Cid]*Entry),
 		blocks:         make(map[cid.Cid]blocks.Block),
 		blockPresences: make(map[cid.Cid]pb.Message_BlockPresenceType),
-		wantlist:       make(map[cid.Cid]*Entry),
-		full:           full,
 	}
+}
+
+// Clone the message fields
+func (m *impl) Clone() BitSwapMessage {
+	msg := newMsg(m.full)
+	for k := range m.wantlist {
+		msg.wantlist[k] = m.wantlist[k]
+	}
+	for k := range m.blocks {
+		msg.blocks[k] = m.blocks[k]
+	}
+	for k := range m.blockPresences {
+		msg.blockPresences[k] = m.blockPresences[k]
+	}
+	msg.pendingBytes = m.pendingBytes
+	return msg
 }
 
 // Reset the values in the message back to defaults, so it can be reused

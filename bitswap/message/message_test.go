@@ -2,7 +2,6 @@ package message
 
 import (
 	"bytes"
-	"fmt"
 	"testing"
 
 	pb "github.com/ipfs/go-bitswap/message/pb"
@@ -305,8 +304,6 @@ func TestEntrySize(t *testing.T) {
 		SendDontHave: true,
 		Cancel:       false,
 	}
-	fmt.Println(len(c.Bytes()))
-	fmt.Println(len(c.KeyString()))
 	epb := e.ToPB()
 	if e.Size() != epb.Size() {
 		t.Fatal("entry size calculation incorrect", e.Size(), epb.Size())
