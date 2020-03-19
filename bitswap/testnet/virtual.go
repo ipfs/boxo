@@ -128,6 +128,8 @@ func (n *network) SendMessage(
 	to peer.ID,
 	mes bsmsg.BitSwapMessage) error {
 
+	mes = mes.Clone()
+
 	n.mu.Lock()
 	defer n.mu.Unlock()
 

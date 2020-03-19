@@ -65,6 +65,12 @@ type BitSwapMessage interface {
 	Exportable
 
 	Loggable() map[string]interface{}
+
+	// Reset the values in the message back to defaults, so it can be reused
+	Reset(bool)
+
+	// Clone the message fields
+	Clone() BitSwapMessage
 }
 
 // Exportable is an interface for structures than can be
@@ -85,6 +91,33 @@ type BlockPresence struct {
 	Type pb.Message_BlockPresenceType
 }
 
+// Entry is a wantlist entry in a Bitswap message, with flags indicating
+// - whether message is a cancel
+// - whether requester wants a DONT_HAVE message
+// - whether requester wants a HAVE message (instead of the block)
+type Entry struct {
+	wantlist.Entry
+	Cancel       bool
+	SendDontHave bool
+}
+
+// Get the size of the entry on the wire
+func (e *Entry) Size() int {
+	epb := e.ToPB()
+	return epb.Size()
+}
+
+// Get the entry in protobuf form
+func (e *Entry) ToPB() pb.Message_Wantlist_Entry {
+	return pb.Message_Wantlist_Entry{
+		Block:        pb.Cid{Cid: e.Cid},
+		Priority:     int32(e.Priority),
+		Cancel:       e.Cancel,
+		WantType:     e.WantType,
+		SendDontHave: e.SendDontHave,
+	}
+}
+
 type impl struct {
 	full           bool
 	wantlist       map[cid.Cid]*Entry
@@ -100,21 +133,42 @@ func New(full bool) BitSwapMessage {
 
 func newMsg(full bool) *impl {
 	return &impl{
+		full:           full,
+		wantlist:       make(map[cid.Cid]*Entry),
 		blocks:         make(map[cid.Cid]blocks.Block),
 		blockPresences: make(map[cid.Cid]pb.Message_BlockPresenceType),
-		wantlist:       make(map[cid.Cid]*Entry),
-		full:           full,
 	}
 }
 
-// Entry is a wantlist entry in a Bitswap message, with flags indicating
-// - whether message is a cancel
-// - whether requester wants a DONT_HAVE message
-// - whether requester wants a HAVE message (instead of the block)
-type Entry struct {
-	wantlist.Entry
-	Cancel       bool
-	SendDontHave bool
+// Clone the message fields
+func (m *impl) Clone() BitSwapMessage {
+	msg := newMsg(m.full)
+	for k := range m.wantlist {
+		msg.wantlist[k] = m.wantlist[k]
+	}
+	for k := range m.blocks {
+		msg.blocks[k] = m.blocks[k]
+	}
+	for k := range m.blockPresences {
+		msg.blockPresences[k] = m.blockPresences[k]
+	}
+	msg.pendingBytes = m.pendingBytes
+	return msg
+}
+
+// Reset the values in the message back to defaults, so it can be reused
+func (m *impl) Reset(full bool) {
+	m.full = full
+	for k := range m.wantlist {
+		delete(m.wantlist, k)
+	}
+	for k := range m.blocks {
+		delete(m.blocks, k)
+	}
+	for k := range m.blockPresences {
+		delete(m.blockPresences, k)
+	}
+	m.pendingBytes = 0
 }
 
 var errCidMissing = errors.New("missing cid")
@@ -267,8 +321,7 @@ func (m *impl) addEntry(c cid.Cid, priority int32, cancel bool, wantType pb.Mess
 	}
 	m.wantlist[c] = e
 
-	aspb := entryToPB(e)
-	return aspb.Size()
+	return e.Size()
 }
 
 func (m *impl) AddBlock(b blocks.Block) {
@@ -300,8 +353,7 @@ func (m *impl) Size() int {
 		size += BlockPresenceSize(c)
 	}
 	for _, e := range m.wantlist {
-		epb := entryToPB(e)
-		size += epb.Size()
+		size += e.Size()
 	}
 
 	return size
@@ -337,21 +389,11 @@ func FromMsgReader(r msgio.Reader) (BitSwapMessage, error) {
 	return newMessageFromProto(pb)
 }
 
-func entryToPB(e *Entry) pb.Message_Wantlist_Entry {
-	return pb.Message_Wantlist_Entry{
-		Block:        pb.Cid{Cid: e.Cid},
-		Priority:     int32(e.Priority),
-		Cancel:       e.Cancel,
-		WantType:     e.WantType,
-		SendDontHave: e.SendDontHave,
-	}
-}
-
 func (m *impl) ToProtoV0() *pb.Message {
 	pbm := new(pb.Message)
 	pbm.Wantlist.Entries = make([]pb.Message_Wantlist_Entry, 0, len(m.wantlist))
 	for _, e := range m.wantlist {
-		pbm.Wantlist.Entries = append(pbm.Wantlist.Entries, entryToPB(e))
+		pbm.Wantlist.Entries = append(pbm.Wantlist.Entries, e.ToPB())
 	}
 	pbm.Wantlist.Full = m.full
 
@@ -367,7 +409,7 @@ func (m *impl) ToProtoV1() *pb.Message {
 	pbm := new(pb.Message)
 	pbm.Wantlist.Entries = make([]pb.Message_Wantlist_Entry, 0, len(m.wantlist))
 	for _, e := range m.wantlist {
-		pbm.Wantlist.Entries = append(pbm.Wantlist.Entries, entryToPB(e))
+		pbm.Wantlist.Entries = append(pbm.Wantlist.Entries, e.ToPB())
 	}
 	pbm.Wantlist.Full = m.full
 
