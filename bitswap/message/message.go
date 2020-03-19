@@ -2,7 +2,7 @@ package message
 
 import (
 	"encoding/binary"
-	"fmt"
+	"errors"
 	"io"
 
 	pb "github.com/ipfs/go-bitswap/message/pb"
@@ -117,14 +117,15 @@ type Entry struct {
 	SendDontHave bool
 }
 
+var errCidMissing = errors.New("missing cid")
+
 func newMessageFromProto(pbm pb.Message) (BitSwapMessage, error) {
 	m := newMsg(pbm.Wantlist.Full)
 	for _, e := range pbm.Wantlist.Entries {
-		c, err := cid.Cast([]byte(e.Block))
-		if err != nil {
-			return nil, fmt.Errorf("incorrectly formatted cid in wantlist: %s", err)
+		if !e.Block.Cid.Defined() {
+			return nil, errCidMissing
 		}
-		m.addEntry(c, e.Priority, e.Cancel, e.WantType, e.SendDontHave)
+		m.addEntry(e.Block.Cid, e.Priority, e.Cancel, e.WantType, e.SendDontHave)
 	}
 
 	// deprecated
@@ -155,13 +156,10 @@ func newMessageFromProto(pbm pb.Message) (BitSwapMessage, error) {
 	}
 
 	for _, bi := range pbm.GetBlockPresences() {
-		c, err := cid.Cast(bi.GetCid())
-		if err != nil {
-			return nil, err
+		if !bi.Cid.Cid.Defined() {
+			return nil, errCidMissing
 		}
-
-		t := bi.GetType()
-		m.AddBlockPresence(c, t)
+		m.AddBlockPresence(bi.Cid.Cid, bi.Type)
 	}
 
 	m.pendingBytes = pbm.PendingBytes
@@ -311,7 +309,7 @@ func (m *impl) Size() int {
 
 func BlockPresenceSize(c cid.Cid) int {
 	return (&pb.Message_BlockPresence{
-		Cid:  c.Bytes(),
+		Cid:  pb.Cid{Cid: c},
 		Type: pb.Message_Have,
 	}).Size()
 }
@@ -341,7 +339,7 @@ func FromMsgReader(r msgio.Reader) (BitSwapMessage, error) {
 
 func entryToPB(e *Entry) pb.Message_Wantlist_Entry {
 	return pb.Message_Wantlist_Entry{
-		Block:        e.Cid.Bytes(),
+		Block:        pb.Cid{Cid: e.Cid},
 		Priority:     int32(e.Priority),
 		Cancel:       e.Cancel,
 		WantType:     e.WantType,
@@ -385,7 +383,7 @@ func (m *impl) ToProtoV1() *pb.Message {
 	pbm.BlockPresences = make([]pb.Message_BlockPresence, 0, len(m.blockPresences))
 	for c, t := range m.blockPresences {
 		pbm.BlockPresences = append(pbm.BlockPresences, pb.Message_BlockPresence{
-			Cid:  c.Bytes(),
+			Cid:  pb.Cid{Cid: c},
 			Type: t,
 		})
 	}
