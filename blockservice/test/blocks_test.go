@@ -74,7 +74,10 @@ func TestGetBlocksSequential(t *testing.T) {
 	var cids []cid.Cid
 	for _, o := range objs {
 		cids = append(cids, o.Cid())
-		servs[0].AddBlock(o)
+		err := servs[0].AddBlock(o)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	t.Log("one instance at a time, get blocks concurrently")

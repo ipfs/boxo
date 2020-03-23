@@ -26,12 +26,18 @@ func TestWriteThroughWorks(t *testing.T) {
 	block := bgen.Next()
 
 	t.Logf("PutCounter: %d", bstore.PutCounter)
-	bserv.AddBlock(block)
+	err := bserv.AddBlock(block)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if bstore.PutCounter != 1 {
 		t.Fatalf("expected just one Put call, have: %d", bstore.PutCounter)
 	}
 
-	bserv.AddBlock(block)
+	err = bserv.AddBlock(block)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if bstore.PutCounter != 2 {
 		t.Fatalf("Put should have called again, should be 2 is: %d", bstore.PutCounter)
 	}
@@ -52,10 +58,15 @@ func TestLazySessionInitialization(t *testing.T) {
 	bgen := butil.NewBlockGenerator()
 
 	block := bgen.Next()
-	bstore.Put(block)
-
+	err := bstore.Put(block)
+	if err != nil {
+		t.Fatal(err)
+	}
 	block2 := bgen.Next()
-	session.HasBlock(block2)
+	err = session.HasBlock(block2)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	bsession := NewSession(ctx, bservSessEx)
 	if bsession.ses != nil {
