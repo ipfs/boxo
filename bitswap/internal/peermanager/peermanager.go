@@ -4,11 +4,14 @@ import (
 	"context"
 	"sync"
 
+	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-metrics-interface"
 
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
+
+var log = logging.Logger("bs:peermgr")
 
 // PeerQueue provides a queue of messages to be sent for a single peer.
 type PeerQueue interface {
