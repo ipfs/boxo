@@ -159,7 +159,7 @@ func New(ctx context.Context,
 		periodicSearchDelay: periodicSearchDelay,
 		self:                self,
 	}
-	s.sws = newSessionWantSender(ctx, id, pm, sprm, bpm, s.onWantsSent, s.onPeersExhausted)
+	s.sws = newSessionWantSender(id, pm, sprm, bpm, s.onWantsSent, s.onPeersExhausted)
 
 	go s.run(ctx)
 
@@ -387,6 +387,9 @@ func (s *Session) handleShutdown() {
 	s.idleTick.Stop()
 	// Shut down the session peer manager
 	s.sprm.Shutdown()
+	// Shut down the sessionWantSender (blocks until sessionWantSender stops
+	// sending)
+	s.sws.Shutdown()
 	// Remove the session from the want manager
 	s.wm.RemoveSession(s.ctx, s.id)
 }

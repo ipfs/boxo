@@ -71,8 +71,13 @@ type onPeersExhaustedFn func([]cid.Cid)
 // consults the peer response tracker (records which peers sent us blocks).
 //
 type sessionWantSender struct {
-	// When the context is cancelled, sessionWantSender shuts down
+	// The context is used when sending wants
 	ctx context.Context
+	// Called to shutdown the sessionWantSender
+	shutdown func()
+	// The sessionWantSender uses the closed channel to signal when it's
+	// finished shutting down
+	closed chan struct{}
 	// The session ID
 	sessionID uint64
 	// A channel that collects incoming changes (events)
@@ -97,11 +102,14 @@ type sessionWantSender struct {
 	onPeersExhausted onPeersExhaustedFn
 }
 
-func newSessionWantSender(ctx context.Context, sid uint64, pm PeerManager, spm SessionPeerManager,
+func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager,
 	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn) sessionWantSender {
 
+	ctx, cancel := context.WithCancel(context.Background())
 	sws := sessionWantSender{
 		ctx:                      ctx,
+		shutdown:                 cancel,
+		closed:                   make(chan struct{}),
 		sessionID:                sid,
 		changes:                  make(chan change, changesBufferSize),
 		wants:                    make(map[cid.Cid]*wantInfo),
@@ -158,10 +166,23 @@ func (sws *sessionWantSender) Run() {
 		case ch := <-sws.changes:
 			sws.onChange([]change{ch})
 		case <-sws.ctx.Done():
-			sws.shutdown()
+			// Unregister the session with the PeerManager
+			sws.pm.UnregisterSession(sws.sessionID)
+
+			// Close the 'closed' channel to signal to Shutdown() that the run
+			// loop has exited
+			close(sws.closed)
 			return
 		}
 	}
+}
+
+// Shutdown the sessionWantSender
+func (sws *sessionWantSender) Shutdown() {
+	// Signal to the run loop to stop processing
+	sws.shutdown()
+	// Wait for run loop to complete
+	<-sws.closed
 }
 
 // addChange adds a new change to the queue
@@ -170,11 +191,6 @@ func (sws *sessionWantSender) addChange(c change) {
 	case sws.changes <- c:
 	case <-sws.ctx.Done():
 	}
-}
-
-// shutdown unregisters the session with the PeerManager
-func (sws *sessionWantSender) shutdown() {
-	sws.pm.UnregisterSession(sws.sessionID)
 }
 
 // collectChanges collects all the changes that have occurred since the last
