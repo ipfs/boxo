@@ -82,7 +82,7 @@ func (pm *mockPeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks 
 }
 
 func (pm *mockPeerManager) waitNextWants() map[peer.ID]*sentWants {
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	pm.lk.Lock()
 	defer pm.lk.Unlock()
