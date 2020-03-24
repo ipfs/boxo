@@ -39,7 +39,7 @@ func newPeerWantManager(wantBlockGauge Gauge) *peerWantManager {
 }
 
 // AddPeer adds a peer whose wants we need to keep track of
-func (pwm *peerWantManager) AddPeer(p peer.ID) {
+func (pwm *peerWantManager) addPeer(p peer.ID) {
 	if _, ok := pwm.peerWants[p]; !ok {
 		pwm.peerWants[p] = &peerWant{
 			wantBlocks: cid.NewSet(),
@@ -49,13 +49,13 @@ func (pwm *peerWantManager) AddPeer(p peer.ID) {
 }
 
 // RemovePeer removes a peer and its associated wants from tracking
-func (pwm *peerWantManager) RemovePeer(p peer.ID) {
+func (pwm *peerWantManager) removePeer(p peer.ID) {
 	delete(pwm.peerWants, p)
 }
 
 // PrepareBroadcastWantHaves filters the list of want-haves for each peer,
 // returning a map of peers to the want-haves they have not yet been sent.
-func (pwm *peerWantManager) PrepareBroadcastWantHaves(wantHaves []cid.Cid) map[peer.ID][]cid.Cid {
+func (pwm *peerWantManager) prepareBroadcastWantHaves(wantHaves []cid.Cid) map[peer.ID][]cid.Cid {
 	res := make(map[peer.ID][]cid.Cid)
 
 	// Iterate over all known peers
@@ -81,7 +81,7 @@ func (pwm *peerWantManager) PrepareBroadcastWantHaves(wantHaves []cid.Cid) map[p
 
 // PrepareSendWants filters the list of want-blocks and want-haves such that
 // it only contains wants that have not already been sent to the peer.
-func (pwm *peerWantManager) PrepareSendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) ([]cid.Cid, []cid.Cid) {
+func (pwm *peerWantManager) prepareSendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) ([]cid.Cid, []cid.Cid) {
 	resWantBlks := make([]cid.Cid, 0)
 	resWantHvs := make([]cid.Cid, 0)
 
@@ -124,7 +124,7 @@ func (pwm *peerWantManager) PrepareSendWants(p peer.ID, wantBlocks []cid.Cid, wa
 // PrepareSendCancels filters the list of cancels for each peer,
 // returning a map of peers which only contains cancels for wants that have
 // been sent to the peer.
-func (pwm *peerWantManager) PrepareSendCancels(cancelKs []cid.Cid) map[peer.ID][]cid.Cid {
+func (pwm *peerWantManager) prepareSendCancels(cancelKs []cid.Cid) map[peer.ID][]cid.Cid {
 	res := make(map[peer.ID][]cid.Cid)
 
 	// Iterate over all known peers
@@ -158,7 +158,7 @@ func (pwm *peerWantManager) PrepareSendCancels(cancelKs []cid.Cid) map[peer.ID][
 }
 
 // GetWantBlocks returns the set of all want-blocks sent to all peers
-func (pwm *peerWantManager) GetWantBlocks() []cid.Cid {
+func (pwm *peerWantManager) getWantBlocks() []cid.Cid {
 	res := cid.NewSet()
 
 	// Iterate over all known peers
@@ -174,7 +174,7 @@ func (pwm *peerWantManager) GetWantBlocks() []cid.Cid {
 }
 
 // GetWantHaves returns the set of all want-haves sent to all peers
-func (pwm *peerWantManager) GetWantHaves() []cid.Cid {
+func (pwm *peerWantManager) getWantHaves() []cid.Cid {
 	res := cid.NewSet()
 
 	// Iterate over all known peers
@@ -190,7 +190,7 @@ func (pwm *peerWantManager) GetWantHaves() []cid.Cid {
 }
 
 // GetWants returns the set of all wants (both want-blocks and want-haves).
-func (pwm *peerWantManager) GetWants() []cid.Cid {
+func (pwm *peerWantManager) getWants() []cid.Cid {
 	res := cid.NewSet()
 
 	// Iterate over all known peers
