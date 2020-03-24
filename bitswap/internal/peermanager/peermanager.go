@@ -94,11 +94,11 @@ func (pm *PeerManager) Connected(p peer.ID, initialWantHaves []cid.Cid) {
 	// If this is the first connection to the peer
 	if pq.refcnt == 1 {
 		// Inform the peer want manager that there's a new peer
-		pm.pwm.AddPeer(p)
+		pm.pwm.addPeer(p)
 		// Record that the want-haves are being sent to the peer
-		pm.pwm.PrepareSendWants(p, nil, initialWantHaves)
+		_, wantHaves := pm.pwm.prepareSendWants(p, nil, initialWantHaves)
 		// Broadcast any live want-haves to the newly connected peers
-		pq.pq.AddBroadcastWantHaves(initialWantHaves)
+		pq.pq.AddBroadcastWantHaves(wantHaves)
 		// Inform the sessions that the peer has connected
 		pm.signalAvailability(p, true)
 	}
@@ -126,7 +126,7 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 	// Clean up the peer
 	delete(pm.peerQueues, p)
 	pq.pq.Shutdown()
-	pm.pwm.RemovePeer(p)
+	pm.pwm.removePeer(p)
 }
 
 // BroadcastWantHaves broadcasts want-haves to all peers (used by the session
@@ -137,7 +137,7 @@ func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.C
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
-	for p, ks := range pm.pwm.PrepareBroadcastWantHaves(wantHaves) {
+	for p, ks := range pm.pwm.prepareBroadcastWantHaves(wantHaves) {
 		if pqi, ok := pm.peerQueues[p]; ok {
 			pqi.pq.AddBroadcastWantHaves(ks)
 		}
@@ -151,7 +151,7 @@ func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []ci
 	defer pm.pqLk.Unlock()
 
 	if pqi, ok := pm.peerQueues[p]; ok {
-		wblks, whvs := pm.pwm.PrepareSendWants(p, wantBlocks, wantHaves)
+		wblks, whvs := pm.pwm.prepareSendWants(p, wantBlocks, wantHaves)
 		pqi.pq.AddWants(wblks, whvs)
 	}
 }
@@ -163,7 +163,7 @@ func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid) {
 	defer pm.pqLk.Unlock()
 
 	// Send a CANCEL to each peer that has been sent a want-block or want-have
-	for p, ks := range pm.pwm.PrepareSendCancels(cancelKs) {
+	for p, ks := range pm.pwm.prepareSendCancels(cancelKs) {
 		if pqi, ok := pm.peerQueues[p]; ok {
 			pqi.pq.AddCancels(ks)
 		}
@@ -175,7 +175,7 @@ func (pm *PeerManager) CurrentWants() []cid.Cid {
 	pm.pqLk.RLock()
 	defer pm.pqLk.RUnlock()
 
-	return pm.pwm.GetWants()
+	return pm.pwm.getWants()
 }
 
 // CurrentWantBlocks returns the list of pending want-blocks
@@ -183,7 +183,7 @@ func (pm *PeerManager) CurrentWantBlocks() []cid.Cid {
 	pm.pqLk.RLock()
 	defer pm.pqLk.RUnlock()
 
-	return pm.pwm.GetWantBlocks()
+	return pm.pwm.getWantBlocks()
 }
 
 // CurrentWantHaves returns the list of pending want-haves
@@ -191,7 +191,7 @@ func (pm *PeerManager) CurrentWantHaves() []cid.Cid {
 	pm.pqLk.RLock()
 	defer pm.pqLk.RUnlock()
 
-	return pm.pwm.GetWantHaves()
+	return pm.pwm.getWantHaves()
 }
 
 func (pm *PeerManager) getOrCreate(p peer.ID) *peerQueueInstance {

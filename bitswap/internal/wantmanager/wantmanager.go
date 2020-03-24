@@ -89,7 +89,7 @@ func (wm *WantManager) BroadcastWantHaves(ctx context.Context, ses uint64, wantH
 
 // RemoveSession is called when the session is shut down
 func (wm *WantManager) RemoveSession(ctx context.Context, ses uint64) {
-	// Remove session's interest in the given blocks
+	// Remove session's interest in the given blocks.
 	cancelKs := wm.sim.RemoveSessionInterest(ses)
 
 	// Remove broadcast want-haves for session
