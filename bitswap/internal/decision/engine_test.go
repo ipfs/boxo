@@ -935,7 +935,7 @@ func TestSendDontHave(t *testing.T) {
 
 	// Nothing in blockstore, should get DONT_HAVE for entries that wanted it
 	var next envChan
-	next, env := getNextEnvelope(e, next, 5*time.Millisecond)
+	next, env := getNextEnvelope(e, next, 10*time.Millisecond)
 	if env == nil {
 		t.Fatal("expected envelope")
 	}
@@ -965,7 +965,7 @@ func TestSendDontHave(t *testing.T) {
 	e.ReceiveFrom(otherPeer, blks, []cid.Cid{})
 
 	// Envelope should contain 2 HAVEs / 2 blocks
-	_, env = getNextEnvelope(e, next, 5*time.Millisecond)
+	_, env = getNextEnvelope(e, next, 10*time.Millisecond)
 	if env == nil {
 		t.Fatal("expected envelope")
 	}
