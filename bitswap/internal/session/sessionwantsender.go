@@ -73,9 +73,11 @@ type onPeersExhaustedFn func([]cid.Cid)
 type sessionWantSender struct {
 	// The context is used when sending wants
 	ctx context.Context
-	// The sessionWantSender uses these channels when it's shutting down
-	closing chan struct{}
-	closed  chan struct{}
+	// Called to shutdown the sessionWantSender
+	shutdown func()
+	// The sessionWantSender uses the close channel to signal when it's
+	// finished shutting down
+	closed chan struct{}
 	// The session ID
 	sessionID uint64
 	// A channel that collects incoming changes (events)
@@ -103,9 +105,10 @@ type sessionWantSender struct {
 func newSessionWantSender(ctx context.Context, sid uint64, pm PeerManager, spm SessionPeerManager,
 	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn) sessionWantSender {
 
+	ctx, cancel := context.WithCancel(ctx)
 	sws := sessionWantSender{
 		ctx:                      ctx,
-		closing:                  make(chan struct{}),
+		shutdown:                 cancel,
 		closed:                   make(chan struct{}),
 		sessionID:                sid,
 		changes:                  make(chan change, changesBufferSize),
@@ -162,7 +165,10 @@ func (sws *sessionWantSender) Run() {
 		select {
 		case ch := <-sws.changes:
 			sws.onChange([]change{ch})
-		case <-sws.closing:
+		case <-sws.ctx.Done():
+			// Unregister the session with the PeerManager
+			sws.pm.UnregisterSession(sws.sessionID)
+
 			// Close the 'closed' channel to signal to Shutdown() that the run
 			// loop has exited
 			close(sws.closed)
@@ -174,9 +180,7 @@ func (sws *sessionWantSender) Run() {
 // Shutdown the sessionWantSender
 func (sws *sessionWantSender) Shutdown() {
 	// Signal to the run loop to stop processing
-	close(sws.closing)
-	// Unregister the session with the PeerManager
-	sws.pm.UnregisterSession(sws.sessionID)
+	sws.shutdown()
 	// Wait for run loop to complete
 	<-sws.closed
 }
@@ -185,7 +189,7 @@ func (sws *sessionWantSender) Shutdown() {
 func (sws *sessionWantSender) addChange(c change) {
 	select {
 	case sws.changes <- c:
-	case <-sws.closing:
+	case <-sws.ctx.Done():
 	}
 }
 
