@@ -159,7 +159,7 @@ func New(ctx context.Context,
 		periodicSearchDelay: periodicSearchDelay,
 		self:                self,
 	}
-	s.sws = newSessionWantSender(ctx, id, pm, sprm, bpm, s.onWantsSent, s.onPeersExhausted)
+	s.sws = newSessionWantSender(id, pm, sprm, bpm, s.onWantsSent, s.onPeersExhausted)
 
 	go s.run(ctx)
 
