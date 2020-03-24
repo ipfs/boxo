@@ -138,7 +138,7 @@ func TestSendWants(t *testing.T) {
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
 
 	go spm.Run()
 
@@ -176,7 +176,7 @@ func TestSendsWantBlockToOnePeerOnly(t *testing.T) {
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
 
 	go spm.Run()
 
@@ -234,7 +234,7 @@ func TestReceiveBlock(t *testing.T) {
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
 
 	go spm.Run()
 
@@ -294,7 +294,7 @@ func TestPeerUnavailable(t *testing.T) {
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
 
 	go spm.Run()
 
@@ -360,7 +360,7 @@ func TestPeersExhausted(t *testing.T) {
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 
 	ep := exhaustedPeers{}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, ep.onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, ep.onPeersExhausted)
 
 	go spm.Run()
 
@@ -436,7 +436,7 @@ func TestPeersExhaustedLastWaitingPeerUnavailable(t *testing.T) {
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 
 	ep := exhaustedPeers{}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, ep.onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, ep.onPeersExhausted)
 
 	go spm.Run()
 
@@ -484,7 +484,7 @@ func TestPeersExhaustedAllPeersUnavailable(t *testing.T) {
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 
 	ep := exhaustedPeers{}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, ep.onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, ep.onPeersExhausted)
 
 	go spm.Run()
 
@@ -522,7 +522,7 @@ func TestConsecutiveDontHaveLimit(t *testing.T) {
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
 
 	go spm.Run()
 
@@ -578,7 +578,7 @@ func TestConsecutiveDontHaveLimitInterrupted(t *testing.T) {
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
 
 	go spm.Run()
 
@@ -633,7 +633,7 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
 
 	go spm.Run()
 
@@ -717,7 +717,7 @@ func TestConsecutiveDontHaveDontRemoveIfHasWantedBlock(t *testing.T) {
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(context.Background(), sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
 
 	go spm.Run()
 

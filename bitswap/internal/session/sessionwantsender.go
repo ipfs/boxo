@@ -75,7 +75,7 @@ type sessionWantSender struct {
 	ctx context.Context
 	// Called to shutdown the sessionWantSender
 	shutdown func()
-	// The sessionWantSender uses the close channel to signal when it's
+	// The sessionWantSender uses the closed channel to signal when it's
 	// finished shutting down
 	closed chan struct{}
 	// The session ID
@@ -102,10 +102,10 @@ type sessionWantSender struct {
 	onPeersExhausted onPeersExhaustedFn
 }
 
-func newSessionWantSender(ctx context.Context, sid uint64, pm PeerManager, spm SessionPeerManager,
+func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager,
 	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn) sessionWantSender {
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	sws := sessionWantSender{
 		ctx:                      ctx,
 		shutdown:                 cancel,
