@@ -71,7 +71,7 @@ func (tr *timeoutRecorder) clear() {
 func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	firstks := testutil.GenerateCids(2)
 	secondks := append(firstks, testutil.GenerateCids(3)...)
-	latency := time.Millisecond * 10
+	latency := time.Millisecond * 20
 	latMultiplier := 2
 	expProcessTime := 5 * time.Millisecond
 	expectedTimeout := expProcessTime + latency*time.Duration(latMultiplier)
@@ -87,7 +87,7 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	dhtm.AddPending(firstks)
 
 	// Wait for less than the expected timeout
-	time.Sleep(expectedTimeout - 5*time.Millisecond)
+	time.Sleep(expectedTimeout - 10*time.Millisecond)
 
 	// At this stage no keys should have timed out
 	if tr.timedOutCount() > 0 {
@@ -98,7 +98,7 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	dhtm.AddPending(secondks)
 
 	// Wait until after the expected timeout
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 
 	// At this stage first set of keys should have timed out
 	if tr.timedOutCount() != len(firstks) {
