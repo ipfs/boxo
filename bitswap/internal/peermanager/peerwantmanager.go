@@ -86,35 +86,44 @@ func (pwm *peerWantManager) prepareSendWants(p peer.ID, wantBlocks []cid.Cid, wa
 	resWantHvs := make([]cid.Cid, 0)
 
 	// Get the existing want-blocks and want-haves for the peer
-	if pws, ok := pwm.peerWants[p]; ok {
-		// Iterate over the requested want-blocks
-		for _, c := range wantBlocks {
-			// If the want-block hasn't been sent to the peer
-			if !pws.wantBlocks.Has(c) {
-				// Record that the CID was sent as a want-block
-				pws.wantBlocks.Add(c)
+	pws, ok := pwm.peerWants[p]
 
-				// Add the CID to the results
-				resWantBlks = append(resWantBlks, c)
+	if !ok {
+		// In practice this should never happen:
+		// - PeerManager calls addPeer() as soon as the peer connects
+		// - PeerManager calls removePeer() as soon as the peer disconnects
+		// - All calls to PeerWantManager are locked
+		log.Errorf("prepareSendWants() called with peer %s but peer not found in peerWantManager", string(p))
+		return resWantBlks, resWantHvs
+	}
 
-				// Make sure the CID is no longer recorded as a want-have
-				pws.wantHaves.Remove(c)
+	// Iterate over the requested want-blocks
+	for _, c := range wantBlocks {
+		// If the want-block hasn't been sent to the peer
+		if !pws.wantBlocks.Has(c) {
+			// Record that the CID was sent as a want-block
+			pws.wantBlocks.Add(c)
 
-				// Increment the count of want-blocks
-				pwm.wantBlockGauge.Inc()
-			}
+			// Add the CID to the results
+			resWantBlks = append(resWantBlks, c)
+
+			// Make sure the CID is no longer recorded as a want-have
+			pws.wantHaves.Remove(c)
+
+			// Increment the count of want-blocks
+			pwm.wantBlockGauge.Inc()
 		}
+	}
 
-		// Iterate over the requested want-haves
-		for _, c := range wantHaves {
-			// If the CID has not been sent as a want-block or want-have
-			if !pws.wantBlocks.Has(c) && !pws.wantHaves.Has(c) {
-				// Record that the CID was sent as a want-have
-				pws.wantHaves.Add(c)
+	// Iterate over the requested want-haves
+	for _, c := range wantHaves {
+		// If the CID has not been sent as a want-block or want-have
+		if !pws.wantBlocks.Has(c) && !pws.wantHaves.Has(c) {
+			// Record that the CID was sent as a want-have
+			pws.wantHaves.Add(c)
 
-				// Add the CID to the results
-				resWantHvs = append(resWantHvs, c)
-			}
+			// Add the CID to the results
+			resWantHvs = append(resWantHvs, c)
 		}
 	}
 
