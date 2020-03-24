@@ -71,8 +71,11 @@ type onPeersExhaustedFn func([]cid.Cid)
 // consults the peer response tracker (records which peers sent us blocks).
 //
 type sessionWantSender struct {
-	// When the context is cancelled, sessionWantSender shuts down
+	// The context is used when sending wants
 	ctx context.Context
+	// The sessionWantSender uses these channels when it's shutting down
+	closing chan struct{}
+	closed  chan struct{}
 	// The session ID
 	sessionID uint64
 	// A channel that collects incoming changes (events)
@@ -102,6 +105,8 @@ func newSessionWantSender(ctx context.Context, sid uint64, pm PeerManager, spm S
 
 	sws := sessionWantSender{
 		ctx:                      ctx,
+		closing:                  make(chan struct{}),
+		closed:                   make(chan struct{}),
 		sessionID:                sid,
 		changes:                  make(chan change, changesBufferSize),
 		wants:                    make(map[cid.Cid]*wantInfo),
@@ -157,24 +162,31 @@ func (sws *sessionWantSender) Run() {
 		select {
 		case ch := <-sws.changes:
 			sws.onChange([]change{ch})
-		case <-sws.ctx.Done():
-			sws.shutdown()
+		case <-sws.closing:
+			// Close the 'closed' channel to signal to Shutdown() that the run
+			// loop has exited
+			close(sws.closed)
 			return
 		}
 	}
+}
+
+// Shutdown the sessionWantSender
+func (sws *sessionWantSender) Shutdown() {
+	// Signal to the run loop to stop processing
+	close(sws.closing)
+	// Unregister the session with the PeerManager
+	sws.pm.UnregisterSession(sws.sessionID)
+	// Wait for run loop to complete
+	<-sws.closed
 }
 
 // addChange adds a new change to the queue
 func (sws *sessionWantSender) addChange(c change) {
 	select {
 	case sws.changes <- c:
-	case <-sws.ctx.Done():
+	case <-sws.closing:
 	}
-}
-
-// shutdown unregisters the session with the PeerManager
-func (sws *sessionWantSender) shutdown() {
-	sws.pm.UnregisterSession(sws.sessionID)
 }
 
 // collectChanges collects all the changes that have occurred since the last
