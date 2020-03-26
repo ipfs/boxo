@@ -9,7 +9,13 @@ import (
 )
 
 func testBuzhashChunking(t *testing.T, buf []byte) (chunkCount int) {
-	util.NewTimeSeededRand().Read(buf)
+	n, err := util.NewTimeSeededRand().Read(buf)
+	if n < len(buf) {
+		t.Fatalf("expected %d bytes, got %d", len(buf), n)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	r := NewBuzhash(bytes.NewReader(buf))
 
