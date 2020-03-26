@@ -40,9 +40,16 @@ func (b *Buzhash) NextBytes() ([]byte, error) {
 	n, err := io.ReadFull(b.r, b.buf[b.n:])
 	if err != nil {
 		if err == io.ErrUnexpectedEOF || err == io.EOF {
-			if b.n+n < buzMin {
+			buffered := b.n + n
+			if buffered < buzMin {
 				b.err = io.EOF
-				res := make([]byte, b.n+n)
+				// Read nothing? Don't return an empty block.
+				if buffered == 0 {
+					pool.Put(b.buf)
+					b.buf = nil
+					return nil, b.err
+				}
+				res := make([]byte, buffered)
 				copy(res, b.buf)
 
 				pool.Put(b.buf)
