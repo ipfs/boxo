@@ -37,6 +37,7 @@ import (
 )
 
 var log = logging.Logger("bitswap")
+var sflog = log.Desugar()
 
 var _ exchange.SessionExchange = (*Bitswap)(nil)
 

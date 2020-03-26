@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	engine "github.com/ipfs/go-bitswap/internal/decision"
-	bsmsg "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	cid "github.com/ipfs/go-cid"
 	process "github.com/jbenet/goprocess"
 	procctx "github.com/jbenet/goprocess/context"
+	"go.uber.org/zap"
 )
 
 // TaskWorkerCount is the total number of simultaneous threads sending
@@ -52,29 +52,11 @@ func (bs *Bitswap) taskWorker(ctx context.Context, id int) {
 					continue
 				}
 
-				// update the BS ledger to reflect sent message
-				// TODO: Should only track *useful* messages in ledger
-				outgoing := bsmsg.New(false)
-				for _, block := range envelope.Message.Blocks() {
-					log.Debugw("Bitswap.TaskWorker.Work",
-						"Target", envelope.Peer,
-						"Block", block.Cid(),
-					)
-					outgoing.AddBlock(block)
-				}
-				for _, blockPresence := range envelope.Message.BlockPresences() {
-					outgoing.AddBlockPresence(blockPresence.Cid, blockPresence.Type)
-				}
 				// TODO: Only record message as sent if there was no error?
-				bs.engine.MessageSent(envelope.Peer, outgoing)
-
+				// Ideally, yes. But we'd need some way to trigger a retry and/or drop
+				// the peer.
+				bs.engine.MessageSent(envelope.Peer, envelope.Message)
 				bs.sendBlocks(ctx, envelope)
-				bs.counterLk.Lock()
-				for _, block := range envelope.Message.Blocks() {
-					bs.counters.blocksSent++
-					bs.counters.dataSent += uint64(len(block.RawData()))
-				}
-				bs.counterLk.Unlock()
 			case <-ctx.Done():
 				return
 			}
@@ -84,41 +66,67 @@ func (bs *Bitswap) taskWorker(ctx context.Context, id int) {
 	}
 }
 
-func (bs *Bitswap) sendBlocks(ctx context.Context, env *engine.Envelope) {
-	// Blocks need to be sent synchronously to maintain proper backpressure
-	// throughout the network stack
-	defer env.Sent()
-
-	msgSize := 0
-	msg := bsmsg.New(false)
+func (bs *Bitswap) logOutgoingBlocks(env *engine.Envelope) {
+	if ce := sflog.Check(zap.DebugLevel, "Bitswap -> send blocks"); ce == nil {
+		return
+	}
 
 	for _, blockPresence := range env.Message.BlockPresences() {
 		c := blockPresence.Cid
 		switch blockPresence.Type {
 		case pb.Message_Have:
-			log.Infof("Sending HAVE %s to %s", c.String()[2:8], env.Peer)
+			log.Debugw("sending message",
+				"type", "HAVE",
+				"cid", c,
+				"peer", env.Peer,
+			)
 		case pb.Message_DontHave:
-			log.Infof("Sending DONT_HAVE %s to %s", c.String()[2:8], env.Peer)
+			log.Debugw("sending message",
+				"type", "DONT_HAVE",
+				"cid", c,
+				"peer", env.Peer,
+			)
 		default:
 			panic(fmt.Sprintf("unrecognized BlockPresence type %v", blockPresence.Type))
 		}
 
-		msgSize += bsmsg.BlockPresenceSize(c)
-		msg.AddBlockPresence(c, blockPresence.Type)
 	}
 	for _, block := range env.Message.Blocks() {
-		msgSize += len(block.RawData())
-		msg.AddBlock(block)
-		log.Infof("Sending block %s to %s", block, env.Peer)
+		log.Debugw("sending message",
+			"type", "BLOCK",
+			"cid", block.Cid(),
+			"peer", env.Peer,
+		)
+	}
+}
+
+func (bs *Bitswap) sendBlocks(ctx context.Context, env *engine.Envelope) {
+	// Blocks need to be sent synchronously to maintain proper backpressure
+	// throughout the network stack
+	defer env.Sent()
+
+	bs.logOutgoingBlocks(env)
+
+	err := bs.network.SendMessage(ctx, env.Peer, env.Message)
+	if err != nil {
+		log.Debugw("failed to send blocks message",
+			"peer", env.Peer,
+			"error", err,
+		)
+		return
 	}
 
-	bs.sentHistogram.Observe(float64(msgSize))
-	err := bs.network.SendMessage(ctx, env.Peer, msg)
-	if err != nil {
-		// log.Infof("sendblock error: %s", err)
-		log.Errorf("SendMessage error: %s. size: %d. block-presence length: %d", err, msg.Size(), len(env.Message.BlockPresences()))
+	dataSent := 0
+	blocks := env.Message.Blocks()
+	for _, b := range blocks {
+		dataSent += len(b.RawData())
 	}
-	log.Infof("Sent message to %s", env.Peer)
+	bs.counterLk.Lock()
+	bs.counters.blocksSent += uint64(len(blocks))
+	bs.counters.dataSent += uint64(dataSent)
+	bs.counterLk.Unlock()
+	bs.sentHistogram.Observe(float64(env.Message.Size()))
+	log.Debugw("sent message", "peer", env.Peer)
 }
 
 func (bs *Bitswap) provideWorker(px process.Process) {
