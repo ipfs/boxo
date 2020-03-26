@@ -8,50 +8,50 @@ import (
 	util "github.com/ipfs/go-ipfs-util"
 )
 
-func TestBuzhashChunking(t *testing.T) {
-	data := make([]byte, 1024*1024*16)
+func testBuzhashChunking(t *testing.T, buf []byte) (chunkCount int) {
+	util.NewTimeSeededRand().Read(buf)
 
-	chunkCount := 0
-	rounds := 100
+	r := NewBuzhash(bytes.NewReader(buf))
 
-	for i := 0; i < rounds; i++ {
-		util.NewTimeSeededRand().Read(data)
+	var chunks [][]byte
 
-		r := NewBuzhash(bytes.NewReader(data))
-
-		var chunks [][]byte
-
-		for {
-			chunk, err := r.NextBytes()
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				t.Fatal(err)
+	for {
+		chunk, err := r.NextBytes()
+		if err != nil {
+			if err == io.EOF {
+				break
 			}
-
-			chunks = append(chunks, chunk)
-		}
-		chunkCount += len(chunks)
-
-		for i, chunk := range chunks {
-			if len(chunk) == 0 {
-				t.Fatalf("chunk %d/%d is empty", i+1, len(chunks))
-			}
+			t.Fatal(err)
 		}
 
-		for i, chunk := range chunks[:len(chunks)-1] {
-			if len(chunk) < buzMin {
-				t.Fatalf("chunk %d/%d is less than the minimum size", i+1, len(chunks))
-			}
-		}
+		chunks = append(chunks, chunk)
+	}
+	chunkCount += len(chunks)
 
-		unchunked := bytes.Join(chunks, nil)
-		if !bytes.Equal(unchunked, data) {
-			t.Fatal("data was chunked incorrectly")
+	for i, chunk := range chunks {
+		if len(chunk) == 0 {
+			t.Fatalf("chunk %d/%d is empty", i+1, len(chunks))
 		}
 	}
-	t.Logf("average block size: %d\n", len(data)*rounds/chunkCount)
+
+	for i, chunk := range chunks[:len(chunks)-1] {
+		if len(chunk) < buzMin {
+			t.Fatalf("chunk %d/%d is less than the minimum size", i+1, len(chunks))
+		}
+	}
+
+	unchunked := bytes.Join(chunks, nil)
+	if !bytes.Equal(unchunked, buf) {
+		t.Fatal("data was chunked incorrectly")
+	}
+
+	return chunkCount
+}
+
+func TestBuzhashChunking(t *testing.T) {
+	buf := make([]byte, 1024*1024*16)
+	count := testBuzhashChunking(t, buf)
+	t.Logf("average block size: %d\n", len(buf)/count)
 }
 
 func TestBuzhashChunkReuse(t *testing.T) {
