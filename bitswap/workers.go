@@ -67,24 +67,28 @@ func (bs *Bitswap) taskWorker(ctx context.Context, id int) {
 }
 
 func (bs *Bitswap) logOutgoingBlocks(env *engine.Envelope) {
-	if ce := sflog.Check(zap.DebugLevel, "Bitswap -> send blocks"); ce == nil {
+	if ce := sflog.Check(zap.DebugLevel, "sent message"); ce == nil {
 		return
 	}
+
+	self := bs.network.Self()
 
 	for _, blockPresence := range env.Message.BlockPresences() {
 		c := blockPresence.Cid
 		switch blockPresence.Type {
 		case pb.Message_Have:
-			log.Debugw("sending message",
+			log.Debugw("sent message",
 				"type", "HAVE",
 				"cid", c,
-				"peer", env.Peer,
+				"local", self,
+				"to", env.Peer,
 			)
 		case pb.Message_DontHave:
-			log.Debugw("sending message",
+			log.Debugw("sent message",
 				"type", "DONT_HAVE",
 				"cid", c,
-				"peer", env.Peer,
+				"local", self,
+				"to", env.Peer,
 			)
 		default:
 			panic(fmt.Sprintf("unrecognized BlockPresence type %v", blockPresence.Type))
@@ -92,10 +96,11 @@ func (bs *Bitswap) logOutgoingBlocks(env *engine.Envelope) {
 
 	}
 	for _, block := range env.Message.Blocks() {
-		log.Debugw("sending message",
+		log.Debugw("sent message",
 			"type", "BLOCK",
 			"cid", block.Cid(),
-			"peer", env.Peer,
+			"local", self,
+			"to", env.Peer,
 		)
 	}
 }
@@ -105,8 +110,6 @@ func (bs *Bitswap) sendBlocks(ctx context.Context, env *engine.Envelope) {
 	// throughout the network stack
 	defer env.Sent()
 
-	bs.logOutgoingBlocks(env)
-
 	err := bs.network.SendMessage(ctx, env.Peer, env.Message)
 	if err != nil {
 		log.Debugw("failed to send blocks message",
@@ -115,6 +118,8 @@ func (bs *Bitswap) sendBlocks(ctx context.Context, env *engine.Envelope) {
 		)
 		return
 	}
+
+	bs.logOutgoingBlocks(env)
 
 	dataSent := 0
 	blocks := env.Message.Blocks()

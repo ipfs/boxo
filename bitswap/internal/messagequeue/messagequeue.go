@@ -466,7 +466,7 @@ func (mq *MessageQueue) simulateDontHaveWithTimeout(wantlist []bsmsg.Entry) {
 
 func (mq *MessageQueue) logOutgoingMessage(wantlist []bsmsg.Entry) {
 	// Save some CPU cycles and allocations if log level is higher than debug
-	if ce := sflog.Check(zap.DebugLevel, "Bitswap -> send wants"); ce == nil {
+	if ce := sflog.Check(zap.DebugLevel, "sent message"); ce == nil {
 		return
 	}
 
@@ -474,15 +474,35 @@ func (mq *MessageQueue) logOutgoingMessage(wantlist []bsmsg.Entry) {
 	for _, e := range wantlist {
 		if e.Cancel {
 			if e.WantType == pb.Message_Wantlist_Have {
-				log.Debugw("Bitswap -> cancel-have", "local", self, "to", mq.p, "cid", e.Cid)
+				log.Debugw("sent message",
+					"type", "CANCEL_WANT_HAVE",
+					"cid", e.Cid,
+					"local", self,
+					"to", mq.p,
+				)
 			} else {
-				log.Debugw("Bitswap -> cancel-block", "local", self, "to", mq.p, "cid", e.Cid)
+				log.Debugw("sent message",
+					"type", "CANCEL_WANT_BLOCK",
+					"cid", e.Cid,
+					"local", self,
+					"to", mq.p,
+				)
 			}
 		} else {
 			if e.WantType == pb.Message_Wantlist_Have {
-				log.Debugw("Bitswap -> want-have", "local", self, "to", mq.p, "cid", e.Cid)
+				log.Debugw("sent message",
+					"type", "WANT_HAVE",
+					"cid", e.Cid,
+					"local", self,
+					"to", mq.p,
+				)
 			} else {
-				log.Debugw("Bitswap -> want-block", "local", self, "to", mq.p, "cid", e.Cid)
+				log.Debugw("sent message",
+					"type", "WANT_BLOCK",
+					"cid", e.Cid,
+					"local", self,
+					"to", mq.p,
+				)
 			}
 		}
 	}
