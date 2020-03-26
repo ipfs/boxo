@@ -2,7 +2,6 @@ package chunk
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"testing"
 
@@ -11,33 +10,48 @@ import (
 
 func TestBuzhashChunking(t *testing.T) {
 	data := make([]byte, 1024*1024*16)
-	util.NewTimeSeededRand().Read(data)
 
-	r := NewBuzhash(bytes.NewReader(data))
+	chunkCount := 0
+	rounds := 100
 
-	var chunks [][]byte
+	for i := 0; i < rounds; i++ {
+		util.NewTimeSeededRand().Read(data)
 
-	for {
-		chunk, err := r.NextBytes()
-		if err != nil {
-			if err == io.EOF {
-				break
+		r := NewBuzhash(bytes.NewReader(data))
+
+		var chunks [][]byte
+
+		for {
+			chunk, err := r.NextBytes()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				t.Fatal(err)
 			}
-			t.Fatal(err)
+
+			chunks = append(chunks, chunk)
+		}
+		chunkCount += len(chunks)
+
+		for i, chunk := range chunks {
+			if len(chunk) == 0 {
+				t.Fatalf("chunk %d/%d is empty", i+1, len(chunks))
+			}
 		}
 
-		chunks = append(chunks, chunk)
-	}
+		for i, chunk := range chunks[:len(chunks)-1] {
+			if len(chunk) < buzMin {
+				t.Fatalf("chunk %d/%d is less than the minimum size", i+1, len(chunks))
+			}
+		}
 
-	t.Logf("average block size: %d\n", len(data)/len(chunks))
-
-	unchunked := bytes.Join(chunks, nil)
-	if !bytes.Equal(unchunked, data) {
-		fmt.Printf("%d %d\n", len(unchunked), len(data))
-		//ioutil.WriteFile("./incorrect", unchunked, 0777)
-		//ioutil.WriteFile("./correct", data, 0777)
-		t.Fatal("data was chunked incorrectly")
+		unchunked := bytes.Join(chunks, nil)
+		if !bytes.Equal(unchunked, data) {
+			t.Fatal("data was chunked incorrectly")
+		}
 	}
+	t.Logf("average block size: %d\n", len(data)*rounds/chunkCount)
 }
 
 func TestBuzhashChunkReuse(t *testing.T) {
