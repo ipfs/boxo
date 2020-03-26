@@ -733,8 +733,7 @@ func (e *Engine) MessageSent(p peer.ID, m bsmsg.BitSwapMessage) {
 
 	// Remove sent block presences from the want list for the peer
 	for _, bp := range m.BlockPresences() {
-		// TODO: record block presence bytes as well?
-		// l.SentBytes(?)
+		// Don't record sent data. We reserve that for data blocks.
 		if bp.Type == pb.Message_Have {
 			l.wantList.RemoveType(bp.Cid, pb.Message_Wantlist_Have)
 		}
