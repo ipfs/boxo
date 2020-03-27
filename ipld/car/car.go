@@ -33,18 +33,18 @@ type CarHeader struct {
 }
 
 type carWriter struct {
-	ds   format.DAGService
+	ds   format.NodeGetter
 	w    io.Writer
 	walk WalkFunc
 }
 
 type WalkFunc func(format.Node) ([]*format.Link, error)
 
-func WriteCar(ctx context.Context, ds format.DAGService, roots []cid.Cid, w io.Writer) error {
+func WriteCar(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.Writer) error {
 	return WriteCarWithWalker(ctx, ds, roots, w, DefaultWalkFunc)
 }
 
-func WriteCarWithWalker(ctx context.Context, ds format.DAGService, roots []cid.Cid, w io.Writer, walk WalkFunc) error {
+func WriteCarWithWalker(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.Writer, walk WalkFunc) error {
 
 	h := &CarHeader{
 		Roots:   roots,
