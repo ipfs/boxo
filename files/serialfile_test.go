@@ -71,22 +71,31 @@ func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
 			t.Fatal(err)
 		}
 	}
-	expectedHiddenPaths := make([]string, 0, 4)
-	expectedRegularPaths := make([]string, 0, 6)
+	expectedPaths := make([]string, 0, 4)
+	expectedSize := int64(0)
+
+testInputs:
 	for p := range testInputs {
-		path := filepath.Join(tmppath, p)
-		stat, err := os.Stat(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !fileFilter.ShouldExclude(stat) {
-			if isFullPathHidden(path) {
-				expectedHiddenPaths = append(expectedHiddenPaths, p)
-			} else {
-				expectedRegularPaths = append(expectedRegularPaths, p)
+		components := strings.Split(p, "/")
+		var stat os.FileInfo
+		for i := range components {
+			stat, err = os.Stat(filepath.Join(
+				append([]string{tmppath}, components[:i+1]...)...,
+			))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fileFilter.ShouldExclude(stat) {
+				continue testInputs
 			}
 		}
+		expectedPaths = append(expectedPaths, p)
+		if stat.Mode().IsRegular() {
+			expectedSize += stat.Size()
+		}
 	}
+
+	sort.Strings(expectedPaths)
 
 	stat, err := os.Stat(tmppath)
 	if err != nil {
@@ -102,9 +111,14 @@ func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
 	}
 	defer sf.Close()
 
+	if size, err := sf.Size(); err != nil {
+		t.Fatalf("failed to determine size: %s", err)
+	} else if size != expectedSize {
+		t.Fatalf("expected size %d, got size %d", expectedSize, size)
+	}
+
 	rootFound := false
-	actualRegularPaths := make([]string, 0, len(expectedRegularPaths))
-	actualHiddenPaths := make([]string, 0, len(expectedHiddenPaths))
+	actualPaths := make([]string, 0, len(expectedPaths))
 	err = Walk(sf, func(path string, nd Node) error {
 		defer nd.Close()
 
@@ -119,16 +133,15 @@ func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
 			rootFound = true
 			return nil
 		}
-		if isFullPathHidden(path) {
-			actualHiddenPaths = append(actualHiddenPaths, path)
-		} else {
-			actualRegularPaths = append(actualRegularPaths, path)
-		}
+		actualPaths = append(actualPaths, path)
 		if !hidden && isFullPathHidden(path) {
 			return fmt.Errorf("found a hidden file")
 		}
-		if fileFilter.Rules.MatchesPath(path) {
-			return fmt.Errorf("found a file that should be excluded")
+		components := filepath.SplitList(path)
+		for i := range components {
+			if fileFilter.Rules.MatchesPath(filepath.Join(components[:i+1]...)) {
+				return fmt.Errorf("found a file that should be excluded")
+			}
 		}
 
 		data, ok := testInputs[path]
@@ -155,19 +168,27 @@ func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !rootFound {
 		t.Fatal("didn't find the root")
 	}
-	for _, regular := range expectedRegularPaths {
-		if idx := sort.SearchStrings(actualRegularPaths, regular); idx < 0 {
-			t.Errorf("missed regular path %q", regular)
-		}
+
+	if len(expectedPaths) != len(actualPaths) {
+		t.Fatalf("expected %d paths, found %d",
+			len(expectedPaths),
+			len(actualPaths),
+		)
 	}
-	if hidden && len(actualHiddenPaths) != len(expectedHiddenPaths) {
-		for _, missing := range expectedHiddenPaths {
-			if idx := sort.SearchStrings(actualHiddenPaths, missing); idx < 0 {
-				t.Errorf("missed hidden path %q", missing)
-			}
+
+	for i := range expectedPaths {
+		if expectedPaths[i] != actualPaths[i] {
+			t.Errorf(
+				"expected path %q does not match actual %q",
+				expectedPaths[i],
+				actualPaths[i],
+			)
 		}
 	}
 }
