@@ -138,13 +138,18 @@ func (f *serialFile) Size() (int64, error) {
 
 	var du int64
 	err := filepath.Walk(f.path, func(p string, fi os.FileInfo, err error) error {
-		if err != nil {
+		if err != nil || fi == nil {
 			return err
 		}
 
-		if fi != nil && fi.Mode().IsRegular() {
+		if f.filter.ShouldExclude(fi) {
+			if fi.Mode().IsDir() {
+				return filepath.SkipDir
+			}
+		} else if fi.Mode().IsRegular() {
 			du += fi.Size()
 		}
+
 		return nil
 	})
 
