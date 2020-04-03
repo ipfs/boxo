@@ -50,6 +50,16 @@ func (pwm *peerWantManager) addPeer(p peer.ID) {
 
 // RemovePeer removes a peer and its associated wants from tracking
 func (pwm *peerWantManager) removePeer(p peer.ID) {
+	pws, ok := pwm.peerWants[p]
+	if !ok {
+		return
+	}
+
+	// Decrement the gauge by the number of pending want-blocks to the peer
+	for range pws.wantBlocks.Keys() {
+		pwm.wantBlockGauge.Dec()
+	}
+
 	delete(pwm.peerWants, p)
 }
 

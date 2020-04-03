@@ -289,4 +289,10 @@ func TestStats(t *testing.T) {
 	if g.count != 3 {
 		t.Fatal("Expected 3 want-blocks", g.count)
 	}
+
+	pwm.removePeer(p0)
+
+	if g.count != 0 {
+		t.Fatal("Expected all want-blocks to be removed with peer", g.count)
+	}
 }
