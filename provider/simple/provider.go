@@ -85,7 +85,12 @@ func (p *Provider) handleAnnouncements() {
 				select {
 				case <-p.ctx.Done():
 					return
-				case c := <-p.queue.Dequeue():
+				case c, ok := <-p.queue.Dequeue():
+					if !ok {
+						// queue closed.
+						return
+					}
+
 					p.doProvide(c)
 				}
 			}

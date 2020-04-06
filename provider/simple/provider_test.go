@@ -84,6 +84,37 @@ func TestAnnouncement(t *testing.T) {
 			t.Fatal("Timeout waiting for cids to be provided.")
 		}
 	}
+	prov.Close()
+
+	select {
+	case cp := <-r.provided:
+		t.Fatal("did not expect to provide CID: ", cp)
+	case <-time.After(time.Second * 1):
+	}
+}
+
+func TestClose(t *testing.T) {
+	ctx := context.Background()
+	defer ctx.Done()
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	queue, err := q.NewQueue(ctx, "test", ds)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := mockContentRouting()
+
+	prov := NewProvider(ctx, queue, r)
+	prov.Run()
+
+	prov.Close()
+
+	select {
+	case cp := <-r.provided:
+		t.Fatal("did not expect to provide anything, provided: ", cp)
+	case <-time.After(time.Second * 1):
+	}
 }
 
 func TestAnnouncementTimeout(t *testing.T) {
