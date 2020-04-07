@@ -79,10 +79,7 @@ func (n *dagService) Get(ctx context.Context, c cid.Cid) (format.Node, error) {
 
 	b, err := n.Blocks.GetBlock(ctx, c)
 	if err != nil {
-		if err == bserv.ErrNotFound {
-			return nil, format.ErrNotFound
-		}
-		return nil, fmt.Errorf("failed to get block for %s: %v", c, err)
+		return nil, err
 	}
 
 	return legacy.DecodeNode(ctx, b)
@@ -127,9 +124,6 @@ func GetLinksDirect(serv format.NodeGetter) GetLinks {
 	return func(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
 		nd, err := serv.Get(ctx, c)
 		if err != nil {
-			if err == bserv.ErrNotFound {
-				err = format.ErrNotFound
-			}
 			return nil, err
 		}
 		return nd.Links(), nil
@@ -143,12 +137,8 @@ type sesGetter struct {
 // Get gets a single node from the DAG.
 func (sg *sesGetter) Get(ctx context.Context, c cid.Cid) (format.Node, error) {
 	blk, err := sg.bs.GetBlock(ctx, c)
-	switch err {
-	case bserv.ErrNotFound:
-		return nil, format.ErrNotFound
-	case nil:
-		// noop
-	default:
+
+	if err != nil {
 		return nil, err
 	}
 
@@ -358,7 +348,7 @@ func IgnoreErrors() WalkOption {
 func IgnoreMissing() WalkOption {
 	return func(walkOptions *walkOptions) {
 		walkOptions.addHandler(func(c cid.Cid, err error) error {
-			if err == format.ErrNotFound {
+			if format.IsNotFound(err) {
 				return nil
 			}
 			return err
@@ -371,7 +361,7 @@ func IgnoreMissing() WalkOption {
 func OnMissing(callback func(c cid.Cid)) WalkOption {
 	return func(walkOptions *walkOptions) {
 		walkOptions.addHandler(func(c cid.Cid, err error) error {
-			if err == format.ErrNotFound {
+			if format.IsNotFound(err) {
 				callback(c)
 			}
 			return err

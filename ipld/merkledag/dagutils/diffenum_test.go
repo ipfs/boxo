@@ -211,7 +211,7 @@ func TestDiffEnumFail(t *testing.T) {
 	}
 
 	err := DiffEnumerate(ctx, lgds, nds["a1"].Cid(), nds["a2"].Cid())
-	if err != ipld.ErrNotFound {
+	if !ipld.IsNotFound(err) {
 		t.Fatal("expected err not found")
 	}
 

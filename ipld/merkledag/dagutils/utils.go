@@ -107,7 +107,7 @@ func (e *Editor) insertNodeAtPath(ctx context.Context, root *dag.ProtoNode, path
 		if err == dag.ErrLinkNotFound && create != nil {
 			nd = create()
 			err = nil // no longer an error case
-		} else if err == ipld.ErrNotFound {
+		} else if ipld.IsNotFound(err) {
 			// try finding it in our source dagstore
 			nd, err = root.GetLinkedProtoNode(ctx, e.src, path[0])
 		}
@@ -170,7 +170,7 @@ func (e *Editor) rmLink(ctx context.Context, root *dag.ProtoNode, path []string)
 
 	// search for node in both tmp dagstore and source dagstore
 	nd, err := root.GetLinkedProtoNode(ctx, e.tmp, path[0])
-	if err == ipld.ErrNotFound {
+	if ipld.IsNotFound(err) {
 		nd, err = root.GetLinkedProtoNode(ctx, e.src, path[0])
 	}
 
@@ -217,7 +217,7 @@ func copyDag(ctx context.Context, nd ipld.Node, from, to ipld.DAGService) error 
 	for _, lnk := range nd.Links() {
 		child, err := lnk.GetNode(ctx, from)
 		if err != nil {
-			if err == ipld.ErrNotFound {
+			if ipld.IsNotFound(err) {
 				// not found means we didnt modify it, and it should
 				// already be in the target datastore
 				continue

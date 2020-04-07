@@ -55,7 +55,7 @@ func TestReadonlyProperties(t *testing.T) {
 		t.Fatal("expected ErrReadOnly")
 	}
 
-	if _, err := ro.Get(ctx, cids[0]); err != ipld.ErrNotFound {
+	if _, err := ro.Get(ctx, cids[0]); !ipld.IsNotFound(err) {
 		t.Fatal("expected ErrNotFound")
 	}
 	if _, err := ro.Get(ctx, cids[3]); err != nil {
