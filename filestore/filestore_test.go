@@ -13,6 +13,7 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	posinfo "github.com/ipfs/go-ipfs-posinfo"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 var bg = context.Background()
@@ -148,7 +149,7 @@ func TestDeletes(t *testing.T) {
 	deleted := make(map[string]bool)
 	for _, c := range todelete {
 		_, err := fs.Get(bg, c)
-		if err != blockstore.ErrNotFound {
+		if !ipld.IsNotFound(err) {
 			t.Fatal("expected blockstore not found error")
 		}
 		deleted[c.KeyString()] = true

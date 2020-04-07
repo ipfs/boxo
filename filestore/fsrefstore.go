@@ -16,9 +16,9 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	dsns "github.com/ipfs/go-datastore/namespace"
 	dsq "github.com/ipfs/go-datastore/query"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	dshelp "github.com/ipfs/go-ipfs-ds-help"
 	posinfo "github.com/ipfs/go-ipfs-posinfo"
+	ipld "github.com/ipfs/go-ipld-format"
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -103,7 +103,7 @@ func (f *FileManager) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 func (f *FileManager) DeleteBlock(ctx context.Context, c cid.Cid) error {
 	err := f.ds.Delete(ctx, dshelp.MultihashToDsKey(c.Hash()))
 	if err == ds.ErrNotFound {
-		return blockstore.ErrNotFound
+		return ipld.ErrNotFound{Cid: c}
 	}
 	return err
 }
@@ -148,7 +148,7 @@ func (f *FileManager) getDataObj(ctx context.Context, m mh.Multihash) (*pb.DataO
 	o, err := f.ds.Get(ctx, dshelp.MultihashToDsKey(m))
 	switch err {
 	case ds.ErrNotFound:
-		return nil, blockstore.ErrNotFound
+		return nil, ipld.ErrNotFound{Cid: cid.NewCidV1(cid.Raw, m)}
 	case nil:
 		//
 	default:

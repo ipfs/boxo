@@ -16,6 +16,7 @@ import (
 	dsq "github.com/ipfs/go-datastore/query"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	posinfo "github.com/ipfs/go-ipfs-posinfo"
+	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
 )
 
@@ -117,7 +118,7 @@ func (f *Filestore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 // ErrNotFound when the block is not stored.
 func (f *Filestore) DeleteBlock(ctx context.Context, c cid.Cid) error {
 	err1 := f.bs.DeleteBlock(ctx, c)
-	if err1 != nil && err1 != blockstore.ErrNotFound {
+	if err1 != nil && !ipld.IsNotFound(err1) {
 		return err1
 	}
 
@@ -125,45 +126,38 @@ func (f *Filestore) DeleteBlock(ctx context.Context, c cid.Cid) error {
 	// if we successfully removed something from the blockstore, but the
 	// filestore didnt have it, return success
 
-	switch err2 {
-	case nil:
-		return nil
-	case blockstore.ErrNotFound:
-		if err1 == blockstore.ErrNotFound {
-			return blockstore.ErrNotFound
+	if ipld.IsNotFound(err2) {
+		if ipld.IsNotFound(err1) {
+			return err1
 		}
+		// being here means err1 was nil and err2 NotFound.
 		return nil
-	default:
-		return err2
 	}
+
+	return err2
 }
 
 // Get retrieves the block with the given Cid. It may return
 // ErrNotFound when the block is not stored.
 func (f *Filestore) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
 	blk, err := f.bs.Get(ctx, c)
-	switch err {
-	case nil:
-		return blk, nil
-	case blockstore.ErrNotFound:
+	if ipld.IsNotFound(err) {
 		return f.fm.Get(ctx, c)
-	default:
-		return nil, err
 	}
+	return blk, err
 }
 
 // GetSize returns the size of the requested block. It may return ErrNotFound
 // when the block is not stored.
 func (f *Filestore) GetSize(ctx context.Context, c cid.Cid) (int, error) {
 	size, err := f.bs.GetSize(ctx, c)
-	switch err {
-	case nil:
-		return size, nil
-	case blockstore.ErrNotFound:
-		return f.fm.GetSize(ctx, c)
-	default:
+	if err != nil {
+		if ipld.IsNotFound(err) {
+			return f.fm.GetSize(ctx, c)
+		}
 		return -1, err
 	}
+	return size, nil
 }
 
 // Has returns true if the block with the given Cid is

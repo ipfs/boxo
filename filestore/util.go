@@ -10,8 +10,8 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dsq "github.com/ipfs/go-datastore/query"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	dshelp "github.com/ipfs/go-ipfs-ds-help"
+	ipld "github.com/ipfs/go-ipld-format"
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -261,7 +261,7 @@ func mkListRes(m mh.Multihash, d *pb.DataObj, err error) *ListRes {
 	status := StatusOk
 	errorMsg := ""
 	if err != nil {
-		if err == ds.ErrNotFound || err == blockstore.ErrNotFound {
+		if err == ds.ErrNotFound || ipld.IsNotFound(err) {
 			status = StatusKeyNotFound
 		} else if err, ok := err.(*CorruptReferenceError); ok {
 			status = err.Code
