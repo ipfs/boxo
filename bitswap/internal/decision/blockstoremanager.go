@@ -8,6 +8,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
+	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-metrics-interface"
 	process "github.com/jbenet/goprocess"
 )
@@ -87,7 +88,7 @@ func (bsm *blockstoreManager) getBlockSizes(ctx context.Context, ks []cid.Cid) (
 	return res, bsm.jobPerKey(ctx, ks, func(c cid.Cid) {
 		size, err := bsm.bs.GetSize(ctx, c)
 		if err != nil {
-			if err != bstore.ErrNotFound {
+			if !ipld.IsNotFound(err) {
 				// Note: this isn't a fatal error. We shouldn't abort the request
 				log.Errorf("blockstore.GetSize(%s) error: %s", c, err)
 			}
@@ -109,7 +110,7 @@ func (bsm *blockstoreManager) getBlocks(ctx context.Context, ks []cid.Cid) (map[
 	return res, bsm.jobPerKey(ctx, ks, func(c cid.Cid) {
 		blk, err := bsm.bs.Get(ctx, c)
 		if err != nil {
-			if err != bstore.ErrNotFound {
+			if !ipld.IsNotFound(err) {
 				// Note: this isn't a fatal error. We shouldn't abort the request
 				log.Errorf("blockstore.Get(%s) error: %s", c, err)
 			}
