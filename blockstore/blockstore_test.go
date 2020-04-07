@@ -12,6 +12,7 @@ import (
 	dsq "github.com/ipfs/go-datastore/query"
 	ds_sync "github.com/ipfs/go-datastore/sync"
 	u "github.com/ipfs/go-ipfs-util"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 func TestGetWhenKeyNotPresent(t *testing.T) {
@@ -30,7 +31,7 @@ func TestGetWhenKeyNotPresent(t *testing.T) {
 func TestGetWhenKeyIsNil(t *testing.T) {
 	bs := NewBlockstore(ds_sync.MutexWrap(ds.NewMapDatastore()))
 	_, err := bs.Get(bg, cid.Cid{})
-	if err != ErrNotFound {
+	if !ipld.IsNotFound(err) {
 		t.Fail()
 	}
 }

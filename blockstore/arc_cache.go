@@ -8,6 +8,7 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	ipld "github.com/ipfs/go-ipld-format"
 	metrics "github.com/ipfs/go-metrics-interface"
 )
 
@@ -135,7 +136,7 @@ func (b *arccache) Has(ctx context.Context, k cid.Cid) (bool, error) {
 
 func (b *arccache) GetSize(ctx context.Context, k cid.Cid) (int, error) {
 	if !k.Defined() {
-		return -1, ErrNotFound
+		return -1, ipld.ErrNotFound{Cid: k}
 	}
 
 	key := cacheKey(k)
@@ -143,7 +144,7 @@ func (b *arccache) GetSize(ctx context.Context, k cid.Cid) (int, error) {
 	if has, blockSize, ok := b.queryCache(key); ok {
 		if !has {
 			// don't have it, return
-			return -1, ErrNotFound
+			return -1, ipld.ErrNotFound{Cid: k}
 		}
 		if blockSize >= 0 {
 			// have it and we know the size
@@ -156,7 +157,7 @@ func (b *arccache) GetSize(ctx context.Context, k cid.Cid) (int, error) {
 	defer b.unlock(key, false)
 
 	blockSize, err := b.blockstore.GetSize(ctx, k)
-	if err == ErrNotFound {
+	if ipld.IsNotFound(err) {
 		b.cacheHave(key, false)
 	} else if err == nil {
 		b.cacheSize(key, blockSize)
@@ -176,7 +177,7 @@ func (b *arccache) View(ctx context.Context, k cid.Cid, callback func([]byte) er
 	}
 
 	if !k.Defined() {
-		return ErrNotFound
+		return ipld.ErrNotFound{Cid: k}
 	}
 
 	key := cacheKey(k)
@@ -184,7 +185,7 @@ func (b *arccache) View(ctx context.Context, k cid.Cid, callback func([]byte) er
 	if has, _, ok := b.queryCache(key); ok && !has {
 		// short circuit if the cache deterministically tells us the item
 		// doesn't exist.
-		return ErrNotFound
+		return ipld.ErrNotFound{Cid: k}
 	}
 
 	b.lock(key, false)
@@ -197,7 +198,7 @@ func (b *arccache) View(ctx context.Context, k cid.Cid, callback func([]byte) er
 		cberr = callback(buf)
 		return nil
 	}); err != nil {
-		if err == ErrNotFound {
+		if ipld.IsNotFound(err) {
 			b.cacheHave(key, false)
 		}
 		return err
@@ -210,20 +211,20 @@ func (b *arccache) View(ctx context.Context, k cid.Cid, callback func([]byte) er
 
 func (b *arccache) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
 	if !k.Defined() {
-		return nil, ErrNotFound
+		return nil, ipld.ErrNotFound{Cid: k}
 	}
 
 	key := cacheKey(k)
 
 	if has, _, ok := b.queryCache(key); ok && !has {
-		return nil, ErrNotFound
+		return nil, ipld.ErrNotFound{Cid: k}
 	}
 
 	b.lock(key, false)
 	defer b.unlock(key, false)
 
 	bl, err := b.blockstore.Get(ctx, k)
-	if bl == nil && err == ErrNotFound {
+	if bl == nil && ipld.IsNotFound(err) {
 		b.cacheHave(key, false)
 	} else if bl != nil {
 		b.cacheSize(key, len(bl.RawData()))

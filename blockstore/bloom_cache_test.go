@@ -11,6 +11,7 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	dsq "github.com/ipfs/go-datastore/query"
 	syncds "github.com/ipfs/go-datastore/sync"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 var bg = context.Background()
@@ -65,7 +66,7 @@ func TestPutManyAddsToBloom(t *testing.T) {
 		t.Fatal(err)
 	}
 	blockSize, err = cachedbs.GetSize(bg, block2.Cid())
-	if err != nil && err != ErrNotFound {
+	if err != nil && !ipld.IsNotFound(err) {
 		t.Fatal(err)
 	}
 	if blockSize > -1 || has {
