@@ -19,7 +19,7 @@ import (
 	uatomic "go.uber.org/atomic"
 )
 
-var log = logging.Logger("blockstore")
+var logger = logging.Logger("blockstore")
 
 // BlockPrefix namespaces blockstore datastores
 var BlockPrefix = ds.NewKey("blocks")
@@ -239,14 +239,14 @@ func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 				return
 			}
 			if e.Error != nil {
-				log.Errorf("blockstore.AllKeysChan got err: %s", e.Error)
+				logger.Errorf("blockstore.AllKeysChan got err: %s", e.Error)
 				return
 			}
 
 			// need to convert to key.Key using key.KeyFromDsKey.
 			bk, err := dshelp.BinaryFromDsKey(ds.RawKey(e.Key))
 			if err != nil {
-				log.Warningf("error parsing key from binary: %s", err)
+				logger.Warningf("error parsing key from binary: %s", err)
 				continue
 			}
 			k := cid.NewCidV1(cid.Raw, bk)

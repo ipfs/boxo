@@ -114,6 +114,9 @@ func (b *arccache) DeleteBlock(ctx context.Context, k cid.Cid) error {
 
 func (b *arccache) Has(ctx context.Context, k cid.Cid) (bool, error) {
 	if !k.Defined() {
+		logger.Error("undefined cid in arccache")
+		// Return cache invalid so the call to blockstore happens
+		// in case of invalid key and correct error is created.
 		return false, nil
 	}
 
