@@ -62,7 +62,7 @@ To select which peer to send the next response to, Bitswap chooses the peer with
 Implementation
 ==============
 
-![Bitswap Components](./docs/go-bitswap.png)
+![Bitswap Components](./go-bitswap.png)
 
 ### Bitswap
 
