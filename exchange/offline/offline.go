@@ -4,11 +4,13 @@ package offline
 
 import (
 	"context"
+	"fmt"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 func Exchange(bs blockstore.Blockstore) exchange.Interface {
@@ -25,7 +27,11 @@ type offlineExchange struct {
 // given key.
 // NB: This function may return before the timeout expires.
 func (e *offlineExchange) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error) {
-	return e.bs.Get(ctx, k)
+	blk, err := e.bs.Get(ctx, k)
+	if ipld.IsNotFound(err) {
+		return nil, fmt.Errorf("block was not found locally (offline): %w", err)
+	}
+	return blk, err
 }
 
 // HasBlock always returns nil.
