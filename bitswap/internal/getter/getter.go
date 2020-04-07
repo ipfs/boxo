@@ -9,7 +9,7 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 var log = logging.Logger("bitswap")
@@ -24,7 +24,7 @@ type GetBlocksFunc func(context.Context, []cid.Cid) (<-chan blocks.Block, error)
 func SyncGetBlock(p context.Context, k cid.Cid, gb GetBlocksFunc) (blocks.Block, error) {
 	if !k.Defined() {
 		log.Error("undefined cid in GetBlock")
-		return nil, blockstore.ErrNotFound
+		return nil, ipld.ErrNotFound{Cid: k}
 	}
 
 	// Any async work initiated by this function must end when this function

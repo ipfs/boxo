@@ -19,10 +19,10 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	detectrace "github.com/ipfs/go-detect-race"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
+	ipld "github.com/ipfs/go-ipld-format"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	p2ptestutil "github.com/libp2p/go-libp2p-netutil"
 	travis "github.com/libp2p/go-libp2p-testing/ci/travis"
@@ -405,7 +405,7 @@ func TestEmptyKey(t *testing.T) {
 	defer cancel()
 
 	_, err := bs.GetBlock(ctx, cid.Cid{})
-	if err != blockstore.ErrNotFound {
+	if !ipld.IsNotFound(err) {
 		t.Error("empty str key should return ErrNotFound")
 	}
 }
