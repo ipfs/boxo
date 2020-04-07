@@ -11,6 +11,7 @@ import (
 	butil "github.com/ipfs/go-ipfs-blocksutil"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 func TestWriteThroughWorks(t *testing.T) {
@@ -132,7 +133,7 @@ func TestNilExchange(t *testing.T) {
 	bserv := NewWriteThrough(bs, nil)
 	sess := NewSession(ctx, bserv)
 	_, err := sess.GetBlock(ctx, block.Cid())
-	if err != ErrNotFound {
+	if !ipld.IsNotFound(err) {
 		t.Fatal("expected block to not be found")
 	}
 	err = bs.Put(ctx, block)

@@ -5,7 +5,6 @@ package blockservice
 
 import (
 	"context"
-	"errors"
 	"io"
 	"sync"
 
@@ -13,13 +12,12 @@ import (
 	cid "github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
+	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-verifcid"
 )
 
 var log = logging.Logger("blockservice")
-
-var ErrNotFound = errors.New("blockservice: key not found")
 
 // BlockGetter is the common interface shared between blockservice sessions and
 // the blockservice.
@@ -151,7 +149,7 @@ func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 
 	if s.exchange != nil {
 		if err := s.exchange.HasBlock(ctx, o); err != nil {
-			log.Errorf("HasBlock: %s", err.Error())
+			logger.Errorf("HasBlock: %s", err.Error())
 		}
 	}
 
@@ -230,7 +228,7 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget fun
 		return block, nil
 	}
 
-	if err == blockstore.ErrNotFound && fget != nil {
+	if ipld.IsNotFound(err) && fget != nil {
 		f := fget() // Don't load the exchange until we have to
 
 		// TODO be careful checking ErrNotFound. If the underlying
@@ -238,9 +236,6 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget fun
 		log.Debug("Blockservice: Searching bitswap")
 		blk, err := f.GetBlock(ctx, c)
 		if err != nil {
-			if err == blockstore.ErrNotFound {
-				return nil, ErrNotFound
-			}
 			return nil, err
 		}
 		log.Debugf("BlockService.BlockFetched %s", c)
@@ -248,10 +243,6 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget fun
 	}
 
 	log.Debug("Blockservice GetBlock: Not found")
-	if err == blockstore.ErrNotFound {
-		return nil, ErrNotFound
-	}
-
 	return nil, err
 }
 
