@@ -197,7 +197,6 @@ func newEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger,
 		peertaskqueue.OnPeerRemovedHook(e.onPeerRemoved),
 		peertaskqueue.TaskMerger(newTaskMerger()),
 		peertaskqueue.IgnoreFreezing(true))
-	go e.scoreWorker(ctx)
 	return e
 }
 
@@ -215,6 +214,7 @@ func (e *Engine) SetSendDontHaves(send bool) {
 func (e *Engine) StartWorkers(ctx context.Context, px process.Process) {
 	// Start up blockstore manager
 	e.bsm.start(px)
+	px.Go(e.scoreWorker)
 
 	for i := 0; i < e.taskWorkerCount; i++ {
 		px.Go(func(px process.Process) {
@@ -240,7 +240,7 @@ func (e *Engine) StartWorkers(ctx context.Context, px process.Process) {
 // To calculate the final score, we sum the short-term and long-term scores then
 // adjust it ±25% based on our debt ratio. Peers that have historically been
 // more useful to us than we are to them get the highest score.
-func (e *Engine) scoreWorker(ctx context.Context) {
+func (e *Engine) scoreWorker(px process.Process) {
 	ticker := time.NewTicker(e.peerSampleInterval)
 	defer ticker.Stop()
 
@@ -257,7 +257,7 @@ func (e *Engine) scoreWorker(ctx context.Context) {
 		var now time.Time
 		select {
 		case now = <-ticker.C:
-		case <-ctx.Done():
+		case <-px.Closing():
 			return
 		}
 
