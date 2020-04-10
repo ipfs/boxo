@@ -319,18 +319,22 @@ func TestCancelOverridesPendingWants(t *testing.T) {
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	peerID := testutil.GeneratePeers(1)[0]
 	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
+
 	wantHaves := testutil.GenerateCids(2)
 	wantBlocks := testutil.GenerateCids(2)
+	cancels := []cid.Cid{wantBlocks[0], wantHaves[0]}
 
 	messageQueue.Startup()
 	messageQueue.AddWants(wantBlocks, wantHaves)
-	messageQueue.AddCancels([]cid.Cid{wantBlocks[0], wantHaves[0]})
+	messageQueue.AddCancels(cancels)
 	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
 
-	if totalEntriesLength(messages) != len(wantHaves)+len(wantBlocks) {
+	if totalEntriesLength(messages) != len(wantHaves)+len(wantBlocks)-len(cancels) {
 		t.Fatal("Wrong message count")
 	}
 
+	// Cancelled 1 want-block and 1 want-have before they were sent
+	// so that leaves 1 want-block and 1 want-have
 	wb, wh, cl := filterWantTypes(messages[0])
 	if len(wb) != 1 || !wb[0].Equals(wantBlocks[1]) {
 		t.Fatal("Expected 1 want-block")
@@ -338,6 +342,20 @@ func TestCancelOverridesPendingWants(t *testing.T) {
 	if len(wh) != 1 || !wh[0].Equals(wantHaves[1]) {
 		t.Fatal("Expected 1 want-have")
 	}
+	// Cancelled wants before they were sent, so no cancel should be sent
+	// to the network
+	if len(cl) != 0 {
+		t.Fatal("Expected no cancels")
+	}
+
+	// Cancel the remaining want-blocks and want-haves
+	cancels = append(wantHaves, wantBlocks...)
+	messageQueue.AddCancels(cancels)
+	messages = collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+
+	// The remaining 2 cancels should be sent to the network as they are for
+	// wants that were sent to the network
+	_, _, cl = filterWantTypes(messages[0])
 	if len(cl) != 2 {
 		t.Fatal("Expected 2 cancels")
 	}
@@ -353,26 +371,41 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	peerID := testutil.GeneratePeers(1)[0]
 	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
-	cancels := testutil.GenerateCids(3)
+
+	cids := testutil.GenerateCids(3)
+	wantBlocks := cids[:1]
+	wantHaves := cids[1:]
 
 	messageQueue.Startup()
-	messageQueue.AddCancels(cancels)
-	messageQueue.AddWants([]cid.Cid{cancels[0]}, []cid.Cid{cancels[1]})
-	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
 
-	if totalEntriesLength(messages) != len(cancels) {
-		t.Fatal("Wrong message count")
+	// Add 1 want-block and 2 want-haves
+	messageQueue.AddWants(wantBlocks, wantHaves)
+
+	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	if totalEntriesLength(messages) != len(wantBlocks)+len(wantHaves) {
+		t.Fatal("Wrong message count", totalEntriesLength(messages))
 	}
 
+	// Cancel existing wants
+	messageQueue.AddCancels(cids)
+	// Override one cancel with a want-block (before cancel is sent to network)
+	messageQueue.AddWants(cids[:1], []cid.Cid{})
+
+	messages = collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	if totalEntriesLength(messages) != 3 {
+		t.Fatal("Wrong message count", totalEntriesLength(messages))
+	}
+
+	// Should send 1 want-block and 2 cancels
 	wb, wh, cl := filterWantTypes(messages[0])
-	if len(wb) != 1 || !wb[0].Equals(cancels[0]) {
+	if len(wb) != 1 {
 		t.Fatal("Expected 1 want-block")
 	}
-	if len(wh) != 1 || !wh[0].Equals(cancels[1]) {
-		t.Fatal("Expected 1 want-have")
+	if len(wh) != 0 {
+		t.Fatal("Expected 0 want-have")
 	}
-	if len(cl) != 1 || !cl[0].Equals(cancels[2]) {
-		t.Fatal("Expected 1 cancel")
+	if len(cl) != 2 {
+		t.Fatal("Expected 2 cancels")
 	}
 }
 
