@@ -6,6 +6,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 )
 
+// The SessionWantList keeps track of which sessions want a CID
 type SessionWantlist struct {
 	sync.RWMutex
 	wants map[cid.Cid]map[uint64]struct{}
@@ -17,6 +18,7 @@ func NewSessionWantlist() *SessionWantlist {
 	}
 }
 
+// The given session wants the keys
 func (swl *SessionWantlist) Add(ks []cid.Cid, ses uint64) {
 	swl.Lock()
 	defer swl.Unlock()
@@ -29,6 +31,8 @@ func (swl *SessionWantlist) Add(ks []cid.Cid, ses uint64) {
 	}
 }
 
+// Remove the keys for all sessions.
+// Called when blocks are received.
 func (swl *SessionWantlist) RemoveKeys(ks []cid.Cid) {
 	swl.Lock()
 	defer swl.Unlock()
@@ -38,6 +42,8 @@ func (swl *SessionWantlist) RemoveKeys(ks []cid.Cid) {
 	}
 }
 
+// Remove the session's wants, and return wants that are no longer wanted by
+// any session.
 func (swl *SessionWantlist) RemoveSession(ses uint64) []cid.Cid {
 	swl.Lock()
 	defer swl.Unlock()
@@ -54,6 +60,7 @@ func (swl *SessionWantlist) RemoveSession(ses uint64) []cid.Cid {
 	return deletedKs
 }
 
+// Remove the session's wants
 func (swl *SessionWantlist) RemoveSessionKeys(ses uint64, ks []cid.Cid) {
 	swl.Lock()
 	defer swl.Unlock()
@@ -68,6 +75,7 @@ func (swl *SessionWantlist) RemoveSessionKeys(ses uint64, ks []cid.Cid) {
 	}
 }
 
+// All keys wanted by all sessions
 func (swl *SessionWantlist) Keys() []cid.Cid {
 	swl.RLock()
 	defer swl.RUnlock()
@@ -79,6 +87,7 @@ func (swl *SessionWantlist) Keys() []cid.Cid {
 	return ks
 }
 
+// All sessions that want the given keys
 func (swl *SessionWantlist) SessionsFor(ks []cid.Cid) []uint64 {
 	swl.RLock()
 	defer swl.RUnlock()
@@ -97,6 +106,7 @@ func (swl *SessionWantlist) SessionsFor(ks []cid.Cid) []uint64 {
 	return ses
 }
 
+// Filter for keys that at least one session wants
 func (swl *SessionWantlist) Has(ks []cid.Cid) *cid.Set {
 	swl.RLock()
 	defer swl.RUnlock()
@@ -110,6 +120,7 @@ func (swl *SessionWantlist) Has(ks []cid.Cid) *cid.Set {
 	return has
 }
 
+// Filter for keys that the given session wants
 func (swl *SessionWantlist) SessionHas(ses uint64, ks []cid.Cid) *cid.Set {
 	swl.RLock()
 	defer swl.RUnlock()
