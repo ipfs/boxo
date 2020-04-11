@@ -551,19 +551,18 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 	// Size of the message so far
 	msgSize := 0
 
-	// Add each broadcast want-have to the message
-	for i := 0; i < len(bcstEntries) && msgSize < mq.maxMessageSize; i++ {
-		// Broadcast wants are sent as want-have
-		wantType := pb.Message_Wantlist_Have
+	// Always prioritize cancels, then targeted, then broadcast.
 
-		// If the remote peer doesn't support HAVE / DONT_HAVE messages,
-		// send a want-block instead
-		if !supportsHave {
-			wantType = pb.Message_Wantlist_Block
-		}
+	// Add each cancel to the message
+	cancels := mq.cancels.Keys()
+	for i := 0; i < len(cancels) && msgSize < mq.maxMessageSize; i++ {
+		c := cancels[i]
 
-		e := bcstEntries[i]
-		msgSize += mq.msg.AddEntry(e.Cid, e.Priority, wantType, false)
+		msgSize += mq.msg.Cancel(c)
+
+		// Clear the cancel - we make a best effort to let peers know about
+		// cancels but won't save them to resend if there's a failure.
+		mq.cancels.Remove(c)
 	}
 
 	// Add each regular want-have / want-block to the message
@@ -578,16 +577,19 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 		}
 	}
 
-	// Add each cancel to the message
-	cancels := mq.cancels.Keys()
-	for i := 0; i < len(cancels) && msgSize < mq.maxMessageSize; i++ {
-		c := cancels[i]
+	// Add each broadcast want-have to the message
+	for i := 0; i < len(bcstEntries) && msgSize < mq.maxMessageSize; i++ {
+		// Broadcast wants are sent as want-have
+		wantType := pb.Message_Wantlist_Have
 
-		msgSize += mq.msg.Cancel(c)
+		// If the remote peer doesn't support HAVE / DONT_HAVE messages,
+		// send a want-block instead
+		if !supportsHave {
+			wantType = pb.Message_Wantlist_Block
+		}
 
-		// Clear the cancel - we make a best effort to let peers know about
-		// cancels but won't save them to resend if there's a failure.
-		mq.cancels.Remove(c)
+		e := bcstEntries[i]
+		msgSize += mq.msg.AddEntry(e.Cid, e.Priority, wantType, false)
 	}
 
 	// Called when the message has been successfully sent.
