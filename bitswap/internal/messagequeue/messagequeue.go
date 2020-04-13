@@ -439,7 +439,7 @@ func (mq *MessageQueue) sendMessage() {
 	for i := 0; i < maxRetries; i++ {
 		if mq.attemptSendAndRecovery(message) {
 			// We were able to send successfully.
-			onSent(wantlist)
+			onSent()
 
 			mq.simulateDontHaveWithTimeout(wantlist)
 
@@ -540,7 +540,7 @@ func (mq *MessageQueue) pendingWorkCount() int {
 }
 
 // Convert the lists of wants into a Bitswap message
-func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwapMessage, func([]bsmsg.Entry)) {
+func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwapMessage, func()) {
 	mq.wllock.Lock()
 	defer mq.wllock.Unlock()
 
@@ -595,7 +595,7 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 	}
 
 	// Called when the message has been successfully sent.
-	onMessageSent := func(wantlist []bsmsg.Entry) {
+	onMessageSent := func() {
 		mq.wllock.Lock()
 		defer mq.wllock.Unlock()
 
