@@ -566,15 +566,16 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 	}
 
 	// Add each regular want-have / want-block to the message
-	peerSentCount := 0
-	for ; peerSentCount < len(peerEntries) && msgSize < mq.maxMessageSize; peerSentCount++ {
-		e := peerEntries[peerSentCount]
+	peerSent := make([]wantlist.Entry, 0, len(peerEntries))
+	for i := 0; i < len(peerEntries) && msgSize < mq.maxMessageSize; i++ {
+		e := peerEntries[i]
 		// If the remote peer doesn't support HAVE / DONT_HAVE messages,
 		// don't send want-haves (only send want-blocks)
 		if !supportsHave && e.WantType == pb.Message_Wantlist_Have {
 			mq.peerWants.RemoveType(e.Cid, pb.Message_Wantlist_Have)
 		} else {
 			msgSize += mq.msg.AddEntry(e.Cid, e.Priority, e.WantType, true)
+			peerSent = append(peerSent, e)
 		}
 	}
 
@@ -603,8 +604,8 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 		for i := 0; i < bcstSentCount; i++ {
 			mq.bcstWants.MarkSent(bcstEntries[i])
 		}
-		for i := 0; i < peerSentCount; i++ {
-			mq.peerWants.MarkSent(peerEntries[i])
+		for _, e := range peerSent {
+			mq.peerWants.MarkSent(e)
 		}
 	}
 
