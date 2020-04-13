@@ -113,8 +113,8 @@ func (r *recallWantlist) RemoveType(c cid.Cid, wtype pb.Message_Wantlist_WantTyp
 	r.pending.RemoveType(c, wtype)
 }
 
-// Sent moves the want from the pending to the sent list
-func (r *recallWantlist) Sent(e bsmsg.Entry) {
+// MarkSent moves the want from the pending to the sent list
+func (r *recallWantlist) MarkSent(e wantlist.Entry) {
 	r.pending.RemoveType(e.Cid, e.WantType)
 	r.sent.Add(e.Cid, e.Priority, e.WantType)
 }
@@ -566,6 +566,7 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 	}
 
 	// Add each regular want-have / want-block to the message
+	peerSentCount := 0
 	for i := 0; i < len(peerEntries) && msgSize < mq.maxMessageSize; i++ {
 		e := peerEntries[i]
 		// If the remote peer doesn't support HAVE / DONT_HAVE messages,
@@ -575,9 +576,12 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 		} else {
 			msgSize += mq.msg.AddEntry(e.Cid, e.Priority, e.WantType, true)
 		}
+
+		peerSentCount++
 	}
 
 	// Add each broadcast want-have to the message
+	bcstSentCount := 0
 	for i := 0; i < len(bcstEntries) && msgSize < mq.maxMessageSize; i++ {
 		// Broadcast wants are sent as want-have
 		wantType := pb.Message_Wantlist_Have
@@ -590,37 +594,25 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 
 		e := bcstEntries[i]
 		msgSize += mq.msg.AddEntry(e.Cid, e.Priority, wantType, false)
+
+		bcstSentCount++
 	}
 
 	// Called when the message has been successfully sent.
 	onMessageSent := func(wantlist []bsmsg.Entry) {
-		bcst := keysToSet(bcstEntries)
-		prws := keysToSet(peerEntries)
-
 		mq.wllock.Lock()
 		defer mq.wllock.Unlock()
 
 		// Move the keys from pending to sent
-		for _, e := range wantlist {
-			if _, ok := bcst[e.Cid]; ok {
-				mq.bcstWants.Sent(e)
-			}
-			if _, ok := prws[e.Cid]; ok {
-				mq.peerWants.Sent(e)
-			}
+		for i := 0; i < bcstSentCount; i++ {
+			mq.bcstWants.MarkSent(bcstEntries[i])
+		}
+		for i := 0; i < peerSentCount; i++ {
+			mq.peerWants.MarkSent(peerEntries[i])
 		}
 	}
 
 	return mq.msg, onMessageSent
-}
-
-// Convert wantlist entries into a set of cids
-func keysToSet(wl []wantlist.Entry) map[cid.Cid]struct{} {
-	set := make(map[cid.Cid]struct{}, len(wl))
-	for _, e := range wl {
-		set[e.Cid] = struct{}{}
-	}
-	return set
 }
 
 func (mq *MessageQueue) initializeSender() error {
