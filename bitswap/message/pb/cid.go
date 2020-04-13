@@ -18,7 +18,8 @@ func (c Cid) Marshal() ([]byte, error) {
 }
 
 func (c *Cid) MarshalTo(data []byte) (int, error) {
-	return copy(data[:c.Size()], c.Cid.Bytes()), nil
+	// intentionally using KeyString here to avoid allocating.
+	return copy(data[:c.Size()], c.Cid.KeyString()), nil
 }
 
 func (c *Cid) Unmarshal(data []byte) (err error) {
