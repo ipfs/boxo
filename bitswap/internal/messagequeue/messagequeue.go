@@ -555,9 +555,10 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 
 	// Add each cancel to the message
 	cancels := mq.cancels.Keys()
-	for i := 0; i < len(cancels) && msgSize < mq.maxMessageSize; i++ {
-		c := cancels[i]
-
+	for _, c := range cancels {
+		if msgSize >= mq.maxMessageSize {
+			break
+		}
 		msgSize += mq.msg.Cancel(c)
 
 		// Clear the cancel - we make a best effort to let peers know about
@@ -566,9 +567,12 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 	}
 
 	// Add each regular want-have / want-block to the message
-	peerSent := make([]wantlist.Entry, 0, len(peerEntries))
-	for i := 0; i < len(peerEntries) && msgSize < mq.maxMessageSize; i++ {
-		e := peerEntries[i]
+	peerSent := peerEntries[:0]
+	for _, e := range peerEntries {
+		if msgSize >= mq.maxMessageSize {
+			break
+		}
+
 		// If the remote peer doesn't support HAVE / DONT_HAVE messages,
 		// don't send want-haves (only send want-blocks)
 		if !supportsHave && e.WantType == pb.Message_Wantlist_Have {
@@ -580,8 +584,12 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 	}
 
 	// Add each broadcast want-have to the message
-	bcstSentCount := 0
-	for ; bcstSentCount < len(bcstEntries) && msgSize < mq.maxMessageSize; bcstSentCount++ {
+	bcstSent := bcstEntries[:0]
+	for _, e := range bcstEntries {
+		if msgSize >= mq.maxMessageSize {
+			break
+		}
+
 		// Broadcast wants are sent as want-have
 		wantType := pb.Message_Wantlist_Have
 
@@ -591,8 +599,8 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 			wantType = pb.Message_Wantlist_Block
 		}
 
-		e := bcstEntries[bcstSentCount]
 		msgSize += mq.msg.AddEntry(e.Cid, e.Priority, wantType, false)
+		bcstSent = append(bcstSent, e)
 	}
 
 	// Called when the message has been successfully sent.
@@ -601,8 +609,8 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 		defer mq.wllock.Unlock()
 
 		// Move the keys from pending to sent
-		for i := 0; i < bcstSentCount; i++ {
-			mq.bcstWants.MarkSent(bcstEntries[i])
+		for _, e := range bcstSent {
+			mq.bcstWants.MarkSent(e)
 		}
 		for _, e := range peerSent {
 			mq.peerWants.MarkSent(e)
