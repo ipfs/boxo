@@ -745,32 +745,19 @@ func (e *Engine) MessageSent(p peer.ID, m bsmsg.BitSwapMessage) {
 func (e *Engine) PeerConnected(p peer.ID) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
-	l, ok := e.ledgerMap[p]
-	if !ok {
-		l = newLedger(p)
-		e.ledgerMap[p] = l
-	}
 
-	l.lk.Lock()
-	defer l.lk.Unlock()
-	l.ref++
+	_, ok := e.ledgerMap[p]
+	if !ok {
+		e.ledgerMap[p] = newLedger(p)
+	}
 }
 
 // PeerDisconnected is called when a peer disconnects.
 func (e *Engine) PeerDisconnected(p peer.ID) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
-	l, ok := e.ledgerMap[p]
-	if !ok {
-		return
-	}
 
-	l.lk.Lock()
-	defer l.lk.Unlock()
-	l.ref--
-	if l.ref <= 0 {
-		delete(e.ledgerMap, p)
-	}
+	delete(e.ledgerMap, p)
 }
 
 // If the want is a want-have, and it's below a certain size, send the full

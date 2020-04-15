@@ -284,7 +284,7 @@ func (mp *messagePasser) SupportsHave() bool {
 	return false
 }
 
-func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID) (bsnet.MessageSender, error) {
+func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID, opts *bsnet.MessageSenderOpts) (bsnet.MessageSender, error) {
 	return &messagePasser{
 		net:    nc,
 		target: p,

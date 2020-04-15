@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -43,6 +44,8 @@ func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) B
 
 		supportedProtocols: s.SupportedProtocols,
 	}
+	bitswapNetwork.connectEvtMgr = newConnectEventManager(&bitswapNetwork)
+
 	return &bitswapNetwork
 }
 
@@ -71,8 +74,9 @@ type impl struct {
 	// alignment.
 	stats Stats
 
-	host    host.Host
-	routing routing.ContentRouting
+	host          host.Host
+	routing       routing.ContentRouting
+	connectEvtMgr *connectEventManager
 
 	protocolBitswapNoVers  protocol.ID
 	protocolBitswapOneZero protocol.ID
@@ -86,24 +90,93 @@ type impl struct {
 }
 
 type streamMessageSender struct {
-	s     network.Stream
-	bsnet *impl
+	to     peer.ID
+	stream network.Stream
+	bsnet  *impl
+	opts   *MessageSenderOpts
 }
 
-func (s *streamMessageSender) Close() error {
-	return helpers.FullClose(s.s)
+func (s *streamMessageSender) Connect(ctx context.Context) (stream network.Stream, err error) {
+	defer func() {
+		if err != nil {
+			s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
+		}
+	}()
+
+	if s.stream != nil {
+		return s.stream, nil
+	}
+
+	if err = s.bsnet.ConnectTo(ctx, s.to); err != nil {
+		return nil, err
+	}
+
+	stream, err = s.bsnet.newStreamToPeer(ctx, s.to)
+	if err != nil {
+		s.stream = stream
+		return s.stream, nil
+	}
+	return nil, err
 }
 
 func (s *streamMessageSender) Reset() error {
-	return s.s.Reset()
+	err := s.stream.Reset()
+	s.stream = nil
+	return err
 }
 
-func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessage) error {
-	return s.bsnet.msgToStream(ctx, s.s, msg)
+func (s *streamMessageSender) Close() error {
+	return helpers.FullClose(s.stream)
 }
 
 func (s *streamMessageSender) SupportsHave() bool {
-	return s.bsnet.SupportsHave(s.s.Protocol())
+	return s.bsnet.SupportsHave(s.stream.Protocol())
+}
+
+func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessage) error {
+	// Try to send the message repeatedly
+	var err error
+	for i := 0; i < s.opts.MaxRetries; i++ {
+		if err = s.attemptSend(ctx, msg); err == nil {
+			// Sent successfully
+			return nil
+		}
+
+		// Failed to send so reset stream and try again
+		_ = s.Reset()
+
+		if i == s.opts.MaxRetries {
+			s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(s.opts.SendErrorBackoff):
+			// wait a short time in case disconnect notifications are still propagating
+			log.Infof("send message to %s failed but context was not Done: %s", s.to, err)
+		}
+	}
+	return err
+}
+
+func (s *streamMessageSender) attemptSend(ctx context.Context, msg bsmsg.BitSwapMessage) error {
+	sndctx, cancel := context.WithTimeout(ctx, s.opts.SendTimeout)
+	defer cancel()
+
+	stream, err := s.Connect(sndctx)
+	if err != nil {
+		log.Infof("failed to open stream to %s: %s", s.to, err)
+		return err
+	}
+
+	if err = s.bsnet.msgToStream(sndctx, stream, msg); err != nil {
+		log.Infof("failed to send message to %s: %s", s.to, err)
+		return err
+	}
+
+	return nil
 }
 
 func (bsnet *impl) Self() peer.ID {
@@ -164,17 +237,21 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 	return nil
 }
 
-func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID) (MessageSender, error) {
-	s, err := bsnet.newStreamToPeer(ctx, p)
+func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *MessageSenderOpts) (MessageSender, error) {
+	sender := &streamMessageSender{
+		to:    p,
+		bsnet: bsnet,
+		opts:  opts,
+	}
+
+	conctx, cancel := context.WithTimeout(ctx, sender.opts.SendTimeout)
+	defer cancel()
+
+	_, err := sender.Connect(conctx)
 	if err != nil {
 		return nil, err
 	}
-
-	return &streamMessageSender{s: s, bsnet: bsnet}, nil
-}
-
-func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stream, error) {
-	return bsnet.host.NewStream(ctx, p, bsnet.supportedProtocols...)
+	return sender, nil
 }
 
 func (bsnet *impl) SendMessage(
@@ -197,7 +274,10 @@ func (bsnet *impl) SendMessage(
 	//nolint
 	go helpers.AwaitEOF(s)
 	return s.Close()
+}
 
+func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stream, error) {
+	return bsnet.host.NewStream(ctx, p, bsnet.supportedProtocols...)
 }
 
 func (bsnet *impl) SetDelegate(r Receiver) {
@@ -268,6 +348,7 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 		p := s.Conn().RemotePeer()
 		ctx := context.Background()
 		log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())
+		bsnet.connectEvtMgr.OnMessage(s.Conn().RemotePeer())
 		bsnet.receiver.ReceiveMessage(ctx, p, received)
 		atomic.AddUint64(&bsnet.stats.MessagesRecvd, 1)
 	}
@@ -284,6 +365,82 @@ func (bsnet *impl) Stats() Stats {
 	}
 }
 
+type connectEventManager struct {
+	bsnet *impl
+	lk    sync.Mutex
+	conns map[peer.ID]*connState
+}
+
+type connState struct {
+	refs       int
+	responsive bool
+}
+
+func newConnectEventManager(bsnet *impl) *connectEventManager {
+	return &connectEventManager{
+		bsnet: bsnet,
+		conns: make(map[peer.ID]*connState),
+	}
+}
+
+func (c *connectEventManager) Connected(p peer.ID) {
+	c.lk.Lock()
+	defer c.lk.Unlock()
+
+	state, ok := c.conns[p]
+	if !ok {
+		state = &connState{responsive: true}
+	}
+	state.refs++
+
+	if state.refs == 1 && state.responsive {
+		c.bsnet.receiver.PeerConnected(p)
+	}
+}
+
+func (c *connectEventManager) Disconnected(p peer.ID) {
+	c.lk.Lock()
+	defer c.lk.Unlock()
+
+	state, ok := c.conns[p]
+	if !ok {
+		// Should never happen
+		return
+	}
+	state.refs--
+	c.conns[p] = state
+
+	if state.refs == 0 && state.responsive {
+		c.bsnet.receiver.PeerDisconnected(p)
+	}
+}
+
+func (c *connectEventManager) MarkUnresponsive(p peer.ID) {
+	c.lk.Lock()
+	defer c.lk.Unlock()
+
+	state, ok := c.conns[p]
+	if !ok {
+		return
+	}
+	state.responsive = false
+	c.conns[p] = state
+
+	c.bsnet.receiver.PeerDisconnected(p)
+}
+
+func (c *connectEventManager) OnMessage(p peer.ID) {
+	c.lk.Lock()
+	defer c.lk.Unlock()
+
+	state, ok := c.conns[p]
+	if ok && !state.responsive {
+		state.responsive = true
+		c.conns[p] = state
+		c.bsnet.receiver.PeerConnected(p)
+	}
+}
+
 type netNotifiee impl
 
 func (nn *netNotifiee) impl() *impl {
@@ -291,10 +448,10 @@ func (nn *netNotifiee) impl() *impl {
 }
 
 func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
-	nn.impl().receiver.PeerConnected(v.RemotePeer())
+	nn.impl().connectEvtMgr.Connected(v.RemotePeer())
 }
 func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
-	nn.impl().receiver.PeerDisconnected(v.RemotePeer())
+	nn.impl().connectEvtMgr.Disconnected(v.RemotePeer())
 }
 func (nn *netNotifiee) OpenedStream(n network.Network, s network.Stream) {}
 func (nn *netNotifiee) ClosedStream(n network.Network, v network.Stream) {}
