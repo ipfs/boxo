@@ -42,7 +42,7 @@ type BitSwapNetwork interface {
 	ConnectTo(context.Context, peer.ID) error
 	DisconnectFrom(context.Context, peer.ID) error
 
-	NewMessageSender(context.Context, peer.ID) (MessageSender, error)
+	NewMessageSender(context.Context, peer.ID, *MessageSenderOpts) (MessageSender, error)
 
 	ConnectionManager() connmgr.ConnManager
 
@@ -61,6 +61,12 @@ type MessageSender interface {
 	Reset() error
 	// Indicates whether the remote peer supports HAVE / DONT_HAVE messages
 	SupportsHave() bool
+}
+
+type MessageSenderOpts struct {
+	MaxRetries       int
+	SendTimeout      time.Duration
+	SendErrorBackoff time.Duration
 }
 
 // Receiver is an interface that can receive messages from the BitSwapNetwork.
