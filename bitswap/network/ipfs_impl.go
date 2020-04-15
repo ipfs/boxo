@@ -94,6 +94,7 @@ type streamMessageSender struct {
 	stream network.Stream
 	bsnet  *impl
 	opts   *MessageSenderOpts
+	done   chan struct{}
 }
 
 func (s *streamMessageSender) Connect(ctx context.Context) (stream network.Stream, err error) {
@@ -126,6 +127,7 @@ func (s *streamMessageSender) Reset() error {
 }
 
 func (s *streamMessageSender) Close() error {
+	close(s.done)
 	return helpers.FullClose(s.stream)
 }
 
@@ -142,6 +144,15 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMess
 			return nil
 		}
 
+		// If the sender has been closed or the context cancelled, just bail out
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-s.done:
+			return nil
+		default:
+		}
+
 		// Failed to send so reset stream and try again
 		_ = s.Reset()
 
@@ -152,6 +163,8 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMess
 
 		select {
 		case <-ctx.Done():
+			return nil
+		case <-s.done:
 			return nil
 		case <-time.After(s.opts.SendErrorBackoff):
 			// wait a short time in case disconnect notifications are still propagating
@@ -242,6 +255,7 @@ func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *Messag
 		to:    p,
 		bsnet: bsnet,
 		opts:  opts,
+		done:  make(chan struct{}),
 	}
 
 	conctx, cancel := context.WithTimeout(ctx, sender.opts.SendTimeout)
