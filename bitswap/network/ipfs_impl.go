@@ -113,7 +113,7 @@ func (s *streamMessageSender) Connect(ctx context.Context) (stream network.Strea
 	}
 
 	stream, err = s.bsnet.newStreamToPeer(ctx, s.to)
-	if err != nil {
+	if err == nil {
 		s.stream = stream
 		return s.stream, nil
 	}

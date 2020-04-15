@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	tn "github.com/ipfs/go-bitswap/testnet"
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	bsnet "github.com/ipfs/go-bitswap/network"
+	tn "github.com/ipfs/go-bitswap/testnet"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 
@@ -170,7 +170,7 @@ func TestSupportsHave(t *testing.T) {
 	mr := mockrouting.NewServer()
 	streamNet, err := tn.StreamNet(ctx, mn, mr)
 	if err != nil {
-		t.Fatal("Unable to setup network")
+		t.Fatalf("Unable to setup network: %s", err)
 	}
 
 	type testCase struct {
@@ -199,7 +199,9 @@ func TestSupportsHave(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		senderCurrent, err := bsnet1.NewMessageSender(ctx, p2.ID())
+		senderCurrent, err := bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{
+			SendTimeout: time.Second,
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
