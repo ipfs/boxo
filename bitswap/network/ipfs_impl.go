@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -44,7 +43,6 @@ func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) B
 
 		supportedProtocols: s.SupportedProtocols,
 	}
-	bitswapNetwork.connectEvtMgr = newConnectEventManager(&bitswapNetwork)
 
 	return &bitswapNetwork
 }
@@ -303,6 +301,7 @@ func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stre
 
 func (bsnet *impl) SetDelegate(r Receiver) {
 	bsnet.receiver = r
+	bsnet.connectEvtMgr = newConnectEventManager(r)
 	for _, proto := range bsnet.supportedProtocols {
 		bsnet.host.SetStreamHandler(proto, bsnet.handleNewStream)
 	}
@@ -383,85 +382,6 @@ func (bsnet *impl) Stats() Stats {
 	return Stats{
 		MessagesRecvd: atomic.LoadUint64(&bsnet.stats.MessagesRecvd),
 		MessagesSent:  atomic.LoadUint64(&bsnet.stats.MessagesSent),
-	}
-}
-
-type connectEventManager struct {
-	bsnet *impl
-	lk    sync.Mutex
-	conns map[peer.ID]*connState
-}
-
-type connState struct {
-	refs       int
-	responsive bool
-}
-
-func newConnectEventManager(bsnet *impl) *connectEventManager {
-	return &connectEventManager{
-		bsnet: bsnet,
-		conns: make(map[peer.ID]*connState),
-	}
-}
-
-func (c *connectEventManager) Connected(p peer.ID) {
-	c.lk.Lock()
-	defer c.lk.Unlock()
-
-	state, ok := c.conns[p]
-	if !ok {
-		state = &connState{responsive: true}
-	}
-	state.refs++
-
-	if state.refs == 1 && state.responsive {
-		c.bsnet.receiver.PeerConnected(p)
-	}
-}
-
-func (c *connectEventManager) Disconnected(p peer.ID) {
-	c.lk.Lock()
-	defer c.lk.Unlock()
-
-	state, ok := c.conns[p]
-	if !ok {
-		// Should never happen
-		return
-	}
-	state.refs--
-	c.conns[p] = state
-
-	if state.refs == 0 {
-		if state.responsive {
-			c.bsnet.receiver.PeerDisconnected(p)
-		}
-		delete(c.conns, p)
-	}
-}
-
-func (c *connectEventManager) MarkUnresponsive(p peer.ID) {
-	c.lk.Lock()
-	defer c.lk.Unlock()
-
-	state, ok := c.conns[p]
-	if !ok {
-		return
-	}
-	state.responsive = false
-	c.conns[p] = state
-
-	c.bsnet.receiver.PeerDisconnected(p)
-}
-
-func (c *connectEventManager) OnMessage(p peer.ID) {
-	c.lk.Lock()
-	defer c.lk.Unlock()
-
-	state, ok := c.conns[p]
-	if ok && !state.responsive {
-		state.responsive = true
-		c.conns[p] = state
-		c.bsnet.receiver.PeerConnected(p)
 	}
 }
 
