@@ -70,7 +70,7 @@ func (c *connectEventManager) MarkUnresponsive(p peer.ID) {
 	defer c.lk.Unlock()
 
 	state, ok := c.conns[p]
-	if !ok {
+	if !ok || !state.responsive {
 		return
 	}
 	state.responsive = false

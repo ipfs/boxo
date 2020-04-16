@@ -95,18 +95,13 @@ type streamMessageSender struct {
 	done   chan struct{}
 }
 
-func (s *streamMessageSender) Connect(ctx context.Context) (stream network.Stream, err error) {
-	defer func() {
-		if err != nil {
-			s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
-		}
-	}()
-
+// Open a stream to the remote peer
+func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, error) {
 	if s.stream != nil {
 		return s.stream, nil
 	}
 
-	if err = s.bsnet.ConnectTo(ctx, s.to); err != nil {
+	if err := s.bsnet.ConnectTo(ctx, s.to); err != nil {
 		return nil, err
 	}
 
@@ -117,38 +112,59 @@ func (s *streamMessageSender) Connect(ctx context.Context) (stream network.Strea
 	default:
 	}
 
-	stream, err = s.bsnet.newStreamToPeer(ctx, s.to)
-	if err == nil {
-		s.stream = stream
-		return s.stream, nil
+	stream, err := s.bsnet.newStreamToPeer(ctx, s.to)
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+
+	s.stream = stream
+	return s.stream, nil
 }
 
+// Reset the stream
 func (s *streamMessageSender) Reset() error {
-	err := s.stream.Reset()
-	s.stream = nil
-	return err
+	if s.stream != nil {
+		err := s.stream.Reset()
+		s.stream = nil
+		return err
+	}
+	return nil
 }
 
+// Close the stream
 func (s *streamMessageSender) Close() error {
 	close(s.done)
 	return helpers.FullClose(s.stream)
 }
 
+// Indicates whether the peer supports HAVE / DONT_HAVE messages
 func (s *streamMessageSender) SupportsHave() bool {
 	return s.bsnet.SupportsHave(s.stream.Protocol())
 }
 
+// Send a message to the peer, attempting multiple times
 func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessage) error {
-	// Try to send the message repeatedly
+	return s.multiAttempt(ctx, func(fnctx context.Context) error {
+		return s.send(fnctx, msg)
+	})
+}
+
+// Perform a function with multiple attempts, and a timeout
+func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func(context.Context) error) error {
+	// Try to call the function repeatedly
 	var err error
 	for i := 0; i < s.opts.MaxRetries; i++ {
-		if err = s.attemptSend(ctx, msg); err == nil {
-			// Sent successfully
+		deadline := time.Now().Add(s.opts.SendTimeout)
+		sndctx, cancel := context.WithDeadline(ctx, deadline)
+
+		if err = fn(sndctx); err == nil {
+			cancel()
+			// Attempt was successful
 			return nil
 		}
+		cancel()
 
+		// Attempt failed.
 		// If the sender has been closed or the context cancelled, just bail out
 		select {
 		case <-ctx.Done():
@@ -161,6 +177,7 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMess
 		// Failed to send so reset stream and try again
 		_ = s.Reset()
 
+		// Failed too many times so mark the peer as unresponsive and return an error
 		if i == s.opts.MaxRetries {
 			s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
 			return err
@@ -179,17 +196,15 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMess
 	return err
 }
 
-func (s *streamMessageSender) attemptSend(ctx context.Context, msg bsmsg.BitSwapMessage) error {
-	sndctx, cancel := context.WithTimeout(ctx, s.opts.SendTimeout)
-	defer cancel()
-
-	stream, err := s.Connect(sndctx)
+// Send a message to the peer
+func (s *streamMessageSender) send(ctx context.Context, msg bsmsg.BitSwapMessage) error {
+	stream, err := s.Connect(ctx)
 	if err != nil {
 		log.Infof("failed to open stream to %s: %s", s.to, err)
 		return err
 	}
 
-	if err = s.bsnet.msgToStream(sndctx, stream, msg); err != nil {
+	if err = s.bsnet.msgToStream(ctx, stream, msg); err != nil {
 		log.Infof("failed to send message to %s: %s", s.to, err)
 		return err
 	}
@@ -256,6 +271,16 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 }
 
 func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *MessageSenderOpts) (MessageSender, error) {
+	if opts.MaxRetries == 0 {
+		opts.MaxRetries = 3
+	}
+	if opts.SendTimeout == 0 {
+		opts.SendTimeout = sendMessageTimeout
+	}
+	if opts.SendErrorBackoff == 0 {
+		opts.SendErrorBackoff = 100 * time.Millisecond
+	}
+
 	sender := &streamMessageSender{
 		to:    p,
 		bsnet: bsnet,
@@ -263,13 +288,15 @@ func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *Messag
 		done:  make(chan struct{}),
 	}
 
-	conctx, cancel := context.WithTimeout(ctx, sender.opts.SendTimeout)
-	defer cancel()
+	err := sender.multiAttempt(ctx, func(fnctx context.Context) error {
+		_, err := sender.Connect(fnctx)
+		return err
+	})
 
-	_, err := sender.Connect(conctx)
 	if err != nil {
 		return nil, err
 	}
+
 	return sender, nil
 }
 
