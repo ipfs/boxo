@@ -359,6 +359,8 @@ func (mq *MessageQueue) runQueue() {
 			return
 		case <-mq.ctx.Done():
 			if mq.sender != nil {
+				// TODO: should I call sender.Close() here also to stop
+				// and in progress connection?
 				_ = mq.sender.Reset()
 			}
 			return
@@ -415,6 +417,7 @@ func (mq *MessageQueue) sendMessage() {
 		// If we fail to initialize the sender, the networking layer will
 		// emit a Disconnect event and the MessageQueue will get cleaned up
 		log.Infof("Could not open message sender to peer %s: %s", mq.p, err)
+		mq.Shutdown()
 		return
 	}
 
@@ -439,6 +442,7 @@ func (mq *MessageQueue) sendMessage() {
 		// If the message couldn't be sent, the networking layer will
 		// emit a Disconnect event and the MessageQueue will get cleaned up
 		log.Infof("Could not send message to peer %s: %s", mq.p, err)
+		mq.Shutdown()
 		return
 	}
 
