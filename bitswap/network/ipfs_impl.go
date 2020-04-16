@@ -424,8 +424,11 @@ func (c *connectEventManager) Disconnected(p peer.ID) {
 	state.refs--
 	c.conns[p] = state
 
-	if state.refs == 0 && state.responsive {
-		c.bsnet.receiver.PeerDisconnected(p)
+	if state.refs == 0 {
+		if state.responsive {
+			c.bsnet.receiver.PeerDisconnected(p)
+		}
+		delete(c.conns, p)
 	}
 }
 
