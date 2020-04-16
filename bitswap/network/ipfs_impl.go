@@ -112,6 +112,13 @@ func (s *streamMessageSender) Connect(ctx context.Context) (stream network.Strea
 		return nil, err
 	}
 
+	// Check if the sender has been closed
+	select {
+	case <-s.done:
+		return nil, nil
+	default:
+	}
+
 	stream, err = s.bsnet.newStreamToPeer(ctx, s.to)
 	if err == nil {
 		s.stream = stream
