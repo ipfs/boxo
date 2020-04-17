@@ -90,15 +90,16 @@ type impl struct {
 }
 
 type streamMessageSender struct {
-	to     peer.ID
-	stream network.Stream
-	bsnet  *impl
-	opts   *MessageSenderOpts
+	to        peer.ID
+	stream    network.Stream
+	connected bool
+	bsnet     *impl
+	opts      *MessageSenderOpts
 }
 
 // Open a stream to the remote peer
 func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, error) {
-	if s.stream != nil {
+	if s.connected {
 		return s.stream, nil
 	}
 
@@ -112,6 +113,7 @@ func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, erro
 	}
 
 	s.stream = stream
+	s.connected = true
 	return s.stream, nil
 }
 
@@ -119,7 +121,7 @@ func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, erro
 func (s *streamMessageSender) Reset() error {
 	if s.stream != nil {
 		err := s.stream.Reset()
-		s.stream = nil
+		s.connected = false
 		return err
 	}
 	return nil
