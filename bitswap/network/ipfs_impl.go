@@ -94,7 +94,6 @@ type streamMessageSender struct {
 	stream network.Stream
 	bsnet  *impl
 	opts   *MessageSenderOpts
-	done   chan struct{}
 }
 
 // Open a stream to the remote peer
@@ -105,13 +104,6 @@ func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, erro
 
 	if err := s.bsnet.ConnectTo(ctx, s.to); err != nil {
 		return nil, err
-	}
-
-	// Check if the sender has been closed
-	select {
-	case <-s.done:
-		return nil, nil
-	default:
 	}
 
 	stream, err := s.bsnet.newStreamToPeer(ctx, s.to)
@@ -135,7 +127,6 @@ func (s *streamMessageSender) Reset() error {
 
 // Close the stream
 func (s *streamMessageSender) Close() error {
-	close(s.done)
 	return helpers.FullClose(s.stream)
 }
 
@@ -172,8 +163,6 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func(context.
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-s.done:
-			return nil
 		default:
 		}
 
@@ -194,8 +183,6 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func(context.
 
 		select {
 		case <-ctx.Done():
-			return nil
-		case <-s.done:
 			return nil
 		case <-time.After(s.opts.SendErrorBackoff):
 			// wait a short time in case disconnect notifications are still propagating
@@ -286,7 +273,6 @@ func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *Messag
 		to:    p,
 		bsnet: bsnet,
 		opts:  opts,
-		done:  make(chan struct{}),
 	}
 
 	err := sender.multiAttempt(ctx, func(fnctx context.Context) error {

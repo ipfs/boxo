@@ -56,6 +56,7 @@ type MessageNetwork interface {
 // MessageQueue implements queue of want messages to send to peers.
 type MessageQueue struct {
 	ctx              context.Context
+	shutdown         func()
 	p                peer.ID
 	network          MessageNetwork
 	dhTimeoutMgr     DontHaveTimeoutManager
@@ -63,7 +64,6 @@ type MessageQueue struct {
 	sendErrorBackoff time.Duration
 
 	outgoingWork chan time.Time
-	done         chan struct{}
 
 	// Take lock whenever any of these variables are modified
 	wllock    sync.Mutex
@@ -170,8 +170,10 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeo
 func newMessageQueue(ctx context.Context, p peer.ID, network MessageNetwork,
 	maxMsgSize int, sendErrorBackoff time.Duration, dhTimeoutMgr DontHaveTimeoutManager) *MessageQueue {
 
+	ctx, cancel := context.WithCancel(ctx)
 	mq := &MessageQueue{
 		ctx:                 ctx,
+		shutdown:            cancel,
 		p:                   p,
 		network:             network,
 		dhTimeoutMgr:        dhTimeoutMgr,
@@ -180,7 +182,6 @@ func newMessageQueue(ctx context.Context, p peer.ID, network MessageNetwork,
 		peerWants:           newRecallWantList(),
 		cancels:             cid.NewSet(),
 		outgoingWork:        make(chan time.Time, 1),
-		done:                make(chan struct{}),
 		rebroadcastInterval: defaultRebroadcastInterval,
 		sendErrorBackoff:    sendErrorBackoff,
 		priority:            maxPriority,
@@ -301,12 +302,17 @@ func (mq *MessageQueue) Startup() {
 
 // Shutdown stops the processing of messages for a message queue.
 func (mq *MessageQueue) Shutdown() {
-	close(mq.done)
+	mq.shutdown()
 }
 
 func (mq *MessageQueue) onShutdown() {
 	// Shut down the DONT_HAVE timeout manager
 	mq.dhTimeoutMgr.Shutdown()
+
+	// Reset the streamMessageSender
+	if mq.sender != nil {
+		_ = mq.sender.Reset()
+	}
 }
 
 func (mq *MessageQueue) runQueue() {
@@ -352,17 +358,7 @@ func (mq *MessageQueue) runQueue() {
 			// in sendMessageDebounce. Send immediately.
 			workScheduled = time.Time{}
 			mq.sendIfReady()
-		case <-mq.done:
-			if mq.sender != nil {
-				mq.sender.Close()
-			}
-			return
 		case <-mq.ctx.Done():
-			if mq.sender != nil {
-				// TODO: should I call sender.Close() here also to stop
-				// and in progress connection?
-				_ = mq.sender.Reset()
-			}
 			return
 		}
 	}
