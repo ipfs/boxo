@@ -280,15 +280,7 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 }
 
 func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *MessageSenderOpts) (MessageSender, error) {
-	if opts.MaxRetries == 0 {
-		opts.MaxRetries = 3
-	}
-	if opts.SendTimeout == 0 {
-		opts.SendTimeout = sendMessageTimeout
-	}
-	if opts.SendErrorBackoff == 0 {
-		opts.SendErrorBackoff = 100 * time.Millisecond
-	}
+	opts = setDefaultOpts(opts)
 
 	sender := &streamMessageSender{
 		to:    p,
@@ -307,6 +299,20 @@ func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *Messag
 	}
 
 	return sender, nil
+}
+
+func setDefaultOpts(opts *MessageSenderOpts) *MessageSenderOpts {
+	copy := *opts
+	if opts.MaxRetries == 0 {
+		copy.MaxRetries = 3
+	}
+	if opts.SendTimeout == 0 {
+		copy.SendTimeout = sendMessageTimeout
+	}
+	if opts.SendErrorBackoff == 0 {
+		copy.SendErrorBackoff = 100 * time.Millisecond
+	}
+	return &copy
 }
 
 func (bsnet *impl) SendMessage(
