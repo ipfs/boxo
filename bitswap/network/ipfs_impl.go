@@ -259,7 +259,7 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 		if err != nil {
 			if err != io.EOF {
 				_ = s.Reset()
-				go bsnet.receiver.ReceiveError(err)
+				bsnet.receiver.ReceiveError(err)
 				log.Debugf("bitswap net handleNewStream from %s error: %s", s.Conn().RemotePeer(), err)
 			}
 			return
