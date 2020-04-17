@@ -164,7 +164,7 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func(context.
 		// If the sender has been closed or the context cancelled, just bail out
 		select {
 		case <-ctx.Done():
-			return nil
+			return ctx.Err()
 		default:
 		}
 
@@ -185,7 +185,7 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func(context.
 
 		select {
 		case <-ctx.Done():
-			return nil
+			return ctx.Err()
 		case <-time.After(s.opts.SendErrorBackoff):
 			// wait a short time in case disconnect notifications are still propagating
 			log.Infof("send message to %s failed but context was not Done: %s", s.to, err)
