@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
@@ -22,6 +23,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	msgio "github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multistream"
 )
 
 var log = logging.Logger("bitswap_network")
@@ -164,7 +166,8 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func(context.
 		}
 		cancel()
 
-		// Attempt failed.
+		// Attempt failed
+
 		// If the sender has been closed or the context cancelled, just bail out
 		select {
 		case <-ctx.Done():
@@ -174,11 +177,17 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func(context.
 		default:
 		}
 
+		// Protocol is not supported, so no need to try multiple times
+		if errors.Is(err, multistream.ErrNotSupported) {
+			s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
+			return err
+		}
+
 		// Failed to send so reset stream and try again
 		_ = s.Reset()
 
 		// Failed too many times so mark the peer as unresponsive and return an error
-		if i == s.opts.MaxRetries {
+		if i == s.opts.MaxRetries-1 {
 			s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
 			return err
 		}
