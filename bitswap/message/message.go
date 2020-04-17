@@ -13,6 +13,7 @@ import (
 	pool "github.com/libp2p/go-buffer-pool"
 	msgio "github.com/libp2p/go-msgio"
 
+	u "github.com/ipfs/go-ipfs-util"
 	"github.com/libp2p/go-libp2p-core/network"
 )
 
@@ -116,6 +117,24 @@ func (e *Entry) ToPB() pb.Message_Wantlist_Entry {
 		WantType:     e.WantType,
 		SendDontHave: e.SendDontHave,
 	}
+}
+
+var MaxEntrySize = maxEntrySize()
+
+func maxEntrySize() int {
+	var maxInt32 int32 = (1 << 31) - 1
+
+	c := cid.NewCidV0(u.Hash([]byte("cid")))
+	e := Entry{
+		Entry: wantlist.Entry{
+			Cid:      c,
+			Priority: maxInt32,
+			WantType: pb.Message_Wantlist_Have,
+		},
+		SendDontHave: true, // true takes up more space than false
+		Cancel:       true,
+	}
+	return e.Size()
 }
 
 type impl struct {

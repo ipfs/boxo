@@ -544,9 +544,28 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 	mq.wllock.Lock()
 	defer mq.wllock.Unlock()
 
-	// Get broadcast and regular wantlist entries
-	bcstEntries := mq.bcstWants.pending.SortedEntries()
-	peerEntries := mq.peerWants.pending.SortedEntries()
+	// Get broadcast and regular wantlist entries.
+	// SortedEntries() slows down the MessageQueue a lot, and entries only need
+	// to be sorted if the number of wants will overflow the size of the
+	// message (to make sure that the highest priority wants are sent in the
+	// first message).
+	// We prioritize cancels, then regular wants, then broadcast wants.
+	var peerEntries []bswl.Entry
+	var bcstEntries []bswl.Entry
+	maxCancelsSize := mq.cancels.Len() * bsmsg.MaxEntrySize
+	maxPeerSize := mq.peerWants.pending.Len() * bsmsg.MaxEntrySize
+	maxBcstSize := mq.bcstWants.pending.Len() * bsmsg.MaxEntrySize
+
+	if maxCancelsSize+maxPeerSize < mq.maxMessageSize {
+		peerEntries = mq.peerWants.pending.Entries()
+	} else {
+		peerEntries = mq.peerWants.pending.SortedEntries()
+	}
+	if maxCancelsSize+maxPeerSize+maxBcstSize < mq.maxMessageSize {
+		bcstEntries = mq.bcstWants.pending.Entries()
+	} else {
+		bcstEntries = mq.bcstWants.pending.SortedEntries()
+	}
 
 	// Size of the message so far
 	msgSize := 0
