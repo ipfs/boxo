@@ -55,7 +55,6 @@ func (c *connectEventManager) Disconnected(p peer.ID) {
 		return
 	}
 	state.refs--
-	c.conns[p] = state
 
 	if state.refs == 0 {
 		if state.responsive {
@@ -74,7 +73,6 @@ func (c *connectEventManager) MarkUnresponsive(p peer.ID) {
 		return
 	}
 	state.responsive = false
-	c.conns[p] = state
 
 	c.connListener.PeerDisconnected(p)
 }
@@ -86,7 +84,6 @@ func (c *connectEventManager) OnMessage(p peer.ID) {
 	state, ok := c.conns[p]
 	if ok && !state.responsive {
 		state.responsive = true
-		c.conns[p] = state
 		c.connListener.PeerConnected(p)
 	}
 }
