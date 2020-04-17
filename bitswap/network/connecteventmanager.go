@@ -13,7 +13,7 @@ type ConnectionListener interface {
 
 type connectEventManager struct {
 	connListener ConnectionListener
-	lk           sync.Mutex
+	lk           sync.RWMutex
 	conns        map[peer.ID]*connState
 }
 
@@ -78,12 +78,28 @@ func (c *connectEventManager) MarkUnresponsive(p peer.ID) {
 }
 
 func (c *connectEventManager) OnMessage(p peer.ID) {
+	// This is a frequent operation so to avoid different message arrivals
+	// getting blocked by a write lock, first take a read lock to check if
+	// we need to modify state
+	c.lk.RLock()
+	state, ok := c.conns[p]
+	c.lk.RUnlock()
+
+	if !ok || state.responsive {
+		return
+	}
+
+	// We need to make a modification so now take a write lock
 	c.lk.Lock()
 	defer c.lk.Unlock()
 
-	state, ok := c.conns[p]
-	if ok && !state.responsive {
-		state.responsive = true
-		c.connListener.PeerConnected(p)
+	// Note: state may have changed in the time between when read lock
+	// was released and write lock taken, so check again
+	state, ok = c.conns[p]
+	if !ok || state.responsive {
+		return
 	}
+
+	state.responsive = true
+	c.connListener.PeerConnected(p)
 }
