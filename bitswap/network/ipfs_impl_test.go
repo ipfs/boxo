@@ -2,16 +2,22 @@ package network_test
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
-	tn "github.com/ipfs/go-bitswap/testnet"
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	bsnet "github.com/ipfs/go-bitswap/network"
+	tn "github.com/ipfs/go-bitswap/testnet"
+	ds "github.com/ipfs/go-datastore"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
+	"github.com/multiformats/go-multistream"
 
+	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
@@ -22,7 +28,7 @@ import (
 type receiver struct {
 	peers           map[peer.ID]struct{}
 	messageReceived chan struct{}
-	connectionEvent chan struct{}
+	connectionEvent chan bool
 	lastMessage     bsmsg.BitSwapMessage
 	lastSender      peer.ID
 }
@@ -31,7 +37,7 @@ func newReceiver() *receiver {
 	return &receiver{
 		peers:           make(map[peer.ID]struct{}),
 		messageReceived: make(chan struct{}),
-		connectionEvent: make(chan struct{}, 1),
+		connectionEvent: make(chan bool, 1),
 	}
 }
 
@@ -52,12 +58,96 @@ func (r *receiver) ReceiveError(err error) {
 
 func (r *receiver) PeerConnected(p peer.ID) {
 	r.peers[p] = struct{}{}
-	r.connectionEvent <- struct{}{}
+	r.connectionEvent <- true
 }
 
 func (r *receiver) PeerDisconnected(p peer.ID) {
 	delete(r.peers, p)
-	r.connectionEvent <- struct{}{}
+	r.connectionEvent <- false
+}
+
+var mockNetErr = fmt.Errorf("network err")
+
+type ErrStream struct {
+	network.Stream
+	lk        sync.Mutex
+	err       error
+	timingOut bool
+}
+
+type ErrHost struct {
+	host.Host
+	lk        sync.Mutex
+	err       error
+	timingOut bool
+	streams   []*ErrStream
+}
+
+func (es *ErrStream) Write(b []byte) (int, error) {
+	es.lk.Lock()
+	defer es.lk.Unlock()
+
+	if es.err != nil {
+		return 0, es.err
+	}
+	if es.timingOut {
+		return 0, context.DeadlineExceeded
+	}
+	return es.Stream.Write(b)
+}
+
+func (eh *ErrHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
+	eh.lk.Lock()
+	defer eh.lk.Unlock()
+
+	if eh.err != nil {
+		return eh.err
+	}
+	if eh.timingOut {
+		return context.DeadlineExceeded
+	}
+	return eh.Host.Connect(ctx, pi)
+}
+
+func (eh *ErrHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID) (network.Stream, error) {
+	eh.lk.Lock()
+	defer eh.lk.Unlock()
+
+	if eh.err != nil {
+		return nil, mockNetErr
+	}
+	if eh.timingOut {
+		return nil, context.DeadlineExceeded
+	}
+	stream, err := eh.Host.NewStream(ctx, p, pids...)
+	estrm := &ErrStream{Stream: stream, err: eh.err, timingOut: eh.timingOut}
+
+	eh.streams = append(eh.streams, estrm)
+	return estrm, err
+}
+
+func (eh *ErrHost) setError(err error) {
+	eh.lk.Lock()
+	defer eh.lk.Unlock()
+
+	eh.err = err
+	for _, s := range eh.streams {
+		s.lk.Lock()
+		s.err = err
+		s.lk.Unlock()
+	}
+}
+
+func (eh *ErrHost) setTimeoutState(timingOut bool) {
+	eh.lk.Lock()
+	defer eh.lk.Unlock()
+
+	eh.timingOut = timingOut
+	for _, s := range eh.streams {
+		s.lk.Lock()
+		s.timingOut = timingOut
+		s.lk.Unlock()
+	}
 }
 
 func TestMessageSendAndReceive(t *testing.T) {
@@ -164,13 +254,255 @@ func TestMessageSendAndReceive(t *testing.T) {
 	}
 }
 
+func TestMessageResendAfterError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	// create network
+	mn := mocknet.New(ctx)
+	mr := mockrouting.NewServer()
+	streamNet, err := tn.StreamNet(ctx, mn, mr)
+	if err != nil {
+		t.Fatal("Unable to setup network")
+	}
+	p1 := tnet.RandIdentityOrFatal(t)
+	p2 := tnet.RandIdentityOrFatal(t)
+
+	h1, err := mn.AddPeer(p1.PrivateKey(), p1.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a special host that we can force to start returning errors
+	eh := &ErrHost{Host: h1}
+	routing := mr.ClientWithDatastore(context.TODO(), p1, ds.NewMapDatastore())
+	bsnet1 := bsnet.NewFromIpfsHost(eh, routing)
+
+	bsnet2 := streamNet.Adapter(p2)
+	r1 := newReceiver()
+	r2 := newReceiver()
+	bsnet1.SetDelegate(r1)
+	bsnet2.SetDelegate(r2)
+
+	err = mn.LinkAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = bsnet1.ConnectTo(ctx, p2.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	isConnected := <-r1.connectionEvent
+	if !isConnected {
+		t.Fatal("Expected connect event")
+	}
+
+	err = bsnet2.ConnectTo(ctx, p1.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blockGenerator := blocksutil.NewBlockGenerator()
+	block1 := blockGenerator.Next()
+	msg := bsmsg.New(false)
+	msg.AddEntry(block1.Cid(), 1, pb.Message_Wantlist_Block, true)
+
+	testSendErrorBackoff := 100 * time.Millisecond
+	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{
+		MaxRetries:       3,
+		SendTimeout:      100 * time.Millisecond,
+		SendErrorBackoff: testSendErrorBackoff,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Return an error from the networking layer the next time we try to send
+	// a message
+	eh.setError(mockNetErr)
+
+	go func() {
+		time.Sleep(testSendErrorBackoff / 2)
+		// Stop throwing errors so that the following attempt to send succeeds
+		eh.setError(nil)
+	}()
+
+	// Send message with retries, first one should fail, then subsequent
+	// message should succeed
+	err = ms.SendMsg(ctx, msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-ctx.Done():
+		t.Fatal("did not receive message sent")
+	case <-r2.messageReceived:
+	}
+}
+
+func TestMessageSendTimeout(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	// create network
+	mn := mocknet.New(ctx)
+	mr := mockrouting.NewServer()
+	streamNet, err := tn.StreamNet(ctx, mn, mr)
+	if err != nil {
+		t.Fatal("Unable to setup network")
+	}
+	p1 := tnet.RandIdentityOrFatal(t)
+	p2 := tnet.RandIdentityOrFatal(t)
+
+	h1, err := mn.AddPeer(p1.PrivateKey(), p1.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a special host that we can force to start timing out
+	eh := &ErrHost{Host: h1}
+	routing := mr.ClientWithDatastore(context.TODO(), p1, ds.NewMapDatastore())
+	bsnet1 := bsnet.NewFromIpfsHost(eh, routing)
+
+	bsnet2 := streamNet.Adapter(p2)
+	r1 := newReceiver()
+	r2 := newReceiver()
+	bsnet1.SetDelegate(r1)
+	bsnet2.SetDelegate(r2)
+
+	err = mn.LinkAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = bsnet1.ConnectTo(ctx, p2.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	isConnected := <-r1.connectionEvent
+	if !isConnected {
+		t.Fatal("Expected connect event")
+	}
+
+	err = bsnet2.ConnectTo(ctx, p1.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blockGenerator := blocksutil.NewBlockGenerator()
+	block1 := blockGenerator.Next()
+	msg := bsmsg.New(false)
+	msg.AddEntry(block1.Cid(), 1, pb.Message_Wantlist_Block, true)
+
+	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{
+		MaxRetries:       3,
+		SendTimeout:      100 * time.Millisecond,
+		SendErrorBackoff: 100 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Return a DeadlineExceeded error from the networking layer the next time we try to
+	// send a message
+	eh.setTimeoutState(true)
+
+	// Send message with retries, all attempts should fail
+	err = ms.SendMsg(ctx, msg)
+	if err == nil {
+		t.Fatal("Expected error from SednMsg")
+	}
+
+	select {
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Did not receive disconnect event")
+	case isConnected = <-r1.connectionEvent:
+		if isConnected {
+			t.Fatal("Expected disconnect event (got connect event)")
+		}
+	}
+}
+
+func TestMessageSendNotSupportedResponse(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	// create network
+	mn := mocknet.New(ctx)
+	mr := mockrouting.NewServer()
+	streamNet, err := tn.StreamNet(ctx, mn, mr)
+	if err != nil {
+		t.Fatal("Unable to setup network")
+	}
+	p1 := tnet.RandIdentityOrFatal(t)
+	p2 := tnet.RandIdentityOrFatal(t)
+
+	h1, err := mn.AddPeer(p1.PrivateKey(), p1.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a special host that responds with ErrNotSupported
+	eh := &ErrHost{Host: h1}
+	routing := mr.ClientWithDatastore(context.TODO(), p1, ds.NewMapDatastore())
+	bsnet1 := bsnet.NewFromIpfsHost(eh, routing)
+
+	bsnet2 := streamNet.Adapter(p2)
+	r1 := newReceiver()
+	r2 := newReceiver()
+	bsnet1.SetDelegate(r1)
+	bsnet2.SetDelegate(r2)
+
+	err = mn.LinkAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = bsnet1.ConnectTo(ctx, p2.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	isConnected := <-r1.connectionEvent
+	if !isConnected {
+		t.Fatal("Expected connect event")
+	}
+
+	err = bsnet2.ConnectTo(ctx, p1.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blockGenerator := blocksutil.NewBlockGenerator()
+	block1 := blockGenerator.Next()
+	msg := bsmsg.New(false)
+	msg.AddEntry(block1.Cid(), 1, pb.Message_Wantlist_Block, true)
+
+	eh.setError(multistream.ErrNotSupported)
+	_, err = bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{
+		MaxRetries:       3,
+		SendTimeout:      100 * time.Millisecond,
+		SendErrorBackoff: 100 * time.Millisecond,
+	})
+	if err == nil {
+		t.Fatal("Expected ErrNotSupported")
+	}
+
+	select {
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Did not receive disconnect event")
+	case isConnected = <-r1.connectionEvent:
+		if isConnected {
+			t.Fatal("Expected disconnect event (got connect event)")
+		}
+	}
+}
+
 func TestSupportsHave(t *testing.T) {
 	ctx := context.Background()
 	mn := mocknet.New(ctx)
 	mr := mockrouting.NewServer()
 	streamNet, err := tn.StreamNet(ctx, mn, mr)
 	if err != nil {
-		t.Fatal("Unable to setup network")
+		t.Fatalf("Unable to setup network: %s", err)
 	}
 
 	type testCase struct {
@@ -199,7 +531,7 @@ func TestSupportsHave(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		senderCurrent, err := bsnet1.NewMessageSender(ctx, p2.ID())
+		senderCurrent, err := bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{})
 		if err != nil {
 			t.Fatal(err)
 		}

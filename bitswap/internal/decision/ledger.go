@@ -43,10 +43,6 @@ type ledger struct {
 	// wantList is a (bounded, small) set of keys that Partner desires.
 	wantList *wl.Wantlist
 
-	// ref is the reference count for this ledger, its used to ensure we
-	// don't drop the reference to this ledger in multi-connection scenarios
-	ref int
-
 	lk sync.RWMutex
 }
 

@@ -99,7 +99,7 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 		t.Fatal("Peers connected that shouldn't be connected")
 	}
 
-	// removing a peer with only one reference
+	// disconnect a peer
 	peerManager.Disconnected(peer1)
 	connectedPeers = peerManager.ConnectedPeers()
 
@@ -107,13 +107,12 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 		t.Fatal("Peer should have been disconnected but was not")
 	}
 
-	// connecting a peer twice, then disconnecting once, should stay in queue
-	peerManager.Connected(peer2, nil)
-	peerManager.Disconnected(peer2)
+	// reconnect peer
+	peerManager.Connected(peer1, nil)
 	connectedPeers = peerManager.ConnectedPeers()
 
-	if !testutil.ContainsPeer(connectedPeers, peer2) {
-		t.Fatal("Peer was disconnected but should not have been")
+	if !testutil.ContainsPeer(connectedPeers, peer1) {
+		t.Fatal("Peer should have been connected but was not")
 	}
 }
 
