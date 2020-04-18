@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
@@ -22,6 +23,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	msgio "github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multistream"
 )
 
 var log = logging.Logger("bitswap_network")
@@ -43,6 +45,7 @@ func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) B
 
 		supportedProtocols: s.SupportedProtocols,
 	}
+
 	return &bitswapNetwork
 }
 
@@ -71,8 +74,9 @@ type impl struct {
 	// alignment.
 	stats Stats
 
-	host    host.Host
-	routing routing.ContentRouting
+	host          host.Host
+	routing       routing.ContentRouting
+	connectEvtMgr *connectEventManager
 
 	protocolBitswapNoVers  protocol.ID
 	protocolBitswapOneZero protocol.ID
@@ -86,24 +90,124 @@ type impl struct {
 }
 
 type streamMessageSender struct {
-	s     network.Stream
-	bsnet *impl
+	to        peer.ID
+	stream    network.Stream
+	connected bool
+	bsnet     *impl
+	opts      *MessageSenderOpts
 }
 
-func (s *streamMessageSender) Close() error {
-	return helpers.FullClose(s.s)
+// Open a stream to the remote peer
+func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, error) {
+	if s.connected {
+		return s.stream, nil
+	}
+
+	if err := s.bsnet.ConnectTo(ctx, s.to); err != nil {
+		return nil, err
+	}
+
+	stream, err := s.bsnet.newStreamToPeer(ctx, s.to)
+	if err != nil {
+		return nil, err
+	}
+
+	s.stream = stream
+	s.connected = true
+	return s.stream, nil
 }
 
+// Reset the stream
 func (s *streamMessageSender) Reset() error {
-	return s.s.Reset()
+	if s.stream != nil {
+		err := s.stream.Reset()
+		s.connected = false
+		return err
+	}
+	return nil
 }
 
-func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessage) error {
-	return s.bsnet.msgToStream(ctx, s.s, msg)
+// Close the stream
+func (s *streamMessageSender) Close() error {
+	return helpers.FullClose(s.stream)
 }
 
+// Indicates whether the peer supports HAVE / DONT_HAVE messages
 func (s *streamMessageSender) SupportsHave() bool {
-	return s.bsnet.SupportsHave(s.s.Protocol())
+	return s.bsnet.SupportsHave(s.stream.Protocol())
+}
+
+// Send a message to the peer, attempting multiple times
+func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessage) error {
+	return s.multiAttempt(ctx, func(fnctx context.Context) error {
+		return s.send(fnctx, msg)
+	})
+}
+
+// Perform a function with multiple attempts, and a timeout
+func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func(context.Context) error) error {
+	// Try to call the function repeatedly
+	var err error
+	for i := 0; i < s.opts.MaxRetries; i++ {
+		deadline := time.Now().Add(s.opts.SendTimeout)
+		sndctx, cancel := context.WithDeadline(ctx, deadline)
+
+		if err = fn(sndctx); err == nil {
+			cancel()
+			// Attempt was successful
+			return nil
+		}
+		cancel()
+
+		// Attempt failed
+
+		// If the sender has been closed or the context cancelled, just bail out
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Protocol is not supported, so no need to try multiple times
+		if errors.Is(err, multistream.ErrNotSupported) {
+			s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
+			return err
+		}
+
+		// Failed to send so reset stream and try again
+		_ = s.Reset()
+
+		// Failed too many times so mark the peer as unresponsive and return an error
+		if i == s.opts.MaxRetries-1 {
+			s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(s.opts.SendErrorBackoff):
+			// wait a short time in case disconnect notifications are still propagating
+			log.Infof("send message to %s failed but context was not Done: %s", s.to, err)
+		}
+	}
+	return err
+}
+
+// Send a message to the peer
+func (s *streamMessageSender) send(ctx context.Context, msg bsmsg.BitSwapMessage) error {
+	stream, err := s.Connect(ctx)
+	if err != nil {
+		log.Infof("failed to open stream to %s: %s", s.to, err)
+		return err
+	}
+
+	if err = s.bsnet.msgToStream(ctx, stream, msg); err != nil {
+		log.Infof("failed to send message to %s: %s", s.to, err)
+		return err
+	}
+
+	return nil
 }
 
 func (bsnet *impl) Self() peer.ID {
@@ -164,17 +268,39 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 	return nil
 }
 
-func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID) (MessageSender, error) {
-	s, err := bsnet.newStreamToPeer(ctx, p)
+func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *MessageSenderOpts) (MessageSender, error) {
+	opts = setDefaultOpts(opts)
+
+	sender := &streamMessageSender{
+		to:    p,
+		bsnet: bsnet,
+		opts:  opts,
+	}
+
+	err := sender.multiAttempt(ctx, func(fnctx context.Context) error {
+		_, err := sender.Connect(fnctx)
+		return err
+	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	return &streamMessageSender{s: s, bsnet: bsnet}, nil
+	return sender, nil
 }
 
-func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stream, error) {
-	return bsnet.host.NewStream(ctx, p, bsnet.supportedProtocols...)
+func setDefaultOpts(opts *MessageSenderOpts) *MessageSenderOpts {
+	copy := *opts
+	if opts.MaxRetries == 0 {
+		copy.MaxRetries = 3
+	}
+	if opts.SendTimeout == 0 {
+		copy.SendTimeout = sendMessageTimeout
+	}
+	if opts.SendErrorBackoff == 0 {
+		copy.SendErrorBackoff = 100 * time.Millisecond
+	}
+	return &copy
 }
 
 func (bsnet *impl) SendMessage(
@@ -197,11 +323,15 @@ func (bsnet *impl) SendMessage(
 	//nolint
 	go helpers.AwaitEOF(s)
 	return s.Close()
+}
 
+func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stream, error) {
+	return bsnet.host.NewStream(ctx, p, bsnet.supportedProtocols...)
 }
 
 func (bsnet *impl) SetDelegate(r Receiver) {
 	bsnet.receiver = r
+	bsnet.connectEvtMgr = newConnectEventManager(r)
 	for _, proto := range bsnet.supportedProtocols {
 		bsnet.host.SetStreamHandler(proto, bsnet.handleNewStream)
 	}
@@ -268,6 +398,7 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 		p := s.Conn().RemotePeer()
 		ctx := context.Background()
 		log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())
+		bsnet.connectEvtMgr.OnMessage(s.Conn().RemotePeer())
 		bsnet.receiver.ReceiveMessage(ctx, p, received)
 		atomic.AddUint64(&bsnet.stats.MessagesRecvd, 1)
 	}
@@ -291,10 +422,10 @@ func (nn *netNotifiee) impl() *impl {
 }
 
 func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
-	nn.impl().receiver.PeerConnected(v.RemotePeer())
+	nn.impl().connectEvtMgr.Connected(v.RemotePeer())
 }
 func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
-	nn.impl().receiver.PeerDisconnected(v.RemotePeer())
+	nn.impl().connectEvtMgr.Disconnected(v.RemotePeer())
 }
 func (nn *netNotifiee) OpenedStream(n network.Network, s network.Stream) {}
 func (nn *netNotifiee) ClosedStream(n network.Network, v network.Stream) {}
