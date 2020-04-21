@@ -333,7 +333,7 @@ func (mq *MessageQueue) runQueue() {
 	}
 
 	var workScheduled time.Time
-	for {
+	for mq.ctx.Err() == nil {
 		select {
 		case <-mq.rebroadcastTimer.C:
 			mq.rebroadcastWantlist()
