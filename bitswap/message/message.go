@@ -44,6 +44,10 @@ type BitSwapMessage interface {
 	// Returns the size of the CANCEL entry in the protobuf
 	Cancel(key cid.Cid) int
 
+	// Remove removes any entries for the given CID. Useful when the want
+	// status for the CID changes when preparing a message.
+	Remove(key cid.Cid)
+
 	// Empty indicates whether the message has any information
 	Empty() bool
 	// Size returns the size of the message in bytes
@@ -296,6 +300,10 @@ func (m *impl) PendingBytes() int32 {
 
 func (m *impl) SetPendingBytes(pendingBytes int32) {
 	m.pendingBytes = pendingBytes
+}
+
+func (m *impl) Remove(k cid.Cid) {
+	delete(m.wantlist, k)
 }
 
 func (m *impl) Cancel(k cid.Cid) int {

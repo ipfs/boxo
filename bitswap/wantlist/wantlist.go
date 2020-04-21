@@ -111,16 +111,14 @@ func (w *Wantlist) Entries() []Entry {
 	return es
 }
 
-// SortedEntries returns wantlist entries ordered by priority.
-func (w *Wantlist) SortedEntries() []Entry {
-	es := w.Entries()
-	sort.Sort(entrySlice(es))
-	return es
-}
-
 // Absorb all the entries in other into this want list
 func (w *Wantlist) Absorb(other *Wantlist) {
 	for _, e := range other.Entries() {
 		w.Add(e.Cid, e.Priority, e.WantType)
 	}
+}
+
+// SortEntries sorts the list of entries by priority.
+func SortEntries(es []Entry) {
+	sort.Sort(entrySlice(es))
 }
