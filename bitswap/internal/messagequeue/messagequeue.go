@@ -115,9 +115,15 @@ func (r *recallWantlist) RemoveType(c cid.Cid, wtype pb.Message_Wantlist_WantTyp
 }
 
 // MarkSent moves the want from the pending to the sent list
-func (r *recallWantlist) MarkSent(e wantlist.Entry) {
-	r.pending.RemoveType(e.Cid, e.WantType)
+//
+// Returns true if the want was marked as sent. Returns false if the want wasn't
+// pending.
+func (r *recallWantlist) MarkSent(e wantlist.Entry) bool {
+	if !r.pending.RemoveType(e.Cid, e.WantType) {
+		return false
+	}
 	r.sent.Add(e.Cid, e.Priority, e.WantType)
+	return true
 }
 
 type peerConn struct {
@@ -539,74 +545,77 @@ func (mq *MessageQueue) pendingWorkCount() int {
 
 // Convert the lists of wants into a Bitswap message
 func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) bsmsg.BitSwapMessage {
-	mq.wllock.Lock()
-	defer mq.wllock.Unlock()
-
 	// Get broadcast and regular wantlist entries.
-	// SortedEntries() slows down the MessageQueue a lot, and entries only need
-	// to be sorted if the number of wants will overflow the size of the
-	// message (to make sure that the highest priority wants are sent in the
-	// first message).
-	// We prioritize cancels, then regular wants, then broadcast wants.
-	var peerEntries []bswl.Entry
-	var bcstEntries []bswl.Entry
-	maxCancelsSize := mq.cancels.Len() * bsmsg.MaxEntrySize
-	maxPeerSize := mq.peerWants.pending.Len() * bsmsg.MaxEntrySize
-	maxBcstSize := mq.bcstWants.pending.Len() * bsmsg.MaxEntrySize
-
-	if maxCancelsSize+maxPeerSize < mq.maxMessageSize {
-		peerEntries = mq.peerWants.pending.Entries()
-	} else {
-		peerEntries = mq.peerWants.pending.SortedEntries()
-	}
-	if maxCancelsSize+maxPeerSize+maxBcstSize < mq.maxMessageSize {
-		bcstEntries = mq.bcstWants.pending.Entries()
-	} else {
-		bcstEntries = mq.bcstWants.pending.SortedEntries()
-	}
-
-	// Size of the message so far
-	msgSize := 0
-
-	// Always prioritize cancels, then targeted, then broadcast.
-
-	// Add each cancel to the message
+	mq.wllock.Lock()
+	peerEntries := mq.peerWants.pending.Entries()
+	bcstEntries := mq.bcstWants.pending.Entries()
 	cancels := mq.cancels.Keys()
-	for _, c := range cancels {
-		if msgSize >= mq.maxMessageSize {
-			break
-		}
-		msgSize += mq.msg.Cancel(c)
-
-		// Clear the cancel - we make a best effort to let peers know about
-		// cancels but won't save them to resend if there's a failure.
-		mq.cancels.Remove(c)
-	}
-
-	// Add each regular want-have / want-block to the message
-	for _, e := range peerEntries {
-		if msgSize >= mq.maxMessageSize {
-			break
-		}
-
+	if !supportsHave {
+		filteredPeerEntries := peerEntries[:0]
 		// If the remote peer doesn't support HAVE / DONT_HAVE messages,
 		// don't send want-haves (only send want-blocks)
-		if !supportsHave && e.WantType == pb.Message_Wantlist_Have {
-			mq.peerWants.RemoveType(e.Cid, pb.Message_Wantlist_Have)
-		} else {
-			msgSize += mq.msg.AddEntry(e.Cid, e.Priority, e.WantType, true)
-
-			// Move the key from pending to sent
-			mq.peerWants.MarkSent(e)
+		//
+		// Doing this here under the lock makes everything else in this
+		// function simpler.
+		//
+		// TODO: We should _try_ to avoid recording these in the first
+		// place if possible.
+		for _, e := range peerEntries {
+			if e.WantType == pb.Message_Wantlist_Have {
+				mq.peerWants.RemoveType(e.Cid, pb.Message_Wantlist_Have)
+			} else {
+				filteredPeerEntries = append(filteredPeerEntries, e)
+			}
 		}
+		peerEntries = filteredPeerEntries
+	}
+	mq.wllock.Unlock()
+
+	// We prioritize cancels, then regular wants, then broadcast wants.
+
+	var (
+		msgSize         = 0 // size of message so far
+		sentCancels     = 0 // number of cancels in message
+		sentPeerEntries = 0 // number of peer entries in message
+		sentBcstEntries = 0 // number of broadcast entries in message
+	)
+
+	// Add each cancel to the message
+	for _, c := range cancels {
+		msgSize += mq.msg.Cancel(c)
+		sentCancels++
+
+		if msgSize >= mq.maxMessageSize {
+			goto FINISH
+		}
+	}
+
+	// Next, add the wants. If we have too many entries to fit into a single
+	// message, sort by priority and include the high priority ones first.
+	// However, avoid sorting till we really need to as this code is a
+	// called frequently.
+
+	// Add each regular want-have / want-block to the message.
+	if msgSize+(len(peerEntries)*bsmsg.MaxEntrySize) > mq.maxMessageSize {
+		bswl.SortEntries(peerEntries)
+	}
+
+	for _, e := range peerEntries {
+		msgSize += mq.msg.AddEntry(e.Cid, e.Priority, e.WantType, true)
+		sentPeerEntries++
+
+		if msgSize >= mq.maxMessageSize {
+			goto FINISH
+		}
+	}
+
+	// Add each broadcast want-have to the message.
+	if msgSize+(len(bcstEntries)*bsmsg.MaxEntrySize) > mq.maxMessageSize {
+		bswl.SortEntries(bcstEntries)
 	}
 
 	// Add each broadcast want-have to the message
 	for _, e := range bcstEntries {
-		if msgSize >= mq.maxMessageSize {
-			break
-		}
-
 		// Broadcast wants are sent as want-have
 		wantType := pb.Message_Wantlist_Have
 
@@ -617,10 +626,39 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) bsmsg.BitSwapM
 		}
 
 		msgSize += mq.msg.AddEntry(e.Cid, e.Priority, wantType, false)
+		sentBcstEntries++
 
-		// Move the key from pending to sent
-		mq.bcstWants.MarkSent(e)
+		if msgSize >= mq.maxMessageSize {
+			goto FINISH
+		}
 	}
+
+FINISH:
+
+	// Finally, re-take the lock, mark sent and remove any entries from our
+	// message that we've decided to cancel at the last minute.
+	mq.wllock.Lock()
+	for _, e := range peerEntries[:sentPeerEntries] {
+		if !mq.peerWants.MarkSent(e) {
+			// It changed.
+			mq.msg.Remove(e.Cid)
+		}
+	}
+
+	for _, e := range bcstEntries[:sentBcstEntries] {
+		if !mq.bcstWants.MarkSent(e) {
+			mq.msg.Remove(e.Cid)
+		}
+	}
+
+	for _, c := range cancels[:sentCancels] {
+		if !mq.cancels.Has(c) {
+			mq.msg.Remove(c)
+		} else {
+			mq.cancels.Remove(c)
+		}
+	}
+	mq.wllock.Unlock()
 
 	return mq.msg
 }
