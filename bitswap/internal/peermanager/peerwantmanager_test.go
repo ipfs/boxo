@@ -38,8 +38,12 @@ func TestPrepareBroadcastWantHaves(t *testing.T) {
 	cids2 := testutil.GenerateCids(2)
 	cids3 := testutil.GenerateCids(2)
 
-	pwm.addPeer(peers[0])
-	pwm.addPeer(peers[1])
+	if blist := pwm.addPeer(peers[0]); len(blist) > 0 {
+		t.Errorf("expected no broadcast wants")
+	}
+	if blist := pwm.addPeer(peers[1]); len(blist) > 0 {
+		t.Errorf("expected no broadcast wants")
+	}
 
 	// Broadcast 2 cids to 2 peers
 	bcst := pwm.prepareBroadcastWantHaves(cids)
@@ -104,16 +108,19 @@ func TestPrepareBroadcastWantHaves(t *testing.T) {
 		}
 	}
 
+	allCids := cids
+	allCids = append(allCids, cids2...)
+	allCids = append(allCids, cids3...)
+	allCids = append(allCids, cids4...)
+
 	// Add another peer
-	pwm.addPeer(peers[2])
-	bcst6 := pwm.prepareBroadcastWantHaves(cids)
-	if len(bcst6) != 1 {
-		t.Fatal("Expected 1 peer")
+	bcst6 := pwm.addPeer(peers[2])
+	if !testutil.MatchKeysIgnoreOrder(bcst6, allCids) {
+		t.Fatalf("Expected all cids to be broadcast.")
 	}
-	for p := range bcst6 {
-		if !testutil.MatchKeysIgnoreOrder(bcst6[p], cids) {
-			t.Fatal("Expected all cids to be broadcast")
-		}
+
+	if broadcast := pwm.prepareBroadcastWantHaves(allCids); len(broadcast) != 0 {
+		t.Errorf("did not expect to have CIDs to broadcast")
 	}
 }
 
