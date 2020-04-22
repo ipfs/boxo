@@ -19,12 +19,12 @@ const (
 
 	// maxExpectedWantProcessTime is the maximum amount of time we expect a
 	// peer takes to process a want and initiate sending a response to us
-	maxExpectedWantProcessTime = 200 * time.Millisecond
+	maxExpectedWantProcessTime = 2 * time.Second
 
 	// latencyMultiplier is multiplied by the average ping time to
 	// get an upper bound on how long we expect to wait for a peer's response
 	// to arrive
-	latencyMultiplier = 2
+	latencyMultiplier = 3
 )
 
 // PeerConnection is a connection to a peer that can be pinged, and the
