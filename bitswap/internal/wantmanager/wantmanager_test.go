@@ -14,13 +14,11 @@ import (
 )
 
 type fakePeerHandler struct {
-	lastInitialWants []cid.Cid
-	lastBcstWants    []cid.Cid
-	lastCancels      []cid.Cid
+	lastBcstWants []cid.Cid
+	lastCancels   []cid.Cid
 }
 
-func (fph *fakePeerHandler) Connected(p peer.ID, initialWants []cid.Cid) {
-	fph.lastInitialWants = initialWants
+func (fph *fakePeerHandler) Connected(p peer.ID) {
 }
 func (fph *fakePeerHandler) Disconnected(p peer.ID) {
 
@@ -37,124 +35,6 @@ type fakeSessionManager struct {
 
 func (*fakeSessionManager) ReceiveFrom(p peer.ID, blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) []sessionmanager.Session {
 	return nil
-}
-
-func TestInitialBroadcastWantsAddedCorrectly(t *testing.T) {
-	ctx := context.Background()
-	ph := &fakePeerHandler{}
-	sim := bssim.New()
-	bpm := bsbpm.New()
-	wm := New(context.Background(), ph, sim, bpm)
-	sm := &fakeSessionManager{}
-	wm.SetSessionManager(sm)
-
-	peers := testutil.GeneratePeers(3)
-
-	// Connect peer 0. Should not receive anything yet.
-	wm.Connected(peers[0])
-	if len(ph.lastInitialWants) != 0 {
-		t.Fatal("expected no initial wants")
-	}
-
-	// Broadcast 2 wants
-	wantHaves := testutil.GenerateCids(2)
-	wm.BroadcastWantHaves(ctx, 1, wantHaves)
-	if len(ph.lastBcstWants) != 2 {
-		t.Fatal("expected broadcast wants")
-	}
-
-	// Connect peer 1. Should receive all wants broadcast so far.
-	wm.Connected(peers[1])
-	if len(ph.lastInitialWants) != 2 {
-		t.Fatal("expected broadcast wants")
-	}
-
-	// Broadcast 3 more wants
-	wantHaves2 := testutil.GenerateCids(3)
-	wm.BroadcastWantHaves(ctx, 2, wantHaves2)
-	if len(ph.lastBcstWants) != 3 {
-		t.Fatal("expected broadcast wants")
-	}
-
-	// Connect peer 2. Should receive all wants broadcast so far.
-	wm.Connected(peers[2])
-	if len(ph.lastInitialWants) != 5 {
-		t.Fatal("expected all wants to be broadcast")
-	}
-}
-
-func TestReceiveFromRemovesBroadcastWants(t *testing.T) {
-	ctx := context.Background()
-	ph := &fakePeerHandler{}
-	sim := bssim.New()
-	bpm := bsbpm.New()
-	wm := New(context.Background(), ph, sim, bpm)
-	sm := &fakeSessionManager{}
-	wm.SetSessionManager(sm)
-
-	peers := testutil.GeneratePeers(3)
-
-	// Broadcast 2 wants
-	cids := testutil.GenerateCids(2)
-	wm.BroadcastWantHaves(ctx, 1, cids)
-	if len(ph.lastBcstWants) != 2 {
-		t.Fatal("expected broadcast wants")
-	}
-
-	// Connect peer 0. Should receive all wants.
-	wm.Connected(peers[0])
-	if len(ph.lastInitialWants) != 2 {
-		t.Fatal("expected broadcast wants")
-	}
-
-	// Receive block for first want
-	ks := cids[0:1]
-	haves := []cid.Cid{}
-	dontHaves := []cid.Cid{}
-	wm.ReceiveFrom(ctx, peers[1], ks, haves, dontHaves)
-
-	// Connect peer 2. Should get remaining want (the one that the block has
-	// not yet been received for).
-	wm.Connected(peers[2])
-	if len(ph.lastInitialWants) != 1 {
-		t.Fatal("expected remaining wants")
-	}
-}
-
-func TestRemoveSessionRemovesBroadcastWants(t *testing.T) {
-	ctx := context.Background()
-	ph := &fakePeerHandler{}
-	sim := bssim.New()
-	bpm := bsbpm.New()
-	wm := New(context.Background(), ph, sim, bpm)
-	sm := &fakeSessionManager{}
-	wm.SetSessionManager(sm)
-
-	peers := testutil.GeneratePeers(2)
-
-	// Broadcast 2 wants for session 0 and 2 wants for session 1
-	ses0 := uint64(0)
-	ses1 := uint64(1)
-	ses0wants := testutil.GenerateCids(2)
-	ses1wants := testutil.GenerateCids(2)
-	wm.BroadcastWantHaves(ctx, ses0, ses0wants)
-	wm.BroadcastWantHaves(ctx, ses1, ses1wants)
-
-	// Connect peer 0. Should receive all wants.
-	wm.Connected(peers[0])
-	if len(ph.lastInitialWants) != 4 {
-		t.Fatal("expected broadcast wants")
-	}
-
-	// Remove session 0
-	wm.RemoveSession(ctx, ses0)
-
-	// Connect peer 1. Should receive all wants from session that has not been
-	// removed.
-	wm.Connected(peers[1])
-	if len(ph.lastInitialWants) != 2 {
-		t.Fatal("expected broadcast wants")
-	}
 }
 
 func TestReceiveFrom(t *testing.T) {

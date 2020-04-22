@@ -261,7 +261,6 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 	mq.dhTimeoutMgr.CancelPending(cancelKs)
 
 	mq.wllock.Lock()
-	defer mq.wllock.Unlock()
 
 	workReady := false
 
@@ -281,6 +280,10 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 			workReady = true
 		}
 	}
+
+	mq.wllock.Unlock()
+
+	// Unlock first to be nice to the scheduler.
 
 	// Schedule a message send
 	if workReady {

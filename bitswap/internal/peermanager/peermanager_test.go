@@ -82,9 +82,9 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 	self, peer1, peer2, peer3, peer4, peer5 := tp[0], tp[1], tp[2], tp[3], tp[4], tp[5]
 	peerManager := New(ctx, peerQueueFactory, self)
 
-	peerManager.Connected(peer1, nil)
-	peerManager.Connected(peer2, nil)
-	peerManager.Connected(peer3, nil)
+	peerManager.Connected(peer1)
+	peerManager.Connected(peer2)
+	peerManager.Connected(peer3)
 
 	connectedPeers := peerManager.ConnectedPeers()
 
@@ -108,7 +108,7 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 	}
 
 	// reconnect peer
-	peerManager.Connected(peer1, nil)
+	peerManager.Connected(peer1)
 	connectedPeers = peerManager.ConnectedPeers()
 
 	if !testutil.ContainsPeer(connectedPeers, peer1) {
@@ -126,9 +126,10 @@ func TestBroadcastOnConnect(t *testing.T) {
 	peerManager := New(ctx, peerQueueFactory, self)
 
 	cids := testutil.GenerateCids(2)
+	peerManager.BroadcastWantHaves(ctx, cids)
 
 	// Connect with two broadcast wants for first peer
-	peerManager.Connected(peer1, cids)
+	peerManager.Connected(peer1)
 	collected := collectMessages(msgs, 2*time.Millisecond)
 
 	if len(collected[peer1].wantHaves) != 2 {
@@ -147,8 +148,11 @@ func TestBroadcastWantHaves(t *testing.T) {
 
 	cids := testutil.GenerateCids(3)
 
-	// Connect to first peer with two broadcast wants
-	peerManager.Connected(peer1, []cid.Cid{cids[0], cids[1]})
+	// Broadcast the first two.
+	peerManager.BroadcastWantHaves(ctx, cids[:2])
+
+	// First peer should get them.
+	peerManager.Connected(peer1)
 	collected := collectMessages(msgs, 2*time.Millisecond)
 
 	if len(collected[peer1].wantHaves) != 2 {
@@ -156,7 +160,7 @@ func TestBroadcastWantHaves(t *testing.T) {
 	}
 
 	// Connect to second peer
-	peerManager.Connected(peer2, nil)
+	peerManager.Connected(peer2)
 
 	// Send a broadcast to all peers, including cid that was already sent to
 	// first peer
@@ -165,10 +169,12 @@ func TestBroadcastWantHaves(t *testing.T) {
 
 	// One of the want-haves was already sent to peer1
 	if len(collected[peer1].wantHaves) != 1 {
-		t.Fatal("Expected 1 want-haves to be sent to first peer", collected[peer1].wantHaves)
+		t.Fatalf("Expected 1 want-haves to be sent to first peer, got %d",
+			len(collected[peer1].wantHaves))
 	}
-	if len(collected[peer2].wantHaves) != 2 {
-		t.Fatal("Expected 2 want-haves to be sent to second peer")
+	if len(collected[peer2].wantHaves) != 3 {
+		t.Fatalf("Expected 3 want-haves to be sent to second peer, got %d",
+			len(collected[peer2].wantHaves))
 	}
 }
 
@@ -182,7 +188,7 @@ func TestSendWants(t *testing.T) {
 	peerManager := New(ctx, peerQueueFactory, self)
 	cids := testutil.GenerateCids(4)
 
-	peerManager.Connected(peer1, nil)
+	peerManager.Connected(peer1)
 	peerManager.SendWants(ctx, peer1, []cid.Cid{cids[0]}, []cid.Cid{cids[2]})
 	collected := collectMessages(msgs, 2*time.Millisecond)
 
@@ -217,8 +223,8 @@ func TestSendCancels(t *testing.T) {
 	cids := testutil.GenerateCids(4)
 
 	// Connect to peer1 and peer2
-	peerManager.Connected(peer1, nil)
-	peerManager.Connected(peer2, nil)
+	peerManager.Connected(peer1)
+	peerManager.Connected(peer2)
 
 	// Send 2 want-blocks and 1 want-have to peer1
 	peerManager.SendWants(ctx, peer1, []cid.Cid{cids[0], cids[1]}, []cid.Cid{cids[2]})
@@ -286,11 +292,11 @@ func TestSessionRegistration(t *testing.T) {
 		t.Fatal("Expected peer not be available till connected")
 	}
 
-	peerManager.Connected(p1, nil)
+	peerManager.Connected(p1)
 	if !s.available[p1] {
 		t.Fatal("Expected signal callback")
 	}
-	peerManager.Connected(p2, nil)
+	peerManager.Connected(p2)
 	if !s.available[p2] {
 		t.Fatal("Expected signal callback")
 	}
@@ -305,7 +311,7 @@ func TestSessionRegistration(t *testing.T) {
 
 	peerManager.UnregisterSession(id)
 
-	peerManager.Connected(p1, nil)
+	peerManager.Connected(p1)
 	if s.available[p1] {
 		t.Fatal("Expected no signal callback (session unregistered)")
 	}

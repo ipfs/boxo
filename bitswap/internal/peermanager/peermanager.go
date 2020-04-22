@@ -82,18 +82,16 @@ func (pm *PeerManager) ConnectedPeers() []peer.ID {
 
 // Connected is called to add a new peer to the pool, and send it an initial set
 // of wants.
-func (pm *PeerManager) Connected(p peer.ID, initialWantHaves []cid.Cid) {
+func (pm *PeerManager) Connected(p peer.ID) {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
 	pq := pm.getOrCreate(p)
 
 	// Inform the peer want manager that there's a new peer
-	pm.pwm.addPeer(p)
-	// Record that the want-haves are being sent to the peer
-	_, wantHaves := pm.pwm.prepareSendWants(p, nil, initialWantHaves)
+	wants := pm.pwm.addPeer(p)
 	// Broadcast any live want-haves to the newly connected peers
-	pq.AddBroadcastWantHaves(wantHaves)
+	pq.AddBroadcastWantHaves(wants)
 	// Inform the sessions that the peer has connected
 	pm.signalAvailability(p, true)
 }
