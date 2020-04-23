@@ -166,11 +166,7 @@ func FetchGraph(ctx context.Context, root cid.Cid, serv ipld.DAGService) error {
 // maxDepth=1 means "fetch root and its direct children" and so on...
 // maxDepth=-1 means unlimited.
 func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, serv ipld.DAGService) error {
-	var ng ipld.NodeGetter = serv
-	ds, ok := serv.(*dagService)
-	if ok {
-		ng = &sesGetter{bserv.NewSession(ctx, ds.Blocks)}
-	}
+	var ng ipld.NodeGetter = NewSession(ctx, serv)
 
 	set := make(map[cid.Cid]int)
 
