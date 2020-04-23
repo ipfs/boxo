@@ -91,7 +91,8 @@ type op struct {
 // info to, and who to request blocks from.
 type Session struct {
 	// dependencies
-	ctx            context.Context
+	bsctx          context.Context // context for bitswap
+	ctx            context.Context // context for session
 	pm             PeerManager
 	bpm            *bsbpm.BlockPresenceManager
 	sprm           SessionPeerManager
@@ -124,7 +125,9 @@ type Session struct {
 
 // New creates a new bitswap session whose lifetime is bounded by the
 // given context.
-func New(ctx context.Context,
+func New(
+	bsctx context.Context, // context for bitswap
+	ctx context.Context, // context for this session
 	id uint64,
 	sprm SessionPeerManager,
 	providerFinder ProviderFinder,
@@ -138,6 +141,7 @@ func New(ctx context.Context,
 	s := &Session{
 		sw:                  newSessionWants(broadcastLiveWantsLimit),
 		tickDelayReqs:       make(chan time.Duration),
+		bsctx:               bsctx,
 		ctx:                 ctx,
 		pm:                  pm,
 		bpm:                 bpm,
@@ -393,10 +397,11 @@ func (s *Session) handleShutdown() {
 	// in anymore
 	s.bpm.RemoveKeys(cancelKs)
 
-	// TODO: If the context is cancelled this won't actually send any CANCELs.
-	// We should use a longer lived context to send out these CANCELs.
-	// Send CANCEL to all peers for blocks that no session is interested in anymore
-	s.pm.SendCancels(s.ctx, cancelKs)
+	// Send CANCEL to all peers for blocks that no session is interested in
+	// anymore.
+	// Note: use bitswap context because session context has already been
+	// cancelled.
+	s.pm.SendCancels(s.bsctx, cancelKs)
 }
 
 // handleReceive is called when the session receives blocks from a peer
