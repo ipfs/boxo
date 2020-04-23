@@ -74,8 +74,8 @@ When a message is received, Bitswap
   So that the Engine can send responses to the wants
 - Informs the Engine of any received blocks
   So that the Engine can send the received blocks to any peers that want them
-- Informs the WantManager of received blocks, HAVEs and DONT_HAVEs
-  So that the WantManager can inform interested sessions
+- Informs the SessionManager of received blocks, HAVEs and DONT_HAVEs
+  So that the SessionManager can inform interested sessions
 
 When the client makes an API call, Bitswap creates a new Session and calls the corresponding method (eg `GetBlocks()`).
 
@@ -101,9 +101,10 @@ The PeerTaskQueue prioritizes tasks such that the peers with the least amount of
 
 ### Requesting Blocks
 
-When the WantManager is informed of a new message, it
-- informs the SessionManager
-  The SessionManager informs the Sessions that are interested in the received blocks and wants
+When the SessionManager is informed of a new message, it
+- informs the BlockPresenceManager
+  The BlockPresenceManager keeps track of which peers have sent HAVES and DONT_HAVEs for each block
+- informs the Sessions that are interested in the received blocks and wants
 - informs the PeerManager of received blocks
   The PeerManager checks if any wants were send to a peer for the received blocks. If so it sends a `CANCEL` message to those peers.
 
@@ -114,7 +115,7 @@ The Session starts in "discovery" mode. This means it doesn't have any peers yet
 When the client initially requests blocks from a Session, the Session
 - informs the SessionInterestManager that it is interested in the want
 - informs the sessionWantManager of the want
-- tells the WantManager to broadcast a `want-have` to all connected peers so as to discover which peers have the block
+- tells the PeerManager to broadcast a `want-have` to all connected peers so as to discover which peers have the block
 - queries the ProviderQueryManager to discover which peers have the block
 
 When the session receives a message with `HAVE` or a `block`, it informs the SessionPeerManager. The SessionPeerManager keeps track of all peers in the session.
