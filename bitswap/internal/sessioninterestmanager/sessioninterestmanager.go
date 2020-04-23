@@ -90,7 +90,7 @@ func (sim *SessionInterestManager) SplitWantedUnwanted(blks []blocks.Block) ([]b
 	return wantedBlks, notWantedBlks
 }
 
-// When the WantManager receives a message is calls InterestedSessions() to
+// When the SessionManager receives a message it calls InterestedSessions() to
 // find out which sessions are interested in the message.
 func (sim *SessionInterestManager) InterestedSessions(blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) []uint64 {
 	sim.lk.RLock()

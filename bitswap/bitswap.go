@@ -22,7 +22,6 @@ import (
 	bssim "github.com/ipfs/go-bitswap/internal/sessioninterestmanager"
 	bssm "github.com/ipfs/go-bitswap/internal/sessionmanager"
 	bsspm "github.com/ipfs/go-bitswap/internal/sessionpeermanager"
-	bswm "github.com/ipfs/go-bitswap/internal/wantmanager"
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	bsnet "github.com/ipfs/go-bitswap/network"
 	blocks "github.com/ipfs/go-block-format"
@@ -123,13 +122,13 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		return nil
 	})
 
-	var wm *bswm.WantManager
 	// onDontHaveTimeout is called when a want-block is sent to a peer that
 	// has an old version of Bitswap that doesn't support DONT_HAVE messages,
 	// or when no response is received within a timeout.
+	var sm *bssm.SessionManager
 	onDontHaveTimeout := func(p peer.ID, dontHaves []cid.Cid) {
-		// Simulate a DONT_HAVE message arriving to the WantManager
-		wm.ReceiveFrom(ctx, p, nil, nil, dontHaves)
+		// Simulate a message arriving with DONT_HAVEs
+		sm.ReceiveFrom(ctx, p, nil, nil, dontHaves)
 	}
 	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
 		return bsmq.New(ctx, p, network, onDontHaveTimeout)
@@ -138,10 +137,9 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := bspm.New(ctx, peerQueueFactory, network.Self())
-	wm = bswm.New(ctx, pm, sim, bpm)
 	pqm := bspqm.New(ctx, network)
 
-	sessionFactory := func(ctx context.Context, id uint64, spm bssession.SessionPeerManager,
+	sessionFactory := func(sessctx context.Context, id uint64, spm bssession.SessionPeerManager,
 		sim *bssim.SessionInterestManager,
 		pm bssession.PeerManager,
 		bpm *bsbpm.BlockPresenceManager,
@@ -149,14 +147,13 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		provSearchDelay time.Duration,
 		rebroadcastDelay delay.D,
 		self peer.ID) bssm.Session {
-		return bssession.New(ctx, id, wm, spm, pqm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
+		return bssession.New(ctx, sessctx, id, spm, pqm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
 		return bsspm.New(id, network.ConnectionManager())
 	}
 	notif := notifications.New()
-	sm := bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
-	wm.SetSessionManager(sm)
+	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
 	engine := decision.NewEngine(ctx, bstore, network.ConnectionManager(), network.Self())
 
 	bs := &Bitswap{
@@ -166,7 +163,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		process:          px,
 		newBlocks:        make(chan cid.Cid, HasBlockBufferSize),
 		provideKeys:      make(chan cid.Cid, provideKeysBufferSize),
-		wm:               wm,
 		pm:               pm,
 		pqm:              pqm,
 		sm:               sm,
@@ -207,9 +203,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 
 // Bitswap instances implement the bitswap protocol.
 type Bitswap struct {
-	// the wantlist tracks global wants for bitswap
-	wm *bswm.WantManager
-
 	pm *bspm.PeerManager
 
 	// the provider query manager manages requests to find providers
@@ -357,7 +350,7 @@ func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []b
 
 	// Send all block keys (including duplicates) to any sessions that want them.
 	// (The duplicates are needed by sessions for accounting purposes)
-	bs.wm.ReceiveFrom(ctx, from, allKs, haves, dontHaves)
+	bs.sm.ReceiveFrom(ctx, from, allKs, haves, dontHaves)
 
 	// Send wanted blocks to decision engine
 	bs.engine.ReceiveFrom(from, wanted, haves)
@@ -480,14 +473,14 @@ func (bs *Bitswap) blockstoreHas(blks []blocks.Block) []bool {
 // PeerConnected is called by the network interface
 // when a peer initiates a new connection to bitswap.
 func (bs *Bitswap) PeerConnected(p peer.ID) {
-	bs.wm.Connected(p)
+	bs.pm.Connected(p)
 	bs.engine.PeerConnected(p)
 }
 
 // PeerDisconnected is called by the network interface when a peer
 // closes a connection
 func (bs *Bitswap) PeerDisconnected(p peer.ID) {
-	bs.wm.Disconnected(p)
+	bs.pm.Disconnected(p)
 	bs.engine.PeerDisconnected(p)
 }
 

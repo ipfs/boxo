@@ -25,17 +25,6 @@ const (
 	broadcastLiveWantsLimit = 64
 )
 
-// WantManager is an interface that can be used to request blocks
-// from given peers.
-type WantManager interface {
-	// BroadcastWantHaves sends want-haves to all connected peers (used for
-	// session discovery)
-	BroadcastWantHaves(context.Context, uint64, []cid.Cid)
-	// RemoveSession removes the session from the WantManager (when the
-	// session shuts down)
-	RemoveSession(context.Context, uint64)
-}
-
 // PeerManager keeps track of which sessions are interested in which peers
 // and takes care of sending wants for the sessions
 type PeerManager interface {
@@ -47,6 +36,11 @@ type PeerManager interface {
 	UnregisterSession(uint64)
 	// SendWants tells the PeerManager to send wants to the given peer
 	SendWants(ctx context.Context, peerId peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid)
+	// BroadcastWantHaves sends want-haves to all connected peers (used for
+	// session discovery)
+	BroadcastWantHaves(context.Context, []cid.Cid)
+	// SendCancels tells the PeerManager to send cancels to all peers
+	SendCancels(context.Context, []cid.Cid)
 }
 
 // SessionPeerManager keeps track of peers in the session
@@ -97,8 +91,10 @@ type op struct {
 // info to, and who to request blocks from.
 type Session struct {
 	// dependencies
-	ctx            context.Context
-	wm             WantManager
+	bsctx          context.Context // context for bitswap
+	ctx            context.Context // context for session
+	pm             PeerManager
+	bpm            *bsbpm.BlockPresenceManager
 	sprm           SessionPeerManager
 	providerFinder ProviderFinder
 	sim            *bssim.SessionInterestManager
@@ -129,9 +125,10 @@ type Session struct {
 
 // New creates a new bitswap session whose lifetime is bounded by the
 // given context.
-func New(ctx context.Context,
+func New(
+	bsctx context.Context, // context for bitswap
+	ctx context.Context, // context for this session
 	id uint64,
-	wm WantManager,
 	sprm SessionPeerManager,
 	providerFinder ProviderFinder,
 	sim *bssim.SessionInterestManager,
@@ -144,8 +141,10 @@ func New(ctx context.Context,
 	s := &Session{
 		sw:                  newSessionWants(broadcastLiveWantsLimit),
 		tickDelayReqs:       make(chan time.Duration),
+		bsctx:               bsctx,
 		ctx:                 ctx,
-		wm:                  wm,
+		pm:                  pm,
+		bpm:                 bpm,
 		sprm:                sprm,
 		providerFinder:      providerFinder,
 		sim:                 sim,
@@ -301,13 +300,13 @@ func (s *Session) run(ctx context.Context) {
 				s.sw.WantsSent(oper.keys)
 			case opBroadcast:
 				// Broadcast want-haves to all peers
-				s.broadcastWantHaves(ctx, oper.keys)
+				s.broadcast(ctx, oper.keys)
 			default:
 				panic("unhandled operation")
 			}
 		case <-s.idleTick.C:
 			// The session hasn't received blocks for a while, broadcast
-			s.broadcastWantHaves(ctx, nil)
+			s.broadcast(ctx, nil)
 		case <-s.periodicSearchTimer.C:
 			// Periodically search for a random live want
 			s.handlePeriodicSearch(ctx)
@@ -325,7 +324,7 @@ func (s *Session) run(ctx context.Context) {
 // Called when the session hasn't received any blocks for some time, or when
 // all peers in the session have sent DONT_HAVE for a particular set of CIDs.
 // Send want-haves to all connected peers, and search for new peers with the CID.
-func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
+func (s *Session) broadcast(ctx context.Context, wants []cid.Cid) {
 	// If this broadcast is because of an idle timeout (we haven't received
 	// any blocks for a while) then broadcast all pending wants
 	if wants == nil {
@@ -333,7 +332,7 @@ func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
 	}
 
 	// Broadcast a want-have for the live wants to everyone we're connected to
-	s.wm.BroadcastWantHaves(ctx, s.id, wants)
+	s.broadcastWantHaves(ctx, wants)
 
 	// do not find providers on consecutive ticks
 	// -- just rely on periodic search widening
@@ -341,7 +340,7 @@ func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
 		// Search for providers who have the first want in the list.
 		// Typically if the provider has the first block they will have
 		// the rest of the blocks also.
-		log.Debugf("Ses%d: FindMorePeers with want %s (1st of %d wants)", s.id, wants[0], len(wants))
+		log.Debugw("FindMorePeers", "session", s.id, "cid", wants[0], "pending", len(wants))
 		s.findMorePeers(ctx, wants[0])
 	}
 	s.resetIdleTick()
@@ -364,7 +363,7 @@ func (s *Session) handlePeriodicSearch(ctx context.Context) {
 	// for new providers for blocks.
 	s.findMorePeers(ctx, randomWant)
 
-	s.wm.BroadcastWantHaves(ctx, s.id, []cid.Cid{randomWant})
+	s.broadcastWantHaves(ctx, []cid.Cid{randomWant})
 
 	s.periodicSearchTimer.Reset(s.periodicSearchDelay.NextWaitTime())
 }
@@ -390,8 +389,19 @@ func (s *Session) handleShutdown() {
 	// Shut down the sessionWantSender (blocks until sessionWantSender stops
 	// sending)
 	s.sws.Shutdown()
-	// Remove the session from the want manager
-	s.wm.RemoveSession(s.ctx, s.id)
+
+	// Remove session's interest in the given blocks.
+	cancelKs := s.sim.RemoveSessionInterest(s.id)
+
+	// Free up block presence tracking for keys that no session is interested
+	// in anymore
+	s.bpm.RemoveKeys(cancelKs)
+
+	// Send CANCEL to all peers for blocks that no session is interested in
+	// anymore.
+	// Note: use bitswap context because session context has already been
+	// cancelled.
+	s.pm.SendCancels(s.bsctx, cancelKs)
 }
 
 // handleReceive is called when the session receives blocks from a peer
@@ -439,9 +449,15 @@ func (s *Session) wantBlocks(ctx context.Context, newks []cid.Cid) {
 	// No peers discovered yet, broadcast some want-haves
 	ks := s.sw.GetNextWants()
 	if len(ks) > 0 {
-		log.Infof("Ses%d: No peers - broadcasting %d want HAVE requests\n", s.id, len(ks))
-		s.wm.BroadcastWantHaves(ctx, s.id, ks)
+		log.Infow("No peers - broadcasting", "session", s.id, "want-count", len(ks))
+		s.broadcastWantHaves(ctx, ks)
 	}
+}
+
+// Send want-haves to all connected peers
+func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
+	log.Debugw("broadcastWantHaves", "session", s.id, "cids", wants)
+	s.pm.BroadcastWantHaves(ctx, wants)
 }
 
 // The session will broadcast if it has outstanding wants and doesn't receive
