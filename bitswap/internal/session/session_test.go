@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -59,8 +60,9 @@ type wantReq struct {
 }
 
 type fakePeerManager struct {
-	cancels  []cid.Cid
 	wantReqs chan wantReq
+	lk       sync.Mutex
+	cancels  []cid.Cid
 }
 
 func newFakePeerManager() *fakePeerManager {
@@ -81,7 +83,14 @@ func (pm *fakePeerManager) BroadcastWantHaves(ctx context.Context, cids []cid.Ci
 	}
 }
 func (pm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid) {
+	pm.lk.Lock()
+	defer pm.lk.Unlock()
 	pm.cancels = append(pm.cancels, cancels...)
+}
+func (pm *fakePeerManager) allCancels() []cid.Cid {
+	pm.lk.Lock()
+	defer pm.lk.Unlock()
+	return append([]cid.Cid{}, pm.cancels...)
 }
 
 func TestSessionGetBlocks(t *testing.T) {
@@ -173,7 +182,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Verify wants were cancelled
-	if len(fpm.cancels) != len(blks) {
+	if len(fpm.allCancels()) != len(blks) {
 		t.Fatal("expected cancels to be sent for all wants")
 	}
 }
