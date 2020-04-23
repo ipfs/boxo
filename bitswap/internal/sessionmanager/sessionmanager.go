@@ -109,8 +109,10 @@ func (sm *SessionManager) GetNextSessionID() uint64 {
 	return sm.sessID
 }
 
-func (sm *SessionManager) ReceiveFrom(p peer.ID, blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) []Session {
-	sessions := make([]Session, 0)
+// ReceiveFrom is called when a new message is received
+func (sm *SessionManager) ReceiveFrom(ctx context.Context, p peer.ID, blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
+	// Record block presence for HAVE / DONT_HAVE
+	sm.blockPresenceManager.ReceiveFrom(p, haves, dontHaves)
 
 	// Notify each session that is interested in the blocks / HAVEs / DONT_HAVEs
 	for _, id := range sm.sessionInterestManager.InterestedSessions(blks, haves, dontHaves) {
@@ -120,9 +122,9 @@ func (sm *SessionManager) ReceiveFrom(p peer.ID, blks []cid.Cid, haves []cid.Cid
 
 		if ok {
 			sess.ReceiveFrom(p, blks, haves, dontHaves)
-			sessions = append(sessions, sess)
 		}
 	}
 
-	return sessions
+	// Send CANCEL to all peers with want-have / want-block
+	sm.peerManager.SendCancels(ctx, blks)
 }

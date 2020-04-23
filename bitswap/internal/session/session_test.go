@@ -17,28 +17,6 @@ import (
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
-type wantReq struct {
-	cids []cid.Cid
-}
-
-type fakeWantManager struct {
-	wantReqs chan wantReq
-}
-
-func newFakeWantManager() *fakeWantManager {
-	return &fakeWantManager{
-		wantReqs: make(chan wantReq, 1),
-	}
-}
-
-func (fwm *fakeWantManager) BroadcastWantHaves(ctx context.Context, sesid uint64, cids []cid.Cid) {
-	select {
-	case fwm.wantReqs <- wantReq{cids}:
-	case <-ctx.Done():
-	}
-}
-func (fwm *fakeWantManager) RemoveSession(context.Context, uint64) {}
-
 func newFakeSessionPeerManager() *bsspm.SessionPeerManager {
 	return bsspm.New(1, newFakePeerTagger())
 }
@@ -76,11 +54,19 @@ func (fpf *fakeProviderFinder) FindProvidersAsync(ctx context.Context, k cid.Cid
 	return make(chan peer.ID)
 }
 
+type wantReq struct {
+	cids []cid.Cid
+}
+
 type fakePeerManager struct {
+	cancels  []cid.Cid
+	wantReqs chan wantReq
 }
 
 func newFakePeerManager() *fakePeerManager {
-	return &fakePeerManager{}
+	return &fakePeerManager{
+		wantReqs: make(chan wantReq, 1),
+	}
 }
 
 func (pm *fakePeerManager) RegisterSession(peer.ID, bspm.Session) bool {
@@ -88,19 +74,27 @@ func (pm *fakePeerManager) RegisterSession(peer.ID, bspm.Session) bool {
 }
 func (pm *fakePeerManager) UnregisterSession(uint64)                                 {}
 func (pm *fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) {}
+func (pm *fakePeerManager) BroadcastWantHaves(ctx context.Context, cids []cid.Cid) {
+	select {
+	case pm.wantReqs <- wantReq{cids}:
+	case <-ctx.Done():
+	}
+}
+func (pm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid) {
+	pm.cancels = append(pm.cancels, cancels...)
+}
 
 func TestSessionGetBlocks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-	fwm := newFakeWantManager()
-	fpm := newFakeSessionPeerManager()
+	fpm := newFakePeerManager()
+	fspm := newFakeSessionPeerManager()
 	fpf := newFakeProviderFinder()
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	notif := notifications.New()
 	defer notif.Shutdown()
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm, fpf, sim, newFakePeerManager(), bpm, notif, time.Second, delay.Fixed(time.Minute), "")
+	session := New(ctx, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
 	var cids []cid.Cid
@@ -115,7 +109,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	}
 
 	// Wait for initial want request
-	receivedWantReq := <-fwm.wantReqs
+	receivedWantReq := <-fpm.wantReqs
 
 	// Should have registered session's interest in blocks
 	intSes := sim.FilterSessionInterested(id, cids)
@@ -138,7 +132,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Verify new peers were recorded
-	if !testutil.MatchPeersIgnoreOrder(fpm.Peers(), peers) {
+	if !testutil.MatchPeersIgnoreOrder(fspm.Peers(), peers) {
 		t.Fatal("peers not recorded by the peer manager")
 	}
 
@@ -172,20 +166,30 @@ func TestSessionGetBlocks(t *testing.T) {
 	if len(wanted) != len(blks)-1 {
 		t.Fatal("session wants incorrect number of blocks")
 	}
+
+	// Shut down session
+	cancel()
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Verify wants were cancelled
+	if len(fpm.cancels) != len(blks) {
+		t.Fatal("expected cancels to be sent for all wants")
+	}
 }
 
 func TestSessionFindMorePeers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 900*time.Millisecond)
 	defer cancel()
-	fwm := newFakeWantManager()
-	fpm := newFakeSessionPeerManager()
+	fpm := newFakePeerManager()
+	fspm := newFakeSessionPeerManager()
 	fpf := newFakeProviderFinder()
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	notif := notifications.New()
 	defer notif.Shutdown()
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm, fpf, sim, newFakePeerManager(), bpm, notif, time.Second, delay.Fixed(time.Minute), "")
+	session := New(ctx, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
 	session.SetBaseTickDelay(200 * time.Microsecond)
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
@@ -200,7 +204,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 
 	// The session should initially broadcast want-haves
 	select {
-	case <-fwm.wantReqs:
+	case <-fpm.wantReqs:
 	case <-ctx.Done():
 		t.Fatal("Did not make first want request ")
 	}
@@ -217,14 +221,14 @@ func TestSessionFindMorePeers(t *testing.T) {
 	// The session should now time out waiting for a response and broadcast
 	// want-haves again
 	select {
-	case <-fwm.wantReqs:
+	case <-fpm.wantReqs:
 	case <-ctx.Done():
 		t.Fatal("Did not make second want request ")
 	}
 
 	// The session should keep broadcasting periodically until it receives a response
 	select {
-	case receivedWantReq := <-fwm.wantReqs:
+	case receivedWantReq := <-fpm.wantReqs:
 		if len(receivedWantReq.cids) != broadcastLiveWantsLimit {
 			t.Fatal("did not rebroadcast whole live list")
 		}
@@ -250,8 +254,8 @@ func TestSessionFindMorePeers(t *testing.T) {
 func TestSessionOnPeersExhausted(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
-	fwm := newFakeWantManager()
-	fpm := newFakeSessionPeerManager()
+	fpm := newFakePeerManager()
+	fspm := newFakeSessionPeerManager()
 	fpf := newFakeProviderFinder()
 
 	sim := bssim.New()
@@ -259,7 +263,7 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 	notif := notifications.New()
 	defer notif.Shutdown()
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm, fpf, sim, newFakePeerManager(), bpm, notif, time.Second, delay.Fixed(time.Minute), "")
+	session := New(ctx, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(broadcastLiveWantsLimit + 5)
 	var cids []cid.Cid
@@ -273,7 +277,7 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 	}
 
 	// Wait for initial want request
-	receivedWantReq := <-fwm.wantReqs
+	receivedWantReq := <-fpm.wantReqs
 
 	// Should have sent out broadcast request for wants
 	if len(receivedWantReq.cids) != broadcastLiveWantsLimit {
@@ -284,7 +288,7 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 	session.onPeersExhausted(cids[len(cids)-2:])
 
 	// Wait for want request
-	receivedWantReq = <-fwm.wantReqs
+	receivedWantReq = <-fpm.wantReqs
 
 	// Should have sent out broadcast request for wants
 	if len(receivedWantReq.cids) != 2 {
@@ -295,15 +299,15 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	fwm := newFakeWantManager()
-	fpm := newFakeSessionPeerManager()
+	fpm := newFakePeerManager()
+	fspm := newFakeSessionPeerManager()
 	fpf := newFakeProviderFinder()
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	notif := notifications.New()
 	defer notif.Shutdown()
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm, fpf, sim, newFakePeerManager(), bpm, notif, 10*time.Millisecond, delay.Fixed(100*time.Millisecond), "")
+	session := New(ctx, id, fspm, fpf, sim, fpm, bpm, notif, 10*time.Millisecond, delay.Fixed(100*time.Millisecond), "")
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(4)
 	var cids []cid.Cid
@@ -318,14 +322,14 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 
 	// The session should initially broadcast want-haves
 	select {
-	case <-fwm.wantReqs:
+	case <-fpm.wantReqs:
 	case <-ctx.Done():
 		t.Fatal("Did not make first want request ")
 	}
 
 	// Verify a broadcast was made
 	select {
-	case receivedWantReq := <-fwm.wantReqs:
+	case receivedWantReq := <-fpm.wantReqs:
 		if len(receivedWantReq.cids) < len(cids) {
 			t.Fatal("did not rebroadcast whole live list")
 		}
@@ -346,7 +350,7 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 
 	// Wait for another broadcast to occur
 	select {
-	case receivedWantReq := <-fwm.wantReqs:
+	case receivedWantReq := <-fpm.wantReqs:
 		if len(receivedWantReq.cids) < len(cids) {
 			t.Fatal("did not rebroadcast whole live list")
 		}
@@ -357,7 +361,7 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	// Wait for another broadcast to occur
 	startTick = time.Now()
 	select {
-	case receivedWantReq := <-fwm.wantReqs:
+	case receivedWantReq := <-fpm.wantReqs:
 		if len(receivedWantReq.cids) < len(cids) {
 			t.Fatal("did not rebroadcast whole live list")
 		}
@@ -374,7 +378,7 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	// Wait for another broadcast to occur
 	startTick = time.Now()
 	select {
-	case receivedWantReq := <-fwm.wantReqs:
+	case receivedWantReq := <-fpm.wantReqs:
 		if len(receivedWantReq.cids) < len(cids) {
 			t.Fatal("did not rebroadcast whole live list")
 		}
@@ -407,8 +411,8 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 }
 
 func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
-	fwm := newFakeWantManager()
-	fpm := newFakeSessionPeerManager()
+	fpm := newFakePeerManager()
+	fspm := newFakeSessionPeerManager()
 	fpf := newFakeProviderFinder()
 	sim := bssim.New()
 	bpm := bsbpm.New()
@@ -418,7 +422,7 @@ func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
 
 	// Create a new session with its own context
 	sessctx, sesscancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	session := New(sessctx, id, fwm, fpm, fpf, sim, newFakePeerManager(), bpm, notif, time.Second, delay.Fixed(time.Minute), "")
+	session := New(sessctx, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
 
 	timerCtx, timerCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer timerCancel()
@@ -450,8 +454,8 @@ func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
 
 func TestSessionReceiveMessageAfterShutdown(t *testing.T) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	fwm := newFakeWantManager()
-	fpm := newFakeSessionPeerManager()
+	fpm := newFakePeerManager()
+	fspm := newFakeSessionPeerManager()
 	fpf := newFakeProviderFinder()
 
 	sim := bssim.New()
@@ -459,7 +463,7 @@ func TestSessionReceiveMessageAfterShutdown(t *testing.T) {
 	notif := notifications.New()
 	defer notif.Shutdown()
 	id := testutil.GenerateSessionID()
-	session := New(ctx, id, fwm, fpm, fpf, sim, newFakePeerManager(), bpm, notif, time.Second, delay.Fixed(time.Minute), "")
+	session := New(ctx, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
 	blockGenerator := blocksutil.NewBlockGenerator()
 	blks := blockGenerator.Blocks(2)
 	cids := []cid.Cid{blks[0].Cid(), blks[1].Cid()}
@@ -470,7 +474,7 @@ func TestSessionReceiveMessageAfterShutdown(t *testing.T) {
 	}
 
 	// Wait for initial want request
-	<-fwm.wantReqs
+	<-fpm.wantReqs
 
 	// Shut down session
 	cancelCtx()
