@@ -2,6 +2,7 @@ package simple
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -18,15 +19,18 @@ import (
 
 var logR = logging.Logger("reprovider.simple")
 
+// ErrClosed is returned by Trigger when operating on a closed reprovider.
+var ErrClosed = errors.New("reprovider service stopped")
+
 // KeyChanFunc is function streaming CIDs to pass to content routing
 type KeyChanFunc func(context.Context) (<-chan cid.Cid, error)
 
 // Reprovider reannounces blocks to the network
 type Reprovider struct {
-	// Reprovider context. Cancel to stop, then wait on doneCh.
-	ctx    context.Context
-	cancel context.CancelFunc
-	doneCh chan struct{}
+	// Reprovider context. Cancel to stop, then wait on closedCh.
+	ctx      context.Context
+	cancel   context.CancelFunc
+	closedCh chan struct{}
 
 	// Trigger triggers a reprovide.
 	trigger chan chan<- error
@@ -43,10 +47,10 @@ type Reprovider struct {
 func NewReprovider(ctx context.Context, reprovideIniterval time.Duration, rsys routing.ContentRouting, keyProvider KeyChanFunc) *Reprovider {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Reprovider{
-		ctx:     ctx,
-		cancel:  cancel,
-		doneCh:  make(chan struct{}),
-		trigger: make(chan chan<- error),
+		ctx:      ctx,
+		cancel:   cancel,
+		closedCh: make(chan struct{}),
+		trigger:  make(chan chan<- error),
 
 		rsys:        rsys,
 		keyProvider: keyProvider,
@@ -57,13 +61,13 @@ func NewReprovider(ctx context.Context, reprovideIniterval time.Duration, rsys r
 // Close the reprovider
 func (rp *Reprovider) Close() error {
 	rp.cancel()
-	<-rp.doneCh
+	<-rp.closedCh
 	return nil
 }
 
 // Run re-provides keys with 'tick' interval or when triggered
 func (rp *Reprovider) Run() {
-	defer close(rp.doneCh)
+	defer close(rp.closedCh)
 
 	var initialReprovideCh, reprovideCh <-chan time.Time
 
@@ -99,7 +103,7 @@ func (rp *Reprovider) Run() {
 
 		// only log if we've hit an actual error, otherwise just tell the client we're shutting down
 		if rp.ctx.Err() != nil {
-			err = fmt.Errorf("shutting down")
+			err = ErrClosed
 		} else if err != nil {
 			logR.Errorf("failed to reprovide: %s", err)
 		}
@@ -146,18 +150,18 @@ func (rp *Reprovider) Reprovide() error {
 //
 // Returns an error if a reprovide is already in progress.
 func (rp *Reprovider) Trigger(ctx context.Context) error {
-	doneCh := make(chan error, 1)
+	resultCh := make(chan error, 1)
 	select {
-	case rp.trigger <- doneCh:
+	case rp.trigger <- resultCh:
 	default:
 		return fmt.Errorf("reprovider is already running")
 	}
 
 	select {
-	case err := <-doneCh:
+	case err := <-resultCh:
 		return err
 	case <-rp.ctx.Done():
-		return fmt.Errorf("reprovide service stopping")
+		return ErrClosed
 	case <-ctx.Done():
 		return ctx.Err()
 	}

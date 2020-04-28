@@ -147,9 +147,13 @@ func TestTriggerTwice(t *testing.T) {
 	// Wait for the trigger to really start.
 	startCh <- struct{}{}
 
+	start := time.Now()
 	// Try to trigger again, this should fail immediately.
 	if err := reprov.Trigger(ctx); err == nil {
 		t.Fatal("expected an error")
+	}
+	if time.Since(start) > 10*time.Millisecond {
+		t.Fatal("expected reprovide to fail instantly")
 	}
 
 	// Let the trigger progress.
