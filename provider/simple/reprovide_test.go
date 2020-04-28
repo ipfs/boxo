@@ -63,6 +63,22 @@ func setupDag(t *testing.T) (nodes []cid.Cid, bstore blockstore.Blockstore) {
 }
 
 func TestReprovide(t *testing.T) {
+	testReprovide(t, func(r *Reprovider, ctx context.Context) error {
+		return r.Reprovide()
+	})
+}
+
+func TestTrigger(t *testing.T) {
+	testReprovide(t, func(r *Reprovider, ctx context.Context) error {
+		go r.Run()
+		time.Sleep(1 * time.Second)
+		defer r.Close()
+		err := r.Trigger(ctx)
+		return err
+	})
+}
+
+func testReprovide(t *testing.T, trigger func(r *Reprovider, ctx context.Context) error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -71,7 +87,7 @@ func TestReprovide(t *testing.T) {
 
 	keyProvider := NewBlockstoreProvider(bstore)
 	reprov := NewReprovider(ctx, time.Hour, clA, keyProvider)
-	err := reprov.Reprovide()
+	err := trigger(reprov, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +108,67 @@ func TestReprovide(t *testing.T) {
 		if providers[0].ID != idA {
 			t.Fatal("Somehow got the wrong peer back as a provider.")
 		}
+	}
+}
+
+func TestTriggerTwice(t *testing.T) {
+	// Ensure we can only trigger once at a time.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	clA, _, _, _ := setupRouting(t)
+
+	keyCh := make(chan cid.Cid)
+	startCh := make(chan struct{})
+	keyFunc := func(ctx context.Context) (<-chan cid.Cid, error) {
+		<-startCh
+		return keyCh, nil
+	}
+
+	reprov := NewReprovider(ctx, time.Hour, clA, keyFunc)
+	go reprov.Run()
+	defer reprov.Close()
+
+	// Wait for the reprovider to start, otherwise, the reprovider will
+	// think a concurrent reprovide is running.
+	//
+	// We _could_ fix this race... but that would be complexity for nothing.
+	// 1. We start a reprovide 1 minute after startup anyways.
+	// 2. The window is really narrow.
+	time.Sleep(1 * time.Second)
+
+	errCh := make(chan error, 2)
+
+	// Trigger in the background
+	go func() {
+		errCh <- reprov.Trigger(ctx)
+	}()
+
+	// Wait for the trigger to really start.
+	startCh <- struct{}{}
+
+	// Try to trigger again, this should fail immediately.
+	if err := reprov.Trigger(ctx); err == nil {
+		t.Fatal("expected an error")
+	}
+
+	// Let the trigger progress.
+	close(keyCh)
+
+	// Check the result.
+	err := <-errCh
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to trigger again, this should work.
+	go func() {
+		errCh <- reprov.Trigger(ctx)
+	}()
+	startCh <- struct{}{}
+	err = <-errCh
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
