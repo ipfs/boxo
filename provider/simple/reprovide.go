@@ -142,7 +142,7 @@ func (rp *Reprovider) Reprovide() error {
 	return nil
 }
 
-// Trigger starts reprovision process in rp.Run and waits for it to finish.
+// Trigger starts the reprovision process in rp.Run and waits for it to finish.
 //
 // Returns an error if a reprovide is already in progress.
 func (rp *Reprovider) Trigger(ctx context.Context) error {
