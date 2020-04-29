@@ -79,7 +79,7 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	tr := timeoutRecorder{}
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, latMultiplier, expProcessTime)
+		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 
@@ -102,7 +102,7 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 
 	// At this stage first set of keys should have timed out
 	if tr.timedOutCount() != len(firstks) {
-		t.Fatal("expected timeout")
+		t.Fatal("expected timeout", tr.timedOutCount(), len(firstks))
 	}
 
 	// Clear the recorded timed out keys
@@ -129,7 +129,7 @@ func TestDontHaveTimeoutMgrCancel(t *testing.T) {
 	tr := timeoutRecorder{}
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, latMultiplier, expProcessTime)
+		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 
@@ -160,7 +160,7 @@ func TestDontHaveTimeoutWantCancelWant(t *testing.T) {
 	tr := timeoutRecorder{}
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, latMultiplier, expProcessTime)
+		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 
@@ -204,7 +204,7 @@ func TestDontHaveTimeoutRepeatedAddPending(t *testing.T) {
 	tr := timeoutRecorder{}
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, latMultiplier, expProcessTime)
+		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 
@@ -222,6 +222,78 @@ func TestDontHaveTimeoutRepeatedAddPending(t *testing.T) {
 	}
 }
 
+func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
+	ks := testutil.GenerateCids(2)
+	latency := time.Millisecond * 40
+	latMultiplier := 1
+	expProcessTime := time.Duration(0)
+	msgLatencyMultiplier := 1
+	pc := &mockPeerConn{latency: latency}
+	tr := timeoutRecorder{}
+
+	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
+		dontHaveTimeout, maxTimeout, latMultiplier, msgLatencyMultiplier, expProcessTime)
+	dhtm.Start()
+	defer dhtm.Shutdown()
+
+	// Add keys
+	dhtm.AddPending(ks)
+
+	// expectedTimeout
+	// = expProcessTime + latency*time.Duration(latMultiplier)
+	// = 0 + 40ms * 1
+	// = 40ms
+
+	// Wait for less than the expected timeout
+	time.Sleep(25 * time.Millisecond)
+
+	// Receive two message latency updates
+	dhtm.UpdateMessageLatency(time.Millisecond * 20)
+	dhtm.UpdateMessageLatency(time.Millisecond * 10)
+
+	// alpha is 0.5 so timeout should be
+	// = (20ms * alpha) + (10ms * (1 - alpha))
+	// = (20ms * 0.5) + (10ms * 0.5)
+	// = 15ms
+	// We've already slept for 25ms so with the new 15ms timeout
+	// the keys should have timed out
+
+	// Give the queue some time to process the updates
+	time.Sleep(5 * time.Millisecond)
+
+	if tr.timedOutCount() != len(ks) {
+		t.Fatal("expected keys to timeout")
+	}
+}
+
+func TestDontHaveTimeoutMgrMessageLatencyMax(t *testing.T) {
+	ks := testutil.GenerateCids(2)
+	pc := &mockPeerConn{latency: time.Second} // ignored
+	tr := timeoutRecorder{}
+	msgLatencyMultiplier := 1
+	testMaxTimeout := time.Millisecond * 10
+
+	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
+		dontHaveTimeout, testMaxTimeout, pingLatencyMultiplier, msgLatencyMultiplier, maxExpectedWantProcessTime)
+	dhtm.Start()
+	defer dhtm.Shutdown()
+
+	// Add keys
+	dhtm.AddPending(ks)
+
+	// Receive a message latency update that would make the timeout greater
+	// than the maximum timeout
+	dhtm.UpdateMessageLatency(testMaxTimeout * 4)
+
+	// Sleep until just after the maximum timeout
+	time.Sleep(testMaxTimeout + 5*time.Millisecond)
+
+	// Keys should have timed out
+	if tr.timedOutCount() != len(ks) {
+		t.Fatal("expected keys to timeout")
+	}
+}
+
 func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 	ks := testutil.GenerateCids(2)
 	latency := time.Millisecond * 1
@@ -233,7 +305,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 	pc := &mockPeerConn{latency: latency, err: fmt.Errorf("ping error")}
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		defaultTimeout, latMultiplier, expProcessTime)
+		defaultTimeout, dontHaveTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 
@@ -267,7 +339,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 	pc := &mockPeerConn{latency: latency}
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		defaultTimeout, latMultiplier, expProcessTime)
+		defaultTimeout, dontHaveTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 
@@ -300,7 +372,7 @@ func TestDontHaveTimeoutNoTimeoutAfterShutdown(t *testing.T) {
 	pc := &mockPeerConn{latency: latency}
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, latMultiplier, expProcessTime)
+		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 
