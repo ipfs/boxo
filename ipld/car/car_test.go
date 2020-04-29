@@ -9,7 +9,7 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
 	dstest "github.com/ipfs/go-merkledag/test"
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 	"github.com/stretchr/testify/require"
@@ -96,7 +96,7 @@ func TestRoundtripSelective(t *testing.T) {
 
 	assertAddNodes(t, dserv, a, b, c, nd1, nd2, nd3)
 
-	ssb := builder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
 
 	// the graph assembled above looks as follows, in order:
 	// nd3 -> [c, nd2 -> [nd1 -> a, b, nd1 -> a]]
