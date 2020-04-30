@@ -303,14 +303,14 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 // HasBlock announces the existence of a block to this bitswap service. The
 // service will potentially notify its peers.
 func (bs *Bitswap) HasBlock(blk blocks.Block) error {
-	return bs.receiveBlocksFrom(context.Background(), time.Time{}, "", []blocks.Block{blk}, nil, nil)
+	return bs.receiveBlocksFrom(context.Background(), "", []blocks.Block{blk}, nil, nil)
 }
 
 // TODO: Some of this stuff really only needs to be done when adding a block
 // from the user, not when receiving it from the network.
 // In case you run `git blame` on this comment, I'll save you some time: ask
 // @whyrusleeping, I don't know the answers you seek.
-func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, at time.Time, from peer.ID, blks []blocks.Block, haves []cid.Cid, dontHaves []cid.Cid) error {
+func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []blocks.Block, haves []cid.Cid, dontHaves []cid.Cid) error {
 	select {
 	case <-bs.process.Closing():
 		return errors.New("bitswap is closed")
@@ -355,7 +355,7 @@ func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, at time.Time, from pee
 		combined = append(combined, allKs...)
 		combined = append(combined, haves...)
 		combined = append(combined, dontHaves...)
-		bs.pm.ResponseReceived(from, at, combined)
+		bs.pm.ResponseReceived(from, combined)
 	}
 
 	// Send all block keys (including duplicates) to any sessions that want them.
@@ -396,8 +396,6 @@ func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, at time.Time, from pee
 // ReceiveMessage is called by the network interface when a new message is
 // received.
 func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg.BitSwapMessage) {
-	now := time.Now()
-
 	bs.counterLk.Lock()
 	bs.counters.messagesRecvd++
 	bs.counterLk.Unlock()
@@ -421,7 +419,7 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 	dontHaves := incoming.DontHaves()
 	if len(iblocks) > 0 || len(haves) > 0 || len(dontHaves) > 0 {
 		// Process blocks
-		err := bs.receiveBlocksFrom(ctx, now, p, iblocks, haves, dontHaves)
+		err := bs.receiveBlocksFrom(ctx, p, iblocks, haves, dontHaves)
 		if err != nil {
 			log.Warnf("ReceiveMessage recvBlockFrom error: %s", err)
 			return

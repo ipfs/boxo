@@ -63,8 +63,11 @@ type MessageQueue struct {
 	maxMessageSize   int
 	sendErrorBackoff time.Duration
 
+	// Signals that there are outgoing wants / cancels ready to be processed
 	outgoingWork chan time.Time
-	responses    chan *Response
+
+	// Channel of CIDs of blocks / HAVEs / DONT_HAVEs received from the peer
+	responses chan []cid.Cid
 
 	// Take lock whenever any of these variables are modified
 	wllock    sync.Mutex
@@ -181,14 +184,6 @@ type DontHaveTimeoutManager interface {
 	UpdateMessageLatency(time.Duration)
 }
 
-// Response from the peer
-type Response struct {
-	// The time at which the response was received
-	at time.Time
-	// The blocks / HAVEs / DONT_HAVEs in the response
-	ks []cid.Cid
-}
-
 // New creates a new MessageQueue.
 func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeout OnDontHaveTimeout) *MessageQueue {
 	onTimeout := func(ks []cid.Cid) {
@@ -215,7 +210,7 @@ func newMessageQueue(ctx context.Context, p peer.ID, network MessageNetwork,
 		peerWants:           newRecallWantList(),
 		cancels:             cid.NewSet(),
 		outgoingWork:        make(chan time.Time, 1),
-		responses:           make(chan *Response, 8),
+		responses:           make(chan []cid.Cid, 8),
 		rebroadcastInterval: defaultRebroadcastInterval,
 		sendErrorBackoff:    sendErrorBackoff,
 		priority:            maxPriority,
@@ -320,7 +315,7 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 // ResponseReceived is called when a message is received from the network.
 // ks is the set of blocks, HAVEs and DONT_HAVEs in the message
 // Note that this is just used to calculate latency.
-func (mq *MessageQueue) ResponseReceived(at time.Time, ks []cid.Cid) {
+func (mq *MessageQueue) ResponseReceived(ks []cid.Cid) {
 	if len(ks) == 0 {
 		return
 	}
@@ -328,7 +323,7 @@ func (mq *MessageQueue) ResponseReceived(at time.Time, ks []cid.Cid) {
 	// These messages are just used to approximate latency, so if we get so
 	// many responses that they get backed up, just ignore the overflow.
 	select {
-	case mq.responses <- &Response{at, ks}:
+	case mq.responses <- ks:
 	default:
 	}
 }
@@ -541,8 +536,9 @@ func (mq *MessageQueue) simulateDontHaveWithTimeout(wantlist []bsmsg.Entry) {
 	mq.dhTimeoutMgr.AddPending(wants)
 }
 
-// handleResponse is called when a response is received from the peer
-func (mq *MessageQueue) handleResponse(res *Response) {
+// handleResponse is called when a response is received from the peer,
+// with the CIDs of received blocks / HAVEs / DONT_HAVEs
+func (mq *MessageQueue) handleResponse(ks []cid.Cid) {
 	now := time.Now()
 	earliest := time.Time{}
 
@@ -552,7 +548,7 @@ func (mq *MessageQueue) handleResponse(res *Response) {
 	// sent to the peer.
 	// Find the earliest request so as to calculate the longest latency as
 	// we want to be conservative when setting the timeout.
-	for _, c := range res.ks {
+	for _, c := range ks {
 		if at, ok := mq.bcstWants.sentAt[c]; ok && (earliest.IsZero() || at.Before(earliest)) {
 			earliest = at
 		}
