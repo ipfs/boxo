@@ -498,7 +498,7 @@ func TestSendingLargeMessages(t *testing.T) {
 	wantBlocks := testutil.GenerateCids(10)
 	entrySize := 44
 	maxMsgSize := entrySize * 3 // 3 wants
-	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMsgSize, sendErrorBackoff, dhtm)
+	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMsgSize, sendErrorBackoff, maxValidLatency, dhtm)
 
 	messageQueue.Startup()
 	messageQueue.AddWants(wantBlocks, []cid.Cid{})
@@ -578,7 +578,7 @@ func TestSendToPeerThatDoesntSupportHaveMonitorsTimeouts(t *testing.T) {
 	peerID := testutil.GeneratePeers(1)[0]
 
 	dhtm := &fakeDontHaveTimeoutMgr{}
-	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, dhtm)
+	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm)
 	messageQueue.Startup()
 
 	wbs := testutil.GenerateCids(10)
@@ -609,7 +609,7 @@ func TestResponseReceived(t *testing.T) {
 	peerID := testutil.GeneratePeers(1)[0]
 
 	dhtm := &fakeDontHaveTimeoutMgr{}
-	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, dhtm)
+	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm)
 	messageQueue.Startup()
 
 	cids := testutil.GenerateCids(10)
@@ -649,7 +649,7 @@ func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
 	peerID := testutil.GeneratePeers(1)[0]
 
 	dhtm := &fakeDontHaveTimeoutMgr{}
-	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, dhtm)
+	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm)
 	messageQueue.Startup()
 
 	cids := testutil.GenerateCids(2)
@@ -684,6 +684,48 @@ func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
 	}
 }
 
+func TestResponseReceivedDiscardsOutliers(t *testing.T) {
+	ctx := context.Background()
+	messagesSent := make(chan []bsmsg.Entry)
+	resetChan := make(chan struct{}, 1)
+	fakeSender := newFakeMessageSender(resetChan, messagesSent, false)
+	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
+	peerID := testutil.GeneratePeers(1)[0]
+
+	maxValLatency := 30 * time.Millisecond
+	dhtm := &fakeDontHaveTimeoutMgr{}
+	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValLatency, dhtm)
+	messageQueue.Startup()
+
+	cids := testutil.GenerateCids(4)
+
+	// Add some wants and wait 20ms
+	messageQueue.AddWants(cids[:2], nil)
+	collectMessages(ctx, t, messagesSent, 20*time.Millisecond)
+
+	// Add some more wants and wait long enough that the first wants will be
+	// outside the maximum valid latency, but the second wants will be inside
+	messageQueue.AddWants(cids[2:], nil)
+	collectMessages(ctx, t, messagesSent, maxValLatency-10*time.Millisecond)
+
+	// Receive a response for the wants
+	messageQueue.ResponseReceived(cids)
+
+	// Wait for the response to be processed by the message queue
+	time.Sleep(10 * time.Millisecond)
+
+	// Check that the latency calculation excludes the first wants
+	// (because they're older than max valid latency)
+	upds := dhtm.latencyUpdates()
+	if len(upds) != 1 {
+		t.Fatal("expected one latency update")
+	}
+	// Elapsed time should not include outliers
+	if upds[0] > maxValLatency {
+		t.Fatal("expected latency calculation to discard outliers")
+	}
+}
+
 func filterWantTypes(wantlist []bsmsg.Entry) ([]cid.Cid, []cid.Cid, []cid.Cid) {
 	var wbs []cid.Cid
 	var whs []cid.Cid
@@ -712,7 +754,7 @@ func BenchmarkMessageQueue(b *testing.B) {
 		dhtm := &fakeDontHaveTimeoutMgr{}
 		peerID := testutil.GeneratePeers(1)[0]
 
-		messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, dhtm)
+		messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm)
 		messageQueue.Startup()
 
 		go func() {
