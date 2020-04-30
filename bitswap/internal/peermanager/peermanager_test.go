@@ -35,7 +35,7 @@ func (fp *mockPeerQueue) AddWants(wbs []cid.Cid, whs []cid.Cid) {
 func (fp *mockPeerQueue) AddCancels(cs []cid.Cid) {
 	fp.msgs <- msg{fp.p, nil, nil, cs}
 }
-func (fp *mockPeerQueue) ResponseReceived(at time.Time, ks []cid.Cid) {
+func (fp *mockPeerQueue) ResponseReceived(ks []cid.Cid) {
 }
 
 type peerWants struct {

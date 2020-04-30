@@ -623,7 +623,7 @@ func TestResponseReceived(t *testing.T) {
 	collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
 
 	// Receive a response for some of the wants from both groups
-	messageQueue.ResponseReceived(time.Now(), []cid.Cid{cids[0], cids[6], cids[9]})
+	messageQueue.ResponseReceived([]cid.Cid{cids[0], cids[6], cids[9]})
 
 	// Wait a short time for processing
 	time.Sleep(10 * time.Millisecond)
