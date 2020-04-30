@@ -640,6 +640,50 @@ func TestResponseReceived(t *testing.T) {
 	}
 }
 
+func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
+	ctx := context.Background()
+	messagesSent := make(chan []bsmsg.Entry)
+	resetChan := make(chan struct{}, 1)
+	fakeSender := newFakeMessageSender(resetChan, messagesSent, false)
+	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
+	peerID := testutil.GeneratePeers(1)[0]
+
+	dhtm := &fakeDontHaveTimeoutMgr{}
+	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, dhtm)
+	messageQueue.Startup()
+
+	cids := testutil.GenerateCids(2)
+
+	// Add some wants and wait 10ms
+	messageQueue.AddWants(cids, nil)
+	collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+
+	// Receive a response for the wants
+	messageQueue.ResponseReceived(cids)
+
+	// Wait another 10ms
+	time.Sleep(10 * time.Millisecond)
+
+	// Message queue should inform DHTM of first response
+	upds := dhtm.latencyUpdates()
+	if len(upds) != 1 {
+		t.Fatal("expected one latency update")
+	}
+
+	// Receive a second response for the same wants
+	messageQueue.ResponseReceived(cids)
+
+	// Wait for the response to be processed by the message queue
+	time.Sleep(10 * time.Millisecond)
+
+	// Message queue should not inform DHTM of second response because the
+	// CIDs are a subset of the first response
+	upds = dhtm.latencyUpdates()
+	if len(upds) != 1 {
+		t.Fatal("expected one latency update")
+	}
+}
+
 func filterWantTypes(wantlist []bsmsg.Entry) ([]cid.Cid, []cid.Cid, []cid.Cid) {
 	var wbs []cid.Cid
 	var whs []cid.Cid

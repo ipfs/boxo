@@ -147,6 +147,13 @@ func (r *recallWantlist) SentAt(c cid.Cid, at time.Time) {
 	}
 }
 
+// ClearSentAt clears out the record of the time a want was sent.
+// We clear the sent at time when we receive a response for a key so that
+// subsequent responses for the key don't appear to be even further delayed.
+func (r *recallWantlist) ClearSentAt(c cid.Cid) {
+	delete(r.sentAt, c)
+}
+
 type peerConn struct {
 	p       peer.ID
 	network MessageNetwork
@@ -549,11 +556,20 @@ func (mq *MessageQueue) handleResponse(ks []cid.Cid) {
 	// Find the earliest request so as to calculate the longest latency as
 	// we want to be conservative when setting the timeout.
 	for _, c := range ks {
-		if at, ok := mq.bcstWants.sentAt[c]; ok && (earliest.IsZero() || at.Before(earliest)) {
-			earliest = at
+		if at, ok := mq.bcstWants.sentAt[c]; ok {
+			if earliest.IsZero() || at.Before(earliest) {
+				earliest = at
+			}
+			mq.bcstWants.ClearSentAt(c)
 		}
-		if at, ok := mq.peerWants.sentAt[c]; ok && (earliest.IsZero() || at.Before(earliest)) {
-			earliest = at
+		if at, ok := mq.peerWants.sentAt[c]; ok {
+			if earliest.IsZero() || at.Before(earliest) {
+				earliest = at
+			}
+			// Clear out the sent time for the CID because we only want to
+			// record the latency between the request and the first response
+			// for that CID (not subsequent responses)
+			mq.peerWants.ClearSentAt(c)
 		}
 	}
 
