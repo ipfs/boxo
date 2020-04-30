@@ -41,6 +41,9 @@ const (
 	// when we debounce for more than sendMessageMaxDelay, we'll send the
 	// message immediately.
 	sendMessageMaxDelay = 20 * time.Millisecond
+	// The maximum amount of time in which to accept a response as being valid
+	// for latency calculation (as opposed to discarding it as an outlier)
+	maxValidLatency = 30 * time.Second
 )
 
 // MessageNetwork is any network that can connect peers and generate a message
@@ -55,13 +58,23 @@ type MessageNetwork interface {
 
 // MessageQueue implements queue of want messages to send to peers.
 type MessageQueue struct {
-	ctx              context.Context
-	shutdown         func()
-	p                peer.ID
-	network          MessageNetwork
-	dhTimeoutMgr     DontHaveTimeoutManager
-	maxMessageSize   int
+	ctx          context.Context
+	shutdown     func()
+	p            peer.ID
+	network      MessageNetwork
+	dhTimeoutMgr DontHaveTimeoutManager
+
+	// The maximum size of a message in bytes. Any overflow is put into the
+	// next message
+	maxMessageSize int
+
+	// The amount of time to wait when there's an error sending to a peer
+	// before retrying
 	sendErrorBackoff time.Duration
+
+	// The maximum amount of time in which to accept a response as being valid
+	// for latency calculation
+	maxValidLatency time.Duration
 
 	// Signals that there are outgoing wants / cancels ready to be processed
 	outgoingWork chan time.Time
@@ -198,12 +211,18 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeo
 		onDontHaveTimeout(p, ks)
 	}
 	dhTimeoutMgr := newDontHaveTimeoutMgr(newPeerConnection(p, network), onTimeout)
-	return newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff, dhTimeoutMgr)
+	return newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff, maxValidLatency, dhTimeoutMgr)
 }
 
 // This constructor is used by the tests
-func newMessageQueue(ctx context.Context, p peer.ID, network MessageNetwork,
-	maxMsgSize int, sendErrorBackoff time.Duration, dhTimeoutMgr DontHaveTimeoutManager) *MessageQueue {
+func newMessageQueue(
+	ctx context.Context,
+	p peer.ID,
+	network MessageNetwork,
+	maxMsgSize int,
+	sendErrorBackoff time.Duration,
+	maxValidLatency time.Duration,
+	dhTimeoutMgr DontHaveTimeoutManager) *MessageQueue {
 
 	ctx, cancel := context.WithCancel(ctx)
 	return &MessageQueue{
@@ -220,6 +239,7 @@ func newMessageQueue(ctx context.Context, p peer.ID, network MessageNetwork,
 		responses:           make(chan []cid.Cid, 8),
 		rebroadcastInterval: defaultRebroadcastInterval,
 		sendErrorBackoff:    sendErrorBackoff,
+		maxValidLatency:     maxValidLatency,
 		priority:            maxPriority,
 		// For performance reasons we just clear out the fields of the message
 		// after using it, instead of creating a new one every time.
@@ -553,17 +573,24 @@ func (mq *MessageQueue) handleResponse(ks []cid.Cid) {
 
 	// Check if the keys in the response correspond to any request that was
 	// sent to the peer.
-	// Find the earliest request so as to calculate the longest latency as
-	// we want to be conservative when setting the timeout.
+	//
+	// - Find the earliest request so as to calculate the longest latency as
+	//   we want to be conservative when setting the timeout
+	// - Ignore latencies that are very long, as these are likely to be outliers
+	//   caused when
+	//   - we send a want to peer A
+	//   - peer A does not have the block
+	//   - peer A later receives the block from peer B
+	//   - peer A sends us HAVE / block
 	for _, c := range ks {
 		if at, ok := mq.bcstWants.sentAt[c]; ok {
-			if earliest.IsZero() || at.Before(earliest) {
+			if (earliest.IsZero() || at.Before(earliest)) && now.Sub(at) < mq.maxValidLatency {
 				earliest = at
 			}
 			mq.bcstWants.ClearSentAt(c)
 		}
 		if at, ok := mq.peerWants.sentAt[c]; ok {
-			if earliest.IsZero() || at.Before(earliest) {
+			if (earliest.IsZero() || at.Before(earliest)) && now.Sub(at) < mq.maxValidLatency {
 				earliest = at
 			}
 			// Clear out the sent time for the CID because we only want to
