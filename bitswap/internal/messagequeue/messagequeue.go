@@ -161,8 +161,8 @@ func (r *recallWantlist) SentAt(c cid.Cid, at time.Time) {
 }
 
 // ClearSentAt clears out the record of the time a want was sent.
-// We clear the sent at time when we receive a response for a key so that
-// subsequent responses for the key don't appear to be even further delayed.
+// We clear the sent at time when we receive a response for a key as we
+// only need the first response for latency measurement.
 func (r *recallWantlist) ClearSentAt(c cid.Cid) {
 	delete(r.sentAt, c)
 }
@@ -201,6 +201,7 @@ type DontHaveTimeoutManager interface {
 	AddPending([]cid.Cid)
 	// CancelPending removes the wants
 	CancelPending([]cid.Cid)
+	// UpdateMessageLatency informs the manager of a new latency measurement
 	UpdateMessageLatency(time.Duration)
 }
 
