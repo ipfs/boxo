@@ -83,7 +83,7 @@ func TestInterestedSessions(t *testing.T) {
 	}
 }
 
-func TestRemoveSessionInterest(t *testing.T) {
+func TestRemoveSession(t *testing.T) {
 	sim := New()
 
 	ses1 := uint64(1)
@@ -92,7 +92,7 @@ func TestRemoveSessionInterest(t *testing.T) {
 	cids2 := append(testutil.GenerateCids(1), cids1[1])
 	sim.RecordSessionInterest(ses1, cids1)
 	sim.RecordSessionInterest(ses2, cids2)
-	sim.RemoveSessionInterest(ses1)
+	sim.RemoveSession(ses1)
 
 	res := sim.FilterSessionInterested(ses1, cids1)
 	if len(res) != 1 || len(res[0]) != 0 {
@@ -108,6 +108,42 @@ func TestRemoveSessionInterest(t *testing.T) {
 	}
 	if len(res[1]) != 2 {
 		t.Fatal("Expected 2 keys")
+	}
+}
+
+func TestRemoveSessionInterested(t *testing.T) {
+	sim := New()
+
+	ses1 := uint64(1)
+	ses2 := uint64(2)
+	cids1 := testutil.GenerateCids(2)
+	cids2 := append(testutil.GenerateCids(1), cids1[1])
+	sim.RecordSessionInterest(ses1, cids1)
+	sim.RecordSessionInterest(ses2, cids2)
+
+	res := sim.RemoveSessionInterested(ses1, []cid.Cid{cids1[0]})
+	if len(res) != 1 {
+		t.Fatal("Expected no interested sessions left")
+	}
+
+	interested := sim.FilterSessionInterested(ses1, cids1)
+	if len(interested) != 1 || len(interested[0]) != 1 {
+		t.Fatal("Expected ses1 still interested in one cid")
+	}
+
+	res = sim.RemoveSessionInterested(ses1, cids1)
+	if len(res) != 0 {
+		t.Fatal("Expected ses2 to be interested in one cid")
+	}
+
+	interested = sim.FilterSessionInterested(ses1, cids1)
+	if len(interested) != 1 || len(interested[0]) != 0 {
+		t.Fatal("Expected ses1 to have no remaining interest")
+	}
+
+	interested = sim.FilterSessionInterested(ses2, cids1)
+	if len(interested) != 1 || len(interested[0]) != 1 {
+		t.Fatal("Expected ses2 to still be interested in one key")
 	}
 }
 

@@ -136,10 +136,12 @@ func TestSendWants(t *testing.T) {
 	sid := uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
+	swc := newMockSessionMgr()
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, onPeersExhausted)
+	defer spm.Shutdown()
 
 	go spm.Run()
 
@@ -174,10 +176,12 @@ func TestSendsWantBlockToOnePeerOnly(t *testing.T) {
 	sid := uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
+	swc := newMockSessionMgr()
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, onPeersExhausted)
+	defer spm.Shutdown()
 
 	go spm.Run()
 
@@ -232,10 +236,12 @@ func TestReceiveBlock(t *testing.T) {
 	sid := uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
+	swc := newMockSessionMgr()
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, onPeersExhausted)
+	defer spm.Shutdown()
 
 	go spm.Run()
 
@@ -284,6 +290,40 @@ func TestReceiveBlock(t *testing.T) {
 	}
 }
 
+func TestCancelWants(t *testing.T) {
+	cids := testutil.GenerateCids(4)
+	sid := uint64(1)
+	pm := newMockPeerManager()
+	fpm := newFakeSessionPeerManager()
+	swc := newMockSessionMgr()
+	bpm := bsbpm.New()
+	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
+	onPeersExhausted := func([]cid.Cid) {}
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, onPeersExhausted)
+	defer spm.Shutdown()
+
+	go spm.Run()
+
+	// add cid0, cid1, cid2
+	blkCids := cids[0:3]
+	spm.Add(blkCids)
+
+	time.Sleep(5 * time.Millisecond)
+
+	// cancel cid0, cid2
+	cancelCids := []cid.Cid{cids[0], cids[2]}
+	spm.Cancel(cancelCids)
+
+	// Wait for processing to complete
+	time.Sleep(5 * time.Millisecond)
+
+	// Should have sent cancels for cid0, cid2
+	sent := swc.cancelled()
+	if !testutil.MatchKeysIgnoreOrder(sent, cancelCids) {
+		t.Fatal("Wrong keys")
+	}
+}
+
 func TestPeerUnavailable(t *testing.T) {
 	cids := testutil.GenerateCids(2)
 	peers := testutil.GeneratePeers(2)
@@ -292,10 +332,12 @@ func TestPeerUnavailable(t *testing.T) {
 	sid := uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
+	swc := newMockSessionMgr()
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, onPeersExhausted)
+	defer spm.Shutdown()
 
 	go spm.Run()
 
@@ -357,11 +399,12 @@ func TestPeersExhausted(t *testing.T) {
 	sid := uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
+	swc := newMockSessionMgr()
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 
 	ep := exhaustedPeers{}
-	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, ep.onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, ep.onPeersExhausted)
 
 	go spm.Run()
 
@@ -433,11 +476,12 @@ func TestPeersExhaustedLastWaitingPeerUnavailable(t *testing.T) {
 	sid := uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
+	swc := newMockSessionMgr()
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 
 	ep := exhaustedPeers{}
-	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, ep.onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, ep.onPeersExhausted)
 
 	go spm.Run()
 
@@ -481,11 +525,12 @@ func TestPeersExhaustedAllPeersUnavailable(t *testing.T) {
 	sid := uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
+	swc := newMockSessionMgr()
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 
 	ep := exhaustedPeers{}
-	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, ep.onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, ep.onPeersExhausted)
 
 	go spm.Run()
 
@@ -520,10 +565,12 @@ func TestConsecutiveDontHaveLimit(t *testing.T) {
 	sid := uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
+	swc := newMockSessionMgr()
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, onPeersExhausted)
+	defer spm.Shutdown()
 
 	go spm.Run()
 
@@ -576,10 +623,12 @@ func TestConsecutiveDontHaveLimitInterrupted(t *testing.T) {
 	sid := uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
+	swc := newMockSessionMgr()
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, onPeersExhausted)
+	defer spm.Shutdown()
 
 	go spm.Run()
 
@@ -631,10 +680,12 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	sid := uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
+	swc := newMockSessionMgr()
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, onPeersExhausted)
+	defer spm.Shutdown()
 
 	go spm.Run()
 
@@ -715,10 +766,12 @@ func TestConsecutiveDontHaveDontRemoveIfHasWantedBlock(t *testing.T) {
 	sid := uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
+	swc := newMockSessionMgr()
 	bpm := bsbpm.New()
 	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
 	onPeersExhausted := func([]cid.Cid) {}
-	spm := newSessionWantSender(sid, pm, fpm, bpm, onSend, onPeersExhausted)
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, onPeersExhausted)
+	defer spm.Shutdown()
 
 	go spm.Run()
 
