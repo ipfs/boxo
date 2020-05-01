@@ -109,3 +109,13 @@ func (bpm *BlockPresenceManager) RemoveKeys(ks []cid.Cid) {
 		delete(bpm.presence, c)
 	}
 }
+
+// HasKey indicates whether the BlockPresenceManager is tracking the given key
+// (used by the tests)
+func (bpm *BlockPresenceManager) HasKey(c cid.Cid) bool {
+	bpm.Lock()
+	defer bpm.Unlock()
+
+	_, ok := bpm.presence[c]
+	return ok
+}

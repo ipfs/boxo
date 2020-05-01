@@ -30,6 +30,12 @@ const (
 	BPHave
 )
 
+// SessionWantsCanceller provides a method to cancel wants
+type SessionWantsCanceller interface {
+	// Cancel wants for this session
+	CancelSessionWants(sid uint64, wants []cid.Cid)
+}
+
 // update encapsulates a message received by the session
 type update struct {
 	// Which peer sent the update
@@ -53,6 +59,8 @@ type peerAvailability struct {
 type change struct {
 	// new wants requested
 	add []cid.Cid
+	// wants cancelled
+	cancel []cid.Cid
 	// new message received by session (blocks / HAVEs / DONT_HAVEs)
 	update update
 	// peer has connected / disconnected
@@ -94,6 +102,8 @@ type sessionWantSender struct {
 	pm PeerManager
 	// Keeps track of peers in the session
 	spm SessionPeerManager
+	// Cancels wants
+	canceller SessionWantsCanceller
 	// Keeps track of which peer has / doesn't have a block
 	bpm *bsbpm.BlockPresenceManager
 	// Called when wants are sent
@@ -102,7 +112,7 @@ type sessionWantSender struct {
 	onPeersExhausted onPeersExhaustedFn
 }
 
-func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager,
+func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager, canceller SessionWantsCanceller,
 	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn) sessionWantSender {
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -119,6 +129,7 @@ func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager,
 
 		pm:               pm,
 		spm:              spm,
+		canceller:        canceller,
 		bpm:              bpm,
 		onSend:           onSend,
 		onPeersExhausted: onPeersExhausted,
@@ -139,6 +150,14 @@ func (sws *sessionWantSender) Add(ks []cid.Cid) {
 	sws.addChange(change{add: ks})
 }
 
+// Cancel is called when a request is cancelled
+func (sws *sessionWantSender) Cancel(ks []cid.Cid) {
+	if len(ks) == 0 {
+		return
+	}
+	sws.addChange(change{cancel: ks})
+}
+
 // Update is called when the session receives a message with incoming blocks
 // or HAVE / DONT_HAVE
 func (sws *sessionWantSender) Update(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
@@ -156,7 +175,9 @@ func (sws *sessionWantSender) Update(from peer.ID, ks []cid.Cid, haves []cid.Cid
 // connected / disconnected
 func (sws *sessionWantSender) SignalAvailability(p peer.ID, isAvailable bool) {
 	availability := peerAvailability{p, isAvailable}
-	sws.addChange(change{availability: availability})
+	// Add the change in a non-blocking manner to avoid the possibility of a
+	// deadlock
+	sws.addChangeNonBlocking(change{availability: availability})
 }
 
 // Run is the main loop for processing incoming changes
@@ -193,6 +214,22 @@ func (sws *sessionWantSender) addChange(c change) {
 	}
 }
 
+// addChangeNonBlocking adds a new change to the queue, using a go-routine
+// if the change blocks, so as to avoid potential deadlocks
+func (sws *sessionWantSender) addChangeNonBlocking(c change) {
+	select {
+	case sws.changes <- c:
+	default:
+		// changes channel is full, so add change in a go routine instead
+		go func() {
+			select {
+			case sws.changes <- c:
+			case <-sws.ctx.Done():
+			}
+		}()
+	}
+}
+
 // collectChanges collects all the changes that have occurred since the last
 // invocation of onChange
 func (sws *sessionWantSender) collectChanges(changes []change) []change {
@@ -215,11 +252,18 @@ func (sws *sessionWantSender) onChange(changes []change) {
 
 	// Apply each change
 	availability := make(map[peer.ID]bool, len(changes))
+	cancels := make([]cid.Cid, 0)
 	var updates []update
 	for _, chng := range changes {
 		// Initialize info for new wants
 		for _, c := range chng.add {
 			sws.trackWant(c)
+		}
+
+		// Remove cancelled wants
+		for _, c := range chng.cancel {
+			sws.untrackWant(c)
+			cancels = append(cancels, c)
 		}
 
 		// Consolidate updates and changes to availability
@@ -246,6 +290,11 @@ func (sws *sessionWantSender) onChange(changes []change) {
 	// Check if there are any wants for which all peers have indicated they
 	// don't have the want
 	sws.checkForExhaustedWants(dontHaves, newlyUnavailable)
+
+	// If there are any cancels, send them
+	if len(cancels) > 0 {
+		sws.canceller.CancelSessionWants(sws.sessionID, cancels)
+	}
 
 	// If there are some connected peers, send any pending wants
 	if sws.spm.HasPeers() {
@@ -304,6 +353,11 @@ func (sws *sessionWantSender) trackWant(c cid.Cid) {
 	for _, p := range sws.spm.Peers() {
 		sws.updateWantBlockPresence(c, p)
 	}
+}
+
+// untrackWant removes an entry from the map of CID -> want info
+func (sws *sessionWantSender) untrackWant(c cid.Cid) {
+	delete(sws.wants, c)
 }
 
 // processUpdates processes incoming blocks and HAVE / DONT_HAVEs.
