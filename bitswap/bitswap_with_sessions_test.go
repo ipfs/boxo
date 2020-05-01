@@ -9,10 +9,12 @@ import (
 	bitswap "github.com/ipfs/go-bitswap"
 	bssession "github.com/ipfs/go-bitswap/internal/session"
 	testinstance "github.com/ipfs/go-bitswap/testinstance"
+	tn "github.com/ipfs/go-bitswap/testnet"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	delay "github.com/ipfs/go-ipfs-delay"
+	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 	tu "github.com/libp2p/go-libp2p-testing/etc"
 )
 
@@ -71,7 +73,7 @@ func TestSessionBetweenPeers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	vnet := getVirtualNetwork()
+	vnet := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(time.Millisecond))
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
@@ -112,6 +114,10 @@ func TestSessionBetweenPeers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	// Uninvolved nodes should receive
+	// - initial broadcast want-have of root block
+	// - CANCEL (when Peer A receives the root block from Peer B)
 	for _, is := range inst[2:] {
 		stat, err := is.Exchange.Stat()
 		if err != nil {
