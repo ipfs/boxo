@@ -353,6 +353,16 @@ func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []b
 		allKs = append(allKs, b.Cid())
 	}
 
+	// If the message came from the network
+	if from != "" {
+		// Inform the PeerManager so that we can calculate per-peer latency
+		combined := make([]cid.Cid, 0, len(allKs)+len(haves)+len(dontHaves))
+		combined = append(combined, allKs...)
+		combined = append(combined, haves...)
+		combined = append(combined, dontHaves...)
+		bs.pm.ResponseReceived(from, combined)
+	}
+
 	// Send all block keys (including duplicates) to any sessions that want them.
 	// (The duplicates are needed by sessions for accounting purposes)
 	bs.sm.ReceiveFrom(ctx, from, allKs, haves, dontHaves)
