@@ -18,6 +18,7 @@ type PeerQueue interface {
 	AddBroadcastWantHaves([]cid.Cid)
 	AddWants([]cid.Cid, []cid.Cid)
 	AddCancels([]cid.Cid)
+	ResponseReceived(ks []cid.Cid)
 	Startup()
 	Shutdown()
 }
@@ -114,6 +115,19 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 	delete(pm.peerQueues, p)
 	pq.Shutdown()
 	pm.pwm.removePeer(p)
+}
+
+// ResponseReceived is called when a message is received from the network.
+// ks is the set of blocks, HAVEs and DONT_HAVEs in the message
+// Note that this is just used to calculate latency.
+func (pm *PeerManager) ResponseReceived(p peer.ID, ks []cid.Cid) {
+	pm.pqLk.Lock()
+	pq, ok := pm.peerQueues[p]
+	pm.pqLk.Unlock()
+
+	if ok {
+		pq.ResponseReceived(ks)
+	}
 }
 
 // BroadcastWantHaves broadcasts want-haves to all peers (used by the session
