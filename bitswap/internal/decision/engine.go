@@ -334,8 +334,8 @@ func (e *Engine) onPeerRemoved(p peer.ID) {
 	e.peerTagger.UntagPeer(p, e.tagQueued)
 }
 
-// WantlistForPeer returns the currently understood want list for a given peer
-func (e *Engine) WantlistForPeer(p peer.ID) (out []wl.Entry) {
+// WantlistForPeer returns the list of keys that the given peer has asked for
+func (e *Engine) WantlistForPeer(p peer.ID) []wl.Entry {
 	partner := e.findOrCreate(p)
 
 	partner.lk.Lock()
@@ -343,7 +343,8 @@ func (e *Engine) WantlistForPeer(p peer.ID) (out []wl.Entry) {
 	partner.lk.Unlock()
 
 	wl.SortEntries(entries)
-	return
+
+	return entries
 }
 
 // LedgerForPeer returns aggregated data about blocks swapped and communication
