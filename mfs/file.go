@@ -64,7 +64,7 @@ func (fi *File) Open(flags Flags) (_ FileDescriptor, _retErr error) {
 		fi.desclock.RLock()
 		defer func() {
 			if _retErr != nil {
-				fi.desclock.Unlock()
+				fi.desclock.RUnlock()
 			}
 		}()
 	} else {
