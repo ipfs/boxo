@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-bitswap/internal/testutil"
-
 	cid "github.com/ipfs/go-cid"
+	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
 type gauge struct {
@@ -19,6 +19,42 @@ func (g *gauge) Dec() {
 	g.count--
 }
 
+type mockPQ struct {
+	bcst    []cid.Cid
+	wbs     []cid.Cid
+	whs     []cid.Cid
+	cancels []cid.Cid
+}
+
+func (mpq *mockPQ) clear() {
+	mpq.bcst = nil
+	mpq.wbs = nil
+	mpq.whs = nil
+	mpq.cancels = nil
+}
+
+func (mpq *mockPQ) Startup()  {}
+func (mpq *mockPQ) Shutdown() {}
+
+func (mpq *mockPQ) AddBroadcastWantHaves(whs []cid.Cid) {
+	mpq.bcst = append(mpq.bcst, whs...)
+}
+func (mpq *mockPQ) AddWants(wbs []cid.Cid, whs []cid.Cid) {
+	mpq.wbs = append(mpq.wbs, wbs...)
+	mpq.whs = append(mpq.whs, whs...)
+}
+func (mpq *mockPQ) AddCancels(cs []cid.Cid) {
+	mpq.cancels = append(mpq.cancels, cs...)
+}
+func (mpq *mockPQ) ResponseReceived(ks []cid.Cid) {
+}
+
+func clearSent(pqs map[peer.ID]PeerQueue) {
+	for _, pqi := range pqs {
+		pqi.(*mockPQ).clear()
+	}
+}
+
 func TestEmpty(t *testing.T) {
 	pwm := newPeerWantManager(&gauge{})
 
@@ -30,7 +66,7 @@ func TestEmpty(t *testing.T) {
 	}
 }
 
-func TestPrepareBroadcastWantHaves(t *testing.T) {
+func TestPWMBroadcastWantHaves(t *testing.T) {
 	pwm := newPeerWantManager(&gauge{})
 
 	peers := testutil.GeneratePeers(3)
@@ -38,74 +74,87 @@ func TestPrepareBroadcastWantHaves(t *testing.T) {
 	cids2 := testutil.GenerateCids(2)
 	cids3 := testutil.GenerateCids(2)
 
-	if blist := pwm.addPeer(peers[0]); len(blist) > 0 {
-		t.Errorf("expected no broadcast wants")
-	}
-	if blist := pwm.addPeer(peers[1]); len(blist) > 0 {
-		t.Errorf("expected no broadcast wants")
+	peerQueues := make(map[peer.ID]PeerQueue)
+	for _, p := range peers[:2] {
+		pq := &mockPQ{}
+		peerQueues[p] = pq
+		pwm.addPeer(pq, p)
+		if len(pq.bcst) > 0 {
+			t.Errorf("expected no broadcast wants")
+		}
 	}
 
 	// Broadcast 2 cids to 2 peers
-	bcst := pwm.prepareBroadcastWantHaves(cids)
-	if len(bcst) != 2 {
-		t.Fatal("Expected 2 peers")
-	}
-	for p := range bcst {
-		if !testutil.MatchKeysIgnoreOrder(bcst[p], cids) {
+	pwm.broadcastWantHaves(cids)
+	for _, pqi := range peerQueues {
+		pq := pqi.(*mockPQ)
+		if len(pq.bcst) != 2 {
+			t.Fatal("Expected 2 want-haves")
+		}
+		if !testutil.MatchKeysIgnoreOrder(pq.bcst, cids) {
 			t.Fatal("Expected all cids to be broadcast")
 		}
 	}
 
 	// Broadcasting same cids should have no effect
-	bcst2 := pwm.prepareBroadcastWantHaves(cids)
-	if len(bcst2) != 0 {
-		t.Fatal("Expected 0 peers")
+	clearSent(peerQueues)
+	pwm.broadcastWantHaves(cids)
+	for _, pqi := range peerQueues {
+		pq := pqi.(*mockPQ)
+		if len(pq.bcst) != 0 {
+			t.Fatal("Expected 0 want-haves")
+		}
 	}
 
 	// Broadcast 2 other cids
-	bcst3 := pwm.prepareBroadcastWantHaves(cids2)
-	if len(bcst3) != 2 {
-		t.Fatal("Expected 2 peers")
-	}
-	for p := range bcst3 {
-		if !testutil.MatchKeysIgnoreOrder(bcst3[p], cids2) {
+	clearSent(peerQueues)
+	pwm.broadcastWantHaves(cids2)
+	for _, pqi := range peerQueues {
+		pq := pqi.(*mockPQ)
+		if len(pq.bcst) != 2 {
+			t.Fatal("Expected 2 want-haves")
+		}
+		if !testutil.MatchKeysIgnoreOrder(pq.bcst, cids2) {
 			t.Fatal("Expected all new cids to be broadcast")
 		}
 	}
 
 	// Broadcast mix of old and new cids
-	bcst4 := pwm.prepareBroadcastWantHaves(append(cids, cids3...))
-	if len(bcst4) != 2 {
-		t.Fatal("Expected 2 peers")
-	}
-	// Only new cids should be broadcast
-	for p := range bcst4 {
-		if !testutil.MatchKeysIgnoreOrder(bcst4[p], cids3) {
+	clearSent(peerQueues)
+	pwm.broadcastWantHaves(append(cids, cids3...))
+	for _, pqi := range peerQueues {
+		pq := pqi.(*mockPQ)
+		if len(pq.bcst) != 2 {
+			t.Fatal("Expected 2 want-haves")
+		}
+		// Only new cids should be broadcast
+		if !testutil.MatchKeysIgnoreOrder(pq.bcst, cids3) {
 			t.Fatal("Expected all new cids to be broadcast")
 		}
 	}
 
 	// Sending want-block for a cid should prevent broadcast to that peer
+	clearSent(peerQueues)
 	cids4 := testutil.GenerateCids(4)
 	wantBlocks := []cid.Cid{cids4[0], cids4[2]}
-	pwm.prepareSendWants(peers[0], wantBlocks, []cid.Cid{})
+	p0 := peers[0]
+	p1 := peers[1]
+	pwm.sendWants(p0, wantBlocks, []cid.Cid{})
 
-	bcst5 := pwm.prepareBroadcastWantHaves(cids4)
-	if len(bcst4) != 2 {
-		t.Fatal("Expected 2 peers")
+	pwm.broadcastWantHaves(cids4)
+	pq0 := peerQueues[p0].(*mockPQ)
+	if len(pq0.bcst) != 2 { // only broadcast 2 / 4 want-haves
+		t.Fatal("Expected 2 want-haves")
 	}
-	// Only cids that were not sent as want-block to peer should be broadcast
-	for p := range bcst5 {
-		if p == peers[0] {
-			if !testutil.MatchKeysIgnoreOrder(bcst5[p], []cid.Cid{cids4[1], cids4[3]}) {
-				t.Fatal("Expected unsent cids to be broadcast")
-			}
-		}
-		if p == peers[1] {
-			if !testutil.MatchKeysIgnoreOrder(bcst5[p], cids4) {
-				t.Fatal("Expected all cids to be broadcast")
-			}
-		}
+	if !testutil.MatchKeysIgnoreOrder(pq0.bcst, []cid.Cid{cids4[1], cids4[3]}) {
+		t.Fatalf("Expected unsent cids to be broadcast")
+	}
+	pq1 := peerQueues[p1].(*mockPQ)
+	if len(pq1.bcst) != 4 { // broadcast all 4 want-haves
+		t.Fatal("Expected 4 want-haves")
+	}
+	if !testutil.MatchKeysIgnoreOrder(pq1.bcst, cids4) {
+		t.Fatal("Expected all cids to be broadcast")
 	}
 
 	allCids := cids
@@ -114,17 +163,22 @@ func TestPrepareBroadcastWantHaves(t *testing.T) {
 	allCids = append(allCids, cids4...)
 
 	// Add another peer
-	bcst6 := pwm.addPeer(peers[2])
-	if !testutil.MatchKeysIgnoreOrder(bcst6, allCids) {
+	peer2 := peers[2]
+	pq2 := &mockPQ{}
+	peerQueues[peer2] = pq2
+	pwm.addPeer(pq2, peer2)
+	if !testutil.MatchKeysIgnoreOrder(pq2.bcst, allCids) {
 		t.Fatalf("Expected all cids to be broadcast.")
 	}
 
-	if broadcast := pwm.prepareBroadcastWantHaves(allCids); len(broadcast) != 0 {
+	clearSent(peerQueues)
+	pwm.broadcastWantHaves(allCids)
+	if len(pq2.bcst) != 0 {
 		t.Errorf("did not expect to have CIDs to broadcast")
 	}
 }
 
-func TestPrepareSendWants(t *testing.T) {
+func TestPWMSendWants(t *testing.T) {
 	pwm := newPeerWantManager(&gauge{})
 
 	peers := testutil.GeneratePeers(2)
@@ -133,68 +187,78 @@ func TestPrepareSendWants(t *testing.T) {
 	cids := testutil.GenerateCids(2)
 	cids2 := testutil.GenerateCids(2)
 
-	pwm.addPeer(p0)
-	pwm.addPeer(p1)
+	peerQueues := make(map[peer.ID]PeerQueue)
+	for _, p := range peers[:2] {
+		pq := &mockPQ{}
+		peerQueues[p] = pq
+		pwm.addPeer(pq, p)
+	}
+	pq0 := peerQueues[p0].(*mockPQ)
+	pq1 := peerQueues[p1].(*mockPQ)
 
 	// Send 2 want-blocks and 2 want-haves to p0
-	wb, wh := pwm.prepareSendWants(p0, cids, cids2)
-	if !testutil.MatchKeysIgnoreOrder(wb, cids) {
+	clearSent(peerQueues)
+	pwm.sendWants(p0, cids, cids2)
+	if !testutil.MatchKeysIgnoreOrder(pq0.wbs, cids) {
 		t.Fatal("Expected 2 want-blocks")
 	}
-	if !testutil.MatchKeysIgnoreOrder(wh, cids2) {
+	if !testutil.MatchKeysIgnoreOrder(pq0.whs, cids2) {
 		t.Fatal("Expected 2 want-haves")
 	}
 
 	// Send to p0
 	// - 1 old want-block and 2 new want-blocks
 	// - 1 old want-have  and 2 new want-haves
+	clearSent(peerQueues)
 	cids3 := testutil.GenerateCids(2)
 	cids4 := testutil.GenerateCids(2)
-	wb2, wh2 := pwm.prepareSendWants(p0, append(cids3, cids[0]), append(cids4, cids2[0]))
-	if !testutil.MatchKeysIgnoreOrder(wb2, cids3) {
+	pwm.sendWants(p0, append(cids3, cids[0]), append(cids4, cids2[0]))
+	if !testutil.MatchKeysIgnoreOrder(pq0.wbs, cids3) {
 		t.Fatal("Expected 2 want-blocks")
 	}
-	if !testutil.MatchKeysIgnoreOrder(wh2, cids4) {
+	if !testutil.MatchKeysIgnoreOrder(pq0.whs, cids4) {
 		t.Fatal("Expected 2 want-haves")
 	}
 
 	// Send to p0 as want-blocks: 1 new want-block, 1 old want-have
+	clearSent(peerQueues)
 	cids5 := testutil.GenerateCids(1)
 	newWantBlockOldWantHave := append(cids5, cids2[0])
-	wb3, wh3 := pwm.prepareSendWants(p0, newWantBlockOldWantHave, []cid.Cid{})
+	pwm.sendWants(p0, newWantBlockOldWantHave, []cid.Cid{})
 	// If a want was sent as a want-have, it should be ok to now send it as a
 	// want-block
-	if !testutil.MatchKeysIgnoreOrder(wb3, newWantBlockOldWantHave) {
+	if !testutil.MatchKeysIgnoreOrder(pq0.wbs, newWantBlockOldWantHave) {
 		t.Fatal("Expected 2 want-blocks")
 	}
-	if len(wh3) != 0 {
+	if len(pq0.whs) != 0 {
 		t.Fatal("Expected 0 want-haves")
 	}
 
 	// Send to p0 as want-haves: 1 new want-have, 1 old want-block
+	clearSent(peerQueues)
 	cids6 := testutil.GenerateCids(1)
 	newWantHaveOldWantBlock := append(cids6, cids[0])
-	wb4, wh4 := pwm.prepareSendWants(p0, []cid.Cid{}, newWantHaveOldWantBlock)
+	pwm.sendWants(p0, []cid.Cid{}, newWantHaveOldWantBlock)
 	// If a want was previously sent as a want-block, it should not be
 	// possible to now send it as a want-have
-	if !testutil.MatchKeysIgnoreOrder(wh4, cids6) {
+	if !testutil.MatchKeysIgnoreOrder(pq0.whs, cids6) {
 		t.Fatal("Expected 1 want-have")
 	}
-	if len(wb4) != 0 {
+	if len(pq0.wbs) != 0 {
 		t.Fatal("Expected 0 want-blocks")
 	}
 
 	// Send 2 want-blocks and 2 want-haves to p1
-	wb5, wh5 := pwm.prepareSendWants(p1, cids, cids2)
-	if !testutil.MatchKeysIgnoreOrder(wb5, cids) {
+	pwm.sendWants(p1, cids, cids2)
+	if !testutil.MatchKeysIgnoreOrder(pq1.wbs, cids) {
 		t.Fatal("Expected 2 want-blocks")
 	}
-	if !testutil.MatchKeysIgnoreOrder(wh5, cids2) {
+	if !testutil.MatchKeysIgnoreOrder(pq1.whs, cids2) {
 		t.Fatal("Expected 2 want-haves")
 	}
 }
 
-func TestPrepareSendCancels(t *testing.T) {
+func TestPWMSendCancels(t *testing.T) {
 	pwm := newPeerWantManager(&gauge{})
 
 	peers := testutil.GeneratePeers(2)
@@ -207,14 +271,20 @@ func TestPrepareSendCancels(t *testing.T) {
 	allwb := append(wb1, wb2...)
 	allwh := append(wh1, wh2...)
 
-	pwm.addPeer(p0)
-	pwm.addPeer(p1)
+	peerQueues := make(map[peer.ID]PeerQueue)
+	for _, p := range peers[:2] {
+		pq := &mockPQ{}
+		peerQueues[p] = pq
+		pwm.addPeer(pq, p)
+	}
+	pq0 := peerQueues[p0].(*mockPQ)
+	pq1 := peerQueues[p1].(*mockPQ)
 
 	// Send 2 want-blocks and 2 want-haves to p0
-	pwm.prepareSendWants(p0, wb1, wh1)
+	pwm.sendWants(p0, wb1, wh1)
 	// Send 3 want-blocks and 3 want-haves to p1
 	// (1 overlapping want-block / want-have with p0)
-	pwm.prepareSendWants(p1, append(wb2, wb1[1]), append(wh2, wh1[1]))
+	pwm.sendWants(p1, append(wb2, wb1[1]), append(wh2, wh1[1]))
 
 	if !testutil.MatchKeysIgnoreOrder(pwm.getWantBlocks(), allwb) {
 		t.Fatal("Expected 4 cids to be wanted")
@@ -224,12 +294,13 @@ func TestPrepareSendCancels(t *testing.T) {
 	}
 
 	// Cancel 1 want-block and 1 want-have that were sent to p0
-	res := pwm.prepareSendCancels([]cid.Cid{wb1[0], wh1[0]})
+	clearSent(peerQueues)
+	pwm.sendCancels([]cid.Cid{wb1[0], wh1[0]})
 	// Should cancel the want-block and want-have
-	if len(res) != 1 {
-		t.Fatal("Expected 1 peer")
+	if len(pq1.cancels) != 0 {
+		t.Fatal("Expected no cancels sent to p1")
 	}
-	if !testutil.MatchKeysIgnoreOrder(res[p0], []cid.Cid{wb1[0], wh1[0]}) {
+	if !testutil.MatchKeysIgnoreOrder(pq0.cancels, []cid.Cid{wb1[0], wh1[0]}) {
 		t.Fatal("Expected 2 cids to be cancelled")
 	}
 	if !testutil.MatchKeysIgnoreOrder(pwm.getWantBlocks(), append(wb2, wb1[1])) {
@@ -240,18 +311,21 @@ func TestPrepareSendCancels(t *testing.T) {
 	}
 
 	// Cancel everything
+	clearSent(peerQueues)
 	allCids := append(allwb, allwh...)
-	res2 := pwm.prepareSendCancels(allCids)
-	// Should cancel the remaining want-blocks and want-haves
-	if len(res2) != 2 {
-		t.Fatal("Expected 2 peers", len(res2))
-	}
-	if !testutil.MatchKeysIgnoreOrder(res2[p0], []cid.Cid{wb1[1], wh1[1]}) {
+	pwm.sendCancels(allCids)
+	// Should cancel the remaining want-blocks and want-haves for p0
+	if !testutil.MatchKeysIgnoreOrder(pq0.cancels, []cid.Cid{wb1[1], wh1[1]}) {
 		t.Fatal("Expected un-cancelled cids to be cancelled")
 	}
-	remainingP2 := append(wb2, wh2...)
-	remainingP2 = append(remainingP2, wb1[1], wh1[1])
-	if !testutil.MatchKeysIgnoreOrder(res2[p1], remainingP2) {
+
+	// Should cancel the remaining want-blocks and want-haves for p1
+	remainingP1 := append(wb2, wh2...)
+	remainingP1 = append(remainingP1, wb1[1], wh1[1])
+	if len(pq1.cancels) != len(remainingP1) {
+		t.Fatal("mismatch", len(pq1.cancels), len(remainingP1))
+	}
+	if !testutil.MatchKeysIgnoreOrder(pq1.cancels, remainingP1) {
 		t.Fatal("Expected un-cancelled cids to be cancelled")
 	}
 	if len(pwm.getWantBlocks()) != 0 {
@@ -271,10 +345,13 @@ func TestStats(t *testing.T) {
 	cids := testutil.GenerateCids(2)
 	cids2 := testutil.GenerateCids(2)
 
-	pwm.addPeer(p0)
+	peerQueues := make(map[peer.ID]PeerQueue)
+	pq := &mockPQ{}
+	peerQueues[p0] = pq
+	pwm.addPeer(pq, p0)
 
 	// Send 2 want-blocks and 2 want-haves to p0
-	pwm.prepareSendWants(p0, cids, cids2)
+	pwm.sendWants(p0, cids, cids2)
 
 	if g.count != 2 {
 		t.Fatal("Expected 2 want-blocks")
@@ -282,7 +359,7 @@ func TestStats(t *testing.T) {
 
 	// Send 1 old want-block and 2 new want-blocks to p0
 	cids3 := testutil.GenerateCids(2)
-	pwm.prepareSendWants(p0, append(cids3, cids[0]), []cid.Cid{})
+	pwm.sendWants(p0, append(cids3, cids[0]), []cid.Cid{})
 
 	if g.count != 4 {
 		t.Fatal("Expected 4 want-blocks")
@@ -291,7 +368,7 @@ func TestStats(t *testing.T) {
 	// Cancel 1 want-block that was sent to p0
 	// and 1 want-block that was not sent
 	cids4 := testutil.GenerateCids(1)
-	pwm.prepareSendCancels(append(cids4, cids[0]))
+	pwm.sendCancels(append(cids4, cids[0]))
 
 	if g.count != 3 {
 		t.Fatal("Expected 3 want-blocks", g.count)
