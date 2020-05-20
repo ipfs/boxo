@@ -197,23 +197,27 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 		return
 	}
 
-	// Handle broadcast wants up-front
-	broadcastKs := make([]cid.Cid, 0, len(cancelKs))
+	// Create a buffer to use for filtering cancels per peer, with the
+	// broadcast wants at the front of the buffer (broadcast wants are sent to
+	// all peers)
+	i := 0
+	cancelsBuff := make([]cid.Cid, len(cancelKs))
 	for _, c := range cancelKs {
 		if pwm.broadcastWants.Has(c) {
-			broadcastKs = append(broadcastKs, c)
-			pwm.broadcastWants.Remove(c)
+			cancelsBuff[i] = c
+			i++
 		}
 	}
-
-	// Allocate a single buffer to filter the cancels to send to each peer
-	cancelsBuff := make([]cid.Cid, 0, len(cancelKs))
+	broadcastKsCount := i
 
 	// Send cancels to a particular peer
 	send := func(p peer.ID, pws *peerWant) {
-		// Include broadcast cancels
-		peerCancels := append(cancelsBuff[:0], broadcastKs...)
+		// Start the index into the buffer after the broadcast wants
+		i = broadcastKsCount
+
+		// For each key to be cancelled
 		for _, c := range cancelKs {
+			// Check if a want was sent for the key
 			wantBlock := pws.wantBlocks.Has(c)
 			if !wantBlock && !pws.wantHaves.Has(c) {
 				continue
@@ -231,17 +235,18 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 			// If it's a broadcast want, we've already added it to
 			// the peer cancels.
 			if !pwm.broadcastWants.Has(c) {
-				peerCancels = append(peerCancels, c)
+				cancelsBuff[i] = c
+				i++
 			}
 		}
 
 		// Send cancels to the peer
-		if len(peerCancels) > 0 {
-			pws.peerQueue.AddCancels(peerCancels)
+		if i > 0 {
+			pws.peerQueue.AddCancels(cancelsBuff[:i])
 		}
 	}
 
-	if len(broadcastKs) > 0 {
+	if broadcastKsCount > 0 {
 		// If a broadcast want is being cancelled, send the cancel to all
 		// peers
 		for p, pws := range pwm.peerWants {
@@ -265,6 +270,11 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 
 			send(p, pws)
 		}
+	}
+
+	// Remove cancelled broadcast wants
+	for _, c := range cancelsBuff[:broadcastKsCount] {
+		pwm.broadcastWants.Remove(c)
 	}
 
 	// Finally, batch-remove the reverse-index. There's no need to
