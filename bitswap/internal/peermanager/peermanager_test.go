@@ -2,6 +2,7 @@ package peermanager
 
 import (
 	"context"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -316,5 +317,63 @@ func TestSessionRegistration(t *testing.T) {
 	peerManager.Connected(p1)
 	if s.available[p1] {
 		t.Fatal("Expected no signal callback (session unregistered)")
+	}
+}
+
+type benchPeerQueue struct {
+}
+
+func (*benchPeerQueue) Startup()  {}
+func (*benchPeerQueue) Shutdown() {}
+
+func (*benchPeerQueue) AddBroadcastWantHaves(whs []cid.Cid)   {}
+func (*benchPeerQueue) AddWants(wbs []cid.Cid, whs []cid.Cid) {}
+func (*benchPeerQueue) AddCancels(cs []cid.Cid)               {}
+func (*benchPeerQueue) ResponseReceived(ks []cid.Cid)         {}
+
+// Simplistic benchmark to allow us to stress test
+func BenchmarkPeerManager(b *testing.B) {
+	b.StopTimer()
+
+	ctx := context.Background()
+
+	peerQueueFactory := func(ctx context.Context, p peer.ID) PeerQueue {
+		return &benchPeerQueue{}
+	}
+
+	self := testutil.GeneratePeers(1)[0]
+	peers := testutil.GeneratePeers(500)
+	peerManager := New(ctx, peerQueueFactory, self)
+
+	// Create a bunch of connections
+	connected := 0
+	for i := 0; i < len(peers); i++ {
+		peerManager.Connected(peers[i])
+		connected++
+	}
+
+	var wanted []cid.Cid
+
+	b.StartTimer()
+	for n := 0; n < b.N; n++ {
+		// Pick a random peer
+		i := rand.Intn(connected)
+
+		// Alternately add either a few wants or many broadcast wants
+		r := rand.Intn(8)
+		if r == 0 {
+			wants := testutil.GenerateCids(10)
+			peerManager.SendWants(ctx, peers[i], wants[:2], wants[2:])
+			wanted = append(wanted, wants...)
+		} else if r == 1 {
+			wants := testutil.GenerateCids(30)
+			peerManager.BroadcastWantHaves(ctx, wants)
+			wanted = append(wanted, wants...)
+		} else {
+			limit := len(wanted) / 10
+			cancel := wanted[:limit]
+			wanted = wanted[limit:]
+			peerManager.SendCancels(ctx, cancel)
+		}
 	}
 }
