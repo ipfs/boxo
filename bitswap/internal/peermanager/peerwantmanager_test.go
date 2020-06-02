@@ -56,7 +56,7 @@ func clearSent(pqs map[peer.ID]PeerQueue) {
 }
 
 func TestEmpty(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{})
+	pwm := newPeerWantManager(&gauge{}, &gauge{})
 
 	if len(pwm.getWantBlocks()) > 0 {
 		t.Fatal("Expected GetWantBlocks() to have length 0")
@@ -67,7 +67,7 @@ func TestEmpty(t *testing.T) {
 }
 
 func TestPWMBroadcastWantHaves(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{})
+	pwm := newPeerWantManager(&gauge{}, &gauge{})
 
 	peers := testutil.GeneratePeers(3)
 	cids := testutil.GenerateCids(2)
@@ -179,7 +179,7 @@ func TestPWMBroadcastWantHaves(t *testing.T) {
 }
 
 func TestPWMSendWants(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{})
+	pwm := newPeerWantManager(&gauge{}, &gauge{})
 
 	peers := testutil.GeneratePeers(2)
 	p0 := peers[0]
@@ -259,7 +259,7 @@ func TestPWMSendWants(t *testing.T) {
 }
 
 func TestPWMSendCancels(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{})
+	pwm := newPeerWantManager(&gauge{}, &gauge{})
 
 	peers := testutil.GeneratePeers(2)
 	p0 := peers[0]
@@ -338,10 +338,12 @@ func TestPWMSendCancels(t *testing.T) {
 
 func TestStats(t *testing.T) {
 	g := &gauge{}
-	pwm := newPeerWantManager(g)
+	wbg := &gauge{}
+	pwm := newPeerWantManager(g, wbg)
 
 	peers := testutil.GeneratePeers(2)
 	p0 := peers[0]
+	p1 := peers[1]
 	cids := testutil.GenerateCids(2)
 	cids2 := testutil.GenerateCids(2)
 
@@ -353,7 +355,10 @@ func TestStats(t *testing.T) {
 	// Send 2 want-blocks and 2 want-haves to p0
 	pwm.sendWants(p0, cids, cids2)
 
-	if g.count != 2 {
+	if g.count != 4 {
+		t.Fatal("Expected 4 wants")
+	}
+	if wbg.count != 2 {
 		t.Fatal("Expected 2 want-blocks")
 	}
 
@@ -361,22 +366,73 @@ func TestStats(t *testing.T) {
 	cids3 := testutil.GenerateCids(2)
 	pwm.sendWants(p0, append(cids3, cids[0]), []cid.Cid{})
 
-	if g.count != 4 {
+	if g.count != 6 {
+		t.Fatal("Expected 6 wants")
+	}
+	if wbg.count != 4 {
+		t.Fatal("Expected 4 want-blocks")
+	}
+
+	// Broadcast 1 old want-have and 2 new want-haves
+	cids4 := testutil.GenerateCids(2)
+	pwm.broadcastWantHaves(append(cids4, cids2[0]))
+	if g.count != 8 {
+		t.Fatal("Expected 8 wants")
+	}
+	if wbg.count != 4 {
+		t.Fatal("Expected 4 want-blocks")
+	}
+
+	// Add a second peer
+	pwm.addPeer(pq, p1)
+
+	if g.count != 8 {
+		t.Fatal("Expected 8 wants")
+	}
+	if wbg.count != 4 {
 		t.Fatal("Expected 4 want-blocks")
 	}
 
 	// Cancel 1 want-block that was sent to p0
 	// and 1 want-block that was not sent
-	cids4 := testutil.GenerateCids(1)
-	pwm.sendCancels(append(cids4, cids[0]))
+	cids5 := testutil.GenerateCids(1)
+	pwm.sendCancels(append(cids5, cids[0]))
 
-	if g.count != 3 {
-		t.Fatal("Expected 3 want-blocks", g.count)
+	if g.count != 7 {
+		t.Fatal("Expected 7 wants")
+	}
+	if wbg.count != 3 {
+		t.Fatal("Expected 3 want-blocks")
 	}
 
+	// Remove first peer
 	pwm.removePeer(p0)
 
-	if g.count != 0 {
-		t.Fatal("Expected all want-blocks to be removed with peer", g.count)
+	// Should still have 3 broadcast wants
+	if g.count != 3 {
+		t.Fatal("Expected 3 wants")
+	}
+	if wbg.count != 0 {
+		t.Fatal("Expected all want-blocks to be removed")
+	}
+
+	// Remove second peer
+	pwm.removePeer(p1)
+
+	// Should still have 3 broadcast wants
+	if g.count != 3 {
+		t.Fatal("Expected 3 wants")
+	}
+	if wbg.count != 0 {
+		t.Fatal("Expected 0 want-blocks")
+	}
+
+	// Cancel one remaining broadcast want-have
+	pwm.sendCancels(cids2[:1])
+	if g.count != 2 {
+		t.Fatal("Expected 2 wants")
+	}
+	if wbg.count != 0 {
+		t.Fatal("Expected 0 want-blocks")
 	}
 }
