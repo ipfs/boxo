@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -383,7 +382,6 @@ func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
 	peerB := peers[1]
 	peerC := peers[2]
 	sid := uint64(1)
-	sidStr := fmt.Sprintf("%d", sid)
 	pm := newMockPeerManager()
 	fpt := newFakePeerTagger()
 	fpm := bsspm.New(1, fpt)
@@ -406,7 +404,7 @@ func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Expect peer A to be protected as it was first to send the block
-	if !fpt.isProtected(peerA, sidStr) {
+	if !fpt.isProtected(peerA) {
 		t.Fatal("Expected first peer to send block to have protected connection")
 	}
 
@@ -417,7 +415,7 @@ func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Expect peer B not to be protected as it was not first to send the block
-	if fpt.isProtected(peerB, sidStr) {
+	if fpt.isProtected(peerB) {
 		t.Fatal("Expected peer not to be protected")
 	}
 
@@ -428,7 +426,7 @@ func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Expect peer C not to be protected as we didn't want the block it sent
-	if fpt.isProtected(peerC, sidStr) {
+	if fpt.isProtected(peerC) {
 		t.Fatal("Expected peer not to be protected")
 	}
 }
