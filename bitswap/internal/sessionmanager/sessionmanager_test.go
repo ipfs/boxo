@@ -51,12 +51,13 @@ func (fs *fakeSession) Shutdown() {
 type fakeSesPeerManager struct {
 }
 
-func (*fakeSesPeerManager) Peers() []peer.ID        { return nil }
-func (*fakeSesPeerManager) PeersDiscovered() bool   { return false }
-func (*fakeSesPeerManager) Shutdown()               {}
-func (*fakeSesPeerManager) AddPeer(peer.ID) bool    { return false }
-func (*fakeSesPeerManager) RemovePeer(peer.ID) bool { return false }
-func (*fakeSesPeerManager) HasPeers() bool          { return false }
+func (*fakeSesPeerManager) Peers() []peer.ID          { return nil }
+func (*fakeSesPeerManager) PeersDiscovered() bool     { return false }
+func (*fakeSesPeerManager) Shutdown()                 {}
+func (*fakeSesPeerManager) AddPeer(peer.ID) bool      { return false }
+func (*fakeSesPeerManager) RemovePeer(peer.ID) bool   { return false }
+func (*fakeSesPeerManager) HasPeers() bool            { return false }
+func (*fakeSesPeerManager) ProtectConnection(peer.ID) {}
 
 type fakePeerManager struct {
 	lk      sync.Mutex

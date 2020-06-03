@@ -9,9 +9,16 @@ import (
 )
 
 type fakePeerTagger struct {
-	lk          sync.Mutex
-	taggedPeers []peer.ID
-	wait        sync.WaitGroup
+	lk             sync.Mutex
+	taggedPeers    []peer.ID
+	protectedPeers map[peer.ID]map[string]struct{}
+	wait           sync.WaitGroup
+}
+
+func newFakePeerTagger() *fakePeerTagger {
+	return &fakePeerTagger{
+		protectedPeers: make(map[peer.ID]map[string]struct{}),
+	}
 }
 
 func (fpt *fakePeerTagger) TagPeer(p peer.ID, tag string, n int) {
@@ -34,6 +41,40 @@ func (fpt *fakePeerTagger) UntagPeer(p peer.ID, tag string) {
 			return
 		}
 	}
+}
+
+func (fpt *fakePeerTagger) Protect(p peer.ID, tag string) {
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+
+	tags, ok := fpt.protectedPeers[p]
+	if !ok {
+		tags = make(map[string]struct{})
+		fpt.protectedPeers[p] = tags
+	}
+	tags[tag] = struct{}{}
+}
+
+func (fpt *fakePeerTagger) Unprotect(p peer.ID, tag string) bool {
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+
+	if tags, ok := fpt.protectedPeers[p]; ok {
+		delete(tags, tag)
+		if len(tags) == 0 {
+			delete(fpt.protectedPeers, p)
+		}
+		return len(tags) > 0
+	}
+
+	return false
+}
+
+func (fpt *fakePeerTagger) isProtected(p peer.ID) bool {
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+
+	return len(fpt.protectedPeers[p]) > 0
 }
 
 func TestAddPeers(t *testing.T) {
@@ -208,9 +249,35 @@ func TestPeerTagging(t *testing.T) {
 	}
 }
 
+func TestProtectConnection(t *testing.T) {
+	peers := testutil.GeneratePeers(1)
+	peerA := peers[0]
+	fpt := newFakePeerTagger()
+	spm := New(1, fpt)
+
+	// Should not protect connection if peer hasn't been added yet
+	spm.ProtectConnection(peerA)
+	if fpt.isProtected(peerA) {
+		t.Fatal("Expected peer not to be protected")
+	}
+
+	// Once peer is added, should be able to protect connection
+	spm.AddPeer(peerA)
+	spm.ProtectConnection(peerA)
+	if !fpt.isProtected(peerA) {
+		t.Fatal("Expected peer to be protected")
+	}
+
+	// Removing peer should unprotect connection
+	spm.RemovePeer(peerA)
+	if fpt.isProtected(peerA) {
+		t.Fatal("Expected peer to be unprotected")
+	}
+}
+
 func TestShutdown(t *testing.T) {
 	peers := testutil.GeneratePeers(2)
-	fpt := &fakePeerTagger{}
+	fpt := newFakePeerTagger()
 	spm := New(1, fpt)
 
 	spm.AddPeer(peers[0])
@@ -219,9 +286,17 @@ func TestShutdown(t *testing.T) {
 		t.Fatal("Expected to have tagged two peers")
 	}
 
+	spm.ProtectConnection(peers[0])
+	if !fpt.isProtected(peers[0]) {
+		t.Fatal("Expected peer to be protected")
+	}
+
 	spm.Shutdown()
 
 	if len(fpt.taggedPeers) != 0 {
 		t.Fatal("Expected to have untagged all peers")
+	}
+	if len(fpt.protectedPeers) != 0 {
+		t.Fatal("Expected to have unprotected all peers")
 	}
 }

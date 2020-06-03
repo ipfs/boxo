@@ -379,6 +379,11 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 				// Inform the peer tracker that this peer was the first to send
 				// us the block
 				sws.peerRspTrkr.receivedBlockFrom(upd.from)
+
+				// Protect the connection to this peer so that we can ensure
+				// that the connection doesn't get pruned by the connection
+				// manager
+				sws.spm.ProtectConnection(upd.from)
 			}
 			delete(sws.peerConsecutiveDontHaves, upd.from)
 		}

@@ -65,6 +65,8 @@ type SessionPeerManager interface {
 	Peers() []peer.ID
 	// Whether there are any peers in the session
 	HasPeers() bool
+	// Protect connection from being pruned by the connection manager
+	ProtectConnection(peer.ID)
 }
 
 // ProviderFinder is used to find providers for a given key

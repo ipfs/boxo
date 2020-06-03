@@ -56,16 +56,49 @@ func newFakeSessionPeerManager() *bsspm.SessionPeerManager {
 	return bsspm.New(1, newFakePeerTagger())
 }
 
-type fakePeerTagger struct {
-}
-
 func newFakePeerTagger() *fakePeerTagger {
-	return &fakePeerTagger{}
+	return &fakePeerTagger{
+		protectedPeers: make(map[peer.ID]map[string]struct{}),
+	}
 }
 
-func (fpt *fakePeerTagger) TagPeer(p peer.ID, tag string, val int) {
+type fakePeerTagger struct {
+	lk             sync.Mutex
+	protectedPeers map[peer.ID]map[string]struct{}
 }
-func (fpt *fakePeerTagger) UntagPeer(p peer.ID, tag string) {
+
+func (fpt *fakePeerTagger) TagPeer(p peer.ID, tag string, val int) {}
+func (fpt *fakePeerTagger) UntagPeer(p peer.ID, tag string)        {}
+
+func (fpt *fakePeerTagger) Protect(p peer.ID, tag string) {
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+
+	tags, ok := fpt.protectedPeers[p]
+	if !ok {
+		tags = make(map[string]struct{})
+		fpt.protectedPeers[p] = tags
+	}
+	tags[tag] = struct{}{}
+}
+
+func (fpt *fakePeerTagger) Unprotect(p peer.ID, tag string) bool {
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+
+	if tags, ok := fpt.protectedPeers[p]; ok {
+		delete(tags, tag)
+		return len(tags) > 0
+	}
+
+	return false
+}
+
+func (fpt *fakePeerTagger) isProtected(p peer.ID) bool {
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+
+	return len(fpt.protectedPeers[p]) > 0
 }
 
 type fakeProviderFinder struct {
