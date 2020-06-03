@@ -1,7 +1,6 @@
 package sessionpeermanager
 
 import (
-	"fmt"
 	"sync"
 	"testing"
 
@@ -69,6 +68,13 @@ func (fpt *fakePeerTagger) Unprotect(p peer.ID, tag string) bool {
 	}
 
 	return false
+}
+
+func (fpt *fakePeerTagger) isProtected(p peer.ID) bool {
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+
+	return len(fpt.protectedPeers[p]) > 0
 }
 
 func TestAddPeers(t *testing.T) {
@@ -247,26 +253,24 @@ func TestProtectConnection(t *testing.T) {
 	peers := testutil.GeneratePeers(1)
 	peerA := peers[0]
 	fpt := newFakePeerTagger()
-	sid := 1
-	sidstr := fmt.Sprintf("%d", sid)
 	spm := New(1, fpt)
 
 	// Should not protect connection if peer hasn't been added yet
 	spm.ProtectConnection(peerA)
-	if _, ok := fpt.protectedPeers[peerA][sidstr]; ok {
+	if fpt.isProtected(peerA) {
 		t.Fatal("Expected peer not to be protected")
 	}
 
 	// Once peer is added, should be able to protect connection
 	spm.AddPeer(peerA)
 	spm.ProtectConnection(peerA)
-	if _, ok := fpt.protectedPeers[peerA][sidstr]; !ok {
+	if !fpt.isProtected(peerA) {
 		t.Fatal("Expected peer to be protected")
 	}
 
 	// Removing peer should unprotect connection
 	spm.RemovePeer(peerA)
-	if _, ok := fpt.protectedPeers[peerA][sidstr]; ok {
+	if fpt.isProtected(peerA) {
 		t.Fatal("Expected peer to be unprotected")
 	}
 }
@@ -274,9 +278,7 @@ func TestProtectConnection(t *testing.T) {
 func TestShutdown(t *testing.T) {
 	peers := testutil.GeneratePeers(2)
 	fpt := newFakePeerTagger()
-	sid := uint64(1)
-	sidstr := fmt.Sprintf("%d", sid)
-	spm := New(sid, fpt)
+	spm := New(1, fpt)
 
 	spm.AddPeer(peers[0])
 	spm.AddPeer(peers[1])
@@ -285,7 +287,7 @@ func TestShutdown(t *testing.T) {
 	}
 
 	spm.ProtectConnection(peers[0])
-	if _, ok := fpt.protectedPeers[peers[0]][sidstr]; !ok {
+	if !fpt.isProtected(peers[0]) {
 		t.Fatal("Expected peer to be protected")
 	}
 

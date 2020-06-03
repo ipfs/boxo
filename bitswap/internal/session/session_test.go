@@ -94,12 +94,11 @@ func (fpt *fakePeerTagger) Unprotect(p peer.ID, tag string) bool {
 	return false
 }
 
-func (fpt *fakePeerTagger) isProtected(p peer.ID, tag string) bool {
+func (fpt *fakePeerTagger) isProtected(p peer.ID) bool {
 	fpt.lk.Lock()
 	defer fpt.lk.Unlock()
 
-	_, ok := fpt.protectedPeers[p][tag]
-	return ok
+	return len(fpt.protectedPeers[p]) > 0
 }
 
 type fakeProviderFinder struct {
