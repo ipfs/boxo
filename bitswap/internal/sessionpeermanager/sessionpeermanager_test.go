@@ -1,6 +1,7 @@
 package sessionpeermanager
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 
@@ -9,9 +10,16 @@ import (
 )
 
 type fakePeerTagger struct {
-	lk          sync.Mutex
-	taggedPeers []peer.ID
-	wait        sync.WaitGroup
+	lk             sync.Mutex
+	taggedPeers    []peer.ID
+	protectedPeers map[peer.ID]map[string]struct{}
+	wait           sync.WaitGroup
+}
+
+func newFakePeerTagger() *fakePeerTagger {
+	return &fakePeerTagger{
+		protectedPeers: make(map[peer.ID]map[string]struct{}),
+	}
 }
 
 func (fpt *fakePeerTagger) TagPeer(p peer.ID, tag string, n int) {
@@ -34,6 +42,30 @@ func (fpt *fakePeerTagger) UntagPeer(p peer.ID, tag string) {
 			return
 		}
 	}
+}
+
+func (fpt *fakePeerTagger) Protect(p peer.ID, tag string) {
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+
+	tags, ok := fpt.protectedPeers[p]
+	if !ok {
+		tags = make(map[string]struct{})
+		fpt.protectedPeers[p] = tags
+	}
+	tags[tag] = struct{}{}
+}
+
+func (fpt *fakePeerTagger) Unprotect(p peer.ID, tag string) bool {
+	fpt.lk.Lock()
+	defer fpt.lk.Unlock()
+
+	if tags, ok := fpt.protectedPeers[p]; ok {
+		delete(tags, tag)
+		return len(tags) > 0
+	}
+
+	return false
 }
 
 func TestAddPeers(t *testing.T) {
@@ -205,6 +237,34 @@ func TestPeerTagging(t *testing.T) {
 	spm.RemovePeer(peers[1])
 	if len(fpt.taggedPeers) != 1 {
 		t.Fatal("Expected to have untagged peer")
+	}
+}
+
+func TestProtectConnection(t *testing.T) {
+	peers := testutil.GeneratePeers(1)
+	peerA := peers[0]
+	fpt := newFakePeerTagger()
+	sid := 1
+	sidstr := fmt.Sprintf("%d", sid)
+	spm := New(1, fpt)
+
+	// Should not protect connection if peer hasn't been added yet
+	spm.ProtectConnection(peerA)
+	if _, ok := fpt.protectedPeers[peerA][sidstr]; ok {
+		t.Fatal("Expected peer not to be protected")
+	}
+
+	// Once peer is added, should be able to protect connection
+	spm.AddPeer(peerA)
+	spm.ProtectConnection(peerA)
+	if _, ok := fpt.protectedPeers[peerA][sidstr]; !ok {
+		t.Fatal("Expected peer to be protected")
+	}
+
+	// Removing peer should unprotect connection
+	spm.RemovePeer(peerA)
+	if _, ok := fpt.protectedPeers[peerA][sidstr]; ok {
+		t.Fatal("Expected peer to be unprotected")
 	}
 }
 

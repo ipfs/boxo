@@ -2,12 +2,14 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
 	bspm "github.com/ipfs/go-bitswap/internal/peermanager"
+	bsspm "github.com/ipfs/go-bitswap/internal/sessionpeermanager"
 	"github.com/ipfs/go-bitswap/internal/testutil"
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -371,6 +373,63 @@ func TestRegisterSessionWithPeerManager(t *testing.T) {
 	// Expect session to have been registered with PeerManager
 	if !pm.has(peerB, sid) {
 		t.Fatal("Expected HAVE to register session with PeerManager")
+	}
+}
+
+func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
+	cids := testutil.GenerateCids(2)
+	peers := testutil.GeneratePeers(3)
+	peerA := peers[0]
+	peerB := peers[1]
+	peerC := peers[2]
+	sid := uint64(1)
+	sidStr := fmt.Sprintf("%d", sid)
+	pm := newMockPeerManager()
+	fpt := newFakePeerTagger()
+	fpm := bsspm.New(1, fpt)
+	swc := newMockSessionMgr()
+	bpm := bsbpm.New()
+	onSend := func(peer.ID, []cid.Cid, []cid.Cid) {}
+	onPeersExhausted := func([]cid.Cid) {}
+	spm := newSessionWantSender(sid, pm, fpm, swc, bpm, onSend, onPeersExhausted)
+	defer spm.Shutdown()
+
+	go spm.Run()
+
+	// add cid0
+	spm.Add(cids[:1])
+
+	// peerA: block cid0
+	spm.Update(peerA, cids[:1], nil, nil)
+
+	// Wait for processing to complete
+	time.Sleep(10 * time.Millisecond)
+
+	// Expect peer A to be protected as it was first to send the block
+	if _, ok := fpt.protectedPeers[peerA][sidStr]; !ok {
+		t.Fatal("Expected first peer to send block to have protected connection")
+	}
+
+	// peerB: block cid0
+	spm.Update(peerB, cids[:1], nil, nil)
+
+	// Wait for processing to complete
+	time.Sleep(10 * time.Millisecond)
+
+	// Expect peer B not to be protected as it was not first to send the block
+	if _, ok := fpt.protectedPeers[peerB][sidStr]; ok {
+		t.Fatal("Expected peer not to be protected")
+	}
+
+	// peerC: block cid1
+	spm.Update(peerC, cids[1:], nil, nil)
+
+	// Wait for processing to complete
+	time.Sleep(10 * time.Millisecond)
+
+	// Expect peer C not to be protected as we didn't want the block it sent
+	if _, ok := fpt.protectedPeers[peerC][sidStr]; ok {
+		t.Fatal("Expected peer not to be protected")
 	}
 }
 
