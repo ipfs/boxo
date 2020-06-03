@@ -406,7 +406,7 @@ func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Expect peer A to be protected as it was first to send the block
-	if _, ok := fpt.protectedPeers[peerA][sidStr]; !ok {
+	if !fpt.isProtected(peerA, sidStr) {
 		t.Fatal("Expected first peer to send block to have protected connection")
 	}
 
@@ -417,7 +417,7 @@ func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Expect peer B not to be protected as it was not first to send the block
-	if _, ok := fpt.protectedPeers[peerB][sidStr]; ok {
+	if fpt.isProtected(peerB, sidStr) {
 		t.Fatal("Expected peer not to be protected")
 	}
 
@@ -428,7 +428,7 @@ func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Expect peer C not to be protected as we didn't want the block it sent
-	if _, ok := fpt.protectedPeers[peerC][sidStr]; ok {
+	if fpt.isProtected(peerC, sidStr) {
 		t.Fatal("Expected peer not to be protected")
 	}
 }
