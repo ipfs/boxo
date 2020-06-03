@@ -21,6 +21,8 @@ const (
 type PeerTagger interface {
 	TagPeer(peer.ID, string, int)
 	UntagPeer(p peer.ID, tag string)
+	Protect(peer.ID, string)
+	Unprotect(peer.ID, string) bool
 }
 
 // SessionPeerManager keeps track of peers for a session, and takes care of
@@ -67,6 +69,18 @@ func (spm *SessionPeerManager) AddPeer(p peer.ID) bool {
 	return true
 }
 
+// Protect connection to this peer from being pruned by the connection manager
+func (spm *SessionPeerManager) ProtectConnection(p peer.ID) {
+	spm.plk.Lock()
+	defer spm.plk.Unlock()
+
+	if _, ok := spm.peers[p]; !ok {
+		return
+	}
+
+	spm.tagger.Protect(p, spm.tag)
+}
+
 // RemovePeer removes the peer from the SessionPeerManager.
 // Returns true if the peer was removed, false if it did not exist.
 func (spm *SessionPeerManager) RemovePeer(p peer.ID) bool {
@@ -79,6 +93,7 @@ func (spm *SessionPeerManager) RemovePeer(p peer.ID) bool {
 
 	delete(spm.peers, p)
 	spm.tagger.UntagPeer(p, spm.tag)
+	spm.tagger.Unprotect(p, spm.tag)
 
 	log.Debugw("Bitswap: removed peer from session", "session", spm.id, "peer", p, "peerCount", len(spm.peers))
 	return true
@@ -130,5 +145,6 @@ func (spm *SessionPeerManager) Shutdown() {
 	// connections to those peers
 	for p := range spm.peers {
 		spm.tagger.UntagPeer(p, spm.tag)
+		spm.tagger.Unprotect(p, spm.tag)
 	}
 }
