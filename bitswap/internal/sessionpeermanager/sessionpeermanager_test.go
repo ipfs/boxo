@@ -62,6 +62,9 @@ func (fpt *fakePeerTagger) Unprotect(p peer.ID, tag string) bool {
 
 	if tags, ok := fpt.protectedPeers[p]; ok {
 		delete(tags, tag)
+		if len(tags) == 0 {
+			delete(fpt.protectedPeers, p)
+		}
 		return len(tags) > 0
 	}
 
@@ -270,8 +273,10 @@ func TestProtectConnection(t *testing.T) {
 
 func TestShutdown(t *testing.T) {
 	peers := testutil.GeneratePeers(2)
-	fpt := &fakePeerTagger{}
-	spm := New(1, fpt)
+	fpt := newFakePeerTagger()
+	sid := uint64(1)
+	sidstr := fmt.Sprintf("%d", sid)
+	spm := New(sid, fpt)
 
 	spm.AddPeer(peers[0])
 	spm.AddPeer(peers[1])
@@ -279,9 +284,17 @@ func TestShutdown(t *testing.T) {
 		t.Fatal("Expected to have tagged two peers")
 	}
 
+	spm.ProtectConnection(peers[0])
+	if _, ok := fpt.protectedPeers[peers[0]][sidstr]; !ok {
+		t.Fatal("Expected peer to be protected")
+	}
+
 	spm.Shutdown()
 
 	if len(fpt.taggedPeers) != 0 {
 		t.Fatal("Expected to have untagged all peers")
+	}
+	if len(fpt.protectedPeers) != 0 {
+		t.Fatal("Expected to have unprotected all peers")
 	}
 }
