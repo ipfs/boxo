@@ -271,7 +271,11 @@ func (sws *sessionWantSender) onChange(changes []change) {
 			// If the update includes blocks or haves, treat it as signaling that
 			// the peer is available
 			if len(chng.update.ks) > 0 || len(chng.update.haves) > 0 {
-				availability[chng.update.from] = true
+				p := chng.update.from
+				availability[p] = true
+
+				// Register with the PeerManager
+				sws.pm.RegisterSession(p, sws)
 			}
 
 			updates = append(updates, chng.update)
