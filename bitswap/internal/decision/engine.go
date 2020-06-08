@@ -557,13 +557,6 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	l.lk.Lock()
 	defer l.lk.Unlock()
 
-	// Record how many bytes were received in the ledger
-	blks := m.Blocks()
-	for _, block := range blks {
-		log.Debugw("Bitswap engine <- block", "local", e.self, "from", p, "cid", block.Cid(), "size", len(block.RawData()))
-		l.ReceivedBytes(len(block.RawData()))
-	}
-
 	// If the peer sent a full wantlist, replace the ledger's wantlist
 	if m.Full() {
 		l.wantList = wl.New()
@@ -664,9 +657,24 @@ func (e *Engine) splitWantsCancels(es []bsmsg.Entry) ([]bsmsg.Entry, []bsmsg.Ent
 // ReceiveFrom is called when new blocks are received and added to the block
 // store, meaning there may be peers who want those blocks, so we should send
 // the blocks to them.
+//
+// This function also updates the receive side of the ledger.
 func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block, haves []cid.Cid) {
 	if len(blks) == 0 {
 		return
+	}
+
+	if from != "" {
+		l := e.findOrCreate(from)
+		l.lk.Lock()
+
+		// Record how many bytes were received in the ledger
+		for _, blk := range blks {
+			log.Debugw("Bitswap engine <- block", "local", e.self, "from", from, "cid", blk.Cid(), "size", len(blk.RawData()))
+			l.ReceivedBytes(len(blk.RawData()))
+		}
+
+		l.lk.Unlock()
 	}
 
 	// Get the size of each block
@@ -678,6 +686,7 @@ func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block, haves []cid.Cid)
 	// Check each peer to see if it wants one of the blocks we received
 	work := false
 	e.lock.RLock()
+
 	for _, l := range e.ledgerMap {
 		l.lk.RLock()
 
