@@ -123,6 +123,7 @@ func TestConsistentAccounting(t *testing.T) {
 
 		sender.Engine.MessageSent(receiver.Peer, m)
 		receiver.Engine.MessageReceived(ctx, sender.Peer, m)
+		receiver.Engine.ReceiveFrom(sender.Peer, m.Blocks(), nil)
 	}
 
 	// Ensure sender records the change
