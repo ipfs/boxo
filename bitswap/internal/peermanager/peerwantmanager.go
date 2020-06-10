@@ -360,6 +360,7 @@ func (pwm *peerWantManager) wantPeerCounts(c cid.Cid) wantPeerCnts {
 	for p := range pwm.wantPeers[c] {
 		pws, ok := pwm.peerWants[p]
 		if !ok {
+			log.Errorf("reverse index has extra peer %s for key %s in peerWantManager", string(p), c)
 			continue
 		}
 
