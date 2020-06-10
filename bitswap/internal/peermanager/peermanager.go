@@ -198,7 +198,7 @@ func (pm *PeerManager) getOrCreate(p peer.ID) PeerQueue {
 
 // RegisterSession tells the PeerManager that the given session is interested
 // in events about the given peer.
-func (pm *PeerManager) RegisterSession(p peer.ID, s Session) bool {
+func (pm *PeerManager) RegisterSession(p peer.ID, s Session) {
 	pm.psLk.Lock()
 	defer pm.psLk.Unlock()
 
@@ -210,9 +210,6 @@ func (pm *PeerManager) RegisterSession(p peer.ID, s Session) bool {
 		pm.peerSessions[p] = make(map[uint64]struct{})
 	}
 	pm.peerSessions[p][s.ID()] = struct{}{}
-
-	_, ok := pm.peerQueues[p]
-	return ok
 }
 
 // UnregisterSession tells the PeerManager that the given session is no longer

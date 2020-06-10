@@ -59,12 +59,11 @@ func newMockPeerManager() *mockPeerManager {
 	}
 }
 
-func (pm *mockPeerManager) RegisterSession(p peer.ID, sess bspm.Session) bool {
+func (pm *mockPeerManager) RegisterSession(p peer.ID, sess bspm.Session) {
 	pm.lk.Lock()
 	defer pm.lk.Unlock()
 
 	pm.peerSessions[p] = sess
-	return true
 }
 
 func (pm *mockPeerManager) has(p peer.ID, sid uint64) bool {

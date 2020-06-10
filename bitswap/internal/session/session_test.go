@@ -136,9 +136,7 @@ func newFakePeerManager() *fakePeerManager {
 	}
 }
 
-func (pm *fakePeerManager) RegisterSession(peer.ID, bspm.Session) bool {
-	return true
-}
+func (pm *fakePeerManager) RegisterSession(peer.ID, bspm.Session)                    {}
 func (pm *fakePeerManager) UnregisterSession(uint64)                                 {}
 func (pm *fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) {}
 func (pm *fakePeerManager) BroadcastWantHaves(ctx context.Context, cids []cid.Cid) {
