@@ -64,7 +64,7 @@ type fakePeerManager struct {
 	cancels []cid.Cid
 }
 
-func (*fakePeerManager) RegisterSession(peer.ID, bspm.Session) bool               { return true }
+func (*fakePeerManager) RegisterSession(peer.ID, bspm.Session)                    {}
 func (*fakePeerManager) UnregisterSession(uint64)                                 {}
 func (*fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) {}
 func (*fakePeerManager) BroadcastWantHaves(context.Context, []cid.Cid)            {}
