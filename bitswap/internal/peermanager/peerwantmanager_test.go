@@ -436,3 +436,81 @@ func TestStats(t *testing.T) {
 		t.Fatal("Expected 0 want-blocks")
 	}
 }
+
+func TestStatsOverlappingWantBlockWantHave(t *testing.T) {
+	g := &gauge{}
+	wbg := &gauge{}
+	pwm := newPeerWantManager(g, wbg)
+
+	peers := testutil.GeneratePeers(2)
+	p0 := peers[0]
+	p1 := peers[1]
+	cids := testutil.GenerateCids(2)
+	cids2 := testutil.GenerateCids(2)
+
+	pwm.addPeer(&mockPQ{}, p0)
+	pwm.addPeer(&mockPQ{}, p1)
+
+	// Send 2 want-blocks and 2 want-haves to p0
+	pwm.sendWants(p0, cids, cids2)
+
+	// Send opposite:
+	// 2 want-haves and 2 want-blocks to p1
+	pwm.sendWants(p1, cids2, cids)
+
+	if g.count != 4 {
+		t.Fatal("Expected 4 wants")
+	}
+	if wbg.count != 4 {
+		t.Fatal("Expected 4 want-blocks")
+	}
+
+	// Cancel 1 of each group of cids
+	pwm.sendCancels([]cid.Cid{cids[0], cids2[0]})
+
+	if g.count != 2 {
+		t.Fatal("Expected 2 wants")
+	}
+	if wbg.count != 2 {
+		t.Fatal("Expected 2 want-blocks")
+	}
+}
+
+func TestStatsRemovePeerOverlappingWantBlockWantHave(t *testing.T) {
+	g := &gauge{}
+	wbg := &gauge{}
+	pwm := newPeerWantManager(g, wbg)
+
+	peers := testutil.GeneratePeers(2)
+	p0 := peers[0]
+	p1 := peers[1]
+	cids := testutil.GenerateCids(2)
+	cids2 := testutil.GenerateCids(2)
+
+	pwm.addPeer(&mockPQ{}, p0)
+	pwm.addPeer(&mockPQ{}, p1)
+
+	// Send 2 want-blocks and 2 want-haves to p0
+	pwm.sendWants(p0, cids, cids2)
+
+	// Send opposite:
+	// 2 want-haves and 2 want-blocks to p1
+	pwm.sendWants(p1, cids2, cids)
+
+	if g.count != 4 {
+		t.Fatal("Expected 4 wants")
+	}
+	if wbg.count != 4 {
+		t.Fatal("Expected 4 want-blocks")
+	}
+
+	// Remove p0
+	pwm.removePeer(p0)
+
+	if g.count != 4 {
+		t.Fatal("Expected 4 wants")
+	}
+	if wbg.count != 2 {
+		t.Fatal("Expected 2 want-blocks")
+	}
+}
