@@ -273,17 +273,26 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 	go func() {
 		defer close(out)
 
-		k := 0
+		allValid := true
 		for _, c := range ks {
-			// hash security
-			if err := verifcid.ValidateCid(c); err == nil {
-				ks[k] = c
-				k++
-			} else {
-				log.Errorf("unsafe CID (%s) passed to blockService.GetBlocks: %s", c, err)
+			if err := verifcid.ValidateCid(c); err != nil {
+				allValid = false
+				break
 			}
 		}
-		ks = ks[:k]
+
+		if !allValid {
+			ks2 := make([]cid.Cid, 0, len(ks))
+			for _, c := range ks {
+				// hash security
+				if err := verifcid.ValidateCid(c); err == nil {
+					ks2 = append(ks2, c)
+				} else {
+					log.Errorf("unsafe CID (%s) passed to blockService.GetBlocks: %s", c, err)
+				}
+			}
+			ks = ks2
+		}
 
 		var misses []cid.Cid
 		for _, c := range ks {
