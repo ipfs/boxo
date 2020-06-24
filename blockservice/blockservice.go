@@ -282,18 +282,16 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 		}
 
 		if !allValid {
-			ks2 := make([]cid.Cid, len(ks))
-			k := 0
+			ks2 := make([]cid.Cid, 0, len(ks))
 			for _, c := range ks {
 				// hash security
 				if err := verifcid.ValidateCid(c); err == nil {
-					ks2[k] = c
-					k++
+					ks2 = append(ks2, c)
 				} else {
 					log.Errorf("unsafe CID (%s) passed to blockService.GetBlocks: %s", c, err)
 				}
 			}
-			ks = ks2[:k]
+			ks = ks2
 		}
 
 		var misses []cid.Cid
