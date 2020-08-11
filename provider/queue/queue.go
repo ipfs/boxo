@@ -3,8 +3,6 @@ package queue
 import (
 	"context"
 	"fmt"
-	"time"
-
 	cid "github.com/ipfs/go-cid"
 	datastore "github.com/ipfs/go-datastore"
 	namespace "github.com/ipfs/go-datastore/namespace"
@@ -29,6 +27,8 @@ type Queue struct {
 	enqueue chan cid.Cid
 	close   context.CancelFunc
 	closed  chan struct{}
+
+	counter int
 }
 
 // NewQueue creates a queue for cids
@@ -117,7 +117,8 @@ func (q *Queue) work() {
 
 			select {
 			case toQueue := <-q.enqueue:
-				keyPath := fmt.Sprintf("%d/%s", time.Now().UnixNano(), c.String())
+				keyPath := fmt.Sprintf("%063d/%s", q.counter, c.String())
+				q.counter++
 				nextKey := datastore.NewKey(keyPath)
 
 				if err := q.ds.Put(nextKey, toQueue.Bytes()); err != nil {
