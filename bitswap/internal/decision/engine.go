@@ -421,7 +421,7 @@ func (e *Engine) nextEnvelope(ctx context.Context) (*Envelope, error) {
 		}
 
 		// Create a new message
-		msg := bsmsg.New(true)
+		msg := bsmsg.New(false)
 
 		log.Debugw("Bitswap process tasks", "local", e.self, "taskCount", len(nextTasks))
 
