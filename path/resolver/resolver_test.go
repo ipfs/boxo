@@ -105,3 +105,43 @@ func TestRecurivePathResolution(t *testing.T) {
 			p.String(), rCid.String(), cKey.String()))
 	}
 }
+
+func TestResolveToLastNode_NoUnnecessaryFetching(t *testing.T) {
+	ctx := context.Background()
+	dagService := dagmock.Mock()
+
+	a := randNode()
+	b := randNode()
+
+	err := a.AddNodeLink("child", b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = dagService.Add(ctx, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	aKey := a.Cid()
+
+	segments := []string{aKey.String(), "child"}
+	p, err := path.FromSegments("/ipfs/", segments...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resolver := resolver.NewBasicResolver(dagService)
+	resolvedCID, remainingPath, err := resolver.ResolveToLastNode(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(remainingPath) > 0 {
+		t.Fatal("cannot have remaining path")
+	}
+
+	if !resolvedCID.Equals(b.Cid()) {
+		t.Fatal("resolved to the wrong CID")
+	}
+}
