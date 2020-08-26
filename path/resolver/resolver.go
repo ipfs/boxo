@@ -89,6 +89,10 @@ func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (cid.
 			return cid.Cid{}, nil, err
 		}
 
+		if len(rest) == 0 {
+			return lnk.Cid, nil, nil
+		}
+
 		next, err := lnk.GetNode(ctx, r.DAG)
 		if err != nil {
 			return cid.Cid{}, nil, err
