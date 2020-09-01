@@ -1,9 +1,10 @@
 package go_pinning_service_http_client
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -202,27 +203,31 @@ func (c *Client) LsSync(ctx context.Context, opts ...LsOption) ([]PinStatusGette
 func (c *Client) lsInternal(ctx context.Context, settings *lsSettings) (pinResults, error) {
 	getter := c.client.PinsApi.PinsGet(ctx)
 	if len(settings.cids) > 0 {
-		getter.Cid(settings.cids)
+		getter = getter.Cid(settings.cids)
 	}
 	if len(settings.status) > 0 {
-		getter.Status(settings.status)
+		statuses := make([]openapi.Status, len(settings.status))
+		for i := 0; i < len(statuses); i++ {
+			statuses[i] = openapi.Status(settings.status[i])
+		}
+		getter = getter.Status(statuses)
 	}
 	if settings.limit == nil {
-		getter.Limit(defaultLimit)
+		getter = getter.Limit(defaultLimit)
 	} else {
-		getter.Limit(*settings.limit)
+		getter = getter.Limit(*settings.limit)
 	}
 	if len(settings.name) > 0 {
-		getter.Name(settings.name)
+		getter = getter.Name(settings.name)
 	}
 	if settings.before != nil {
-		getter.Before(*settings.before)
+		getter = getter.Before(*settings.before)
 	}
 	if settings.after != nil {
-		getter.After(*settings.after)
+		getter = getter.After(*settings.after)
 	}
 	if settings.meta != nil {
-		getter.Meta(settings.meta)
+		getter = getter.Meta(settings.meta)
 	}
 
 	// TODO: Ignoring HTTP Response OK?
@@ -367,10 +372,38 @@ func getCIDEncoder() multibase.Encoder {
 }
 
 func httperr(resp *http.Response, e error) error {
-	body, err := ioutil.ReadAll(resp.Body)
-	var bodystr string
-	if err == nil {
-		bodystr = string(body)
+	oerr, ok := e.(openapi.GenericOpenAPIError)
+	if !ok {
+		panic("wrong error type")
 	}
-	return fmt.Errorf("httpresp code: %d, httpresp: %s, httpbody: %s, err: %w", resp.StatusCode, resp.Status, bodystr, e)
+	var buf bytes.Buffer
+	var err error
+
+	var reqStr string
+	if resp.Request.GetBody != nil {
+		resp.Request.Body, err = resp.Request.GetBody()
+		if err != nil {
+			reqStr = err.Error()
+		} else if err := resp.Request.Write(&buf); err != nil {
+			reqStr = err.Error()
+		} else {
+			reqStr = buf.String()
+		}
+	} else {
+		reqStr = resp.Request.URL.String()
+	}
+
+	bodystr := string(oerr.Body())
+	//body, err := ioutil.ReadAll(resp.Body)
+	//var bodystr string
+	//if err == nil {
+	//	bodystr = string(body)
+	//}
+	relevantErr := fmt.Sprintf("{ httpcode: %d, httpresp: %s, httpbody: %s, reqstr: %s }", resp.StatusCode, resp.Status, bodystr, reqStr)
+	relevantErrBytes, err := json.MarshalIndent(relevantErr, "", "\t")
+	if err != nil {
+		return fmt.Errorf("RelevantInfo : %s, MarshalErr: %w, Err: %w", relevantErr, err, e)
+	}
+
+	return fmt.Errorf("relevantErr: %s, err: %w", relevantErrBytes, e)
 }

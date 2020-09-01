@@ -1,6 +1,8 @@
 package go_pinning_service_http_client
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-pinning-service-http-client/openapi"
 	"github.com/multiformats/go-multiaddr"
@@ -9,6 +11,8 @@ import (
 
 // PinGetter Getter for Pin object
 type PinGetter interface {
+	fmt.Stringer
+	json.Marshaler
 	// CID to be pinned recursively
 	GetCid() cid.Cid
 	// Optional name for pinned data; can be used for lookups later
@@ -23,6 +27,37 @@ type pinObject struct {
 	openapi.Pin
 }
 
+func (p *pinObject) MarshalJSON() ([]byte, error) {
+	var originsStr string
+	if o := p.GetOrigins(); o != nil {
+		originsBytes, err := json.Marshal(o)
+		if err == nil {
+			originsStr = string(originsBytes)
+		}
+	}
+
+	var metaStr string
+	if meta := p.GetMeta(); meta != nil {
+		metaBytes, err := json.Marshal(meta)
+		if err == nil {
+			metaStr = string(metaBytes)
+		}
+	}
+
+	str := fmt.Sprintf("{ \"Cid\" : \"%v\", \"Name\" : \"%s\", \"Origins\" : %v, \"Meta\" : %v }",
+		p.GetCid(), p.GetName(), originsStr, metaStr)
+	return []byte(str), nil
+}
+
+func (p *pinObject) String() string {
+	marshalled, err := json.MarshalIndent(p, "", "\t")
+	if err != nil {
+		return ""
+	}
+
+	return string(marshalled)
+}
+
 func (p *pinObject) GetCid() cid.Cid {
 	c, err := cid.Parse(p.Pin.Cid)
 	if err != nil {
@@ -31,19 +66,31 @@ func (p *pinObject) GetCid() cid.Cid {
 	return c
 }
 
-type Status = openapi.Status
+type Status string
 
 const (
-	StatusQueued  Status = openapi.QUEUED
-	StatusPinning Status = openapi.PINNING
-	StatusPinned  Status = openapi.PINNED
-	StatusFailed  Status = openapi.FAILED
+	StatusUnknown Status = ""
+	StatusQueued  Status = Status(openapi.QUEUED)
+	StatusPinning Status = Status(openapi.PINNING)
+	StatusPinned  Status = Status(openapi.PINNED)
+	StatusFailed  Status = Status(openapi.FAILED)
 )
+
+func (s Status) String() string {
+	switch s {
+	case StatusQueued, StatusPinning, StatusPinned, StatusFailed:
+		return string(s)
+	default:
+		return string(StatusUnknown)
+	}
+}
 
 var validStatuses = []Status{"queued", "pinning", "pinned", "failed"}
 
 // PinStatusGetter Getter for Pin object with status
 type PinStatusGetter interface {
+	fmt.Stringer
+	json.Marshaler
 	// Globally unique ID of the pin request; can be used to check the status of ongoing pinning, modification of pin object, or pin removal
 	GetId() string
 	GetStatus() Status
@@ -76,4 +123,40 @@ func (p *pinStatusObject) GetDelegates() []multiaddr.Multiaddr {
 
 func (p *pinStatusObject) GetPin() PinGetter {
 	return &pinObject{p.Pin}
+}
+
+func (p *pinStatusObject) GetStatus() Status {
+	return Status(p.PinStatus.GetStatus())
+}
+
+func (p *pinStatusObject) MarshalJSON() ([]byte, error) {
+	var delegatesStr string
+	if d := p.GetDelegates(); d != nil {
+		delegatesBytes, err := json.Marshal(d)
+		if err == nil {
+			delegatesStr = string(delegatesBytes)
+		}
+	}
+
+	var infoStr string
+	if info := p.GetInfo(); info != nil {
+		infoBytes, err := json.Marshal(info)
+		if err == nil {
+			infoStr = string(infoBytes)
+		}
+	}
+
+	str := fmt.Sprintf("{\"Pin\" : %v, \"ID\" : \"%s\", \"Status\" : \"%s\", \"Created\" : \"%v\", \"Delegates\" : %v, \"Info\" : %v }",
+		p.GetPin(), p.GetId(), p.GetStatus(), p.GetCreated(), delegatesStr, infoStr)
+
+	return []byte(str), nil
+}
+
+func (p *pinStatusObject) String() string {
+	marshalled, err := json.MarshalIndent(p, "", "\t")
+	if err != nil {
+		return ""
+	}
+
+	return string(marshalled)
 }

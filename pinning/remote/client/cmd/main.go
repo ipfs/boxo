@@ -6,6 +6,7 @@ import (
 	"github.com/ipfs/go-cid"
 	pinclient "github.com/ipfs/go-pinning-service-http-client"
 	"os"
+	"time"
 )
 
 func main() {
@@ -35,29 +36,36 @@ func main() {
 	}
 	_ = ipfsPgCid
 
+	listPins(ctx, c)
+
 	fmt.Println("Adding libp2p home page")
-	ps, err := c.Add(ctx, libp2pCid, pinclient.PinOpts.WithName("libp2p_home"))
+	ps, err := c.Add(ctx, libp2pCid, pinclient.PinOpts.WithName("libp2p"))
 	if err == nil {
-		fmt.Println(ps.GetStatus())
+		fmt.Printf("PinStatus: %v \n", ps)
 	} else {
 		fmt.Println(err)
 	}
 
-	fmt.Println("List all pins")
-	pins, err := c.LsSync(ctx)
-	fmt.Println(err)
-
-	for _, p := range pins {
-		fmt.Printf("Pin Name: %s, CID: %s", p.GetPin().GetName(), p.GetPin().GetCid().String())
-	}
+	listPins(ctx, c)
 
 	fmt.Println("Check on pin status")
-	status, err := c.GetStatusByID(ctx, ps.GetId())
-	if err == nil {
-		fmt.Println(status.GetStatus())
-	} else {
-		fmt.Println(err)
+	if ps == nil {
+		panic("Skipping pin status check because the pin is null")
 	}
+
+	var pinned bool
+	for !pinned {
+		status, err := c.GetStatusByID(ctx, ps.GetId())
+		if err == nil {
+			fmt.Println(status.GetStatus())
+			pinned = status.GetStatus() == pinclient.StatusPinned
+		} else {
+			fmt.Println(err)
+		}
+		time.Sleep(time.Millisecond * 500)
+	}
+
+	listPins(ctx, c)
 
 	fmt.Println("Delete pin")
 	err = c.DeleteByID(ctx, ps.GetId())
@@ -67,11 +75,17 @@ func main() {
 		fmt.Println(err)
 	}
 
-	fmt.Println("List all pins")
-	pins, err = c.LsSync(ctx)
-	fmt.Println(err)
+	listPins(ctx, c)
+}
 
-	for _, p := range pins {
-		fmt.Printf("Pin Name: %s, CID: %s", p.GetPin().GetName(), p.GetPin().GetCid().String())
+func listPins(ctx context.Context, c *pinclient.Client) {
+	fmt.Println("List all pins")
+	pins, err := c.LsSync(ctx)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		for _, p := range pins {
+			fmt.Printf("Pin: %v \n", p)
+		}
 	}
 }
