@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"fmt"
 	"math/rand"
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
@@ -59,7 +60,7 @@ func GeneratePeers(n int) []peer.ID {
 	peerIds := make([]peer.ID, 0, n)
 	for i := 0; i < n; i++ {
 		peerSeq++
-		p := peer.ID(peerSeq)
+		p := peer.ID(fmt.Sprint(i))
 		peerIds = append(peerIds, p)
 	}
 	return peerIds
