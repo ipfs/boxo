@@ -295,7 +295,6 @@ func (dsl *DefaultScoreLedger) Stop() {
 func (dsl *DefaultScoreLedger) init(scorePeer ScorePeerFunc) {
 	dsl.lock.Lock()
 	defer dsl.lock.Unlock()
-	dsl.ledgerMap = make(map[peer.ID]*scoreledger)
 	dsl.scorePeer = scorePeer
 }
 
