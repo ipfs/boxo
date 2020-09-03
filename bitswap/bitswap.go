@@ -11,6 +11,7 @@ import (
 
 	delay "github.com/ipfs/go-ipfs-delay"
 
+	deciface "github.com/ipfs/go-bitswap/decision"
 	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
 	decision "github.com/ipfs/go-bitswap/internal/decision"
 	bsgetter "github.com/ipfs/go-bitswap/internal/getter"
@@ -92,6 +93,13 @@ func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
 func SetSendDontHaves(send bool) Option {
 	return func(bs *Bitswap) {
 		bs.engine.SetSendDontHaves(send)
+	}
+}
+
+// Configures the engine to use the given score decision logic.
+func WithScoreLedger(scoreLedger deciface.ScoreLedger) Option {
+	return func(bs *Bitswap) {
+		bs.engine.UseScoreLedger(scoreLedger)
 	}
 }
 

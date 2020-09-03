@@ -9,11 +9,12 @@ import (
 	"time"
 
 	bitswap "github.com/ipfs/go-bitswap"
+	deciface "github.com/ipfs/go-bitswap/decision"
 	decision "github.com/ipfs/go-bitswap/internal/decision"
 	bssession "github.com/ipfs/go-bitswap/internal/session"
+	"github.com/ipfs/go-bitswap/message"
 	testinstance "github.com/ipfs/go-bitswap/testinstance"
 	tn "github.com/ipfs/go-bitswap/testnet"
-	"github.com/ipfs/go-bitswap/message"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	detectrace "github.com/ipfs/go-detect-race"
@@ -801,5 +802,61 @@ func TestBitswapLedgerTwoWay(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+type testingScoreLedger struct {
+	scorePeer deciface.ScorePeerFunc
+	started   chan struct{}
+	closed    chan struct{}
+}
+
+func newTestingScoreLedger() *testingScoreLedger {
+	return &testingScoreLedger{
+		nil,
+		make(chan struct{}),
+		make(chan struct{}),
+	}
+}
+
+func (tsl *testingScoreLedger) GetReceipt(p peer.ID) *deciface.Receipt {
+	return nil
+}
+func (tsl *testingScoreLedger) AddToSentBytes(p peer.ID, n int)     {}
+func (tsl *testingScoreLedger) AddToReceivedBytes(p peer.ID, n int) {}
+func (tsl *testingScoreLedger) PeerConnected(p peer.ID)             {}
+func (tsl *testingScoreLedger) PeerDisconnected(p peer.ID)          {}
+func (tsl *testingScoreLedger) Start(scorePeer deciface.ScorePeerFunc) {
+	tsl.scorePeer = scorePeer
+	close(tsl.started)
+}
+func (tsl *testingScoreLedger) Stop() {
+	close(tsl.closed)
+}
+
+// Tests start and stop of a custom decision logic
+func TestWithScoreLedger(t *testing.T) {
+	tsl := newTestingScoreLedger()
+	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
+	bsOpts := []bitswap.Option{bitswap.WithScoreLedger(tsl)}
+	ig := testinstance.NewTestInstanceGenerator(net, nil, bsOpts)
+	defer ig.Close()
+	i := ig.Next()
+	defer i.Exchange.Close()
+
+	select {
+	case <-tsl.started:
+		if tsl.scorePeer == nil {
+			t.Fatal("Expected the score function to be initialized")
+		}
+	case <-time.After(time.Second * 5):
+		t.Fatal("Expected the score ledger to be started within 5s")
+	}
+
+	i.Exchange.Close()
+	select {
+	case <-tsl.closed:
+	case <-time.After(time.Second * 5):
+		t.Fatal("Expected the score ledger to be closed within 5s")
 	}
 }
