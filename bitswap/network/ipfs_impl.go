@@ -265,6 +265,8 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 		return fmt.Errorf("unrecognized protocol on remote: %s", s.Protocol())
 	}
 
+	atomic.AddUint64(&bsnet.stats.MessagesSent, 1)
+
 	if err := s.SetWriteDeadline(time.Time{}); err != nil {
 		log.Warnf("error resetting deadline: %s", err)
 	}
@@ -320,7 +322,6 @@ func (bsnet *impl) SendMessage(
 		_ = s.Reset()
 		return err
 	}
-	atomic.AddUint64(&bsnet.stats.MessagesSent, 1)
 
 	// TODO(https://github.com/libp2p/go-libp2p-net/issues/28): Avoid this goroutine.
 	//nolint
