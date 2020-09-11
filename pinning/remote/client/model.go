@@ -36,7 +36,7 @@ func (p *pinObject) MarshalJSON() ([]byte, error) {
 		}
 	}
 
-	var metaStr string
+	metaStr := "{}"
 	if meta := p.GetMeta(); meta != nil {
 		metaBytes, err := json.Marshal(meta)
 		if err == nil {
@@ -138,7 +138,7 @@ func (p *pinStatusObject) MarshalJSON() ([]byte, error) {
 		}
 	}
 
-	var infoStr string
+	infoStr := "{}"
 	if info := p.GetInfo(); info != nil {
 		infoBytes, err := json.Marshal(info)
 		if err == nil {
