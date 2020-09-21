@@ -55,7 +55,7 @@ func main() {
 
 	var pinned bool
 	for !pinned {
-		status, err := c.GetStatusByID(ctx, ps.GetId())
+		status, err := c.GetStatusByID(ctx, ps.GetRequestId())
 		if err == nil {
 			fmt.Println(status.GetStatus())
 			pinned = status.GetStatus() == pinclient.StatusPinned
@@ -68,7 +68,7 @@ func main() {
 	listPins(ctx, c)
 
 	fmt.Println("Delete pin")
-	err = c.DeleteByID(ctx, ps.GetId())
+	err = c.DeleteByID(ctx, ps.GetRequestId())
 	if err == nil {
 		fmt.Println("Successfully deleted pin")
 	} else {

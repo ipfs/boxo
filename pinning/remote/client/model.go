@@ -92,7 +92,7 @@ type PinStatusGetter interface {
 	fmt.Stringer
 	json.Marshaler
 	// Globally unique ID of the pin request; can be used to check the status of ongoing pinning, modification of pin object, or pin removal
-	GetId() string
+	GetRequestId() string
 	GetStatus() Status
 	// Immutable timestamp indicating when a pin request entered a pinning service; can be used for filtering results and pagination
 	GetCreated() time.Time
@@ -129,6 +129,10 @@ func (p *pinStatusObject) GetStatus() Status {
 	return Status(p.PinStatus.GetStatus())
 }
 
+func (p *pinStatusObject) GetRequestId() string {
+	return p.GetRequestid()
+}
+
 func (p *pinStatusObject) MarshalJSON() ([]byte, error) {
 	var delegatesStr string
 	if d := p.GetDelegates(); d != nil {
@@ -146,8 +150,8 @@ func (p *pinStatusObject) MarshalJSON() ([]byte, error) {
 		}
 	}
 
-	str := fmt.Sprintf("{\"Pin\" : %v, \"ID\" : \"%s\", \"Status\" : \"%s\", \"Created\" : \"%v\", \"Delegates\" : %v, \"Info\" : %v }",
-		p.GetPin(), p.GetId(), p.GetStatus(), p.GetCreated(), delegatesStr, infoStr)
+	str := fmt.Sprintf("{\"Pin\" : %v, \"RequestID\" : \"%s\", \"Status\" : \"%s\", \"Created\" : \"%v\", \"Delegates\" : %v, \"Info\" : %v }",
+		p.GetPin(), p.GetRequestId(), p.GetStatus(), p.GetCreated(), delegatesStr, infoStr)
 
 	return []byte(str), nil
 }

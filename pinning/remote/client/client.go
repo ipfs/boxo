@@ -39,7 +39,8 @@ func NewClient(url, bearerToken string) *Client {
 }
 
 func getError(e *openapi.Error) error {
-	return fmt.Errorf("request error: %d - %s", e.Code, e.Message)
+	err := e.GetError()
+	return fmt.Errorf("request error: %s - %s", err.GetReason(), err.GetDetails())
 }
 
 // TODO: We should probably make sure there are no duplicates sent
@@ -311,7 +312,7 @@ func (c *Client) Add(ctx context.Context, cid cid.Cid, opts ...AddOption) (PinSt
 }
 
 func (c *Client) GetStatusByID(ctx context.Context, pinID string) (PinStatusGetter, error) {
-	getter := c.client.PinsApi.PinsIdGet(ctx, pinID)
+	getter := c.client.PinsApi.PinsRequestidGet(ctx, pinID)
 	result, httpresp, err := getter.Execute()
 	if err != nil {
 		err := httperr(httpresp, err)
@@ -322,7 +323,7 @@ func (c *Client) GetStatusByID(ctx context.Context, pinID string) (PinStatusGett
 }
 
 func (c *Client) DeleteByID(ctx context.Context, pinID string) error {
-	deleter := c.client.PinsApi.PinsIdDelete(ctx, pinID)
+	deleter := c.client.PinsApi.PinsRequestidDelete(ctx, pinID)
 	httpresp, err := deleter.Execute()
 	if err != nil {
 		err := httperr(httpresp, err)
@@ -339,7 +340,7 @@ func (c *Client) Modify(ctx context.Context, pinID string, cid cid.Cid, opts ...
 		}
 	}
 
-	adder := c.client.PinsApi.PinsIdPost(ctx, pinID)
+	adder := c.client.PinsApi.PinsRequestidPost(ctx, pinID)
 	p := openapi.Pin{
 		Cid: cid.Encode(getCIDEncoder()),
 	}
@@ -402,7 +403,7 @@ func httperr(resp *http.Response, e error) error {
 	relevantErr := fmt.Sprintf("{ httpcode: %d, httpresp: %s, httpbody: %s, reqstr: %s }", resp.StatusCode, resp.Status, bodystr, reqStr)
 	relevantErrBytes, err := json.MarshalIndent(relevantErr, "", "\t")
 	if err != nil {
-		return fmt.Errorf("RelevantInfo : %s, MarshalErr: %w, Err: %w", relevantErr, err, e)
+		return fmt.Errorf("RelevantInfo : %s, MarshalErr: %s, Err: %w", relevantErr, err, e)
 	}
 
 	return fmt.Errorf("relevantErr: %s, err: %w", relevantErrBytes, e)

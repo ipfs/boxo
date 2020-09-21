@@ -11,252 +11,133 @@ package openapi
 
 import (
 	"encoding/json"
-	"time"
 )
 
-// PinStatus Pin object with status
-type PinStatus struct {
-	// Globally unique identifier of the pin request; can be used to check the status of ongoing pinning, or pin removal
-	Requestid string `json:"requestid"`
-	Status    Status `json:"status"`
-	// Immutable timestamp indicating when a pin request entered a pinning service; can be used for filtering results and pagination
-	Created time.Time `json:"created"`
-	Pin     Pin       `json:"pin"`
-	// List of multiaddrs designated by pinning service for transferring any new data from external peers
-	Delegates []string `json:"delegates"`
-	// Optional info for PinStatus response
-	Info *map[string]string `json:"info,omitempty"`
+// ErrorError struct for ErrorError
+type ErrorError struct {
+	// Mandatory string identifying the type of error
+	Reason string `json:"reason"`
+	// Optional, longer description of the error; may include UUID of transaction for support, links to documentation etc
+	Details *string `json:"details,omitempty"`
 }
 
-// NewPinStatus instantiates a new PinStatus object
+// NewErrorError instantiates a new ErrorError object
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewPinStatus(requestid string, status Status, created time.Time, pin Pin, delegates []string) *PinStatus {
-	this := PinStatus{}
-	this.Requestid = requestid
-	this.Status = status
-	this.Created = created
-	this.Pin = pin
-	this.Delegates = delegates
+func NewErrorError(reason string) *ErrorError {
+	this := ErrorError{}
+	this.Reason = reason
 	return &this
 }
 
-// NewPinStatusWithDefaults instantiates a new PinStatus object
+// NewErrorErrorWithDefaults instantiates a new ErrorError object
 // This constructor will only assign default values to properties that have it defined,
 // but it doesn't guarantee that properties required by API are set
-func NewPinStatusWithDefaults() *PinStatus {
-	this := PinStatus{}
+func NewErrorErrorWithDefaults() *ErrorError {
+	this := ErrorError{}
 	return &this
 }
 
-// GetRequestid returns the Requestid field value
-func (o *PinStatus) GetRequestid() string {
+// GetReason returns the Reason field value
+func (o *ErrorError) GetReason() string {
 	if o == nil {
 		var ret string
 		return ret
 	}
 
-	return o.Requestid
+	return o.Reason
 }
 
-// GetRequestidOk returns a tuple with the Requestid field value
+// GetReasonOk returns a tuple with the Reason field value
 // and a boolean to check if the value has been set.
-func (o *PinStatus) GetRequestidOk() (*string, bool) {
+func (o *ErrorError) GetReasonOk() (*string, bool) {
 	if o == nil {
 		return nil, false
 	}
-	return &o.Requestid, true
+	return &o.Reason, true
 }
 
-// SetRequestid sets field value
-func (o *PinStatus) SetRequestid(v string) {
-	o.Requestid = v
+// SetReason sets field value
+func (o *ErrorError) SetReason(v string) {
+	o.Reason = v
 }
 
-// GetStatus returns the Status field value
-func (o *PinStatus) GetStatus() Status {
-	if o == nil {
-		var ret Status
+// GetDetails returns the Details field value if set, zero value otherwise.
+func (o *ErrorError) GetDetails() string {
+	if o == nil || o.Details == nil {
+		var ret string
 		return ret
 	}
-
-	return o.Status
+	return *o.Details
 }
 
-// GetStatusOk returns a tuple with the Status field value
+// GetDetailsOk returns a tuple with the Details field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *PinStatus) GetStatusOk() (*Status, bool) {
-	if o == nil {
+func (o *ErrorError) GetDetailsOk() (*string, bool) {
+	if o == nil || o.Details == nil {
 		return nil, false
 	}
-	return &o.Status, true
+	return o.Details, true
 }
 
-// SetStatus sets field value
-func (o *PinStatus) SetStatus(v Status) {
-	o.Status = v
-}
-
-// GetCreated returns the Created field value
-func (o *PinStatus) GetCreated() time.Time {
-	if o == nil {
-		var ret time.Time
-		return ret
-	}
-
-	return o.Created
-}
-
-// GetCreatedOk returns a tuple with the Created field value
-// and a boolean to check if the value has been set.
-func (o *PinStatus) GetCreatedOk() (*time.Time, bool) {
-	if o == nil {
-		return nil, false
-	}
-	return &o.Created, true
-}
-
-// SetCreated sets field value
-func (o *PinStatus) SetCreated(v time.Time) {
-	o.Created = v
-}
-
-// GetPin returns the Pin field value
-func (o *PinStatus) GetPin() Pin {
-	if o == nil {
-		var ret Pin
-		return ret
-	}
-
-	return o.Pin
-}
-
-// GetPinOk returns a tuple with the Pin field value
-// and a boolean to check if the value has been set.
-func (o *PinStatus) GetPinOk() (*Pin, bool) {
-	if o == nil {
-		return nil, false
-	}
-	return &o.Pin, true
-}
-
-// SetPin sets field value
-func (o *PinStatus) SetPin(v Pin) {
-	o.Pin = v
-}
-
-// GetDelegates returns the Delegates field value
-func (o *PinStatus) GetDelegates() []string {
-	if o == nil {
-		var ret []string
-		return ret
-	}
-
-	return o.Delegates
-}
-
-// GetDelegatesOk returns a tuple with the Delegates field value
-// and a boolean to check if the value has been set.
-func (o *PinStatus) GetDelegatesOk() (*[]string, bool) {
-	if o == nil {
-		return nil, false
-	}
-	return &o.Delegates, true
-}
-
-// SetDelegates sets field value
-func (o *PinStatus) SetDelegates(v []string) {
-	o.Delegates = v
-}
-
-// GetInfo returns the Info field value if set, zero value otherwise.
-func (o *PinStatus) GetInfo() map[string]string {
-	if o == nil || o.Info == nil {
-		var ret map[string]string
-		return ret
-	}
-	return *o.Info
-}
-
-// GetInfoOk returns a tuple with the Info field value if set, nil otherwise
-// and a boolean to check if the value has been set.
-func (o *PinStatus) GetInfoOk() (*map[string]string, bool) {
-	if o == nil || o.Info == nil {
-		return nil, false
-	}
-	return o.Info, true
-}
-
-// HasInfo returns a boolean if a field has been set.
-func (o *PinStatus) HasInfo() bool {
-	if o != nil && o.Info != nil {
+// HasDetails returns a boolean if a field has been set.
+func (o *ErrorError) HasDetails() bool {
+	if o != nil && o.Details != nil {
 		return true
 	}
 
 	return false
 }
 
-// SetInfo gets a reference to the given map[string]string and assigns it to the Info field.
-func (o *PinStatus) SetInfo(v map[string]string) {
-	o.Info = &v
+// SetDetails gets a reference to the given string and assigns it to the Details field.
+func (o *ErrorError) SetDetails(v string) {
+	o.Details = &v
 }
 
-func (o PinStatus) MarshalJSON() ([]byte, error) {
+func (o ErrorError) MarshalJSON() ([]byte, error) {
 	toSerialize := map[string]interface{}{}
 	if true {
-		toSerialize["requestid"] = o.Requestid
+		toSerialize["reason"] = o.Reason
 	}
-	if true {
-		toSerialize["status"] = o.Status
-	}
-	if true {
-		toSerialize["created"] = o.Created
-	}
-	if true {
-		toSerialize["pin"] = o.Pin
-	}
-	if true {
-		toSerialize["delegates"] = o.Delegates
-	}
-	if o.Info != nil {
-		toSerialize["info"] = o.Info
+	if o.Details != nil {
+		toSerialize["details"] = o.Details
 	}
 	return json.Marshal(toSerialize)
 }
 
-type NullablePinStatus struct {
-	value *PinStatus
+type NullableErrorError struct {
+	value *ErrorError
 	isSet bool
 }
 
-func (v NullablePinStatus) Get() *PinStatus {
+func (v NullableErrorError) Get() *ErrorError {
 	return v.value
 }
 
-func (v *NullablePinStatus) Set(val *PinStatus) {
+func (v *NullableErrorError) Set(val *ErrorError) {
 	v.value = val
 	v.isSet = true
 }
 
-func (v NullablePinStatus) IsSet() bool {
+func (v NullableErrorError) IsSet() bool {
 	return v.isSet
 }
 
-func (v *NullablePinStatus) Unset() {
+func (v *NullableErrorError) Unset() {
 	v.value = nil
 	v.isSet = false
 }
 
-func NewNullablePinStatus(val *PinStatus) *NullablePinStatus {
-	return &NullablePinStatus{value: val, isSet: true}
+func NewNullableErrorError(val *ErrorError) *NullableErrorError {
+	return &NullableErrorError{value: val, isSet: true}
 }
 
-func (v NullablePinStatus) MarshalJSON() ([]byte, error) {
+func (v NullableErrorError) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v.value)
 }
 
-func (v *NullablePinStatus) UnmarshalJSON(src []byte) error {
+func (v *NullableErrorError) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }

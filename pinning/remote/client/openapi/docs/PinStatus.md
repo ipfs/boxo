@@ -4,7 +4,7 @@
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
-**Id** | **string** | Globally unique ID of the pin request; can be used to check the status of ongoing pinning, modification of pin object, or pin removal | 
+**Requestid** | **string** | Globally unique identifier of the pin request; can be used to check the status of ongoing pinning, or pin removal | 
 **Status** | [**Status**](Status.md) |  | 
 **Created** | [**time.Time**](time.Time.md) | Immutable timestamp indicating when a pin request entered a pinning service; can be used for filtering results and pagination | 
 **Pin** | [**Pin**](Pin.md) |  | 
@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 
 ### NewPinStatus
 
-`func NewPinStatus(id string, status Status, created time.Time, pin Pin, delegates []string, ) *PinStatus`
+`func NewPinStatus(requestid string, status Status, created time.Time, pin Pin, delegates []string, ) *PinStatus`
 
 NewPinStatus instantiates a new PinStatus object
 This constructor will assign default values to properties that have it defined,
@@ -30,24 +30,24 @@ NewPinStatusWithDefaults instantiates a new PinStatus object
 This constructor will only assign default values to properties that have it defined,
 but it doesn't guarantee that properties required by API are set
 
-### GetId
+### GetRequestid
 
-`func (o *PinStatus) GetId() string`
+`func (o *PinStatus) GetRequestid() string`
 
-GetId returns the Id field if non-nil, zero value otherwise.
+GetRequestid returns the Requestid field if non-nil, zero value otherwise.
 
-### GetIdOk
+### GetRequestidOk
 
-`func (o *PinStatus) GetIdOk() (*string, bool)`
+`func (o *PinStatus) GetRequestidOk() (*string, bool)`
 
-GetIdOk returns a tuple with the Id field if it's non-nil, zero value otherwise
+GetRequestidOk returns a tuple with the Requestid field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
-### SetId
+### SetRequestid
 
-`func (o *PinStatus) SetId(v string)`
+`func (o *PinStatus) SetRequestid(v string)`
 
-SetId sets Id field to given value.
+SetRequestid sets Requestid field to given value.
 
 
 ### GetStatus
