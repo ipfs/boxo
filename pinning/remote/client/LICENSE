@@ -1,21 +1,22 @@
-MIT License
+The software contents of this repository are Copyright (c) Protocol Labs,
+Licensed under the `Permissive License Stack`, meaning either of:
 
-Copyright (c) 2020 IPFS
+- Apache-2.0 Software License: https://www.apache.org/licenses/LICENSE-2.0
+  ([...4tr2kfsq](https://gateway.ipfs.io/ipfs/bafkreiankqxazcae4onkp436wag2lj3ccso4nawxqkkfckd6cg4tr2kfsq))
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+- MIT Software License: https://opensource.org/licenses/MIT
+  ([...vljevcba](https://gateway.ipfs.io/ipfs/bafkreiepofszg4gfe2gzuhojmksgemsub2h4uy2gewdnr35kswvljevcba))
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+You may not use the contents of this repository except in compliance
+with one of the listed Licenses. For an extended clarification of the
+intent behind the choice of Licensing please refer to
+https://protocol.ai/blog/announcing-the-permissive-license-stack/
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Unless required by applicable law or agreed to in writing, software
+distributed under the terms listed in this notice is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+either express or implied. See each License for the specific language
+governing permissions and limitations under that License.
+
+<!--- SPDX-License-Identifier: Apache-2.0 OR MIT -->
+`SPDX-License-Identifier: Apache-2.0 OR MIT`
