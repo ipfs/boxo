@@ -221,8 +221,8 @@ func (sct *selectiveCarTraverser) loader(lnk ipld.Link, ctx ipld.LinkContext) (i
 
 func (sct *selectiveCarTraverser) traverseBlocks() error {
 
-	nsc := dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) (ipld.NodeStyle, error) {
-		return basicnode.Style.Any, nil
+	nsc := dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
+		return basicnode.Prototype.Any, nil
 	})
 
 	for _, carDag := range sct.sc.dags {
@@ -243,9 +243,9 @@ func (sct *selectiveCarTraverser) traverseBlocks() error {
 		nd := nb.Build()
 		err = traversal.Progress{
 			Cfg: &traversal.Config{
-				Ctx:                        sct.sc.ctx,
-				LinkLoader:                 sct.loader,
-				LinkTargetNodeStyleChooser: nsc,
+				Ctx:                            sct.sc.ctx,
+				LinkLoader:                     sct.loader,
+				LinkTargetNodePrototypeChooser: nsc,
 			},
 		}.WalkAdv(nd, parsed, func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil })
 		if err != nil {
