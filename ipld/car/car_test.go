@@ -96,7 +96,7 @@ func TestRoundtripSelective(t *testing.T) {
 
 	assertAddNodes(t, dserv, a, b, c, nd1, nd2, nd3)
 
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Style.Any)
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
 
 	// the graph assembled above looks as follows, in order:
 	// nd3 -> [c, nd2 -> [nd1 -> a, b, nd1 -> a]]
