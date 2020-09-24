@@ -13,6 +13,8 @@ import (
 	decision "github.com/ipfs/go-bitswap/internal/decision"
 	bssession "github.com/ipfs/go-bitswap/internal/session"
 	"github.com/ipfs/go-bitswap/message"
+	bsmsg "github.com/ipfs/go-bitswap/message"
+	pb "github.com/ipfs/go-bitswap/message/pb"
 	testinstance "github.com/ipfs/go-bitswap/testinstance"
 	tn "github.com/ipfs/go-bitswap/testnet"
 	blocks "github.com/ipfs/go-block-format"
@@ -468,7 +470,6 @@ func TestBasicBitswap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	st1, err := instances[1].Exchange.Stat()
 	if err != nil {
 		t.Fatal(err)
@@ -858,5 +859,146 @@ func TestWithScoreLedger(t *testing.T) {
 	case <-tsl.closed:
 	case <-time.After(time.Second * 5):
 		t.Fatal("Expected the score ledger to be closed within 5s")
+	}
+}
+
+type logItem struct {
+	dir byte
+	pid peer.ID
+	msg bsmsg.BitSwapMessage
+}
+type mockWireTap struct {
+	log []logItem
+}
+
+func (m *mockWireTap) MessageReceived(p peer.ID, msg bsmsg.BitSwapMessage) {
+	m.log = append(m.log, logItem{'r', p, msg})
+}
+func (m *mockWireTap) MessageSent(p peer.ID, msg bsmsg.BitSwapMessage) {
+	m.log = append(m.log, logItem{'s', p, msg})
+}
+
+func TestWireTap(t *testing.T) {
+	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
+	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
+	defer ig.Close()
+	bg := blocksutil.NewBlockGenerator()
+
+	instances := ig.Instances(3)
+	blocks := bg.Blocks(2)
+
+	// Install WireTap
+	wiretap := new(mockWireTap)
+	bitswap.EnableWireTap(wiretap)(instances[0].Exchange)
+
+	// First peer has block
+	err := instances[0].Exchange.HasBlock(blocks[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	// Second peer broadcasts want for block CID
+	// (Received by first and third peers)
+	_, err = instances[1].Exchange.GetBlock(ctx, blocks[0].Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// When second peer receives block, it should send out a cancel, so third
+	// peer should no longer keep second peer's want
+	if err = tu.WaitFor(ctx, func() error {
+		if len(instances[2].Exchange.WantlistForPeer(instances[1].Peer)) != 0 {
+			return fmt.Errorf("should have no items in other peers wantlist")
+		}
+		if len(instances[1].Exchange.GetWantlist()) != 0 {
+			return fmt.Errorf("shouldnt have anything in wantlist")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// After communication, 3 messages should be logged via WireTap
+	if l := len(wiretap.log); l != 3 {
+		t.Fatal("expected 3 items logged via WireTap, found", l)
+	}
+
+	// Received: 'Have'
+	if wiretap.log[0].dir != 'r' {
+		t.Error("expected message to be received")
+	}
+	if wiretap.log[0].pid != instances[1].Peer {
+		t.Error("expected peer", instances[1].Peer, ", found", wiretap.log[0].pid)
+	}
+	if l := len(wiretap.log[0].msg.Wantlist()); l != 1 {
+		t.Fatal("expected 1 entry in Wantlist, found", l)
+	}
+	if wiretap.log[0].msg.Wantlist()[0].WantType != pb.Message_Wantlist_Have {
+		t.Error("expected WantType equal to 'Have', found 'Block'")
+	}
+
+	// Sent: Block
+	if wiretap.log[1].dir != 's' {
+		t.Error("expected message to be sent")
+	}
+	if wiretap.log[1].pid != instances[1].Peer {
+		t.Error("expected peer", instances[1].Peer, ", found", wiretap.log[1].pid)
+	}
+	if l := len(wiretap.log[1].msg.Blocks()); l != 1 {
+		t.Fatal("expected 1 entry in Blocks, found", l)
+	}
+	if wiretap.log[1].msg.Blocks()[0].Cid() != blocks[0].Cid() {
+		t.Error("wrong block Cid")
+	}
+
+	// Received: 'Cancel'
+	if wiretap.log[2].dir != 'r' {
+		t.Error("expected message to be received")
+	}
+	if wiretap.log[2].pid != instances[1].Peer {
+		t.Error("expected peer", instances[1].Peer, ", found", wiretap.log[2].pid)
+	}
+	if l := len(wiretap.log[2].msg.Wantlist()); l != 1 {
+		t.Fatal("expected 1 entry in Wantlist, found", l)
+	}
+	if wiretap.log[2].msg.Wantlist()[0].WantType != pb.Message_Wantlist_Block {
+		t.Error("expected WantType equal to 'Block', found 'Have'")
+	}
+	if wiretap.log[2].msg.Wantlist()[0].Cancel != true {
+		t.Error("expected entry with Cancel set to 'true'")
+	}
+
+	// After disabling WireTap, no new messages are logged
+	bitswap.DisableWireTap()(instances[0].Exchange)
+
+	err = instances[0].Exchange.HasBlock(blocks[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = instances[1].Exchange.GetBlock(ctx, blocks[1].Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = tu.WaitFor(ctx, func() error {
+		if len(instances[1].Exchange.GetWantlist()) != 0 {
+			return fmt.Errorf("shouldnt have anything in wantlist")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if l := len(wiretap.log); l != 3 {
+		t.Fatal("expected 3 items logged via WireTap, found", l)
+	}
+
+	for _, inst := range instances {
+		err := inst.Exchange.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
