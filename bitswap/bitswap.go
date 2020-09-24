@@ -252,6 +252,9 @@ type Bitswap struct {
 	allMetric     metrics.Histogram
 	sentHistogram metrics.Histogram
 
+	// External statistics interface
+	wiretap WireTap
+
 	// the SessionManager routes requests to interested sessions
 	sm *bssm.SessionManager
 
@@ -418,6 +421,10 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 	bs.engine.MessageReceived(ctx, p, incoming)
 	// TODO: this is bad, and could be easily abused.
 	// Should only track *useful* messages in ledger
+
+	if bs.wiretap != nil {
+		bs.wiretap.MessageReceived(p, incoming)
+	}
 
 	iblocks := incoming.Blocks()
 
