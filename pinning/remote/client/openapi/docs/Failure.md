@@ -1,46 +1,46 @@
-# Error
+# Failure
 
 ## Properties
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
-**Error** | [**ErrorError**](Error_error.md) |  | 
+**Error** | [**FailureError**](Failure_error.md) |  | 
 
 ## Methods
 
-### NewError
+### NewFailure
 
-`func NewError(error_ ErrorError, ) *Error`
+`func NewFailure(error_ FailureError, ) *Failure`
 
-NewError instantiates a new Error object
+NewFailure instantiates a new Failure object
 This constructor will assign default values to properties that have it defined,
 and makes sure properties required by API are set, but the set of arguments
 will change when the set of required properties is changed
 
-### NewErrorWithDefaults
+### NewFailureWithDefaults
 
-`func NewErrorWithDefaults() *Error`
+`func NewFailureWithDefaults() *Failure`
 
-NewErrorWithDefaults instantiates a new Error object
+NewFailureWithDefaults instantiates a new Failure object
 This constructor will only assign default values to properties that have it defined,
 but it doesn't guarantee that properties required by API are set
 
 ### GetError
 
-`func (o *Error) GetError() ErrorError`
+`func (o *Failure) GetError() FailureError`
 
 GetError returns the Error field if non-nil, zero value otherwise.
 
 ### GetErrorOk
 
-`func (o *Error) GetErrorOk() (*ErrorError, bool)`
+`func (o *Failure) GetErrorOk() (*FailureError, bool)`
 
 GetErrorOk returns a tuple with the Error field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
 ### SetError
 
-`func (o *Error) SetError(v ErrorError)`
+`func (o *Failure) SetError(v FailureError)`
 
 SetError sets Error field to given value.
 

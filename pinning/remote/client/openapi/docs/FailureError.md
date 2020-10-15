@@ -1,4 +1,4 @@
-# ErrorError
+# FailureError
 
 ## Properties
 
@@ -9,65 +9,65 @@ Name | Type | Description | Notes
 
 ## Methods
 
-### NewErrorError
+### NewFailureError
 
-`func NewErrorError(reason string, ) *ErrorError`
+`func NewFailureError(reason string, ) *FailureError`
 
-NewErrorError instantiates a new ErrorError object
+NewFailureError instantiates a new FailureError object
 This constructor will assign default values to properties that have it defined,
 and makes sure properties required by API are set, but the set of arguments
 will change when the set of required properties is changed
 
-### NewErrorErrorWithDefaults
+### NewFailureErrorWithDefaults
 
-`func NewErrorErrorWithDefaults() *ErrorError`
+`func NewFailureErrorWithDefaults() *FailureError`
 
-NewErrorErrorWithDefaults instantiates a new ErrorError object
+NewFailureErrorWithDefaults instantiates a new FailureError object
 This constructor will only assign default values to properties that have it defined,
 but it doesn't guarantee that properties required by API are set
 
 ### GetReason
 
-`func (o *ErrorError) GetReason() string`
+`func (o *FailureError) GetReason() string`
 
 GetReason returns the Reason field if non-nil, zero value otherwise.
 
 ### GetReasonOk
 
-`func (o *ErrorError) GetReasonOk() (*string, bool)`
+`func (o *FailureError) GetReasonOk() (*string, bool)`
 
 GetReasonOk returns a tuple with the Reason field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
 ### SetReason
 
-`func (o *ErrorError) SetReason(v string)`
+`func (o *FailureError) SetReason(v string)`
 
 SetReason sets Reason field to given value.
 
 
 ### GetDetails
 
-`func (o *ErrorError) GetDetails() string`
+`func (o *FailureError) GetDetails() string`
 
 GetDetails returns the Details field if non-nil, zero value otherwise.
 
 ### GetDetailsOk
 
-`func (o *ErrorError) GetDetailsOk() (*string, bool)`
+`func (o *FailureError) GetDetailsOk() (*string, bool)`
 
 GetDetailsOk returns a tuple with the Details field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
 ### SetDetails
 
-`func (o *ErrorError) SetDetails(v string)`
+`func (o *FailureError) SetDetails(v string)`
 
 SetDetails sets Details field to given value.
 
 ### HasDetails
 
-`func (o *ErrorError) HasDetails() bool`
+`func (o *FailureError) HasDetails() bool`
 
 HasDetails returns a boolean if a field has been set.
 
