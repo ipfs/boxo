@@ -1,10 +1,9 @@
 package go_pinning_service_http_client
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 	"net/http"
 	"time"
 
@@ -36,11 +35,6 @@ func NewClient(url, bearerToken string) *Client {
 	}
 
 	return &Client{client: openapi.NewAPIClient(config)}
-}
-
-func getError(e *openapi.Error) error {
-	err := e.GetError()
-	return fmt.Errorf("request error: %s - %s", err.GetReason(), err.GetDetails())
 }
 
 // TODO: We should probably make sure there are no duplicates sent
@@ -374,37 +368,16 @@ func getCIDEncoder() multibase.Encoder {
 
 func httperr(resp *http.Response, e error) error {
 	oerr, ok := e.(openapi.GenericOpenAPIError)
-	if !ok {
-		panic("wrong error type")
-	}
-	var buf bytes.Buffer
-	var err error
-
-	var reqStr string
-	if resp.Request.GetBody != nil {
-		resp.Request.Body, err = resp.Request.GetBody()
-		if err != nil {
-			reqStr = err.Error()
-		} else if err := resp.Request.Write(&buf); err != nil {
-			reqStr = err.Error()
-		} else {
-			reqStr = buf.String()
+	if ok {
+		ferr, ok := oerr.Model().(openapi.Failure)
+		if ok {
+			return errors.Wrapf(e,"statusCode: %d, reason : %q, details : %q", resp.StatusCode, ferr.Error.GetReason(), ferr.Error.GetDetails())
 		}
-	} else {
-		reqStr = resp.Request.URL.String()
 	}
 
-	bodystr := string(oerr.Body())
-	//body, err := ioutil.ReadAll(resp.Body)
-	//var bodystr string
-	//if err == nil {
-	//	bodystr = string(body)
-	//}
-	relevantErr := fmt.Sprintf("{ httpcode: %d, httpresp: %s, httpbody: %s, reqstr: %s }", resp.StatusCode, resp.Status, bodystr, reqStr)
-	relevantErrBytes, err := json.MarshalIndent(relevantErr, "", "\t")
-	if err != nil {
-		return fmt.Errorf("RelevantInfo : %s, MarshalErr: %s, Err: %w", relevantErr, err, e)
+	if resp == nil {
+		return errors.Wrapf(e,"empty response from remote pinning service")
 	}
 
-	return fmt.Errorf("relevantErr: %s, err: %w", relevantErrBytes, e)
+	return errors.Wrapf(e, "remote pinning service error. statusCode: %d", resp.StatusCode)
 }
