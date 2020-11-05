@@ -26,7 +26,7 @@ var headerCmd = cli.Command{
 		}
 		defer fi.Close()
 
-		ch, err := car.ReadHeader(bufio.NewReader(fi))
+		ch, _, err := car.ReadHeader(bufio.NewReader(fi))
 		if err != nil {
 			return err
 		}
