@@ -100,8 +100,15 @@ func LdSize(d ...[]byte) uint64 {
 }
 
 func LdRead(r *bufio.Reader) ([]byte, error) {
+	if _, err := r.Peek(1); err != nil { // no more blocks, likely clean io.EOF
+		return nil, err
+	}
+
 	l, err := binary.ReadUvarint(r)
 	if err != nil {
+		if err == io.EOF {
+			return nil, io.ErrUnexpectedEOF // don't silently pretend this is a clean EOF
+		}
 		return nil, err
 	}
 
