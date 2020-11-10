@@ -10,11 +10,19 @@ import (
 
 // idstore wraps a BlockStore to add support for identity hashes
 type idstore struct {
-	bs Blockstore
+	bs     Blockstore
+	viewer Viewer
 }
 
+var _ Blockstore = (*idstore)(nil)
+var _ Viewer = (*idstore)(nil)
+
 func NewIdStore(bs Blockstore) Blockstore {
-	return &idstore{bs}
+	ids := &idstore{bs: bs}
+	if v, ok := bs.(Viewer); ok {
+		ids.viewer = v
+	}
+	return ids
 }
 
 func extractContents(k cid.Cid) (bool, []byte) {
@@ -44,6 +52,21 @@ func (b *idstore) Has(k cid.Cid) (bool, error) {
 		return true, nil
 	}
 	return b.bs.Has(k)
+}
+
+func (b *idstore) View(k cid.Cid, callback func([]byte) error) error {
+	if b.viewer == nil {
+		blk, err := b.Get(k)
+		if err != nil {
+			return err
+		}
+		return callback(blk.RawData())
+	}
+	isId, bdata := extractContents(k)
+	if isId {
+		return callback(bdata)
+	}
+	return b.viewer.View(k, callback)
 }
 
 func (b *idstore) GetSize(k cid.Cid) (int, error) {

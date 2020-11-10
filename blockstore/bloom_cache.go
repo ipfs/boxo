@@ -29,6 +29,9 @@ func bloomCached(ctx context.Context, bs Blockstore, bloomSize, hashCount int) (
 			"Total number of requests to bloom cache").Counter(),
 		buildChan: make(chan struct{}),
 	}
+	if v, ok := bs.(Viewer); ok {
+		bc.viewer = v
+	}
 	go func() {
 		err := bc.build(ctx)
 		if err != nil {
@@ -67,11 +70,15 @@ type bloomcache struct {
 
 	buildChan  chan struct{}
 	blockstore Blockstore
+	viewer     Viewer
 
 	// Statistics
 	hits  metrics.Counter
 	total metrics.Counter
 }
+
+var _ Blockstore = (*bloomcache)(nil)
+var _ Viewer = (*bloomcache)(nil)
 
 func (b *bloomcache) BloomActive() bool {
 	return atomic.LoadInt32(&b.active) != 0
@@ -149,6 +156,21 @@ func (b *bloomcache) Has(k cid.Cid) (bool, error) {
 
 func (b *bloomcache) GetSize(k cid.Cid) (int, error) {
 	return b.blockstore.GetSize(k)
+}
+
+func (b *bloomcache) View(k cid.Cid, callback func([]byte) error) error {
+	if b.viewer == nil {
+		blk, err := b.Get(k)
+		if err != nil {
+			return err
+		}
+		return callback(blk.RawData())
+	}
+
+	if has, ok := b.hasCached(k); ok && !has {
+		return ErrNotFound
+	}
+	return b.viewer.View(k, callback)
 }
 
 func (b *bloomcache) Get(k cid.Cid) (blocks.Block, error) {
