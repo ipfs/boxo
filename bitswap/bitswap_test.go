@@ -868,14 +868,25 @@ type logItem struct {
 	msg bsmsg.BitSwapMessage
 }
 type mockWireTap struct {
+	mu  sync.Mutex
 	log []logItem
 }
 
 func (m *mockWireTap) MessageReceived(p peer.ID, msg bsmsg.BitSwapMessage) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.log = append(m.log, logItem{'r', p, msg})
 }
 func (m *mockWireTap) MessageSent(p peer.ID, msg bsmsg.BitSwapMessage) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.log = append(m.log, logItem{'s', p, msg})
+}
+
+func (m *mockWireTap) getLog() []logItem {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.log[:len(m.log):len(m.log)]
 }
 
 func TestWireTap(t *testing.T) {
@@ -921,53 +932,55 @@ func TestWireTap(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	log := wiretap.getLog()
+
 	// After communication, 3 messages should be logged via WireTap
-	if l := len(wiretap.log); l != 3 {
+	if l := len(log); l != 3 {
 		t.Fatal("expected 3 items logged via WireTap, found", l)
 	}
 
 	// Received: 'Have'
-	if wiretap.log[0].dir != 'r' {
+	if log[0].dir != 'r' {
 		t.Error("expected message to be received")
 	}
-	if wiretap.log[0].pid != instances[1].Peer {
-		t.Error("expected peer", instances[1].Peer, ", found", wiretap.log[0].pid)
+	if log[0].pid != instances[1].Peer {
+		t.Error("expected peer", instances[1].Peer, ", found", log[0].pid)
 	}
-	if l := len(wiretap.log[0].msg.Wantlist()); l != 1 {
+	if l := len(log[0].msg.Wantlist()); l != 1 {
 		t.Fatal("expected 1 entry in Wantlist, found", l)
 	}
-	if wiretap.log[0].msg.Wantlist()[0].WantType != pb.Message_Wantlist_Have {
+	if log[0].msg.Wantlist()[0].WantType != pb.Message_Wantlist_Have {
 		t.Error("expected WantType equal to 'Have', found 'Block'")
 	}
 
 	// Sent: Block
-	if wiretap.log[1].dir != 's' {
+	if log[1].dir != 's' {
 		t.Error("expected message to be sent")
 	}
-	if wiretap.log[1].pid != instances[1].Peer {
-		t.Error("expected peer", instances[1].Peer, ", found", wiretap.log[1].pid)
+	if log[1].pid != instances[1].Peer {
+		t.Error("expected peer", instances[1].Peer, ", found", log[1].pid)
 	}
-	if l := len(wiretap.log[1].msg.Blocks()); l != 1 {
+	if l := len(log[1].msg.Blocks()); l != 1 {
 		t.Fatal("expected 1 entry in Blocks, found", l)
 	}
-	if wiretap.log[1].msg.Blocks()[0].Cid() != blocks[0].Cid() {
+	if log[1].msg.Blocks()[0].Cid() != blocks[0].Cid() {
 		t.Error("wrong block Cid")
 	}
 
 	// Received: 'Cancel'
-	if wiretap.log[2].dir != 'r' {
+	if log[2].dir != 'r' {
 		t.Error("expected message to be received")
 	}
-	if wiretap.log[2].pid != instances[1].Peer {
-		t.Error("expected peer", instances[1].Peer, ", found", wiretap.log[2].pid)
+	if log[2].pid != instances[1].Peer {
+		t.Error("expected peer", instances[1].Peer, ", found", log[2].pid)
 	}
-	if l := len(wiretap.log[2].msg.Wantlist()); l != 1 {
+	if l := len(log[2].msg.Wantlist()); l != 1 {
 		t.Fatal("expected 1 entry in Wantlist, found", l)
 	}
-	if wiretap.log[2].msg.Wantlist()[0].WantType != pb.Message_Wantlist_Block {
+	if log[2].msg.Wantlist()[0].WantType != pb.Message_Wantlist_Block {
 		t.Error("expected WantType equal to 'Block', found 'Have'")
 	}
-	if wiretap.log[2].msg.Wantlist()[0].Cancel != true {
+	if log[2].msg.Wantlist()[0].Cancel != true {
 		t.Error("expected entry with Cancel set to 'true'")
 	}
 
@@ -991,7 +1004,9 @@ func TestWireTap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if l := len(wiretap.log); l != 3 {
+	log = wiretap.getLog()
+
+	if l := len(log); l != 3 {
 		t.Fatal("expected 3 items logged via WireTap, found", l)
 	}
 
