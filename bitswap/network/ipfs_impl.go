@@ -13,7 +13,6 @@ import (
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
 	"github.com/libp2p/go-libp2p-core/connmgr"
-	"github.com/libp2p/go-libp2p-core/helpers"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -132,7 +131,7 @@ func (s *streamMessageSender) Reset() error {
 
 // Close the stream
 func (s *streamMessageSender) Close() error {
-	return helpers.FullClose(s.stream)
+	return s.stream.Close()
 }
 
 // Indicates whether the peer supports HAVE / DONT_HAVE messages
@@ -323,9 +322,6 @@ func (bsnet *impl) SendMessage(
 		return err
 	}
 
-	// TODO(https://github.com/libp2p/go-libp2p-net/issues/28): Avoid this goroutine.
-	//nolint
-	go helpers.AwaitEOF(s)
 	return s.Close()
 }
 
