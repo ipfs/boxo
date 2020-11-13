@@ -178,6 +178,10 @@ func NewEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger,
 func newEngine(ctx context.Context, bs bstore.Blockstore, peerTagger PeerTagger, self peer.ID,
 	maxReplaceSize int, scoreLedger ScoreLedger) *Engine {
 
+	if scoreLedger == nil {
+		scoreLedger = NewDefaultScoreLedger()
+	}
+
 	e := &Engine{
 		ledgerMap:                       make(map[peer.ID]*ledger),
 		scoreLedger:                     scoreLedger,
@@ -221,9 +225,6 @@ func (e *Engine) UseScoreLedger(scoreLedger ScoreLedger) {
 // if it is unset, initializes the scoreLedger with the default
 // implementation.
 func (e *Engine) startScoreLedger(px process.Process) {
-	if e.scoreLedger == nil {
-		e.scoreLedger = NewDefaultScoreLedger()
-	}
 	e.scoreLedger.Start(func(p peer.ID, score int) {
 		if score == 0 {
 			e.peerTagger.UntagPeer(p, e.tagUseful)
