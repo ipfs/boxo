@@ -102,8 +102,6 @@ func (l *scoreledger) Receipt() *Receipt {
 
 // DefaultScoreLedger is used by Engine as the default ScoreLedger.
 type DefaultScoreLedger struct {
-	// a sample counting ticker
-	ticker *time.Ticker
 	// the score func
 	scorePeer ScorePeerFunc
 	// is closed on Close
@@ -333,7 +331,6 @@ func (dsl *DefaultScoreLedger) PeerDisconnected(p peer.ID) {
 func NewDefaultScoreLedger() *DefaultScoreLedger {
 	return &DefaultScoreLedger{
 		ledgerMap:          make(map[peer.ID]*scoreledger),
-		ticker:             time.NewTicker(time.Millisecond * 100),
 		closing:            make(chan struct{}),
 		peerSampleInterval: shortTerm,
 	}
