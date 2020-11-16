@@ -2,6 +2,7 @@ package blockstore
 
 import (
 	"context"
+	"io"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -16,6 +17,7 @@ type idstore struct {
 
 var _ Blockstore = (*idstore)(nil)
 var _ Viewer = (*idstore)(nil)
+var _ io.Closer = (*idstore)(nil)
 
 func NewIdStore(bs Blockstore) Blockstore {
 	ids := &idstore{bs: bs}
@@ -111,4 +113,11 @@ func (b *idstore) HashOnRead(enabled bool) {
 
 func (b *idstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return b.bs.AllKeysChan(ctx)
+}
+
+func (b *idstore) Close() error {
+	if c, ok := b.bs.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
 }
