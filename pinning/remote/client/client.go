@@ -371,7 +371,7 @@ func httperr(resp *http.Response, e error) error {
 	if ok {
 		ferr, ok := oerr.Model().(openapi.Failure)
 		if ok {
-			return errors.Wrapf(e,"statusCode: %d, reason : %q, details : %q", resp.StatusCode, ferr.Error.GetReason(), ferr.Error.GetDetails())
+			return errors.Wrapf(e,"statusCode: %d, reason: %q, details: %q", resp.StatusCode, ferr.Error.GetReason(), ferr.Error.GetDetails())
 		}
 	}
 
