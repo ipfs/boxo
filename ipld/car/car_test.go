@@ -117,7 +117,9 @@ func TestRoundtripSelective(t *testing.T) {
 	// write car in one step
 	buf := new(bytes.Buffer)
 	blockCount := 0
+	var oneStepBlocks []Block
 	err := sc.Write(buf, func(block Block) error {
+		oneStepBlocks = append(oneStepBlocks, block)
 		blockCount++
 		return nil
 	})
@@ -128,7 +130,11 @@ func TestRoundtripSelective(t *testing.T) {
 	sc2 := NewSelectiveCar(context.Background(), sourceBs, []Dag{Dag{Root: nd3.Cid(), Selector: selector}})
 
 	// write car in two steps
-	scp, err := sc2.Prepare()
+	var twoStepBlocks []Block
+	scp, err := sc2.Prepare(func(block Block) error {
+		twoStepBlocks = append(twoStepBlocks, block)
+		return nil
+	})
 	require.NoError(t, err)
 	buf2 := new(bytes.Buffer)
 	err = scp.Dump(buf2)
@@ -140,6 +146,9 @@ func TestRoundtripSelective(t *testing.T) {
 
 	// verify equal data written by both methods
 	require.Equal(t, buf.Bytes(), buf2.Bytes())
+
+	// verify equal blocks were passed to user block hook funcs
+	require.Equal(t, oneStepBlocks, twoStepBlocks)
 
 	// readout car and verify contents
 	bserv := dstest.Bserv()
