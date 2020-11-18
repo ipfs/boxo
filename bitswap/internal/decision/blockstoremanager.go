@@ -21,7 +21,7 @@ type blockstoreManager struct {
 
 // newBlockstoreManager creates a new blockstoreManager with the given context
 // and number of workers
-func newBlockstoreManager(ctx context.Context, bs bstore.Blockstore, workerCount int) *blockstoreManager {
+func newBlockstoreManager(bs bstore.Blockstore, workerCount int) *blockstoreManager {
 	return &blockstoreManager{
 		bs:          bs,
 		workerCount: workerCount,
