@@ -5,6 +5,7 @@ package bitswap
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"sync"
 	"time"
@@ -45,6 +46,9 @@ const (
 	// these requests take at _least_ two minutes at the moment.
 	provideTimeout         = time.Minute * 3
 	defaultProvSearchDelay = time.Second
+
+	// Number of concurrent workers in decision engine that process requests to the blockstore
+	defaulEngineBlockstoreWorkerCount = 128
 )
 
 var (
@@ -85,6 +89,17 @@ func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
 	}
 }
 
+// EngineBlockstoreWorkerCount sets the number of worker threads used for
+// blockstore operations in the decision engine
+func EngineBlockstoreWorkerCount(count int) Option {
+	if count <= 0 {
+		panic(fmt.Sprintf("Engine blockstore worker count is %d but must be > 0", count))
+	}
+	return func(bs *Bitswap) {
+		bs.engineBstoreWorkerCount = count
+	}
+}
+
 // SetSendDontHaves indicates what to do when the engine receives a want-block
 // for a block that is not in the blockstore. Either
 // - Send a DONT_HAVE message
@@ -99,7 +114,7 @@ func SetSendDontHaves(send bool) Option {
 // Configures the engine to use the given score decision logic.
 func WithScoreLedger(scoreLedger deciface.ScoreLedger) Option {
 	return func(bs *Bitswap) {
-		bs.engine.UseScoreLedger(scoreLedger)
+		bs.engineScoreLedger = scoreLedger
 	}
 }
 
@@ -166,27 +181,26 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	}
 	notif := notifications.New()
 	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
-	engine := decision.NewEngine(ctx, bstore, network.ConnectionManager(), network.Self())
 
 	bs := &Bitswap{
 		blockstore:       bstore,
-		engine:           engine,
 		network:          network,
 		process:          px,
 		newBlocks:        make(chan cid.Cid, HasBlockBufferSize),
 		provideKeys:      make(chan cid.Cid, provideKeysBufferSize),
 		pm:               pm,
 		pqm:              pqm,
-		sm:               sm,
-		sim:              sim,
-		notif:            notif,
-		counters:         new(counters),
-		dupMetric:        dupHist,
-		allMetric:        allHist,
-		sentHistogram:    sentHistogram,
-		provideEnabled:   true,
-		provSearchDelay:  defaultProvSearchDelay,
-		rebroadcastDelay: delay.Fixed(time.Minute),
+		sm:                      sm,
+		sim:                     sim,
+		notif:                   notif,
+		counters:                new(counters),
+		dupMetric:               dupHist,
+		allMetric:               allHist,
+		sentHistogram:           sentHistogram,
+		provideEnabled:          true,
+		provSearchDelay:         defaultProvSearchDelay,
+		rebroadcastDelay:        delay.Fixed(time.Minute),
+		engineBstoreWorkerCount: defaulEngineBlockstoreWorkerCount,
 	}
 
 	// apply functional options before starting and running bitswap
@@ -194,12 +208,15 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		option(bs)
 	}
 
+	// Set up decision engine
+	bs.engine = decision.NewEngine(bstore, bs.engineBstoreWorkerCount, network.ConnectionManager(), network.Self(), bs.engineScoreLedger)
+
 	bs.pqm.Startup()
 	network.SetDelegate(bs)
 
 	// Start up bitswaps async worker routines
 	bs.startWorkers(ctx, px)
-	engine.StartWorkers(ctx, px)
+	bs.engine.StartWorkers(ctx, px)
 
 	// bind the context and process.
 	// do it over here to avoid closing before all setup is done.
@@ -270,6 +287,12 @@ type Bitswap struct {
 
 	// how often to rebroadcast providing requests to find more optimized providers
 	rebroadcastDelay delay.D
+
+	// how many worker threads to start for decision engine blockstore worker
+	engineBstoreWorkerCount int
+
+	// the score ledger used by the decision engine
+	engineScoreLedger deciface.ScoreLedger
 }
 
 type counters struct {
