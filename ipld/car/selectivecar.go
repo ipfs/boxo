@@ -50,9 +50,10 @@ type OnNewCarBlockFunc func(Block) error
 // the Car file like size and number of blocks that go into it
 type SelectiveCarPrepared struct {
 	SelectiveCar
-	size   uint64
-	header CarHeader
-	cids   []cid.Cid
+	size               uint64
+	header             CarHeader
+	cids               []cid.Cid
+	userOnNewCarBlocks []OnNewCarBlockFunc
 }
 
 // NewSelectiveCar creates a new SelectiveCar for the given car file based
@@ -72,7 +73,7 @@ func (sc SelectiveCar) traverse(onCarHeader OnCarHeaderFunc, onNewCarBlock OnNew
 
 // Prepare traverse a car file and collects data on what is about to be written, but
 // does not actually write the file
-func (sc SelectiveCar) Prepare() (SelectiveCarPrepared, error) {
+func (sc SelectiveCar) Prepare(userOnNewCarBlocks ...OnNewCarBlockFunc) (SelectiveCarPrepared, error) {
 	var header CarHeader
 	var cids []cid.Cid
 
@@ -88,7 +89,7 @@ func (sc SelectiveCar) Prepare() (SelectiveCarPrepared, error) {
 	if err != nil {
 		return SelectiveCarPrepared{}, err
 	}
-	return SelectiveCarPrepared{sc, size, header, cids}, nil
+	return SelectiveCarPrepared{sc, size, header, cids, userOnNewCarBlocks}, nil
 }
 
 func (sc SelectiveCar) Write(w io.Writer, userOnNewCarBlocks ...OnNewCarBlockFunc) error {
@@ -133,6 +134,10 @@ func (sc SelectiveCarPrepared) Cids() []cid.Cid {
 // Dump writes the car file as quickly as possible based on information already
 // collected
 func (sc SelectiveCarPrepared) Dump(w io.Writer) error {
+	offset, err := HeaderSize(&sc.header)
+	if err != nil {
+		return fmt.Errorf("failed to size car header: %s", err)
+	}
 	if err := WriteHeader(&sc.header, w); err != nil {
 		return fmt.Errorf("failed to write car header: %s", err)
 	}
@@ -142,10 +147,23 @@ func (sc SelectiveCarPrepared) Dump(w io.Writer) error {
 			return err
 		}
 		raw := blk.RawData()
+		size := util.LdSize(c.Bytes(), raw)
 		err = util.LdWrite(w, c.Bytes(), raw)
 		if err != nil {
 			return err
 		}
+		for _, userOnNewCarBlock := range sc.userOnNewCarBlocks {
+			err := userOnNewCarBlock(Block{
+				BlockCID: c,
+				Data:     raw,
+				Offset:   offset,
+				Size:     size,
+			})
+			if err != nil {
+				return err
+			}
+		}
+		offset += size
 	}
 	return nil
 }
