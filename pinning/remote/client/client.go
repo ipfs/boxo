@@ -195,6 +195,30 @@ func (c *Client) LsSync(ctx context.Context, opts ...LsOption) ([]PinStatusGette
 	return res, <-errCh
 }
 
+// Manual version of Ls that returns a single batch of results and int with total count
+func (c *Client) LsBatchSync(ctx context.Context, opts ...LsOption) ([]PinStatusGetter, int, error) {
+	var res []PinStatusGetter
+
+	settings := new(lsSettings)
+	for _, o := range opts {
+		if err := o(settings); err != nil {
+			return nil, 0, err
+		}
+	}
+
+	pinRes, err := c.lsInternal(ctx, settings)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	results := pinRes.GetResults()
+	for _, r := range results {
+		res = append(res, &pinStatusObject{r})
+	}
+
+	return res, int(pinRes.Count), nil
+}
+
 func (c *Client) lsInternal(ctx context.Context, settings *lsSettings) (pinResults, error) {
 	getter := c.client.PinsApi.PinsGet(ctx)
 	if len(settings.cids) > 0 {
@@ -257,7 +281,7 @@ func (pinAddOpts) WithName(name string) AddOption {
 	}
 }
 
-func (pinLsOpts) WithOrigins(origins ...multiaddr.Multiaddr) AddOption {
+func (pinAddOpts) WithOrigins(origins ...multiaddr.Multiaddr) AddOption {
 	return func(options *addSettings) error {
 		for _, o := range origins {
 			options.origins = append(options.origins, o.String())
@@ -326,7 +350,7 @@ func (c *Client) DeleteByID(ctx context.Context, pinID string) error {
 	return nil
 }
 
-func (c *Client) Modify(ctx context.Context, pinID string, cid cid.Cid, opts ...AddOption) (PinStatusGetter, error) {
+func (c *Client) Replace(ctx context.Context, pinID string, cid cid.Cid, opts ...AddOption) (PinStatusGetter, error) {
 	settings := new(addSettings)
 	for _, o := range opts {
 		if err := o(settings); err != nil {
