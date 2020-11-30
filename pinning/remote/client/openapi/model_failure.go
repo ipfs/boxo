@@ -13,205 +13,93 @@ import (
 	"encoding/json"
 )
 
-// Pin Pin object
-type Pin struct {
-	// Content Identifier (CID) to be pinned recursively
-	Cid string `json:"cid"`
-	// Optional name for pinned data; can be used for lookups later
-	Name *string `json:"name,omitempty"`
-	// Optional list of multiaddrs known to provide the data
-	Origins *[]string `json:"origins,omitempty"`
-	// Optional metadata for pin object
-	Meta *map[string]string `json:"meta,omitempty"`
+// Failure Response for a failed request
+type Failure struct {
+	Error FailureError `json:"error"`
 }
 
-// NewPin instantiates a new Pin object
+// NewFailure instantiates a new Failure object
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewPin(cid string) *Pin {
-	this := Pin{}
-	this.Cid = cid
+func NewFailure(error_ FailureError) *Failure {
+	this := Failure{}
+	this.Error = error_
 	return &this
 }
 
-// NewPinWithDefaults instantiates a new Pin object
+// NewFailureWithDefaults instantiates a new Failure object
 // This constructor will only assign default values to properties that have it defined,
 // but it doesn't guarantee that properties required by API are set
-func NewPinWithDefaults() *Pin {
-	this := Pin{}
+func NewFailureWithDefaults() *Failure {
+	this := Failure{}
 	return &this
 }
 
-// GetCid returns the Cid field value
-func (o *Pin) GetCid() string {
+// GetError returns the Error field value
+func (o *Failure) GetError() FailureError {
 	if o == nil {
-		var ret string
+		var ret FailureError
 		return ret
 	}
 
-	return o.Cid
+	return o.Error
 }
 
-// GetCidOk returns a tuple with the Cid field value
+// GetErrorOk returns a tuple with the Error field value
 // and a boolean to check if the value has been set.
-func (o *Pin) GetCidOk() (*string, bool) {
+func (o *Failure) GetErrorOk() (*FailureError, bool) {
 	if o == nil {
 		return nil, false
 	}
-	return &o.Cid, true
+	return &o.Error, true
 }
 
-// SetCid sets field value
-func (o *Pin) SetCid(v string) {
-	o.Cid = v
+// SetError sets field value
+func (o *Failure) SetError(v FailureError) {
+	o.Error = v
 }
 
-// GetName returns the Name field value if set, zero value otherwise.
-func (o *Pin) GetName() string {
-	if o == nil || o.Name == nil {
-		var ret string
-		return ret
-	}
-	return *o.Name
-}
-
-// GetNameOk returns a tuple with the Name field value if set, nil otherwise
-// and a boolean to check if the value has been set.
-func (o *Pin) GetNameOk() (*string, bool) {
-	if o == nil || o.Name == nil {
-		return nil, false
-	}
-	return o.Name, true
-}
-
-// HasName returns a boolean if a field has been set.
-func (o *Pin) HasName() bool {
-	if o != nil && o.Name != nil {
-		return true
-	}
-
-	return false
-}
-
-// SetName gets a reference to the given string and assigns it to the Name field.
-func (o *Pin) SetName(v string) {
-	o.Name = &v
-}
-
-// GetOrigins returns the Origins field value if set, zero value otherwise.
-func (o *Pin) GetOrigins() []string {
-	if o == nil || o.Origins == nil {
-		var ret []string
-		return ret
-	}
-	return *o.Origins
-}
-
-// GetOriginsOk returns a tuple with the Origins field value if set, nil otherwise
-// and a boolean to check if the value has been set.
-func (o *Pin) GetOriginsOk() (*[]string, bool) {
-	if o == nil || o.Origins == nil {
-		return nil, false
-	}
-	return o.Origins, true
-}
-
-// HasOrigins returns a boolean if a field has been set.
-func (o *Pin) HasOrigins() bool {
-	if o != nil && o.Origins != nil {
-		return true
-	}
-
-	return false
-}
-
-// SetOrigins gets a reference to the given []string and assigns it to the Origins field.
-func (o *Pin) SetOrigins(v []string) {
-	o.Origins = &v
-}
-
-// GetMeta returns the Meta field value if set, zero value otherwise.
-func (o *Pin) GetMeta() map[string]string {
-	if o == nil || o.Meta == nil {
-		var ret map[string]string
-		return ret
-	}
-	return *o.Meta
-}
-
-// GetMetaOk returns a tuple with the Meta field value if set, nil otherwise
-// and a boolean to check if the value has been set.
-func (o *Pin) GetMetaOk() (*map[string]string, bool) {
-	if o == nil || o.Meta == nil {
-		return nil, false
-	}
-	return o.Meta, true
-}
-
-// HasMeta returns a boolean if a field has been set.
-func (o *Pin) HasMeta() bool {
-	if o != nil && o.Meta != nil {
-		return true
-	}
-
-	return false
-}
-
-// SetMeta gets a reference to the given map[string]string and assigns it to the Meta field.
-func (o *Pin) SetMeta(v map[string]string) {
-	o.Meta = &v
-}
-
-func (o Pin) MarshalJSON() ([]byte, error) {
+func (o Failure) MarshalJSON() ([]byte, error) {
 	toSerialize := map[string]interface{}{}
 	if true {
-		toSerialize["cid"] = o.Cid
-	}
-	if o.Name != nil {
-		toSerialize["name"] = o.Name
-	}
-	if o.Origins != nil {
-		toSerialize["origins"] = o.Origins
-	}
-	if o.Meta != nil {
-		toSerialize["meta"] = o.Meta
+		toSerialize["error"] = o.Error
 	}
 	return json.Marshal(toSerialize)
 }
 
-type NullablePin struct {
-	value *Pin
+type NullableFailure struct {
+	value *Failure
 	isSet bool
 }
 
-func (v NullablePin) Get() *Pin {
+func (v NullableFailure) Get() *Failure {
 	return v.value
 }
 
-func (v *NullablePin) Set(val *Pin) {
+func (v *NullableFailure) Set(val *Failure) {
 	v.value = val
 	v.isSet = true
 }
 
-func (v NullablePin) IsSet() bool {
+func (v NullableFailure) IsSet() bool {
 	return v.isSet
 }
 
-func (v *NullablePin) Unset() {
+func (v *NullableFailure) Unset() {
 	v.value = nil
 	v.isSet = false
 }
 
-func NewNullablePin(val *Pin) *NullablePin {
-	return &NullablePin{value: val, isSet: true}
+func NewNullableFailure(val *Failure) *NullableFailure {
+	return &NullableFailure{value: val, isSet: true}
 }
 
-func (v NullablePin) MarshalJSON() ([]byte, error) {
+func (v NullableFailure) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v.value)
 }
 
-func (v *NullablePin) UnmarshalJSON(src []byte) error {
+func (v *NullableFailure) UnmarshalJSON(src []byte) error {
 	v.isSet = true
 	return json.Unmarshal(src, &v.value)
 }

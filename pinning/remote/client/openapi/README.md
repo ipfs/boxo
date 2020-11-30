@@ -13,10 +13,21 @@ The IPFS Pinning Service API is intended to be an implementation-agnostic API&#x
 This section describes the most important object types and conventions.
 
 A full list of fields and schemas can be found in the `schemas` section of the [YAML file](https://github.com/ipfs/pinning-services-api-spec/blob/master/ipfs-pinning-service.yaml).
+
+## Identifiers
+### cid
+[Content Identifier (CID)](https://docs.ipfs.io/concepts/content-addressing/) points at the root of a DAG that is pinned recursively.
+### requestid
+Unique identifier of a pin request.
+
+When a pin is created, the service responds with unique `requestid` that can be later used for pin removal. When the same `cid` is pinned again, a different `requestid` is returned to differentiate between those pin requests.
+
+Service implementation should use UUID, `hash(accessToken,Pin,PinStatus.created)`, or any other opaque identifier that provides equally strong protection against race conditions.
+
 ## Objects
 ### Pin object
 
-![pinning-services-api-pin-object.png](https://bafybeidcoyxd723nakggdayy6qg25bl7mls3ilwwiyxmys5qpek7y6jwc4.ipfs.dweb.link/?filename=pinning-services-api-pin-object.png)
+![pin object](https://bafybeideck2fchyxna4wqwc2mo67yriokehw3yujboc5redjdaajrk2fjq.ipfs.dweb.link/pin.png)
 
 The `Pin` object is a representation of a pin request.
 
@@ -24,30 +35,30 @@ It includes the `cid` of data to be pinned, as well as optional metadata in `nam
 
 ### Pin status response
 
-![pinning-services-api-pin-status-response.png](https://bafybeiec3c3gzsus4rksddsuxcybilex3odq5cm2cyrzrb7m3suwspl6uy.ipfs.dweb.link/?filename=pinning-services-api-pin-status-response.png)
+![pin status response object](https://bafybeideck2fchyxna4wqwc2mo67yriokehw3yujboc5redjdaajrk2fjq.ipfs.dweb.link/pinstatus.png)
 
 The `PinStatus` object is a representation of the current state of a pinning operation.
-It includes the original `pin` object, along with the current `status` and globally unique `id` of the entire pinning request, which can be used for future status checks and management. Addresses in the `delegates` array are peers delegated by the pinning service for facilitating direct file transfers (more details in the provider hints section). Any additional vendor-specific information is returned in optional `info`.
+It includes the original `pin` object, along with the current `status` and globally unique `requestid` of the entire pinning request, which can be used for future status checks and management. Addresses in the `delegates` array are peers delegated by the pinning service for facilitating direct file transfers (more details in the provider hints section). Any additional vendor-specific information is returned in optional `info`.
 
 ## The pin lifecycle
 
-![pinning-services-api-objects.png](https://bafybeigyefq6vwfcsi7dfgqunf4uei426lvia3w73ylg4kgdwwg6txivpe.ipfs.dweb.link/?filename=pinning-services-api-objects.png)
+![pinning service objects and lifecycle](https://bafybeideck2fchyxna4wqwc2mo67yriokehw3yujboc5redjdaajrk2fjq.ipfs.dweb.link/lifecycle.png)
 
 ### Creating a new pin object
 The user sends a `Pin` object to `POST /pins` and receives a `PinStatus` response:
-- `id` in `PinStatus` is the identifier of the pin operation, which can can be used for checking status, modifying the pin, and/or removing the pin in the future
+- `requestid` in `PinStatus` is the identifier of the pin operation, which can can be used for checking status, and removing the pin in the future
 - `status` in `PinStatus` indicates the current state of a pin
 
 ### Checking status of in-progress pinning
 `status` (in `PinStatus`) may indicate a pending state (`queued` or `pinning`). This means the data behind `Pin.cid` was not found on the pinning service and is being fetched from the IPFS network at large, which may take time.
 
-In this case, the user can periodically check pinning progress via `GET /pins/{id}` until pinning is successful, or the user decides to remove the pending pin.
+In this case, the user can periodically check pinning progress via `GET /pins/{requestid}` until pinning is successful, or the user decides to remove the pending pin.
 
-### Modifying an existing pin object
-The user can modify an existing pin object via `POST /pins/{id}`. The new pin object `id` is returned in the `PinStatus` response. The old pin object is deleted automatically.
+### Replacing an existing pin object
+The user can replace an existing pin object via `POST /pins/{requestid}`. This is a shortcut for removing a pin object identified by `requestid` and creating a new one in a single API call that protects against undesired garbage collection of blocks common to both pins. Useful when updating a pin representing a huge dataset where most of blocks did not change. The new pin object `requestid` is returned in the `PinStatus` response. The old pin object is deleted automatically.
 
 ### Removing a pin object
-A pin object can be removed via `DELETE /pins/{id}`.
+A pin object can be removed via `DELETE /pins/{requestid}`.
 
 
 ## Provider hints
@@ -93,7 +104,7 @@ Pin objects can be listed by executing `GET /pins` with optional parameters:
 ## Overview
 This API client was generated by the [OpenAPI Generator](https://openapi-generator.tech) project.  By using the [OpenAPI-spec](https://www.openapis.org/) from a remote server, you can easily generate an API client.
 
-- API version: 0.0.5
+- API version: 0.1.1
 - Package version: 1.0.0
 - Build package: org.openapitools.codegen.languages.GoClientExperimentalCodegen
 
@@ -161,15 +172,16 @@ All URIs are relative to *https://pinning-service.example.com*
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
 *PinsApi* | [**PinsGet**](docs/PinsApi.md#pinsget) | **Get** /pins | List pin objects
-*PinsApi* | [**PinsIdDelete**](docs/PinsApi.md#pinsiddelete) | **Delete** /pins/{id} | Remove pin object
-*PinsApi* | [**PinsIdGet**](docs/PinsApi.md#pinsidget) | **Get** /pins/{id} | Get pin object
-*PinsApi* | [**PinsIdPost**](docs/PinsApi.md#pinsidpost) | **Post** /pins/{id} | Modify pin object
 *PinsApi* | [**PinsPost**](docs/PinsApi.md#pinspost) | **Post** /pins | Add pin object
+*PinsApi* | [**PinsRequestidDelete**](docs/PinsApi.md#pinsrequestiddelete) | **Delete** /pins/{requestid} | Remove pin object
+*PinsApi* | [**PinsRequestidGet**](docs/PinsApi.md#pinsrequestidget) | **Get** /pins/{requestid} | Get pin object
+*PinsApi* | [**PinsRequestidPost**](docs/PinsApi.md#pinsrequestidpost) | **Post** /pins/{requestid} | Replace pin object
 
 
 ## Documentation For Models
 
- - [Error](docs/Error.md)
+ - [Failure](docs/Failure.md)
+ - [FailureError](docs/FailureError.md)
  - [Pin](docs/Pin.md)
  - [PinResults](docs/PinResults.md)
  - [PinStatus](docs/PinStatus.md)
