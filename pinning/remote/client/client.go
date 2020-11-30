@@ -395,13 +395,13 @@ func httperr(resp *http.Response, e error) error {
 	if ok {
 		ferr, ok := oerr.Model().(openapi.Failure)
 		if ok {
-			return errors.Wrapf(e,"statusCode: %d, reason: %q, details: %q", resp.StatusCode, ferr.Error.GetReason(), ferr.Error.GetDetails())
+			return errors.Wrapf(e, "reason: %q, details: %q", ferr.Error.GetReason(), ferr.Error.GetDetails())
 		}
 	}
 
 	if resp == nil {
-		return errors.Wrapf(e,"empty response from remote pinning service")
+		return errors.Wrapf(e, "empty response from remote pinning service")
 	}
 
-	return errors.Wrapf(e, "remote pinning service error. statusCode: %d", resp.StatusCode)
+	return errors.Wrapf(e, "remote pinning service returned http error %d", resp.StatusCode)
 }
