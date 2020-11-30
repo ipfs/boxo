@@ -1,4 +1,4 @@
-package pin
+package ipldpinner
 
 import (
 	"context"

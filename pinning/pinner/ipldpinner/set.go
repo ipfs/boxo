@@ -1,4 +1,4 @@
-package pin
+package ipldpinner
 
 import (
 	"bytes"
@@ -55,9 +55,14 @@ func (s sortByHash) Swap(a, b int) {
 }
 
 func storeItems(ctx context.Context, dag ipld.DAGService, estimatedLen uint64, depth uint32, iter itemIterator, internalKeys keyObserver) (*merkledag.ProtoNode, error) {
-	links := make([]*ipld.Link, 0, defaultFanout+maxItems)
+	// Each node wastes up to defaultFanout in empty links.
+	var leafLinks uint64
+	if estimatedLen < maxItems {
+		leafLinks = estimatedLen
+	}
+	links := make([]*ipld.Link, defaultFanout, defaultFanout+leafLinks)
 	for i := 0; i < defaultFanout; i++ {
-		links = append(links, &ipld.Link{Cid: emptyKey})
+		links[i] = &ipld.Link{Cid: emptyKey}
 	}
 
 	// add emptyKey to our set of internal pinset objects
@@ -97,7 +102,7 @@ func storeItems(ctx context.Context, dag ipld.DAGService, estimatedLen uint64, d
 		sort.Stable(s)
 	}
 
-	hashed := make([][]cid.Cid, defaultFanout)
+	var hashed [][]cid.Cid
 	for {
 		// This loop essentially enumerates every single item in the set
 		// and maps them all into a set of buckets. Each bucket will be recursively
@@ -115,6 +120,9 @@ func storeItems(ctx context.Context, dag ipld.DAGService, estimatedLen uint64, d
 		k, ok := iter()
 		if !ok {
 			break
+		}
+		if hashed == nil {
+			hashed = make([][]cid.Cid, defaultFanout)
 		}
 		h := hash(depth, k) % defaultFanout
 		hashed[h] = append(hashed[h], k)

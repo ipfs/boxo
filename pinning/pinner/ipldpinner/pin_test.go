@@ -1,4 +1,4 @@
-package pin
+package ipldpinner
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	dssync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	pin "github.com/ipfs/go-ipfs-pinner"
 	util "github.com/ipfs/go-ipfs-util"
 )
 
@@ -30,7 +31,7 @@ func randNode() (*mdag.ProtoNode, cid.Cid) {
 	return nd, k
 }
 
-func assertPinned(t *testing.T, p Pinner, c cid.Cid, failmsg string) {
+func assertPinned(t *testing.T, p pin.Pinner, c cid.Cid, failmsg string) {
 	_, pinned, err := p.IsPinned(context.Background(), c)
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +42,7 @@ func assertPinned(t *testing.T, p Pinner, c cid.Cid, failmsg string) {
 	}
 }
 
-func assertUnpinned(t *testing.T, p Pinner, c cid.Cid, failmsg string) {
+func assertUnpinned(t *testing.T, p pin.Pinner, c cid.Cid, failmsg string) {
 	_, pinned, err := p.IsPinned(context.Background(), c)
 	if err != nil {
 		t.Fatal(err)
@@ -62,10 +63,13 @@ func TestPinnerBasic(t *testing.T) {
 	dserv := mdag.NewDAGService(bserv)
 
 	// TODO does pinner need to share datastore with blockservice?
-	p := NewPinner(dstore, dserv, dserv)
+	p, err := New(dstore, dserv, dserv)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	a, ak := randNode()
-	err := dserv.Add(ctx, a)
+	err = dserv.Add(ctx, a)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +155,7 @@ func TestPinnerBasic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	np, err := LoadPinner(dstore, dserv, dserv)
+	np, err := New(dstore, dserv, dserv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +192,10 @@ func TestIsPinnedLookup(t *testing.T) {
 	dserv := mdag.NewDAGService(bserv)
 
 	// TODO does pinner need to share datastore with blockservice?
-	p := NewPinner(dstore, dserv, dserv)
+	p, err := New(dstore, dserv, dserv)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	aNodes := make([]*mdag.ProtoNode, aBranchLen)
 	aKeys := make([]cid.Cid, aBranchLen)
@@ -229,7 +236,7 @@ func TestIsPinnedLookup(t *testing.T) {
 	}
 
 	// Add C
-	err := dserv.Add(ctx, c)
+	err = dserv.Add(ctx, c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,11 +296,13 @@ func TestDuplicateSemantics(t *testing.T) {
 
 	dserv := mdag.NewDAGService(bserv)
 
-	// TODO does pinner need to share datastore with blockservice?
-	p := NewPinner(dstore, dserv, dserv)
+	p, err := New(dstore, dserv, dserv)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	a, _ := randNode()
-	err := dserv.Add(ctx, a)
+	err = dserv.Add(ctx, a)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,10 +332,13 @@ func TestFlush(t *testing.T) {
 	bserv := bs.New(bstore, offline.Exchange(bstore))
 
 	dserv := mdag.NewDAGService(bserv)
-	p := NewPinner(dstore, dserv, dserv)
+	p, err := New(dstore, dserv, dserv)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, k := randNode()
 
-	p.PinWithMode(k, Recursive)
+	p.PinWithMode(k, pin.Recursive)
 	if err := p.Flush(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -340,11 +352,14 @@ func TestPinRecursiveFail(t *testing.T) {
 	bserv := bs.New(bstore, offline.Exchange(bstore))
 	dserv := mdag.NewDAGService(bserv)
 
-	p := NewPinner(dstore, dserv, dserv)
+	p, err := New(dstore, dserv, dserv)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	a, _ := randNode()
 	b, _ := randNode()
-	err := a.AddNodeLink("child", b)
+	err = a.AddNodeLink("child", b)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +400,10 @@ func TestPinUpdate(t *testing.T) {
 	bserv := bs.New(bstore, offline.Exchange(bstore))
 
 	dserv := mdag.NewDAGService(bserv)
-	p := NewPinner(dstore, dserv, dserv)
+	p, err := New(dstore, dserv, dserv)
+	if err != nil {
+		t.Fatal(err)
+	}
 	n1, c1 := randNode()
 	n2, c2 := randNode()
 
