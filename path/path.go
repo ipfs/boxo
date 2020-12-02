@@ -96,7 +96,7 @@ func ParsePath(txt string) (Path, error) {
 	// if the path doesnt begin with a '/'
 	// we expect this to start with a hash, and be an 'ipfs' path
 	if parts[0] != "" {
-		if _, err := cid.Decode(parts[0]); err != nil {
+		if _, err := decodeCid(parts[0]); err != nil {
 			return "", &pathError{error: err, path: txt}
 		}
 		// The case when the path starts with hash without a protocol prefix
@@ -114,7 +114,7 @@ func ParsePath(txt string) (Path, error) {
 			return "", &pathError{error: fmt.Errorf("not enough path components"), path: txt}
 		}
 		// Validate Cid.
-		_, err := cid.Decode(parts[2])
+		_, err := decodeCid(parts[2])
 		if err != nil {
 			return "", &pathError{error: fmt.Errorf("invalid CID: %s", err), path: txt}
 		}
@@ -135,7 +135,7 @@ func ParseCidToPath(txt string) (Path, error) {
 		return "", &pathError{error: fmt.Errorf("empty"), path: txt}
 	}
 
-	c, err := cid.Decode(txt)
+	c, err := decodeCid(txt)
 	if err != nil {
 		return "", &pathError{error: err, path: txt}
 	}
@@ -172,11 +172,19 @@ func SplitAbsPath(fpath Path) (cid.Cid, []string, error) {
 		return cid.Cid{}, nil, &pathError{error: fmt.Errorf("empty"), path: string(fpath)}
 	}
 
-	c, err := cid.Decode(parts[0])
+	c, err := decodeCid(parts[0])
 	// first element in the path is a cid
 	if err != nil {
 		return cid.Cid{}, nil, &pathError{error: fmt.Errorf("invalid CID: %s", err), path: string(fpath)}
 	}
 
 	return c, parts[1:], nil
+}
+
+func decodeCid(cstr string) (cid.Cid, error) {
+	c, err := cid.Decode(cstr)
+	if err != nil && len(cstr) == 46 && cstr[:2] == "qm" { // https://github.com/ipfs/go-ipfs/issues/7792
+		return cid.Cid{}, fmt.Errorf("%v (possible lowercased CIDv0; consider converting to a case-agnostic CIDv1, such as base32)", err)
+	}
+	return c, err
 }

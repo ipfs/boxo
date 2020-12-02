@@ -102,3 +102,14 @@ func TestPopLastSegment(t *testing.T) {
 		}
 	}
 }
+
+func TestV0ErrorDueToLowercase(t *testing.T) {
+	badb58 := "/ipfs/qmbwqxbekc3p8tqskc98xmwnzrzdtrlmimpl8wbutgsmnr"
+	_, err := ParsePath(badb58)
+	if err == nil {
+		t.Fatal("should have failed to decode")
+	}
+	if !strings.HasSuffix(err.Error(), "(possible lowercased CIDv0; consider converting to a case-agnostic CIDv1, such as base32)") {
+		t.Fatal("should have meaningful info about case-insensitive fix")
+	}
+}
