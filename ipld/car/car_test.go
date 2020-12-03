@@ -112,7 +112,7 @@ func TestRoundtripSelective(t *testing.T) {
 			ssb.ExploreIndex(1, ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreAll(ssb.ExploreRecursiveEdge()))))
 	}).Node()
 
-	sc := NewSelectiveCar(context.Background(), sourceBs, []Dag{Dag{Root: nd3.Cid(), Selector: selector}})
+	sc := NewSelectiveCar(context.Background(), sourceBs, []Dag{{Root: nd3.Cid(), Selector: selector}})
 
 	// write car in one step
 	buf := new(bytes.Buffer)
@@ -127,7 +127,7 @@ func TestRoundtripSelective(t *testing.T) {
 	require.NoError(t, err)
 
 	// create a new builder for two-step write
-	sc2 := NewSelectiveCar(context.Background(), sourceBs, []Dag{Dag{Root: nd3.Cid(), Selector: selector}})
+	sc2 := NewSelectiveCar(context.Background(), sourceBs, []Dag{{Root: nd3.Cid(), Selector: selector}})
 
 	// write car in two steps
 	var twoStepBlocks []Block
