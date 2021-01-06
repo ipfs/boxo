@@ -102,64 +102,62 @@ func ApplyChange(ctx context.Context, ds ipld.DAGService, nd *dag.ProtoNode, cs 
 // 2. both of two nodes are ProtoNode.
 // Otherwise, it compares the cid and emits a Mod change object.
 func Diff(ctx context.Context, ds ipld.DAGService, a, b ipld.Node) ([]*Change, error) {
-	// Base case where both nodes are leaves, just compare
-	// their CIDs.
-	if len(a.Links()) == 0 && len(b.Links()) == 0 {
-		return getChange(a, b)
+	if a.Cid() == b.Cid() {
+		return []*Change{}, nil
+	}
+
+	cleanA, okA := a.Copy().(*dag.ProtoNode)
+	cleanB, okB := b.Copy().(*dag.ProtoNode)
+
+	linksA := a.Links()
+	linksB := b.Links()
+
+	if !okA || !okB || (len(linksA) == 0 && len(linksB) == 0) {
+		return []*Change{{Type: Mod, Before: a.Cid(), After: b.Cid()}}, nil
 	}
 
 	var out []*Change
-	cleanA, okA := a.Copy().(*dag.ProtoNode)
-	cleanB, okB := b.Copy().(*dag.ProtoNode)
-	if !okA || !okB {
-		return getChange(a, b)
-	}
-
-	// strip out unchanged stuff
-	for _, lnk := range a.Links() {
-		l, _, err := b.ResolveLink([]string{lnk.Name})
-		if err == nil {
-			if l.Cid.Equals(lnk.Cid) {
-				// no change... ignore it
-			} else {
-				anode, err := lnk.GetNode(ctx, ds)
-				if err != nil {
-					return nil, err
-				}
-
-				bnode, err := l.GetNode(ctx, ds)
-				if err != nil {
-					return nil, err
-				}
-
-				sub, err := Diff(ctx, ds, anode, bnode)
-				if err != nil {
-					return nil, err
-				}
-
-				for _, subc := range sub {
-					subc.Path = path.Join(lnk.Name, subc.Path)
-					out = append(out, subc)
-				}
-			}
-			_ = cleanA.RemoveNodeLink(l.Name)
-			_ = cleanB.RemoveNodeLink(l.Name)
+	for _, linkA := range linksA {
+		linkB, _, err := b.ResolveLink([]string{linkA.Name})
+		if err != nil {
+			continue
 		}
+
+		cleanA.RemoveNodeLink(linkA.Name)
+		cleanB.RemoveNodeLink(linkA.Name)
+
+		if linkA.Cid == linkB.Cid {
+			continue
+		}
+
+		nodeA, err := linkA.GetNode(ctx, ds)
+		if err != nil {
+			return nil, err
+		}
+
+		nodeB, err := linkB.GetNode(ctx, ds)
+		if err != nil {
+			return nil, err
+		}
+
+		sub, err := Diff(ctx, ds, nodeA, nodeB)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, c := range sub {
+			c.Path = path.Join(linkA.Name, c.Path)
+		}
+
+		out = append(out, sub...)
 	}
 
-	for _, lnk := range cleanA.Links() {
-		out = append(out, &Change{
-			Type:   Remove,
-			Path:   lnk.Name,
-			Before: lnk.Cid,
-		})
+	for _, l := range cleanA.Links() {
+		out = append(out, &Change{Type: Remove, Path: l.Name, Before: l.Cid})
 	}
-	for _, lnk := range cleanB.Links() {
-		out = append(out, &Change{
-			Type:  Add,
-			Path:  lnk.Name,
-			After: lnk.Cid,
-		})
+
+	for _, l := range cleanB.Links() {
+		out = append(out, &Change{Type: Add, Path: l.Name, After: l.Cid})
 	}
 
 	return out, nil
@@ -177,38 +175,26 @@ type Conflict struct {
 // A slice of Conflicts is returned and contains pointers to the
 // Changes involved (which share the same path).
 func MergeDiffs(a, b []*Change) ([]*Change, []Conflict) {
-	var out []*Change
-	var conflicts []Conflict
 	paths := make(map[string]*Change)
 	for _, c := range a {
 		paths[c.Path] = c
 	}
 
-	for _, c := range b {
-		if ca, ok := paths[c.Path]; ok {
-			conflicts = append(conflicts, Conflict{
-				A: ca,
-				B: c,
-			})
-		} else {
-			out = append(out, c)
-		}
-	}
-	for _, c := range paths {
-		out = append(out, c)
-	}
-	return out, conflicts
-}
+	var changes []*Change
+	var conflicts []Conflict
 
-func getChange(a, b ipld.Node) ([]*Change, error) {
-	if a.Cid().Equals(b.Cid()) {
-		return []*Change{}, nil
+	for _, changeB := range b {
+		if changeA, ok := paths[changeB.Path]; ok {
+			conflicts = append(conflicts, Conflict{changeA, changeB})
+		} else {
+			changes = append(changes, changeB)
+		}
+		delete(paths, changeB.Path)
 	}
-	return []*Change{
-		{
-			Type:   Mod,
-			Before: a.Cid(),
-			After:  b.Cid(),
-		},
-	}, nil
+
+	for _, c := range paths {
+		changes = append(changes, c)
+	}
+
+	return changes, conflicts
 }
