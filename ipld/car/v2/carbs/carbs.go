@@ -30,7 +30,8 @@ type Carbs struct {
 var _ bs.Blockstore = (*Carbs)(nil)
 
 func (c *Carbs) Read(idx int64) (cid.Cid, []byte, error) {
-	return util.ReadNode(bufio.NewReader(&unatreader{c.backing, idx}))
+	bcid, _, data, err := util.ReadNode(bufio.NewReader(&unatreader{c.backing, idx}))
+	return bcid, data, err
 }
 
 // DeleteBlock doesn't delete a block on RO blockstore
@@ -148,7 +149,7 @@ func (c *Carbs) PutMany([]blocks.Block) error {
 
 // AllKeysChan returns the list of keys in the store
 func (c *Carbs) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
-	header, err := car.ReadHeader(bufio.NewReader(&unatreader{c.backing, 0}))
+	header, _, err := car.ReadHeader(bufio.NewReader(&unatreader{c.backing, 0}))
 	if err != nil {
 		return nil, fmt.Errorf("Error reading car header: %w", err)
 	}
@@ -192,7 +193,7 @@ func (c *Carbs) HashOnRead(enabled bool) {
 
 // Roots returns the root CIDs of the backing car
 func (c *Carbs) Roots() ([]cid.Cid, error) {
-	header, err := car.ReadHeader(bufio.NewReader(&unatreader{c.backing, 0}))
+	header, _, err := car.ReadHeader(bufio.NewReader(&unatreader{c.backing, 0}))
 	if err != nil {
 		return nil, fmt.Errorf("Error reading car header: %w", err)
 	}
@@ -238,7 +239,7 @@ func GenerateIndex(store io.ReaderAt, size int64, codec IndexCodec, verbose bool
 
 	bar.Start()
 
-	header, err := car.ReadHeader(bufio.NewReader(&unatreader{store, 0}))
+	header, _, err := car.ReadHeader(bufio.NewReader(&unatreader{store, 0}))
 	if err != nil {
 		return nil, fmt.Errorf("Error reading car header: %w", err)
 	}
