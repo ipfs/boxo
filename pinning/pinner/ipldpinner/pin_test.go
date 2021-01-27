@@ -54,7 +54,8 @@ func assertUnpinned(t *testing.T, p pin.Pinner, c cid.Cid, failmsg string) {
 }
 
 func TestPinnerBasic(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
@@ -62,7 +63,6 @@ func TestPinnerBasic(t *testing.T) {
 
 	dserv := mdag.NewDAGService(bserv)
 
-	// TODO does pinner need to share datastore with blockservice?
 	p, err := New(dstore, dserv, dserv)
 	if err != nil {
 		t.Fatal(err)
@@ -165,6 +165,98 @@ func TestPinnerBasic(t *testing.T) {
 
 	// Test recursively pinned
 	assertPinned(t, np, bk, "could not find recursively pinned node")
+
+	// Test that LoadKeys returns the expected CIDs.
+	keyChan := make(chan cid.Cid)
+	go func() {
+		err = LoadKeys(ctx, dstore, dserv, dserv, true, keyChan)
+		close(keyChan)
+	}()
+	keys := map[cid.Cid]struct{}{}
+	for c := range keyChan {
+		keys[c] = struct{}{}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	recKeys, _ := np.RecursiveKeys(ctx)
+	if len(keys) != len(recKeys) {
+		t.Fatal("wrong number of recursive keys from LoadKeys")
+	}
+	for _, k := range recKeys {
+		if _, ok := keys[k]; !ok {
+			t.Fatal("LoadKeys did not return correct recursive keys")
+		}
+	}
+
+	keyChan = make(chan cid.Cid)
+	go func() {
+		err = LoadKeys(ctx, dstore, dserv, dserv, false, keyChan)
+		close(keyChan)
+	}()
+	keys = map[cid.Cid]struct{}{}
+	for c := range keyChan {
+		keys[c] = struct{}{}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirKeys, _ := np.DirectKeys(ctx)
+	if len(keys) != len(dirKeys) {
+		t.Fatal("wrong number of direct keys from LoadKeys")
+	}
+	for _, k := range dirKeys {
+		if _, ok := keys[k]; !ok {
+			t.Fatal("LoadKeys did not return correct direct keys")
+		}
+	}
+
+	cancel()
+	emptyDS := dssync.MutexWrap(ds.NewMapDatastore())
+
+	// Check key not in datastore
+	err = LoadKeys(ctx, emptyDS, dserv, dserv, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check error on bad key
+	if err = emptyDS.Put(pinDatastoreKey, []byte("bad-cid")); err != nil {
+		panic(err)
+	}
+	if err = emptyDS.Sync(pinDatastoreKey); err != nil {
+		panic(err)
+	}
+	if err = LoadKeys(ctx, emptyDS, dserv, dserv, true, nil); err == nil {
+		t.Fatal("expected error")
+	}
+
+	// Lookup dag that does not exist
+	noKey, err := cid.Decode("QmYff9iHR1Hz6wufVeJodzXqQm4pkK4QNS9ms8tyPKVWm1")
+	if err != nil {
+		panic(err)
+	}
+	if err = emptyDS.Put(pinDatastoreKey, noKey.Bytes()); err != nil {
+		panic(err)
+	}
+	if err = emptyDS.Sync(pinDatastoreKey); err != nil {
+		panic(err)
+	}
+	err = LoadKeys(ctx, emptyDS, dserv, dserv, true, nil)
+	if err == nil || err.Error() != "cannot find pinning root object: merkledag: not found" {
+		t.Fatal("did not get expected error")
+	}
+
+	// Check error when node has no links
+	if err = emptyDS.Put(pinDatastoreKey, emptyKey.Bytes()); err != nil {
+		panic(err)
+	}
+	if err = emptyDS.Sync(pinDatastoreKey); err != nil {
+		panic(err)
+	}
+	if err = LoadKeys(ctx, emptyDS, dserv, dserv, true, nil); err == nil {
+		t.Fatal("expected error")
+	}
 }
 
 func TestIsPinnedLookup(t *testing.T) {

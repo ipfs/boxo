@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	bs "github.com/ipfs/go-blockservice"
@@ -55,7 +56,8 @@ func makeStore() (ds.Datastore, ipld.DAGService) {
 }
 
 func TestConversions(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	dstore, dserv := makeStore()
 
 	dsPinner, err := dspinner.New(ctx, dstore, dserv)
@@ -149,5 +151,29 @@ func TestConversions(t *testing.T) {
 	err = verifyPins(toDSPinner)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestConvertLoadError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dstore, dserv := makeStore()
+	// Point /local/pins to empty node to cause failure loading pins.
+	pinDatastoreKey := ds.NewKey("/local/pins")
+	emptyKey, err := cid.Decode("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")
+	if err != nil {
+		panic(err)
+	}
+	if err = dstore.Put(pinDatastoreKey, emptyKey.Bytes()); err != nil {
+		panic(err)
+	}
+	if err = dstore.Sync(pinDatastoreKey); err != nil {
+		panic(err)
+	}
+
+	_, _, err = ConvertPinsFromIPLDToDS(ctx, dstore, dserv, dserv)
+	if err == nil || !strings.HasPrefix(err.Error(), "cannot load recursive keys") {
+		t.Fatal("did not get expected error")
 	}
 }

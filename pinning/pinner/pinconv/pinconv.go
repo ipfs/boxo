@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ipfs/go-cid"
+	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	ipfspinner "github.com/ipfs/go-ipfs-pinner"
 	"github.com/ipfs/go-ipfs-pinner/dspinner"
@@ -24,39 +24,38 @@ import (
 func ConvertPinsFromIPLDToDS(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService, internal ipld.DAGService) (ipfspinner.Pinner, int, error) {
 	const ipldPinPath = "/local/pins"
 
-	ipldPinner, err := ipldpinner.New(dstore, dserv, internal)
-	if err != nil {
-		return nil, 0, err
-	}
-
 	dsPinner, err := dspinner.New(ctx, dstore, dserv)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	seen := cid.NewSet()
-	cids, err := ipldPinner.RecursiveKeys(ctx)
-	if err != nil {
-		return nil, 0, err
-	}
-	for i := range cids {
-		seen.Add(cids[i])
-		dsPinner.PinWithMode(cids[i], ipfspinner.Recursive)
-	}
-	convCount := len(cids)
+	var convCount int
+	keyChan := make(chan cid.Cid)
 
-	cids, err = ipldPinner.DirectKeys(ctx)
+	go func() {
+		err = ipldpinner.LoadKeys(ctx, dstore, dserv, internal, true, keyChan)
+		close(keyChan)
+	}()
+	for key := range keyChan {
+		dsPinner.PinWithMode(key, ipfspinner.Recursive)
+		convCount++
+	}
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("cannot load recursive keys: %s", err)
 	}
-	for i := range cids {
-		if seen.Has(cids[i]) {
-			// Pin was already pinned recursively
-			continue
-		}
-		dsPinner.PinWithMode(cids[i], ipfspinner.Direct)
+
+	keyChan = make(chan cid.Cid)
+	go func() {
+		err = ipldpinner.LoadKeys(ctx, dstore, dserv, internal, false, keyChan)
+		close(keyChan)
+	}()
+	for key := range keyChan {
+		dsPinner.PinWithMode(key, ipfspinner.Direct)
+		convCount++
 	}
-	convCount += len(cids)
+	if err != nil {
+		return nil, 0, fmt.Errorf("cannot load direct keys: %s", err)
+	}
 
 	err = dsPinner.Flush(ctx)
 	if err != nil {

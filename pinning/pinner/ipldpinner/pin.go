@@ -141,6 +141,41 @@ func New(dstore ds.Datastore, dserv, internal ipld.DAGService) (*pinner, error) 
 	}, nil
 }
 
+// LoadKeys reads the pinned CIDs and sends them on the given channel.  This is
+// used to read pins without loading them all into memory.
+func LoadKeys(ctx context.Context, dstore ds.Datastore, dserv, internal ipld.DAGService, recursive bool, keyChan chan<- cid.Cid) error {
+	rootKey, err := dstore.Get(pinDatastoreKey)
+	if err != nil {
+		if err == ds.ErrNotFound {
+			return nil
+		}
+		return err
+	}
+	rootCid, err := cid.Cast(rootKey)
+	if err != nil {
+		return err
+	}
+
+	root, err := internal.Get(ctx, rootCid)
+	if err != nil {
+		return fmt.Errorf("cannot find pinning root object: %v", err)
+	}
+
+	rootpb, ok := root.(*mdag.ProtoNode)
+	if !ok {
+		return mdag.ErrNotProtobuf
+	}
+
+	var linkName string
+	if recursive {
+		linkName = linkRecursive
+	} else {
+		linkName = linkDirect
+	}
+
+	return loadSetChan(ctx, internal, rootpb, linkName, keyChan)
+}
+
 // Pin the given node, optionally recursive
 func (p *pinner) Pin(ctx context.Context, node ipld.Node, recurse bool) error {
 	err := p.dserv.Add(ctx, node)

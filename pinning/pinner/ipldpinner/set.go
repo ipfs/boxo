@@ -219,13 +219,15 @@ func walkItems(ctx context.Context, dag ipld.DAGService, n *merkledag.ProtoNode,
 	// readHdr guarantees fanout is a safe value
 	fanout := hdr.GetFanout()
 	for i, l := range n.Links()[fanout:] {
-		if err := fn(i, l); err != nil {
+		if err = fn(i, l); err != nil {
 			return err
 		}
 	}
 	for _, l := range n.Links()[:fanout] {
 		c := l.Cid
-		children(c)
+		if children != nil {
+			children(c)
+		}
 		if c.Equals(emptyKey) {
 			continue
 		}
@@ -239,7 +241,7 @@ func walkItems(ctx context.Context, dag ipld.DAGService, n *merkledag.ProtoNode,
 			return merkledag.ErrNotProtobuf
 		}
 
-		if err := walkItems(ctx, dag, stpb, fn, children); err != nil {
+		if err = walkItems(ctx, dag, stpb, fn, children); err != nil {
 			return err
 		}
 	}
@@ -275,6 +277,33 @@ func loadSet(ctx context.Context, dag ipld.DAGService, root *merkledag.ProtoNode
 		return nil, err
 	}
 	return res, nil
+}
+
+func loadSetChan(ctx context.Context, dag ipld.DAGService, root *merkledag.ProtoNode, name string, keyChan chan<- cid.Cid) error {
+	l, err := root.GetNodeLink(name)
+	if err != nil {
+		return err
+	}
+
+	n, err := l.GetNode(ctx, dag)
+	if err != nil {
+		return err
+	}
+
+	pbn, ok := n.(*merkledag.ProtoNode)
+	if !ok {
+		return merkledag.ErrNotProtobuf
+	}
+
+	walk := func(idx int, link *ipld.Link) error {
+		keyChan <- link.Cid
+		return nil
+	}
+
+	if err = walkItems(ctx, dag, pbn, walk, nil); err != nil {
+		return err
+	}
+	return nil
 }
 
 func getCidListIterator(cids []cid.Cid) itemIterator {
