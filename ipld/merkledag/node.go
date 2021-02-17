@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	ipld "github.com/ipfs/go-ipld-format"
+	format "github.com/ipfs/go-ipld-format"
+	legacy "github.com/ipfs/go-ipld-legacy"
+	ipld "github.com/ipld/go-ipld-prime"
+	dagpb "github.com/ipld/go-ipld-prime-proto"
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -16,16 +20,20 @@ var (
 	ErrLinkNotFound = fmt.Errorf("no link by that name")
 )
 
+type immutableProtoNode struct {
+	encoded []byte
+	dagpb.PBNode
+}
+
 // ProtoNode represents a node in the IPFS Merkle DAG.
 // nodes have opaque data and a set of navigable links.
 type ProtoNode struct {
-	links []*ipld.Link
+	links []*format.Link
 	data  []byte
 
 	// cache encoded/marshaled value
-	encoded []byte
-
-	cached cid.Cid
+	encoded *immutableProtoNode
+	cached  cid.Cid
 
 	// builder specifies cid version and hashing function
 	builder cid.Builder
@@ -82,8 +90,8 @@ func (n *ProtoNode) SetCidBuilder(builder cid.Builder) {
 	}
 }
 
-// LinkSlice is a slice of ipld.Links
-type LinkSlice []*ipld.Link
+// LinkSlice is a slice of format.Links
+type LinkSlice []*format.Link
 
 func (ls LinkSlice) Len() int           { return len(ls) }
 func (ls LinkSlice) Swap(a, b int)      { ls[a], ls[b] = ls[b], ls[a] }
@@ -95,10 +103,8 @@ func NodeWithData(d []byte) *ProtoNode {
 }
 
 // AddNodeLink adds a link to another node.
-func (n *ProtoNode) AddNodeLink(name string, that ipld.Node) error {
-	n.encoded = nil
-
-	lnk, err := ipld.MakeLink(that)
+func (n *ProtoNode) AddNodeLink(name string, that format.Node) error {
+	lnk, err := format.MakeLink(that)
 	if err != nil {
 		return err
 	}
@@ -111,9 +117,9 @@ func (n *ProtoNode) AddNodeLink(name string, that ipld.Node) error {
 }
 
 // AddRawLink adds a copy of a link to this node
-func (n *ProtoNode) AddRawLink(name string, l *ipld.Link) error {
+func (n *ProtoNode) AddRawLink(name string, l *format.Link) error {
 	n.encoded = nil
-	n.links = append(n.links, &ipld.Link{
+	n.links = append(n.links, &format.Link{
 		Name: name,
 		Size: l.Size,
 		Cid:  l.Cid,
@@ -147,10 +153,10 @@ func (n *ProtoNode) RemoveNodeLink(name string) error {
 }
 
 // GetNodeLink returns a copy of the link with the given name.
-func (n *ProtoNode) GetNodeLink(name string) (*ipld.Link, error) {
+func (n *ProtoNode) GetNodeLink(name string) (*format.Link, error) {
 	for _, l := range n.links {
 		if l.Name == name {
-			return &ipld.Link{
+			return &format.Link{
 				Name: l.Name,
 				Size: l.Size,
 				Cid:  l.Cid,
@@ -161,7 +167,7 @@ func (n *ProtoNode) GetNodeLink(name string) (*ipld.Link, error) {
 }
 
 // GetLinkedProtoNode returns a copy of the ProtoNode with the given name.
-func (n *ProtoNode) GetLinkedProtoNode(ctx context.Context, ds ipld.DAGService, name string) (*ProtoNode, error) {
+func (n *ProtoNode) GetLinkedProtoNode(ctx context.Context, ds format.DAGService, name string) (*ProtoNode, error) {
 	nd, err := n.GetLinkedNode(ctx, ds, name)
 	if err != nil {
 		return nil, err
@@ -176,7 +182,7 @@ func (n *ProtoNode) GetLinkedProtoNode(ctx context.Context, ds ipld.DAGService, 
 }
 
 // GetLinkedNode returns a copy of the IPLD Node with the given name.
-func (n *ProtoNode) GetLinkedNode(ctx context.Context, ds ipld.DAGService, name string) (ipld.Node, error) {
+func (n *ProtoNode) GetLinkedNode(ctx context.Context, ds format.DAGService, name string) (format.Node, error) {
 	lnk, err := n.GetNodeLink(name)
 	if err != nil {
 		return nil, err
@@ -187,7 +193,7 @@ func (n *ProtoNode) GetLinkedNode(ctx context.Context, ds ipld.DAGService, name 
 
 // Copy returns a copy of the node.
 // NOTE: Does not make copies of Node objects in the links.
-func (n *ProtoNode) Copy() ipld.Node {
+func (n *ProtoNode) Copy() format.Node {
 	nnode := new(ProtoNode)
 	if len(n.data) > 0 {
 		nnode.data = make([]byte, len(n.data))
@@ -195,7 +201,7 @@ func (n *ProtoNode) Copy() ipld.Node {
 	}
 
 	if len(n.links) > 0 {
-		nnode.links = make([]*ipld.Link, len(n.links))
+		nnode.links = make([]*format.Link, len(n.links))
 		copy(nnode.links, n.links)
 	}
 
@@ -204,7 +210,6 @@ func (n *ProtoNode) Copy() ipld.Node {
 	return nnode
 }
 
-// RawData returns the protobuf-encoded version of the node.
 func (n *ProtoNode) RawData() []byte {
 	out, _ := n.EncodeProtobuf(false)
 	return out
@@ -247,7 +252,7 @@ func (n *ProtoNode) Size() (uint64, error) {
 }
 
 // Stat returns statistics on the node.
-func (n *ProtoNode) Stat() (*ipld.NodeStat, error) {
+func (n *ProtoNode) Stat() (*format.NodeStat, error) {
 	enc, err := n.EncodeProtobuf(false)
 	if err != nil {
 		return nil, err
@@ -258,7 +263,7 @@ func (n *ProtoNode) Stat() (*ipld.NodeStat, error) {
 		return nil, err
 	}
 
-	return &ipld.NodeStat{
+	return &format.NodeStat{
 		Hash:           n.Cid().String(),
 		NumLinks:       len(n.links),
 		BlockSize:      len(enc),
@@ -278,8 +283,8 @@ func (n *ProtoNode) Loggable() map[string]interface{} {
 // UnmarshalJSON reads the node fields from a JSON-encoded byte slice.
 func (n *ProtoNode) UnmarshalJSON(b []byte) error {
 	s := struct {
-		Data  []byte       `json:"data"`
-		Links []*ipld.Link `json:"links"`
+		Data  []byte         `json:"data"`
+		Links []*format.Link `json:"links"`
 	}{}
 
 	err := json.Unmarshal(b, &s)
@@ -338,12 +343,12 @@ func (n *ProtoNode) Multihash() mh.Multihash {
 }
 
 // Links returns the node links.
-func (n *ProtoNode) Links() []*ipld.Link {
+func (n *ProtoNode) Links() []*format.Link {
 	return n.links
 }
 
 // SetLinks replaces the node links with the given ones.
-func (n *ProtoNode) SetLinks(links []*ipld.Link) {
+func (n *ProtoNode) SetLinks(links []*format.Link) {
 	n.links = links
 }
 
@@ -355,7 +360,7 @@ func (n *ProtoNode) Resolve(path []string) (interface{}, []string, error) {
 // ResolveLink consumes the first element of the path and obtains the link
 // corresponding to it from the node. It returns the link
 // and the path without the consumed element.
-func (n *ProtoNode) ResolveLink(path []string) (*ipld.Link, []string, error) {
+func (n *ProtoNode) ResolveLink(path []string) (*format.Link, []string, error) {
 	if len(path) == 0 {
 		return nil, nil, fmt.Errorf("end of path, no more links to resolve")
 	}
@@ -382,3 +387,17 @@ func (n *ProtoNode) Tree(p string, depth int) []string {
 	}
 	return out
 }
+
+func ProtoNodeConverter(b blocks.Block, nd ipld.Node) (legacy.UniversalNode, error) {
+	pbNode, ok := nd.(dagpb.PBNode)
+	if !ok {
+		return nil, ErrNotProtobuf
+	}
+	encoded := &immutableProtoNode{b.RawData(), pbNode}
+	pn := fromImmutableNode(encoded)
+	pn.cached = b.Cid()
+	pn.builder = b.Cid().Prefix()
+	return pn, nil
+}
+
+var _ legacy.UniversalNode = &ProtoNode{}
