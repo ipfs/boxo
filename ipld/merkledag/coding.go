@@ -28,7 +28,7 @@ const _ = pb.DoNotUpgradeFileEverItWillChangeYourHashes
 // The conversion uses an intermediate PBNode.
 func unmarshal(encodedBytes []byte) (*ProtoNode, error) {
 	nb := dagpb.Type.PBNode.NewBuilder()
-	err := dagpb.RawDecoder(nb, bytes.NewBuffer(encodedBytes))
+	err := dagpb.PBDecoder(nb, bytes.NewBuffer(encodedBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -44,10 +44,22 @@ func fromImmutableNode(encoded *immutableProtoNode) *ProtoNode {
 	iter := n.encoded.PBNode.Links.Iterator()
 	for !iter.Done() {
 		_, next := iter.Next()
+		name := ""
+		if next.FieldName().Exists() {
+			name = next.FieldName().Must().String()
+		}
+		c := cid.Undef
+		if next.FieldHash().Exists() {
+			c = next.FieldHash().Must().Link().(cidlink.Link).Cid
+		}
+		size := uint64(0)
+		if next.FieldTsize().Exists() {
+			size = uint64(next.FieldTsize().Must().Int())
+		}
 		link := &format.Link{
-			Name: next.FieldName().Must().String(),
-			Size: uint64(next.FieldTsize().Must().Int()),
-			Cid:  next.FieldHash().Must().Link().(cidlink.Link).Cid,
+			Name: name,
+			Size: size,
+			Cid:  c,
 		}
 		links = append(links, link)
 	}
