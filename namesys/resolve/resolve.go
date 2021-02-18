@@ -8,7 +8,7 @@ import (
 
 	"github.com/ipfs/go-path"
 
-	"github.com/ipfs/go-ipfs/namesys"
+	"github.com/ipfs/go-namesys"
 )
 
 // ErrNoNamesys is an explicit error for when an IPFS node doesn't

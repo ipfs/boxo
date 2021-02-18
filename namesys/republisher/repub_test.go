@@ -20,8 +20,8 @@ import (
 	"github.com/ipfs/go-ipfs/core"
 	"github.com/ipfs/go-ipfs/core/bootstrap"
 	mock "github.com/ipfs/go-ipfs/core/mock"
-	namesys "github.com/ipfs/go-ipfs/namesys"
-	. "github.com/ipfs/go-ipfs/namesys/republisher"
+	namesys "github.com/ipfs/go-namesys"
+	. "github.com/ipfs/go-namesys/republisher"
 )
 
 func TestRepublish(t *testing.T) {
