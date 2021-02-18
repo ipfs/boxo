@@ -14,6 +14,7 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
+	"github.com/ipfs/go-merkledag"
 	mdag "github.com/ipfs/go-merkledag"
 	"github.com/ipfs/go-merkledag/dagutils"
 
@@ -328,35 +329,20 @@ func (p *pinner) CheckIfPinned(ctx context.Context, cids ...cid.Cid) ([]ipfspinn
 	}
 
 	// Now walk all recursive pins to check for indirect pins
-	var checkChildren func(cid.Cid, cid.Cid) error
-	checkChildren = func(rk, parentKey cid.Cid) error {
-		links, err := ipld.GetLinks(ctx, p.dserv, parentKey)
-		if err != nil {
-			return err
-		}
-		for _, lnk := range links {
-			c := lnk.Cid
+	visited := cid.NewSet()
+	for _, rk := range p.recursePin.Keys() {
+		err := merkledag.Walk(ctx, merkledag.GetLinksWithDAG(p.dserv), rk, func(c cid.Cid) bool {
+			if toCheck.Len() == 0 || !visited.Visit(c) {
+				return false
+			}
 
 			if toCheck.Has(c) {
-				pinned = append(pinned,
-					ipfspinner.Pinned{Key: c, Mode: ipfspinner.Indirect, Via: rk})
+				pinned = append(pinned, ipfspinner.Pinned{Key: c, Mode: ipfspinner.Indirect, Via: rk})
 				toCheck.Remove(c)
 			}
 
-			err := checkChildren(rk, c)
-			if err != nil {
-				return err
-			}
-
-			if toCheck.Len() == 0 {
-				return nil
-			}
-		}
-		return nil
-	}
-
-	for _, rk := range p.recursePin.Keys() {
-		err := checkChildren(rk, rk)
+			return true
+		}, merkledag.Concurrent())
 		if err != nil {
 			return nil, err
 		}
