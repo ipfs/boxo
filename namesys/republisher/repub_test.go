@@ -22,7 +22,7 @@ import (
 	ipns_pb "github.com/ipfs/go-ipns/pb"
 	path "github.com/ipfs/go-path"
 
-	keystore "github.com/ipfs/go-ipfs/keystore"
+	keystore "github.com/ipfs/go-ipfs-keystore"
 	namesys "github.com/ipfs/go-namesys"
 	. "github.com/ipfs/go-namesys/republisher"
 )
