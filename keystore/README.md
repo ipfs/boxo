@@ -24,8 +24,6 @@ go-ipfs-keystore provides the Keystore interface for key management.  Keystores 
 > go get github.com/ipfs/go-ipfs-keystore
 ```
 
-It uses [Gx](https://github.com/whyrusleeping/gx) to manage dependencies.
-
 ## Usage
 ```
 import "github.com/ipfs/go-ipfs-keystore"
