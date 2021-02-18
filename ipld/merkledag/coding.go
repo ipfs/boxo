@@ -10,8 +10,9 @@ import (
 	cid "github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
 	pb "github.com/ipfs/go-merkledag/pb"
+	ipld "github.com/ipld/go-ipld-prime"
 	dagpb "github.com/ipld/go-ipld-prime-proto"
-	"github.com/ipld/go-ipld-prime/fluent"
+	"github.com/ipld/go-ipld-prime/fluent/qp"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
 
@@ -54,32 +55,27 @@ func fromImmutableNode(encoded *immutableProtoNode) *ProtoNode {
 	return n
 }
 func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
-	nb := dagpb.Type.PBNode.NewBuilder()
-	err := fluent.Recover(func() {
-		fb := fluent.WrapAssembler(nb)
-		fb.CreateMap(-1, func(fmb fluent.MapAssembler) {
-			fmb.AssembleEntry("Links").CreateList(int64(len(n.links)), func(flb fluent.ListAssembler) {
-				for _, link := range n.links {
-					flb.AssembleValue().CreateMap(-1, func(fmb fluent.MapAssembler) {
-						if link.Cid.Defined() {
-							hash, err := cid.Cast(link.Cid.Bytes())
-							if err != nil {
-								panic(fluent.Error{Err: fmt.Errorf("unmarshal failed. %v", err)})
-							}
-							fmb.AssembleEntry("Hash").AssignLink(cidlink.Link{Cid: hash})
+	nd, err := qp.BuildMap(dagpb.Type.PBNode, 2, func(ma ipld.MapAssembler) {
+		qp.MapEntry(ma, "Links", qp.List(int64(len(n.links)), func(la ipld.ListAssembler) {
+			for _, link := range n.links {
+				qp.ListEntry(la, qp.Map(-1, func(ma ipld.MapAssembler) {
+					if link.Cid.Defined() {
+						hash, err := cid.Cast(link.Cid.Bytes())
+						if err != nil {
+							panic(fmt.Errorf("unmarshal failed. %v", err))
 						}
-						fmb.AssembleEntry("Name").AssignString(link.Name)
-						fmb.AssembleEntry("Tsize").AssignInt(int64(link.Size))
-					})
-				}
-			})
-			fmb.AssembleEntry("Data").AssignBytes(n.data)
-		})
+						qp.MapEntry(ma, "Hash", qp.Link(cidlink.Link{Cid: hash}))
+					}
+					qp.MapEntry(ma, "Name", qp.String(link.Name))
+					qp.MapEntry(ma, "Tsize", qp.Int(int64(link.Size)))
+				}))
+			}
+		}))
+		qp.MapEntry(ma, "Data", qp.Bytes(n.data))
 	})
 	if err != nil {
 		return nil, err
 	}
-	nd := nb.Build()
 	newData := new(bytes.Buffer)
 	err = dagpb.PBEncoder(nd, newData)
 	if err != nil {
