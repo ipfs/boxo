@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	keystore "github.com/ipfs/go-ipfs/keystore"
+	keystore "github.com/ipfs/go-ipfs-keystore"
 	namesys "github.com/ipfs/go-namesys"
 	path "github.com/ipfs/go-path"
 
