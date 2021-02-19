@@ -120,6 +120,8 @@ func TestPublishWithCache0(t *testing.T) {
 	}
 }
 
+type ctxKey string
+
 func TestPublishWithTTL(t *testing.T) {
 	dst := dssync.MutexWrap(ds.NewMapDatastore())
 	priv, _, err := ci.GenerateKeyPair(ci.RSA, 2048)
@@ -150,7 +152,7 @@ func TestPublishWithTTL(t *testing.T) {
 	ttl := 1 * time.Second
 	eol := time.Now().Add(2 * time.Second)
 
-	ctx := context.WithValue(context.Background(), "ipns-publish-ttl", ttl)
+	ctx := context.WithValue(context.Background(), ctxKey("ipns-publish-ttl"), ttl)
 	err = nsys.Publish(ctx, priv, p)
 	if err != nil {
 		t.Fatal(err)
