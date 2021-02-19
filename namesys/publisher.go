@@ -218,9 +218,8 @@ func checkCtxTTL(ctx context.Context) (time.Duration, bool) {
 }
 
 // PutRecordToRouting publishes the given entry using the provided ValueStore,
-// using the ID associated to the provided public key and embedding the public
-// key in the IPNS entry when it cannot be extracted from the ID. In that
-// case, it calls PublishPublicKey in addition to PublishEntry.
+// keyed on the ID associated with the provided public key. The public key is
+// also made available to the routing system so that entries can be verified.
 func PutRecordToRouting(ctx context.Context, r routing.ValueStore, k ci.PubKey, entry *pb.IpnsEntry) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
