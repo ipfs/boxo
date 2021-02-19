@@ -1,3 +1,16 @@
+// Package namesys defines Resolver and Publisher interfaces for IPNS paths,
+// that is, IPFS paths in the form of /ipns/<name_to_be_resolved>. A "resolved"
+// IPNS path becomes an /ipfs/<cid> path.
+//
+// Traditionally, these paths would be in the form of /ipns/peer_id, which
+// references an IPNS record in a distributed ValueStore (usually the IPFS
+// DHT).
+//
+// Additionally, the /ipns/ namespace can also be used with domain names that
+// use DNSLink (/ipns/my.domain.example, see https://dnslink.io) and proquint
+// strings.
+//
+// The package provides implementations for all three resolvers.
 package namesys
 
 import (

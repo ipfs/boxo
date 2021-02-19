@@ -11,14 +11,13 @@ import (
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 	ipns "github.com/ipfs/go-ipns"
 	path "github.com/ipfs/go-path"
-	testutil "github.com/libp2p/go-libp2p-testing/net"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 )
 
 func TestRoutingResolve(t *testing.T) {
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	serv := mockrouting.NewServer()
-	id := testutil.RandIdentityOrFatal(t)
+	id := tnet.RandIdentityOrFatal(t)
 	d := serv.ClientWithDatastore(context.Background(), id, dstore)
 
 	resolver := NewIpnsResolver(d)
@@ -44,7 +43,7 @@ func TestRoutingResolve(t *testing.T) {
 
 func TestPrexistingExpiredRecord(t *testing.T) {
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
-	d := mockrouting.NewServer().ClientWithDatastore(context.Background(), testutil.RandIdentityOrFatal(t), dstore)
+	d := mockrouting.NewServer().ClientWithDatastore(context.Background(), tnet.RandIdentityOrFatal(t), dstore)
 
 	resolver := NewIpnsResolver(d)
 	publisher := NewIpnsPublisher(d, dstore)
@@ -78,7 +77,7 @@ func TestPrexistingExpiredRecord(t *testing.T) {
 
 func TestPrexistingRecord(t *testing.T) {
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
-	d := mockrouting.NewServer().ClientWithDatastore(context.Background(), testutil.RandIdentityOrFatal(t), dstore)
+	d := mockrouting.NewServer().ClientWithDatastore(context.Background(), tnet.RandIdentityOrFatal(t), dstore)
 
 	resolver := NewIpnsResolver(d)
 	publisher := NewIpnsPublisher(d, dstore)
