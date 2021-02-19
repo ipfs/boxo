@@ -1,3 +1,5 @@
+// Package republisher provides a utility to automatically re-publish IPNS
+// records related to the keys in a Keystore.
 package republisher
 
 import (
@@ -36,6 +38,8 @@ var FailureRetryInterval = time.Minute * 5
 // DefaultRecordLifetime is the default lifetime for IPNS records
 const DefaultRecordLifetime = time.Hour * 24
 
+// Republisher facilitates the regular publishing of all the IPNS records
+// associated to keys in a Keystore.
 type Republisher struct {
 	ns   namesys.Publisher
 	ds   ds.Datastore
@@ -60,6 +64,8 @@ func NewRepublisher(ns namesys.Publisher, ds ds.Datastore, self ic.PrivKey, ks k
 	}
 }
 
+// Run starts the republisher facility. It can be stopped by stopping the
+// provided proc.
 func (rp *Republisher) Run(proc goprocess.Process) {
 	timer := time.NewTimer(InitialRebroadcastDelay)
 	defer timer.Stop()

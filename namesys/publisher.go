@@ -22,6 +22,9 @@ import (
 
 const ipnsPrefix = "/ipns/"
 
+// DefaultRecordEOL specifies the time that the network will cache IPNS
+// records after being publihsed. Records should be re-published before this
+// interval expires.
 const DefaultRecordEOL = 24 * time.Hour
 
 // IpnsPublisher is capable of publishing and resolving names to the IPFS
@@ -49,11 +52,13 @@ func (p *IpnsPublisher) Publish(ctx context.Context, k ci.PrivKey, value path.Pa
 	return p.PublishWithEOL(ctx, k, value, time.Now().Add(DefaultRecordEOL))
 }
 
+// IpnsDsKey returns a datastore key given an IPNS identifier (peer
+// ID). Defines the storage key for IPNS records in the local datastore.
 func IpnsDsKey(id peer.ID) ds.Key {
 	return ds.NewKey("/ipns/" + base32.RawStdEncoding.EncodeToString([]byte(id)))
 }
 
-// PublishedNames returns the latest IPNS records published by this node and
+// ListPublished returns the latest IPNS records published by this node and
 // their expiration times.
 //
 // This method will not search the routing system for records published by other
@@ -212,6 +217,9 @@ func checkCtxTTL(ctx context.Context) (time.Duration, bool) {
 	return d, ok
 }
 
+// PutRecordToRouting publishes the given entry using the provided ValueStore,
+// keyed on the ID associated with the provided public key. The public key is
+// also made available to the routing system so that entries can be verified.
 func PutRecordToRouting(ctx context.Context, r routing.ValueStore, k ci.PubKey, entry *pb.IpnsEntry) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -260,6 +268,8 @@ func waitOnErrChan(ctx context.Context, errs chan error) error {
 	}
 }
 
+// PublishPublicKey stores the given public key in the ValueStore with the
+// given key.
 func PublishPublicKey(ctx context.Context, r routing.ValueStore, k string, pubk ci.PubKey) error {
 	log.Debugf("Storing pubkey at: %s", k)
 	pkbytes, err := pubk.Bytes()
@@ -271,6 +281,8 @@ func PublishPublicKey(ctx context.Context, r routing.ValueStore, k string, pubk 
 	return r.PutValue(ctx, k, pkbytes)
 }
 
+// PublishEntry stores the given IpnsEntry in the ValueStore with the given
+// ipnskey.
 func PublishEntry(ctx context.Context, r routing.ValueStore, ipnskey string, rec *pb.IpnsEntry) error {
 	data, err := proto.Marshal(rec)
 	if err != nil {

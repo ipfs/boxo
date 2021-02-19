@@ -1,14 +1,20 @@
 # go-namesys
 
-[![](https://img.shields.io/badge/made%20by-Protocol%20Labs-blue.svg?style=flat-square)](http://ipn.io)
+[![](https://img.shields.io/badge/made%20by-Protocol%20Labs-blue.svg?style=flat-square)](http://protocol.ai)
 [![](https://img.shields.io/badge/project-IPFS-blue.svg?style=flat-square)](http://ipfs.io/)
-[![standard-readme compliant](https://img.shields.io/badge/standard--readme-OK-green.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ipfs/go-namesys.svg)](https://pkg.go.dev/github.com/ipfs/go-namesys)
 [![Travis CI](https://travis-ci.com/ipfs/go-namesys.svg?branch=master)](https://travis-ci.com/ipfs/go-namesys)
 
 
 > go-namesys provides publish and resolution support for the /ipns/ namespace 
 
-go-namesys allows to publish and resolve IPNS records or dnslink domain names.
+Package namesys defines `Resolver` and `Publisher` interfaces for IPNS paths, that is, paths in the form of `/ipns/<name_to_be_resolved>`. A "resolved" IPNS path becomes an `/ipfs/<cid>` path.
+
+Traditionally, these paths would be in the form of `/ipns/peer_id`, which references an IPNS record in a distributed `ValueStore` (usually the IPFS DHT).
+
+Additionally, the /ipns/ namespace can also be used with domain names that use DNSLink (/ipns/my.domain.example, see https://dnslink.io) and proquint strings.
+
+The package provides implementations for all three resolvers.
 
 ## Table of Contents
 
@@ -28,6 +34,8 @@ go-namesys allows to publish and resolve IPNS records or dnslink domain names.
 ```
 import "github.com/ipfs/go-namesys"
 ```
+
+See the [Pkg.go.dev documentation](https://pkg.go.dev/github.com/ipfs/go-namesys)
 
 ## Contribute
 

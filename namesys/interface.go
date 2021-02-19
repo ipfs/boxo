@@ -50,7 +50,7 @@ var ErrResolveRecursion = errors.New(
 // ErrPublishFailed signals an error when attempting to publish.
 var ErrPublishFailed = errors.New("could not publish name")
 
-// Namesys represents a cohesive name publishing and resolving system.
+// NameSystem represents a cohesive name publishing and resolving system.
 //
 // Publishing a name is the process of establishing a mapping, a key-value
 // pair, according to naming rules and databases.
