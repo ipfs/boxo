@@ -15,6 +15,7 @@ import (
 const ethTLD = "eth"
 const linkTLD = "link"
 
+// LookupTXTFunc is a generic type for a function that lookups TXT record values.
 type LookupTXTFunc func(name string) (txt []string, err error)
 
 // DNSResolver implements a Resolver on DNS domains
@@ -146,10 +147,10 @@ func parseEntry(txt string) (path.Path, error) {
 		return p, nil
 	}
 
-	return tryParseDnsLink(txt)
+	return tryParseDNSLink(txt)
 }
 
-func tryParseDnsLink(txt string) (path.Path, error) {
+func tryParseDNSLink(txt string) (path.Path, error) {
 	parts := strings.SplitN(txt, "=", 2)
 	if len(parts) == 2 && parts[0] == "dnslink" {
 		return path.ParsePath(parts[1])

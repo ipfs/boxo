@@ -9,6 +9,8 @@ import (
 	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 )
 
+// ProquintResolver implements the Resolver interface for proquint identifiers
+// (see http://arxiv.org/html/0901.4016).
 type ProquintResolver struct{}
 
 // Resolve implements Resolver.
