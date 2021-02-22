@@ -33,7 +33,7 @@ func NewFetcher(exchange *bitswap.Bitswap) Fetcher {
 	return Fetcher{exchange: exchange}
 }
 
-func (f Fetcher) FetchNode(ctx context.Context, c cid.Cid) (ipld.Node, error) {
+func (f Fetcher) Block(ctx context.Context, c cid.Cid) (ipld.Node, error) {
 	nb := basicnode.Prototype.Any.NewBuilder()
 
 	err := cidlink.Link{Cid: c}.Load(ctx, ipld.LinkContext{}, nb, f.loader(ctx))
@@ -44,36 +44,14 @@ func (f Fetcher) FetchNode(ctx context.Context, c cid.Cid) (ipld.Node, error) {
 	return nb.Build(), nil
 }
 
-func (f Fetcher) FetchMatching(ctx context.Context, root cid.Cid, match selector.Selector) (chan FetchResult, chan error) {
+func (f Fetcher) NodeMatching(ctx context.Context, node ipld.Node, match selector.Selector) (chan FetchResult, chan error) {
 	results := make(chan FetchResult)
 	errors := make(chan error)
 
 	go func() {
 		defer close(results)
 
-		// retrieve first node
-		node, err := f.FetchNode(ctx, root)
-		if err != nil {
-			errors <- err
-			return
-		}
-
-		err = traversal.Progress{
-			Cfg: &traversal.Config{
-				LinkLoader: f.loader(ctx),
-				LinkTargetNodePrototypeChooser: func(_ ipld.Link, _ ipld.LinkContext) (ipld.NodePrototype, error) {
-					return basicnode.Prototype__Any{}, nil
-				},
-			},
-		}.WalkMatching(node, match, func(prog traversal.Progress, n ipld.Node) error {
-			results <- FetchResult{
-				Node:          n,
-				Path:          prog.Path,
-				LastBlockPath: prog.LastBlock.Path,
-				LastBlockLink: prog.LastBlock.Link,
-			}
-			return nil
-		})
+		err := f.fetch(ctx, node, match, results)
 		if err != nil {
 			errors <- err
 			return
@@ -83,7 +61,31 @@ func (f Fetcher) FetchMatching(ctx context.Context, root cid.Cid, match selector
 	return results, errors
 }
 
-func (f Fetcher) FetchAll(ctx context.Context, root cid.Cid) (chan FetchResult, chan error) {
+func (f Fetcher) BlockMatching(ctx context.Context, root cid.Cid, match selector.Selector) (chan FetchResult, chan error) {
+	results := make(chan FetchResult)
+	errors := make(chan error)
+
+	go func() {
+		defer close(results)
+
+		// retrieve first node
+		node, err := f.Block(ctx, root)
+		if err != nil {
+			errors <- err
+			return
+		}
+
+		err = f.fetch(ctx, node, match, results)
+		if err != nil {
+			errors <- err
+			return
+		}
+	}()
+
+	return results, errors
+}
+
+func (f Fetcher) BlockAll(ctx context.Context, root cid.Cid) (chan FetchResult, chan error) {
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype__Any{})
 	allSelector, err := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreUnion(
 		ssb.Matcher(),
@@ -94,7 +96,26 @@ func (f Fetcher) FetchAll(ctx context.Context, root cid.Cid) (chan FetchResult, 
 		errors <- err
 		return nil, errors
 	}
-	return f.FetchMatching(ctx, root, allSelector)
+	return f.BlockMatching(ctx, root, allSelector)
+}
+
+func (f Fetcher) fetch(ctx context.Context, node ipld.Node, match selector.Selector, results chan FetchResult) error {
+	return traversal.Progress{
+		Cfg: &traversal.Config{
+			LinkLoader: f.loader(ctx),
+			LinkTargetNodePrototypeChooser: func(_ ipld.Link, _ ipld.LinkContext) (ipld.NodePrototype, error) {
+				return basicnode.Prototype__Any{}, nil
+			},
+		},
+	}.WalkMatching(node, match, func(prog traversal.Progress, n ipld.Node) error {
+		results <- FetchResult{
+			Node:          n,
+			Path:          prog.Path,
+			LastBlockPath: prog.LastBlock.Path,
+			LastBlockLink: prog.LastBlock.Link,
+		}
+		return nil
+	})
 }
 
 func (f Fetcher) loader(ctx context.Context) ipld.Loader {
