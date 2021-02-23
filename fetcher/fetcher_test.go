@@ -52,7 +52,8 @@ func TestFetchIPLDPrimeNode(t *testing.T) {
 	defer wantsBlock.Exchange.Close()
 
 	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
-	fetch := fetcher.NewFetcher(wantsGetter)
+	fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+	fetch := fetcherConfig.NewSession(context.Background())
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -103,8 +104,8 @@ func TestFetchIPLDGraph(t *testing.T) {
 	defer wantsBlock.Exchange.Close()
 
 	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
-	fetch := fetcher.NewFetcher(wantsGetter)
-
+	fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+	fetch := fetcherConfig.NewSession(context.Background())
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
