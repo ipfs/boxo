@@ -11,6 +11,7 @@ import (
 	testinstance "github.com/ipfs/go-bitswap/testinstance"
 	tn "github.com/ipfs/go-bitswap/testnet"
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
@@ -50,7 +51,8 @@ func TestFetchIPLDPrimeNode(t *testing.T) {
 	wantsBlock := peers[1]
 	defer wantsBlock.Exchange.Close()
 
-	fetch := fetcher.NewFetcher(wantsBlock.Exchange)
+	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
+	fetch := fetcher.NewFetcher(wantsGetter)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -100,7 +102,8 @@ func TestFetchIPLDGraph(t *testing.T) {
 	wantsBlock := peers[1]
 	defer wantsBlock.Exchange.Close()
 
-	fetch := fetcher.NewFetcher(wantsBlock.Exchange)
+	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
+	fetch := fetcher.NewFetcher(wantsGetter)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -141,9 +144,9 @@ Loop:
 func encodeBlock(n ipld.Node) (blocks.Block, ipld.Node, ipld.Link) {
 	lb := cidlink.LinkBuilder{cid.Prefix{
 		Version:  1,
-		Codec:    0x71,
+		Codec:    cid.DagCBOR,
 		MhType:   0x17,
-		MhLength: 4,
+		MhLength: 20,
 	}}
 	var b blocks.Block
 	lnk, err := lb.Build(context.Background(), ipld.LinkContext{}, n,

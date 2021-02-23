@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ipfs/go-bitswap"
+	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -16,10 +16,8 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 )
 
-// TODO: need to support sessions
-
 type Fetcher struct {
-	exchange *bitswap.Bitswap
+	blockGetter blockservice.BlockGetter
 }
 
 type FetchResult struct {
@@ -29,8 +27,8 @@ type FetchResult struct {
 	LastBlockLink ipld.Link
 }
 
-func NewFetcher(exchange *bitswap.Bitswap) Fetcher {
-	return Fetcher{exchange: exchange}
+func NewFetcher(blockGetter blockservice.BlockGetter) Fetcher {
+	return Fetcher{blockGetter: blockGetter}
 }
 
 func (f Fetcher) Block(ctx context.Context, c cid.Cid) (ipld.Node, error) {
@@ -125,7 +123,7 @@ func (f Fetcher) loader(ctx context.Context) ipld.Loader {
 			return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
 		}
 
-		blk, err := f.exchange.GetBlock(ctx, cidLink.Cid)
+		blk, err := f.blockGetter.GetBlock(ctx, cidLink.Cid)
 		if err != nil {
 			return nil, err
 		}
