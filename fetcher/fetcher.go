@@ -6,31 +6,34 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
-
-	"github.com/ipld/go-ipld-prime/traversal"
-
-	"github.com/ipld/go-ipld-prime/traversal/selector"
-
 	"github.com/ipfs/go-bitswap"
-
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/ipld/go-ipld-prime/traversal"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
+	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 )
 
 // TODO: need to support sessions
 
 type Fetcher struct {
-	Exchange *bitswap.Bitswap
+	exchange *bitswap.Bitswap
 }
 
-func NewFetcher(exchange *bitswap.Bitswap) *Fetcher {
-	return &Fetcher{Exchange: exchange}
+type FetchResult struct {
+	Node          ipld.Node
+	Path          ipld.Path
+	LastBlockPath ipld.Path
+	LastBlockLink ipld.Link
 }
 
-func (f *Fetcher) FetchNode(ctx context.Context, c cid.Cid) (ipld.Node, error) {
+func NewFetcher(exchange *bitswap.Bitswap) Fetcher {
+	return Fetcher{exchange: exchange}
+}
+
+func (f Fetcher) Block(ctx context.Context, c cid.Cid) (ipld.Node, error) {
 	nb := basicnode.Prototype.Any.NewBuilder()
 
 	err := cidlink.Link{Cid: c}.Load(ctx, ipld.LinkContext{}, nb, f.loader(ctx))
@@ -41,61 +44,88 @@ func (f *Fetcher) FetchNode(ctx context.Context, c cid.Cid) (ipld.Node, error) {
 	return nb.Build(), nil
 }
 
-type NodeResult struct {
-	Node ipld.Node
-	Err  error
-}
-
-func (f *Fetcher) FetchMatching(ctx context.Context, root cid.Cid, match selector.Selector) (chan NodeResult, error) {
-	node, err := f.FetchNode(ctx, root)
-	if err != nil {
-		return nil, err
-	}
-
-	results := make(chan NodeResult)
+func (f Fetcher) NodeMatching(ctx context.Context, node ipld.Node, match selector.Selector) (chan FetchResult, chan error) {
+	results := make(chan FetchResult)
+	errors := make(chan error)
 
 	go func() {
 		defer close(results)
-		err = traversal.Progress{
-			Cfg: &traversal.Config{
-				LinkLoader: f.loader(ctx),
-				LinkTargetNodePrototypeChooser: func(_ ipld.Link, _ ipld.LinkContext) (ipld.NodePrototype, error) {
-					return basicnode.Prototype__Any{}, nil
-				},
-			},
-		}.WalkMatching(node, match, func(prog traversal.Progress, n ipld.Node) error {
-			results <- NodeResult{Node: n}
-			return nil
-		})
+
+		err := f.fetch(ctx, node, match, results)
 		if err != nil {
-			results <- NodeResult{Err: err}
+			errors <- err
+			return
 		}
 	}()
 
-	return results, nil
+	return results, errors
 }
 
-func (f *Fetcher) FetchAll(ctx context.Context, root cid.Cid) (chan NodeResult, error) {
+func (f Fetcher) BlockMatching(ctx context.Context, root cid.Cid, match selector.Selector) (chan FetchResult, chan error) {
+	results := make(chan FetchResult)
+	errors := make(chan error)
+
+	go func() {
+		defer close(results)
+
+		// retrieve first node
+		node, err := f.Block(ctx, root)
+		if err != nil {
+			errors <- err
+			return
+		}
+
+		err = f.fetch(ctx, node, match, results)
+		if err != nil {
+			errors <- err
+			return
+		}
+	}()
+
+	return results, errors
+}
+
+func (f Fetcher) BlockAll(ctx context.Context, root cid.Cid) (chan FetchResult, chan error) {
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype__Any{})
 	allSelector, err := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreUnion(
 		ssb.Matcher(),
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
 	)).Selector()
 	if err != nil {
-		return nil, err
+		errors := make(chan error, 1)
+		errors <- err
+		return nil, errors
 	}
-	return f.FetchMatching(ctx, root, allSelector)
+	return f.BlockMatching(ctx, root, allSelector)
 }
 
-// TODO: take optional Cid channel for links traversed
-func (f *Fetcher) loader(ctx context.Context) ipld.Loader {
+func (f Fetcher) fetch(ctx context.Context, node ipld.Node, match selector.Selector, results chan FetchResult) error {
+	return traversal.Progress{
+		Cfg: &traversal.Config{
+			LinkLoader: f.loader(ctx),
+			LinkTargetNodePrototypeChooser: func(_ ipld.Link, _ ipld.LinkContext) (ipld.NodePrototype, error) {
+				return basicnode.Prototype__Any{}, nil
+			},
+		},
+	}.WalkMatching(node, match, func(prog traversal.Progress, n ipld.Node) error {
+		results <- FetchResult{
+			Node:          n,
+			Path:          prog.Path,
+			LastBlockPath: prog.LastBlock.Path,
+			LastBlockLink: prog.LastBlock.Link,
+		}
+		return nil
+	})
+}
+
+func (f Fetcher) loader(ctx context.Context) ipld.Loader {
 	return func(lnk ipld.Link, _ ipld.LinkContext) (io.Reader, error) {
 		cidLink, ok := lnk.(cidlink.Link)
 		if !ok {
 			return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
 		}
 
-		blk, err := f.Exchange.GetBlock(ctx, cidLink.Cid)
+		blk, err := f.exchange.GetBlock(ctx, cidLink.Cid)
 		if err != nil {
 			return nil, err
 		}

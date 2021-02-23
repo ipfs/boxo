@@ -55,7 +55,7 @@ func TestFetchIPLDPrimeNode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	retrievedNode, err := fetch.FetchNode(ctx, block.Cid())
+	retrievedNode, err := fetch.Block(ctx, block.Cid())
 	require.NoError(t, err)
 	assert.Equal(t, node, retrievedNode)
 }
@@ -105,24 +105,33 @@ func TestFetchIPLDGraph(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	nodeChan, err := fetch.FetchAll(ctx, block1.Cid())
+	nodeCh, errCh := fetch.BlockAll(ctx, block1.Cid())
 	require.NoError(t, err)
 
 	order := 0
-	for res := range nodeChan {
-		require.NoError(t, res.Err)
 
-		switch order {
-		case 0:
-			assert.Equal(t, node1, res.Node)
-		case 4:
-			assert.Equal(t, node2, res.Node)
-		case 5:
-			assert.Equal(t, node3, res.Node)
-		case 7:
-			assert.Equal(t, node4, res.Node)
+Loop:
+	for {
+		select {
+		case res, ok := <-nodeCh:
+			if !ok {
+				break Loop
+			}
+
+			switch order {
+			case 0:
+				assert.Equal(t, node1, res.Node)
+			case 4:
+				assert.Equal(t, node2, res.Node)
+			case 5:
+				assert.Equal(t, node3, res.Node)
+			case 7:
+				assert.Equal(t, node4, res.Node)
+			}
+			order++
+		case err := <-errCh:
+			require.FailNow(t, err.Error())
 		}
-		order++
 	}
 
 	// expect 10 nodes altogether including sub nodes
