@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 
+	dagpb "github.com/ipld/go-ipld-prime-proto"
+
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -138,9 +140,9 @@ func (f *Fetcher) fetch(ctx context.Context, node ipld.Node, match selector.Sele
 	return traversal.Progress{
 		Cfg: &traversal.Config{
 			LinkLoader: f.loader(ctx),
-			LinkTargetNodePrototypeChooser: func(_ ipld.Link, _ ipld.LinkContext) (ipld.NodePrototype, error) {
+			LinkTargetNodePrototypeChooser: dagpb.AddDagPBSupportToChooser(func(_ ipld.Link, _ ipld.LinkContext) (ipld.NodePrototype, error) {
 				return basicnode.Prototype__Any{}, nil
-			},
+			}),
 		},
 	}.WalkMatching(node, match, func(prog traversal.Progress, n ipld.Node) error {
 		results <- FetchResult{
