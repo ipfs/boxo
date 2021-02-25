@@ -58,7 +58,7 @@ func TestFetchIPLDPrimeNode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	retrievedNode, err := fetch.Block(ctx, block.Cid())
+	retrievedNode, err := fetch.Block(ctx, cidlink.Link{Cid: block.Cid()})
 	require.NoError(t, err)
 	assert.Equal(t, node, retrievedNode)
 }
@@ -109,7 +109,7 @@ func TestFetchIPLDGraph(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	nodeCh, errCh := fetch.BlockAll(ctx, block1.Cid())
+	nodeCh, errCh := fetch.BlockAll(ctx, cidlink.Link{Cid: block1.Cid()})
 	require.NoError(t, err)
 
 	order := 0
