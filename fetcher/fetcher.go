@@ -49,7 +49,11 @@ func (fc FetcherConfig) NewSession(ctx context.Context) *Fetcher {
 
 // Block fetches a schemaless node graph corresponding to single block by link.
 func (f *Fetcher) Block(ctx context.Context, link ipld.Link) (ipld.Node, error) {
-	return f.BlockOfType(ctx, link, basicnode.Prototype.Any)
+	prototype, err := prototypeFromLink(link)
+	if err != nil {
+		return nil, err
+	}
+	return f.BlockOfType(ctx, link, prototype)
 }
 
 // BlockOfType fetches a node graph of the provided type corresponding to single block by link.
@@ -86,7 +90,13 @@ func (f *Fetcher) NodeMatching(ctx context.Context, node ipld.Node, match select
 // BlockMatching traverses a schemaless node graph starting with the given link using the given selector and possibly crossing
 // block boundaries. Each matched node is sent to the FetchResult channel.
 func (f *Fetcher) BlockMatching(ctx context.Context, root ipld.Link, match selector.Selector) (chan FetchResult, chan error) {
-	return f.BlockMatchingOfType(ctx, root, match, basicnode.Prototype.Any)
+	prototype, err := prototypeFromLink(root)
+	if err != nil {
+		errors := make(chan error, 1)
+		errors <- err
+		return nil, errors
+	}
+	return f.BlockMatchingOfType(ctx, root, match, prototype)
 }
 
 // BlockMatchingOfType traverses a node graph starting with the given link using the given selector and possibly
@@ -119,7 +129,13 @@ func (f *Fetcher) BlockMatchingOfType(ctx context.Context, root ipld.Link, match
 // BlockAll traverses all nodes in the graph linked by root. The nodes will be untyped and send over the results
 // channel.
 func (f *Fetcher) BlockAll(ctx context.Context, root ipld.Link) (chan FetchResult, chan error) {
-	return f.BlockAllOfType(ctx, root, basicnode.Prototype.Any)
+	prototype, err := prototypeFromLink(root)
+	if err != nil {
+		errors := make(chan error, 1)
+		errors <- err
+		return nil, errors
+	}
+	return f.BlockAllOfType(ctx, root, prototype)
 }
 
 // BlockAllOfType traverses all nodes in the graph linked by root. The nodes will typed according to ptype
@@ -174,4 +190,10 @@ func (f *Fetcher) loader(ctx context.Context) ipld.Loader {
 
 		return bytes.NewReader(blk.RawData()), nil
 	}
+}
+
+func prototypeFromLink(lnk ipld.Link) (ipld.NodePrototype, error) {
+	return dagpb.AddDagPBSupportToChooser(func(_ ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
+		return basicnode.Prototype__Any{}, nil
+	})(lnk, ipld.LinkContext{})
 }
