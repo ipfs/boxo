@@ -26,24 +26,24 @@ func newBlockstoreManager(bs bstore.Blockstore, workerCount int) *blockstoreMana
 		bs:          bs,
 		workerCount: workerCount,
 		jobs:        make(chan func()),
+		px:          process.WithTeardown(func() error { return nil }),
 	}
 }
 
 func (bsm *blockstoreManager) start(px process.Process) {
-	bsm.px = px
-
+	px.AddChild(bsm.px)
 	// Start up workers
 	for i := 0; i < bsm.workerCount; i++ {
-		px.Go(func(px process.Process) {
-			bsm.worker()
+		bsm.px.Go(func(px process.Process) {
+			bsm.worker(px)
 		})
 	}
 }
 
-func (bsm *blockstoreManager) worker() {
+func (bsm *blockstoreManager) worker(px process.Process) {
 	for {
 		select {
-		case <-bsm.px.Closing():
+		case <-px.Closing():
 			return
 		case job := <-bsm.jobs:
 			job()
