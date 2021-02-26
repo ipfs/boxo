@@ -70,7 +70,7 @@ func (f *Fetcher) BlockOfType(ctx context.Context, link ipld.Link, ptype ipld.No
 
 // NodeMatching traverses a node graph starting with the provided node using the given selector and possibly crossing
 // block boundaries. Each matched node is sent to the FetchResult channel.
-func (f *Fetcher) NodeMatching(ctx context.Context, node ipld.Node, match selector.Selector) (chan FetchResult, chan error) {
+func (f *Fetcher) NodeMatching(ctx context.Context, node ipld.Node, match selector.Selector) (<-chan FetchResult, <-chan error) {
 	results := make(chan FetchResult)
 	errors := make(chan error)
 
@@ -89,7 +89,7 @@ func (f *Fetcher) NodeMatching(ctx context.Context, node ipld.Node, match select
 
 // BlockMatching traverses a schemaless node graph starting with the given link using the given selector and possibly crossing
 // block boundaries. Each matched node is sent to the FetchResult channel.
-func (f *Fetcher) BlockMatching(ctx context.Context, root ipld.Link, match selector.Selector) (chan FetchResult, chan error) {
+func (f *Fetcher) BlockMatching(ctx context.Context, root ipld.Link, match selector.Selector) (<-chan FetchResult, <-chan error) {
 	prototype, err := prototypeFromLink(root)
 	if err != nil {
 		errors := make(chan error, 1)
@@ -102,7 +102,7 @@ func (f *Fetcher) BlockMatching(ctx context.Context, root ipld.Link, match selec
 // BlockMatchingOfType traverses a node graph starting with the given link using the given selector and possibly
 // crossing block boundaries. The nodes will be typed using the provided prototype. Each matched node is sent to
 // the FetchResult channel.
-func (f *Fetcher) BlockMatchingOfType(ctx context.Context, root ipld.Link, match selector.Selector, ptype ipld.NodePrototype) (chan FetchResult, chan error) {
+func (f *Fetcher) BlockMatchingOfType(ctx context.Context, root ipld.Link, match selector.Selector, ptype ipld.NodePrototype) (<-chan FetchResult, <-chan error) {
 	results := make(chan FetchResult)
 	errors := make(chan error)
 
@@ -128,7 +128,7 @@ func (f *Fetcher) BlockMatchingOfType(ctx context.Context, root ipld.Link, match
 
 // BlockAll traverses all nodes in the graph linked by root. The nodes will be untyped and send over the results
 // channel.
-func (f *Fetcher) BlockAll(ctx context.Context, root ipld.Link) (chan FetchResult, chan error) {
+func (f *Fetcher) BlockAll(ctx context.Context, root ipld.Link) (<-chan FetchResult, <-chan error) {
 	prototype, err := prototypeFromLink(root)
 	if err != nil {
 		errors := make(chan error, 1)
@@ -140,7 +140,7 @@ func (f *Fetcher) BlockAll(ctx context.Context, root ipld.Link) (chan FetchResul
 
 // BlockAllOfType traverses all nodes in the graph linked by root. The nodes will typed according to ptype
 // and send over the results channel.
-func (f *Fetcher) BlockAllOfType(ctx context.Context, root ipld.Link, ptype ipld.NodePrototype) (chan FetchResult, chan error) {
+func (f *Fetcher) BlockAllOfType(ctx context.Context, root ipld.Link, ptype ipld.NodePrototype) (<-chan FetchResult, <-chan error) {
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype__Any{})
 	allSelector, err := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreUnion(
 		ssb.Matcher(),
