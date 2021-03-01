@@ -23,7 +23,7 @@ import (
 	"github.com/magiconair/properties/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ipfs/fetcher"
+	"github.com/ipfs/go-fetcher"
 )
 
 var _ cidlink.MulticodecDecoder = dagcbor.Decoder
