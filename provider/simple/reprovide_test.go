@@ -9,17 +9,21 @@ import (
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
+	"github.com/ipfs/go-fetcher"
 	"github.com/ipfs/go-ipfs-blockstore"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	mock "github.com/ipfs/go-ipfs-routing/mock"
 	cbor "github.com/ipfs/go-ipld-cbor"
-	merkledag "github.com/ipfs/go-merkledag"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	testutil "github.com/libp2p/go-libp2p-testing/net"
 	mh "github.com/multiformats/go-multihash"
 
 	. "github.com/ipfs/go-ipfs-provider/simple"
 )
+
+var _ cidlink.MulticodecDecoder = dagcbor.Decoder
 
 func setupRouting(t *testing.T) (clA, clB mock.Client, idA, idB peer.ID) {
 	mrserv := mock.NewServer()
@@ -195,7 +199,7 @@ func TestReprovidePinned(t *testing.T) {
 
 	nodes, bstore := setupDag(t)
 
-	dag := merkledag.NewDAGService(bsrv.New(bstore, offline.Exchange(bstore)))
+	fetchConfig := fetcher.NewFetcherConfig(bsrv.New(bstore, offline.Exchange(bstore)))
 
 	for i := 0; i < 2; i++ {
 		clA, clB, idA, _ := setupRouting(t)
@@ -215,7 +219,7 @@ func TestReprovidePinned(t *testing.T) {
 		keyProvider := NewPinnedProvider(onlyRoots, &mockPinner{
 			recursive: []cid.Cid{nodes[1]},
 			direct:    []cid.Cid{nodes[3]},
-		}, dag)
+		}, fetchConfig)
 
 		reprov := NewReprovider(ctx, time.Hour, clA, keyProvider)
 		err := reprov.Reprovide()
