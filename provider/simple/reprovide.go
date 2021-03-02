@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"time"
 
 	"github.com/cenkalti/backoff"
@@ -14,6 +13,7 @@ import (
 	blocks "github.com/ipfs/go-ipfs-blockstore"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-verifcid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/routing"
 )
 
