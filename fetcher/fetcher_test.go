@@ -208,24 +208,16 @@ func TestHelpers(t *testing.T) {
 
 func assertNodesInOrder(t *testing.T, nodeCh <-chan fetcher.FetchResult, errCh <-chan error, nodeCount int, nodes map[int]ipld.Node) {
 	order := 0
-Loop:
-	for {
-		select {
-		case res, ok := <-nodeCh:
-			if !ok {
-				break Loop
-			}
-
-			expectedNode, ok := nodes[order]
-			if ok {
-				assert.Equal(t, expectedNode, res.Node)
-			}
-
-			order++
-		case err := <-errCh:
-			require.FailNow(t, err.Error())
+	for res := range nodeCh {
+		expectedNode, ok := nodes[order]
+		if ok {
+			assert.Equal(t, expectedNode, res.Node)
 		}
+		order++
 	}
+
+	err := <-errCh
+	require.NoError(t, err)
 	assert.Equal(t, nodeCount, order)
 }
 

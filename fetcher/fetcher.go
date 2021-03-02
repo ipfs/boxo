@@ -26,6 +26,8 @@ type FetcherConfig struct {
 type Fetcher interface {
 	// NodeMatching traverses a node graph starting with the provided node using the given selector and possibly crossing
 	// block boundaries. Each matched node is sent to the FetchResult channel.
+	// The results and error channels will be closed on query completion or error. The error channel is buffered,
+	// will emit at most one error and must be checked after processing the results.
 	NodeMatching(ctx context.Context, node ipld.Node, match selector.Selector) (<-chan FetchResult, <-chan error)
 
 	// BlockOfType fetches a node graph of the provided type corresponding to single block by link.
@@ -34,6 +36,8 @@ type Fetcher interface {
 	// BlockMatchingOfType traverses a node graph starting with the given link using the given selector and possibly
 	// crossing block boundaries. The nodes will be typed using the provided prototype. Each matched node is sent to
 	// the FetchResult channel.
+	// The results and error channels will be closed on query completion or error. The error channel is buffered,
+	// will emit at most one error and must be checked after processing the results.
 	BlockMatchingOfType(ctx context.Context, root ipld.Link, match selector.Selector, ptype ipld.NodePrototype) (<-chan FetchResult, <-chan error)
 }
 
@@ -75,10 +79,11 @@ func (f *fetcherSession) BlockOfType(ctx context.Context, link ipld.Link, ptype 
 
 func (f *fetcherSession) NodeMatching(ctx context.Context, node ipld.Node, match selector.Selector) (<-chan FetchResult, <-chan error) {
 	results := make(chan FetchResult)
-	errors := make(chan error)
+	errors := make(chan error, 1)
 
 	go func() {
 		defer close(results)
+		defer close(errors)
 
 		err := f.fetch(ctx, node, match, results)
 		if err != nil {
@@ -92,10 +97,11 @@ func (f *fetcherSession) NodeMatching(ctx context.Context, node ipld.Node, match
 
 func (f *fetcherSession) BlockMatchingOfType(ctx context.Context, root ipld.Link, match selector.Selector, ptype ipld.NodePrototype) (<-chan FetchResult, <-chan error) {
 	results := make(chan FetchResult)
-	errors := make(chan error)
+	errors := make(chan error, 1)
 
 	go func() {
 		defer close(results)
+		defer close(errors)
 
 		// retrieve first node
 		node, err := f.BlockOfType(ctx, root, ptype)
