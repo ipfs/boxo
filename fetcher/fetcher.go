@@ -23,18 +23,19 @@ type FetcherConfig struct {
 
 type Fetcher interface {
 	// NodeMatching traverses a node graph starting with the provided node using the given selector and possibly crossing
-	// block boundaries. Each matched node is sent to the FetchResult channel.  This method blocks until all results
-	// are read or an error occurs. The provided function will be called once for every result and possibly once with an
-	// error after which not be called.
+	// block boundaries. Each matched node is passed as FetchResult to the callback.
+	// The sequence of events is: NodeMatching begins, the callback is called zero or more times with a FetchResult, the
+	// callback is called zero or one time with an error, then NodeMatching returns.
 	NodeMatching(context.Context, ipld.Node, selector.Selector, FetchCallback)
 
 	// BlockOfType fetches a node graph of the provided type corresponding to single block by link.
 	BlockOfType(context.Context, ipld.Link, ipld.NodePrototype) (ipld.Node, error)
 
 	// BlockMatchingOfType traverses a node graph starting with the given link using the given selector and possibly
-	// crossing block boundaries. The nodes will be typed using the provided prototype. Each matched node is sent to
-	// the FetchResult channel. This method blocks until all results are read or an error occurs.
-	// The provided function will be called once for every result and possibly once with an error after which not be called.
+	// crossing block boundaries. The nodes will be typed using the provided prototype. Each matched node is passed as
+	// a FetchResult to the callback.
+	// The sequence of events is: BlockMatchingOfType begins, the callback is called zero or more times with a
+	// FetchResult, the callback is called zero or one time with an error, then BlockMatchingOfType returns.
 	BlockMatchingOfType(context.Context, ipld.Link, selector.Selector, ipld.NodePrototype, FetchCallback)
 }
 
