@@ -235,15 +235,14 @@ func pinSet(ctx context.Context, pinning Pinner, fetchConfig fetcher.FetcherConf
 		for _, key := range rkeys {
 			set.Visitor(ctx)(key)
 			if !onlyRoots {
-				nodeCh, errCh := fetcher.BlockAll(ctx, session, cidlink.Link{key})
-				for res := range nodeCh {
+				err := fetcher.BlockAll(ctx, session, cidlink.Link{key}, func(res fetcher.FetchResult) error {
 					clink, ok := res.LastBlockLink.(cidlink.Link)
 					if ok {
 						set.Visitor(ctx)(clink.Cid)
 					}
-				}
-
-				if err := <-errCh; err != nil {
+					return nil
+				})
+				if err != nil {
 					logR.Errorf("reprovide indirect pins: %s", err)
 					return
 				}
