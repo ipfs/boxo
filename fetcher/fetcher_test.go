@@ -114,10 +114,11 @@ func TestFetchIPLDGraph(t *testing.T) {
 	defer cancel()
 
 	results := []fetcher.FetchResult{}
-	fetcher.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()}, func(res fetcher.FetchResult, err error) {
-		require.NoError(t, err)
+	err = fetcher.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()}, func(res fetcher.FetchResult) error {
 		results = append(results, res)
+		return nil
 	})
+	require.NoError(t, err)
 
 	assertNodesInOrder(t, results, 10, map[int]ipld.Node{0: node1, 4: node2, 5: node3, 7: node4})
 }
@@ -180,10 +181,11 @@ func TestFetchIPLDPath(t *testing.T) {
 	require.NoError(t, err)
 
 	results := []fetcher.FetchResult{}
-	fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult, err error) {
-		require.NoError(t, err)
+	err = fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult) error {
 		results = append(results, res)
+		return nil
 	})
+	require.NoError(t, err)
 
 	assertNodesInOrder(t, results, 1, map[int]ipld.Node{0: node5})
 }
@@ -257,10 +259,11 @@ func TestHelpers(t *testing.T) {
 		defer cancel()
 
 		results := []fetcher.FetchResult{}
-		fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult, err error) {
-			require.NoError(t, err)
+		err = fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult) error {
 			results = append(results, res)
+			return nil
 		})
+		require.NoError(t, err)
 
 		assertNodesInOrder(t, results, 4, map[int]ipld.Node{0: node1, 4: node2})
 	})
@@ -273,10 +276,11 @@ func TestHelpers(t *testing.T) {
 		defer cancel()
 
 		results := []fetcher.FetchResult{}
-		fetcher.BlockAllOfType(ctx, session, cidlink.Link{Cid: block1.Cid()}, basicnode.Prototype__Any{}, func(res fetcher.FetchResult, err error) {
-			require.NoError(t, err)
+		err = fetcher.BlockAllOfType(ctx, session, cidlink.Link{Cid: block1.Cid()}, basicnode.Prototype__Any{}, func(res fetcher.FetchResult) error {
 			results = append(results, res)
+			return nil
 		})
+		require.NoError(t, err)
 
 		assertNodesInOrder(t, results, 10, map[int]ipld.Node{0: node1, 4: node2, 5: node3, 7: node4})
 	})

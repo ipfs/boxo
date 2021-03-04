@@ -23,20 +23,20 @@ type FetcherConfig struct {
 
 type Fetcher interface {
 	// NodeMatching traverses a node graph starting with the provided node using the given selector and possibly crossing
-	// block boundaries. Each matched node is passed as FetchResult to the callback.
-	// The sequence of events is: NodeMatching begins, the callback is called zero or more times with a FetchResult, the
-	// callback is called zero or one time with an error, then NodeMatching returns.
-	NodeMatching(context.Context, ipld.Node, selector.Selector, FetchCallback)
+	// block boundaries. Each matched node is passed as FetchResult to the callback. Errors returned from callback will
+	// halt the traversal. The sequence of events is: NodeMatching begins, the callback is called zero or more times
+	// with a FetchResult, then NodeMatching returns.
+	NodeMatching(context.Context, ipld.Node, selector.Selector, FetchCallback) error
 
 	// BlockOfType fetches a node graph of the provided type corresponding to single block by link.
 	BlockOfType(context.Context, ipld.Link, ipld.NodePrototype) (ipld.Node, error)
 
 	// BlockMatchingOfType traverses a node graph starting with the given link using the given selector and possibly
 	// crossing block boundaries. The nodes will be typed using the provided prototype. Each matched node is passed as
-	// a FetchResult to the callback.
+	// a FetchResult to the callback. Errors returned from callback will halt the traversal.
 	// The sequence of events is: BlockMatchingOfType begins, the callback is called zero or more times with a
-	// FetchResult, the callback is called zero or one time with an error, then BlockMatchingOfType returns.
-	BlockMatchingOfType(context.Context, ipld.Link, selector.Selector, ipld.NodePrototype, FetchCallback)
+	// FetchResult, then BlockMatchingOfType returns.
+	BlockMatchingOfType(context.Context, ipld.Link, selector.Selector, ipld.NodePrototype, FetchCallback) error
 }
 
 type fetcherSession struct {
@@ -50,7 +50,7 @@ type FetchResult struct {
 	LastBlockLink ipld.Link
 }
 
-type FetchCallback func(result FetchResult, err error)
+type FetchCallback func(result FetchResult) error
 
 // NewFetcherConfig creates a FetchConfig from which session may be created and nodes retrieved.
 func NewFetcherConfig(blockService blockservice.BlockService) FetcherConfig {
@@ -77,21 +77,37 @@ func (f *fetcherSession) BlockOfType(ctx context.Context, link ipld.Link, ptype 
 	return nb.Build(), nil
 }
 
-func (f *fetcherSession) NodeMatching(ctx context.Context, node ipld.Node, match selector.Selector, cb FetchCallback) {
-	f.fetch(ctx, node, match, cb)
+func (f *fetcherSession) NodeMatching(ctx context.Context, node ipld.Node, match selector.Selector, cb FetchCallback) error {
+	return traversal.Progress{
+		Cfg: &traversal.Config{
+			LinkLoader: f.loader(ctx),
+			LinkTargetNodePrototypeChooser: dagpb.AddDagPBSupportToChooser(func(_ ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
+				if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
+					return tlnkNd.LinkTargetNodePrototype(), nil
+				}
+				return basicnode.Prototype.Any, nil
+			}),
+		},
+	}.WalkMatching(node, match, func(prog traversal.Progress, n ipld.Node) error {
+		return cb(FetchResult{
+			Node:          n,
+			Path:          prog.Path,
+			LastBlockPath: prog.LastBlock.Path,
+			LastBlockLink: prog.LastBlock.Link,
+		})
+	})
 }
 
 func (f *fetcherSession) BlockMatchingOfType(ctx context.Context, root ipld.Link, match selector.Selector,
-	ptype ipld.NodePrototype, cb FetchCallback) {
+	ptype ipld.NodePrototype, cb FetchCallback) error {
 
 	// retrieve first node
 	node, err := f.BlockOfType(ctx, root, ptype)
 	if err != nil {
-		cb(FetchResult{}, err)
-		return
+		return err
 	}
 
-	f.fetch(ctx, node, match, cb)
+	return f.NodeMatching(ctx, node, match, cb)
 }
 
 // Block fetches a schemaless node graph corresponding to single block by link.
@@ -105,64 +121,36 @@ func Block(ctx context.Context, f Fetcher, link ipld.Link) (ipld.Node, error) {
 
 // BlockMatching traverses a schemaless node graph starting with the given link using the given selector and possibly crossing
 // block boundaries. Each matched node is sent to the FetchResult channel.
-func BlockMatching(ctx context.Context, f Fetcher, root ipld.Link, match selector.Selector, cb FetchCallback) {
+func BlockMatching(ctx context.Context, f Fetcher, root ipld.Link, match selector.Selector, cb FetchCallback) error {
 	prototype, err := prototypeFromLink(root)
 	if err != nil {
-		cb(FetchResult{}, err)
-		return
+		return err
 	}
-	f.BlockMatchingOfType(ctx, root, match, prototype, cb)
+	return f.BlockMatchingOfType(ctx, root, match, prototype, cb)
 }
 
 // BlockAll traverses all nodes in the graph linked by root. The nodes will be untyped and send over the results
 // channel.
-func BlockAll(ctx context.Context, f Fetcher, root ipld.Link, cb FetchCallback) {
+func BlockAll(ctx context.Context, f Fetcher, root ipld.Link, cb FetchCallback) error {
 	prototype, err := prototypeFromLink(root)
 	if err != nil {
-		cb(FetchResult{}, err)
-		return
+		return err
 	}
-	BlockAllOfType(ctx, f, root, prototype, cb)
+	return BlockAllOfType(ctx, f, root, prototype, cb)
 }
 
 // BlockAllOfType traverses all nodes in the graph linked by root. The nodes will typed according to ptype
 // and send over the results channel.
-func BlockAllOfType(ctx context.Context, f Fetcher, root ipld.Link, ptype ipld.NodePrototype, cb FetchCallback) {
+func BlockAllOfType(ctx context.Context, f Fetcher, root ipld.Link, ptype ipld.NodePrototype, cb FetchCallback) error {
 	ssb := builder.NewSelectorSpecBuilder(ptype)
 	allSelector, err := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreUnion(
 		ssb.Matcher(),
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
 	)).Selector()
 	if err != nil {
-		cb(FetchResult{}, err)
-		return
+		return err
 	}
-	f.BlockMatchingOfType(ctx, root, allSelector, ptype, cb)
-}
-
-func (f *fetcherSession) fetch(ctx context.Context, node ipld.Node, match selector.Selector, cb FetchCallback) {
-	err := traversal.Progress{
-		Cfg: &traversal.Config{
-			LinkLoader: f.loader(ctx),
-			LinkTargetNodePrototypeChooser: dagpb.AddDagPBSupportToChooser(func(_ ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
-				if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
-					return tlnkNd.LinkTargetNodePrototype(), nil
-				}
-				return basicnode.Prototype.Any, nil
-			}),
-		},
-	}.WalkMatching(node, match, func(prog traversal.Progress, n ipld.Node) error {
-		cb(FetchResult{
-			Node:          n,
-			Path:          prog.Path,
-			LastBlockPath: prog.LastBlock.Path,
-			LastBlockLink: prog.LastBlock.Link,
-		}, nil)
-		return nil
-	})
-	if err != nil {
-		cb(FetchResult{}, err)
-	}
+	return f.BlockMatchingOfType(ctx, root, allSelector, ptype, cb)
 }
 
 func (f *fetcherSession) loader(ctx context.Context) ipld.Loader {
