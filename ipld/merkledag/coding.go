@@ -10,8 +10,8 @@ import (
 	cid "github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
 	pb "github.com/ipfs/go-merkledag/pb"
+	dagpb "github.com/ipld/go-codec-dagpb"
 	ipld "github.com/ipld/go-ipld-prime"
-	dagpb "github.com/ipld/go-ipld-prime-proto"
 	"github.com/ipld/go-ipld-prime/fluent/qp"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
@@ -28,7 +28,7 @@ const _ = pb.DoNotUpgradeFileEverItWillChangeYourHashes
 // The conversion uses an intermediate PBNode.
 func unmarshal(encodedBytes []byte) (*ProtoNode, error) {
 	nb := dagpb.Type.PBNode.NewBuilder()
-	err := dagpb.PBDecoder(nb, bytes.NewBuffer(encodedBytes))
+	err := dagpb.Decoder(nb, bytes.NewBuffer(encodedBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,9 @@ func unmarshal(encodedBytes []byte) (*ProtoNode, error) {
 func fromImmutableNode(encoded *immutableProtoNode) *ProtoNode {
 	n := new(ProtoNode)
 	n.encoded = encoded
-	n.data = n.encoded.PBNode.Data.Bytes()
+	if n.encoded.PBNode.Data.Exists() {
+		n.data = n.encoded.PBNode.Data.Must().Bytes()
+	}
 	links := make([]*format.Link, 0, n.encoded.PBNode.Links.Length())
 	iter := n.encoded.PBNode.Links.Iterator()
 	for !iter.Done() {
@@ -49,9 +51,7 @@ func fromImmutableNode(encoded *immutableProtoNode) *ProtoNode {
 			name = next.FieldName().Must().String()
 		}
 		c := cid.Undef
-		if next.FieldHash().Exists() {
-			c = next.FieldHash().Must().Link().(cidlink.Link).Cid
-		}
+		c = next.FieldHash().Link().(cidlink.Link).Cid
 		size := uint64(0)
 		if next.FieldTsize().Exists() {
 			size = uint64(next.FieldTsize().Must().Int())
@@ -89,7 +89,7 @@ func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
 		return nil, err
 	}
 	newData := new(bytes.Buffer)
-	err = dagpb.PBEncoder(nd, newData)
+	err = dagpb.Encoder(nd, newData)
 	if err != nil {
 		return nil, err
 	}

@@ -1,15 +1,16 @@
 package merkledag
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 
 	blocks "github.com/ipfs/go-block-format"
 	u "github.com/ipfs/go-ipfs-util"
 	legacy "github.com/ipfs/go-ipld-legacy"
 	ipld "github.com/ipld/go-ipld-prime"
-	dagpb "github.com/ipld/go-ipld-prime-proto"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 
 	cid "github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
@@ -18,7 +19,41 @@ import (
 // RawNode represents a node which only contains data.
 type RawNode struct {
 	blocks.Block
-	dagpb.RawNode
+
+	// Always a node/basic Bytes.
+	// We can't reference a specific type, as it's not exposed there.
+	// If we find that the interface indirection really matters,
+	// then we could possibly use dagpb.Bytes.
+	ipld.Node
+}
+
+type byteAccesor interface {
+	Bytes() []byte
+}
+
+// TODO(mvdan): replace with go-ipld-prime's raw codec
+
+func RawDecoder(am ipld.NodeAssembler, r io.Reader) error {
+	var data []byte
+	if buf, ok := r.(byteAccesor); ok {
+		data = buf.Bytes()
+	} else {
+		var err error
+		data, err = ioutil.ReadAll(r)
+		if err != nil {
+			return fmt.Errorf("could not decode raw node: %v", err)
+		}
+	}
+	return am.AssignBytes(data)
+}
+
+func RawEncoder(node ipld.Node, w io.Writer) error {
+	data, err := node.AsBytes()
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data)
+	return err
 }
 
 var _ legacy.UniversalNode = &RawNode{}
@@ -28,10 +63,7 @@ func NewRawNode(data []byte) *RawNode {
 	h := u.Hash(data)
 	c := cid.NewCidV1(cid.Raw, h)
 	blk, _ := blocks.NewBlockWithCid(data, c)
-	nb := dagpb.Type.RawNode.NewBuilder()
-	_ = dagpb.RawDecoder(nb, bytes.NewBuffer(blk.RawData()))
-	nd := nb.Build()
-	return &RawNode{blk, nd.(dagpb.RawNode)}
+	return &RawNode{blk, basicnode.NewBytes(data)}
 }
 
 // DecodeRawBlock is a block decoder for raw IPLD nodes conforming to `node.DecodeBlockFunc`.
@@ -39,14 +71,8 @@ func DecodeRawBlock(block blocks.Block) (format.Node, error) {
 	if block.Cid().Type() != cid.Raw {
 		return nil, fmt.Errorf("raw nodes cannot be decoded from non-raw blocks: %d", block.Cid().Type())
 	}
-	nb := dagpb.Type.RawNode.NewBuilder()
-	err := dagpb.RawDecoder(nb, bytes.NewBuffer(block.RawData()))
-	if err != nil {
-		return nil, err
-	}
-	nd := nb.Build()
 	// Once you "share" a block, it should be immutable. Therefore, we can just use this block as-is.
-	return &RawNode{block, nd.(dagpb.RawNode)}, nil
+	return &RawNode{block, basicnode.NewBytes(block.RawData())}, nil
 }
 
 var _ format.DecodeBlockFunc = DecodeRawBlock
@@ -62,14 +88,8 @@ func NewRawNodeWPrefix(data []byte, builder cid.Builder) (*RawNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	nb := dagpb.Type.RawNode.NewBuilder()
-	err = dagpb.RawDecoder(nb, bytes.NewBuffer(data))
-	if err != nil {
-		return nil, err
-	}
-	nd := nb.Build()
 	// Once you "share" a block, it should be immutable. Therefore, we can just use this block as-is.
-	return &RawNode{blk, nd.(dagpb.RawNode)}, nil
+	return &RawNode{blk, basicnode.NewBytes(data)}, nil
 }
 
 // Links returns nil.
@@ -101,11 +121,8 @@ func (rn *RawNode) Copy() format.Node {
 		// programmer error
 		panic("failure attempting to clone raw block: " + err.Error())
 	}
-	nb := dagpb.Type.RawNode.NewBuilder()
-	_ = dagpb.RawDecoder(nb, bytes.NewBuffer(nblk.RawData()))
-	nd := nb.Build()
 	// Once you "share" a block, it should be immutable. Therefore, we can just use this block as-is.
-	return &RawNode{nblk, nd.(dagpb.RawNode)}
+	return &RawNode{nblk, basicnode.NewBytes(nblk.RawData())}
 }
 
 // Size returns the size of this node
@@ -127,11 +144,10 @@ func (rn *RawNode) MarshalJSON() ([]byte, error) {
 }
 
 func RawNodeConverter(b blocks.Block, nd ipld.Node) (legacy.UniversalNode, error) {
-	rn, ok := nd.(dagpb.RawNode)
-	if !ok {
+	if nd.Kind() != ipld.Kind_Bytes {
 		return nil, ErrNotProtobuf
 	}
-	return &RawNode{b, rn}, nil
+	return &RawNode{b, nd}, nil
 }
 
 var _ legacy.UniversalNode = (*RawNode)(nil)

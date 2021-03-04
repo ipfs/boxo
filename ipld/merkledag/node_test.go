@@ -12,15 +12,25 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
+var sampleCid cid.Cid
+
+func init() {
+	var err error
+	sampleCid, err = cid.Cast([]byte{1, 85, 0, 5, 0, 1, 2, 3, 4})
+	if err != nil {
+		panic(err)
+	}
+}
+
 func TestStableCID(t *testing.T) {
 	nd := &ProtoNode{}
 	nd.SetData([]byte("foobar"))
 	nd.SetLinks([]*ipld.Link{
-		{Name: "a"},
-		{Name: "b"},
-		{Name: "c"},
+		{Name: "a", Cid: sampleCid},
+		{Name: "b", Cid: sampleCid},
+		{Name: "c", Cid: sampleCid},
 	})
-	expected, err := cid.Decode("QmSN3WED2xPLbYvBbfvew2ZLtui8EbFYYcbfkpKH5jwG9C")
+	expected, err := cid.Decode("QmciCHWD9Q47VPX6naY3XsPZGnqVqbedAniGCcaHjBaCri")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,12 +42,12 @@ func TestStableCID(t *testing.T) {
 func TestRemoveLink(t *testing.T) {
 	nd := &ProtoNode{}
 	nd.SetLinks([]*ipld.Link{
-		{Name: "a"},
-		{Name: "b"},
-		{Name: "a"},
-		{Name: "a"},
-		{Name: "c"},
-		{Name: "a"},
+		{Name: "a", Cid: sampleCid},
+		{Name: "b", Cid: sampleCid},
+		{Name: "a", Cid: sampleCid},
+		{Name: "a", Cid: sampleCid},
+		{Name: "c", Cid: sampleCid},
+		{Name: "a", Cid: sampleCid},
 	})
 
 	err := nd.RemoveNodeLink("a")
@@ -138,9 +148,9 @@ func TestFindLink(t *testing.T) {
 func TestNodeCopy(t *testing.T) {
 	nd := &ProtoNode{}
 	nd.SetLinks([]*ipld.Link{
-		{Name: "a"},
-		{Name: "c"},
-		{Name: "b"},
+		{Name: "a", Cid: sampleCid},
+		{Name: "c", Cid: sampleCid},
+		{Name: "b", Cid: sampleCid},
 	})
 
 	nd.SetData([]byte("testing"))
@@ -156,9 +166,9 @@ func TestNodeCopy(t *testing.T) {
 func TestJsonRoundtrip(t *testing.T) {
 	nd := new(ProtoNode)
 	nd.SetLinks([]*ipld.Link{
-		{Name: "a"},
-		{Name: "c"},
-		{Name: "b"},
+		{Name: "a", Cid: sampleCid},
+		{Name: "c", Cid: sampleCid},
+		{Name: "b", Cid: sampleCid},
 	})
 	nd.SetData([]byte("testing"))
 

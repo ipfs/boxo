@@ -12,7 +12,9 @@ import (
 	ipldcbor "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
 	legacy "github.com/ipfs/go-ipld-legacy"
-	dagpb "github.com/ipld/go-ipld-prime-proto"
+	dagpb "github.com/ipld/go-codec-dagpb"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 )
 
 // TODO: We should move these registrations elsewhere. Really, most of the IPLD
@@ -22,8 +24,12 @@ func init() {
 	format.Register(cid.DagProtobuf, DecodeProtobufBlock)
 	format.Register(cid.Raw, DecodeRawBlock)
 	format.Register(cid.DagCBOR, ipldcbor.DecodeBlock)
+
 	legacy.RegisterCodec(cid.DagProtobuf, dagpb.Type.PBNode, ProtoNodeConverter)
-	legacy.RegisterCodec(cid.Raw, dagpb.Type.RawNode, RawNodeConverter)
+	legacy.RegisterCodec(cid.Raw, basicnode.Prototype.Bytes, RawNodeConverter)
+
+	cidlink.RegisterMulticodecDecoder(cid.Raw, RawDecoder)
+	cidlink.RegisterMulticodecEncoder(cid.Raw, RawEncoder)
 }
 
 // contextKey is a type to use as value for the ProgressTracker contexts.

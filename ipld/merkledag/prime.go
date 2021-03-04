@@ -2,7 +2,7 @@ package merkledag
 
 import (
 	"github.com/ipld/go-ipld-prime"
-	dagpb "github.com/ipld/go-ipld-prime-proto"
+	dagpb "github.com/ipld/go-codec-dagpb"
 )
 
 // Kind returns a value from the Kind enum describing what the

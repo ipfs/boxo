@@ -9,8 +9,8 @@ import (
 	cid "github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
 	legacy "github.com/ipfs/go-ipld-legacy"
+	dagpb "github.com/ipld/go-codec-dagpb"
 	ipld "github.com/ipld/go-ipld-prime"
-	dagpb "github.com/ipld/go-ipld-prime-proto"
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -211,7 +211,10 @@ func (n *ProtoNode) Copy() format.Node {
 }
 
 func (n *ProtoNode) RawData() []byte {
-	out, _ := n.EncodeProtobuf(false)
+	out, err := n.EncodeProtobuf(false)
+	if err != nil {
+		panic(err)
+	}
 	return out
 }
 
@@ -314,7 +317,7 @@ func (n *ProtoNode) Cid() cid.Cid {
 		return n.cached
 	}
 
-	c, err := n.builder.Sum(n.RawData())
+	c, err := n.CidBuilder().Sum(n.RawData())
 	if err != nil {
 		// programmer error
 		err = fmt.Errorf("invalid CID of length %d: %x: %v", len(n.RawData()), n.RawData(), err)
