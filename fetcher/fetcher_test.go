@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ import (
 	"github.com/ipld/go-ipld-prime/fluent"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	"github.com/magiconair/properties/assert"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-fetcher"
@@ -112,10 +113,79 @@ func TestFetchIPLDGraph(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	nodeCh, errCh := fetcher.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()})
+	results := []fetcher.FetchResult{}
+	fetcher.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()}, func(res fetcher.FetchResult, err error) {
+		require.NoError(t, err)
+		results = append(results, res)
+	})
+
+	assertNodesInOrder(t, results, 10, map[int]ipld.Node{0: node1, 4: node2, 5: node3, 7: node4})
+}
+
+func TestFetchIPLDPath(t *testing.T) {
+	block5, node5, link5 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+		na.AssembleEntry("five").AssignBool(true)
+	}))
+	block3, _, link3 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+		na.AssembleEntry("three").AssignLink(link5)
+	}))
+	block4, _, link4 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+		na.AssembleEntry("four").AssignBool(true)
+	}))
+	block2, _, link2 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 2, func(na fluent.MapAssembler) {
+		na.AssembleEntry("link3").AssignLink(link3)
+		na.AssembleEntry("link4").AssignLink(link4)
+	}))
+	block1, _, _ := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 3, func(na fluent.MapAssembler) {
+		na.AssembleEntry("foo").AssignBool(true)
+		na.AssembleEntry("bar").AssignBool(false)
+		na.AssembleEntry("nested").CreateMap(2, func(na fluent.MapAssembler) {
+			na.AssembleEntry("link2").AssignLink(link2)
+			na.AssembleEntry("nonlink").AssignString("zoo")
+		})
+	}))
+
+	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0*time.Millisecond))
+	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
+	defer ig.Close()
+
+	peers := ig.Instances(2)
+	hasBlock := peers[0]
+	defer hasBlock.Exchange.Close()
+
+	for _, blk := range []blocks.Block{block1, block2, block3, block4, block5} {
+		err := hasBlock.Exchange.HasBlock(blk)
+		require.NoError(t, err)
+	}
+
+	wantsBlock := peers[1]
+	defer wantsBlock.Exchange.Close()
+
+	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
+	fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+	session := fetcherConfig.NewSession(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	path := strings.Split("nested/link2/link3/three", "/")
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+	spec := ssb.Matcher()
+	explorePath := func(p string, s builder.SelectorSpec) builder.SelectorSpec {
+		return ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) { efsb.Insert(p, s) })
+	}
+	for i := len(path) - 1; i >= 0; i-- {
+		spec = explorePath(path[i], spec)
+	}
+	sel, err := spec.Selector()
 	require.NoError(t, err)
 
-	assertNodesInOrder(t, nodeCh, errCh, 10, map[int]ipld.Node{0: node1, 4: node2, 5: node3, 7: node4})
+	results := []fetcher.FetchResult{}
+	fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult, err error) {
+		require.NoError(t, err)
+		results = append(results, res)
+	})
+
+	assertNodesInOrder(t, results, 1, map[int]ipld.Node{0: node5})
 }
 
 func TestHelpers(t *testing.T) {
@@ -186,10 +256,13 @@ func TestHelpers(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		nodeCh, errCh := fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel)
-		require.NoError(t, err)
+		results := []fetcher.FetchResult{}
+		fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult, err error) {
+			require.NoError(t, err)
+			results = append(results, res)
+		})
 
-		assertNodesInOrder(t, nodeCh, errCh, 4, map[int]ipld.Node{0: node1, 4: node2})
+		assertNodesInOrder(t, results, 4, map[int]ipld.Node{0: node1, 4: node2})
 	})
 
 	t.Run("BlockAllOfType retrieves all nodes with a schema", func(t *testing.T) {
@@ -199,26 +272,25 @@ func TestHelpers(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		nodeCh, errCh := fetcher.BlockAllOfType(ctx, session, cidlink.Link{Cid: block1.Cid()}, basicnode.Prototype__Any{})
-		require.NoError(t, err)
+		results := []fetcher.FetchResult{}
+		fetcher.BlockAllOfType(ctx, session, cidlink.Link{Cid: block1.Cid()}, basicnode.Prototype__Any{}, func(res fetcher.FetchResult, err error) {
+			require.NoError(t, err)
+			results = append(results, res)
+		})
 
-		assertNodesInOrder(t, nodeCh, errCh, 10, map[int]ipld.Node{0: node1, 4: node2, 5: node3, 7: node4})
+		assertNodesInOrder(t, results, 10, map[int]ipld.Node{0: node1, 4: node2, 5: node3, 7: node4})
 	})
 }
 
-func assertNodesInOrder(t *testing.T, nodeCh <-chan fetcher.FetchResult, errCh <-chan error, nodeCount int, nodes map[int]ipld.Node) {
-	order := 0
-	for res := range nodeCh {
+func assertNodesInOrder(t *testing.T, results []fetcher.FetchResult, nodeCount int, nodes map[int]ipld.Node) {
+	for order, res := range results {
 		expectedNode, ok := nodes[order]
 		if ok {
 			assert.Equal(t, expectedNode, res.Node)
 		}
-		order++
 	}
 
-	err := <-errCh
-	require.NoError(t, err)
-	assert.Equal(t, nodeCount, order)
+	assert.Equal(t, nodeCount, len(results))
 }
 
 func encodeBlock(n ipld.Node) (blocks.Block, ipld.Node, ipld.Link) {
