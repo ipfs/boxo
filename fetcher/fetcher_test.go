@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ import (
 	"github.com/ipld/go-ipld-prime/fluent"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	"github.com/magiconair/properties/assert"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-fetcher"
@@ -116,6 +117,69 @@ func TestFetchIPLDGraph(t *testing.T) {
 	require.NoError(t, err)
 
 	assertNodesInOrder(t, nodeCh, errCh, 10, map[int]ipld.Node{0: node1, 4: node2, 5: node3, 7: node4})
+}
+
+func TestFetchIPLDPath(t *testing.T) {
+	block5, node5, link5 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+		na.AssembleEntry("five").AssignBool(true)
+	}))
+	block3, _, link3 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+		na.AssembleEntry("three").AssignLink(link5)
+	}))
+	block4, _, link4 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+		na.AssembleEntry("four").AssignBool(true)
+	}))
+	block2, _, link2 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 2, func(na fluent.MapAssembler) {
+		na.AssembleEntry("link3").AssignLink(link3)
+		na.AssembleEntry("link4").AssignLink(link4)
+	}))
+	block1, _, _ := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 3, func(na fluent.MapAssembler) {
+		na.AssembleEntry("foo").AssignBool(true)
+		na.AssembleEntry("bar").AssignBool(false)
+		na.AssembleEntry("nested").CreateMap(2, func(na fluent.MapAssembler) {
+			na.AssembleEntry("link2").AssignLink(link2)
+			na.AssembleEntry("nonlink").AssignString("zoo")
+		})
+	}))
+
+	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0*time.Millisecond))
+	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
+	defer ig.Close()
+
+	peers := ig.Instances(2)
+	hasBlock := peers[0]
+	defer hasBlock.Exchange.Close()
+
+	for _, blk := range []blocks.Block{block1, block2, block3, block4, block5} {
+		err := hasBlock.Exchange.HasBlock(blk)
+		require.NoError(t, err)
+	}
+
+	wantsBlock := peers[1]
+	defer wantsBlock.Exchange.Close()
+
+	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
+	fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+	session := fetcherConfig.NewSession(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	path := strings.Split("nested/link2/link3/three", "/")
+	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
+	spec := ssb.Matcher()
+	explorePath := func(p string, s builder.SelectorSpec) builder.SelectorSpec {
+		return ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) { efsb.Insert(p, s) })
+	}
+	for i := len(path) - 1; i >= 0; i-- {
+		spec = explorePath(path[i], spec)
+	}
+	sel, err := spec.Selector()
+	require.NoError(t, err)
+
+	nodeCh, errCh := fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel)
+	require.NoError(t, err)
+
+	assertNodesInOrder(t, nodeCh, errCh, 1, map[int]ipld.Node{0: node5})
 }
 
 func TestHelpers(t *testing.T) {
