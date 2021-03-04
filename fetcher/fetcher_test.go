@@ -113,10 +113,13 @@ func TestFetchIPLDGraph(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	nodeCh, errCh := fetcher.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()})
-	require.NoError(t, err)
+	results := []fetcher.FetchResult{}
+	fetcher.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()}, func(res fetcher.FetchResult, err error) {
+		require.NoError(t, err)
+		results = append(results, res)
+	})
 
-	assertNodesInOrder(t, nodeCh, errCh, 10, map[int]ipld.Node{0: node1, 4: node2, 5: node3, 7: node4})
+	assertNodesInOrder(t, results, 10, map[int]ipld.Node{0: node1, 4: node2, 5: node3, 7: node4})
 }
 
 func TestFetchIPLDPath(t *testing.T) {
@@ -176,10 +179,13 @@ func TestFetchIPLDPath(t *testing.T) {
 	sel, err := spec.Selector()
 	require.NoError(t, err)
 
-	nodeCh, errCh := fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel)
-	require.NoError(t, err)
+	results := []fetcher.FetchResult{}
+	fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult, err error) {
+		require.NoError(t, err)
+		results = append(results, res)
+	})
 
-	assertNodesInOrder(t, nodeCh, errCh, 1, map[int]ipld.Node{0: node5})
+	assertNodesInOrder(t, results, 1, map[int]ipld.Node{0: node5})
 }
 
 func TestHelpers(t *testing.T) {
@@ -250,10 +256,13 @@ func TestHelpers(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		nodeCh, errCh := fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel)
-		require.NoError(t, err)
+		results := []fetcher.FetchResult{}
+		fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult, err error) {
+			require.NoError(t, err)
+			results = append(results, res)
+		})
 
-		assertNodesInOrder(t, nodeCh, errCh, 4, map[int]ipld.Node{0: node1, 4: node2})
+		assertNodesInOrder(t, results, 4, map[int]ipld.Node{0: node1, 4: node2})
 	})
 
 	t.Run("BlockAllOfType retrieves all nodes with a schema", func(t *testing.T) {
@@ -263,26 +272,25 @@ func TestHelpers(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		nodeCh, errCh := fetcher.BlockAllOfType(ctx, session, cidlink.Link{Cid: block1.Cid()}, basicnode.Prototype__Any{})
-		require.NoError(t, err)
+		results := []fetcher.FetchResult{}
+		fetcher.BlockAllOfType(ctx, session, cidlink.Link{Cid: block1.Cid()}, basicnode.Prototype__Any{}, func(res fetcher.FetchResult, err error) {
+			require.NoError(t, err)
+			results = append(results, res)
+		})
 
-		assertNodesInOrder(t, nodeCh, errCh, 10, map[int]ipld.Node{0: node1, 4: node2, 5: node3, 7: node4})
+		assertNodesInOrder(t, results, 10, map[int]ipld.Node{0: node1, 4: node2, 5: node3, 7: node4})
 	})
 }
 
-func assertNodesInOrder(t *testing.T, nodeCh <-chan fetcher.FetchResult, errCh <-chan error, nodeCount int, nodes map[int]ipld.Node) {
-	order := 0
-	for res := range nodeCh {
+func assertNodesInOrder(t *testing.T, results []fetcher.FetchResult, nodeCount int, nodes map[int]ipld.Node) {
+	for order, res := range results {
 		expectedNode, ok := nodes[order]
 		if ok {
 			assert.Equal(t, expectedNode, res.Node)
 		}
-		order++
 	}
 
-	err := <-errCh
-	require.NoError(t, err)
-	assert.Equal(t, nodeCount, order)
+	assert.Equal(t, nodeCount, len(results))
 }
 
 func encodeBlock(n ipld.Node) (blocks.Block, ipld.Node, ipld.Link) {
