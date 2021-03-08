@@ -10,11 +10,14 @@ import (
 	cid "github.com/ipfs/go-cid"
 	util "github.com/ipld/go-car/util"
 	"github.com/ipld/go-ipld-prime"
-	dagpb "github.com/ipld/go-ipld-prime-proto"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
+
+	// The dag-pb and raw codecs are necessary for unixfs.
+	dagpb "github.com/ipld/go-codec-dagpb"
+	_ "github.com/ipld/go-ipld-prime/codec/raw"
 )
 
 // Dag is a root/selector combo to put into a car
@@ -238,10 +241,14 @@ func (sct *selectiveCarTraverser) loader(lnk ipld.Link, ctx ipld.LinkContext) (i
 }
 
 func (sct *selectiveCarTraverser) traverseBlocks() error {
-
-	nsc := dagpb.AddDagPBSupportToChooser(func(ipld.Link, ipld.LinkContext) (ipld.NodePrototype, error) {
+	nsc := func(lnk ipld.Link, lctx ipld.LinkContext) (ipld.NodePrototype, error) {
+		// We can decode all nodes into basicnode's Any, except for
+		// dagpb nodes, which must explicitly use the PBNode prototype.
+		if lnk, ok := lnk.(cidlink.Link); ok && lnk.Cid.Prefix().Codec == 0x70 {
+			return dagpb.Type.PBNode, nil
+		}
 		return basicnode.Prototype.Any, nil
-	})
+	}
 
 	for _, carDag := range sct.sc.dags {
 		parsed, err := selector.ParseSelector(carDag.Selector)
@@ -249,10 +256,7 @@ func (sct *selectiveCarTraverser) traverseBlocks() error {
 			return err
 		}
 		lnk := cidlink.Link{Cid: carDag.Root}
-		ns, err := nsc(lnk, ipld.LinkContext{})
-		if err != nil {
-			return err
-		}
+		ns, _ := nsc(lnk, ipld.LinkContext{}) // nsc won't error
 		nb := ns.NewBuilder()
 		err = lnk.Load(sct.sc.ctx, ipld.LinkContext{}, nb, sct.loader)
 		if err != nil {
