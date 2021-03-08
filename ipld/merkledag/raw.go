@@ -3,8 +3,6 @@ package merkledag
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
 
 	blocks "github.com/ipfs/go-block-format"
 	u "github.com/ipfs/go-ipfs-util"
@@ -29,31 +27,6 @@ type RawNode struct {
 
 type byteAccesor interface {
 	Bytes() []byte
-}
-
-// TODO(mvdan): replace with go-ipld-prime's raw codec
-
-func RawDecoder(am ipld.NodeAssembler, r io.Reader) error {
-	var data []byte
-	if buf, ok := r.(byteAccesor); ok {
-		data = buf.Bytes()
-	} else {
-		var err error
-		data, err = ioutil.ReadAll(r)
-		if err != nil {
-			return fmt.Errorf("could not decode raw node: %v", err)
-		}
-	}
-	return am.AssignBytes(data)
-}
-
-func RawEncoder(node ipld.Node, w io.Writer) error {
-	data, err := node.AsBytes()
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(data)
-	return err
 }
 
 var _ legacy.UniversalNode = &RawNode{}

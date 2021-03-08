@@ -13,7 +13,7 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	legacy "github.com/ipfs/go-ipld-legacy"
 	dagpb "github.com/ipld/go-codec-dagpb"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	_ "github.com/ipld/go-ipld-prime/codec/raw"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 )
 
@@ -27,9 +27,6 @@ func init() {
 
 	legacy.RegisterCodec(cid.DagProtobuf, dagpb.Type.PBNode, ProtoNodeConverter)
 	legacy.RegisterCodec(cid.Raw, basicnode.Prototype.Bytes, RawNodeConverter)
-
-	cidlink.RegisterMulticodecDecoder(cid.Raw, RawDecoder)
-	cidlink.RegisterMulticodecEncoder(cid.Raw, RawEncoder)
 }
 
 // contextKey is a type to use as value for the ProgressTracker contexts.
