@@ -83,7 +83,9 @@ func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
 				}))
 			}
 		}))
-		qp.MapEntry(ma, "Data", qp.Bytes(n.data))
+		if n.data != nil {
+			qp.MapEntry(ma, "Data", qp.Bytes(n.data))
+		}
 	})
 	if err != nil {
 		return nil, err
