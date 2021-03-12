@@ -70,7 +70,9 @@ func NewSelectiveCar(ctx context.Context, store ReadStore, dags []Dag) Selective
 }
 
 func (sc SelectiveCar) traverse(onCarHeader OnCarHeaderFunc, onNewCarBlock OnNewCarBlockFunc) (uint64, error) {
-	traverser := &selectiveCarTraverser{onCarHeader, onNewCarBlock, 0, cid.NewSet(), sc}
+
+	traverser := &selectiveCarTraverser{onCarHeader, onNewCarBlock, 0, cid.NewSet(), sc, cidlink.DefaultLinkSystem()}
+	traverser.lsys.StorageReadOpener = traverser.loader
 	return traverser.traverse()
 }
 
@@ -177,6 +179,7 @@ type selectiveCarTraverser struct {
 	offset        uint64
 	cidSet        *cid.Set
 	sc            SelectiveCar
+	lsys          ipld.LinkSystem
 }
 
 func (sct *selectiveCarTraverser) traverse() (uint64, error) {
@@ -212,7 +215,7 @@ func (sct *selectiveCarTraverser) traverseHeader() error {
 	return sct.onCarHeader(header)
 }
 
-func (sct *selectiveCarTraverser) loader(lnk ipld.Link, ctx ipld.LinkContext) (io.Reader, error) {
+func (sct *selectiveCarTraverser) loader(ctx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
 	cl, ok := lnk.(cidlink.Link)
 	if !ok {
 		return nil, errors.New("incorrect link type")
@@ -257,16 +260,14 @@ func (sct *selectiveCarTraverser) traverseBlocks() error {
 		}
 		lnk := cidlink.Link{Cid: carDag.Root}
 		ns, _ := nsc(lnk, ipld.LinkContext{}) // nsc won't error
-		nb := ns.NewBuilder()
-		err = lnk.Load(sct.sc.ctx, ipld.LinkContext{}, nb, sct.loader)
+		nd, err := sct.lsys.Load(ipld.LinkContext{Ctx: sct.sc.ctx}, lnk, ns)
 		if err != nil {
 			return err
 		}
-		nd := nb.Build()
 		err = traversal.Progress{
 			Cfg: &traversal.Config{
 				Ctx:                            sct.sc.ctx,
-				LinkLoader:                     sct.loader,
+				LinkSystem:                     sct.lsys,
 				LinkTargetNodePrototypeChooser: nsc,
 			},
 		}.WalkAdv(nd, parsed, func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil })
