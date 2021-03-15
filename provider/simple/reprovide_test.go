@@ -14,8 +14,7 @@ import (
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	mock "github.com/ipfs/go-ipfs-routing/mock"
 	cbor "github.com/ipfs/go-ipld-cbor"
-	"github.com/ipld/go-ipld-prime/codec/dagcbor"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	testutil "github.com/libp2p/go-libp2p-testing/net"
 	mh "github.com/multiformats/go-multihash"
@@ -23,7 +22,6 @@ import (
 	. "github.com/ipfs/go-ipfs-provider/simple"
 )
 
-var _ cidlink.MulticodecDecoder = dagcbor.Decoder
 
 func setupRouting(t *testing.T) (clA, clB mock.Client, idA, idB peer.ID) {
 	mrserv := mock.NewServer()
