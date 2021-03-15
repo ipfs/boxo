@@ -23,7 +23,6 @@ import (
 	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/fluent"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	_ "github.com/ipld/go-ipld-prime/multihash/register/all"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
