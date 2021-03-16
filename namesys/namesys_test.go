@@ -11,7 +11,6 @@ import (
 	offroute "github.com/ipfs/go-ipfs-routing/offline"
 	ipns "github.com/ipfs/go-ipns"
 	path "github.com/ipfs/go-path"
-	unixfs "github.com/ipfs/go-unixfs"
 	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 	ci "github.com/libp2p/go-libp2p-core/crypto"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -110,7 +109,8 @@ func TestPublishWithCache0(t *testing.T) {
 	})
 
 	nsys := NewNameSystem(routing, dst, 0)
-	p, err := path.ParsePath(unixfs.EmptyDirNode().Cid().String())
+	// CID is arbitrary.
+	p, err := path.ParsePath("QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,8 @@ func TestPublishWithTTL(t *testing.T) {
 	})
 
 	nsys := NewNameSystem(routing, dst, 128)
-	p, err := path.ParsePath(unixfs.EmptyDirNode().Cid().String())
+	// CID is arbitrary.
+	p, err := path.ParsePath("QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
 	if err != nil {
 		t.Fatal(err)
 	}
