@@ -9,11 +9,9 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 	ds "github.com/ipfs/go-datastore"
 	dsquery "github.com/ipfs/go-datastore/query"
-	pin "github.com/ipfs/go-ipfs-pinner"
 	ipns "github.com/ipfs/go-ipns"
 	pb "github.com/ipfs/go-ipns/pb"
 	path "github.com/ipfs/go-path"
-	ft "github.com/ipfs/go-unixfs"
 	ci "github.com/libp2p/go-libp2p-core/crypto"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	routing "github.com/libp2p/go-libp2p-core/routing"
@@ -292,27 +290,6 @@ func PublishEntry(ctx context.Context, r routing.ValueStore, ipnskey string, rec
 	log.Debugf("Storing ipns entry at: %s", ipnskey)
 	// Store ipns entry at "/ipns/"+h(pubkey)
 	return r.PutValue(ctx, ipnskey, data)
-}
-
-// InitializeKeyspace sets the ipns record for the given key to
-// point to an empty directory.
-// TODO: this doesnt feel like it belongs here
-func InitializeKeyspace(ctx context.Context, pub Publisher, pins pin.Pinner, key ci.PrivKey) error {
-	emptyDir := ft.EmptyDirNode()
-
-	// pin recursively because this might already be pinned
-	// and doing a direct pin would throw an error in that case
-	err := pins.Pin(ctx, emptyDir, true)
-	if err != nil {
-		return err
-	}
-
-	err = pins.Flush(ctx)
-	if err != nil {
-		return err
-	}
-
-	return pub.Publish(ctx, key, path.FromCid(emptyDir.Cid()))
 }
 
 // PkKeyForID returns the public key routing key for the given peer ID.
