@@ -7,8 +7,8 @@ import (
 	"io"
 
 	"github.com/ipfs/go-blockservice"
+	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
-	dagpb "github.com/ipld/go-ipld-prime-proto"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/schema"
@@ -18,7 +18,8 @@ import (
 )
 
 type FetcherConfig struct {
-	blockService blockservice.BlockService
+	blockService     blockservice.BlockService
+	PrototypeChooser traversal.LinkTargetNodePrototypeChooser
 }
 
 type Fetcher interface {
@@ -37,10 +38,14 @@ type Fetcher interface {
 	// The sequence of events is: BlockMatchingOfType begins, the callback is called zero or more times with a
 	// FetchResult, then BlockMatchingOfType returns.
 	BlockMatchingOfType(context.Context, ipld.Link, selector.Selector, ipld.NodePrototype, FetchCallback) error
+
+	// Uses the given link to pick a prototype to build the linked node.
+	PrototypeFromLink(link ipld.Link) (ipld.NodePrototype, error)
 }
 
 type fetcherSession struct {
-	blockGetter blockservice.BlockGetter
+	linkSystem   ipld.LinkSystem
+	protoChooser traversal.LinkTargetNodePrototypeChooser
 }
 
 type FetchResult struct {
@@ -54,39 +59,30 @@ type FetchCallback func(result FetchResult) error
 
 // NewFetcherConfig creates a FetchConfig from which session may be created and nodes retrieved.
 func NewFetcherConfig(blockService blockservice.BlockService) FetcherConfig {
-	return FetcherConfig{blockService: blockService}
+	return FetcherConfig{
+		blockService:     blockService,
+		PrototypeChooser: DefaultPrototypeChooser,
+	}
 }
 
 // NewSession creates a session from which nodes may be retrieved.
 // The session ends when the provided context is canceled.
 func (fc FetcherConfig) NewSession(ctx context.Context) Fetcher {
-	return &fetcherSession{
-		blockGetter: blockservice.NewSession(ctx, fc.blockService),
-	}
+	ls := cidlink.DefaultLinkSystem()
+	ls.StorageReadOpener = blockOpener(ctx, blockservice.NewSession(ctx, fc.blockService))
+	return &fetcherSession{linkSystem: ls, protoChooser: fc.PrototypeChooser}
 }
 
 // BlockOfType fetches a node graph of the provided type corresponding to single block by link.
 func (f *fetcherSession) BlockOfType(ctx context.Context, link ipld.Link, ptype ipld.NodePrototype) (ipld.Node, error) {
-	nb := ptype.NewBuilder()
-
-	err := link.Load(ctx, ipld.LinkContext{}, nb, f.loader(ctx))
-	if err != nil {
-		return nil, err
-	}
-
-	return nb.Build(), nil
+	return f.linkSystem.Load(ipld.LinkContext{}, link, ptype)
 }
 
 func (f *fetcherSession) NodeMatching(ctx context.Context, node ipld.Node, match selector.Selector, cb FetchCallback) error {
 	return traversal.Progress{
 		Cfg: &traversal.Config{
-			LinkLoader: f.loader(ctx),
-			LinkTargetNodePrototypeChooser: dagpb.AddDagPBSupportToChooser(func(_ ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
-				if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
-					return tlnkNd.LinkTargetNodePrototype(), nil
-				}
-				return basicnode.Prototype.Any, nil
-			}),
+			LinkSystem:                     f.linkSystem,
+			LinkTargetNodePrototypeChooser: f.protoChooser,
 		},
 	}.WalkMatching(node, match, func(prog traversal.Progress, n ipld.Node) error {
 		return cb(FetchResult{
@@ -110,9 +106,13 @@ func (f *fetcherSession) BlockMatchingOfType(ctx context.Context, root ipld.Link
 	return f.NodeMatching(ctx, node, match, cb)
 }
 
+func (f *fetcherSession) PrototypeFromLink(lnk ipld.Link) (ipld.NodePrototype, error) {
+	return f.protoChooser(lnk, ipld.LinkContext{})
+}
+
 // Block fetches a schemaless node graph corresponding to single block by link.
 func Block(ctx context.Context, f Fetcher, link ipld.Link) (ipld.Node, error) {
-	prototype, err := prototypeFromLink(link)
+	prototype, err := f.PrototypeFromLink(link)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func Block(ctx context.Context, f Fetcher, link ipld.Link) (ipld.Node, error) {
 // BlockMatching traverses a schemaless node graph starting with the given link using the given selector and possibly crossing
 // block boundaries. Each matched node is sent to the FetchResult channel.
 func BlockMatching(ctx context.Context, f Fetcher, root ipld.Link, match selector.Selector, cb FetchCallback) error {
-	prototype, err := prototypeFromLink(root)
+	prototype, err := f.PrototypeFromLink(root)
 	if err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func BlockMatching(ctx context.Context, f Fetcher, root ipld.Link, match selecto
 // BlockAll traverses all nodes in the graph linked by root. The nodes will be untyped and send over the results
 // channel.
 func BlockAll(ctx context.Context, f Fetcher, root ipld.Link, cb FetchCallback) error {
-	prototype, err := prototypeFromLink(root)
+	prototype, err := f.PrototypeFromLink(root)
 	if err != nil {
 		return err
 	}
@@ -153,14 +153,14 @@ func BlockAllOfType(ctx context.Context, f Fetcher, root ipld.Link, ptype ipld.N
 	return f.BlockMatchingOfType(ctx, root, allSelector, ptype, cb)
 }
 
-func (f *fetcherSession) loader(ctx context.Context) ipld.Loader {
-	return func(lnk ipld.Link, _ ipld.LinkContext) (io.Reader, error) {
+func blockOpener(ctx context.Context, bs *blockservice.Session) ipld.BlockReadOpener {
+	return func(_ ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
 		cidLink, ok := lnk.(cidlink.Link)
 		if !ok {
 			return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
 		}
 
-		blk, err := f.blockGetter.GetBlock(ctx, cidLink.Cid)
+		blk, err := bs.GetBlock(ctx, cidLink.Cid)
 		if err != nil {
 			return nil, err
 		}
@@ -169,8 +169,10 @@ func (f *fetcherSession) loader(ctx context.Context) ipld.Loader {
 	}
 }
 
-func prototypeFromLink(lnk ipld.Link) (ipld.NodePrototype, error) {
-	return dagpb.AddDagPBSupportToChooser(func(_ ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
-		return basicnode.Prototype__Any{}, nil
-	})(lnk, ipld.LinkContext{})
-}
+// Chooser that supports DagPB nodes and choosing the prototype from the link.
+var DefaultPrototypeChooser = dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
+	if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
+		return tlnkNd.LinkTargetNodePrototype(), nil
+	}
+	return basicnode.Prototype.Any, nil
+})

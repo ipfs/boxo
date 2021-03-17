@@ -20,7 +20,7 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/fluent"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
@@ -29,8 +29,6 @@ import (
 
 	"github.com/ipfs/go-fetcher"
 )
-
-var _ cidlink.MulticodecDecoder = dagcbor.Decoder
 
 func TestFetchIPLDPrimeNode(t *testing.T) {
 	block, node, _ := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 3, func(na fluent.MapAssembler) {
@@ -298,27 +296,27 @@ func assertNodesInOrder(t *testing.T, results []fetcher.FetchResult, nodeCount i
 }
 
 func encodeBlock(n ipld.Node) (blocks.Block, ipld.Node, ipld.Link) {
-	lb := cidlink.LinkBuilder{cid.Prefix{
+	ls := cidlink.DefaultLinkSystem()
+	var b blocks.Block
+	lb := cidlink.LinkPrototype{cid.Prefix{
 		Version:  1,
-		Codec:    cid.DagCBOR,
+		Codec:    0x71,
 		MhType:   0x17,
 		MhLength: 20,
 	}}
-	var b blocks.Block
-	lnk, err := lb.Build(context.Background(), ipld.LinkContext{}, n,
-		func(ipld.LinkContext) (io.Writer, ipld.StoreCommitter, error) {
-			buf := bytes.Buffer{}
-			return &buf, func(lnk ipld.Link) error {
-				clnk, ok := lnk.(cidlink.Link)
-				if !ok {
-					return fmt.Errorf("incorrect link type %v", lnk)
-				}
-				var err error
-				b, err = blocks.NewBlockWithCid(buf.Bytes(), clnk.Cid)
-				return err
-			}, nil
-		},
-	)
+	ls.StorageWriteOpener = func(ipld.LinkContext) (io.Writer, ipld.BlockWriteCommitter, error) {
+		buf := bytes.Buffer{}
+		return &buf, func(lnk ipld.Link) error {
+			clnk, ok := lnk.(cidlink.Link)
+			if !ok {
+				return fmt.Errorf("incorrect link type %v", lnk)
+			}
+			var err error
+			b, err = blocks.NewBlockWithCid(buf.Bytes(), clnk.Cid)
+			return err
+		}, nil
+	}
+	lnk, err := ls.Store(ipld.LinkContext{}, lb, n)
 	if err != nil {
 		panic(err)
 	}
