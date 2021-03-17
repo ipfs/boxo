@@ -22,7 +22,6 @@ import (
 	. "github.com/ipfs/go-ipfs-provider/simple"
 )
 
-
 func setupRouting(t *testing.T) (clA, clB mock.Client, idA, idB peer.ID) {
 	mrserv := mock.NewServer()
 
