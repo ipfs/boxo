@@ -169,24 +169,10 @@ func blockOpener(ctx context.Context, bs *blockservice.Session) ipld.BlockReadOp
 	}
 }
 
-func DefaultPrototypeChooser(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
-	c, ok := lnk.(cidlink.Link)
-	if ok {
-		switch c.Cid.Prefix().Codec {
-		case 0x70:
-			return dagpb.Type.PBNode, nil
-		case 0x55:
-			return basicnode.Prototype.Bytes, nil
-		default:
-			if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
-				return tlnkNd.LinkTargetNodePrototype(), nil
-			}
-			return basicnode.Prototype.Any, nil
-		}
-	}
-
+// Chooser that supports DagPB nodes and choosing the prototype from the link.
+var DefaultPrototypeChooser = dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
 	if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
 		return tlnkNd.LinkTargetNodePrototype(), nil
 	}
 	return basicnode.Prototype.Any, nil
-}
+})
