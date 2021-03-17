@@ -9,11 +9,11 @@ import (
 	"github.com/cenkalti/backoff"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-cidutil"
+	"github.com/ipfs/go-fetcher"
 	blocks "github.com/ipfs/go-ipfs-blockstore"
-	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
-	"github.com/ipfs/go-merkledag"
 	"github.com/ipfs/go-verifcid"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p-core/routing"
 )
 
@@ -184,9 +184,9 @@ type Pinner interface {
 }
 
 // NewPinnedProvider returns provider supplying pinned keys
-func NewPinnedProvider(onlyRoots bool, pinning Pinner, dag ipld.DAGService) KeyChanFunc {
+func NewPinnedProvider(onlyRoots bool, pinning Pinner, fetchConfig fetcher.FetcherConfig) KeyChanFunc {
 	return func(ctx context.Context) (<-chan cid.Cid, error) {
-		set, err := pinSet(ctx, pinning, dag, onlyRoots)
+		set, err := pinSet(ctx, pinning, fetchConfig, onlyRoots)
 		if err != nil {
 			return nil, err
 		}
@@ -208,7 +208,7 @@ func NewPinnedProvider(onlyRoots bool, pinning Pinner, dag ipld.DAGService) KeyC
 	}
 }
 
-func pinSet(ctx context.Context, pinning Pinner, dag ipld.DAGService, onlyRoots bool) (*cidutil.StreamingSet, error) {
+func pinSet(ctx context.Context, pinning Pinner, fetchConfig fetcher.FetcherConfig, onlyRoots bool) (*cidutil.StreamingSet, error) {
 	set := cidutil.NewStreamingSet()
 
 	go func() {
@@ -230,11 +230,18 @@ func pinSet(ctx context.Context, pinning Pinner, dag ipld.DAGService, onlyRoots 
 			logR.Errorf("reprovide indirect pins: %s", err)
 			return
 		}
+
+		session := fetchConfig.NewSession(ctx)
 		for _, key := range rkeys {
-			if onlyRoots {
-				set.Visitor(ctx)(key)
-			} else {
-				err := merkledag.Walk(ctx, merkledag.GetLinksWithDAG(dag), key, set.Visitor(ctx))
+			set.Visitor(ctx)(key)
+			if !onlyRoots {
+				err := fetcher.BlockAll(ctx, session, cidlink.Link{key}, func(res fetcher.FetchResult) error {
+					clink, ok := res.LastBlockLink.(cidlink.Link)
+					if ok {
+						set.Visitor(ctx)(clink.Cid)
+					}
+					return nil
+				})
 				if err != nil {
 					logR.Errorf("reprovide indirect pins: %s", err)
 					return
