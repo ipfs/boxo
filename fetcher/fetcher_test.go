@@ -1,10 +1,7 @@
 package fetcher_test
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"io"
 	"strings"
 	"testing"
 	"time"
@@ -16,11 +13,10 @@ import (
 	tn "github.com/ipfs/go-bitswap/testnet"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-blockservice"
-	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-fetcher/testutil"
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 	"github.com/ipld/go-ipld-prime"
-	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/fluent"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
@@ -31,7 +27,7 @@ import (
 )
 
 func TestFetchIPLDPrimeNode(t *testing.T) {
-	block, node, _ := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 3, func(na fluent.MapAssembler) {
+	block, node, _ := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 3, func(na fluent.MapAssembler) {
 		na.AssembleEntry("foo").AssignBool(true)
 		na.AssembleEntry("bar").AssignBool(false)
 		na.AssembleEntry("nested").CreateMap(2, func(na fluent.MapAssembler) {
@@ -66,17 +62,17 @@ func TestFetchIPLDPrimeNode(t *testing.T) {
 }
 
 func TestFetchIPLDGraph(t *testing.T) {
-	block3, node3, link3 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+	block3, node3, link3 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
 		na.AssembleEntry("three").AssignBool(true)
 	}))
-	block4, node4, link4 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+	block4, node4, link4 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
 		na.AssembleEntry("four").AssignBool(true)
 	}))
-	block2, node2, link2 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 2, func(na fluent.MapAssembler) {
+	block2, node2, link2 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 2, func(na fluent.MapAssembler) {
 		na.AssembleEntry("link3").AssignLink(link3)
 		na.AssembleEntry("link4").AssignLink(link4)
 	}))
-	block1, node1, _ := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 3, func(na fluent.MapAssembler) {
+	block1, node1, _ := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 3, func(na fluent.MapAssembler) {
 		na.AssembleEntry("foo").AssignBool(true)
 		na.AssembleEntry("bar").AssignBool(false)
 		na.AssembleEntry("nested").CreateMap(2, func(na fluent.MapAssembler) {
@@ -122,20 +118,20 @@ func TestFetchIPLDGraph(t *testing.T) {
 }
 
 func TestFetchIPLDPath(t *testing.T) {
-	block5, node5, link5 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+	block5, node5, link5 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
 		na.AssembleEntry("five").AssignBool(true)
 	}))
-	block3, _, link3 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+	block3, _, link3 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
 		na.AssembleEntry("three").AssignLink(link5)
 	}))
-	block4, _, link4 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+	block4, _, link4 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
 		na.AssembleEntry("four").AssignBool(true)
 	}))
-	block2, _, link2 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 2, func(na fluent.MapAssembler) {
+	block2, _, link2 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 2, func(na fluent.MapAssembler) {
 		na.AssembleEntry("link3").AssignLink(link3)
 		na.AssembleEntry("link4").AssignLink(link4)
 	}))
-	block1, _, _ := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 3, func(na fluent.MapAssembler) {
+	block1, _, _ := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 3, func(na fluent.MapAssembler) {
 		na.AssembleEntry("foo").AssignBool(true)
 		na.AssembleEntry("bar").AssignBool(false)
 		na.AssembleEntry("nested").CreateMap(2, func(na fluent.MapAssembler) {
@@ -189,17 +185,17 @@ func TestFetchIPLDPath(t *testing.T) {
 }
 
 func TestHelpers(t *testing.T) {
-	block3, node3, link3 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+	block3, node3, link3 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
 		na.AssembleEntry("three").AssignBool(true)
 	}))
-	block4, node4, link4 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+	block4, node4, link4 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
 		na.AssembleEntry("four").AssignBool(true)
 	}))
-	block2, node2, link2 := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 2, func(na fluent.MapAssembler) {
+	block2, node2, link2 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 2, func(na fluent.MapAssembler) {
 		na.AssembleEntry("link3").AssignLink(link3)
 		na.AssembleEntry("link4").AssignLink(link4)
 	}))
-	block1, node1, _ := encodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 3, func(na fluent.MapAssembler) {
+	block1, node1, _ := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 3, func(na fluent.MapAssembler) {
 		na.AssembleEntry("foo").AssignBool(true)
 		na.AssembleEntry("bar").AssignBool(false)
 		na.AssembleEntry("nested").CreateMap(2, func(na fluent.MapAssembler) {
@@ -293,32 +289,4 @@ func assertNodesInOrder(t *testing.T, results []fetcher.FetchResult, nodeCount i
 	}
 
 	assert.Equal(t, nodeCount, len(results))
-}
-
-func encodeBlock(n ipld.Node) (blocks.Block, ipld.Node, ipld.Link) {
-	ls := cidlink.DefaultLinkSystem()
-	var b blocks.Block
-	lb := cidlink.LinkPrototype{cid.Prefix{
-		Version:  1,
-		Codec:    0x71,
-		MhType:   0x17,
-		MhLength: 20,
-	}}
-	ls.StorageWriteOpener = func(ipld.LinkContext) (io.Writer, ipld.BlockWriteCommitter, error) {
-		buf := bytes.Buffer{}
-		return &buf, func(lnk ipld.Link) error {
-			clnk, ok := lnk.(cidlink.Link)
-			if !ok {
-				return fmt.Errorf("incorrect link type %v", lnk)
-			}
-			var err error
-			b, err = blocks.NewBlockWithCid(buf.Bytes(), clnk.Cid)
-			return err
-		}, nil
-	}
-	lnk, err := ls.Store(ipld.LinkContext{}, lb, n)
-	if err != nil {
-		panic(err)
-	}
-	return b, n, lnk
 }

@@ -78,13 +78,8 @@ func (f *fetcherSession) BlockOfType(ctx context.Context, link ipld.Link, ptype 
 	return f.linkSystem.Load(ipld.LinkContext{}, link, ptype)
 }
 
-func (f *fetcherSession) NodeMatching(ctx context.Context, node ipld.Node, match selector.Selector, cb FetchCallback) error {
-	return traversal.Progress{
-		Cfg: &traversal.Config{
-			LinkSystem:                     f.linkSystem,
-			LinkTargetNodePrototypeChooser: f.protoChooser,
-		},
-	}.WalkMatching(node, match, func(prog traversal.Progress, n ipld.Node) error {
+func (f *fetcherSession) nodeMatching(ctx context.Context, initialProgress traversal.Progress, node ipld.Node, match selector.Selector, cb FetchCallback) error {
+	return initialProgress.WalkMatching(node, match, func(prog traversal.Progress, n ipld.Node) error {
 		return cb(FetchResult{
 			Node:          n,
 			Path:          prog.Path,
@@ -92,6 +87,19 @@ func (f *fetcherSession) NodeMatching(ctx context.Context, node ipld.Node, match
 			LastBlockLink: prog.LastBlock.Link,
 		})
 	})
+}
+
+func (f *fetcherSession) blankProgress(ctx context.Context) traversal.Progress {
+	return traversal.Progress{
+		Cfg: &traversal.Config{
+			LinkSystem:                     f.linkSystem,
+			LinkTargetNodePrototypeChooser: f.protoChooser,
+		},
+	}
+}
+
+func (f *fetcherSession) NodeMatching(ctx context.Context, node ipld.Node, match selector.Selector, cb FetchCallback) error {
+	return f.nodeMatching(ctx, f.blankProgress(ctx), node, match, cb)
 }
 
 func (f *fetcherSession) BlockMatchingOfType(ctx context.Context, root ipld.Link, match selector.Selector,
@@ -103,7 +111,9 @@ func (f *fetcherSession) BlockMatchingOfType(ctx context.Context, root ipld.Link
 		return err
 	}
 
-	return f.NodeMatching(ctx, node, match, cb)
+	progress := f.blankProgress(ctx)
+	progress.LastBlock.Link = root
+	return f.nodeMatching(ctx, progress, node, match, cb)
 }
 
 func (f *fetcherSession) PrototypeFromLink(lnk ipld.Link) (ipld.NodePrototype, error) {
