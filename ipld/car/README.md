@@ -24,4 +24,4 @@ Small note: If editing the Readme, please conform to the [standard-readme](https
 
 ## License
 
-MIT © Whyrusleeping
+Apache-2.0/MIT © Protocol Labs
