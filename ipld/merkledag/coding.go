@@ -42,10 +42,11 @@ func fromImmutableNode(encoded *immutableProtoNode) *ProtoNode {
 	if n.encoded.PBNode.Data.Exists() {
 		n.data = n.encoded.PBNode.Data.Must().Bytes()
 	}
-	links := make([]*format.Link, 0, n.encoded.PBNode.Links.Length())
-	iter := n.encoded.PBNode.Links.Iterator()
-	for !iter.Done() {
-		_, next := iter.Next()
+	numLinks := n.encoded.PBNode.Links.Length()
+	n.links = make([]*format.Link, numLinks)
+	linkAllocs := make([]format.Link, numLinks)
+	for i := int64(0); i < numLinks; i++ {
+		next := n.encoded.PBNode.Links.Lookup(i)
 		name := ""
 		if next.FieldName().Exists() {
 			name = next.FieldName().Must().String()
@@ -56,21 +57,19 @@ func fromImmutableNode(encoded *immutableProtoNode) *ProtoNode {
 		if next.FieldTsize().Exists() {
 			size = uint64(next.FieldTsize().Must().Int())
 		}
-		link := &format.Link{
-			Name: name,
-			Size: size,
-			Cid:  c,
-		}
-		links = append(links, link)
+		link := &linkAllocs[i]
+		link.Name = name
+		link.Size = size
+		link.Cid = c
+		n.links[i] = link
 	}
-	n.links = links
 	return n
 }
 func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
 	nd, err := qp.BuildMap(dagpb.Type.PBNode, 2, func(ma ipld.MapAssembler) {
 		qp.MapEntry(ma, "Links", qp.List(int64(len(n.links)), func(la ipld.ListAssembler) {
 			for _, link := range n.links {
-				qp.ListEntry(la, qp.Map(-1, func(ma ipld.MapAssembler) {
+				qp.ListEntry(la, qp.Map(3, func(ma ipld.MapAssembler) {
 					if link.Cid.Defined() {
 						hash, err := cid.Cast(link.Cid.Bytes())
 						if err != nil {
@@ -91,8 +90,7 @@ func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
 		return nil, err
 	}
 	newData := new(bytes.Buffer)
-	err = dagpb.Encoder(nd, newData)
-	if err != nil {
+	if err := dagpb.Encoder(nd, newData); err != nil {
 		return nil, err
 	}
 	return &immutableProtoNode{newData.Bytes(), nd.(dagpb.PBNode)}, nil
