@@ -71,11 +71,7 @@ func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
 			for _, link := range n.links {
 				qp.ListEntry(la, qp.Map(3, func(ma ipld.MapAssembler) {
 					if link.Cid.Defined() {
-						hash, err := cid.Cast(link.Cid.Bytes())
-						if err != nil {
-							panic(fmt.Errorf("unmarshal failed. %v", err))
-						}
-						qp.MapEntry(ma, "Hash", qp.Link(cidlink.Link{Cid: hash}))
+						qp.MapEntry(ma, "Hash", qp.Link(cidlink.Link{Cid: link.Cid}))
 					}
 					qp.MapEntry(ma, "Name", qp.String(link.Name))
 					qp.MapEntry(ma, "Tsize", qp.Int(int64(link.Size)))
