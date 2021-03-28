@@ -1,7 +1,6 @@
 package merkledag
 
 import (
-	"bytes"
 	"fmt"
 	"sort"
 	"strings"
@@ -28,8 +27,7 @@ const _ = pb.DoNotUpgradeFileEverItWillChangeYourHashes
 // The conversion uses an intermediate PBNode.
 func unmarshal(encodedBytes []byte) (*ProtoNode, error) {
 	nb := dagpb.Type.PBNode.NewBuilder()
-	err := dagpb.Decoder(nb, bytes.NewBuffer(encodedBytes))
-	if err != nil {
+	if err := dagpb.DecodeBytes(nb, encodedBytes); err != nil {
 		return nil, err
 	}
 	nd := nb.Build()
@@ -85,11 +83,16 @@ func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	newData := new(bytes.Buffer)
-	if err := dagpb.Encoder(nd, newData); err != nil {
+
+	// 1KiB can be allocated on the stack, and covers most small nodes
+	// without having to grow the buffer and cause allocations.
+	enc := make([]byte, 0, 1024)
+
+	enc, err = dagpb.AppendEncode(enc, nd)
+	if err != nil {
 		return nil, err
 	}
-	return &immutableProtoNode{newData.Bytes(), nd.(dagpb.PBNode)}, nil
+	return &immutableProtoNode{enc, nd.(dagpb.PBNode)}, nil
 }
 
 // Marshal encodes a *Node instance into a new byte slice.
