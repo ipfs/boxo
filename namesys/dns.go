@@ -13,7 +13,7 @@ import (
 )
 
 const ethTLD = "eth"
-const linkTLD = "link"
+const linkTLD = "domains"
 
 // LookupTXTFunc is a generic type for a function that lookups TXT record values.
 type LookupTXTFunc func(name string) (txt []string, err error)
