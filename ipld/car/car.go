@@ -183,17 +183,16 @@ func loadCarFast(s batchStore, cr *CarReader) (*CarHeader, error) {
 	var buf []blocks.Block
 	for {
 		blk, err := cr.Next()
-		switch err {
-		case io.EOF:
-			if len(buf) > 0 {
-				if err := s.PutMany(buf); err != nil {
-					return nil, err
+		if err != nil {
+			if err == io.EOF {
+				if len(buf) > 0 {
+					if err := s.PutMany(buf); err != nil {
+						return nil, err
+					}
 				}
+				return cr.Header, nil
 			}
-			return cr.Header, nil
-		default:
 			return nil, err
-		case nil:
 		}
 
 		buf = append(buf, blk)
@@ -208,15 +207,13 @@ func loadCarFast(s batchStore, cr *CarReader) (*CarHeader, error) {
 }
 
 func loadCarSlow(s Store, cr *CarReader) (*CarHeader, error) {
-
 	for {
 		blk, err := cr.Next()
-		switch err {
-		case io.EOF:
-			return cr.Header, nil
-		default:
+		if err != nil {
+			if err == io.EOF {
+				return cr.Header, nil
+			}
 			return nil, err
-		case nil:
 		}
 
 		if err := s.Put(blk); err != nil {
