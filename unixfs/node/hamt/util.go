@@ -1,0 +1,129 @@
+package hamt
+
+// adapted from https://github.com/ipfs/go-unixfs/blob/master/hamt/util.go
+
+import (
+	"fmt"
+
+	"math/bits"
+
+	"github.com/Stebalien/go-bitfield"
+	"github.com/ipfs/go-unixfsnode/data"
+	dagpb "github.com/ipld/go-codec-dagpb"
+	"github.com/spaolacci/murmur3"
+)
+
+// hashBits is a helper that allows the reading of the 'next n bits' as an integer.
+type hashBits struct {
+	b        []byte
+	consumed int
+}
+
+func mkmask(n int) byte {
+	return (1 << uint(n)) - 1
+}
+
+// Next returns the next 'i' bits of the hashBits value as an integer, or an
+// error if there aren't enough bits.
+func (hb *hashBits) Next(i int) (int, error) {
+	if hb.consumed+i > len(hb.b)*8 {
+		return 0, fmt.Errorf("sharded directory too deep")
+	}
+	return hb.next(i), nil
+}
+
+func (hb *hashBits) next(i int) int {
+	curbi := hb.consumed / 8
+	leftb := 8 - (hb.consumed % 8)
+
+	curb := hb.b[curbi]
+	if i == leftb {
+		out := int(mkmask(i) & curb)
+		hb.consumed += i
+		return out
+	} else if i < leftb {
+		a := curb & mkmask(leftb) // mask out the high bits we don't want
+		b := a & ^mkmask(leftb-i) // mask out the low bits we don't want
+		c := b >> uint(leftb-i)   // shift whats left down
+		hb.consumed += i
+		return int(c)
+	} else {
+		out := int(mkmask(leftb) & curb)
+		out <<= uint(i - leftb)
+		hb.consumed += leftb
+		out += hb.next(i - leftb)
+		return out
+	}
+}
+
+func ValidateHAMTData(nd data.UnixFSData) error {
+	if nd.FieldDataType().Int() != data.Data_HAMTShard {
+		return data.ErrWrongNodeType{data.Data_HAMTShard, nd.FieldDataType().Int()}
+	}
+
+	if !nd.FieldHashType().Exists() || uint64(nd.FieldHashType().Must().Int()) != HashMurmur3 {
+		return fmt.Errorf("only murmur3 supported as hash function")
+	}
+
+	if !nd.FieldData().Exists() {
+		return fmt.Errorf("Data field not present")
+	}
+
+	if !nd.FieldFanout().Exists() {
+		return fmt.Errorf("Fanout field not present")
+	}
+	if err := checkLogTwo(int(nd.FieldFanout().Must().Int())); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func Log2Size(nd data.UnixFSData) int {
+	return bits.TrailingZeros(uint(nd.FieldFanout().Must().Int()))
+}
+
+func MaxPadLength(nd data.UnixFSData) int {
+	return len(fmt.Sprintf("%X", nd.FieldFanout().Must().Int()-1))
+}
+
+func BitField(nd data.UnixFSData) bitfield.Bitfield {
+	bf := bitfield.NewBitfield(int(nd.FieldFanout().Must().Int()))
+	bf.SetBytes(nd.FieldData().Must().Bytes())
+	return bf
+}
+
+func checkLogTwo(v int) error {
+	if v <= 0 {
+		return fmt.Errorf("hamt size should be a power of two")
+	}
+	lg2 := bits.TrailingZeros(uint(v))
+	if 1<<uint(lg2) != v {
+		return fmt.Errorf("hamt size should be a power of two")
+	}
+	return nil
+}
+
+func hash(val []byte) []byte {
+	h := murmur3.New64()
+	h.Write(val)
+	return h.Sum(nil)
+}
+
+func IsValueLink(pbLink dagpb.PBLink, maxpadlen int) (bool, error) {
+	if !pbLink.FieldName().Exists() {
+		return false, fmt.Errorf("missing link name")
+	}
+	name := pbLink.FieldName().Must().String()
+	if len(name) < maxpadlen {
+		return false, fmt.Errorf("invalid link name '%s'", name)
+	}
+	if len(name) == maxpadlen {
+		return false, nil
+	}
+	return true, nil
+}
+
+func MatchKey(pbLink dagpb.PBLink, key string, maxpadlen int) bool {
+	return pbLink.FieldName().Must().String()[maxpadlen:] == key
+}
