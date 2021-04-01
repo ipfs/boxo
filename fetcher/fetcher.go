@@ -17,11 +17,19 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 )
 
+// AugmentChooserFunc is a function that can augment a prototype chooser at the time the Fetcher is initialized,
+// which is given the linksystem the fetcher itself will use
+type AugmentChooserFunc func(*ipld.LinkSystem, traversal.LinkTargetNodePrototypeChooser) traversal.LinkTargetNodePrototypeChooser
+
+// FetcherConfig defines a configuration object from which Fetcher instances are constructed
 type FetcherConfig struct {
 	blockService     blockservice.BlockService
+	AugmentChooser   AugmentChooserFunc
 	PrototypeChooser traversal.LinkTargetNodePrototypeChooser
 }
 
+// Fetcher is an interface for reading from a dag. Reads may be local or remote, and may employ data exchange
+// protocols like graphsync and bitswap
 type Fetcher interface {
 	// NodeMatching traverses a node graph starting with the provided node using the given selector and possibly crossing
 	// block boundaries. Each matched node is passed as FetchResult to the callback. Errors returned from callback will
@@ -48,6 +56,7 @@ type fetcherSession struct {
 	protoChooser traversal.LinkTargetNodePrototypeChooser
 }
 
+// FetchResult is a single node read as part of a dag operation called on a fetcher
 type FetchResult struct {
 	Node          ipld.Node
 	Path          ipld.Path
@@ -55,6 +64,7 @@ type FetchResult struct {
 	LastBlockLink ipld.Link
 }
 
+// FetchCallback is called for each node traversed during a fetch
 type FetchCallback func(result FetchResult) error
 
 // NewFetcherConfig creates a FetchConfig from which session may be created and nodes retrieved.
@@ -69,8 +79,15 @@ func NewFetcherConfig(blockService blockservice.BlockService) FetcherConfig {
 // The session ends when the provided context is canceled.
 func (fc FetcherConfig) NewSession(ctx context.Context) Fetcher {
 	ls := cidlink.DefaultLinkSystem()
+	// while we may be loading blocks remotely, they are already hash verified by the time they load
+	// into ipld-prime
+	ls.TrustedStorage = true
 	ls.StorageReadOpener = blockOpener(ctx, blockservice.NewSession(ctx, fc.blockService))
-	return &fetcherSession{linkSystem: ls, protoChooser: fc.PrototypeChooser}
+	protoChooser := fc.PrototypeChooser
+	if fc.AugmentChooser != nil {
+		protoChooser = fc.AugmentChooser(&ls, protoChooser)
+	}
+	return &fetcherSession{linkSystem: ls, protoChooser: protoChooser}
 }
 
 // BlockOfType fetches a node graph of the provided type corresponding to single block by link.

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 
@@ -289,4 +290,105 @@ func assertNodesInOrder(t *testing.T, results []fetcher.FetchResult, nodeCount i
 	}
 
 	assert.Equal(t, nodeCount, len(results))
+}
+
+type selfLoader struct {
+	ipld.Node
+	ctx context.Context
+	ls  *ipld.LinkSystem
+}
+
+func (sl *selfLoader) LookupByString(key string) (ipld.Node, error) {
+	nd, err := sl.Node.LookupByString(key)
+	if err != nil {
+		return nd, err
+	}
+	if nd.Kind() == ipld.Kind_Link {
+		lnk, _ := nd.AsLink()
+		nd, err = sl.ls.Load(ipld.LinkContext{Ctx: sl.ctx}, lnk, basicnode.Prototype.Any)
+	}
+	return nd, err
+}
+
+type selfLoadPrototype struct {
+	ctx           context.Context
+	ls            *ipld.LinkSystem
+	basePrototype ipld.NodePrototype
+}
+
+func (slp *selfLoadPrototype) NewBuilder() ipld.NodeBuilder {
+	return &selfLoadBuilder{ctx: slp.ctx, NodeBuilder: slp.basePrototype.NewBuilder(), ls: slp.ls}
+}
+
+type selfLoadBuilder struct {
+	ctx context.Context
+	ipld.NodeBuilder
+	ls *ipld.LinkSystem
+}
+
+func (slb *selfLoadBuilder) Build() ipld.Node {
+	nd := slb.NodeBuilder.Build()
+	return &selfLoader{nd, slb.ctx, slb.ls}
+}
+
+func TestChooserAugmentation(t *testing.T) {
+	// demonstrates how to use the augment chooser to build an ADL that self loads its own nodes
+	block3, node3, link3 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+		na.AssembleEntry("three").AssignBool(true)
+	}))
+	block4, node4, link4 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
+		na.AssembleEntry("four").AssignBool(true)
+	}))
+	block2, _, _ := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 2, func(na fluent.MapAssembler) {
+		na.AssembleEntry("link3").AssignLink(link3)
+		na.AssembleEntry("link4").AssignLink(link4)
+	}))
+
+	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0*time.Millisecond))
+	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
+	defer ig.Close()
+
+	peers := ig.Instances(2)
+	hasBlock := peers[0]
+	defer hasBlock.Exchange.Close()
+
+	err := hasBlock.Exchange.HasBlock(block2)
+	require.NoError(t, err)
+	err = hasBlock.Exchange.HasBlock(block3)
+	require.NoError(t, err)
+	err = hasBlock.Exchange.HasBlock(block4)
+	require.NoError(t, err)
+
+	wantsBlock := peers[1]
+	defer wantsBlock.Exchange.Close()
+
+	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
+	fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+	augmentChooser := func(ls *ipld.LinkSystem, base traversal.LinkTargetNodePrototypeChooser) traversal.LinkTargetNodePrototypeChooser {
+		return func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
+			np, err := base(lnk, lnkCtx)
+			if err != nil {
+				return np, err
+			}
+			return &selfLoadPrototype{ctx: lnkCtx.Ctx, ls: ls, basePrototype: np}, nil
+		}
+	}
+	fetcherConfig.AugmentChooser = augmentChooser
+	session := fetcherConfig.NewSession(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	retrievedNode, err := fetcher.Block(ctx, session, cidlink.Link{Cid: block2.Cid()})
+	require.NoError(t, err)
+
+	// instead of getting links back, we automatically load the nodes
+
+	retrievedNode3, err := retrievedNode.LookupByString("link3")
+	require.NoError(t, err)
+	assert.Equal(t, node3, retrievedNode3)
+
+	retrievedNode4, err := retrievedNode.LookupByString("link4")
+	require.NoError(t, err)
+	assert.Equal(t, node4, retrievedNode4)
+
 }
