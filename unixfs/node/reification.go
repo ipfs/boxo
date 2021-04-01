@@ -34,12 +34,12 @@ func Reify(ctx context.Context, maybePBNodeRoot ipld.Node, lsys *ipld.LinkSystem
 	}
 	if !pbNode.FieldData().Exists() {
 		// no data field, therefore, not UnixFS
-		return pbNode, nil
+		return defaultReifier(ctx, pbNode, lsys)
 	}
 	data, err := data.DecodeUnixFSData(pbNode.Data.Must().Bytes())
 	if err != nil {
 		// we could not decode the UnixFS data, therefore, not UnixFS
-		return pbNode, nil
+		return defaultReifier(ctx, pbNode, lsys)
 	}
 	builder, ok := reifyFuncs[data.FieldDataType().Int()]
 	if !ok {
@@ -53,4 +53,10 @@ type reifyTypeFunc func(context.Context, dagpb.PBNode, data.UnixFSData, *ipld.Li
 var reifyFuncs = map[int64]reifyTypeFunc{
 	data.Data_Directory: directory.NewUnixFSBasicDir,
 	data.Data_HAMTShard: hamt.NewUnixFSHAMTShard,
+}
+
+// treat non-unixFS nodes like directories -- allow them to lookup by link
+// TODO: Make this a separate node as directors gain more functionality
+func defaultReifier(_ context.Context, substrate dagpb.PBNode, _ *ipld.LinkSystem) (ipld.Node, error) {
+	return &_PathedPBNode{_substrate: substrate}, nil
 }
