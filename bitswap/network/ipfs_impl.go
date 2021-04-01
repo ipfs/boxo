@@ -422,9 +422,19 @@ func (nn *netNotifiee) impl() *impl {
 }
 
 func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
+	// ignore transient connections
+	if v.Stat().Transient {
+		return
+	}
+
 	nn.impl().connectEvtMgr.Connected(v.RemotePeer())
 }
 func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
+	// ignore transient connections
+	if v.Stat().Transient {
+		return
+	}
+
 	nn.impl().connectEvtMgr.Disconnected(v.RemotePeer())
 }
 func (nn *netNotifiee) OpenedStream(n network.Network, s network.Stream) {}
