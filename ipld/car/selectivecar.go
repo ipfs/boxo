@@ -212,7 +212,7 @@ func (sct *selectiveCarTraverser) traverseHeader() error {
 func (sct *selectiveCarTraverser) loader(lnk ipld.Link, ctx ipld.LinkContext) (io.Reader, error) {
 	cl, ok := lnk.(cidlink.Link)
 	if !ok {
-		return nil, errors.New("Incorrect Link Type")
+		return nil, errors.New("incorrect link type")
 	}
 	c := cl.Cid
 	blk, err := sct.sc.store.Get(c)
