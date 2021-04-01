@@ -1,6 +1,8 @@
 package ipns
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -8,6 +10,10 @@ import (
 	"time"
 
 	pb "github.com/ipfs/go-ipns/pb"
+
+	ipldcodec "github.com/ipld/go-ipld-prime/multicodec"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/multiformats/go-multicodec"
 
 	proto "github.com/gogo/protobuf/proto"
 	u "github.com/ipfs/go-ipfs-util"
@@ -44,7 +50,7 @@ func testValidatorCaseMatchFunc(t *testing.T, priv ci.PrivKey, kbook pstore.KeyB
 	data := val
 	if data == nil {
 		p := []byte("/ipfs/QmfM2r8seH2GiRaC4esTjeraXEachRt8ZsSeGaWTPLyMoG")
-		entry, err := Create(priv, p, 1, eol)
+		entry, err := Create(priv, p, 1, eol, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -64,7 +70,9 @@ func TestValidator(t *testing.T) {
 	priv, id, _ := genKeys(t)
 	priv2, id2, _ := genKeys(t)
 	kbook := pstoremem.NewPeerstore()
-	kbook.AddPubKey(id, priv.GetPublic())
+	if err := kbook.AddPubKey(id, priv.GetPublic()); err != nil {
+		t.Fatal(err)
+	}
 	emptyKbook := pstoremem.NewPeerstore()
 
 	testValidatorCase(t, priv, kbook, "/ipns/"+string(id), nil, ts.Add(time.Hour), nil)
@@ -95,7 +103,7 @@ func TestEmbeddedPubKeyValidate(t *testing.T) {
 
 	priv, _, ipnsk := genKeys(t)
 
-	entry, err := Create(priv, pth, 1, goodeol)
+	entry, err := Create(priv, pth, 1, goodeol, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +155,7 @@ func TestPeerIDPubKeyValidate(t *testing.T) {
 
 	ipnsk := "/ipns/" + string(pid)
 
-	entry, err := Create(sk, pth, 1, goodeol)
+	entry, err := Create(sk, pth, 1, goodeol, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,6 +166,210 @@ func TestPeerIDPubKeyValidate(t *testing.T) {
 	}
 
 	testValidatorCase(t, sk, kbook, ipnsk, dataNoKey, goodeol, nil)
+}
+
+func TestBothSignatureVersionsValidate(t *testing.T) {
+	goodeol := time.Now().Add(time.Hour)
+
+	sk, pk, err := ci.GenerateEd25519Key(rand.New(rand.NewSource(42)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path1 := []byte("/path/1")
+	entry, err := Create(sk, path1, 1, goodeol, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Validate(pk, entry); err != nil {
+		t.Fatal(err)
+	}
+
+	entry.SignatureV2 = nil
+	if err := Validate(pk, entry); err != nil {
+		t.Fatal(err)
+	}
+
+	entry.SignatureV1 = nil
+	if err := Validate(pk, entry); !errors.Is(err, ErrSignature) {
+		t.Fatal(err)
+	}
+}
+
+func TestNewSignatureVersionPreferred(t *testing.T) {
+	goodeol := time.Now().Add(time.Hour)
+
+	sk, pk, err := ci.GenerateEd25519Key(rand.New(rand.NewSource(42)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pid, err := peer.IDFromPublicKey(pk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ipnsk := "/ipns/" + string(pid)
+
+	path1 := []byte("/path/1")
+	entry1, err := Create(sk, path1, 1, goodeol, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path2 := []byte("/path/2")
+	entry2, err := Create(sk, path2, 2, goodeol, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Validate(pk, entry1); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Validate(pk, entry2); err != nil {
+		t.Fatal(err)
+	}
+
+	v := Validator{}
+	best, err := v.Select(ipnsk, [][]byte{mustMarshal(t, entry1), mustMarshal(t, entry2)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if best != 1 {
+		t.Fatal("entry2 should be better than entry1")
+	}
+
+	// Having only the v1 signature should be valid
+	entry2.SignatureV2 = nil
+	if err := Validate(pk, entry2); err != nil {
+		t.Fatal(err)
+	}
+
+	// However the v2 signature should be preferred
+	best, err = v.Select(ipnsk, [][]byte{mustMarshal(t, entry1), mustMarshal(t, entry2)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if best != 0 {
+		t.Fatal("entry1 should be better than entry2")
+	}
+
+	// Having a missing v1 signature is acceptable as long as there is a valid v2 signature
+	entry1.SignatureV1 = nil
+	if err := Validate(pk, entry1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Having an invalid v1 signature is acceptable as long as there is a valid v2 signature
+	entry1.SignatureV1 = []byte("garbage")
+	if err := Validate(pk, entry1); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCborDataCanonicalization(t *testing.T) {
+	goodeol := time.Now().Add(time.Hour)
+
+	sk, pk, err := ci.GenerateEd25519Key(rand.New(rand.NewSource(42)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := append([]byte("/path/1"), 0x00)
+	seqnum := uint64(1)
+	entry, err := Create(sk, path, seqnum, goodeol, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Validate(pk, entry); err != nil {
+		t.Fatal(err)
+	}
+
+	dec, err := ipldcodec.LookupDecoder(uint64(multicodec.DagCbor))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ndbuilder := basicnode.Prototype__Map{}.NewBuilder()
+	if err := dec(ndbuilder, bytes.NewReader(entry.GetData())); err != nil {
+		t.Fatal(err)
+	}
+
+	nd := ndbuilder.Build()
+	iter := nd.MapIterator()
+	var fields []string
+	for !iter.Done() {
+		k, v, err := iter.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		kstr, err := k.AsString()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		switch kstr {
+		case value:
+			b, err := v.AsBytes()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(path, b) {
+				t.Fatal("value did not match")
+			}
+		case sequence:
+			s, err := v.AsInt()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if uint64(s) != seqnum {
+				t.Fatal("sequence numbers did not match")
+			}
+		case validity:
+			val, err := v.AsBytes()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(val, []byte(u.FormatRFC3339(goodeol))) {
+				t.Fatal("validity did not match")
+			}
+		case validityType:
+			vt, err := v.AsInt()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if uint64(vt) != 0 {
+				t.Fatal("validity types did not match")
+			}
+		case ttl:
+			ttlVal, err := v.AsInt()
+			if err != nil {
+				t.Fatal(err)
+			}
+			// TODO: test non-zero TTL
+			if uint64(ttlVal) != uint64(time.Hour.Nanoseconds()) {
+				t.Fatal("TTLs did not match")
+			}
+		}
+
+		fields = append(fields, kstr)
+	}
+
+	// Check for map sort order (i.e. by length then by value)
+	expectedOrder := []string{"TTL", "Value", "Sequence", "Validity", "ValidityType"}
+	if len(fields) != len(expectedOrder) {
+		t.Fatal("wrong number of fields")
+	}
+
+	for i, f := range fields {
+		expected := expectedOrder[i]
+		if f != expected {
+			t.Fatalf("expected %s, got %s", expected, f)
+		}
+	}
 }
 
 func genKeys(t *testing.T) (ci.PrivKey, peer.ID, string) {

@@ -23,7 +23,7 @@ func TestEmbedPublicKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e, err := Create(priv, []byte("/a/b"), 0, time.Now().Add(1*time.Hour))
+	e, err := Create(priv, []byte("/a/b"), 0, time.Now().Add(1*time.Hour), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func ExampleCreate() {
 
 	// Create an IPNS record that expires in one hour and points to the IPFS address
 	// /ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5
-	ipnsRecord, err := Create(privateKey, []byte("/ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5"), 0, time.Now().Add(1*time.Hour))
+	ipnsRecord, err := Create(privateKey, []byte("/ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5"), 0, time.Now().Add(1*time.Hour), 0)
 	if err != nil {
 		panic(err)
 	}

@@ -15,7 +15,7 @@ import (
 
 func shuffle(a []*pb.IpnsEntry) {
 	for n := 0; n < 5; n++ {
-		for i, _ := range a {
+		for i := range a {
 			j := rand.Intn(len(a))
 			a[i], a[j] = a[j], a[i]
 		}
@@ -56,32 +56,32 @@ func TestOrdering(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e1, err := Create(priv, []byte("foo"), 1, ts.Add(time.Hour))
+	e1, err := Create(priv, []byte("foo"), 1, ts.Add(time.Hour), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	e2, err := Create(priv, []byte("bar"), 2, ts.Add(time.Hour))
+	e2, err := Create(priv, []byte("bar"), 2, ts.Add(time.Hour), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	e3, err := Create(priv, []byte("baz"), 3, ts.Add(time.Hour))
+	e3, err := Create(priv, []byte("baz"), 3, ts.Add(time.Hour), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	e4, err := Create(priv, []byte("cat"), 3, ts.Add(time.Hour*2))
+	e4, err := Create(priv, []byte("cat"), 3, ts.Add(time.Hour*2), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	e5, err := Create(priv, []byte("dog"), 4, ts.Add(time.Hour*3))
+	e5, err := Create(priv, []byte("dog"), 4, ts.Add(time.Hour*3), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	e6, err := Create(priv, []byte("fish"), 4, ts.Add(time.Hour*3))
+	e6, err := Create(priv, []byte("fish"), 4, ts.Add(time.Hour*3), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
