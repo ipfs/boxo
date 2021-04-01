@@ -56,14 +56,10 @@ func (n UnixFSHAMTShard) Kind() ipld.Kind {
 // LookupByString looks for the key in the list of links with a matching name
 func (n UnixFSHAMTShard) LookupByString(key string) (ipld.Node, error) {
 	hv := &hashBits{b: hash([]byte(key))}
-	pbLink, err := n.lookup(key, hv)
-	if err != nil {
-		return nil, err
-	}
-	return pbLink.FieldHash(), nil
+	return n.lookup(key, hv)
 }
 
-func (n UnixFSHAMTShard) lookup(key string, hv *hashBits) (dagpb.PBLink, error) {
+func (n UnixFSHAMTShard) lookup(key string, hv *hashBits) (dagpb.Link, error) {
 	log2 := Log2Size(n.data)
 	maxPadLength := MaxPadLength(n.data)
 	childIndex, err := hv.Next(log2)
@@ -82,7 +78,7 @@ func (n UnixFSHAMTShard) lookup(key string, hv *hashBits) (dagpb.PBLink, error) 
 		}
 		if isValue {
 			if MatchKey(pbLink, key, maxPadLength) {
-				return pbLink, nil
+				return pbLink.FieldHash(), nil
 			}
 		} else {
 			childNd, err := n.loadChild(pbLink)
@@ -312,13 +308,13 @@ func (n UnixFSHAMTShard) Iterator() *iter.UnixFSDir__Itr {
 	return iter.NewUnixFSDirIterator(listItr, st.transformNameNode)
 }
 
-func (n UnixFSHAMTShard) Lookup(key dagpb.String) dagpb.PBLink {
+func (n UnixFSHAMTShard) Lookup(key dagpb.String) dagpb.Link {
 	hv := &hashBits{b: hash([]byte(key.String()))}
-	pbLink, err := n.lookup(key.String(), hv)
+	link, err := n.lookup(key.String(), hv)
 	if err != nil {
 		return nil
 	}
-	return pbLink
+	return link
 }
 
 // direct access to the links and data
