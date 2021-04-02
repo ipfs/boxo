@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 
@@ -310,28 +309,7 @@ func (sl *selfLoader) LookupByString(key string) (ipld.Node, error) {
 	return nd, err
 }
 
-type selfLoadPrototype struct {
-	ctx           context.Context
-	ls            *ipld.LinkSystem
-	basePrototype ipld.NodePrototype
-}
-
-func (slp *selfLoadPrototype) NewBuilder() ipld.NodeBuilder {
-	return &selfLoadBuilder{ctx: slp.ctx, NodeBuilder: slp.basePrototype.NewBuilder(), ls: slp.ls}
-}
-
-type selfLoadBuilder struct {
-	ctx context.Context
-	ipld.NodeBuilder
-	ls *ipld.LinkSystem
-}
-
-func (slb *selfLoadBuilder) Build() ipld.Node {
-	nd := slb.NodeBuilder.Build()
-	return &selfLoader{nd, slb.ctx, slb.ls}
-}
-
-func TestChooserAugmentation(t *testing.T) {
+func TestNodeReification(t *testing.T) {
 	// demonstrates how to use the augment chooser to build an ADL that self loads its own nodes
 	block3, node3, link3 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
 		na.AssembleEntry("three").AssignBool(true)
@@ -364,16 +342,10 @@ func TestChooserAugmentation(t *testing.T) {
 
 	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
 	fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
-	augmentChooser := func(ls *ipld.LinkSystem, base traversal.LinkTargetNodePrototypeChooser) traversal.LinkTargetNodePrototypeChooser {
-		return func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
-			np, err := base(lnk, lnkCtx)
-			if err != nil {
-				return np, err
-			}
-			return &selfLoadPrototype{ctx: lnkCtx.Ctx, ls: ls, basePrototype: np}, nil
-		}
+	nodeReifier := func(lnkCtx ipld.LinkContext, nd ipld.Node, ls *ipld.LinkSystem) (ipld.Node, error) {
+		return &selfLoader{Node: nd, ctx: lnkCtx.Ctx, ls: ls}, nil
 	}
-	fetcherConfig.AugmentChooser = augmentChooser
+	fetcherConfig.NodeReifier = nodeReifier
 	session := fetcherConfig.NewSession(context.Background())
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -385,10 +357,12 @@ func TestChooserAugmentation(t *testing.T) {
 
 	retrievedNode3, err := retrievedNode.LookupByString("link3")
 	require.NoError(t, err)
-	assert.Equal(t, node3, retrievedNode3)
+	underlying3 := retrievedNode3.(*selfLoader).Node
+	assert.Equal(t, node3, underlying3)
 
 	retrievedNode4, err := retrievedNode.LookupByString("link4")
 	require.NoError(t, err)
-	assert.Equal(t, node4, retrievedNode4)
+	underlying4 := retrievedNode4.(*selfLoader).Node
+	assert.Equal(t, node4, underlying4)
 
 }

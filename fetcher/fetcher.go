@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/ipfs/go-blockservice"
+	"github.com/ipfs/go-unixfsnode"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -17,14 +18,10 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 )
 
-// AugmentChooserFunc is a function that can augment a prototype chooser at the time the Fetcher is initialized,
-// which is given the linksystem the fetcher itself will use
-type AugmentChooserFunc func(*ipld.LinkSystem, traversal.LinkTargetNodePrototypeChooser) traversal.LinkTargetNodePrototypeChooser
-
 // FetcherConfig defines a configuration object from which Fetcher instances are constructed
 type FetcherConfig struct {
 	blockService     blockservice.BlockService
-	AugmentChooser   AugmentChooserFunc
+	NodeReifier      ipld.NodeReifier
 	PrototypeChooser traversal.LinkTargetNodePrototypeChooser
 }
 
@@ -71,6 +68,7 @@ type FetchCallback func(result FetchResult) error
 func NewFetcherConfig(blockService blockservice.BlockService) FetcherConfig {
 	return FetcherConfig{
 		blockService:     blockService,
+		NodeReifier:      DefaultReifier,
 		PrototypeChooser: DefaultPrototypeChooser,
 	}
 }
@@ -83,10 +81,9 @@ func (fc FetcherConfig) NewSession(ctx context.Context) Fetcher {
 	// into ipld-prime
 	ls.TrustedStorage = true
 	ls.StorageReadOpener = blockOpener(ctx, blockservice.NewSession(ctx, fc.blockService))
+	ls.NodeReifier = fc.NodeReifier
+
 	protoChooser := fc.PrototypeChooser
-	if fc.AugmentChooser != nil {
-		protoChooser = fc.AugmentChooser(&ls, protoChooser)
-	}
 	return &fetcherSession{linkSystem: ls, protoChooser: protoChooser}
 }
 
@@ -203,3 +200,5 @@ var DefaultPrototypeChooser = dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkC
 	}
 	return basicnode.Prototype.Any, nil
 })
+
+var DefaultReifier = unixfsnode.Reify
