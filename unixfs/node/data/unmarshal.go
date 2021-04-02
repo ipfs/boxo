@@ -2,7 +2,6 @@ package data
 
 import (
 	"errors"
-	"fmt"
 	"math"
 
 	"github.com/ipld/go-ipld-prime"
@@ -40,7 +39,7 @@ func consumeUnixFSData(remaining []byte, ma ipld.MapAssembler) error {
 		switch fieldNum {
 		case Data_DataTypeWireNum:
 			if wireType != protowire.VarintType {
-				return fmt.Errorf("protobuf: (UnixFSData) invalid wireType, field: DataType, expected %d, got %d", protowire.VarintType, wireType)
+				return ErrWrongWireType{"UnixFSData", "DataType", protowire.VarintType, wireType}
 			}
 			dataType, n := protowire.ConsumeVarint(remaining)
 			if n < 0 {
@@ -50,7 +49,7 @@ func consumeUnixFSData(remaining []byte, ma ipld.MapAssembler) error {
 			qp.MapEntry(ma, "DataType", qp.Int(int64(dataType)))
 		case Data_DataWireNum:
 			if wireType != protowire.BytesType {
-				return fmt.Errorf("protobuf: (UnixFSData) invalid wireType, field: Data, expected %d, got %d", protowire.VarintType, wireType)
+				return ErrWrongWireType{"UnixFSData", "Data", protowire.VarintType, wireType}
 			}
 			data, n := protowire.ConsumeBytes(remaining)
 			if n < 0 {
@@ -60,7 +59,7 @@ func consumeUnixFSData(remaining []byte, ma ipld.MapAssembler) error {
 			qp.MapEntry(ma, "Data", qp.Bytes(data))
 		case Data_FileSizeWireNum:
 			if wireType != protowire.VarintType {
-				return fmt.Errorf("protobuf: (UnixFSData) invalid wireType, field: FileSize, expected %d, got %d", protowire.VarintType, wireType)
+				return ErrWrongWireType{"UnixFSData", "FileSize", protowire.VarintType, wireType}
 			}
 			fileSize, n := protowire.ConsumeVarint(remaining)
 			if n < 0 {
@@ -112,11 +111,11 @@ func consumeUnixFSData(remaining []byte, ma ipld.MapAssembler) error {
 					}
 				}))
 			default:
-				return fmt.Errorf("protobuf: (UnixFSData) invalid wireType, field: BlockSizes, got %d", wireType)
+				return ErrWrongWireType{"UnixFSData", "BlockSizes", protowire.VarintType, wireType}
 			}
 		case Data_HashTypeWireNum:
 			if wireType != protowire.VarintType {
-				return fmt.Errorf("protobuf: (UnixFSData) invalid wireType, field: HashType, expected %d, got %d", protowire.VarintType, wireType)
+				return ErrWrongWireType{"UnixFSData", "HashType", protowire.VarintType, wireType}
 			}
 			hashType, n := protowire.ConsumeVarint(remaining)
 			if n < 0 {
@@ -126,7 +125,7 @@ func consumeUnixFSData(remaining []byte, ma ipld.MapAssembler) error {
 			qp.MapEntry(ma, "HashType", qp.Int(int64(hashType)))
 		case Data_FanoutWireNum:
 			if wireType != protowire.VarintType {
-				return fmt.Errorf("protobuf: (UnixFSData) invalid wireType, field: Fanout, expected %d, got %d", protowire.VarintType, wireType)
+				return ErrWrongWireType{"UnixFSData", "Fanout", protowire.VarintType, wireType}
 			}
 			fanout, n := protowire.ConsumeVarint(remaining)
 			if n < 0 {
@@ -136,7 +135,7 @@ func consumeUnixFSData(remaining []byte, ma ipld.MapAssembler) error {
 			qp.MapEntry(ma, "Fanout", qp.Int(int64(fanout)))
 		case Data_ModeWireNum:
 			if wireType != protowire.VarintType {
-				return fmt.Errorf("protobuf: (UnixFSData) invalid wireType, field: Mode, expected %d, got %d", protowire.VarintType, wireType)
+				return ErrWrongWireType{"UnixFSData", "Mode", protowire.VarintType, wireType}
 			}
 			mode, n := protowire.ConsumeVarint(remaining)
 			if n < 0 {
@@ -149,7 +148,7 @@ func consumeUnixFSData(remaining []byte, ma ipld.MapAssembler) error {
 			qp.MapEntry(ma, "Mode", qp.Int(int64(mode)))
 		case Data_MTimeWireNum:
 			if wireType != protowire.BytesType {
-				return fmt.Errorf("protobuf: (UnixFSData) invalid wireType, field: Mtime, expected %d, got %d", protowire.BytesType, wireType)
+				return ErrWrongWireType{"UnixFSData", "Mtime", protowire.BytesType, wireType}
 			}
 			mTimeBytes, n := protowire.ConsumeBytes(remaining)
 			if n < 0 {
@@ -215,7 +214,7 @@ func consumeUnixTime(remaining []byte, ma ipld.MapAssembler) error {
 		switch fieldNum {
 		case UnixTime_SecondsWireNum:
 			if wireType != protowire.VarintType {
-				return fmt.Errorf("protobuf: (UnixTime) invalid wireType, field: Seconds, expected %d, got %d", protowire.VarintType, wireType)
+				return ErrWrongWireType{"UnixTime", "Seconds", protowire.VarintType, wireType}
 			}
 			seconds, n := protowire.ConsumeVarint(remaining)
 			if n < 0 {
@@ -225,7 +224,7 @@ func consumeUnixTime(remaining []byte, ma ipld.MapAssembler) error {
 			qp.MapEntry(ma, "Seconds", qp.Int(int64(seconds)))
 		case UnixTime_FractionalNanosecondsWireNum:
 			if wireType != protowire.Fixed32Type {
-				return fmt.Errorf("protobuf: (UnixTime) invalid wireType, field: FractionalNanoseconds, expected %d, got %d", protowire.Fixed32Type, wireType)
+				return ErrWrongWireType{"UnixTime", "FractionalNanoseconds", protowire.Fixed32Type, wireType}
 			}
 			fractionalNanoseconds, n := protowire.ConsumeFixed32(remaining)
 			if n < 0 {
@@ -284,7 +283,7 @@ func consumeUnixFSMetadata(remaining []byte, ma ipld.MapAssembler) error {
 		switch fieldNum {
 		case Metadata_MimeTypeWireNum:
 			if wireType != protowire.BytesType {
-				return fmt.Errorf("protobuf: (UnixFSMetadata) invalid wireType, field: MimeType, expected %d, got %d", protowire.VarintType, wireType)
+				return ErrWrongWireType{"UnixFSMetadata", "MimeType", protowire.VarintType, wireType}
 			}
 			mimeTypeBytes, n := protowire.ConsumeBytes(remaining)
 			if n < 0 {

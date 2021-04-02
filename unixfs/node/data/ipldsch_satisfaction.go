@@ -26,15 +26,14 @@ func (n *_BlockSizes) LookupMaybe(idx int64) MaybeInt {
 	}
 }
 
-var _BlockSizes__valueAbsent = _Int__Maybe{m: schema.Maybe_Absent}
-
+var _BlockSizes__valueAbsent = _Int__Maybe{m:schema.Maybe_Absent}
 func (n BlockSizes) Iterator() *BlockSizes__Itr {
 	return &BlockSizes__Itr{n, 0}
 }
 
 type BlockSizes__Itr struct {
-	n   BlockSizes
-	idx int
+	n BlockSizes
+	idx  int
 }
 
 func (itr *BlockSizes__Itr) Next() (idx int64, v Int) {
@@ -67,14 +66,14 @@ func (m MaybeBlockSizes) Exists() bool {
 }
 func (m MaybeBlockSizes) AsNode() ipld.Node {
 	switch m.m {
-	case schema.Maybe_Absent:
-		return ipld.Absent
-	case schema.Maybe_Null:
-		return ipld.Null
-	case schema.Maybe_Value:
-		return m.v
-	default:
-		panic("unreachable")
+		case schema.Maybe_Absent:
+			return ipld.Absent
+		case schema.Maybe_Null:
+			return ipld.Null
+		case schema.Maybe_Value:
+			return m.v
+		default:
+			panic("unreachable")
 	}
 }
 func (m MaybeBlockSizes) Must() BlockSizes {
@@ -83,10 +82,8 @@ func (m MaybeBlockSizes) Must() BlockSizes {
 	}
 	return m.v
 }
-
 var _ ipld.Node = (BlockSizes)(&_BlockSizes{})
 var _ schema.TypedNode = (BlockSizes)(&_BlockSizes{})
-
 func (BlockSizes) Kind() ipld.Kind {
 	return ipld.Kind_List
 }
@@ -122,8 +119,8 @@ func (n BlockSizes) ListIterator() ipld.ListIterator {
 }
 
 type _BlockSizes__ListItr struct {
-	n   BlockSizes
-	idx int
+	n BlockSizes
+	idx  int
 }
 
 func (itr *_BlockSizes__ListItr) Next() (idx int64, v ipld.Node, _ error) {
@@ -170,7 +167,6 @@ func (BlockSizes) AsLink() (ipld.Link, error) {
 func (BlockSizes) Prototype() ipld.NodePrototype {
 	return _BlockSizes__Prototype{}
 }
-
 type _BlockSizes__Prototype struct{}
 
 func (_BlockSizes__Prototype) NewBuilder() ipld.NodeBuilder {
@@ -178,11 +174,9 @@ func (_BlockSizes__Prototype) NewBuilder() ipld.NodeBuilder {
 	nb.Reset()
 	return &nb
 }
-
 type _BlockSizes__Builder struct {
 	_BlockSizes__Assembler
 }
-
 func (nb *_BlockSizes__Builder) Build() ipld.Node {
 	if *nb.m != schema.Maybe_Value {
 		panic("invalid state: cannot call Build on an assembler that's not finished")
@@ -194,10 +188,9 @@ func (nb *_BlockSizes__Builder) Reset() {
 	var m schema.Maybe
 	*nb = _BlockSizes__Builder{_BlockSizes__Assembler{w: &w, m: &m}}
 }
-
 type _BlockSizes__Assembler struct {
-	w     *_BlockSizes
-	m     *schema.Maybe
+	w *_BlockSizes
+	m *schema.Maybe
 	state laState
 
 	cm schema.Maybe
@@ -354,11 +347,8 @@ func (BlockSizes) Type() schema.Type {
 func (n BlockSizes) Representation() ipld.Node {
 	return (*_BlockSizes__Repr)(n)
 }
-
 type _BlockSizes__Repr _BlockSizes
-
 var _ ipld.Node = &_BlockSizes__Repr{}
-
 func (_BlockSizes__Repr) Kind() ipld.Kind {
 	return ipld.Kind_List
 }
@@ -436,7 +426,6 @@ func (_BlockSizes__Repr) AsLink() (ipld.Link, error) {
 func (_BlockSizes__Repr) Prototype() ipld.NodePrototype {
 	return _BlockSizes__ReprPrototype{}
 }
-
 type _BlockSizes__ReprPrototype struct{}
 
 func (_BlockSizes__ReprPrototype) NewBuilder() ipld.NodeBuilder {
@@ -444,11 +433,9 @@ func (_BlockSizes__ReprPrototype) NewBuilder() ipld.NodeBuilder {
 	nb.Reset()
 	return &nb
 }
-
 type _BlockSizes__ReprBuilder struct {
 	_BlockSizes__ReprAssembler
 }
-
 func (nb *_BlockSizes__ReprBuilder) Build() ipld.Node {
 	if *nb.m != schema.Maybe_Value {
 		panic("invalid state: cannot call Build on an assembler that's not finished")
@@ -460,10 +447,9 @@ func (nb *_BlockSizes__ReprBuilder) Reset() {
 	var m schema.Maybe
 	*nb = _BlockSizes__ReprBuilder{_BlockSizes__ReprAssembler{w: &w, m: &m}}
 }
-
 type _BlockSizes__ReprAssembler struct {
-	w     *_BlockSizes
-	m     *schema.Maybe
+	w *_BlockSizes
+	m *schema.Maybe
 	state laState
 
 	cm schema.Maybe
@@ -622,7 +608,6 @@ func (_Bytes__Prototype) FromBytes(v []byte) (Bytes, error) {
 	n := _Bytes{v}
 	return &n, nil
 }
-
 type _Bytes__Maybe struct {
 	m schema.Maybe
 	v Bytes
@@ -640,14 +625,14 @@ func (m MaybeBytes) Exists() bool {
 }
 func (m MaybeBytes) AsNode() ipld.Node {
 	switch m.m {
-	case schema.Maybe_Absent:
-		return ipld.Absent
-	case schema.Maybe_Null:
-		return ipld.Null
-	case schema.Maybe_Value:
-		return m.v
-	default:
-		panic("unreachable")
+		case schema.Maybe_Absent:
+			return ipld.Absent
+		case schema.Maybe_Null:
+			return ipld.Null
+		case schema.Maybe_Value:
+			return m.v
+		default:
+			panic("unreachable")
 	}
 }
 func (m MaybeBytes) Must() Bytes {
@@ -656,10 +641,8 @@ func (m MaybeBytes) Must() Bytes {
 	}
 	return m.v
 }
-
 var _ ipld.Node = (Bytes)(&_Bytes{})
 var _ schema.TypedNode = (Bytes)(&_Bytes{})
-
 func (Bytes) Kind() ipld.Kind {
 	return ipld.Kind_Bytes
 }
@@ -711,7 +694,6 @@ func (Bytes) AsLink() (ipld.Link, error) {
 func (Bytes) Prototype() ipld.NodePrototype {
 	return _Bytes__Prototype{}
 }
-
 type _Bytes__Prototype struct{}
 
 func (_Bytes__Prototype) NewBuilder() ipld.NodeBuilder {
@@ -719,11 +701,9 @@ func (_Bytes__Prototype) NewBuilder() ipld.NodeBuilder {
 	nb.Reset()
 	return &nb
 }
-
 type _Bytes__Builder struct {
 	_Bytes__Assembler
 }
-
 func (nb *_Bytes__Builder) Build() ipld.Node {
 	if *nb.m != schema.Maybe_Value {
 		panic("invalid state: cannot call Build on an assembler that's not finished")
@@ -735,7 +715,6 @@ func (nb *_Bytes__Builder) Reset() {
 	var m schema.Maybe
 	*nb = _Bytes__Builder{_Bytes__Assembler{w: &w, m: &m}}
 }
-
 type _Bytes__Assembler struct {
 	w *_Bytes
 	m *schema.Maybe
@@ -820,11 +799,8 @@ func (Bytes) Type() schema.Type {
 func (n Bytes) Representation() ipld.Node {
 	return (*_Bytes__Repr)(n)
 }
-
 type _Bytes__Repr = _Bytes
-
 var _ ipld.Node = &_Bytes__Repr{}
-
 type _Bytes__ReprPrototype = _Bytes__Prototype
 type _Bytes__ReprAssembler = _Bytes__Assembler
 
@@ -835,7 +811,6 @@ func (_Int__Prototype) FromInt(v int64) (Int, error) {
 	n := _Int{v}
 	return &n, nil
 }
-
 type _Int__Maybe struct {
 	m schema.Maybe
 	v Int
@@ -853,14 +828,14 @@ func (m MaybeInt) Exists() bool {
 }
 func (m MaybeInt) AsNode() ipld.Node {
 	switch m.m {
-	case schema.Maybe_Absent:
-		return ipld.Absent
-	case schema.Maybe_Null:
-		return ipld.Null
-	case schema.Maybe_Value:
-		return m.v
-	default:
-		panic("unreachable")
+		case schema.Maybe_Absent:
+			return ipld.Absent
+		case schema.Maybe_Null:
+			return ipld.Null
+		case schema.Maybe_Value:
+			return m.v
+		default:
+			panic("unreachable")
 	}
 }
 func (m MaybeInt) Must() Int {
@@ -869,10 +844,8 @@ func (m MaybeInt) Must() Int {
 	}
 	return m.v
 }
-
 var _ ipld.Node = (Int)(&_Int{})
 var _ schema.TypedNode = (Int)(&_Int{})
-
 func (Int) Kind() ipld.Kind {
 	return ipld.Kind_Int
 }
@@ -924,7 +897,6 @@ func (Int) AsLink() (ipld.Link, error) {
 func (Int) Prototype() ipld.NodePrototype {
 	return _Int__Prototype{}
 }
-
 type _Int__Prototype struct{}
 
 func (_Int__Prototype) NewBuilder() ipld.NodeBuilder {
@@ -932,11 +904,9 @@ func (_Int__Prototype) NewBuilder() ipld.NodeBuilder {
 	nb.Reset()
 	return &nb
 }
-
 type _Int__Builder struct {
 	_Int__Assembler
 }
-
 func (nb *_Int__Builder) Build() ipld.Node {
 	if *nb.m != schema.Maybe_Value {
 		panic("invalid state: cannot call Build on an assembler that's not finished")
@@ -948,7 +918,6 @@ func (nb *_Int__Builder) Reset() {
 	var m schema.Maybe
 	*nb = _Int__Builder{_Int__Assembler{w: &w, m: &m}}
 }
-
 type _Int__Assembler struct {
 	w *_Int
 	m *schema.Maybe
@@ -1033,11 +1002,8 @@ func (Int) Type() schema.Type {
 func (n Int) Representation() ipld.Node {
 	return (*_Int__Repr)(n)
 }
-
 type _Int__Repr = _Int
-
 var _ ipld.Node = &_Int__Repr{}
-
 type _Int__ReprPrototype = _Int__Prototype
 type _Int__ReprAssembler = _Int__Assembler
 
@@ -1052,7 +1018,6 @@ func (_String__Prototype) FromString(v string) (String, error) {
 	n := _String{v}
 	return &n, nil
 }
-
 type _String__Maybe struct {
 	m schema.Maybe
 	v String
@@ -1070,14 +1035,14 @@ func (m MaybeString) Exists() bool {
 }
 func (m MaybeString) AsNode() ipld.Node {
 	switch m.m {
-	case schema.Maybe_Absent:
-		return ipld.Absent
-	case schema.Maybe_Null:
-		return ipld.Null
-	case schema.Maybe_Value:
-		return m.v
-	default:
-		panic("unreachable")
+		case schema.Maybe_Absent:
+			return ipld.Absent
+		case schema.Maybe_Null:
+			return ipld.Null
+		case schema.Maybe_Value:
+			return m.v
+		default:
+			panic("unreachable")
 	}
 }
 func (m MaybeString) Must() String {
@@ -1086,10 +1051,8 @@ func (m MaybeString) Must() String {
 	}
 	return m.v
 }
-
 var _ ipld.Node = (String)(&_String{})
 var _ schema.TypedNode = (String)(&_String{})
-
 func (String) Kind() ipld.Kind {
 	return ipld.Kind_String
 }
@@ -1141,7 +1104,6 @@ func (String) AsLink() (ipld.Link, error) {
 func (String) Prototype() ipld.NodePrototype {
 	return _String__Prototype{}
 }
-
 type _String__Prototype struct{}
 
 func (_String__Prototype) NewBuilder() ipld.NodeBuilder {
@@ -1149,11 +1111,9 @@ func (_String__Prototype) NewBuilder() ipld.NodeBuilder {
 	nb.Reset()
 	return &nb
 }
-
 type _String__Builder struct {
 	_String__Assembler
 }
-
 func (nb *_String__Builder) Build() ipld.Node {
 	if *nb.m != schema.Maybe_Value {
 		panic("invalid state: cannot call Build on an assembler that's not finished")
@@ -1165,7 +1125,6 @@ func (nb *_String__Builder) Reset() {
 	var m schema.Maybe
 	*nb = _String__Builder{_String__Assembler{w: &w, m: &m}}
 }
-
 type _String__Assembler struct {
 	w *_String
 	m *schema.Maybe
@@ -1250,13 +1209,11 @@ func (String) Type() schema.Type {
 func (n String) Representation() ipld.Node {
 	return (*_String__Repr)(n)
 }
-
 type _String__Repr = _String
-
 var _ ipld.Node = &_String__Repr{}
-
 type _String__ReprPrototype = _String__Prototype
 type _String__ReprAssembler = _String__Assembler
+
 
 func (n _UnixFSData) FieldDataType() Int {
 	return &n.DataType
@@ -1282,7 +1239,6 @@ func (n _UnixFSData) FieldMode() MaybeInt {
 func (n _UnixFSData) FieldMtime() MaybeUnixTime {
 	return &n.Mtime
 }
-
 type _UnixFSData__Maybe struct {
 	m schema.Maybe
 	v UnixFSData
@@ -1300,14 +1256,14 @@ func (m MaybeUnixFSData) Exists() bool {
 }
 func (m MaybeUnixFSData) AsNode() ipld.Node {
 	switch m.m {
-	case schema.Maybe_Absent:
-		return ipld.Absent
-	case schema.Maybe_Null:
-		return ipld.Null
-	case schema.Maybe_Value:
-		return m.v
-	default:
-		panic("unreachable")
+		case schema.Maybe_Absent:
+			return ipld.Absent
+		case schema.Maybe_Null:
+			return ipld.Null
+		case schema.Maybe_Value:
+			return m.v
+		default:
+			panic("unreachable")
 	}
 }
 func (m MaybeUnixFSData) Must() UnixFSData {
@@ -1316,20 +1272,18 @@ func (m MaybeUnixFSData) Must() UnixFSData {
 	}
 	return m.v
 }
-
 var (
-	fieldName__UnixFSData_DataType   = _String{"DataType"}
-	fieldName__UnixFSData_Data       = _String{"Data"}
-	fieldName__UnixFSData_FileSize   = _String{"FileSize"}
+	fieldName__UnixFSData_DataType = _String{"DataType"}
+	fieldName__UnixFSData_Data = _String{"Data"}
+	fieldName__UnixFSData_FileSize = _String{"FileSize"}
 	fieldName__UnixFSData_BlockSizes = _String{"BlockSizes"}
-	fieldName__UnixFSData_HashType   = _String{"HashType"}
-	fieldName__UnixFSData_Fanout     = _String{"Fanout"}
-	fieldName__UnixFSData_Mode       = _String{"Mode"}
-	fieldName__UnixFSData_Mtime      = _String{"Mtime"}
+	fieldName__UnixFSData_HashType = _String{"HashType"}
+	fieldName__UnixFSData_Fanout = _String{"Fanout"}
+	fieldName__UnixFSData_Mode = _String{"Mode"}
+	fieldName__UnixFSData_Mtime = _String{"Mtime"}
 )
 var _ ipld.Node = (UnixFSData)(&_UnixFSData{})
 var _ schema.TypedNode = (UnixFSData)(&_UnixFSData{})
-
 func (UnixFSData) Kind() ipld.Kind {
 	return ipld.Kind_Map
 }
@@ -1391,12 +1345,11 @@ func (n UnixFSData) MapIterator() ipld.MapIterator {
 }
 
 type _UnixFSData__MapItr struct {
-	n   UnixFSData
-	idx int
+	n UnixFSData
+	idx  int
 }
 
-func (itr *_UnixFSData__MapItr) Next() (k ipld.Node, v ipld.Node, _ error) {
-	if itr.idx >= 8 {
+func (itr *_UnixFSData__MapItr) Next() (k ipld.Node, v ipld.Node, _ error) {if itr.idx >= 8 {
 		return nil, nil, ipld.ErrIteratorOverread{}
 	}
 	switch itr.idx {
@@ -1491,7 +1444,6 @@ func (UnixFSData) AsLink() (ipld.Link, error) {
 func (UnixFSData) Prototype() ipld.NodePrototype {
 	return _UnixFSData__Prototype{}
 }
-
 type _UnixFSData__Prototype struct{}
 
 func (_UnixFSData__Prototype) NewBuilder() ipld.NodeBuilder {
@@ -1499,11 +1451,9 @@ func (_UnixFSData__Prototype) NewBuilder() ipld.NodeBuilder {
 	nb.Reset()
 	return &nb
 }
-
 type _UnixFSData__Builder struct {
 	_UnixFSData__Assembler
 }
-
 func (nb *_UnixFSData__Builder) Build() ipld.Node {
 	if *nb.m != schema.Maybe_Value {
 		panic("invalid state: cannot call Build on an assembler that's not finished")
@@ -1515,24 +1465,23 @@ func (nb *_UnixFSData__Builder) Reset() {
 	var m schema.Maybe
 	*nb = _UnixFSData__Builder{_UnixFSData__Assembler{w: &w, m: &m}}
 }
-
 type _UnixFSData__Assembler struct {
-	w     *_UnixFSData
-	m     *schema.Maybe
+	w *_UnixFSData
+	m *schema.Maybe
 	state maState
-	s     int
-	f     int
+	s int
+	f int
 
-	cm            schema.Maybe
-	ca_DataType   _Int__Assembler
-	ca_Data       _Bytes__Assembler
-	ca_FileSize   _Int__Assembler
+	cm schema.Maybe
+	ca_DataType _Int__Assembler
+	ca_Data _Bytes__Assembler
+	ca_FileSize _Int__Assembler
 	ca_BlockSizes _BlockSizes__Assembler
-	ca_HashType   _Int__Assembler
-	ca_Fanout     _Int__Assembler
-	ca_Mode       _Int__Assembler
-	ca_Mtime      _UnixTime__Assembler
-}
+	ca_HashType _Int__Assembler
+	ca_Fanout _Int__Assembler
+	ca_Mode _Int__Assembler
+	ca_Mtime _UnixTime__Assembler
+	}
 
 func (na *_UnixFSData__Assembler) reset() {
 	na.state = maState_initial
@@ -1548,17 +1497,16 @@ func (na *_UnixFSData__Assembler) reset() {
 }
 
 var (
-	fieldBit__UnixFSData_DataType    = 1 << 0
-	fieldBit__UnixFSData_Data        = 1 << 1
-	fieldBit__UnixFSData_FileSize    = 1 << 2
-	fieldBit__UnixFSData_BlockSizes  = 1 << 3
-	fieldBit__UnixFSData_HashType    = 1 << 4
-	fieldBit__UnixFSData_Fanout      = 1 << 5
-	fieldBit__UnixFSData_Mode        = 1 << 6
-	fieldBit__UnixFSData_Mtime       = 1 << 7
-	fieldBits__UnixFSData_sufficient = 0 + 1<<0 + 1<<3
+	fieldBit__UnixFSData_DataType = 1 << 0
+	fieldBit__UnixFSData_Data = 1 << 1
+	fieldBit__UnixFSData_FileSize = 1 << 2
+	fieldBit__UnixFSData_BlockSizes = 1 << 3
+	fieldBit__UnixFSData_HashType = 1 << 4
+	fieldBit__UnixFSData_Fanout = 1 << 5
+	fieldBit__UnixFSData_Mode = 1 << 6
+	fieldBit__UnixFSData_Mtime = 1 << 7
+	fieldBits__UnixFSData_sufficient = 0 + 1 << 0 + 1 << 3
 )
-
 func (na *_UnixFSData__Assembler) BeginMap(int64) (ipld.MapAssembler, error) {
 	switch *na.m {
 	case schema.Maybe_Value, schema.Maybe_Null:
@@ -1745,7 +1693,7 @@ func (ma *_UnixFSData__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, e
 	}
 	switch k {
 	case "DataType":
-		if ma.s&fieldBit__UnixFSData_DataType != 0 {
+		if ma.s & fieldBit__UnixFSData_DataType != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_DataType}
 		}
 		ma.s += fieldBit__UnixFSData_DataType
@@ -1755,7 +1703,7 @@ func (ma *_UnixFSData__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, e
 		ma.ca_DataType.m = &ma.cm
 		return &ma.ca_DataType, nil
 	case "Data":
-		if ma.s&fieldBit__UnixFSData_Data != 0 {
+		if ma.s & fieldBit__UnixFSData_Data != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Data}
 		}
 		ma.s += fieldBit__UnixFSData_Data
@@ -1765,7 +1713,7 @@ func (ma *_UnixFSData__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, e
 		ma.ca_Data.m = &ma.w.Data.m
 		return &ma.ca_Data, nil
 	case "FileSize":
-		if ma.s&fieldBit__UnixFSData_FileSize != 0 {
+		if ma.s & fieldBit__UnixFSData_FileSize != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_FileSize}
 		}
 		ma.s += fieldBit__UnixFSData_FileSize
@@ -1775,7 +1723,7 @@ func (ma *_UnixFSData__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, e
 		ma.ca_FileSize.m = &ma.w.FileSize.m
 		return &ma.ca_FileSize, nil
 	case "BlockSizes":
-		if ma.s&fieldBit__UnixFSData_BlockSizes != 0 {
+		if ma.s & fieldBit__UnixFSData_BlockSizes != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_BlockSizes}
 		}
 		ma.s += fieldBit__UnixFSData_BlockSizes
@@ -1785,7 +1733,7 @@ func (ma *_UnixFSData__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, e
 		ma.ca_BlockSizes.m = &ma.cm
 		return &ma.ca_BlockSizes, nil
 	case "HashType":
-		if ma.s&fieldBit__UnixFSData_HashType != 0 {
+		if ma.s & fieldBit__UnixFSData_HashType != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_HashType}
 		}
 		ma.s += fieldBit__UnixFSData_HashType
@@ -1795,7 +1743,7 @@ func (ma *_UnixFSData__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, e
 		ma.ca_HashType.m = &ma.w.HashType.m
 		return &ma.ca_HashType, nil
 	case "Fanout":
-		if ma.s&fieldBit__UnixFSData_Fanout != 0 {
+		if ma.s & fieldBit__UnixFSData_Fanout != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Fanout}
 		}
 		ma.s += fieldBit__UnixFSData_Fanout
@@ -1805,7 +1753,7 @@ func (ma *_UnixFSData__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, e
 		ma.ca_Fanout.m = &ma.w.Fanout.m
 		return &ma.ca_Fanout, nil
 	case "Mode":
-		if ma.s&fieldBit__UnixFSData_Mode != 0 {
+		if ma.s & fieldBit__UnixFSData_Mode != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Mode}
 		}
 		ma.s += fieldBit__UnixFSData_Mode
@@ -1815,7 +1763,7 @@ func (ma *_UnixFSData__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, e
 		ma.ca_Mode.m = &ma.w.Mode.m
 		return &ma.ca_Mode, nil
 	case "Mtime":
-		if ma.s&fieldBit__UnixFSData_Mtime != 0 {
+		if ma.s & fieldBit__UnixFSData_Mtime != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Mtime}
 		}
 		ma.s += fieldBit__UnixFSData_Mtime
@@ -1825,7 +1773,7 @@ func (ma *_UnixFSData__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, e
 		ma.ca_Mtime.m = &ma.w.Mtime.m
 		return &ma.ca_Mtime, nil
 	}
-	return nil, ipld.ErrInvalidKey{TypeName: "data.UnixFSData", Key: &_String{k}}
+	return nil, ipld.ErrInvalidKey{TypeName:"data.UnixFSData", Key:&_String{k}}
 }
 func (ma *_UnixFSData__Assembler) AssembleKey() ipld.NodeAssembler {
 	switch ma.state {
@@ -1911,12 +1859,12 @@ func (ma *_UnixFSData__Assembler) Finish() error {
 	case maState_finished:
 		panic("invalid state: Finish cannot be called on an assembler that's already finished")
 	}
-	if ma.s&fieldBits__UnixFSData_sufficient != fieldBits__UnixFSData_sufficient {
+	if ma.s & fieldBits__UnixFSData_sufficient != fieldBits__UnixFSData_sufficient {
 		err := ipld.ErrMissingRequiredField{Missing: make([]string, 0)}
-		if ma.s&fieldBit__UnixFSData_DataType == 0 {
+		if ma.s & fieldBit__UnixFSData_DataType == 0 {
 			err.Missing = append(err.Missing, "DataType")
 		}
-		if ma.s&fieldBit__UnixFSData_BlockSizes == 0 {
+		if ma.s & fieldBit__UnixFSData_BlockSizes == 0 {
 			err.Missing = append(err.Missing, "BlockSizes")
 		}
 		return err
@@ -1931,9 +1879,7 @@ func (ma *_UnixFSData__Assembler) KeyPrototype() ipld.NodePrototype {
 func (ma *_UnixFSData__Assembler) ValuePrototype(k string) ipld.NodePrototype {
 	panic("todo structbuilder mapassembler valueprototype")
 }
-
 type _UnixFSData__KeyAssembler _UnixFSData__Assembler
-
 func (_UnixFSData__KeyAssembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
 	return mixins.StringAssembler{"data.UnixFSData.KeyAssembler"}.BeginMap(0)
 }
@@ -1958,63 +1904,63 @@ func (ka *_UnixFSData__KeyAssembler) AssignString(k string) error {
 	}
 	switch k {
 	case "DataType":
-		if ka.s&fieldBit__UnixFSData_DataType != 0 {
+		if ka.s & fieldBit__UnixFSData_DataType != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_DataType}
 		}
 		ka.s += fieldBit__UnixFSData_DataType
 		ka.state = maState_expectValue
 		ka.f = 0
 	case "Data":
-		if ka.s&fieldBit__UnixFSData_Data != 0 {
+		if ka.s & fieldBit__UnixFSData_Data != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Data}
 		}
 		ka.s += fieldBit__UnixFSData_Data
 		ka.state = maState_expectValue
 		ka.f = 1
 	case "FileSize":
-		if ka.s&fieldBit__UnixFSData_FileSize != 0 {
+		if ka.s & fieldBit__UnixFSData_FileSize != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_FileSize}
 		}
 		ka.s += fieldBit__UnixFSData_FileSize
 		ka.state = maState_expectValue
 		ka.f = 2
 	case "BlockSizes":
-		if ka.s&fieldBit__UnixFSData_BlockSizes != 0 {
+		if ka.s & fieldBit__UnixFSData_BlockSizes != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_BlockSizes}
 		}
 		ka.s += fieldBit__UnixFSData_BlockSizes
 		ka.state = maState_expectValue
 		ka.f = 3
 	case "HashType":
-		if ka.s&fieldBit__UnixFSData_HashType != 0 {
+		if ka.s & fieldBit__UnixFSData_HashType != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_HashType}
 		}
 		ka.s += fieldBit__UnixFSData_HashType
 		ka.state = maState_expectValue
 		ka.f = 4
 	case "Fanout":
-		if ka.s&fieldBit__UnixFSData_Fanout != 0 {
+		if ka.s & fieldBit__UnixFSData_Fanout != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Fanout}
 		}
 		ka.s += fieldBit__UnixFSData_Fanout
 		ka.state = maState_expectValue
 		ka.f = 5
 	case "Mode":
-		if ka.s&fieldBit__UnixFSData_Mode != 0 {
+		if ka.s & fieldBit__UnixFSData_Mode != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Mode}
 		}
 		ka.s += fieldBit__UnixFSData_Mode
 		ka.state = maState_expectValue
 		ka.f = 6
 	case "Mtime":
-		if ka.s&fieldBit__UnixFSData_Mtime != 0 {
+		if ka.s & fieldBit__UnixFSData_Mtime != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Mtime}
 		}
 		ka.s += fieldBit__UnixFSData_Mtime
 		ka.state = maState_expectValue
 		ka.f = 7
 	default:
-		return ipld.ErrInvalidKey{TypeName: "data.UnixFSData", Key: &_String{k}}
+		return ipld.ErrInvalidKey{TypeName:"data.UnixFSData", Key:&_String{k}}
 	}
 	return nil
 }
@@ -2040,21 +1986,18 @@ func (UnixFSData) Type() schema.Type {
 func (n UnixFSData) Representation() ipld.Node {
 	return (*_UnixFSData__Repr)(n)
 }
-
 type _UnixFSData__Repr _UnixFSData
-
 var (
-	fieldName__UnixFSData_DataType_serial   = _String{"DataType"}
-	fieldName__UnixFSData_Data_serial       = _String{"Data"}
-	fieldName__UnixFSData_FileSize_serial   = _String{"FileSize"}
+	fieldName__UnixFSData_DataType_serial = _String{"DataType"}
+	fieldName__UnixFSData_Data_serial = _String{"Data"}
+	fieldName__UnixFSData_FileSize_serial = _String{"FileSize"}
 	fieldName__UnixFSData_BlockSizes_serial = _String{"BlockSizes"}
-	fieldName__UnixFSData_HashType_serial   = _String{"HashType"}
-	fieldName__UnixFSData_Fanout_serial     = _String{"Fanout"}
-	fieldName__UnixFSData_Mode_serial       = _String{"Mode"}
-	fieldName__UnixFSData_Mtime_serial      = _String{"Mtime"}
+	fieldName__UnixFSData_HashType_serial = _String{"HashType"}
+	fieldName__UnixFSData_Fanout_serial = _String{"Fanout"}
+	fieldName__UnixFSData_Mode_serial = _String{"Mode"}
+	fieldName__UnixFSData_Mtime_serial = _String{"Mtime"}
 )
 var _ ipld.Node = &_UnixFSData__Repr{}
-
 func (_UnixFSData__Repr) Kind() ipld.Kind {
 	return ipld.Kind_Map
 }
@@ -2143,9 +2086,7 @@ type _UnixFSData__ReprMapItr struct {
 	end int
 }
 
-func (itr *_UnixFSData__ReprMapItr) Next() (k ipld.Node, v ipld.Node, _ error) {
-advance:
-	if itr.idx >= 8 {
+func (itr *_UnixFSData__ReprMapItr) Next() (k ipld.Node, v ipld.Node, _ error) {advance:if itr.idx >= 8 {
 		return nil, nil, ipld.ErrIteratorOverread{}
 	}
 	switch itr.idx {
@@ -2258,7 +2199,6 @@ func (_UnixFSData__Repr) AsLink() (ipld.Link, error) {
 func (_UnixFSData__Repr) Prototype() ipld.NodePrototype {
 	return _UnixFSData__ReprPrototype{}
 }
-
 type _UnixFSData__ReprPrototype struct{}
 
 func (_UnixFSData__ReprPrototype) NewBuilder() ipld.NodeBuilder {
@@ -2266,11 +2206,9 @@ func (_UnixFSData__ReprPrototype) NewBuilder() ipld.NodeBuilder {
 	nb.Reset()
 	return &nb
 }
-
 type _UnixFSData__ReprBuilder struct {
 	_UnixFSData__ReprAssembler
 }
-
 func (nb *_UnixFSData__ReprBuilder) Build() ipld.Node {
 	if *nb.m != schema.Maybe_Value {
 		panic("invalid state: cannot call Build on an assembler that's not finished")
@@ -2282,24 +2220,23 @@ func (nb *_UnixFSData__ReprBuilder) Reset() {
 	var m schema.Maybe
 	*nb = _UnixFSData__ReprBuilder{_UnixFSData__ReprAssembler{w: &w, m: &m}}
 }
-
 type _UnixFSData__ReprAssembler struct {
-	w     *_UnixFSData
-	m     *schema.Maybe
+	w *_UnixFSData
+	m *schema.Maybe
 	state maState
-	s     int
-	f     int
+	s int
+	f int
 
-	cm            schema.Maybe
-	ca_DataType   _Int__ReprAssembler
-	ca_Data       _Bytes__ReprAssembler
-	ca_FileSize   _Int__ReprAssembler
+	cm schema.Maybe
+	ca_DataType _Int__ReprAssembler
+	ca_Data _Bytes__ReprAssembler
+	ca_FileSize _Int__ReprAssembler
 	ca_BlockSizes _BlockSizes__ReprAssembler
-	ca_HashType   _Int__ReprAssembler
-	ca_Fanout     _Int__ReprAssembler
-	ca_Mode       _Int__ReprAssembler
-	ca_Mtime      _UnixTime__ReprAssembler
-}
+	ca_HashType _Int__ReprAssembler
+	ca_Fanout _Int__ReprAssembler
+	ca_Mode _Int__ReprAssembler
+	ca_Mtime _UnixTime__ReprAssembler
+	}
 
 func (na *_UnixFSData__ReprAssembler) reset() {
 	na.state = maState_initial
@@ -2406,8 +2343,7 @@ func (ma *_UnixFSData__ReprAssembler) valueFinishTidy() bool {
 	switch ma.f {
 	case 0:
 		switch ma.cm {
-		case schema.Maybe_Value:
-			ma.cm = schema.Maybe_Absent
+		case schema.Maybe_Value:ma.cm = schema.Maybe_Absent
 			ma.state = maState_initial
 			return true
 		default:
@@ -2433,8 +2369,7 @@ func (ma *_UnixFSData__ReprAssembler) valueFinishTidy() bool {
 		}
 	case 3:
 		switch ma.cm {
-		case schema.Maybe_Value:
-			ma.cm = schema.Maybe_Absent
+		case schema.Maybe_Value:ma.cm = schema.Maybe_Absent
 			ma.state = maState_initial
 			return true
 		default:
@@ -2497,7 +2432,7 @@ func (ma *_UnixFSData__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssemble
 	}
 	switch k {
 	case "DataType":
-		if ma.s&fieldBit__UnixFSData_DataType != 0 {
+		if ma.s & fieldBit__UnixFSData_DataType != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_DataType_serial}
 		}
 		ma.s += fieldBit__UnixFSData_DataType
@@ -2507,7 +2442,7 @@ func (ma *_UnixFSData__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssemble
 		ma.ca_DataType.m = &ma.cm
 		return &ma.ca_DataType, nil
 	case "Data":
-		if ma.s&fieldBit__UnixFSData_Data != 0 {
+		if ma.s & fieldBit__UnixFSData_Data != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Data_serial}
 		}
 		ma.s += fieldBit__UnixFSData_Data
@@ -2515,10 +2450,10 @@ func (ma *_UnixFSData__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssemble
 		ma.f = 1
 		ma.ca_Data.w = ma.w.Data.v
 		ma.ca_Data.m = &ma.w.Data.m
-
+		
 		return &ma.ca_Data, nil
 	case "FileSize":
-		if ma.s&fieldBit__UnixFSData_FileSize != 0 {
+		if ma.s & fieldBit__UnixFSData_FileSize != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_FileSize_serial}
 		}
 		ma.s += fieldBit__UnixFSData_FileSize
@@ -2526,10 +2461,10 @@ func (ma *_UnixFSData__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssemble
 		ma.f = 2
 		ma.ca_FileSize.w = ma.w.FileSize.v
 		ma.ca_FileSize.m = &ma.w.FileSize.m
-
+		
 		return &ma.ca_FileSize, nil
 	case "BlockSizes":
-		if ma.s&fieldBit__UnixFSData_BlockSizes != 0 {
+		if ma.s & fieldBit__UnixFSData_BlockSizes != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_BlockSizes_serial}
 		}
 		ma.s += fieldBit__UnixFSData_BlockSizes
@@ -2539,7 +2474,7 @@ func (ma *_UnixFSData__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssemble
 		ma.ca_BlockSizes.m = &ma.cm
 		return &ma.ca_BlockSizes, nil
 	case "HashType":
-		if ma.s&fieldBit__UnixFSData_HashType != 0 {
+		if ma.s & fieldBit__UnixFSData_HashType != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_HashType_serial}
 		}
 		ma.s += fieldBit__UnixFSData_HashType
@@ -2547,10 +2482,10 @@ func (ma *_UnixFSData__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssemble
 		ma.f = 4
 		ma.ca_HashType.w = ma.w.HashType.v
 		ma.ca_HashType.m = &ma.w.HashType.m
-
+		
 		return &ma.ca_HashType, nil
 	case "Fanout":
-		if ma.s&fieldBit__UnixFSData_Fanout != 0 {
+		if ma.s & fieldBit__UnixFSData_Fanout != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Fanout_serial}
 		}
 		ma.s += fieldBit__UnixFSData_Fanout
@@ -2558,10 +2493,10 @@ func (ma *_UnixFSData__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssemble
 		ma.f = 5
 		ma.ca_Fanout.w = ma.w.Fanout.v
 		ma.ca_Fanout.m = &ma.w.Fanout.m
-
+		
 		return &ma.ca_Fanout, nil
 	case "Mode":
-		if ma.s&fieldBit__UnixFSData_Mode != 0 {
+		if ma.s & fieldBit__UnixFSData_Mode != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Mode_serial}
 		}
 		ma.s += fieldBit__UnixFSData_Mode
@@ -2569,10 +2504,10 @@ func (ma *_UnixFSData__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssemble
 		ma.f = 6
 		ma.ca_Mode.w = ma.w.Mode.v
 		ma.ca_Mode.m = &ma.w.Mode.m
-
+		
 		return &ma.ca_Mode, nil
 	case "Mtime":
-		if ma.s&fieldBit__UnixFSData_Mtime != 0 {
+		if ma.s & fieldBit__UnixFSData_Mtime != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Mtime_serial}
 		}
 		ma.s += fieldBit__UnixFSData_Mtime
@@ -2580,11 +2515,11 @@ func (ma *_UnixFSData__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssemble
 		ma.f = 7
 		ma.ca_Mtime.w = ma.w.Mtime.v
 		ma.ca_Mtime.m = &ma.w.Mtime.m
-
+		
 		return &ma.ca_Mtime, nil
 	default:
 	}
-	return nil, ipld.ErrInvalidKey{TypeName: "data.UnixFSData.Repr", Key: &_String{k}}
+	return nil, ipld.ErrInvalidKey{TypeName:"data.UnixFSData.Repr", Key:&_String{k}}
 }
 func (ma *_UnixFSData__ReprAssembler) AssembleKey() ipld.NodeAssembler {
 	switch ma.state {
@@ -2626,12 +2561,12 @@ func (ma *_UnixFSData__ReprAssembler) AssembleValue() ipld.NodeAssembler {
 	case 1:
 		ma.ca_Data.w = ma.w.Data.v
 		ma.ca_Data.m = &ma.w.Data.m
-
+		
 		return &ma.ca_Data
 	case 2:
 		ma.ca_FileSize.w = ma.w.FileSize.v
 		ma.ca_FileSize.m = &ma.w.FileSize.m
-
+		
 		return &ma.ca_FileSize
 	case 3:
 		ma.ca_BlockSizes.w = &ma.w.BlockSizes
@@ -2640,22 +2575,22 @@ func (ma *_UnixFSData__ReprAssembler) AssembleValue() ipld.NodeAssembler {
 	case 4:
 		ma.ca_HashType.w = ma.w.HashType.v
 		ma.ca_HashType.m = &ma.w.HashType.m
-
+		
 		return &ma.ca_HashType
 	case 5:
 		ma.ca_Fanout.w = ma.w.Fanout.v
 		ma.ca_Fanout.m = &ma.w.Fanout.m
-
+		
 		return &ma.ca_Fanout
 	case 6:
 		ma.ca_Mode.w = ma.w.Mode.v
 		ma.ca_Mode.m = &ma.w.Mode.m
-
+		
 		return &ma.ca_Mode
 	case 7:
 		ma.ca_Mtime.w = ma.w.Mtime.v
 		ma.ca_Mtime.m = &ma.w.Mtime.m
-
+		
 		return &ma.ca_Mtime
 	default:
 		panic("unreachable")
@@ -2676,12 +2611,12 @@ func (ma *_UnixFSData__ReprAssembler) Finish() error {
 	case maState_finished:
 		panic("invalid state: Finish cannot be called on an assembler that's already finished")
 	}
-	if ma.s&fieldBits__UnixFSData_sufficient != fieldBits__UnixFSData_sufficient {
+	if ma.s & fieldBits__UnixFSData_sufficient != fieldBits__UnixFSData_sufficient {
 		err := ipld.ErrMissingRequiredField{Missing: make([]string, 0)}
-		if ma.s&fieldBit__UnixFSData_DataType == 0 {
+		if ma.s & fieldBit__UnixFSData_DataType == 0 {
 			err.Missing = append(err.Missing, "DataType")
 		}
-		if ma.s&fieldBit__UnixFSData_BlockSizes == 0 {
+		if ma.s & fieldBit__UnixFSData_BlockSizes == 0 {
 			err.Missing = append(err.Missing, "BlockSizes")
 		}
 		return err
@@ -2696,9 +2631,7 @@ func (ma *_UnixFSData__ReprAssembler) KeyPrototype() ipld.NodePrototype {
 func (ma *_UnixFSData__ReprAssembler) ValuePrototype(k string) ipld.NodePrototype {
 	panic("todo structbuilder mapassembler repr valueprototype")
 }
-
 type _UnixFSData__ReprKeyAssembler _UnixFSData__ReprAssembler
-
 func (_UnixFSData__ReprKeyAssembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
 	return mixins.StringAssembler{"data.UnixFSData.Repr.KeyAssembler"}.BeginMap(0)
 }
@@ -2723,7 +2656,7 @@ func (ka *_UnixFSData__ReprKeyAssembler) AssignString(k string) error {
 	}
 	switch k {
 	case "DataType":
-		if ka.s&fieldBit__UnixFSData_DataType != 0 {
+		if ka.s & fieldBit__UnixFSData_DataType != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_DataType_serial}
 		}
 		ka.s += fieldBit__UnixFSData_DataType
@@ -2731,7 +2664,7 @@ func (ka *_UnixFSData__ReprKeyAssembler) AssignString(k string) error {
 		ka.f = 0
 		return nil
 	case "Data":
-		if ka.s&fieldBit__UnixFSData_Data != 0 {
+		if ka.s & fieldBit__UnixFSData_Data != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Data_serial}
 		}
 		ka.s += fieldBit__UnixFSData_Data
@@ -2739,7 +2672,7 @@ func (ka *_UnixFSData__ReprKeyAssembler) AssignString(k string) error {
 		ka.f = 1
 		return nil
 	case "FileSize":
-		if ka.s&fieldBit__UnixFSData_FileSize != 0 {
+		if ka.s & fieldBit__UnixFSData_FileSize != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_FileSize_serial}
 		}
 		ka.s += fieldBit__UnixFSData_FileSize
@@ -2747,7 +2680,7 @@ func (ka *_UnixFSData__ReprKeyAssembler) AssignString(k string) error {
 		ka.f = 2
 		return nil
 	case "BlockSizes":
-		if ka.s&fieldBit__UnixFSData_BlockSizes != 0 {
+		if ka.s & fieldBit__UnixFSData_BlockSizes != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_BlockSizes_serial}
 		}
 		ka.s += fieldBit__UnixFSData_BlockSizes
@@ -2755,7 +2688,7 @@ func (ka *_UnixFSData__ReprKeyAssembler) AssignString(k string) error {
 		ka.f = 3
 		return nil
 	case "HashType":
-		if ka.s&fieldBit__UnixFSData_HashType != 0 {
+		if ka.s & fieldBit__UnixFSData_HashType != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_HashType_serial}
 		}
 		ka.s += fieldBit__UnixFSData_HashType
@@ -2763,7 +2696,7 @@ func (ka *_UnixFSData__ReprKeyAssembler) AssignString(k string) error {
 		ka.f = 4
 		return nil
 	case "Fanout":
-		if ka.s&fieldBit__UnixFSData_Fanout != 0 {
+		if ka.s & fieldBit__UnixFSData_Fanout != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Fanout_serial}
 		}
 		ka.s += fieldBit__UnixFSData_Fanout
@@ -2771,7 +2704,7 @@ func (ka *_UnixFSData__ReprKeyAssembler) AssignString(k string) error {
 		ka.f = 5
 		return nil
 	case "Mode":
-		if ka.s&fieldBit__UnixFSData_Mode != 0 {
+		if ka.s & fieldBit__UnixFSData_Mode != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Mode_serial}
 		}
 		ka.s += fieldBit__UnixFSData_Mode
@@ -2779,7 +2712,7 @@ func (ka *_UnixFSData__ReprKeyAssembler) AssignString(k string) error {
 		ka.f = 6
 		return nil
 	case "Mtime":
-		if ka.s&fieldBit__UnixFSData_Mtime != 0 {
+		if ka.s & fieldBit__UnixFSData_Mtime != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSData_Mtime_serial}
 		}
 		ka.s += fieldBit__UnixFSData_Mtime
@@ -2787,7 +2720,7 @@ func (ka *_UnixFSData__ReprKeyAssembler) AssignString(k string) error {
 		ka.f = 7
 		return nil
 	}
-	return ipld.ErrInvalidKey{TypeName: "data.UnixFSData.Repr", Key: &_String{k}}
+	return ipld.ErrInvalidKey{TypeName:"data.UnixFSData.Repr", Key:&_String{k}}
 }
 func (_UnixFSData__ReprKeyAssembler) AssignBytes([]byte) error {
 	return mixins.StringAssembler{"data.UnixFSData.Repr.KeyAssembler"}.AssignBytes(nil)
@@ -2806,10 +2739,10 @@ func (_UnixFSData__ReprKeyAssembler) Prototype() ipld.NodePrototype {
 	return _String__Prototype{}
 }
 
+
 func (n _UnixFSMetadata) FieldMimeType() MaybeString {
 	return &n.MimeType
 }
-
 type _UnixFSMetadata__Maybe struct {
 	m schema.Maybe
 	v UnixFSMetadata
@@ -2827,14 +2760,14 @@ func (m MaybeUnixFSMetadata) Exists() bool {
 }
 func (m MaybeUnixFSMetadata) AsNode() ipld.Node {
 	switch m.m {
-	case schema.Maybe_Absent:
-		return ipld.Absent
-	case schema.Maybe_Null:
-		return ipld.Null
-	case schema.Maybe_Value:
-		return m.v
-	default:
-		panic("unreachable")
+		case schema.Maybe_Absent:
+			return ipld.Absent
+		case schema.Maybe_Null:
+			return ipld.Null
+		case schema.Maybe_Value:
+			return m.v
+		default:
+			panic("unreachable")
 	}
 }
 func (m MaybeUnixFSMetadata) Must() UnixFSMetadata {
@@ -2843,13 +2776,11 @@ func (m MaybeUnixFSMetadata) Must() UnixFSMetadata {
 	}
 	return m.v
 }
-
 var (
 	fieldName__UnixFSMetadata_MimeType = _String{"MimeType"}
 )
 var _ ipld.Node = (UnixFSMetadata)(&_UnixFSMetadata{})
 var _ schema.TypedNode = (UnixFSMetadata)(&_UnixFSMetadata{})
-
 func (UnixFSMetadata) Kind() ipld.Kind {
 	return ipld.Kind_Map
 }
@@ -2882,12 +2813,11 @@ func (n UnixFSMetadata) MapIterator() ipld.MapIterator {
 }
 
 type _UnixFSMetadata__MapItr struct {
-	n   UnixFSMetadata
-	idx int
+	n UnixFSMetadata
+	idx  int
 }
 
-func (itr *_UnixFSMetadata__MapItr) Next() (k ipld.Node, v ipld.Node, _ error) {
-	if itr.idx >= 1 {
+func (itr *_UnixFSMetadata__MapItr) Next() (k ipld.Node, v ipld.Node, _ error) {if itr.idx >= 1 {
 		return nil, nil, ipld.ErrIteratorOverread{}
 	}
 	switch itr.idx {
@@ -2941,7 +2871,6 @@ func (UnixFSMetadata) AsLink() (ipld.Link, error) {
 func (UnixFSMetadata) Prototype() ipld.NodePrototype {
 	return _UnixFSMetadata__Prototype{}
 }
-
 type _UnixFSMetadata__Prototype struct{}
 
 func (_UnixFSMetadata__Prototype) NewBuilder() ipld.NodeBuilder {
@@ -2949,11 +2878,9 @@ func (_UnixFSMetadata__Prototype) NewBuilder() ipld.NodeBuilder {
 	nb.Reset()
 	return &nb
 }
-
 type _UnixFSMetadata__Builder struct {
 	_UnixFSMetadata__Assembler
 }
-
 func (nb *_UnixFSMetadata__Builder) Build() ipld.Node {
 	if *nb.m != schema.Maybe_Value {
 		panic("invalid state: cannot call Build on an assembler that's not finished")
@@ -2965,17 +2892,16 @@ func (nb *_UnixFSMetadata__Builder) Reset() {
 	var m schema.Maybe
 	*nb = _UnixFSMetadata__Builder{_UnixFSMetadata__Assembler{w: &w, m: &m}}
 }
-
 type _UnixFSMetadata__Assembler struct {
-	w     *_UnixFSMetadata
-	m     *schema.Maybe
+	w *_UnixFSMetadata
+	m *schema.Maybe
 	state maState
-	s     int
-	f     int
+	s int
+	f int
 
-	cm          schema.Maybe
+	cm schema.Maybe
 	ca_MimeType _String__Assembler
-}
+	}
 
 func (na *_UnixFSMetadata__Assembler) reset() {
 	na.state = maState_initial
@@ -2984,10 +2910,9 @@ func (na *_UnixFSMetadata__Assembler) reset() {
 }
 
 var (
-	fieldBit__UnixFSMetadata_MimeType    = 1 << 0
+	fieldBit__UnixFSMetadata_MimeType = 1 << 0
 	fieldBits__UnixFSMetadata_sufficient = 0
 )
-
 func (na *_UnixFSMetadata__Assembler) BeginMap(int64) (ipld.MapAssembler, error) {
 	switch *na.m {
 	case schema.Maybe_Value, schema.Maybe_Null:
@@ -3109,7 +3034,7 @@ func (ma *_UnixFSMetadata__Assembler) AssembleEntry(k string) (ipld.NodeAssemble
 	}
 	switch k {
 	case "MimeType":
-		if ma.s&fieldBit__UnixFSMetadata_MimeType != 0 {
+		if ma.s & fieldBit__UnixFSMetadata_MimeType != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSMetadata_MimeType}
 		}
 		ma.s += fieldBit__UnixFSMetadata_MimeType
@@ -3119,7 +3044,7 @@ func (ma *_UnixFSMetadata__Assembler) AssembleEntry(k string) (ipld.NodeAssemble
 		ma.ca_MimeType.m = &ma.w.MimeType.m
 		return &ma.ca_MimeType, nil
 	}
-	return nil, ipld.ErrInvalidKey{TypeName: "data.UnixFSMetadata", Key: &_String{k}}
+	return nil, ipld.ErrInvalidKey{TypeName:"data.UnixFSMetadata", Key:&_String{k}}
 }
 func (ma *_UnixFSMetadata__Assembler) AssembleKey() ipld.NodeAssembler {
 	switch ma.state {
@@ -3177,7 +3102,7 @@ func (ma *_UnixFSMetadata__Assembler) Finish() error {
 	case maState_finished:
 		panic("invalid state: Finish cannot be called on an assembler that's already finished")
 	}
-	if ma.s&fieldBits__UnixFSMetadata_sufficient != fieldBits__UnixFSMetadata_sufficient {
+	if ma.s & fieldBits__UnixFSMetadata_sufficient != fieldBits__UnixFSMetadata_sufficient {
 		err := ipld.ErrMissingRequiredField{Missing: make([]string, 0)}
 		return err
 	}
@@ -3191,9 +3116,7 @@ func (ma *_UnixFSMetadata__Assembler) KeyPrototype() ipld.NodePrototype {
 func (ma *_UnixFSMetadata__Assembler) ValuePrototype(k string) ipld.NodePrototype {
 	panic("todo structbuilder mapassembler valueprototype")
 }
-
 type _UnixFSMetadata__KeyAssembler _UnixFSMetadata__Assembler
-
 func (_UnixFSMetadata__KeyAssembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
 	return mixins.StringAssembler{"data.UnixFSMetadata.KeyAssembler"}.BeginMap(0)
 }
@@ -3218,14 +3141,14 @@ func (ka *_UnixFSMetadata__KeyAssembler) AssignString(k string) error {
 	}
 	switch k {
 	case "MimeType":
-		if ka.s&fieldBit__UnixFSMetadata_MimeType != 0 {
+		if ka.s & fieldBit__UnixFSMetadata_MimeType != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSMetadata_MimeType}
 		}
 		ka.s += fieldBit__UnixFSMetadata_MimeType
 		ka.state = maState_expectValue
 		ka.f = 0
 	default:
-		return ipld.ErrInvalidKey{TypeName: "data.UnixFSMetadata", Key: &_String{k}}
+		return ipld.ErrInvalidKey{TypeName:"data.UnixFSMetadata", Key:&_String{k}}
 	}
 	return nil
 }
@@ -3251,14 +3174,11 @@ func (UnixFSMetadata) Type() schema.Type {
 func (n UnixFSMetadata) Representation() ipld.Node {
 	return (*_UnixFSMetadata__Repr)(n)
 }
-
 type _UnixFSMetadata__Repr _UnixFSMetadata
-
 var (
 	fieldName__UnixFSMetadata_MimeType_serial = _String{"MimeType"}
 )
 var _ ipld.Node = &_UnixFSMetadata__Repr{}
-
 func (_UnixFSMetadata__Repr) Kind() ipld.Kind {
 	return ipld.Kind_Map
 }
@@ -3303,9 +3223,7 @@ type _UnixFSMetadata__ReprMapItr struct {
 	end int
 }
 
-func (itr *_UnixFSMetadata__ReprMapItr) Next() (k ipld.Node, v ipld.Node, _ error) {
-advance:
-	if itr.idx >= 1 {
+func (itr *_UnixFSMetadata__ReprMapItr) Next() (k ipld.Node, v ipld.Node, _ error) {advance:if itr.idx >= 1 {
 		return nil, nil, ipld.ErrIteratorOverread{}
 	}
 	switch itr.idx {
@@ -3362,7 +3280,6 @@ func (_UnixFSMetadata__Repr) AsLink() (ipld.Link, error) {
 func (_UnixFSMetadata__Repr) Prototype() ipld.NodePrototype {
 	return _UnixFSMetadata__ReprPrototype{}
 }
-
 type _UnixFSMetadata__ReprPrototype struct{}
 
 func (_UnixFSMetadata__ReprPrototype) NewBuilder() ipld.NodeBuilder {
@@ -3370,11 +3287,9 @@ func (_UnixFSMetadata__ReprPrototype) NewBuilder() ipld.NodeBuilder {
 	nb.Reset()
 	return &nb
 }
-
 type _UnixFSMetadata__ReprBuilder struct {
 	_UnixFSMetadata__ReprAssembler
 }
-
 func (nb *_UnixFSMetadata__ReprBuilder) Build() ipld.Node {
 	if *nb.m != schema.Maybe_Value {
 		panic("invalid state: cannot call Build on an assembler that's not finished")
@@ -3386,17 +3301,16 @@ func (nb *_UnixFSMetadata__ReprBuilder) Reset() {
 	var m schema.Maybe
 	*nb = _UnixFSMetadata__ReprBuilder{_UnixFSMetadata__ReprAssembler{w: &w, m: &m}}
 }
-
 type _UnixFSMetadata__ReprAssembler struct {
-	w     *_UnixFSMetadata
-	m     *schema.Maybe
+	w *_UnixFSMetadata
+	m *schema.Maybe
 	state maState
-	s     int
-	f     int
+	s int
+	f int
 
-	cm          schema.Maybe
+	cm schema.Maybe
 	ca_MimeType _String__ReprAssembler
-}
+	}
 
 func (na *_UnixFSMetadata__ReprAssembler) reset() {
 	na.state = maState_initial
@@ -3524,7 +3438,7 @@ func (ma *_UnixFSMetadata__ReprAssembler) AssembleEntry(k string) (ipld.NodeAsse
 	}
 	switch k {
 	case "MimeType":
-		if ma.s&fieldBit__UnixFSMetadata_MimeType != 0 {
+		if ma.s & fieldBit__UnixFSMetadata_MimeType != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSMetadata_MimeType_serial}
 		}
 		ma.s += fieldBit__UnixFSMetadata_MimeType
@@ -3532,11 +3446,11 @@ func (ma *_UnixFSMetadata__ReprAssembler) AssembleEntry(k string) (ipld.NodeAsse
 		ma.f = 0
 		ma.ca_MimeType.w = ma.w.MimeType.v
 		ma.ca_MimeType.m = &ma.w.MimeType.m
-
+		
 		return &ma.ca_MimeType, nil
 	default:
 	}
-	return nil, ipld.ErrInvalidKey{TypeName: "data.UnixFSMetadata.Repr", Key: &_String{k}}
+	return nil, ipld.ErrInvalidKey{TypeName:"data.UnixFSMetadata.Repr", Key:&_String{k}}
 }
 func (ma *_UnixFSMetadata__ReprAssembler) AssembleKey() ipld.NodeAssembler {
 	switch ma.state {
@@ -3574,7 +3488,7 @@ func (ma *_UnixFSMetadata__ReprAssembler) AssembleValue() ipld.NodeAssembler {
 	case 0:
 		ma.ca_MimeType.w = ma.w.MimeType.v
 		ma.ca_MimeType.m = &ma.w.MimeType.m
-
+		
 		return &ma.ca_MimeType
 	default:
 		panic("unreachable")
@@ -3595,7 +3509,7 @@ func (ma *_UnixFSMetadata__ReprAssembler) Finish() error {
 	case maState_finished:
 		panic("invalid state: Finish cannot be called on an assembler that's already finished")
 	}
-	if ma.s&fieldBits__UnixFSMetadata_sufficient != fieldBits__UnixFSMetadata_sufficient {
+	if ma.s & fieldBits__UnixFSMetadata_sufficient != fieldBits__UnixFSMetadata_sufficient {
 		err := ipld.ErrMissingRequiredField{Missing: make([]string, 0)}
 		return err
 	}
@@ -3609,9 +3523,7 @@ func (ma *_UnixFSMetadata__ReprAssembler) KeyPrototype() ipld.NodePrototype {
 func (ma *_UnixFSMetadata__ReprAssembler) ValuePrototype(k string) ipld.NodePrototype {
 	panic("todo structbuilder mapassembler repr valueprototype")
 }
-
 type _UnixFSMetadata__ReprKeyAssembler _UnixFSMetadata__ReprAssembler
-
 func (_UnixFSMetadata__ReprKeyAssembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
 	return mixins.StringAssembler{"data.UnixFSMetadata.Repr.KeyAssembler"}.BeginMap(0)
 }
@@ -3636,7 +3548,7 @@ func (ka *_UnixFSMetadata__ReprKeyAssembler) AssignString(k string) error {
 	}
 	switch k {
 	case "MimeType":
-		if ka.s&fieldBit__UnixFSMetadata_MimeType != 0 {
+		if ka.s & fieldBit__UnixFSMetadata_MimeType != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixFSMetadata_MimeType_serial}
 		}
 		ka.s += fieldBit__UnixFSMetadata_MimeType
@@ -3644,7 +3556,7 @@ func (ka *_UnixFSMetadata__ReprKeyAssembler) AssignString(k string) error {
 		ka.f = 0
 		return nil
 	}
-	return ipld.ErrInvalidKey{TypeName: "data.UnixFSMetadata.Repr", Key: &_String{k}}
+	return ipld.ErrInvalidKey{TypeName:"data.UnixFSMetadata.Repr", Key:&_String{k}}
 }
 func (_UnixFSMetadata__ReprKeyAssembler) AssignBytes([]byte) error {
 	return mixins.StringAssembler{"data.UnixFSMetadata.Repr.KeyAssembler"}.AssignBytes(nil)
@@ -3663,13 +3575,13 @@ func (_UnixFSMetadata__ReprKeyAssembler) Prototype() ipld.NodePrototype {
 	return _String__Prototype{}
 }
 
+
 func (n _UnixTime) FieldSeconds() Int {
 	return &n.Seconds
 }
 func (n _UnixTime) FieldFractionalNanoseconds() MaybeInt {
 	return &n.FractionalNanoseconds
 }
-
 type _UnixTime__Maybe struct {
 	m schema.Maybe
 	v UnixTime
@@ -3687,14 +3599,14 @@ func (m MaybeUnixTime) Exists() bool {
 }
 func (m MaybeUnixTime) AsNode() ipld.Node {
 	switch m.m {
-	case schema.Maybe_Absent:
-		return ipld.Absent
-	case schema.Maybe_Null:
-		return ipld.Null
-	case schema.Maybe_Value:
-		return m.v
-	default:
-		panic("unreachable")
+		case schema.Maybe_Absent:
+			return ipld.Absent
+		case schema.Maybe_Null:
+			return ipld.Null
+		case schema.Maybe_Value:
+			return m.v
+		default:
+			panic("unreachable")
 	}
 }
 func (m MaybeUnixTime) Must() UnixTime {
@@ -3703,14 +3615,12 @@ func (m MaybeUnixTime) Must() UnixTime {
 	}
 	return m.v
 }
-
 var (
-	fieldName__UnixTime_Seconds               = _String{"Seconds"}
+	fieldName__UnixTime_Seconds = _String{"Seconds"}
 	fieldName__UnixTime_FractionalNanoseconds = _String{"FractionalNanoseconds"}
 )
 var _ ipld.Node = (UnixTime)(&_UnixTime{})
 var _ schema.TypedNode = (UnixTime)(&_UnixTime{})
-
 func (UnixTime) Kind() ipld.Kind {
 	return ipld.Kind_Map
 }
@@ -3745,12 +3655,11 @@ func (n UnixTime) MapIterator() ipld.MapIterator {
 }
 
 type _UnixTime__MapItr struct {
-	n   UnixTime
-	idx int
+	n UnixTime
+	idx  int
 }
 
-func (itr *_UnixTime__MapItr) Next() (k ipld.Node, v ipld.Node, _ error) {
-	if itr.idx >= 2 {
+func (itr *_UnixTime__MapItr) Next() (k ipld.Node, v ipld.Node, _ error) {if itr.idx >= 2 {
 		return nil, nil, ipld.ErrIteratorOverread{}
 	}
 	switch itr.idx {
@@ -3807,7 +3716,6 @@ func (UnixTime) AsLink() (ipld.Link, error) {
 func (UnixTime) Prototype() ipld.NodePrototype {
 	return _UnixTime__Prototype{}
 }
-
 type _UnixTime__Prototype struct{}
 
 func (_UnixTime__Prototype) NewBuilder() ipld.NodeBuilder {
@@ -3815,11 +3723,9 @@ func (_UnixTime__Prototype) NewBuilder() ipld.NodeBuilder {
 	nb.Reset()
 	return &nb
 }
-
 type _UnixTime__Builder struct {
 	_UnixTime__Assembler
 }
-
 func (nb *_UnixTime__Builder) Build() ipld.Node {
 	if *nb.m != schema.Maybe_Value {
 		panic("invalid state: cannot call Build on an assembler that's not finished")
@@ -3831,18 +3737,17 @@ func (nb *_UnixTime__Builder) Reset() {
 	var m schema.Maybe
 	*nb = _UnixTime__Builder{_UnixTime__Assembler{w: &w, m: &m}}
 }
-
 type _UnixTime__Assembler struct {
-	w     *_UnixTime
-	m     *schema.Maybe
+	w *_UnixTime
+	m *schema.Maybe
 	state maState
-	s     int
-	f     int
+	s int
+	f int
 
-	cm                       schema.Maybe
-	ca_Seconds               _Int__Assembler
+	cm schema.Maybe
+	ca_Seconds _Int__Assembler
 	ca_FractionalNanoseconds _Int__Assembler
-}
+	}
 
 func (na *_UnixTime__Assembler) reset() {
 	na.state = maState_initial
@@ -3852,11 +3757,10 @@ func (na *_UnixTime__Assembler) reset() {
 }
 
 var (
-	fieldBit__UnixTime_Seconds               = 1 << 0
+	fieldBit__UnixTime_Seconds = 1 << 0
 	fieldBit__UnixTime_FractionalNanoseconds = 1 << 1
-	fieldBits__UnixTime_sufficient           = 0 + 1<<0
+	fieldBits__UnixTime_sufficient = 0 + 1 << 0
 )
-
 func (na *_UnixTime__Assembler) BeginMap(int64) (ipld.MapAssembler, error) {
 	switch *na.m {
 	case schema.Maybe_Value, schema.Maybe_Null:
@@ -3988,7 +3892,7 @@ func (ma *_UnixTime__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, err
 	}
 	switch k {
 	case "Seconds":
-		if ma.s&fieldBit__UnixTime_Seconds != 0 {
+		if ma.s & fieldBit__UnixTime_Seconds != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixTime_Seconds}
 		}
 		ma.s += fieldBit__UnixTime_Seconds
@@ -3998,7 +3902,7 @@ func (ma *_UnixTime__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, err
 		ma.ca_Seconds.m = &ma.cm
 		return &ma.ca_Seconds, nil
 	case "FractionalNanoseconds":
-		if ma.s&fieldBit__UnixTime_FractionalNanoseconds != 0 {
+		if ma.s & fieldBit__UnixTime_FractionalNanoseconds != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixTime_FractionalNanoseconds}
 		}
 		ma.s += fieldBit__UnixTime_FractionalNanoseconds
@@ -4008,7 +3912,7 @@ func (ma *_UnixTime__Assembler) AssembleEntry(k string) (ipld.NodeAssembler, err
 		ma.ca_FractionalNanoseconds.m = &ma.w.FractionalNanoseconds.m
 		return &ma.ca_FractionalNanoseconds, nil
 	}
-	return nil, ipld.ErrInvalidKey{TypeName: "data.UnixTime", Key: &_String{k}}
+	return nil, ipld.ErrInvalidKey{TypeName:"data.UnixTime", Key:&_String{k}}
 }
 func (ma *_UnixTime__Assembler) AssembleKey() ipld.NodeAssembler {
 	switch ma.state {
@@ -4070,9 +3974,9 @@ func (ma *_UnixTime__Assembler) Finish() error {
 	case maState_finished:
 		panic("invalid state: Finish cannot be called on an assembler that's already finished")
 	}
-	if ma.s&fieldBits__UnixTime_sufficient != fieldBits__UnixTime_sufficient {
+	if ma.s & fieldBits__UnixTime_sufficient != fieldBits__UnixTime_sufficient {
 		err := ipld.ErrMissingRequiredField{Missing: make([]string, 0)}
-		if ma.s&fieldBit__UnixTime_Seconds == 0 {
+		if ma.s & fieldBit__UnixTime_Seconds == 0 {
 			err.Missing = append(err.Missing, "Seconds")
 		}
 		return err
@@ -4087,9 +3991,7 @@ func (ma *_UnixTime__Assembler) KeyPrototype() ipld.NodePrototype {
 func (ma *_UnixTime__Assembler) ValuePrototype(k string) ipld.NodePrototype {
 	panic("todo structbuilder mapassembler valueprototype")
 }
-
 type _UnixTime__KeyAssembler _UnixTime__Assembler
-
 func (_UnixTime__KeyAssembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
 	return mixins.StringAssembler{"data.UnixTime.KeyAssembler"}.BeginMap(0)
 }
@@ -4114,21 +4016,21 @@ func (ka *_UnixTime__KeyAssembler) AssignString(k string) error {
 	}
 	switch k {
 	case "Seconds":
-		if ka.s&fieldBit__UnixTime_Seconds != 0 {
+		if ka.s & fieldBit__UnixTime_Seconds != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixTime_Seconds}
 		}
 		ka.s += fieldBit__UnixTime_Seconds
 		ka.state = maState_expectValue
 		ka.f = 0
 	case "FractionalNanoseconds":
-		if ka.s&fieldBit__UnixTime_FractionalNanoseconds != 0 {
+		if ka.s & fieldBit__UnixTime_FractionalNanoseconds != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixTime_FractionalNanoseconds}
 		}
 		ka.s += fieldBit__UnixTime_FractionalNanoseconds
 		ka.state = maState_expectValue
 		ka.f = 1
 	default:
-		return ipld.ErrInvalidKey{TypeName: "data.UnixTime", Key: &_String{k}}
+		return ipld.ErrInvalidKey{TypeName:"data.UnixTime", Key:&_String{k}}
 	}
 	return nil
 }
@@ -4154,15 +4056,12 @@ func (UnixTime) Type() schema.Type {
 func (n UnixTime) Representation() ipld.Node {
 	return (*_UnixTime__Repr)(n)
 }
-
 type _UnixTime__Repr _UnixTime
-
 var (
-	fieldName__UnixTime_Seconds_serial               = _String{"Seconds"}
+	fieldName__UnixTime_Seconds_serial = _String{"Seconds"}
 	fieldName__UnixTime_FractionalNanoseconds_serial = _String{"FractionalNanoseconds"}
 )
 var _ ipld.Node = &_UnixTime__Repr{}
-
 func (_UnixTime__Repr) Kind() ipld.Kind {
 	return ipld.Kind_Map
 }
@@ -4209,9 +4108,7 @@ type _UnixTime__ReprMapItr struct {
 	end int
 }
 
-func (itr *_UnixTime__ReprMapItr) Next() (k ipld.Node, v ipld.Node, _ error) {
-advance:
-	if itr.idx >= 2 {
+func (itr *_UnixTime__ReprMapItr) Next() (k ipld.Node, v ipld.Node, _ error) {advance:if itr.idx >= 2 {
 		return nil, nil, ipld.ErrIteratorOverread{}
 	}
 	switch itr.idx {
@@ -4271,7 +4168,6 @@ func (_UnixTime__Repr) AsLink() (ipld.Link, error) {
 func (_UnixTime__Repr) Prototype() ipld.NodePrototype {
 	return _UnixTime__ReprPrototype{}
 }
-
 type _UnixTime__ReprPrototype struct{}
 
 func (_UnixTime__ReprPrototype) NewBuilder() ipld.NodeBuilder {
@@ -4279,11 +4175,9 @@ func (_UnixTime__ReprPrototype) NewBuilder() ipld.NodeBuilder {
 	nb.Reset()
 	return &nb
 }
-
 type _UnixTime__ReprBuilder struct {
 	_UnixTime__ReprAssembler
 }
-
 func (nb *_UnixTime__ReprBuilder) Build() ipld.Node {
 	if *nb.m != schema.Maybe_Value {
 		panic("invalid state: cannot call Build on an assembler that's not finished")
@@ -4295,18 +4189,17 @@ func (nb *_UnixTime__ReprBuilder) Reset() {
 	var m schema.Maybe
 	*nb = _UnixTime__ReprBuilder{_UnixTime__ReprAssembler{w: &w, m: &m}}
 }
-
 type _UnixTime__ReprAssembler struct {
-	w     *_UnixTime
-	m     *schema.Maybe
+	w *_UnixTime
+	m *schema.Maybe
 	state maState
-	s     int
-	f     int
+	s int
+	f int
 
-	cm                       schema.Maybe
-	ca_Seconds               _Int__ReprAssembler
+	cm schema.Maybe
+	ca_Seconds _Int__ReprAssembler
 	ca_FractionalNanoseconds _Int__ReprAssembler
-}
+	}
 
 func (na *_UnixTime__ReprAssembler) reset() {
 	na.state = maState_initial
@@ -4407,8 +4300,7 @@ func (ma *_UnixTime__ReprAssembler) valueFinishTidy() bool {
 	switch ma.f {
 	case 0:
 		switch ma.cm {
-		case schema.Maybe_Value:
-			ma.cm = schema.Maybe_Absent
+		case schema.Maybe_Value:ma.cm = schema.Maybe_Absent
 			ma.state = maState_initial
 			return true
 		default:
@@ -4444,7 +4336,7 @@ func (ma *_UnixTime__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssembler,
 	}
 	switch k {
 	case "Seconds":
-		if ma.s&fieldBit__UnixTime_Seconds != 0 {
+		if ma.s & fieldBit__UnixTime_Seconds != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixTime_Seconds_serial}
 		}
 		ma.s += fieldBit__UnixTime_Seconds
@@ -4454,7 +4346,7 @@ func (ma *_UnixTime__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssembler,
 		ma.ca_Seconds.m = &ma.cm
 		return &ma.ca_Seconds, nil
 	case "FractionalNanoseconds":
-		if ma.s&fieldBit__UnixTime_FractionalNanoseconds != 0 {
+		if ma.s & fieldBit__UnixTime_FractionalNanoseconds != 0 {
 			return nil, ipld.ErrRepeatedMapKey{Key: &fieldName__UnixTime_FractionalNanoseconds_serial}
 		}
 		ma.s += fieldBit__UnixTime_FractionalNanoseconds
@@ -4462,11 +4354,11 @@ func (ma *_UnixTime__ReprAssembler) AssembleEntry(k string) (ipld.NodeAssembler,
 		ma.f = 1
 		ma.ca_FractionalNanoseconds.w = ma.w.FractionalNanoseconds.v
 		ma.ca_FractionalNanoseconds.m = &ma.w.FractionalNanoseconds.m
-
+		
 		return &ma.ca_FractionalNanoseconds, nil
 	default:
 	}
-	return nil, ipld.ErrInvalidKey{TypeName: "data.UnixTime.Repr", Key: &_String{k}}
+	return nil, ipld.ErrInvalidKey{TypeName:"data.UnixTime.Repr", Key:&_String{k}}
 }
 func (ma *_UnixTime__ReprAssembler) AssembleKey() ipld.NodeAssembler {
 	switch ma.state {
@@ -4508,7 +4400,7 @@ func (ma *_UnixTime__ReprAssembler) AssembleValue() ipld.NodeAssembler {
 	case 1:
 		ma.ca_FractionalNanoseconds.w = ma.w.FractionalNanoseconds.v
 		ma.ca_FractionalNanoseconds.m = &ma.w.FractionalNanoseconds.m
-
+		
 		return &ma.ca_FractionalNanoseconds
 	default:
 		panic("unreachable")
@@ -4529,9 +4421,9 @@ func (ma *_UnixTime__ReprAssembler) Finish() error {
 	case maState_finished:
 		panic("invalid state: Finish cannot be called on an assembler that's already finished")
 	}
-	if ma.s&fieldBits__UnixTime_sufficient != fieldBits__UnixTime_sufficient {
+	if ma.s & fieldBits__UnixTime_sufficient != fieldBits__UnixTime_sufficient {
 		err := ipld.ErrMissingRequiredField{Missing: make([]string, 0)}
-		if ma.s&fieldBit__UnixTime_Seconds == 0 {
+		if ma.s & fieldBit__UnixTime_Seconds == 0 {
 			err.Missing = append(err.Missing, "Seconds")
 		}
 		return err
@@ -4546,9 +4438,7 @@ func (ma *_UnixTime__ReprAssembler) KeyPrototype() ipld.NodePrototype {
 func (ma *_UnixTime__ReprAssembler) ValuePrototype(k string) ipld.NodePrototype {
 	panic("todo structbuilder mapassembler repr valueprototype")
 }
-
 type _UnixTime__ReprKeyAssembler _UnixTime__ReprAssembler
-
 func (_UnixTime__ReprKeyAssembler) BeginMap(sizeHint int64) (ipld.MapAssembler, error) {
 	return mixins.StringAssembler{"data.UnixTime.Repr.KeyAssembler"}.BeginMap(0)
 }
@@ -4573,7 +4463,7 @@ func (ka *_UnixTime__ReprKeyAssembler) AssignString(k string) error {
 	}
 	switch k {
 	case "Seconds":
-		if ka.s&fieldBit__UnixTime_Seconds != 0 {
+		if ka.s & fieldBit__UnixTime_Seconds != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixTime_Seconds_serial}
 		}
 		ka.s += fieldBit__UnixTime_Seconds
@@ -4581,7 +4471,7 @@ func (ka *_UnixTime__ReprKeyAssembler) AssignString(k string) error {
 		ka.f = 0
 		return nil
 	case "FractionalNanoseconds":
-		if ka.s&fieldBit__UnixTime_FractionalNanoseconds != 0 {
+		if ka.s & fieldBit__UnixTime_FractionalNanoseconds != 0 {
 			return ipld.ErrRepeatedMapKey{Key: &fieldName__UnixTime_FractionalNanoseconds_serial}
 		}
 		ka.s += fieldBit__UnixTime_FractionalNanoseconds
@@ -4589,7 +4479,7 @@ func (ka *_UnixTime__ReprKeyAssembler) AssignString(k string) error {
 		ka.f = 1
 		return nil
 	}
-	return ipld.ErrInvalidKey{TypeName: "data.UnixTime.Repr", Key: &_String{k}}
+	return ipld.ErrInvalidKey{TypeName:"data.UnixTime.Repr", Key:&_String{k}}
 }
 func (_UnixTime__ReprKeyAssembler) AssignBytes([]byte) error {
 	return mixins.StringAssembler{"data.UnixTime.Repr.KeyAssembler"}.AssignBytes(nil)
@@ -4607,3 +4497,4 @@ func (ka *_UnixTime__ReprKeyAssembler) AssignNode(v ipld.Node) error {
 func (_UnixTime__ReprKeyAssembler) Prototype() ipld.NodePrototype {
 	return _String__Prototype{}
 }
+

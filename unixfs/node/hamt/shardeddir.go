@@ -20,6 +20,8 @@ const (
 var _ ipld.Node = UnixFSHAMTShard(nil)
 var _ schema.TypedNode = UnixFSHAMTShard(nil)
 
+// UnixFSHAMTShared is an IPLD Prime Node that provides a read interface
+// to a UnixFS HAMT
 type UnixFSHAMTShard = *_UnixFSHAMTShard
 
 type _UnixFSHAMTShard struct {
@@ -32,6 +34,8 @@ type _UnixFSHAMTShard struct {
 	cachedLength int64
 }
 
+// NewUnixFSHAMTShard attempts to construct a UnixFSHAMTShard node from the base protobuf node plus
+// a decoded UnixFSData structure
 func NewUnixFSHAMTShard(ctx context.Context, substrate dagpb.PBNode, data data.UnixFSData, lsys *ipld.LinkSystem) (ipld.Node, error) {
 	if err := ValidateHAMTData(data); err != nil {
 		return nil, err
@@ -54,7 +58,7 @@ func (n UnixFSHAMTShard) Kind() ipld.Kind {
 }
 
 // LookupByString looks for the key in the list of links with a matching name
-func (n UnixFSHAMTShard) LookupByString(key string) (ipld.Node, error) {
+func (n *_UnixFSHAMTShard) LookupByString(key string) (ipld.Node, error) {
 	hv := &hashBits{b: hash([]byte(key))}
 	return n.lookup(key, hv)
 }
@@ -91,13 +95,14 @@ func (n UnixFSHAMTShard) lookup(key string, hv *hashBits) (dagpb.Link, error) {
 	return nil, schema.ErrNoSuchField{Type: nil /*TODO*/, Field: ipld.PathSegmentOfString(key)}
 }
 
+// AttemptHAMTShardFromNode attempts to read a HAMT shard from a general protobuf node
 func AttemptHAMTShardFromNode(ctx context.Context, nd ipld.Node, lsys *ipld.LinkSystem) (UnixFSHAMTShard, error) {
 	pbnd, ok := nd.(dagpb.PBNode)
 	if !ok {
-		return nil, fmt.Errorf("hamt.AttemptHAMTShardFromNode: child node was not a protobuf node")
+		return nil, fmt.Errorf("hamt.AttemptHAMTShardFromNode: %w", ErrNotProtobuf)
 	}
 	if !pbnd.FieldData().Exists() {
-		return nil, fmt.Errorf("hamt.AttemptHAMTShardFromNode: child node was not a UnixFS node")
+		return nil, fmt.Errorf("hamt.AttemptHAMTShardFromNode: %w", ErrNotUnixFSNode)
 	}
 	data, err := data.DecodeUnixFSData(pbnd.FieldData().Must().Bytes())
 	if err != nil {
@@ -330,7 +335,7 @@ func (n UnixFSHAMTShard) FieldData() dagpb.MaybeBytes {
 func (n UnixFSHAMTShard) getChildLink(childIndex int) (dagpb.PBLink, error) {
 	linkIndex := n.bitfield.OnesBefore(childIndex)
 	if linkIndex >= int(n.FieldLinks().Length()) || linkIndex < 0 {
-		return nil, fmt.Errorf("invalid index passed to operate children (likely corrupt bitfield)")
+		return nil, ErrInvalidChildIndex
 	}
 	return n.FieldLinks().Lookup(int64(linkIndex)), nil
 }

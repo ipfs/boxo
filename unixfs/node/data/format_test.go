@@ -39,7 +39,7 @@ var symlink = loadFixture("symlink.txt.unixfs")
 
 func TestUnixfsFormat(t *testing.T) {
 	t.Run("defaults to file", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(*builder.Builder) {})
+		data, err := builder.BuildUnixFS(func(*builder.Builder) {})
 		require.NoError(t, err)
 		require.Equal(t, Data_File, data.FieldDataType().Int())
 		marshaled := EncodeUnixFSData(data)
@@ -52,7 +52,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("raw", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_Raw)
 			builder.Data(b, []byte("bananas"))
 		})
@@ -67,7 +67,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("directory", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_Directory)
 		})
 		require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("HAMTShard", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_HAMTShard)
 		})
 		require.NoError(t, err)
@@ -95,7 +95,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("file", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_File)
 			builder.Data(b, []byte("batata"))
 		})
@@ -110,7 +110,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("file add blocksize", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_File)
 			builder.BlockSizes(b, []uint64{256})
 		})
@@ -127,7 +127,7 @@ func TestUnixfsFormat(t *testing.T) {
 	t.Run("mode", func(t *testing.T) {
 		mode, err := strconv.ParseInt("0555", 8, 32)
 		require.NoError(t, err)
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_File)
 			builder.Permissions(b, int(mode))
 		})
@@ -139,7 +139,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("default mode for files", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_File)
 		})
 		require.NoError(t, err)
@@ -150,7 +150,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("default mode for directories", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_Directory)
 		})
 		require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("default mode for hamt shards", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_HAMTShard)
 		})
 		require.NoError(t, err)
@@ -174,7 +174,7 @@ func TestUnixfsFormat(t *testing.T) {
 	t.Run("mode as string", func(t *testing.T) {
 		mode, err := strconv.ParseInt("0555", 8, 32)
 		require.NoError(t, err)
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_File)
 			builder.PermissionsString(b, "0555")
 		})
@@ -186,7 +186,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("mtime", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_File)
 			builder.Mtime(b, func(tb builder.TimeBuilder) {
 				builder.Seconds(tb, 5)
@@ -204,7 +204,7 @@ func TestUnixfsFormat(t *testing.T) {
 		seconds := now.Unix()
 		nanosecond := now.Nanosecond()
 
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_File)
 			builder.Mtime(b, func(tb builder.TimeBuilder) {
 				builder.Time(tb, now)
@@ -222,7 +222,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("omits default file mode from protobuf", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_File)
 			builder.Permissions(b, 0o0644)
 		})
@@ -237,7 +237,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("omits default directory mode from protobuf", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_Directory)
 			builder.Permissions(b, 0o0755)
 		})
@@ -272,7 +272,7 @@ func TestUnixfsFormat(t *testing.T) {
 
 	t.Run("ignores high bits in mode passed to constructor", func(t *testing.T) {
 		mode := 0o0100644 // similar to output from fs.stat
-		entry, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		entry, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_File)
 			builder.Permissions(b, mode)
 		})
@@ -291,7 +291,7 @@ func TestUnixfsFormat(t *testing.T) {
 
 	// figuring out what is this metadata for https://github.com/ipfs/js-ipfs-data-importing/issues/3#issuecomment-182336526
 	t.Run("metadata", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_Metadata)
 		})
 		require.NoError(t, err)
@@ -304,7 +304,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("symlink", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_Symlink)
 		})
 		require.NoError(t, err)
@@ -318,7 +318,7 @@ func TestUnixfsFormat(t *testing.T) {
 	})
 
 	t.Run("invalid type", func(t *testing.T) {
-		_, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		_, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, 9999)
 		})
 		require.EqualError(t, err, "Type: 9999 is not valid")
@@ -365,7 +365,7 @@ func TestInterop(t *testing.T) {
 	})
 
 	t.Run("empty", func(t *testing.T) {
-		data, err := builder.BuildUnixFs(func(b *builder.Builder) {
+		data, err := builder.BuildUnixFS(func(b *builder.Builder) {
 			builder.DataType(b, Data_File)
 		})
 		require.NoError(t, err)

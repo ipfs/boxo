@@ -27,7 +27,7 @@ func mkmask(n int) byte {
 // error if there aren't enough bits.
 func (hb *hashBits) Next(i int) (int, error) {
 	if hb.consumed+i > len(hb.b)*8 {
-		return 0, fmt.Errorf("sharded directory too deep")
+		return 0, ErrHAMTTooDeep
 	}
 	return hb.next(i), nil
 }
@@ -62,15 +62,15 @@ func ValidateHAMTData(nd data.UnixFSData) error {
 	}
 
 	if !nd.FieldHashType().Exists() || uint64(nd.FieldHashType().Must().Int()) != HashMurmur3 {
-		return fmt.Errorf("only murmur3 supported as hash function")
+		return ErrInvalidHashFunc
 	}
 
 	if !nd.FieldData().Exists() {
-		return fmt.Errorf("Data field not present")
+		return ErrNoDataField
 	}
 
 	if !nd.FieldFanout().Exists() {
-		return fmt.Errorf("Fanout field not present")
+		return ErrNoFanoutField
 	}
 	if err := checkLogTwo(int(nd.FieldFanout().Must().Int())); err != nil {
 		return err
@@ -95,11 +95,11 @@ func BitField(nd data.UnixFSData) bitfield.Bitfield {
 
 func checkLogTwo(v int) error {
 	if v <= 0 {
-		return fmt.Errorf("hamt size should be a power of two")
+		return ErrHAMTSizeInvalid
 	}
 	lg2 := bits.TrailingZeros(uint(v))
 	if 1<<uint(lg2) != v {
-		return fmt.Errorf("hamt size should be a power of two")
+		return ErrHAMTSizeInvalid
 	}
 	return nil
 }
@@ -112,11 +112,11 @@ func hash(val []byte) []byte {
 
 func IsValueLink(pbLink dagpb.PBLink, maxpadlen int) (bool, error) {
 	if !pbLink.FieldName().Exists() {
-		return false, fmt.Errorf("missing link name")
+		return false, ErrMissingLinkName
 	}
 	name := pbLink.FieldName().Must().String()
 	if len(name) < maxpadlen {
-		return false, fmt.Errorf("invalid link name '%s'", name)
+		return false, ErrInvalidLinkName{name}
 	}
 	if len(name) == maxpadlen {
 		return false, nil
