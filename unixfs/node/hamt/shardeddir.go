@@ -97,6 +97,11 @@ func (n UnixFSHAMTShard) lookup(key string, hv *hashBits) (dagpb.Link, error) {
 
 // AttemptHAMTShardFromNode attempts to read a HAMT shard from a general protobuf node
 func AttemptHAMTShardFromNode(ctx context.Context, nd ipld.Node, lsys *ipld.LinkSystem) (UnixFSHAMTShard, error) {
+	// shortcut if node is already a hamt
+	hnd, ok := nd.(UnixFSHAMTShard)
+	if ok {
+		return hnd, nil
+	}
 	pbnd, ok := nd.(dagpb.PBNode)
 	if !ok {
 		return nil, fmt.Errorf("hamt.AttemptHAMTShardFromNode: %w", ErrNotProtobuf)
