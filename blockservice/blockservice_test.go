@@ -119,3 +119,31 @@ func (fe *fakeSessionExchange) NewSession(ctx context.Context) exchange.Fetcher 
 	}
 	return fe.session
 }
+
+func TestNilExchange(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	bgen := butil.NewBlockGenerator()
+	block := bgen.Next()
+
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	bserv := NewWriteThrough(bs, nil)
+	sess := NewSession(ctx, bserv)
+	_, err := sess.GetBlock(ctx, block.Cid())
+	if err != ErrNotFound {
+		t.Fatal("expected block to not be found")
+	}
+	err = bs.Put(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := sess.GetBlock(ctx, block.Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Cid() != block.Cid() {
+		t.Fatal("got the wrong block")
+	}
+}
