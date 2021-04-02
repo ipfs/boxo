@@ -366,12 +366,20 @@ func (s *Session) getSession() exchange.Fetcher {
 
 // GetBlock gets a block in the context of a request session
 func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	return getBlock(ctx, c, s.bs, s.getSession) // hash security
+	var f func() exchange.Fetcher
+	if s.sessEx != nil {
+		f = s.getSession
+	}
+	return getBlock(ctx, c, s.bs, f) // hash security
 }
 
 // GetBlocks gets blocks in the context of a request session
 func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
-	return getBlocks(ctx, ks, s.bs, s.getSession) // hash security
+	var f func() exchange.Fetcher
+	if s.sessEx != nil {
+		f = s.getSession
+	}
+	return getBlocks(ctx, ks, s.bs, f) // hash security
 }
 
 var _ BlockGetter = (*Session)(nil)
