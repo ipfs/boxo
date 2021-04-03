@@ -7,7 +7,6 @@ import (
 	"io"
 
 	"github.com/ipfs/go-blockservice"
-	"github.com/ipfs/go-unixfsnode"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -68,7 +67,6 @@ type FetchCallback func(result FetchResult) error
 func NewFetcherConfig(blockService blockservice.BlockService) FetcherConfig {
 	return FetcherConfig{
 		blockService:     blockService,
-		NodeReifier:      DefaultReifier,
 		PrototypeChooser: DefaultPrototypeChooser,
 	}
 }
@@ -200,5 +198,3 @@ var DefaultPrototypeChooser = dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkC
 	}
 	return basicnode.Prototype.Any, nil
 })
-
-var DefaultReifier = unixfsnode.Reify
