@@ -26,3 +26,15 @@ var DataTypeValues = map[string]int64{
 	"Symlink":   Data_Symlink,
 	"HAMTShard": Data_HAMTShard,
 }
+
+const Field__DataType = "DataType"
+const Field__Data = "Data"
+const Field__FileSize = "FileSize"
+const Field__BlockSizes = "BlockSizes"
+const Field__HashType = "HashType"
+const Field__Fanout = "Fanout"
+const Field__Mode = "Mode"
+const Field__Mtime = "Mtime"
+const Field__Seconds = "Seconds"
+const Field__Nanoseconds = "FractionalNanoseconds"
+const Field__MimeType = "MimeType"

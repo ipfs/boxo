@@ -17,13 +17,13 @@ const (
 	ErrInvalidChildIndex errorType = "invalid index passed to operate children (likely corrupt bitfield)"
 	// ErrHAMTTooDeep indicates we attempted to load from a HAMT node that went past the depth of the tree
 	ErrHAMTTooDeep errorType = "sharded directory too deep"
-	// ErrInvalidHashFunc indicates the HAMT node's hash function is unsupported (must be Murmur3)
-	ErrInvalidHashFunc errorType = "only murmur3 supported as hash function"
+	// ErrInvalidHashType indicates the HAMT node's hash function is unsupported (must be Murmur3)
+	ErrInvalidHashType errorType = "only murmur3 supported as hash function"
 	// ErrNoDataField indicates the HAMT node's UnixFS structure lacked a data field, which is
 	// where a bit mask is stored
-	ErrNoDataField errorType = "Data field not present"
+	ErrNoDataField errorType = "'Data' field not present"
 	// ErrNoFanoutField indicates the HAMT node's UnixFS structure lacked a fanout field, which is required
-	ErrNoFanoutField errorType = "Fanout field not present"
+	ErrNoFanoutField errorType = "'Fanout' field not present"
 	// ErrHAMTSizeInvalid indicates the HAMT's size property was not an exact power of 2
 	ErrHAMTSizeInvalid errorType = "hamt size should be a power of two"
 	// ErrMissingLinkName indicates a link in a HAMT had no Name property (required for all HAMTs)

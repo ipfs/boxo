@@ -37,11 +37,11 @@ type _UnixFSHAMTShard struct {
 // NewUnixFSHAMTShard attempts to construct a UnixFSHAMTShard node from the base protobuf node plus
 // a decoded UnixFSData structure
 func NewUnixFSHAMTShard(ctx context.Context, substrate dagpb.PBNode, data data.UnixFSData, lsys *ipld.LinkSystem) (ipld.Node, error) {
-	if err := ValidateHAMTData(data); err != nil {
+	if err := validateHAMTData(data); err != nil {
 		return nil, err
 	}
 	shardCache := make(map[ipld.Link]*_UnixFSHAMTShard, substrate.FieldLinks().Length())
-	bf := BitField(data)
+	bf := bitField(data)
 	return &_UnixFSHAMTShard{
 		ctx:          ctx,
 		_substrate:   substrate,
@@ -64,8 +64,8 @@ func (n *_UnixFSHAMTShard) LookupByString(key string) (ipld.Node, error) {
 }
 
 func (n UnixFSHAMTShard) lookup(key string, hv *hashBits) (dagpb.Link, error) {
-	log2 := Log2Size(n.data)
-	maxPadLength := MaxPadLength(n.data)
+	log2 := log2Size(n.data)
+	maxPadLen := maxPadLength(n.data)
 	childIndex, err := hv.Next(log2)
 	if err != nil {
 		return nil, err
@@ -76,12 +76,12 @@ func (n UnixFSHAMTShard) lookup(key string, hv *hashBits) (dagpb.Link, error) {
 		if err != nil {
 			return nil, err
 		}
-		isValue, err := IsValueLink(pbLink, maxPadLength)
+		isValue, err := isValueLink(pbLink, maxPadLen)
 		if err != nil {
 			return nil, err
 		}
 		if isValue {
-			if MatchKey(pbLink, key, maxPadLength) {
+			if MatchKey(pbLink, key, maxPadLen) {
 				return pbLink.FieldHash(), nil
 			}
 		} else {
@@ -154,13 +154,13 @@ func (n UnixFSHAMTShard) LookupBySegment(seg ipld.PathSegment) (ipld.Node, error
 }
 
 func (n UnixFSHAMTShard) MapIterator() ipld.MapIterator {
-	maxpadLen := MaxPadLength(n.data)
+	maxPadLen := maxPadLength(n.data)
 	listItr := &_UnixFSShardedDir__ListItr{
 		_substrate: n.FieldLinks().Iterator(),
-		maxpadlen:  maxpadLen,
+		maxPadLen:  maxPadLen,
 		nd:         n,
 	}
-	st := stringTransformer{maxpadLen: maxpadLen}
+	st := stringTransformer{maxPadLen: maxPadLen}
 	return iter.NewUnixFSDirMapIterator(listItr, st.transformNameNode)
 }
 
@@ -168,7 +168,7 @@ type _UnixFSShardedDir__ListItr struct {
 	_substrate *dagpb.PBLinks__Itr
 	childIter  *_UnixFSShardedDir__ListItr
 	nd         UnixFSHAMTShard
-	maxpadlen  int
+	maxPadLen  int
 	total      int64
 }
 
@@ -189,7 +189,7 @@ func (itr *_UnixFSShardedDir__ListItr) next() dagpb.PBLink {
 			return nil
 		}
 		_, next := itr._substrate.Next()
-		isValue, err := IsValueLink(next, itr.maxpadlen)
+		isValue, err := isValueLink(next, itr.maxPadLen)
 		if err != nil {
 			return nil
 		}
@@ -203,7 +203,7 @@ func (itr *_UnixFSShardedDir__ListItr) next() dagpb.PBLink {
 		itr.childIter = &_UnixFSShardedDir__ListItr{
 			_substrate: child._substrate.FieldLinks().Iterator(),
 			nd:         child,
-			maxpadlen:  MaxPadLength(child.data),
+			maxPadLen:  maxPadLength(child.data),
 		}
 
 	}
@@ -235,12 +235,12 @@ func (n UnixFSHAMTShard) Length() int64 {
 	if n.cachedLength != -1 {
 		return n.cachedLength
 	}
-	maxpadLen := MaxPadLength(n.data)
+	maxPadLen := maxPadLength(n.data)
 	total := int64(0)
 	itr := n.FieldLinks().Iterator()
 	for !itr.Done() {
 		_, pbLink := itr.Next()
-		isValue, err := IsValueLink(pbLink, maxpadLen)
+		isValue, err := isValueLink(pbLink, maxPadLen)
 		if err != nil {
 			continue
 		}
@@ -308,13 +308,13 @@ func (n UnixFSHAMTShard) Representation() ipld.Node {
 // Native map accessors
 
 func (n UnixFSHAMTShard) Iterator() *iter.UnixFSDir__Itr {
-	maxpadLen := MaxPadLength(n.data)
+	maxPadLen := maxPadLength(n.data)
 	listItr := &_UnixFSShardedDir__ListItr{
 		_substrate: n.FieldLinks().Iterator(),
-		maxpadlen:  maxpadLen,
+		maxPadLen:  maxPadLen,
 		nd:         n,
 	}
-	st := stringTransformer{maxpadLen: maxpadLen}
+	st := stringTransformer{maxPadLen: maxPadLen}
 	return iter.NewUnixFSDirIterator(listItr, st.transformNameNode)
 }
 
@@ -350,12 +350,12 @@ func (n UnixFSHAMTShard) hasChild(childIndex int) bool {
 }
 
 type stringTransformer struct {
-	maxpadLen int
+	maxPadLen int
 }
 
 func (s stringTransformer) transformNameNode(nd dagpb.String) dagpb.String {
 	nb := dagpb.Type.String.NewBuilder()
-	err := nb.AssignString(nd.String()[s.maxpadLen:])
+	err := nb.AssignString(nd.String()[s.maxPadLen:])
 	if err != nil {
 		return nil
 	}

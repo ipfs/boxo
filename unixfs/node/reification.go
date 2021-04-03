@@ -29,7 +29,7 @@ func Reify(lnkCtx ipld.LinkContext, maybePBNodeRoot ipld.Node, lsys *ipld.LinkSy
 	}
 	builder, ok := reifyFuncs[data.FieldDataType().Int()]
 	if !ok {
-		return nil, fmt.Errorf("No reification for this UnixFS node type")
+		return nil, fmt.Errorf("no reification for this UnixFS node type")
 	}
 	return builder(lnkCtx.Ctx, pbNode, data, lsys)
 }

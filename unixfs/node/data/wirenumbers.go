@@ -10,7 +10,7 @@ const (
 	Data_HashTypeWireNum                  protowire.Number = 5
 	Data_FanoutWireNum                    protowire.Number = 6
 	Data_ModeWireNum                      protowire.Number = 7
-	Data_MTimeWireNum                     protowire.Number = 8
+	Data_MtimeWireNum                     protowire.Number = 8
 	UnixTime_SecondsWireNum               protowire.Number = 1
 	UnixTime_FractionalNanosecondsWireNum protowire.Number = 2
 	Metadata_MimeTypeWireNum              protowire.Number = 1

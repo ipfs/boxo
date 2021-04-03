@@ -20,7 +20,7 @@ func (e ErrWrongNodeType) Error() string {
 	if !ok {
 		actualName = "Unknown Type"
 	}
-	return fmt.Sprintf("Incorrect Node Type: (UnixFSData) expected type: %s, actual type: %s", expectedName, actualName)
+	return fmt.Sprintf("incorrect Node Type: (UnixFSData) expected type: %s, actual type: %s", expectedName, actualName)
 }
 
 type ErrWrongWireType struct {
@@ -39,5 +39,5 @@ type ErrInvalidDataType struct {
 }
 
 func (e ErrInvalidDataType) Error() string {
-	return fmt.Sprintf("Type: %d is not valid", e.DataType)
+	return fmt.Sprintf("type: %d is not valid", e.DataType)
 }

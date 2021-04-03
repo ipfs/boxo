@@ -41,28 +41,29 @@ func (hb *hashBits) next(i int) int {
 		out := int(mkmask(i) & curb)
 		hb.consumed += i
 		return out
-	} else if i < leftb {
+	}
+	if i < leftb {
 		a := curb & mkmask(leftb) // mask out the high bits we don't want
 		b := a & ^mkmask(leftb-i) // mask out the low bits we don't want
 		c := b >> uint(leftb-i)   // shift whats left down
 		hb.consumed += i
 		return int(c)
-	} else {
-		out := int(mkmask(leftb) & curb)
-		out <<= uint(i - leftb)
-		hb.consumed += leftb
-		out += hb.next(i - leftb)
-		return out
 	}
+	out := int(mkmask(leftb) & curb)
+	out <<= uint(i - leftb)
+	hb.consumed += leftb
+	out += hb.next(i - leftb)
+	return out
+
 }
 
-func ValidateHAMTData(nd data.UnixFSData) error {
+func validateHAMTData(nd data.UnixFSData) error {
 	if nd.FieldDataType().Int() != data.Data_HAMTShard {
 		return data.ErrWrongNodeType{data.Data_HAMTShard, nd.FieldDataType().Int()}
 	}
 
 	if !nd.FieldHashType().Exists() || uint64(nd.FieldHashType().Must().Int()) != HashMurmur3 {
-		return ErrInvalidHashFunc
+		return ErrInvalidHashType
 	}
 
 	if !nd.FieldData().Exists() {
@@ -79,15 +80,15 @@ func ValidateHAMTData(nd data.UnixFSData) error {
 	return nil
 }
 
-func Log2Size(nd data.UnixFSData) int {
+func log2Size(nd data.UnixFSData) int {
 	return bits.TrailingZeros(uint(nd.FieldFanout().Must().Int()))
 }
 
-func MaxPadLength(nd data.UnixFSData) int {
+func maxPadLength(nd data.UnixFSData) int {
 	return len(fmt.Sprintf("%X", nd.FieldFanout().Must().Int()-1))
 }
 
-func BitField(nd data.UnixFSData) bitfield.Bitfield {
+func bitField(nd data.UnixFSData) bitfield.Bitfield {
 	bf := bitfield.NewBitfield(int(nd.FieldFanout().Must().Int()))
 	bf.SetBytes(nd.FieldData().Must().Bytes())
 	return bf
@@ -110,20 +111,20 @@ func hash(val []byte) []byte {
 	return h.Sum(nil)
 }
 
-func IsValueLink(pbLink dagpb.PBLink, maxpadlen int) (bool, error) {
+func isValueLink(pbLink dagpb.PBLink, maxPadLen int) (bool, error) {
 	if !pbLink.FieldName().Exists() {
 		return false, ErrMissingLinkName
 	}
 	name := pbLink.FieldName().Must().String()
-	if len(name) < maxpadlen {
+	if len(name) < maxPadLen {
 		return false, ErrInvalidLinkName{name}
 	}
-	if len(name) == maxpadlen {
+	if len(name) == maxPadLen {
 		return false, nil
 	}
 	return true, nil
 }
 
-func MatchKey(pbLink dagpb.PBLink, key string, maxpadlen int) bool {
-	return pbLink.FieldName().Must().String()[maxpadlen:] == key
+func MatchKey(pbLink dagpb.PBLink, key string, maxPadLen int) bool {
+	return pbLink.FieldName().Must().String()[maxPadLen:] == key
 }

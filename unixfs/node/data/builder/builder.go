@@ -16,7 +16,7 @@ import (
 //
 //   smallFileData, err := BuildUnixFS(func(b *Builder) {
 //      Data(b, []byte{"hello world"})
-//      MTime(b, func(tb TimeBuilder) {
+//      Mtime(b, func(tb TimeBuilder) {
 //				Time(tb, time.Now())
 //			})
 //   })
@@ -26,10 +26,10 @@ func BuildUnixFS(fn func(*Builder)) (data.UnixFSData, error) {
 		b := &Builder{MapAssembler: ma}
 		fn(b)
 		if !b.hasBlockSizes {
-			qp.MapEntry(ma, "BlockSizes", qp.List(0, func(ipld.ListAssembler) {}))
+			qp.MapEntry(ma, data.Field__BlockSizes, qp.List(0, func(ipld.ListAssembler) {}))
 		}
 		if !b.hasDataType {
-			qp.MapEntry(ma, "DataType", qp.Int(data.Data_File))
+			qp.MapEntry(ma, data.Field__DataType, qp.Int(data.Data_File))
 		}
 	})
 	if err != nil {
@@ -51,24 +51,24 @@ func DataType(b *Builder, dataType int64) {
 	if !ok {
 		panic(data.ErrInvalidDataType{dataType})
 	}
-	qp.MapEntry(b.MapAssembler, "DataType", qp.Int(dataType))
+	qp.MapEntry(b.MapAssembler, data.Field__DataType, qp.Int(dataType))
 	b.hasDataType = true
 }
 
 // Data sets the data member inside the UnixFS data
-func Data(b *Builder, data []byte) {
-	qp.MapEntry(b.MapAssembler, "Data", qp.Bytes(data))
+func Data(b *Builder, dataBytes []byte) {
+	qp.MapEntry(b.MapAssembler, data.Field__Data, qp.Bytes(dataBytes))
 }
 
 // FileSize sets the file size which should be the size of actual bytes underneath
 // this node for large files, w/o additional bytes to encode intermediate nodes
 func FileSize(b *Builder, fileSize uint64) {
-	qp.MapEntry(b.MapAssembler, "FileSize", qp.Int(int64(fileSize)))
+	qp.MapEntry(b.MapAssembler, data.Field__FileSize, qp.Int(int64(fileSize)))
 }
 
 // BlockSizes encodes block sizes for each child node
 func BlockSizes(b *Builder, blockSizes []uint64) {
-	qp.MapEntry(b.MapAssembler, "BlockSizes", qp.List(int64(len(blockSizes)), func(la ipld.ListAssembler) {
+	qp.MapEntry(b.MapAssembler, data.Field__BlockSizes, qp.List(int64(len(blockSizes)), func(la ipld.ListAssembler) {
 		for _, bs := range blockSizes {
 			qp.ListEntry(la, qp.Int(int64(bs)))
 		}
@@ -76,20 +76,20 @@ func BlockSizes(b *Builder, blockSizes []uint64) {
 	b.hasBlockSizes = true
 }
 
-// HashFunc sets the hash function for this node -- only applicable to HAMT
-func HashFunc(b *Builder, hashFunc uint64) {
-	qp.MapEntry(b.MapAssembler, "HashFunc", qp.Int(int64(hashFunc)))
+// HashType sets the hash function for this node -- only applicable to HAMT
+func HashType(b *Builder, hashType uint64) {
+	qp.MapEntry(b.MapAssembler, data.Field__HashType, qp.Int(int64(hashType)))
 }
 
 // Fanout sets the fanout in a HAMT tree
 func Fanout(b *Builder, fanout uint64) {
-	qp.MapEntry(b.MapAssembler, "Fanout", qp.Int(int64(fanout)))
+	qp.MapEntry(b.MapAssembler, data.Field__Fanout, qp.Int(int64(fanout)))
 }
 
 // Permissions sets file permissions for the Mode member of the UnixFS node
 func Permissions(b *Builder, mode int) {
 	mode = mode & 0xFFF
-	qp.MapEntry(b.MapAssembler, "Mode", qp.Int(int64(mode)))
+	qp.MapEntry(b.MapAssembler, data.Field__Mode, qp.Int(int64(mode)))
 }
 
 func parseModeString(modeString string) (uint64, error) {
@@ -107,13 +107,13 @@ func PermissionsString(b *Builder, modeString string) {
 		panic(err)
 	}
 	mode64 = mode64 & 0xFFF
-	qp.MapEntry(b.MapAssembler, "Mode", qp.Int(int64(mode64)))
+	qp.MapEntry(b.MapAssembler, data.Field__Mode, qp.Int(int64(mode64)))
 }
 
 // Mtime sets the modification time for this node using the time builder interface
 // and associated methods
 func Mtime(b *Builder, fn func(tb TimeBuilder)) {
-	qp.MapEntry(b.MapAssembler, "Mtime", qp.Map(-1, func(ma ipld.MapAssembler) {
+	qp.MapEntry(b.MapAssembler, data.Field__Mtime, qp.Map(-1, func(ma ipld.MapAssembler) {
 		fn(ma)
 	}))
 }
@@ -129,7 +129,7 @@ func Time(ma TimeBuilder, t time.Time) {
 
 // Seconds sets the seconds for a modification time
 func Seconds(ma TimeBuilder, seconds int64) {
-	qp.MapEntry(ma, "Seconds", qp.Int(seconds))
+	qp.MapEntry(ma, data.Field__Seconds, qp.Int(seconds))
 
 }
 
@@ -139,5 +139,5 @@ func FractionalNanoseconds(ma TimeBuilder, nanoseconds int32) {
 	if nanoseconds < 0 || nanoseconds > 999999999 {
 		panic(errors.New("mtime-nsecs must be within the range [0,999999999]"))
 	}
-	qp.MapEntry(ma, "FractionalNanoseconds", qp.Int(int64(nanoseconds)))
+	qp.MapEntry(ma, data.Field__Nanoseconds, qp.Int(int64(nanoseconds)))
 }

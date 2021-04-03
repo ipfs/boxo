@@ -14,14 +14,14 @@ func (u UnixFSData) Permissions() int {
 // DefaultPermissions gets the default permissions for a UnixFS object based on its
 // type
 func DefaultPermissions(u UnixFSData) int {
-	if u.FieldDataType().Int() == Data_File {
+	switch u.FieldDataType().Int() {
+	case Data_File:
 		return FilePermissionsDefault
-	}
-	if u.FieldDataType().Int() == Data_Directory {
+	case Data_Directory:
 		return DirectorPerimissionsDefault
-	}
-	if u.FieldDataType().Int() == Data_HAMTShard {
+	case Data_HAMTShard:
 		return HAMTShardPerimissionsDefault
+	default:
+		return 0
 	}
-	return 0
 }

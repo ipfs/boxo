@@ -49,7 +49,7 @@ func AppendEncodeUnixFSData(enc []byte, node UnixFSData) []byte {
 			size += protowire.SizeTag(2)
 			size += protowire.SizeFixed32()
 		}
-		enc = protowire.AppendTag(enc, Data_MTimeWireNum, protowire.BytesType)
+		enc = protowire.AppendTag(enc, Data_MtimeWireNum, protowire.BytesType)
 		enc = protowire.AppendVarint(enc, uint64(size))
 		enc = AppendEncodeUnixTime(enc, mtime)
 	}

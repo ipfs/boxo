@@ -26,10 +26,7 @@ func consumeUnixFSData(remaining []byte, ma ipld.MapAssembler) error {
 	var bsa ipld.NodeBuilder
 	var la ipld.ListAssembler
 	var packedBlockSizes bool
-	for {
-		if len(remaining) == 0 {
-			break
-		}
+	for len(remaining) != 0 {
 
 		fieldNum, wireType, n := protowire.ConsumeTag(remaining)
 		if n < 0 {
@@ -39,34 +36,34 @@ func consumeUnixFSData(remaining []byte, ma ipld.MapAssembler) error {
 		switch fieldNum {
 		case Data_DataTypeWireNum:
 			if wireType != protowire.VarintType {
-				return ErrWrongWireType{"UnixFSData", "DataType", protowire.VarintType, wireType}
+				return ErrWrongWireType{"UnixFSData", Field__DataType, protowire.VarintType, wireType}
 			}
 			dataType, n := protowire.ConsumeVarint(remaining)
 			if n < 0 {
 				return protowire.ParseError(n)
 			}
 			remaining = remaining[n:]
-			qp.MapEntry(ma, "DataType", qp.Int(int64(dataType)))
+			qp.MapEntry(ma, Field__DataType, qp.Int(int64(dataType)))
 		case Data_DataWireNum:
 			if wireType != protowire.BytesType {
-				return ErrWrongWireType{"UnixFSData", "Data", protowire.VarintType, wireType}
+				return ErrWrongWireType{"UnixFSData", Field__Data, protowire.VarintType, wireType}
 			}
 			data, n := protowire.ConsumeBytes(remaining)
 			if n < 0 {
 				return protowire.ParseError(n)
 			}
 			remaining = remaining[n:]
-			qp.MapEntry(ma, "Data", qp.Bytes(data))
+			qp.MapEntry(ma, Field__Data, qp.Bytes(data))
 		case Data_FileSizeWireNum:
 			if wireType != protowire.VarintType {
-				return ErrWrongWireType{"UnixFSData", "FileSize", protowire.VarintType, wireType}
+				return ErrWrongWireType{"UnixFSData", Field__FileSize, protowire.VarintType, wireType}
 			}
 			fileSize, n := protowire.ConsumeVarint(remaining)
 			if n < 0 {
 				return protowire.ParseError(n)
 			}
 			remaining = remaining[n:]
-			qp.MapEntry(ma, "FileSize", qp.Int(int64(fileSize)))
+			qp.MapEntry(ma, Field__FileSize, qp.Int(int64(fileSize)))
 		case Data_BlockSizesWireNum:
 			switch wireType {
 			case protowire.VarintType:
@@ -104,38 +101,38 @@ func consumeUnixFSData(remaining []byte, ma ipld.MapAssembler) error {
 						blockSizeCount++
 					}
 				}
-				qp.MapEntry(ma, "BlockSizes", qp.List(blockSizeCount, func(la ipld.ListAssembler) {
+				qp.MapEntry(ma, Field__BlockSizes, qp.List(blockSizeCount, func(la ipld.ListAssembler) {
 					err := consumeBlockSizes(blockSizesBytes, blockSizeCount, la)
 					if err != nil {
 						panic(err)
 					}
 				}))
 			default:
-				return ErrWrongWireType{"UnixFSData", "BlockSizes", protowire.VarintType, wireType}
+				return ErrWrongWireType{"UnixFSData", Field__BlockSizes, protowire.VarintType, wireType}
 			}
 		case Data_HashTypeWireNum:
 			if wireType != protowire.VarintType {
-				return ErrWrongWireType{"UnixFSData", "HashType", protowire.VarintType, wireType}
+				return ErrWrongWireType{"UnixFSData", Field__HashType, protowire.VarintType, wireType}
 			}
 			hashType, n := protowire.ConsumeVarint(remaining)
 			if n < 0 {
 				return protowire.ParseError(n)
 			}
 			remaining = remaining[n:]
-			qp.MapEntry(ma, "HashType", qp.Int(int64(hashType)))
+			qp.MapEntry(ma, Field__HashType, qp.Int(int64(hashType)))
 		case Data_FanoutWireNum:
 			if wireType != protowire.VarintType {
-				return ErrWrongWireType{"UnixFSData", "Fanout", protowire.VarintType, wireType}
+				return ErrWrongWireType{"UnixFSData", Field__Fanout, protowire.VarintType, wireType}
 			}
 			fanout, n := protowire.ConsumeVarint(remaining)
 			if n < 0 {
 				return protowire.ParseError(n)
 			}
 			remaining = remaining[n:]
-			qp.MapEntry(ma, "Fanout", qp.Int(int64(fanout)))
+			qp.MapEntry(ma, Field__Fanout, qp.Int(int64(fanout)))
 		case Data_ModeWireNum:
 			if wireType != protowire.VarintType {
-				return ErrWrongWireType{"UnixFSData", "Mode", protowire.VarintType, wireType}
+				return ErrWrongWireType{"UnixFSData", Field__Mode, protowire.VarintType, wireType}
 			}
 			mode, n := protowire.ConsumeVarint(remaining)
 			if n < 0 {
@@ -145,17 +142,17 @@ func consumeUnixFSData(remaining []byte, ma ipld.MapAssembler) error {
 				return errors.New("mode should be a 32 bit value")
 			}
 			remaining = remaining[n:]
-			qp.MapEntry(ma, "Mode", qp.Int(int64(mode)))
-		case Data_MTimeWireNum:
+			qp.MapEntry(ma, Field__Mode, qp.Int(int64(mode)))
+		case Data_MtimeWireNum:
 			if wireType != protowire.BytesType {
-				return ErrWrongWireType{"UnixFSData", "Mtime", protowire.BytesType, wireType}
+				return ErrWrongWireType{"UnixFSData", Field__Mtime, protowire.BytesType, wireType}
 			}
 			mTimeBytes, n := protowire.ConsumeBytes(remaining)
 			if n < 0 {
 				return protowire.ParseError(n)
 			}
 			remaining = remaining[n:]
-			qp.MapEntry(ma, "Mtime", qp.Map(-1, func(ma ipld.MapAssembler) {
+			qp.MapEntry(ma, Field__Mtime, qp.Map(-1, func(ma ipld.MapAssembler) {
 				err := consumeUnixTime(mTimeBytes, ma)
 				if err != nil {
 					panic(err)
@@ -171,14 +168,14 @@ func consumeUnixFSData(remaining []byte, ma ipld.MapAssembler) error {
 	}
 	if !packedBlockSizes {
 		if la == nil {
-			qp.MapEntry(ma, "BlockSizes", qp.List(0, func(ipld.ListAssembler) {}))
+			qp.MapEntry(ma, Field__BlockSizes, qp.List(0, func(ipld.ListAssembler) {}))
 		} else {
 			err := la.Finish()
 			if err != nil {
 				return err
 			}
 			nd := bsa.Build()
-			qp.MapEntry(ma, "BlockSizes", qp.Node(nd))
+			qp.MapEntry(ma, Field__BlockSizes, qp.Node(nd))
 		}
 	}
 	return nil
@@ -200,11 +197,7 @@ func consumeBlockSizes(remaining []byte, count int64, la ipld.ListAssembler) err
 }
 
 func consumeUnixTime(remaining []byte, ma ipld.MapAssembler) error {
-	for {
-		if len(remaining) == 0 {
-			break
-		}
-
+	for len(remaining) != 0 {
 		fieldNum, wireType, n := protowire.ConsumeTag(remaining)
 		if n < 0 {
 			return protowire.ParseError(n)
@@ -214,24 +207,24 @@ func consumeUnixTime(remaining []byte, ma ipld.MapAssembler) error {
 		switch fieldNum {
 		case UnixTime_SecondsWireNum:
 			if wireType != protowire.VarintType {
-				return ErrWrongWireType{"UnixTime", "Seconds", protowire.VarintType, wireType}
+				return ErrWrongWireType{"UnixTime", Field__Seconds, protowire.VarintType, wireType}
 			}
 			seconds, n := protowire.ConsumeVarint(remaining)
 			if n < 0 {
 				return protowire.ParseError(n)
 			}
 			remaining = remaining[n:]
-			qp.MapEntry(ma, "Seconds", qp.Int(int64(seconds)))
+			qp.MapEntry(ma, Field__Seconds, qp.Int(int64(seconds)))
 		case UnixTime_FractionalNanosecondsWireNum:
 			if wireType != protowire.Fixed32Type {
-				return ErrWrongWireType{"UnixTime", "FractionalNanoseconds", protowire.Fixed32Type, wireType}
+				return ErrWrongWireType{"UnixTime", Field__Nanoseconds, protowire.Fixed32Type, wireType}
 			}
 			fractionalNanoseconds, n := protowire.ConsumeFixed32(remaining)
 			if n < 0 {
 				return protowire.ParseError(n)
 			}
 			remaining = remaining[n:]
-			qp.MapEntry(ma, "FractionalNanoseconds", qp.Int(int64(fractionalNanoseconds)))
+			qp.MapEntry(ma, Field__Nanoseconds, qp.Int(int64(fractionalNanoseconds)))
 		default:
 			n := protowire.ConsumeFieldValue(fieldNum, wireType, remaining)
 			if n < 0 {
@@ -269,10 +262,7 @@ func DecodeUnixFSMetadata(src []byte) (UnixFSMetadata, error) {
 }
 
 func consumeUnixFSMetadata(remaining []byte, ma ipld.MapAssembler) error {
-	for {
-		if len(remaining) == 0 {
-			break
-		}
+	for len(remaining) != 0 {
 
 		fieldNum, wireType, n := protowire.ConsumeTag(remaining)
 		if n < 0 {
@@ -283,14 +273,14 @@ func consumeUnixFSMetadata(remaining []byte, ma ipld.MapAssembler) error {
 		switch fieldNum {
 		case Metadata_MimeTypeWireNum:
 			if wireType != protowire.BytesType {
-				return ErrWrongWireType{"UnixFSMetadata", "MimeType", protowire.VarintType, wireType}
+				return ErrWrongWireType{"UnixFSMetadata", Field__MimeType, protowire.VarintType, wireType}
 			}
 			mimeTypeBytes, n := protowire.ConsumeBytes(remaining)
 			if n < 0 {
 				return protowire.ParseError(n)
 			}
 			remaining = remaining[n:]
-			qp.MapEntry(ma, "MimeType", qp.String(string(mimeTypeBytes)))
+			qp.MapEntry(ma, Field__MimeType, qp.String(string(mimeTypeBytes)))
 		default:
 			n := protowire.ConsumeFieldValue(fieldNum, wireType, remaining)
 			if n < 0 {
