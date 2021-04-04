@@ -1,30 +1,50 @@
 package unixfsnode
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/ipfs/go-unixfsnode/data"
+	"github.com/ipfs/go-unixfsnode/directory"
+	"github.com/ipfs/go-unixfsnode/hamt"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 )
 
 // Reify looks at an ipld Node and tries to interpret it as a UnixFSNode
 // if successful, it returns the UnixFSNode
-func Reify(maybePBNodeRoot ipld.Node) (ipld.Node, error) {
-	if pbNode, ok := maybePBNodeRoot.(dagpb.PBNode); ok {
-		return &_UnixFSNode{_substrate: pbNode}, nil
+func Reify(lnkCtx ipld.LinkContext, maybePBNodeRoot ipld.Node, lsys *ipld.LinkSystem) (ipld.Node, error) {
+	pbNode, ok := maybePBNodeRoot.(dagpb.PBNode)
+	if !ok {
+		return maybePBNodeRoot, nil
 	}
-
-	// Shortcut didn't work.  Process via the data model.
-	//  The AssignNode method on the pb node already contains all the logic necessary for this, so we use that.
-	nb := dagpb.Type.PBNode.NewBuilder()
-	if err := nb.AssignNode(maybePBNodeRoot); err != nil {
-		return nil, fmt.Errorf("unixfsnode.Reify failed: data does not match expected shape for Protobuf Node: %w", err)
+	if !pbNode.FieldData().Exists() {
+		// no data field, therefore, not UnixFS
+		return defaultReifier(lnkCtx.Ctx, pbNode, lsys)
 	}
-	return &_UnixFSNode{nb.Build().(dagpb.PBNode)}, nil
-
+	data, err := data.DecodeUnixFSData(pbNode.Data.Must().Bytes())
+	if err != nil {
+		// we could not decode the UnixFS data, therefore, not UnixFS
+		return defaultReifier(lnkCtx.Ctx, pbNode, lsys)
+	}
+	builder, ok := reifyFuncs[data.FieldDataType().Int()]
+	if !ok {
+		return nil, fmt.Errorf("no reification for this UnixFS node type")
+	}
+	return builder(lnkCtx.Ctx, pbNode, data, lsys)
 }
 
-// Substrate returns the underlying PBNode -- note: only the substrate will encode successfully to protobuf if writing
-func (n UnixFSNode) Substrate() ipld.Node {
-	return n._substrate
+type reifyTypeFunc func(context.Context, dagpb.PBNode, data.UnixFSData, *ipld.LinkSystem) (ipld.Node, error)
+
+var reifyFuncs = map[int64]reifyTypeFunc{
+	data.Data_Directory: directory.NewUnixFSBasicDir,
+	data.Data_HAMTShard: hamt.NewUnixFSHAMTShard,
 }
+
+// treat non-unixFS nodes like directories -- allow them to lookup by link
+// TODO: Make this a separate node as directors gain more functionality
+func defaultReifier(_ context.Context, substrate dagpb.PBNode, _ *ipld.LinkSystem) (ipld.Node, error) {
+	return &_PathedPBNode{_substrate: substrate}, nil
+}
+
+var _ ipld.NodeReifier = Reify
