@@ -37,6 +37,10 @@ func Reify(lnkCtx ipld.LinkContext, maybePBNodeRoot ipld.Node, lsys *ipld.LinkSy
 type reifyTypeFunc func(context.Context, dagpb.PBNode, data.UnixFSData, *ipld.LinkSystem) (ipld.Node, error)
 
 var reifyFuncs = map[int64]reifyTypeFunc{
+	data.Data_File:      defaultUnixFSReifier,
+	data.Data_Metadata:  defaultUnixFSReifier,
+	data.Data_Raw:       defaultUnixFSReifier,
+	data.Data_Symlink:   defaultUnixFSReifier,
 	data.Data_Directory: directory.NewUnixFSBasicDir,
 	data.Data_HAMTShard: hamt.NewUnixFSHAMTShard,
 }
@@ -45,6 +49,10 @@ var reifyFuncs = map[int64]reifyTypeFunc{
 // TODO: Make this a separate node as directors gain more functionality
 func defaultReifier(_ context.Context, substrate dagpb.PBNode, _ *ipld.LinkSystem) (ipld.Node, error) {
 	return &_PathedPBNode{_substrate: substrate}, nil
+}
+
+func defaultUnixFSReifier(ctx context.Context, substrate dagpb.PBNode, _ data.UnixFSData, ls *ipld.LinkSystem) (ipld.Node, error) {
+	return defaultReifier(ctx, substrate, ls)
 }
 
 var _ ipld.NodeReifier = Reify
