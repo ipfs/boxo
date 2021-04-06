@@ -2,6 +2,7 @@ package namesys
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -36,6 +37,14 @@ func resolve(ctx context.Context, r resolver, name string, options opts.ResolveO
 		}
 	}
 
+	if err == ErrResolveFailed {
+		i := len(name) - 1
+		for i >= 0 && name[i] != '/' {
+			i--
+		}
+		// Wrap error so that it can be tested if it is a ErrResolveFailed
+		err = fmt.Errorf("%w: %s is missing DNSLink record (https://docs.ipfs.io/concepts/dnslink/)", ErrResolveFailed, name[i+1:])
+	}
 	return p, err
 }
 

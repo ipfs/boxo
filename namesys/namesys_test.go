@@ -2,6 +2,7 @@ package namesys
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ type mockResolver struct {
 func testResolution(t *testing.T, resolver Resolver, name string, depth uint, expected string, expError error) {
 	t.Helper()
 	p, err := resolver.Resolve(context.Background(), name, opts.Depth(depth))
-	if err != expError {
+	if !errors.Is(err, expError) {
 		t.Fatal(fmt.Errorf(
 			"expected %s with a depth of %d to have a '%s' error, but got '%s'",
 			name, depth, expError, err))
