@@ -40,7 +40,7 @@ cid := (your cid to provide here)
 
 q := queue.NewQueue(context.Background(), "example", dstore)
 
-reprov := simple.NewReprovider(context.Background(), time.Hour * 12, rsys, simple.NewBlockstoreProvider)
+reprov := simple.NewReprovider(context.Background(), time.Hour * 12, rsys, simple.NewBlockstoreProvider(dstore))
 prov := simple.NewProvider(context.Background(), q, rsys)
 sys := provider.NewSystem(prov, reprov)
 
