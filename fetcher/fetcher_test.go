@@ -171,11 +171,10 @@ func TestFetchIPLDPath(t *testing.T) {
 	for i := len(path) - 1; i >= 0; i-- {
 		spec = explorePath(path[i], spec)
 	}
-	sel, err := spec.Selector()
-	require.NoError(t, err)
+	sel := spec.Node()
 
 	results := []fetcher.FetchResult{}
-	err = fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult) error {
+	err := fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult) error {
 		results = append(results, res)
 		return nil
 	})
@@ -241,11 +240,10 @@ func TestHelpers(t *testing.T) {
 	t.Run("BlockMatching retrieves nodes matching selector", func(t *testing.T) {
 		// limit recursion depth to 2 nodes and expect to get only 2 blocks (4 nodes)
 		ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype__Any{})
-		sel, err := ssb.ExploreRecursive(selector.RecursionLimitDepth(2), ssb.ExploreUnion(
+		sel := ssb.ExploreRecursive(selector.RecursionLimitDepth(2), ssb.ExploreUnion(
 			ssb.Matcher(),
 			ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
-		)).Selector()
-		require.NoError(t, err)
+		)).Node()
 
 		fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
 		session := fetcherConfig.NewSession(context.Background())

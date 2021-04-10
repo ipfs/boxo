@@ -31,7 +31,7 @@ type Fetcher interface {
 	// block boundaries. Each matched node is passed as FetchResult to the callback. Errors returned from callback will
 	// halt the traversal. The sequence of events is: NodeMatching begins, the callback is called zero or more times
 	// with a FetchResult, then NodeMatching returns.
-	NodeMatching(context.Context, ipld.Node, selector.Selector, FetchCallback) error
+	NodeMatching(context.Context, ipld.Node, ipld.Node, FetchCallback) error
 
 	// BlockOfType fetches a node graph of the provided type corresponding to single block by link.
 	BlockOfType(context.Context, ipld.Link, ipld.NodePrototype) (ipld.Node, error)
@@ -41,7 +41,7 @@ type Fetcher interface {
 	// a FetchResult to the callback. Errors returned from callback will halt the traversal.
 	// The sequence of events is: BlockMatchingOfType begins, the callback is called zero or more times with a
 	// FetchResult, then BlockMatchingOfType returns.
-	BlockMatchingOfType(context.Context, ipld.Link, selector.Selector, ipld.NodePrototype, FetchCallback) error
+	BlockMatchingOfType(context.Context, ipld.Link, ipld.Node, ipld.NodePrototype, FetchCallback) error
 
 	// Uses the given link to pick a prototype to build the linked node.
 	PrototypeFromLink(link ipld.Link) (ipld.NodePrototype, error)
@@ -90,8 +90,12 @@ func (f *fetcherSession) BlockOfType(ctx context.Context, link ipld.Link, ptype 
 	return f.linkSystem.Load(ipld.LinkContext{}, link, ptype)
 }
 
-func (f *fetcherSession) nodeMatching(ctx context.Context, initialProgress traversal.Progress, node ipld.Node, match selector.Selector, cb FetchCallback) error {
-	return initialProgress.WalkMatching(node, match, func(prog traversal.Progress, n ipld.Node) error {
+func (f *fetcherSession) nodeMatching(ctx context.Context, initialProgress traversal.Progress, node ipld.Node, match ipld.Node, cb FetchCallback) error {
+	matchSelector, err := selector.ParseSelector(match)
+	if err != nil {
+		return err
+	}
+	return initialProgress.WalkMatching(node, matchSelector, func(prog traversal.Progress, n ipld.Node) error {
 		return cb(FetchResult{
 			Node:          n,
 			Path:          prog.Path,
@@ -110,11 +114,11 @@ func (f *fetcherSession) blankProgress(ctx context.Context) traversal.Progress {
 	}
 }
 
-func (f *fetcherSession) NodeMatching(ctx context.Context, node ipld.Node, match selector.Selector, cb FetchCallback) error {
+func (f *fetcherSession) NodeMatching(ctx context.Context, node ipld.Node, match ipld.Node, cb FetchCallback) error {
 	return f.nodeMatching(ctx, f.blankProgress(ctx), node, match, cb)
 }
 
-func (f *fetcherSession) BlockMatchingOfType(ctx context.Context, root ipld.Link, match selector.Selector,
+func (f *fetcherSession) BlockMatchingOfType(ctx context.Context, root ipld.Link, match ipld.Node,
 	ptype ipld.NodePrototype, cb FetchCallback) error {
 
 	// retrieve first node
@@ -143,7 +147,7 @@ func Block(ctx context.Context, f Fetcher, link ipld.Link) (ipld.Node, error) {
 
 // BlockMatching traverses a schemaless node graph starting with the given link using the given selector and possibly crossing
 // block boundaries. Each matched node is sent to the FetchResult channel.
-func BlockMatching(ctx context.Context, f Fetcher, root ipld.Link, match selector.Selector, cb FetchCallback) error {
+func BlockMatching(ctx context.Context, f Fetcher, root ipld.Link, match ipld.Node, cb FetchCallback) error {
 	prototype, err := f.PrototypeFromLink(root)
 	if err != nil {
 		return err
@@ -165,13 +169,10 @@ func BlockAll(ctx context.Context, f Fetcher, root ipld.Link, cb FetchCallback) 
 // and send over the results channel.
 func BlockAllOfType(ctx context.Context, f Fetcher, root ipld.Link, ptype ipld.NodePrototype, cb FetchCallback) error {
 	ssb := builder.NewSelectorSpecBuilder(ptype)
-	allSelector, err := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreUnion(
+	allSelector := ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreUnion(
 		ssb.Matcher(),
 		ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
-	)).Selector()
-	if err != nil {
-		return err
-	}
+	)).Node()
 	return f.BlockMatchingOfType(ctx, root, allSelector, ptype, cb)
 }
 
