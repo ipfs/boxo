@@ -8,8 +8,8 @@ import (
 	testinstance "github.com/ipfs/go-bitswap/testinstance"
 	tn "github.com/ipfs/go-bitswap/testnet"
 	"github.com/ipfs/go-blockservice"
-	"github.com/ipfs/go-fetcher"
 	"github.com/ipfs/go-fetcher/helpers"
+	bsfetcher "github.com/ipfs/go-fetcher/impl/blockservice"
 	"github.com/ipfs/go-fetcher/testutil"
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
@@ -62,13 +62,13 @@ func TestFetchGraphToBlocks(t *testing.T) {
 	defer wantsBlock.Exchange.Close()
 
 	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
-	fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+	fetcherConfig := bsfetcher.NewFetcherConfig(wantsGetter)
 	session := fetcherConfig.NewSession(context.Background())
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	results := []helpers.BlockResult{}
-	err = fetcher.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()}, helpers.OnBlocks(func(res helpers.BlockResult) error {
+	err = helpers.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()}, helpers.OnBlocks(func(res helpers.BlockResult) error {
 		results = append(results, res)
 		return nil
 	}))
@@ -113,13 +113,13 @@ func TestFetchGraphToUniqueBlocks(t *testing.T) {
 	defer wantsBlock.Exchange.Close()
 
 	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
-	fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+	fetcherConfig := bsfetcher.NewFetcherConfig(wantsGetter)
 	session := fetcherConfig.NewSession(context.Background())
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	results := []helpers.BlockResult{}
-	err = fetcher.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()}, helpers.OnUniqueBlocks(func(res helpers.BlockResult) error {
+	err = helpers.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()}, helpers.OnUniqueBlocks(func(res helpers.BlockResult) error {
 		results = append(results, res)
 		return nil
 	}))

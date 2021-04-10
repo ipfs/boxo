@@ -1,4 +1,4 @@
-package fetcher_test
+package bsfetcher_test
 
 import (
 	"context"
@@ -13,6 +13,9 @@ import (
 	tn "github.com/ipfs/go-bitswap/testnet"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-blockservice"
+	"github.com/ipfs/go-fetcher"
+	"github.com/ipfs/go-fetcher/helpers"
+	bsfetcher "github.com/ipfs/go-fetcher/impl/blockservice"
 	"github.com/ipfs/go-fetcher/testutil"
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
@@ -22,8 +25,6 @@ import (
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/ipfs/go-fetcher"
 )
 
 func TestFetchIPLDPrimeNode(t *testing.T) {
@@ -50,13 +51,13 @@ func TestFetchIPLDPrimeNode(t *testing.T) {
 	defer wantsBlock.Exchange.Close()
 
 	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
-	fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+	fetcherConfig := bsfetcher.NewFetcherConfig(wantsGetter)
 	session := fetcherConfig.NewSession(context.Background())
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	retrievedNode, err := fetcher.Block(ctx, session, cidlink.Link{Cid: block.Cid()})
+	retrievedNode, err := helpers.Block(ctx, session, cidlink.Link{Cid: block.Cid()})
 	require.NoError(t, err)
 	assert.Equal(t, node, retrievedNode)
 }
@@ -102,13 +103,13 @@ func TestFetchIPLDGraph(t *testing.T) {
 	defer wantsBlock.Exchange.Close()
 
 	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
-	fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+	fetcherConfig := bsfetcher.NewFetcherConfig(wantsGetter)
 	session := fetcherConfig.NewSession(context.Background())
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	results := []fetcher.FetchResult{}
-	err = fetcher.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()}, func(res fetcher.FetchResult) error {
+	err = helpers.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()}, func(res fetcher.FetchResult) error {
 		results = append(results, res)
 		return nil
 	})
@@ -157,7 +158,7 @@ func TestFetchIPLDPath(t *testing.T) {
 	defer wantsBlock.Exchange.Close()
 
 	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
-	fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+	fetcherConfig := bsfetcher.NewFetcherConfig(wantsGetter)
 	session := fetcherConfig.NewSession(context.Background())
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -174,7 +175,7 @@ func TestFetchIPLDPath(t *testing.T) {
 	sel := spec.Node()
 
 	results := []fetcher.FetchResult{}
-	err := fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult) error {
+	err := helpers.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult) error {
 		results = append(results, res)
 		return nil
 	})
@@ -226,12 +227,12 @@ func TestHelpers(t *testing.T) {
 	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
 
 	t.Run("Block retrieves node", func(t *testing.T) {
-		fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+		fetcherConfig := bsfetcher.NewFetcherConfig(wantsGetter)
 		session := fetcherConfig.NewSession(context.Background())
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		node, err := fetcher.Block(ctx, session, cidlink.Link{Cid: block1.Cid()})
+		node, err := helpers.Block(ctx, session, cidlink.Link{Cid: block1.Cid()})
 		require.NoError(t, err)
 
 		assert.Equal(t, node, node1)
@@ -245,13 +246,13 @@ func TestHelpers(t *testing.T) {
 			ssb.ExploreAll(ssb.ExploreRecursiveEdge()),
 		)).Node()
 
-		fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+		fetcherConfig := bsfetcher.NewFetcherConfig(wantsGetter)
 		session := fetcherConfig.NewSession(context.Background())
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
 		results := []fetcher.FetchResult{}
-		err = fetcher.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult) error {
+		err = helpers.BlockMatching(ctx, session, cidlink.Link{Cid: block1.Cid()}, sel, func(res fetcher.FetchResult) error {
 			results = append(results, res)
 			return nil
 		})
@@ -262,13 +263,13 @@ func TestHelpers(t *testing.T) {
 
 	t.Run("BlockAllOfType retrieves all nodes with a schema", func(t *testing.T) {
 		// limit recursion depth to 2 nodes and expect to get only 2 blocks (4 nodes)
-		fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+		fetcherConfig := bsfetcher.NewFetcherConfig(wantsGetter)
 		session := fetcherConfig.NewSession(context.Background())
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
 		results := []fetcher.FetchResult{}
-		err = fetcher.BlockAllOfType(ctx, session, cidlink.Link{Cid: block1.Cid()}, basicnode.Prototype__Any{}, func(res fetcher.FetchResult) error {
+		err = helpers.BlockAllOfType(ctx, session, cidlink.Link{Cid: block1.Cid()}, basicnode.Prototype__Any{}, func(res fetcher.FetchResult) error {
 			results = append(results, res)
 			return nil
 		})
@@ -339,7 +340,7 @@ func TestNodeReification(t *testing.T) {
 	defer wantsBlock.Exchange.Close()
 
 	wantsGetter := blockservice.New(wantsBlock.Blockstore(), wantsBlock.Exchange)
-	fetcherConfig := fetcher.NewFetcherConfig(wantsGetter)
+	fetcherConfig := bsfetcher.NewFetcherConfig(wantsGetter)
 	nodeReifier := func(lnkCtx ipld.LinkContext, nd ipld.Node, ls *ipld.LinkSystem) (ipld.Node, error) {
 		return &selfLoader{Node: nd, ctx: lnkCtx.Ctx, ls: ls}, nil
 	}
@@ -348,7 +349,7 @@ func TestNodeReification(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	retrievedNode, err := fetcher.Block(ctx, session, cidlink.Link{Cid: block2.Cid()})
+	retrievedNode, err := helpers.Block(ctx, session, cidlink.Link{Cid: block2.Cid()})
 	require.NoError(t, err)
 
 	// instead of getting links back, we automatically load the nodes
