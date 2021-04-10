@@ -225,6 +225,11 @@ func Load(path string, noPersist bool) (*Carbs, error) {
 	return &obj, nil
 }
 
+// Of opens a carbs data store from an existing reader of the base data and index
+func Of(backing io.ReaderAt, index Index) *Carbs {
+	return &Carbs{backing, index}
+}
+
 // GenerateIndex provides a low-level interface to create an index over a
 // reader to a car stream.
 func GenerateIndex(store io.ReaderAt, size int64, codec IndexCodec, verbose bool) (Index, error) {
