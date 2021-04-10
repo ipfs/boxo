@@ -51,6 +51,9 @@ func (fc FetcherConfig) NewSession(ctx context.Context) fetcher.Fetcher {
 	return &fetcherSession{linkSystem: ls, protoChooser: protoChooser}
 }
 
+// interface check
+var _ fetcher.Factory = FetcherConfig{}
+
 // BlockOfType fetches a node graph of the provided type corresponding to single block by link.
 func (f *fetcherSession) BlockOfType(ctx context.Context, link ipld.Link, ptype ipld.NodePrototype) (ipld.Node, error) {
 	return f.linkSystem.Load(ipld.LinkContext{}, link, ptype)

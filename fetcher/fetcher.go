@@ -39,3 +39,8 @@ type FetchResult struct {
 
 // FetchCallback is called for each node traversed during a fetch
 type FetchCallback func(result FetchResult) error
+
+// Factory is anything that can create new sessions of the fetcher
+type Factory interface {
+	NewSession(ctx context.Context) Fetcher
+}
