@@ -1,6 +1,8 @@
 package carbon
 
 import (
+	"os"
+
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
@@ -45,6 +47,12 @@ func (c *carbonFD) Finish() error {
 	fi, err := c.idx.Flatten()
 	if err != nil {
 		return err
+	}
+	fd, ok := c.writeHandle.Writer.(*os.File)
+	if ok {
+		if err := fd.Close(); err != nil {
+			return err
+		}
 	}
 	return carbs.Save(fi, c.path)
 }
