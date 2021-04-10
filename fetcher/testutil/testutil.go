@@ -8,6 +8,8 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
+
+	// used to make sure we have dagcbor encoding
 	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
@@ -16,7 +18,7 @@ import (
 func EncodeBlock(n ipld.Node) (blocks.Block, ipld.Node, ipld.Link) {
 	ls := cidlink.DefaultLinkSystem()
 	var b blocks.Block
-	lb := cidlink.LinkPrototype{cid.Prefix{
+	lb := cidlink.LinkPrototype{Prefix: cid.Prefix{
 		Version:  1,
 		Codec:    0x71,
 		MhType:   0x17,
