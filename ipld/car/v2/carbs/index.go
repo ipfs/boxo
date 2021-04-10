@@ -35,7 +35,7 @@ var IndexAtlas = map[IndexCodec]IndexCls{
 // Record is a pre-processed record of a car item and location.
 type Record struct {
 	cid.Cid
-	idx uint64
+	Idx uint64
 }
 
 // Index provides an interface for figuring out where in the car a given cid begins

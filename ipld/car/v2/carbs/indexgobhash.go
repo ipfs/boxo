@@ -33,7 +33,7 @@ func (m *mapGobIndex) Codec() IndexCodec {
 
 func (m *mapGobIndex) Load(rs []Record) error {
 	for _, r := range rs {
-		(*m)[r.Cid] = r.idx
+		(*m)[r.Cid] = r.Idx
 	}
 	return nil
 }

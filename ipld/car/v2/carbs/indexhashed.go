@@ -32,7 +32,7 @@ func (m *mapIndex) Codec() IndexCodec {
 
 func (m *mapIndex) Load(rs []Record) error {
 	for _, r := range rs {
-		(*m)[r.Cid] = r.idx
+		(*m)[r.Cid] = r.Idx
 	}
 	return nil
 }

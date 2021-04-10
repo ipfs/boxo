@@ -165,7 +165,7 @@ func (m *multiWidthIndex) Load(items []Record) error {
 			idxs[len(digest)] = make([]digestRecord, 0)
 			idx = idxs[len(digest)]
 		}
-		idxs[len(digest)] = append(idx, digestRecord{digest, item.idx})
+		idxs[len(digest)] = append(idx, digestRecord{digest, item.Idx})
 	}
 
 	// Sort each list. then write to compact form.
