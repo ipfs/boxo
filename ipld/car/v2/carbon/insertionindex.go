@@ -35,7 +35,7 @@ func (r record) Less(than llrb.Item) bool {
 	if !ok {
 		return false
 	}
-	return bytes.Compare(r.digest, other.digest) <= 0
+	return bytes.Compare(r.digest, other.digest) < 0
 }
 
 func mkRecord(r carbs.Record) record {

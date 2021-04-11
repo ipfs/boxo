@@ -2,6 +2,7 @@ package carbon
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
 	"github.com/ipfs/go-cid"
@@ -30,27 +31,28 @@ func New(path string) (Carbon, error) {
 
 // NewWithRoots creates a new Carbon blockstore with a provided set of root cids as the car roots
 func NewWithRoots(path string, roots []cid.Cid) (Carbon, error) {
-	wfd, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND, 0666)
+	wfd, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("couldn't create backing car: %w", err)
 	}
 	rfd, err := os.OpenFile(path, os.O_RDONLY, 0666)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not re-open read handle: %w", err)
 	}
 
 	hdr := car.CarHeader{
 		Roots:   roots,
 		Version: 1,
 	}
-	if err := car.WriteHeader(&hdr, wfd); err != nil {
-		return nil, err
+	writer := poswriter{wfd, 0}
+	if err := car.WriteHeader(&hdr, &writer); err != nil {
+		return nil, fmt.Errorf("couldn't write car header: %w", err)
 	}
 
 	idx := insertionIndex{}
 	f := carbonFD{
 		path,
-		&poswriter{wfd, 0},
+		&writer,
 		*carbs.Of(rfd, &idx),
 		&idx,
 	}
