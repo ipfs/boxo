@@ -29,6 +29,7 @@ import (
 	ci "github.com/libp2p/go-libp2p-core/crypto"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	routing "github.com/libp2p/go-libp2p-core/routing"
+	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
 // mpns (a multi-protocol NameSystem) implements generic IPFS naming.
@@ -49,7 +50,7 @@ type mpns struct {
 }
 
 // NewNameSystem will construct the IPFS naming system based on Routing
-func NewNameSystem(r routing.ValueStore, ds ds.Datastore, cachesize int) NameSystem {
+func NewNameSystem(r routing.ValueStore, ds ds.Datastore, rslv madns.BasicResolver, cachesize int) NameSystem {
 	var (
 		cache     *lru.Cache
 		staticMap map[string]path.Path
@@ -73,7 +74,7 @@ func NewNameSystem(r routing.ValueStore, ds ds.Datastore, cachesize int) NameSys
 	}
 
 	return &mpns{
-		dnsResolver:      NewDNSResolver(),
+		dnsResolver:      NewDNSResolver(rslv),
 		proquintResolver: new(ProquintResolver),
 		ipnsResolver:     NewIpnsResolver(r),
 		ipnsPublisher:    NewIpnsPublisher(r, ds),
