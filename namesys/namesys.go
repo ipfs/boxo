@@ -74,7 +74,7 @@ func NewNameSystem(r routing.ValueStore, ds ds.Datastore, rslv madns.BasicResolv
 	}
 
 	return &mpns{
-		dnsResolver:      NewDNSResolver(rslv),
+		dnsResolver:      NewDNSResolver(rslv.LookupTXT),
 		proquintResolver: new(ProquintResolver),
 		ipnsResolver:     NewIpnsResolver(r),
 		ipnsPublisher:    NewIpnsPublisher(r, ds),

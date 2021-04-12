@@ -11,7 +11,6 @@ import (
 	path "github.com/ipfs/go-path"
 	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 	isd "github.com/jbenet/go-is-domain"
-	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
 const ethTLD = "eth"
@@ -28,8 +27,8 @@ type DNSResolver struct {
 }
 
 // NewDNSResolver constructs a name resolver using DNS TXT records.
-func NewDNSResolver(rslv madns.BasicResolver) *DNSResolver {
-	return &DNSResolver{lookupTXT: rslv.LookupTXT}
+func NewDNSResolver(lookup LookupTXTFunc) *DNSResolver {
+	return &DNSResolver{lookupTXT: lookup}
 }
 
 // Resolve implements Resolver.
