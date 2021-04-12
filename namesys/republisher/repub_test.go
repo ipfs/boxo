@@ -22,6 +22,8 @@ import (
 	ipns_pb "github.com/ipfs/go-ipns/pb"
 	path "github.com/ipfs/go-path"
 
+	madns "github.com/multiformats/go-multiaddr-dns"
+
 	keystore "github.com/ipfs/go-ipfs-keystore"
 	namesys "github.com/ipfs/go-namesys"
 	. "github.com/ipfs/go-namesys/republisher"
@@ -74,7 +76,7 @@ func TestRepublish(t *testing.T) {
 	var nodes []*mockNode
 	for i := 0; i < 10; i++ {
 		n := getMockNode(t, ctx)
-		ns := namesys.NewNameSystem(n.dht, n.store, 0)
+		ns := namesys.NewNameSystem(n.dht, n.store, madns.DefaultResolver, 0)
 
 		nsystems = append(nsystems, ns)
 		nodes = append(nodes, n)
@@ -153,7 +155,7 @@ func TestLongEOLRepublish(t *testing.T) {
 	var nodes []*mockNode
 	for i := 0; i < 10; i++ {
 		n := getMockNode(t, ctx)
-		ns := namesys.NewNameSystem(n.dht, n.store, 0)
+		ns := namesys.NewNameSystem(n.dht, n.store, madns.DefaultResolver, 0)
 
 		nsystems = append(nsystems, ns)
 		nodes = append(nodes, n)
