@@ -13,9 +13,6 @@ import (
 	isd "github.com/jbenet/go-is-domain"
 )
 
-const ethTLD = "eth"
-const linkTLD = "domains"
-
 // LookupTXTFunc is a generic type for a function that lookups TXT record values.
 type LookupTXTFunc func(ctx context.Context, name string) (txt []string, err error)
 
@@ -66,12 +63,6 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 		fqdn = domain
 	} else {
 		fqdn = domain + "."
-	}
-
-	if strings.HasSuffix(fqdn, "."+ethTLD+".") {
-		// This is an ENS name.  As we're resolving via an arbitrary DNS server
-		// that may not know about .eth we need to add our link domain suffix.
-		fqdn += linkTLD + "."
 	}
 
 	rootChan := make(chan lookupRes, 1)
