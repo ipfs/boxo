@@ -23,6 +23,7 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	path "github.com/ipfs/go-path"
 	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 	isd "github.com/jbenet/go-is-domain"
@@ -42,6 +43,8 @@ import (
 // It can only publish to: (a) IPFS routing naming.
 //
 type mpns struct {
+	ds ds.Datastore
+
 	dnsResolver, proquintResolver, ipnsResolver resolver
 	ipnsPublisher                               Publisher
 
@@ -49,15 +52,45 @@ type mpns struct {
 	cache     *lru.Cache
 }
 
-// NewNameSystem will construct the IPFS naming system based on Routing
-func NewNameSystem(r routing.ValueStore, ds ds.Datastore, rslv madns.BasicResolver, cachesize int) NameSystem {
-	var (
-		cache     *lru.Cache
-		staticMap map[string]path.Path
-	)
-	if cachesize > 0 {
-		cache, _ = lru.New(cachesize)
+type Option func(*mpns) error
+
+// WithCache is an option that instructs the name system to use a (LRU) cache of the given size.
+func WithCache(size int) Option {
+	return func(ns *mpns) error {
+		if size <= 0 {
+			return fmt.Errorf("invalid cache size %d; must be > 0", size)
+		}
+
+		cache, err := lru.New(size)
+		if err != nil {
+			return err
+		}
+
+		ns.cache = cache
+		return nil
 	}
+}
+
+// WithDNSResolver is an option that supplies a custom DNS resolver to use instead of the system
+// default.
+func WithDNSResolver(rslv madns.BasicResolver) Option {
+	return func(ns *mpns) error {
+		ns.dnsResolver = NewDNSResolver(rslv.LookupTXT)
+		return nil
+	}
+}
+
+// WithDatastore is an option that supplies a datastore to use instead of an in-memory map datastore.
+func WithDatastore(ds ds.Datastore) Option {
+	return func(ns *mpns) error {
+		ns.ds = ds
+		return nil
+	}
+}
+
+// NewNameSystem will construct the IPFS naming system based on Routing
+func NewNameSystem(r routing.ValueStore, opts ...Option) (NameSystem, error) {
+	var staticMap map[string]path.Path
 
 	// Prewarm namesys cache with static records for deterministic tests and debugging.
 	// Useful for testing things like DNSLink without real DNS lookup.
@@ -73,14 +106,30 @@ func NewNameSystem(r routing.ValueStore, ds ds.Datastore, rslv madns.BasicResolv
 		}
 	}
 
-	return &mpns{
-		dnsResolver:      NewDNSResolver(rslv.LookupTXT),
-		proquintResolver: new(ProquintResolver),
-		ipnsResolver:     NewIpnsResolver(r),
-		ipnsPublisher:    NewIpnsPublisher(r, ds),
-		staticMap:        staticMap,
-		cache:            cache,
+	ns := &mpns{
+		staticMap: staticMap,
 	}
+
+	for _, opt := range opts {
+		err := opt(ns)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if ns.ds == nil {
+		ns.ds = dssync.MutexWrap(ds.NewMapDatastore())
+	}
+
+	if ns.dnsResolver == nil {
+		ns.dnsResolver = NewDNSResolver(madns.DefaultResolver.LookupTXT)
+	}
+
+	ns.proquintResolver = new(ProquintResolver)
+	ns.ipnsResolver = NewIpnsResolver(r)
+	ns.ipnsPublisher = NewIpnsPublisher(r, ns.ds)
+
+	return ns, nil
 }
 
 // DefaultResolverCacheTTL defines max ttl of a record placed in namesys cache.
