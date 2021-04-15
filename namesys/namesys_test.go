@@ -17,7 +17,6 @@ import (
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	pstoremem "github.com/libp2p/go-libp2p-peerstore/pstoremem"
 	record "github.com/libp2p/go-libp2p-record"
-	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
 type mockResolver struct {
@@ -110,7 +109,11 @@ func TestPublishWithCache0(t *testing.T) {
 		"pk":   record.PublicKeyValidator{},
 	})
 
-	nsys := NewNameSystem(routing, dst, madns.DefaultResolver, 0)
+	nsys, err := NewNameSystem(routing, WithDatastore(dst))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// CID is arbitrary.
 	p, err := path.ParsePath("QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
 	if err != nil {
@@ -143,7 +146,11 @@ func TestPublishWithTTL(t *testing.T) {
 		"pk":   record.PublicKeyValidator{},
 	})
 
-	nsys := NewNameSystem(routing, dst, madns.DefaultResolver, 128)
+	nsys, err := NewNameSystem(routing, WithDatastore(dst), WithCache(128))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// CID is arbitrary.
 	p, err := path.ParsePath("QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
 	if err != nil {
