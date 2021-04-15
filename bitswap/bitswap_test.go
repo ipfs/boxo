@@ -12,7 +12,6 @@ import (
 	deciface "github.com/ipfs/go-bitswap/decision"
 	decision "github.com/ipfs/go-bitswap/internal/decision"
 	bssession "github.com/ipfs/go-bitswap/internal/session"
-	"github.com/ipfs/go-bitswap/message"
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	testinstance "github.com/ipfs/go-bitswap/testinstance"
@@ -149,7 +148,7 @@ func TestUnwantedBlockNotAdded(t *testing.T) {
 
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	block := blocks.NewBlock([]byte("block"))
-	bsMessage := message.New(true)
+	bsMessage := bsmsg.New(true)
 	bsMessage.AddBlock(block)
 
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
@@ -215,7 +214,7 @@ func TestPendingBlockAdded(t *testing.T) {
 
 	// Simulate receiving a message which contains the block in the "tofetch" queue
 	lastBlock := blks[len(blks)-1]
-	bsMessage := message.New(true)
+	bsMessage := bsmsg.New(true)
 	bsMessage.AddBlock(lastBlock)
 	unknownPeer := peer.ID("QmUHfvCQrzyR6vFXmeyCptfCWedfcmfa12V6UuziDtrw23")
 	instance.Exchange.ReceiveMessage(oneSecCtx, unknownPeer, bsMessage)
