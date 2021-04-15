@@ -183,10 +183,9 @@ func peerIsPartner(p peer.ID, e *Engine) bool {
 }
 
 func TestOutboxClosedWhenEngineClosed(t *testing.T) {
-	ctx := context.Background()
 	t.SkipNow() // TODO implement *Engine.Close
 	e := newEngine(blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil))
-	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
+	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
