@@ -56,26 +56,8 @@ func NewDagReader(ctx context.Context, n ipld.Node, serv ipld.NodeGetter) (DagRe
 		}
 
 		switch fsNode.Type() {
-		case unixfs.TFile:
+		case unixfs.TFile, unixfs.TRaw:
 			size = fsNode.FileSize()
-
-		case unixfs.TRaw:
-			stat, err := n.Stat()
-			if err != nil {
-				return nil, err
-			}
-			size = uint64(stat.DataSize)
-			for _, link := range n.Links() {
-				ln, err := link.GetNode(ctx, serv)
-				if err != nil {
-					return nil, err
-				}
-				stat, err := ln.Stat()
-				if err != nil {
-					return nil, err
-				}
-				size += uint64(stat.DataSize)
-			}
 
 		case unixfs.TDirectory, unixfs.THAMTShard:
 			// Dont allow reading directories

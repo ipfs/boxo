@@ -159,9 +159,9 @@ func size(pbdata *pb.Data) (uint64, error) {
 	switch pbdata.GetType() {
 	case pb.Data_Directory, pb.Data_HAMTShard:
 		return 0, errors.New("can't get data size of directory")
-	case pb.Data_File:
+	case pb.Data_File, pb.Data_Raw:
 		return pbdata.GetFilesize(), nil
-	case pb.Data_Symlink, pb.Data_Raw:
+	case pb.Data_Symlink:
 		return uint64(len(pbdata.GetData())), nil
 	default:
 		return 0, errors.New("unrecognized node data type")
