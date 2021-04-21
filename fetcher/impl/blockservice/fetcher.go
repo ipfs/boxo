@@ -8,7 +8,6 @@ import (
 
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-fetcher"
-	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
@@ -106,12 +105,12 @@ func (f *fetcherSession) PrototypeFromLink(lnk ipld.Link) (ipld.NodePrototype, e
 }
 
 // DefaultPrototypeChooser supports DagPB nodes and choosing the prototype from the link.
-var DefaultPrototypeChooser = dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
+var DefaultPrototypeChooser = func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
 	if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
 		return tlnkNd.LinkTargetNodePrototype(), nil
 	}
 	return basicnode.Prototype.Any, nil
-})
+}
 
 func blockOpener(ctx context.Context, bs *blockservice.Session) ipld.BlockReadOpener {
 	return func(_ ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
