@@ -67,7 +67,7 @@ func (r *receiver) PeerDisconnected(p peer.ID) {
 	r.connectionEvent <- false
 }
 
-var mockNetErr = fmt.Errorf("network err")
+var errMockNetErr = fmt.Errorf("network err")
 
 type ErrStream struct {
 	network.Stream
@@ -115,7 +115,7 @@ func (eh *ErrHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID
 	defer eh.lk.Unlock()
 
 	if eh.err != nil {
-		return nil, mockNetErr
+		return nil, errMockNetErr
 	}
 	if eh.timingOut {
 		return nil, context.DeadlineExceeded
@@ -337,7 +337,7 @@ func TestMessageResendAfterError(t *testing.T) {
 
 	// Return an error from the networking layer the next time we try to send
 	// a message
-	eh.setError(mockNetErr)
+	eh.setError(errMockNetErr)
 
 	go func() {
 		time.Sleep(testSendErrorBackoff / 2)

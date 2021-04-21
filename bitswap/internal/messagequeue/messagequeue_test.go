@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ipfs/go-bitswap/internal/testutil"
-	"github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	cid "github.com/ipfs/go-cid"
 
@@ -251,7 +250,7 @@ func TestSendingMessagesPriority(t *testing.T) {
 	if totalEntriesLength(messages) != len(wantHaves)+len(wantBlocks) {
 		t.Fatal("wrong number of wants")
 	}
-	byCid := make(map[cid.Cid]message.Entry)
+	byCid := make(map[cid.Cid]bsmsg.Entry)
 	for _, entry := range messages[0] {
 		byCid[entry.Cid] = entry
 	}
