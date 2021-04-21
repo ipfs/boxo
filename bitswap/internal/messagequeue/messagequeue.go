@@ -9,7 +9,6 @@ import (
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	bsnet "github.com/ipfs/go-bitswap/network"
-	"github.com/ipfs/go-bitswap/wantlist"
 	bswl "github.com/ipfs/go-bitswap/wantlist"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
@@ -142,7 +141,7 @@ func (r *recallWantlist) RemoveType(c cid.Cid, wtype pb.Message_Wantlist_WantTyp
 //
 // Returns true if the want was marked as sent. Returns false if the want wasn't
 // pending.
-func (r *recallWantlist) MarkSent(e wantlist.Entry) bool {
+func (r *recallWantlist) MarkSent(e bswl.Entry) bool {
 	if !r.pending.RemoveType(e.Cid, e.WantType) {
 		return false
 	}
