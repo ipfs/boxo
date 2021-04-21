@@ -8,7 +8,6 @@
 //
 // Additionally, the /ipns/ namespace can also be used with domain names that
 // use DNSLink (/ipns/<dnslink_name>, https://docs.ipfs.io/concepts/dnslink/)
-// and proquint strings.
 //
 // The package provides implementations for all three resolvers.
 package namesys
@@ -38,15 +37,14 @@ import (
 // Uses several Resolvers:
 // (a) IPFS routing naming: SFS-like PKI names.
 // (b) dns domains: resolves using links in DNS TXT records
-// (c) proquints: interprets string as the raw byte data.
 //
 // It can only publish to: (a) IPFS routing naming.
 //
 type mpns struct {
 	ds ds.Datastore
 
-	dnsResolver, proquintResolver, ipnsResolver resolver
-	ipnsPublisher                               Publisher
+	dnsResolver, ipnsResolver resolver
+	ipnsPublisher             Publisher
 
 	staticMap map[string]path.Path
 	cache     *lru.Cache
@@ -125,7 +123,6 @@ func NewNameSystem(r routing.ValueStore, opts ...Option) (NameSystem, error) {
 		ns.dnsResolver = NewDNSResolver(madns.DefaultResolver.LookupTXT)
 	}
 
-	ns.proquintResolver = new(ProquintResolver)
 	ns.ipnsResolver = NewIpnsResolver(r)
 	ns.ipnsPublisher = NewIpnsPublisher(r, ns.ds)
 
@@ -188,7 +185,6 @@ func (ns *mpns) resolveOnceAsync(ctx context.Context, name string, options opts.
 	// Resolver selection:
 	// 1. if it is a PeerID/CID/multihash resolve through "ipns".
 	// 2. if it is a domain name, resolve through "dns"
-	// 3. otherwise resolve through the "proquint" resolver
 
 	var res resolver
 	ipnsKey, err := peer.Decode(key)
@@ -228,11 +224,9 @@ func (ns *mpns) resolveOnceAsync(ctx context.Context, name string, options opts.
 	} else if _, ok := dns.IsDomainName(key); ok {
 		res = ns.dnsResolver
 	} else {
-		// TODO: remove proquint?
-		// dns.IsDomainName(key) will return true for proquint strings,
-		// so this block is a dead code.
-		// (alternative is to move this before DNS check)
-		res = ns.proquintResolver
+		out <- onceResult{err: fmt.Errorf("invalid IPNS root: %q", key)}
+		close(out)
+		return out
 	}
 
 	resCh := res.resolveOnceAsync(ctx, key, options)
