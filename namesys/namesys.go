@@ -7,8 +7,8 @@
 // DHT).
 //
 // Additionally, the /ipns/ namespace can also be used with domain names that
-// use DNSLink (/ipns/my.domain.example, see https://dnslink.io) and proquint
-// strings.
+// use DNSLink (/ipns/<dnslink_name>, https://docs.ipfs.io/concepts/dnslink/)
+// and proquint strings.
 //
 // The package provides implementations for all three resolvers.
 package namesys
@@ -26,10 +26,10 @@ import (
 	dssync "github.com/ipfs/go-datastore/sync"
 	path "github.com/ipfs/go-path"
 	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
-	isd "github.com/jbenet/go-is-domain"
 	ci "github.com/libp2p/go-libp2p-core/crypto"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	routing "github.com/libp2p/go-libp2p-core/routing"
+	dns "github.com/miekg/dns"
 	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
@@ -225,9 +225,13 @@ func (ns *mpns) resolveOnceAsync(ctx context.Context, name string, options opts.
 
 	if err == nil {
 		res = ns.ipnsResolver
-	} else if isd.IsDomain(key) {
+	} else if _, ok := dns.IsDomainName(key); ok {
 		res = ns.dnsResolver
 	} else {
+		// TODO: remove proquint?
+		// dns.IsDomainName(key) will return true for proquint strings,
+		// so this block is a dead code.
+		// (alternative is to move this before DNS check)
 		res = ns.proquintResolver
 	}
 
