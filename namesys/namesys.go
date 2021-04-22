@@ -78,7 +78,7 @@ func WithDNSResolver(rslv madns.BasicResolver) Option {
 	}
 }
 
-// WithDatastore is an option that supplies a datastore to use instead of an in-memory map datastore.
+// WithDatastore is an option that supplies a datastore to use instead of an in-memory map datastore. The datastore is used to store published IPNS records and make them available for querying.
 func WithDatastore(ds ds.Datastore) Option {
 	return func(ns *mpns) error {
 		ns.ds = ds
