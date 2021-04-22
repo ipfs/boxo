@@ -27,6 +27,7 @@ import (
 
 var log = logging.Logger("bitswap_network")
 
+var connectTimeout = time.Second * 5
 var sendMessageTimeout = time.Minute * 10
 
 // NewFromIpfsHost returns a BitSwapNetwork supported by underlying IPFS host.
@@ -312,7 +313,10 @@ func (bsnet *impl) SendMessage(
 	p peer.ID,
 	outgoing bsmsg.BitSwapMessage) error {
 
-	s, err := bsnet.newStreamToPeer(ctx, p)
+	tctx, cancel := context.WithTimeout(ctx, connectTimeout)
+	defer cancel()
+
+	s, err := bsnet.newStreamToPeer(tctx, p)
 	if err != nil {
 		return err
 	}
