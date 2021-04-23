@@ -13,7 +13,7 @@ import (
 	dns "github.com/miekg/dns"
 )
 
-// LookupTXTFunc is a generic type for a function that lookups TXT record values.
+// LookupTXTFunc is a function that lookups TXT record values.
 type LookupTXTFunc func(ctx context.Context, name string) (txt []string, err error)
 
 // DNSResolver implements a Resolver on DNS domains
