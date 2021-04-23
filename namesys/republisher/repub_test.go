@@ -74,7 +74,10 @@ func TestRepublish(t *testing.T) {
 	var nodes []*mockNode
 	for i := 0; i < 10; i++ {
 		n := getMockNode(t, ctx)
-		ns := namesys.NewNameSystem(n.dht, n.store, 0)
+		ns, err := namesys.NewNameSystem(n.dht, namesys.WithDatastore(n.store))
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		nsystems = append(nsystems, ns)
 		nodes = append(nodes, n)
@@ -153,7 +156,10 @@ func TestLongEOLRepublish(t *testing.T) {
 	var nodes []*mockNode
 	for i := 0; i < 10; i++ {
 		n := getMockNode(t, ctx)
-		ns := namesys.NewNameSystem(n.dht, n.store, 0)
+		ns, err := namesys.NewNameSystem(n.dht, namesys.WithDatastore(n.store))
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		nsystems = append(nsystems, ns)
 		nodes = append(nodes, n)

@@ -10,14 +10,11 @@ import (
 
 	path "github.com/ipfs/go-path"
 	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
-	isd "github.com/jbenet/go-is-domain"
+	dns "github.com/miekg/dns"
 )
 
-const ethTLD = "eth"
-const linkTLD = "domains"
-
-// LookupTXTFunc is a generic type for a function that lookups TXT record values.
-type LookupTXTFunc func(name string) (txt []string, err error)
+// LookupTXTFunc is a function that lookups TXT record values.
+type LookupTXTFunc func(ctx context.Context, name string) (txt []string, err error)
 
 // DNSResolver implements a Resolver on DNS domains
 type DNSResolver struct {
@@ -27,8 +24,8 @@ type DNSResolver struct {
 }
 
 // NewDNSResolver constructs a name resolver using DNS TXT records.
-func NewDNSResolver() *DNSResolver {
-	return &DNSResolver{lookupTXT: net.LookupTXT}
+func NewDNSResolver(lookup LookupTXTFunc) *DNSResolver {
+	return &DNSResolver{lookupTXT: lookup}
 }
 
 // Resolve implements Resolver.
@@ -55,7 +52,7 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 	segments := strings.SplitN(name, "/", 2)
 	domain := segments[0]
 
-	if !isd.IsDomain(domain) {
+	if _, ok := dns.IsDomainName(domain); !ok {
 		out <- onceResult{err: fmt.Errorf("not a valid domain name: %s", domain)}
 		close(out)
 		return out
@@ -68,17 +65,11 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 		fqdn = domain + "."
 	}
 
-	if strings.HasSuffix(fqdn, "."+ethTLD+".") {
-		// This is an ENS name.  As we're resolving via an arbitrary DNS server
-		// that may not know about .eth we need to add our link domain suffix.
-		fqdn += linkTLD + "."
-	}
-
 	rootChan := make(chan lookupRes, 1)
-	go workDomain(r, fqdn, rootChan)
+	go workDomain(ctx, r, fqdn, rootChan)
 
 	subChan := make(chan lookupRes, 1)
-	go workDomain(r, "_dnslink."+fqdn, subChan)
+	go workDomain(ctx, r, "_dnslink."+fqdn, subChan)
 
 	appendPath := func(p path.Path) (path.Path, error) {
 		if len(segments) > 1 {
@@ -139,10 +130,10 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 	return out
 }
 
-func workDomain(r *DNSResolver, name string, res chan lookupRes) {
+func workDomain(ctx context.Context, r *DNSResolver, name string, res chan lookupRes) {
 	defer close(res)
 
-	txt, err := r.lookupTXT(name)
+	txt, err := r.lookupTXT(ctx, name)
 	if err != nil {
 		if dnsErr, ok := err.(*net.DNSError); ok {
 			// If no TXT records found, return same error as when no text
