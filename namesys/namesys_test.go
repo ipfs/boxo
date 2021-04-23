@@ -109,7 +109,11 @@ func TestPublishWithCache0(t *testing.T) {
 		"pk":   record.PublicKeyValidator{},
 	})
 
-	nsys := NewNameSystem(routing, dst, 0)
+	nsys, err := NewNameSystem(routing, WithDatastore(dst))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// CID is arbitrary.
 	p, err := path.ParsePath("QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
 	if err != nil {
@@ -142,7 +146,11 @@ func TestPublishWithTTL(t *testing.T) {
 		"pk":   record.PublicKeyValidator{},
 	})
 
-	nsys := NewNameSystem(routing, dst, 128)
+	nsys, err := NewNameSystem(routing, WithDatastore(dst), WithCache(128))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// CID is arbitrary.
 	p, err := path.ParsePath("QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
 	if err != nil {

@@ -7,8 +7,7 @@
 // DHT).
 //
 // Additionally, the /ipns/ namespace can also be used with domain names that
-// use DNSLink (/ipns/my.domain.example, see https://dnslink.io) and proquint
-// strings.
+// use DNSLink (/ipns/<dnslink_name>, https://docs.ipfs.io/concepts/dnslink/)
 //
 // The package provides implementations for all three resolvers.
 package namesys
@@ -23,12 +22,14 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	path "github.com/ipfs/go-path"
 	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
-	isd "github.com/jbenet/go-is-domain"
 	ci "github.com/libp2p/go-libp2p-core/crypto"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	routing "github.com/libp2p/go-libp2p-core/routing"
+	dns "github.com/miekg/dns"
+	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
 // mpns (a multi-protocol NameSystem) implements generic IPFS naming.
@@ -36,27 +37,58 @@ import (
 // Uses several Resolvers:
 // (a) IPFS routing naming: SFS-like PKI names.
 // (b) dns domains: resolves using links in DNS TXT records
-// (c) proquints: interprets string as the raw byte data.
 //
 // It can only publish to: (a) IPFS routing naming.
 //
 type mpns struct {
-	dnsResolver, proquintResolver, ipnsResolver resolver
-	ipnsPublisher                               Publisher
+	ds ds.Datastore
+
+	dnsResolver, ipnsResolver resolver
+	ipnsPublisher             Publisher
 
 	staticMap map[string]path.Path
 	cache     *lru.Cache
 }
 
-// NewNameSystem will construct the IPFS naming system based on Routing
-func NewNameSystem(r routing.ValueStore, ds ds.Datastore, cachesize int) NameSystem {
-	var (
-		cache     *lru.Cache
-		staticMap map[string]path.Path
-	)
-	if cachesize > 0 {
-		cache, _ = lru.New(cachesize)
+type Option func(*mpns) error
+
+// WithCache is an option that instructs the name system to use a (LRU) cache of the given size.
+func WithCache(size int) Option {
+	return func(ns *mpns) error {
+		if size <= 0 {
+			return fmt.Errorf("invalid cache size %d; must be > 0", size)
+		}
+
+		cache, err := lru.New(size)
+		if err != nil {
+			return err
+		}
+
+		ns.cache = cache
+		return nil
 	}
+}
+
+// WithDNSResolver is an option that supplies a custom DNS resolver to use instead of the system
+// default.
+func WithDNSResolver(rslv madns.BasicResolver) Option {
+	return func(ns *mpns) error {
+		ns.dnsResolver = NewDNSResolver(rslv.LookupTXT)
+		return nil
+	}
+}
+
+// WithDatastore is an option that supplies a datastore to use instead of an in-memory map datastore. The datastore is used to store published IPNS records and make them available for querying.
+func WithDatastore(ds ds.Datastore) Option {
+	return func(ns *mpns) error {
+		ns.ds = ds
+		return nil
+	}
+}
+
+// NewNameSystem will construct the IPFS naming system based on Routing
+func NewNameSystem(r routing.ValueStore, opts ...Option) (NameSystem, error) {
+	var staticMap map[string]path.Path
 
 	// Prewarm namesys cache with static records for deterministic tests and debugging.
 	// Useful for testing things like DNSLink without real DNS lookup.
@@ -72,14 +104,29 @@ func NewNameSystem(r routing.ValueStore, ds ds.Datastore, cachesize int) NameSys
 		}
 	}
 
-	return &mpns{
-		dnsResolver:      NewDNSResolver(),
-		proquintResolver: new(ProquintResolver),
-		ipnsResolver:     NewIpnsResolver(r),
-		ipnsPublisher:    NewIpnsPublisher(r, ds),
-		staticMap:        staticMap,
-		cache:            cache,
+	ns := &mpns{
+		staticMap: staticMap,
 	}
+
+	for _, opt := range opts {
+		err := opt(ns)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if ns.ds == nil {
+		ns.ds = dssync.MutexWrap(ds.NewMapDatastore())
+	}
+
+	if ns.dnsResolver == nil {
+		ns.dnsResolver = NewDNSResolver(madns.DefaultResolver.LookupTXT)
+	}
+
+	ns.ipnsResolver = NewIpnsResolver(r)
+	ns.ipnsPublisher = NewIpnsPublisher(r, ns.ds)
+
+	return ns, nil
 }
 
 // DefaultResolverCacheTTL defines max ttl of a record placed in namesys cache.
@@ -138,7 +185,6 @@ func (ns *mpns) resolveOnceAsync(ctx context.Context, name string, options opts.
 	// Resolver selection:
 	// 1. if it is a PeerID/CID/multihash resolve through "ipns".
 	// 2. if it is a domain name, resolve through "dns"
-	// 3. otherwise resolve through the "proquint" resolver
 
 	var res resolver
 	ipnsKey, err := peer.Decode(key)
@@ -175,10 +221,12 @@ func (ns *mpns) resolveOnceAsync(ctx context.Context, name string, options opts.
 
 	if err == nil {
 		res = ns.ipnsResolver
-	} else if isd.IsDomain(key) {
+	} else if _, ok := dns.IsDomainName(key); ok {
 		res = ns.dnsResolver
 	} else {
-		res = ns.proquintResolver
+		out <- onceResult{err: fmt.Errorf("invalid IPNS root: %q", key)}
+		close(out)
+		return out
 	}
 
 	resCh := res.resolveOnceAsync(ctx, key, options)
