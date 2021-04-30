@@ -355,7 +355,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 	}
 
 	// Sleep until after the default timeout
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(defaultTimeout * 2)
 
 	// Now the keys should have timed out
 	if tr.timedOutCount() != len(ks) {
