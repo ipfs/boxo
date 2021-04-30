@@ -501,7 +501,7 @@ func TestSendingLargeMessages(t *testing.T) {
 
 	messageQueue.Startup()
 	messageQueue.AddWants(wantBlocks, []cid.Cid{})
-	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	messages := collectMessages(ctx, t, messagesSent, 100*time.Millisecond)
 
 	// want-block has size 44, so with maxMsgSize 44 * 3 (3 want-blocks), then if
 	// we send 10 want-blocks we should expect 4 messages:
