@@ -184,11 +184,13 @@ func (n *network) SendMessage(
 }
 
 type networkClient struct {
+	// These need to be at the top of the struct (allocated on the heap) for alignment on 32bit platforms.
+	stats bsnet.Stats
+
 	local peer.ID
 	bsnet.Receiver
 	network            *network
 	routing            routing.Routing
-	stats              bsnet.Stats
 	supportedProtocols []protocol.ID
 }
 
