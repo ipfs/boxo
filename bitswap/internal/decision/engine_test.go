@@ -1058,18 +1058,18 @@ func TestTaggingUseful(t *testing.T) {
 	msg.AddBlock(block)
 
 	for i := 0; i < 3; i++ {
-		if me.PeerTagger.count(me.Engine.tagUseful) != 0 {
-			t.Fatal("Peers should be untagged but weren't")
+		if untagged := me.PeerTagger.count(me.Engine.tagUseful); untagged != 0 {
+			t.Fatalf("%d peers should be untagged but weren't", untagged)
 		}
 
 		me.Engine.MessageSent(friend, msg)
 
-		for j := 0; j < 3; j++ {
+		for j := 0; j < 2; j++ {
 			<-sampleCh
 		}
 
-		if me.PeerTagger.count(me.Engine.tagUseful) != 1 {
-			t.Fatal("Peers should be tagged but weren't")
+		if tagged := me.PeerTagger.count(me.Engine.tagUseful); tagged != 1 {
+			t.Fatalf("1 peer should be tagged, but %d were", tagged)
 		}
 
 		for j := 0; j < longTermRatio; j++ {
