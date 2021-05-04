@@ -246,16 +246,34 @@ func TestDifferentKeyObjectsWork(t *testing.T) {
 }
 
 func TestPutManyCaches(t *testing.T) {
-	arc, _, cd := createStores(t)
-	arc.PutMany([]blocks.Block{exampleBlock})
+	t.Run("happy path PutMany", func(t *testing.T) {
+		arc, _, cd := createStores(t)
+		arc.PutMany([]blocks.Block{exampleBlock})
 
-	trap("has hit datastore", cd, t)
-	arc.Has(exampleBlock.Cid())
-	arc.GetSize(exampleBlock.Cid())
-	untrap(cd)
-	arc.DeleteBlock(exampleBlock.Cid())
+		trap("has hit datastore", cd, t)
+		arc.Has(exampleBlock.Cid())
+		arc.GetSize(exampleBlock.Cid())
+		untrap(cd)
+		arc.DeleteBlock(exampleBlock.Cid())
 
-	arc.Put(exampleBlock)
-	trap("PunMany has hit datastore", cd, t)
-	arc.PutMany([]blocks.Block{exampleBlock})
+		arc.Put(exampleBlock)
+		trap("PunMany has hit datastore", cd, t)
+		arc.PutMany([]blocks.Block{exampleBlock})
+	})
+
+	t.Run("PutMany with duplicates", func(t *testing.T) {
+		arc, _, cd := createStores(t)
+		arc.PutMany([]blocks.Block{exampleBlock, exampleBlock})
+
+		trap("has hit datastore", cd, t)
+		arc.Has(exampleBlock.Cid())
+		arc.GetSize(exampleBlock.Cid())
+		untrap(cd)
+		arc.DeleteBlock(exampleBlock.Cid())
+
+		arc.Put(exampleBlock)
+		trap("PunMany has hit datastore", cd, t)
+		arc.PutMany([]blocks.Block{exampleBlock})
+	})
+
 }
