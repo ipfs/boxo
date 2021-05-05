@@ -81,7 +81,10 @@ type HAMTDirectory struct {
 	dserv ipld.DAGService
 }
 
-// NewDirectory returns a Directory. It needs a `DAGService` to add the children.
+// NewDirectory returns a Directory that can either be a HAMTDirectory if the
+// UseHAMTSharding is set, or otherwise an UpgradeableDirectory containing a
+// BasicDirectory that can be converted to a HAMTDirectory if the option is
+// set in the future.
 func NewDirectory(dserv ipld.DAGService) Directory {
 	if UseHAMTSharding {
 		dir := new(HAMTDirectory)
@@ -94,10 +97,10 @@ func NewDirectory(dserv ipld.DAGService) Directory {
 		return dir
 	}
 
-	dir := new(BasicDirectory)
-	dir.node = format.EmptyDirNode()
-	dir.dserv = dserv
-	return dir
+	basicDir := new(BasicDirectory)
+	basicDir.node = format.EmptyDirNode()
+	basicDir.dserv = dserv
+	return UpgradeableDirectory{basicDir}
 }
 
 // ErrNotADir implies that the given node was not a unixfs directory
@@ -293,4 +296,28 @@ func (d *HAMTDirectory) GetNode() (ipld.Node, error) {
 // GetCidBuilder implements the `Directory` interface.
 func (d *HAMTDirectory) GetCidBuilder() cid.Builder {
 	return d.shard.CidBuilder()
+}
+
+// UpgradeableDirectory wraps a Directory interface and provides extra logic
+// to upgrade from its BasicDirectory implementation to HAMTDirectory.
+type UpgradeableDirectory struct {
+	Directory
+}
+
+var _ Directory = (*UpgradeableDirectory)(nil)
+
+// AddChild implements the `Directory` interface. We check when adding new entries
+// if we should switch to HAMTDirectory according to global option(s).
+func (d UpgradeableDirectory) AddChild(ctx context.Context, name string, nd ipld.Node) error {
+	if UseHAMTSharding {
+		if basicDir, ok := d.Directory.(*BasicDirectory); ok {
+			hamtDir, err := basicDir.SwitchToSharding(ctx)
+			if err != nil {
+				return err
+			}
+			d.Directory = hamtDir
+		}
+	}
+
+	return d.Directory.AddChild(ctx, name, nd)
 }
