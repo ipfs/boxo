@@ -105,7 +105,7 @@ func TestUpgradeableDirectory(t *testing.T) {
 	ds := mdtest.Mock()
 	UseHAMTSharding = false // Create a BasicDirectory.
 	dir := NewDirectory(ds)
-	if _, ok := dir.(UpgradeableDirectory).Directory.(*BasicDirectory); !ok {
+	if _, ok := dir.(*UpgradeableDirectory).Directory.(*BasicDirectory); !ok {
 		t.Fatal("UpgradeableDirectory doesn't contain BasicDirectory")
 	}
 
@@ -117,7 +117,7 @@ func TestUpgradeableDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := dir.(UpgradeableDirectory).Directory.(*HAMTDirectory); !ok {
+	if _, ok := dir.(*UpgradeableDirectory).Directory.(*HAMTDirectory); !ok {
 		t.Fatal("UpgradeableDirectory wasn't upgraded to HAMTDirectory")
 	}
 }
