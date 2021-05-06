@@ -100,7 +100,7 @@ func NewDirectory(dserv ipld.DAGService) Directory {
 	basicDir := new(BasicDirectory)
 	basicDir.node = format.EmptyDirNode()
 	basicDir.dserv = dserv
-	return UpgradeableDirectory{basicDir}
+	return &UpgradeableDirectory{basicDir}
 }
 
 // ErrNotADir implies that the given node was not a unixfs directory
@@ -308,7 +308,7 @@ var _ Directory = (*UpgradeableDirectory)(nil)
 
 // AddChild implements the `Directory` interface. We check when adding new entries
 // if we should switch to HAMTDirectory according to global option(s).
-func (d UpgradeableDirectory) AddChild(ctx context.Context, name string, nd ipld.Node) error {
+func (d *UpgradeableDirectory) AddChild(ctx context.Context, name string, nd ipld.Node) error {
 	if UseHAMTSharding {
 		if basicDir, ok := d.Directory.(*BasicDirectory); ok {
 			hamtDir, err := basicDir.SwitchToSharding(ctx)
