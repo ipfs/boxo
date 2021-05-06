@@ -98,6 +98,30 @@ func TestDuplicateAddDir(t *testing.T) {
 	}
 }
 
+func TestUpgradeableDirectory(t *testing.T) {
+	oldHamtOption := UseHAMTSharding
+	defer func() {UseHAMTSharding = oldHamtOption}()
+
+	ds := mdtest.Mock()
+	UseHAMTSharding = false // Create a BasicDirectory.
+	dir := NewDirectory(ds)
+	if _, ok := dir.(UpgradeableDirectory).Directory.(*BasicDirectory); !ok {
+		t.Fatal("UpgradeableDirectory doesn't contain BasicDirectory")
+	}
+
+	// Any new directory entry will trigger the upgrade to HAMTDirectory
+	UseHAMTSharding = true
+
+	err := dir.AddChild(context.Background(), "test", ft.EmptyDirNode())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := dir.(UpgradeableDirectory).Directory.(*HAMTDirectory); !ok {
+		t.Fatal("UpgradeableDirectory wasn't upgraded to HAMTDirectory")
+	}
+}
+
 func TestDirBuilder(t *testing.T) {
 	ds := mdtest.Mock()
 	dir := NewDirectory(ds)
