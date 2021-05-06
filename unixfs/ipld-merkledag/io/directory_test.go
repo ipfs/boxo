@@ -100,7 +100,7 @@ func TestDuplicateAddDir(t *testing.T) {
 
 func TestUpgradeableDirectory(t *testing.T) {
 	oldHamtOption := UseHAMTSharding
-	defer func() {UseHAMTSharding = oldHamtOption}()
+	defer func() { UseHAMTSharding = oldHamtOption }()
 
 	ds := mdtest.Mock()
 	UseHAMTSharding = false // Create a BasicDirectory.
