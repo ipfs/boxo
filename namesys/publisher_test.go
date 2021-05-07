@@ -3,9 +3,10 @@ package namesys
 import (
 	"context"
 	"crypto/rand"
-	"github.com/ipfs/go-path"
 	"testing"
 	"time"
+
+	"github.com/ipfs/go-path"
 
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"

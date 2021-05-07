@@ -206,7 +206,7 @@ func (p *IpnsPublisher) PublishWithEOL(ctx context.Context, k ci.PrivKey, value 
 // as such, i'm using the context to wire it through to avoid changing too
 // much code along the way.
 func checkCtxTTL(ctx context.Context) (time.Duration, bool) {
-	v := ctx.Value("ipns-publish-ttl")
+	v := ctx.Value(ttlContextKey)
 	if v == nil {
 		return 0, false
 	}
@@ -295,4 +295,14 @@ func PublishEntry(ctx context.Context, r routing.ValueStore, ipnskey string, rec
 // PkKeyForID returns the public key routing key for the given peer ID.
 func PkKeyForID(id peer.ID) string {
 	return "/pk/" + string(id)
+}
+
+// contextKey is a private comparable type used to hold value keys in contexts
+type contextKey string
+
+var ttlContextKey contextKey = "ipns-publish-ttl"
+
+// ContextWithTTL returns a copy of the parent context with an added value representing the TTL
+func ContextWithTTL(ctx context.Context, ttl time.Duration) context.Context {
+	return context.WithValue(context.Background(), ttlContextKey, ttl)
 }

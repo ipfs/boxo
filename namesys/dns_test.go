@@ -21,7 +21,6 @@ func (m *mockDNS) lookupTXT(ctx context.Context, name string) (txt []string, err
 }
 
 func TestDnsEntryParsing(t *testing.T) {
-
 	goodEntries := []string{
 		"QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD",
 		"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD",
