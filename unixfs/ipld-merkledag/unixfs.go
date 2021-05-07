@@ -361,6 +361,11 @@ func EmptyDirNode() *dag.ProtoNode {
 	return dag.NodeWithData(FolderPBData())
 }
 
+// EmptyFileNode creates an empty file Protonode.
+func EmptyFileNode() *dag.ProtoNode {
+	return dag.NodeWithData(FilePBData(nil, 0))
+}
+
 // ReadUnixFSNodeData extracts the UnixFS data from an IPLD node.
 // Raw nodes are (also) processed because they are used as leaf
 // nodes containing (only) UnixFS data.
