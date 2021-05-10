@@ -160,7 +160,7 @@ func TestPublishWithTTL(t *testing.T) {
 	ttl := 1 * time.Second
 	eol := time.Now().Add(2 * time.Second)
 
-	ctx := context.WithValue(context.Background(), "ipns-publish-ttl", ttl)
+	ctx := ContextWithTTL(context.Background(), ttl)
 	err = nsys.Publish(ctx, priv, p)
 	if err != nil {
 		t.Fatal(err)
