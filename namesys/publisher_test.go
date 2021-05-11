@@ -76,7 +76,7 @@ func testNamekeyPublisher(t *testing.T, keyType int, expectedErr error, expected
 	serv := mockrouting.NewServer()
 	r := serv.ClientWithDatastore(context.Background(), &identity{p}, dstore)
 
-	entry, err := ipns.Create(privKey, value, seqnum, eol)
+	entry, err := ipns.Create(privKey, value, seqnum, eol, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
