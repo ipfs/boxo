@@ -162,17 +162,14 @@ func (p *IpnsPublisher) updateRecord(ctx context.Context, k ci.PrivKey, value pa
 		seqno++
 	}
 
-	// Create record
-	entry, err := ipns.Create(k, []byte(value), seqno, eol)
-	if err != nil {
-		return nil, err
-	}
-
 	// Set the TTL
 	// TODO: Make this less hacky.
-	ttl, ok := checkCtxTTL(ctx)
-	if ok {
-		entry.Ttl = proto.Uint64(uint64(ttl.Nanoseconds()))
+	ttl, _ := checkCtxTTL(ctx)
+
+	// Create record
+	entry, err := ipns.Create(k, []byte(value), seqno, eol, ttl)
+	if err != nil {
+		return nil, err
 	}
 
 	data, err := proto.Marshal(entry)
