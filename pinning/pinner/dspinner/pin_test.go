@@ -18,7 +18,6 @@ import (
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	ipfspin "github.com/ipfs/go-ipfs-pinner"
-	"github.com/ipfs/go-ipfs-pinner/ipldpinner"
 	util "github.com/ipfs/go-ipfs-util"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
@@ -951,18 +950,10 @@ func BenchmarkNthPin(b *testing.B) {
 	if err != nil {
 		panic(err.Error())
 	}
-	pinnerIPLD, err := ipldpinner.New(dstore, dserv, dserv)
-	if err != nil {
-		panic(err.Error())
-	}
 
 	for count := 1000; count <= 10000; count += 1000 {
 		b.Run(fmt.Sprint("PinDS-", count), func(b *testing.B) {
 			benchmarkNthPin(b, count, pinner, dserv)
-		})
-
-		b.Run(fmt.Sprint("PinIPLD-", count), func(b *testing.B) {
-			benchmarkNthPin(b, count, pinnerIPLD, dserv)
 		})
 	}
 }
@@ -1011,15 +1002,6 @@ func BenchmarkNPins(b *testing.B) {
 			}
 			benchmarkNPins(b, count, pinner, dserv)
 		})
-
-		b.Run(fmt.Sprint("PinIPLD-", count), func(b *testing.B) {
-			dstore, dserv := makeStore()
-			pinner, err := ipldpinner.New(dstore, dserv, dserv)
-			if err != nil {
-				panic(err.Error())
-			}
-			benchmarkNPins(b, count, pinner, dserv)
-		})
 	}
 }
 
@@ -1056,15 +1038,6 @@ func BenchmarkNUnpins(b *testing.B) {
 		b.Run(fmt.Sprint("UnpinDS-", count), func(b *testing.B) {
 			dstore, dserv := makeStore()
 			pinner, err := New(context.Background(), dstore, dserv)
-			if err != nil {
-				panic(err.Error())
-			}
-			benchmarkNUnpins(b, count, pinner, dserv)
-		})
-
-		b.Run(fmt.Sprint("UninIPLD-", count), func(b *testing.B) {
-			dstore, dserv := makeStore()
-			pinner, err := ipldpinner.New(dstore, dserv, dserv)
 			if err != nil {
 				panic(err.Error())
 			}
@@ -1108,15 +1081,6 @@ func BenchmarkPinAll(b *testing.B) {
 			pinner, err := New(context.Background(), dstore, dserv)
 			if err != nil {
 				panic(err)
-			}
-			benchmarkPinAll(b, count, pinner, dserv)
-		})
-
-		b.Run(fmt.Sprint("PinAllIPLD-", count), func(b *testing.B) {
-			dstore, dserv := makeStore()
-			pinner, err := ipldpinner.New(dstore, dserv, dserv)
-			if err != nil {
-				panic(err.Error())
 			}
 			benchmarkPinAll(b, count, pinner, dserv)
 		})
