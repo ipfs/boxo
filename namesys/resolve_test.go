@@ -54,7 +54,7 @@ func TestPrexistingExpiredRecord(t *testing.T) {
 	h := path.FromString("/ipfs/QmZULkCELmmk5XNfCgTnCyFgAVxBRBXyDHGGMVoLFLiXEN")
 	eol := time.Now().Add(time.Hour * -1)
 
-	entry, err := ipns.Create(identity.PrivateKey(), []byte(h), 0, eol)
+	entry, err := ipns.Create(identity.PrivateKey(), []byte(h), 0, eol, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestPrexistingRecord(t *testing.T) {
 	// Make a good record and put it in the datastore
 	h := path.FromString("/ipfs/QmZULkCELmmk5XNfCgTnCyFgAVxBRBXyDHGGMVoLFLiXEN")
 	eol := time.Now().Add(time.Hour)
-	entry, err := ipns.Create(identity.PrivateKey(), []byte(h), 0, eol)
+	entry, err := ipns.Create(identity.PrivateKey(), []byte(h), 0, eol, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

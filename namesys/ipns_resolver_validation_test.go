@@ -57,7 +57,7 @@ func testResolverValidation(t *testing.T, keyType int) {
 	priv, id, _, ipnsDHTPath := genKeys(t, keyType)
 	ts := time.Now()
 	p := []byte("/ipfs/QmfM2r8seH2GiRaC4esTjeraXEachRt8ZsSeGaWTPLyMoG")
-	entry, err := createIPNSRecordWithEmbeddedPublicKey(priv, p, 1, ts.Add(time.Hour))
+	entry, err := createIPNSRecordWithEmbeddedPublicKey(priv, p, 1, ts.Add(time.Hour), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func testResolverValidation(t *testing.T, keyType int) {
 		t.Fatalf("Mismatch between published path %s and resolved path %s", p, resp)
 	}
 	// Create expired entry
-	expiredEntry, err := createIPNSRecordWithEmbeddedPublicKey(priv, p, 1, ts.Add(-1*time.Hour))
+	expiredEntry, err := createIPNSRecordWithEmbeddedPublicKey(priv, p, 1, ts.Add(-1*time.Hour), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,8 +146,8 @@ func genKeys(t *testing.T, keyType int) (ci.PrivKey, peer.ID, string, string) {
 	return sk, id, PkKeyForID(id), ipns.RecordKey(id)
 }
 
-func createIPNSRecordWithEmbeddedPublicKey(sk ci.PrivKey, val []byte, seq uint64, eol time.Time) (*ipns_pb.IpnsEntry, error) {
-	entry, err := ipns.Create(sk, val, seq, eol)
+func createIPNSRecordWithEmbeddedPublicKey(sk ci.PrivKey, val []byte, seq uint64, eol time.Time, ttl time.Duration) (*ipns_pb.IpnsEntry, error) {
+	entry, err := ipns.Create(sk, val, seq, eol, ttl)
 	if err != nil {
 		return nil, err
 	}
