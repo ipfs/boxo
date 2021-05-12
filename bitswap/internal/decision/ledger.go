@@ -6,8 +6,8 @@ import (
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	wl "github.com/ipfs/go-bitswap/wantlist"
 
-	cid "github.com/ipfs/go-cid"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/ipfs/go-cid"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 func newLedger(p peer.ID) *ledger {
@@ -39,4 +39,8 @@ func (l *ledger) CancelWant(k cid.Cid) bool {
 
 func (l *ledger) WantListContains(k cid.Cid) (wl.Entry, bool) {
 	return l.wantList.Contains(k)
+}
+
+func (l *ledger) Entries() []wl.Entry {
+	return l.wantList.Entries()
 }
