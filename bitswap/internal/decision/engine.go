@@ -13,13 +13,13 @@ import (
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	wl "github.com/ipfs/go-bitswap/wantlist"
 	blocks "github.com/ipfs/go-block-format"
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	process "github.com/jbenet/goprocess"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 // TODO consider taking responsibility for other types of requests. For
@@ -563,7 +563,7 @@ func (e *Engine) splitWantsCancels(es []bsmsg.Entry) ([]bsmsg.Entry, []bsmsg.Ent
 // the blocks to them.
 //
 // This function also updates the receive side of the ledger.
-func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block, haves []cid.Cid) {
+func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block) {
 	if len(blks) == 0 {
 		return
 	}
