@@ -14,11 +14,11 @@ import (
 
 var log = logging.Logger("provider.queue")
 
-// Queue provides a durable, FIFO interface to the datastore for storing cids
+// Queue provides a best-effort durability, FIFO interface to the datastore for storing cids
 //
-// Durability just means that cids in the process of being provided when a
-// crash or shutdown occurs will still be in the queue when the node is
-// brought back online.
+// Best-effort durability just means that cids in the process of being provided when a
+// crash or shutdown occurs may be in the queue when the node is brought back online
+// depending on whether the underlying datastore has synchronous or asynchronous writes.
 type Queue struct {
 	// used to differentiate queues in datastore
 	// e.g. provider vs reprovider
