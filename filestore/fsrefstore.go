@@ -149,10 +149,10 @@ func (f *FileManager) getDataObj(m mh.Multihash) (*pb.DataObj, error) {
 	switch err {
 	case ds.ErrNotFound:
 		return nil, blockstore.ErrNotFound
-	default:
-		return nil, err
 	case nil:
 		//
+	default:
+		return nil, err
 	}
 
 	return unmarshalDataObj(o)
@@ -290,7 +290,8 @@ func (f *FileManager) putTo(b *posinfo.FilestoreNode, to putter) error {
 		if !f.AllowFiles {
 			return ErrFilestoreNotEnabled
 		}
-		if !filepath.HasPrefix(b.PosInfo.FullPath, f.root) { //nolint:staticcheck
+		//lint:ignore SA1019 // ignore staticcheck
+		if !filepath.HasPrefix(b.PosInfo.FullPath, f.root) {
 			return fmt.Errorf("cannot add filestore references outside ipfs root (%s)", f.root)
 		}
 
