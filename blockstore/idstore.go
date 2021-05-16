@@ -34,7 +34,7 @@ func extractContents(k cid.Cid) (bool, []byte) {
 	}
 
 	dmh, err := mh.Decode(k.Hash())
-	if err != nil || dmh.Code != mh.ID {
+	if err != nil || dmh.Code != mh.IDENTITY {
 		return false, nil
 	}
 	return true, dmh.Digest
