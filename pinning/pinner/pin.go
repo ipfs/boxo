@@ -8,10 +8,7 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
-	logging "github.com/ipfs/go-log"
 )
-
-var log = logging.Logger("pin")
 
 const (
 	linkRecursive = "recursive"

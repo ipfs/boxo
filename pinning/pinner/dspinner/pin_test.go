@@ -893,9 +893,7 @@ func makeStore() (ds.Datastore, ipld.DAGService) {
 	if err != nil {
 		panic(err)
 	}
-	var dstore ds.Batching
-	dstore = &batchWrap{ldstore}
-
+	dstore := &batchWrap{ldstore}
 	bstore := blockstore.NewBlockstore(dstore)
 	bserv := bs.New(bstore, offline.Exchange(bstore))
 	dserv := mdag.NewDAGService(bserv)
