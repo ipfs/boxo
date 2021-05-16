@@ -18,7 +18,6 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-merkledag"
-	mdag "github.com/ipfs/go-merkledag"
 	"github.com/ipfs/go-merkledag/dagutils"
 	"github.com/polydawn/refmt/cbor"
 	"github.com/polydawn/refmt/obj/atlas"
@@ -191,7 +190,7 @@ func (p *pinner) Pin(ctx context.Context, node ipld.Node, recurse bool) error {
 		// temporary unlock to fetch the entire graph
 		p.lock.Unlock()
 		// Fetch graph starting at node identified by cid
-		err = mdag.FetchGraph(ctx, c, p.dserv)
+		err = merkledag.FetchGraph(ctx, c, p.dserv)
 		p.lock.Lock()
 		if err != nil {
 			return err

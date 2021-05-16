@@ -127,12 +127,14 @@ func (x *indexer) ForEach(ctx context.Context, key string, fn func(key, value st
 			break
 		}
 		ent := r.Entry
-		decIdx, err := decode(path.Base(path.Dir(ent.Key)))
+		var decIdx string
+		decIdx, err = decode(path.Base(path.Dir(ent.Key)))
 		if err != nil {
 			err = fmt.Errorf("cannot decode index: %v", err)
 			break
 		}
-		decKey, err := decode(path.Base(ent.Key))
+		var decKey string
+		decKey, err = decode(path.Base(ent.Key))
 		if err != nil {
 			err = fmt.Errorf("cannot decode key: %v", err)
 			break
