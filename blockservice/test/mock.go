@@ -1,24 +1,23 @@
 package bstest
 
 import (
-	. "github.com/ipfs/go-blockservice"
-
 	testinstance "github.com/ipfs/go-bitswap/testinstance"
 	tn "github.com/ipfs/go-bitswap/testnet"
+	"github.com/ipfs/go-blockservice"
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 )
 
 // Mocks returns |n| connected mock Blockservices
-func Mocks(n int) []BlockService {
+func Mocks(n int) []blockservice.BlockService {
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0))
 	sg := testinstance.NewTestInstanceGenerator(net)
 
 	instances := sg.Instances(n)
 
-	var servs []BlockService
+	var servs []blockservice.BlockService
 	for _, i := range instances {
-		servs = append(servs, New(i.Blockstore(), i.Exchange))
+		servs = append(servs, blockservice.New(i.Blockstore(), i.Exchange))
 	}
 	return servs
 }
