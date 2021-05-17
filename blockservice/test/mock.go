@@ -11,7 +11,7 @@ import (
 // Mocks returns |n| connected mock Blockservices
 func Mocks(n int) []blockservice.BlockService {
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0))
-	sg := testinstance.NewTestInstanceGenerator(net)
+	sg := testinstance.NewTestInstanceGenerator(net, nil, nil)
 
 	instances := sg.Instances(n)
 
