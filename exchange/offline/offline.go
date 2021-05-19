@@ -34,7 +34,7 @@ func (e *offlineExchange) HasBlock(b blocks.Block) error {
 }
 
 // Close always returns nil.
-func (_ *offlineExchange) Close() error {
+func (e *offlineExchange) Close() error {
 	// NB: exchange doesn't own the blockstore's underlying datastore, so it is
 	// not responsible for closing it.
 	return nil
@@ -44,11 +44,9 @@ func (e *offlineExchange) GetBlocks(ctx context.Context, ks []cid.Cid) (<-chan b
 	out := make(chan blocks.Block)
 	go func() {
 		defer close(out)
-		var misses []cid.Cid
 		for _, k := range ks {
 			hit, err := e.bs.Get(k)
 			if err != nil {
-				misses = append(misses, k)
 				// a long line of misses should abort when context is cancelled.
 				select {
 				// TODO case send misses down channel
