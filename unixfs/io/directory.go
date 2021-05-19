@@ -134,7 +134,7 @@ func NewDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (Directory, err
 
 	switch fsNode.Type() {
 	case format.TDirectory:
-		return newBasicDirectoryFromNode(dserv, protoBufNode.Copy().(*mdag.ProtoNode)), nil
+		return &UpgradeableDirectory{newBasicDirectoryFromNode(dserv, protoBufNode.Copy().(*mdag.ProtoNode))}, nil
 	case format.THAMTShard:
 		shard, err := hamt.NewHamtFromDag(dserv, node)
 		if err != nil {
