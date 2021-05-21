@@ -150,6 +150,7 @@ func NewDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (Directory, err
 }
 
 func (d *BasicDirectory) computeEstimatedSize() {
+	d.estimatedSize = 0
 	d.ForEachLink(nil, func(l *ipld.Link) error {
 		d.addToEstimatedSize(l.Name, l.Cid)
 		return nil
