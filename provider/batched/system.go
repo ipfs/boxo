@@ -225,6 +225,11 @@ func (s *BatchProvidingSystem) Run() {
 				keys = append(keys, c.Hash())
 			}
 
+			// in case after removing all the invalid CIDs there are no valid ones left
+			if len(keys) == 0 {
+				continue
+			}
+
 			for !s.rsys.Ready() {
 				log.Debugf("reprovider system not ready")
 				select {
