@@ -107,7 +107,7 @@ func EngineBlockstoreWorkerCount(count int) Option {
 // This option is only used for testing.
 func SetSendDontHaves(send bool) Option {
 	return func(bs *Bitswap) {
-		bs.engine.SetSendDontHaves(send)
+		bs.engineSetSendDontHaves = send
 	}
 }
 
@@ -210,6 +210,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		provSearchDelay:            defaultProvSearchDelay,
 		rebroadcastDelay:           delay.Fixed(time.Minute),
 		engineBstoreWorkerCount:    defaulEngineBlockstoreWorkerCount,
+		engineSetSendDontHaves:     true,
 		simulateDontHavesOnTimeout: true,
 	}
 
@@ -220,6 +221,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 
 	// Set up decision engine
 	bs.engine = decision.NewEngine(bstore, bs.engineBstoreWorkerCount, network.ConnectionManager(), network.Self(), bs.engineScoreLedger)
+	bs.engine.SetSendDontHaves(bs.engineSetSendDontHaves)
 
 	bs.pqm.Startup()
 	network.SetDelegate(bs)
@@ -303,6 +305,11 @@ type Bitswap struct {
 
 	// the score ledger used by the decision engine
 	engineScoreLedger deciface.ScoreLedger
+
+	// indicates what to do when the engine receives a want-block for a block that
+	// is not in the blockstore. Either send DONT_HAVE or do nothing.
+	// This is used to simulate with old version of bitswap that were quiets.
+	engineSetSendDontHaves bool
 
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
