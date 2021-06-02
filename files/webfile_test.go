@@ -12,7 +12,7 @@ import (
 func TestWebFile(t *testing.T) {
 	const content = "Hello world!"
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, content)
+		fmt.Fprint(w, content)
 	}))
 	defer s.Close()
 
