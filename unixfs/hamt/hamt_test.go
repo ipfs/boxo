@@ -280,6 +280,9 @@ func TestRemoveAfterMarshal(t *testing.T) {
 	}
 
 	s, err = NewHamtFromDag(ds, nd)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	ctx := context.Background()
 
@@ -334,7 +337,13 @@ func TestSetAfterMarshal(t *testing.T) {
 	}
 
 	nd, err = nds.Node()
+	if err != nil {
+		t.Fatal(err)
+	}
 	nds, err = NewHamtFromDag(ds, nd)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	links, err := nds.EnumLinks(ctx)
 	if err != nil {
@@ -408,7 +417,13 @@ func TestDuplicateAddShard(t *testing.T) {
 	}
 
 	node, err := dir.Node()
+	if err != nil {
+		t.Fatal(err)
+	}
 	dir, err = NewHamtFromDag(ds, node)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	lnks, err := dir.EnumLinks(ctx)
 	if err != nil {
@@ -503,7 +518,13 @@ func TestRemoveElemsAfterMarshal(t *testing.T) {
 	}
 
 	nd, err = nds.Node()
+	if err != nil {
+		t.Fatal(err)
+	}
 	nds, err = NewHamtFromDag(ds, nd)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	links, err := nds.EnumLinks(ctx)
 	if err != nil {

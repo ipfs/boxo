@@ -8,9 +8,9 @@ import (
 	mdag "github.com/ipfs/go-merkledag"
 
 	format "github.com/ipfs/go-unixfs"
-	hamt "github.com/ipfs/go-unixfs/hamt"
+	"github.com/ipfs/go-unixfs/hamt"
 
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
 )
@@ -151,7 +151,7 @@ func NewDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (Directory, err
 
 func (d *BasicDirectory) computeEstimatedSize() {
 	d.estimatedSize = 0
-	d.ForEachLink(nil, func(l *ipld.Link) error {
+	d.ForEachLink(context.TODO(), func(l *ipld.Link) error {
 		d.addToEstimatedSize(l.Name, l.Cid)
 		return nil
 	})
