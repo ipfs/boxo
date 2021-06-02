@@ -23,14 +23,14 @@ const DefaultIpfsHash = mh.SHA2_256
 var Debug bool
 
 // ErrNotImplemented signifies a function has not been implemented yet.
-var ErrNotImplemented = errors.New("Error: not implemented yet.")
+var ErrNotImplemented = errors.New("error: not implemented yet")
 
 // ErrTimeout implies that a timeout has been triggered
-var ErrTimeout = errors.New("Error: Call timed out.")
+var ErrTimeout = errors.New("error: call timed out")
 
-// ErrSearchIncomplete implies that a search type operation didnt
+// ErrSearchIncomplete implies that a search type operation didn't
 // find the expected node, but did find 'a' node.
-var ErrSearchIncomplete = errors.New("Error: Search Incomplete.")
+var ErrSearchIncomplete = errors.New("error: search incomplete")
 
 // ErrCast is returned when a cast fails AND the program should not panic.
 func ErrCast() error {
