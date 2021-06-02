@@ -26,7 +26,7 @@ func TestTarWriter(t *testing.T) {
 	go func() {
 		defer tw.Close()
 		if err := tw.WriteFile(tf, ""); err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 
