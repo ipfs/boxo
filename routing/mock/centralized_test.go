@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 	u "github.com/ipfs/go-ipfs-util"
 
@@ -44,8 +44,8 @@ func TestClientFindProviders(t *testing.T) {
 
 	providersFromClient := client.FindProvidersAsync(context.Background(), k, max)
 	isInClient := false
-	for pi := range providersFromClient {
-		if pi.ID == pi.ID { // <-- typo?
+	for p := range providersFromClient {
+		if p.ID == pi.ID() {
 			isInClient = true
 		}
 	}
