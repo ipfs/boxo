@@ -118,9 +118,9 @@ func WithScoreLedger(scoreLedger deciface.ScoreLedger) Option {
 	}
 }
 
-func SetSendDontHavesOnTimeout(send bool) Option {
+func SetSimulateDontHavesOnTimeout(send bool) Option {
 	return func(bs *Bitswap) {
-		bs.sendDontHavesOnTimeout = send
+		bs.simulateDontHavesOnTimeout = send
 	}
 }
 
@@ -158,7 +158,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	var bs *Bitswap
 	onDontHaveTimeout := func(p peer.ID, dontHaves []cid.Cid) {
 		// Simulate a message arriving with DONT_HAVEs
-		if bs.sendDontHavesOnTimeout {
+		if bs.simulateDontHavesOnTimeout {
 			sm.ReceiveFrom(ctx, p, nil, nil, dontHaves)
 		}
 	}
@@ -192,25 +192,25 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
 
 	bs = &Bitswap{
-		blockstore:              bstore,
-		network:                 network,
-		process:                 px,
-		newBlocks:               make(chan cid.Cid, HasBlockBufferSize),
-		provideKeys:             make(chan cid.Cid, provideKeysBufferSize),
-		pm:                      pm,
-		pqm:                     pqm,
-		sm:                      sm,
-		sim:                     sim,
-		notif:                   notif,
-		counters:                new(counters),
-		dupMetric:               dupHist,
-		allMetric:               allHist,
-		sentHistogram:           sentHistogram,
-		provideEnabled:          true,
-		provSearchDelay:         defaultProvSearchDelay,
-		rebroadcastDelay:        delay.Fixed(time.Minute),
-		engineBstoreWorkerCount: defaulEngineBlockstoreWorkerCount,
-		sendDontHavesOnTimeout:  true,
+		blockstore:                 bstore,
+		network:                    network,
+		process:                    px,
+		newBlocks:                  make(chan cid.Cid, HasBlockBufferSize),
+		provideKeys:                make(chan cid.Cid, provideKeysBufferSize),
+		pm:                         pm,
+		pqm:                        pqm,
+		sm:                         sm,
+		sim:                        sim,
+		notif:                      notif,
+		counters:                   new(counters),
+		dupMetric:                  dupHist,
+		allMetric:                  allHist,
+		sentHistogram:              sentHistogram,
+		provideEnabled:             true,
+		provSearchDelay:            defaultProvSearchDelay,
+		rebroadcastDelay:           delay.Fixed(time.Minute),
+		engineBstoreWorkerCount:    defaulEngineBlockstoreWorkerCount,
+		simulateDontHavesOnTimeout: true,
 	}
 
 	// apply functional options before starting and running bitswap
@@ -305,7 +305,7 @@ type Bitswap struct {
 	engineScoreLedger deciface.ScoreLedger
 
 	// whether we should actually simulate dont haves on request timeout
-	sendDontHavesOnTimeout bool
+	simulateDontHavesOnTimeout bool
 }
 
 type counters struct {
