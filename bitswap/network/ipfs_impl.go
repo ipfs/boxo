@@ -403,8 +403,8 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 		ctx := context.Background()
 		log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())
 		bsnet.connectEvtMgr.OnMessage(s.Conn().RemotePeer())
-		bsnet.receiver.ReceiveMessage(ctx, p, received)
 		atomic.AddUint64(&bsnet.stats.MessagesRecvd, 1)
+		bsnet.receiver.ReceiveMessage(ctx, p, received)
 	}
 }
 
