@@ -61,12 +61,11 @@ var verifyCmd = cli.Command{
 
 		for {
 			_, err := cr.Next()
-			switch err {
-			case io.EOF:
+			if err == io.EOF {
 				return nil
-			default:
+			}
+			if err != nil {
 				return err
-			case nil:
 			}
 		}
 	},
@@ -93,12 +92,11 @@ var lsCmd = cli.Command{
 
 		for {
 			blk, err := cr.Next()
-			switch err {
-			case io.EOF:
+			if err == io.EOF {
 				return nil
-			default:
+			}
+			if err != nil {
 				return err
-			case nil:
 			}
 			fmt.Println(blk.Cid())
 		}
@@ -112,5 +110,5 @@ func main() {
 		lsCmd,
 		verifyCmd,
 	}
-	app.RunAndExitOnError()
+	app.Run(os.Args)
 }
