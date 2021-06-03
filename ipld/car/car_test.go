@@ -308,6 +308,9 @@ func TestBadHeaders(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := makeCar(t, tc.hex)
+			if err == nil {
+				t.Fatal("expected error from bad header, didn't get one")
+			}
 			if tc.errStr != "" {
 				if err.Error() != tc.errStr {
 					t.Fatalf("bad error: %v", err)
