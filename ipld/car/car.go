@@ -77,7 +77,7 @@ func ReadHeader(br *bufio.Reader) (*CarHeader, error) {
 
 	var ch CarHeader
 	if err := cbor.DecodeInto(hb, &ch); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid header: %v", err)
 	}
 
 	return &ch, nil
@@ -130,12 +130,12 @@ func NewCarReader(r io.Reader) (*CarReader, error) {
 		return nil, err
 	}
 
-	if len(ch.Roots) == 0 {
-		return nil, fmt.Errorf("empty car")
-	}
-
 	if ch.Version != 1 {
 		return nil, fmt.Errorf("invalid car version: %d", ch.Version)
+	}
+
+	if len(ch.Roots) == 0 {
+		return nil, fmt.Errorf("empty car, no roots")
 	}
 
 	return &CarReader{

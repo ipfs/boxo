@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"io"
+	"strings"
 	"testing"
 
 	cid "github.com/ipfs/go-cid"
@@ -231,6 +232,83 @@ func TestEOFHandling(t *testing.T) {
 		}
 		if blk != nil {
 			t.Fatal("EOF returned unexpected block")
+		}
+	})
+}
+
+func TestBadHeaders(t *testing.T) {
+	makeCar := func(t *testing.T, byts string) error {
+		fixture, err := hex.DecodeString(byts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = NewCarReader(bytes.NewReader(fixture))
+		return err
+	}
+
+	t.Run("Sanity check {version:1,roots:[baeaaaa3bmjrq]}", func(t *testing.T) {
+		err := makeCar(t, "1ca265726f6f747381d82a4800010000036162636776657273696f6e01")
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("{version:2}", func(t *testing.T) {
+		err := makeCar(t, "0aa16776657273696f6e02")
+		if err.Error() != "invalid car version: 2" {
+			t.Fatalf("bad error: %v", err)
+		}
+	})
+
+	// an unfortunate error because we don't use a pointer
+	t.Run("{roots:[baeaaaa3bmjrq]}", func(t *testing.T) {
+		err := makeCar(t, "13a165726f6f747381d82a480001000003616263")
+		if err.Error() != "invalid car version: 0" {
+			t.Fatalf("bad error: %v", err)
+		}
+	})
+
+	t.Run("{version:\"1\",roots:[baeaaaa3bmjrq]}", func(t *testing.T) {
+		err := makeCar(t, "1da265726f6f747381d82a4800010000036162636776657273696f6e6131")
+		if !strings.HasPrefix(err.Error(), "invalid header: ") {
+			t.Fatalf("bad error: %v", err)
+		}
+	})
+
+	t.Run("{version:1}", func(t *testing.T) {
+		err := makeCar(t, "0aa16776657273696f6e01")
+		if err.Error() != "empty car, no roots" {
+			t.Fatalf("bad error: %v", err)
+		}
+	})
+
+	t.Run("{version:1,roots:{cid:baeaaaa3bmjrq}}", func(t *testing.T) {
+		err := makeCar(t, "20a265726f6f7473a163636964d82a4800010000036162636776657273696f6e01")
+		if !strings.HasPrefix(err.Error(), "invalid header: ") {
+			t.Fatalf("bad error: %v", err)
+		}
+	})
+
+	t.Run("{version:1,roots:[baeaaaa3bmjrq],blip:true}", func(t *testing.T) {
+		err := makeCar(t, "22a364626c6970f565726f6f747381d82a4800010000036162636776657273696f6e01")
+		if !strings.HasPrefix(err.Error(), "invalid header: ") {
+			t.Fatalf("bad error: %v", err)
+		}
+	})
+
+	t.Run("[1,[]]", func(t *testing.T) {
+		err := makeCar(t, "03820180")
+		if !strings.HasPrefix(err.Error(), "invalid header: ") {
+			t.Fatalf("bad error: %v", err)
+		}
+	})
+
+	// this is an unfortunate error, it'd be nice to catch it better but it's
+	// very unlikely we'd ever see this in practice
+	t.Run("null", func(t *testing.T) {
+		err := makeCar(t, "01f6")
+		if !strings.HasPrefix(err.Error(), "invalid car version: 0") {
+			t.Fatalf("bad error: %v", err)
 		}
 	})
 }
