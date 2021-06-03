@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/benbjohnson/clock"
 	cid "github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
@@ -60,6 +61,7 @@ type pendingWant struct {
 // we ping the peer to estimate latency. If we receive a response from the
 // peer we use the response latency.
 type dontHaveTimeoutMgr struct {
+	clock                      clock.Clock
 	ctx                        context.Context
 	shutdown                   func()
 	peerConn                   PeerConnection
@@ -83,14 +85,16 @@ type dontHaveTimeoutMgr struct {
 	// ewma of message latency (time from message sent to response received)
 	messageLatency *latencyEwma
 	// timer used to wait until want at front of queue expires
-	checkForTimeoutsTimer *time.Timer
+	checkForTimeoutsTimer *clock.Timer
+	// used for testing -- signal when a scheduled timeout check has happened
+	signal chan struct{}
 }
 
 // newDontHaveTimeoutMgr creates a new dontHaveTimeoutMgr
 // onDontHaveTimeout is called when pending keys expire (not cancelled before timeout)
 func newDontHaveTimeoutMgr(pc PeerConnection, onDontHaveTimeout func([]cid.Cid)) *dontHaveTimeoutMgr {
 	return newDontHaveTimeoutMgrWithParams(pc, onDontHaveTimeout, dontHaveTimeout, maxTimeout,
-		pingLatencyMultiplier, messageLatencyMultiplier, maxExpectedWantProcessTime)
+		pingLatencyMultiplier, messageLatencyMultiplier, maxExpectedWantProcessTime, clock.New(), nil)
 }
 
 // newDontHaveTimeoutMgrWithParams is used by the tests
@@ -101,10 +105,13 @@ func newDontHaveTimeoutMgrWithParams(
 	maxTimeout time.Duration,
 	pingLatencyMultiplier int,
 	messageLatencyMultiplier int,
-	maxExpectedWantProcessTime time.Duration) *dontHaveTimeoutMgr {
+	maxExpectedWantProcessTime time.Duration,
+	clock clock.Clock,
+	signal chan struct{}) *dontHaveTimeoutMgr {
 
 	ctx, shutdown := context.WithCancel(context.Background())
 	mqp := &dontHaveTimeoutMgr{
+		clock:                      clock,
 		ctx:                        ctx,
 		shutdown:                   shutdown,
 		peerConn:                   pc,
@@ -117,6 +124,7 @@ func newDontHaveTimeoutMgrWithParams(
 		messageLatencyMultiplier:   messageLatencyMultiplier,
 		maxExpectedWantProcessTime: maxExpectedWantProcessTime,
 		onDontHaveTimeout:          onDontHaveTimeout,
+		signal:                     signal,
 	}
 
 	return mqp
@@ -214,6 +222,7 @@ func (dhtm *dontHaveTimeoutMgr) measurePingLatency() {
 // checkForTimeouts checks pending wants to see if any are over the timeout.
 // Note: this function should only be called within the lock.
 func (dhtm *dontHaveTimeoutMgr) checkForTimeouts() {
+
 	if len(dhtm.wantQueue) == 0 {
 		return
 	}
@@ -228,7 +237,7 @@ func (dhtm *dontHaveTimeoutMgr) checkForTimeouts() {
 		if pw.active {
 			// The queue is in order from earliest to latest, so if we
 			// didn't find an expired entry we can stop iterating
-			if time.Since(pw.sent) < dhtm.timeout {
+			if dhtm.clock.Since(pw.sent) < dhtm.timeout {
 				break
 			}
 
@@ -259,17 +268,26 @@ func (dhtm *dontHaveTimeoutMgr) checkForTimeouts() {
 	// Schedule the next check for the moment when the oldest pending want will
 	// timeout
 	oldestStart := dhtm.wantQueue[0].sent
-	until := time.Until(oldestStart.Add(dhtm.timeout))
+	until := oldestStart.Add(dhtm.timeout).Sub(dhtm.clock.Now())
 	if dhtm.checkForTimeoutsTimer == nil {
-		dhtm.checkForTimeoutsTimer = time.AfterFunc(until, func() {
-			dhtm.lk.Lock()
-			defer dhtm.lk.Unlock()
-
-			dhtm.checkForTimeouts()
-		})
+		dhtm.checkForTimeoutsTimer = dhtm.clock.Timer(until)
+		go dhtm.consumeTimeouts()
 	} else {
 		dhtm.checkForTimeoutsTimer.Stop()
 		dhtm.checkForTimeoutsTimer.Reset(until)
+	}
+}
+
+func (dhtm *dontHaveTimeoutMgr) consumeTimeouts() {
+	for {
+		select {
+		case <-dhtm.ctx.Done():
+			return
+		case <-dhtm.checkForTimeoutsTimer.C:
+			dhtm.lk.Lock()
+			dhtm.checkForTimeouts()
+			dhtm.lk.Unlock()
+		}
 	}
 }
 
@@ -280,7 +298,7 @@ func (dhtm *dontHaveTimeoutMgr) AddPending(ks []cid.Cid) {
 		return
 	}
 
-	start := time.Now()
+	start := dhtm.clock.Now()
 
 	dhtm.lk.Lock()
 	defer dhtm.lk.Unlock()
@@ -331,6 +349,11 @@ func (dhtm *dontHaveTimeoutMgr) fireTimeout(pending []cid.Cid) {
 
 	// Fire the timeout
 	dhtm.onDontHaveTimeout(pending)
+
+	// signal a timeout fired
+	if dhtm.signal != nil {
+		dhtm.signal <- struct{}{}
+	}
 }
 
 // calculateTimeoutFromPingLatency calculates a reasonable timeout derived from latency
