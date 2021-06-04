@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/benbjohnson/clock"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -55,6 +56,8 @@ type scoreledger struct {
 
 	// the record lock
 	lock sync.RWMutex
+
+	clock clock.Clock
 }
 
 // Receipt is a summary of the ledger for a given peer
@@ -73,7 +76,7 @@ func (l *scoreledger) AddToSentBytes(n int) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 	l.exchangeCount++
-	l.lastExchange = time.Now()
+	l.lastExchange = l.clock.Now()
 	l.bytesSent += uint64(n)
 }
 
@@ -82,7 +85,7 @@ func (l *scoreledger) AddToReceivedBytes(n int) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 	l.exchangeCount++
-	l.lastExchange = time.Now()
+	l.lastExchange = l.clock.Now()
 	l.bytesRecv += uint64(n)
 }
 
@@ -114,6 +117,7 @@ type DefaultScoreLedger struct {
 	peerSampleInterval time.Duration
 	// used by the tests to detect when a sample is taken
 	sampleCh chan struct{}
+	clock    clock.Clock
 }
 
 // scoreWorker keeps track of how "useful" our peers are, updating scores in the
@@ -134,7 +138,7 @@ type DefaultScoreLedger struct {
 // adjust it ±25% based on our debt ratio. Peers that have historically been
 // more useful to us than we are to them get the highest score.
 func (dsl *DefaultScoreLedger) scoreWorker() {
-	ticker := time.NewTicker(dsl.peerSampleInterval)
+	ticker := dsl.clock.Ticker(dsl.peerSampleInterval)
 	defer ticker.Stop()
 
 	type update struct {
@@ -236,9 +240,10 @@ func (dsl *DefaultScoreLedger) find(p peer.ID) *scoreledger {
 }
 
 // Returns a new scoreledger.
-func newScoreLedger(p peer.ID) *scoreledger {
+func newScoreLedger(p peer.ID, clock clock.Clock) *scoreledger {
 	return &scoreledger{
 		partner: p,
+		clock:   clock,
 	}
 }
 
@@ -255,7 +260,7 @@ func (dsl *DefaultScoreLedger) findOrCreate(p peer.ID) *scoreledger {
 	defer dsl.lock.Unlock()
 	l, ok := dsl.ledgerMap[p]
 	if !ok {
-		l = newScoreLedger(p)
+		l = newScoreLedger(p, dsl.clock)
 		dsl.ledgerMap[p] = l
 	}
 	return l
@@ -315,7 +320,7 @@ func (dsl *DefaultScoreLedger) PeerConnected(p peer.ID) {
 	defer dsl.lock.Unlock()
 	_, ok := dsl.ledgerMap[p]
 	if !ok {
-		dsl.ledgerMap[p] = newScoreLedger(p)
+		dsl.ledgerMap[p] = newScoreLedger(p, dsl.clock)
 	}
 }
 
@@ -333,14 +338,16 @@ func NewDefaultScoreLedger() *DefaultScoreLedger {
 		ledgerMap:          make(map[peer.ID]*scoreledger),
 		closing:            make(chan struct{}),
 		peerSampleInterval: shortTerm,
+		clock:              clock.New(),
 	}
 }
 
 // Creates a new instance of the default score ledger with testing
 // parameters.
-func NewTestScoreLedger(peerSampleInterval time.Duration, sampleCh chan struct{}) *DefaultScoreLedger {
+func NewTestScoreLedger(peerSampleInterval time.Duration, sampleCh chan struct{}, clock clock.Clock) *DefaultScoreLedger {
 	dsl := NewDefaultScoreLedger()
 	dsl.peerSampleInterval = peerSampleInterval
 	dsl.sampleCh = sampleCh
+	dsl.clock = clock
 	return dsl
 }
