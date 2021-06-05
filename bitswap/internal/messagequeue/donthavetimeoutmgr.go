@@ -86,8 +86,8 @@ type dontHaveTimeoutMgr struct {
 	messageLatency *latencyEwma
 	// timer used to wait until want at front of queue expires
 	checkForTimeoutsTimer *clock.Timer
-	// used for testing -- signal when a scheduled timeout check has happened
-	signal chan struct{}
+	// used for testing -- timeoutsTriggered when a scheduled dont have timeouts were triggered
+	timeoutsTriggered chan struct{}
 }
 
 // newDontHaveTimeoutMgr creates a new dontHaveTimeoutMgr
@@ -107,7 +107,7 @@ func newDontHaveTimeoutMgrWithParams(
 	messageLatencyMultiplier int,
 	maxExpectedWantProcessTime time.Duration,
 	clock clock.Clock,
-	signal chan struct{}) *dontHaveTimeoutMgr {
+	timeoutsTriggered chan struct{}) *dontHaveTimeoutMgr {
 
 	ctx, shutdown := context.WithCancel(context.Background())
 	mqp := &dontHaveTimeoutMgr{
@@ -124,7 +124,7 @@ func newDontHaveTimeoutMgrWithParams(
 		messageLatencyMultiplier:   messageLatencyMultiplier,
 		maxExpectedWantProcessTime: maxExpectedWantProcessTime,
 		onDontHaveTimeout:          onDontHaveTimeout,
-		signal:                     signal,
+		timeoutsTriggered:          timeoutsTriggered,
 	}
 
 	return mqp
@@ -351,8 +351,8 @@ func (dhtm *dontHaveTimeoutMgr) fireTimeout(pending []cid.Cid) {
 	dhtm.onDontHaveTimeout(pending)
 
 	// signal a timeout fired
-	if dhtm.signal != nil {
-		dhtm.signal <- struct{}{}
+	if dhtm.timeoutsTriggered != nil {
+		dhtm.timeoutsTriggered <- struct{}{}
 	}
 }
 
