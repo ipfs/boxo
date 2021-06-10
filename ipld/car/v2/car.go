@@ -1,7 +1,11 @@
 package car
 
-// HeaderBytesSize is the fixed size of CAR v2 header in number of bytes.
-const HeaderBytesSize = 32
+const (
+	// HeaderBytesSize is the fixed size of CAR v2 header in number of bytes.
+	HeaderBytesSize = 40
+	// CharacteristicsBytesSize is the fixed size of Characteristics bitfield within CAR v2 header in number of bytes.
+	CharacteristicsBytesSize = 16
+)
 
 var (
 	// The fixed prefix of a CAR v2, signalling the version number to previous versions for graceful fail over.
@@ -23,6 +27,8 @@ type (
 	Header struct {
 		// 128-bit characteristics of this CAR v2 file, such as order, deduplication, etc. Reserved for future use.
 		Characteristics Characteristics
+		// The offset from the beginning of the file at which the dump of CAR v1 starts.
+		CarV1Offset uint64
 		// The size of CAR v1 encapsulated in this CAR v2 as bytes.
 		CarV1Size uint64
 		// The offset from the beginning of the file at which the CAR v2 index begins.
@@ -42,5 +48,5 @@ func (h *Header) Size() int {
 
 // Size gets the size of Characteristics in number of bytes.
 func (c *Characteristics) Size() int {
-	return PrefixBytesSize
+	return CharacteristicsBytesSize
 }
