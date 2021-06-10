@@ -1,7 +1,7 @@
 package car
 
-const prefixBytesSize = 16
-const headerBytesSize = 32
+// HeaderBytesSize is the fixed size of CAR v2 header in number of bytes.
+const HeaderBytesSize = 32
 
 var (
 	// The fixed prefix of a CAR v2, signalling the version number to previous versions for graceful fail over.
@@ -13,7 +13,7 @@ var (
 		0x02, // uint(2)
 	}
 	// The size of the CAR v2 prefix in 11 bytes, (i.e. 11).
-	PrefixBytesSize = uint64(len(PrefixBytes))
+	PrefixBytesSize = len(PrefixBytes)
 	// Reserved 128 bits space to capture future characteristics of CAR v2 such as order, duplication, etc.
 	EmptyCharacteristics = new(Characteristics)
 )
@@ -37,10 +37,10 @@ type (
 
 // Size gets the size of Header in number of bytes.
 func (h *Header) Size() int {
-	return headerBytesSize
+	return HeaderBytesSize
 }
 
 // Size gets the size of Characteristics in number of bytes.
 func (c *Characteristics) Size() int {
-	return prefixBytesSize
+	return PrefixBytesSize
 }
