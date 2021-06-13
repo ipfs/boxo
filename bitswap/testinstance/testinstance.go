@@ -5,8 +5,8 @@ import (
 	"time"
 
 	bitswap "github.com/ipfs/go-bitswap"
-	tn "github.com/ipfs/go-bitswap/testnet"
 	bsnet "github.com/ipfs/go-bitswap/network"
+	tn "github.com/ipfs/go-bitswap/testnet"
 	ds "github.com/ipfs/go-datastore"
 	delayed "github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"

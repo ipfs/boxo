@@ -208,24 +208,24 @@ func TestAllPeersDoNotHaveBlock(t *testing.T) {
 	}
 
 	testcases := []testcase{
-		testcase{[]peer.ID{p0}, []cid.Cid{c0}, []cid.Cid{}},
-		testcase{[]peer.ID{p1}, []cid.Cid{c0}, []cid.Cid{c0}},
-		testcase{[]peer.ID{p2}, []cid.Cid{c0}, []cid.Cid{}},
+		{[]peer.ID{p0}, []cid.Cid{c0}, []cid.Cid{}},
+		{[]peer.ID{p1}, []cid.Cid{c0}, []cid.Cid{c0}},
+		{[]peer.ID{p2}, []cid.Cid{c0}, []cid.Cid{}},
 
-		testcase{[]peer.ID{p0}, []cid.Cid{c1}, []cid.Cid{c1}},
-		testcase{[]peer.ID{p1}, []cid.Cid{c1}, []cid.Cid{}},
-		testcase{[]peer.ID{p2}, []cid.Cid{c1}, []cid.Cid{}},
+		{[]peer.ID{p0}, []cid.Cid{c1}, []cid.Cid{c1}},
+		{[]peer.ID{p1}, []cid.Cid{c1}, []cid.Cid{}},
+		{[]peer.ID{p2}, []cid.Cid{c1}, []cid.Cid{}},
 
-		testcase{[]peer.ID{p0}, []cid.Cid{c2}, []cid.Cid{c2}},
-		testcase{[]peer.ID{p1}, []cid.Cid{c2}, []cid.Cid{}},
-		testcase{[]peer.ID{p2}, []cid.Cid{c2}, []cid.Cid{c2}},
+		{[]peer.ID{p0}, []cid.Cid{c2}, []cid.Cid{c2}},
+		{[]peer.ID{p1}, []cid.Cid{c2}, []cid.Cid{}},
+		{[]peer.ID{p2}, []cid.Cid{c2}, []cid.Cid{c2}},
 
 		// p0 recieved DONT_HAVE for c1 & c2 (but not for c0)
-		testcase{[]peer.ID{p0}, []cid.Cid{c0, c1, c2}, []cid.Cid{c1, c2}},
-		testcase{[]peer.ID{p0, p1}, []cid.Cid{c0, c1, c2}, []cid.Cid{}},
+		{[]peer.ID{p0}, []cid.Cid{c0, c1, c2}, []cid.Cid{c1, c2}},
+		{[]peer.ID{p0, p1}, []cid.Cid{c0, c1, c2}, []cid.Cid{}},
 		// Both p0 and p2 received DONT_HAVE for c2
-		testcase{[]peer.ID{p0, p2}, []cid.Cid{c0, c1, c2}, []cid.Cid{c2}},
-		testcase{[]peer.ID{p0, p1, p2}, []cid.Cid{c0, c1, c2}, []cid.Cid{}},
+		{[]peer.ID{p0, p2}, []cid.Cid{c0, c1, c2}, []cid.Cid{c2}},
+		{[]peer.ID{p0, p1, p2}, []cid.Cid{c0, c1, c2}, []cid.Cid{}},
 	}
 
 	for i, tc := range testcases {

@@ -236,31 +236,31 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 
 	testCases := []testCase{
 		// Just send want-blocks
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     vowels,
 					sendDontHave: false,
 				},
 			},
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks: vowels,
 				},
 			},
 		},
 
 		// Send want-blocks and want-haves
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     vowels,
 					wantHaves:    "fgh",
 					sendDontHave: false,
 				},
 			},
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks:  vowels,
 					haves: "fgh",
 				},
@@ -269,16 +269,16 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 
 		// Send want-blocks and want-haves, with some want-haves that are not
 		// present, but without requesting DONT_HAVES
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     vowels,
 					wantHaves:    "fgh123",
 					sendDontHave: false,
 				},
 			},
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks:  vowels,
 					haves: "fgh",
 				},
@@ -287,16 +287,16 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 
 		// Send want-blocks and want-haves, with some want-haves that are not
 		// present, and request DONT_HAVES
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     vowels,
 					wantHaves:    "fgh123",
 					sendDontHave: true,
 				},
 			},
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks:      vowels,
 					haves:     "fgh",
 					dontHaves: "123",
@@ -306,16 +306,16 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 
 		// Send want-blocks and want-haves, with some want-blocks and want-haves that are not
 		// present, but without requesting DONT_HAVES
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     "aeiou123",
 					wantHaves:    "fgh456",
 					sendDontHave: false,
 				},
 			},
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks:      "aeiou",
 					haves:     "fgh",
 					dontHaves: "",
@@ -325,16 +325,16 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 
 		// Send want-blocks and want-haves, with some want-blocks and want-haves that are not
 		// present, and request DONT_HAVES
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     "aeiou123",
 					wantHaves:    "fgh456",
 					sendDontHave: true,
 				},
 			},
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks:      "aeiou",
 					haves:     "fgh",
 					dontHaves: "123456",
@@ -343,48 +343,48 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 		},
 
 		// Send repeated want-blocks
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     "ae",
 					sendDontHave: false,
 				},
-				testCaseEntry{
+				{
 					wantBlks:     "io",
 					sendDontHave: false,
 				},
-				testCaseEntry{
+				{
 					wantBlks:     "u",
 					sendDontHave: false,
 				},
 			},
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks: "aeiou",
 				},
 			},
 		},
 
 		// Send repeated want-blocks and want-haves
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     "ae",
 					wantHaves:    "jk",
 					sendDontHave: false,
 				},
-				testCaseEntry{
+				{
 					wantBlks:     "io",
 					wantHaves:    "lm",
 					sendDontHave: false,
 				},
-				testCaseEntry{
+				{
 					wantBlks:     "u",
 					sendDontHave: false,
 				},
 			},
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks:  "aeiou",
 					haves: "jklm",
 				},
@@ -393,26 +393,26 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 
 		// Send repeated want-blocks and want-haves, with some want-blocks and want-haves that are not
 		// present, and request DONT_HAVES
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     "ae12",
 					wantHaves:    "jk5",
 					sendDontHave: true,
 				},
-				testCaseEntry{
+				{
 					wantBlks:     "io34",
 					wantHaves:    "lm",
 					sendDontHave: true,
 				},
-				testCaseEntry{
+				{
 					wantBlks:     "u",
 					wantHaves:    "6",
 					sendDontHave: true,
 				},
 			},
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks:      "aeiou",
 					haves:     "jklm",
 					dontHaves: "123456",
@@ -421,13 +421,13 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 		},
 
 		// Send want-block then want-have for same CID
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     "a",
 					sendDontHave: true,
 				},
-				testCaseEntry{
+				{
 					wantHaves:    "a",
 					sendDontHave: true,
 				},
@@ -435,67 +435,67 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 			// want-have should be ignored because there was already a
 			// want-block for the same CID in the queue
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks: "a",
 				},
 			},
 		},
 
 		// Send want-have then want-block for same CID
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantHaves:    "b",
 					sendDontHave: true,
 				},
-				testCaseEntry{
+				{
 					wantBlks:     "b",
 					sendDontHave: true,
 				},
 			},
 			// want-block should overwrite existing want-have
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks: "b",
 				},
 			},
 		},
 
 		// Send want-block then want-block for same CID
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     "a",
 					sendDontHave: true,
 				},
-				testCaseEntry{
+				{
 					wantBlks:     "a",
 					sendDontHave: true,
 				},
 			},
 			// second want-block should be ignored
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks: "a",
 				},
 			},
 		},
 
 		// Send want-have then want-have for same CID
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantHaves:    "a",
 					sendDontHave: true,
 				},
-				testCaseEntry{
+				{
 					wantHaves:    "a",
 					sendDontHave: true,
 				},
 			},
 			// second want-have should be ignored
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					haves: "a",
 				},
 			},
@@ -573,13 +573,13 @@ func TestPartnerWantHaveWantBlockActive(t *testing.T) {
 
 	testCases := []testCase{
 		// Send want-block then want-have for same CID
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     "a",
 					sendDontHave: true,
 				},
-				testCaseEntry{
+				{
 					wantHaves:    "a",
 					sendDontHave: true,
 				},
@@ -587,20 +587,20 @@ func TestPartnerWantHaveWantBlockActive(t *testing.T) {
 			// want-have should be ignored because there was already a
 			// want-block for the same CID in the queue
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks: "a",
 				},
 			},
 		},
 
 		// Send want-have then want-block for same CID
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantHaves:    "b",
 					sendDontHave: true,
 				},
-				testCaseEntry{
+				{
 					wantBlks:     "b",
 					sendDontHave: true,
 				},
@@ -608,50 +608,50 @@ func TestPartnerWantHaveWantBlockActive(t *testing.T) {
 			// want-have is active when want-block is added, so want-have
 			// should get sent, then want-block
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					haves: "b",
 				},
-				testCaseExp{
+				{
 					blks: "b",
 				},
 			},
 		},
 
 		// Send want-block then want-block for same CID
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantBlks:     "a",
 					sendDontHave: true,
 				},
-				testCaseEntry{
+				{
 					wantBlks:     "a",
 					sendDontHave: true,
 				},
 			},
 			// second want-block should be ignored
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					blks: "a",
 				},
 			},
 		},
 
 		// Send want-have then want-have for same CID
-		testCase{
+		{
 			wls: []testCaseEntry{
-				testCaseEntry{
+				{
 					wantHaves:    "a",
 					sendDontHave: true,
 				},
-				testCaseEntry{
+				{
 					wantHaves:    "a",
 					sendDontHave: true,
 				},
 			},
 			// second want-have should be ignored
 			exp: []testCaseExp{
-				testCaseExp{
+				{
 					haves: "a",
 				},
 			},
