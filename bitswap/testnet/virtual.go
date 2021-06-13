@@ -271,9 +271,9 @@ func (mp *messagePasser) Reset() error {
 }
 
 var oldProtos = map[protocol.ID]struct{}{
-	bsnet.ProtocolBitswapNoVers:  struct{}{},
-	bsnet.ProtocolBitswapOneZero: struct{}{},
-	bsnet.ProtocolBitswapOneOne:  struct{}{},
+	bsnet.ProtocolBitswapNoVers:  {},
+	bsnet.ProtocolBitswapOneZero: {},
+	bsnet.ProtocolBitswapOneOne:  {},
 }
 
 func (mp *messagePasser) SupportsHave() bool {
