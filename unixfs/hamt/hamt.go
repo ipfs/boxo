@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"os"
 
-	bitfield "github.com/Stebalien/go-bitfield"
+	bitfield "github.com/ipfs/go-bitfield"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
