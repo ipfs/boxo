@@ -7,8 +7,8 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
 	dstest "github.com/ipfs/go-merkledag/test"
+	"github.com/ipld/go-car/v2/carbs"
 	"github.com/stretchr/testify/assert"
-	"github.com/willscott/carbs"
 	"testing"
 )
 

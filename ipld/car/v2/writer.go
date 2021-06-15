@@ -6,7 +6,7 @@ import (
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
 	carv1 "github.com/ipld/go-car"
-	"github.com/willscott/carbs"
+	"github.com/ipld/go-car/v2/carbs"
 	"io"
 )
 
@@ -123,7 +123,7 @@ func (w *Writer) writeHeader(writer io.Writer, carV1Len int) (int64, error) {
 }
 
 func (w *Writer) writeIndex(writer io.Writer, carV1 []byte) (n int64, err error) {
-	// TODO avoid recopying the bytes by refacting carbs once it is integrated here.
+	// TODO avoid recopying the bytes by refactoring carbs once it is integrated here.
 	// Right now we copy the bytes since carbs takes a writer.
 	// Consider refactoring carbs to make this process more efficient.
 	// We should avoid reading the entire car into memory since it can be large.
