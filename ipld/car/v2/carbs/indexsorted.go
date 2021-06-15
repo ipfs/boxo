@@ -88,7 +88,7 @@ func (s *singleWidthIndex) get(d []byte) uint64 {
 	if int64(idx) == s.len {
 		return 0
 	}
-	if bytes.Compare(d[:], s.index[idx*int(s.width):(idx+1)*int(s.width)-8]) != 0 {
+	if !bytes.Equal(d[:], s.index[idx*int(s.width):(idx+1)*int(s.width)-8]) {
 		return 0
 	}
 	return binary.LittleEndian.Uint64(s.index[(idx+1)*int(s.width)-8 : (idx+1)*int(s.width)])

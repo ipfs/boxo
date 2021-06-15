@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/willscott/carbs"
+	"github.com/ipld/go-car/v2/carbs"
 	"golang.org/x/exp/mmap"
 )
 
@@ -45,7 +45,5 @@ func main() {
 
 	if err := carbs.Save(idx, db); err != nil {
 		fmt.Printf("Error saving : %v\n", err)
-		return
 	}
-	return
 }

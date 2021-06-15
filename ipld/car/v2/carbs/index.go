@@ -78,7 +78,7 @@ func Restore(path string) (Index, error) {
 	}
 	idx, ok := IndexAtlas[IndexCodec(codec)]
 	if !ok {
-		return nil, fmt.Errorf("Unknown codec: %d", codec)
+		return nil, fmt.Errorf("unknown codec: %d", codec)
 	}
 	idxInst := idx()
 	if err := idxInst.Unmarshal(&uar); err != nil {
