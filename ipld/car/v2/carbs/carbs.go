@@ -10,47 +10,47 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	bs "github.com/ipfs/go-ipfs-blockstore"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/multiformats/go-multihash"
 
 	pb "github.com/cheggaaa/pb/v3"
-	car "github.com/ipld/go-car"
+	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
 	"golang.org/x/exp/mmap"
 )
 
-var errNotFound = bs.ErrNotFound
+var errNotFound = blockstore.ErrNotFound
 
-// Carbs provides a read-only Car Block Store.
-type Carbs struct {
+// BlockStore provides a read-only Car Block Store.
+type BlockStore struct {
 	backing io.ReaderAt
 	idx     Index
 }
 
-var _ bs.Blockstore = (*Carbs)(nil)
+var _ blockstore.Blockstore = (*BlockStore)(nil)
 
-func (c *Carbs) Read(idx int64) (cid.Cid, []byte, error) {
-	bcid, data, err := util.ReadNode(bufio.NewReader(&unatreader{c.backing, idx}))
+func (b *BlockStore) Read(idx int64) (cid.Cid, []byte, error) {
+	bcid, data, err := util.ReadNode(bufio.NewReader(&unatreader{b.backing, idx}))
 	return bcid, data, err
 }
 
 // DeleteBlock doesn't delete a block on RO blockstore
-func (c *Carbs) DeleteBlock(_ cid.Cid) error {
+func (b *BlockStore) DeleteBlock(_ cid.Cid) error {
 	return fmt.Errorf("read only")
 }
 
 // Has indicates if the store has a cid
-func (c *Carbs) Has(key cid.Cid) (bool, error) {
-	offset, err := c.idx.Get(key)
+func (b *BlockStore) Has(key cid.Cid) (bool, error) {
+	offset, err := b.idx.Get(key)
 	if err != nil {
 		return false, err
 	}
-	uar := unatreader{c.backing, int64(offset)}
+	uar := unatreader{b.backing, int64(offset)}
 	_, err = binary.ReadUvarint(&uar)
 	if err != nil {
 		return false, err
 	}
-	cid, _, err := readCid(c.backing, uar.at)
+	cid, _, err := readCid(b.backing, uar.at)
 	if err != nil {
 		return false, err
 	}
@@ -100,60 +100,61 @@ func readCid(store io.ReaderAt, at int64) (cid.Cid, int, error) {
 }
 
 // Get gets a block from the store
-func (c *Carbs) Get(key cid.Cid) (blocks.Block, error) {
-	offset, err := c.idx.Get(key)
+func (b *BlockStore) Get(key cid.Cid) (blocks.Block, error) {
+	offset, err := b.idx.Get(key)
 	if err != nil {
 		return nil, err
 	}
-	entry, bytes, err := c.Read(int64(offset))
+	entry, bytes, err := b.Read(int64(offset))
 	if err != nil {
+		// TODO replace with logging
 		fmt.Printf("failed get %d:%v\n", offset, err)
-		return nil, bs.ErrNotFound
+		return nil, blockstore.ErrNotFound
 	}
 	if !entry.Equals(key) {
-		return nil, bs.ErrNotFound
+		return nil, blockstore.ErrNotFound
 	}
 	return blocks.NewBlockWithCid(bytes, key)
 }
 
 // GetSize gets how big a item is
-func (c *Carbs) GetSize(key cid.Cid) (int, error) {
-	idx, err := c.idx.Get(key)
+func (b *BlockStore) GetSize(key cid.Cid) (int, error) {
+	idx, err := b.idx.Get(key)
 	if err != nil {
 		return -1, err
 	}
-	len, err := binary.ReadUvarint(&unatreader{c.backing, int64(idx)})
+	len, err := binary.ReadUvarint(&unatreader{b.backing, int64(idx)})
 	if err != nil {
-		return -1, bs.ErrNotFound
+		return -1, blockstore.ErrNotFound
 	}
-	cid, _, err := readCid(c.backing, int64(idx+len))
+	cid, _, err := readCid(b.backing, int64(idx+len))
 	if err != nil {
 		return 0, err
 	}
 	if !cid.Equals(key) {
-		return -1, bs.ErrNotFound
+		return -1, blockstore.ErrNotFound
 	}
 	// get cid. validate.
 	return int(len), err
 }
 
 // Put does nothing on a ro store
-func (c *Carbs) Put(blocks.Block) error {
+func (b *BlockStore) Put(blocks.Block) error {
 	return fmt.Errorf("read only")
 }
 
 // PutMany does nothing on a ro store
-func (c *Carbs) PutMany([]blocks.Block) error {
+func (b *BlockStore) PutMany([]blocks.Block) error {
 	return fmt.Errorf("read only")
 }
 
 // AllKeysChan returns the list of keys in the store
-func (c *Carbs) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
-	header, err := car.ReadHeader(bufio.NewReader(&unatreader{c.backing, 0}))
+func (b *BlockStore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
+	header, err := carv1.ReadHeader(bufio.NewReader(&unatreader{b.backing, 0}))
 	if err != nil {
-		return nil, fmt.Errorf("Error reading car header: %w", err)
+		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
-	offset, err := car.HeaderSize(header)
+	offset, err := carv1.HeaderSize(header)
 	if err != nil {
 		return nil, err
 	}
@@ -162,14 +163,14 @@ func (c *Carbs) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	go func() {
 		done := ctx.Done()
 
-		rdr := unatreader{c.backing, int64(offset)}
-		for true {
+		rdr := unatreader{b.backing, int64(offset)}
+		for {
 			l, err := binary.ReadUvarint(&rdr)
 			thisItemForNxt := rdr.at
 			if err != nil {
 				return
 			}
-			c, _, err := readCid(c.backing, thisItemForNxt)
+			c, _, err := readCid(b.backing, thisItemForNxt)
 			if err != nil {
 				return
 			}
@@ -187,21 +188,20 @@ func (c *Carbs) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 }
 
 // HashOnRead does nothing
-func (c *Carbs) HashOnRead(enabled bool) {
-	return
+func (b *BlockStore) HashOnRead(bool) {
 }
 
 // Roots returns the root CIDs of the backing car
-func (c *Carbs) Roots() ([]cid.Cid, error) {
-	header, err := car.ReadHeader(bufio.NewReader(&unatreader{c.backing, 0}))
+func (b *BlockStore) Roots() ([]cid.Cid, error) {
+	header, err := carv1.ReadHeader(bufio.NewReader(&unatreader{b.backing, 0}))
 	if err != nil {
-		return nil, fmt.Errorf("Error reading car header: %w", err)
+		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
 	return header.Roots, nil
 }
 
 // Load opens a carbs data store, generating an index if it does not exist
-func Load(path string, noPersist bool) (*Carbs, error) {
+func Load(path string, noPersist bool) (*BlockStore, error) {
 	reader, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
@@ -218,7 +218,7 @@ func Load(path string, noPersist bool) (*Carbs, error) {
 			}
 		}
 	}
-	obj := Carbs{
+	obj := BlockStore{
 		backing: reader,
 		idx:     idx,
 	}
@@ -226,8 +226,8 @@ func Load(path string, noPersist bool) (*Carbs, error) {
 }
 
 // Of opens a carbs data store from an existing reader of the base data and index
-func Of(backing io.ReaderAt, index Index) *Carbs {
-	return &Carbs{backing, index}
+func Of(backing io.ReaderAt, index Index) *BlockStore {
+	return &BlockStore{backing, index}
 }
 
 // GenerateIndex provides a low-level interface to create an index over a
@@ -244,11 +244,11 @@ func GenerateIndex(store io.ReaderAt, size int64, codec IndexCodec, verbose bool
 
 	bar.Start()
 
-	header, err := car.ReadHeader(bufio.NewReader(&unatreader{store, 0}))
+	header, err := carv1.ReadHeader(bufio.NewReader(&unatreader{store, 0}))
 	if err != nil {
-		return nil, fmt.Errorf("Error reading car header: %w", err)
+		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
-	offset, err := car.HeaderSize(header)
+	offset, err := carv1.HeaderSize(header)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +258,7 @@ func GenerateIndex(store io.ReaderAt, size int64, codec IndexCodec, verbose bool
 
 	records := make([]Record, 0)
 	rdr := unatreader{store, int64(offset)}
-	for true {
+	for {
 		thisItemIdx := rdr.at
 		l, err := binary.ReadUvarint(&rdr)
 		bar.Add64(int64(l))
