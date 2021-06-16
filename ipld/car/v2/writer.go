@@ -3,11 +3,12 @@ package car
 import (
 	"bytes"
 	"context"
+	"io"
+
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/v2/carbs"
-	"io"
 )
 
 const bulkPaddingBytesSize = 1024
@@ -74,7 +75,7 @@ func (w *Writer) WriteTo(writer io.Writer) (n int64, err error) {
 	if err != nil {
 		return
 	}
-	n += int64(prefixBytesSize)
+	n += int64(PrefixSize)
 	// We read the entire car into memory because carbs.GenerateIndex takes a reader.
 	// Future PRs will make this more efficient by exposing necessary interfaces in carbs so that
 	// this can be done in an streaming manner.

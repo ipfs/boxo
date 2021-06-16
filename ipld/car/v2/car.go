@@ -6,11 +6,13 @@ import (
 )
 
 const (
-	// HeaderBytesSize is the fixed size of CAR v2 header in number of bytes.
-	HeaderBytesSize = 40
-	// CharacteristicsBytesSize is the fixed size of Characteristics bitfield within CAR v2 header in number of bytes.
-	CharacteristicsBytesSize = 16
-	uint64BytesSize          = 8
+	// PrefixSize is the size of the CAR v2 prefix in 11 bytes, (i.e. 11).
+	PrefixSize = 11
+	// HeaderSize is the fixed size of CAR v2 header in number of bytes.
+	HeaderSize = 40
+	// CharacteristicsSize is the fixed size of Characteristics bitfield within CAR v2 header in number of bytes.
+	CharacteristicsSize = 16
+	uint64Size          = 8
 )
 
 var (
@@ -22,8 +24,6 @@ var (
 		0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, // "version"
 		0x02, // uint(2)
 	}
-	// The size of the CAR v2 prefix in 11 bytes, (i.e. 11).
-	prefixBytesSize = uint64(len(PrefixBytes))
 )
 
 type (
@@ -47,15 +47,27 @@ type (
 
 // WriteTo writes this characteristics to the given writer.
 func (c Characteristics) WriteTo(w io.Writer) (n int64, err error) {
-	if err = writeUint64To(w, c.Hi); err != nil {
+	if err = binary.Write(w, binary.LittleEndian, c.Hi); err != nil {
 		return
 	}
-	n += uint64BytesSize
-	if err = writeUint64To(w, c.Lo); err != nil {
+	n += uint64Size
+	if err = binary.Write(w, binary.LittleEndian, c.Lo); err != nil {
 		return
 	}
-	n += uint64BytesSize
+	n += uint64Size
 	return
+}
+
+func (c *Characteristics) ReadFrom(r io.Reader) (int64, error) {
+	buf := make([]byte, CharacteristicsSize)
+	read, err := io.ReadFull(r, buf)
+	n := int64(read)
+	if err != nil {
+		return n, err
+	}
+	c.Hi = binary.LittleEndian.Uint64(buf[:uint64Size])
+	c.Lo = binary.LittleEndian.Uint64(buf[uint64Size:])
+	return n, nil
 }
 
 // NewHeader instantiates a new CAR v2 header, given the byte length of a CAR v1.
@@ -63,7 +75,7 @@ func NewHeader(carV1Size uint64) Header {
 	header := Header{
 		CarV1Size: carV1Size,
 	}
-	header.CarV1Offset = prefixBytesSize + HeaderBytesSize
+	header.CarV1Offset = PrefixSize + HeaderSize
 	header.IndexOffset = header.CarV1Offset + carV1Size
 	return header
 }
@@ -89,26 +101,43 @@ func (h Header) WithCarV1Padding(padding uint64) Header {
 
 // WriteTo serializes this header as bytes and writes them using the given io.Writer.
 func (h Header) WriteTo(w io.Writer) (n int64, err error) {
+	// TODO optimize write by encoding all bytes in a slice and writing once.
 	wn, err := h.Characteristics.WriteTo(w)
 	if err != nil {
 		return
 	}
 	n += wn
-	if err = writeUint64To(w, h.CarV1Offset); err != nil {
+	if err = binary.Write(w, binary.LittleEndian, h.CarV1Offset); err != nil {
 		return
 	}
-	n += uint64BytesSize
-	if err = writeUint64To(w, h.CarV1Size); err != nil {
+	n += uint64Size
+	if err = binary.Write(w, binary.LittleEndian, h.CarV1Size); err != nil {
 		return
 	}
-	n += uint64BytesSize
-	if err = writeUint64To(w, h.IndexOffset); err != nil {
+	n += uint64Size
+	if err = binary.Write(w, binary.LittleEndian, h.IndexOffset); err != nil {
 		return
 	}
-	n += uint64BytesSize
+	n += uint64Size
 	return
 }
 
-func writeUint64To(w io.Writer, v uint64) error {
-	return binary.Write(w, binary.LittleEndian, v)
+// ReadFrom populates fields of this header from the given r.
+func (h *Header) ReadFrom(r io.Reader) (int64, error) {
+	n, err := h.Characteristics.ReadFrom(r)
+	if err != nil {
+		return n, err
+	}
+	remainingSize := HeaderSize - CharacteristicsSize
+	buf := make([]byte, remainingSize)
+	read, err := io.ReadFull(r, buf)
+	n += int64(read)
+	if err != nil {
+		return n, err
+	}
+	carV1RelOffset := uint64Size * 2
+	h.CarV1Offset = binary.LittleEndian.Uint64(buf[:uint64Size])
+	h.CarV1Size = binary.LittleEndian.Uint64(buf[uint64Size:carV1RelOffset])
+	h.IndexOffset = binary.LittleEndian.Uint64(buf[carV1RelOffset:])
+	return n, nil
 }

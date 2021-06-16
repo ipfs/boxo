@@ -51,7 +51,7 @@ func TestIndexRT(t *testing.T) {
 		}
 		defer os.Remove(carFile)
 	*/
-	// TODO use temporari directory to run tests taht work with OS file system to avoid accidental source code modification
+	// TODO use temporary directory to run tests taht work with OS file system to avoid accidental source code modification
 	carFile := "testdata/test.car"
 
 	cf, err := Load(carFile, false)
