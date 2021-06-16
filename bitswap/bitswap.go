@@ -308,7 +308,7 @@ type Bitswap struct {
 
 	// indicates what to do when the engine receives a want-block for a block that
 	// is not in the blockstore. Either send DONT_HAVE or do nothing.
-	// This is used to simulate with old version of bitswap that were quiets.
+	// This is used to simulate older versions of bitswap that did nothing instead of sending back a DONT_HAVE.
 	engineSetSendDontHaves bool
 
 	// whether we should actually simulate dont haves on request timeout
