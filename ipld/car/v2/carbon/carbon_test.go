@@ -1,6 +1,8 @@
 package carbon_test
 
 import (
+	"github.com/ipld/go-car/v2/carbon"
+	"github.com/ipld/go-car/v2/carbs"
 	"io"
 	"math/rand"
 	"os"
@@ -8,12 +10,10 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car"
-	"github.com/willscott/carbon"
-	"github.com/willscott/carbs"
 )
 
 func TestCarbon(t *testing.T) {
-	f, err := os.Open("test.car")
+	f, err := os.Open("../carbs/testdata/test.car")
 	if err != nil {
 		t.Skipf("fixture not found: %q", err)
 		return
@@ -33,7 +33,7 @@ func TestCarbon(t *testing.T) {
 		t.Fatal(err)
 	}
 	cids := make([]cid.Cid, 0)
-	for true {
+	for {
 		b, err := r.Next()
 		if err == io.EOF {
 			break

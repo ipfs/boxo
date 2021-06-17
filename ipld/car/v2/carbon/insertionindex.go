@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/ipld/go-car/v2/carbs"
 	"io"
 
 	"github.com/ipfs/go-cid"
 	"github.com/multiformats/go-multihash"
 	"github.com/petar/GoLLRB/llrb"
 	cbor "github.com/whyrusleeping/cbor/go"
-	carbs "github.com/willscott/carbs"
 )
 
 // IndexInsertion carbs IndexCodec identifier

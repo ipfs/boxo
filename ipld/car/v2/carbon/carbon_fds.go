@@ -1,12 +1,12 @@
 package carbon
 
 import (
+	"github.com/ipld/go-car/v2/carbs"
 	"os"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/util"
-	carbs "github.com/willscott/carbs"
 )
 
 // carbonFD is a carbon implementation based on having two file handles opened, one appending to the file, and the other
@@ -14,7 +14,7 @@ import (
 type carbonFD struct {
 	path        string
 	writeHandle *poswriter
-	carbs.Carbs
+	carbs.BlockStore
 	idx *insertionIndex
 }
 

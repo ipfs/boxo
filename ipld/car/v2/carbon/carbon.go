@@ -3,17 +3,17 @@ package carbon
 import (
 	"errors"
 	"fmt"
+	"github.com/ipld/go-car/v2/carbs"
 	"os"
 
 	"github.com/ipfs/go-cid"
-	bs "github.com/ipfs/go-ipfs-blockstore"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipld/go-car"
-	"github.com/willscott/carbs"
 )
 
 // Carbon is a carbs-index-compatible blockstore supporting appending additional blocks
 type Carbon interface {
-	bs.Blockstore
+	blockstore.Blockstore
 	Checkpoint() error
 	Finish() error
 }
