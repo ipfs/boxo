@@ -155,6 +155,10 @@ func (b *bloomcache) Has(k cid.Cid) (bool, error) {
 }
 
 func (b *bloomcache) GetSize(k cid.Cid) (int, error) {
+	if has, ok := b.hasCached(k); ok && !has {
+		return -1, ErrNotFound
+	}
+
 	return b.blockstore.GetSize(k)
 }
 
