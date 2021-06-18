@@ -1,10 +1,9 @@
-package carbon
+package index
 
 import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/ipld/go-car/v2/carbs"
 	"io"
 
 	"github.com/ipfs/go-cid"
@@ -13,60 +12,56 @@ import (
 	cbor "github.com/whyrusleeping/cbor/go"
 )
 
-// IndexInsertion carbs IndexCodec identifier
-const IndexInsertion carbs.IndexCodec = 0x300010
-
-// init hook to register the index format
-func init() {
-	carbs.IndexAtlas[IndexInsertion] = mkInsertion
-}
-
-type insertionIndex struct {
+type InsertionIndex struct {
 	items llrb.LLRB
 }
 
-type record struct {
-	digest []byte
-	carbs.Record
+func (ii *InsertionIndex) InsertNoReplace(key cid.Cid, n uint64) {
+	ii.items.InsertNoReplace(mkRecordFromCid(key, n))
 }
 
-func (r record) Less(than llrb.Item) bool {
-	other, ok := than.(record)
+type recordDigest struct {
+	digest []byte
+	Record
+}
+
+func (r recordDigest) Less(than llrb.Item) bool {
+	other, ok := than.(recordDigest)
 	if !ok {
 		return false
 	}
 	return bytes.Compare(r.digest, other.digest) < 0
 }
 
-func mkRecord(r carbs.Record) record {
+func mkRecord(r Record) recordDigest {
 	d, err := multihash.Decode(r.Hash())
 	if err != nil {
-		return record{}
+		return recordDigest{}
 	}
 
-	return record{d.Digest, r}
+	return recordDigest{d.Digest, r}
 }
 
-func mkRecordFromCid(c cid.Cid, at uint64) record {
+func mkRecordFromCid(c cid.Cid, at uint64) recordDigest {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
-		return record{}
+		return recordDigest{}
 	}
 
-	return record{d.Digest, carbs.Record{Cid: c, Idx: at}}
+	return recordDigest{d.Digest, Record{Cid: c, Idx: at}}
 }
 
-func (ii *insertionIndex) Get(c cid.Cid) (uint64, error) {
+func (ii *InsertionIndex) Get(c cid.Cid) (uint64, error) {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
 		return 0, err
 	}
-	entry := record{digest: d.Digest}
+	entry := recordDigest{digest: d.Digest}
 	e := ii.items.Get(entry)
 	if e == nil {
 		return 0, errNotFound
 	}
-	r, ok := e.(record)
+	r, ok := e.(recordDigest)
 	if !ok {
 		return 0, errUnsupported
 	}
@@ -74,7 +69,7 @@ func (ii *insertionIndex) Get(c cid.Cid) (uint64, error) {
 	return r.Record.Idx, nil
 }
 
-func (ii *insertionIndex) Marshal(w io.Writer) error {
+func (ii *InsertionIndex) Marshal(w io.Writer) error {
 	if err := binary.Write(w, binary.LittleEndian, int64(ii.items.Len())); err != nil {
 		return err
 	}
@@ -82,7 +77,7 @@ func (ii *insertionIndex) Marshal(w io.Writer) error {
 	var err error
 
 	iter := func(i llrb.Item) bool {
-		if err = cbor.Encode(w, i.(record).Record); err != nil {
+		if err = cbor.Encode(w, i.(recordDigest).Record); err != nil {
 			return false
 		}
 		return true
@@ -91,14 +86,14 @@ func (ii *insertionIndex) Marshal(w io.Writer) error {
 	return err
 }
 
-func (ii *insertionIndex) Unmarshal(r io.Reader) error {
+func (ii *InsertionIndex) Unmarshal(r io.Reader) error {
 	var len int64
 	if err := binary.Read(r, binary.LittleEndian, &len); err != nil {
 		return err
 	}
 	d := cbor.NewDecoder(r)
 	for i := int64(0); i < len; i++ {
-		var rec carbs.Record
+		var rec Record
 		if err := d.Decode(&rec); err != nil {
 			return err
 		}
@@ -108,11 +103,11 @@ func (ii *insertionIndex) Unmarshal(r io.Reader) error {
 }
 
 // Codec identifies this index format
-func (ii *insertionIndex) Codec() carbs.IndexCodec {
+func (ii *InsertionIndex) Codec() Codec {
 	return IndexInsertion
 }
 
-func (ii *insertionIndex) Load(rs []carbs.Record) error {
+func (ii *InsertionIndex) Load(rs []Record) error {
 	for _, r := range rs {
 		rec := mkRecord(r)
 		if rec.digest == nil {
@@ -123,19 +118,19 @@ func (ii *insertionIndex) Load(rs []carbs.Record) error {
 	return nil
 }
 
-func mkInsertion() carbs.Index {
-	ii := insertionIndex{}
+func mkInsertion() Index {
+	ii := InsertionIndex{}
 	return &ii
 }
 
 // Flatten returns a 'indexsorted' formatted index for more efficient subsequent loading
-func (ii *insertionIndex) Flatten() (carbs.Index, error) {
-	si := carbs.IndexAtlas[carbs.IndexSorted]()
-	rcrds := make([]carbs.Record, ii.items.Len())
+func (ii *InsertionIndex) Flatten() (Index, error) {
+	si := IndexAtlas[IndexSorted]()
+	rcrds := make([]Record, ii.items.Len())
 
 	idx := 0
 	iter := func(i llrb.Item) bool {
-		rcrds[idx] = i.(record).Record
+		rcrds[idx] = i.(recordDigest).Record
 		idx++
 		return true
 	}

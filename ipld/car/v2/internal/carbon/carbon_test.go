@@ -1,8 +1,8 @@
 package carbon_test
 
 import (
-	"github.com/ipld/go-car/v2/carbon"
-	"github.com/ipld/go-car/v2/carbs"
+	"github.com/ipld/go-car/v2/blockstore"
+	"github.com/ipld/go-car/v2/internal/carbon"
 	"io"
 	"math/rand"
 	"os"
@@ -75,7 +75,7 @@ func TestCarbon(t *testing.T) {
 		t.Fatalf("index not written: %v", stat)
 	}
 
-	carb, err := carbs.Load("testcarbon.car", true)
+	carb, err := blockstore.LoadReadOnly("testcarbon.car", true)
 	if err != nil {
 		t.Fatal(err)
 	}

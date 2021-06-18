@@ -8,7 +8,7 @@ import (
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
 	carv1 "github.com/ipld/go-car"
-	"github.com/ipld/go-car/v2/carbs"
+	"github.com/ipld/go-car/v2/internal/index"
 )
 
 const bulkPaddingBytesSize = 1024
@@ -21,7 +21,7 @@ type (
 	// Writer writes CAR v2 into a give io.Writer.
 	Writer struct {
 		Walk         carv1.WalkFunc
-		IndexCodec   carbs.IndexCodec
+		IndexCodec   index.Codec
 		NodeGetter   format.NodeGetter
 		CarV1Padding uint64
 		IndexPadding uint64
@@ -30,6 +30,7 @@ type (
 		roots        []cid.Cid
 		encodedCarV1 *bytes.Buffer
 	}
+	WriteOption func(*Writer)
 )
 
 // WriteTo writes this padding to the given writer as default value bytes.
@@ -60,7 +61,7 @@ func (p padding) WriteTo(w io.Writer) (n int64, err error) {
 func NewWriter(ctx context.Context, ng format.NodeGetter, roots []cid.Cid) *Writer {
 	return &Writer{
 		Walk:         carv1.DefaultWalkFunc,
-		IndexCodec:   carbs.IndexSorted,
+		IndexCodec:   index.IndexSorted,
 		NodeGetter:   ng,
 		ctx:          ctx,
 		roots:        roots,
@@ -129,7 +130,7 @@ func (w *Writer) writeIndex(writer io.Writer, carV1 []byte) (n int64, err error)
 	// Consider refactoring carbs to make this process more efficient.
 	// We should avoid reading the entire car into memory since it can be large.
 	reader := bytes.NewReader(carV1)
-	index, err := carbs.GenerateIndex(reader, int64(len(carV1)), carbs.IndexSorted, true)
+	index, err := index.GenerateIndex(reader, int64(len(carV1)), index.IndexSorted)
 	if err != nil {
 		return
 	}

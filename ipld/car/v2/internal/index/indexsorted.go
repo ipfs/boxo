@@ -1,4 +1,4 @@
-package carbs
+package index
 
 import (
 	"bytes"
@@ -11,17 +11,24 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
-type digestRecord struct {
-	digest []byte
-	index  uint64
-}
+type (
+	digestRecord struct {
+		digest []byte
+		index  uint64
+	}
+	recordSet        []digestRecord
+	singleWidthIndex struct {
+		width int32
+		len   int64 // in struct, len is #items. when marshaled, it's saved as #bytes.
+		index []byte
+	}
+	multiWidthIndex map[int32]singleWidthIndex
+)
 
 func (d digestRecord) write(buf []byte) {
 	n := copy(buf[:], d.digest)
 	binary.LittleEndian.PutUint64(buf[n:], d.index)
 }
-
-type recordSet []digestRecord
 
 func (r recordSet) Len() int {
 	return len(r)
@@ -35,13 +42,7 @@ func (r recordSet) Swap(i, j int) {
 	r[i], r[j] = r[j], r[i]
 }
 
-type singleWidthIndex struct {
-	width int32
-	len   int64 // in struct, len is #items. when marshaled, it's saved as #bytes.
-	index []byte
-}
-
-func (s *singleWidthIndex) Codec() IndexCodec {
+func (s *singleWidthIndex) Codec() Codec {
 	return IndexSingleSorted
 }
 
@@ -111,8 +112,6 @@ func (s *singleWidthIndex) Load(items []Record) error {
 	return nil
 }
 
-type multiWidthIndex map[int32]singleWidthIndex
-
 func (m *multiWidthIndex) Get(c cid.Cid) (uint64, error) {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
@@ -124,7 +123,7 @@ func (m *multiWidthIndex) Get(c cid.Cid) (uint64, error) {
 	return 0, errNotFound
 }
 
-func (m *multiWidthIndex) Codec() IndexCodec {
+func (m *multiWidthIndex) Codec() Codec {
 	return IndexSorted
 }
 

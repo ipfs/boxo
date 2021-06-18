@@ -1,6 +1,7 @@
-package carbs
+package blockstore
 
 import (
+	"github.com/ipld/go-car/v2/internal/index"
 	"os"
 	"testing"
 )
@@ -54,7 +55,7 @@ func TestIndexRT(t *testing.T) {
 	// TODO use temporary directory to run tests taht work with OS file system to avoid accidental source code modification
 	carFile := "testdata/test.car"
 
-	cf, err := Load(carFile, false)
+	cf, err := LoadReadOnly(carFile, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestIndexRT(t *testing.T) {
 		t.Fatalf("failed get: %v", err)
 	}
 
-	idx, err := Restore(carFile)
+	idx, err := index.Restore(carFile)
 	if err != nil {
 		t.Fatalf("failed restore: %v", err)
 	}

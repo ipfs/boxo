@@ -3,6 +3,7 @@ package car
 import (
 	"bufio"
 	"fmt"
+	internalio "github.com/ipld/go-car/v2/internal/io"
 	"io"
 
 	carv1 "github.com/ipld/go-car"
@@ -57,5 +58,5 @@ func (r *Reader) CarV1ReaderAt() io.ReaderAt {
 
 // IndexReaderAt provides an io.ReaderAt containing the carbs.Index of this CAR v2.
 func (r *Reader) IndexReaderAt() io.ReaderAt {
-	return NewOffsetReader(r.r, int64(r.Header.IndexOffset))
+	return internalio.NewOffsetReader(r.r, int64(r.Header.IndexOffset))
 }

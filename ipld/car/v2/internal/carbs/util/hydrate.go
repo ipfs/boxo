@@ -2,10 +2,9 @@ package main
 
 import (
 	"fmt"
-	"os"
-
-	"github.com/ipld/go-car/v2/carbs"
+	"github.com/ipld/go-car/v2/internal/index"
 	"golang.org/x/exp/mmap"
+	"os"
 )
 
 func main() {
@@ -14,12 +13,12 @@ func main() {
 		return
 	}
 	db := os.Args[1]
-	codec := carbs.IndexSorted
+	codec := index.IndexSorted
 	if len(os.Args) == 3 {
 		if os.Args[2] == "Hash" {
-			codec = carbs.IndexHashed
+			codec = index.IndexHashed
 		} else if os.Args[2] == "GobHash" {
-			codec = carbs.IndexGobHashed
+			codec = index.IndexGobHashed
 		}
 	}
 
@@ -35,7 +34,7 @@ func main() {
 		return
 	}
 
-	idx, err := carbs.GenerateIndex(dbBacking, dbstat.Size(), codec, true)
+	idx, err := index.GenerateIndex(dbBacking, dbstat.Size(), codec)
 	if err != nil {
 		fmt.Printf("Error generating index: %v\n", err)
 		return
@@ -43,7 +42,7 @@ func main() {
 
 	fmt.Printf("Saving...\n")
 
-	if err := carbs.Save(idx, db); err != nil {
+	if err := index.Save(idx, db); err != nil {
 		fmt.Printf("Error saving : %v\n", err)
 	}
 }

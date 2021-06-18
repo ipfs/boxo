@@ -1,4 +1,4 @@
-package carbs
+package index
 
 import (
 	"io"
@@ -26,7 +26,7 @@ func (m *mapIndex) Unmarshal(r io.Reader) error {
 	return d.Decode(m)
 }
 
-func (m *mapIndex) Codec() IndexCodec {
+func (m *mapIndex) Codec() Codec {
 	return IndexHashed
 }
 

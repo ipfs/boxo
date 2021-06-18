@@ -1,7 +1,8 @@
 package carbon
 
 import (
-	"github.com/ipld/go-car/v2/carbs"
+	"github.com/ipld/go-car/v2/blockstore"
+	"github.com/ipld/go-car/v2/internal/index"
 	"os"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -14,8 +15,8 @@ import (
 type carbonFD struct {
 	path        string
 	writeHandle *poswriter
-	carbs.BlockStore
-	idx *insertionIndex
+	blockstore.ReadOnly
+	idx *index.InsertionIndex
 }
 
 var _ (Carbon) = (*carbonFD)(nil)
@@ -37,7 +38,7 @@ func (c *carbonFD) PutMany(b []blocks.Block) error {
 		if err := util.LdWrite(c.writeHandle, bl.Cid().Bytes(), bl.RawData()); err != nil {
 			return err
 		}
-		c.idx.items.InsertNoReplace(mkRecordFromCid(bl.Cid(), n))
+		c.idx.InsertNoReplace(bl.Cid(), n)
 	}
 	return nil
 }
@@ -54,10 +55,10 @@ func (c *carbonFD) Finish() error {
 			return err
 		}
 	}
-	return carbs.Save(fi, c.path)
+	return index.Save(fi, c.path)
 }
 
 // Checkpoint serializes the carbon index so that the partially written blockstore can be resumed.
 func (c *carbonFD) Checkpoint() error {
-	return carbs.Save(c.idx, c.path)
+	return index.Save(c.idx, c.path)
 }

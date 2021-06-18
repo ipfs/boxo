@@ -1,50 +1,54 @@
-package carbs
+package index
 
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/ipfs/go-cid"
+	internalio "github.com/ipld/go-car/v2/internal/io"
+	"golang.org/x/exp/mmap"
 	"io"
 	"os"
-
-	"github.com/ipfs/go-cid"
-	"golang.org/x/exp/mmap"
 )
 
-// IndexCodec is used as a multicodec identifier for carbs index files
-type IndexCodec int
-
-// IndexCodec table is a first var-int in carbs indexes
+// Codec table is a first var-int in carbs indexes
 const (
-	IndexHashed IndexCodec = iota + 0x300000
+	IndexHashed Codec = iota + 0x300000
 	IndexSorted
 	IndexSingleSorted
 	IndexGobHashed
+	IndexInsertion
 )
 
-// IndexCls is a constructor for an index type
-type IndexCls func() Index
+type (
+	// Codec is used as a multicodec identifier for carbs index files
+	Codec int
+
+	// IndexCls is a constructor for an index type
+	IndexCls func() Index
+
+	// Record is a pre-processed record of a car item and location.
+	Record struct {
+		cid.Cid
+		Idx uint64
+	}
+
+	// Index provides an interface for figuring out where in the car a given cid begins
+	Index interface {
+		Codec() Codec
+		Marshal(w io.Writer) error
+		Unmarshal(r io.Reader) error
+		Get(cid.Cid) (uint64, error)
+		Load([]Record) error
+	}
+)
 
 // IndexAtlas holds known index formats
-var IndexAtlas = map[IndexCodec]IndexCls{
+var IndexAtlas = map[Codec]IndexCls{
 	IndexHashed:       mkHashed,
 	IndexSorted:       mkSorted,
 	IndexSingleSorted: mkSingleSorted,
 	IndexGobHashed:    mkGobHashed,
-}
-
-// Record is a pre-processed record of a car item and location.
-type Record struct {
-	cid.Cid
-	Idx uint64
-}
-
-// Index provides an interface for figuring out where in the car a given cid begins
-type Index interface {
-	Codec() IndexCodec
-	Marshal(w io.Writer) error
-	Unmarshal(r io.Reader) error
-	Get(cid.Cid) (uint64, error)
-	Load([]Record) error
+	IndexInsertion:    mkInsertion,
 }
 
 // Save writes a generated index for a car at `path`
@@ -71,17 +75,17 @@ func Restore(path string) (Index, error) {
 	}
 
 	defer reader.Close()
-	uar := unatreader{reader, 0}
-	codec, err := binary.ReadUvarint(&uar)
+	uar := internalio.NewOffsetReader(reader, 0)
+	codec, err := binary.ReadUvarint(uar)
 	if err != nil {
 		return nil, err
 	}
-	idx, ok := IndexAtlas[IndexCodec(codec)]
+	idx, ok := IndexAtlas[Codec(codec)]
 	if !ok {
 		return nil, fmt.Errorf("unknown codec: %d", codec)
 	}
 	idxInst := idx()
-	if err := idxInst.Unmarshal(&uar); err != nil {
+	if err := idxInst.Unmarshal(uar); err != nil {
 		return nil, err
 	}
 
