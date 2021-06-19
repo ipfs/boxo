@@ -11,7 +11,6 @@ import (
 	"time"
 
 	format "github.com/ipfs/go-ipld-format"
-	"github.com/ipfs/go-merkledag"
 	dag "github.com/ipfs/go-merkledag"
 	mdtest "github.com/ipfs/go-merkledag/test"
 	ft "github.com/ipfs/go-unixfs"
@@ -88,7 +87,7 @@ func assertLinksEqual(linksA []*format.Link, linksB []*format.Link) error {
 
 func mockDag() (format.DAGService, *ipld.LinkSystem) {
 	bsrv := mdtest.Bserv()
-	dsrv := merkledag.NewDAGService(bsrv)
+	dsrv := dag.NewDAGService(bsrv)
 	lsys := cidlink.DefaultLinkSystem()
 	lsys.StorageReadOpener = func(lnkCtx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
 		cidLink, ok := lnk.(cidlink.Link)

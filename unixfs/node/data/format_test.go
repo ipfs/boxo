@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-unixfsnode/data"
 	. "github.com/ipfs/go-unixfsnode/data"
 	"github.com/ipfs/go-unixfsnode/data/builder"
 	"github.com/ipld/go-ipld-prime"
@@ -254,9 +253,9 @@ func TestUnixfsFormat(t *testing.T) {
 	t.Run("respects high bits in mode read from buffer", func(t *testing.T) {
 		mode := 0o0100644 // similar to output from fs.stat
 		nd, err := qp.BuildMap(Type.UnixFSData, -1, func(ma ipld.MapAssembler) {
-			qp.MapEntry(ma, data.Field__DataType, qp.Int(Data_File))
-			qp.MapEntry(ma, data.Field__BlockSizes, qp.List(0, func(ipld.ListAssembler) {}))
-			qp.MapEntry(ma, data.Field__Mode, qp.Int(int64(mode)))
+			qp.MapEntry(ma, Field__DataType, qp.Int(Data_File))
+			qp.MapEntry(ma, Field__BlockSizes, qp.List(0, func(ipld.ListAssembler) {}))
+			qp.MapEntry(ma, Field__Mode, qp.Int(int64(mode)))
 		})
 		require.NoError(t, err)
 		und, ok := nd.(UnixFSData)
