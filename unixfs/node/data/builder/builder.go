@@ -49,7 +49,7 @@ type Builder struct {
 func DataType(b *Builder, dataType int64) {
 	_, ok := data.DataTypeNames[dataType]
 	if !ok {
-		panic(data.ErrInvalidDataType{dataType})
+		panic(data.ErrInvalidDataType{DataType: dataType})
 	}
 	qp.MapEntry(b.MapAssembler, data.Field__DataType, qp.Int(dataType))
 	b.hasDataType = true
