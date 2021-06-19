@@ -22,7 +22,7 @@ type _UnixFSBasicDir struct {
 
 func NewUnixFSBasicDir(ctx context.Context, substrate dagpb.PBNode, nddata data.UnixFSData, _ *ipld.LinkSystem) (ipld.Node, error) {
 	if nddata.FieldDataType().Int() != data.Data_Directory {
-		return nil, data.ErrWrongNodeType{data.Data_Directory, nddata.FieldDataType().Int()}
+		return nil, data.ErrWrongNodeType{Expected: data.Data_Directory, Actual: nddata.FieldDataType().Int()}
 	}
 	return &_UnixFSBasicDir{_substrate: substrate}, nil
 }

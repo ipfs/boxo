@@ -59,7 +59,7 @@ func (hb *hashBits) next(i int) int {
 
 func validateHAMTData(nd data.UnixFSData) error {
 	if nd.FieldDataType().Int() != data.Data_HAMTShard {
-		return data.ErrWrongNodeType{data.Data_HAMTShard, nd.FieldDataType().Int()}
+		return data.ErrWrongNodeType{Expected: data.Data_HAMTShard, Actual: nd.FieldDataType().Int()}
 	}
 
 	if !nd.FieldHashType().Exists() || uint64(nd.FieldHashType().Must().Int()) != HashMurmur3 {
