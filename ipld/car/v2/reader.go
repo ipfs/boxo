@@ -7,6 +7,7 @@ import (
 
 	internalio "github.com/ipld/go-car/v2/internal/io"
 
+	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
 )
 
@@ -16,6 +17,7 @@ const version2 = 2
 type Reader struct {
 	Header Header
 	r      io.ReaderAt
+	roots  []cid.Cid
 }
 
 // NewReader constructs a new reader that reads CAR v2 from the given r.
@@ -46,6 +48,19 @@ func (r *Reader) readPragma() (err error) {
 	return
 }
 
+// Roots returns the root CIDs of this CAR
+func (r *Reader) Roots() ([]cid.Cid, error) {
+	if r.roots != nil {
+		return r.roots, nil
+	}
+	header, err := carv1.ReadHeader(bufio.NewReader(r.carv1SectionReader()))
+	if err != nil {
+		return nil, err
+	}
+	r.roots = header.Roots
+	return r.roots, nil
+}
+
 func (r *Reader) readHeader() (err error) {
 	headerSection := io.NewSectionReader(r.r, PragmaSize, HeaderSize)
 	_, err = r.Header.ReadFrom(headerSection)
@@ -54,6 +69,10 @@ func (r *Reader) readHeader() (err error) {
 
 // CarV1ReaderAt provides an io.ReaderAt containing the CAR v1 dump encapsulated in this CAR v2.
 func (r *Reader) CarV1ReaderAt() io.ReaderAt {
+	return r.carv1SectionReader()
+}
+
+func (r *Reader) carv1SectionReader() *io.SectionReader {
 	return io.NewSectionReader(r.r, int64(r.Header.CarV1Offset), int64(r.Header.CarV1Size))
 }
 

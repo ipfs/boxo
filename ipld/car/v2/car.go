@@ -93,6 +93,11 @@ func (h Header) WithCarV1Padding(padding uint64) Header {
 	return h
 }
 
+// HasIndex indicates whether the index is present.
+func (h Header) HasIndex() bool {
+	return h.IndexOffset != 0
+}
+
 // WriteTo serializes this header as bytes and writes them using the given io.Writer.
 func (h Header) WriteTo(w io.Writer) (n int64, err error) {
 	wn, err := h.Characteristics.WriteTo(w)
