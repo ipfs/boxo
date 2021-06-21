@@ -6,16 +6,17 @@ import (
 )
 
 const (
-	// PrefixSize is the size of the CAR v2 prefix in 11 bytes, (i.e. 11).
-	PrefixSize = 11
+	// PragmaSize is the size of the CAR v2 pragma in bytes.
+	PragmaSize = 11
 	// HeaderSize is the fixed size of CAR v2 header in number of bytes.
 	HeaderSize = 40
 	// CharacteristicsSize is the fixed size of Characteristics bitfield within CAR v2 header in number of bytes.
 	CharacteristicsSize = 16
 )
 
-// The fixed prefix of a CAR v2, signalling the version number to previous versions for graceful fail over.
-var PrefixBytes = []byte{
+// The pragma of a CAR v2, containing the version number..
+// This is a valid CAR v1 header, with version number set to 2.
+var Pragma = []byte{
 	0x0a,                                     // unit(10)
 	0xa1,                                     // map(1)
 	0x67,                                     // string(7)
@@ -68,15 +69,15 @@ func NewHeader(carV1Size uint64) Header {
 	header := Header{
 		CarV1Size: carV1Size,
 	}
-	header.CarV1Offset = PrefixSize + HeaderSize
+	header.CarV1Offset = PragmaSize + HeaderSize
 	header.IndexOffset = header.CarV1Offset + carV1Size
 	return header
 }
 
 // WithIndexPadding sets the index offset from the beginning of the file for this header and returns the
 // header for convenient chained calls.
-// The index offset is calculated as the sum of PrefixBytesLen, HeaderBytesLen,
-// Header.CarV1Len, and the given padding.
+// The index offset is calculated as the sum of PragmaSize, HeaderSize,
+// Header.CarV1Size, and the given padding.
 func (h Header) WithIndexPadding(padding uint64) Header {
 	h.IndexOffset = h.IndexOffset + padding
 	return h
@@ -84,7 +85,7 @@ func (h Header) WithIndexPadding(padding uint64) Header {
 
 // WithCarV1Padding sets the CAR v1 dump offset from the beginning of the file for this header and returns the
 // header for convenient chained calls.
-// The CAR v1 offset is calculated as the sum of PrefixBytesLen, HeaderBytesLen and the given padding.
+// The CAR v1 offset is calculated as the sum of PragmaSize, HeaderSize and the given padding.
 // The call to this function also shifts the Header.IndexOffset forward by the given padding.
 func (h Header) WithCarV1Padding(padding uint64) Header {
 	h.CarV1Offset = h.CarV1Offset + padding

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestCarV2PrefixLength(t *testing.T) {
+func TestCarV2PragmaLength(t *testing.T) {
 	tests := []struct {
 		name string
 		want interface{}
@@ -19,29 +19,29 @@ func TestCarV2PrefixLength(t *testing.T) {
 		{
 			"ActualSizeShouldBe11",
 			11,
-			len(carv2.PrefixBytes),
+			len(carv2.Pragma),
 		},
 		{
 			"ShouldStartWithVarint(10)",
-			carv2.PrefixBytes[0],
+			carv2.Pragma[0],
 			10,
 		},
 	}
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			assert.EqualValues(t, tt.want, tt.got, "CarV2Prefix got = %v, want %v", tt.got, tt.want)
+			assert.EqualValues(t, tt.want, tt.got, "CarV2Pragma got = %v, want %v", tt.got, tt.want)
 		})
 	}
 }
 
-func TestCarV2PrefixIsValidCarV1Header(t *testing.T) {
-	v1h, err := carv1.ReadHeader(bufio.NewReader(bytes.NewReader(carv2.PrefixBytes)))
-	assert.NoError(t, err, "cannot decode prefix as CBOR with CAR v1 header structure")
+func TestCarV2PragmaIsValidCarV1Header(t *testing.T) {
+	v1h, err := carv1.ReadHeader(bufio.NewReader(bytes.NewReader(carv2.Pragma)))
+	assert.NoError(t, err, "cannot decode pragma as CBOR with CAR v1 header structure")
 	assert.Equal(t, &carv1.CarHeader{
 		Roots:   nil,
 		Version: 2,
-	}, v1h, "CAR v2 prefix must be a valid CAR v1 header")
+	}, v1h, "CAR v2 pragma must be a valid CAR v1 header")
 }
 
 func TestHeader_WriteTo(t *testing.T) {
@@ -164,20 +164,20 @@ func TestHeader_WithPadding(t *testing.T) {
 		{
 			"WhenNoPaddingOffsetsAreSumOfSizes",
 			carv2.NewHeader(123),
-			carv2.PrefixSize + carv2.HeaderSize,
-			carv2.PrefixSize + carv2.HeaderSize + 123,
+			carv2.PragmaSize + carv2.HeaderSize,
+			carv2.PragmaSize + carv2.HeaderSize + 123,
 		},
 		{
 			"WhenOnlyPaddingCarV1BothOffsetsShift",
 			carv2.NewHeader(123).WithCarV1Padding(3),
-			carv2.PrefixSize + carv2.HeaderSize + 3,
-			carv2.PrefixSize + carv2.HeaderSize + 3 + 123,
+			carv2.PragmaSize + carv2.HeaderSize + 3,
+			carv2.PragmaSize + carv2.HeaderSize + 3 + 123,
 		},
 		{
 			"WhenPaddingBothCarV1AndIndexBothOffsetsShiftWithAdditionalIndexShift",
 			carv2.NewHeader(123).WithCarV1Padding(3).WithIndexPadding(7),
-			carv2.PrefixSize + carv2.HeaderSize + 3,
-			carv2.PrefixSize + carv2.HeaderSize + 3 + 123 + 7,
+			carv2.PragmaSize + carv2.HeaderSize + 3,
+			carv2.PragmaSize + carv2.HeaderSize + 3 + 123 + 7,
 		},
 	}
 
@@ -193,9 +193,9 @@ func TestNewHeaderHasExpectedValues(t *testing.T) {
 	wantCarV1Len := uint64(1413)
 	want := carv2.Header{
 		Characteristics: carv2.Characteristics{},
-		CarV1Offset:     carv2.PrefixSize + carv2.HeaderSize,
+		CarV1Offset:     carv2.PragmaSize + carv2.HeaderSize,
 		CarV1Size:       wantCarV1Len,
-		IndexOffset:     carv2.PrefixSize + carv2.HeaderSize + wantCarV1Len,
+		IndexOffset:     carv2.PragmaSize + carv2.HeaderSize + wantCarV1Len,
 	}
 	got := carv2.NewHeader(wantCarV1Len)
 	assert.Equal(t, want, got, "NewHeader got = %v, want = %v", got, want)

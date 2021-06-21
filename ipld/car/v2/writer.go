@@ -72,11 +72,11 @@ func NewWriter(ctx context.Context, ng format.NodeGetter, roots []cid.Cid) *Writ
 // WriteTo writes the given root CIDs according to CAR v2 specification, traversing the DAG using the
 // Writer.Walk function.
 func (w *Writer) WriteTo(writer io.Writer) (n int64, err error) {
-	_, err = writer.Write(PrefixBytes)
+	_, err = writer.Write(Pragma)
 	if err != nil {
 		return
 	}
-	n += int64(PrefixSize)
+	n += int64(PragmaSize)
 	// We read the entire car into memory because carbs.GenerateIndex takes a reader.
 	// Future PRs will make this more efficient by exposing necessary interfaces in carbs so that
 	// this can be done in an streaming manner.

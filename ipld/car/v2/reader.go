@@ -25,7 +25,7 @@ func NewReader(r io.ReaderAt) (*Reader, error) {
 	cr := &Reader{
 		r: r,
 	}
-	if err := cr.readPrefix(); err != nil {
+	if err := cr.readPragma(); err != nil {
 		return nil, err
 	}
 	if err := cr.readHeader(); err != nil {
@@ -34,8 +34,8 @@ func NewReader(r io.ReaderAt) (*Reader, error) {
 	return cr, nil
 }
 
-func (r *Reader) readPrefix() (err error) {
-	pr := io.NewSectionReader(r.r, 0, PrefixSize)
+func (r *Reader) readPragma() (err error) {
+	pr := io.NewSectionReader(r.r, 0, PragmaSize)
 	header, err := carv1.ReadHeader(bufio.NewReader(pr))
 	if err != nil {
 		return
@@ -47,7 +47,7 @@ func (r *Reader) readPrefix() (err error) {
 }
 
 func (r *Reader) readHeader() (err error) {
-	headerSection := io.NewSectionReader(r.r, PrefixSize, HeaderSize)
+	headerSection := io.NewSectionReader(r.r, PragmaSize, HeaderSize)
 	_, err = r.Header.ReadFrom(headerSection)
 	return
 }
