@@ -3,11 +3,12 @@ package index
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
+	"os"
+
 	"github.com/ipfs/go-cid"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"golang.org/x/exp/mmap"
-	"io"
-	"os"
 )
 
 // Codec table is a first var-int in carbs indexes
@@ -53,7 +54,7 @@ var IndexAtlas = map[Codec]IndexCls{
 
 // Save writes a generated index for a car at `path`
 func Save(i Index, path string) error {
-	stream, err := os.OpenFile(path+".idx", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
+	stream, err := os.OpenFile(path+".idx", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
 	if err != nil {
 		return err
 	}

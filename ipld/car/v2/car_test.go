@@ -3,10 +3,11 @@ package car_test
 import (
 	"bufio"
 	"bytes"
+	"testing"
+
 	carv1 "github.com/ipld/go-car"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestCarV2PrefixLength(t *testing.T) {
@@ -99,6 +100,7 @@ func TestHeader_WriteTo(t *testing.T) {
 		})
 	}
 }
+
 func TestHeader_ReadFrom(t *testing.T) {
 	tests := []struct {
 		name       string

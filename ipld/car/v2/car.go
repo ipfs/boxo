@@ -14,16 +14,14 @@ const (
 	CharacteristicsSize = 16
 )
 
-var (
-	// The fixed prefix of a CAR v2, signalling the version number to previous versions for graceful fail over.
-	PrefixBytes = []byte{
-		0x0a,                                     // unit(10)
-		0xa1,                                     // map(1)
-		0x67,                                     // string(7)
-		0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, // "version"
-		0x02, // uint(2)
-	}
-)
+// The fixed prefix of a CAR v2, signalling the version number to previous versions for graceful fail over.
+var PrefixBytes = []byte{
+	0x0a,                                     // unit(10)
+	0xa1,                                     // map(1)
+	0x67,                                     // string(7)
+	0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, // "version"
+	0x02, // uint(2)
+}
 
 type (
 	// Header represents the CAR v2 header/pragma.

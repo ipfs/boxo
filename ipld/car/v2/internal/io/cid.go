@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
+
 	"github.com/ipfs/go-cid"
 	"github.com/multiformats/go-multihash"
-	"io"
 )
 
 var cidv0Pref = []byte{0x12, 0x20}

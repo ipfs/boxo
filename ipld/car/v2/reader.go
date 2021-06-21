@@ -3,8 +3,9 @@ package car
 import (
 	"bufio"
 	"fmt"
-	internalio "github.com/ipld/go-car/v2/internal/io"
 	"io"
+
+	internalio "github.com/ipld/go-car/v2/internal/io"
 
 	carv1 "github.com/ipld/go-car"
 )

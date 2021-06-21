@@ -1,12 +1,13 @@
 package carbon_test
 
 import (
-	"github.com/ipld/go-car/v2/blockstore"
-	"github.com/ipld/go-car/v2/internal/carbon"
 	"io"
 	"math/rand"
 	"os"
 	"testing"
+
+	"github.com/ipld/go-car/v2/blockstore"
+	"github.com/ipld/go-car/v2/internal/carbon"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car"

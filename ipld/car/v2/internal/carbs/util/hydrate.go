@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/ipld/go-car/v2/internal/index"
 	"golang.org/x/exp/mmap"
-	"os"
 )
 
 func main() {

@@ -3,9 +3,10 @@ package carbon
 import (
 	"errors"
 	"fmt"
+	"os"
+
 	carblockstore "github.com/ipld/go-car/v2/blockstore"
 	"github.com/ipld/go-car/v2/internal/index"
-	"os"
 
 	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
@@ -29,11 +30,11 @@ func New(path string) (Carbon, error) {
 
 // NewWithRoots creates a new Carbon blockstore with a provided set of root cids as the car roots
 func NewWithRoots(path string, roots []cid.Cid) (Carbon, error) {
-	wfd, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+	wfd, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o666)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create backing car: %w", err)
 	}
-	rfd, err := os.OpenFile(path, os.O_RDONLY, 0666)
+	rfd, err := os.OpenFile(path, os.O_RDONLY, 0o666)
 	if err != nil {
 		return nil, fmt.Errorf("could not re-open read handle: %w", err)
 	}

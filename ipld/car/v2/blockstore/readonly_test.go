@@ -1,9 +1,10 @@
 package blockstore
 
 import (
-	"github.com/ipld/go-car/v2/internal/index"
 	"os"
 	"testing"
+
+	"github.com/ipld/go-car/v2/internal/index"
 )
 
 /*

@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
+	"io"
+
 	"github.com/cheggaaa/pb/v3"
 	carv1 "github.com/ipld/go-car"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"golang.org/x/exp/mmap"
-	"io"
 )
 
 // GenerateIndex provides a low-level interface to create an index over a

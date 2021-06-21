@@ -1,9 +1,10 @@
 package carbon
 
 import (
+	"os"
+
 	"github.com/ipld/go-car/v2/blockstore"
 	"github.com/ipld/go-car/v2/internal/index"
-	"os"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
