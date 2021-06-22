@@ -11,8 +11,6 @@ import (
 	carv1 "github.com/ipld/go-car"
 )
 
-const version2 = 2
-
 // Reader represents a reader of CAR v2.
 type Reader struct {
 	Header Header
@@ -21,13 +19,13 @@ type Reader struct {
 }
 
 // NewReader constructs a new reader that reads CAR v2 from the given r.
-// Upon instantiation, the reader inspects the payload by reading the first 11 bytes and will return
-// an error if the payload does not represent a CAR v2.
+// Upon instantiation, the reader inspects the payload by reading the pragma and will return
+// an error if the pragma does not represent a CAR v2.
 func NewReader(r io.ReaderAt) (*Reader, error) {
 	cr := &Reader{
 		r: r,
 	}
-	if err := cr.readPragma(); err != nil {
+	if err := cr.requireV2Pragma(); err != nil {
 		return nil, err
 	}
 	if err := cr.readHeader(); err != nil {
@@ -36,14 +34,17 @@ func NewReader(r io.ReaderAt) (*Reader, error) {
 	return cr, nil
 }
 
-func (r *Reader) readPragma() (err error) {
-	pr := io.NewSectionReader(r.r, 0, PragmaSize)
-	header, err := carv1.ReadHeader(bufio.NewReader(pr))
+func (r *Reader) requireV2Pragma() (err error) {
+	or := internalio.NewOffsetReader(r.r, 0)
+	version, _, err := ReadPragma(or)
 	if err != nil {
 		return
 	}
-	if header.Version != version2 {
-		err = fmt.Errorf("invalid car version: %d", header.Version)
+	if version != 2 {
+		return fmt.Errorf("invalid car version: %d", version)
+	}
+	if or.Offset() != PragmaSize {
+		err = fmt.Errorf("invalid car v2 pragma; size %d is larger than expected %d", or.Offset(), PragmaSize)
 	}
 	return
 }
@@ -79,4 +80,19 @@ func (r *Reader) carv1SectionReader() *io.SectionReader {
 // IndexReaderAt provides an io.ReaderAt containing the carbs.Index of this CAR v2.
 func (r *Reader) IndexReaderAt() io.ReaderAt {
 	return internalio.NewOffsetReader(r.r, int64(r.Header.IndexOffset))
+}
+
+// ReadPragma reads the pragma from r.
+// This function accepts both CAR v1 and v2 payloads.
+// The roots are returned only if the version of pragma equals 1, otherwise returns nil as roots.
+func ReadPragma(r io.Reader) (version uint64, roots []cid.Cid, err error) {
+	header, err := carv1.ReadHeader(bufio.NewReader(r))
+	if err != nil {
+		return
+	}
+	version = header.Version
+	if version == 1 {
+		roots = header.Roots
+	}
+	return
 }
