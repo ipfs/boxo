@@ -2,34 +2,38 @@ package tar
 
 import (
 	"archive/tar"
+	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
-	gopath "path"
 	fp "path/filepath"
 	"strings"
 )
 
+var errTraverseSymlink = errors.New("cannot traverse symlinks")
+var errInvalidRoot = errors.New("tar has invalid root")
+var errInvalidRootMultipleRoots = fmt.Errorf("contains more than one root or the root directory is not the first entry : %w", errInvalidRoot)
+
+// Extractor is used for extracting tar files to a filesystem.
+//
+// The Extractor can only extract tar files containing files, directories and symlinks. Additionally, the tar files must
+// either have a single file, or symlink in them, or must have all of its objects inside of a single root directory
+// object.
+//
+// If the tar file contains a single file/symlink then it will try and extract it with semantics similar to Linux's
+// `cp`. In particular, the name of the extracted file/symlink will match the extraction path. If the extraction path
+// is a directory then it will extract into the directory using its original name.
+//
+// Overwriting: Extraction of files and symlinks will result in overwriting the existing objects with the same name
+// when possible (i.e. other files, symlinks, and empty directories).
 type Extractor struct {
 	Path     string
 	Progress func(int64) int64
-
-	// SanitizePathFunc can be provided if you wish to inspect and/or modify the source path
-	// returning an error from this function will abort extraction
-	SanitizePathFunc func(path string) (saferPath string, userDefined error)
-
-	// LinkFunc can be provided for user specified handling of filesystem links
-	// returning an error from this function aborts extraction
-	LinkFunc func(Link) error
 }
 
-// Link represents a filesystem link where Name is the link's destination path,
-// Target is what the link actually points to,
-// and Root is the extraction root
-type Link struct {
-	Root, Name, Target string
-}
-
+// Extract extracts a tar file to the file system. See the Extractor for more information on the limitations on the
+// tar files that can be extracted.
 func (te *Extractor) Extract(reader io.Reader) error {
 	if isNullDevice(te.Path) {
 		return nil
@@ -37,21 +41,90 @@ func (te *Extractor) Extract(reader io.Reader) error {
 
 	tarReader := tar.NewReader(reader)
 
-	// Check if the output path already exists, so we know whether we should
-	// create our output with that name, or if we should put the output inside
-	// a preexisting directory
-	rootExists := true
-	rootIsDir := false
-	if stat, err := os.Stat(te.Path); err != nil && os.IsNotExist(err) {
-		rootExists = false
-	} else if err != nil {
+	var firstObjectWasDir bool
+
+	header, err := tarReader.Next()
+	if err != nil && err != io.EOF {
 		return err
-	} else if stat.IsDir() {
-		rootIsDir = true
+	}
+	if header == nil || err == io.EOF {
+		return fmt.Errorf("empty tar file")
 	}
 
-	// files come recursively in order (i == 0 is root directory)
-	for i := 0; ; i++ {
+	// Specially handle the first entry assuming it is a single root object (e.g. root directory, single file,
+	// or single symlink)
+
+	// track what the root tar path is so we can ensure that all other entries are below the root
+	if strings.Contains(header.Name, "/") {
+		return fmt.Errorf("root name contains multiple components : %q : %w", header.Name, errInvalidRoot)
+	}
+	switch header.Name {
+	case "", ".", "..":
+		return fmt.Errorf("invalid root path: %q : %w", header.Name, errInvalidRoot)
+	}
+	rootName := header.Name
+
+	// Get the platform-specific output path
+	rootOutputPath := fp.Clean(te.Path)
+	if err := validatePlatformPath(rootOutputPath); err != nil {
+		return err
+	}
+
+	// If the last element in the rootOutputPath (which is passed by the user) is a symlink do not follow it
+	// this makes it easier for users to reason about where files are getting extracted to even when the tar is not
+	// from a trusted source
+	//
+	// For example, if the user extracts a mutable link to a tar file (http://sometimesbad.tld/t.tar) and situationally
+	// it contains a folder, file, or symlink the outputs could hop around the user's file system. This is especially
+	// annoying since we allow symlinks to point anywhere a user might want them to.
+	switch header.Typeflag {
+	case tar.TypeDir:
+		// if this is the root directory, use it as the output path for remaining files
+		firstObjectWasDir = true
+		if err := te.extractDir(rootOutputPath); err != nil {
+			return err
+		}
+	case tar.TypeReg, tar.TypeSymlink:
+		// Check if the output path already exists, so we know whether we should
+		// create our output with that name, or if we should put the output inside
+		// a preexisting directory
+
+		rootIsExistingDirectory := false
+		// We do not follow links here
+		if stat, err := os.Lstat(rootOutputPath); err != nil {
+			if !os.IsNotExist(err) {
+				return err
+			}
+		} else if stat.IsDir() {
+			rootIsExistingDirectory = true
+		}
+
+		outputPath := rootOutputPath
+		// If the root is a directory which already exists then put the file/symlink in the directory
+		if rootIsExistingDirectory {
+			// make sure the root has a valid name
+			if err := validatePathComponent(rootName); err != nil {
+				return err
+			}
+
+			// If the output path directory exists then put the file/symlink into the directory.
+			outputPath = fp.Join(rootOutputPath, rootName)
+		}
+
+		// If an object with the target name already exists overwrite it
+		if header.Typeflag == tar.TypeReg {
+			if err := te.extractFile(outputPath, tarReader); err != nil {
+				return err
+			}
+		} else if err := te.extractSymlink(outputPath, header); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unrecognized tar header type: %d", header.Typeflag)
+	}
+
+	// files come recursively in order
+	for {
 		header, err := tarReader.Next()
 		if err != nil && err != io.EOF {
 			return err
@@ -60,17 +133,46 @@ func (te *Extractor) Extract(reader io.Reader) error {
 			break
 		}
 
+		// Make sure that we only have a single root element
+		if !firstObjectWasDir {
+			return fmt.Errorf("the root was not a directory and the tar has multiple entries: %w", errInvalidRoot)
+		}
+
+		// validate the path to remove paths we refuse to work with and make it easier to reason about
+		if err := validateTarPath(header.Name); err != nil {
+			return err
+		}
+		cleanedPath := header.Name
+
+		relPath, err := getRelativePath(rootName, cleanedPath)
+		if err != nil {
+			return err
+		}
+
+		outputPath, err := te.outputPath(rootOutputPath, relPath)
+		if err != nil {
+			return err
+		}
+
+		// This check should already be covered by previous validation, but may catch bugs that slip through.
+		// Checks if the relative path matches or exceeds the root
+		// We check for matching because the outputPath function strips the original root
+		rel, err := fp.Rel(rootOutputPath, outputPath)
+		if err != nil || rel == "." || strings.Contains(rel, "..") {
+			return errInvalidRootMultipleRoots
+		}
+
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := te.extractDir(header, i); err != nil {
+			if err := te.extractDir(outputPath); err != nil {
 				return err
 			}
 		case tar.TypeReg:
-			if err := te.extractFile(header, tarReader, i, rootExists, rootIsDir); err != nil {
+			if err := te.extractFile(outputPath, tarReader); err != nil {
 				return err
 			}
 		case tar.TypeSymlink:
-			if err := te.extractSymlink(header); err != nil {
+			if err := te.extractSymlink(outputPath, header); err != nil {
 				return err
 			}
 		default:
@@ -80,100 +182,122 @@ func (te *Extractor) Extract(reader io.Reader) error {
 	return nil
 }
 
-// Sanitize sets up the extractor to use built in sanitation functions
-// (Modify paths to be platform legal, symlinks may not escape extraction root)
-// or unsets any previously set sanitation functions on the extractor
-// (no special rules are applied when extracting)
-func (te *Extractor) Sanitize(toggle bool) {
-	if toggle {
-		te.SanitizePathFunc = sanitizePath
-		te.LinkFunc = func(inLink Link) error {
-			if err := childrenOnly(inLink); err != nil {
-				return err
-			}
-			if err := platformLink(inLink); err != nil {
-				return err
-			}
-			return os.Symlink(inLink.Target, inLink.Name)
-		}
-	} else {
-		te.SanitizePathFunc = nil
-		te.LinkFunc = nil
+// validateTarPath returns an error if the path has problematic characters
+func validateTarPath(tarPath string) error {
+	if len(tarPath) == 0 {
+		return fmt.Errorf("path is empty")
 	}
-}
 
-// outputPath returns the path at which to place tarPath
-func (te *Extractor) outputPath(tarPath string) (outPath string, err error) {
+	if tarPath[0] == '/' {
+		return fmt.Errorf("%q : path starts with '/'", tarPath)
+	}
+
 	elems := strings.Split(tarPath, "/") // break into elems
 	for _, e := range elems {
-		if e == ".." {
-			return "", fmt.Errorf("%s : path contains '..'", tarPath)
+		switch e {
+		case "", ".", "..":
+			return fmt.Errorf("%q : path contains %q", tarPath, e)
 		}
 	}
-	elems = elems[1:]                       // remove original root
-	outPath = strings.Join(elems, "/")      // join elems
-	outPath = gopath.Join(te.Path, outPath) // rebase on to extraction target root
-	// sanitize path to be platform legal
-	if te.SanitizePathFunc != nil {
-		outPath, err = te.SanitizePathFunc(outPath)
-	} else {
-		outPath = fp.FromSlash(outPath)
-	}
-	return
+	return nil
 }
 
-func (te *Extractor) extractDir(h *tar.Header, depth int) error {
-	path, err := te.outputPath(h.Name)
+// getRelativePath returns the relative path between rootTarPath and tarPath. Assumes both paths have been cleaned.
+// Will error if the tarPath is not below the rootTarPath.
+func getRelativePath(rootName, tarPath string) (string, error) {
+	if !strings.HasPrefix(tarPath, rootName+"/") {
+		return "", errInvalidRootMultipleRoots
+	}
+	return tarPath[len(rootName)+1:], nil
+}
+
+// outputPath returns the path at which to place the relativeTarPath. Assumes the path is cleaned.
+func (te *Extractor) outputPath(basePlatformPath, relativeTarPath string) (string, error) {
+	elems := strings.Split(relativeTarPath, "/")
+
+	platformPath := basePlatformPath
+	for i, e := range elems {
+		if err := validatePathComponent(e); err != nil {
+			return "", err
+		}
+		platformPath = fp.Join(platformPath, e)
+
+		// Last element is not checked since it will be removed (if it exists) by any of the extraction functions.
+		// For more details see:
+		// https://github.com/libarchive/libarchive/blob/0fd2ed25d78e9f4505de5dcb6208c6c0ff8d2edb/libarchive/archive_write_disk_posix.c#L2810
+		if i == len(elems)-1 {
+			break
+		}
+
+		fi, err := os.Lstat(platformPath)
+		if err != nil {
+			return "", err
+		}
+
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return "", errTraverseSymlink
+		}
+		if !fi.Mode().IsDir() {
+			return "", errors.New("cannot traverse non-directory objects")
+		}
+	}
+
+	return platformPath, nil
+}
+
+var errExtractedDirToSymlink = errors.New("cannot extract to symlink")
+
+func (te *Extractor) extractDir(path string) error {
+	err := os.MkdirAll(path, 0755)
 	if err != nil {
 		return err
 	}
 
-	if depth == 0 {
-		// if this is the root directory, use it as the output path for remaining files
-		te.Path = path
+	if stat, err := os.Lstat(path); err != nil {
+		return err
+	} else if !stat.IsDir() {
+		return errExtractedDirToSymlink
 	}
-
-	return os.MkdirAll(path, 0755)
+	return nil
 }
 
-func (te *Extractor) extractSymlink(h *tar.Header) error {
-	path, err := te.outputPath(h.Name)
-	if err != nil {
+func (te *Extractor) extractSymlink(path string, h *tar.Header) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
-	}
-
-	if te.LinkFunc != nil {
-		return te.LinkFunc(Link{Root: te.Path, Name: h.Name, Target: h.Linkname})
 	}
 
 	return os.Symlink(h.Linkname, path)
 }
 
-func (te *Extractor) extractFile(h *tar.Header, r *tar.Reader, depth int, rootExists bool, rootIsDir bool) error {
-	path, err := te.outputPath(h.Name)
-	if err != nil {
+func (te *Extractor) extractFile(path string, r *tar.Reader) error {
+	// Attempt removing the target so we can overwrite files, symlinks and empty directories
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
-	if depth == 0 { // if depth is 0, this is the only file (we aren't extracting a directory)
-		if rootExists && rootIsDir {
-			// putting file inside of a root dir.
-			fnameo := gopath.Base(h.Name)
-			fnamen := fp.Base(path)
-			// add back original name if lost.
-			if fnameo != fnamen {
-				path = fp.Join(path, fnameo)
-			}
-		} // else if old file exists, just overwrite it.
-	}
-
-	file, err := os.Create(path)
+	// Create a temporary file in the target directory and then rename the temporary file to the target to better deal
+	// with races on the file system.
+	base := fp.Dir(path)
+	tmpfile, err := ioutil.TempFile(base, "")
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	if err := copyWithProgress(tmpfile, r, te.Progress); err != nil {
+		_ = tmpfile.Close()
+		_ = os.Remove(tmpfile.Name())
+		return err
+	}
+	if err := tmpfile.Close(); err != nil {
+		_ = os.Remove(tmpfile.Name())
+		return err
+	}
 
-	return copyWithProgress(file, r, te.Progress)
+	if err := os.Rename(tmpfile.Name(), path); err != nil {
+		_ = os.Remove(tmpfile.Name())
+		return err
+	}
+
+	return nil
 }
 
 func copyWithProgress(to io.Writer, from io.Reader, cb func(int64) int64) error {
@@ -196,27 +320,4 @@ func copyWithProgress(to io.Writer, from io.Reader, cb func(int64) int64) error 
 			return err
 		}
 	}
-}
-
-// childrenOnly will return an error if link targets escape their root
-func childrenOnly(inLink Link) error {
-	if fp.IsAbs(inLink.Target) {
-		return fmt.Errorf("Link target %q is an absolute path (forbidden)", inLink.Target)
-	}
-
-	resolvedTarget := fp.Join(inLink.Name, inLink.Target)
-	rel, err := fp.Rel(inLink.Root, resolvedTarget)
-	if err != nil {
-		return err
-	}
-	//disallow symlinks from climbing out of the target root
-	if strings.HasPrefix(rel, "..") {
-		return fmt.Errorf("Symlink target %q escapes root %q", inLink.Target, inLink.Root)
-	}
-	//disallow pointing to your own root from above as well
-	if strings.HasPrefix(resolvedTarget, inLink.Root) {
-		return fmt.Errorf("Symlink target %q escapes and re-enters its own root %q (forbidden)", inLink.Target, inLink.Root)
-	}
-
-	return nil
 }

@@ -3,17 +3,25 @@
 package tar
 
 import (
+	"fmt"
 	"os"
+	"strings"
 )
 
 func isNullDevice(path string) bool {
 	return path == os.DevNull
 }
 
-func sanitizePath(path string) (string, error) {
-	return path, nil
+func validatePlatformPath(platformPath string) error {
+	if strings.Contains(platformPath, "\x00") {
+		return fmt.Errorf("invalid platform path: path components cannot contain null: %q", platformPath)
+	}
+	return nil
 }
 
-func platformLink(inLink Link) error {
+func validatePathComponent(c string) error {
+	if strings.Contains(c, "\x00") {
+		return fmt.Errorf("invalid platform path: path components cannot contain null: %q", c)
+	}
 	return nil
 }
