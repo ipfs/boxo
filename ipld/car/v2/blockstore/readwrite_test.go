@@ -4,7 +4,6 @@ import (
 	"io"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,17 +15,19 @@ import (
 )
 
 func TestBlockstore(t *testing.T) {
-	tempDir := t.TempDir()
 	f, err := os.Open("testdata/test.car")
 	assert.NoError(t, err)
 	defer f.Close()
 	r, err := carv1.NewCarReader(f)
 	assert.NoError(t, err)
-	path := filepath.Join(tempDir, "/testv2blockstore.car")
+	path := "testv2blockstore.car"
 	ingester, err := blockstore.NewReadWrite(path, r.Header.Roots)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		os.Remove(path)
+	}()
 
 	cids := make([]cid.Cid, 0)
 	for {
