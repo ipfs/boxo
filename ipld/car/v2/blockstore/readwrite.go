@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
@@ -20,49 +19,46 @@ import (
 )
 
 var (
-	_            (blockstore.Blockstore) = (*Blockstore)(nil)
-	errFinalized                         = errors.New("finalized blockstore")
+	_            blockstore.Blockstore = (*ReadWrite)(nil)
+	errFinalized                       = errors.New("finalized blockstore")
 )
 
-// Blockstore is a carbon implementation based on having two file handles opened,
+// ReadWrite is a carbon implementation based on having two file handles opened,
 // one appending to the file, and the other
 // seeking to read items as needed.
 // This implementation is preferable for a write-heavy workload.
 // The Finalize function must be called once the putting blocks are finished.
 // Upon calling Finalize all read and write calls to this blockstore will result in error.
 type (
-	Blockstore struct {
-		w           io.WriterAt
+	// TODO consider exposing interfaces
+	ReadWrite struct {
+		f           *os.File
 		carV1Wrtier *internalio.OffsetWriter
 		ReadOnly
 		idx    *index.InsertionIndex
 		header carv2.Header
 	}
-	Option func(*Blockstore)
+	Option func(*ReadWrite) // TODO consider unifying with writer options
 )
 
 func WithCarV1Padding(p uint64) Option {
-	return func(b *Blockstore) {
+	return func(b *ReadWrite) {
 		b.header = b.header.WithCarV1Padding(p)
 	}
 }
 
 func WithIndexPadding(p uint64) Option {
-	return func(b *Blockstore) {
+	return func(b *ReadWrite) {
 		b.header = b.header.WithIndexPadding(p)
 	}
 }
 
-// New creates a new Blockstore at the given path with a provided set of root cids as the car roots.
-func New(path string, roots []cid.Cid, opts ...Option) (*Blockstore, error) {
+// NewReadWrite creates a new ReadWrite at the given path with a provided set of root cids as the car roots.
+func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, error) {
 	// TODO support resumption if the path provided contains partially written blocks in v2 format.
-	wfd, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o666)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o666)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't create backing car: %w", err)
-	}
-	rfd, err := os.OpenFile(path, os.O_RDONLY, 0o666)
-	if err != nil {
-		return nil, fmt.Errorf("could not re-open read handle: %w", err)
+		return nil, fmt.Errorf("could not open read/write file: %w", err)
 	}
 
 	indexcls, ok := index.IndexAtlas[index.IndexInsertion]
@@ -71,17 +67,18 @@ func New(path string, roots []cid.Cid, opts ...Option) (*Blockstore, error) {
 	}
 	idx := (indexcls()).(*index.InsertionIndex)
 
-	b := &Blockstore{
-		w:        wfd,
-		ReadOnly: *ReadOnlyOf(rfd, idx),
-		idx:      idx,
-		header:   carv2.Header{},
+	b := &ReadWrite{
+		f:      f,
+		idx:    idx,
+		header: carv2.NewHeader(0),
 	}
-
-	applyOptions(b, opts)
-	b.carV1Wrtier = internalio.NewOffsetWriter(wfd, int64(b.header.CarV1Offset))
-
-	if _, err := wfd.Write(carv2.Pragma); err != nil {
+	for _, opt := range opts {
+		opt(b)
+	}
+	b.carV1Wrtier = internalio.NewOffsetWriter(f, int64(b.header.CarV1Offset))
+	carV1Reader := internalio.NewOffsetReader(f, int64(b.header.CarV1Offset))
+	b.ReadOnly = *ReadOnlyOf(carV1Reader, idx)
+	if _, err := f.WriteAt(carv2.Pragma, 0); err != nil {
 		return nil, err
 	}
 
@@ -95,18 +92,12 @@ func New(path string, roots []cid.Cid, opts ...Option) (*Blockstore, error) {
 	return b, nil
 }
 
-func applyOptions(b *Blockstore, opts []Option) {
-	for _, opt := range opts {
-		opt(b)
-	}
-}
-
-func (b *Blockstore) DeleteBlock(cid.Cid) error {
+func (b *ReadWrite) DeleteBlock(cid.Cid) error {
 	return errUnsupported
 }
 
 // Put puts a given block to the underlying datastore
-func (b *Blockstore) Put(blk blocks.Block) error {
+func (b *ReadWrite) Put(blk blocks.Block) error {
 	if b.isFinalized() {
 		return errFinalized
 	}
@@ -115,7 +106,7 @@ func (b *Blockstore) Put(blk blocks.Block) error {
 
 // PutMany puts a slice of blocks at the same time using batching
 // capabilities of the underlying datastore whenever possible.
-func (b *Blockstore) PutMany(blks []blocks.Block) error {
+func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 	if b.isFinalized() {
 		return errFinalized
 	}
@@ -129,21 +120,22 @@ func (b *Blockstore) PutMany(blks []blocks.Block) error {
 	return nil
 }
 
-func (b *Blockstore) isFinalized() bool {
+func (b *ReadWrite) isFinalized() bool {
 	return b.header.CarV1Size != 0
 }
 
 // Finalize finalizes this blockstore by writing the CAR v2 header, along with flattened index
 // for more efficient subsequent read.
 // After this call, this blockstore can no longer be used for read or write.
-func (b *Blockstore) Finalize() error {
+func (b *ReadWrite) Finalize() error {
 	if b.isFinalized() {
 		return errFinalized
 	}
 	// TODO check if add index option is set and don't write the index then set index offset to zero.
 	// TODO see if folks need to continue reading from a finalized blockstore, if so return ReadOnly blockstore here.
-	b.header.CarV1Size = uint64(b.carV1Wrtier.Position())
-	if _, err := b.header.WriteTo(internalio.NewOffsetWriter(b.w, carv2.PragmaSize)); err != nil {
+	b.header = b.header.WithCarV1Size(uint64(b.carV1Wrtier.Position()))
+	defer b.f.Close()
+	if _, err := b.header.WriteTo(internalio.NewOffsetWriter(b.f, carv2.PragmaSize)); err != nil {
 		return err
 	}
 	// TODO if index not needed don't bother flattening it.
@@ -151,31 +143,31 @@ func (b *Blockstore) Finalize() error {
 	if err != nil {
 		return err
 	}
-	return index.WriteTo(fi, internalio.NewOffsetWriter(b.w, int64(b.header.IndexOffset)))
+	return index.WriteTo(fi, internalio.NewOffsetWriter(b.f, int64(b.header.IndexOffset)))
 }
 
-func (b *Blockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
+func (b *ReadWrite) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	if b.isFinalized() {
 		return nil, errFinalized
 	}
 	return b.ReadOnly.AllKeysChan(ctx)
 }
 
-func (b *Blockstore) Has(key cid.Cid) (bool, error) {
+func (b *ReadWrite) Has(key cid.Cid) (bool, error) {
 	if b.isFinalized() {
 		return false, errFinalized
 	}
 	return b.ReadOnly.Has(key)
 }
 
-func (b *Blockstore) Get(key cid.Cid) (blocks.Block, error) {
+func (b *ReadWrite) Get(key cid.Cid) (blocks.Block, error) {
 	if b.isFinalized() {
 		return nil, errFinalized
 	}
 	return b.ReadOnly.Get(key)
 }
 
-func (b *Blockstore) GetSize(key cid.Cid) (int, error) {
+func (b *ReadWrite) GetSize(key cid.Cid) (int, error) {
 	if b.isFinalized() {
 		return 0, errFinalized
 	}

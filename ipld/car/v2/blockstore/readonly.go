@@ -54,7 +54,7 @@ func OpenReadOnly(path string, noPersist bool) (*ReadOnly, error) {
 			return nil, err
 		}
 		if !noPersist {
-			if err = index.Save(idx, path); err != nil {
+			if err := index.Attach(path, idx, v2r.Header.IndexOffset); err != nil {
 				return nil, err
 			}
 		}

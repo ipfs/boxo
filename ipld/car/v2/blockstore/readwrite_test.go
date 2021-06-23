@@ -4,7 +4,10 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/ipld/go-car/v2/blockstore"
 
@@ -13,25 +16,17 @@ import (
 )
 
 func TestBlockstore(t *testing.T) {
-	f, err := os.Open("../carbs/testdata/test.car")
-	if err != nil {
-		t.Skipf("fixture not found: %q", err)
-		return
-	}
+	tempDir := t.TempDir()
+	f, err := os.Open("testdata/test.car")
+	assert.NoError(t, err)
 	defer f.Close()
-
 	r, err := carv1.NewCarReader(f)
+	assert.NoError(t, err)
+	path := filepath.Join(tempDir, "/testv2blockstore.car")
+	ingester, err := blockstore.NewReadWrite(path, r.Header.Roots)
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := "testv2blockstore.car"
-	ingester, err := blockstore.New(path, r.Header.Roots)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		os.Remove(path)
-	}()
 
 	cids := make([]cid.Cid, 0)
 	for {
@@ -39,6 +34,8 @@ func TestBlockstore(t *testing.T) {
 		if err == io.EOF {
 			break
 		}
+		assert.NoError(t, err)
+
 		if err := ingester.Put(b); err != nil {
 			t.Fatal(err)
 		}
@@ -64,15 +61,6 @@ func TestBlockstore(t *testing.T) {
 	if err := ingester.Finalize(); err != nil {
 		t.Fatal(err)
 	}
-
-	stat, err := os.Stat("testcarbon.car.idx")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stat.Size() <= 0 {
-		t.Fatalf("index not written: %v", stat)
-	}
-
 	carb, err := blockstore.OpenReadOnly(path, true)
 	if err != nil {
 		t.Fatal(err)

@@ -43,9 +43,6 @@ func (r *Reader) requireV2Pragma() (err error) {
 	if version != 2 {
 		return fmt.Errorf("invalid car version: %d", version)
 	}
-	if or.Offset() != PragmaSize {
-		err = fmt.Errorf("invalid car v2 pragma; size %d is larger than expected %d", or.Offset(), PragmaSize)
-	}
 	return
 }
 
@@ -69,12 +66,12 @@ func (r *Reader) readHeader() (err error) {
 }
 
 // CarV1Reader provides a reader containing the CAR v1 section encapsulated in this CAR v2.
-func (r *Reader) CarV1Reader() *io.SectionReader {
+func (r *Reader) CarV1Reader() *io.SectionReader { // TODO consider returning io.Reader+ReaderAt in a custom interface
 	return io.NewSectionReader(r.r, int64(r.Header.CarV1Offset), int64(r.Header.CarV1Size))
 }
 
 // IndexReader provides an io.Reader containing the carbs.Index of this CAR v2.
-func (r *Reader) IndexReader() io.Reader {
+func (r *Reader) IndexReader() io.Reader { // TODO consider returning io.Reader+ReaderAt in a custom interface
 	return internalio.NewOffsetReader(r.r, int64(r.Header.IndexOffset))
 }
 
