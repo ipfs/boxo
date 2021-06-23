@@ -6,16 +6,16 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
-
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
+	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"golang.org/x/exp/mmap"
+	"io"
 )
 
 var _ blockstore.Blockstore = (*ReadOnly)(nil)
@@ -29,20 +29,26 @@ type ReadOnly struct {
 	idx     index.Index
 }
 
-// ReadOnlyOf opens a carbs data store from an existing reader of the base data and index
+// ReadOnlyOf opens a carbs data store from an existing backing of the base data (i.e. CAR v1 payload) and index.
 func ReadOnlyOf(backing io.ReaderAt, index index.Index) *ReadOnly {
 	return &ReadOnly{backing, index}
 }
 
-// LoadReadOnly opens a read-only blockstore, generating an index if it does not exist
-func LoadReadOnly(path string, noPersist bool) (*ReadOnly, error) {
+// OpenReadOnly opens a read-only blockstore from a CAR v2 file, generating an index if it does not exist.
+// If noPersist is set to false then the generated index is written into the CAR v2 file at path.
+func OpenReadOnly(path string, noPersist bool) (*ReadOnly, error) {
 	reader, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	idx, err := index.Restore(path)
+
+	v2r, err := carv2.NewReader(reader)
 	if err != nil {
-		idx, err = index.GenerateIndex(reader, 0, index.IndexSorted)
+		return nil, err
+	}
+	var idx index.Index
+	if !v2r.Header.HasIndex() {
+		idx, err := index.Generate(v2r.CarV1Reader(), index.IndexSorted)
 		if err != nil {
 			return nil, err
 		}
@@ -51,9 +57,14 @@ func LoadReadOnly(path string, noPersist bool) (*ReadOnly, error) {
 				return nil, err
 			}
 		}
+	} else {
+		idx, err = index.ReadFrom(v2r.IndexReader())
+		if err != nil {
+			return nil, err
+		}
 	}
 	obj := ReadOnly{
-		backing: reader,
+		backing: v2r.CarV1Reader(),
 		idx:     idx,
 	}
 	return &obj, nil

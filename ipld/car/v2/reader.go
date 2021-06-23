@@ -54,7 +54,7 @@ func (r *Reader) Roots() ([]cid.Cid, error) {
 	if r.roots != nil {
 		return r.roots, nil
 	}
-	header, err := carv1.ReadHeader(bufio.NewReader(r.carv1SectionReader()))
+	header, err := carv1.ReadHeader(bufio.NewReader(r.CarV1Reader()))
 	if err != nil {
 		return nil, err
 	}
@@ -68,17 +68,13 @@ func (r *Reader) readHeader() (err error) {
 	return
 }
 
-// CarV1ReaderAt provides an io.ReaderAt containing the CAR v1 dump encapsulated in this CAR v2.
-func (r *Reader) CarV1ReaderAt() io.ReaderAt {
-	return r.carv1SectionReader()
-}
-
-func (r *Reader) carv1SectionReader() *io.SectionReader {
+// CarV1Reader provides a reader containing the CAR v1 section encapsulated in this CAR v2.
+func (r *Reader) CarV1Reader() *io.SectionReader {
 	return io.NewSectionReader(r.r, int64(r.Header.CarV1Offset), int64(r.Header.CarV1Size))
 }
 
-// IndexReaderAt provides an io.ReaderAt containing the carbs.Index of this CAR v2.
-func (r *Reader) IndexReaderAt() io.ReaderAt {
+// IndexReader provides an io.Reader containing the carbs.Index of this CAR v2.
+func (r *Reader) IndexReader() io.Reader {
 	return internalio.NewOffsetReader(r.r, int64(r.Header.IndexOffset))
 }
 

@@ -29,13 +29,7 @@ func main() {
 		return
 	}
 
-	dbstat, err := os.Stat(db)
-	if err != nil {
-		fmt.Printf("Error statting car for hydration: %v\n", err)
-		return
-	}
-
-	idx, err := index.GenerateIndex(dbBacking, dbstat.Size(), codec)
+	idx, err := index.Generate(dbBacking, codec)
 	if err != nil {
 		fmt.Printf("Error generating index: %v\n", err)
 		return

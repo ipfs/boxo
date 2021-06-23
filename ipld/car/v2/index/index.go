@@ -1,14 +1,13 @@
 package index
 
 import (
+	"bufio"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/ipfs/go-cid"
-	internalio "github.com/ipld/go-car/v2/internal/io"
-	"golang.org/x/exp/mmap"
 )
 
 // Codec table is a first var-int in carbs indexes
@@ -52,32 +51,28 @@ var IndexAtlas = map[Codec]IndexCls{
 	IndexInsertion:    mkInsertion,
 }
 
-// Save writes a generated index for a car at `path`
+// Save writes a generated index into the given `path` as a file with a `.idx` extension.
 func Save(i Index, path string) error {
 	stream, err := os.OpenFile(path+".idx", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
 	if err != nil {
 		return err
 	}
 	defer stream.Close()
-
-	buf := make([]byte, binary.MaxVarintLen64)
-	b := binary.PutUvarint(buf, uint64(i.Codec()))
-	if _, err := stream.Write(buf[:b]); err != nil {
-		return err
-	}
-	return i.Marshal(stream)
+	return WriteTo(i, stream)
 }
 
-// Restore loads an index from an on-disk representation.
-func Restore(path string) (Index, error) {
-	reader, err := mmap.Open(path + ".idx")
-	if err != nil {
-		return nil, err
+func WriteTo(i Index, w io.Writer) error {
+	buf := make([]byte, binary.MaxVarintLen64)
+	b := binary.PutUvarint(buf, uint64(i.Codec()))
+	if _, err := w.Write(buf[:b]); err != nil {
+		return err
 	}
+	return i.Marshal(w)
+}
 
-	defer reader.Close()
-	uar := internalio.NewOffsetReader(reader, 0)
-	codec, err := binary.ReadUvarint(uar)
+func ReadFrom(uar io.Reader) (Index, error) {
+	reader := bufio.NewReader(uar)
+	codec, err := binary.ReadUvarint(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -86,9 +81,8 @@ func Restore(path string) (Index, error) {
 		return nil, fmt.Errorf("unknown codec: %d", codec)
 	}
 	idxInst := idx()
-	if err := idxInst.Unmarshal(uar); err != nil {
+	if err := idxInst.Unmarshal(reader); err != nil {
 		return nil, err
 	}
-
 	return idxInst, nil
 }

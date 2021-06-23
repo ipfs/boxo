@@ -1,19 +1,17 @@
-package carbon_test
+package blockstore_test
 
 import (
+	"github.com/ipld/go-car/v2/blockstore"
 	"io"
 	"math/rand"
 	"os"
 	"testing"
 
-	"github.com/ipld/go-car/v2/blockstore"
-	"github.com/ipld/go-car/v2/internal/carbon"
-
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-car"
+	carv1 "github.com/ipld/go-car"
 )
 
-func TestCarbon(t *testing.T) {
+func TestBlockstore(t *testing.T) {
 	f, err := os.Open("../carbs/testdata/test.car")
 	if err != nil {
 		t.Skipf("fixture not found: %q", err)
@@ -21,18 +19,20 @@ func TestCarbon(t *testing.T) {
 	}
 	defer f.Close()
 
-	ingester, err := carbon.New("testcarbon.car")
+	r, err := carv1.NewCarReader(f)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "testv2blockstore.car"
+	ingester, err := blockstore.New(path, r.Header.Roots)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		os.Remove("testcarbon.car")
+		os.Remove(path)
 	}()
 
-	r, err := car.NewCarReader(f)
-	if err != nil {
-		t.Fatal(err)
-	}
 	cids := make([]cid.Cid, 0)
 	for {
 		b, err := r.Next()
@@ -61,12 +61,9 @@ func TestCarbon(t *testing.T) {
 		}
 	}
 
-	if err := ingester.Finish(); err != nil {
+	if err := ingester.Finalize(); err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		os.Remove("testcarbon.car.idx")
-	}()
 
 	stat, err := os.Stat("testcarbon.car.idx")
 	if err != nil {
@@ -76,7 +73,7 @@ func TestCarbon(t *testing.T) {
 		t.Fatalf("index not written: %v", stat)
 	}
 
-	carb, err := blockstore.LoadReadOnly("testcarbon.car", true)
+	carb, err := blockstore.OpenReadOnly(path, true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -77,7 +77,7 @@ func (w *Writer) WriteTo(writer io.Writer) (n int64, err error) {
 		return
 	}
 	n += int64(PragmaSize)
-	// We read the entire car into memory because carbs.GenerateIndex takes a reader.
+	// We read the entire car into memory because carbs.Generate takes a reader.
 	// Future PRs will make this more efficient by exposing necessary interfaces in carbs so that
 	// this can be done in an streaming manner.
 	if err = carv1.WriteCarWithWalker(w.ctx, w.NodeGetter, w.roots, w.encodedCarV1, w.Walk); err != nil {
@@ -130,7 +130,7 @@ func (w *Writer) writeIndex(writer io.Writer, carV1 []byte) (n int64, err error)
 	// Consider refactoring carbs to make this process more efficient.
 	// We should avoid reading the entire car into memory since it can be large.
 	reader := bytes.NewReader(carV1)
-	index, err := index.GenerateIndex(reader, int64(len(carV1)), index.IndexSorted)
+	index, err := index.Generate(reader, index.IndexSorted)
 	if err != nil {
 		return
 	}
