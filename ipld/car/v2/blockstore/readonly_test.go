@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ipld/go-car/v2/internal/index"
+	"github.com/ipld/go-car/v2/index"
 )
 
 /*

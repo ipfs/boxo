@@ -6,7 +6,7 @@ import (
 	"os"
 
 	carblockstore "github.com/ipld/go-car/v2/blockstore"
-	"github.com/ipld/go-car/v2/internal/index"
+	"github.com/ipld/go-car/v2/index"
 
 	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"

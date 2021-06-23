@@ -13,7 +13,7 @@ import (
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/util"
-	"github.com/ipld/go-car/v2/internal/index"
+	"github.com/ipld/go-car/v2/index"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"golang.org/x/exp/mmap"
 )

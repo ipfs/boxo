@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/ipld/go-car/v2/blockstore"
-	"github.com/ipld/go-car/v2/internal/index"
+	"github.com/ipld/go-car/v2/index"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
