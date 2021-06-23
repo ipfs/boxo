@@ -18,11 +18,11 @@ type (
 	}
 	recordSet        []digestRecord
 	singleWidthIndex struct {
-		width int32
-		len   int64 // in struct, len is #items. when marshaled, it's saved as #bytes.
+		width uint32
+		len   uint64 // in struct, len is #items. when marshaled, it's saved as #bytes.
 		index []byte
 	}
-	multiWidthIndex map[int32]singleWidthIndex
+	multiWidthIndex map[uint32]singleWidthIndex
 )
 
 func (d digestRecord) write(buf []byte) {
@@ -65,7 +65,7 @@ func (s *singleWidthIndex) Unmarshal(r io.Reader) error {
 		return err
 	}
 	s.index = make([]byte, s.len)
-	s.len /= int64(s.width)
+	s.len /= uint64(s.width)
 	_, err := io.ReadFull(r, s.index)
 	return err
 }
@@ -86,7 +86,7 @@ func (s *singleWidthIndex) get(d []byte) uint64 {
 	idx := sort.Search(int(s.len), func(i int) bool {
 		return s.Less(i, d)
 	})
-	if int64(idx) == s.len {
+	if uint64(idx) == s.len {
 		return 0
 	}
 	if !bytes.Equal(d[:], s.index[idx*int(s.width):(idx+1)*int(s.width)-8]) {
@@ -117,7 +117,7 @@ func (m *multiWidthIndex) Get(c cid.Cid) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if s, ok := (*m)[int32(len(d.Digest)+8)]; ok {
+	if s, ok := (*m)[uint32(len(d.Digest)+8)]; ok {
 		return s.get(d.Digest), nil
 	}
 	return 0, errNotFound
@@ -176,11 +176,11 @@ func (m *multiWidthIndex) Load(items []Record) error {
 			itm.write(compact[off*rcrdWdth : (off+1)*rcrdWdth])
 		}
 		s := singleWidthIndex{
-			width: int32(rcrdWdth),
-			len:   int64(len(lst)),
+			width: uint32(rcrdWdth),
+			len:   uint64(len(lst)),
 			index: compact,
 		}
-		(*m)[int32(width)+8] = s
+		(*m)[uint32(width)+8] = s
 	}
 	return nil
 }
