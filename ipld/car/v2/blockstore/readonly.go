@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
@@ -15,7 +17,6 @@ import (
 	"github.com/ipld/go-car/v2/index"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"golang.org/x/exp/mmap"
-	"io"
 )
 
 var _ blockstore.Blockstore = (*ReadOnly)(nil)

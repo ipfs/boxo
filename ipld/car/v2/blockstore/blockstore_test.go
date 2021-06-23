@@ -1,11 +1,12 @@
 package blockstore_test
 
 import (
-	"github.com/ipld/go-car/v2/blockstore"
 	"io"
 	"math/rand"
 	"os"
 	"testing"
+
+	"github.com/ipld/go-car/v2/blockstore"
 
 	"github.com/ipfs/go-cid"
 	carv1 "github.com/ipld/go-car"
@@ -20,7 +21,6 @@ func TestBlockstore(t *testing.T) {
 	defer f.Close()
 
 	r, err := carv1.NewCarReader(f)
-
 	if err != nil {
 		t.Fatal(err)
 	}

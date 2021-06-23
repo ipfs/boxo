@@ -19,8 +19,10 @@ import (
 	"github.com/ipld/go-car/util"
 )
 
-var _ (blockstore.Blockstore) = (*Blockstore)(nil)
-var errFinalized = errors.New("finalized blockstore")
+var (
+	_            (blockstore.Blockstore) = (*Blockstore)(nil)
+	errFinalized                         = errors.New("finalized blockstore")
+)
 
 // Blockstore is a carbon implementation based on having two file handles opened,
 // one appending to the file, and the other
