@@ -86,6 +86,7 @@ func (r *Reader) IndexReaderAt() io.ReaderAt {
 // This function accepts both CAR v1 and v2 payloads.
 // The roots are returned only if the version of pragma equals 1, otherwise returns nil as roots.
 func ReadPragma(r io.Reader) (version uint64, roots []cid.Cid, err error) {
+	// TODO if the user provides a reader that sufficiently satisfies what carv1.ReadHeader is asking then use that instead of wrapping every time.
 	header, err := carv1.ReadHeader(bufio.NewReader(r))
 	if err != nil {
 		return
