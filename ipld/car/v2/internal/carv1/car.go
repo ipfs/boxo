@@ -33,18 +33,11 @@ type CarHeader struct {
 }
 
 type carWriter struct {
-	ds   format.NodeGetter
-	w    io.Writer
-	walk WalkFunc
+	ds format.NodeGetter
+	w  io.Writer
 }
-
-type WalkFunc func(format.Node) ([]*format.Link, error)
 
 func WriteCar(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.Writer) error {
-	return WriteCarWithWalker(ctx, ds, roots, w, DefaultWalkFunc)
-}
-
-func WriteCarWithWalker(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.Writer, walk WalkFunc) error {
 	h := &CarHeader{
 		Roots:   roots,
 		Version: 1,
@@ -54,7 +47,7 @@ func WriteCarWithWalker(ctx context.Context, ds format.NodeGetter, roots []cid.C
 		return fmt.Errorf("failed to write car header: %s", err)
 	}
 
-	cw := &carWriter{ds: ds, w: w, walk: walk}
+	cw := &carWriter{ds: ds, w: w}
 	seen := cid.NewSet()
 	for _, r := range roots {
 		if err := dag.Walk(ctx, cw.enumGetLinks, r, seen.Visit); err != nil {
@@ -62,10 +55,6 @@ func WriteCarWithWalker(ctx context.Context, ds format.NodeGetter, roots []cid.C
 		}
 	}
 	return nil
-}
-
-func DefaultWalkFunc(nd format.Node) ([]*format.Link, error) {
-	return nd.Links(), nil
 }
 
 func ReadHeader(br *bufio.Reader) (*CarHeader, error) {
@@ -110,7 +99,7 @@ func (cw *carWriter) enumGetLinks(ctx context.Context, c cid.Cid) ([]*format.Lin
 		return nil, err
 	}
 
-	return cw.walk(nd)
+	return nd.Links(), nil
 }
 
 func (cw *carWriter) writeNode(ctx context.Context, nd format.Node) error {

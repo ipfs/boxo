@@ -56,6 +56,7 @@ func WithIndexPadding(p uint64) Option {
 // NewReadWrite creates a new ReadWrite at the given path with a provided set of root cids as the car roots.
 func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, error) {
 	// TODO support resumption if the path provided contains partially written blocks in v2 format.
+	// TODO either lock the file or open exclusively; can we do somethign to reduce edge cases.
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o666)
 	if err != nil {
 		return nil, fmt.Errorf("could not open read/write file: %w", err)

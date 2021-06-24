@@ -20,7 +20,6 @@ type (
 	padding uint64
 	// Writer writes CAR v2 into a give io.Writer.
 	Writer struct {
-		Walk         carv1.WalkFunc
 		IndexCodec   index.Codec
 		NodeGetter   format.NodeGetter
 		CarV1Padding uint64
@@ -57,10 +56,8 @@ func (p padding) WriteTo(w io.Writer) (n int64, err error) {
 
 // NewWriter instantiates a new CAR v2 writer.
 // The writer instantiated uses `carbs.IndexSorted` as the index codec,
-// and `carv1.DefaultWalkFunc` as the default walk function.
 func NewWriter(ctx context.Context, ng format.NodeGetter, roots []cid.Cid) *Writer {
 	return &Writer{
-		Walk:         carv1.DefaultWalkFunc,
 		IndexCodec:   index.IndexSorted,
 		NodeGetter:   ng,
 		ctx:          ctx,
@@ -69,8 +66,7 @@ func NewWriter(ctx context.Context, ng format.NodeGetter, roots []cid.Cid) *Writ
 	}
 }
 
-// WriteTo writes the given root CIDs according to CAR v2 specification, traversing the DAG using the
-// Writer.Walk function.
+// WriteTo writes the given root CIDs according to CAR v2 specification.
 func (w *Writer) WriteTo(writer io.Writer) (n int64, err error) {
 	_, err = writer.Write(Pragma)
 	if err != nil {
@@ -80,7 +76,7 @@ func (w *Writer) WriteTo(writer io.Writer) (n int64, err error) {
 	// We read the entire car into memory because carbs.Generate takes a reader.
 	// Future PRs will make this more efficient by exposing necessary interfaces in carbs so that
 	// this can be done in an streaming manner.
-	if err = carv1.WriteCarWithWalker(w.ctx, w.NodeGetter, w.roots, w.encodedCarV1, w.Walk); err != nil {
+	if err = carv1.WriteCar(w.ctx, w.NodeGetter, w.roots, w.encodedCarV1); err != nil {
 		return
 	}
 	carV1Len := w.encodedCarV1.Len()
