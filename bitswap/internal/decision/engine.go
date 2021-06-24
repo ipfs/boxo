@@ -703,7 +703,11 @@ func (e *Engine) PeerDisconnected(p peer.ID) {
 
 	ledger, ok := e.ledgerMap[p]
 	if ok {
-		for _, entry := range ledger.Entries() {
+		ledger.lk.RLock()
+		entries := ledger.Entries()
+		ledger.lk.RUnlock()
+
+		for _, entry := range entries {
 			e.peerLedger.CancelWant(p, entry.Cid)
 		}
 	}
