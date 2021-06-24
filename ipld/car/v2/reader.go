@@ -70,7 +70,7 @@ func (r *Reader) CarV1Reader() *io.SectionReader { // TODO consider returning io
 	return io.NewSectionReader(r.r, int64(r.Header.CarV1Offset), int64(r.Header.CarV1Size))
 }
 
-// IndexReader provides an io.Reader containing the carbs.Index of this CAR v2.
+// IndexReader provides an io.Reader containing the index of this CAR v2.
 func (r *Reader) IndexReader() io.Reader { // TODO consider returning io.Reader+ReaderAt in a custom interface
 	return internalio.NewOffsetReader(r.r, int64(r.Header.IndexOffset))
 }

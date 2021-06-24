@@ -23,12 +23,14 @@ var (
 	errFinalized                       = errors.New("finalized blockstore")
 )
 
-// ReadWrite is a carbon implementation based on having two file handles opened,
-// one appending to the file, and the other
-// seeking to read items as needed.
+// ReadWrite implements a blockstore that stores blocks in CAR v2 format.
+// Blocks put into the blockstore can be read back once they are successfully written.
 // This implementation is preferable for a write-heavy workload.
+// The blocks are written immediately on Put and PutAll calls, while the index is stored in memory
+// and updated incrementally.
 // The Finalize function must be called once the putting blocks are finished.
-// Upon calling Finalize all read and write calls to this blockstore will result in error.
+// Upon calling Finalize header is finalized and index is written out.
+// Once finalized, all read and write calls to this blockstore will result in error.
 type (
 	// TODO consider exposing interfaces
 	ReadWrite struct {
@@ -41,19 +43,21 @@ type (
 	Option func(*ReadWrite) // TODO consider unifying with writer options
 )
 
+// WithCarV1Padding sets the padding to be added between CAR v2 header and its data payload on Finalize.
 func WithCarV1Padding(p uint64) Option {
 	return func(b *ReadWrite) {
 		b.header = b.header.WithCarV1Padding(p)
 	}
 }
 
+// WithIndexPadding sets the padding between data payload and its index on Finalize.
 func WithIndexPadding(p uint64) Option {
 	return func(b *ReadWrite) {
 		b.header = b.header.WithIndexPadding(p)
 	}
 }
 
-// NewReadWrite creates a new ReadWrite at the given path with a provided set of root cids as the car roots.
+// NewReadWrite creates a new ReadWrite at the given path with a provided set of root CIDs as the car roots.
 func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, error) {
 	// TODO support resumption if the path provided contains partially written blocks in v2 format.
 	// TODO either lock the file or open exclusively; can we do somethign to reduce edge cases.
@@ -62,7 +66,7 @@ func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, err
 		return nil, fmt.Errorf("could not open read/write file: %w", err)
 	}
 
-	indexcls, ok := index.IndexAtlas[index.IndexInsertion]
+	indexcls, ok := index.BuildersByCodec[index.IndexInsertion]
 	if !ok {
 		return nil, fmt.Errorf("unknownindex  codec: %#v", index.IndexInsertion)
 	}
@@ -91,10 +95,6 @@ func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, err
 		return nil, fmt.Errorf("couldn't write car header: %w", err)
 	}
 	return b, nil
-}
-
-func (b *ReadWrite) DeleteBlock(cid.Cid) error {
-	return errUnsupported
 }
 
 // Put puts a given block to the underlying datastore

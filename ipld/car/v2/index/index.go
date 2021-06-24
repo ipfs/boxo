@@ -12,7 +12,7 @@ import (
 	"github.com/ipfs/go-cid"
 )
 
-// Codec table is a first var-int in carbs indexes
+// Codec table is a first var-int in CAR indexes
 const (
 	IndexHashed Codec = iota + 0x300000
 	IndexSorted
@@ -22,11 +22,11 @@ const (
 )
 
 type (
-	// Codec is used as a multicodec identifier for carbs index files
+	// Codec is used as a multicodec identifier for CAR index files
 	Codec int
 
-	// IndexCls is a constructor for an index type
-	IndexCls func() Index
+	// Builder is a constructor for an index type
+	Builder func() Index
 
 	// Record is a pre-processed record of a car item and location.
 	Record struct {
@@ -34,7 +34,7 @@ type (
 		Idx uint64
 	}
 
-	// Index provides an interface for figuring out where in the car a given cid begins
+	// Index provides an interface for looking up byte offset of a given CID.
 	Index interface {
 		Codec() Codec
 		Marshal(w io.Writer) error
@@ -44,8 +44,8 @@ type (
 	}
 )
 
-// IndexAtlas holds known index formats
-var IndexAtlas = map[Codec]IndexCls{
+// BuildersByCodec holds known index formats
+var BuildersByCodec = map[Codec]Builder{
 	IndexHashed:       mkHashed,
 	IndexSorted:       mkSorted,
 	IndexSingleSorted: mkSingleSorted,
@@ -53,9 +53,9 @@ var IndexAtlas = map[Codec]IndexCls{
 	IndexInsertion:    mkInsertion,
 }
 
-// Save writes a generated index into the given `path` as a file with a `.idx` extension.
+// Save writes a generated index into the given `path`.
 func Save(idx Index, path string) error {
-	stream, err := os.OpenFile(path+".idx", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
+	stream, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
 	if err != nil {
 		return err
 	}
@@ -74,28 +74,34 @@ func Attach(path string, idx Index, offset uint64) error {
 	return WriteTo(idx, indexWriter)
 }
 
-func WriteTo(i Index, w io.Writer) error {
+// WriteTo writes the given idx into w.
+// The written bytes include the index encoding.
+// This can then be read back using index.ReadFrom
+func WriteTo(idx Index, w io.Writer) error {
 	buf := make([]byte, binary.MaxVarintLen64)
-	b := binary.PutUvarint(buf, uint64(i.Codec()))
+	b := binary.PutUvarint(buf, uint64(idx.Codec()))
 	if _, err := w.Write(buf[:b]); err != nil {
 		return err
 	}
-	return i.Marshal(w)
+	return idx.Marshal(w)
 }
 
-func ReadFrom(uar io.Reader) (Index, error) {
-	reader := bufio.NewReader(uar)
+// ReadFrom reads index from r.
+// The reader decodes the index by reading the first byte to interpret the encoding.
+// Returns error if the encoding is not known.
+func ReadFrom(r io.Reader) (Index, error) {
+	reader := bufio.NewReader(r)
 	codec, err := binary.ReadUvarint(reader)
 	if err != nil {
 		return nil, err
 	}
-	idx, ok := IndexAtlas[Codec(codec)]
+	builder, ok := BuildersByCodec[Codec(codec)]
 	if !ok {
 		return nil, fmt.Errorf("unknown codec: %d", codec)
 	}
-	idxInst := idx()
-	if err := idxInst.Unmarshal(reader); err != nil {
+	idx := builder()
+	if err := idx.Unmarshal(reader); err != nil {
 		return nil, err
 	}
-	return idxInst, nil
+	return idx, nil
 }

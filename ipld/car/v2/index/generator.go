@@ -11,13 +11,9 @@ import (
 	"golang.org/x/exp/mmap"
 )
 
-// Generate generates index given car v1 payload using the given codec.
-func Generate(car io.ReaderAt, codec Codec) (Index, error) {
-	indexcls, ok := IndexAtlas[codec]
-	if !ok {
-		return nil, fmt.Errorf("unknown codec: %#v", codec)
-	}
-
+// Generate generates index for a given car in v1 format.
+// The index can be stored using index.Save into a file or serialized using index.WriteTo.
+func Generate(car io.ReaderAt) (Index, error) {
 	header, err := carv1.ReadHeader(bufio.NewReader(internalio.NewOffsetReader(car, 0)))
 	if err != nil {
 		return nil, fmt.Errorf("error reading car header: %w", err)
@@ -27,7 +23,7 @@ func Generate(car io.ReaderAt, codec Codec) (Index, error) {
 		return nil, err
 	}
 
-	idx := indexcls()
+	idx := mkSorted()
 
 	records := make([]Record, 0)
 	rdr := internalio.NewOffsetReader(car, int64(offset))
@@ -56,16 +52,13 @@ func Generate(car io.ReaderAt, codec Codec) (Index, error) {
 	return idx, nil
 }
 
-// GenerateFromFile walks a car v1 file and generates an index of cid->byte offset, then
-// stors it in a separate file at the given path with extension `.idx`.
-func GenerateFromFile(path string, codec Codec) error {
+// GenerateFromFile walks a car v1 file at the give path and generates an index of cid->byte offset.
+// The index can be stored using index.Save into a file or serialized using index.WriteTo.
+func GenerateFromFile(path string) (Index, error) {
 	store, err := mmap.Open(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	idx, err := Generate(store, codec)
-	if err != nil {
-		return err
-	}
-	return Save(idx, path)
+	defer store.Close()
+	return Generate(store)
 }

@@ -125,7 +125,7 @@ func mkInsertion() Index {
 
 // Flatten returns a 'indexsorted' formatted index for more efficient subsequent loading
 func (ii *InsertionIndex) Flatten() (Index, error) {
-	si := IndexAtlas[IndexSorted]()
+	si := BuildersByCodec[IndexSorted]()
 	rcrds := make([]Record, ii.items.Len())
 
 	idx := 0

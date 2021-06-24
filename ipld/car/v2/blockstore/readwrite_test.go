@@ -62,7 +62,7 @@ func TestBlockstore(t *testing.T) {
 	if err := ingester.Finalize(); err != nil {
 		t.Fatal(err)
 	}
-	carb, err := blockstore.OpenReadOnly(path, true)
+	carb, err := blockstore.OpenReadOnly(path, false)
 	if err != nil {
 		t.Fatal(err)
 	}

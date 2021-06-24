@@ -11,10 +11,7 @@ import (
 	"github.com/ipld/go-car/v2/internal/carv1"
 )
 
-const (
-	bulkPaddingBytesSize = 1024
-	defaultIndexCodex    = index.IndexSorted
-)
+const bulkPaddingBytesSize = 1024
 
 var bulkPadding = make([]byte, bulkPaddingBytesSize)
 
@@ -57,7 +54,6 @@ func (p padding) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 // NewWriter instantiates a new CAR v2 writer.
-// The writer instantiated uses `carbs.IndexSorted` as the index codec.
 func NewWriter(ctx context.Context, ng format.NodeGetter, roots []cid.Cid) *Writer {
 	return &Writer{
 		NodeGetter:   ng,
@@ -74,8 +70,8 @@ func (w *Writer) WriteTo(writer io.Writer) (n int64, err error) {
 		return
 	}
 	n += int64(PragmaSize)
-	// We read the entire car into memory because carbs.Generate takes a reader.
-	// Future PRs will make this more efficient by exposing necessary interfaces in carbs so that
+	// We read the entire car into memory because index.Generate takes a reader.
+	// TODO Future PRs will make this more efficient by exposing necessary interfaces in index pacakge so that
 	// this can be done in an streaming manner.
 	if err = carv1.WriteCar(w.ctx, w.NodeGetter, w.roots, w.encodedCarV1); err != nil {
 		return
@@ -121,17 +117,16 @@ func (w *Writer) writeHeader(writer io.Writer, carV1Len int) (int64, error) {
 	return header.WriteTo(writer)
 }
 
-func (w *Writer) writeIndex(writer io.Writer, carV1 []byte) (n int64, err error) {
-	// TODO avoid recopying the bytes by refactoring carbs once it is integrated here.
-	// Right now we copy the bytes since carbs takes a writer.
-	// Consider refactoring carbs to make this process more efficient.
+func (w *Writer) writeIndex(writer io.Writer, carV1 []byte) (int64, error) {
+	// TODO avoid recopying the bytes by refactoring index once it is integrated here.
+	// Right now we copy the bytes since index takes a writer.
+	// Consider refactoring index to make this process more efficient.
 	// We should avoid reading the entire car into memory since it can be large.
 	reader := bytes.NewReader(carV1)
-	index, err := index.Generate(reader, defaultIndexCodex)
+	idx, err := index.Generate(reader)
 	if err != nil {
-		return
+		return 0, err
 	}
-	err = index.Marshal(writer)
-	// FIXME refactor carbs to expose the number of bytes written.
-	return
+	// FIXME refactor index to expose the number of bytes written.
+	return 0, index.WriteTo(idx, writer)
 }

@@ -26,34 +26,37 @@ var errUnsupported = errors.New("unsupported operation")
 
 // ReadOnly provides a read-only Car Block Store.
 type ReadOnly struct {
+	// The backing containing the CAR in v1 format
 	backing io.ReaderAt
-	idx     index.Index
+	// The CAR v1 content index
+	idx index.Index
 }
 
-// ReadOnlyOf opens a carbs data store from an existing backing of the base data (i.e. CAR v1 payload) and index.
+// ReadOnlyOf opens ReadOnly blockstore from an existing backing containing a CAR v1 payload and an existing index.
+// The index for a CAR v1 payload can be separately generated using index.Generate.
 func ReadOnlyOf(backing io.ReaderAt, index index.Index) *ReadOnly {
 	return &ReadOnly{backing, index}
 }
 
 // OpenReadOnly opens a read-only blockstore from a CAR v2 file, generating an index if it does not exist.
-// If noPersist is set to false then the generated index is written into the CAR v2 file at path.
-func OpenReadOnly(path string, noPersist bool) (*ReadOnly, error) {
+// If attachIndex is set to true and the index is not present in the given CAR v2 file,
+// then the generated index is written into the given path.
+func OpenReadOnly(path string, attachIndex bool) (*ReadOnly, error) {
 	reader, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
 	}
-
 	v2r, err := carv2.NewReader(reader)
 	if err != nil {
 		return nil, err
 	}
 	var idx index.Index
 	if !v2r.Header.HasIndex() {
-		idx, err := index.Generate(v2r.CarV1Reader(), index.IndexSorted)
+		idx, err := index.Generate(v2r.CarV1Reader())
 		if err != nil {
 			return nil, err
 		}
-		if !noPersist {
+		if attachIndex {
 			if err := index.Attach(path, idx, v2r.Header.IndexOffset); err != nil {
 				return nil, err
 			}
@@ -71,17 +74,17 @@ func OpenReadOnly(path string, noPersist bool) (*ReadOnly, error) {
 	return &obj, nil
 }
 
-func (b *ReadOnly) read(idx int64) (cid.Cid, []byte, error) {
+func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
 	bcid, data, err := util.ReadNode(bufio.NewReader(internalio.NewOffsetReader(b.backing, idx)))
 	return bcid, data, err
 }
 
-// DeleteBlock is unsupported and always returns an error
+// DeleteBlock is unsupported and always returns an error.
 func (b *ReadOnly) DeleteBlock(_ cid.Cid) error {
 	return errUnsupported
 }
 
-// Has indicates if the store has a cid
+// Has indicates if the store contains a block that corresponds to the given key.
 func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 	offset, err := b.idx.Get(key)
 	if err != nil {
@@ -99,13 +102,13 @@ func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 	return c.Equals(key), nil
 }
 
-// Get gets a block from the store
+// Get gets a block corresponding to the given key.
 func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
 	offset, err := b.idx.Get(key)
 	if err != nil {
 		return nil, err
 	}
-	entry, bytes, err := b.read(int64(offset))
+	entry, bytes, err := b.readBlock(int64(offset))
 	if err != nil {
 		// TODO Improve error handling; not all errors mean NotFound.
 		return nil, blockstore.ErrNotFound
@@ -116,7 +119,7 @@ func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
 	return blocks.NewBlockWithCid(bytes, key)
 }
 
-// GetSize gets how big a item is
+// GetSize gets the size of an item corresponding to the given key.
 func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 	idx, err := b.idx.Get(key)
 	if err != nil {
@@ -137,17 +140,17 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 	return int(l), err
 }
 
-// Put is not supported and always returns an error
+// Put is not supported and always returns an error.
 func (b *ReadOnly) Put(blocks.Block) error {
 	return errUnsupported
 }
 
-// PutMany is not supported and always returns an error
+// PutMany is not supported and always returns an error.
 func (b *ReadOnly) PutMany([]blocks.Block) error {
 	return errUnsupported
 }
 
-// AllKeysChan returns the list of keys in the store
+// AllKeysChan returns the list of keys in the CAR.
 func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	// TODO we may use this walk for populating the index, and we need to be able to iterate keys in this way somewhere for index generation. In general though, when it's asked for all keys from a blockstore with an index, we should iterate through the index when possible rather than linear reads through the full car.
 	header, err := carv1.ReadHeader(bufio.NewReader(internalio.NewOffsetReader(b.backing, 0)))
@@ -187,11 +190,11 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return ch, nil
 }
 
-// HashOnRead does nothing
+// HashOnRead does nothing.
 func (b *ReadOnly) HashOnRead(bool) {
 }
 
-// Roots returns the root CIDs of the backing car
+// Roots returns the root CIDs of the backing CAR.
 func (b *ReadOnly) Roots() ([]cid.Cid, error) {
 	header, err := carv1.ReadHeader(bufio.NewReader(internalio.NewOffsetReader(b.backing, 0)))
 	if err != nil {
