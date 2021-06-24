@@ -235,6 +235,9 @@ func (e *Engine) StartWorkers(ctx context.Context, px process.Process) {
 	e.bsm.start(px)
 	e.startScoreLedger(px)
 
+	e.taskWorkerLock.Lock()
+	defer e.taskWorkerLock.Unlock()
+
 	for i := 0; i < e.taskWorkerCount; i++ {
 		px.Go(func(px process.Process) {
 			e.taskWorker(ctx)
