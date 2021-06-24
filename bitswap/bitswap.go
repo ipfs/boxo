@@ -118,6 +118,12 @@ func WithScoreLedger(scoreLedger deciface.ScoreLedger) Option {
 	}
 }
 
+func SetSimulateDontHavesOnTimeout(send bool) Option {
+	return func(bs *Bitswap) {
+		bs.simulateDontHavesOnTimeout = send
+	}
+}
+
 // New initializes a BitSwap instance that communicates over the provided
 // BitSwapNetwork. This function registers the returned instance as the network
 // delegate. Runs until context is cancelled or bitswap.Close is called.
@@ -149,9 +155,12 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	// has an old version of Bitswap that doesn't support DONT_HAVE messages,
 	// or when no response is received within a timeout.
 	var sm *bssm.SessionManager
+	var bs *Bitswap
 	onDontHaveTimeout := func(p peer.ID, dontHaves []cid.Cid) {
 		// Simulate a message arriving with DONT_HAVEs
-		sm.ReceiveFrom(ctx, p, nil, nil, dontHaves)
+		if bs.simulateDontHavesOnTimeout {
+			sm.ReceiveFrom(ctx, p, nil, nil, dontHaves)
+		}
 	}
 	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
 		return bsmq.New(ctx, p, network, onDontHaveTimeout)
@@ -182,25 +191,26 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	notif := notifications.New()
 	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
 
-	bs := &Bitswap{
-		blockstore:              bstore,
-		network:                 network,
-		process:                 px,
-		newBlocks:               make(chan cid.Cid, HasBlockBufferSize),
-		provideKeys:             make(chan cid.Cid, provideKeysBufferSize),
-		pm:                      pm,
-		pqm:                     pqm,
-		sm:                      sm,
-		sim:                     sim,
-		notif:                   notif,
-		counters:                new(counters),
-		dupMetric:               dupHist,
-		allMetric:               allHist,
-		sentHistogram:           sentHistogram,
-		provideEnabled:          true,
-		provSearchDelay:         defaultProvSearchDelay,
-		rebroadcastDelay:        delay.Fixed(time.Minute),
-		engineBstoreWorkerCount: defaulEngineBlockstoreWorkerCount,
+	bs = &Bitswap{
+		blockstore:                 bstore,
+		network:                    network,
+		process:                    px,
+		newBlocks:                  make(chan cid.Cid, HasBlockBufferSize),
+		provideKeys:                make(chan cid.Cid, provideKeysBufferSize),
+		pm:                         pm,
+		pqm:                        pqm,
+		sm:                         sm,
+		sim:                        sim,
+		notif:                      notif,
+		counters:                   new(counters),
+		dupMetric:                  dupHist,
+		allMetric:                  allHist,
+		sentHistogram:              sentHistogram,
+		provideEnabled:             true,
+		provSearchDelay:            defaultProvSearchDelay,
+		rebroadcastDelay:           delay.Fixed(time.Minute),
+		engineBstoreWorkerCount:    defaulEngineBlockstoreWorkerCount,
+		simulateDontHavesOnTimeout: true,
 	}
 
 	// apply functional options before starting and running bitswap
@@ -293,6 +303,9 @@ type Bitswap struct {
 
 	// the score ledger used by the decision engine
 	engineScoreLedger deciface.ScoreLedger
+
+	// whether we should actually simulate dont haves on request timeout
+	simulateDontHavesOnTimeout bool
 }
 
 type counters struct {

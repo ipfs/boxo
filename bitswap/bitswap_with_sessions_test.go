@@ -74,7 +74,7 @@ func TestSessionBetweenPeers(t *testing.T) {
 	defer cancel()
 
 	vnet := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(time.Millisecond))
-	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
+	ig := testinstance.NewTestInstanceGenerator(vnet, nil, []bitswap.Option{bitswap.SetSimulateDontHavesOnTimeout(false)})
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 

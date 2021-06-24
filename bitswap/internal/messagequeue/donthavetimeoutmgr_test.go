@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/benbjohnson/clock"
 	"github.com/ipfs/go-bitswap/internal/testutil"
 	cid "github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -16,10 +17,13 @@ type mockPeerConn struct {
 	err       error
 	latency   time.Duration
 	latencies []time.Duration
+	clock     clock.Clock
+	pinged    chan struct{}
 }
 
 func (pc *mockPeerConn) Ping(ctx context.Context) ping.Result {
-	timer := time.NewTimer(pc.latency)
+	timer := pc.clock.Timer(pc.latency)
+	pc.pinged <- struct{}{}
 	select {
 	case <-timer.C:
 		if pc.err != nil {
@@ -75,19 +79,21 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	latMultiplier := 2
 	expProcessTime := 5 * time.Millisecond
 	expectedTimeout := expProcessTime + latency*time.Duration(latMultiplier)
-	pc := &mockPeerConn{latency: latency}
+	clock := clock.NewMock()
+	pinged := make(chan struct{})
+	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
-
+	timeoutsTriggered := make(chan struct{})
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
+		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
-
+	<-pinged
 	// Add first set of keys
 	dhtm.AddPending(firstks)
 
 	// Wait for less than the expected timeout
-	time.Sleep(expectedTimeout - 10*time.Millisecond)
+	clock.Add(expectedTimeout - 10*time.Millisecond)
 
 	// At this stage no keys should have timed out
 	if tr.timedOutCount() > 0 {
@@ -98,18 +104,21 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	dhtm.AddPending(secondks)
 
 	// Wait until after the expected timeout
-	time.Sleep(20 * time.Millisecond)
+	clock.Add(20 * time.Millisecond)
+
+	<-timeoutsTriggered
 
 	// At this stage first set of keys should have timed out
 	if tr.timedOutCount() != len(firstks) {
 		t.Fatal("expected timeout", tr.timedOutCount(), len(firstks))
 	}
-
 	// Clear the recorded timed out keys
 	tr.clear()
 
 	// Sleep until the second set of keys should have timed out
-	time.Sleep(expectedTimeout + 10*time.Millisecond)
+	clock.Add(expectedTimeout + 10*time.Millisecond)
+
+	<-timeoutsTriggered
 
 	// At this stage all keys should have timed out. The second set included
 	// the first set of keys, but they were added before the first set timed
@@ -125,24 +134,29 @@ func TestDontHaveTimeoutMgrCancel(t *testing.T) {
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
 	expectedTimeout := latency
-	pc := &mockPeerConn{latency: latency}
+	clock := clock.NewMock()
+	pinged := make(chan struct{})
+	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
-
+	timeoutsTriggered := make(chan struct{})
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
+		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
+	<-pinged
 
 	// Add keys
 	dhtm.AddPending(ks)
-	time.Sleep(5 * time.Millisecond)
+	clock.Add(5 * time.Millisecond)
 
 	// Cancel keys
 	cancelCount := 1
 	dhtm.CancelPending(ks[:cancelCount])
 
 	// Wait for the expected timeout
-	time.Sleep(expectedTimeout)
+	clock.Add(expectedTimeout)
+
+	<-timeoutsTriggered
 
 	// At this stage all non-cancelled keys should have timed out
 	if tr.timedOutCount() != len(ks)-cancelCount {
@@ -156,30 +170,36 @@ func TestDontHaveTimeoutWantCancelWant(t *testing.T) {
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
 	expectedTimeout := latency
-	pc := &mockPeerConn{latency: latency}
+	clock := clock.NewMock()
+	pinged := make(chan struct{})
+	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
+	timeoutsTriggered := make(chan struct{})
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
+		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
+	<-pinged
 
 	// Add keys
 	dhtm.AddPending(ks)
 
 	// Wait for a short time
-	time.Sleep(expectedTimeout - 10*time.Millisecond)
+	clock.Add(expectedTimeout - 10*time.Millisecond)
 
 	// Cancel two keys
 	dhtm.CancelPending(ks[:2])
 
-	time.Sleep(5 * time.Millisecond)
+	clock.Add(5 * time.Millisecond)
 
 	// Add back one cancelled key
 	dhtm.AddPending(ks[:1])
 
 	// Wait till after initial timeout
-	time.Sleep(10 * time.Millisecond)
+	clock.Add(10 * time.Millisecond)
+
+	<-timeoutsTriggered
 
 	// At this stage only the key that was never cancelled should have timed out
 	if tr.timedOutCount() != 1 {
@@ -187,7 +207,9 @@ func TestDontHaveTimeoutWantCancelWant(t *testing.T) {
 	}
 
 	// Wait till after added back key should time out
-	time.Sleep(latency)
+	clock.Add(latency)
+
+	<-timeoutsTriggered
 
 	// At this stage the key that was added back should also have timed out
 	if tr.timedOutCount() != 2 {
@@ -200,13 +222,17 @@ func TestDontHaveTimeoutRepeatedAddPending(t *testing.T) {
 	latency := time.Millisecond * 5
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
-	pc := &mockPeerConn{latency: latency}
+	clock := clock.NewMock()
+	pinged := make(chan struct{})
+	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
+	timeoutsTriggered := make(chan struct{})
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
+		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
+	<-pinged
 
 	// Add keys repeatedly
 	for _, c := range ks {
@@ -214,7 +240,9 @@ func TestDontHaveTimeoutRepeatedAddPending(t *testing.T) {
 	}
 
 	// Wait for the expected timeout
-	time.Sleep(latency + 5*time.Millisecond)
+	clock.Add(latency + 5*time.Millisecond)
+
+	<-timeoutsTriggered
 
 	// At this stage all keys should have timed out
 	if tr.timedOutCount() != len(ks) {
@@ -228,14 +256,17 @@ func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
 	msgLatencyMultiplier := 1
-	pc := &mockPeerConn{latency: latency}
+	clock := clock.NewMock()
+	pinged := make(chan struct{})
+	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
+	timeoutsTriggered := make(chan struct{})
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, maxTimeout, latMultiplier, msgLatencyMultiplier, expProcessTime)
+		dontHaveTimeout, maxTimeout, latMultiplier, msgLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
-
+	<-pinged
 	// Add keys
 	dhtm.AddPending(ks)
 
@@ -245,7 +276,7 @@ func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
 	// = 40ms
 
 	// Wait for less than the expected timeout
-	time.Sleep(25 * time.Millisecond)
+	clock.Add(25 * time.Millisecond)
 
 	// Receive two message latency updates
 	dhtm.UpdateMessageLatency(time.Millisecond * 20)
@@ -259,7 +290,9 @@ func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
 	// the keys should have timed out
 
 	// Give the queue some time to process the updates
-	time.Sleep(5 * time.Millisecond)
+	clock.Add(5 * time.Millisecond)
+
+	<-timeoutsTriggered
 
 	if tr.timedOutCount() != len(ks) {
 		t.Fatal("expected keys to timeout")
@@ -268,16 +301,19 @@ func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
 
 func TestDontHaveTimeoutMgrMessageLatencyMax(t *testing.T) {
 	ks := testutil.GenerateCids(2)
-	pc := &mockPeerConn{latency: time.Second} // ignored
+	clock := clock.NewMock()
+	pinged := make(chan struct{})
+	pc := &mockPeerConn{latency: time.Second, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
 	msgLatencyMultiplier := 1
 	testMaxTimeout := time.Millisecond * 10
+	timeoutsTriggered := make(chan struct{})
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, testMaxTimeout, pingLatencyMultiplier, msgLatencyMultiplier, maxExpectedWantProcessTime)
+		dontHaveTimeout, testMaxTimeout, pingLatencyMultiplier, msgLatencyMultiplier, maxExpectedWantProcessTime, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
-
+	<-pinged
 	// Add keys
 	dhtm.AddPending(ks)
 
@@ -286,7 +322,9 @@ func TestDontHaveTimeoutMgrMessageLatencyMax(t *testing.T) {
 	dhtm.UpdateMessageLatency(testMaxTimeout * 4)
 
 	// Sleep until just after the maximum timeout
-	time.Sleep(testMaxTimeout + 5*time.Millisecond)
+	clock.Add(testMaxTimeout + 5*time.Millisecond)
+
+	<-timeoutsTriggered
 
 	// Keys should have timed out
 	if tr.timedOutCount() != len(ks) {
@@ -302,18 +340,22 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 	defaultTimeout := 10 * time.Millisecond
 	expectedTimeout := expProcessTime + defaultTimeout
 	tr := timeoutRecorder{}
-	pc := &mockPeerConn{latency: latency, err: fmt.Errorf("ping error")}
+	clock := clock.NewMock()
+	pinged := make(chan struct{})
+	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged, err: fmt.Errorf("ping error")}
+	timeoutsTriggered := make(chan struct{})
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		defaultTimeout, dontHaveTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
+		defaultTimeout, dontHaveTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
+	<-pinged
 
 	// Add keys
 	dhtm.AddPending(ks)
 
 	// Sleep for less than the expected timeout
-	time.Sleep(expectedTimeout - 5*time.Millisecond)
+	clock.Add(expectedTimeout - 5*time.Millisecond)
 
 	// At this stage no timeout should have happened yet
 	if tr.timedOutCount() > 0 {
@@ -321,7 +363,9 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 	}
 
 	// Sleep until after the expected timeout
-	time.Sleep(10 * time.Millisecond)
+	clock.Add(10 * time.Millisecond)
+
+	<-timeoutsTriggered
 
 	// Now the keys should have timed out
 	if tr.timedOutCount() != len(ks) {
@@ -335,19 +379,23 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
 	defaultTimeout := 10 * time.Millisecond
+	clock := clock.NewMock()
+	pinged := make(chan struct{})
+	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
-	pc := &mockPeerConn{latency: latency}
+	timeoutsTriggered := make(chan struct{})
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		defaultTimeout, dontHaveTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
+		defaultTimeout, dontHaveTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
+	<-pinged
 
 	// Add keys
 	dhtm.AddPending(ks)
 
 	// Sleep for less than the default timeout
-	time.Sleep(defaultTimeout - 5*time.Millisecond)
+	clock.Add(defaultTimeout - 5*time.Millisecond)
 
 	// At this stage no timeout should have happened yet
 	if tr.timedOutCount() > 0 {
@@ -355,7 +403,9 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 	}
 
 	// Sleep until after the default timeout
-	time.Sleep(defaultTimeout * 2)
+	clock.Add(defaultTimeout * 2)
+
+	<-timeoutsTriggered
 
 	// Now the keys should have timed out
 	if tr.timedOutCount() != len(ks) {
@@ -368,25 +418,29 @@ func TestDontHaveTimeoutNoTimeoutAfterShutdown(t *testing.T) {
 	latency := time.Millisecond * 10
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
+	clock := clock.NewMock()
+	pinged := make(chan struct{})
+	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
-	pc := &mockPeerConn{latency: latency}
+	timeoutsTriggered := make(chan struct{})
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime)
+		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
+	<-pinged
 
 	// Add keys
 	dhtm.AddPending(ks)
 
 	// Wait less than the timeout
-	time.Sleep(latency - 5*time.Millisecond)
+	clock.Add(latency - 5*time.Millisecond)
 
 	// Shutdown the manager
 	dhtm.Shutdown()
 
 	// Wait for the expected timeout
-	time.Sleep(10 * time.Millisecond)
+	clock.Add(10 * time.Millisecond)
 
 	// Manager was shut down so timeout should not have fired
 	if tr.timedOutCount() != 0 {

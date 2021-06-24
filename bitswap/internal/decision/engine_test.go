@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/benbjohnson/clock"
 	"github.com/ipfs/go-bitswap/internal/testutil"
 	message "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
@@ -91,13 +92,13 @@ type engineSet struct {
 }
 
 func newTestEngine(ctx context.Context, idStr string) engineSet {
-	return newTestEngineWithSampling(ctx, idStr, shortTerm, nil)
+	return newTestEngineWithSampling(ctx, idStr, shortTerm, nil, clock.New())
 }
 
-func newTestEngineWithSampling(ctx context.Context, idStr string, peerSampleInterval time.Duration, sampleCh chan struct{}) engineSet {
+func newTestEngineWithSampling(ctx context.Context, idStr string, peerSampleInterval time.Duration, sampleCh chan struct{}, clock clock.Clock) engineSet {
 	fpt := &fakePeerTagger{}
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	e := newEngine(bs, 4, fpt, "localhost", 0, NewTestScoreLedger(peerSampleInterval, sampleCh))
+	e := newEngine(bs, 4, fpt, "localhost", 0, NewTestScoreLedger(peerSampleInterval, sampleCh, clock))
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 	return engineSet{
 		Peer: peer.ID(idStr),
@@ -184,7 +185,7 @@ func peerIsPartner(p peer.ID, e *Engine) bool {
 
 func TestOutboxClosedWhenEngineClosed(t *testing.T) {
 	t.SkipNow() // TODO implement *Engine.Close
-	e := newEngine(blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil))
+	e := newEngine(blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
 	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -512,7 +513,7 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 		testCases = onlyTestCases
 	}
 
-	e := newEngine(bs, 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil))
+	e := newEngine(bs, 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
 	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
 	for i, testCase := range testCases {
 		t.Logf("Test case %d:", i)
@@ -668,7 +669,7 @@ func TestPartnerWantHaveWantBlockActive(t *testing.T) {
 		testCases = onlyTestCases
 	}
 
-	e := newEngine(bs, 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil))
+	e := newEngine(bs, 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
 	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
 
 	var next envChan
@@ -853,7 +854,7 @@ func TestPartnerWantsThenCancels(t *testing.T) {
 	ctx := context.Background()
 	for i := 0; i < numRounds; i++ {
 		expected := make([][]string, 0, len(testcases))
-		e := newEngine(bs, 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil))
+		e := newEngine(bs, 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
 		e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 		for _, testcase := range testcases {
 			set := testcase[0]
@@ -878,7 +879,7 @@ func TestSendReceivedBlocksToPeersThatWantThem(t *testing.T) {
 	partner := libp2ptest.RandPeerIDFatal(t)
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
 
-	e := newEngine(bs, 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil))
+	e := newEngine(bs, 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
 	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
 
 	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
@@ -922,7 +923,7 @@ func TestSendDontHave(t *testing.T) {
 	partner := libp2ptest.RandPeerIDFatal(t)
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
 
-	e := newEngine(bs, 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil))
+	e := newEngine(bs, 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
 	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
 
 	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
@@ -986,7 +987,7 @@ func TestWantlistForPeer(t *testing.T) {
 	partner := libp2ptest.RandPeerIDFatal(t)
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
 
-	e := newEngine(bs, 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil))
+	e := newEngine(bs, 4, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
 	e.StartWorkers(context.Background(), process.WithTeardown(func() error { return nil }))
 
 	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
@@ -1044,13 +1045,15 @@ func TestTaggingPeers(t *testing.T) {
 }
 
 func TestTaggingUseful(t *testing.T) {
-	peerSampleInterval := 1 * time.Millisecond
+	peerSampleIntervalHalf := 10 * time.Millisecond
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	sampleCh := make(chan struct{})
-	me := newTestEngineWithSampling(ctx, "engine", peerSampleInterval, sampleCh)
+	mockClock := clock.NewMock()
+	me := newTestEngineWithSampling(ctx, "engine", peerSampleIntervalHalf*2, sampleCh, mockClock)
+	mockClock.Add(1 * time.Millisecond)
 	friend := peer.ID("friend")
 
 	block := blocks.NewBlock([]byte("foobar"))
@@ -1061,18 +1064,18 @@ func TestTaggingUseful(t *testing.T) {
 		if untagged := me.PeerTagger.count(me.Engine.tagUseful); untagged != 0 {
 			t.Fatalf("%d peers should be untagged but weren't", untagged)
 		}
-
+		mockClock.Add(peerSampleIntervalHalf)
 		me.Engine.MessageSent(friend, msg)
 
-		for j := 0; j < 2; j++ {
-			<-sampleCh
-		}
+		mockClock.Add(peerSampleIntervalHalf)
+		<-sampleCh
 
 		if tagged := me.PeerTagger.count(me.Engine.tagUseful); tagged != 1 {
 			t.Fatalf("1 peer should be tagged, but %d were", tagged)
 		}
 
 		for j := 0; j < longTermRatio; j++ {
+			mockClock.Add(peerSampleIntervalHalf * 2)
 			<-sampleCh
 		}
 	}
@@ -1082,6 +1085,7 @@ func TestTaggingUseful(t *testing.T) {
 	}
 
 	for j := 0; j < longTermRatio; j++ {
+		mockClock.Add(peerSampleIntervalHalf * 2)
 		<-sampleCh
 	}
 
@@ -1090,6 +1094,7 @@ func TestTaggingUseful(t *testing.T) {
 	}
 
 	for j := 0; j < longTermRatio; j++ {
+		mockClock.Add(peerSampleIntervalHalf * 2)
 		<-sampleCh
 	}
 
