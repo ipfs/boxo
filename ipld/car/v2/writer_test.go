@@ -9,7 +9,6 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
 	dstest "github.com/ipfs/go-merkledag/test"
-	"github.com/ipld/go-car/v2/index"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -62,7 +61,6 @@ func TestNewWriter(t *testing.T) {
 	dagService := dstest.Mock()
 	wantRoots := generateRootCid(t, dagService)
 	writer := NewWriter(context.Background(), dagService, wantRoots)
-	assert.Equal(t, index.IndexSorted, writer.IndexCodec)
 	assert.Equal(t, wantRoots, writer.roots)
 }
 
