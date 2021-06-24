@@ -15,9 +15,9 @@ func newPeerLedger() *peerLedger {
 
 func (l *peerLedger) Wants(p peer.ID, k cid.Cid) {
 	m, ok := l.cids[k]
-	if  !ok {
+	if !ok {
 		m = make(map[peer.ID]struct{})
-		l.cids[k]=m
+		l.cids[k] = m
 	}
 	m[p] = struct{}{}
 }
