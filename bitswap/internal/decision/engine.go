@@ -163,7 +163,7 @@ type Engine struct {
 
 	sendDontHaves bool
 
-	self                  peer.ID
+	self peer.ID
 }
 
 // NewEngine creates a new block sending engine for the given block store

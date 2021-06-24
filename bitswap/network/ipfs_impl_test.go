@@ -447,10 +447,10 @@ func TestSupportsHave(t *testing.T) {
 	}
 
 	testCases := []testCase{
-		testCase{bsnet.ProtocolBitswap, true},
-		testCase{bsnet.ProtocolBitswapOneOne, false},
-		testCase{bsnet.ProtocolBitswapOneZero, false},
-		testCase{bsnet.ProtocolBitswapNoVers, false},
+		{bsnet.ProtocolBitswap, true},
+		{bsnet.ProtocolBitswapOneOne, false},
+		{bsnet.ProtocolBitswapOneZero, false},
+		{bsnet.ProtocolBitswapNoVers, false},
 	}
 
 	for _, tc := range testCases {
