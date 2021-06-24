@@ -13,13 +13,13 @@ import (
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	wl "github.com/ipfs/go-bitswap/wantlist"
 	blocks "github.com/ipfs/go-block-format"
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-peertaskqueue"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	process "github.com/jbenet/goprocess"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 // TODO consider taking responsibility for other types of requests. For
@@ -144,10 +144,13 @@ type Engine struct {
 
 	tagQueued, tagUseful string
 
-	lock sync.RWMutex // protects the fields immediatly below
+	lock sync.RWMutex // protects the fields immediately below
 
 	// ledgerMap lists block-related Ledgers by their Partner key.
 	ledgerMap map[peer.ID]*ledger
+
+	// peerLedger saves which peers are waiting for a Cid
+	peerLedger *peerLedger
 
 	// an external ledger dealing with peer scores
 	scoreLedger ScoreLedger
@@ -191,6 +194,7 @@ func newEngine(bs bstore.Blockstore, bstoreWorkerCount int, peerTagger PeerTagge
 		taskWorkerCount:                 taskWorkerCount,
 		sendDontHaves:                   true,
 		self:                            self,
+		peerLedger:                      newPeerLedger(),
 	}
 	e.tagQueued = fmt.Sprintf(tagFormat, "queued", uuid.New().String())
 	e.tagUseful = fmt.Sprintf(tagFormat, "useful", uuid.New().String())
@@ -459,6 +463,15 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		return
 	}
 
+	e.lock.Lock()
+	for _, entry := range wants {
+		e.peerLedger.Wants(p, entry.Cid)
+	}
+	for _, entry := range cancels {
+		e.peerLedger.CancelWant(p, entry.Cid)
+	}
+	e.lock.Unlock()
+
 	// Get the ledger for the peer
 	l := e.findOrCreate(p)
 	l.lk.Lock()
@@ -566,7 +579,7 @@ func (e *Engine) splitWantsCancels(es []bsmsg.Entry) ([]bsmsg.Entry, []bsmsg.Ent
 // the blocks to them.
 //
 // This function also updates the receive side of the ledger.
-func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block, haves []cid.Cid) {
+func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block) {
 	if len(blks) == 0 {
 		return
 	}
@@ -591,40 +604,48 @@ func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block, haves []cid.Cid)
 	}
 
 	// Check each peer to see if it wants one of the blocks we received
-	work := false
+	var work bool
 	e.lock.RLock()
+	for _, b := range blks {
+		k := b.Cid()
 
-	for _, l := range e.ledgerMap {
-		l.lk.RLock()
-
-		for _, b := range blks {
-			k := b.Cid()
-
-			if entry, ok := l.WantListContains(k); ok {
-				work = true
-
-				blockSize := blockSizes[k]
-				isWantBlock := e.sendAsBlock(entry.WantType, blockSize)
-
-				entrySize := blockSize
-				if !isWantBlock {
-					entrySize = bsmsg.BlockPresenceSize(k)
-				}
-
-				e.peerRequestQueue.PushTasks(l.Partner, peertask.Task{
-					Topic:    entry.Cid,
-					Priority: int(entry.Priority),
-					Work:     entrySize,
-					Data: &taskData{
-						BlockSize:    blockSize,
-						HaveBlock:    true,
-						IsWantBlock:  isWantBlock,
-						SendDontHave: false,
-					},
-				})
+		for _, p := range e.peerLedger.Peers(k) {
+			ledger, ok := e.ledgerMap[p]
+			if !ok {
+				log.Errorw("failed to find peer in ledger", "peer", p)
+				e.peerLedger.CancelWant(p, k)
+				continue
 			}
+			ledger.lk.RLock()
+			entry, ok := ledger.WantListContains(k)
+			ledger.lk.RUnlock()
+			if !ok { // should never happen
+				log.Errorw("wantlist index doesn't match peer's wantlist", "peer", p)
+				e.peerLedger.CancelWant(p, k)
+				continue
+			}
+			work = true
+
+			blockSize := blockSizes[k]
+			isWantBlock := e.sendAsBlock(entry.WantType, blockSize)
+
+			entrySize := blockSize
+			if !isWantBlock {
+				entrySize = bsmsg.BlockPresenceSize(k)
+			}
+
+			e.peerRequestQueue.PushTasks(p, peertask.Task{
+				Topic:    entry.Cid,
+				Priority: int(entry.Priority),
+				Work:     entrySize,
+				Data: &taskData{
+					BlockSize:    blockSize,
+					HaveBlock:    true,
+					IsWantBlock:  isWantBlock,
+					SendDontHave: false,
+				},
+			})
 		}
-		l.lk.RUnlock()
 	}
 	e.lock.RUnlock()
 
@@ -680,6 +701,12 @@ func (e *Engine) PeerDisconnected(p peer.ID) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
+	ledger, ok := e.ledgerMap[p]
+	if ok {
+		for _, entry := range ledger.Entries() {
+			e.peerLedger.CancelWant(p, entry.Cid)
+		}
+	}
 	delete(e.ledgerMap, p)
 
 	e.scoreLedger.PeerDisconnected(p)

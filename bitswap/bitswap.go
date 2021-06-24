@@ -14,10 +14,10 @@ import (
 
 	deciface "github.com/ipfs/go-bitswap/decision"
 	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
-	decision "github.com/ipfs/go-bitswap/internal/decision"
+	"github.com/ipfs/go-bitswap/internal/decision"
 	bsgetter "github.com/ipfs/go-bitswap/internal/getter"
 	bsmq "github.com/ipfs/go-bitswap/internal/messagequeue"
-	notifications "github.com/ipfs/go-bitswap/internal/notifications"
+	"github.com/ipfs/go-bitswap/internal/notifications"
 	bspm "github.com/ipfs/go-bitswap/internal/peermanager"
 	bspqm "github.com/ipfs/go-bitswap/internal/providerquerymanager"
 	bssession "github.com/ipfs/go-bitswap/internal/session"
@@ -27,14 +27,14 @@ import (
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	bsnet "github.com/ipfs/go-bitswap/network"
 	blocks "github.com/ipfs/go-block-format"
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	logging "github.com/ipfs/go-log"
-	metrics "github.com/ipfs/go-metrics-interface"
+	"github.com/ipfs/go-metrics-interface"
 	process "github.com/jbenet/goprocess"
 	procctx "github.com/jbenet/goprocess/context"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 var log = logging.Logger("bitswap")
@@ -422,7 +422,7 @@ func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []b
 	bs.sm.ReceiveFrom(ctx, from, allKs, haves, dontHaves)
 
 	// Send wanted blocks to decision engine
-	bs.engine.ReceiveFrom(from, wanted, haves)
+	bs.engine.ReceiveFrom(from, wanted)
 
 	// Publish the block to any Bitswap clients that had requested blocks.
 	// (the sessions use this pubsub mechanism to inform clients of incoming
