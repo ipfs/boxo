@@ -19,9 +19,9 @@ import (
 
 	bitswap "github.com/ipfs/go-bitswap"
 	bssession "github.com/ipfs/go-bitswap/internal/session"
+	bsnet "github.com/ipfs/go-bitswap/network"
 	testinstance "github.com/ipfs/go-bitswap/testinstance"
 	tn "github.com/ipfs/go-bitswap/testnet"
-	bsnet "github.com/ipfs/go-bitswap/network"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
@@ -53,14 +53,14 @@ type bench struct {
 var benches = []bench{
 	// Fetch from two seed nodes that both have all 100 blocks
 	// - request one at a time, in series
-	bench{"3Nodes-AllToAll-OneAtATime", 3, 100, allToAll, oneAtATime},
+	{"3Nodes-AllToAll-OneAtATime", 3, 100, allToAll, oneAtATime},
 	// - request all 100 with a single GetBlocks() call
-	bench{"3Nodes-AllToAll-BigBatch", 3, 100, allToAll, batchFetchAll},
+	{"3Nodes-AllToAll-BigBatch", 3, 100, allToAll, batchFetchAll},
 
 	// Fetch from two seed nodes, one at a time, where:
 	// - node A has blocks 0 - 74
 	// - node B has blocks 25 - 99
-	bench{"3Nodes-Overlap1-OneAtATime", 3, 100, overlap1, oneAtATime},
+	{"3Nodes-Overlap1-OneAtATime", 3, 100, overlap1, oneAtATime},
 
 	// Fetch from two seed nodes, where:
 	// - node A has even blocks
@@ -68,40 +68,40 @@ var benches = []bench{
 	// - both nodes have every third block
 
 	// - request one at a time, in series
-	bench{"3Nodes-Overlap3-OneAtATime", 3, 100, overlap2, oneAtATime},
+	{"3Nodes-Overlap3-OneAtATime", 3, 100, overlap2, oneAtATime},
 	// - request 10 at a time, in series
-	bench{"3Nodes-Overlap3-BatchBy10", 3, 100, overlap2, batchFetchBy10},
+	{"3Nodes-Overlap3-BatchBy10", 3, 100, overlap2, batchFetchBy10},
 	// - request all 100 in parallel as individual GetBlock() calls
-	bench{"3Nodes-Overlap3-AllConcurrent", 3, 100, overlap2, fetchAllConcurrent},
+	{"3Nodes-Overlap3-AllConcurrent", 3, 100, overlap2, fetchAllConcurrent},
 	// - request all 100 with a single GetBlocks() call
-	bench{"3Nodes-Overlap3-BigBatch", 3, 100, overlap2, batchFetchAll},
+	{"3Nodes-Overlap3-BigBatch", 3, 100, overlap2, batchFetchAll},
 	// - request 1, then 10, then 89 blocks (similar to how IPFS would fetch a file)
-	bench{"3Nodes-Overlap3-UnixfsFetch", 3, 100, overlap2, unixfsFileFetch},
+	{"3Nodes-Overlap3-UnixfsFetch", 3, 100, overlap2, unixfsFileFetch},
 
 	// Fetch from nine seed nodes, all nodes have all blocks
 	// - request one at a time, in series
-	bench{"10Nodes-AllToAll-OneAtATime", 10, 100, allToAll, oneAtATime},
+	{"10Nodes-AllToAll-OneAtATime", 10, 100, allToAll, oneAtATime},
 	// - request 10 at a time, in series
-	bench{"10Nodes-AllToAll-BatchFetchBy10", 10, 100, allToAll, batchFetchBy10},
+	{"10Nodes-AllToAll-BatchFetchBy10", 10, 100, allToAll, batchFetchBy10},
 	// - request all 100 with a single GetBlocks() call
-	bench{"10Nodes-AllToAll-BigBatch", 10, 100, allToAll, batchFetchAll},
+	{"10Nodes-AllToAll-BigBatch", 10, 100, allToAll, batchFetchAll},
 	// - request all 100 in parallel as individual GetBlock() calls
-	bench{"10Nodes-AllToAll-AllConcurrent", 10, 100, allToAll, fetchAllConcurrent},
+	{"10Nodes-AllToAll-AllConcurrent", 10, 100, allToAll, fetchAllConcurrent},
 	// - request 1, then 10, then 89 blocks (similar to how IPFS would fetch a file)
-	bench{"10Nodes-AllToAll-UnixfsFetch", 10, 100, allToAll, unixfsFileFetch},
+	{"10Nodes-AllToAll-UnixfsFetch", 10, 100, allToAll, unixfsFileFetch},
 	// - follow a typical IPFS request pattern for 1000 blocks
-	bench{"10Nodes-AllToAll-UnixfsFetchLarge", 10, 1000, allToAll, unixfsFileFetchLarge},
+	{"10Nodes-AllToAll-UnixfsFetchLarge", 10, 1000, allToAll, unixfsFileFetchLarge},
 
 	// Fetch from nine seed nodes, blocks are distributed randomly across all nodes (no dups)
 	// - request one at a time, in series
-	bench{"10Nodes-OnePeerPerBlock-OneAtATime", 10, 100, onePeerPerBlock, oneAtATime},
+	{"10Nodes-OnePeerPerBlock-OneAtATime", 10, 100, onePeerPerBlock, oneAtATime},
 	// - request all 100 with a single GetBlocks() call
-	bench{"10Nodes-OnePeerPerBlock-BigBatch", 10, 100, onePeerPerBlock, batchFetchAll},
+	{"10Nodes-OnePeerPerBlock-BigBatch", 10, 100, onePeerPerBlock, batchFetchAll},
 	// - request 1, then 10, then 89 blocks (similar to how IPFS would fetch a file)
-	bench{"10Nodes-OnePeerPerBlock-UnixfsFetch", 10, 100, onePeerPerBlock, unixfsFileFetch},
+	{"10Nodes-OnePeerPerBlock-UnixfsFetch", 10, 100, onePeerPerBlock, unixfsFileFetch},
 
 	// Fetch from 199 seed nodes, all nodes have all blocks, fetch all 20 blocks with a single GetBlocks() call
-	bench{"200Nodes-AllToAll-BigBatch", 200, 20, allToAll, batchFetchAll},
+	{"200Nodes-AllToAll-BigBatch", 200, 20, allToAll, batchFetchAll},
 }
 
 func BenchmarkFixedDelay(b *testing.B) {
@@ -127,9 +127,9 @@ type mixedBench struct {
 }
 
 var mixedBenches = []mixedBench{
-	mixedBench{bench{"3Nodes-Overlap3-OneAtATime", 3, 10, overlap2, oneAtATime}, 1, 2},
-	mixedBench{bench{"3Nodes-AllToAll-OneAtATime", 3, 10, allToAll, oneAtATime}, 1, 2},
-	mixedBench{bench{"3Nodes-Overlap3-AllConcurrent", 3, 10, overlap2, fetchAllConcurrent}, 1, 2},
+	{bench{"3Nodes-Overlap3-OneAtATime", 3, 10, overlap2, oneAtATime}, 1, 2},
+	{bench{"3Nodes-AllToAll-OneAtATime", 3, 10, allToAll, oneAtATime}, 1, 2},
+	{bench{"3Nodes-Overlap3-AllConcurrent", 3, 10, overlap2, fetchAllConcurrent}, 1, 2},
 	// mixedBench{bench{"3Nodes-Overlap3-UnixfsFetch", 3, 100, overlap2, unixfsFileFetch}, 1, 2},
 }
 
