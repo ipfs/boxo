@@ -7,15 +7,15 @@ import (
 	"os"
 
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	carv1 "github.com/ipld/go-car"
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/internal/carv1"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 
 	"github.com/ipld/go-car/v2/index"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-car/util"
+	"github.com/ipld/go-car/v2/internal/carv1/util"
 )
 
 var (

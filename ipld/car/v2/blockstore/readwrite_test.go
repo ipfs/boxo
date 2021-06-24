@@ -11,7 +11,7 @@ import (
 	"github.com/ipld/go-car/v2/blockstore"
 
 	"github.com/ipfs/go-cid"
-	carv1 "github.com/ipld/go-car"
+	"github.com/ipld/go-car/v2/internal/carv1"
 )
 
 func TestBlockstore(t *testing.T) {

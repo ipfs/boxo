@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"testing"
 
-	carv1 "github.com/ipld/go-car"
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/stretchr/testify/assert"
 )
 

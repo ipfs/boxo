@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	carv1 "github.com/ipld/go-car"
+	"github.com/ipld/go-car/v2/internal/carv1"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"golang.org/x/exp/mmap"
 )

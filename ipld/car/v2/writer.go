@@ -7,8 +7,8 @@ import (
 
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
-	carv1 "github.com/ipld/go-car"
 	"github.com/ipld/go-car/v2/index"
+	"github.com/ipld/go-car/v2/internal/carv1"
 )
 
 const bulkPaddingBytesSize = 1024

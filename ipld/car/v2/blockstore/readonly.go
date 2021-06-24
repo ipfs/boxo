@@ -11,10 +11,10 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	carv1 "github.com/ipld/go-car"
-	"github.com/ipld/go-car/util"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
+	"github.com/ipld/go-car/v2/internal/carv1"
+	"github.com/ipld/go-car/v2/internal/carv1/util"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"golang.org/x/exp/mmap"
 )
