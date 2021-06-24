@@ -25,7 +25,7 @@ func NewReader(r io.ReaderAt) (*Reader, error) {
 	cr := &Reader{
 		r: r,
 	}
-	if err := cr.requireV2Pragma(); err != nil {
+	if err := cr.requireVersion2(); err != nil {
 		return nil, err
 	}
 	if err := cr.readHeader(); err != nil {
@@ -34,9 +34,9 @@ func NewReader(r io.ReaderAt) (*Reader, error) {
 	return cr, nil
 }
 
-func (r *Reader) requireV2Pragma() (err error) {
+func (r *Reader) requireVersion2() (err error) {
 	or := internalio.NewOffsetReader(r.r, 0)
-	version, _, err := ReadPragma(or)
+	version, err := ReadVersion(or)
 	if err != nil {
 		return
 	}
@@ -75,18 +75,13 @@ func (r *Reader) IndexReader() io.Reader { // TODO consider returning io.Reader+
 	return internalio.NewOffsetReader(r.r, int64(r.Header.IndexOffset))
 }
 
-// ReadPragma reads the pragma from r.
+// ReadVersion reads the version from the pragma.
 // This function accepts both CAR v1 and v2 payloads.
-// The roots are returned only if the version of pragma equals 1, otherwise returns nil as roots.
-func ReadPragma(r io.Reader) (version uint64, roots []cid.Cid, err error) {
+func ReadVersion(r io.Reader) (version uint64, err error) {
 	// TODO if the user provides a reader that sufficiently satisfies what carv1.ReadHeader is asking then use that instead of wrapping every time.
 	header, err := carv1.ReadHeader(bufio.NewReader(r))
 	if err != nil {
 		return
 	}
-	version = header.Version
-	if version == 1 {
-		roots = header.Roots
-	}
-	return
+	return header.Version, nil
 }
