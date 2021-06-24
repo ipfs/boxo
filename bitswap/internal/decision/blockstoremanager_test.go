@@ -224,20 +224,22 @@ func TestBlockstoreManagerCtxDone(t *testing.T) {
 	delayTime := 20 * time.Millisecond
 	bsdelay := delay.Fixed(delayTime)
 
-	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
-	bstore := blockstore.NewBlockstore(ds_sync.MutexWrap(dstore))
+	underlyingDstore := ds_sync.MutexWrap(ds.NewMapDatastore())
+	dstore := delayed.New(underlyingDstore, bsdelay)
+	underlyingBstore := blockstore.NewBlockstore(underlyingDstore)
+	bstore := blockstore.NewBlockstore(dstore)
 
 	bsm := newBlockstoreManager(bstore, 3)
 	proc := process.WithTeardown(func() error { return nil })
 	bsm.start(proc)
 
-	blks := testutil.GenerateBlocksOfSize(10, 1024)
+	blks := testutil.GenerateBlocksOfSize(100, 128)
 	var ks []cid.Cid
 	for _, b := range blks {
 		ks = append(ks, b.Cid())
 	}
 
-	err := bstore.PutMany(blks)
+	err := underlyingBstore.PutMany(blks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,8 +253,8 @@ func TestBlockstoreManagerCtxDone(t *testing.T) {
 		t.Error("expected an error")
 	}
 
-	// would expect to wait delayTime*10 if we didn't cancel.
-	if time.Since(before) > delayTime*2 {
+	// would expect to wait delayTime*100/3 if we didn't cancel.
+	if time.Since(before) > delayTime*10 {
 		t.Error("expected a fast timeout")
 	}
 }
