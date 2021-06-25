@@ -16,7 +16,6 @@ import (
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
 	internalio "github.com/ipld/go-car/v2/internal/io"
-	"golang.org/x/exp/mmap"
 )
 
 var _ blockstore.Blockstore = (*ReadOnly)(nil)
@@ -26,30 +25,31 @@ var errUnsupported = errors.New("unsupported operation")
 
 // ReadOnly provides a read-only Car Block Store.
 type ReadOnly struct {
-	// The backing containing the CAR in v1 format
+	// The backing containing the CAR in v1 format.
 	backing io.ReaderAt
-	// The CAR v1 content index
+	// The CAR v1 content index.
 	idx index.Index
+
+	// If we called carv2.NewReaderMmap, remember to close it too.
+	carv2Closer io.Closer
 }
 
 // ReadOnlyOf opens ReadOnly blockstore from an existing backing containing a CAR v1 payload and an existing index.
 // The index for a CAR v1 payload can be separately generated using index.Generate.
 func ReadOnlyOf(backing io.ReaderAt, index index.Index) *ReadOnly {
-	return &ReadOnly{backing, index}
+	return &ReadOnly{backing: backing, idx: index}
 }
 
 // OpenReadOnly opens a read-only blockstore from a CAR v2 file, generating an index if it does not exist.
 // If attachIndex is set to true and the index is not present in the given CAR v2 file,
 // then the generated index is written into the given path.
 func OpenReadOnly(path string, attachIndex bool) (*ReadOnly, error) {
-	reader, err := mmap.Open(path)
+
+	v2r, err := carv2.NewReaderMmap(path)
 	if err != nil {
 		return nil, err
 	}
-	v2r, err := carv2.NewReader(reader)
-	if err != nil {
-		return nil, err
-	}
+
 	var idx index.Index
 	if !v2r.Header.HasIndex() {
 		idx, err := index.Generate(v2r.CarV1Reader())
@@ -68,8 +68,9 @@ func OpenReadOnly(path string, attachIndex bool) (*ReadOnly, error) {
 		}
 	}
 	obj := ReadOnly{
-		backing: v2r.CarV1Reader(),
-		idx:     idx,
+		backing:     v2r.CarV1Reader(),
+		idx:         idx,
+		carv2Closer: v2r,
 	}
 	return &obj, nil
 }
@@ -190,8 +191,9 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return ch, nil
 }
 
-// HashOnRead does nothing.
+// HashOnRead is currently unimplemented; hashing on reads never happens.
 func (b *ReadOnly) HashOnRead(bool) {
+	// TODO: implement before the final release?
 }
 
 // Roots returns the root CIDs of the backing CAR.
@@ -201,4 +203,12 @@ func (b *ReadOnly) Roots() ([]cid.Cid, error) {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
 	return header.Roots, nil
+}
+
+// Close closes the underlying reader if it was opened by OpenReadOnly.
+func (b *ReadOnly) Close() error {
+	if b.carv2Closer != nil {
+		return b.carv2Closer.Close()
+	}
+	return nil
 }

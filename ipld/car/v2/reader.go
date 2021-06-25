@@ -9,13 +9,32 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2/internal/carv1"
+	"golang.org/x/exp/mmap"
 )
 
 // Reader represents a reader of CAR v2.
 type Reader struct {
-	Header Header
-	r      io.ReaderAt
-	roots  []cid.Cid
+	Header      Header
+	r           io.ReaderAt
+	roots       []cid.Cid
+	carv2Closer io.Closer
+}
+
+// NewReaderMmap is a wrapper for NewReader which opens the file at path with
+// x/exp/mmap.
+func NewReaderMmap(path string) (*Reader, error) {
+	f, err := mmap.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	r, err := NewReader(f)
+	if err != nil {
+		return nil, err
+	}
+
+	r.carv2Closer = f
+	return r, nil
 }
 
 // NewReader constructs a new reader that reads CAR v2 from the given r.
@@ -66,13 +85,23 @@ func (r *Reader) readHeader() (err error) {
 }
 
 // CarV1Reader provides a reader containing the CAR v1 section encapsulated in this CAR v2.
-func (r *Reader) CarV1Reader() *io.SectionReader { // TODO consider returning io.Reader+ReaderAt in a custom interface
+func (r *Reader) CarV1Reader() *io.SectionReader {
+	// TODO consider returning io.Reader+ReaderAt in a custom interface
 	return io.NewSectionReader(r.r, int64(r.Header.CarV1Offset), int64(r.Header.CarV1Size))
 }
 
 // IndexReader provides an io.Reader containing the index of this CAR v2.
-func (r *Reader) IndexReader() io.Reader { // TODO consider returning io.Reader+ReaderAt in a custom interface
+func (r *Reader) IndexReader() io.Reader {
+	// TODO consider returning io.Reader+ReaderAt in a custom interface
 	return internalio.NewOffsetReader(r.r, int64(r.Header.IndexOffset))
+}
+
+// Close closes the underlying reader if it was opened by NewReaderMmap.
+func (r *Reader) Close() error {
+	if r.carv2Closer != nil {
+		return r.carv2Closer.Close()
+	}
+	return nil
 }
 
 // ReadVersion reads the version from the pragma.
