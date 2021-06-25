@@ -14,8 +14,10 @@ import (
 
 // Codec table is a first var-int in CAR indexes
 const (
-	IndexHashed Codec = iota + 0x300000
-	IndexSorted
+	IndexSorted Codec = 0x0400 // as per https://github.com/multiformats/multicodec/pull/220
+
+	// TODO: unexport these before the final release, probably
+	IndexHashed Codec = 0x300000 + iota
 	IndexSingleSorted
 	IndexGobHashed
 	IndexInsertion
@@ -23,6 +25,7 @@ const (
 
 type (
 	// Codec is used as a multicodec identifier for CAR index files
+	// TODO: use go-multicodec before the final release
 	Codec int
 
 	// Builder is a constructor for an index type
@@ -45,6 +48,7 @@ type (
 )
 
 // BuildersByCodec holds known index formats
+// TODO: turn this into a func before the final release?
 var BuildersByCodec = map[Codec]Builder{
 	IndexHashed:       mkHashed,
 	IndexSorted:       mkSorted,
