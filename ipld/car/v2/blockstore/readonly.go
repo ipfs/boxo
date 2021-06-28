@@ -163,27 +163,28 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 		return nil, err
 	}
 
+	// TODO: document this choice of 5, or use simpler buffering like 0 or 1.
 	ch := make(chan cid.Cid, 5)
+
 	go func() {
-		done := ctx.Done()
+		defer close(ch)
 
 		rdr := internalio.NewOffsetReader(b.backing, int64(offset))
 		for {
 			l, err := binary.ReadUvarint(rdr)
 			thisItemForNxt := rdr.Offset()
 			if err != nil {
-				return
+				return // TODO: log this error
 			}
 			c, _, err := internalio.ReadCid(b.backing, thisItemForNxt)
 			if err != nil {
-				return
+				return // TODO: log this error
 			}
 			rdr.SeekOffset(thisItemForNxt + int64(l))
 
 			select {
 			case ch <- c:
-				continue
-			case <-done:
+			case <-ctx.Done():
 				return
 			}
 		}

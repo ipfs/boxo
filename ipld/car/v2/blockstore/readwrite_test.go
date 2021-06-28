@@ -1,10 +1,12 @@
 package blockstore_test
 
 import (
+	"context"
 	"io"
 	"math/rand"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -15,6 +17,9 @@ import (
 )
 
 func TestBlockstore(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
 	f, err := os.Open("testdata/test.car")
 	assert.NoError(t, err)
 	defer f.Close()
@@ -65,6 +70,25 @@ func TestBlockstore(t *testing.T) {
 	carb, err := blockstore.OpenReadOnly(path, false)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	allKeysCh, err := carb.AllKeysChan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	numKeysCh := 0
+	for c := range allKeysCh {
+		b, err := carb.Get(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !b.Cid().Equals(c) {
+			t.Fatal("wrong item returned")
+		}
+		numKeysCh++
+	}
+	if numKeysCh != len(cids) {
+		t.Fatal("AllKeysChan returned an unexpected amount of keys")
 	}
 
 	for _, c := range cids {
