@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 
@@ -19,9 +18,6 @@ import (
 )
 
 var _ blockstore.Blockstore = (*ReadOnly)(nil)
-
-// errUnsupported is returned for unsupported operations
-var errUnsupported = errors.New("unsupported operation")
 
 // ReadOnly provides a read-only Car Block Store.
 type ReadOnly struct {
@@ -82,7 +78,7 @@ func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
 
 // DeleteBlock is unsupported and always returns an error.
 func (b *ReadOnly) DeleteBlock(_ cid.Cid) error {
-	return errUnsupported
+	panic("called write method on a read-only blockstore")
 }
 
 // Has indicates if the store contains a block that corresponds to the given key.
@@ -143,12 +139,12 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 
 // Put is not supported and always returns an error.
 func (b *ReadOnly) Put(blocks.Block) error {
-	return errUnsupported
+	panic("called write method on a read-only blockstore")
 }
 
 // PutMany is not supported and always returns an error.
 func (b *ReadOnly) PutMany([]blocks.Block) error {
-	return errUnsupported
+	panic("called write method on a read-only blockstore")
 }
 
 // AllKeysChan returns the list of keys in the CAR.

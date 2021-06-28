@@ -2,7 +2,6 @@ package blockstore
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
@@ -18,10 +17,7 @@ import (
 	"github.com/ipld/go-car/v2/internal/carv1/util"
 )
 
-var (
-	_            blockstore.Blockstore = (*ReadWrite)(nil)
-	errFinalized                       = errors.New("finalized blockstore")
-)
+var _ blockstore.Blockstore = (*ReadWrite)(nil)
 
 // ReadWrite implements a blockstore that stores blocks in CAR v2 format.
 // Blocks put into the blockstore can be read back once they are successfully written.
@@ -30,18 +26,17 @@ var (
 // and updated incrementally.
 // The Finalize function must be called once the putting blocks are finished.
 // Upon calling Finalize header is finalized and index is written out.
-// Once finalized, all read and write calls to this blockstore will result in error.
-type (
-	// TODO consider exposing interfaces
-	ReadWrite struct {
-		f           *os.File
-		carV1Wrtier *internalio.OffsetWriter
-		ReadOnly
-		idx    *index.InsertionIndex
-		header carv2.Header
-	}
-	Option func(*ReadWrite) // TODO consider unifying with writer options
-)
+// Once finalized, all read and write calls to this blockstore will result in panics.
+type ReadWrite struct {
+	f           *os.File
+	carV1Writer *internalio.OffsetWriter
+	ReadOnly
+	idx    *index.InsertionIndex
+	header carv2.Header
+}
+
+// TODO consider exposing interfaces
+type Option func(*ReadWrite) // TODO consider unifying with writer options
 
 // WithCarV1Padding sets the padding to be added between CAR v2 header and its data payload on Finalize.
 func WithCarV1Padding(p uint64) Option {
@@ -80,7 +75,7 @@ func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, err
 	for _, opt := range opts {
 		opt(b)
 	}
-	b.carV1Wrtier = internalio.NewOffsetWriter(f, int64(b.header.CarV1Offset))
+	b.carV1Writer = internalio.NewOffsetWriter(f, int64(b.header.CarV1Offset))
 	carV1Reader := internalio.NewOffsetReader(f, int64(b.header.CarV1Offset))
 	b.ReadOnly = *ReadOnlyOf(carV1Reader, idx)
 	if _, err := f.WriteAt(carv2.Pragma, 0); err != nil {
@@ -91,29 +86,33 @@ func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, err
 		Roots:   roots,
 		Version: 1,
 	}
-	if err := carv1.WriteHeader(v1Header, b.carV1Wrtier); err != nil {
+	if err := carv1.WriteHeader(v1Header, b.carV1Writer); err != nil {
 		return nil, fmt.Errorf("couldn't write car header: %w", err)
 	}
 	return b, nil
 }
 
+func (b *ReadWrite) panicIfFinalized() {
+	if b.header.CarV1Size != 0 {
+		panic("must not use a read-write blockstore after finalizing")
+	}
+}
+
 // Put puts a given block to the underlying datastore
 func (b *ReadWrite) Put(blk blocks.Block) error {
-	if b.isFinalized() {
-		return errFinalized
-	}
+	b.panicIfFinalized()
+
 	return b.PutMany([]blocks.Block{blk})
 }
 
 // PutMany puts a slice of blocks at the same time using batching
 // capabilities of the underlying datastore whenever possible.
 func (b *ReadWrite) PutMany(blks []blocks.Block) error {
-	if b.isFinalized() {
-		return errFinalized
-	}
+	b.panicIfFinalized()
+
 	for _, bl := range blks {
-		n := uint64(b.carV1Wrtier.Position())
-		if err := util.LdWrite(b.carV1Wrtier, bl.Cid().Bytes(), bl.RawData()); err != nil {
+		n := uint64(b.carV1Writer.Position())
+		if err := util.LdWrite(b.carV1Writer, bl.Cid().Bytes(), bl.RawData()); err != nil {
 			return err
 		}
 		b.idx.InsertNoReplace(bl.Cid(), n)
@@ -121,20 +120,15 @@ func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 	return nil
 }
 
-func (b *ReadWrite) isFinalized() bool {
-	return b.header.CarV1Size != 0
-}
-
 // Finalize finalizes this blockstore by writing the CAR v2 header, along with flattened index
 // for more efficient subsequent read.
 // After this call, this blockstore can no longer be used for read or write.
 func (b *ReadWrite) Finalize() error {
-	if b.isFinalized() {
-		return errFinalized
-	}
+	b.panicIfFinalized()
+
 	// TODO check if add index option is set and don't write the index then set index offset to zero.
 	// TODO see if folks need to continue reading from a finalized blockstore, if so return ReadOnly blockstore here.
-	b.header = b.header.WithCarV1Size(uint64(b.carV1Wrtier.Position()))
+	b.header = b.header.WithCarV1Size(uint64(b.carV1Writer.Position()))
 	defer b.f.Close()
 	if _, err := b.header.WriteTo(internalio.NewOffsetWriter(b.f, carv2.PragmaSize)); err != nil {
 		return err
@@ -148,29 +142,25 @@ func (b *ReadWrite) Finalize() error {
 }
 
 func (b *ReadWrite) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
-	if b.isFinalized() {
-		return nil, errFinalized
-	}
+	b.panicIfFinalized()
+
 	return b.ReadOnly.AllKeysChan(ctx)
 }
 
 func (b *ReadWrite) Has(key cid.Cid) (bool, error) {
-	if b.isFinalized() {
-		return false, errFinalized
-	}
+	b.panicIfFinalized()
+
 	return b.ReadOnly.Has(key)
 }
 
 func (b *ReadWrite) Get(key cid.Cid) (blocks.Block, error) {
-	if b.isFinalized() {
-		return nil, errFinalized
-	}
+	b.panicIfFinalized()
+
 	return b.ReadOnly.Get(key)
 }
 
 func (b *ReadWrite) GetSize(key cid.Cid) (int, error) {
-	if b.isFinalized() {
-		return 0, errFinalized
-	}
+	b.panicIfFinalized()
+
 	return b.ReadOnly.GetSize(key)
 }
