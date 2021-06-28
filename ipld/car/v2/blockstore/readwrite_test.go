@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/multiformats/go-multihash"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ipld/go-car/v2/blockstore"
 
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2/internal/carv1"
 )
@@ -21,10 +23,10 @@ func TestBlockstore(t *testing.T) {
 	defer cancel()
 
 	f, err := os.Open("testdata/test.car")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer f.Close()
 	r, err := carv1.NewCarReader(f)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	path := "testv2blockstore.car"
 	ingester, err := blockstore.NewReadWrite(path, r.Header.Roots)
 	if err != nil {
@@ -40,7 +42,7 @@ func TestBlockstore(t *testing.T) {
 		if err == io.EOF {
 			break
 		}
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		if err := ingester.Put(b); err != nil {
 			t.Fatal(err)
@@ -100,4 +102,59 @@ func TestBlockstore(t *testing.T) {
 			t.Fatal("wrong item returned")
 		}
 	}
+}
+
+func TestBlockstorePutSameHashes(t *testing.T) {
+	path := "testv2blockstore.car"
+	wbs, err := blockstore.NewReadWrite(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { os.Remove(path) }()
+
+	var blockList []blocks.Block
+
+	addBlock := func(data []byte, version, codec uint64) {
+		c, err := cid.Prefix{
+			Version:  version,
+			Codec:    codec,
+			MhType:   multihash.SHA2_256,
+			MhLength: -1,
+		}.Sum(data)
+		require.NoError(t, err)
+
+		block, err := blocks.NewBlockWithCid(data, c)
+		require.NoError(t, err)
+
+		blockList = append(blockList, block)
+	}
+
+	data1 := []byte("foo bar")
+	addBlock(data1, 0, cid.Raw)
+	addBlock(data1, 1, cid.Raw)
+	addBlock(data1, 1, cid.DagCBOR)
+
+	data2 := []byte("foo bar baz")
+	addBlock(data2, 0, cid.Raw)
+	addBlock(data2, 1, cid.Raw)
+	addBlock(data2, 1, cid.DagCBOR)
+
+	for _, block := range blockList {
+		err = wbs.Put(block)
+		require.NoError(t, err)
+	}
+
+	for _, block := range blockList {
+		has, err := wbs.Has(block.Cid())
+		require.NoError(t, err)
+		require.True(t, has)
+
+		got, err := wbs.Get(block.Cid())
+		require.NoError(t, err)
+		require.Equal(t, block.Cid(), got.Cid())
+		require.Equal(t, block.RawData(), got.RawData())
+	}
+
+	err = wbs.Finalize()
+	require.NoError(t, err)
 }

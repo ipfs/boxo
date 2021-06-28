@@ -2,6 +2,7 @@ package blockstore
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -40,7 +41,6 @@ func ReadOnlyOf(backing io.ReaderAt, index index.Index) *ReadOnly {
 // If attachIndex is set to true and the index is not present in the given CAR v2 file,
 // then the generated index is written into the given path.
 func OpenReadOnly(path string, attachIndex bool) (*ReadOnly, error) {
-
 	v2r, err := carv2.NewReaderMmap(path)
 	if err != nil {
 		return nil, err
@@ -96,7 +96,7 @@ func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return c.Equals(key), nil
+	return bytes.Equal(key.Hash(), c.Hash()), nil
 }
 
 // Get gets a block corresponding to the given key.
@@ -105,15 +105,15 @@ func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
 	if err != nil {
 		return nil, err
 	}
-	entry, bytes, err := b.readBlock(int64(offset))
+	entry, data, err := b.readBlock(int64(offset))
 	if err != nil {
 		// TODO Improve error handling; not all errors mean NotFound.
 		return nil, blockstore.ErrNotFound
 	}
-	if !entry.Equals(key) {
+	if !bytes.Equal(key.Hash(), entry.Hash()) {
 		return nil, blockstore.ErrNotFound
 	}
-	return blocks.NewBlockWithCid(bytes, key)
+	return blocks.NewBlockWithCid(data, key)
 }
 
 // GetSize gets the size of an item corresponding to the given key.
