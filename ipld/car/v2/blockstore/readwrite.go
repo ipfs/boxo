@@ -100,8 +100,7 @@ func (b *ReadWrite) panicIfFinalized() {
 
 // Put puts a given block to the underlying datastore
 func (b *ReadWrite) Put(blk blocks.Block) error {
-	b.panicIfFinalized()
-
+	// PutMany already calls panicIfFinalized.
 	return b.PutMany([]blocks.Block{blk})
 }
 
@@ -109,6 +108,9 @@ func (b *ReadWrite) Put(blk blocks.Block) error {
 // capabilities of the underlying datastore whenever possible.
 func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 	b.panicIfFinalized()
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	for _, bl := range blks {
 		n := uint64(b.carV1Writer.Position())
@@ -125,6 +127,9 @@ func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 // After this call, this blockstore can no longer be used for read or write.
 func (b *ReadWrite) Finalize() error {
 	b.panicIfFinalized()
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	// TODO check if add index option is set and don't write the index then set index offset to zero.
 	// TODO see if folks need to continue reading from a finalized blockstore, if so return ReadOnly blockstore here.

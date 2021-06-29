@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -23,6 +24,14 @@ var _ blockstore.Blockstore = (*ReadOnly)(nil)
 
 // ReadOnly provides a read-only Car Block Store.
 type ReadOnly struct {
+	// mu allows ReadWrite to be safe for concurrent use.
+	// It's in ReadOnly so that read operations also grab read locks,
+	// given that ReadWrite embeds ReadOnly for methods like Get and Has.
+	//
+	// The main fields guarded by the mutex are the index and the underlying writers.
+	// For simplicity, the entirety of the blockstore methods grab the mutex.
+	mu sync.RWMutex
+
 	// The backing containing the CAR in v1 format.
 	backing io.ReaderAt
 	// The CAR v1 content index.
@@ -84,6 +93,9 @@ func (b *ReadOnly) DeleteBlock(_ cid.Cid) error {
 
 // Has indicates if the store contains a block that corresponds to the given key.
 func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	offset, err := b.idx.Get(key)
 	if errors.Is(err, index.ErrNotFound) {
 		return false, nil
@@ -104,6 +116,9 @@ func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 
 // Get gets a block corresponding to the given key.
 func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	offset, err := b.idx.Get(key)
 	if err != nil {
 		return nil, err
@@ -121,6 +136,9 @@ func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
 
 // GetSize gets the size of an item corresponding to the given key.
 func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	idx, err := b.idx.Get(key)
 	if err != nil {
 		return -1, err
@@ -152,6 +170,9 @@ func (b *ReadOnly) PutMany([]blocks.Block) error {
 
 // AllKeysChan returns the list of keys in the CAR.
 func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
+	// We release the lock when the channel-sending goroutine stops.
+	b.mu.RLock()
+
 	// TODO we may use this walk for populating the index, and we need to be able to iterate keys in this way somewhere for index generation. In general though, when it's asked for all keys from a blockstore with an index, we should iterate through the index when possible rather than linear reads through the full car.
 	header, err := carv1.ReadHeader(bufio.NewReader(internalio.NewOffsetReader(b.backing, 0)))
 	if err != nil {
@@ -166,6 +187,8 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	ch := make(chan cid.Cid, 5)
 
 	go func() {
+		defer b.mu.RUnlock()
+
 		defer close(ch)
 
 		rdr := internalio.NewOffsetReader(b.backing, int64(offset))

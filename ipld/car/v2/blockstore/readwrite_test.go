@@ -2,9 +2,11 @@ package blockstore_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math/rand"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -166,4 +168,46 @@ func TestBlockstorePutSameHashes(t *testing.T) {
 
 	err = wbs.Finalize()
 	require.NoError(t, err)
+}
+
+func TestBlockstoreConcurrentUse(t *testing.T) {
+	path := "testv2blockstore.car"
+	wbs, err := blockstore.NewReadWrite(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { os.Remove(path) }()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		data := []byte(fmt.Sprintf("data-%d", i))
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			c, err := cid.Prefix{
+				Version:  1,
+				Codec:    cid.Raw,
+				MhType:   multihash.SHA2_256,
+				MhLength: -1,
+			}.Sum(data)
+			require.NoError(t, err)
+
+			block, err := blocks.NewBlockWithCid(data, c)
+			require.NoError(t, err)
+
+			has, err := wbs.Has(block.Cid())
+			require.NoError(t, err)
+			require.False(t, has)
+
+			err = wbs.Put(block)
+			require.NoError(t, err)
+
+			got, err := wbs.Get(block.Cid())
+			require.NoError(t, err)
+			require.Equal(t, data, got.RawData())
+		}()
+	}
+	wg.Wait()
 }
