@@ -59,7 +59,7 @@ func (ii *InsertionIndex) Get(c cid.Cid) (uint64, error) {
 	entry := recordDigest{digest: d.Digest}
 	e := ii.items.Get(entry)
 	if e == nil {
-		return 0, errNotFound
+		return 0, ErrNotFound
 	}
 	r, ok := e.(recordDigest)
 	if !ok {

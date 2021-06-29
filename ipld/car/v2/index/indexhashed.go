@@ -12,7 +12,7 @@ type mapIndex map[cid.Cid]uint64
 func (m *mapIndex) Get(c cid.Cid) (uint64, error) {
 	el, ok := (*m)[c]
 	if !ok {
-		return 0, errNotFound
+		return 0, ErrNotFound
 	}
 	return el, nil
 }

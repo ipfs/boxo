@@ -120,7 +120,7 @@ func (m *multiWidthIndex) Get(c cid.Cid) (uint64, error) {
 	if s, ok := (*m)[uint32(len(d.Digest)+8)]; ok {
 		return s.get(d.Digest), nil
 	}
-	return 0, errNotFound
+	return 0, ErrNotFound
 }
 
 func (m *multiWidthIndex) Codec() Codec {

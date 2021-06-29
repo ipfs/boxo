@@ -114,7 +114,7 @@ func TestBlockstorePutSameHashes(t *testing.T) {
 
 	var blockList []blocks.Block
 
-	addBlock := func(data []byte, version, codec uint64) {
+	appendBlock := func(data []byte, version, codec uint64) {
 		c, err := cid.Prefix{
 			Version:  version,
 			Codec:    codec,
@@ -130,16 +130,25 @@ func TestBlockstorePutSameHashes(t *testing.T) {
 	}
 
 	data1 := []byte("foo bar")
-	addBlock(data1, 0, cid.Raw)
-	addBlock(data1, 1, cid.Raw)
-	addBlock(data1, 1, cid.DagCBOR)
+	appendBlock(data1, 0, cid.Raw)
+	appendBlock(data1, 1, cid.Raw)
+	appendBlock(data1, 1, cid.DagCBOR)
 
 	data2 := []byte("foo bar baz")
-	addBlock(data2, 0, cid.Raw)
-	addBlock(data2, 1, cid.Raw)
-	addBlock(data2, 1, cid.DagCBOR)
+	appendBlock(data2, 0, cid.Raw)
+	appendBlock(data2, 1, cid.Raw)
+	appendBlock(data2, 1, cid.DagCBOR)
 
-	for _, block := range blockList {
+	for i, block := range blockList {
+		// Has should never error here.
+		// The first block should be missing.
+		// Others might not, given the duplicate hashes.
+		has, err := wbs.Has(block.Cid())
+		require.NoError(t, err)
+		if i == 0 {
+			require.False(t, has)
+		}
+
 		err = wbs.Put(block)
 		require.NoError(t, err)
 	}

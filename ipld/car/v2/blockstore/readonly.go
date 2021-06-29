@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
@@ -84,7 +85,9 @@ func (b *ReadOnly) DeleteBlock(_ cid.Cid) error {
 // Has indicates if the store contains a block that corresponds to the given key.
 func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 	offset, err := b.idx.Get(key)
-	if err != nil {
+	if errors.Is(err, index.ErrNotFound) {
+		return false, nil
+	} else if err != nil {
 		return false, err
 	}
 	uar := internalio.NewOffsetReader(b.backing, int64(offset))
