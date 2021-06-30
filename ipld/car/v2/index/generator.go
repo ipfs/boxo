@@ -18,6 +18,10 @@ func Generate(car io.ReaderAt) (Index, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
+
+	// TODO: Generate should likely just take an io.ReadSeeker.
+	// TODO: ensure the input's header version is 1.
+
 	offset, err := carv1.HeaderSize(header)
 	if err != nil {
 		return nil, err

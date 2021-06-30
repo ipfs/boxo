@@ -53,6 +53,7 @@ func (s *singleWidthIndex) Marshal(w io.Writer) error {
 	if err := binary.Write(w, binary.LittleEndian, int64(len(s.index))); err != nil {
 		return err
 	}
+	// TODO: we could just w.Write(s.index) here and avoid overhead
 	_, err := io.Copy(w, bytes.NewBuffer(s.index))
 	return err
 }
@@ -129,8 +130,21 @@ func (m *multiWidthIndex) Codec() Codec {
 
 func (m *multiWidthIndex) Marshal(w io.Writer) error {
 	binary.Write(w, binary.LittleEndian, int32(len(*m)))
-	for _, s := range *m {
-		if err := s.Marshal(w); err != nil {
+
+	// The widths are unique, but ranging over a map isn't deterministic.
+	// As per the CARv2 spec, we must order buckets by digest length.
+
+	widths := make([]uint32, 0, len(*m))
+	for width := range *m {
+		widths = append(widths, width)
+	}
+	sort.Slice(widths, func(i, j int) bool {
+		return widths[i] < widths[j]
+	})
+
+	for _, width := range widths {
+		bucket := (*m)[width]
+		if err := bucket.Marshal(w); err != nil {
 			return err
 		}
 	}

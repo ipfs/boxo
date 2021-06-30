@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
 
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
@@ -129,4 +130,69 @@ func (w *Writer) writeIndex(writer io.Writer, carV1 []byte) (int64, error) {
 	}
 	// FIXME refactor index to expose the number of bytes written.
 	return 0, index.WriteTo(idx, writer)
+}
+
+// WrapV1File takes a source path to a CARv1 file and wraps it as a CARv2 file
+// with an index, writing the result to the destination path.
+// The resulting CARv2 file's inner CARv1 payload is left unmodified,
+// and does not use any padding before the innner CARv1 or index.
+func WrapV1File(srcPath, dstPath string) error {
+	// TODO: verify src is indeed a CARv1 to prevent misuse.
+	// index.Generate should probably be in charge of that.
+
+	// TODO: also expose WrapV1(io.ReadSeeker, io.Writer),
+	// once index.Generate takes a ReadSeeker.
+
+	// We don't use mmap.Open, so we can later use io.Copy.
+	f1, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer f1.Close()
+
+	idx, err := index.Generate(f1)
+	if err != nil {
+		return err
+	}
+
+	// Use Seek to learn the size of the CARv1 before reading it.
+	v1Size, err := f1.Seek(0, io.SeekEnd)
+	if err != nil {
+		return err
+	}
+	if _, err := f1.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
+	// Only create the destination CARv2 when we've gathered all the
+	// information we need, such as the index and the CARv1 size.
+	f2, err := os.Create(dstPath)
+	if err != nil {
+		return err
+	}
+	defer f2.Close()
+
+	// Similar to the Writer API, write all components of a CARv2 to the
+	// destination file: Pragma, Header, CARv1, Index.
+	v2Header := NewHeader(uint64(v1Size))
+	if _, err := f2.Write(Pragma); err != nil {
+		return err
+	}
+	if _, err := v2Header.WriteTo(f2); err != nil {
+		return err
+	}
+	if _, err := io.Copy(f2, f1); err != nil {
+		return err
+	}
+	if err := index.WriteTo(idx, f2); err != nil {
+		return err
+	}
+
+	// Check the close error, since we're writing to f2.
+	// Note that we also do a "defer f2.Close()" above,
+	// to make sure that the earlier error returns don't leak the file.
+	if err := f2.Close(); err != nil {
+		return err
+	}
+	return nil
 }
