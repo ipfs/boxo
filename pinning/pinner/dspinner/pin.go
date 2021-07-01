@@ -31,9 +31,6 @@ const (
 )
 
 var (
-	// ErrNotPinned is returned when trying to unpin items that are not pinned.
-	ErrNotPinned = errors.New("not pinned or pinned indirectly")
-
 	log logging.StandardLogger = logging.Logger("pin")
 
 	linkDirect, linkRecursive string
@@ -346,7 +343,7 @@ func (p *pinner) Unpin(ctx context.Context, c cid.Cid, recursive bool) error {
 			return err
 		}
 		if !has {
-			return ErrNotPinned
+			return ipfspinner.ErrNotPinned
 		}
 	}
 

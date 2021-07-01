@@ -75,6 +75,9 @@ func StringToMode(s string) (Mode, bool) {
 	return mode, ok
 }
 
+// ErrNotPinned is returned when trying to unpin items that are not pinned.
+var ErrNotPinned = fmt.Errorf("not pinned or pinned indirectly")
+
 // A Pinner provides the necessary methods to keep track of Nodes which are
 // to be kept locally, according to a pin mode. In practice, a Pinner is in
 // in charge of keeping the list of items from the local storage that should
@@ -93,6 +96,7 @@ type Pinner interface {
 
 	// Unpin the given cid. If recursive is true, removes either a recursive or
 	// a direct pin. If recursive is false, only removes a direct pin.
+	// If the pin doesn't exist, return ErrNotPinned
 	Unpin(ctx context.Context, cid cid.Cid, recursive bool) error
 
 	// Update updates a recursive pin from one cid to another

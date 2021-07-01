@@ -260,8 +260,8 @@ func TestPinnerBasic(t *testing.T) {
 	}
 
 	err = p.Unpin(ctx, dk, true)
-	if err != ErrNotPinned {
-		t.Fatal("expected error:", ErrNotPinned)
+	if err != ipfspin.ErrNotPinned {
+		t.Fatal("expected error:", ipfspin.ErrNotPinned)
 	}
 
 	err = p.Flush(ctx)
