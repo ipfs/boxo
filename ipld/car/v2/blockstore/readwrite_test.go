@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -26,17 +27,14 @@ func TestBlockstore(t *testing.T) {
 
 	f, err := os.Open("testdata/test.car")
 	require.NoError(t, err)
-	defer f.Close()
+	t.Cleanup(func() { f.Close() })
 	r, err := carv1.NewCarReader(f)
 	require.NoError(t, err)
-	path := "testv2blockstore.car"
+
+	path := filepath.Join(t.TempDir(), "readwrite.car")
 	ingester, err := blockstore.NewReadWrite(path, r.Header.Roots)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		os.Remove(path)
-	}()
+	require.NoError(t, err)
+	t.Cleanup(func() { ingester.Finalize() })
 
 	cids := make([]cid.Cid, 0)
 	for {
@@ -46,9 +44,8 @@ func TestBlockstore(t *testing.T) {
 		}
 		require.NoError(t, err)
 
-		if err := ingester.Put(b); err != nil {
-			t.Fatal(err)
-		}
+		err = ingester.Put(b)
+		require.NoError(t, err)
 		cids = append(cids, b.Cid())
 
 		// try reading a random one:
@@ -60,32 +57,24 @@ func TestBlockstore(t *testing.T) {
 
 	for _, c := range cids {
 		b, err := ingester.Get(c)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		if !b.Cid().Equals(c) {
 			t.Fatal("wrong item returned")
 		}
 	}
 
-	if err := ingester.Finalize(); err != nil {
-		t.Fatal(err)
-	}
+	err = ingester.Finalize()
+	require.NoError(t, err)
 	carb, err := blockstore.OpenReadOnly(path, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	t.Cleanup(func() { carb.Close() })
 
 	allKeysCh, err := carb.AllKeysChan(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	numKeysCh := 0
 	for c := range allKeysCh {
 		b, err := carb.Get(c)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		if !b.Cid().Equals(c) {
 			t.Fatal("wrong item returned")
 		}
@@ -97,9 +86,7 @@ func TestBlockstore(t *testing.T) {
 
 	for _, c := range cids {
 		b, err := carb.Get(c)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		if !b.Cid().Equals(c) {
 			t.Fatal("wrong item returned")
 		}
@@ -107,12 +94,19 @@ func TestBlockstore(t *testing.T) {
 }
 
 func TestBlockstorePutSameHashes(t *testing.T) {
-	path := "testv2blockstore.car"
-	wbs, err := blockstore.NewReadWrite(path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { os.Remove(path) }()
+	tdir := t.TempDir()
+	wbs, err := blockstore.NewReadWrite(
+		filepath.Join(tdir, "readwrite.car"), nil,
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { wbs.Finalize() })
+
+	wbsd, err := blockstore.NewReadWrite(
+		filepath.Join(tdir, "readwrite-dedup.car"), nil,
+		blockstore.WithCidDeduplication,
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { wbsd.Finalize() })
 
 	var blockList []blocks.Block
 
@@ -131,15 +125,31 @@ func TestBlockstorePutSameHashes(t *testing.T) {
 		blockList = append(blockList, block)
 	}
 
+	// Two raw blocks, meaning we have two unique multihashes.
+	// However, we have multiple CIDs for each multihash.
+	// We also have two duplicate CIDs.
 	data1 := []byte("foo bar")
 	appendBlock(data1, 0, cid.Raw)
 	appendBlock(data1, 1, cid.Raw)
 	appendBlock(data1, 1, cid.DagCBOR)
+	appendBlock(data1, 1, cid.DagCBOR) // duplicate CID
 
 	data2 := []byte("foo bar baz")
 	appendBlock(data2, 0, cid.Raw)
 	appendBlock(data2, 1, cid.Raw)
+	appendBlock(data2, 1, cid.Raw) // duplicate CID
 	appendBlock(data2, 1, cid.DagCBOR)
+
+	countBlocks := func(bs *blockstore.ReadWrite) int {
+		ch, err := bs.AllKeysChan(context.Background())
+		require.NoError(t, err)
+
+		n := 0
+		for range ch {
+			n++
+		}
+		return n
+	}
 
 	for i, block := range blockList {
 		// Has should never error here.
@@ -166,17 +176,28 @@ func TestBlockstorePutSameHashes(t *testing.T) {
 		require.Equal(t, block.RawData(), got.RawData())
 	}
 
+	require.Equal(t, len(blockList), countBlocks(wbs))
+
 	err = wbs.Finalize()
+	require.NoError(t, err)
+
+	// Put the same list of blocks to the blockstore that
+	// deduplicates by CID.
+	// We should end up with two fewer blocks.
+	for _, block := range blockList {
+		err = wbsd.Put(block)
+		require.NoError(t, err)
+	}
+	require.Equal(t, len(blockList)-2, countBlocks(wbsd))
+
+	err = wbsd.Finalize()
 	require.NoError(t, err)
 }
 
 func TestBlockstoreConcurrentUse(t *testing.T) {
-	path := "testv2blockstore.car"
-	wbs, err := blockstore.NewReadWrite(path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { os.Remove(path) }()
+	wbs, err := blockstore.NewReadWrite(filepath.Join(t.TempDir(), "readwrite.car"), nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { wbs.Finalize() })
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {

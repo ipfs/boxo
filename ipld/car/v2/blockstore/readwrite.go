@@ -33,6 +33,8 @@ type ReadWrite struct {
 	ReadOnly
 	idx    *index.InsertionIndex
 	header carv2.Header
+
+	dedupCids bool
 }
 
 // TODO consider exposing interfaces
@@ -50,6 +52,15 @@ func WithIndexPadding(p uint64) Option {
 	return func(b *ReadWrite) {
 		b.header = b.header.WithIndexPadding(p)
 	}
+}
+
+// WithCidDeduplication makes Put calls ignore blocks if the blockstore already
+// has the exact same CID.
+// This can help avoid redundancy in a CARv1's list of CID-Block pairs.
+//
+// Note that this compares whole CIDs, not just multihashes.
+func WithCidDeduplication(b *ReadWrite) {
+	b.dedupCids = true
 }
 
 // NewReadWrite creates a new ReadWrite at the given path with a provided set of root CIDs as the car roots.
@@ -113,11 +124,16 @@ func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 	defer b.mu.Unlock()
 
 	for _, bl := range blks {
+		c := bl.Cid()
+		if b.dedupCids && b.idx.HasExactCID(c) {
+			continue
+		}
+
 		n := uint64(b.carV1Writer.Position())
-		if err := util.LdWrite(b.carV1Writer, bl.Cid().Bytes(), bl.RawData()); err != nil {
+		if err := util.LdWrite(b.carV1Writer, c.Bytes(), bl.RawData()); err != nil {
 			return err
 		}
-		b.idx.InsertNoReplace(bl.Cid(), n)
+		b.idx.InsertNoReplace(c, n)
 	}
 	return nil
 }
@@ -126,7 +142,11 @@ func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 // for more efficient subsequent read.
 // After this call, this blockstore can no longer be used for read or write.
 func (b *ReadWrite) Finalize() error {
-	b.panicIfFinalized()
+	if b.header.CarV1Size != 0 {
+		// Allow duplicate Finalize calls, just like Close.
+		// Still error, just like ReadOnly.Close; it should be discarded.
+		return fmt.Errorf("called Finalize twice")
+	}
 
 	b.mu.Lock()
 	defer b.mu.Unlock()

@@ -36,7 +36,7 @@ func (r recordDigest) Less(than llrb.Item) bool {
 func mkRecord(r Record) recordDigest {
 	d, err := multihash.Decode(r.Hash())
 	if err != nil {
-		return recordDigest{}
+		panic(err)
 	}
 
 	return recordDigest{d.Digest, r}
@@ -45,7 +45,7 @@ func mkRecord(r Record) recordDigest {
 func mkRecordFromCid(c cid.Cid, at uint64) recordDigest {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
-		return recordDigest{}
+		panic(err)
 	}
 
 	return recordDigest{d.Digest, Record{Cid: c, Idx: at}}
@@ -140,4 +140,30 @@ func (ii *InsertionIndex) Flatten() (Index, error) {
 		return nil, err
 	}
 	return si, nil
+}
+
+func (ii *InsertionIndex) HasExactCID(c cid.Cid) bool {
+	d, err := multihash.Decode(c.Hash())
+	if err != nil {
+		panic(err)
+	}
+	entry := recordDigest{digest: d.Digest}
+
+	found := false
+	iter := func(i llrb.Item) bool {
+		existing := i.(recordDigest)
+		if !bytes.Equal(existing.digest, entry.digest) {
+			// We've already looked at all entries with matching digests.
+			return false
+		}
+		if existing.Record.Cid == c {
+			// We found an exact match.
+			found = true
+			return false
+		}
+		// Continue looking in ascending order.
+		return true
+	}
+	ii.items.AscendGreaterOrEqual(entry, iter)
+	return found
 }
