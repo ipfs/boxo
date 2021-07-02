@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"golang.org/x/exp/mmap"
@@ -34,14 +35,14 @@ func Generate(car io.ReaderAt) (Index, error) {
 	for {
 		thisItemIdx := rdr.Offset()
 		l, err := binary.ReadUvarint(rdr)
-		thisItemForNxt := rdr.Offset()
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			return nil, err
 		}
-		c, _, err := internalio.ReadCid(car, thisItemForNxt)
+		thisItemForNxt := rdr.Offset()
+		_, c, err := cid.CidFromReader(rdr)
 		if err != nil {
 			return nil, err
 		}

@@ -107,7 +107,7 @@ func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	c, _, err := internalio.ReadCid(b.backing, uar.Offset())
+	_, c, err := cid.CidFromReader(uar)
 	if err != nil {
 		return false, err
 	}
@@ -147,7 +147,7 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 	if err != nil {
 		return -1, blockstore.ErrNotFound
 	}
-	c, _, err := internalio.ReadCid(b.backing, int64(idx+l))
+	_, c, err := cid.CidFromReader(internalio.NewOffsetReader(b.backing, int64(idx+l)))
 	if err != nil {
 		return 0, err
 	}
@@ -194,11 +194,11 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 		rdr := internalio.NewOffsetReader(b.backing, int64(offset))
 		for {
 			l, err := binary.ReadUvarint(rdr)
-			thisItemForNxt := rdr.Offset()
 			if err != nil {
 				return // TODO: log this error
 			}
-			c, _, err := internalio.ReadCid(b.backing, thisItemForNxt)
+			thisItemForNxt := rdr.Offset()
+			_, c, err := cid.CidFromReader(rdr)
 			if err != nil {
 				return // TODO: log this error
 			}
