@@ -132,67 +132,72 @@ func (w *Writer) writeIndex(writer io.Writer, carV1 []byte) (int64, error) {
 	return 0, index.WriteTo(idx, writer)
 }
 
-// WrapV1File takes a source path to a CARv1 file and wraps it as a CARv2 file
-// with an index, writing the result to the destination path.
-// The resulting CARv2 file's inner CARv1 payload is left unmodified,
-// and does not use any padding before the innner CARv1 or index.
+// WrapV1File is a wrapper around WrapV1 that takes filesystem paths.
+// The source path is assumed to exist, and the destination path is overwritten.
+// Note that the destination path might still be created even if an error
+// occurred.
 func WrapV1File(srcPath, dstPath string) error {
-	// TODO: verify src is indeed a CARv1 to prevent misuse.
-	// index.Generate should probably be in charge of that.
-
-	// TODO: also expose WrapV1(io.ReadSeeker, io.Writer),
-	// once index.Generate takes a ReadSeeker.
-
-	// We don't use mmap.Open, so we can later use io.Copy.
-	f1, err := os.Open(srcPath)
+	src, err := os.Open(srcPath)
 	if err != nil {
 		return err
 	}
-	defer f1.Close()
+	defer src.Close()
 
-	idx, err := index.Generate(f1)
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	if err := WrapV1(src, dst); err != nil {
+		return err
+	}
+
+	// Check the close error, since we're writing to dst.
+	// Note that we also do a "defer dst.Close()" above,
+	// to make sure that the earlier error returns don't leak the file.
+	if err := dst.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// WrapV1 takes a CARv1 file and wraps it as a CARv2 file with an index.
+// The resulting CARv2 file's inner CARv1 payload is left unmodified,
+// and does not use any padding before the innner CARv1 or index.
+func WrapV1(src io.ReadSeeker, dst io.Writer) error {
+	// TODO: verify src is indeed a CARv1 to prevent misuse.
+	// index.Generate should probably be in charge of that.
+
+	idx, err := index.Generate(src)
 	if err != nil {
 		return err
 	}
 
 	// Use Seek to learn the size of the CARv1 before reading it.
-	v1Size, err := f1.Seek(0, io.SeekEnd)
+	v1Size, err := src.Seek(0, io.SeekEnd)
 	if err != nil {
 		return err
 	}
-	if _, err := f1.Seek(0, io.SeekStart); err != nil {
+	if _, err := src.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-
-	// Only create the destination CARv2 when we've gathered all the
-	// information we need, such as the index and the CARv1 size.
-	f2, err := os.Create(dstPath)
-	if err != nil {
-		return err
-	}
-	defer f2.Close()
 
 	// Similar to the Writer API, write all components of a CARv2 to the
 	// destination file: Pragma, Header, CARv1, Index.
 	v2Header := NewHeader(uint64(v1Size))
-	if _, err := f2.Write(Pragma); err != nil {
+	if _, err := dst.Write(Pragma); err != nil {
 		return err
 	}
-	if _, err := v2Header.WriteTo(f2); err != nil {
+	if _, err := v2Header.WriteTo(dst); err != nil {
 		return err
 	}
-	if _, err := io.Copy(f2, f1); err != nil {
+	if _, err := io.Copy(dst, src); err != nil {
 		return err
 	}
-	if err := index.WriteTo(idx, f2); err != nil {
+	if err := index.WriteTo(idx, dst); err != nil {
 		return err
 	}
 
-	// Check the close error, since we're writing to f2.
-	// Note that we also do a "defer f2.Close()" above,
-	// to make sure that the earlier error returns don't leak the file.
-	if err := f2.Close(); err != nil {
-		return err
-	}
 	return nil
 }

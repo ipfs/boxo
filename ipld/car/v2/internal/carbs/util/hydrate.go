@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/ipld/go-car/v2/index"
-	"golang.org/x/exp/mmap"
 )
 
 func main() {
@@ -15,13 +14,7 @@ func main() {
 	}
 	db := os.Args[1]
 
-	dbBacking, err := mmap.Open(db)
-	if err != nil {
-		fmt.Printf("Error Opening car for hydration: %v\n", err)
-		return
-	}
-
-	idx, err := index.Generate(dbBacking)
+	idx, err := index.GenerateFromFile(db)
 	if err != nil {
 		fmt.Printf("Error generating index: %v\n", err)
 		return

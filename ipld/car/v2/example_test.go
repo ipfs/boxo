@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/blockstore"
 )
 
 func ExampleWrapV1File() {
@@ -43,8 +44,16 @@ func ExampleWrapV1File() {
 	}
 	fmt.Println("Inner CARv1 is exactly the same:", bytes.Equal(orig, inner))
 
+	// Verify that the CARv2 works well with its index.
+	bs, err := blockstore.OpenReadOnly(dst, false)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(bs.Get(roots[0]))
+
 	// Output:
 	// Roots: [bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy]
 	// Has index: true
 	// Inner CARv1 is exactly the same: true
+	// [Block bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy] <nil>
 }

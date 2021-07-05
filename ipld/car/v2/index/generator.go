@@ -5,17 +5,26 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2/internal/carv1"
-	internalio "github.com/ipld/go-car/v2/internal/io"
-	"golang.org/x/exp/mmap"
 )
+
+type readSeekerPlusByte struct {
+	io.ReadSeeker
+}
+
+func (r readSeekerPlusByte) ReadByte() (byte, error) {
+	var p [1]byte
+	_, err := io.ReadFull(r, p[:])
+	return p[0], err
+}
 
 // Generate generates index for a given car in v1 format.
 // The index can be stored using index.Save into a file or serialized using index.WriteTo.
-func Generate(car io.ReaderAt) (Index, error) {
-	header, err := carv1.ReadHeader(bufio.NewReader(internalio.NewOffsetReader(car, 0)))
+func Generate(v1 io.ReadSeeker) (Index, error) {
+	header, err := carv1.ReadHeader(bufio.NewReader(v1))
 	if err != nil {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
@@ -31,23 +40,37 @@ func Generate(car io.ReaderAt) (Index, error) {
 	idx := mkSorted()
 
 	records := make([]Record, 0)
-	rdr := internalio.NewOffsetReader(car, int64(offset))
+
+	// Seek to the first frame.
+	// Record the start of each frame, which we need for the index records.
+	frameOffset := int64(0)
+	if frameOffset, err = v1.Seek(int64(offset), io.SeekStart); err != nil {
+		return nil, err
+	}
+
 	for {
-		thisItemIdx := rdr.Offset()
-		l, err := binary.ReadUvarint(rdr)
+		// Grab the length of the frame.
+		// Note that ReadUvarint wants a ByteReader.
+		length, err := binary.ReadUvarint(readSeekerPlusByte{v1})
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			return nil, err
 		}
-		thisItemForNxt := rdr.Offset()
-		_, c, err := cid.CidFromReader(rdr)
+
+		// Grab the CID.
+		n, c, err := cid.CidFromReader(v1)
 		if err != nil {
 			return nil, err
 		}
-		records = append(records, Record{c, uint64(thisItemIdx)})
-		rdr.SeekOffset(thisItemForNxt + int64(l))
+		records = append(records, Record{c, uint64(frameOffset)})
+
+		// Seek to the next frame by skipping the block.
+		// The frame length includes the CID, so subtract it.
+		if frameOffset, err = v1.Seek(int64(length)-int64(n), io.SeekCurrent); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := idx.Load(records); err != nil {
@@ -60,10 +83,10 @@ func Generate(car io.ReaderAt) (Index, error) {
 // GenerateFromFile walks a car v1 file at the give path and generates an index of cid->byte offset.
 // The index can be stored using index.Save into a file or serialized using index.WriteTo.
 func GenerateFromFile(path string) (Index, error) {
-	store, err := mmap.Open(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer store.Close()
-	return Generate(store)
+	defer f.Close()
+	return Generate(f)
 }
