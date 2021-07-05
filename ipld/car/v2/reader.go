@@ -54,7 +54,7 @@ func NewReader(r io.ReaderAt) (*Reader, error) {
 }
 
 func (r *Reader) requireVersion2() (err error) {
-	or := internalio.NewOffsetReader(r.r, 0)
+	or := internalio.NewOffsetReadSeeker(r.r, 0)
 	version, err := ReadVersion(or)
 	if err != nil {
 		return
@@ -100,7 +100,7 @@ func (r *Reader) CarV1Reader() SectionReader {
 
 // IndexReader provides an io.Reader containing the index of this CAR v2.
 func (r *Reader) IndexReader() io.Reader {
-	return internalio.NewOffsetReader(r.r, int64(r.Header.IndexOffset))
+	return internalio.NewOffsetReadSeeker(r.r, int64(r.Header.IndexOffset))
 }
 
 // Close closes the underlying reader if it was opened by NewReaderMmap.

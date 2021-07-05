@@ -52,14 +52,14 @@ type ReadOnly struct {
 //
 // There is no need to call ReadOnly.Close on instances returned by this function.
 func NewReadOnly(backing io.ReaderAt, idx index.Index) (*ReadOnly, error) {
-	version, err := carv2.ReadVersion(internalio.NewOffsetReader(backing, 0))
+	version, err := readVersion(backing)
 	if err != nil {
 		return nil, err
 	}
 	switch version {
 	case 1:
 		if idx == nil {
-			if idx, err = index.Generate(backing); err != nil {
+			if idx, err = generateIndex(backing); err != nil {
 				return nil, err
 			}
 		}
@@ -75,7 +75,7 @@ func NewReadOnly(backing io.ReaderAt, idx index.Index) (*ReadOnly, error) {
 				if err != nil {
 					return nil, err
 				}
-			} else if idx, err = index.Generate(backing); err != nil {
+			} else if idx, err = generateIndex(v2r.CarV1Reader()); err != nil {
 				return nil, err
 			}
 		}
@@ -83,6 +83,28 @@ func NewReadOnly(backing io.ReaderAt, idx index.Index) (*ReadOnly, error) {
 	default:
 		return nil, fmt.Errorf("unsupported car version: %v", version)
 	}
+}
+
+func readVersion(at io.ReaderAt) (uint64, error) {
+	var rr io.Reader
+	switch r := at.(type) {
+	case io.Reader:
+		rr = r
+	default:
+		rr = internalio.NewOffsetReadSeeker(r, 0)
+	}
+	return carv2.ReadVersion(rr)
+}
+
+func generateIndex(at io.ReaderAt) (index.Index, error) {
+	var rs io.ReadSeeker
+	switch r := at.(type) {
+	case io.ReadSeeker:
+		rs = r
+	default:
+		rs = internalio.NewOffsetReadSeeker(r, 0)
+	}
+	return index.Generate(rs)
 }
 
 // OpenReadOnly opens a read-only blockstore from a CAR v2 file, generating an index if it does not exist.
@@ -120,7 +142,7 @@ func OpenReadOnly(path string, attachIndex bool) (*ReadOnly, error) {
 }
 
 func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
-	bcid, data, err := util.ReadNode(bufio.NewReader(internalio.NewOffsetReader(b.backing, idx)))
+	bcid, data, err := util.ReadNode(bufio.NewReader(internalio.NewOffsetReadSeeker(b.backing, idx)))
 	return bcid, data, err
 }
 
@@ -140,7 +162,7 @@ func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 	} else if err != nil {
 		return false, err
 	}
-	uar := internalio.NewOffsetReader(b.backing, int64(offset))
+	uar := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
 	_, err = varint.ReadUvarint(uar)
 	if err != nil {
 		return false, err
@@ -181,11 +203,11 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	l, err := varint.ReadUvarint(internalio.NewOffsetReader(b.backing, int64(idx)))
+	l, err := varint.ReadUvarint(internalio.NewOffsetReadSeeker(b.backing, int64(idx)))
 	if err != nil {
 		return -1, blockstore.ErrNotFound
 	}
-	_, c, err := cid.CidFromReader(internalio.NewOffsetReader(b.backing, int64(idx+l)))
+	_, c, err := cid.CidFromReader(internalio.NewOffsetReadSeeker(b.backing, int64(idx+l)))
 	if err != nil {
 		return 0, err
 	}
@@ -212,7 +234,7 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	b.mu.RLock()
 
 	// TODO we may use this walk for populating the index, and we need to be able to iterate keys in this way somewhere for index generation. In general though, when it's asked for all keys from a blockstore with an index, we should iterate through the index when possible rather than linear reads through the full car.
-	header, err := carv1.ReadHeader(bufio.NewReader(internalio.NewOffsetReader(b.backing, 0)))
+	header, err := carv1.ReadHeader(bufio.NewReader(internalio.NewOffsetReadSeeker(b.backing, 0)))
 	if err != nil {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
@@ -229,7 +251,7 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 
 		defer close(ch)
 
-		rdr := internalio.NewOffsetReader(b.backing, int64(offset))
+		rdr := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
 		for {
 			l, err := varint.ReadUvarint(rdr)
 			if err != nil {
@@ -240,7 +262,9 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 			if err != nil {
 				return // TODO: log this error
 			}
-			rdr.SeekOffset(thisItemForNxt + int64(l))
+			if _, err := rdr.Seek(thisItemForNxt+int64(l), io.SeekStart); err != nil {
+				return // TODO: log this error
+			}
 
 			select {
 			case ch <- c:
@@ -259,7 +283,7 @@ func (b *ReadOnly) HashOnRead(bool) {
 
 // Roots returns the root CIDs of the backing CAR.
 func (b *ReadOnly) Roots() ([]cid.Cid, error) {
-	header, err := carv1.ReadHeader(bufio.NewReader(internalio.NewOffsetReader(b.backing, 0)))
+	header, err := carv1.ReadHeader(bufio.NewReader(internalio.NewOffsetReadSeeker(b.backing, 0)))
 	if err != nil {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
