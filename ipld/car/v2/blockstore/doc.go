@@ -6,8 +6,6 @@
 // * ReadOnly.NewReadOnly can be used to instantiate a new read-only blockstore for a given CAR v1
 //   or CAR v2 data payload with an optional index override.
 // * ReadOnly.OpenReadOnly can be used to instantiate a new read-only blockstore for a given CAR v2
-//   file with automatic index generation if the index is not present in the given file. This
-//   function can optionally attach the index to the given CAR v2 file.
-//
+//    or car v2 file with automatic index generation if the index is not present.
 
 package blockstore

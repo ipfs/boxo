@@ -9,6 +9,8 @@ import (
 	"io"
 	"sync"
 
+	"golang.org/x/exp/mmap"
+
 	"github.com/multiformats/go-varint"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -107,38 +109,22 @@ func generateIndex(at io.ReaderAt) (index.Index, error) {
 	return index.Generate(rs)
 }
 
-// OpenReadOnly opens a read-only blockstore from a CAR v2 file, generating an index if it does not exist.
-// If attachIndex is set to true and the index is not present in the given CAR v2 file,
-// then the generated index is written into the given path.
-func OpenReadOnly(path string, attachIndex bool) (*ReadOnly, error) {
-	v2r, err := carv2.NewReaderMmap(path)
+// OpenReadOnly opens a read-only blockstore from a CAR file (either v1 or v2), generating an index if it does not exist.
+// Note, the generated index if the index does not exist is ephemeral and only stored in memory.
+// See index.Generate and Index.Attach for persisting index onto a CAR file.
+func OpenReadOnly(path string) (*ReadOnly, error) {
+	f, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
 	}
 
-	var idx index.Index
-	if !v2r.Header.HasIndex() {
-		idx, err := index.Generate(v2r.CarV1Reader())
-		if err != nil {
-			return nil, err
-		}
-		if attachIndex {
-			if err := index.Attach(path, idx, v2r.Header.IndexOffset); err != nil {
-				return nil, err
-			}
-		}
-	} else {
-		idx, err = index.ReadFrom(v2r.IndexReader())
-		if err != nil {
-			return nil, err
-		}
+	robs, err := NewReadOnly(f, nil)
+	if err != nil {
+		return nil, err
 	}
-	obj := ReadOnly{
-		backing:     v2r.CarV1Reader(),
-		idx:         idx,
-		carv2Closer: v2r,
-	}
-	return &obj, nil
+	robs.carv2Closer = f
+
+	return robs, nil
 }
 
 func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {

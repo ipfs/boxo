@@ -65,7 +65,7 @@ func TestBlockstore(t *testing.T) {
 
 	err = ingester.Finalize()
 	require.NoError(t, err)
-	carb, err := blockstore.OpenReadOnly(path, false)
+	carb, err := blockstore.OpenReadOnly(path)
 	require.NoError(t, err)
 	t.Cleanup(func() { carb.Close() })
 

@@ -45,7 +45,7 @@ func ExampleWrapV1File() {
 	fmt.Println("Inner CARv1 is exactly the same:", bytes.Equal(orig, inner))
 
 	// Verify that the CARv2 works well with its index.
-	bs, err := blockstore.OpenReadOnly(dst, false)
+	bs, err := blockstore.OpenReadOnly(dst)
 	if err != nil {
 		panic(err)
 	}
