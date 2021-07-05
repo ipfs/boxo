@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 
+	"github.com/multiformats/go-varint"
+
 	internalio "github.com/ipld/go-car/v2/internal/io"
 
 	"github.com/ipfs/go-cid"
@@ -83,7 +85,7 @@ func Attach(path string, idx Index, offset uint64) error {
 // This can then be read back using index.ReadFrom
 func WriteTo(idx Index, w io.Writer) error {
 	buf := make([]byte, binary.MaxVarintLen64)
-	b := binary.PutUvarint(buf, uint64(idx.Codec()))
+	b := varint.PutUvarint(buf, uint64(idx.Codec()))
 	if _, err := w.Write(buf[:b]); err != nil {
 		return err
 	}
@@ -95,7 +97,7 @@ func WriteTo(idx Index, w io.Writer) error {
 // Returns error if the encoding is not known.
 func ReadFrom(r io.Reader) (Index, error) {
 	reader := bufio.NewReader(r)
-	codec, err := binary.ReadUvarint(reader)
+	codec, err := varint.ReadUvarint(reader)
 	if err != nil {
 		return nil, err
 	}

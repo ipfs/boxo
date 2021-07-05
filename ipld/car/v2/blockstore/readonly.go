@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/multiformats/go-varint"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -103,7 +104,7 @@ func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 		return false, err
 	}
 	uar := internalio.NewOffsetReader(b.backing, int64(offset))
-	_, err = binary.ReadUvarint(uar)
+	_, err = varint.ReadUvarint(uar)
 	if err != nil {
 		return false, err
 	}
@@ -143,7 +144,7 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	l, err := binary.ReadUvarint(internalio.NewOffsetReader(b.backing, int64(idx)))
+	l, err := varint.ReadUvarint(internalio.NewOffsetReader(b.backing, int64(idx)))
 	if err != nil {
 		return -1, blockstore.ErrNotFound
 	}
@@ -193,7 +194,7 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 
 		rdr := internalio.NewOffsetReader(b.backing, int64(offset))
 		for {
-			l, err := binary.ReadUvarint(rdr)
+			l, err := varint.ReadUvarint(rdr)
 			if err != nil {
 				return // TODO: log this error
 			}

@@ -2,10 +2,11 @@ package index
 
 import (
 	"bufio"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/multiformats/go-varint"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2/internal/carv1"
@@ -51,7 +52,7 @@ func Generate(v1 io.ReadSeeker) (Index, error) {
 	for {
 		// Grab the length of the frame.
 		// Note that ReadUvarint wants a ByteReader.
-		length, err := binary.ReadUvarint(readSeekerPlusByte{v1})
+		length, err := varint.ReadUvarint(readSeekerPlusByte{v1})
 		if err != nil {
 			if err == io.EOF {
 				break

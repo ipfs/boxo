@@ -2,8 +2,9 @@ package util
 
 import (
 	"bufio"
-	"encoding/binary"
 	"io"
+
+	"github.com/multiformats/go-varint"
 
 	cid "github.com/ipfs/go-cid"
 )
@@ -34,7 +35,7 @@ func LdWrite(w io.Writer, d ...[]byte) error {
 	}
 
 	buf := make([]byte, 8)
-	n := binary.PutUvarint(buf, sum)
+	n := varint.PutUvarint(buf, sum)
 	_, err := w.Write(buf[:n])
 	if err != nil {
 		return err
@@ -55,9 +56,8 @@ func LdSize(d ...[]byte) uint64 {
 	for _, s := range d {
 		sum += uint64(len(s))
 	}
-	buf := make([]byte, 8)
-	n := binary.PutUvarint(buf, sum)
-	return sum + uint64(n)
+	s := varint.UvarintSize(sum)
+	return sum + uint64(s)
 }
 
 func LdRead(r *bufio.Reader) ([]byte, error) {
@@ -65,7 +65,7 @@ func LdRead(r *bufio.Reader) ([]byte, error) {
 		return nil, err
 	}
 
-	l, err := binary.ReadUvarint(r)
+	l, err := varint.ReadUvarint(r)
 	if err != nil {
 		if err == io.EOF {
 			return nil, io.ErrUnexpectedEOF // don't silently pretend this is a clean EOF
