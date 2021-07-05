@@ -239,16 +239,22 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 
 		rdr := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
 		for {
-			l, err := varint.ReadUvarint(rdr)
+			length, err := varint.ReadUvarint(rdr)
 			if err != nil {
 				return // TODO: log this error
 			}
+
+			// Null padding; treat it as EOF.
+			if length == 0 {
+				break
+			}
+
 			thisItemForNxt := rdr.Offset()
 			_, c, err := cid.CidFromReader(rdr)
 			if err != nil {
 				return // TODO: log this error
 			}
-			if _, err := rdr.Seek(thisItemForNxt+int64(l), io.SeekStart); err != nil {
+			if _, err := rdr.Seek(thisItemForNxt+int64(length), io.SeekStart); err != nil {
 				return // TODO: log this error
 			}
 

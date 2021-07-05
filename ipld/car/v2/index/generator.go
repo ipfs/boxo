@@ -60,6 +60,13 @@ func Generate(v1 io.ReadSeeker) (Index, error) {
 			return nil, err
 		}
 
+		// Null padding; treat zero-length frames as an EOF.
+		// They don't contain a CID nor block, so they're not useful.
+		// TODO: Amend the CARv1 spec to explicitly allow this.
+		if length == 0 {
+			break
+		}
+
 		// Grab the CID.
 		n, c, err := cid.CidFromReader(v1)
 		if err != nil {

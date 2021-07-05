@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -231,4 +232,44 @@ func TestBlockstoreConcurrentUse(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+type bufferReaderAt []byte
+
+func (b bufferReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	if off >= int64(len(b)) {
+		return 0, io.EOF
+	}
+	return copy(p, b[off:]), nil
+}
+
+func TestBlockstoreNullPadding(t *testing.T) {
+	paddedV1, err := ioutil.ReadFile("testdata/test.car")
+	require.NoError(t, err)
+
+	// A sample null-padded CARv1 file.
+	paddedV1 = append(paddedV1, make([]byte, 2048)...)
+
+	rbs, err := blockstore.NewReadOnly(bufferReaderAt(paddedV1), nil)
+	require.NoError(t, err)
+
+	roots, err := rbs.Roots()
+	require.NoError(t, err)
+
+	has, err := rbs.Has(roots[0])
+	require.NoError(t, err)
+	require.True(t, has)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	allKeysCh, err := rbs.AllKeysChan(ctx)
+	require.NoError(t, err)
+	for c := range allKeysCh {
+		b, err := rbs.Get(c)
+		require.NoError(t, err)
+		if !b.Cid().Equals(c) {
+			t.Fatal("wrong item returned")
+		}
+	}
 }
