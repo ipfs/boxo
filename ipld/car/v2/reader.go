@@ -84,15 +84,22 @@ func (r *Reader) readHeader() (err error) {
 	return
 }
 
+// SectionReader implements both io.ReadSeeker and io.ReaderAt.
+// It is the interface version of io.SectionReader, but note that the
+// implementation is not guaranteed to be an io.SectionReader.
+type SectionReader interface {
+	io.Reader
+	io.Seeker
+	io.ReaderAt
+}
+
 // CarV1Reader provides a reader containing the CAR v1 section encapsulated in this CAR v2.
-func (r *Reader) CarV1Reader() *io.SectionReader {
-	// TODO consider returning io.Reader+ReaderAt in a custom interface
+func (r *Reader) CarV1Reader() SectionReader {
 	return io.NewSectionReader(r.r, int64(r.Header.CarV1Offset), int64(r.Header.CarV1Size))
 }
 
 // IndexReader provides an io.Reader containing the index of this CAR v2.
 func (r *Reader) IndexReader() io.Reader {
-	// TODO consider returning io.Reader+ReaderAt in a custom interface
 	return internalio.NewOffsetReader(r.r, int64(r.Header.IndexOffset))
 }
 
