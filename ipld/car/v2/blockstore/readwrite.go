@@ -88,7 +88,7 @@ func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, err
 	}
 	b.carV1Writer = internalio.NewOffsetWriter(f, int64(b.header.CarV1Offset))
 	carV1Reader := internalio.NewOffsetReader(f, int64(b.header.CarV1Offset))
-	b.ReadOnly = *ReadOnlyOf(carV1Reader, idx)
+	b.ReadOnly = ReadOnly{backing: carV1Reader, idx: idx}
 	if _, err := f.WriteAt(carv2.Pragma, 0); err != nil {
 		return nil, err
 	}

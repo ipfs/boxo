@@ -42,10 +42,47 @@ type ReadOnly struct {
 	carv2Closer io.Closer
 }
 
-// ReadOnlyOf opens ReadOnly blockstore from an existing backing containing a CAR v1 payload and an existing index.
-// The index for a CAR v1 payload can be separately generated using index.Generate.
-func ReadOnlyOf(backing io.ReaderAt, index index.Index) *ReadOnly {
-	return &ReadOnly{backing: backing, idx: index}
+// NewReadOnly creates a new ReadOnly blockstore from the backing with a optional index as idx.
+// This function accepts both CAR v1 and v2 backing.
+// The blockstore is instantiated with the given index if it is not nil.
+//
+// Otherwise:
+// * For a CAR v1 backing an index is generated.
+// * For a CAR v2 backing an index is only generated if Header.HasIndex returns false.
+//
+// There is no need to call ReadOnly.Close on instances returned by this function.
+func NewReadOnly(backing io.ReaderAt, idx index.Index) (*ReadOnly, error) {
+	version, err := carv2.ReadVersion(internalio.NewOffsetReader(backing, 0))
+	if err != nil {
+		return nil, err
+	}
+	switch version {
+	case 1:
+		if idx == nil {
+			if idx, err = index.Generate(backing); err != nil {
+				return nil, err
+			}
+		}
+		return &ReadOnly{backing: backing, idx: idx}, nil
+	case 2:
+		v2r, err := carv2.NewReader(backing)
+		if err != nil {
+			return nil, err
+		}
+		if idx == nil {
+			if v2r.Header.HasIndex() {
+				idx, err = index.ReadFrom(v2r.IndexReader())
+				if err != nil {
+					return nil, err
+				}
+			} else if idx, err = index.Generate(backing); err != nil {
+				return nil, err
+			}
+		}
+		return &ReadOnly{backing: v2r.CarV1Reader(), idx: idx}, nil
+	default:
+		return nil, fmt.Errorf("unsupported car version: %v", version)
+	}
 }
 
 // OpenReadOnly opens a read-only blockstore from a CAR v2 file, generating an index if it does not exist.
