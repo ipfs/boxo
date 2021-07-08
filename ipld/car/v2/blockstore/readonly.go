@@ -220,11 +220,12 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	b.mu.RLock()
 
 	// TODO we may use this walk for populating the index, and we need to be able to iterate keys in this way somewhere for index generation. In general though, when it's asked for all keys from a blockstore with an index, we should iterate through the index when possible rather than linear reads through the full car.
-	header, err := carv1.ReadHeader(bufio.NewReader(internalio.NewOffsetReadSeeker(b.backing, 0)))
+	rdr := internalio.NewOffsetReadSeeker(b.backing, 0)
+	header, err := carv1.ReadHeader(bufio.NewReader(rdr))
 	if err != nil {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
-	offset, err := carv1.HeaderSize(header)
+	headerSize, err := carv1.HeaderSize(header)
 	if err != nil {
 		return nil, err
 	}
@@ -232,12 +233,15 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	// TODO: document this choice of 5, or use simpler buffering like 0 or 1.
 	ch := make(chan cid.Cid, 5)
 
+	// Seek to the end of header.
+	if _, err = rdr.Seek(int64(headerSize), io.SeekStart); err != nil {
+		return nil, err
+	}
+
 	go func() {
 		defer b.mu.RUnlock()
-
 		defer close(ch)
 
-		rdr := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
 		for {
 			length, err := varint.ReadUvarint(rdr)
 			if err != nil {
@@ -246,7 +250,7 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 
 			// Null padding; treat it as EOF.
 			if length == 0 {
-				break
+				break // TODO make this an optional behaviour; by default we should error
 			}
 
 			thisItemForNxt := rdr.Offset()
@@ -261,6 +265,7 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 			select {
 			case ch <- c:
 			case <-ctx.Done():
+				// TODO: log ctx error
 				return
 			}
 		}

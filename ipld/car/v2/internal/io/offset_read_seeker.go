@@ -55,11 +55,16 @@ func (o *OffsetReadSeeker) Offset() int64 {
 func (o *OffsetReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case io.SeekStart:
-		o.off = offset
+		o.off = offset + o.base
 	case io.SeekCurrent:
 		o.off += offset
 	case io.SeekEnd:
 		panic("unsupported whence: SeekEnd")
 	}
-	return o.off, nil
+	return o.Position(), nil
+}
+
+// Position returns the current position of this reader relative to the initial offset.
+func (o *OffsetReadSeeker) Position() int64 {
+	return o.off - o.base
 }

@@ -1,11 +1,12 @@
 package car
 
 import (
+	"os"
+	"testing"
+
 	"github.com/ipld/go-car/v2/index"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"os"
-	"testing"
 )
 
 func TestReadOrGenerateIndex(t *testing.T) {
@@ -52,7 +53,6 @@ func TestReadOrGenerateIndex(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			carFile, err := os.Open(tt.carPath)
 			require.NoError(t, err)
 			t.Cleanup(func() { assert.NoError(t, carFile.Close()) })

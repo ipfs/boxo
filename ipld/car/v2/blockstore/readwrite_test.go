@@ -12,6 +12,10 @@ import (
 	"testing"
 	"time"
 
+	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/index"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 
@@ -28,7 +32,7 @@ func TestBlockstore(t *testing.T) {
 
 	f, err := os.Open("testdata/test.car")
 	require.NoError(t, err)
-	t.Cleanup(func() { f.Close() })
+	t.Cleanup(func() { assert.NoError(t, f.Close()) })
 	r, err := carv1.NewCarReader(f)
 	require.NoError(t, err)
 
@@ -66,15 +70,15 @@ func TestBlockstore(t *testing.T) {
 
 	err = ingester.Finalize()
 	require.NoError(t, err)
-	carb, err := blockstore.OpenReadOnly(path)
+	robs, err := blockstore.OpenReadOnly(path)
 	require.NoError(t, err)
-	t.Cleanup(func() { carb.Close() })
+	t.Cleanup(func() { assert.NoError(t, robs.Close()) })
 
-	allKeysCh, err := carb.AllKeysChan(ctx)
+	allKeysCh, err := robs.AllKeysChan(ctx)
 	require.NoError(t, err)
 	numKeysCh := 0
 	for c := range allKeysCh {
-		b, err := carb.Get(c)
+		b, err := robs.Get(c)
 		require.NoError(t, err)
 		if !b.Cid().Equals(c) {
 			t.Fatal("wrong item returned")
@@ -82,11 +86,11 @@ func TestBlockstore(t *testing.T) {
 		numKeysCh++
 	}
 	if numKeysCh != len(cids) {
-		t.Fatal("AllKeysChan returned an unexpected amount of keys")
+		t.Fatalf("AllKeysChan returned an unexpected amount of keys; expected %v but got %v", len(cids), numKeysCh)
 	}
 
 	for _, c := range cids {
-		b, err := carb.Get(c)
+		b, err := robs.Get(c)
 		require.NoError(t, err)
 		if !b.Cid().Equals(c) {
 			t.Fatal("wrong item returned")
@@ -272,4 +276,84 @@ func TestBlockstoreNullPadding(t *testing.T) {
 			t.Fatal("wrong item returned")
 		}
 	}
+}
+
+func TestBlockstoreResumption(t *testing.T) {
+	v1f, err := os.Open("testdata/test.car")
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, v1f.Close()) })
+	r, err := carv1.NewCarReader(v1f)
+	require.NoError(t, err)
+
+	path := filepath.Join(t.TempDir(), "readwrite-resume.car")
+	// Create an incomplete CAR v2 file with no blocks put.
+	subject, err := blockstore.NewReadWrite(path, r.Header.Roots)
+	require.NoError(t, err)
+
+	// For each block resume on the same file, putting blocks one at a time.
+	for {
+		b, err := r.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+
+		// 30% chance of subject failing (or closing file without calling Finalize).
+		// The higher this percentage the slower the test runs considering the number of blocks in the original CAR v1 test payload.
+		shouldFailAbruptly := rand.Float32() <= 0.3
+		if shouldFailAbruptly {
+			// Close off the open file and re-instantiate a new subject with resumption enabled.
+			// Note, we don't have to close the file for resumption to work.
+			// We do this to avoid resource leak during testing.
+			require.NoError(t, subject.Close())
+			subject, err = blockstore.NewReadWrite(path, r.Header.Roots, blockstore.WithResumption(true))
+			require.NoError(t, err)
+		}
+		require.NoError(t, subject.Put(b))
+	}
+	require.NoError(t, subject.Close())
+
+	// Finalize the blockstore to complete partially written CAR v2 file.
+	subject, err = blockstore.NewReadWrite(path, r.Header.Roots, blockstore.WithResumption(true))
+	require.NoError(t, err)
+	require.NoError(t, subject.Finalize())
+
+	// Assert resumed from file is a valid CAR v2 with index.
+	v2f, err := os.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, v2f.Close()) })
+	v2r, err := carv2.NewReader(v2f)
+	require.NoError(t, err)
+	require.True(t, v2r.Header.HasIndex())
+
+	// Assert CAR v1 payload in file matches the original CAR v1 payload.
+	_, err = v1f.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	wantPayloadReader, err := carv1.NewCarReader(v1f)
+	require.NoError(t, err)
+
+	gotPayloadReader, err := carv1.NewCarReader(v2r.CarV1Reader())
+	require.NoError(t, err)
+
+	require.Equal(t, wantPayloadReader.Header, gotPayloadReader.Header)
+	for {
+		wantNextBlock, wantErr := wantPayloadReader.Next()
+		gotNextBlock, gotErr := gotPayloadReader.Next()
+		if wantErr == io.EOF {
+			require.Equal(t, wantErr, gotErr)
+			break
+		}
+		require.NoError(t, wantErr)
+		require.NoError(t, gotErr)
+		require.Equal(t, wantNextBlock, gotNextBlock)
+	}
+
+	// Assert index in resumed from file is identical to index generated directly from original CAR v1 payload.
+	_, err = v1f.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	gotIdx, err := index.ReadFrom(v2r.IndexReader())
+	require.NoError(t, err)
+	wantIdx, err := index.Generate(v1f)
+	require.NoError(t, err)
+	require.Equal(t, wantIdx, gotIdx)
 }

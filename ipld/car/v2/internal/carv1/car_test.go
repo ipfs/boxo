@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	cid "github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
@@ -226,6 +228,72 @@ func TestBadHeaders(t *testing.T) {
 					t.Fatalf("bad error: %v", err)
 				}
 			}
+		})
+	}
+}
+
+func TestCarHeaderEquals(t *testing.T) {
+	oneCid := dag.NewRawNode([]byte("fish")).Cid()
+	anotherCid := dag.NewRawNode([]byte("lobster")).Cid()
+	tests := []struct {
+		name  string
+		one   CarHeader
+		other CarHeader
+		want  bool
+	}{
+		{
+			"SameVersionNilRootsIsEqual",
+			CarHeader{nil, 1},
+			CarHeader{nil, 1},
+			true,
+		},
+		{
+			"SameVersionEmptyRootsIsEqual",
+			CarHeader{[]cid.Cid{}, 1},
+			CarHeader{[]cid.Cid{}, 1},
+			true,
+		},
+		{
+			"SameVersionNonEmptySameRootsIsEqual",
+			CarHeader{[]cid.Cid{oneCid}, 1},
+			CarHeader{[]cid.Cid{oneCid}, 1},
+			true,
+		},
+		{
+			"SameVersionNonEmptySameRootsInDifferentOrderIsEqual",
+			CarHeader{[]cid.Cid{oneCid, anotherCid}, 1},
+			CarHeader{[]cid.Cid{anotherCid, oneCid}, 1},
+			true,
+		},
+		{
+			"SameVersionDifferentRootsIsNotEqual",
+			CarHeader{[]cid.Cid{oneCid}, 1},
+			CarHeader{[]cid.Cid{anotherCid}, 1},
+			false,
+		},
+		{
+			"DifferentVersionDifferentRootsIsNotEqual",
+			CarHeader{[]cid.Cid{oneCid}, 0},
+			CarHeader{[]cid.Cid{anotherCid}, 1},
+			false,
+		},
+		{
+			"MismatchingVersionIsNotEqual",
+			CarHeader{nil, 0},
+			CarHeader{nil, 1},
+			false,
+		},
+		{
+			"ZeroValueHeadersAreEqual",
+			CarHeader{},
+			CarHeader{},
+			true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.one.Equals(tt.other)
+			require.Equal(t, tt.want, got, "Equals() = %v, want %v", got, tt.want)
 		})
 	}
 }
