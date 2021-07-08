@@ -129,12 +129,12 @@ var _ io.ReaderAt = (*readSeekerAt)(nil)
 
 type readSeekerAt struct {
 	rs io.ReadSeeker
-	mu sync.RWMutex
+	mu sync.Mutex
 }
 
 func (rsa *readSeekerAt) ReadAt(p []byte, off int64) (n int, err error) {
-	rsa.mu.RLock()
-	defer rsa.mu.RUnlock()
+	rsa.mu.Lock()
+	defer rsa.mu.Unlock()
 	if _, err := rsa.rs.Seek(off, io.SeekStart); err != nil {
 		return 0, err
 	}
