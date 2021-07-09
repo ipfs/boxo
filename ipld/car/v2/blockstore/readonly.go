@@ -189,19 +189,19 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	l, err := varint.ReadUvarint(internalio.NewOffsetReadSeeker(b.backing, int64(idx)))
+	rdr := internalio.NewOffsetReadSeeker(b.backing, int64(idx))
+	frameLen, err := varint.ReadUvarint(rdr)
 	if err != nil {
 		return -1, blockstore.ErrNotFound
 	}
-	_, c, err := cid.CidFromReader(internalio.NewOffsetReadSeeker(b.backing, int64(idx+l)))
+	cidLen, readCid, err := cid.CidFromReader(rdr)
 	if err != nil {
 		return 0, err
 	}
-	if !c.Equals(key) {
+	if !readCid.Equals(key) {
 		return -1, blockstore.ErrNotFound
 	}
-	// get cid. validate.
-	return int(l), err
+	return int(frameLen) - cidLen, err
 }
 
 // Put is not supported and always returns an error.
