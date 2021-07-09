@@ -114,9 +114,9 @@ func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, err
 		opt(b)
 	}
 
-	fFlag := os.O_RDWR | os.O_CREATE
+	fFlag := os.O_RDWR
 	if !b.resume {
-		fFlag = fFlag | os.O_EXCL
+		fFlag = fFlag | os.O_CREATE | os.O_EXCL
 	}
 	var err error
 	b.f, err = os.OpenFile(path, fFlag, 0o666) // TODO: Should the user be able to configure FileMode permissions?
