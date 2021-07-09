@@ -41,7 +41,6 @@ type ReadWrite struct {
 	header carv2.Header
 
 	dedupCids bool
-	resume    bool
 }
 
 // TODO consider exposing interfaces
@@ -70,74 +69,87 @@ func WithCidDeduplication(b *ReadWrite) { // TODO should this take a bool and re
 	b.dedupCids = true
 }
 
-// WithResumption sets whether the blockstore should resume on a file produced by a ReadWrite
-// blockstore on which ReadWrite.Finalize was not called.
+// NewReadWrite creates a new ReadWrite at the given path with a provided set of root CIDs and options.
 //
-// This option is set to false by default, i.e. disabled. When disabled, the file at path must not
-// exist, otherwise an error is returned upon ReadWrite blockstore construction.
+// ReadWrite.Finalize must be called once putting and reading blocks are no longer needed.
+// Upon calling ReadWrite.Finalize the CAR v2 header and index are written out onto the file and the
+// backing file is closed. Once finalized, all read and write calls to this blockstore will result
+// in panics. Note, a finalized file cannot be resumed from.
 //
-// When this option is set to true the existing data frames in file are re-indexed, allowing the
-// caller to continue putting any remaining blocks without having to re-ingest blocks for which
-// previous ReadWrite.Put returned successfully.
+// If a file at given path does not exist, the instantiation will write car.Pragma and data payload
+// header (i.e. the inner CAR v1 header) onto the file before returning.
 //
-// Resumption is only allowed on files that satisfy the following criteria:
+// When the given path already exists, the blockstore will attempt to resume from it.
+// On resumption the existing data frames in file are re-indexed, allowing the caller to continue
+// putting any remaining blocks without having to re-ingest blocks for which previous ReadWrite.Put
+// returned successfully.
+//
+// Resumption only works on files that were created by a previous instance of a ReadWrite
+// blockstore. This means a file created as a result of a successful call to NewReadWrite can be
+// resumed from as long as write operations such as ReadWrite.Put, and ReadWrite.PutMany returned
+// successfully and ReadWrite. On resumption the roots argument and WithCarV1Padding option must match the
+// previous instantiation of ReadWrite blockstore that created the file.
+// More explicitly, the file resuming from must:
 //   1. start with a complete CAR v2 car.Pragma.
 //   2. contain a complete CAR v1 data header with root CIDs matching the CIDs passed to the
-//      constructor, starting at offset specified by WithCarV1Padding, followed by zero or more
-//      complete data frames. If any corrupt data frames are present the resumption will fail. Note,
-//      it is important that new instantiations of ReadWrite blockstore with resumption enabled use
-//      the same WithCarV1Padding option, since this option is used to locate the offset at which
-//      the data payload starts.
-//   3. have not been produced by a ReadWrite blockstore that was finalized, i.e. call to
-//      ReadWrite.Finalize returned successfully.
-func WithResumption(enabled bool) Option {
-	return func(b *ReadWrite) {
-		b.resume = enabled
-	}
-}
-
-// NewReadWrite creates a new ReadWrite at the given path with a provided set of root CIDs and options.
+//      constructor, starting at offset optionally padded by WithCarV1Padding, followed by zero or
+//      more complete data frames. If any corrupt data frames are present the resumption will fail.
+//      Note, if set previously, the blockstore must use the same WithCarV1Padding option as before,
+//      since this option is used to locate the CAR v1 data payload.
+//  3. ReadWrite.Finalize must not have been called on the file.
 func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, error) {
-	// TODO either lock the file or open exclusively; can we do somethign to reduce edge cases.
-
-	b := &ReadWrite{
-		header: carv2.NewHeader(0),
+	// Try and resume by default if the file exists.
+	resume := true
+	if _, err := os.Stat(path); err != nil { // TODO should we use stats to avoid resuming from files with zero size?
+		if os.IsNotExist(err) {
+			resume = false
+		} else {
+			return nil, err
+		}
 	}
-
-	indexcls, ok := index.BuildersByCodec[index.IndexInsertion]
-	if !ok {
-		return nil, fmt.Errorf("unknownindex  codec: %#v", index.IndexInsertion)
-	}
-	b.idx = (indexcls()).(*index.InsertionIndex)
-
-	for _, opt := range opts {
-		opt(b)
-	}
-
-	fFlag := os.O_RDWR
-	if !b.resume {
-		fFlag = fFlag | os.O_CREATE | os.O_EXCL
-	}
-	var err error
-	b.f, err = os.OpenFile(path, fFlag, 0o666) // TODO: Should the user be able to configure FileMode permissions?
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666) // TODO: Should the user be able to configure FileMode permissions?
 	if err != nil {
 		return nil, fmt.Errorf("could not open read/write file: %w", err)
 	}
-	b.carV1Writer = internalio.NewOffsetWriter(b.f, int64(b.header.CarV1Offset))
-	v1r := internalio.NewOffsetReadSeeker(b.f, int64(b.header.CarV1Offset))
-	b.ReadOnly = ReadOnly{backing: v1r, idx: b.idx, carv2Closer: b.f}
 
-	if b.resume {
-		if err = b.resumeWithRoots(roots); err != nil {
+	// If construction of blockstore fails, make sure to close off the open file.
+	defer func() {
+		if err != nil {
+			f.Close()
+		}
+	}()
+
+	idxBuilder, ok := index.BuildersByCodec[index.IndexInsertion]
+	if !ok {
+		return nil, fmt.Errorf("unknownindex  codec: %#v", index.IndexInsertion)
+	}
+
+	// Instantiate block store.
+	// Set the header fileld before applying options since padding options may modify header.
+	rwbs := &ReadWrite{
+		f:      f,
+		idx:    (idxBuilder()).(*index.InsertionIndex),
+		header: carv2.NewHeader(0),
+	}
+	for _, opt := range opts {
+		opt(rwbs)
+	}
+
+	rwbs.carV1Writer = internalio.NewOffsetWriter(rwbs.f, int64(rwbs.header.CarV1Offset))
+	v1r := internalio.NewOffsetReadSeeker(rwbs.f, int64(rwbs.header.CarV1Offset))
+	rwbs.ReadOnly = ReadOnly{backing: v1r, idx: rwbs.idx, carv2Closer: rwbs.f}
+
+	if resume {
+		if err = rwbs.resumeWithRoots(roots); err != nil {
 			return nil, err
 		}
 	} else {
-		if err = b.initWithRoots(roots); err != nil {
+		if err = rwbs.initWithRoots(roots); err != nil {
 			return nil, err
 		}
 	}
 
-	return b, nil
+	return rwbs, nil
 }
 
 func (b *ReadWrite) initWithRoots(roots []cid.Cid) error {
@@ -160,6 +172,17 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 	if version != 2 {
 		// The file is not a CAR v2 and we cannot resume from it.
 		return fmt.Errorf("cannot resume on CAR file with version %v", version)
+	}
+
+	// Check if file is finalized.
+	// A file is finalized when it contains a valid CAR v2 header with non-zero v1 offset.
+	// If finalized, cannot resume from.
+	var headerInFile carv2.Header
+	if _, err := headerInFile.ReadFrom(internalio.NewOffsetReadSeeker(b.f, carv2.PragmaSize)); err == nil {
+		// TODO: we technically can; this could be a feature to do if asked for.
+		if headerInFile.CarV1Offset != 0 {
+			return fmt.Errorf("cannot resume from a finalized file")
+		}
 	}
 
 	// Use the given CAR v1 padding to instantiate the CAR v1 reader on file.
@@ -277,15 +300,17 @@ func (b *ReadWrite) Finalize() error {
 	// TODO see if folks need to continue reading from a finalized blockstore, if so return ReadOnly blockstore here.
 	b.header = b.header.WithCarV1Size(uint64(b.carV1Writer.Position()))
 	defer b.Close()
-	if _, err := b.header.WriteTo(internalio.NewOffsetWriter(b.f, carv2.PragmaSize)); err != nil {
-		return err
-	}
+
 	// TODO if index not needed don't bother flattening it.
 	fi, err := b.idx.Flatten()
 	if err != nil {
 		return err
 	}
-	return index.WriteTo(fi, internalio.NewOffsetWriter(b.f, int64(b.header.IndexOffset)))
+	if err := index.WriteTo(fi, internalio.NewOffsetWriter(b.f, int64(b.header.IndexOffset))); err != nil {
+		return err
+	}
+	_, err = b.header.WriteTo(internalio.NewOffsetWriter(b.f, carv2.PragmaSize))
+	return err
 }
 
 func (b *ReadWrite) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {

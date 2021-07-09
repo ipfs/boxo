@@ -306,7 +306,7 @@ func TestBlockstoreResumption(t *testing.T) {
 			// Note, we don't have to close the file for resumption to work.
 			// We do this to avoid resource leak during testing.
 			require.NoError(t, subject.Close())
-			subject, err = blockstore.NewReadWrite(path, r.Header.Roots, blockstore.WithResumption(true))
+			subject, err = blockstore.NewReadWrite(path, r.Header.Roots)
 			require.NoError(t, err)
 		}
 		require.NoError(t, subject.Put(b))
@@ -314,7 +314,7 @@ func TestBlockstoreResumption(t *testing.T) {
 	require.NoError(t, subject.Close())
 
 	// Finalize the blockstore to complete partially written CAR v2 file.
-	subject, err = blockstore.NewReadWrite(path, r.Header.Roots, blockstore.WithResumption(true))
+	subject, err = blockstore.NewReadWrite(path, r.Header.Roots)
 	require.NoError(t, err)
 	require.NoError(t, subject.Finalize())
 
@@ -356,4 +356,14 @@ func TestBlockstoreResumption(t *testing.T) {
 	wantIdx, err := index.Generate(v1f)
 	require.NoError(t, err)
 	require.Equal(t, wantIdx, gotIdx)
+}
+
+func TestBlockstoreResumptionFailsOnFinalizedFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "readwrite-resume-finalized.car")
+	// Create an incomplete CAR v2 file with no blocks put.
+	subject, err := blockstore.NewReadWrite(path, []cid.Cid{})
+	require.NoError(t, err)
+	require.NoError(t, subject.Finalize())
+	_, err = blockstore.NewReadWrite(path, []cid.Cid{})
+	require.Errorf(t, err, "cannot resume from a finalized file")
 }

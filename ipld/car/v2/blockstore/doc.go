@@ -13,7 +13,6 @@
 // Upon finalization, the instance can no longer be used for reading or writing blocks and will
 // panic if used. To continue reading the blocks users are encouraged to use ReadOnly blockstore
 // instantiated from the same file path using OpenReadOnly.
-// A user may resume reading/writing from files produced by an instance of ReadWrite blockstore that
-// on which ReadWrite.Finalize was never called. To resume, WithResumption option must be set to
-// true. See docs on WithResumption for usage criteria.
+// A user may resume reading/writing from files produced by an instance of ReadWrite blockstore. The
+// resumption is attempted automatically, if the path passed to NewReadWrite exists.
 package blockstore
