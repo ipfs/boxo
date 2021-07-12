@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	blocks "github.com/ipfs/go-block-format"
+
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 
@@ -74,6 +76,11 @@ func TestReadOnly(t *testing.T) {
 				gotBlock, err := subject.Get(key)
 				require.NoError(t, err)
 				require.Equal(t, wantBlock, gotBlock)
+
+				// Assert write operations panic
+				require.Panics(t, func() { subject.Put(wantBlock) })
+				require.Panics(t, func() { subject.PutMany([]blocks.Block{wantBlock}) })
+				require.Panics(t, func() { subject.DeleteBlock(key) })
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
@@ -89,12 +96,6 @@ func TestReadOnly(t *testing.T) {
 			require.Equal(t, wantCids, gotCids)
 		})
 	}
-}
-
-func TestOpenReadOnlyFailsOnUnknownVersion(t *testing.T) {
-	subject, err := OpenReadOnly("../testdata/sample-rootless-v42.car")
-	require.Errorf(t, err, "unsupported car version: 42")
-	require.Nil(t, subject)
 }
 
 func TestNewReadOnlyFailsOnUnknownVersion(t *testing.T) {

@@ -86,10 +86,10 @@ func WithCidDeduplication(b *ReadWrite) { // TODO should this take a bool and re
 //
 // Resumption only works on files that were created by a previous instance of a ReadWrite
 // blockstore. This means a file created as a result of a successful call to NewReadWrite can be
-// resumed from as long as write operations such as ReadWrite.Put, and ReadWrite.PutMany returned
-// successfully and ReadWrite. On resumption the roots argument and WithCarV1Padding option must match the
-// previous instantiation of ReadWrite blockstore that created the file.
-// More explicitly, the file resuming from must:
+// resumed from as long as write operations such as ReadWrite.Put, ReadWrite.PutMany returned
+// successfully and ReadWrite.Finalize was never called. On resumption the roots argument and
+// WithCarV1Padding option must match the previous instantiation of ReadWrite blockstore that
+// created the file. More explicitly, the file resuming from must:
 //   1. start with a complete CAR v2 car.Pragma.
 //   2. contain a complete CAR v1 data header with root CIDs matching the CIDs passed to the
 //      constructor, starting at offset optionally padded by WithCarV1Padding, followed by zero or
