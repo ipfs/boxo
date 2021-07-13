@@ -4,9 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"sync"
-
-	"github.com/ipld/go-car/v2/index"
 
 	internalio "github.com/ipld/go-car/v2/internal/io"
 
@@ -123,59 +120,4 @@ func ReadVersion(r io.Reader) (version uint64, err error) {
 		return
 	}
 	return header.Version, nil
-}
-
-var _ io.ReaderAt = (*readSeekerAt)(nil)
-
-type readSeekerAt struct {
-	rs io.ReadSeeker
-	mu sync.Mutex
-}
-
-func (rsa *readSeekerAt) ReadAt(p []byte, off int64) (n int, err error) {
-	rsa.mu.Lock()
-	defer rsa.mu.Unlock()
-	if _, err := rsa.rs.Seek(off, io.SeekStart); err != nil {
-		return 0, err
-	}
-	return rsa.rs.Read(p)
-}
-
-// ReadOrGenerateIndex accepts both CAR v1 and v2 format, and reads or generates an index for it.
-// When the given reader is in CAR v1 format an index is always generated.
-// For a payload in CAR v2 format, an index is only generated if Header.HasIndex returns false.
-// An error is returned for all other formats, i.e. versions other than 1 or 2.
-//
-// Note, the returned index lives entirely in memory and will not depend on the
-// given reader to fulfill index lookup.
-func ReadOrGenerateIndex(rs io.ReadSeeker) (index.Index, error) {
-	// Read version.
-	version, err := ReadVersion(rs)
-	if err != nil {
-		return nil, err
-	}
-	// Seek to the begining, since reading the version changes the reader's offset.
-	if _, err := rs.Seek(0, io.SeekStart); err != nil {
-		return nil, err
-	}
-
-	switch version {
-	case 1:
-		// Simply generate the index, since there can't be a pre-existing one.
-		return index.Generate(rs)
-	case 2:
-		// Read CAR v2 format
-		v2r, err := NewReader(&readSeekerAt{rs: rs})
-		if err != nil {
-			return nil, err
-		}
-		// If index is present, then no need to generate; decode and return it.
-		if v2r.Header.HasIndex() {
-			return index.ReadFrom(v2r.IndexReader())
-		}
-		// Otherwise, generate index from CAR v1 payload wrapped within CAR v2 format.
-		return index.Generate(v2r.CarV1Reader())
-	default:
-		return nil, fmt.Errorf("unknown version %v", version)
-	}
 }

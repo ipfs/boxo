@@ -353,7 +353,7 @@ func TestBlockstoreResumption(t *testing.T) {
 	require.NoError(t, err)
 	gotIdx, err := index.ReadFrom(v2r.IndexReader())
 	require.NoError(t, err)
-	wantIdx, err := index.Generate(v1f)
+	wantIdx, err := carv2.GenerateIndex(v1f)
 	require.NoError(t, err)
 	require.Equal(t, wantIdx, gotIdx)
 }

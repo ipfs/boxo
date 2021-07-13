@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	carv2 "github.com/ipld/go-car/v2"
+
 	"github.com/ipld/go-car/v2/index"
 )
 
@@ -14,7 +16,7 @@ func main() {
 	}
 	db := os.Args[1]
 
-	idx, err := index.GenerateFromFile(db)
+	idx, err := carv2.GenerateIndexFromFile(db)
 	if err != nil {
 		fmt.Printf("Error generating index: %v\n", err)
 		return

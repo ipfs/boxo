@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 
+	internalio "github.com/ipld/go-car/v2/internal/io"
+
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipld/go-car/v2/index"
@@ -71,7 +73,7 @@ func (w *Writer) WriteTo(writer io.Writer) (n int64, err error) {
 		return
 	}
 	n += int64(PragmaSize)
-	// We read the entire car into memory because index.Generate takes a reader.
+	// We read the entire car into memory because GenerateIndex takes a reader.
 	// TODO Future PRs will make this more efficient by exposing necessary interfaces in index pacakge so that
 	// this can be done in an streaming manner.
 	if err = carv1.WriteCar(w.ctx, w.NodeGetter, w.roots, w.encodedCarV1); err != nil {
@@ -124,7 +126,7 @@ func (w *Writer) writeIndex(writer io.Writer, carV1 []byte) (int64, error) {
 	// Consider refactoring index to make this process more efficient.
 	// We should avoid reading the entire car into memory since it can be large.
 	reader := bytes.NewReader(carV1)
-	idx, err := index.Generate(reader)
+	idx, err := GenerateIndex(reader)
 	if err != nil {
 		return 0, err
 	}
@@ -167,9 +169,9 @@ func WrapV1File(srcPath, dstPath string) error {
 // and does not use any padding before the innner CARv1 or index.
 func WrapV1(src io.ReadSeeker, dst io.Writer) error {
 	// TODO: verify src is indeed a CARv1 to prevent misuse.
-	// index.Generate should probably be in charge of that.
+	// GenerateIndex should probably be in charge of that.
 
-	idx, err := index.Generate(src)
+	idx, err := GenerateIndex(src)
 	if err != nil {
 		return err
 	}
@@ -200,4 +202,18 @@ func WrapV1(src io.ReadSeeker, dst io.Writer) error {
 	}
 
 	return nil
+}
+
+// AttachIndex attaches a given index to an existing car v2 file at given path and offset.
+func AttachIndex(path string, idx index.Index, offset uint64) error {
+	// TODO: instead of offset, maybe take padding?
+	// TODO: check that the given path is indeed a CAR v2.
+	// TODO: update CAR v2 header according to the offset at which index is written out.
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	indexWriter := internalio.NewOffsetWriter(out, int64(offset))
+	return index.WriteTo(idx, indexWriter)
 }

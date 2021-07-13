@@ -106,12 +106,12 @@ func generateIndex(at io.ReaderAt) (index.Index, error) {
 	default:
 		rs = internalio.NewOffsetReadSeeker(r, 0)
 	}
-	return index.Generate(rs)
+	return carv2.GenerateIndex(rs)
 }
 
 // OpenReadOnly opens a read-only blockstore from a CAR file (either v1 or v2), generating an index if it does not exist.
 // Note, the generated index if the index does not exist is ephemeral and only stored in memory.
-// See index.Generate and Index.Attach for persisting index onto a CAR file.
+// See car.GenerateIndex and Index.Attach for persisting index onto a CAR file.
 func OpenReadOnly(path string) (*ReadOnly, error) {
 	f, err := mmap.Open(path)
 	if err != nil {

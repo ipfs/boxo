@@ -194,7 +194,7 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 	}
 
 	// TODO See how we can reduce duplicate code here.
-	// The code here comes from index.Generate.
+	// The code here comes from car.GenerateIndex.
 	// Copied because we need to populate an insertindex, not a sorted index.
 	// Producing a sorted index via generate, then converting it to insertindex is not possible.
 	// Because Index interface does not expose internal records.
