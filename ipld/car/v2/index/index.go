@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 
+	"github.com/multiformats/go-multicodec"
+
 	"github.com/multiformats/go-varint"
 
 	internalio "github.com/ipld/go-car/v2/internal/io"
@@ -16,22 +18,14 @@ import (
 
 // Codec table is a first var-int in CAR indexes
 const (
-	IndexSorted Codec = 0x0400 // as per https://github.com/multiformats/multicodec/pull/220
-
-	// TODO: unexport these before the final release, probably
-	IndexHashed Codec = 0x300000 + iota
-	IndexSingleSorted
-	IndexGobHashed
-	IndexInsertion
+	indexHashed codec = 0x300000 + iota
+	indexSingleSorted
+	indexGobHashed
 )
 
 type (
-	// Codec is used as a multicodec identifier for CAR index files
-	// TODO: use go-multicodec before the final release
-	Codec int
-
-	// Builder is a constructor for an index type
-	Builder func() Index
+	// codec is used as a multicodec identifier for CAR index files
+	codec int
 
 	// Record is a pre-processed record of a car item and location.
 	Record struct {
@@ -41,7 +35,7 @@ type (
 
 	// Index provides an interface for looking up byte offset of a given CID.
 	Index interface {
-		Codec() Codec
+		Codec() multicodec.Code
 		Marshal(w io.Writer) error
 		Unmarshal(r io.Reader) error
 		Get(cid.Cid) (uint64, error)
@@ -49,14 +43,14 @@ type (
 	}
 )
 
-// BuildersByCodec holds known index formats
-// TODO: turn this into a func before the final release?
-var BuildersByCodec = map[Codec]Builder{
-	IndexHashed:       mkHashed,
-	IndexSorted:       mkSorted,
-	IndexSingleSorted: mkSingleSorted,
-	IndexGobHashed:    mkGobHashed,
-	IndexInsertion:    mkInsertion,
+// New constructs a new index corresponding to the given CAR index codec.
+func New(codec multicodec.Code) (Index, error) {
+	switch codec {
+	case multicodec.CarIndexSorted:
+		return newSorted(), nil
+	default:
+		return nil, fmt.Errorf("unknwon index codec: %v", codec)
+	}
 }
 
 // Save writes a generated index into the given `path`.
@@ -97,15 +91,15 @@ func WriteTo(idx Index, w io.Writer) error {
 // Returns error if the encoding is not known.
 func ReadFrom(r io.Reader) (Index, error) {
 	reader := bufio.NewReader(r)
-	codec, err := varint.ReadUvarint(reader)
+	code, err := varint.ReadUvarint(reader)
 	if err != nil {
 		return nil, err
 	}
-	builder, ok := BuildersByCodec[Codec(codec)]
-	if !ok {
-		return nil, fmt.Errorf("unknown codec: %d", codec)
+	codec := multicodec.Code(code)
+	idx, err := New(codec)
+	if err != nil {
+		return nil, err
 	}
-	idx := builder()
 	if err := idx.Unmarshal(reader); err != nil {
 		return nil, err
 	}

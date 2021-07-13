@@ -4,9 +4,12 @@ import (
 	"encoding/gob"
 	"io"
 
+	"github.com/multiformats/go-multicodec"
+
 	"github.com/ipfs/go-cid"
 )
 
+//lint:ignore U1000 kept for potential future use.
 type mapGobIndex map[cid.Cid]uint64
 
 func (m *mapGobIndex) Get(c cid.Cid) (uint64, error) {
@@ -27,8 +30,8 @@ func (m *mapGobIndex) Unmarshal(r io.Reader) error {
 	return d.Decode(m)
 }
 
-func (m *mapGobIndex) Codec() Codec {
-	return IndexHashed
+func (m *mapGobIndex) Codec() multicodec.Code {
+	return multicodec.Code(indexHashed)
 }
 
 func (m *mapGobIndex) Load(rs []Record) error {
@@ -38,7 +41,8 @@ func (m *mapGobIndex) Load(rs []Record) error {
 	return nil
 }
 
-func mkGobHashed() Index {
+//lint:ignore U1000 kept for potential future use.
+func newGobHashed() Index {
 	mi := make(mapGobIndex)
 	return &mi
 }

@@ -30,7 +30,6 @@ func Generate(v1 io.ReadSeeker) (Index, error) {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
 
-	// TODO: Generate should likely just take an io.ReadSeeker.
 	// TODO: ensure the input's header version is 1.
 
 	offset, err := carv1.HeaderSize(header)
@@ -38,7 +37,7 @@ func Generate(v1 io.ReadSeeker) (Index, error) {
 		return nil, err
 	}
 
-	idx := mkSorted()
+	idx := newSorted()
 
 	records := make([]Record, 0)
 

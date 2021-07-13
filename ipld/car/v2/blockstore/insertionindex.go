@@ -1,10 +1,14 @@
-package index
+package blockstore
 
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
+
+	"github.com/ipld/go-car/v2/index"
+	"github.com/multiformats/go-multicodec"
 
 	"github.com/ipfs/go-cid"
 	"github.com/multiformats/go-multihash"
@@ -12,18 +16,21 @@ import (
 	cbor "github.com/whyrusleeping/cbor/go"
 )
 
-type InsertionIndex struct {
-	items llrb.LLRB
-}
+var (
+	errUnsupported      = errors.New("not supported")
+	insertionIndexCodec = multicodec.Code(0x300003)
+)
 
-func (ii *InsertionIndex) InsertNoReplace(key cid.Cid, n uint64) {
-	ii.items.InsertNoReplace(mkRecordFromCid(key, n))
-}
+type (
+	insertionIndex struct {
+		items llrb.LLRB
+	}
 
-type recordDigest struct {
-	digest []byte
-	Record
-}
+	recordDigest struct {
+		digest []byte
+		index.Record
+	}
+)
 
 func (r recordDigest) Less(than llrb.Item) bool {
 	other, ok := than.(recordDigest)
@@ -33,7 +40,7 @@ func (r recordDigest) Less(than llrb.Item) bool {
 	return bytes.Compare(r.digest, other.digest) < 0
 }
 
-func mkRecord(r Record) recordDigest {
+func newRecordDigest(r index.Record) recordDigest {
 	d, err := multihash.Decode(r.Hash())
 	if err != nil {
 		panic(err)
@@ -42,16 +49,20 @@ func mkRecord(r Record) recordDigest {
 	return recordDigest{d.Digest, r}
 }
 
-func mkRecordFromCid(c cid.Cid, at uint64) recordDigest {
+func newRecordFromCid(c cid.Cid, at uint64) recordDigest {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
 		panic(err)
 	}
 
-	return recordDigest{d.Digest, Record{Cid: c, Idx: at}}
+	return recordDigest{d.Digest, index.Record{Cid: c, Idx: at}}
 }
 
-func (ii *InsertionIndex) Get(c cid.Cid) (uint64, error) {
+func (ii *insertionIndex) insertNoReplace(key cid.Cid, n uint64) {
+	ii.items.InsertNoReplace(newRecordFromCid(key, n))
+}
+
+func (ii *insertionIndex) Get(c cid.Cid) (uint64, error) {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
 		return 0, err
@@ -59,7 +70,7 @@ func (ii *InsertionIndex) Get(c cid.Cid) (uint64, error) {
 	entry := recordDigest{digest: d.Digest}
 	e := ii.items.Get(entry)
 	if e == nil {
-		return 0, ErrNotFound
+		return 0, index.ErrNotFound
 	}
 	r, ok := e.(recordDigest)
 	if !ok {
@@ -69,13 +80,11 @@ func (ii *InsertionIndex) Get(c cid.Cid) (uint64, error) {
 	return r.Record.Idx, nil
 }
 
-func (ii *InsertionIndex) Marshal(w io.Writer) error {
+func (ii *insertionIndex) Marshal(w io.Writer) error {
 	if err := binary.Write(w, binary.LittleEndian, int64(ii.items.Len())); err != nil {
 		return err
 	}
-
 	var err error
-
 	iter := func(i llrb.Item) bool {
 		if err = cbor.Encode(w, i.(recordDigest).Record); err != nil {
 			return false
@@ -86,30 +95,29 @@ func (ii *InsertionIndex) Marshal(w io.Writer) error {
 	return err
 }
 
-func (ii *InsertionIndex) Unmarshal(r io.Reader) error {
-	var len int64
-	if err := binary.Read(r, binary.LittleEndian, &len); err != nil {
+func (ii *insertionIndex) Unmarshal(r io.Reader) error {
+	var length int64
+	if err := binary.Read(r, binary.LittleEndian, &length); err != nil {
 		return err
 	}
 	d := cbor.NewDecoder(r)
-	for i := int64(0); i < len; i++ {
-		var rec Record
+	for i := int64(0); i < length; i++ {
+		var rec index.Record
 		if err := d.Decode(&rec); err != nil {
 			return err
 		}
-		ii.items.InsertNoReplace(mkRecord(rec))
+		ii.items.InsertNoReplace(newRecordDigest(rec))
 	}
 	return nil
 }
 
-// Codec identifies this index format
-func (ii *InsertionIndex) Codec() Codec {
-	return IndexInsertion
+func (ii *insertionIndex) Codec() multicodec.Code {
+	return insertionIndexCodec
 }
 
-func (ii *InsertionIndex) Load(rs []Record) error {
+func (ii *insertionIndex) Load(rs []index.Record) error {
 	for _, r := range rs {
-		rec := mkRecord(r)
+		rec := newRecordDigest(r)
 		if rec.digest == nil {
 			return fmt.Errorf("invalid entry: %v", r)
 		}
@@ -118,15 +126,17 @@ func (ii *InsertionIndex) Load(rs []Record) error {
 	return nil
 }
 
-func mkInsertion() Index {
-	ii := InsertionIndex{}
-	return &ii
+func newInsertionIndex() *insertionIndex {
+	return &insertionIndex{}
 }
 
-// Flatten returns a 'indexsorted' formatted index for more efficient subsequent loading
-func (ii *InsertionIndex) Flatten() (Index, error) {
-	si := BuildersByCodec[IndexSorted]()
-	rcrds := make([]Record, ii.items.Len())
+// flatten returns a 'indexsorted' formatted index for more efficient subsequent loading
+func (ii *insertionIndex) flatten() (index.Index, error) {
+	si, err := index.New(multicodec.CarIndexSorted)
+	if err != nil {
+		return nil, err
+	}
+	rcrds := make([]index.Record, ii.items.Len())
 
 	idx := 0
 	iter := func(i llrb.Item) bool {
@@ -142,7 +152,7 @@ func (ii *InsertionIndex) Flatten() (Index, error) {
 	return si, nil
 }
 
-func (ii *InsertionIndex) HasExactCID(c cid.Cid) bool {
+func (ii *insertionIndex) hasExactCID(c cid.Cid) bool {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
 		panic(err)

@@ -7,6 +7,8 @@ import (
 	"io"
 	"sort"
 
+	"github.com/multiformats/go-multicodec"
+
 	"github.com/ipfs/go-cid"
 	"github.com/multiformats/go-multihash"
 )
@@ -42,8 +44,8 @@ func (r recordSet) Swap(i, j int) {
 	r[i], r[j] = r[j], r[i]
 }
 
-func (s *singleWidthIndex) Codec() Codec {
-	return IndexSingleSorted
+func (s *singleWidthIndex) Codec() multicodec.Code {
+	return multicodec.Code(indexSingleSorted)
 }
 
 func (s *singleWidthIndex) Marshal(w io.Writer) error {
@@ -124,12 +126,14 @@ func (m *multiWidthIndex) Get(c cid.Cid) (uint64, error) {
 	return 0, ErrNotFound
 }
 
-func (m *multiWidthIndex) Codec() Codec {
-	return IndexSorted
+func (m *multiWidthIndex) Codec() multicodec.Code {
+	return multicodec.CarIndexSorted
 }
 
 func (m *multiWidthIndex) Marshal(w io.Writer) error {
-	binary.Write(w, binary.LittleEndian, int32(len(*m)))
+	if err := binary.Write(w, binary.LittleEndian, int32(len(*m))); err != nil {
+		return err
+	}
 
 	// The widths are unique, but ranging over a map isn't deterministic.
 	// As per the CARv2 spec, we must order buckets by digest length.
@@ -153,7 +157,9 @@ func (m *multiWidthIndex) Marshal(w io.Writer) error {
 
 func (m *multiWidthIndex) Unmarshal(r io.Reader) error {
 	var l int32
-	binary.Read(r, binary.LittleEndian, &l)
+	if err := binary.Read(r, binary.LittleEndian, &l); err != nil {
+		return err
+	}
 	for i := 0; i < int(l); i++ {
 		s := singleWidthIndex{}
 		if err := s.Unmarshal(r); err != nil {
@@ -199,12 +205,13 @@ func (m *multiWidthIndex) Load(items []Record) error {
 	return nil
 }
 
-func mkSorted() Index {
+func newSorted() Index {
 	m := make(multiWidthIndex)
 	return &m
 }
 
-func mkSingleSorted() Index {
+//lint:ignore U1000 kept for potential future use.
+func newSingleSorted() Index {
 	s := singleWidthIndex{}
 	return &s
 }

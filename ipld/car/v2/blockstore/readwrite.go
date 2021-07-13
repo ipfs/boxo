@@ -37,7 +37,7 @@ type ReadWrite struct {
 	f           *os.File
 	carV1Writer *internalio.OffsetWriteSeeker
 	ReadOnly
-	idx    *index.InsertionIndex
+	idx    *insertionIndex
 	header carv2.Header
 
 	dedupCids bool
@@ -119,16 +119,11 @@ func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, err
 		}
 	}()
 
-	idxBuilder, ok := index.BuildersByCodec[index.IndexInsertion]
-	if !ok {
-		return nil, fmt.Errorf("unknownindex  codec: %#v", index.IndexInsertion)
-	}
-
 	// Instantiate block store.
 	// Set the header fileld before applying options since padding options may modify header.
 	rwbs := &ReadWrite{
 		f:      f,
-		idx:    (idxBuilder()).(*index.InsertionIndex),
+		idx:    newInsertionIndex(),
 		header: carv2.NewHeader(0),
 	}
 	for _, opt := range opts {
@@ -235,7 +230,7 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 		if err != nil {
 			return err
 		}
-		b.idx.InsertNoReplace(c, uint64(frameOffset))
+		b.idx.insertNoReplace(c, uint64(frameOffset))
 
 		// Seek to the next frame by skipping the block.
 		// The frame length includes the CID, so subtract it.
@@ -270,7 +265,7 @@ func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 
 	for _, bl := range blks {
 		c := bl.Cid()
-		if b.dedupCids && b.idx.HasExactCID(c) {
+		if b.dedupCids && b.idx.hasExactCID(c) {
 			continue
 		}
 
@@ -278,7 +273,7 @@ func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 		if err := util.LdWrite(b.carV1Writer, c.Bytes(), bl.RawData()); err != nil {
 			return err
 		}
-		b.idx.InsertNoReplace(c, n)
+		b.idx.insertNoReplace(c, n)
 	}
 	return nil
 }
@@ -302,7 +297,7 @@ func (b *ReadWrite) Finalize() error {
 	defer b.Close()
 
 	// TODO if index not needed don't bother flattening it.
-	fi, err := b.idx.Flatten()
+	fi, err := b.idx.flatten()
 	if err != nil {
 		return err
 	}

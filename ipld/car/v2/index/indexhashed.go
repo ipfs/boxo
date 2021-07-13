@@ -3,10 +3,13 @@ package index
 import (
 	"io"
 
+	"github.com/multiformats/go-multicodec"
+
 	"github.com/ipfs/go-cid"
 	cbor "github.com/whyrusleeping/cbor/go"
 )
 
+//lint:ignore U1000 kept for potential future use.
 type mapIndex map[cid.Cid]uint64
 
 func (m *mapIndex) Get(c cid.Cid) (uint64, error) {
@@ -26,8 +29,8 @@ func (m *mapIndex) Unmarshal(r io.Reader) error {
 	return d.Decode(m)
 }
 
-func (m *mapIndex) Codec() Codec {
-	return IndexHashed
+func (m *mapIndex) Codec() multicodec.Code {
+	return multicodec.Code(indexHashed)
 }
 
 func (m *mapIndex) Load(rs []Record) error {
@@ -37,7 +40,8 @@ func (m *mapIndex) Load(rs []Record) error {
 	return nil
 }
 
-func mkHashed() Index {
+//lint:ignore U1000 kept for potential future use.
+func newHashed() Index {
 	mi := make(mapIndex)
 	return &mi
 }
