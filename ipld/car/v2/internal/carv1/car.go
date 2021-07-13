@@ -210,11 +210,13 @@ func loadCarSlow(s Store, cr *CarReader) (*CarHeader, error) {
 	}
 }
 
-// Equals checks whether two headers are equal.
-// Two headers are considered equal if:
+// Matches checks whether two headers match.
+// Two headers are considered matching if:
 //   1. They have the same version number, and
 //   2. They contain the same root CIDs in any order.
-func (h CarHeader) Equals(other CarHeader) bool {
+// Note, this function explicitly ignores the order of roots.
+// If order of roots matter use reflect.DeepEqual instead.
+func (h CarHeader) Matches(other CarHeader) bool {
 	if h.Version != other.Version {
 		return false
 	}
@@ -229,6 +231,7 @@ func (h CarHeader) Equals(other CarHeader) bool {
 	}
 
 	// Check other contains all roots.
+	// TODO: should this be optimised for cases where the number of roots are large since it has O(N^2) complexity?
 	for _, r := range h.Roots {
 		if !other.containsRoot(r) {
 			return false

@@ -232,7 +232,7 @@ func TestBadHeaders(t *testing.T) {
 	}
 }
 
-func TestCarHeaderEquals(t *testing.T) {
+func TestCarHeaderMatchess(t *testing.T) {
 	oneCid := dag.NewRawNode([]byte("fish")).Cid()
 	anotherCid := dag.NewRawNode([]byte("lobster")).Cid()
 	tests := []struct {
@@ -242,49 +242,49 @@ func TestCarHeaderEquals(t *testing.T) {
 		want  bool
 	}{
 		{
-			"SameVersionNilRootsIsEqual",
+			"SameVersionNilRootsIsMatching",
 			CarHeader{nil, 1},
 			CarHeader{nil, 1},
 			true,
 		},
 		{
-			"SameVersionEmptyRootsIsEqual",
+			"SameVersionEmptyRootsIsMatching",
 			CarHeader{[]cid.Cid{}, 1},
 			CarHeader{[]cid.Cid{}, 1},
 			true,
 		},
 		{
-			"SameVersionNonEmptySameRootsIsEqual",
+			"SameVersionNonEmptySameRootsIsMatching",
 			CarHeader{[]cid.Cid{oneCid}, 1},
 			CarHeader{[]cid.Cid{oneCid}, 1},
 			true,
 		},
 		{
-			"SameVersionNonEmptySameRootsInDifferentOrderIsEqual",
+			"SameVersionNonEmptySameRootsInDifferentOrderIsMatching",
 			CarHeader{[]cid.Cid{oneCid, anotherCid}, 1},
 			CarHeader{[]cid.Cid{anotherCid, oneCid}, 1},
 			true,
 		},
 		{
-			"SameVersionDifferentRootsIsNotEqual",
+			"SameVersionDifferentRootsIsNotMatching",
 			CarHeader{[]cid.Cid{oneCid}, 1},
 			CarHeader{[]cid.Cid{anotherCid}, 1},
 			false,
 		},
 		{
-			"DifferentVersionDifferentRootsIsNotEqual",
+			"DifferentVersionDifferentRootsIsNotMatching",
 			CarHeader{[]cid.Cid{oneCid}, 0},
 			CarHeader{[]cid.Cid{anotherCid}, 1},
 			false,
 		},
 		{
-			"MismatchingVersionIsNotEqual",
+			"MismatchingVersionIsNotMatching",
 			CarHeader{nil, 0},
 			CarHeader{nil, 1},
 			false,
 		},
 		{
-			"ZeroValueHeadersAreEqual",
+			"ZeroValueHeadersAreMatching",
 			CarHeader{},
 			CarHeader{},
 			true,
@@ -292,8 +292,8 @@ func TestCarHeaderEquals(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.one.Equals(tt.other)
-			require.Equal(t, tt.want, got, "Equals() = %v, want %v", got, tt.want)
+			got := tt.one.Matches(tt.other)
+			require.Equal(t, tt.want, got, "Matches() = %v, want %v", got, tt.want)
 		})
 	}
 }

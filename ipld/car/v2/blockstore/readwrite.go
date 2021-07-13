@@ -97,21 +97,22 @@ func WithCidDeduplication(b *ReadWrite) { // TODO should this take a bool and re
 //      Note, if set previously, the blockstore must use the same WithCarV1Padding option as before,
 //      since this option is used to locate the CAR v1 data payload.
 //  3. ReadWrite.Finalize must not have been called on the file.
+//
+// Note, resumption should be used with WithCidDeduplication, so that blocks that are successfully
+// written into the file are not re-written. Unless, the user explicitly wants duplicate blocks.
 func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, error) {
-	// Try and resume by default if the file exists.
-	resume := true
-	if _, err := os.Stat(path); err != nil { // TODO should we use stats to avoid resuming from files with zero size?
-		if os.IsNotExist(err) {
-			resume = false
-		} else {
-			return nil, err
-		}
-	}
+	// TODO: enable deduplication by default now that resumption is automatically attempted.
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666) // TODO: Should the user be able to configure FileMode permissions?
 	if err != nil {
 		return nil, fmt.Errorf("could not open read/write file: %w", err)
 	}
-
+	stat, err := f.Stat()
+	if err != nil {
+		// Note, we should not get a an os.ErrNotExist here because the flags used to open file includes os.O_CREATE
+		return nil, err
+	}
+	// Try and resume by default if the file size is non-zero.
+	resume := stat.Size() != 0
 	// If construction of blockstore fails, make sure to close off the open file.
 	defer func() {
 		if err != nil {
@@ -187,7 +188,7 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 		// Cannot read the CAR v1 header; the file is most likely corrupt.
 		return fmt.Errorf("error reading car header: %w", err)
 	}
-	if !header.Equals(carv1.CarHeader{Roots: roots, Version: 1}) {
+	if !header.Matches(carv1.CarHeader{Roots: roots, Version: 1}) {
 		// Cannot resume if version and root does not match.
 		return errors.New("cannot resume on file with mismatching data header")
 	}

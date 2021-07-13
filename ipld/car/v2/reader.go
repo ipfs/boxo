@@ -149,10 +149,6 @@ func (rsa *readSeekerAt) ReadAt(p []byte, off int64) (n int, err error) {
 // Note, the returned index lives entirely in memory and will not depend on the
 // given reader to fulfill index lookup.
 func ReadOrGenerateIndex(rs io.ReadSeeker) (index.Index, error) {
-	// Seek to the beginning of the reader in order to read version.
-	if _, err := rs.Seek(0, io.SeekStart); err != nil {
-		return nil, err
-	}
 	// Read version.
 	version, err := ReadVersion(rs)
 	if err != nil {
