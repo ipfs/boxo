@@ -74,7 +74,8 @@ func WithCidDeduplication(b *ReadWrite) { // TODO should this take a bool and re
 // ReadWrite.Finalize must be called once putting and reading blocks are no longer needed.
 // Upon calling ReadWrite.Finalize the CAR v2 header and index are written out onto the file and the
 // backing file is closed. Once finalized, all read and write calls to this blockstore will result
-// in panics. Note, a finalized file cannot be resumed from.
+// in panics. Note, ReadWrite.Finalize must be called on an open instance regardless of whether any
+// blocks were put or not.
 //
 // If a file at given path does not exist, the instantiation will write car.Pragma and data payload
 // header (i.e. the inner CAR v1 header) onto the file before returning.
@@ -87,19 +88,21 @@ func WithCidDeduplication(b *ReadWrite) { // TODO should this take a bool and re
 // Resumption only works on files that were created by a previous instance of a ReadWrite
 // blockstore. This means a file created as a result of a successful call to NewReadWrite can be
 // resumed from as long as write operations such as ReadWrite.Put, ReadWrite.PutMany returned
-// successfully and ReadWrite.Finalize was never called. On resumption the roots argument and
-// WithCarV1Padding option must match the previous instantiation of ReadWrite blockstore that
-// created the file. More explicitly, the file resuming from must:
+// successfully. On resumption the roots argument and WithCarV1Padding option must match the
+// previous instantiation of ReadWrite blockstore that created the file. More explicitly, the file
+// resuming from must:
 //   1. start with a complete CAR v2 car.Pragma.
 //   2. contain a complete CAR v1 data header with root CIDs matching the CIDs passed to the
 //      constructor, starting at offset optionally padded by WithCarV1Padding, followed by zero or
 //      more complete data frames. If any corrupt data frames are present the resumption will fail.
 //      Note, if set previously, the blockstore must use the same WithCarV1Padding option as before,
 //      since this option is used to locate the CAR v1 data payload.
-//  3. ReadWrite.Finalize must not have been called on the file.
 //
 // Note, resumption should be used with WithCidDeduplication, so that blocks that are successfully
 // written into the file are not re-written. Unless, the user explicitly wants duplicate blocks.
+//
+// Resuming from finalized files is allowed. However, resumption will regenerate the index
+// regardless by scanning every existing block in file.
 func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, error) {
 	// TODO: enable deduplication by default now that resumption is automatically attempted.
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666) // TODO: Should the user be able to configure FileMode permissions?
@@ -170,14 +173,45 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 		return fmt.Errorf("cannot resume on CAR file with version %v", version)
 	}
 
-	// Check if file is finalized.
-	// A file is finalized when it contains a valid CAR v2 header with non-zero v1 offset.
-	// If finalized, cannot resume from.
+	// Check if file was finalized by trying to read the CAR v2 header.
+	// We check because if finalized the CARv1 reader behaviour needs to be adjusted since
+	// EOF will not signify end of CAR v1 payload. i.e. index is most likely present.
 	var headerInFile carv2.Header
-	if _, err := headerInFile.ReadFrom(internalio.NewOffsetReadSeeker(b.f, carv2.PragmaSize)); err == nil {
-		// TODO: we technically can; this could be a feature to do if asked for.
-		if headerInFile.CarV1Offset != 0 {
-			return fmt.Errorf("cannot resume from a finalized file")
+	_, err = headerInFile.ReadFrom(internalio.NewOffsetReadSeeker(b.f, carv2.PragmaSize))
+
+	// If reading CARv2 header succeeded, and CARv1 offset in header is not zero then the file is
+	// most-likely finalized. Check padding and truncate the file to remove index.
+	// Otherwise, carry on reading the v1 payload at offset determined from b.header.
+	if err == nil && headerInFile.CarV1Offset != 0 {
+		if headerInFile.CarV1Offset != b.header.CarV1Offset {
+			// Assert that the padding on file matches the given WithCarV1Padding option.
+			gotPadding := headerInFile.CarV1Offset - carv2.PragmaSize - carv2.HeaderSize
+			wantPadding := b.header.CarV1Offset - carv2.PragmaSize - carv2.HeaderSize
+			return fmt.Errorf(
+				"cannot resume from file with mismatched CARv1 offset; "+
+					"`WithCarV1Padding` option must match the padding on file."+
+					"Expected padding value of %v but got %v", wantPadding, gotPadding,
+			)
+		} else if headerInFile.CarV1Size != 0 {
+			// If header in file contains the size of car v1, then the index is most likely present.
+			// Since we will need to re-generate the index, as the one in file is flattened, truncate
+			// the file so that the Readonly.backing has the right set of bytes to deal with.
+			// This effectively means resuming from a finalized file will wipe its index even if there
+			// are no blocks put unless the user calls finalize.
+			if err := b.f.Truncate(int64(headerInFile.CarV1Offset + headerInFile.CarV1Size)); err != nil {
+				return err
+			}
+		} else {
+			// If CARv1 size is zero, since CARv1 offset wasn't, then the CARv2 header was
+			// most-likely partially written. Since we write the header last in Finalize then the
+			// file most-likely contains the index and we cannot know where it starts, therefore
+			// can't resume.
+			return errors.New("corrupt CARv2 header; cannot resume from file")
+		}
+		// Now that CARv2 header is present on file, clear it to avoid incorrect size and offset in
+		// header in case blocksotre is closed without finalization and is resumed from.
+		if err := b.unfinalize(); err != nil {
+			return err
 		}
 	}
 
@@ -244,6 +278,11 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 	return err
 }
 
+func (b *ReadWrite) unfinalize() error {
+	_, err := new(carv2.Header).WriteTo(internalio.NewOffsetWriter(b.f, carv2.PragmaSize))
+	return err
+}
+
 func (b *ReadWrite) panicIfFinalized() {
 	if b.header.CarV1Size != 0 {
 		panic("must not use a read-write blockstore after finalizing")
@@ -291,7 +330,6 @@ func (b *ReadWrite) Finalize() error {
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
 	// TODO check if add index option is set and don't write the index then set index offset to zero.
 	// TODO see if folks need to continue reading from a finalized blockstore, if so return ReadOnly blockstore here.
 	b.header = b.header.WithCarV1Size(uint64(b.carV1Writer.Position()))

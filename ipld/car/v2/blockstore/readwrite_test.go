@@ -26,6 +26,8 @@ import (
 	"github.com/ipld/go-car/v2/internal/carv1"
 )
 
+var rng = rand.New(rand.NewSource(1413))
+
 func TestBlockstore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -54,7 +56,7 @@ func TestBlockstore(t *testing.T) {
 		cids = append(cids, b.Cid())
 
 		// try reading a random one:
-		candidate := cids[rand.Intn(len(cids))]
+		candidate := cids[rng.Intn(len(cids))]
 		if has, err := ingester.Has(candidate); !has || err != nil {
 			t.Fatalf("expected to find %s but didn't: %s", candidate, err)
 		}
@@ -291,25 +293,62 @@ func TestBlockstoreResumption(t *testing.T) {
 	require.NoError(t, err)
 
 	// For each block resume on the same file, putting blocks one at a time.
+	var wantBlockCountSoFar int
+	wantBlocks := make(map[cid.Cid]blocks.Block)
 	for {
 		b, err := r.Next()
 		if err == io.EOF {
 			break
 		}
 		require.NoError(t, err)
+		wantBlockCountSoFar++
+		wantBlocks[b.Cid()] = b
 
-		// 30% chance of subject failing (or closing file without calling Finalize).
-		// The higher this percentage the slower the test runs considering the number of blocks in the original CAR v1 test payload.
-		shouldFailAbruptly := rand.Float32() <= 0.3
-		if shouldFailAbruptly {
-			// Close off the open file and re-instantiate a new subject with resumption enabled.
-			// Note, we don't have to close the file for resumption to work.
-			// We do this to avoid resource leak during testing.
-			require.NoError(t, subject.Close())
+		// 30% chance of subject failing; more concretely: re-instantiating blockstore with the same
+		// file without calling Finalize. The higher this percentage the slower the test runs
+		// considering the number of blocks in the original CAR v1 test payload.
+		resume := rng.Float32() <= 0.3
+		// If testing resume case, then flip a coin to decide whether to finalize before blockstore
+		// re-instantiation or not. Note, both cases should work for resumption since we do not
+		// limit resumption to unfinalized files.
+		finalizeBeforeResumption := rng.Float32() <= 0.5
+		if resume {
+			if finalizeBeforeResumption {
+				require.NoError(t, subject.Finalize())
+			} else {
+				// Close off the open file and re-instantiate a new subject with resumption enabled.
+				// Note, we don't have to close the file for resumption to work.
+				// We do this to avoid resource leak during testing.
+				require.NoError(t, subject.Close())
+			}
 			subject, err = blockstore.NewReadWrite(path, r.Header.Roots)
 			require.NoError(t, err)
 		}
 		require.NoError(t, subject.Put(b))
+
+		// With 10% chance test read operations on an resumed read-write blockstore.
+		// We don't test on every put to reduce test runtime.
+		testRead := rng.Float32() <= 0.1
+		if testRead {
+			// Assert read operations on the read-write blockstore are as expected when resumed from an
+			// existing file
+			var gotBlockCountSoFar int
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			t.Cleanup(cancel)
+			keysChan, err := subject.AllKeysChan(ctx)
+			require.NoError(t, err)
+			for k := range keysChan {
+				has, err := subject.Has(k)
+				require.NoError(t, err)
+				require.True(t, has)
+				gotBlock, err := subject.Get(k)
+				require.NoError(t, err)
+				require.Equal(t, wantBlocks[k], gotBlock)
+				gotBlockCountSoFar++
+			}
+			// Assert the number of blocks in file are as expected calculated via AllKeysChan
+			require.Equal(t, wantBlockCountSoFar, gotBlockCountSoFar)
+		}
 	}
 	require.NoError(t, subject.Close())
 
@@ -358,12 +397,13 @@ func TestBlockstoreResumption(t *testing.T) {
 	require.Equal(t, wantIdx, gotIdx)
 }
 
-func TestBlockstoreResumptionFailsOnFinalizedFile(t *testing.T) {
+func TestBlockstoreResumptionIsSupportedOnFinalizedFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "readwrite-resume-finalized.car")
 	// Create an incomplete CAR v2 file with no blocks put.
 	subject, err := blockstore.NewReadWrite(path, []cid.Cid{})
 	require.NoError(t, err)
 	require.NoError(t, subject.Finalize())
-	_, err = blockstore.NewReadWrite(path, []cid.Cid{})
-	require.Errorf(t, err, "cannot resume from a finalized file")
+	subject, err = blockstore.NewReadWrite(path, []cid.Cid{})
+	t.Cleanup(func() { subject.Close() })
+	require.NoError(t, err)
 }
