@@ -21,8 +21,8 @@ var bulkPadding = make([]byte, bulkPaddingBytesSize)
 type (
 	// padding represents the number of padding bytes.
 	padding uint64
-	// Writer writes CAR v2 into a give io.Writer.
-	Writer struct {
+	// writer writes CAR v2 into a given io.Writer.
+	writer struct {
 		NodeGetter   format.NodeGetter
 		CarV1Padding uint64
 		IndexPadding uint64
@@ -31,7 +31,6 @@ type (
 		roots        []cid.Cid
 		encodedCarV1 *bytes.Buffer
 	}
-	WriteOption func(*Writer)
 )
 
 // WriteTo writes this padding to the given writer as default value bytes.
@@ -56,9 +55,9 @@ func (p padding) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-// NewWriter instantiates a new CAR v2 writer.
-func NewWriter(ctx context.Context, ng format.NodeGetter, roots []cid.Cid) *Writer {
-	return &Writer{
+// newWriter instantiates a new CAR v2 writer.
+func newWriter(ctx context.Context, ng format.NodeGetter, roots []cid.Cid) *writer {
+	return &writer{
 		NodeGetter:   ng,
 		ctx:          ctx,
 		roots:        roots,
@@ -67,7 +66,7 @@ func NewWriter(ctx context.Context, ng format.NodeGetter, roots []cid.Cid) *Writ
 }
 
 // WriteTo writes the given root CIDs according to CAR v2 specification.
-func (w *Writer) WriteTo(writer io.Writer) (n int64, err error) {
+func (w *writer) WriteTo(writer io.Writer) (n int64, err error) {
 	_, err = writer.Write(Pragma)
 	if err != nil {
 		return
@@ -113,14 +112,14 @@ func (w *Writer) WriteTo(writer io.Writer) (n int64, err error) {
 	return
 }
 
-func (w *Writer) writeHeader(writer io.Writer, carV1Len int) (int64, error) {
+func (w *writer) writeHeader(writer io.Writer, carV1Len int) (int64, error) {
 	header := NewHeader(uint64(carV1Len)).
 		WithCarV1Padding(w.CarV1Padding).
 		WithIndexPadding(w.IndexPadding)
 	return header.WriteTo(writer)
 }
 
-func (w *Writer) writeIndex(writer io.Writer, carV1 []byte) (int64, error) {
+func (w *writer) writeIndex(writer io.Writer, carV1 []byte) (int64, error) {
 	// TODO avoid recopying the bytes by refactoring index once it is integrated here.
 	// Right now we copy the bytes since index takes a writer.
 	// Consider refactoring index to make this process more efficient.
@@ -185,7 +184,7 @@ func WrapV1(src io.ReadSeeker, dst io.Writer) error {
 		return err
 	}
 
-	// Similar to the Writer API, write all components of a CARv2 to the
+	// Similar to the writer API, write all components of a CARv2 to the
 	// destination file: Pragma, Header, CARv1, Index.
 	v2Header := NewHeader(uint64(v1Size))
 	if _, err := dst.Write(Pragma); err != nil {

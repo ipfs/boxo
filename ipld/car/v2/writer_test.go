@@ -60,7 +60,7 @@ func TestPadding_WriteTo(t *testing.T) {
 func TestNewWriter(t *testing.T) {
 	dagService := dstest.Mock()
 	wantRoots := generateRootCid(t, dagService)
-	writer := NewWriter(context.Background(), dagService, wantRoots)
+	writer := newWriter(context.Background(), dagService, wantRoots)
 	assert.Equal(t, wantRoots, writer.roots)
 }
 
