@@ -52,7 +52,7 @@ func TestBlockstore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	f, err := os.Open("testdata/test.car")
+	f, err := os.Open("../testdata/sample-v1.car")
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, f.Close()) })
 	r, err := carv1.NewCarReader(f)
@@ -270,7 +270,7 @@ func (b bufferReaderAt) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func TestBlockstoreNullPadding(t *testing.T) {
-	paddedV1, err := ioutil.ReadFile("testdata/test.car")
+	paddedV1, err := ioutil.ReadFile("../testdata/sample-v1.car")
 	require.NoError(t, err)
 
 	// A sample null-padded CARv1 file.
@@ -301,7 +301,7 @@ func TestBlockstoreNullPadding(t *testing.T) {
 }
 
 func TestBlockstoreResumption(t *testing.T) {
-	v1f, err := os.Open("testdata/test.car")
+	v1f, err := os.Open("../testdata/sample-v1.car")
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, v1f.Close()) })
 	r, err := carv1.NewCarReader(v1f)

@@ -37,11 +37,6 @@ func TestReadOnly(t *testing.T) {
 	}{
 		{
 			"OpenedWithCarV1",
-			"testdata/test.car",
-			newReaderFromV1File(t, "testdata/test.car"),
-		},
-		{
-			"OpenedWithAnotherCarV1",
 			"../testdata/sample-v1.car",
 			newReaderFromV1File(t, "../testdata/sample-v1.car"),
 		},
