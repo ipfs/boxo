@@ -68,7 +68,7 @@ func WithCidDeduplication(b *ReadWrite) { // TODO should this take a bool and re
 	b.dedupCids = true
 }
 
-// NewReadWrite creates a new ReadWrite at the given path with a provided set of root CIDs and options.
+// OpenReadWrite creates a new ReadWrite at the given path with a provided set of root CIDs and options.
 //
 // ReadWrite.Finalize must be called once putting and reading blocks are no longer needed.
 // Upon calling ReadWrite.Finalize the CAR v2 header and index are written out onto the file and the
@@ -85,7 +85,7 @@ func WithCidDeduplication(b *ReadWrite) { // TODO should this take a bool and re
 // returned successfully.
 //
 // Resumption only works on files that were created by a previous instance of a ReadWrite
-// blockstore. This means a file created as a result of a successful call to NewReadWrite can be
+// blockstore. This means a file created as a result of a successful call to OpenReadWrite can be
 // resumed from as long as write operations such as ReadWrite.Put, ReadWrite.PutMany returned
 // successfully. On resumption the roots argument and WithCarV1Padding option must match the
 // previous instantiation of ReadWrite blockstore that created the file. More explicitly, the file
@@ -102,7 +102,7 @@ func WithCidDeduplication(b *ReadWrite) { // TODO should this take a bool and re
 //
 // Resuming from finalized files is allowed. However, resumption will regenerate the index
 // regardless by scanning every existing block in file.
-func NewReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, error) {
+func OpenReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, error) {
 	// TODO: enable deduplication by default now that resumption is automatically attempted.
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666) // TODO: Should the user be able to configure FileMode permissions?
 	if err != nil {

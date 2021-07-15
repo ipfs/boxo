@@ -19,9 +19,8 @@ type Reader struct {
 	carv2Closer io.Closer
 }
 
-// NewReaderMmap is a wrapper for NewReader which opens the file at path with
-// x/exp/mmap.
-func NewReaderMmap(path string) (*Reader, error) {
+// OpenReader is a wrapper for NewReader which opens the file at path.
+func OpenReader(path string) (*Reader, error) {
 	f, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
@@ -102,7 +101,7 @@ func (r *Reader) IndexReader() io.Reader {
 	return internalio.NewOffsetReadSeeker(r.r, int64(r.Header.IndexOffset))
 }
 
-// Close closes the underlying reader if it was opened by NewReaderMmap.
+// Close closes the underlying reader if it was opened by OpenReader.
 func (r *Reader) Close() error {
 	if r.carv2Closer != nil {
 		return r.carv2Closer.Close()

@@ -21,7 +21,7 @@ func ExampleWrapV1File() {
 	}
 
 	// Open our new CARv2 file and show some info about it.
-	cr, err := carv2.NewReaderMmap(dst)
+	cr, err := carv2.OpenReader(dst)
 	if err != nil {
 		panic(err)
 	}

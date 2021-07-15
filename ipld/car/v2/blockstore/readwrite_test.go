@@ -39,7 +39,7 @@ func TestBlockstore(t *testing.T) {
 	require.NoError(t, err)
 
 	path := filepath.Join(t.TempDir(), "readwrite.car")
-	ingester, err := blockstore.NewReadWrite(path, r.Header.Roots)
+	ingester, err := blockstore.OpenReadWrite(path, r.Header.Roots)
 	require.NoError(t, err)
 	t.Cleanup(func() { ingester.Finalize() })
 
@@ -102,13 +102,13 @@ func TestBlockstore(t *testing.T) {
 
 func TestBlockstorePutSameHashes(t *testing.T) {
 	tdir := t.TempDir()
-	wbs, err := blockstore.NewReadWrite(
+	wbs, err := blockstore.OpenReadWrite(
 		filepath.Join(tdir, "readwrite.car"), nil,
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { wbs.Finalize() })
 
-	wbsd, err := blockstore.NewReadWrite(
+	wbsd, err := blockstore.OpenReadWrite(
 		filepath.Join(tdir, "readwrite-dedup.car"), nil,
 		blockstore.WithCidDeduplication,
 	)
@@ -202,7 +202,7 @@ func TestBlockstorePutSameHashes(t *testing.T) {
 }
 
 func TestBlockstoreConcurrentUse(t *testing.T) {
-	wbs, err := blockstore.NewReadWrite(filepath.Join(t.TempDir(), "readwrite.car"), nil)
+	wbs, err := blockstore.OpenReadWrite(filepath.Join(t.TempDir(), "readwrite.car"), nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { wbs.Finalize() })
 
@@ -289,7 +289,7 @@ func TestBlockstoreResumption(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "readwrite-resume.car")
 	// Create an incomplete CAR v2 file with no blocks put.
-	subject, err := blockstore.NewReadWrite(path, r.Header.Roots)
+	subject, err := blockstore.OpenReadWrite(path, r.Header.Roots)
 	require.NoError(t, err)
 
 	// For each block resume on the same file, putting blocks one at a time.
@@ -321,7 +321,7 @@ func TestBlockstoreResumption(t *testing.T) {
 				// We do this to avoid resource leak during testing.
 				require.NoError(t, subject.Close())
 			}
-			subject, err = blockstore.NewReadWrite(path, r.Header.Roots)
+			subject, err = blockstore.OpenReadWrite(path, r.Header.Roots)
 			require.NoError(t, err)
 		}
 		require.NoError(t, subject.Put(b))
@@ -353,7 +353,7 @@ func TestBlockstoreResumption(t *testing.T) {
 	require.NoError(t, subject.Close())
 
 	// Finalize the blockstore to complete partially written CAR v2 file.
-	subject, err = blockstore.NewReadWrite(path, r.Header.Roots)
+	subject, err = blockstore.OpenReadWrite(path, r.Header.Roots)
 	require.NoError(t, err)
 	require.NoError(t, subject.Finalize())
 
@@ -400,10 +400,10 @@ func TestBlockstoreResumption(t *testing.T) {
 func TestBlockstoreResumptionIsSupportedOnFinalizedFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "readwrite-resume-finalized.car")
 	// Create an incomplete CAR v2 file with no blocks put.
-	subject, err := blockstore.NewReadWrite(path, []cid.Cid{})
+	subject, err := blockstore.OpenReadWrite(path, []cid.Cid{})
 	require.NoError(t, err)
 	require.NoError(t, subject.Finalize())
-	subject, err = blockstore.NewReadWrite(path, []cid.Cid{})
+	subject, err = blockstore.OpenReadWrite(path, []cid.Cid{})
 	t.Cleanup(func() { subject.Close() })
 	require.NoError(t, err)
 }

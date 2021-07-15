@@ -14,5 +14,5 @@
 // panic if used. To continue reading the blocks users are encouraged to use ReadOnly blockstore
 // instantiated from the same file path using OpenReadOnly.
 // A user may resume reading/writing from files produced by an instance of ReadWrite blockstore. The
-// resumption is attempted automatically, if the path passed to NewReadWrite exists.
+// resumption is attempted automatically, if the path passed to OpenReadWrite exists.
 package blockstore
