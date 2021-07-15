@@ -6,6 +6,8 @@ import (
 	"os"
 	"sync"
 
+	internalio "github.com/ipld/go-car/v2/internal/io"
+
 	"github.com/ipld/go-car/v2/index"
 	"github.com/multiformats/go-multicodec"
 
@@ -15,20 +17,11 @@ import (
 	"github.com/ipld/go-car/v2/internal/carv1"
 )
 
-type readSeekerPlusByte struct {
-	io.ReadSeeker
-}
-
-func (r readSeekerPlusByte) ReadByte() (byte, error) {
-	var p [1]byte
-	_, err := io.ReadFull(r, p[:])
-	return p[0], err
-}
-
 // GenerateIndex generates index for a given car in v1 format.
 // The index can be stored using index.Save into a file or serialized using index.WriteTo.
-func GenerateIndex(v1 io.ReadSeeker) (index.Index, error) {
-	header, err := carv1.ReadHeader(v1)
+func GenerateIndex(v1r io.Reader) (index.Index, error) {
+	reader := internalio.ToByteReadSeeker(v1r)
+	header, err := carv1.ReadHeader(reader)
 	if err != nil {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
@@ -37,28 +30,26 @@ func GenerateIndex(v1 io.ReadSeeker) (index.Index, error) {
 		return nil, fmt.Errorf("expected version to be 1, got %v", header.Version)
 	}
 
-	offset, err := carv1.HeaderSize(header)
-	if err != nil {
-		return nil, err
-	}
-
 	idx, err := index.New(multicodec.CarIndexSorted)
 	if err != nil {
 		return nil, err
 	}
 	records := make([]index.Record, 0)
 
-	// Seek to the first frame.
-	// Record the start of each frame, which we need for the index records.
-	frameOffset := int64(0)
-	if frameOffset, err = v1.Seek(int64(offset), io.SeekStart); err != nil {
+	// Record the start of each frame, with first frame starring from current position in the
+	// reader, i.e. right after the header, since we have only read the header so far.
+	var frameOffset int64
+
+	// The Seek call below is equivalent to getting the reader.offset directly.
+	// We get it through Seek to only depend on APIs of a typical io.Seeker.
+	// This would also reduce refactoring in case the utility reader is moved.
+	if frameOffset, err = reader.Seek(0, io.SeekCurrent); err != nil {
 		return nil, err
 	}
 
 	for {
-		// Grab the length of the frame.
-		// Note that ReadUvarint wants a ByteReader.
-		length, err := varint.ReadUvarint(readSeekerPlusByte{v1})
+		// Read the frame's length.
+		frameLen, err := varint.ReadUvarint(reader)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -69,12 +60,12 @@ func GenerateIndex(v1 io.ReadSeeker) (index.Index, error) {
 		// Null padding; treat zero-length frames as an EOF.
 		// They don't contain a CID nor block, so they're not useful.
 		// TODO: Amend the CARv1 spec to explicitly allow this.
-		if length == 0 {
+		if frameLen == 0 {
 			break
 		}
 
-		// Grab the CID.
-		n, c, err := cid.CidFromReader(v1)
+		// Read the CID.
+		cidLen, c, err := cid.CidFromReader(reader)
 		if err != nil {
 			return nil, err
 		}
@@ -82,7 +73,8 @@ func GenerateIndex(v1 io.ReadSeeker) (index.Index, error) {
 
 		// Seek to the next frame by skipping the block.
 		// The frame length includes the CID, so subtract it.
-		if frameOffset, err = v1.Seek(int64(length)-int64(n), io.SeekCurrent); err != nil {
+		remainingFrameLen := int64(frameLen) - int64(cidLen)
+		if frameOffset, err = reader.Seek(remainingFrameLen, io.SeekCurrent); err != nil {
 			return nil, err
 		}
 	}
@@ -134,7 +126,7 @@ func ReadOrGenerateIndex(rs io.ReadSeeker) (index.Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Seek to the begining, since reading the version changes the reader's offset.
+	// Seek to the beginning, since reading the version changes the reader's offset.
 	if _, err := rs.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
