@@ -24,7 +24,7 @@ import (
 
 var _ blockstore.Blockstore = (*ReadOnly)(nil)
 
-// ReadOnly provides a read-only Car Block Store.
+// ReadOnly provides a read-only CAR Block Store.
 type ReadOnly struct {
 	// mu allows ReadWrite to be safe for concurrent use.
 	// It's in ReadOnly so that read operations also grab read locks,
@@ -41,6 +41,35 @@ type ReadOnly struct {
 
 	// If we called carv2.NewReaderMmap, remember to close it too.
 	carv2Closer io.Closer
+
+	ropts carv2.ReadOptions
+}
+
+// UseWholeCIDs is a read option which makes a CAR blockstore identify blocks by
+// whole CIDs, and not just their multihashes. The default is to use
+// multihashes, which matches the current semantics of go-ipfs-blockstore v1.
+//
+// Enabling this option affects a number of methods, including read-only ones:
+//
+// • Get, Has, and HasSize will only return a block
+// only if the entire CID is present in the CAR file.
+//
+// • DeleteBlock will delete a block only when the entire CID matches.
+//
+// • AllKeysChan will return the original whole CIDs, instead of with their
+// multicodec set to "raw" to just provide multihashes.
+//
+// • If AllowDuplicatePuts isn't set,
+// Put and PutMany will deduplicate by the whole CID,
+// allowing different CIDs with equal multihashes.
+//
+// Note that this option only affects the blockstore, and is ignored by the root
+// go-car/v2 package.
+func UseWholeCIDs(enable bool) carv2.ReadOption {
+	return func(o *carv2.ReadOptions) {
+		// TODO: update methods like Get, Has, and AllKeysChan to obey this.
+		o.BlockstoreUseWholeCIDs = enable
+	}
 }
 
 // NewReadOnly creates a new ReadOnly blockstore from the backing with a optional index as idx.
@@ -52,7 +81,12 @@ type ReadOnly struct {
 // * For a CAR v2 backing an index is only generated if Header.HasIndex returns false.
 //
 // There is no need to call ReadOnly.Close on instances returned by this function.
-func NewReadOnly(backing io.ReaderAt, idx index.Index) (*ReadOnly, error) {
+func NewReadOnly(backing io.ReaderAt, idx index.Index, opts ...carv2.ReadOption) (*ReadOnly, error) {
+	b := &ReadOnly{}
+	for _, opt := range opts {
+		opt(&b.ropts)
+	}
+
 	version, err := readVersion(backing)
 	if err != nil {
 		return nil, err
@@ -60,13 +94,15 @@ func NewReadOnly(backing io.ReaderAt, idx index.Index) (*ReadOnly, error) {
 	switch version {
 	case 1:
 		if idx == nil {
-			if idx, err = generateIndex(backing); err != nil {
+			if idx, err = generateIndex(backing, opts...); err != nil {
 				return nil, err
 			}
 		}
-		return &ReadOnly{backing: backing, idx: idx}, nil
+		b.backing = backing
+		b.idx = idx
+		return b, nil
 	case 2:
-		v2r, err := carv2.NewReader(backing)
+		v2r, err := carv2.NewReader(backing, opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -76,11 +112,13 @@ func NewReadOnly(backing io.ReaderAt, idx index.Index) (*ReadOnly, error) {
 				if err != nil {
 					return nil, err
 				}
-			} else if idx, err = generateIndex(v2r.CarV1Reader()); err != nil {
+			} else if idx, err = generateIndex(v2r.CarV1Reader(), opts...); err != nil {
 				return nil, err
 			}
 		}
-		return &ReadOnly{backing: v2r.CarV1Reader(), idx: idx}, nil
+		b.backing = v2r.CarV1Reader()
+		b.idx = idx
+		return b, nil
 	default:
 		return nil, fmt.Errorf("unsupported car version: %v", version)
 	}
@@ -97,7 +135,7 @@ func readVersion(at io.ReaderAt) (uint64, error) {
 	return carv2.ReadVersion(rr)
 }
 
-func generateIndex(at io.ReaderAt) (index.Index, error) {
+func generateIndex(at io.ReaderAt, opts ...carv2.ReadOption) (index.Index, error) {
 	var rs io.ReadSeeker
 	switch r := at.(type) {
 	case io.ReadSeeker:
@@ -105,19 +143,19 @@ func generateIndex(at io.ReaderAt) (index.Index, error) {
 	default:
 		rs = internalio.NewOffsetReadSeeker(r, 0)
 	}
-	return carv2.GenerateIndex(rs)
+	return carv2.GenerateIndex(rs, opts...)
 }
 
 // OpenReadOnly opens a read-only blockstore from a CAR file (either v1 or v2), generating an index if it does not exist.
 // Note, the generated index if the index does not exist is ephemeral and only stored in memory.
 // See car.GenerateIndex and Index.Attach for persisting index onto a CAR file.
-func OpenReadOnly(path string) (*ReadOnly, error) {
+func OpenReadOnly(path string, opts ...carv2.ReadOption) (*ReadOnly, error) {
 	f, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
 	}
 
-	robs, err := NewReadOnly(f, nil)
+	robs, err := NewReadOnly(f, nil, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +229,7 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 		return -1, err
 	}
 	rdr := internalio.NewOffsetReadSeeker(b.backing, int64(idx))
-	frameLen, err := varint.ReadUvarint(rdr)
+	sectionLen, err := varint.ReadUvarint(rdr)
 	if err != nil {
 		return -1, blockstore.ErrNotFound
 	}
@@ -202,7 +240,7 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 	if !readCid.Equals(key) {
 		return -1, blockstore.ErrNotFound
 	}
-	return int(frameLen) - cidLen, err
+	return int(sectionLen) - cidLen, err
 }
 
 // Put is not supported and always returns an error.
@@ -249,9 +287,14 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 				return // TODO: log this error
 			}
 
-			// Null padding; treat it as EOF.
+			// Null padding; by default it's an error.
 			if length == 0 {
-				break // TODO make this an optional behaviour; by default we should error
+				if b.ropts.ZeroLegthSectionAsEOF {
+					break
+				} else {
+					return // TODO: log this error
+					// return fmt.Errorf("carv1 null padding not allowed by default; see WithZeroLegthSectionAsEOF")
+				}
 			}
 
 			thisItemForNxt := rdr.Offset()

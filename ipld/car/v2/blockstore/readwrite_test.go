@@ -122,15 +122,19 @@ func TestBlockstore(t *testing.T) {
 
 func TestBlockstorePutSameHashes(t *testing.T) {
 	tdir := t.TempDir()
+
+	// wbs allows duplicate puts.
 	wbs, err := blockstore.OpenReadWrite(
 		filepath.Join(tdir, "readwrite.car"), nil,
+		blockstore.AllowDuplicatePuts(true),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { wbs.Finalize() })
 
+	// wbs deduplicates puts by CID.
 	wbsd, err := blockstore.OpenReadWrite(
 		filepath.Join(tdir, "readwrite-dedup.car"), nil,
-		blockstore.WithCidDeduplication,
+		blockstore.UseWholeCIDs(true),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { wbsd.Finalize() })
@@ -276,7 +280,7 @@ func TestBlockstoreNullPadding(t *testing.T) {
 	// A sample null-padded CARv1 file.
 	paddedV1 = append(paddedV1, make([]byte, 2048)...)
 
-	rbs, err := blockstore.NewReadOnly(bufferReaderAt(paddedV1), nil)
+	rbs, err := blockstore.NewReadOnly(bufferReaderAt(paddedV1), nil, carv2.ZeroLegthSectionAsEOF)
 	require.NoError(t, err)
 
 	roots, err := rbs.Roots()
@@ -483,8 +487,8 @@ func TestReadWriteWithPaddingWorksAsExpected(t *testing.T) {
 	subject, err := blockstore.OpenReadWrite(
 		path,
 		WantRoots,
-		blockstore.WithCarV1Padding(wantCarV1Padding),
-		blockstore.WithIndexPadding(wantIndexPadding))
+		carv2.UseCarV1Padding(wantCarV1Padding),
+		carv2.UseIndexPadding(wantIndexPadding))
 	require.NoError(t, err)
 	t.Cleanup(func() { subject.Close() })
 	require.NoError(t, subject.Put(oneTestBlockWithCidV1))
@@ -544,7 +548,7 @@ func TestReadWriteResumptionFromFileWithDifferentCarV1PaddingIsError(t *testing.
 	subject, err := blockstore.OpenReadWrite(
 		path,
 		WantRoots,
-		blockstore.WithCarV1Padding(1413))
+		carv2.UseCarV1Padding(1413))
 	require.NoError(t, err)
 	t.Cleanup(func() { subject.Close() })
 	require.NoError(t, subject.Put(oneTestBlockWithCidV1))
@@ -553,7 +557,7 @@ func TestReadWriteResumptionFromFileWithDifferentCarV1PaddingIsError(t *testing.
 	resumingSubject, err := blockstore.OpenReadWrite(
 		path,
 		WantRoots,
-		blockstore.WithCarV1Padding(1314))
+		carv2.UseCarV1Padding(1314))
 	require.EqualError(t, err, "cannot resume from file with mismatched CARv1 offset; "+
 		"`WithCarV1Padding` option must match the padding on file. "+
 		"Expected padding value of 1413 but got 1314")

@@ -18,7 +18,12 @@ import (
 
 // GenerateIndex generates index for a given car in v1 format.
 // The index can be stored using index.Save into a file or serialized using index.WriteTo.
-func GenerateIndex(v1r io.Reader) (index.Index, error) {
+func GenerateIndex(v1r io.Reader, opts ...ReadOption) (index.Index, error) {
+	var o ReadOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	reader := internalio.ToByteReadSeeker(v1r)
 	header, err := carv1.ReadHeader(reader)
 	if err != nil {
@@ -35,20 +40,20 @@ func GenerateIndex(v1r io.Reader) (index.Index, error) {
 	}
 	records := make([]index.Record, 0)
 
-	// Record the start of each frame, with first frame starring from current position in the
+	// Record the start of each section, with first section starring from current position in the
 	// reader, i.e. right after the header, since we have only read the header so far.
-	var frameOffset int64
+	var sectionOffset int64
 
 	// The Seek call below is equivalent to getting the reader.offset directly.
 	// We get it through Seek to only depend on APIs of a typical io.Seeker.
 	// This would also reduce refactoring in case the utility reader is moved.
-	if frameOffset, err = reader.Seek(0, io.SeekCurrent); err != nil {
+	if sectionOffset, err = reader.Seek(0, io.SeekCurrent); err != nil {
 		return nil, err
 	}
 
 	for {
-		// Read the frame's length.
-		frameLen, err := varint.ReadUvarint(reader)
+		// Read the section's length.
+		sectionLen, err := varint.ReadUvarint(reader)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -56,11 +61,13 @@ func GenerateIndex(v1r io.Reader) (index.Index, error) {
 			return nil, err
 		}
 
-		// Null padding; treat zero-length frames as an EOF.
-		// They don't contain a CID nor block, so they're not useful.
-		// TODO: Amend the CARv1 spec to explicitly allow this.
-		if frameLen == 0 {
-			break
+		// Null padding; by default it's an error.
+		if sectionLen == 0 {
+			if o.ZeroLegthSectionAsEOF {
+				break
+			} else {
+				return nil, fmt.Errorf("carv1 null padding not allowed by default; see ZeroLegthSectionAsEOF")
+			}
 		}
 
 		// Read the CID.
@@ -68,12 +75,12 @@ func GenerateIndex(v1r io.Reader) (index.Index, error) {
 		if err != nil {
 			return nil, err
 		}
-		records = append(records, index.Record{Cid: c, Idx: uint64(frameOffset)})
+		records = append(records, index.Record{Cid: c, Idx: uint64(sectionOffset)})
 
-		// Seek to the next frame by skipping the block.
-		// The frame length includes the CID, so subtract it.
-		remainingFrameLen := int64(frameLen) - int64(cidLen)
-		if frameOffset, err = reader.Seek(remainingFrameLen, io.SeekCurrent); err != nil {
+		// Seek to the next section by skipping the block.
+		// The section length includes the CID, so subtract it.
+		remainingSectionLen := int64(sectionLen) - int64(cidLen)
+		if sectionOffset, err = reader.Seek(remainingSectionLen, io.SeekCurrent); err != nil {
 			return nil, err
 		}
 	}

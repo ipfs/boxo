@@ -20,13 +20,13 @@ type Reader struct {
 }
 
 // OpenReader is a wrapper for NewReader which opens the file at path.
-func OpenReader(path string) (*Reader, error) {
+func OpenReader(path string, opts ...ReadOption) (*Reader, error) {
 	f, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
 	}
 
-	r, err := NewReader(f)
+	r, err := NewReader(f, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func OpenReader(path string) (*Reader, error) {
 // NewReader constructs a new reader that reads CAR v2 from the given r.
 // Upon instantiation, the reader inspects the payload by reading the pragma and will return
 // an error if the pragma does not represent a CAR v2.
-func NewReader(r io.ReaderAt) (*Reader, error) {
+func NewReader(r io.ReaderAt, opts ...ReadOption) (*Reader, error) {
 	cr := &Reader{
 		r: r,
 	}

@@ -39,33 +39,19 @@ type ReadWrite struct {
 	idx    *insertionIndex
 	header carv2.Header
 
-	dedupCids bool
+	wopts carv2.WriteOptions
 }
 
-// TODO consider exposing interfaces
-type Option func(*ReadWrite) // TODO consider unifying with writer options
-
-// WithCarV1Padding sets the padding to be added between CAR v2 header and its data payload on Finalize.
-func WithCarV1Padding(p uint64) Option {
-	return func(b *ReadWrite) {
-		b.header = b.header.WithCarV1Padding(p)
-	}
-}
-
-// WithIndexPadding sets the padding between data payload and its index on Finalize.
-func WithIndexPadding(p uint64) Option {
-	return func(b *ReadWrite) {
-		b.header = b.header.WithIndexPadding(p)
-	}
-}
-
-// WithCidDeduplication makes Put calls ignore blocks if the blockstore already
-// has the exact same CID.
-// This can help avoid redundancy in a CARv1's list of CID-Block pairs.
+// AllowDuplicatePuts is a write option which makes a CAR blockstore not
+// deduplicate blocks in Put and PutMany. The default is to deduplicate,
+// which matches the current semantics of go-ipfs-blockstore v1.
 //
-// Note that this compares whole CIDs, not just multihashes.
-func WithCidDeduplication(b *ReadWrite) { // TODO should this take a bool and return an option to allow disabling dedupliation?
-	b.dedupCids = true
+// Note that this option only affects the blockstore, and is ignored by the root
+// go-car/v2 package.
+func AllowDuplicatePuts(allow bool) carv2.WriteOption {
+	return func(o *carv2.WriteOptions) {
+		o.BlockstoreAllowDuplicatePuts = allow
+	}
 }
 
 // OpenReadWrite creates a new ReadWrite at the given path with a provided set of root CIDs and options.
@@ -80,7 +66,7 @@ func WithCidDeduplication(b *ReadWrite) { // TODO should this take a bool and re
 // header (i.e. the inner CAR v1 header) onto the file before returning.
 //
 // When the given path already exists, the blockstore will attempt to resume from it.
-// On resumption the existing data frames in file are re-indexed, allowing the caller to continue
+// On resumption the existing data sections in file are re-indexed, allowing the caller to continue
 // putting any remaining blocks without having to re-ingest blocks for which previous ReadWrite.Put
 // returned successfully.
 //
@@ -93,7 +79,7 @@ func WithCidDeduplication(b *ReadWrite) { // TODO should this take a bool and re
 //   1. start with a complete CAR v2 car.Pragma.
 //   2. contain a complete CAR v1 data header with root CIDs matching the CIDs passed to the
 //      constructor, starting at offset optionally padded by WithCarV1Padding, followed by zero or
-//      more complete data frames. If any corrupt data frames are present the resumption will fail.
+//      more complete data sections. If any corrupt data sections are present the resumption will fail.
 //      Note, if set previously, the blockstore must use the same WithCarV1Padding option as before,
 //      since this option is used to locate the CAR v1 data payload.
 //
@@ -102,7 +88,7 @@ func WithCidDeduplication(b *ReadWrite) { // TODO should this take a bool and re
 //
 // Resuming from finalized files is allowed. However, resumption will regenerate the index
 // regardless by scanning every existing block in file.
-func OpenReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, error) {
+func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.ReadWriteOption) (*ReadWrite, error) {
 	// TODO: enable deduplication by default now that resumption is automatically attempted.
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666) // TODO: Should the user be able to configure FileMode permissions?
 	if err != nil {
@@ -129,13 +115,27 @@ func OpenReadWrite(path string, roots []cid.Cid, opts ...Option) (*ReadWrite, er
 		idx:    newInsertionIndex(),
 		header: carv2.NewHeader(0),
 	}
+
 	for _, opt := range opts {
-		opt(rwbs)
+		switch opt := opt.(type) {
+		case carv2.ReadOption:
+			opt(&rwbs.ropts)
+		case carv2.WriteOption:
+			opt(&rwbs.wopts)
+		}
+	}
+	if p := rwbs.wopts.CarV1Padding; p > 0 {
+		rwbs.header = rwbs.header.WithCarV1Padding(p)
+	}
+	if p := rwbs.wopts.IndexPadding; p > 0 {
+		rwbs.header = rwbs.header.WithIndexPadding(p)
 	}
 
 	rwbs.carV1Writer = internalio.NewOffsetWriter(rwbs.f, int64(rwbs.header.CarV1Offset))
 	v1r := internalio.NewOffsetReadSeeker(rwbs.f, int64(rwbs.header.CarV1Offset))
-	rwbs.ReadOnly = ReadOnly{backing: v1r, idx: rwbs.idx, carv2Closer: rwbs.f}
+	rwbs.ReadOnly.backing = v1r
+	rwbs.ReadOnly.idx = rwbs.idx
+	rwbs.ReadOnly.carv2Closer = rwbs.f
 
 	if resume {
 		if err = rwbs.resumeWithRoots(roots); err != nil {
@@ -237,13 +237,13 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 	if err != nil {
 		return err
 	}
-	frameOffset := int64(0)
-	if frameOffset, err = v1r.Seek(int64(offset), io.SeekStart); err != nil {
+	sectionOffset := int64(0)
+	if sectionOffset, err = v1r.Seek(int64(offset), io.SeekStart); err != nil {
 		return err
 	}
 
 	for {
-		// Grab the length of the frame.
+		// Grab the length of the section.
 		// Note that ReadUvarint wants a ByteReader.
 		length, err := varint.ReadUvarint(v1r)
 		if err != nil {
@@ -253,10 +253,13 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 			return err
 		}
 
-		// Null padding; treat zero-length frames as an EOF.
-		// They don't contain a CID nor block, so they're not useful.
+		// Null padding; by default it's an error.
 		if length == 0 {
-			break // TODO This behaviour should be an option, not default. By default we should error. Hook this up to a write option
+			if b.ropts.ZeroLegthSectionAsEOF {
+				break
+			} else {
+				return fmt.Errorf("carv1 null padding not allowed by default; see WithZeroLegthSectionAsEOF")
+			}
 		}
 
 		// Grab the CID.
@@ -264,16 +267,16 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 		if err != nil {
 			return err
 		}
-		b.idx.insertNoReplace(c, uint64(frameOffset))
+		b.idx.insertNoReplace(c, uint64(sectionOffset))
 
-		// Seek to the next frame by skipping the block.
-		// The frame length includes the CID, so subtract it.
-		if frameOffset, err = v1r.Seek(int64(length)-int64(n), io.SeekCurrent); err != nil {
+		// Seek to the next section by skipping the block.
+		// The section length includes the CID, so subtract it.
+		if sectionOffset, err = v1r.Seek(int64(length)-int64(n), io.SeekCurrent); err != nil {
 			return err
 		}
 	}
 	// Seek to the end of last skipped block where the writer should resume writing.
-	_, err = b.carV1Writer.Seek(frameOffset, io.SeekStart)
+	_, err = b.carV1Writer.Seek(sectionOffset, io.SeekStart)
 	return err
 }
 
@@ -304,8 +307,17 @@ func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 
 	for _, bl := range blks {
 		c := bl.Cid()
-		if b.dedupCids && b.idx.hasExactCID(c) {
-			continue
+
+		if !b.wopts.BlockstoreAllowDuplicatePuts {
+			if b.ropts.BlockstoreUseWholeCIDs && b.idx.hasExactCID(c) {
+				continue // deduplicated by CID
+			}
+			if !b.ropts.BlockstoreUseWholeCIDs {
+				_, err := b.idx.Get(c)
+				if err == nil {
+					continue // deduplicated by hash
+				}
+			}
 		}
 
 		n := uint64(b.carV1Writer.Position())
