@@ -12,7 +12,7 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
-	dag "github.com/ipfs/go-merkledag"
+	"github.com/ipfs/go-merkledag"
 	dstest "github.com/ipfs/go-merkledag/test"
 )
 
@@ -26,18 +26,18 @@ func assertAddNodes(t *testing.T, ds format.DAGService, nds ...format.Node) {
 
 func TestRoundtrip(t *testing.T) {
 	dserv := dstest.Mock()
-	a := dag.NewRawNode([]byte("aaaa"))
-	b := dag.NewRawNode([]byte("bbbb"))
-	c := dag.NewRawNode([]byte("cccc"))
+	a := merkledag.NewRawNode([]byte("aaaa"))
+	b := merkledag.NewRawNode([]byte("bbbb"))
+	c := merkledag.NewRawNode([]byte("cccc"))
 
-	nd1 := &dag.ProtoNode{}
+	nd1 := &merkledag.ProtoNode{}
 	nd1.AddNodeLink("cat", a)
 
-	nd2 := &dag.ProtoNode{}
+	nd2 := &merkledag.ProtoNode{}
 	nd2.AddNodeLink("first", nd1)
 	nd2.AddNodeLink("dog", b)
 
-	nd3 := &dag.ProtoNode{}
+	nd3 := &merkledag.ProtoNode{}
 	nd3.AddNodeLink("second", nd2)
 	nd3.AddNodeLink("bear", c)
 
@@ -233,8 +233,8 @@ func TestBadHeaders(t *testing.T) {
 }
 
 func TestCarHeaderMatchess(t *testing.T) {
-	oneCid := dag.NewRawNode([]byte("fish")).Cid()
-	anotherCid := dag.NewRawNode([]byte("lobster")).Cid()
+	oneCid := merkledag.NewRawNode([]byte("fish")).Cid()
+	anotherCid := merkledag.NewRawNode([]byte("lobster")).Cid()
 	tests := []struct {
 		name  string
 		one   CarHeader

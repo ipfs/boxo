@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
-	dag "github.com/ipfs/go-merkledag"
+	"github.com/ipfs/go-merkledag"
 	dstest "github.com/ipfs/go-merkledag/test"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
@@ -28,18 +28,18 @@ func assertAddNodes(t *testing.T, ds format.DAGService, nds ...format.Node) {
 
 func TestRoundtrip(t *testing.T) {
 	dserv := dstest.Mock()
-	a := dag.NewRawNode([]byte("aaaa"))
-	b := dag.NewRawNode([]byte("bbbb"))
-	c := dag.NewRawNode([]byte("cccc"))
+	a := merkledag.NewRawNode([]byte("aaaa"))
+	b := merkledag.NewRawNode([]byte("bbbb"))
+	c := merkledag.NewRawNode([]byte("cccc"))
 
-	nd1 := &dag.ProtoNode{}
+	nd1 := &merkledag.ProtoNode{}
 	nd1.AddNodeLink("cat", a)
 
-	nd2 := &dag.ProtoNode{}
+	nd2 := &merkledag.ProtoNode{}
 	nd2.AddNodeLink("first", nd1)
 	nd2.AddNodeLink("dog", b)
 
-	nd3 := &dag.ProtoNode{}
+	nd3 := &merkledag.ProtoNode{}
 	nd3.AddNodeLink("second", nd2)
 	nd3.AddNodeLink("bear", c)
 
@@ -80,20 +80,20 @@ func TestRoundtrip(t *testing.T) {
 func TestRoundtripSelective(t *testing.T) {
 	sourceBserv := dstest.Bserv()
 	sourceBs := sourceBserv.Blockstore()
-	dserv := dag.NewDAGService(sourceBserv)
-	a := dag.NewRawNode([]byte("aaaa"))
-	b := dag.NewRawNode([]byte("bbbb"))
-	c := dag.NewRawNode([]byte("cccc"))
+	dserv := merkledag.NewDAGService(sourceBserv)
+	a := merkledag.NewRawNode([]byte("aaaa"))
+	b := merkledag.NewRawNode([]byte("bbbb"))
+	c := merkledag.NewRawNode([]byte("cccc"))
 
-	nd1 := &dag.ProtoNode{}
+	nd1 := &merkledag.ProtoNode{}
 	nd1.AddNodeLink("cat", a)
 
-	nd2 := &dag.ProtoNode{}
+	nd2 := &merkledag.ProtoNode{}
 	nd2.AddNodeLink("first", nd1)
 	nd2.AddNodeLink("dog", b)
 	nd2.AddNodeLink("repeat", nd1)
 
-	nd3 := &dag.ProtoNode{}
+	nd3 := &merkledag.ProtoNode{}
 	nd3.AddNodeLink("second", nd2)
 	nd3.AddNodeLink("bear", c)
 
@@ -106,7 +106,7 @@ func TestRoundtripSelective(t *testing.T) {
 	// this selector starts at n3, and traverses a link at index 1 (nd2, the second link, zero indexed)
 	// it then recursively traverses all of its children
 	// the only node skipped is 'c' -- link at index 0 immediately below nd3
-	// the purpose is simply to show we are not writing the entire dag underneath
+	// the purpose is simply to show we are not writing the entire merkledag underneath
 	// nd3
 	selector := ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
 		efsb.Insert("Links",

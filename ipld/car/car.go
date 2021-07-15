@@ -10,7 +10,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
-	dag "github.com/ipfs/go-merkledag"
+	"github.com/ipfs/go-merkledag"
 
 	util "github.com/ipld/go-car/util"
 )
@@ -58,7 +58,7 @@ func WriteCarWithWalker(ctx context.Context, ds format.NodeGetter, roots []cid.C
 	cw := &carWriter{ds: ds, w: w, walk: walk}
 	seen := cid.NewSet()
 	for _, r := range roots {
-		if err := dag.Walk(ctx, cw.enumGetLinks, r, seen.Visit); err != nil {
+		if err := merkledag.Walk(ctx, cw.enumGetLinks, r, seen.Visit); err != nil {
 			return err
 		}
 	}

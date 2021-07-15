@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	dag "github.com/ipfs/go-merkledag"
+	"github.com/ipfs/go-merkledag"
 
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
@@ -29,9 +29,9 @@ import (
 )
 
 var (
-	rng              = rand.New(rand.NewSource(1413))
-	oneTestBlock     = dag.NewRawNode([]byte("fish")).Block
-	anotherTestBlock = dag.NewRawNode([]byte("barreleye")).Block
+	rng                       = rand.New(rand.NewSource(1413))
+	oneTestBlockWithCidV1     = merkledag.NewRawNode([]byte("fish")).Block
+	anotherTestBlockWithCidV0 = blocks.NewBlock([]byte("barreleye"))
 )
 
 func TestBlockstore(t *testing.T) {
@@ -415,8 +415,8 @@ func TestBlockstoreResumptionIsSupportedOnFinalizedFile(t *testing.T) {
 }
 
 func TestReadWritePanicsOnlyWhenFinalized(t *testing.T) {
-	oneTestBlockCid := oneTestBlock.Cid()
-	anotherTestBlockCid := anotherTestBlock.Cid()
+	oneTestBlockCid := oneTestBlockWithCidV1.Cid()
+	anotherTestBlockCid := anotherTestBlockWithCidV0.Cid()
 	wantRoots := []cid.Cid{oneTestBlockCid, anotherTestBlockCid}
 	path := filepath.Join(t.TempDir(), "readwrite-finalized-panic.car")
 
@@ -424,16 +424,16 @@ func TestReadWritePanicsOnlyWhenFinalized(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { subject.Close() })
 
-	require.NoError(t, subject.Put(oneTestBlock))
-	require.NoError(t, subject.Put(anotherTestBlock))
+	require.NoError(t, subject.Put(oneTestBlockWithCidV1))
+	require.NoError(t, subject.Put(anotherTestBlockWithCidV0))
 
 	gotBlock, err := subject.Get(oneTestBlockCid)
 	require.NoError(t, err)
-	require.Equal(t, oneTestBlock, gotBlock)
+	require.Equal(t, oneTestBlockWithCidV1, gotBlock)
 
 	gotSize, err := subject.GetSize(oneTestBlockCid)
 	require.NoError(t, err)
-	require.Equal(t, len(oneTestBlock.RawData()), gotSize)
+	require.Equal(t, len(oneTestBlockWithCidV1.RawData()), gotSize)
 
 	gotRoots, err := subject.Roots()
 	require.NoError(t, err)
@@ -452,15 +452,15 @@ func TestReadWritePanicsOnlyWhenFinalized(t *testing.T) {
 	require.Panics(t, func() { subject.GetSize(anotherTestBlockCid) })
 	require.Panics(t, func() { subject.Has(anotherTestBlockCid) })
 	require.Panics(t, func() { subject.HashOnRead(true) })
-	require.Panics(t, func() { subject.Put(oneTestBlock) })
-	require.Panics(t, func() { subject.PutMany([]blocks.Block{anotherTestBlock}) })
+	require.Panics(t, func() { subject.Put(oneTestBlockWithCidV1) })
+	require.Panics(t, func() { subject.PutMany([]blocks.Block{anotherTestBlockWithCidV0}) })
 	require.Panics(t, func() { subject.AllKeysChan(context.Background()) })
 	require.Panics(t, func() { subject.DeleteBlock(oneTestBlockCid) })
 }
 
 func TestReadWriteWithPaddingWorksAsExpected(t *testing.T) {
-	oneTestBlockCid := oneTestBlock.Cid()
-	anotherTestBlockCid := anotherTestBlock.Cid()
+	oneTestBlockCid := oneTestBlockWithCidV1.Cid()
+	anotherTestBlockCid := anotherTestBlockWithCidV0.Cid()
 	WantRoots := []cid.Cid{oneTestBlockCid, anotherTestBlockCid}
 	path := filepath.Join(t.TempDir(), "readwrite-with-padding.car")
 
@@ -473,8 +473,8 @@ func TestReadWriteWithPaddingWorksAsExpected(t *testing.T) {
 		blockstore.WithIndexPadding(wantIndexPadding))
 	require.NoError(t, err)
 	t.Cleanup(func() { subject.Close() })
-	require.NoError(t, subject.Put(oneTestBlock))
-	require.NoError(t, subject.Put(anotherTestBlock))
+	require.NoError(t, subject.Put(oneTestBlockWithCidV1))
+	require.NoError(t, subject.Put(anotherTestBlockWithCidV0))
 	require.NoError(t, subject.Finalize())
 
 	// Assert CARv2 header contains right offsets.
@@ -497,10 +497,10 @@ func TestReadWriteWithPaddingWorksAsExpected(t *testing.T) {
 	require.Equal(t, WantRoots, gotCarV1.Header.Roots)
 	gotOneBlock, err := gotCarV1.Next()
 	require.NoError(t, err)
-	require.Equal(t, oneTestBlock, gotOneBlock)
+	require.Equal(t, oneTestBlockWithCidV1, gotOneBlock)
 	gotAnotherBlock, err := gotCarV1.Next()
 	require.NoError(t, err)
-	require.Equal(t, anotherTestBlock, gotAnotherBlock)
+	require.Equal(t, anotherTestBlockWithCidV0, gotAnotherBlock)
 	_, err = gotCarV1.Next()
 	require.Equal(t, io.EOF, err)
 
@@ -523,7 +523,7 @@ func TestReadWriteResumptionFromNonV2FileIsError(t *testing.T) {
 }
 
 func TestReadWriteResumptionFromFileWithDifferentCarV1PaddingIsError(t *testing.T) {
-	oneTestBlockCid := oneTestBlock.Cid()
+	oneTestBlockCid := oneTestBlockWithCidV1.Cid()
 	WantRoots := []cid.Cid{oneTestBlockCid}
 	path := filepath.Join(t.TempDir(), "readwrite-resume-with-padding.car")
 
@@ -533,7 +533,7 @@ func TestReadWriteResumptionFromFileWithDifferentCarV1PaddingIsError(t *testing.
 		blockstore.WithCarV1Padding(1413))
 	require.NoError(t, err)
 	t.Cleanup(func() { subject.Close() })
-	require.NoError(t, subject.Put(oneTestBlock))
+	require.NoError(t, subject.Put(oneTestBlockWithCidV1))
 	require.NoError(t, subject.Finalize())
 
 	resumingSubject, err := blockstore.OpenReadWrite(

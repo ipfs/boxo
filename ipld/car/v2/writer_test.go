@@ -7,7 +7,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
-	dag "github.com/ipfs/go-merkledag"
+	"github.com/ipfs/go-merkledag"
 	dstest "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
 )
@@ -66,25 +66,25 @@ func TestNewWriter(t *testing.T) {
 
 func generateRootCid(t *testing.T, adder format.NodeAdder) []cid.Cid {
 	// TODO convert this into a utility testing lib that takes an rng and generates a random DAG with some threshold for depth/breadth.
-	this := dag.NewRawNode([]byte("fish"))
-	that := dag.NewRawNode([]byte("lobster"))
-	other := dag.NewRawNode([]byte("🌊"))
+	this := merkledag.NewRawNode([]byte("fish"))
+	that := merkledag.NewRawNode([]byte("lobster"))
+	other := merkledag.NewRawNode([]byte("🌊"))
 
-	one := &dag.ProtoNode{}
+	one := &merkledag.ProtoNode{}
 	assertAddNodeLink(t, one, this, "fishmonger")
 
-	another := &dag.ProtoNode{}
+	another := &merkledag.ProtoNode{}
 	assertAddNodeLink(t, another, one, "barreleye")
 	assertAddNodeLink(t, another, that, "🐡")
 
-	andAnother := &dag.ProtoNode{}
+	andAnother := &merkledag.ProtoNode{}
 	assertAddNodeLink(t, andAnother, another, "🍤")
 
 	assertAddNodes(t, adder, this, that, other, one, another, andAnother)
 	return []cid.Cid{andAnother.Cid()}
 }
 
-func assertAddNodeLink(t *testing.T, pn *dag.ProtoNode, fn format.Node, name string) {
+func assertAddNodeLink(t *testing.T, pn *merkledag.ProtoNode, fn format.Node, name string) {
 	assert.NoError(t, pn.AddNodeLink(name, fn))
 }
 
