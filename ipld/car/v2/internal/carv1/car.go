@@ -1,7 +1,6 @@
 package carv1
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -57,8 +56,8 @@ func WriteCar(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.W
 	return nil
 }
 
-func ReadHeader(br *bufio.Reader) (*CarHeader, error) {
-	hb, err := util.LdRead(br)
+func ReadHeader(r io.Reader) (*CarHeader, error) {
+	hb, err := util.LdRead(r)
 	if err != nil {
 		return nil, err
 	}
@@ -107,13 +106,12 @@ func (cw *carWriter) writeNode(ctx context.Context, nd format.Node) error {
 }
 
 type CarReader struct {
-	br     *bufio.Reader
+	r      io.Reader
 	Header *CarHeader
 }
 
 func NewCarReader(r io.Reader) (*CarReader, error) {
-	br := bufio.NewReader(r)
-	ch, err := ReadHeader(br)
+	ch, err := ReadHeader(r)
 	if err != nil {
 		return nil, err
 	}
@@ -127,13 +125,13 @@ func NewCarReader(r io.Reader) (*CarReader, error) {
 	}
 
 	return &CarReader{
-		br:     br,
+		r:      r,
 		Header: ch,
 	}, nil
 }
 
 func (cr *CarReader) Next() (blocks.Block, error) {
-	c, data, err := util.ReadNode(cr.br)
+	c, data, err := util.ReadNode(cr.r)
 	if err != nil {
 		return nil, err
 	}

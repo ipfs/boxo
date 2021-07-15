@@ -1,7 +1,6 @@
 package blockstore
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -128,7 +127,7 @@ func OpenReadOnly(path string) (*ReadOnly, error) {
 }
 
 func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
-	bcid, data, err := util.ReadNode(bufio.NewReader(internalio.NewOffsetReadSeeker(b.backing, idx)))
+	bcid, data, err := util.ReadNode(internalio.NewOffsetReadSeeker(b.backing, idx))
 	return bcid, data, err
 }
 
@@ -222,7 +221,7 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 
 	// TODO we may use this walk for populating the index, and we need to be able to iterate keys in this way somewhere for index generation. In general though, when it's asked for all keys from a blockstore with an index, we should iterate through the index when possible rather than linear reads through the full car.
 	rdr := internalio.NewOffsetReadSeeker(b.backing, 0)
-	header, err := carv1.ReadHeader(bufio.NewReader(rdr))
+	header, err := carv1.ReadHeader(rdr)
 	if err != nil {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
@@ -281,7 +280,7 @@ func (b *ReadOnly) HashOnRead(bool) {
 
 // Roots returns the root CIDs of the backing CAR.
 func (b *ReadOnly) Roots() ([]cid.Cid, error) {
-	header, err := carv1.ReadHeader(bufio.NewReader(internalio.NewOffsetReadSeeker(b.backing, 0)))
+	header, err := carv1.ReadHeader(internalio.NewOffsetReadSeeker(b.backing, 0))
 	if err != nil {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}

@@ -1,7 +1,6 @@
 package car_test
 
 import (
-	"bufio"
 	"bytes"
 	"testing"
 
@@ -36,7 +35,7 @@ func TestCarV2PragmaLength(t *testing.T) {
 }
 
 func TestCarV2PragmaIsValidCarV1Header(t *testing.T) {
-	v1h, err := carv1.ReadHeader(bufio.NewReader(bytes.NewReader(carv2.Pragma)))
+	v1h, err := carv1.ReadHeader(bytes.NewReader(carv2.Pragma))
 	assert.NoError(t, err, "cannot decode pragma as CBOR with CAR v1 header structure")
 	assert.Equal(t, &carv1.CarHeader{
 		Roots:   nil,

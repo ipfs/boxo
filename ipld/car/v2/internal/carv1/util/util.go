@@ -1,8 +1,9 @@
 package util
 
 import (
-	"bufio"
 	"io"
+
+	internalio "github.com/ipld/go-car/v2/internal/io"
 
 	"github.com/multiformats/go-varint"
 
@@ -14,8 +15,8 @@ type BytesReader interface {
 	io.ByteReader
 }
 
-func ReadNode(br *bufio.Reader) (cid.Cid, []byte, error) {
-	data, err := LdRead(br)
+func ReadNode(r io.Reader) (cid.Cid, []byte, error) {
+	data, err := LdRead(r)
 	if err != nil {
 		return cid.Cid{}, nil, err
 	}
@@ -60,15 +61,12 @@ func LdSize(d ...[]byte) uint64 {
 	return sum + uint64(s)
 }
 
-func LdRead(r *bufio.Reader) ([]byte, error) {
-	if _, err := r.Peek(1); err != nil { // no more blocks, likely clean io.EOF
-		return nil, err
-	}
-
-	l, err := varint.ReadUvarint(r)
+func LdRead(r io.Reader) ([]byte, error) {
+	l, err := varint.ReadUvarint(internalio.ToByteReader(r))
 	if err != nil {
-		if err == io.EOF {
-			return nil, io.ErrUnexpectedEOF // don't silently pretend this is a clean EOF
+		// If the length of bytes read is non-zero when the error is EOF then signal an unclean EOF.
+		if l > 0 && err == io.EOF {
+			return nil, io.ErrUnexpectedEOF
 		}
 		return nil, err
 	}

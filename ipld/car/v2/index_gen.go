@@ -1,7 +1,6 @@
 package car
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -29,7 +28,7 @@ func (r readSeekerPlusByte) ReadByte() (byte, error) {
 // GenerateIndex generates index for a given car in v1 format.
 // The index can be stored using index.Save into a file or serialized using index.WriteTo.
 func GenerateIndex(v1 io.ReadSeeker) (index.Index, error) {
-	header, err := carv1.ReadHeader(bufio.NewReader(v1))
+	header, err := carv1.ReadHeader(v1)
 	if err != nil {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}

@@ -1,11 +1,12 @@
 package index
 
 import (
-	"bufio"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
+
+	internalio "github.com/ipld/go-car/v2/internal/io"
 
 	"github.com/multiformats/go-multicodec"
 
@@ -77,8 +78,7 @@ func WriteTo(idx Index, w io.Writer) error {
 // The reader decodes the index by reading the first byte to interpret the encoding.
 // Returns error if the encoding is not known.
 func ReadFrom(r io.Reader) (Index, error) {
-	reader := bufio.NewReader(r)
-	code, err := varint.ReadUvarint(reader)
+	code, err := varint.ReadUvarint(internalio.ToByteReader(r))
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func ReadFrom(r io.Reader) (Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := idx.Unmarshal(reader); err != nil {
+	if err := idx.Unmarshal(r); err != nil {
 		return nil, err
 	}
 	return idx, nil

@@ -1,7 +1,6 @@
 package blockstore
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -217,7 +216,7 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 
 	// Use the given CAR v1 padding to instantiate the CAR v1 reader on file.
 	v1r := internalio.NewOffsetReadSeeker(b.ReadOnly.backing, 0)
-	header, err := carv1.ReadHeader(bufio.NewReader(v1r))
+	header, err := carv1.ReadHeader(v1r)
 	if err != nil {
 		// Cannot read the CAR v1 header; the file is most likely corrupt.
 		return fmt.Errorf("error reading car header: %w", err)

@@ -1,7 +1,6 @@
 package car
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 
@@ -70,7 +69,7 @@ func (r *Reader) Roots() ([]cid.Cid, error) {
 	if r.roots != nil {
 		return r.roots, nil
 	}
-	header, err := carv1.ReadHeader(bufio.NewReader(r.CarV1Reader()))
+	header, err := carv1.ReadHeader(r.CarV1Reader())
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +114,7 @@ func (r *Reader) Close() error {
 // This function accepts both CAR v1 and v2 payloads.
 func ReadVersion(r io.Reader) (version uint64, err error) {
 	// TODO if the user provides a reader that sufficiently satisfies what carv1.ReadHeader is asking then use that instead of wrapping every time.
-	header, err := carv1.ReadHeader(bufio.NewReader(r))
+	header, err := carv1.ReadHeader(r)
 	if err != nil {
 		return
 	}
