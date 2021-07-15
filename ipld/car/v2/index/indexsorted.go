@@ -82,20 +82,20 @@ func (s *singleWidthIndex) Get(c cid.Cid) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return s.get(d.Digest), nil
+	return s.get(d.Digest)
 }
 
-func (s *singleWidthIndex) get(d []byte) uint64 {
+func (s *singleWidthIndex) get(d []byte) (uint64, error) {
 	idx := sort.Search(int(s.len), func(i int) bool {
 		return s.Less(i, d)
 	})
 	if uint64(idx) == s.len {
-		return 0
+		return 0, ErrNotFound
 	}
 	if !bytes.Equal(d[:], s.index[idx*int(s.width):(idx+1)*int(s.width)-8]) {
-		return 0
+		return 0, ErrNotFound
 	}
-	return binary.LittleEndian.Uint64(s.index[(idx+1)*int(s.width)-8 : (idx+1)*int(s.width)])
+	return binary.LittleEndian.Uint64(s.index[(idx+1)*int(s.width)-8 : (idx+1)*int(s.width)]), nil
 }
 
 func (s *singleWidthIndex) Load(items []Record) error {
@@ -121,7 +121,7 @@ func (m *multiWidthIndex) Get(c cid.Cid) (uint64, error) {
 		return 0, err
 	}
 	if s, ok := (*m)[uint32(len(d.Digest)+8)]; ok {
-		return s.get(d.Digest), nil
+		return s.get(d.Digest)
 	}
 	return 0, ErrNotFound
 }

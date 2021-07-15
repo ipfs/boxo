@@ -2,6 +2,8 @@ package blockstore
 
 import (
 	"context"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	"github.com/ipfs/go-merkledag"
 	"io"
 	"os"
 	"testing"
@@ -15,6 +17,17 @@ import (
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/stretchr/testify/require"
 )
+
+func TestReadOnlyGetReturnsBlockstoreNotFoundWhenCidDoesNotExist(t *testing.T) {
+	subject, err := OpenReadOnly("../testdata/sample-v1.car")
+	require.NoError(t, err)
+	nonExistingKey := merkledag.NewRawNode([]byte("lobstermuncher")).Block.Cid()
+
+	// Assert blockstore API returns blockstore.ErrNotFound
+	gotBlock, err := subject.Get(nonExistingKey)
+	require.Equal(t, blockstore.ErrNotFound, err)
+	require.Nil(t, gotBlock)
+}
 
 func TestReadOnly(t *testing.T) {
 	tests := []struct {

@@ -21,6 +21,7 @@ import (
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 
+	ipfsblockstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipld/go-car/v2/blockstore"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -33,6 +34,19 @@ var (
 	oneTestBlockWithCidV1     = merkledag.NewRawNode([]byte("fish")).Block
 	anotherTestBlockWithCidV0 = blocks.NewBlock([]byte("barreleye"))
 )
+
+func TestReadWriteGetReturnsBlockstoreNotFoundWhenCidDoesNotExist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "readwrite-err-not-found.car")
+	subject, err := blockstore.OpenReadWrite(path, []cid.Cid{})
+	t.Cleanup(func() { subject.Close() })
+	require.NoError(t, err)
+	nonExistingKey := merkledag.NewRawNode([]byte("undadasea")).Block.Cid()
+
+	// Assert blockstore API returns blockstore.ErrNotFound
+	gotBlock, err := subject.Get(nonExistingKey)
+	require.Equal(t, ipfsblockstore.ErrNotFound, err)
+	require.Nil(t, gotBlock)
+}
 
 func TestBlockstore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

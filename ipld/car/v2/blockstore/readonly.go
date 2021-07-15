@@ -165,14 +165,15 @@ func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
 	defer b.mu.RUnlock()
 
 	offset, err := b.idx.Get(key)
-	// TODO Improve error handling; not all errors mean NotFound.
 	if err != nil {
-		return nil, blockstore.ErrNotFound
+		if err == index.ErrNotFound {
+			err = blockstore.ErrNotFound
+		}
+		return nil, err
 	}
 	entry, data, err := b.readBlock(int64(offset))
 	if err != nil {
-		// TODO Improve error handling; not all errors mean NotFound.
-		return nil, blockstore.ErrNotFound
+		return nil, err
 	}
 	if !bytes.Equal(key.Hash(), entry.Hash()) {
 		return nil, blockstore.ErrNotFound
