@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	dag "github.com/ipfs/go-merkledag"
+
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
 	"github.com/stretchr/testify/assert"
@@ -26,7 +28,11 @@ import (
 	"github.com/ipld/go-car/v2/internal/carv1"
 )
 
-var rng = rand.New(rand.NewSource(1413))
+var (
+	rng              = rand.New(rand.NewSource(1413))
+	oneTestBlock     = dag.NewRawNode([]byte("fish")).Block
+	anotherTestBlock = dag.NewRawNode([]byte("barreleye")).Block
+)
 
 func TestBlockstore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -406,4 +412,136 @@ func TestBlockstoreResumptionIsSupportedOnFinalizedFile(t *testing.T) {
 	subject, err = blockstore.OpenReadWrite(path, []cid.Cid{})
 	t.Cleanup(func() { subject.Close() })
 	require.NoError(t, err)
+}
+
+func TestReadWritePanicsOnlyWhenFinalized(t *testing.T) {
+	oneTestBlockCid := oneTestBlock.Cid()
+	anotherTestBlockCid := anotherTestBlock.Cid()
+	wantRoots := []cid.Cid{oneTestBlockCid, anotherTestBlockCid}
+	path := filepath.Join(t.TempDir(), "readwrite-finalized-panic.car")
+
+	subject, err := blockstore.OpenReadWrite(path, wantRoots)
+	require.NoError(t, err)
+	t.Cleanup(func() { subject.Close() })
+
+	require.NoError(t, subject.Put(oneTestBlock))
+	require.NoError(t, subject.Put(anotherTestBlock))
+
+	gotBlock, err := subject.Get(oneTestBlockCid)
+	require.NoError(t, err)
+	require.Equal(t, oneTestBlock, gotBlock)
+
+	gotSize, err := subject.GetSize(oneTestBlockCid)
+	require.NoError(t, err)
+	require.Equal(t, len(oneTestBlock.RawData()), gotSize)
+
+	gotRoots, err := subject.Roots()
+	require.NoError(t, err)
+	require.Equal(t, wantRoots, gotRoots)
+
+	has, err := subject.Has(oneTestBlockCid)
+	require.NoError(t, err)
+	require.True(t, has)
+
+	subject.HashOnRead(true)
+	// Delete should always panic regardless of finalize
+	require.Panics(t, func() { subject.DeleteBlock(oneTestBlockCid) })
+
+	require.NoError(t, subject.Finalize())
+	require.Panics(t, func() { subject.Get(oneTestBlockCid) })
+	require.Panics(t, func() { subject.GetSize(anotherTestBlockCid) })
+	require.Panics(t, func() { subject.Has(anotherTestBlockCid) })
+	require.Panics(t, func() { subject.HashOnRead(true) })
+	require.Panics(t, func() { subject.Put(oneTestBlock) })
+	require.Panics(t, func() { subject.PutMany([]blocks.Block{anotherTestBlock}) })
+	require.Panics(t, func() { subject.AllKeysChan(context.Background()) })
+	require.Panics(t, func() { subject.DeleteBlock(oneTestBlockCid) })
+}
+
+func TestReadWriteWithPaddingWorksAsExpected(t *testing.T) {
+	oneTestBlockCid := oneTestBlock.Cid()
+	anotherTestBlockCid := anotherTestBlock.Cid()
+	WantRoots := []cid.Cid{oneTestBlockCid, anotherTestBlockCid}
+	path := filepath.Join(t.TempDir(), "readwrite-with-padding.car")
+
+	wantCarV1Padding := uint64(1413)
+	wantIndexPadding := uint64(1314)
+	subject, err := blockstore.OpenReadWrite(
+		path,
+		WantRoots,
+		blockstore.WithCarV1Padding(wantCarV1Padding),
+		blockstore.WithIndexPadding(wantIndexPadding))
+	require.NoError(t, err)
+	t.Cleanup(func() { subject.Close() })
+	require.NoError(t, subject.Put(oneTestBlock))
+	require.NoError(t, subject.Put(anotherTestBlock))
+	require.NoError(t, subject.Finalize())
+
+	// Assert CARv2 header contains right offsets.
+	gotCarV2, err := carv2.OpenReader(path)
+	t.Cleanup(func() { gotCarV2.Close() })
+	require.NoError(t, err)
+	wantCarV1Offset := carv2.PragmaSize + carv2.HeaderSize + wantCarV1Padding
+	wantIndexOffset := wantCarV1Offset + gotCarV2.Header.CarV1Size + wantIndexPadding
+	require.Equal(t, wantCarV1Offset, gotCarV2.Header.CarV1Offset)
+	require.Equal(t, wantIndexOffset, gotCarV2.Header.IndexOffset)
+	require.NoError(t, gotCarV2.Close())
+
+	f, err := os.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { f.Close() })
+
+	// Assert reading CARv1 directly at offset and size is as expected.
+	gotCarV1, err := carv1.NewCarReader(io.NewSectionReader(f, int64(wantCarV1Offset), int64(gotCarV2.Header.CarV1Size)))
+	require.NoError(t, err)
+	require.Equal(t, WantRoots, gotCarV1.Header.Roots)
+	gotOneBlock, err := gotCarV1.Next()
+	require.NoError(t, err)
+	require.Equal(t, oneTestBlock, gotOneBlock)
+	gotAnotherBlock, err := gotCarV1.Next()
+	require.NoError(t, err)
+	require.Equal(t, anotherTestBlock, gotAnotherBlock)
+	_, err = gotCarV1.Next()
+	require.Equal(t, io.EOF, err)
+
+	// Assert reading index directly from file is parsable and has expected CIDs.
+	stat, err := f.Stat()
+	require.NoError(t, err)
+	indexSize := stat.Size() - int64(wantIndexOffset)
+	gotIdx, err := index.ReadFrom(io.NewSectionReader(f, int64(wantIndexOffset), indexSize))
+	require.NoError(t, err)
+	_, err = gotIdx.Get(oneTestBlockCid)
+	require.NoError(t, err)
+	_, err = gotIdx.Get(anotherTestBlockCid)
+	require.NoError(t, err)
+}
+
+func TestReadWriteResumptionFromNonV2FileIsError(t *testing.T) {
+	subject, err := blockstore.OpenReadWrite("../testdata/sample-rootless-v42.car", []cid.Cid{})
+	require.EqualError(t, err, "cannot resume on CAR file with version 42")
+	require.Nil(t, subject)
+}
+
+func TestReadWriteResumptionFromFileWithDifferentCarV1PaddingIsError(t *testing.T) {
+	oneTestBlockCid := oneTestBlock.Cid()
+	WantRoots := []cid.Cid{oneTestBlockCid}
+	path := filepath.Join(t.TempDir(), "readwrite-resume-with-padding.car")
+
+	subject, err := blockstore.OpenReadWrite(
+		path,
+		WantRoots,
+		blockstore.WithCarV1Padding(1413))
+	require.NoError(t, err)
+	t.Cleanup(func() { subject.Close() })
+	require.NoError(t, subject.Put(oneTestBlock))
+	require.NoError(t, subject.Finalize())
+
+	resumingSubject, err := blockstore.OpenReadWrite(
+		path,
+		WantRoots,
+		blockstore.WithCarV1Padding(1314))
+	require.EqualError(t, err, "cannot resume from file with mismatched CARv1 offset; "+
+		"`WithCarV1Padding` option must match the padding on file. "+
+		"Expected padding value of 1413 but got 1314")
+	require.Nil(t, resumingSubject)
 }

@@ -184,11 +184,11 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 	if err == nil && headerInFile.CarV1Offset != 0 {
 		if headerInFile.CarV1Offset != b.header.CarV1Offset {
 			// Assert that the padding on file matches the given WithCarV1Padding option.
-			gotPadding := headerInFile.CarV1Offset - carv2.PragmaSize - carv2.HeaderSize
-			wantPadding := b.header.CarV1Offset - carv2.PragmaSize - carv2.HeaderSize
+			wantPadding := headerInFile.CarV1Offset - carv2.PragmaSize - carv2.HeaderSize
+			gotPadding := b.header.CarV1Offset - carv2.PragmaSize - carv2.HeaderSize
 			return fmt.Errorf(
 				"cannot resume from file with mismatched CARv1 offset; "+
-					"`WithCarV1Padding` option must match the padding on file."+
+					"`WithCarV1Padding` option must match the padding on file. "+
 					"Expected padding value of %v but got %v", wantPadding, gotPadding,
 			)
 		} else if headerInFile.CarV1Size != 0 {
@@ -330,7 +330,6 @@ func (b *ReadWrite) Finalize() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	// TODO check if add index option is set and don't write the index then set index offset to zero.
-	// TODO see if folks need to continue reading from a finalized blockstore, if so return ReadOnly blockstore here.
 	b.header = b.header.WithCarV1Size(uint64(b.carV1Writer.Position()))
 	defer b.Close()
 
@@ -368,4 +367,10 @@ func (b *ReadWrite) GetSize(key cid.Cid) (int, error) {
 	b.panicIfFinalized()
 
 	return b.ReadOnly.GetSize(key)
+}
+
+func (b *ReadWrite) HashOnRead(h bool) {
+	b.panicIfFinalized()
+
+	b.ReadOnly.HashOnRead(h)
 }
