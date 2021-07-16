@@ -1,18 +1,17 @@
-package car
+package carv1
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
+
+	"github.com/ipld/go-car/v2/internal/carv1/util"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
-
-	util "github.com/ipld/go-car/util"
 )
 
 func init() {
@@ -33,19 +32,11 @@ type CarHeader struct {
 }
 
 type carWriter struct {
-	ds   format.NodeGetter
-	w    io.Writer
-	walk WalkFunc
+	ds format.NodeGetter
+	w  io.Writer
 }
-
-type WalkFunc func(format.Node) ([]*format.Link, error)
 
 func WriteCar(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.Writer) error {
-	return WriteCarWithWalker(ctx, ds, roots, w, DefaultWalkFunc)
-}
-
-func WriteCarWithWalker(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.Writer, walk WalkFunc) error {
-
 	h := &CarHeader{
 		Roots:   roots,
 		Version: 1,
@@ -55,7 +46,7 @@ func WriteCarWithWalker(ctx context.Context, ds format.NodeGetter, roots []cid.C
 		return fmt.Errorf("failed to write car header: %s", err)
 	}
 
-	cw := &carWriter{ds: ds, w: w, walk: walk}
+	cw := &carWriter{ds: ds, w: w}
 	seen := cid.NewSet()
 	for _, r := range roots {
 		if err := merkledag.Walk(ctx, cw.enumGetLinks, r, seen.Visit); err != nil {
@@ -65,12 +56,8 @@ func WriteCarWithWalker(ctx context.Context, ds format.NodeGetter, roots []cid.C
 	return nil
 }
 
-func DefaultWalkFunc(nd format.Node) ([]*format.Link, error) {
-	return nd.Links(), nil
-}
-
-func ReadHeader(br *bufio.Reader) (*CarHeader, error) {
-	hb, err := util.LdRead(br)
+func ReadHeader(r io.Reader) (*CarHeader, error) {
+	hb, err := util.LdRead(r)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +98,7 @@ func (cw *carWriter) enumGetLinks(ctx context.Context, c cid.Cid) ([]*format.Lin
 		return nil, err
 	}
 
-	return cw.walk(nd)
+	return nd.Links(), nil
 }
 
 func (cw *carWriter) writeNode(ctx context.Context, nd format.Node) error {
@@ -119,13 +106,12 @@ func (cw *carWriter) writeNode(ctx context.Context, nd format.Node) error {
 }
 
 type CarReader struct {
-	br     *bufio.Reader
+	r      io.Reader
 	Header *CarHeader
 }
 
 func NewCarReader(r io.Reader) (*CarReader, error) {
-	br := bufio.NewReader(r)
-	ch, err := ReadHeader(br)
+	ch, err := ReadHeader(r)
 	if err != nil {
 		return nil, err
 	}
@@ -139,13 +125,13 @@ func NewCarReader(r io.Reader) (*CarReader, error) {
 	}
 
 	return &CarReader{
-		br:     br,
+		r:      r,
 		Header: ch,
 	}, nil
 }
 
 func (cr *CarReader) Next() (blocks.Block, error) {
-	c, data, err := util.ReadNode(cr.br)
+	c, data, err := util.ReadNode(cr.r)
 	if err != nil {
 		return nil, err
 	}
@@ -220,4 +206,43 @@ func loadCarSlow(s Store, cr *CarReader) (*CarHeader, error) {
 			return nil, err
 		}
 	}
+}
+
+// Matches checks whether two headers match.
+// Two headers are considered matching if:
+//   1. They have the same version number, and
+//   2. They contain the same root CIDs in any order.
+// Note, this function explicitly ignores the order of roots.
+// If order of roots matter use reflect.DeepEqual instead.
+func (h CarHeader) Matches(other CarHeader) bool {
+	if h.Version != other.Version {
+		return false
+	}
+	thisLen := len(h.Roots)
+	if thisLen != len(other.Roots) {
+		return false
+	}
+	// Headers with a single root are popular.
+	// Implement a fast execution path for popular cases.
+	if thisLen == 1 {
+		return h.Roots[0].Equals(other.Roots[0])
+	}
+
+	// Check other contains all roots.
+	// TODO: should this be optimised for cases where the number of roots are large since it has O(N^2) complexity?
+	for _, r := range h.Roots {
+		if !other.containsRoot(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func (h *CarHeader) containsRoot(root cid.Cid) bool {
+	for _, r := range h.Roots {
+		if r.Equals(root) {
+			return true
+		}
+	}
+	return false
 }

@@ -1,4 +1,4 @@
-package car
+package carv1
 
 import (
 	"bytes"
@@ -8,14 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ipfs/go-cid"
+	"github.com/stretchr/testify/require"
+
+	cid "github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
 	dstest "github.com/ipfs/go-merkledag/test"
-	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	"github.com/ipld/go-ipld-prime/traversal/selector"
-	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
-	"github.com/stretchr/testify/require"
 )
 
 func assertAddNodes(t *testing.T, ds format.DAGService, nds ...format.Node) {
@@ -74,102 +72,6 @@ func TestRoundtrip(t *testing.T) {
 		if !has {
 			t.Fatal("should have cid in blockstore")
 		}
-	}
-}
-
-func TestRoundtripSelective(t *testing.T) {
-	sourceBserv := dstest.Bserv()
-	sourceBs := sourceBserv.Blockstore()
-	dserv := merkledag.NewDAGService(sourceBserv)
-	a := merkledag.NewRawNode([]byte("aaaa"))
-	b := merkledag.NewRawNode([]byte("bbbb"))
-	c := merkledag.NewRawNode([]byte("cccc"))
-
-	nd1 := &merkledag.ProtoNode{}
-	nd1.AddNodeLink("cat", a)
-
-	nd2 := &merkledag.ProtoNode{}
-	nd2.AddNodeLink("first", nd1)
-	nd2.AddNodeLink("dog", b)
-	nd2.AddNodeLink("repeat", nd1)
-
-	nd3 := &merkledag.ProtoNode{}
-	nd3.AddNodeLink("second", nd2)
-	nd3.AddNodeLink("bear", c)
-
-	assertAddNodes(t, dserv, a, b, c, nd1, nd2, nd3)
-
-	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
-
-	// the graph assembled above looks as follows, in order:
-	// nd3 -> [c, nd2 -> [nd1 -> a, b, nd1 -> a]]
-	// this selector starts at n3, and traverses a link at index 1 (nd2, the second link, zero indexed)
-	// it then recursively traverses all of its children
-	// the only node skipped is 'c' -- link at index 0 immediately below nd3
-	// the purpose is simply to show we are not writing the entire merkledag underneath
-	// nd3
-	selector := ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
-		efsb.Insert("Links",
-			ssb.ExploreIndex(1, ssb.ExploreRecursive(selector.RecursionLimitNone(), ssb.ExploreAll(ssb.ExploreRecursiveEdge()))))
-	}).Node()
-
-	sc := NewSelectiveCar(context.Background(), sourceBs, []Dag{{Root: nd3.Cid(), Selector: selector}})
-
-	// write car in one step
-	buf := new(bytes.Buffer)
-	blockCount := 0
-	var oneStepBlocks []Block
-	err := sc.Write(buf, func(block Block) error {
-		oneStepBlocks = append(oneStepBlocks, block)
-		blockCount++
-		return nil
-	})
-	require.Equal(t, blockCount, 5)
-	require.NoError(t, err)
-
-	// create a new builder for two-step write
-	sc2 := NewSelectiveCar(context.Background(), sourceBs, []Dag{{Root: nd3.Cid(), Selector: selector}})
-
-	// write car in two steps
-	var twoStepBlocks []Block
-	scp, err := sc2.Prepare(func(block Block) error {
-		twoStepBlocks = append(twoStepBlocks, block)
-		return nil
-	})
-	require.NoError(t, err)
-	buf2 := new(bytes.Buffer)
-	err = scp.Dump(buf2)
-	require.NoError(t, err)
-
-	// verify preparation step correctly assesed length and blocks
-	require.Equal(t, scp.Size(), uint64(buf.Len()))
-	require.Equal(t, len(scp.Cids()), blockCount)
-
-	// verify equal data written by both methods
-	require.Equal(t, buf.Bytes(), buf2.Bytes())
-
-	// verify equal blocks were passed to user block hook funcs
-	require.Equal(t, oneStepBlocks, twoStepBlocks)
-
-	// readout car and verify contents
-	bserv := dstest.Bserv()
-	ch, err := LoadCar(bserv.Blockstore(), buf)
-	require.NoError(t, err)
-	require.Equal(t, len(ch.Roots), 1)
-
-	require.True(t, ch.Roots[0].Equals(nd3.Cid()))
-
-	bs := bserv.Blockstore()
-	for _, nd := range []format.Node{a, b, nd1, nd2, nd3} {
-		has, err := bs.Has(nd.Cid())
-		require.NoError(t, err)
-		require.True(t, has)
-	}
-
-	for _, nd := range []format.Node{c} {
-		has, err := bs.Has(nd.Cid())
-		require.NoError(t, err)
-		require.False(t, has)
 	}
 }
 
@@ -255,31 +157,37 @@ func TestBadHeaders(t *testing.T) {
 			"13a165726f6f747381d82a480001000003616263",
 			"invalid car version: 0",
 			"",
-		}, {
+		},
+		{
 			"{version:\"1\",roots:[baeaaaa3bmjrq]}",
 			"1da265726f6f747381d82a4800010000036162636776657273696f6e6131",
 			"", "invalid header: ",
-		}, {
+		},
+		{
 			"{version:1}",
 			"0aa16776657273696f6e01",
 			"empty car, no roots",
 			"",
-		}, {
+		},
+		{
 			"{version:1,roots:{cid:baeaaaa3bmjrq}}",
 			"20a265726f6f7473a163636964d82a4800010000036162636776657273696f6e01",
 			"",
 			"invalid header: ",
-		}, {
+		},
+		{
 			"{version:1,roots:[baeaaaa3bmjrq],blip:true}",
 			"22a364626c6970f565726f6f747381d82a4800010000036162636776657273696f6e01",
 			"",
 			"invalid header: ",
-		}, {
+		},
+		{
 			"[1,[]]",
 			"03820180",
 			"",
 			"invalid header: ",
-		}, {
+		},
+		{
 			// this is an unfortunate error, it'd be nice to catch it better but it's
 			// very unlikely we'd ever see this in practice
 			"null",
@@ -320,6 +228,72 @@ func TestBadHeaders(t *testing.T) {
 					t.Fatalf("bad error: %v", err)
 				}
 			}
+		})
+	}
+}
+
+func TestCarHeaderMatchess(t *testing.T) {
+	oneCid := merkledag.NewRawNode([]byte("fish")).Cid()
+	anotherCid := merkledag.NewRawNode([]byte("lobster")).Cid()
+	tests := []struct {
+		name  string
+		one   CarHeader
+		other CarHeader
+		want  bool
+	}{
+		{
+			"SameVersionNilRootsIsMatching",
+			CarHeader{nil, 1},
+			CarHeader{nil, 1},
+			true,
+		},
+		{
+			"SameVersionEmptyRootsIsMatching",
+			CarHeader{[]cid.Cid{}, 1},
+			CarHeader{[]cid.Cid{}, 1},
+			true,
+		},
+		{
+			"SameVersionNonEmptySameRootsIsMatching",
+			CarHeader{[]cid.Cid{oneCid}, 1},
+			CarHeader{[]cid.Cid{oneCid}, 1},
+			true,
+		},
+		{
+			"SameVersionNonEmptySameRootsInDifferentOrderIsMatching",
+			CarHeader{[]cid.Cid{oneCid, anotherCid}, 1},
+			CarHeader{[]cid.Cid{anotherCid, oneCid}, 1},
+			true,
+		},
+		{
+			"SameVersionDifferentRootsIsNotMatching",
+			CarHeader{[]cid.Cid{oneCid}, 1},
+			CarHeader{[]cid.Cid{anotherCid}, 1},
+			false,
+		},
+		{
+			"DifferentVersionDifferentRootsIsNotMatching",
+			CarHeader{[]cid.Cid{oneCid}, 0},
+			CarHeader{[]cid.Cid{anotherCid}, 1},
+			false,
+		},
+		{
+			"MismatchingVersionIsNotMatching",
+			CarHeader{nil, 0},
+			CarHeader{nil, 1},
+			false,
+		},
+		{
+			"ZeroValueHeadersAreMatching",
+			CarHeader{},
+			CarHeader{},
+			true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.one.Matches(tt.other)
+			require.Equal(t, tt.want, got, "Matches() = %v, want %v", got, tt.want)
 		})
 	}
 }
