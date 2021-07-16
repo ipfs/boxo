@@ -1,10 +1,11 @@
 package index
 
 import (
+	"testing"
+
 	"github.com/ipfs/go-merkledag"
 	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestSortedIndexCodec(t *testing.T) {

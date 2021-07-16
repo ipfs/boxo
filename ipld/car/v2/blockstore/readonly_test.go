@@ -2,12 +2,13 @@ package blockstore
 
 import (
 	"context"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	"github.com/ipfs/go-merkledag"
 	"io"
 	"os"
 	"testing"
 	"time"
+
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	"github.com/ipfs/go-merkledag"
 
 	blocks "github.com/ipfs/go-block-format"
 
