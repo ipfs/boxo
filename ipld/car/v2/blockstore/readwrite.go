@@ -343,7 +343,12 @@ func (b *ReadWrite) Finalize() error {
 	defer b.mu.Unlock()
 	// TODO check if add index option is set and don't write the index then set index offset to zero.
 	b.header = b.header.WithDataSize(uint64(b.dataWriter.Position()))
-	defer b.Close()
+
+	// Note that we can't use b.Close here, as that tries to grab the same
+	// mutex we're holding here.
+	// TODO: should we check the error here? especially with OpenReadWrite,
+	// we should care about close errors.
+	defer b.closeWithoutMutex()
 
 	// TODO if index not needed don't bother flattening it.
 	fi, err := b.idx.flatten()

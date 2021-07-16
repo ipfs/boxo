@@ -330,7 +330,18 @@ func (b *ReadOnly) Roots() ([]cid.Cid, error) {
 }
 
 // Close closes the underlying reader if it was opened by OpenReadOnly.
+//
+// Note that this call may block if any blockstore operations are currently in
+// progress, including an AllKeysChan that hasn't been fully consumed or
+// cancelled.
 func (b *ReadOnly) Close() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.closeWithoutMutex()
+}
+
+func (b *ReadOnly) closeWithoutMutex() error {
 	if b.carv2Closer != nil {
 		return b.carv2Closer.Close()
 	}
