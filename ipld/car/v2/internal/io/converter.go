@@ -3,6 +3,7 @@ package io
 import (
 	"io"
 	"io/ioutil"
+	"sync"
 )
 
 var (
@@ -10,6 +11,7 @@ var (
 	_ io.ByteReader = (*readSeekerPlusByte)(nil)
 	_ io.ByteReader = (*discardingReadSeekerPlusByte)(nil)
 	_ io.ReadSeeker = (*discardingReadSeekerPlusByte)(nil)
+	_ io.ReaderAt   = (*readSeekerAt)(nil)
 )
 
 type (
@@ -30,6 +32,11 @@ type (
 		io.ReadSeeker
 		io.ByteReader
 	}
+
+	readSeekerAt struct {
+		rs io.ReadSeeker
+		mu sync.Mutex
+	}
 )
 
 func ToByteReader(r io.Reader) io.ByteReader {
@@ -47,6 +54,13 @@ func ToByteReadSeeker(r io.Reader) ByteReadSeeker {
 		return &readSeekerPlusByte{rs}
 	}
 	return &discardingReadSeekerPlusByte{Reader: r}
+}
+
+func ToReaderAt(rs io.ReadSeeker) io.ReaderAt {
+	if ra, ok := rs.(io.ReaderAt); ok {
+		return ra
+	}
+	return &readSeekerAt{rs: rs}
 }
 
 func (rb readerPlusByte) ReadByte() (byte, error) {
@@ -88,4 +102,13 @@ func readByte(r io.Reader) (byte, error) {
 	var p [1]byte
 	_, err := io.ReadFull(r, p[:])
 	return p[0], err
+}
+
+func (rsa *readSeekerAt) ReadAt(p []byte, off int64) (n int, err error) {
+	rsa.mu.Lock()
+	defer rsa.mu.Unlock()
+	if _, err := rsa.rs.Seek(off, io.SeekStart); err != nil {
+		return 0, err
+	}
+	return rsa.rs.Read(p)
 }

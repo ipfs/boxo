@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
 
 	internalio "github.com/ipld/go-car/v2/internal/io"
 
@@ -97,22 +96,6 @@ func GenerateIndexFromFile(path string) (index.Index, error) {
 	return GenerateIndex(f)
 }
 
-var _ io.ReaderAt = (*readSeekerAt)(nil)
-
-type readSeekerAt struct {
-	rs io.ReadSeeker
-	mu sync.Mutex
-}
-
-func (rsa *readSeekerAt) ReadAt(p []byte, off int64) (n int, err error) {
-	rsa.mu.Lock()
-	defer rsa.mu.Unlock()
-	if _, err := rsa.rs.Seek(off, io.SeekStart); err != nil {
-		return 0, err
-	}
-	return rsa.rs.Read(p)
-}
-
 // ReadOrGenerateIndex accepts both CAR v1 and v2 format, and reads or generates an index for it.
 // When the given reader is in CAR v1 format an index is always generated.
 // For a payload in CAR v2 format, an index is only generated if Header.HasIndex returns false.
@@ -137,7 +120,7 @@ func ReadOrGenerateIndex(rs io.ReadSeeker) (index.Index, error) {
 		return GenerateIndex(rs)
 	case 2:
 		// Read CAR v2 format
-		v2r, err := NewReader(&readSeekerAt{rs: rs})
+		v2r, err := NewReader(internalio.ToReaderAt(rs))
 		if err != nil {
 			return nil, err
 		}
