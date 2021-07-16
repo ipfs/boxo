@@ -52,9 +52,9 @@ func New(codec multicodec.Code) (Index, error) {
 	}
 }
 
-// Save writes a generated index into the given `path`.
+// Save writes a generated index into the given `path` replacing the file if it exists.
 func Save(idx Index, path string) error {
-	stream, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
+	stream, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o640)
 	if err != nil {
 		return err
 	}
