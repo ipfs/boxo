@@ -47,7 +47,7 @@ func TestWrapV1(t *testing.T) {
 	require.NoError(t, err)
 	wantPayload, err := ioutil.ReadAll(sf)
 	require.NoError(t, err)
-	gotPayload, err := ioutil.ReadAll(subject.CarV1Reader())
+	gotPayload, err := ioutil.ReadAll(subject.DataReader())
 	require.NoError(t, err)
 	require.Equal(t, wantPayload, gotPayload)
 

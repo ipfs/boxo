@@ -63,10 +63,10 @@ func GenerateIndex(v1r io.Reader, opts ...ReadOption) (index.Index, error) {
 
 		// Null padding; by default it's an error.
 		if sectionLen == 0 {
-			if o.ZeroLegthSectionAsEOF {
+			if o.ZeroLengthSectionAsEOF {
 				break
 			} else {
-				return nil, fmt.Errorf("carv1 null padding not allowed by default; see ZeroLegthSectionAsEOF")
+				return nil, fmt.Errorf("carv1 null padding not allowed by default; see ZeroLengthSectionAsEOF")
 			}
 		}
 
@@ -103,10 +103,10 @@ func GenerateIndexFromFile(path string) (index.Index, error) {
 	return GenerateIndex(f)
 }
 
-// ReadOrGenerateIndex accepts both CAR v1 and v2 format, and reads or generates an index for it.
-// When the given reader is in CAR v1 format an index is always generated.
-// For a payload in CAR v2 format, an index is only generated if Header.HasIndex returns false.
-// An error is returned for all other formats, i.e. versions other than 1 or 2.
+// ReadOrGenerateIndex accepts both CARv1 and CARv2 formats, and reads or generates an index for it.
+// When the given reader is in CARv1 format an index is always generated.
+// For a payload in CARv2 format, an index is only generated if Header.HasIndex returns false.
+// An error is returned for all other formats, i.e. pragma with versions other than 1 or 2.
 //
 // Note, the returned index lives entirely in memory and will not depend on the
 // given reader to fulfill index lookup.
@@ -126,7 +126,7 @@ func ReadOrGenerateIndex(rs io.ReadSeeker) (index.Index, error) {
 		// Simply generate the index, since there can't be a pre-existing one.
 		return GenerateIndex(rs)
 	case 2:
-		// Read CAR v2 format
+		// Read CARv2 format
 		v2r, err := NewReader(internalio.ToReaderAt(rs))
 		if err != nil {
 			return nil, err
@@ -135,8 +135,8 @@ func ReadOrGenerateIndex(rs io.ReadSeeker) (index.Index, error) {
 		if v2r.Header.HasIndex() {
 			return index.ReadFrom(v2r.IndexReader())
 		}
-		// Otherwise, generate index from CAR v1 payload wrapped within CAR v2 format.
-		return GenerateIndex(v2r.CarV1Reader())
+		// Otherwise, generate index from CARv1 payload wrapped within CARv2 format.
+		return GenerateIndex(v2r.DataReader())
 	default:
 		return nil, fmt.Errorf("unknown version %v", version)
 	}

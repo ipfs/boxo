@@ -38,7 +38,7 @@ func ExampleWrapV1File() {
 	if err != nil {
 		panic(err)
 	}
-	inner, err := ioutil.ReadAll(cr.CarV1Reader())
+	inner, err := ioutil.ReadAll(cr.DataReader())
 	if err != nil {
 		panic(err)
 	}

@@ -280,7 +280,7 @@ func TestBlockstoreNullPadding(t *testing.T) {
 	// A sample null-padded CARv1 file.
 	paddedV1 = append(paddedV1, make([]byte, 2048)...)
 
-	rbs, err := blockstore.NewReadOnly(bufferReaderAt(paddedV1), nil, carv2.ZeroLegthSectionAsEOF)
+	rbs, err := blockstore.NewReadOnly(bufferReaderAt(paddedV1), nil, carv2.ZeroLengthSectionAsEOF)
 	require.NoError(t, err)
 
 	roots, err := rbs.Roots()
@@ -312,7 +312,7 @@ func TestBlockstoreResumption(t *testing.T) {
 	require.NoError(t, err)
 
 	path := filepath.Join(t.TempDir(), "readwrite-resume.car")
-	// Create an incomplete CAR v2 file with no blocks put.
+	// Create an incomplete CARv2 file with no blocks put.
 	subject, err := blockstore.OpenReadWrite(path, r.Header.Roots)
 	require.NoError(t, err)
 
@@ -330,7 +330,7 @@ func TestBlockstoreResumption(t *testing.T) {
 
 		// 30% chance of subject failing; more concretely: re-instantiating blockstore with the same
 		// file without calling Finalize. The higher this percentage the slower the test runs
-		// considering the number of blocks in the original CAR v1 test payload.
+		// considering the number of blocks in the original CARv1 test payload.
 		resume := rng.Float32() <= 0.3
 		// If testing resume case, then flip a coin to decide whether to finalize before blockstore
 		// re-instantiation or not. Note, both cases should work for resumption since we do not
@@ -376,12 +376,12 @@ func TestBlockstoreResumption(t *testing.T) {
 	}
 	require.NoError(t, subject.Close())
 
-	// Finalize the blockstore to complete partially written CAR v2 file.
+	// Finalize the blockstore to complete partially written CARv2 file.
 	subject, err = blockstore.OpenReadWrite(path, r.Header.Roots)
 	require.NoError(t, err)
 	require.NoError(t, subject.Finalize())
 
-	// Assert resumed from file is a valid CAR v2 with index.
+	// Assert resumed from file is a valid CARv2 with index.
 	v2f, err := os.Open(path)
 	require.NoError(t, err)
 	t.Cleanup(func() { assert.NoError(t, v2f.Close()) })
@@ -389,13 +389,13 @@ func TestBlockstoreResumption(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, v2r.Header.HasIndex())
 
-	// Assert CAR v1 payload in file matches the original CAR v1 payload.
+	// Assert CARv1 payload in file matches the original CARv1 payload.
 	_, err = v1f.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 	wantPayloadReader, err := carv1.NewCarReader(v1f)
 	require.NoError(t, err)
 
-	gotPayloadReader, err := carv1.NewCarReader(v2r.CarV1Reader())
+	gotPayloadReader, err := carv1.NewCarReader(v2r.DataReader())
 	require.NoError(t, err)
 
 	require.Equal(t, wantPayloadReader.Header, gotPayloadReader.Header)
@@ -411,7 +411,7 @@ func TestBlockstoreResumption(t *testing.T) {
 		require.Equal(t, wantNextBlock, gotNextBlock)
 	}
 
-	// Assert index in resumed from file is identical to index generated directly from original CAR v1 payload.
+	// Assert index in resumed from file is identical to index generated directly from original CARv1 payload.
 	_, err = v1f.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 	gotIdx, err := index.ReadFrom(v2r.IndexReader())
@@ -423,7 +423,7 @@ func TestBlockstoreResumption(t *testing.T) {
 
 func TestBlockstoreResumptionIsSupportedOnFinalizedFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "readwrite-resume-finalized.car")
-	// Create an incomplete CAR v2 file with no blocks put.
+	// Create an incomplete CARv2 file with no blocks put.
 	subject, err := blockstore.OpenReadWrite(path, []cid.Cid{})
 	require.NoError(t, err)
 	require.NoError(t, subject.Finalize())
@@ -487,7 +487,7 @@ func TestReadWriteWithPaddingWorksAsExpected(t *testing.T) {
 	subject, err := blockstore.OpenReadWrite(
 		path,
 		WantRoots,
-		carv2.UseCarV1Padding(wantCarV1Padding),
+		carv2.UseDataPadding(wantCarV1Padding),
 		carv2.UseIndexPadding(wantIndexPadding))
 	require.NoError(t, err)
 	t.Cleanup(func() { subject.Close() })
@@ -500,8 +500,8 @@ func TestReadWriteWithPaddingWorksAsExpected(t *testing.T) {
 	t.Cleanup(func() { gotCarV2.Close() })
 	require.NoError(t, err)
 	wantCarV1Offset := carv2.PragmaSize + carv2.HeaderSize + wantCarV1Padding
-	wantIndexOffset := wantCarV1Offset + gotCarV2.Header.CarV1Size + wantIndexPadding
-	require.Equal(t, wantCarV1Offset, gotCarV2.Header.CarV1Offset)
+	wantIndexOffset := wantCarV1Offset + gotCarV2.Header.DataSize + wantIndexPadding
+	require.Equal(t, wantCarV1Offset, gotCarV2.Header.DataOffset)
 	require.Equal(t, wantIndexOffset, gotCarV2.Header.IndexOffset)
 	require.NoError(t, gotCarV2.Close())
 
@@ -510,7 +510,7 @@ func TestReadWriteWithPaddingWorksAsExpected(t *testing.T) {
 	t.Cleanup(func() { f.Close() })
 
 	// Assert reading CARv1 directly at offset and size is as expected.
-	gotCarV1, err := carv1.NewCarReader(io.NewSectionReader(f, int64(wantCarV1Offset), int64(gotCarV2.Header.CarV1Size)))
+	gotCarV1, err := carv1.NewCarReader(io.NewSectionReader(f, int64(wantCarV1Offset), int64(gotCarV2.Header.DataSize)))
 	require.NoError(t, err)
 	require.Equal(t, WantRoots, gotCarV1.Header.Roots)
 	gotOneBlock, err := gotCarV1.Next()
@@ -548,7 +548,7 @@ func TestReadWriteResumptionFromFileWithDifferentCarV1PaddingIsError(t *testing.
 	subject, err := blockstore.OpenReadWrite(
 		path,
 		WantRoots,
-		carv2.UseCarV1Padding(1413))
+		carv2.UseDataPadding(1413))
 	require.NoError(t, err)
 	t.Cleanup(func() { subject.Close() })
 	require.NoError(t, subject.Put(oneTestBlockWithCidV1))
@@ -557,9 +557,9 @@ func TestReadWriteResumptionFromFileWithDifferentCarV1PaddingIsError(t *testing.
 	resumingSubject, err := blockstore.OpenReadWrite(
 		path,
 		WantRoots,
-		carv2.UseCarV1Padding(1314))
+		carv2.UseDataPadding(1314))
 	require.EqualError(t, err, "cannot resume from file with mismatched CARv1 offset; "+
-		"`WithCarV1Padding` option must match the padding on file. "+
+		"`WithDataPadding` option must match the padding on file. "+
 		"Expected padding value of 1413 but got 1314")
 	require.Nil(t, resumingSubject)
 }

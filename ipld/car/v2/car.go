@@ -6,16 +6,16 @@ import (
 )
 
 const (
-	// PragmaSize is the size of the CAR v2 pragma in bytes.
+	// PragmaSize is the size of the CARv2 pragma in bytes.
 	PragmaSize = 11
-	// HeaderSize is the fixed size of CAR v2 header in number of bytes.
+	// HeaderSize is the fixed size of CARv2 header in number of bytes.
 	HeaderSize = 40
-	// CharacteristicsSize is the fixed size of Characteristics bitfield within CAR v2 header in number of bytes.
+	// CharacteristicsSize is the fixed size of Characteristics bitfield within CARv2 header in number of bytes.
 	CharacteristicsSize = 16
 )
 
-// The pragma of a CAR v2, containing the version number..
-// This is a valid CAR v1 header, with version number set to 2.
+// The pragma of a CARv2, containing the version number.
+// This is a valid CARv1 header, with version number of 2 and no root CIDs.
 var Pragma = []byte{
 	0x0a,                                     // unit(10)
 	0xa1,                                     // map(1)
@@ -25,18 +25,18 @@ var Pragma = []byte{
 }
 
 type (
-	// Header represents the CAR v2 header/pragma.
+	// Header represents the CARv2 header/pragma.
 	Header struct {
-		// 128-bit characteristics of this CAR v2 file, such as order, deduplication, etc. Reserved for future use.
+		// 128-bit characteristics of this CARv2 file, such as order, deduplication, etc. Reserved for future use.
 		Characteristics Characteristics
-		// The offset from the beginning of the file at which the dump of CAR v1 starts.
-		CarV1Offset uint64
-		// The size of CAR v1 encapsulated in this CAR v2 as bytes.
-		CarV1Size uint64
-		// The offset from the beginning of the file at which the CAR v2 index begins.
+		// The byte-offset from the beginning of the CARv2 to the first byte of the CARv1 data payload.
+		DataOffset uint64
+		// The byte-length of the CARv1 data payload.
+		DataSize uint64
+		// The byte-offset from the beginning of the CARv2 to the first byte of the index payload. This value may be 0 to indicate the absence of index data.
 		IndexOffset uint64
 	}
-	// Characteristics is a bitfield placeholder for capturing the characteristics of a CAR v2 such as order and determinism.
+	// Characteristics is a bitfield placeholder for capturing the characteristics of a CARv2 such as order and determinism.
 	Characteristics struct {
 		Hi uint64
 		Lo uint64
@@ -64,37 +64,37 @@ func (c *Characteristics) ReadFrom(r io.Reader) (int64, error) {
 	return n, nil
 }
 
-// NewHeader instantiates a new CAR v2 header, given the byte length of a CAR v1.
-func NewHeader(carV1Size uint64) Header {
+// NewHeader instantiates a new CARv2 header, given the data size.
+func NewHeader(dataSize uint64) Header {
 	header := Header{
-		CarV1Size: carV1Size,
+		DataSize: dataSize,
 	}
-	header.CarV1Offset = PragmaSize + HeaderSize
-	header.IndexOffset = header.CarV1Offset + carV1Size
+	header.DataOffset = PragmaSize + HeaderSize
+	header.IndexOffset = header.DataOffset + dataSize
 	return header
 }
 
-// WithIndexPadding sets the index offset from the beginning of the file for this header and returns the
-// header for convenient chained calls.
+// WithIndexPadding sets the index offset from the beginning of the file for this header and returns
+// the header for convenient chained calls.
 // The index offset is calculated as the sum of PragmaSize, HeaderSize,
-// Header.CarV1Size, and the given padding.
+// Header.DataSize, and the given padding.
 func (h Header) WithIndexPadding(padding uint64) Header {
 	h.IndexOffset = h.IndexOffset + padding
 	return h
 }
 
-// WithCarV1Padding sets the CAR v1 dump offset from the beginning of the file for this header and returns the
-// header for convenient chained calls.
-// The CAR v1 offset is calculated as the sum of PragmaSize, HeaderSize and the given padding.
+// WithDataPadding sets the data payload byte-offset from the beginning of the file for this header
+// and returns the header for convenient chained calls.
+// The Data offset is calculated as the sum of PragmaSize, HeaderSize and the given padding.
 // The call to this function also shifts the Header.IndexOffset forward by the given padding.
-func (h Header) WithCarV1Padding(padding uint64) Header {
-	h.CarV1Offset = PragmaSize + HeaderSize + padding
+func (h Header) WithDataPadding(padding uint64) Header {
+	h.DataOffset = PragmaSize + HeaderSize + padding
 	h.IndexOffset = h.IndexOffset + padding
 	return h
 }
 
-func (h Header) WithCarV1Size(size uint64) Header {
-	h.CarV1Size = size
+func (h Header) WithDataSize(size uint64) Header {
+	h.DataSize = size
 	h.IndexOffset = size + h.IndexOffset
 	return h
 }
@@ -112,8 +112,8 @@ func (h Header) WriteTo(w io.Writer) (n int64, err error) {
 		return
 	}
 	buf := make([]byte, 24)
-	binary.LittleEndian.PutUint64(buf[:8], h.CarV1Offset)
-	binary.LittleEndian.PutUint64(buf[8:16], h.CarV1Size)
+	binary.LittleEndian.PutUint64(buf[:8], h.DataOffset)
+	binary.LittleEndian.PutUint64(buf[8:16], h.DataSize)
 	binary.LittleEndian.PutUint64(buf[16:], h.IndexOffset)
 	written, err := w.Write(buf)
 	n += int64(written)
@@ -132,8 +132,8 @@ func (h *Header) ReadFrom(r io.Reader) (int64, error) {
 	if err != nil {
 		return n, err
 	}
-	h.CarV1Offset = binary.LittleEndian.Uint64(buf[:8])
-	h.CarV1Size = binary.LittleEndian.Uint64(buf[8:16])
+	h.DataOffset = binary.LittleEndian.Uint64(buf[:8])
+	h.DataSize = binary.LittleEndian.Uint64(buf[8:16])
 	h.IndexOffset = binary.LittleEndian.Uint64(buf[16:])
 	return n, nil
 }

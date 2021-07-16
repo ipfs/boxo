@@ -36,11 +36,11 @@ func TestCarV2PragmaLength(t *testing.T) {
 
 func TestCarV2PragmaIsValidCarV1Header(t *testing.T) {
 	v1h, err := carv1.ReadHeader(bytes.NewReader(carv2.Pragma))
-	assert.NoError(t, err, "cannot decode pragma as CBOR with CAR v1 header structure")
+	assert.NoError(t, err, "cannot decode pragma as CBOR with CARv1 header structure")
 	assert.Equal(t, &carv1.CarHeader{
 		Roots:   nil,
 		Version: 2,
-	}, v1h, "CAR v2 pragma must be a valid CAR v1 header")
+	}, v1h, "CARv2 pragma must be a valid CARv1 header")
 }
 
 func TestHeader_WriteTo(t *testing.T) {
@@ -70,8 +70,8 @@ func TestHeader_WriteTo(t *testing.T) {
 				Characteristics: carv2.Characteristics{
 					Hi: 1001, Lo: 1002,
 				},
-				CarV1Offset: 99,
-				CarV1Size:   100,
+				DataOffset:  99,
+				DataSize:    100,
 				IndexOffset: 101,
 			},
 			[]byte{
@@ -94,8 +94,8 @@ func TestHeader_WriteTo(t *testing.T) {
 			}
 			gotWrite := buf.Bytes()
 			assert.Equal(t, tt.wantWrite, gotWrite, "Header.WriteTo() gotWrite = %v, wantWrite %v", gotWrite, tt.wantWrite)
-			assert.EqualValues(t, carv2.HeaderSize, uint64(len(gotWrite)), "WriteTo() CAR v2 header length must always be %v bytes long", carv2.HeaderSize)
-			assert.EqualValues(t, carv2.HeaderSize, uint64(written), "WriteTo() CAR v2 header byte count must always be %v bytes long", carv2.HeaderSize)
+			assert.EqualValues(t, carv2.HeaderSize, uint64(len(gotWrite)), "WriteTo() CARv2 header length must always be %v bytes long", carv2.HeaderSize)
+			assert.EqualValues(t, carv2.HeaderSize, uint64(written), "WriteTo() CARv2 header byte count must always be %v bytes long", carv2.HeaderSize)
 		})
 	}
 }
@@ -135,8 +135,8 @@ func TestHeader_ReadFrom(t *testing.T) {
 				Characteristics: carv2.Characteristics{
 					Hi: 1001, Lo: 1002,
 				},
-				CarV1Offset: 99,
-				CarV1Size:   100,
+				DataOffset:  99,
+				DataSize:    100,
 				IndexOffset: 101,
 			},
 			false,
@@ -168,13 +168,13 @@ func TestHeader_WithPadding(t *testing.T) {
 		},
 		{
 			"WhenOnlyPaddingCarV1BothOffsetsShift",
-			carv2.NewHeader(123).WithCarV1Padding(3),
+			carv2.NewHeader(123).WithDataPadding(3),
 			carv2.PragmaSize + carv2.HeaderSize + 3,
 			carv2.PragmaSize + carv2.HeaderSize + 3 + 123,
 		},
 		{
 			"WhenPaddingBothCarV1AndIndexBothOffsetsShiftWithAdditionalIndexShift",
-			carv2.NewHeader(123).WithCarV1Padding(3).WithIndexPadding(7),
+			carv2.NewHeader(123).WithDataPadding(3).WithIndexPadding(7),
 			carv2.PragmaSize + carv2.HeaderSize + 3,
 			carv2.PragmaSize + carv2.HeaderSize + 3 + 123 + 7,
 		},
@@ -182,7 +182,7 @@ func TestHeader_WithPadding(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.EqualValues(t, tt.wantCarV1Offset, tt.subject.CarV1Offset)
+			assert.EqualValues(t, tt.wantCarV1Offset, tt.subject.DataOffset)
 			assert.EqualValues(t, tt.wantIndexOffset, tt.subject.IndexOffset)
 		})
 	}
@@ -192,8 +192,8 @@ func TestNewHeaderHasExpectedValues(t *testing.T) {
 	wantCarV1Len := uint64(1413)
 	want := carv2.Header{
 		Characteristics: carv2.Characteristics{},
-		CarV1Offset:     carv2.PragmaSize + carv2.HeaderSize,
-		CarV1Size:       wantCarV1Len,
+		DataOffset:      carv2.PragmaSize + carv2.HeaderSize,
+		DataSize:        wantCarV1Len,
 		IndexOffset:     carv2.PragmaSize + carv2.HeaderSize + wantCarV1Len,
 	}
 	got := carv2.NewHeader(wantCarV1Len)

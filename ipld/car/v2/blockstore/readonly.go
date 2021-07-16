@@ -34,9 +34,9 @@ type ReadOnly struct {
 	// For simplicity, the entirety of the blockstore methods grab the mutex.
 	mu sync.RWMutex
 
-	// The backing containing the CAR in v1 format.
+	// The backing containing the data payload in CARv1 format.
 	backing io.ReaderAt
-	// The CAR v1 content index.
+	// The CARv1 content index.
 	idx index.Index
 
 	// If we called carv2.NewReaderMmap, remember to close it too.
@@ -53,8 +53,6 @@ type ReadOnly struct {
 //
 // • Get, Has, and HasSize will only return a block
 // only if the entire CID is present in the CAR file.
-//
-// • DeleteBlock will delete a block only when the entire CID matches.
 //
 // • AllKeysChan will return the original whole CIDs, instead of with their
 // multicodec set to "raw" to just provide multihashes.
@@ -73,12 +71,12 @@ func UseWholeCIDs(enable bool) carv2.ReadOption {
 }
 
 // NewReadOnly creates a new ReadOnly blockstore from the backing with a optional index as idx.
-// This function accepts both CAR v1 and v2 backing.
+// This function accepts both CARv1 and CARv2 backing.
 // The blockstore is instantiated with the given index if it is not nil.
 //
 // Otherwise:
-// * For a CAR v1 backing an index is generated.
-// * For a CAR v2 backing an index is only generated if Header.HasIndex returns false.
+// * For a CARv1 backing an index is generated.
+// * For a CARv2 backing an index is only generated if Header.HasIndex returns false.
 //
 // There is no need to call ReadOnly.Close on instances returned by this function.
 func NewReadOnly(backing io.ReaderAt, idx index.Index, opts ...carv2.ReadOption) (*ReadOnly, error) {
@@ -112,11 +110,11 @@ func NewReadOnly(backing io.ReaderAt, idx index.Index, opts ...carv2.ReadOption)
 				if err != nil {
 					return nil, err
 				}
-			} else if idx, err = generateIndex(v2r.CarV1Reader(), opts...); err != nil {
+			} else if idx, err = generateIndex(v2r.DataReader(), opts...); err != nil {
 				return nil, err
 			}
 		}
-		b.backing = v2r.CarV1Reader()
+		b.backing = v2r.DataReader()
 		b.idx = idx
 		return b, nil
 	default:
@@ -169,7 +167,7 @@ func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
 	return bcid, data, err
 }
 
-// DeleteBlock is unsupported and always returns an error.
+// DeleteBlock is unsupported and always panics.
 func (b *ReadOnly) DeleteBlock(_ cid.Cid) error {
 	panic("called write method on a read-only blockstore")
 }
@@ -289,7 +287,7 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 
 			// Null padding; by default it's an error.
 			if length == 0 {
-				if b.ropts.ZeroLegthSectionAsEOF {
+				if b.ropts.ZeroLengthSectionAsEOF {
 					break
 				} else {
 					return // TODO: log this error

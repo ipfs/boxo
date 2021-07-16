@@ -79,11 +79,11 @@ func WrapV1(src io.ReadSeeker, dst io.Writer) error {
 	return nil
 }
 
-// AttachIndex attaches a given index to an existing car v2 file at given path and offset.
+// AttachIndex attaches a given index to an existing CARv2 file at given path and offset.
 func AttachIndex(path string, idx index.Index, offset uint64) error {
 	// TODO: instead of offset, maybe take padding?
-	// TODO: check that the given path is indeed a CAR v2.
-	// TODO: update CAR v2 header according to the offset at which index is written out.
+	// TODO: check that the given path is indeed a CARv2.
+	// TODO: update CARv2 header according to the offset at which index is written out.
 	out, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
 	if err != nil {
 		return err

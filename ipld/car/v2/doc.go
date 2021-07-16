@@ -1,3 +1,3 @@
-// Package car represents the CAR v2 implementation.
-// TODO add CAR v2 byte structure here.
+// Package car represents the CARv2 implementation.
+// TODO add CARv2 byte structure here.
 package car

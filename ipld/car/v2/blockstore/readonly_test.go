@@ -131,7 +131,7 @@ func newReaderFromV2File(t *testing.T, carv2Path string) *carv1.CarReader {
 	t.Cleanup(func() { f.Close() })
 	v2r, err := carv2.NewReader(f)
 	require.NoError(t, err)
-	v1r, err := carv1.NewCarReader(v2r.CarV1Reader())
+	v1r, err := carv1.NewCarReader(v2r.DataReader())
 	require.NoError(t, err)
 	return v1r
 }

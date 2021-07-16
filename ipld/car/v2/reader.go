@@ -11,12 +11,12 @@ import (
 	"golang.org/x/exp/mmap"
 )
 
-// Reader represents a reader of CAR v2.
+// Reader represents a reader of CARv2.
 type Reader struct {
-	Header      Header
-	r           io.ReaderAt
-	roots       []cid.Cid
-	carv2Closer io.Closer
+	Header Header
+	r      io.ReaderAt
+	roots  []cid.Cid
+	closer io.Closer
 }
 
 // OpenReader is a wrapper for NewReader which opens the file at path.
@@ -31,13 +31,13 @@ func OpenReader(path string, opts ...ReadOption) (*Reader, error) {
 		return nil, err
 	}
 
-	r.carv2Closer = f
+	r.closer = f
 	return r, nil
 }
 
-// NewReader constructs a new reader that reads CAR v2 from the given r.
+// NewReader constructs a new reader that reads CARv2 from the given r.
 // Upon instantiation, the reader inspects the payload by reading the pragma and will return
-// an error if the pragma does not represent a CAR v2.
+// an error if the pragma does not represent a CARv2.
 func NewReader(r io.ReaderAt, opts ...ReadOption) (*Reader, error) {
 	cr := &Reader{
 		r: r,
@@ -63,12 +63,13 @@ func (r *Reader) requireVersion2() (err error) {
 	return
 }
 
-// Roots returns the root CIDs of this CAR
+// Roots returns the root CIDs.
+// The root CIDs are extracted lazily from the data payload header.
 func (r *Reader) Roots() ([]cid.Cid, error) {
 	if r.roots != nil {
 		return r.roots, nil
 	}
-	header, err := carv1.ReadHeader(r.CarV1Reader())
+	header, err := carv1.ReadHeader(r.DataReader())
 	if err != nil {
 		return nil, err
 	}
@@ -91,26 +92,26 @@ type SectionReader interface {
 	io.ReaderAt
 }
 
-// CarV1Reader provides a reader containing the CAR v1 section encapsulated in this CAR v2.
-func (r *Reader) CarV1Reader() SectionReader {
-	return io.NewSectionReader(r.r, int64(r.Header.CarV1Offset), int64(r.Header.CarV1Size))
+// DataReader provides a reader containing the data payload in CARv1 format.
+func (r *Reader) DataReader() SectionReader {
+	return io.NewSectionReader(r.r, int64(r.Header.DataOffset), int64(r.Header.DataSize))
 }
 
-// IndexReader provides an io.Reader containing the index of this CAR v2.
+// IndexReader provides an io.Reader containing the index for the data payload.
 func (r *Reader) IndexReader() io.Reader {
 	return internalio.NewOffsetReadSeeker(r.r, int64(r.Header.IndexOffset))
 }
 
 // Close closes the underlying reader if it was opened by OpenReader.
 func (r *Reader) Close() error {
-	if r.carv2Closer != nil {
-		return r.carv2Closer.Close()
+	if r.closer != nil {
+		return r.closer.Close()
 	}
 	return nil
 }
 
 // ReadVersion reads the version from the pragma.
-// This function accepts both CAR v1 and v2 payloads.
+// This function accepts both CARv1 and CARv2 payloads.
 func ReadVersion(r io.Reader) (version uint64, err error) {
 	// TODO if the user provides a reader that sufficiently satisfies what carv1.ReadHeader is asking then use that instead of wrapping every time.
 	header, err := carv1.ReadHeader(r)

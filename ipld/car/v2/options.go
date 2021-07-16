@@ -6,7 +6,7 @@ package car
 // This type should not be used directly by end users; it's only exposed as a
 // side effect of ReadOption.
 type ReadOptions struct {
-	ZeroLegthSectionAsEOF bool
+	ZeroLengthSectionAsEOF bool
 
 	BlockstoreUseWholeCIDs bool
 }
@@ -24,7 +24,7 @@ var _ ReadWriteOption = ReadOption(nil)
 // This type should not be used directly by end users; it's only exposed as a
 // side effect of WriteOption.
 type WriteOptions struct {
-	CarV1Padding uint64
+	DataPadding  uint64
 	IndexPadding uint64
 
 	BlockstoreAllowDuplicatePuts bool
@@ -42,19 +42,19 @@ type ReadWriteOption interface {
 	readWriteOption()
 }
 
-// ZeroLegthSectionAsEOF is a read option which allows a CARv1 decoder to treat
+// ZeroLengthSectionAsEOF is a read option which allows a CARv1 decoder to treat
 // a zero-length section as the end of the input CAR file. For example, this can
 // be useful to allow "null padding" after a CARv1 without knowing where the
 // padding begins.
-func ZeroLegthSectionAsEOF(o *ReadOptions) {
-	o.ZeroLegthSectionAsEOF = true
+func ZeroLengthSectionAsEOF(o *ReadOptions) {
+	o.ZeroLengthSectionAsEOF = true
 }
 
-// UseCarV1Padding is a write option which sets the padding to be added between
-// CAR v2 header and its data payload on Finalize.
-func UseCarV1Padding(p uint64) WriteOption {
+// UseDataPadding is a write option which sets the padding to be added between
+// CARv2 header and its data payload on Finalize.
+func UseDataPadding(p uint64) WriteOption {
 	return func(o *WriteOptions) {
-		o.CarV1Padding = p
+		o.DataPadding = p
 	}
 }
 
