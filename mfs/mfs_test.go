@@ -1162,6 +1162,7 @@ func TestConcurrentWrites(t *testing.T) {
 
 	var wg sync.WaitGroup
 	nloops := 100
+	errs := make(chan error, 1000)
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
@@ -1171,16 +1172,19 @@ func TestConcurrentWrites(t *testing.T) {
 				err := writeFile(rt, "a/b/c/afile", func(buf []byte) []byte {
 					if len(buf) == 0 {
 						if lastSeen > 0 {
-							t.Fatalf("file corrupted, last seen: %d", lastSeen)
+							errs <- fmt.Errorf("file corrupted, last seen: %d", lastSeen)
+							return buf
 						}
 						buf = make([]byte, 8)
 					} else if len(buf) != 8 {
-						t.Fatal("buf not the right size")
+						errs <- fmt.Errorf("buf not the right size")
+						return buf
 					}
 
 					num := binary.LittleEndian.Uint64(buf)
 					if num < lastSeen {
-						t.Fatalf("count decreased: was %d, is %d", lastSeen, num)
+						errs <- fmt.Errorf("count decreased: was %d, is %d", lastSeen, num)
+						return buf
 					} else {
 						t.Logf("count correct: was %d, is %d", lastSeen, num)
 					}
@@ -1190,13 +1194,17 @@ func TestConcurrentWrites(t *testing.T) {
 					return buf
 				})
 				if err != nil {
-					t.Error("writefile failed: ", err)
+					errs <- fmt.Errorf("writefile failed: %v", err)
 					return
 				}
 			}
 		}()
 	}
 	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Fatal(e)
+	}
 	buf := make([]byte, 8)
 	if err := readFile(rt, "a/b/c/afile", 0, buf); err != nil {
 		t.Fatal(err)
@@ -1353,10 +1361,10 @@ func TestTruncateAndWrite(t *testing.T) {
 	}
 
 	fd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
-	defer fd.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer fd.Close()
 	for i := 0; i < 200; i++ {
 		err = fd.Truncate(0)
 		if err != nil {

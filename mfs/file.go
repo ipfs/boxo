@@ -169,7 +169,7 @@ func (fi *File) Sync() error {
 	// just being able to take the writelock means the descriptor is synced
 	// TODO: Why?
 	fi.desclock.Lock()
-	fi.desclock.Unlock()
+	defer fi.desclock.Unlock() // Defer works around "empty critical section (SA2001)"
 	return nil
 }
 
