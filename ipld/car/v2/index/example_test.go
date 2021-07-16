@@ -2,6 +2,7 @@ package index_test
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 
@@ -44,16 +45,20 @@ func ExampleReadFrom() {
 	// Frame with CID bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy starts at offset 61 relative to CARv1 data payload.
 }
 
-// ExampleSave unmarshalls an index from an indexed CARv2 file, and stores it as a separate
+// ExampleWriteTo unmarshalls an index from an indexed CARv2 file, and stores it as a separate
 // file on disk.
-func ExampleSave() {
+func ExampleWriteTo() {
 	// Open the CARv2 file
 	src := "../testdata/sample-wrapped-v2.car"
 	cr, err := carv2.OpenReader(src)
 	if err != nil {
 		panic(err)
 	}
-	defer cr.Close()
+	defer func() {
+		if err := cr.Close(); err != nil {
+			panic(err)
+		}
+	}()
 
 	// Read and unmarshall index within CARv2 file.
 	idx, err := index.ReadFrom(cr.IndexReader())
@@ -63,17 +68,25 @@ func ExampleSave() {
 
 	// Store the index alone onto destination file.
 	dest := "../testdata/sample-index.carindex"
-	err = index.Save(idx, dest)
+	f, err := os.Create(dest)
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			panic(err)
+		}
+	}()
+	err = index.WriteTo(idx, f)
 	if err != nil {
 		panic(err)
 	}
 
-	// Open the destination file that contains the index only.
-	f, err := os.Open(dest)
+	// Seek to the beginning of tile to read it back.
+	_, err = f.Seek(0, io.SeekStart)
 	if err != nil {
 		panic(err)
 	}
-	defer f.Close()
 
 	// Read and unmarshall the destination file as a separate index instance.
 	reReadIdx, err := index.ReadFrom(f)

@@ -128,33 +128,6 @@ func TestWriteTo(t *testing.T) {
 	require.Equal(t, wantIdx, gotIdx)
 }
 
-func TestSave(t *testing.T) {
-	// Read sample index on file
-	idxf, err := os.Open("../testdata/sample-index.carindex")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, idxf.Close()) })
-
-	// Unmarshall to get expected index
-	wantIdx, err := ReadFrom(idxf)
-	require.NoError(t, err)
-
-	// Save the same index at destination
-	dest := filepath.Join(t.TempDir(), "index-write-to-test.carindex")
-	require.NoError(t, Save(wantIdx, dest))
-
-	// Open the saved file
-	destF, err := os.Open(dest)
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, destF.Close()) })
-
-	// Read the written index back
-	gotIdx, err := ReadFrom(destF)
-	require.NoError(t, err)
-
-	// Assert they are equal
-	require.Equal(t, wantIdx, gotIdx)
-}
-
 func TestMarshalledIndexStartsWithCodec(t *testing.T) {
 	// Read sample index on file
 	idxf, err := os.Open("../testdata/sample-index.carindex")

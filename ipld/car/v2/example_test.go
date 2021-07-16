@@ -25,7 +25,12 @@ func ExampleWrapV1File() {
 	if err != nil {
 		panic(err)
 	}
-	defer cr.Close()
+	defer func() {
+		if err := cr.Close(); err != nil {
+			panic(err)
+		}
+	}()
+
 	roots, err := cr.Roots()
 	if err != nil {
 		panic(err)
