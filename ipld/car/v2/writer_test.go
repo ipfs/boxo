@@ -1,9 +1,16 @@
 package car
 
 import (
-	"bytes"
 	"context"
+	"io"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/ipld/go-car/v2/index"
+	"github.com/ipld/go-car/v2/internal/carv1"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
@@ -12,56 +19,44 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPadding_WriteTo(t *testing.T) {
-	tests := []struct {
-		name      string
-		padding   padding
-		wantBytes []byte
-		wantN     int64
-		wantErr   bool
-	}{
-		{
-			"ZeroPaddingIsNoBytes",
-			padding(0),
-			nil,
-			0,
-			false,
-		},
-		{
-			"NonZeroPaddingIsCorrespondingZeroValueBytes",
-			padding(3),
-			[]byte{0x00, 0x00, 0x00},
-			3,
-			false,
-		},
-		{
-			"PaddingLargerThanTheBulkPaddingSizeIsCorrespondingZeroValueBytes",
-			padding(1025),
-			make([]byte, 1025),
-			1025,
-			false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			w := &bytes.Buffer{}
-			gotN, gotErr := tt.padding.WriteTo(w)
-			if tt.wantErr {
-				assert.Error(t, gotErr)
-				return
-			}
-			gotBytes := w.Bytes()
-			assert.Equal(t, tt.wantN, gotN)
-			assert.Equal(t, tt.wantBytes, gotBytes)
-		})
-	}
-}
+func TestWrapV1(t *testing.T) {
+	// Produce a CARv1 file to test wrapping with.
+	dagSvc := dstest.Mock()
+	src := filepath.Join(t.TempDir(), "unwrapped-test-v1.car")
+	sf, err := os.Create(src)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sf.Close()) })
+	require.NoError(t, carv1.WriteCar(context.Background(), dagSvc, generateRootCid(t, dagSvc), sf))
 
-func TestNewWriter(t *testing.T) {
-	dagService := dstest.Mock()
-	wantRoots := generateRootCid(t, dagService)
-	writer := newWriter(context.Background(), dagService, wantRoots)
-	assert.Equal(t, wantRoots, writer.roots)
+	// Wrap the test CARv1 file
+	dest := filepath.Join(t.TempDir(), "wrapped-test-v1.car")
+	df, err := os.Create(dest)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, df.Close()) })
+	_, err = sf.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	require.NoError(t, WrapV1(sf, df))
+
+	// Assert wrapped file is valid CARv2 with CARv1 data payload matching the original CARv1 file.
+	subject, err := OpenReader(dest)
+	t.Cleanup(func() { require.NoError(t, subject.Close()) })
+	require.NoError(t, err)
+
+	// Assert CARv1 data payloads are identical.
+	_, err = sf.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	wantPayload, err := ioutil.ReadAll(sf)
+	require.NoError(t, err)
+	gotPayload, err := ioutil.ReadAll(subject.CarV1Reader())
+	require.NoError(t, err)
+	require.Equal(t, wantPayload, gotPayload)
+
+	// Assert embedded index in CARv2 is same as index generated from the original CARv1.
+	wantIdx, err := GenerateIndexFromFile(src)
+	require.NoError(t, err)
+	gotIdx, err := index.ReadFrom(subject.IndexReader())
+	require.NoError(t, err)
+	require.Equal(t, wantIdx, gotIdx)
 }
 
 func generateRootCid(t *testing.T, adder format.NodeAdder) []cid.Cid {
