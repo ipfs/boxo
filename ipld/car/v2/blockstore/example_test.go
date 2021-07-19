@@ -20,7 +20,10 @@ func ExampleOpenReadOnly() {
 	// Note, `OpenReadOnly` accepts bot CARv1 and CARv2 formats and transparently generate index
 	// in the background if necessary.
 	// This instance sets ZeroLengthSectionAsEOF option to treat zero sized sections in file as EOF.
-	robs, err := blockstore.OpenReadOnly("../testdata/sample-v1.car", carv2.ZeroLengthSectionAsEOF)
+	robs, err := blockstore.OpenReadOnly("../testdata/sample-v1.car",
+		blockstore.UseWholeCIDs(true),
+		carv2.ZeroLengthSectionAsEOF(true),
+	)
 	if err != nil {
 		panic(err)
 	}

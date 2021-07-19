@@ -32,21 +32,6 @@ func TestNew(t *testing.T) {
 			codec:   multicodec.Cidv1,
 			wantErr: true,
 		},
-		{
-			name:    "IndexSingleSortedMultiCodecIsError",
-			codec:   multicodec.Code(indexSingleSorted),
-			wantErr: true,
-		},
-		{
-			name:    "IndexHashedMultiCodecIsError",
-			codec:   multicodec.Code(indexHashed),
-			wantErr: true,
-		},
-		{
-			name:    "IndexGobHashedMultiCodecIsError",
-			codec:   multicodec.Code(indexGobHashed),
-			wantErr: true,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -82,7 +67,7 @@ func TestReadFrom(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get offset from the index for a CID and assert it exists
-		gotOffset, err := subject.Get(wantBlock.Cid())
+		gotOffset, err := GetFirst(subject, wantBlock.Cid())
 		require.NoError(t, err)
 		require.NotZero(t, gotOffset)
 

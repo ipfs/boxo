@@ -14,32 +14,58 @@ import (
 	"github.com/ipfs/go-cid"
 )
 
-// Codec table is a first var-int in CAR indexes
-const (
-	indexHashed codec = 0x300000 + iota
-	indexSingleSorted
-	indexGobHashed
-)
-
 type (
-	// codec is used as a multicodec identifier for CAR index files
-	codec int
-
 	// Record is a pre-processed record of a car item and location.
 	Record struct {
 		cid.Cid
-		Idx uint64
+		Offset uint64
 	}
 
 	// Index provides an interface for looking up byte offset of a given CID.
+	//
+	// Note that each indexing mechanism is free to match CIDs however it
+	// sees fit. For example, multicodec.CarIndexSorted only indexes
+	// multihash digests, meaning that Get and GetAll will find matching
+	// blocks even if the CID's encoding multicodec differs. Other index
+	// implementations might index the entire CID, the entire multihash, or
+	// just part of a multihash's digest.
 	Index interface {
+		// Codec provides the multicodec code that the index implements.
+		//
+		// Note that this may return a reserved code if the index
+		// implementation is not defined in a spec.
 		Codec() multicodec.Code
+
+		// Marshal encodes the index in serial form.
 		Marshal(w io.Writer) error
+		// Unmarshal decodes the index from its serial form.
 		Unmarshal(r io.Reader) error
-		Get(cid.Cid) (uint64, error)
+
+		// Load inserts a number of records into the index.
 		Load([]Record) error
+
+		// Get looks up all blocks matching a given CID,
+		// calling a function for each one of their offsets.
+		//
+		// If the function returns false, GetAll stops.
+		//
+		// If no error occurred and the CID isn't indexed,
+		// meaning that no callbacks happen,
+		// ErrNotFound is returned.
+		GetAll(cid.Cid, func(uint64) bool) error
 	}
 )
+
+// GetFirst is a wrapper over Index.GetAll, returning the offset for the first
+// matching indexed CID.
+func GetFirst(idx Index, key cid.Cid) (uint64, error) {
+	var firstOffset uint64
+	err := idx.GetAll(key, func(offset uint64) bool {
+		firstOffset = offset
+		return false
+	})
+	return firstOffset, err
+}
 
 // New constructs a new index corresponding to the given CAR index codec.
 func New(codec multicodec.Code) (Index, error) {

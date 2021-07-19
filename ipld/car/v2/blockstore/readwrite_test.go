@@ -123,21 +123,29 @@ func TestBlockstore(t *testing.T) {
 func TestBlockstorePutSameHashes(t *testing.T) {
 	tdir := t.TempDir()
 
-	// wbs allows duplicate puts.
-	wbs, err := blockstore.OpenReadWrite(
-		filepath.Join(tdir, "readwrite.car"), nil,
+	// This blockstore allows duplicate puts,
+	// and identifies by multihash as per the default.
+	wbsAllowDups, err := blockstore.OpenReadWrite(
+		filepath.Join(tdir, "readwrite-allowdup.car"), nil,
 		blockstore.AllowDuplicatePuts(true),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { wbs.Finalize() })
+	t.Cleanup(func() { wbsAllowDups.Finalize() })
 
-	// wbs deduplicates puts by CID.
-	wbsd, err := blockstore.OpenReadWrite(
-		filepath.Join(tdir, "readwrite-dedup.car"), nil,
+	// This blockstore deduplicates puts by CID.
+	wbsByCID, err := blockstore.OpenReadWrite(
+		filepath.Join(tdir, "readwrite-dedup-wholecid.car"), nil,
 		blockstore.UseWholeCIDs(true),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { wbsd.Finalize() })
+	t.Cleanup(func() { wbsByCID.Finalize() })
+
+	// This blockstore deduplicates puts by multihash.
+	wbsByHash, err := blockstore.OpenReadWrite(
+		filepath.Join(tdir, "readwrite-dedup-hash.car"), nil,
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { wbsByHash.Finalize() })
 
 	var blockList []blocks.Block
 
@@ -160,15 +168,15 @@ func TestBlockstorePutSameHashes(t *testing.T) {
 	// However, we have multiple CIDs for each multihash.
 	// We also have two duplicate CIDs.
 	data1 := []byte("foo bar")
-	appendBlock(data1, 0, cid.Raw)
-	appendBlock(data1, 1, cid.Raw)
+	appendBlock(data1, 0, cid.DagProtobuf)
+	appendBlock(data1, 1, cid.DagProtobuf)
 	appendBlock(data1, 1, cid.DagCBOR)
 	appendBlock(data1, 1, cid.DagCBOR) // duplicate CID
 
 	data2 := []byte("foo bar baz")
-	appendBlock(data2, 0, cid.Raw)
-	appendBlock(data2, 1, cid.Raw)
-	appendBlock(data2, 1, cid.Raw) // duplicate CID
+	appendBlock(data2, 0, cid.DagProtobuf)
+	appendBlock(data2, 1, cid.DagProtobuf)
+	appendBlock(data2, 1, cid.DagProtobuf) // duplicate CID
 	appendBlock(data2, 1, cid.DagCBOR)
 
 	countBlocks := func(bs *blockstore.ReadWrite) int {
@@ -176,52 +184,75 @@ func TestBlockstorePutSameHashes(t *testing.T) {
 		require.NoError(t, err)
 
 		n := 0
-		for range ch {
+		for c := range ch {
+			if c.Prefix().Codec == cid.Raw {
+				if bs == wbsByCID {
+					t.Error("expected blockstore with UseWholeCIDs to not flatten on AllKeysChan")
+				}
+			} else {
+				if bs != wbsByCID {
+					t.Error("expected blockstore without UseWholeCIDs to flatten on AllKeysChan")
+				}
+			}
 			n++
 		}
 		return n
 	}
 
-	for i, block := range blockList {
-		// Has should never error here.
-		// The first block should be missing.
-		// Others might not, given the duplicate hashes.
-		has, err := wbs.Has(block.Cid())
-		require.NoError(t, err)
-		if i == 0 {
-			require.False(t, has)
+	putBlockList := func(bs *blockstore.ReadWrite) {
+		for i, block := range blockList {
+			// Has should never error here.
+			// The first block should be missing.
+			// Others might not, given the duplicate hashes.
+			has, err := bs.Has(block.Cid())
+			require.NoError(t, err)
+			if i == 0 {
+				require.False(t, has)
+			}
+
+			err = bs.Put(block)
+			require.NoError(t, err)
+
+			// Has, Get, and GetSize need to work right after a Put.
+			has, err = bs.Has(block.Cid())
+			require.NoError(t, err)
+			require.True(t, has)
+
+			got, err := bs.Get(block.Cid())
+			require.NoError(t, err)
+			require.Equal(t, block.Cid(), got.Cid())
+			require.Equal(t, block.RawData(), got.RawData())
+
+			size, err := bs.GetSize(block.Cid())
+			require.NoError(t, err)
+			require.Equal(t, len(block.RawData()), size)
 		}
-
-		err = wbs.Put(block)
-		require.NoError(t, err)
 	}
 
-	for _, block := range blockList {
-		has, err := wbs.Has(block.Cid())
-		require.NoError(t, err)
-		require.True(t, has)
+	putBlockList(wbsAllowDups)
+	require.Equal(t, len(blockList), countBlocks(wbsAllowDups))
 
-		got, err := wbs.Get(block.Cid())
-		require.NoError(t, err)
-		require.Equal(t, block.Cid(), got.Cid())
-		require.Equal(t, block.RawData(), got.RawData())
-	}
-
-	require.Equal(t, len(blockList), countBlocks(wbs))
-
-	err = wbs.Finalize()
+	err = wbsAllowDups.Finalize()
 	require.NoError(t, err)
 
 	// Put the same list of blocks to the blockstore that
 	// deduplicates by CID.
-	// We should end up with two fewer blocks.
-	for _, block := range blockList {
-		err = wbsd.Put(block)
-		require.NoError(t, err)
-	}
-	require.Equal(t, len(blockList)-2, countBlocks(wbsd))
+	// We should end up with two fewer blocks,
+	// as two are entire CID duplicates.
+	putBlockList(wbsByCID)
+	require.Equal(t, len(blockList)-2, countBlocks(wbsByCID))
 
-	err = wbsd.Finalize()
+	err = wbsByCID.Finalize()
+	require.NoError(t, err)
+
+	// Put the same list of blocks to the blockstore that
+	// deduplicates by CID.
+	// We should end up with just two blocks,
+	// as the original set of blocks only has two distinct multihashes.
+	putBlockList(wbsByHash)
+	require.Equal(t, 2, countBlocks(wbsByHash))
+
+	err = wbsByHash.Finalize()
 	require.NoError(t, err)
 }
 
@@ -280,7 +311,8 @@ func TestBlockstoreNullPadding(t *testing.T) {
 	// A sample null-padded CARv1 file.
 	paddedV1 = append(paddedV1, make([]byte, 2048)...)
 
-	rbs, err := blockstore.NewReadOnly(bufferReaderAt(paddedV1), nil, carv2.ZeroLengthSectionAsEOF)
+	rbs, err := blockstore.NewReadOnly(bufferReaderAt(paddedV1), nil,
+		carv2.ZeroLengthSectionAsEOF(true))
 	require.NoError(t, err)
 
 	roots, err := rbs.Roots()
@@ -313,7 +345,8 @@ func TestBlockstoreResumption(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "readwrite-resume.car")
 	// Create an incomplete CARv2 file with no blocks put.
-	subject, err := blockstore.OpenReadWrite(path, r.Header.Roots)
+	subject, err := blockstore.OpenReadWrite(path, r.Header.Roots,
+		blockstore.UseWholeCIDs(true))
 	require.NoError(t, err)
 
 	// For each block resume on the same file, putting blocks one at a time.
@@ -345,7 +378,8 @@ func TestBlockstoreResumption(t *testing.T) {
 				// We do this to avoid resource leak during testing.
 				require.NoError(t, subject.Close())
 			}
-			subject, err = blockstore.OpenReadWrite(path, r.Header.Roots)
+			subject, err = blockstore.OpenReadWrite(path, r.Header.Roots,
+				blockstore.UseWholeCIDs(true))
 			require.NoError(t, err)
 		}
 		require.NoError(t, subject.Put(b))
@@ -377,7 +411,8 @@ func TestBlockstoreResumption(t *testing.T) {
 	require.NoError(t, subject.Close())
 
 	// Finalize the blockstore to complete partially written CARv2 file.
-	subject, err = blockstore.OpenReadWrite(path, r.Header.Roots)
+	subject, err = blockstore.OpenReadWrite(path, r.Header.Roots,
+		blockstore.UseWholeCIDs(true))
 	require.NoError(t, err)
 	require.NoError(t, subject.Finalize())
 
@@ -528,9 +563,9 @@ func TestReadWriteWithPaddingWorksAsExpected(t *testing.T) {
 	indexSize := stat.Size() - int64(wantIndexOffset)
 	gotIdx, err := index.ReadFrom(io.NewSectionReader(f, int64(wantIndexOffset), indexSize))
 	require.NoError(t, err)
-	_, err = gotIdx.Get(oneTestBlockCid)
+	_, err = index.GetFirst(gotIdx, oneTestBlockCid)
 	require.NoError(t, err)
-	_, err = gotIdx.Get(anotherTestBlockCid)
+	_, err = index.GetFirst(gotIdx, anotherTestBlockCid)
 	require.NoError(t, err)
 }
 

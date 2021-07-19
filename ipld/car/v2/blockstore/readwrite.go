@@ -89,7 +89,6 @@ func AllowDuplicatePuts(allow bool) carv2.WriteOption {
 // Resuming from finalized files is allowed. However, resumption will regenerate the index
 // regardless by scanning every existing block in file.
 func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.ReadWriteOption) (*ReadWrite, error) {
-	// TODO: enable deduplication by default now that resumption is automatically attempted.
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666) // TODO: Should the user be able to configure FileMode permissions?
 	if err != nil {
 		return nil, fmt.Errorf("could not open read/write file: %w", err)

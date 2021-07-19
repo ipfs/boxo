@@ -44,10 +44,6 @@ func (r recordSet) Swap(i, j int) {
 	r[i], r[j] = r[j], r[i]
 }
 
-func (s *singleWidthIndex) Codec() multicodec.Code {
-	return multicodec.Code(indexSingleSorted)
-}
-
 func (s *singleWidthIndex) Marshal(w io.Writer) error {
 	if err := binary.Write(w, binary.LittleEndian, s.width); err != nil {
 		return err
@@ -77,25 +73,34 @@ func (s *singleWidthIndex) Less(i int, digest []byte) bool {
 	return bytes.Compare(digest[:], s.index[i*int(s.width):((i+1)*int(s.width)-8)]) <= 0
 }
 
-func (s *singleWidthIndex) Get(c cid.Cid) (uint64, error) {
+func (s *singleWidthIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
-		return 0, err
+		return err
 	}
-	return s.get(d.Digest)
+	return s.getAll(d.Digest, fn)
 }
 
-func (s *singleWidthIndex) get(d []byte) (uint64, error) {
+func (s *singleWidthIndex) getAll(d []byte, fn func(uint64) bool) error {
 	idx := sort.Search(int(s.len), func(i int) bool {
 		return s.Less(i, d)
 	})
 	if uint64(idx) == s.len {
-		return 0, ErrNotFound
+		return ErrNotFound
 	}
-	if !bytes.Equal(d[:], s.index[idx*int(s.width):(idx+1)*int(s.width)-8]) {
-		return 0, ErrNotFound
+
+	any := false
+	for bytes.Equal(d[:], s.index[idx*int(s.width):(idx+1)*int(s.width)-8]) {
+		any = true
+		offset := binary.LittleEndian.Uint64(s.index[(idx+1)*int(s.width)-8 : (idx+1)*int(s.width)])
+		if !fn(offset) {
+			break
+		}
 	}
-	return binary.LittleEndian.Uint64(s.index[(idx+1)*int(s.width)-8 : (idx+1)*int(s.width)]), nil
+	if !any {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *singleWidthIndex) Load(items []Record) error {
@@ -115,15 +120,15 @@ func (s *singleWidthIndex) Load(items []Record) error {
 	return nil
 }
 
-func (m *multiWidthIndex) Get(c cid.Cid) (uint64, error) {
+func (m *multiWidthIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
-		return 0, err
+		return err
 	}
 	if s, ok := (*m)[uint32(len(d.Digest)+8)]; ok {
-		return s.get(d.Digest)
+		return s.getAll(d.Digest, fn)
 	}
-	return 0, ErrNotFound
+	return ErrNotFound
 }
 
 func (m *multiWidthIndex) Codec() multicodec.Code {
@@ -184,7 +189,7 @@ func (m *multiWidthIndex) Load(items []Record) error {
 			idxs[len(digest)] = make([]digestRecord, 0)
 			idx = idxs[len(digest)]
 		}
-		idxs[len(digest)] = append(idx, digestRecord{digest, item.Idx})
+		idxs[len(digest)] = append(idx, digestRecord{digest, item.Offset})
 	}
 
 	// Sort each list. then write to compact form.
@@ -208,10 +213,4 @@ func (m *multiWidthIndex) Load(items []Record) error {
 func newSorted() Index {
 	m := make(multiWidthIndex)
 	return &m
-}
-
-//lint:ignore U1000 kept for potential future use.
-func newSingleSorted() Index {
-	s := singleWidthIndex{}
-	return &s
 }

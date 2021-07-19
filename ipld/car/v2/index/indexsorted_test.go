@@ -19,17 +19,13 @@ func TestSortedIndex_GetReturnsNotFoundWhenCidDoesNotExist(t *testing.T) {
 		subject Index
 	}{
 		{
-			"SingleSorted",
-			newSingleSorted(),
-		},
-		{
 			"Sorted",
 			newSorted(),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotOffset, err := tt.subject.Get(nonExistingKey)
+			gotOffset, err := GetFirst(tt.subject, nonExistingKey)
 			require.Equal(t, ErrNotFound, err)
 			require.Equal(t, uint64(0), gotOffset)
 		})

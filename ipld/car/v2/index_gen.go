@@ -75,7 +75,7 @@ func GenerateIndex(v1r io.Reader, opts ...ReadOption) (index.Index, error) {
 		if err != nil {
 			return nil, err
 		}
-		records = append(records, index.Record{Cid: c, Idx: uint64(sectionOffset)})
+		records = append(records, index.Record{Cid: c, Offset: uint64(sectionOffset)})
 
 		// Seek to the next section by skipping the block.
 		// The section length includes the CID, so subtract it.

@@ -65,7 +65,6 @@ type ReadOnly struct {
 // go-car/v2 package.
 func UseWholeCIDs(enable bool) carv2.ReadOption {
 	return func(o *carv2.ReadOptions) {
-		// TODO: update methods like Get, Has, and AllKeysChan to obey this.
 		o.BlockstoreUseWholeCIDs = enable
 	}
 }
@@ -177,22 +176,35 @@ func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	offset, err := b.idx.Get(key)
+	var fnFound bool
+	var fnErr error
+	err := b.idx.GetAll(key, func(offset uint64) bool {
+		uar := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
+		var err error
+		_, err = varint.ReadUvarint(uar)
+		if err != nil {
+			fnErr = err
+			return false
+		}
+		_, readCid, err := cid.CidFromReader(uar)
+		if err != nil {
+			fnErr = err
+			return false
+		}
+		if b.ropts.BlockstoreUseWholeCIDs {
+			fnFound = readCid.Equals(key)
+			return !fnFound // continue looking if we haven't found it
+		} else {
+			fnFound = bytes.Equal(readCid.Hash(), key.Hash())
+			return false
+		}
+	})
 	if errors.Is(err, index.ErrNotFound) {
 		return false, nil
 	} else if err != nil {
 		return false, err
 	}
-	uar := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
-	_, err = varint.ReadUvarint(uar)
-	if err != nil {
-		return false, err
-	}
-	_, c, err := cid.CidFromReader(uar)
-	if err != nil {
-		return false, err
-	}
-	return bytes.Equal(key.Hash(), c.Hash()), nil
+	return fnFound, fnErr
 }
 
 // Get gets a block corresponding to the given key.
@@ -200,21 +212,39 @@ func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	offset, err := b.idx.Get(key)
-	if err != nil {
-		if err == index.ErrNotFound {
-			err = blockstore.ErrNotFound
+	var fnData []byte
+	var fnErr error
+	err := b.idx.GetAll(key, func(offset uint64) bool {
+		readCid, data, err := b.readBlock(int64(offset))
+		if err != nil {
+			fnErr = err
+			return false
 		}
+		if b.ropts.BlockstoreUseWholeCIDs {
+			if readCid.Equals(key) {
+				fnData = data
+				return false
+			} else {
+				return true // continue looking
+			}
+		} else {
+			if bytes.Equal(readCid.Hash(), key.Hash()) {
+				fnData = data
+			}
+			return false
+		}
+	})
+	if errors.Is(err, index.ErrNotFound) {
+		return nil, blockstore.ErrNotFound
+	} else if err != nil {
 		return nil, err
+	} else if fnErr != nil {
+		return nil, fnErr
 	}
-	entry, data, err := b.readBlock(int64(offset))
-	if err != nil {
-		return nil, err
-	}
-	if !bytes.Equal(key.Hash(), entry.Hash()) {
+	if fnData == nil {
 		return nil, blockstore.ErrNotFound
 	}
-	return blocks.NewBlockWithCid(data, key)
+	return blocks.NewBlockWithCid(fnData, key)
 }
 
 // GetSize gets the size of an item corresponding to the given key.
@@ -222,23 +252,45 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	idx, err := b.idx.Get(key)
-	if err != nil {
+	var fnSize int = -1
+	var fnErr error
+	err := b.idx.GetAll(key, func(offset uint64) bool {
+		rdr := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
+		sectionLen, err := varint.ReadUvarint(rdr)
+		if err != nil {
+			fnErr = err
+			return false
+		}
+		cidLen, readCid, err := cid.CidFromReader(rdr)
+		if err != nil {
+			fnErr = err
+			return false
+		}
+		if b.ropts.BlockstoreUseWholeCIDs {
+			if readCid.Equals(key) {
+				fnSize = int(sectionLen) - cidLen
+				return false
+			} else {
+				return true // continue looking
+			}
+		} else {
+			if bytes.Equal(readCid.Hash(), key.Hash()) {
+				fnSize = int(sectionLen) - cidLen
+			}
+			return false
+		}
+	})
+	if errors.Is(err, index.ErrNotFound) {
+		return -1, blockstore.ErrNotFound
+	} else if err != nil {
 		return -1, err
+	} else if fnErr != nil {
+		return -1, fnErr
 	}
-	rdr := internalio.NewOffsetReadSeeker(b.backing, int64(idx))
-	sectionLen, err := varint.ReadUvarint(rdr)
-	if err != nil {
+	if fnSize == -1 {
 		return -1, blockstore.ErrNotFound
 	}
-	cidLen, readCid, err := cid.CidFromReader(rdr)
-	if err != nil {
-		return 0, err
-	}
-	if !readCid.Equals(key) {
-		return -1, blockstore.ErrNotFound
-	}
-	return int(sectionLen) - cidLen, err
+	return fnSize, nil
 }
 
 // Put is not supported and always returns an error.
@@ -302,6 +354,11 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 			}
 			if _, err := rdr.Seek(thisItemForNxt+int64(length), io.SeekStart); err != nil {
 				return // TODO: log this error
+			}
+
+			// If we're just using multihashes, flatten to the "raw" codec.
+			if !b.ropts.BlockstoreUseWholeCIDs {
+				c = cid.NewCidV1(cid.Raw, c.Hash())
 			}
 
 			select {

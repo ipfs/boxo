@@ -55,7 +55,7 @@ func newRecordFromCid(c cid.Cid, at uint64) recordDigest {
 		panic(err)
 	}
 
-	return recordDigest{d.Digest, index.Record{Cid: c, Idx: at}}
+	return recordDigest{d.Digest, index.Record{Cid: c, Offset: at}}
 }
 
 func (ii *insertionIndex) insertNoReplace(key cid.Cid, n uint64) {
@@ -77,7 +77,31 @@ func (ii *insertionIndex) Get(c cid.Cid) (uint64, error) {
 		return 0, errUnsupported
 	}
 
-	return r.Record.Idx, nil
+	return r.Record.Offset, nil
+}
+
+func (ii *insertionIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {
+	d, err := multihash.Decode(c.Hash())
+	if err != nil {
+		return err
+	}
+	entry := recordDigest{digest: d.Digest}
+
+	any := false
+	iter := func(i llrb.Item) bool {
+		existing := i.(recordDigest)
+		if !bytes.Equal(existing.digest, entry.digest) {
+			// We've already looked at all entries with matching digests.
+			return false
+		}
+		any = true
+		return fn(existing.Record.Offset)
+	}
+	ii.items.AscendGreaterOrEqual(entry, iter)
+	if !any {
+		return index.ErrNotFound
+	}
+	return nil
 }
 
 func (ii *insertionIndex) Marshal(w io.Writer) error {
@@ -151,6 +175,10 @@ func (ii *insertionIndex) flatten() (index.Index, error) {
 	}
 	return si, nil
 }
+
+// note that hasExactCID is very similar to GetAll,
+// but it's separate as it allows us to compare Record.Cid directly,
+// whereas GetAll just provides Record.Offset.
 
 func (ii *insertionIndex) hasExactCID(c cid.Cid) bool {
 	d, err := multihash.Decode(c.Hash())

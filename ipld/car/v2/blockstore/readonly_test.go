@@ -49,7 +49,9 @@ func TestReadOnly(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			subject, err := OpenReadOnly(tt.v1OrV2path)
+			subject, err := OpenReadOnly(tt.v1OrV2path,
+				UseWholeCIDs(true),
+			)
 			t.Cleanup(func() { subject.Close() })
 			require.NoError(t, err)
 

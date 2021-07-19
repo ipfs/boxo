@@ -34,7 +34,7 @@ func ExampleReadFrom() {
 
 	// For each root CID print the offset relative to CARv1 data payload.
 	for _, r := range roots {
-		offset, err := idx.Get(r)
+		offset, err := index.GetFirst(idx, r)
 		if err != nil {
 			panic(err)
 		}

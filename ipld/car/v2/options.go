@@ -46,8 +46,10 @@ type ReadWriteOption interface {
 // a zero-length section as the end of the input CAR file. For example, this can
 // be useful to allow "null padding" after a CARv1 without knowing where the
 // padding begins.
-func ZeroLengthSectionAsEOF(o *ReadOptions) {
-	o.ZeroLengthSectionAsEOF = true
+func ZeroLengthSectionAsEOF(enable bool) ReadOption {
+	return func(o *ReadOptions) {
+		o.ZeroLengthSectionAsEOF = true
+	}
 }
 
 // UseDataPadding is a write option which sets the padding to be added between
