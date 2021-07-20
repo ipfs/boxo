@@ -3,7 +3,9 @@ package index_test
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"reflect"
 
 	carv2 "github.com/ipld/go-car/v2"
@@ -67,8 +69,12 @@ func ExampleWriteTo() {
 	}
 
 	// Store the index alone onto destination file.
-	dest := "../testdata/sample-index.carindex"
-	f, err := os.Create(dest)
+	tdir, err := ioutil.TempDir(os.TempDir(), "example-*")
+	if err != nil {
+		panic(err)
+	}
+	dst := filepath.Join(tdir, "index.carindex")
+	f, err := os.Create(dst)
 	if err != nil {
 		panic(err)
 	}
@@ -96,11 +102,11 @@ func ExampleWriteTo() {
 
 	// Expect indices to be equal.
 	if reflect.DeepEqual(idx, reReadIdx) {
-		fmt.Printf("Saved index file at %v matches the index embedded in CARv2 at %v.\n", dest, src)
+		fmt.Printf("Saved index file matches the index embedded in CARv2 at %v.\n", src)
 	} else {
 		panic("expected to get the same index as the CARv2 file")
 	}
 
 	// Output:
-	// Saved index file at ../testdata/sample-index.carindex matches the index embedded in CARv2 at ../testdata/sample-wrapped-v2.car.
+	// Saved index file matches the index embedded in CARv2 at ../testdata/sample-wrapped-v2.car.
 }

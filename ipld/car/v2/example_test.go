@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"os"
+	"path/filepath"
 
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/blockstore"
@@ -15,7 +17,11 @@ func ExampleWrapV1File() {
 	// Writing the result to testdata allows reusing that file in other tests,
 	// and also helps ensure that the result is deterministic.
 	src := "testdata/sample-v1.car"
-	dst := "testdata/sample-wrapped-v2.car"
+	tdir, err := ioutil.TempDir(os.TempDir(), "example-*")
+	if err != nil {
+		panic(err)
+	}
+	dst := filepath.Join(tdir, "wrapped-v2.car")
 	if err := carv2.WrapV1File(src, dst); err != nil {
 		panic(err)
 	}

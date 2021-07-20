@@ -3,6 +3,9 @@ package blockstore_test
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -79,10 +82,14 @@ func ExampleOpenReadWrite() {
 	thatBlock := merkledag.NewRawNode([]byte("lobster")).Block
 	andTheOtherBlock := merkledag.NewRawNode([]byte("barreleye")).Block
 
-	dest := "../testdata/sample-rw-bs-v2.car"
+	tdir, err := ioutil.TempDir(os.TempDir(), "example-*")
+	if err != nil {
+		panic(err)
+	}
+	dst := filepath.Join(tdir, "sample-rw-bs-v2.car")
 	roots := []cid.Cid{thisBlock.Cid(), thatBlock.Cid(), andTheOtherBlock.Cid()}
 
-	rwbs, err := blockstore.OpenReadWrite(dest, roots, carv2.UseDataPadding(1413), carv2.UseIndexPadding(42))
+	rwbs, err := blockstore.OpenReadWrite(dst, roots, carv2.UseDataPadding(1413), carv2.UseIndexPadding(42))
 	if err != nil {
 		panic(err)
 	}
@@ -110,7 +117,7 @@ func ExampleOpenReadWrite() {
 	// Resume from the same file to add more blocks.
 	// Note the UseDataPadding and roots must match the values passed to the blockstore instance
 	// that created the original file. Otherwise, we cannot resume from the same file.
-	resumedRwbos, err := blockstore.OpenReadWrite(dest, roots, carv2.UseDataPadding(1413))
+	resumedRwbos, err := blockstore.OpenReadWrite(dst, roots, carv2.UseDataPadding(1413))
 	if err != nil {
 		panic(err)
 	}

@@ -570,9 +570,27 @@ func TestReadWriteWithPaddingWorksAsExpected(t *testing.T) {
 }
 
 func TestReadWriteResumptionFromNonV2FileIsError(t *testing.T) {
-	subject, err := blockstore.OpenReadWrite("../testdata/sample-rootless-v42.car", []cid.Cid{})
+	tmpPath := requireTmpCopy(t, "../testdata/sample-rootless-v42.car")
+	subject, err := blockstore.OpenReadWrite(tmpPath, []cid.Cid{})
 	require.EqualError(t, err, "cannot resume on CAR file with version 42")
 	require.Nil(t, subject)
+}
+
+func requireTmpCopy(t *testing.T, src string) string {
+	srcF, err := os.Open(src)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, srcF.Close()) })
+	stats, err := srcF.Stat()
+	require.NoError(t, err)
+
+	dst := filepath.Join(t.TempDir(), stats.Name())
+	dstF, err := os.Create(dst)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, dstF.Close()) })
+
+	_, err = io.Copy(dstF, srcF)
+	require.NoError(t, err)
+	return dst
 }
 
 func TestReadWriteResumptionFromFileWithDifferentCarV1PaddingIsError(t *testing.T) {
