@@ -5,7 +5,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"reflect"
 
 	carv2 "github.com/ipld/go-car/v2"
@@ -69,12 +68,7 @@ func ExampleWriteTo() {
 	}
 
 	// Store the index alone onto destination file.
-	tdir, err := ioutil.TempDir(os.TempDir(), "example-*")
-	if err != nil {
-		panic(err)
-	}
-	dst := filepath.Join(tdir, "index.carindex")
-	f, err := os.Create(dst)
+	f, err := ioutil.TempFile(os.TempDir(), "example-index-*.carindex")
 	if err != nil {
 		panic(err)
 	}
