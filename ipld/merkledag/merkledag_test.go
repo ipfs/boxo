@@ -156,7 +156,7 @@ func SubtestNodeStat(t *testing.T, n *ProtoNode) {
 
 type devZero struct{}
 
-func (_ devZero) Read(b []byte) (int, error) {
+func (devZero) Read(b []byte) (int, error) {
 	for i := range b {
 		b[i] = 0
 	}

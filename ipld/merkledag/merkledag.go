@@ -137,10 +137,10 @@ func (sg *sesGetter) Get(ctx context.Context, c cid.Cid) (ipld.Node, error) {
 	switch err {
 	case bserv.ErrNotFound:
 		return nil, ipld.ErrNotFound
-	default:
-		return nil, err
 	case nil:
 		// noop
+	default:
+		return nil, err
 	}
 
 	return ipld.Decode(blk)
