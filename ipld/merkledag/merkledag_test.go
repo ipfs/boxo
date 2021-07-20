@@ -350,11 +350,11 @@ func TestFetchGraphWithDepthLimit(t *testing.T) {
 	}
 
 	tests := []testcase{
-		testcase{1, 4},
-		testcase{0, 1},
-		testcase{-1, 6},
-		testcase{2, 6},
-		testcase{3, 6},
+		{1, 4},
+		{0, 1},
+		{-1, 6},
+		{2, 6},
+		{3, 6},
 	}
 
 	testF := func(t *testing.T, tc testcase) {

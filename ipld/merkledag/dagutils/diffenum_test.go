@@ -46,61 +46,61 @@ func mkGraph(desc map[string]ndesc) map[string]ipld.Node {
 }
 
 var tg1 = map[string]ndesc{
-	"a1": ndesc{
+	"a1": {
 		"foo": "b",
 	},
-	"b": ndesc{},
-	"a2": ndesc{
+	"b": {},
+	"a2": {
 		"foo": "b",
 		"bar": "c",
 	},
-	"c": ndesc{},
+	"c": {},
 }
 
 var tg2 = map[string]ndesc{
-	"a1": ndesc{
+	"a1": {
 		"foo": "b",
 	},
-	"b": ndesc{},
-	"a2": ndesc{
+	"b": {},
+	"a2": {
 		"foo": "b",
 		"bar": "c",
 	},
-	"c": ndesc{"baz": "d"},
-	"d": ndesc{},
+	"c": {"baz": "d"},
+	"d": {},
 }
 
 var tg3 = map[string]ndesc{
-	"a1": ndesc{
+	"a1": {
 		"foo": "b",
 		"bar": "c",
 	},
-	"b": ndesc{},
-	"a2": ndesc{
+	"b": {},
+	"a2": {
 		"foo": "b",
 		"bar": "d",
 	},
-	"c": ndesc{},
-	"d": ndesc{},
+	"c": {},
+	"d": {},
 }
 
 var tg4 = map[string]ndesc{
-	"a1": ndesc{
+	"a1": {
 		"key1": "b",
 		"key2": "c",
 	},
-	"a2": ndesc{
+	"a2": {
 		"key1": "b",
 		"key2": "d",
 	},
 }
 
 var tg5 = map[string]ndesc{
-	"a1": ndesc{
+	"a1": {
 		"key1": "a",
 		"key2": "b",
 	},
-	"a2": ndesc{
+	"a2": {
 		"key1": "c",
 		"key2": "d",
 	},

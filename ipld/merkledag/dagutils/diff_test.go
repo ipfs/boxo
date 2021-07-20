@@ -33,9 +33,9 @@ func TestMergeDiffs(t *testing.T) {
 	}
 
 	expect := []*Change{
-		changesB[1],
 		changesA[0],
 		changesA[2],
+		changesB[1],
 	}
 
 	for i, change := range changes {

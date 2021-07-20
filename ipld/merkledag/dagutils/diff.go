@@ -176,24 +176,28 @@ type Conflict struct {
 // Changes involved (which share the same path).
 func MergeDiffs(a, b []*Change) ([]*Change, []Conflict) {
 	paths := make(map[string]*Change)
-	for _, c := range a {
+	for _, c := range b {
 		paths[c.Path] = c
 	}
 
 	var changes []*Change
 	var conflicts []Conflict
 
-	for _, changeB := range b {
-		if changeA, ok := paths[changeB.Path]; ok {
+	// NOTE: we avoid iterating over maps here to ensure iteration order is determistic. We
+	// include changes from a first, then b.
+	for _, changeA := range a {
+		if changeB, ok := paths[changeA.Path]; ok {
 			conflicts = append(conflicts, Conflict{changeA, changeB})
 		} else {
-			changes = append(changes, changeB)
+			changes = append(changes, changeA)
 		}
-		delete(paths, changeB.Path)
+		delete(paths, changeA.Path)
 	}
 
-	for _, c := range paths {
-		changes = append(changes, c)
+	for _, c := range b {
+		if _, ok := paths[c.Path]; ok {
+			changes = append(changes, c)
+		}
 	}
 
 	return changes, conflicts
