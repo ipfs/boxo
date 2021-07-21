@@ -98,9 +98,11 @@ func TestReadOrGenerateIndex(t *testing.T) {
 			got, err := ReadOrGenerateIndex(carFile, tt.readOpts...)
 			if tt.wantErr {
 				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				want := tt.wantIndexer(t)
+				require.Equal(t, want, got)
 			}
-			want := tt.wantIndexer(t)
-			require.Equal(t, want, got)
 		})
 	}
 }
@@ -143,9 +145,11 @@ func TestGenerateIndexFromFile(t *testing.T) {
 			got, err := GenerateIndexFromFile(tt.carPath)
 			if tt.wantErr {
 				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				want := tt.wantIndexer(t)
+				require.Equal(t, want, got)
 			}
-			want := tt.wantIndexer(t)
-			require.Equal(t, want, got)
 		})
 	}
 }

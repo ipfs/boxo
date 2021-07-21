@@ -39,6 +39,7 @@ func TestNew(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
+				require.NoError(t, err)
 				require.Equal(t, tt.want, got)
 			}
 		})
