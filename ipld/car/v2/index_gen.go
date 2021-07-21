@@ -110,7 +110,7 @@ func GenerateIndexFromFile(path string) (index.Index, error) {
 //
 // Note, the returned index lives entirely in memory and will not depend on the
 // given reader to fulfill index lookup.
-func ReadOrGenerateIndex(rs io.ReadSeeker) (index.Index, error) {
+func ReadOrGenerateIndex(rs io.ReadSeeker, opts ...ReadOption) (index.Index, error) {
 	// Read version.
 	version, err := ReadVersion(rs)
 	if err != nil {
@@ -124,10 +124,10 @@ func ReadOrGenerateIndex(rs io.ReadSeeker) (index.Index, error) {
 	switch version {
 	case 1:
 		// Simply generate the index, since there can't be a pre-existing one.
-		return GenerateIndex(rs)
+		return GenerateIndex(rs, opts...)
 	case 2:
 		// Read CARv2 format
-		v2r, err := NewReader(internalio.ToReaderAt(rs))
+		v2r, err := NewReader(internalio.ToReaderAt(rs), opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -136,7 +136,7 @@ func ReadOrGenerateIndex(rs io.ReadSeeker) (index.Index, error) {
 			return index.ReadFrom(v2r.IndexReader())
 		}
 		// Otherwise, generate index from CARv1 payload wrapped within CARv2 format.
-		return GenerateIndex(v2r.DataReader())
+		return GenerateIndex(v2r.DataReader(), opts...)
 	default:
 		return nil, fmt.Errorf("unknown version %v", version)
 	}

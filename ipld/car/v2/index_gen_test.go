@@ -13,12 +13,14 @@ func TestReadOrGenerateIndex(t *testing.T) {
 	tests := []struct {
 		name        string
 		carPath     string
+		readOpts    []ReadOption
 		wantIndexer func(t *testing.T) index.Index
 		wantErr     bool
 	}{
 		{
 			"CarV1IsIndexedAsExpected",
 			"testdata/sample-v1.car",
+			[]ReadOption{},
 			func(t *testing.T) index.Index {
 				v1, err := os.Open("testdata/sample-v1.car")
 				require.NoError(t, err)
@@ -32,6 +34,7 @@ func TestReadOrGenerateIndex(t *testing.T) {
 		{
 			"CarV2WithIndexIsReturnedAsExpected",
 			"testdata/sample-wrapped-v2.car",
+			[]ReadOption{},
 			func(t *testing.T) index.Index {
 				v2, err := os.Open("testdata/sample-wrapped-v2.car")
 				require.NoError(t, err)
@@ -45,8 +48,44 @@ func TestReadOrGenerateIndex(t *testing.T) {
 			false,
 		},
 		{
+			"CarV1WithZeroLenSectionIsGeneratedAsExpected",
+			"testdata/sample-v1-with-zero-len-section.car",
+			[]ReadOption{ZeroLengthSectionAsEOF(true)},
+			func(t *testing.T) index.Index {
+				v1, err := os.Open("testdata/sample-v1-with-zero-len-section.car")
+				require.NoError(t, err)
+				defer v1.Close()
+				want, err := GenerateIndex(v1, ZeroLengthSectionAsEOF(true))
+				require.NoError(t, err)
+				return want
+			},
+			false,
+		},
+		{
+			"AnotherCarV1WithZeroLenSectionIsGeneratedAsExpected",
+			"testdata/sample-v1-with-zero-len-section2.car",
+			[]ReadOption{ZeroLengthSectionAsEOF(true)},
+			func(t *testing.T) index.Index {
+				v1, err := os.Open("testdata/sample-v1-with-zero-len-section2.car")
+				require.NoError(t, err)
+				defer v1.Close()
+				want, err := GenerateIndex(v1, ZeroLengthSectionAsEOF(true))
+				require.NoError(t, err)
+				return want
+			},
+			false,
+		},
+		{
+			"CarV1WithZeroLenSectionWithoutOptionIsError",
+			"testdata/sample-v1-with-zero-len-section.car",
+			[]ReadOption{},
+			func(t *testing.T) index.Index { return nil },
+			true,
+		},
+		{
 			"CarOtherThanV1OrV2IsError",
 			"testdata/sample-rootless-v42.car",
+			[]ReadOption{},
 			func(t *testing.T) index.Index { return nil },
 			true,
 		},
@@ -56,7 +95,7 @@ func TestReadOrGenerateIndex(t *testing.T) {
 			carFile, err := os.Open(tt.carPath)
 			require.NoError(t, err)
 			t.Cleanup(func() { assert.NoError(t, carFile.Close()) })
-			got, err := ReadOrGenerateIndex(carFile)
+			got, err := ReadOrGenerateIndex(carFile, tt.readOpts...)
 			if tt.wantErr {
 				require.Error(t, err)
 			}

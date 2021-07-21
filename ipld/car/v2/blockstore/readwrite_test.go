@@ -305,11 +305,8 @@ func (b bufferReaderAt) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func TestBlockstoreNullPadding(t *testing.T) {
-	paddedV1, err := ioutil.ReadFile("../testdata/sample-v1.car")
+	paddedV1, err := ioutil.ReadFile("../testdata/sample-v1-with-zero-len-section.car")
 	require.NoError(t, err)
-
-	// A sample null-padded CARv1 file.
-	paddedV1 = append(paddedV1, make([]byte, 2048)...)
 
 	rbs, err := blockstore.NewReadOnly(bufferReaderAt(paddedV1), nil,
 		carv2.ZeroLengthSectionAsEOF(true))

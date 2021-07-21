@@ -48,7 +48,7 @@ type ReadWriteOption interface {
 // padding begins.
 func ZeroLengthSectionAsEOF(enable bool) ReadOption {
 	return func(o *ReadOptions) {
-		o.ZeroLengthSectionAsEOF = true
+		o.ZeroLengthSectionAsEOF = enable
 	}
 }
 
