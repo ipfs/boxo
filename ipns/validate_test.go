@@ -17,13 +17,13 @@ import (
 
 	proto "github.com/gogo/protobuf/proto"
 	u "github.com/ipfs/go-ipfs-util"
-	ci "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/crypto"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	pstore "github.com/libp2p/go-libp2p-core/peerstore"
 	pstoremem "github.com/libp2p/go-libp2p-peerstore/pstoremem"
 )
 
-func testValidatorCase(t *testing.T, priv ci.PrivKey, kbook pstore.KeyBook, key string, val []byte, eol time.Time, exp error) {
+func testValidatorCase(t *testing.T, priv crypto.PrivKey, kbook pstore.KeyBook, key string, val []byte, eol time.Time, exp error) {
 	t.Helper()
 
 	match := func(t *testing.T, err error) {
@@ -43,7 +43,7 @@ func testValidatorCase(t *testing.T, priv ci.PrivKey, kbook pstore.KeyBook, key 
 	testValidatorCaseMatchFunc(t, priv, kbook, key, val, eol, match)
 }
 
-func testValidatorCaseMatchFunc(t *testing.T, priv ci.PrivKey, kbook pstore.KeyBook, key string, val []byte, eol time.Time, matchf func(*testing.T, error)) {
+func testValidatorCaseMatchFunc(t *testing.T, priv crypto.PrivKey, kbook pstore.KeyBook, key string, val []byte, eol time.Time, matchf func(*testing.T, error)) {
 	t.Helper()
 	validator := Validator{kbook}
 
@@ -110,7 +110,7 @@ func TestEmbeddedPubKeyValidate(t *testing.T) {
 
 	testValidatorCase(t, priv, kbook, ipnsk, mustMarshal(t, entry), goodeol, ErrPublicKeyNotFound)
 
-	pubkb, err := priv.GetPublic().Bytes()
+	pubkb, err := crypto.MarshalPublicKey(priv.GetPublic())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestEmbeddedPubKeyValidate(t *testing.T) {
 	})
 
 	opriv, _, _ := genKeys(t)
-	wrongkeydata, err := opriv.GetPublic().Bytes()
+	wrongkeydata, err := crypto.MarshalPublicKey(opriv.GetPublic())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestPeerIDPubKeyValidate(t *testing.T) {
 
 	pth := []byte("/ipfs/QmfM2r8seH2GiRaC4esTjeraXEachRt8ZsSeGaWTPLyMoG")
 
-	sk, pk, err := ci.GenerateEd25519Key(rand.New(rand.NewSource(42)))
+	sk, pk, err := crypto.GenerateEd25519Key(rand.New(rand.NewSource(42)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestPeerIDPubKeyValidate(t *testing.T) {
 func TestBothSignatureVersionsValidate(t *testing.T) {
 	goodeol := time.Now().Add(time.Hour)
 
-	sk, pk, err := ci.GenerateEd25519Key(rand.New(rand.NewSource(42)))
+	sk, pk, err := crypto.GenerateEd25519Key(rand.New(rand.NewSource(42)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestBothSignatureVersionsValidate(t *testing.T) {
 func TestNewSignatureVersionPreferred(t *testing.T) {
 	goodeol := time.Now().Add(time.Hour)
 
-	sk, pk, err := ci.GenerateEd25519Key(rand.New(rand.NewSource(42)))
+	sk, pk, err := crypto.GenerateEd25519Key(rand.New(rand.NewSource(42)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestNewSignatureVersionPreferred(t *testing.T) {
 func TestCborDataCanonicalization(t *testing.T) {
 	goodeol := time.Now().Add(time.Hour)
 
-	sk, pk, err := ci.GenerateEd25519Key(rand.New(rand.NewSource(42)))
+	sk, pk, err := crypto.GenerateEd25519Key(rand.New(rand.NewSource(42)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,9 +372,9 @@ func TestCborDataCanonicalization(t *testing.T) {
 	}
 }
 
-func genKeys(t *testing.T) (ci.PrivKey, peer.ID, string) {
+func genKeys(t *testing.T) (crypto.PrivKey, peer.ID, string) {
 	sr := u.NewTimeSeededRand()
-	priv, _, err := ci.GenerateKeyPairWithReader(ci.RSA, 2048, sr)
+	priv, _, err := crypto.GenerateKeyPairWithReader(crypto.RSA, 2048, sr)
 	if err != nil {
 		t.Fatal(err)
 	}
