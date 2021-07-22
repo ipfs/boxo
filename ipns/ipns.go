@@ -273,7 +273,7 @@ func EmbedPublicKey(pk ic.PubKey, entry *pb.IpnsEntry) error {
 
 	// We failed to extract the public key from the peer ID, embed it in the
 	// record.
-	pkBytes, err := pk.Bytes()
+	pkBytes, err := ic.MarshalPublicKey(pk)
 	if err != nil {
 		return err
 	}
