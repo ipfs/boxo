@@ -16,6 +16,10 @@ func (m *mockFileInfo) Name() string {
 	return m.name
 }
 
+func (m *mockFileInfo) Sys() interface{} {
+	return nil
+}
+
 var _ os.FileInfo = &mockFileInfo{}
 
 func TestFileFilter(t *testing.T) {

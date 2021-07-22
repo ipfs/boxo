@@ -24,20 +24,20 @@ func TestWriteTo(t *testing.T) {
 	}
 	defer os.RemoveAll(tmppath)
 
-	path := tmppath + "/output"
+	path := filepath.Join(tmppath, "output")
 
 	err = WriteTo(sf, path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	expected := map[string]string{
-		".":   "",
-		"1":   "Some text!\n",
-		"2":   "beep",
-		"3":   "",
-		"4":   "boop",
-		"5":   "",
-		"5/a": "foobar",
+		".":                       "",
+		"1":                       "Some text!\n",
+		"2":                       "beep",
+		"3":                       "",
+		"4":                       "boop",
+		"5":                       "",
+		filepath.FromSlash("5/a"): "foobar",
 	}
 	err = filepath.Walk(path, func(cpath string, info os.FileInfo, err error) error {
 		if err != nil {

@@ -29,17 +29,17 @@ func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
 	defer os.RemoveAll(tmppath)
 
 	testInputs := map[string]string{
-		"1":      "Some text!\n",
-		"2":      "beep",
-		"3":      "",
-		"4":      "boop",
-		"5":      "",
-		"5/a":    "foobar",
-		".6":     "thing",
-		"7":      "",
-		"7/.foo": "bla",
-		".8":     "",
-		".8/foo": "bla",
+		"1":                          "Some text!\n",
+		"2":                          "beep",
+		"3":                          "",
+		"4":                          "boop",
+		"5":                          "",
+		filepath.FromSlash("5/a"):    "foobar",
+		".6":                         "thing",
+		"7":                          "",
+		filepath.FromSlash("7/.foo"): "bla",
+		".8":                         "",
+		filepath.FromSlash(".8/foo"): "bla",
 	}
 	fileFilter, err := NewFilter("", []string{"9", "10"}, hidden)
 	if err != nil {
@@ -47,9 +47,9 @@ func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
 	}
 	if withIgnoreRules {
 		testInputs["9"] = ""
-		testInputs["9/b"] = "bebop"
+		testInputs[filepath.FromSlash("9/b")] = "bebop"
 		testInputs["10"] = ""
-		testInputs["10/.c"] = "doowop"
+		testInputs[filepath.FromSlash("10/.c")] = "doowop"
 	}
 
 	for p, c := range testInputs {
@@ -76,7 +76,7 @@ func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
 
 testInputs:
 	for p := range testInputs {
-		components := strings.Split(p, "/")
+		components := strings.Split(p, string(filepath.Separator))
 		var stat os.FileInfo
 		for i := range components {
 			stat, err = os.Stat(filepath.Join(
