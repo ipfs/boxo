@@ -12,7 +12,7 @@ import (
 	ipns "github.com/ipfs/go-ipns"
 	pb "github.com/ipfs/go-ipns/pb"
 	path "github.com/ipfs/go-path"
-	ci "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/crypto"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	routing "github.com/libp2p/go-libp2p-core/routing"
 	base32 "github.com/whyrusleeping/base32"
@@ -45,7 +45,7 @@ func NewIpnsPublisher(route routing.ValueStore, ds ds.Datastore) *IpnsPublisher 
 
 // Publish implements Publisher. Accepts a keypair and a value,
 // and publishes it out to the routing system
-func (p *IpnsPublisher) Publish(ctx context.Context, k ci.PrivKey, value path.Path) error {
+func (p *IpnsPublisher) Publish(ctx context.Context, k crypto.PrivKey, value path.Path) error {
 	log.Debugf("Publish %s", value)
 	return p.PublishWithEOL(ctx, k, value, time.Now().Add(DefaultRecordEOL))
 }
@@ -140,7 +140,7 @@ func (p *IpnsPublisher) GetPublished(ctx context.Context, id peer.ID, checkRouti
 	return e, nil
 }
 
-func (p *IpnsPublisher) updateRecord(ctx context.Context, k ci.PrivKey, value path.Path, eol time.Time) (*pb.IpnsEntry, error) {
+func (p *IpnsPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, value path.Path, eol time.Time) (*pb.IpnsEntry, error) {
 	id, err := peer.IDFromPrivateKey(k)
 	if err != nil {
 		return nil, err
@@ -190,7 +190,7 @@ func (p *IpnsPublisher) updateRecord(ctx context.Context, k ci.PrivKey, value pa
 
 // PublishWithEOL is a temporary stand in for the ipns records implementation
 // see here for more details: https://github.com/ipfs/specs/tree/master/records
-func (p *IpnsPublisher) PublishWithEOL(ctx context.Context, k ci.PrivKey, value path.Path, eol time.Time) error {
+func (p *IpnsPublisher) PublishWithEOL(ctx context.Context, k crypto.PrivKey, value path.Path, eol time.Time) error {
 	record, err := p.updateRecord(ctx, k, value, eol)
 	if err != nil {
 		return err
@@ -215,7 +215,7 @@ func checkCtxTTL(ctx context.Context) (time.Duration, bool) {
 // PutRecordToRouting publishes the given entry using the provided ValueStore,
 // keyed on the ID associated with the provided public key. The public key is
 // also made available to the routing system so that entries can be verified.
-func PutRecordToRouting(ctx context.Context, r routing.ValueStore, k ci.PubKey, entry *pb.IpnsEntry) error {
+func PutRecordToRouting(ctx context.Context, r routing.ValueStore, k crypto.PubKey, entry *pb.IpnsEntry) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -265,9 +265,9 @@ func waitOnErrChan(ctx context.Context, errs chan error) error {
 
 // PublishPublicKey stores the given public key in the ValueStore with the
 // given key.
-func PublishPublicKey(ctx context.Context, r routing.ValueStore, k string, pubk ci.PubKey) error {
+func PublishPublicKey(ctx context.Context, r routing.ValueStore, k string, pubk crypto.PubKey) error {
 	log.Debugf("Storing pubkey at: %s", k)
-	pkbytes, err := pubk.Bytes()
+	pkbytes, err := crypto.MarshalPublicKey(pubk)
 	if err != nil {
 		return err
 	}
