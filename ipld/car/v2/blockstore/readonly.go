@@ -24,26 +24,34 @@ import (
 
 var _ blockstore.Blockstore = (*ReadOnly)(nil)
 
-// ReadOnly provides a read-only CAR Block Store.
-type ReadOnly struct {
-	// mu allows ReadWrite to be safe for concurrent use.
-	// It's in ReadOnly so that read operations also grab read locks,
-	// given that ReadWrite embeds ReadOnly for methods like Get and Has.
-	//
-	// The main fields guarded by the mutex are the index and the underlying writers.
-	// For simplicity, the entirety of the blockstore methods grab the mutex.
-	mu sync.RWMutex
+var errZeroLengthSection = fmt.Errorf("zero-length section not allowed by default; see WithZeroLengthSectionAsEOF option")
 
-	// The backing containing the data payload in CARv1 format.
-	backing io.ReaderAt
-	// The CARv1 content index.
-	idx index.Index
+type (
+	// ReadOnly provides a read-only CAR Block Store.
+	ReadOnly struct {
+		// mu allows ReadWrite to be safe for concurrent use.
+		// It's in ReadOnly so that read operations also grab read locks,
+		// given that ReadWrite embeds ReadOnly for methods like Get and Has.
+		//
+		// The main fields guarded by the mutex are the index and the underlying writers.
+		// For simplicity, the entirety of the blockstore methods grab the mutex.
+		mu sync.RWMutex
 
-	// If we called carv2.NewReaderMmap, remember to close it too.
-	carv2Closer io.Closer
+		// The backing containing the data payload in CARv1 format.
+		backing io.ReaderAt
+		// The CARv1 content index.
+		idx index.Index
 
-	ropts carv2.ReadOptions
-}
+		// If we called carv2.NewReaderMmap, remember to close it too.
+		carv2Closer io.Closer
+
+		ropts carv2.ReadOptions
+	}
+
+	contextKey string
+)
+
+const asyncErrHandlerKey contextKey = "asyncErrorHandlerKey"
 
 // UseWholeCIDs is a read option which makes a CAR blockstore identify blocks by
 // whole CIDs, and not just their multihashes. The default is to use
@@ -303,7 +311,19 @@ func (b *ReadOnly) PutMany([]blocks.Block) error {
 	panic("called write method on a read-only blockstore")
 }
 
-// AllKeysChan returns the list of keys in the CAR.
+// WithAsyncErrorHandler returns a context with async error handling set to the given errHandler.
+// Any errors that occur during asynchronous operations of AllKeysChan will be passed to the given
+// handler.
+func WithAsyncErrorHandler(ctx context.Context, errHandler func(error)) context.Context {
+	return context.WithValue(ctx, asyncErrHandlerKey, errHandler)
+}
+
+// AllKeysChan returns the list of keys in the CAR data payload.
+// If the ctx is constructed using WithAsyncErrorHandler any errors that occur during asynchronous
+// retrieval of CIDs will be passed to the error handler function set in context.
+// Otherwise, errors will terminate the asynchronous operation silently.
+//
+// See WithAsyncErrorHandler
 func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	// We release the lock when the channel-sending goroutine stops.
 	b.mu.RLock()
@@ -334,7 +354,10 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 		for {
 			length, err := varint.ReadUvarint(rdr)
 			if err != nil {
-				return // TODO: log this error
+				if err != io.EOF {
+					maybeReportError(ctx, err)
+				}
+				return
 			}
 
 			// Null padding; by default it's an error.
@@ -342,18 +365,20 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 				if b.ropts.ZeroLengthSectionAsEOF {
 					break
 				} else {
-					return // TODO: log this error
-					// return fmt.Errorf("carv1 null padding not allowed by default; see WithZeroLegthSectionAsEOF")
+					maybeReportError(ctx, errZeroLengthSection)
+					return
 				}
 			}
 
 			thisItemForNxt := rdr.Offset()
 			_, c, err := cid.CidFromReader(rdr)
 			if err != nil {
-				return // TODO: log this error
+				maybeReportError(ctx, err)
+				return
 			}
 			if _, err := rdr.Seek(thisItemForNxt+int64(length), io.SeekStart); err != nil {
-				return // TODO: log this error
+				maybeReportError(ctx, err)
+				return
 			}
 
 			// If we're just using multihashes, flatten to the "raw" codec.
@@ -364,12 +389,21 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 			select {
 			case ch <- c:
 			case <-ctx.Done():
-				// TODO: log ctx error
+				maybeReportError(ctx, ctx.Err())
 				return
 			}
 		}
 	}()
 	return ch, nil
+}
+
+// maybeReportError checks if an error handler is present in context associated to the key
+// asyncErrHandlerKey, and if preset it will pass the error to it.
+func maybeReportError(ctx context.Context, err error) {
+	value := ctx.Value(asyncErrHandlerKey)
+	if eh, _ := value.(func(error)); eh != nil {
+		eh(err)
+	}
 }
 
 // HashOnRead is currently unimplemented; hashing on reads never happens.

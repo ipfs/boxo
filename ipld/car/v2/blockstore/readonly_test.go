@@ -131,6 +131,84 @@ func TestNewReadOnlyFailsOnUnknownVersion(t *testing.T) {
 	require.Nil(t, subject)
 }
 
+func TestReadOnlyAllKeysChanErrHandlerCalledOnTimeout(t *testing.T) {
+	expiredCtx, cancel := context.WithTimeout(context.Background(), -time.Millisecond)
+	t.Cleanup(cancel)
+
+	subject, err := OpenReadOnly("../testdata/sample-v1.car")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, subject.Close()) })
+
+	// Make a channel to be able to select and block on until error handler is called.
+	errHandlerCalled := make(chan interface{})
+	expiredErrHandlingCtx := WithAsyncErrorHandler(expiredCtx, func(err error) {
+		defer close(errHandlerCalled)
+		require.EqualError(t, err, "context deadline exceeded")
+	})
+	_, err = subject.AllKeysChan(expiredErrHandlingCtx)
+	require.NoError(t, err)
+
+	// Assert error handler was called with required condition, waiting at most 3 seconds.
+	select {
+	case <-errHandlerCalled:
+		break
+	case <-time.After(time.Second * 3):
+		require.Fail(t, "error handler was not called within expected time window")
+	}
+}
+
+func TestReadOnlyAllKeysChanErrHandlerNeverCalled(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		errHandler func(err error)
+		wantCIDs   []cid.Cid
+	}{
+		{
+			"ReadingValidCarV1ReturnsNoErrors",
+			"../testdata/sample-v1.car",
+			func(err error) {
+				require.Fail(t, "unexpected call", "error handler called unexpectedly with err: %v", err)
+			},
+			listCids(t, newV1ReaderFromV1File(t, "../testdata/sample-v1.car", false)),
+		},
+		{
+			"ReadingValidCarV2ReturnsNoErrors",
+			"../testdata/sample-wrapped-v2.car",
+			func(err error) {
+				require.Fail(t, "unexpected call", "error handler called unexpectedly with err: %v", err)
+			},
+			listCids(t, newV1ReaderFromV2File(t, "../testdata/sample-wrapped-v2.car", false)),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			subject, err := OpenReadOnly(tt.path, UseWholeCIDs(true))
+			require.NoError(t, err)
+			ctx := WithAsyncErrorHandler(context.Background(), tt.errHandler)
+			keysChan, err := subject.AllKeysChan(ctx)
+			require.NoError(t, err)
+			var gotCids []cid.Cid
+			for k := range keysChan {
+				gotCids = append(gotCids, k)
+			}
+			require.Equal(t, tt.wantCIDs, gotCids)
+		})
+	}
+}
+
+func listCids(t *testing.T, v1r *carv1.CarReader) (cids []cid.Cid) {
+	for {
+		block, err := v1r.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		cids = append(cids, block.Cid())
+	}
+	return
+}
+
 func newV1ReaderFromV1File(t *testing.T, carv1Path string, zeroLenSectionAsEOF bool) *carv1.CarReader {
 	f, err := os.Open(carv1Path)
 	require.NoError(t, err)
