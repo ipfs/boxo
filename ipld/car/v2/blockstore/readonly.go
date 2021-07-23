@@ -162,7 +162,7 @@ func OpenReadOnly(path string, opts ...carv2.ReadOption) (*ReadOnly, error) {
 }
 
 func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
-	bcid, data, err := util.ReadNode(internalio.NewOffsetReadSeeker(b.backing, idx))
+	bcid, data, err := util.ReadNode(internalio.NewOffsetReadSeeker(b.backing, idx), b.ropts.ZeroLengthSectionAsEOF)
 	return bcid, data, err
 }
 
@@ -252,7 +252,7 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	var fnSize int = -1
+	fnSize := -1
 	var fnErr error
 	err := b.idx.GetAll(key, func(offset uint64) bool {
 		rdr := internalio.NewOffsetReadSeeker(b.backing, int64(offset))

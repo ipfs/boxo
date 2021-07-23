@@ -34,25 +34,38 @@ func TestReadOnly(t *testing.T) {
 	tests := []struct {
 		name       string
 		v1OrV2path string
+		opts       []carv2.ReadOption
 		v1r        *carv1.CarReader
 	}{
 		{
 			"OpenedWithCarV1",
 			"../testdata/sample-v1.car",
-			newReaderFromV1File(t, "../testdata/sample-v1.car"),
+			[]carv2.ReadOption{UseWholeCIDs(true)},
+			newV1ReaderFromV1File(t, "../testdata/sample-v1.car", false),
 		},
 		{
 			"OpenedWithCarV2",
 			"../testdata/sample-wrapped-v2.car",
-			newReaderFromV2File(t, "../testdata/sample-wrapped-v2.car"),
+			[]carv2.ReadOption{UseWholeCIDs(true)},
+			newV1ReaderFromV2File(t, "../testdata/sample-wrapped-v2.car", false),
+		},
+		{
+			"OpenedWithCarV1ZeroLenSection",
+			"../testdata/sample-v1-with-zero-len-section.car",
+			[]carv2.ReadOption{UseWholeCIDs(true), carv2.ZeroLengthSectionAsEOF(true)},
+			newV1ReaderFromV1File(t, "../testdata/sample-v1-with-zero-len-section.car", true),
+		},
+		{
+			"OpenedWithAnotherCarV1ZeroLenSection",
+			"../testdata/sample-v1-with-zero-len-section2.car",
+			[]carv2.ReadOption{UseWholeCIDs(true), carv2.ZeroLengthSectionAsEOF(true)},
+			newV1ReaderFromV1File(t, "../testdata/sample-v1-with-zero-len-section2.car", true),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			subject, err := OpenReadOnly(tt.v1OrV2path,
-				UseWholeCIDs(true),
-			)
-			t.Cleanup(func() { subject.Close() })
+			subject, err := OpenReadOnly(tt.v1OrV2path, tt.opts...)
+			t.Cleanup(func() { require.NoError(t, subject.Close()) })
 			require.NoError(t, err)
 
 			// Assert roots match v1 payload.
@@ -118,22 +131,29 @@ func TestNewReadOnlyFailsOnUnknownVersion(t *testing.T) {
 	require.Nil(t, subject)
 }
 
-func newReaderFromV1File(t *testing.T, carv1Path string) *carv1.CarReader {
+func newV1ReaderFromV1File(t *testing.T, carv1Path string, zeroLenSectionAsEOF bool) *carv1.CarReader {
 	f, err := os.Open(carv1Path)
 	require.NoError(t, err)
 	t.Cleanup(func() { f.Close() })
-	v1r, err := carv1.NewCarReader(f)
+	v1r, err := newV1Reader(f, zeroLenSectionAsEOF)
 	require.NoError(t, err)
 	return v1r
 }
 
-func newReaderFromV2File(t *testing.T, carv2Path string) *carv1.CarReader {
+func newV1ReaderFromV2File(t *testing.T, carv2Path string, zeroLenSectionAsEOF bool) *carv1.CarReader {
 	f, err := os.Open(carv2Path)
 	require.NoError(t, err)
 	t.Cleanup(func() { f.Close() })
 	v2r, err := carv2.NewReader(f)
 	require.NoError(t, err)
-	v1r, err := carv1.NewCarReader(v2r.DataReader())
+	v1r, err := newV1Reader(v2r.DataReader(), zeroLenSectionAsEOF)
 	require.NoError(t, err)
 	return v1r
+}
+
+func newV1Reader(r io.Reader, zeroLenSectionAsEOF bool) (*carv1.CarReader, error) {
+	if zeroLenSectionAsEOF {
+		return carv1.NewCarReaderWithZeroLengthSectionAsEOF(r)
+	}
+	return carv1.NewCarReader(r)
 }

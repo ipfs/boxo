@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -295,5 +296,38 @@ func TestCarHeaderMatchess(t *testing.T) {
 			got := tt.one.Matches(tt.other)
 			require.Equal(t, tt.want, got, "Matches() = %v, want %v", got, tt.want)
 		})
+	}
+}
+
+func TestReadingZeroLengthSectionWithoutOptionSetIsError(t *testing.T) {
+	f, err := os.Open("../../testdata/sample-v1-with-zero-len-section.car")
+	require.NoError(t, err)
+	subject, err := NewCarReader(f)
+	require.NoError(t, err)
+
+	for {
+		_, err := subject.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			require.EqualError(t, err, "varints malformed, could not reach the end")
+			return
+		}
+	}
+	require.Fail(t, "expected error when reading file with zero section without option set")
+}
+
+func TestReadingZeroLengthSectionWithOptionSetIsSuccess(t *testing.T) {
+	f, err := os.Open("../../testdata/sample-v1-with-zero-len-section.car")
+	require.NoError(t, err)
+	subject, err := NewCarReaderWithZeroLengthSectionAsEOF(f)
+	require.NoError(t, err)
+
+	for {
+		_, err := subject.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
 	}
 }

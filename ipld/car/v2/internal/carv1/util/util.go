@@ -15,8 +15,8 @@ type BytesReader interface {
 	io.ByteReader
 }
 
-func ReadNode(r io.Reader) (cid.Cid, []byte, error) {
-	data, err := LdRead(r)
+func ReadNode(r io.Reader, zeroLenAsEOF bool) (cid.Cid, []byte, error) {
+	data, err := LdRead(r, zeroLenAsEOF)
 	if err != nil {
 		return cid.Cid{}, nil, err
 	}
@@ -61,7 +61,7 @@ func LdSize(d ...[]byte) uint64 {
 	return sum + uint64(s)
 }
 
-func LdRead(r io.Reader) ([]byte, error) {
+func LdRead(r io.Reader, zeroLenAsEOF bool) ([]byte, error) {
 	l, err := varint.ReadUvarint(internalio.ToByteReader(r))
 	if err != nil {
 		// If the length of bytes read is non-zero when the error is EOF then signal an unclean EOF.
@@ -69,6 +69,8 @@ func LdRead(r io.Reader) ([]byte, error) {
 			return nil, io.ErrUnexpectedEOF
 		}
 		return nil, err
+	} else if l == 0 && zeroLenAsEOF {
+		return nil, io.EOF
 	}
 
 	buf := make([]byte, l)

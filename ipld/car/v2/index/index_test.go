@@ -77,7 +77,7 @@ func TestReadFrom(t *testing.T) {
 		require.NoError(t, err)
 
 		// Read the fame at offset and assert the frame corresponds to the expected block.
-		gotCid, gotData, err := util.ReadNode(crf)
+		gotCid, gotData, err := util.ReadNode(crf, false)
 		require.NoError(t, err)
 		gotBlock, err := blocks.NewBlockWithCid(gotData, gotCid)
 		require.NoError(t, err)

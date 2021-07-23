@@ -57,7 +57,7 @@ func WriteCar(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.W
 }
 
 func ReadHeader(r io.Reader) (*CarHeader, error) {
-	hb, err := util.LdRead(r)
+	hb, err := util.LdRead(r, false)
 	if err != nil {
 		return nil, err
 	}
@@ -106,11 +106,20 @@ func (cw *carWriter) writeNode(ctx context.Context, nd format.Node) error {
 }
 
 type CarReader struct {
-	r      io.Reader
-	Header *CarHeader
+	r            io.Reader
+	Header       *CarHeader
+	zeroLenAsEOF bool
+}
+
+func NewCarReaderWithZeroLengthSectionAsEOF(r io.Reader) (*CarReader, error) {
+	return newCarReader(r, true)
 }
 
 func NewCarReader(r io.Reader) (*CarReader, error) {
+	return newCarReader(r, false)
+}
+
+func newCarReader(r io.Reader, zeroLenAsEOF bool) (*CarReader, error) {
 	ch, err := ReadHeader(r)
 	if err != nil {
 		return nil, err
@@ -125,13 +134,14 @@ func NewCarReader(r io.Reader) (*CarReader, error) {
 	}
 
 	return &CarReader{
-		r:      r,
-		Header: ch,
+		r:            r,
+		Header:       ch,
+		zeroLenAsEOF: zeroLenAsEOF,
 	}, nil
 }
 
 func (cr *CarReader) Next() (blocks.Block, error) {
-	c, data, err := util.ReadNode(cr.r)
+	c, data, err := util.ReadNode(cr.r, cr.zeroLenAsEOF)
 	if err != nil {
 		return nil, err
 	}
