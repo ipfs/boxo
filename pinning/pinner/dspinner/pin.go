@@ -84,7 +84,8 @@ func init() {
 
 // pinner implements the Pinner interface
 type pinner struct {
-	lock sync.RWMutex
+	autoSync bool
+	lock     sync.RWMutex
 
 	dserv  ipld.DAGService
 	dstore ds.Datastore
@@ -113,7 +114,7 @@ func (p *pin) dsKey() ds.Key {
 
 func newPin(c cid.Cid, mode ipfspinner.Mode, name string) *pin {
 	return &pin{
-		Id:   ds.RandomKey().String(),
+		Id:   path.Base(ds.RandomKey().String()),
 		Cid:  c,
 		Name: name,
 		Mode: mode,
@@ -127,8 +128,13 @@ type syncDAGService interface {
 
 // New creates a new pinner and loads its keysets from the given datastore. If
 // there is no data present in the datastore, then an empty pinner is returned.
-func New(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService) (ipfspinner.Pinner, error) {
+//
+// By default, changes are automatically flushed to the datastore.  This can be
+// disabled by calling SetAutosync(false), which will require that Flush be
+// called explicitly.
+func New(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService) (*pinner, error) {
 	p := &pinner{
+		autoSync:  true,
 		cidDIndex: dsindex.New(dstore, ds.NewKey(pinCidDIndexPath)),
 		cidRIndex: dsindex.New(dstore, ds.NewKey(pinCidRIndexPath)),
 		nameIndex: dsindex.New(dstore, ds.NewKey(pinNameIndexPath)),
@@ -146,18 +152,24 @@ func New(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService) (ipfsp
 	if data[0] == 1 {
 		p.dirty = 1
 
-		pins, err := p.loadAllPins(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("cannot load pins: %v", err)
-		}
-
-		err = p.rebuildIndexes(ctx, pins)
+		err = p.rebuildIndexes(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("cannot rebuild indexes: %v", err)
 		}
 	}
 
 	return p, nil
+}
+
+// SetAutosync allows auto-syncing to be enabled or disabled during runtime.
+// This may be used to turn off autosync before doing many repeated pinning
+// operations, and then turn it on after.  Returns the previous value.
+func (p *pinner) SetAutosync(auto bool) bool {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	p.autoSync, auto = auto, p.autoSync
+	return auto
 }
 
 // Pin the given node, optionally recursive
@@ -193,6 +205,12 @@ func (p *pinner) Pin(ctx context.Context, node ipld.Node, recurse bool) error {
 			return err
 		}
 
+		// If autosyncing, sync dag service before making any change to pins
+		err = p.flushDagService(ctx, false)
+		if err != nil {
+			return err
+		}
+
 		// Only look again if something has changed.
 		if p.dirty != dirtyBefore {
 			found, err = p.cidRIndex.HasAny(ctx, cidKey)
@@ -210,7 +228,10 @@ func (p *pinner) Pin(ctx context.Context, node ipld.Node, recurse bool) error {
 			return err
 		}
 		if found {
-			p.removePinsForCid(ctx, c, ipfspinner.Direct)
+			_, err = p.removePinsForCid(ctx, c, ipfspinner.Direct)
+			if err != nil {
+				return err
+			}
 		}
 
 		_, err = p.addPin(ctx, c, ipfspinner.Recursive, "")
@@ -231,7 +252,7 @@ func (p *pinner) Pin(ctx context.Context, node ipld.Node, recurse bool) error {
 			return err
 		}
 	}
-	return nil
+	return p.flushPins(ctx, false)
 }
 
 func (p *pinner) addPin(ctx context.Context, c cid.Cid, mode ipfspinner.Mode, name string) (string, error) {
@@ -244,7 +265,13 @@ func (p *pinner) addPin(ctx context.Context, c cid.Cid, mode ipfspinner.Mode, na
 		return "", fmt.Errorf("could not encode pin: %v", err)
 	}
 
-	p.setDirty(ctx, true)
+	p.setDirty(ctx)
+
+	// Store the pin
+	err = p.dstore.Put(pp.dsKey(), pinData)
+	if err != nil {
+		return "", err
+	}
 
 	// Store CID index
 	switch mode {
@@ -263,36 +290,28 @@ func (p *pinner) addPin(ctx context.Context, c cid.Cid, mode ipfspinner.Mode, na
 		// Store name index
 		err = p.nameIndex.Add(ctx, name, pp.Id)
 		if err != nil {
+			if mode == ipfspinner.Recursive {
+				e := p.cidRIndex.Delete(ctx, c.KeyString(), pp.Id)
+				if e != nil {
+					log.Errorf("error deleting index: %s", e)
+				}
+			} else {
+				e := p.cidDIndex.Delete(ctx, c.KeyString(), pp.Id)
+				if e != nil {
+					log.Errorf("error deleting index: %s", e)
+				}
+			}
 			return "", fmt.Errorf("could not add pin name index: %v", err)
 		}
-	}
-
-	// Store the pin.  Pin must be stored after index for recovery to work.
-	err = p.dstore.Put(pp.dsKey(), pinData)
-	if err != nil {
-		if mode == ipfspinner.Recursive {
-			p.cidRIndex.Delete(ctx, c.KeyString(), pp.Id)
-		} else {
-			p.cidDIndex.Delete(ctx, c.KeyString(), pp.Id)
-		}
-		if name != "" {
-			p.nameIndex.Delete(ctx, name, pp.Id)
-		}
-		return "", err
 	}
 
 	return pp.Id, nil
 }
 
 func (p *pinner) removePin(ctx context.Context, pp *pin) error {
-	p.setDirty(ctx, true)
+	p.setDirty(ctx)
+	var err error
 
-	// Remove pin from datastore.  Pin must be removed before index for
-	// recovery to work.
-	err := p.dstore.Delete(pp.dsKey())
-	if err != nil {
-		return err
-	}
 	// Remove cid index from datastore
 	if pp.Mode == ipfspinner.Recursive {
 		err = p.cidRIndex.Delete(ctx, pp.Cid.KeyString(), pp.Id)
@@ -309,6 +328,13 @@ func (p *pinner) removePin(ctx context.Context, pp *pin) error {
 		if err != nil {
 			return err
 		}
+	}
+
+	// The pin is removed last so that an incomplete remove is detected by a
+	// pin that has a missing index.
+	err = p.dstore.Delete(pp.dsKey())
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -347,12 +373,15 @@ func (p *pinner) Unpin(ctx context.Context, c cid.Cid, recursive bool) error {
 		}
 	}
 
-	_, err = p.removePinsForCid(ctx, c, ipfspinner.Any)
+	removed, err := p.removePinsForCid(ctx, c, ipfspinner.Any)
 	if err != nil {
 		return err
 	}
+	if !removed {
+		return nil
+	}
 
-	return nil
+	return p.flushPins(ctx, false)
 }
 
 // IsPinned returns whether or not the given key is pinned
@@ -542,7 +571,17 @@ func (p *pinner) RemovePinWithMode(c cid.Cid, mode ipfspinner.Mode) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	p.removePinsForCid(ctx, c, mode)
+	removed, err := p.removePinsForCid(ctx, c, mode)
+	if err != nil {
+		log.Error("cound not remove pins: %s", err)
+		return
+	}
+	if !removed {
+		return
+	}
+	if err = p.flushPins(ctx, false); err != nil {
+		log.Error("cound not remove pins: %s", err)
+	}
 }
 
 // removePinsForCid removes all pins for a cid that has the specified mode.
@@ -583,17 +622,35 @@ func (p *pinner) removePinsForCid(ctx context.Context, c cid.Cid, mode ipfspinne
 		pp, err = p.loadPin(ctx, pid)
 		if err != nil {
 			if err == ds.ErrNotFound {
-				p.setDirty(ctx, true)
+				p.setDirty(ctx)
 				// Fix index; remove index for pin that does not exist
 				switch mode {
 				case ipfspinner.Recursive:
-					p.cidRIndex.DeleteKey(ctx, cidKey)
+					_, err = p.cidRIndex.DeleteKey(ctx, cidKey)
+					if err != nil {
+						return false, fmt.Errorf("error deleting index: %s", err)
+					}
 				case ipfspinner.Direct:
-					p.cidDIndex.DeleteKey(ctx, cidKey)
+					_, err = p.cidDIndex.DeleteKey(ctx, cidKey)
+					if err != nil {
+						return false, fmt.Errorf("error deleting index: %s", err)
+					}
 				case ipfspinner.Any:
-					p.cidRIndex.DeleteKey(ctx, cidKey)
-					p.cidDIndex.DeleteKey(ctx, cidKey)
+					_, err = p.cidRIndex.DeleteKey(ctx, cidKey)
+					if err != nil {
+						return false, fmt.Errorf("error deleting index: %s", err)
+					}
+					_, err = p.cidDIndex.DeleteKey(ctx, cidKey)
+					if err != nil {
+						return false, fmt.Errorf("error deleting index: %s", err)
+					}
 				}
+				if err = p.flushPins(ctx, true); err != nil {
+					return false, err
+				}
+				// Mark this as removed since it removed an index, which is
+				// what prevents determines if an item is pinned.
+				removed = true
 				log.Error("found CID index with missing pin")
 				continue
 			}
@@ -617,95 +674,6 @@ func (p *pinner) loadPin(ctx context.Context, pid string) (*pin, error) {
 		return nil, err
 	}
 	return decodePin(pid, pinData)
-}
-
-// loadAllPins loads all pins from the datastore.
-func (p *pinner) loadAllPins(ctx context.Context) ([]*pin, error) {
-	q := query.Query{
-		Prefix: pinKeyPath,
-	}
-	results, err := p.dstore.Query(q)
-	if err != nil {
-		return nil, err
-	}
-	ents, err := results.Rest()
-	if err != nil {
-		return nil, err
-	}
-	if len(ents) == 0 {
-		return nil, nil
-	}
-
-	pins := make([]*pin, len(ents))
-	for i := range ents {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		var p *pin
-		p, err = decodePin(path.Base(ents[i].Key), ents[i].Value)
-		if err != nil {
-			return nil, err
-		}
-		pins[i] = p
-	}
-	return pins, nil
-}
-
-// rebuildIndexes uses the stored pins to rebuild secondary indexes.  This
-// resolves any discrepancy between secondary indexes and pins that could
-// result from a program termination between saving the two.
-func (p *pinner) rebuildIndexes(ctx context.Context, pins []*pin) error {
-	// Build temporary in-memory CID index from pins
-	dstoreMem := ds.NewMapDatastore()
-	tmpCidDIndex := dsindex.New(dstoreMem, ds.NewKey(pinCidDIndexPath))
-	tmpCidRIndex := dsindex.New(dstoreMem, ds.NewKey(pinCidRIndexPath))
-	tmpNameIndex := dsindex.New(dstoreMem, ds.NewKey(pinNameIndexPath))
-	var hasNames bool
-	for _, pp := range pins {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if pp.Mode == ipfspinner.Recursive {
-			tmpCidRIndex.Add(ctx, pp.Cid.KeyString(), pp.Id)
-		} else if pp.Mode == ipfspinner.Direct {
-			tmpCidDIndex.Add(ctx, pp.Cid.KeyString(), pp.Id)
-		}
-		if pp.Name != "" {
-			tmpNameIndex.Add(ctx, pp.Name, pp.Id)
-			hasNames = true
-		}
-	}
-
-	// Sync the CID index to what was build from pins.  This fixes any invalid
-	// indexes, which could happen if ipfs was terminated between writing pin
-	// and writing secondary index.
-	changed, err := dsindex.SyncIndex(ctx, tmpCidRIndex, p.cidRIndex)
-	if err != nil {
-		return fmt.Errorf("cannot sync indexes: %v", err)
-	}
-	if changed {
-		log.Info("invalid recursive indexes detected - rebuilt")
-	}
-
-	changed, err = dsindex.SyncIndex(ctx, tmpCidDIndex, p.cidDIndex)
-	if err != nil {
-		return fmt.Errorf("cannot sync indexes: %v", err)
-	}
-	if changed {
-		log.Info("invalid direct indexes detected - rebuilt")
-	}
-
-	if hasNames {
-		changed, err = dsindex.SyncIndex(ctx, tmpNameIndex, p.nameIndex)
-		if err != nil {
-			return fmt.Errorf("cannot sync name indexes: %v", err)
-		}
-		if changed {
-			log.Info("invalid name indexes detected - rebuilt")
-		}
-	}
-
-	return p.Flush(ctx)
 }
 
 // DirectKeys returns a slice containing the directly pinned keys
@@ -810,15 +778,36 @@ func (p *pinner) Update(ctx context.Context, from, to cid.Cid, unpin bool) error
 		return err
 	}
 
-	if !unpin {
+	if unpin {
+		_, err = p.removePinsForCid(ctx, from, ipfspinner.Recursive)
+		if err != nil {
+			return err
+		}
+	}
+
+	return p.flushPins(ctx, false)
+}
+
+func (p *pinner) flushDagService(ctx context.Context, force bool) error {
+	if !p.autoSync && !force {
 		return nil
 	}
-
-	_, err = p.removePinsForCid(ctx, from, ipfspinner.Recursive)
-	if err != nil {
-		return err
+	if syncDServ, ok := p.dserv.(syncDAGService); ok {
+		if err := syncDServ.Sync(); err != nil {
+			return fmt.Errorf("cannot sync pinned data: %v", err)
+		}
 	}
+	return nil
+}
 
+func (p *pinner) flushPins(ctx context.Context, force bool) error {
+	if !p.autoSync && !force {
+		return nil
+	}
+	if err := p.dstore.Sync(ds.NewKey(basePath)); err != nil {
+		return fmt.Errorf("cannot sync pin state: %v", err)
+	}
+	p.setClean(ctx)
 	return nil
 }
 
@@ -827,20 +816,12 @@ func (p *pinner) Flush(ctx context.Context) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	if syncDServ, ok := p.dserv.(syncDAGService); ok {
-		if err := syncDServ.Sync(); err != nil {
-			return fmt.Errorf("cannot sync pinned data: %v", err)
-		}
+	err := p.flushDagService(ctx, true)
+	if err != nil {
+		return err
 	}
 
-	// Sync pins and indexes
-	if err := p.dstore.Sync(ds.NewKey(basePath)); err != nil {
-		return fmt.Errorf("cannot sync pin state: %v", err)
-	}
-
-	p.setDirty(ctx, false)
-
-	return nil
+	return p.flushPins(ctx, true)
 }
 
 // PinWithMode allows the user to have fine grained control over pin
@@ -868,6 +849,9 @@ func (p *pinner) PinWithMode(c cid.Cid, mode ipfspinner.Mode) {
 	_, err := p.addPin(ctx, c, mode, "")
 	if err != nil {
 		return
+	}
+	if err = p.flushPins(ctx, false); err != nil {
+		log.Errorf("failed to create %s pin: %s", mode, err)
 	}
 }
 
@@ -914,26 +898,163 @@ func decodePin(pid string, data []byte) (*pin, error) {
 	return p, nil
 }
 
-// setDirty saves a boolean dirty flag in the datastore whenever there is a
-// transition between a dirty (counter > 0) and non-dirty (counter == 0) state.
-func (p *pinner) setDirty(ctx context.Context, dirty bool) {
-	isClean := p.dirty == p.clean
-	if dirty {
-		p.dirty++
-		if !isClean {
-			return // do not save; was already dirty
-		}
-	} else if isClean {
-		return // already clean
-	} else {
-		p.clean = p.dirty // set clean
+// setDirty updates the dirty counter and saves a dirty state in the datastore
+// if the state was previously clean
+func (p *pinner) setDirty(ctx context.Context) {
+	wasClean := p.dirty == p.clean
+	p.dirty++
+
+	if !wasClean {
+		return // do not save; was already dirty
 	}
 
-	// Do edge-triggered write to datastore
-	data := []byte{0}
-	if dirty {
-		data[0] = 1
+	data := []byte{1}
+	err := p.dstore.Put(dirtyKey, data)
+	if err != nil {
+		log.Errorf("failed to set pin dirty flag: %s", err)
+		return
 	}
-	p.dstore.Put(dirtyKey, data)
-	p.dstore.Sync(dirtyKey)
+	err = p.dstore.Sync(dirtyKey)
+	if err != nil {
+		log.Errorf("failed to sync pin dirty flag: %s", err)
+	}
+}
+
+// setClean saves a clean state value in the datastore if the state was
+// previously dirty
+func (p *pinner) setClean(ctx context.Context) {
+	if p.dirty == p.clean {
+		return // already clean
+	}
+
+	data := []byte{0}
+	err := p.dstore.Put(dirtyKey, data)
+	if err != nil {
+		log.Errorf("failed to set clear dirty flag: %s", err)
+		return
+	}
+	if err = p.dstore.Sync(dirtyKey); err != nil {
+		log.Errorf("failed to sync cleared pin dirty flag: %s", err)
+		return
+	}
+	p.clean = p.dirty // set clean
+}
+
+// sync datastore after every 50 cid repairs
+const syncRepairFrequency = 50
+
+// rebuildIndexes uses the stored pins to rebuild secondary indexes.  This
+// resolves any discrepancy between secondary indexes and pins that could
+// result from a program termination between saving the two.
+func (p *pinner) rebuildIndexes(ctx context.Context) error {
+	// Load all pins from the datastore.
+	q := query.Query{
+		Prefix: pinKeyPath,
+	}
+	results, err := p.dstore.Query(q)
+	if err != nil {
+		return err
+	}
+	defer results.Close()
+
+	var checkedCount, repairedCount int
+
+	// Iterate all pins and check if the corresponding recursive or direct
+	// index is missing.  If the index is missing then create the index.
+	for r := range results.Next() {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if r.Error != nil {
+			return fmt.Errorf("cannot read index: %v", r.Error)
+		}
+		ent := r.Entry
+		pp, err := decodePin(path.Base(ent.Key), ent.Value)
+		if err != nil {
+			return err
+		}
+
+		indexKey := pp.Cid.KeyString()
+
+		var indexer, staleIndexer dsindex.Indexer
+		var idxrName, staleIdxrName string
+		if pp.Mode == ipfspinner.Recursive {
+			indexer = p.cidRIndex
+			staleIndexer = p.cidDIndex
+			idxrName = linkRecursive
+			staleIdxrName = linkDirect
+		} else if pp.Mode == ipfspinner.Direct {
+			indexer = p.cidDIndex
+			staleIndexer = p.cidRIndex
+			idxrName = linkDirect
+			staleIdxrName = linkRecursive
+		} else {
+			log.Error("unrecognized pin mode:", pp.Mode)
+			continue
+		}
+
+		// Remove any stale index from unused indexer
+		ok, err := staleIndexer.HasValue(ctx, indexKey, pp.Id)
+		if err != nil {
+			return err
+		}
+		if ok {
+			// Delete any stale index
+			log.Errorf("deleting stale %s pin index for cid %v", staleIdxrName, pp.Cid.String())
+			if err = staleIndexer.Delete(ctx, indexKey, pp.Id); err != nil {
+				return err
+			}
+		}
+
+		// Check that the indexer indexes this pin
+		ok, err = indexer.HasValue(ctx, indexKey, pp.Id)
+		if err != nil {
+			return err
+		}
+
+		var repaired bool
+		if !ok {
+			// Do not rebuild if index has an old value with leading slash
+			ok, err = indexer.HasValue(ctx, indexKey, "/"+pp.Id)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				log.Errorf("repairing %s pin index for cid: %s", idxrName, pp.Cid.String())
+				// There was no index found for this pin.  This was either an
+				// incomplete add or and incomplete delete of a pin.  Either
+				// way, restore the index to complete the add or to undo the
+				// incomplete delete.
+				if err = indexer.Add(ctx, indexKey, pp.Id); err != nil {
+					return err
+				}
+				repaired = true
+			}
+		}
+		// Check for missing name index
+		if pp.Name != "" {
+			ok, err = p.nameIndex.HasValue(ctx, pp.Name, pp.Id)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				log.Errorf("repairing name pin index for cid: %s", pp.Cid.String())
+				if err = p.nameIndex.Add(ctx, pp.Name, pp.Id); err != nil {
+					return err
+				}
+			}
+			repaired = true
+		}
+
+		if repaired {
+			repairedCount++
+		}
+		checkedCount++
+		if checkedCount%syncRepairFrequency == 0 {
+			p.flushPins(ctx, true)
+		}
+	}
+
+	log.Errorf("checked %d pins for invalid indexes, repaired %d pins", checkedCount, repairedCount)
+	return p.flushPins(ctx, true)
 }

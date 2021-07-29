@@ -112,40 +112,30 @@ func (x *indexer) ForEach(ctx context.Context, key string, fn func(key, value st
 	if err != nil {
 		return err
 	}
+	defer results.Close()
 
-	for {
-		r, ok := results.NextSync()
-		if !ok {
-			break
+	for r := range results.Next() {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 		if r.Error != nil {
-			err = r.Error
-			break
-		}
-		if ctx.Err() != nil {
-			err = ctx.Err()
-			break
+			return fmt.Errorf("cannot read index: %v", r.Error)
 		}
 		ent := r.Entry
-		var decIdx string
-		decIdx, err = decode(path.Base(path.Dir(ent.Key)))
+		decIdx, err := decode(path.Base(path.Dir(ent.Key)))
 		if err != nil {
-			err = fmt.Errorf("cannot decode index: %v", err)
-			break
+			return fmt.Errorf("cannot decode index: %v", err)
 		}
-		var decKey string
-		decKey, err = decode(path.Base(ent.Key))
+		decKey, err := decode(path.Base(ent.Key))
 		if err != nil {
-			err = fmt.Errorf("cannot decode key: %v", err)
-			break
+			return fmt.Errorf("cannot decode key: %v", err)
 		}
 		if !fn(decIdx, decKey) {
-			break
+			return nil
 		}
 	}
-	results.Close()
 
-	return err
+	return nil
 }
 
 func (x *indexer) HasValue(ctx context.Context, key, value string) (bool, error) {
