@@ -605,6 +605,7 @@ func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block) {
 
 	// Check each peer to see if it wants one of the blocks we received
 	var work bool
+	missingWants := make(map[peer.ID][]cid.Cid)
 	e.lock.RLock()
 	for _, b := range blks {
 		k := b.Cid()
@@ -613,7 +614,7 @@ func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block) {
 			ledger, ok := e.ledgerMap[p]
 			if !ok {
 				log.Errorw("failed to find peer in ledger", "peer", p)
-				e.peerLedger.CancelWant(p, k)
+				missingWants[p] = append(missingWants[p], k)
 				continue
 			}
 			ledger.lk.RLock()
@@ -621,7 +622,7 @@ func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block) {
 			ledger.lk.RUnlock()
 			if !ok { // should never happen
 				log.Errorw("wantlist index doesn't match peer's wantlist", "peer", p)
-				e.peerLedger.CancelWant(p, k)
+				missingWants[p] = append(missingWants[p], k)
 				continue
 			}
 			work = true
@@ -648,6 +649,30 @@ func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block) {
 		}
 	}
 	e.lock.RUnlock()
+
+	// If we found missing wants (e.g., because the peer disconnected, we have some races here)
+	// remove them from the list. Unfortunately, we still have to re-check because the user
+	// could have re-connected in the meantime.
+	if len(missingWants) > 0 {
+		e.lock.Lock()
+		for p, wl := range missingWants {
+			if ledger, ok := e.ledgerMap[p]; ok {
+				ledger.lk.RLock()
+				for _, k := range wl {
+					if _, has := ledger.WantListContains(k); has {
+						continue
+					}
+					e.peerLedger.CancelWant(p, k)
+				}
+				ledger.lk.RUnlock()
+			} else {
+				for _, k := range wl {
+					e.peerLedger.CancelWant(p, k)
+				}
+			}
+		}
+		e.lock.Unlock()
+	}
 
 	if work {
 		e.signalNewWork()
