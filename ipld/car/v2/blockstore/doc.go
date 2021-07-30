@@ -1,4 +1,4 @@
-// package blockstore implements IPFS blockstore interface backed by a CAR file.
+// package blockstore implements the IPFS blockstore interface backed by a CAR file.
 // This package provides two flavours of blockstore: ReadOnly and ReadWrite.
 //
 // The ReadOnly blockstore provides a read-only random access from a given data payload either in
