@@ -102,9 +102,9 @@ func TestReadOnly(t *testing.T) {
 				require.Equal(t, wantBlock, gotBlock)
 
 				// Assert write operations panic
-				require.Panics(t, func() { subject.Put(wantBlock) })
-				require.Panics(t, func() { subject.PutMany([]blocks.Block{wantBlock}) })
-				require.Panics(t, func() { subject.DeleteBlock(key) })
+				require.Error(t, subject.Put(wantBlock))
+				require.Error(t, subject.PutMany([]blocks.Block{wantBlock}))
+				require.Error(t, subject.DeleteBlock(key))
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)

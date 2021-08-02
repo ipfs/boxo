@@ -494,18 +494,24 @@ func TestReadWritePanicsOnlyWhenFinalized(t *testing.T) {
 	require.True(t, has)
 
 	subject.HashOnRead(true)
-	// Delete should always panic regardless of finalize
-	require.Panics(t, func() { subject.DeleteBlock(oneTestBlockCid) })
+	// Delete should always error regardless of finalize
+	require.Error(t, subject.DeleteBlock(oneTestBlockCid))
 
 	require.NoError(t, subject.Finalize())
-	require.Panics(t, func() { subject.Get(oneTestBlockCid) })
-	require.Panics(t, func() { subject.GetSize(anotherTestBlockCid) })
-	require.Panics(t, func() { subject.Has(anotherTestBlockCid) })
-	require.Panics(t, func() { subject.HashOnRead(true) })
-	require.Panics(t, func() { subject.Put(oneTestBlockWithCidV1) })
-	require.Panics(t, func() { subject.PutMany([]blocks.Block{anotherTestBlockWithCidV0}) })
-	require.Panics(t, func() { subject.AllKeysChan(context.Background()) })
-	require.Panics(t, func() { subject.DeleteBlock(oneTestBlockCid) })
+	require.Error(t, subject.Finalize())
+
+	_, err = subject.Get(oneTestBlockCid)
+	require.Error(t, err)
+	_, err = subject.GetSize(anotherTestBlockCid)
+	require.Error(t, err)
+	_, err = subject.Has(anotherTestBlockCid)
+	require.Error(t, err)
+
+	require.Error(t, subject.Put(oneTestBlockWithCidV1))
+	require.Error(t, subject.PutMany([]blocks.Block{anotherTestBlockWithCidV0}))
+	_, err = subject.AllKeysChan(context.Background())
+	require.Error(t, err)
+	require.Error(t, subject.DeleteBlock(oneTestBlockCid))
 }
 
 func TestReadWriteWithPaddingWorksAsExpected(t *testing.T) {

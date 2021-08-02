@@ -24,7 +24,10 @@ import (
 
 var _ blockstore.Blockstore = (*ReadOnly)(nil)
 
-var errZeroLengthSection = fmt.Errorf("zero-length section not allowed by default; see WithZeroLengthSectionAsEOF option")
+var (
+	errZeroLengthSection = fmt.Errorf("zero-length carv2 section not allowed by default; see WithZeroLengthSectionAsEOF option")
+	errReadOnly          = fmt.Errorf("called write method on a read-only carv2 blockstore")
+)
 
 type (
 	// ReadOnly provides a read-only CAR Block Store.
@@ -176,7 +179,7 @@ func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
 
 // DeleteBlock is unsupported and always panics.
 func (b *ReadOnly) DeleteBlock(_ cid.Cid) error {
-	panic("called write method on a read-only blockstore")
+	return errReadOnly
 }
 
 // Has indicates if the store contains a block that corresponds to the given key.
@@ -303,12 +306,12 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 
 // Put is not supported and always returns an error.
 func (b *ReadOnly) Put(blocks.Block) error {
-	panic("called write method on a read-only blockstore")
+	return errReadOnly
 }
 
 // PutMany is not supported and always returns an error.
 func (b *ReadOnly) PutMany([]blocks.Block) error {
-	panic("called write method on a read-only blockstore")
+	return errReadOnly
 }
 
 // WithAsyncErrorHandler returns a context with async error handling set to the given errHandler.

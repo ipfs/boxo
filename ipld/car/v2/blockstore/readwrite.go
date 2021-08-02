@@ -23,6 +23,8 @@ import (
 
 var _ blockstore.Blockstore = (*ReadWrite)(nil)
 
+var errFinalized = fmt.Errorf("cannot use a read-write carv2 blockstore after finalizing")
+
 // ReadWrite implements a blockstore that stores blocks in CARv2 format.
 // Blocks put into the blockstore can be read back once they are successfully written.
 // This implementation is preferable for a write-heavy workload.
@@ -284,22 +286,22 @@ func (b *ReadWrite) unfinalize() error {
 	return err
 }
 
-func (b *ReadWrite) panicIfFinalized() {
-	if b.header.DataSize != 0 {
-		panic("must not use a read-write blockstore after finalizing")
-	}
+func (b *ReadWrite) finalized() bool {
+	return b.header.DataSize != 0
 }
 
 // Put puts a given block to the underlying datastore
 func (b *ReadWrite) Put(blk blocks.Block) error {
-	// PutMany already calls panicIfFinalized.
+	// PutMany already checks b.finalized.
 	return b.PutMany([]blocks.Block{blk})
 }
 
 // PutMany puts a slice of blocks at the same time using batching
 // capabilities of the underlying datastore whenever possible.
 func (b *ReadWrite) PutMany(blks []blocks.Block) error {
-	b.panicIfFinalized()
+	if b.finalized() {
+		return errFinalized
+	}
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -362,31 +364,33 @@ func (b *ReadWrite) Finalize() error {
 }
 
 func (b *ReadWrite) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
-	b.panicIfFinalized()
+	if b.finalized() {
+		return nil, errFinalized
+	}
 
 	return b.ReadOnly.AllKeysChan(ctx)
 }
 
 func (b *ReadWrite) Has(key cid.Cid) (bool, error) {
-	b.panicIfFinalized()
+	if b.finalized() {
+		return false, errFinalized
+	}
 
 	return b.ReadOnly.Has(key)
 }
 
 func (b *ReadWrite) Get(key cid.Cid) (blocks.Block, error) {
-	b.panicIfFinalized()
+	if b.finalized() {
+		return nil, errFinalized
+	}
 
 	return b.ReadOnly.Get(key)
 }
 
 func (b *ReadWrite) GetSize(key cid.Cid) (int, error) {
-	b.panicIfFinalized()
+	if b.finalized() {
+		return 0, errFinalized
+	}
 
 	return b.ReadOnly.GetSize(key)
-}
-
-func (b *ReadWrite) HashOnRead(h bool) {
-	b.panicIfFinalized()
-
-	b.ReadOnly.HashOnRead(h)
 }
