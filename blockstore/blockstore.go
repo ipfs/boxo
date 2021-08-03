@@ -121,6 +121,16 @@ func NewBlockstore(d ds.Batching) Blockstore {
 	}
 }
 
+// NewBlockstoreNoPrefix returns a default Blockstore implementation
+// using the provided datastore.Batching backend.
+// This constructor does not modify input keys in any way
+func NewBlockstoreNoPrefix(d ds.Batching) Blockstore {
+	return &blockstore{
+		datastore: d,
+		rehash:    uatomic.NewBool(false),
+	}
+}
+
 type blockstore struct {
 	datastore ds.Batching
 
