@@ -11,14 +11,21 @@ import (
 	"github.com/ipld/go-car/v2/blockstore"
 )
 
-// Open a read-only blockstore,
-// and retrieve all blocks in a shuffled order.
+// BenchmarkOpenReadOnlyV1 opens a read-only blockstore,
+// and retrieves all blocks in a shuffled order.
 // Note that this benchmark includes generating an index,
 // since the input file is a CARv1.
-
 func BenchmarkOpenReadOnlyV1(b *testing.B) {
 	path := "../testdata/sample-v1.car"
-
+	f, err := os.Open("../testdata/sample-v1.car")
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}()
 	info, err := os.Stat(path)
 	if err != nil {
 		b.Fatal(err)
@@ -27,12 +34,12 @@ func BenchmarkOpenReadOnlyV1(b *testing.B) {
 	b.ReportAllocs()
 
 	var shuffledCIDs []cid.Cid
-	cr, err := carv2.OpenReader(path)
+	br, err := carv2.NewBlockReader(f)
 	if err != nil {
 		b.Fatal(err)
 	}
 	for {
-		block, err := cr.Next()
+		block, err := br.Next()
 		if err == io.EOF {
 			break
 		}
@@ -41,7 +48,6 @@ func BenchmarkOpenReadOnlyV1(b *testing.B) {
 		}
 		shuffledCIDs = append(shuffledCIDs, block.Cid())
 	}
-	cr.Close()
 
 	// The shuffling needs to be deterministic,
 	// for the sake of stable benchmark results.
@@ -65,7 +71,9 @@ func BenchmarkOpenReadOnlyV1(b *testing.B) {
 				}
 			}
 
-			bs.Close()
+			if err := bs.Close(); err != nil {
+				b.Fatal(err)
+			}
 		}
 	})
 }

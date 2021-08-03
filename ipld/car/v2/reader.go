@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"io"
 
-	blocks "github.com/ipfs/go-block-format"
-
 	internalio "github.com/ipld/go-car/v2/internal/io"
 
 	"github.com/ipfs/go-cid"
@@ -20,11 +18,7 @@ type Reader struct {
 	r       io.ReaderAt
 	roots   []cid.Cid
 	ropts   ReadOptions
-	// carV1Reader is lazily created, is not reusable, and exclusively used by Reader.Next.
-	// Note, this reader is forward-only and cannot be rewound. Once it reaches the end of the data
-	// payload, it will always return io.EOF.
-	carV1Reader *carv1.CarReader
-	closer      io.Closer
+	closer  io.Closer
 }
 
 // OpenReader is a wrapper for NewReader which opens the file at path.
@@ -131,26 +125,6 @@ func (r *Reader) Close() error {
 		return r.closer.Close()
 	}
 	return nil
-}
-
-// Next reads the next block in the data payload with an io.EOF error indicating the end is reached.
-// Note, this function is forward-only; once the end has been reached it will always return io.EOF.
-func (r *Reader) Next() (blocks.Block, error) {
-	if r.carV1Reader == nil {
-		var err error
-		if r.carV1Reader, err = r.newCarV1Reader(); err != nil {
-			return nil, err
-		}
-	}
-	return r.carV1Reader.Next()
-}
-
-func (r *Reader) newCarV1Reader() (*carv1.CarReader, error) {
-	dr := r.DataReader()
-	if r.ropts.ZeroLengthSectionAsEOF {
-		return carv1.NewCarReaderWithZeroLengthSectionAsEOF(dr)
-	}
-	return carv1.NewCarReader(dr)
 }
 
 // ReadVersion reads the version from the pragma.

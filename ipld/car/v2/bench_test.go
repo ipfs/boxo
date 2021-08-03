@@ -8,10 +8,9 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 )
 
-// Open a reader, get the roots, and iterate over all blocks.
-// Essentially looking at the contents of any CARv1 or CARv2 file.
-// Note that this also uses ReadVersion underneath.
-
+// BenchmarkReadBlocks instantiates a BlockReader, and iterates over all blocks.
+// It essentially looks at the contents of any CARv1 or CARv2 file.
+// Note that this also uses internal carv1.ReadHeader underneath.
 func BenchmarkReadBlocks(b *testing.B) {
 	path := "testdata/sample-wrapped-v2.car"
 
@@ -24,16 +23,16 @@ func BenchmarkReadBlocks(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			cr, err := carv2.OpenReader(path)
+			r, err := os.Open("testdata/sample-wrapped-v2.car")
 			if err != nil {
 				b.Fatal(err)
 			}
-			_, err = cr.Roots()
+			br, err := carv2.NewBlockReader(r)
 			if err != nil {
 				b.Fatal(err)
 			}
 			for {
-				_, err := cr.Next()
+				_, err := br.Next()
 				if err == io.EOF {
 					break
 				}
@@ -42,7 +41,9 @@ func BenchmarkReadBlocks(b *testing.B) {
 				}
 			}
 
-			cr.Close()
+			if err := r.Close(); err != nil {
+				b.Fatal(err)
+			}
 		}
 	})
 }

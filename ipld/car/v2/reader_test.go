@@ -136,16 +136,6 @@ func TestReader_WithCarV1Consistency(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, wantReader.Header.Roots, gotRoots)
 			require.Nil(t, subject.IndexReader())
-
-			for {
-				gotBlock, gotErr := subject.Next()
-				wantBlock, wantErr := wantReader.Next()
-				require.Equal(t, wantBlock, gotBlock)
-				require.Equal(t, wantErr, gotErr)
-				if gotErr == io.EOF {
-					break
-				}
-			}
 		})
 	}
 }
@@ -184,16 +174,6 @@ func TestReader_WithCarV2Consistency(t *testing.T) {
 			wantIndex, err := carv2.GenerateIndex(subject.DataReader())
 			require.NoError(t, err)
 			require.Equal(t, wantIndex, gotIndex)
-
-			for {
-				gotBlock, gotErr := subject.Next()
-				wantBlock, wantErr := wantReader.Next()
-				require.Equal(t, wantBlock, gotBlock)
-				require.Equal(t, wantErr, gotErr)
-				if gotErr == io.EOF {
-					break
-				}
-			}
 		})
 	}
 }
