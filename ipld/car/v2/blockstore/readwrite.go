@@ -35,11 +35,12 @@ var errFinalized = fmt.Errorf("cannot use a read-write carv2 blockstore after fi
 // Upon calling Finalize header is finalized and index is written out.
 // Once finalized, all read and write calls to this blockstore will result in panics.
 type ReadWrite struct {
+	ronly ReadOnly
+
 	f          *os.File
 	dataWriter *internalio.OffsetWriteSeeker
-	ReadOnly
-	idx    *insertionIndex
-	header carv2.Header
+	idx        *insertionIndex
+	header     carv2.Header
 
 	wopts carv2.WriteOptions
 }
@@ -120,7 +121,7 @@ func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.ReadWriteOption) 
 	for _, opt := range opts {
 		switch opt := opt.(type) {
 		case carv2.ReadOption:
-			opt(&rwbs.ropts)
+			opt(&rwbs.ronly.ropts)
 		case carv2.WriteOption:
 			opt(&rwbs.wopts)
 		}
@@ -134,9 +135,9 @@ func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.ReadWriteOption) 
 
 	rwbs.dataWriter = internalio.NewOffsetWriter(rwbs.f, int64(rwbs.header.DataOffset))
 	v1r := internalio.NewOffsetReadSeeker(rwbs.f, int64(rwbs.header.DataOffset))
-	rwbs.ReadOnly.backing = v1r
-	rwbs.ReadOnly.idx = rwbs.idx
-	rwbs.ReadOnly.carv2Closer = rwbs.f
+	rwbs.ronly.backing = v1r
+	rwbs.ronly.idx = rwbs.idx
+	rwbs.ronly.carv2Closer = rwbs.f
 
 	if resume {
 		if err = rwbs.resumeWithRoots(roots); err != nil {
@@ -216,7 +217,7 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 	}
 
 	// Use the given CARv1 padding to instantiate the CARv1 reader on file.
-	v1r := internalio.NewOffsetReadSeeker(b.ReadOnly.backing, 0)
+	v1r := internalio.NewOffsetReadSeeker(b.ronly.backing, 0)
 	header, err := carv1.ReadHeader(v1r)
 	if err != nil {
 		// Cannot read the CARv1 header; the file is most likely corrupt.
@@ -256,7 +257,7 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 
 		// Null padding; by default it's an error.
 		if length == 0 {
-			if b.ropts.ZeroLengthSectionAsEOF {
+			if b.ronly.ropts.ZeroLengthSectionAsEOF {
 				break
 			} else {
 				return fmt.Errorf("carv1 null padding not allowed by default; see WithZeroLegthSectionAsEOF")
@@ -303,17 +304,17 @@ func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 		return errFinalized
 	}
 
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.ronly.mu.Lock()
+	defer b.ronly.mu.Unlock()
 
 	for _, bl := range blks {
 		c := bl.Cid()
 
 		if !b.wopts.BlockstoreAllowDuplicatePuts {
-			if b.ropts.BlockstoreUseWholeCIDs && b.idx.hasExactCID(c) {
+			if b.ronly.ropts.BlockstoreUseWholeCIDs && b.idx.hasExactCID(c) {
 				continue // deduplicated by CID
 			}
-			if !b.ropts.BlockstoreUseWholeCIDs {
+			if !b.ronly.ropts.BlockstoreUseWholeCIDs {
 				_, err := b.idx.Get(c)
 				if err == nil {
 					continue // deduplicated by hash
@@ -340,8 +341,8 @@ func (b *ReadWrite) Finalize() error {
 		return fmt.Errorf("called Finalize twice")
 	}
 
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.ronly.mu.Lock()
+	defer b.ronly.mu.Unlock()
 	// TODO check if add index option is set and don't write the index then set index offset to zero.
 	b.header = b.header.WithDataSize(uint64(b.dataWriter.Position()))
 
@@ -349,7 +350,7 @@ func (b *ReadWrite) Finalize() error {
 	// mutex we're holding here.
 	// TODO: should we check the error here? especially with OpenReadWrite,
 	// we should care about close errors.
-	defer b.closeWithoutMutex()
+	defer b.ronly.closeWithoutMutex()
 
 	// TODO if index not needed don't bother flattening it.
 	fi, err := b.idx.flatten()
@@ -368,7 +369,7 @@ func (b *ReadWrite) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 		return nil, errFinalized
 	}
 
-	return b.ReadOnly.AllKeysChan(ctx)
+	return b.ronly.AllKeysChan(ctx)
 }
 
 func (b *ReadWrite) Has(key cid.Cid) (bool, error) {
@@ -376,7 +377,7 @@ func (b *ReadWrite) Has(key cid.Cid) (bool, error) {
 		return false, errFinalized
 	}
 
-	return b.ReadOnly.Has(key)
+	return b.ronly.Has(key)
 }
 
 func (b *ReadWrite) Get(key cid.Cid) (blocks.Block, error) {
@@ -384,7 +385,7 @@ func (b *ReadWrite) Get(key cid.Cid) (blocks.Block, error) {
 		return nil, errFinalized
 	}
 
-	return b.ReadOnly.Get(key)
+	return b.ronly.Get(key)
 }
 
 func (b *ReadWrite) GetSize(key cid.Cid) (int, error) {
@@ -392,5 +393,17 @@ func (b *ReadWrite) GetSize(key cid.Cid) (int, error) {
 		return 0, errFinalized
 	}
 
-	return b.ReadOnly.GetSize(key)
+	return b.ronly.GetSize(key)
+}
+
+func (b *ReadWrite) DeleteBlock(_ cid.Cid) error {
+	return fmt.Errorf("ReadWrite blockstore does not support deleting blocks")
+}
+
+func (b *ReadWrite) HashOnRead(enable bool) {
+	b.ronly.HashOnRead(enable)
+}
+
+func (b *ReadWrite) Roots() ([]cid.Cid, error) {
+	return b.ronly.Roots()
 }

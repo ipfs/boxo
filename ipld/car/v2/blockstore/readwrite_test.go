@@ -38,7 +38,7 @@ var (
 func TestReadWriteGetReturnsBlockstoreNotFoundWhenCidDoesNotExist(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "readwrite-err-not-found.car")
 	subject, err := blockstore.OpenReadWrite(path, []cid.Cid{})
-	t.Cleanup(func() { subject.Close() })
+	t.Cleanup(func() { subject.Finalize() })
 	require.NoError(t, err)
 	nonExistingKey := merkledag.NewRawNode([]byte("undadasea")).Block.Cid()
 
@@ -373,7 +373,7 @@ func TestBlockstoreResumption(t *testing.T) {
 				// Close off the open file and re-instantiate a new subject with resumption enabled.
 				// Note, we don't have to close the file for resumption to work.
 				// We do this to avoid resource leak during testing.
-				require.NoError(t, subject.Close())
+				require.NoError(t, blockstore.CloseReadWrite(subject))
 			}
 			subject, err = blockstore.OpenReadWrite(path, r.Header.Roots,
 				blockstore.UseWholeCIDs(true))
@@ -405,7 +405,7 @@ func TestBlockstoreResumption(t *testing.T) {
 			require.Equal(t, wantBlockCountSoFar, gotBlockCountSoFar)
 		}
 	}
-	require.NoError(t, subject.Close())
+	require.NoError(t, blockstore.CloseReadWrite(subject))
 
 	// Finalize the blockstore to complete partially written CARv2 file.
 	subject, err = blockstore.OpenReadWrite(path, r.Header.Roots,
@@ -460,8 +460,8 @@ func TestBlockstoreResumptionIsSupportedOnFinalizedFile(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, subject.Finalize())
 	subject, err = blockstore.OpenReadWrite(path, []cid.Cid{})
-	t.Cleanup(func() { subject.Close() })
 	require.NoError(t, err)
+	t.Cleanup(func() { subject.Finalize() })
 }
 
 func TestReadWritePanicsOnlyWhenFinalized(t *testing.T) {
@@ -472,7 +472,6 @@ func TestReadWritePanicsOnlyWhenFinalized(t *testing.T) {
 
 	subject, err := blockstore.OpenReadWrite(path, wantRoots)
 	require.NoError(t, err)
-	t.Cleanup(func() { subject.Close() })
 
 	require.NoError(t, subject.Put(oneTestBlockWithCidV1))
 	require.NoError(t, subject.Put(anotherTestBlockWithCidV0))
@@ -499,6 +498,9 @@ func TestReadWritePanicsOnlyWhenFinalized(t *testing.T) {
 
 	require.NoError(t, subject.Finalize())
 	require.Error(t, subject.Finalize())
+
+	_, ok := (interface{})(subject).(io.Closer)
+	require.False(t, ok)
 
 	_, err = subject.Get(oneTestBlockCid)
 	require.Error(t, err)
@@ -528,7 +530,6 @@ func TestReadWriteWithPaddingWorksAsExpected(t *testing.T) {
 		carv2.UseDataPadding(wantCarV1Padding),
 		carv2.UseIndexPadding(wantIndexPadding))
 	require.NoError(t, err)
-	t.Cleanup(func() { subject.Close() })
 	require.NoError(t, subject.Put(oneTestBlockWithCidV1))
 	require.NoError(t, subject.Put(anotherTestBlockWithCidV0))
 	require.NoError(t, subject.Finalize())
@@ -606,7 +607,6 @@ func TestReadWriteResumptionFromFileWithDifferentCarV1PaddingIsError(t *testing.
 		WantRoots,
 		carv2.UseDataPadding(1413))
 	require.NoError(t, err)
-	t.Cleanup(func() { subject.Close() })
 	require.NoError(t, subject.Put(oneTestBlockWithCidV1))
 	require.NoError(t, subject.Finalize())
 

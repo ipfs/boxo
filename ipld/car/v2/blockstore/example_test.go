@@ -93,7 +93,6 @@ func ExampleOpenReadWrite() {
 	if err != nil {
 		panic(err)
 	}
-	defer rwbs.Close()
 
 	// Put all blocks onto the blockstore.
 	blocks := []blocks.Block{thisBlock, thatBlock}
@@ -121,7 +120,6 @@ func ExampleOpenReadWrite() {
 	if err != nil {
 		panic(err)
 	}
-	defer resumedRwbos.Close()
 
 	// Put another block, appending it to the set of blocks that are written previously.
 	if err := resumedRwbos.Put(andTheOtherBlock); err != nil {
