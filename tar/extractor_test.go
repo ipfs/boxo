@@ -45,7 +45,7 @@ func init() {
 }
 
 func TestSingleFile(t *testing.T) {
-	fileName := "file.."
+	fileName := "file..ext"
 	fileData := "file data"
 
 	testTarExtraction(t, nil, []tarEntry{
@@ -64,7 +64,7 @@ func TestSingleFile(t *testing.T) {
 }
 
 func TestSingleDirectory(t *testing.T) {
-	dirName := "dir.."
+	dirName := "dir..sfx"
 
 	testTarExtraction(t, nil, []tarEntry{
 		&dirTarEntry{dirName},
