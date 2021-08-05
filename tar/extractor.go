@@ -161,6 +161,11 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		if err != nil || rel == "." {
 			return errInvalidRootMultipleRoots
 		}
+		for _, e := range strings.Split(rel, "/") {
+			if e == ".." {
+				return fmt.Errorf("relative path contains '..'")
+			}
+		}
 
 		switch header.Typeflag {
 		case tar.TypeDir:
