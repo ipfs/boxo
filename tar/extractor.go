@@ -161,7 +161,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		if err != nil || rel == "." {
 			return errInvalidRootMultipleRoots
 		}
-		for _, e := range strings.Split(rel, "/") {
+		for _, e := range strings.Split(fp.ToSlash(rel), "/") {
 			if e == ".." {
 				return fmt.Errorf("relative path contains '..'")
 			}
