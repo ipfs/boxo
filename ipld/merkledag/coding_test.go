@@ -30,7 +30,6 @@ func init() {
 		panic(err)
 	}
 	benchInput = enc
-	// println(len(benchInput))
 }
 
 func BenchmarkRoundtrip(b *testing.B) {
@@ -46,7 +45,6 @@ func BenchmarkRoundtrip(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			// println(len(benchInput), len(enc))
 			_ = enc
 		}
 	})

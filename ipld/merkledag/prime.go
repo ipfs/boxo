@@ -1,9 +1,17 @@
 package merkledag
 
 import (
-	"github.com/ipld/go-ipld-prime"
 	dagpb "github.com/ipld/go-codec-dagpb"
+	"github.com/ipld/go-ipld-prime"
 )
+
+// Protonode was originally implemented as a go-ipld-format node, and included
+// functionality that does not fit well into the model for go-ipld-prime, namely
+// the ability ot modify the node in place.
+
+// In order to support the go-ipld-prime interface, all of these prime methods
+// serialize and rebuild the go-ipld-prime node as needed, so that it remains up
+// to date with mutations made via the add/remove link methods
 
 // Kind returns a value from the Kind enum describing what the
 // essential serializable kind of this node is (map, list, integer, etc).

@@ -17,6 +17,7 @@ import (
 // Common errors
 var (
 	ErrNotProtobuf  = fmt.Errorf("expected protobuf dag node")
+	ErrNotRawNode   = fmt.Errorf("expected raw bytes node")
 	ErrLinkNotFound = fmt.Errorf("no link by that name")
 )
 
@@ -27,6 +28,18 @@ type immutableProtoNode struct {
 
 // ProtoNode represents a node in the IPFS Merkle DAG.
 // nodes have opaque data and a set of navigable links.
+// ProtoNode is a go-ipld-legacy.UniversalNode, meaning it is both
+// a go-ipld-prime node and a go-ipld-format node.
+// ProtoNode maintains compatibility with it's original implementation
+// as a go-ipld-format only node, which included some mutability, namely the
+// the ability to add/remove links in place
+//
+// TODO: We should be able to eventually replace this implementation with
+// * go-codec-dagpb for basic DagPB encode/decode to go-ipld-prime
+// * go-unixfsnode ADLs for higher level DAGPB functionality
+// For the time being however, go-unixfsnode is read only and
+// this mutable protonode implementation is needed to support go-unixfs,
+// the only library that implements both read and write for UnixFS v1.
 type ProtoNode struct {
 	links []*format.Link
 	data  []byte

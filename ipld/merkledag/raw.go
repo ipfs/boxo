@@ -114,7 +114,7 @@ func (rn *RawNode) MarshalJSON() ([]byte, error) {
 
 func RawNodeConverter(b blocks.Block, nd ipld.Node) (legacy.UniversalNode, error) {
 	if nd.Kind() != ipld.Kind_Bytes {
-		return nil, ErrNotProtobuf
+		return nil, ErrNotRawNode
 	}
 	return &RawNode{b, nd}, nil
 }
