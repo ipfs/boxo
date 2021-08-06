@@ -158,8 +158,13 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		// Checks if the relative path matches or exceeds the root
 		// We check for matching because the outputPath function strips the original root
 		rel, err := fp.Rel(rootOutputPath, outputPath)
-		if err != nil || rel == "." || strings.Contains(rel, "..") {
+		if err != nil || rel == "." {
 			return errInvalidRootMultipleRoots
+		}
+		for _, e := range strings.Split(fp.ToSlash(rel), "/") {
+			if e == ".." {
+				return fmt.Errorf("relative path contains '..'")
+			}
 		}
 
 		switch header.Typeflag {
@@ -211,7 +216,7 @@ func getRelativePath(rootName, tarPath string) (string, error) {
 	return tarPath[len(rootName)+1:], nil
 }
 
-// outputPath returns the path at which to place the relativeTarPath. Assumes the path is cleaned.
+// outputPath returns the directory path at which to place the file relativeTarPath. Assumes relativeTarPath is cleaned.
 func (te *Extractor) outputPath(basePlatformPath, relativeTarPath string) (string, error) {
 	elems := strings.Split(relativeTarPath, "/")
 

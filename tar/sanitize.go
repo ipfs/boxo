@@ -20,6 +20,9 @@ func validatePlatformPath(platformPath string) error {
 }
 
 func validatePathComponent(c string) error {
+	if c == ".." {
+		return fmt.Errorf("invalid platform path: path component cannot be '..'")
+	}
 	if strings.Contains(c, "\x00") {
 		return fmt.Errorf("invalid platform path: path components cannot contain null: %q", c)
 	}

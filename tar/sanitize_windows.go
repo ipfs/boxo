@@ -38,6 +38,9 @@ func validatePathComponent(c string) error {
 		return fmt.Errorf("invalid platform path: path components cannot end with ' ' : %q", c)
 	}
 
+	if c == ".." {
+		return fmt.Errorf("invalid platform path: path component cannot be '..'")
+	}
 	// error on reserved characters
 	if strings.ContainsAny(c, reservedCharsStr) {
 		return fmt.Errorf("invalid platform path: path components cannot contain any of %s : %q", reservedCharsStr, c)
