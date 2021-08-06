@@ -25,10 +25,6 @@ type RawNode struct {
 	ipld.Node
 }
 
-type byteAccesor interface {
-	Bytes() []byte
-}
-
 var _ legacy.UniversalNode = &RawNode{}
 
 // NewRawNode creates a RawNode using the default sha2-256 hash function.
