@@ -50,6 +50,16 @@ func (fc FetcherConfig) NewSession(ctx context.Context) fetcher.Fetcher {
 	return &fetcherSession{linkSystem: ls, protoChooser: protoChooser}
 }
 
+// WithReifier derives a different fetcher factory from the same source but
+// with a chosen NodeReifier for pathing semantics.
+func (fc FetcherConfig) WithReifier(nr ipld.NodeReifier) fetcher.Factory {
+	return FetcherConfig{
+		blockService:     fc.blockService,
+		NodeReifier:      nr,
+		PrototypeChooser: fc.PrototypeChooser,
+	}
+}
+
 // interface check
 var _ fetcher.Factory = FetcherConfig{}
 
