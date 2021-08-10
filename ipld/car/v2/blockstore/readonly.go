@@ -27,32 +27,36 @@ var _ blockstore.Blockstore = (*ReadOnly)(nil)
 var (
 	errZeroLengthSection = fmt.Errorf("zero-length carv2 section not allowed by default; see WithZeroLengthSectionAsEOF option")
 	errReadOnly          = fmt.Errorf("called write method on a read-only carv2 blockstore")
+	errClosed            = fmt.Errorf("cannot use a carv2 blockstore after closing")
 )
 
-type (
-	// ReadOnly provides a read-only CAR Block Store.
-	ReadOnly struct {
-		// mu allows ReadWrite to be safe for concurrent use.
-		// It's in ReadOnly so that read operations also grab read locks,
-		// given that ReadWrite embeds ReadOnly for methods like Get and Has.
-		//
-		// The main fields guarded by the mutex are the index and the underlying writers.
-		// For simplicity, the entirety of the blockstore methods grab the mutex.
-		mu sync.RWMutex
+// ReadOnly provides a read-only CAR Block Store.
+type ReadOnly struct {
+	// mu allows ReadWrite to be safe for concurrent use.
+	// It's in ReadOnly so that read operations also grab read locks,
+	// given that ReadWrite embeds ReadOnly for methods like Get and Has.
+	//
+	// The main fields guarded by the mutex are the index and the underlying writers.
+	// For simplicity, the entirety of the blockstore methods grab the mutex.
+	mu sync.RWMutex
 
-		// The backing containing the data payload in CARv1 format.
-		backing io.ReaderAt
-		// The CARv1 content index.
-		idx index.Index
+	// When true, the blockstore has been closed via Close, Discard, or
+	// Finalize, and must not be used. Any further blockstore method calls
+	// will return errClosed to avoid panics or broken behavior.
+	closed bool
 
-		// If we called carv2.NewReaderMmap, remember to close it too.
-		carv2Closer io.Closer
+	// The backing containing the data payload in CARv1 format.
+	backing io.ReaderAt
+	// The CARv1 content index.
+	idx index.Index
 
-		ropts carv2.ReadOptions
-	}
+	// If we called carv2.NewReaderMmap, remember to close it too.
+	carv2Closer io.Closer
 
-	contextKey string
-)
+	ropts carv2.ReadOptions
+}
+
+type contextKey string
 
 const asyncErrHandlerKey contextKey = "asyncErrorHandlerKey"
 
@@ -177,7 +181,7 @@ func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
 	return bcid, data, err
 }
 
-// DeleteBlock is unsupported and always panics.
+// DeleteBlock is unsupported and always errors.
 func (b *ReadOnly) DeleteBlock(_ cid.Cid) error {
 	return errReadOnly
 }
@@ -186,6 +190,10 @@ func (b *ReadOnly) DeleteBlock(_ cid.Cid) error {
 func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
+
+	if b.closed {
+		return false, errClosed
+	}
 
 	var fnFound bool
 	var fnErr error
@@ -222,6 +230,10 @@ func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
+
+	if b.closed {
+		return nil, errClosed
+	}
 
 	var fnData []byte
 	var fnErr error
@@ -262,6 +274,10 @@ func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
 func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
+
+	if b.closed {
+		return 0, errClosed
+	}
 
 	fnSize := -1
 	var fnErr error
@@ -329,16 +345,26 @@ func WithAsyncErrorHandler(ctx context.Context, errHandler func(error)) context.
 // See WithAsyncErrorHandler
 func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	// We release the lock when the channel-sending goroutine stops.
+	// Note that we can't use a deferred unlock here,
+	// because if we return a nil error,
+	// we only want to unlock once the async goroutine has stopped.
 	b.mu.RLock()
+
+	if b.closed {
+		b.mu.RUnlock() // don't hold the mutex forever
+		return nil, errClosed
+	}
 
 	// TODO we may use this walk for populating the index, and we need to be able to iterate keys in this way somewhere for index generation. In general though, when it's asked for all keys from a blockstore with an index, we should iterate through the index when possible rather than linear reads through the full car.
 	rdr := internalio.NewOffsetReadSeeker(b.backing, 0)
 	header, err := carv1.ReadHeader(rdr)
 	if err != nil {
+		b.mu.RUnlock() // don't hold the mutex forever
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}
 	headerSize, err := carv1.HeaderSize(header)
 	if err != nil {
+		b.mu.RUnlock() // don't hold the mutex forever
 		return nil, err
 	}
 
@@ -347,6 +373,7 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 
 	// Seek to the end of header.
 	if _, err = rdr.Seek(int64(headerSize), io.SeekStart); err != nil {
+		b.mu.RUnlock() // don't hold the mutex forever
 		return nil, err
 	}
 
@@ -424,10 +451,10 @@ func (b *ReadOnly) Roots() ([]cid.Cid, error) {
 }
 
 // Close closes the underlying reader if it was opened by OpenReadOnly.
+// After this call, the blockstore can no longer be used.
 //
 // Note that this call may block if any blockstore operations are currently in
-// progress, including an AllKeysChan that hasn't been fully consumed or
-// cancelled.
+// progress, including an AllKeysChan that hasn't been fully consumed or cancelled.
 func (b *ReadOnly) Close() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -436,6 +463,7 @@ func (b *ReadOnly) Close() error {
 }
 
 func (b *ReadOnly) closeWithoutMutex() error {
+	b.closed = true
 	if b.carv2Closer != nil {
 		return b.carv2Closer.Close()
 	}

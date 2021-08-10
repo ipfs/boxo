@@ -373,7 +373,7 @@ func TestBlockstoreResumption(t *testing.T) {
 				// Close off the open file and re-instantiate a new subject with resumption enabled.
 				// Note, we don't have to close the file for resumption to work.
 				// We do this to avoid resource leak during testing.
-				require.NoError(t, blockstore.CloseReadWrite(subject))
+				subject.Discard()
 			}
 			subject, err = blockstore.OpenReadWrite(path, r.Header.Roots,
 				blockstore.UseWholeCIDs(true))
@@ -405,7 +405,7 @@ func TestBlockstoreResumption(t *testing.T) {
 			require.Equal(t, wantBlockCountSoFar, gotBlockCountSoFar)
 		}
 	}
-	require.NoError(t, blockstore.CloseReadWrite(subject))
+	subject.Discard()
 
 	// Finalize the blockstore to complete partially written CARv2 file.
 	subject, err = blockstore.OpenReadWrite(path, r.Header.Roots,
@@ -618,4 +618,52 @@ func TestReadWriteResumptionFromFileWithDifferentCarV1PaddingIsError(t *testing.
 		"`WithDataPadding` option must match the padding on file. "+
 		"Expected padding value of 1413 but got 1314")
 	require.Nil(t, resumingSubject)
+}
+
+func TestReadWriteErrorAfterClose(t *testing.T) {
+	root := blocks.NewBlock([]byte("foo"))
+	for _, closeMethod := range []func(*blockstore.ReadWrite){
+		(*blockstore.ReadWrite).Discard,
+		func(bs *blockstore.ReadWrite) { bs.Finalize() },
+	} {
+		path := filepath.Join(t.TempDir(), "readwrite.car")
+		bs, err := blockstore.OpenReadWrite(path, []cid.Cid{root.Cid()})
+		require.NoError(t, err)
+
+		err = bs.Put(root)
+		require.NoError(t, err)
+
+		roots, err := bs.Roots()
+		require.NoError(t, err)
+		_, err = bs.Has(roots[0])
+		require.NoError(t, err)
+		_, err = bs.Get(roots[0])
+		require.NoError(t, err)
+		_, err = bs.GetSize(roots[0])
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		_, err = bs.AllKeysChan(ctx)
+		require.NoError(t, err)
+		cancel() // to stop the AllKeysChan goroutine
+
+		closeMethod(bs)
+
+		_, err = bs.Roots()
+		require.Error(t, err)
+		_, err = bs.Has(roots[0])
+		require.Error(t, err)
+		_, err = bs.Get(roots[0])
+		require.Error(t, err)
+		_, err = bs.GetSize(roots[0])
+		require.Error(t, err)
+		_, err = bs.AllKeysChan(ctx)
+		require.Error(t, err)
+
+		err = bs.Put(root)
+		require.Error(t, err)
+
+		// TODO: test that closing blocks if an AllKeysChan operation is
+		// in progress.
+	}
 }

@@ -23,8 +23,6 @@ import (
 
 var _ blockstore.Blockstore = (*ReadWrite)(nil)
 
-var errFinalized = fmt.Errorf("cannot use a read-write carv2 blockstore after finalizing")
-
 // ReadWrite implements a blockstore that stores blocks in CARv2 format.
 // Blocks put into the blockstore can be read back once they are successfully written.
 // This implementation is preferable for a write-heavy workload.
@@ -33,7 +31,7 @@ var errFinalized = fmt.Errorf("cannot use a read-write carv2 blockstore after fi
 //
 // The Finalize function must be called once the putting blocks are finished.
 // Upon calling Finalize header is finalized and index is written out.
-// Once finalized, all read and write calls to this blockstore will result in panics.
+// Once finalized, all read and write calls to this blockstore will result in errors.
 type ReadWrite struct {
 	ronly ReadOnly
 
@@ -62,7 +60,7 @@ func AllowDuplicatePuts(allow bool) carv2.WriteOption {
 // ReadWrite.Finalize must be called once putting and reading blocks are no longer needed.
 // Upon calling ReadWrite.Finalize the CARv2 header and index are written out onto the file and the
 // backing file is closed. Once finalized, all read and write calls to this blockstore will result
-// in panics. Note, ReadWrite.Finalize must be called on an open instance regardless of whether any
+// in errors. Note, ReadWrite.Finalize must be called on an open instance regardless of whether any
 // blocks were put or not.
 //
 // If a file at given path does not exist, the instantiation will write car.Pragma and data payload
@@ -287,25 +285,21 @@ func (b *ReadWrite) unfinalize() error {
 	return err
 }
 
-func (b *ReadWrite) finalized() bool {
-	return b.header.DataSize != 0
-}
-
 // Put puts a given block to the underlying datastore
 func (b *ReadWrite) Put(blk blocks.Block) error {
-	// PutMany already checks b.finalized.
+	// PutMany already checks b.ronly.closed.
 	return b.PutMany([]blocks.Block{blk})
 }
 
 // PutMany puts a slice of blocks at the same time using batching
 // capabilities of the underlying datastore whenever possible.
 func (b *ReadWrite) PutMany(blks []blocks.Block) error {
-	if b.finalized() {
-		return errFinalized
-	}
-
 	b.ronly.mu.Lock()
 	defer b.ronly.mu.Unlock()
+
+	if b.ronly.closed {
+		return errClosed
+	}
 
 	for _, bl := range blks {
 		c := bl.Cid()
@@ -331,25 +325,37 @@ func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 	return nil
 }
 
+// Discard closes this blockstore without finalizing its header and index.
+// After this call, the blockstore can no longer be used.
+//
+// Note that this call may block if any blockstore operations are currently in
+// progress, including an AllKeysChan that hasn't been fully consumed or cancelled.
+func (b *ReadWrite) Discard() {
+	// Same semantics as ReadOnly.Close, including allowing duplicate calls.
+	// The only difference is that our method is called Discard,
+	// to further clarify that we're not properly finalizing and writing a
+	// CARv2 file.
+	b.ronly.Close()
+}
+
 // Finalize finalizes this blockstore by writing the CARv2 header, along with flattened index
 // for more efficient subsequent read.
-// After this call, this blockstore can no longer be used for read or write.
+// After this call, the blockstore can no longer be used.
 func (b *ReadWrite) Finalize() error {
-	if b.header.DataSize != 0 {
-		// Allow duplicate Finalize calls, just like Close.
-		// Still error, just like ReadOnly.Close; it should be discarded.
-		return fmt.Errorf("called Finalize twice")
-	}
-
 	b.ronly.mu.Lock()
 	defer b.ronly.mu.Unlock()
+
+	if b.ronly.closed {
+		// Allow duplicate Finalize calls, just like Close.
+		// Still error, just like ReadOnly.Close; it should be discarded.
+		return fmt.Errorf("called Finalize on a closed blockstore")
+	}
+
 	// TODO check if add index option is set and don't write the index then set index offset to zero.
 	b.header = b.header.WithDataSize(uint64(b.dataWriter.Position()))
 
 	// Note that we can't use b.Close here, as that tries to grab the same
 	// mutex we're holding here.
-	// TODO: should we check the error here? especially with OpenReadWrite,
-	// we should care about close errors.
 	defer b.ronly.closeWithoutMutex()
 
 	// TODO if index not needed don't bother flattening it.
@@ -360,39 +366,29 @@ func (b *ReadWrite) Finalize() error {
 	if err := index.WriteTo(fi, internalio.NewOffsetWriter(b.f, int64(b.header.IndexOffset))); err != nil {
 		return err
 	}
-	_, err = b.header.WriteTo(internalio.NewOffsetWriter(b.f, carv2.PragmaSize))
-	return err
+	if _, err := b.header.WriteTo(internalio.NewOffsetWriter(b.f, carv2.PragmaSize)); err != nil {
+		return err
+	}
+
+	if err := b.ronly.closeWithoutMutex(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (b *ReadWrite) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
-	if b.finalized() {
-		return nil, errFinalized
-	}
-
 	return b.ronly.AllKeysChan(ctx)
 }
 
 func (b *ReadWrite) Has(key cid.Cid) (bool, error) {
-	if b.finalized() {
-		return false, errFinalized
-	}
-
 	return b.ronly.Has(key)
 }
 
 func (b *ReadWrite) Get(key cid.Cid) (blocks.Block, error) {
-	if b.finalized() {
-		return nil, errFinalized
-	}
-
 	return b.ronly.Get(key)
 }
 
 func (b *ReadWrite) GetSize(key cid.Cid) (int, error) {
-	if b.finalized() {
-		return 0, errFinalized
-	}
-
 	return b.ronly.GetSize(key)
 }
 

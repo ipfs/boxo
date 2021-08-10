@@ -101,7 +101,7 @@ func TestReadOnly(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, wantBlock, gotBlock)
 
-				// Assert write operations panic
+				// Assert write operations error
 				require.Error(t, subject.Put(wantBlock))
 				require.Error(t, subject.PutMany([]blocks.Block{wantBlock}))
 				require.Error(t, subject.DeleteBlock(key))
@@ -234,4 +234,39 @@ func newV1Reader(r io.Reader, zeroLenSectionAsEOF bool) (*carv1.CarReader, error
 		return carv1.NewCarReaderWithZeroLengthSectionAsEOF(r)
 	}
 	return carv1.NewCarReader(r)
+}
+
+func TestReadOnlyErrorAfterClose(t *testing.T) {
+	bs, err := OpenReadOnly("../testdata/sample-v1.car")
+	require.NoError(t, err)
+
+	roots, err := bs.Roots()
+	require.NoError(t, err)
+	_, err = bs.Has(roots[0])
+	require.NoError(t, err)
+	_, err = bs.Get(roots[0])
+	require.NoError(t, err)
+	_, err = bs.GetSize(roots[0])
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	_, err = bs.AllKeysChan(ctx)
+	require.NoError(t, err)
+	cancel() // to stop the AllKeysChan goroutine
+
+	bs.Close()
+
+	_, err = bs.Roots()
+	require.Error(t, err)
+	_, err = bs.Has(roots[0])
+	require.Error(t, err)
+	_, err = bs.Get(roots[0])
+	require.Error(t, err)
+	_, err = bs.GetSize(roots[0])
+	require.Error(t, err)
+	_, err = bs.AllKeysChan(ctx)
+	require.Error(t, err)
+
+	// TODO: test that closing blocks if an AllKeysChan operation is
+	// in progress.
 }
