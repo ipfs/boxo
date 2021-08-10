@@ -104,7 +104,8 @@ func (f *fetcherSession) PrototypeFromLink(lnk ipld.Link) (ipld.NodePrototype, e
 	return f.protoChooser(lnk, ipld.LinkContext{})
 }
 
-// DefaultPrototypeChooser supports DagPB nodes and choosing the prototype from the link.
+// DefaultPrototypeChooser supports choosing the prototype from the link and falling
+// back to a basicnode.Any builder
 var DefaultPrototypeChooser = func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
 	if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
 		return tlnkNd.LinkTargetNodePrototype(), nil
