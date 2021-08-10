@@ -59,6 +59,49 @@ func TestWrapV1(t *testing.T) {
 	require.Equal(t, wantIdx, gotIdx)
 }
 
+func TestExtractV1(t *testing.T) {
+	// Produce a CARv1 file to test.
+	dagSvc := dstest.Mock()
+	v1Src := filepath.Join(t.TempDir(), "original-test-v1.car")
+	v1f, err := os.Create(v1Src)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, v1f.Close()) })
+	require.NoError(t, carv1.WriteCar(context.Background(), dagSvc, generateRootCid(t, dagSvc), v1f))
+	_, err = v1f.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	wantV1, err := ioutil.ReadAll(v1f)
+	require.NoError(t, err)
+
+	// Wrap the produced CARv1 into a CARv2 to use for testing.
+	v2path := filepath.Join(t.TempDir(), "wrapped-for-extract-test-v2.car")
+	require.NoError(t, WrapV1File(v1Src, v2path))
+
+	// Assert extract from CARv2 file is as expected.
+	dstPath := filepath.Join(t.TempDir(), "extract-file-test-v1.car")
+	require.NoError(t, ExtractV1File(v2path, dstPath))
+	gotFromFile, err := ioutil.ReadFile(dstPath)
+	require.NoError(t, err)
+	require.Equal(t, wantV1, gotFromFile)
+
+	// Assert extract from CARv2 file in-place is as expected
+	require.NoError(t, ExtractV1File(v2path, v2path))
+	gotFromInPlaceFile, err := ioutil.ReadFile(v2path)
+	require.NoError(t, err)
+	require.Equal(t, wantV1, gotFromInPlaceFile)
+}
+
+func TestExtractV1WithUnknownVersionIsError(t *testing.T) {
+	dstPath := filepath.Join(t.TempDir(), "extract-dst-file-test-v42.car")
+	err := ExtractV1File("testdata/sample-rootless-v42.car", dstPath)
+	require.EqualError(t, err, "invalid source version: 42")
+}
+
+func TestExtractV1FromACarV1IsError(t *testing.T) {
+	dstPath := filepath.Join(t.TempDir(), "extract-dst-file-test-v1.car")
+	err := ExtractV1File("testdata/sample-v1.car", dstPath)
+	require.Equal(t, ErrAlreadyV1, err)
+}
+
 func generateRootCid(t *testing.T, adder format.NodeAdder) []cid.Cid {
 	// TODO convert this into a utility testing lib that takes an rng and generates a random DAG with some threshold for depth/breadth.
 	this := merkledag.NewRawNode([]byte("fish"))

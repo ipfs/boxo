@@ -2,11 +2,19 @@ package car_test
 
 import (
 	"io"
+	"math/rand"
 	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-merkledag"
+	"github.com/ipld/go-car/v2/blockstore"
 
 	carv2 "github.com/ipld/go-car/v2"
 )
+
+var rng = rand.New(rand.NewSource(1413))
 
 // BenchmarkReadBlocks instantiates a BlockReader, and iterates over all blocks.
 // It essentially looks at the contents of any CARv1 or CARv2 file.
@@ -46,4 +54,94 @@ func BenchmarkReadBlocks(b *testing.B) {
 			}
 		}
 	})
+}
+
+// BenchmarkExtractV1File extracts inner CARv1 payload from a sample CARv2 file using ExtractV1File.
+func BenchmarkExtractV1File(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "bench-large-v2.car")
+	generateRandomCarV2File(b, path, 10*1024*1024) // 10 MiB
+	defer os.Remove(path)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.SetBytes(info.Size())
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		dstPath := filepath.Join(b.TempDir(), "destination.car")
+		for pb.Next() {
+			err = carv2.ExtractV1File(path, dstPath)
+			if err != nil {
+				b.Fatal(err)
+			}
+			_ = os.Remove(dstPath)
+		}
+	})
+}
+
+// BenchmarkExtractV1UsingReader extracts inner CARv1 payload from a sample CARv2 file using Reader
+// API. This benchmark is implemented to be used as a comparison in conjunction with
+// BenchmarkExtractV1File.
+func BenchmarkExtractV1UsingReader(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "bench-large-v2.car")
+	generateRandomCarV2File(b, path, 10*1024*1024) // 10 MiB
+	defer os.Remove(path)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.SetBytes(info.Size())
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		dstPath := filepath.Join(b.TempDir(), "destination.car")
+		for pb.Next() {
+			dst, err := os.Create(dstPath)
+			if err != nil {
+				b.Fatal(err)
+			}
+			reader, err := carv2.OpenReader(path)
+			if err != nil {
+				b.Fatal(err)
+			}
+			_, err = io.Copy(dst, reader.DataReader())
+			if err != nil {
+				b.Fatal(err)
+			}
+			if err := dst.Close(); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
+func generateRandomCarV2File(b *testing.B, path string, minTotalBlockSize int) {
+	bs, err := blockstore.OpenReadWrite(path, []cid.Cid{})
+	defer func() {
+		if err := bs.Finalize(); err != nil {
+			b.Fatal(err)
+		}
+	}()
+	if err != nil {
+		b.Fatal(err)
+	}
+	buf := make([]byte, 1024)
+	var totalBlockSize int
+	for totalBlockSize < minTotalBlockSize {
+		size, err := rng.Read(buf)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		blk := merkledag.NewRawNode(buf)
+		if err := bs.Put(blk); err != nil {
+			b.Fatal(err)
+		}
+		totalBlockSize += size
+	}
 }
