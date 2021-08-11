@@ -14,6 +14,7 @@ var benchInput []byte
 
 func init() {
 	someData := bytes.Repeat([]byte("some plaintext data\n"), 10)
+	// make a test CID -- doesn't matter just to add as a link
 	someCid, _ := cid.Cast([]byte{1, 85, 0, 5, 0, 1, 2, 3, 4})
 
 	node := &merkledag.ProtoNode{}

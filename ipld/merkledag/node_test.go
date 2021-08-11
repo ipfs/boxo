@@ -16,6 +16,7 @@ var sampleCid cid.Cid
 
 func init() {
 	var err error
+	// make a test CID -- doesn't matter just to add as a link
 	sampleCid, err = cid.Cast([]byte{1, 85, 0, 5, 0, 1, 2, 3, 4})
 	if err != nil {
 		panic(err)
