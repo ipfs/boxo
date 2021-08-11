@@ -93,7 +93,7 @@ func TestExtractV1(t *testing.T) {
 func TestExtractV1WithUnknownVersionIsError(t *testing.T) {
 	dstPath := filepath.Join(t.TempDir(), "extract-dst-file-test-v42.car")
 	err := ExtractV1File("testdata/sample-rootless-v42.car", dstPath)
-	require.EqualError(t, err, "invalid source version: 42")
+	require.EqualError(t, err, "source version must be 2; got: 42")
 }
 
 func TestExtractV1FromACarV1IsError(t *testing.T) {

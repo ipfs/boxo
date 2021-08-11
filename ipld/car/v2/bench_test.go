@@ -14,8 +14,6 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 )
 
-var rng = rand.New(rand.NewSource(1413))
-
 // BenchmarkReadBlocks instantiates a BlockReader, and iterates over all blocks.
 // It essentially looks at the contents of any CARv1 or CARv2 file.
 // Note that this also uses internal carv1.ReadHeader underneath.
@@ -59,7 +57,7 @@ func BenchmarkReadBlocks(b *testing.B) {
 // BenchmarkExtractV1File extracts inner CARv1 payload from a sample CARv2 file using ExtractV1File.
 func BenchmarkExtractV1File(b *testing.B) {
 	path := filepath.Join(b.TempDir(), "bench-large-v2.car")
-	generateRandomCarV2File(b, path, 10*1024*1024) // 10 MiB
+	generateRandomCarV2File(b, path, 10<<20) // 10 MiB
 	defer os.Remove(path)
 
 	info, err := os.Stat(path)
@@ -87,7 +85,7 @@ func BenchmarkExtractV1File(b *testing.B) {
 // BenchmarkExtractV1File.
 func BenchmarkExtractV1UsingReader(b *testing.B) {
 	path := filepath.Join(b.TempDir(), "bench-large-v2.car")
-	generateRandomCarV2File(b, path, 10*1024*1024) // 10 MiB
+	generateRandomCarV2File(b, path, 10<<20) // 10 MiB
 	defer os.Remove(path)
 
 	info, err := os.Stat(path)
@@ -121,6 +119,8 @@ func BenchmarkExtractV1UsingReader(b *testing.B) {
 }
 
 func generateRandomCarV2File(b *testing.B, path string, minTotalBlockSize int) {
+	// Use fixed RNG for determinism across benchmarks.
+	rng := rand.New(rand.NewSource(1413))
 	bs, err := blockstore.OpenReadWrite(path, []cid.Cid{})
 	defer func() {
 		if err := bs.Finalize(); err != nil {
@@ -130,7 +130,7 @@ func generateRandomCarV2File(b *testing.B, path string, minTotalBlockSize int) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	buf := make([]byte, 1024)
+	buf := make([]byte, 32<<10) // 32 KiB
 	var totalBlockSize int
 	for totalBlockSize < minTotalBlockSize {
 		size, err := rng.Read(buf)

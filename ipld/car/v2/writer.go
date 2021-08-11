@@ -92,6 +92,12 @@ func WrapV1(src io.ReadSeeker, dst io.Writer) error {
 // Note that the destination path might still be created even if an error
 // occurred.
 // If srcPath and dstPath are the same, then the dstPath is converted, in-place, to CARv1.
+//
+// This function aims to extract the CARv1 payload as efficiently as possible.
+// The method is best-effort and depends on your operating system;
+// for example, it should use copy_file_range on recent Linux versions.
+// This API should be preferred over copying directly via Reader.DataReader,
+// as it should allow for better performance while always being at least as efficient.
 func ExtractV1File(srcPath, dstPath string) (err error) {
 	src, err := os.Open(srcPath)
 	if err != nil {
@@ -110,7 +116,7 @@ func ExtractV1File(srcPath, dstPath string) (err error) {
 		return ErrAlreadyV1
 	}
 	if version != 2 {
-		return fmt.Errorf("invalid source version: %v", version)
+		return fmt.Errorf("source version must be 2; got: %d", version)
 	}
 
 	// Read CARv2 header to locate data payload.
@@ -123,11 +129,11 @@ func ExtractV1File(srcPath, dstPath string) (err error) {
 	// Validate header
 	dataOffset := int64(v2h.DataOffset)
 	if dataOffset < PragmaSize+HeaderSize {
-		return fmt.Errorf("invalid data payload offset: %v", dataOffset)
+		return fmt.Errorf("invalid data payload offset: %d", dataOffset)
 	}
 	dataSize := int64(v2h.DataSize)
 	if dataSize <= 0 {
-		return fmt.Errorf("invalid data payload size: %v", dataSize)
+		return fmt.Errorf("invalid data payload size: %d", dataSize)
 	}
 
 	// Seek to the point where the data payload starts
@@ -163,7 +169,7 @@ func ExtractV1File(srcPath, dstPath string) (err error) {
 		return err
 	}
 	if written != dataSize {
-		return fmt.Errorf("expected to write exactly %v but wrote %v", dataSize, written)
+		return fmt.Errorf("expected to write exactly %d but wrote %d", dataSize, written)
 	}
 
 	// Check that the size destination file matches expected size.
