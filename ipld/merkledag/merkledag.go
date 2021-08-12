@@ -10,16 +10,25 @@ import (
 	bserv "github.com/ipfs/go-blockservice"
 	cid "github.com/ipfs/go-cid"
 	ipldcbor "github.com/ipfs/go-ipld-cbor"
-	ipld "github.com/ipfs/go-ipld-format"
+	format "github.com/ipfs/go-ipld-format"
+	legacy "github.com/ipfs/go-ipld-legacy"
+	dagpb "github.com/ipld/go-codec-dagpb"
+
+	// blank import is used to register the IPLD raw codec
+	_ "github.com/ipld/go-ipld-prime/codec/raw"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 )
 
 // TODO: We should move these registrations elsewhere. Really, most of the IPLD
 // functionality should go in a `go-ipld` repo but that will take a lot of work
 // and design.
 func init() {
-	ipld.Register(cid.DagProtobuf, DecodeProtobufBlock)
-	ipld.Register(cid.Raw, DecodeRawBlock)
-	ipld.Register(cid.DagCBOR, ipldcbor.DecodeBlock)
+	format.Register(cid.DagProtobuf, DecodeProtobufBlock)
+	format.Register(cid.Raw, DecodeRawBlock)
+	format.Register(cid.DagCBOR, ipldcbor.DecodeBlock)
+
+	legacy.RegisterCodec(cid.DagProtobuf, dagpb.Type.PBNode, ProtoNodeConverter)
+	legacy.RegisterCodec(cid.Raw, basicnode.Prototype.Bytes, RawNodeConverter)
 }
 
 // contextKey is a type to use as value for the ProgressTracker contexts.
@@ -43,7 +52,7 @@ type dagService struct {
 }
 
 // Add adds a node to the dagService, storing the block in the BlockService
-func (n *dagService) Add(ctx context.Context, nd ipld.Node) error {
+func (n *dagService) Add(ctx context.Context, nd format.Node) error {
 	if n == nil { // FIXME remove this assertion. protect with constructor invariant
 		return fmt.Errorf("dagService is nil")
 	}
@@ -51,7 +60,7 @@ func (n *dagService) Add(ctx context.Context, nd ipld.Node) error {
 	return n.Blocks.AddBlock(nd)
 }
 
-func (n *dagService) AddMany(ctx context.Context, nds []ipld.Node) error {
+func (n *dagService) AddMany(ctx context.Context, nds []format.Node) error {
 	blks := make([]blocks.Block, len(nds))
 	for i, nd := range nds {
 		blks[i] = nd
@@ -60,7 +69,7 @@ func (n *dagService) AddMany(ctx context.Context, nds []ipld.Node) error {
 }
 
 // Get retrieves a node from the dagService, fetching the block in the BlockService
-func (n *dagService) Get(ctx context.Context, c cid.Cid) (ipld.Node, error) {
+func (n *dagService) Get(ctx context.Context, c cid.Cid) (format.Node, error) {
 	if n == nil {
 		return nil, fmt.Errorf("dagService is nil")
 	}
@@ -71,17 +80,17 @@ func (n *dagService) Get(ctx context.Context, c cid.Cid) (ipld.Node, error) {
 	b, err := n.Blocks.GetBlock(ctx, c)
 	if err != nil {
 		if err == bserv.ErrNotFound {
-			return nil, ipld.ErrNotFound
+			return nil, format.ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to get block for %s: %v", c, err)
 	}
 
-	return ipld.Decode(b)
+	return legacy.DecodeNode(ctx, b)
 }
 
 // GetLinks return the links for the node, the node doesn't necessarily have
 // to exist locally.
-func (n *dagService) GetLinks(ctx context.Context, c cid.Cid) ([]*ipld.Link, error) {
+func (n *dagService) GetLinks(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
 	if c.Type() == cid.Raw {
 		return nil, nil
 	}
@@ -114,12 +123,12 @@ func (n *dagService) RemoveMany(ctx context.Context, cids []cid.Cid) error {
 // GetLinksDirect creates a function to get the links for a node, from
 // the node, bypassing the LinkService.  If the node does not exist
 // locally (and can not be retrieved) an error will be returned.
-func GetLinksDirect(serv ipld.NodeGetter) GetLinks {
-	return func(ctx context.Context, c cid.Cid) ([]*ipld.Link, error) {
+func GetLinksDirect(serv format.NodeGetter) GetLinks {
+	return func(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
 		nd, err := serv.Get(ctx, c)
 		if err != nil {
 			if err == bserv.ErrNotFound {
-				err = ipld.ErrNotFound
+				err = format.ErrNotFound
 			}
 			return nil, err
 		}
@@ -132,32 +141,32 @@ type sesGetter struct {
 }
 
 // Get gets a single node from the DAG.
-func (sg *sesGetter) Get(ctx context.Context, c cid.Cid) (ipld.Node, error) {
+func (sg *sesGetter) Get(ctx context.Context, c cid.Cid) (format.Node, error) {
 	blk, err := sg.bs.GetBlock(ctx, c)
 	switch err {
 	case bserv.ErrNotFound:
-		return nil, ipld.ErrNotFound
+		return nil, format.ErrNotFound
 	case nil:
 		// noop
 	default:
 		return nil, err
 	}
 
-	return ipld.Decode(blk)
+	return legacy.DecodeNode(ctx, blk)
 }
 
 // GetMany gets many nodes at once, batching the request if possible.
-func (sg *sesGetter) GetMany(ctx context.Context, keys []cid.Cid) <-chan *ipld.NodeOption {
+func (sg *sesGetter) GetMany(ctx context.Context, keys []cid.Cid) <-chan *format.NodeOption {
 	return getNodesFromBG(ctx, sg.bs, keys)
 }
 
 // Session returns a NodeGetter using a new session for block fetches.
-func (n *dagService) Session(ctx context.Context) ipld.NodeGetter {
+func (n *dagService) Session(ctx context.Context) format.NodeGetter {
 	return &sesGetter{bserv.NewSession(ctx, n.Blocks)}
 }
 
 // FetchGraph fetches all nodes that are children of the given node
-func FetchGraph(ctx context.Context, root cid.Cid, serv ipld.DAGService) error {
+func FetchGraph(ctx context.Context, root cid.Cid, serv format.DAGService) error {
 	return FetchGraphWithDepthLimit(ctx, root, -1, serv)
 }
 
@@ -165,8 +174,8 @@ func FetchGraph(ctx context.Context, root cid.Cid, serv ipld.DAGService) error {
 // node down to the given depth. maxDepth=0 means "only fetch root",
 // maxDepth=1 means "fetch root and its direct children" and so on...
 // maxDepth=-1 means unlimited.
-func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, serv ipld.DAGService) error {
-	var ng ipld.NodeGetter = NewSession(ctx, serv)
+func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, serv format.DAGService) error {
+	var ng format.NodeGetter = NewSession(ctx, serv)
 
 	set := make(map[cid.Cid]int)
 
@@ -212,7 +221,7 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 // This method may not return all requested nodes (and may or may not return an
 // error indicating that it failed to do so. It is up to the caller to verify
 // that it received all nodes.
-func (n *dagService) GetMany(ctx context.Context, keys []cid.Cid) <-chan *ipld.NodeOption {
+func (n *dagService) GetMany(ctx context.Context, keys []cid.Cid) <-chan *format.NodeOption {
 	return getNodesFromBG(ctx, n.Blocks, keys)
 }
 
@@ -227,10 +236,10 @@ func dedupKeys(keys []cid.Cid) []cid.Cid {
 	return set.Keys()
 }
 
-func getNodesFromBG(ctx context.Context, bs bserv.BlockGetter, keys []cid.Cid) <-chan *ipld.NodeOption {
+func getNodesFromBG(ctx context.Context, bs bserv.BlockGetter, keys []cid.Cid) <-chan *format.NodeOption {
 	keys = dedupKeys(keys)
 
-	out := make(chan *ipld.NodeOption, len(keys))
+	out := make(chan *format.NodeOption, len(keys))
 	blocks := bs.GetBlocks(ctx, keys)
 	var count int
 
@@ -241,22 +250,22 @@ func getNodesFromBG(ctx context.Context, bs bserv.BlockGetter, keys []cid.Cid) <
 			case b, ok := <-blocks:
 				if !ok {
 					if count != len(keys) {
-						out <- &ipld.NodeOption{Err: fmt.Errorf("failed to fetch all nodes")}
+						out <- &format.NodeOption{Err: fmt.Errorf("failed to fetch all nodes")}
 					}
 					return
 				}
 
-				nd, err := ipld.Decode(b)
+				nd, err := legacy.DecodeNode(ctx, b)
 				if err != nil {
-					out <- &ipld.NodeOption{Err: err}
+					out <- &format.NodeOption{Err: err}
 					return
 				}
 
-				out <- &ipld.NodeOption{Node: nd}
+				out <- &format.NodeOption{Node: nd}
 				count++
 
 			case <-ctx.Done():
-				out <- &ipld.NodeOption{Err: ctx.Err()}
+				out <- &format.NodeOption{Err: ctx.Err()}
 				return
 			}
 		}
@@ -266,15 +275,15 @@ func getNodesFromBG(ctx context.Context, bs bserv.BlockGetter, keys []cid.Cid) <
 
 // GetLinks is the type of function passed to the EnumerateChildren function(s)
 // for getting the children of an IPLD node.
-type GetLinks func(context.Context, cid.Cid) ([]*ipld.Link, error)
+type GetLinks func(context.Context, cid.Cid) ([]*format.Link, error)
 
 // GetLinksWithDAG returns a GetLinks function that tries to use the given
 // NodeGetter as a LinkGetter to get the children of a given IPLD node. This may
 // allow us to traverse the DAG without actually loading and parsing the node in
 // question (if we already have the links cached).
-func GetLinksWithDAG(ng ipld.NodeGetter) GetLinks {
-	return func(ctx context.Context, c cid.Cid) ([]*ipld.Link, error) {
-		return ipld.GetLinks(ctx, ng, c)
+func GetLinksWithDAG(ng format.NodeGetter) GetLinks {
+	return func(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
+		return format.GetLinks(ctx, ng, c)
 	}
 }
 
@@ -344,7 +353,7 @@ func IgnoreErrors() WalkOption {
 func IgnoreMissing() WalkOption {
 	return func(walkOptions *walkOptions) {
 		walkOptions.addHandler(func(c cid.Cid, err error) error {
-			if err == ipld.ErrNotFound {
+			if err == format.ErrNotFound {
 				return nil
 			}
 			return err
@@ -357,7 +366,7 @@ func IgnoreMissing() WalkOption {
 func OnMissing(callback func(c cid.Cid)) WalkOption {
 	return func(walkOptions *walkOptions) {
 		walkOptions.addHandler(func(c cid.Cid, err error) error {
-			if err == ipld.ErrNotFound {
+			if err == format.ErrNotFound {
 				callback(c)
 			}
 			return err
@@ -454,7 +463,7 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 	}
 
 	type linksDepth struct {
-		links []*ipld.Link
+		links []*format.Link
 		depth int
 	}
 
@@ -569,7 +578,7 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 	}
 }
 
-var _ ipld.LinkGetter = &dagService{}
-var _ ipld.NodeGetter = &dagService{}
-var _ ipld.NodeGetter = &sesGetter{}
-var _ ipld.DAGService = &dagService{}
+var _ format.LinkGetter = &dagService{}
+var _ format.NodeGetter = &dagService{}
+var _ format.NodeGetter = &sesGetter{}
+var _ format.DAGService = &dagService{}
