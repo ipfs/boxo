@@ -1,19 +1,25 @@
 package simple_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
 
+	blocks "github.com/ipfs/go-block-format"
 	bsrv "github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
-	"github.com/ipfs/go-ipfs-blockstore"
+	bsfetcher "github.com/ipfs/go-fetcher/impl/blockservice"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	mock "github.com/ipfs/go-ipfs-routing/mock"
-	cbor "github.com/ipfs/go-ipld-cbor"
-	merkledag "github.com/ipfs/go-merkledag"
+	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	"github.com/ipld/go-ipld-prime/fluent/qp"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	testutil "github.com/libp2p/go-libp2p-testing/net"
 	mh "github.com/multiformats/go-multihash"
@@ -36,22 +42,24 @@ func setupRouting(t *testing.T) (clA, clB mock.Client, idA, idB peer.ID) {
 func setupDag(t *testing.T) (nodes []cid.Cid, bstore blockstore.Blockstore) {
 	bstore = blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	for _, data := range []string{"foo", "bar"} {
-		blk, err := cbor.WrapObject(data, mh.SHA2_256, -1)
+		nb := basicnode.Prototype.Any.NewBuilder()
+		err := nb.AssignString(data)
 		if err != nil {
 			t.Fatal(err)
 		}
+		blk := toBlock(t, nb.Build())
 		err = bstore.Put(blk)
 		if err != nil {
 			t.Fatal(err)
 		}
 		nodes = append(nodes, blk.Cid())
-
-		blk, err = cbor.WrapObject(map[string]interface{}{
-			"child": blk.Cid(),
-		}, mh.SHA2_256, -1)
+		nd, err := qp.BuildMap(basicnode.Prototype.Map, 1, func(ma ipld.MapAssembler) {
+			qp.MapEntry(ma, "child", qp.Link(cidlink.Link{Cid: blk.Cid()}))
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
+		blk = toBlock(t, nd)
 		err = bstore.Put(blk)
 		if err != nil {
 			t.Fatal(err)
@@ -60,6 +68,28 @@ func setupDag(t *testing.T) (nodes []cid.Cid, bstore blockstore.Blockstore) {
 	}
 
 	return nodes, bstore
+}
+
+func toBlock(t *testing.T, nd ipld.Node) blocks.Block {
+	buf := new(bytes.Buffer)
+	err := dagcbor.Encode(nd, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := cid.Prefix{
+		Version:  1,
+		Codec:    cid.DagCBOR,
+		MhType:   mh.SHA2_256,
+		MhLength: -1,
+	}.Sum(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	blk, err := blocks.NewBlockWithCid(buf.Bytes(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return blk
 }
 
 func TestReprovide(t *testing.T) {
@@ -195,7 +225,7 @@ func TestReprovidePinned(t *testing.T) {
 
 	nodes, bstore := setupDag(t)
 
-	dag := merkledag.NewDAGService(bsrv.New(bstore, offline.Exchange(bstore)))
+	fetchConfig := bsfetcher.NewFetcherConfig(bsrv.New(bstore, offline.Exchange(bstore)))
 
 	for i := 0; i < 2; i++ {
 		clA, clB, idA, _ := setupRouting(t)
@@ -215,7 +245,7 @@ func TestReprovidePinned(t *testing.T) {
 		keyProvider := NewPinnedProvider(onlyRoots, &mockPinner{
 			recursive: []cid.Cid{nodes[1]},
 			direct:    []cid.Cid{nodes[3]},
-		}, dag)
+		}, fetchConfig)
 
 		reprov := NewReprovider(ctx, time.Hour, clA, keyProvider)
 		err := reprov.Reprovide()
