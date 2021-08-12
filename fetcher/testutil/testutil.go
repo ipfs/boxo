@@ -24,6 +24,9 @@ func EncodeBlock(n ipld.Node) (blocks.Block, ipld.Node, ipld.Link) {
 		MhType:   0x17,
 		MhLength: 20,
 	}}
+	ls.StorageReadOpener = func(ipld.LinkContext, ipld.Link) (io.Reader, error) {
+		return bytes.NewReader(b.RawData()), nil
+	}
 	ls.StorageWriteOpener = func(ipld.LinkContext) (io.Writer, ipld.BlockWriteCommitter, error) {
 		buf := bytes.Buffer{}
 		return &buf, func(lnk ipld.Link) error {
@@ -40,5 +43,9 @@ func EncodeBlock(n ipld.Node) (blocks.Block, ipld.Node, ipld.Link) {
 	if err != nil {
 		panic(err)
 	}
-	return b, n, lnk
+	ln, err := ls.Load(ipld.LinkContext{}, lnk, n.Prototype())
+	if err != nil {
+		panic(err)
+	}
+	return b, ln, lnk
 }

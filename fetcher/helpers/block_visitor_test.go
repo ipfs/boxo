@@ -88,8 +88,8 @@ func TestFetchGraphToUniqueBlocks(t *testing.T) {
 		na.AssembleEntry("foo").AssignBool(true)
 		na.AssembleEntry("bar").AssignBool(false)
 		na.AssembleEntry("nested").CreateMap(2, func(na fluent.MapAssembler) {
-			na.AssembleEntry("link3").AssignLink(link3)
 			na.AssembleEntry("link2").AssignLink(link2)
+			na.AssembleEntry("link3").AssignLink(link3)
 			na.AssembleEntry("nonlink").AssignString("zoo")
 		})
 	}))
@@ -125,7 +125,7 @@ func TestFetchGraphToUniqueBlocks(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	assertBlocksInOrder(t, results, 3, map[int]ipld.Node{0: node1, 1: node3, 2: node2})
+	assertBlocksInOrder(t, results, 3, map[int]ipld.Node{0: node1, 1: node2, 2: node3})
 }
 
 func assertBlocksInOrder(t *testing.T, results []helpers.BlockResult, nodeCount int, nodes map[int]ipld.Node) {
