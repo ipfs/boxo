@@ -269,7 +269,7 @@ func TestHelpers(t *testing.T) {
 		defer cancel()
 
 		results := []fetcher.FetchResult{}
-		err = helpers.BlockAllOfType(ctx, session, cidlink.Link{Cid: block1.Cid()}, basicnode.Prototype__Any{}, func(res fetcher.FetchResult) error {
+		err = helpers.BlockAll(ctx, session, cidlink.Link{Cid: block1.Cid()}, func(res fetcher.FetchResult) error {
 			results = append(results, res)
 			return nil
 		})
