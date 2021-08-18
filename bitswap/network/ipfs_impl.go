@@ -28,7 +28,11 @@ import (
 var log = logging.Logger("bitswap_network")
 
 var connectTimeout = time.Second * 5
-var sendMessageTimeout = time.Minute * 10
+
+var maxSendTimeout = 2 * time.Minute
+var minSendTimeout = 10 * time.Second
+var sendLatency = 2 * time.Second
+var minSendRate = (100 * 1000) / 8 // 100kbit/s
 
 // NewFromIpfsHost returns a BitSwapNetwork supported by underlying IPFS host.
 func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) BitSwapNetwork {
@@ -300,12 +304,23 @@ func setDefaultOpts(opts *MessageSenderOpts) *MessageSenderOpts {
 		copy.MaxRetries = 3
 	}
 	if opts.SendTimeout == 0 {
-		copy.SendTimeout = sendMessageTimeout
+		copy.SendTimeout = maxSendTimeout
 	}
 	if opts.SendErrorBackoff == 0 {
 		copy.SendErrorBackoff = 100 * time.Millisecond
 	}
 	return &copy
+}
+
+func sendTimeout(size int) time.Duration {
+	timeout := sendLatency
+	timeout += time.Duration((uint64(time.Second) * uint64(size)) / uint64(minSendRate))
+	if timeout > maxSendTimeout {
+		timeout = maxSendTimeout
+	} else if timeout < minSendTimeout {
+		timeout = minSendTimeout
+	}
+	return timeout
 }
 
 func (bsnet *impl) SendMessage(
@@ -321,7 +336,8 @@ func (bsnet *impl) SendMessage(
 		return err
 	}
 
-	if err = bsnet.msgToStream(ctx, s, outgoing, sendMessageTimeout); err != nil {
+	timeout := sendTimeout(outgoing.Size())
+	if err = bsnet.msgToStream(ctx, s, outgoing, timeout); err != nil {
 		_ = s.Reset()
 		return err
 	}

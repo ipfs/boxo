@@ -285,7 +285,11 @@ func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
 		t.SkipNow()
 	}
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
-	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
+	ig := testinstance.NewTestInstanceGenerator(net, nil, []bitswap.Option{
+		bitswap.TaskWorkerCount(5),
+		bitswap.EngineTaskWorkerCount(5),
+		bitswap.MaxOutstandingBytesPerPeer(1 << 20),
+	})
 	defer ig.Close()
 	bg := blocksutil.NewBlockGenerator()
 

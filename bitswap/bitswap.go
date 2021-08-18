@@ -15,6 +15,7 @@ import (
 	deciface "github.com/ipfs/go-bitswap/decision"
 	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
 	"github.com/ipfs/go-bitswap/internal/decision"
+	"github.com/ipfs/go-bitswap/internal/defaults"
 	bsgetter "github.com/ipfs/go-bitswap/internal/getter"
 	bsmq "github.com/ipfs/go-bitswap/internal/messagequeue"
 	"github.com/ipfs/go-bitswap/internal/notifications"
@@ -42,15 +43,6 @@ var sflog = log.Desugar()
 
 var _ exchange.SessionExchange = (*Bitswap)(nil)
 
-const (
-	// these requests take at _least_ two minutes at the moment.
-	provideTimeout         = time.Minute * 3
-	defaultProvSearchDelay = time.Second
-
-	// Number of concurrent workers in decision engine that process requests to the blockstore
-	defaulEngineBlockstoreWorkerCount = 128
-)
-
 var (
 	// HasBlockBufferSize is the buffer size of the channel for new blocks
 	// that need to be provided. They should get pulled over by the
@@ -62,6 +54,8 @@ var (
 
 	// the 1<<18+15 is to observe old file chunks that are 1<<18 + 14 in size
 	metricsBuckets = []float64{1 << 6, 1 << 10, 1 << 14, 1 << 18, 1<<18 + 15, 1 << 22}
+
+	timeMetricsBuckets = []float64{1, 10, 30, 60, 90, 120, 600}
 )
 
 // Option defines the functional option type that can be used to configure
@@ -97,6 +91,36 @@ func EngineBlockstoreWorkerCount(count int) Option {
 	}
 	return func(bs *Bitswap) {
 		bs.engineBstoreWorkerCount = count
+	}
+}
+
+// EngineTaskWorkerCount sets the number of worker threads used inside the engine
+func EngineTaskWorkerCount(count int) Option {
+	if count <= 0 {
+		panic(fmt.Sprintf("Engine task worker count is %d but must be > 0", count))
+	}
+	return func(bs *Bitswap) {
+		bs.engineTaskWorkerCount = count
+	}
+}
+
+func TaskWorkerCount(count int) Option {
+	if count <= 0 {
+		panic(fmt.Sprintf("task worker count is %d but must be > 0", count))
+	}
+	return func(bs *Bitswap) {
+		bs.taskWorkerCount = count
+	}
+}
+
+// MaxOutstandingBytesPerPeer describes approximately how much work we are will to have outstanding to a peer at any
+// given time. Setting it to 0 will disable any limiting.
+func MaxOutstandingBytesPerPeer(count int) Option {
+	if count < 0 {
+		panic(fmt.Sprintf("max outstanding bytes per peer is %d but must be >= 0", count))
+	}
+	return func(bs *Bitswap) {
+		bs.engineMaxOutstandingBytesPerPeer = count
 	}
 }
 
@@ -147,6 +171,17 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	sentHistogram := metrics.NewCtx(ctx, "sent_all_blocks_bytes", "Histogram of blocks sent by"+
 		" this bitswap").Histogram(metricsBuckets)
 
+	sendTimeHistogram := metrics.NewCtx(ctx, "send_times", "Histogram of how long it takes to send messages"+
+		" in this bitswap").Histogram(timeMetricsBuckets)
+
+	pendingEngineGauge := metrics.NewCtx(ctx, "pending_tasks", "Total number of pending tasks").Gauge()
+
+	activeEngineGauge := metrics.NewCtx(ctx, "active_tasks", "Total number of active tasks").Gauge()
+
+	pendingBlocksGauge := metrics.NewCtx(ctx, "pending_block_tasks", "Total number of pending blockstore tasks").Gauge()
+
+	activeBlocksGauge := metrics.NewCtx(ctx, "active_block_tasks", "Total number of active blockstore tasks").Gauge()
+
 	px := process.WithTeardown(func() error {
 		return nil
 	})
@@ -192,26 +227,30 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
 
 	bs = &Bitswap{
-		blockstore:                 bstore,
-		network:                    network,
-		process:                    px,
-		newBlocks:                  make(chan cid.Cid, HasBlockBufferSize),
-		provideKeys:                make(chan cid.Cid, provideKeysBufferSize),
-		pm:                         pm,
-		pqm:                        pqm,
-		sm:                         sm,
-		sim:                        sim,
-		notif:                      notif,
-		counters:                   new(counters),
-		dupMetric:                  dupHist,
-		allMetric:                  allHist,
-		sentHistogram:              sentHistogram,
-		provideEnabled:             true,
-		provSearchDelay:            defaultProvSearchDelay,
-		rebroadcastDelay:           delay.Fixed(time.Minute),
-		engineBstoreWorkerCount:    defaulEngineBlockstoreWorkerCount,
-		engineSetSendDontHaves:     true,
-		simulateDontHavesOnTimeout: true,
+		blockstore:                       bstore,
+		network:                          network,
+		process:                          px,
+		newBlocks:                        make(chan cid.Cid, HasBlockBufferSize),
+		provideKeys:                      make(chan cid.Cid, provideKeysBufferSize),
+		pm:                               pm,
+		pqm:                              pqm,
+		sm:                               sm,
+		sim:                              sim,
+		notif:                            notif,
+		counters:                         new(counters),
+		dupMetric:                        dupHist,
+		allMetric:                        allHist,
+		sentHistogram:                    sentHistogram,
+		sendTimeHistogram:                sendTimeHistogram,
+		provideEnabled:                   true,
+		provSearchDelay:                  defaults.ProvSearchDelay,
+		rebroadcastDelay:                 delay.Fixed(time.Minute),
+		engineBstoreWorkerCount:          defaults.BitswapEngineBlockstoreWorkerCount,
+		engineTaskWorkerCount:            defaults.BitswapEngineTaskWorkerCount,
+		taskWorkerCount:                  defaults.BitswapTaskWorkerCount,
+		engineMaxOutstandingBytesPerPeer: defaults.BitswapMaxOutstandingBytesPerPeer,
+		engineSetSendDontHaves:           true,
+		simulateDontHavesOnTimeout:       true,
 	}
 
 	// apply functional options before starting and running bitswap
@@ -220,7 +259,20 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	}
 
 	// Set up decision engine
-	bs.engine = decision.NewEngine(bstore, bs.engineBstoreWorkerCount, network.ConnectionManager(), network.Self(), bs.engineScoreLedger)
+	bs.engine = decision.NewEngine(
+		ctx,
+		bstore,
+		bs.engineBstoreWorkerCount,
+		bs.engineTaskWorkerCount,
+		bs.engineMaxOutstandingBytesPerPeer,
+		network.ConnectionManager(),
+		network.Self(),
+		bs.engineScoreLedger,
+		pendingEngineGauge,
+		activeEngineGauge,
+		pendingBlocksGauge,
+		activeBlocksGauge,
+	)
 	bs.engine.SetSendDontHaves(bs.engineSetSendDontHaves)
 
 	bs.pqm.Startup()
@@ -277,9 +329,10 @@ type Bitswap struct {
 	counters  *counters
 
 	// Metrics interface metrics
-	dupMetric     metrics.Histogram
-	allMetric     metrics.Histogram
-	sentHistogram metrics.Histogram
+	dupMetric         metrics.Histogram
+	allMetric         metrics.Histogram
+	sentHistogram     metrics.Histogram
+	sendTimeHistogram metrics.Histogram
 
 	// External statistics interface
 	wiretap WireTap
@@ -302,6 +355,15 @@ type Bitswap struct {
 
 	// how many worker threads to start for decision engine blockstore worker
 	engineBstoreWorkerCount int
+
+	// how many worker threads to start for decision engine task worker
+	engineTaskWorkerCount int
+
+	// the total number of simultaneous threads sending outgoing messages
+	taskWorkerCount int
+
+	// the total amount of bytes that a peer should have outstanding, it is utilized by the decision engine
+	engineMaxOutstandingBytesPerPeer int
 
 	// the score ledger used by the decision engine
 	engineScoreLedger deciface.ScoreLedger

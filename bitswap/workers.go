@@ -3,8 +3,10 @@ package bitswap
 import (
 	"context"
 	"fmt"
+	"time"
 
 	engine "github.com/ipfs/go-bitswap/internal/decision"
+	"github.com/ipfs/go-bitswap/internal/defaults"
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	cid "github.com/ipfs/go-cid"
 	process "github.com/jbenet/goprocess"
@@ -12,14 +14,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// TaskWorkerCount is the total number of simultaneous threads sending
-// outgoing messages
-var TaskWorkerCount = 8
-
 func (bs *Bitswap) startWorkers(ctx context.Context, px process.Process) {
 
 	// Start up workers to handle requests from other nodes for the data on this node
-	for i := 0; i < TaskWorkerCount; i++ {
+	for i := 0; i < bs.taskWorkerCount; i++ {
 		i := i
 		px.Go(func(px process.Process) {
 			bs.taskWorker(ctx, i)
@@ -52,6 +50,8 @@ func (bs *Bitswap) taskWorker(ctx context.Context, id int) {
 					continue
 				}
 
+				start := time.Now()
+
 				// TODO: Only record message as sent if there was no error?
 				// Ideally, yes. But we'd need some way to trigger a retry and/or drop
 				// the peer.
@@ -60,6 +60,10 @@ func (bs *Bitswap) taskWorker(ctx context.Context, id int) {
 					bs.wiretap.MessageSent(envelope.Peer, envelope.Message)
 				}
 				bs.sendBlocks(ctx, envelope)
+
+				dur := time.Since(start)
+				bs.sendTimeHistogram.Observe(dur.Seconds())
+
 			case <-ctx.Done():
 				return
 			}
@@ -159,7 +163,7 @@ func (bs *Bitswap) provideWorker(px process.Process) {
 		log.Debugw("Bitswap.ProvideWorker.Start", "ID", wid, "cid", k)
 		defer log.Debugw("Bitswap.ProvideWorker.End", "ID", wid, "cid", k)
 
-		ctx, cancel := context.WithTimeout(ctx, provideTimeout) // timeout ctx
+		ctx, cancel := context.WithTimeout(ctx, defaults.ProvideTimeout) // timeout ctx
 		defer cancel()
 
 		if err := bs.network.Provide(ctx, k); err != nil {
