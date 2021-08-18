@@ -16,6 +16,7 @@ import (
 	"github.com/ipfs/go-cid"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	logging "github.com/ipfs/go-log"
+	"github.com/ipfs/go-metrics-interface"
 	"github.com/ipfs/go-peertaskqueue"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 	process "github.com/jbenet/goprocess"
@@ -73,9 +74,6 @@ const (
 	// maxBlockSizeReplaceHasWithBlock is the maximum size of the block in
 	// bytes up to which we will replace a want-have with a want-block
 	maxBlockSizeReplaceHasWithBlock = 1024
-
-	// Number of concurrent workers that pull tasks off the request queue
-	taskWorkerCount = 8
 )
 
 // Envelope contains a message for a Peer.
@@ -167,16 +165,65 @@ type Engine struct {
 	sendDontHaves bool
 
 	self peer.ID
+
+	// metrics gauge for total pending tasks across all workers
+	pendingGauge metrics.Gauge
+
+	// metrics gauge for total pending tasks across all workers
+	activeGauge metrics.Gauge
+
+	// used to ensure metrics are reported each fixed number of operation
+	metricsLock         sync.Mutex
+	metricUpdateCounter int
 }
 
-// NewEngine creates a new block sending engine for the given block store
-func NewEngine(bs bstore.Blockstore, bstoreWorkerCount int, peerTagger PeerTagger, self peer.ID, scoreLedger ScoreLedger) *Engine {
-	return newEngine(bs, bstoreWorkerCount, peerTagger, self, maxBlockSizeReplaceHasWithBlock, scoreLedger)
+// NewEngine creates a new block sending engine for the given block store.
+// maxOutstandingBytesPerPeer hints to the peer task queue not to give a peer more tasks if it has some maximum
+// work already outstanding.
+func NewEngine(
+	ctx context.Context,
+	bs bstore.Blockstore,
+	bstoreWorkerCount,
+	engineTaskWorkerCount, maxOutstandingBytesPerPeer int,
+	peerTagger PeerTagger,
+	self peer.ID,
+	scoreLedger ScoreLedger,
+	pendingEngineGauge metrics.Gauge,
+	activeEngineGauge metrics.Gauge,
+	pendingBlocksGauge metrics.Gauge,
+	activeBlocksGauge metrics.Gauge,
+) *Engine {
+	return newEngine(
+		ctx,
+		bs,
+		bstoreWorkerCount,
+		engineTaskWorkerCount,
+		maxOutstandingBytesPerPeer,
+		peerTagger,
+		self,
+		maxBlockSizeReplaceHasWithBlock,
+		scoreLedger,
+		pendingEngineGauge,
+		activeEngineGauge,
+		pendingBlocksGauge,
+		activeBlocksGauge,
+	)
 }
 
-// This constructor is used by the tests
-func newEngine(bs bstore.Blockstore, bstoreWorkerCount int, peerTagger PeerTagger, self peer.ID,
-	maxReplaceSize int, scoreLedger ScoreLedger) *Engine {
+func newEngine(
+	ctx context.Context,
+	bs bstore.Blockstore,
+	bstoreWorkerCount,
+	engineTaskWorkerCount, maxOutstandingBytesPerPeer int,
+	peerTagger PeerTagger,
+	self peer.ID,
+	maxReplaceSize int,
+	scoreLedger ScoreLedger,
+	pendingEngineGauge metrics.Gauge,
+	activeEngineGauge metrics.Gauge,
+	pendingBlocksGauge metrics.Gauge,
+	activeBlocksGauge metrics.Gauge,
+) *Engine {
 
 	if scoreLedger == nil {
 		scoreLedger = NewDefaultScoreLedger()
@@ -185,16 +232,18 @@ func newEngine(bs bstore.Blockstore, bstoreWorkerCount int, peerTagger PeerTagge
 	e := &Engine{
 		ledgerMap:                       make(map[peer.ID]*ledger),
 		scoreLedger:                     scoreLedger,
-		bsm:                             newBlockstoreManager(bs, bstoreWorkerCount),
+		bsm:                             newBlockstoreManager(ctx, bs, bstoreWorkerCount, pendingBlocksGauge, activeBlocksGauge),
 		peerTagger:                      peerTagger,
 		outbox:                          make(chan (<-chan *Envelope), outboxChanBuffer),
 		workSignal:                      make(chan struct{}, 1),
 		ticker:                          time.NewTicker(time.Millisecond * 100),
 		maxBlockSizeReplaceHasWithBlock: maxReplaceSize,
-		taskWorkerCount:                 taskWorkerCount,
+		taskWorkerCount:                 engineTaskWorkerCount,
 		sendDontHaves:                   true,
 		self:                            self,
 		peerLedger:                      newPeerLedger(),
+		pendingGauge:                    pendingEngineGauge,
+		activeGauge:                     activeEngineGauge,
 	}
 	e.tagQueued = fmt.Sprintf(tagFormat, "queued", uuid.New().String())
 	e.tagUseful = fmt.Sprintf(tagFormat, "useful", uuid.New().String())
@@ -202,8 +251,22 @@ func newEngine(bs bstore.Blockstore, bstoreWorkerCount int, peerTagger PeerTagge
 		peertaskqueue.OnPeerAddedHook(e.onPeerAdded),
 		peertaskqueue.OnPeerRemovedHook(e.onPeerRemoved),
 		peertaskqueue.TaskMerger(newTaskMerger()),
-		peertaskqueue.IgnoreFreezing(true))
+		peertaskqueue.IgnoreFreezing(true),
+		peertaskqueue.MaxOutstandingWorkPerPeer(maxOutstandingBytesPerPeer))
 	return e
+}
+
+func (e *Engine) updateMetrics() {
+	e.metricsLock.Lock()
+	c := e.metricUpdateCounter
+	e.metricUpdateCounter++
+	e.metricsLock.Unlock()
+
+	if c%100 == 0 {
+		stats := e.peerRequestQueue.Stats()
+		e.activeGauge.Set(float64(stats.NumActive))
+		e.pendingGauge.Set(float64(stats.NumPending))
+	}
 }
 
 // SetSendDontHaves indicates what to do when the engine receives a want-block
@@ -316,18 +379,21 @@ func (e *Engine) nextEnvelope(ctx context.Context) (*Envelope, error) {
 	for {
 		// Pop some tasks off the request queue
 		p, nextTasks, pendingBytes := e.peerRequestQueue.PopTasks(targetMessageSize)
+		e.updateMetrics()
 		for len(nextTasks) == 0 {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			case <-e.workSignal:
 				p, nextTasks, pendingBytes = e.peerRequestQueue.PopTasks(targetMessageSize)
+				e.updateMetrics()
 			case <-e.ticker.C:
 				// When a task is cancelled, the queue may be "frozen" for a
 				// period of time. We periodically "thaw" the queue to make
 				// sure it doesn't get stuck in a frozen state.
 				e.peerRequestQueue.ThawRound()
 				p, nextTasks, pendingBytes = e.peerRequestQueue.PopTasks(targetMessageSize)
+				e.updateMetrics()
 			}
 		}
 
@@ -557,6 +623,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	// Push entries onto the request queue
 	if len(activeEntries) > 0 {
 		e.peerRequestQueue.PushTasks(p, activeEntries...)
+		e.updateMetrics()
 	}
 }
 
@@ -646,6 +713,7 @@ func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block) {
 					SendDontHave: false,
 				},
 			})
+			e.updateMetrics()
 		}
 	}
 	e.lock.RUnlock()

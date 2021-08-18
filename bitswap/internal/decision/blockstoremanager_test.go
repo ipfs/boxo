@@ -9,6 +9,7 @@ import (
 
 	"github.com/ipfs/go-bitswap/internal/testutil"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-metrics-interface"
 
 	blocks "github.com/ipfs/go-block-format"
 	ds "github.com/ipfs/go-datastore"
@@ -19,13 +20,23 @@ import (
 	process "github.com/jbenet/goprocess"
 )
 
+func newBlockstoreManagerForTesting(
+	ctx context.Context,
+	bs blockstore.Blockstore,
+	workerCount int,
+) *blockstoreManager {
+	testPendingBlocksGauge := metrics.NewCtx(ctx, "pending_block_tasks", "Total number of pending blockstore tasks").Gauge()
+	testActiveBlocksGauge := metrics.NewCtx(ctx, "active_block_tasks", "Total number of active blockstore tasks").Gauge()
+	return newBlockstoreManager(ctx, bs, workerCount, testPendingBlocksGauge, testActiveBlocksGauge)
+}
+
 func TestBlockstoreManagerNotFoundKey(t *testing.T) {
 	ctx := context.Background()
 	bsdelay := delay.Fixed(3 * time.Millisecond)
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
 	bstore := blockstore.NewBlockstore(ds_sync.MutexWrap(dstore))
 
-	bsm := newBlockstoreManager(bstore, 5)
+	bsm := newBlockstoreManagerForTesting(ctx, bstore, 5)
 	bsm.start(process.WithTeardown(func() error { return nil }))
 
 	cids := testutil.GenerateCids(4)
@@ -64,7 +75,7 @@ func TestBlockstoreManager(t *testing.T) {
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
 	bstore := blockstore.NewBlockstore(ds_sync.MutexWrap(dstore))
 
-	bsm := newBlockstoreManager(bstore, 5)
+	bsm := newBlockstoreManagerForTesting(ctx, bstore, 5)
 	bsm.start(process.WithTeardown(func() error { return nil }))
 
 	exp := make(map[cid.Cid]blocks.Block)
@@ -148,7 +159,7 @@ func TestBlockstoreManagerConcurrency(t *testing.T) {
 	bstore := blockstore.NewBlockstore(ds_sync.MutexWrap(dstore))
 
 	workerCount := 5
-	bsm := newBlockstoreManager(bstore, workerCount)
+	bsm := newBlockstoreManagerForTesting(ctx, bstore, workerCount)
 	bsm.start(process.WithTeardown(func() error { return nil }))
 
 	blkSize := int64(8 * 1024)
@@ -190,7 +201,7 @@ func TestBlockstoreManagerClose(t *testing.T) {
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
 	bstore := blockstore.NewBlockstore(ds_sync.MutexWrap(dstore))
 
-	bsm := newBlockstoreManager(bstore, 3)
+	bsm := newBlockstoreManagerForTesting(ctx, bstore, 3)
 	px := process.WithTeardown(func() error { return nil })
 	bsm.start(px)
 
@@ -229,7 +240,8 @@ func TestBlockstoreManagerCtxDone(t *testing.T) {
 	underlyingBstore := blockstore.NewBlockstore(underlyingDstore)
 	bstore := blockstore.NewBlockstore(dstore)
 
-	bsm := newBlockstoreManager(bstore, 3)
+	ctx := context.Background()
+	bsm := newBlockstoreManagerForTesting(ctx, bstore, 3)
 	proc := process.WithTeardown(func() error { return nil })
 	bsm.start(proc)
 
