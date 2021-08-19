@@ -178,6 +178,40 @@ func TestReader_WithCarV2Consistency(t *testing.T) {
 	}
 }
 
+func TestOpenReader_DoesNotPanicForReadersCreatedBeforeClosure(t *testing.T) {
+	subject, err := carv2.OpenReader("testdata/sample-wrapped-v2.car")
+	require.NoError(t, err)
+	dReaderBeforeClosure := subject.DataReader()
+	iReaderBeforeClosure := subject.IndexReader()
+	require.NoError(t, subject.Close())
+
+	buf := make([]byte, 1)
+	panicTest := func(r io.Reader) {
+		_, err := r.Read(buf)
+		require.EqualError(t, err, "mmap: closed")
+	}
+
+	require.NotPanics(t, func() { panicTest(dReaderBeforeClosure) })
+	require.NotPanics(t, func() { panicTest(iReaderBeforeClosure) })
+}
+
+func TestOpenReader_DoesNotPanicForReadersCreatedAfterClosure(t *testing.T) {
+	subject, err := carv2.OpenReader("testdata/sample-wrapped-v2.car")
+	require.NoError(t, err)
+	require.NoError(t, subject.Close())
+	dReaderAfterClosure := subject.DataReader()
+	iReaderAfterClosure := subject.IndexReader()
+
+	buf := make([]byte, 1)
+	panicTest := func(r io.Reader) {
+		_, err := r.Read(buf)
+		require.EqualError(t, err, "mmap: closed")
+	}
+
+	require.NotPanics(t, func() { panicTest(dReaderAfterClosure) })
+	require.NotPanics(t, func() { panicTest(iReaderAfterClosure) })
+}
+
 func requireNewCarV1ReaderFromV2File(t *testing.T, carV12Path string, zerLenAsEOF bool) *carv1.CarReader {
 	f, err := os.Open(carV12Path)
 	require.NoError(t, err)
