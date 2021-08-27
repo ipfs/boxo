@@ -113,10 +113,10 @@ func (r *Reader) DataReader() SectionReader {
 // present. Otherwise, returns nil.
 // Note, this function will always return nil if the backing payload represents a CARv1.
 func (r *Reader) IndexReader() io.Reader {
-	if r.Version == 2 {
-		return internalio.NewOffsetReadSeeker(r.r, int64(r.Header.IndexOffset))
+	if r.Version == 1 || !r.Header.HasIndex() {
+		return nil
 	}
-	return nil
+	return internalio.NewOffsetReadSeeker(r.r, int64(r.Header.IndexOffset))
 }
 
 // Close closes the underlying reader if it was opened by OpenReader.

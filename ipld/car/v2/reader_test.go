@@ -212,6 +212,30 @@ func TestOpenReader_DoesNotPanicForReadersCreatedAfterClosure(t *testing.T) {
 	require.NotPanics(t, func() { panicTest(iReaderAfterClosure) })
 }
 
+func TestReader_ReturnsNilWhenThereIsNoIndex(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+	}{
+		{
+			name: "IndexlessCarV2",
+			path: "testdata/sample-v2-indexless.car",
+		},
+		{
+			name: "CarV1",
+			path: "testdata/sample-v1.car",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			subject, err := carv2.OpenReader(tt.path)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, subject.Close()) })
+			require.Nil(t, subject.IndexReader())
+		})
+	}
+}
+
 func requireNewCarV1ReaderFromV2File(t *testing.T, carV12Path string, zerLenAsEOF bool) *carv1.CarReader {
 	f, err := os.Open(carV12Path)
 	require.NoError(t, err)
