@@ -680,15 +680,17 @@ func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block) {
 		for _, p := range e.peerLedger.Peers(k) {
 			ledger, ok := e.ledgerMap[p]
 			if !ok {
-				log.Errorw("failed to find peer in ledger", "peer", p)
+				// This can happen if the peer has disconnected while we're processing this list.
+				log.Debugw("failed to find peer in ledger", "peer", p)
 				missingWants[p] = append(missingWants[p], k)
 				continue
 			}
 			ledger.lk.RLock()
 			entry, ok := ledger.WantListContains(k)
 			ledger.lk.RUnlock()
-			if !ok { // should never happen
-				log.Errorw("wantlist index doesn't match peer's wantlist", "peer", p)
+			if !ok {
+				// This can happen if the peer has canceled their want while we're processing this message.
+				log.Debugw("wantlist index doesn't match peer's wantlist", "peer", p)
 				missingWants[p] = append(missingWants[p], k)
 				continue
 			}
