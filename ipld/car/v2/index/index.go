@@ -72,6 +72,8 @@ func New(codec multicodec.Code) (Index, error) {
 	switch codec {
 	case multicodec.CarIndexSorted:
 		return newSorted(), nil
+	case multicodec.CarMultihashIndexSorted:
+		return newMultihashSorted(), nil
 	default:
 		return nil, fmt.Errorf("unknwon index codec: %v", codec)
 	}
