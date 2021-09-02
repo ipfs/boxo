@@ -304,6 +304,13 @@ func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 	for _, bl := range blks {
 		c := bl.Cid()
 
+		// Check for IDENTITY CID. If IDENTITY, ignore and move to the next block.
+		if _, ok, err := isIdentity(c); err != nil {
+			return err
+		} else if ok {
+			continue
+		}
+
 		if !b.wopts.BlockstoreAllowDuplicatePuts {
 			if b.ronly.ropts.BlockstoreUseWholeCIDs && b.idx.hasExactCID(c) {
 				continue // deduplicated by CID

@@ -1,4 +1,4 @@
-// package blockstore implements the IPFS blockstore interface backed by a CAR file.
+// Package blockstore implements the IPFS blockstore interface backed by a CAR file.
 // This package provides two flavours of blockstore: ReadOnly and ReadWrite.
 //
 // The ReadOnly blockstore provides a read-only random access from a given data payload either in
@@ -15,4 +15,14 @@
 // instantiated from the same file path using OpenReadOnly.
 // A user may resume reading/writing from files produced by an instance of ReadWrite blockstore. The
 // resumption is attempted automatically, if the path passed to OpenReadWrite exists.
+//
+// Note that the blockstore implementations in this package behave similarly to IPFS IdStore wrapper
+// when given CIDs with multihash.IDENTITY code.
+// More specifically, for CIDs with multhash.IDENTITY code:
+// * blockstore.Has will always return true.
+// * blockstore.Get will always succeed, returning the multihash digest of the given CID.
+// * blockstore.GetSize will always succeed, returning the multihash digest length of the given CID.
+// * blockstore.Put and blockstore.PutMany will always succeed without performing any operation.
+//
+// See: https://pkg.go.dev/github.com/ipfs/go-ipfs-blockstore#NewIdStore
 package blockstore

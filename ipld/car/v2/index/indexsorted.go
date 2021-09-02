@@ -206,6 +206,13 @@ func (m *multiWidthIndex) Load(items []Record) error {
 		if err != nil {
 			return err
 		}
+
+		// Ignore records with IDENTITY as required by CARv2 spec.
+		// See: https://ipld.io/specs/transport/car/carv2/#index-format
+		if decHash.Code == multihash.IDENTITY {
+			continue
+		}
+
 		digest := decHash.Digest
 		idx, ok := idxs[len(digest)]
 		if !ok {

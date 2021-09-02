@@ -29,6 +29,10 @@ type (
 	// blocks even if the CID's encoding multicodec differs. Other index
 	// implementations might index the entire CID, the entire multihash, or
 	// just part of a multihash's digest.
+	//
+	// In accordance with the CARv2 specification, Index will never contain information about CIDs
+	// with multihash.IDENTITY code.
+	// See: https://ipld.io/specs/transport/car/carv2/#index-format
 	Index interface {
 		// Codec provides the multicodec code that the index implements.
 		//

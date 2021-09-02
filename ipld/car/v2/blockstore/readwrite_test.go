@@ -64,6 +64,7 @@ func TestBlockstore(t *testing.T) {
 	t.Cleanup(func() { ingester.Finalize() })
 
 	cids := make([]cid.Cid, 0)
+	var idCidCount int
 	for {
 		b, err := r.Next()
 		if err == io.EOF {
@@ -79,6 +80,12 @@ func TestBlockstore(t *testing.T) {
 		candidate := cids[rng.Intn(len(cids))]
 		if has, err := ingester.Has(candidate); !has || err != nil {
 			t.Fatalf("expected to find %s but didn't: %s", candidate, err)
+		}
+
+		dmh, err := multihash.Decode(b.Cid().Hash())
+		require.NoError(t, err)
+		if dmh.Code == multihash.IDENTITY {
+			idCidCount++
 		}
 	}
 
@@ -107,9 +114,8 @@ func TestBlockstore(t *testing.T) {
 		}
 		numKeysCh++
 	}
-	if numKeysCh != len(cids) {
-		t.Fatalf("AllKeysChan returned an unexpected amount of keys; expected %v but got %v", len(cids), numKeysCh)
-	}
+	expectedCidCount := len(cids) - idCidCount
+	require.Equal(t, expectedCidCount, numKeysCh, "AllKeysChan returned an unexpected amount of keys; expected %v but got %v", expectedCidCount, numKeysCh)
 
 	for _, c := range cids {
 		b, err := robs.Get(c)
@@ -347,7 +353,7 @@ func TestBlockstoreResumption(t *testing.T) {
 	require.NoError(t, err)
 
 	// For each block resume on the same file, putting blocks one at a time.
-	var wantBlockCountSoFar int
+	var wantBlockCountSoFar, idCidCount int
 	wantBlocks := make(map[cid.Cid]blocks.Block)
 	for {
 		b, err := r.Next()
@@ -357,6 +363,12 @@ func TestBlockstoreResumption(t *testing.T) {
 		require.NoError(t, err)
 		wantBlockCountSoFar++
 		wantBlocks[b.Cid()] = b
+
+		dmh, err := multihash.Decode(b.Cid().Hash())
+		require.NoError(t, err)
+		if dmh.Code == multihash.IDENTITY {
+			idCidCount++
+		}
 
 		// 30% chance of subject failing; more concretely: re-instantiating blockstore with the same
 		// file without calling Finalize. The higher this percentage the slower the test runs
@@ -402,7 +414,7 @@ func TestBlockstoreResumption(t *testing.T) {
 				gotBlockCountSoFar++
 			}
 			// Assert the number of blocks in file are as expected calculated via AllKeysChan
-			require.Equal(t, wantBlockCountSoFar, gotBlockCountSoFar)
+			require.Equal(t, wantBlockCountSoFar-idCidCount, gotBlockCountSoFar)
 		}
 	}
 	subject.Discard()
@@ -433,22 +445,31 @@ func TestBlockstoreResumption(t *testing.T) {
 	require.Equal(t, wantPayloadReader.Header, gotPayloadReader.Header)
 	for {
 		wantNextBlock, wantErr := wantPayloadReader.Next()
-		gotNextBlock, gotErr := gotPayloadReader.Next()
 		if wantErr == io.EOF {
+			gotNextBlock, gotErr := gotPayloadReader.Next()
 			require.Equal(t, wantErr, gotErr)
+			require.Nil(t, gotNextBlock)
 			break
 		}
 		require.NoError(t, wantErr)
+
+		dmh, err := multihash.Decode(wantNextBlock.Cid().Hash())
+		require.NoError(t, err)
+		if dmh.Code == multihash.IDENTITY {
+			continue
+		}
+
+		gotNextBlock, gotErr := gotPayloadReader.Next()
 		require.NoError(t, gotErr)
 		require.Equal(t, wantNextBlock, gotNextBlock)
 	}
 
-	// Assert index in resumed from file is identical to index generated directly from original CARv1 payload.
+	// Assert index in resumed from file is identical to index generated from the data payload portion of the generated CARv2 file.
 	_, err = v1f.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 	gotIdx, err := index.ReadFrom(v2r.IndexReader())
 	require.NoError(t, err)
-	wantIdx, err := carv2.GenerateIndex(v1f)
+	wantIdx, err := carv2.GenerateIndex(v2r.DataReader())
 	require.NoError(t, err)
 	require.Equal(t, wantIdx, gotIdx)
 }

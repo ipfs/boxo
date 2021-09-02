@@ -10,8 +10,6 @@ import (
 
 	"golang.org/x/exp/mmap"
 
-	"github.com/multiformats/go-varint"
-
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
@@ -20,6 +18,8 @@ import (
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
 	internalio "github.com/ipld/go-car/v2/internal/io"
+	"github.com/multiformats/go-multihash"
+	"github.com/multiformats/go-varint"
 )
 
 var _ blockstore.Blockstore = (*ReadOnly)(nil)
@@ -187,7 +187,16 @@ func (b *ReadOnly) DeleteBlock(_ cid.Cid) error {
 }
 
 // Has indicates if the store contains a block that corresponds to the given key.
+// This function always returns true for any given key with multihash.IDENTITY code.
 func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
+	// Check if the given CID has multihash.IDENTITY code
+	// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
+	if _, ok, err := isIdentity(key); err != nil {
+		return false, err
+	} else if ok {
+		return true, nil
+	}
+
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -227,7 +236,16 @@ func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 }
 
 // Get gets a block corresponding to the given key.
+// This API will always return true if the given key has multihash.IDENTITY code.
 func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
+	// Check if the given CID has multihash.IDENTITY code
+	// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
+	if digest, ok, err := isIdentity(key); err != nil {
+		return nil, err
+	} else if ok {
+		return blocks.NewBlockWithCid(digest, key)
+	}
+
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -272,6 +290,14 @@ func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
 
 // GetSize gets the size of an item corresponding to the given key.
 func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
+	// Check if the given CID has multihash.IDENTITY code
+	// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
+	if digest, ok, err := isIdentity(key); err != nil {
+		return 0, err
+	} else if ok {
+		return len(digest), nil
+	}
+
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -318,6 +344,16 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 		return -1, blockstore.ErrNotFound
 	}
 	return fnSize, nil
+}
+
+func isIdentity(key cid.Cid) (digest []byte, ok bool, err error) {
+	dmh, err := multihash.Decode(key.Hash())
+	if err != nil {
+		return nil, false, err
+	}
+	ok = dmh.Code == multihash.IDENTITY
+	digest = dmh.Digest
+	return digest, ok, nil
 }
 
 // Put is not supported and always returns an error.

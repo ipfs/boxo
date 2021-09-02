@@ -4,6 +4,9 @@ import (
 	"encoding/binary"
 	"testing"
 
+	"github.com/ipfs/go-cid"
+	"github.com/multiformats/go-multihash"
+
 	"github.com/ipfs/go-merkledag"
 	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
@@ -13,7 +16,7 @@ func TestSortedIndexCodec(t *testing.T) {
 	require.Equal(t, multicodec.CarIndexSorted, newSorted().Codec())
 }
 
-func TestSortedIndex_GetReturnsNotFoundWhenCidDoesNotExist(t *testing.T) {
+func TestIndexSorted_GetReturnsNotFoundWhenCidDoesNotExist(t *testing.T) {
 	nonExistingKey := merkledag.NewRawNode([]byte("lobstermuncher")).Block.Cid()
 	tests := []struct {
 		name    string
@@ -61,4 +64,43 @@ func TestSingleWidthIndex_GetAll(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, 3, foundCount)
+}
+
+func TestIndexSorted_IgnoresIdentityCids(t *testing.T) {
+	data := []byte("🐟 in da 🌊d")
+	// Generate a record with IDENTITY multihash
+	idMh, err := multihash.Sum(data, multihash.IDENTITY, -1)
+	require.NoError(t, err)
+	idRec := Record{
+		Cid:    cid.NewCidV1(cid.Raw, idMh),
+		Offset: 1,
+	}
+	// Generate a record with non-IDENTITY multihash
+	nonIdMh, err := multihash.Sum(data, multihash.SHA2_256, -1)
+	require.NoError(t, err)
+	noIdRec := Record{
+		Cid:    cid.NewCidV1(cid.Raw, nonIdMh),
+		Offset: 2,
+	}
+
+	subject := newSorted()
+	err = subject.Load([]Record{idRec, noIdRec})
+	require.NoError(t, err)
+
+	// Assert record with IDENTITY CID is not present.
+	err = subject.GetAll(idRec.Cid, func(u uint64) bool {
+		require.Fail(t, "no IDENTITY record shoul be found")
+		return false
+	})
+	require.Equal(t, ErrNotFound, err)
+
+	// Assert record with non-IDENTITY CID is indeed present.
+	var found bool
+	err = subject.GetAll(noIdRec.Cid, func(gotOffset uint64) bool {
+		found = true
+		require.Equal(t, noIdRec.Offset, gotOffset)
+		return false
+	})
+	require.NoError(t, err)
+	require.True(t, found)
 }
