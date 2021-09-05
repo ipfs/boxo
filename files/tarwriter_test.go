@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"io"
 	"testing"
+	"time"
 )
 
 func TestTarWriter(t *testing.T) {
@@ -41,6 +42,10 @@ func TestTarWriter(t *testing.T) {
 		}
 		if cur.Size != size {
 			t.Errorf("got wrong size: %d != %d", cur.Size, size)
+		}
+		now := time.Now()
+		if cur.ModTime.After(now) {
+			t.Errorf("wrote timestamp in the future: %s (now) < %s", now, cur.ModTime)
 		}
 	}
 
