@@ -210,7 +210,53 @@ func TestMultihashIndexSortedConsistencyWithIndexSorted(t *testing.T) {
 	}
 }
 
-func generateMultihashSortedIndex(t *testing.T, path string) index.Index {
+func TestMultihashSorted_ForEachIsConsistentWithGetAll(t *testing.T) {
+	path := "testdata/sample-v1.car"
+	f, err := os.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, f.Close()) })
+
+	br, err := carv2.NewBlockReader(f)
+	require.NoError(t, err)
+	subject := generateMultihashSortedIndex(t, path)
+
+	gotForEach := make(map[string]uint64)
+	err = subject.ForEach(func(mh multihash.Multihash, offset uint64) error {
+		gotForEach[mh.String()] = offset
+		return nil
+	})
+	require.NoError(t, err)
+
+	for {
+		b, err := br.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		c := b.Cid()
+		dmh, err := multihash.Decode(c.Hash())
+		require.NoError(t, err)
+		if dmh.Code == multihash.IDENTITY {
+			continue
+		}
+
+		wantMh := c.Hash()
+
+		var wantOffset uint64
+		err = subject.GetAll(c, func(u uint64) bool {
+			wantOffset = u
+			return false
+		})
+		require.NoError(t, err)
+
+		s := wantMh.String()
+		gotOffset, ok := gotForEach[s]
+		require.True(t, ok)
+		require.Equal(t, wantOffset, gotOffset)
+	}
+}
+
+func generateMultihashSortedIndex(t *testing.T, path string) *index.MultihashIndexSorted {
 	f, err := os.Open(path)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, f.Close()) })
@@ -219,8 +265,7 @@ func generateMultihashSortedIndex(t *testing.T, path string) index.Index {
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), header.Version)
 
-	idx, err := index.New(multicodec.CarMultihashIndexSorted)
-	require.NoError(t, err)
+	idx := index.NewMultihashSorted()
 	records := make([]index.Record, 0)
 
 	var sectionOffset int64

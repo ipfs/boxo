@@ -44,7 +44,7 @@ type (
 		// Load inserts a number of records into the index.
 		Load([]Record) error
 
-		// Get looks up all blocks matching a given CID,
+		// GetAll looks up all blocks matching a given CID,
 		// calling a function for each one of their offsets.
 		//
 		// If the function returns false, GetAll stops.
@@ -73,7 +73,7 @@ func New(codec multicodec.Code) (Index, error) {
 	case multicodec.CarIndexSorted:
 		return newSorted(), nil
 	case multicodec.CarMultihashIndexSorted:
-		return newMultihashSorted(), nil
+		return NewMultihashSorted(), nil
 	default:
 		return nil, fmt.Errorf("unknwon index codec: %v", codec)
 	}

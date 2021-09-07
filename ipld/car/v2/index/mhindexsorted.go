@@ -10,10 +10,12 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
+var _ Index = (*MultihashIndexSorted)(nil)
+
 type (
-	// multihashIndexSorted maps multihash code (i.e. hashing algorithm) to multiWidthCodedIndex.
+	// MultihashIndexSorted maps multihash code (i.e. hashing algorithm) to multiWidthCodedIndex.
 	// This index ignores any Record with multihash.IDENTITY.
-	multihashIndexSorted map[uint64]*multiWidthCodedIndex
+	MultihashIndexSorted map[uint64]*multiWidthCodedIndex
 	// multiWidthCodedIndex stores multihash code for each multiWidthIndex.
 	multiWidthCodedIndex struct {
 		multiWidthIndex
@@ -41,11 +43,21 @@ func (m *multiWidthCodedIndex) Unmarshal(r io.Reader) error {
 	return m.multiWidthIndex.Unmarshal(r)
 }
 
-func (m *multihashIndexSorted) Codec() multicodec.Code {
+func (m *multiWidthCodedIndex) forEach(f func(mh multihash.Multihash, offset uint64) error) error {
+	return m.multiWidthIndex.forEachDigest(func(digest []byte, offset uint64) error {
+		mh, err := multihash.Encode(digest, m.code)
+		if err != nil {
+			return err
+		}
+		return f(mh, offset)
+	})
+}
+
+func (m *MultihashIndexSorted) Codec() multicodec.Code {
 	return multicodec.CarMultihashIndexSorted
 }
 
-func (m *multihashIndexSorted) Marshal(w io.Writer) error {
+func (m *MultihashIndexSorted) Marshal(w io.Writer) error {
 	if err := binary.Write(w, binary.LittleEndian, int32(len(*m))); err != nil {
 		return err
 	}
@@ -63,7 +75,7 @@ func (m *multihashIndexSorted) Marshal(w io.Writer) error {
 	return nil
 }
 
-func (m *multihashIndexSorted) sortedMultihashCodes() []uint64 {
+func (m *MultihashIndexSorted) sortedMultihashCodes() []uint64 {
 	codes := make([]uint64, 0, len(*m))
 	for code := range *m {
 		codes = append(codes, code)
@@ -74,7 +86,7 @@ func (m *multihashIndexSorted) sortedMultihashCodes() []uint64 {
 	return codes
 }
 
-func (m *multihashIndexSorted) Unmarshal(r io.Reader) error {
+func (m *MultihashIndexSorted) Unmarshal(r io.Reader) error {
 	var l int32
 	if err := binary.Read(r, binary.LittleEndian, &l); err != nil {
 		return err
@@ -89,11 +101,11 @@ func (m *multihashIndexSorted) Unmarshal(r io.Reader) error {
 	return nil
 }
 
-func (m *multihashIndexSorted) put(mwci *multiWidthCodedIndex) {
+func (m *MultihashIndexSorted) put(mwci *multiWidthCodedIndex) {
 	(*m)[mwci.code] = mwci
 }
 
-func (m *multihashIndexSorted) Load(records []Record) error {
+func (m *MultihashIndexSorted) Load(records []Record) error {
 	// TODO optimize load by avoiding multihash decoding twice.
 	// This implementation decodes multihashes twice: once here to group by code, and once in the
 	// internals of multiWidthIndex to group by digest length. The code can be optimized by
@@ -132,7 +144,7 @@ func (m *multihashIndexSorted) Load(records []Record) error {
 	return nil
 }
 
-func (m *multihashIndexSorted) GetAll(cid cid.Cid, f func(uint64) bool) error {
+func (m *MultihashIndexSorted) GetAll(cid cid.Cid, f func(uint64) bool) error {
 	hash := cid.Hash()
 	dmh, err := multihash.Decode(hash)
 	if err != nil {
@@ -145,14 +157,24 @@ func (m *multihashIndexSorted) GetAll(cid cid.Cid, f func(uint64) bool) error {
 	return mwci.GetAll(cid, f)
 }
 
-func (m *multihashIndexSorted) get(dmh *multihash.DecodedMultihash) (*multiWidthCodedIndex, error) {
+// ForEach calls f for every multihash and its associated offset stored by this index.
+func (m *MultihashIndexSorted) ForEach(f func(mh multihash.Multihash, offset uint64) error) error {
+	for _, mwci := range *m {
+		if err := mwci.forEach(f); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *MultihashIndexSorted) get(dmh *multihash.DecodedMultihash) (*multiWidthCodedIndex, error) {
 	if codedIdx, ok := (*m)[dmh.Code]; ok {
 		return codedIdx, nil
 	}
 	return nil, ErrNotFound
 }
 
-func newMultihashSorted() Index {
-	index := make(multihashIndexSorted)
+func NewMultihashSorted() *MultihashIndexSorted {
+	index := make(MultihashIndexSorted)
 	return &index
 }

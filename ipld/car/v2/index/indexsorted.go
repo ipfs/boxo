@@ -13,6 +13,8 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
+var _ Index = (*multiWidthIndex)(nil)
+
 type (
 	digestRecord struct {
 		digest []byte
@@ -120,6 +122,21 @@ func (s *singleWidthIndex) Load(items []Record) error {
 	return nil
 }
 
+func (s *singleWidthIndex) forEachDigest(f func(digest []byte, offset uint64) error) error {
+	segmentCount := len(s.index) / int(s.width)
+	for i := 0; i < segmentCount; i++ {
+		digestStart := i * int(s.width)
+		offsetEnd := (i + 1) * int(s.width)
+		digestEnd := offsetEnd - 8
+		digest := s.index[digestStart:digestEnd]
+		offset := binary.LittleEndian.Uint64(s.index[digestEnd:offsetEnd])
+		if err := f(digest, offset); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *multiWidthIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
@@ -206,6 +223,15 @@ func (m *multiWidthIndex) Load(items []Record) error {
 			index: compact,
 		}
 		(*m)[uint32(width)+8] = s
+	}
+	return nil
+}
+
+func (m *multiWidthIndex) forEachDigest(f func(digest []byte, offset uint64) error) error {
+	for _, swi := range *m {
+		if err := swi.forEachDigest(f); err != nil {
+			return err
+		}
 	}
 	return nil
 }
