@@ -63,11 +63,11 @@ func ToReaderAt(rs io.ReadSeeker) io.ReaderAt {
 	return &readSeekerAt{rs: rs}
 }
 
-func (rb readerPlusByte) ReadByte() (byte, error) {
+func (rb *readerPlusByte) ReadByte() (byte, error) {
 	return readByte(rb)
 }
 
-func (rsb readSeekerPlusByte) ReadByte() (byte, error) {
+func (rsb *readSeekerPlusByte) ReadByte() (byte, error) {
 	return readByte(rsb)
 }
 
