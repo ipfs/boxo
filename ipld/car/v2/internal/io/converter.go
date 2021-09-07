@@ -17,15 +17,21 @@ var (
 type (
 	readerPlusByte struct {
 		io.Reader
+
+		byteBuf [1]byte // escapes via io.Reader.Read; preallocate
 	}
 
 	readSeekerPlusByte struct {
 		io.ReadSeeker
+
+		byteBuf [1]byte // escapes via io.Reader.Read; preallocate
 	}
 
 	discardingReadSeekerPlusByte struct {
 		io.Reader
 		offset int64
+
+		byteBuf [1]byte // escapes via io.Reader.Read; preallocate
 	}
 
 	ByteReadSeeker interface {
@@ -43,7 +49,7 @@ func ToByteReader(r io.Reader) io.ByteReader {
 	if br, ok := r.(io.ByteReader); ok {
 		return br
 	}
-	return &readerPlusByte{r}
+	return &readerPlusByte{Reader: r}
 }
 
 func ToByteReadSeeker(r io.Reader) ByteReadSeeker {
@@ -51,7 +57,7 @@ func ToByteReadSeeker(r io.Reader) ByteReadSeeker {
 		return brs
 	}
 	if rs, ok := r.(io.ReadSeeker); ok {
-		return &readSeekerPlusByte{rs}
+		return &readSeekerPlusByte{ReadSeeker: rs}
 	}
 	return &discardingReadSeekerPlusByte{Reader: r}
 }
@@ -64,15 +70,18 @@ func ToReaderAt(rs io.ReadSeeker) io.ReaderAt {
 }
 
 func (rb *readerPlusByte) ReadByte() (byte, error) {
-	return readByte(rb)
+	_, err := io.ReadFull(rb, rb.byteBuf[:])
+	return rb.byteBuf[0], err
 }
 
 func (rsb *readSeekerPlusByte) ReadByte() (byte, error) {
-	return readByte(rsb)
+	_, err := io.ReadFull(rsb, rsb.byteBuf[:])
+	return rsb.byteBuf[0], err
 }
 
 func (drsb *discardingReadSeekerPlusByte) ReadByte() (byte, error) {
-	return readByte(drsb)
+	_, err := io.ReadFull(drsb, drsb.byteBuf[:])
+	return drsb.byteBuf[0], err
 }
 
 func (drsb *discardingReadSeekerPlusByte) Read(p []byte) (read int, err error) {
@@ -96,12 +105,6 @@ func (drsb *discardingReadSeekerPlusByte) Seek(offset int64, whence int) (int64,
 	default:
 		panic("unsupported whence: io.SeekEnd")
 	}
-}
-
-func readByte(r io.Reader) (byte, error) {
-	var p [1]byte
-	_, err := io.ReadFull(r, p[:])
-	return p[0], err
 }
 
 func (rsa *readSeekerAt) ReadAt(p []byte, off int64) (n int, err error) {
