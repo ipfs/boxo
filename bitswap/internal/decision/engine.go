@@ -328,8 +328,6 @@ func (e *Engine) WantlistForPeer(p peer.ID) []wl.Entry {
 	entries := partner.wantList.Entries()
 	partner.lk.Unlock()
 
-	wl.SortEntries(entries)
-
 	return entries
 }
 
