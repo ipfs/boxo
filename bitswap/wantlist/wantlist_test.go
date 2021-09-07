@@ -211,8 +211,6 @@ func TestSortEntries(t *testing.T) {
 	wl.Add(testcids[2], 4, pb.Message_Wantlist_Have)
 
 	entries := wl.Entries()
-	SortEntries(entries)
-
 	if !entries[0].Cid.Equals(testcids[1]) ||
 		!entries[1].Cid.Equals(testcids[2]) ||
 		!entries[2].Cid.Equals(testcids[0]) {

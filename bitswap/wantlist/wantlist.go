@@ -13,6 +13,9 @@ import (
 // Wantlist is a raw list of wanted blocks and their priorities
 type Wantlist struct {
 	set map[cid.Cid]Entry
+
+	// Re-computing this can get expensive so we memoize it.
+	cached []Entry
 }
 
 // Entry is an entry in a want list, consisting of a cid and its priority
@@ -58,11 +61,11 @@ func (w *Wantlist) Add(c cid.Cid, priority int32, wantType pb.Message_Wantlist_W
 		return false
 	}
 
-	w.set[c] = Entry{
+	w.put(c, Entry{
 		Cid:      c,
 		Priority: priority,
 		WantType: wantType,
-	}
+	})
 
 	return true
 }
@@ -74,7 +77,7 @@ func (w *Wantlist) Remove(c cid.Cid) bool {
 		return false
 	}
 
-	delete(w.set, c)
+	w.delete(c)
 	return true
 }
 
@@ -91,8 +94,18 @@ func (w *Wantlist) RemoveType(c cid.Cid, wantType pb.Message_Wantlist_WantType) 
 		return false
 	}
 
-	delete(w.set, c)
+	w.delete(c)
 	return true
+}
+
+func (w *Wantlist) delete(c cid.Cid) {
+	delete(w.set, c)
+	w.cached = nil
+}
+
+func (w *Wantlist) put(c cid.Cid, e Entry) {
+	w.cached = nil
+	w.set[c] = e
 }
 
 // Contains returns the entry, if present, for the given CID, plus whether it
@@ -102,23 +115,28 @@ func (w *Wantlist) Contains(c cid.Cid) (Entry, bool) {
 	return e, ok
 }
 
-// Entries returns all wantlist entries for a want list.
+// Entries returns all wantlist entries for a want list, sorted by priority.
+//
+// DO NOT MODIFY. The returned list is cached.
 func (w *Wantlist) Entries() []Entry {
+	if w.cached != nil {
+		return w.cached
+	}
 	es := make([]Entry, 0, len(w.set))
 	for _, e := range w.set {
 		es = append(es, e)
 	}
-	return es
+	sort.Sort(entrySlice(es))
+	w.cached = es
+	return es[0:len(es):len(es)]
 }
 
 // Absorb all the entries in other into this want list
 func (w *Wantlist) Absorb(other *Wantlist) {
+	// Invalidate the cache up-front to avoid doing any work trying to keep it up-to-date.
+	w.cached = nil
+
 	for _, e := range other.Entries() {
 		w.Add(e.Cid, e.Priority, e.WantType)
 	}
-}
-
-// SortEntries sorts the list of entries by priority.
-func SortEntries(es []Entry) {
-	sort.Sort(entrySlice(es))
 }
