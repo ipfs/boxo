@@ -87,15 +87,21 @@ func (s *singleWidthIndex) getAll(d []byte, fn func(uint64) bool) error {
 	idx := sort.Search(int(s.len), func(i int) bool {
 		return s.Less(i, d)
 	})
-	if uint64(idx) == s.len {
-		return ErrNotFound
-	}
 
-	any := false
-	for bytes.Equal(d[:], s.index[idx*int(s.width):(idx+1)*int(s.width)-8]) {
-		any = true
-		offset := binary.LittleEndian.Uint64(s.index[(idx+1)*int(s.width)-8 : (idx+1)*int(s.width)])
-		if !fn(offset) {
+	var any bool
+	for ; uint64(idx) < s.len; idx++ {
+		digestStart := idx * int(s.width)
+		offsetEnd := (idx + 1) * int(s.width)
+		digestEnd := offsetEnd - 8
+		if bytes.Equal(d[:], s.index[digestStart:digestEnd]) {
+			any = true
+			offset := binary.LittleEndian.Uint64(s.index[digestEnd:offsetEnd])
+			if !fn(offset) {
+				// User signalled to stop searching; therefore, break.
+				break
+			}
+		} else {
+			// No more matches; therefore, break.
 			break
 		}
 	}
