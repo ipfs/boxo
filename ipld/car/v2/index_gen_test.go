@@ -169,7 +169,7 @@ func TestMultihashIndexSortedConsistencyWithIndexSorted(t *testing.T) {
 
 	sortedIndex, err := carv2.GenerateIndexFromFile(path)
 	require.NoError(t, err)
-	require.Equal(t, multicodec.CarIndexSorted, sortedIndex.Codec())
+	require.Equal(t, multicodec.CarMultihashIndexSorted, sortedIndex.Codec())
 
 	f, err := os.Open(path)
 	require.NoError(t, err)

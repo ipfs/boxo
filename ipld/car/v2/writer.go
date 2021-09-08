@@ -6,9 +6,8 @@ import (
 	"io"
 	"os"
 
-	internalio "github.com/ipld/go-car/v2/internal/io"
-
 	"github.com/ipld/go-car/v2/index"
+	internalio "github.com/ipld/go-car/v2/internal/io"
 )
 
 // ErrAlreadyV1 signals that the given payload is already in CARv1 format.
@@ -47,12 +46,27 @@ func WrapV1File(srcPath, dstPath string) error {
 // WrapV1 takes a CARv1 file and wraps it as a CARv2 file with an index.
 // The resulting CARv2 file's inner CARv1 payload is left unmodified,
 // and does not use any padding before the innner CARv1 or index.
-func WrapV1(src io.ReadSeeker, dst io.Writer) error {
+func WrapV1(src io.ReadSeeker, dst io.Writer, opts ...ReadWriteOption) error {
 	// TODO: verify src is indeed a CARv1 to prevent misuse.
 	// GenerateIndex should probably be in charge of that.
 
-	idx, err := GenerateIndex(src)
+	var ro []ReadOption
+	var wo []WriteOption
+	for _, opt := range opts {
+		switch opt := opt.(type) {
+		case ReadOption:
+			ro = append(ro, opt)
+		case WriteOption:
+			wo = append(wo, opt)
+		}
+	}
+	wopts := ApplyWriteOptions(wo...)
+	idx, err := index.New(wopts.IndexCodec)
 	if err != nil {
+		return err
+	}
+
+	if err := LoadIndex(idx, src, ro...); err != nil {
 		return err
 	}
 

@@ -5,40 +5,40 @@ import (
 	"io"
 	"os"
 
-	internalio "github.com/ipld/go-car/v2/internal/io"
-
-	"github.com/ipld/go-car/v2/index"
-	"github.com/multiformats/go-multicodec"
-
-	"github.com/multiformats/go-varint"
-
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1"
+	internalio "github.com/ipld/go-car/v2/internal/io"
+	"github.com/multiformats/go-varint"
 )
 
 // GenerateIndex generates index for a given car in v1 format.
-// The index can be stored using index.Save into a file or serialized using index.WriteTo.
+// The generated index will be in multicodec.CarMultihashIndexSorted, the default index codec.
+// The index can be stored in serialized format using index.WriteTo.
+// See LoadIndex.
 func GenerateIndex(v1r io.Reader, opts ...ReadOption) (index.Index, error) {
-	var o ReadOptions
-	for _, opt := range opts {
-		opt(&o)
+	idx := index.NewMultihashSorted()
+	if err := LoadIndex(idx, v1r, opts...); err != nil {
+		return nil, err
 	}
+	return idx, nil
+}
 
+// LoadIndex populates idx with index records generated from v1r.
+// The v1r must be data payload in CARv1 format.
+func LoadIndex(idx index.Index, v1r io.Reader, opts ...ReadOption) error {
 	reader := internalio.ToByteReadSeeker(v1r)
 	header, err := carv1.ReadHeader(reader)
 	if err != nil {
-		return nil, fmt.Errorf("error reading car header: %w", err)
+		return fmt.Errorf("error reading car header: %w", err)
 	}
 
 	if header.Version != 1 {
-		return nil, fmt.Errorf("expected version to be 1, got %v", header.Version)
+		return fmt.Errorf("expected version to be 1, got %v", header.Version)
 	}
 
-	idx, err := index.New(multicodec.CarIndexSorted)
-	if err != nil {
-		return nil, err
-	}
-	records := make([]index.Record, 0)
+	// Parse Options.
+	ropts := ApplyReadOptions(opts...)
 
 	// Record the start of each section, with first section starring from current position in the
 	// reader, i.e. right after the header, since we have only read the header so far.
@@ -48,9 +48,10 @@ func GenerateIndex(v1r io.Reader, opts ...ReadOption) (index.Index, error) {
 	// We get it through Seek to only depend on APIs of a typical io.Seeker.
 	// This would also reduce refactoring in case the utility reader is moved.
 	if sectionOffset, err = reader.Seek(0, io.SeekCurrent); err != nil {
-		return nil, err
+		return err
 	}
 
+	records := make([]index.Record, 0)
 	for {
 		// Read the section's length.
 		sectionLen, err := varint.ReadUvarint(reader)
@@ -58,22 +59,22 @@ func GenerateIndex(v1r io.Reader, opts ...ReadOption) (index.Index, error) {
 			if err == io.EOF {
 				break
 			}
-			return nil, err
+			return err
 		}
 
 		// Null padding; by default it's an error.
 		if sectionLen == 0 {
-			if o.ZeroLengthSectionAsEOF {
+			if ropts.ZeroLengthSectionAsEOF {
 				break
 			} else {
-				return nil, fmt.Errorf("carv1 null padding not allowed by default; see ZeroLengthSectionAsEOF")
+				return fmt.Errorf("carv1 null padding not allowed by default; see ZeroLengthSectionAsEOF")
 			}
 		}
 
 		// Read the CID.
 		cidLen, c, err := cid.CidFromReader(reader)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		records = append(records, index.Record{Cid: c, Offset: uint64(sectionOffset)})
 
@@ -81,19 +82,20 @@ func GenerateIndex(v1r io.Reader, opts ...ReadOption) (index.Index, error) {
 		// The section length includes the CID, so subtract it.
 		remainingSectionLen := int64(sectionLen) - int64(cidLen)
 		if sectionOffset, err = reader.Seek(remainingSectionLen, io.SeekCurrent); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	if err := idx.Load(records); err != nil {
-		return nil, err
+		return err
 	}
 
-	return idx, nil
+	return nil
 }
 
 // GenerateIndexFromFile walks a car v1 file at the give path and generates an index of cid->byte offset.
 // The index can be stored using index.Save into a file or serialized using index.WriteTo.
+// See GenerateIndex.
 func GenerateIndexFromFile(path string) (index.Index, error) {
 	f, err := os.Open(path)
 	if err != nil {

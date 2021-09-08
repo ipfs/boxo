@@ -1,5 +1,7 @@
 package car
 
+import "github.com/multiformats/go-multicodec"
+
 // ReadOptions holds the configured options after applying a number of
 // ReadOption funcs.
 //
@@ -9,6 +11,15 @@ type ReadOptions struct {
 	ZeroLengthSectionAsEOF bool
 
 	BlockstoreUseWholeCIDs bool
+}
+
+// ApplyReadOptions applies ropts and returns the resulting ReadOptions.
+func ApplyReadOptions(ropts ...ReadOption) ReadOptions {
+	var opts ReadOptions
+	for _, opt := range ropts {
+		opt(&opts)
+	}
+	return opts
 }
 
 // ReadOption describes an option which affects behavior when parsing CAR files.
@@ -26,8 +37,22 @@ var _ ReadWriteOption = ReadOption(nil)
 type WriteOptions struct {
 	DataPadding  uint64
 	IndexPadding uint64
+	IndexCodec   multicodec.Code
 
 	BlockstoreAllowDuplicatePuts bool
+}
+
+// ApplyWriteOptions applies the given ropts and returns the resulting WriteOptions.
+func ApplyWriteOptions(ropts ...WriteOption) WriteOptions {
+	var opts WriteOptions
+	for _, opt := range ropts {
+		opt(&opts)
+	}
+	// Set defaults for zero valued fields.
+	if opts.IndexCodec == 0 {
+		opts.IndexCodec = multicodec.CarMultihashIndexSorted
+	}
+	return opts
 }
 
 // WriteOption describes an option which affects behavior when encoding CAR files.
@@ -65,5 +90,12 @@ func UseDataPadding(p uint64) WriteOption {
 func UseIndexPadding(p uint64) WriteOption {
 	return func(o *WriteOptions) {
 		o.IndexPadding = p
+	}
+}
+
+// UseIndexCodec is a write option which sets the codec used for index generation.
+func UseIndexCodec(c multicodec.Code) WriteOption {
+	return func(o *WriteOptions) {
+		o.IndexCodec = c
 	}
 }

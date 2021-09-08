@@ -37,14 +37,10 @@ func NewBlockReader(r io.Reader, opts ...ReadOption) (*BlockReader, error) {
 		return nil, err
 	}
 
-	// Populate the block reader version.
+	// Populate the block reader version and options.
 	br := &BlockReader{
 		Version: pragmaOrV1Header.Version,
-	}
-
-	// Populate read options
-	for _, o := range opts {
-		o(&br.ropts)
+		ropts:   ApplyReadOptions(opts...),
 	}
 
 	// Expect either version 1 or 2.

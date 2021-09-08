@@ -48,9 +48,7 @@ func NewReader(r io.ReaderAt, opts ...ReadOption) (*Reader, error) {
 	cr := &Reader{
 		r: r,
 	}
-	for _, o := range opts {
-		o(&cr.ropts)
-	}
+	cr.ropts = ApplyReadOptions(opts...)
 
 	or := internalio.NewOffsetReadSeeker(r, 0)
 	var err error

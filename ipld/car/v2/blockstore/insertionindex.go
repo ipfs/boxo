@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2/index"
 	"github.com/multiformats/go-multicodec"
-
-	"github.com/ipfs/go-cid"
 	"github.com/multiformats/go-multihash"
 	"github.com/petar/GoLLRB/llrb"
 	cbor "github.com/whyrusleeping/cbor/go"
@@ -154,9 +153,9 @@ func newInsertionIndex() *insertionIndex {
 	return &insertionIndex{}
 }
 
-// flatten returns a 'indexsorted' formatted index for more efficient subsequent loading
-func (ii *insertionIndex) flatten() (index.Index, error) {
-	si, err := index.New(multicodec.CarIndexSorted)
+// flatten returns a formatted index in the given codec for more efficient subsequent loading.
+func (ii *insertionIndex) flatten(codec multicodec.Code) (index.Index, error) {
+	si, err := index.New(codec)
 	if err != nil {
 		return nil, err
 	}

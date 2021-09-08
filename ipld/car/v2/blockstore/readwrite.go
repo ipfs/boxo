@@ -116,14 +116,19 @@ func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.ReadWriteOption) 
 		header: carv2.NewHeader(0),
 	}
 
+	var ro []carv2.ReadOption
+	var wo []carv2.WriteOption
 	for _, opt := range opts {
 		switch opt := opt.(type) {
 		case carv2.ReadOption:
-			opt(&rwbs.ronly.ropts)
+			ro = append(ro, opt)
 		case carv2.WriteOption:
-			opt(&rwbs.wopts)
+			wo = append(wo, opt)
 		}
 	}
+	rwbs.ronly.ropts = carv2.ApplyReadOptions(ro...)
+	rwbs.wopts = carv2.ApplyWriteOptions(wo...)
+
 	if p := rwbs.wopts.DataPadding; p > 0 {
 		rwbs.header = rwbs.header.WithDataPadding(p)
 	}
@@ -366,7 +371,7 @@ func (b *ReadWrite) Finalize() error {
 	defer b.ronly.closeWithoutMutex()
 
 	// TODO if index not needed don't bother flattening it.
-	fi, err := b.idx.flatten()
+	fi, err := b.idx.flatten(b.wopts.IndexCodec)
 	if err != nil {
 		return err
 	}

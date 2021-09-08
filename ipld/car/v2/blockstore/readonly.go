@@ -94,9 +94,9 @@ func UseWholeCIDs(enable bool) carv2.ReadOption {
 //
 // There is no need to call ReadOnly.Close on instances returned by this function.
 func NewReadOnly(backing io.ReaderAt, idx index.Index, opts ...carv2.ReadOption) (*ReadOnly, error) {
-	b := &ReadOnly{}
-	for _, opt := range opts {
-		opt(&b.ropts)
+	ropts := carv2.ApplyReadOptions(opts...)
+	b := &ReadOnly{
+		ropts: ropts,
 	}
 
 	version, err := readVersion(backing)
@@ -155,6 +155,8 @@ func generateIndex(at io.ReaderAt, opts ...carv2.ReadOption) (index.Index, error
 	default:
 		rs = internalio.NewOffsetReadSeeker(r, 0)
 	}
+
+	// Note, we do not set any write options so that all write options fall back onto defaults.
 	return carv2.GenerateIndex(rs, opts...)
 }
 
