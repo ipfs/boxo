@@ -74,7 +74,7 @@ func writeDirHeader(w *tar.Writer, fpath string) error {
 		Name:     fpath,
 		Typeflag: tar.TypeDir,
 		Mode:     0777,
-		ModTime:  time.Now(),
+		ModTime:  time.Now().Truncate(time.Second),
 		// TODO: set mode, dates, etc. when added to unixFS
 	})
 }
@@ -85,7 +85,7 @@ func writeFileHeader(w *tar.Writer, fpath string, size uint64) error {
 		Size:     int64(size),
 		Typeflag: tar.TypeReg,
 		Mode:     0644,
-		ModTime:  time.Now(),
+		ModTime:  time.Now().Truncate(time.Second),
 		// TODO: set mode, dates, etc. when added to unixFS
 	})
 }
