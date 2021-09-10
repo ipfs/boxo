@@ -8,6 +8,7 @@ import (
 	internalio "github.com/ipld/go-car/v2/internal/io"
 
 	"github.com/multiformats/go-multicodec"
+	"github.com/multiformats/go-multihash"
 
 	"github.com/multiformats/go-varint"
 
@@ -57,6 +58,22 @@ type (
 		// meaning that no callbacks happen,
 		// ErrNotFound is returned.
 		GetAll(cid.Cid, func(uint64) bool) error
+	}
+
+	// IterableIndex extends Index in cases where the Index is able to
+	// provide an iterator for getting the list of all entries in the
+	// index.
+	IterableIndex interface {
+		Index
+
+		// ForEach takes a callback function that will be called
+		// on each entry in the index. The arguments to the callback are
+		// the multihash of the element, and the offset in the car file
+		// where the element appears.
+		//
+		// If the callback returns a non-nil error, the iteration is aborted,
+		// and the ForEach function returns the error to the user.
+		ForEach(func(multihash.Multihash, uint64) error) error
 	}
 )
 

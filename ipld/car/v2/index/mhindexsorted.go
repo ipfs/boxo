@@ -11,6 +11,7 @@ import (
 )
 
 var _ Index = (*MultihashIndexSorted)(nil)
+var _ IterableIndex = (*MultihashIndexSorted)(nil)
 
 type (
 	// MultihashIndexSorted maps multihash code (i.e. hashing algorithm) to multiWidthCodedIndex.
