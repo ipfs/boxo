@@ -9,8 +9,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// SplitCar is a command to output the index part of a car.
-func SplitCar(c *cli.Context) error {
+// DetachCar is a command to output the index part of a car.
+func DetachCar(c *cli.Context) error {
 	r, err := carv2.OpenReader(c.Args().Get(0))
 	if err != nil {
 		return err
