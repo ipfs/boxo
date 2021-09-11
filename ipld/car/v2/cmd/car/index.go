@@ -46,6 +46,13 @@ func IndexCar(c *cli.Context) error {
 
 	v1r := r.DataReader()
 
+	if r.Version == 1 {
+		fi, err := os.Stat(c.Args().Get(0))
+		if err != nil {
+			return err
+		}
+		r.Header.DataSize = uint64(fi.Size())
+	}
 	v2Header := carv2.NewHeader(r.Header.DataSize)
 	if c.String("codec") == "none" {
 		v2Header.IndexOffset = 0
