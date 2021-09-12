@@ -14,6 +14,30 @@ func main() {
 		Usage: "Utility for working with car files",
 		Commands: []*cli.Command{
 			{
+				Name:   "detach-index",
+				Usage:  "Detach an index to a detached file",
+				Action: DetachCar,
+			},
+			{
+				Name:    "filter",
+				Aliases: []string{"f"},
+				Usage:   "Filter the CIDs in a car",
+				Action:  FilterCar,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:      "cid-file",
+						Usage:     "A file to read CIDs from",
+						TakesFile: true,
+					},
+				},
+			},
+			{
+				Name:    "get-block",
+				Aliases: []string{"gb"},
+				Usage:   "Get a block out of a car",
+				Action:  GetCarBlock,
+			},
+			{
 				Name:    "index",
 				Aliases: []string{"i"},
 				Usage:   "write out the car with an index",
@@ -28,28 +52,10 @@ func main() {
 				},
 			},
 			{
-				Name:   "detach-index",
-				Usage:  "Detach an index to a detached file",
-				Action: DetachCar,
-			},
-			{
 				Name:    "list",
 				Aliases: []string{"l"},
 				Usage:   "List the CIDs in a car",
 				Action:  ListCar,
-			},
-			{
-				Name:    "filter",
-				Aliases: []string{"f"},
-				Usage:   "Filter the CIDs in a car",
-				Action:  FilterCar,
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:      "cid-file",
-						Usage:     "A file to read CIDs from",
-						TakesFile: true,
-					},
-				},
 			},
 		},
 	}
