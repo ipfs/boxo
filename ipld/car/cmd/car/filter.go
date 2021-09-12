@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/ipfs/go-cid"
+	carv1 "github.com/ipld/go-car"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/blockstore"
-	icarv1 "github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/urfave/cli/v2"
 )
 
@@ -49,7 +49,7 @@ func FilterCar(c *cli.Context) error {
 	}
 	fmt.Printf("filtering to %d cids\n", len(cidMap))
 
-	rd, err := icarv1.NewCarReader(r.DataReader())
+	rd, err := carv1.NewCarReader(r.DataReader())
 	if err != nil {
 		return err
 	}

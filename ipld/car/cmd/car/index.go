@@ -7,9 +7,9 @@ import (
 	"os"
 
 	"github.com/ipfs/go-cid"
+	carv1 "github.com/ipld/go-car"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
-	icarv1 "github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-varint"
 	"github.com/urfave/cli/v2"
@@ -76,11 +76,12 @@ func IndexCar(c *cli.Context) error {
 	}
 
 	// collect records as we go through the v1r
-	hdr, err := icarv1.ReadHeader(v1r)
+	br := bufio.NewReader(v1r)
+	hdr, err := carv1.ReadHeader(br)
 	if err != nil {
 		return fmt.Errorf("error reading car header: %w", err)
 	}
-	if err := icarv1.WriteHeader(hdr, outStream); err != nil {
+	if err := carv1.WriteHeader(hdr, outStream); err != nil {
 		return err
 	}
 
@@ -89,8 +90,8 @@ func IndexCar(c *cli.Context) error {
 	if sectionOffset, err = v1r.Seek(0, io.SeekCurrent); err != nil {
 		return err
 	}
+	sectionOffset -= int64(br.Buffered())
 
-	br := bufio.NewReader(v1r)
 	for {
 		// Read the section's length.
 		sectionLen, err := varint.ReadUvarint(br)
