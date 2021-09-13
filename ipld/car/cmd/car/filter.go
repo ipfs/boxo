@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/ipfs/go-cid"
-	carv1 "github.com/ipld/go-car"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/blockstore"
 	"github.com/urfave/cli/v2"
@@ -16,20 +15,16 @@ import (
 
 // FilterCar is a command to select a subset of a car by CID.
 func FilterCar(c *cli.Context) error {
-	r, err := carv2.OpenReader(c.Args().Get(0))
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-
 	if c.Args().Len() < 2 {
 		return fmt.Errorf("an output filename must be provided")
 	}
-	roots, err := r.Roots()
+
+	fd, err := os.Open(c.Args().First())
 	if err != nil {
 		return err
 	}
-	bs, err := blockstore.OpenReadWrite(c.Args().Get(1), roots)
+	defer fd.Close()
+	rd, err := carv2.NewBlockReader(fd)
 	if err != nil {
 		return err
 	}
@@ -49,7 +44,16 @@ func FilterCar(c *cli.Context) error {
 	}
 	fmt.Printf("filtering to %d cids\n", len(cidMap))
 
-	rd, err := carv1.NewCarReader(r.DataReader())
+	outRoots := make([]cid.Cid, 0)
+	for _, r := range rd.Roots {
+		if _, ok := cidMap[r]; ok {
+			outRoots = append(outRoots, r)
+		}
+	}
+	if len(outRoots) == 0 {
+		fmt.Fprintf(os.Stderr, "warning: no roots defined after filtering\n")
+	}
+	bs, err := blockstore.OpenReadWrite(c.Args().Get(1), outRoots)
 	if err != nil {
 		return err
 	}

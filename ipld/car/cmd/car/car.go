@@ -38,6 +38,23 @@ func main() {
 				Action:  GetCarBlock,
 			},
 			{
+				Name:    "get-dag",
+				Aliases: []string{"gd"},
+				Usage:   "Get a dag out of a car",
+				Action:  GetCarDag,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "selector",
+						Aliases: []string{"s"},
+						Usage:   "A selector over the dag",
+					},
+					&cli.BoolFlag{
+						Name:  "strict",
+						Usage: "Fail if the selector finds links to blocks not in the original car",
+					},
+				},
+			},
+			{
 				Name:    "index",
 				Aliases: []string{"i"},
 				Usage:   "write out the car with an index",
