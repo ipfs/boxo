@@ -1,0 +1,16 @@
+env SAMPLE_CID='bafy2bzacebohz654namrgmwjjx4qmtwgxixsd7pn4tlanyrc3g3hwj75hlxrw'
+# "list" on a CARv1.
+car list ${INPUTS}/sample-v1.car
+stdout -count=1043 '^bafy'
+stdout -count=6 '^bafk'
+stdout -count=1 'bafy2bzacebohz654namrgmwjjx4qmtwgxixsd7pn4tlanyrc3g3hwj75hlxrw'
+
+# "list" on a CARv2.
+car list ${INPUTS}/sample-wrapped-v2.car
+stdout -count=1043 '^bafy'
+stdout -count=6 '^bafk'
+stdout -count=1 'bafy2bzacebohz654namrgmwjjx4qmtwgxixsd7pn4tlanyrc3g3hwj75hlxrw'
+
+# Short "l" alias.
+car l ${INPUTS}/sample-v1.car
+stdout -count=1043 '^bafy'

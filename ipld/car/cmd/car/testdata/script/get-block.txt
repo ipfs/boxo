@@ -1,0 +1,19 @@
+env SAMPLE_CID='bafy2bzacebohz654namrgmwjjx4qmtwgxixsd7pn4tlanyrc3g3hwj75hlxrw'
+env MISSING_CID='bafy2bzacebohz654namrgmwjjx4qmtwgxixsd7pn4tlanyrc3g3hwj75xxxxx'
+
+# "get-block" on a CARv1 with an output file.
+car get-block ${INPUTS}/sample-v1.car ${SAMPLE_CID} out.block
+cmp out.block ${INPUTS}/${SAMPLE_CID}.block
+rm out.block
+
+# "get-block" on a CARv1 with stdout.
+car get-block ${INPUTS}/sample-v1.car ${SAMPLE_CID}
+cmp stdout ${INPUTS}/${SAMPLE_CID}.block
+
+# Short "gb" alias.
+car get-block ${INPUTS}/sample-v1.car ${SAMPLE_CID}
+cmp stdout ${INPUTS}/${SAMPLE_CID}.block
+
+# "get-block" on a missing CID.
+! car get-block ${INPUTS}/sample-v1.car ${MISSING_CID}
+stderr 'block not found'

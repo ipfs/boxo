@@ -8,7 +8,9 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func main() {
+func main() { os.Exit(main1()) }
+
+func main1() int {
 	app := &cli.App{
 		Name:  "car",
 		Usage: "Utility for working with car files",
@@ -85,7 +87,8 @@ func main() {
 
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Fatal(err)
-		os.Exit(1)
+		log.Println(err)
+		return 1
 	}
+	return 0
 }
