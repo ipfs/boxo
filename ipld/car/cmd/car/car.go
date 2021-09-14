@@ -74,6 +74,12 @@ func main() {
 				Usage:   "List the CIDs in a car",
 				Action:  ListCar,
 			},
+			{
+				Name:    "verify",
+				Aliases: []string{"v"},
+				Usage:   "Verify a CAR is wellformed",
+				Action:  VerifyCar,
+			},
 		},
 	}
 
