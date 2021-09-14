@@ -72,6 +72,10 @@ func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (cid.
 	// create a selector to traverse and match all path segments
 	pathSelector := pathAllSelector(p[:len(p)-1])
 
+	// create a new cancellable session
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
 	// resolve node before last path segment
 	nodes, lastCid, depth, err := r.resolveNodes(ctx, c, pathSelector)
 	if err != nil {
@@ -132,6 +136,10 @@ func (r *Resolver) ResolvePath(ctx context.Context, fpath path.Path) (ipld.Node,
 	// create a selector to traverse all path segments but only match the last
 	pathSelector := pathLeafSelector(p)
 
+	// create a new cancellable session
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
 	nodes, c, _, err := r.resolveNodes(ctx, c, pathSelector)
 	if err != nil {
 		return nil, nil, err
@@ -171,6 +179,10 @@ func (r *Resolver) ResolvePathComponents(ctx context.Context, fpath path.Path) (
 
 	// create a selector to traverse and match all path segments
 	pathSelector := pathAllSelector(p)
+
+	// create a new cancellable session
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
 
 	nodes, _, _, err := r.resolveNodes(ctx, c, pathSelector)
 	if err != nil {
@@ -218,10 +230,6 @@ func (r *Resolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []stri
 // Finds nodes matching the selector starting with a cid. Returns the matched nodes, the cid of the block containing
 // the last node, and the depth of the last node within its block (root is depth 0).
 func (r *Resolver) resolveNodes(ctx context.Context, c cid.Cid, sel ipld.Node) ([]ipld.Node, cid.Cid, int, error) {
-	// create a new cancellable session
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-
 	session := r.FetcherFactory.NewSession(ctx)
 
 	// traverse selector
