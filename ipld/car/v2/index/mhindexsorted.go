@@ -10,8 +10,10 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
-var _ Index = (*MultihashIndexSorted)(nil)
-var _ IterableIndex = (*MultihashIndexSorted)(nil)
+var (
+	_ Index         = (*MultihashIndexSorted)(nil)
+	_ IterableIndex = (*MultihashIndexSorted)(nil)
+)
 
 type (
 	// MultihashIndexSorted maps multihash code (i.e. hashing algorithm) to multiWidthCodedIndex.

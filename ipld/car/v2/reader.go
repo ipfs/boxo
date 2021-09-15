@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"io"
 
-	internalio "github.com/ipld/go-car/v2/internal/io"
-
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2/internal/carv1"
+	internalio "github.com/ipld/go-car/v2/internal/io"
 	"golang.org/x/exp/mmap"
 )
 
@@ -17,12 +16,12 @@ type Reader struct {
 	Version uint64
 	r       io.ReaderAt
 	roots   []cid.Cid
-	ropts   ReadOptions
+	opts    Options
 	closer  io.Closer
 }
 
 // OpenReader is a wrapper for NewReader which opens the file at path.
-func OpenReader(path string, opts ...ReadOption) (*Reader, error) {
+func OpenReader(path string, opts ...Option) (*Reader, error) {
 	f, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
@@ -44,11 +43,11 @@ func OpenReader(path string, opts ...ReadOption) (*Reader, error) {
 // Note that any other version other than 1 or 2 will result in an error. The caller may use
 // Reader.Version to get the actual version r represents. In the case where r represents a CARv1
 // Reader.Header will not be populated and is left as zero-valued.
-func NewReader(r io.ReaderAt, opts ...ReadOption) (*Reader, error) {
+func NewReader(r io.ReaderAt, opts ...Option) (*Reader, error) {
 	cr := &Reader{
 		r: r,
 	}
-	cr.ropts = ApplyReadOptions(opts...)
+	cr.opts = ApplyOptions(opts...)
 
 	or := internalio.NewOffsetReadSeeker(r, 0)
 	var err error

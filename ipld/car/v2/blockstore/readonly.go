@@ -8,8 +8,6 @@ import (
 	"io"
 	"sync"
 
-	"golang.org/x/exp/mmap"
-
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
@@ -20,6 +18,7 @@ import (
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/multiformats/go-multihash"
 	"github.com/multiformats/go-varint"
+	"golang.org/x/exp/mmap"
 )
 
 var _ blockstore.Blockstore = (*ReadOnly)(nil)
@@ -53,7 +52,7 @@ type ReadOnly struct {
 	// If we called carv2.NewReaderMmap, remember to close it too.
 	carv2Closer io.Closer
 
-	ropts carv2.ReadOptions
+	opts carv2.Options
 }
 
 type contextKey string
@@ -78,8 +77,8 @@ const asyncErrHandlerKey contextKey = "asyncErrorHandlerKey"
 //
 // Note that this option only affects the blockstore, and is ignored by the root
 // go-car/v2 package.
-func UseWholeCIDs(enable bool) carv2.ReadOption {
-	return func(o *carv2.ReadOptions) {
+func UseWholeCIDs(enable bool) carv2.Option {
+	return func(o *carv2.Options) {
 		o.BlockstoreUseWholeCIDs = enable
 	}
 }
@@ -93,10 +92,9 @@ func UseWholeCIDs(enable bool) carv2.ReadOption {
 // * For a CARv2 backing an index is only generated if Header.HasIndex returns false.
 //
 // There is no need to call ReadOnly.Close on instances returned by this function.
-func NewReadOnly(backing io.ReaderAt, idx index.Index, opts ...carv2.ReadOption) (*ReadOnly, error) {
-	ropts := carv2.ApplyReadOptions(opts...)
+func NewReadOnly(backing io.ReaderAt, idx index.Index, opts ...carv2.Option) (*ReadOnly, error) {
 	b := &ReadOnly{
-		ropts: ropts,
+		opts: carv2.ApplyOptions(opts...),
 	}
 
 	version, err := readVersion(backing)
@@ -147,7 +145,7 @@ func readVersion(at io.ReaderAt) (uint64, error) {
 	return carv2.ReadVersion(rr)
 }
 
-func generateIndex(at io.ReaderAt, opts ...carv2.ReadOption) (index.Index, error) {
+func generateIndex(at io.ReaderAt, opts ...carv2.Option) (index.Index, error) {
 	var rs io.ReadSeeker
 	switch r := at.(type) {
 	case io.ReadSeeker:
@@ -163,7 +161,7 @@ func generateIndex(at io.ReaderAt, opts ...carv2.ReadOption) (index.Index, error
 // OpenReadOnly opens a read-only blockstore from a CAR file (either v1 or v2), generating an index if it does not exist.
 // Note, the generated index if the index does not exist is ephemeral and only stored in memory.
 // See car.GenerateIndex and Index.Attach for persisting index onto a CAR file.
-func OpenReadOnly(path string, opts ...carv2.ReadOption) (*ReadOnly, error) {
+func OpenReadOnly(path string, opts ...carv2.Option) (*ReadOnly, error) {
 	f, err := mmap.Open(path)
 	if err != nil {
 		return nil, err
@@ -179,7 +177,7 @@ func OpenReadOnly(path string, opts ...carv2.ReadOption) (*ReadOnly, error) {
 }
 
 func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
-	bcid, data, err := util.ReadNode(internalio.NewOffsetReadSeeker(b.backing, idx), b.ropts.ZeroLengthSectionAsEOF)
+	bcid, data, err := util.ReadNode(internalio.NewOffsetReadSeeker(b.backing, idx), b.opts.ZeroLengthSectionAsEOF)
 	return bcid, data, err
 }
 
@@ -221,7 +219,7 @@ func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 			fnErr = err
 			return false
 		}
-		if b.ropts.BlockstoreUseWholeCIDs {
+		if b.opts.BlockstoreUseWholeCIDs {
 			fnFound = readCid.Equals(key)
 			return !fnFound // continue looking if we haven't found it
 		} else {
@@ -263,7 +261,7 @@ func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
 			fnErr = err
 			return false
 		}
-		if b.ropts.BlockstoreUseWholeCIDs {
+		if b.opts.BlockstoreUseWholeCIDs {
 			if readCid.Equals(key) {
 				fnData = data
 				return false
@@ -321,7 +319,7 @@ func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
 			fnErr = err
 			return false
 		}
-		if b.ropts.BlockstoreUseWholeCIDs {
+		if b.opts.BlockstoreUseWholeCIDs {
 			if readCid.Equals(key) {
 				fnSize = int(sectionLen) - cidLen
 				return false
@@ -430,7 +428,7 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 
 			// Null padding; by default it's an error.
 			if length == 0 {
-				if b.ropts.ZeroLengthSectionAsEOF {
+				if b.opts.ZeroLengthSectionAsEOF {
 					break
 				} else {
 					maybeReportError(ctx, errZeroLengthSection)
@@ -450,7 +448,7 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 			}
 
 			// If we're just using multihashes, flatten to the "raw" codec.
-			if !b.ropts.BlockstoreUseWholeCIDs {
+			if !b.opts.BlockstoreUseWholeCIDs {
 				c = cid.NewCidV1(cid.Raw, c.Hash())
 			}
 

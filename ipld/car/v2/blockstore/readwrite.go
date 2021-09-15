@@ -7,18 +7,15 @@ import (
 	"io"
 	"os"
 
-	"github.com/ipld/go-car/v2/internal/carv1"
-	"github.com/multiformats/go-varint"
-
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	carv2 "github.com/ipld/go-car/v2"
-	internalio "github.com/ipld/go-car/v2/internal/io"
-
-	"github.com/ipld/go-car/v2/index"
-
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/index"
+	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
+	internalio "github.com/ipld/go-car/v2/internal/io"
+	"github.com/multiformats/go-varint"
 )
 
 var _ blockstore.Blockstore = (*ReadWrite)(nil)
@@ -40,7 +37,7 @@ type ReadWrite struct {
 	idx        *insertionIndex
 	header     carv2.Header
 
-	wopts carv2.WriteOptions
+	opts carv2.Options
 }
 
 // AllowDuplicatePuts is a write option which makes a CAR blockstore not
@@ -49,8 +46,8 @@ type ReadWrite struct {
 //
 // Note that this option only affects the blockstore, and is ignored by the root
 // go-car/v2 package.
-func AllowDuplicatePuts(allow bool) carv2.WriteOption {
-	return func(o *carv2.WriteOptions) {
+func AllowDuplicatePuts(allow bool) carv2.Option {
+	return func(o *carv2.Options) {
 		o.BlockstoreAllowDuplicatePuts = allow
 	}
 }
@@ -89,7 +86,7 @@ func AllowDuplicatePuts(allow bool) carv2.WriteOption {
 //
 // Resuming from finalized files is allowed. However, resumption will regenerate the index
 // regardless by scanning every existing block in file.
-func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.ReadWriteOption) (*ReadWrite, error) {
+func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.Option) (*ReadWrite, error) {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666) // TODO: Should the user be able to configure FileMode permissions?
 	if err != nil {
 		return nil, fmt.Errorf("could not open read/write file: %w", err)
@@ -114,25 +111,14 @@ func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.ReadWriteOption) 
 		f:      f,
 		idx:    newInsertionIndex(),
 		header: carv2.NewHeader(0),
+		opts:   carv2.ApplyOptions(opts...),
 	}
+	rwbs.ronly.opts = rwbs.opts
 
-	var ro []carv2.ReadOption
-	var wo []carv2.WriteOption
-	for _, opt := range opts {
-		switch opt := opt.(type) {
-		case carv2.ReadOption:
-			ro = append(ro, opt)
-		case carv2.WriteOption:
-			wo = append(wo, opt)
-		}
-	}
-	rwbs.ronly.ropts = carv2.ApplyReadOptions(ro...)
-	rwbs.wopts = carv2.ApplyWriteOptions(wo...)
-
-	if p := rwbs.wopts.DataPadding; p > 0 {
+	if p := rwbs.opts.DataPadding; p > 0 {
 		rwbs.header = rwbs.header.WithDataPadding(p)
 	}
-	if p := rwbs.wopts.IndexPadding; p > 0 {
+	if p := rwbs.opts.IndexPadding; p > 0 {
 		rwbs.header = rwbs.header.WithIndexPadding(p)
 	}
 
@@ -260,7 +246,7 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 
 		// Null padding; by default it's an error.
 		if length == 0 {
-			if b.ronly.ropts.ZeroLengthSectionAsEOF {
+			if b.ronly.opts.ZeroLengthSectionAsEOF {
 				break
 			} else {
 				return fmt.Errorf("carv1 null padding not allowed by default; see WithZeroLegthSectionAsEOF")
@@ -316,11 +302,11 @@ func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 			continue
 		}
 
-		if !b.wopts.BlockstoreAllowDuplicatePuts {
-			if b.ronly.ropts.BlockstoreUseWholeCIDs && b.idx.hasExactCID(c) {
+		if !b.opts.BlockstoreAllowDuplicatePuts {
+			if b.ronly.opts.BlockstoreUseWholeCIDs && b.idx.hasExactCID(c) {
 				continue // deduplicated by CID
 			}
-			if !b.ronly.ropts.BlockstoreUseWholeCIDs {
+			if !b.ronly.opts.BlockstoreUseWholeCIDs {
 				_, err := b.idx.Get(c)
 				if err == nil {
 					continue // deduplicated by hash
@@ -371,7 +357,7 @@ func (b *ReadWrite) Finalize() error {
 	defer b.ronly.closeWithoutMutex()
 
 	// TODO if index not needed don't bother flattening it.
-	fi, err := b.idx.flatten(b.wopts.IndexCodec)
+	fi, err := b.idx.flatten(b.opts.IndexCodec)
 	if err != nil {
 		return err
 	}

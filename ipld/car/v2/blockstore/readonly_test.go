@@ -7,14 +7,11 @@ import (
 	"testing"
 	"time"
 
+	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipfs/go-merkledag"
-
-	blocks "github.com/ipfs/go-block-format"
-
-	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
-
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/stretchr/testify/require"
 )
@@ -34,31 +31,31 @@ func TestReadOnly(t *testing.T) {
 	tests := []struct {
 		name       string
 		v1OrV2path string
-		opts       []carv2.ReadOption
+		opts       []carv2.Option
 		v1r        *carv1.CarReader
 	}{
 		{
 			"OpenedWithCarV1",
 			"../testdata/sample-v1.car",
-			[]carv2.ReadOption{UseWholeCIDs(true)},
+			[]carv2.Option{UseWholeCIDs(true)},
 			newV1ReaderFromV1File(t, "../testdata/sample-v1.car", false),
 		},
 		{
 			"OpenedWithCarV2",
 			"../testdata/sample-wrapped-v2.car",
-			[]carv2.ReadOption{UseWholeCIDs(true)},
+			[]carv2.Option{UseWholeCIDs(true)},
 			newV1ReaderFromV2File(t, "../testdata/sample-wrapped-v2.car", false),
 		},
 		{
 			"OpenedWithCarV1ZeroLenSection",
 			"../testdata/sample-v1-with-zero-len-section.car",
-			[]carv2.ReadOption{UseWholeCIDs(true), carv2.ZeroLengthSectionAsEOF(true)},
+			[]carv2.Option{UseWholeCIDs(true), carv2.ZeroLengthSectionAsEOF(true)},
 			newV1ReaderFromV1File(t, "../testdata/sample-v1-with-zero-len-section.car", true),
 		},
 		{
 			"OpenedWithAnotherCarV1ZeroLenSection",
 			"../testdata/sample-v1-with-zero-len-section2.car",
-			[]carv2.ReadOption{UseWholeCIDs(true), carv2.ZeroLengthSectionAsEOF(true)},
+			[]carv2.Option{UseWholeCIDs(true), carv2.ZeroLengthSectionAsEOF(true)},
 			newV1ReaderFromV1File(t, "../testdata/sample-v1-with-zero-len-section2.car", true),
 		},
 	}

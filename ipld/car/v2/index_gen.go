@@ -16,7 +16,7 @@ import (
 // The generated index will be in multicodec.CarMultihashIndexSorted, the default index codec.
 // The index can be stored in serialized format using index.WriteTo.
 // See LoadIndex.
-func GenerateIndex(v1r io.Reader, opts ...ReadOption) (index.Index, error) {
+func GenerateIndex(v1r io.Reader, opts ...Option) (index.Index, error) {
 	idx := index.NewMultihashSorted()
 	if err := LoadIndex(idx, v1r, opts...); err != nil {
 		return nil, err
@@ -26,7 +26,7 @@ func GenerateIndex(v1r io.Reader, opts ...ReadOption) (index.Index, error) {
 
 // LoadIndex populates idx with index records generated from v1r.
 // The v1r must be data payload in CARv1 format.
-func LoadIndex(idx index.Index, v1r io.Reader, opts ...ReadOption) error {
+func LoadIndex(idx index.Index, v1r io.Reader, opts ...Option) error {
 	reader := internalio.ToByteReadSeeker(v1r)
 	header, err := carv1.ReadHeader(reader)
 	if err != nil {
@@ -38,7 +38,7 @@ func LoadIndex(idx index.Index, v1r io.Reader, opts ...ReadOption) error {
 	}
 
 	// Parse Options.
-	ropts := ApplyReadOptions(opts...)
+	o := ApplyOptions(opts...)
 
 	// Record the start of each section, with first section starring from current position in the
 	// reader, i.e. right after the header, since we have only read the header so far.
@@ -64,7 +64,7 @@ func LoadIndex(idx index.Index, v1r io.Reader, opts ...ReadOption) error {
 
 		// Null padding; by default it's an error.
 		if sectionLen == 0 {
-			if ropts.ZeroLengthSectionAsEOF {
+			if o.ZeroLengthSectionAsEOF {
 				break
 			} else {
 				return fmt.Errorf("carv1 null padding not allowed by default; see ZeroLengthSectionAsEOF")
@@ -112,7 +112,7 @@ func GenerateIndexFromFile(path string) (index.Index, error) {
 //
 // Note, the returned index lives entirely in memory and will not depend on the
 // given reader to fulfill index lookup.
-func ReadOrGenerateIndex(rs io.ReadSeeker, opts ...ReadOption) (index.Index, error) {
+func ReadOrGenerateIndex(rs io.ReadSeeker, opts ...Option) (index.Index, error) {
 	// Read version.
 	version, err := ReadVersion(rs)
 	if err != nil {

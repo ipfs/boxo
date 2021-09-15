@@ -5,16 +5,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/multiformats/go-multihash"
-
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/multiformats/go-multicodec"
+	"github.com/multiformats/go-multihash"
 	"github.com/multiformats/go-varint"
-
-	"github.com/ipld/go-car/v2/index"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,14 +21,14 @@ func TestReadOrGenerateIndex(t *testing.T) {
 	tests := []struct {
 		name        string
 		carPath     string
-		readOpts    []carv2.ReadOption
+		opts        []carv2.Option
 		wantIndexer func(t *testing.T) index.Index
 		wantErr     bool
 	}{
 		{
 			"CarV1IsIndexedAsExpected",
 			"testdata/sample-v1.car",
-			[]carv2.ReadOption{},
+			[]carv2.Option{},
 			func(t *testing.T) index.Index {
 				v1, err := os.Open("testdata/sample-v1.car")
 				require.NoError(t, err)
@@ -44,7 +42,7 @@ func TestReadOrGenerateIndex(t *testing.T) {
 		{
 			"CarV2WithIndexIsReturnedAsExpected",
 			"testdata/sample-wrapped-v2.car",
-			[]carv2.ReadOption{},
+			[]carv2.Option{},
 			func(t *testing.T) index.Index {
 				v2, err := os.Open("testdata/sample-wrapped-v2.car")
 				require.NoError(t, err)
@@ -60,7 +58,7 @@ func TestReadOrGenerateIndex(t *testing.T) {
 		{
 			"CarV1WithZeroLenSectionIsGeneratedAsExpected",
 			"testdata/sample-v1-with-zero-len-section.car",
-			[]carv2.ReadOption{carv2.ZeroLengthSectionAsEOF(true)},
+			[]carv2.Option{carv2.ZeroLengthSectionAsEOF(true)},
 			func(t *testing.T) index.Index {
 				v1, err := os.Open("testdata/sample-v1-with-zero-len-section.car")
 				require.NoError(t, err)
@@ -74,7 +72,7 @@ func TestReadOrGenerateIndex(t *testing.T) {
 		{
 			"AnotherCarV1WithZeroLenSectionIsGeneratedAsExpected",
 			"testdata/sample-v1-with-zero-len-section2.car",
-			[]carv2.ReadOption{carv2.ZeroLengthSectionAsEOF(true)},
+			[]carv2.Option{carv2.ZeroLengthSectionAsEOF(true)},
 			func(t *testing.T) index.Index {
 				v1, err := os.Open("testdata/sample-v1-with-zero-len-section2.car")
 				require.NoError(t, err)
@@ -88,14 +86,14 @@ func TestReadOrGenerateIndex(t *testing.T) {
 		{
 			"CarV1WithZeroLenSectionWithoutOptionIsError",
 			"testdata/sample-v1-with-zero-len-section.car",
-			[]carv2.ReadOption{},
+			[]carv2.Option{},
 			func(t *testing.T) index.Index { return nil },
 			true,
 		},
 		{
 			"CarOtherThanV1OrV2IsError",
 			"testdata/sample-rootless-v42.car",
-			[]carv2.ReadOption{},
+			[]carv2.Option{},
 			func(t *testing.T) index.Index { return nil },
 			true,
 		},
@@ -105,7 +103,7 @@ func TestReadOrGenerateIndex(t *testing.T) {
 			carFile, err := os.Open(tt.carPath)
 			require.NoError(t, err)
 			t.Cleanup(func() { assert.NoError(t, carFile.Close()) })
-			got, err := carv2.ReadOrGenerateIndex(carFile, tt.readOpts...)
+			got, err := carv2.ReadOrGenerateIndex(carFile, tt.opts...)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {

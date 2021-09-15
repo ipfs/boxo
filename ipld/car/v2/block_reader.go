@@ -20,8 +20,8 @@ type BlockReader struct {
 	Roots []cid.Cid
 
 	// Used internally only, by BlockReader.Next during iteration over blocks.
-	r     io.Reader
-	ropts ReadOptions
+	r    io.Reader
+	opts Options
 }
 
 // NewBlockReader instantiates a new BlockReader facilitating iteration over blocks in CARv1 or
@@ -29,7 +29,7 @@ type BlockReader struct {
 // BlockReader.Version. The root CIDs of the CAR payload are exposed via BlockReader.Roots
 //
 // See BlockReader.Next
-func NewBlockReader(r io.Reader, opts ...ReadOption) (*BlockReader, error) {
+func NewBlockReader(r io.Reader, opts ...Option) (*BlockReader, error) {
 	// Read CARv1 header or CARv2 pragma.
 	// Both are a valid CARv1 header, therefore are read as such.
 	pragmaOrV1Header, err := carv1.ReadHeader(r)
@@ -40,7 +40,7 @@ func NewBlockReader(r io.Reader, opts ...ReadOption) (*BlockReader, error) {
 	// Populate the block reader version and options.
 	br := &BlockReader{
 		Version: pragmaOrV1Header.Version,
-		ropts:   ApplyReadOptions(opts...),
+		opts:    ApplyOptions(opts...),
 	}
 
 	// Expect either version 1 or 2.
@@ -116,11 +116,11 @@ func NewBlockReader(r io.Reader, opts ...ReadOption) (*BlockReader, error) {
 // reaches the end of the underlying io.Reader stream.
 //
 // As for CARv2 payload, the underlying io.Reader is read only up to the end of the last block.
-// Note, in a case where ReadOption.ZeroLengthSectionAsEOF is enabled, io.EOF is returned
+// Note, in a case where ZeroLengthSectionAsEOF Option is enabled, io.EOF is returned
 // immediately upon encountering a zero-length section without reading any further bytes from the
 // underlying io.Reader.
 func (br *BlockReader) Next() (blocks.Block, error) {
-	c, data, err := util.ReadNode(br.r, br.ropts.ZeroLengthSectionAsEOF)
+	c, data, err := util.ReadNode(br.r, br.opts.ZeroLengthSectionAsEOF)
 	if err != nil {
 		return nil, err
 	}
