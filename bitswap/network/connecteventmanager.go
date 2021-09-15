@@ -83,9 +83,10 @@ func (c *connectEventManager) OnMessage(p peer.ID) {
 	// we need to modify state
 	c.lk.RLock()
 	state, ok := c.conns[p]
+	responsive := ok && state.responsive
 	c.lk.RUnlock()
 
-	if !ok || state.responsive {
+	if !ok || responsive {
 		return
 	}
 
