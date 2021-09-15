@@ -870,29 +870,29 @@ type logItem struct {
 	pid peer.ID
 	msg bsmsg.BitSwapMessage
 }
-type mockWireTap struct {
+type mockTracer struct {
 	mu  sync.Mutex
 	log []logItem
 }
 
-func (m *mockWireTap) MessageReceived(p peer.ID, msg bsmsg.BitSwapMessage) {
+func (m *mockTracer) MessageReceived(p peer.ID, msg bsmsg.BitSwapMessage) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.log = append(m.log, logItem{'r', p, msg})
 }
-func (m *mockWireTap) MessageSent(p peer.ID, msg bsmsg.BitSwapMessage) {
+func (m *mockTracer) MessageSent(p peer.ID, msg bsmsg.BitSwapMessage) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.log = append(m.log, logItem{'s', p, msg})
 }
 
-func (m *mockWireTap) getLog() []logItem {
+func (m *mockTracer) getLog() []logItem {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.log[:len(m.log):len(m.log)]
 }
 
-func TestWireTap(t *testing.T) {
+func TestTracer(t *testing.T) {
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
@@ -901,9 +901,9 @@ func TestWireTap(t *testing.T) {
 	instances := ig.Instances(3)
 	blocks := bg.Blocks(2)
 
-	// Install WireTap
-	wiretap := new(mockWireTap)
-	bitswap.EnableWireTap(wiretap)(instances[0].Exchange)
+	// Install Tracer
+	wiretap := new(mockTracer)
+	bitswap.WithTracer(wiretap)(instances[0].Exchange)
 
 	// First peer has block
 	err := instances[0].Exchange.HasBlock(blocks[0])
@@ -937,9 +937,9 @@ func TestWireTap(t *testing.T) {
 
 	log := wiretap.getLog()
 
-	// After communication, 3 messages should be logged via WireTap
+	// After communication, 3 messages should be logged via Tracer
 	if l := len(log); l != 3 {
-		t.Fatal("expected 3 items logged via WireTap, found", l)
+		t.Fatal("expected 3 items logged via Tracer, found", l)
 	}
 
 	// Received: 'Have'
@@ -988,7 +988,7 @@ func TestWireTap(t *testing.T) {
 	}
 
 	// After disabling WireTap, no new messages are logged
-	bitswap.DisableWireTap()(instances[0].Exchange)
+	bitswap.WithTracer(nil)(instances[0].Exchange)
 
 	err = instances[0].Exchange.HasBlock(blocks[1])
 	if err != nil {
