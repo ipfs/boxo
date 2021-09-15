@@ -56,8 +56,8 @@ func (bs *Bitswap) taskWorker(ctx context.Context, id int) {
 				// Ideally, yes. But we'd need some way to trigger a retry and/or drop
 				// the peer.
 				bs.engine.MessageSent(envelope.Peer, envelope.Message)
-				if bs.wiretap != nil {
-					bs.wiretap.MessageSent(envelope.Peer, envelope.Message)
+				if bs.tracer != nil {
+					bs.tracer.MessageSent(envelope.Peer, envelope.Message)
 				}
 				bs.sendBlocks(ctx, envelope)
 
