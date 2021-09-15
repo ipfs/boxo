@@ -8,6 +8,7 @@ import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
+	"github.com/multiformats/go-multihash"
 	"github.com/urfave/cli/v2"
 )
 
@@ -44,12 +45,15 @@ func VerifyCar(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		lengthToIndex := carv2.PragmaSize + carv2.HeaderSize + rx.Header.DataOffset + rx.Header.DataSize
+		lengthToIndex := carv2.PragmaSize + carv2.HeaderSize + rx.Header.DataSize
 		if uint64(flen.Size()) > lengthToIndex && rx.Header.IndexOffset == 0 {
 			return fmt.Errorf("header claims no index, but extra bytes in file beyond data size")
 		}
+		if rx.Header.DataOffset < carv2.PragmaSize+carv2.HeaderSize {
+			return fmt.Errorf("data offset places data within carv2 header")
+		}
 		if rx.Header.IndexOffset < lengthToIndex {
-			return fmt.Errorf("index offset overlaps with data")
+			return fmt.Errorf("index offset overlaps with data. data ends at %d. index offset of %d", lengthToIndex, rx.Header.IndexOffset)
 		}
 	}
 
@@ -87,6 +91,13 @@ func VerifyCar(c *cli.Context) error {
 			return err
 		}
 		for _, c := range cidList {
+			cidHash, err := multihash.Decode(c.Hash())
+			if err != nil {
+				return err
+			}
+			if cidHash.Code == multihash.IDENTITY {
+				continue
+			}
 			if err := idx.GetAll(c, func(_ uint64) bool {
 				return true
 			}); err != nil {

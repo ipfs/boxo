@@ -50,10 +50,36 @@ func FilterCar(c *cli.Context) error {
 			outRoots = append(outRoots, r)
 		}
 	}
+
+	outPath := c.Args().Get(1)
+	if !c.Bool("append") {
+		if _, err := os.Stat(outPath); err == nil || !os.IsNotExist(err) {
+			// output to an existing file.
+			if err := os.Truncate(outPath, 0); err != nil {
+				return err
+			}
+		}
+	} else {
+		// roots will need to be whatever is in the output already.
+		cv2r, err := carv2.OpenReader(outPath)
+		if err != nil {
+			return err
+		}
+		if cv2r.Version != 2 {
+			return fmt.Errorf("can only append to version 2 car files")
+		}
+		outRoots, err = cv2r.Roots()
+		if err != nil {
+			return err
+		}
+		_ = cv2r.Close()
+	}
+
 	if len(outRoots) == 0 {
 		fmt.Fprintf(os.Stderr, "warning: no roots defined after filtering\n")
 	}
-	bs, err := blockstore.OpenReadWrite(c.Args().Get(1), outRoots)
+
+	bs, err := blockstore.OpenReadWrite(outPath, outRoots)
 	if err != nil {
 		return err
 	}

@@ -31,6 +31,10 @@ func main1() int {
 						Usage:     "A file to read CIDs from",
 						TakesFile: true,
 					},
+					&cli.BoolFlag{
+						Name:  "append",
+						Usage: "Append cids to an existing output file",
+					},
 				},
 			},
 			{

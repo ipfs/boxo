@@ -1,0 +1,30 @@
+# basic filter
+stdin filteredcids.txt
+car filter ${INPUTS}/sample-wrapped-v2.car out.car
+stderr 'warning: no roots defined after filtering'
+car list out.car
+! stderr .
+cmp stdout filteredcids.txt
+
+# filter with root CID
+stdin filteredroot.txt
+car filter ${INPUTS}/sample-wrapped-v2.car out.car
+! stderr .
+car list out.car
+! stderr .
+cmp stdout filteredroot.txt
+
+# append other cids
+stdin filteredcids.txt
+car filter -append ${INPUTS}/sample-wrapped-v2.car out.car
+! stderr .
+car list out.car
+stdout -count=4 '^bafy'
+
+
+-- filteredcids.txt --
+bafy2bzacebohz654namrgmwjjx4qmtwgxixsd7pn4tlanyrc3g3hwj75hlxrw
+bafy2bzaceaqtiesyfqd2jibmofz22oolguzf5wscwh73rmeypglfu2xhkptri
+bafy2bzacebct3dm7izgyauijzkaf3yd7ylni725k66rq7dfp3jr5ywhpprj3k
+-- filteredroot.txt --
+bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy

@@ -1,0 +1,3 @@
+# "verify" should exit with code 0 on reasonable cars.
+car verify ${INPUTS}/sample-v1.car
+car verify ${INPUTS}/sample-wrapped-v2.car
