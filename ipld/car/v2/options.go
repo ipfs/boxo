@@ -2,6 +2,9 @@ package car
 
 import "github.com/multiformats/go-multicodec"
 
+// DefaultMaxIndexCidSize specifies the maximum size in byptes accepted as a section CID by CARv2 index.
+const DefaultMaxIndexCidSize = 2 << 10 // 2 KiB
+
 // Option describes an option which affects behavior when interacting with CAR files.
 type Option func(*Options)
 
@@ -25,6 +28,8 @@ type Options struct {
 	IndexPadding           uint64
 	IndexCodec             multicodec.Code
 	ZeroLengthSectionAsEOF bool
+	MaxIndexCidSize        uint64
+	StoreIdentityCIDs      bool
 
 	BlockstoreAllowDuplicatePuts bool
 	BlockstoreUseWholeCIDs       bool
@@ -41,6 +46,9 @@ func ApplyOptions(opt ...Option) Options {
 	// Set defaults for zero valued fields.
 	if opts.IndexCodec == 0 {
 		opts.IndexCodec = multicodec.CarMultihashIndexSorted
+	}
+	if opts.MaxIndexCidSize == 0 {
+		opts.MaxIndexCidSize = DefaultMaxIndexCidSize
 	}
 	return opts
 }
@@ -73,5 +81,22 @@ func UseIndexPadding(p uint64) Option {
 func UseIndexCodec(c multicodec.Code) Option {
 	return func(o *Options) {
 		o.IndexCodec = c
+	}
+}
+
+// StoreIdentityCIDs sets whether to persist sections that are referenced by
+// CIDs with multihash.IDENTITY digest.
+// This option is disabled by default.
+func StoreIdentityCIDs(b bool) Option {
+	return func(o *Options) {
+		o.StoreIdentityCIDs = b
+	}
+}
+
+// MaxIndexCidSize specifies the maximum allowed size for indexed CIDs in bytes.
+// Indexing a CID with larger than the allowed size results in ErrCidTooLarge error.
+func MaxIndexCidSize(s uint64) Option {
+	return func(o *Options) {
+		o.MaxIndexCidSize = s
 	}
 }

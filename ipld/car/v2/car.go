@@ -43,6 +43,9 @@ type (
 	}
 )
 
+// fullyIndexedCharPos is the position of Characteristics.Hi bit that specifies whether the index is a catalog af all CIDs or not.
+const fullyIndexedCharPos = 7 // left-most bit
+
 // WriteTo writes this characteristics to the given w.
 func (c Characteristics) WriteTo(w io.Writer) (n int64, err error) {
 	buf := make([]byte, 16)
@@ -62,6 +65,37 @@ func (c *Characteristics) ReadFrom(r io.Reader) (int64, error) {
 	c.Hi = binary.LittleEndian.Uint64(buf[:8])
 	c.Lo = binary.LittleEndian.Uint64(buf[8:])
 	return n, nil
+}
+
+// IsFullyIndexed specifies whether the index of CARv2 represents a catalog of all CID segments.
+// See StoreIdentityCIDs
+func (c *Characteristics) IsFullyIndexed() bool {
+	return isBitSet(c.Hi, fullyIndexedCharPos)
+}
+
+// SetFullyIndexed sets whether of CARv2 represents a catalog of all CID segments.
+func (c *Characteristics) SetFullyIndexed(b bool) {
+	if b {
+		c.Hi = setBit(c.Hi, fullyIndexedCharPos)
+	} else {
+		c.Hi = unsetBit(c.Hi, fullyIndexedCharPos)
+	}
+}
+
+func setBit(n uint64, pos uint) uint64 {
+	n |= 1 << pos
+	return n
+}
+
+func unsetBit(n uint64, pos uint) uint64 {
+	mask := uint64(^(1 << pos))
+	n &= mask
+	return n
+}
+
+func isBitSet(n uint64, pos uint) bool {
+	bit := n & (1 << pos)
+	return bit > 0
 }
 
 // NewHeader instantiates a new CARv2 header, given the data size.

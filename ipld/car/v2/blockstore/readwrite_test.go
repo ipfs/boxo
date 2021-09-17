@@ -2,6 +2,7 @@ package blockstore_test
 
 import (
 	"context"
+	"crypto/sha512"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -12,21 +13,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-merkledag"
-
-	carv2 "github.com/ipld/go-car/v2"
-	"github.com/ipld/go-car/v2/index"
-	"github.com/stretchr/testify/assert"
-
-	"github.com/multiformats/go-multihash"
-	"github.com/stretchr/testify/require"
-
-	ipfsblockstore "github.com/ipfs/go-ipfs-blockstore"
-	"github.com/ipld/go-car/v2/blockstore"
-
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	ipfsblockstore "github.com/ipfs/go-ipfs-blockstore"
+	cbor "github.com/ipfs/go-ipld-cbor"
+	"github.com/ipfs/go-merkledag"
+	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/blockstore"
+	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1"
+	"github.com/multiformats/go-multicodec"
+	"github.com/multiformats/go-multihash"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -687,4 +686,166 @@ func TestReadWriteErrorAfterClose(t *testing.T) {
 		// TODO: test that closing blocks if an AllKeysChan operation is
 		// in progress.
 	}
+}
+
+func TestOpenReadWrite_WritesIdentityCIDsWhenOptionIsEnabled(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "readwrite-with-id-enabled.car")
+	subject, err := blockstore.OpenReadWrite(path, []cid.Cid{}, carv2.StoreIdentityCIDs(true))
+	require.NoError(t, err)
+
+	data := []byte("fish")
+	idmh, err := multihash.Sum(data, multihash.IDENTITY, -1)
+	require.NoError(t, err)
+	idCid := cid.NewCidV1(uint64(multicodec.Raw), idmh)
+
+	idBlock, err := blocks.NewBlockWithCid(data, idCid)
+	require.NoError(t, err)
+	err = subject.Put(idBlock)
+	require.NoError(t, err)
+
+	has, err := subject.Has(idCid)
+	require.NoError(t, err)
+	require.True(t, has)
+
+	gotBlock, err := subject.Get(idCid)
+	require.NoError(t, err)
+	require.Equal(t, idBlock, gotBlock)
+
+	keysChan, err := subject.AllKeysChan(context.Background())
+	require.NoError(t, err)
+	var i int
+	for c := range keysChan {
+		i++
+		require.Equal(t, idCid, c)
+	}
+	require.Equal(t, 1, i)
+
+	err = subject.Finalize()
+	require.NoError(t, err)
+
+	// Assert resulting CAR file indeed has the IDENTITY block.
+	f, err := os.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, f.Close()) })
+
+	reader, err := carv2.NewBlockReader(f)
+	require.NoError(t, err)
+
+	gotBlock, err = reader.Next()
+	require.NoError(t, err)
+	require.Equal(t, idBlock, gotBlock)
+
+	next, err := reader.Next()
+	require.Equal(t, io.EOF, err)
+	require.Nil(t, next)
+
+	// Assert the id is indexed.
+	r, err := carv2.OpenReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, r.Close()) })
+	require.True(t, r.Header.HasIndex())
+
+	ir := r.IndexReader()
+	require.NotNil(t, ir)
+
+	gotIdx, err := index.ReadFrom(ir)
+	require.NoError(t, err)
+
+	// Determine expected offset as the length of header plus one
+	header, err := carv1.ReadHeader(r.DataReader())
+	require.NoError(t, err)
+	object, err := cbor.DumpObject(header)
+	require.NoError(t, err)
+	expectedOffset := len(object) + 1
+
+	// Assert index is iterable and has exactly one record with expected multihash and offset.
+	switch idx := gotIdx.(type) {
+	case index.IterableIndex:
+		var i int
+		err := idx.ForEach(func(mh multihash.Multihash, offset uint64) error {
+			i++
+			require.Equal(t, idmh, mh)
+			require.Equal(t, uint64(expectedOffset), offset)
+			return nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, 1, i)
+	default:
+		require.Failf(t, "unexpected index type", "wanted %v but got %v", multicodec.CarMultihashIndexSorted, idx.Codec())
+	}
+}
+
+func TestOpenReadWrite_ErrorsWhenWritingTooLargeOfACid(t *testing.T) {
+	maxAllowedCidSize := uint64(2)
+	path := filepath.Join(t.TempDir(), "readwrite-with-id-enabled-too-large.car")
+	subject, err := blockstore.OpenReadWrite(path, []cid.Cid{}, carv2.MaxIndexCidSize(maxAllowedCidSize))
+	t.Cleanup(subject.Discard)
+	require.NoError(t, err)
+
+	data := []byte("monsterlobster")
+	mh, err := multihash.Sum(data, multihash.SHA2_256, -1)
+	require.NoError(t, err)
+	bigCid := cid.NewCidV1(uint64(multicodec.Raw), mh)
+	bigCidLen := uint64(bigCid.ByteLen())
+	require.True(t, bigCidLen > maxAllowedCidSize)
+
+	bigBlock, err := blocks.NewBlockWithCid(data, bigCid)
+	require.NoError(t, err)
+	err = subject.Put(bigBlock)
+	require.Equal(t, &carv2.ErrCidTooLarge{MaxSize: maxAllowedCidSize, CurrentSize: bigCidLen}, err)
+}
+
+func TestReadWrite_ReWritingCARv1WithIdentityCidIsIdenticalToOriginalWithOptionsEnabled(t *testing.T) {
+	originalCARv1Path := "../testdata/sample-v1.car"
+	originalCarV1, err := os.Open(originalCARv1Path)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, originalCarV1.Close()) })
+
+	r, err := carv2.NewBlockReader(originalCarV1)
+	require.NoError(t, err)
+
+	path := filepath.Join(t.TempDir(), "readwrite-from-carv1-with-id-enabled.car")
+	subject, err := blockstore.OpenReadWrite(path, r.Roots, carv2.StoreIdentityCIDs(true))
+	require.NoError(t, err)
+	var idCidCount int
+	for {
+		next, err := r.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		if next.Cid().Prefix().MhType == multihash.IDENTITY {
+			idCidCount++
+		}
+		err = subject.Put(next)
+		require.NoError(t, err)
+	}
+	require.NotZero(t, idCidCount)
+	err = subject.Finalize()
+	require.NoError(t, err)
+
+	v2r, err := carv2.OpenReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, v2r.Close()) })
+
+	// Assert characteristics bit is set.
+	require.True(t, v2r.Header.Characteristics.IsFullyIndexed())
+
+	// Assert original CARv1 and generated innter CARv1 payload have the same SHA512 hash
+	// Note, we hash instead of comparing bytes to avoid excessive memory usage when sample CARv1 is large.
+
+	hasher := sha512.New()
+	gotWritten, err := io.Copy(hasher, v2r.DataReader())
+	require.NoError(t, err)
+	gotSum := hasher.Sum(nil)
+
+	hasher.Reset()
+	_, err = originalCarV1.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	wantWritten, err := io.Copy(hasher, originalCarV1)
+	require.NoError(t, err)
+	wantSum := hasher.Sum(nil)
+
+	require.Equal(t, wantWritten, gotWritten)
+	require.Equal(t, wantSum, gotSum)
 }

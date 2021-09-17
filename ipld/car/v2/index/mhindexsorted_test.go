@@ -20,31 +20,6 @@ func TestMutilhashSortedIndex_Codec(t *testing.T) {
 	require.Equal(t, multicodec.CarMultihashIndexSorted, subject.Codec())
 }
 
-func TestMultiWidthCodedIndex_LoadDoesNotLoadIdentityMultihash(t *testing.T) {
-	rng := rand.New(rand.NewSource(1413))
-	identityRecords := generateIndexRecords(t, multihash.IDENTITY, rng)
-	nonIdentityRecords := generateIndexRecords(t, multihash.SHA2_256, rng)
-	records := append(identityRecords, nonIdentityRecords...)
-
-	subject, err := index.New(multicodec.CarMultihashIndexSorted)
-	require.NoError(t, err)
-	err = subject.Load(records)
-	require.NoError(t, err)
-
-	// Assert index does not contain any records with IDENTITY multihash code.
-	for _, r := range identityRecords {
-		wantCid := r.Cid
-		err = subject.GetAll(wantCid, func(o uint64) bool {
-			require.Fail(t, "subject should not contain any records with IDENTITY multihash code")
-			return false
-		})
-		require.Equal(t, index.ErrNotFound, err)
-	}
-
-	// Assert however, index does contain the non IDENTITY records.
-	requireContainsAll(t, subject, nonIdentityRecords)
-}
-
 func TestMultiWidthCodedIndex_MarshalUnmarshal(t *testing.T) {
 	rng := rand.New(rand.NewSource(1413))
 	records := generateIndexRecords(t, multihash.SHA2_256, rng)

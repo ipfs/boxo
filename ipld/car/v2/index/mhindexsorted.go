@@ -17,7 +17,6 @@ var (
 
 type (
 	// MultihashIndexSorted maps multihash code (i.e. hashing algorithm) to multiWidthCodedIndex.
-	// This index ignores any Record with multihash.IDENTITY.
 	MultihashIndexSorted map[uint64]*multiWidthCodedIndex
 	// multiWidthCodedIndex stores multihash code for each multiWidthIndex.
 	multiWidthCodedIndex struct {
@@ -123,10 +122,6 @@ func (m *MultihashIndexSorted) Load(records []Record) error {
 			return err
 		}
 		code := dmh.Code
-		// Ignore IDENTITY multihash in the index.
-		if code == multihash.IDENTITY {
-			continue
-		}
 		recsByCode, ok := byCode[code]
 		if !ok {
 			recsByCode = make([]Record, 0)

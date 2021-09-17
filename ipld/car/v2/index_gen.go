@@ -9,15 +9,19 @@ import (
 	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	internalio "github.com/ipld/go-car/v2/internal/io"
+	"github.com/multiformats/go-multihash"
 	"github.com/multiformats/go-varint"
 )
 
 // GenerateIndex generates index for a given car in v1 format.
-// The generated index will be in multicodec.CarMultihashIndexSorted, the default index codec.
 // The index can be stored in serialized format using index.WriteTo.
 // See LoadIndex.
 func GenerateIndex(v1r io.Reader, opts ...Option) (index.Index, error) {
-	idx := index.NewMultihashSorted()
+	wopts := ApplyOptions(opts...)
+	idx, err := index.New(wopts.IndexCodec)
+	if err != nil {
+		return nil, err
+	}
 	if err := LoadIndex(idx, v1r, opts...); err != nil {
 		return nil, err
 	}
@@ -76,7 +80,13 @@ func LoadIndex(idx index.Index, v1r io.Reader, opts ...Option) error {
 		if err != nil {
 			return err
 		}
-		records = append(records, index.Record{Cid: c, Offset: uint64(sectionOffset)})
+
+		if o.StoreIdentityCIDs || c.Prefix().MhType != multihash.IDENTITY {
+			if uint64(cidLen) > o.MaxIndexCidSize {
+				return &ErrCidTooLarge{MaxSize: o.MaxIndexCidSize, CurrentSize: uint64(cidLen)}
+			}
+			records = append(records, index.Record{Cid: c, Offset: uint64(sectionOffset)})
+		}
 
 		// Seek to the next section by skipping the block.
 		// The section length includes the CID, so subtract it.
@@ -94,7 +104,7 @@ func LoadIndex(idx index.Index, v1r io.Reader, opts ...Option) error {
 }
 
 // GenerateIndexFromFile walks a car v1 file at the give path and generates an index of cid->byte offset.
-// The index can be stored using index.Save into a file or serialized using index.WriteTo.
+// The index can be stored using index.WriteTo.
 // See GenerateIndex.
 func GenerateIndexFromFile(path string) (index.Index, error) {
 	f, err := os.Open(path)

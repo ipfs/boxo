@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/stretchr/testify/assert"
@@ -198,4 +200,45 @@ func TestNewHeaderHasExpectedValues(t *testing.T) {
 	}
 	got := carv2.NewHeader(wantCarV1Len)
 	assert.Equal(t, want, got, "NewHeader got = %v, want = %v", got, want)
+}
+
+func TestCharacteristics_StoreIdentityCIDs(t *testing.T) {
+	subject := carv2.Characteristics{}
+	require.False(t, subject.IsFullyIndexed())
+
+	subject.SetFullyIndexed(true)
+	require.True(t, subject.IsFullyIndexed())
+
+	var buf bytes.Buffer
+	written, err := subject.WriteTo(&buf)
+	require.NoError(t, err)
+	require.Equal(t, int64(16), written)
+	require.Equal(t, []byte{
+		0x80, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+	}, buf.Bytes())
+
+	var decodedSubject carv2.Characteristics
+	read, err := decodedSubject.ReadFrom(&buf)
+	require.NoError(t, err)
+	require.Equal(t, int64(16), read)
+	require.True(t, decodedSubject.IsFullyIndexed())
+
+	buf.Reset()
+	subject.SetFullyIndexed(false)
+	require.False(t, subject.IsFullyIndexed())
+
+	written, err = subject.WriteTo(&buf)
+	require.NoError(t, err)
+	require.Equal(t, int64(16), written)
+	require.Equal(t, []byte{
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+	}, buf.Bytes())
+
+	var decodedSubjectAgain carv2.Characteristics
+	read, err = decodedSubjectAgain.ReadFrom(&buf)
+	require.NoError(t, err)
+	require.Equal(t, int64(16), read)
+	require.False(t, decodedSubjectAgain.IsFullyIndexed())
 }

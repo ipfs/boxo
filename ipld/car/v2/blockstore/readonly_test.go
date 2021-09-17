@@ -32,48 +32,50 @@ func TestReadOnly(t *testing.T) {
 		name       string
 		v1OrV2path string
 		opts       []carv2.Option
-		v1r        *carv1.CarReader
 	}{
 		{
 			"OpenedWithCarV1",
 			"../testdata/sample-v1.car",
-			[]carv2.Option{UseWholeCIDs(true)},
-			newV1ReaderFromV1File(t, "../testdata/sample-v1.car", false),
+			[]carv2.Option{UseWholeCIDs(true), carv2.StoreIdentityCIDs(true)},
 		},
 		{
 			"OpenedWithCarV2",
 			"../testdata/sample-wrapped-v2.car",
-			[]carv2.Option{UseWholeCIDs(true)},
-			newV1ReaderFromV2File(t, "../testdata/sample-wrapped-v2.car", false),
+			[]carv2.Option{UseWholeCIDs(true), carv2.StoreIdentityCIDs(true)},
 		},
 		{
 			"OpenedWithCarV1ZeroLenSection",
 			"../testdata/sample-v1-with-zero-len-section.car",
 			[]carv2.Option{UseWholeCIDs(true), carv2.ZeroLengthSectionAsEOF(true)},
-			newV1ReaderFromV1File(t, "../testdata/sample-v1-with-zero-len-section.car", true),
 		},
 		{
 			"OpenedWithAnotherCarV1ZeroLenSection",
 			"../testdata/sample-v1-with-zero-len-section2.car",
 			[]carv2.Option{UseWholeCIDs(true), carv2.ZeroLengthSectionAsEOF(true)},
-			newV1ReaderFromV1File(t, "../testdata/sample-v1-with-zero-len-section2.car", true),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			subject, err := OpenReadOnly(tt.v1OrV2path, tt.opts...)
+			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, subject.Close()) })
+
+			f, err := os.Open(tt.v1OrV2path)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, f.Close()) })
+
+			reader, err := carv2.NewBlockReader(f, tt.opts...)
 			require.NoError(t, err)
 
 			// Assert roots match v1 payload.
-			wantRoots := tt.v1r.Header.Roots
+			wantRoots := reader.Roots
 			gotRoots, err := subject.Roots()
 			require.NoError(t, err)
 			require.Equal(t, wantRoots, gotRoots)
 
 			var wantCids []cid.Cid
 			for {
-				wantBlock, err := tt.v1r.Next()
+				wantBlock, err := reader.Next()
 				if err == io.EOF {
 					break
 				}

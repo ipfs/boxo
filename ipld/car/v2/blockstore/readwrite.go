@@ -295,11 +295,23 @@ func (b *ReadWrite) PutMany(blks []blocks.Block) error {
 	for _, bl := range blks {
 		c := bl.Cid()
 
-		// Check for IDENTITY CID. If IDENTITY, ignore and move to the next block.
-		if _, ok, err := isIdentity(c); err != nil {
-			return err
-		} else if ok {
-			continue
+		// If StoreIdentityCIDs option is disabled then treat IDENTITY CIDs like IdStore.
+		if !b.opts.StoreIdentityCIDs {
+			// Check for IDENTITY CID. If IDENTITY, ignore and move to the next block.
+			if _, ok, err := isIdentity(c); err != nil {
+				return err
+			} else if ok {
+				continue
+			}
+		}
+
+		// Check if its size is too big.
+		// If larger than maximum allowed size, return error.
+		// Note, we need to check this regardless of whether we have IDENTITY CID or not.
+		// Since multhihash codes other than IDENTITY can result in large digests.
+		cSize := uint64(len(c.Bytes()))
+		if cSize > b.opts.MaxIndexCidSize {
+			return &carv2.ErrCidTooLarge{MaxSize: b.opts.MaxIndexCidSize, CurrentSize: cSize}
 		}
 
 		if !b.opts.BlockstoreAllowDuplicatePuts {
@@ -351,6 +363,7 @@ func (b *ReadWrite) Finalize() error {
 
 	// TODO check if add index option is set and don't write the index then set index offset to zero.
 	b.header = b.header.WithDataSize(uint64(b.dataWriter.Position()))
+	b.header.Characteristics.SetFullyIndexed(b.opts.StoreIdentityCIDs)
 
 	// Note that we can't use b.Close here, as that tries to grab the same
 	// mutex we're holding here.

@@ -31,9 +31,7 @@ type (
 	// implementations might index the entire CID, the entire multihash, or
 	// just part of a multihash's digest.
 	//
-	// In accordance with the CARv2 specification, Index will never contain information about CIDs
-	// with multihash.IDENTITY code.
-	// See: https://ipld.io/specs/transport/car/carv2/#index-format
+	// See: multicodec.CarIndexSorted, multicodec.CarMultihashIndexSorted
 	Index interface {
 		// Codec provides the multicodec code that the index implements.
 		//
@@ -47,12 +45,19 @@ type (
 		Unmarshal(r io.Reader) error
 
 		// Load inserts a number of records into the index.
+		// Note that Index will load all given records. Any filtering of the records such as
+		// exclusion of CIDs with multihash.IDENTITY code must occur prior to calling this function.
+		//
+		// Further, the actual information extracted and indexed from the given records entirely
+		// depends on the concrete index implementation.
+		// For example, some index implementations may only store partial multihashes.
 		Load([]Record) error
 
 		// GetAll looks up all blocks matching a given CID,
 		// calling a function for each one of their offsets.
 		//
-		// If the function returns false, GetAll stops.
+		// GetAll stops if the given function returns false,
+		// or there are no more offsets; whichever happens first.
 		//
 		// If no error occurred and the CID isn't indexed,
 		// meaning that no callbacks happen,
@@ -61,8 +66,13 @@ type (
 	}
 
 	// IterableIndex extends Index in cases where the Index is able to
-	// provide an iterator for getting the list of all entries in the
+	// provide an iterator for getting the list of all multihashes in the
 	// index.
+	//
+	// Note that it is possible for an index to contain multiple offsets for
+	// a given multihash.
+	//
+	// See: IterableIndex.ForEach, Index.GetAll.
 	IterableIndex interface {
 		Index
 
@@ -73,6 +83,11 @@ type (
 		//
 		// If the callback returns a non-nil error, the iteration is aborted,
 		// and the ForEach function returns the error to the user.
+		//
+		// An index may contain multiple offsets corresponding to the same multihash, e.g. via duplicate blocks.
+		// In such cases, the given function may be called multiple times with the same multhihash but different offset.
+		//
+		// The order of calls to the given function is entirely index-specific.
 		ForEach(func(multihash.Multihash, uint64) error) error
 	}
 )
