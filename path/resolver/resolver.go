@@ -136,10 +136,6 @@ func (r *Resolver) ResolvePath(ctx context.Context, fpath path.Path) (ipld.Node,
 	// create a selector to traverse all path segments but only match the last
 	pathSelector := pathLeafSelector(p)
 
-	// create a new cancellable session
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-
 	nodes, c, _, err := r.resolveNodes(ctx, c, pathSelector)
 	if err != nil {
 		return nil, nil, err
@@ -180,10 +176,6 @@ func (r *Resolver) ResolvePathComponents(ctx context.Context, fpath path.Path) (
 	// create a selector to traverse and match all path segments
 	pathSelector := pathAllSelector(p)
 
-	// create a new cancellable session
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-
 	nodes, _, _, err := r.resolveNodes(ctx, c, pathSelector)
 	if err != nil {
 		evt.Append(logging.LoggableMap{"error": err.Error()})
@@ -206,10 +198,6 @@ func (r *Resolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []stri
 
 	// create a selector to traverse and match all path segments
 	pathSelector := pathAllSelector(names)
-
-	// create a new cancellable session
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
 
 	session := r.FetcherFactory.NewSession(ctx)
 
