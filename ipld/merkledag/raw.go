@@ -102,6 +102,10 @@ func (rn *RawNode) Size() (uint64, error) {
 // Stat returns some Stats about this node.
 func (rn *RawNode) Stat() (*format.NodeStat, error) {
 	return &format.NodeStat{
+		Hash:           rn.Cid().String(),
+		NumLinks:       0,
+		BlockSize:      len(rn.RawData()),
+		LinksSize:      0,
 		CumulativeSize: len(rn.RawData()),
 		DataSize:       len(rn.RawData()),
 	}, nil
