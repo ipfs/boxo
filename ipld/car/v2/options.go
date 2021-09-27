@@ -86,6 +86,9 @@ func UseIndexCodec(c multicodec.Code) Option {
 
 // StoreIdentityCIDs sets whether to persist sections that are referenced by
 // CIDs with multihash.IDENTITY digest.
+// When writing CAR files with this option,
+// Characteristics.IsFullyIndexed will be set.
+//
 // This option is disabled by default.
 func StoreIdentityCIDs(b bool) Option {
 	return func(o *Options) {
