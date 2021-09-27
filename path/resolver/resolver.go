@@ -72,6 +72,10 @@ func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (cid.
 	// create a selector to traverse and match all path segments
 	pathSelector := pathAllSelector(p[:len(p)-1])
 
+	// create a new cancellable session
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
 	// resolve node before last path segment
 	nodes, lastCid, depth, err := r.resolveNodes(ctx, c, pathSelector)
 	if err != nil {
@@ -118,6 +122,9 @@ func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (cid.
 
 // ResolvePath fetches the node for given path. It returns the last item
 // returned by ResolvePathComponents and the last link traversed which can be used to recover the block.
+//
+// Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
+// possible to load certain values.
 func (r *Resolver) ResolvePath(ctx context.Context, fpath path.Path) (ipld.Node, ipld.Link, error) {
 	// validate path
 	if err := fpath.IsValid(); err != nil {
@@ -152,6 +159,9 @@ func ResolveSingle(ctx context.Context, ds format.NodeGetter, nd format.Node, na
 // ResolvePathComponents fetches the nodes for each segment of the given path.
 // It uses the first path component as a hash (key) of the first node, then
 // resolves all other components walking the links via a selector traversal
+//
+// Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
+// possible to load certain values.
 func (r *Resolver) ResolvePathComponents(ctx context.Context, fpath path.Path) ([]ipld.Node, error) {
 	//lint:ignore SA1019 TODO: replace EventBegin
 	evt := log.EventBegin(ctx, "resolvePathComponents", logging.LoggableMap{"fpath": fpath})
@@ -187,6 +197,9 @@ func (r *Resolver) ResolvePathComponents(ctx context.Context, fpath path.Path) (
 //
 // ResolveLinks(nd, []string{"foo", "bar", "baz"})
 // would retrieve "baz" in ("bar" in ("foo" in nd.Links).Links).Links
+//
+// Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
+// possible to load certain values.
 func (r *Resolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []string) ([]ipld.Node, error) {
 	//lint:ignore SA1019 TODO: replace EventBegin
 	evt := log.EventBegin(ctx, "resolveLinks", logging.LoggableMap{"names": names})
@@ -194,10 +207,6 @@ func (r *Resolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []stri
 
 	// create a selector to traverse and match all path segments
 	pathSelector := pathAllSelector(names)
-
-	// create a new cancellable session
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
 
 	session := r.FetcherFactory.NewSession(ctx)
 
@@ -218,10 +227,6 @@ func (r *Resolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []stri
 // Finds nodes matching the selector starting with a cid. Returns the matched nodes, the cid of the block containing
 // the last node, and the depth of the last node within its block (root is depth 0).
 func (r *Resolver) resolveNodes(ctx context.Context, c cid.Cid, sel ipld.Node) ([]ipld.Node, cid.Cid, int, error) {
-	// create a new cancellable session
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-
 	session := r.FetcherFactory.NewSession(ctx)
 
 	// traverse selector
