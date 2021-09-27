@@ -10,6 +10,7 @@ import (
 
 var _ ipld.Node = PathedPBNode(nil)
 var _ schema.TypedNode = PathedPBNode(nil)
+var _ ipld.ADL = PathedPBNode(nil)
 
 type PathedPBNode = *_PathedPBNode
 

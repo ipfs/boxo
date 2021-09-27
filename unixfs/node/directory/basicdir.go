@@ -13,6 +13,7 @@ import (
 
 var _ ipld.Node = UnixFSBasicDir(nil)
 var _ schema.TypedNode = UnixFSBasicDir(nil)
+var _ ipld.ADL = UnixFSBasicDir(nil)
 
 type UnixFSBasicDir = *_UnixFSBasicDir
 

@@ -19,6 +19,7 @@ const (
 
 var _ ipld.Node = UnixFSHAMTShard(nil)
 var _ schema.TypedNode = UnixFSHAMTShard(nil)
+var _ ipld.ADL = UnixFSHAMTShard(nil)
 
 // UnixFSHAMTShared is an IPLD Prime Node that provides a read interface
 // to a UnixFS HAMT
@@ -51,6 +52,10 @@ func NewUnixFSHAMTShard(ctx context.Context, substrate dagpb.PBNode, data data.U
 		bitfield:     bf,
 		cachedLength: -1,
 	}, nil
+}
+
+func (n UnixFSHAMTShard) Substrate() ipld.Node {
+	return n._substrate
 }
 
 func (n UnixFSHAMTShard) Kind() ipld.Kind {
