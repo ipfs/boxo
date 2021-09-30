@@ -276,7 +276,7 @@ func (sct *selectiveCarTraverser) traverseBlocks() error {
 		if sct.sc.opts.maxTraversalLinks < math.MaxInt64 {
 			prog.Budget = &traversal.Budget{
 				NodeBudget: math.MaxInt64,
-				LinkBudget: sct.sc.opts.maxTraversalLinks,
+				LinkBudget: int64(sct.sc.opts.maxTraversalLinks),
 			}
 		}
 		err = prog.WalkAdv(nd, parsed, func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil })
@@ -293,7 +293,7 @@ func (sct *selectiveCarTraverser) traverseBlocks() error {
 // This type should not be used directly by end users; it's only exposed as a
 // side effect of SelectiveCarOption.
 type selectiveCarOptions struct {
-	maxTraversalLinks int64
+	maxTraversalLinks uint64
 }
 
 // SelectiveCarOption describes an option which affects behavior when
@@ -304,7 +304,7 @@ type SelectiveCarOption func(*selectiveCarOptions)
 // can execute before failing
 func MaxTraversalLinks(maxTraversalLinks uint64) SelectiveCarOption {
 	return func(sco *selectiveCarOptions) {
-		sco.maxTraversalLinks = int64(maxTraversalLinks)
+		sco.maxTraversalLinks = maxTraversalLinks
 	}
 }
 
