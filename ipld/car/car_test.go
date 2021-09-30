@@ -15,6 +15,7 @@ import (
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/stretchr/testify/require"
 )
 
@@ -171,6 +172,44 @@ func TestRoundtripSelective(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, has)
 	}
+}
+
+func TestLinkLimitSelective(t *testing.T) {
+	sourceBserv := dstest.Bserv()
+	sourceBs := sourceBserv.Blockstore()
+	dserv := merkledag.NewDAGService(sourceBserv)
+	a := merkledag.NewRawNode([]byte("aaaa"))
+	b := merkledag.NewRawNode([]byte("bbbb"))
+	c := merkledag.NewRawNode([]byte("cccc"))
+
+	nd1 := &merkledag.ProtoNode{}
+	nd1.AddNodeLink("cat", a)
+
+	nd2 := &merkledag.ProtoNode{}
+	nd2.AddNodeLink("first", nd1)
+	nd2.AddNodeLink("dog", b)
+	nd2.AddNodeLink("repeat", nd1)
+
+	nd3 := &merkledag.ProtoNode{}
+	nd3.AddNodeLink("second", nd2)
+	nd3.AddNodeLink("bear", c)
+
+	assertAddNodes(t, dserv, a, b, c, nd1, nd2, nd3)
+
+	sc := NewSelectiveCar(context.Background(),
+		sourceBs,
+		[]Dag{{Root: nd3.Cid(), Selector: selectorparse.CommonSelector_ExploreAllRecursively}},
+		MaxTraversalLinks(2))
+
+	buf := new(bytes.Buffer)
+	blockCount := 0
+	err := sc.Write(buf, func(block Block) error {
+		blockCount++
+		return nil
+	})
+	require.Equal(t, blockCount, 3) // root + 2
+	require.Error(t, err)
+	require.Regexp(t, "^traversal budget exceeded: budget for links reached zero while on path .*", err)
 }
 
 func TestEOFHandling(t *testing.T) {

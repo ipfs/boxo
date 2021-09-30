@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 
 	cid "github.com/ipfs/go-cid"
 	util "github.com/ipld/go-car/util"
@@ -40,6 +41,7 @@ type SelectiveCar struct {
 	ctx   context.Context
 	dags  []Dag
 	store ReadStore
+	opts  selectiveCarOptions
 }
 
 // OnCarHeaderFunc is called during traversal when the header is created
@@ -61,16 +63,16 @@ type SelectiveCarPrepared struct {
 
 // NewSelectiveCar creates a new SelectiveCar for the given car file based
 // a block store and set of root+selector pairs
-func NewSelectiveCar(ctx context.Context, store ReadStore, dags []Dag) SelectiveCar {
+func NewSelectiveCar(ctx context.Context, store ReadStore, dags []Dag, opts ...SelectiveCarOption) SelectiveCar {
 	return SelectiveCar{
 		ctx:   ctx,
 		store: store,
 		dags:  dags,
+		opts:  applyOptions(opts...),
 	}
 }
 
 func (sc SelectiveCar) traverse(onCarHeader OnCarHeaderFunc, onNewCarBlock OnNewCarBlockFunc) (uint64, error) {
-
 	traverser := &selectiveCarTraverser{onCarHeader, onNewCarBlock, 0, cid.NewSet(), sc, cidlink.DefaultLinkSystem()}
 	traverser.lsys.StorageReadOpener = traverser.loader
 	return traverser.traverse()
@@ -264,16 +266,55 @@ func (sct *selectiveCarTraverser) traverseBlocks() error {
 		if err != nil {
 			return err
 		}
-		err = traversal.Progress{
+		prog := traversal.Progress{
 			Cfg: &traversal.Config{
 				Ctx:                            sct.sc.ctx,
 				LinkSystem:                     sct.lsys,
 				LinkTargetNodePrototypeChooser: nsc,
 			},
-		}.WalkAdv(nd, parsed, func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil })
+		}
+		if sct.sc.opts.maxTraversalLinks < math.MaxInt64 {
+			prog.Budget = &traversal.Budget{
+				NodeBudget: math.MaxInt64,
+				LinkBudget: sct.sc.opts.maxTraversalLinks,
+			}
+		}
+		err = prog.WalkAdv(nd, parsed, func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil })
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// selectiveCarOptions holds the configured options after applying a number of
+// SelectiveCarOption funcs.
+//
+// This type should not be used directly by end users; it's only exposed as a
+// side effect of SelectiveCarOption.
+type selectiveCarOptions struct {
+	maxTraversalLinks int64
+}
+
+// SelectiveCarOption describes an option which affects behavior when
+// interacting with the SelectiveCar interface.
+type SelectiveCarOption func(*selectiveCarOptions)
+
+// MaxTraversalLinks changes the allowed number of links a selector traversal
+// can execute before failing
+func MaxTraversalLinks(maxTraversalLinks uint64) SelectiveCarOption {
+	return func(sco *selectiveCarOptions) {
+		sco.maxTraversalLinks = int64(maxTraversalLinks)
+	}
+}
+
+// applyOptions applies given opts and returns the resulting selectiveCarOptions
+func applyOptions(opt ...SelectiveCarOption) selectiveCarOptions {
+	opts := selectiveCarOptions{
+		maxTraversalLinks: math.MaxInt64, // default: traverse all
+	}
+	for _, o := range opt {
+		o(&opts)
+	}
+	return opts
 }
