@@ -182,26 +182,12 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 					"`WithDataPadding` option must match the padding on file. "+
 					"Expected padding value of %v but got %v", wantPadding, gotPadding,
 			)
-		} else if headerInFile.DataSize != 0 {
-			// If header in file contains the size of car v1, then the index is most likely present.
-			// Since we will need to re-generate the index, as the one in file is flattened, truncate
-			// the file so that the Readonly.backing has the right set of bytes to deal with.
-			// This effectively means resuming from a finalized file will wipe its index even if there
-			// are no blocks put unless the user calls finalize.
-			if err := b.f.Truncate(int64(headerInFile.DataOffset + headerInFile.DataSize)); err != nil {
-				return err
-			}
-		} else {
+		} else if headerInFile.DataSize == 0 {
 			// If CARv1 size is zero, since CARv1 offset wasn't, then the CARv2 header was
 			// most-likely partially written. Since we write the header last in Finalize then the
 			// file most-likely contains the index and we cannot know where it starts, therefore
 			// can't resume.
 			return errors.New("corrupt CARv2 header; cannot resume from file")
-		}
-		// Now that CARv2 header is present on file, clear it to avoid incorrect size and offset in
-		// header in case blocksotre is closed without finalization and is resumed from.
-		if err := b.unfinalize(); err != nil {
-			return err
 		}
 	}
 
@@ -215,6 +201,22 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 	if !header.Matches(carv1.CarHeader{Roots: roots, Version: 1}) {
 		// Cannot resume if version and root does not match.
 		return errors.New("cannot resume on file with mismatching data header")
+	}
+
+	if headerInFile.DataOffset != 0 {
+		// If header in file contains the size of car v1, then the index is most likely present.
+		// Since we will need to re-generate the index, as the one in file is flattened, truncate
+		// the file so that the Readonly.backing has the right set of bytes to deal with.
+		// This effectively means resuming from a finalized file will wipe its index even if there
+		// are no blocks put unless the user calls finalize.
+		if err := b.f.Truncate(int64(headerInFile.DataOffset + headerInFile.DataSize)); err != nil {
+			return err
+		}
+	}
+	// Now that CARv2 header is present on file, clear it to avoid incorrect size and offset in
+	// header in case blocksotre is closed without finalization and is resumed from.
+	if err := b.unfinalize(); err != nil {
+		return fmt.Errorf("could not un-finalize: %w", err)
 	}
 
 	// TODO See how we can reduce duplicate code here.

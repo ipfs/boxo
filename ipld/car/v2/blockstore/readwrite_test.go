@@ -600,17 +600,39 @@ func TestReadWriteResumptionFromNonV2FileIsError(t *testing.T) {
 	require.Nil(t, subject)
 }
 
+func TestReadWriteResumptionMismatchingRootsIsError(t *testing.T) {
+	tmpPath := requireTmpCopy(t, "../testdata/sample-wrapped-v2.car")
+
+	origContent, err := ioutil.ReadFile(tmpPath)
+	require.NoError(t, err)
+
+	badRoot, err := cid.NewPrefixV1(cid.Raw, multihash.SHA2_256).Sum([]byte("bad root"))
+	require.NoError(t, err)
+
+	subject, err := blockstore.OpenReadWrite(tmpPath, []cid.Cid{badRoot})
+	require.EqualError(t, err, "cannot resume on file with mismatching data header")
+	require.Nil(t, subject)
+
+	newContent, err := ioutil.ReadFile(tmpPath)
+	require.NoError(t, err)
+
+	// Expect the bad file to be left untouched; check the size first.
+	// If the sizes mismatch, printing a huge diff would not help us.
+	require.Equal(t, len(origContent), len(newContent))
+	require.Equal(t, origContent, newContent)
+}
+
 func requireTmpCopy(t *testing.T, src string) string {
 	srcF, err := os.Open(src)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, srcF.Close()) })
+	defer func() { require.NoError(t, srcF.Close()) }()
 	stats, err := srcF.Stat()
 	require.NoError(t, err)
 
 	dst := filepath.Join(t.TempDir(), stats.Name())
 	dstF, err := os.Create(dst)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, dstF.Close()) })
+	defer func() { require.NoError(t, dstF.Close()) }()
 
 	_, err = io.Copy(dstF, srcF)
 	require.NoError(t, err)
