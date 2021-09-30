@@ -131,3 +131,149 @@ func assertAddNodes(t *testing.T, adder format.NodeAdder, nds ...format.Node) {
 		assert.NoError(t, adder.Add(context.Background(), nd))
 	}
 }
+
+func TestReplaceRootsInFile(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		roots      []cid.Cid
+		wantErrMsg string
+	}{
+		{
+			name:       "CorruptPragmaIsRejected",
+			path:       "testdata/sample-corrupt-pragma.car",
+			wantErrMsg: "unexpected EOF",
+		},
+		{
+			name:       "CARv42IsRejected",
+			path:       "testdata/sample-rootless-v42.car",
+			wantErrMsg: "invalid car version: 42",
+		},
+		{
+			name:       "CARv1RootsOfDifferentSizeAreNotReplaced",
+			path:       "testdata/sample-v1.car",
+			wantErrMsg: "current header size (61) must match replacement header size (18)",
+		},
+		{
+			name:       "CARv2RootsOfDifferentSizeAreNotReplaced",
+			path:       "testdata/sample-wrapped-v2.car",
+			wantErrMsg: "current header size (61) must match replacement header size (18)",
+		},
+		{
+			name:       "CARv1NonEmptyRootsOfDifferentSizeAreNotReplaced",
+			path:       "testdata/sample-v1.car",
+			roots:      []cid.Cid{requireDecodedCid(t, "QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")},
+			wantErrMsg: "current header size (61) must match replacement header size (57)",
+		},
+		{
+			name:       "CARv1ZeroLenNonEmptyRootsOfDifferentSizeAreNotReplaced",
+			path:       "testdata/sample-v1-with-zero-len-section.car",
+			roots:      []cid.Cid{merkledag.NewRawNode([]byte("fish")).Cid()},
+			wantErrMsg: "current header size (61) must match replacement header size (59)",
+		},
+		{
+			name:       "CARv2NonEmptyRootsOfDifferentSizeAreNotReplaced",
+			path:       "testdata/sample-wrapped-v2.car",
+			roots:      []cid.Cid{merkledag.NewRawNode([]byte("fish")).Cid()},
+			wantErrMsg: "current header size (61) must match replacement header size (59)",
+		},
+		{
+			name:       "CARv2IndexlessNonEmptyRootsOfDifferentSizeAreNotReplaced",
+			path:       "testdata/sample-v2-indexless.car",
+			roots:      []cid.Cid{merkledag.NewRawNode([]byte("fish")).Cid()},
+			wantErrMsg: "current header size (61) must match replacement header size (59)",
+		},
+		{
+			name:  "CARv1SameSizeRootsAreReplaced",
+			path:  "testdata/sample-v1.car",
+			roots: []cid.Cid{requireDecodedCid(t, "bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5od")},
+		},
+		{
+			name:  "CARv2SameSizeRootsAreReplaced",
+			path:  "testdata/sample-wrapped-v2.car",
+			roots: []cid.Cid{requireDecodedCid(t, "bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oi")},
+		},
+		{
+			name:  "CARv2IndexlessSameSizeRootsAreReplaced",
+			path:  "testdata/sample-v2-indexless.car",
+			roots: []cid.Cid{requireDecodedCid(t, "bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oi")},
+		},
+		{
+			name:  "CARv1ZeroLenSameSizeRootsAreReplaced",
+			path:  "testdata/sample-v1-with-zero-len-section.car",
+			roots: []cid.Cid{requireDecodedCid(t, "bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5o5")},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Make a copy of input files to preserve original for comparison.
+			// This also avoids modification files in testdata.
+			tmpCopy := requireTmpCopy(t, tt.path)
+			err := ReplaceRootsInFile(tmpCopy, tt.roots)
+			if tt.wantErrMsg != "" {
+				require.EqualError(t, err, tt.wantErrMsg)
+				return
+			}
+			require.NoError(t, err)
+
+			original, err := os.Open(tt.path)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, original.Close()) }()
+
+			target, err := os.Open(tmpCopy)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, target.Close()) }()
+
+			// Assert file size has not changed.
+			wantStat, err := original.Stat()
+			require.NoError(t, err)
+			gotStat, err := target.Stat()
+			require.NoError(t, err)
+			require.Equal(t, wantStat.Size(), gotStat.Size())
+
+			wantReader, err := NewBlockReader(original, ZeroLengthSectionAsEOF(true))
+			require.NoError(t, err)
+			gotReader, err := NewBlockReader(target, ZeroLengthSectionAsEOF(true))
+			require.NoError(t, err)
+
+			// Assert roots are replaced.
+			require.Equal(t, tt.roots, gotReader.Roots)
+
+			// Assert data blocks are identical.
+			for {
+				wantNext, wantErr := wantReader.Next()
+				gotNext, gotErr := gotReader.Next()
+				if wantErr == io.EOF {
+					require.Equal(t, io.EOF, gotErr)
+					break
+				}
+				require.NoError(t, wantErr)
+				require.NoError(t, gotErr)
+				require.Equal(t, wantNext, gotNext)
+			}
+		})
+	}
+}
+
+func requireDecodedCid(t *testing.T, s string) cid.Cid {
+	decoded, err := cid.Decode(s)
+	require.NoError(t, err)
+	return decoded
+}
+
+func requireTmpCopy(t *testing.T, src string) string {
+	srcF, err := os.Open(src)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, srcF.Close()) }()
+	stats, err := srcF.Stat()
+	require.NoError(t, err)
+
+	dst := filepath.Join(t.TempDir(), stats.Name())
+	dstF, err := os.Create(dst)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, dstF.Close()) }()
+
+	_, err = io.Copy(dstF, srcF)
+	require.NoError(t, err)
+	return dst
+}

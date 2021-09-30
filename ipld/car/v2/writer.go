@@ -1,12 +1,15 @@
 package car
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2/index"
+	"github.com/ipld/go-car/v2/internal/carv1"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 )
 
@@ -209,4 +212,101 @@ func AttachIndex(path string, idx index.Index, offset uint64) error {
 	defer out.Close()
 	indexWriter := internalio.NewOffsetWriter(out, int64(offset))
 	return index.WriteTo(idx, indexWriter)
+}
+
+// ReplaceRootsInFile replaces the root CIDs in CAR file at given path with the given roots.
+// This function accepts both CARv1 and CARv2 files.
+//
+// Note that the roots are only replaced if their total serialized size exactly matches the total
+// serialized size of existing roots in CAR file.
+func ReplaceRootsInFile(path string, roots []cid.Cid) (err error) {
+	f, err := os.OpenFile(path, os.O_RDWR, 0o666)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		// Close file and override return error type if it is nil.
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}()
+
+	// Read header or pragma; note that both are a valid CARv1 header.
+	header, err := carv1.ReadHeader(f)
+	if err != nil {
+		return err
+	}
+
+	var currentSize int64
+	var newHeaderOffset int64
+	switch header.Version {
+	case 1:
+		// When the given file is a CARv1 :
+		// 1. The offset at which the new header should be written is zero (newHeaderOffset = 0)
+		// 2. The current header size is equal to the number of bytes read, and
+		//
+		// Note that we explicitly avoid using carv1.HeaderSize to determine the current header size.
+		// This is based on the fact that carv1.ReadHeader does not read any extra bytes.
+		// Therefore, we can avoid extra allocations of carv1.HeaderSize to determine size by simply
+		// counting the bytes read so far.
+		currentSize, err = f.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return err
+		}
+	case 2:
+		// When the given file is a CARv2 :
+		// 1. The offset at which the new header should be written is carv2.Header.DataOffset
+		// 2. The inner CARv1 header size is equal to the number of bytes read minus carv2.Header.DataOffset
+		var v2h Header
+		if _, err = v2h.ReadFrom(f); err != nil {
+			return err
+		}
+		newHeaderOffset = int64(v2h.DataOffset)
+		if _, err = f.Seek(newHeaderOffset, io.SeekStart); err != nil {
+			return err
+		}
+		var innerV1Header *carv1.CarHeader
+		innerV1Header, err = carv1.ReadHeader(f)
+		if err != nil {
+			return err
+		}
+		if innerV1Header.Version != 1 {
+			err = fmt.Errorf("invalid data payload header: expected version 1, got %d", innerV1Header.Version)
+		}
+		var readSoFar int64
+		readSoFar, err = f.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return err
+		}
+		currentSize = readSoFar - newHeaderOffset
+	default:
+		err = fmt.Errorf("invalid car version: %d", header.Version)
+		return err
+	}
+
+	newHeader := &carv1.CarHeader{
+		Roots:   roots,
+		Version: 1,
+	}
+	// Serialize the new header straight up instead of using carv1.HeaderSize.
+	// Because, carv1.HeaderSize serialises it to calculate size anyway.
+	// By serializing straight up we get the replacement bytes and size.
+	// Otherwise, we end up serializing the new header twice:
+	// once through carv1.HeaderSize, and
+	// once to write it out.
+	var buf bytes.Buffer
+	if err = carv1.WriteHeader(newHeader, &buf); err != nil {
+		return err
+	}
+	// Assert the header sizes are consistent.
+	newSize := int64(buf.Len())
+	if currentSize != newSize {
+		return fmt.Errorf("current header size (%d) must match replacement header size (%d)", currentSize, newSize)
+	}
+	// Seek to the offset at which the new header should be written.
+	if _, err = f.Seek(newHeaderOffset, io.SeekStart); err != nil {
+		return err
+	}
+	_, err = f.Write(buf.Bytes())
+	return err
 }
