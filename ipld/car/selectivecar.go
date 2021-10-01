@@ -271,6 +271,7 @@ func (sct *selectiveCarTraverser) traverseBlocks() error {
 				Ctx:                            sct.sc.ctx,
 				LinkSystem:                     sct.lsys,
 				LinkTargetNodePrototypeChooser: nsc,
+				LinkVisitOnlyOnce:              sct.sc.opts.TraverseLinksOnlyOnce,
 			},
 		}
 		if sct.sc.opts.MaxTraversalLinks < math.MaxInt64 {
