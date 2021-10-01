@@ -2,7 +2,7 @@ package car
 
 import "math"
 
-// Options holds the configured options after applying a number of
+// options holds the configured options after applying a number of
 // Option funcs.
 type options struct {
 	TraverseLinksOnlyOnce bool
@@ -38,7 +38,7 @@ func MaxTraversalLinks(MaxTraversalLinks uint64) Option {
 	}
 }
 
-// ApplyOptions applies given opts and returns the resulting Options.
+// applyOptions applies given opts and returns the resulting options.
 func applyOptions(opt ...Option) options {
 	opts := options{
 		TraverseLinksOnlyOnce: false,         // default: recurse until exhausted
