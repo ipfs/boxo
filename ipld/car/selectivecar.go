@@ -41,7 +41,7 @@ type SelectiveCar struct {
 	ctx   context.Context
 	dags  []Dag
 	store ReadStore
-	opts  selectiveCarOptions
+	opts  Options
 }
 
 // OnCarHeaderFunc is called during traversal when the header is created
@@ -63,12 +63,12 @@ type SelectiveCarPrepared struct {
 
 // NewSelectiveCar creates a new SelectiveCar for the given car file based
 // a block store and set of root+selector pairs
-func NewSelectiveCar(ctx context.Context, store ReadStore, dags []Dag, opts ...SelectiveCarOption) SelectiveCar {
+func NewSelectiveCar(ctx context.Context, store ReadStore, dags []Dag, opts ...Option) SelectiveCar {
 	return SelectiveCar{
 		ctx:   ctx,
 		store: store,
 		dags:  dags,
-		opts:  applyOptions(opts...),
+		opts:  ApplyOptions(opts...),
 	}
 }
 
@@ -273,10 +273,10 @@ func (sct *selectiveCarTraverser) traverseBlocks() error {
 				LinkTargetNodePrototypeChooser: nsc,
 			},
 		}
-		if sct.sc.opts.maxTraversalLinks < math.MaxInt64 {
+		if sct.sc.opts.MaxTraversalLinks < math.MaxInt64 {
 			prog.Budget = &traversal.Budget{
 				NodeBudget: math.MaxInt64,
-				LinkBudget: int64(sct.sc.opts.maxTraversalLinks),
+				LinkBudget: int64(sct.sc.opts.MaxTraversalLinks),
 			}
 		}
 		err = prog.WalkAdv(nd, parsed, func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil })
@@ -285,36 +285,4 @@ func (sct *selectiveCarTraverser) traverseBlocks() error {
 		}
 	}
 	return nil
-}
-
-// selectiveCarOptions holds the configured options after applying a number of
-// SelectiveCarOption funcs.
-//
-// This type should not be used directly by end users; it's only exposed as a
-// side effect of SelectiveCarOption.
-type selectiveCarOptions struct {
-	maxTraversalLinks uint64
-}
-
-// SelectiveCarOption describes an option which affects behavior when
-// interacting with the SelectiveCar interface.
-type SelectiveCarOption func(*selectiveCarOptions)
-
-// MaxTraversalLinks changes the allowed number of links a selector traversal
-// can execute before failing
-func MaxTraversalLinks(maxTraversalLinks uint64) SelectiveCarOption {
-	return func(sco *selectiveCarOptions) {
-		sco.maxTraversalLinks = maxTraversalLinks
-	}
-}
-
-// applyOptions applies given opts and returns the resulting selectiveCarOptions
-func applyOptions(opt ...SelectiveCarOption) selectiveCarOptions {
-	opts := selectiveCarOptions{
-		maxTraversalLinks: math.MaxInt64, // default: traverse all
-	}
-	for _, o := range opt {
-		o(&opts)
-	}
-	return opts
 }
