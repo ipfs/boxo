@@ -1,28 +1,27 @@
-package car_test
+package car
 
 import (
 	"math"
 	"testing"
 
-	car "github.com/ipld/go-car"
 	"github.com/stretchr/testify/require"
 )
 
 func TestApplyOptions_SetsExpectedDefaults(t *testing.T) {
-	require.Equal(t, car.Options{
+	require.Equal(t, options{
 		MaxTraversalLinks:     math.MaxInt64,
 		TraverseLinksOnlyOnce: false,
-	}, car.ApplyOptions())
+	}, applyOptions())
 }
 
 func TestApplyOptions_AppliesOptions(t *testing.T) {
 	require.Equal(t,
-		car.Options{
+		options{
 			MaxTraversalLinks:     123,
 			TraverseLinksOnlyOnce: true,
 		},
-		car.ApplyOptions(
-			car.MaxTraversalLinks(123),
-			car.TraverseLinksOnlyOnce(),
+		applyOptions(
+			MaxTraversalLinks(123),
+			TraverseLinksOnlyOnce(),
 		))
 }

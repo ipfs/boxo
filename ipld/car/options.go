@@ -4,17 +4,14 @@ import "math"
 
 // Options holds the configured options after applying a number of
 // Option funcs.
-//
-// This type should not be used directly by end users; it's only exposed as a
-// side effect of Option.
-type Options struct {
+type options struct {
 	TraverseLinksOnlyOnce bool
 	MaxTraversalLinks     uint64
 }
 
 // Option describes an option which affects behavior when
 // interacting with the  interface.
-type Option func(*Options)
+type Option func(*options)
 
 // TraverseLinksOnlyOnce prevents the traversal engine from repeatedly visiting
 // the same links more than once.
@@ -25,7 +22,7 @@ type Option func(*Options)
 // links for different reasons during selector execution can be valid and
 // necessary to perform full traversal.
 func TraverseLinksOnlyOnce() Option {
-	return func(sco *Options) {
+	return func(sco *options) {
 		sco.TraverseLinksOnlyOnce = true
 	}
 }
@@ -36,16 +33,14 @@ func TraverseLinksOnlyOnce() Option {
 // Note that setting this option may cause an error to be returned from selector
 // execution when building a SelectiveCar.
 func MaxTraversalLinks(MaxTraversalLinks uint64) Option {
-	return func(sco *Options) {
+	return func(sco *options) {
 		sco.MaxTraversalLinks = MaxTraversalLinks
 	}
 }
 
 // ApplyOptions applies given opts and returns the resulting Options.
-// This function should not be used directly by end users; it's only exposed as a
-// side effect of Option.
-func ApplyOptions(opt ...Option) Options {
-	opts := Options{
+func applyOptions(opt ...Option) options {
+	opts := options{
 		TraverseLinksOnlyOnce: false,         // default: recurse until exhausted
 		MaxTraversalLinks:     math.MaxInt64, // default: traverse all
 	}

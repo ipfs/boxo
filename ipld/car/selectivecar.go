@@ -41,7 +41,7 @@ type SelectiveCar struct {
 	ctx   context.Context
 	dags  []Dag
 	store ReadStore
-	opts  Options
+	opts  options
 }
 
 // OnCarHeaderFunc is called during traversal when the header is created
@@ -68,7 +68,7 @@ func NewSelectiveCar(ctx context.Context, store ReadStore, dags []Dag, opts ...O
 		ctx:   ctx,
 		store: store,
 		dags:  dags,
-		opts:  ApplyOptions(opts...),
+		opts:  applyOptions(opts...),
 	}
 }
 
