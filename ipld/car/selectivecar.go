@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 
 	cid "github.com/ipfs/go-cid"
 	util "github.com/ipld/go-car/util"
@@ -40,6 +41,7 @@ type SelectiveCar struct {
 	ctx   context.Context
 	dags  []Dag
 	store ReadStore
+	opts  options
 }
 
 // OnCarHeaderFunc is called during traversal when the header is created
@@ -61,16 +63,16 @@ type SelectiveCarPrepared struct {
 
 // NewSelectiveCar creates a new SelectiveCar for the given car file based
 // a block store and set of root+selector pairs
-func NewSelectiveCar(ctx context.Context, store ReadStore, dags []Dag) SelectiveCar {
+func NewSelectiveCar(ctx context.Context, store ReadStore, dags []Dag, opts ...Option) SelectiveCar {
 	return SelectiveCar{
 		ctx:   ctx,
 		store: store,
 		dags:  dags,
+		opts:  applyOptions(opts...),
 	}
 }
 
 func (sc SelectiveCar) traverse(onCarHeader OnCarHeaderFunc, onNewCarBlock OnNewCarBlockFunc) (uint64, error) {
-
 	traverser := &selectiveCarTraverser{onCarHeader, onNewCarBlock, 0, cid.NewSet(), sc, cidlink.DefaultLinkSystem()}
 	traverser.lsys.StorageReadOpener = traverser.loader
 	return traverser.traverse()
@@ -264,13 +266,21 @@ func (sct *selectiveCarTraverser) traverseBlocks() error {
 		if err != nil {
 			return err
 		}
-		err = traversal.Progress{
+		prog := traversal.Progress{
 			Cfg: &traversal.Config{
 				Ctx:                            sct.sc.ctx,
 				LinkSystem:                     sct.lsys,
 				LinkTargetNodePrototypeChooser: nsc,
+				LinkVisitOnlyOnce:              sct.sc.opts.TraverseLinksOnlyOnce,
 			},
-		}.WalkAdv(nd, parsed, func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil })
+		}
+		if sct.sc.opts.MaxTraversalLinks < math.MaxInt64 {
+			prog.Budget = &traversal.Budget{
+				NodeBudget: math.MaxInt64,
+				LinkBudget: int64(sct.sc.opts.MaxTraversalLinks),
+			}
+		}
+		err = prog.WalkAdv(nd, parsed, func(traversal.Progress, ipld.Node, traversal.VisitReason) error { return nil })
 		if err != nil {
 			return err
 		}
