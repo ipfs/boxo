@@ -207,6 +207,31 @@ func WithTaskComparator(comparator TaskComparator) Option {
 	}
 }
 
+// wrapTaskComparator wraps a TaskComparator so it can be used as a QueueTaskComparator
+func wrapTaskComparator(tc TaskComparator) peertask.QueueTaskComparator {
+	return func(a, b *peertask.QueueTask) bool {
+		taskDataA := a.Task.Data.(*taskData)
+		taskInfoA := &TaskInfo{
+			Peer:         a.Target,
+			Cid:          a.Task.Topic.(cid.Cid),
+			IsWantBlock:  taskDataA.IsWantBlock,
+			SendDontHave: taskDataA.SendDontHave,
+			BlockSize:    taskDataA.BlockSize,
+			HaveBlock:    taskDataA.HaveBlock,
+		}
+		taskDataB := b.Task.Data.(*taskData)
+		taskInfoB := &TaskInfo{
+			Peer:         b.Target,
+			Cid:          b.Task.Topic.(cid.Cid),
+			IsWantBlock:  taskDataB.IsWantBlock,
+			SendDontHave: taskDataB.SendDontHave,
+			BlockSize:    taskDataB.BlockSize,
+			HaveBlock:    taskDataB.HaveBlock,
+		}
+		return tc(taskInfoA, taskInfoB)
+	}
+}
+
 // NewEngine creates a new block sending engine for the given block store.
 // maxOutstandingBytesPerPeer hints to the peer task queue not to give a peer more tasks if it has some maximum
 // work already outstanding.
@@ -295,29 +320,9 @@ func newEngine(
 	}
 
 	if e.taskComparator != nil {
-		peerTaskComparator := func(a, b *peertask.QueueTask) bool {
-			taskDataA := a.Task.Data.(*taskData)
-			taskInfoA := &TaskInfo{
-				Peer:         a.Target,
-				Cid:          a.Task.Topic.(cid.Cid),
-				IsWantBlock:  taskDataA.IsWantBlock,
-				SendDontHave: taskDataA.SendDontHave,
-				BlockSize:    taskDataA.BlockSize,
-				HaveBlock:    taskDataA.HaveBlock,
-			}
-			taskDataB := b.Task.Data.(*taskData)
-			taskInfoB := &TaskInfo{
-				Peer:         b.Target,
-				Cid:          b.Task.Topic.(cid.Cid),
-				IsWantBlock:  taskDataB.IsWantBlock,
-				SendDontHave: taskDataB.SendDontHave,
-				BlockSize:    taskDataB.BlockSize,
-				HaveBlock:    taskDataB.HaveBlock,
-			}
-			return e.taskComparator(taskInfoA, taskInfoB)
-		}
-		peerTaskQueueOpts = append(peerTaskQueueOpts, peertaskqueue.PeerComparator(peertracker.TaskPriorityPeerComparator(peerTaskComparator)))
-		peerTaskQueueOpts = append(peerTaskQueueOpts, peertaskqueue.TaskComparator(peerTaskComparator))
+		queueTaskComparator := wrapTaskComparator(e.taskComparator)
+		peerTaskQueueOpts = append(peerTaskQueueOpts, peertaskqueue.PeerComparator(peertracker.TaskPriorityPeerComparator(queueTaskComparator)))
+		peerTaskQueueOpts = append(peerTaskQueueOpts, peertaskqueue.TaskComparator(queueTaskComparator))
 	}
 
 	e.peerRequestQueue = peertaskqueue.New(peerTaskQueueOpts...)
