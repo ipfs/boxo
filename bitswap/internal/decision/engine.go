@@ -182,6 +182,8 @@ type Engine struct {
 
 // TaskInfo represents the details of a request from a peer.
 type TaskInfo struct {
+	Peer peer.ID
+	// The CID of the block
 	Cid cid.Cid
 	// Tasks can be want-have or want-block
 	IsWantBlock bool
@@ -296,6 +298,7 @@ func newEngine(
 		peerTaskComparator := func(a, b *peertask.QueueTask) bool {
 			taskDataA := a.Task.Data.(*taskData)
 			taskInfoA := &TaskInfo{
+				Peer:         a.Target,
 				Cid:          a.Task.Topic.(cid.Cid),
 				IsWantBlock:  taskDataA.IsWantBlock,
 				SendDontHave: taskDataA.SendDontHave,
@@ -304,6 +307,7 @@ func newEngine(
 			}
 			taskDataB := b.Task.Data.(*taskData)
 			taskInfoB := &TaskInfo{
+				Peer:         b.Target,
 				Cid:          b.Task.Topic.(cid.Cid),
 				IsWantBlock:  taskDataB.IsWantBlock,
 				SendDontHave: taskDataB.SendDontHave,
