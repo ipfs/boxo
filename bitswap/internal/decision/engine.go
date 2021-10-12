@@ -19,6 +19,7 @@ import (
 	"github.com/ipfs/go-metrics-interface"
 	"github.com/ipfs/go-peertaskqueue"
 	"github.com/ipfs/go-peertaskqueue/peertask"
+	"github.com/ipfs/go-peertaskqueue/peertracker"
 	process "github.com/jbenet/goprocess"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
@@ -175,6 +176,33 @@ type Engine struct {
 	// used to ensure metrics are reported each fixed number of operation
 	metricsLock         sync.Mutex
 	metricUpdateCounter int
+
+	taskComparator TaskComparator
+}
+
+// TaskInfo represents the details of a request from a peer.
+type TaskInfo struct {
+	Cid cid.Cid
+	// Tasks can be want-have or want-block
+	IsWantBlock bool
+	// Whether to immediately send a response if the block is not found
+	SendDontHave bool
+	// The size of the block corresponding to the task
+	BlockSize int
+	// Whether the block was found
+	HaveBlock bool
+}
+
+// TaskComparator is used for task prioritization.
+// It should return true if task 'ta' has higher priority than task 'tb'
+type TaskComparator func(ta, tb *TaskInfo) bool
+
+type Option func(*Engine)
+
+func WithTaskComparator(comparator TaskComparator) Option {
+	return func(e *Engine) {
+		e.taskComparator = comparator
+	}
 }
 
 // NewEngine creates a new block sending engine for the given block store.
@@ -192,6 +220,7 @@ func NewEngine(
 	activeEngineGauge metrics.Gauge,
 	pendingBlocksGauge metrics.Gauge,
 	activeBlocksGauge metrics.Gauge,
+	opts ...Option,
 ) *Engine {
 	return newEngine(
 		ctx,
@@ -207,6 +236,7 @@ func NewEngine(
 		activeEngineGauge,
 		pendingBlocksGauge,
 		activeBlocksGauge,
+		opts...,
 	)
 }
 
@@ -223,6 +253,7 @@ func newEngine(
 	activeEngineGauge metrics.Gauge,
 	pendingBlocksGauge metrics.Gauge,
 	activeBlocksGauge metrics.Gauge,
+	opts ...Option,
 ) *Engine {
 
 	if scoreLedger == nil {
@@ -247,12 +278,46 @@ func newEngine(
 	}
 	e.tagQueued = fmt.Sprintf(tagFormat, "queued", uuid.New().String())
 	e.tagUseful = fmt.Sprintf(tagFormat, "useful", uuid.New().String())
-	e.peerRequestQueue = peertaskqueue.New(
+
+	for _, opt := range opts {
+		opt(e)
+	}
+
+	// default peer task queue options
+	peerTaskQueueOpts := []peertaskqueue.Option{
 		peertaskqueue.OnPeerAddedHook(e.onPeerAdded),
 		peertaskqueue.OnPeerRemovedHook(e.onPeerRemoved),
 		peertaskqueue.TaskMerger(newTaskMerger()),
 		peertaskqueue.IgnoreFreezing(true),
-		peertaskqueue.MaxOutstandingWorkPerPeer(maxOutstandingBytesPerPeer))
+		peertaskqueue.MaxOutstandingWorkPerPeer(maxOutstandingBytesPerPeer),
+	}
+
+	if e.taskComparator != nil {
+		peerTaskComparator := func(a, b *peertask.QueueTask) bool {
+			taskDataA := a.Task.Data.(*taskData)
+			taskInfoA := &TaskInfo{
+				Cid:          a.Task.Topic.(cid.Cid),
+				IsWantBlock:  taskDataA.IsWantBlock,
+				SendDontHave: taskDataA.SendDontHave,
+				BlockSize:    taskDataA.BlockSize,
+				HaveBlock:    taskDataA.HaveBlock,
+			}
+			taskDataB := b.Task.Data.(*taskData)
+			taskInfoB := &TaskInfo{
+				Cid:          b.Task.Topic.(cid.Cid),
+				IsWantBlock:  taskDataB.IsWantBlock,
+				SendDontHave: taskDataB.SendDontHave,
+				BlockSize:    taskDataB.BlockSize,
+				HaveBlock:    taskDataB.HaveBlock,
+			}
+			return e.taskComparator(taskInfoA, taskInfoB)
+		}
+		peerTaskQueueOpts = append(peerTaskQueueOpts, peertaskqueue.PeerComparator(peertracker.TaskPriorityPeerComparator(peerTaskComparator)))
+		peerTaskQueueOpts = append(peerTaskQueueOpts, peertaskqueue.TaskComparator(peerTaskComparator))
+	}
+
+	e.peerRequestQueue = peertaskqueue.New(peerTaskQueueOpts...)
+
 	return e
 }
 
