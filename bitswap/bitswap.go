@@ -384,7 +384,7 @@ type Bitswap struct {
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
 
-	taskComparator TaskComparator
+	taskComparator decision.TaskComparator
 }
 
 type counters struct {
