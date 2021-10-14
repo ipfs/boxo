@@ -69,7 +69,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	providerQueryManager.Startup()
 	keys := testutil.GenerateCids(2)
 
-	sessionCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[0])
 	secondRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[1])
@@ -107,7 +107,7 @@ func TestDedupingProviderRequests(t *testing.T) {
 	providerQueryManager.Startup()
 	key := testutil.GenerateCids(1)[0]
 
-	sessionCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key)
 	secondRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, key)
@@ -152,7 +152,7 @@ func TestCancelOneRequestDoesNotTerminateAnother(t *testing.T) {
 	firstSessionCtx, firstCancel := context.WithTimeout(ctx, 3*time.Millisecond)
 	defer firstCancel()
 	firstRequestChan := providerQueryManager.FindProvidersAsync(firstSessionCtx, key)
-	secondSessionCtx, secondCancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	secondSessionCtx, secondCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer secondCancel()
 	secondRequestChan := providerQueryManager.FindProvidersAsync(secondSessionCtx, key)
 
@@ -262,7 +262,7 @@ func TestRateLimitingRequests(t *testing.T) {
 	providerQueryManager.Startup()
 
 	keys := testutil.GenerateCids(maxInProcessRequests + 1)
-	sessionCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	var requestChannels []<-chan peer.ID
 	for i := 0; i < maxInProcessRequests+1; i++ {
@@ -283,6 +283,7 @@ func TestRateLimitingRequests(t *testing.T) {
 	fpn.queriesMadeMutex.Lock()
 	defer fpn.queriesMadeMutex.Unlock()
 	if fpn.queriesMade != maxInProcessRequests+1 {
+		t.Logf("Queries made: %d\n", fpn.queriesMade)
 		t.Fatal("Did not make all seperate requests")
 	}
 }
@@ -291,7 +292,7 @@ func TestFindProviderTimeout(t *testing.T) {
 	peers := testutil.GeneratePeers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
-		delay:      1 * time.Millisecond,
+		delay:      10 * time.Millisecond,
 	}
 	ctx := context.Background()
 	providerQueryManager := New(ctx, fpn)
@@ -299,7 +300,7 @@ func TestFindProviderTimeout(t *testing.T) {
 	providerQueryManager.SetFindProviderTimeout(2 * time.Millisecond)
 	keys := testutil.GenerateCids(1)
 
-	sessionCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[0])
 	var firstPeersReceived []peer.ID
