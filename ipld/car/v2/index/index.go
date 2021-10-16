@@ -87,7 +87,7 @@ type (
 		// An index may contain multiple offsets corresponding to the same multihash, e.g. via duplicate blocks.
 		// In such cases, the given function may be called multiple times with the same multhihash but different offset.
 		//
-		// The order of calls to the given function is entirely index-specific.
+		// The order of calls to the given function is deterministic, but entirely index-specific.
 		ForEach(func(multihash.Multihash, uint64) error) error
 	}
 )

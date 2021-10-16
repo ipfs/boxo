@@ -157,7 +157,13 @@ func (m *MultihashIndexSorted) GetAll(cid cid.Cid, f func(uint64) bool) error {
 
 // ForEach calls f for every multihash and its associated offset stored by this index.
 func (m *MultihashIndexSorted) ForEach(f func(mh multihash.Multihash, offset uint64) error) error {
-	for _, mwci := range *m {
+	sizes := make([]uint64, 0, len(*m))
+	for k := range *m {
+		sizes = append(sizes, k)
+	}
+	sort.Slice(sizes, func(i, j int) bool { return sizes[i] < sizes[j] })
+	for _, s := range sizes {
+		mwci := (*m)[s]
 		if err := mwci.forEach(f); err != nil {
 			return err
 		}

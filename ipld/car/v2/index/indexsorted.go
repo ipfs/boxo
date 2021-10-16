@@ -235,7 +235,13 @@ func (m *multiWidthIndex) Load(items []Record) error {
 }
 
 func (m *multiWidthIndex) forEachDigest(f func(digest []byte, offset uint64) error) error {
-	for _, swi := range *m {
+	sizes := make([]uint32, 0, len(*m))
+	for k := range *m {
+		sizes = append(sizes, k)
+	}
+	sort.Slice(sizes, func(i, j int) bool { return sizes[i] < sizes[j] })
+	for _, s := range sizes {
+		swi := (*m)[s]
 		if err := swi.forEachDigest(f); err != nil {
 			return err
 		}

@@ -46,6 +46,35 @@ func TestMultiWidthCodedIndex_MarshalUnmarshal(t *testing.T) {
 	requireContainsAll(t, umSubject, records)
 }
 
+func TestMultiWidthCodedIndex_StableIterate(t *testing.T) {
+	rng := rand.New(rand.NewSource(1414))
+	records := generateIndexRecords(t, multihash.SHA2_256, rng)
+	records = append(records, generateIndexRecords(t, multihash.SHA2_512, rng)...)
+	records = append(records, generateIndexRecords(t, multihash.IDENTITY, rng)...)
+
+	// Create a new mh sorted index and load randomly generated records into it.
+	subject, err := index.New(multicodec.CarMultihashIndexSorted)
+	require.NoError(t, err)
+	err = subject.Load(records)
+	require.NoError(t, err)
+
+	iterable := subject.(index.IterableIndex)
+	mh := make([]multihash.Multihash, 0, len(records))
+	require.NoError(t, iterable.ForEach(func(m multihash.Multihash, _ uint64) error {
+		mh = append(mh, m)
+		return nil
+	}))
+
+	for i := 0; i < 10; i++ {
+		candidate := make([]multihash.Multihash, 0, len(records))
+		require.NoError(t, iterable.ForEach(func(m multihash.Multihash, _ uint64) error {
+			candidate = append(candidate, m)
+			return nil
+		}))
+		require.Equal(t, mh, candidate)
+	}
+}
+
 func generateIndexRecords(t *testing.T, hasherCode uint64, rng *rand.Rand) []index.Record {
 	var records []index.Record
 	recordCount := rng.Intn(99) + 1 // Up to 100 records
