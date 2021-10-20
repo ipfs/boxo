@@ -160,9 +160,14 @@ func (sg *sesGetter) GetMany(ctx context.Context, keys []cid.Cid) <-chan *format
 	return getNodesFromBG(ctx, sg.bs, keys)
 }
 
+// WrapSession wraps a blockservice session to satisfy the format.NodeGetter interface
+func WrapSession(s *bserv.Session) format.NodeGetter {
+	return &sesGetter{s}
+}
+
 // Session returns a NodeGetter using a new session for block fetches.
 func (n *dagService) Session(ctx context.Context) format.NodeGetter {
-	return &sesGetter{bserv.NewSession(ctx, n.Blocks)}
+	return WrapSession(bserv.NewSession(ctx, n.Blocks))
 }
 
 // FetchGraph fetches all nodes that are children of the given node
