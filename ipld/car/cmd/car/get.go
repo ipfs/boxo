@@ -2,20 +2,22 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
 
-	_ "github.com/ipld/go-codec-dagpb"
+	dagpb "github.com/ipld/go-codec-dagpb"
+	"github.com/ipld/go-ipld-prime"
 	_ "github.com/ipld/go-ipld-prime/codec/cbor"
 	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
 	_ "github.com/ipld/go-ipld-prime/codec/dagjson"
 	_ "github.com/ipld/go-ipld-prime/codec/json"
 	_ "github.com/ipld/go-ipld-prime/codec/raw"
 
-	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	ipfsbs "github.com/ipfs/go-ipfs-blockstore"
+	"github.com/ipld/go-car"
 	"github.com/ipld/go-car/v2/blockstore"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
@@ -68,18 +70,45 @@ func GetCarDag(c *cli.Context) error {
 		return fmt.Errorf("usage: car get-dag [-s selector] <file.car> <root cid> <output file>")
 	}
 
+	// string to CID for the root of the DAG to extract
+	rootCid, err := cid.Parse(c.Args().Get(1))
+	if err != nil {
+		return err
+	}
+
 	bs, err := blockstore.OpenReadOnly(c.Args().Get(0))
 	if err != nil {
 		return err
 	}
 
-	// string to CID
-	blkCid, err := cid.Parse(c.Args().Get(1))
-	if err != nil {
-		return err
-	}
+	output := c.Args().Get(2)
+	strict := c.Bool("strict")
 
-	outStore, err := blockstore.OpenReadWrite(c.Args().Get(2), []cid.Cid{blkCid})
+	// selector traversal, default to ExploreAllRecursively which only explores the DAG blocks
+	// because we only care about the blocks loaded during the walk, not the nodes matched
+	sel := selectorParser.CommonSelector_ExploreAllRecursively
+	if c.IsSet("selector") {
+		sel, err = selectorParser.ParseJSONSelector(c.String("selector"))
+		if err != nil {
+			return err
+		}
+	}
+	linkVisitOnlyOnce := !c.IsSet("selector") // if using a custom selector, this isn't as safe
+
+	switch c.Int("version") {
+	case 2:
+		return writeCarV2(rootCid, output, bs, strict, sel, linkVisitOnlyOnce)
+	case 1:
+		return writeCarV1(rootCid, output, bs, strict, sel, linkVisitOnlyOnce)
+	default:
+		return fmt.Errorf("invalid CAR version %d", c.Int("version"))
+	}
+}
+
+func writeCarV2(rootCid cid.Cid, output string, bs *blockstore.ReadOnly, strict bool, sel datamodel.Node, linkVisitOnlyOnce bool) error {
+	_ = os.Remove(output)
+
+	outStore, err := blockstore.OpenReadWrite(output, []cid.Cid{rootCid}, blockstore.AllowDuplicatePuts(false))
 	if err != nil {
 		return err
 	}
@@ -91,7 +120,7 @@ func GetCarDag(c *cli.Context) error {
 			blk, err := bs.Get(cl.Cid)
 			if err != nil {
 				if err == ipfsbs.ErrNotFound {
-					if c.Bool("strict") {
+					if strict {
 						return nil, err
 					}
 					return nil, traversal.SkipMe{}
@@ -102,61 +131,53 @@ func GetCarDag(c *cli.Context) error {
 		}
 		return nil, fmt.Errorf("unknown link type: %T", l)
 	}
-	ls.StorageWriteOpener = func(_ linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
-		buf := bytes.NewBuffer(nil)
-		return buf, func(l datamodel.Link) error {
-			if cl, ok := l.(cidlink.Link); ok {
-				blk, err := blocks.NewBlockWithCid(buf.Bytes(), cl.Cid)
-				if err != nil {
-					return err
-				}
-				return outStore.Put(blk)
-			}
-			return fmt.Errorf("unknown link type: %T", l)
-		}, nil
+
+	nsc := func(lnk datamodel.Link, lctx ipld.LinkContext) (datamodel.NodePrototype, error) {
+		if lnk, ok := lnk.(cidlink.Link); ok && lnk.Cid.Prefix().Codec == 0x70 {
+			return dagpb.Type.PBNode, nil
+		}
+		return basicnode.Prototype.Any, nil
 	}
 
-	rootlnk := cidlink.Link{
-		Cid: blkCid,
-	}
-	node, err := ls.Load(linking.LinkContext{}, rootlnk, basicnode.Prototype.Any)
+	rootLink := cidlink.Link{Cid: rootCid}
+	ns, _ := nsc(rootLink, ipld.LinkContext{})
+	rootNode, err := ls.Load(ipld.LinkContext{}, rootLink, ns)
 	if err != nil {
 		return err
 	}
 
-	// selector traversal
-	s, _ := selector.CompileSelector(selectorParser.CommonSelector_MatchAllRecursively)
-	if c.IsSet("selector") {
-		sn, err := selectorParser.ParseJSONSelector(c.String("selector"))
-		if err != nil {
-			return err
-		}
-		s, err = selector.CompileSelector(sn)
-		if err != nil {
-			return err
-		}
+	traversalProgress := traversal.Progress{
+		Cfg: &traversal.Config{
+			LinkSystem:                     ls,
+			LinkTargetNodePrototypeChooser: nsc,
+			LinkVisitOnlyOnce:              linkVisitOnlyOnce,
+		},
 	}
 
-	lnkProto := cidlink.LinkPrototype{
-		Prefix: blkCid.Prefix(),
+	s, err := selector.CompileSelector(sel)
+	if err != nil {
+		return err
 	}
-	err = traversal.WalkMatching(node, s, func(p traversal.Progress, n datamodel.Node) error {
-		if p.LastBlock.Link != nil {
-			if cl, ok := p.LastBlock.Link.(cidlink.Link); ok {
-				lnkProto = cidlink.LinkPrototype{
-					Prefix: cl.Prefix(),
-				}
-			}
-		}
-		_, err = ls.Store(linking.LinkContext{}, lnkProto, n)
-		if err != nil {
-			return err
-		}
-		return nil
-	})
+
+	err = traversalProgress.WalkMatching(rootNode, s, func(p traversal.Progress, n datamodel.Node) error { return nil })
 	if err != nil {
 		return err
 	}
 
 	return outStore.Finalize()
+}
+
+func writeCarV1(rootCid cid.Cid, output string, bs *blockstore.ReadOnly, strict bool, sel datamodel.Node, linkVisitOnlyOnce bool) error {
+	opts := make([]car.Option, 0)
+	if linkVisitOnlyOnce {
+		opts = append(opts, car.TraverseLinksOnlyOnce())
+	}
+	sc := car.NewSelectiveCar(context.Background(), bs, []car.Dag{{Root: rootCid, Selector: sel}}, opts...)
+	f, err := os.Create(output)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return sc.Write(f)
 }

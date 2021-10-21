@@ -72,6 +72,11 @@ func main1() int {
 						Name:  "strict",
 						Usage: "Fail if the selector finds links to blocks not in the original car",
 					},
+					&cli.IntFlag{
+						Name:  "version",
+						Value: 2,
+						Usage: "Write output as a v1 or v2 format car",
+					},
 				},
 			},
 			{
