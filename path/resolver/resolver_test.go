@@ -57,7 +57,7 @@ func TestRecurivePathResolution(t *testing.T) {
 	}
 
 	for _, n := range []*merkledag.ProtoNode{a, b, c} {
-		err = bsrv.AddBlock(n)
+		err = bsrv.AddBlock(ctx, n)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -151,7 +151,7 @@ func TestResolveToLastNode_ErrNoLink(t *testing.T) {
 	}
 
 	for _, n := range []*merkledag.ProtoNode{a, b, c} {
-		err = bsrv.AddBlock(n)
+		err = bsrv.AddBlock(ctx, n)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -197,7 +197,7 @@ func TestResolveToLastNode_NoUnnecessaryFetching(t *testing.T) {
 	err := a.AddNodeLink("child", b)
 	require.NoError(t, err)
 
-	err = bsrv.AddBlock(a)
+	err = bsrv.AddBlock(ctx, a)
 	require.NoError(t, err)
 
 	aKey := a.Cid()
@@ -243,7 +243,7 @@ func TestPathRemainder(t *testing.T) {
 	require.NoError(t, err)
 	blk, err := blocks.NewBlockWithCid(out.Bytes(), lnk)
 	require.NoError(t, err)
-	bsrv.AddBlock(blk)
+	bsrv.AddBlock(ctx, blk)
 	fetcherFactory := bsfetcher.NewFetcherConfig(bsrv)
 	resolver := resolver.NewBasicResolver(fetcherFactory)
 
@@ -259,7 +259,7 @@ func TestResolveToLastNode_MixedSegmentTypes(t *testing.T) {
 	defer cancel()
 	bsrv := dagmock.Bserv()
 	a := randNode()
-	err := bsrv.AddBlock(a)
+	err := bsrv.AddBlock(ctx, a)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestResolveToLastNode_MixedSegmentTypes(t *testing.T) {
 	require.NoError(t, err)
 	blk, err := blocks.NewBlockWithCid(out.Bytes(), lnk)
 	require.NoError(t, err)
-	bsrv.AddBlock(blk)
+	bsrv.AddBlock(ctx, blk)
 	fetcherFactory := bsfetcher.NewFetcherConfig(bsrv)
 	resolver := resolver.NewBasicResolver(fetcherFactory)
 
