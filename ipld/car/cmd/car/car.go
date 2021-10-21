@@ -16,6 +16,20 @@ func main1() int {
 		Usage: "Utility for working with car files",
 		Commands: []*cli.Command{
 			{
+				Name:    "create",
+				Usage:   "Create a car file",
+				Aliases: []string{"c"},
+				Action:  CreateCar,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:      "file",
+						Aliases:   []string{"f", "output", "o"},
+						Usage:     "The car file to write to",
+						TakesFile: true,
+					},
+				},
+			},
+			{
 				Name:   "detach-index",
 				Usage:  "Detach an index to a detached file",
 				Action: DetachCar,
@@ -72,6 +86,10 @@ func main1() int {
 						Usage:   "The type of index to write",
 						Value:   multicodec.CarMultihashIndexSorted.String(),
 					},
+					&cli.BoolFlag{
+						Name:  "v1",
+						Usage: "Write out only the carV1 file. Implies codec of 'none'",
+					},
 				},
 			},
 			{
@@ -79,6 +97,17 @@ func main1() int {
 				Aliases: []string{"l"},
 				Usage:   "List the CIDs in a car",
 				Action:  ListCar,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:    "verbose",
+						Aliases: []string{"v"},
+						Usage:   "Include verbose information about contained blocks",
+					},
+					&cli.BoolFlag{
+						Name:  "unixfs",
+						Usage: "List unixfs filesystem from the root of the car",
+					},
+				},
 			},
 			{
 				Name:    "verify",

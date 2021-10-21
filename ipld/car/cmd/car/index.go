@@ -23,6 +23,23 @@ func IndexCar(c *cli.Context) error {
 	}
 	defer r.Close()
 
+	if c.Bool("v1") {
+		if c.IsSet("codec") && c.String("codec") != "none" {
+			return fmt.Errorf("only supported codec for a v1 car is 'none'")
+		}
+		outStream := os.Stdout
+		if c.Args().Len() >= 2 {
+			outStream, err = os.Create(c.Args().Get(1))
+			if err != nil {
+				return err
+			}
+		}
+		defer outStream.Close()
+
+		_, err := io.Copy(outStream, r.DataReader())
+		return err
+	}
+
 	var idx index.Index
 	if c.String("codec") != "none" {
 		var mc multicodec.Code

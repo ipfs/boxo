@@ -85,8 +85,9 @@ func GetCarDag(c *cli.Context) error {
 	}
 
 	ls := cidlink.DefaultLinkSystem()
+	ls.TrustedStorage = true
 	ls.StorageReadOpener = func(_ linking.LinkContext, l datamodel.Link) (io.Reader, error) {
-		if cl, ok := l.(*cidlink.Link); ok {
+		if cl, ok := l.(cidlink.Link); ok {
 			blk, err := bs.Get(cl.Cid)
 			if err != nil {
 				if err == ipfsbs.ErrNotFound {
@@ -104,7 +105,7 @@ func GetCarDag(c *cli.Context) error {
 	ls.StorageWriteOpener = func(_ linking.LinkContext) (io.Writer, linking.BlockWriteCommitter, error) {
 		buf := bytes.NewBuffer(nil)
 		return buf, func(l datamodel.Link) error {
-			if cl, ok := l.(*cidlink.Link); ok {
+			if cl, ok := l.(cidlink.Link); ok {
 				blk, err := blocks.NewBlockWithCid(buf.Bytes(), cl.Cid)
 				if err != nil {
 					return err
@@ -124,7 +125,7 @@ func GetCarDag(c *cli.Context) error {
 	}
 
 	// selector traversal
-	s := selectorParser.CommonSelector_MatchAllRecursively
+	s, _ := selector.CompileSelector(selectorParser.CommonSelector_MatchAllRecursively)
 	if c.IsSet("selector") {
 		sn, err := selectorParser.ParseJSONSelector(c.String("selector"))
 		if err != nil {
@@ -141,7 +142,7 @@ func GetCarDag(c *cli.Context) error {
 	}
 	err = traversal.WalkMatching(node, s, func(p traversal.Progress, n datamodel.Node) error {
 		if p.LastBlock.Link != nil {
-			if cl, ok := p.LastBlock.Link.(*cidlink.Link); ok {
+			if cl, ok := p.LastBlock.Link.(cidlink.Link); ok {
 				lnkProto = cidlink.LinkPrototype{
 					Prefix: cl.Prefix(),
 				}

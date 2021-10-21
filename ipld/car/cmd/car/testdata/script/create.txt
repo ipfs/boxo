@@ -1,0 +1,13 @@
+car create --file=out.car foo.txt bar.txt
+
+car verify out.car
+car list --unixfs out.car
+stdout -count=2 'txt$'
+car list out.car
+stdout -count=3 '^baf'
+stdout -count=2 '^bafk'
+
+-- foo.txt --
+foo content
+-- bar.txt --
+bar content
