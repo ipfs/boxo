@@ -606,15 +606,15 @@ func (d *countGetsDS) maybeSleep(c cid.Cid) {
 	}
 }
 
-func (d *countGetsDS) Has(c cid.Cid) (bool, error) {
+func (d *countGetsDS) Has(ctx context.Context, c cid.Cid) (bool, error) {
 	if d.started {
 		panic("implement me")
 	}
-	return d.Blockstore.Has(c)
+	return d.Blockstore.Has(ctx, c)
 }
 
-func (d *countGetsDS) Get(c cid.Cid) (blocks.Block, error) {
-	blk, err := d.Blockstore.Get(c)
+func (d *countGetsDS) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+	blk, err := d.Blockstore.Get(ctx, c)
 	if err != nil {
 		return nil, err
 	}
@@ -623,11 +623,11 @@ func (d *countGetsDS) Get(c cid.Cid) (blocks.Block, error) {
 	return blk, nil
 }
 
-func (d *countGetsDS) GetSize(c cid.Cid) (int, error) {
+func (d *countGetsDS) GetSize(ctx context.Context, c cid.Cid) (int, error) {
 	if d.started {
 		panic("implement me")
 	}
-	return d.Blockstore.GetSize(c)
+	return d.Blockstore.GetSize(ctx, c)
 }
 
 func (d *countGetsDS) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
