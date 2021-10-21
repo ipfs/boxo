@@ -673,12 +673,18 @@ func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block) {
 	// Check each peer to see if it wants one of the blocks we received
 	var work bool
 	missingWants := make(map[peer.ID][]cid.Cid)
-	e.lock.RLock()
 	for _, b := range blks {
 		k := b.Cid()
 
-		for _, p := range e.peerLedger.Peers(k) {
+		e.lock.RLock()
+		peers := e.peerLedger.Peers(k)
+		e.lock.RUnlock()
+
+		for _, p := range peers {
+			e.lock.RLock()
 			ledger, ok := e.ledgerMap[p]
+			e.lock.RUnlock()
+
 			if !ok {
 				// This can happen if the peer has disconnected while we're processing this list.
 				log.Debugw("failed to find peer in ledger", "peer", p)
@@ -718,7 +724,6 @@ func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block) {
 			e.updateMetrics()
 		}
 	}
-	e.lock.RUnlock()
 
 	// If we found missing wants (e.g., because the peer disconnected, we have some races here)
 	// remove them from the list. Unfortunately, we still have to re-check because the user
