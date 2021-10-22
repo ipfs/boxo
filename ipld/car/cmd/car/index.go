@@ -23,9 +23,9 @@ func IndexCar(c *cli.Context) error {
 	}
 	defer r.Close()
 
-	if c.Bool("v1") {
+	if c.Int("version") == 1 {
 		if c.IsSet("codec") && c.String("codec") != "none" {
-			return fmt.Errorf("only supported codec for a v1 car is 'none'")
+			return fmt.Errorf("'none' is the only supported codec for a v1 car")
 		}
 		outStream := os.Stdout
 		if c.Args().Len() >= 2 {
@@ -38,6 +38,10 @@ func IndexCar(c *cli.Context) error {
 
 		_, err := io.Copy(outStream, r.DataReader())
 		return err
+	}
+
+	if c.Int("version") != 2 {
+		return fmt.Errorf("invalid CAR version %d", c.Int("version"))
 	}
 
 	var idx index.Index
