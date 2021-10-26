@@ -5,6 +5,7 @@ import (
 
 	pb "github.com/ipfs/go-bitswap/message/pb"
 	cid "github.com/ipfs/go-cid"
+	"github.com/stretchr/testify/require"
 )
 
 var testcids []cid.Cid
@@ -211,11 +212,24 @@ func TestSortEntries(t *testing.T) {
 	wl.Add(testcids[2], 4, pb.Message_Wantlist_Have)
 
 	entries := wl.Entries()
-	SortEntries(entries)
-
 	if !entries[0].Cid.Equals(testcids[1]) ||
 		!entries[1].Cid.Equals(testcids[2]) ||
 		!entries[2].Cid.Equals(testcids[0]) {
 		t.Fatal("wrong order")
 	}
+
+}
+
+// Test adding and removing interleaved with checking entries to make sure we clear the cache.
+func TestCache(t *testing.T) {
+	wl := New()
+
+	wl.Add(testcids[0], 3, pb.Message_Wantlist_Block)
+	require.Len(t, wl.Entries(), 1)
+
+	wl.Add(testcids[1], 3, pb.Message_Wantlist_Block)
+	require.Len(t, wl.Entries(), 2)
+
+	wl.Remove(testcids[1])
+	require.Len(t, wl.Entries(), 1)
 }
