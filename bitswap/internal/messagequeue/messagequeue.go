@@ -740,13 +740,6 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 
 	// Next, add the wants. If we have too many entries to fit into a single
 	// message, sort by priority and include the high priority ones first.
-	// However, avoid sorting till we really need to as this code is a
-	// called frequently.
-
-	// Add each regular want-have / want-block to the message.
-	if msgSize+(len(peerEntries)*bsmsg.MaxEntrySize) > mq.maxMessageSize {
-		bswl.SortEntries(peerEntries)
-	}
 
 	for _, e := range peerEntries {
 		msgSize += mq.msg.AddEntry(e.Cid, e.Priority, e.WantType, true)
@@ -755,11 +748,6 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 		if msgSize >= mq.maxMessageSize {
 			goto FINISH
 		}
-	}
-
-	// Add each broadcast want-have to the message.
-	if msgSize+(len(bcstEntries)*bsmsg.MaxEntrySize) > mq.maxMessageSize {
-		bswl.SortEntries(bcstEntries)
 	}
 
 	// Add each broadcast want-have to the message
