@@ -24,7 +24,7 @@ func newTaskMerger() *taskMerger {
 
 // The request queue uses this Method to decide if a newly pushed task has any
 // new information beyond the tasks with the same Topic (CID) in the queue.
-func (*taskMerger) HasNewInfo(task peertask.Task, existing []peertask.Task) bool {
+func (*taskMerger) HasNewInfo(task peertask.Task, existing []*peertask.Task) bool {
 	haveSize := false
 	isWantBlock := false
 	for _, et := range existing {
