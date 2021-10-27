@@ -1080,6 +1080,7 @@ func TestTaskComparator(t *testing.T) {
 	// use a single task worker so that the order of outgoing messages is deterministic
 	engineTaskWorkerCount := 1
 	e := newEngineForTesting(ctx, bs, 4, engineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, fpt, "localhost", 0, sl,
+		// if this Option is omitted, the test fails
 		WithTaskComparator(func(ta, tb *TaskInfo) bool {
 			// prioritize based on lexicographic ordering of block content
 			return cids[ta.Cid] < cids[tb.Cid]

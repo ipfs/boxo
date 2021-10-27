@@ -148,8 +148,11 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 	}
 }
 
+type TaskInfo = decision.TaskInfo
+type TaskComparator = decision.TaskComparator
+
 // WithTaskComparator configures custom task prioritization logic.
-func WithTaskComparator(comparator decision.TaskComparator) Option {
+func WithTaskComparator(comparator TaskComparator) Option {
 	return func(bs *Bitswap) {
 		bs.taskComparator = comparator
 	}
@@ -384,7 +387,7 @@ type Bitswap struct {
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
 
-	taskComparator decision.TaskComparator
+	taskComparator TaskComparator
 }
 
 type counters struct {
