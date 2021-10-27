@@ -18,6 +18,7 @@ import (
 	"github.com/ipfs/go-metrics-interface"
 
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
@@ -92,14 +93,14 @@ type engineSet struct {
 	Blockstore blockstore.Blockstore
 }
 
-func newTestEngine(ctx context.Context, idStr string) engineSet {
-	return newTestEngineWithSampling(ctx, idStr, shortTerm, nil, clock.New())
+func newTestEngine(ctx context.Context, idStr string, opts ...Option) engineSet {
+	return newTestEngineWithSampling(ctx, idStr, shortTerm, nil, clock.New(), opts...)
 }
 
-func newTestEngineWithSampling(ctx context.Context, idStr string, peerSampleInterval time.Duration, sampleCh chan struct{}, clock clock.Clock) engineSet {
+func newTestEngineWithSampling(ctx context.Context, idStr string, peerSampleInterval time.Duration, sampleCh chan struct{}, clock clock.Clock, opts ...Option) engineSet {
 	fpt := &fakePeerTagger{}
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, fpt, "localhost", 0, NewTestScoreLedger(peerSampleInterval, sampleCh, clock))
+	e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, fpt, "localhost", 0, NewTestScoreLedger(peerSampleInterval, sampleCh, clock), opts...)
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 	return engineSet{
 		Peer: peer.ID(idStr),
@@ -193,6 +194,7 @@ func newEngineForTesting(
 	self peer.ID,
 	maxReplaceSize int,
 	scoreLedger ScoreLedger,
+	opts ...Option,
 ) *Engine {
 	testPendingEngineGauge := metrics.NewCtx(ctx, "pending_tasks", "Total number of pending tasks").Gauge()
 	testActiveEngineGauge := metrics.NewCtx(ctx, "active_tasks", "Total number of active tasks").Gauge()
@@ -212,6 +214,7 @@ func newEngineForTesting(
 		testActiveEngineGauge,
 		testPendingBlocksGauge,
 		testActiveBlocksGauge,
+		opts...,
 	)
 }
 
@@ -1052,6 +1055,60 @@ func TestWantlistForPeer(t *testing.T) {
 		t.Fatal("expected wantlist to be sorted")
 	}
 
+}
+
+func TestTaskComparator(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	keys := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}
+	cids := make(map[cid.Cid]int)
+	blks := make([]blocks.Block, 0, len(keys))
+	for i, letter := range keys {
+		block := blocks.NewBlock([]byte(letter))
+		blks = append(blks, block)
+		cids[block.Cid()] = i
+	}
+
+	fpt := &fakePeerTagger{}
+	sl := NewTestScoreLedger(shortTerm, nil, clock.New())
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	if err := bs.PutMany(blks); err != nil {
+		t.Fatal(err)
+	}
+
+	// use a single task worker so that the order of outgoing messages is deterministic
+	engineTaskWorkerCount := 1
+	e := newEngineForTesting(ctx, bs, 4, engineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, fpt, "localhost", 0, sl,
+		WithTaskComparator(func(ta, tb *TaskInfo) bool {
+			// prioritize based on lexicographic ordering of block content
+			return cids[ta.Cid] < cids[tb.Cid]
+		}),
+	)
+	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
+
+	// rely on randomness of Go map's iteration order to add Want entries in random order
+	peerIDs := make([]peer.ID, len(keys))
+	for _, i := range cids {
+		peerID := libp2ptest.RandPeerIDFatal(t)
+		peerIDs[i] = peerID
+		partnerWantBlocks(e, keys[i:i+1], peerID)
+	}
+
+	// check that outgoing messages are sent in the correct order
+	for i, peerID := range peerIDs {
+		next := <-e.Outbox()
+		envelope := <-next
+		if peerID != envelope.Peer {
+			t.Errorf("expected message for peer ID %#v but instead got message for peer ID %#v", peerID, envelope.Peer)
+		}
+		responseBlocks := envelope.Message.Blocks()
+		if len(responseBlocks) != 1 {
+			t.Errorf("expected 1 block in response but instead got %v", len(blks))
+		} else if responseBlocks[0].Cid() != blks[i].Cid() {
+			t.Errorf("expected block with CID %#v but instead got block with CID %#v", blks[i].Cid(), responseBlocks[0].Cid())
+		}
+	}
 }
 
 func TestTaggingPeers(t *testing.T) {
