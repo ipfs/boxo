@@ -148,6 +148,16 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 	}
 }
 
+type TaskInfo = decision.TaskInfo
+type TaskComparator = decision.TaskComparator
+
+// WithTaskComparator configures custom task prioritization logic.
+func WithTaskComparator(comparator TaskComparator) Option {
+	return func(bs *Bitswap) {
+		bs.taskComparator = comparator
+	}
+}
+
 // New initializes a BitSwap instance that communicates over the provided
 // BitSwapNetwork. This function registers the returned instance as the network
 // delegate. Runs until context is cancelled or bitswap.Close is called.
@@ -272,6 +282,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		activeEngineGauge,
 		pendingBlocksGauge,
 		activeBlocksGauge,
+		decision.WithTaskComparator(bs.taskComparator),
 	)
 	bs.engine.SetSendDontHaves(bs.engineSetSendDontHaves)
 
@@ -375,6 +386,8 @@ type Bitswap struct {
 
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
+
+	taskComparator TaskComparator
 }
 
 type counters struct {
