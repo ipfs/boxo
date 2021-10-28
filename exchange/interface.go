@@ -15,7 +15,7 @@ type Interface interface { // type Exchanger interface
 
 	// TODO Should callers be concerned with whether the block was made
 	// available on the network?
-	HasBlock(blocks.Block) error
+	HasBlock(context.Context, blocks.Block) error
 
 	IsOnline() bool
 
