@@ -20,6 +20,7 @@ var logger = logging.Logger("delegated-routing-client")
 
 func (c *client) FindProviders(ctx context.Context, cid cid.Cid) ([]peer.AddrInfo, error) {
 	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	ch, err := c.FindProvidersAsync(ctx, cid)
 	if err != nil {
 		return nil, err
