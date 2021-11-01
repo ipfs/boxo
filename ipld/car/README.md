@@ -3,7 +3,7 @@ go-car (go!)
 
 [![](https://img.shields.io/badge/made%20by-Protocol%20Labs-blue.svg?style=flat-square)](https://protocol.ai)
 [![](https://img.shields.io/badge/project-ipld-orange.svg?style=flat-square)](https://github.com/ipld/ipld)
-[![](https://img.shields.io/badge/freenode-%23ipld-orange.svg?style=flat-square)](https://webchat.freenode.net/?channels=%23ipld)
+[![](https://img.shields.io/badge/matrix-%23ipld-blue.svg?style=flat-square)](https://matrix.to/#/#ipld:ipfs.io)
 [![Go Reference](https://pkg.go.dev/badge/github.com/ipld/go-car.svg)](https://pkg.go.dev/github.com/ipld/go-car)
 [![Coverage Status](https://codecov.io/gh/ipld/go-car/branch/master/graph/badge.svg)](https://codecov.io/gh/ipld/go-car/branch/master)
 
