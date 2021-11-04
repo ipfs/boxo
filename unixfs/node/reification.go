@@ -6,6 +6,7 @@ import (
 
 	"github.com/ipfs/go-unixfsnode/data"
 	"github.com/ipfs/go-unixfsnode/directory"
+	"github.com/ipfs/go-unixfsnode/file"
 	"github.com/ipfs/go-unixfsnode/hamt"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
@@ -37,9 +38,9 @@ func Reify(lnkCtx ipld.LinkContext, maybePBNodeRoot ipld.Node, lsys *ipld.LinkSy
 type reifyTypeFunc func(context.Context, dagpb.PBNode, data.UnixFSData, *ipld.LinkSystem) (ipld.Node, error)
 
 var reifyFuncs = map[int64]reifyTypeFunc{
-	data.Data_File:      defaultUnixFSReifier,
+	data.Data_File:      unixFSFileReifier,
 	data.Data_Metadata:  defaultUnixFSReifier,
-	data.Data_Raw:       defaultUnixFSReifier,
+	data.Data_Raw:       unixFSFileReifier,
 	data.Data_Symlink:   defaultUnixFSReifier,
 	data.Data_Directory: directory.NewUnixFSBasicDir,
 	data.Data_HAMTShard: hamt.NewUnixFSHAMTShard,
@@ -49,6 +50,10 @@ var reifyFuncs = map[int64]reifyTypeFunc{
 // TODO: Make this a separate node as directors gain more functionality
 func defaultReifier(_ context.Context, substrate dagpb.PBNode, _ *ipld.LinkSystem) (ipld.Node, error) {
 	return &_PathedPBNode{_substrate: substrate}, nil
+}
+
+func unixFSFileReifier(ctx context.Context, substrate dagpb.PBNode, _ data.UnixFSData, ls *ipld.LinkSystem) (ipld.Node, error) {
+	return file.NewUnixFSFile(ctx, substrate, ls)
 }
 
 func defaultUnixFSReifier(ctx context.Context, substrate dagpb.PBNode, _ data.UnixFSData, ls *ipld.LinkSystem) (ipld.Node, error) {
