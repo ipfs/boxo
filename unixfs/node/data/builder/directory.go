@@ -77,6 +77,8 @@ func estimateDirSize(entries []dagpb.PBLink) int {
 		cl, ok := lnk.(cidlink.Link)
 		if ok {
 			s += cl.ByteLen()
+		} else if lnk == nil {
+			s += 0
 		} else {
 			s += len(lnk.Binary())
 		}

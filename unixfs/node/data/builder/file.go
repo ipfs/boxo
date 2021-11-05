@@ -43,6 +43,11 @@ func BuildUnixFSFile(r io.Reader, chunker string, ls *ipld.LinkSystem) (ipld.Lin
 		}
 
 		if prev != nil && prev[0] == root {
+			if root == nil {
+				node := basicnode.NewBytes([]byte{})
+				link, err := ls.Store(ipld.LinkContext{}, leafLinkProto, node)
+				return link, 0, err
+			}
 			return root, size, nil
 		}
 
