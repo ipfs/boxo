@@ -1,0 +1,12 @@
+car create --file=out.car foo.txt bar.txt
+mkdir out
+car extract -v -f out.car out
+! stderr .
+stdout -count=2 'txt$'
+car create --file=out2.car out/foo.txt out/bar.txt
+cmp out.car out2.car
+
+-- foo.txt --
+foo content
+-- bar.txt --
+bar content
