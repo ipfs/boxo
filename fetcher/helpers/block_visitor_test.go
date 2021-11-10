@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var bg = context.Background()
+
 func TestFetchGraphToBlocks(t *testing.T) {
 	block3, node3, link3 := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 1, func(na fluent.MapAssembler) {
 		na.AssembleEntry("three").AssignBool(true)
@@ -49,13 +51,13 @@ func TestFetchGraphToBlocks(t *testing.T) {
 	hasBlock := peers[0]
 	defer hasBlock.Exchange.Close()
 
-	err := hasBlock.Exchange.HasBlock(block1)
+	err := hasBlock.Exchange.HasBlock(bg, block1)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block2)
+	err = hasBlock.Exchange.HasBlock(bg, block2)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block3)
+	err = hasBlock.Exchange.HasBlock(bg, block3)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block4)
+	err = hasBlock.Exchange.HasBlock(bg, block4)
 	require.NoError(t, err)
 
 	wantsBlock := peers[1]
@@ -102,11 +104,11 @@ func TestFetchGraphToUniqueBlocks(t *testing.T) {
 	hasBlock := peers[0]
 	defer hasBlock.Exchange.Close()
 
-	err := hasBlock.Exchange.HasBlock(block1)
+	err := hasBlock.Exchange.HasBlock(bg, block1)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block2)
+	err = hasBlock.Exchange.HasBlock(bg, block2)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block3)
+	err = hasBlock.Exchange.HasBlock(bg, block3)
 	require.NoError(t, err)
 
 	wantsBlock := peers[1]

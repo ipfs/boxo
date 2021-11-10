@@ -27,6 +27,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var bg = context.Background()
+
 func TestFetchIPLDPrimeNode(t *testing.T) {
 	block, node, _ := testutil.EncodeBlock(fluent.MustBuildMap(basicnode.Prototype__Map{}, 3, func(na fluent.MapAssembler) {
 		na.AssembleEntry("foo").AssignBool(true)
@@ -44,7 +46,7 @@ func TestFetchIPLDPrimeNode(t *testing.T) {
 	hasBlock := peers[0]
 	defer hasBlock.Exchange.Close()
 
-	err := hasBlock.Exchange.HasBlock(block)
+	err := hasBlock.Exchange.HasBlock(bg, block)
 	require.NoError(t, err)
 
 	wantsBlock := peers[1]
@@ -90,13 +92,13 @@ func TestFetchIPLDGraph(t *testing.T) {
 	hasBlock := peers[0]
 	defer hasBlock.Exchange.Close()
 
-	err := hasBlock.Exchange.HasBlock(block1)
+	err := hasBlock.Exchange.HasBlock(bg, block1)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block2)
+	err = hasBlock.Exchange.HasBlock(bg, block2)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block3)
+	err = hasBlock.Exchange.HasBlock(bg, block3)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block4)
+	err = hasBlock.Exchange.HasBlock(bg, block4)
 	require.NoError(t, err)
 
 	wantsBlock := peers[1]
@@ -150,7 +152,7 @@ func TestFetchIPLDPath(t *testing.T) {
 	defer hasBlock.Exchange.Close()
 
 	for _, blk := range []blocks.Block{block1, block2, block3, block4, block5} {
-		err := hasBlock.Exchange.HasBlock(blk)
+		err := hasBlock.Exchange.HasBlock(bg, blk)
 		require.NoError(t, err)
 	}
 
@@ -212,13 +214,13 @@ func TestHelpers(t *testing.T) {
 	hasBlock := peers[0]
 	defer hasBlock.Exchange.Close()
 
-	err := hasBlock.Exchange.HasBlock(block1)
+	err := hasBlock.Exchange.HasBlock(bg, block1)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block2)
+	err = hasBlock.Exchange.HasBlock(bg, block2)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block3)
+	err = hasBlock.Exchange.HasBlock(bg, block3)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block4)
+	err = hasBlock.Exchange.HasBlock(bg, block4)
 	require.NoError(t, err)
 
 	wantsBlock := peers[1]
@@ -329,11 +331,11 @@ func TestNodeReification(t *testing.T) {
 	hasBlock := peers[0]
 	defer hasBlock.Exchange.Close()
 
-	err := hasBlock.Exchange.HasBlock(block2)
+	err := hasBlock.Exchange.HasBlock(bg, block2)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block3)
+	err = hasBlock.Exchange.HasBlock(bg, block3)
 	require.NoError(t, err)
-	err = hasBlock.Exchange.HasBlock(block4)
+	err = hasBlock.Exchange.HasBlock(bg, block4)
 	require.NoError(t, err)
 
 	wantsBlock := peers[1]
