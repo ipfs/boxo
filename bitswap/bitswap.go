@@ -436,8 +436,8 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 
 // HasBlock announces the existence of a block to this bitswap service. The
 // service will potentially notify its peers.
-func (bs *Bitswap) HasBlock(blk blocks.Block) error {
-	return bs.receiveBlocksFrom(context.Background(), "", []blocks.Block{blk}, nil, nil)
+func (bs *Bitswap) HasBlock(ctx context.Context, blk blocks.Block) error {
+	return bs.receiveBlocksFrom(ctx, "", []blocks.Block{blk}, nil, nil)
 }
 
 // TODO: Some of this stuff really only needs to be done when adding a block
@@ -464,7 +464,7 @@ func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []b
 
 	// Put wanted blocks into blockstore
 	if len(wanted) > 0 {
-		err := bs.blockstore.PutMany(wanted)
+		err := bs.blockstore.PutMany(ctx, wanted)
 		if err != nil {
 			log.Errorf("Error writing %d blocks to datastore: %s", len(wanted), err)
 			return err
@@ -604,7 +604,7 @@ func (bs *Bitswap) blockstoreHas(blks []blocks.Block) []bool {
 		go func(i int, b blocks.Block) {
 			defer wg.Done()
 
-			has, err := bs.blockstore.Has(b.Cid())
+			has, err := bs.blockstore.Has(context.TODO(), b.Cid())
 			if err != nil {
 				log.Infof("blockstore.Has error: %s", err)
 				has = false

@@ -90,7 +90,7 @@ func TestGetBlockFromPeerAfterPeerAnnounces(t *testing.T) {
 	hasBlock := peers[0]
 	defer hasBlock.Exchange.Close()
 
-	if err := hasBlock.Exchange.HasBlock(block); err != nil {
+	if err := hasBlock.Exchange.HasBlock(context.Background(), block); err != nil {
 		t.Fatal(err)
 	}
 
@@ -123,7 +123,7 @@ func TestDoesNotProvideWhenConfiguredNotTo(t *testing.T) {
 	wantsBlock := ig.Next()
 	defer wantsBlock.Exchange.Close()
 
-	if err := hasBlock.Exchange.HasBlock(block); err != nil {
+	if err := hasBlock.Exchange.HasBlock(context.Background(), block); err != nil {
 		t.Fatal(err)
 	}
 
@@ -158,7 +158,7 @@ func TestUnwantedBlockNotAdded(t *testing.T) {
 	hasBlock := peers[0]
 	defer hasBlock.Exchange.Close()
 
-	if err := hasBlock.Exchange.HasBlock(block); err != nil {
+	if err := hasBlock.Exchange.HasBlock(context.Background(), block); err != nil {
 		t.Fatal(err)
 	}
 
@@ -170,7 +170,7 @@ func TestUnwantedBlockNotAdded(t *testing.T) {
 
 	doesNotWantBlock.Exchange.ReceiveMessage(ctx, hasBlock.Peer, bsMessage)
 
-	blockInStore, err := doesNotWantBlock.Blockstore().Has(block.Cid())
+	blockInStore, err := doesNotWantBlock.Blockstore().Has(ctx, block.Cid())
 	if err != nil || blockInStore {
 		t.Fatal("Unwanted block added to block store")
 	}
@@ -229,7 +229,7 @@ func TestPendingBlockAdded(t *testing.T) {
 	}
 
 	// Make sure Bitswap adds the block to the blockstore
-	blockInStore, err := instance.Blockstore().Has(lastBlock.Cid())
+	blockInStore, err := instance.Blockstore().Has(context.Background(), lastBlock.Cid())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +302,7 @@ func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
 	first := instances[0]
 	for _, b := range blocks {
 		blkeys = append(blkeys, b.Cid())
-		err := first.Exchange.HasBlock(b)
+		err := first.Exchange.HasBlock(ctx, b)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -341,7 +341,7 @@ func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
 
 	for _, inst := range instances {
 		for _, b := range blocks {
-			if _, err := inst.Blockstore().Get(b.Cid()); err != nil {
+			if _, err := inst.Blockstore().Get(ctx, b.Cid()); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -378,7 +378,7 @@ func TestSendToWantingPeer(t *testing.T) {
 	}
 
 	// peerB announces to the network that he has block alpha
-	err = peerB.Exchange.HasBlock(alpha)
+	err = peerB.Exchange.HasBlock(ctx, alpha)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +440,7 @@ func TestBasicBitswap(t *testing.T) {
 	blocks := bg.Blocks(1)
 
 	// First peer has block
-	err := instances[0].Exchange.HasBlock(blocks[0])
+	err := instances[0].Exchange.HasBlock(context.Background(), blocks[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -540,7 +540,7 @@ func TestDoubleGet(t *testing.T) {
 		t.Fatal("expected channel to be closed")
 	}
 
-	err = instances[0].Exchange.HasBlock(blocks[0])
+	err = instances[0].Exchange.HasBlock(context.Background(), blocks[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -703,7 +703,7 @@ func TestBitswapLedgerOneWay(t *testing.T) {
 
 	instances := ig.Instances(2)
 	blocks := bg.Blocks(1)
-	err := instances[0].Exchange.HasBlock(blocks[0])
+	err := instances[0].Exchange.HasBlock(context.Background(), blocks[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -755,12 +755,12 @@ func TestBitswapLedgerTwoWay(t *testing.T) {
 
 	instances := ig.Instances(2)
 	blocks := bg.Blocks(2)
-	err := instances[0].Exchange.HasBlock(blocks[0])
+	err := instances[0].Exchange.HasBlock(context.Background(), blocks[0])
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = instances[1].Exchange.HasBlock(blocks[1])
+	err = instances[1].Exchange.HasBlock(context.Background(), blocks[1])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -906,7 +906,7 @@ func TestTracer(t *testing.T) {
 	bitswap.WithTracer(wiretap)(instances[0].Exchange)
 
 	// First peer has block
-	err := instances[0].Exchange.HasBlock(blocks[0])
+	err := instances[0].Exchange.HasBlock(context.Background(), blocks[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -990,7 +990,7 @@ func TestTracer(t *testing.T) {
 	// After disabling WireTap, no new messages are logged
 	bitswap.WithTracer(nil)(instances[0].Exchange)
 
-	err = instances[0].Exchange.HasBlock(blocks[1])
+	err = instances[0].Exchange.HasBlock(context.Background(), blocks[1])
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -85,7 +85,7 @@ func (bsm *blockstoreManager) getBlockSizes(ctx context.Context, ks []cid.Cid) (
 
 	var lk sync.Mutex
 	return res, bsm.jobPerKey(ctx, ks, func(c cid.Cid) {
-		size, err := bsm.bs.GetSize(c)
+		size, err := bsm.bs.GetSize(ctx, c)
 		if err != nil {
 			if err != bstore.ErrNotFound {
 				// Note: this isn't a fatal error. We shouldn't abort the request
@@ -107,7 +107,7 @@ func (bsm *blockstoreManager) getBlocks(ctx context.Context, ks []cid.Cid) (map[
 
 	var lk sync.Mutex
 	return res, bsm.jobPerKey(ctx, ks, func(c cid.Cid) {
-		blk, err := bsm.bs.Get(c)
+		blk, err := bsm.bs.Get(ctx, c)
 		if err != nil {
 			if err != bstore.ErrNotFound {
 				// Note: this isn't a fatal error. We shouldn't abort the request
