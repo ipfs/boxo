@@ -89,7 +89,7 @@ func TestBlockstoreManager(t *testing.T) {
 	}
 
 	// Put all blocks in the blockstore except the last one
-	if err := bstore.PutMany(blks[:len(blks)-1]); err != nil {
+	if err := bstore.PutMany(ctx, blks[:len(blks)-1]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -169,7 +169,7 @@ func TestBlockstoreManagerConcurrency(t *testing.T) {
 		ks = append(ks, b.Cid())
 	}
 
-	err := bstore.PutMany(blks)
+	err := bstore.PutMany(ctx, blks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestBlockstoreManagerClose(t *testing.T) {
 		ks = append(ks, b.Cid())
 	}
 
-	err := bstore.PutMany(blks)
+	err := bstore.PutMany(ctx, blks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestBlockstoreManagerCtxDone(t *testing.T) {
 		ks = append(ks, b.Cid())
 	}
 
-	err := underlyingBstore.PutMany(blks)
+	err := underlyingBstore.PutMany(ctx, blks)
 	if err != nil {
 		t.Fatal(err)
 	}
