@@ -28,12 +28,12 @@ func TestHasBlockReturnsNil(t *testing.T) {
 	ex := Exchange(store)
 	block := blocks.NewBlock([]byte("data"))
 
-	err := ex.HasBlock(block)
+	err := ex.HasBlock(context.Background(), block)
 	if err != nil {
 		t.Fail()
 	}
 
-	if _, err := store.Get(block.Cid()); err != nil {
+	if _, err := store.Get(context.Background(), block.Cid()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -46,7 +46,7 @@ func TestGetBlocks(t *testing.T) {
 	expected := g.Blocks(2)
 
 	for _, b := range expected {
-		if err := ex.HasBlock(b); err != nil {
+		if err := ex.HasBlock(context.Background(), b); err != nil {
 			t.Fail()
 		}
 	}
