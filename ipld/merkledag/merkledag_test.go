@@ -610,7 +610,7 @@ func TestCidRetention(t *testing.T) {
 	}
 
 	bs := dstest.Bserv()
-	err = bs.AddBlock(blk)
+	err = bs.AddBlock(ctx, blk)
 	if err != nil {
 		t.Fatal(err)
 	}

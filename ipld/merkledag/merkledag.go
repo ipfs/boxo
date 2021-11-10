@@ -57,7 +57,7 @@ func (n *dagService) Add(ctx context.Context, nd format.Node) error {
 		return fmt.Errorf("dagService is nil")
 	}
 
-	return n.Blocks.AddBlock(nd)
+	return n.Blocks.AddBlock(ctx, nd)
 }
 
 func (n *dagService) AddMany(ctx context.Context, nds []format.Node) error {
@@ -65,7 +65,7 @@ func (n *dagService) AddMany(ctx context.Context, nds []format.Node) error {
 	for i, nd := range nds {
 		blks[i] = nd
 	}
-	return n.Blocks.AddBlocks(blks)
+	return n.Blocks.AddBlocks(ctx, blks)
 }
 
 // Get retrieves a node from the dagService, fetching the block in the BlockService
@@ -102,7 +102,7 @@ func (n *dagService) GetLinks(ctx context.Context, c cid.Cid) ([]*format.Link, e
 }
 
 func (n *dagService) Remove(ctx context.Context, c cid.Cid) error {
-	return n.Blocks.DeleteBlock(c)
+	return n.Blocks.DeleteBlock(ctx, c)
 }
 
 // RemoveMany removes multiple nodes from the DAG. It will likely be faster than
@@ -113,7 +113,7 @@ func (n *dagService) Remove(ctx context.Context, c cid.Cid) error {
 func (n *dagService) RemoveMany(ctx context.Context, cids []cid.Cid) error {
 	// TODO(#4608): make this batch all the way down.
 	for _, c := range cids {
-		if err := n.Blocks.DeleteBlock(c); err != nil {
+		if err := n.Blocks.DeleteBlock(ctx, c); err != nil {
 			return err
 		}
 	}
