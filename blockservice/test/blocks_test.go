@@ -33,7 +33,7 @@ func TestBlocks(t *testing.T) {
 		t.Error("Block key and data multihash key not equal")
 	}
 
-	err := bs.AddBlock(o)
+	err := bs.AddBlock(context.Background(), o)
 	if err != nil {
 		t.Error("failed to add block to BlockService", err)
 		return
@@ -74,7 +74,7 @@ func TestGetBlocksSequential(t *testing.T) {
 	var cids []cid.Cid
 	for _, o := range objs {
 		cids = append(cids, o.Cid())
-		err := servs[0].AddBlock(o)
+		err := servs[0].AddBlock(context.Background(), o)
 		if err != nil {
 			t.Fatal(err)
 		}
