@@ -48,7 +48,7 @@ func setupDag(t *testing.T) (nodes []cid.Cid, bstore blockstore.Blockstore) {
 			t.Fatal(err)
 		}
 		blk := toBlock(t, nb.Build())
-		err = bstore.Put(blk)
+		err = bstore.Put(context.Background(), blk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +60,7 @@ func setupDag(t *testing.T) (nodes []cid.Cid, bstore blockstore.Blockstore) {
 			t.Fatal(err)
 		}
 		blk = toBlock(t, nd)
-		err = bstore.Put(blk)
+		err = bstore.Put(context.Background(), blk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -117,6 +117,7 @@ func testReprovide(t *testing.T, trigger func(r *Reprovider, ctx context.Context
 
 	keyProvider := NewBlockstoreProvider(bstore)
 	reprov := NewReprovider(ctx, time.Hour, clA, keyProvider)
+	reprov.Trigger(context.Background())
 	err := trigger(reprov, ctx)
 	if err != nil {
 		t.Fatal(err)

@@ -8,7 +8,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	"github.com/ipfs/go-ipfs-blocksutil"
+	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 )
 
 var blockGenerator = blocksutil.NewBlockGenerator()
@@ -72,7 +72,7 @@ func TestMangledData(t *testing.T) {
 
 	// put bad data in the queue
 	queueKey := datastore.NewKey("/test/0")
-	err = queue.ds.Put(queueKey, []byte("borked"))
+	err = queue.ds.Put(ctx, queueKey, []byte("borked"))
 	if err != nil {
 		t.Fatal(err)
 	}

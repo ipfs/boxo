@@ -259,10 +259,10 @@ func (s *BatchProvidingSystem) Run() {
 				s.lastReprovideBatchSize = len(keys)
 				s.lastReprovideDuration = dur
 
-				if err := s.ds.Put(lastReprovideKey, storeTime(time.Now())); err != nil {
+				if err := s.ds.Put(s.ctx, lastReprovideKey, storeTime(time.Now())); err != nil {
 					log.Errorf("could not store last reprovide time: %v", err)
 				}
-				if err := s.ds.Sync(lastReprovideKey); err != nil {
+				if err := s.ds.Sync(s.ctx, lastReprovideKey); err != nil {
 					log.Errorf("could not perform sync of last reprovide time: %v", err)
 				}
 			}
@@ -374,7 +374,7 @@ reprovideCidLoop:
 }
 
 func (s *BatchProvidingSystem) getLastReprovideTime() (time.Time, error) {
-	val, err := s.ds.Get(lastReprovideKey)
+	val, err := s.ds.Get(s.ctx, lastReprovideKey)
 	if errors.Is(err, datastore.ErrNotFound) {
 		return time.Time{}, nil
 	}

@@ -97,7 +97,7 @@ func (q *Queue) work() {
 					c, err = cid.Parse(head.Value)
 					if err != nil {
 						log.Warningf("error parsing queue entry cid with key (%s), removing it from queue: %s", head.Key, err)
-						err = q.ds.Delete(k)
+						err = q.ds.Delete(q.ctx, k)
 						if err != nil {
 							log.Errorf("error deleting queue entry with key (%s), due to error (%s), stopping provider", head.Key, err)
 							return
@@ -120,12 +120,12 @@ func (q *Queue) work() {
 				keyPath := fmt.Sprintf("%d/%s", time.Now().UnixNano(), c.String())
 				nextKey := datastore.NewKey(keyPath)
 
-				if err := q.ds.Put(nextKey, toQueue.Bytes()); err != nil {
+				if err := q.ds.Put(q.ctx, nextKey, toQueue.Bytes()); err != nil {
 					log.Errorf("Failed to enqueue cid: %s", err)
 					continue
 				}
 			case dequeue <- c:
-				err := q.ds.Delete(k)
+				err := q.ds.Delete(q.ctx, k)
 
 				if err != nil {
 					log.Errorf("Failed to delete queued cid %s with key %s: %s", c, k, err)
@@ -141,7 +141,7 @@ func (q *Queue) work() {
 
 func (q *Queue) getQueueHead() (*query.Entry, error) {
 	qry := query.Query{Orders: []query.Order{query.OrderByKey{}}, Limit: 1}
-	results, err := q.ds.Query(qry)
+	results, err := q.ds.Query(q.ctx, qry)
 	if err != nil {
 		return nil, err
 	}

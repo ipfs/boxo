@@ -45,7 +45,7 @@ type Reprovider struct {
 }
 
 // NewReprovider creates new Reprovider instance.
-func NewReprovider(ctx context.Context, reprovideIniterval time.Duration, rsys routing.ContentRouting, keyProvider KeyChanFunc) *Reprovider {
+func NewReprovider(ctx context.Context, reprovideInterval time.Duration, rsys routing.ContentRouting, keyProvider KeyChanFunc) *Reprovider {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Reprovider{
 		ctx:      ctx,
@@ -55,7 +55,7 @@ func NewReprovider(ctx context.Context, reprovideIniterval time.Duration, rsys r
 
 		rsys:        rsys,
 		keyProvider: keyProvider,
-		tick:        reprovideIniterval,
+		tick:        reprovideInterval,
 	}
 }
 
