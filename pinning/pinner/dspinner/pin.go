@@ -142,7 +142,7 @@ func New(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService) (*pinn
 		dstore:    dstore,
 	}
 
-	data, err := dstore.Get(dirtyKey)
+	data, err := dstore.Get(ctx, dirtyKey)
 	if err != nil {
 		if err == ds.ErrNotFound {
 			return p, nil
@@ -268,7 +268,7 @@ func (p *pinner) addPin(ctx context.Context, c cid.Cid, mode ipfspinner.Mode, na
 	p.setDirty(ctx)
 
 	// Store the pin
-	err = p.dstore.Put(pp.dsKey(), pinData)
+	err = p.dstore.Put(ctx, pp.dsKey(), pinData)
 	if err != nil {
 		return "", err
 	}
@@ -332,7 +332,7 @@ func (p *pinner) removePin(ctx context.Context, pp *pin) error {
 
 	// The pin is removed last so that an incomplete remove is detected by a
 	// pin that has a missing index.
-	err = p.dstore.Delete(pp.dsKey())
+	err = p.dstore.Delete(ctx, pp.dsKey())
 	if err != nil {
 		return err
 	}
@@ -669,7 +669,7 @@ func (p *pinner) removePinsForCid(ctx context.Context, c cid.Cid, mode ipfspinne
 
 // loadPin loads a single pin from the datastore.
 func (p *pinner) loadPin(ctx context.Context, pid string) (*pin, error) {
-	pinData, err := p.dstore.Get(ds.NewKey(path.Join(pinKeyPath, pid)))
+	pinData, err := p.dstore.Get(ctx, ds.NewKey(path.Join(pinKeyPath, pid)))
 	if err != nil {
 		return nil, err
 	}
@@ -804,7 +804,7 @@ func (p *pinner) flushPins(ctx context.Context, force bool) error {
 	if !p.autoSync && !force {
 		return nil
 	}
-	if err := p.dstore.Sync(ds.NewKey(basePath)); err != nil {
+	if err := p.dstore.Sync(ctx, ds.NewKey(basePath)); err != nil {
 		return fmt.Errorf("cannot sync pin state: %v", err)
 	}
 	p.setClean(ctx)
@@ -909,12 +909,12 @@ func (p *pinner) setDirty(ctx context.Context) {
 	}
 
 	data := []byte{1}
-	err := p.dstore.Put(dirtyKey, data)
+	err := p.dstore.Put(ctx, dirtyKey, data)
 	if err != nil {
 		log.Errorf("failed to set pin dirty flag: %s", err)
 		return
 	}
-	err = p.dstore.Sync(dirtyKey)
+	err = p.dstore.Sync(ctx, dirtyKey)
 	if err != nil {
 		log.Errorf("failed to sync pin dirty flag: %s", err)
 	}
@@ -928,12 +928,12 @@ func (p *pinner) setClean(ctx context.Context) {
 	}
 
 	data := []byte{0}
-	err := p.dstore.Put(dirtyKey, data)
+	err := p.dstore.Put(ctx, dirtyKey, data)
 	if err != nil {
 		log.Errorf("failed to set clear dirty flag: %s", err)
 		return
 	}
-	if err = p.dstore.Sync(dirtyKey); err != nil {
+	if err = p.dstore.Sync(ctx, dirtyKey); err != nil {
 		log.Errorf("failed to sync cleared pin dirty flag: %s", err)
 		return
 	}
@@ -951,7 +951,7 @@ func (p *pinner) rebuildIndexes(ctx context.Context) error {
 	q := query.Query{
 		Prefix: pinKeyPath,
 	}
-	results, err := p.dstore.Query(q)
+	results, err := p.dstore.Query(ctx, q)
 	if err != nil {
 		return err
 	}

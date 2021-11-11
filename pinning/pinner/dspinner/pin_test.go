@@ -309,7 +309,7 @@ func TestPinnerBasic(t *testing.T) {
 	if pp.Cid != ak {
 		t.Error("loaded pin has wrong cid")
 	}
-	err = p.dstore.Delete(pp.dsKey())
+	err = p.dstore.Delete(ctx, pp.dsKey())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -703,7 +703,7 @@ func TestLoadDirty(t *testing.T) {
 	p.setDirty(ctx)
 
 	// Verify dirty
-	data, err := dstore.Get(dirtyKey)
+	data, err := dstore.Get(ctx, dirtyKey)
 	if err != nil {
 		t.Fatalf("could not read dirty flag: %v", err)
 	}
@@ -727,7 +727,7 @@ func TestLoadDirty(t *testing.T) {
 	}
 
 	// Verify not dirty
-	data, err = dstore.Get(dirtyKey)
+	data, err = dstore.Get(ctx, dirtyKey)
 	if err != nil {
 		t.Fatalf("could not read dirty flag: %v", err)
 	}
@@ -923,7 +923,7 @@ type batchWrap struct {
 	ds.Datastore
 }
 
-func (d *batchWrap) Batch() (ds.Batch, error) {
+func (d *batchWrap) Batch(_ context.Context) (ds.Batch, error) {
 	return ds.NewBasicBatch(d), nil
 }
 
@@ -957,7 +957,7 @@ func BenchmarkLoad(b *testing.B) {
 
 	b.Run("RebuildTrue", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			err = dstore.Put(dirtyKey, []byte{1})
+			err = dstore.Put(ctx, dirtyKey, []byte{1})
 			if err != nil {
 				panic(err.Error())
 			}
@@ -971,7 +971,7 @@ func BenchmarkLoad(b *testing.B) {
 
 	b.Run("RebuildFalse", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			err = dstore.Put(dirtyKey, []byte{0})
+			err = dstore.Put(ctx, dirtyKey, []byte{0})
 			if err != nil {
 				panic(err.Error())
 			}
@@ -1161,7 +1161,7 @@ func BenchmarkRebuild(b *testing.B) {
 		b.Run(fmt.Sprintf("Rebuild %d", pins), func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				err = dstore.Put(dirtyKey, []byte{1})
+				err = dstore.Put(ctx, dirtyKey, []byte{1})
 				if err != nil {
 					panic(err.Error())
 				}
@@ -1252,7 +1252,7 @@ func TestCidIndex(t *testing.T) {
 	q := query.Query{
 		Prefix: pinKeyPath,
 	}
-	results, err := pinner.dstore.Query(q)
+	results, err := pinner.dstore.Query(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1335,7 +1335,7 @@ func TestRebuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = pinner.dstore.Delete(pp.dsKey())
+	err = pinner.dstore.Delete(ctx, pp.dsKey())
 	if err != nil {
 		t.Fatal(err)
 	}
