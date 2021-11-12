@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"os"
 
-	mdag "github.com/ipfs/go-merkledag"
-
-	format "github.com/ipfs/go-unixfs"
 	"github.com/ipfs/go-unixfs/hamt"
+	"github.com/ipfs/go-unixfs/private/linksize"
 
+	"github.com/alecthomas/units"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
+	mdag "github.com/ipfs/go-merkledag"
+	format "github.com/ipfs/go-unixfs"
 )
 
 var log = logging.Logger("unixfs")
@@ -23,9 +24,10 @@ var log = logging.Logger("unixfs")
 // The size is not the *exact* block size of the encoded BasicDirectory but just
 // the estimated size based byte length of links name and CID (BasicDirectory's
 // ProtoNode doesn't use the Data field so this estimate is pretty accurate).
-var HAMTShardingSize = 0
+var HAMTShardingSize = int(256 * units.KiB)
 
 // DefaultShardWidth is the default value used for hamt sharding width.
+// Needs to be a power of two (shard entry size) and multiple of 8 (bitfield size).
 var DefaultShardWidth = 256
 
 // Directory defines a UnixFS directory. It is used for creating, reading and
@@ -74,6 +76,16 @@ type Directory interface {
 // TODO: Evaluate removing `dserv` from this layer and providing it in MFS.
 // (The functions should in that case add a `DAGService` argument.)
 
+// Link size estimation function. For production it's usually the one here
+// but during test we may mock it to get fixed sizes.
+func productionLinkSize(linkName string, linkCid cid.Cid) int {
+	return len(linkName) + linkCid.ByteLen()
+}
+
+func init() {
+	linksize.LinkSizeFunction = productionLinkSize
+}
+
 // BasicDirectory is the basic implementation of `Directory`. All the entries
 // are stored in a single node.
 type BasicDirectory struct {
@@ -93,6 +105,10 @@ type BasicDirectory struct {
 type HAMTDirectory struct {
 	shard *hamt.Shard
 	dserv ipld.DAGService
+
+	// Track the changes in size by the AddChild and RemoveChild calls
+	// for the HAMTShardingSize option.
+	sizeChange int
 }
 
 func newEmptyBasicDirectory(dserv ipld.DAGService) *BasicDirectory {
@@ -110,10 +126,10 @@ func newBasicDirectoryFromNode(dserv ipld.DAGService, node *mdag.ProtoNode) *Bas
 	return basicDir
 }
 
-// NewDirectory returns a Directory implemented by UpgradeableDirectory
+// NewDirectory returns a Directory implemented by DynamicDirectory
 // containing a BasicDirectory that can be converted to a HAMTDirectory.
 func NewDirectory(dserv ipld.DAGService) Directory {
-	return &UpgradeableDirectory{newEmptyBasicDirectory(dserv)}
+	return &DynamicDirectory{newEmptyBasicDirectory(dserv)}
 }
 
 // ErrNotADir implies that the given node was not a unixfs directory
@@ -134,16 +150,13 @@ func NewDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (Directory, err
 
 	switch fsNode.Type() {
 	case format.TDirectory:
-		return &UpgradeableDirectory{newBasicDirectoryFromNode(dserv, protoBufNode.Copy().(*mdag.ProtoNode))}, nil
+		return &DynamicDirectory{newBasicDirectoryFromNode(dserv, protoBufNode.Copy().(*mdag.ProtoNode))}, nil
 	case format.THAMTShard:
 		shard, err := hamt.NewHamtFromDag(dserv, node)
 		if err != nil {
 			return nil, err
 		}
-		return &HAMTDirectory{
-			dserv: dserv,
-			shard: shard,
-		}, nil
+		return &DynamicDirectory{&HAMTDirectory{shard, dserv, 0}}, nil
 	}
 
 	return nil, ErrNotADir
@@ -155,18 +168,16 @@ func (d *BasicDirectory) computeEstimatedSize() {
 		d.addToEstimatedSize(l.Name, l.Cid)
 		return nil
 	})
-}
-
-func estimatedLinkSize(linkName string, linkCid cid.Cid) int {
-	return len(linkName) + linkCid.ByteLen()
+	// ForEachLink will never fail traversing the BasicDirectory
+	// and neither the inner callback `addToEstimatedSize`.
 }
 
 func (d *BasicDirectory) addToEstimatedSize(name string, linkCid cid.Cid) {
-	d.estimatedSize += estimatedLinkSize(name, linkCid)
+	d.estimatedSize += linksize.LinkSizeFunction(name, linkCid)
 }
 
 func (d *BasicDirectory) removeFromEstimatedSize(name string, linkCid cid.Cid) {
-	d.estimatedSize -= estimatedLinkSize(name, linkCid)
+	d.estimatedSize -= linksize.LinkSizeFunction(name, linkCid)
 	if d.estimatedSize < 0 {
 		// Something has gone very wrong. Log an error and recompute the
 		// size from scratch.
@@ -183,17 +194,50 @@ func (d *BasicDirectory) SetCidBuilder(builder cid.Builder) {
 // AddChild implements the `Directory` interface. It adds (or replaces)
 // a link to the given `node` under `name`.
 func (d *BasicDirectory) AddChild(ctx context.Context, name string, node ipld.Node) error {
-	// Remove old link (if it existed; ignore `ErrNotExist` otherwise).
+	link, err := ipld.MakeLink(node)
+	if err != nil {
+		return err
+	}
+
+	return d.addLinkChild(ctx, name, link)
+}
+
+func (d *BasicDirectory) needsToSwitchToHAMTDir(name string, nodeToAdd ipld.Node) (bool, error) {
+	if HAMTShardingSize == 0 { // Option disabled.
+		return false, nil
+	}
+
+	operationSizeChange := 0
+	// Find if there is an old entry under that name that will be overwritten.
+	entryToRemove, err := d.node.GetNodeLink(name)
+	if err != mdag.ErrLinkNotFound {
+		if err != nil {
+			return false, err
+		}
+		operationSizeChange -= linksize.LinkSizeFunction(name, entryToRemove.Cid)
+	}
+	if nodeToAdd != nil {
+		operationSizeChange += linksize.LinkSizeFunction(name, nodeToAdd.Cid())
+	}
+
+	return d.estimatedSize+operationSizeChange >= HAMTShardingSize, nil
+}
+
+// addLinkChild adds the link as an entry to this directory under the given
+// name. Plumbing function for the AddChild API.
+func (d *BasicDirectory) addLinkChild(ctx context.Context, name string, link *ipld.Link) error {
+	// Remove old link and account for size change (if it existed; ignore
+	// `ErrNotExist` otherwise).
 	err := d.RemoveChild(ctx, name)
 	if err != nil && err != os.ErrNotExist {
 		return err
 	}
 
-	err = d.node.AddNodeLink(name, node)
+	err = d.node.AddRawLink(name, link)
 	if err != nil {
 		return err
 	}
-	d.addToEstimatedSize(name, node.Cid())
+	d.addToEstimatedSize(name, link.Cid)
 	return nil
 }
 
@@ -218,7 +262,7 @@ func (d *BasicDirectory) EnumLinksAsync(ctx context.Context) <-chan format.LinkR
 }
 
 // ForEachLink implements the `Directory` interface.
-func (d *BasicDirectory) ForEachLink(ctx context.Context, f func(*ipld.Link) error) error {
+func (d *BasicDirectory) ForEachLink(_ context.Context, f func(*ipld.Link) error) error {
 	for _, l := range d.node.Links() {
 		if err := f(l); err != nil {
 			return err
@@ -277,8 +321,8 @@ func (d *BasicDirectory) GetCidBuilder() cid.Builder {
 	return d.node.CidBuilder()
 }
 
-// SwitchToSharding returns a HAMT implementation of this directory.
-func (d *BasicDirectory) SwitchToSharding(ctx context.Context) (Directory, error) {
+// switchToSharding returns a HAMT implementation of this directory.
+func (d *BasicDirectory) switchToSharding(ctx context.Context) (*HAMTDirectory, error) {
 	hamtDir := new(HAMTDirectory)
 	hamtDir.dserv = d.dserv
 
@@ -311,7 +355,16 @@ func (d *HAMTDirectory) SetCidBuilder(builder cid.Builder) {
 
 // AddChild implements the `Directory` interface.
 func (d *HAMTDirectory) AddChild(ctx context.Context, name string, nd ipld.Node) error {
-	return d.shard.Set(ctx, name, nd)
+	oldChild, err := d.shard.Swap(ctx, name, nd)
+	if err != nil {
+		return err
+	}
+
+	if oldChild != nil {
+		d.removeFromSizeChange(oldChild.Name, oldChild.Cid)
+	}
+	d.addToSizeChange(name, nd.Cid())
+	return nil
 }
 
 // ForEachLink implements the `Directory` interface.
@@ -342,7 +395,16 @@ func (d *HAMTDirectory) Find(ctx context.Context, name string) (ipld.Node, error
 
 // RemoveChild implements the `Directory` interface.
 func (d *HAMTDirectory) RemoveChild(ctx context.Context, name string) error {
-	return d.shard.Remove(ctx, name)
+	oldChild, err := d.shard.Take(ctx, name)
+	if err != nil {
+		return err
+	}
+
+	if oldChild != nil {
+		d.removeFromSizeChange(oldChild.Name, oldChild.Cid)
+	}
+
+	return nil
 }
 
 // GetNode implements the `Directory` interface.
@@ -355,42 +417,198 @@ func (d *HAMTDirectory) GetCidBuilder() cid.Builder {
 	return d.shard.CidBuilder()
 }
 
-// UpgradeableDirectory wraps a Directory interface and provides extra logic
-// to upgrade from its BasicDirectory implementation to HAMTDirectory.
-type UpgradeableDirectory struct {
+// switchToBasic returns a BasicDirectory implementation of this directory.
+func (d *HAMTDirectory) switchToBasic(ctx context.Context) (*BasicDirectory, error) {
+	basicDir := newEmptyBasicDirectory(d.dserv)
+	basicDir.SetCidBuilder(d.GetCidBuilder())
+
+	err := d.ForEachLink(ctx, func(lnk *ipld.Link) error {
+		err := basicDir.addLinkChild(ctx, lnk.Name, lnk)
+		if err != nil {
+			return err
+		}
+
+		return nil
+		// This function enumerates all the links in the Directory requiring all
+		// shards to be accessible but it is only called *after* sizeBelowThreshold
+		// returns true, which means we have already enumerated and fetched *all*
+		// shards in the first place (that's the only way we can be really sure
+		// we are actually below the threshold).
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return basicDir, nil
+}
+
+func (d *HAMTDirectory) addToSizeChange(name string, linkCid cid.Cid) {
+	d.sizeChange += linksize.LinkSizeFunction(name, linkCid)
+}
+
+func (d *HAMTDirectory) removeFromSizeChange(name string, linkCid cid.Cid) {
+	d.sizeChange -= linksize.LinkSizeFunction(name, linkCid)
+}
+
+// Evaluate a switch from HAMTDirectory to BasicDirectory in case the size will
+// go above the threshold when we are adding or removing an entry.
+// In both the add/remove operations any old name will be removed, and for the
+// add operation in particular a new entry will be added under that name (otherwise
+// nodeToAdd is nil). We compute both (potential) future subtraction and
+// addition to the size change.
+func (d *HAMTDirectory) needsToSwitchToBasicDir(ctx context.Context, name string, nodeToAdd ipld.Node) (switchToBasic bool, err error) {
+	if HAMTShardingSize == 0 { // Option disabled.
+		return false, nil
+	}
+
+	operationSizeChange := 0
+
+	// Find if there is an old entry under that name that will be overwritten
+	// (AddEntry) or flat out removed (RemoveEntry).
+	entryToRemove, err := d.shard.Find(ctx, name)
+	if err != os.ErrNotExist {
+		if err != nil {
+			return false, err
+		}
+		operationSizeChange -= linksize.LinkSizeFunction(name, entryToRemove.Cid)
+	}
+
+	// For the AddEntry case compute the size addition of the new entry.
+	if nodeToAdd != nil {
+		operationSizeChange += linksize.LinkSizeFunction(name, nodeToAdd.Cid())
+	}
+
+	if d.sizeChange+operationSizeChange >= 0 {
+		// We won't have reduced the HAMT net size.
+		return false, nil
+	}
+
+	// We have reduced the directory size, check if went below the
+	// HAMTShardingSize threshold to trigger a switch.
+	return d.sizeBelowThreshold(ctx, operationSizeChange)
+}
+
+// Evaluate directory size and a future sizeChange and check if it will be below
+// HAMTShardingSize threshold (to trigger a transition to a BasicDirectory).
+// Instead of enumerating the entire tree we eagerly call EnumLinksAsync
+// until we either reach a value above the threshold (in that case no need
+// to keep counting) or an error occurs (like the context being canceled
+// if we take too much time fetching the necessary shards).
+func (d *HAMTDirectory) sizeBelowThreshold(ctx context.Context, sizeChange int) (below bool, err error) {
+	if HAMTShardingSize == 0 {
+		panic("asked to compute HAMT size with HAMTShardingSize option off (0)")
+	}
+
+	// We don't necessarily compute the full size of *all* shards as we might
+	// end early if we already know we're above the threshold or run out of time.
+	partialSize := 0
+
+	// We stop the enumeration once we have enough information and exit this function.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	for linkResult := range d.EnumLinksAsync(ctx) {
+		if linkResult.Err != nil {
+			return false, linkResult.Err
+		}
+
+		partialSize += linksize.LinkSizeFunction(linkResult.Link.Name, linkResult.Link.Cid)
+		if partialSize+sizeChange >= HAMTShardingSize {
+			// We have already fetched enough shards to assert we are
+			//  above the threshold, so no need to keep fetching.
+			return false, nil
+		}
+	}
+
+	// We enumerated *all* links in all shards and didn't reach the threshold.
+	return true, nil
+}
+
+// DynamicDirectory wraps a Directory interface and provides extra logic
+// to switch from BasicDirectory to HAMTDirectory and backwards based on
+// size.
+type DynamicDirectory struct {
 	Directory
 }
 
-var _ Directory = (*UpgradeableDirectory)(nil)
+var _ Directory = (*DynamicDirectory)(nil)
 
 // AddChild implements the `Directory` interface. We check when adding new entries
 // if we should switch to HAMTDirectory according to global option(s).
-func (d *UpgradeableDirectory) AddChild(ctx context.Context, name string, nd ipld.Node) error {
-	err := d.Directory.AddChild(ctx, name, nd)
+func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.Node) error {
+	hamtDir, ok := d.Directory.(*HAMTDirectory)
+	if ok {
+		// We evaluate a switch in the HAMTDirectory case even for an AddChild
+		// as it may overwrite an existing entry and end up actually reducing
+		// the directory size.
+		switchToBasic, err := hamtDir.needsToSwitchToBasicDir(ctx, name, nd)
+		if err != nil {
+			return err
+		}
+
+		if switchToBasic {
+			basicDir, err := hamtDir.switchToBasic(ctx)
+			if err != nil {
+				return err
+			}
+			err = basicDir.AddChild(ctx, name, nd)
+			if err != nil {
+				return err
+			}
+			d.Directory = basicDir
+			return nil
+		}
+
+		return d.Directory.AddChild(ctx, name, nd)
+	}
+
+	// BasicDirectory
+	basicDir := d.Directory.(*BasicDirectory)
+	switchToHAMT, err := basicDir.needsToSwitchToHAMTDir(name, nd)
+	if err != nil {
+		return err
+	}
+	if !switchToHAMT {
+		return basicDir.AddChild(ctx, name, nd)
+	}
+	hamtDir, err = basicDir.switchToSharding(ctx)
+	if err != nil {
+		return err
+	}
+	hamtDir.AddChild(ctx, name, nd)
+	if err != nil {
+		return err
+	}
+	d.Directory = hamtDir
+	return nil
+}
+
+// RemoveChild implements the `Directory` interface. Used in the case where we wrap
+// a HAMTDirectory that might need to be downgraded to a BasicDirectory. The
+// upgrade path is in AddChild.
+func (d *DynamicDirectory) RemoveChild(ctx context.Context, name string) error {
+	hamtDir, ok := d.Directory.(*HAMTDirectory)
+	if !ok {
+		return d.Directory.RemoveChild(ctx, name)
+	}
+
+	switchToBasic, err := hamtDir.needsToSwitchToBasicDir(ctx, name, nil)
 	if err != nil {
 		return err
 	}
 
-	// Evaluate possible HAMT upgrade.
-	if HAMTShardingSize == 0 {
-		return nil
-	}
-	basicDir, ok := d.Directory.(*BasicDirectory)
-	if !ok {
-		return nil
-	}
-	if basicDir.estimatedSize >= HAMTShardingSize {
-		// Ideally to minimize performance we should check if this last
-		// `AddChild` call would bring the directory size over the threshold
-		// *before* executing it since we would end up switching anyway and
-		// that call would be "wasted". This is a minimal performance impact
-		// and we prioritize a simple code base.
-		hamtDir, err := basicDir.SwitchToSharding(ctx)
-		if err != nil {
-			return err
-		}
-		d.Directory = hamtDir
+	if !switchToBasic {
+		return hamtDir.RemoveChild(ctx, name)
 	}
 
+	basicDir, err := hamtDir.switchToBasic(ctx)
+	if err != nil {
+		return err
+	}
+	basicDir.RemoveChild(ctx, name)
+	if err != nil {
+		return err
+	}
+	d.Directory = basicDir
 	return nil
 }
