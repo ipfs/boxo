@@ -24,12 +24,17 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
+
+	format "github.com/ipfs/go-unixfs"
+	"github.com/ipfs/go-unixfs/internal"
 
 	bitfield "github.com/ipfs/go-bitfield"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
-	format "github.com/ipfs/go-unixfs"
 )
 
 const (
@@ -37,27 +42,41 @@ const (
 	HashMurmur3 uint64 = 0x22
 )
 
+func init() {
+	internal.HAMTHashFunction = murmur3Hash
+}
+
 func (ds *Shard) isValueNode() bool {
 	return ds.key != "" && ds.val != nil
 }
 
 // A Shard represents the HAMT. It should be initialized with NewShard().
 type Shard struct {
-	cid cid.Cid
-
 	childer *childer
 
-	tableSize    int
+	// Entries per node (number of possible childs indexed by the partial key).
+	tableSize int
+	// Bits needed to encode child indexes (log2 of number of entries). This is
+	// the number of bits taken from the hash key on each level of the tree.
 	tableSizeLg2 int
 
 	builder  cid.Builder
 	hashFunc uint64
 
+	// String format with number of zeros that will be present in the hexadecimal
+	// encoding of the child index to always reach the fixed maxpadlen chars.
+	// Example: maxpadlen = 4 => prefixPadStr: "%04X" (print number in hexadecimal
+	// format padding with zeros to always reach 4 characters).
 	prefixPadStr string
-	maxpadlen    int
+	// Length in chars of string that encodes child indexes. We encode indexes
+	// as hexadecimal strings to this is log4 of number of entries.
+	maxpadlen int
 
 	dserv ipld.DAGService
 
+	// FIXME: Remove. We don't actually store "value nodes". This confusing
+	//  abstraction just removes the maxpadlen from the link names to extract
+	//  the actual value link the trie is storing.
 	// leaf node
 	key string
 	val *ipld.Link
@@ -70,12 +89,13 @@ func NewShard(dserv ipld.DAGService, size int) (*Shard, error) {
 		return nil, err
 	}
 
+	// FIXME: Make this at least a static configuration for testing.
 	ds.hashFunc = HashMurmur3
 	return ds, nil
 }
 
 func makeShard(ds ipld.DAGService, size int) (*Shard, error) {
-	lg2s, err := logtwo(size)
+	lg2s, err := Logtwo(size)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +143,6 @@ func NewHamtFromDag(dserv ipld.DAGService, nd ipld.Node) (*Shard, error) {
 
 	ds.childer.makeChilder(fsn.Data(), pbnd.Links())
 
-	ds.cid = pbnd.Cid()
 	ds.hashFunc = fsn.HashType()
 	ds.builder = pbnd.CidBuilder()
 
@@ -206,31 +225,49 @@ func (ds *Shard) makeShardValue(lnk *ipld.Link) (*Shard, error) {
 
 // Set sets 'name' = nd in the HAMT
 func (ds *Shard) Set(ctx context.Context, name string, nd ipld.Node) error {
-	hv := &hashBits{b: hash([]byte(name))}
-	err := ds.dserv.Add(ctx, nd)
+	_, err := ds.Swap(ctx, name, nd)
+	return err
+}
+
+// Swap sets a link pointing to the passed node as the value under the
+// name key in this Shard or its children. It also returns the previous link
+// under that name key (if any).
+func (ds *Shard) Swap(ctx context.Context, name string, node ipld.Node) (*ipld.Link, error) {
+	hv := newHashBits(name)
+	err := ds.dserv.Add(ctx, node)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	lnk, err := ipld.MakeLink(nd)
+	lnk, err := ipld.MakeLink(node)
 	if err != nil {
-		return err
+		return nil, err
 	}
+
+	// FIXME: We don't need to set the name here, it will get overwritten.
+	//  This is confusing, confirm and remove this line.
 	lnk.Name = ds.linkNamePrefix(0) + name
 
-	return ds.modifyValue(ctx, hv, name, lnk)
+	return ds.swapValue(ctx, hv, name, lnk)
 }
 
 // Remove deletes the named entry if it exists. Otherwise, it returns
 // os.ErrNotExist.
 func (ds *Shard) Remove(ctx context.Context, name string) error {
-	hv := &hashBits{b: hash([]byte(name))}
-	return ds.modifyValue(ctx, hv, name, nil)
+	_, err := ds.Take(ctx, name)
+	return err
+}
+
+// Take is similar to the public Remove but also returns the
+// old removed link (if it exists).
+func (ds *Shard) Take(ctx context.Context, name string) (*ipld.Link, error) {
+	hv := newHashBits(name)
+	return ds.swapValue(ctx, hv, name, nil)
 }
 
 // Find searches for a child node by 'name' within this hamt
 func (ds *Shard) Find(ctx context.Context, name string) (*ipld.Link, error) {
-	hv := &hashBits{b: hash([]byte(name))}
+	hv := newHashBits(name)
 
 	var out *ipld.Link
 	err := ds.getValue(ctx, hv, name, func(sv *Shard) error {
@@ -338,9 +375,11 @@ func (ds *Shard) EnumLinksAsync(ctx context.Context) <-chan format.LinkResult {
 	go func() {
 		defer close(linkResults)
 		defer cancel()
-		getLinks := makeAsyncTrieGetLinks(ds.dserv, linkResults)
-		cset := cid.NewSet()
-		err := dag.Walk(ctx, getLinks, ds.cid, cset.Visit, dag.Concurrent())
+
+		err := parallelShardWalk(ctx, ds, ds.dserv, func(formattedLink *ipld.Link) error {
+			emitResult(ctx, linkResults, format.LinkResult{Link: formattedLink, Err: nil})
+			return nil
+		})
 		if err != nil {
 			emitResult(ctx, linkResults, format.LinkResult{Link: nil, Err: err})
 		}
@@ -348,44 +387,178 @@ func (ds *Shard) EnumLinksAsync(ctx context.Context) <-chan format.LinkResult {
 	return linkResults
 }
 
-// makeAsyncTrieGetLinks builds a getLinks function that can be used with EnumerateChildrenAsync
-// to iterate a HAMT shard. It takes an IPLD Dag Service to fetch nodes, and a call back that will get called
-// on all links to leaf nodes in a HAMT tree, so they can be collected for an EnumLinks operation
-func makeAsyncTrieGetLinks(dagService ipld.DAGService, linkResults chan<- format.LinkResult) dag.GetLinks {
+type listCidsAndShards struct {
+	cids   []cid.Cid
+	shards []*Shard
+}
 
-	return func(ctx context.Context, currentCid cid.Cid) ([]*ipld.Link, error) {
-		node, err := dagService.Get(ctx, currentCid)
-		if err != nil {
-			return nil, err
-		}
-		directoryShard, err := NewHamtFromDag(dagService, node)
-		if err != nil {
-			return nil, err
-		}
+func (ds *Shard) walkChildren(processLinkValues func(formattedLink *ipld.Link) error) (*listCidsAndShards, error) {
+	res := &listCidsAndShards{}
 
-		childShards := make([]*ipld.Link, 0, directoryShard.childer.length())
-		links := directoryShard.childer.links
-		for idx := range directoryShard.childer.children {
-			lnk := links[idx]
-			lnkLinkType, err := directoryShard.childLinkType(lnk)
-
+	for idx, lnk := range ds.childer.links {
+		if nextShard := ds.childer.children[idx]; nextShard == nil {
+			lnkLinkType, err := ds.childLinkType(lnk)
 			if err != nil {
 				return nil, err
 			}
-			if lnkLinkType == shardLink {
-				childShards = append(childShards, lnk)
-			} else {
-				sv, err := directoryShard.makeShardValue(lnk)
+
+			switch lnkLinkType {
+			case shardValueLink:
+				sv, err := ds.makeShardValue(lnk)
 				if err != nil {
 					return nil, err
 				}
 				formattedLink := sv.val
 				formattedLink.Name = sv.key
-				emitResult(ctx, linkResults, format.LinkResult{Link: formattedLink, Err: nil})
+
+				if err := processLinkValues(formattedLink); err != nil {
+					return nil, err
+				}
+			case shardLink:
+				res.cids = append(res.cids, lnk.Cid)
+			default:
+				return nil, fmt.Errorf("unsupported shard link type")
+			}
+
+		} else {
+			if nextShard.val != nil {
+				formattedLink := &ipld.Link{
+					Name: nextShard.key,
+					Size: nextShard.val.Size,
+					Cid:  nextShard.val.Cid,
+				}
+				if err := processLinkValues(formattedLink); err != nil {
+					return nil, err
+				}
+			} else {
+				res.shards = append(res.shards, nextShard)
 			}
 		}
-		return childShards, nil
 	}
+	return res, nil
+}
+
+// parallelShardWalk is quite similar to the DAG walking algorithm from https://github.com/ipfs/go-merkledag/blob/594e515f162e764183243b72c2ba84f743424c8c/merkledag.go#L464
+// However, there are a few notable differences:
+// 1. Some children are actualized Shard structs and some are in the blockstore, this will leverage walking over the in memory Shards as well as the stored blocks
+// 2. Instead of just passing each child into the worker pool by itself we group them so that we can leverage optimizations from GetMany.
+//    This optimization also makes the walk a little more biased towards depth (as opposed to BFS) in the earlier part of the DAG.
+//    This is particularly helpful for operations like estimating the directory size which should complete quickly when possible.
+// 3. None of the extra options from that package are needed
+func parallelShardWalk(ctx context.Context, root *Shard, dserv ipld.DAGService, processShardValues func(formattedLink *ipld.Link) error) error {
+	const concurrency = 32
+
+	var visitlk sync.Mutex
+	visitSet := cid.NewSet()
+	visit := visitSet.Visit
+
+	// Setup synchronization
+	grp, errGrpCtx := errgroup.WithContext(ctx)
+
+	// Input and output queues for workers.
+	feed := make(chan *listCidsAndShards)
+	out := make(chan *listCidsAndShards)
+	done := make(chan struct{})
+
+	for i := 0; i < concurrency; i++ {
+		grp.Go(func() error {
+			for feedChildren := range feed {
+				for _, nextShard := range feedChildren.shards {
+					nextChildren, err := nextShard.walkChildren(processShardValues)
+					if err != nil {
+						return err
+					}
+
+					select {
+					case out <- nextChildren:
+					case <-errGrpCtx.Done():
+						return nil
+					}
+				}
+
+				var linksToVisit []cid.Cid
+				for _, nextCid := range feedChildren.cids {
+					var shouldVisit bool
+
+					visitlk.Lock()
+					shouldVisit = visit(nextCid)
+					visitlk.Unlock()
+
+					if shouldVisit {
+						linksToVisit = append(linksToVisit, nextCid)
+					}
+				}
+
+				chNodes := dserv.GetMany(errGrpCtx, linksToVisit)
+				for optNode := range chNodes {
+					if optNode.Err != nil {
+						return optNode.Err
+					}
+
+					nextShard, err := NewHamtFromDag(dserv, optNode.Node)
+					if err != nil {
+						return err
+					}
+
+					nextChildren, err := nextShard.walkChildren(processShardValues)
+					if err != nil {
+						return err
+					}
+
+					select {
+					case out <- nextChildren:
+					case <-errGrpCtx.Done():
+						return nil
+					}
+				}
+
+				select {
+				case done <- struct{}{}:
+				case <-errGrpCtx.Done():
+				}
+			}
+			return nil
+		})
+	}
+
+	send := feed
+	var todoQueue []*listCidsAndShards
+	var inProgress int
+
+	next := &listCidsAndShards{
+		shards: []*Shard{root},
+	}
+
+dispatcherLoop:
+	for {
+		select {
+		case send <- next:
+			inProgress++
+			if len(todoQueue) > 0 {
+				next = todoQueue[0]
+				todoQueue = todoQueue[1:]
+			} else {
+				next = nil
+				send = nil
+			}
+		case <-done:
+			inProgress--
+			if inProgress == 0 && next == nil {
+				break dispatcherLoop
+			}
+		case nextNodes := <-out:
+			if next == nil {
+				next = nextNodes
+				send = feed
+			} else {
+				todoQueue = append(todoQueue, nextNodes)
+			}
+		case <-errGrpCtx.Done():
+			break dispatcherLoop
+		}
+	}
+	close(feed)
+	return grp.Wait()
 }
 
 func emitResult(ctx context.Context, linkResults chan<- format.LinkResult, r format.LinkResult) {
@@ -419,75 +592,95 @@ func (ds *Shard) walkTrie(ctx context.Context, cb func(*Shard) error) error {
 	})
 }
 
-func (ds *Shard) modifyValue(ctx context.Context, hv *hashBits, key string, val *ipld.Link) error {
+// swapValue sets the link `value` in the given key, either creating the entry
+// if it didn't exist or overwriting the old one. It returns the old entry (if any).
+func (ds *Shard) swapValue(ctx context.Context, hv *hashBits, key string, value *ipld.Link) (*ipld.Link, error) {
 	idx, err := hv.Next(ds.tableSizeLg2)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if !ds.childer.has(idx) {
-		return ds.childer.insert(key, val, idx)
+		// Entry does not exist, create a new one.
+		return nil, ds.childer.insert(key, value, idx)
 	}
 
 	i := ds.childer.sliceIndex(idx)
-
 	child, err := ds.childer.get(ctx, i)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if child.isValueNode() {
+		// Leaf node. This is the base case of this recursive function.
 		if child.key == key {
-			// value modification
-			if val == nil {
-				return ds.childer.rm(idx)
+			// We are in the correct shard (tree level) so we modify this child
+			// and return.
+			oldValue := child.val
+
+			if value == nil { // Remove old entry.
+				return oldValue, ds.childer.rm(idx)
 			}
 
-			child.val = val
-			return nil
+			child.val = value // Overwrite entry.
+			return oldValue, nil
 		}
 
-		if val == nil {
-			return os.ErrNotExist
+		if value == nil {
+			return nil, os.ErrNotExist
 		}
 
-		// replace value with another shard, one level deeper
-		ns, err := NewShard(ds.dserv, ds.tableSize)
+		// We are in the same slot with another entry with a different key
+		// so we need to fork this leaf node into a shard with two childs:
+		// the old entry and the new one being inserted here.
+		// We don't overwrite anything here so we keep:
+		//   `oldValue = nil`
+
+		// The child of this shard will now be a new shard. The old child value
+		// will be a child of this new shard (along with the new value being
+		// inserted).
+		grandChild := child
+		child, err = NewShard(ds.dserv, ds.tableSize)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		ns.builder = ds.builder
-		chhv := &hashBits{
-			b:        hash([]byte(child.key)),
-			consumed: hv.consumed,
-		}
+		child.builder = ds.builder
+		chhv := newConsumedHashBits(grandChild.key, hv.consumed)
 
-		err = ns.modifyValue(ctx, hv, key, val)
+		// We explicitly ignore the oldValue returned by the next two insertions
+		// (which will be nil) to highlight there is no overwrite here: they are
+		// done with different keys to a new (empty) shard. (At best this shard
+		// will create new ones until we find different slots for both.)
+		_, err = child.swapValue(ctx, hv, key, value)
 		if err != nil {
-			return err
+			return nil, err
 		}
-
-		err = ns.modifyValue(ctx, chhv, child.key, child.val)
+		_, err = child.swapValue(ctx, chhv, grandChild.key, grandChild.val)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		ds.childer.set(ns, i)
-		return nil
+		// Replace this leaf node with the new Shard node.
+		ds.childer.set(child, i)
+		return nil, nil
 	} else {
-		err := child.modifyValue(ctx, hv, key, val)
+		// We are in a Shard (internal node). We will recursively call this
+		// function until finding the leaf (the logic of the `if` case above).
+		oldValue, err := child.swapValue(ctx, hv, key, value)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		if val == nil {
+		if value == nil {
+			// We have removed an entry, check if we should remove shards
+			// as well.
 			switch child.childer.length() {
 			case 0:
 				// empty sub-shard, prune it
 				// Note: this shouldnt normally ever happen
 				//       in the event of another implementation creates flawed
 				//       structures, this will help to normalize them.
-				return ds.childer.rm(idx)
+				return oldValue, ds.childer.rm(idx)
 			case 1:
 				// The single child _should_ be a value by
 				// induction. However, we allow for it to be a
@@ -499,24 +692,25 @@ func (ds *Shard) modifyValue(ctx context.Context, hv *hashBits, key string, val 
 					if schild.isValueNode() {
 						ds.childer.set(schild, i)
 					}
-					return nil
+					return oldValue, nil
 				}
 
 				// Otherwise, work with the link.
 				slnk := child.childer.link(0)
-				lnkType, err := child.childer.sd.childLinkType(slnk)
+				var lnkType linkType
+				lnkType, err = child.childer.sd.childLinkType(slnk)
 				if err != nil {
-					return err
+					return nil, err
 				}
 				if lnkType == shardValueLink {
 					// sub-shard with a single value element, collapse it
 					ds.childer.setLink(slnk, i)
 				}
-				return nil
+				return oldValue, nil
 			}
 		}
 
-		return nil
+		return oldValue, nil
 	}
 }
 

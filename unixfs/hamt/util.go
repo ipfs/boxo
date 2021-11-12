@@ -2,15 +2,27 @@ package hamt
 
 import (
 	"fmt"
+	"math/bits"
+
+	"github.com/ipfs/go-unixfs/internal"
 
 	"github.com/spaolacci/murmur3"
-	"math/bits"
 )
 
 // hashBits is a helper that allows the reading of the 'next n bits' as an integer.
 type hashBits struct {
 	b        []byte
 	consumed int
+}
+
+func newHashBits(val string) *hashBits {
+	return &hashBits{b: internal.HAMTHashFunction([]byte(val))}
+}
+
+func newConsumedHashBits(val string, consumed int) *hashBits {
+	hv := &hashBits{b: internal.HAMTHashFunction([]byte(val))}
+	hv.consumed = consumed
+	return hv
 }
 
 func mkmask(n int) byte {
@@ -50,7 +62,7 @@ func (hb *hashBits) next(i int) int {
 	}
 }
 
-func logtwo(v int) (int, error) {
+func Logtwo(v int) (int, error) {
 	if v <= 0 {
 		return 0, fmt.Errorf("hamt size should be a power of two")
 	}
@@ -61,7 +73,7 @@ func logtwo(v int) (int, error) {
 	return lg2, nil
 }
 
-func hash(val []byte) []byte {
+func murmur3Hash(val []byte) []byte {
 	h := murmur3.New64()
 	h.Write(val)
 	return h.Sum(nil)
