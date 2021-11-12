@@ -53,7 +53,7 @@ func mutexKey(k cid.Cid) uint8 {
 	return k.KeyString()[len(k.KeyString())-1]
 }
 
-func (b *arccache) DeleteBlock(k cid.Cid) error {
+func (b *arccache) DeleteBlock(ctx context.Context, k cid.Cid) error {
 	if !k.Defined() {
 		return nil
 	}
@@ -67,14 +67,14 @@ func (b *arccache) DeleteBlock(k cid.Cid) error {
 	defer lk.Unlock()
 
 	b.cache.Remove(k) // Invalidate cache before deleting.
-	err := b.blockstore.DeleteBlock(k)
+	err := b.blockstore.DeleteBlock(ctx, k)
 	if err == nil {
 		b.cacheHave(k, false)
 	}
 	return err
 }
 
-func (b *arccache) Has(k cid.Cid) (bool, error) {
+func (b *arccache) Has(ctx context.Context, k cid.Cid) (bool, error) {
 	if !k.Defined() {
 		return false, nil
 	}
@@ -87,7 +87,7 @@ func (b *arccache) Has(k cid.Cid) (bool, error) {
 	lk.RLock()
 	defer lk.RUnlock()
 
-	has, err := b.blockstore.Has(k)
+	has, err := b.blockstore.Has(ctx, k)
 	if err != nil {
 		return false, err
 	}
@@ -95,7 +95,7 @@ func (b *arccache) Has(k cid.Cid) (bool, error) {
 	return has, nil
 }
 
-func (b *arccache) GetSize(k cid.Cid) (int, error) {
+func (b *arccache) GetSize(ctx context.Context, k cid.Cid) (int, error) {
 	if !k.Defined() {
 		return -1, ErrNotFound
 	}
@@ -116,7 +116,7 @@ func (b *arccache) GetSize(k cid.Cid) (int, error) {
 	lk.RLock()
 	defer lk.RUnlock()
 
-	blockSize, err := b.blockstore.GetSize(k)
+	blockSize, err := b.blockstore.GetSize(ctx, k)
 	if err == ErrNotFound {
 		b.cacheHave(k, false)
 	} else if err == nil {
@@ -125,11 +125,11 @@ func (b *arccache) GetSize(k cid.Cid) (int, error) {
 	return blockSize, err
 }
 
-func (b *arccache) View(k cid.Cid, callback func([]byte) error) error {
+func (b *arccache) View(ctx context.Context, k cid.Cid, callback func([]byte) error) error {
 	// shortcircuit and fall back to Get if the underlying store
 	// doesn't support Viewer.
 	if b.viewer == nil {
-		blk, err := b.Get(k)
+		blk, err := b.Get(ctx, k)
 		if err != nil {
 			return err
 		}
@@ -150,10 +150,10 @@ func (b *arccache) View(k cid.Cid, callback func([]byte) error) error {
 	lk.RLock()
 	defer lk.RUnlock()
 
-	return b.viewer.View(k, callback)
+	return b.viewer.View(ctx, k, callback)
 }
 
-func (b *arccache) Get(k cid.Cid) (blocks.Block, error) {
+func (b *arccache) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
 	if !k.Defined() {
 		return nil, ErrNotFound
 	}
@@ -166,7 +166,7 @@ func (b *arccache) Get(k cid.Cid) (blocks.Block, error) {
 	lk.RLock()
 	defer lk.RUnlock()
 
-	bl, err := b.blockstore.Get(k)
+	bl, err := b.blockstore.Get(ctx, k)
 	if bl == nil && err == ErrNotFound {
 		b.cacheHave(k, false)
 	} else if bl != nil {
@@ -175,7 +175,7 @@ func (b *arccache) Get(k cid.Cid) (blocks.Block, error) {
 	return bl, err
 }
 
-func (b *arccache) Put(bl blocks.Block) error {
+func (b *arccache) Put(ctx context.Context, bl blocks.Block) error {
 	if has, _, ok := b.queryCache(bl.Cid()); ok && has {
 		return nil
 	}
@@ -184,14 +184,14 @@ func (b *arccache) Put(bl blocks.Block) error {
 	lk.Lock()
 	defer lk.Unlock()
 
-	err := b.blockstore.Put(bl)
+	err := b.blockstore.Put(ctx, bl)
 	if err == nil {
 		b.cacheSize(bl.Cid(), len(bl.RawData()))
 	}
 	return err
 }
 
-func (b *arccache) PutMany(bs []blocks.Block) error {
+func (b *arccache) PutMany(ctx context.Context, bs []blocks.Block) error {
 	mxs := [256]*sync.RWMutex{}
 	var good []blocks.Block
 	for _, block := range bs {
@@ -217,7 +217,7 @@ func (b *arccache) PutMany(bs []blocks.Block) error {
 		}
 	}()
 
-	err := b.blockstore.PutMany(good)
+	err := b.blockstore.PutMany(ctx, good)
 	if err != nil {
 		return err
 	}
@@ -227,8 +227,8 @@ func (b *arccache) PutMany(bs []blocks.Block) error {
 	return nil
 }
 
-func (b *arccache) HashOnRead(enabled bool) {
-	b.blockstore.HashOnRead(enabled)
+func (b *arccache) HashOnRead(ctx context.Context, enabled bool) {
+	b.blockstore.HashOnRead(ctx, enabled)
 }
 
 func (b *arccache) cacheHave(c cid.Cid, have bool) {
@@ -276,14 +276,14 @@ func (b *arccache) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return b.blockstore.AllKeysChan(ctx)
 }
 
-func (b *arccache) GCLock() Unlocker {
-	return b.blockstore.(GCBlockstore).GCLock()
+func (b *arccache) GCLock(ctx context.Context) Unlocker {
+	return b.blockstore.(GCBlockstore).GCLock(ctx)
 }
 
-func (b *arccache) PinLock() Unlocker {
-	return b.blockstore.(GCBlockstore).PinLock()
+func (b *arccache) PinLock(ctx context.Context) Unlocker {
+	return b.blockstore.(GCBlockstore).PinLock(ctx)
 }
 
-func (b *arccache) GCRequested() bool {
-	return b.blockstore.(GCBlockstore).GCRequested()
+func (b *arccache) GCRequested(ctx context.Context) bool {
+	return b.blockstore.(GCBlockstore).GCRequested(ctx)
 }

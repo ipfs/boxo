@@ -13,6 +13,8 @@ import (
 	syncds "github.com/ipfs/go-datastore/sync"
 )
 
+var bg = context.Background()
+
 func testBloomCached(ctx context.Context, bs Blockstore) (*bloomcache, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -45,12 +47,12 @@ func TestPutManyAddsToBloom(t *testing.T) {
 	block2 := blocks.NewBlock([]byte("bar"))
 	emptyBlock := blocks.NewBlock([]byte{})
 
-	cachedbs.PutMany([]blocks.Block{block1, emptyBlock})
-	has, err := cachedbs.Has(block1.Cid())
+	cachedbs.PutMany(bg, []blocks.Block{block1, emptyBlock})
+	has, err := cachedbs.Has(bg, block1.Cid())
 	if err != nil {
 		t.Fatal(err)
 	}
-	blockSize, err := cachedbs.GetSize(block1.Cid())
+	blockSize, err := cachedbs.GetSize(bg, block1.Cid())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,11 +60,11 @@ func TestPutManyAddsToBloom(t *testing.T) {
 		t.Fatal("added block is reported missing")
 	}
 
-	has, err = cachedbs.Has(block2.Cid())
+	has, err = cachedbs.Has(bg, block2.Cid())
 	if err != nil {
 		t.Fatal(err)
 	}
-	blockSize, err = cachedbs.GetSize(block2.Cid())
+	blockSize, err = cachedbs.GetSize(bg, block2.Cid())
 	if err != nil && err != ErrNotFound {
 		t.Fatal(err)
 	}
@@ -70,11 +72,11 @@ func TestPutManyAddsToBloom(t *testing.T) {
 		t.Fatal("not added block is reported to be in blockstore")
 	}
 
-	has, err = cachedbs.Has(emptyBlock.Cid())
+	has, err = cachedbs.Has(bg, emptyBlock.Cid())
 	if err != nil {
 		t.Fatal(err)
 	}
-	blockSize, err = cachedbs.GetSize(emptyBlock.Cid())
+	blockSize, err = cachedbs.GetSize(bg, emptyBlock.Cid())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +97,7 @@ func TestHasIsBloomCached(t *testing.T) {
 	bs := NewBlockstore(syncds.MutexWrap(cd))
 
 	for i := 0; i < 1000; i++ {
-		bs.Put(blocks.NewBlock([]byte(fmt.Sprintf("data: %d", i))))
+		bs.Put(bg, blocks.NewBlock([]byte(fmt.Sprintf("data: %d", i))))
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -115,7 +117,7 @@ func TestHasIsBloomCached(t *testing.T) {
 	})
 
 	for i := 0; i < 1000; i++ {
-		cachedbs.Has(blocks.NewBlock([]byte(fmt.Sprintf("data: %d", i+2000))).Cid())
+		cachedbs.Has(bg, blocks.NewBlock([]byte(fmt.Sprintf("data: %d", i+2000))).Cid())
 	}
 
 	if float64(cacheFails)/float64(1000) > float64(0.05) {
@@ -125,20 +127,20 @@ func TestHasIsBloomCached(t *testing.T) {
 	cacheFails = 0
 	block := blocks.NewBlock([]byte("newBlock"))
 
-	cachedbs.PutMany([]blocks.Block{block})
+	cachedbs.PutMany(bg, []blocks.Block{block})
 	if cacheFails != 2 {
 		t.Fatalf("expected two datastore hits: %d", cacheFails)
 	}
-	cachedbs.Put(block)
+	cachedbs.Put(bg, block)
 	if cacheFails != 3 {
 		t.Fatalf("expected datastore hit: %d", cacheFails)
 	}
 
-	if has, err := cachedbs.Has(block.Cid()); !has || err != nil {
+	if has, err := cachedbs.Has(bg, block.Cid()); !has || err != nil {
 		t.Fatal("has gave wrong response")
 	}
 
-	bl, err := cachedbs.Get(block.Cid())
+	bl, err := cachedbs.Get(bg, block.Cid())
 	if bl.String() != block.String() {
 		t.Fatal("block data doesn't match")
 	}
@@ -168,45 +170,45 @@ func (c *callbackDatastore) CallF() {
 	c.f()
 }
 
-func (c *callbackDatastore) Put(key ds.Key, value []byte) (err error) {
+func (c *callbackDatastore) Put(ctx context.Context, key ds.Key, value []byte) (err error) {
 	c.CallF()
-	return c.ds.Put(key, value)
+	return c.ds.Put(ctx, key, value)
 }
 
-func (c *callbackDatastore) Get(key ds.Key) (value []byte, err error) {
+func (c *callbackDatastore) Get(ctx context.Context, key ds.Key) (value []byte, err error) {
 	c.CallF()
-	return c.ds.Get(key)
+	return c.ds.Get(ctx, key)
 }
 
-func (c *callbackDatastore) Has(key ds.Key) (exists bool, err error) {
+func (c *callbackDatastore) Has(ctx context.Context, key ds.Key) (exists bool, err error) {
 	c.CallF()
-	return c.ds.Has(key)
+	return c.ds.Has(ctx, key)
 }
 
-func (c *callbackDatastore) GetSize(key ds.Key) (size int, err error) {
+func (c *callbackDatastore) GetSize(ctx context.Context, key ds.Key) (size int, err error) {
 	c.CallF()
-	return c.ds.GetSize(key)
+	return c.ds.GetSize(ctx, key)
 }
 
 func (c *callbackDatastore) Close() error {
 	return nil
 }
 
-func (c *callbackDatastore) Delete(key ds.Key) (err error) {
+func (c *callbackDatastore) Delete(ctx context.Context, key ds.Key) (err error) {
 	c.CallF()
-	return c.ds.Delete(key)
+	return c.ds.Delete(ctx, key)
 }
 
-func (c *callbackDatastore) Query(q dsq.Query) (dsq.Results, error) {
+func (c *callbackDatastore) Query(ctx context.Context, q dsq.Query) (dsq.Results, error) {
 	c.CallF()
-	return c.ds.Query(q)
+	return c.ds.Query(ctx, q)
 }
 
-func (c *callbackDatastore) Sync(key ds.Key) error {
+func (c *callbackDatastore) Sync(ctx context.Context, key ds.Key) error {
 	c.CallF()
-	return c.ds.Sync(key)
+	return c.ds.Sync(ctx, key)
 }
 
-func (c *callbackDatastore) Batch() (ds.Batch, error) {
+func (c *callbackDatastore) Batch(_ context.Context) (ds.Batch, error) {
 	return ds.NewBasicBatch(c), nil
 }
