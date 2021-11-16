@@ -16,7 +16,7 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
-var logger = logging.Logger("delegated-routing-client")
+var logger = logging.Logger("delegated/client")
 
 func (c *client) FindProviders(ctx context.Context, cid cid.Cid) ([]peer.AddrInfo, error) {
 	ctx, cancel := context.WithCancel(ctx)
@@ -35,6 +35,8 @@ func (c *client) FindProviders(ctx context.Context, cid cid.Cid) ([]peer.AddrInf
 			} else {
 				if r.Err == nil {
 					infos = append(infos, r.AddrInfo...)
+				} else {
+					logger.Errorf("delegated client received invalid response (%v)", r.Err)
 				}
 			}
 		case <-ctx.Done():
