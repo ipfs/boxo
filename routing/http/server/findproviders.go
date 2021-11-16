@@ -67,6 +67,7 @@ func FindProvidersAsyncHandler(f FindProvidersAsyncFunc) http.HandlerFunc {
 				writer.Write(enc)
 			}
 		default:
+			log.Errorf("unknown method (%v)", env.Tag)
 			writer.WriteHeader(404)
 		}
 	}
