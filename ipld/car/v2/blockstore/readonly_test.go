@@ -1,8 +1,10 @@
 package blockstore
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -268,4 +270,30 @@ func TestReadOnlyErrorAfterClose(t *testing.T) {
 
 	// TODO: test that closing blocks if an AllKeysChan operation is
 	// in progress.
+}
+
+func TestNewReadOnly_CarV1WithoutIndexWorksAsExpected(t *testing.T) {
+	carV1Bytes, err := ioutil.ReadFile("../testdata/sample-v1.car")
+	require.NoError(t, err)
+
+	reader := bytes.NewReader(carV1Bytes)
+	v1r, err := carv1.NewCarReader(reader)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), v1r.Header.Version)
+
+	// Pick the first block in CARv1 as candidate to check `Get` works.
+	wantBlock, err := v1r.Next()
+	require.NoError(t, err)
+
+	// Seek back to the begining of the CARv1 payload.
+	_, err = reader.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+
+	subject, err := NewReadOnly(reader, nil, UseWholeCIDs(true))
+	require.NoError(t, err)
+
+	// Require that the block is found via ReadOnly API and contetns are as expected.
+	gotBlock, err := subject.Get(wantBlock.Cid())
+	require.NoError(t, err)
+	require.Equal(t, wantBlock, gotBlock)
 }

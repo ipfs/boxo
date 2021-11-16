@@ -150,6 +150,10 @@ func generateIndex(at io.ReaderAt, opts ...carv2.Option) (index.Index, error) {
 	switch r := at.(type) {
 	case io.ReadSeeker:
 		rs = r
+		// The version may have been read from the given io.ReaderAt; therefore move back to the begining.
+		if _, err := rs.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
 	default:
 		rs = internalio.NewOffsetReadSeeker(r, 0)
 	}
