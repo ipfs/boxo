@@ -8,9 +8,12 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-delegated-routing/client"
 	"github.com/ipfs/go-delegated-routing/parser"
+	logging "github.com/ipfs/go-log"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/multiformats/go-multiaddr"
 )
+
+var log = logging.Logger("delegated/server")
 
 type FindProvidersAsyncFunc func(cid.Cid, chan<- client.FindProvidersAsyncResult) error
 
@@ -21,6 +24,7 @@ func FindProvidersAsyncHandler(f FindProvidersAsyncFunc) http.HandlerFunc {
 		env := parser.Envelope{Payload: &parser.GetP2PProvideRequest{}}
 		err := dec.Decode(&env)
 		if err != nil {
+			log.Errorf("received request not decodeable (%v)", err)
 			writer.WriteHeader(400)
 			return
 		}
@@ -28,23 +32,27 @@ func FindProvidersAsyncHandler(f FindProvidersAsyncFunc) http.HandlerFunc {
 		case parser.MethodGetP2PProvide:
 			req, ok := env.Payload.(*parser.GetP2PProvideRequest)
 			if !ok {
+				log.Errorf("p2p provide request is missing")
 				writer.WriteHeader(400)
 				return
 			}
 			// extract key and return it in the form of a cid
 			parsedCid, err := ParseGetP2PProvideRequest(req)
 			if err != nil {
+				log.Errorf("cannot parse get p2p provide request (%v)", err)
 				writer.WriteHeader(400)
 				return
 			}
 			// proxy to func
 			ch := make(chan client.FindProvidersAsyncResult)
 			if err = f(parsedCid, ch); err != nil {
+				log.Errorf("get p2p provider rejected request (%v)", err)
 				writer.WriteHeader(500)
 				return
 			}
 			for x := range ch {
 				if x.Err != nil {
+					log.Errorf("get p2p provider returned error (%v)", x.Err)
 					continue
 				}
 				resp := GenerateGetP2PProvideResponse(x.AddrInfo)
