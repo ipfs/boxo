@@ -128,7 +128,7 @@ func (d *Directory) localUpdate(c child) (*dag.ProtoNode, error) {
 
 // Update child entry in the underlying UnixFS directory.
 func (d *Directory) updateChild(c child) error {
-	err := d.addUnixFSChild(c)
+	err := d.unixfsDir.AddChild(d.ctx, c.Name, c.Node)
 	if err != nil {
 		return err
 	}
@@ -313,7 +313,7 @@ func (d *Directory) Mkdir(name string) (*Directory, error) {
 		return nil, err
 	}
 
-	err = d.addUnixFSChild(child{name, ndir})
+	err = d.unixfsDir.AddChild(d.ctx, name, ndir)
 	if err != nil {
 		return nil, err
 	}
@@ -360,35 +360,12 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 		return err
 	}
 
-	err = d.addUnixFSChild(child{name, nd})
+	err = d.unixfsDir.AddChild(d.ctx, name, nd)
 	if err != nil {
 		return err
 	}
 
 	d.modTime = time.Now()
-	return nil
-}
-
-// addUnixFSChild adds a child to the inner UnixFS directory
-// and transitions to a HAMT implementation if needed.
-func (d *Directory) addUnixFSChild(c child) error {
-	if uio.UseHAMTSharding {
-		// If the directory HAMT implementation is being used and this
-		// directory is actually a basic implementation switch it to HAMT.
-		if basicDir, ok := d.unixfsDir.(*uio.BasicDirectory); ok {
-			hamtDir, err := basicDir.SwitchToSharding(d.ctx)
-			if err != nil {
-				return err
-			}
-			d.unixfsDir = hamtDir
-		}
-	}
-
-	err := d.unixfsDir.AddChild(d.ctx, c.Name, c.Node)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
