@@ -96,7 +96,7 @@ func (q *Queue) work() {
 					k = datastore.NewKey(head.Key)
 					c, err = cid.Parse(head.Value)
 					if err != nil {
-						log.Warningf("error parsing queue entry cid with key (%s), removing it from queue: %s", head.Key, err)
+						log.Warnf("error parsing queue entry cid with key (%s), removing it from queue: %s", head.Key, err)
 						err = q.ds.Delete(q.ctx, k)
 						if err != nil {
 							log.Errorf("error deleting queue entry with key (%s), due to error (%s), stopping provider", head.Key, err)

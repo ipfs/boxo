@@ -110,7 +110,7 @@ func (p *Provider) doProvide(c cid.Cid) {
 
 	logP.Info("announce - start - ", c)
 	if err := p.contentRouting.Provide(ctx, c, true); err != nil {
-		logP.Warningf("Unable to provide entry: %s, %s", c, err)
+		logP.Warnf("Unable to provide entry: %s, %s", c, err)
 	}
 	logP.Info("announce - end - ", c)
 }
