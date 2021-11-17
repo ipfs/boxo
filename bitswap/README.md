@@ -70,7 +70,7 @@ var host host.Host
 var router routing.ContentRouting
 var bstore blockstore.Blockstore
 
-network := bsnet.NewFromIPFSHost(host, router)
+network := bsnet.NewFromIpfsHost(host, router)
 exchange := bitswap.New(ctx, network, bstore)
 ```
 
