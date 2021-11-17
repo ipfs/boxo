@@ -236,7 +236,7 @@ func pinSet(ctx context.Context, pinning Pinner, fetchConfig fetcher.Factory, on
 		for _, key := range rkeys {
 			set.Visitor(ctx)(key)
 			if !onlyRoots {
-				err := fetcherhelpers.BlockAll(ctx, session, cidlink.Link{key}, func(res fetcher.FetchResult) error {
+				err := fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: key}, func(res fetcher.FetchResult) error {
 					clink, ok := res.LastBlockLink.(cidlink.Link)
 					if ok {
 						set.Visitor(ctx)(clink.Cid)
