@@ -54,7 +54,7 @@ type Blockstore interface {
 
 	// HashOnRead specifies if every read block should be
 	// rehashed to make sure it matches its CID.
-	HashOnRead(ctx context.Context, enabled bool)
+	HashOnRead(enabled bool)
 }
 
 // Viewer can be implemented by blockstores that offer zero-copy access to
@@ -137,7 +137,7 @@ type blockstore struct {
 	rehash *uatomic.Bool
 }
 
-func (bs *blockstore) HashOnRead(_ context.Context, enabled bool) {
+func (bs *blockstore) HashOnRead(enabled bool) {
 	bs.rehash.Store(enabled)
 }
 

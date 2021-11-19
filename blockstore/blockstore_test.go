@@ -152,7 +152,7 @@ func TestHashOnRead(t *testing.T) {
 	bl2 := blocks.NewBlock([]byte("some other data"))
 	bs.Put(bg, blBad)
 	bs.Put(bg, bl2)
-	bs.HashOnRead(bg, true)
+	bs.HashOnRead(true)
 
 	if _, err := bs.Get(bg, bl.Cid()); err != ErrHashMismatch {
 		t.Fatalf("expected '%v' got '%v'\n", ErrHashMismatch, err)

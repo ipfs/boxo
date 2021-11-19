@@ -227,8 +227,8 @@ func (b *arccache) PutMany(ctx context.Context, bs []blocks.Block) error {
 	return nil
 }
 
-func (b *arccache) HashOnRead(ctx context.Context, enabled bool) {
-	b.blockstore.HashOnRead(ctx, enabled)
+func (b *arccache) HashOnRead(enabled bool) {
+	b.blockstore.HashOnRead(enabled)
 }
 
 func (b *arccache) cacheHave(c cid.Cid, have bool) {
