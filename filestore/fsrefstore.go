@@ -66,7 +66,7 @@ func NewFileManager(ds ds.Batching, root string) *FileManager {
 func (f *FileManager) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	q := dsq.Query{KeysOnly: true}
 
-	res, err := f.ds.Query(q)
+	res, err := f.ds.Query(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -100,8 +100,8 @@ func (f *FileManager) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 
 // DeleteBlock deletes the reference-block from the underlying
 // datastore. It does not touch the referenced data.
-func (f *FileManager) DeleteBlock(c cid.Cid) error {
-	err := f.ds.Delete(dshelp.MultihashToDsKey(c.Hash()))
+func (f *FileManager) DeleteBlock(ctx context.Context, c cid.Cid) error {
+	err := f.ds.Delete(ctx, dshelp.MultihashToDsKey(c.Hash()))
 	if err == ds.ErrNotFound {
 		return blockstore.ErrNotFound
 	}
@@ -112,12 +112,12 @@ func (f *FileManager) DeleteBlock(c cid.Cid) error {
 // is done in two steps: the first step retrieves the reference
 // block from the datastore. The second step uses the stored
 // path and offsets to read the raw block data directly from disk.
-func (f *FileManager) Get(c cid.Cid) (blocks.Block, error) {
-	dobj, err := f.getDataObj(c.Hash())
+func (f *FileManager) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+	dobj, err := f.getDataObj(ctx, c.Hash())
 	if err != nil {
 		return nil, err
 	}
-	out, err := f.readDataObj(c.Hash(), dobj)
+	out, err := f.readDataObj(ctx, c.Hash(), dobj)
 	if err != nil {
 		return nil, err
 	}
@@ -129,23 +129,23 @@ func (f *FileManager) Get(c cid.Cid) (blocks.Block, error) {
 //
 // This method may successfully return the size even if returning the block
 // would fail because the associated file is no longer available.
-func (f *FileManager) GetSize(c cid.Cid) (int, error) {
-	dobj, err := f.getDataObj(c.Hash())
+func (f *FileManager) GetSize(ctx context.Context, c cid.Cid) (int, error) {
+	dobj, err := f.getDataObj(ctx, c.Hash())
 	if err != nil {
 		return -1, err
 	}
 	return int(dobj.GetSize_()), nil
 }
 
-func (f *FileManager) readDataObj(m mh.Multihash, d *pb.DataObj) ([]byte, error) {
+func (f *FileManager) readDataObj(ctx context.Context, m mh.Multihash, d *pb.DataObj) ([]byte, error) {
 	if IsURL(d.GetFilePath()) {
-		return f.readURLDataObj(m, d)
+		return f.readURLDataObj(ctx, m, d)
 	}
 	return f.readFileDataObj(m, d)
 }
 
-func (f *FileManager) getDataObj(m mh.Multihash) (*pb.DataObj, error) {
-	o, err := f.ds.Get(dshelp.MultihashToDsKey(m))
+func (f *FileManager) getDataObj(ctx context.Context, m mh.Multihash) (*pb.DataObj, error) {
+	o, err := f.ds.Get(ctx, dshelp.MultihashToDsKey(m))
 	switch err {
 	case ds.ErrNotFound:
 		return nil, blockstore.ErrNotFound
@@ -213,12 +213,12 @@ func (f *FileManager) readFileDataObj(m mh.Multihash, d *pb.DataObj) ([]byte, er
 }
 
 // reads and verifies the block from URL
-func (f *FileManager) readURLDataObj(m mh.Multihash, d *pb.DataObj) ([]byte, error) {
+func (f *FileManager) readURLDataObj(ctx context.Context, m mh.Multihash, d *pb.DataObj) ([]byte, error) {
 	if !f.AllowUrls {
 		return nil, ErrUrlstoreNotEnabled
 	}
 
-	req, err := http.NewRequest("GET", d.GetFilePath(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", d.GetFilePath(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -261,24 +261,24 @@ func (f *FileManager) readURLDataObj(m mh.Multihash, d *pb.DataObj) ([]byte, err
 
 // Has returns if the FileManager is storing a block reference. It does not
 // validate the data, nor checks if the reference is valid.
-func (f *FileManager) Has(c cid.Cid) (bool, error) {
+func (f *FileManager) Has(ctx context.Context, c cid.Cid) (bool, error) {
 	// NOTE: interesting thing to consider. Has doesnt validate the data.
 	// So the data on disk could be invalid, and we could think we have it.
 	dsk := dshelp.MultihashToDsKey(c.Hash())
-	return f.ds.Has(dsk)
+	return f.ds.Has(ctx, dsk)
 }
 
 type putter interface {
-	Put(ds.Key, []byte) error
+	Put(context.Context, ds.Key, []byte) error
 }
 
 // Put adds a new reference block to the FileManager. It does not check
 // that the reference is valid.
-func (f *FileManager) Put(b *posinfo.FilestoreNode) error {
-	return f.putTo(b, f.ds)
+func (f *FileManager) Put(ctx context.Context, b *posinfo.FilestoreNode) error {
+	return f.putTo(ctx, b, f.ds)
 }
 
-func (f *FileManager) putTo(b *posinfo.FilestoreNode, to putter) error {
+func (f *FileManager) putTo(ctx context.Context, b *posinfo.FilestoreNode, to putter) error {
 	var dobj pb.DataObj
 
 	if IsURL(b.PosInfo.FullPath) {
@@ -310,24 +310,24 @@ func (f *FileManager) putTo(b *posinfo.FilestoreNode, to putter) error {
 		return err
 	}
 
-	return to.Put(dshelp.MultihashToDsKey(b.Cid().Hash()), data)
+	return to.Put(ctx, dshelp.MultihashToDsKey(b.Cid().Hash()), data)
 }
 
 // PutMany is like Put() but takes a slice of blocks instead,
 // allowing it to create a batch transaction.
-func (f *FileManager) PutMany(bs []*posinfo.FilestoreNode) error {
-	batch, err := f.ds.Batch()
+func (f *FileManager) PutMany(ctx context.Context, bs []*posinfo.FilestoreNode) error {
+	batch, err := f.ds.Batch(ctx)
 	if err != nil {
 		return err
 	}
 
 	for _, b := range bs {
-		if err := f.putTo(b, batch); err != nil {
+		if err := f.putTo(ctx, b, batch); err != nil {
 			return err
 		}
 	}
 
-	return batch.Commit()
+	return batch.Commit(ctx)
 }
 
 // IsURL returns true if the string represents a valid URL that the

@@ -115,13 +115,13 @@ func (f *Filestore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 // blockstore. As expected, in the case of FileManager blocks, only the
 // reference is deleted, not its contents. It may return
 // ErrNotFound when the block is not stored.
-func (f *Filestore) DeleteBlock(c cid.Cid) error {
-	err1 := f.bs.DeleteBlock(c)
+func (f *Filestore) DeleteBlock(ctx context.Context, c cid.Cid) error {
+	err1 := f.bs.DeleteBlock(ctx, c)
 	if err1 != nil && err1 != blockstore.ErrNotFound {
 		return err1
 	}
 
-	err2 := f.fm.DeleteBlock(c)
+	err2 := f.fm.DeleteBlock(ctx, c)
 	// if we successfully removed something from the blockstore, but the
 	// filestore didnt have it, return success
 
@@ -140,13 +140,13 @@ func (f *Filestore) DeleteBlock(c cid.Cid) error {
 
 // Get retrieves the block with the given Cid. It may return
 // ErrNotFound when the block is not stored.
-func (f *Filestore) Get(c cid.Cid) (blocks.Block, error) {
-	blk, err := f.bs.Get(c)
+func (f *Filestore) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+	blk, err := f.bs.Get(ctx, c)
 	switch err {
 	case nil:
 		return blk, nil
 	case blockstore.ErrNotFound:
-		return f.fm.Get(c)
+		return f.fm.Get(ctx, c)
 	default:
 		return nil, err
 	}
@@ -154,13 +154,13 @@ func (f *Filestore) Get(c cid.Cid) (blocks.Block, error) {
 
 // GetSize returns the size of the requested block. It may return ErrNotFound
 // when the block is not stored.
-func (f *Filestore) GetSize(c cid.Cid) (int, error) {
-	size, err := f.bs.GetSize(c)
+func (f *Filestore) GetSize(ctx context.Context, c cid.Cid) (int, error) {
+	size, err := f.bs.GetSize(ctx, c)
 	switch err {
 	case nil:
 		return size, nil
 	case blockstore.ErrNotFound:
-		return f.fm.GetSize(c)
+		return f.fm.GetSize(ctx, c)
 	default:
 		return -1, err
 	}
@@ -168,8 +168,8 @@ func (f *Filestore) GetSize(c cid.Cid) (int, error) {
 
 // Has returns true if the block with the given Cid is
 // stored in the Filestore.
-func (f *Filestore) Has(c cid.Cid) (bool, error) {
-	has, err := f.bs.Has(c)
+func (f *Filestore) Has(ctx context.Context, c cid.Cid) (bool, error) {
+	has, err := f.bs.Has(ctx, c)
 	if err != nil {
 		return false, err
 	}
@@ -178,15 +178,15 @@ func (f *Filestore) Has(c cid.Cid) (bool, error) {
 		return true, nil
 	}
 
-	return f.fm.Has(c)
+	return f.fm.Has(ctx, c)
 }
 
 // Put stores a block in the Filestore. For blocks of
 // underlying type FilestoreNode, the operation is
 // delegated to the FileManager, while the rest of blocks
 // are handled by the regular blockstore.
-func (f *Filestore) Put(b blocks.Block) error {
-	has, err := f.Has(b.Cid())
+func (f *Filestore) Put(ctx context.Context, b blocks.Block) error {
+	has, err := f.Has(ctx, b.Cid())
 	if err != nil {
 		return err
 	}
@@ -197,20 +197,20 @@ func (f *Filestore) Put(b blocks.Block) error {
 
 	switch b := b.(type) {
 	case *posinfo.FilestoreNode:
-		return f.fm.Put(b)
+		return f.fm.Put(ctx, b)
 	default:
-		return f.bs.Put(b)
+		return f.bs.Put(ctx, b)
 	}
 }
 
 // PutMany is like Put(), but takes a slice of blocks, allowing
 // the underlying blockstore to perform batch transactions.
-func (f *Filestore) PutMany(bs []blocks.Block) error {
+func (f *Filestore) PutMany(ctx context.Context, bs []blocks.Block) error {
 	var normals []blocks.Block
 	var fstores []*posinfo.FilestoreNode
 
 	for _, b := range bs {
-		has, err := f.Has(b.Cid())
+		has, err := f.Has(ctx, b.Cid())
 		if err != nil {
 			return err
 		}
@@ -228,14 +228,14 @@ func (f *Filestore) PutMany(bs []blocks.Block) error {
 	}
 
 	if len(normals) > 0 {
-		err := f.bs.PutMany(normals)
+		err := f.bs.PutMany(ctx, normals)
 		if err != nil {
 			return err
 		}
 	}
 
 	if len(fstores) > 0 {
-		err := f.fm.PutMany(fstores)
+		err := f.fm.PutMany(ctx, fstores)
 		if err != nil {
 			return err
 		}

@@ -1,6 +1,7 @@
 package filestore
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
@@ -86,64 +87,64 @@ func (r *ListRes) FormatLong(enc func(cid.Cid) string) string {
 // of the given Filestore and returns a ListRes object with the information.
 // List does not verify that the reference is valid or whether the
 // raw data is accesible. See Verify().
-func List(fs *Filestore, key cid.Cid) *ListRes {
-	return list(fs, false, key.Hash())
+func List(ctx context.Context, fs *Filestore, key cid.Cid) *ListRes {
+	return list(ctx, fs, false, key.Hash())
 }
 
 // ListAll returns a function as an iterator which, once invoked, returns
 // one by one each block in the Filestore's FileManager.
 // ListAll does not verify that the references are valid or whether
 // the raw data is accessible. See VerifyAll().
-func ListAll(fs *Filestore, fileOrder bool) (func() *ListRes, error) {
+func ListAll(ctx context.Context, fs *Filestore, fileOrder bool) (func(context.Context) *ListRes, error) {
 	if fileOrder {
-		return listAllFileOrder(fs, false)
+		return listAllFileOrder(ctx, fs, false)
 	}
-	return listAll(fs, false)
+	return listAll(ctx, fs, false)
 }
 
 // Verify fetches the block with the given key from the Filemanager
 // of the given Filestore and returns a ListRes object with the information.
 // Verify makes sure that the reference is valid and the block data can be
 // read.
-func Verify(fs *Filestore, key cid.Cid) *ListRes {
-	return list(fs, true, key.Hash())
+func Verify(ctx context.Context, fs *Filestore, key cid.Cid) *ListRes {
+	return list(ctx, fs, true, key.Hash())
 }
 
 // VerifyAll returns a function as an iterator which, once invoked,
 // returns one by one each block in the Filestore's FileManager.
 // VerifyAll checks that the reference is valid and that the block data
 // can be read.
-func VerifyAll(fs *Filestore, fileOrder bool) (func() *ListRes, error) {
+func VerifyAll(ctx context.Context, fs *Filestore, fileOrder bool) (func(context.Context) *ListRes, error) {
 	if fileOrder {
-		return listAllFileOrder(fs, true)
+		return listAllFileOrder(ctx, fs, true)
 	}
-	return listAll(fs, true)
+	return listAll(ctx, fs, true)
 }
 
-func list(fs *Filestore, verify bool, key mh.Multihash) *ListRes {
-	dobj, err := fs.fm.getDataObj(key)
+func list(ctx context.Context, fs *Filestore, verify bool, key mh.Multihash) *ListRes {
+	dobj, err := fs.fm.getDataObj(ctx, key)
 	if err != nil {
 		return mkListRes(key, nil, err)
 	}
 	if verify {
-		_, err = fs.fm.readDataObj(key, dobj)
+		_, err = fs.fm.readDataObj(ctx, key, dobj)
 	}
 	return mkListRes(key, dobj, err)
 }
 
-func listAll(fs *Filestore, verify bool) (func() *ListRes, error) {
+func listAll(ctx context.Context, fs *Filestore, verify bool) (func(context.Context) *ListRes, error) {
 	q := dsq.Query{}
-	qr, err := fs.fm.ds.Query(q)
+	qr, err := fs.fm.ds.Query(ctx, q)
 	if err != nil {
 		return nil, err
 	}
 
-	return func() *ListRes {
+	return func(ctx context.Context) *ListRes {
 		mhash, dobj, err := next(qr)
 		if dobj == nil && err == nil {
 			return nil
 		} else if err == nil && verify {
-			_, err = fs.fm.readDataObj(mhash, dobj)
+			_, err = fs.fm.readDataObj(ctx, mhash, dobj)
 		}
 		return mkListRes(mhash, dobj, err)
 	}, nil
@@ -169,9 +170,9 @@ func next(qr dsq.Results) (mh.Multihash, *pb.DataObj, error) {
 	return mhash, dobj, nil
 }
 
-func listAllFileOrder(fs *Filestore, verify bool) (func() *ListRes, error) {
+func listAllFileOrder(ctx context.Context, fs *Filestore, verify bool) (func(context.Context) *ListRes, error) {
 	q := dsq.Query{}
-	qr, err := fs.fm.ds.Query(q)
+	qr, err := fs.fm.ds.Query(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +202,7 @@ func listAllFileOrder(fs *Filestore, verify bool) (func() *ListRes, error) {
 	sort.Sort(entries)
 
 	i := 0
-	return func() *ListRes {
+	return func(ctx context.Context) *ListRes {
 		if i >= len(entries) {
 			return nil
 		}
@@ -228,7 +229,7 @@ func listAllFileOrder(fs *Filestore, verify bool) (func() *ListRes, error) {
 		// finally verify the dataobj if requested
 		var err error
 		if verify {
-			_, err = fs.fm.readDataObj(mhash, &dobj)
+			_, err = fs.fm.readDataObj(ctx, mhash, &dobj)
 		}
 		return mkListRes(mhash, &dobj, err)
 	}, nil
