@@ -46,7 +46,10 @@ func testResolverValidation(t *testing.T, keyType int) {
 	ctx := context.Background()
 	rid := testutil.RandIdentityOrFatal(t)
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
-	peerstore := pstoremem.NewPeerstore()
+	peerstore, err := pstoremem.NewPeerstore()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	vstore := newMockValueStore(rid, dstore, peerstore)
 	resolver := NewIpnsResolver(vstore)
