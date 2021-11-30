@@ -46,16 +46,18 @@ func (r recordSet) Swap(i, j int) {
 	r[i], r[j] = r[j], r[i]
 }
 
-func (s *singleWidthIndex) Marshal(w io.Writer) error {
+func (s *singleWidthIndex) Marshal(w io.Writer) (uint64, error) {
+	l := uint64(0)
 	if err := binary.Write(w, binary.LittleEndian, s.width); err != nil {
-		return err
+		return 0, err
 	}
+	l += 4
 	if err := binary.Write(w, binary.LittleEndian, int64(len(s.index))); err != nil {
-		return err
+		return l, err
 	}
-	// TODO: we could just w.Write(s.index) here and avoid overhead
-	_, err := io.Copy(w, bytes.NewBuffer(s.index))
-	return err
+	l += 8
+	n, err := w.Write(s.index)
+	return l + uint64(n), err
 }
 
 func (s *singleWidthIndex) Unmarshal(r io.Reader) error {
@@ -158,10 +160,12 @@ func (m *multiWidthIndex) Codec() multicodec.Code {
 	return multicodec.CarIndexSorted
 }
 
-func (m *multiWidthIndex) Marshal(w io.Writer) error {
+func (m *multiWidthIndex) Marshal(w io.Writer) (uint64, error) {
+	l := uint64(0)
 	if err := binary.Write(w, binary.LittleEndian, int32(len(*m))); err != nil {
-		return err
+		return l, err
 	}
+	l += 4
 
 	// The widths are unique, but ranging over a map isn't deterministic.
 	// As per the CARv2 spec, we must order buckets by digest length.
@@ -176,11 +180,13 @@ func (m *multiWidthIndex) Marshal(w io.Writer) error {
 
 	for _, width := range widths {
 		bucket := (*m)[width]
-		if err := bucket.Marshal(w); err != nil {
-			return err
+		n, err := bucket.Marshal(w)
+		l += n
+		if err != nil {
+			return l, err
 		}
 	}
-	return nil
+	return l, nil
 }
 
 func (m *multiWidthIndex) Unmarshal(r io.Reader) error {

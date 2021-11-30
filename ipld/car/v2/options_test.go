@@ -1,6 +1,7 @@
 package car_test
 
 import (
+	"math"
 	"testing"
 
 	carv2 "github.com/ipld/go-car/v2"
@@ -11,8 +12,9 @@ import (
 
 func TestApplyOptions_SetsExpectedDefaults(t *testing.T) {
 	require.Equal(t, carv2.Options{
-		IndexCodec:      multicodec.CarMultihashIndexSorted,
-		MaxIndexCidSize: carv2.DefaultMaxIndexCidSize,
+		IndexCodec:        multicodec.CarMultihashIndexSorted,
+		MaxIndexCidSize:   carv2.DefaultMaxIndexCidSize,
+		MaxTraversalLinks: math.MaxInt64,
 	}, carv2.ApplyOptions())
 }
 
@@ -27,6 +29,7 @@ func TestApplyOptions_AppliesOptions(t *testing.T) {
 			StoreIdentityCIDs:            true,
 			BlockstoreAllowDuplicatePuts: true,
 			BlockstoreUseWholeCIDs:       true,
+			MaxTraversalLinks:            math.MaxInt64,
 		},
 		carv2.ApplyOptions(
 			carv2.UseDataPadding(123),

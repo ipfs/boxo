@@ -77,7 +77,7 @@ func ExampleWriteTo() {
 			panic(err)
 		}
 	}()
-	err = index.WriteTo(idx, f)
+	_, err = index.WriteTo(idx, f)
 	if err != nil {
 		panic(err)
 	}

@@ -103,10 +103,13 @@ func (ii *insertionIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {
 	return nil
 }
 
-func (ii *insertionIndex) Marshal(w io.Writer) error {
+func (ii *insertionIndex) Marshal(w io.Writer) (uint64, error) {
+	l := uint64(0)
 	if err := binary.Write(w, binary.LittleEndian, int64(ii.items.Len())); err != nil {
-		return err
+		return l, err
 	}
+	l += 8
+
 	var err error
 	iter := func(i llrb.Item) bool {
 		if err = cbor.Encode(w, i.(recordDigest).Record); err != nil {
@@ -115,7 +118,7 @@ func (ii *insertionIndex) Marshal(w io.Writer) error {
 		return true
 	}
 	ii.items.AscendGreaterOrEqual(ii.items.Min(), iter)
-	return err
+	return l, err
 }
 
 func (ii *insertionIndex) Unmarshal(r io.Reader) error {

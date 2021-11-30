@@ -15,6 +15,9 @@ import (
 	"github.com/ipfs/go-cid"
 )
 
+// CarIndexNone is a sentinal value used as a multicodec code for the index indicating no index.
+const CarIndexNone = 0x300000
+
 type (
 	// Record is a pre-processed record of a car item and location.
 	Record struct {
@@ -40,7 +43,7 @@ type (
 		Codec() multicodec.Code
 
 		// Marshal encodes the index in serial form.
-		Marshal(w io.Writer) error
+		Marshal(w io.Writer) (uint64, error)
 		// Unmarshal decodes the index from its serial form.
 		Unmarshal(r io.Reader) error
 
@@ -118,13 +121,16 @@ func New(codec multicodec.Code) (Index, error) {
 // WriteTo writes the given idx into w.
 // The written bytes include the index encoding.
 // This can then be read back using index.ReadFrom
-func WriteTo(idx Index, w io.Writer) error {
+func WriteTo(idx Index, w io.Writer) (uint64, error) {
 	buf := make([]byte, binary.MaxVarintLen64)
 	b := varint.PutUvarint(buf, uint64(idx.Codec()))
-	if _, err := w.Write(buf[:b]); err != nil {
-		return err
+	n, err := w.Write(buf[:b])
+	if err != nil {
+		return uint64(n), err
 	}
-	return idx.Marshal(w)
+
+	l, err := idx.Marshal(w)
+	return uint64(n) + l, err
 }
 
 // ReadFrom reads index from r.

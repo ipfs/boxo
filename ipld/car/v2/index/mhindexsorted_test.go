@@ -32,7 +32,7 @@ func TestMultiWidthCodedIndex_MarshalUnmarshal(t *testing.T) {
 
 	// Marshal the index.
 	buf := new(bytes.Buffer)
-	err = subject.Marshal(buf)
+	_, err = subject.Marshal(buf)
 	require.NoError(t, err)
 
 	// Unmarshal it back to another instance of mh sorted index.

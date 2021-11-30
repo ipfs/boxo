@@ -31,11 +31,12 @@ func newMultiWidthCodedIndex() *multiWidthCodedIndex {
 	}
 }
 
-func (m *multiWidthCodedIndex) Marshal(w io.Writer) error {
+func (m *multiWidthCodedIndex) Marshal(w io.Writer) (uint64, error) {
 	if err := binary.Write(w, binary.LittleEndian, m.code); err != nil {
-		return err
+		return 8, err
 	}
-	return m.multiWidthIndex.Marshal(w)
+	n, err := m.multiWidthIndex.Marshal(w)
+	return 8 + n, err
 }
 
 func (m *multiWidthCodedIndex) Unmarshal(r io.Reader) error {
@@ -59,22 +60,25 @@ func (m *MultihashIndexSorted) Codec() multicodec.Code {
 	return multicodec.CarMultihashIndexSorted
 }
 
-func (m *MultihashIndexSorted) Marshal(w io.Writer) error {
+func (m *MultihashIndexSorted) Marshal(w io.Writer) (uint64, error) {
 	if err := binary.Write(w, binary.LittleEndian, int32(len(*m))); err != nil {
-		return err
+		return 4, err
 	}
 	// The codes are unique, but ranging over a map isn't deterministic.
 	// As per the CARv2 spec, we must order buckets by digest length.
 	// TODO update CARv2 spec to reflect this for the new index type.
 	codes := m.sortedMultihashCodes()
+	l := uint64(4)
 
 	for _, code := range codes {
 		mwci := (*m)[code]
-		if err := mwci.Marshal(w); err != nil {
-			return err
+		n, err := mwci.Marshal(w)
+		l += n
+		if err != nil {
+			return l, err
 		}
 	}
-	return nil
+	return l, nil
 }
 
 func (m *MultihashIndexSorted) sortedMultihashCodes() []uint64 {

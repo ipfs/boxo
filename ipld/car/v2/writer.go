@@ -84,7 +84,7 @@ func WrapV1(src io.ReadSeeker, dst io.Writer, opts ...Option) error {
 	if _, err := io.Copy(dst, src); err != nil {
 		return err
 	}
-	if err := index.WriteTo(idx, dst); err != nil {
+	if _, err := index.WriteTo(idx, dst); err != nil {
 		return err
 	}
 
@@ -211,7 +211,8 @@ func AttachIndex(path string, idx index.Index, offset uint64) error {
 	}
 	defer out.Close()
 	indexWriter := internalio.NewOffsetWriter(out, int64(offset))
-	return index.WriteTo(idx, indexWriter)
+	_, err = index.WriteTo(idx, indexWriter)
+	return err
 }
 
 // ReplaceRootsInFile replaces the root CIDs in CAR file at given path with the given roots.

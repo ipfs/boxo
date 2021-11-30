@@ -376,7 +376,7 @@ func (b *ReadWrite) Finalize() error {
 	if err != nil {
 		return err
 	}
-	if err := index.WriteTo(fi, internalio.NewOffsetWriter(b.f, int64(b.header.IndexOffset))); err != nil {
+	if _, err := index.WriteTo(fi, internalio.NewOffsetWriter(b.f, int64(b.header.IndexOffset))); err != nil {
 		return err
 	}
 	if _, err := b.header.WriteTo(internalio.NewOffsetWriter(b.f, carv2.PragmaSize)); err != nil {

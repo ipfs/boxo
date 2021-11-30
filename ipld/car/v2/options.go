@@ -1,6 +1,11 @@
 package car
 
-import "github.com/multiformats/go-multicodec"
+import (
+	"math"
+
+	"github.com/ipld/go-car/v2/index"
+	"github.com/multiformats/go-multicodec"
+)
 
 // DefaultMaxIndexCidSize specifies the maximum size in byptes accepted as a section CID by CARv2 index.
 const DefaultMaxIndexCidSize = 2 << 10 // 2 KiB
@@ -33,6 +38,7 @@ type Options struct {
 
 	BlockstoreAllowDuplicatePuts bool
 	BlockstoreUseWholeCIDs       bool
+	MaxTraversalLinks            uint64
 }
 
 // ApplyOptions applies given opts and returns the resulting Options.
@@ -40,6 +46,7 @@ type Options struct {
 // side effect of Option.
 func ApplyOptions(opt ...Option) Options {
 	var opts Options
+	opts.MaxTraversalLinks = math.MaxInt64 //default: traverse all
 	for _, o := range opt {
 		o(&opts)
 	}
@@ -81,6 +88,13 @@ func UseIndexPadding(p uint64) Option {
 func UseIndexCodec(c multicodec.Code) Option {
 	return func(o *Options) {
 		o.IndexCodec = c
+	}
+}
+
+// WithoutIndex flags that no index should be included in generation.
+func WithoutIndex() Option {
+	return func(o *Options) {
+		o.IndexCodec = index.CarIndexNone
 	}
 }
 

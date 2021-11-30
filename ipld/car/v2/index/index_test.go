@@ -100,7 +100,8 @@ func TestWriteTo(t *testing.T) {
 	destF, err := os.Create(dest)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, destF.Close()) })
-	require.NoError(t, WriteTo(wantIdx, destF))
+	_, err = WriteTo(wantIdx, destF)
+	require.NoError(t, err)
 
 	// Seek to the beginning of the written out file.
 	_, err = destF.Seek(0, io.SeekStart)
@@ -126,6 +127,7 @@ func TestMarshalledIndexStartsWithCodec(t *testing.T) {
 
 	// Assert the first two bytes are the corresponding multicodec code.
 	buf := new(bytes.Buffer)
-	require.NoError(t, WriteTo(wantIdx, buf))
+	_, err = WriteTo(wantIdx, buf)
+	require.NoError(t, err)
 	require.Equal(t, varint.ToUvarint(uint64(multicodec.CarIndexSorted)), buf.Bytes()[:2])
 }
