@@ -24,6 +24,7 @@ func assertAddNodes(t *testing.T, ds format.DAGService, nds ...format.Node) {
 }
 
 func TestRoundtrip(t *testing.T) {
+	ctx := context.Background()
 	dserv := dstest.Mock()
 	a := merkledag.NewRawNode([]byte("aaaa"))
 	b := merkledag.NewRawNode([]byte("bbbb"))
@@ -48,7 +49,7 @@ func TestRoundtrip(t *testing.T) {
 	}
 
 	bserv := dstest.Bserv()
-	ch, err := car.LoadCar(bserv.Blockstore(), buf)
+	ch, err := car.LoadCar(ctx, bserv.Blockstore(), buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +64,7 @@ func TestRoundtrip(t *testing.T) {
 
 	bs := bserv.Blockstore()
 	for _, nd := range []format.Node{a, b, c, nd1, nd2, nd3} {
-		has, err := bs.Has(nd.Cid())
+		has, err := bs.Has(ctx, nd.Cid())
 		if err != nil {
 			t.Fatal(err)
 		}

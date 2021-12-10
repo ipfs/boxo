@@ -19,6 +19,7 @@ import (
 )
 
 func TestRoundtripSelective(t *testing.T) {
+	ctx := context.Background()
 	sourceBserv := dstest.Bserv()
 	sourceBs := sourceBserv.Blockstore()
 	dserv := merkledag.NewDAGService(sourceBserv)
@@ -79,7 +80,7 @@ func TestRoundtripSelective(t *testing.T) {
 	})
 	require.NoError(t, err)
 	buf2 := new(bytes.Buffer)
-	err = scp.Dump(buf2)
+	err = scp.Dump(ctx, buf2)
 	require.NoError(t, err)
 
 	// verify preparation step correctly assesed length and blocks
@@ -94,7 +95,7 @@ func TestRoundtripSelective(t *testing.T) {
 
 	// readout car and verify contents
 	bserv := dstest.Bserv()
-	ch, err := car.LoadCar(bserv.Blockstore(), buf)
+	ch, err := car.LoadCar(ctx, bserv.Blockstore(), buf)
 	require.NoError(t, err)
 	require.Equal(t, len(ch.Roots), 1)
 
@@ -102,13 +103,13 @@ func TestRoundtripSelective(t *testing.T) {
 
 	bs := bserv.Blockstore()
 	for _, nd := range []format.Node{a, b, nd1, nd2, nd3} {
-		has, err := bs.Has(nd.Cid())
+		has, err := bs.Has(ctx, nd.Cid())
 		require.NoError(t, err)
 		require.True(t, has)
 	}
 
 	for _, nd := range []format.Node{c} {
-		has, err := bs.Has(nd.Cid())
+		has, err := bs.Has(ctx, nd.Cid())
 		require.NoError(t, err)
 		require.False(t, has)
 	}
@@ -221,7 +222,7 @@ type countingReadStore struct {
 	count int
 }
 
-func (rs *countingReadStore) Get(c cid.Cid) (blocks.Block, error) {
+func (rs *countingReadStore) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
 	rs.count++
-	return rs.bs.Get(c)
+	return rs.bs.Get(ctx, c)
 }
