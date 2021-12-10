@@ -140,7 +140,7 @@ func (sc SelectiveCarPrepared) Cids() []cid.Cid {
 
 // Dump writes the car file as quickly as possible based on information already
 // collected
-func (sc SelectiveCarPrepared) Dump(w io.Writer) error {
+func (sc SelectiveCarPrepared) Dump(ctx context.Context, w io.Writer) error {
 	offset, err := HeaderSize(&sc.header)
 	if err != nil {
 		return fmt.Errorf("failed to size car header: %s", err)
@@ -149,7 +149,7 @@ func (sc SelectiveCarPrepared) Dump(w io.Writer) error {
 		return fmt.Errorf("failed to write car header: %s", err)
 	}
 	for _, c := range sc.cids {
-		blk, err := sc.store.Get(c)
+		blk, err := sc.store.Get(ctx, c)
 		if err != nil {
 			return err
 		}
@@ -223,7 +223,7 @@ func (sct *selectiveCarTraverser) loader(ctx ipld.LinkContext, lnk ipld.Link) (i
 		return nil, errors.New("incorrect link type")
 	}
 	c := cl.Cid
-	blk, err := sct.sc.store.Get(c)
+	blk, err := sct.sc.store.Get(ctx.Ctx, c)
 	if err != nil {
 		return nil, err
 	}
