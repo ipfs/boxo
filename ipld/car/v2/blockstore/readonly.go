@@ -186,13 +186,13 @@ func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
 }
 
 // DeleteBlock is unsupported and always errors.
-func (b *ReadOnly) DeleteBlock(_ cid.Cid) error {
+func (b *ReadOnly) DeleteBlock(_ context.Context, _ cid.Cid) error {
 	return errReadOnly
 }
 
 // Has indicates if the store contains a block that corresponds to the given key.
 // This function always returns true for any given key with multihash.IDENTITY code.
-func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
+func (b *ReadOnly) Has(ctx context.Context, key cid.Cid) (bool, error) {
 	// Check if the given CID has multihash.IDENTITY code
 	// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
 	if _, ok, err := isIdentity(key); err != nil {
@@ -241,7 +241,7 @@ func (b *ReadOnly) Has(key cid.Cid) (bool, error) {
 
 // Get gets a block corresponding to the given key.
 // This API will always return true if the given key has multihash.IDENTITY code.
-func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
+func (b *ReadOnly) Get(ctx context.Context, key cid.Cid) (blocks.Block, error) {
 	// Check if the given CID has multihash.IDENTITY code
 	// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
 	if digest, ok, err := isIdentity(key); err != nil {
@@ -293,7 +293,7 @@ func (b *ReadOnly) Get(key cid.Cid) (blocks.Block, error) {
 }
 
 // GetSize gets the size of an item corresponding to the given key.
-func (b *ReadOnly) GetSize(key cid.Cid) (int, error) {
+func (b *ReadOnly) GetSize(ctx context.Context, key cid.Cid) (int, error) {
 	// Check if the given CID has multihash.IDENTITY code
 	// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
 	if digest, ok, err := isIdentity(key); err != nil {
@@ -361,12 +361,12 @@ func isIdentity(key cid.Cid) (digest []byte, ok bool, err error) {
 }
 
 // Put is not supported and always returns an error.
-func (b *ReadOnly) Put(blocks.Block) error {
+func (b *ReadOnly) Put(context.Context, blocks.Block) error {
 	return errReadOnly
 }
 
 // PutMany is not supported and always returns an error.
-func (b *ReadOnly) PutMany([]blocks.Block) error {
+func (b *ReadOnly) PutMany(context.Context, []blocks.Block) error {
 	return errReadOnly
 }
 

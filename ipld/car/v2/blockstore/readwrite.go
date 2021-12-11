@@ -279,14 +279,14 @@ func (b *ReadWrite) unfinalize() error {
 }
 
 // Put puts a given block to the underlying datastore
-func (b *ReadWrite) Put(blk blocks.Block) error {
+func (b *ReadWrite) Put(ctx context.Context, blk blocks.Block) error {
 	// PutMany already checks b.ronly.closed.
-	return b.PutMany([]blocks.Block{blk})
+	return b.PutMany(ctx, []blocks.Block{blk})
 }
 
 // PutMany puts a slice of blocks at the same time using batching
 // capabilities of the underlying datastore whenever possible.
-func (b *ReadWrite) PutMany(blks []blocks.Block) error {
+func (b *ReadWrite) PutMany(ctx context.Context, blks []blocks.Block) error {
 	b.ronly.mu.Lock()
 	defer b.ronly.mu.Unlock()
 
@@ -393,19 +393,19 @@ func (b *ReadWrite) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return b.ronly.AllKeysChan(ctx)
 }
 
-func (b *ReadWrite) Has(key cid.Cid) (bool, error) {
-	return b.ronly.Has(key)
+func (b *ReadWrite) Has(ctx context.Context, key cid.Cid) (bool, error) {
+	return b.ronly.Has(ctx, key)
 }
 
-func (b *ReadWrite) Get(key cid.Cid) (blocks.Block, error) {
-	return b.ronly.Get(key)
+func (b *ReadWrite) Get(ctx context.Context, key cid.Cid) (blocks.Block, error) {
+	return b.ronly.Get(ctx, key)
 }
 
-func (b *ReadWrite) GetSize(key cid.Cid) (int, error) {
-	return b.ronly.GetSize(key)
+func (b *ReadWrite) GetSize(ctx context.Context, key cid.Cid) (int, error) {
+	return b.ronly.GetSize(ctx, key)
 }
 
-func (b *ReadWrite) DeleteBlock(_ cid.Cid) error {
+func (b *ReadWrite) DeleteBlock(_ context.Context, _ cid.Cid) error {
 	return fmt.Errorf("ReadWrite blockstore does not support deleting blocks")
 }
 

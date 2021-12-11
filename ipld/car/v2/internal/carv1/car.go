@@ -19,11 +19,11 @@ func init() {
 }
 
 type Store interface {
-	Put(blocks.Block) error
+	Put(context.Context, blocks.Block) error
 }
 
 type ReadStore interface {
-	Get(cid.Cid) (blocks.Block, error)
+	Get(context.Context, cid.Cid) (blocks.Block, error)
 }
 
 type CarHeader struct {
@@ -159,30 +159,31 @@ func (cr *CarReader) Next() (blocks.Block, error) {
 }
 
 type batchStore interface {
-	PutMany([]blocks.Block) error
+	PutMany(context.Context, []blocks.Block) error
 }
 
 func LoadCar(s Store, r io.Reader) (*CarHeader, error) {
+	ctx := context.TODO()
 	cr, err := NewCarReader(r)
 	if err != nil {
 		return nil, err
 	}
 
 	if bs, ok := s.(batchStore); ok {
-		return loadCarFast(bs, cr)
+		return loadCarFast(ctx, bs, cr)
 	}
 
-	return loadCarSlow(s, cr)
+	return loadCarSlow(ctx, s, cr)
 }
 
-func loadCarFast(s batchStore, cr *CarReader) (*CarHeader, error) {
+func loadCarFast(ctx context.Context, s batchStore, cr *CarReader) (*CarHeader, error) {
 	var buf []blocks.Block
 	for {
 		blk, err := cr.Next()
 		if err != nil {
 			if err == io.EOF {
 				if len(buf) > 0 {
-					if err := s.PutMany(buf); err != nil {
+					if err := s.PutMany(ctx, buf); err != nil {
 						return nil, err
 					}
 				}
@@ -194,7 +195,7 @@ func loadCarFast(s batchStore, cr *CarReader) (*CarHeader, error) {
 		buf = append(buf, blk)
 
 		if len(buf) > 1000 {
-			if err := s.PutMany(buf); err != nil {
+			if err := s.PutMany(ctx, buf); err != nil {
 				return nil, err
 			}
 			buf = buf[:0]
@@ -202,7 +203,7 @@ func loadCarFast(s batchStore, cr *CarReader) (*CarHeader, error) {
 	}
 }
 
-func loadCarSlow(s Store, cr *CarReader) (*CarHeader, error) {
+func loadCarSlow(ctx context.Context, s Store, cr *CarReader) (*CarHeader, error) {
 	for {
 		blk, err := cr.Next()
 		if err != nil {
@@ -212,7 +213,7 @@ func loadCarSlow(s Store, cr *CarReader) (*CarHeader, error) {
 			return nil, err
 		}
 
-		if err := s.Put(blk); err != nil {
+		if err := s.Put(ctx, blk); err != nil {
 			return nil, err
 		}
 	}

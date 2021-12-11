@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"time"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -57,7 +58,7 @@ func ExampleOpenReadOnly() {
 			cancel()
 			break
 		}
-		size, err := robs.GetSize(k)
+		size, err := robs.GetSize(context.TODO(), k)
 		if err != nil {
 			panic(err)
 		}
@@ -78,6 +79,9 @@ func ExampleOpenReadOnly() {
 
 // ExampleOpenReadWrite creates a read-write blockstore and puts
 func ExampleOpenReadWrite() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
 	thisBlock := merkledag.NewRawNode([]byte("fish")).Block
 	thatBlock := merkledag.NewRawNode([]byte("lobster")).Block
 	andTheOtherBlock := merkledag.NewRawNode([]byte("barreleye")).Block
@@ -96,13 +100,13 @@ func ExampleOpenReadWrite() {
 
 	// Put all blocks onto the blockstore.
 	blocks := []blocks.Block{thisBlock, thatBlock}
-	if err := rwbs.PutMany(blocks); err != nil {
+	if err := rwbs.PutMany(ctx, blocks); err != nil {
 		panic(err)
 	}
 	fmt.Printf("Successfully wrote %v blocks into the blockstore.\n", len(blocks))
 
 	// Any blocks put can be read back using the same blockstore instance.
-	block, err := rwbs.Get(thatBlock.Cid())
+	block, err := rwbs.Get(ctx, thatBlock.Cid())
 	if err != nil {
 		panic(err)
 	}
@@ -122,13 +126,13 @@ func ExampleOpenReadWrite() {
 	}
 
 	// Put another block, appending it to the set of blocks that are written previously.
-	if err := resumedRwbos.Put(andTheOtherBlock); err != nil {
+	if err := resumedRwbos.Put(ctx, andTheOtherBlock); err != nil {
 		panic(err)
 	}
 
 	// Read back the the block put before resumption.
 	// Blocks previously put are present.
-	block, err = resumedRwbos.Get(thatBlock.Cid())
+	block, err = resumedRwbos.Get(ctx, thatBlock.Cid())
 	if err != nil {
 		panic(err)
 	}
@@ -136,7 +140,7 @@ func ExampleOpenReadWrite() {
 
 	// Put an additional block to the CAR.
 	// Blocks put after resumption are also present.
-	block, err = resumedRwbos.Get(andTheOtherBlock.Cid())
+	block, err = resumedRwbos.Get(ctx, andTheOtherBlock.Cid())
 	if err != nil {
 		panic(err)
 	}

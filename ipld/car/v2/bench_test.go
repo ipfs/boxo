@@ -1,6 +1,7 @@
 package car_test
 
 import (
+	"context"
 	"io"
 	"math/rand"
 	"os"
@@ -139,7 +140,7 @@ func generateRandomCarV2File(b *testing.B, path string, minTotalBlockSize int) {
 		}
 
 		blk := merkledag.NewRawNode(buf)
-		if err := bs.Put(blk); err != nil {
+		if err := bs.Put(context.TODO(), blk); err != nil {
 			b.Fatal(err)
 		}
 		totalBlockSize += size
