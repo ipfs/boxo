@@ -148,6 +148,12 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 	}
 }
 
+func WithTargetMessageSize(tms int) Option {
+	return func(bs *Bitswap) {
+		bs.engineTargetMessageSize = tms
+	}
+}
+
 type TaskInfo = decision.TaskInfo
 type TaskComparator = decision.TaskComparator
 
@@ -259,6 +265,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		engineTaskWorkerCount:            defaults.BitswapEngineTaskWorkerCount,
 		taskWorkerCount:                  defaults.BitswapTaskWorkerCount,
 		engineMaxOutstandingBytesPerPeer: defaults.BitswapMaxOutstandingBytesPerPeer,
+		engineTargetMessageSize:          defaults.BitswapEngineTargetMessageSize,
 		engineSetSendDontHaves:           true,
 		simulateDontHavesOnTimeout:       true,
 	}
@@ -283,6 +290,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		pendingBlocksGauge,
 		activeBlocksGauge,
 		decision.WithTaskComparator(bs.taskComparator),
+		decision.WithTargetMessageSize(bs.engineTargetMessageSize),
 	)
 	bs.engine.SetSendDontHaves(bs.engineSetSendDontHaves)
 
@@ -378,6 +386,9 @@ type Bitswap struct {
 
 	// the score ledger used by the decision engine
 	engineScoreLedger deciface.ScoreLedger
+
+	// target message size setting for engines peer task queue
+	engineTargetMessageSize int
 
 	// indicates what to do when the engine receives a want-block for a block that
 	// is not in the blockstore. Either send DONT_HAVE or do nothing.

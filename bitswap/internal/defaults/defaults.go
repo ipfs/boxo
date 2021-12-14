@@ -17,4 +17,6 @@ const (
 	BitswapEngineTaskWorkerCount = 8
 	// the total amount of bytes that a peer should have outstanding, it is utilized by the decision engine
 	BitswapMaxOutstandingBytesPerPeer = 1 << 20
+	// the number of bytes we attempt to make each outgoing bitswap message
+	BitswapEngineTargetMessageSize = 16 * 1024
 )
