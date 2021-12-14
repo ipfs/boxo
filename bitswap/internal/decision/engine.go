@@ -64,7 +64,7 @@ const (
 	// targetMessageSize is the ideal size of the batched payload. We try to
 	// pop this much data off the request queue, but it may be a little more
 	// or less depending on what's in the queue.
-	targetMessageSize = 16 * 1024
+	defaultTargetMessageSize = 16 * 1024
 	// tagFormat is the tag given to peers associated an engine
 	tagFormat = "bs-engine-%s-%s"
 
@@ -159,6 +159,8 @@ type Engine struct {
 	taskWorkerLock  sync.Mutex
 	taskWorkerCount int
 
+	targetMessageSize int
+
 	// maxBlockSizeReplaceHasWithBlock is the maximum size of the block in
 	// bytes up to which we will replace a want-have with a want-block
 	maxBlockSizeReplaceHasWithBlock int
@@ -204,6 +206,12 @@ type Option func(*Engine)
 func WithTaskComparator(comparator TaskComparator) Option {
 	return func(e *Engine) {
 		e.taskComparator = comparator
+	}
+}
+
+func WithTargetMessageSize(size int) Option {
+	return func(e *Engine) {
+		e.targetMessageSize = size
 	}
 }
 
@@ -302,6 +310,7 @@ func newEngine(
 		peerLedger:                      newPeerLedger(),
 		pendingGauge:                    pendingEngineGauge,
 		activeGauge:                     activeEngineGauge,
+		targetMessageSize:               defaultTargetMessageSize,
 	}
 	e.tagQueued = fmt.Sprintf(tagFormat, "queued", uuid.New().String())
 	e.tagUseful = fmt.Sprintf(tagFormat, "useful", uuid.New().String())
@@ -450,21 +459,21 @@ func (e *Engine) taskWorkerExit() {
 func (e *Engine) nextEnvelope(ctx context.Context) (*Envelope, error) {
 	for {
 		// Pop some tasks off the request queue
-		p, nextTasks, pendingBytes := e.peerRequestQueue.PopTasks(targetMessageSize)
+		p, nextTasks, pendingBytes := e.peerRequestQueue.PopTasks(e.targetMessageSize)
 		e.updateMetrics()
 		for len(nextTasks) == 0 {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			case <-e.workSignal:
-				p, nextTasks, pendingBytes = e.peerRequestQueue.PopTasks(targetMessageSize)
+				p, nextTasks, pendingBytes = e.peerRequestQueue.PopTasks(e.targetMessageSize)
 				e.updateMetrics()
 			case <-e.ticker.C:
 				// When a task is cancelled, the queue may be "frozen" for a
 				// period of time. We periodically "thaw" the queue to make
 				// sure it doesn't get stuck in a frozen state.
 				e.peerRequestQueue.ThawRound()
-				p, nextTasks, pendingBytes = e.peerRequestQueue.PopTasks(targetMessageSize)
+				p, nextTasks, pendingBytes = e.peerRequestQueue.PopTasks(e.targetMessageSize)
 				e.updateMetrics()
 			}
 		}
