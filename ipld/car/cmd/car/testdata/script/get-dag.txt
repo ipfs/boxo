@@ -1,0 +1,6 @@
+env SAMPLE_CID='bafy2bzaceaycv7jhaegckatnncu5yugzkrnzeqsppzegufr35lroxxnsnpspu'
+car get-dag ${INPUTS}/sample-v1.car ${SAMPLE_CID} out.car
+! stderr .
+car list out.car
+! stderr .
+stdout -count=1 '^bafy2bzaceaycv7jhaegckatnncu5yugzkrnzeqsppzegufr35lroxxnsnpspu'

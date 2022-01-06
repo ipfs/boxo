@@ -66,27 +66,41 @@ func GetCarBlock(c *cli.Context) error {
 
 // GetCarDag is a command to get a dag out of a car
 func GetCarDag(c *cli.Context) error {
-	if c.Args().Len() < 3 {
-		return fmt.Errorf("usage: car get-dag [-s selector] <file.car> <root cid> <output file>")
+	if c.Args().Len() < 2 {
+		return fmt.Errorf("usage: car get-dag [-s selector] <file.car> [root cid] <output file>")
 	}
 
-	// string to CID for the root of the DAG to extract
-	rootCid, err := cid.Parse(c.Args().Get(1))
-	if err != nil {
-		return err
-	}
+	// if root cid is emitted we'll read it from the root of file.car.
+	output := c.Args().Get(1)
+	var rootCid cid.Cid
 
 	bs, err := blockstore.OpenReadOnly(c.Args().Get(0))
 	if err != nil {
 		return err
 	}
 
-	output := c.Args().Get(2)
+	if c.Args().Len() == 2 {
+		roots, err := bs.Roots()
+		if err != nil {
+			return err
+		}
+		if len(roots) != 1 {
+			return fmt.Errorf("car file has does not have exactly one root, dag root must be specified explicitly")
+		}
+		rootCid = roots[0]
+	} else {
+		rootCid, err = cid.Parse(output)
+		if err != nil {
+			return err
+		}
+		output = c.Args().Get(2)
+	}
+
 	strict := c.Bool("strict")
 
 	// selector traversal, default to ExploreAllRecursively which only explores the DAG blocks
 	// because we only care about the blocks loaded during the walk, not the nodes matched
-	sel := selectorParser.CommonSelector_ExploreAllRecursively
+	sel := selectorParser.CommonSelector_MatchAllRecursively
 	if c.IsSet("selector") {
 		sel, err = selectorParser.ParseJSONSelector(c.String("selector"))
 		if err != nil {
@@ -125,6 +139,9 @@ func writeCarV2(rootCid cid.Cid, output string, bs *blockstore.ReadOnly, strict 
 					}
 					return nil, traversal.SkipMe{}
 				}
+				return nil, err
+			}
+			if err := outStore.Put(blk); err != nil {
 				return nil, err
 			}
 			return bytes.NewBuffer(blk.RawData()), nil
