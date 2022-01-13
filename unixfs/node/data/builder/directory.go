@@ -89,7 +89,7 @@ func estimateDirSize(entries []dagpb.PBLink) int {
 // BuildUnixFSDirectory creates a directory link over a collection of entries.
 func BuildUnixFSDirectory(entries []dagpb.PBLink, ls *ipld.LinkSystem) (ipld.Link, error) {
 	if estimateDirSize(entries) > shardSplitThreshold {
-		return BuildUnixFSShardedDirectory(defaultShardWidth, multihash.MURMUR3_128, entries, ls)
+		return BuildUnixFSShardedDirectory(defaultShardWidth, multihash.MURMUR3X64_64, entries, ls)
 	}
 	ufd, err := BuildUnixFS(func(b *Builder) {
 		DataType(b, data.Data_Directory)

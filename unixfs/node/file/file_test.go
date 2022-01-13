@@ -67,12 +67,12 @@ func open(car string, t *testing.T) (ipld.Node, *ipld.LinkSystem) {
 		t.Fatal(err)
 	}
 	ls := cidlink.DefaultLinkSystem()
-	ls.StorageReadOpener = func(_ ipld.LinkContext, l ipld.Link) (io.Reader, error) {
+	ls.StorageReadOpener = func(lctx ipld.LinkContext, l ipld.Link) (io.Reader, error) {
 		cl, ok := l.(cidlink.Link)
 		if !ok {
 			return nil, fmt.Errorf("couldn't load link")
 		}
-		blk, err := baseStore.Get(cl.Cid)
+		blk, err := baseStore.Get(lctx.Ctx, cl.Cid)
 		if err != nil {
 			return nil, err
 		}
