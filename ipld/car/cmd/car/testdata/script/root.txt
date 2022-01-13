@@ -1,0 +1,15 @@
+car root ${INPUTS}/sample-v1.car
+cmp stdout v1root.txt
+
+car root ${INPUTS}/sample-wrapped-v2.car
+cmp stdout v2root.txt
+
+stop stdin_test_needs_car_fix
+stdin ${INPUTS}/sample-wrapped-v2.car
+car root
+cmp stdout v2root.txt
+
+-- v1root.txt --
+bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy
+-- v2root.txt --
+bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy

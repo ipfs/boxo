@@ -136,6 +136,11 @@ func main1() int {
 				},
 			},
 			{
+				Name:   "root",
+				Usage:  "Get the root CID of a car",
+				Action: CarRoot,
+			},
+			{
 				Name:    "verify",
 				Aliases: []string{"v"},
 				Usage:   "Verify a CAR is wellformed",
