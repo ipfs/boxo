@@ -1,5 +1,5 @@
-//go:build darwin || linux || netbsd || openbsd
-// +build darwin linux netbsd openbsd
+//go:build darwin || linux || netbsd || openbsd || freebsd
+// +build darwin linux netbsd openbsd freebsd
 
 package files
 
