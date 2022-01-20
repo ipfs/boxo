@@ -6,6 +6,8 @@ import (
 	"os"
 
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/index"
+	"github.com/multiformats/go-multihash"
 	"github.com/urfave/cli/v2"
 )
 
@@ -32,4 +34,36 @@ func DetachCar(c *cli.Context) error {
 
 	_, err = io.Copy(outStream, r.IndexReader())
 	return err
+}
+
+// DetachCarList prints a list of what's found in a detached index.
+func DetachCarList(c *cli.Context) error {
+	var err error
+
+	inStream := os.Stdin
+	if c.Args().Len() >= 1 {
+		inStream, err = os.Open(c.Args().First())
+		if err != nil {
+			return err
+		}
+		defer inStream.Close()
+	}
+
+	idx, err := index.ReadFrom(inStream)
+	if err != nil {
+		return err
+	}
+
+	if iidx, ok := idx.(index.IterableIndex); ok {
+		err := iidx.ForEach(func(mh multihash.Multihash, offset uint64) error {
+			fmt.Printf("%s %d\n", mh, offset)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	return fmt.Errorf("index of codec %s is not iterable", idx.Codec())
 }

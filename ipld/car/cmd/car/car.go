@@ -33,6 +33,11 @@ func main1() int {
 				Name:   "detach-index",
 				Usage:  "Detach an index to a detached file",
 				Action: DetachCar,
+				Subcommands: []*cli.Command{{
+					Name:   "list",
+					Usage:  "List a detached index",
+					Action: DetachCarList,
+				}},
 			},
 			{
 				Name:    "extract",
