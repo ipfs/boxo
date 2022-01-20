@@ -46,7 +46,7 @@ func GetCarBlock(c *cli.Context) error {
 		return err
 	}
 
-	blk, err := bs.Get(blkCid)
+	blk, err := bs.Get(c.Context, blkCid)
 	if err != nil {
 		return err
 	}
@@ -111,7 +111,7 @@ func GetCarDag(c *cli.Context) error {
 
 	switch c.Int("version") {
 	case 2:
-		return writeCarV2(rootCid, output, bs, strict, sel, linkVisitOnlyOnce)
+		return writeCarV2(c.Context, rootCid, output, bs, strict, sel, linkVisitOnlyOnce)
 	case 1:
 		return writeCarV1(rootCid, output, bs, strict, sel, linkVisitOnlyOnce)
 	default:
@@ -119,7 +119,7 @@ func GetCarDag(c *cli.Context) error {
 	}
 }
 
-func writeCarV2(rootCid cid.Cid, output string, bs *blockstore.ReadOnly, strict bool, sel datamodel.Node, linkVisitOnlyOnce bool) error {
+func writeCarV2(ctx context.Context, rootCid cid.Cid, output string, bs *blockstore.ReadOnly, strict bool, sel datamodel.Node, linkVisitOnlyOnce bool) error {
 	_ = os.Remove(output)
 
 	outStore, err := blockstore.OpenReadWrite(output, []cid.Cid{rootCid}, blockstore.AllowDuplicatePuts(false))
@@ -131,7 +131,7 @@ func writeCarV2(rootCid cid.Cid, output string, bs *blockstore.ReadOnly, strict 
 	ls.TrustedStorage = true
 	ls.StorageReadOpener = func(_ linking.LinkContext, l datamodel.Link) (io.Reader, error) {
 		if cl, ok := l.(cidlink.Link); ok {
-			blk, err := bs.Get(cl.Cid)
+			blk, err := bs.Get(ctx, cl.Cid)
 			if err != nil {
 				if err == ipfsbs.ErrNotFound {
 					if strict {
@@ -141,7 +141,7 @@ func writeCarV2(rootCid cid.Cid, output string, bs *blockstore.ReadOnly, strict 
 				}
 				return nil, err
 			}
-			if err := outStore.Put(blk); err != nil {
+			if err := outStore.Put(ctx, blk); err != nil {
 				return nil, err
 			}
 			return bytes.NewBuffer(blk.RawData()), nil

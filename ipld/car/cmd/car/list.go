@@ -138,7 +138,7 @@ func listUnixfs(c *cli.Context, outStream io.Writer) error {
 		if !ok {
 			return nil, fmt.Errorf("not a cidlink")
 		}
-		blk, err := bs.Get(cl.Cid)
+		blk, err := bs.Get(c.Context, cl.Cid)
 		if err != nil {
 			return nil, err
 		}

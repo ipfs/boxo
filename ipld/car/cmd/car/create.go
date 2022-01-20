@@ -43,7 +43,17 @@ func CreateCar(c *cli.Context) error {
 	}
 	proxyRoot := cid.NewCidV1(uint64(multicodec.DagPb), hash)
 
-	cdest, err := blockstore.OpenReadWrite(c.String("file"), []cid.Cid{proxyRoot})
+	options := []car.Option{}
+	switch c.Int("version") {
+	case 1:
+		options = []car.Option{blockstore.WriteAsCarV1(true)}
+	case 2:
+		// already the default
+	default:
+		return fmt.Errorf("invalid CAR version %d", c.Int("version"))
+	}
+
+	cdest, err := blockstore.OpenReadWrite(c.String("file"), []cid.Cid{proxyRoot}, options...)
 	if err != nil {
 		return err
 	}
@@ -69,7 +79,7 @@ func writeFiles(ctx context.Context, bs *blockstore.ReadWrite, paths ...string) 
 		if !ok {
 			return nil, fmt.Errorf("not a cidlink")
 		}
-		blk, err := bs.Get(cl.Cid)
+		blk, err := bs.Get(ctx, cl.Cid)
 		if err != nil {
 			return nil, err
 		}
@@ -86,7 +96,7 @@ func writeFiles(ctx context.Context, bs *blockstore.ReadWrite, paths ...string) 
 			if err != nil {
 				return err
 			}
-			bs.Put(blk)
+			bs.Put(ctx, blk)
 			return nil
 		}, nil
 	}

@@ -156,5 +156,6 @@ func IndexCar(c *cli.Context) error {
 		return err
 	}
 
-	return index.WriteTo(idx, outStream)
+	_, err = index.WriteTo(idx, outStream)
+	return err
 }

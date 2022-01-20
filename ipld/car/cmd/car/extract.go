@@ -42,7 +42,7 @@ func ExtractCar(c *cli.Context) error {
 		if !ok {
 			return nil, fmt.Errorf("not a cidlink")
 		}
-		blk, err := bs.Get(cl.Cid)
+		blk, err := bs.Get(c.Context, cl.Cid)
 		if err != nil {
 			return nil, err
 		}

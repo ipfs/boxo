@@ -93,7 +93,7 @@ func FilterCar(c *cli.Context) error {
 			return err
 		}
 		if _, ok := cidMap[blk.Cid()]; ok {
-			if err := bs.Put(blk); err != nil {
+			if err := bs.Put(c.Context, blk); err != nil {
 				return err
 			}
 		}

@@ -27,6 +27,11 @@ func main1() int {
 						Usage:     "The car file to write to",
 						TakesFile: true,
 					},
+					&cli.IntFlag{
+						Name:  "version",
+						Value: 2,
+						Usage: "Write output as a v1 or v2 format car",
+					},
 				},
 			},
 			{
