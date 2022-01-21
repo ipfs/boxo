@@ -47,81 +47,122 @@ func TestReadWriteGetReturnsBlockstoreNotFoundWhenCidDoesNotExist(t *testing.T) 
 	require.Nil(t, gotBlock)
 }
 
-func TestBlockstore(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	f, err := os.Open("../testdata/sample-v1.car")
-	require.NoError(t, err)
-	t.Cleanup(func() { assert.NoError(t, f.Close()) })
-	r, err := carv1.NewCarReader(f)
+func TestBlockstoreX(t *testing.T) {
+	originalCARv1Path := "../testdata/sample-v1.car"
+	originalCARv1ComparePath := "../testdata/sample-v1-noidentity.car"
+	originalCARv1ComparePathStat, err := os.Stat(originalCARv1ComparePath)
 	require.NoError(t, err)
 
-	path := filepath.Join(t.TempDir(), "readwrite.car")
-	ingester, err := blockstore.OpenReadWrite(path, r.Header.Roots)
-	require.NoError(t, err)
-	t.Cleanup(func() { ingester.Finalize() })
-
-	cids := make([]cid.Cid, 0)
-	var idCidCount int
-	for {
-		b, err := r.Next()
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-
-		err = ingester.Put(ctx, b)
-		require.NoError(t, err)
-		cids = append(cids, b.Cid())
-
-		// try reading a random one:
-		candidate := cids[rng.Intn(len(cids))]
-		if has, err := ingester.Has(ctx, candidate); !has || err != nil {
-			t.Fatalf("expected to find %s but didn't: %s", candidate, err)
-		}
-
-		dmh, err := multihash.Decode(b.Cid().Hash())
-		require.NoError(t, err)
-		if dmh.Code == multihash.IDENTITY {
-			idCidCount++
-		}
+	variants := []struct {
+		name                  string
+		options               []carv2.Option
+		expectedV1StartOffset int64
+	}{
+		// no options, expect a standard CARv2 with the noidentity inner CARv1
+		{"noopt_carv2", []carv2.Option{}, int64(carv2.PragmaSize + carv2.HeaderSize)},
+		// option to only write as a CARv1, expect the noidentity inner CARv1
+		{"carv1", []carv2.Option{blockstore.WriteAsCarV1(true)}, int64(0)},
 	}
 
-	for _, c := range cids {
-		b, err := ingester.Get(ctx, c)
-		require.NoError(t, err)
-		if !b.Cid().Equals(c) {
-			t.Fatal("wrong item returned")
-		}
-	}
+	for _, variant := range variants {
+		t.Run(variant.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
 
-	err = ingester.Finalize()
-	require.NoError(t, err)
-	robs, err := blockstore.OpenReadOnly(path)
-	require.NoError(t, err)
-	t.Cleanup(func() { assert.NoError(t, robs.Close()) })
+			f, err := os.Open(originalCARv1Path)
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, f.Close()) })
+			r, err := carv1.NewCarReader(f)
+			require.NoError(t, err)
 
-	allKeysCh, err := robs.AllKeysChan(ctx)
-	require.NoError(t, err)
-	numKeysCh := 0
-	for c := range allKeysCh {
-		b, err := robs.Get(ctx, c)
-		require.NoError(t, err)
-		if !b.Cid().Equals(c) {
-			t.Fatal("wrong item returned")
-		}
-		numKeysCh++
-	}
-	expectedCidCount := len(cids) - idCidCount
-	require.Equal(t, expectedCidCount, numKeysCh, "AllKeysChan returned an unexpected amount of keys; expected %v but got %v", expectedCidCount, numKeysCh)
+			path := filepath.Join(t.TempDir(), fmt.Sprintf("readwrite_%s.car", variant.name))
+			ingester, err := blockstore.OpenReadWrite(path, r.Header.Roots, variant.options...)
+			require.NoError(t, err)
+			t.Cleanup(func() { ingester.Finalize() })
 
-	for _, c := range cids {
-		b, err := robs.Get(ctx, c)
-		require.NoError(t, err)
-		if !b.Cid().Equals(c) {
-			t.Fatal("wrong item returned")
-		}
+			cids := make([]cid.Cid, 0)
+			var idCidCount int
+			for {
+				b, err := r.Next()
+				if err == io.EOF {
+					break
+				}
+				require.NoError(t, err)
+
+				err = ingester.Put(ctx, b)
+				require.NoError(t, err)
+				cids = append(cids, b.Cid())
+
+				// try reading a random one:
+				candidate := cids[rng.Intn(len(cids))]
+				if has, err := ingester.Has(ctx, candidate); !has || err != nil {
+					t.Fatalf("expected to find %s but didn't: %s", candidate, err)
+				}
+
+				dmh, err := multihash.Decode(b.Cid().Hash())
+				require.NoError(t, err)
+				if dmh.Code == multihash.IDENTITY {
+					idCidCount++
+				}
+			}
+
+			for _, c := range cids {
+				b, err := ingester.Get(ctx, c)
+				require.NoError(t, err)
+				if !b.Cid().Equals(c) {
+					t.Fatal("wrong item returned")
+				}
+			}
+
+			err = ingester.Finalize()
+			require.NoError(t, err)
+			robs, err := blockstore.OpenReadOnly(path)
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, robs.Close()) })
+
+			allKeysCh, err := robs.AllKeysChan(ctx)
+			require.NoError(t, err)
+			numKeysCh := 0
+			for c := range allKeysCh {
+				b, err := robs.Get(ctx, c)
+				require.NoError(t, err)
+				if !b.Cid().Equals(c) {
+					t.Fatal("wrong item returned")
+				}
+				numKeysCh++
+			}
+			expectedCidCount := len(cids) - idCidCount
+			require.Equal(t, expectedCidCount, numKeysCh, "AllKeysChan returned an unexpected amount of keys; expected %v but got %v", expectedCidCount, numKeysCh)
+
+			for _, c := range cids {
+				b, err := robs.Get(ctx, c)
+				require.NoError(t, err)
+				if !b.Cid().Equals(c) {
+					t.Fatal("wrong item returned")
+				}
+			}
+
+			wrote, err := os.Open(path)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, wrote.Close()) })
+			_, err = wrote.Seek(variant.expectedV1StartOffset, io.SeekStart)
+			require.NoError(t, err)
+			hasher := sha512.New()
+			gotWritten, err := io.Copy(hasher, io.LimitReader(wrote, originalCARv1ComparePathStat.Size()))
+			require.NoError(t, err)
+			gotSum := hasher.Sum(nil)
+
+			hasher.Reset()
+			originalCarV1, err := os.Open(originalCARv1ComparePath)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, originalCarV1.Close()) })
+			wantWritten, err := io.Copy(hasher, originalCarV1)
+			require.NoError(t, err)
+			wantSum := hasher.Sum(nil)
+
+			require.Equal(t, wantWritten, gotWritten)
+			require.Equal(t, wantSum, gotSum)
+		})
 	}
 }
 

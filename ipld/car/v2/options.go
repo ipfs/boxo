@@ -39,6 +39,7 @@ type Options struct {
 	BlockstoreAllowDuplicatePuts bool
 	BlockstoreUseWholeCIDs       bool
 	MaxTraversalLinks            uint64
+	WriteAsCarV1                 bool
 }
 
 // ApplyOptions applies given opts and returns the resulting Options.

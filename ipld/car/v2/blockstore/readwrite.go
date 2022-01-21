@@ -40,6 +40,18 @@ type ReadWrite struct {
 	opts carv2.Options
 }
 
+// WriteAsCarV1 is a write option which makes a CAR blockstore write the output
+// as a CARv1 only, with no CARv2 header or index. Indexing is used internally
+// during write but is discarded upon finalization.
+//
+// Note that this option only affects the blockstore, and is ignored by the root
+// go-car/v2 package.
+func WriteAsCarV1(asCarV1 bool) carv2.Option {
+	return func(o *carv2.Options) {
+		o.WriteAsCarV1 = asCarV1
+	}
+}
+
 // AllowDuplicatePuts is a write option which makes a CAR blockstore not
 // deduplicate blocks in Put and PutMany. The default is to deduplicate,
 // which matches the current semantics of go-ipfs-blockstore v1.
@@ -122,18 +134,22 @@ func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.Option) (*ReadWri
 		rwbs.header = rwbs.header.WithIndexPadding(p)
 	}
 
-	rwbs.dataWriter = internalio.NewOffsetWriter(rwbs.f, int64(rwbs.header.DataOffset))
-	v1r := internalio.NewOffsetReadSeeker(rwbs.f, int64(rwbs.header.DataOffset))
+	offset := int64(rwbs.header.DataOffset)
+	if rwbs.opts.WriteAsCarV1 {
+		offset = 0
+	}
+	rwbs.dataWriter = internalio.NewOffsetWriter(rwbs.f, offset)
+	v1r := internalio.NewOffsetReadSeeker(rwbs.f, offset)
 	rwbs.ronly.backing = v1r
 	rwbs.ronly.idx = rwbs.idx
 	rwbs.ronly.carv2Closer = rwbs.f
 
 	if resume {
-		if err = rwbs.resumeWithRoots(roots); err != nil {
+		if err = rwbs.resumeWithRoots(!rwbs.opts.WriteAsCarV1, roots); err != nil {
 			return nil, err
 		}
 	} else {
-		if err = rwbs.initWithRoots(roots); err != nil {
+		if err = rwbs.initWithRoots(!rwbs.opts.WriteAsCarV1, roots); err != nil {
 			return nil, err
 		}
 	}
@@ -141,14 +157,16 @@ func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.Option) (*ReadWri
 	return rwbs, nil
 }
 
-func (b *ReadWrite) initWithRoots(roots []cid.Cid) error {
-	if _, err := b.f.WriteAt(carv2.Pragma, 0); err != nil {
-		return err
+func (b *ReadWrite) initWithRoots(v2 bool, roots []cid.Cid) error {
+	if v2 {
+		if _, err := b.f.WriteAt(carv2.Pragma, 0); err != nil {
+			return err
+		}
 	}
 	return carv1.WriteHeader(&carv1.CarHeader{Roots: roots, Version: 1}, b.dataWriter)
 }
 
-func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
+func (b *ReadWrite) resumeWithRoots(v2 bool, roots []cid.Cid) error {
 	// On resumption it is expected that the CARv2 Pragma, and the CARv1 header is successfully written.
 	// Otherwise we cannot resume from the file.
 	// Read pragma to assert if b.f is indeed a CARv2.
@@ -158,36 +176,42 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 		// Or the write must have failed before pragma was written.
 		return err
 	}
-	if version != 2 {
-		// The file is not a CARv2 and we cannot resume from it.
+	switch {
+	case version == 1 && !v2:
+	case version == 2 && v2:
+	default:
+		// The file is not the expected version and we cannot resume from it.
 		return fmt.Errorf("cannot resume on CAR file with version %v", version)
 	}
 
-	// Check if file was finalized by trying to read the CARv2 header.
-	// We check because if finalized the CARv1 reader behaviour needs to be adjusted since
-	// EOF will not signify end of CARv1 payload. i.e. index is most likely present.
 	var headerInFile carv2.Header
-	_, err = headerInFile.ReadFrom(internalio.NewOffsetReadSeeker(b.f, carv2.PragmaSize))
 
-	// If reading CARv2 header succeeded, and CARv1 offset in header is not zero then the file is
-	// most-likely finalized. Check padding and truncate the file to remove index.
-	// Otherwise, carry on reading the v1 payload at offset determined from b.header.
-	if err == nil && headerInFile.DataOffset != 0 {
-		if headerInFile.DataOffset != b.header.DataOffset {
-			// Assert that the padding on file matches the given WithDataPadding option.
-			wantPadding := headerInFile.DataOffset - carv2.PragmaSize - carv2.HeaderSize
-			gotPadding := b.header.DataOffset - carv2.PragmaSize - carv2.HeaderSize
-			return fmt.Errorf(
-				"cannot resume from file with mismatched CARv1 offset; "+
-					"`WithDataPadding` option must match the padding on file. "+
-					"Expected padding value of %v but got %v", wantPadding, gotPadding,
-			)
-		} else if headerInFile.DataSize == 0 {
-			// If CARv1 size is zero, since CARv1 offset wasn't, then the CARv2 header was
-			// most-likely partially written. Since we write the header last in Finalize then the
-			// file most-likely contains the index and we cannot know where it starts, therefore
-			// can't resume.
-			return errors.New("corrupt CARv2 header; cannot resume from file")
+	if v2 {
+		// Check if file was finalized by trying to read the CARv2 header.
+		// We check because if finalized the CARv1 reader behaviour needs to be adjusted since
+		// EOF will not signify end of CARv1 payload. i.e. index is most likely present.
+		_, err = headerInFile.ReadFrom(internalio.NewOffsetReadSeeker(b.f, carv2.PragmaSize))
+
+		// If reading CARv2 header succeeded, and CARv1 offset in header is not zero then the file is
+		// most-likely finalized. Check padding and truncate the file to remove index.
+		// Otherwise, carry on reading the v1 payload at offset determined from b.header.
+		if err == nil && headerInFile.DataOffset != 0 {
+			if headerInFile.DataOffset != b.header.DataOffset {
+				// Assert that the padding on file matches the given WithDataPadding option.
+				wantPadding := headerInFile.DataOffset - carv2.PragmaSize - carv2.HeaderSize
+				gotPadding := b.header.DataOffset - carv2.PragmaSize - carv2.HeaderSize
+				return fmt.Errorf(
+					"cannot resume from file with mismatched CARv1 offset; "+
+						"`WithDataPadding` option must match the padding on file. "+
+						"Expected padding value of %v but got %v", wantPadding, gotPadding,
+				)
+			} else if headerInFile.DataSize == 0 {
+				// If CARv1 size is zero, since CARv1 offset wasn't, then the CARv2 header was
+				// most-likely partially written. Since we write the header last in Finalize then the
+				// file most-likely contains the index and we cannot know where it starts, therefore
+				// can't resume.
+				return errors.New("corrupt CARv2 header; cannot resume from file")
+			}
 		}
 	}
 
@@ -213,10 +237,13 @@ func (b *ReadWrite) resumeWithRoots(roots []cid.Cid) error {
 			return err
 		}
 	}
-	// Now that CARv2 header is present on file, clear it to avoid incorrect size and offset in
-	// header in case blocksotre is closed without finalization and is resumed from.
-	if err := b.unfinalize(); err != nil {
-		return fmt.Errorf("could not un-finalize: %w", err)
+
+	if v2 {
+		// Now that CARv2 header is present on file, clear it to avoid incorrect size and offset in
+		// header in case blocksotre is closed without finalization and is resumed from.
+		if err := b.unfinalize(); err != nil {
+			return fmt.Errorf("could not un-finalize: %w", err)
+		}
 	}
 
 	// TODO See how we can reduce duplicate code here.
@@ -354,6 +381,13 @@ func (b *ReadWrite) Discard() {
 // for more efficient subsequent read.
 // After this call, the blockstore can no longer be used.
 func (b *ReadWrite) Finalize() error {
+	if b.opts.WriteAsCarV1 {
+		// all blocks are already properly written to the CARv1 inner container and there's
+		// no additional finalization required at the end of the file for a complete v1
+		b.ronly.Close()
+		return nil
+	}
+
 	b.ronly.mu.Lock()
 	defer b.ronly.mu.Unlock()
 
