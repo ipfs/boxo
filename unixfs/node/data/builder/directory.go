@@ -48,8 +48,7 @@ func BuildUnixFSRecursive(root string, ls *ipld.LinkSystem) (ipld.Link, uint64, 
 			}
 			lnks = append(lnks, entry)
 		}
-		outLnk, sz, err := BuildUnixFSDirectory(lnks, ls)
-		return outLnk, tsize + sz, err
+		return BuildUnixFSDirectory(lnks, ls)
 	case m.Type() == fs.ModeSymlink:
 		content, err := os.Readlink(root)
 		if err != nil {
@@ -126,7 +125,9 @@ func BuildUnixFSDirectory(entries []dagpb.PBLink, ls *ipld.LinkSystem) (ipld.Lin
 		return nil, 0, err
 	}
 	// sorting happens in codec-dagpb
+	var totalSize uint64
 	for _, e := range entries {
+		totalSize += uint64(e.Tsize.Must().Int())
 		if err := lnks.AssembleValue().AssignNode(e); err != nil {
 			return nil, 0, err
 		}
@@ -138,5 +139,9 @@ func BuildUnixFSDirectory(entries []dagpb.PBLink, ls *ipld.LinkSystem) (ipld.Lin
 		return nil, 0, err
 	}
 	node := pbb.Build()
-	return sizedStore(ls, fileLinkProto, node)
+	lnk, sz, err := sizedStore(ls, fileLinkProto, node)
+	if err != nil {
+		return nil, 0, err
+	}
+	return lnk, totalSize + sz, err
 }

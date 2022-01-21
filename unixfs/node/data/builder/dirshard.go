@@ -56,7 +56,9 @@ func BuildUnixFSShardedDirectory(size int, hasher uint64, entries []dagpb.PBLink
 	hamtEntries := make([]hamtLink, 0, len(entries))
 	for _, e := range entries {
 		name := e.Name.Must().String()
-		sum := h.Sum([]byte(name))
+		h.Reset()
+		h.Write([]byte(name))
+		sum := h.Sum(nil)
 		hamtEntries = append(hamtEntries, hamtLink{
 			sum,
 			e,
@@ -97,9 +99,11 @@ func (s *shard) add(lnk hamtLink) error {
 
 	current, ok := s.children[bucket]
 	if !ok {
+		// no bucket, make one with this entry
 		s.children[bucket] = entry{nil, &lnk}
 		return nil
 	} else if current.shard != nil {
+		// existing shard, add this link to the shard
 		return current.shard.add(lnk)
 	}
 	// make a shard for current and lnk
@@ -114,15 +118,18 @@ func (s *shard) add(lnk hamtLink) error {
 		},
 		nil,
 	}
+	// add existing link from this bucket to the new shard
 	if err := newShard.add(*current.hamtLink); err != nil {
 		return err
 	}
+	// replace bucket with shard
 	s.children[bucket] = newShard
+	// add new link to the new shard
 	return newShard.add(lnk)
 }
 
 func (s *shard) formatLinkName(name string, idx int) string {
-	return fmt.Sprintf("%*X%s", s.width, idx, name)
+	return fmt.Sprintf("%0*X%s", s.width, idx, name)
 }
 
 // bitmap calculates the bitmap of which links in the shard are set.
@@ -169,6 +176,7 @@ func (s *shard) serialize(ls *ipld.LinkSystem) (ipld.Link, uint64, error) {
 		return nil, 0, err
 	}
 	// sorting happens in codec-dagpb
+	var totalSize uint64
 	for idx, e := range s.children {
 		var lnk dagpb.PBLink
 		if e.shard != nil {
@@ -176,6 +184,7 @@ func (s *shard) serialize(ls *ipld.LinkSystem) (ipld.Link, uint64, error) {
 			if err != nil {
 				return nil, 0, err
 			}
+			totalSize += sz
 			fullName := s.formatLinkName("", idx)
 			lnk, err = BuildUnixFSDirectoryEntry(fullName, int64(sz), ipldLnk)
 			if err != nil {
@@ -183,7 +192,9 @@ func (s *shard) serialize(ls *ipld.LinkSystem) (ipld.Link, uint64, error) {
 			}
 		} else {
 			fullName := s.formatLinkName(e.Name.Must().String(), idx)
-			lnk, err = BuildUnixFSDirectoryEntry(fullName, e.Tsize.Must().Int(), e.Hash.Link())
+			sz := e.Tsize.Must().Int()
+			totalSize += uint64(sz)
+			lnk, err = BuildUnixFSDirectoryEntry(fullName, sz, e.Hash.Link())
 		}
 		if err != nil {
 			return nil, 0, err
@@ -200,5 +211,9 @@ func (s *shard) serialize(ls *ipld.LinkSystem) (ipld.Link, uint64, error) {
 		return nil, 0, err
 	}
 	node := pbb.Build()
-	return sizedStore(ls, fileLinkProto, node)
+	lnk, sz, err := sizedStore(ls, fileLinkProto, node)
+	if err != nil {
+		return nil, 0, err
+	}
+	return lnk, totalSize + sz, nil
 }

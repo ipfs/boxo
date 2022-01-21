@@ -45,12 +45,10 @@ func TestBuildUnixFSDirectory(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		dl, tsize, err := BuildUnixFSDirectory(entries, &ls)
+		dl, _, err := BuildUnixFSDirectory(entries, &ls)
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		require.GreaterOrEqual(t, tsize, uint64(0)) // TODO: set properly
 
 		pbn, err := ls.Load(ipld.LinkContext{}, dl, dagpb.Type.PBNode)
 		if err != nil {
@@ -108,8 +106,36 @@ func TestBuildUnixFSRecursive(t *testing.T) {
 
 	lnk, sz, err := BuildUnixFSRecursive(filepath.Join(dir, fixture.name), &ls)
 	require.NoError(t, err)
-	require.Equal(t, lnk.String(), fixture.expectedLnk.String())
-	require.Equal(t, sz, uint64(245))
+	require.Equal(t, fixture.expectedLnk.String(), lnk.String())
+	require.Equal(t, uint64(245), sz)
+}
+
+func TestBuildUnixFSRecursiveSharded(t *testing.T) {
+	// only the top CID is of interest, but this tree is correct and can be used for future validation
+	fixture := fentry{
+		"rootDir",
+		"",
+		mustCidDecode("bafybeiendaawtta62lx2p2e2hecgywmqeq6ekrn2pfypxjkmdzmaeituhe"),
+		make([]fentry, 0),
+	}
+
+	for i := 0; i < 2048; i++ {
+		name := fmt.Sprintf("long name to fill out bytes to make the sharded directory test flip over the sharded directory limit because link names are included in the directory entry %d", i)
+		fixture.children = append(fixture.children, fentry{name, name, cid.Undef, nil})
+	}
+
+	ls := cidlink.DefaultLinkSystem()
+	storage := cidlink.Memory{}
+	ls.StorageReadOpener = storage.OpenRead
+	ls.StorageWriteOpener = storage.OpenWrite
+
+	dir := t.TempDir()
+	makeFixture(t, dir, fixture)
+
+	lnk, sz, err := BuildUnixFSRecursive(filepath.Join(dir, fixture.name), &ls)
+	require.NoError(t, err)
+	require.Equal(t, fixture.expectedLnk.String(), lnk.String())
+	require.Equal(t, uint64(778128), sz)
 }
 
 type fentry struct {
