@@ -39,7 +39,7 @@ type hamtLink struct {
 
 // BuildUnixFSShardedDirectory will build a hamt of unixfs hamt shards encoing a directory with more entries
 // than is typically allowed to fit in a standard IPFS single-block unixFS directory.
-func BuildUnixFSShardedDirectory(size int, hasher uint64, entries []dagpb.PBLink, ls *ipld.LinkSystem) (ipld.Link, error) {
+func BuildUnixFSShardedDirectory(size int, hasher uint64, entries []dagpb.PBLink, ls *ipld.LinkSystem) (ipld.Link, uint64, error) {
 	// hash the entries
 	var h hash.Hash
 	var err error
@@ -50,7 +50,7 @@ func BuildUnixFSShardedDirectory(size int, hasher uint64, entries []dagpb.PBLink
 	} else {
 		h, err = multihash.GetHasher(hasher)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
 	hamtEntries := make([]hamtLink, 0, len(entries))
@@ -65,7 +65,7 @@ func BuildUnixFSShardedDirectory(size int, hasher uint64, entries []dagpb.PBLink
 
 	sizeLg2, err := logtwo(size)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	sharder := shard{
@@ -81,7 +81,7 @@ func BuildUnixFSShardedDirectory(size int, hasher uint64, entries []dagpb.PBLink
 	for _, entry := range hamtEntries {
 		err := sharder.add(entry)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
 
@@ -138,7 +138,7 @@ func (s *shard) bitmap() []byte {
 
 // serialize stores the concrete representation of this shard in the link system and
 // returns a link to it.
-func (s *shard) serialize(ls *ipld.LinkSystem) (ipld.Link, error) {
+func (s *shard) serialize(ls *ipld.LinkSystem) (ipld.Link, uint64, error) {
 	ufd, err := BuildUnixFS(func(b *Builder) {
 		DataType(b, data.Data_HAMTShard)
 		HashType(b, s.hasher)
@@ -146,59 +146,59 @@ func (s *shard) serialize(ls *ipld.LinkSystem) (ipld.Link, error) {
 		Fanout(b, uint64(s.size))
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	pbb := dagpb.Type.PBNode.NewBuilder()
 	pbm, err := pbb.BeginMap(2)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err = pbm.AssembleKey().AssignString("Data"); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err = pbm.AssembleValue().AssignBytes(data.EncodeUnixFSData(ufd)); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err = pbm.AssembleKey().AssignString("Links"); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	lnkBuilder := dagpb.Type.PBLinks.NewBuilder()
 	lnks, err := lnkBuilder.BeginList(int64(len(s.children)))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	// sorting happens in codec-dagpb
 	for idx, e := range s.children {
 		var lnk dagpb.PBLink
 		if e.shard != nil {
-			ipldLnk, err := e.shard.serialize(ls)
+			ipldLnk, sz, err := e.shard.serialize(ls)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			fullName := s.formatLinkName("", idx)
-			lnk, err = BuildUnixFSDirectoryEntry(fullName, 0, ipldLnk)
+			lnk, err = BuildUnixFSDirectoryEntry(fullName, int64(sz), ipldLnk)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 		} else {
 			fullName := s.formatLinkName(e.Name.Must().String(), idx)
 			lnk, err = BuildUnixFSDirectoryEntry(fullName, e.Tsize.Must().Int(), e.Hash.Link())
 		}
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if err := lnks.AssembleValue().AssignNode(lnk); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
 	if err := lnks.Finish(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	pbm.AssembleValue().AssignNode(lnkBuilder.Build())
 	if err := pbm.Finish(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	node := pbb.Build()
-	return ls.Store(ipld.LinkContext{}, fileLinkProto, node)
+	return sizedStore(ls, fileLinkProto, node)
 }

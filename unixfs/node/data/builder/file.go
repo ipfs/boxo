@@ -86,8 +86,7 @@ func fileTreeRecursive(depth int, children []ipld.Link, childLen []uint64, src c
 			return nil, 0, err
 		}
 		node := basicnode.NewBytes(leaf)
-		link, err := ls.Store(ipld.LinkContext{}, leafLinkProto, node)
-		return link, uint64(len(leaf)), err
+		return sizedStore(ls, leafLinkProto, node)
 	}
 	// depth > 1.
 	totalSize := uint64(0)
@@ -166,25 +165,11 @@ func fileTreeRecursive(depth int, children []ipld.Link, childLen []uint64, src c
 	}
 	pbn := dpbb.Build()
 
-	link, err := ls.Store(ipld.LinkContext{}, fileLinkProto, pbn)
+	link, sz, err := sizedStore(ls, fileLinkProto, pbn)
 	if err != nil {
 		return nil, 0, err
 	}
-	// calculate the dagpb node's size and add as overhead.
-	cl, ok := link.(cidlink.Link)
-	if !ok {
-		return nil, 0, fmt.Errorf("unexpected non-cid linksystem")
-	}
-	rawlnk := cid.NewCidV1(uint64(multicodec.Raw), cl.Cid.Hash())
-	rn, err := ls.Load(ipld.LinkContext{}, cidlink.Link{Cid: rawlnk}, basicnode.Prototype__Bytes{})
-	if err != nil {
-		return nil, 0, fmt.Errorf("could not re-interpret dagpb node as bytes: %w", err)
-	}
-	rnb, err := rn.AsBytes()
-	if err != nil {
-		return nil, 0, fmt.Errorf("could not parse dagpb node as bytes: %w", err)
-	}
-	return link, totalSize + uint64(len(rnb)), nil
+	return link, totalSize + sz, nil
 }
 
 // BuildUnixFSDirectoryEntry creates the link to a file or directory as it appears within a unixfs directory.
@@ -256,25 +241,7 @@ func BuildUnixFSSymlink(content string, ls *ipld.LinkSystem) (ipld.Link, uint64,
 	}
 	pbn := dpbb.Build()
 
-	link, err := ls.Store(ipld.LinkContext{}, fileLinkProto, pbn)
-	if err != nil {
-		return nil, 0, err
-	}
-	// calculate the size and add as overhead.
-	cl, ok := link.(cidlink.Link)
-	if !ok {
-		return nil, 0, fmt.Errorf("unexpected non-cid linksystem")
-	}
-	rawlnk := cid.NewCidV1(uint64(multicodec.Raw), cl.Cid.Hash())
-	rn, err := ls.Load(ipld.LinkContext{}, cidlink.Link{Cid: rawlnk}, basicnode.Prototype__Bytes{})
-	if err != nil {
-		return nil, 0, fmt.Errorf("could not re-interpret dagpb node as bytes: %w", err)
-	}
-	rnb, err := rn.AsBytes()
-	if err != nil {
-		return nil, 0, fmt.Errorf("could not re-interpret dagpb node as bytes: %w", err)
-	}
-	return link, uint64(len(rnb)), nil
+	return sizedStore(ls, fileLinkProto, pbn)
 }
 
 // Constants below are from

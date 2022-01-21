@@ -30,6 +30,7 @@ func BuildUnixFSRecursive(root string, ls *ipld.LinkSystem) (ipld.Link, uint64, 
 	m := info.Mode()
 	switch {
 	case m.IsDir():
+		var tsize uint64
 		entries, err := os.ReadDir(root)
 		if err != nil {
 			return nil, 0, err
@@ -40,27 +41,36 @@ func BuildUnixFSRecursive(root string, ls *ipld.LinkSystem) (ipld.Link, uint64, 
 			if err != nil {
 				return nil, 0, err
 			}
+			tsize += sz
 			entry, err := BuildUnixFSDirectoryEntry(e.Name(), int64(sz), lnk)
 			if err != nil {
 				return nil, 0, err
 			}
 			lnks = append(lnks, entry)
 		}
-		outLnk, err := BuildUnixFSDirectory(lnks, ls)
-		return outLnk, 0, err
+		outLnk, sz, err := BuildUnixFSDirectory(lnks, ls)
+		return outLnk, tsize + sz, err
 	case m.Type() == fs.ModeSymlink:
 		content, err := os.Readlink(root)
 		if err != nil {
 			return nil, 0, err
 		}
-		return BuildUnixFSSymlink(content, ls)
+		outLnk, sz, err := BuildUnixFSSymlink(content, ls)
+		if err != nil {
+			return nil, 0, err
+		}
+		return outLnk, sz, nil
 	case m.IsRegular():
 		fp, err := os.Open(root)
 		if err != nil {
 			return nil, 0, err
 		}
 		defer fp.Close()
-		return BuildUnixFSFile(fp, "", ls)
+		outLnk, sz, err := BuildUnixFSFile(fp, "", ls)
+		if err != nil {
+			return nil, 0, err
+		}
+		return outLnk, sz, nil
 	default:
 		return nil, 0, fmt.Errorf("cannot encode non regular file: %s", root)
 	}
@@ -87,7 +97,7 @@ func estimateDirSize(entries []dagpb.PBLink) int {
 }
 
 // BuildUnixFSDirectory creates a directory link over a collection of entries.
-func BuildUnixFSDirectory(entries []dagpb.PBLink, ls *ipld.LinkSystem) (ipld.Link, error) {
+func BuildUnixFSDirectory(entries []dagpb.PBLink, ls *ipld.LinkSystem) (ipld.Link, uint64, error) {
 	if estimateDirSize(entries) > shardSplitThreshold {
 		return BuildUnixFSShardedDirectory(defaultShardWidth, multihash.MURMUR3X64_64, entries, ls)
 	}
@@ -95,38 +105,38 @@ func BuildUnixFSDirectory(entries []dagpb.PBLink, ls *ipld.LinkSystem) (ipld.Lin
 		DataType(b, data.Data_Directory)
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	pbb := dagpb.Type.PBNode.NewBuilder()
 	pbm, err := pbb.BeginMap(2)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err = pbm.AssembleKey().AssignString("Data"); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err = pbm.AssembleValue().AssignBytes(data.EncodeUnixFSData(ufd)); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err = pbm.AssembleKey().AssignString("Links"); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	lnks, err := pbm.AssembleValue().BeginList(int64(len(entries)))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	// sorting happens in codec-dagpb
 	for _, e := range entries {
 		if err := lnks.AssembleValue().AssignNode(e); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
 	if err := lnks.Finish(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err := pbm.Finish(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	node := pbb.Build()
-	return ls.Store(ipld.LinkContext{}, fileLinkProto, node)
+	return sizedStore(ls, fileLinkProto, node)
 }
