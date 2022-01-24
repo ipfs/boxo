@@ -110,16 +110,16 @@ func TestBuildUnixFSRecursive(t *testing.T) {
 	require.Equal(t, uint64(245), sz)
 }
 
-func TestBuildUnixFSRecursiveSharded(t *testing.T) {
+func TestBuildUnixFSRecursiveLargeSharded(t *testing.T) {
 	// only the top CID is of interest, but this tree is correct and can be used for future validation
 	fixture := fentry{
 		"rootDir",
 		"",
-		mustCidDecode("bafybeiendaawtta62lx2p2e2hecgywmqeq6ekrn2pfypxjkmdzmaeituhe"),
+		mustCidDecode("bafybeigyvxs6og5jbmpaa43qbhhd5swklqcfzqdrtjgfh53qjon6hpjaye"),
 		make([]fentry, 0),
 	}
 
-	for i := 0; i < 2048; i++ {
+	for i := 0; i < 1344; i++ {
 		name := fmt.Sprintf("long name to fill out bytes to make the sharded directory test flip over the sharded directory limit because link names are included in the directory entry %d", i)
 		fixture.children = append(fixture.children, fentry{name, name, cid.Undef, nil})
 	}
@@ -135,7 +135,38 @@ func TestBuildUnixFSRecursiveSharded(t *testing.T) {
 	lnk, sz, err := BuildUnixFSRecursive(filepath.Join(dir, fixture.name), &ls)
 	require.NoError(t, err)
 	require.Equal(t, fixture.expectedLnk.String(), lnk.String())
-	require.Equal(t, uint64(778128), sz)
+	require.Equal(t, uint64(515735), sz)
+}
+
+// Same as TestBuildUnixFSRecursiveLargeSharded but it's one file less which flips
+// it back to the un-sharded format. So we're testing the boundary condition and
+// the proper construction of large DAGs.
+func TestBuildUnixFSRecursiveLargeUnsharded(t *testing.T) {
+	// only the top CID is of interest, but this tree is correct and can be used for future validation
+	fixture := fentry{
+		"rootDir",
+		"",
+		mustCidDecode("bafybeihecq4rpl4nw3cgfb2uiwltgsmw5sutouvuldv5fxn4gfbihvnalq"),
+		make([]fentry, 0),
+	}
+
+	for i := 0; i < 1343; i++ {
+		name := fmt.Sprintf("long name to fill out bytes to make the sharded directory test flip over the sharded directory limit because link names are included in the directory entry %d", i)
+		fixture.children = append(fixture.children, fentry{name, name, cid.Undef, nil})
+	}
+
+	ls := cidlink.DefaultLinkSystem()
+	storage := cidlink.Memory{}
+	ls.StorageReadOpener = storage.OpenRead
+	ls.StorageWriteOpener = storage.OpenWrite
+
+	dir := t.TempDir()
+	makeFixture(t, dir, fixture)
+
+	lnk, sz, err := BuildUnixFSRecursive(filepath.Join(dir, fixture.name), &ls)
+	require.NoError(t, err)
+	require.Equal(t, fixture.expectedLnk.String(), lnk.String())
+	require.Equal(t, uint64(490665), sz)
 }
 
 type fentry struct {
