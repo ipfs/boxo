@@ -29,5 +29,5 @@ COMMANDS:
 
 To install the latest version of `car` module, run:
 ```shell script
-go install github.com/ipld/go-car/cmd/car
+go install github.com/ipld/go-car/cmd/car@latest
 ```
