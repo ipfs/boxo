@@ -10,7 +10,7 @@ import (
 )
 
 // A Path represents an ipfs content path:
-//   * /<cid>/path/to/file
+//   * <cid>/path/to/file
 //   * /ipfs/<cid>
 //   * /ipns/<cid>/path/to/folder
 //   * etc
@@ -104,7 +104,7 @@ func ParsePath(txt string) (Path, error) {
 	}
 
 	if len(parts) < 3 {
-		return "", &pathError{error: fmt.Errorf("path does not begin with '/'"), path: txt}
+		return "", &pathError{error: fmt.Errorf("invalid ipfs path"), path: txt}
 	}
 
 	//TODO: make this smarter
