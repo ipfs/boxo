@@ -104,7 +104,7 @@ func ParsePath(txt string) (Path, error) {
 	}
 
 	if len(parts) < 3 {
-		return "", &pathError{error: fmt.Errorf("path does not begin with '/'"), path: txt}
+		return "", &pathError{error: fmt.Errorf("invalid ipfs path"), path: txt}
 	}
 
 	//TODO: make this smarter

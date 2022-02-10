@@ -51,6 +51,19 @@ func TestNoComponents(t *testing.T) {
 	}
 }
 
+func TestInvalidPaths(t *testing.T) {
+	for _, s := range []string{
+		"/ipfs",
+		"/testfs",
+		"/",
+	} {
+		_, err := ParsePath(s)
+		if err == nil || !strings.Contains(err.Error(), "invalid ipfs path") || !strings.Contains(err.Error(), s) {
+			t.Error("wrong error")
+		}
+	}
+}
+
 func TestIsJustAKey(t *testing.T) {
 	cases := map[string]bool{
 		"QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":           true,
