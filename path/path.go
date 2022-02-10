@@ -10,7 +10,7 @@ import (
 )
 
 // A Path represents an ipfs content path:
-//   * /<cid>/path/to/file
+//   * <cid>/path/to/file
 //   * /ipfs/<cid>
 //   * /ipns/<cid>/path/to/folder
 //   * etc
