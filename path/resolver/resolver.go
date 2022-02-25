@@ -41,25 +41,42 @@ func (e ErrNoLink) Error() string {
 	return fmt.Sprintf("no link named %q under %s", e.Name, e.Node.String())
 }
 
-// Resolver provides path resolution to IPFS
+// Resolver provides path resolution to IPFS.
+type Resolver interface {
+	// ResolveToLastNode walks the given path and returns the cid of the
+	// last block referenced by the path, and the path segments to
+	// traverse from the final block boundary to the final node within the
+	// block.
+	ResolveToLastNode(ctx context.Context, fpath path.Path) (cid.Cid, []string, error)
+	// ResolvePath fetches the node for given path. It returns the last
+	// item returned by ResolvePathComponents and the last link traversed
+	// which can be used to recover the block.
+	ResolvePath(ctx context.Context, fpath path.Path) (ipld.Node, ipld.Link, error)
+	// ResolvePathComponents fetches the nodes for each segment of the given path.
+	// It uses the first path component as a hash (key) of the first node, then
+	// resolves all other components walking the links via a selector traversal
+	ResolvePathComponents(ctx context.Context, fpath path.Path) ([]ipld.Node, error)
+}
+
+// BasicResolver implements the Resolver interface.
 // It references a FetcherFactory, which is uses to resolve nodes.
 // TODO: now that this is more modular, try to unify this code with the
-//       the resolvers in namesys
-type Resolver struct {
+//       the resolvers in namesys.
+type BasicResolver struct {
 	FetcherFactory fetcher.Factory
 }
 
 // NewBasicResolver constructs a new basic resolver.
-func NewBasicResolver(fetcherFactory fetcher.Factory) *Resolver {
-	return &Resolver{
+func NewBasicResolver(fetcherFactory fetcher.Factory) Resolver {
+	return &BasicResolver{
 		FetcherFactory: fetcherFactory,
 	}
 }
 
-// ResolveToLastNode walks the given path and returns the cid of the last block
-// referenced by the path, and the path segments to traverse from the final block boundary to the final node
-// within the block.
-func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (cid.Cid, []string, error) {
+// ResolveToLastNode walks the given path and returns the cid of the last
+// block referenced by the path, and the path segments to traverse from the
+// final block boundary to the final node within the block.
+func (r *BasicResolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (cid.Cid, []string, error) {
 	c, p, err := path.SplitAbsPath(fpath)
 	if err != nil {
 		return cid.Cid{}, nil, err
@@ -125,7 +142,7 @@ func (r *Resolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (cid.
 //
 // Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
 // possible to load certain values.
-func (r *Resolver) ResolvePath(ctx context.Context, fpath path.Path) (ipld.Node, ipld.Link, error) {
+func (r *BasicResolver) ResolvePath(ctx context.Context, fpath path.Path) (ipld.Node, ipld.Link, error) {
 	// validate path
 	if err := fpath.IsValid(); err != nil {
 		return nil, nil, err
@@ -162,7 +179,7 @@ func ResolveSingle(ctx context.Context, ds format.NodeGetter, nd format.Node, na
 //
 // Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
 // possible to load certain values.
-func (r *Resolver) ResolvePathComponents(ctx context.Context, fpath path.Path) ([]ipld.Node, error) {
+func (r *BasicResolver) ResolvePathComponents(ctx context.Context, fpath path.Path) ([]ipld.Node, error) {
 	//lint:ignore SA1019 TODO: replace EventBegin
 	evt := log.EventBegin(ctx, "resolvePathComponents", logging.LoggableMap{"fpath": fpath})
 	defer evt.Done()
@@ -200,7 +217,7 @@ func (r *Resolver) ResolvePathComponents(ctx context.Context, fpath path.Path) (
 //
 // Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
 // possible to load certain values.
-func (r *Resolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []string) ([]ipld.Node, error) {
+func (r *BasicResolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []string) ([]ipld.Node, error) {
 	//lint:ignore SA1019 TODO: replace EventBegin
 	evt := log.EventBegin(ctx, "resolveLinks", logging.LoggableMap{"names": names})
 	defer evt.Done()
@@ -226,7 +243,7 @@ func (r *Resolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []stri
 
 // Finds nodes matching the selector starting with a cid. Returns the matched nodes, the cid of the block containing
 // the last node, and the depth of the last node within its block (root is depth 0).
-func (r *Resolver) resolveNodes(ctx context.Context, c cid.Cid, sel ipld.Node) ([]ipld.Node, cid.Cid, int, error) {
+func (r *BasicResolver) resolveNodes(ctx context.Context, c cid.Cid, sel ipld.Node) ([]ipld.Node, cid.Cid, int, error) {
 	session := r.FetcherFactory.NewSession(ctx)
 
 	// traverse selector
