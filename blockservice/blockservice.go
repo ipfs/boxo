@@ -17,7 +17,7 @@ import (
 	"github.com/ipfs/go-verifcid"
 )
 
-var log = logging.Logger("blockservice")
+var logger = logging.Logger("blockservice")
 
 // BlockGetter is the common interface shared between blockservice sessions and
 // the blockservice.
@@ -70,7 +70,7 @@ type blockService struct {
 // NewBlockService creates a BlockService with given datastore instance.
 func New(bs blockstore.Blockstore, rem exchange.Interface) BlockService {
 	if rem == nil {
-		log.Debug("blockservice running in local (offline) mode.")
+		logger.Debug("blockservice running in local (offline) mode.")
 	}
 
 	return &blockService{
@@ -84,7 +84,7 @@ func New(bs blockstore.Blockstore, rem exchange.Interface) BlockService {
 // through to the blockstore and are not skipped by cache checks.
 func NewWriteThrough(bs blockstore.Blockstore, rem exchange.Interface) BlockService {
 	if rem == nil {
-		log.Debug("blockservice running in local (offline) mode.")
+		logger.Debug("blockservice running in local (offline) mode.")
 	}
 
 	return &blockService{
@@ -145,7 +145,7 @@ func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 		return err
 	}
 
-	log.Debugf("BlockService.BlockAdded %s", c)
+	logger.Debugf("BlockService.BlockAdded %s", c)
 
 	if s.exchange != nil {
 		if err := s.exchange.HasBlock(ctx, o); err != nil {
@@ -191,9 +191,9 @@ func (s *blockService) AddBlocks(ctx context.Context, bs []blocks.Block) error {
 
 	if s.exchange != nil {
 		for _, o := range toput {
-			log.Debugf("BlockService.BlockAdded %s", o.Cid())
+			logger.Debugf("BlockService.BlockAdded %s", o.Cid())
 			if err := s.exchange.HasBlock(ctx, o); err != nil {
-				log.Errorf("HasBlock: %s", err.Error())
+				logger.Errorf("HasBlock: %s", err.Error())
 			}
 		}
 	}
@@ -203,7 +203,7 @@ func (s *blockService) AddBlocks(ctx context.Context, bs []blocks.Block) error {
 // GetBlock retrieves a particular block from the service,
 // Getting it from the datastore using the key (hash).
 func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	log.Debugf("BlockService GetBlock: '%s'", c)
+	logger.Debugf("BlockService GetBlock: '%s'", c)
 
 	var f func() exchange.Fetcher
 	if s.exchange != nil {
@@ -233,16 +233,16 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget fun
 
 		// TODO be careful checking ErrNotFound. If the underlying
 		// implementation changes, this will break.
-		log.Debug("Blockservice: Searching bitswap")
+		logger.Debug("Blockservice: Searching bitswap")
 		blk, err := f.GetBlock(ctx, c)
 		if err != nil {
 			return nil, err
 		}
-		log.Debugf("BlockService.BlockFetched %s", c)
+		logger.Debugf("BlockService.BlockFetched %s", c)
 		return blk, nil
 	}
 
-	log.Debug("Blockservice GetBlock: Not found")
+	logger.Debug("Blockservice GetBlock: Not found")
 	return nil, err
 }
 
@@ -279,7 +279,7 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 				if err := verifcid.ValidateCid(c); err == nil {
 					ks2 = append(ks2, c)
 				} else {
-					log.Errorf("unsafe CID (%s) passed to blockService.GetBlocks: %s", c, err)
+					logger.Errorf("unsafe CID (%s) passed to blockService.GetBlocks: %s", c, err)
 				}
 			}
 			ks = ks2
@@ -306,12 +306,12 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 		f := fget() // don't load exchange unless we have to
 		rblocks, err := f.GetBlocks(ctx, misses)
 		if err != nil {
-			log.Debugf("Error with GetBlocks: %s", err)
+			logger.Debugf("Error with GetBlocks: %s", err)
 			return
 		}
 
 		for b := range rblocks {
-			log.Debugf("BlockService.BlockFetched %s", b.Cid())
+			logger.Debugf("BlockService.BlockFetched %s", b.Cid())
 			select {
 			case out <- b:
 			case <-ctx.Done():
@@ -326,13 +326,13 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 func (s *blockService) DeleteBlock(ctx context.Context, c cid.Cid) error {
 	err := s.blockstore.DeleteBlock(ctx, c)
 	if err == nil {
-		log.Debugf("BlockService.BlockDeleted %s", c)
+		logger.Debugf("BlockService.BlockDeleted %s", c)
 	}
 	return err
 }
 
 func (s *blockService) Close() error {
-	log.Debug("blockservice is shutting down...")
+	logger.Debug("blockservice is shutting down...")
 	return s.exchange.Close()
 }
 
