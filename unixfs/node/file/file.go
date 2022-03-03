@@ -11,10 +11,10 @@ import (
 // root of a unixfs File.
 // It provides a `bytes` view over the file, along with access to io.Reader streaming access
 // to file data.
-func NewUnixFSFile(ctx context.Context, substrate ipld.Node, lsys *ipld.LinkSystem) (StreamableByteNode, error) {
+func NewUnixFSFile(ctx context.Context, substrate ipld.Node, lsys *ipld.LinkSystem) (LargeBytesNode, error) {
 	if substrate.Kind() == ipld.Kind_Bytes {
 		// A raw / single-node file.
-		return &singleNodeFile{substrate, 0}, nil
+		return &singleNodeFile{substrate}, nil
 	}
 	// see if it's got children.
 	links, err := substrate.LookupByString("Links")
@@ -30,22 +30,29 @@ func NewUnixFSFile(ctx context.Context, substrate ipld.Node, lsys *ipld.LinkSyst
 		ctx:       ctx,
 		lsys:      lsys,
 		substrate: substrate,
-		done:      false,
-		rdr:       nil}, nil
+	}, nil
 }
 
-// A StreamableByteNode is an ipld.Node that can be streamed over. It is guaranteed to have a Bytes type.
-type StreamableByteNode interface {
+// A LargeBytesNode is an ipld.Node that can be streamed over. It is guaranteed to have a Bytes type.
+type LargeBytesNode interface {
 	ipld.Node
-	io.Reader
+	AsLargeBytes() (io.ReadSeeker, error)
 }
 
 type singleNodeFile struct {
 	ipld.Node
+}
+
+func (f *singleNodeFile) AsLargeBytes() (io.ReadSeeker, error) {
+	return &singleNodeReader{f, 0}, nil
+}
+
+type singleNodeReader struct {
+	ipld.Node
 	offset int
 }
 
-func (f *singleNodeFile) Read(p []byte) (int, error) {
+func (f *singleNodeReader) Read(p []byte) (int, error) {
 	buf, err := f.Node.AsBytes()
 	if err != nil {
 		return 0, err
@@ -56,4 +63,24 @@ func (f *singleNodeFile) Read(p []byte) (int, error) {
 	n := copy(p, buf[f.offset:])
 	f.offset += n
 	return n, nil
+}
+
+func (f *singleNodeReader) Seek(offset int64, whence int) (int64, error) {
+	buf, err := f.Node.AsBytes()
+	if err != nil {
+		return 0, err
+	}
+
+	switch whence {
+	case io.SeekStart:
+		f.offset = int(offset)
+	case io.SeekCurrent:
+		f.offset += int(offset)
+	case io.SeekEnd:
+		f.offset = len(buf) + int(offset)
+	}
+	if f.offset < 0 {
+		return 0, io.EOF
+	}
+	return int64(f.offset), nil
 }

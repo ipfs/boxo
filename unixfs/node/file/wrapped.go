@@ -6,7 +6,7 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 )
 
-func newWrappedNode(substrate ipld.Node) (StreamableByteNode, error) {
+func newWrappedNode(substrate ipld.Node) (LargeBytesNode, error) {
 	dataField, err := substrate.LookupByString("Data")
 	if err != nil {
 		return nil, err

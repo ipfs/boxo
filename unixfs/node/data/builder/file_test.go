@@ -3,7 +3,6 @@ package builder
 import (
 	"bytes"
 	"context"
-	"io"
 	"testing"
 
 	"github.com/ipfs/go-cid"
@@ -70,7 +69,7 @@ func TestUnixFSFileRoundtrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	// read back out the file.
-	out, err := io.ReadAll(ufn)
+	out, err := ufn.AsBytes()
 	if err != nil {
 		t.Fatal(err)
 	}
