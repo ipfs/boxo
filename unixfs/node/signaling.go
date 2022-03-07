@@ -22,7 +22,7 @@ func AddUnixFSReificationToLinkSystem(lsys *ipld.LinkSystem) {
 func UnixFSPathSelector(path string) datamodel.Node {
 	segments := strings.Split(path, "/")
 	ssb := builder.NewSelectorSpecBuilder(basicnode.Prototype.Any)
-	selectorSoFar := ssb.Matcher()
+	selectorSoFar := ssb.ExploreInterpretAs("unixfs", ssb.Matcher())
 	for i := len(segments) - 1; i >= 0; i-- {
 		selectorSoFar = ssb.ExploreInterpretAs("unixfs",
 			ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) {
