@@ -123,18 +123,18 @@ func (f *Filestore) DeleteBlock(ctx context.Context, c cid.Cid) error {
 	}
 
 	err2 := f.fm.DeleteBlock(ctx, c)
+
 	// if we successfully removed something from the blockstore, but the
 	// filestore didnt have it, return success
-
-	if ipld.IsNotFound(err2) {
-		if ipld.IsNotFound(err1) {
-			return err1
-		}
-		// being here means err1 was nil and err2 NotFound.
-		return nil
+	if !ipld.IsNotFound(err2) {
+		return err2
 	}
 
-	return err2
+	if ipld.IsNotFound(err1) {
+		return err1
+	}
+
+	return nil
 }
 
 // Get retrieves the block with the given Cid. It may return
