@@ -180,6 +180,8 @@ type Engine struct {
 	metricUpdateCounter int
 
 	taskComparator TaskComparator
+
+	peerBlockRequestFilter PeerBlockRequestFilter
 }
 
 // TaskInfo represents the details of a request from a peer.
@@ -201,11 +203,21 @@ type TaskInfo struct {
 // It should return true if task 'ta' has higher priority than task 'tb'
 type TaskComparator func(ta, tb *TaskInfo) bool
 
+// PeerBlockRequestFilter is used to accept / deny requests for a CID coming from a PeerID
+// It should return true if the request should be fullfilled.
+type PeerBlockRequestFilter func(p peer.ID, c cid.Cid) bool
+
 type Option func(*Engine)
 
 func WithTaskComparator(comparator TaskComparator) Option {
 	return func(e *Engine) {
 		e.taskComparator = comparator
+	}
+}
+
+func WithPeerBlockRequestFilter(pbrf PeerBlockRequestFilter) Option {
+	return func(e *Engine) {
+		e.peerBlockRequestFilter = pbrf
 	}
 }
 
@@ -598,8 +610,11 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		}
 	}()
 
-	// Get block sizes
+	// Dispatch entries
 	wants, cancels := e.splitWantsCancels(entries)
+	wants, denials := e.splitWantsDenials(p, wants)
+
+	// Get block sizes
 	wantKs := cid.NewSet()
 	for _, entry := range wants {
 		wantKs.Add(entry.Cid)
@@ -639,6 +654,38 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		}
 	}
 
+	// Cancel a block operation
+	sendDontHave := func(entry bsmsg.Entry) {
+		// Only add the task to the queue if the requester wants a DONT_HAVE
+		if e.sendDontHaves && entry.SendDontHave {
+			c := entry.Cid
+
+			newWorkExists = true
+			isWantBlock := false
+			if entry.WantType == pb.Message_Wantlist_Block {
+				isWantBlock = true
+			}
+
+			activeEntries = append(activeEntries, peertask.Task{
+				Topic:    c,
+				Priority: int(entry.Priority),
+				Work:     bsmsg.BlockPresenceSize(c),
+				Data: &taskData{
+					BlockSize:    0,
+					HaveBlock:    false,
+					IsWantBlock:  isWantBlock,
+					SendDontHave: entry.SendDontHave,
+				},
+			})
+		}
+	}
+
+	// Deny access to blocks
+	for _, entry := range denials {
+		log.Debugw("Bitswap engine: block denied access", "local", e.self, "from", p, "cid", entry.Cid, "sendDontHave", entry.SendDontHave)
+		sendDontHave(entry)
+	}
+
 	// For each want-have / want-block
 	for _, entry := range wants {
 		c := entry.Cid
@@ -650,27 +697,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		// If the block was not found
 		if !found {
 			log.Debugw("Bitswap engine: block not found", "local", e.self, "from", p, "cid", entry.Cid, "sendDontHave", entry.SendDontHave)
-
-			// Only add the task to the queue if the requester wants a DONT_HAVE
-			if e.sendDontHaves && entry.SendDontHave {
-				newWorkExists = true
-				isWantBlock := false
-				if entry.WantType == pb.Message_Wantlist_Block {
-					isWantBlock = true
-				}
-
-				activeEntries = append(activeEntries, peertask.Task{
-					Topic:    c,
-					Priority: int(entry.Priority),
-					Work:     bsmsg.BlockPresenceSize(c),
-					Data: &taskData{
-						BlockSize:    0,
-						HaveBlock:    false,
-						IsWantBlock:  isWantBlock,
-						SendDontHave: entry.SendDontHave,
-					},
-				})
-			}
+			sendDontHave(entry)
 		} else {
 			// The block was found, add it to the queue
 			newWorkExists = true
@@ -720,6 +747,26 @@ func (e *Engine) splitWantsCancels(es []bsmsg.Entry) ([]bsmsg.Entry, []bsmsg.Ent
 		}
 	}
 	return wants, cancels
+}
+
+// Split the want-have / want-block entries from the block that will be denied access
+func (e *Engine) splitWantsDenials(p peer.ID, allWants []bsmsg.Entry) ([]bsmsg.Entry, []bsmsg.Entry) {
+	if e.peerBlockRequestFilter == nil {
+		return allWants, nil
+	}
+
+	wants := make([]bsmsg.Entry, 0, len(allWants))
+	denied := make([]bsmsg.Entry, 0, len(allWants))
+
+	for _, et := range allWants {
+		if e.peerBlockRequestFilter(p, et.Cid) {
+			wants = append(wants, et)
+		} else {
+			denied = append(denied, et)
+		}
+	}
+
+	return wants, denied
 }
 
 // ReceiveFrom is called when new blocks are received and added to the block

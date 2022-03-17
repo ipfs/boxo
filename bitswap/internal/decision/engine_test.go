@@ -1112,6 +1112,334 @@ func TestTaskComparator(t *testing.T) {
 	}
 }
 
+func TestPeerBlockFilter(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	// Generate a few keys
+	keys := []string{"a", "b", "c", "d"}
+	blks := make([]blocks.Block, 0, len(keys))
+	for _, letter := range keys {
+		block := blocks.NewBlock([]byte(letter))
+		blks = append(blks, block)
+	}
+
+	// Generate a few partner peers
+	peerIDs := make([]peer.ID, 3)
+	peerIDs[0] = libp2ptest.RandPeerIDFatal(t)
+	peerIDs[1] = libp2ptest.RandPeerIDFatal(t)
+	peerIDs[2] = libp2ptest.RandPeerIDFatal(t)
+
+	// Setup the main peer
+	fpt := &fakePeerTagger{}
+	sl := NewTestScoreLedger(shortTerm, nil, clock.New())
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	if err := bs.PutMany(ctx, blks); err != nil {
+		t.Fatal(err)
+	}
+
+	e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, fpt, "localhost", 0, sl,
+		WithPeerBlockRequestFilter(func(p peer.ID, c cid.Cid) bool {
+			// peer 0 has access to everything
+			if p == peerIDs[0] {
+				return true
+			}
+			// peer 1 can only access key c and d
+			if p == peerIDs[1] {
+				return blks[2].Cid().Equals(c) || blks[3].Cid().Equals(c)
+			}
+			// peer 2 and other can only access key d
+			return blks[3].Cid().Equals(c)
+		}),
+	)
+	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
+
+	// Setup the test
+	type testCaseEntry struct {
+		peerIndex int
+		wantBlks  string
+		wantHaves string
+	}
+
+	type testCaseExp struct {
+		blks      string
+		haves     string
+		dontHaves string
+	}
+
+	type testCase struct {
+		only bool
+		wl   testCaseEntry
+		exp  testCaseExp
+	}
+
+	testCases := []testCase{
+		// Peer 0 has access to everything: want-block `a` succeeds.
+		{
+			wl: testCaseEntry{
+				peerIndex: 0,
+				wantBlks:  "a",
+			},
+			exp: testCaseExp{
+				blks: "a",
+			},
+		},
+		// Peer 0 has access to everything: want-have `b` succeeds.
+		{
+			wl: testCaseEntry{
+				peerIndex: 0,
+				wantHaves: "b1",
+			},
+			exp: testCaseExp{
+				haves:     "b",
+				dontHaves: "1",
+			},
+		},
+		// Peer 1 has access to [c, d]: want-have `a` result in dont-have.
+		{
+			wl: testCaseEntry{
+				peerIndex: 1,
+				wantHaves: "ac",
+			},
+			exp: testCaseExp{
+				haves:     "c",
+				dontHaves: "a",
+			},
+		},
+		// Peer 1 has access to [c, d]: want-block `b` result in dont-have.
+		{
+			wl: testCaseEntry{
+				peerIndex: 1,
+				wantBlks:  "bd",
+			},
+			exp: testCaseExp{
+				blks:      "d",
+				dontHaves: "b",
+			},
+		},
+		// Peer 2 has access to [d]: want-have `a` and want-block `b` result in dont-have.
+		{
+			wl: testCaseEntry{
+				peerIndex: 2,
+				wantHaves: "a",
+				wantBlks:  "bcd1",
+			},
+			exp: testCaseExp{
+				haves:     "",
+				blks:      "d",
+				dontHaves: "abc1",
+			},
+		},
+	}
+
+	var onlyTestCases []testCase
+	for _, testCase := range testCases {
+		if testCase.only {
+			onlyTestCases = append(onlyTestCases, testCase)
+		}
+	}
+	if len(onlyTestCases) > 0 {
+		testCases = onlyTestCases
+	}
+
+	for i, testCase := range testCases {
+		// Create wants requests
+		wl := testCase.wl
+
+		t.Logf("test case %v: Peer%v / want-blocks '%s' / want-haves '%s'",
+			i, wl.peerIndex, wl.wantBlks, wl.wantHaves)
+
+		wantBlks := strings.Split(wl.wantBlks, "")
+		wantHaves := strings.Split(wl.wantHaves, "")
+
+		partnerWantBlocksHaves(e, wantBlks, wantHaves, true, peerIDs[wl.peerIndex])
+
+		// Check result
+		exp := testCase.exp
+
+		next := <-e.Outbox()
+		envelope := <-next
+
+		expBlks := strings.Split(exp.blks, "")
+		expHaves := strings.Split(exp.haves, "")
+		expDontHaves := strings.Split(exp.dontHaves, "")
+
+		err := checkOutput(t, e, envelope, expBlks, expHaves, expDontHaves)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestPeerBlockFilterMutability(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	// Generate a few keys
+	keys := []string{"a", "b", "c", "d"}
+	blks := make([]blocks.Block, 0, len(keys))
+	for _, letter := range keys {
+		block := blocks.NewBlock([]byte(letter))
+		blks = append(blks, block)
+	}
+
+	partnerID := libp2ptest.RandPeerIDFatal(t)
+
+	// Setup the main peer
+	fpt := &fakePeerTagger{}
+	sl := NewTestScoreLedger(shortTerm, nil, clock.New())
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	if err := bs.PutMany(ctx, blks); err != nil {
+		t.Fatal(err)
+	}
+
+	filterAllowList := make(map[cid.Cid]bool)
+
+	e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, fpt, "localhost", 0, sl,
+		WithPeerBlockRequestFilter(func(p peer.ID, c cid.Cid) bool {
+			return filterAllowList[c]
+		}),
+	)
+	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
+
+	// Setup the test
+	type testCaseEntry struct {
+		allowList string
+		wantBlks  string
+		wantHaves string
+	}
+
+	type testCaseExp struct {
+		blks      string
+		haves     string
+		dontHaves string
+	}
+
+	type testCase struct {
+		only bool
+		wls  []testCaseEntry
+		exps []testCaseExp
+	}
+
+	testCases := []testCase{
+		{
+			wls: []testCaseEntry{
+				{
+					// Peer has no accesses & request a want-block
+					allowList: "",
+					wantBlks:  "a",
+				},
+				{
+					// Then Peer is allowed access to a
+					allowList: "a",
+					wantBlks:  "a",
+				},
+			},
+			exps: []testCaseExp{
+				{
+					dontHaves: "a",
+				},
+				{
+					blks: "a",
+				},
+			},
+		},
+		{
+			wls: []testCaseEntry{
+				{
+					// Peer has access to bc
+					allowList: "bc",
+					wantHaves: "bc",
+				},
+				{
+					// Then Peer loses access to b
+					allowList: "c",
+					wantBlks:  "bc", // Note: We request a block here to force a response from the node
+				},
+			},
+			exps: []testCaseExp{
+				{
+					haves: "bc",
+				},
+				{
+					blks:      "c",
+					dontHaves: "b",
+				},
+			},
+		},
+		{
+			wls: []testCaseEntry{
+				{
+					// Peer has no accesses & request a want-have
+					allowList: "",
+					wantHaves: "d",
+				},
+				{
+					// Then Peer gains access to d
+					allowList: "d",
+					wantHaves: "d",
+				},
+			},
+			exps: []testCaseExp{
+				{
+					dontHaves: "d",
+				},
+				{
+					haves: "d",
+				},
+			},
+		},
+	}
+
+	var onlyTestCases []testCase
+	for _, testCase := range testCases {
+		if testCase.only {
+			onlyTestCases = append(onlyTestCases, testCase)
+		}
+	}
+	if len(onlyTestCases) > 0 {
+		testCases = onlyTestCases
+	}
+
+	for i, testCase := range testCases {
+		for j := range testCase.wls {
+			wl := testCase.wls[j]
+			exp := testCase.exps[j]
+
+			// Create wants requests
+			t.Logf("test case %v, %v: allow-list '%s' / want-blocks '%s' / want-haves '%s'",
+				i, j, wl.allowList, wl.wantBlks, wl.wantHaves)
+
+			allowList := strings.Split(wl.allowList, "")
+			wantBlks := strings.Split(wl.wantBlks, "")
+			wantHaves := strings.Split(wl.wantHaves, "")
+
+			// Update the allow list
+			filterAllowList = make(map[cid.Cid]bool)
+			for _, letter := range allowList {
+				block := blocks.NewBlock([]byte(letter))
+				filterAllowList[block.Cid()] = true
+			}
+
+			// Send the request
+			partnerWantBlocksHaves(e, wantBlks, wantHaves, true, partnerID)
+
+			// Check result
+			next := <-e.Outbox()
+			envelope := <-next
+
+			expBlks := strings.Split(exp.blks, "")
+			expHaves := strings.Split(exp.haves, "")
+			expDontHaves := strings.Split(exp.dontHaves, "")
+
+			err := checkOutput(t, e, envelope, expBlks, expHaves, expDontHaves)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
 func TestTaggingPeers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -1199,24 +1527,24 @@ func TestTaggingUseful(t *testing.T) {
 	}
 }
 
-func partnerWantBlocks(e *Engine, keys []string, partner peer.ID) {
+func partnerWantBlocks(e *Engine, wantBlocks []string, partner peer.ID) {
 	add := message.New(false)
-	for i, letter := range keys {
+	for i, letter := range wantBlocks {
 		block := blocks.NewBlock([]byte(letter))
-		add.AddEntry(block.Cid(), int32(len(keys)-i), pb.Message_Wantlist_Block, true)
+		add.AddEntry(block.Cid(), int32(len(wantBlocks)-i), pb.Message_Wantlist_Block, true)
 	}
 	e.MessageReceived(context.Background(), partner, add)
 }
 
-func partnerWantBlocksHaves(e *Engine, keys []string, wantHaves []string, sendDontHave bool, partner peer.ID) {
+func partnerWantBlocksHaves(e *Engine, wantBlocks []string, wantHaves []string, sendDontHave bool, partner peer.ID) {
 	add := message.New(false)
-	priority := int32(len(wantHaves) + len(keys))
+	priority := int32(len(wantHaves) + len(wantBlocks))
 	for _, letter := range wantHaves {
 		block := blocks.NewBlock([]byte(letter))
 		add.AddEntry(block.Cid(), priority, pb.Message_Wantlist_Have, sendDontHave)
 		priority--
 	}
-	for _, letter := range keys {
+	for _, letter := range wantBlocks {
 		block := blocks.NewBlock([]byte(letter))
 		add.AddEntry(block.Cid(), priority, pb.Message_Wantlist_Block, sendDontHave)
 		priority--
