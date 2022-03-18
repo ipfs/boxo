@@ -3,9 +3,10 @@ package go_pinning_service_http_client
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	"net/http"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-pinning-service-http-client/openapi"
@@ -261,7 +262,6 @@ func (c *Client) lsInternal(ctx context.Context, settings *lsSettings) (pinResul
 
 // TODO: We should probably make sure there are no duplicates sent
 type addSettings struct {
-	cid     string
 	name    string
 	origins []string
 	meta    map[string]string
