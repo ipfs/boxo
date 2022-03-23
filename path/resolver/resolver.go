@@ -58,17 +58,17 @@ type Resolver interface {
 	ResolvePathComponents(ctx context.Context, fpath path.Path) ([]ipld.Node, error)
 }
 
-// BasicResolver implements the Resolver interface.
+// basicResolver implements the Resolver interface.
 // It references a FetcherFactory, which is uses to resolve nodes.
 // TODO: now that this is more modular, try to unify this code with the
 //       the resolvers in namesys.
-type BasicResolver struct {
+type basicResolver struct {
 	FetcherFactory fetcher.Factory
 }
 
 // NewBasicResolver constructs a new basic resolver.
 func NewBasicResolver(fetcherFactory fetcher.Factory) Resolver {
-	return &BasicResolver{
+	return &basicResolver{
 		FetcherFactory: fetcherFactory,
 	}
 }
@@ -76,7 +76,7 @@ func NewBasicResolver(fetcherFactory fetcher.Factory) Resolver {
 // ResolveToLastNode walks the given path and returns the cid of the last
 // block referenced by the path, and the path segments to traverse from the
 // final block boundary to the final node within the block.
-func (r *BasicResolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (cid.Cid, []string, error) {
+func (r *basicResolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (cid.Cid, []string, error) {
 	c, p, err := path.SplitAbsPath(fpath)
 	if err != nil {
 		return cid.Cid{}, nil, err
@@ -142,7 +142,7 @@ func (r *BasicResolver) ResolveToLastNode(ctx context.Context, fpath path.Path) 
 //
 // Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
 // possible to load certain values.
-func (r *BasicResolver) ResolvePath(ctx context.Context, fpath path.Path) (ipld.Node, ipld.Link, error) {
+func (r *basicResolver) ResolvePath(ctx context.Context, fpath path.Path) (ipld.Node, ipld.Link, error) {
 	// validate path
 	if err := fpath.IsValid(); err != nil {
 		return nil, nil, err
@@ -179,7 +179,7 @@ func ResolveSingle(ctx context.Context, ds format.NodeGetter, nd format.Node, na
 //
 // Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
 // possible to load certain values.
-func (r *BasicResolver) ResolvePathComponents(ctx context.Context, fpath path.Path) ([]ipld.Node, error) {
+func (r *basicResolver) ResolvePathComponents(ctx context.Context, fpath path.Path) ([]ipld.Node, error) {
 	//lint:ignore SA1019 TODO: replace EventBegin
 	evt := log.EventBegin(ctx, "resolvePathComponents", logging.LoggableMap{"fpath": fpath})
 	defer evt.Done()
@@ -217,7 +217,7 @@ func (r *BasicResolver) ResolvePathComponents(ctx context.Context, fpath path.Pa
 //
 // Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
 // possible to load certain values.
-func (r *BasicResolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []string) ([]ipld.Node, error) {
+func (r *basicResolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []string) ([]ipld.Node, error) {
 	//lint:ignore SA1019 TODO: replace EventBegin
 	evt := log.EventBegin(ctx, "resolveLinks", logging.LoggableMap{"names": names})
 	defer evt.Done()
@@ -243,7 +243,7 @@ func (r *BasicResolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names [
 
 // Finds nodes matching the selector starting with a cid. Returns the matched nodes, the cid of the block containing
 // the last node, and the depth of the last node within its block (root is depth 0).
-func (r *BasicResolver) resolveNodes(ctx context.Context, c cid.Cid, sel ipld.Node) ([]ipld.Node, cid.Cid, int, error) {
+func (r *basicResolver) resolveNodes(ctx context.Context, c cid.Cid, sel ipld.Node) ([]ipld.Node, cid.Cid, int, error) {
 	session := r.FetcherFactory.NewSession(ctx)
 
 	// traverse selector
