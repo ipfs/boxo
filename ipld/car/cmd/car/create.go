@@ -117,7 +117,7 @@ func writeFiles(ctx context.Context, bs *blockstore.ReadWrite, paths ...string) 
 
 	// make a directory for the file(s).
 
-	root, err := builder.BuildUnixFSDirectory(topLevel, &ls)
+	root, _, err := builder.BuildUnixFSDirectory(topLevel, &ls)
 	if err != nil {
 		return cid.Undef, nil
 	}

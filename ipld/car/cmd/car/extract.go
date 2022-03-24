@@ -239,13 +239,17 @@ func extractFile(c *cli.Context, ls *ipld.LinkSystem, n ipld.Node, outputName st
 	if err != nil {
 		return err
 	}
+	nlr, err := node.AsLargeBytes()
+	if err != nil {
+		return err
+	}
 
 	f, err := os.Create(outputName)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(f, node)
+	_, err = io.Copy(f, nlr)
 
 	return err
 }

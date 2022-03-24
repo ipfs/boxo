@@ -17,6 +17,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	ipfsbs "github.com/ipfs/go-ipfs-blockstore"
+	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-car"
 	"github.com/ipld/go-car/v2/blockstore"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -128,6 +129,7 @@ func writeCarV2(ctx context.Context, rootCid cid.Cid, output string, bs *blockst
 	}
 
 	ls := cidlink.DefaultLinkSystem()
+	ls.KnownReifiers = map[string]linking.NodeReifier{"unixfs": unixfsnode.Reify}
 	ls.TrustedStorage = true
 	ls.StorageReadOpener = func(_ linking.LinkContext, l datamodel.Link) (io.Reader, error) {
 		if cl, ok := l.(cidlink.Link); ok {
@@ -176,7 +178,19 @@ func writeCarV2(ctx context.Context, rootCid cid.Cid, output string, bs *blockst
 		return err
 	}
 
-	err = traversalProgress.WalkMatching(rootNode, s, func(p traversal.Progress, n datamodel.Node) error { return nil })
+	err = traversalProgress.WalkMatching(rootNode, s, func(p traversal.Progress, n datamodel.Node) error {
+		lb, ok := n.(datamodel.LargeBytesNode)
+		if ok {
+			rs, err := lb.AsLargeBytes()
+			if err == nil {
+				_, err := io.Copy(io.Discard, rs)
+				if err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return err
 	}

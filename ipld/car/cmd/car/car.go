@@ -130,7 +130,7 @@ func main1() int {
 			},
 			{
 				Name:    "list",
-				Aliases: []string{"l"},
+				Aliases: []string{"l", "ls"},
 				Usage:   "List the CIDs in a car",
 				Action:  ListCar,
 				Flags: []cli.Flag{
