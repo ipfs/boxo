@@ -284,7 +284,7 @@ func PublishEntry(ctx context.Context, r routing.ValueStore, ipnskey string, rec
 		return err
 	}
 
-	log.Debugf("Storing ipns entry at: %s", ipnskey)
+	log.Debugf("Storing ipns entry at: %x", ipnskey)
 	// Store ipns entry at "/ipns/"+h(pubkey)
 	return r.PutValue(ctx, ipnskey, data)
 }
