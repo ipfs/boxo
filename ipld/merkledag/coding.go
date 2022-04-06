@@ -49,8 +49,7 @@ func fromImmutableNode(encoded *immutableProtoNode) *ProtoNode {
 		if next.FieldName().Exists() {
 			name = next.FieldName().Must().String()
 		}
-		c := cid.Undef
-		c = next.FieldHash().Link().(cidlink.Link).Cid
+		c := next.FieldHash().Link().(cidlink.Link).Cid
 		size := uint64(0)
 		if next.FieldTsize().Exists() {
 			size = uint64(next.FieldTsize().Must().Int())
