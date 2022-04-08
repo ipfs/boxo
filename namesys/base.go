@@ -40,12 +40,18 @@ func resolve(ctx context.Context, r resolver, name string, options opts.ResolveO
 }
 
 func resolveAsync(ctx context.Context, r resolver, name string, options opts.ResolveOpts) <-chan Result {
+	ctx, span := StartSpan(ctx, "ResolveAsync")
+	defer span.End()
+
 	resCh := r.resolveOnceAsync(ctx, name, options)
 	depth := options.Depth
 	outCh := make(chan Result, 1)
 
 	go func() {
 		defer close(outCh)
+		ctx, span := StartSpan(ctx, "ResolveAsync.Worker")
+		defer span.End()
+
 		var subCh <-chan Result
 		var cancelSub context.CancelFunc
 		defer func() {

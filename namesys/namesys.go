@@ -30,6 +30,8 @@ import (
 	routing "github.com/libp2p/go-libp2p-core/routing"
 	dns "github.com/miekg/dns"
 	madns "github.com/multiformats/go-multiaddr-dns"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // mpns (a multi-protocol NameSystem) implements generic IPFS naming.
@@ -134,6 +136,9 @@ const DefaultResolverCacheTTL = time.Minute
 
 // Resolve implements Resolver.
 func (ns *mpns) Resolve(ctx context.Context, name string, options ...opts.ResolveOpt) (path.Path, error) {
+	ctx, span := StartSpan(ctx, "MPNS.Resolve", trace.WithAttributes(attribute.String("Name", name)))
+	defer span.End()
+
 	if strings.HasPrefix(name, "/ipfs/") {
 		return path.ParsePath(name)
 	}
@@ -146,6 +151,9 @@ func (ns *mpns) Resolve(ctx context.Context, name string, options ...opts.Resolv
 }
 
 func (ns *mpns) ResolveAsync(ctx context.Context, name string, options ...opts.ResolveOpt) <-chan Result {
+	ctx, span := StartSpan(ctx, "MPNS.ResolveAsync", trace.WithAttributes(attribute.String("Name", name)))
+	defer span.End()
+
 	if strings.HasPrefix(name, "/ipfs/") {
 		p, err := path.ParsePath(name)
 		res := make(chan Result, 1)
@@ -167,6 +175,9 @@ func (ns *mpns) ResolveAsync(ctx context.Context, name string, options ...opts.R
 
 // resolveOnce implements resolver.
 func (ns *mpns) resolveOnceAsync(ctx context.Context, name string, options opts.ResolveOpts) <-chan onceResult {
+	ctx, span := StartSpan(ctx, "MPNS.ResolveOnceAsync")
+	defer span.End()
+
 	out := make(chan onceResult, 1)
 
 	if !strings.HasPrefix(name, ipnsPrefix) {
@@ -213,11 +224,14 @@ func (ns *mpns) resolveOnceAsync(ctx context.Context, name string, options opts.
 		if len(segments) > 3 {
 			p, err = path.FromSegments("", strings.TrimRight(p.String(), "/"), segments[3])
 		}
+		span.SetAttributes(attribute.Bool("CacheHit", true))
+		span.RecordError(err)
 
 		out <- onceResult{value: p, err: err}
 		close(out)
 		return out
 	}
+	span.SetAttributes(attribute.Bool("CacheHit", false))
 
 	if err == nil {
 		res = ns.ipnsResolver
@@ -273,18 +287,25 @@ func emitOnceResult(ctx context.Context, outCh chan<- onceResult, r onceResult) 
 
 // Publish implements Publisher
 func (ns *mpns) Publish(ctx context.Context, name ci.PrivKey, value path.Path) error {
+	ctx, span := StartSpan(ctx, "MPNS.Publish")
+	defer span.End()
 	return ns.PublishWithEOL(ctx, name, value, time.Now().Add(DefaultRecordEOL))
 }
 
 func (ns *mpns) PublishWithEOL(ctx context.Context, name ci.PrivKey, value path.Path, eol time.Time) error {
+	ctx, span := StartSpan(ctx, "MPNS.PublishWithEOL", trace.WithAttributes(attribute.String("Value", value.String())))
+	defer span.End()
 	id, err := peer.IDFromPrivateKey(name)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
+	span.SetAttributes(attribute.String("ID", id.String()))
 	if err := ns.ipnsPublisher.PublishWithEOL(ctx, name, value, eol); err != nil {
 		// Invalidate the cache. Publishing may _partially_ succeed but
 		// still return an error.
 		ns.cacheInvalidate(string(id))
+		span.RecordError(err)
 		return err
 	}
 	ttl := DefaultResolverCacheTTL

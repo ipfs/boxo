@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/ipfs/go-path"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-namesys"
 )
@@ -18,6 +20,8 @@ var ErrNoNamesys = errors.New(
 
 // ResolveIPNS resolves /ipns paths
 func ResolveIPNS(ctx context.Context, nsys namesys.NameSystem, p path.Path) (path.Path, error) {
+	ctx, span := namesys.StartSpan(ctx, "ResolveIPNS", trace.WithAttributes(attribute.String("Path", p.String())))
+	defer span.End()
 	if strings.HasPrefix(p.String(), "/ipns/") {
 		// TODO(cryptix): we should be able to query the local cache for the path
 		if nsys == nil {
