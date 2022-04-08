@@ -11,6 +11,8 @@ import (
 	path "github.com/ipfs/go-path"
 	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 	dns "github.com/miekg/dns"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // LookupTXTFunc is a function that lookups TXT record values.
@@ -30,11 +32,17 @@ func NewDNSResolver(lookup LookupTXTFunc) *DNSResolver {
 
 // Resolve implements Resolver.
 func (r *DNSResolver) Resolve(ctx context.Context, name string, options ...opts.ResolveOpt) (path.Path, error) {
+	ctx, span := StartSpan(ctx, "DNSResolver.Resolve")
+	defer span.End()
+
 	return resolve(ctx, r, name, opts.ProcessOpts(options))
 }
 
 // ResolveAsync implements Resolver.
 func (r *DNSResolver) ResolveAsync(ctx context.Context, name string, options ...opts.ResolveOpt) <-chan Result {
+	ctx, span := StartSpan(ctx, "DNSResolver.ResolveAsync")
+	defer span.End()
+
 	return resolveAsync(ctx, r, name, opts.ProcessOpts(options))
 }
 
@@ -47,6 +55,9 @@ type lookupRes struct {
 // TXT records for a given domain name should contain a b58
 // encoded multihash.
 func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options opts.ResolveOpts) <-chan onceResult {
+	ctx, span := StartSpan(ctx, "DNSResolver.ResolveOnceAsync")
+	defer span.End()
+
 	var fqdn string
 	out := make(chan onceResult, 1)
 	segments := strings.SplitN(name, "/", 2)
@@ -80,6 +91,9 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 
 	go func() {
 		defer close(out)
+		ctx, span := StartSpan(ctx, "DNSResolver.ResolveOnceAsync.Worker")
+		defer span.End()
+
 		var rootResErr, subResErr error
 		for {
 			select {
@@ -131,6 +145,9 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 }
 
 func workDomain(ctx context.Context, r *DNSResolver, name string, res chan lookupRes) {
+	ctx, span := StartSpan(ctx, "DNSResolver.WorkDomain", trace.WithAttributes(attribute.String("Name", name)))
+	defer span.End()
+
 	defer close(res)
 
 	txt, err := r.lookupTXT(ctx, name)

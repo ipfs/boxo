@@ -16,6 +16,8 @@ import (
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	routing "github.com/libp2p/go-libp2p-core/routing"
 	base32 "github.com/whyrusleeping/base32"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const ipnsPrefix = "/ipns/"
@@ -191,6 +193,9 @@ func (p *IpnsPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 // PublishWithEOL is a temporary stand in for the ipns records implementation
 // see here for more details: https://github.com/ipfs/specs/tree/master/records
 func (p *IpnsPublisher) PublishWithEOL(ctx context.Context, k crypto.PrivKey, value path.Path, eol time.Time) error {
+	ctx, span := StartSpan(ctx, "IpnsPublisher.PublishWithEOL", trace.WithAttributes(attribute.String("Value", value.String())))
+	defer span.End()
+
 	record, err := p.updateRecord(ctx, k, value, eol)
 	if err != nil {
 		return err
@@ -216,6 +221,9 @@ func checkCtxTTL(ctx context.Context) (time.Duration, bool) {
 // keyed on the ID associated with the provided public key. The public key is
 // also made available to the routing system so that entries can be verified.
 func PutRecordToRouting(ctx context.Context, r routing.ValueStore, k crypto.PubKey, entry *pb.IpnsEntry) error {
+	ctx, span := StartSpan(ctx, "PutRecordToRouting")
+	defer span.End()
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -266,6 +274,9 @@ func waitOnErrChan(ctx context.Context, errs chan error) error {
 // PublishPublicKey stores the given public key in the ValueStore with the
 // given key.
 func PublishPublicKey(ctx context.Context, r routing.ValueStore, k string, pubk crypto.PubKey) error {
+	ctx, span := StartSpan(ctx, "PublishPublicKey", trace.WithAttributes(attribute.String("Key", k)))
+	defer span.End()
+
 	log.Debugf("Storing pubkey at: %s", k)
 	pkbytes, err := crypto.MarshalPublicKey(pubk)
 	if err != nil {
@@ -279,6 +290,9 @@ func PublishPublicKey(ctx context.Context, r routing.ValueStore, k string, pubk 
 // PublishEntry stores the given IpnsEntry in the ValueStore with the given
 // ipnskey.
 func PublishEntry(ctx context.Context, r routing.ValueStore, ipnskey string, rec *pb.IpnsEntry) error {
+	ctx, span := StartSpan(ctx, "PublishEntry", trace.WithAttributes(attribute.String("IPNSKey", ipnskey)))
+	defer span.End()
+
 	data, err := proto.Marshal(rec)
 	if err != nil {
 		return err

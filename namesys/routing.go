@@ -16,6 +16,8 @@ import (
 	routing "github.com/libp2p/go-libp2p-core/routing"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	mh "github.com/multiformats/go-multihash"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var log = logging.Logger("namesys")
@@ -38,17 +40,24 @@ func NewIpnsResolver(route routing.ValueStore) *IpnsResolver {
 
 // Resolve implements Resolver.
 func (r *IpnsResolver) Resolve(ctx context.Context, name string, options ...opts.ResolveOpt) (path.Path, error) {
+	ctx, span := StartSpan(ctx, "IpnsResolver.Resolve", trace.WithAttributes(attribute.String("Name", name)))
+	defer span.End()
 	return resolve(ctx, r, name, opts.ProcessOpts(options))
 }
 
 // ResolveAsync implements Resolver.
 func (r *IpnsResolver) ResolveAsync(ctx context.Context, name string, options ...opts.ResolveOpt) <-chan Result {
+	ctx, span := StartSpan(ctx, "IpnsResolver.ResolveAsync", trace.WithAttributes(attribute.String("Name", name)))
+	defer span.End()
 	return resolveAsync(ctx, r, name, opts.ProcessOpts(options))
 }
 
 // resolveOnce implements resolver. Uses the IPFS routing system to
 // resolve SFS-like names.
 func (r *IpnsResolver) resolveOnceAsync(ctx context.Context, name string, options opts.ResolveOpts) <-chan onceResult {
+	ctx, span := StartSpan(ctx, "IpnsResolver.ResolveOnceAsync", trace.WithAttributes(attribute.String("Name", name)))
+	defer span.End()
+
 	out := make(chan onceResult, 1)
 	log.Debugf("RoutingResolver resolving %s", name)
 	cancel := func() {}
@@ -86,6 +95,9 @@ func (r *IpnsResolver) resolveOnceAsync(ctx context.Context, name string, option
 	go func() {
 		defer cancel()
 		defer close(out)
+		ctx, span := StartSpan(ctx, "IpnsResolver.ResolveOnceAsync.Worker")
+		defer span.End()
+
 		for {
 			select {
 			case val, ok := <-vals:

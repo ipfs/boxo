@@ -10,6 +10,7 @@ import (
 	keystore "github.com/ipfs/go-ipfs-keystore"
 	namesys "github.com/ipfs/go-namesys"
 	path "github.com/ipfs/go-path"
+	"go.opentelemetry.io/otel/attribute"
 
 	proto "github.com/gogo/protobuf/proto"
 	ds "github.com/ipfs/go-datastore"
@@ -93,6 +94,8 @@ func (rp *Republisher) Run(proc goprocess.Process) {
 func (rp *Republisher) republishEntries(p goprocess.Process) error {
 	ctx, cancel := context.WithCancel(gpctx.OnClosingContext(p))
 	defer cancel()
+	ctx, span := namesys.StartSpan(ctx, "Republisher.RepublishEntries")
+	defer span.End()
 
 	// TODO: Use rp.ipns.ListPublished(). We can't currently *do* that
 	// because:
@@ -125,8 +128,11 @@ func (rp *Republisher) republishEntries(p goprocess.Process) error {
 }
 
 func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) error {
+	ctx, span := namesys.StartSpan(ctx, "Republisher.RepublishEntry")
+	defer span.End()
 	id, err := peer.IDFromPrivateKey(priv)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
@@ -136,14 +142,17 @@ func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) erro
 	e, err := rp.getLastIPNSEntry(ctx, id)
 	if err != nil {
 		if err == errNoEntry {
+			span.SetAttributes(attribute.Bool("NoEntry", true))
 			return nil
 		}
+		span.RecordError(err)
 		return err
 	}
 
 	p := path.Path(e.GetValue())
 	prevEol, err := ipns.GetEOL(e)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
@@ -152,7 +161,9 @@ func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) erro
 	if prevEol.After(eol) {
 		eol = prevEol
 	}
-	return rp.ns.PublishWithEOL(ctx, priv, p, eol)
+	err = rp.ns.PublishWithEOL(ctx, priv, p, eol)
+	span.RecordError(err)
+	return err
 }
 
 func (rp *Republisher) getLastIPNSEntry(ctx context.Context, id peer.ID) (*pb.IpnsEntry, error) {
