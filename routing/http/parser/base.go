@@ -5,7 +5,7 @@ import (
 )
 
 type Envelope struct {
-	Tag string `json:"tag"`
+	Tag     string      `json:"tag"`
 	Payload interface{} `json:"payload"`
 }
 
