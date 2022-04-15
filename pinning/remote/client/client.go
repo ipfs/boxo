@@ -153,8 +153,22 @@ func (c *Client) Ls(ctx context.Context, opts ...LsOption) (chan PinStatusGetter
 	}
 
 	go func() {
-		defer close(errs)
-		defer close(res)
+		defer func() {
+			if r := recover(); r != nil {
+				var err error
+				switch x := r.(type) {
+				case string:
+					err = fmt.Errorf("unexpected error while listing remote pins: %s", x)
+				case error:
+					err = fmt.Errorf("unexpected error while listing remote pins: %w", x)
+				default:
+					err = errors.New("unknown panic while listing remote pins")
+				}
+				errs <- err
+			}
+			close(errs)
+			close(res)
+		}()
 
 		for {
 			pinRes, err := c.lsInternal(ctx, settings)
@@ -173,11 +187,19 @@ func (c *Client) Ls(ctx context.Context, opts ...LsOption) (chan PinStatusGetter
 				}
 			}
 
-			if int(pinRes.Count) == len(results) {
+			batchSize := len(results)
+			if int(pinRes.Count) == batchSize {
+				// no more batches
 				return
 			}
 
-			oldestResult := pinRes.Results[len(pinRes.Results)-1]
+			// Better DX/UX for cases like https://github.com/application-research/estuary/issues/124
+			if batchSize == 0 && int(pinRes.Count) != 0 {
+				errs <- fmt.Errorf("invalid pinning service response: PinResults.count=%d but no PinResults.results", int(pinRes.Count))
+				return
+			}
+
+			oldestResult := results[batchSize-1]
 			settings.before = &oldestResult.Created
 		}
 	}()
