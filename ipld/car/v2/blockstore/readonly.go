@@ -11,6 +11,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	format "github.com/ipfs/go-ipld-format"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1"
@@ -280,14 +281,14 @@ func (b *ReadOnly) Get(ctx context.Context, key cid.Cid) (blocks.Block, error) {
 		}
 	})
 	if errors.Is(err, index.ErrNotFound) {
-		return nil, blockstore.ErrNotFound
+		return nil, format.ErrNotFound{Cid: key}
 	} else if err != nil {
-		return nil, err
+		return nil, format.ErrNotFound{Cid: key}
 	} else if fnErr != nil {
 		return nil, fnErr
 	}
 	if fnData == nil {
-		return nil, blockstore.ErrNotFound
+		return nil, format.ErrNotFound{Cid: key}
 	}
 	return blocks.NewBlockWithCid(fnData, key)
 }
@@ -338,14 +339,14 @@ func (b *ReadOnly) GetSize(ctx context.Context, key cid.Cid) (int, error) {
 		}
 	})
 	if errors.Is(err, index.ErrNotFound) {
-		return -1, blockstore.ErrNotFound
+		return -1, format.ErrNotFound{Cid: key}
 	} else if err != nil {
 		return -1, err
 	} else if fnErr != nil {
 		return -1, fnErr
 	}
 	if fnSize == -1 {
-		return -1, blockstore.ErrNotFound
+		return -1, format.ErrNotFound{Cid: key}
 	}
 	return fnSize, nil
 }

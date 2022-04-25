@@ -15,8 +15,8 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	ipfsblockstore "github.com/ipfs/go-ipfs-blockstore"
 	cbor "github.com/ipfs/go-ipld-cbor"
+	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/blockstore"
@@ -43,7 +43,7 @@ func TestReadWriteGetReturnsBlockstoreNotFoundWhenCidDoesNotExist(t *testing.T) 
 
 	// Assert blockstore API returns blockstore.ErrNotFound
 	gotBlock, err := subject.Get(context.TODO(), nonExistingKey)
-	require.Equal(t, ipfsblockstore.ErrNotFound, err)
+	require.IsType(t, format.ErrNotFound{}, err)
 	require.Nil(t, gotBlock)
 }
 
