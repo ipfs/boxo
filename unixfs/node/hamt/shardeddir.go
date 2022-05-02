@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Stebalien/go-bitfield"
+	bitfield "github.com/ipfs/go-bitfield"
 	"github.com/ipfs/go-unixfsnode/data"
 	"github.com/ipfs/go-unixfsnode/iter"
 	dagpb "github.com/ipld/go-codec-dagpb"
