@@ -1,98 +1,133 @@
 package server
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"net/http"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-delegated-routing/client"
-	"github.com/ipfs/go-delegated-routing/parser"
+	proto "github.com/ipfs/go-delegated-routing/gen/proto"
 	logging "github.com/ipfs/go-log"
+	"github.com/ipld/edelweiss/values"
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/multiformats/go-multiaddr"
 )
 
-var log = logging.Logger("delegated/server")
+var logger = logging.Logger("service/server/delegatedrouting")
 
-type FindProvidersAsyncFunc func(cid.Cid, chan<- client.FindProvidersAsyncResult) error
+type DelegatedRoutingService interface {
+	FindProviders(key cid.Cid) (<-chan client.FindProvidersAsyncResult, error)
+	GetIPNS(id []byte) (<-chan client.GetIPNSAsyncResult, error)
+	PutIPNS(id []byte, record []byte) (<-chan client.PutIPNSAsyncResult, error)
+}
 
-func FindProvidersAsyncHandler(f FindProvidersAsyncFunc) http.HandlerFunc {
-	return func(writer http.ResponseWriter, request *http.Request) {
-		msg := request.URL.Query().Get("q")
-		dec := json.NewDecoder(bytes.NewBufferString(msg))
-		env := parser.Envelope{Payload: &parser.GetP2PProvideRequest{}}
-		err := dec.Decode(&env)
+func DelegatedRoutingAsyncHandler(svc DelegatedRoutingService) http.HandlerFunc {
+	drs := &delegatedRoutingServer{svc}
+	return proto.DelegatedRouting_AsyncHandler(drs)
+}
+
+type delegatedRoutingServer struct {
+	service DelegatedRoutingService
+}
+
+func (drs *delegatedRoutingServer) GetIPNS(ctx context.Context, req *proto.GetIPNSRequest) (<-chan *proto.DelegatedRouting_GetIPNS_AsyncResult, error) {
+	rch := make(chan *proto.DelegatedRouting_GetIPNS_AsyncResult)
+	go func() {
+		defer close(rch)
+		id := req.ID
+		ch, err := drs.service.GetIPNS(id)
 		if err != nil {
-			log.Errorf("received request not decodeable (%v)", err)
-			writer.WriteHeader(400)
+			logger.Errorf("get ipns function rejected request (%w)", err)
 			return
 		}
-		switch env.Tag {
-		case parser.MethodGetP2PProvide:
-			req, ok := env.Payload.(*parser.GetP2PProvideRequest)
-			if !ok {
-				log.Errorf("p2p provide request is missing")
-				writer.WriteHeader(400)
-				return
+		for x := range ch {
+			var resp *proto.DelegatedRouting_GetIPNS_AsyncResult
+			if x.Err != nil {
+				logger.Infof("get ipns function returned error (%w)", x.Err)
+				resp = &proto.DelegatedRouting_GetIPNS_AsyncResult{Err: x.Err}
+			} else {
+				resp = &proto.DelegatedRouting_GetIPNS_AsyncResult{Resp: &proto.GetIPNSResponse{Record: x.Record}}
 			}
-			// extract key and return it in the form of a cid
-			parsedCid, err := ParseGetP2PProvideRequest(req)
+			rch <- resp
+		}
+	}()
+	return rch, nil
+}
+
+func (drs *delegatedRoutingServer) PutIPNS(ctx context.Context, req *proto.PutIPNSRequest) (<-chan *proto.DelegatedRouting_PutIPNS_AsyncResult, error) {
+	rch := make(chan *proto.DelegatedRouting_PutIPNS_AsyncResult)
+	go func() {
+		defer close(rch)
+		id, record := req.ID, req.Record
+		ch, err := drs.service.PutIPNS(id, record)
+		if err != nil {
+			logger.Errorf("put ipns function rejected request (%w)", err)
+			return
+		}
+		for x := range ch {
+			var resp *proto.DelegatedRouting_PutIPNS_AsyncResult
+			if x.Err != nil {
+				logger.Infof("put ipns function returned error (%w)", x.Err)
+				resp = &proto.DelegatedRouting_PutIPNS_AsyncResult{Err: x.Err}
+			} else {
+				resp = &proto.DelegatedRouting_PutIPNS_AsyncResult{Resp: &proto.PutIPNSResponse{}}
+			}
+			rch <- resp
+		}
+	}()
+	return rch, nil
+}
+
+func (drs *delegatedRoutingServer) FindProviders(ctx context.Context, req *proto.FindProvidersRequest) (<-chan *proto.DelegatedRouting_FindProviders_AsyncResult, error) {
+	rch := make(chan *proto.DelegatedRouting_FindProviders_AsyncResult)
+	go func() {
+		defer close(rch)
+		pcids := parseCidsFromFindProvidersRequest(req)
+		for _, c := range pcids {
+			ch, err := drs.service.FindProviders(c)
 			if err != nil {
-				log.Errorf("cannot parse get p2p provide request (%v)", err)
-				writer.WriteHeader(400)
-				return
-			}
-			// proxy to func
-			ch := make(chan client.FindProvidersAsyncResult)
-			if err = f(parsedCid, ch); err != nil {
-				log.Errorf("get p2p provider rejected request (%v)", err)
-				writer.WriteHeader(500)
-				return
+				logger.Errorf("find providers function rejected request (%w)", err)
+				continue
 			}
 			for x := range ch {
+				var resp *proto.DelegatedRouting_FindProviders_AsyncResult
 				if x.Err != nil {
-					log.Errorf("get p2p provider returned error (%v)", x.Err)
-					continue
+					logger.Infof("find providers function returned error (%w)", x.Err)
+					resp = &proto.DelegatedRouting_FindProviders_AsyncResult{Err: x.Err}
+				} else {
+					resp = buildFindProvidersResponse(c, x.AddrInfo)
 				}
-				resp := GenerateGetP2PProvideResponse(x.AddrInfo)
-				env := &parser.Envelope{
-					Tag:     parser.MethodGetP2PProvide,
-					Payload: resp,
-				}
-				enc, err := json.Marshal(env)
-				if err != nil {
-					continue
-				}
-				writer.Write(enc)
+				rch <- resp
 			}
-		default:
-			log.Errorf("unknown method (%v)", env.Tag)
-			writer.WriteHeader(404)
 		}
+	}()
+	return rch, nil
+}
+
+func parseCidsFromFindProvidersRequest(req *proto.FindProvidersRequest) []cid.Cid {
+	return []cid.Cid{cid.Cid(req.Key)}
+}
+
+func buildFindProvidersResponse(key cid.Cid, addrInfo []peer.AddrInfo) *proto.DelegatedRouting_FindProviders_AsyncResult {
+	provs := make(proto.ProvidersList, len(addrInfo))
+	bitswapProto := proto.TransferProtocol{Bitswap: &proto.BitswapProtocol{}}
+	for i, addrInfo := range addrInfo {
+		provs[i] = proto.Provider{
+			ProviderNode:  proto.Node{Peer: buildPeerFromAddrInfo(addrInfo)},
+			ProviderProto: proto.TransferProtocolList{bitswapProto},
+		}
+	}
+	return &proto.DelegatedRouting_FindProviders_AsyncResult{
+		Resp: &proto.FindProvidersResponse{Providers: provs},
 	}
 }
 
-// ParseGetP2PProvideRequest parses a GetP2PProvideRequest and returns the included bytes key in the form of a cid.
-func ParseGetP2PProvideRequest(req *parser.GetP2PProvideRequest) (cid.Cid, error) {
-	mhBytes, err := parser.FromDJSpecialBytes(req.Key)
-	if err != nil {
-		return cid.Undef, err
+func buildPeerFromAddrInfo(addrInfo peer.AddrInfo) *proto.Peer {
+	pm := make([]values.Bytes, len(addrInfo.Addrs))
+	for i, addr := range addrInfo.Addrs {
+		pm[i] = addr.Bytes()
 	}
-	parsedCid := cid.NewCidV1(cid.Raw, mhBytes)
-	if err != nil {
-		return cid.Undef, err
+	return &proto.Peer{
+		ID:             []byte(addrInfo.ID),
+		Multiaddresses: pm,
 	}
-	return parsedCid, nil
-}
-
-func GenerateGetP2PProvideResponse(infos []peer.AddrInfo) *parser.GetP2PProvideResponse {
-	resp := &parser.GetP2PProvideResponse{}
-	for _, info := range infos {
-		for _, addr := range info.Addrs {
-			peerAddr := addr.Encapsulate(multiaddr.StringCast("/p2p/" + info.ID.String()))
-			resp.Peers = append(resp.Peers, parser.ToDJSpecialBytes(peerAddr.Bytes()))
-		}
-	}
-	return resp
 }
