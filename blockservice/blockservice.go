@@ -8,7 +8,11 @@ import (
 	"io"
 	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-blockservice/internal"
 	cid "github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
@@ -129,6 +133,9 @@ func NewSession(ctx context.Context, bs BlockService) *Session {
 // AddBlock adds a particular block to the service, Putting it into the datastore.
 // TODO pass a context into this if the remote.HasBlock is going to remain here.
 func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
+	ctx, span := internal.StartSpan(ctx, "blockService.AddBlock")
+	defer span.End()
+
 	c := o.Cid()
 	// hash security
 	err := verifcid.ValidateCid(c)
@@ -157,6 +164,9 @@ func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 }
 
 func (s *blockService) AddBlocks(ctx context.Context, bs []blocks.Block) error {
+	ctx, span := internal.StartSpan(ctx, "blockService.AddBlocks")
+	defer span.End()
+
 	// hash security
 	for _, b := range bs {
 		err := verifcid.ValidateCid(b.Cid())
@@ -203,7 +213,8 @@ func (s *blockService) AddBlocks(ctx context.Context, bs []blocks.Block) error {
 // GetBlock retrieves a particular block from the service,
 // Getting it from the datastore using the key (hash).
 func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	logger.Debugf("BlockService GetBlock: '%s'", c)
+	ctx, span := internal.StartSpan(ctx, "blockService.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
+	defer span.End()
 
 	var f func() exchange.Fetcher
 	if s.exchange != nil {
@@ -250,6 +261,9 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget fun
 // the returned channel.
 // NB: No guarantees are made about order.
 func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
+	ctx, span := internal.StartSpan(ctx, "blockService.GetBlocks")
+	defer span.End()
+
 	var f func() exchange.Fetcher
 	if s.exchange != nil {
 		f = s.getExchange
@@ -324,6 +338,9 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 
 // DeleteBlock deletes a block in the blockservice from the datastore
 func (s *blockService) DeleteBlock(ctx context.Context, c cid.Cid) error {
+	ctx, span := internal.StartSpan(ctx, "blockService.DeleteBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
+	defer span.End()
+
 	err := s.blockstore.DeleteBlock(ctx, c)
 	if err == nil {
 		logger.Debugf("BlockService.BlockDeleted %s", c)
@@ -357,6 +374,9 @@ func (s *Session) getSession() exchange.Fetcher {
 
 // GetBlock gets a block in the context of a request session
 func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+	ctx, span := internal.StartSpan(ctx, "Session.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
+	defer span.End()
+
 	var f func() exchange.Fetcher
 	if s.sessEx != nil {
 		f = s.getSession
@@ -366,6 +386,9 @@ func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error)
 
 // GetBlocks gets blocks in the context of a request session
 func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
+	ctx, span := internal.StartSpan(ctx, "Session.GetBlocks")
+	defer span.End()
+
 	var f func() exchange.Fetcher
 	if s.sessEx != nil {
 		f = s.getSession
