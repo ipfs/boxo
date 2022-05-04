@@ -7,18 +7,20 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ipld/go-ipld-prime/schema"
-
-	path "github.com/ipfs/go-path"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-fetcher"
 	fetcherhelpers "github.com/ipfs/go-fetcher/helpers"
 	format "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
+	path "github.com/ipfs/go-path"
+	"github.com/ipfs/go-path/internal"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/ipld/go-ipld-prime/schema"
 	"github.com/ipld/go-ipld-prime/traversal/selector/builder"
 )
 
@@ -77,6 +79,9 @@ func NewBasicResolver(fetcherFactory fetcher.Factory) Resolver {
 // block referenced by the path, and the path segments to traverse from the
 // final block boundary to the final node within the block.
 func (r *basicResolver) ResolveToLastNode(ctx context.Context, fpath path.Path) (cid.Cid, []string, error) {
+	ctx, span := internal.StartSpan(ctx, "basicResolver.ResolveToLastNode", trace.WithAttributes(attribute.Stringer("Path", fpath)))
+	defer span.End()
+
 	c, p, err := path.SplitAbsPath(fpath)
 	if err != nil {
 		return cid.Cid{}, nil, err
@@ -143,6 +148,9 @@ func (r *basicResolver) ResolveToLastNode(ctx context.Context, fpath path.Path) 
 // Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
 // possible to load certain values.
 func (r *basicResolver) ResolvePath(ctx context.Context, fpath path.Path) (ipld.Node, ipld.Link, error) {
+	ctx, span := internal.StartSpan(ctx, "basicResolver.ResolvePath", trace.WithAttributes(attribute.Stringer("Path", fpath)))
+	defer span.End()
+
 	// validate path
 	if err := fpath.IsValid(); err != nil {
 		return nil, nil, err
@@ -170,6 +178,8 @@ func (r *basicResolver) ResolvePath(ctx context.Context, fpath path.Path) (ipld.
 // extra context (does not opaquely resolve through sharded nodes)
 // Deprecated: fetch node as ipld-prime or convert it and then use a selector to traverse through it.
 func ResolveSingle(ctx context.Context, ds format.NodeGetter, nd format.Node, names []string) (*format.Link, []string, error) {
+	ctx, span := internal.StartSpan(ctx, "ResolveSingle", trace.WithAttributes(attribute.Stringer("CID", nd.Cid())))
+	defer span.End()
 	return nd.ResolveLink(names)
 }
 
@@ -180,6 +190,9 @@ func ResolveSingle(ctx context.Context, ds format.NodeGetter, nd format.Node, na
 // Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
 // possible to load certain values.
 func (r *basicResolver) ResolvePathComponents(ctx context.Context, fpath path.Path) ([]ipld.Node, error) {
+	ctx, span := internal.StartSpan(ctx, "basicResolver.ResolvePathComponents", trace.WithAttributes(attribute.Stringer("Path", fpath)))
+	defer span.End()
+
 	//lint:ignore SA1019 TODO: replace EventBegin
 	evt := log.EventBegin(ctx, "resolvePathComponents", logging.LoggableMap{"fpath": fpath})
 	defer evt.Done()
@@ -218,6 +231,9 @@ func (r *basicResolver) ResolvePathComponents(ctx context.Context, fpath path.Pa
 // Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
 // possible to load certain values.
 func (r *basicResolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []string) ([]ipld.Node, error) {
+	ctx, span := internal.StartSpan(ctx, "basicResolver.ResolveLinks")
+	defer span.End()
+
 	//lint:ignore SA1019 TODO: replace EventBegin
 	evt := log.EventBegin(ctx, "resolveLinks", logging.LoggableMap{"names": names})
 	defer evt.Done()
@@ -244,6 +260,8 @@ func (r *basicResolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names [
 // Finds nodes matching the selector starting with a cid. Returns the matched nodes, the cid of the block containing
 // the last node, and the depth of the last node within its block (root is depth 0).
 func (r *basicResolver) resolveNodes(ctx context.Context, c cid.Cid, sel ipld.Node) ([]ipld.Node, cid.Cid, int, error) {
+	ctx, span := internal.StartSpan(ctx, "basicResolver.resolveNodes", trace.WithAttributes(attribute.Stringer("CID", c)))
+	defer span.End()
 	session := r.FetcherFactory.NewSession(ctx)
 
 	// traverse selector
