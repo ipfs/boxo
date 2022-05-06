@@ -178,6 +178,11 @@ func (bs *blockstore) Put(ctx context.Context, block blocks.Block) error {
 }
 
 func (bs *blockstore) PutMany(ctx context.Context, blocks []blocks.Block) error {
+	if len(blocks) == 1 {
+		// performance fast-path
+		return bs.Put(ctx, blocks[0])
+	}
+
 	t, err := bs.datastore.Batch(ctx)
 	if err != nil {
 		return err
