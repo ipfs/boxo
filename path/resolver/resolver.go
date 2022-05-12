@@ -178,7 +178,7 @@ func (r *basicResolver) ResolvePath(ctx context.Context, fpath path.Path) (ipld.
 // extra context (does not opaquely resolve through sharded nodes)
 // Deprecated: fetch node as ipld-prime or convert it and then use a selector to traverse through it.
 func ResolveSingle(ctx context.Context, ds format.NodeGetter, nd format.Node, names []string) (*format.Link, []string, error) {
-	ctx, span := internal.StartSpan(ctx, "ResolveSingle", trace.WithAttributes(attribute.Stringer("CID", nd.Cid())))
+	_, span := internal.StartSpan(ctx, "ResolveSingle", trace.WithAttributes(attribute.Stringer("CID", nd.Cid())))
 	defer span.End()
 	return nd.ResolveLink(names)
 }
