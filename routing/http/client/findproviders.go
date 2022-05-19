@@ -56,23 +56,30 @@ func (fp *Client) FindProvidersAsync(ctx context.Context, key cid.Cid) (<-chan F
 	if err != nil {
 		return nil, err
 	}
+
 	parsedRespCh := make(chan FindProvidersAsyncResult, 1)
 	go func() {
 		defer close(parsedRespCh)
-		if ctx.Err() != nil {
-			return
-		}
-		protoAsyncResp, ok := <-protoRespCh
-		if !ok {
-			return
-		}
+
+		// TODO wrap in a for loop after fixing https://github.com/ipld/go-ipld-prime/issues/374
 		var parsedAsyncResp FindProvidersAsyncResult
-		parsedAsyncResp.Err = protoAsyncResp.Err
-		if protoAsyncResp.Resp != nil {
-			parsedAsyncResp.AddrInfo = parseFindProvidersResponse(protoAsyncResp.Resp)
+		select {
+		case <-ctx.Done():
+			parsedAsyncResp.Err = ctx.Err()
+		case par, ok := <-protoRespCh:
+			if !ok {
+				return
+			}
+
+			parsedAsyncResp.Err = par.Err
+			if par.Resp != nil {
+				parsedAsyncResp.AddrInfo = parseFindProvidersResponse(par.Resp)
+			}
 		}
+
 		parsedRespCh <- parsedAsyncResp
 	}()
+
 	return parsedRespCh, nil
 }
 
