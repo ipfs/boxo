@@ -73,8 +73,33 @@ func testClientServer(t *testing.T, numIter int) (avgLatency time.Duration, delt
 			t.Errorf("expecting %#v, got %#v", testIPNSRecord, record[0])
 		}
 
+		val, err := c.GetValue(context.Background(), string(testIPNSID))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(val, testIPNSRecord) {
+			t.Errorf("expecting %#v, got %#v", testIPNSRecord, val)
+		}
+
+		ch, err := c.SearchValue(context.Background(), string(testIPNSID))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for out := range ch {
+			if !bytes.Equal(out, testIPNSRecord) {
+				t.Errorf("expecting %#v, got %#v", testIPNSRecord, out)
+			}
+		}
+
 		// exercise PutIPNS
 		err = c.PutIPNS(context.Background(), testIPNSID, testIPNSRecord)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = c.PutValue(context.Background(), string(testIPNSID), testIPNSRecord)
 		if err != nil {
 			t.Fatal(err)
 		}
