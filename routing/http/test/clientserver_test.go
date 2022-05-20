@@ -195,13 +195,9 @@ func TestCancelContext(t *testing.T) {
 
 	cancel()
 
-	out, ok := <-gir
-	if !ok {
-		t.Fatal("we need to have a response")
-	}
-
-	if out.Err.Error() != "context canceled" {
-		t.Fatal("error must be context canceled")
+	o0, ok := <-gir
+	if ok {
+		t.Fatal("channel must be closed", "OUTPUT:", o0.Err)
 	}
 
 	ctx, cancel = context.WithCancel(context.Background())
@@ -213,13 +209,9 @@ func TestCancelContext(t *testing.T) {
 
 	cancel()
 
-	pout, ok := <-pir
-	if !ok {
-		t.Fatal("we need to have a response")
-	}
-
-	if pout.Err.Error() != "context canceled" {
-		t.Fatal("error must be context canceled")
+	o1, ok := <-pir
+	if ok {
+		t.Fatal("channel must be closed", "OUTPUT:", o1.Err)
 	}
 
 	ctx, cancel = context.WithCancel(context.Background())
@@ -236,13 +228,9 @@ func TestCancelContext(t *testing.T) {
 
 	cancel()
 
-	paout, ok := <-par
-	if !ok {
-		t.Fatal("we need to have a response")
-	}
-
-	if paout.Err.Error() != "context canceled" {
-		t.Fatal("error must be context canceled")
+	o2, ok := <-par
+	if ok {
+		t.Fatal("channel must be closed", "OUTPUT:", o2.Err)
 	}
 }
 

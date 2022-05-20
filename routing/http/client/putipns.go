@@ -26,21 +26,20 @@ func (fp *Client) PutIPNSAsync(ctx context.Context, id []byte, record []byte) (<
 	ch1 := make(chan PutIPNSAsyncResult, 1)
 	go func() {
 		defer close(ch1)
-
-		// TODO wrap in a for loop after fixing https://github.com/ipld/go-ipld-prime/issues/374
-		var r1 PutIPNSAsyncResult
-		select {
-		case <-ctx.Done():
-			r1.Err = ctx.Err()
-		case r0, ok := <-ch0:
-			if !ok {
+		for {
+			select {
+			case <-ctx.Done():
 				return
+			case r0, ok := <-ch0:
+				if !ok {
+					return
+				}
+
+				ch1 <- PutIPNSAsyncResult{
+					Err: r0.Err,
+				}
 			}
-
-			r1.Err = r0.Err
 		}
-
-		ch1 <- r1
 	}()
 
 	return ch1, nil
