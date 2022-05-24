@@ -76,7 +76,12 @@ func (fp *Client) FindProvidersAsync(ctx context.Context, key cid.Cid) (<-chan F
 					parsedAsyncResp.AddrInfo = parseFindProvidersResponse(par.Resp)
 				}
 
-				parsedRespCh <- parsedAsyncResp
+				select {
+				case <-ctx.Done():
+					return
+				case parsedRespCh <- parsedAsyncResp:
+				}
+
 			}
 		}
 	}()

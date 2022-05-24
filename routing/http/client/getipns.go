@@ -54,7 +54,11 @@ func (fp *Client) GetIPNSAsync(ctx context.Context, id []byte) (<-chan GetIPNSAs
 
 				if r0.Err != nil {
 					r1.Err = r0.Err
-					ch1 <- r1
+					select {
+					case <-ctx.Done():
+						return
+					case ch1 <- r1:
+					}
 					continue
 				}
 
@@ -64,12 +68,22 @@ func (fp *Client) GetIPNSAsync(ctx context.Context, id []byte) (<-chan GetIPNSAs
 
 				if err = fp.validator.Validate(string(id), r0.Resp.Record); err != nil {
 					r1.Err = err
-					ch1 <- r1
+					select {
+					case <-ctx.Done():
+						return
+					case ch1 <- r1:
+					}
+
 					continue
 				}
 
 				r1.Record = r0.Resp.Record
-				ch1 <- r1
+
+				select {
+				case <-ctx.Done():
+					return
+				case ch1 <- r1:
+				}
 			}
 		}
 	}()

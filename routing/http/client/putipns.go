@@ -34,9 +34,12 @@ func (fp *Client) PutIPNSAsync(ctx context.Context, id []byte, record []byte) (<
 				if !ok {
 					return
 				}
-
-				ch1 <- PutIPNSAsyncResult{
+				select {
+				case <-ctx.Done():
+					return
+				case ch1 <- PutIPNSAsyncResult{
 					Err: r0.Err,
+				}:
 				}
 			}
 		}
