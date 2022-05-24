@@ -22,10 +22,9 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
-func testClientServer(t *testing.T, numIter int) (avgLatency time.Duration, deltaGo int, deltaMem uint64) {
+func createClientAndServer(t *testing.T) (*client.Client, *httptest.Server) {
 	// start a server
 	s := httptest.NewServer(server.DelegatedRoutingAsyncHandler(testDelegatedRoutingService{}))
-	defer s.Close()
 
 	// start a client
 	q, err := proto.New_DelegatedRouting_Client(s.URL, proto.DelegatedRouting_Client_WithHTTPClient(s.Client()))
@@ -33,6 +32,15 @@ func testClientServer(t *testing.T, numIter int) (avgLatency time.Duration, delt
 		t.Fatal(err)
 	}
 	c := client.NewClient(q)
+
+	return c, s
+}
+
+func testClientServer(t *testing.T, numIter int) (avgLatency time.Duration, deltaGo int, deltaMem uint64) {
+	t.Helper()
+
+	c, s := createClientAndServer(t)
+	defer s.Close()
 
 	// verify result
 	h, err := multihash.Sum([]byte("TEST"), multihash.SHA3, 4)
@@ -172,6 +180,58 @@ func (s testStatistic) MaxDeviation() float64 {
 
 func (s testStatistic) DeviatesBy(numStddev float64) bool {
 	return s.MaxDeviation()/s.Stddev() > numStddev
+}
+
+func TestCancelContext(t *testing.T) {
+	c, s := createClientAndServer(t)
+	defer s.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	gir, err := c.GetIPNSAsync(ctx, testIPNSID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cancel()
+
+	o0, ok := <-gir
+	if ok {
+		t.Fatal("channel must be closed", "OUTPUT:", o0.Err)
+	}
+
+	ctx, cancel = context.WithCancel(context.Background())
+
+	pir, err := c.PutIPNSAsync(ctx, testIPNSID, testIPNSRecord)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cancel()
+
+	o1, ok := <-pir
+	if ok {
+		t.Fatal("channel must be closed", "OUTPUT:", o1.Err)
+	}
+
+	ctx, cancel = context.WithCancel(context.Background())
+
+	cid, err := cid.Decode("QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	par, err := c.FindProvidersAsync(ctx, cid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cancel()
+
+	o2, ok := <-par
+	if ok {
+		t.Fatal("channel must be closed", "OUTPUT:", o2.Err)
+	}
 }
 
 func TestClientServer(t *testing.T) {

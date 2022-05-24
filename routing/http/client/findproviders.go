@@ -56,23 +56,36 @@ func (fp *Client) FindProvidersAsync(ctx context.Context, key cid.Cid) (<-chan F
 	if err != nil {
 		return nil, err
 	}
+
 	parsedRespCh := make(chan FindProvidersAsyncResult, 1)
 	go func() {
 		defer close(parsedRespCh)
-		if ctx.Err() != nil {
-			return
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case par, ok := <-protoRespCh:
+				if !ok {
+					return
+				}
+
+				var parsedAsyncResp FindProvidersAsyncResult
+
+				parsedAsyncResp.Err = par.Err
+				if par.Resp != nil {
+					parsedAsyncResp.AddrInfo = parseFindProvidersResponse(par.Resp)
+				}
+
+				select {
+				case <-ctx.Done():
+					return
+				case parsedRespCh <- parsedAsyncResp:
+				}
+
+			}
 		}
-		protoAsyncResp, ok := <-protoRespCh
-		if !ok {
-			return
-		}
-		var parsedAsyncResp FindProvidersAsyncResult
-		parsedAsyncResp.Err = protoAsyncResp.Err
-		if protoAsyncResp.Resp != nil {
-			parsedAsyncResp.AddrInfo = parseFindProvidersResponse(protoAsyncResp.Resp)
-		}
-		parsedRespCh <- parsedAsyncResp
 	}()
+
 	return parsedRespCh, nil
 }
 

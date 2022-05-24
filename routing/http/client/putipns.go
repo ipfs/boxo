@@ -26,16 +26,24 @@ func (fp *Client) PutIPNSAsync(ctx context.Context, id []byte, record []byte) (<
 	ch1 := make(chan PutIPNSAsyncResult, 1)
 	go func() {
 		defer close(ch1)
-		if ctx.Err() != nil {
-			return
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case r0, ok := <-ch0:
+				if !ok {
+					return
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case ch1 <- PutIPNSAsyncResult{
+					Err: r0.Err,
+				}:
+				}
+			}
 		}
-		r0, ok := <-ch0
-		if !ok {
-			return
-		}
-		var r1 PutIPNSAsyncResult
-		r1.Err = r0.Err
-		ch1 <- r1
 	}()
+
 	return ch1, nil
 }
