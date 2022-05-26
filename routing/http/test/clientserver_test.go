@@ -324,7 +324,7 @@ func TestMain(m *testing.M) {
 
 type testDelegatedRoutingService struct{}
 
-func (testDelegatedRoutingService) GetIPNS(id []byte) (<-chan client.GetIPNSAsyncResult, error) {
+func (testDelegatedRoutingService) GetIPNS(ctx context.Context, id []byte) (<-chan client.GetIPNSAsyncResult, error) {
 	ch := make(chan client.GetIPNSAsyncResult)
 	go func() {
 		ch <- client.GetIPNSAsyncResult{Record: testIPNSRecord}
@@ -333,7 +333,7 @@ func (testDelegatedRoutingService) GetIPNS(id []byte) (<-chan client.GetIPNSAsyn
 	return ch, nil
 }
 
-func (testDelegatedRoutingService) PutIPNS(id []byte, record []byte) (<-chan client.PutIPNSAsyncResult, error) {
+func (testDelegatedRoutingService) PutIPNS(ctx context.Context, id []byte, record []byte) (<-chan client.PutIPNSAsyncResult, error) {
 	ch := make(chan client.PutIPNSAsyncResult)
 	go func() {
 		ch <- client.PutIPNSAsyncResult{}
@@ -342,7 +342,7 @@ func (testDelegatedRoutingService) PutIPNS(id []byte, record []byte) (<-chan cli
 	return ch, nil
 }
 
-func (testDelegatedRoutingService) FindProviders(key cid.Cid) (<-chan client.FindProvidersAsyncResult, error) {
+func (testDelegatedRoutingService) FindProviders(ctx context.Context, key cid.Cid) (<-chan client.FindProvidersAsyncResult, error) {
 	ch := make(chan client.FindProvidersAsyncResult)
 	go func() {
 		ch <- client.FindProvidersAsyncResult{AddrInfo: []peer.AddrInfo{*testAddrInfo}}
