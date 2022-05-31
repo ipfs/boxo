@@ -16,7 +16,7 @@ type writerOutput struct {
 	w     io.Writer
 	size  uint64
 	code  multicodec.Code
-	rcrds []index.Record
+	rcrds map[cid.Cid]index.Record
 }
 
 func (w *writerOutput) Size() uint64 {
@@ -28,7 +28,11 @@ func (w *writerOutput) Index() (index.Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := idx.Load(w.rcrds); err != nil {
+	rcrds := make([]index.Record, 0, len(w.rcrds))
+	for _, r := range w.rcrds {
+		rcrds = append(rcrds, r)
+	}
+	if err := idx.Load(rcrds); err != nil {
 		return nil, err
 	}
 
@@ -63,17 +67,13 @@ func (w *writingReader) Read(p []byte) (int, error) {
 		if _, err := cpy.WriteTo(w.wo.w); err != nil {
 			return 0, err
 		}
-
-		// maybe write the index.
-		if w.wo.code != index.CarIndexNone {
-			_, c, err := cid.CidFromBytes([]byte(w.cid))
-			if err != nil {
-				return 0, err
-			}
-			w.wo.rcrds = append(w.wo.rcrds, index.Record{
-				Cid:    c,
-				Offset: w.wo.size,
-			})
+		_, c, err := cid.CidFromBytes([]byte(w.cid))
+		if err != nil {
+			return 0, err
+		}
+		w.wo.rcrds[c] = index.Record{
+			Cid:    c,
+			Offset: w.wo.size,
 		}
 		w.wo.size += uint64(w.len) + uint64(len(size)+len(w.cid))
 
@@ -94,11 +94,21 @@ func TeeingLinkSystem(ls ipld.LinkSystem, w io.Writer, initialOffset uint64, ind
 		w:     w,
 		size:  initialOffset,
 		code:  indexCodec,
-		rcrds: make([]index.Record, 0),
+		rcrds: make(map[cid.Cid]index.Record),
 	}
 
 	tls := ls
 	tls.StorageReadOpener = func(lc linking.LinkContext, l ipld.Link) (io.Reader, error) {
+		_, c, err := cid.CidFromBytes([]byte(l.Binary()))
+		if err != nil {
+			return nil, err
+		}
+
+		// if we've already read this cid in this session, don't re-write it.
+		if _, ok := wo.rcrds[c]; ok {
+			return ls.StorageReadOpener(lc, l)
+		}
+
 		r, err := ls.StorageReadOpener(lc, l)
 		if err != nil {
 			return nil, err

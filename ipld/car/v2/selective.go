@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"os"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/loader"
 	ipld "github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/linking"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
@@ -236,14 +238,19 @@ func traverse(ctx context.Context, ls *ipld.LinkSystem, root cid.Cid, s ipld.Nod
 		return err
 	}
 
+	chooser := func(_ ipld.Link, _ linking.LinkContext) (ipld.NodePrototype, error) {
+		return basicnode.Prototype.Any, nil
+	}
+	if opts.TraversalPrototypeChooser != nil {
+		chooser = opts.TraversalPrototypeChooser
+	}
+
 	progress := traversal.Progress{
 		Cfg: &traversal.Config{
-			Ctx:        ctx,
-			LinkSystem: *ls,
-			LinkTargetNodePrototypeChooser: func(_ ipld.Link, _ linking.LinkContext) (ipld.NodePrototype, error) {
-				return basicnode.Prototype.Any, nil
-			},
-			LinkVisitOnlyOnce: !opts.BlockstoreAllowDuplicatePuts,
+			Ctx:                            ctx,
+			LinkSystem:                     *ls,
+			LinkTargetNodePrototypeChooser: chooser,
+			LinkVisitOnlyOnce:              !opts.BlockstoreAllowDuplicatePuts,
 		},
 	}
 	if opts.MaxTraversalLinks < math.MaxInt64 {
@@ -255,11 +262,25 @@ func traverse(ctx context.Context, ls *ipld.LinkSystem, root cid.Cid, s ipld.Nod
 
 	lnk := cidlink.Link{Cid: root}
 	ls.TrustedStorage = true
-	rootNode, err := ls.Load(ipld.LinkContext{}, lnk, basicnode.Prototype.Any)
+	rp, err := chooser(lnk, ipld.LinkContext{})
+	if err != nil {
+		return err
+	}
+	rootNode, err := ls.Load(ipld.LinkContext{}, lnk, rp)
 	if err != nil {
 		return fmt.Errorf("root blk load failed: %s", err)
 	}
-	err = progress.WalkMatching(rootNode, sel, func(_ traversal.Progress, _ ipld.Node) error {
+	err = progress.WalkMatching(rootNode, sel, func(_ traversal.Progress, node ipld.Node) error {
+		if lbn, ok := node.(datamodel.LargeBytesNode); ok {
+			s, err := lbn.AsLargeBytes()
+			if err != nil {
+				return err
+			}
+			_, err = io.Copy(ioutil.Discard, s)
+			if err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
