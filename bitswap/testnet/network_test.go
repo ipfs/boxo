@@ -28,7 +28,7 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 
 	expectedStr := "received async"
 
-	responder.SetDelegate(lambda(func(
+	responder.Start(lambda(func(
 		ctx context.Context,
 		fromWaiter peer.ID,
 		msgFromWaiter bsmsg.BitSwapMessage) {
@@ -40,8 +40,9 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 			t.Error(err)
 		}
 	}))
+	t.Cleanup(responder.Stop)
 
-	waiter.SetDelegate(lambda(func(
+	waiter.Start(lambda(func(
 		ctx context.Context,
 		fromResponder peer.ID,
 		msgFromResponder bsmsg.BitSwapMessage) {
@@ -59,6 +60,7 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 			t.Fatal("Message not received from the responder")
 		}
 	}))
+	t.Cleanup(waiter.Stop)
 
 	messageSentAsync := bsmsg.New(true)
 	messageSentAsync.AddBlock(blocks.NewBlock([]byte("data")))

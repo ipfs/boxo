@@ -35,9 +35,10 @@ type BitSwapNetwork interface {
 		peer.ID,
 		bsmsg.BitSwapMessage) error
 
-	// SetDelegate registers the Reciver to handle messages received from the
-	// network.
-	SetDelegate(Receiver)
+	// Start registers the Reciver and starts handling new messages, connectivity events, etc.
+	Start(Receiver)
+	// Stop stops the network service.
+	Stop()
 
 	ConnectTo(context.Context, peer.ID) error
 	DisconnectFrom(context.Context, peer.ID) error

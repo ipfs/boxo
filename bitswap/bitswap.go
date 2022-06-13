@@ -303,7 +303,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 	bs.engine.SetSendDontHaves(bs.engineSetSendDontHaves)
 
 	bs.pqm.Startup()
-	network.SetDelegate(bs)
+	network.Start(bs)
 
 	// Start up bitswaps async worker routines
 	bs.startWorkers(ctx, px)
@@ -316,6 +316,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 		sm.Shutdown()
 		cancelFunc()
 		notif.Shutdown()
+		network.Stop()
 	}()
 	procctx.CloseAfterContext(px, ctx) // parent cancelled first
 
