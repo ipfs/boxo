@@ -1,144 +1,168 @@
 package network
 
 import (
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/ipfs/go-bitswap/internal/testutil"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/stretchr/testify/require"
 )
 
+type mockConnEvent struct {
+	connected bool
+	peer      peer.ID
+}
+
 type mockConnListener struct {
-	conns map[peer.ID]int
+	sync.Mutex
+	events []mockConnEvent
 }
 
 func newMockConnListener() *mockConnListener {
-	return &mockConnListener{
-		conns: make(map[peer.ID]int),
-	}
+	return new(mockConnListener)
 }
 
 func (cl *mockConnListener) PeerConnected(p peer.ID) {
-	cl.conns[p]++
+	cl.Lock()
+	defer cl.Unlock()
+	cl.events = append(cl.events, mockConnEvent{connected: true, peer: p})
 }
 
 func (cl *mockConnListener) PeerDisconnected(p peer.ID) {
-	cl.conns[p]--
+	cl.Lock()
+	defer cl.Unlock()
+	cl.events = append(cl.events, mockConnEvent{connected: false, peer: p})
 }
 
-func TestConnectEventManagerConnectionCount(t *testing.T) {
+func wait(t *testing.T, c *connectEventManager) {
+	require.Eventually(t, func() bool {
+		c.lk.RLock()
+		defer c.lk.RUnlock()
+		return len(c.changeQueue) == 0
+	}, time.Second, time.Millisecond, "connection event manager never processed events")
+}
+
+func TestConnectEventManagerConnectDisconnect(t *testing.T) {
 	connListener := newMockConnListener()
 	peers := testutil.GeneratePeers(2)
 	cem := newConnectEventManager(connListener)
+	cem.Start()
+	t.Cleanup(cem.Stop)
 
-	// Peer A: 1 Connection
+	var expectedEvents []mockConnEvent
+
+	// Connect A twice, should only see one event
 	cem.Connected(peers[0])
-	if connListener.conns[peers[0]] != 1 {
-		t.Fatal("Expected Connected event")
-	}
-
-	// Peer A: 2 Connections
 	cem.Connected(peers[0])
-	if connListener.conns[peers[0]] != 1 {
-		t.Fatal("Unexpected no Connected event for the same peer")
-	}
+	expectedEvents = append(expectedEvents, mockConnEvent{
+		peer:      peers[0],
+		connected: true,
+	})
 
-	// Peer A: 2 Connections
-	// Peer B: 1 Connection
+	// Flush the event queue.
+	wait(t, cem)
+	require.Equal(t, expectedEvents, connListener.events)
+
+	// Block up the event loop.
+	connListener.Lock()
 	cem.Connected(peers[1])
-	if connListener.conns[peers[1]] != 1 {
-		t.Fatal("Expected Connected event")
-	}
+	expectedEvents = append(expectedEvents, mockConnEvent{
+		peer:      peers[1],
+		connected: true,
+	})
 
-	// Peer A: 2 Connections
-	// Peer B: 0 Connections
-	cem.Disconnected(peers[1])
-	if connListener.conns[peers[1]] != 0 {
-		t.Fatal("Expected Disconnected event")
-	}
-
-	// Peer A: 1 Connection
-	// Peer B: 0 Connections
+	// We don't expect this to show up.
 	cem.Disconnected(peers[0])
-	if connListener.conns[peers[0]] != 1 {
-		t.Fatal("Expected no Disconnected event for peer with one remaining conn")
-	}
+	cem.Connected(peers[0])
 
-	// Peer A: 0 Connections
-	// Peer B: 0 Connections
-	cem.Disconnected(peers[0])
-	if connListener.conns[peers[0]] != 0 {
-		t.Fatal("Expected Disconnected event")
-	}
+	connListener.Unlock()
+
+	wait(t, cem)
+	require.Equal(t, expectedEvents, connListener.events)
 }
 
 func TestConnectEventManagerMarkUnresponsive(t *testing.T) {
 	connListener := newMockConnListener()
 	p := testutil.GeneratePeers(1)[0]
 	cem := newConnectEventManager(connListener)
+	cem.Start()
+	t.Cleanup(cem.Stop)
 
-	// Peer A: 1 Connection
+	var expectedEvents []mockConnEvent
+
+	// Don't mark as connected when we receive a message (could have been delayed).
+	cem.OnMessage(p)
+	wait(t, cem)
+	require.Equal(t, expectedEvents, connListener.events)
+
+	// Handle connected event.
 	cem.Connected(p)
-	if connListener.conns[p] != 1 {
-		t.Fatal("Expected Connected event")
-	}
+	wait(t, cem)
 
-	// Peer A: 1 Connection <Unresponsive>
+	expectedEvents = append(expectedEvents, mockConnEvent{
+		peer:      p,
+		connected: true,
+	})
+	require.Equal(t, expectedEvents, connListener.events)
+
+	// Becomes unresponsive.
 	cem.MarkUnresponsive(p)
-	if connListener.conns[p] != 0 {
-		t.Fatal("Expected Disconnected event")
-	}
+	wait(t, cem)
 
-	// Peer A: 2 Connections <Unresponsive>
+	expectedEvents = append(expectedEvents, mockConnEvent{
+		peer:      p,
+		connected: false,
+	})
+	require.Equal(t, expectedEvents, connListener.events)
+
+	// We have a new connection, mark them responsive.
 	cem.Connected(p)
-	if connListener.conns[p] != 0 {
-		t.Fatal("Expected no Connected event for unresponsive peer")
-	}
+	wait(t, cem)
+	expectedEvents = append(expectedEvents, mockConnEvent{
+		peer:      p,
+		connected: true,
+	})
+	require.Equal(t, expectedEvents, connListener.events)
 
-	// Peer A: 2 Connections <Becomes responsive>
+	// No duplicate event.
 	cem.OnMessage(p)
-	if connListener.conns[p] != 1 {
-		t.Fatal("Expected Connected event for newly responsive peer")
-	}
-
-	// Peer A: 2 Connections
-	cem.OnMessage(p)
-	if connListener.conns[p] != 1 {
-		t.Fatal("Expected no further Connected event for subsequent messages")
-	}
-
-	// Peer A: 1 Connection
-	cem.Disconnected(p)
-	if connListener.conns[p] != 1 {
-		t.Fatal("Expected no Disconnected event for peer with one remaining conn")
-	}
-
-	// Peer A: 0 Connections
-	cem.Disconnected(p)
-	if connListener.conns[p] != 0 {
-		t.Fatal("Expected Disconnected event")
-	}
+	wait(t, cem)
+	require.Equal(t, expectedEvents, connListener.events)
 }
 
 func TestConnectEventManagerDisconnectAfterMarkUnresponsive(t *testing.T) {
 	connListener := newMockConnListener()
 	p := testutil.GeneratePeers(1)[0]
 	cem := newConnectEventManager(connListener)
+	cem.Start()
+	t.Cleanup(cem.Stop)
 
-	// Peer A: 1 Connection
+	var expectedEvents []mockConnEvent
+
+	// Handle connected event.
 	cem.Connected(p)
-	if connListener.conns[p] != 1 {
-		t.Fatal("Expected Connected event")
-	}
+	wait(t, cem)
 
-	// Peer A: 1 Connection <Unresponsive>
+	expectedEvents = append(expectedEvents, mockConnEvent{
+		peer:      p,
+		connected: true,
+	})
+	require.Equal(t, expectedEvents, connListener.events)
+
+	// Becomes unresponsive.
 	cem.MarkUnresponsive(p)
-	if connListener.conns[p] != 0 {
-		t.Fatal("Expected Disconnected event")
-	}
+	wait(t, cem)
 
-	// Peer A: 0 Connections
+	expectedEvents = append(expectedEvents, mockConnEvent{
+		peer:      p,
+		connected: false,
+	})
+	require.Equal(t, expectedEvents, connListener.events)
+
 	cem.Disconnected(p)
-	if connListener.conns[p] != 0 {
-		t.Fatal("Expected not to receive a second Disconnected event")
-	}
+	wait(t, cem)
+	require.Empty(t, cem.peers) // all disconnected
+	require.Equal(t, expectedEvents, connListener.events)
 }

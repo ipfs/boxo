@@ -300,8 +300,11 @@ func (nc *networkClient) Provide(ctx context.Context, k cid.Cid) error {
 	return nc.routing.Provide(ctx, k, true)
 }
 
-func (nc *networkClient) SetDelegate(r bsnet.Receiver) {
+func (nc *networkClient) Start(r bsnet.Receiver) {
 	nc.Receiver = r
+}
+
+func (nc *networkClient) Stop() {
 }
 
 func (nc *networkClient) ConnectTo(_ context.Context, p peer.ID) error {

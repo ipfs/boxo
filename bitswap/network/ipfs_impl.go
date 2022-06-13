@@ -349,15 +349,20 @@ func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stre
 	return bsnet.host.NewStream(ctx, p, bsnet.supportedProtocols...)
 }
 
-func (bsnet *impl) SetDelegate(r Receiver) {
+func (bsnet *impl) Start(r Receiver) {
 	bsnet.receiver = r
 	bsnet.connectEvtMgr = newConnectEventManager(r)
 	for _, proto := range bsnet.supportedProtocols {
 		bsnet.host.SetStreamHandler(proto, bsnet.handleNewStream)
 	}
 	bsnet.host.Network().Notify((*netNotifiee)(bsnet))
-	// TODO: StopNotify.
+	bsnet.connectEvtMgr.Start()
 
+}
+
+func (bsnet *impl) Stop() {
+	bsnet.connectEvtMgr.Stop()
+	bsnet.host.Network().StopNotify((*netNotifiee)(bsnet))
 }
 
 func (bsnet *impl) ConnectTo(ctx context.Context, p peer.ID) error {
@@ -450,8 +455,8 @@ func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
 	nn.impl().connectEvtMgr.Connected(v.RemotePeer())
 }
 func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
-	// ignore transient connections
-	if v.Stat().Transient {
+	// Only record a "disconnect" when we actually disconnect.
+	if n.Connectedness(v.RemotePeer()) == network.Connected {
 		return
 	}
 

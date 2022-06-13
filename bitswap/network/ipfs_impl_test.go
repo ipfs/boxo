@@ -38,7 +38,8 @@ func newReceiver() *receiver {
 	return &receiver{
 		peers:           make(map[peer.ID]struct{}),
 		messageReceived: make(chan struct{}),
-		connectionEvent: make(chan bool, 1),
+		// Avoid blocking. 100 is good enough for tests.
+		connectionEvent: make(chan bool, 100),
 	}
 }
 
@@ -169,8 +170,10 @@ func TestMessageSendAndReceive(t *testing.T) {
 	bsnet2 := streamNet.Adapter(p2)
 	r1 := newReceiver()
 	r2 := newReceiver()
-	bsnet1.SetDelegate(r1)
-	bsnet2.SetDelegate(r2)
+	bsnet1.Start(r1)
+	t.Cleanup(bsnet1.Stop)
+	bsnet2.Start(r2)
+	t.Cleanup(bsnet2.Stop)
 
 	err = mn.LinkAll()
 	if err != nil {
@@ -268,7 +271,8 @@ func prepareNetwork(t *testing.T, ctx context.Context, p1 tnet.Identity, r1 *rec
 	eh1 := &ErrHost{Host: h1}
 	routing1 := mr.ClientWithDatastore(context.TODO(), p1, ds.NewMapDatastore())
 	bsnet1 := bsnet.NewFromIpfsHost(eh1, routing1)
-	bsnet1.SetDelegate(r1)
+	bsnet1.Start(r1)
+	t.Cleanup(bsnet1.Stop)
 	if r1.listener != nil {
 		eh1.Network().Notify(r1.listener)
 	}
@@ -281,7 +285,8 @@ func prepareNetwork(t *testing.T, ctx context.Context, p1 tnet.Identity, r1 *rec
 	eh2 := &ErrHost{Host: h2}
 	routing2 := mr.ClientWithDatastore(context.TODO(), p2, ds.NewMapDatastore())
 	bsnet2 := bsnet.NewFromIpfsHost(eh2, routing2)
-	bsnet2.SetDelegate(r2)
+	bsnet2.Start(r2)
+	t.Cleanup(bsnet2.Stop)
 	if r2.listener != nil {
 		eh2.Network().Notify(r2.listener)
 	}
@@ -454,28 +459,32 @@ func TestSupportsHave(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		p1 := tnet.RandIdentityOrFatal(t)
-		bsnet1 := streamNet.Adapter(p1)
-		bsnet1.SetDelegate(newReceiver())
+		t.Run(fmt.Sprintf("%s-%v", tc.proto, tc.expSupportsHave), func(t *testing.T) {
+			p1 := tnet.RandIdentityOrFatal(t)
+			bsnet1 := streamNet.Adapter(p1)
+			bsnet1.Start(newReceiver())
+			t.Cleanup(bsnet1.Stop)
 
-		p2 := tnet.RandIdentityOrFatal(t)
-		bsnet2 := streamNet.Adapter(p2, bsnet.SupportedProtocols([]protocol.ID{tc.proto}))
-		bsnet2.SetDelegate(newReceiver())
+			p2 := tnet.RandIdentityOrFatal(t)
+			bsnet2 := streamNet.Adapter(p2, bsnet.SupportedProtocols([]protocol.ID{tc.proto}))
+			bsnet2.Start(newReceiver())
+			t.Cleanup(bsnet2.Stop)
 
-		err = mn.LinkAll()
-		if err != nil {
-			t.Fatal(err)
-		}
+			err = mn.LinkAll()
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		senderCurrent, err := bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer senderCurrent.Close()
+			senderCurrent, err := bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer senderCurrent.Close()
 
-		if senderCurrent.SupportsHave() != tc.expSupportsHave {
-			t.Fatal("Expected sender HAVE message support", tc.proto, tc.expSupportsHave)
-		}
+			if senderCurrent.SupportsHave() != tc.expSupportsHave {
+				t.Fatal("Expected sender HAVE message support", tc.proto, tc.expSupportsHave)
+			}
+		})
 	}
 }
 
