@@ -11,8 +11,11 @@ import (
 	"time"
 
 	delay "github.com/ipfs/go-ipfs-delay"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	deciface "github.com/ipfs/go-bitswap/decision"
+	"github.com/ipfs/go-bitswap/internal"
 	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
 	"github.com/ipfs/go-bitswap/internal/decision"
 	"github.com/ipfs/go-bitswap/internal/defaults"
@@ -425,8 +428,10 @@ type counters struct {
 
 // GetBlock attempts to retrieve a particular block from peers within the
 // deadline enforced by the context.
-func (bs *Bitswap) GetBlock(parent context.Context, k cid.Cid) (blocks.Block, error) {
-	return bsgetter.SyncGetBlock(parent, k, bs.GetBlocks)
+func (bs *Bitswap) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error) {
+	ctx, span := internal.StartSpan(ctx, "GetBlock", trace.WithAttributes(attribute.String("Key", k.String())))
+	defer span.End()
+	return bsgetter.SyncGetBlock(ctx, k, bs.GetBlocks)
 }
 
 // WantlistForPeer returns the currently understood list of blocks requested by a
@@ -453,6 +458,8 @@ func (bs *Bitswap) LedgerForPeer(p peer.ID) *decision.Receipt {
 // resources, provide a context with a reasonably short deadline (ie. not one
 // that lasts throughout the lifetime of the server)
 func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error) {
+	ctx, span := internal.StartSpan(ctx, "GetBlocks", trace.WithAttributes(attribute.Int("NumKeys", len(keys))))
+	defer span.End()
 	session := bs.sm.NewSession(ctx, bs.provSearchDelay, bs.rebroadcastDelay)
 	return session.GetBlocks(ctx, keys)
 }
@@ -460,6 +467,8 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 // HasBlock announces the existence of a block to this bitswap service. The
 // service will potentially notify its peers.
 func (bs *Bitswap) HasBlock(ctx context.Context, blk blocks.Block) error {
+	ctx, span := internal.StartSpan(ctx, "GetBlocks", trace.WithAttributes(attribute.String("Block", blk.Cid().String())))
+	defer span.End()
 	return bs.receiveBlocksFrom(ctx, "", []blocks.Block{blk}, nil, nil)
 }
 
@@ -696,5 +705,7 @@ func (bs *Bitswap) IsOnline() bool {
 // be more efficient in its requests to peers. If you are using a session
 // from go-blockservice, it will create a bitswap session automatically.
 func (bs *Bitswap) NewSession(ctx context.Context) exchange.Fetcher {
+	ctx, span := internal.StartSpan(ctx, "NewSession")
+	defer span.End()
 	return bs.sm.NewSession(ctx, bs.provSearchDelay, bs.rebroadcastDelay)
 }

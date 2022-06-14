@@ -2,12 +2,16 @@ package sessionmanager
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
 
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
+	"github.com/ipfs/go-bitswap/internal"
 	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
 	notifications "github.com/ipfs/go-bitswap/internal/notifications"
 	bssession "github.com/ipfs/go-bitswap/internal/session"
@@ -86,6 +90,9 @@ func (sm *SessionManager) NewSession(ctx context.Context,
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D) exchange.Fetcher {
 	id := sm.GetNextSessionID()
+
+	ctx, span := internal.StartSpan(ctx, "SessionManager.NewSession", trace.WithAttributes(attribute.String("ID", strconv.FormatUint(id, 10))))
+	defer span.End()
 
 	pm := sm.peerManagerFactory(ctx, id)
 	session := sm.sessionFactory(ctx, sm, id, pm, sm.sessionInterestManager, sm.peerManager, sm.blockPresenceManager, sm.notif, provSearchDelay, rebroadcastDelay, sm.self)
