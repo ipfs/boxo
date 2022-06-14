@@ -1,7 +1,6 @@
 package blockpresencemanager
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/ipfs/go-bitswap/internal/testutil"
@@ -233,7 +232,7 @@ func TestAllPeersDoNotHaveBlock(t *testing.T) {
 			bpm.AllPeersDoNotHaveBlock(tc.peers, tc.ks),
 			tc.exp,
 		) {
-			t.Fatal(fmt.Sprintf("test case %d failed: expected matching keys", i))
+			t.Fatalf("test case %d failed: expected matching keys", i)
 		}
 	}
 }

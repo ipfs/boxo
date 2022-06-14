@@ -44,15 +44,18 @@ type providerQueryMessage interface {
 }
 
 type receivedProviderMessage struct {
-	k cid.Cid
-	p peer.ID
+	ctx context.Context
+	k   cid.Cid
+	p   peer.ID
 }
 
 type finishedProviderQueryMessage struct {
-	k cid.Cid
+	ctx context.Context
+	k   cid.Cid
 }
 
 type newProvideQueryMessage struct {
+	ctx                   context.Context
 	k                     cid.Cid
 	inProgressRequestChan chan<- inProgressRequest
 }
@@ -120,6 +123,7 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 
 	select {
 	case pqm.providerQueryMessages <- &newProvideQueryMessage{
+		ctx:                   sessionCtx,
 		k:                     k,
 		inProgressRequestChan: inProgressRequestChan,
 	}:
@@ -244,8 +248,9 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 					}
 					select {
 					case pqm.providerQueryMessages <- &receivedProviderMessage{
-						k: k,
-						p: p,
+						ctx: findProviderCtx,
+						k:   k,
+						p:   p,
 					}:
 					case <-pqm.ctx.Done():
 						return
@@ -256,7 +261,8 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 			cancel()
 			select {
 			case pqm.providerQueryMessages <- &finishedProviderQueryMessage{
-				k: k,
+				ctx: findProviderCtx,
+				k:   k,
 			}:
 			case <-pqm.ctx.Done():
 			}
@@ -372,6 +378,7 @@ func (npqm *newProvideQueryMessage) debugMessage() string {
 func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[npqm.k]
 	if !ok {
+
 		ctx, cancelFn := context.WithCancel(pqm.ctx)
 		requestStatus = &inProgressRequestStatus{
 			listeners: make(map[chan peer.ID]struct{}),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/ipfs/go-bitswap/internal"
 	notifications "github.com/ipfs/go-bitswap/internal/notifications"
 	logging "github.com/ipfs/go-log"
 
@@ -22,6 +23,9 @@ type GetBlocksFunc func(context.Context, []cid.Cid) (<-chan blocks.Block, error)
 // blocks that returns a channel, and uses that function to return the
 // block syncronously.
 func SyncGetBlock(p context.Context, k cid.Cid, gb GetBlocksFunc) (blocks.Block, error) {
+	p, span := internal.StartSpan(p, "Getter.SyncGetBlock")
+	defer span.End()
+
 	if !k.Defined() {
 		log.Error("undefined cid in GetBlock")
 		return nil, ipld.ErrNotFound{Cid: k}
@@ -65,6 +69,8 @@ type WantFunc func(context.Context, []cid.Cid)
 // incoming blocks.
 func AsyncGetBlocks(ctx context.Context, sessctx context.Context, keys []cid.Cid, notif notifications.PubSub,
 	want WantFunc, cwants func([]cid.Cid)) (<-chan blocks.Block, error) {
+	ctx, span := internal.StartSpan(ctx, "Getter.AsyncGetBlocks")
+	defer span.End()
 
 	// If there are no keys supplied, just return a closed channel
 	if len(keys) == 0 {
