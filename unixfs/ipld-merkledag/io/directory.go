@@ -334,12 +334,7 @@ func (d *BasicDirectory) switchToSharding(ctx context.Context) (*HAMTDirectory, 
 	hamtDir.shard = shard
 
 	for _, lnk := range d.node.Links() {
-		node, err := d.dserv.Get(ctx, lnk.Cid)
-		if err != nil {
-			return nil, err
-		}
-
-		err = hamtDir.shard.Set(ctx, lnk.Name, node)
+		err = hamtDir.shard.SetLink(ctx, lnk.Name, lnk)
 		if err != nil {
 			return nil, err
 		}
