@@ -229,6 +229,26 @@ func (ds *Shard) Set(ctx context.Context, name string, nd ipld.Node) error {
 	return err
 }
 
+// Set sets 'name' = nd in the HAMT, using directly the information in the
+// given link. This avoids writing the given node, then reading it to making a
+// link out of it.
+func (ds *Shard) SetLink(ctx context.Context, name string, lnk *ipld.Link) error {
+	hv := newHashBits(name)
+
+	newLink := ipld.Link{
+		Name: lnk.Name,
+		Size: lnk.Size,
+		Cid:  lnk.Cid,
+	}
+
+	// FIXME: We don't need to set the name here, it will get overwritten.
+	//  This is confusing, confirm and remove this line.
+	newLink.Name = ds.linkNamePrefix(0) + name
+
+	_, err := ds.swapValue(ctx, hv, name, &newLink)
+	return err
+}
+
 // Swap sets a link pointing to the passed node as the value under the
 // name key in this Shard or its children. It also returns the previous link
 // under that name key (if any).
