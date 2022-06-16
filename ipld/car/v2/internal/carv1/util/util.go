@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"io"
 
 	internalio "github.com/ipld/go-car/v2/internal/io"
@@ -71,6 +72,11 @@ func LdRead(r io.Reader, zeroLenAsEOF bool) ([]byte, error) {
 		return nil, err
 	} else if l == 0 && zeroLenAsEOF {
 		return nil, io.EOF
+	}
+
+	const maxAllowedHeaderSize = 1024 * 1024
+	if l > maxAllowedHeaderSize { // Don't OOM
+		return nil, errors.New("invalid input, too big header")
 	}
 
 	buf := make([]byte, l)
