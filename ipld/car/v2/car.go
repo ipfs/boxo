@@ -2,6 +2,7 @@ package car
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 )
 
@@ -166,8 +167,16 @@ func (h *Header) ReadFrom(r io.Reader) (int64, error) {
 	if err != nil {
 		return n, err
 	}
-	h.DataOffset = binary.LittleEndian.Uint64(buf[:8])
-	h.DataSize = binary.LittleEndian.Uint64(buf[8:16])
-	h.IndexOffset = binary.LittleEndian.Uint64(buf[16:])
+	dataOffset := binary.LittleEndian.Uint64(buf[:8])
+	dataSize := binary.LittleEndian.Uint64(buf[8:16])
+	indexOffset := binary.LittleEndian.Uint64(buf[16:])
+	if int64(dataOffset) < 0 ||
+		int64(dataSize) < 0 ||
+		int64(indexOffset) < 0 {
+		return n, errors.New("malformed car, overflowing offsets")
+	}
+	h.DataOffset = dataOffset
+	h.DataSize = dataSize
+	h.IndexOffset = indexOffset
 	return n, nil
 }
