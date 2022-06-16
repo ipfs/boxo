@@ -75,9 +75,11 @@ func TestRoundtrip(t *testing.T) {
 	}
 }
 
+// fixture is a clean single-block, single-root CAR
+const fixtureStr = "3aa265726f6f747381d82a58250001711220151fe9e73c6267a7060c6f6c4cca943c236f4b196723489608edb42a8b8fa80b6776657273696f6e012c01711220151fe9e73c6267a7060c6f6c4cca943c236f4b196723489608edb42a8b8fa80ba165646f646779f5"
+
 func TestEOFHandling(t *testing.T) {
-	// fixture is a clean single-block, single-root CAR
-	fixture, err := hex.DecodeString("3aa265726f6f747381d82a58250001711220151fe9e73c6267a7060c6f6c4cca943c236f4b196723489608edb42a8b8fa80b6776657273696f6e012c01711220151fe9e73c6267a7060c6f6c4cca943c236f4b196723489608edb42a8b8fa80ba165646f646779f5")
+	fixture, err := hex.DecodeString(fixtureStr)
 	if err != nil {
 		t.Fatal(err)
 	}
