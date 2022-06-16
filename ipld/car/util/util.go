@@ -28,9 +28,13 @@ type BytesReader interface {
 
 // TODO: this belongs in the go-cid package
 func ReadCid(buf []byte) (cid.Cid, int, error) {
-	if bytes.Equal(buf[:2], cidv0Pref) {
-		c, err := cid.Cast(buf[:34])
-		return c, 34, err
+	if len(buf) >= 2 && bytes.Equal(buf[:2], cidv0Pref) {
+		i := 34
+		if len(buf) < i {
+			i = len(buf)
+		}
+		c, err := cid.Cast(buf[:i])
+		return c, i, err
 	}
 
 	br := bytes.NewReader(buf)
