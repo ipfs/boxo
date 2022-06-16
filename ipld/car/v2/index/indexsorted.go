@@ -3,6 +3,7 @@ package index
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -66,6 +67,10 @@ func (s *singleWidthIndex) Unmarshal(r io.Reader) error {
 	}
 	if err := binary.Read(r, binary.LittleEndian, &s.len); err != nil {
 		return err
+	}
+	const maxSingleWidthIndexSize = 1024 * 1024
+	if s.len > maxSingleWidthIndexSize {
+		return errors.New("single width index is too big")
 	}
 	s.index = make([]byte, s.len)
 	s.len /= uint64(s.width)
