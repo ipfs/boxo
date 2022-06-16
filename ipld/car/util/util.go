@@ -4,12 +4,20 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
 	cid "github.com/ipfs/go-cid"
 	mh "github.com/multiformats/go-multihash"
 )
+
+// MaxAllowedHeaderSize hint about how big the header red are allowed to be.
+// This value is a hint to avoid OOMs, a parser that cannot OOM because it is
+// streaming for example, isn't forced to follow that value.
+// Deprecated: You should use v2#NewReader instead since it allows for options
+// to be passed in.
+var MaxAllowedHeaderSize uint = 1024
 
 var cidv0Pref = []byte{0x12, 0x20}
 
@@ -110,6 +118,10 @@ func LdRead(r *bufio.Reader) ([]byte, error) {
 			return nil, io.ErrUnexpectedEOF // don't silently pretend this is a clean EOF
 		}
 		return nil, err
+	}
+
+	if l > uint64(MaxAllowedHeaderSize) { // Don't OOM
+		return nil, errors.New("malformed car; header is bigger than util.MaxAllowedHeaderSize")
 	}
 
 	buf := make([]byte, l)
