@@ -65,6 +65,9 @@ func (s *singleWidthIndex) Unmarshal(r io.Reader) error {
 	if err := binary.Read(r, binary.LittleEndian, &s.width); err != nil {
 		return err
 	}
+	if s.width == 0 {
+		return errors.New("malformed car width index cannot be 0")
+	}
 	if err := binary.Read(r, binary.LittleEndian, &s.len); err != nil {
 		return err
 	}
