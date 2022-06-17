@@ -8,6 +8,7 @@ import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
+	"github.com/ipld/go-car/v2/index/testutil"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/multiformats/go-multicodec"
@@ -103,7 +104,11 @@ func TestGenerateIndex(t *testing.T) {
 				if tt.wantIndexer != nil {
 					want = tt.wantIndexer(t)
 				}
-				require.Equal(t, want, got)
+				if want == nil {
+					require.Nil(t, got)
+				} else {
+					testutil.AssertIndenticalIndexes(t, want, got)
+				}
 			}
 		})
 		t.Run("GenerateIndexFromFile_"+tt.name, func(t *testing.T) {

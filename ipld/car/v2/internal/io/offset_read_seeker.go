@@ -1,63 +1,123 @@
 package io
 
-import "io"
-
-var (
-	_ io.ReaderAt   = (*OffsetReadSeeker)(nil)
-	_ io.ReadSeeker = (*OffsetReadSeeker)(nil)
+import (
+	"errors"
+	"io"
 )
 
-// OffsetReadSeeker implements Read, and ReadAt on a section
+var (
+	_ io.ReaderAt   = (*offsetReadSeeker)(nil)
+	_ io.ReadSeeker = (*offsetReadSeeker)(nil)
+)
+
+// offsetReadSeeker implements Read, and ReadAt on a section
 // of an underlying io.ReaderAt.
-// The main difference between io.SectionReader and OffsetReadSeeker is that
+// The main difference between io.SectionReader and offsetReadSeeker is that
 // NewOffsetReadSeeker does not require the user to know the number of readable bytes.
 //
 // It also partially implements Seek, where the implementation panics if io.SeekEnd is passed.
-// This is because, OffsetReadSeeker does not know the end of the file therefore cannot seek relative
+// This is because, offsetReadSeeker does not know the end of the file therefore cannot seek relative
 // to it.
-type OffsetReadSeeker struct {
+type offsetReadSeeker struct {
 	r    io.ReaderAt
 	base int64
 	off  int64
+	b    [1]byte // avoid alloc in ReadByte
 }
 
-// NewOffsetReadSeeker returns an OffsetReadSeeker that reads from r
+type ReadSeekerAt interface {
+	io.Reader
+	io.ReaderAt
+	io.Seeker
+	io.ByteReader
+}
+
+// NewOffsetReadSeeker returns an ReadSeekerAt that reads from r
 // starting offset offset off and stops with io.EOF when r reaches its end.
 // The Seek function will panic if whence io.SeekEnd is passed.
-func NewOffsetReadSeeker(r io.ReaderAt, off int64) *OffsetReadSeeker {
-	return &OffsetReadSeeker{r, off, off}
+func NewOffsetReadSeeker(r io.ReaderAt, off int64) ReadSeekerAt {
+	nr, err := NewOffsetReadSeekerWithError(r, off)
+	if err != nil {
+		return erroringReader{err}
+	}
+	return nr
 }
 
-func (o *OffsetReadSeeker) Read(p []byte) (n int, err error) {
+func NewOffsetReadSeekerWithError(r io.ReaderAt, off int64) (ReadSeekerAt, error) {
+	if or, ok := r.(*offsetReadSeeker); ok {
+		oldBase := or.base
+		newBase := or.base + off
+		if newBase < oldBase {
+			return nil, errors.New("NewOffsetReadSeeker overflow int64")
+		}
+		return &offsetReadSeeker{
+			r:    or.r,
+			base: newBase,
+			off:  newBase,
+		}, nil
+	}
+	return &offsetReadSeeker{
+		r:    r,
+		base: off,
+		off:  off,
+	}, nil
+}
+
+func (o *offsetReadSeeker) Read(p []byte) (n int, err error) {
 	n, err = o.r.ReadAt(p, o.off)
-	o.off += int64(n)
+	oldOffset := o.off
+	off := oldOffset + int64(n)
+	if off < oldOffset {
+		return 0, errors.New("ReadAt offset overflow")
+	}
+	o.off = off
 	return
 }
 
-func (o *OffsetReadSeeker) ReadAt(p []byte, off int64) (n int, err error) {
+func (o *offsetReadSeeker) ReadAt(p []byte, off int64) (n int, err error) {
 	if off < 0 {
 		return 0, io.EOF
 	}
+	oldOffset := off
 	off += o.base
+	if off < oldOffset {
+		return 0, errors.New("ReadAt offset overflow")
+	}
 	return o.r.ReadAt(p, off)
 }
 
-func (o *OffsetReadSeeker) ReadByte() (byte, error) {
-	b := []byte{0}
-	_, err := o.Read(b)
-	return b[0], err
+func (o *offsetReadSeeker) ReadByte() (byte, error) {
+	_, err := o.Read(o.b[:])
+	return o.b[0], err
 }
 
-func (o *OffsetReadSeeker) Offset() int64 {
+func (o *offsetReadSeeker) Offset() int64 {
 	return o.off
 }
 
-func (o *OffsetReadSeeker) Seek(offset int64, whence int) (int64, error) {
+func (o *offsetReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case io.SeekStart:
-		o.off = offset + o.base
+		oldOffset := offset
+		off := offset + o.base
+		if off < oldOffset {
+			return 0, errors.New("Seek offset overflow")
+		}
+		o.off = off
 	case io.SeekCurrent:
-		o.off += offset
+		oldOffset := o.off
+		if offset < 0 {
+			if -offset > oldOffset {
+				return 0, errors.New("Seek offset underflow")
+			}
+			o.off = oldOffset + offset
+		} else {
+			off := oldOffset + offset
+			if off < oldOffset {
+				return 0, errors.New("Seek offset overflow")
+			}
+			o.off = off
+		}
 	case io.SeekEnd:
 		panic("unsupported whence: SeekEnd")
 	}
@@ -65,6 +125,26 @@ func (o *OffsetReadSeeker) Seek(offset int64, whence int) (int64, error) {
 }
 
 // Position returns the current position of this reader relative to the initial offset.
-func (o *OffsetReadSeeker) Position() int64 {
+func (o *offsetReadSeeker) Position() int64 {
 	return o.off - o.base
+}
+
+type erroringReader struct {
+	err error
+}
+
+func (e erroringReader) Read(_ []byte) (int, error) {
+	return 0, e.err
+}
+
+func (e erroringReader) ReadAt(_ []byte, n int64) (int, error) {
+	return 0, e.err
+}
+
+func (e erroringReader) ReadByte() (byte, error) {
+	return 0, e.err
+}
+
+func (e erroringReader) Seek(_ int64, _ int) (int64, error) {
+	return 0, e.err
 }

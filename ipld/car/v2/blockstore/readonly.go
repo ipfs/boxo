@@ -182,8 +182,11 @@ func OpenReadOnly(path string, opts ...carv2.Option) (*ReadOnly, error) {
 }
 
 func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
-	bcid, data, err := util.ReadNode(internalio.NewOffsetReadSeeker(b.backing, idx), b.opts.ZeroLengthSectionAsEOF)
-	return bcid, data, err
+	r, err := internalio.NewOffsetReadSeekerWithError(b.backing, idx)
+	if err != nil {
+		return cid.Cid{}, nil, err
+	}
+	return util.ReadNode(r, b.opts.ZeroLengthSectionAsEOF)
 }
 
 // DeleteBlock is unsupported and always errors.
@@ -441,7 +444,11 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 				}
 			}
 
-			thisItemForNxt := rdr.Offset()
+			thisItemForNxt, err := rdr.Seek(0, io.SeekCurrent)
+			if err != nil {
+				maybeReportError(ctx, err)
+				return
+			}
 			_, c, err := cid.CidFromReader(rdr)
 			if err != nil {
 				maybeReportError(ctx, err)

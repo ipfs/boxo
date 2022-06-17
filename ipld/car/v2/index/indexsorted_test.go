@@ -1,6 +1,7 @@
 package index
 
 import (
+	"bytes"
 	"encoding/binary"
 	"testing"
 
@@ -51,7 +52,7 @@ func TestSingleWidthIndex_GetAll(t *testing.T) {
 	subject := &singleWidthIndex{
 		width: 9,
 		len:   uint64(l),
-		index: buf,
+		index: bytes.NewReader(buf),
 	}
 
 	var foundCount int

@@ -842,20 +842,15 @@ func TestOpenReadWrite_WritesIdentityCIDsWhenOptionIsEnabled(t *testing.T) {
 	expectedOffset := len(object) + 1
 
 	// Assert index is iterable and has exactly one record with expected multihash and offset.
-	switch idx := gotIdx.(type) {
-	case index.IterableIndex:
-		var i int
-		err := idx.ForEach(func(mh multihash.Multihash, offset uint64) error {
-			i++
-			require.Equal(t, idmh, mh)
-			require.Equal(t, uint64(expectedOffset), offset)
-			return nil
-		})
-		require.NoError(t, err)
-		require.Equal(t, 1, i)
-	default:
-		require.Failf(t, "unexpected index type", "wanted %v but got %v", multicodec.CarMultihashIndexSorted, idx.Codec())
-	}
+	var count int
+	err = gotIdx.ForEach(func(mh multihash.Multihash, offset uint64) error {
+		count++
+		require.Equal(t, idmh, mh)
+		require.Equal(t, uint64(expectedOffset), offset)
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
 }
 
 func TestOpenReadWrite_ErrorsWhenWritingTooLargeOfACid(t *testing.T) {

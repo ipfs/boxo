@@ -96,11 +96,15 @@ func FuzzIndex(f *testing.F) {
 			if err != nil {
 				return
 			}
-			index := subject.IndexReader()
-			if index == nil {
+			indexRdr := subject.IndexReader()
+			if indexRdr == nil {
 				return
 			}
-			data, err := io.ReadAll(index)
+			_, n, err := index.ReadFromWithSize(indexRdr)
+			if err != nil {
+				return
+			}
+			data, err := io.ReadAll(io.NewSectionReader(indexRdr, 0, n))
 			if err != nil {
 				f.Fatal(err)
 			}

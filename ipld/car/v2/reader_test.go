@@ -7,6 +7,7 @@ import (
 
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
+	"github.com/ipld/go-car/v2/index/testutil"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/stretchr/testify/require"
 )
@@ -173,7 +174,7 @@ func TestReader_WithCarV2Consistency(t *testing.T) {
 			require.NoError(t, err)
 			wantIndex, err := carv2.GenerateIndex(subject.DataReader())
 			require.NoError(t, err)
-			require.Equal(t, wantIndex, gotIndex)
+			testutil.AssertIndenticalIndexes(t, wantIndex, gotIndex)
 		})
 	}
 }
@@ -186,8 +187,8 @@ func TestOpenReader_DoesNotPanicForReadersCreatedBeforeClosure(t *testing.T) {
 	require.NoError(t, subject.Close())
 
 	buf := make([]byte, 1)
-	panicTest := func(r io.Reader) {
-		_, err := r.Read(buf)
+	panicTest := func(r io.ReaderAt) {
+		_, err := r.ReadAt(buf, 0)
 		require.EqualError(t, err, "mmap: closed")
 	}
 
@@ -203,8 +204,8 @@ func TestOpenReader_DoesNotPanicForReadersCreatedAfterClosure(t *testing.T) {
 	iReaderAfterClosure := subject.IndexReader()
 
 	buf := make([]byte, 1)
-	panicTest := func(r io.Reader) {
-		_, err := r.Read(buf)
+	panicTest := func(r io.ReaderAt) {
+		_, err := r.ReadAt(buf, 0)
 		require.EqualError(t, err, "mmap: closed")
 	}
 

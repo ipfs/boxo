@@ -9,6 +9,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-car/v2/index"
+	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
 	"github.com/petar/GoLLRB/llrb"
@@ -121,6 +122,20 @@ func (ii *insertionIndex) Marshal(w io.Writer) (uint64, error) {
 	return l, err
 }
 
+func (ii *insertionIndex) ForEach(f func(multihash.Multihash, uint64) error) error {
+	var errr error
+	ii.items.AscendGreaterOrEqual(ii.items.Min(), func(i llrb.Item) bool {
+		r := i.(recordDigest).Record
+		err := f(r.Cid.Hash(), r.Offset)
+		if err != nil {
+			errr = err
+			return false
+		}
+		return true
+	})
+	return errr
+}
+
 func (ii *insertionIndex) Unmarshal(r io.Reader) error {
 	var length int64
 	if err := binary.Read(r, binary.LittleEndian, &length); err != nil {
@@ -135,6 +150,15 @@ func (ii *insertionIndex) Unmarshal(r io.Reader) error {
 		ii.items.InsertNoReplace(newRecordDigest(rec))
 	}
 	return nil
+}
+
+func (ii *insertionIndex) UnmarshalLazyRead(r io.ReaderAt) (int64, error) {
+	rdr := internalio.NewOffsetReadSeeker(r, 0)
+	err := ii.Unmarshal(rdr)
+	if err != nil {
+		return 0, err
+	}
+	return rdr.Seek(0, io.SeekCurrent)
 }
 
 func (ii *insertionIndex) Codec() multicodec.Code {

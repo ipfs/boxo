@@ -45,7 +45,13 @@ type (
 		// Marshal encodes the index in serial form.
 		Marshal(w io.Writer) (uint64, error)
 		// Unmarshal decodes the index from its serial form.
+		// Deprecated: This function is slurpy and will copy everything into memory.
 		Unmarshal(r io.Reader) error
+
+		// UnmarshalLazyRead is the safe alternative to to Unmarshal.
+		// Instead of slurping it will keep a reference to the the io.ReaderAt passed in
+		// and ask for data as needed.
+		UnmarshalLazyRead(r io.ReaderAt) (indexSize int64, err error)
 
 		// Load inserts a number of records into the index.
 		// Note that Index will load all given records. Any filtering of the records such as
@@ -66,18 +72,6 @@ type (
 		// meaning that no callbacks happen,
 		// ErrNotFound is returned.
 		GetAll(cid.Cid, func(uint64) bool) error
-	}
-
-	// IterableIndex extends Index in cases where the Index is able to
-	// provide an iterator for getting the list of all multihashes in the
-	// index.
-	//
-	// Note that it is possible for an index to contain multiple offsets for
-	// a given multihash.
-	//
-	// See: IterableIndex.ForEach, Index.GetAll.
-	IterableIndex interface {
-		Index
 
 		// ForEach takes a callback function that will be called
 		// on each entry in the index. The arguments to the callback are
@@ -92,6 +86,12 @@ type (
 		//
 		// The order of calls to the given function is deterministic, but entirely index-specific.
 		ForEach(func(multihash.Multihash, uint64) error) error
+	}
+
+	// IterableIndex is an index which support iterating over it's elements
+	// Deprecated: IterableIndex has been moved into Index. Just use Index now.
+	IterableIndex interface {
+		Index
 	}
 )
 
@@ -136,18 +136,30 @@ func WriteTo(idx Index, w io.Writer) (uint64, error) {
 // ReadFrom reads index from r.
 // The reader decodes the index by reading the first byte to interpret the encoding.
 // Returns error if the encoding is not known.
-func ReadFrom(r io.Reader) (Index, error) {
-	code, err := varint.ReadUvarint(internalio.ToByteReader(r))
+func ReadFrom(r io.ReaderAt) (Index, error) {
+	idx, _, err := ReadFromWithSize(r)
+	return idx, err
+}
+
+// ReadFromWithSize is just like ReadFrom but return the size of the Index.
+// The size is only valid when err != nil.
+func ReadFromWithSize(r io.ReaderAt) (Index, int64, error) {
+	code, err := varint.ReadUvarint(internalio.NewOffsetReadSeeker(r, 0))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	codec := multicodec.Code(code)
 	idx, err := New(codec)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	if err := idx.Unmarshal(r); err != nil {
-		return nil, err
+	rdr, err := internalio.NewOffsetReadSeekerWithError(r, int64(varint.UvarintSize(code)))
+	if err != nil {
+		return nil, 0, err
 	}
-	return idx, nil
+	n, err := idx.UnmarshalLazyRead(rdr)
+	if err != nil {
+		return nil, 0, err
+	}
+	return idx, n, nil
 }

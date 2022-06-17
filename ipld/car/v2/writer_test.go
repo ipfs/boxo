@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ipld/go-car/v2/index"
+	"github.com/ipld/go-car/v2/index/testutil"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/stretchr/testify/require"
 
@@ -56,7 +57,7 @@ func TestWrapV1(t *testing.T) {
 	require.NoError(t, err)
 	gotIdx, err := index.ReadFrom(subject.IndexReader())
 	require.NoError(t, err)
-	require.Equal(t, wantIdx, gotIdx)
+	testutil.AssertIndenticalIndexes(t, wantIdx, gotIdx)
 }
 
 func TestExtractV1(t *testing.T) {

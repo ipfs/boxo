@@ -58,7 +58,7 @@ func TestMultiWidthCodedIndex_StableIterate(t *testing.T) {
 	err = subject.Load(records)
 	require.NoError(t, err)
 
-	iterable := subject.(index.IterableIndex)
+	iterable := subject.(index.Index)
 	mh := make([]multihash.Multihash, 0, len(records))
 	require.NoError(t, iterable.ForEach(func(m multihash.Multihash, _ uint64) error {
 		mh = append(mh, m)
