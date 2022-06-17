@@ -79,3 +79,36 @@ func FuzzReader(f *testing.F) {
 		car.GenerateIndex(subject.DataReader())
 	})
 }
+
+func FuzzIndex(f *testing.F) {
+	files, err := filepath.Glob("testdata/*.car")
+	if err != nil {
+		f.Fatal(err)
+	}
+	for _, fname := range files {
+		func() {
+			file, err := os.Open(fname)
+			if err != nil {
+				f.Fatal(err)
+			}
+			defer file.Close()
+			subject, err := car.NewReader(file)
+			if err != nil {
+				return
+			}
+			index := subject.IndexReader()
+			if index == nil {
+				return
+			}
+			data, err := io.ReadAll(index)
+			if err != nil {
+				f.Fatal(err)
+			}
+			f.Add(data)
+		}()
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		index.ReadFrom(bytes.NewReader(data))
+	})
+}
