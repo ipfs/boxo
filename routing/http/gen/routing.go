@@ -1,3 +1,4 @@
+//go:generate go run ./routing.go
 package main
 
 import (
