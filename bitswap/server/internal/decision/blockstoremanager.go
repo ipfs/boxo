@@ -107,7 +107,7 @@ func (bsm *blockstoreManager) getBlockSizes(ctx context.Context, ks []cid.Cid) (
 }
 
 func (bsm *blockstoreManager) getBlocks(ctx context.Context, ks []cid.Cid) (map[cid.Cid]blocks.Block, error) {
-	res := make(map[cid.Cid]blocks.Block)
+	res := make(map[cid.Cid]blocks.Block, len(ks))
 	if len(ks) == 0 {
 		return res, nil
 	}
@@ -120,17 +120,18 @@ func (bsm *blockstoreManager) getBlocks(ctx context.Context, ks []cid.Cid) (map[
 				// Note: this isn't a fatal error. We shouldn't abort the request
 				log.Errorf("blockstore.Get(%s) error: %s", c, err)
 			}
-		} else {
-			lk.Lock()
-			res[c] = blk
-			lk.Unlock()
+			return
 		}
+
+		lk.Lock()
+		res[c] = blk
+		lk.Unlock()
 	})
 }
 
 func (bsm *blockstoreManager) jobPerKey(ctx context.Context, ks []cid.Cid, jobFn func(c cid.Cid)) error {
 	var err error
-	wg := sync.WaitGroup{}
+	var wg sync.WaitGroup
 	for _, k := range ks {
 		c := k
 		wg.Add(1)

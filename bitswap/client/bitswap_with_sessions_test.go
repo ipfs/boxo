@@ -1,4 +1,4 @@
-package bitswap_test
+package client_test
 
 import (
 	"context"
@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	bitswap "github.com/ipfs/go-bitswap"
-	bssession "github.com/ipfs/go-bitswap/internal/session"
-	testinstance "github.com/ipfs/go-bitswap/testinstance"
+	"github.com/ipfs/go-bitswap"
+	"github.com/ipfs/go-bitswap/client/internal/session"
+	testinstance "github.com/ipfs/go-bitswap/client/testinstance"
 	tn "github.com/ipfs/go-bitswap/testnet"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -17,6 +17,24 @@ import (
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 	tu "github.com/libp2p/go-libp2p-testing/etc"
 )
+
+func getVirtualNetwork() tn.Network {
+	// FIXME: the tests are really sensitive to the network delay. fix them to work
+	// well under varying conditions
+	return tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0))
+}
+
+func addBlock(t *testing.T, ctx context.Context, inst testinstance.Instance, blk blocks.Block) {
+	t.Helper()
+	err := inst.Blockstore().Put(ctx, blk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = inst.Exchange.NotifyNewBlocks(ctx, blk)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestBasicSessions(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -154,7 +172,7 @@ func TestSessionSplitFetch(t *testing.T) {
 	}
 
 	// Create a session on the remaining peer and fetch all the blocks 10 at a time
-	ses := inst[10].Exchange.NewSession(ctx).(*bssession.Session)
+	ses := inst[10].Exchange.NewSession(ctx).(*session.Session)
 	ses.SetBaseTickDelay(time.Millisecond * 10)
 
 	for i := 0; i < 10; i++ {
@@ -199,7 +217,7 @@ func TestFetchNotConnected(t *testing.T) {
 	// Note: Peer A and Peer B are not initially connected, so this tests
 	// that Peer B will search for and find Peer A
 	thisNode := ig.Next()
-	ses := thisNode.Exchange.NewSession(ctx).(*bssession.Session)
+	ses := thisNode.Exchange.NewSession(ctx).(*session.Session)
 	ses.SetBaseTickDelay(time.Millisecond * 10)
 
 	ch, err := ses.GetBlocks(ctx, cids)
@@ -245,7 +263,7 @@ func TestFetchAfterDisconnect(t *testing.T) {
 	}
 
 	// Request all blocks with Peer B
-	ses := peerB.Exchange.NewSession(ctx).(*bssession.Session)
+	ses := peerB.Exchange.NewSession(ctx).(*session.Session)
 	ses.SetBaseTickDelay(time.Millisecond * 10)
 
 	ch, err := ses.GetBlocks(ctx, cids)

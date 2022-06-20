@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math/rand"
 
+	"github.com/ipfs/go-bitswap/client/wantlist"
 	bsmsg "github.com/ipfs/go-bitswap/message"
-	"github.com/ipfs/go-bitswap/wantlist"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"

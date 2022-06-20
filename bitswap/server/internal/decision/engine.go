@@ -9,9 +9,11 @@ import (
 
 	"github.com/google/uuid"
 
+	wl "github.com/ipfs/go-bitswap/client/wantlist"
+	"github.com/ipfs/go-bitswap/internal/defaults"
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
-	wl "github.com/ipfs/go-bitswap/wantlist"
+	bmetrics "github.com/ipfs/go-bitswap/metrics"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
@@ -182,6 +184,9 @@ type Engine struct {
 	taskComparator TaskComparator
 
 	peerBlockRequestFilter PeerBlockRequestFilter
+
+	bstoreWorkerCount          int
+	maxOutstandingBytesPerPeer int
 }
 
 // TaskInfo represents the details of a request from a peer.
@@ -227,6 +232,50 @@ func WithTargetMessageSize(size int) Option {
 	}
 }
 
+func WithScoreLedger(scoreledger ScoreLedger) Option {
+	return func(e *Engine) {
+		e.scoreLedger = scoreledger
+	}
+}
+
+// WithBlockstoreWorkerCount sets the number of worker threads used for
+// blockstore operations in the decision engine
+func WithBlockstoreWorkerCount(count int) Option {
+	if count <= 0 {
+		panic(fmt.Sprintf("Engine blockstore worker count is %d but must be > 0", count))
+	}
+	return func(e *Engine) {
+		e.bstoreWorkerCount = count
+	}
+}
+
+// WithTaskWorkerCount sets the number of worker threads used inside the engine
+func WithTaskWorkerCount(count int) Option {
+	if count <= 0 {
+		panic(fmt.Sprintf("Engine task worker count is %d but must be > 0", count))
+	}
+	return func(e *Engine) {
+		e.taskWorkerCount = count
+	}
+}
+
+// WithMaxOutstandingBytesPerPeer describes approximately how much work we are will to have outstanding to a peer at any
+// given time. Setting it to 0 will disable any limiting.
+func WithMaxOutstandingBytesPerPeer(count int) Option {
+	if count < 0 {
+		panic(fmt.Sprintf("max outstanding bytes per peer is %d but must be >= 0", count))
+	}
+	return func(e *Engine) {
+		e.maxOutstandingBytesPerPeer = count
+	}
+}
+
+func WithSetSendDontHave(send bool) Option {
+	return func(e *Engine) {
+		e.sendDontHaves = send
+	}
+}
+
 // wrapTaskComparator wraps a TaskComparator so it can be used as a QueueTaskComparator
 func wrapTaskComparator(tc TaskComparator) peertask.QueueTaskComparator {
 	return func(a, b *peertask.QueueTask) bool {
@@ -257,76 +306,56 @@ func wrapTaskComparator(tc TaskComparator) peertask.QueueTaskComparator {
 // work already outstanding.
 func NewEngine(
 	bs bstore.Blockstore,
-	bstoreWorkerCount,
-	engineTaskWorkerCount, maxOutstandingBytesPerPeer int,
 	peerTagger PeerTagger,
 	self peer.ID,
-	scoreLedger ScoreLedger,
-	pendingEngineGauge metrics.Gauge,
-	activeEngineGauge metrics.Gauge,
-	pendingBlocksGauge metrics.Gauge,
-	activeBlocksGauge metrics.Gauge,
+	metrics *bmetrics.Metrics,
 	opts ...Option,
 ) *Engine {
 	return newEngine(
 		bs,
-		bstoreWorkerCount,
-		engineTaskWorkerCount,
-		maxOutstandingBytesPerPeer,
 		peerTagger,
 		self,
 		maxBlockSizeReplaceHasWithBlock,
-		scoreLedger,
-		pendingEngineGauge,
-		activeEngineGauge,
-		pendingBlocksGauge,
-		activeBlocksGauge,
+		metrics,
 		opts...,
 	)
 }
 
 func newEngine(
 	bs bstore.Blockstore,
-	bstoreWorkerCount,
-	engineTaskWorkerCount, maxOutstandingBytesPerPeer int,
 	peerTagger PeerTagger,
 	self peer.ID,
 	maxReplaceSize int,
-	scoreLedger ScoreLedger,
-	pendingEngineGauge metrics.Gauge,
-	activeEngineGauge metrics.Gauge,
-	pendingBlocksGauge metrics.Gauge,
-	activeBlocksGauge metrics.Gauge,
+	metrics *bmetrics.Metrics,
 	opts ...Option,
 ) *Engine {
 
-	if scoreLedger == nil {
-		scoreLedger = NewDefaultScoreLedger()
-	}
-
 	e := &Engine{
 		ledgerMap:                       make(map[peer.ID]*ledger),
-		scoreLedger:                     scoreLedger,
-		bsm:                             newBlockstoreManager(bs, bstoreWorkerCount, pendingBlocksGauge, activeBlocksGauge),
+		scoreLedger:                     NewDefaultScoreLedger(),
+		bstoreWorkerCount:               defaults.BitswapEngineBlockstoreWorkerCount,
+		maxOutstandingBytesPerPeer:      defaults.BitswapMaxOutstandingBytesPerPeer,
 		peerTagger:                      peerTagger,
 		outbox:                          make(chan (<-chan *Envelope), outboxChanBuffer),
 		workSignal:                      make(chan struct{}, 1),
 		ticker:                          time.NewTicker(time.Millisecond * 100),
 		maxBlockSizeReplaceHasWithBlock: maxReplaceSize,
-		taskWorkerCount:                 engineTaskWorkerCount,
+		taskWorkerCount:                 defaults.BitswapEngineTaskWorkerCount,
 		sendDontHaves:                   true,
 		self:                            self,
 		peerLedger:                      newPeerLedger(),
-		pendingGauge:                    pendingEngineGauge,
-		activeGauge:                     activeEngineGauge,
+		pendingGauge:                    metrics.PendingEngineGauge(),
+		activeGauge:                     metrics.ActiveEngineGauge(),
 		targetMessageSize:               defaultTargetMessageSize,
+		tagQueued:                       fmt.Sprintf(tagFormat, "queued", uuid.New().String()),
+		tagUseful:                       fmt.Sprintf(tagFormat, "useful", uuid.New().String()),
 	}
-	e.tagQueued = fmt.Sprintf(tagFormat, "queued", uuid.New().String())
-	e.tagUseful = fmt.Sprintf(tagFormat, "useful", uuid.New().String())
 
 	for _, opt := range opts {
 		opt(e)
 	}
+
+	e.bsm = newBlockstoreManager(bs, e.bstoreWorkerCount, metrics.PendingBlocksGauge(), metrics.ActiveBlocksGauge())
 
 	// default peer task queue options
 	peerTaskQueueOpts := []peertaskqueue.Option{
@@ -334,7 +363,7 @@ func newEngine(
 		peertaskqueue.OnPeerRemovedHook(e.onPeerRemoved),
 		peertaskqueue.TaskMerger(newTaskMerger()),
 		peertaskqueue.IgnoreFreezing(true),
-		peertaskqueue.MaxOutstandingWorkPerPeer(maxOutstandingBytesPerPeer),
+		peertaskqueue.MaxOutstandingWorkPerPeer(e.maxOutstandingBytesPerPeer),
 	}
 
 	if e.taskComparator != nil {

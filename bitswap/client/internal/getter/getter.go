@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ipfs/go-bitswap/internal"
-	notifications "github.com/ipfs/go-bitswap/internal/notifications"
+	"github.com/ipfs/go-bitswap/client/internal"
+	notifications "github.com/ipfs/go-bitswap/client/internal/notifications"
 	logging "github.com/ipfs/go-log"
 
 	blocks "github.com/ipfs/go-block-format"
