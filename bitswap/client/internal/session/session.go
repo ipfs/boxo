@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/ipfs/go-bitswap/internal"
-	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
-	bsgetter "github.com/ipfs/go-bitswap/internal/getter"
-	notifications "github.com/ipfs/go-bitswap/internal/notifications"
-	bspm "github.com/ipfs/go-bitswap/internal/peermanager"
-	bssim "github.com/ipfs/go-bitswap/internal/sessioninterestmanager"
+	"github.com/ipfs/go-bitswap/client/internal"
+	bsbpm "github.com/ipfs/go-bitswap/client/internal/blockpresencemanager"
+	bsgetter "github.com/ipfs/go-bitswap/client/internal/getter"
+	notifications "github.com/ipfs/go-bitswap/client/internal/notifications"
+	bspm "github.com/ipfs/go-bitswap/client/internal/peermanager"
+	bssim "github.com/ipfs/go-bitswap/client/internal/sessioninterestmanager"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
@@ -476,10 +476,10 @@ func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
 // The session will broadcast if it has outstanding wants and doesn't receive
 // any blocks for some time.
 // The length of time is calculated
-// - initially
-//   as a fixed delay
-// - once some blocks are received
-//   from a base delay and average latency, with a backoff
+//   - initially
+//     as a fixed delay
+//   - once some blocks are received
+//     from a base delay and average latency, with a backoff
 func (s *Session) resetIdleTick() {
 	var tickDelay time.Duration
 	if !s.latencyTrkr.hasLatency() {

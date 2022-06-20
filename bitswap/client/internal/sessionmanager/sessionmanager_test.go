@@ -9,11 +9,11 @@ import (
 
 	delay "github.com/ipfs/go-ipfs-delay"
 
-	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
-	notifications "github.com/ipfs/go-bitswap/internal/notifications"
-	bspm "github.com/ipfs/go-bitswap/internal/peermanager"
-	bssession "github.com/ipfs/go-bitswap/internal/session"
-	bssim "github.com/ipfs/go-bitswap/internal/sessioninterestmanager"
+	bsbpm "github.com/ipfs/go-bitswap/client/internal/blockpresencemanager"
+	notifications "github.com/ipfs/go-bitswap/client/internal/notifications"
+	bspm "github.com/ipfs/go-bitswap/client/internal/peermanager"
+	bssession "github.com/ipfs/go-bitswap/client/internal/session"
+	bssim "github.com/ipfs/go-bitswap/client/internal/sessioninterestmanager"
 	"github.com/ipfs/go-bitswap/internal/testutil"
 
 	blocks "github.com/ipfs/go-block-format"

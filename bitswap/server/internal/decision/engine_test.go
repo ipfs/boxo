@@ -11,11 +11,10 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
-	"github.com/ipfs/go-bitswap/internal/defaults"
 	"github.com/ipfs/go-bitswap/internal/testutil"
 	message "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
-	"github.com/ipfs/go-metrics-interface"
+	"github.com/ipfs/go-bitswap/metrics"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -100,7 +99,7 @@ func newTestEngine(ctx context.Context, idStr string, opts ...Option) engineSet 
 func newTestEngineWithSampling(ctx context.Context, idStr string, peerSampleInterval time.Duration, sampleCh chan struct{}, clock clock.Clock, opts ...Option) engineSet {
 	fpt := &fakePeerTagger{}
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, fpt, "localhost", 0, NewTestScoreLedger(peerSampleInterval, sampleCh, clock), opts...)
+	e := newEngineForTesting(ctx, bs, fpt, "localhost", 0, append(opts[:len(opts):len(opts)], WithScoreLedger(NewTestScoreLedger(peerSampleInterval, sampleCh, clock)), WithBlockstoreWorkerCount(4))...)
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 	return engineSet{
 		Peer: peer.ID(idStr),
@@ -188,31 +187,17 @@ func peerIsPartner(p peer.ID, e *Engine) bool {
 func newEngineForTesting(
 	ctx context.Context,
 	bs blockstore.Blockstore,
-	bstoreWorkerCount,
-	engineTaskWorkerCount, maxOutstandingBytesPerPeer int,
 	peerTagger PeerTagger,
 	self peer.ID,
 	maxReplaceSize int,
-	scoreLedger ScoreLedger,
 	opts ...Option,
 ) *Engine {
-	testPendingEngineGauge := metrics.NewCtx(ctx, "pending_tasks", "Total number of pending tasks").Gauge()
-	testActiveEngineGauge := metrics.NewCtx(ctx, "active_tasks", "Total number of active tasks").Gauge()
-	testPendingBlocksGauge := metrics.NewCtx(ctx, "pending_block_tasks", "Total number of pending blockstore tasks").Gauge()
-	testActiveBlocksGauge := metrics.NewCtx(ctx, "active_block_tasks", "Total number of active blockstore tasks").Gauge()
 	return newEngine(
 		bs,
-		bstoreWorkerCount,
-		engineTaskWorkerCount,
-		maxOutstandingBytesPerPeer,
 		peerTagger,
 		self,
 		maxReplaceSize,
-		scoreLedger,
-		testPendingEngineGauge,
-		testActiveEngineGauge,
-		testPendingBlocksGauge,
-		testActiveBlocksGauge,
+		metrics.New(ctx),
 		opts...,
 	)
 }
@@ -220,7 +205,7 @@ func newEngineForTesting(
 func TestOutboxClosedWhenEngineClosed(t *testing.T) {
 	t.SkipNow() // TODO implement *Engine.Close
 	ctx := context.Background()
-	e := newEngineForTesting(ctx, blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
+	e := newEngineForTesting(ctx, blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -549,7 +534,7 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
+	e := newEngineForTesting(ctx, bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 	for i, testCase := range testCases {
 		t.Logf("Test case %d:", i)
@@ -706,7 +691,7 @@ func TestPartnerWantHaveWantBlockActive(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
+	e := newEngineForTesting(ctx, bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 
 	var next envChan
@@ -891,7 +876,7 @@ func TestPartnerWantsThenCancels(t *testing.T) {
 	ctx := context.Background()
 	for i := 0; i < numRounds; i++ {
 		expected := make([][]string, 0, len(testcases))
-		e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
+		e := newEngineForTesting(ctx, bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
 		e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 		for _, testcase := range testcases {
 			set := testcase[0]
@@ -917,7 +902,7 @@ func TestSendReceivedBlocksToPeersThatWantThem(t *testing.T) {
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
 
 	ctx := context.Background()
-	e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
+	e := newEngineForTesting(ctx, bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 
 	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
@@ -963,7 +948,7 @@ func TestSendDontHave(t *testing.T) {
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
 
 	ctx := context.Background()
-	e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
+	e := newEngineForTesting(ctx, bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 
 	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
@@ -1029,7 +1014,7 @@ func TestWantlistForPeer(t *testing.T) {
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
 
 	ctx := context.Background()
-	e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, &fakePeerTagger{}, "localhost", 0, NewTestScoreLedger(shortTerm, nil, clock.New()))
+	e := newEngineForTesting(ctx, bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 
 	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
@@ -1079,8 +1064,7 @@ func TestTaskComparator(t *testing.T) {
 	}
 
 	// use a single task worker so that the order of outgoing messages is deterministic
-	engineTaskWorkerCount := 1
-	e := newEngineForTesting(ctx, bs, 4, engineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, fpt, "localhost", 0, sl,
+	e := newEngineForTesting(ctx, bs, fpt, "localhost", 0, WithScoreLedger(sl), WithBlockstoreWorkerCount(4), WithTaskWorkerCount(1),
 		// if this Option is omitted, the test fails
 		WithTaskComparator(func(ta, tb *TaskInfo) bool {
 			// prioritize based on lexicographic ordering of block content
@@ -1139,7 +1123,7 @@ func TestPeerBlockFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, fpt, "localhost", 0, sl,
+	e := newEngineForTesting(ctx, bs, fpt, "localhost", 0, WithScoreLedger(sl), WithBlockstoreWorkerCount(4),
 		WithPeerBlockRequestFilter(func(p peer.ID, c cid.Cid) bool {
 			// peer 0 has access to everything
 			if p == peerIDs[0] {
@@ -1296,7 +1280,7 @@ func TestPeerBlockFilterMutability(t *testing.T) {
 
 	filterAllowList := make(map[cid.Cid]bool)
 
-	e := newEngineForTesting(ctx, bs, 4, defaults.BitswapEngineTaskWorkerCount, defaults.BitswapMaxOutstandingBytesPerPeer, fpt, "localhost", 0, sl,
+	e := newEngineForTesting(ctx, bs, fpt, "localhost", 0, WithScoreLedger(sl), WithBlockstoreWorkerCount(4),
 		WithPeerBlockRequestFilter(func(p peer.ID, c cid.Cid) bool {
 			return filterAllowList[c]
 		}),

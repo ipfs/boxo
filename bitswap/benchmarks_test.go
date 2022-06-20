@@ -17,10 +17,9 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
 
-	bitswap "github.com/ipfs/go-bitswap"
-	bssession "github.com/ipfs/go-bitswap/internal/session"
+	"github.com/ipfs/go-bitswap"
+	testinstance "github.com/ipfs/go-bitswap/client/testinstance"
 	bsnet "github.com/ipfs/go-bitswap/network"
-	testinstance "github.com/ipfs/go-bitswap/testinstance"
 	tn "github.com/ipfs/go-bitswap/testnet"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
@@ -498,7 +497,7 @@ func onePeerPerBlock(b *testing.B, provs []testinstance.Instance, blks []blocks.
 }
 
 func oneAtATime(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
-	ses := bs.NewSession(context.Background()).(*bssession.Session)
+	ses := bs.NewSession(context.Background())
 	for _, c := range ks {
 		_, err := ses.GetBlock(context.Background(), c)
 		if err != nil {

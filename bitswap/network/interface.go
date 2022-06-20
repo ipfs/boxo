@@ -36,7 +36,7 @@ type BitSwapNetwork interface {
 		bsmsg.BitSwapMessage) error
 
 	// Start registers the Reciver and starts handling new messages, connectivity events, etc.
-	Start(Receiver)
+	Start(...Receiver)
 	// Stop stops the network service.
 	Stop()
 

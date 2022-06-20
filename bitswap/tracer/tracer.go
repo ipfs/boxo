@@ -1,4 +1,4 @@
-package bitswap
+package tracer
 
 import (
 	bsmsg "github.com/ipfs/go-bitswap/message"
@@ -10,11 +10,4 @@ import (
 type Tracer interface {
 	MessageReceived(peer.ID, bsmsg.BitSwapMessage)
 	MessageSent(peer.ID, bsmsg.BitSwapMessage)
-}
-
-// Configures Bitswap to use given tracer.
-func WithTracer(tap Tracer) Option {
-	return func(bs *Bitswap) {
-		bs.tracer = tap
-	}
 }

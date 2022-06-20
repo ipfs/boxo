@@ -9,14 +9,13 @@ import (
 	"testing"
 	"time"
 
-	bitswap "github.com/ipfs/go-bitswap"
-	deciface "github.com/ipfs/go-bitswap/decision"
-	decision "github.com/ipfs/go-bitswap/internal/decision"
-	bssession "github.com/ipfs/go-bitswap/internal/session"
+	"github.com/ipfs/go-bitswap"
+	testinstance "github.com/ipfs/go-bitswap/client/testinstance"
 	bsmsg "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
-	testinstance "github.com/ipfs/go-bitswap/testinstance"
+	"github.com/ipfs/go-bitswap/server"
 	tn "github.com/ipfs/go-bitswap/testnet"
+	"github.com/ipfs/go-bitswap/tracer"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	detectrace "github.com/ipfs/go-detect-race"
@@ -34,14 +33,6 @@ func isCI() bool {
 	return os.Getenv("CI") != ""
 }
 
-// FIXME the tests are really sensitive to the network delay. fix them to work
-// well under varying conditions
-const kNetworkDelay = 0 * time.Millisecond
-
-func getVirtualNetwork() tn.Network {
-	return tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
-}
-
 func addBlock(t *testing.T, ctx context.Context, inst testinstance.Instance, blk blocks.Block) {
 	t.Helper()
 	err := inst.Blockstore().Put(ctx, blk)
@@ -54,8 +45,12 @@ func addBlock(t *testing.T, ctx context.Context, inst testinstance.Instance, blk
 	}
 }
 
+// FIXME the tests are really sensitive to the network delay. fix them to work
+// well under varying conditions
+const kNetworkDelay = 0 * time.Millisecond
+
 func TestClose(t *testing.T) {
-	vnet := getVirtualNetwork()
+	vnet := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
@@ -143,7 +138,7 @@ func TestDoesNotProvideWhenConfiguredNotTo(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
 	defer cancel()
 
-	ns := wantsBlock.Exchange.NewSession(ctx).(*bssession.Session)
+	ns := wantsBlock.Exchange.NewSession(ctx)
 
 	received, err := ns.GetBlock(ctx, block.Cid())
 	if received != nil {
@@ -191,7 +186,8 @@ func TestUnwantedBlockNotAdded(t *testing.T) {
 // blockstore in the following scenario:
 // - the want for the block has been requested by the client
 // - the want for the block has not yet been sent out to a peer
-//   (because the live request queue is full)
+//
+//	(because the live request queue is full)
 func TestPendingBlockAdded(t *testing.T) {
 	ctx := context.Background()
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
@@ -627,7 +623,7 @@ func TestWantlistCleanup(t *testing.T) {
 	}
 }
 
-func assertLedgerMatch(ra, rb *decision.Receipt) error {
+func assertLedgerMatch(ra, rb *server.Receipt) error {
 	if ra.Sent != rb.Recv {
 		return fmt.Errorf("mismatch in ledgers (exchanged bytes): %d sent vs %d recvd", ra.Sent, rb.Recv)
 	}
@@ -643,7 +639,7 @@ func assertLedgerMatch(ra, rb *decision.Receipt) error {
 	return nil
 }
 
-func assertLedgerEqual(ra, rb *decision.Receipt) error {
+func assertLedgerEqual(ra, rb *server.Receipt) error {
 	if ra.Value != rb.Value {
 		return fmt.Errorf("mismatch in ledgers (value/debt ratio): %f vs %f ", ra.Value, rb.Value)
 	}
@@ -663,8 +659,8 @@ func assertLedgerEqual(ra, rb *decision.Receipt) error {
 	return nil
 }
 
-func newReceipt(sent, recv, exchanged uint64) *decision.Receipt {
-	return &decision.Receipt{
+func newReceipt(sent, recv, exchanged uint64) *server.Receipt {
+	return &server.Receipt{
 		Peer:      "test",
 		Value:     float64(sent) / (1 + float64(recv)),
 		Sent:      sent,
@@ -780,7 +776,7 @@ func TestBitswapLedgerTwoWay(t *testing.T) {
 }
 
 type testingScoreLedger struct {
-	scorePeer deciface.ScorePeerFunc
+	scorePeer server.ScorePeerFunc
 	started   chan struct{}
 	closed    chan struct{}
 }
@@ -793,14 +789,14 @@ func newTestingScoreLedger() *testingScoreLedger {
 	}
 }
 
-func (tsl *testingScoreLedger) GetReceipt(p peer.ID) *deciface.Receipt {
+func (tsl *testingScoreLedger) GetReceipt(p peer.ID) *server.Receipt {
 	return nil
 }
 func (tsl *testingScoreLedger) AddToSentBytes(p peer.ID, n int)     {}
 func (tsl *testingScoreLedger) AddToReceivedBytes(p peer.ID, n int) {}
 func (tsl *testingScoreLedger) PeerConnected(p peer.ID)             {}
 func (tsl *testingScoreLedger) PeerDisconnected(p peer.ID)          {}
-func (tsl *testingScoreLedger) Start(scorePeer deciface.ScorePeerFunc) {
+func (tsl *testingScoreLedger) Start(scorePeer server.ScorePeerFunc) {
 	tsl.scorePeer = scorePeer
 	close(tsl.started)
 }
@@ -873,7 +869,7 @@ func TestTracer(t *testing.T) {
 
 	// Install Tracer
 	wiretap := new(mockTracer)
-	bitswap.WithTracer(wiretap)(instances[0].Exchange)
+	updateTracer(instances[0].Exchange, wiretap)
 
 	// First peer has block
 	addBlock(t, context.Background(), instances[0], blocks[0])
@@ -955,7 +951,7 @@ func TestTracer(t *testing.T) {
 	}
 
 	// After disabling WireTap, no new messages are logged
-	bitswap.WithTracer(nil)(instances[0].Exchange)
+	updateTracer(instances[0].Exchange, nil)
 
 	addBlock(t, context.Background(), instances[0], blocks[1])
 
@@ -984,4 +980,8 @@ func TestTracer(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+func updateTracer(bs *bitswap.Bitswap, tap tracer.Tracer) {
+	bitswap.WithTracer(tap).V.(func(*bitswap.Bitswap))(bs)
 }
