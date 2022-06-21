@@ -4,11 +4,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ipld/go-car/v2/index"
-
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 )
+
+type Index interface {
+	ForEach(func(multihash.Multihash, uint64) error) error
+}
 
 // insertUint64 perform one round of insertion sort on the last element
 func insertUint64(s []uint64) {
@@ -28,7 +30,7 @@ func insertUint64(s []uint64) {
 	}
 }
 
-func AssertIndenticalIndexes(t *testing.T, a, b index.Index) {
+func AssertIndenticalIndexes(t *testing.T, a, b Index) {
 	var wg sync.Mutex
 	wg.Lock()
 	// key is multihash.Multihash.HexString

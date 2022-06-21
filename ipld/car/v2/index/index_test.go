@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipld/go-car/v2/index/testutil"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
 	"github.com/multiformats/go-multicodec"
@@ -112,7 +113,7 @@ func TestWriteTo(t *testing.T) {
 	require.NoError(t, err)
 
 	// Assert they are equal
-	require.Equal(t, wantIdx, gotIdx)
+	testutil.AssertIndenticalIndexes(t, wantIdx, gotIdx)
 }
 
 func TestMarshalledIndexStartsWithCodec(t *testing.T) {

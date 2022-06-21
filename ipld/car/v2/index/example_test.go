@@ -5,10 +5,10 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"reflect"
 
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
+	"github.com/multiformats/go-multihash"
 )
 
 // ExampleReadFrom unmarshalls an index from an indexed CARv2 file, and for each root CID prints the
@@ -94,12 +94,26 @@ func ExampleWriteTo() {
 		panic(err)
 	}
 
-	// Expect indices to be equal.
-	if reflect.DeepEqual(idx, reReadIdx) {
-		fmt.Printf("Saved index file matches the index embedded in CARv2 at %v.\n", src)
-	} else {
+	// Expect indices to be equal - collect all of the multihashes and their
+	// offsets from the first and compare to the second
+	mha := make(map[string]uint64, 0)
+	_ = idx.ForEach(func(mh multihash.Multihash, off uint64) error {
+		mha[mh.HexString()] = off
+		return nil
+	})
+	var count int
+	_ = reReadIdx.ForEach(func(mh multihash.Multihash, off uint64) error {
+		count++
+		if expectedOffset, ok := mha[mh.HexString()]; !ok || expectedOffset != off {
+			panic("expected to get the same index as the CARv2 file")
+		}
+		return nil
+	})
+	if count != len(mha) {
 		panic("expected to get the same index as the CARv2 file")
 	}
+
+	fmt.Printf("Saved index file matches the index embedded in CARv2 at %v.\n", src)
 
 	// Output:
 	// Saved index file matches the index embedded in CARv2 at ../testdata/sample-wrapped-v2.car.

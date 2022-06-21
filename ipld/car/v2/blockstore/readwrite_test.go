@@ -21,6 +21,7 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/blockstore"
 	"github.com/ipld/go-car/v2/index"
+	"github.com/ipld/go-car/v2/index/testutil"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
@@ -519,7 +520,7 @@ func TestBlockstoreResumption(t *testing.T) {
 	require.NoError(t, err)
 	wantIdx, err := carv2.GenerateIndex(v2r.DataReader())
 	require.NoError(t, err)
-	require.Equal(t, wantIdx, gotIdx)
+	testutil.AssertIndenticalIndexes(t, wantIdx, gotIdx)
 }
 
 func TestBlockstoreResumptionIsSupportedOnFinalizedFile(t *testing.T) {
