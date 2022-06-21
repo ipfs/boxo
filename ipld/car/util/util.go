@@ -12,12 +12,11 @@ import (
 	mh "github.com/multiformats/go-multihash"
 )
 
-// MaxAllowedHeaderSize hint about how big the header red are allowed to be.
-// This value is a hint to avoid OOMs, a parser that cannot OOM because it is
-// streaming for example, isn't forced to follow that value.
-// Deprecated: You should use v2#NewReader instead since it allows for options
-// to be passed in.
-var MaxAllowedHeaderSize uint = 1024
+// MaxAllowedSectionSize dictates the maximum number of bytes that a CARv1 header
+// or section is allowed to occupy without causing a decode to error.
+// This cannot be supplied as an option, only adjusted as a global. You should
+// use v2#NewReader instead since it allows for options to be passed in.
+var MaxAllowedSectionSize uint = 32 << 20 // 32MiB
 
 var cidv0Pref = []byte{0x12, 0x20}
 
@@ -124,8 +123,8 @@ func LdRead(r *bufio.Reader) ([]byte, error) {
 		return nil, err
 	}
 
-	if l > uint64(MaxAllowedHeaderSize) { // Don't OOM
-		return nil, errors.New("malformed car; header is bigger than util.MaxAllowedHeaderSize")
+	if l > uint64(MaxAllowedSectionSize) { // Don't OOM
+		return nil, errors.New("malformed car; header is bigger than util.MaxAllowedSectionSize")
 	}
 
 	buf := make([]byte, l)
