@@ -113,7 +113,7 @@ func (r *Reader) IndexReader() io.ReaderAt {
 	if r.Version == 1 || !r.Header.HasIndex() {
 		return nil
 	}
-	return io.NewSectionReader(r.r, int64(r.Header.IndexOffset), int64(r.Header.DataSize)-int64(r.Header.IndexOffset))
+	return internalio.NewOffsetReadSeeker(r.r, int64(r.Header.IndexOffset))
 }
 
 // Close closes the underlying reader if it was opened by OpenReader.
