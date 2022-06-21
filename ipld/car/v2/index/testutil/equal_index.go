@@ -41,7 +41,7 @@ func AssertIndenticalIndexes(t *testing.T, a, b Index) {
 		a.ForEach(func(mh multihash.Multihash, off uint64) error {
 			aCount++
 			str := mh.HexString()
-			slice, _ := aMap[str]
+			slice := aMap[str]
 			slice = append(slice, off)
 			insertUint64(slice)
 			aMap[str] = slice
@@ -54,7 +54,7 @@ func AssertIndenticalIndexes(t *testing.T, a, b Index) {
 	a.ForEach(func(mh multihash.Multihash, off uint64) error {
 		bCount++
 		str := mh.HexString()
-		slice, _ := bMap[str]
+		slice := bMap[str]
 		slice = append(slice, off)
 		insertUint64(slice)
 		bMap[str] = slice
