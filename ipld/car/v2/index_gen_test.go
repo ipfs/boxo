@@ -256,7 +256,7 @@ func generateMultihashSortedIndex(t *testing.T, path string) *index.MultihashInd
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, f.Close()) })
 	reader := internalio.ToByteReadSeeker(f)
-	header, err := carv1.ReadHeader(reader)
+	header, err := carv1.ReadHeader(reader, carv1.DefaultMaxAllowedHeaderSize)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), header.Version)
 

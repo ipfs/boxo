@@ -30,9 +30,11 @@ type BlockReader struct {
 //
 // See BlockReader.Next
 func NewBlockReader(r io.Reader, opts ...Option) (*BlockReader, error) {
+	options := ApplyOptions(opts...)
+
 	// Read CARv1 header or CARv2 pragma.
 	// Both are a valid CARv1 header, therefore are read as such.
-	pragmaOrV1Header, err := carv1.ReadHeader(r)
+	pragmaOrV1Header, err := carv1.ReadHeader(r, options.MaxAllowedHeaderSize)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +42,7 @@ func NewBlockReader(r io.Reader, opts ...Option) (*BlockReader, error) {
 	// Populate the block reader version and options.
 	br := &BlockReader{
 		Version: pragmaOrV1Header.Version,
-		opts:    ApplyOptions(opts...),
+		opts:    options,
 	}
 
 	// Expect either version 1 or 2.
@@ -92,7 +94,7 @@ func NewBlockReader(r io.Reader, opts ...Option) (*BlockReader, error) {
 		br.r = io.LimitReader(r, dataSize)
 
 		// Populate br.Roots by reading the inner CARv1 data payload header.
-		header, err := carv1.ReadHeader(br.r)
+		header, err := carv1.ReadHeader(br.r, options.MaxAllowedHeaderSize)
 		if err != nil {
 			return nil, err
 		}
@@ -120,7 +122,7 @@ func NewBlockReader(r io.Reader, opts ...Option) (*BlockReader, error) {
 // immediately upon encountering a zero-length section without reading any further bytes from the
 // underlying io.Reader.
 func (br *BlockReader) Next() (blocks.Block, error) {
-	c, data, err := util.ReadNode(br.r, br.opts.ZeroLengthSectionAsEOF)
+	c, data, err := util.ReadNode(br.r, br.opts.ZeroLengthSectionAsEOF, br.opts.MaxAllowedSectionSize)
 	if err != nil {
 		return nil, err
 	}

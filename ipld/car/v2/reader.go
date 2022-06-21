@@ -51,7 +51,7 @@ func NewReader(r io.ReaderAt, opts ...Option) (*Reader, error) {
 
 	or := internalio.NewOffsetReadSeeker(r, 0)
 	var err error
-	cr.Version, err = ReadVersion(or)
+	cr.Version, err = ReadVersion(or, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (r *Reader) Roots() ([]cid.Cid, error) {
 	if r.roots != nil {
 		return r.roots, nil
 	}
-	header, err := carv1.ReadHeader(r.DataReader())
+	header, err := carv1.ReadHeader(r.DataReader(), r.opts.MaxAllowedHeaderSize)
 	if err != nil {
 		return nil, err
 	}
@@ -126,8 +126,9 @@ func (r *Reader) Close() error {
 
 // ReadVersion reads the version from the pragma.
 // This function accepts both CARv1 and CARv2 payloads.
-func ReadVersion(r io.Reader) (uint64, error) {
-	header, err := carv1.ReadHeader(r)
+func ReadVersion(r io.Reader, opts ...Option) (uint64, error) {
+	o := ApplyOptions(opts...)
+	header, err := carv1.ReadHeader(r, o.MaxAllowedHeaderSize)
 	if err != nil {
 		return 0, err
 	}

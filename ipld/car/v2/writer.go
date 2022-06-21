@@ -105,7 +105,7 @@ func WrapV1(src io.ReadSeeker, dst io.Writer, opts ...Option) error {
 // for example, it should use copy_file_range on recent Linux versions.
 // This API should be preferred over copying directly via Reader.DataReader,
 // as it should allow for better performance while always being at least as efficient.
-func ExtractV1File(srcPath, dstPath string) (err error) {
+func ExtractV1File(srcPath, dstPath string, opts ...Option) (err error) {
 	src, err := os.Open(srcPath)
 	if err != nil {
 		return err
@@ -115,7 +115,7 @@ func ExtractV1File(srcPath, dstPath string) (err error) {
 	defer src.Close()
 
 	// Detect CAR version.
-	version, err := ReadVersion(src)
+	version, err := ReadVersion(src, opts...)
 	if err != nil {
 		return err
 	}
@@ -220,7 +220,7 @@ func AttachIndex(path string, idx index.Index, offset uint64) error {
 //
 // Note that the roots are only replaced if their total serialized size exactly matches the total
 // serialized size of existing roots in CAR file.
-func ReplaceRootsInFile(path string, roots []cid.Cid) (err error) {
+func ReplaceRootsInFile(path string, roots []cid.Cid, opts ...Option) (err error) {
 	f, err := os.OpenFile(path, os.O_RDWR, 0o666)
 	if err != nil {
 		return err
@@ -232,8 +232,10 @@ func ReplaceRootsInFile(path string, roots []cid.Cid) (err error) {
 		}
 	}()
 
+	options := ApplyOptions(opts...)
+
 	// Read header or pragma; note that both are a valid CARv1 header.
-	header, err := carv1.ReadHeader(f)
+	header, err := carv1.ReadHeader(f, options.MaxAllowedHeaderSize)
 	if err != nil {
 		return err
 	}
@@ -267,7 +269,7 @@ func ReplaceRootsInFile(path string, roots []cid.Cid) (err error) {
 			return err
 		}
 		var innerV1Header *carv1.CarHeader
-		innerV1Header, err = carv1.ReadHeader(f)
+		innerV1Header, err = carv1.ReadHeader(f, options.MaxAllowedHeaderSize)
 		if err != nil {
 			return err
 		}

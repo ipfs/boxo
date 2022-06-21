@@ -37,7 +37,7 @@ func TestCarV2PragmaLength(t *testing.T) {
 }
 
 func TestCarV2PragmaIsValidCarV1Header(t *testing.T) {
-	v1h, err := carv1.ReadHeader(bytes.NewReader(carv2.Pragma))
+	v1h, err := carv1.ReadHeader(bytes.NewReader(carv2.Pragma), carv1.DefaultMaxAllowedHeaderSize)
 	assert.NoError(t, err, "cannot decode pragma as CBOR with CARv1 header structure")
 	assert.Equal(t, &carv1.CarHeader{
 		Roots:   nil,

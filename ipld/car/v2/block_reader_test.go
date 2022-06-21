@@ -1,12 +1,17 @@
 package car_test
 
 import (
+	"bytes"
+	"encoding/hex"
 	"io"
 	"os"
 	"testing"
 
+	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/internal/carv1"
+	mh "github.com/multiformats/go-multihash"
+	"github.com/multiformats/go-varint"
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,6 +107,56 @@ func TestBlockReader_WithCarV1Consistency(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMaxSectionLength(t *testing.T) {
+	// headerHex is the zero-roots CARv1 header
+	const headerHex = "11a265726f6f7473806776657273696f6e01"
+	headerBytes, _ := hex.DecodeString(headerHex)
+	// 8 MiB block of zeros
+	block := make([]byte, 8<<20)
+	// CID for that block
+	pfx := cid.NewPrefixV1(cid.Raw, mh.SHA2_256)
+	cid, err := pfx.Sum(block)
+	require.NoError(t, err)
+
+	// construct CAR
+	var buf bytes.Buffer
+	buf.Write(headerBytes)
+	buf.Write(varint.ToUvarint(uint64(len(cid.Bytes()) + len(block))))
+	buf.Write(cid.Bytes())
+	buf.Write(block)
+
+	// try to read it
+	car, err := carv2.NewBlockReader(bytes.NewReader(buf.Bytes()))
+	require.NoError(t, err)
+	// error should occur on first section read
+	_, err = car.Next()
+	require.EqualError(t, err, "invalid section data, length of read beyond allowable maximum")
+
+	// successful read by expanding the max section size
+	car, err = carv2.NewBlockReader(bytes.NewReader(buf.Bytes()), carv2.MaxAllowedSectionSize((8<<20)+40))
+	require.NoError(t, err)
+	// can now read block and get our 8 MiB zeroed byte array
+	readBlock, err := car.Next()
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(block, readBlock.RawData()))
+}
+
+func TestMaxHeaderLength(t *testing.T) {
+	// headerHex is the is a 5 root CARv1 header
+	const headerHex = "de01a265726f6f747385d82a58250001711220785197229dc8bb1152945da58e2348f7e279eeded06cc2ca736d0e879858b501d82a58250001711220785197229dc8bb1152945da58e2348f7e279eeded06cc2ca736d0e879858b501d82a58250001711220785197229dc8bb1152945da58e2348f7e279eeded06cc2ca736d0e879858b501d82a58250001711220785197229dc8bb1152945da58e2348f7e279eeded06cc2ca736d0e879858b501d82a58250001711220785197229dc8bb1152945da58e2348f7e279eeded06cc2ca736d0e879858b5016776657273696f6e01"
+	headerBytes, _ := hex.DecodeString(headerHex)
+	c, _ := cid.Decode("bafyreidykglsfhoixmivffc5uwhcgshx4j465xwqntbmu43nb2dzqwfvae")
+
+	// successful read
+	car, err := carv2.NewBlockReader(bytes.NewReader(headerBytes))
+	require.NoError(t, err)
+	require.ElementsMatch(t, []cid.Cid{c, c, c, c, c}, car.Roots)
+
+	// unsuccessful read, low allowable max header length (length - 3 because there are 2 bytes in the length varint prefix)
+	_, err = carv2.NewBlockReader(bytes.NewReader(headerBytes), carv2.MaxAllowedHeaderSize(uint64(len(headerBytes)-3)))
+	require.EqualError(t, err, "invalid header data, length of read beyond allowable maximum")
 }
 
 func requireReaderFromPath(t *testing.T, path string) io.Reader {

@@ -98,7 +98,7 @@ func NewReadOnly(backing io.ReaderAt, idx index.Index, opts ...carv2.Option) (*R
 		opts: carv2.ApplyOptions(opts...),
 	}
 
-	version, err := readVersion(backing)
+	version, err := readVersion(backing, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func NewReadOnly(backing io.ReaderAt, idx index.Index, opts ...carv2.Option) (*R
 	}
 }
 
-func readVersion(at io.ReaderAt) (uint64, error) {
+func readVersion(at io.ReaderAt, opts ...carv2.Option) (uint64, error) {
 	var rr io.Reader
 	switch r := at.(type) {
 	case io.Reader:
@@ -143,7 +143,7 @@ func readVersion(at io.ReaderAt) (uint64, error) {
 	default:
 		rr = internalio.NewOffsetReadSeeker(r, 0)
 	}
-	return carv2.ReadVersion(rr)
+	return carv2.ReadVersion(rr, opts...)
 }
 
 func generateIndex(at io.ReaderAt, opts ...carv2.Option) (index.Index, error) {
@@ -186,7 +186,7 @@ func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
 	if err != nil {
 		return cid.Cid{}, nil, err
 	}
-	return util.ReadNode(r, b.opts.ZeroLengthSectionAsEOF)
+	return util.ReadNode(r, b.opts.ZeroLengthSectionAsEOF, b.opts.MaxAllowedSectionSize)
 }
 
 // DeleteBlock is unsupported and always errors.
@@ -401,7 +401,7 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 
 	// TODO we may use this walk for populating the index, and we need to be able to iterate keys in this way somewhere for index generation. In general though, when it's asked for all keys from a blockstore with an index, we should iterate through the index when possible rather than linear reads through the full car.
 	rdr := internalio.NewOffsetReadSeeker(b.backing, 0)
-	header, err := carv1.ReadHeader(rdr)
+	header, err := carv1.ReadHeader(rdr, b.opts.MaxAllowedHeaderSize)
 	if err != nil {
 		b.mu.RUnlock() // don't hold the mutex forever
 		return nil, fmt.Errorf("error reading car header: %w", err)
@@ -491,7 +491,7 @@ func (b *ReadOnly) HashOnRead(bool) {
 
 // Roots returns the root CIDs of the backing CAR.
 func (b *ReadOnly) Roots() ([]cid.Cid, error) {
-	header, err := carv1.ReadHeader(internalio.NewOffsetReadSeeker(b.backing, 0))
+	header, err := carv1.ReadHeader(internalio.NewOffsetReadSeeker(b.backing, 0), b.opts.MaxAllowedHeaderSize)
 	if err != nil {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}

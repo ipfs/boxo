@@ -169,11 +169,11 @@ func (b *ReadWrite) initWithRoots(v2 bool, roots []cid.Cid) error {
 	return carv1.WriteHeader(&carv1.CarHeader{Roots: roots, Version: 1}, b.dataWriter)
 }
 
-func (b *ReadWrite) resumeWithRoots(v2 bool, roots []cid.Cid) error {
+func (b *ReadWrite) resumeWithRoots(v2 bool, roots []cid.Cid, opts ...carv2.Option) error {
 	// On resumption it is expected that the CARv2 Pragma, and the CARv1 header is successfully written.
 	// Otherwise we cannot resume from the file.
 	// Read pragma to assert if b.f is indeed a CARv2.
-	version, err := carv2.ReadVersion(b.f)
+	version, err := carv2.ReadVersion(b.f, opts...)
 	if err != nil {
 		// The file is not a valid CAR file and cannot resume from it.
 		// Or the write must have failed before pragma was written.
@@ -224,7 +224,7 @@ func (b *ReadWrite) resumeWithRoots(v2 bool, roots []cid.Cid) error {
 
 	// Use the given CARv1 padding to instantiate the CARv1 reader on file.
 	v1r := internalio.NewOffsetReadSeeker(b.ronly.backing, 0)
-	header, err := carv1.ReadHeader(v1r)
+	header, err := carv1.ReadHeader(v1r, b.opts.MaxAllowedHeaderSize)
 	if err != nil {
 		// Cannot read the CARv1 header; the file is most likely corrupt.
 		return fmt.Errorf("error reading car header: %w", err)

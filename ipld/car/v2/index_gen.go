@@ -37,8 +37,11 @@ func GenerateIndex(v1r io.Reader, opts ...Option) (index.Index, error) {
 // Note, the index is re-generated every time even if r is in CARv2 format and already has an index.
 // To read existing index when available see ReadOrGenerateIndex.
 func LoadIndex(idx index.Index, r io.Reader, opts ...Option) error {
+	// Parse Options.
+	o := ApplyOptions(opts...)
+
 	reader := internalio.ToByteReadSeeker(r)
-	pragma, err := carv1.ReadHeader(r)
+	pragma, err := carv1.ReadHeader(r, o.MaxAllowedHeaderSize)
 	if err != nil {
 		return fmt.Errorf("error reading car header: %w", err)
 	}
@@ -78,7 +81,7 @@ func LoadIndex(idx index.Index, r io.Reader, opts ...Option) error {
 		dataOffset = int64(v2h.DataOffset)
 
 		// Read the inner CARv1 header to skip it and sanity check it.
-		v1h, err := carv1.ReadHeader(reader)
+		v1h, err := carv1.ReadHeader(reader, o.MaxAllowedHeaderSize)
 		if err != nil {
 			return err
 		}
@@ -103,9 +106,6 @@ func LoadIndex(idx index.Index, r io.Reader, opts ...Option) error {
 	// Subtract the data offset; if CARv1 this would be zero otherwise the value will come from the
 	// CARv2 header.
 	sectionOffset -= dataOffset
-
-	// Parse Options.
-	o := ApplyOptions(opts...)
 
 	records := make([]index.Record, 0)
 	for {
@@ -188,7 +188,7 @@ func GenerateIndexFromFile(path string, opts ...Option) (index.Index, error) {
 // given reader to fulfill index lookup.
 func ReadOrGenerateIndex(rs io.ReadSeeker, opts ...Option) (index.Index, error) {
 	// Read version.
-	version, err := ReadVersion(rs)
+	version, err := ReadVersion(rs, opts...)
 	if err != nil {
 		return nil, err
 	}

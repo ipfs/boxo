@@ -14,6 +14,9 @@ import (
 	"github.com/ipfs/go-merkledag"
 )
 
+const DefaultMaxAllowedHeaderSize uint64 = 32 << 20 // 32MiB
+const DefaultMaxAllowedSectionSize uint64 = 8 << 20 // 8MiB
+
 func init() {
 	cbor.RegisterCborType(CarHeader{})
 }
@@ -56,9 +59,12 @@ func WriteCar(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.W
 	return nil
 }
 
-func ReadHeader(r io.Reader) (*CarHeader, error) {
-	hb, err := util.LdRead(r, false)
+func ReadHeader(r io.Reader, maxReadBytes uint64) (*CarHeader, error) {
+	hb, err := util.LdRead(r, false, maxReadBytes)
 	if err != nil {
+		if err == util.ErrSectionTooLarge {
+			err = util.ErrHeaderTooLarge
+		}
 		return nil, err
 	}
 
@@ -106,21 +112,22 @@ func (cw *carWriter) writeNode(ctx context.Context, nd format.Node) error {
 }
 
 type CarReader struct {
-	r            io.Reader
-	Header       *CarHeader
-	zeroLenAsEOF bool
+	r                     io.Reader
+	Header                *CarHeader
+	zeroLenAsEOF          bool
+	maxAllowedSectionSize uint64
 }
 
 func NewCarReaderWithZeroLengthSectionAsEOF(r io.Reader) (*CarReader, error) {
-	return newCarReader(r, true)
+	return NewCarReaderWithoutDefaults(r, true, DefaultMaxAllowedHeaderSize, DefaultMaxAllowedSectionSize)
 }
 
 func NewCarReader(r io.Reader) (*CarReader, error) {
-	return newCarReader(r, false)
+	return NewCarReaderWithoutDefaults(r, false, DefaultMaxAllowedHeaderSize, DefaultMaxAllowedSectionSize)
 }
 
-func newCarReader(r io.Reader, zeroLenAsEOF bool) (*CarReader, error) {
-	ch, err := ReadHeader(r)
+func NewCarReaderWithoutDefaults(r io.Reader, zeroLenAsEOF bool, maxAllowedHeaderSize uint64, maxAllowedSectionSize uint64) (*CarReader, error) {
+	ch, err := ReadHeader(r, maxAllowedHeaderSize)
 	if err != nil {
 		return nil, err
 	}
@@ -134,14 +141,15 @@ func newCarReader(r io.Reader, zeroLenAsEOF bool) (*CarReader, error) {
 	}
 
 	return &CarReader{
-		r:            r,
-		Header:       ch,
-		zeroLenAsEOF: zeroLenAsEOF,
+		r:                     r,
+		Header:                ch,
+		zeroLenAsEOF:          zeroLenAsEOF,
+		maxAllowedSectionSize: maxAllowedSectionSize,
 	}, nil
 }
 
 func (cr *CarReader) Next() (blocks.Block, error) {
-	c, data, err := util.ReadNode(cr.r, cr.zeroLenAsEOF)
+	c, data, err := util.ReadNode(cr.r, cr.zeroLenAsEOF, cr.maxAllowedSectionSize)
 	if err != nil {
 		return nil, err
 	}

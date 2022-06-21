@@ -836,7 +836,7 @@ func TestOpenReadWrite_WritesIdentityCIDsWhenOptionIsEnabled(t *testing.T) {
 	require.NoError(t, err)
 
 	// Determine expected offset as the length of header plus one
-	header, err := carv1.ReadHeader(r.DataReader())
+	header, err := carv1.ReadHeader(r.DataReader(), carv1.DefaultMaxAllowedHeaderSize)
 	require.NoError(t, err)
 	object, err := cbor.DumpObject(header)
 	require.NoError(t, err)
