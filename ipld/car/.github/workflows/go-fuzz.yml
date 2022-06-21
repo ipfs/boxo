@@ -21,7 +21,6 @@ jobs:
           go version
           go env
       - name: Run Fuzzing for 1m
-        uses: protocol/multiple-go-modules@v1.2
         with:
           run: go test -v -fuzz=Fuzz${{ matrix.target }} -fuzztime=1m .
   v2:
@@ -43,7 +42,6 @@ jobs:
           go version
           go env
       - name: Run Fuzzing for 1m
-        uses: protocol/multiple-go-modules@v1.2
         with:
           run: |
             cd v2
