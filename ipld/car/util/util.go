@@ -26,7 +26,7 @@ type BytesReader interface {
 	io.ByteReader
 }
 
-// TODO: this belongs in the go-cid package
+// Deprecated: ReadCid shouldn't be used directly, use CidFromReader from go-cid
 func ReadCid(buf []byte) (cid.Cid, int, error) {
 	if len(buf) >= 2 && bytes.Equal(buf[:2], cidv0Pref) {
 		i := 34
@@ -70,7 +70,7 @@ func ReadNode(br *bufio.Reader) (cid.Cid, []byte, error) {
 		return cid.Cid{}, nil, err
 	}
 
-	c, n, err := ReadCid(data)
+	n, c, err := cid.CidFromReader(bytes.NewReader(data))
 	if err != nil {
 		return cid.Cid{}, nil, err
 	}
