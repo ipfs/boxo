@@ -44,6 +44,7 @@ type (
 
 		// Marshal encodes the index in serial form.
 		Marshal(w io.Writer) (uint64, error)
+
 		// Unmarshal decodes the index from its serial form.
 		// Deprecated: This function is slurpy and will copy everything into memory.
 		Unmarshal(r io.Reader) error

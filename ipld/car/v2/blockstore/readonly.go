@@ -47,6 +47,7 @@ type ReadOnly struct {
 
 	// The backing containing the data payload in CARv1 format.
 	backing io.ReaderAt
+
 	// The CARv1 content index.
 	idx index.Index
 
