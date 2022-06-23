@@ -49,9 +49,12 @@ type (
 		// Deprecated: This function is slurpy and will copy everything into memory.
 		Unmarshal(r io.Reader) error
 
-		// UnmarshalLazyRead is the safe alternative to to Unmarshal.
-		// Instead of slurping it will keep a reference to the the io.ReaderAt passed in
-		// and ask for data as needed.
+		// UnmarshalLazyRead lazily decodes the index from its serial form. It is a
+		// safer alternative to to Unmarshal, particularly when reading index data
+		// from untrusted sources (which is not recommended) but also in more
+		// constrained memory environments.
+		// Instead of slurping UnmarshalLazyRead will keep a reference to the the
+		// io.ReaderAt passed in and ask for data as needed.
 		UnmarshalLazyRead(r io.ReaderAt) (indexSize int64, err error)
 
 		// Load inserts a number of records into the index.
@@ -137,6 +140,7 @@ func WriteTo(idx Index, w io.Writer) (uint64, error) {
 // ReadFrom reads index from r.
 // The reader decodes the index by reading the first byte to interpret the encoding.
 // Returns error if the encoding is not known.
+// Attempting to read index data from untrusted sources is not recommended.
 func ReadFrom(r io.ReaderAt) (Index, error) {
 	idx, _, err := ReadFromWithSize(r)
 	return idx, err
@@ -144,6 +148,7 @@ func ReadFrom(r io.ReaderAt) (Index, error) {
 
 // ReadFromWithSize is just like ReadFrom but return the size of the Index.
 // The size is only valid when err != nil.
+// Attempting to read index data from untrusted sources is not recommended.
 func ReadFromWithSize(r io.ReaderAt) (Index, int64, error) {
 	code, err := varint.ReadUvarint(internalio.NewOffsetReadSeeker(r, 0))
 	if err != nil {

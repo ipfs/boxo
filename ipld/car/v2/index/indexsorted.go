@@ -113,8 +113,9 @@ func (s *singleWidthIndex) checkUnmarshalLengths(width uint32, dataLen, extra ui
 	if width <= 8 {
 		return errors.New("malformed index; width must be bigger than 8")
 	}
-	if int32(width) < 0 {
-		return errors.New("index too big; singleWidthIndex width is overflowing int32")
+	const maxWidth = 32 << 20 // 32MiB, to ~match the go-cid maximum
+	if width > maxWidth {
+		return errors.New("index too big; singleWidthIndex width is larger than allowed maximum")
 	}
 	oldDataLen, dataLen := dataLen, dataLen+extra
 	if oldDataLen > dataLen {
