@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestReadOrGenerateIndex(t *testing.T) {
+func TestGenerateIndex(t *testing.T) {
 	tests := []struct {
 		name        string
 		carPath     string
@@ -26,10 +26,9 @@ func TestReadOrGenerateIndex(t *testing.T) {
 		wantErr     bool
 	}{
 		{
-			"CarV1IsIndexedAsExpected",
-			"testdata/sample-v1.car",
-			[]carv2.Option{},
-			func(t *testing.T) index.Index {
+			name:    "CarV1IsIndexedAsExpected",
+			carPath: "testdata/sample-v1.car",
+			wantIndexer: func(t *testing.T) index.Index {
 				v1, err := os.Open("testdata/sample-v1.car")
 				require.NoError(t, err)
 				defer v1.Close()
@@ -37,13 +36,11 @@ func TestReadOrGenerateIndex(t *testing.T) {
 				require.NoError(t, err)
 				return want
 			},
-			false,
 		},
 		{
-			"CarV2WithIndexIsReturnedAsExpected",
-			"testdata/sample-wrapped-v2.car",
-			[]carv2.Option{},
-			func(t *testing.T) index.Index {
+			name:    "CarV2WithIndexIsReturnedAsExpected",
+			carPath: "testdata/sample-wrapped-v2.car",
+			wantIndexer: func(t *testing.T) index.Index {
 				v2, err := os.Open("testdata/sample-wrapped-v2.car")
 				require.NoError(t, err)
 				defer v2.Close()
@@ -53,13 +50,12 @@ func TestReadOrGenerateIndex(t *testing.T) {
 				require.NoError(t, err)
 				return want
 			},
-			false,
 		},
 		{
-			"CarV1WithZeroLenSectionIsGeneratedAsExpected",
-			"testdata/sample-v1-with-zero-len-section.car",
-			[]carv2.Option{carv2.ZeroLengthSectionAsEOF(true)},
-			func(t *testing.T) index.Index {
+			name:    "CarV1WithZeroLenSectionIsGeneratedAsExpected",
+			carPath: "testdata/sample-v1-with-zero-len-section.car",
+			opts:    []carv2.Option{carv2.ZeroLengthSectionAsEOF(true)},
+			wantIndexer: func(t *testing.T) index.Index {
 				v1, err := os.Open("testdata/sample-v1-with-zero-len-section.car")
 				require.NoError(t, err)
 				defer v1.Close()
@@ -67,13 +63,12 @@ func TestReadOrGenerateIndex(t *testing.T) {
 				require.NoError(t, err)
 				return want
 			},
-			false,
 		},
 		{
-			"AnotherCarV1WithZeroLenSectionIsGeneratedAsExpected",
-			"testdata/sample-v1-with-zero-len-section2.car",
-			[]carv2.Option{carv2.ZeroLengthSectionAsEOF(true)},
-			func(t *testing.T) index.Index {
+			name:    "AnotherCarV1WithZeroLenSectionIsGeneratedAsExpected",
+			carPath: "testdata/sample-v1-with-zero-len-section2.car",
+			opts:    []carv2.Option{carv2.ZeroLengthSectionAsEOF(true)},
+			wantIndexer: func(t *testing.T) index.Index {
 				v1, err := os.Open("testdata/sample-v1-with-zero-len-section2.car")
 				require.NoError(t, err)
 				defer v1.Close()
@@ -81,25 +76,21 @@ func TestReadOrGenerateIndex(t *testing.T) {
 				require.NoError(t, err)
 				return want
 			},
-			false,
 		},
 		{
-			"CarV1WithZeroLenSectionWithoutOptionIsError",
-			"testdata/sample-v1-with-zero-len-section.car",
-			[]carv2.Option{},
-			func(t *testing.T) index.Index { return nil },
-			true,
+			name:    "CarV1WithZeroLenSectionWithoutOptionIsError",
+			carPath: "testdata/sample-v1-with-zero-len-section.car",
+			wantErr: true,
 		},
 		{
-			"CarOtherThanV1OrV2IsError",
-			"testdata/sample-rootless-v42.car",
-			[]carv2.Option{},
-			func(t *testing.T) index.Index { return nil },
-			true,
+			name:        "CarOtherThanV1OrV2IsError",
+			carPath:     "testdata/sample-rootless-v42.car",
+			wantIndexer: func(t *testing.T) index.Index { return nil },
+			wantErr:     true,
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run("ReadOrGenerateIndex_"+tt.name, func(t *testing.T) {
 			carFile, err := os.Open(tt.carPath)
 			require.NoError(t, err)
 			t.Cleanup(func() { assert.NoError(t, carFile.Close()) })
@@ -108,54 +99,55 @@ func TestReadOrGenerateIndex(t *testing.T) {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				want := tt.wantIndexer(t)
+				var want index.Index
+				if tt.wantIndexer != nil {
+					want = tt.wantIndexer(t)
+				}
 				require.Equal(t, want, got)
 			}
 		})
-	}
-}
-
-func TestGenerateIndexFromFile(t *testing.T) {
-	tests := []struct {
-		name        string
-		carPath     string
-		wantIndexer func(t *testing.T) index.Index
-		wantErr     bool
-	}{
-		{
-			"CarV1IsIndexedAsExpected",
-			"testdata/sample-v1.car",
-			func(t *testing.T) index.Index {
-				v1, err := os.Open("testdata/sample-v1.car")
-				require.NoError(t, err)
-				defer v1.Close()
-				want, err := carv2.GenerateIndex(v1)
-				require.NoError(t, err)
-				return want
-			},
-			false,
-		},
-		{
-			"CarV2IsErrorSinceOnlyV1PayloadIsExpected",
-			"testdata/sample-wrapped-v2.car",
-			func(t *testing.T) index.Index { return nil },
-			true,
-		},
-		{
-			"CarOtherThanV1OrV2IsError",
-			"testdata/sample-rootless-v42.car",
-			func(t *testing.T) index.Index { return nil },
-			true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := carv2.GenerateIndexFromFile(tt.carPath)
+		t.Run("GenerateIndexFromFile_"+tt.name, func(t *testing.T) {
+			got, err := carv2.GenerateIndexFromFile(tt.carPath, tt.opts...)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				want := tt.wantIndexer(t)
+				var want index.Index
+				if tt.wantIndexer != nil {
+					want = tt.wantIndexer(t)
+				}
+				require.Equal(t, want, got)
+			}
+		})
+		t.Run("LoadIndex_"+tt.name, func(t *testing.T) {
+			carFile, err := os.Open(tt.carPath)
+			require.NoError(t, err)
+			got, err := index.New(multicodec.CarMultihashIndexSorted)
+			require.NoError(t, err)
+			err = carv2.LoadIndex(got, carFile, tt.opts...)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				var want index.Index
+				if tt.wantIndexer != nil {
+					want = tt.wantIndexer(t)
+				}
+				require.Equal(t, want, got)
+			}
+		})
+		t.Run("GenerateIndex_"+tt.name, func(t *testing.T) {
+			carFile, err := os.Open(tt.carPath)
+			require.NoError(t, err)
+			got, err := carv2.GenerateIndex(carFile, tt.opts...)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				var want index.Index
+				if tt.wantIndexer != nil {
+					want = tt.wantIndexer(t)
+				}
 				require.Equal(t, want, got)
 			}
 		})

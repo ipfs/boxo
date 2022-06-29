@@ -13,9 +13,12 @@ import (
 	"github.com/multiformats/go-varint"
 )
 
-// GenerateIndex generates index for a given car in v1 format.
+// GenerateIndex generates index for the given car payload reader.
 // The index can be stored in serialized format using index.WriteTo.
-// See LoadIndex.
+//
+// Note, the index is re-generated every time even if the payload is in CARv2 format and already has
+// an index. To read existing index when available see ReadOrGenerateIndex.
+// See: LoadIndex.
 func GenerateIndex(v1r io.Reader, opts ...Option) (index.Index, error) {
 	wopts := ApplyOptions(opts...)
 	idx, err := index.New(wopts.IndexCodec)
@@ -28,21 +31,63 @@ func GenerateIndex(v1r io.Reader, opts ...Option) (index.Index, error) {
 	return idx, nil
 }
 
-// LoadIndex populates idx with index records generated from v1r.
-// The v1r must be data payload in CARv1 format.
-func LoadIndex(idx index.Index, v1r io.Reader, opts ...Option) error {
-	reader := internalio.ToByteReadSeeker(v1r)
-	header, err := carv1.ReadHeader(reader)
+// LoadIndex populates idx with index records generated from r.
+// The r may be in CARv1 or CARv2 format.
+//
+// Note, the index is re-generated every time even if r is in CARv2 format and already has an index.
+// To read existing index when available see ReadOrGenerateIndex.
+func LoadIndex(idx index.Index, r io.Reader, opts ...Option) error {
+	reader := internalio.ToByteReadSeeker(r)
+	pragma, err := carv1.ReadHeader(r)
 	if err != nil {
 		return fmt.Errorf("error reading car header: %w", err)
 	}
 
-	if header.Version != 1 {
-		return fmt.Errorf("expected version to be 1, got %v", header.Version)
-	}
+	var dataSize, dataOffset int64
+	switch pragma.Version {
+	case 1:
+		break
+	case 2:
+		// Read V2 header which should appear immediately after pragma according to CARv2 spec.
+		var v2h Header
+		_, err := v2h.ReadFrom(r)
+		if err != nil {
+			return err
+		}
 
-	// Parse Options.
-	o := ApplyOptions(opts...)
+		// Sanity-check the CARv2 header
+		if v2h.DataOffset < HeaderSize {
+			return fmt.Errorf("malformed CARv2; data offset too small: %d", v2h.DataOffset)
+		}
+		if v2h.DataSize < 1 {
+			return fmt.Errorf("malformed CARv2; data payload size too small: %d", v2h.DataSize)
+		}
+
+		// Seek to the beginning of the inner CARv1 payload
+		_, err = reader.Seek(int64(v2h.DataOffset), io.SeekStart)
+		if err != nil {
+			return err
+		}
+
+		// Set dataSize and dataOffset which are then used during index loading logic to decide
+		// where to stop and adjust section offset respectively.
+		// Note that we could use a LimitReader here and re-define reader with it. However, it means
+		// the internalio.ToByteReadSeeker will be less efficient since LimitReader does not
+		// implement ByteReader nor ReadSeeker.
+		dataSize = int64(v2h.DataSize)
+		dataOffset = int64(v2h.DataOffset)
+
+		// Read the inner CARv1 header to skip it and sanity check it.
+		v1h, err := carv1.ReadHeader(reader)
+		if err != nil {
+			return err
+		}
+		if v1h.Version != 1 {
+			return fmt.Errorf("expected data payload header version of 1; got %d", v1h.Version)
+		}
+	default:
+		return fmt.Errorf("expected either version 1 or 2; got %d", pragma.Version)
+	}
 
 	// Record the start of each section, with first section starring from current position in the
 	// reader, i.e. right after the header, since we have only read the header so far.
@@ -54,6 +99,13 @@ func LoadIndex(idx index.Index, v1r io.Reader, opts ...Option) error {
 	if sectionOffset, err = reader.Seek(0, io.SeekCurrent); err != nil {
 		return err
 	}
+
+	// Subtract the data offset; if CARv1 this would be zero otherwise the value will come from the
+	// CARv2 header.
+	sectionOffset -= dataOffset
+
+	// Parse Options.
+	o := ApplyOptions(opts...)
 
 	records := make([]index.Record, 0)
 	for {
@@ -94,6 +146,14 @@ func LoadIndex(idx index.Index, v1r io.Reader, opts ...Option) error {
 		if sectionOffset, err = reader.Seek(remainingSectionLen, io.SeekCurrent); err != nil {
 			return err
 		}
+		// Subtract the data offset which will be non-zero when reader represents a CARv2.
+		sectionOffset -= dataOffset
+
+		// Check if we have reached the end of data payload and if so treat it as an EOF.
+		// Note, dataSize will be non-zero only if we are reading from a CARv2.
+		if dataSize != 0 && sectionOffset >= dataSize {
+			break
+		}
 	}
 
 	if err := idx.Load(records); err != nil {
@@ -103,16 +163,20 @@ func LoadIndex(idx index.Index, v1r io.Reader, opts ...Option) error {
 	return nil
 }
 
-// GenerateIndexFromFile walks a car v1 file at the give path and generates an index of cid->byte offset.
-// The index can be stored using index.WriteTo.
-// See GenerateIndex.
-func GenerateIndexFromFile(path string) (index.Index, error) {
+// GenerateIndexFromFile walks a CAR file at the give path and generates an index of cid->byte offset.
+// The index can be stored using index.WriteTo. Both CARv1 and CARv2 formats are accepted.
+//
+// Note, the index is re-generated every time even if the given CAR file is in CARv2 format and
+// already has an index. To read existing index when available see ReadOrGenerateIndex.
+//
+// See: GenerateIndex.
+func GenerateIndexFromFile(path string, opts ...Option) (index.Index, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	return GenerateIndex(f)
+	return GenerateIndex(f, opts...)
 }
 
 // ReadOrGenerateIndex accepts both CARv1 and CARv2 formats, and reads or generates an index for it.
