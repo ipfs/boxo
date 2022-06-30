@@ -64,20 +64,6 @@ func NewBlockReader(r io.Reader, opts ...Option) (*BlockReader, error) {
 		if _, err := v2h.ReadFrom(r); err != nil {
 			return nil, err
 		}
-		// Assert the data payload offset validity.
-		// It must be at least 51 (<CARv2Pragma> + <CARv2Header>).
-		dataOffset := int64(v2h.DataOffset)
-		if dataOffset < PragmaSize+HeaderSize {
-			return nil, fmt.Errorf("invalid data payload offset: %v", dataOffset)
-		}
-		// Assert the data size validity.
-		// It must be larger than zero.
-		// Technically, it should be at least 11 bytes (i.e. a valid CARv1 header with no roots) but
-		// we let further parsing of the header to signal invalid data payload header.
-		dataSize := int64(v2h.DataSize)
-		if dataSize <= 0 {
-			return nil, fmt.Errorf("invalid data payload size: %v", dataSize)
-		}
 
 		// Skip to the beginning of inner CARv1 data payload.
 		// Note, at this point the pragma and CARv1 header have been read.
@@ -86,12 +72,12 @@ func NewBlockReader(r io.Reader, opts ...Option) (*BlockReader, error) {
 		// fast forward to the beginning of data payload by subtracting pragma and header size from
 		// dataOffset.
 		rs := internalio.ToByteReadSeeker(r)
-		if _, err := rs.Seek(dataOffset-PragmaSize-HeaderSize, io.SeekCurrent); err != nil {
+		if _, err := rs.Seek(int64(v2h.DataOffset)-PragmaSize-HeaderSize, io.SeekCurrent); err != nil {
 			return nil, err
 		}
 
 		// Set br.r to a LimitReader reading from r limited to dataSize.
-		br.r = io.LimitReader(r, dataSize)
+		br.r = io.LimitReader(r, int64(v2h.DataSize))
 
 		// Populate br.Roots by reading the inner CARv1 data payload header.
 		header, err := carv1.ReadHeader(br.r, options.MaxAllowedHeaderSize)

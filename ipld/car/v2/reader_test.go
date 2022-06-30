@@ -1,14 +1,19 @@
 package car_test
 
 import (
+	"bytes"
+	"encoding/hex"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/index/testutil"
 	"github.com/ipld/go-car/v2/internal/carv1"
+	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 )
 
@@ -267,4 +272,221 @@ func requireNewCarV1Reader(t *testing.T, r io.Reader, zerLenAsEOF bool) *carv1.C
 	}
 	require.NoError(t, err)
 	return cr
+}
+
+func TestInspect(t *testing.T) {
+	tests := []struct {
+		name          string
+		path          string
+		zerLenAsEOF   bool
+		expectedStats carv2.CarStats
+	}{
+		{
+			name: "IndexlessCarV2",
+			path: "testdata/sample-v2-indexless.car",
+			expectedStats: carv2.CarStats{
+				Version: 2,
+				Header: carv2.Header{
+					Characteristics: carv2.Characteristics{0, 0},
+					DataOffset:      51,
+					DataSize:        479907,
+					IndexOffset:     0,
+				},
+				Roots:          []cid.Cid{mustCidDecode("bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy")},
+				RootsPresent:   true,
+				AvgBlockLength: 417, // 417.6644423260248
+				MinBlockLength: 1,
+				MaxBlockLength: 1342,
+				AvgCidLength:   37, // 37.86939942802669
+				MinCidLength:   14,
+				MaxCidLength:   38,
+				BlockCount:     1049,
+				CodecCounts: map[multicodec.Code]uint64{
+					multicodec.Raw:     6,
+					multicodec.DagCbor: 1043,
+				},
+				MhTypeCounts: map[multicodec.Code]uint64{
+					multicodec.Identity:   6,
+					multicodec.Blake2b256: 1043,
+				},
+			},
+		},
+		{
+			// same payload as IndexlessCarV2, so only difference is the Version & Header
+			name: "CarV1",
+			path: "testdata/sample-v1.car",
+			expectedStats: carv2.CarStats{
+				Version:        1,
+				Header:         carv2.Header{},
+				Roots:          []cid.Cid{mustCidDecode("bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy")},
+				RootsPresent:   true,
+				AvgBlockLength: 417, // 417.6644423260248
+				MinBlockLength: 1,
+				MaxBlockLength: 1342,
+				AvgCidLength:   37, // 37.86939942802669
+				MinCidLength:   14,
+				MaxCidLength:   38,
+				BlockCount:     1049,
+				CodecCounts: map[multicodec.Code]uint64{
+					multicodec.Raw:     6,
+					multicodec.DagCbor: 1043,
+				},
+				MhTypeCounts: map[multicodec.Code]uint64{
+					multicodec.Identity:   6,
+					multicodec.Blake2b256: 1043,
+				},
+			},
+		},
+		{
+			// same payload as IndexlessCarV2, so only difference is the Header
+			name: "CarV2ProducedByBlockstore",
+			path: "testdata/sample-rw-bs-v2.car",
+			expectedStats: carv2.CarStats{
+				Version: 2,
+				Header: carv2.Header{
+					DataOffset:  1464,
+					DataSize:    273,
+					IndexOffset: 1737,
+				},
+				Roots: []cid.Cid{
+					mustCidDecode("bafkreifuosuzujyf4i6psbneqtwg2fhplc2wxptc5euspa2gn3bwhnihfu"),
+					mustCidDecode("bafkreifc4hca3inognou377hfhvu2xfchn2ltzi7yu27jkaeujqqqdbjju"),
+					mustCidDecode("bafkreig5lvr4l6b4fr3un4xvzeyt3scevgsqjgrhlnwxw2unwbn5ro276u"),
+				},
+				RootsPresent:   true,
+				BlockCount:     3,
+				CodecCounts:    map[multicodec.Code]uint64{multicodec.Raw: 3},
+				MhTypeCounts:   map[multicodec.Code]uint64{multicodec.Sha2_256: 3},
+				AvgCidLength:   36,
+				MaxCidLength:   36,
+				MinCidLength:   36,
+				AvgBlockLength: 6,
+				MaxBlockLength: 9,
+				MinBlockLength: 4,
+				IndexCodec:     multicodec.CarMultihashIndexSorted,
+				IndexSize:      148,
+			},
+		},
+		// same as CarV1 but with a zero-byte EOF to test options
+		{
+			name:        "CarV1VersionWithZeroLenSectionIsOne",
+			path:        "testdata/sample-v1-with-zero-len-section.car",
+			zerLenAsEOF: true,
+			expectedStats: carv2.CarStats{
+				Version:        1,
+				Header:         carv2.Header{},
+				Roots:          []cid.Cid{mustCidDecode("bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy")},
+				RootsPresent:   true,
+				AvgBlockLength: 417, // 417.6644423260248
+				MinBlockLength: 1,
+				MaxBlockLength: 1342,
+				AvgCidLength:   37, // 37.86939942802669
+				MinCidLength:   14,
+				MaxCidLength:   38,
+				BlockCount:     1049,
+				CodecCounts: map[multicodec.Code]uint64{
+					multicodec.Raw:     6,
+					multicodec.DagCbor: 1043,
+				},
+				MhTypeCounts: map[multicodec.Code]uint64{
+					multicodec.Identity:   6,
+					multicodec.Blake2b256: 1043,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader, err := carv2.OpenReader(tt.path, carv2.ZeroLengthSectionAsEOF(tt.zerLenAsEOF))
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, reader.Close()) })
+			stats, err := reader.Inspect()
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedStats, stats)
+		})
+	}
+}
+
+func TestInspectError(t *testing.T) {
+	tests := []struct {
+		name                 string
+		carHex               string
+		expectedOpenError    string
+		expectedInspectError string
+	}{
+		{
+			name:                 "BadCidV0",
+			carHex:               "3aa265726f6f747381d8305825000130302030303030303030303030303030303030303030303030303030303030303030306776657273696f6e010130",
+			expectedInspectError: "expected 1 as the cid version number, got: 48",
+		},
+		{
+			name:              "BadHeaderLength",
+			carHex:            "e0e0e0e0a7060c6f6c4cca943c236f4b196723489608edb42a8b8fa80b6776657273696f6e19",
+			expectedOpenError: "invalid header data, length of read beyond allowable maximum",
+		},
+		{
+			name:                 "BadSectionLength",
+			carHex:               "11a265726f6f7473806776657273696f6e01e0e0e0e0a7060155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000",
+			expectedInspectError: "invalid section data, length of read beyond allowable maximum",
+		},
+		// the bad index tests are manually constructed from this single-block CARv2 by adjusting the Uint32 and Uint64 values in the index:
+		// pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
+		// 0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 01000000 1200000000000000 01000000 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000
+		{
+			name: "BadIndexCountOverflow",
+			//                     pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
+			carHex:               "0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 ffffffff 1200000000000000 01000000 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000",
+			expectedInspectError: "index too big; MultihashIndexSorted count is overflowing int32",
+		},
+		{
+			name: "BadIndexCountTooMany",
+			//                     pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
+			carHex:               "0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 ffffff7f 1200000000000000 01000000 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000",
+			expectedInspectError: "unexpected EOF",
+		},
+		{
+			name: "BadIndexMultiWidthOverflow",
+			//                     pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
+			carHex:               "0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 01000000 1200000000000000 ffffffff 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000",
+			expectedInspectError: "index too big; multiWidthIndex count is overflowing int32",
+		},
+		{
+			name: "BadIndexMultiWidthTooMany",
+			//                     pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
+			carHex:               "0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 01000000 1200000000000000 ffffff7f 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000",
+			expectedInspectError: "unexpected EOF",
+		},
+		// we don't test any further into the index, to do that, a user should do a ForEach across the loaded index (and sanity check the offsets)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			car, _ := hex.DecodeString(strings.ReplaceAll(tt.carHex, " ", ""))
+			reader, err := carv2.NewReader(bytes.NewReader(car))
+			if tt.expectedOpenError != "" {
+				require.Error(t, err)
+				require.Equal(t, err.Error(), tt.expectedOpenError)
+				return
+			} else {
+				require.NoError(t, err)
+			}
+			t.Cleanup(func() { require.NoError(t, reader.Close()) })
+			_, err = reader.Inspect()
+			if tt.expectedInspectError != "" {
+				require.Error(t, err)
+				require.Equal(t, err.Error(), tt.expectedInspectError)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func mustCidDecode(s string) cid.Cid {
+	c, err := cid.Decode(s)
+	if err != nil {
+		panic(err)
+	}
+	return c
 }
