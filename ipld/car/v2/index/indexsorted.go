@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"sort"
 
 	"github.com/ipld/go-car/v2/internal/errsort"
@@ -347,20 +346,8 @@ func (m *multiWidthIndex) Load(items []Record) error {
 	return nil
 }
 
-func (m *multiWidthIndex) ForEach(f func(multihash.Multihash, uint64) error) error {
-	return m.forEachDigest(func(digest []byte, offset uint64) error {
-		// multicodec.CarIndexSorted does not contain the multihash code; it only contains the digest.
-		// To implement ForEach on this index kind we encode the digest with multihash code math.MaxUint64.
-		// The CarIndexSorted documents this behaviour and the user should not take the multihash code
-		// as the actual code of the multihashes of CAR blocks.
-		// The rationale for using math.MaxUint64 is to avoid using a reserved multihash code that could
-		// become error-prone later, including 0x00 which is a valid multihash code for IDENTITY.
-		mh, err := multihash.Encode(digest, math.MaxUint64)
-		if err != nil {
-			return err
-		}
-		return f(mh, offset)
-	})
+func (m *multiWidthIndex) ForEach(func(multihash.Multihash, uint64) error) error {
+	return fmt.Errorf("%s does not support ForEach enumeration; use %s instead", multicodec.CarIndexSorted, multicodec.CarMultihashIndexSorted)
 }
 
 func (m *multiWidthIndex) forEachDigest(f func(digest []byte, offset uint64) error) error {

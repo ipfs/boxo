@@ -80,8 +80,10 @@ type (
 		// the multihash of the element, and the offset in the car file
 		// where the element appears.
 		//
-		// Note that index with codec multicodec.CarIndexSorted does not store the multihash code.
-		// The multihashes passed to ForEach on this index type should only rely on the digest part.
+		// Note that index with codec multicodec.CarIndexSorted does not support ForEach enumeration.
+		// Because this index type only contains the multihash digest and not the code.
+		// Calling ForEach on this index type will result in error.
+		// Use multicodec.CarMultihashIndexSorted index type instead.
 		//
 		// If the callback returns a non-nil error, the iteration is aborted,
 		// and the ForEach function returns the error to the user.

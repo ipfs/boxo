@@ -7,8 +7,20 @@ import (
 
 	"github.com/ipfs/go-merkledag"
 	"github.com/multiformats/go-multicodec"
+	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSortedIndex_ErrorsOnForEach(t *testing.T) {
+	subject, err := New(multicodec.CarIndexSorted)
+	require.NoError(t, err)
+	err = subject.ForEach(func(multihash.Multihash, uint64) error { return nil })
+	require.Error(t, err)
+	require.Equal(t,
+		"car-index-sorted does not support ForEach enumeration; use car-multihash-index-sorted instead",
+		err.Error(),
+	)
+}
 
 func TestSortedIndexCodec(t *testing.T) {
 	require.Equal(t, multicodec.CarIndexSorted, newSorted().Codec())
