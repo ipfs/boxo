@@ -2,15 +2,16 @@ package verifcid
 
 import (
 	"fmt"
-
 	cid "github.com/ipfs/go-cid"
 	mh "github.com/multiformats/go-multihash"
 )
 
 var ErrPossiblyInsecureHashFunction = fmt.Errorf("potentially insecure hash functions not allowed")
-var ErrBelowMinimumHashLength = fmt.Errorf("hashes must be at %d least bytes long", minimumHashLength)
+var ErrBelowMinimumHashLength = fmt.Errorf("hashes must be at least %d bytes long", minimumHashLength)
+var ErrAboveMaximumHashLength = fmt.Errorf("hashes must be at most %d bytes long", maximumHashLength)
 
 const minimumHashLength = 20
+const maximumHashLength = 128
 
 var goodset = map[uint64]bool{
 	mh.SHA2_256:     true,
@@ -25,7 +26,8 @@ var goodset = map[uint64]bool{
 	mh.KECCAK_256:   true,
 	mh.KECCAK_384:   true,
 	mh.KECCAK_512:   true,
-	mh.ID:           true,
+	mh.BLAKE3:       true,
+	mh.IDENTITY:     true,
 
 	mh.SHA1: true, // not really secure but still useful
 }
@@ -54,8 +56,12 @@ func ValidateCid(c cid.Cid) error {
 		return ErrPossiblyInsecureHashFunction
 	}
 
-	if pref.MhType != mh.ID && pref.MhLength < minimumHashLength {
+	if pref.MhType != mh.IDENTITY && pref.MhLength < minimumHashLength {
 		return ErrBelowMinimumHashLength
+	}
+
+	if pref.MhType != mh.IDENTITY && pref.MhLength > maximumHashLength {
+		return ErrAboveMaximumHashLength
 	}
 
 	return nil
