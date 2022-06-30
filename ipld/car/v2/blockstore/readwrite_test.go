@@ -520,7 +520,7 @@ func TestBlockstoreResumption(t *testing.T) {
 	require.NoError(t, err)
 	wantIdx, err := carv2.GenerateIndex(v2r.DataReader())
 	require.NoError(t, err)
-	testutil.AssertIndenticalIndexes(t, wantIdx, gotIdx)
+	testutil.AssertIdenticalIndexes(t, wantIdx, gotIdx)
 }
 
 func TestBlockstoreResumptionIsSupportedOnFinalizedFile(t *testing.T) {

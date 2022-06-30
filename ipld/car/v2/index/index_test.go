@@ -113,7 +113,7 @@ func TestWriteTo(t *testing.T) {
 	require.NoError(t, err)
 
 	// Assert they are equal
-	testutil.AssertIndenticalIndexes(t, wantIdx, gotIdx)
+	testutil.AssertIdenticalIndexes(t, wantIdx, gotIdx)
 }
 
 func TestMarshalledIndexStartsWithCodec(t *testing.T) {

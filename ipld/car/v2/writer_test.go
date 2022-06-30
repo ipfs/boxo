@@ -57,7 +57,7 @@ func TestWrapV1(t *testing.T) {
 	require.NoError(t, err)
 	gotIdx, err := index.ReadFrom(subject.IndexReader())
 	require.NoError(t, err)
-	testutil.AssertIndenticalIndexes(t, wantIdx, gotIdx)
+	testutil.AssertIdenticalIndexes(t, wantIdx, gotIdx)
 }
 
 func TestExtractV1(t *testing.T) {

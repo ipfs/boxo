@@ -30,15 +30,17 @@ func insertUint64(s []uint64) {
 	}
 }
 
-func AssertIndenticalIndexes(t *testing.T, a, b Index) {
-	var wg sync.Mutex
-	wg.Lock()
+func AssertIdenticalIndexes(t *testing.T, a, b Index) {
+	var wg sync.WaitGroup
 	// key is multihash.Multihash.HexString
 	var aCount uint
+	var aErr error
 	aMap := make(map[string][]uint64)
+	wg.Add(1)
+
 	go func() {
-		defer wg.Unlock()
-		a.ForEach(func(mh multihash.Multihash, off uint64) error {
+		defer wg.Done()
+		aErr = a.ForEach(func(mh multihash.Multihash, off uint64) error {
 			aCount++
 			str := mh.HexString()
 			slice := aMap[str]
@@ -51,7 +53,7 @@ func AssertIndenticalIndexes(t *testing.T, a, b Index) {
 
 	var bCount uint
 	bMap := make(map[string][]uint64)
-	a.ForEach(func(mh multihash.Multihash, off uint64) error {
+	bErr := b.ForEach(func(mh multihash.Multihash, off uint64) error {
 		bCount++
 		str := mh.HexString()
 		slice := bMap[str]
@@ -60,7 +62,9 @@ func AssertIndenticalIndexes(t *testing.T, a, b Index) {
 		bMap[str] = slice
 		return nil
 	})
-	wg.Lock()
+	wg.Wait()
+	require.NoError(t, aErr)
+	require.NoError(t, bErr)
 
 	require.Equal(t, aCount, bCount)
 	require.Equal(t, aMap, bMap)

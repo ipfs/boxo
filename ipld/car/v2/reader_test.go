@@ -174,7 +174,7 @@ func TestReader_WithCarV2Consistency(t *testing.T) {
 			require.NoError(t, err)
 			wantIndex, err := carv2.GenerateIndex(subject.DataReader())
 			require.NoError(t, err)
-			testutil.AssertIndenticalIndexes(t, wantIndex, gotIndex)
+			testutil.AssertIdenticalIndexes(t, wantIndex, gotIndex)
 		})
 	}
 }

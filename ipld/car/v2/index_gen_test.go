@@ -1,6 +1,7 @@
 package car_test
 
 import (
+	"github.com/stretchr/testify/assert"
 	"io"
 	"os"
 	"testing"
@@ -14,25 +15,25 @@ import (
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
 	"github.com/multiformats/go-varint"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGenerateIndex(t *testing.T) {
-	tests := []struct {
+	type testCase struct {
 		name        string
 		carPath     string
 		opts        []carv2.Option
 		wantIndexer func(t *testing.T) index.Index
 		wantErr     bool
-	}{
+	}
+	tests := []testCase{
 		{
 			name:    "CarV1IsIndexedAsExpected",
 			carPath: "testdata/sample-v1.car",
 			wantIndexer: func(t *testing.T) index.Index {
 				v1, err := os.Open("testdata/sample-v1.car")
 				require.NoError(t, err)
-				defer v1.Close()
+				t.Cleanup(func() { assert.NoError(t, v1.Close()) })
 				want, err := carv2.GenerateIndex(v1)
 				require.NoError(t, err)
 				return want
@@ -44,7 +45,7 @@ func TestGenerateIndex(t *testing.T) {
 			wantIndexer: func(t *testing.T) index.Index {
 				v2, err := os.Open("testdata/sample-wrapped-v2.car")
 				require.NoError(t, err)
-				defer v2.Close()
+				t.Cleanup(func() { assert.NoError(t, v2.Close()) })
 				reader, err := carv2.NewReader(v2)
 				require.NoError(t, err)
 				want, err := index.ReadFrom(reader.IndexReader())
@@ -59,7 +60,7 @@ func TestGenerateIndex(t *testing.T) {
 			wantIndexer: func(t *testing.T) index.Index {
 				v1, err := os.Open("testdata/sample-v1-with-zero-len-section.car")
 				require.NoError(t, err)
-				defer v1.Close()
+				t.Cleanup(func() { assert.NoError(t, v1.Close()) })
 				want, err := carv2.GenerateIndex(v1, carv2.ZeroLengthSectionAsEOF(true))
 				require.NoError(t, err)
 				return want
@@ -72,7 +73,7 @@ func TestGenerateIndex(t *testing.T) {
 			wantIndexer: func(t *testing.T) index.Index {
 				v1, err := os.Open("testdata/sample-v1-with-zero-len-section2.car")
 				require.NoError(t, err)
-				defer v1.Close()
+				t.Cleanup(func() { assert.NoError(t, v1.Close()) })
 				want, err := carv2.GenerateIndex(v1, carv2.ZeroLengthSectionAsEOF(true))
 				require.NoError(t, err)
 				return want
@@ -90,71 +91,49 @@ func TestGenerateIndex(t *testing.T) {
 			wantErr:     true,
 		},
 	}
+
+	requireWant := func(tt testCase, got index.Index, gotErr error) {
+		if tt.wantErr {
+			require.Error(t, gotErr)
+		} else {
+			require.NoError(t, gotErr)
+			var want index.Index
+			if tt.wantIndexer != nil {
+				want = tt.wantIndexer(t)
+			}
+			if want == nil {
+				require.Nil(t, got)
+			} else {
+				testutil.AssertIdenticalIndexes(t, want, got)
+			}
+		}
+	}
+
 	for _, tt := range tests {
 		t.Run("ReadOrGenerateIndex_"+tt.name, func(t *testing.T) {
 			carFile, err := os.Open(tt.carPath)
 			require.NoError(t, err)
 			t.Cleanup(func() { assert.NoError(t, carFile.Close()) })
-			got, err := carv2.ReadOrGenerateIndex(carFile, tt.opts...)
-			if tt.wantErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				var want index.Index
-				if tt.wantIndexer != nil {
-					want = tt.wantIndexer(t)
-				}
-				if want == nil {
-					require.Nil(t, got)
-				} else {
-					testutil.AssertIndenticalIndexes(t, want, got)
-				}
-			}
+			got, gotErr := carv2.ReadOrGenerateIndex(carFile, tt.opts...)
+			requireWant(tt, got, gotErr)
 		})
 		t.Run("GenerateIndexFromFile_"+tt.name, func(t *testing.T) {
-			got, err := carv2.GenerateIndexFromFile(tt.carPath, tt.opts...)
-			if tt.wantErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				var want index.Index
-				if tt.wantIndexer != nil {
-					want = tt.wantIndexer(t)
-				}
-				require.Equal(t, want, got)
-			}
+			got, gotErr := carv2.GenerateIndexFromFile(tt.carPath, tt.opts...)
+			requireWant(tt, got, gotErr)
 		})
 		t.Run("LoadIndex_"+tt.name, func(t *testing.T) {
 			carFile, err := os.Open(tt.carPath)
 			require.NoError(t, err)
 			got, err := index.New(multicodec.CarMultihashIndexSorted)
 			require.NoError(t, err)
-			err = carv2.LoadIndex(got, carFile, tt.opts...)
-			if tt.wantErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				var want index.Index
-				if tt.wantIndexer != nil {
-					want = tt.wantIndexer(t)
-				}
-				require.Equal(t, want, got)
-			}
+			gotErr := carv2.LoadIndex(got, carFile, tt.opts...)
+			requireWant(tt, got, gotErr)
 		})
 		t.Run("GenerateIndex_"+tt.name, func(t *testing.T) {
 			carFile, err := os.Open(tt.carPath)
 			require.NoError(t, err)
-			got, err := carv2.GenerateIndex(carFile, tt.opts...)
-			if tt.wantErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				var want index.Index
-				if tt.wantIndexer != nil {
-					want = tt.wantIndexer(t)
-				}
-				require.Equal(t, want, got)
-			}
+			got, gotErr := carv2.GenerateIndex(carFile, tt.opts...)
+			requireWant(tt, got, gotErr)
 		})
 	}
 }
