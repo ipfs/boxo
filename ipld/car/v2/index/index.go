@@ -5,14 +5,12 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/ipfs/go-cid"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
-
 	"github.com/multiformats/go-varint"
-
-	"github.com/ipfs/go-cid"
 )
 
 // CarIndexNone is a sentinal value used as a multicodec code for the index indicating no index.
@@ -81,6 +79,9 @@ type (
 		// on each entry in the index. The arguments to the callback are
 		// the multihash of the element, and the offset in the car file
 		// where the element appears.
+		//
+		// Note that index with codec multicodec.CarIndexSorted does not store the multihash code.
+		// The multihashes passed to ForEach on this index type should only rely on the digest part.
 		//
 		// If the callback returns a non-nil error, the iteration is aborted,
 		// and the ForEach function returns the error to the user.
