@@ -22,9 +22,9 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
-func createClientAndServer(t *testing.T) (*client.Client, *httptest.Server) {
+func createClientAndServer(t *testing.T, service server.DelegatedRoutingService) (*client.Client, *httptest.Server) {
 	// start a server
-	s := httptest.NewServer(server.DelegatedRoutingAsyncHandler(testDelegatedRoutingService{}))
+	s := httptest.NewServer(server.DelegatedRoutingAsyncHandler(service))
 
 	// start a client
 	q, err := proto.New_DelegatedRouting_Client(s.URL, proto.DelegatedRouting_Client_WithHTTPClient(s.Client()))
@@ -39,7 +39,7 @@ func createClientAndServer(t *testing.T) (*client.Client, *httptest.Server) {
 func testClientServer(t *testing.T, numIter int) (avgLatency time.Duration, deltaGo int, deltaMem uint64) {
 	t.Helper()
 
-	c, s := createClientAndServer(t)
+	c, s := createClientAndServer(t, testDelegatedRoutingService{})
 	defer s.Close()
 
 	// verify result
@@ -183,7 +183,8 @@ func (s testStatistic) DeviatesBy(numStddev float64) bool {
 }
 
 func TestCancelContext(t *testing.T) {
-	c, s := createClientAndServer(t)
+	drService := &hangingDelegatedRoutingService{}
+	c, s := createClientAndServer(t, drService)
 	defer s.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -197,7 +198,7 @@ func TestCancelContext(t *testing.T) {
 
 	o0, ok := <-gir
 	if ok {
-		t.Fatal("channel must be closed", "OUTPUT:", o0.Err)
+		t.Fatal("GetIPNSAsync channel must be closed", "OUTPUT:", o0.Err)
 	}
 
 	ctx, cancel = context.WithCancel(context.Background())
@@ -210,12 +211,12 @@ func TestCancelContext(t *testing.T) {
 	cancel()
 
 	o1, ok := <-pir
+
 	if ok {
-		t.Fatal("channel must be closed", "OUTPUT:", o1.Err)
+		t.Fatal("PutIPNSAsync channel must be closed", "OUTPUT:", o1.Err)
 	}
 
 	ctx, cancel = context.WithCancel(context.Background())
-
 	cid, err := cid.Decode("QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR")
 	if err != nil {
 		t.Fatal(err)
@@ -230,7 +231,7 @@ func TestCancelContext(t *testing.T) {
 
 	o2, ok := <-par
 	if ok {
-		t.Fatal("channel must be closed", "OUTPUT:", o2.Err)
+		t.Fatal("FindProvidersAsync channel must be closed", "OUTPUT:", o2.Err)
 	}
 }
 
@@ -346,6 +347,37 @@ func (testDelegatedRoutingService) FindProviders(ctx context.Context, key cid.Ci
 	ch := make(chan client.FindProvidersAsyncResult)
 	go func() {
 		ch <- client.FindProvidersAsyncResult{AddrInfo: []peer.AddrInfo{*testAddrInfo}}
+		close(ch)
+	}()
+	return ch, nil
+}
+
+// hangingDelegatedRoutingService hangs on every request until the context is canceled, returning nothing.
+type hangingDelegatedRoutingService struct {
+}
+
+func (s *hangingDelegatedRoutingService) GetIPNS(ctx context.Context, id []byte) (<-chan client.GetIPNSAsyncResult, error) {
+	ch := make(chan client.GetIPNSAsyncResult)
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
+	return ch, nil
+}
+
+func (s *hangingDelegatedRoutingService) PutIPNS(ctx context.Context, id []byte, record []byte) (<-chan client.PutIPNSAsyncResult, error) {
+	ch := make(chan client.PutIPNSAsyncResult)
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
+	return ch, nil
+}
+
+func (s *hangingDelegatedRoutingService) FindProviders(ctx context.Context, key cid.Cid) (<-chan client.FindProvidersAsyncResult, error) {
+	ch := make(chan client.FindProvidersAsyncResult)
+	go func() {
+		<-ctx.Done()
 		close(ch)
 	}()
 	return ch, nil
