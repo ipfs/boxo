@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        target: [ "BlockReader", "Reader", "Index" ]
+        target: [ "BlockReader", "Reader", "Index", "Inspect" ]
     runs-on: ubuntu-latest
     name: Fuzz V2 ${{ matrix.target }}
     steps:

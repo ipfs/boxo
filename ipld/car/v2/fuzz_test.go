@@ -13,6 +13,7 @@ import (
 
 	car "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
+	"github.com/ipld/go-car/v2/internal/carv1"
 )
 
 // v1FixtureStr is a clean carv1 single-block, single-root CAR
@@ -114,5 +115,59 @@ func FuzzIndex(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		index.ReadFrom(bytes.NewReader(data))
+	})
+}
+
+func FuzzInspect(f *testing.F) {
+	seedWithCarFiles(f)
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		reader, err := car.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return
+		}
+
+		// Do differential fuzzing between Inspect and the normal parser
+		_, inspectErr := reader.Inspect(true)
+		if inspectErr == nil {
+			return
+		}
+
+		reader, err = car.NewReader(bytes.NewReader(data))
+		if err != nil {
+			t.Fatal("second NewReader on same data failed", err.Error())
+		}
+
+		if i := reader.IndexReader(); i != nil {
+			_, err = index.ReadFrom(i)
+			if err != nil {
+				return
+			}
+		}
+
+		dr := reader.DataReader()
+
+		_, err = carv1.ReadHeader(dr, carv1.DefaultMaxAllowedHeaderSize)
+		if err != nil {
+			return
+		}
+
+		blocks, err := car.NewBlockReader(dr)
+		if err != nil {
+			return
+		}
+
+		for {
+			_, err := blocks.Next()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				// caught error as expected
+				return
+			}
+		}
+
+		t.Fatal("Inspect found error but we red this file correctly:", inspectErr.Error())
 	})
 }
