@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -25,9 +26,13 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	p2ptestutil "github.com/libp2p/go-libp2p-netutil"
-	travis "github.com/libp2p/go-libp2p-testing/ci/travis"
 	tu "github.com/libp2p/go-libp2p-testing/etc"
 )
+
+func isCI() bool {
+	// https://github.blog/changelog/2020-04-15-github-actions-sets-the-ci-environment-variable-to-true/
+	return os.Getenv("CI") != ""
+}
 
 // FIXME the tests are really sensitive to the network delay. fix them to work
 // well under varying conditions
@@ -248,7 +253,7 @@ func TestLargeSwarm(t *testing.T) {
 		// when running with the race detector, 500 instances launches
 		// well over 8k goroutines. This hits a race detector limit.
 		numInstances = 20
-	} else if travis.IsRunning() {
+	} else if isCI() {
 		numInstances = 200
 	} else {
 		t.Parallel()
@@ -261,7 +266,7 @@ func TestLargeFile(t *testing.T) {
 		t.SkipNow()
 	}
 
-	if !travis.IsRunning() {
+	if !isCI() {
 		t.Parallel()
 	}
 
