@@ -11,6 +11,7 @@ import (
 	"github.com/ipld/go-car/v2/internal/carv1/util"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/multiformats/go-multicodec"
+	"github.com/multiformats/go-multihash"
 	"github.com/multiformats/go-varint"
 	"golang.org/x/exp/mmap"
 )
@@ -266,23 +267,36 @@ func (r *Reader) Inspect(validateBlockHash bool) (CarStats, error) {
 		blockLength := sectionLength - uint64(cidLen)
 
 		if validateBlockHash {
-			// read the block data, hash it and compare it
-			buf := make([]byte, blockLength)
-			if _, err := io.ReadFull(dr, buf); err != nil {
-				return CarStats{}, err
+			// Use multihash.SumStream to avoid having to copy the entire block content into memory.
+			// The SumStream uses a buffered copy to write bytes into the hasher which will take
+			// advantage of streaming hash calculation depending on the hash function.
+			// TODO: introduce SumStream in go-cid to simplify the code here.
+			blockReader := io.LimitReader(dr, int64(blockLength))
+			mhl := cp.MhLength
+			if mhtype == multicodec.Identity {
+				mhl = -1
 			}
-
-			hashed, err := cp.Sum(buf)
+			mh, err := multihash.SumStream(blockReader, cp.MhType, mhl)
 			if err != nil {
 				return CarStats{}, err
 			}
-
-			if !hashed.Equals(c) {
-				return CarStats{}, fmt.Errorf("mismatch in content integrity, expected: %s, got: %s", c, hashed)
+			var wantCid cid.Cid
+			switch cp.Version {
+			case 0:
+				wantCid = cid.NewCidV0(mh)
+			case 1:
+				wantCid = cid.NewCidV1(cp.Codec, mh)
+			default:
+				return CarStats{}, fmt.Errorf("invalid cid version: %d", cp.Version)
+			}
+			if !wantCid.Equals(c) {
+				return CarStats{}, fmt.Errorf("mismatch in content integrity, expected: %s, got: %s", wantCid, c)
 			}
 		} else {
 			// otherwise, skip over it
-			dr.Seek(int64(blockLength), io.SeekCurrent)
+			if _, err := dr.Seek(int64(blockLength), io.SeekCurrent); err != nil {
+				return CarStats{}, err
+			}
 		}
 
 		stats.BlockCount++
@@ -294,11 +308,11 @@ func (r *Reader) Inspect(validateBlockHash bool) (CarStats, error) {
 		if uint64(cidLen) > stats.MaxCidLength {
 			stats.MaxCidLength = uint64(cidLen)
 		}
-		if uint64(blockLength) < minBlockLength {
-			minBlockLength = uint64(blockLength)
+		if blockLength < minBlockLength {
+			minBlockLength = blockLength
 		}
-		if uint64(blockLength) > stats.MaxBlockLength {
-			stats.MaxBlockLength = uint64(blockLength)
+		if blockLength > stats.MaxBlockLength {
+			stats.MaxBlockLength = blockLength
 		}
 	}
 

@@ -477,14 +477,14 @@ func TestInspectError(t *testing.T) {
 			//       header                             cid                                                                          data
 			carHex:               "11a265726f6f7473806776657273696f6e 012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca ffffffffffffffffffff",
 			validateBlockHash:    true,
-			expectedInspectError: "mismatch in content integrity, expected: bafkreiab2rek7wjiazkfrt3hbnqpljmu24226alszdlh6ivic2abgjubzi, got: bafkreiaaqoxrddiyuy6gxnks6ioqytxhq5a7tchm2mm5htigznwiljukmm",
+			expectedInspectError: "mismatch in content integrity, expected: bafkreiaaqoxrddiyuy6gxnks6ioqytxhq5a7tchm2mm5htigznwiljukmm, got: bafkreiab2rek7wjiazkfrt3hbnqpljmu24226alszdlh6ivic2abgjubzi",
 		},
 		{
 			name: "IdentityCID", // a case where this _could_ be a valid CAR if we allowed identity CIDs and not matching block contents to exist, there's no block bytes in this
 			//                  47 {version:1,roots:[identity cid]}                                                               25 identity cid (dag-json {"identity":"block"})
 			carHex:               "2f a265726f6f747381d82a581a0001a90200147b226964656e74697479223a22626c6f636b227d6776657273696f6e01 19 01a90200147b226964656e74697479223a22626c6f636b227d",
 			validateBlockHash:    true,
-			expectedInspectError: "mismatch in content integrity, expected: baguqeaaupmrgszdfnz2gs5dzei5ceytmn5rwwit5, got: baguqeaaa",
+			expectedInspectError: "mismatch in content integrity, expected: baguqeaaa, got: baguqeaaupmrgszdfnz2gs5dzei5ceytmn5rwwit5",
 		},
 		// the bad index tests are manually constructed from this single-block CARv2 by adjusting the Uint32 and Uint64 values in the index:
 		// pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
