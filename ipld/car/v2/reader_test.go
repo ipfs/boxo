@@ -278,6 +278,7 @@ func TestInspect(t *testing.T) {
 	tests := []struct {
 		name          string
 		path          string
+		carHex        string
 		zerLenAsEOF   bool
 		expectedStats carv2.CarStats
 	}{
@@ -394,14 +395,43 @@ func TestInspect(t *testing.T) {
 				},
 			},
 		},
+		{
+			// A case where this _could_ be a valid CAR if we allowed identity CIDs
+			// and not matching block contents to exist, there's no block bytes in
+			// this. It will only fail if you don't validate the CID matches the,
+			// bytes (see TestInspectError for that case).
+			name: "IdentityCID",
+			//       47 {version:1,roots:[identity cid]}                                                               25 identity cid (dag-json {"identity":"block"})
+			carHex: "2f a265726f6f747381d82a581a0001a90200147b226964656e74697479223a22626c6f636b227d6776657273696f6e01 19 01a90200147b226964656e74697479223a22626c6f636b227d",
+			expectedStats: carv2.CarStats{
+				Version:      1,
+				Roots:        []cid.Cid{mustCidDecode("baguqeaaupmrgszdfnz2gs5dzei5ceytmn5rwwit5")},
+				RootsPresent: true,
+				BlockCount:   1,
+				CodecCounts:  map[multicodec.Code]uint64{multicodec.DagJson: 1},
+				MhTypeCounts: map[multicodec.Code]uint64{multicodec.Identity: 1},
+				AvgCidLength: 25,
+				MaxCidLength: 25,
+				MinCidLength: 25,
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reader, err := carv2.OpenReader(tt.path, carv2.ZeroLengthSectionAsEOF(tt.zerLenAsEOF))
-			require.NoError(t, err)
+			var reader *carv2.Reader
+			var err error
+			if tt.path != "" {
+				reader, err = carv2.OpenReader(tt.path, carv2.ZeroLengthSectionAsEOF(tt.zerLenAsEOF))
+				require.NoError(t, err)
+			} else {
+				byts, err := hex.DecodeString(strings.ReplaceAll(tt.carHex, " ", ""))
+				require.NoError(t, err)
+				reader, err = carv2.NewReader(bytes.NewReader(byts), carv2.ZeroLengthSectionAsEOF(tt.zerLenAsEOF))
+				require.NoError(t, err)
+			}
 			t.Cleanup(func() { require.NoError(t, reader.Close()) })
-			stats, err := reader.Inspect()
+			stats, err := reader.Inspect(false)
 			require.NoError(t, err)
 			require.Equal(t, tt.expectedStats, stats)
 		})
@@ -414,6 +444,7 @@ func TestInspectError(t *testing.T) {
 		carHex               string
 		expectedOpenError    string
 		expectedInspectError string
+		validateBlockHash    bool
 	}{
 		{
 			name:                 "BadCidV0",
@@ -429,6 +460,31 @@ func TestInspectError(t *testing.T) {
 			name:                 "BadSectionLength",
 			carHex:               "11a265726f6f7473806776657273696f6e01e0e0e0e0a7060155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000",
 			expectedInspectError: "invalid section data, length of read beyond allowable maximum",
+		},
+		{
+			name:                 "BadSectionLength2",
+			carHex:               "3aa265726f6f747381d8305825000130302030303030303030303030303030303030303030303030303030303030303030306776657273696f6e01200130302030303030303030303030303030303030303030303030303030303030303030303030303030303030",
+			expectedInspectError: "section length shorter than CID length",
+			validateBlockHash:    true,
+		},
+		{
+			name: "BadBlockHash(SanityCheck)", // this should pass because we don't ask the CID be validated even though it doesn't match
+			//       header                             cid                                                                          data
+			carHex: "11a265726f6f7473806776657273696f6e 012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca ffffffffffffffffffff",
+		},
+		{
+			name: "BadBlockHash", // same as above, but we ask for CID validation
+			//       header                             cid                                                                          data
+			carHex:               "11a265726f6f7473806776657273696f6e 012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca ffffffffffffffffffff",
+			validateBlockHash:    true,
+			expectedInspectError: "mismatch in content integrity, expected: bafkreiab2rek7wjiazkfrt3hbnqpljmu24226alszdlh6ivic2abgjubzi, got: bafkreiaaqoxrddiyuy6gxnks6ioqytxhq5a7tchm2mm5htigznwiljukmm",
+		},
+		{
+			name: "IdentityCID", // a case where this _could_ be a valid CAR if we allowed identity CIDs and not matching block contents to exist, there's no block bytes in this
+			//                  47 {version:1,roots:[identity cid]}                                                               25 identity cid (dag-json {"identity":"block"})
+			carHex:               "2f a265726f6f747381d82a581a0001a90200147b226964656e74697479223a22626c6f636b227d6776657273696f6e01 19 01a90200147b226964656e74697479223a22626c6f636b227d",
+			validateBlockHash:    true,
+			expectedInspectError: "mismatch in content integrity, expected: baguqeaaupmrgszdfnz2gs5dzei5ceytmn5rwwit5, got: baguqeaaa",
 		},
 		// the bad index tests are manually constructed from this single-block CARv2 by adjusting the Uint32 and Uint64 values in the index:
 		// pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
@@ -466,16 +522,16 @@ func TestInspectError(t *testing.T) {
 			reader, err := carv2.NewReader(bytes.NewReader(car))
 			if tt.expectedOpenError != "" {
 				require.Error(t, err)
-				require.Equal(t, err.Error(), tt.expectedOpenError)
+				require.Equal(t, tt.expectedOpenError, err.Error())
 				return
 			} else {
 				require.NoError(t, err)
 			}
 			t.Cleanup(func() { require.NoError(t, reader.Close()) })
-			_, err = reader.Inspect()
+			_, err = reader.Inspect(tt.validateBlockHash)
 			if tt.expectedInspectError != "" {
 				require.Error(t, err)
-				require.Equal(t, err.Error(), tt.expectedInspectError)
+				require.Equal(t, tt.expectedInspectError, err.Error())
 			} else {
 				require.NoError(t, err)
 			}

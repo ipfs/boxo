@@ -145,6 +145,13 @@ type CarStats struct {
 // contents of the CAR.
 // Inspect works for CARv1 and CARv2 contents. A CARv1 will return an
 // uninitialized Header value.
+//
+// If validateBlockHash is true, all block data in the payload will be hashed
+// and compared to the CID for that block and an error will return if there
+// is a mismatch. If false, block data will be skipped over and not checked.
+// Performing a full block hash validation is similar to using a BlockReader and
+// calling Next over all blocks.
+//
 // Inspect will perform a basic check of a CARv2 index, where present, but this
 // does not guarantee that the index is correct. Attempting to read index data
 // from untrusted sources is not recommended. If required, further validation of
@@ -152,7 +159,34 @@ type CarStats struct {
 // sanity checking that the offsets are within the data payload section of the
 // CAR. However, re-generation of index data in this case is the recommended
 // course of action.
-func (r *Reader) Inspect() (CarStats, error) {
+//
+// Beyond the checks performed by Inspect, a valid / good CAR is somewhat
+// use-case dependent. Factors to consider include:
+//
+// * Bad indexes, including incorrect offsets, duplicate entries, or other
+//   faulty data. Indexes should be re-generated, regardless, if you need to use
+//   them and have any reason to not trust the source.
+//
+// * Blocks use codecs that your system doesn't have access to—which may mean
+//   you can't traverse a DAG or use the contained data. CarStats#CodecCounts
+//   contains a list of codecs found in the CAR so this can be checked.
+//
+// * CIDs use multihashes that your system doesn't have access to—which will
+//   mean you can't validate block hashes are correct (using validateBlockHash
+//   in this case will result in a failure). CarStats#MhTypeCounts contains a
+//   list of multihashes found in the CAR so this can bechecked.
+//
+// * The presence of IDENTITY CIDs, which may not be supported (or desired) by
+//   the consumer of the CAR. CarStats#CodecCounts can determine the presence
+//   of IDENTITY CIDs.
+//
+// * Roots: the number of roots, duplicates, and whether they are related to the
+//   blocks contained within the CAR. CarStats contains a list of Roots and a
+//   RootsPresent bool so further checks can be performed.
+//
+// * DAG completeness is not checked. Any properties relating to the DAG, or
+//   DAGs contained within a CAR are the responsibility of the user to check.
+func (r *Reader) Inspect(validateBlockHash bool) (CarStats, error) {
 	stats := CarStats{
 		Version:      r.Version,
 		Header:       r.Header,
@@ -189,7 +223,8 @@ func (r *Reader) Inspect() (CarStats, error) {
 				// otherwise, this is a normal ending
 				break
 			}
-		} else if sectionLength == 0 && r.opts.ZeroLengthSectionAsEOF {
+		}
+		if sectionLength == 0 && r.opts.ZeroLengthSectionAsEOF {
 			// normal ending for this read mode
 			break
 		}
@@ -201,6 +236,13 @@ func (r *Reader) Inspect() (CarStats, error) {
 		cidLen, c, err := cid.CidFromReader(dr)
 		if err != nil {
 			return CarStats{}, err
+		}
+
+		if sectionLength < uint64(cidLen) {
+			// this case is handled different in the normal ReadNode() path since it
+			// slurps in the whole section bytes and decodes CID from there - so an
+			// error should come from a failing io.ReadFull
+			return CarStats{}, fmt.Errorf("section length shorter than CID length")
 		}
 
 		// is this a root block? (also account for duplicate root CIDs)
@@ -222,7 +264,26 @@ func (r *Reader) Inspect() (CarStats, error) {
 		stats.MhTypeCounts[mhtype] = count + 1
 
 		blockLength := sectionLength - uint64(cidLen)
-		dr.Seek(int64(blockLength), io.SeekCurrent)
+
+		if validateBlockHash {
+			// read the block data, hash it and compare it
+			buf := make([]byte, blockLength)
+			if _, err := io.ReadFull(dr, buf); err != nil {
+				return CarStats{}, err
+			}
+
+			hashed, err := cp.Sum(buf)
+			if err != nil {
+				return CarStats{}, err
+			}
+
+			if !hashed.Equals(c) {
+				return CarStats{}, fmt.Errorf("mismatch in content integrity, expected: %s, got: %s", c, hashed)
+			}
+		} else {
+			// otherwise, skip over it
+			dr.Seek(int64(blockLength), io.SeekCurrent)
+		}
 
 		stats.BlockCount++
 		totalCidLength += uint64(cidLen)

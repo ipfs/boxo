@@ -119,7 +119,7 @@ func (br *BlockReader) Next() (blocks.Block, error) {
 	}
 
 	if !hashed.Equals(c) {
-		return nil, fmt.Errorf("mismatch in content integrity, name: %s, data: %s", c, hashed)
+		return nil, fmt.Errorf("mismatch in content integrity, expected: %s, got: %s", c, hashed)
 	}
 
 	return blocks.NewBlockWithCid(data, c)
