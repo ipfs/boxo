@@ -119,6 +119,57 @@ func BenchmarkExtractV1UsingReader(b *testing.B) {
 	})
 }
 
+// BenchmarkReader_InspectWithBlockValidation benchmarks Reader.Inspect with block hash validation
+// for a randomly generated CARv2 file of size 10 MiB.
+func BenchmarkReader_InspectWithBlockValidation(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "bench-large-v2.car")
+	generateRandomCarV2File(b, path, 10<<20) // 10 MiB
+	defer os.Remove(path)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.SetBytes(info.Size())
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			benchmarkInspect(b, path, true)
+		}
+	})
+}
+
+// BenchmarkReader_InspectWithoutBlockValidation benchmarks Reader.Inspect without block hash
+// validation for a randomly generated CARv2 file of size 10 MiB.
+func BenchmarkReader_InspectWithoutBlockValidation(b *testing.B) {
+	path := filepath.Join(b.TempDir(), "bench-large-v2.car")
+	generateRandomCarV2File(b, path, 10<<20) // 10 MiB
+	defer os.Remove(path)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.SetBytes(info.Size())
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			benchmarkInspect(b, path, false)
+		}
+	})
+}
+
+func benchmarkInspect(b *testing.B, path string, validateBlockHash bool) {
+	reader, err := carv2.OpenReader(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if _, err := reader.Inspect(validateBlockHash); err != nil {
+		b.Fatal(err)
+	}
+}
 func generateRandomCarV2File(b *testing.B, path string, minTotalBlockSize int) {
 	// Use fixed RNG for determinism across benchmarks.
 	rng := rand.New(rand.NewSource(1413))
