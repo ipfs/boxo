@@ -280,17 +280,17 @@ func (r *Reader) Inspect(validateBlockHash bool) (CarStats, error) {
 			if err != nil {
 				return CarStats{}, err
 			}
-			var wantCid cid.Cid
+			var gotCid cid.Cid
 			switch cp.Version {
 			case 0:
-				wantCid = cid.NewCidV0(mh)
+				gotCid = cid.NewCidV0(mh)
 			case 1:
-				wantCid = cid.NewCidV1(cp.Codec, mh)
+				gotCid = cid.NewCidV1(cp.Codec, mh)
 			default:
 				return CarStats{}, fmt.Errorf("invalid cid version: %d", cp.Version)
 			}
-			if !wantCid.Equals(c) {
-				return CarStats{}, fmt.Errorf("mismatch in content integrity, expected: %s, got: %s", wantCid, c)
+			if !gotCid.Equals(c) {
+				return CarStats{}, fmt.Errorf("mismatch in content integrity, expected: %s, got: %s", c, gotCid)
 			}
 		} else {
 			// otherwise, skip over it
