@@ -122,8 +122,8 @@ func (r *Reader) IndexReader() io.ReaderAt {
 	return internalio.NewOffsetReadSeeker(r.r, int64(r.Header.IndexOffset))
 }
 
-// CarStats is returned by an Inspect() call
-type CarStats struct {
+// Stats is returned by an Inspect() call
+type Stats struct {
 	Version        uint64
 	Header         Header
 	Roots          []cid.Cid
@@ -142,7 +142,7 @@ type CarStats struct {
 }
 
 // Inspect does a quick scan of a CAR, performing basic validation of the format
-// and returning a CarStats object that provides a high-level description of the
+// and returning a Stats object that provides a high-level description of the
 // contents of the CAR.
 // Inspect works for CARv1 and CARv2 contents. A CARv1 will return an
 // uninitialized Header value.
@@ -169,26 +169,26 @@ type CarStats struct {
 //   them and have any reason to not trust the source.
 //
 // * Blocks use codecs that your system doesn't have access to—which may mean
-//   you can't traverse a DAG or use the contained data. CarStats#CodecCounts
+//   you can't traverse a DAG or use the contained data. Stats.CodecCounts
 //   contains a list of codecs found in the CAR so this can be checked.
 //
 // * CIDs use multihashes that your system doesn't have access to—which will
 //   mean you can't validate block hashes are correct (using validateBlockHash
-//   in this case will result in a failure). CarStats#MhTypeCounts contains a
-//   list of multihashes found in the CAR so this can bechecked.
+//   in this case will result in a failure). Stats.MhTypeCounts contains a
+//   list of multihashes found in the CAR so this can be checked.
 //
 // * The presence of IDENTITY CIDs, which may not be supported (or desired) by
-//   the consumer of the CAR. CarStats#CodecCounts can determine the presence
+//   the consumer of the CAR. Stats.CodecCounts can determine the presence
 //   of IDENTITY CIDs.
 //
 // * Roots: the number of roots, duplicates, and whether they are related to the
-//   blocks contained within the CAR. CarStats contains a list of Roots and a
+//   blocks contained within the CAR. Stats contains a list of Roots and a
 //   RootsPresent bool so further checks can be performed.
 //
 // * DAG completeness is not checked. Any properties relating to the DAG, or
 //   DAGs contained within a CAR are the responsibility of the user to check.
-func (r *Reader) Inspect(validateBlockHash bool) (CarStats, error) {
-	stats := CarStats{
+func (r *Reader) Inspect(validateBlockHash bool) (Stats, error) {
+	stats := Stats{
 		Version:      r.Version,
 		Header:       r.Header,
 		CodecCounts:  make(map[multicodec.Code]uint64),
@@ -206,7 +206,7 @@ func (r *Reader) Inspect(validateBlockHash bool) (CarStats, error) {
 	// read roots, not using Roots(), because we need the offset setup in the data trader
 	header, err := carv1.ReadHeader(dr, r.opts.MaxAllowedHeaderSize)
 	if err != nil {
-		return CarStats{}, err
+		return Stats{}, err
 	}
 	stats.Roots = header.Roots
 	var rootsPresentCount int
@@ -219,7 +219,7 @@ func (r *Reader) Inspect(validateBlockHash bool) (CarStats, error) {
 			if err == io.EOF {
 				// if the length of bytes read is non-zero when the error is EOF then signal an unclean EOF.
 				if sectionLength > 0 {
-					return CarStats{}, io.ErrUnexpectedEOF
+					return Stats{}, io.ErrUnexpectedEOF
 				}
 				// otherwise, this is a normal ending
 				break
@@ -230,20 +230,20 @@ func (r *Reader) Inspect(validateBlockHash bool) (CarStats, error) {
 			break
 		}
 		if sectionLength > r.opts.MaxAllowedSectionSize {
-			return CarStats{}, util.ErrSectionTooLarge
+			return Stats{}, util.ErrSectionTooLarge
 		}
 
 		// decode just the CID bytes
 		cidLen, c, err := cid.CidFromReader(dr)
 		if err != nil {
-			return CarStats{}, err
+			return Stats{}, err
 		}
 
 		if sectionLength < uint64(cidLen) {
 			// this case is handled different in the normal ReadNode() path since it
 			// slurps in the whole section bytes and decodes CID from there - so an
 			// error should come from a failing io.ReadFull
-			return CarStats{}, fmt.Errorf("section length shorter than CID length")
+			return Stats{}, fmt.Errorf("section length shorter than CID length")
 		}
 
 		// is this a root block? (also account for duplicate root CIDs)
@@ -278,7 +278,7 @@ func (r *Reader) Inspect(validateBlockHash bool) (CarStats, error) {
 			}
 			mh, err := multihash.SumStream(blockReader, cp.MhType, mhl)
 			if err != nil {
-				return CarStats{}, err
+				return Stats{}, err
 			}
 			var gotCid cid.Cid
 			switch cp.Version {
@@ -287,15 +287,15 @@ func (r *Reader) Inspect(validateBlockHash bool) (CarStats, error) {
 			case 1:
 				gotCid = cid.NewCidV1(cp.Codec, mh)
 			default:
-				return CarStats{}, fmt.Errorf("invalid cid version: %d", cp.Version)
+				return Stats{}, fmt.Errorf("invalid cid version: %d", cp.Version)
 			}
 			if !gotCid.Equals(c) {
-				return CarStats{}, fmt.Errorf("mismatch in content integrity, expected: %s, got: %s", c, gotCid)
+				return Stats{}, fmt.Errorf("mismatch in content integrity, expected: %s, got: %s", c, gotCid)
 			}
 		} else {
 			// otherwise, skip over it
 			if _, err := dr.Seek(int64(blockLength), io.SeekCurrent); err != nil {
-				return CarStats{}, err
+				return Stats{}, err
 			}
 		}
 
@@ -329,7 +329,7 @@ func (r *Reader) Inspect(validateBlockHash bool) (CarStats, error) {
 		// is intended to be a fast initial scan
 		ind, size, err := index.ReadFromWithSize(r.IndexReader())
 		if err != nil {
-			return CarStats{}, err
+			return Stats{}, err
 		}
 		stats.IndexCodec = ind.Codec()
 		stats.IndexSize = uint64(size)

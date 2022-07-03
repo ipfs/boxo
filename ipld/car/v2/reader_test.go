@@ -280,12 +280,12 @@ func TestInspect(t *testing.T) {
 		path          string
 		carHex        string
 		zerLenAsEOF   bool
-		expectedStats carv2.CarStats
+		expectedStats carv2.Stats
 	}{
 		{
 			name: "IndexlessCarV2",
 			path: "testdata/sample-v2-indexless.car",
-			expectedStats: carv2.CarStats{
+			expectedStats: carv2.Stats{
 				Version: 2,
 				Header: carv2.Header{
 					Characteristics: carv2.Characteristics{0, 0},
@@ -316,7 +316,7 @@ func TestInspect(t *testing.T) {
 			// same payload as IndexlessCarV2, so only difference is the Version & Header
 			name: "CarV1",
 			path: "testdata/sample-v1.car",
-			expectedStats: carv2.CarStats{
+			expectedStats: carv2.Stats{
 				Version:        1,
 				Header:         carv2.Header{},
 				Roots:          []cid.Cid{mustCidDecode("bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy")},
@@ -342,7 +342,7 @@ func TestInspect(t *testing.T) {
 			// same payload as IndexlessCarV2, so only difference is the Header
 			name: "CarV2ProducedByBlockstore",
 			path: "testdata/sample-rw-bs-v2.car",
-			expectedStats: carv2.CarStats{
+			expectedStats: carv2.Stats{
 				Version: 2,
 				Header: carv2.Header{
 					DataOffset:  1464,
@@ -373,7 +373,7 @@ func TestInspect(t *testing.T) {
 			name:        "CarV1VersionWithZeroLenSectionIsOne",
 			path:        "testdata/sample-v1-with-zero-len-section.car",
 			zerLenAsEOF: true,
-			expectedStats: carv2.CarStats{
+			expectedStats: carv2.Stats{
 				Version:        1,
 				Header:         carv2.Header{},
 				Roots:          []cid.Cid{mustCidDecode("bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy")},
@@ -403,7 +403,7 @@ func TestInspect(t *testing.T) {
 			name: "IdentityCID",
 			//       47 {version:1,roots:[identity cid]}                                                               25 identity cid (dag-json {"identity":"block"})
 			carHex: "2f a265726f6f747381d82a581a0001a90200147b226964656e74697479223a22626c6f636b227d6776657273696f6e01 19 01a90200147b226964656e74697479223a22626c6f636b227d",
-			expectedStats: carv2.CarStats{
+			expectedStats: carv2.Stats{
 				Version:      1,
 				Roots:        []cid.Cid{mustCidDecode("baguqeaaupmrgszdfnz2gs5dzei5ceytmn5rwwit5")},
 				RootsPresent: true,
