@@ -1,4 +1,4 @@
-on: [push, pull_request]
+on: [ push, pull_request ]
 name: Go Fuzz
 
 jobs:
@@ -21,8 +21,7 @@ jobs:
           go version
           go env
       - name: Run Fuzzing for 1m
-        with:
-          run: go test -v -fuzz=Fuzz${{ matrix.target }} -fuzztime=1m .
+        run: go test -v -fuzz=Fuzz${{ matrix.target }} -fuzztime=1m .
   v2:
     strategy:
       fail-fast: true
@@ -42,7 +41,6 @@ jobs:
           go version
           go env
       - name: Run Fuzzing for 1m
-        with:
-          run: |
-            cd v2
-            go test -v -fuzz=Fuzz${{ matrix.target }} -fuzztime=1m .
+        run: |
+          cd v2
+          go test -v -fuzz=Fuzz${{ matrix.target }} -fuzztime=1m .
