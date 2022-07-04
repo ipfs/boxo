@@ -1,6 +1,7 @@
 package car
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -224,6 +225,7 @@ func (r *Reader) Inspect(validateBlockHash bool) (Stats, error) {
 				// otherwise, this is a normal ending
 				break
 			}
+			return Stats{}, err
 		}
 		if sectionLength == 0 && r.opts.ZeroLengthSectionAsEOF {
 			// normal ending for this read mode
@@ -243,7 +245,7 @@ func (r *Reader) Inspect(validateBlockHash bool) (Stats, error) {
 			// this case is handled different in the normal ReadNode() path since it
 			// slurps in the whole section bytes and decodes CID from there - so an
 			// error should come from a failing io.ReadFull
-			return Stats{}, fmt.Errorf("section length shorter than CID length")
+			return Stats{}, errors.New("section length shorter than CID length")
 		}
 
 		// is this a root block? (also account for duplicate root CIDs)

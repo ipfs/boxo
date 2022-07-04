@@ -468,6 +468,11 @@ func TestInspectError(t *testing.T) {
 			validateBlockHash:    true,
 		},
 		{
+			name:                 "BadSectionLength3",
+			carHex:               "11a265726f6f7473f66776657273696f6e0180",
+			expectedInspectError: "unexpected EOF",
+		},
+		{
 			name: "BadBlockHash(SanityCheck)", // this should pass because we don't ask the CID be validated even though it doesn't match
 			//       header                             cid                                                                          data
 			carHex: "11a265726f6f7473806776657273696f6e 012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca ffffffffffffffffffff",
