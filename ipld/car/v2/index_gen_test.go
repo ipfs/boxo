@@ -9,7 +9,6 @@ import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
-	"github.com/ipld/go-car/v2/index/testutil"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/multiformats/go-multicodec"
@@ -48,7 +47,9 @@ func TestGenerateIndex(t *testing.T) {
 				t.Cleanup(func() { assert.NoError(t, v2.Close()) })
 				reader, err := carv2.NewReader(v2)
 				require.NoError(t, err)
-				want, err := index.ReadFrom(reader.IndexReader())
+				ir, err := reader.IndexReader()
+				require.NoError(t, err)
+				want, err := index.ReadFrom(ir)
 				require.NoError(t, err)
 				return want
 			},
@@ -104,7 +105,7 @@ func TestGenerateIndex(t *testing.T) {
 			if want == nil {
 				require.Nil(t, got)
 			} else {
-				testutil.AssertIdenticalIndexes(t, want, got)
+				require.Equal(t, want, got)
 			}
 		}
 	}

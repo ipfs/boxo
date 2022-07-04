@@ -35,15 +35,7 @@ type ReadSeekerAt interface {
 // NewOffsetReadSeeker returns an ReadSeekerAt that reads from r
 // starting offset offset off and stops with io.EOF when r reaches its end.
 // The Seek function will panic if whence io.SeekEnd is passed.
-func NewOffsetReadSeeker(r io.ReaderAt, off int64) ReadSeekerAt {
-	nr, err := NewOffsetReadSeekerWithError(r, off)
-	if err != nil {
-		return erroringReader{err}
-	}
-	return nr
-}
-
-func NewOffsetReadSeekerWithError(r io.ReaderAt, off int64) (ReadSeekerAt, error) {
+func NewOffsetReadSeeker(r io.ReaderAt, off int64) (ReadSeekerAt, error) {
 	if or, ok := r.(*offsetReadSeeker); ok {
 		oldBase := or.base
 		newBase := or.base + off
@@ -127,24 +119,4 @@ func (o *offsetReadSeeker) Seek(offset int64, whence int) (int64, error) {
 // Position returns the current position of this reader relative to the initial offset.
 func (o *offsetReadSeeker) Position() int64 {
 	return o.off - o.base
-}
-
-type erroringReader struct {
-	err error
-}
-
-func (e erroringReader) Read(_ []byte) (int, error) {
-	return 0, e.err
-}
-
-func (e erroringReader) ReadAt(_ []byte, n int64) (int, error) {
-	return 0, e.err
-}
-
-func (e erroringReader) ReadByte() (byte, error) {
-	return 0, e.err
-}
-
-func (e erroringReader) Seek(_ int64, _ int) (int64, error) {
-	return 0, e.err
 }

@@ -120,15 +120,28 @@ func NewReadOnly(backing io.ReaderAt, idx index.Index, opts ...carv2.Option) (*R
 		}
 		if idx == nil {
 			if v2r.Header.HasIndex() {
-				idx, err = index.ReadFrom(v2r.IndexReader())
+				ir, err := v2r.IndexReader()
 				if err != nil {
 					return nil, err
 				}
-			} else if idx, err = generateIndex(v2r.DataReader(), opts...); err != nil {
-				return nil, err
+				idx, err = index.ReadFrom(ir)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				dr, err := v2r.DataReader()
+				if err != nil {
+					return nil, err
+				}
+				if idx, err = generateIndex(dr, opts...); err != nil {
+					return nil, err
+				}
 			}
 		}
-		b.backing = v2r.DataReader()
+		b.backing, err = v2r.DataReader()
+		if err != nil {
+			return nil, err
+		}
 		b.idx = idx
 		return b, nil
 	default:
@@ -142,7 +155,11 @@ func readVersion(at io.ReaderAt, opts ...carv2.Option) (uint64, error) {
 	case io.Reader:
 		rr = r
 	default:
-		rr = internalio.NewOffsetReadSeeker(r, 0)
+		var err error
+		rr, err = internalio.NewOffsetReadSeeker(r, 0)
+		if err != nil {
+			return 0, err
+		}
 	}
 	return carv2.ReadVersion(rr, opts...)
 }
@@ -157,7 +174,11 @@ func generateIndex(at io.ReaderAt, opts ...carv2.Option) (index.Index, error) {
 			return nil, err
 		}
 	default:
-		rs = internalio.NewOffsetReadSeeker(r, 0)
+		var err error
+		rs, err = internalio.NewOffsetReadSeeker(r, 0)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Note, we do not set any write options so that all write options fall back onto defaults.
@@ -183,7 +204,7 @@ func OpenReadOnly(path string, opts ...carv2.Option) (*ReadOnly, error) {
 }
 
 func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
-	r, err := internalio.NewOffsetReadSeekerWithError(b.backing, idx)
+	r, err := internalio.NewOffsetReadSeeker(b.backing, idx)
 	if err != nil {
 		return cid.Cid{}, nil, err
 	}
@@ -216,8 +237,11 @@ func (b *ReadOnly) Has(ctx context.Context, key cid.Cid) (bool, error) {
 	var fnFound bool
 	var fnErr error
 	err := b.idx.GetAll(key, func(offset uint64) bool {
-		uar := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
-		var err error
+		uar, err := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
+		if err != nil {
+			fnErr = err
+			return false
+		}
 		_, err = varint.ReadUvarint(uar)
 		if err != nil {
 			fnErr = err
@@ -317,7 +341,11 @@ func (b *ReadOnly) GetSize(ctx context.Context, key cid.Cid) (int, error) {
 	fnSize := -1
 	var fnErr error
 	err := b.idx.GetAll(key, func(offset uint64) bool {
-		rdr := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
+		rdr, err := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
+		if err != nil {
+			fnErr = err
+			return false
+		}
 		sectionLen, err := varint.ReadUvarint(rdr)
 		if err != nil {
 			fnErr = err
@@ -401,7 +429,10 @@ func (b *ReadOnly) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	}
 
 	// TODO we may use this walk for populating the index, and we need to be able to iterate keys in this way somewhere for index generation. In general though, when it's asked for all keys from a blockstore with an index, we should iterate through the index when possible rather than linear reads through the full car.
-	rdr := internalio.NewOffsetReadSeeker(b.backing, 0)
+	rdr, err := internalio.NewOffsetReadSeeker(b.backing, 0)
+	if err != nil {
+		return nil, err
+	}
 	header, err := carv1.ReadHeader(rdr, b.opts.MaxAllowedHeaderSize)
 	if err != nil {
 		b.mu.RUnlock() // don't hold the mutex forever
@@ -492,7 +523,11 @@ func (b *ReadOnly) HashOnRead(bool) {
 
 // Roots returns the root CIDs of the backing CAR.
 func (b *ReadOnly) Roots() ([]cid.Cid, error) {
-	header, err := carv1.ReadHeader(internalio.NewOffsetReadSeeker(b.backing, 0), b.opts.MaxAllowedHeaderSize)
+	ors, err := internalio.NewOffsetReadSeeker(b.backing, 0)
+	if err != nil {
+		return nil, err
+	}
+	header, err := carv1.ReadHeader(ors, b.opts.MaxAllowedHeaderSize)
 	if err != nil {
 		return nil, fmt.Errorf("error reading car header: %w", err)
 	}

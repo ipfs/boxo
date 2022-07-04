@@ -108,7 +108,11 @@ func BenchmarkExtractV1UsingReader(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			_, err = io.Copy(dst, reader.DataReader())
+			dr, err := reader.DataReader()
+			if err != nil {
+				b.Fatal(err)
+			}
+			_, err = io.Copy(dst, dr)
 			if err != nil {
 				b.Fatal(err)
 			}

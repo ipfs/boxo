@@ -53,10 +53,13 @@ func TestMultiWidthCodedIndex_StableIterate(t *testing.T) {
 	records = append(records, generateIndexRecords(t, multihash.IDENTITY, rng)...)
 
 	// Create a new mh sorted index and load randomly generated records into it.
-	subject, err := index.New(multicodec.CarMultihashIndexSorted)
+	idx, err := index.New(multicodec.CarMultihashIndexSorted)
 	require.NoError(t, err)
-	err = subject.Load(records)
+	err = idx.Load(records)
 	require.NoError(t, err)
+
+	subject, ok := idx.(index.IterableIndex)
+	require.True(t, ok)
 
 	mh := make([]multihash.Multihash, 0, len(records))
 	require.NoError(t, subject.ForEach(func(m multihash.Multihash, _ uint64) error {

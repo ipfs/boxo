@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	car "github.com/ipld/go-car/v2"
-	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1"
 )
 
@@ -73,48 +72,15 @@ func FuzzReader(f *testing.F) {
 		}
 
 		subject.Roots()
-		ir := subject.IndexReader()
-		if ir != nil {
-			index.ReadFrom(ir)
+		_, err = subject.IndexReader()
+		if err != nil {
+			return
 		}
-		car.GenerateIndex(subject.DataReader())
-	})
-}
-
-func FuzzIndex(f *testing.F) {
-	files, err := filepath.Glob("testdata/*.car")
-	if err != nil {
-		f.Fatal(err)
-	}
-	for _, fname := range files {
-		func() {
-			file, err := os.Open(fname)
-			if err != nil {
-				f.Fatal(err)
-			}
-			defer file.Close()
-			subject, err := car.NewReader(file)
-			if err != nil {
-				return
-			}
-			indexRdr := subject.IndexReader()
-			if indexRdr == nil {
-				return
-			}
-			_, n, err := index.ReadFromWithSize(indexRdr)
-			if err != nil {
-				return
-			}
-			data, err := io.ReadAll(io.NewSectionReader(indexRdr, 0, n))
-			if err != nil {
-				f.Fatal(err)
-			}
-			f.Add(data)
-		}()
-	}
-
-	f.Fuzz(func(t *testing.T, data []byte) {
-		index.ReadFrom(bytes.NewReader(data))
+		dr, err := subject.DataReader()
+		if err != nil {
+			return
+		}
+		car.GenerateIndex(dr)
 	})
 }
 
@@ -137,15 +103,18 @@ func FuzzInspect(f *testing.F) {
 		if err != nil {
 			t.Fatal("second NewReader on same data failed", err.Error())
 		}
-
-		if i := reader.IndexReader(); i != nil {
-			_, err = index.ReadFrom(i)
-			if err != nil {
-				return
-			}
+		i, err := reader.IndexReader()
+		if err != nil {
+			return
 		}
-
-		dr := reader.DataReader()
+		// FIXME: Once indexes are safe to parse, do not skip .car with index in the differential fuzzing.
+		if i == nil {
+			return
+		}
+		dr, err := reader.DataReader()
+		if err != nil {
+			return
+		}
 
 		_, err = carv1.ReadHeader(dr, carv1.DefaultMaxAllowedHeaderSize)
 		if err != nil {

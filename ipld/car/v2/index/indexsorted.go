@@ -5,21 +5,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	internalio "github.com/ipld/go-car/v2/internal/io"
 	"io"
 	"sort"
 
-	"github.com/ipld/go-car/v2/internal/errsort"
-	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/multiformats/go-multicodec"
 
 	"github.com/ipfs/go-cid"
 	"github.com/multiformats/go-multihash"
 )
-
-type sizedReaderAt interface {
-	io.ReaderAt
-	Size() int64
-}
 
 var _ Index = (*multiWidthIndex)(nil)
 
@@ -32,7 +26,7 @@ type (
 	singleWidthIndex struct {
 		width uint32
 		len   uint64 // in struct, len is #items. when marshaled, it's saved as #bytes.
-		index sizedReaderAt
+		index []byte
 	}
 	multiWidthIndex map[uint32]singleWidthIndex
 )
@@ -60,24 +54,27 @@ func (s *singleWidthIndex) Marshal(w io.Writer) (uint64, error) {
 		return 0, err
 	}
 	l += 4
-	sz := s.index.Size()
-	if err := binary.Write(w, binary.LittleEndian, sz); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, int64(len(s.index))); err != nil {
 		return l, err
 	}
 	l += 8
-	n, err := io.Copy(w, io.NewSectionReader(s.index, 0, sz))
+	n, err := w.Write(s.index)
 	return l + uint64(n), err
 }
 
-// Unmarshal decodes the index from its serial form.
-// Deprecated: This function is slurpy and will copy the index in memory.
 func (s *singleWidthIndex) Unmarshal(r io.Reader) error {
 	var width uint32
 	if err := binary.Read(r, binary.LittleEndian, &width); err != nil {
+		if err == io.EOF {
+			return io.ErrUnexpectedEOF
+		}
 		return err
 	}
 	var dataLen uint64
 	if err := binary.Read(r, binary.LittleEndian, &dataLen); err != nil {
+		if err == io.EOF {
+			return io.ErrUnexpectedEOF
+		}
 		return err
 	}
 
@@ -89,24 +86,8 @@ func (s *singleWidthIndex) Unmarshal(r io.Reader) error {
 	if _, err := io.ReadFull(r, buf); err != nil {
 		return err
 	}
-	s.index = bytes.NewReader(buf)
+	s.index = buf
 	return nil
-}
-
-func (s *singleWidthIndex) UnmarshalLazyRead(r io.ReaderAt) (indexSize int64, err error) {
-	var b [12]byte
-	_, err = internalio.FullReadAt(r, b[:], 0)
-	if err != nil {
-		return 0, err
-	}
-
-	width := binary.LittleEndian.Uint32(b[:4])
-	dataLen := binary.LittleEndian.Uint64(b[4:12])
-	if err := s.checkUnmarshalLengths(width, dataLen, uint64(len(b))); err != nil {
-		return 0, err
-	}
-	s.index = io.NewSectionReader(r, int64(len(b)), int64(dataLen))
-	return int64(dataLen) + int64(len(b)), nil
 }
 
 func (s *singleWidthIndex) checkUnmarshalLengths(width uint32, dataLen, extra uint64) error {
@@ -129,6 +110,10 @@ func (s *singleWidthIndex) checkUnmarshalLengths(width uint32, dataLen, extra ui
 	return nil
 }
 
+func (s *singleWidthIndex) Less(i int, digest []byte) bool {
+	return bytes.Compare(digest[:], s.index[i*int(s.width):((i+1)*int(s.width)-8)]) <= 0
+}
+
 func (s *singleWidthIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
@@ -138,35 +123,18 @@ func (s *singleWidthIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {
 }
 
 func (s *singleWidthIndex) getAll(d []byte, fn func(uint64) bool) error {
-	digestLen := int64(s.width) - 8
-	b := make([]byte, digestLen)
-	idxI, err := errsort.Search(int(s.len), func(i int) (bool, error) {
-		digestStart := int64(i) * int64(s.width)
-		_, err := internalio.FullReadAt(s.index, b, digestStart)
-		if err != nil {
-			return false, err
-		}
-		return bytes.Compare(d, b) <= 0, nil
+	idx := sort.Search(int(s.len), func(i int) bool {
+		return s.Less(i, d)
 	})
-	if err != nil {
-		return err
-	}
-	idx := int64(idxI)
 
 	var any bool
 	for ; uint64(idx) < s.len; idx++ {
-		digestStart := idx * int64(s.width)
-		offsetEnd := digestStart + int64(s.width)
+		digestStart := idx * int(s.width)
+		offsetEnd := (idx + 1) * int(s.width)
 		digestEnd := offsetEnd - 8
-		digestLen := digestEnd - digestStart
-		b := make([]byte, offsetEnd-digestStart)
-		_, err := internalio.FullReadAt(s.index, b, digestStart)
-		if err != nil {
-			return err
-		}
-		if bytes.Equal(d, b[:digestLen]) {
+		if bytes.Equal(d[:], s.index[digestStart:digestEnd]) {
 			any = true
-			offset := binary.LittleEndian.Uint64(b[digestLen:])
+			offset := binary.LittleEndian.Uint64(s.index[digestEnd:offsetEnd])
 			if !fn(offset) {
 				// User signalled to stop searching; therefore, break.
 				break
@@ -200,19 +168,13 @@ func (s *singleWidthIndex) Load(items []Record) error {
 }
 
 func (s *singleWidthIndex) forEachDigest(f func(digest []byte, offset uint64) error) error {
-	segmentCount := s.index.Size() / int64(s.width)
-	for i := int64(0); i < segmentCount; i++ {
-		digestStart := i * int64(s.width)
-		offsetEnd := digestStart + int64(s.width)
+	segmentCount := len(s.index) / int(s.width)
+	for i := 0; i < segmentCount; i++ {
+		digestStart := i * int(s.width)
+		offsetEnd := (i + 1) * int(s.width)
 		digestEnd := offsetEnd - 8
-		digestLen := digestEnd - digestStart
-		b := make([]byte, offsetEnd-digestStart)
-		_, err := internalio.FullReadAt(s.index, b, digestStart)
-		if err != nil {
-			return err
-		}
-		digest := b[:digestLen]
-		offset := binary.LittleEndian.Uint64(b[digestLen:])
+		digest := s.index[digestStart:digestEnd]
+		offset := binary.LittleEndian.Uint64(s.index[digestEnd:offsetEnd])
 		if err := f(digest, offset); err != nil {
 			return err
 		}
@@ -265,49 +227,38 @@ func (m *multiWidthIndex) Marshal(w io.Writer) (uint64, error) {
 }
 
 func (m *multiWidthIndex) Unmarshal(r io.Reader) error {
+	reader := internalio.ToByteReadSeeker(r)
 	var l int32
-	if err := binary.Read(r, binary.LittleEndian, &l); err != nil {
+	if err := binary.Read(reader, binary.LittleEndian, &l); err != nil {
+		if err == io.EOF {
+			return io.ErrUnexpectedEOF
+		}
 		return err
+	}
+	sum, err := reader.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+	if int32(l) < 0 {
+		return errors.New("index too big; multiWidthIndex count is overflowing int32")
 	}
 	for i := 0; i < int(l); i++ {
 		s := singleWidthIndex{}
 		if err := s.Unmarshal(r); err != nil {
 			return err
 		}
-		(*m)[s.width] = s
-	}
-	return nil
-}
-
-func (m *multiWidthIndex) UnmarshalLazyRead(r io.ReaderAt) (sum int64, err error) {
-	var b [4]byte
-	_, err = internalio.FullReadAt(r, b[:], 0)
-	if err != nil {
-		return 0, err
-	}
-	count := binary.LittleEndian.Uint32(b[:4])
-	if int32(count) < 0 {
-		return 0, errors.New("index too big; multiWidthIndex count is overflowing int32")
-	}
-	sum += int64(len(b))
-	for ; count > 0; count-- {
-		s := singleWidthIndex{}
-		or, err := internalio.NewOffsetReadSeekerWithError(r, sum)
+		n, err := reader.Seek(0, io.SeekCurrent)
 		if err != nil {
-			return 0, err
-		}
-		n, err := s.UnmarshalLazyRead(or)
-		if err != nil {
-			return 0, err
+			return err
 		}
 		oldSum := sum
 		sum += n
 		if sum < oldSum {
-			return 0, errors.New("index too big; multiWidthIndex len is overflowing int64")
+			return errors.New("index too big; multiWidthIndex len is overflowing int64")
 		}
 		(*m)[s.width] = s
 	}
-	return sum, nil
+	return nil
 }
 
 func (m *multiWidthIndex) Load(items []Record) error {
@@ -339,15 +290,11 @@ func (m *multiWidthIndex) Load(items []Record) error {
 		s := singleWidthIndex{
 			width: uint32(rcrdWdth),
 			len:   uint64(len(lst)),
-			index: bytes.NewReader(compact),
+			index: compact,
 		}
 		(*m)[uint32(width)+8] = s
 	}
 	return nil
-}
-
-func (m *multiWidthIndex) ForEach(func(multihash.Multihash, uint64) error) error {
-	return fmt.Errorf("%s does not support ForEach enumeration; use %s instead", multicodec.CarIndexSorted, multicodec.CarMultihashIndexSorted)
 }
 
 func (m *multiWidthIndex) forEachDigest(f func(digest []byte, offset uint64) error) error {

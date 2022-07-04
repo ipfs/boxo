@@ -56,8 +56,10 @@ func NewReader(r io.ReaderAt, opts ...Option) (*Reader, error) {
 	}
 	cr.opts = ApplyOptions(opts...)
 
-	or := internalio.NewOffsetReadSeeker(r, 0)
-	var err error
+	or, err := internalio.NewOffsetReadSeeker(r, 0)
+	if err != nil {
+		return nil, err
+	}
 	cr.Version, err = ReadVersion(or, opts...)
 	if err != nil {
 		return nil, err
@@ -82,7 +84,11 @@ func (r *Reader) Roots() ([]cid.Cid, error) {
 	if r.roots != nil {
 		return r.roots, nil
 	}
-	header, err := carv1.ReadHeader(r.DataReader(), r.opts.MaxAllowedHeaderSize)
+	dr, err := r.DataReader()
+	if err != nil {
+		return nil, err
+	}
+	header, err := carv1.ReadHeader(dr, r.opts.MaxAllowedHeaderSize)
 	if err != nil {
 		return nil, err
 	}
@@ -106,9 +112,9 @@ type SectionReader interface {
 }
 
 // DataReader provides a reader containing the data payload in CARv1 format.
-func (r *Reader) DataReader() SectionReader {
+func (r *Reader) DataReader() (SectionReader, error) {
 	if r.Version == 2 {
-		return io.NewSectionReader(r.r, int64(r.Header.DataOffset), int64(r.Header.DataSize))
+		return io.NewSectionReader(r.r, int64(r.Header.DataOffset), int64(r.Header.DataSize)), nil
 	}
 	return internalio.NewOffsetReadSeeker(r.r, 0)
 }
@@ -116,9 +122,9 @@ func (r *Reader) DataReader() SectionReader {
 // IndexReader provides an io.Reader containing the index for the data payload if the index is
 // present. Otherwise, returns nil.
 // Note, this function will always return nil if the backing payload represents a CARv1.
-func (r *Reader) IndexReader() io.ReaderAt {
+func (r *Reader) IndexReader() (io.Reader, error) {
 	if r.Version == 1 || !r.Header.HasIndex() {
-		return nil
+		return nil, nil
 	}
 	return internalio.NewOffsetReadSeeker(r.r, int64(r.Header.IndexOffset))
 }
@@ -139,7 +145,6 @@ type Stats struct {
 	MaxBlockLength uint64
 	MinBlockLength uint64
 	IndexCodec     multicodec.Code
-	IndexSize      uint64
 }
 
 // Inspect does a quick scan of a CAR, performing basic validation of the format
@@ -201,7 +206,10 @@ func (r *Reader) Inspect(validateBlockHash bool) (Stats, error) {
 	var minCidLength uint64 = math.MaxUint64
 	var minBlockLength uint64 = math.MaxUint64
 
-	dr := r.DataReader()
+	dr, err := r.DataReader()
+	if err != nil {
+		return Stats{}, err
+	}
 	bdr := internalio.ToByteReader(dr)
 
 	// read roots, not using Roots(), because we need the offset setup in the data trader
@@ -327,14 +335,15 @@ func (r *Reader) Inspect(validateBlockHash bool) (Stats, error) {
 	}
 
 	if stats.Version != 1 && stats.Header.HasIndex() {
-		// performs an UnmarshalLazyRead which should have its own validation and
-		// is intended to be a fast initial scan
-		ind, size, err := index.ReadFromWithSize(r.IndexReader())
+		idxr, err := r.IndexReader()
 		if err != nil {
 			return Stats{}, err
 		}
-		stats.IndexCodec = ind.Codec()
-		stats.IndexSize = uint64(size)
+		idx, err := index.ReadFrom(idxr)
+		if err != nil {
+			return Stats{}, err
+		}
+		stats.IndexCodec = idx.Codec()
 	}
 
 	return stats, nil

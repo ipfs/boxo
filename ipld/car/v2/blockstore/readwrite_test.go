@@ -21,7 +21,6 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/blockstore"
 	"github.com/ipld/go-car/v2/index"
-	"github.com/ipld/go-car/v2/index/testutil"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
@@ -488,7 +487,9 @@ func TestBlockstoreResumption(t *testing.T) {
 	wantPayloadReader, err := carv1.NewCarReader(v1f)
 	require.NoError(t, err)
 
-	gotPayloadReader, err := carv1.NewCarReader(v2r.DataReader())
+	dr, err := v2r.DataReader()
+	require.NoError(t, err)
+	gotPayloadReader, err := carv1.NewCarReader(dr)
 	require.NoError(t, err)
 
 	require.Equal(t, wantPayloadReader.Header, gotPayloadReader.Header)
@@ -516,11 +517,15 @@ func TestBlockstoreResumption(t *testing.T) {
 	// Assert index in resumed from file is identical to index generated from the data payload portion of the generated CARv2 file.
 	_, err = v1f.Seek(0, io.SeekStart)
 	require.NoError(t, err)
-	gotIdx, err := index.ReadFrom(v2r.IndexReader())
+	ir, err := v2r.IndexReader()
 	require.NoError(t, err)
-	wantIdx, err := carv2.GenerateIndex(v2r.DataReader())
+	gotIdx, err := index.ReadFrom(ir)
 	require.NoError(t, err)
-	testutil.AssertIdenticalIndexes(t, wantIdx, gotIdx)
+	dr, err = v2r.DataReader()
+	require.NoError(t, err)
+	wantIdx, err := carv2.GenerateIndex(dr)
+	require.NoError(t, err)
+	require.Equal(t, wantIdx, gotIdx)
 }
 
 func TestBlockstoreResumptionIsSupportedOnFinalizedFile(t *testing.T) {
@@ -829,29 +834,37 @@ func TestOpenReadWrite_WritesIdentityCIDsWhenOptionIsEnabled(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, r.Close()) })
 	require.True(t, r.Header.HasIndex())
 
-	ir := r.IndexReader()
+	ir, err := r.IndexReader()
+	require.NoError(t, err)
 	require.NotNil(t, ir)
 
 	gotIdx, err := index.ReadFrom(ir)
 	require.NoError(t, err)
 
 	// Determine expected offset as the length of header plus one
-	header, err := carv1.ReadHeader(r.DataReader(), carv1.DefaultMaxAllowedHeaderSize)
+	dr, err := r.DataReader()
+	require.NoError(t, err)
+	header, err := carv1.ReadHeader(dr, carv1.DefaultMaxAllowedHeaderSize)
 	require.NoError(t, err)
 	object, err := cbor.DumpObject(header)
 	require.NoError(t, err)
 	expectedOffset := len(object) + 1
 
 	// Assert index is iterable and has exactly one record with expected multihash and offset.
-	var count int
-	err = gotIdx.ForEach(func(mh multihash.Multihash, offset uint64) error {
-		count++
-		require.Equal(t, idmh, mh)
-		require.Equal(t, uint64(expectedOffset), offset)
-		return nil
-	})
-	require.NoError(t, err)
-	require.Equal(t, 1, count)
+	switch idx := gotIdx.(type) {
+	case index.IterableIndex:
+		var i int
+		err := idx.ForEach(func(mh multihash.Multihash, offset uint64) error {
+			i++
+			require.Equal(t, idmh, mh)
+			require.Equal(t, uint64(expectedOffset), offset)
+			return nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, 1, i)
+	default:
+		require.Failf(t, "unexpected index type", "wanted %v but got %v", multicodec.CarMultihashIndexSorted, idx.Codec())
+	}
 }
 
 func TestOpenReadWrite_ErrorsWhenWritingTooLargeOfACid(t *testing.T) {
@@ -914,7 +927,9 @@ func TestReadWrite_ReWritingCARv1WithIdentityCidIsIdenticalToOriginalWithOptions
 	// Note, we hash instead of comparing bytes to avoid excessive memory usage when sample CARv1 is large.
 
 	hasher := sha512.New()
-	gotWritten, err := io.Copy(hasher, v2r.DataReader())
+	dr, err := v2r.DataReader()
+	require.NoError(t, err)
+	gotWritten, err := io.Copy(hasher, dr)
 	require.NoError(t, err)
 	gotSum := hasher.Sum(nil)
 

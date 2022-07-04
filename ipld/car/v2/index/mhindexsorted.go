@@ -3,17 +3,18 @@ package index
 import (
 	"encoding/binary"
 	"errors"
+	internalio "github.com/ipld/go-car/v2/internal/io"
 	"io"
 	"sort"
 
 	"github.com/ipfs/go-cid"
-	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
 )
 
 var (
-	_ Index = (*MultihashIndexSorted)(nil)
+	_ Index         = (*MultihashIndexSorted)(nil)
+	_ IterableIndex = (*MultihashIndexSorted)(nil)
 )
 
 type (
@@ -42,32 +43,12 @@ func (m *multiWidthCodedIndex) Marshal(w io.Writer) (uint64, error) {
 
 func (m *multiWidthCodedIndex) Unmarshal(r io.Reader) error {
 	if err := binary.Read(r, binary.LittleEndian, &m.code); err != nil {
+		if err == io.EOF {
+			return io.ErrUnexpectedEOF
+		}
 		return err
 	}
 	return m.multiWidthIndex.Unmarshal(r)
-}
-
-func (m *multiWidthCodedIndex) UnmarshalLazyRead(r io.ReaderAt) (int64, error) {
-	var b [8]byte
-	_, err := internalio.FullReadAt(r, b[:], 0)
-	if err != nil {
-		return 0, err
-	}
-	m.code = binary.LittleEndian.Uint64(b[:8])
-	rdr, err := internalio.NewOffsetReadSeekerWithError(r, int64(len(b)))
-	if err != nil {
-		return 0, err
-	}
-	sum, err := m.multiWidthIndex.UnmarshalLazyRead(rdr)
-	if err != nil {
-		return 0, err
-	}
-	oldSum := sum
-	sum += int64(len(b))
-	if sum < oldSum {
-		return 0, errors.New("index too big; multiWidthCodedIndex len is overflowing")
-	}
-	return sum, nil
 }
 
 func (m *multiWidthCodedIndex) forEach(f func(mh multihash.Multihash, offset uint64) error) error {
@@ -117,49 +98,38 @@ func (m *MultihashIndexSorted) sortedMultihashCodes() []uint64 {
 }
 
 func (m *MultihashIndexSorted) Unmarshal(r io.Reader) error {
+	reader := internalio.ToByteReadSeeker(r)
 	var l int32
-	if err := binary.Read(r, binary.LittleEndian, &l); err != nil {
+	if err := binary.Read(reader, binary.LittleEndian, &l); err != nil {
+		if err == io.EOF {
+			return io.ErrUnexpectedEOF
+		}
 		return err
+	}
+	sum, err := reader.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+	if int32(l) < 0 {
+		return errors.New("index too big; MultihashIndexSorted count is overflowing int32")
 	}
 	for i := 0; i < int(l); i++ {
 		mwci := newMultiWidthCodedIndex()
 		if err := mwci.Unmarshal(r); err != nil {
 			return err
 		}
-		m.put(mwci)
-	}
-	return nil
-}
-
-func (m *MultihashIndexSorted) UnmarshalLazyRead(r io.ReaderAt) (sum int64, err error) {
-	var b [4]byte
-	_, err = internalio.FullReadAt(r, b[:], 0)
-	if err != nil {
-		return 0, err
-	}
-	sum += int64(len(b))
-	count := binary.LittleEndian.Uint32(b[:4])
-	if int32(count) < 0 {
-		return 0, errors.New("index too big; MultihashIndexSorted count is overflowing int32")
-	}
-	for ; count > 0; count-- {
-		mwci := newMultiWidthCodedIndex()
-		or, err := internalio.NewOffsetReadSeekerWithError(r, sum)
+		n, err := reader.Seek(0, io.SeekCurrent)
 		if err != nil {
-			return 0, err
-		}
-		n, err := mwci.UnmarshalLazyRead(or)
-		if err != nil {
-			return 0, err
+			return err
 		}
 		oldSum := sum
 		sum += n
 		if sum < oldSum {
-			return 0, errors.New("index too big; MultihashIndexSorted sum is overflowing int64")
+			return errors.New("index too big; MultihashIndexSorted len is overflowing int64")
 		}
 		m.put(mwci)
 	}
-	return sum, nil
+	return nil
 }
 
 func (m *MultihashIndexSorted) put(mwci *multiWidthCodedIndex) {

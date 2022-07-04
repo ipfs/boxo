@@ -139,7 +139,7 @@ func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.Option) (*ReadWri
 		offset = 0
 	}
 	rwbs.dataWriter = internalio.NewOffsetWriter(rwbs.f, offset)
-	v1r, err := internalio.NewOffsetReadSeekerWithError(rwbs.f, offset)
+	v1r, err := internalio.NewOffsetReadSeeker(rwbs.f, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -169,11 +169,11 @@ func (b *ReadWrite) initWithRoots(v2 bool, roots []cid.Cid) error {
 	return carv1.WriteHeader(&carv1.CarHeader{Roots: roots, Version: 1}, b.dataWriter)
 }
 
-func (b *ReadWrite) resumeWithRoots(v2 bool, roots []cid.Cid, opts ...carv2.Option) error {
+func (b *ReadWrite) resumeWithRoots(v2 bool, roots []cid.Cid) error {
 	// On resumption it is expected that the CARv2 Pragma, and the CARv1 header is successfully written.
 	// Otherwise we cannot resume from the file.
 	// Read pragma to assert if b.f is indeed a CARv2.
-	version, err := carv2.ReadVersion(b.f, opts...)
+	version, err := carv2.ReadVersion(b.f)
 	if err != nil {
 		// The file is not a valid CAR file and cannot resume from it.
 		// Or the write must have failed before pragma was written.
@@ -193,7 +193,7 @@ func (b *ReadWrite) resumeWithRoots(v2 bool, roots []cid.Cid, opts ...carv2.Opti
 		// Check if file was finalized by trying to read the CARv2 header.
 		// We check because if finalized the CARv1 reader behaviour needs to be adjusted since
 		// EOF will not signify end of CARv1 payload. i.e. index is most likely present.
-		r, err := internalio.NewOffsetReadSeekerWithError(b.f, carv2.PragmaSize)
+		r, err := internalio.NewOffsetReadSeeker(b.f, carv2.PragmaSize)
 		if err != nil {
 			return err
 		}
@@ -223,7 +223,10 @@ func (b *ReadWrite) resumeWithRoots(v2 bool, roots []cid.Cid, opts ...carv2.Opti
 	}
 
 	// Use the given CARv1 padding to instantiate the CARv1 reader on file.
-	v1r := internalio.NewOffsetReadSeeker(b.ronly.backing, 0)
+	v1r, err := internalio.NewOffsetReadSeeker(b.ronly.backing, 0)
+	if err != nil {
+		return err
+	}
 	header, err := carv1.ReadHeader(v1r, b.opts.MaxAllowedHeaderSize)
 	if err != nil {
 		// Cannot read the CARv1 header; the file is most likely corrupt.

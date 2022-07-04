@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipld/go-car/v2/index/testutil"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
 	"github.com/multiformats/go-multicodec"
@@ -53,6 +52,9 @@ func TestReadFrom(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, idxf.Close()) })
 
 	subject, err := ReadFrom(idxf)
+	require.NoError(t, err)
+
+	_, err = idxf.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 
 	idxf2, err := os.Open("../testdata/sample-multihash-index-sorted.carindex")
@@ -126,7 +128,7 @@ func TestWriteTo(t *testing.T) {
 	require.NoError(t, err)
 
 	// Assert they are equal
-	testutil.AssertIdenticalIndexes(t, wantIdx, gotIdx)
+	require.Equal(t, wantIdx, gotIdx)
 }
 
 func TestMarshalledIndexStartsWithCodec(t *testing.T) {

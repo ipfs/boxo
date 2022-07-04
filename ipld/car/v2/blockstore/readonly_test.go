@@ -226,7 +226,9 @@ func newV1ReaderFromV2File(t *testing.T, carv2Path string, zeroLenSectionAsEOF b
 	t.Cleanup(func() { f.Close() })
 	v2r, err := carv2.NewReader(f)
 	require.NoError(t, err)
-	v1r, err := newV1Reader(v2r.DataReader(), zeroLenSectionAsEOF)
+	dr, err := v2r.DataReader()
+	require.NoError(t, err)
+	v1r, err := newV1Reader(dr, zeroLenSectionAsEOF)
 	require.NoError(t, err)
 	return v1r
 }

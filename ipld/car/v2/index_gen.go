@@ -209,10 +209,18 @@ func ReadOrGenerateIndex(rs io.ReadSeeker, opts ...Option) (index.Index, error) 
 		}
 		// If index is present, then no need to generate; decode and return it.
 		if v2r.Header.HasIndex() {
-			return index.ReadFrom(v2r.IndexReader())
+			ir, err := v2r.IndexReader()
+			if err != nil {
+				return nil, err
+			}
+			return index.ReadFrom(ir)
 		}
 		// Otherwise, generate index from CARv1 payload wrapped within CARv2 format.
-		return GenerateIndex(v2r.DataReader(), opts...)
+		dr, err := v2r.DataReader()
+		if err != nil {
+			return nil, err
+		}
+		return GenerateIndex(dr, opts...)
 	default:
 		return nil, fmt.Errorf("unknown version %v", version)
 	}

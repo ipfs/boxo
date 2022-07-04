@@ -11,7 +11,6 @@ import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
-	"github.com/ipld/go-car/v2/index/testutil"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
@@ -141,7 +140,9 @@ func TestReader_WithCarV1Consistency(t *testing.T) {
 			gotRoots, err := subject.Roots()
 			require.NoError(t, err)
 			require.Equal(t, wantReader.Header.Roots, gotRoots)
-			require.Nil(t, subject.IndexReader())
+			ir, err := subject.IndexReader()
+			require.Nil(t, ir)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -173,13 +174,16 @@ func TestReader_WithCarV2Consistency(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, wantReader.Header.Roots, gotRoots)
 
-			gotIndexReader := subject.IndexReader()
+			gotIndexReader, err := subject.IndexReader()
+			require.NoError(t, err)
 			require.NotNil(t, gotIndexReader)
 			gotIndex, err := index.ReadFrom(gotIndexReader)
 			require.NoError(t, err)
-			wantIndex, err := carv2.GenerateIndex(subject.DataReader())
+			dr, err := subject.DataReader()
 			require.NoError(t, err)
-			testutil.AssertIdenticalIndexes(t, wantIndex, gotIndex)
+			wantIndex, err := carv2.GenerateIndex(dr)
+			require.NoError(t, err)
+			require.Equal(t, wantIndex, gotIndex)
 		})
 	}
 }
@@ -187,13 +191,15 @@ func TestReader_WithCarV2Consistency(t *testing.T) {
 func TestOpenReader_DoesNotPanicForReadersCreatedBeforeClosure(t *testing.T) {
 	subject, err := carv2.OpenReader("testdata/sample-wrapped-v2.car")
 	require.NoError(t, err)
-	dReaderBeforeClosure := subject.DataReader()
-	iReaderBeforeClosure := subject.IndexReader()
+	dReaderBeforeClosure, err := subject.DataReader()
+	require.NoError(t, err)
+	iReaderBeforeClosure, err := subject.IndexReader()
+	require.NoError(t, err)
 	require.NoError(t, subject.Close())
 
 	buf := make([]byte, 1)
-	panicTest := func(r io.ReaderAt) {
-		_, err := r.ReadAt(buf, 0)
+	panicTest := func(r io.Reader) {
+		_, err := r.Read(buf)
 		require.EqualError(t, err, "mmap: closed")
 	}
 
@@ -205,12 +211,14 @@ func TestOpenReader_DoesNotPanicForReadersCreatedAfterClosure(t *testing.T) {
 	subject, err := carv2.OpenReader("testdata/sample-wrapped-v2.car")
 	require.NoError(t, err)
 	require.NoError(t, subject.Close())
-	dReaderAfterClosure := subject.DataReader()
-	iReaderAfterClosure := subject.IndexReader()
+	dReaderAfterClosure, err := subject.DataReader()
+	require.NoError(t, err)
+	iReaderAfterClosure, err := subject.IndexReader()
+	require.NoError(t, err)
 
 	buf := make([]byte, 1)
-	panicTest := func(r io.ReaderAt) {
-		_, err := r.ReadAt(buf, 0)
+	panicTest := func(r io.Reader) {
+		_, err := r.Read(buf)
 		require.EqualError(t, err, "mmap: closed")
 	}
 
@@ -237,7 +245,9 @@ func TestReader_ReturnsNilWhenThereIsNoIndex(t *testing.T) {
 			subject, err := carv2.OpenReader(tt.path)
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, subject.Close()) })
-			require.Nil(t, subject.IndexReader())
+			ir, err := subject.IndexReader()
+			require.NoError(t, err)
+			require.Nil(t, ir)
 		})
 	}
 }
@@ -365,7 +375,6 @@ func TestInspect(t *testing.T) {
 				MaxBlockLength: 9,
 				MinBlockLength: 4,
 				IndexCodec:     multicodec.CarMultihashIndexSorted,
-				IndexSize:      148,
 			},
 		},
 		// same as CarV1 but with a zero-byte EOF to test options
