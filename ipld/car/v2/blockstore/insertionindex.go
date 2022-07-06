@@ -2,6 +2,7 @@ package blockstore
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
 	"github.com/petar/GoLLRB/llrb"
+	cbor "github.com/whyrusleeping/cbor/go"
 )
 
 // This index is intended to be efficient for random-access, in-memory lookups
@@ -106,7 +108,37 @@ func (ii *insertionIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {
 }
 
 func (ii *insertionIndex) Marshal(w io.Writer) (uint64, error) {
-	return 0, fmt.Errorf("unimplemented, index type not intended for serialization")
+	l := uint64(0)
+	if err := binary.Write(w, binary.LittleEndian, int64(ii.items.Len())); err != nil {
+		return l, err
+	}
+	l += 8
+
+	var err error
+	iter := func(i llrb.Item) bool {
+		if err = cbor.Encode(w, i.(recordDigest).Record); err != nil {
+			return false
+		}
+		return true
+	}
+	ii.items.AscendGreaterOrEqual(ii.items.Min(), iter)
+	return l, err
+}
+
+func (ii *insertionIndex) Unmarshal(r io.Reader) error {
+	var length int64
+	if err := binary.Read(r, binary.LittleEndian, &length); err != nil {
+		return err
+	}
+	d := cbor.NewDecoder(r)
+	for i := int64(0); i < length; i++ {
+		var rec index.Record
+		if err := d.Decode(&rec); err != nil {
+			return err
+		}
+		ii.items.InsertNoReplace(newRecordDigest(rec))
+	}
+	return nil
 }
 
 func (ii *insertionIndex) ForEach(f func(multihash.Multihash, uint64) error) error {
@@ -121,14 +153,6 @@ func (ii *insertionIndex) ForEach(f func(multihash.Multihash, uint64) error) err
 		return true
 	})
 	return errr
-}
-
-func (ii *insertionIndex) Unmarshal(r io.Reader) error {
-	return fmt.Errorf("unimplemented, index type not intended for deserialization")
-}
-
-func (ii *insertionIndex) UnmarshalLazyRead(r io.ReaderAt) (int64, error) {
-	return 0, fmt.Errorf("unimplemented, index type not intended for deserialization")
 }
 
 func (ii *insertionIndex) Codec() multicodec.Code {
