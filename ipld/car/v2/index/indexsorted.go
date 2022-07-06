@@ -91,8 +91,8 @@ func (s *singleWidthIndex) Unmarshal(r io.Reader) error {
 }
 
 func (s *singleWidthIndex) checkUnmarshalLengths(width uint32, dataLen, extra uint64) error {
-	if width <= 8 {
-		return errors.New("malformed index; width must be bigger than 8")
+	if width < 8 {
+		return errors.New("malformed index; width must be at least 8")
 	}
 	const maxWidth = 32 << 20 // 32MiB, to ~match the go-cid maximum
 	if width > maxWidth {
