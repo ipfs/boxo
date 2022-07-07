@@ -2,20 +2,41 @@ package client
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/ipfs/go-ipns"
 	"github.com/libp2p/go-libp2p-core/routing"
+	record "github.com/libp2p/go-libp2p-record"
 )
 
 var _ routing.ValueStore = &Client{}
 
 // PutValue adds value corresponding to given Key.
 func (c *Client) PutValue(ctx context.Context, key string, val []byte, opts ...routing.Option) error {
-	return c.PutIPNS(ctx, []byte(key), val)
+	ns, path, err := record.SplitKey(key)
+	if err != nil {
+		return fmt.Errorf("invalid key: %w", err)
+	}
+
+	if ns != "ipns" {
+		return ipns.ErrKeyFormat
+	}
+
+	return c.PutIPNS(ctx, []byte(path), val)
 }
 
 // GetValue searches for the value corresponding to given Key.
 func (c *Client) GetValue(ctx context.Context, key string, opts ...routing.Option) ([]byte, error) {
-	return c.GetIPNS(ctx, []byte(key))
+	ns, path, err := record.SplitKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("invalid key: %w", err)
+	}
+
+	if ns != "ipns" {
+		return nil, ipns.ErrKeyFormat
+	}
+
+	return c.GetIPNS(ctx, []byte(path))
 }
 
 // SearchValue searches for better and better values from this value
@@ -29,7 +50,16 @@ func (c *Client) GetValue(ctx context.Context, key string, opts ...routing.Optio
 // Implementations of this methods won't return ErrNotFound. When a value
 // couldn't be found, the channel will get closed without passing any results
 func (c *Client) SearchValue(ctx context.Context, key string, opts ...routing.Option) (<-chan []byte, error) {
-	resChan, err := c.GetIPNSAsync(ctx, []byte(key))
+	ns, path, err := record.SplitKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("invalid key: %w", err)
+	}
+
+	if ns != "ipns" {
+		return nil, ipns.ErrKeyFormat
+	}
+
+	resChan, err := c.GetIPNSAsync(ctx, []byte(path))
 	if err != nil {
 		return nil, err
 	}

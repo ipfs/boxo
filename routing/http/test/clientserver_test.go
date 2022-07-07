@@ -73,7 +73,7 @@ func testClientServer(t *testing.T, numIter int) (avgLatency time.Duration, delt
 		}
 
 		// exercise GetIPNS
-		record, err := c.GetIPNS(context.Background(), testIPNSID)
+		record, err := c.GetIPNS(context.Background(), []byte(testPeerIDFromIPNS))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -102,7 +102,7 @@ func testClientServer(t *testing.T, numIter int) (avgLatency time.Duration, delt
 		}
 
 		// exercise PutIPNS
-		err = c.PutIPNS(context.Background(), testIPNSID, testIPNSRecord)
+		err = c.PutIPNS(context.Background(), []byte(testPeerIDFromIPNS), testIPNSRecord)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -189,7 +189,7 @@ func TestCancelContext(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	gir, err := c.GetIPNSAsync(ctx, testIPNSID)
+	gir, err := c.GetIPNSAsync(ctx, []byte(testPeerIDFromIPNS))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestCancelContext(t *testing.T) {
 
 	ctx, cancel = context.WithCancel(context.Background())
 
-	pir, err := c.PutIPNSAsync(ctx, testIPNSID, testIPNSRecord)
+	pir, err := c.PutIPNSAsync(ctx, []byte(testPeerIDFromIPNS), testIPNSRecord)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,8 +294,9 @@ var (
 		Addrs: []multiaddr.Multiaddr{testMultiaddr},
 	}
 	// IPNS
-	testIPNSID     []byte
-	testIPNSRecord []byte
+	testPeerIDFromIPNS peer.ID
+	testIPNSID         []byte
+	testIPNSRecord     []byte
 )
 
 // TestMain generates a valid IPNS key and record for testing purposes.
@@ -308,6 +309,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
+	testPeerIDFromIPNS = peerID
 	testIPNSID = []byte(ipns.RecordKey(peerID))
 	entry, err := ipns.Create(privateKey, testIPNSID, 0, time.Now().Add(time.Hour), time.Hour)
 	if err != nil {

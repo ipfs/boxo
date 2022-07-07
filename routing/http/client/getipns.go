@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/ipfs/go-delegated-routing/gen/proto"
+	ipns "github.com/ipfs/go-ipns"
+	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/routing"
 )
 
@@ -21,7 +23,7 @@ func (fp *Client) GetIPNS(ctx context.Context, id []byte) ([]byte, error) {
 	if len(records) == 0 {
 		return nil, routing.ErrNotFound
 	}
-	best, err := fp.validator.Select(string(id), records)
+	best, err := fp.validator.Select(ipns.RecordKey(peer.ID(id)), records)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +68,7 @@ func (fp *Client) GetIPNSAsync(ctx context.Context, id []byte) (<-chan GetIPNSAs
 					continue
 				}
 
-				if err = fp.validator.Validate(string(id), r0.Resp.Record); err != nil {
+				if err = fp.validator.Validate(ipns.RecordKey(peer.ID(id)), r0.Resp.Record); err != nil {
 					r1.Err = err
 					select {
 					case <-ctx.Done():
