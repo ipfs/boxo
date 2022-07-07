@@ -32,7 +32,11 @@ func DetachCar(c *cli.Context) error {
 	}
 	defer outStream.Close()
 
-	_, err = io.Copy(outStream, r.IndexReader())
+	ir, err := r.IndexReader()
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(outStream, ir)
 	return err
 }
 

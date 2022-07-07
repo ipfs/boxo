@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+
 	"io"
 	"os"
 
@@ -16,7 +17,7 @@ import (
 	_ "github.com/ipld/go-ipld-prime/codec/raw"
 
 	"github.com/ipfs/go-cid"
-	ipfsbs "github.com/ipfs/go-ipfs-blockstore"
+	ipldfmt "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipld/go-car"
 	"github.com/ipld/go-car/v2/blockstore"
@@ -135,7 +136,7 @@ func writeCarV2(ctx context.Context, rootCid cid.Cid, output string, bs *blockst
 		if cl, ok := l.(cidlink.Link); ok {
 			blk, err := bs.Get(ctx, cl.Cid)
 			if err != nil {
-				if err == ipfsbs.ErrNotFound {
+				if ipldfmt.IsNotFound(err) {
 					if strict {
 						return nil, err
 					}

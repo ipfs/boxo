@@ -36,7 +36,11 @@ func IndexCar(c *cli.Context) error {
 		}
 		defer outStream.Close()
 
-		_, err := io.Copy(outStream, r.DataReader())
+		dr, err := r.DataReader()
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(outStream, dr)
 		return err
 	}
 
@@ -65,7 +69,10 @@ func IndexCar(c *cli.Context) error {
 	}
 	defer outStream.Close()
 
-	v1r := r.DataReader()
+	v1r, err := r.DataReader()
+	if err != nil {
+		return err
+	}
 
 	if r.Version == 1 {
 		fi, err := os.Stat(c.Args().Get(0))

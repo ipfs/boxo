@@ -86,7 +86,11 @@ func VerifyCar(c *cli.Context) error {
 
 	// index
 	if rx.Version == 2 && rx.Header.HasIndex() {
-		idx, err := index.ReadFrom(rx.IndexReader())
+		ir, err := rx.IndexReader()
+		if err != nil {
+			return err
+		}
+		idx, err := index.ReadFrom(ir)
 		if err != nil {
 			return err
 		}
