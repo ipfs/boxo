@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"sync"
 	"time"
 
@@ -464,83 +463,40 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks
 	return session.GetBlocks(ctx, keys)
 }
 
-// HasBlock announces the existence of a block to this bitswap service. The
+// NotifyNewBlocks announces the existence of blocks to this bitswap service. The
 // service will potentially notify its peers.
-func (bs *Bitswap) HasBlock(ctx context.Context, blk blocks.Block) error {
-	ctx, span := internal.StartSpan(ctx, "GetBlocks", trace.WithAttributes(attribute.String("Block", blk.Cid().String())))
+// Bitswap itself doesn't store new blocks. It's the caller responsibility to ensure
+// that those blocks are available in the blockstore before calling this function.
+func (bs *Bitswap) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error {
+	ctx, span := internal.StartSpan(ctx, "NotifyNewBlocks")
 	defer span.End()
-	return bs.receiveBlocksFrom(ctx, "", []blocks.Block{blk}, nil, nil)
-}
 
-// TODO: Some of this stuff really only needs to be done when adding a block
-// from the user, not when receiving it from the network.
-// In case you run `git blame` on this comment, I'll save you some time: ask
-// @whyrusleeping, I don't know the answers you seek.
-func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []blocks.Block, haves []cid.Cid, dontHaves []cid.Cid) error {
 	select {
 	case <-bs.process.Closing():
 		return errors.New("bitswap is closed")
 	default:
 	}
 
-	wanted := blks
-
-	// If blocks came from the network
-	if from != "" {
-		var notWanted []blocks.Block
-		wanted, notWanted = bs.sim.SplitWantedUnwanted(blks)
-		for _, b := range notWanted {
-			log.Debugf("[recv] block not in wantlist; cid=%s, peer=%s", b.Cid(), from)
-		}
-	}
-
-	// Put wanted blocks into blockstore
-	if len(wanted) > 0 {
-		err := bs.blockstore.PutMany(ctx, wanted)
-		if err != nil {
-			log.Errorf("Error writing %d blocks to datastore: %s", len(wanted), err)
-			return err
-		}
-	}
-
-	// NOTE: There exists the possiblity for a race condition here.  If a user
-	// creates a node, then adds it to the dagservice while another goroutine
-	// is waiting on a GetBlock for that object, they will receive a reference
-	// to the same node. We should address this soon, but i'm not going to do
-	// it now as it requires more thought and isnt causing immediate problems.
-
-	allKs := make([]cid.Cid, 0, len(blks))
-	for _, b := range blks {
-		allKs = append(allKs, b.Cid())
-	}
-
-	// If the message came from the network
-	if from != "" {
-		// Inform the PeerManager so that we can calculate per-peer latency
-		combined := make([]cid.Cid, 0, len(allKs)+len(haves)+len(dontHaves))
-		combined = append(combined, allKs...)
-		combined = append(combined, haves...)
-		combined = append(combined, dontHaves...)
-		bs.pm.ResponseReceived(from, combined)
+	blkCids := make([]cid.Cid, len(blks))
+	for i, blk := range blks {
+		blkCids[i] = blk.Cid()
 	}
 
 	// Send all block keys (including duplicates) to any sessions that want them.
 	// (The duplicates are needed by sessions for accounting purposes)
-	bs.sm.ReceiveFrom(ctx, from, allKs, haves, dontHaves)
+	bs.sm.ReceiveFrom(ctx, "", blkCids, nil, nil)
 
 	// Send wanted blocks to decision engine
-	bs.engine.ReceiveFrom(from, wanted)
+	bs.engine.NotifyNewBlocks(blks)
 
 	// Publish the block to any Bitswap clients that had requested blocks.
 	// (the sessions use this pubsub mechanism to inform clients of incoming
 	// blocks)
-	for _, b := range wanted {
-		bs.notif.Publish(b)
-	}
+	bs.notif.Publish(blks...)
 
-	// If the reprovider is enabled, send wanted blocks to reprovider
+	// If the reprovider is enabled, send block to reprovider
 	if bs.provideEnabled {
-		for _, blk := range wanted {
+		for _, blk := range blks {
 			select {
 			case bs.newBlocks <- blk.Cid():
 				// send block off to be reprovided
@@ -550,10 +506,49 @@ func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []b
 		}
 	}
 
-	if from != "" {
-		for _, b := range wanted {
-			log.Debugw("Bitswap.GetBlockRequest.End", "cid", b.Cid())
-		}
+	return nil
+}
+
+// receiveBlocksFrom process blocks received from the network
+func (bs *Bitswap) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []blocks.Block, haves []cid.Cid, dontHaves []cid.Cid) error {
+	select {
+	case <-bs.process.Closing():
+		return errors.New("bitswap is closed")
+	default:
+	}
+
+	wanted, notWanted := bs.sim.SplitWantedUnwanted(blks)
+	for _, b := range notWanted {
+		log.Debugf("[recv] block not in wantlist; cid=%s, peer=%s", b.Cid(), from)
+	}
+
+	allKs := make([]cid.Cid, 0, len(blks))
+	for _, b := range blks {
+		allKs = append(allKs, b.Cid())
+	}
+
+	// Inform the PeerManager so that we can calculate per-peer latency
+	combined := make([]cid.Cid, 0, len(allKs)+len(haves)+len(dontHaves))
+	combined = append(combined, allKs...)
+	combined = append(combined, haves...)
+	combined = append(combined, dontHaves...)
+	bs.pm.ResponseReceived(from, combined)
+
+	// Send all block keys (including duplicates) to any sessions that want them for accounting purpose.
+	bs.sm.ReceiveFrom(ctx, from, allKs, haves, dontHaves)
+
+	// Send wanted blocks to decision engine
+	bs.engine.ReceivedBlocks(from, wanted)
+
+	// Publish the block to any Bitswap clients that had requested blocks.
+	// (the sessions use this pubsub mechanism to inform clients of incoming
+	// blocks)
+	for _, b := range wanted {
+		bs.notif.Publish(b)
+	}
+
+	for _, b := range wanted {
+		log.Debugw("Bitswap.GetBlockRequest.End", "cid", b.Cid())
 	}
 
 	return nil

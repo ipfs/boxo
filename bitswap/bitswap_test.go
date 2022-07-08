@@ -42,6 +42,18 @@ func getVirtualNetwork() tn.Network {
 	return tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 }
 
+func addBlock(t *testing.T, ctx context.Context, inst testinstance.Instance, blk blocks.Block) {
+	t.Helper()
+	err := inst.Blockstore().Put(ctx, blk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = inst.Exchange.NotifyNewBlocks(ctx, blk)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestClose(t *testing.T) {
 	vnet := getVirtualNetwork()
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
@@ -95,9 +107,7 @@ func TestGetBlockFromPeerAfterPeerAnnounces(t *testing.T) {
 	hasBlock := peers[0]
 	defer hasBlock.Exchange.Close()
 
-	if err := hasBlock.Exchange.HasBlock(context.Background(), block); err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, context.Background(), hasBlock, block)
 
 	wantsBlock := peers[1]
 	defer wantsBlock.Exchange.Close()
@@ -128,9 +138,7 @@ func TestDoesNotProvideWhenConfiguredNotTo(t *testing.T) {
 	wantsBlock := ig.Next()
 	defer wantsBlock.Exchange.Close()
 
-	if err := hasBlock.Exchange.HasBlock(context.Background(), block); err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, context.Background(), hasBlock, block)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
 	defer cancel()
@@ -163,9 +171,7 @@ func TestUnwantedBlockNotAdded(t *testing.T) {
 	hasBlock := peers[0]
 	defer hasBlock.Exchange.Close()
 
-	if err := hasBlock.Exchange.HasBlock(context.Background(), block); err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, context.Background(), hasBlock, block)
 
 	doesNotWantBlock := peers[1]
 	defer doesNotWantBlock.Exchange.Close()
@@ -231,15 +237,6 @@ func TestPendingBlockAdded(t *testing.T) {
 	}
 	if !blkrecvd.Cid().Equals(lastBlock.Cid()) {
 		t.Fatal("received wrong block")
-	}
-
-	// Make sure Bitswap adds the block to the blockstore
-	blockInStore, err := instance.Blockstore().Has(context.Background(), lastBlock.Cid())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !blockInStore {
-		t.Fatal("Block was not added to block store")
 	}
 }
 
@@ -307,10 +304,7 @@ func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
 	first := instances[0]
 	for _, b := range blocks {
 		blkeys = append(blkeys, b.Cid())
-		err := first.Exchange.HasBlock(ctx, b)
-		if err != nil {
-			t.Fatal(err)
-		}
+		addBlock(t, ctx, first, b)
 	}
 
 	t.Log("Distribute!")
@@ -339,16 +333,6 @@ func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
 	for err := range errs {
 		if err != nil {
 			t.Fatal(err)
-		}
-	}
-
-	t.Log("Verify!")
-
-	for _, inst := range instances {
-		for _, b := range blocks {
-			if _, err := inst.Blockstore().Get(ctx, b.Cid()); err != nil {
-				t.Fatal(err)
-			}
 		}
 	}
 }
@@ -383,10 +367,7 @@ func TestSendToWantingPeer(t *testing.T) {
 	}
 
 	// peerB announces to the network that he has block alpha
-	err = peerB.Exchange.HasBlock(ctx, alpha)
-	if err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, ctx, peerB, alpha)
 
 	// At some point, peerA should get alpha (or timeout)
 	blkrecvd, ok := <-alphaPromise
@@ -445,10 +426,7 @@ func TestBasicBitswap(t *testing.T) {
 	blocks := bg.Blocks(1)
 
 	// First peer has block
-	err := instances[0].Exchange.HasBlock(context.Background(), blocks[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, context.Background(), instances[0], blocks[0])
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
@@ -545,10 +523,7 @@ func TestDoubleGet(t *testing.T) {
 		t.Fatal("expected channel to be closed")
 	}
 
-	err = instances[0].Exchange.HasBlock(context.Background(), blocks[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, context.Background(), instances[0], blocks[0])
 
 	select {
 	case blk, ok := <-blkch2:
@@ -708,10 +683,7 @@ func TestBitswapLedgerOneWay(t *testing.T) {
 
 	instances := ig.Instances(2)
 	blocks := bg.Blocks(1)
-	err := instances[0].Exchange.HasBlock(context.Background(), blocks[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, context.Background(), instances[0], blocks[0])
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
@@ -760,19 +732,12 @@ func TestBitswapLedgerTwoWay(t *testing.T) {
 
 	instances := ig.Instances(2)
 	blocks := bg.Blocks(2)
-	err := instances[0].Exchange.HasBlock(context.Background(), blocks[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = instances[1].Exchange.HasBlock(context.Background(), blocks[1])
-	if err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, context.Background(), instances[0], blocks[0])
+	addBlock(t, context.Background(), instances[1], blocks[1])
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	_, err = instances[1].Exchange.GetBlock(ctx, blocks[0].Cid())
+	_, err := instances[1].Exchange.GetBlock(ctx, blocks[0].Cid())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -911,17 +876,14 @@ func TestTracer(t *testing.T) {
 	bitswap.WithTracer(wiretap)(instances[0].Exchange)
 
 	// First peer has block
-	err := instances[0].Exchange.HasBlock(context.Background(), blocks[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, context.Background(), instances[0], blocks[0])
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
 	// Second peer broadcasts want for block CID
 	// (Received by first and third peers)
-	_, err = instances[1].Exchange.GetBlock(ctx, blocks[0].Cid())
+	_, err := instances[1].Exchange.GetBlock(ctx, blocks[0].Cid())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -995,10 +957,8 @@ func TestTracer(t *testing.T) {
 	// After disabling WireTap, no new messages are logged
 	bitswap.WithTracer(nil)(instances[0].Exchange)
 
-	err = instances[0].Exchange.HasBlock(context.Background(), blocks[1])
-	if err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, context.Background(), instances[0], blocks[1])
+
 	_, err = instances[1].Exchange.GetBlock(ctx, blocks[1].Cid())
 	if err != nil {
 		t.Fatal(err)

@@ -187,9 +187,7 @@ func TestFetchNotConnected(t *testing.T) {
 	// Provide 10 blocks on Peer A
 	blks := bgen.Blocks(10)
 	for _, block := range blks {
-		if err := other.Exchange.HasBlock(ctx, block); err != nil {
-			t.Fatal(err)
-		}
+		addBlock(t, ctx, other, block)
 	}
 
 	var cids []cid.Cid
@@ -243,9 +241,7 @@ func TestFetchAfterDisconnect(t *testing.T) {
 
 	firstBlks := blks[:5]
 	for _, block := range firstBlks {
-		if err := peerA.Exchange.HasBlock(ctx, block); err != nil {
-			t.Fatal(err)
-		}
+		addBlock(t, ctx, peerA, block)
 	}
 
 	// Request all blocks with Peer B
@@ -279,9 +275,7 @@ func TestFetchAfterDisconnect(t *testing.T) {
 	// Provide remaining blocks
 	lastBlks := blks[5:]
 	for _, block := range lastBlks {
-		if err := peerA.Exchange.HasBlock(ctx, block); err != nil {
-			t.Fatal(err)
-		}
+		addBlock(t, ctx, peerA, block)
 	}
 
 	// Peer B should call FindProviders() and find Peer A
@@ -334,9 +328,7 @@ func TestInterestCacheOverflow(t *testing.T) {
 	// wait to ensure that all the above cids were added to the sessions cache
 	time.Sleep(time.Millisecond * 50)
 
-	if err := b.Exchange.HasBlock(ctx, blks[0]); err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, ctx, b, blks[0])
 
 	select {
 	case blk, ok := <-zeroch:
@@ -381,9 +373,7 @@ func TestPutAfterSessionCacheEvict(t *testing.T) {
 	// wait to ensure that all the above cids were added to the sessions cache
 	time.Sleep(time.Millisecond * 50)
 
-	if err := a.Exchange.HasBlock(ctx, blks[17]); err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, ctx, a, blks[17])
 
 	select {
 	case <-blkch:
@@ -423,9 +413,7 @@ func TestMultipleSessions(t *testing.T) {
 	}
 
 	time.Sleep(time.Millisecond * 10)
-	if err := b.Exchange.HasBlock(ctx, blk); err != nil {
-		t.Fatal(err)
-	}
+	addBlock(t, ctx, b, blk)
 
 	select {
 	case <-blkch2:

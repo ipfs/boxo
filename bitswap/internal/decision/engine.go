@@ -769,27 +769,29 @@ func (e *Engine) splitWantsDenials(p peer.ID, allWants []bsmsg.Entry) ([]bsmsg.E
 	return wants, denied
 }
 
-// ReceiveFrom is called when new blocks are received and added to the block
-// store, meaning there may be peers who want those blocks, so we should send
-// the blocks to them.
-//
+// ReceivedBlocks is called when new blocks are received from the network.
 // This function also updates the receive side of the ledger.
-func (e *Engine) ReceiveFrom(from peer.ID, blks []blocks.Block) {
+func (e *Engine) ReceivedBlocks(from peer.ID, blks []blocks.Block) {
 	if len(blks) == 0 {
 		return
 	}
 
-	if from != "" {
-		l := e.findOrCreate(from)
-		l.lk.Lock()
+	l := e.findOrCreate(from)
 
-		// Record how many bytes were received in the ledger
-		for _, blk := range blks {
-			log.Debugw("Bitswap engine <- block", "local", e.self, "from", from, "cid", blk.Cid(), "size", len(blk.RawData()))
-			e.scoreLedger.AddToReceivedBytes(l.Partner, len(blk.RawData()))
-		}
+	// Record how many bytes were received in the ledger
+	l.lk.Lock()
+	for _, blk := range blks {
+		log.Debugw("Bitswap engine <- block", "local", e.self, "from", from, "cid", blk.Cid(), "size", len(blk.RawData()))
+		e.scoreLedger.AddToReceivedBytes(l.Partner, len(blk.RawData()))
+	}
+	l.lk.Unlock()
+}
 
-		l.lk.Unlock()
+// NotifyNewBlocks is called when new blocks becomes available locally, and in particular when the caller of bitswap
+// decide to store those blocks and make them available on the network.
+func (e *Engine) NotifyNewBlocks(blks []blocks.Block) {
+	if len(blks) == 0 {
+		return
 	}
 
 	// Get the size of each block
