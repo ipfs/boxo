@@ -12,13 +12,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-blockservice/internal"
 	cid "github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-verifcid"
+
+	"github.com/ipfs/go-blockservice/internal"
 )
 
 var logger = logging.Logger("blockservice")
@@ -84,7 +85,7 @@ func New(bs blockstore.Blockstore, rem exchange.Interface) BlockService {
 	}
 }
 
-// NewWriteThrough ceates a BlockService that guarantees writes will go
+// NewWriteThrough creates a BlockService that guarantees writes will go
 // through to the blockstore and are not skipped by cache checks.
 func NewWriteThrough(bs blockstore.Blockstore, rem exchange.Interface) BlockService {
 	if rem == nil {
@@ -131,7 +132,6 @@ func NewSession(ctx context.Context, bs BlockService) *Session {
 }
 
 // AddBlock adds a particular block to the service, Putting it into the datastore.
-// TODO pass a context into this if the remote.HasBlock is going to remain here.
 func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 	ctx, span := internal.StartSpan(ctx, "blockService.AddBlock")
 	defer span.End()
@@ -155,8 +155,8 @@ func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 	logger.Debugf("BlockService.BlockAdded %s", c)
 
 	if s.exchange != nil {
-		if err := s.exchange.HasBlock(ctx, o); err != nil {
-			logger.Errorf("HasBlock: %s", err.Error())
+		if err := s.exchange.NotifyNewBlocks(ctx, o); err != nil {
+			logger.Errorf("NotifyNewBlocks: %s", err.Error())
 		}
 	}
 
@@ -200,11 +200,9 @@ func (s *blockService) AddBlocks(ctx context.Context, bs []blocks.Block) error {
 	}
 
 	if s.exchange != nil {
-		for _, o := range toput {
-			logger.Debugf("BlockService.BlockAdded %s", o.Cid())
-			if err := s.exchange.HasBlock(ctx, o); err != nil {
-				logger.Errorf("HasBlock: %s", err.Error())
-			}
+		logger.Debugf("BlockService.BlockAdded %d blocks", len(toput))
+		if err := s.exchange.NotifyNewBlocks(ctx, toput...); err != nil {
+			logger.Errorf("NotifyNewBlocks: %s", err.Error())
 		}
 	}
 	return nil
@@ -246,6 +244,11 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget fun
 		// implementation changes, this will break.
 		logger.Debug("Blockservice: Searching bitswap")
 		blk, err := f.GetBlock(ctx, c)
+		if err != nil {
+			return nil, err
+		}
+		// also write in the blockstore for caching
+		err = bs.Put(ctx, blk)
 		if err != nil {
 			return nil, err
 		}
@@ -325,11 +328,42 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 		}
 
 		for b := range rblocks {
+			// batch available blocks together
+			batch := make([]blocks.Block, 0, 8)
+			batch = append(batch, b)
 			logger.Debugf("BlockService.BlockFetched %s", b.Cid())
-			select {
-			case out <- b:
-			case <-ctx.Done():
+
+		batchLoop:
+			for {
+				select {
+				case moreBlock, ok := <-rblocks:
+					if !ok {
+						// rblock has been closed, we set it to nil to avoid pulling zero values
+						rblocks = nil
+					} else {
+						logger.Debugf("BlockService.BlockFetched %s", moreBlock.Cid())
+						batch = append(batch, moreBlock)
+					}
+				case <-ctx.Done():
+					return
+				default:
+					break batchLoop
+				}
+			}
+
+			// also write in the blockstore for caching
+			err = bs.PutMany(ctx, batch)
+			if err != nil {
+				logger.Errorf("could not write blocks from the network to the blockstore: %s", err)
 				return
+			}
+
+			for _, b = range batch {
+				select {
+				case out <- b:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}()

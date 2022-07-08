@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	blocks "github.com/ipfs/go-block-format"
+	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
@@ -19,8 +20,8 @@ func TestWriteThroughWorks(t *testing.T) {
 		blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())),
 		0,
 	}
-	bstore2 := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	exch := offline.Exchange(bstore2)
+	exchbstore := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	exch := offline.Exchange(exchbstore)
 	bserv := NewWriteThrough(bstore, exch)
 	bgen := butil.NewBlockGenerator()
 
@@ -44,6 +45,57 @@ func TestWriteThroughWorks(t *testing.T) {
 	}
 }
 
+func TestExchangeWrite(t *testing.T) {
+	bstore := &PutCountingBlockstore{
+		blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())),
+		0,
+	}
+	exchbstore := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	exch := offline.Exchange(exchbstore)
+	bserv := NewWriteThrough(bstore, exch)
+	bgen := butil.NewBlockGenerator()
+
+	// GetBlock
+	block := bgen.Next()
+	err := exchbstore.Put(context.Background(), block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := bserv.GetBlock(context.Background(), block.Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Cid() != block.Cid() {
+		t.Fatalf("GetBlock returned unexpected block")
+	}
+	if bstore.PutCounter != 1 {
+		t.Fatalf("expected one Put call, have: %d", bstore.PutCounter)
+	}
+
+	// GetBlocks
+	b1 := bgen.Next()
+	err = exchbstore.Put(context.Background(), b1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b2 := bgen.Next()
+	err = exchbstore.Put(context.Background(), b2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bchan := bserv.GetBlocks(context.Background(), []cid.Cid{b1.Cid(), b2.Cid()})
+	var gotBlocks []blocks.Block
+	for b := range bchan {
+		gotBlocks = append(gotBlocks, b)
+	}
+	if len(gotBlocks) != 2 {
+		t.Fatalf("expected to retrieve 2 blocks, got %d", len(gotBlocks))
+	}
+	if bstore.PutCounter != 3 {
+		t.Fatalf("expected 3 Put call, have: %d", bstore.PutCounter)
+	}
+}
+
 func TestLazySessionInitialization(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -53,8 +105,8 @@ func TestLazySessionInitialization(t *testing.T) {
 	bstore2 := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	bstore3 := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	session := offline.Exchange(bstore2)
-	exchange := offline.Exchange(bstore3)
-	sessionExch := &fakeSessionExchange{Interface: exchange, session: session}
+	exch := offline.Exchange(bstore3)
+	sessionExch := &fakeSessionExchange{Interface: exch, session: session}
 	bservSessEx := NewWriteThrough(bstore, sessionExch)
 	bgen := butil.NewBlockGenerator()
 
@@ -64,7 +116,11 @@ func TestLazySessionInitialization(t *testing.T) {
 		t.Fatal(err)
 	}
 	block2 := bgen.Next()
-	err = session.HasBlock(ctx, block2)
+	err = bstore2.Put(ctx, block2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = session.NotifyNewBlocks(ctx, block2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,6 +161,11 @@ type PutCountingBlockstore struct {
 func (bs *PutCountingBlockstore) Put(ctx context.Context, block blocks.Block) error {
 	bs.PutCounter++
 	return bs.Blockstore.Put(ctx, block)
+}
+
+func (bs *PutCountingBlockstore) PutMany(ctx context.Context, blocks []blocks.Block) error {
+	bs.PutCounter += len(blocks)
+	return bs.Blockstore.PutMany(ctx, blocks)
 }
 
 var _ exchange.SessionExchange = (*fakeSessionExchange)(nil)
