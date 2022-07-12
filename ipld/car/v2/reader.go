@@ -339,11 +339,10 @@ func (r *Reader) Inspect(validateBlockHash bool) (Stats, error) {
 		if err != nil {
 			return Stats{}, err
 		}
-		idx, err := index.ReadFrom(idxr)
+		stats.IndexCodec, err = index.ReadCodec(idxr)
 		if err != nil {
 			return Stats{}, err
 		}
-		stats.IndexCodec = idx.Codec()
 	}
 
 	return stats, nil

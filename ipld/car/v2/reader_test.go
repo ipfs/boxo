@@ -503,30 +503,6 @@ func TestInspectError(t *testing.T) {
 		// the bad index tests are manually constructed from this single-block CARv2 by adjusting the Uint32 and Uint64 values in the index:
 		// pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
 		// 0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 01000000 1200000000000000 01000000 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000
-		{
-			name: "BadIndexCountOverflow",
-			//                     pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
-			carHex:               "0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 ffffffff 1200000000000000 01000000 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000",
-			expectedInspectError: "index too big; MultihashIndexSorted count is overflowing int32",
-		},
-		{
-			name: "BadIndexCountTooMany",
-			//                     pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
-			carHex:               "0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 ffffff7f 1200000000000000 01000000 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000",
-			expectedInspectError: "unexpected EOF",
-		},
-		{
-			name: "BadIndexMultiWidthOverflow",
-			//                     pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
-			carHex:               "0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 01000000 1200000000000000 ffffffff 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000",
-			expectedInspectError: "index too big; multiWidthIndex count is overflowing int32",
-		},
-		{
-			name: "BadIndexMultiWidthTooMany",
-			//                     pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
-			carHex:               "0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 01000000 1200000000000000 ffffff7f 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000",
-			expectedInspectError: "unexpected EOF",
-		},
 		// we don't test any further into the index, to do that, a user should do a ForEach across the loaded index (and sanity check the offsets)
 	}
 
