@@ -13,9 +13,8 @@ import (
 type Interface interface { // type Exchanger interface
 	Fetcher
 
-	// TODO Should callers be concerned with whether the block was made
-	// available on the network?
-	HasBlock(context.Context, blocks.Block) error
+	// NotifyNewBlocks tells the exchange that new blocks are available and can be served.
+	NotifyNewBlocks(ctx context.Context, blocks ...blocks.Block) error
 
 	IsOnline() bool
 
