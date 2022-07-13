@@ -16,8 +16,6 @@ type Interface interface { // type Exchanger interface
 	// NotifyNewBlocks tells the exchange that new blocks are available and can be served.
 	NotifyNewBlocks(ctx context.Context, blocks ...blocks.Block) error
 
-	IsOnline() bool
-
 	io.Closer
 }
 
