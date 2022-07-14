@@ -529,6 +529,60 @@ func TestInspectError(t *testing.T) {
 	}
 }
 
+func TestIndex_ReadFromCorruptIndex(t *testing.T) {
+	tests := []struct {
+		name        string
+		givenCarHex string
+		wantErr     string
+	}{
+		{
+			name: "BadIndexCountOverflow",
+			//                     pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
+			givenCarHex: "0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 ffffffff 1200000000000000 01000000 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000",
+			wantErr:     "index too big; MultihashIndexSorted count is overflowing int32",
+		},
+		{
+			name: "BadIndexCountTooMany",
+			//                     pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
+			givenCarHex: "0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 ffffff7f 1200000000000000 01000000 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000",
+			wantErr:     "unexpected EOF",
+		},
+		{
+			name: "BadIndexMultiWidthOverflow",
+			//                     pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
+			givenCarHex: "0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 01000000 1200000000000000 ffffffff 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000",
+			wantErr:     "index too big; multiWidthIndex count is overflowing int32",
+		},
+		{
+			name: "BadIndexMultiWidthTooMany",
+			//                     pragma                 carv2 header                                                                     carv1                                                                                                                              icodec count  codec            count (swi) width dataLen          mh                                                               offset
+			givenCarHex: "0aa16776657273696f6e02 00000000000000000000000000000000330000000000000041000000000000007400000000000000 11a265726f6f7473806776657273696f6e012e0155122001d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca00000000000000000000 8108 01000000 1200000000000000 ffffff7f 28000000 2800000000000000 01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca 1200000000000000",
+			wantErr:     "unexpected EOF",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			car, _ := hex.DecodeString(strings.ReplaceAll(test.givenCarHex, " ", ""))
+			reader, err := carv2.NewReader(bytes.NewReader(car))
+			require.NoError(t, err)
+
+			ir, err := reader.IndexReader()
+			require.NoError(t, err)
+			require.NotNil(t, ir)
+
+			gotIdx, err := index.ReadFrom(ir)
+			if test.wantErr == "" {
+				require.NoError(t, err)
+				require.NotNil(t, gotIdx)
+			} else {
+				require.Error(t, err)
+				require.Equal(t, test.wantErr, err.Error())
+				require.Nil(t, gotIdx)
+			}
+		})
+	}
+}
+
 func mustCidDecode(s string) cid.Cid {
 	c, err := cid.Decode(s)
 	if err != nil {
