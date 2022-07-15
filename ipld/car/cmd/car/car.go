@@ -129,6 +129,18 @@ func main1() int {
 				},
 			},
 			{
+				Name:   "inspect",
+				Usage:  "verifies a car and prints a basic report about its contents",
+				Action: InspectCar,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "full",
+						Value: false,
+						Usage: "Check that the block data hash digests match the CIDs",
+					},
+				},
+			},
+			{
 				Name:    "list",
 				Aliases: []string{"l", "ls"},
 				Usage:   "List the CIDs in a car",

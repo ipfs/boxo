@@ -1,0 +1,43 @@
+car inspect ${INPUTS}/sample-v1.car
+cmp stdout v1inspect.txt
+
+car inspect ${INPUTS}/sample-wrapped-v2.car
+cmp stdout v2inspect.txt
+
+! car inspect ${INPUTS}/badheaderlength.car
+stderr 'invalid header data'
+
+! car inspect ${INPUTS}/badsectionlength.car
+stderr 'invalid section data'
+
+-- v1inspect.txt --
+Version: 1
+Roots: bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy
+Root blocks present in data: Yes
+Block count: 1049
+Min / average / max block length (bytes): 1 / 417 / 1342
+Min / average / max CID length (bytes): 14 / 37 / 38
+Block count per codec:
+	raw: 6
+	dag-cbor: 1043
+CID count per multihash:
+	identity: 6
+	blake2b-256: 1043
+-- v2inspect.txt --
+Version: 2
+Characteristics: 00000000000000000000000000000000
+Data offset: 51
+Data (payload) length: 479907
+Index offset: 479958
+Index type: car-multihash-index-sorted
+Roots: bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy
+Root blocks present in data: Yes
+Block count: 1049
+Min / average / max block length (bytes): 1 / 417 / 1342
+Min / average / max CID length (bytes): 14 / 37 / 38
+Block count per codec:
+	raw: 6
+	dag-cbor: 1043
+CID count per multihash:
+	identity: 6
+	blake2b-256: 1043

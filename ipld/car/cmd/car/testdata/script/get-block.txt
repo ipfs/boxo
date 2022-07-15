@@ -16,4 +16,4 @@ cmp stdout ${INPUTS}/${SAMPLE_CID}.block
 
 # "get-block" on a missing CID.
 ! car get-block ${INPUTS}/sample-v1.car ${MISSING_CID}
-stderr 'bafy2bzacebohz654namrgmwjjx4qmtwgxixsd7pn4tlanyrc3g3hwj75xxxxw not found'
+stderr 'ipld: could not find bafy2bzacebohz654namrgmwjjx4qmtwgxixsd7pn4tlanyrc3g3hwj75xxxxw'
