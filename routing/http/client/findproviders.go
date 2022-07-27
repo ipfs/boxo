@@ -6,7 +6,7 @@ import (
 	"github.com/ipfs/go-cid"
 	proto "github.com/ipfs/go-delegated-routing/gen/proto"
 	ipns "github.com/ipfs/go-ipns"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/peer"
 	record "github.com/libp2p/go-libp2p-record"
 	"github.com/multiformats/go-multiaddr"

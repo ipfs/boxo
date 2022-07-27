@@ -5,7 +5,7 @@ import (
 	"os"
 	"path"
 
-	log "github.com/ipfs/go-log"
+	log "github.com/ipfs/go-log/v2"
 	"github.com/ipld/edelweiss/compile"
 	"github.com/ipld/edelweiss/defs"
 )

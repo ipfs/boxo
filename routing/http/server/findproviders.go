@@ -7,7 +7,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-delegated-routing/client"
 	proto "github.com/ipfs/go-delegated-routing/gen/proto"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/edelweiss/values"
 	"github.com/libp2p/go-libp2p-core/peer"
 )
