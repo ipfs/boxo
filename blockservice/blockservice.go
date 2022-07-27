@@ -118,16 +118,18 @@ func NewSession(ctx context.Context, bs BlockService) *Session {
 	exch := bs.Exchange()
 	if sessEx, ok := exch.(exchange.SessionExchange); ok {
 		return &Session{
-			sessCtx: ctx,
-			ses:     nil,
-			sessEx:  sessEx,
-			bs:      bs.Blockstore(),
+			sessCtx:  ctx,
+			ses:      nil,
+			sessEx:   sessEx,
+			bs:       bs.Blockstore(),
+			notifier: exch,
 		}
 	}
 	return &Session{
-		ses:     exch,
-		sessCtx: ctx,
-		bs:      bs.Blockstore(),
+		ses:      exch,
+		sessCtx:  ctx,
+		bs:       bs.Blockstore(),
+		notifier: exch,
 	}
 }
 
@@ -214,7 +216,7 @@ func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, e
 	ctx, span := internal.StartSpan(ctx, "blockService.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
 	defer span.End()
 
-	var f func() exchange.Interface
+	var f func() notifiableFetcher
 	if s.exchange != nil {
 		f = s.getExchange
 	}
@@ -222,11 +224,11 @@ func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, e
 	return getBlock(ctx, c, s.blockstore, f) // hash security
 }
 
-func (s *blockService) getExchange() exchange.Interface {
+func (s *blockService) getExchange() notifiableFetcher {
 	return s.exchange
 }
 
-func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget func() exchange.Interface) (blocks.Block, error) {
+func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget func() notifiableFetcher) (blocks.Block, error) {
 	err := verifcid.ValidateCid(c) // hash security
 	if err != nil {
 		return nil, err
@@ -271,7 +273,7 @@ func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan block
 	ctx, span := internal.StartSpan(ctx, "blockService.GetBlocks")
 	defer span.End()
 
-	var f func() exchange.Interface
+	var f func() notifiableFetcher
 	if s.exchange != nil {
 		f = s.getExchange
 	}
@@ -279,7 +281,7 @@ func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan block
 	return getBlocks(ctx, ks, s.blockstore, f) // hash security
 }
 
-func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget func() exchange.Interface) <-chan blocks.Block {
+func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget func() notifiableFetcher) <-chan blocks.Block {
 	out := make(chan blocks.Block)
 
 	go func() {
@@ -397,24 +399,53 @@ func (s *blockService) Close() error {
 	return s.exchange.Close()
 }
 
-// Session is a helper type to provide higher level access to bitswap sessions
-type Session struct {
-	bs      blockstore.Blockstore
-	ses     exchange.Fetcher
-	sessEx  exchange.SessionExchange
-	sessCtx context.Context
-	lk      sync.Mutex
+type notifier interface {
+	NotifyNewBlocks(context.Context, ...blocks.Block) error
 }
 
-func (s *Session) getSession() exchange.Interface {
+// Session is a helper type to provide higher level access to bitswap sessions
+type Session struct {
+	bs       blockstore.Blockstore
+	ses      exchange.Fetcher
+	sessEx   exchange.SessionExchange
+	sessCtx  context.Context
+	notifier notifier
+	lk       sync.Mutex
+}
+
+type notifiableFetcher interface {
+	exchange.Fetcher
+	notifier
+}
+
+type notifiableFetcherWrapper struct {
+	exchange.Fetcher
+	notifier
+}
+
+func (s *Session) getSession() notifiableFetcher {
 	s.lk.Lock()
 	defer s.lk.Unlock()
 	if s.ses == nil {
 		s.ses = s.sessEx.NewSession(s.sessCtx)
 	}
 
-	// TODO: don't do that
-	return s.ses.(exchange.Interface)
+	return notifiableFetcherWrapper{s.ses, s.notifier}
+}
+
+func (s *Session) getExchange() notifiableFetcher {
+	return notifiableFetcherWrapper{s.ses, s.notifier}
+}
+
+func (s *Session) getFetcherFactory() func() notifiableFetcher {
+	if s.sessEx != nil {
+		return s.getSession
+	}
+	if s.ses != nil {
+		// Our exchange isn't session compatible, let's fallback to non sessions fetches
+		return s.getExchange
+	}
+	return nil
 }
 
 // GetBlock gets a block in the context of a request session
@@ -422,11 +453,7 @@ func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error)
 	ctx, span := internal.StartSpan(ctx, "Session.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
 	defer span.End()
 
-	var f func() exchange.Interface
-	if s.sessEx != nil {
-		f = s.getSession
-	}
-	return getBlock(ctx, c, s.bs, f) // hash security
+	return getBlock(ctx, c, s.bs, s.getFetcherFactory()) // hash security
 }
 
 // GetBlocks gets blocks in the context of a request session
@@ -434,11 +461,7 @@ func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Blo
 	ctx, span := internal.StartSpan(ctx, "Session.GetBlocks")
 	defer span.End()
 
-	var f func() exchange.Interface
-	if s.sessEx != nil {
-		f = s.getSession
-	}
-	return getBlocks(ctx, ks, s.bs, f) // hash security
+	return getBlocks(ctx, ks, s.bs, s.getFetcherFactory()) // hash security
 }
 
 var _ BlockGetter = (*Session)(nil)
