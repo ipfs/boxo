@@ -214,7 +214,7 @@ func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, e
 	ctx, span := internal.StartSpan(ctx, "blockService.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
 	defer span.End()
 
-	var f func() exchange.Fetcher
+	var f func() exchange.Interface
 	if s.exchange != nil {
 		f = s.getExchange
 	}
@@ -222,11 +222,11 @@ func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, e
 	return getBlock(ctx, c, s.blockstore, f) // hash security
 }
 
-func (s *blockService) getExchange() exchange.Fetcher {
+func (s *blockService) getExchange() exchange.Interface {
 	return s.exchange
 }
 
-func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget func() exchange.Fetcher) (blocks.Block, error) {
+func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget func() exchange.Interface) (blocks.Block, error) {
 	err := verifcid.ValidateCid(c) // hash security
 	if err != nil {
 		return nil, err
@@ -247,8 +247,12 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget fun
 		if err != nil {
 			return nil, err
 		}
-		// also write in the blockstore for caching
+		// also write in the blockstore for caching, inform the exchange that the block is available
 		err = bs.Put(ctx, blk)
+		if err != nil {
+			return nil, err
+		}
+		err = f.NotifyNewBlocks(ctx, blk)
 		if err != nil {
 			return nil, err
 		}
@@ -267,7 +271,7 @@ func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan block
 	ctx, span := internal.StartSpan(ctx, "blockService.GetBlocks")
 	defer span.End()
 
-	var f func() exchange.Fetcher
+	var f func() exchange.Interface
 	if s.exchange != nil {
 		f = s.getExchange
 	}
@@ -275,7 +279,7 @@ func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan block
 	return getBlocks(ctx, ks, s.blockstore, f) // hash security
 }
 
-func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget func() exchange.Fetcher) <-chan blocks.Block {
+func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget func() exchange.Interface) <-chan blocks.Block {
 	out := make(chan blocks.Block)
 
 	go func() {
@@ -351,10 +355,16 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 				}
 			}
 
-			// also write in the blockstore for caching
+			// also write in the blockstore for caching, inform the exchange that the blocks are available
 			err = bs.PutMany(ctx, batch)
 			if err != nil {
 				logger.Errorf("could not write blocks from the network to the blockstore: %s", err)
+				return
+			}
+
+			err = f.NotifyNewBlocks(ctx, batch...)
+			if err != nil {
+				logger.Errorf("could not tell the exchange about new blocks: %s", err)
 				return
 			}
 
@@ -396,14 +406,15 @@ type Session struct {
 	lk      sync.Mutex
 }
 
-func (s *Session) getSession() exchange.Fetcher {
+func (s *Session) getSession() exchange.Interface {
 	s.lk.Lock()
 	defer s.lk.Unlock()
 	if s.ses == nil {
 		s.ses = s.sessEx.NewSession(s.sessCtx)
 	}
 
-	return s.ses
+	// TODO: don't do that
+	return s.ses.(exchange.Interface)
 }
 
 // GetBlock gets a block in the context of a request session
@@ -411,7 +422,7 @@ func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error)
 	ctx, span := internal.StartSpan(ctx, "Session.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
 	defer span.End()
 
-	var f func() exchange.Fetcher
+	var f func() exchange.Interface
 	if s.sessEx != nil {
 		f = s.getSession
 	}
@@ -423,7 +434,7 @@ func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Blo
 	ctx, span := internal.StartSpan(ctx, "Session.GetBlocks")
 	defer span.End()
 
-	var f func() exchange.Fetcher
+	var f func() exchange.Interface
 	if s.sessEx != nil {
 		f = s.getSession
 	}

@@ -51,48 +51,68 @@ func TestExchangeWrite(t *testing.T) {
 		0,
 	}
 	exchbstore := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	exch := offline.Exchange(exchbstore)
+	exch := &notifyCountingExchange{
+		offline.Exchange(exchbstore),
+		0,
+	}
 	bserv := NewWriteThrough(bstore, exch)
 	bgen := butil.NewBlockGenerator()
 
-	// GetBlock
-	block := bgen.Next()
-	err := exchbstore.Put(context.Background(), block)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := bserv.GetBlock(context.Background(), block.Cid())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Cid() != block.Cid() {
-		t.Fatalf("GetBlock returned unexpected block")
-	}
-	if bstore.PutCounter != 1 {
-		t.Fatalf("expected one Put call, have: %d", bstore.PutCounter)
-	}
+	for name, fetcher := range map[string]BlockGetter{
+		"blockservice": bserv,
+		"session":      NewSession(context.Background(), bserv),
+	} {
+		t.Run(name, func(t *testing.T) {
+			// GetBlock
+			block := bgen.Next()
+			err := exchbstore.Put(context.Background(), block)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := fetcher.GetBlock(context.Background(), block.Cid())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Cid() != block.Cid() {
+				t.Fatalf("GetBlock returned unexpected block")
+			}
+			if bstore.PutCounter != 1 {
+				t.Fatalf("expected one Put call, have: %d", bstore.PutCounter)
+			}
+			if exch.notifyCount != 1 {
+				t.Fatalf("expected one NotifyNewBlocks call, have: %d", exch.notifyCount)
+			}
 
-	// GetBlocks
-	b1 := bgen.Next()
-	err = exchbstore.Put(context.Background(), b1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b2 := bgen.Next()
-	err = exchbstore.Put(context.Background(), b2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	bchan := bserv.GetBlocks(context.Background(), []cid.Cid{b1.Cid(), b2.Cid()})
-	var gotBlocks []blocks.Block
-	for b := range bchan {
-		gotBlocks = append(gotBlocks, b)
-	}
-	if len(gotBlocks) != 2 {
-		t.Fatalf("expected to retrieve 2 blocks, got %d", len(gotBlocks))
-	}
-	if bstore.PutCounter != 3 {
-		t.Fatalf("expected 3 Put call, have: %d", bstore.PutCounter)
+			// GetBlocks
+			b1 := bgen.Next()
+			err = exchbstore.Put(context.Background(), b1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b2 := bgen.Next()
+			err = exchbstore.Put(context.Background(), b2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bchan := fetcher.GetBlocks(context.Background(), []cid.Cid{b1.Cid(), b2.Cid()})
+			var gotBlocks []blocks.Block
+			for b := range bchan {
+				gotBlocks = append(gotBlocks, b)
+			}
+			if len(gotBlocks) != 2 {
+				t.Fatalf("expected to retrieve 2 blocks, got %d", len(gotBlocks))
+			}
+			if bstore.PutCounter != 3 {
+				t.Fatalf("expected 3 Put call, have: %d", bstore.PutCounter)
+			}
+			if exch.notifyCount != 3 {
+				t.Fatalf("expected one NotifyNewBlocks call, have: %d", exch.notifyCount)
+			}
+
+			// reset counts
+			bstore.PutCounter = 0
+			exch.notifyCount = 0
+		})
 	}
 }
 
@@ -166,6 +186,18 @@ func (bs *PutCountingBlockstore) Put(ctx context.Context, block blocks.Block) er
 func (bs *PutCountingBlockstore) PutMany(ctx context.Context, blocks []blocks.Block) error {
 	bs.PutCounter += len(blocks)
 	return bs.Blockstore.PutMany(ctx, blocks)
+}
+
+var _ exchange.Interface = (*notifyCountingExchange)(nil)
+
+type notifyCountingExchange struct {
+	exchange.Interface
+	notifyCount int
+}
+
+func (n *notifyCountingExchange) NotifyNewBlocks(ctx context.Context, blocks ...blocks.Block) error {
+	n.notifyCount += len(blocks)
+	return n.Interface.NotifyNewBlocks(ctx, blocks...)
 }
 
 var _ exchange.SessionExchange = (*fakeSessionExchange)(nil)
