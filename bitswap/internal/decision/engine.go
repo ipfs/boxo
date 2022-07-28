@@ -780,11 +780,11 @@ func (e *Engine) ReceivedBlocks(from peer.ID, blks []blocks.Block) {
 
 	// Record how many bytes were received in the ledger
 	l.lk.Lock()
+	defer l.lk.Unlock()
 	for _, blk := range blks {
 		log.Debugw("Bitswap engine <- block", "local", e.self, "from", from, "cid", blk.Cid(), "size", len(blk.RawData()))
 		e.scoreLedger.AddToReceivedBytes(l.Partner, len(blk.RawData()))
 	}
-	l.lk.Unlock()
 }
 
 // NotifyNewBlocks is called when new blocks becomes available locally, and in particular when the caller of bitswap
