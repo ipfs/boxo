@@ -104,7 +104,7 @@ func newTestEngineWithSampling(ctx context.Context, idStr string, peerSampleInte
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 	return engineSet{
 		Peer: peer.ID(idStr),
-		// Strategy: New(true),
+		//Strategy: New(true),
 		PeerTagger: fpt,
 		Blockstore: bs,
 		Engine:     e,
