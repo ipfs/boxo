@@ -15,7 +15,7 @@ const bufferSize = 16
 // for cids. It's used internally by bitswap to decouple receiving blocks
 // and actually providing them back to the GetBlocks caller.
 type PubSub interface {
-	Publish(block blocks.Block)
+	Publish(blocks ...blocks.Block)
 	Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Block
 	Shutdown()
 }
@@ -35,7 +35,7 @@ type impl struct {
 	closed chan struct{}
 }
 
-func (ps *impl) Publish(block blocks.Block) {
+func (ps *impl) Publish(blocks ...blocks.Block) {
 	ps.lk.RLock()
 	defer ps.lk.RUnlock()
 	select {
@@ -44,7 +44,9 @@ func (ps *impl) Publish(block blocks.Block) {
 	default:
 	}
 
-	ps.wrapped.Pub(block, block.Cid().KeyString())
+	for _, block := range blocks {
+		ps.wrapped.Pub(block, block.Cid().KeyString())
+	}
 }
 
 func (ps *impl) Shutdown() {
