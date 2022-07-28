@@ -126,7 +126,7 @@ func TestConsistentAccounting(t *testing.T) {
 
 		sender.Engine.MessageSent(receiver.Peer, m)
 		receiver.Engine.MessageReceived(ctx, sender.Peer, m)
-		receiver.Engine.ReceiveFrom(sender.Peer, m.Blocks())
+		receiver.Engine.ReceivedBlocks(sender.Peer, m.Blocks())
 	}
 
 	// Ensure sender records the change
@@ -936,10 +936,11 @@ func TestSendReceivedBlocksToPeersThatWantThem(t *testing.T) {
 		t.Fatal("expected no envelope yet")
 	}
 
+	e.ReceivedBlocks(otherPeer, []blocks.Block{blks[0], blks[2]})
 	if err := bs.PutMany(context.Background(), []blocks.Block{blks[0], blks[2]}); err != nil {
 		t.Fatal(err)
 	}
-	e.ReceiveFrom(otherPeer, []blocks.Block{blks[0], blks[2]})
+	e.NotifyNewBlocks([]blocks.Block{blks[0], blks[2]})
 	_, env = getNextEnvelope(e, next, 5*time.Millisecond)
 	if env == nil {
 		t.Fatal("expected envelope")
@@ -1000,10 +1001,11 @@ func TestSendDontHave(t *testing.T) {
 	}
 
 	// Receive all the blocks
+	e.ReceivedBlocks(otherPeer, []blocks.Block{blks[0], blks[2]})
 	if err := bs.PutMany(context.Background(), blks); err != nil {
 		t.Fatal(err)
 	}
-	e.ReceiveFrom(otherPeer, blks)
+	e.NotifyNewBlocks(blks)
 
 	// Envelope should contain 2 HAVEs / 2 blocks
 	_, env = getNextEnvelope(e, next, 10*time.Millisecond)
