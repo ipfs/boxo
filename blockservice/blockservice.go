@@ -333,23 +333,22 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 			return
 		}
 
-		for b := range rblocks {
-			// batch available blocks together
-			batch := make([]blocks.Block, 0, 8)
-			batch = append(batch, b)
-			logger.Debugf("BlockService.BlockFetched %s", b.Cid())
-
+		// batch available blocks together
+		const batchSize = 32
+		batch := make([]blocks.Block, 0, batchSize)
+		for {
+			var noMoreBlocks bool
 		batchLoop:
-			for {
+			for len(batch) < batchSize {
 				select {
-				case moreBlock, ok := <-rblocks:
+				case b, ok := <-rblocks:
 					if !ok {
-						// rblock has been closed, we set it to nil to avoid pulling zero values
-						rblocks = nil
-					} else {
-						logger.Debugf("BlockService.BlockFetched %s", moreBlock.Cid())
-						batch = append(batch, moreBlock)
+						noMoreBlocks = true
+						break batchLoop
 					}
+
+					logger.Debugf("BlockService.BlockFetched %s", b.Cid())
+					batch = append(batch, b)
 				case <-ctx.Done():
 					return
 				default:
@@ -370,12 +369,16 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 				return
 			}
 
-			for _, b = range batch {
+			for _, b := range batch {
 				select {
 				case out <- b:
 				case <-ctx.Done():
 					return
 				}
+			}
+			batch = batch[:0]
+			if noMoreBlocks {
+				break
 			}
 		}
 	}()
