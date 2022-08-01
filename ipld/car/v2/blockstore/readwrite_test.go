@@ -945,6 +945,41 @@ func TestReadWrite_ReWritingCARv1WithIdentityCidIsIdenticalToOriginalWithOptions
 	require.Equal(t, wantSum, gotSum)
 }
 
+func TestReadWriteOpenFile(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	dir := t.TempDir() // auto cleanup
+	f, err := ioutil.TempFile(dir, "")
+	require.NoError(t, err)
+
+	root := blocks.NewBlock([]byte("foo"))
+
+	bs, err := blockstore.OpenReadWriteFile(f, []cid.Cid{root.Cid()})
+	require.NoError(t, err)
+
+	err = bs.Put(ctx, root)
+	require.NoError(t, err)
+
+	roots, err := bs.Roots()
+	require.NoError(t, err)
+	_, err = bs.Has(ctx, roots[0])
+	require.NoError(t, err)
+	_, err = bs.Get(ctx, roots[0])
+	require.NoError(t, err)
+	_, err = bs.GetSize(ctx, roots[0])
+	require.NoError(t, err)
+
+	err = bs.Finalize()
+	require.NoError(t, err)
+
+	_, err = f.Seek(0, 0)
+	require.NoError(t, err) // file should not be closed, let the caller do it
+
+	err = f.Close()
+	require.NoError(t, err)
+}
+
 func TestBlockstore_IdentityCidWithEmptyDataIsIndexed(t *testing.T) {
 	p := path.Join(t.TempDir(), "car-id-cid-empty.carv2")
 	var noData []byte
