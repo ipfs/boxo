@@ -10,12 +10,13 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	"github.com/multiformats/go-varint"
+
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
 	internalio "github.com/ipld/go-car/v2/internal/io"
-	"github.com/multiformats/go-varint"
 )
 
 var _ blockstore.Blockstore = (*ReadWrite)(nil)
@@ -103,6 +104,18 @@ func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.Option) (*ReadWri
 	if err != nil {
 		return nil, fmt.Errorf("could not open read/write file: %w", err)
 	}
+	rwbs, err := OpenReadWriteFile(f, roots, opts...)
+	if err != nil {
+		return nil, err
+	}
+	// close the file when finalizing
+	rwbs.ronly.carv2Closer = rwbs.f
+	return rwbs, nil
+}
+
+// OpenReadWriteFile is similar as OpenReadWrite but lets you control the file lifecycle.
+// You are responsible for closing the given file.
+func OpenReadWriteFile(f *os.File, roots []cid.Cid, opts ...carv2.Option) (*ReadWrite, error) {
 	stat, err := f.Stat()
 	if err != nil {
 		// Note, we should not get a an os.ErrNotExist here because the flags used to open file includes os.O_CREATE
@@ -145,7 +158,6 @@ func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.Option) (*ReadWri
 	}
 	rwbs.ronly.backing = v1r
 	rwbs.ronly.idx = rwbs.idx
-	rwbs.ronly.carv2Closer = rwbs.f
 
 	if resume {
 		if err = rwbs.resumeWithRoots(!rwbs.opts.WriteAsCarV1, roots); err != nil {
