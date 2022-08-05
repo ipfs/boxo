@@ -14,32 +14,21 @@ var (
 	timeMetricsBuckets = []float64{1, 10, 30, 60, 90, 120, 600}
 )
 
-type onceAble[T any] struct {
-	o sync.Once
-	v T
-}
-
-func (o *onceAble[T]) reuseOrInit(creator func() T) T {
-	o.o.Do(func() {
-		o.v = creator()
-	})
-	return o.v
-}
-
 // Metrics is a type which lazy initialize metrics objects.
 // It MUST not be copied.
 type Metrics struct {
-	ctx context.Context
+	ctx  context.Context
+	lock sync.Mutex
 
-	dupHist      onceAble[metrics.Histogram]
-	allHist      onceAble[metrics.Histogram]
-	sentHist     onceAble[metrics.Histogram]
-	sendTimeHist onceAble[metrics.Histogram]
+	dupHist      metrics.Histogram
+	allHist      metrics.Histogram
+	sentHist     metrics.Histogram
+	sendTimeHist metrics.Histogram
 
-	pendingEngineGauge onceAble[metrics.Gauge]
-	activeEngineGauge  onceAble[metrics.Gauge]
-	pendingBlocksGauge onceAble[metrics.Gauge]
-	activeBlocksGauge  onceAble[metrics.Gauge]
+	pendingEngineGauge metrics.Gauge
+	activeEngineGauge  metrics.Gauge
+	pendingBlocksGauge metrics.Gauge
+	activeBlocksGauge  metrics.Gauge
 }
 
 func New(ctx context.Context) *Metrics {
@@ -49,63 +38,95 @@ func New(ctx context.Context) *Metrics {
 // DupHist return recv_dup_blocks_bytes.
 // Threadsafe
 func (m *Metrics) DupHist() metrics.Histogram {
-	return m.dupHist.reuseOrInit(func() metrics.Histogram {
-		return metrics.NewCtx(m.ctx, "recv_dup_blocks_bytes", "Summary of duplicate data blocks recived").Histogram(metricsBuckets)
-	})
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if m.dupHist != nil {
+		return m.dupHist
+	}
+	m.dupHist = metrics.NewCtx(m.ctx, "recv_dup_blocks_bytes", "Summary of duplicate data blocks recived").Histogram(metricsBuckets)
+	return m.dupHist
 }
 
 // AllHist returns recv_all_blocks_bytes.
 // Threadsafe
 func (m *Metrics) AllHist() metrics.Histogram {
-	return m.allHist.reuseOrInit(func() metrics.Histogram {
-		return metrics.NewCtx(m.ctx, "recv_all_blocks_bytes", "Summary of all data blocks recived").Histogram(metricsBuckets)
-	})
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if m.allHist != nil {
+		return m.allHist
+	}
+	m.allHist = metrics.NewCtx(m.ctx, "recv_all_blocks_bytes", "Summary of all data blocks recived").Histogram(metricsBuckets)
+	return m.allHist
 }
 
 // SentHist returns sent_all_blocks_bytes.
 // Threadsafe
 func (m *Metrics) SentHist() metrics.Histogram {
-	return m.sentHist.reuseOrInit(func() metrics.Histogram {
-		return metrics.NewCtx(m.ctx, "sent_all_blocks_bytes", "Histogram of blocks sent by this bitswap").Histogram(metricsBuckets)
-	})
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if m.sentHist != nil {
+		return m.sentHist
+	}
+	m.sentHist = metrics.NewCtx(m.ctx, "sent_all_blocks_bytes", "Histogram of blocks sent by this bitswap").Histogram(metricsBuckets)
+	return m.sentHist
 }
 
 // SendTimeHist returns send_times.
 // Threadsafe
 func (m *Metrics) SendTimeHist() metrics.Histogram {
-	return m.sendTimeHist.reuseOrInit(func() metrics.Histogram {
-		return metrics.NewCtx(m.ctx, "send_times", "Histogram of how long it takes to send messages in this bitswap").Histogram(timeMetricsBuckets)
-	})
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if m.sendTimeHist != nil {
+		return m.sendTimeHist
+	}
+	m.sendTimeHist = metrics.NewCtx(m.ctx, "send_times", "Histogram of how long it takes to send messages in this bitswap").Histogram(timeMetricsBuckets)
+	return m.sendTimeHist
 }
 
 // PendingEngineGauge returns pending_tasks.
 // Threadsafe
 func (m *Metrics) PendingEngineGauge() metrics.Gauge {
-	return m.pendingEngineGauge.reuseOrInit(func() metrics.Gauge {
-		return metrics.NewCtx(m.ctx, "pending_tasks", "Total number of pending tasks").Gauge()
-	})
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if m.pendingEngineGauge != nil {
+		return m.pendingEngineGauge
+	}
+	m.pendingEngineGauge = metrics.NewCtx(m.ctx, "pending_tasks", "Total number of pending tasks").Gauge()
+	return m.pendingEngineGauge
 }
 
 // ActiveEngineGauge returns active_tasks.
 // Threadsafe
 func (m *Metrics) ActiveEngineGauge() metrics.Gauge {
-	return m.activeEngineGauge.reuseOrInit(func() metrics.Gauge {
-		return metrics.NewCtx(m.ctx, "active_tasks", "Total number of active tasks").Gauge()
-	})
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if m.activeEngineGauge != nil {
+		return m.activeEngineGauge
+	}
+	m.activeEngineGauge = metrics.NewCtx(m.ctx, "active_tasks", "Total number of active tasks").Gauge()
+	return m.activeEngineGauge
 }
 
 // PendingBlocksGauge returns pending_block_tasks.
 // Threadsafe
 func (m *Metrics) PendingBlocksGauge() metrics.Gauge {
-	return m.pendingBlocksGauge.reuseOrInit(func() metrics.Gauge {
-		return metrics.NewCtx(m.ctx, "pending_block_tasks", "Total number of pending blockstore tasks").Gauge()
-	})
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if m.pendingBlocksGauge != nil {
+		return m.pendingBlocksGauge
+	}
+	m.pendingBlocksGauge = metrics.NewCtx(m.ctx, "pending_block_tasks", "Total number of pending blockstore tasks").Gauge()
+	return m.pendingBlocksGauge
 }
 
 // ActiveBlocksGauge returns active_block_tasks.
 // Threadsafe
 func (m *Metrics) ActiveBlocksGauge() metrics.Gauge {
-	return m.activeBlocksGauge.reuseOrInit(func() metrics.Gauge {
-		return metrics.NewCtx(m.ctx, "active_block_tasks", "Total number of active blockstore tasks").Gauge()
-	})
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if m.activeBlocksGauge != nil {
+		return m.activeBlocksGauge
+	}
+	m.activeBlocksGauge = metrics.NewCtx(m.ctx, "active_block_tasks", "Total number of active blockstore tasks").Gauge()
+	return m.activeBlocksGauge
 }
