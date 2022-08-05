@@ -10,7 +10,6 @@ import (
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-metrics-interface"
-	process "github.com/jbenet/goprocess"
 )
 
 // blockstoreManager maintains a pool of workers that make requests to the blockstore.
@@ -18,15 +17,17 @@ type blockstoreManager struct {
 	bs           bstore.Blockstore
 	workerCount  int
 	jobs         chan func()
-	px           process.Process
 	pendingGauge metrics.Gauge
 	activeGauge  metrics.Gauge
+
+	workerWG sync.WaitGroup
+	stopChan chan struct{}
+	stopOnce sync.Once
 }
 
 // newBlockstoreManager creates a new blockstoreManager with the given context
 // and number of workers
 func newBlockstoreManager(
-	ctx context.Context,
 	bs bstore.Blockstore,
 	workerCount int,
 	pendingGauge metrics.Gauge,
@@ -36,26 +37,31 @@ func newBlockstoreManager(
 		bs:           bs,
 		workerCount:  workerCount,
 		jobs:         make(chan func()),
-		px:           process.WithTeardown(func() error { return nil }),
 		pendingGauge: pendingGauge,
 		activeGauge:  activeGauge,
+		stopChan:     make(chan struct{}),
 	}
 }
 
-func (bsm *blockstoreManager) start(px process.Process) {
-	px.AddChild(bsm.px)
-	// Start up workers
+func (bsm *blockstoreManager) start() {
+	bsm.workerWG.Add(bsm.workerCount)
 	for i := 0; i < bsm.workerCount; i++ {
-		bsm.px.Go(func(px process.Process) {
-			bsm.worker(px)
-		})
+		go bsm.worker()
 	}
 }
 
-func (bsm *blockstoreManager) worker(px process.Process) {
+func (bsm *blockstoreManager) stop() {
+	bsm.stopOnce.Do(func() {
+		close(bsm.stopChan)
+	})
+	bsm.workerWG.Wait()
+}
+
+func (bsm *blockstoreManager) worker() {
+	defer bsm.workerWG.Done()
 	for {
 		select {
-		case <-px.Closing():
+		case <-bsm.stopChan:
 			return
 		case job := <-bsm.jobs:
 			bsm.pendingGauge.Dec()
@@ -70,7 +76,7 @@ func (bsm *blockstoreManager) addJob(ctx context.Context, job func()) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-bsm.px.Closing():
+	case <-bsm.stopChan:
 		return fmt.Errorf("shutting down")
 	case bsm.jobs <- job:
 		bsm.pendingGauge.Inc()

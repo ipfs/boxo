@@ -286,7 +286,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork,
 
 	// Set up decision engine
 	bs.engine = decision.NewEngine(
-		ctx,
 		bstore,
 		bs.engineBstoreWorkerCount,
 		bs.engineTaskWorkerCount,
