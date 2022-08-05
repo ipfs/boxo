@@ -201,7 +201,6 @@ func newEngineForTesting(
 	testPendingBlocksGauge := metrics.NewCtx(ctx, "pending_block_tasks", "Total number of pending blockstore tasks").Gauge()
 	testActiveBlocksGauge := metrics.NewCtx(ctx, "active_block_tasks", "Total number of active blockstore tasks").Gauge()
 	return newEngine(
-		ctx,
 		bs,
 		bstoreWorkerCount,
 		engineTaskWorkerCount,

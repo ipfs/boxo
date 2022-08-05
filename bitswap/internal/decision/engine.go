@@ -256,7 +256,6 @@ func wrapTaskComparator(tc TaskComparator) peertask.QueueTaskComparator {
 // maxOutstandingBytesPerPeer hints to the peer task queue not to give a peer more tasks if it has some maximum
 // work already outstanding.
 func NewEngine(
-	ctx context.Context,
 	bs bstore.Blockstore,
 	bstoreWorkerCount,
 	engineTaskWorkerCount, maxOutstandingBytesPerPeer int,
@@ -270,7 +269,6 @@ func NewEngine(
 	opts ...Option,
 ) *Engine {
 	return newEngine(
-		ctx,
 		bs,
 		bstoreWorkerCount,
 		engineTaskWorkerCount,
@@ -288,7 +286,6 @@ func NewEngine(
 }
 
 func newEngine(
-	ctx context.Context,
 	bs bstore.Blockstore,
 	bstoreWorkerCount,
 	engineTaskWorkerCount, maxOutstandingBytesPerPeer int,
@@ -310,7 +307,7 @@ func newEngine(
 	e := &Engine{
 		ledgerMap:                       make(map[peer.ID]*ledger),
 		scoreLedger:                     scoreLedger,
-		bsm:                             newBlockstoreManager(ctx, bs, bstoreWorkerCount, pendingBlocksGauge, activeBlocksGauge),
+		bsm:                             newBlockstoreManager(bs, bstoreWorkerCount, pendingBlocksGauge, activeBlocksGauge),
 		peerTagger:                      peerTagger,
 		outbox:                          make(chan (<-chan *Envelope), outboxChanBuffer),
 		workSignal:                      make(chan struct{}, 1),
@@ -391,20 +388,28 @@ func (e *Engine) startScoreLedger(px process.Process) {
 	})
 }
 
+func (e *Engine) startBlockstoreManager(px process.Process) {
+	e.bsm.start()
+	px.Go(func(ppx process.Process) {
+		<-ppx.Closing()
+		e.bsm.stop()
+	})
+}
+
 // Start up workers to handle requests from other nodes for the data on this node
 func (e *Engine) StartWorkers(ctx context.Context, px process.Process) {
-	// Start up blockstore manager
-	e.bsm.start(px)
+	e.startBlockstoreManager(px)
 	e.startScoreLedger(px)
 
 	e.taskWorkerLock.Lock()
 	defer e.taskWorkerLock.Unlock()
 
 	for i := 0; i < e.taskWorkerCount; i++ {
-		px.Go(func(px process.Process) {
+		px.Go(func(_ process.Process) {
 			e.taskWorker(ctx)
 		})
 	}
+
 }
 
 func (e *Engine) onPeerAdded(p peer.ID) {
