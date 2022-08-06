@@ -63,7 +63,7 @@ func New(ctx context.Context, net network.BitSwapNetwork, bstore blockstore.Bloc
 	var clientOptions []client.Option
 
 	for _, o := range options {
-		switch typedOption := o.V.(type) {
+		switch typedOption := o.v.(type) {
 		case server.Option:
 			serverOptions = append(serverOptions, typedOption)
 		case client.Option:
