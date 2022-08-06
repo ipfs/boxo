@@ -14,7 +14,7 @@ type option func(*Bitswap)
 // Option is interface{} of server.Option or client.Option or func(*Bitswap)
 // wrapped in a struct to gain strong type checking.
 type Option struct {
-	V interface{}
+	v interface{}
 }
 
 func EngineBlockstoreWorkerCount(count int) Option {
@@ -74,15 +74,6 @@ func WithTracer(tap tracer.Tracer) Option {
 	return Option{
 		func(bs *Bitswap) {
 			bs.tracer = tap
-			// the tests use this to hot update tracers, we need to update tracers of impls if we are running
-			if bs.Client != nil {
-				if tap != nil {
-					tap = nopReceiveTracer{tap}
-				}
-				client.WithTracer(tap)(bs.Client)
-				// no need to check for server as they can't not be both running
-				server.WithTracer(tap)(bs.Server)
-			}
 		},
 	}
 }
