@@ -18,6 +18,7 @@ type DelegatedRoutingService interface {
 	FindProviders(ctx context.Context, key cid.Cid) (<-chan client.FindProvidersAsyncResult, error)
 	GetIPNS(ctx context.Context, id []byte) (<-chan client.GetIPNSAsyncResult, error)
 	PutIPNS(ctx context.Context, id []byte, record []byte) (<-chan client.PutIPNSAsyncResult, error)
+	Provide(ctx context.Context, req *client.ProvideRequest) (<-chan client.ProvideAsyncResult, error)
 }
 
 func DelegatedRoutingAsyncHandler(svc DelegatedRoutingService) http.HandlerFunc {
@@ -138,6 +139,48 @@ func (drs *delegatedRoutingServer) FindProviders(ctx context.Context, req *proto
 						return
 					case rch <- resp:
 					}
+				}
+			}
+		}
+	}()
+	return rch, nil
+}
+
+func (drs *delegatedRoutingServer) Provide(ctx context.Context, req *proto.ProvideRequest) (<-chan *proto.DelegatedRouting_Provide_AsyncResult, error) {
+	rch := make(chan *proto.DelegatedRouting_Provide_AsyncResult)
+	go func() {
+		defer close(rch)
+		pr, err := client.ParseProvideRequest(req)
+		if err != nil {
+			logger.Errorf("Provide function rejected request (%w)", err)
+			return
+		}
+		ch, err := drs.service.Provide(ctx, pr)
+		if err != nil {
+			logger.Errorf("Provide function rejected request (%w)", err)
+			return
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case resp, ok := <-ch:
+				if !ok {
+					return
+				}
+				var protoResp *proto.DelegatedRouting_Provide_AsyncResult
+				if resp.Err != nil {
+					logger.Infof("find providers function returned error (%w)", resp.Err)
+					protoResp = &proto.DelegatedRouting_Provide_AsyncResult{Err: resp.Err}
+				} else {
+					protoResp = &proto.DelegatedRouting_Provide_AsyncResult{Resp: &proto.ProvideResponse{AdvisoryTTL: values.Int(resp.AdvisoryTTL)}}
+				}
+
+				select {
+				case <-ctx.Done():
+					return
+				case rch <- protoResp:
 				}
 			}
 		}

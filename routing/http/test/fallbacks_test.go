@@ -24,7 +24,10 @@ func TestClientWithServerReturningUnknownValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := client.NewClient(q)
+	c, err := client.NewClient(q, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// verify no result arrive
 	h, err := multihash.Sum([]byte("TEST"), multihash.SHA3, 4)
@@ -75,4 +78,8 @@ func (testServiceWithUnknown) GetIPNS(ctx context.Context, req *proto.GetIPNSReq
 
 func (testServiceWithUnknown) PutIPNS(ctx context.Context, req *proto.PutIPNSRequest) (<-chan *proto.DelegatedRouting_PutIPNS_AsyncResult, error) {
 	return nil, fmt.Errorf("PutIPNS not supported by test service")
+}
+
+func (testServiceWithUnknown) Provide(ctx context.Context, req *proto.ProvideRequest) (<-chan *proto.DelegatedRouting_Provide_AsyncResult, error) {
+	return nil, fmt.Errorf("Provide not supported by test service")
 }

@@ -38,6 +38,13 @@ var proto = defs.Defs{
 						Return: defs.Ref{Name: "PutIPNSResponse"},
 					},
 				},
+				defs.Method{
+					Name: "Provide",
+					Type: defs.Fn{
+						Arg:    defs.Ref{Name: "ProvideRequest"},
+						Return: defs.Ref{Name: "ProvideResponse"},
+					},
+				},
 			},
 		},
 	},
@@ -108,6 +115,30 @@ var proto = defs.Defs{
 	defs.Named{
 		Name: "PutIPNSResponse",
 		Type: defs.Structure{},
+	},
+
+	// ProvideRequest type
+	defs.Named{
+		Name: "ProvideRequest",
+		Type: defs.Structure{
+			Fields: defs.Fields{
+				defs.Field{Name: "Key", GoName: "Key", Type: defs.Ref{Name: "LinkToAny"}},
+				defs.Field{Name: "Provider", GoName: "Provider", Type: defs.Ref{Name: "Provider"}},
+				defs.Field{Name: "Timestamp", GoName: "Timestamp", Type: defs.Int{}},
+				defs.Field{Name: "AdvisoryTTL", GoName: "AdvisoryTTL", Type: defs.Int{}},
+				defs.Field{Name: "Signature", GoName: "Signature", Type: defs.Bytes{}},
+			},
+		},
+	},
+
+	// ProvideResponse type
+	defs.Named{
+		Name: "ProvideResponse",
+		Type: defs.Structure{
+			Fields: defs.Fields{
+				defs.Field{Name: "AdvisoryTTL", GoName: "AdvisoryTTL", Type: defs.Int{}},
+			},
+		},
 	},
 
 	// general routing types

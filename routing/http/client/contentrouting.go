@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"time"
 
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -18,8 +19,16 @@ func NewContentRoutingClient(c DelegatedRoutingClient) *ContentRoutingClient {
 	return &ContentRoutingClient{client: c}
 }
 
-func (c *ContentRoutingClient) Provide(context.Context, cid.Cid, bool) error {
-	return routing.ErrNotSupported
+func (c *ContentRoutingClient) Provide(ctx context.Context, key cid.Cid, announce bool) error {
+	// If 'true' is
+	// passed, it also announces it, otherwise it is just kept in the local
+	// accounting of which objects are being provided.
+	if !announce {
+		return nil
+	}
+
+	_, err := c.client.Provide(ctx, key, 24*time.Hour)
+	return err
 }
 
 func (c *ContentRoutingClient) FindProvidersAsync(ctx context.Context, key cid.Cid, numResults int) <-chan peer.AddrInfo {

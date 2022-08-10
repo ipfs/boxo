@@ -23,7 +23,10 @@ func TestClientWithServerReturningErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := client.NewClient(q)
+	c, err := client.NewClient(q, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// verify no result arrive
 	h, err := multihash.Sum([]byte("TEST"), multihash.SHA3, 4)
@@ -74,5 +77,9 @@ func (testServiceWithErrors) GetIPNS(ctx context.Context, req *proto.GetIPNSRequ
 }
 
 func (testServiceWithErrors) PutIPNS(ctx context.Context, req *proto.PutIPNSRequest) (<-chan *proto.DelegatedRouting_PutIPNS_AsyncResult, error) {
+	return nil, fmt.Errorf(testSyncError)
+}
+
+func (testServiceWithErrors) Provide(ctx context.Context, req *proto.ProvideRequest) (<-chan *proto.DelegatedRouting_Provide_AsyncResult, error) {
 	return nil, fmt.Errorf(testSyncError)
 }

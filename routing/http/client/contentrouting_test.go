@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -42,6 +43,14 @@ func (t TestDelegatedRoutingClient) PutIPNS(ctx context.Context, id []byte, reco
 }
 
 func (t TestDelegatedRoutingClient) PutIPNSAsync(ctx context.Context, id []byte, record []byte) (<-chan PutIPNSAsyncResult, error) {
+	panic("not supported")
+}
+
+func (t TestDelegatedRoutingClient) ProvideAsync(ctx context.Context, key cid.Cid, ttl time.Duration) (<-chan time.Duration, error) {
+	panic("not supported")
+}
+
+func (t TestDelegatedRoutingClient) Provide(ctx context.Context, key cid.Cid, tl time.Duration) (time.Duration, error) {
 	panic("not supported")
 }
 

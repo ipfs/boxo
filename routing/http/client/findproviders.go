@@ -2,11 +2,15 @@ package client
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"github.com/ipfs/go-cid"
 	proto "github.com/ipfs/go-delegated-routing/gen/proto"
 	ipns "github.com/ipfs/go-ipns"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/ipld/edelweiss/values"
+	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	record "github.com/libp2p/go-libp2p-record"
 	"github.com/multiformats/go-multiaddr"
@@ -21,15 +25,33 @@ type DelegatedRoutingClient interface {
 	GetIPNSAsync(ctx context.Context, id []byte) (<-chan GetIPNSAsyncResult, error)
 	PutIPNS(ctx context.Context, id []byte, record []byte) error
 	PutIPNSAsync(ctx context.Context, id []byte, record []byte) (<-chan PutIPNSAsyncResult, error)
+	Provide(ctx context.Context, key cid.Cid, ttl time.Duration) (time.Duration, error)
+	ProvideAsync(ctx context.Context, key cid.Cid, ttl time.Duration) (<-chan time.Duration, error)
 }
 
 type Client struct {
 	client    proto.DelegatedRouting_Client
 	validator record.Validator
+
+	provider *Provider
+	identity crypto.PrivKey
 }
 
-func NewClient(c proto.DelegatedRouting_Client) *Client {
-	return &Client{client: c, validator: ipns.Validator{}}
+var _ DelegatedRoutingClient = (*Client)(nil)
+
+// NewClient creates a client.
+// The Provider and identity parameters are option. If they are nil, the `Provide` method will not function.
+func NewClient(c proto.DelegatedRouting_Client, p *Provider, identity crypto.PrivKey) (*Client, error) {
+	if p != nil && !p.Peer.ID.MatchesPublicKey(identity.GetPublic()) {
+		return nil, errors.New("identity does not match provider")
+	}
+
+	return &Client{
+		client:    c,
+		validator: ipns.Validator{},
+		provider:  p,
+		identity:  identity,
+	}, nil
 }
 
 func (fp *Client) FindProviders(ctx context.Context, key cid.Cid) ([]peer.AddrInfo, error) {
@@ -142,5 +164,22 @@ func ParseNodeAddresses(n *proto.Peer) []peer.AddrInfo {
 		}
 		infos = append(infos, peer.AddrInfo{ID: peerID, Addrs: []multiaddr.Multiaddr{ma}})
 	}
+	if len(n.Multiaddresses) == 0 {
+		infos = append(infos, peer.AddrInfo{ID: peerID})
+	}
 	return infos
+}
+
+// ToProtoPeer creates a protocol Peer structure from address info.
+func ToProtoPeer(ai peer.AddrInfo) *proto.Peer {
+	p := proto.Peer{
+		ID:             values.Bytes(ai.ID),
+		Multiaddresses: make(proto.AnonList20, 0),
+	}
+
+	for _, addr := range ai.Addrs {
+		p.Multiaddresses = append(p.Multiaddresses, addr.Bytes())
+	}
+
+	return &p
 }
