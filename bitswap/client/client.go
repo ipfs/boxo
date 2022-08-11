@@ -82,16 +82,14 @@ func WithBlockReceivedNotifier(brn BlockReceivedNotifier) Option {
 }
 
 type BlockReceivedNotifier interface {
-	// ReceivedBlocks notify the decision engine that a peer is well behaving
-	// and gave us usefull data, potentially increasing it's score and making us
+	// ReceivedBlocks notifies the decision engine that a peer is well-behaving
+	// and gave us useful data, potentially increasing its score and making us
 	// send them more data in exchange.
 	ReceivedBlocks(peer.ID, []blocks.Block)
 }
 
-// New initializes a BitSwap instance that communicates over the provided
-// BitSwapNetwork. This function registers the returned instance as the network
-// delegate. Runs until context is cancelled or bitswap.Close is called.
-func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, m *bmetrics.Metrics, options ...Option) *Client {
+// New initializes a Bitswap client that runs until client.Close is called.
+func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Client {
 	// important to use provided parent context (since it may include important
 	// loggable data). It's probably not a good idea to allow bitswap to be
 	// coupled to the concerns of the ipfs daemon in this way.
@@ -155,8 +153,8 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		sim:                        sim,
 		notif:                      notif,
 		counters:                   new(counters),
-		dupMetric:                  m.DupHist(),
-		allMetric:                  m.AllHist(),
+		dupMetric:                  bmetrics.DupHist(),
+		allMetric:                  bmetrics.AllHist(),
 		provSearchDelay:            defaults.ProvSearchDelay,
 		rebroadcastDelay:           delay.Fixed(time.Minute),
 		simulateDontHavesOnTimeout: true,

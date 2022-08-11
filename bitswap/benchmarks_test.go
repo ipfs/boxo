@@ -18,8 +18,8 @@ import (
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
 
 	"github.com/ipfs/go-bitswap"
-	testinstance "github.com/ipfs/go-bitswap/client/testinstance"
 	bsnet "github.com/ipfs/go-bitswap/network"
+	testinstance "github.com/ipfs/go-bitswap/testinstance"
 	tn "github.com/ipfs/go-bitswap/testnet"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"

@@ -14,7 +14,6 @@ import (
 	"github.com/ipfs/go-bitswap/internal/testutil"
 	message "github.com/ipfs/go-bitswap/message"
 	pb "github.com/ipfs/go-bitswap/message/pb"
-	"github.com/ipfs/go-bitswap/metrics"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -197,7 +196,6 @@ func newEngineForTesting(
 		peerTagger,
 		self,
 		maxReplaceSize,
-		metrics.New(ctx),
 		opts...,
 	)
 }

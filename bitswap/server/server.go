@@ -26,14 +26,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var (
-	// HasBlockBufferSize is the buffer size of the channel for new blocks
-	// that need to be provided. They should get pulled over by the
-	// provideCollector even before they are actually provided.
-	// TODO: Does this need to be this large givent that?
-	HasBlockBufferSize    = 256
-	provideKeysBufferSize = 2048
-)
+var provideKeysBufferSize = 2048
 
 var log = logging.Logger("bitswap-server")
 var sflog = log.Desugar()
@@ -74,11 +67,13 @@ type Server struct {
 	// Extra options to pass to the decision manager
 	engineOptions []decision.Option
 
+	// the size of channel buffer to use
+	hasBlockBufferSize int
 	// whether or not to make provide announcements
 	provideEnabled bool
 }
 
-func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, m *bmetrics.Metrics, options ...Option) *Server {
+func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Server {
 	ctx, cancel := context.WithCancel(ctx)
 
 	px := process.WithTeardown(func() error {
@@ -90,15 +85,16 @@ func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Bl
 	}()
 
 	s := &Server{
-		sentHistogram:     m.SentHist(),
-		sendTimeHistogram: m.SendTimeHist(),
-		taskWorkerCount:   defaults.BitswapTaskWorkerCount,
-		network:           network,
-		process:           px,
-		provideEnabled:    true,
-		newBlocks:         make(chan cid.Cid, HasBlockBufferSize),
-		provideKeys:       make(chan cid.Cid, provideKeysBufferSize),
+		sentHistogram:      bmetrics.SentHist(),
+		sendTimeHistogram:  bmetrics.SendTimeHist(),
+		taskWorkerCount:    defaults.BitswapTaskWorkerCount,
+		network:            network,
+		process:            px,
+		provideEnabled:     true,
+		hasBlockBufferSize: defaults.HasBlockBufferSize,
+		provideKeys:        make(chan cid.Cid, provideKeysBufferSize),
 	}
+	s.newBlocks = make(chan cid.Cid, s.hasBlockBufferSize)
 
 	for _, o := range options {
 		o(s)
@@ -109,7 +105,6 @@ func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Bl
 		bstore,
 		network.ConnectionManager(),
 		network.Self(),
-		m,
 		s.engineOptions...,
 	)
 	s.engineOptions = nil
@@ -212,6 +207,16 @@ func MaxOutstandingBytesPerPeer(count int) Option {
 	o := decision.WithMaxOutstandingBytesPerPeer(count)
 	return func(bs *Server) {
 		bs.engineOptions = append(bs.engineOptions, o)
+	}
+}
+
+// HasBlockBufferSize configure how big the new blocks buffer should be.
+func HasBlockBufferSize(count int) Option {
+	if count < 0 {
+		panic("cannot have negative buffer size")
+	}
+	return func(bs *Server) {
+		bs.hasBlockBufferSize = count
 	}
 }
 
