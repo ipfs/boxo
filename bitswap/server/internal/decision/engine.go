@@ -308,7 +308,6 @@ func NewEngine(
 	bs bstore.Blockstore,
 	peerTagger PeerTagger,
 	self peer.ID,
-	metrics *bmetrics.Metrics,
 	opts ...Option,
 ) *Engine {
 	return newEngine(
@@ -316,7 +315,6 @@ func NewEngine(
 		peerTagger,
 		self,
 		maxBlockSizeReplaceHasWithBlock,
-		metrics,
 		opts...,
 	)
 }
@@ -326,10 +324,8 @@ func newEngine(
 	peerTagger PeerTagger,
 	self peer.ID,
 	maxReplaceSize int,
-	metrics *bmetrics.Metrics,
 	opts ...Option,
 ) *Engine {
-
 	e := &Engine{
 		ledgerMap:                       make(map[peer.ID]*ledger),
 		scoreLedger:                     NewDefaultScoreLedger(),
@@ -344,8 +340,8 @@ func newEngine(
 		sendDontHaves:                   true,
 		self:                            self,
 		peerLedger:                      newPeerLedger(),
-		pendingGauge:                    metrics.PendingEngineGauge(),
-		activeGauge:                     metrics.ActiveEngineGauge(),
+		pendingGauge:                    bmetrics.PendingEngineGauge(),
+		activeGauge:                     bmetrics.ActiveEngineGauge(),
 		targetMessageSize:               defaultTargetMessageSize,
 		tagQueued:                       fmt.Sprintf(tagFormat, "queued", uuid.New().String()),
 		tagUseful:                       fmt.Sprintf(tagFormat, "useful", uuid.New().String()),
@@ -355,7 +351,7 @@ func newEngine(
 		opt(e)
 	}
 
-	e.bsm = newBlockstoreManager(bs, e.bstoreWorkerCount, metrics.PendingBlocksGauge(), metrics.ActiveBlocksGauge())
+	e.bsm = newBlockstoreManager(bs, e.bstoreWorkerCount, bmetrics.PendingBlocksGauge(), bmetrics.ActiveBlocksGauge())
 
 	// default peer task queue options
 	peerTaskQueueOpts := []peertaskqueue.Option{

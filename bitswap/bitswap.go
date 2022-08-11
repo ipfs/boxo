@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/ipfs/go-bitswap/client"
+	"github.com/ipfs/go-bitswap/internal/defaults"
 	"github.com/ipfs/go-bitswap/message"
-	"github.com/ipfs/go-bitswap/metrics"
 	"github.com/ipfs/go-bitswap/network"
 	"github.com/ipfs/go-bitswap/server"
 	"github.com/ipfs/go-bitswap/tracer"
@@ -24,7 +24,7 @@ import (
 var log = logging.Logger("bitswap")
 
 // old interface we are targeting
-type old interface {
+type bitswap interface {
 	Close() error
 	GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
 	GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error)
@@ -44,7 +44,8 @@ type old interface {
 }
 
 var _ exchange.SessionExchange = (*Bitswap)(nil)
-var _ old = (*Bitswap)(nil)
+var _ bitswap = (*Bitswap)(nil)
+var HasBlockBufferSize = defaults.HasBlockBufferSize
 
 type Bitswap struct {
 	*client.Client
@@ -81,9 +82,12 @@ func New(ctx context.Context, net network.BitSwapNetwork, bstore blockstore.Bloc
 		serverOptions = append(serverOptions, server.WithTracer(tracer))
 	}
 
-	stats := metrics.New(ctx)
-	bs.Server = server.New(ctx, net, bstore, stats, serverOptions...)
-	bs.Client = client.New(ctx, net, bstore, stats, append(clientOptions, client.WithBlockReceivedNotifier(bs.Server))...)
+	if HasBlockBufferSize != defaults.HasBlockBufferSize {
+		serverOptions = append(serverOptions, server.HasBlockBufferSize(HasBlockBufferSize))
+	}
+
+	bs.Server = server.New(ctx, net, bstore, serverOptions...)
+	bs.Client = client.New(ctx, net, bstore, append(clientOptions, client.WithBlockReceivedNotifier(bs.Server))...)
 	net.Start(bs) // use the polyfill receiver to log received errors and trace messages only once
 
 	return bs

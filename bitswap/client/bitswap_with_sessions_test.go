@@ -8,7 +8,7 @@ import (
 
 	"github.com/ipfs/go-bitswap"
 	"github.com/ipfs/go-bitswap/client/internal/session"
-	testinstance "github.com/ipfs/go-bitswap/client/testinstance"
+	testinstance "github.com/ipfs/go-bitswap/testinstance"
 	tn "github.com/ipfs/go-bitswap/testnet"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
