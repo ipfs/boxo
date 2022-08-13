@@ -167,7 +167,7 @@ func TestStartupAndShutdown(t *testing.T) {
 
 	messageQueue.Startup()
 	messageQueue.AddBroadcastWantHaves(bcstwh)
-	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	messages := collectMessages(ctx, t, messagesSent, 100*time.Millisecond)
 	if len(messages) != 1 {
 		t.Fatal("wrong number of messages were sent for broadcast want-haves")
 	}
@@ -184,7 +184,7 @@ func TestStartupAndShutdown(t *testing.T) {
 
 	messageQueue.Shutdown()
 
-	timeoutctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	timeoutctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer cancel()
 	select {
 	case <-resetChan:
@@ -207,7 +207,7 @@ func TestSendingMessagesDeduped(t *testing.T) {
 	messageQueue.Startup()
 	messageQueue.AddWants(wantBlocks, wantHaves)
 	messageQueue.AddWants(wantBlocks, wantHaves)
-	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	messages := collectMessages(ctx, t, messagesSent, 100*time.Millisecond)
 
 	if totalEntriesLength(messages) != len(wantHaves)+len(wantBlocks) {
 		t.Fatal("Messages were not deduped")
@@ -318,7 +318,7 @@ func TestCancelOverridesPendingWants(t *testing.T) {
 	messageQueue.Startup()
 	messageQueue.AddWants(wantBlocks, wantHaves)
 	messageQueue.AddCancels(cancels)
-	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	messages := collectMessages(ctx, t, messagesSent, 100*time.Millisecond)
 
 	if totalEntriesLength(messages) != len(wantHaves)+len(wantBlocks)-len(cancels) {
 		t.Fatal("Wrong message count")
@@ -342,7 +342,7 @@ func TestCancelOverridesPendingWants(t *testing.T) {
 	// Cancel the remaining want-blocks and want-haves
 	cancels = append(wantHaves, wantBlocks...)
 	messageQueue.AddCancels(cancels)
-	messages = collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	messages = collectMessages(ctx, t, messagesSent, 100*time.Millisecond)
 
 	// The remaining 2 cancels should be sent to the network as they are for
 	// wants that were sent to the network
@@ -370,7 +370,7 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 	// Add 1 want-block and 2 want-haves
 	messageQueue.AddWants(wantBlocks, wantHaves)
 
-	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	messages := collectMessages(ctx, t, messagesSent, 100*time.Millisecond)
 	if totalEntriesLength(messages) != len(wantBlocks)+len(wantHaves) {
 		t.Fatal("Wrong message count", totalEntriesLength(messages))
 	}
@@ -380,7 +380,7 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 	// Override one cancel with a want-block (before cancel is sent to network)
 	messageQueue.AddWants(cids[:1], []cid.Cid{})
 
-	messages = collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	messages = collectMessages(ctx, t, messagesSent, 100*time.Millisecond)
 	if totalEntriesLength(messages) != 3 {
 		t.Fatal("Wrong message count", totalEntriesLength(messages))
 	}
@@ -554,7 +554,7 @@ func TestSendToPeerThatDoesntSupportHave(t *testing.T) {
 	// Check broadcast want-haves
 	bcwh := testutil.GenerateCids(10)
 	messageQueue.AddBroadcastWantHaves(bcwh)
-	messages := collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	messages := collectMessages(ctx, t, messagesSent, 100*time.Millisecond)
 
 	if len(messages) != 1 {
 		t.Fatal("wrong number of messages were sent", len(messages))
@@ -573,7 +573,7 @@ func TestSendToPeerThatDoesntSupportHave(t *testing.T) {
 	wbs := testutil.GenerateCids(10)
 	whs := testutil.GenerateCids(10)
 	messageQueue.AddWants(wbs, whs)
-	messages = collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	messages = collectMessages(ctx, t, messagesSent, 100*time.Millisecond)
 
 	if len(messages) != 1 {
 		t.Fatal("wrong number of messages were sent", len(messages))
@@ -603,7 +603,7 @@ func TestSendToPeerThatDoesntSupportHaveMonitorsTimeouts(t *testing.T) {
 
 	wbs := testutil.GenerateCids(10)
 	messageQueue.AddWants(wbs, nil)
-	collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	collectMessages(ctx, t, messagesSent, 100*time.Millisecond)
 
 	// Check want-blocks are added to DontHaveTimeoutMgr
 	if dhtm.pendingCount() != len(wbs) {
@@ -612,7 +612,7 @@ func TestSendToPeerThatDoesntSupportHaveMonitorsTimeouts(t *testing.T) {
 
 	cancelCount := 2
 	messageQueue.AddCancels(wbs[:cancelCount])
-	collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	collectMessages(ctx, t, messagesSent, 100*time.Millisecond)
 
 	// Check want-blocks are removed from DontHaveTimeoutMgr
 	if dhtm.pendingCount() != len(wbs)-cancelCount {
@@ -685,7 +685,7 @@ func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
 
 	// Add some wants and wait 10ms
 	messageQueue.AddWants(cids, nil)
-	collectMessages(ctx, t, messagesSent, 10*time.Millisecond)
+	collectMessages(ctx, t, messagesSent, 100*time.Millisecond)
 
 	// Receive a response for the wants
 	messageQueue.ResponseReceived(cids)
