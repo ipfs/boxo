@@ -17,7 +17,7 @@ import (
 	"github.com/ipfs/go-bitswap/tracer"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-ipfs-blockstore"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-metrics-interface"
 	process "github.com/jbenet/goprocess"
@@ -85,8 +85,8 @@ func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Bl
 	}()
 
 	s := &Server{
-		sentHistogram:      bmetrics.SentHist(),
-		sendTimeHistogram:  bmetrics.SendTimeHist(),
+		sentHistogram:      bmetrics.SentHist(ctx),
+		sendTimeHistogram:  bmetrics.SendTimeHist(ctx),
 		taskWorkerCount:    defaults.BitswapTaskWorkerCount,
 		network:            network,
 		process:            px,
@@ -100,8 +100,8 @@ func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Bl
 		o(s)
 	}
 
-	// Set up decision engine
 	s.engine = decision.NewEngine(
+		ctx,
 		bstore,
 		network.ConnectionManager(),
 		network.Self(),
