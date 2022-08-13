@@ -3,7 +3,7 @@ package session
 import (
 	"context"
 
-	bsbpm "github.com/ipfs/go-bitswap/internal/blockpresencemanager"
+	bsbpm "github.com/ipfs/go-bitswap/client/internal/blockpresencemanager"
 
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -70,14 +70,12 @@ type change struct {
 type onSendFn func(to peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid)
 type onPeersExhaustedFn func([]cid.Cid)
 
-//
 // sessionWantSender is responsible for sending want-have and want-block to
 // peers. For each want, it sends a single optimistic want-block request to
 // one peer and want-have requests to all other peers in the session.
 // To choose the best peer for the optimistic want-block it maintains a list
 // of how peers have responded to each want (HAVE / DONT_HAVE / Unknown) and
 // consults the peer response tracker (records which peers sent us blocks).
-//
 type sessionWantSender struct {
 	// The context is used when sending wants
 	ctx context.Context

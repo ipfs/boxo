@@ -183,15 +183,40 @@ func (n *network) SendMessage(
 	return nil
 }
 
+var _ bsnet.Receiver = (*networkClient)(nil)
+
 type networkClient struct {
 	// These need to be at the top of the struct (allocated on the heap) for alignment on 32bit platforms.
 	stats bsnet.Stats
 
-	local peer.ID
-	bsnet.Receiver
+	local              peer.ID
+	receivers          []bsnet.Receiver
 	network            *network
 	routing            routing.Routing
 	supportedProtocols []protocol.ID
+}
+
+func (nc *networkClient) ReceiveMessage(ctx context.Context, sender peer.ID, incoming bsmsg.BitSwapMessage) {
+	for _, v := range nc.receivers {
+		v.ReceiveMessage(ctx, sender, incoming)
+	}
+}
+
+func (nc *networkClient) ReceiveError(e error) {
+	for _, v := range nc.receivers {
+		v.ReceiveError(e)
+	}
+}
+
+func (nc *networkClient) PeerConnected(p peer.ID) {
+	for _, v := range nc.receivers {
+		v.PeerConnected(p)
+	}
+}
+func (nc *networkClient) PeerDisconnected(p peer.ID) {
+	for _, v := range nc.receivers {
+		v.PeerDisconnected(p)
+	}
 }
 
 func (nc *networkClient) Self() peer.ID {
@@ -300,8 +325,8 @@ func (nc *networkClient) Provide(ctx context.Context, k cid.Cid) error {
 	return nc.routing.Provide(ctx, k, true)
 }
 
-func (nc *networkClient) Start(r bsnet.Receiver) {
-	nc.Receiver = r
+func (nc *networkClient) Start(r ...bsnet.Receiver) {
+	nc.receivers = r
 }
 
 func (nc *networkClient) Stop() {
@@ -325,7 +350,7 @@ func (nc *networkClient) ConnectTo(_ context.Context, p peer.ID) error {
 	nc.network.mu.Unlock()
 
 	otherClient.receiver.PeerConnected(nc.local)
-	nc.Receiver.PeerConnected(p)
+	nc.PeerConnected(p)
 	return nil
 }
 
@@ -346,7 +371,7 @@ func (nc *networkClient) DisconnectFrom(_ context.Context, p peer.ID) error {
 	delete(nc.network.conns, tag)
 
 	otherClient.receiver.PeerDisconnected(nc.local)
-	nc.Receiver.PeerDisconnected(p)
+	nc.PeerDisconnected(p)
 	return nil
 }
 

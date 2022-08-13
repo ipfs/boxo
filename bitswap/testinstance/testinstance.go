@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	bitswap "github.com/ipfs/go-bitswap"
+	"github.com/ipfs/go-bitswap"
 	bsnet "github.com/ipfs/go-bitswap/network"
 	tn "github.com/ipfs/go-bitswap/testnet"
 	ds "github.com/ipfs/go-datastore"
@@ -120,7 +120,7 @@ func NewInstance(ctx context.Context, net tn.Network, p tnet.Identity, netOption
 		panic(err.Error()) // FIXME perhaps change signature and return error.
 	}
 
-	bs := bitswap.New(ctx, adapter, bstore, bsOptions...).(*bitswap.Bitswap)
+	bs := bitswap.New(ctx, adapter, bstore, bsOptions...)
 
 	return Instance{
 		Adapter:         adapter,
