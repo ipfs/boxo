@@ -192,6 +192,7 @@ func newEngineForTesting(
 	opts ...Option,
 ) *Engine {
 	return newEngine(
+		ctx,
 		bs,
 		peerTagger,
 		self,

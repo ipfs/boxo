@@ -10,11 +10,12 @@ import (
 	"github.com/ipfs/go-bitswap/network"
 	"github.com/ipfs/go-bitswap/server"
 	"github.com/ipfs/go-bitswap/tracer"
+	"github.com/ipfs/go-metrics-interface"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-ipfs-blockstore"
-	"github.com/ipfs/go-ipfs-exchange-interface"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	logging "github.com/ipfs/go-log"
 	"github.com/libp2p/go-libp2p-core/peer"
 
@@ -85,6 +86,8 @@ func New(ctx context.Context, net network.BitSwapNetwork, bstore blockstore.Bloc
 	if HasBlockBufferSize != defaults.HasBlockBufferSize {
 		serverOptions = append(serverOptions, server.HasBlockBufferSize(HasBlockBufferSize))
 	}
+
+	ctx = metrics.CtxSubScope(ctx, "bitswap")
 
 	bs.Server = server.New(ctx, net, bstore, serverOptions...)
 	bs.Client = client.New(ctx, net, bstore, append(clientOptions, client.WithBlockReceivedNotifier(bs.Server))...)
