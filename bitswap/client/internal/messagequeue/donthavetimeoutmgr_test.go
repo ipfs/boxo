@@ -375,10 +375,10 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 
 func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 	ks := testutil.GenerateCids(2)
-	latency := time.Millisecond * 20
+	latency := time.Millisecond * 200
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
-	defaultTimeout := 10 * time.Millisecond
+	defaultTimeout := 100 * time.Millisecond
 	clock := clock.NewMock()
 	pinged := make(chan struct{})
 	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
@@ -395,7 +395,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 	dhtm.AddPending(ks)
 
 	// Sleep for less than the default timeout
-	clock.Add(defaultTimeout - 5*time.Millisecond)
+	clock.Add(defaultTimeout - 50*time.Millisecond)
 
 	// At this stage no timeout should have happened yet
 	if tr.timedOutCount() > 0 {
