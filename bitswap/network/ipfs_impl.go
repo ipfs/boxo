@@ -90,7 +90,7 @@ type impl struct {
 	supportedProtocols []protocol.ID
 
 	// inbound messages from the network are forwarded to the receiver
-	receiver Receiver
+	receivers []Receiver
 }
 
 type streamMessageSender struct {
@@ -349,9 +349,15 @@ func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stre
 	return bsnet.host.NewStream(ctx, p, bsnet.supportedProtocols...)
 }
 
-func (bsnet *impl) Start(r Receiver) {
-	bsnet.receiver = r
-	bsnet.connectEvtMgr = newConnectEventManager(r)
+func (bsnet *impl) Start(r ...Receiver) {
+	bsnet.receivers = r
+	{
+		connectionListeners := make([]ConnectionListener, len(r))
+		for i, v := range r {
+			connectionListeners[i] = v
+		}
+		bsnet.connectEvtMgr = newConnectEventManager(connectionListeners...)
+	}
 	for _, proto := range bsnet.supportedProtocols {
 		bsnet.host.SetStreamHandler(proto, bsnet.handleNewStream)
 	}
@@ -403,7 +409,7 @@ func (bsnet *impl) Provide(ctx context.Context, k cid.Cid) error {
 func (bsnet *impl) handleNewStream(s network.Stream) {
 	defer s.Close()
 
-	if bsnet.receiver == nil {
+	if len(bsnet.receivers) == 0 {
 		_ = s.Reset()
 		return
 	}
@@ -414,7 +420,9 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 		if err != nil {
 			if err != io.EOF {
 				_ = s.Reset()
-				bsnet.receiver.ReceiveError(err)
+				for _, v := range bsnet.receivers {
+					v.ReceiveError(err)
+				}
 				log.Debugf("bitswap net handleNewStream from %s error: %s", s.Conn().RemotePeer(), err)
 			}
 			return
@@ -425,7 +433,9 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 		log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())
 		bsnet.connectEvtMgr.OnMessage(s.Conn().RemotePeer())
 		atomic.AddUint64(&bsnet.stats.MessagesRecvd, 1)
-		bsnet.receiver.ReceiveMessage(ctx, p, received)
+		for _, v := range bsnet.receivers {
+			v.ReceiveMessage(ctx, p, received)
+		}
 	}
 }
 

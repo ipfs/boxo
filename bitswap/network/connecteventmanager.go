@@ -20,10 +20,10 @@ const (
 )
 
 type connectEventManager struct {
-	connListener ConnectionListener
-	lk           sync.RWMutex
-	cond         sync.Cond
-	peers        map[peer.ID]*peerState
+	connListeners []ConnectionListener
+	lk            sync.RWMutex
+	cond          sync.Cond
+	peers         map[peer.ID]*peerState
 
 	changeQueue []peer.ID
 	stop        bool
@@ -35,11 +35,11 @@ type peerState struct {
 	pending            bool
 }
 
-func newConnectEventManager(connListener ConnectionListener) *connectEventManager {
+func newConnectEventManager(connListeners ...ConnectionListener) *connectEventManager {
 	evtManager := &connectEventManager{
-		connListener: connListener,
-		peers:        make(map[peer.ID]*peerState),
-		done:         make(chan struct{}),
+		connListeners: connListeners,
+		peers:         make(map[peer.ID]*peerState),
+		done:          make(chan struct{}),
 	}
 	evtManager.cond = sync.Cond{L: &evtManager.lk}
 	return evtManager
@@ -130,12 +130,16 @@ func (c *connectEventManager) worker() {
 			// We could be transitioning from unresponsive to disconnected.
 			if oldState == stateResponsive {
 				c.lk.Unlock()
-				c.connListener.PeerDisconnected(pid)
+				for _, v := range c.connListeners {
+					v.PeerDisconnected(pid)
+				}
 				c.lk.Lock()
 			}
 		case stateResponsive:
 			c.lk.Unlock()
-			c.connListener.PeerConnected(pid)
+			for _, v := range c.connListeners {
+				v.PeerConnected(pid)
+			}
 			c.lk.Lock()
 		}
 	}
@@ -186,7 +190,8 @@ func (c *connectEventManager) MarkUnresponsive(p peer.ID) {
 //
 // - When we're connected to the peer, this will mark the peer as responsive (from unresponsive).
 // - When not connected, we ignore this call. Unfortunately, a peer may disconnect before we process
-//   the "on message" event, so we can't treat this as evidence of a connection.
+//
+//	the "on message" event, so we can't treat this as evidence of a connection.
 func (c *connectEventManager) OnMessage(p peer.ID) {
 	c.lk.RLock()
 	unresponsive := c.getState(p) == stateUnresponsive
