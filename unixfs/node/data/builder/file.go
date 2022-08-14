@@ -165,11 +165,11 @@ func fileTreeRecursive(depth int, children []ipld.Link, childLen []uint64, src c
 	}
 	pbn := dpbb.Build()
 
-	link, sz, err := sizedStore(ls, fileLinkProto, pbn)
+	link, _, err := sizedStore(ls, fileLinkProto, pbn)
 	if err != nil {
 		return nil, 0, err
 	}
-	return link, totalSize + sz, nil
+	return link, totalSize, nil
 }
 
 // BuildUnixFSDirectoryEntry creates the link to a file or directory as it appears within a unixfs directory.
