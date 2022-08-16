@@ -25,6 +25,7 @@ import (
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	u "github.com/ipfs/go-ipfs-util"
 	ipld "github.com/ipfs/go-ipld-format"
+	prime "github.com/ipld/go-ipld-prime"
 )
 
 // makeDepthTestingGraph makes a small DAG with two levels. The level-two
@@ -743,6 +744,225 @@ func TestEnumerateAsyncFailsNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("this should have failed")
 	}
+}
+
+func TestLinkSorting(t *testing.T) {
+	az := "az"
+	aaaa := "aaaa"
+	bbbb := "bbbb"
+	cccc := "cccc"
+
+	azBlk := NewRawNode([]byte(az))
+	aaaaBlk := NewRawNode([]byte(aaaa))
+	bbbbBlk := NewRawNode([]byte(bbbb))
+	ccccBlk := NewRawNode([]byte(cccc))
+	pbn := &mdpb.PBNode{
+		Links: []*mdpb.PBLink{
+			{Hash: bbbbBlk.Cid().Bytes(), Name: &bbbb},
+			{Hash: azBlk.Cid().Bytes(), Name: &az},
+			{Hash: aaaaBlk.Cid().Bytes(), Name: &aaaa},
+			{Hash: ccccBlk.Cid().Bytes(), Name: &cccc},
+		},
+	}
+	byts, err := pbn.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mustLookupNodeString := func(t *testing.T, node prime.Node, name string) prime.Node {
+		subNode, err := node.LookupByString(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return subNode
+	}
+
+	mustLookupNodeIndex := func(t *testing.T, node prime.Node, idx int64) prime.Node {
+		subNode, err := node.LookupByIndex(idx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return subNode
+	}
+
+	mustNodeAsString := func(t *testing.T, node prime.Node) string {
+		str, err := node.AsString()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return str
+	}
+
+	verifyUnsortedNode := func(t *testing.T, node *ProtoNode) {
+		links := node.Links()
+		if len(links) != 4 {
+			t.Errorf("wrong number of links, expected 4 but got %d", len(links))
+		}
+		if links[0].Name != bbbb {
+			t.Errorf("expected link 0 to be 'bbbb', got %s", links[0].Name)
+		}
+		if links[1].Name != az {
+			t.Errorf("expected link 0 to be 'az', got %s", links[1].Name)
+		}
+		if links[2].Name != aaaa {
+			t.Errorf("expected link 0 to be 'aaaa', got %s", links[2].Name)
+		}
+		if links[3].Name != cccc {
+			t.Errorf("expected link 0 to be 'cccc', got %s", links[3].Name)
+		}
+
+		// check the go-ipld-prime form
+		linksNode := mustLookupNodeString(t, node, "Links")
+		if linksNode.Length() != 4 {
+			t.Errorf("(Node) wrong number of links, expected 4 but got %d", len(links))
+		}
+		if name := mustNodeAsString(t, mustLookupNodeString(t, mustLookupNodeIndex(t, linksNode, 0), "Name")); name != bbbb {
+			t.Errorf("(Node) expected link 0 to be 'bbbb', got %s", name)
+		}
+		if name := mustNodeAsString(t, mustLookupNodeString(t, mustLookupNodeIndex(t, linksNode, 1), "Name")); name != az {
+			t.Errorf("(Node) expected link 0 to be 'az', got %s", name)
+		}
+		if name := mustNodeAsString(t, mustLookupNodeString(t, mustLookupNodeIndex(t, linksNode, 2), "Name")); name != aaaa {
+			t.Errorf("(Node) expected link 0 to be 'aaaa', got %s", name)
+		}
+		if name := mustNodeAsString(t, mustLookupNodeString(t, mustLookupNodeIndex(t, linksNode, 3), "Name")); name != cccc {
+			t.Errorf("(Node) expected link 0 to be 'cccc', got %s", name)
+		}
+	}
+
+	verifySortedNode := func(t *testing.T, node *ProtoNode) {
+		links := node.Links()
+		if len(links) != 4 {
+			t.Errorf("wrong number of links, expected 4 but got %d", len(links))
+		}
+		if links[0].Name != aaaa {
+			t.Errorf("expected link 0 to be 'aaaa', got %s", links[0].Name)
+		}
+		if links[1].Name != az {
+			t.Errorf("expected link 0 to be 'az', got %s", links[1].Name)
+		}
+		if links[2].Name != bbbb {
+			t.Errorf("expected link 0 to be 'bbbb', got %s", links[2].Name)
+		}
+		if links[3].Name != cccc {
+			t.Errorf("expected link 0 to be 'cccc', got %s", links[3].Name)
+		}
+
+		// check the go-ipld-prime form
+		linksNode := mustLookupNodeString(t, node, "Links")
+		if linksNode.Length() != 4 {
+			t.Errorf("(Node) wrong number of links, expected 4 but got %d", len(links))
+		}
+		if name := mustNodeAsString(t, mustLookupNodeString(t, mustLookupNodeIndex(t, linksNode, 0), "Name")); name != aaaa {
+			t.Errorf("(Node) expected link 0 to be 'aaaa', got %s", name)
+		}
+		if name := mustNodeAsString(t, mustLookupNodeString(t, mustLookupNodeIndex(t, linksNode, 1), "Name")); name != az {
+			t.Errorf("(Node) expected link 0 to be 'az', got %s", name)
+		}
+		if name := mustNodeAsString(t, mustLookupNodeString(t, mustLookupNodeIndex(t, linksNode, 2), "Name")); name != bbbb {
+			t.Errorf("(Node) expected link 0 to be 'bbbb', got %s", name)
+		}
+		if name := mustNodeAsString(t, mustLookupNodeString(t, mustLookupNodeIndex(t, linksNode, 3), "Name")); name != cccc {
+			t.Errorf("(Node) expected link 0 to be 'cccc', got %s", name)
+		}
+	}
+
+	t.Run("decode", func(t *testing.T) {
+		node, err := DecodeProtobuf(byts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifyUnsortedNode(t, node)
+	})
+
+	t.Run("RawData() should not mutate, should return original form", func(t *testing.T) {
+		node, err := DecodeProtobuf(byts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rawData := node.RawData()
+		verifyUnsortedNode(t, node)
+		if !bytes.Equal(rawData, byts) {
+			t.Error("RawData() did not return original bytes")
+		}
+	})
+
+	t.Run("Size() should not mutate", func(t *testing.T) {
+		node, err := DecodeProtobuf(byts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sz, err := node.Size()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sz != 182 {
+			t.Errorf("expected size to be 182, got %d", sz)
+		}
+		verifyUnsortedNode(t, node)
+	})
+
+	t.Run("GetPBNode() should not mutate, returned PBNode should be sorted", func(t *testing.T) {
+		node, err := DecodeProtobuf(byts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rtPBNode := node.GetPBNode()
+		rtByts, err := rtPBNode.Marshal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifyUnsortedNode(t, node)
+		rtNode, err := DecodeProtobuf(rtByts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifySortedNode(t, rtNode)
+	})
+
+	t.Run("add and remove link should mutate", func(t *testing.T) {
+		node, err := DecodeProtobuf(byts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		someCid, _ := cid.Cast([]byte{1, 85, 0, 5, 0, 1, 2, 3, 4})
+		if err = node.AddRawLink("foo", &ipld.Link{
+			Size: 10,
+			Cid:  someCid,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err = node.RemoveNodeLink("foo"); err != nil {
+			t.Fatal(err)
+		}
+		verifySortedNode(t, node)
+	})
+
+	t.Run("update link should not mutate, returned ProtoNode should be sorted", func(t *testing.T) {
+		node, err := DecodeProtobuf(byts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		newNode, err := node.UpdateNodeLink("self", node)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = newNode.RemoveNodeLink("self"); err != nil {
+			t.Fatal(err)
+		}
+		verifySortedNode(t, newNode)
+		verifyUnsortedNode(t, node)
+	})
+
+	t.Run("SetLinks() should mutate", func(t *testing.T) {
+		node, err := DecodeProtobuf(byts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		links := node.Links() // clone
+		node.SetLinks(links)
+		verifySortedNode(t, node)
+	})
 }
 
 func TestProgressIndicator(t *testing.T) {

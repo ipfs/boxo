@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -41,10 +42,12 @@ type immutableProtoNode struct {
 // this mutable protonode implementation is needed to support go-unixfs,
 // the only library that implements both read and write for UnixFS v1.
 type ProtoNode struct {
-	links []*format.Link
-	data  []byte
+	links      []*format.Link
+	linksDirty bool
+	data       []byte
 
-	// cache encoded/marshaled value
+	// cache encoded/marshaled value, kept to make the go-ipld-prime Node interface
+	// work (see prime.go), and to provide a cached []byte encoded form available
 	encoded *immutableProtoNode
 	cached  cid.Cid
 
@@ -115,7 +118,15 @@ func NodeWithData(d []byte) *ProtoNode {
 	return &ProtoNode{data: d}
 }
 
-// AddNodeLink adds a link to another node.
+// AddNodeLink adds a link to another node. The link will be added in
+// sorted order.
+//
+// If sorting has not already been applied to this node (because
+// it was deserialized from a form that did not have sorted links), the links
+// list will be sorted. If a ProtoNode was deserialized from a badly encoded
+// form that did not already have its links sorted, calling AddNodeLink and then
+// RemoveNodeLink for the same link, will not result in an identically encoded
+// form as the links will have been sorted.
 func (n *ProtoNode) AddNodeLink(name string, that format.Node) error {
 	lnk, err := format.MakeLink(that)
 	if err != nil {
@@ -129,22 +140,30 @@ func (n *ProtoNode) AddNodeLink(name string, that format.Node) error {
 	return nil
 }
 
-// AddRawLink adds a copy of a link to this node
+// AddRawLink adds a copy of a link to this node. The link will be added in
+// sorted order.
+//
+// If sorting has not already been applied to this node (because
+// it was deserialized from a form that did not have sorted links), the links
+// list will be sorted. If a ProtoNode was deserialized from a badly encoded
+// form that did not already have its links sorted, calling AddRawLink and then
+// RemoveNodeLink for the same link, will not result in an identically encoded
+// form as the links will have been sorted.
 func (n *ProtoNode) AddRawLink(name string, l *format.Link) error {
-	n.encoded = nil
 	n.links = append(n.links, &format.Link{
 		Name: name,
 		Size: l.Size,
 		Cid:  l.Cid,
 	})
-
+	n.linksDirty = true // needs a sort
+	n.encoded = nil
 	return nil
 }
 
-// RemoveNodeLink removes a link on this node by the given name.
+// RemoveNodeLink removes a link on this node by the given name. If there are
+// no links with this name, ErrLinkNotFound will be returned. If there are more
+// than one link with this name, they will all be removed.
 func (n *ProtoNode) RemoveNodeLink(name string) error {
-	n.encoded = nil
-
 	ref := n.links[:0]
 	found := false
 
@@ -161,6 +180,11 @@ func (n *ProtoNode) RemoveNodeLink(name string) error {
 	}
 
 	n.links = ref
+	// Even though a removal won't change sorting, this node may have come from
+	// a deserialized state with badly sorted links. Now that we are mutating,
+	// we need to ensure the resulting link list is sorted when it gets consumed.
+	n.linksDirty = true
+	n.encoded = nil
 
 	return nil
 }
@@ -204,8 +228,10 @@ func (n *ProtoNode) GetLinkedNode(ctx context.Context, ds format.DAGService, nam
 	return lnk.GetNode(ctx, ds)
 }
 
-// Copy returns a copy of the node.
-// NOTE: Does not make copies of Node objects in the links.
+// Copy returns a copy of the node. The resulting node will have a properly
+// sorted Links list regardless of whether the original came from a badly
+// serialized form that didn't have a sorted list.
+// NOTE: This does not make copies of Node objects in the links.
 func (n *ProtoNode) Copy() format.Node {
 	nnode := new(ProtoNode)
 	if len(n.data) > 0 {
@@ -214,8 +240,11 @@ func (n *ProtoNode) Copy() format.Node {
 	}
 
 	if len(n.links) > 0 {
-		nnode.links = make([]*format.Link, len(n.links))
-		copy(nnode.links, n.links)
+		nnode.links = append([]*format.Link(nil), n.links...)
+		// Sort links regardless of linksDirty state, this may have come from a
+		// serialized form that had badly sorted links, in which case linksDirty
+		// will not be true.
+		sort.Stable(LinkSlice(nnode.links))
 	}
 
 	nnode.builder = n.builder
@@ -244,7 +273,12 @@ func (n *ProtoNode) SetData(d []byte) {
 }
 
 // UpdateNodeLink return a copy of the node with the link name set to point to
-// that. If a link of the same name existed, it is removed.
+// that. The link will be added in sorted order. If a link of the same name
+// existed, it is removed.
+//
+// If sorting has not already been applied to this node (because
+// it was deserialized from a form that did not have sorted links), the links
+// list will be sorted in the returned copy.
 func (n *ProtoNode) UpdateNodeLink(name string, that *ProtoNode) (*ProtoNode, error) {
 	newnode := n.Copy().(*ProtoNode)
 	_ = newnode.RemoveNodeLink(name) // ignore error
@@ -309,12 +343,23 @@ func (n *ProtoNode) UnmarshalJSON(b []byte) error {
 	}
 
 	n.data = s.Data
+	// Links may not be sorted after deserialization, but we don't change
+	// them until we mutate this node since we're representing the current,
+	// as-serialized state. So n.linksDirty is not set here.
 	n.links = s.Links
+	n.encoded = nil
 	return nil
 }
 
 // MarshalJSON returns a JSON representation of the node.
 func (n *ProtoNode) MarshalJSON() ([]byte, error) {
+	if n.linksDirty {
+		// there was a mutation involving links, make sure we sort
+		sort.Stable(LinkSlice(n.links))
+		n.linksDirty = false
+		n.encoded = nil
+	}
+
 	out := map[string]interface{}{
 		"data":  n.data,
 		"links": n.links,
@@ -358,14 +403,23 @@ func (n *ProtoNode) Multihash() mh.Multihash {
 	return n.cached.Hash()
 }
 
-// Links returns the node links.
+// Links returns a copy of the node's links.
 func (n *ProtoNode) Links() []*format.Link {
-	return n.links
+	if n.linksDirty {
+		// there was a mutation involving links, make sure we sort
+		sort.Stable(LinkSlice(n.links))
+		n.linksDirty = false
+		n.encoded = nil
+	}
+	return append([]*format.Link(nil), n.links...)
 }
 
-// SetLinks replaces the node links with the given ones.
+// SetLinks replaces the node links with a copy of the provided links. Sorting
+// will be applied to the list.
 func (n *ProtoNode) SetLinks(links []*format.Link) {
-	n.links = links
+	n.links = append([]*format.Link(nil), links...)
+	n.linksDirty = true // needs a sort
+	n.encoded = nil
 }
 
 // Resolve is an alias for ResolveLink.
@@ -395,6 +449,13 @@ func (n *ProtoNode) ResolveLink(path []string) (*format.Link, []string, error) {
 func (n *ProtoNode) Tree(p string, depth int) []string {
 	if p != "" {
 		return nil
+	}
+
+	if n.linksDirty {
+		// there was a mutation involving links, make sure we sort
+		sort.Stable(LinkSlice(n.links))
+		n.linksDirty = false
+		n.encoded = nil
 	}
 
 	out := make([]string, 0, len(n.links))
