@@ -27,8 +27,7 @@ type Client struct {
 func NewClient(url, bearerToken string) *Client {
 	config := openapi.NewConfiguration()
 	config.UserAgent = UserAgent
-	bearer := fmt.Sprintf("Bearer %s", bearerToken)
-	config.AddDefaultHeader("Authorization", bearer)
+	config.AddDefaultHeader("Authorization", "Bearer "+bearerToken)
 	config.Servers = openapi.ServerConfigurations{
 		openapi.ServerConfiguration{
 			URL: url,
