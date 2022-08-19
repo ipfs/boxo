@@ -6,10 +6,10 @@ import (
 
 	pb "github.com/ipfs/go-ipns/pb"
 
-	proto "github.com/gogo/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	logging "github.com/ipfs/go-log"
 	ic "github.com/libp2p/go-libp2p-core/crypto"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 	pstore "github.com/libp2p/go-libp2p-core/peerstore"
 	record "github.com/libp2p/go-libp2p-record"
 )
@@ -46,7 +46,7 @@ func (v Validator) Validate(key string, value []byte) error {
 	}
 
 	// Get the public key defined by the ipns path
-	pid, err := peer.IDFromString(pidString)
+	pid, err := peer.IDFromBytes([]byte(pidString))
 	if err != nil {
 		log.Debugf("failed to parse ipns record key %s into peer ID", pidString)
 		return ErrKeyFormat
