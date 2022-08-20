@@ -64,7 +64,10 @@ func TestNamedV0File(t *testing.T) {
 }
 
 func TestLargeFileReader(t *testing.T) {
-	buf := make([]byte, 1024*1024*1024)
+	if testing.Short() {
+		t.Skip()
+	}
+	buf := make([]byte, 512*1024*1024)
 	ipfsutil.NewSeededRand(0xdeadbeef).Read(buf)
 	r := bytes.NewReader(buf)
 

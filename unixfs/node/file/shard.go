@@ -2,7 +2,6 @@ package file
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sync"
 
@@ -138,6 +137,8 @@ func (s *shardNodeFile) linkSize(lnk ipld.Node, position int) (int64, io.ReadSee
 	}
 
 	// check if there are blocksizes written, use them if there are.
+	// both err and md can be nil if this was not the first time unpack()
+	// was called but there was an error on the first call.
 	md, err := s.unpack()
 	if err == nil && md != nil {
 		pn, err := md.BlockSizes.LookupByIndex(int64(position))
@@ -155,7 +156,7 @@ func (s *shardNodeFile) linkSize(lnk ipld.Node, position int) (int64, io.ReadSee
 	if err != nil {
 		return 0, nil, err
 	}
-	fmt.Printf("had to get len by opening child.\n")
+
 	end, err := tr.Seek(0, io.SeekEnd)
 	if err != nil {
 		return end, nil, err
@@ -195,7 +196,7 @@ func (s *shardNodeReader) Seek(offset int64, whence int) (int64, error) {
 func (s *shardNodeFile) length() int64 {
 	// see if we have size specified in the unixfs data. errors fall back to length from links
 	nodeData, err := s.unpack()
-	if err != nil {
+	if err != nil || nodeData == nil {
 		return s.lengthFromLinks()
 	}
 	if nodeData.FileSize.Exists() {
