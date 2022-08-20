@@ -39,15 +39,14 @@ func (s *shardNodeReader) makeReader() (io.Reader, error) {
 		return nil, err
 	}
 	readers := make([]io.Reader, 0)
-	lnki := links.ListIterator()
+	lnkIter := links.ListIterator()
 	at := int64(0)
-	lin := 0
-	for !lnki.Done() {
-		_, lnk, err := lnki.Next()
+	for !lnkIter.Done() {
+		lnkIdx, lnk, err := lnkIter.Next()
 		if err != nil {
 			return nil, err
 		}
-		childSize, tr, err := s.linkSize(lnk, lin)
+		childSize, tr, err := s.linkSize(lnk, int(lnkIdx))
 		if err != nil {
 			return nil, err
 		}

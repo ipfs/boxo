@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"testing"
 
 	ipfsutil "github.com/ipfs/go-ipfs-util"
@@ -64,7 +65,7 @@ func TestNamedV0File(t *testing.T) {
 }
 
 func TestLargeFileReader(t *testing.T) {
-	if testing.Short() {
+	if testing.Short() || strconv.IntSize == 32 {
 		t.Skip()
 	}
 	buf := make([]byte, 512*1024*1024)
