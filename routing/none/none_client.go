@@ -53,5 +53,5 @@ func ConstructNilRouting(_ context.Context, _ host.Host, _ ds.Batching, _ record
 	return &nilclient{}, nil
 }
 
-//  ensure nilclient satisfies interface
+// ensure nilclient satisfies interface
 var _ routing.Routing = &nilclient{}
