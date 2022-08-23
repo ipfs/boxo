@@ -63,7 +63,8 @@ type Resolver interface {
 // basicResolver implements the Resolver interface.
 // It references a FetcherFactory, which is uses to resolve nodes.
 // TODO: now that this is more modular, try to unify this code with the
-//       the resolvers in namesys.
+//
+//	the resolvers in namesys.
 type basicResolver struct {
 	FetcherFactory fetcher.Factory
 }
