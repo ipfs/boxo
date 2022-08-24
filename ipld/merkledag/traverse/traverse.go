@@ -93,13 +93,12 @@ type Func func(current State) error
 // ErrFunc is provided to handle problems when walking to the Node. Traverse
 // will call ErrFunc with the error encountered. ErrFunc can decide how to
 // handle that error, and return an error back to Traversal with how to proceed:
-//   * nil - skip the Node and its children, but continue processing
-//   * all other errors halt processing immediately.
+//   - nil - skip the Node and its children, but continue processing
+//   - all other errors halt processing immediately.
 //
 // If ErrFunc is nil, Traversal will stop, as if:
 //
-//   opts.ErrFunc = func(err error) { return err }
-//
+//	opts.ErrFunc = func(err error) { return err }
 type ErrFunc func(err error) error
 
 // Traverse initiates a DAG traversal with the given options starting at
