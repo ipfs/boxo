@@ -3,7 +3,7 @@ package data_test
 // adapted from https://github.com/ipfs/js-ipfs-unixfs/blob/master/packages/ipfs-unixfs/test/unixfs-format.spec.js
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 	"path"
 	"runtime"
@@ -25,7 +25,7 @@ func loadFixture(name string) []byte {
 	if err != nil {
 		panic(err)
 	}
-	data, err := ioutil.ReadAll(f)
+	data, err := io.ReadAll(f)
 	if err != nil {
 		panic(err)
 	}
