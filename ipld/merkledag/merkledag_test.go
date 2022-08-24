@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"strings"
 	"sync"
@@ -252,7 +251,7 @@ func runBatchFetchTest(t *testing.T, read io.Reader) {
 
 	dagr := makeTestDAGReader(t, root, dagservs[0])
 
-	expected, err := ioutil.ReadAll(dagr)
+	expected, err := io.ReadAll(dagr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +283,7 @@ func runBatchFetchTest(t *testing.T, read io.Reader) {
 				errs <- ErrNotProtobuf
 			}
 			read := makeTestDAGReader(t, firstpb, dagservs[i])
-			datagot, err := ioutil.ReadAll(read)
+			datagot, err := io.ReadAll(read)
 			if err != nil {
 				errs <- err
 			}
