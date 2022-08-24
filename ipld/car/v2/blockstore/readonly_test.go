@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -277,7 +276,7 @@ func TestReadOnlyErrorAfterClose(t *testing.T) {
 }
 
 func TestNewReadOnly_CarV1WithoutIndexWorksAsExpected(t *testing.T) {
-	carV1Bytes, err := ioutil.ReadFile("../testdata/sample-v1.car")
+	carV1Bytes, err := os.ReadFile("../testdata/sample-v1.car")
 	require.NoError(t, err)
 
 	reader := bytes.NewReader(carV1Bytes)

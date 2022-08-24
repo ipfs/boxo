@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 
@@ -276,7 +275,7 @@ func traverse(ctx context.Context, ls *ipld.LinkSystem, root cid.Cid, s ipld.Nod
 			if err != nil {
 				return err
 			}
-			_, err = io.Copy(ioutil.Discard, s)
+			_, err = io.Copy(io.Discard, s)
 			if err != nil {
 				return err
 			}

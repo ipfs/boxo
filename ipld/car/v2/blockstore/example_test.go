@@ -3,7 +3,6 @@ package blockstore_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -86,7 +85,7 @@ func ExampleOpenReadWrite() {
 	thatBlock := merkledag.NewRawNode([]byte("lobster")).Block
 	andTheOtherBlock := merkledag.NewRawNode([]byte("barreleye")).Block
 
-	tdir, err := ioutil.TempDir(os.TempDir(), "example-*")
+	tdir, err := os.MkdirTemp(os.TempDir(), "example-*")
 	if err != nil {
 		panic(err)
 	}

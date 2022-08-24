@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -19,7 +18,7 @@ func ExampleWrapV1File() {
 	// Writing the result to testdata allows reusing that file in other tests,
 	// and also helps ensure that the result is deterministic.
 	src := "testdata/sample-v1.car"
-	tdir, err := ioutil.TempDir(os.TempDir(), "example-*")
+	tdir, err := os.MkdirTemp(os.TempDir(), "example-*")
 	if err != nil {
 		panic(err)
 	}
@@ -47,7 +46,7 @@ func ExampleWrapV1File() {
 	fmt.Println("Has index:", cr.Header.HasIndex())
 
 	// Verify that the CARv1 remains exactly the same.
-	orig, err := ioutil.ReadFile(src)
+	orig, err := os.ReadFile(src)
 	if err != nil {
 		panic(err)
 	}
@@ -55,7 +54,7 @@ func ExampleWrapV1File() {
 	if err != nil {
 		panic(err)
 	}
-	inner, err := ioutil.ReadAll(dr)
+	inner, err := io.ReadAll(dr)
 	if err != nil {
 		panic(err)
 	}

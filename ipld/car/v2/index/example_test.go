@@ -3,7 +3,6 @@ package index_test
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"reflect"
 
@@ -76,7 +75,7 @@ func ExampleWriteTo() {
 	}
 
 	// Store the index alone onto destination file.
-	f, err := ioutil.TempFile(os.TempDir(), "example-index-*.carindex")
+	f, err := os.CreateTemp(os.TempDir(), "example-index-*.carindex")
 	if err != nil {
 		panic(err)
 	}

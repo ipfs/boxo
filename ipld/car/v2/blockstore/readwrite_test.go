@@ -5,7 +5,6 @@ import (
 	"crypto/sha512"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path"
@@ -360,7 +359,7 @@ func TestBlockstoreNullPadding(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	paddedV1, err := ioutil.ReadFile("../testdata/sample-v1-with-zero-len-section.car")
+	paddedV1, err := os.ReadFile("../testdata/sample-v1-with-zero-len-section.car")
 	require.NoError(t, err)
 
 	rbs, err := blockstore.NewReadOnly(bufferReaderAt(paddedV1), nil,
@@ -665,7 +664,7 @@ func TestReadWriteResumptionFromNonV2FileIsError(t *testing.T) {
 func TestReadWriteResumptionMismatchingRootsIsError(t *testing.T) {
 	tmpPath := requireTmpCopy(t, "../testdata/sample-wrapped-v2.car")
 
-	origContent, err := ioutil.ReadFile(tmpPath)
+	origContent, err := os.ReadFile(tmpPath)
 	require.NoError(t, err)
 
 	badRoot, err := cid.NewPrefixV1(cid.Raw, multihash.SHA2_256).Sum([]byte("bad root"))
@@ -675,7 +674,7 @@ func TestReadWriteResumptionMismatchingRootsIsError(t *testing.T) {
 	require.EqualError(t, err, "cannot resume on file with mismatching data header")
 	require.Nil(t, subject)
 
-	newContent, err := ioutil.ReadFile(tmpPath)
+	newContent, err := os.ReadFile(tmpPath)
 	require.NoError(t, err)
 
 	// Expect the bad file to be left untouched; check the size first.
@@ -950,7 +949,7 @@ func TestReadWriteOpenFile(t *testing.T) {
 	defer cancel()
 
 	dir := t.TempDir() // auto cleanup
-	f, err := ioutil.TempFile(dir, "")
+	f, err := os.CreateTemp(dir, "")
 	require.NoError(t, err)
 
 	root := blocks.NewBlock([]byte("foo"))

@@ -3,7 +3,6 @@ package car
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -45,11 +44,11 @@ func TestWrapV1(t *testing.T) {
 	// Assert CARv1 data payloads are identical.
 	_, err = sf.Seek(0, io.SeekStart)
 	require.NoError(t, err)
-	wantPayload, err := ioutil.ReadAll(sf)
+	wantPayload, err := io.ReadAll(sf)
 	require.NoError(t, err)
 	dr, err := subject.DataReader()
 	require.NoError(t, err)
-	gotPayload, err := ioutil.ReadAll(dr)
+	gotPayload, err := io.ReadAll(dr)
 	require.NoError(t, err)
 	require.Equal(t, wantPayload, gotPayload)
 
@@ -73,7 +72,7 @@ func TestExtractV1(t *testing.T) {
 	require.NoError(t, carv1.WriteCar(context.Background(), dagSvc, generateRootCid(t, dagSvc), v1f))
 	_, err = v1f.Seek(0, io.SeekStart)
 	require.NoError(t, err)
-	wantV1, err := ioutil.ReadAll(v1f)
+	wantV1, err := io.ReadAll(v1f)
 	require.NoError(t, err)
 
 	// Wrap the produced CARv1 into a CARv2 to use for testing.
@@ -83,13 +82,13 @@ func TestExtractV1(t *testing.T) {
 	// Assert extract from CARv2 file is as expected.
 	dstPath := filepath.Join(t.TempDir(), "extract-file-test-v1.car")
 	require.NoError(t, ExtractV1File(v2path, dstPath))
-	gotFromFile, err := ioutil.ReadFile(dstPath)
+	gotFromFile, err := os.ReadFile(dstPath)
 	require.NoError(t, err)
 	require.Equal(t, wantV1, gotFromFile)
 
 	// Assert extract from CARv2 file in-place is as expected
 	require.NoError(t, ExtractV1File(v2path, v2path))
-	gotFromInPlaceFile, err := ioutil.ReadFile(v2path)
+	gotFromInPlaceFile, err := os.ReadFile(v2path)
 	require.NoError(t, err)
 	require.Equal(t, wantV1, gotFromInPlaceFile)
 }

@@ -2,7 +2,6 @@ package io
 
 import (
 	"io"
-	"io/ioutil"
 	"sync"
 )
 
@@ -97,10 +96,10 @@ func (drsb *discardingReadSeekerPlusByte) Seek(offset int64, whence int) (int64,
 		if n < 0 {
 			panic("unsupported rewind via whence: io.SeekStart")
 		}
-		_, err := io.CopyN(ioutil.Discard, drsb, n)
+		_, err := io.CopyN(io.Discard, drsb, n)
 		return drsb.offset, err
 	case io.SeekCurrent:
-		_, err := io.CopyN(ioutil.Discard, drsb, offset)
+		_, err := io.CopyN(io.Discard, drsb, offset)
 		return drsb.offset, err
 	default:
 		panic("unsupported whence: io.SeekEnd")
