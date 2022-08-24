@@ -24,9 +24,9 @@ import (
 // go-unixfsnode & ipld-prime data layout of nodes.
 // We make some assumptions in building files with this builder to reduce
 // complexity, namely:
-// * we assume we are using CIDv1, which has implied that the leaf
-//   data nodes are stored as raw bytes.
-//   ref: https://github.com/ipfs/go-mfs/blob/1b1fd06cff048caabeddb02d4dbf22d2274c7971/file.go#L50
+//   - we assume we are using CIDv1, which has implied that the leaf
+//     data nodes are stored as raw bytes.
+//     ref: https://github.com/ipfs/go-mfs/blob/1b1fd06cff048caabeddb02d4dbf22d2274c7971/file.go#L50
 func BuildUnixFSFile(r io.Reader, chunker string, ls *ipld.LinkSystem) (ipld.Link, uint64, error) {
 	s, err := chunk.FromString(r, chunker)
 	if err != nil {
@@ -256,15 +256,16 @@ var roughLinkSize = 34 + 8 + 5   // sha256 multihash + size + no name + protobuf
 
 // DefaultLinksPerBlock governs how the importer decides how many links there
 // will be per block. This calculation is based on expected distributions of:
-//  * the expected distribution of block sizes
-//  * the expected distribution of link sizes
-//  * desired access speed
+//   - the expected distribution of block sizes
+//   - the expected distribution of link sizes
+//   - desired access speed
+//
 // For now, we use:
 //
-//   var roughLinkBlockSize = 1 << 13 // 8KB
-//   var roughLinkSize = 34 + 8 + 5   // sha256 multihash + size + no name
-//                                    // + protobuf framing
-//   var DefaultLinksPerBlock = (roughLinkBlockSize / roughLinkSize)
-//                            = ( 8192 / 47 )
-//                            = (approximately) 174
+//	var roughLinkBlockSize = 1 << 13 // 8KB
+//	var roughLinkSize = 34 + 8 + 5   // sha256 multihash + size + no name
+//	                                 // + protobuf framing
+//	var DefaultLinksPerBlock = (roughLinkBlockSize / roughLinkSize)
+//	                         = ( 8192 / 47 )
+//	                         = (approximately) 174
 var DefaultLinksPerBlock = roughLinkBlockSize / roughLinkSize

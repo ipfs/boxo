@@ -14,13 +14,12 @@ import (
 // that match the UnixFS protobuf encoded in the Data member of a ProtoNode
 // with sensible defaults
 //
-//   smallFileData, err := BuildUnixFS(func(b *Builder) {
-//      Data(b, []byte{"hello world"})
-//      Mtime(b, func(tb TimeBuilder) {
-//				Time(tb, time.Now())
-//			})
-//   })
-//
+//	  smallFileData, err := BuildUnixFS(func(b *Builder) {
+//	     Data(b, []byte{"hello world"})
+//	     Mtime(b, func(tb TimeBuilder) {
+//					Time(tb, time.Now())
+//				})
+//	  })
 func BuildUnixFS(fn func(*Builder)) (data.UnixFSData, error) {
 	nd, err := qp.BuildMap(data.Type.UnixFSData, -1, func(ma ipld.MapAssembler) {
 		b := &Builder{MapAssembler: ma}
