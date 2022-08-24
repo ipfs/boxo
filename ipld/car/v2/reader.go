@@ -170,29 +170,29 @@ type Stats struct {
 // Beyond the checks performed by Inspect, a valid / good CAR is somewhat
 // use-case dependent. Factors to consider include:
 //
-// * Bad indexes, including incorrect offsets, duplicate entries, or other
-//   faulty data. Indexes should be re-generated, regardless, if you need to use
-//   them and have any reason to not trust the source.
+//   - Bad indexes, including incorrect offsets, duplicate entries, or other
+//     faulty data. Indexes should be re-generated, regardless, if you need to use
+//     them and have any reason to not trust the source.
 //
-// * Blocks use codecs that your system doesn't have access to—which may mean
-//   you can't traverse a DAG or use the contained data. Stats.CodecCounts
-//   contains a list of codecs found in the CAR so this can be checked.
+//   - Blocks use codecs that your system doesn't have access to—which may mean
+//     you can't traverse a DAG or use the contained data. Stats.CodecCounts
+//     contains a list of codecs found in the CAR so this can be checked.
 //
-// * CIDs use multihashes that your system doesn't have access to—which will
-//   mean you can't validate block hashes are correct (using validateBlockHash
-//   in this case will result in a failure). Stats.MhTypeCounts contains a
-//   list of multihashes found in the CAR so this can be checked.
+//   - CIDs use multihashes that your system doesn't have access to—which will
+//     mean you can't validate block hashes are correct (using validateBlockHash
+//     in this case will result in a failure). Stats.MhTypeCounts contains a
+//     list of multihashes found in the CAR so this can be checked.
 //
-// * The presence of IDENTITY CIDs, which may not be supported (or desired) by
-//   the consumer of the CAR. Stats.CodecCounts can determine the presence
-//   of IDENTITY CIDs.
+//   - The presence of IDENTITY CIDs, which may not be supported (or desired) by
+//     the consumer of the CAR. Stats.CodecCounts can determine the presence
+//     of IDENTITY CIDs.
 //
-// * Roots: the number of roots, duplicates, and whether they are related to the
-//   blocks contained within the CAR. Stats contains a list of Roots and a
-//   RootsPresent bool so further checks can be performed.
+//   - Roots: the number of roots, duplicates, and whether they are related to the
+//     blocks contained within the CAR. Stats contains a list of Roots and a
+//     RootsPresent bool so further checks can be performed.
 //
-// * DAG completeness is not checked. Any properties relating to the DAG, or
-//   DAGs contained within a CAR are the responsibility of the user to check.
+//   - DAG completeness is not checked. Any properties relating to the DAG, or
+//     DAGs contained within a CAR are the responsibility of the user to check.
 func (r *Reader) Inspect(validateBlockHash bool) (Stats, error) {
 	stats := Stats{
 		Version:      r.Version,

@@ -3,10 +3,10 @@
 //
 // The ReadOnly blockstore provides a read-only random access from a given data payload either in
 // unindexed CARv1 format or indexed/unindexed v2 format:
-// * ReadOnly.NewReadOnly can be used to instantiate a new read-only blockstore for a given CARv1
-//   or CARv2 data payload with an optional index override.
-// * ReadOnly.OpenReadOnly can be used to instantiate a new read-only blockstore for a given CARv1
-//    or CARv2 file with automatic index generation if the index is not present.
+//   - ReadOnly.NewReadOnly can be used to instantiate a new read-only blockstore for a given CARv1
+//     or CARv2 data payload with an optional index override.
+//   - ReadOnly.OpenReadOnly can be used to instantiate a new read-only blockstore for a given CARv1
+//     or CARv2 file with automatic index generation if the index is not present.
 //
 // The ReadWrite blockstore allows writing and reading of the blocks concurrently. The user of this
 // blockstore is responsible for calling ReadWrite.Finalize when finished writing blocks.

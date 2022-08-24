@@ -87,7 +87,9 @@ func (w *writingReader) Read(p []byte) (int, error) {
 // that block is also written as a CAR block to the provided io.Writer. Metadata
 // (the size of data written) is provided in the second return value.
 // The `initialOffset` is used to calculate the offsets recorded for the index, and will be
-//   included in the `.Size()` of the IndexTracker.
+//
+//	included in the `.Size()` of the IndexTracker.
+//
 // An indexCodec of `index.CarIndexNoIndex` can be used to not track these offsets.
 func TeeingLinkSystem(ls ipld.LinkSystem, w io.Writer, initialOffset uint64, indexCodec multicodec.Code) (ipld.LinkSystem, IndexTracker) {
 	wo := writerOutput{

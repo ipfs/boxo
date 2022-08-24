@@ -229,8 +229,9 @@ func loadCarSlow(ctx context.Context, s Store, cr *CarReader) (*CarHeader, error
 
 // Matches checks whether two headers match.
 // Two headers are considered matching if:
-//   1. They have the same version number, and
-//   2. They contain the same root CIDs in any order.
+//  1. They have the same version number, and
+//  2. They contain the same root CIDs in any order.
+//
 // Note, this function explicitly ignores the order of roots.
 // If order of roots matter use reflect.DeepEqual instead.
 func (h CarHeader) Matches(other CarHeader) bool {
