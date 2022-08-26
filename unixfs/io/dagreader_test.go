@@ -3,7 +3,6 @@ package io
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"strings"
 	"testing"
 
@@ -26,7 +25,7 @@ func TestBasicRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	outbuf, err := ioutil.ReadAll(reader)
+	outbuf, err := io.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +256,7 @@ func TestMetadataNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	readdata, err := ioutil.ReadAll(reader)
+	readdata, err := io.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	mrand "math/rand"
 	"testing"
 
@@ -53,7 +52,7 @@ func getTestDag(t *testing.T, ds ipld.DAGService, size int64, blksize int64) (*d
 	return nd, data
 }
 
-//Test where calls to read are smaller than the chunk size
+// Test where calls to read are smaller than the chunk size
 func TestSizeBasedSplit(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -119,7 +118,7 @@ func arrComp(a, b []byte) error {
 }
 
 func dagrArrComp(t *testing.T, r io.Reader, should []byte) {
-	out, err := ioutil.ReadAll(r)
+	out, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +137,7 @@ func TestIndirectBlocks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(reader)
+	out, err := io.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +178,7 @@ func TestSeekToBegin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	n, err := io.CopyN(ioutil.Discard, rs, 1024*4)
+	n, err := io.CopyN(io.Discard, rs, 1024*4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +206,7 @@ func TestSeekToAlmostBegin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	n, err := io.CopyN(ioutil.Discard, rs, 1024*4)
+	n, err := io.CopyN(io.Discard, rs, 1024*4)
 	if err != nil {
 		t.Fatal(err)
 	}

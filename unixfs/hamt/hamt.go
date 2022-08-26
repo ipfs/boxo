@@ -9,8 +9,10 @@
 // wikipedia article is the collapsing of empty shards.
 // Given the following tree: ( '[' = shards, '{' = values )
 // [ 'A' ] -> [ 'B' ] -> { "ABC" }
-//    |       L-> { "ABD" }
-//    L-> { "ASDF" }
+//
+//	|       L-> { "ABD" }
+//	L-> { "ASDF" }
+//
 // If we simply removed "ABC", we would end up with a tree where shard 'B' only
 // has a single child.  This causes two issues, the first, is that now we have
 // an extra lookup required to get to "ABD".  The second issue is that now we
@@ -460,11 +462,11 @@ func (ds *Shard) walkChildren(processLinkValues func(formattedLink *ipld.Link) e
 
 // parallelShardWalk is quite similar to the DAG walking algorithm from https://github.com/ipfs/go-merkledag/blob/594e515f162e764183243b72c2ba84f743424c8c/merkledag.go#L464
 // However, there are a few notable differences:
-// 1. Some children are actualized Shard structs and some are in the blockstore, this will leverage walking over the in memory Shards as well as the stored blocks
-// 2. Instead of just passing each child into the worker pool by itself we group them so that we can leverage optimizations from GetMany.
-//    This optimization also makes the walk a little more biased towards depth (as opposed to BFS) in the earlier part of the DAG.
-//    This is particularly helpful for operations like estimating the directory size which should complete quickly when possible.
-// 3. None of the extra options from that package are needed
+//  1. Some children are actualized Shard structs and some are in the blockstore, this will leverage walking over the in memory Shards as well as the stored blocks
+//  2. Instead of just passing each child into the worker pool by itself we group them so that we can leverage optimizations from GetMany.
+//     This optimization also makes the walk a little more biased towards depth (as opposed to BFS) in the earlier part of the DAG.
+//     This is particularly helpful for operations like estimating the directory size which should complete quickly when possible.
+//  3. None of the extra options from that package are needed
 func parallelShardWalk(ctx context.Context, root *Shard, dserv ipld.DAGService, processShardValues func(formattedLink *ipld.Link) error) error {
 	const concurrency = 32
 

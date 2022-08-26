@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"testing"
 
 	uio "github.com/ipfs/go-unixfs/io"
@@ -60,7 +59,7 @@ func TestStableCid(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(dr)
+	out, err := io.ReadAll(dr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +85,7 @@ func TestBalancedDag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(dr)
+	out, err := io.ReadAll(dr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +143,7 @@ func runReadBench(b *testing.B, nd ipld.Node, ds ipld.DAGService) {
 			b.Fatal(err)
 		}
 
-		_, err = read.WriteTo(ioutil.Discard)
+		_, err = read.WriteTo(io.Discard)
 		if err != nil && err != io.EOF {
 			b.Fatal(err)
 		}

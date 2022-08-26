@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"testing"
 
 	dag "github.com/ipfs/go-merkledag"
@@ -63,7 +62,7 @@ func verifyNode(t *testing.T, orig []byte, dm *DagModifier, opts testu.NodeOpts)
 		t.Fatal(err)
 	}
 
-	after, err := ioutil.ReadAll(rd)
+	after, err := io.ReadAll(rd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +328,7 @@ func testLargeWriteChunks(t *testing.T, opts testu.NodeOpts) {
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(dagmod)
+	out, err := io.ReadAll(dagmod)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +373,7 @@ func testDagTruncate(t *testing.T, opts testu.NodeOpts) {
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(dagmod)
+	out, err := io.ReadAll(dagmod)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,7 +457,7 @@ func TestDagSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(dagmod)
+	out, err := io.ReadAll(dagmod)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -540,7 +539,7 @@ func testSparseWrite(t *testing.T, opts testu.NodeOpts) {
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(dagmod)
+	out, err := io.ReadAll(dagmod)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,7 +592,7 @@ func testSeekPastEndWrite(t *testing.T, opts testu.NodeOpts) {
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(dagmod)
+	out, err := io.ReadAll(dagmod)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -627,7 +626,7 @@ func testRelativeSeek(t *testing.T, opts testu.NodeOpts) {
 		}
 	}
 
-	out, err := ioutil.ReadAll(dagmod)
+	out, err := io.ReadAll(dagmod)
 	if err != nil {
 		t.Fatal(err)
 	}
