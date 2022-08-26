@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/ipfs/go-unixfs/internal"
 	"math"
 	"testing"
+
+	"github.com/ipfs/go-unixfs/internal"
 
 	mdtest "github.com/ipfs/go-merkledag/test"
 	"github.com/stretchr/testify/assert"
@@ -18,14 +19,16 @@ import (
 )
 
 // CreateCompleteHAMT creates a HAMT the following properties:
-// * its height (distance/edges from root to deepest node) is specified by treeHeight.
-// * all leaf Shard nodes have the same depth (and have only 'value' links).
-// * all internal Shard nodes point only to other Shards (and hence have zero 'value' links).
-// * the total number of 'value' links (directory entries) is:
-//   childsPerNode ^ (treeHeight).
-//  treeHeight: The number of layers of non-value HAMT nodes (e.g. height = 1 is a single shard pointing to some values)
+//   - its height (distance/edges from root to deepest node) is specified by treeHeight.
+//   - all leaf Shard nodes have the same depth (and have only 'value' links).
+//   - all internal Shard nodes point only to other Shards (and hence have zero 'value' links).
+//   - the total number of 'value' links (directory entries) is:
+//     childsPerNode ^ (treeHeight).
+//     treeHeight: The number of layers of non-value HAMT nodes (e.g. height = 1 is a single shard pointing to some values)
+//
 // FIXME: HAMTHashFunction needs to be set to idHash by the caller. We depend on
-//  this simplification for the current logic to work.
+//
+//	this simplification for the current logic to work.
 func CreateCompleteHAMT(ds ipld.DAGService, treeHeight int, childsPerNode int) (ipld.Node, error) {
 	if treeHeight < 1 {
 		panic("treeHeight < 1")
@@ -75,7 +78,8 @@ func idHash(val []byte) []byte {
 }
 
 // FIXME: This is not checking the exact height of the tree but just making
-//  sure there are as many children as we would have with a complete HAMT.
+//
+//	sure there are as many children as we would have with a complete HAMT.
 func TestCreateCompleteShard(t *testing.T) {
 	oldHashFunc := internal.HAMTHashFunction
 	defer func() { internal.HAMTHashFunction = oldHashFunc }()

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	mrand "math/rand"
 	"testing"
 
@@ -62,7 +61,7 @@ func buildTestDag(ds ipld.DAGService, spl chunker.Splitter, rawLeaves UseRawLeav
 	})
 }
 
-//Test where calls to read are smaller than the chunk size
+// Test where calls to read are smaller than the chunk size
 func TestSizeBasedSplit(t *testing.T) {
 	runBothSubtests(t, testSizeBasedSplit)
 }
@@ -103,7 +102,7 @@ func testFileConsistency(t *testing.T, bs chunker.SplitterGen, nbytes int, rawLe
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(r)
+	out, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +132,7 @@ func testBuilderConsistency(t *testing.T, rawLeaves UseRawLeaves) {
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(r)
+	out, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +178,7 @@ func testIndirectBlocks(t *testing.T, rawLeaves UseRawLeaves) {
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(reader)
+	out, err := io.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +218,7 @@ func testSeekingBasic(t *testing.T, rawLeaves UseRawLeaves) {
 		t.Fatal("Failed to seek to correct offset")
 	}
 
-	out, err := ioutil.ReadAll(rs)
+	out, err := io.ReadAll(rs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +250,7 @@ func testSeekToBegin(t *testing.T, rawLeaves UseRawLeaves) {
 		t.Fatal(err)
 	}
 
-	n, err := io.CopyN(ioutil.Discard, rs, 1024*4)
+	n, err := io.CopyN(io.Discard, rs, 1024*4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +266,7 @@ func testSeekToBegin(t *testing.T, rawLeaves UseRawLeaves) {
 		t.Fatal("Failed to seek to beginning")
 	}
 
-	out, err := ioutil.ReadAll(rs)
+	out, err := io.ReadAll(rs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +298,7 @@ func testSeekToAlmostBegin(t *testing.T, rawLeaves UseRawLeaves) {
 		t.Fatal(err)
 	}
 
-	n, err := io.CopyN(ioutil.Discard, rs, 1024*4)
+	n, err := io.CopyN(io.Discard, rs, 1024*4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +314,7 @@ func testSeekToAlmostBegin(t *testing.T, rawLeaves UseRawLeaves) {
 		t.Fatal("Failed to seek to almost beginning")
 	}
 
-	out, err := ioutil.ReadAll(rs)
+	out, err := io.ReadAll(rs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,7 +533,7 @@ func testAppend(t *testing.T, rawLeaves UseRawLeaves) {
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(fread)
+	out, err := io.ReadAll(fread)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -600,7 +599,7 @@ func testMultipleAppends(t *testing.T, rawLeaves UseRawLeaves) {
 			t.Fatal(err)
 		}
 
-		out, err := ioutil.ReadAll(fread)
+		out, err := io.ReadAll(fread)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -654,7 +653,7 @@ func TestAppendSingleBytesToEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := ioutil.ReadAll(fread)
+	out, err := io.ReadAll(fread)
 	if err != nil {
 		t.Fatal(err)
 	}

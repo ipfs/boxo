@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"testing"
 
 	ft "github.com/ipfs/go-unixfs"
@@ -87,7 +86,7 @@ func GetEmptyNode(t testing.TB, dserv ipld.DAGService, opts NodeOpts) ipld.Node 
 // GetRandomNode returns a random unixfs file node.
 func GetRandomNode(t testing.TB, dserv ipld.DAGService, size int64, opts NodeOpts) ([]byte, ipld.Node) {
 	in := io.LimitReader(u.NewTimeSeededRand(), size)
-	buf, err := ioutil.ReadAll(in)
+	buf, err := io.ReadAll(in)
 	if err != nil {
 		t.Fatal(err)
 	}

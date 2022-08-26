@@ -17,36 +17,37 @@
 // that the UnixFS node.
 //
 // Notes:
-// 1. In the implementation. `FSNodeOverDag` structure is used for representing
-//    the UnixFS node encoded inside the DAG node.
-//    (see https://github.com/ipfs/go-ipfs/pull/5118.)
-// 2. `TFile` is used for backwards-compatibility. It was a bug causing the leaf
-//    nodes to be generated with this type instead of `TRaw`. The former one
-//    should be used (like the trickle builder does).
-//    (See https://github.com/ipfs/go-ipfs/pull/5120.)
 //
-//                                                 +-------------+
-//                                                 |   Root 4    |
-//                                                 +-------------+
-//                                                       |
-//                            +--------------------------+----------------------------+
-//                            |                                                       |
-//                      +-------------+                                         +-------------+
-//                      |   Node 2    |                                         |   Node 5    |
-//                      +-------------+                                         +-------------+
-//                            |                                                       |
-//              +-------------+-------------+                           +-------------+
-//              |                           |                           |
-//       +-------------+             +-------------+             +-------------+
-//       |   Node 1    |             |   Node 3    |             |   Node 6    |
-//       +-------------+             +-------------+             +-------------+
-//              |                           |                           |
-//       +------+------+             +------+------+             +------+
-//       |             |             |             |             |
-//  +=========+   +=========+   +=========+   +=========+   +=========+
-//  | Chunk 1 |   | Chunk 2 |   | Chunk 3 |   | Chunk 4 |   | Chunk 5 |
-//  +=========+   +=========+   +=========+   +=========+   +=========+
+//  1. In the implementation. `FSNodeOverDag` structure is used for representing
+//     the UnixFS node encoded inside the DAG node.
+//     (see https://github.com/ipfs/go-ipfs/pull/5118.)
 //
+//  2. `TFile` is used for backwards-compatibility. It was a bug causing the leaf
+//     nodes to be generated with this type instead of `TRaw`. The former one
+//     should be used (like the trickle builder does).
+//     (See https://github.com/ipfs/go-ipfs/pull/5120.)
+//
+//     +-------------+
+//     |   Root 4    |
+//     +-------------+
+//     |
+//     +--------------------------+----------------------------+
+//     |                                                       |
+//     +-------------+                                         +-------------+
+//     |   Node 2    |                                         |   Node 5    |
+//     +-------------+                                         +-------------+
+//     |                                                       |
+//     +-------------+-------------+                           +-------------+
+//     |                           |                           |
+//     +-------------+             +-------------+             +-------------+
+//     |   Node 1    |             |   Node 3    |             |   Node 6    |
+//     +-------------+             +-------------+             +-------------+
+//     |                           |                           |
+//     +------+------+             +------+------+             +------+
+//     |             |             |             |             |
+//     +=========+   +=========+   +=========+   +=========+   +=========+
+//     | Chunk 1 |   | Chunk 2 |   | Chunk 3 |   | Chunk 4 |   | Chunk 5 |
+//     +=========+   +=========+   +=========+   +=========+   +=========+
 package balanced
 
 import (
@@ -80,55 +81,54 @@ import (
 // offset in the file the graph represents: each internal node uses the file size
 // of its children as an index when seeking.
 //
-//      `Layout` creates a root and hands it off to be filled:
+//	`Layout` creates a root and hands it off to be filled:
 //
-//             +-------------+
-//             |   Root 1    |
-//             +-------------+
-//                    |
-//       ( fillNodeRec fills in the )
-//       ( chunks on the root.      )
-//                    |
-//             +------+------+
-//             |             |
-//        + - - - - +   + - - - - +
-//        | Chunk 1 |   | Chunk 2 |
-//        + - - - - +   + - - - - +
+//	       +-------------+
+//	       |   Root 1    |
+//	       +-------------+
+//	              |
+//	 ( fillNodeRec fills in the )
+//	 ( chunks on the root.      )
+//	              |
+//	       +------+------+
+//	       |             |
+//	  + - - - - +   + - - - - +
+//	  | Chunk 1 |   | Chunk 2 |
+//	  + - - - - +   + - - - - +
 //
-//                           ↓
-//      When the root is full but there's more data...
-//                           ↓
+//	                     ↓
+//	When the root is full but there's more data...
+//	                     ↓
 //
-//             +-------------+
-//             |   Root 1    |
-//             +-------------+
-//                    |
-//             +------+------+
-//             |             |
-//        +=========+   +=========+   + - - - - +
-//        | Chunk 1 |   | Chunk 2 |   | Chunk 3 |
-//        +=========+   +=========+   + - - - - +
+//	       +-------------+
+//	       |   Root 1    |
+//	       +-------------+
+//	              |
+//	       +------+------+
+//	       |             |
+//	  +=========+   +=========+   + - - - - +
+//	  | Chunk 1 |   | Chunk 2 |   | Chunk 3 |
+//	  +=========+   +=========+   + - - - - +
 //
-//                           ↓
-//      ...Layout's job is to create a new root.
-//                           ↓
+//	                     ↓
+//	...Layout's job is to create a new root.
+//	                     ↓
 //
-//                            +-------------+
-//                            |   Root 2    |
-//                            +-------------+
-//                                  |
-//                    +-------------+ - - - - - - - - +
-//                    |                               |
-//             +-------------+            ( fillNodeRec creates the )
-//             |   Node 1    |            ( branch that connects    )
-//             +-------------+            ( "Root 2" to "Chunk 3."  )
-//                    |                               |
-//             +------+------+             + - - - - -+
-//             |             |             |
-//        +=========+   +=========+   + - - - - +
-//        | Chunk 1 |   | Chunk 2 |   | Chunk 3 |
-//        +=========+   +=========+   + - - - - +
-//
+//	                      +-------------+
+//	                      |   Root 2    |
+//	                      +-------------+
+//	                            |
+//	              +-------------+ - - - - - - - - +
+//	              |                               |
+//	       +-------------+            ( fillNodeRec creates the )
+//	       |   Node 1    |            ( branch that connects    )
+//	       +-------------+            ( "Root 2" to "Chunk 3."  )
+//	              |                               |
+//	       +------+------+             + - - - - -+
+//	       |             |             |
+//	  +=========+   +=========+   + - - - - +
+//	  | Chunk 1 |   | Chunk 2 |   | Chunk 3 |
+//	  +=========+   +=========+   + - - - - +
 func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 	if db.Done() {
 		// No data, return just an empty node.
@@ -185,22 +185,22 @@ func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 // root, and those children will in turn be filled (calling `fillNodeRec`
 // recursively).
 //
-//                      +-------------+
-//                      |   `node`    |
-//                      |  (new root) |
-//                      +-------------+
-//                            |
-//              +-------------+ - - - - - - + - - - - - - - - - - - +
-//              |                           |                       |
-//      +--------------+             + - - - - -  +           + - - - - -  +
-//      |  (old root)  |             |  new child |           |            |
-//      +--------------+             + - - - - -  +           + - - - - -  +
-//              |                          |                        |
-//       +------+------+             + - - + - - - +
-//       |             |             |             |
-//  +=========+   +=========+   + - - - - +    + - - - - +
-//  | Chunk 1 |   | Chunk 2 |   | Chunk 3 |    | Chunk 4 |
-//  +=========+   +=========+   + - - - - +    + - - - - +
+//	                    +-------------+
+//	                    |   `node`    |
+//	                    |  (new root) |
+//	                    +-------------+
+//	                          |
+//	            +-------------+ - - - - - - + - - - - - - - - - - - +
+//	            |                           |                       |
+//	    +--------------+             + - - - - -  +           + - - - - -  +
+//	    |  (old root)  |             |  new child |           |            |
+//	    +--------------+             + - - - - -  +           + - - - - -  +
+//	            |                          |                        |
+//	     +------+------+             + - - + - - - +
+//	     |             |             |             |
+//	+=========+   +=========+   + - - - - +    + - - - - +
+//	| Chunk 1 |   | Chunk 2 |   | Chunk 3 |    | Chunk 4 |
+//	+=========+   +=========+   + - - - - +    + - - - - +
 //
 // The `node` to be filled uses the `FSNodeOverDag` abstraction that allows adding
 // child nodes without packing/unpacking the UnixFS layer node (having an internal
