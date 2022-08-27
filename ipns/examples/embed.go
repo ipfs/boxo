@@ -5,8 +5,8 @@ import (
 
 	pb "github.com/ipfs/go-ipns/pb"
 
-	ipns "github.com/ipfs/go-ipns"
-	crypto "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/ipfs/go-ipns"
+	"github.com/libp2p/go-libp2p/core/crypto"
 )
 
 // CreateEntryWithEmbed shows how you can create an IPNS entry

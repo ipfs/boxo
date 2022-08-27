@@ -7,11 +7,11 @@ import (
 	pb "github.com/ipfs/go-ipns/pb"
 
 	"github.com/gogo/protobuf/proto"
-	logging "github.com/ipfs/go-log"
-	ic "github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/peer"
-	pstore "github.com/libp2p/go-libp2p-core/peerstore"
+	logging "github.com/ipfs/go-log/v2"
 	record "github.com/libp2p/go-libp2p-record"
+	ic "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
+	pstore "github.com/libp2p/go-libp2p/core/peerstore"
 )
 
 var log = logging.Logger("ipns")

@@ -9,18 +9,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
+	u "github.com/ipfs/go-ipfs-util"
 	pb "github.com/ipfs/go-ipns/pb"
-
 	ipldcodec "github.com/ipld/go-ipld-prime/multicodec"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
+	pstore "github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/multiformats/go-multicodec"
-
-	proto "github.com/gogo/protobuf/proto"
-	u "github.com/ipfs/go-ipfs-util"
-	"github.com/libp2p/go-libp2p-core/crypto"
-	peer "github.com/libp2p/go-libp2p-core/peer"
-	pstore "github.com/libp2p/go-libp2p-core/peerstore"
-	pstoremem "github.com/libp2p/go-libp2p-peerstore/pstoremem"
 )
 
 func testValidatorCase(t *testing.T, priv crypto.PrivKey, kbook pstore.KeyBook, key string, val []byte, eol time.Time, exp error) {
@@ -69,11 +67,17 @@ func TestValidator(t *testing.T) {
 
 	priv, id, _ := genKeys(t)
 	priv2, id2, _ := genKeys(t)
-	kbook := pstoremem.NewPeerstore()
+	kbook, err := pstoremem.NewPeerstore()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := kbook.AddPubKey(id, priv.GetPublic()); err != nil {
 		t.Fatal(err)
 	}
-	emptyKbook := pstoremem.NewPeerstore()
+	emptyKbook, err := pstoremem.NewPeerstore()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	testValidatorCase(t, priv, kbook, "/ipns/"+string(id), nil, ts.Add(time.Hour), nil)
 	testValidatorCase(t, priv, kbook, "/ipns/"+string(id), nil, ts.Add(time.Hour*-1), ErrExpiredRecord)
@@ -97,7 +101,10 @@ func mustMarshal(t *testing.T, entry *pb.IpnsEntry) []byte {
 
 func TestEmbeddedPubKeyValidate(t *testing.T) {
 	goodeol := time.Now().Add(time.Hour)
-	kbook := pstoremem.NewPeerstore()
+	kbook, err := pstoremem.NewPeerstore()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	pth := []byte("/ipfs/QmfM2r8seH2GiRaC4esTjeraXEachRt8ZsSeGaWTPLyMoG")
 
@@ -139,7 +146,10 @@ func TestPeerIDPubKeyValidate(t *testing.T) {
 	t.Skip("disabled until libp2p/go-libp2p-crypto#51 is fixed")
 
 	goodeol := time.Now().Add(time.Hour)
-	kbook := pstoremem.NewPeerstore()
+	kbook, err := pstoremem.NewPeerstore()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	pth := []byte("/ipfs/QmfM2r8seH2GiRaC4esTjeraXEachRt8ZsSeGaWTPLyMoG")
 

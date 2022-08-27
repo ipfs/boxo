@@ -6,22 +6,21 @@ import (
 	"sort"
 	"time"
 
+	"github.com/multiformats/go-multicodec"
 	"github.com/pkg/errors"
 
 	"github.com/ipld/go-ipld-prime"
 	_ "github.com/ipld/go-ipld-prime/codec/dagcbor" // used to import the DagCbor encoder/decoder
 	ipldcodec "github.com/ipld/go-ipld-prime/multicodec"
-	"github.com/ipld/go-ipld-prime/node/basic"
-
-	"github.com/multiformats/go-multicodec"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 
 	"github.com/gogo/protobuf/proto"
 
 	pb "github.com/ipfs/go-ipns/pb"
 
 	u "github.com/ipfs/go-ipfs-util"
-	ic "github.com/libp2p/go-libp2p-core/crypto"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	ic "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 const (
