@@ -16,7 +16,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"golang.org/x/oauth2"
 	"io"
 	"log"
 	"mime/multipart"
@@ -29,6 +28,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"golang.org/x/oauth2"
 )
 
 var (
