@@ -87,10 +87,10 @@ func (rp *Republisher) Update(c cid.Cid) {
 // updates.
 //
 // Algorithm:
-//   1. When we receive the first update after publishing, we set a `longer` timer.
-//   2. When we receive any update, we reset the `quick` timer.
-//   3. If either the `quick` timeout or the `longer` timeout elapses,
-//      we call `publish` with the latest updated value.
+//  1. When we receive the first update after publishing, we set a `longer` timer.
+//  2. When we receive any update, we reset the `quick` timer.
+//  3. If either the `quick` timeout or the `longer` timeout elapses,
+//     we call `publish` with the latest updated value.
 //
 // The `longer` timer ensures that we delay publishing by at most
 // `TimeoutLong`. The `quick` timer allows us to publish sooner if
