@@ -14,8 +14,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log"
-	peer "github.com/libp2p/go-libp2p-core/peer"
-	loggables "github.com/libp2p/go-libp2p-loggables"
+	peer "github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
 )
 
@@ -128,7 +127,6 @@ type Session struct {
 	periodicSearchDelay delay.D
 	// identifiers
 	notif notifications.PubSub
-	uuid  logging.Loggable
 	id    uint64
 
 	self peer.ID
@@ -164,7 +162,6 @@ func New(
 		incoming:            make(chan op, 128),
 		latencyTrkr:         latencyTracker{},
 		notif:               notif,
-		uuid:                loggables.Uuid("GetBlockRequest"),
 		baseTickDelay:       time.Millisecond * 500,
 		id:                  id,
 		initialSearchDelay:  initialSearchDelay,
@@ -241,8 +238,6 @@ func (s *Session) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
 func (s *Session) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error) {
 	ctx, span := internal.StartSpan(ctx, "Session.GetBlocks")
 	defer span.End()
-
-	ctx = logging.ContextWithLoggable(ctx, s.uuid)
 
 	return bsgetter.AsyncGetBlocks(ctx, s.ctx, keys, s.notif,
 		func(ctx context.Context, keys []cid.Cid) {

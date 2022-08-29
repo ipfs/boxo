@@ -8,7 +8,7 @@ import (
 	"github.com/ipfs/go-metrics-interface"
 
 	cid "github.com/ipfs/go-cid"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
 var log = logging.Logger("bs:peermgr")

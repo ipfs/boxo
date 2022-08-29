@@ -5,24 +5,24 @@ import (
 	"time"
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
+	"github.com/ipfs/go-bitswap/network/internal"
 
 	cid "github.com/ipfs/go-cid"
 
-	"github.com/libp2p/go-libp2p-core/connmgr"
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/libp2p/go-libp2p/core/connmgr"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
 var (
 	// ProtocolBitswapNoVers is equivalent to the legacy bitswap protocol
-	ProtocolBitswapNoVers protocol.ID = "/ipfs/bitswap"
+	ProtocolBitswapNoVers = internal.ProtocolBitswapNoVers
 	// ProtocolBitswapOneZero is the prefix for the legacy bitswap protocol
-	ProtocolBitswapOneZero protocol.ID = "/ipfs/bitswap/1.0.0"
+	ProtocolBitswapOneZero = internal.ProtocolBitswapOneZero
 	// ProtocolBitswapOneOne is the the prefix for version 1.1.0
-	ProtocolBitswapOneOne protocol.ID = "/ipfs/bitswap/1.1.0"
+	ProtocolBitswapOneOne = internal.ProtocolBitswapOneOne
 	// ProtocolBitswap is the current version of the bitswap protocol: 1.2.0
-	ProtocolBitswap protocol.ID = "/ipfs/bitswap/1.2.0"
+	ProtocolBitswap = internal.ProtocolBitswap
 )
 
 // BitSwapNetwork provides network connectivity for BitSwap sessions.

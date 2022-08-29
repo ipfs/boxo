@@ -21,8 +21,8 @@ import (
 	dssync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	process "github.com/jbenet/goprocess"
-	peer "github.com/libp2p/go-libp2p-core/peer"
-	libp2ptest "github.com/libp2p/go-libp2p-core/test"
+	peer "github.com/libp2p/go-libp2p/core/peer"
+	libp2ptest "github.com/libp2p/go-libp2p/core/test"
 )
 
 type peerTag struct {
