@@ -7,7 +7,7 @@ import (
 	pb "github.com/ipfs/go-bitswap/message/pb"
 
 	"github.com/ipfs/go-cid"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 func newLedger(p peer.ID) *ledger {

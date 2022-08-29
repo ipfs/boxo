@@ -17,7 +17,7 @@ import (
 	bssession "github.com/ipfs/go-bitswap/client/internal/session"
 	bssim "github.com/ipfs/go-bitswap/client/internal/sessioninterestmanager"
 	exchange "github.com/ipfs/go-ipfs-exchange-interface"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
 // Session is a session that is managed by the session manager

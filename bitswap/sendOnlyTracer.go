@@ -3,7 +3,7 @@ package bitswap
 import (
 	"github.com/ipfs/go-bitswap/message"
 	"github.com/ipfs/go-bitswap/tracer"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type sendOnlyTracer interface {

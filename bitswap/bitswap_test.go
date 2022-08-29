@@ -21,9 +21,9 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 	ipld "github.com/ipfs/go-ipld-format"
-	peer "github.com/libp2p/go-libp2p-core/peer"
-	p2ptestutil "github.com/libp2p/go-libp2p-netutil"
 	tu "github.com/libp2p/go-libp2p-testing/etc"
+	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
+	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
 func isCI() bool {

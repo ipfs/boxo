@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"math/rand"
 	"os"
@@ -15,7 +14,7 @@ import (
 
 	"github.com/ipfs/go-bitswap/internal/testutil"
 	blocks "github.com/ipfs/go-block-format"
-	protocol "github.com/libp2p/go-libp2p-core/protocol"
+	protocol "github.com/libp2p/go-libp2p/core/protocol"
 
 	"github.com/ipfs/go-bitswap"
 	bsnet "github.com/ipfs/go-bitswap/network"
@@ -115,7 +114,7 @@ func BenchmarkFixedDelay(b *testing.B) {
 	}
 
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = ioutil.WriteFile("tmp/benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/benchmark.json", out, 0666)
 	printResults(benchmarkLog)
 }
 
@@ -183,7 +182,7 @@ func BenchmarkFetchFromOldBitswap(b *testing.B) {
 	}
 
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = ioutil.WriteFile("tmp/benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/benchmark.json", out, 0666)
 	printResults(benchmarkLog)
 }
 
@@ -241,7 +240,7 @@ func BenchmarkRealWorld(b *testing.B) {
 		subtestDistributeAndFetchRateLimited(b, 300, 200, slowNetworkDelay, slowBandwidthGenerator, stdBlockSize, bstoreLatency, allToAll, batchFetchAll)
 	})
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = ioutil.WriteFile("tmp/rw-benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/rw-benchmark.json", out, 0666)
 	printResults(benchmarkLog)
 }
 
@@ -264,7 +263,7 @@ func BenchmarkDatacenter(b *testing.B) {
 		subtestDistributeAndFetchRateLimited(b, 3, 100, datacenterNetworkDelay, datacenterBandwidthGenerator, largeBlockSize, bstoreLatency, allToAll, unixfsFileFetch)
 	})
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = ioutil.WriteFile("tmp/rb-benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/rb-benchmark.json", out, 0666)
 	printResults(benchmarkLog)
 }
 
@@ -305,7 +304,7 @@ func BenchmarkDatacenterMultiLeechMultiSeed(b *testing.B) {
 	})
 
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = ioutil.WriteFile("tmp/rb-benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/rb-benchmark.json", out, 0666)
 	printResults(benchmarkLog)
 }
 

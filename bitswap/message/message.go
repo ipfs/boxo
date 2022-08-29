@@ -14,7 +14,7 @@ import (
 	msgio "github.com/libp2p/go-msgio"
 
 	u "github.com/ipfs/go-ipfs-util"
-	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p/core/network"
 )
 
 // BitSwapMessage is the basic interface for interacting building, encoding,

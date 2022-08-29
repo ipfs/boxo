@@ -9,16 +9,17 @@ import (
 	"time"
 
 	bsmsg "github.com/ipfs/go-bitswap/message"
+	"github.com/ipfs/go-bitswap/network/internal"
 
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
-	"github.com/libp2p/go-libp2p-core/connmgr"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-libp2p-core/peer"
-	peerstore "github.com/libp2p/go-libp2p-core/peerstore"
-	"github.com/libp2p/go-libp2p-core/protocol"
-	"github.com/libp2p/go-libp2p-core/routing"
+	"github.com/libp2p/go-libp2p/core/connmgr"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
+	peerstore "github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	msgio "github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
@@ -54,14 +55,7 @@ func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) B
 }
 
 func processSettings(opts ...NetOpt) Settings {
-	s := Settings{
-		SupportedProtocols: []protocol.ID{
-			ProtocolBitswap,
-			ProtocolBitswapOneOne,
-			ProtocolBitswapOneZero,
-			ProtocolBitswapNoVers,
-		},
-	}
+	s := Settings{SupportedProtocols: internal.DefaultProtocols}
 	for _, opt := range opts {
 		opt(&s)
 	}

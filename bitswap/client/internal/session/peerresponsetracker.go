@@ -3,7 +3,7 @@ package session
 import (
 	"math/rand"
 
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
 // peerResponseTracker keeps track of how many times each peer was the first

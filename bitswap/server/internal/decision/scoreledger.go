@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
 const (
