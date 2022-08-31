@@ -11,6 +11,7 @@ package openapi
 
 import (
 	_context "context"
+	_io "io"
 	_nethttp "net/http"
 	_neturl "net/url"
 	"strings"
