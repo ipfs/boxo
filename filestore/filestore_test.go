@@ -3,8 +3,8 @@ package filestore
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
 	"math/rand"
+	"os"
 	"testing"
 
 	dag "github.com/ipfs/go-merkledag"
@@ -21,7 +21,7 @@ var bg = context.Background()
 func newTestFilestore(t *testing.T) (string, *Filestore) {
 	mds := ds.NewMapDatastore()
 
-	testdir, err := ioutil.TempDir("", "filestore-test")
+	testdir, err := os.MkdirTemp("", "filestore-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func newTestFilestore(t *testing.T) (string, *Filestore) {
 }
 
 func makeFile(dir string, data []byte) (string, error) {
-	f, err := ioutil.TempFile(dir, "file")
+	f, err := os.CreateTemp(dir, "file")
 	if err != nil {
 		return "", err
 	}
