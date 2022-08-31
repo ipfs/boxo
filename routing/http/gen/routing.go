@@ -3,6 +3,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path"
 
 	log "github.com/ipfs/go-log/v2"
@@ -252,6 +253,11 @@ func main() {
 	}
 	if err = goFile.Build(); err != nil {
 		logger.Errorf("build (%v)\n", err)
+		os.Exit(-1)
+	}
+	// go fmt
+	if err = exec.Command("go", "fmt", "./...").Run(); err != nil {
+		logger.Errorf("formatting generated code (%v)\n", err)
 		os.Exit(-1)
 	}
 }
