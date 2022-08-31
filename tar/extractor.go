@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	fp "path/filepath"
 	"strings"
@@ -283,7 +282,7 @@ func (te *Extractor) extractFile(path string, r *tar.Reader) error {
 	// Create a temporary file in the target directory and then rename the temporary file to the target to better deal
 	// with races on the file system.
 	base := fp.Dir(path)
-	tmpfile, err := ioutil.TempFile(base, "")
+	tmpfile, err := os.CreateTemp(base, "")
 	if err != nil {
 		return err
 	}

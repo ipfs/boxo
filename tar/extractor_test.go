@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	fp "path/filepath"
 	"runtime"
@@ -23,7 +22,7 @@ func init() {
 	// check if the platform supports symlinks
 	// inspired by https://github.com/golang/go/blob/770f1de8c54256d5b17447028e47b201ba8e62c8/src/internal/testenv/testenv_windows.go#L17
 
-	tmpdir, err := ioutil.TempDir("", "platformsymtest")
+	tmpdir, err := os.MkdirTemp("", "platformsymtest")
 	if err != nil {
 		panic("failed to create temp directory: " + err.Error())
 	}
@@ -54,7 +53,7 @@ func TestSingleFile(t *testing.T) {
 		func(t *testing.T, extractDir string) {
 			f, err := os.Open(fp.Join(extractDir, fileName))
 			assert.NoError(t, err)
-			data, err := ioutil.ReadAll(f)
+			data, err := io.ReadAll(f)
 			assert.NoError(t, err)
 			assert.Equal(t, fileData, string(data))
 			assert.NoError(t, f.Close())
@@ -115,7 +114,7 @@ func TestDirectoryFollowSymlinkToFile(t *testing.T) {
 	testTarExtraction(t, func(t *testing.T, rootDir string) {
 		target := fp.Join(rootDir, tarOutRoot)
 		symlinkTarget := fp.Join(target, "foo")
-		if err := ioutil.WriteFile(symlinkTarget, []byte("original data"), os.ModePerm); err != nil {
+		if err := os.WriteFile(symlinkTarget, []byte("original data"), os.ModePerm); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Symlink(symlinkTarget, fp.Join(target, childName)); err != nil {
@@ -318,7 +317,7 @@ func testTarExtraction(t *testing.T, setup func(t *testing.T, rootDir string), t
 	// Directory structure.
 	// FIXME: We can't easily work on a MemFS since we would need to replace
 	//  all the `os` calls in the extractor so using a temporary dir.
-	rootDir, err := ioutil.TempDir("", "tar-extraction-test")
+	rootDir, err := os.MkdirTemp("", "tar-extraction-test")
 	assert.NoError(t, err)
 	extractDir := fp.Join(rootDir, tarOutRoot)
 	err = os.MkdirAll(extractDir, 0755)
