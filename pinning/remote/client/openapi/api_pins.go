@@ -11,7 +11,7 @@ package openapi
 
 import (
 	_context "context"
-	_ioutil "io/ioutil"
+	_io "io"
 	_nethttp "net/http"
 	_neturl "net/url"
 	"strings"
@@ -76,7 +76,8 @@ func (r apiPinsGetRequest) Meta(meta map[string]string) apiPinsGetRequest {
 /*
 PinsGet List pin objects
 List all the pin objects, matching optional filters; when no filter is provided, only successful pins are returned
- * @param ctx _context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+  - @param ctx _context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+
 @return apiPinsGetRequest
 */
 func (a *PinsApiService) PinsGet(ctx _context.Context) apiPinsGetRequest {
@@ -88,7 +89,8 @@ func (a *PinsApiService) PinsGet(ctx _context.Context) apiPinsGetRequest {
 
 /*
 Execute executes the request
- @return PinResults
+
+	@return PinResults
 */
 func (r apiPinsGetRequest) Execute() (PinResults, *_nethttp.Response, error) {
 	var (
@@ -159,7 +161,7 @@ func (r apiPinsGetRequest) Execute() (PinResults, *_nethttp.Response, error) {
 		return localVarReturnValue, localVarHTTPResponse, err
 	}
 
-	localVarBody, err := _ioutil.ReadAll(localVarHTTPResponse.Body)
+	localVarBody, err := _io.ReadAll(localVarHTTPResponse.Body)
 	localVarHTTPResponse.Body.Close()
 	if err != nil {
 		return localVarReturnValue, localVarHTTPResponse, err
@@ -209,7 +211,8 @@ func (r apiPinsPostRequest) Pin(pin Pin) apiPinsPostRequest {
 /*
 PinsPost Add pin object
 Add a new pin object for the current access token
- * @param ctx _context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+  - @param ctx _context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+
 @return apiPinsPostRequest
 */
 func (a *PinsApiService) PinsPost(ctx _context.Context) apiPinsPostRequest {
@@ -221,7 +224,8 @@ func (a *PinsApiService) PinsPost(ctx _context.Context) apiPinsPostRequest {
 
 /*
 Execute executes the request
- @return PinStatus
+
+	@return PinStatus
 */
 func (r apiPinsPostRequest) Execute() (PinStatus, *_nethttp.Response, error) {
 	var (
@@ -277,7 +281,7 @@ func (r apiPinsPostRequest) Execute() (PinStatus, *_nethttp.Response, error) {
 		return localVarReturnValue, localVarHTTPResponse, err
 	}
 
-	localVarBody, err := _ioutil.ReadAll(localVarHTTPResponse.Body)
+	localVarBody, err := _io.ReadAll(localVarHTTPResponse.Body)
 	localVarHTTPResponse.Body.Close()
 	if err != nil {
 		return localVarReturnValue, localVarHTTPResponse, err
@@ -322,8 +326,9 @@ type apiPinsRequestidDeleteRequest struct {
 /*
 PinsRequestidDelete Remove pin object
 Remove a pin object
- * @param ctx _context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- * @param requestid
+  - @param ctx _context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+  - @param requestid
+
 @return apiPinsRequestidDeleteRequest
 */
 func (a *PinsApiService) PinsRequestidDelete(ctx _context.Context, requestid string) apiPinsRequestidDeleteRequest {
@@ -336,7 +341,6 @@ func (a *PinsApiService) PinsRequestidDelete(ctx _context.Context, requestid str
 
 /*
 Execute executes the request
-
 */
 func (r apiPinsRequestidDeleteRequest) Execute() (*_nethttp.Response, error) {
 	var (
@@ -386,7 +390,7 @@ func (r apiPinsRequestidDeleteRequest) Execute() (*_nethttp.Response, error) {
 		return localVarHTTPResponse, err
 	}
 
-	localVarBody, err := _ioutil.ReadAll(localVarHTTPResponse.Body)
+	localVarBody, err := _io.ReadAll(localVarHTTPResponse.Body)
 	localVarHTTPResponse.Body.Close()
 	if err != nil {
 		return localVarHTTPResponse, err
@@ -422,8 +426,9 @@ type apiPinsRequestidGetRequest struct {
 /*
 PinsRequestidGet Get pin object
 Get a pin object and its status
- * @param ctx _context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- * @param requestid
+  - @param ctx _context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+  - @param requestid
+
 @return apiPinsRequestidGetRequest
 */
 func (a *PinsApiService) PinsRequestidGet(ctx _context.Context, requestid string) apiPinsRequestidGetRequest {
@@ -436,7 +441,8 @@ func (a *PinsApiService) PinsRequestidGet(ctx _context.Context, requestid string
 
 /*
 Execute executes the request
- @return PinStatus
+
+	@return PinStatus
 */
 func (r apiPinsRequestidGetRequest) Execute() (PinStatus, *_nethttp.Response, error) {
 	var (
@@ -487,7 +493,7 @@ func (r apiPinsRequestidGetRequest) Execute() (PinStatus, *_nethttp.Response, er
 		return localVarReturnValue, localVarHTTPResponse, err
 	}
 
-	localVarBody, err := _ioutil.ReadAll(localVarHTTPResponse.Body)
+	localVarBody, err := _io.ReadAll(localVarHTTPResponse.Body)
 	localVarHTTPResponse.Body.Close()
 	if err != nil {
 		return localVarReturnValue, localVarHTTPResponse, err
@@ -538,8 +544,9 @@ func (r apiPinsRequestidPostRequest) Pin(pin Pin) apiPinsRequestidPostRequest {
 /*
 PinsRequestidPost Replace pin object
 Replace an existing pin object (shortcut for executing remove and add operations in one step to avoid unnecessary garbage collection of blocks present in both recursive pins)
- * @param ctx _context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
- * @param requestid
+  - @param ctx _context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+  - @param requestid
+
 @return apiPinsRequestidPostRequest
 */
 func (a *PinsApiService) PinsRequestidPost(ctx _context.Context, requestid string) apiPinsRequestidPostRequest {
@@ -552,7 +559,8 @@ func (a *PinsApiService) PinsRequestidPost(ctx _context.Context, requestid strin
 
 /*
 Execute executes the request
- @return PinStatus
+
+	@return PinStatus
 */
 func (r apiPinsRequestidPostRequest) Execute() (PinStatus, *_nethttp.Response, error) {
 	var (
@@ -609,7 +617,7 @@ func (r apiPinsRequestidPostRequest) Execute() (PinStatus, *_nethttp.Response, e
 		return localVarReturnValue, localVarHTTPResponse, err
 	}
 
-	localVarBody, err := _ioutil.ReadAll(localVarHTTPResponse.Body)
+	localVarBody, err := _io.ReadAll(localVarHTTPResponse.Body)
 	localVarHTTPResponse.Body.Close()
 	if err != nil {
 		return localVarReturnValue, localVarHTTPResponse, err

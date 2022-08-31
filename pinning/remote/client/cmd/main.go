@@ -3,10 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/ipfs/go-cid"
-	pinclient "github.com/ipfs/go-pinning-service-http-client"
 	"os"
 	"time"
+
+	"github.com/ipfs/go-cid"
+	pinclient "github.com/ipfs/go-pinning-service-http-client"
 )
 
 func main() {
