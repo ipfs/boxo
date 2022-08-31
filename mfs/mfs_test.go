@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"sort"
@@ -176,7 +175,7 @@ func assertFileAtPath(ds ipld.DAGService, root *Directory, expn ipld.Node, pth s
 		return err
 	}
 
-	out, err := ioutil.ReadAll(rfd)
+	out, err := io.ReadAll(rfd)
 	if err != nil {
 		return err
 	}
@@ -199,7 +198,7 @@ func catNode(ds ipld.DAGService, nd *dag.ProtoNode) ([]byte, error) {
 	}
 	defer r.Close()
 
-	return ioutil.ReadAll(r)
+	return io.ReadAll(r)
 }
 
 func setupRoot(ctx context.Context, t *testing.T) (ipld.DAGService, *Root) {
@@ -831,7 +830,7 @@ func actorReadFile(d *Directory) error {
 		return err
 	}
 
-	_, err = ioutil.ReadAll(rfd)
+	_, err = io.ReadAll(rfd)
 	if err != nil {
 		return err
 	}
@@ -1116,7 +1115,7 @@ func writeFile(rt *Root, path string, transform func([]byte) []byte) error {
 	}
 	defer fd.Close()
 
-	data, err := ioutil.ReadAll(fd)
+	data, err := io.ReadAll(fd)
 	if err != nil {
 		return err
 	}
@@ -1383,7 +1382,7 @@ func TestTruncateAndWrite(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		data, err := ioutil.ReadAll(fd)
+		data, err := io.ReadAll(fd)
 		if err != nil {
 			t.Fatal(err)
 		}
