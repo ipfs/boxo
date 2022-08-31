@@ -245,7 +245,8 @@ func main() {
 		logger.Errorf("compilation (%v)\n", err)
 		os.Exit(-1)
 	}
-	if err = os.Mkdir(dir, 0755); err != nil {
+	// use MkdirAll since it doesn't return an err if the dir already exists
+	if err = os.MkdirAll(dir, 0755); err != nil {
 		logger.Errorf("making pkg dir (%v)\n", err)
 		os.Exit(-1)
 	}
