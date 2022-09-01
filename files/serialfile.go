@@ -3,7 +3,6 @@ package files
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -52,7 +51,7 @@ func NewSerialFileWithFilter(path string, filter *Filter, stat os.FileInfo) (Nod
 	case mode.IsDir():
 		// for directories, stat all of the contents first, so we know what files to
 		// open when Entries() is called
-		contents, err := ioutil.ReadDir(path)
+		contents, err := os.ReadDir(path)
 		if err != nil {
 			return nil, err
 		}

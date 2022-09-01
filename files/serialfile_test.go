@@ -2,7 +2,7 @@ package files
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -22,7 +22,7 @@ func TestSerialFile(t *testing.T) {
 }
 
 func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
-	tmppath, err := ioutil.TempDir("", "files-test")
+	tmppath, err := os.MkdirTemp("", "files-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
 		if c == "" {
 			continue
 		}
-		if err := ioutil.WriteFile(path, []byte(c), 0666); err != nil {
+		if err := os.WriteFile(path, []byte(c), 0666); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -158,7 +158,7 @@ testInputs:
 				return fmt.Errorf("expected a directory at %q", path)
 			}
 		case File:
-			actual, err := ioutil.ReadAll(nd)
+			actual, err := io.ReadAll(nd)
 			if err != nil {
 				return err
 			}

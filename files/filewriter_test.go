@@ -2,7 +2,6 @@ package files
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,7 +19,7 @@ func TestWriteTo(t *testing.T) {
 			"a": NewBytesFile([]byte("foobar")),
 		}),
 	})
-	tmppath, err := ioutil.TempDir("", "files-test")
+	tmppath, err := os.MkdirTemp("", "files-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +59,7 @@ func TestWriteTo(t *testing.T) {
 				return fmt.Errorf("expected a directory at %q", rpath)
 			}
 		} else {
-			actual, err := ioutil.ReadFile(cpath)
+			actual, err := os.ReadFile(cpath)
 			if err != nil {
 				return err
 			}
@@ -79,7 +78,7 @@ func TestWriteTo(t *testing.T) {
 }
 
 func TestDontAllowOverwrite(t *testing.T) {
-	tmppath, err := ioutil.TempDir("", "files-test")
+	tmppath, err := os.MkdirTemp("", "files-test")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmppath)
 
