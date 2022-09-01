@@ -2,7 +2,6 @@ package keystore
 
 import (
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -27,7 +26,7 @@ func privKeyOrFatal(t *testing.T) ci.PrivKey {
 }
 
 func TestKeystoreBasics(t *testing.T) {
-	tdir, err := ioutil.TempDir("", "keystore-test")
+	tdir, err := os.MkdirTemp("", "keystore-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +145,7 @@ func TestKeystoreBasics(t *testing.T) {
 }
 
 func TestInvalidKeyFiles(t *testing.T) {
-	tdir, err := ioutil.TempDir("", "keystore-test")
+	tdir, err := os.MkdirTemp("", "keystore-test")
 
 	if err != nil {
 		t.Fatal(err)
@@ -171,12 +170,12 @@ func TestInvalidKeyFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = ioutil.WriteFile(filepath.Join(ks.dir, encodedName), bytes, 0644)
+	err = os.WriteFile(filepath.Join(ks.dir, encodedName), bytes, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = ioutil.WriteFile(filepath.Join(ks.dir, "z.invalid"), bytes, 0644)
+	err = os.WriteFile(filepath.Join(ks.dir, "z.invalid"), bytes, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +204,7 @@ func TestInvalidKeyFiles(t *testing.T) {
 }
 
 func TestNonExistingKey(t *testing.T) {
-	tdir, err := ioutil.TempDir("", "keystore-test")
+	tdir, err := os.MkdirTemp("", "keystore-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +244,7 @@ func assertGetKey(ks Keystore, name string, exp ci.PrivKey) error {
 }
 
 func assertDirContents(dir string, exp []string) error {
-	finfos, err := ioutil.ReadDir(dir)
+	finfos, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
