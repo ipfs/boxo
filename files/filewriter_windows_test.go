@@ -1,10 +1,8 @@
 //go:build windows
-// +build windows
 
 package files
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,7 +11,7 @@ import (
 )
 
 func TestWriteToInvalidPaths(t *testing.T) {
-	tmppath, err := ioutil.TempDir("", "files-test")
+	tmppath, err := os.MkdirTemp("", "files-test")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmppath)
 

@@ -1,7 +1,7 @@
 package files
 
 import (
-	"io/ioutil"
+	"io"
 	"testing"
 )
 
@@ -56,7 +56,7 @@ func CheckDir(t *testing.T, dir Directory, expected []Event) {
 				if !ok {
 					t.Fatalf("[%d] expected file to be a normal file: %T", i, it.Node())
 				}
-				out, err := ioutil.ReadAll(mf)
+				out, err := io.ReadAll(mf)
 				if err != nil {
 					t.Errorf("[%d] failed to read file", i)
 					continue
