@@ -217,14 +217,23 @@ func (b *ReadOnly) DeleteBlock(_ context.Context, _ cid.Cid) error {
 }
 
 // Has indicates if the store contains a block that corresponds to the given key.
-// This function always returns true for any given key with multihash.IDENTITY code.
+// This function always returns true for any given key with multihash.IDENTITY
+// code unless the StoreIdentityCIDs option is on, in which case it will defer
+// to the index to check for the existence of the block; the index may or may
+// not contain identity CIDs included in this CAR, depending on whether
+// StoreIdentityCIDs was on when the index was created. If the CAR is a CARv1
+// and StoreIdentityCIDs is on, then the index will contain identity CIDs and
+// this will always return true.
 func (b *ReadOnly) Has(ctx context.Context, key cid.Cid) (bool, error) {
-	// Check if the given CID has multihash.IDENTITY code
-	// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
-	if _, ok, err := isIdentity(key); err != nil {
-		return false, err
-	} else if ok {
-		return true, nil
+	if !b.opts.StoreIdentityCIDs {
+		// If we don't store identity CIDs then we can return them straight away as if they are here,
+		// otherwise we need to check for their existence.
+		// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
+		if _, ok, err := isIdentity(key); err != nil {
+			return false, err
+		} else if ok {
+			return true, nil
+		}
 	}
 
 	b.mu.RLock()
@@ -269,14 +278,23 @@ func (b *ReadOnly) Has(ctx context.Context, key cid.Cid) (bool, error) {
 }
 
 // Get gets a block corresponding to the given key.
-// This API will always return true if the given key has multihash.IDENTITY code.
+// This function always returns the block for any given key with
+// multihash.IDENTITY code unless the StoreIdentityCIDs option is on, in which
+// case it will defer to the index to check for the existence of the block; the
+// index may or may not contain identity CIDs included in this CAR, depending on
+// whether StoreIdentityCIDs was on when the index was created. If the CAR is a
+// CARv1 and StoreIdentityCIDs is on, then the index will contain identity CIDs
+// and this will always return true.
 func (b *ReadOnly) Get(ctx context.Context, key cid.Cid) (blocks.Block, error) {
-	// Check if the given CID has multihash.IDENTITY code
-	// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
-	if digest, ok, err := isIdentity(key); err != nil {
-		return nil, err
-	} else if ok {
-		return blocks.NewBlockWithCid(digest, key)
+	if !b.opts.StoreIdentityCIDs {
+		// If we don't store identity CIDs then we can return them straight away as if they are here,
+		// otherwise we need to check for their existence.
+		// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
+		if digest, ok, err := isIdentity(key); err != nil {
+			return nil, err
+		} else if ok {
+			return blocks.NewBlockWithCid(digest, key)
+		}
 	}
 
 	b.mu.RLock()

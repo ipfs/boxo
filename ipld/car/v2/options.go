@@ -127,8 +127,15 @@ func WithoutIndex() Option {
 
 // StoreIdentityCIDs sets whether to persist sections that are referenced by
 // CIDs with multihash.IDENTITY digest.
-// When writing CAR files with this option,
-// Characteristics.IsFullyIndexed will be set.
+// When writing CAR files with this option, Characteristics.IsFullyIndexed will
+// be set.
+//
+// By default, the blockstore interface will always return true for Has() called
+// with identity CIDs, but when this option is turned on, it will defer to the
+// index.
+//
+// When creating an index (or loading a CARv1 as a blockstore), when this option
+// is on, identity CIDs will be included in the index.
 //
 // This option is disabled by default.
 func StoreIdentityCIDs(b bool) Option {

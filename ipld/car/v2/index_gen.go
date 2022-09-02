@@ -34,6 +34,10 @@ func GenerateIndex(v1r io.Reader, opts ...Option) (index.Index, error) {
 // LoadIndex populates idx with index records generated from r.
 // The r may be in CARv1 or CARv2 format.
 //
+// If the StoreIdentityCIDs option is set when calling LoadIndex, identity
+// CIDs will be included in the index. By default this option is off, and
+// identity CIDs will not be included in the index.
+//
 // Note, the index is re-generated every time even if r is in CARv2 format and already has an index.
 // To read existing index when available see ReadOrGenerateIndex.
 func LoadIndex(idx index.Index, r io.Reader, opts ...Option) error {

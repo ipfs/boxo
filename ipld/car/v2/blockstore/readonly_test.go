@@ -14,6 +14,7 @@ import (
 	"github.com/ipfs/go-merkledag"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/internal/carv1"
+	"github.com/multiformats/go-multicodec"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,31 +34,53 @@ func TestReadOnly(t *testing.T) {
 		name       string
 		v1OrV2path string
 		opts       []carv2.Option
+		noIdCids   bool
 	}{
 		{
 			"OpenedWithCarV1",
 			"../testdata/sample-v1.car",
 			[]carv2.Option{UseWholeCIDs(true), carv2.StoreIdentityCIDs(true)},
+			// index is made, but identity CIDs are included so they'll be found
+			false,
+		},
+		{
+			"OpenedWithCarV1_NoIdentityCID",
+			"../testdata/sample-v1.car",
+			[]carv2.Option{UseWholeCIDs(true)},
+			// index is made, identity CIDs are not included, but we always short-circuit when StoreIdentityCIDs(false)
+			false,
 		},
 		{
 			"OpenedWithCarV2",
 			"../testdata/sample-wrapped-v2.car",
 			[]carv2.Option{UseWholeCIDs(true), carv2.StoreIdentityCIDs(true)},
+			// index already exists, but was made without identity CIDs, but opening with StoreIdentityCIDs(true) means we check the index
+			true,
+		},
+		{
+			"OpenedWithCarV2_NoIdentityCID",
+			"../testdata/sample-wrapped-v2.car",
+			[]carv2.Option{UseWholeCIDs(true)},
+			// index already exists, it was made without identity CIDs, but we always short-circuit when StoreIdentityCIDs(false)
+			false,
 		},
 		{
 			"OpenedWithCarV1ZeroLenSection",
 			"../testdata/sample-v1-with-zero-len-section.car",
 			[]carv2.Option{UseWholeCIDs(true), carv2.ZeroLengthSectionAsEOF(true)},
+			false,
 		},
 		{
 			"OpenedWithAnotherCarV1ZeroLenSection",
 			"../testdata/sample-v1-with-zero-len-section2.car",
 			[]carv2.Option{UseWholeCIDs(true), carv2.ZeroLengthSectionAsEOF(true)},
+			false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.TODO()
+
 			subject, err := OpenReadOnly(tt.v1OrV2path, tt.opts...)
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, subject.Close()) })
@@ -89,7 +112,13 @@ func TestReadOnly(t *testing.T) {
 				// Assert blockstore contains key.
 				has, err := subject.Has(ctx, key)
 				require.NoError(t, err)
-				require.True(t, has)
+				if key.Prefix().MhType == uint64(multicodec.Identity) && tt.noIdCids {
+					// fixture wasn't made with StoreIdentityCIDs, but we opened it with StoreIdentityCIDs,
+					// so they aren't there to find
+					require.False(t, has)
+				} else {
+					require.True(t, has)
+				}
 
 				// Assert size matches block raw data length.
 				gotSize, err := subject.GetSize(ctx, key)
@@ -98,9 +127,11 @@ func TestReadOnly(t *testing.T) {
 				require.Equal(t, wantSize, gotSize)
 
 				// Assert block itself matches v1 payload block.
-				gotBlock, err := subject.Get(ctx, key)
-				require.NoError(t, err)
-				require.Equal(t, wantBlock, gotBlock)
+				if has {
+					gotBlock, err := subject.Get(ctx, key)
+					require.NoError(t, err)
+					require.Equal(t, wantBlock, gotBlock)
+				}
 
 				// Assert write operations error
 				require.Error(t, subject.Put(ctx, wantBlock))
