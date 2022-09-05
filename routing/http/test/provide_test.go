@@ -30,7 +30,7 @@ func TestProvideRoundtrip(t *testing.T) {
 	testMH, _ := multihash.Encode([]byte("test"), multihash.IDENTITY)
 	testCid := cid.NewCidV1(cid.Raw, testMH)
 
-	if _, err = c1.Provide(context.Background(), testCid, time.Hour); err == nil {
+	if _, err = c1.Provide(context.Background(), []cid.Cid{testCid}, time.Hour); err == nil {
 		t.Fatal("should get sync error on unsigned provide request.")
 	}
 
@@ -43,7 +43,7 @@ func TestProvideRoundtrip(t *testing.T) {
 	}, priv)
 	defer s.Close()
 
-	rc, err := c.Provide(context.Background(), testCid, 2*time.Hour)
+	rc, err := c.Provide(context.Background(), []cid.Cid{testCid}, 2*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}

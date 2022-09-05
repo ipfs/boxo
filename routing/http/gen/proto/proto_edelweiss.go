@@ -3152,10 +3152,134 @@ func (x PutIPNSResponse) Prototype() pd3.NodePrototype {
 	return nil
 }
 
+// -- protocol type AnonList14 --
+
+type AnonList14 []LinkToAny
+
+func (v AnonList14) Node() pd3.Node {
+	return v
+}
+
+func (v *AnonList14) Parse(n pd3.Node) error {
+	if n.Kind() == pd3.Kind_Null {
+		*v = nil
+		return nil
+	}
+	if n.Kind() != pd3.Kind_List {
+		return pd1.ErrNA
+	} else {
+		*v = make(AnonList14, n.Length())
+		iter := n.ListIterator()
+		for !iter.Done() {
+			if i, n, err := iter.Next(); err != nil {
+				return pd1.ErrNA
+			} else if err = (*v)[i].Parse(n); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+func (AnonList14) Kind() pd3.Kind {
+	return pd3.Kind_List
+}
+
+func (AnonList14) LookupByString(string) (pd3.Node, error) {
+	return nil, pd1.ErrNA
+}
+
+func (AnonList14) LookupByNode(key pd3.Node) (pd3.Node, error) {
+	return nil, pd1.ErrNA
+}
+
+func (v AnonList14) LookupByIndex(i int64) (pd3.Node, error) {
+	if i < 0 || i >= v.Length() {
+		return nil, pd1.ErrBounds
+	} else {
+		return v[i].Node(), nil
+	}
+}
+
+func (v AnonList14) LookupBySegment(seg pd3.PathSegment) (pd3.Node, error) {
+	if i, err := seg.Index(); err != nil {
+		return nil, pd1.ErrNA
+	} else {
+		return v.LookupByIndex(i)
+	}
+}
+
+func (AnonList14) MapIterator() pd3.MapIterator {
+	return nil
+}
+
+func (v AnonList14) ListIterator() pd3.ListIterator {
+	return &AnonList14_ListIterator{v, 0}
+}
+
+func (v AnonList14) Length() int64 {
+	return int64(len(v))
+}
+
+func (AnonList14) IsAbsent() bool {
+	return false
+}
+
+func (AnonList14) IsNull() bool {
+	return false
+}
+
+func (v AnonList14) AsBool() (bool, error) {
+	return false, pd1.ErrNA
+}
+
+func (AnonList14) AsInt() (int64, error) {
+	return 0, pd1.ErrNA
+}
+
+func (AnonList14) AsFloat() (float64, error) {
+	return 0, pd1.ErrNA
+}
+
+func (AnonList14) AsString() (string, error) {
+	return "", pd1.ErrNA
+}
+
+func (AnonList14) AsBytes() ([]byte, error) {
+	return nil, pd1.ErrNA
+}
+
+func (AnonList14) AsLink() (pd3.Link, error) {
+	return nil, pd1.ErrNA
+}
+
+func (AnonList14) Prototype() pd3.NodePrototype {
+	return nil // not needed
+}
+
+type AnonList14_ListIterator struct {
+	list AnonList14
+	at   int64
+}
+
+func (iter *AnonList14_ListIterator) Next() (int64, pd3.Node, error) {
+	if iter.Done() {
+		return -1, nil, pd1.ErrBounds
+	}
+	v := iter.list[iter.at]
+	i := int64(iter.at)
+	iter.at++
+	return i, v.Node(), nil
+}
+
+func (iter *AnonList14_ListIterator) Done() bool {
+	return iter.at >= iter.list.Length()
+}
+
 // -- protocol type ProvideRequest --
 
 type ProvideRequest struct {
-	Key         LinkToAny
+	Key         AnonList14
 	Provider    Provider
 	Timestamp   pd1.Int
 	AdvisoryTTL pd1.Int
@@ -4117,15 +4241,15 @@ func (x Node) Prototype() pd3.NodePrototype {
 	return nil
 }
 
-// -- protocol type AnonList20 --
+// -- protocol type AnonList21 --
 
-type AnonList20 []pd1.Bytes
+type AnonList21 []pd1.Bytes
 
-func (v AnonList20) Node() pd3.Node {
+func (v AnonList21) Node() pd3.Node {
 	return v
 }
 
-func (v *AnonList20) Parse(n pd3.Node) error {
+func (v *AnonList21) Parse(n pd3.Node) error {
 	if n.Kind() == pd3.Kind_Null {
 		*v = nil
 		return nil
@@ -4133,7 +4257,7 @@ func (v *AnonList20) Parse(n pd3.Node) error {
 	if n.Kind() != pd3.Kind_List {
 		return pd1.ErrNA
 	} else {
-		*v = make(AnonList20, n.Length())
+		*v = make(AnonList21, n.Length())
 		iter := n.ListIterator()
 		for !iter.Done() {
 			if i, n, err := iter.Next(); err != nil {
@@ -4146,19 +4270,19 @@ func (v *AnonList20) Parse(n pd3.Node) error {
 	}
 }
 
-func (AnonList20) Kind() pd3.Kind {
+func (AnonList21) Kind() pd3.Kind {
 	return pd3.Kind_List
 }
 
-func (AnonList20) LookupByString(string) (pd3.Node, error) {
+func (AnonList21) LookupByString(string) (pd3.Node, error) {
 	return nil, pd1.ErrNA
 }
 
-func (AnonList20) LookupByNode(key pd3.Node) (pd3.Node, error) {
+func (AnonList21) LookupByNode(key pd3.Node) (pd3.Node, error) {
 	return nil, pd1.ErrNA
 }
 
-func (v AnonList20) LookupByIndex(i int64) (pd3.Node, error) {
+func (v AnonList21) LookupByIndex(i int64) (pd3.Node, error) {
 	if i < 0 || i >= v.Length() {
 		return nil, pd1.ErrBounds
 	} else {
@@ -4166,7 +4290,7 @@ func (v AnonList20) LookupByIndex(i int64) (pd3.Node, error) {
 	}
 }
 
-func (v AnonList20) LookupBySegment(seg pd3.PathSegment) (pd3.Node, error) {
+func (v AnonList21) LookupBySegment(seg pd3.PathSegment) (pd3.Node, error) {
 	if i, err := seg.Index(); err != nil {
 		return nil, pd1.ErrNA
 	} else {
@@ -4174,60 +4298,60 @@ func (v AnonList20) LookupBySegment(seg pd3.PathSegment) (pd3.Node, error) {
 	}
 }
 
-func (AnonList20) MapIterator() pd3.MapIterator {
+func (AnonList21) MapIterator() pd3.MapIterator {
 	return nil
 }
 
-func (v AnonList20) ListIterator() pd3.ListIterator {
-	return &AnonList20_ListIterator{v, 0}
+func (v AnonList21) ListIterator() pd3.ListIterator {
+	return &AnonList21_ListIterator{v, 0}
 }
 
-func (v AnonList20) Length() int64 {
+func (v AnonList21) Length() int64 {
 	return int64(len(v))
 }
 
-func (AnonList20) IsAbsent() bool {
+func (AnonList21) IsAbsent() bool {
 	return false
 }
 
-func (AnonList20) IsNull() bool {
+func (AnonList21) IsNull() bool {
 	return false
 }
 
-func (v AnonList20) AsBool() (bool, error) {
+func (v AnonList21) AsBool() (bool, error) {
 	return false, pd1.ErrNA
 }
 
-func (AnonList20) AsInt() (int64, error) {
+func (AnonList21) AsInt() (int64, error) {
 	return 0, pd1.ErrNA
 }
 
-func (AnonList20) AsFloat() (float64, error) {
+func (AnonList21) AsFloat() (float64, error) {
 	return 0, pd1.ErrNA
 }
 
-func (AnonList20) AsString() (string, error) {
+func (AnonList21) AsString() (string, error) {
 	return "", pd1.ErrNA
 }
 
-func (AnonList20) AsBytes() ([]byte, error) {
+func (AnonList21) AsBytes() ([]byte, error) {
 	return nil, pd1.ErrNA
 }
 
-func (AnonList20) AsLink() (pd3.Link, error) {
+func (AnonList21) AsLink() (pd3.Link, error) {
 	return nil, pd1.ErrNA
 }
 
-func (AnonList20) Prototype() pd3.NodePrototype {
+func (AnonList21) Prototype() pd3.NodePrototype {
 	return nil // not needed
 }
 
-type AnonList20_ListIterator struct {
-	list AnonList20
+type AnonList21_ListIterator struct {
+	list AnonList21
 	at   int64
 }
 
-func (iter *AnonList20_ListIterator) Next() (int64, pd3.Node, error) {
+func (iter *AnonList21_ListIterator) Next() (int64, pd3.Node, error) {
 	if iter.Done() {
 		return -1, nil, pd1.ErrBounds
 	}
@@ -4237,7 +4361,7 @@ func (iter *AnonList20_ListIterator) Next() (int64, pd3.Node, error) {
 	return i, v.Node(), nil
 }
 
-func (iter *AnonList20_ListIterator) Done() bool {
+func (iter *AnonList21_ListIterator) Done() bool {
 	return iter.at >= iter.list.Length()
 }
 
@@ -4245,7 +4369,7 @@ func (iter *AnonList20_ListIterator) Done() bool {
 
 type Peer struct {
 	ID             pd1.Bytes
-	Multiaddresses AnonList20
+	Multiaddresses AnonList21
 }
 
 func (x Peer) Node() pd3.Node {

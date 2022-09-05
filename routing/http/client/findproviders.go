@@ -25,8 +25,8 @@ type DelegatedRoutingClient interface {
 	GetIPNSAsync(ctx context.Context, id []byte) (<-chan GetIPNSAsyncResult, error)
 	PutIPNS(ctx context.Context, id []byte, record []byte) error
 	PutIPNSAsync(ctx context.Context, id []byte, record []byte) (<-chan PutIPNSAsyncResult, error)
-	Provide(ctx context.Context, key cid.Cid, ttl time.Duration) (time.Duration, error)
-	ProvideAsync(ctx context.Context, key cid.Cid, ttl time.Duration) (<-chan time.Duration, error)
+	Provide(ctx context.Context, key []cid.Cid, ttl time.Duration) (time.Duration, error)
+	ProvideAsync(ctx context.Context, key []cid.Cid, ttl time.Duration) (<-chan time.Duration, error)
 }
 
 type Client struct {
@@ -174,7 +174,7 @@ func ParseNodeAddresses(n *proto.Peer) []peer.AddrInfo {
 func ToProtoPeer(ai peer.AddrInfo) *proto.Peer {
 	p := proto.Peer{
 		ID:             values.Bytes(ai.ID),
-		Multiaddresses: make(proto.AnonList20, 0),
+		Multiaddresses: make(proto.AnonList21, 0),
 	}
 
 	for _, addr := range ai.Addrs {

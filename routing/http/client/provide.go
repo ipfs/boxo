@@ -100,7 +100,7 @@ func parseProtocol(tp *proto.TransferProtocol) (TransferProtocol, error) {
 
 // ProvideRequest is a message indicating a provider can provide a Key for a given TTL
 type ProvideRequest struct {
-	Key cid.Cid
+	Key []cid.Cid
 	*Provider
 	Timestamp   int64
 	AdvisoryTTL time.Duration
@@ -109,7 +109,7 @@ type ProvideRequest struct {
 
 var provideSchema, provideSchemaErr = ipld.LoadSchemaBytes([]byte(`
 		type ProvideRequest struct {
-			Key    &Any
+			Key   [&Any]
 			Provider  Provider
 			Timestamp Int
 			AdvisoryTTL Int
@@ -234,8 +234,12 @@ func ParseProvideRequest(req *proto.ProvideRequest) (*ProvideRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	keys := make([]cid.Cid, 0, len(req.Key))
+	for _, c := range req.Key {
+		keys = append(keys, cid.Cid(c))
+	}
 	pr := ProvideRequest{
-		Key:         cid.Cid(req.Key),
+		Key:         keys,
 		Provider:    prov,
 		AdvisoryTTL: time.Duration(req.AdvisoryTTL),
 		Timestamp:   int64(req.Timestamp),
@@ -268,9 +272,9 @@ type ProvideAsyncResult struct {
 	Err         error
 }
 
-func (fp *Client) Provide(ctx context.Context, key cid.Cid, ttl time.Duration) (time.Duration, error) {
+func (fp *Client) Provide(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {
 	req := ProvideRequest{
-		Key:         key,
+		Key:         keys,
 		Provider:    fp.provider,
 		AdvisoryTTL: ttl,
 		Timestamp:   time.Now().Unix(),
@@ -308,9 +312,9 @@ func (fp *Client) Provide(ctx context.Context, key cid.Cid, ttl time.Duration) (
 	return 0, err
 }
 
-func (fp *Client) ProvideAsync(ctx context.Context, key cid.Cid, ttl time.Duration) (<-chan time.Duration, error) {
+func (fp *Client) ProvideAsync(ctx context.Context, keys []cid.Cid, ttl time.Duration) (<-chan time.Duration, error) {
 	req := ProvideRequest{
-		Key:         key,
+		Key:         keys,
 		Provider:    fp.provider,
 		AdvisoryTTL: ttl,
 		Timestamp:   time.Now().Unix(),
@@ -352,8 +356,12 @@ func (fp *Client) ProvideSignedRecord(ctx context.Context, req *ProvideRequest) 
 	if req.Provider != nil {
 		providerProto = *req.Provider.ToProto()
 	}
+	keys := make(proto.AnonList14, 0, len(req.Key))
+	for _, c := range req.Key {
+		keys = append(keys, proto.LinkToAny(c))
+	}
 	ch0, err := fp.client.Provide_Async(ctx, &proto.ProvideRequest{
-		Key:         proto.LinkToAny(req.Key),
+		Key:         keys,
 		Provider:    providerProto,
 		Timestamp:   values.Int(req.Timestamp),
 		AdvisoryTTL: values.Int(req.AdvisoryTTL),

@@ -123,7 +123,7 @@ var proto = defs.Defs{
 		Name: "ProvideRequest",
 		Type: defs.Structure{
 			Fields: defs.Fields{
-				defs.Field{Name: "Key", GoName: "Key", Type: defs.Ref{Name: "LinkToAny"}},
+				defs.Field{Name: "Key", GoName: "Key", Type: defs.List{Element: defs.Ref{Name: "LinkToAny"}}},
 				defs.Field{Name: "Provider", GoName: "Provider", Type: defs.Ref{Name: "Provider"}},
 				defs.Field{Name: "Timestamp", GoName: "Timestamp", Type: defs.Int{}},
 				defs.Field{Name: "AdvisoryTTL", GoName: "AdvisoryTTL", Type: defs.Int{}},

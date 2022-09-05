@@ -46,11 +46,11 @@ func (t TestDelegatedRoutingClient) PutIPNSAsync(ctx context.Context, id []byte,
 	panic("not supported")
 }
 
-func (t TestDelegatedRoutingClient) ProvideAsync(ctx context.Context, key cid.Cid, ttl time.Duration) (<-chan time.Duration, error) {
+func (t TestDelegatedRoutingClient) ProvideAsync(ctx context.Context, key []cid.Cid, ttl time.Duration) (<-chan time.Duration, error) {
 	panic("not supported")
 }
 
-func (t TestDelegatedRoutingClient) Provide(ctx context.Context, key cid.Cid, tl time.Duration) (time.Duration, error) {
+func (t TestDelegatedRoutingClient) Provide(ctx context.Context, key []cid.Cid, tl time.Duration) (time.Duration, error) {
 	panic("not supported")
 }
 
