@@ -72,8 +72,8 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 func WithTracer(tap tracer.Tracer) Option {
 	// Only trace the server, both receive the same messages anyway
 	return Option{
-		func(bs *Bitswap) {
+		option(func(bs *Bitswap) {
 			bs.tracer = tap
-		},
+		}),
 	}
 }
