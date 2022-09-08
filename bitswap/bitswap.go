@@ -73,7 +73,7 @@ func New(ctx context.Context, net network.BitSwapNetwork, bstore blockstore.Bloc
 		case option:
 			typedOption(bs)
 		default:
-			panic(fmt.Errorf("unknown option type passed to bitswap.New, got: %T, %v; expected: %T, %T or %T", typedOption, typedOption, server.Option(nil), client.Option(nil), option{}))
+			panic(fmt.Errorf("unknown option type passed to bitswap.New, got: %T, %v; expected: %T, %T or %T", typedOption, typedOption, server.Option(nil), client.Option(nil), option(nil)))
 		}
 	}
 
