@@ -53,6 +53,10 @@ func Create(sk ic.PrivKey, val []byte, seq uint64, eol time.Time, ttl time.Durat
 	}
 	entry.Data = cborData
 
+	// For now we still create V1 signatures. These are deprecated, and not
+	// used during verification anymore (Validate func requires SignatureV2),
+	// but setting it here allows legacy nodes (e.g., go-ipfs < v0.9.0) to
+	// still resolve IPNS published by modern nodes.
 	sig1, err := sk.Sign(ipnsEntryDataForSigV1(entry))
 	if err != nil {
 		return nil, errors.Wrap(err, "could not compute signature data")
@@ -130,7 +134,7 @@ func createCborDataForIpnsEntry(e *pb.IpnsEntry) ([]byte, error) {
 func Validate(pk ic.PubKey, entry *pb.IpnsEntry) error {
 	// Check the ipns record signature with the public key
 
-	// Check v2 signature if it's available, otherwise use the v1 signature
+	// Check v2 signature if it's available
 	if entry.GetSignatureV2() != nil {
 		sig2Data, err := ipnsEntryDataForSigV2(entry)
 		if err != nil {
@@ -147,9 +151,8 @@ func Validate(pk ic.PubKey, entry *pb.IpnsEntry) error {
 			return err
 		}
 	} else {
-		if ok, err := pk.Verify(ipnsEntryDataForSigV1(entry), entry.GetSignatureV1()); err != nil || !ok {
-			return ErrSignature
-		}
+		// always error if no valid signature could be found
+		return ErrSignature
 	}
 
 	eol, err := GetEOL(entry)
