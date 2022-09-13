@@ -3,6 +3,7 @@ package test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http/httptest"
@@ -225,21 +226,35 @@ func TestCancelContext(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	par, err := c.FindProvidersAsync(ctx, cid)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// FindProviders reads all results into a buffer before returning headers.
+	// This means that, unlike the other calls, the client will not return the result channel
+	// until the server reads all the results, which will never happen.
+	// So we make the FindProversAsync call asynchronously and cancel,
+	// which should result in a cancelation error.
+
+	done := make(chan struct{})
+	go func() {
+		par, err := c.FindProvidersAsync(ctx, cid)
+		if err != nil {
+			if !errors.Is(err, context.Canceled) {
+				panic(err)
+			}
+		}
+		select {
+		case <-par:
+			panic("got a result when no result was expected")
+		default:
+		}
+		close(done)
+	}()
 
 	cancel()
 
-	o2, ok := <-par
-	if ok {
-		t.Fatal("FindProvidersAsync channel must be closed", "OUTPUT:", o2.Err)
-	}
+	<-done
+
 }
 
 func TestClientServer(t *testing.T) {
-
 	var numIter []int = []int{1e2, 1e3, 1e4}
 	avgLatency := make([]time.Duration, len(numIter))
 	deltaGo := make([]int, len(numIter))

@@ -24,6 +24,7 @@ var proto = defs.Defs{
 						Arg:    defs.Ref{Name: "FindProvidersRequest"},
 						Return: defs.Ref{Name: "FindProvidersResponse"},
 					},
+					Cachable: true,
 				},
 				defs.Method{
 					Name: "GetIPNS",
