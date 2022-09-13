@@ -8,9 +8,8 @@ import (
 	"github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 	u "github.com/ipfs/go-ipfs-util"
-
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-testing/net"
+	tnet "github.com/libp2p/go-libp2p-testing/net"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 func TestKeyNotFound(t *testing.T) {

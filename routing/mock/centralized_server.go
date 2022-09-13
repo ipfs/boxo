@@ -6,14 +6,12 @@ import (
 	"sync"
 	"time"
 
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
-
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-testing/net"
-
-	offline "github.com/ipfs/go-ipfs-routing/offline"
+	"github.com/ipfs/go-ipfs-routing/offline"
+	tnet "github.com/libp2p/go-libp2p-testing/net"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 // server is the mockrouting.Client's private interface to the routing server
