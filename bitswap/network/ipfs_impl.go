@@ -55,7 +55,7 @@ func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) B
 }
 
 func processSettings(opts ...NetOpt) Settings {
-	s := Settings{SupportedProtocols: internal.DefaultProtocols}
+	s := Settings{SupportedProtocols: append([]protocol.ID(nil), internal.DefaultProtocols...)}
 	for _, opt := range opts {
 		opt(&s)
 	}
