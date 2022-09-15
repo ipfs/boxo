@@ -139,8 +139,8 @@ func bytesToMA(b []byte) (interface{}, error) {
 	return multiaddr.NewMultiaddrBytes(b)
 }
 func maToBytes(iface interface{}) ([]byte, error) {
-	if ma, ok := iface.(multiaddr.Multiaddr); ok {
-		return ma.Bytes(), nil
+	if ma, ok := iface.(*multiaddr.Multiaddr); ok {
+		return (*ma).Bytes(), nil
 	}
 	return nil, fmt.Errorf("did not get expected MA type")
 }

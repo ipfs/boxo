@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	multiaddr "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
 )
 
@@ -34,12 +35,17 @@ func TestProvideRoundtrip(t *testing.T) {
 		t.Fatal("should get sync error on unsigned provide request.")
 	}
 
+	ma, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/tcp/4001")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	c, s := createClientAndServer(t, testDelegatedRoutingService{}, &client.Provider{
 		Peer: peer.AddrInfo{
 			ID:    pID,
-			Addrs: []multiaddr.Multiaddr{},
+			Addrs: []multiaddr.Multiaddr{ma},
 		},
-		ProviderProto: []client.TransferProtocol{},
+		ProviderProto: []client.TransferProtocol{{Codec: multicodec.TransportBitswap}},
 	}, priv)
 	defer s.Close()
 
