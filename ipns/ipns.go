@@ -133,26 +133,25 @@ func createCborDataForIpnsEntry(e *pb.IpnsEntry) ([]byte, error) {
 // Validates validates the given IPNS entry against the given public key.
 func Validate(pk ic.PubKey, entry *pb.IpnsEntry) error {
 	// Check the ipns record signature with the public key
-
-	// Check v2 signature if it's available
-	if entry.GetSignatureV2() != nil {
-		sig2Data, err := ipnsEntryDataForSigV2(entry)
-		if err != nil {
-			return fmt.Errorf("could not compute signature data: %w", err)
-		}
-		if ok, err := pk.Verify(sig2Data, entry.GetSignatureV2()); err != nil || !ok {
-			return ErrSignature
-		}
-
-		// TODO: If we switch from pb.IpnsEntry to a more generic IpnsRecord type then perhaps we should only check
-		// this if there is no v1 signature. In the meanwhile this helps avoid some potential rough edges around people
-		// checking the entry fields instead of doing CBOR decoding everywhere.
-		if err := validateCborDataMatchesPbData(entry); err != nil {
-			return err
-		}
-	} else {
+	if entry.GetSignatureV2() == nil {
 		// always error if no valid signature could be found
 		return ErrSignature
+	}
+
+	sig2Data, err := ipnsEntryDataForSigV2(entry)
+	if err != nil {
+		return fmt.Errorf("could not compute signature data: %w", err)
+	}
+	if ok, err := pk.Verify(sig2Data, entry.GetSignatureV2()); err != nil || !ok {
+		return ErrSignature
+	}
+
+	// TODO: If we switch from pb.IpnsEntry to a more generic IpnsRecord type then perhaps we should only check
+	// this if there is no v1 signature. In the meanwhile this helps avoid some potential rough edges around people
+	// checking the entry fields instead of doing CBOR decoding everywhere.
+	// See https://github.com/ipfs/go-ipns/pull/42 for next steps here
+	if err := validateCborDataMatchesPbData(entry); err != nil {
+		return err
 	}
 
 	eol, err := GetEOL(entry)
