@@ -178,7 +178,7 @@ func TestPeerIDPubKeyValidate(t *testing.T) {
 	testValidatorCase(t, sk, kbook, ipnsk, dataNoKey, goodeol, nil)
 }
 
-func TestBothSignatureVersionsValidate(t *testing.T) {
+func TestOnlySignatureV2Validate(t *testing.T) {
 	goodeol := time.Now().Add(time.Hour)
 
 	sk, pk, err := crypto.GenerateEd25519Key(rand.New(rand.NewSource(42)))
@@ -197,17 +197,12 @@ func TestBothSignatureVersionsValidate(t *testing.T) {
 	}
 
 	entry.SignatureV2 = nil
-	if err := Validate(pk, entry); err != nil {
-		t.Fatal(err)
-	}
-
-	entry.SignatureV1 = nil
 	if err := Validate(pk, entry); !errors.Is(err, ErrSignature) {
 		t.Fatal(err)
 	}
 }
 
-func TestNewSignatureVersionPreferred(t *testing.T) {
+func TestSignatureV1Ignored(t *testing.T) {
 	goodeol := time.Now().Add(time.Hour)
 
 	sk, pk, err := crypto.GenerateEd25519Key(rand.New(rand.NewSource(42)))
@@ -251,13 +246,13 @@ func TestNewSignatureVersionPreferred(t *testing.T) {
 		t.Fatal("entry2 should be better than entry1")
 	}
 
-	// Having only the v1 signature should be valid
+	// Having only the v1 signature should be invalid
 	entry2.SignatureV2 = nil
-	if err := Validate(pk, entry2); err != nil {
+	if err := Validate(pk, entry2); !errors.Is(err, ErrSignature) {
 		t.Fatal(err)
 	}
 
-	// However the v2 signature should be preferred
+	// Record with v2 signature should always be preferred
 	best, err = v.Select(ipnsk, [][]byte{mustMarshal(t, entry1), mustMarshal(t, entry2)})
 	if err != nil {
 		t.Fatal(err)
@@ -275,6 +270,26 @@ func TestNewSignatureVersionPreferred(t *testing.T) {
 	// Having an invalid v1 signature is acceptable as long as there is a valid v2 signature
 	entry1.SignatureV1 = []byte("garbage")
 	if err := Validate(pk, entry1); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMaxSizeValidate(t *testing.T) {
+	goodeol := time.Now().Add(time.Hour)
+
+	sk, pk, err := crypto.GenerateEd25519Key(rand.New(rand.NewSource(42)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create record over the max size (value+other fields)
+	value := make([]byte, MaxRecordSize)
+	entry, err := Create(sk, value, 1, goodeol, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Must fail with ErrRecordSize
+	if err := Validate(pk, entry); !errors.Is(err, ErrRecordSize) {
 		t.Fatal(err)
 	}
 }

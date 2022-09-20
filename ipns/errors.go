@@ -35,3 +35,10 @@ var ErrPublicKeyMismatch = errors.New("public key in record did not match expect
 
 // ErrBadRecord should be returned when an ipns record cannot be unmarshalled
 var ErrBadRecord = errors.New("record could not be unmarshalled")
+
+// 10 KiB limit defined in https://github.com/ipfs/specs/pull/319
+const MaxRecordSize int = 10 << (10 * 1)
+
+// ErrRecordSize should be returned when an ipns record is
+// invalid due to being too big
+var ErrRecordSize = errors.New("record exceeds allowed size limit")

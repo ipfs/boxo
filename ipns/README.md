@@ -1,14 +1,13 @@
 # go-ipns
 
-[![](https://img.shields.io/badge/made%20by-Protocol%20Labs-blue.svg?style=flat-square)](http://protocol.ai)
-[![](https://img.shields.io/badge/project-IPFS-blue.svg?style=flat-square)](http://ipfs.io/)
-[![](https://img.shields.io/badge/freenode-%23ipfs-blue.svg?style=flat-square)](http://webchat.freenode.net/?channels=%23ipfs)
+[![](https://img.shields.io/badge/made%20by-Protocol%20Labs-blue.svg?style=flat-square)](https://protocol.ai)
+[![](https://img.shields.io/badge/project-IPFS-blue.svg?style=flat-square)](https://ipfs.tech/)
 [![standard-readme compliant](https://img.shields.io/badge/standard--readme-OK-green.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
 [![GoDoc](https://godoc.org/github.com/ipfs/go-datastore?status.svg)](https://godoc.org/github.com/ipfs/go-ipns)
 
 > ipns record definitions
 
-This package contains all of the components necessary to create, understand, and validate IPNS records. It does *not* publish or resolve those records. [`go-ipfs`](https://github.com/ipfs/go-ipfs) uses this package internally to manipulate records.
+This package contains all of the components necessary to create, understand, and validate IPNS records. It does *not* publish or resolve those records. [Kubo](https://github.com/ipfs/kubo) uses this package internally to manipulate records.
 
 ## Lead Maintainer
 
