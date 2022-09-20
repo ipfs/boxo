@@ -274,6 +274,26 @@ func TestSignatureV1Ignored(t *testing.T) {
 	}
 }
 
+func TestMaxSizeValidate(t *testing.T) {
+	goodeol := time.Now().Add(time.Hour)
+
+	sk, pk, err := crypto.GenerateEd25519Key(rand.New(rand.NewSource(42)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create record over the max size (value+other fields)
+	value := make([]byte, MaxRecordSize)
+	entry, err := Create(sk, value, 1, goodeol, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Must fail with ErrRecordSize
+	if err := Validate(pk, entry); !errors.Is(err, ErrRecordSize) {
+		t.Fatal(err)
+	}
+}
+
 func TestCborDataCanonicalization(t *testing.T) {
 	goodeol := time.Now().Add(time.Hour)
 

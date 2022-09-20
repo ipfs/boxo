@@ -132,6 +132,11 @@ func createCborDataForIpnsEntry(e *pb.IpnsEntry) ([]byte, error) {
 
 // Validates validates the given IPNS entry against the given public key.
 func Validate(pk ic.PubKey, entry *pb.IpnsEntry) error {
+	// Make sure max size is respected
+	if entry.Size() > MaxRecordSize {
+		return ErrRecordSize
+	}
+
 	// Check the ipns record signature with the public key
 	if entry.GetSignatureV2() == nil {
 		// always error if no valid signature could be found
