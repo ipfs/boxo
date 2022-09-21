@@ -35,7 +35,12 @@ func TestProvideRoundtrip(t *testing.T) {
 		t.Fatal("should get sync error on unsigned provide request.")
 	}
 
-	ma, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/tcp/4001")
+	ma1, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/tcp/4001")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ma2, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/tcp/4002")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +48,7 @@ func TestProvideRoundtrip(t *testing.T) {
 	c, s := createClientAndServer(t, testDelegatedRoutingService{}, &client.Provider{
 		Peer: peer.AddrInfo{
 			ID:    pID,
-			Addrs: []multiaddr.Multiaddr{ma},
+			Addrs: []multiaddr.Multiaddr{ma1, ma2},
 		},
 		ProviderProto: []client.TransferProtocol{{Codec: multicodec.TransportBitswap}},
 	}, priv)
