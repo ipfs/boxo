@@ -142,14 +142,14 @@ func parseProtoNodeToAddrInfo(n proto.Node) []peer.AddrInfo {
 	if n.Peer == nil { // ignore non-peer nodes
 		return nil
 	}
-	infos = append(infos, ParseNodeAddresses(n.Peer)...)
+	infos = append(infos, ParseNodeAddresses(n.Peer))
 	return infos
 }
 
 // ParseNodeAddresses parses peer node addresses from the protocol structure Peer.
-func ParseNodeAddresses(n *proto.Peer) []peer.AddrInfo {
+func ParseNodeAddresses(n *proto.Peer) peer.AddrInfo {
 	peerID := peer.ID(n.ID)
-	infos := []peer.AddrInfo{}
+	info := peer.AddrInfo{ID: peerID}
 	for _, addrBytes := range n.Multiaddresses {
 		ma, err := multiaddr.NewMultiaddrBytes(addrBytes)
 		if err != nil {
@@ -162,12 +162,9 @@ func ParseNodeAddresses(n *proto.Peer) []peer.AddrInfo {
 			logger.Infof("dropping provider multiaddress %v ending in /p2p/peerid", ma)
 			continue
 		}
-		infos = append(infos, peer.AddrInfo{ID: peerID, Addrs: []multiaddr.Multiaddr{ma}})
+		info.Addrs = append(info.Addrs, ma)
 	}
-	if len(n.Multiaddresses) == 0 {
-		infos = append(infos, peer.AddrInfo{ID: peerID})
-	}
-	return infos
+	return info
 }
 
 // ToProtoPeer creates a protocol Peer structure from address info.
