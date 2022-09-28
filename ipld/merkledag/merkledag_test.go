@@ -25,6 +25,7 @@ import (
 	u "github.com/ipfs/go-ipfs-util"
 	ipld "github.com/ipfs/go-ipld-format"
 	prime "github.com/ipld/go-ipld-prime"
+	mh "github.com/multiformats/go-multihash"
 )
 
 // makeDepthTestingGraph makes a small DAG with two levels. The level-two
@@ -70,6 +71,40 @@ func traverseAndCheck(t *testing.T, root ipld.Node, ds ipld.DAGService, hasF fun
 			t.Fatal(err)
 		}
 		traverseAndCheck(t, child, ds, hasF)
+	}
+}
+
+func TestBadBuilderEncode(t *testing.T) {
+	n := NodeWithData([]byte("boop"))
+	_, err := n.EncodeProtobuf(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = n.SetCidBuilder(
+		&cid.Prefix{
+			MhType:   mh.SHA2_256,
+			MhLength: -1,
+			Version:  1,
+			Codec:    cid.DagProtobuf,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = n.SetCidBuilder(
+		&cid.Prefix{
+			MhType:   mh.SHA2_256_TRUNC254_PADDED,
+			MhLength: 256,
+			Version:  1,
+			Codec:    cid.DagProtobuf,
+		},
+	)
+	if err == nil {
+		t.Fatal("expected SetCidBuilder to error on unusable hasher")
+	}
+	_, err = n.EncodeProtobuf(false)
+	if err != nil {
+		t.Fatalf("expected EncodeProtobuf to use safe CidBuilder: %v", err)
 	}
 }
 

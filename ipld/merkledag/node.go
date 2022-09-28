@@ -13,6 +13,7 @@ import (
 	dagpb "github.com/ipld/go-codec-dagpb"
 	ipld "github.com/ipld/go-ipld-prime"
 	mh "github.com/multiformats/go-multihash"
+	mhcore "github.com/multiformats/go-multihash/core"
 )
 
 // Common errors
@@ -96,14 +97,26 @@ func (n *ProtoNode) CidBuilder() cid.Builder {
 }
 
 // SetCidBuilder sets the CID builder if it is non nil, if nil then it
-// is reset to the default value
-func (n *ProtoNode) SetCidBuilder(builder cid.Builder) {
+// is reset to the default value. An error will be returned if the builder
+// is not usable.
+func (n *ProtoNode) SetCidBuilder(builder cid.Builder) error {
 	if builder == nil {
 		n.builder = v0CidPrefix
-	} else {
-		n.builder = builder.WithCodec(cid.DagProtobuf)
-		n.cached = cid.Undef
+		return nil
 	}
+	if p, ok := builder.(*cid.Prefix); ok {
+		mhLen := p.MhLength
+		if mhLen <= 0 {
+			mhLen = -1
+		}
+		_, err := mhcore.GetVariableHasher(p.MhType, mhLen)
+		if err != nil {
+			return err
+		}
+	}
+	n.builder = builder.WithCodec(cid.DagProtobuf)
+	n.cached = cid.Undef
+	return nil
 }
 
 // LinkSlice is a slice of format.Links
