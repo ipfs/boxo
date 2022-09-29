@@ -406,19 +406,12 @@ func (n *ProtoNode) MarshalJSON() ([]byte, error) {
 // Cid returns the node's Cid, calculated according to its prefix
 // and raw data contents.
 func (n *ProtoNode) Cid() cid.Cid {
-	if n.encoded != nil && n.cached.Defined() {
-		return n.cached
-	}
-
-	c, err := n.CidBuilder().Sum(n.RawData())
-	if err != nil {
-		// programmer error
-		err = fmt.Errorf("invalid CID of length %d: %x: %v", len(n.RawData()), n.RawData(), err)
+	// re-encode if necessary and we'll get a new cached CID
+	if _, err := n.EncodeProtobuf(false); err != nil {
 		panic(err)
 	}
 
-	n.cached = c
-	return c
+	return n.cached
 }
 
 // String prints the node's Cid.
@@ -428,14 +421,7 @@ func (n *ProtoNode) String() string {
 
 // Multihash hashes the encoded data of this node.
 func (n *ProtoNode) Multihash() mh.Multihash {
-	// NOTE: EncodeProtobuf generates the hash and puts it in n.cached.
-	_, err := n.EncodeProtobuf(false)
-	if err != nil {
-		// Note: no possibility exists for an error to be returned through here
-		panic(err)
-	}
-
-	return n.cached.Hash()
+	return n.Cid().Hash()
 }
 
 // Links returns a copy of the node's links.
