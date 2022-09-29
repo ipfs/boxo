@@ -3,10 +3,12 @@ package merkledag_test
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"strings"
 	"sync"
@@ -27,6 +29,11 @@ import (
 	prime "github.com/ipld/go-ipld-prime"
 	mh "github.com/multiformats/go-multihash"
 )
+
+var someCid cid.Cid = func() cid.Cid {
+	c, _ := cid.Cast([]byte{1, 85, 0, 5, 0, 1, 2, 3, 4})
+	return c
+}()
 
 // makeDepthTestingGraph makes a small DAG with two levels. The level-two
 // nodes are both children of the root and of one of the level 1 nodes.
@@ -106,6 +113,97 @@ func TestBadBuilderEncode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected EncodeProtobuf to use safe CidBuilder: %v", err)
 	}
+}
+
+func TestLinkChecking(t *testing.T) {
+	cases := []struct {
+		name string
+		fn   func(*ProtoNode) error
+	}{
+		{
+			name: "AddRawLink overflow Tsize",
+			fn: func(n *ProtoNode) error {
+				return n.AddRawLink("foo", &ipld.Link{Size: math.MaxUint64, Cid: someCid})
+			},
+		},
+
+		{
+			name: "AddRawLink undefined CID",
+			fn: func(n *ProtoNode) error {
+				return n.AddRawLink("foo", &ipld.Link{Cid: cid.Undef})
+			},
+		},
+
+		{
+			name: "SetLinks overflow Tsize",
+			fn: func(n *ProtoNode) error {
+				return n.SetLinks([]*ipld.Link{{Size: math.MaxUint64, Cid: someCid}})
+			},
+		},
+
+		{
+			name: "SetLinks undefined CID",
+			fn: func(n *ProtoNode) error {
+				return n.SetLinks([]*ipld.Link{{Cid: cid.Undef}})
+			},
+		},
+
+		{
+			name: "UnmarshalJSON overflow Tsize",
+			fn: func(n *ProtoNode) error {
+				return n.UnmarshalJSON([]byte(`{"data":null,"links":[{"Name":"","Size":18446744073709549568,"Cid":{"/":"QmNPWHBrVQiiV8FpyNuEPhB9E2rbvdy9Yx79EY1EJuyf9o"}}]}`))
+			},
+		},
+
+		{
+			name: "UnmarshalJSON undefined CID",
+			fn: func(n *ProtoNode) error {
+				return n.UnmarshalJSON([]byte(`{"data":null,"links":[{"Name":"","Size":100}]}`))
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			n := NodeWithData([]byte("boop"))
+			err := tc.fn(n)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+
+	t.Run("round-trip block with bad Tsize", func(t *testing.T) {
+		badblock, _ := hex.DecodeString("122f0a22122000bb3604d2ecd386227007c548249521fbb9a394e1e26460091d0a692888e7361880f0ffffffffffffff01")
+		n, err := DecodeProtobuf(badblock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// sanity
+		if len(n.Links()) != 1 {
+			t.Fatal("expected a link")
+		}
+		// sanity
+		if n.Links()[0].Size <= math.MaxInt64 {
+			t.Fatal("expected link Tsize to be oversized")
+		}
+
+		// forced round-trip
+		byts, err := n.EncodeProtobuf(true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, err = DecodeProtobuf(byts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(n.Links()) != 1 {
+			t.Fatal("expected a link")
+		}
+		if n.Links()[0].Size != 0 {
+			t.Fatal("expected link Tsize to be truncated on reencode")
+		}
+	})
 }
 
 func TestNode(t *testing.T) {
@@ -604,7 +702,7 @@ func TestGetRawNodes(t *testing.T) {
 func TestProtoNodeResolve(t *testing.T) {
 
 	nd := new(ProtoNode)
-	nd.SetLinks([]*ipld.Link{{Name: "foo"}})
+	nd.SetLinks([]*ipld.Link{{Name: "foo", Cid: someCid}})
 
 	lnk, left, err := nd.ResolveLink([]string{"foo", "bar"})
 	if err != nil {
@@ -959,7 +1057,6 @@ func TestLinkSorting(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		someCid, _ := cid.Cast([]byte{1, 85, 0, 5, 0, 1, 2, 3, 4})
 		if err = node.AddRawLink("foo", &ipld.Link{
 			Size: 10,
 			Cid:  someCid,

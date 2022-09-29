@@ -80,13 +80,20 @@ func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
 	nd, err := qp.BuildMap(dagpb.Type.PBNode, 2, func(ma ipld.MapAssembler) {
 		qp.MapEntry(ma, "Links", qp.List(int64(len(links)), func(la ipld.ListAssembler) {
 			for _, link := range links {
-				qp.ListEntry(la, qp.Map(3, func(ma ipld.MapAssembler) {
-					if link.Cid.Defined() {
+				// it shouldn't be possible to get here with an undefined CID, but in
+				// case it is we're going to drop this link from the encoded form
+				// entirely
+				if link.Cid.Defined() {
+					qp.ListEntry(la, qp.Map(3, func(ma ipld.MapAssembler) {
 						qp.MapEntry(ma, "Hash", qp.Link(cidlink.Link{Cid: link.Cid}))
-					}
-					qp.MapEntry(ma, "Name", qp.String(link.Name))
-					qp.MapEntry(ma, "Tsize", qp.Int(int64(link.Size)))
-				}))
+						qp.MapEntry(ma, "Name", qp.String(link.Name))
+						sz := int64(link.Size)
+						if sz < 0 { // overflow, >MaxInt64 is almost certainly an error
+							sz = 0
+						}
+						qp.MapEntry(ma, "Tsize", qp.Int(sz))
+					}))
+				}
 			}
 		}))
 		if n.data != nil {

@@ -3,7 +3,9 @@ package merkledag
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"sort"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -163,11 +165,15 @@ func (n *ProtoNode) AddNodeLink(name string, that format.Node) error {
 // RemoveNodeLink for the same link, will not result in an identically encoded
 // form as the links will have been sorted.
 func (n *ProtoNode) AddRawLink(name string, l *format.Link) error {
-	n.links = append(n.links, &format.Link{
+	lnk := &format.Link{
 		Name: name,
 		Size: l.Size,
 		Cid:  l.Cid,
-	})
+	}
+	if err := checkLink(lnk); err != nil {
+		return err
+	}
+	n.links = append(n.links, lnk)
 	n.linksDirty = true // needs a sort
 	n.encoded = nil
 	return nil
@@ -360,7 +366,23 @@ func (n *ProtoNode) UnmarshalJSON(b []byte) error {
 	// them until we mutate this node since we're representing the current,
 	// as-serialized state. So n.linksDirty is not set here.
 	n.links = s.Links
+	for _, lnk := range s.Links {
+		if err := checkLink(lnk); err != nil {
+			return err
+		}
+	}
+
 	n.encoded = nil
+	return nil
+}
+
+func checkLink(lnk *format.Link) error {
+	if lnk.Size > math.MaxInt64 {
+		return fmt.Errorf("value of Tsize is too large: %d", lnk.Size)
+	}
+	if !lnk.Cid.Defined() {
+		return errors.New("link must have a value Cid value")
+	}
 	return nil
 }
 
@@ -429,10 +451,16 @@ func (n *ProtoNode) Links() []*format.Link {
 
 // SetLinks replaces the node links with a copy of the provided links. Sorting
 // will be applied to the list.
-func (n *ProtoNode) SetLinks(links []*format.Link) {
+func (n *ProtoNode) SetLinks(links []*format.Link) error {
+	for _, lnk := range links {
+		if err := checkLink(lnk); err != nil {
+			return err
+		}
+	}
 	n.links = append([]*format.Link(nil), links...)
 	n.linksDirty = true // needs a sort
 	n.encoded = nil
+	return nil
 }
 
 // Resolve is an alias for ResolveLink.
