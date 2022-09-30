@@ -271,6 +271,11 @@ func (n *ProtoNode) Copy() format.Node {
 	return nnode
 }
 
+// RawData returns the encoded byte form of this node.
+//
+// Note that this method can panic if a new encode is required and there is an
+// error performing the encode. To avoid a panic, use node.EncodeProtobuf(false)
+// instead (or prior to calling RawData) and check for its returned error value.
 func (n *ProtoNode) RawData() []byte {
 	out, err := n.EncodeProtobuf(false)
 	if err != nil {
@@ -405,21 +410,35 @@ func (n *ProtoNode) MarshalJSON() ([]byte, error) {
 
 // Cid returns the node's Cid, calculated according to its prefix
 // and raw data contents.
+//
+// Note that this method can panic if a new encode is required and there is an
+// error performing the encode. To avoid a panic, call
+// node.EncodeProtobuf(false) prior to calling Cid and check for its returned
+// error value.
 func (n *ProtoNode) Cid() cid.Cid {
 	// re-encode if necessary and we'll get a new cached CID
 	if _, err := n.EncodeProtobuf(false); err != nil {
 		panic(err)
 	}
-
 	return n.cached
 }
 
 // String prints the node's Cid.
+//
+// Note that this method can panic if a new encode is required and there is an
+// error performing the encode. To avoid a panic, call
+// node.EncodeProtobuf(false) prior to calling String and check for its returned
+// error value.
 func (n *ProtoNode) String() string {
 	return n.Cid().String()
 }
 
 // Multihash hashes the encoded data of this node.
+//
+// Note that this method can panic if a new encode is required and there is an
+// error performing the encode. To avoid a panic, call
+// node.EncodeProtobuf(false) prior to calling Multihash and check for its
+// returned error value.
 func (n *ProtoNode) Multihash() mh.Multihash {
 	return n.Cid().Hash()
 }
