@@ -83,7 +83,7 @@ func DownloadFile(c cid.Cid) (io.ReadCloser, error) {
 
 	r := &downloader{
 		Closer: resp.Body,
-		state:  [][]region{{{low: 0, high: 1<<64 - 1, c: c}}},
+		state:  [][]region{{{c: c}}},
 	}
 	r.buf = *bufio.NewReaderSize(resp.Body, maxBlockSize*2+4096*2)
 
