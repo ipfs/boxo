@@ -13,6 +13,7 @@ func main() {
 	err := mainRet()
 	if err != nil {
 		os.Stderr.WriteString(err.Error())
+		os.Stderr.WriteString("\n")
 		os.Exit(1)
 	}
 	os.Exit(0)
@@ -39,13 +40,13 @@ Example:
 
 	r, err := feather.DownloadFile(c)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error starting file download: %w", err)
 	}
 	defer r.Close()
 
 	_, err = io.Copy(os.Stdout, r)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error downloading file: %w", err)
 	}
 	return nil
 }
