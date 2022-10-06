@@ -165,7 +165,8 @@ func (d *downloader) Read(b []byte) (int, error) {
 		pref := c.Prefix()
 		switch pref.MhType {
 		case mh.IDENTITY:
-			data = c.Hash()[1:] // skip the 0x00 prefix
+			data = c.Hash()[1:]                   // skip the 0x00 prefix
+			data = data[len(data)-pref.MhLength:] // skip the multihash length
 		default:
 			if err := verifcid.ValidateCid(c); err != nil {
 				return 0, fmt.Errorf("cid %s don't pass safe test: %w", cidStringTruncate(c), err)
@@ -223,7 +224,7 @@ func (d *downloader) Read(b []byte) (int, error) {
 			if todo.rangeKnown {
 				expectedSize := todo.high - todo.low
 				if uint64(len(data)) != expectedSize {
-					return 0, fmt.Errorf("leaf isn't size is incorrect for %s, expected %d; got %d", cidStringTruncate(c), len(data), expectedSize)
+					return 0, fmt.Errorf("leaf isn't size is incorrect for %s, expected %d; got %d", cidStringTruncate(c), expectedSize, len(data))
 				}
 			}
 			d.curBlock = data
