@@ -18,6 +18,11 @@ func Reify(lnkCtx ipld.LinkContext, maybePBNodeRoot ipld.Node, lsys *ipld.LinkSy
 	return doReify(lnkCtx, maybePBNodeRoot, lsys, true)
 }
 
+// nonLazyReify works like reify but will load all of a directory or file as it reaches them.
+func nonLazyReify(lnkCtx ipld.LinkContext, maybePBNodeRoot ipld.Node, lsys *ipld.LinkSystem) (ipld.Node, error) {
+	return doReify(lnkCtx, maybePBNodeRoot, lsys, false)
+}
+
 func doReify(lnkCtx ipld.LinkContext, maybePBNodeRoot ipld.Node, lsys *ipld.LinkSystem, lazy bool) (ipld.Node, error) {
 	pbNode, ok := maybePBNodeRoot.(dagpb.PBNode)
 	if !ok {
@@ -47,7 +52,7 @@ func doReify(lnkCtx ipld.LinkContext, maybePBNodeRoot ipld.Node, lsys *ipld.Link
 type reifyTypeFunc func(context.Context, dagpb.PBNode, data.UnixFSData, *ipld.LinkSystem) (ipld.Node, error)
 
 var reifyFuncs = map[int64]reifyTypeFunc{
-	data.Data_File:      unixFSFileReifier,
+	data.Data_File:      unixFSFileReifierWithPreload,
 	data.Data_Metadata:  defaultUnixFSReifier,
 	data.Data_Raw:       unixFSFileReifier,
 	data.Data_Symlink:   defaultUnixFSReifier,
@@ -71,6 +76,10 @@ func defaultReifier(_ context.Context, substrate dagpb.PBNode, _ *ipld.LinkSyste
 
 func unixFSFileReifier(ctx context.Context, substrate dagpb.PBNode, _ data.UnixFSData, ls *ipld.LinkSystem) (ipld.Node, error) {
 	return file.NewUnixFSFile(ctx, substrate, ls)
+}
+
+func unixFSFileReifierWithPreload(ctx context.Context, substrate dagpb.PBNode, _ data.UnixFSData, ls *ipld.LinkSystem) (ipld.Node, error) {
+	return file.NewUnixFSFileWithPreload(ctx, substrate, ls)
 }
 
 func defaultUnixFSReifier(ctx context.Context, substrate dagpb.PBNode, _ data.UnixFSData, ls *ipld.LinkSystem) (ipld.Node, error) {

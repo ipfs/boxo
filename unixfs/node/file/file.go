@@ -33,6 +33,21 @@ func NewUnixFSFile(ctx context.Context, substrate ipld.Node, lsys *ipld.LinkSyst
 	}, nil
 }
 
+func NewUnixFSFileWithPreload(ctx context.Context, substrate ipld.Node, lsys *ipld.LinkSystem) (LargeBytesNode, error) {
+	f, err := NewUnixFSFile(ctx, substrate, lsys)
+	if err != nil {
+		return nil, err
+	}
+	r, err := f.AsLargeBytes()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.Copy(io.Discard, r); err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
 // A LargeBytesNode is an ipld.Node that can be streamed over. It is guaranteed to have a Bytes type.
 type LargeBytesNode interface {
 	ipld.Node
