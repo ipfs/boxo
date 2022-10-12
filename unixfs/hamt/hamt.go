@@ -86,7 +86,12 @@ type Shard struct {
 
 // NewShard creates a new, empty HAMT shard with the given size.
 func NewShard(dserv ipld.DAGService, size int) (*Shard, error) {
-	ds, err := makeShard(dserv, size)
+	return NewShardValue(dserv, size, "", nil)
+}
+
+// NewShardValue creates a new, empty HAMT shard with the given key, value and size.
+func NewShardValue(dserv ipld.DAGService, size int, key string, value *ipld.Link) (*Shard, error) {
+	ds, err := makeShard(dserv, size, key, value)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +101,7 @@ func NewShard(dserv ipld.DAGService, size int) (*Shard, error) {
 	return ds, nil
 }
 
-func makeShard(ds ipld.DAGService, size int) (*Shard, error) {
+func makeShard(ds ipld.DAGService, size int, key string, val *ipld.Link) (*Shard, error) {
 	lg2s, err := Logtwo(size)
 	if err != nil {
 		return nil, err
@@ -109,6 +114,9 @@ func makeShard(ds ipld.DAGService, size int) (*Shard, error) {
 		childer:      newChilder(ds, size),
 		tableSize:    size,
 		dserv:        ds,
+
+		key: key,
+		val: val,
 	}
 
 	s.childer.sd = s
@@ -138,7 +146,7 @@ func NewHamtFromDag(dserv ipld.DAGService, nd ipld.Node) (*Shard, error) {
 
 	size := int(fsn.Fanout())
 
-	ds, err := makeShard(dserv, size)
+	ds, err := makeShard(dserv, size, "", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +222,7 @@ func (ds *Shard) Node() (ipld.Node, error) {
 
 func (ds *Shard) makeShardValue(lnk *ipld.Link) (*Shard, error) {
 	lnk2 := *lnk
-	s, err := makeShard(ds.dserv, ds.tableSize)
+	s, err := makeShard(ds.dserv, ds.tableSize, "", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -795,7 +803,11 @@ func (s *childer) insert(key string, lnk *ipld.Link, idx int) error {
 
 	lnk.Name = s.sd.linkNamePrefix(idx) + key
 	i := s.sliceIndex(idx)
-	sd := &Shard{key: key, val: lnk}
+
+	sd, err := NewShardValue(s.dserv, 256, key, lnk)
+	if err != nil {
+		return err
+	}
 
 	s.children = append(s.children[:i], append([]*Shard{sd}, s.children[i:]...)...)
 	s.links = append(s.links[:i], append([]*ipld.Link{nil}, s.links[i:]...)...)

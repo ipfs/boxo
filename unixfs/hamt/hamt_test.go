@@ -435,6 +435,38 @@ func TestDuplicateAddShard(t *testing.T) {
 	}
 }
 
+// fix https://github.com/ipfs/kubo/issues/9063
+func TestSetLink(t *testing.T) {
+	ds := mdtest.Mock()
+	dir, _ := NewShard(ds, 256)
+	_, s, err := makeDir(ds, 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lnk, err := s.Link()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	err = dir.SetLink(ctx, "test", lnk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(dir.childer.children) != 1 {
+		t.Fatal("no child")
+	}
+
+	for _, sh := range dir.childer.children {
+		if sh.childer == nil {
+			t.Fatal("no childer on shard")
+		}
+	}
+}
+
 func TestLoadFailsFromNonShard(t *testing.T) {
 	ds := mdtest.Mock()
 	nd := ft.EmptyDirNode()
