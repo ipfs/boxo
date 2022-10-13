@@ -1,9 +1,6 @@
 Repository Name
 =======================
-
-> Repository tagline
-
-A longer repository description.
+Documentation is needed in this Readme, but in the meantime this blog post is a good starting point: https://blog.ipfs.tech/2022-09-02-introducing-reframe/
 
 ## Documentation
 
