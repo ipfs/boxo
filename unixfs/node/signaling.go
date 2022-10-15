@@ -15,6 +15,7 @@ func AddUnixFSReificationToLinkSystem(lsys *ipld.LinkSystem) {
 		lsys.KnownReifiers = make(map[string]linking.NodeReifier)
 	}
 	lsys.KnownReifiers["unixfs"] = Reify
+	lsys.KnownReifiers["unixfs-preload"] = nonLazyReify
 }
 
 // UnixFSPathSelector creates a selector for a file/path inside of a UnixFS directory

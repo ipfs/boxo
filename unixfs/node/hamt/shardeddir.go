@@ -54,6 +54,22 @@ func NewUnixFSHAMTShard(ctx context.Context, substrate dagpb.PBNode, data data.U
 	}, nil
 }
 
+// NewUnixFSHAMTShardWithPreload attempts to construct a UnixFSHAMTShard node from the base protobuf node plus
+// a decoded UnixFSData structure, and then iterate through and load the full set of hamt shards.
+func NewUnixFSHAMTShardWithPreload(ctx context.Context, substrate dagpb.PBNode, data data.UnixFSData, lsys *ipld.LinkSystem) (ipld.Node, error) {
+	n, err := NewUnixFSHAMTShard(ctx, substrate, data, lsys)
+	if err != nil {
+		return n, err
+	}
+
+	traverse := n.Length()
+	if traverse == -1 {
+		return n, fmt.Errorf("could not fully explore hamt during preload")
+	}
+
+	return n, nil
+}
+
 func (n UnixFSHAMTShard) Substrate() ipld.Node {
 	return n._substrate
 }
