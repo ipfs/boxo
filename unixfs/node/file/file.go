@@ -33,6 +33,10 @@ func NewUnixFSFile(ctx context.Context, substrate ipld.Node, lsys *ipld.LinkSyst
 	}, nil
 }
 
+// NewUnixFSFileWithPreload is the same as NewUnixFSFile but it performs a full load of constituent
+// blocks where the file spans multiple blocks. This is useful where a system needs to watch the
+// LinkSystem for block loads to determine which blocks make up this file.
+// NewUnixFSFileWithPreload is used by the "unixfs-preload" reifier.
 func NewUnixFSFileWithPreload(ctx context.Context, substrate ipld.Node, lsys *ipld.LinkSystem) (LargeBytesNode, error) {
 	f, err := NewUnixFSFile(ctx, substrate, lsys)
 	if err != nil {
