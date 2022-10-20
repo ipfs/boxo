@@ -2,181 +2,84 @@ package client
 
 import (
 	"context"
-	"errors"
-	"time"
+	"encoding/json"
+	"net/http"
+	"path"
 
 	"github.com/ipfs/go-cid"
-	proto "github.com/ipfs/go-delegated-routing/gen/proto"
-	ipns "github.com/ipfs/go-ipns"
-	logging "github.com/ipfs/go-log/v2"
-	"github.com/ipld/edelweiss/values"
-	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
-	record "github.com/libp2p/go-libp2p-record"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multicodec"
 )
 
-var logger = logging.Logger("service/client/delegatedrouting")
-
-type DelegatedRoutingClient interface {
-	FindProviders(ctx context.Context, key cid.Cid) ([]peer.AddrInfo, error)
-	FindProvidersAsync(ctx context.Context, key cid.Cid) (<-chan FindProvidersAsyncResult, error)
-	GetIPNS(ctx context.Context, id []byte) ([]byte, error)
-	GetIPNSAsync(ctx context.Context, id []byte) (<-chan GetIPNSAsyncResult, error)
-	PutIPNS(ctx context.Context, id []byte, record []byte) error
-	PutIPNSAsync(ctx context.Context, id []byte, record []byte) (<-chan PutIPNSAsyncResult, error)
-	Provide(ctx context.Context, key []cid.Cid, ttl time.Duration) (time.Duration, error)
-	ProvideAsync(ctx context.Context, key []cid.Cid, ttl time.Duration) (<-chan time.Duration, error)
-}
-
-type Client struct {
-	client    proto.DelegatedRouting_Client
-	validator record.Validator
-
-	provider *Provider
-	identity crypto.PrivKey
-}
-
-var _ DelegatedRoutingClient = (*Client)(nil)
-
-// NewClient creates a client.
-// The Provider and identity parameters are option. If they are nil, the `Provide` method will not function.
-func NewClient(c proto.DelegatedRouting_Client, p *Provider, identity crypto.PrivKey) (*Client, error) {
-	if p != nil && !p.Peer.ID.MatchesPublicKey(identity.GetPublic()) {
-		return nil, errors.New("identity does not match provider")
+func (p *Provider) UnmarshalJSON(b []byte) error {
+	type prov struct {
+		Peer      peer.AddrInfo
+		Protocols []TransferProtocol
 	}
-
-	return &Client{
-		client:    c,
-		validator: ipns.Validator{},
-		provider:  p,
-		identity:  identity,
-	}, nil
-}
-
-func (fp *Client) FindProviders(ctx context.Context, key cid.Cid) ([]peer.AddrInfo, error) {
-	resps, err := fp.client.FindProviders(ctx, cidsToFindProvidersRequest(key))
+	tempProv := prov{}
+	err := json.Unmarshal(b, &tempProv)
 	if err != nil {
-		return nil, err
-	}
-	infos := []peer.AddrInfo{}
-	for _, resp := range resps {
-		infos = append(infos, parseFindProvidersResponse(resp)...)
-	}
-	return infos, nil
-}
-
-type FindProvidersAsyncResult struct {
-	AddrInfo []peer.AddrInfo
-	Err      error
-}
-
-// FindProvidersAsync processes the stream of raw protocol async results into a stream of parsed results.
-// Specifically, FindProvidersAsync converts protocol-level provider descriptions into peer address infos.
-func (fp *Client) FindProvidersAsync(ctx context.Context, key cid.Cid) (<-chan FindProvidersAsyncResult, error) {
-	protoRespCh, err := fp.client.FindProviders_Async(ctx, cidsToFindProvidersRequest(key))
-	if err != nil {
-		return nil, err
+		return err
 	}
 
-	parsedRespCh := make(chan FindProvidersAsyncResult, 1)
-	go func() {
-		defer close(parsedRespCh)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case par, ok := <-protoRespCh:
-				if !ok {
-					return
-				}
+	p.Peer = tempProv.Peer
+	p.Protocols = tempProv.Protocols
 
-				var parsedAsyncResp FindProvidersAsyncResult
-
-				parsedAsyncResp.Err = par.Err
-				if par.Resp != nil {
-					parsedAsyncResp.AddrInfo = parseFindProvidersResponse(par.Resp)
-				}
-
-				select {
-				case <-ctx.Done():
-					return
-				case parsedRespCh <- parsedAsyncResp:
-				}
-
-			}
-		}
-	}()
-
-	return parsedRespCh, nil
-}
-
-func cidsToFindProvidersRequest(cid cid.Cid) *proto.FindProvidersRequest {
-	return &proto.FindProvidersRequest{
-		Key: proto.LinkToAny(cid),
-	}
-}
-
-func parseFindProvidersResponse(resp *proto.FindProvidersResponse) []peer.AddrInfo {
-	infos := []peer.AddrInfo{}
-	for _, prov := range resp.Providers {
-		if !providerSupportsBitswap(prov.ProviderProto) {
-			continue
-		}
-		infos = append(infos, parseProtoNodeToAddrInfo(prov.ProviderNode)...)
-	}
-	return infos
-}
-
-func providerSupportsBitswap(supported proto.TransferProtocolList) bool {
-	for _, p := range supported {
-		if p.Bitswap != nil {
-			return true
-		}
-	}
-	return false
-}
-
-func parseProtoNodeToAddrInfo(n proto.Node) []peer.AddrInfo {
-	infos := []peer.AddrInfo{}
-	if n.Peer == nil { // ignore non-peer nodes
-		return nil
-	}
-	infos = append(infos, ParseNodeAddresses(n.Peer))
-	return infos
-}
-
-// ParseNodeAddresses parses peer node addresses from the protocol structure Peer.
-func ParseNodeAddresses(n *proto.Peer) peer.AddrInfo {
-	peerID := peer.ID(n.ID)
-	info := peer.AddrInfo{ID: peerID}
-	for _, addrBytes := range n.Multiaddresses {
-		ma, err := multiaddr.NewMultiaddrBytes(addrBytes)
-		if err != nil {
-			logger.Infof("cannot parse multiaddress (%v)", err)
-			continue
-		}
-		// drop multiaddrs that end in /p2p/peerID
+	p.Peer.Addrs = nil
+	for _, ma := range tempProv.Peer.Addrs {
 		_, last := multiaddr.SplitLast(ma)
 		if last != nil && last.Protocol().Code == multiaddr.P_P2P {
 			logger.Infof("dropping provider multiaddress %v ending in /p2p/peerid", ma)
 			continue
 		}
-		info.Addrs = append(info.Addrs, ma)
+		p.Peer.Addrs = append(p.Peer.Addrs, ma)
 	}
-	return info
+
+	return nil
 }
 
-// ToProtoPeer creates a protocol Peer structure from address info.
-func ToProtoPeer(ai peer.AddrInfo) *proto.Peer {
-	p := proto.Peer{
-		ID:             values.Bytes(ai.ID),
-		Multiaddresses: make(proto.AnonList21, 0),
+type findProvidersResponse struct {
+	Providers []Provider
+}
+
+func (fp *Client) FindProviders(ctx context.Context, key cid.Cid) ([]peer.AddrInfo, error) {
+	url := path.Join(fp.baseURL, "providers", key.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
 	}
 
-	for _, addr := range ai.Addrs {
-		p.Multiaddresses = append(p.Multiaddresses, addr.Bytes())
+	resp, err := fp.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, httpError(resp.StatusCode, resp.Body)
 	}
 
-	return &p
+	parsedResp := &findProvidersResponse{}
+	err = json.NewDecoder(resp.Body).Decode(parsedResp)
+	if err != nil {
+		return nil, err
+	}
+
+	infos := []peer.AddrInfo{}
+	for _, prov := range parsedResp.Providers {
+		supportsBitswap := false
+		for _, proto := range prov.Protocols {
+			if proto.Codec != multicodec.TransportBitswap {
+				supportsBitswap = true
+				break
+			}
+		}
+		if !supportsBitswap {
+			continue
+		}
+		infos = append(infos, prov.Peer)
+	}
+
+	return infos, nil
 }

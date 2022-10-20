@@ -1,93 +1,50 @@
 package client
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"path"
 
-	"github.com/ipfs/go-delegated-routing/gen/proto"
 	ipns "github.com/ipfs/go-ipns"
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/routing"
 )
 
-func (fp *Client) GetIPNS(ctx context.Context, id []byte) ([]byte, error) {
-	resps, err := fp.GetIPNSAsync(ctx, id)
+func (fp *Client) GetIPNSRecord(ctx context.Context, id []byte) ([]byte, error) {
+	peerID, err := peer.IDFromBytes(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid peer ID: %w", err)
+	}
+	url := path.Join(fp.baseURL, "ipns", peerID.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	records := [][]byte{}
-	for resp := range resps {
-		if resp.Err == nil {
-			records = append(records, resp.Record)
-		}
-	}
-	if len(records) == 0 {
-		return nil, routing.ErrNotFound
-	}
-	best, err := fp.validator.Select(ipns.RecordKey(peer.ID(id)), records)
+
+	resp, err := fp.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	return records[best], nil
-}
+	defer resp.Body.Close()
 
-type GetIPNSAsyncResult struct {
-	Record []byte
-	Err    error
-}
+	if resp.StatusCode != http.StatusOK {
+		return nil, httpError(resp.StatusCode, resp.Body)
+	}
 
-func (fp *Client) GetIPNSAsync(ctx context.Context, id []byte) (<-chan GetIPNSAsyncResult, error) {
-	ch0, err := fp.client.GetIPNS_Async(ctx, &proto.GetIPNSRequest{ID: id})
+	buf := &bytes.Buffer{}
+	_, err = io.Copy(buf, resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading IPNS record: %w", err)
+	}
+
+	// validate the record
+	recordBytes := buf.Bytes()
+	err = fp.validator.Validate(ipns.RecordKey(peerID), recordBytes)
 	if err != nil {
 		return nil, err
 	}
-	ch1 := make(chan GetIPNSAsyncResult, 1)
-	go func() {
-		defer close(ch1)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case r0, ok := <-ch0:
-				if !ok {
-					return
-				}
 
-				var r1 GetIPNSAsyncResult
-
-				if r0.Err != nil {
-					r1.Err = r0.Err
-					select {
-					case <-ctx.Done():
-						return
-					case ch1 <- r1:
-					}
-					continue
-				}
-
-				if r0.Resp == nil {
-					continue
-				}
-
-				if err = fp.validator.Validate(ipns.RecordKey(peer.ID(id)), r0.Resp.Record); err != nil {
-					r1.Err = err
-					select {
-					case <-ctx.Done():
-						return
-					case ch1 <- r1:
-					}
-
-					continue
-				}
-
-				r1.Record = r0.Resp.Record
-
-				select {
-				case <-ctx.Done():
-					return
-				case ch1 <- r1:
-				}
-			}
-		}
-	}()
-	return ch1, nil
+	return recordBytes, nil
 }
