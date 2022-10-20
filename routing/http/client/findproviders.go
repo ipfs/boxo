@@ -12,10 +12,6 @@ import (
 	"github.com/multiformats/go-multicodec"
 )
 
-type findProvidersResponse struct {
-	Providers []delegatedrouting.Provider
-}
-
 func (fp *Client) FindProviders(ctx context.Context, key cid.Cid) ([]peer.AddrInfo, error) {
 	url := path.Join(fp.baseURL, "providers", key.String())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -33,7 +29,7 @@ func (fp *Client) FindProviders(ctx context.Context, key cid.Cid) ([]peer.AddrIn
 		return nil, httpError(resp.StatusCode, resp.Body)
 	}
 
-	parsedResp := &findProvidersResponse{}
+	parsedResp := &delegatedrouting.FindProvidersResult{}
 	err = json.NewDecoder(resp.Body).Decode(parsedResp)
 	if err != nil {
 		return nil, err

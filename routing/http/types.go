@@ -23,11 +23,19 @@ type TransferProtocol struct {
 	Payload json.RawMessage
 }
 
+type ProvideResult struct {
+	AdvisoryTTL time.Duration
+}
+
 type ProvideRequestPayload struct {
 	Keys        []string //cids
 	Timestamp   int64
 	AdvisoryTTL time.Duration
 	Provider    Provider
+}
+
+type FindProvidersResult struct {
+	Providers []Provider
 }
 
 type Provider struct {
@@ -71,9 +79,8 @@ type ProvideRequest struct {
 // Sign a provide request
 func (pr *ProvideRequest) Sign(peerID peer.ID, key crypto.PrivKey) error {
 	if pr.IsSigned() {
-		return errors.New("already Signed")
+		return errors.New("already signed")
 	}
-	//	pr.Timestamp = time.Now().Unix()
 
 	if key == nil {
 		return errors.New("no key provided")
@@ -132,7 +139,9 @@ func (pr *ProvideRequest) Verify() error {
 		return fmt.Errorf("multibase-decoding signature to verify: %w", err)
 	}
 
-	ok, err := pk.Verify(payloadBytes, sigBytes)
+	hash := sha256.New().Sum(payloadBytes)
+
+	ok, err := pk.Verify(hash, sigBytes)
 	if err != nil {
 		return err
 	}
@@ -146,8 +155,4 @@ func (pr *ProvideRequest) Verify() error {
 // IsSigned indicates if the ProvideRequest has been signed
 func (pr *ProvideRequest) IsSigned() bool {
 	return pr.Signature != ""
-}
-
-type ProvideResult struct {
-	AdvisoryTTL time.Duration
 }
