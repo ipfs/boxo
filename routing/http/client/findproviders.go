@@ -7,40 +7,13 @@ import (
 	"path"
 
 	"github.com/ipfs/go-cid"
+	delegatedrouting "github.com/ipfs/go-delegated-routing"
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multicodec"
 )
 
-func (p *Provider) UnmarshalJSON(b []byte) error {
-	type prov struct {
-		Peer      peer.AddrInfo
-		Protocols []TransferProtocol
-	}
-	tempProv := prov{}
-	err := json.Unmarshal(b, &tempProv)
-	if err != nil {
-		return err
-	}
-
-	p.Peer = tempProv.Peer
-	p.Protocols = tempProv.Protocols
-
-	p.Peer.Addrs = nil
-	for _, ma := range tempProv.Peer.Addrs {
-		_, last := multiaddr.SplitLast(ma)
-		if last != nil && last.Protocol().Code == multiaddr.P_P2P {
-			logger.Infof("dropping provider multiaddress %v ending in /p2p/peerid", ma)
-			continue
-		}
-		p.Peer.Addrs = append(p.Peer.Addrs, ma)
-	}
-
-	return nil
-}
-
 type findProvidersResponse struct {
-	Providers []Provider
+	Providers []delegatedrouting.Provider
 }
 
 func (fp *Client) FindProviders(ctx context.Context, key cid.Cid) ([]peer.AddrInfo, error) {

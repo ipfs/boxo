@@ -7,11 +7,15 @@ import (
 	"fmt"
 	"time"
 
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multicodec"
 )
+
+var logger = logging.Logger("service/delegatedrouting")
 
 // TransferProtocol represents a data transfer protocol
 type TransferProtocol struct {
@@ -29,6 +33,33 @@ type ProvideRequestPayload struct {
 type Provider struct {
 	Peer      peer.AddrInfo
 	Protocols []TransferProtocol
+}
+
+func (p *Provider) UnmarshalJSON(b []byte) error {
+	type prov struct {
+		Peer      peer.AddrInfo
+		Protocols []TransferProtocol
+	}
+	tempProv := prov{}
+	err := json.Unmarshal(b, &tempProv)
+	if err != nil {
+		return err
+	}
+
+	p.Peer = tempProv.Peer
+	p.Protocols = tempProv.Protocols
+
+	p.Peer.Addrs = nil
+	for _, ma := range tempProv.Peer.Addrs {
+		_, last := multiaddr.SplitLast(ma)
+		if last != nil && last.Protocol().Code == multiaddr.P_P2P {
+			logger.Infof("dropping provider multiaddress %v ending in /p2p/peerid", ma)
+			continue
+		}
+		p.Peer.Addrs = append(p.Peer.Addrs, ma)
+	}
+
+	return nil
 }
 
 // ProvideRequest is a message indicating a provider can provide a Key for a given TTL

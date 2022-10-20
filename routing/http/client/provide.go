@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
+	delegatedrouting "github.com/ipfs/go-delegated-routing"
 	"github.com/multiformats/go-multibase"
 )
 
@@ -19,7 +20,7 @@ func (fp *Client) Provide(ctx context.Context, keys []cid.Cid, ttl time.Duration
 	for i, c := range keys {
 		keysStrs[i] = c.String()
 	}
-	reqPayload := ProvideRequestPayload{
+	reqPayload := delegatedrouting.ProvideRequestPayload{
 		Keys:        keysStrs,
 		AdvisoryTTL: ttl,
 		Timestamp:   time.Now().Unix(),
@@ -35,7 +36,7 @@ func (fp *Client) Provide(ctx context.Context, keys []cid.Cid, ttl time.Duration
 		return 0, err
 	}
 
-	req := ProvideRequest{Payload: reqPayloadEncoded}
+	req := delegatedrouting.ProvideRequest{Payload: reqPayloadEncoded}
 
 	if fp.identity != nil {
 		if err := req.Sign(fp.provider.Peer.ID, fp.identity); err != nil {
@@ -57,7 +58,7 @@ type provideRequest struct {
 }
 
 // ProvideAsync makes a provide request to a delegated router
-func (fp *Client) ProvideSignedRecord(ctx context.Context, req ProvideRequest) (time.Duration, error) {
+func (fp *Client) ProvideSignedRecord(ctx context.Context, req delegatedrouting.ProvideRequest) (time.Duration, error) {
 	if !req.IsSigned() {
 		return 0, errors.New("request is not signed")
 	}
@@ -81,7 +82,7 @@ func (fp *Client) ProvideSignedRecord(ctx context.Context, req ProvideRequest) (
 		return 0, httpError(resp.StatusCode, resp.Body)
 	}
 
-	provideResult := ProvideResult{}
+	provideResult := delegatedrouting.ProvideResult{}
 	err = json.NewDecoder(resp.Body).Decode(&provideResult)
 	return provideResult.AdvisoryTTL, err
 }
