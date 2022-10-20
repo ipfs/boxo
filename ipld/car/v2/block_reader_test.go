@@ -3,6 +3,7 @@ package car_test
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -103,6 +104,41 @@ func TestBlockReader_WithCarV1Consistency(t *testing.T) {
 				require.Equal(t, wantErr, gotErr)
 				if gotErr == io.EOF {
 					break
+				}
+			}
+		})
+		t.Run(tt.name+"-skipping-reads", func(t *testing.T) {
+			r := requireReaderFromPath(t, tt.path)
+			subject, err := carv2.NewBlockReader(r, carv2.ZeroLengthSectionAsEOF(tt.zerLenAsEOF))
+			require.NoError(t, err)
+
+			require.Equal(t, tt.wantVersion, subject.Version)
+
+			var wantReader *carv1.CarReader
+			switch tt.wantVersion {
+			case 1:
+				wantReader = requireNewCarV1ReaderFromV1File(t, tt.path, tt.zerLenAsEOF)
+			case 2:
+				wantReader = requireNewCarV1ReaderFromV2File(t, tt.path, tt.zerLenAsEOF)
+			default:
+				require.Failf(t, "invalid test-case", "unknown wantVersion %v", tt.wantVersion)
+			}
+			require.Equal(t, wantReader.Header.Roots, subject.Roots)
+
+			for {
+				gotBlock, gotErr := subject.SkipNext()
+				wantBlock, wantErr := wantReader.Next()
+				if wantErr != nil && gotErr == nil {
+					fmt.Printf("want was %+v\n", wantReader)
+					fmt.Printf("want was err, got was %+v / %d\n", gotBlock, gotBlock.Size)
+				}
+				require.Equal(t, wantErr, gotErr)
+				if gotErr == io.EOF {
+					break
+				}
+				if gotErr == nil {
+					require.Equal(t, wantBlock.Cid(), gotBlock.Cid)
+					require.Equal(t, uint64(len(wantBlock.RawData())), gotBlock.Size)
 				}
 			}
 		})
