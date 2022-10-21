@@ -19,7 +19,8 @@ var logger = logging.Logger("service/delegatedrouting")
 
 // TransferProtocol represents a data transfer protocol
 type TransferProtocol struct {
-	Codec   multicodec.Code
+	Codec multicodec.Code
+	// Payload optionally contains extra data about the transfer protocol
 	Payload json.RawMessage
 }
 
@@ -39,32 +40,39 @@ type FindProvidersResult struct {
 }
 
 type Provider struct {
-	Peer      peer.AddrInfo
+	PeerID    peer.ID
+	Addrs     []multiaddr.Multiaddr
 	Protocols []TransferProtocol
 }
 
 func (p *Provider) UnmarshalJSON(b []byte) error {
 	type prov struct {
-		Peer      peer.AddrInfo
+		PeerID    peer.ID
+		Addrs     []string
 		Protocols []TransferProtocol
 	}
 	tempProv := prov{}
 	err := json.Unmarshal(b, &tempProv)
 	if err != nil {
-		return err
+		return fmt.Errorf("unmarshaling provider: %w", err)
 	}
 
-	p.Peer = tempProv.Peer
+	p.PeerID = tempProv.PeerID
 	p.Protocols = tempProv.Protocols
 
-	p.Peer.Addrs = nil
-	for _, ma := range tempProv.Peer.Addrs {
+	p.Addrs = nil
+	for i, maStr := range tempProv.Addrs {
+		ma, err := multiaddr.NewMultiaddr(maStr)
+		if err != nil {
+			return fmt.Errorf("parsing multiaddr %d: %w", i, err)
+		}
+
 		_, last := multiaddr.SplitLast(ma)
 		if last != nil && last.Protocol().Code == multiaddr.P_P2P {
 			logger.Infof("dropping provider multiaddress %v ending in /p2p/peerid", ma)
 			continue
 		}
-		p.Peer.Addrs = append(p.Peer.Addrs, ma)
+		p.Addrs = append(p.Addrs, ma)
 	}
 
 	return nil
@@ -129,7 +137,7 @@ func (pr *ProvideRequest) Verify() error {
 		return fmt.Errorf("unmarshaling payload to verify: %w", err)
 	}
 
-	pk, err := payload.Provider.Peer.ID.ExtractPublicKey()
+	pk, err := payload.Provider.PeerID.ExtractPublicKey()
 	if err != nil {
 		return err
 	}

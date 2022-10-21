@@ -14,10 +14,8 @@ import (
 	"github.com/ipfs/go-cid"
 	delegatedrouting "github.com/ipfs/go-delegated-routing"
 	"github.com/multiformats/go-multibase"
-	"github.com/multiformats/go-multicodec"
 
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 var logger = logging.Logger("service/server/delegatedrouting")
@@ -30,14 +28,20 @@ type ProvideRequest struct {
 }
 
 type ContentRouter interface {
-	FindProviders(ctx context.Context, key cid.Cid) ([]peer.AddrInfo, error)
+	FindProviders(ctx context.Context, key cid.Cid) ([]delegatedrouting.Provider, error)
 	Provide(ctx context.Context, req ProvideRequest) (time.Duration, error)
 	Ready() bool
 }
 
-func Handler(svc ContentRouter) http.Handler {
+type serverOption func(s *server)
+
+func Handler(svc ContentRouter, opts ...serverOption) http.Handler {
 	server := &server{
 		svc: svc,
+	}
+
+	for _, opt := range opts {
+		opt(server)
 	}
 
 	r := mux.NewRouter()
@@ -99,17 +103,7 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 		writeErr(w, "Provide", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
 	}
-
-	respBytes, err := json.Marshal(delegatedrouting.ProvideResult{AdvisoryTTL: advisoryTTL})
-	if err != nil {
-		writeErr(w, "Provide", http.StatusInternalServerError, fmt.Errorf("marshaling response: %w", err))
-		return
-	}
-
-	_, err = io.Copy(w, bytes.NewReader(respBytes))
-	if err != nil {
-		logErr("Provide", "writing response body", err)
-	}
+	writeResult(w, "Provide", delegatedrouting.ProvideResult{AdvisoryTTL: advisoryTTL})
 }
 
 func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
@@ -120,25 +114,13 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		writeErr(w, "FindProviders", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
 		return
 	}
-	addrInfos, err := s.svc.FindProviders(httpReq.Context(), cid)
+	providers, err := s.svc.FindProviders(httpReq.Context(), cid)
 	if err != nil {
 		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
 	}
-	var providers []delegatedrouting.Provider
-	for _, ai := range addrInfos {
-		providers = append(providers, delegatedrouting.Provider{
-			Peer:      ai,
-			Protocols: []delegatedrouting.TransferProtocol{{Codec: multicodec.TransportBitswap}},
-		})
-	}
 	response := delegatedrouting.FindProvidersResult{Providers: providers}
-	respBytes, err := json.Marshal(response)
-	if err != nil {
-		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("marshaling response: %w", err))
-		return
-	}
-	_, err = io.Copy(w, bytes.NewReader(respBytes))
+	writeResult(w, "FindProviders", response)
 }
 
 func (s *server) ping(w http.ResponseWriter, req *http.Request) {
@@ -146,6 +128,23 @@ func (s *server) ping(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+}
+
+func writeResult(w http.ResponseWriter, method string, val any) {
+	// keep the marshaling separate from the writing, so we can distinguish bugs (which surface as 500)
+	// from transient network issues (which surface as transport errors)
+	buf := &bytes.Buffer{}
+	encoder := json.NewEncoder(buf)
+	encoder.SetEscapeHTML(false)
+	err := encoder.Encode(val)
+	if err != nil {
+		writeErr(w, method, http.StatusInternalServerError, fmt.Errorf("marshaling response: %w", err))
+		return
+	}
+	_, err = io.Copy(w, buf)
+	if err != nil {
+		logErr("Provide", "writing response body", err)
 	}
 }
 

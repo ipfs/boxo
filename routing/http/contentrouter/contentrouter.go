@@ -6,21 +6,25 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/routing"
 	"github.com/multiformats/go-multihash"
 	"github.com/samber/lo"
 )
 
+var logger = logging.Logger("service/contentrouting")
+
 type client interface {
 	Provide(context.Context, []cid.Cid, time.Duration) (time.Duration, error)
 	FindProviders(context.Context, cid.Cid) ([]peer.AddrInfo, error)
+	Ready(context.Context) (bool, error)
 }
 
 type ContentRouter struct {
 	client                client
 	maxProvideConcurrency int
-	// batch size
+	maxProvideBatchSize   int
 }
 
 var _ routing.ContentRouting = (*ContentRouter)(nil)
@@ -29,6 +33,7 @@ func NewContentRoutingClient(c client) *ContentRouter {
 	return &ContentRouter{
 		client:                c,
 		maxProvideConcurrency: 5,
+		maxProvideBatchSize:   100,
 	}
 }
 
@@ -55,12 +60,12 @@ func (c *ContentRouter) ProvideMany(ctx context.Context, mhKeys []multihash.Mult
 
 	ttl := 24 * time.Hour
 
-	if len(keys) <= MaxCIDsPerProvide {
+	if len(keys) <= c.maxProvideBatchSize {
 		_, err := c.client.Provide(ctx, keys, ttl)
 		return err
 	}
 
-	chunks := lo.Chunk(keys, MaxCIDsPerProvide)
+	chunks := lo.Chunk(keys, c.maxProvideBatchSize)
 
 	workerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -125,10 +130,14 @@ func (c *ContentRouter) ProvideMany(ctx context.Context, mhKeys []multihash.Mult
 // Ready is part of the existing `ProvideMany` interface, but can be used more generally to determine if the routing client
 // has a working connection.
 func (c *ContentRouter) Ready() bool {
-	// TODO: currently codegen does not expose a way to access the state of the connection
-	// Once either that is exposed, or the `Identify` portion of the reframe spec is implemented,
-	// a more nuanced response for this method will be possible.
-	return true
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ready, err := c.client.Ready(ctx)
+	if err != nil {
+		logger.Warnw("error checking if delegated content router is ready", "Error", err)
+		return false
+	}
+	return ready
 }
 
 func (c *ContentRouter) FindProvidersAsync(ctx context.Context, key cid.Cid, numResults int) <-chan peer.AddrInfo {
