@@ -1,4 +1,4 @@
-package client
+package contentrouter
 
 import (
 	"context"
@@ -13,6 +13,8 @@ import (
 )
 
 var logger = logging.Logger("service/contentrouting")
+
+const ttl = 24 * time.Hour
 
 type client interface {
 	Provide(context.Context, []cid.Cid, time.Duration) (time.Duration, error)
@@ -62,7 +64,7 @@ func (c *contentRouter) Provide(ctx context.Context, key cid.Cid, announce bool)
 		return nil
 	}
 
-	_, err := c.client.Provide(ctx, []cid.Cid{key}, 24*time.Hour)
+	_, err := c.client.Provide(ctx, []cid.Cid{key}, ttl)
 	return err
 }
 
@@ -74,8 +76,6 @@ func (c *contentRouter) ProvideMany(ctx context.Context, mhKeys []multihash.Mult
 	for _, m := range mhKeys {
 		keys = append(keys, cid.NewCidV1(cid.Raw, m))
 	}
-
-	ttl := 24 * time.Hour
 
 	if len(keys) <= c.maxProvideBatchSize {
 		_, err := c.client.Provide(ctx, keys, ttl)
