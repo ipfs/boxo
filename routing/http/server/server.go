@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/ipfs/go-cid"
 	delegatedrouting "github.com/ipfs/go-delegated-routing"
+	"github.com/ipfs/go-delegated-routing/internal"
 	"github.com/multiformats/go-multibase"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -67,6 +67,7 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 
 	err = req.Verify()
 	if err != nil {
+		logErr("Provide", "signature validation failed", err)
 		writeErr(w, "Provide", http.StatusForbidden, errors.New("signature validation failed"))
 		return
 	}
@@ -134,10 +135,7 @@ func (s *server) ping(w http.ResponseWriter, req *http.Request) {
 func writeResult(w http.ResponseWriter, method string, val any) {
 	// keep the marshaling separate from the writing, so we can distinguish bugs (which surface as 500)
 	// from transient network issues (which surface as transport errors)
-	buf := &bytes.Buffer{}
-	encoder := json.NewEncoder(buf)
-	encoder.SetEscapeHTML(false)
-	err := encoder.Encode(val)
+	buf, err := internal.MarshalJSON(val)
 	if err != nil {
 		writeErr(w, method, http.StatusInternalServerError, fmt.Errorf("marshaling response: %w", err))
 		return
@@ -162,5 +160,5 @@ func writeErr(w http.ResponseWriter, method string, statusCode int, cause error)
 }
 
 func logErr(method, msg string, err error) {
-	logger.Infof(msg, "Method", method, "Error", err)
+	logger.Infow(msg, "Method", method, "Error", err)
 }

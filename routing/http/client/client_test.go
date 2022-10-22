@@ -3,11 +3,11 @@ package client
 import (
 	"context"
 	"crypto/rand"
-	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/benbjohnson/clock"
 	"github.com/ipfs/go-cid"
 	delegatedrouting "github.com/ipfs/go-delegated-routing"
 	"github.com/ipfs/go-delegated-routing/server"
@@ -40,16 +40,16 @@ type testDeps struct {
 	router   *mockContentRouter
 	server   *httptest.Server
 	provider delegatedrouting.Provider
-	client   *Client
+	client   *client
 }
 
 func makeTestDeps(t *testing.T) testDeps {
+	provider, identity := makeProviderAndIdentity(nil)
 	router := &mockContentRouter{}
 	server := httptest.NewServer(server.Handler(router))
 	t.Cleanup(server.Close)
 	serverAddr := "http://" + server.Listener.Addr().String()
-	provider := delegatedrouting.Provider{}
-	c, err := New(serverAddr, &http.Client{}, provider)
+	c, err := New(serverAddr, WithProvider(provider), WithIdentity(identity))
 	if err != nil {
 		panic(err)
 	}
@@ -59,6 +59,20 @@ func makeTestDeps(t *testing.T) testDeps {
 		provider: provider,
 		client:   c,
 	}
+}
+
+func makeCID() cid.Cid {
+	buf := make([]byte, 63)
+	_, err := rand.Read(buf)
+	if err != nil {
+		panic(err)
+	}
+	mh, err := multihash.Encode(buf, multihash.SHA2_256)
+	if err != nil {
+		panic(err)
+	}
+	c := cid.NewCidV1(0, mh)
+	return c
 }
 
 func TestClient_Ready(t *testing.T) {
@@ -122,6 +136,11 @@ func TestClient_Ready(t *testing.T) {
 }
 
 func makeProvider(protocols []delegatedrouting.TransferProtocol) delegatedrouting.Provider {
+	prov, _ := makeProviderAndIdentity(protocols)
+	return prov
+}
+
+func makeProviderAndIdentity(protocols []delegatedrouting.TransferProtocol) (delegatedrouting.Provider, crypto.PrivKey) {
 	priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	if err != nil {
 		panic(err)
@@ -144,7 +163,7 @@ func makeProvider(protocols []delegatedrouting.TransferProtocol) delegatedroutin
 		PeerID:    peerID,
 		Addrs:     []multiaddr.Multiaddr{ma1, ma2},
 		Protocols: protocols,
-	}
+	}, priv
 }
 
 func provsToAIs(provs []delegatedrouting.Provider) (ais []peer.AddrInfo) {
@@ -158,12 +177,6 @@ func provsToAIs(provs []delegatedrouting.Provider) (ais []peer.AddrInfo) {
 }
 
 func TestClient_FindProviders(t *testing.T) {
-	mh, err := multihash.Encode([]byte("asdf"), multihash.SHA2_256)
-	if err != nil {
-		panic(err)
-	}
-	cid := cid.NewCidV1(0, mh)
-
 	bitswapProtocol := []delegatedrouting.TransferProtocol{{Codec: multicodec.TransportBitswap, Payload: []byte(`{"a":1}`)}}
 	bitswapProvs := []delegatedrouting.Provider{makeProvider(bitswapProtocol), makeProvider(bitswapProtocol)}
 
@@ -216,6 +229,7 @@ func TestClient_FindProviders(t *testing.T) {
 			if c.stopServer {
 				deps.server.Close()
 			}
+			cid := makeCID()
 
 			router.On("FindProviders", mock.Anything, cid).
 				Return(c.routerProvs, c.routerErr)
@@ -229,6 +243,105 @@ func TestClient_FindProviders(t *testing.T) {
 			}
 
 			assert.Equal(t, c.expAIs, ais)
+		})
+	}
+}
+
+func TestClient_Provide(t *testing.T) {
+	cases := []struct {
+		name       string
+		manglePath bool
+		stopServer bool
+		noProvider bool
+		noIdentity bool
+
+		cids []cid.Cid
+		ttl  time.Duration
+
+		routerAdvisoryTTL time.Duration
+		routerErr         error
+
+		expErrContains string
+		expAdvisoryTTL time.Duration
+	}{
+		{
+			name:              "happy case",
+			cids:              []cid.Cid{makeCID()},
+			ttl:               1 * time.Hour,
+			routerAdvisoryTTL: 1 * time.Minute,
+
+			expAdvisoryTTL: 1 * time.Minute,
+		},
+		{
+			name:           "should return error if identity is not provided",
+			noIdentity:     true,
+			expErrContains: "cannot Provide without an identity",
+		},
+		{
+			name:           "should return error if provider is not provided",
+			noProvider:     true,
+			expErrContains: "cannot Provide without a provider",
+		},
+		{
+			name:           "returns an error if there's a non-200 response",
+			manglePath:     true,
+			expErrContains: "HTTP error with StatusCode=404: 404 page not found",
+		},
+		{
+			name:           "returns an error if the HTTP client returns a non-HTTP error",
+			stopServer:     true,
+			expErrContains: "connect: connection refused",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			deps := makeTestDeps(t)
+			client := deps.client
+			router := deps.router
+			prov := deps.provider
+
+			if c.noIdentity {
+				client.identity = nil
+			}
+			if c.noProvider {
+				client.provider = delegatedrouting.Provider{}
+			}
+
+			clock := clock.NewMock()
+			client.clock = clock
+
+			ctx := context.Background()
+
+			if c.manglePath {
+				client.baseURL += "/foo"
+			}
+			if c.stopServer {
+				deps.server.Close()
+			}
+
+			var cidStrs []string
+			for _, c := range c.cids {
+				cidStrs = append(cidStrs, c.String())
+			}
+			expectedProvReq := server.ProvideRequest{
+				Keys:        c.cids,
+				Timestamp:   clock.Now(),
+				AdvisoryTTL: c.ttl,
+				Provider:    prov,
+			}
+
+			router.On("Provide", mock.Anything, expectedProvReq).
+				Return(c.routerAdvisoryTTL, c.routerErr)
+
+			advisoryTTL, err := client.Provide(ctx, c.cids, c.ttl)
+
+			if c.expErrContains != "" {
+				require.ErrorContains(t, err, c.expErrContains)
+			} else {
+				require.NoError(t, err)
+			}
+
+			assert.Equal(t, c.expAdvisoryTTL, advisoryTTL)
 		})
 	}
 }

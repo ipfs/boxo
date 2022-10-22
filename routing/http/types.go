@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ipfs/go-delegated-routing/internal"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -84,6 +85,26 @@ type ProvideRequest struct {
 	Payload   string
 }
 
+type encoder interface {
+	Encode(val any) error
+}
+
+func (pr *ProvideRequest) SetPayload(p ProvideRequestPayload) error {
+	buf, err := internal.MarshalJSON(p)
+	if err != nil {
+		return err
+	}
+	baseEnc, err := multibase.Encode(multibase.Base64, buf.Bytes())
+	if err != nil {
+		return err
+	}
+	if pr.Payload != baseEnc {
+		pr.Signature = ""
+		pr.Payload = baseEnc
+	}
+	return nil
+}
+
 // Sign a provide request
 func (pr *ProvideRequest) Sign(peerID peer.ID, key crypto.PrivKey) error {
 	if pr.IsSigned() {
@@ -102,11 +123,7 @@ func (pr *ProvideRequest) Sign(peerID peer.ID, key crypto.PrivKey) error {
 		return errors.New("not the correct signing key")
 	}
 
-	out, err := json.Marshal(pr)
-	if err != nil {
-		return fmt.Errorf("marshaling provide request for signature: %w", err)
-	}
-	hash := sha256.New().Sum(out)
+	hash := sha256.New().Sum([]byte(pr.Payload))
 	sig, err := key.Sign(hash)
 	if err != nil {
 		return err
@@ -147,7 +164,7 @@ func (pr *ProvideRequest) Verify() error {
 		return fmt.Errorf("multibase-decoding signature to verify: %w", err)
 	}
 
-	hash := sha256.New().Sum(payloadBytes)
+	hash := sha256.New().Sum([]byte(pr.Payload))
 
 	ok, err := pk.Verify(hash, sigBytes)
 	if err != nil {
