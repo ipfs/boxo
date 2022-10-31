@@ -81,38 +81,64 @@ func traverseAndCheck(t *testing.T, root ipld.Node, ds ipld.DAGService, hasF fun
 	}
 }
 
+type brokenBuilder struct{}
+
+func (brokenBuilder) Sum([]byte) (cid.Cid, error)    { return cid.Undef, errors.New("Nope!") }
+func (brokenBuilder) GetCodec() uint64               { return 0 }
+func (b brokenBuilder) WithCodec(uint64) cid.Builder { return b }
+
 func TestBadBuilderEncode(t *testing.T) {
 	n := NodeWithData([]byte("boop"))
-	_, err := n.EncodeProtobuf(false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = n.SetCidBuilder(
-		&cid.Prefix{
-			MhType:   mh.SHA2_256,
-			MhLength: -1,
-			Version:  1,
-			Codec:    cid.DagProtobuf,
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = n.SetCidBuilder(
-		&cid.Prefix{
-			MhType:   mh.SHA2_256_TRUNC254_PADDED,
-			MhLength: 256,
-			Version:  1,
-			Codec:    cid.DagProtobuf,
-		},
-	)
-	if err == nil {
-		t.Fatal("expected SetCidBuilder to error on unusable hasher")
-	}
-	_, err = n.EncodeProtobuf(false)
-	if err != nil {
-		t.Fatalf("expected EncodeProtobuf to use safe CidBuilder: %v", err)
-	}
+
+	t.Run("good builder sanity check", func(t *testing.T) {
+		if _, err := n.EncodeProtobuf(false); err != nil {
+			t.Fatal(err)
+		}
+		if err := n.SetCidBuilder(
+			&cid.Prefix{
+				MhType:   mh.SHA2_256,
+				MhLength: -1,
+				Version:  1,
+				Codec:    cid.DagProtobuf,
+			},
+		); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("hasher we can't use, should error", func(t *testing.T) {
+		if err := n.SetCidBuilder(
+			&cid.Prefix{
+				MhType:   mh.SHA2_256_TRUNC254_PADDED,
+				MhLength: 256,
+				Version:  1,
+				Codec:    cid.DagProtobuf,
+			},
+		); err == nil {
+			t.Fatal("expected SetCidBuilder to error on unusable hasher")
+		}
+		if _, err := n.EncodeProtobuf(false); err != nil {
+			t.Fatalf("expected EncodeProtobuf to use safe CidBuilder: %v", err)
+		}
+	})
+
+	t.Run("broken custom builder, should error", func(t *testing.T) {
+		if err := n.SetCidBuilder(brokenBuilder{}); err == nil {
+			t.Fatal("expected SetCidBuilder to error on unusable hasher")
+		}
+		if _, err := n.EncodeProtobuf(false); err != nil {
+			t.Fatalf("expected EncodeProtobuf to use safe CidBuilder: %v", err)
+		}
+	})
+
+	t.Run("broken custom builder as pointer, should error", func(t *testing.T) {
+		if err := n.SetCidBuilder(&brokenBuilder{}); err == nil {
+			t.Fatal("expected SetCidBuilder to error on unusable hasher")
+		}
+		if _, err := n.EncodeProtobuf(false); err != nil {
+			t.Fatalf("expected EncodeProtobuf to use safe CidBuilder: %v", err)
+		}
+	})
 }
 
 func TestLinkChecking(t *testing.T) {

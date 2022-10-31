@@ -25,6 +25,9 @@ var (
 	ErrLinkNotFound = fmt.Errorf("no link by that name")
 )
 
+// for testing custom CidBuilders
+var zeros [256]byte
+
 type immutableProtoNode struct {
 	encoded []byte
 	dagpb.PBNode
@@ -106,19 +109,36 @@ func (n *ProtoNode) SetCidBuilder(builder cid.Builder) error {
 		n.builder = v0CidPrefix
 		return nil
 	}
-	if p, ok := builder.(*cid.Prefix); ok {
-		mhLen := p.MhLength
-		if mhLen <= 0 {
-			mhLen = -1
+	switch b := builder.(type) {
+	case cid.Prefix:
+		if err := checkHasher(b.MhType, b.MhLength); err != nil {
+			return err
 		}
-		_, err := mhcore.GetVariableHasher(p.MhType, mhLen)
-		if err != nil {
+	case *cid.Prefix:
+		if err := checkHasher(b.MhType, b.MhLength); err != nil {
+			return err
+		}
+	default:
+		// We have to test it's a usable hasher by invoking it and checking it
+		// doesn't error. This is only a basic check, there are still ways it may
+		// break
+		if _, err := builder.Sum(zeros[:]); err != nil {
 			return err
 		}
 	}
 	n.builder = builder.WithCodec(cid.DagProtobuf)
 	n.cached = cid.Undef
 	return nil
+}
+
+// check whether the hasher is likely to be a usable one
+func checkHasher(indicator uint64, sizeHint int) error {
+	mhLen := sizeHint
+	if mhLen <= 0 {
+		mhLen = -1
+	}
+	_, err := mhcore.GetVariableHasher(indicator, mhLen)
+	return err
 }
 
 // LinkSlice is a slice of format.Links
