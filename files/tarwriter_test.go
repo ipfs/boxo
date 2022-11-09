@@ -2,6 +2,7 @@ package files
 
 import (
 	"archive/tar"
+	"errors"
 	"io"
 	"testing"
 	"time"
@@ -81,5 +82,68 @@ func TestTarWriter(t *testing.T) {
 
 	if cur, err = tr.Next(); err != io.EOF {
 		t.Fatal(err)
+	}
+}
+
+func TestTarWriterRelativePathInsideRoot(t *testing.T) {
+	tf := NewMapDirectory(map[string]Node{
+		"file.txt": NewBytesFile([]byte(text)),
+		"boop": NewMapDirectory(map[string]Node{
+			"../a.txt": NewBytesFile([]byte("bleep")),
+			"b.txt":    NewBytesFile([]byte("bloop")),
+		}),
+		"beep.txt": NewBytesFile([]byte("beep")),
+	})
+
+	tw, err := NewTarWriter(io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer tw.Close()
+	if err := tw.WriteFile(tf, ""); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestTarWriterFailsFileOutsideRoot(t *testing.T) {
+	tf := NewMapDirectory(map[string]Node{
+		"file.txt": NewBytesFile([]byte(text)),
+		"boop": NewMapDirectory(map[string]Node{
+			"../../a.txt": NewBytesFile([]byte("bleep")),
+			"b.txt":       NewBytesFile([]byte("bloop")),
+		}),
+		"beep.txt": NewBytesFile([]byte("beep")),
+	})
+
+	tw, err := NewTarWriter(io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer tw.Close()
+	if err := tw.WriteFile(tf, ""); !errors.Is(err, ErrUnixFSPathOutsideRoot) {
+		t.Errorf("unexpected error, wanted: %v; got: %v", ErrUnixFSPathOutsideRoot, err)
+	}
+}
+
+func TestTarWriterFailsFileOutsideRootWithBaseDir(t *testing.T) {
+	tf := NewMapDirectory(map[string]Node{
+		"../file.txt": NewBytesFile([]byte(text)),
+		"boop": NewMapDirectory(map[string]Node{
+			"a.txt": NewBytesFile([]byte("bleep")),
+			"b.txt": NewBytesFile([]byte("bloop")),
+		}),
+		"beep.txt": NewBytesFile([]byte("beep")),
+	})
+
+	tw, err := NewTarWriter(io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer tw.Close()
+	if err := tw.WriteFile(tf, "test.tar"); !errors.Is(err, ErrUnixFSPathOutsideRoot) {
+		t.Errorf("unexpected error, wanted: %v; got: %v", ErrUnixFSPathOutsideRoot, err)
 	}
 }
