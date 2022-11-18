@@ -13,7 +13,8 @@ import (
 	"github.com/ipfs/go-cid"
 	delegatedrouting "github.com/ipfs/go-delegated-routing"
 	"github.com/ipfs/go-delegated-routing/internal"
-	"github.com/multiformats/go-multibase"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 
 	logging "github.com/ipfs/go-log/v2"
 )
@@ -24,13 +25,13 @@ type ProvideRequest struct {
 	Keys        []cid.Cid
 	Timestamp   time.Time
 	AdvisoryTTL time.Duration
-	Provider    delegatedrouting.Provider
+	ID          peer.ID
+	Addrs       []multiaddr.Multiaddr
 }
 
 type ContentRouter interface {
 	FindProviders(ctx context.Context, key cid.Cid) ([]delegatedrouting.Provider, error)
 	Provide(ctx context.Context, req ProvideRequest) (time.Duration, error)
-	Ready() bool
 }
 
 type serverOption func(s *server)
@@ -47,7 +48,6 @@ func Handler(svc ContentRouter, opts ...serverOption) http.Handler {
 	r := mux.NewRouter()
 	r.HandleFunc("/v1/providers", server.provide).Methods("POST")
 	r.HandleFunc("/v1/providers/{cid}", server.findProviders).Methods("GET")
-	r.HandleFunc("/v1/ping", server.ping).Methods("GET")
 
 	return r
 }
@@ -58,53 +58,52 @@ type server struct {
 }
 
 func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
-	req := delegatedrouting.ProvideRequest{}
+	req := delegatedrouting.WriteProvidersRequest{}
 	err := json.NewDecoder(httpReq.Body).Decode(&req)
 	if err != nil {
 		writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
 		return
 	}
 
-	err = req.Verify()
-	if err != nil {
-		logErr("Provide", "signature validation failed", err)
-		writeErr(w, "Provide", http.StatusForbidden, errors.New("signature validation failed"))
-		return
-	}
+	resp := delegatedrouting.WriteProvidersResponse{}
 
-	_, payloadBytes, err := multibase.Decode(req.Payload)
-	if err != nil {
-		writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("invalid payload multibase: %w", err))
-		return
-	}
-	reqPayload := delegatedrouting.ProvideRequestPayload{}
-	err = json.Unmarshal(payloadBytes, &reqPayload)
-	if err != nil {
-		writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("invalid payload: %w", err))
-		return
-	}
+	for i, prov := range req.Providers {
+		switch v := prov.(type) {
+		case *delegatedrouting.BitswapWriteProviderRequest:
+			err := v.Verify()
+			if err != nil {
+				logErr("Provide", "signature verification failed", err)
+				writeErr(w, "Provide", http.StatusForbidden, errors.New("signature verification failed"))
+				return
+			}
 
-	var keys []cid.Cid
-	for i, k := range reqPayload.Keys {
-		c, err := cid.Decode(k)
-		if err != nil {
-			writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("CID %d invalid: %w", i, err))
+			keys := make([]cid.Cid, len(v.Keys))
+			for i, k := range v.Keys {
+				keys[i] = k.Cid
+
+			}
+			advisoryTTL, err := s.svc.Provide(httpReq.Context(), ProvideRequest{
+				Keys:        keys,
+				Timestamp:   v.Timestamp.Time,
+				AdvisoryTTL: v.AdvisoryTTL.Duration,
+				ID:          v.ID,
+				Addrs:       v.Addrs,
+			})
+			if err != nil {
+				writeErr(w, "Provide", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+				return
+			}
+			resp.Protocols = append(resp.Protocols, v.Protocol)
+			resp.ProvideResults = append(resp.ProvideResults, &delegatedrouting.BitswapWriteProviderResponse{AdvisoryTTL: advisoryTTL})
+		case *delegatedrouting.UnknownProvider:
+			resp.Protocols = append(resp.Protocols, v.Protocol)
+			resp.ProvideResults = append(resp.ProvideResults, v)
+		default:
+			writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("provider record %d does not contain a protocol", i))
 			return
 		}
-		keys = append(keys, c)
 	}
-
-	advisoryTTL, err := s.svc.Provide(httpReq.Context(), ProvideRequest{
-		Keys:        keys,
-		Timestamp:   time.UnixMilli(reqPayload.Timestamp),
-		AdvisoryTTL: reqPayload.AdvisoryTTL,
-		Provider:    reqPayload.Provider,
-	})
-	if err != nil {
-		writeErr(w, "Provide", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-		return
-	}
-	writeResult(w, "Provide", delegatedrouting.ProvideResult{AdvisoryTTL: advisoryTTL})
+	writeResult(w, "Provide", resp)
 }
 
 func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
@@ -120,16 +119,8 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
 	}
-	response := delegatedrouting.FindProvidersResult{Providers: providers}
+	response := delegatedrouting.FindProvidersResponse{Providers: providers}
 	writeResult(w, "FindProviders", response)
-}
-
-func (s *server) ping(w http.ResponseWriter, req *http.Request) {
-	if s.svc.Ready() {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}
 }
 
 func writeResult(w http.ResponseWriter, method string, val any) {

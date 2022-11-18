@@ -1,183 +1,226 @@
 package delegatedrouting
 
 import (
-	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-delegated-routing/internal"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/multiformats/go-multiaddr"
-	"github.com/multiformats/go-multibase"
-	"github.com/multiformats/go-multicodec"
 )
 
 var logger = logging.Logger("service/delegatedrouting")
 
-// TransferProtocol represents a data transfer protocol
-type TransferProtocol struct {
-	Codec multicodec.Code
-	// Payload optionally contains extra data about the transfer protocol
-	Payload json.RawMessage
+type Time struct{ time.Time }
+
+func (t *Time) MarshalJSON() ([]byte, error) { return internal.MarshalJSONBytes(t.UnixMilli()) }
+func (t *Time) UnmarshalJSON(b []byte) error {
+	var timestamp int64
+	err := json.Unmarshal(b, &timestamp)
+	if err != nil {
+		return err
+	}
+	t.Time = time.UnixMilli(timestamp)
+	return nil
 }
 
-type ProvideResult struct {
-	AdvisoryTTL time.Duration
+type Duration struct{ time.Duration }
+
+func (d *Duration) MarshalJSON() ([]byte, error) { return internal.MarshalJSONBytes(d.Duration) }
+func (d *Duration) UnmarshalJSON(b []byte) error {
+	var dur int64
+	err := json.Unmarshal(b, &dur)
+	if err != nil {
+		return err
+	}
+	d.Duration = time.Duration(dur)
+	return nil
 }
 
-type ProvideRequestPayload struct {
-	Keys        []string //cids
-	Timestamp   int64
-	AdvisoryTTL time.Duration
-	Provider    Provider
+type CID struct{ cid.Cid }
+
+func (c *CID) MarshalJSON() ([]byte, error) { return internal.MarshalJSONBytes(c.String()) }
+func (c *CID) UnmarshalJSON(b []byte) error {
+	var s string
+	err := json.Unmarshal(b, &s)
+	if err != nil {
+		return err
+	}
+	decodedCID, err := cid.Decode(s)
+	if err != nil {
+		return err
+	}
+	c.Cid = decodedCID
+	return nil
 }
 
-type FindProvidersResult struct {
+type Provider interface{}
+type WriteProviderResponse interface{}
+
+type UnknownWriteProviderResponse struct {
+	Bytes []byte
+}
+
+func (r *UnknownWriteProviderResponse) UnmarshalJSON(b []byte) error {
+	err := json.Unmarshal(b, r)
+	if err != nil {
+		return err
+	}
+	r.Bytes = b
+	return nil
+}
+
+func (r *UnknownWriteProviderResponse) MarshalJSON() ([]byte, error) {
+	// the response type must be an object
+	m := map[string]interface{}{}
+	err := json.Unmarshal(r.Bytes, &m)
+	if err != nil {
+		return nil, err
+	}
+	return internal.MarshalJSONBytes(m)
+}
+
+type WriteProvidersRequest struct {
 	Providers []Provider
 }
 
-type Provider struct {
-	PeerID    peer.ID
-	Addrs     []multiaddr.Multiaddr
-	Protocols []TransferProtocol
+type WriteProvidersResponse struct {
+	// Protocols is the list of protocols expected for each result.
+	// This is required to unmarshal the result types.
+	// It can be derived from the request that was sent.
+	// If this is nil, then each WriteProviderResponse will contain a map[string]interface{}.
+	Protocols []string `json:"-"`
+
+	ProvideResults []WriteProviderResponse
 }
 
-func (p *Provider) UnmarshalJSON(b []byte) error {
-	type prov struct {
-		PeerID    peer.ID
-		Addrs     []string
-		Protocols []TransferProtocol
+func (r *WriteProvidersResponse) UnmarshalJSON(b []byte) error {
+	type wpr struct {
+		ProvideResults []json.RawMessage
 	}
-	tempProv := prov{}
-	err := json.Unmarshal(b, &tempProv)
+	var tempWPR wpr
+	err := json.Unmarshal(b, &tempWPR)
 	if err != nil {
-		return fmt.Errorf("unmarshaling provider: %w", err)
+		return err
+	}
+	if r.Protocols != nil && len(r.Protocols) != len(tempWPR.ProvideResults) {
+		return fmt.Errorf("got %d results but only have protocol information for %d", len(tempWPR.ProvideResults), len(r.Protocols))
 	}
 
-	p.PeerID = tempProv.PeerID
-	p.Protocols = tempProv.Protocols
+	r.ProvideResults = make([]WriteProviderResponse, len(r.Protocols))
 
-	p.Addrs = nil
-	for i, maStr := range tempProv.Addrs {
-		ma, err := multiaddr.NewMultiaddr(maStr)
-		if err != nil {
-			return fmt.Errorf("parsing multiaddr %d: %w", i, err)
-		}
-
-		_, last := multiaddr.SplitLast(ma)
-		if last != nil && last.Protocol().Code == multiaddr.P_P2P {
-			logger.Infof("dropping provider multiaddress %v ending in /p2p/peerid", ma)
+	for i, provResBytes := range tempWPR.ProvideResults {
+		if r.Protocols == nil {
+			m := map[string]interface{}{}
+			err := json.Unmarshal(provResBytes, &m)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling element %d of response: %w", len(tempWPR.ProvideResults), err)
+			}
+			r.ProvideResults[i] = m
 			continue
 		}
-		p.Addrs = append(p.Addrs, ma)
-	}
 
-	return nil
-}
+		var val any
+		switch r.Protocols[i] {
+		case "bitswap":
+			var resp BitswapWriteProviderResponse
+			err := json.Unmarshal(provResBytes, &resp)
+			if err != nil {
+				return err
+			}
+			val = &resp
+		default:
+			val = &UnknownWriteProviderResponse{Bytes: provResBytes}
+		}
 
-// ProvideRequest is a message indicating a provider can provide a Key for a given TTL
-type ProvideRequest struct {
-	Signature string
-	Payload   string
-}
-
-type encoder interface {
-	Encode(val any) error
-}
-
-func (pr *ProvideRequest) SetPayload(p ProvideRequestPayload) error {
-	buf, err := internal.MarshalJSON(p)
-	if err != nil {
-		return err
-	}
-	baseEnc, err := multibase.Encode(multibase.Base64, buf.Bytes())
-	if err != nil {
-		return err
-	}
-	if pr.Payload != baseEnc {
-		pr.Signature = ""
-		pr.Payload = baseEnc
+		r.ProvideResults[i] = val
 	}
 	return nil
 }
 
-// Sign a provide request
-func (pr *ProvideRequest) Sign(peerID peer.ID, key crypto.PrivKey) error {
-	if pr.IsSigned() {
-		return errors.New("already signed")
-	}
+type RawProvider struct {
+	Protocol string
+	bytes    []byte
+}
 
-	if key == nil {
-		return errors.New("no key provided")
-	}
-
-	sid, err := peer.IDFromPrivateKey(key)
+func (p *RawProvider) UnmarshalJSON(b []byte) error {
+	v := struct{ Protocol string }{}
+	err := json.Unmarshal(b, &v)
 	if err != nil {
 		return err
 	}
-	if sid != peerID {
-		return errors.New("not the correct signing key")
-	}
-
-	hash := sha256.New().Sum([]byte(pr.Payload))
-	sig, err := key.Sign(hash)
-	if err != nil {
-		return err
-	}
-
-	sigStr, err := multibase.Encode(multibase.Base64, sig)
-	if err != nil {
-		return fmt.Errorf("multibase-encoding signature: %w", err)
-	}
-
-	pr.Signature = sigStr
+	p.bytes = b
+	p.Protocol = v.Protocol
 	return nil
 }
 
-func (pr *ProvideRequest) Verify() error {
-	if !pr.IsSigned() {
-		return errors.New("not signed")
+func (p *RawProvider) MarshalJSON() ([]byte, error) {
+	return p.bytes, nil
+}
+
+type UnknownProvider struct {
+	Protocol string
+	Bytes    []byte
+}
+
+type FindProvidersResponse struct {
+	Providers []Provider
+}
+
+func (r *FindProvidersResponse) UnmarshalJSON(b []byte) error {
+	type fpr struct {
+		Providers []json.RawMessage
 	}
-
-	_, payloadBytes, err := multibase.Decode(pr.Payload)
-	if err != nil {
-		return fmt.Errorf("multibase-decoding payload to verify: %w", err)
-	}
-
-	payload := ProvideRequestPayload{}
-	err = json.Unmarshal(payloadBytes, &payload)
-	if err != nil {
-		return fmt.Errorf("unmarshaling payload to verify: %w", err)
-	}
-
-	pk, err := payload.Provider.PeerID.ExtractPublicKey()
-	if err != nil {
-		return err
-	}
-
-	_, sigBytes, err := multibase.Decode(pr.Signature)
-	if err != nil {
-		return fmt.Errorf("multibase-decoding signature to verify: %w", err)
-	}
-
-	hash := sha256.New().Sum([]byte(pr.Payload))
-
-	ok, err := pk.Verify(hash, sigBytes)
+	var tempFPR fpr
+	err := json.Unmarshal(b, &tempFPR)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return errors.New("signature failed to verify")
-	}
 
+	for _, provBytes := range tempFPR.Providers {
+		var readProv RawProvider
+		err := json.Unmarshal(provBytes, &readProv)
+		if err != nil {
+			return err
+		}
+
+		switch readProv.Protocol {
+		case "bitswap":
+			var prov BitswapReadProviderResponse
+			err := json.Unmarshal(readProv.bytes, &prov)
+			if err != nil {
+				return err
+			}
+			r.Providers = append(r.Providers, &prov)
+		default:
+			var prov UnknownProvider
+			err := json.Unmarshal(b, &prov)
+			if err != nil {
+				return err
+			}
+			r.Providers = append(r.Providers, &prov)
+		}
+
+	}
 	return nil
 }
 
-// IsSigned indicates if the ProvideRequest has been signed
-func (pr *ProvideRequest) IsSigned() bool {
-	return pr.Signature != ""
+func (u *UnknownProvider) UnmarshalJSON(b []byte) error {
+	err := json.Unmarshal(b, u)
+	if err != nil {
+		return err
+	}
+	u.Bytes = b
+	return nil
+}
+
+func (u *UnknownProvider) MarshalJSON() ([]byte, error) {
+	m := map[string]interface{}{}
+	err := json.Unmarshal(u.Bytes, &m)
+	if err != nil {
+		return nil, err
+	}
+	m["Protocol"] = u.Protocol
+	return internal.MarshalJSONBytes(m)
 }

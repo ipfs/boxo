@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"crypto/rand"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -11,8 +12,11 @@ import (
 	"github.com/ipfs/go-cid"
 	delegatedrouting "github.com/ipfs/go-delegated-routing"
 	"github.com/ipfs/go-delegated-routing/server"
-	"github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p"
+	gostream "github.com/libp2p/go-libp2p-gostream"
+	p2phttp "github.com/libp2p/go-libp2p-http"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
@@ -295,7 +299,8 @@ func TestClient_Provide(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			deps := makeTestDeps(t)
+			//			deps := makeTestDeps(t)
+			deps := makeTestDepsLibp2p(t)
 			client := deps.client
 			router := deps.router
 			prov := deps.provider
@@ -344,4 +349,56 @@ func TestClient_Provide(t *testing.T) {
 			assert.Equal(t, c.expAdvisoryTTL, advisoryTTL)
 		})
 	}
+}
+
+func makeTestDepsLibp2p(t *testing.T) testDeps {
+	provider, identity := makeProviderAndIdentity(nil)
+	router := &mockContentRouter{}
+	server := httptest.NewUnstartedServer(server.Handler(router))
+
+	// server setup
+	h1, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/9454"))
+	require.NoError(t, err)
+	t.Cleanup(func() { h1.Close() })
+
+	listener, err := gostream.Listen(h1, p2phttp.DefaultP2PProtocol)
+	t.Cleanup(func() { listener.Close() })
+	server.Listener = listener
+
+	server.Start()
+	t.Cleanup(server.Close)
+	serverAddr := "libp2p://" + h1.ID().String()
+
+	// client setup
+	h2Ma, err := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/9455")
+	require.NoError(t, err)
+	h2, err := libp2p.New(libp2p.ListenAddrs(h2Ma))
+	require.NoError(t, err)
+	t.Cleanup(func() { h2.Close() })
+
+	c, err := New(serverAddr, WithProvider(provider), WithIdentity(identity))
+	if err != nil {
+		panic(err)
+	}
+	tr := &http.Transport{}
+	tr.RegisterProtocol("libp2p", p2phttp.NewTransport(h2))
+	httpClient := &http.Client{Transport: tr}
+	c.httpClient = httpClient
+
+	// connect
+	h1.Peerstore().AddAddr(h2.ID(), h2Ma, 10*time.Minute)
+	err = h1.Connect(context.Background(), h2.Peerstore().PeerInfo(h2.ID()))
+	require.NoError(t, err)
+
+	return testDeps{
+		router:   router,
+		server:   server,
+		provider: provider,
+		client:   c,
+	}
+
+}
+
+func TestClient_libp2p(t *testing.T) {
+
 }

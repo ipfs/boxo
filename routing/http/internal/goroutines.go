@@ -56,19 +56,16 @@ func DoBatch[A any](ctx context.Context, maxBatchSize, maxConcurrency int, items
 	}()
 
 	// receive any errors
-	for {
-		select {
-		case err, ok := <-errChan:
-			if !ok {
-				// we finished without any errors, congratulations
-				return nil
-			}
-			// short circuit on the first error we get
-			// canceling the worker ctx and thus all workers,
-			return err
-		case <-ctx.Done():
-			return ctx.Err()
+	select {
+	case err, ok := <-errChan:
+		if !ok {
+			// we finished without any errors, congratulations
+			return nil
 		}
+		// short circuit on the first error we get
+		// canceling the worker ctx and thus all workers,
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-
 }

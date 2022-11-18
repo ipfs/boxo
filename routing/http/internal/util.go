@@ -12,3 +12,11 @@ func MarshalJSON(val any) (*bytes.Buffer, error) {
 	err := enc.Encode(val)
 	return buf, err
 }
+
+func MarshalJSONBytes(val any) ([]byte, error) {
+	buf, err := MarshalJSON(val)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}

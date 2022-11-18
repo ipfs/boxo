@@ -14,13 +14,18 @@ import (
 	"github.com/ipfs/go-delegated-routing/internal"
 	ipns "github.com/ipfs/go-ipns"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/peer"
 	record "github.com/libp2p/go-libp2p-record"
-	"github.com/multiformats/go-multicodec"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 )
 
 var logger = logging.Logger("service/delegatedrouting")
+
+type Provider struct {
+	ID    peer.ID
+	Addrs []multiaddr.Multiaddr
+}
 
 type client struct {
 	baseURL    string
@@ -28,7 +33,7 @@ type client struct {
 	validator  record.Validator
 	clock      clock.Clock
 
-	provider delegatedrouting.Provider
+	provider Provider
 	identity crypto.PrivKey
 }
 
@@ -50,7 +55,7 @@ func WithHTTPClient(h httpClient) option {
 	}
 }
 
-func WithProvider(p delegatedrouting.Provider) option {
+func WithProvider(p Provider) option {
 	return func(c *client) {
 		c.provider = p
 	}
@@ -70,14 +75,14 @@ func New(baseURL string, opts ...option) (*client, error) {
 		opt(client)
 	}
 
-	if client.identity != nil && client.provider.PeerID.Size() != 0 && !client.provider.PeerID.MatchesPublicKey(client.identity.GetPublic()) {
+	if client.identity != nil && client.provider.ID.Size() != 0 && !client.provider.ID.MatchesPublicKey(client.identity.GetPublic()) {
 		return nil, errors.New("identity does not match provider")
 	}
 
 	return client, nil
 }
 
-func (c *client) FindProviders(ctx context.Context, key cid.Cid) ([]peer.AddrInfo, error) {
+func (c *client) FindProviders(ctx context.Context, key cid.Cid) ([]delegatedrouting.Provider, error) {
 	url := c.baseURL + "/v1/providers/" + key.String()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -94,63 +99,42 @@ func (c *client) FindProviders(ctx context.Context, key cid.Cid) ([]peer.AddrInf
 		return nil, httpError(resp.StatusCode, resp.Body)
 	}
 
-	parsedResp := &delegatedrouting.FindProvidersResult{}
+	parsedResp := &delegatedrouting.FindProvidersResponse{}
 	err = json.NewDecoder(resp.Body).Decode(parsedResp)
-	if err != nil {
-		return nil, err
-	}
-
-	infos := []peer.AddrInfo{}
-	for _, prov := range parsedResp.Providers {
-		supportsBitswap := false
-		for _, proto := range prov.Protocols {
-			if proto.Codec == multicodec.TransportBitswap {
-				supportsBitswap = true
-				break
-			}
-		}
-		if !supportsBitswap {
-			continue
-		}
-		infos = append(infos, peer.AddrInfo{
-			ID:    prov.PeerID,
-			Addrs: prov.Addrs,
-		})
-	}
-	return infos, nil
+	return parsedResp.Providers, err
 }
 
-func (c *client) Provide(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {
+func (c *client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {
 	if c.identity == nil {
 		return 0, errors.New("cannot Provide without an identity")
 	}
-	if c.provider.PeerID.Size() == 0 {
+	if c.provider.ID.Size() == 0 {
 		return 0, errors.New("cannot Provide without a provider")
 	}
 
-	keysStrs := make([]string, len(keys))
+	ks := make([]delegatedrouting.CID, len(keys))
 	for i, c := range keys {
-		keysStrs[i] = c.String()
-	}
-	reqPayload := delegatedrouting.ProvideRequestPayload{
-		Keys:        keysStrs,
-		AdvisoryTTL: ttl,
-		Timestamp:   c.clock.Now().UnixMilli(),
-		Provider:    c.provider,
+		ks[i] = delegatedrouting.CID{Cid: c}
 	}
 
-	req := delegatedrouting.ProvideRequest{}
-	err := req.SetPayload(reqPayload)
-	if err != nil {
-		return 0, fmt.Errorf("setting payload: %w", err)
-	}
+	now := c.clock.Now()
 
-	err = req.Sign(c.provider.PeerID, c.identity)
+	req := delegatedrouting.BitswapWriteProviderRequest{
+		Protocol: "bitswap",
+		BitswapWriteProviderRequestPayload: delegatedrouting.BitswapWriteProviderRequestPayload{
+			Keys:        ks,
+			AdvisoryTTL: delegatedrouting.Duration{Duration: ttl},
+			Timestamp:   delegatedrouting.Time{Time: now},
+			ID:          c.provider.ID,
+			Addrs:       c.provider.Addrs,
+		},
+	}
+	err := req.Sign(c.provider.ID, c.identity)
 	if err != nil {
 		return 0, err
 	}
 
-	advisoryTTL, err := c.provideSignedRecord(ctx, req)
+	advisoryTTL, err := c.provideSignedBitswapRecord(ctx, req)
 	if err != nil {
 		return 0, err
 	}
@@ -158,16 +142,13 @@ func (c *client) Provide(ctx context.Context, keys []cid.Cid, ttl time.Duration)
 	return advisoryTTL, err
 }
 
-type provideRequest struct {
-	Keys      []cid.Cid
-	Protocols map[string]interface{}
-}
-
 // ProvideAsync makes a provide request to a delegated router
-func (c *client) provideSignedRecord(ctx context.Context, req delegatedrouting.ProvideRequest) (time.Duration, error) {
-	if !req.IsSigned() {
+func (c *client) provideSignedBitswapRecord(ctx context.Context, bswp delegatedrouting.BitswapWriteProviderRequest) (time.Duration, error) {
+	if !bswp.IsSigned() {
 		return 0, errors.New("request is not signed")
 	}
+
+	req := delegatedrouting.WriteProvidersRequest{Providers: []delegatedrouting.Provider{bswp}}
 
 	url := c.baseURL + "/v1/providers"
 
@@ -187,10 +168,15 @@ func (c *client) provideSignedRecord(ctx context.Context, req delegatedrouting.P
 	if resp.StatusCode != http.StatusOK {
 		return 0, httpError(resp.StatusCode, resp.Body)
 	}
-
-	provideResult := delegatedrouting.ProvideResult{}
+	provideResult := delegatedrouting.WriteProvidersResponse{Protocols: []string{"bitswap"}}
 	err = json.NewDecoder(resp.Body).Decode(&provideResult)
-	return provideResult.AdvisoryTTL, err
+	if err != nil {
+		return 0, err
+	}
+	if len(provideResult.ProvideResults) != 1 {
+		return 0, fmt.Errorf("expected 1 result but got %d", len(provideResult.ProvideResults))
+	}
+	return provideResult.ProvideResults[0].(*delegatedrouting.BitswapWriteProviderResponse).AdvisoryTTL, nil
 }
 
 func (c *client) Ready(ctx context.Context) (bool, error) {
