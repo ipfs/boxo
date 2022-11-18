@@ -1,0 +1,28 @@
+# debug a car to patch
+car debug -o out.patch ${INPUTS}/sample-v1.car
+! stderr .
+grep -count=1049 \+\+\+ out.patch
+
+# recompile to binary
+car compile -o out.car out.patch
+! stderr .
+
+# should have same blocks as it started with.
+car ls out.car
+stdout -count=1043 '^bafy'
+stdout -count=6 '^bafk'
+
+# make a small car
+car create --file=small.car foo.txt
+
+car debug -o small.patch small.car
+! stderr .
+
+car compile -o new.car small.patch
+! stderr .
+
+# confirm roundtrip is stable.
+cmp small.car new.car
+
+-- foo.txt --
+hello world

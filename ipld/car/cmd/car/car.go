@@ -16,6 +16,19 @@ func main1() int {
 		Usage: "Utility for working with car files",
 		Commands: []*cli.Command{
 			{
+				Name:   "compile",
+				Usage:  "compile a car file from a debug patch",
+				Action: CompileCar,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:      "output",
+						Aliases:   []string{"o", "f"},
+						Usage:     "The file to write to",
+						TakesFile: true,
+					},
+				},
+			},
+			{
 				Name:    "create",
 				Usage:   "Create a car file",
 				Aliases: []string{"c"},
@@ -31,6 +44,19 @@ func main1() int {
 						Name:  "version",
 						Value: 2,
 						Usage: "Write output as a v1 or v2 format car",
+					},
+				},
+			},
+			{
+				Name:   "debug",
+				Usage:  "debug a car file",
+				Action: DebugCar,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:      "output",
+						Aliases:   []string{"o", "f"},
+						Usage:     "The file to write to",
+						TakesFile: true,
 					},
 				},
 			},
