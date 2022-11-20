@@ -3,7 +3,7 @@ package keystore
 import (
 	"errors"
 
-	ci "github.com/libp2p/go-libp2p-core/crypto"
+	ci "github.com/libp2p/go-libp2p/core/crypto"
 )
 
 // MemKeystore is an in memory keystore implementation that is not persisted to

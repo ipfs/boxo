@@ -8,7 +8,7 @@ import (
 	"sort"
 	"testing"
 
-	ci "github.com/libp2p/go-libp2p-core/crypto"
+	ci "github.com/libp2p/go-libp2p/core/crypto"
 )
 
 type rr struct{}
@@ -160,7 +160,7 @@ func TestInvalidKeyFiles(t *testing.T) {
 
 	key := privKeyOrFatal(t)
 
-	bytes, err := key.Bytes()
+	bytes, err := key.Raw()
 	if err != nil {
 		t.Fatal(err)
 	}

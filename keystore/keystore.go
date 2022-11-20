@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	base32 "encoding/base32"
+	"encoding/base32"
 
 	logging "github.com/ipfs/go-log"
-	ci "github.com/libp2p/go-libp2p-core/crypto"
+	ci "github.com/libp2p/go-libp2p/core/crypto"
 )
 
 var log = logging.Logger("keystore")
