@@ -8,22 +8,22 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	goprocess "github.com/jbenet/goprocess"
+	"github.com/jbenet/goprocess"
 	"github.com/libp2p/go-libp2p"
-	ic "github.com/libp2p/go-libp2p-core/crypto"
-	host "github.com/libp2p/go-libp2p-core/host"
-	peer "github.com/libp2p/go-libp2p-core/peer"
-	routing "github.com/libp2p/go-libp2p-core/routing"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	ic "github.com/libp2p/go-libp2p/core/crypto"
+	host "github.com/libp2p/go-libp2p/core/host"
+	peer "github.com/libp2p/go-libp2p/core/peer"
+	routing "github.com/libp2p/go-libp2p/core/routing"
 
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/ipfs/go-ipns"
 	ipns_pb "github.com/ipfs/go-ipns/pb"
-	path "github.com/ipfs/go-path"
+	"github.com/ipfs/go-path"
 
 	keystore "github.com/ipfs/go-ipfs-keystore"
-	namesys "github.com/ipfs/go-namesys"
+	"github.com/ipfs/go-namesys"
 	. "github.com/ipfs/go-namesys/republisher"
 )
 

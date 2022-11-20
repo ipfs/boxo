@@ -8,19 +8,19 @@ import (
 	"time"
 
 	keystore "github.com/ipfs/go-ipfs-keystore"
-	namesys "github.com/ipfs/go-namesys"
-	path "github.com/ipfs/go-path"
+	"github.com/ipfs/go-namesys"
+	"github.com/ipfs/go-path"
 	"go.opentelemetry.io/otel/attribute"
 
-	proto "github.com/gogo/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	ds "github.com/ipfs/go-datastore"
-	ipns "github.com/ipfs/go-ipns"
+	"github.com/ipfs/go-ipns"
 	pb "github.com/ipfs/go-ipns/pb"
 	logging "github.com/ipfs/go-log"
-	goprocess "github.com/jbenet/goprocess"
+	"github.com/jbenet/goprocess"
 	gpctx "github.com/jbenet/goprocess/context"
-	ic "github.com/libp2p/go-libp2p-core/crypto"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	ic "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 var errNoEntry = errors.New("no previous entry")
