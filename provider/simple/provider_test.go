@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	cid "github.com/ipfs/go-cid"
-	datastore "github.com/ipfs/go-datastore"
-	sync "github.com/ipfs/go-datastore/sync"
+	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-datastore"
+	"github.com/ipfs/go-datastore/sync"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
-	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 
 	q "github.com/ipfs/go-ipfs-provider/queue"
 

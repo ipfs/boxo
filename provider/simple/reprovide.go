@@ -15,7 +15,7 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-verifcid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/libp2p/go-libp2p-core/routing"
+	"github.com/libp2p/go-libp2p/core/routing"
 )
 
 var logR = logging.Logger("reprovider.simple")
