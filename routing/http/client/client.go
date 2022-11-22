@@ -11,7 +11,7 @@ import (
 	"github.com/benbjohnson/clock"
 	"github.com/ipfs/go-cid"
 	delegatedrouting "github.com/ipfs/go-delegated-routing"
-	"github.com/ipfs/go-delegated-routing/internal"
+	"github.com/ipfs/go-delegated-routing/internal/drjson"
 	ipns "github.com/ipfs/go-ipns"
 	logging "github.com/ipfs/go-log/v2"
 	record "github.com/libp2p/go-libp2p-record"
@@ -22,18 +22,14 @@ import (
 
 var logger = logging.Logger("service/delegatedrouting")
 
-type Provider struct {
-	ID    peer.ID
-	Addrs []multiaddr.Multiaddr
-}
-
 type client struct {
 	baseURL    string
 	httpClient httpClient
 	validator  record.Validator
 	clock      clock.Clock
 
-	provider Provider
+	peerID   peer.ID
+	addrs    []delegatedrouting.Multiaddr
 	identity crypto.PrivKey
 }
 
@@ -55,9 +51,12 @@ func WithHTTPClient(h httpClient) option {
 	}
 }
 
-func WithProvider(p Provider) option {
+func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) option {
 	return func(c *client) {
-		c.provider = p
+		c.peerID = peerID
+		for _, a := range addrs {
+			c.addrs = append(c.addrs, delegatedrouting.Multiaddr{Multiaddr: a})
+		}
 	}
 }
 
@@ -75,7 +74,7 @@ func New(baseURL string, opts ...option) (*client, error) {
 		opt(client)
 	}
 
-	if client.identity != nil && client.provider.ID.Size() != 0 && !client.provider.ID.MatchesPublicKey(client.identity.GetPublic()) {
+	if client.identity != nil && client.peerID.Size() != 0 && !client.peerID.MatchesPublicKey(client.identity.GetPublic()) {
 		return nil, errors.New("identity does not match provider")
 	}
 
@@ -106,10 +105,10 @@ func (c *client) FindProviders(ctx context.Context, key cid.Cid) ([]delegatedrou
 
 func (c *client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {
 	if c.identity == nil {
-		return 0, errors.New("cannot Provide without an identity")
+		return 0, errors.New("cannot provide Bitswap records without an identity")
 	}
-	if c.provider.ID.Size() == 0 {
-		return 0, errors.New("cannot Provide without a provider")
+	if c.peerID.Size() == 0 {
+		return 0, errors.New("cannot provide Bitswap records without a peer ID")
 	}
 
 	ks := make([]delegatedrouting.CID, len(keys))
@@ -125,16 +124,16 @@ func (c *client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 			Keys:        ks,
 			AdvisoryTTL: delegatedrouting.Duration{Duration: ttl},
 			Timestamp:   delegatedrouting.Time{Time: now},
-			ID:          c.provider.ID,
-			Addrs:       c.provider.Addrs,
+			ID:          &c.peerID,
+			Addrs:       c.addrs,
 		},
 	}
-	err := req.Sign(c.provider.ID, c.identity)
+	err := req.Sign(c.peerID, c.identity)
 	if err != nil {
 		return 0, err
 	}
 
-	advisoryTTL, err := c.provideSignedBitswapRecord(ctx, req)
+	advisoryTTL, err := c.provideSignedBitswapRecord(ctx, &req)
 	if err != nil {
 		return 0, err
 	}
@@ -143,7 +142,7 @@ func (c *client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 }
 
 // ProvideAsync makes a provide request to a delegated router
-func (c *client) provideSignedBitswapRecord(ctx context.Context, bswp delegatedrouting.BitswapWriteProviderRequest) (time.Duration, error) {
+func (c *client) provideSignedBitswapRecord(ctx context.Context, bswp *delegatedrouting.BitswapWriteProviderRequest) (time.Duration, error) {
 	if !bswp.IsSigned() {
 		return 0, errors.New("request is not signed")
 	}
@@ -152,7 +151,7 @@ func (c *client) provideSignedBitswapRecord(ctx context.Context, bswp delegatedr
 
 	url := c.baseURL + "/v1/providers"
 
-	reqBodyBuf, err := internal.MarshalJSON(req)
+	reqBodyBuf, err := drjson.MarshalJSON(&req)
 	if err != nil {
 		return 0, err
 	}
@@ -177,26 +176,4 @@ func (c *client) provideSignedBitswapRecord(ctx context.Context, bswp delegatedr
 		return 0, fmt.Errorf("expected 1 result but got %d", len(provideResult.ProvideResults))
 	}
 	return provideResult.ProvideResults[0].(*delegatedrouting.BitswapWriteProviderResponse).AdvisoryTTL, nil
-}
-
-func (c *client) Ready(ctx context.Context) (bool, error) {
-	url := c.baseURL + "/v1/ping"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return false, err
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusOK {
-		return true, nil
-	}
-	if resp.StatusCode == http.StatusServiceUnavailable {
-		return false, nil
-	}
-	return false, fmt.Errorf("unexpected HTTP status code '%d'", resp.StatusCode)
 }

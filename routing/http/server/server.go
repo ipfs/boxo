@@ -12,7 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/ipfs/go-cid"
 	delegatedrouting "github.com/ipfs/go-delegated-routing"
-	"github.com/ipfs/go-delegated-routing/internal"
+	"github.com/ipfs/go-delegated-routing/internal/drjson"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 
@@ -82,12 +82,16 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 				keys[i] = k.Cid
 
 			}
+			addrs := make([]multiaddr.Multiaddr, len(v.Addrs))
+			for i, a := range v.Addrs {
+				addrs[i] = a.Multiaddr
+			}
 			advisoryTTL, err := s.svc.Provide(httpReq.Context(), ProvideRequest{
 				Keys:        keys,
 				Timestamp:   v.Timestamp.Time,
 				AdvisoryTTL: v.AdvisoryTTL.Duration,
-				ID:          v.ID,
-				Addrs:       v.Addrs,
+				ID:          *v.ID,
+				Addrs:       addrs,
 			})
 			if err != nil {
 				writeErr(w, "Provide", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
@@ -126,7 +130,7 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 func writeResult(w http.ResponseWriter, method string, val any) {
 	// keep the marshaling separate from the writing, so we can distinguish bugs (which surface as 500)
 	// from transient network issues (which surface as transport errors)
-	buf, err := internal.MarshalJSON(val)
+	buf, err := drjson.MarshalJSON(val)
 	if err != nil {
 		writeErr(w, method, http.StatusInternalServerError, fmt.Errorf("marshaling response: %w", err))
 		return
@@ -151,5 +155,6 @@ func writeErr(w http.ResponseWriter, method string, statusCode int, cause error)
 }
 
 func logErr(method, msg string, err error) {
+	fmt.Printf("err: %s", err)
 	logger.Infow(msg, "Method", method, "Error", err)
 }

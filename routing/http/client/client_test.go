@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 	"crypto/rand"
-	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -12,13 +11,9 @@ import (
 	"github.com/ipfs/go-cid"
 	delegatedrouting "github.com/ipfs/go-delegated-routing"
 	"github.com/ipfs/go-delegated-routing/server"
-	"github.com/libp2p/go-libp2p"
-	gostream "github.com/libp2p/go-libp2p-gostream"
-	p2phttp "github.com/libp2p/go-libp2p-http"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
-	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -41,27 +36,29 @@ func (m *mockContentRouter) Ready() bool {
 }
 
 type testDeps struct {
-	router   *mockContentRouter
-	server   *httptest.Server
-	provider delegatedrouting.Provider
-	client   *client
+	router *mockContentRouter
+	server *httptest.Server
+	peerID peer.ID
+	addrs  []multiaddr.Multiaddr
+	client *client
 }
 
 func makeTestDeps(t *testing.T) testDeps {
-	provider, identity := makeProviderAndIdentity(nil)
+	peerID, addrs, identity := makeProviderAndIdentity()
 	router := &mockContentRouter{}
 	server := httptest.NewServer(server.Handler(router))
 	t.Cleanup(server.Close)
 	serverAddr := "http://" + server.Listener.Addr().String()
-	c, err := New(serverAddr, WithProvider(provider), WithIdentity(identity))
+	c, err := New(serverAddr, WithProviderInfo(peerID, addrs), WithIdentity(identity))
 	if err != nil {
 		panic(err)
 	}
 	return testDeps{
-		router:   router,
-		server:   server,
-		provider: provider,
-		client:   c,
+		router: router,
+		server: server,
+		peerID: peerID,
+		addrs:  addrs,
+		client: c,
 	}
 }
 
@@ -79,72 +76,35 @@ func makeCID() cid.Cid {
 	return c
 }
 
-func TestClient_Ready(t *testing.T) {
-	cases := []struct {
-		name           string
-		manglePath     bool
-		stopServer     bool
-		routerReady    bool
-		expStatus      bool
-		expErrContains string
-	}{
-		{
-			name:        "happy case",
-			routerReady: true,
-			expStatus:   true,
-		},
-		{
-			name:        "503 returns false",
-			routerReady: false,
-			expStatus:   false,
-		},
-		{
-			name:           "non-503 error returns an error",
-			manglePath:     true,
-			expStatus:      false,
-			expErrContains: "unexpected HTTP status code '404'",
-		},
-		{
-			name:           "undialable returns an error",
-			stopServer:     true,
-			expStatus:      false,
-			expErrContains: "connect: connection refused",
-		},
+func makeProvider() (peer.ID, []multiaddr.Multiaddr) {
+	peerID, addrs, _ := makeProviderAndIdentity()
+	return peerID, addrs
+}
+
+func addrsToDRAddrs(addrs []multiaddr.Multiaddr) (drmas []delegatedrouting.Multiaddr) {
+	for _, a := range addrs {
+		drmas = append(drmas, delegatedrouting.Multiaddr{Multiaddr: a})
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			deps := makeTestDeps(t)
-			client := deps.client
-			router := deps.router
+	return
+}
 
-			if c.manglePath {
-				client.baseURL += "/foo"
-			}
-			if c.stopServer {
-				deps.server.Close()
-			}
+func drAddrsToAddrs(drmas []delegatedrouting.Multiaddr) (addrs []multiaddr.Multiaddr) {
+	for _, a := range drmas {
+		addrs = append(addrs, a.Multiaddr)
+	}
+	return
+}
 
-			router.On("Ready").Return(c.routerReady)
-
-			ready, err := client.Ready(context.Background())
-
-			if c.expErrContains != "" {
-				assert.ErrorContains(t, err, c.expErrContains)
-			} else {
-				assert.NoError(t, err)
-			}
-
-			assert.Equal(t, c.expStatus, ready)
-		})
+func makeBSReadProviderResp() delegatedrouting.BitswapReadProviderResponse {
+	peerID, addrs, _ := makeProviderAndIdentity()
+	return delegatedrouting.BitswapReadProviderResponse{
+		Protocol: "bitswap",
+		ID:       &peerID,
+		Addrs:    addrsToDRAddrs(addrs),
 	}
 }
 
-func makeProvider(protocols []delegatedrouting.TransferProtocol) delegatedrouting.Provider {
-	prov, _ := makeProviderAndIdentity(protocols)
-	return prov
-}
-
-func makeProviderAndIdentity(protocols []delegatedrouting.TransferProtocol) (delegatedrouting.Provider, crypto.PrivKey) {
+func makeProviderAndIdentity() (peer.ID, []multiaddr.Multiaddr, crypto.PrivKey) {
 	priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	if err != nil {
 		panic(err)
@@ -163,32 +123,22 @@ func makeProviderAndIdentity(protocols []delegatedrouting.TransferProtocol) (del
 		panic(err)
 	}
 
-	return delegatedrouting.Provider{
-		PeerID:    peerID,
-		Addrs:     []multiaddr.Multiaddr{ma1, ma2},
-		Protocols: protocols,
-	}, priv
+	return peerID, []multiaddr.Multiaddr{ma1, ma2}, priv
 }
 
-func provsToAIs(provs []delegatedrouting.Provider) (ais []peer.AddrInfo) {
+func bsProvsToAIs(provs []delegatedrouting.BitswapReadProviderResponse) (ais []peer.AddrInfo) {
 	for _, prov := range provs {
 		ais = append(ais, peer.AddrInfo{
-			ID:    prov.PeerID,
-			Addrs: prov.Addrs,
+			ID:    *prov.ID,
+			Addrs: drAddrsToAddrs(prov.Addrs),
 		})
 	}
 	return
 }
 
 func TestClient_FindProviders(t *testing.T) {
-	bitswapProtocol := []delegatedrouting.TransferProtocol{{Codec: multicodec.TransportBitswap, Payload: []byte(`{"a":1}`)}}
-	bitswapProvs := []delegatedrouting.Provider{makeProvider(bitswapProtocol), makeProvider(bitswapProtocol)}
-
-	nonBitswapProtocol := []delegatedrouting.TransferProtocol{{Codec: multicodec.TransportGraphsyncFilecoinv1}}
-	mixedProvs := []delegatedrouting.Provider{
-		makeProvider(bitswapProtocol),
-		makeProvider(nonBitswapProtocol),
-	}
+	bsReadProvResp := makeBSReadProviderResp()
+	bitswapProvs := []delegatedrouting.Provider{&bsReadProvResp}
 
 	cases := []struct {
 		name        string
@@ -197,18 +147,13 @@ func TestClient_FindProviders(t *testing.T) {
 		routerProvs []delegatedrouting.Provider
 		routerErr   error
 
-		expAIs         []peer.AddrInfo
+		expProvs       []delegatedrouting.Provider
 		expErrContains string
 	}{
 		{
 			name:        "happy case",
 			routerProvs: bitswapProvs,
-			expAIs:      provsToAIs(bitswapProvs),
-		},
-		{
-			name:        "non-bitswap providers are filtered by the client",
-			routerProvs: mixedProvs,
-			expAIs:      provsToAIs(mixedProvs[0:1]),
+			expProvs:    bitswapProvs,
 		},
 		{
 			name:           "returns an error if there's a non-200 response",
@@ -238,7 +183,7 @@ func TestClient_FindProviders(t *testing.T) {
 			router.On("FindProviders", mock.Anything, cid).
 				Return(c.routerProvs, c.routerErr)
 
-			ais, err := client.FindProviders(context.Background(), cid)
+			provs, err := client.FindProviders(context.Background(), cid)
 
 			if c.expErrContains != "" {
 				require.ErrorContains(t, err, c.expErrContains)
@@ -246,18 +191,18 @@ func TestClient_FindProviders(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			assert.Equal(t, c.expAIs, ais)
+			assert.Equal(t, c.expProvs, provs)
 		})
 	}
 }
 
 func TestClient_Provide(t *testing.T) {
 	cases := []struct {
-		name       string
-		manglePath bool
-		stopServer bool
-		noProvider bool
-		noIdentity bool
+		name           string
+		manglePath     bool
+		stopServer     bool
+		noProviderInfo bool
+		noIdentity     bool
 
 		cids []cid.Cid
 		ttl  time.Duration
@@ -279,12 +224,12 @@ func TestClient_Provide(t *testing.T) {
 		{
 			name:           "should return error if identity is not provided",
 			noIdentity:     true,
-			expErrContains: "cannot Provide without an identity",
+			expErrContains: "cannot provide Bitswap records without an identity",
 		},
 		{
 			name:           "should return error if provider is not provided",
-			noProvider:     true,
-			expErrContains: "cannot Provide without a provider",
+			noProviderInfo: true,
+			expErrContains: "cannot provide Bitswap records without a peer ID",
 		},
 		{
 			name:           "returns an error if there's a non-200 response",
@@ -300,16 +245,16 @@ func TestClient_Provide(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			//			deps := makeTestDeps(t)
-			deps := makeTestDepsLibp2p(t)
+			deps := makeTestDeps(t)
 			client := deps.client
 			router := deps.router
-			prov := deps.provider
 
 			if c.noIdentity {
 				client.identity = nil
 			}
-			if c.noProvider {
-				client.provider = delegatedrouting.Provider{}
+			if c.noProviderInfo {
+				client.peerID = ""
+				client.addrs = nil
 			}
 
 			clock := clock.NewMock()
@@ -332,13 +277,14 @@ func TestClient_Provide(t *testing.T) {
 				Keys:        c.cids,
 				Timestamp:   clock.Now(),
 				AdvisoryTTL: c.ttl,
-				Provider:    prov,
+				Addrs:       drAddrsToAddrs(client.addrs),
+				ID:          client.peerID,
 			}
 
 			router.On("Provide", mock.Anything, expectedProvReq).
 				Return(c.routerAdvisoryTTL, c.routerErr)
 
-			advisoryTTL, err := client.Provide(ctx, c.cids, c.ttl)
+			advisoryTTL, err := client.ProvideBitswap(ctx, c.cids, c.ttl)
 
 			if c.expErrContains != "" {
 				require.ErrorContains(t, err, c.expErrContains)
@@ -349,56 +295,4 @@ func TestClient_Provide(t *testing.T) {
 			assert.Equal(t, c.expAdvisoryTTL, advisoryTTL)
 		})
 	}
-}
-
-func makeTestDepsLibp2p(t *testing.T) testDeps {
-	provider, identity := makeProviderAndIdentity(nil)
-	router := &mockContentRouter{}
-	server := httptest.NewUnstartedServer(server.Handler(router))
-
-	// server setup
-	h1, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/9454"))
-	require.NoError(t, err)
-	t.Cleanup(func() { h1.Close() })
-
-	listener, err := gostream.Listen(h1, p2phttp.DefaultP2PProtocol)
-	t.Cleanup(func() { listener.Close() })
-	server.Listener = listener
-
-	server.Start()
-	t.Cleanup(server.Close)
-	serverAddr := "libp2p://" + h1.ID().String()
-
-	// client setup
-	h2Ma, err := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/9455")
-	require.NoError(t, err)
-	h2, err := libp2p.New(libp2p.ListenAddrs(h2Ma))
-	require.NoError(t, err)
-	t.Cleanup(func() { h2.Close() })
-
-	c, err := New(serverAddr, WithProvider(provider), WithIdentity(identity))
-	if err != nil {
-		panic(err)
-	}
-	tr := &http.Transport{}
-	tr.RegisterProtocol("libp2p", p2phttp.NewTransport(h2))
-	httpClient := &http.Client{Transport: tr}
-	c.httpClient = httpClient
-
-	// connect
-	h1.Peerstore().AddAddr(h2.ID(), h2Ma, 10*time.Minute)
-	err = h1.Connect(context.Background(), h2.Peerstore().PeerInfo(h2.ID()))
-	require.NoError(t, err)
-
-	return testDeps{
-		router:   router,
-		server:   server,
-		provider: provider,
-		client:   c,
-	}
-
-}
-
-func TestClient_libp2p(t *testing.T) {
-
 }

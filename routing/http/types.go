@@ -6,15 +6,16 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-delegated-routing/internal"
+	"github.com/ipfs/go-delegated-routing/internal/drjson"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/multiformats/go-multiaddr"
 )
 
 var logger = logging.Logger("service/delegatedrouting")
 
 type Time struct{ time.Time }
 
-func (t *Time) MarshalJSON() ([]byte, error) { return internal.MarshalJSONBytes(t.UnixMilli()) }
+func (t Time) MarshalJSON() ([]byte, error) { return drjson.MarshalJSONBytes(t.UnixMilli()) }
 func (t *Time) UnmarshalJSON(b []byte) error {
 	var timestamp int64
 	err := json.Unmarshal(b, &timestamp)
@@ -27,20 +28,22 @@ func (t *Time) UnmarshalJSON(b []byte) error {
 
 type Duration struct{ time.Duration }
 
-func (d *Duration) MarshalJSON() ([]byte, error) { return internal.MarshalJSONBytes(d.Duration) }
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return drjson.MarshalJSONBytes(d.Duration.Milliseconds())
+}
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	var dur int64
 	err := json.Unmarshal(b, &dur)
 	if err != nil {
 		return err
 	}
-	d.Duration = time.Duration(dur)
+	d.Duration = time.Duration(dur) * time.Millisecond
 	return nil
 }
 
 type CID struct{ cid.Cid }
 
-func (c *CID) MarshalJSON() ([]byte, error) { return internal.MarshalJSONBytes(c.String()) }
+func (c CID) MarshalJSON() ([]byte, error) { return drjson.MarshalJSONBytes(c.String()) }
 func (c *CID) UnmarshalJSON(b []byte) error {
 	var s string
 	err := json.Unmarshal(b, &s)
@@ -55,6 +58,22 @@ func (c *CID) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+type Multiaddr struct{ multiaddr.Multiaddr }
+
+func (m *Multiaddr) UnmarshalJSON(b []byte) error {
+	var s string
+	err := json.Unmarshal(b, &s)
+	if err != nil {
+		return err
+	}
+	ma, err := multiaddr.NewMultiaddr(s)
+	if err != nil {
+		return err
+	}
+	m.Multiaddr = ma
+	return nil
+}
+
 type Provider interface{}
 type WriteProviderResponse interface{}
 
@@ -63,26 +82,59 @@ type UnknownWriteProviderResponse struct {
 }
 
 func (r *UnknownWriteProviderResponse) UnmarshalJSON(b []byte) error {
-	err := json.Unmarshal(b, r)
-	if err != nil {
-		return err
-	}
 	r.Bytes = b
 	return nil
 }
 
-func (r *UnknownWriteProviderResponse) MarshalJSON() ([]byte, error) {
+func (r UnknownWriteProviderResponse) MarshalJSON() ([]byte, error) {
 	// the response type must be an object
 	m := map[string]interface{}{}
 	err := json.Unmarshal(r.Bytes, &m)
 	if err != nil {
 		return nil, err
 	}
-	return internal.MarshalJSONBytes(m)
+	return drjson.MarshalJSONBytes(m)
 }
 
 type WriteProvidersRequest struct {
 	Providers []Provider
+}
+
+func (r *WriteProvidersRequest) UnmarshalJSON(b []byte) error {
+	type wpr struct {
+		Providers []json.RawMessage
+	}
+	var tempWPR wpr
+	err := json.Unmarshal(b, &tempWPR)
+	if err != nil {
+		return err
+	}
+
+	for _, provBytes := range tempWPR.Providers {
+		var rawProv RawProvider
+		err := json.Unmarshal(provBytes, &rawProv)
+		if err != nil {
+			return err
+		}
+
+		switch rawProv.Protocol {
+		case "bitswap":
+			var prov BitswapWriteProviderRequest
+			err := json.Unmarshal(rawProv.bytes, &prov)
+			if err != nil {
+				return err
+			}
+			r.Providers = append(r.Providers, &prov)
+		default:
+			var prov UnknownProvider
+			err := json.Unmarshal(b, &prov)
+			if err != nil {
+				return err
+			}
+			r.Providers = append(r.Providers, &prov)
+		}
+	}
+	return nil
 }
 
 type WriteProvidersResponse struct {
@@ -207,20 +259,16 @@ func (r *FindProvidersResponse) UnmarshalJSON(b []byte) error {
 }
 
 func (u *UnknownProvider) UnmarshalJSON(b []byte) error {
-	err := json.Unmarshal(b, u)
-	if err != nil {
-		return err
-	}
 	u.Bytes = b
 	return nil
 }
 
-func (u *UnknownProvider) MarshalJSON() ([]byte, error) {
+func (u UnknownProvider) MarshalJSON() ([]byte, error) {
 	m := map[string]interface{}{}
 	err := json.Unmarshal(u.Bytes, &m)
 	if err != nil {
 		return nil, err
 	}
 	m["Protocol"] = u.Protocol
-	return internal.MarshalJSONBytes(m)
+	return drjson.MarshalJSONBytes(m)
 }

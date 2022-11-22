@@ -7,17 +7,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ipfs/go-delegated-routing/internal"
+	"github.com/ipfs/go-delegated-routing/internal/drjson"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 )
 
 type BitswapReadProviderResponse struct {
 	Protocol string
-	ID       peer.ID
-	Addrs    []multiaddr.Multiaddr
+	ID       *peer.ID
+	Addrs    []Multiaddr
 }
 
 type BitswapWriteProviderRequest struct {
@@ -32,8 +31,8 @@ type BitswapWriteProviderRequestPayload struct {
 	Keys        []CID
 	Timestamp   Time
 	AdvisoryTTL Duration
-	ID          peer.ID
-	Addrs       []multiaddr.Multiaddr
+	ID          *peer.ID
+	Addrs       []Multiaddr
 }
 
 func (p *BitswapWriteProviderRequest) GetPayload() BitswapWriteProviderRequestPayload {
@@ -56,7 +55,7 @@ func (p *BitswapWriteProviderRequest) MarshalJSON() ([]byte, error) {
 	bwp.Signature = p.Signature
 	bwp.Payload = p.rawPayload
 
-	return internal.MarshalJSONBytes(bwp)
+	return drjson.MarshalJSONBytes(bwp)
 }
 
 func (p *BitswapWriteProviderRequest) UnmarshalJSON(b []byte) error {
@@ -74,6 +73,14 @@ func (p *BitswapWriteProviderRequest) UnmarshalJSON(b []byte) error {
 	p.Signature = bwp.Signature
 	p.rawPayload = bwp.Payload
 
+	payload := BitswapWriteProviderRequestPayload{}
+	err = json.Unmarshal([]byte(p.rawPayload), &payload)
+	if err != nil {
+		return fmt.Errorf("unmarshaling payload: %w", err)
+	}
+
+	p.BitswapWriteProviderRequestPayload = payload
+
 	return nil
 }
 
@@ -82,7 +89,7 @@ func (p *BitswapWriteProviderRequest) IsSigned() bool {
 }
 
 func (p *BitswapWriteProviderRequest) setRawPayload() error {
-	payloadBytes, err := internal.MarshalJSONBytes(p.BitswapWriteProviderRequestPayload)
+	payloadBytes, err := drjson.MarshalJSONBytes(p.BitswapWriteProviderRequestPayload)
 	if err != nil {
 		return fmt.Errorf("marshaling bitswap write provider payload: %w", err)
 	}
@@ -131,6 +138,10 @@ func (p *BitswapWriteProviderRequest) Verify() error {
 		return errors.New("not signed")
 	}
 
+	if p.ID == nil {
+		return errors.New("peer ID must be specified")
+	}
+
 	// note that we only generate and set the payload if it hasn't already been set
 	// to allow for passing through the payload untouched if it is already provided
 	if p.rawPayload == "" {
@@ -142,7 +153,7 @@ func (p *BitswapWriteProviderRequest) Verify() error {
 
 	pk, err := p.ID.ExtractPublicKey()
 	if err != nil {
-		return err
+		return fmt.Errorf("extracing public key from peer ID: %w", err)
 	}
 
 	_, sigBytes, err := multibase.Decode(p.Signature)
@@ -154,7 +165,7 @@ func (p *BitswapWriteProviderRequest) Verify() error {
 
 	ok, err := pk.Verify(hash, sigBytes)
 	if err != nil {
-		return err
+		return fmt.Errorf("verifying hash with signature: %w", err)
 	}
 	if !ok {
 		return errors.New("signature failed to verify")
