@@ -26,8 +26,6 @@ func singleItemBatches(items []int) (batches [][]int) {
 }
 
 func TestDoBatch(t *testing.T) {
-	type batchHandler func(context.Context, sync.Mutex, [][]int, []int) error
-
 	cases := []struct {
 		name           string
 		items          []int

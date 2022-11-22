@@ -77,11 +77,6 @@ func makeCID() cid.Cid {
 	return c
 }
 
-func makeProvider() (peer.ID, []multiaddr.Multiaddr) {
-	peerID, addrs, _ := makeProviderAndIdentity()
-	return peerID, addrs
-}
-
 func addrsToDRAddrs(addrs []multiaddr.Multiaddr) (drmas []delegatedrouting.Multiaddr) {
 	for _, a := range addrs {
 		drmas = append(drmas, delegatedrouting.Multiaddr{Multiaddr: a})
@@ -125,16 +120,6 @@ func makeProviderAndIdentity() (peer.ID, []multiaddr.Multiaddr, crypto.PrivKey) 
 	}
 
 	return peerID, []multiaddr.Multiaddr{ma1, ma2}, priv
-}
-
-func bsProvsToAIs(provs []delegatedrouting.BitswapReadProviderResponse) (ais []peer.AddrInfo) {
-	for _, prov := range provs {
-		ais = append(ais, peer.AddrInfo{
-			ID:    *prov.ID,
-			Addrs: drAddrsToAddrs(prov.Addrs),
-		})
-	}
-	return
 }
 
 func TestClient_FindProviders(t *testing.T) {
