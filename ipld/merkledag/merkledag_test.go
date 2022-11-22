@@ -87,6 +87,18 @@ func (brokenBuilder) Sum([]byte) (cid.Cid, error)    { return cid.Undef, errors.
 func (brokenBuilder) GetCodec() uint64               { return 0 }
 func (b brokenBuilder) WithCodec(uint64) cid.Builder { return b }
 
+// builder that will pass the basic SetCidBuilder tests but fail otherwise
+type sneakyBrokenBuilder struct{}
+
+func (sneakyBrokenBuilder) Sum(data []byte) (cid.Cid, error) {
+	if len(data) == 256 {
+		return V1CidPrefix().Sum(data)
+	}
+	return cid.Undef, errors.New("Nope!")
+}
+func (sneakyBrokenBuilder) GetCodec() uint64               { return 0 }
+func (b sneakyBrokenBuilder) WithCodec(uint64) cid.Builder { return b }
+
 func TestBadBuilderEncode(t *testing.T) {
 	n := NodeWithData([]byte("boop"))
 
@@ -137,6 +149,24 @@ func TestBadBuilderEncode(t *testing.T) {
 		}
 		if _, err := n.EncodeProtobuf(false); err != nil {
 			t.Fatalf("expected EncodeProtobuf to use safe CidBuilder: %v", err)
+		}
+	})
+
+	t.Run("broken sneaky custom builder, should error", func(t *testing.T) {
+		if err := n.SetCidBuilder(sneakyBrokenBuilder{}); err != nil {
+			t.Fatalf("expected SetCidBuilder to not error with sneaky custom builder: %v", err)
+		}
+		if _, err := n.EncodeProtobuf(false); err == nil {
+			t.Fatal("expected EncodeProtobuf to fail using the sneaky custom builder")
+		}
+		if len(n.RawData()) != 0 {
+			t.Fatal("expected RawData to return zero-byte slice")
+		}
+		if n.Cid().String() != "bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku" {
+			t.Fatal("expected Cid to return the zero dag-pb CID")
+		}
+		if n.String() != "bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku" {
+			t.Fatal("expected String to return the zero dag-pb CID string")
 		}
 	})
 }

@@ -12,6 +12,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
 	legacy "github.com/ipfs/go-ipld-legacy"
+	logging "github.com/ipfs/go-log/v2"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	ipld "github.com/ipld/go-ipld-prime"
 	mh "github.com/multiformats/go-multihash"
@@ -25,8 +26,11 @@ var (
 	ErrLinkNotFound = fmt.Errorf("no link by that name")
 )
 
+var log = logging.Logger("merkledag")
+
 // for testing custom CidBuilders
 var zeros [256]byte
+var zeroCid = mustZeroCid()
 
 type immutableProtoNode struct {
 	encoded []byte
@@ -293,13 +297,16 @@ func (n *ProtoNode) Copy() format.Node {
 
 // RawData returns the encoded byte form of this node.
 //
-// Note that this method can panic if a new encode is required and there is an
-// error performing the encode. To avoid a panic, use node.EncodeProtobuf(false)
-// instead (or prior to calling RawData) and check for its returned error value.
+// Note that this method may return an empty byte slice if there is an error
+// performing the encode. To check whether such an error may have occurred, use
+// node.EncodeProtobuf(false), instead (or prior to calling RawData) and check
+// for its returned error value; the result of EncodeProtobuf is cached so there
+// is minimal overhead when invoking both methods.
 func (n *ProtoNode) RawData() []byte {
 	out, err := n.EncodeProtobuf(false)
 	if err != nil {
-		panic(err)
+		log.Errorf("failed to encode dag-pb block: %s", err.Error())
+		return nil
 	}
 	return out
 }
@@ -431,34 +438,47 @@ func (n *ProtoNode) MarshalJSON() ([]byte, error) {
 // Cid returns the node's Cid, calculated according to its prefix
 // and raw data contents.
 //
-// Note that this method can panic if a new encode is required and there is an
-// error performing the encode. To avoid a panic, call
-// node.EncodeProtobuf(false) prior to calling Cid and check for its returned
-// error value.
+// Note that this method may return a CID representing a zero-length byte slice
+// if there is an error performing the encode. To check whether such an error
+// may have occurred, use node.EncodeProtobuf(false), instead (or prior to
+// calling RawData) and check for its returned error value; the result of
+// EncodeProtobuf is cached so there is minimal overhead when invoking both
+// methods.
 func (n *ProtoNode) Cid() cid.Cid {
 	// re-encode if necessary and we'll get a new cached CID
 	if _, err := n.EncodeProtobuf(false); err != nil {
-		panic(err)
+		log.Errorf("failed to encode dag-pb block: %s", err.Error())
+		// error, return a zero-CID
+		c, err := n.CidBuilder().Sum([]byte{})
+		if err != nil {
+			// CidBuilder was a source of error, return _the_ dag-pb zero CIDv1
+			return zeroCid
+		}
+		return c
 	}
 	return n.cached
 }
 
 // String prints the node's Cid.
 //
-// Note that this method can panic if a new encode is required and there is an
-// error performing the encode. To avoid a panic, call
-// node.EncodeProtobuf(false) prior to calling String and check for its returned
-// error value.
+// Note that this method may return a CID representing a zero-length byte slice
+// if there is an error performing the encode. To check whether such an error
+// may have occurred, use node.EncodeProtobuf(false), instead (or prior to
+// calling RawData) and check for its returned error value; the result of
+// EncodeProtobuf is cached so there is minimal overhead when invoking both
+// methods.
 func (n *ProtoNode) String() string {
 	return n.Cid().String()
 }
 
 // Multihash hashes the encoded data of this node.
 //
-// Note that this method can panic if a new encode is required and there is an
-// error performing the encode. To avoid a panic, call
-// node.EncodeProtobuf(false) prior to calling Multihash and check for its
-// returned error value.
+// Note that this method may return a multihash representing a zero-length byte
+// slice if there is an error performing the encode. To check whether such an
+// error may have occurred, use node.EncodeProtobuf(false), instead (or prior to
+// calling RawData) and check for its returned error value; the result of
+// EncodeProtobuf is cached so there is minimal overhead when invoking both
+// methods.
 func (n *ProtoNode) Multihash() mh.Multihash {
 	return n.Cid().Hash()
 }
@@ -541,6 +561,15 @@ func ProtoNodeConverter(b blocks.Block, nd ipld.Node) (legacy.UniversalNode, err
 	pn.cached = b.Cid()
 	pn.builder = b.Cid().Prefix()
 	return pn, nil
+}
+
+// TODO: replace with cid.MustParse() when we bump go-cid
+func mustZeroCid() cid.Cid {
+	c, err := cid.Parse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")
+	if err != nil {
+		panic(err)
+	}
+	return c
 }
 
 var _ legacy.UniversalNode = &ProtoNode{}
