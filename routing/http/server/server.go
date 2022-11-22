@@ -155,5 +155,6 @@ func writeErr(w http.ResponseWriter, method string, statusCode int, cause error)
 }
 
 func logErr(method, msg string, err error) {
+	fmt.Printf("err: %s", err)
 	logger.Infow(msg, "Method", method, "Error", err)
 }
