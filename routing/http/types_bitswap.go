@@ -35,15 +35,6 @@ type BitswapWriteProviderRequestPayload struct {
 	Addrs       []Multiaddr
 }
 
-func (p *BitswapWriteProviderRequest) MarshalJSON() ([]byte, error) {
-	err := p.Verify()
-	if err != nil {
-		return nil, err
-	}
-
-	return json.Marshal(p)
-}
-
 type tmpBWPR BitswapWriteProviderRequest
 
 func (p *BitswapWriteProviderRequest) UnmarshalJSON(b []byte) error {

@@ -33,7 +33,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	if err != nil {
 		return err
 	}
-	d.Duration = time.Duration(dur) * time.Millisecond
+	d.Duration = time.Duration(dur)
 	return nil
 }
 
