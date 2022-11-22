@@ -31,6 +31,10 @@ type client struct {
 	peerID   peer.ID
 	addrs    []delegatedrouting.Multiaddr
 	identity crypto.PrivKey
+
+	// called immeidately after signing a provide req
+	// used for testing, e.g. testing the server with a mangled signature
+	afterSignCallback func(req *delegatedrouting.BitswapWriteProviderRequest)
 }
 
 type httpClient interface {
@@ -133,6 +137,10 @@ func (c *client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 		return 0, err
 	}
 
+	if c.afterSignCallback != nil {
+		c.afterSignCallback(&req)
+	}
+
 	advisoryTTL, err := c.provideSignedBitswapRecord(ctx, &req)
 	if err != nil {
 		return 0, err
@@ -143,10 +151,6 @@ func (c *client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 
 // ProvideAsync makes a provide request to a delegated router
 func (c *client) provideSignedBitswapRecord(ctx context.Context, bswp *delegatedrouting.BitswapWriteProviderRequest) (time.Duration, error) {
-	if !bswp.IsSigned() {
-		return 0, errors.New("request is not signed")
-	}
-
 	req := delegatedrouting.WriteProvidersRequest{Providers: []delegatedrouting.Provider{bswp}}
 
 	url := c.baseURL + "/v1/providers"

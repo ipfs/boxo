@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -148,7 +149,7 @@ func TestClient_FindProviders(t *testing.T) {
 		routerErr   error
 
 		expProvs       []delegatedrouting.Provider
-		expErrContains string
+		expErrContains []string
 	}{
 		{
 			name:        "happy case",
@@ -158,12 +159,12 @@ func TestClient_FindProviders(t *testing.T) {
 		{
 			name:           "returns an error if there's a non-200 response",
 			manglePath:     true,
-			expErrContains: "HTTP error with StatusCode=404: 404 page not found",
+			expErrContains: []string{"HTTP error with StatusCode=404: 404 page not found"},
 		},
 		{
 			name:           "returns an error if the HTTP client returns a non-HTTP error",
 			stopServer:     true,
-			expErrContains: "connect: connection refused",
+			expErrContains: []string{"connect: connection refused"},
 		},
 	}
 	for _, c := range cases {
@@ -185,9 +186,10 @@ func TestClient_FindProviders(t *testing.T) {
 
 			provs, err := client.FindProviders(context.Background(), cid)
 
-			if c.expErrContains != "" {
-				require.ErrorContains(t, err, c.expErrContains)
-			} else {
+			for _, exp := range c.expErrContains {
+				require.ErrorContains(t, err, exp)
+			}
+			if len(c.expErrContains) == 0 {
 				require.NoError(t, err)
 			}
 
@@ -198,11 +200,12 @@ func TestClient_FindProviders(t *testing.T) {
 
 func TestClient_Provide(t *testing.T) {
 	cases := []struct {
-		name           string
-		manglePath     bool
-		stopServer     bool
-		noProviderInfo bool
-		noIdentity     bool
+		name            string
+		manglePath      bool
+		mangleSignature bool
+		stopServer      bool
+		noProviderInfo  bool
+		noIdentity      bool
 
 		cids []cid.Cid
 		ttl  time.Duration
@@ -220,6 +223,13 @@ func TestClient_Provide(t *testing.T) {
 			routerAdvisoryTTL: 1 * time.Minute,
 
 			expAdvisoryTTL: 1 * time.Minute,
+		},
+		{
+			name:            "should return a 403 if the payload signature verification fails",
+			cids:            []cid.Cid{},
+			mangleSignature: true,
+
+			expErrContains: "HTTP error with StatusCode=403",
 		},
 		{
 			name:           "should return error if identity is not provided",
@@ -258,6 +268,7 @@ func TestClient_Provide(t *testing.T) {
 			}
 
 			clock := clock.NewMock()
+			clock.Set(time.Now())
 			client.clock = clock
 
 			ctx := context.Background()
@@ -268,6 +279,16 @@ func TestClient_Provide(t *testing.T) {
 			if c.stopServer {
 				deps.server.Close()
 			}
+			if c.mangleSignature {
+				client.afterSignCallback = func(req *delegatedrouting.BitswapWriteProviderRequest) {
+					mh, err := multihash.Encode([]byte("boom"), multihash.SHA2_256)
+					require.NoError(t, err)
+					mb, err := multibase.Encode(multibase.Base64, mh)
+					require.NoError(t, err)
+
+					req.Signature = mb
+				}
+			}
 
 			var cidStrs []string
 			for _, c := range c.cids {
@@ -275,7 +296,7 @@ func TestClient_Provide(t *testing.T) {
 			}
 			expectedProvReq := server.ProvideRequest{
 				Keys:        c.cids,
-				Timestamp:   clock.Now(),
+				Timestamp:   clock.Now().Truncate(time.Millisecond),
 				AdvisoryTTL: c.ttl,
 				Addrs:       drAddrsToAddrs(client.addrs),
 				ID:          client.peerID,

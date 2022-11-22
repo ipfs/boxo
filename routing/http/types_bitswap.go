@@ -40,10 +40,6 @@ func (p *BitswapWriteProviderRequest) GetPayload() BitswapWriteProviderRequestPa
 }
 
 func (p *BitswapWriteProviderRequest) MarshalJSON() ([]byte, error) {
-	err := p.Verify()
-	if err != nil {
-		return nil, err
-	}
 	bwp := struct {
 		Protocol  string
 		Signature string
