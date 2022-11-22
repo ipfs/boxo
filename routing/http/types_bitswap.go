@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ipfs/go-delegated-routing/internal/drjson"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multibase"
@@ -20,46 +19,35 @@ type BitswapReadProviderResponse struct {
 }
 
 type BitswapWriteProviderRequest struct {
-	BitswapWriteProviderRequestPayload
 	Protocol  string
 	Signature string
 
-	rawPayload string
+	// this content must be untouched because it is signed and we need to verify it
+	RawPayload json.RawMessage                    `json:"Payload"`
+	Payload    BitswapWriteProviderRequestPayload `json:"-"`
 }
 
 type BitswapWriteProviderRequestPayload struct {
 	Keys        []CID
-	Timestamp   Time
-	AdvisoryTTL Duration
+	Timestamp   *Time
+	AdvisoryTTL *Duration
 	ID          *peer.ID
 	Addrs       []Multiaddr
 }
 
-func (p *BitswapWriteProviderRequest) GetPayload() BitswapWriteProviderRequestPayload {
-	return BitswapWriteProviderRequestPayload{}
-}
-
 func (p *BitswapWriteProviderRequest) MarshalJSON() ([]byte, error) {
-	bwp := struct {
-		Protocol  string
-		Signature string
-		Payload   string
-	}{
-		Protocol: p.Protocol,
+	err := p.Verify()
+	if err != nil {
+		return nil, err
 	}
 
-	bwp.Signature = p.Signature
-	bwp.Payload = p.rawPayload
-
-	return drjson.MarshalJSONBytes(bwp)
+	return json.Marshal(p)
 }
 
+type tmpBWPR BitswapWriteProviderRequest
+
 func (p *BitswapWriteProviderRequest) UnmarshalJSON(b []byte) error {
-	bwp := struct {
-		Protocol  string
-		Signature string
-		Payload   string
-	}{}
+	var bwp tmpBWPR
 	err := json.Unmarshal(b, &bwp)
 	if err != nil {
 		return err
@@ -67,17 +55,9 @@ func (p *BitswapWriteProviderRequest) UnmarshalJSON(b []byte) error {
 
 	p.Protocol = bwp.Protocol
 	p.Signature = bwp.Signature
-	p.rawPayload = bwp.Payload
+	p.RawPayload = bwp.RawPayload
 
-	payload := BitswapWriteProviderRequestPayload{}
-	err = json.Unmarshal([]byte(p.rawPayload), &payload)
-	if err != nil {
-		return fmt.Errorf("unmarshaling payload: %w", err)
-	}
-
-	p.BitswapWriteProviderRequestPayload = payload
-
-	return nil
+	return json.Unmarshal(bwp.RawPayload, &p.Payload)
 }
 
 func (p *BitswapWriteProviderRequest) IsSigned() bool {
@@ -85,11 +65,13 @@ func (p *BitswapWriteProviderRequest) IsSigned() bool {
 }
 
 func (p *BitswapWriteProviderRequest) setRawPayload() error {
-	payloadBytes, err := drjson.MarshalJSONBytes(p.BitswapWriteProviderRequestPayload)
+	payloadBytes, err := json.Marshal(p.Payload)
 	if err != nil {
 		return fmt.Errorf("marshaling bitswap write provider payload: %w", err)
 	}
-	p.rawPayload = string(payloadBytes)
+
+	p.RawPayload = payloadBytes
+
 	return nil
 }
 
@@ -114,8 +96,8 @@ func (p *BitswapWriteProviderRequest) Sign(peerID peer.ID, key crypto.PrivKey) e
 	if err != nil {
 		return err
 	}
-	hash := sha256.New().Sum([]byte(p.rawPayload))
-	sig, err := key.Sign(hash)
+	hash := sha256.Sum256([]byte(p.RawPayload))
+	sig, err := key.Sign(hash[:])
 	if err != nil {
 		return err
 	}
@@ -134,20 +116,20 @@ func (p *BitswapWriteProviderRequest) Verify() error {
 		return errors.New("not signed")
 	}
 
-	if p.ID == nil {
+	if p.Payload.ID == nil {
 		return errors.New("peer ID must be specified")
 	}
 
 	// note that we only generate and set the payload if it hasn't already been set
 	// to allow for passing through the payload untouched if it is already provided
-	if p.rawPayload == "" {
+	if p.RawPayload == nil {
 		err := p.setRawPayload()
 		if err != nil {
 			return err
 		}
 	}
 
-	pk, err := p.ID.ExtractPublicKey()
+	pk, err := p.Payload.ID.ExtractPublicKey()
 	if err != nil {
 		return fmt.Errorf("extracing public key from peer ID: %w", err)
 	}
@@ -157,9 +139,8 @@ func (p *BitswapWriteProviderRequest) Verify() error {
 		return fmt.Errorf("multibase-decoding signature to verify: %w", err)
 	}
 
-	hash := sha256.New().Sum([]byte(p.rawPayload))
-
-	ok, err := pk.Verify(hash, sigBytes)
+	hash := sha256.Sum256([]byte(p.RawPayload))
+	ok, err := pk.Verify(hash[:], sigBytes)
 	if err != nil {
 		return fmt.Errorf("verifying hash with signature: %w", err)
 	}

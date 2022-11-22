@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,7 +13,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/ipfs/go-cid"
 	delegatedrouting "github.com/ipfs/go-delegated-routing"
-	"github.com/ipfs/go-delegated-routing/internal/drjson"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 
@@ -53,8 +53,7 @@ func Handler(svc ContentRouter, opts ...serverOption) http.Handler {
 }
 
 type server struct {
-	svc    ContentRouter
-	router *mux.Router
+	svc ContentRouter
 }
 
 func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
@@ -77,20 +76,20 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 				return
 			}
 
-			keys := make([]cid.Cid, len(v.Keys))
-			for i, k := range v.Keys {
+			keys := make([]cid.Cid, len(v.Payload.Keys))
+			for i, k := range v.Payload.Keys {
 				keys[i] = k.Cid
 
 			}
-			addrs := make([]multiaddr.Multiaddr, len(v.Addrs))
-			for i, a := range v.Addrs {
+			addrs := make([]multiaddr.Multiaddr, len(v.Payload.Addrs))
+			for i, a := range v.Payload.Addrs {
 				addrs[i] = a.Multiaddr
 			}
 			advisoryTTL, err := s.svc.Provide(httpReq.Context(), ProvideRequest{
 				Keys:        keys,
-				Timestamp:   v.Timestamp.Time,
-				AdvisoryTTL: v.AdvisoryTTL.Duration,
-				ID:          *v.ID,
+				Timestamp:   v.Payload.Timestamp.Time,
+				AdvisoryTTL: v.Payload.AdvisoryTTL.Duration,
+				ID:          *v.Payload.ID,
 				Addrs:       addrs,
 			})
 			if err != nil {
@@ -130,12 +129,13 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 func writeResult(w http.ResponseWriter, method string, val any) {
 	// keep the marshaling separate from the writing, so we can distinguish bugs (which surface as 500)
 	// from transient network issues (which surface as transport errors)
-	buf, err := drjson.MarshalJSON(val)
+	b, err := json.Marshal(val)
 	if err != nil {
 		writeErr(w, method, http.StatusInternalServerError, fmt.Errorf("marshaling response: %w", err))
 		return
 	}
-	_, err = io.Copy(w, buf)
+
+	_, err = io.Copy(w, bytes.NewBuffer(b))
 	if err != nil {
 		logErr("Provide", "writing response body", err)
 	}

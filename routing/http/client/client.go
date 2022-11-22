@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,7 +12,6 @@ import (
 	"github.com/benbjohnson/clock"
 	"github.com/ipfs/go-cid"
 	delegatedrouting "github.com/ipfs/go-delegated-routing"
-	"github.com/ipfs/go-delegated-routing/internal/drjson"
 	ipns "github.com/ipfs/go-ipns"
 	logging "github.com/ipfs/go-log/v2"
 	record "github.com/libp2p/go-libp2p-record"
@@ -124,10 +124,10 @@ func (c *client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 
 	req := delegatedrouting.BitswapWriteProviderRequest{
 		Protocol: "bitswap",
-		BitswapWriteProviderRequestPayload: delegatedrouting.BitswapWriteProviderRequestPayload{
+		Payload: delegatedrouting.BitswapWriteProviderRequestPayload{
 			Keys:        ks,
-			AdvisoryTTL: delegatedrouting.Duration{Duration: ttl},
-			Timestamp:   delegatedrouting.Time{Time: now},
+			AdvisoryTTL: &delegatedrouting.Duration{Duration: ttl},
+			Timestamp:   &delegatedrouting.Time{Time: now},
 			ID:          &c.peerID,
 			Addrs:       c.addrs,
 		},
@@ -155,12 +155,15 @@ func (c *client) provideSignedBitswapRecord(ctx context.Context, bswp *delegated
 
 	url := c.baseURL + "/v1/providers"
 
-	reqBodyBuf, err := drjson.MarshalJSON(&req)
+	b, err := json.Marshal(req)
 	if err != nil {
 		return 0, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, reqBodyBuf)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(b))
+	if err != nil {
+		return 0, err
+	}
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -179,5 +182,6 @@ func (c *client) provideSignedBitswapRecord(ctx context.Context, bswp *delegated
 	if len(provideResult.ProvideResults) != 1 {
 		return 0, fmt.Errorf("expected 1 result but got %d", len(provideResult.ProvideResults))
 	}
+
 	return provideResult.ProvideResults[0].(*delegatedrouting.BitswapWriteProviderResponse).AdvisoryTTL, nil
 }

@@ -290,10 +290,6 @@ func TestClient_Provide(t *testing.T) {
 				}
 			}
 
-			var cidStrs []string
-			for _, c := range c.cids {
-				cidStrs = append(cidStrs, c.String())
-			}
 			expectedProvReq := server.ProvideRequest{
 				Keys:        c.cids,
 				Timestamp:   clock.Now().Truncate(time.Millisecond),
