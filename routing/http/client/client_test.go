@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"net/http/httptest"
+	"runtime"
 	"testing"
 	"time"
 
@@ -77,11 +78,6 @@ func makeCID() cid.Cid {
 	return c
 }
 
-func makeProvider() (peer.ID, []multiaddr.Multiaddr) {
-	peerID, addrs, _ := makeProviderAndIdentity()
-	return peerID, addrs
-}
-
 func addrsToDRAddrs(addrs []multiaddr.Multiaddr) (drmas []delegatedrouting.Multiaddr) {
 	for _, a := range addrs {
 		drmas = append(drmas, delegatedrouting.Multiaddr{Multiaddr: a})
@@ -127,16 +123,6 @@ func makeProviderAndIdentity() (peer.ID, []multiaddr.Multiaddr, crypto.PrivKey) 
 	return peerID, []multiaddr.Multiaddr{ma1, ma2}, priv
 }
 
-func bsProvsToAIs(provs []delegatedrouting.BitswapReadProviderResponse) (ais []peer.AddrInfo) {
-	for _, prov := range provs {
-		ais = append(ais, peer.AddrInfo{
-			ID:    *prov.ID,
-			Addrs: drAddrsToAddrs(prov.Addrs),
-		})
-	}
-	return
-}
-
 func TestClient_FindProviders(t *testing.T) {
 	bsReadProvResp := makeBSReadProviderResp()
 	bitswapProvs := []delegatedrouting.Provider{&bsReadProvResp}
@@ -148,8 +134,9 @@ func TestClient_FindProviders(t *testing.T) {
 		routerProvs []delegatedrouting.Provider
 		routerErr   error
 
-		expProvs       []delegatedrouting.Provider
-		expErrContains []string
+		expProvs          []delegatedrouting.Provider
+		expErrContains    []string
+		expWinErrContains []string
 	}{
 		{
 			name:        "happy case",
@@ -162,9 +149,10 @@ func TestClient_FindProviders(t *testing.T) {
 			expErrContains: []string{"HTTP error with StatusCode=404: 404 page not found"},
 		},
 		{
-			name:           "returns an error if the HTTP client returns a non-HTTP error",
-			stopServer:     true,
-			expErrContains: []string{"connect: connection refused"},
+			name:              "returns an error if the HTTP client returns a non-HTTP error",
+			stopServer:        true,
+			expErrContains:    []string{"connect: connection refused"},
+			expWinErrContains: []string{"connectex: No connection could be made because the target machine actively refused it."},
 		},
 	}
 	for _, c := range cases {
@@ -186,10 +174,17 @@ func TestClient_FindProviders(t *testing.T) {
 
 			provs, err := client.FindProviders(context.Background(), cid)
 
-			for _, exp := range c.expErrContains {
+			var errList []string
+			if runtime.GOOS == "windows" && len(c.expWinErrContains) != 0 {
+				errList = c.expWinErrContains
+			} else {
+				errList = c.expErrContains
+			}
+
+			for _, exp := range errList {
 				require.ErrorContains(t, err, exp)
 			}
-			if len(c.expErrContains) == 0 {
+			if len(errList) == 0 {
 				require.NoError(t, err)
 			}
 
@@ -213,7 +208,9 @@ func TestClient_Provide(t *testing.T) {
 		routerAdvisoryTTL time.Duration
 		routerErr         error
 
-		expErrContains string
+		expErrContains    string
+		expWinErrContains string
+
 		expAdvisoryTTL time.Duration
 	}{
 		{
@@ -247,9 +244,10 @@ func TestClient_Provide(t *testing.T) {
 			expErrContains: "HTTP error with StatusCode=404: 404 page not found",
 		},
 		{
-			name:           "returns an error if the HTTP client returns a non-HTTP error",
-			stopServer:     true,
-			expErrContains: "connect: connection refused",
+			name:              "returns an error if the HTTP client returns a non-HTTP error",
+			stopServer:        true,
+			expErrContains:    "connect: connection refused",
+			expWinErrContains: "connectex: No connection could be made because the target machine actively refused it.",
 		},
 	}
 	for _, c := range cases {
@@ -290,10 +288,6 @@ func TestClient_Provide(t *testing.T) {
 				}
 			}
 
-			var cidStrs []string
-			for _, c := range c.cids {
-				cidStrs = append(cidStrs, c.String())
-			}
 			expectedProvReq := server.ProvideRequest{
 				Keys:        c.cids,
 				Timestamp:   clock.Now().Truncate(time.Millisecond),
@@ -307,8 +301,15 @@ func TestClient_Provide(t *testing.T) {
 
 			advisoryTTL, err := client.ProvideBitswap(ctx, c.cids, c.ttl)
 
-			if c.expErrContains != "" {
-				require.ErrorContains(t, err, c.expErrContains)
+			var errorString string
+			if runtime.GOOS == "windows" && c.expWinErrContains != "" {
+				errorString = c.expWinErrContains
+			} else {
+				errorString = c.expErrContains
+			}
+
+			if errorString != "" {
+				require.ErrorContains(t, err, errorString)
 			} else {
 				require.NoError(t, err)
 			}

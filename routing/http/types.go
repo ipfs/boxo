@@ -6,16 +6,14 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-delegated-routing/internal/drjson"
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/multiformats/go-multiaddr"
 )
 
-var logger = logging.Logger("service/delegatedrouting")
-
 type Time struct{ time.Time }
 
-func (t Time) MarshalJSON() ([]byte, error) { return drjson.MarshalJSONBytes(t.UnixMilli()) }
+func (t *Time) MarshalJSON() ([]byte, error) {
+	return json.Marshal(t.Time.UnixMilli())
+}
 func (t *Time) UnmarshalJSON(b []byte) error {
 	var timestamp int64
 	err := json.Unmarshal(b, &timestamp)
@@ -28,22 +26,20 @@ func (t *Time) UnmarshalJSON(b []byte) error {
 
 type Duration struct{ time.Duration }
 
-func (d Duration) MarshalJSON() ([]byte, error) {
-	return drjson.MarshalJSONBytes(d.Duration.Milliseconds())
-}
+func (d *Duration) MarshalJSON() ([]byte, error) { return json.Marshal(d.Duration) }
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	var dur int64
 	err := json.Unmarshal(b, &dur)
 	if err != nil {
 		return err
 	}
-	d.Duration = time.Duration(dur) * time.Millisecond
+	d.Duration = time.Duration(dur)
 	return nil
 }
 
 type CID struct{ cid.Cid }
 
-func (c CID) MarshalJSON() ([]byte, error) { return drjson.MarshalJSONBytes(c.String()) }
+func (c *CID) MarshalJSON() ([]byte, error) { return json.Marshal(c.String()) }
 func (c *CID) UnmarshalJSON(b []byte) error {
 	var s string
 	err := json.Unmarshal(b, &s)
@@ -93,7 +89,7 @@ func (r UnknownWriteProviderResponse) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return drjson.MarshalJSONBytes(m)
+	return json.Marshal(m)
 }
 
 type WriteProvidersRequest struct {
@@ -270,5 +266,6 @@ func (u UnknownProvider) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	m["Protocol"] = u.Protocol
-	return drjson.MarshalJSONBytes(m)
+
+	return json.Marshal(m)
 }
