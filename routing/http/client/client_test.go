@@ -10,8 +10,8 @@ import (
 
 	"github.com/benbjohnson/clock"
 	"github.com/ipfs/go-cid"
-	delegatedrouting "github.com/ipfs/go-delegated-routing"
-	"github.com/ipfs/go-delegated-routing/server"
+	delegatedrouting "github.com/ipfs/go-libipfs/routing/http"
+	"github.com/ipfs/go-libipfs/routing/http/server"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"

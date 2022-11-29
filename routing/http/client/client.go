@@ -11,8 +11,8 @@ import (
 
 	"github.com/benbjohnson/clock"
 	"github.com/ipfs/go-cid"
-	delegatedrouting "github.com/ipfs/go-delegated-routing"
 	ipns "github.com/ipfs/go-ipns"
+	delegatedrouting "github.com/ipfs/go-libipfs/routing/http"
 	logging "github.com/ipfs/go-log/v2"
 	record "github.com/libp2p/go-libp2p-record"
 	"github.com/libp2p/go-libp2p/core/crypto"

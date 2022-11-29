@@ -12,7 +12,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/ipfs/go-cid"
-	delegatedrouting "github.com/ipfs/go-delegated-routing"
+	delegatedrouting "github.com/ipfs/go-libipfs/routing/http"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 
