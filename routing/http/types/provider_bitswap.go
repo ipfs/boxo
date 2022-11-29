@@ -1,33 +1,32 @@
-package http
+package types
 
 import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
+	"github.com/ipfs/go-libipfs/routing/http/internal/drjson"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multibase"
 )
 
-type BitswapReadProviderResponse struct {
-	Protocol string
-	ID       *peer.ID
-	Addrs    []Multiaddr
-}
+const BitswapProviderID = "bitswap"
 
-type BitswapWriteProviderRequest struct {
+var _ WriteProviderRecord = &WriteBitswapProviderRecord{}
+
+// WriteBitswapProviderRecord is used when we want to add a new provider record that is using bitswap.
+type WriteBitswapProviderRecord struct {
 	Protocol  string
 	Signature string
 
 	// this content must be untouched because it is signed and we need to verify it
-	RawPayload json.RawMessage                    `json:"Payload"`
-	Payload    BitswapWriteProviderRequestPayload `json:"-"`
+	RawPayload json.RawMessage `json:"Payload"`
+	Payload    BitswapPayload  `json:"-"`
 }
 
-type BitswapWriteProviderRequestPayload struct {
+type BitswapPayload struct {
 	Keys        []CID
 	Timestamp   *Time
 	AdvisoryTTL *Duration
@@ -35,9 +34,11 @@ type BitswapWriteProviderRequestPayload struct {
 	Addrs       []Multiaddr
 }
 
-type tmpBWPR BitswapWriteProviderRequest
+func (*WriteBitswapProviderRecord) IsWriteProviderRecord() {}
 
-func (p *BitswapWriteProviderRequest) UnmarshalJSON(b []byte) error {
+type tmpBWPR WriteBitswapProviderRecord
+
+func (p *WriteBitswapProviderRecord) UnmarshalJSON(b []byte) error {
 	var bwp tmpBWPR
 	err := json.Unmarshal(b, &bwp)
 	if err != nil {
@@ -51,12 +52,12 @@ func (p *BitswapWriteProviderRequest) UnmarshalJSON(b []byte) error {
 	return json.Unmarshal(bwp.RawPayload, &p.Payload)
 }
 
-func (p *BitswapWriteProviderRequest) IsSigned() bool {
+func (p *WriteBitswapProviderRecord) IsSigned() bool {
 	return p.Signature != ""
 }
 
-func (p *BitswapWriteProviderRequest) setRawPayload() error {
-	payloadBytes, err := json.Marshal(p.Payload)
+func (p *WriteBitswapProviderRecord) setRawPayload() error {
+	payloadBytes, err := drjson.MarshalJSONBytes(p.Payload)
 	if err != nil {
 		return fmt.Errorf("marshaling bitswap write provider payload: %w", err)
 	}
@@ -66,7 +67,7 @@ func (p *BitswapWriteProviderRequest) setRawPayload() error {
 	return nil
 }
 
-func (p *BitswapWriteProviderRequest) Sign(peerID peer.ID, key crypto.PrivKey) error {
+func (p *WriteBitswapProviderRecord) Sign(peerID peer.ID, key crypto.PrivKey) error {
 	if p.IsSigned() {
 		return errors.New("already signed")
 	}
@@ -102,7 +103,7 @@ func (p *BitswapWriteProviderRequest) Sign(peerID peer.ID, key crypto.PrivKey) e
 	return nil
 }
 
-func (p *BitswapWriteProviderRequest) Verify() error {
+func (p *WriteBitswapProviderRecord) Verify() error {
 	if !p.IsSigned() {
 		return errors.New("not signed")
 	}
@@ -142,6 +143,30 @@ func (p *BitswapWriteProviderRequest) Verify() error {
 	return nil
 }
 
-type BitswapWriteProviderResponse struct {
-	AdvisoryTTL time.Duration
+var _ ProviderResponse = &WriteBitswapProviderRecordResponse{}
+
+// WriteBitswapProviderRecordResponse will be returned as a result of WriteBitswapProviderRecord
+type WriteBitswapProviderRecordResponse struct {
+	Protocol    string
+	AdvisoryTTL *Duration
 }
+
+func (wbprr *WriteBitswapProviderRecordResponse) GetProtocol() string {
+	return wbprr.Protocol
+}
+
+var _ ReadProviderRecord = &ReadBitswapProviderRecord{}
+var _ ProviderResponse = &ReadBitswapProviderRecord{}
+
+// ReadBitswapProviderRecord is a provider result with parameters for bitswap providers
+type ReadBitswapProviderRecord struct {
+	Protocol string
+	ID       *peer.ID
+	Addrs    []Multiaddr
+}
+
+func (rbpr *ReadBitswapProviderRecord) GetProtocol() string {
+	return rbpr.Protocol
+}
+
+func (*ReadBitswapProviderRecord) IsReadProviderRecord() {}
