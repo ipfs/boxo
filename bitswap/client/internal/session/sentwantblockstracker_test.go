@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"github.com/ipfs/go-bitswap/internal/testutil"
+	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
 )
 
 func TestSendWantBlocksTracker(t *testing.T) {

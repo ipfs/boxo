@@ -1,7 +1,7 @@
 package wantlist
 
 import (
-	"github.com/ipfs/go-bitswap/client/wantlist"
+	"github.com/ipfs/go-libipfs/bitswap/client/wantlist"
 	"github.com/ipfs/go-cid"
 )
 

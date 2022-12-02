@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-bitswap/internal/testutil"
+	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-metrics-interface"
 

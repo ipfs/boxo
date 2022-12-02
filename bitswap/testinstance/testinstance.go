@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/ipfs/go-bitswap"
-	bsnet "github.com/ipfs/go-bitswap/network"
-	tn "github.com/ipfs/go-bitswap/testnet"
+	"github.com/ipfs/go-libipfs/bitswap"
+	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
+	tn "github.com/ipfs/go-libipfs/bitswap/testnet"
 	ds "github.com/ipfs/go-datastore"
 	delayed "github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"

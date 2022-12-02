@@ -9,11 +9,11 @@ import (
 
 	"github.com/google/uuid"
 
-	wl "github.com/ipfs/go-bitswap/client/wantlist"
-	"github.com/ipfs/go-bitswap/internal/defaults"
-	bsmsg "github.com/ipfs/go-bitswap/message"
-	pb "github.com/ipfs/go-bitswap/message/pb"
-	bmetrics "github.com/ipfs/go-bitswap/metrics"
+	wl "github.com/ipfs/go-libipfs/bitswap/client/wantlist"
+	"github.com/ipfs/go-libipfs/bitswap/internal/defaults"
+	bsmsg "github.com/ipfs/go-libipfs/bitswap/message"
+	pb "github.com/ipfs/go-libipfs/bitswap/message/pb"
+	bmetrics "github.com/ipfs/go-libipfs/bitswap/metrics"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	bstore "github.com/ipfs/go-ipfs-blockstore"

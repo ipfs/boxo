@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/ipfs/go-bitswap/server/internal/decision"
+	"github.com/ipfs/go-libipfs/bitswap/server/internal/decision"
 )
 
 type (

@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ipfs/go-bitswap/client"
-	"github.com/ipfs/go-bitswap/internal/defaults"
-	"github.com/ipfs/go-bitswap/message"
-	"github.com/ipfs/go-bitswap/network"
-	"github.com/ipfs/go-bitswap/server"
-	"github.com/ipfs/go-bitswap/tracer"
+	"github.com/ipfs/go-libipfs/bitswap/client"
+	"github.com/ipfs/go-libipfs/bitswap/internal/defaults"
+	"github.com/ipfs/go-libipfs/bitswap/message"
+	"github.com/ipfs/go-libipfs/bitswap/network"
+	"github.com/ipfs/go-libipfs/bitswap/server"
+	"github.com/ipfs/go-libipfs/bitswap/tracer"
 	"github.com/ipfs/go-metrics-interface"
 
 	blocks "github.com/ipfs/go-block-format"

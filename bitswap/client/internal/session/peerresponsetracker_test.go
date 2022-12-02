@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/ipfs/go-bitswap/internal/testutil"
+	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
