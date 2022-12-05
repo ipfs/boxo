@@ -12,6 +12,7 @@ import (
 	"github.com/benbjohnson/clock"
 	"github.com/ipfs/go-cid"
 	ipns "github.com/ipfs/go-ipns"
+	"github.com/ipfs/go-libipfs/routing/http/contentrouter"
 	"github.com/ipfs/go-libipfs/routing/http/internal/drjson"
 	"github.com/ipfs/go-libipfs/routing/http/server"
 	"github.com/ipfs/go-libipfs/routing/http/types"
@@ -38,6 +39,8 @@ type client struct {
 	// used for testing, e.g. testing the server with a mangled signature
 	afterSignCallback func(req *types.WriteBitswapProviderRecord)
 }
+
+var _ contentrouter.Client = &client{}
 
 type httpClient interface {
 	Do(req *http.Request) (*http.Response, error)
