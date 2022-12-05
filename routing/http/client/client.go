@@ -69,9 +69,15 @@ func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) option {
 // New creates a content routing API client.
 // The Provider and identity parameters are option. If they are nil, the `Provide` method will not function.
 func New(baseURL string, opts ...option) (*client, error) {
+	defaultHTTPClient := &http.Client{
+		Transport: &ResponseBodyLimitedTransport{
+			RoundTripper: http.DefaultTransport,
+			LimitBytes:   1 << 20,
+		},
+	}
 	client := &client{
 		baseURL:    baseURL,
-		httpClient: http.DefaultClient,
+		httpClient: defaultHTTPClient,
 		validator:  ipns.Validator{},
 		clock:      clock.New(),
 	}
