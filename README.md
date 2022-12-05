@@ -1,17 +1,13 @@
-Repository Name
+go-libipfs
 =======================
 
-> Repository tagline
+> A library for building IPFS implementations
 
-A longer repository description.
+Go-libips is a library for building IPFS implementations and tools in Go. It contains reusable functionality useful for interacting and experimenting with IPFS.
 
-## Documentation
+This is also used by [Kubo](https://github.com/ipfs/kubo) for its core functionality.
 
-[Insert link to documentation]() or expand with Install, Build, Usage sections.
-
-## Lead Maintainer
-
-[Your name](https://github.com/alinktoyourname)
+Currently this library is a target for consolidating Go IPFS repositories, and will receive minor version releases as repositories are consolidated into it. We are initially focused on merely consolidating repositories, *not* refactoring across packages. Once repositories are mostly consolidated, *then* we will begin refactoring this library holistically. Individual components can still be worked on and refactored individually, but please refrain from trying to refactor across components.
 
 ## Contributing
 
