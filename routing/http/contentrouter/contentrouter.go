@@ -2,6 +2,7 @@ package contentrouter
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"github.com/ipfs/go-cid"
@@ -114,7 +115,11 @@ func (c *contentRouter) FindProvidersAsync(ctx context.Context, key cid.Cid, num
 		if r.GetProtocol() == types.BitswapProviderID {
 			result, ok := r.(*types.ReadBitswapProviderRecord)
 			if !ok {
-				logger.Warnw("problem casting find providers result of type", types.BitswapProviderID)
+				logger.Errorw(
+					"problem casting find providers result",
+					"ProtocolID", types.BitswapProviderID,
+					"Type", reflect.TypeOf(r).String(),
+				)
 				continue
 			}
 
