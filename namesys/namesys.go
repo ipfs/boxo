@@ -41,7 +41,6 @@ import (
 // (b) dns domains: resolves using links in DNS TXT records
 //
 // It can only publish to: (a) IPFS routing naming.
-//
 type mpns struct {
 	ds ds.Datastore
 
