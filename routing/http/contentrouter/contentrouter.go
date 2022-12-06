@@ -2,13 +2,16 @@ package contentrouter
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/routing/http/internal"
+	"github.com/ipfs/go-libipfs/routing/http/types"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
 )
 
@@ -16,14 +19,13 @@ var logger = logging.Logger("service/contentrouting")
 
 const ttl = 24 * time.Hour
 
-type client interface {
-	Provide(context.Context, []cid.Cid, time.Duration) (time.Duration, error)
-	FindProviders(context.Context, cid.Cid) ([]peer.AddrInfo, error)
-	Ready(context.Context) (bool, error)
+type Client interface {
+	ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error)
+	FindProviders(ctx context.Context, key cid.Cid) ([]types.ProviderResponse, error)
 }
 
 type contentRouter struct {
-	client                client
+	client                Client
 	maxProvideConcurrency int
 	maxProvideBatchSize   int
 }
@@ -44,7 +46,7 @@ func WithMaxProvideBatchSize(max int) option {
 	}
 }
 
-func NewContentRoutingClient(c client, opts ...option) *contentRouter {
+func NewContentRoutingClient(c Client, opts ...option) *contentRouter {
 	cr := &contentRouter{
 		client:                c,
 		maxProvideConcurrency: 5,
@@ -64,7 +66,7 @@ func (c *contentRouter) Provide(ctx context.Context, key cid.Cid, announce bool)
 		return nil
 	}
 
-	_, err := c.client.Provide(ctx, []cid.Cid{key}, ttl)
+	_, err := c.client.ProvideBitswap(ctx, []cid.Cid{key}, ttl)
 	return err
 }
 
@@ -78,7 +80,7 @@ func (c *contentRouter) ProvideMany(ctx context.Context, mhKeys []multihash.Mult
 	}
 
 	if len(keys) <= c.maxProvideBatchSize {
-		_, err := c.client.Provide(ctx, keys, ttl)
+		_, err := c.client.ProvideBitswap(ctx, keys, ttl)
 		return err
 	}
 
@@ -88,23 +90,15 @@ func (c *contentRouter) ProvideMany(ctx context.Context, mhKeys []multihash.Mult
 		c.maxProvideConcurrency,
 		keys,
 		func(ctx context.Context, batch []cid.Cid) error {
-			_, err := c.client.Provide(ctx, batch, ttl)
+			_, err := c.client.ProvideBitswap(ctx, batch, ttl)
 			return err
 		},
 	)
 }
 
-// Ready is part of the existing `ProvideMany` interface, but can be used more generally to determine if the routing client
-// has a working connection.
+// Ready is part of the existing `ProvideMany` interface.
 func (c *contentRouter) Ready() bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	ready, err := c.client.Ready(ctx)
-	if err != nil {
-		logger.Warnw("error checking if delegated content router is ready", "Error", err)
-		return false
-	}
-	return ready
+	return true
 }
 
 func (c *contentRouter) FindProvidersAsync(ctx context.Context, key cid.Cid, numResults int) <-chan peer.AddrInfo {
@@ -118,7 +112,28 @@ func (c *contentRouter) FindProvidersAsync(ctx context.Context, key cid.Cid, num
 
 	ch := make(chan peer.AddrInfo, len(results))
 	for _, r := range results {
-		ch <- r
+		if r.GetProtocol() == types.BitswapProviderID {
+			result, ok := r.(*types.ReadBitswapProviderRecord)
+			if !ok {
+				logger.Errorw(
+					"problem casting find providers result",
+					"ProtocolID", types.BitswapProviderID,
+					"Type", reflect.TypeOf(r).String(),
+				)
+				continue
+			}
+
+			var addrs []multiaddr.Multiaddr
+			for _, a := range result.Addrs {
+				addrs = append(addrs, a.Multiaddr)
+			}
+
+			ch <- peer.AddrInfo{
+				ID:    *result.ID,
+				Addrs: addrs,
+			}
+		}
+
 	}
 	close(ch)
 	return ch

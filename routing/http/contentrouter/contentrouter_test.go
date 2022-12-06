@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-libipfs/routing/http/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
@@ -16,13 +17,13 @@ import (
 
 type mockClient struct{ mock.Mock }
 
-func (m *mockClient) Provide(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {
+func (m *mockClient) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {
 	args := m.Called(ctx, keys, ttl)
 	return args.Get(0).(time.Duration), args.Error(1)
 }
-func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) ([]peer.AddrInfo, error) {
+func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) ([]types.ProviderResponse, error) {
 	args := m.Called(ctx, key)
-	return args.Get(0).([]peer.AddrInfo), args.Error(1)
+	return args.Get(0).([]types.ProviderResponse), args.Error(1)
 }
 func (m *mockClient) Ready(ctx context.Context) (bool, error) {
 	args := m.Called(ctx)
@@ -66,14 +67,14 @@ func TestProvide(t *testing.T) {
 			crc := NewContentRoutingClient(client)
 
 			if !c.expNotProvided {
-				client.On("Provide", ctx, []cid.Cid{key}, ttl).Return(time.Minute, nil)
+				client.On("ProvideBitswap", ctx, []cid.Cid{key}, ttl).Return(time.Minute, nil)
 			}
 
 			err := crc.Provide(ctx, key, c.announce)
 			assert.NoError(t, err)
 
 			if c.expNotProvided {
-				client.AssertNumberOfCalls(t, "Provide", 0)
+				client.AssertNumberOfCalls(t, "ProvideBitswap", 0)
 			}
 
 		})
@@ -90,7 +91,7 @@ func TestProvideMany(t *testing.T) {
 	client := &mockClient{}
 	crc := NewContentRoutingClient(client)
 
-	client.On("Provide", ctx, cids, ttl).Return(time.Minute, nil)
+	client.On("ProvideBitswap", ctx, cids, ttl).Return(time.Minute, nil)
 
 	err := crc.ProvideMany(ctx, mhs)
 	require.NoError(t, err)
@@ -102,9 +103,20 @@ func TestFindProvidersAsync(t *testing.T) {
 	client := &mockClient{}
 	crc := NewContentRoutingClient(client)
 
-	ais := []peer.AddrInfo{
-		{ID: peer.ID("peer1")},
-		{ID: peer.ID("peer2")},
+	p1 := peer.ID("peer1")
+	p2 := peer.ID("peer2")
+	ais := []types.ProviderResponse{
+		&types.ReadBitswapProviderRecord{
+			Protocol: types.BitswapProviderID,
+			ID:       &p1,
+		},
+		&types.ReadBitswapProviderRecord{
+			Protocol: types.BitswapProviderID,
+			ID:       &p2,
+		},
+		&types.UnknownProviderRecord{
+			Protocol: "UNKNOWN",
+		},
 	}
 
 	client.On("FindProviders", ctx, key).Return(ais, nil)
@@ -116,5 +128,10 @@ func TestFindProvidersAsync(t *testing.T) {
 		actualAIs = append(actualAIs, ai)
 	}
 
-	require.Equal(t, ais, actualAIs)
+	expected := []peer.AddrInfo{
+		{ID: p1},
+		{ID: p2},
+	}
+
+	require.Equal(t, expected, actualAIs)
 }
