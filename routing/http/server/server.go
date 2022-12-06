@@ -148,6 +148,8 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 }
 
 func writeResult(w http.ResponseWriter, method string, val any) {
+	w.Header().Add("Content-Type", "application/json")
+
 	// keep the marshaling separate from the writing, so we can distinguish bugs (which surface as 500)
 	// from transient network issues (which surface as transport errors)
 	b, err := drjson.MarshalJSONBytes(val)
