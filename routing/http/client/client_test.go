@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"crypto/rand"
+	"net/http"
 	"net/http/httptest"
 	"runtime"
 	"testing"
@@ -130,11 +131,11 @@ func TestClient_FindProviders(t *testing.T) {
 	bitswapProvs := []types.ProviderResponse{&bsReadProvResp}
 
 	cases := []struct {
-		name        string
-		manglePath  bool
-		stopServer  bool
-		routerProvs []types.ProviderResponse
-		routerErr   error
+		name           string
+		httpStatusCode int
+		stopServer     bool
+		routerProvs    []types.ProviderResponse
+		routerErr      error
 
 		expProvs          []types.ProviderResponse
 		expErrContains    []string
@@ -147,8 +148,8 @@ func TestClient_FindProviders(t *testing.T) {
 		},
 		{
 			name:           "returns an error if there's a non-200 response",
-			manglePath:     true,
-			expErrContains: []string{"HTTP error with StatusCode=404: 404 page not found"},
+			httpStatusCode: 500,
+			expErrContains: []string{"HTTP error with StatusCode=500: "},
 		},
 		{
 			name:              "returns an error if the HTTP client returns a non-HTTP error",
@@ -163,9 +164,12 @@ func TestClient_FindProviders(t *testing.T) {
 			client := deps.client
 			router := deps.router
 
-			if c.manglePath {
-				client.baseURL += "/foo"
+			if c.httpStatusCode != 0 {
+				deps.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(c.httpStatusCode)
+				})
 			}
+
 			if c.stopServer {
 				deps.server.Close()
 			}

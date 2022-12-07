@@ -15,6 +15,7 @@ require (
 	github.com/multiformats/go-multihash v0.2.1
 	github.com/samber/lo v1.36.0
 	github.com/stretchr/testify v1.8.1
+	go.opencensus.io v0.23.0
 )
 
 require (

@@ -96,18 +96,35 @@ func New(baseURL string, opts ...option) (*client, error) {
 	return client, nil
 }
 
-func (c *client) FindProviders(ctx context.Context, key cid.Cid) ([]types.ProviderResponse, error) {
+func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs []types.ProviderResponse, err error) {
+	measurement := newMeasurement("FindProviders")
+	defer func() {
+		measurement.length = len(provs)
+		measurement.record(ctx)
+	}()
+
 	url := c.baseURL + server.ProvidePath + key.String()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
+	measurement.host = req.Host
 
+	start := c.clock.Now()
 	resp, err := c.httpClient.Do(req)
+
+	measurement.err = err
+	measurement.latency = c.clock.Since(start)
+
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	measurement.statusCode = resp.StatusCode
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, httpError(resp.StatusCode, resp.Body)
