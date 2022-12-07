@@ -21,7 +21,8 @@ func TestHeaders(t *testing.T) {
 
 	result := []types.ProviderResponse{
 		&types.ReadBitswapProviderRecord{
-			Protocol: types.BitswapProviderID,
+			Protocol: "transport-bitswap",
+			Schema:   types.SchemaBitswap,
 		},
 	}
 

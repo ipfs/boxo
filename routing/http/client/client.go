@@ -134,7 +134,8 @@ func (c *client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 	now := c.clock.Now()
 
 	req := types.WriteBitswapProviderRecord{
-		Protocol: types.BitswapProviderID,
+		Protocol: "transport-bitswap",
+		Schema:   types.SchemaBitswap,
 		Payload: types.BitswapPayload{
 			Keys:        ks,
 			AdvisoryTTL: &types.Duration{Duration: ttl},

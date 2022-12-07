@@ -107,11 +107,13 @@ func TestFindProvidersAsync(t *testing.T) {
 	p2 := peer.ID("peer2")
 	ais := []types.ProviderResponse{
 		&types.ReadBitswapProviderRecord{
-			Protocol: types.BitswapProviderID,
+			Protocol: "transport-bitswap",
+			Schema:   types.SchemaBitswap,
 			ID:       &p1,
 		},
 		&types.ReadBitswapProviderRecord{
-			Protocol: types.BitswapProviderID,
+			Protocol: "transport-bitswap",
+			Schema:   types.SchemaBitswap,
 			ID:       &p2,
 		},
 		&types.UnknownProviderRecord{

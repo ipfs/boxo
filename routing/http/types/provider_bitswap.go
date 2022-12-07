@@ -12,13 +12,14 @@ import (
 	"github.com/multiformats/go-multibase"
 )
 
-const BitswapProviderID = "bitswap"
+const SchemaBitswap = "bitswap"
 
 var _ WriteProviderRecord = &WriteBitswapProviderRecord{}
 
 // WriteBitswapProviderRecord is used when we want to add a new provider record that is using bitswap.
 type WriteBitswapProviderRecord struct {
 	Protocol  string
+	Schema    string
 	Signature string
 
 	// this content must be untouched because it is signed and we need to verify it
@@ -46,6 +47,7 @@ func (p *WriteBitswapProviderRecord) UnmarshalJSON(b []byte) error {
 	}
 
 	p.Protocol = bwp.Protocol
+	p.Schema = bwp.Schema
 	p.Signature = bwp.Signature
 	p.RawPayload = bwp.RawPayload
 
@@ -148,11 +150,16 @@ var _ ProviderResponse = &WriteBitswapProviderRecordResponse{}
 // WriteBitswapProviderRecordResponse will be returned as a result of WriteBitswapProviderRecord
 type WriteBitswapProviderRecordResponse struct {
 	Protocol    string
+	Schema      string
 	AdvisoryTTL *Duration
 }
 
 func (wbprr *WriteBitswapProviderRecordResponse) GetProtocol() string {
 	return wbprr.Protocol
+}
+
+func (wbprr *WriteBitswapProviderRecordResponse) GetSchema() string {
+	return wbprr.Schema
 }
 
 var _ ReadProviderRecord = &ReadBitswapProviderRecord{}
@@ -161,12 +168,17 @@ var _ ProviderResponse = &ReadBitswapProviderRecord{}
 // ReadBitswapProviderRecord is a provider result with parameters for bitswap providers
 type ReadBitswapProviderRecord struct {
 	Protocol string
+	Schema   string
 	ID       *peer.ID
 	Addrs    []Multiaddr
 }
 
 func (rbpr *ReadBitswapProviderRecord) GetProtocol() string {
 	return rbpr.Protocol
+}
+
+func (rbpr *ReadBitswapProviderRecord) GetSchema() string {
+	return rbpr.Schema
 }
 
 func (*ReadBitswapProviderRecord) IsReadProviderRecord() {}

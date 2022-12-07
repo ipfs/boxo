@@ -112,12 +112,12 @@ func (c *contentRouter) FindProvidersAsync(ctx context.Context, key cid.Cid, num
 
 	ch := make(chan peer.AddrInfo, len(results))
 	for _, r := range results {
-		if r.GetProtocol() == types.BitswapProviderID {
+		if r.GetSchema() == types.SchemaBitswap {
 			result, ok := r.(*types.ReadBitswapProviderRecord)
 			if !ok {
 				logger.Errorw(
 					"problem casting find providers result",
-					"ProtocolID", types.BitswapProviderID,
+					"Schema", r.GetSchema(),
 					"Type", reflect.TypeOf(r).String(),
 				)
 				continue

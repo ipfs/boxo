@@ -35,8 +35,8 @@ func (r *WriteProvidersRequest) UnmarshalJSON(b []byte) error {
 			return err
 		}
 
-		switch rawProv.Protocol {
-		case BitswapProviderID:
+		switch rawProv.Schema {
+		case SchemaBitswap:
 			var prov WriteBitswapProviderRecord
 			err := json.Unmarshal(rawProv.Bytes, &prov)
 			if err != nil {
@@ -58,6 +58,7 @@ func (r *WriteProvidersRequest) UnmarshalJSON(b []byte) error {
 // ProviderResponse is implemented for any ProviderResponse. It needs to have a Protocol field.
 type ProviderResponse interface {
 	GetProtocol() string
+	GetSchema() string
 }
 
 // WriteProvidersResponse is the result of a Provide operation
@@ -84,8 +85,8 @@ func (r *WriteProvidersResponse) UnmarshalJSON(b []byte) error {
 			return err
 		}
 
-		switch rawProv.GetProtocol() {
-		case BitswapProviderID:
+		switch rawProv.Schema {
+		case SchemaBitswap:
 			var prov WriteBitswapProviderRecordResponse
 			err := json.Unmarshal(rawProv.Bytes, &prov)
 			if err != nil {
@@ -124,8 +125,8 @@ func (r *ReadProvidersResponse) UnmarshalJSON(b []byte) error {
 			return err
 		}
 
-		switch readProv.Protocol {
-		case BitswapProviderID:
+		switch readProv.Schema {
+		case SchemaBitswap:
 			var prov ReadBitswapProviderRecord
 			err := json.Unmarshal(readProv.Bytes, &prov)
 			if err != nil {
@@ -133,12 +134,7 @@ func (r *ReadProvidersResponse) UnmarshalJSON(b []byte) error {
 			}
 			r.Providers = append(r.Providers, &prov)
 		default:
-			var prov UnknownProviderRecord
-			err := json.Unmarshal(b, &prov)
-			if err != nil {
-				return err
-			}
-			r.Providers = append(r.Providers, &prov)
+			r.Providers = append(r.Providers, &readProv)
 		}
 
 	}
