@@ -96,7 +96,8 @@ func drAddrsToAddrs(drmas []types.Multiaddr) (addrs []multiaddr.Multiaddr) {
 func makeBSReadProviderResp() types.ReadBitswapProviderRecord {
 	peerID, addrs, _ := makeProviderAndIdentity()
 	return types.ReadBitswapProviderRecord{
-		Protocol: types.BitswapProviderID,
+		Protocol: "transport-bitswap",
+		Schema:   types.SchemaBitswap,
 		ID:       &peerID,
 		Addrs:    addrsToDRAddrs(addrs),
 	}

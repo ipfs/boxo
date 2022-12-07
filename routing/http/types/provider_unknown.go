@@ -13,11 +13,16 @@ var _ ProviderResponse = &UnknownProviderRecord{}
 // UnknownProviderRecord is used when we cannot parse the provider record using `GetProtocol`
 type UnknownProviderRecord struct {
 	Protocol string
+	Schema   string
 	Bytes    []byte
 }
 
 func (u *UnknownProviderRecord) GetProtocol() string {
 	return u.Protocol
+}
+
+func (u *UnknownProviderRecord) GetSchema() string {
+	return u.Schema
 }
 
 func (u *UnknownProviderRecord) IsReadProviderRecord() {}
@@ -33,6 +38,10 @@ func (u *UnknownProviderRecord) UnmarshalJSON(b []byte) error {
 	if ok {
 		u.Protocol = ps
 	}
+	schema, ok := m["Schema"].(string)
+	if ok {
+		u.Schema = schema
+	}
 
 	u.Bytes = b
 
@@ -46,6 +55,7 @@ func (u UnknownProviderRecord) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	m["Protocol"] = u.Protocol
+	m["Schema"] = u.Schema
 
 	return drjson.MarshalJSONBytes(m)
 }

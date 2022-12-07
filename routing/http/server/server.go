@@ -41,6 +41,7 @@ type BitswapWriteProvideRequest struct {
 
 type WriteProvideRequest struct {
 	Protocol string
+	Schema   string
 	Bytes    []byte
 }
 
@@ -109,12 +110,14 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 			resp.ProvideResults = append(resp.ProvideResults,
 				&types.WriteBitswapProviderRecordResponse{
 					Protocol:    v.Protocol,
+					Schema:      v.Schema,
 					AdvisoryTTL: &types.Duration{Duration: advisoryTTL},
 				},
 			)
 		case *types.UnknownProviderRecord:
 			provResp, err := s.svc.Provide(httpReq.Context(), &WriteProvideRequest{
 				Protocol: v.Protocol,
+				Schema:   v.Schema,
 				Bytes:    v.Bytes,
 			})
 			if err != nil {
