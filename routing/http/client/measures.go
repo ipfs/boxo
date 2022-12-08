@@ -59,7 +59,7 @@ func (m measurement) record(ctx context.Context) {
 			tag.Upsert(keyStatusCode, strconv.Itoa(m.statusCode)),
 			tag.Upsert(keyError, metricsErrStr(m.err)),
 		},
-		measureLatency.M(int64(m.latency)),
+		measureLatency.M(m.latency.Milliseconds()),
 	)
 	if m.err == nil {
 		stats.RecordWithTags(
