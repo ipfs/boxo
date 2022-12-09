@@ -28,7 +28,7 @@ type Queue struct {
 	close   context.CancelFunc
 	closed  chan struct{}
 
-	counter int
+	counter uint64
 }
 
 // NewQueue creates a queue for cids
@@ -117,7 +117,7 @@ func (q *Queue) work() {
 
 			select {
 			case toQueue := <-q.enqueue:
-				keyPath := fmt.Sprintf("%063d/%s", q.counter, c.String())
+				keyPath := fmt.Sprintf("%020d/%s", q.counter, c.String())
 				q.counter++
 				nextKey := datastore.NewKey(keyPath)
 
