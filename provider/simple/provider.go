@@ -10,7 +10,7 @@ import (
 	"github.com/ipfs/go-cid"
 	q "github.com/ipfs/go-ipfs-provider/queue"
 	logging "github.com/ipfs/go-log"
-	"github.com/libp2p/go-libp2p-core/routing"
+	"github.com/libp2p/go-libp2p/core/routing"
 )
 
 var logP = logging.Logger("provider.simple")
