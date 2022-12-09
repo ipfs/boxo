@@ -127,6 +127,14 @@ func testReprovide(t *testing.T, trigger func(r *Reprovider, ctx context.Context
 	maxProvs := 100
 
 	for _, c := range nodes {
+		// We provide raw cids because of the multihash keying
+		// FIXME(@Jorropo): I think this change should be done in the DHT layer, probably an issue with our routing mock.
+		b := c.Bytes()
+		b[1] = 0x55 // rewrite the cid to raw
+		_, c, err := cid.CidFromBytes(b)
+		if err != nil {
+			t.Fatal(err)
+		}
 		provChan := clB.FindProvidersAsync(ctx, c, maxProvs)
 		for p := range provChan {
 			providers = append(providers, p)
