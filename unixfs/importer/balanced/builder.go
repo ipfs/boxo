@@ -158,7 +158,10 @@ func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 
 		// Add the old `root` as a child of the `newRoot`.
 		newRoot := db.NewFSNodeOverDag(ft.TFile)
-		newRoot.AddChild(root, fileSize, db)
+		err = newRoot.AddChild(root, fileSize, db)
+		if err != nil {
+			return nil, err
+		}
 
 		// Fill the `newRoot` (that has the old `root` already as child)
 		// and make it the current `root` for the next iteration (when
