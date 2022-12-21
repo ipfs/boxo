@@ -12,7 +12,9 @@ import (
 	"github.com/benbjohnson/clock"
 	"github.com/ipfs/boxo/routing/http/server"
 	"github.com/ipfs/boxo/routing/http/types"
+	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
+
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -25,9 +27,9 @@ import (
 
 type mockContentRouter struct{ mock.Mock }
 
-func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid) ([]types.ProviderResponse, error) {
+func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid) (iter.Iter[types.ProviderResponse], error) {
 	args := m.Called(ctx, key)
-	return args.Get(0).([]types.ProviderResponse), args.Error(1)
+	return args.Get(0).(iter.Iter[types.ProviderResponse]), args.Error(1)
 }
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.BitswapWriteProvideRequest) (time.Duration, error) {
 	args := m.Called(ctx, req)
@@ -180,6 +182,9 @@ func TestClient_FindProviders(t *testing.T) {
 			client := deps.client
 			router := deps.router
 
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+
 			if c.httpStatusCode != 0 {
 				deps.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(c.httpStatusCode)
@@ -191,10 +196,12 @@ func TestClient_FindProviders(t *testing.T) {
 			}
 			cid := makeCID()
 
-			router.On("FindProviders", mock.Anything, cid).
-				Return(c.routerProvs, c.routerErr)
+			findProvsIter := iter.FromSlice(c.routerProvs)
 
-			provs, err := client.FindProviders(context.Background(), cid)
+			router.On("FindProviders", mock.Anything, cid).
+				Return(findProvsIter, c.routerErr)
+
+			provsIter, err := client.FindProviders(ctx, cid)
 
 			var errList []string
 			if runtime.GOOS == "windows" && len(c.expWinErrContains) != 0 {
@@ -209,6 +216,9 @@ func TestClient_FindProviders(t *testing.T) {
 			if len(errList) == 0 {
 				require.NoError(t, err)
 			}
+
+			provs, err := iter.ReadAll(provsIter)
+			require.NoError(t, err)
 
 			assert.Equal(t, c.expProvs, provs)
 		})
@@ -274,7 +284,6 @@ func TestClient_Provide(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			//			deps := makeTestDeps(t)
 			deps := makeTestDeps(t)
 			client := deps.client
 			router := deps.router

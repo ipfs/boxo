@@ -7,12 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/ipfs/boxo/routing/http/internal/drjson"
 	"github.com/ipfs/boxo/routing/http/types"
+	"github.com/ipfs/boxo/routing/http/types/iter"
+	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -20,13 +23,23 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 )
 
+const (
+	mediaTypeJSON   = "application/json"
+	mediaTypeNDJSON = "application/x-ndjson"
+)
+
 var logger = logging.Logger("service/server/delegatedrouting")
 
 const ProvidePath = "/routing/v1/providers/"
 const FindProvidersPath = "/routing/v1/providers/{cid}"
 
+type FindProvidersAsyncResponse struct {
+	ProviderResponse types.ProviderResponse
+	Error            error
+}
+
 type ContentRouter interface {
-	FindProviders(ctx context.Context, key cid.Cid) ([]types.ProviderResponse, error)
+	FindProviders(ctx context.Context, key cid.Cid) (iter.Iter[types.ProviderResponse], error)
 	ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error)
 	Provide(ctx context.Context, req *WriteProvideRequest) (types.ProviderResponse, error)
 }
@@ -47,6 +60,13 @@ type WriteProvideRequest struct {
 
 type serverOption func(s *server)
 
+// WithStreamingResultsDisabled disables ndjson responses, so that the server only supports JSON responses.
+func WithStreamingResultsDisabled() serverOption {
+	return func(s *server) {
+		s.disableNDJSON = true
+	}
+}
+
 func Handler(svc ContentRouter, opts ...serverOption) http.Handler {
 	server := &server{
 		svc: svc,
@@ -64,11 +84,12 @@ func Handler(svc ContentRouter, opts ...serverOption) http.Handler {
 }
 
 type server struct {
-	svc ContentRouter
+	svc           ContentRouter
+	disableNDJSON bool
 }
 
 func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
-	req := types.WriteProvidersRequest{}
+	req := jsontypes.WriteProvidersRequest{}
 	err := json.NewDecoder(httpReq.Body).Decode(&req)
 	_ = httpReq.Body.Close()
 	if err != nil {
@@ -76,7 +97,7 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 		return
 	}
 
-	resp := types.WriteProvidersResponse{}
+	resp := jsontypes.WriteProvidersResponse{}
 
 	for i, prov := range req.Providers {
 		switch v := prov.(type) {
@@ -131,7 +152,7 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 			return
 		}
 	}
-	writeResult(w, "Provide", resp)
+	writeJSONResult(w, "Provide", resp)
 }
 
 func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
@@ -142,17 +163,106 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		writeErr(w, "FindProviders", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
 		return
 	}
-	providers, err := s.svc.FindProviders(httpReq.Context(), cid)
+
+	var handlerFunc func(w http.ResponseWriter, provIter iter.Iter[types.ProviderResponse])
+
+	var supportsNDJSON bool
+	var supportsJSON bool
+	accepts := httpReq.Header.Values("Accept")
+	if len(accepts) == 0 {
+		handlerFunc = s.findProvidersJSON
+	} else {
+		for _, accept := range accepts {
+			mediaType, _, err := mime.ParseMediaType(accept)
+			if err != nil {
+				writeErr(w, "FindProviders", http.StatusBadRequest, fmt.Errorf("unable to parse Accept header: %w", err))
+				return
+			}
+
+			switch mediaType {
+			case mediaTypeJSON:
+				supportsJSON = true
+			case mediaTypeNDJSON:
+				supportsNDJSON = true
+			}
+		}
+
+		if supportsNDJSON && !s.disableNDJSON {
+			handlerFunc = s.findProvidersNDJSON
+		} else if supportsJSON {
+			handlerFunc = s.findProvidersJSON
+		} else {
+			writeErr(w, "FindProviders", http.StatusBadRequest, errors.New("no supported content types"))
+			return
+		}
+	}
+
+	provIter, err := s.svc.FindProviders(httpReq.Context(), cid)
 	if err != nil {
 		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
 	}
-	response := types.ReadProvidersResponse{Providers: providers}
-	writeResult(w, "FindProviders", response)
+
+	handlerFunc(w, provIter)
 }
 
-func writeResult(w http.ResponseWriter, method string, val any) {
-	w.Header().Add("Content-Type", "application/json")
+func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.Iter[types.ProviderResponse]) {
+	defer provIter.Close()
+
+	var (
+		providers []types.ProviderResponse
+		i         int
+	)
+
+	for {
+		v, ok, err := provIter.Next()
+		if err != nil {
+			writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error on result %d: %w", i, err))
+		}
+		if !ok {
+			break
+		}
+		providers = append(providers, v)
+		i++
+	}
+	response := jsontypes.ReadProvidersResponse{Providers: providers}
+	writeJSONResult(w, "FindProviders", response)
+}
+
+func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.Iter[types.ProviderResponse]) {
+	defer provIter.Close()
+
+	w.Header().Set("Content-Type", mediaTypeNDJSON)
+	w.WriteHeader(http.StatusOK)
+	for {
+		v, ok, err := provIter.Next()
+		if err != nil {
+			logger.Errorw("FindProviders ndjson iterator error", "Error", err)
+			return
+		}
+		if !ok {
+			break
+		}
+		// don't use an encoder because we can't easily differentiate writer errors from encoding errors
+		b, err := drjson.MarshalJSONBytes(v)
+		if err != nil {
+			logger.Errorw("FindProviders ndjson marshal error", "Error", err)
+			return
+		}
+
+		_, err = w.Write(b)
+		if err != nil {
+			logger.Warn("FindProviders ndjson write error", "Error", err)
+			return
+		}
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+}
+
+func writeJSONResult(w http.ResponseWriter, method string, val any) {
+	w.Header().Add("Content-Type", mediaTypeJSON)
 
 	// keep the marshaling separate from the writing, so we can distinguish bugs (which surface as 500)
 	// from transient network issues (which surface as transport errors)
