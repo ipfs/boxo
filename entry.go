@@ -44,8 +44,7 @@ const maxCidCharDisplay = 512
 
 type region struct {
 	c          cid.Cid
-	low        uint64
-	high       uint64
+	size       uint64
 	rangeKnown bool
 }
 
@@ -212,9 +211,8 @@ func (d *downloader) Read(b []byte) (int, error) {
 		switch pref.Codec {
 		case cid.Raw:
 			if todo.rangeKnown {
-				expectedSize := todo.high - todo.low
-				if uint64(len(data)) != expectedSize {
-					return 0, fmt.Errorf("leaf isn't size is incorrect for %s, expected %d; got %d", cidStringTruncate(c), expectedSize, len(data))
+				if uint64(len(data)) != todo.size {
+					return 0, fmt.Errorf("leaf isn't size is incorrect for %s, expected %d; got %d", cidStringTruncate(c), todo.size, len(data))
 				}
 			}
 			d.curBlock = data
@@ -246,88 +244,32 @@ func (d *downloader) Read(b []byte) (int, error) {
 					return 0, fmt.Errorf("inconsistent sisterlists for %s, %d vs %d", cidStringTruncate(c), len(blocksizes), len(links))
 				}
 
-				if todo.rangeKnown {
-					if todo.low < uint64(len(metadata.Data)) {
-						high := uint64(len(metadata.Data))
-						if high > todo.high {
-							high = todo.high
-						}
-						d.curBlock = metadata.Data[todo.low:high]
-					}
-				} else {
-					d.curBlock = metadata.Data
-				}
+				d.curBlock = metadata.Data
 
 				filesize := uint64(len(metadata.Data))
 				if len(blocksizes) != 0 {
-					if todo.rangeKnown {
-						var regionsInBound int
-						for _, bs := range blocksizes {
-							if todo.low <= filesize+bs && filesize < todo.high {
-								regionsInBound++
-							}
-							filesize += bs
+					regions := slices.Grow(d.state, len(blocksizes))
+					for i := len(blocksizes); i > 0; {
+						i--
+						bs := blocksizes[i]
+						subCid, err := loadCidFromBytes(links[i].Hash)
+						if err != nil {
+							return 0, fmt.Errorf("link %d of %s: %w", i, cidStringTruncate(c), err)
 						}
 
-						regions := slices.Grow(d.state, regionsInBound)
-						cursor := uint64(len(metadata.Data))
-						for i := len(blocksizes); i > 0; {
-							i--
-							bs := blocksizes[i]
-							if cursor >= todo.high {
-								break
-							}
-							if todo.low <= cursor+bs {
-								var low uint64
-								if todo.low > cursor {
-									low = todo.low - cursor
-								}
-								high := todo.high - cursor
-								if bs < high {
-									high = bs
-								}
-
-								subCid, err := loadCidFromBytes(links[i].Hash)
-								if err != nil {
-									return 0, fmt.Errorf("link %d of %s: %w", i, cidStringTruncate(c), err)
-								}
-
-								regions = append(regions, region{
-									c:          subCid,
-									low:        low,
-									high:       high,
-									rangeKnown: true,
-								})
-							}
-							cursor += bs
-						}
-						d.state = regions
-					} else {
-						regions := slices.Grow(d.state, len(blocksizes))
-						for i := len(blocksizes); i > 0; {
-							i--
-							bs := blocksizes[i]
-							subCid, err := loadCidFromBytes(links[i].Hash)
-							if err != nil {
-								return 0, fmt.Errorf("link %d of %s: %w", i, cidStringTruncate(c), err)
-							}
-
-							regions = append(regions, region{
-								c:          subCid,
-								low:        0,
-								high:       bs,
-								rangeKnown: true,
-							})
-							filesize += bs
-						}
-						d.state = regions
+						regions = append(regions, region{
+							c:          subCid,
+							size:       bs,
+							rangeKnown: true,
+						})
+						filesize += bs
 					}
+					d.state = regions
 				}
 
 				if todo.rangeKnown {
-					expectedSize := todo.high - todo.low
-					if filesize != expectedSize {
-						return 0, fmt.Errorf("inconsistent filesize for %s, expected %d; got %d", cidStringTruncate(c), expectedSize, filesize)
+					if todo.size != filesize {
+						return 0, fmt.Errorf("inconsistent filesize for %s, expected %d; got %d", cidStringTruncate(c), todo.size, filesize)
 					}
 				}
 				if metadata.Filesize != nil {
