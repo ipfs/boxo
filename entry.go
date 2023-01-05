@@ -40,6 +40,7 @@ const gateway = "http://localhost:8080/ipfs/"
 const maxHeaderSize = 32 * 1024 * 1024 // 32MiB
 const maxBlockSize = 2 * 1024 * 1024   // 2MiB
 const maxCidSize = 4096
+const maxElementSize = maxCidSize + maxBlockSize + binary.MaxVarintLen64
 const maxCidCharDisplay = 512
 
 type region struct {
@@ -81,7 +82,7 @@ func DownloadFile(c cid.Cid) (io.ReadCloser, error) {
 		Closer: resp.Body,
 		state:  []region{{c: c}},
 	}
-	r.buf = *bufio.NewReaderSize(resp.Body, maxBlockSize*2+4096*2)
+	r.buf = *bufio.NewReaderSize(resp.Body, maxElementSize*2)
 
 	headerSize, err := binary.ReadUvarint(&r.buf)
 	if err != nil {
