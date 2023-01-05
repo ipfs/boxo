@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	pb "github.com/Jorropo/go-featheripfs/internal/pb"
+	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/ipfs/go-cid"
@@ -16,10 +17,6 @@ import (
 	"github.com/ipfs/go-verifcid"
 	mh "github.com/multiformats/go-multihash"
 )
-
-func create[T any](len int) []T {
-	return append([]T{}, make([]T, len)...)
-}
 
 func cidStringTruncate(c cid.Cid) string {
 	cidStr := c.String()
@@ -56,7 +53,7 @@ type downloader struct {
 	io.Closer
 
 	buf      bufio.Reader
-	state    [][]region
+	state    []region
 	curBlock []byte
 }
 
@@ -83,7 +80,7 @@ func DownloadFile(c cid.Cid) (io.ReadCloser, error) {
 
 	r := &downloader{
 		Closer: resp.Body,
-		state:  [][]region{{{c: c}}},
+		state:  []region{{c: c}},
 	}
 	r.buf = *bufio.NewReaderSize(resp.Body, maxBlockSize*2+4096*2)
 
@@ -149,15 +146,8 @@ func (d *downloader) Read(b []byte) (int, error) {
 
 		// pop current item from the DFS stack
 		last := len(d.state) - 1
-		todos := d.state[last]
-		todo := todos[0]
-		todos = todos[1:]
-		if len(todos) == 0 {
-			d.state[last] = nil // early gc
-			d.state = d.state[:last]
-		} else {
-			d.state[last] = todos
-		}
+		todo := d.state[last]
+		d.state = d.state[:last]
 
 		var data []byte
 		c := todo.c
@@ -270,7 +260,6 @@ func (d *downloader) Read(b []byte) (int, error) {
 
 				filesize := uint64(len(metadata.Data))
 				if len(blocksizes) != 0 {
-					var subRegions []region
 					if todo.rangeKnown {
 						var regionsInBound int
 						for _, bs := range blocksizes {
@@ -280,10 +269,11 @@ func (d *downloader) Read(b []byte) (int, error) {
 							filesize += bs
 						}
 
-						subRegions = create[region](regionsInBound)
-						var j int
+						regions := slices.Grow(d.state, regionsInBound)
 						cursor := uint64(len(metadata.Data))
-						for i, bs := range blocksizes {
+						for i := len(blocksizes); i > 0; {
+							i--
+							bs := blocksizes[i]
 							if cursor >= todo.high {
 								break
 							}
@@ -302,34 +292,36 @@ func (d *downloader) Read(b []byte) (int, error) {
 									return 0, fmt.Errorf("link %d of %s: %w", i, cidStringTruncate(c), err)
 								}
 
-								subRegions[j] = region{
+								regions = append(regions, region{
 									c:          subCid,
 									low:        low,
 									high:       high,
 									rangeKnown: true,
-								}
-								j++
+								})
 							}
 							cursor += bs
 						}
+						d.state = regions
 					} else {
-						subRegions = create[region](len(blocksizes))
-						for i, bs := range blocksizes {
+						regions := slices.Grow(d.state, len(blocksizes))
+						for i := len(blocksizes); i > 0; {
+							i--
+							bs := blocksizes[i]
 							subCid, err := loadCidFromBytes(links[i].Hash)
 							if err != nil {
 								return 0, fmt.Errorf("link %d of %s: %w", i, cidStringTruncate(c), err)
 							}
 
-							subRegions[i] = region{
+							regions = append(regions, region{
 								c:          subCid,
 								low:        0,
 								high:       bs,
 								rangeKnown: true,
-							}
+							})
 							filesize += bs
 						}
+						d.state = regions
 					}
-					d.state = append(d.state, subRegions)
 				}
 
 				if todo.rangeKnown {

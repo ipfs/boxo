@@ -7,6 +7,7 @@ require (
 	github.com/ipfs/go-ipld-cbor v0.0.6
 	github.com/ipfs/go-verifcid v0.0.2
 	github.com/multiformats/go-multihash v0.2.1
+	golang.org/x/exp v0.0.0-20230105000112-eab7a2c85304
 	google.golang.org/protobuf v1.28.1
 )
 
@@ -25,7 +26,7 @@ require (
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/whyrusleeping/cbor-gen v0.0.0-20200123233031-1cdf64d27158 // indirect
 	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e // indirect
-	golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1 // indirect
+	golang.org/x/sys v0.1.0 // indirect
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
 	lukechampine.com/blake3 v1.1.6 // indirect
 )
