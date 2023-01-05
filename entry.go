@@ -57,8 +57,6 @@ type downloader struct {
 	curBlock []byte
 }
 
-// If DownloadFile returns a non nil error, you MUST call Close on the reader,
-// even if reader.Read returns an error.
 func DownloadFile(c cid.Cid) (io.ReadCloser, error) {
 	req, err := http.NewRequest("GET", gateway+c.String(), bytes.NewReader(nil))
 	if err != nil {
@@ -143,6 +141,13 @@ func (d *downloader) Read(b []byte) (int, error) {
 			// no more data remaining
 			return 0, io.EOF
 		}
+
+		var good bool
+		defer func() {
+			if !good {
+				d.Close()
+			}
+		}()
 
 		// pop current item from the DFS stack
 		last := len(d.state) - 1
@@ -285,6 +290,8 @@ func (d *downloader) Read(b []byte) (int, error) {
 		default:
 			return 0, fmt.Errorf("unknown codec type %d for %s; expected Raw or Dag-PB", pref.Codec, cidStringTruncate(c))
 		}
+
+		good = true
 	}
 
 	n := copy(b, d.curBlock)
