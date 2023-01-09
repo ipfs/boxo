@@ -109,6 +109,7 @@ func fileTreeRecursive(depth int, children []ipld.Link, childLen []uint64, src c
 		}
 		totalSize += sz
 		children = append(children, nxt)
+		childLen = append(childLen, sz)
 		blksizes = append(blksizes, sz)
 	}
 	if len(children) == 0 {
