@@ -106,12 +106,16 @@ func makeShard(ds ipld.DAGService, size int, key string, val *ipld.Link) (*Shard
 	if err != nil {
 		return nil, err
 	}
+	childer, err := newChilder(ds, size)
+	if err != nil {
+		return nil, err
+	}
 	maxpadding := fmt.Sprintf("%X", size-1)
 	s := &Shard{
 		tableSizeLg2: lg2s,
 		prefixPadStr: fmt.Sprintf("%%0%dX", len(maxpadding)),
 		maxpadlen:    len(maxpadding),
-		childer:      newChilder(ds, size),
+		childer:      childer,
 		tableSize:    size,
 		dserv:        ds,
 
@@ -765,11 +769,21 @@ type childer struct {
 	children []*Shard
 }
 
-func newChilder(ds ipld.DAGService, size int) *childer {
+const maximumHamtWidth = 1 << 10 // FIXME: Spec this and decide of a correct value
+
+func newChilder(ds ipld.DAGService, size int) (*childer, error) {
+	if size > maximumHamtWidth {
+		return nil, fmt.Errorf("hamt witdh (%d) exceed maximum allowed (%d)", size, maximumHamtWidth)
+	}
+	bf, err := bitfield.NewBitfield(size)
+	if err != nil {
+		return nil, err
+	}
+
 	return &childer{
 		dserv:    ds,
-		bitfield: bitfield.NewBitfield(size),
-	}
+		bitfield: bf,
+	}, nil
 }
 
 func (s *childer) makeChilder(data []byte, links []*ipld.Link) *childer {

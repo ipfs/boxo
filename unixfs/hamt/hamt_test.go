@@ -737,8 +737,10 @@ func BenchmarkHAMTSet(b *testing.B) {
 }
 
 func TestHamtBadSize(t *testing.T) {
-	_, err := NewShard(nil, 7)
-	if err == nil {
-		t.Fatal("should have failed to construct hamt with bad size")
+	for _, size := range [...]int{-8, 7, 2, 1337, 1024 + 8, -3} {
+		_, err := NewShard(nil, size)
+		if err == nil {
+			t.Error("should have failed to construct hamt with bad size: %d", size)
+		}
 	}
 }
