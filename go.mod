@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/benbjohnson/clock v1.3.0
+	github.com/crackcomm/go-gitignore v0.0.0-20170627025303-887ab5e44cc3
 	github.com/gorilla/mux v1.8.0
 	github.com/ipfs/go-cid v0.3.2
 	github.com/ipfs/go-ipns v0.3.0
@@ -16,6 +17,7 @@ require (
 	github.com/samber/lo v1.36.0
 	github.com/stretchr/testify v1.8.1
 	go.opencensus.io v0.23.0
+	golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab
 )
 
 require (
@@ -46,7 +48,6 @@ require (
 	go.uber.org/zap v1.23.0 // indirect
 	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e // indirect
 	golang.org/x/exp v0.0.0-20220916125017-b168a2c6b86b // indirect
-	golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.1.7 // indirect
 )
