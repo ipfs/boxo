@@ -7,8 +7,8 @@ import (
 	ft "github.com/ipfs/go-unixfs"
 	uio "github.com/ipfs/go-unixfs/io"
 
-	files "github.com/ipfs/go-ipfs-files"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-libipfs/files"
 	dag "github.com/ipfs/go-merkledag"
 )
 
