@@ -3,7 +3,7 @@ package quickbuilder_test
 import (
 	"testing"
 
-	quickbuilder "github.com/ipfs/go-unixfsnode/data/builder/quick"
+	quickbuilder "github.com/ipfs/go-libipfs/unixfs/node/data/builder/quick"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/storage/memstore"
 )

@@ -11,11 +11,11 @@ import (
 	"time"
 
 	format "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-libipfs/unixfs/node/hamt"
 	dag "github.com/ipfs/go-merkledag"
 	mdtest "github.com/ipfs/go-merkledag/test"
 	ft "github.com/ipfs/go-unixfs"
 	legacy "github.com/ipfs/go-unixfs/hamt"
-	"github.com/ipfs/go-unixfsnode/hamt"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/fluent/qp"

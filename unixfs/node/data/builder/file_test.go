@@ -7,7 +7,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	u "github.com/ipfs/go-ipfs-util"
-	"github.com/ipfs/go-unixfsnode/file"
+	"github.com/ipfs/go-libipfs/unixfs/node/file"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"

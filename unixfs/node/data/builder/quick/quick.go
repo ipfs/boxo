@@ -5,7 +5,7 @@ package quickbuilder
 import (
 	"bytes"
 
-	"github.com/ipfs/go-unixfsnode/data/builder"
+	"github.com/ipfs/go-libipfs/unixfs/node/data/builder"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 )

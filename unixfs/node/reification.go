@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ipfs/go-unixfsnode/data"
-	"github.com/ipfs/go-unixfsnode/directory"
-	"github.com/ipfs/go-unixfsnode/file"
-	"github.com/ipfs/go-unixfsnode/hamt"
+	"github.com/ipfs/go-libipfs/unixfs/node/data"
+	"github.com/ipfs/go-libipfs/unixfs/node/directory"
+	"github.com/ipfs/go-libipfs/unixfs/node/file"
+	"github.com/ipfs/go-libipfs/unixfs/node/hamt"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 )

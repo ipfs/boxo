@@ -1,7 +1,7 @@
 package file
 
 import (
-	"github.com/ipfs/go-unixfsnode/data"
+	"github.com/ipfs/go-libipfs/unixfs/node/data"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 )

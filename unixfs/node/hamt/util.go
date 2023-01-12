@@ -8,7 +8,7 @@ import (
 	"math/bits"
 
 	bitfield "github.com/ipfs/go-bitfield"
-	"github.com/ipfs/go-unixfsnode/data"
+	"github.com/ipfs/go-libipfs/unixfs/node/data"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/spaolacci/murmur3"
 )

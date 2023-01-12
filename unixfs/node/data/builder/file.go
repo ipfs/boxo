@@ -6,7 +6,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	chunk "github.com/ipfs/go-ipfs-chunker"
-	"github.com/ipfs/go-unixfsnode/data"
+	"github.com/ipfs/go-libipfs/unixfs/node/data"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"

@@ -7,9 +7,9 @@ import (
 	"io"
 	"testing"
 
-	"github.com/ipfs/go-unixfsnode"
-	"github.com/ipfs/go-unixfsnode/directory"
-	"github.com/ipfs/go-unixfsnode/file"
+	unixfsnode "github.com/ipfs/go-libipfs/unixfs/node"
+	"github.com/ipfs/go-libipfs/unixfs/node/directory"
+	"github.com/ipfs/go-libipfs/unixfs/node/file"
 	"github.com/ipld/go-car/v2/blockstore"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"

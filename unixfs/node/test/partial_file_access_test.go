@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	u "github.com/ipfs/go-ipfs-util"
-	"github.com/ipfs/go-unixfsnode/data/builder"
-	"github.com/ipfs/go-unixfsnode/file"
+	"github.com/ipfs/go-libipfs/unixfs/node/data/builder"
+	"github.com/ipfs/go-libipfs/unixfs/node/file"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"

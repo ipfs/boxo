@@ -3,9 +3,9 @@ package directory
 import (
 	"context"
 
-	"github.com/ipfs/go-unixfsnode/data"
-	"github.com/ipfs/go-unixfsnode/iter"
-	"github.com/ipfs/go-unixfsnode/utils"
+	"github.com/ipfs/go-libipfs/unixfs/node/data"
+	"github.com/ipfs/go-libipfs/unixfs/node/iter"
+	"github.com/ipfs/go-libipfs/unixfs/node/utils"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/schema"

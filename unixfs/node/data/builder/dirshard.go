@@ -5,8 +5,8 @@ import (
 	"hash"
 
 	bitfield "github.com/ipfs/go-bitfield"
-	"github.com/ipfs/go-unixfsnode/data"
-	"github.com/ipfs/go-unixfsnode/hamt"
+	"github.com/ipfs/go-libipfs/unixfs/node/data"
+	"github.com/ipfs/go-libipfs/unixfs/node/hamt"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/multiformats/go-multihash"
