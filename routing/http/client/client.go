@@ -40,6 +40,10 @@ type client struct {
 	afterSignCallback func(req *types.WriteBitswapProviderRecord)
 }
 
+// defaultUserAgent is used as a fallback to inform HTTP server which library
+// version sent a request
+var defaultUserAgent = moduleVersion()
+
 var _ contentrouter.Client = &client{}
 
 type httpClient interface {
@@ -60,6 +64,23 @@ func WithHTTPClient(h httpClient) option {
 	}
 }
 
+func WithUserAgent(ua string) option {
+	return func(c *client) {
+		if ua == "" {
+			return
+		}
+		httpClient, ok := c.httpClient.(*http.Client)
+		if !ok {
+			return
+		}
+		transport, ok := httpClient.Transport.(*ResponseBodyLimitedTransport)
+		if !ok {
+			return
+		}
+		transport.UserAgent = ua
+	}
+}
+
 func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) option {
 	return func(c *client) {
 		c.peerID = peerID
@@ -76,6 +97,7 @@ func New(baseURL string, opts ...option) (*client, error) {
 		Transport: &ResponseBodyLimitedTransport{
 			RoundTripper: http.DefaultTransport,
 			LimitBytes:   1 << 20,
+			UserAgent:    defaultUserAgent,
 		},
 	}
 	client := &client{
