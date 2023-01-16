@@ -153,6 +153,11 @@ func main1() int {
 						Usage: "Write output as a v1 or v2 format car",
 					},
 				},
+				Subcommands: []*cli.Command{{
+					Name:   "create",
+					Usage:  "Write out a detached index",
+					Action: CreateIndex,
+				}},
 			},
 			{
 				Name:   "inspect",

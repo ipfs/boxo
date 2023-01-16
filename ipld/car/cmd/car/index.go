@@ -166,3 +166,45 @@ func IndexCar(c *cli.Context) error {
 	_, err = index.WriteTo(idx, outStream)
 	return err
 }
+
+// CreateIndex is a command to write out an index of the CAR file
+func CreateIndex(c *cli.Context) error {
+	r, err := carv2.OpenReader(c.Args().Get(0))
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	outStream := os.Stdout
+	if c.Args().Len() >= 2 {
+		outStream, err = os.Create(c.Args().Get(1))
+		if err != nil {
+			return err
+		}
+	}
+	defer outStream.Close()
+
+	var mc multicodec.Code
+	if err := mc.Set(c.String("codec")); err != nil {
+		return err
+	}
+	idx, err := index.New(mc)
+	if err != nil {
+		return err
+	}
+
+	dr, err := r.DataReader()
+	if err != nil {
+		return err
+	}
+
+	if err := carv2.LoadIndex(idx, dr); err != nil {
+		return err
+	}
+
+	if _, err := index.WriteTo(idx, outStream); err != nil {
+		return err
+	}
+
+	return nil
+}
