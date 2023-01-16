@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"runtime/debug"
+	"strings"
 )
 
 type ResponseBodyLimitedTransport struct {
@@ -44,32 +46,34 @@ func (l *limitReadCloser) Read(p []byte) (int, error) {
 
 // ImportPath is the canonical import path that allows us to identify
 // official client builds vs modified forks, and use that info in User-Agent header.
-const ImportPath = "github.com/ipfs/go-libipfs/routing/http/client"
+var ImportPath = importPath()
+
+// importPath returns the path that library consumers would have in go.mod
+func importPath() string {
+	p := reflect.ValueOf(ResponseBodyLimitedTransport{}).Type().PkgPath()
+	// we have monorepo, so stripping the remainder
+	return strings.TrimSuffix(p, "/routing/http/client")
+}
 
 // moduleVersion returns a useful user agent version string allowing us to
-// identify requests coming from officialxl releases of this module.
-func moduleVersion() string {
+// identify requests coming from official releases of this module vs forks.
+func moduleVersion() (ua string) {
+	ua = ImportPath
 	var module *debug.Module
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		return ""
-	}
-
-	// find this client in the dependency list
-	// of the app that has it in go.mod
-	for _, dep := range bi.Deps {
-		if dep.Path == ImportPath {
-			module = dep
-			break
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		// If debug.ReadBuildInfo was successful, we can read Version by finding
+		// this client in the dependency list of the app that has it in go.mod
+		for _, dep := range bi.Deps {
+			if dep.Path == ImportPath {
+				module = dep
+				break
+			}
 		}
+		if module != nil {
+			ua += "@" + module.Version
+			return
+		}
+		ua += "@unknown"
 	}
-
-	if module == nil {
-		return ""
-	}
-	ua := ImportPath + "/" + module.Version
-	if module.Sum != "" {
-		ua += "/" + module.Sum
-	}
-	return ua
+	return
 }
