@@ -48,21 +48,37 @@ type testDeps struct {
 }
 
 func makeTestDeps(t *testing.T) testDeps {
+	const testUserAgent = "testUserAgent"
 	peerID, addrs, identity := makeProviderAndIdentity()
 	router := &mockContentRouter{}
 	server := httptest.NewServer(server.Handler(router))
 	t.Cleanup(server.Close)
 	serverAddr := "http://" + server.Listener.Addr().String()
-	c, err := New(serverAddr, WithProviderInfo(peerID, addrs), WithIdentity(identity))
+	c, err := New(serverAddr, WithProviderInfo(peerID, addrs), WithIdentity(identity), WithUserAgent(testUserAgent))
 	if err != nil {
 		panic(err)
 	}
+	assertUserAgentOverride(t, c, testUserAgent)
 	return testDeps{
 		router: router,
 		server: server,
 		peerID: peerID,
 		addrs:  addrs,
 		client: c,
+	}
+}
+
+func assertUserAgentOverride(t *testing.T, c *client, expected string) {
+	httpClient, ok := c.httpClient.(*http.Client)
+	if !ok {
+		t.Error("invalid c.httpClient")
+	}
+	transport, ok := httpClient.Transport.(*ResponseBodyLimitedTransport)
+	if !ok {
+		t.Error("invalid httpClient.Transport")
+	}
+	if transport.UserAgent != expected {
+		t.Error("invalid httpClient.Transport.UserAgent")
 	}
 }
 
