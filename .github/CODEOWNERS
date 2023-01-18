@@ -1,0 +1,4 @@
+# This CODEOWNERS file does not defines precise codeowners, we use it as review hints.
+# Peoples here have an intrest into reviewing some packages of this monorepo.
+
+/ipsl/* @Jorropo
