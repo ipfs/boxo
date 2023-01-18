@@ -4,3 +4,6 @@
 
 # HTTP Gateway
 gateway/  @lidel @hacdias
+
+# IPSL
+ipsl/* @Jorropo
