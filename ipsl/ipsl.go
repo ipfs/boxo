@@ -20,8 +20,6 @@ type Traversal interface {
 }
 
 type Node interface {
-	Reflect() (SomeNode, error)
-
 	// Serialize returns the real representation of what is being executed.
 	Serialize() (AstNode, error)
 
@@ -52,14 +50,15 @@ func CompileAll(scopeName string, arguments ...SomeNode) (SomeNode, error) {
 
 	traversals := make([]Traversal, len(arguments))
 	for i, c := range arguments {
-		if c.Type != TypeTraversal {
-			return SomeNode{}, ErrTypeError{fmt.Sprintf("trying to build an all node but received a %s argument", c.Type.String())}
+		trav, ok := c.Node.(Traversal)
+		if !ok {
+			return SomeNode{}, ErrTypeError{fmt.Sprintf("trying to build an all node but received wrong type as %T argument", PrettyNodeType(c.Node))}
 		}
 
-		traversals[i] = c.Node.(Traversal)
+		traversals[i] = trav
 	}
 
-	return SomeNode{All(traversals...), TypeTraversal}, nil
+	return SomeNode{All(traversals...)}, nil
 }
 
 func (n AllNode) Traverse(c cid.Cid, _ []byte) ([]CidTraversalPair, error) {
@@ -68,13 +67,6 @@ func (n AllNode) Traverse(c cid.Cid, _ []byte) ([]CidTraversalPair, error) {
 		r[i] = CidTraversalPair{c, t}
 	}
 	return r, nil
-}
-
-func (n AllNode) Reflect() (SomeNode, error) {
-	return SomeNode{
-		Type: TypeTraversal,
-		Node: n,
-	}, nil
 }
 
 func (n AllNode) Serialize() (AstNode, error) {
@@ -127,13 +119,6 @@ type CidLiteral struct {
 	Cid cid.Cid
 }
 
-func (c CidLiteral) Reflect() (SomeNode, error) {
-	return SomeNode{
-		Type: TypeCid,
-		Node: c,
-	}, nil
-}
-
 func (c CidLiteral) Serialize() (AstNode, error) {
 	return AstNode{
 		Type:    SyntaxTypeCidLiteral,
@@ -143,4 +128,17 @@ func (c CidLiteral) Serialize() (AstNode, error) {
 
 func (c CidLiteral) SerializeForNetwork() (AstNode, error) {
 	return c.Serialize()
+}
+
+func PrettyNodeType(n Node) string {
+	switch n.(type) {
+	case Traversal:
+		return "Traversal"
+	case Scope:
+		return "Scope"
+	case CidLiteral:
+		return "Cid"
+	default:
+		return fmt.Sprintf("unknown node type %T", n)
+	}
 }

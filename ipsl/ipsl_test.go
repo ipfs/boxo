@@ -36,12 +36,13 @@ func TestBasicCompileWithBuiltin(t *testing.T) {
 		t.Errorf("bytes red does not match code size")
 	}
 
-	if node.Type != TypeCid {
-		t.Fatalf("type does not match, expected Cid; got: %s", node.Type)
+	cidlit, ok := node.Node.(CidLiteral)
+	if !ok {
+		t.Fatalf("type does not match, expected Cid; got: %s", PrettyNodeType(node.Node))
 	}
 	expected := cid.MustParse("bafkqaaa")
-	if c := node.Node.(CidLiteral).Cid; !c.Equals(expected) {
-		t.Errorf("cid does not match, expected: %s; got %s", expected, c)
+	if !cidlit.Cid.Equals(expected) {
+		t.Errorf("cid does not match, expected: %s; got %s", expected, cidlit.Cid)
 	}
 }
 
@@ -58,24 +59,18 @@ func TestBasic2CompileWithBuiltin(t *testing.T) {
 		t.Errorf("bytes red does not match code size")
 	}
 
-	if node.Type != TypeCid {
-		t.Fatalf("type does not match, expected Cid; got: %s", node.Type)
+	cidlit, ok := node.Node.(CidLiteral)
+	if !ok {
+		t.Fatalf("type does not match, expected Cid; got: %s", PrettyNodeType(node.Node))
 	}
 	expected := cid.MustParse("bafkqaaa")
-	if c := node.Node.(CidLiteral).Cid; !c.Equals(expected) {
-		t.Errorf("cid does not match, expected: %s; got %s", expected, c)
+	if !cidlit.Cid.Equals(expected) {
+		t.Errorf("cid does not match, expected: %s; got %s", expected, cidlit.Cid)
 	}
 }
 
 type mockScopeNode struct {
 	scope map[string]NodeCompiler
-}
-
-func (n mockScopeNode) Reflect() (SomeNode, error) {
-	return SomeNode{
-		Type: TypeScope,
-		Node: n,
-	}, nil
 }
 
 func (n mockScopeNode) Serialize() (AstNode, error) {
@@ -106,7 +101,6 @@ func TestScopeCompileWithBuiltin(t *testing.T) {
 		}
 
 		return SomeNode{
-			Type: TypeScope,
 			Node: mockScopeNode{map[string]NodeCompiler{
 				"reflect":             reflect("test-scope"),
 				"reflect.cursed.name": reflect("test-scope"),
@@ -123,12 +117,13 @@ func TestScopeCompileWithBuiltin(t *testing.T) {
 		t.Errorf("bytes red does not match code size")
 	}
 
-	if node.Type != TypeCid {
-		t.Fatalf("type does not match, expected Cid; got: %s", node.Type)
+	cidlit, ok := node.Node.(CidLiteral)
+	if !ok {
+		t.Fatalf("type does not match, expected Cid; got: %s", PrettyNodeType(node.Node))
 	}
 	expected := cid.MustParse("bafkqaaa")
-	if c := node.Node.(CidLiteral).Cid; !c.Equals(expected) {
-		t.Errorf("cid does not match, expected: %s; got %s", expected, c)
+	if !cidlit.Cid.Equals(expected) {
+		t.Errorf("cid does not match, expected: %s; got %s", expected, cidlit.Cid)
 	}
 }
 

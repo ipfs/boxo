@@ -74,10 +74,11 @@ func (c *Compiler) CompileToTraversal(rr UnreadableRuneReader) (Traversal, int, 
 	if err != nil {
 		return nil, n, err
 	}
-	if node.Type != TypeTraversal {
-		return nil, n, ErrTypeError{fmt.Sprintf("expected type Traversal; got %q", node.Type.String())}
+	traversal, ok := node.Node.(Traversal)
+	if !ok {
+		return nil, n, ErrTypeError{fmt.Sprintf("expected type Traversal; got %q", PrettyNodeType(node.Node))}
 	}
-	return node.Node.(Traversal), n, nil
+	return traversal, n, nil
 }
 
 // Compile returns some node that has been compiled, the number of bytes red and an error.
@@ -167,7 +168,6 @@ func (c compiler) compileCid() (SomeNode, int, error) {
 	}
 
 	return SomeNode{
-		Type: TypeCid,
 		Node: CidLiteral{cid},
 	}, n, nil
 }
@@ -193,7 +193,6 @@ argumentLoop:
 		case ')':
 			break argumentLoop
 		case 0:
-			break
 		default:
 			return SomeNode{}, sum, ErrSyntaxError{fmt.Sprintf("incorrect termination for a value node: %q", string(end))}
 		}
@@ -224,11 +223,12 @@ func (c compiler) compileScopeNode(f *frame) (SomeNode, int, error) {
 	if err != nil {
 		return SomeNode{}, sum, err
 	}
-	if scope.Type != TypeScope {
-		return SomeNode{}, sum, ErrTypeError{fmt.Sprintf("expected Scope type node; got %s", scope.Type.String())}
+	scopeObject, ok := scope.Node.(Scope)
+	if !ok {
+		return SomeNode{}, sum, ErrTypeError{fmt.Sprintf("expected Scope type node; got %s", PrettyNodeType(scope.Node))}
 	}
 
-	scopeMap, err := scope.Node.(Scope).GetScope()
+	scopeMap, err := scopeObject.GetScope()
 	if err != nil {
 		return SomeNode{}, sum, err
 	}
@@ -269,16 +269,16 @@ func (c compiler) compileScopeNode(f *frame) (SomeNode, int, error) {
 	}
 
 	sn := scopeNode{boundToken, scope, result.Node}
-	switch result.Type {
-	case TypeCid:
+	switch result.Node.(type) {
+	case CidLiteral:
 		return result, sum, nil
-	case TypeTraversal:
-		return SomeNode{traversalScopeNode{sn}, result.Type}, sum, nil
-	case TypeScope:
-		return SomeNode{scopeScopeNode{sn}, result.Type}, sum, nil
+	case Traversal:
+		return SomeNode{traversalScopeNode{sn}}, sum, nil
+	case Scope:
+		return SomeNode{scopeScopeNode{sn}}, sum, nil
 	// TODO: implement more types when they are added.
 	default:
-		return SomeNode{}, sum, fmt.Errorf("unimplemented type forwarding in scope for %q", result.Type.String())
+		return SomeNode{}, sum, fmt.Errorf("unimplemented type forwarding in scope for %q", PrettyNodeType(result.Node))
 	}
 }
 
@@ -338,13 +338,6 @@ type traversalScopeNode struct {
 	scopeNode
 }
 
-func (n traversalScopeNode) Reflect() (SomeNode, error) {
-	return SomeNode{
-		Type: TypeTraversal,
-		Node: n,
-	}, nil
-}
-
 func (n traversalScopeNode) Traverse(c cid.Cid, b []byte) ([]CidTraversalPair, error) {
 	r, err := n.scopeNode.result.(Traversal).Traverse(c, b)
 	if err != nil {
@@ -361,13 +354,6 @@ func (n traversalScopeNode) Traverse(c cid.Cid, b []byte) ([]CidTraversalPair, e
 
 type scopeScopeNode struct {
 	scopeNode
-}
-
-func (n scopeScopeNode) Reflect() (SomeNode, error) {
-	return SomeNode{
-		Type: TypeScope,
-		Node: n,
-	}, nil
 }
 
 func (n scopeScopeNode) GetScope() (map[string]NodeCompiler, error) {
@@ -431,28 +417,6 @@ func (c compiler) readToken() ([]rune, int, error) {
 // SomeNode is any ipsl expression, this is used for reflection within the compiler.
 type SomeNode struct {
 	Node Node
-	// Type Defines what Node implements
-	Type Type
-}
-
-type Type uint8
-
-const (
-	TypeUnknown Type = iota // Value for Zero
-	TypeTraversal
-	TypeScope
-	TypeCid
-)
-
-func (t Type) String() string {
-	switch t {
-	case TypeTraversal:
-		return "Traversal"
-	case TypeScope:
-		return "Scope"
-	default:
-		return "Unknown type of " + strconv.FormatUint(uint64(t), 10)
-	}
 }
 
 type AstNode struct {
