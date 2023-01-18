@@ -9,21 +9,23 @@ import (
 	. "github.com/ipfs/go-libipfs/ipsl"
 )
 
-func reflect(scope string, nodes ...SomeNode) (SomeNode, error) {
-	if scope != "" {
-		return SomeNode{}, fmt.Errorf("got non empty scope while compiling reflect: %q", scope)
-	}
+func reflect(expectedScope string) func(string, ...SomeNode) (SomeNode, error) {
+	return func(scope string, nodes ...SomeNode) (SomeNode, error) {
+		if scope != expectedScope {
+			return SomeNode{}, fmt.Errorf("got unexpected scope while compiling reflect: %q instead of: %q", scope, expectedScope)
+		}
 
-	if len(nodes) != 1 {
-		return SomeNode{}, fmt.Errorf("got arguments list that is not one while compiling reflect: %#v", nodes)
-	}
+		if len(nodes) != 1 {
+			return SomeNode{}, fmt.Errorf("got arguments list that is not one while compiling reflect: %#v", nodes)
+		}
 
-	return nodes[0], nil
+		return nodes[0], nil
+	}
 }
 
 func TestBasicCompileWithBuiltin(t *testing.T) {
 	var c Compiler
-	c.SetBuiltin("reflect", reflect)
+	c.SetBuiltin("reflect", reflect(""))
 
 	const code = `(reflect $bafkqaaa)`
 	node, n, err := c.Compile(strings.NewReader(code))
@@ -45,7 +47,7 @@ func TestBasicCompileWithBuiltin(t *testing.T) {
 
 func TestBasic2CompileWithBuiltin(t *testing.T) {
 	var c Compiler
-	c.SetBuiltin("reflect", reflect)
+	c.SetBuiltin("reflect", reflect(""))
 
 	const code = `(reflect (reflect $bafkqaaa))`
 	node, n, err := c.Compile(strings.NewReader(code))
@@ -65,9 +67,74 @@ func TestBasic2CompileWithBuiltin(t *testing.T) {
 	}
 }
 
+type mockScopeNode struct {
+	scope map[string]NodeCompiler
+}
+
+func (n mockScopeNode) Reflect() (SomeNode, error) {
+	return SomeNode{
+		Type: TypeScope,
+		Node: n,
+	}, nil
+}
+
+func (n mockScopeNode) Serialize() (AstNode, error) {
+	return AstNode{
+		Type: SyntaxTypeValueNode,
+		Args: []AstNode{{
+			Type:    SyntaxTypeToken,
+			Literal: "load-test-scope",
+		}},
+	}, nil
+}
+
+func (n mockScopeNode) SerializeForNetwork() (AstNode, error) { return n.Serialize() }
+
+func (n mockScopeNode) GetScope() (map[string]NodeCompiler, error) {
+	return n.scope, nil
+}
+
+func TestScopeCompileWithBuiltin(t *testing.T) {
+	var c Compiler
+	c.SetBuiltin("load-test-scope", func(scope string, nodes ...SomeNode) (SomeNode, error) {
+		if scope != "" {
+			return SomeNode{}, fmt.Errorf("got non empty scope while compiling reflect: %q", scope)
+		}
+
+		if len(nodes) != 0 {
+			return SomeNode{}, fmt.Errorf("got arguments list that is not empty: %#v", nodes)
+		}
+
+		return SomeNode{
+			Type: TypeScope,
+			Node: mockScopeNode{map[string]NodeCompiler{
+				"reflect":             reflect("test-scope"),
+				"reflect.cursed.name": reflect("test-scope"),
+			}},
+		}, nil
+	})
+
+	const code = `[test-scope (load-test-scope) (test-scope.reflect (test-scope.reflect.cursed.name $bafkqaaa))]`
+	node, n, err := c.Compile(strings.NewReader(code))
+	if err != nil {
+		t.Fatalf("failed to compile: %s", err.Error())
+	}
+	if n != len(code) {
+		t.Errorf("bytes red does not match code size")
+	}
+
+	if node.Type != TypeCid {
+		t.Fatalf("type does not match, expected Cid; got: %s", node.Type)
+	}
+	expected := cid.MustParse("bafkqaaa")
+	if c := node.Node.(CidLiteral).Cid; !c.Equals(expected) {
+		t.Errorf("cid does not match, expected: %s; got %s", expected, c)
+	}
+}
+
 func FuzzCompile(f *testing.F) {
 	var c Compiler
-	c.SetBuiltin("reflect", reflect)
+	c.SetBuiltin("reflect", reflect(""))
 
 	f.Add(`(reflect (reflect $bafkqaaa))`)
 	f.Fuzz(func(_ *testing.T, code string) {
