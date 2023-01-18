@@ -30,15 +30,12 @@ Most users should use v2, especially for new software, since the v2 API transpar
 
 ## Install
 
-To install the latest version of `go-car/v2` module, run:
+To install the latest version of the `car` executable, run:
 ```shell script
-go get github.com/ipld/go-car/v2
+go install github.com/ipld/go-car/cmd/car@latest
 ```
 
-Alternatively, to install the v0 module, run:
-```shell script
-go get github.com/ipld/go-car
-```
+This will install the `car` executable into `$GOPATH/bin/`
 
 ## API Documentation
 
