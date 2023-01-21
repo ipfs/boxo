@@ -3,19 +3,29 @@ package files
 import (
 	"io"
 	"mime/multipart"
+	"strings"
 	"testing"
+	"time"
 )
 
 var text = "Some text! :)"
 
 func getTestMultiFileReader(t *testing.T) *MultiFileReader {
 	sf := NewMapDirectory(map[string]Node{
-		"file.txt": NewBytesFile([]byte(text)),
+		"file.txt": NewReaderStatFile(
+			strings.NewReader(text),
+			&mockFileInfo{name: "file.txt", mode: 0, mtime: time.Time{}}),
 		"boop": NewMapDirectory(map[string]Node{
-			"a.txt": NewBytesFile([]byte("bleep")),
-			"b.txt": NewBytesFile([]byte("bloop")),
+			"a.txt": NewReaderStatFile(
+				strings.NewReader("bleep"),
+				&mockFileInfo{name: "a.txt", mode: 0744, mtime: time.Time{}}),
+			"b.txt": NewReaderStatFile(
+				strings.NewReader("bloop"),
+				&mockFileInfo{name: "b.txt", mode: 0666, mtime: time.Unix(1604320500, 0)}),
 		}),
-		"beep.txt": NewBytesFile([]byte("beep")),
+		"beep.txt": NewReaderStatFile(
+			strings.NewReader("beep"),
+			&mockFileInfo{name: "beep.txt", mode: 0754, mtime: time.Unix(1604320500, 55555)}),
 	})
 
 	// testing output by reading it with the go stdlib "mime/multipart" Reader
@@ -34,6 +44,14 @@ func TestMultiFileReaderToMultiFile(t *testing.T) {
 
 	if !it.Next() || it.Name() != "beep.txt" {
 		t.Fatal("iterator didn't work as expected")
+	}
+
+	n := it.Node()
+	if n.Mode() != 0754 {
+		t.Fatal("unexpected file mode")
+	}
+	if n.ModTime() != time.Unix(1604320500, 55555) {
+		t.Fatal("unexpected last modification time")
 	}
 
 	if !it.Next() || it.Name() != "boop" || DirFromEntry(it) == nil {

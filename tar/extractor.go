@@ -4,10 +4,13 @@ import (
 	"archive/tar"
 	"errors"
 	"fmt"
+	"github.com/ipfs/go-libipfs/files"
 	"io"
 	"os"
 	fp "path/filepath"
+	"runtime"
 	"strings"
+	"time"
 )
 
 var errTraverseSymlink = errors.New("cannot traverse symlinks")
@@ -24,11 +27,14 @@ var errInvalidRootMultipleRoots = fmt.Errorf("contains more than one root or the
 // `cp`. In particular, the name of the extracted file/symlink will match the extraction path. If the extraction path
 // is a directory then it will extract into the directory using its original name.
 //
+// If an associated mode and last modification time was stored in the archive it is restored.
+//
 // Overwriting: Extraction of files and symlinks will result in overwriting the existing objects with the same name
 // when possible (i.e. other files, symlinks, and empty directories).
 type Extractor struct {
-	Path     string
-	Progress func(int64) int64
+	Path            string
+	Progress        func(int64) int64
+	deferredUpdates []deferredUpdate
 }
 
 // Extract extracts a tar file to the file system. See the Extractor for more information on the limitations on the
@@ -38,9 +44,9 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		return nil
 	}
 
-	tarReader := tar.NewReader(reader)
-
 	var firstObjectWasDir bool
+	tarReader := tar.NewReader(reader)
+	te.deferredUpdates = make([]deferredUpdate, 0, 80)
 
 	header, err := tarReader.Next()
 	if err != nil && err != io.EOF {
@@ -49,6 +55,19 @@ func (te *Extractor) Extract(reader io.Reader) error {
 	if header == nil || err == io.EOF {
 		return fmt.Errorf("empty tar file")
 	}
+
+	doUpdates := func() error {
+		for i := len(te.deferredUpdates) - 1; i >= 0; i-- {
+			m := te.deferredUpdates[i]
+			err := updateMeta(m.path, m.mode, m.mtime)
+			if err != nil {
+				return err
+			}
+		}
+		te.deferredUpdates = nil
+		return nil
+	}
+	defer func() { err = doUpdates() }()
 
 	// Specially handle the first entry assuming it is a single root object (e.g. root directory, single file,
 	// or single symlink)
@@ -83,6 +102,10 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		if err := te.extractDir(rootOutputPath); err != nil {
 			return err
 		}
+		if err := te.deferUpdate(rootOutputPath, header); err != nil {
+			return err
+		}
+
 	case tar.TypeReg, tar.TypeSymlink:
 		// Check if the output path already exists, so we know whether we should
 		// create our output with that name, or if we should put the output inside
@@ -113,6 +136,9 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		// If an object with the target name already exists overwrite it
 		if header.Typeflag == tar.TypeReg {
 			if err := te.extractFile(outputPath, tarReader); err != nil {
+				return err
+			}
+			if err := updateMeta(outputPath, header.Mode, header.ModTime); err != nil {
 				return err
 			}
 		} else if err := te.extractSymlink(outputPath, header); err != nil {
@@ -171,8 +197,14 @@ func (te *Extractor) Extract(reader io.Reader) error {
 			if err := te.extractDir(outputPath); err != nil {
 				return err
 			}
+			if err := te.deferUpdate(outputPath, header); err != nil {
+				return err
+			}
 		case tar.TypeReg:
 			if err := te.extractFile(outputPath, tarReader); err != nil {
+				return err
+			}
+			if err := updateMeta(outputPath, header.Mode, header.ModTime); err != nil {
 				return err
 			}
 		case tar.TypeSymlink:
@@ -266,11 +298,22 @@ func (te *Extractor) extractDir(path string) error {
 }
 
 func (te *Extractor) extractSymlink(path string, h *tar.Header) error {
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+	err := os.Remove(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
-	return os.Symlink(h.Linkname, path)
+	err = os.Symlink(h.Linkname, path)
+	if err != nil {
+		return err
+	}
+
+	switch runtime.GOOS {
+	case "linux", "freebsd", "netbsd", "openbsd", "dragonfly":
+		return updateModTime(path, h.ModTime)
+	default:
+		return nil
+	}
 }
 
 func (te *Extractor) extractFile(path string, r *tar.Reader) error {
@@ -324,4 +367,68 @@ func copyWithProgress(to io.Writer, from io.Reader, cb func(int64) int64) error 
 			return err
 		}
 	}
+}
+
+type deferredUpdate struct {
+	path  string
+	mode  int64
+	mtime time.Time
+}
+
+func (te *Extractor) deferUpdate(path string, header *tar.Header) error {
+	if header.Mode == 0 && header.ModTime.IsZero() {
+		return nil
+	}
+
+	prefix := func() string {
+		for i := len(path) - 1; i >= 0; i-- {
+			if path[i] == '/' {
+				return path[:i]
+			}
+		}
+		return path
+	}
+
+	n := len(te.deferredUpdates)
+	if n > 0 && len(path) < len(te.deferredUpdates[n-1].path) {
+		// if possible, apply the previous deferral
+		m := te.deferredUpdates[n-1]
+		if strings.HasPrefix(m.path, prefix()) {
+			err := updateMeta(m.path, m.mode, m.mtime)
+			if err != nil {
+				return err
+			}
+			te.deferredUpdates = te.deferredUpdates[:n-1]
+		}
+	}
+
+	te.deferredUpdates = append(te.deferredUpdates, deferredUpdate{
+		path:  path,
+		mode:  header.Mode,
+		mtime: header.ModTime,
+	})
+
+	return nil
+}
+
+func updateMeta(path string, mode int64, mtime time.Time) error {
+	if err := updateModTime(path, mtime); err != nil {
+		return err
+	}
+	if mode != 0 {
+		if err := os.Chmod(path, files.UnixPermsToModePerms(uint32(mode))); err != nil {
+			return fmt.Errorf("failed to update file mode on '%s'", path)
+		}
+	}
+	return nil
+}
+
+// updateModTime sets the last access and modification time of the target filesystem
+// object to the given time.
+// When the given path references a symlink, if supported the symlink is updated.
+func updateModTime(path string, mtime time.Time) error {
+	if err := updateMtime(path, mtime); err != nil {
+		return fmt.Errorf("[%v] failed to update last modification time on '%s'", path, err)
+	}
+	return nil
 }

@@ -6,12 +6,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
+	"time"
 )
 
 func TestWebFile(t *testing.T) {
 	const content = "Hello world!"
+	const mode = 0644
+	mtime := time.Unix(16043205005, 0)
+
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add(LastModifiedHeaderName, mtime.Format(time.RFC1123))
+		w.Header().Add(FileModeHeaderName, strconv.FormatUint(uint64(mode), 8))
 		fmt.Fprint(w, content)
 	}))
 	defer s.Close()
@@ -27,6 +34,12 @@ func TestWebFile(t *testing.T) {
 	}
 	if string(body) != content {
 		t.Fatalf("expected %q but got %q", content, string(body))
+	}
+	if actual := wf.Mode(); actual != mode {
+		t.Fatalf("expected file mode %q but got 0%q", mode, strconv.FormatUint(uint64(actual), 8))
+	}
+	if actual := wf.ModTime(); !actual.Equal(mtime) {
+		t.Fatalf("expected last modified time %q but got %q", mtime, actual)
 	}
 }
 
