@@ -7,17 +7,29 @@ go-car (go!)
 [![Go Reference](https://pkg.go.dev/badge/github.com/ipld/go-car.svg)](https://pkg.go.dev/github.com/ipld/go-car)
 [![Coverage Status](https://codecov.io/gh/ipld/go-car/branch/master/graph/badge.svg)](https://codecov.io/gh/ipld/go-car/branch/master)
 
-> A library to interact with merkledags stored as a single file
+> Work with car (Content addressed ARchive) files!
 
-This is a Go implementation of the [CAR specifications](https://ipld.io/specs/transport/car/), both [CARv1](https://ipld.io/specs/transport/car/carv1/) and [CARv2](https://ipld.io/specs/transport/car/carv2/).
+This is a Golang implementation of the [CAR specifications](https://ipld.io/specs/transport/car/), both [CARv1](https://ipld.io/specs/transport/car/carv1/) and [CARv2](https://ipld.io/specs/transport/car/carv2/).
 
-Note that there are two major module versions:
+As a format, there are two major module versions:
 
 * [`go-car/v2`](v2/) is geared towards reading and writing CARv2 files, and also
   supports consuming CARv1 files and using CAR files as an IPFS blockstore.
-* `go-car` v0, in the root directory, just supports reading and writing CARv1 files.
+* `go-car`, in the root directory, only supports reading and writing CARv1 files.
 
 Most users should use v2, especially for new software, since the v2 API transparently supports both CAR formats.
+
+## Usage / Installation
+
+This repository provides a `car` binary that can be used for creating, extracting, and working with car files.
+
+To install the latest version of `car`, run:
+```shell script
+go install github.com/ipld/go-car/cmd/car@latest
+```
+
+More information about this binary is available in [`cmd/car`](cmd/car/)
+
 
 ## Features
 
@@ -28,14 +40,6 @@ Most users should use v2, especially for new software, since the v2 API transpar
 * Write CARv2 files via [Read-Write blockstore](https://pkg.go.dev/github.com/ipld/go-car/v2/blockstore#OpenReadWrite) API, with support for appending blocks to an existing CARv2 file, and resumption from a partially written CARv2 files.
 * Individual access to [inner CARv1 data payload]((https://pkg.go.dev/github.com/ipld/go-car/v2#Reader.DataReader)) and [index]((https://pkg.go.dev/github.com/ipld/go-car/v2#Reader.IndexReader)) of a CARv2 file via the `Reader` API.
 
-## Install
-
-To install the latest version of the `car` executable, run:
-```shell script
-go install github.com/ipld/go-car/cmd/car@latest
-```
-
-This will install the `car` executable into `$GOPATH/bin/`
 
 ## API Documentation
 
@@ -53,8 +57,8 @@ Here is a shortlist of other examples from the documentation
 
 ## Maintainers
 
-* [Daniel Martí](https://github.com/mvdan)
 * [Masih Derkani](https://github.com/masih)
+* [Will Scott](https://github.com/willscott)
 
 ## Contribute
 

@@ -5,7 +5,7 @@ car - The CLI tool
 [![](https://img.shields.io/badge/project-ipld-orange.svg?style=flat-square)](https://github.com/ipld/ipld)
 [![](https://img.shields.io/badge/matrix-%23ipld-blue.svg?style=flat-square)](https://matrix.to/#/#ipld:ipfs.io)
 
-> A CLI to interact with car files
+> A CLI for interacting with car files
 
 ## Usage
 
@@ -30,7 +30,7 @@ COMMANDS:
 
 ## Install
 
-To install the latest version of `car` module, run:
+To install the latest version of `car`, run:
 ```shell script
 go install github.com/ipld/go-car/cmd/car@latest
 ```
