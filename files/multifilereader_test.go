@@ -233,6 +233,6 @@ func testContentDispositionEncoding(t *testing.T, form bool, filename string, ex
 	mfr.addContentDisposition(header, filename)
 	v := header.Get(contentDispositionHeader)
 	if v != expected {
-		t.Fatalf("expected content-disposition to be: %s", v)
+		t.Fatalf("content-disposition did not match:\nExpected: %s\nActual  : %s", expected, v)
 	}
 }
