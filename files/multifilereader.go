@@ -89,7 +89,7 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 
 			// write the boundary and headers
 			header := make(textproto.MIMEHeader)
-			filename := url.QueryEscape(path.Join(path.Join(mfr.path...), entry.Name()))
+			filename := path.Join(path.Join(mfr.path...), entry.Name())
 			mfr.addContentDisposition(header, filename)
 
 			var contentType string
@@ -168,7 +168,7 @@ func (mfr *MultiFileReader) addContentDisposition(header textproto.MIMEHeader, f
 		sb.WriteString("attachment")
 	}
 
-	fmt.Fprintf(sb, "; filename=\"%s\"", filename)
+	fmt.Fprintf(sb, "; filename=\"%s\"", url.QueryEscape(filename))
 
 	header.Set(contentDispositionHeader, sb.String())
 }

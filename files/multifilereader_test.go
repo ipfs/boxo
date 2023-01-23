@@ -3,6 +3,7 @@ package files
 import (
 	"io"
 	"mime/multipart"
+	"net/textproto"
 	"strings"
 	"testing"
 	"time"
@@ -212,4 +213,26 @@ func TestCommonPrefix(t *testing.T) {
 			kind: TDirEnd,
 		},
 	})
+}
+
+func TestContentDispositonEncoding(t *testing.T) {
+	testContentDispositionEncoding(t, false, "£ẞǑǓÆ æ ♫♬",
+		"attachment; filename=\"%C2%A3%E1%BA%9E%C7%91%C7%93%C3%86+%C3%A6+%E2%99%AB%E2%99%AC\"")
+	testContentDispositionEncoding(t, true, "£ẞǑǓÆ æ ♫♬",
+		"form-data; name=\"file\"; filename=\"%C2%A3%E1%BA%9E%C7%91%C7%93%C3%86+%C3%A6+%E2%99%AB%E2%99%AC\"")
+}
+
+func testContentDispositionEncoding(t *testing.T, form bool, filename string, expected string) {
+	sf := NewMapDirectory(map[string]Node{"": NewBytesFile([]byte(""))})
+	mfr := NewMultiFileReader(sf, form)
+	if _, err := mfr.Read(nil); err != nil {
+		t.Fatal("MultiFileReader.Read failed")
+	}
+
+	header := make(textproto.MIMEHeader)
+	mfr.addContentDisposition(header, filename)
+	v := header.Get(contentDispositionHeader)
+	if v != expected {
+		t.Fatalf("expected content-disposition to be: %s", v)
+	}
 }

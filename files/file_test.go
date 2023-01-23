@@ -70,7 +70,7 @@ func TestMultipartFiles(t *testing.T) {
 	data := `
 --Boundary!
 Content-Type: text/plain
-Content-Disposition: form-data; name="file-0?mode=0754&mtime=1604320500&mtime-nsecs=55555"; filename="file1"
+Content-Disposition: form-data; name="file-0?mode=0754&mtime=1604320500&mtime-nsecs=55555"; filename="%C2%A3%E1%BA%9E%C7%91%C7%93%C3%86+%C3%A6+%E2%99%AB%E2%99%AC"
 Some-Header: beep
 
 beep
@@ -122,7 +122,7 @@ implicit file2
 	CheckDir(t, dir, []Event{
 		{
 			kind:  TFile,
-			name:  "file1",
+			name:  "£ẞǑǓÆ æ ♫♬",
 			value: "beep",
 			mode:  0754,
 			mtime: time.Unix(1604320500, 55555),
