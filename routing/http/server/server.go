@@ -57,8 +57,8 @@ func Handler(svc ContentRouter, opts ...serverOption) http.Handler {
 	}
 
 	r := mux.NewRouter()
-	r.HandleFunc(ProvidePath, server.provide).Methods("POST")
-	r.HandleFunc(FindProvidersPath, server.findProviders).Methods("GET")
+	r.HandleFunc(ProvidePath, server.provide).Methods(http.MethodPut)
+	r.HandleFunc(FindProvidersPath, server.findProviders).Methods(http.MethodGet)
 
 	return r
 }
@@ -70,6 +70,7 @@ type server struct {
 func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 	req := types.WriteProvidersRequest{}
 	err := json.NewDecoder(httpReq.Body).Decode(&req)
+	_ = httpReq.Body.Close()
 	if err != nil {
 		writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
 		return
