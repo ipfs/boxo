@@ -21,6 +21,7 @@ import (
 	"github.com/ipfs/go-ipns"
 	ipns_pb "github.com/ipfs/go-ipns/pb"
 	"github.com/ipfs/go-path"
+	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 
 	keystore "github.com/ipfs/go-ipfs-keystore"
 	"github.com/ipfs/go-namesys"
@@ -103,7 +104,7 @@ func TestRepublish(t *testing.T) {
 	timeout := time.Second
 	for {
 		expiration = time.Now().Add(time.Second)
-		err := rp.PublishWithEOL(ctx, publisher.privKey, p, expiration)
+		err := rp.Publish(ctx, publisher.privKey, p, opts.PublishWithEOL(expiration))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -179,7 +180,7 @@ func TestLongEOLRepublish(t *testing.T) {
 	name := "/ipns/" + publisher.id
 
 	expiration := time.Now().Add(time.Hour)
-	err := rp.PublishWithEOL(ctx, publisher.privKey, p, expiration)
+	err := rp.Publish(ctx, publisher.privKey, p, opts.PublishWithEOL(expiration))
 	if err != nil {
 		t.Fatal(err)
 	}

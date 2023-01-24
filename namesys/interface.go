@@ -31,7 +31,6 @@ package namesys
 
 import (
 	"errors"
-	"time"
 
 	"context"
 
@@ -95,12 +94,7 @@ type Resolver interface {
 
 // Publisher is an object capable of publishing particular names.
 type Publisher interface {
-
 	// Publish establishes a name-value mapping.
 	// TODO make this not PrivKey specific.
-	Publish(ctx context.Context, name ci.PrivKey, value path.Path) error
-
-	// TODO: to be replaced by a more generic 'PublishWithValidity' type
-	// call once the records spec is implemented
-	PublishWithEOL(ctx context.Context, name ci.PrivKey, value path.Path, eol time.Time) error
+	Publish(ctx context.Context, name ci.PrivKey, value path.Path, options ...opts.PublishOption) error
 }

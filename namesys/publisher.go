@@ -12,6 +12,7 @@ import (
 	"github.com/ipfs/go-ipns"
 	pb "github.com/ipfs/go-ipns/pb"
 	"github.com/ipfs/go-path"
+	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
@@ -21,11 +22,6 @@ import (
 )
 
 const ipnsPrefix = "/ipns/"
-
-// DefaultRecordEOL specifies the time that the network will cache IPNS
-// records after being publihsed. Records should be re-published before this
-// interval expires.
-const DefaultRecordEOL = 24 * time.Hour
 
 // IpnsPublisher is capable of publishing and resolving names to the IPFS
 // routing system.
@@ -47,9 +43,18 @@ func NewIpnsPublisher(route routing.ValueStore, ds ds.Datastore) *IpnsPublisher 
 
 // Publish implements Publisher. Accepts a keypair and a value,
 // and publishes it out to the routing system
-func (p *IpnsPublisher) Publish(ctx context.Context, k crypto.PrivKey, value path.Path) error {
+func (p *IpnsPublisher) Publish(ctx context.Context, k crypto.PrivKey, value path.Path, options ...opts.PublishOption) error {
 	log.Debugf("Publish %s", value)
-	return p.PublishWithEOL(ctx, k, value, time.Now().Add(DefaultRecordEOL))
+
+	ctx, span := StartSpan(ctx, "IpnsPublisher.Publish", trace.WithAttributes(attribute.String("Value", value.String())))
+	defer span.End()
+
+	record, err := p.updateRecord(ctx, k, value, options...)
+	if err != nil {
+		return err
+	}
+
+	return PutRecordToRouting(ctx, p.routing, k.GetPublic(), record)
 }
 
 // IpnsDsKey returns a datastore key given an IPNS identifier (peer
@@ -142,7 +147,7 @@ func (p *IpnsPublisher) GetPublished(ctx context.Context, id peer.ID, checkRouti
 	return e, nil
 }
 
-func (p *IpnsPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, value path.Path, eol time.Time) (*pb.IpnsEntry, error) {
+func (p *IpnsPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, value path.Path, options ...opts.PublishOption) (*pb.IpnsEntry, error) {
 	id, err := peer.IDFromPrivateKey(k)
 	if err != nil {
 		return nil, err
@@ -164,12 +169,10 @@ func (p *IpnsPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 		seqno++
 	}
 
-	// Set the TTL
-	// TODO: Make this less hacky.
-	ttl, _ := checkCtxTTL(ctx)
+	opts := opts.ProcessPublishOptions(options)
 
 	// Create record
-	entry, err := ipns.Create(k, []byte(value), seqno, eol, ttl)
+	entry, err := ipns.Create(k, []byte(value), seqno, opts.EOL, opts.TTL)
 	if err != nil {
 		return nil, err
 	}
@@ -188,33 +191,6 @@ func (p *IpnsPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 		return nil, err
 	}
 	return entry, nil
-}
-
-// PublishWithEOL is a temporary stand in for the ipns records implementation
-// see here for more details: https://github.com/ipfs/specs/tree/master/records
-func (p *IpnsPublisher) PublishWithEOL(ctx context.Context, k crypto.PrivKey, value path.Path, eol time.Time) error {
-	ctx, span := StartSpan(ctx, "IpnsPublisher.PublishWithEOL", trace.WithAttributes(attribute.String("Value", value.String())))
-	defer span.End()
-
-	record, err := p.updateRecord(ctx, k, value, eol)
-	if err != nil {
-		return err
-	}
-
-	return PutRecordToRouting(ctx, p.routing, k.GetPublic(), record)
-}
-
-// setting the TTL on published records is an experimental feature.
-// as such, i'm using the context to wire it through to avoid changing too
-// much code along the way.
-func checkCtxTTL(ctx context.Context) (time.Duration, bool) {
-	v := ctx.Value(ttlContextKey)
-	if v == nil {
-		return 0, false
-	}
-
-	d, ok := v.(time.Duration)
-	return d, ok
 }
 
 // PutRecordToRouting publishes the given entry using the provided ValueStore,
@@ -306,14 +282,4 @@ func PublishEntry(ctx context.Context, r routing.ValueStore, ipnskey string, rec
 // PkKeyForID returns the public key routing key for the given peer ID.
 func PkKeyForID(id peer.ID) string {
 	return "/pk/" + string(id)
-}
-
-// contextKey is a private comparable type used to hold value keys in contexts
-type contextKey string
-
-var ttlContextKey contextKey = "ipns-publish-ttl"
-
-// ContextWithTTL returns a copy of the parent context with an added value representing the TTL
-func ContextWithTTL(ctx context.Context, ttl time.Duration) context.Context {
-	return context.WithValue(context.Background(), ttlContextKey, ttl)
 }

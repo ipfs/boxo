@@ -166,8 +166,7 @@ func TestPublishWithTTL(t *testing.T) {
 	ttl := 1 * time.Second
 	eol := time.Now().Add(2 * time.Second)
 
-	ctx := ContextWithTTL(context.Background(), ttl)
-	err = nsys.Publish(ctx, priv, p)
+	err = nsys.Publish(context.Background(), priv, p, opts.PublishWithEOL(eol), opts.PublishWithTTL(ttl))
 	if err != nil {
 		t.Fatal(err)
 	}

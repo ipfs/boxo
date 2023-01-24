@@ -285,22 +285,24 @@ func emitOnceResult(ctx context.Context, outCh chan<- onceResult, r onceResult) 
 }
 
 // Publish implements Publisher
-func (ns *mpns) Publish(ctx context.Context, name ci.PrivKey, value path.Path) error {
+func (ns *mpns) Publish(ctx context.Context, name ci.PrivKey, value path.Path, options ...opts.PublishOption) error {
 	ctx, span := StartSpan(ctx, "MPNS.Publish")
 	defer span.End()
-	return ns.PublishWithEOL(ctx, name, value, time.Now().Add(DefaultRecordEOL))
-}
 
-func (ns *mpns) PublishWithEOL(ctx context.Context, name ci.PrivKey, value path.Path, eol time.Time) error {
-	ctx, span := StartSpan(ctx, "MPNS.PublishWithEOL", trace.WithAttributes(attribute.String("Value", value.String())))
-	defer span.End()
+	// This is a bit hacky. We do this because the EOL is based on the current
+	// time, but also needed in the end of the function. Therefore, we parse
+	// the options immediately and add an option PublishWithEOL with the EOL
+	// calculated in this moment.
+	publishOpts := opts.ProcessPublishOptions(options)
+	options = append(options, opts.PublishWithEOL(publishOpts.EOL))
+
 	id, err := peer.IDFromPrivateKey(name)
 	if err != nil {
 		span.RecordError(err)
 		return err
 	}
 	span.SetAttributes(attribute.String("ID", id.String()))
-	if err := ns.ipnsPublisher.PublishWithEOL(ctx, name, value, eol); err != nil {
+	if err := ns.ipnsPublisher.Publish(ctx, name, value, options...); err != nil {
 		// Invalidate the cache. Publishing may _partially_ succeed but
 		// still return an error.
 		ns.cacheInvalidate(string(id))
@@ -308,11 +310,11 @@ func (ns *mpns) PublishWithEOL(ctx context.Context, name ci.PrivKey, value path.
 		return err
 	}
 	ttl := DefaultResolverCacheTTL
-	if setTTL, ok := checkCtxTTL(ctx); ok {
-		ttl = setTTL
+	if publishOpts.TTL >= 0 {
+		ttl = publishOpts.TTL
 	}
-	if ttEol := time.Until(eol); ttEol < ttl {
-		ttl = ttEol
+	if ttEOL := time.Until(publishOpts.EOL); ttEOL < ttl {
+		ttl = ttEOL
 	}
 	ns.cacheSet(string(id), value, ttl)
 	return nil

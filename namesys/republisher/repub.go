@@ -17,6 +17,7 @@ import (
 	"github.com/ipfs/go-ipns"
 	pb "github.com/ipfs/go-ipns/pb"
 	logging "github.com/ipfs/go-log"
+	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 	"github.com/jbenet/goprocess"
 	gpctx "github.com/jbenet/goprocess/context"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -161,7 +162,7 @@ func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) erro
 	if prevEol.After(eol) {
 		eol = prevEol
 	}
-	err = rp.ns.PublishWithEOL(ctx, priv, p, eol)
+	err = rp.ns.Publish(ctx, priv, p, opts.PublishWithEOL(eol))
 	span.RecordError(err)
 	return err
 }
