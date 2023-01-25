@@ -127,6 +127,44 @@ func TestScopeCompileWithBuiltin(t *testing.T) {
 	}
 }
 
+func TestEmpty(t *testing.T) {
+	const code = `(empty)`
+	trav, n, err := CompileToTraversal(strings.NewReader(code))
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	if n != len(code) {
+		t.Errorf("unexpected code length returned: expected %d; got %d", len(code), n)
+	}
+
+	ast, err := trav.Serialize()
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	} else {
+		rebuiltCode := ast.String()
+		if rebuiltCode != code {
+			t.Errorf("serialized code does not match: expected %q, got %q", code, rebuiltCode)
+		}
+	}
+	ast, err = trav.SerializeForNetwork()
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	} else {
+		rebuiltCode := ast.String()
+		if rebuiltCode != code {
+			t.Errorf("serialized code does not match: expected %q, got %q", code, rebuiltCode)
+		}
+	}
+
+	cids, err := trav.Traverse(cid.MustParse("bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"), []byte{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err.Error())
+	}
+	if len(cids) != 0 {
+		t.Errorf("unexpected traversal results matching empty")
+	}
+}
+
 func FuzzCompile(f *testing.F) {
 	var c Compiler
 	c.SetBuiltin("reflect", reflect(""))
