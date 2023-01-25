@@ -6,7 +6,7 @@ import (
 
 	proto "github.com/gogo/protobuf/proto"
 
-	pb "github.com/ipfs/go-libipfs/unixfs/ipld-merkledag/pb"
+	pb "github.com/ipfs/go-libipfs/unixfs/pb"
 )
 
 func TestFSNode(t *testing.T) {

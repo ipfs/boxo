@@ -9,7 +9,7 @@ import (
 	dag "github.com/ipfs/go-merkledag"
 
 	ft "github.com/ipfs/go-libipfs/unixfs/ipld-merkledag"
-	pb "github.com/ipfs/go-libipfs/unixfs/ipld-merkledag/pb"
+	pb "github.com/ipfs/go-libipfs/unixfs/pb"
 
 	cid "github.com/ipfs/go-cid"
 	chunker "github.com/ipfs/go-ipfs-chunker"
