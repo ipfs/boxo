@@ -23,6 +23,7 @@ require (
 	github.com/ipfs/go-log v1.0.5
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/ipfs/go-merkledag v0.9.0
+	github.com/ipld/go-car/v2 v2.5.1
 	github.com/libp2p/go-libp2p v0.23.4
 	github.com/libp2p/go-libp2p-record v0.2.0
 	github.com/multiformats/go-multiaddr v0.8.0
