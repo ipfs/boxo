@@ -130,6 +130,43 @@ func (c CidLiteral) SerializeForNetwork() (AstNode, error) {
 	return c.Serialize()
 }
 
+// EmptyTraversal is a traversal that always returns nothing
+type EmptyTraversal struct{}
+
+func Empty() Traversal {
+	return EmptyTraversal{}
+}
+
+func (c EmptyTraversal) Traverse(_ cid.Cid, _ []byte) ([]CidTraversalPair, error) {
+	return []CidTraversalPair{}, nil
+}
+
+func (c EmptyTraversal) Serialize() (AstNode, error) {
+	return AstNode{
+		Type: SyntaxTypeValueNode,
+		Args: []AstNode{{
+			Type:    SyntaxTypeToken,
+			Literal: "empty",
+		}},
+	}, nil
+}
+
+func (c EmptyTraversal) SerializeForNetwork() (AstNode, error) {
+	return c.Serialize()
+}
+
+func CompileEmpty(scopeName string, arguments ...SomeNode) (SomeNode, error) {
+	if scopeName != "" {
+		panic("builtin empty called not in the builtin scope")
+	}
+
+	if len(arguments) != 0 {
+		return SomeNode{}, ErrTypeError{fmt.Sprintf("empty node called with %d arguments, empty does not take arguments", len(arguments))}
+	}
+
+	return SomeNode{Empty()}, nil
+}
+
 func PrettyNodeType(n Node) string {
 	switch n.(type) {
 	case Traversal:
