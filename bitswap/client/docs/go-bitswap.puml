@@ -1,0 +1,49 @@
+@startuml Bitswap Components
+
+node "Top Level Interface" {
+  [Bitswap]
+}
+
+node "Sending Blocks" {  
+  [Bitswap] --* [Engine]
+  [Engine] -left-* [Ledger]
+  [Engine] -right-* [PeerTaskQueue]
+  [Engine] --> [TaskWorker (workers.go)]
+}
+
+node "Providing" {
+  [Bitswap] --* [Provide Collector (workers.go)]
+  [Provide Collector (workers.go)] --* [Provide Worker (workers.go)]
+}
+
+node "Finding Providers" {
+  [Bitswap] --* [ProvideQueryManager]
+}
+
+node "Sessions (smart requests)" {
+  [Bitswap] --* [SessionManager]
+  [SessionManager] --> [SessionInterestManager]
+  [SessionManager] --o [Session]
+  [SessionManager] --> [BlockPresenceManager]
+  [Session] --* [sessionWantSender]
+  [Session] --* [SessionPeerManager]
+  [Session] --> [ProvideQueryManager]
+  [Session] --* [sessionWants]
+  [Session] --> [SessionInterestManager]
+  [sessionWantSender] --> [BlockPresenceManager]
+}
+
+node "Requesting Blocks" {  
+  [SessionManager] --> [PeerManager]
+  [sessionWantSender] --> [PeerManager]
+  [PeerManager] --* [MessageQueue]
+}
+
+node "Network" {
+  [BitSwapNetwork]
+  [MessageQueue] --> [BitSwapNetwork]
+  [ProvideQueryManager] --> [BitSwapNetwork]
+  [TaskWorker (workers.go)] --> [BitSwapNetwork]
+  [Provide Worker (workers.go)] --> [BitSwapNetwork]
+}
+@enduml
