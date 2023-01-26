@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/ipfs/go-libipfs/files"
 	"io"
-	"io/ioutil"
 	"os"
 	fp "path/filepath"
 	"runtime"
@@ -78,7 +77,7 @@ func TestSingleFileWithMeta(t *testing.T) {
 			testMeta(t, path, mode, mtime)
 			f, err := os.Open(path)
 			assert.NoError(t, err)
-			data, err := ioutil.ReadAll(f)
+			data, err := io.ReadAll(f)
 			assert.NoError(t, err)
 			assert.Equal(t, fileData, string(data))
 			assert.NoError(t, f.Close())
