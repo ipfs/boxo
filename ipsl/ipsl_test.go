@@ -50,7 +50,7 @@ func TestBasic2CompileWithBuiltin(t *testing.T) {
 	var c Compiler
 	c.SetBuiltin("reflect", reflect(""))
 
-	const code = `(reflect (reflect $bafkqaaa))`
+	const code = `(reflect{some comment to test ([)] comments}(reflect $bafkqaaa))`
 	node, n, err := c.Compile(strings.NewReader(code))
 	if err != nil {
 		t.Fatalf("failed to compile: %s", err.Error())
