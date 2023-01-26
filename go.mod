@@ -9,7 +9,6 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/gorilla/mux v1.8.0
 	github.com/ipfs/go-bitfield v1.0.0
-	github.com/ipfs/go-block-format v0.0.3
 	github.com/ipfs/go-blockservice v0.5.0
 	github.com/ipfs/go-cid v0.3.2
 	github.com/ipfs/go-datastore v0.6.0
@@ -44,6 +43,7 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/ipfs/bbloom v0.0.4 // indirect
+	github.com/ipfs/go-block-format v0.1.0 // indirect
 	github.com/ipfs/go-ipfs-ds-help v1.1.0 // indirect
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.0 // indirect
 	github.com/ipfs/go-ipld-cbor v0.0.6 // indirect

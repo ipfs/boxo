@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	blocks "github.com/ipfs/go-block-format"
 	bsrv "github.com/ipfs/go-blockservice"
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
@@ -19,6 +18,7 @@ import (
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	ipld "github.com/ipfs/go-ipld-format"
+	blocks "github.com/ipfs/go-libipfs/blocks"
 	mdag "github.com/ipfs/go-merkledag"
 	mdtest "github.com/ipfs/go-merkledag/test"
 
