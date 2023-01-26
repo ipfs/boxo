@@ -109,7 +109,10 @@ func TestSyncDFS(t *testing.T) {
 	traversal := mockTraversal{t, root1Cid, root1, []ipsl.CidTraversalPair{
 		{Cid: leaf1Cid, Traversal: mockTraversal{t, leaf1Cid, leaf1, nil}},
 		{Cid: root2Cid, Traversal: mockTraversal{t, root2Cid, root2, []ipsl.CidTraversalPair{
-			{Cid: leaf2Cid, Traversal: mockTraversal{t, leaf2Cid, leaf2, nil}},
+			{Cid: leaf2Cid, Traversal: ipsl.All(
+				mockTraversal{t, leaf2Cid, leaf2, nil},
+				mockTraversal{t, leaf2Cid, leaf2, nil},
+			)},
 			{Cid: leaf3Cid, Traversal: mockTraversal{t, leaf3Cid, leaf3, nil}},
 		}}},
 		{Cid: leaf4Cid, Traversal: mockTraversal{t, leaf4Cid, leaf4, nil}},
@@ -134,10 +137,12 @@ func TestSyncDFS(t *testing.T) {
 		leaf1Cid,
 		root2Cid,
 		leaf2Cid,
+		leaf2Cid,
+		leaf2Cid,
 		leaf3Cid,
 		leaf4Cid,
 	}
 	if !slices.Equal(result, expectedOrder) {
-		t.Errorf("bad traversal order: expected: %#v; got %#v", expectedOrder, result)
+		t.Errorf("bad traversal order: expected: %v; got %v", expectedOrder, result)
 	}
 }
