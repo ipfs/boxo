@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	blocks "github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
 	"github.com/multiformats/go-multicodec"
