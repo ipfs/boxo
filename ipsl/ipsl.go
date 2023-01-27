@@ -149,6 +149,20 @@ func (c StringLiteral) SerializeForNetwork() (AstNode, error) {
 	return c.Serialize()
 }
 
+var _ Node = None{}
+
+type None struct{}
+
+func (c None) Serialize() (AstNode, error) {
+	return AstNode{
+		Type: SyntaxTypeNone,
+	}, nil
+}
+
+func (c None) SerializeForNetwork() (AstNode, error) {
+	return c.Serialize()
+}
+
 // EmptyTraversal is a traversal that always returns nothing
 type EmptyTraversal struct{}
 
@@ -196,6 +210,8 @@ func PrettyNodeType(n Node) string {
 		return "Cid"
 	case StringLiteral:
 		return "String"
+	case None:
+		return "None"
 	default:
 		return fmt.Sprintf("unknown node type %T", n)
 	}

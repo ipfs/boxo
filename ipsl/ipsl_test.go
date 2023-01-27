@@ -221,6 +221,29 @@ func TestStringLiterals(t *testing.T) {
 	}
 }
 
+func TestNone(t *testing.T) {
+	var c Compiler
+	c.SetBuiltin("reflect", reflect(""))
+
+	for _, tc := range [...]string{
+		`°`,
+		`(reflect °)`,
+		`(reflect (reflect °))`,
+		// TODO: add tests for pick
+	} {
+		node, sum, err := c.Compile(strings.NewReader(tc))
+		if sum != len(tc) {
+			t.Errorf("wrong sum for input %q: expected %q; got %q", tc, len(tc), sum)
+		}
+		if err != nil {
+			t.Errorf("unexpected error for input %q: got %q", tc, err)
+		}
+		if node.Node != (None{}) {
+			t.Errorf("unexpected node for input %q: got %q", tc, node.Node)
+		}
+	}
+}
+
 func FuzzCompile(f *testing.F) {
 	var c Compiler
 	c.SetBuiltin("reflect", reflect(""))
