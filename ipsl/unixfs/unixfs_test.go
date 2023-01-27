@@ -6,19 +6,19 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ipfs/go-libipfs/ipsl/helpers"
-	. "github.com/ipfs/go-libipfs/ipsl/unixfs"
-
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipfs/go-ipfs-exchange-offline"
+	"github.com/ipfs/go-libipfs/blocks"
+	"github.com/ipfs/go-libipfs/ipsl/helpers"
+	. "github.com/ipfs/go-libipfs/ipsl/unixfs"
 	"github.com/ipld/go-car/v2"
 	"golang.org/x/exp/slices"
 )
 
-func getSmallTreeDatastore(t *testing.T) (helpers.ByteBlockGetter, []cid.Cid) {
+func getSmallTreeDatastore(t *testing.T) (blockservice.BlockGetter, []cid.Cid) {
 	f, err := os.Open("testdata/small-tree.car")
 	if err != nil {
 		t.Fatalf("to open small-tree.car: %s", err)
@@ -52,16 +52,16 @@ BlockLoop:
 		cids = append(cids, block.Cid())
 	}
 
-	service := blockservice.New(bs, offline.Exchange(blockstore.NewBlockstore(datastore.NewNullDatastore())))
-	return helpers.BlockGetterToByteBlockGetter{BlockGetter: service}, cids
+	return blockservice.New(bs, offline.Exchange(blockstore.NewBlockstore(datastore.NewNullDatastore()))), cids
 }
 
 func TestEverything(t *testing.T) {
 	bs, expectedOrder := getSmallTreeDatastore(t)
 	root := expectedOrder[0]
 	var result []cid.Cid
-	err := helpers.SyncDFS(context.Background(), root, Everything(), bs, 10, func(c cid.Cid, data []byte) error {
-		hashedData, err := c.Prefix().Sum(data)
+	err := helpers.SyncDFS(context.Background(), root, Everything(), bs, 10, func(b blocks.Block) error {
+		c := b.Cid()
+		hashedData, err := c.Prefix().Sum(b.RawData())
 		if err != nil {
 			t.Errorf("error hashing data in callBack: %s", err)
 		} else {

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-libipfs/blocks"
 )
 
 type UnreadableRuneReader interface {
@@ -338,8 +339,8 @@ type traversalScopeNode struct {
 	scopeNode
 }
 
-func (n traversalScopeNode) Traverse(c cid.Cid, b []byte) ([]CidTraversalPair, error) {
-	r, err := n.scopeNode.result.(Traversal).Traverse(c, b)
+func (n traversalScopeNode) Traverse(b blocks.Block) ([]CidTraversalPair, error) {
+	r, err := n.scopeNode.result.(Traversal).Traverse(b)
 	if err != nil {
 		return nil, err
 	}
