@@ -142,6 +142,8 @@ func (c compiler) compileNextNode(f *frame) (SomeNode, rune, int, error) {
 				return SomeNode{}, 0, sum, fmt.Errorf("compileNextNode compileString: %w", err)
 			}
 			return node, 0, sum, nil
+		case '°':
+			return SomeNode{Node: None{}}, 0, sum, nil
 		// TODO: implement other literals
 		case '{':
 			n, err := c.skipComment()
@@ -503,6 +505,8 @@ func (a AstNode) String() string {
 		return "$" + a.Literal.(cid.Cid).String()
 	case SyntaxTypeNumberLiteral:
 		return strconv.FormatUint(a.Literal.(uint64), 10)
+	case SyntaxTypeNone:
+		return "°"
 	default:
 		return a.Type.String()
 	}
@@ -518,6 +522,7 @@ const (
 	SyntaxTypeStringLiteral
 	SyntaxTypeCidLiteral
 	SyntaxTypeNumberLiteral
+	SyntaxTypeNone
 )
 
 func (st SyntaxType) String() string {
@@ -534,6 +539,8 @@ func (st SyntaxType) String() string {
 		return "Cid Literal"
 	case SyntaxTypeNumberLiteral:
 		return "Number Literal"
+	case SyntaxTypeNone:
+		return "None"
 	default:
 		return "Unknown syntax type of " + strconv.FormatUint(uint64(st), 10)
 	}
