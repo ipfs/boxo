@@ -135,6 +135,13 @@ func (c compiler) compileNextNode(f *frame) (SomeNode, rune, int, error) {
 				return SomeNode{}, 0, sum, fmt.Errorf("compileNextNode compileCid: %w", err)
 			}
 			return node, 0, sum, nil
+		case '"':
+			node, n, err := c.compileString()
+			sum += n
+			if err != nil {
+				return SomeNode{}, 0, sum, fmt.Errorf("compileNextNode compileString: %w", err)
+			}
+			return node, 0, sum, nil
 		// TODO: implement other literals
 		case '{':
 			n, err := c.skipComment()
@@ -176,6 +183,47 @@ func (c compiler) compileCid() (SomeNode, int, error) {
 	return SomeNode{
 		Node: CidLiteral{cid},
 	}, n, nil
+}
+
+func (c compiler) compileString() (SomeNode, int, error) {
+	tokens := append([]rune(nil), '"')
+	var backslash bool // stores if the previous char was a backslash
+	var sum int
+	for {
+		r, n, err := c.rr.ReadRune()
+		sum += n
+		switch err {
+		case nil:
+		case io.EOF:
+			err = io.ErrUnexpectedEOF
+			fallthrough
+		default:
+			return SomeNode{}, sum, err
+		}
+
+		tokens = append(tokens, r)
+
+		switch r {
+		case '\\':
+			backslash = !backslash
+		case '"':
+			if backslash {
+				backslash = false
+				continue
+			}
+
+			str, err := strconv.Unquote(string(tokens))
+			if err != nil {
+				return SomeNode{}, sum, err
+			}
+
+			return SomeNode{
+				Node: StringLiteral{str},
+			}, sum, nil
+		default:
+			backslash = false
+		}
+	}
 }
 
 func (c compiler) compileValueNode(f *frame) (SomeNode, int, error) {
