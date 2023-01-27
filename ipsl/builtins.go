@@ -1,6 +1,6 @@
 package ipsl
 
-var defaultBuiltinFrame = frame{scope: map[string]NodeCompiler{
+var defaultBuiltinFrame = frame{scope: ScopeMapping{
 	"all":   CompileAll,
 	"empty": CompileEmpty,
 }}
