@@ -1,7 +1,9 @@
 package ipsl_test
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -173,6 +175,49 @@ func TestUnexpectedEOFInBrokenNode(t *testing.T) {
 	}
 	if !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Errorf("unexpected error: expected %q; got %q", io.ErrUnexpectedEOF, err)
+	}
+}
+
+func TestStringLiterals(t *testing.T) {
+	var c Compiler
+	c.SetBuiltin("reflect", reflect(""))
+
+	for _, tc := range [...]struct {
+		code   string
+		result string
+		err    error
+	}{
+		{`"this is a string node"`, "this is a string node", nil},
+		{`"this is a string \" with an escaped quote"`, "this is a string \" with an escaped quote", nil},
+		{`"this is a string with an escaped backslash \\"`, "this is a string with an escaped backslash \\", nil},
+		{`"this is an unterminated string`, "", io.ErrUnexpectedEOF},
+		{`"this is an unterminated string because it escape the termination \"`, "", io.ErrUnexpectedEOF},
+		{`(reflect "this is a string node")`, "this is a string node", nil},
+		{`(reflect{comment in the middle}"this is a string \" with an escaped quote")`, "this is a string \" with an escaped quote", nil},
+		{`(reflect "this is a string with an escaped backslash \\"{comment right after})`, "this is a string with an escaped backslash \\", nil},
+		{`(reflect "this is an unterminated string`, "", io.ErrUnexpectedEOF},
+		{`(reflect "this is an unterminated string because it escape the termination \"`, "", io.ErrUnexpectedEOF},
+	} {
+		node, sum, err := c.Compile(strings.NewReader(tc.code))
+		if !errors.Is(err, tc.err) {
+			t.Errorf("wrong error for input %q: expected %q; got %q", tc.code, tc.err, err)
+		}
+		if sum != len(tc.code) {
+			t.Errorf("wrong sum for input %q: expected %q; got %q", tc.code, len(tc.code), sum)
+		}
+		if tc.err != nil {
+			continue
+		}
+
+		strNode, ok := node.Node.(StringLiteral)
+		if !ok {
+			t.Errorf("wrong node type for input %q: expected %T; got %T", tc.code, StringLiteral{}, node.Node)
+			continue
+		}
+
+		if strNode.Str != tc.result {
+			t.Errorf("wrong result for input %q: expected %q; got %q", tc.code, tc.result, strNode.Str)
+		}
 	}
 }
 
