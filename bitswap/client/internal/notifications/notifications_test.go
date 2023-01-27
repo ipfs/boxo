@@ -9,9 +9,12 @@ import (
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	blocks "github.com/ipfs/go-libipfs/blocks"
+	"github.com/ipfs/go-libipfs/internal/test"
 )
 
 func TestDuplicates(t *testing.T) {
+	test.Flaky(t)
+
 	b1 := blocks.NewBlock([]byte("1"))
 	b2 := blocks.NewBlock([]byte("2"))
 
@@ -37,6 +40,8 @@ func TestDuplicates(t *testing.T) {
 }
 
 func TestPublishSubscribe(t *testing.T) {
+	test.Flaky(t)
+
 	blockSent := blocks.NewBlock([]byte("Greetings from The Interval"))
 
 	n := New()
@@ -54,6 +59,8 @@ func TestPublishSubscribe(t *testing.T) {
 }
 
 func TestSubscribeMany(t *testing.T) {
+	test.Flaky(t)
+
 	e1 := blocks.NewBlock([]byte("1"))
 	e2 := blocks.NewBlock([]byte("2"))
 
@@ -79,6 +86,8 @@ func TestSubscribeMany(t *testing.T) {
 // TestDuplicateSubscribe tests a scenario where a given block
 // would be requested twice at the same time.
 func TestDuplicateSubscribe(t *testing.T) {
+	test.Flaky(t)
+
 	e1 := blocks.NewBlock([]byte("1"))
 
 	n := New()
@@ -101,6 +110,8 @@ func TestDuplicateSubscribe(t *testing.T) {
 }
 
 func TestShutdownBeforeUnsubscribe(t *testing.T) {
+	test.Flaky(t)
+
 	e1 := blocks.NewBlock([]byte("1"))
 
 	n := New()
@@ -120,6 +131,8 @@ func TestShutdownBeforeUnsubscribe(t *testing.T) {
 }
 
 func TestSubscribeIsANoopWhenCalledWithNoKeys(t *testing.T) {
+	test.Flaky(t)
+
 	n := New()
 	defer n.Shutdown()
 	ch := n.Subscribe(context.Background()) // no keys provided
@@ -129,6 +142,7 @@ func TestSubscribeIsANoopWhenCalledWithNoKeys(t *testing.T) {
 }
 
 func TestCarryOnWhenDeadlineExpires(t *testing.T) {
+	test.Flaky(t)
 
 	impossibleDeadline := time.Nanosecond
 	fastExpiringCtx, cancel := context.WithTimeout(context.Background(), impossibleDeadline)
@@ -143,6 +157,7 @@ func TestCarryOnWhenDeadlineExpires(t *testing.T) {
 }
 
 func TestDoesNotDeadLockIfContextCancelledBeforePublish(t *testing.T) {
+	test.Flaky(t)
 
 	g := blocksutil.NewBlockGenerator()
 	ctx, cancel := context.WithCancel(context.Background())

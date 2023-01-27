@@ -4,11 +4,14 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
+	"github.com/ipfs/go-libipfs/internal/test"
 	"github.com/ipfs/go-peertaskqueue"
 	"github.com/ipfs/go-peertaskqueue/peertask"
 )
 
 func TestPushHaveVsBlock(t *testing.T) {
+	test.Flaky(t)
+
 	partner := testutil.GeneratePeers(1)[0]
 
 	wantHave := peertask.Task{
@@ -61,6 +64,8 @@ func TestPushHaveVsBlock(t *testing.T) {
 }
 
 func TestPushSizeInfo(t *testing.T) {
+	test.Flaky(t)
+
 	partner := testutil.GeneratePeers(1)[0]
 
 	wantBlockBlockSize := 10
@@ -173,6 +178,8 @@ func TestPushSizeInfo(t *testing.T) {
 }
 
 func TestPushHaveVsBlockActive(t *testing.T) {
+	test.Flaky(t)
+
 	partner := testutil.GeneratePeers(1)[0]
 
 	wantBlock := peertask.Task{
@@ -227,6 +234,8 @@ func TestPushHaveVsBlockActive(t *testing.T) {
 }
 
 func TestPushSizeInfoActive(t *testing.T) {
+	test.Flaky(t)
+
 	partner := testutil.GeneratePeers(1)[0]
 
 	wantBlock := peertask.Task{

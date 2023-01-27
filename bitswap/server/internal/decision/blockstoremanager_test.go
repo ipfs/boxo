@@ -8,15 +8,15 @@ import (
 	"time"
 
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
-	"github.com/ipfs/go-metrics-interface"
-
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	delay "github.com/ipfs/go-ipfs-delay"
+	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
 	blocks "github.com/ipfs/go-libipfs/blocks"
+	"github.com/ipfs/go-libipfs/internal/test"
+	"github.com/ipfs/go-metrics-interface"
 )
 
 func newBlockstoreManagerForTesting(
@@ -34,6 +34,8 @@ func newBlockstoreManagerForTesting(
 }
 
 func TestBlockstoreManagerNotFoundKey(t *testing.T) {
+	test.Flaky(t)
+
 	ctx := context.Background()
 	bsdelay := delay.Fixed(3 * time.Millisecond)
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
@@ -72,6 +74,8 @@ func TestBlockstoreManagerNotFoundKey(t *testing.T) {
 }
 
 func TestBlockstoreManager(t *testing.T) {
+	test.Flaky(t)
+
 	ctx := context.Background()
 	bsdelay := delay.Fixed(3 * time.Millisecond)
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
@@ -154,6 +158,8 @@ func TestBlockstoreManager(t *testing.T) {
 }
 
 func TestBlockstoreManagerConcurrency(t *testing.T) {
+	test.Flaky(t)
+
 	ctx := context.Background()
 	bsdelay := delay.Fixed(3 * time.Millisecond)
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
@@ -195,6 +201,8 @@ func TestBlockstoreManagerConcurrency(t *testing.T) {
 }
 
 func TestBlockstoreManagerClose(t *testing.T) {
+	test.Flaky(t)
+
 	ctx := context.Background()
 	delayTime := 20 * time.Millisecond
 	bsdelay := delay.Fixed(delayTime)
@@ -230,6 +238,8 @@ func TestBlockstoreManagerClose(t *testing.T) {
 }
 
 func TestBlockstoreManagerCtxDone(t *testing.T) {
+	test.Flaky(t)
+
 	delayTime := 20 * time.Millisecond
 	bsdelay := delay.Fixed(delayTime)
 

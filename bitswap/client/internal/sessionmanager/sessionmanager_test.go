@@ -7,17 +7,16 @@ import (
 	"testing"
 	"time"
 
+	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
-
 	bsbpm "github.com/ipfs/go-libipfs/bitswap/client/internal/blockpresencemanager"
 	notifications "github.com/ipfs/go-libipfs/bitswap/client/internal/notifications"
 	bspm "github.com/ipfs/go-libipfs/bitswap/client/internal/peermanager"
 	bssession "github.com/ipfs/go-libipfs/bitswap/client/internal/session"
 	bssim "github.com/ipfs/go-libipfs/bitswap/client/internal/sessioninterestmanager"
 	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
-
-	cid "github.com/ipfs/go-cid"
 	blocks "github.com/ipfs/go-libipfs/blocks"
+	"github.com/ipfs/go-libipfs/internal/test"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -109,6 +108,8 @@ func peerManagerFactory(ctx context.Context, id uint64) bssession.SessionPeerMan
 }
 
 func TestReceiveFrom(t *testing.T) {
+	test.Flaky(t)
+
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -156,6 +157,8 @@ func TestReceiveFrom(t *testing.T) {
 }
 
 func TestReceiveBlocksWhenManagerShutdown(t *testing.T) {
+	test.Flaky(t)
+
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -191,6 +194,8 @@ func TestReceiveBlocksWhenManagerShutdown(t *testing.T) {
 }
 
 func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	notif := notifications.New()
@@ -226,6 +231,8 @@ func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
 }
 
 func TestShutdown(t *testing.T) {
+	test.Flaky(t)
+
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

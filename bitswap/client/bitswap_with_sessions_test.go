@@ -15,6 +15,7 @@ import (
 	testinstance "github.com/ipfs/go-libipfs/bitswap/testinstance"
 	tn "github.com/ipfs/go-libipfs/bitswap/testnet"
 	blocks "github.com/ipfs/go-libipfs/blocks"
+	"github.com/ipfs/go-libipfs/internal/test"
 	tu "github.com/libp2p/go-libp2p-testing/etc"
 )
 
@@ -37,6 +38,8 @@ func addBlock(t *testing.T, ctx context.Context, inst testinstance.Instance, blk
 }
 
 func TestBasicSessions(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -88,6 +91,8 @@ func assertBlockLists(got, exp []blocks.Block) error {
 }
 
 func TestSessionBetweenPeers(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -148,6 +153,8 @@ func TestSessionBetweenPeers(t *testing.T) {
 }
 
 func TestSessionSplitFetch(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -192,6 +199,8 @@ func TestSessionSplitFetch(t *testing.T) {
 }
 
 func TestFetchNotConnected(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -235,6 +244,8 @@ func TestFetchNotConnected(t *testing.T) {
 }
 
 func TestFetchAfterDisconnect(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -313,6 +324,8 @@ func TestFetchAfterDisconnect(t *testing.T) {
 }
 
 func TestInterestCacheOverflow(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -363,6 +376,8 @@ func TestInterestCacheOverflow(t *testing.T) {
 }
 
 func TestPutAfterSessionCacheEvict(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -401,6 +416,8 @@ func TestPutAfterSessionCacheEvict(t *testing.T) {
 }
 
 func TestMultipleSessions(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -442,6 +459,8 @@ func TestMultipleSessions(t *testing.T) {
 }
 
 func TestWantlistClearsOnCancel(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 

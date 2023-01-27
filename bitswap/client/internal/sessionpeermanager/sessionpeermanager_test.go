@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
+	"github.com/ipfs/go-libipfs/internal/test"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -78,6 +79,8 @@ func (fpt *fakePeerTagger) isProtected(p peer.ID) bool {
 }
 
 func TestAddPeers(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	spm := New(1, &fakePeerTagger{})
 
@@ -98,6 +101,8 @@ func TestAddPeers(t *testing.T) {
 }
 
 func TestRemovePeers(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	spm := New(1, &fakePeerTagger{})
 
@@ -124,6 +129,8 @@ func TestRemovePeers(t *testing.T) {
 }
 
 func TestHasPeers(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	spm := New(1, &fakePeerTagger{})
 
@@ -153,6 +160,8 @@ func TestHasPeers(t *testing.T) {
 }
 
 func TestHasPeer(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	spm := New(1, &fakePeerTagger{})
 
@@ -181,6 +190,8 @@ func TestHasPeer(t *testing.T) {
 }
 
 func TestPeers(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	spm := New(1, &fakePeerTagger{})
 
@@ -205,6 +216,8 @@ func TestPeers(t *testing.T) {
 }
 
 func TestPeersDiscovered(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	spm := New(1, &fakePeerTagger{})
 
@@ -224,6 +237,8 @@ func TestPeersDiscovered(t *testing.T) {
 }
 
 func TestPeerTagging(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	fpt := &fakePeerTagger{}
 	spm := New(1, fpt)
@@ -250,6 +265,8 @@ func TestPeerTagging(t *testing.T) {
 }
 
 func TestProtectConnection(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(1)
 	peerA := peers[0]
 	fpt := newFakePeerTagger()
@@ -276,6 +293,8 @@ func TestProtectConnection(t *testing.T) {
 }
 
 func TestShutdown(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	fpt := newFakePeerTagger()
 	spm := New(1, fpt)

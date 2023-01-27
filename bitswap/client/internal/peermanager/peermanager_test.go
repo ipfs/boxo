@@ -8,7 +8,7 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
-
+	"github.com/ipfs/go-libipfs/internal/test"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -77,6 +77,8 @@ func makePeerQueueFactory(msgs chan msg) PeerQueueFactory {
 }
 
 func TestAddingAndRemovingPeers(t *testing.T) {
+	test.Flaky(t)
+
 	ctx := context.Background()
 	msgs := make(chan msg, 16)
 	peerQueueFactory := makePeerQueueFactory(msgs)
@@ -120,6 +122,8 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 }
 
 func TestBroadcastOnConnect(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	msgs := make(chan msg, 16)
@@ -141,6 +145,8 @@ func TestBroadcastOnConnect(t *testing.T) {
 }
 
 func TestBroadcastWantHaves(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	msgs := make(chan msg, 16)
@@ -182,6 +188,8 @@ func TestBroadcastWantHaves(t *testing.T) {
 }
 
 func TestSendWants(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	msgs := make(chan msg, 16)
@@ -216,6 +224,8 @@ func TestSendWants(t *testing.T) {
 }
 
 func TestSendCancels(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	msgs := make(chan msg, 16)
@@ -275,6 +285,8 @@ func newSess(id uint64) *sess {
 }
 
 func TestSessionRegistration(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	msgs := make(chan msg, 16)

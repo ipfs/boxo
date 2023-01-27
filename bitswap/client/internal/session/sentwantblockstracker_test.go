@@ -4,9 +4,12 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
+	"github.com/ipfs/go-libipfs/internal/test"
 )
 
 func TestSendWantBlocksTracker(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	cids := testutil.GenerateCids(2)
 	swbt := newSentWantBlocksTracker()

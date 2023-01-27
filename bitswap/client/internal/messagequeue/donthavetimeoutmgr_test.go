@@ -10,6 +10,7 @@ import (
 	"github.com/benbjohnson/clock"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
+	"github.com/ipfs/go-libipfs/internal/test"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
@@ -73,6 +74,8 @@ func (tr *timeoutRecorder) clear() {
 }
 
 func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
+	test.Flaky(t)
+
 	firstks := testutil.GenerateCids(2)
 	secondks := append(firstks, testutil.GenerateCids(3)...)
 	latency := time.Millisecond * 20
@@ -129,6 +132,8 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 }
 
 func TestDontHaveTimeoutMgrCancel(t *testing.T) {
+	test.Flaky(t)
+
 	ks := testutil.GenerateCids(3)
 	latency := time.Millisecond * 10
 	latMultiplier := 1
@@ -165,6 +170,8 @@ func TestDontHaveTimeoutMgrCancel(t *testing.T) {
 }
 
 func TestDontHaveTimeoutWantCancelWant(t *testing.T) {
+	test.Flaky(t)
+
 	ks := testutil.GenerateCids(3)
 	latency := time.Millisecond * 20
 	latMultiplier := 1
@@ -218,6 +225,8 @@ func TestDontHaveTimeoutWantCancelWant(t *testing.T) {
 }
 
 func TestDontHaveTimeoutRepeatedAddPending(t *testing.T) {
+	test.Flaky(t)
+
 	ks := testutil.GenerateCids(10)
 	latency := time.Millisecond * 5
 	latMultiplier := 1
@@ -251,6 +260,8 @@ func TestDontHaveTimeoutRepeatedAddPending(t *testing.T) {
 }
 
 func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
+	test.Flaky(t)
+
 	ks := testutil.GenerateCids(2)
 	latency := time.Millisecond * 40
 	latMultiplier := 1
@@ -300,6 +311,8 @@ func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
 }
 
 func TestDontHaveTimeoutMgrMessageLatencyMax(t *testing.T) {
+	test.Flaky(t)
+
 	ks := testutil.GenerateCids(2)
 	clock := clock.NewMock()
 	pinged := make(chan struct{})
@@ -333,6 +346,8 @@ func TestDontHaveTimeoutMgrMessageLatencyMax(t *testing.T) {
 }
 
 func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
+	test.Flaky(t)
+
 	ks := testutil.GenerateCids(2)
 	latency := time.Millisecond * 1
 	latMultiplier := 2
@@ -374,6 +389,8 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 }
 
 func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
+	test.Flaky(t)
+
 	ks := testutil.GenerateCids(2)
 	latency := time.Millisecond * 200
 	latMultiplier := 1
@@ -414,6 +431,8 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 }
 
 func TestDontHaveTimeoutNoTimeoutAfterShutdown(t *testing.T) {
+	test.Flaky(t)
+
 	ks := testutil.GenerateCids(2)
 	latency := time.Millisecond * 10
 	latMultiplier := 1

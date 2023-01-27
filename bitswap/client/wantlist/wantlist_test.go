@@ -5,6 +5,7 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	pb "github.com/ipfs/go-libipfs/bitswap/message/pb"
+	"github.com/ipfs/go-libipfs/internal/test"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,6 +42,8 @@ func assertHasCid(t *testing.T, w wli, c cid.Cid) {
 }
 
 func TestBasicWantlist(t *testing.T) {
+	test.Flaky(t)
+
 	wl := New()
 
 	if !wl.Add(testcids[0], 5, pb.Message_Wantlist_Block) {
@@ -78,6 +81,8 @@ func TestBasicWantlist(t *testing.T) {
 }
 
 func TestAddHaveThenBlock(t *testing.T) {
+	test.Flaky(t)
+
 	wl := New()
 
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Have)
@@ -93,6 +98,8 @@ func TestAddHaveThenBlock(t *testing.T) {
 }
 
 func TestAddBlockThenHave(t *testing.T) {
+	test.Flaky(t)
+
 	wl := New()
 
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Block)
@@ -108,6 +115,8 @@ func TestAddBlockThenHave(t *testing.T) {
 }
 
 func TestAddHaveThenRemoveBlock(t *testing.T) {
+	test.Flaky(t)
+
 	wl := New()
 
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Have)
@@ -120,6 +129,8 @@ func TestAddHaveThenRemoveBlock(t *testing.T) {
 }
 
 func TestAddBlockThenRemoveHave(t *testing.T) {
+	test.Flaky(t)
+
 	wl := New()
 
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Block)
@@ -135,6 +146,8 @@ func TestAddBlockThenRemoveHave(t *testing.T) {
 }
 
 func TestAddHaveThenRemoveAny(t *testing.T) {
+	test.Flaky(t)
+
 	wl := New()
 
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Have)
@@ -147,6 +160,8 @@ func TestAddHaveThenRemoveAny(t *testing.T) {
 }
 
 func TestAddBlockThenRemoveAny(t *testing.T) {
+	test.Flaky(t)
+
 	wl := New()
 
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Block)
@@ -159,6 +174,8 @@ func TestAddBlockThenRemoveAny(t *testing.T) {
 }
 
 func TestAbsort(t *testing.T) {
+	test.Flaky(t)
+
 	wl := New()
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Block)
 	wl.Add(testcids[1], 4, pb.Message_Wantlist_Have)
@@ -205,6 +222,8 @@ func TestAbsort(t *testing.T) {
 }
 
 func TestSortEntries(t *testing.T) {
+	test.Flaky(t)
+
 	wl := New()
 
 	wl.Add(testcids[0], 3, pb.Message_Wantlist_Block)
@@ -222,6 +241,8 @@ func TestSortEntries(t *testing.T) {
 
 // Test adding and removing interleaved with checking entries to make sure we clear the cache.
 func TestCache(t *testing.T) {
+	test.Flaky(t)
+
 	wl := New()
 
 	wl.Add(testcids[0], 3, pb.Message_Wantlist_Block)

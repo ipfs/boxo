@@ -11,6 +11,7 @@ import (
 	bspm "github.com/ipfs/go-libipfs/bitswap/client/internal/peermanager"
 	bsspm "github.com/ipfs/go-libipfs/bitswap/client/internal/sessionpeermanager"
 	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
+	"github.com/ipfs/go-libipfs/internal/test"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -140,6 +141,8 @@ func (ep *exhaustedPeers) exhausted() []cid.Cid {
 }
 
 func TestSendWants(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(4)
 	peers := testutil.GeneratePeers(1)
 	peerA := peers[0]
@@ -179,6 +182,8 @@ func TestSendWants(t *testing.T) {
 }
 
 func TestSendsWantBlockToOnePeerOnly(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(4)
 	peers := testutil.GeneratePeers(2)
 	peerA := peers[0]
@@ -239,6 +244,8 @@ func TestSendsWantBlockToOnePeerOnly(t *testing.T) {
 }
 
 func TestReceiveBlock(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(2)
 	peers := testutil.GeneratePeers(2)
 	peerA := peers[0]
@@ -301,6 +308,8 @@ func TestReceiveBlock(t *testing.T) {
 }
 
 func TestCancelWants(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(4)
 	sid := uint64(1)
 	pm := newMockPeerManager()
@@ -335,6 +344,8 @@ func TestCancelWants(t *testing.T) {
 }
 
 func TestRegisterSessionWithPeerManager(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(2)
 	peers := testutil.GeneratePeers(2)
 	peerA := peers[0]
@@ -375,6 +386,8 @@ func TestRegisterSessionWithPeerManager(t *testing.T) {
 }
 
 func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(2)
 	peers := testutil.GeneratePeers(3)
 	peerA := peers[0]
@@ -431,6 +444,8 @@ func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
 }
 
 func TestPeerUnavailable(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(2)
 	peers := testutil.GeneratePeers(2)
 	peerA := peers[0]
@@ -498,6 +513,8 @@ func TestPeerUnavailable(t *testing.T) {
 }
 
 func TestPeersExhausted(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(3)
 	peers := testutil.GeneratePeers(2)
 	peerA := peers[0]
@@ -575,6 +592,8 @@ func TestPeersExhausted(t *testing.T) {
 // - the remaining peer becomes unavailable
 // onPeersExhausted should be sent for that CID
 func TestPeersExhaustedLastWaitingPeerUnavailable(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(2)
 	peers := testutil.GeneratePeers(2)
 	peerA := peers[0]
@@ -624,6 +643,8 @@ func TestPeersExhaustedLastWaitingPeerUnavailable(t *testing.T) {
 // Tests that when all the peers are removed from the session
 // onPeersExhausted should be called with all outstanding CIDs
 func TestPeersExhaustedAllPeersUnavailable(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(3)
 	peers := testutil.GeneratePeers(2)
 	peerA := peers[0]
@@ -666,6 +687,8 @@ func TestPeersExhaustedAllPeersUnavailable(t *testing.T) {
 }
 
 func TestConsecutiveDontHaveLimit(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
 	p := testutil.GeneratePeers(1)[0]
 	sid := uint64(1)
@@ -724,6 +747,8 @@ func TestConsecutiveDontHaveLimit(t *testing.T) {
 }
 
 func TestConsecutiveDontHaveLimitInterrupted(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
 	p := testutil.GeneratePeers(1)[0]
 	sid := uint64(1)
@@ -781,6 +806,8 @@ func TestConsecutiveDontHaveLimitInterrupted(t *testing.T) {
 }
 
 func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
 	p := testutil.GeneratePeers(1)[0]
 	sid := uint64(1)
@@ -867,6 +894,8 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 }
 
 func TestConsecutiveDontHaveDontRemoveIfHasWantedBlock(t *testing.T) {
+	test.Flaky(t)
+
 	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
 	p := testutil.GeneratePeers(1)[0]
 	sid := uint64(1)

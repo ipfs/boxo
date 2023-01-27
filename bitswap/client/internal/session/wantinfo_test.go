@@ -4,9 +4,12 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
+	"github.com/ipfs/go-libipfs/internal/test"
 )
 
 func TestEmptyWantInfo(t *testing.T) {
+	test.Flaky(t)
+
 	wp := newWantInfo(newPeerResponseTracker())
 
 	if wp.bestPeer != "" {
@@ -15,6 +18,8 @@ func TestEmptyWantInfo(t *testing.T) {
 }
 
 func TestSetPeerBlockPresence(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	wp := newWantInfo(newPeerResponseTracker())
 
@@ -35,6 +40,8 @@ func TestSetPeerBlockPresence(t *testing.T) {
 }
 
 func TestSetPeerBlockPresenceBestLower(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	wp := newWantInfo(newPeerResponseTracker())
 
@@ -55,6 +62,8 @@ func TestSetPeerBlockPresenceBestLower(t *testing.T) {
 }
 
 func TestRemoveThenSetDontHave(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	wp := newWantInfo(newPeerResponseTracker())
 

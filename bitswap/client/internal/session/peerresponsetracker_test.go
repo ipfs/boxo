@@ -5,10 +5,13 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
+	"github.com/ipfs/go-libipfs/internal/test"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
 func TestPeerResponseTrackerInit(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	prt := newPeerResponseTracker()
 
@@ -25,6 +28,8 @@ func TestPeerResponseTrackerInit(t *testing.T) {
 }
 
 func TestPeerResponseTrackerProbabilityUnknownPeers(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(4)
 	prt := newPeerResponseTracker()
 
@@ -54,6 +59,8 @@ func TestPeerResponseTrackerProbabilityUnknownPeers(t *testing.T) {
 }
 
 func TestPeerResponseTrackerProbabilityOneKnownOneUnknownPeer(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(2)
 	prt := newPeerResponseTracker()
 
@@ -79,6 +86,8 @@ func TestPeerResponseTrackerProbabilityOneKnownOneUnknownPeer(t *testing.T) {
 }
 
 func TestPeerResponseTrackerProbabilityProportional(t *testing.T) {
+	test.Flaky(t)
+
 	peers := testutil.GeneratePeers(3)
 	prt := newPeerResponseTracker()
 

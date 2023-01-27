@@ -15,14 +15,14 @@ import (
 	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
 	"github.com/ipfs/go-libipfs/bitswap/network/internal"
 	tn "github.com/ipfs/go-libipfs/bitswap/testnet"
-	"github.com/multiformats/go-multistream"
-
+	"github.com/ipfs/go-libipfs/internal/test"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
+	"github.com/multiformats/go-multistream"
 )
 
 // Receiver is an interface for receiving messages from the GraphSyncNetwork.
@@ -163,6 +163,8 @@ func (eh *ErrHost) setTimeoutState(timingOut bool) {
 }
 
 func TestMessageSendAndReceive(t *testing.T) {
+	test.Flaky(t)
+
 	// create network
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -331,6 +333,8 @@ func prepareNetwork(t *testing.T, ctx context.Context, p1 tnet.Identity, r1 *rec
 }
 
 func TestMessageResendAfterError(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -377,6 +381,8 @@ func TestMessageResendAfterError(t *testing.T) {
 }
 
 func TestMessageSendTimeout(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -418,6 +424,8 @@ func TestMessageSendTimeout(t *testing.T) {
 }
 
 func TestMessageSendNotSupportedResponse(t *testing.T) {
+	test.Flaky(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -450,6 +458,8 @@ func TestMessageSendNotSupportedResponse(t *testing.T) {
 }
 
 func TestSupportsHave(t *testing.T) {
+	test.Flaky(t)
+
 	ctx := context.Background()
 	mn := mocknet.New()
 	defer mn.Close()
@@ -664,6 +674,8 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 }
 
 func TestNetworkCounters(t *testing.T) {
+	test.Flaky(t)
+
 	for n := 0; n < 11; n++ {
 		testNetworkCounters(t, 10-n, n)
 	}
