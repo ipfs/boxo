@@ -35,41 +35,65 @@ func (e ErrSyntaxError) Error() string {
 	return e.msg
 }
 
-// CompileToTraversal returns a Traversal that has been compiled, the number of bytes red and an error.
-// It compiles with the default builtin scope.
-func CompileToTraversal(rr UnreadableRuneReader) (Traversal, int, error) {
-	return (&Compiler{}).CompileToTraversal(rr)
-}
-
-// Compile returns some node that has been compiled, the number of bytes red and an error.
-// It compiles with the default builtin scope.
-func Compile(rr UnreadableRuneReader) (SomeNode, int, error) {
-	return (&Compiler{}).Compile(rr)
-}
-
 // Compiler allows to do multiple compilations and customise which builtins are available by default.
 // The main point of this is for the testsuite because it allows to add mocked builtins nodes.
 // You should most likely just use the CompileToTraversal and Compile functions.
 // The zero value is valid and include the default builtin scope.
 type Compiler struct {
 	builtinFrame frame
+	scopes       map[string]Scope
 	initFrame    sync.Once
 }
 
 func (c *Compiler) initDefaultFrame() {
 	c.initFrame.Do(func() {
-		c.builtinFrame.scope = make(map[string]NodeCompiler)
+		c.builtinFrame.scope = ScopeMapping{
+			"load-builtin-scope": c.loadBuiltinScope,
+		}
 		c.builtinFrame.next = &defaultBuiltinFrame
+		c.scopes = make(map[string]Scope)
 	})
 }
 
+// SetBuiltin add a new builtin node to the compiler.
+// It is not threadsafe with any other method of the Compiler.
 func (c *Compiler) SetBuiltin(name string, nodeCompiler NodeCompiler) {
 	c.initDefaultFrame()
 	c.builtinFrame.scope[name] = nodeCompiler
 }
 
-// CompileToTraversal returns a Traversal that has been compiled, the number of bytes red and an error.
-// It is thread safe to do multiple compilations at once on the same Compiler. But not with AddBuiltin.
+// SetBuiltinScope add a scope that will be loadable by the load-builtin-scope node.
+// It is not threadsafe with any other method of the Compiler.
+func (c *Compiler) SetBuiltinScope(name string, scope Scope) {
+	c.initDefaultFrame()
+	c.scopes[name] = scope
+}
+
+func (c *Compiler) loadBuiltinScope(scopeName string, arguments ...SomeNode) (SomeNode, error) {
+	if scopeName != "" {
+		panic(fmt.Sprintf("called with a non empty scope %q", scopeName))
+	}
+
+	if len(arguments) != 1 {
+		return SomeNode{}, ErrTypeError{fmt.Sprintf("too many arguments: expected 1; got %d", len(arguments))}
+	}
+
+	// TODO: replace string argument with a string matcher.
+	arg := arguments[0]
+	str, ok := arg.Node.(StringLiteral)
+	if !ok {
+		return SomeNode{}, ErrTypeError{fmt.Sprintf("wrong type passed in: expected String; got %s", PrettyNodeType(arg.Node))}
+	}
+
+	scope, ok := c.scopes[str.Str]
+	if !ok {
+		return SomeNode{Node: None{}}, nil
+	}
+	return SomeNode{scope}, nil
+}
+
+// CompileToTraversal returns a Traversal that has been compiled and the number of bytes red.
+// It is thread safe to do multiple compilations at once on the same Compiler.
 func (c *Compiler) CompileToTraversal(rr UnreadableRuneReader) (Traversal, int, error) {
 	node, n, err := c.Compile(rr)
 	if err != nil {
@@ -82,8 +106,8 @@ func (c *Compiler) CompileToTraversal(rr UnreadableRuneReader) (Traversal, int, 
 	return traversal, n, nil
 }
 
-// Compile returns some node that has been compiled, the number of bytes red and an error.
-// It is thread safe to do multiple compilations at once on the same Compiler. But not with AddBuiltin.
+// Compile returns some node that has been compiled and the number of bytes red.
+// It is thread safe to do multiple compilations at once on the same Compiler.
 func (c *Compiler) Compile(rr UnreadableRuneReader) (SomeNode, int, error) {
 	c.initDefaultFrame()
 	return compiler{rr}.compileNextNodeWithoutClosure(&c.builtinFrame)
@@ -412,7 +436,7 @@ type scopeScopeNode struct {
 	scopeNode
 }
 
-func (n scopeScopeNode) GetScope() (map[string]NodeCompiler, error) {
+func (n scopeScopeNode) GetScope() (ScopeMapping, error) {
 	return n.scopeNode.result.(Scope).GetScope()
 }
 

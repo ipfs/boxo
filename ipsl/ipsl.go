@@ -32,7 +32,7 @@ type Node interface {
 type Scope interface {
 	Node
 
-	GetScope() (map[string]NodeCompiler, error)
+	GetScope() (ScopeMapping, error)
 }
 
 // An AllNode traverse all the traversals with the same cid it is given to.

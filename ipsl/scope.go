@@ -3,7 +3,7 @@ package ipsl
 import "strings"
 
 type frame struct {
-	scope  map[string]NodeCompiler
+	scope  ScopeMapping
 	prefix string
 
 	next *frame
@@ -38,3 +38,5 @@ Unmatch:
 }
 
 type NodeCompiler func(scopeName string, arguments ...SomeNode) (SomeNode, error)
+
+type ScopeMapping map[string]NodeCompiler
