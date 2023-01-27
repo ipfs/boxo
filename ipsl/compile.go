@@ -101,7 +101,12 @@ func (c compiler) compileNextNode(f *frame) (SomeNode, rune, int, error) {
 	for {
 		r, n, err := c.rr.ReadRune()
 		sum += n
-		if err != nil {
+		switch err {
+		case nil:
+		case io.EOF:
+			err = io.ErrUnexpectedEOF
+			fallthrough
+		default:
 			return SomeNode{}, 0, sum, fmt.Errorf("compileNextNode ReadRune: %w", err)
 		}
 

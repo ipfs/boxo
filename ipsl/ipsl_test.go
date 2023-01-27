@@ -166,6 +166,16 @@ func TestEmpty(t *testing.T) {
 	}
 }
 
+func TestUnexpectedEOFInBrokenNode(t *testing.T) {
+	_, _, err := (&Compiler{}).Compile(strings.NewReader(`(empty {this is some unterminated node}`))
+	if err == nil {
+		t.Fatal("unexpected incorrect code does not return an error")
+	}
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Errorf("unexpected error: expected %q; got %q", io.ErrUnexpectedEOF, err)
+	}
+}
+
 func FuzzCompile(f *testing.F) {
 	var c Compiler
 	c.SetBuiltin("reflect", reflect(""))
