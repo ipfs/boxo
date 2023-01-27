@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/ipfs/kubo/core/corehttp/gateway/assets"
+	"github.com/ipfs/go-libipfs/gateway/assets"
 )
 
 const (
