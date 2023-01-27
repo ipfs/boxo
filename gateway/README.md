@@ -4,7 +4,7 @@
 
 ## Documentation
 
-* Go Documentation: https://pkg.go.dev/github.com/ipfs/kubo/core/corehttp/gateway
+* Go Documentation: https://pkg.go.dev/github.com/ipfs/go-libipfs/gateway
 
 ## Example
 

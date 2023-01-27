@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-
-	"github.com/ipfs/kubo/core/corehttp/gateway/assets"
 )
 
 const (
@@ -17,10 +15,10 @@ const (
 	testPath = "/ipfs/QmFooBarQXB2mzChmMeKY47C43LxUdg1NDJ5MWcKMKxDu7/a/b/c"
 )
 
-var directoryTestData = assets.DirectoryTemplateData{
+var directoryTestData = DirectoryTemplateData{
 	GatewayURL: "//localhost:3000",
 	DNSLink:    true,
-	Listing: []assets.DirectoryItem{{
+	Listing: []DirectoryItem{{
 		Size:      "25 MiB",
 		Name:      "short-film.mov",
 		Path:      testPath + "/short-film.mov",
@@ -41,7 +39,7 @@ var directoryTestData = assets.DirectoryTemplateData{
 	}},
 	Size: "25 MiB",
 	Path: testPath,
-	Breadcrumbs: []assets.Breadcrumb{{
+	Breadcrumbs: []Breadcrumb{{
 		Name: "ipfs",
 	}, {
 		Name: "QmFooBarQXB2mzChmMeKY47C43LxUdg1NDJ5MWcKMKxDu7",
@@ -60,7 +58,7 @@ var directoryTestData = assets.DirectoryTemplateData{
 	Hash:     "QmFooBazBar2mzChmMeKY47C43LxUdg1NDJ5MWcKMKxDu7",
 }
 
-var dagTestData = assets.DagTemplateData{
+var dagTestData = DagTemplateData{
 	Path:      "/ipfs/baguqeerabn4wonmz6icnk7dfckuizcsf4e4igua2ohdboecku225xxmujepa",
 	CID:       "baguqeerabn4wonmz6icnk7dfckuizcsf4e4igua2ohdboecku225xxmujepa",
 	CodecName: "dag-json",
@@ -123,4 +121,36 @@ func main() {
 
 	fmt.Printf("listening on localhost:3000\n")
 	_ = http.ListenAndServe("localhost:3000", mux)
+}
+
+// Copied from ../assets.go
+type DagTemplateData struct {
+	Path      string
+	CID       string
+	CodecName string
+	CodecHex  string
+}
+
+type DirectoryTemplateData struct {
+	GatewayURL  string
+	DNSLink     bool
+	Listing     []DirectoryItem
+	Size        string
+	Path        string
+	Breadcrumbs []Breadcrumb
+	BackLink    string
+	Hash        string
+}
+
+type DirectoryItem struct {
+	Size      string
+	Name      string
+	Path      string
+	Hash      string
+	ShortHash string
+}
+
+type Breadcrumb struct {
+	Name string
+	Path string
 }
