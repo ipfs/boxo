@@ -40,11 +40,11 @@ type carWriter struct {
 
 type WalkFunc func(format.Node) ([]*format.Link, error)
 
-func WriteCar(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.Writer) error {
-	return WriteCarWithWalker(ctx, ds, roots, w, DefaultWalkFunc)
+func WriteCar(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.Writer, options ...merkledag.WalkOption) error {
+	return WriteCarWithWalker(ctx, ds, roots, w, DefaultWalkFunc, options...)
 }
 
-func WriteCarWithWalker(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.Writer, walk WalkFunc) error {
+func WriteCarWithWalker(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.Writer, walk WalkFunc, options ...merkledag.WalkOption) error {
 
 	h := &CarHeader{
 		Roots:   roots,
@@ -58,7 +58,7 @@ func WriteCarWithWalker(ctx context.Context, ds format.NodeGetter, roots []cid.C
 	cw := &carWriter{ds: ds, w: w, walk: walk}
 	seen := cid.NewSet()
 	for _, r := range roots {
-		if err := merkledag.Walk(ctx, cw.enumGetLinks, r, seen.Visit); err != nil {
+		if err := merkledag.Walk(ctx, cw.enumGetLinks, r, seen.Visit, options...); err != nil {
 			return err
 		}
 	}
