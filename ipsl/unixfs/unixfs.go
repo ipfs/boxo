@@ -8,13 +8,21 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-libipfs/ipsl"
+	merkledag_pb "github.com/ipfs/go-merkledag/pb"
 	unixfs_pb "github.com/ipfs/go-unixfs/pb"
-	"github.com/ipfs/go-merkledag/pb"
 )
 
 // Everything is a Traversal that will match all the unixfs childs blocks, forever.
 func Everything() ipsl.Traversal {
 	return EverythingNode{"unixfs"}
+}
+
+func compileEverything(scopeName string, arguments ...ipsl.SomeNode) (ipsl.SomeNode, error) {
+	if len(arguments) != 0 {
+		return ipsl.SomeNode{}, ipsl.ErrTypeError{Msg: fmt.Sprintf("empty node called with %d arguments, empty does not take arguments", len(arguments))}
+	}
+
+	return ipsl.SomeNode{Node: EverythingNode{scopeName}}, nil
 }
 
 type EverythingNode struct {
@@ -26,7 +34,7 @@ func (n EverythingNode) Serialize() (ipsl.AstNode, error) {
 		Type: ipsl.SyntaxTypeValueNode,
 		Args: []ipsl.AstNode{{
 			Type:    ipsl.SyntaxTypeToken,
-			Literal: n.ScopeName + ".EverythingNode",
+			Literal: n.ScopeName + ".everything",
 		}},
 	}, nil
 }

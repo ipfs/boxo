@@ -40,3 +40,5 @@ Unmatch:
 type NodeCompiler func(scopeName string, arguments ...SomeNode) (SomeNode, error)
 
 type ScopeMapping map[string]NodeCompiler
+
+type ScopeName string

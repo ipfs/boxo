@@ -9,8 +9,8 @@ import (
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-ipfs-blockstore"
-	"github.com/ipfs/go-ipfs-exchange-offline"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-libipfs/ipsl/helpers"
 	. "github.com/ipfs/go-libipfs/ipsl/unixfs"
@@ -79,6 +79,6 @@ func TestEverything(t *testing.T) {
 	}
 
 	if !slices.Equal(result, expectedOrder) {
-		t.Errorf("bad traversal order: expected: %#v; got %#v", expectedOrder, result)
+		t.Errorf("bad traversal order: expected: %v; got %v", expectedOrder, result)
 	}
 }
