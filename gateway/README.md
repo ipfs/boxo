@@ -1,11 +1,12 @@
 # IPFS Gateway
 
-> IPFS Gateway HTTP handler.
+> A reference implementation of HTTP Gateway Specifications.
 
 ## Documentation
 
 * Go Documentation: https://pkg.go.dev/github.com/ipfs/go-libipfs/gateway
-
+* Gateway Specification: https://github.com/ipfs/specs/tree/main/http-gateways#readme
+* Types of HTTP Gateways: https://docs.ipfs.tech/how-to/address-ipfs-on-web/#http-gateways
 ## Example
 
 ```go
@@ -23,13 +24,13 @@ conf := gateway.Config{
 ipfs := ...
 offlineIPFS := ...
 
-// Create http mux and setup gateway handler.
+// Create http mux and setup path gateway handler.
 mux := http.NewServeMux()
 gwHandler := gateway.NewHandler(conf, ipfs, offlineIPFS)
 mux.Handle("/ipfs/", gwHandler)
 mux.Handle("/ipns/", gwHandler)
 
-// Start the server on :8080 and voilá! You have an IPFS gateway running
+// Start the server on :8080 and voilá! You have a basic IPFS gateway running
 // in http://localhost:8080.
 _ = http.ListenAndServe(":8080", mux)
 ```
