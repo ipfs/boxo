@@ -39,7 +39,6 @@ jobs:
         run: |
           go mod edit -replace=github.com/ipfs/go-libipfs=../go-libipfs
           go mod tidy
-          make build
           cat go.mod
         working-directory: kubo
       - name: Install sharness dependencies
