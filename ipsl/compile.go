@@ -110,7 +110,7 @@ func (c *Compiler) CompileToTraversal(rr UnreadableRuneReader) (Traversal, int, 
 // It is thread safe to do multiple compilations at once on the same Compiler.
 func (c *Compiler) Compile(rr UnreadableRuneReader) (SomeNode, int, error) {
 	c.initDefaultFrame()
-	return compiler{rr}.compileNextNodeWithoutClosure(&c.builtinFrame)
+	return compiler{rr}.compileNextNodeWithoutTermination(&c.builtinFrame)
 }
 
 // compiler represent a single pass compilation attempt
@@ -183,7 +183,7 @@ func (c compiler) compileNextNode(f *frame) (SomeNode, rune, int, error) {
 	}
 }
 
-func (c compiler) compileNextNodeWithoutClosure(f *frame) (SomeNode, int, error) {
+func (c compiler) compileNextNodeWithoutTermination(f *frame) (SomeNode, int, error) {
 	node, end, n, err := c.compileNextNode(f)
 	if err != nil {
 		return SomeNode{}, n, err
@@ -298,7 +298,7 @@ func (c compiler) compileScopeNode(f *frame) (SomeNode, int, error) {
 		return SomeNode{}, sum, err
 	}
 
-	scope, n, err := c.compileNextNodeWithoutClosure(f)
+	scope, n, err := c.compileNextNodeWithoutTermination(f)
 	sum += n
 	if err != nil {
 		return SomeNode{}, sum, err
@@ -321,7 +321,7 @@ func (c compiler) compileScopeNode(f *frame) (SomeNode, int, error) {
 		next: f,
 	}
 
-	result, n, err := c.compileNextNodeWithoutClosure(nextFrame)
+	result, n, err := c.compileNextNodeWithoutTermination(nextFrame)
 	sum += n
 	if err != nil {
 		return SomeNode{}, sum, err
