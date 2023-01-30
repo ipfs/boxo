@@ -43,5 +43,5 @@ jobs:
         run: make test_sharness_deps
         working-directory: kubo
       - name: Run Sharness Tests
-        run: find . -maxdepth 1 -name "*gateway*" -exec {} \;
+        run: find . -maxdepth 1 -name "*gateway*.sh" -exec {} \;
         working-directory: kubo/test/sharness
