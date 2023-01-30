@@ -23,8 +23,12 @@ jobs:
         with:
           repository: ipfs/kubo
           path: kubo
-      - name: Install missing tools
+      - name: Install Missing Tools
         run: sudo apt install -y socat net-tools fish libxml2-utils
+      - name: Restore Go Cache
+        uses: protocol/cache-go-action@v1
+        with:
+          name: ${{ github.job }}
       - name: Install sharness dependencies
         run: make test_sharness_deps
         working-directory: kubo
