@@ -19,6 +19,10 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: 1.19.1
+      - name: Checkout go-libipfs
+        uses: actions/checkout@v3
+        with:
+          path: go-libipfs
       - name: Checkout Kubo
         uses: actions/checkout@v3
         with:
@@ -30,6 +34,11 @@ jobs:
         uses: protocol/cache-go-action@v1
         with:
           name: ${{ github.job }}
+      - name: Replace go-libipfs in Kubo go.mod
+        run: |
+          go mod edit -replace=github.com/ipfs/go-libipfs=../go-libipfs
+          go mod tidy
+        working-directory: kubo
       - name: Install sharness dependencies
         run: make test_sharness_deps
         working-directory: kubo
