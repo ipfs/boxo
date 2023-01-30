@@ -32,6 +32,7 @@ type Node interface {
 type Scope interface {
 	Node
 
+	// GetScope returns a scope mapping, consumers are not allowed to modify the ScopeMapping.
 	GetScope() (ScopeMapping, error)
 }
 

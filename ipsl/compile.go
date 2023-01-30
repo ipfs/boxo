@@ -19,11 +19,11 @@ type UnreadableRuneReader interface {
 
 // ErrTypeError indicagtes a syntax error, this error will always be errors.Is able.
 type ErrTypeError struct {
-	msg string
+	Msg string
 }
 
 func (e ErrTypeError) Error() string {
-	return e.msg
+	return e.Msg
 }
 
 // ErrSyntaxError indicates a syntax error, this error will always be errors.Is able.
@@ -41,7 +41,7 @@ func (e ErrSyntaxError) Error() string {
 // The zero value is valid and include the default builtin scope.
 type Compiler struct {
 	builtinFrame frame
-	scopes       map[string]Scope
+	scopes       map[ScopeName]Scope
 	initFrame    sync.Once
 }
 
@@ -51,7 +51,7 @@ func (c *Compiler) initDefaultFrame() {
 			"load-builtin-scope": c.loadBuiltinScope,
 		}
 		c.builtinFrame.next = &defaultBuiltinFrame
-		c.scopes = make(map[string]Scope)
+		c.scopes = make(map[ScopeName]Scope)
 	})
 }
 
@@ -64,7 +64,7 @@ func (c *Compiler) SetBuiltin(name string, nodeCompiler NodeCompiler) {
 
 // SetBuiltinScope add a scope that will be loadable by the load-builtin-scope node.
 // It is not threadsafe with any other method of the Compiler.
-func (c *Compiler) SetBuiltinScope(name string, scope Scope) {
+func (c *Compiler) SetBuiltinScope(name ScopeName, scope Scope) {
 	c.initDefaultFrame()
 	c.scopes[name] = scope
 }
@@ -85,7 +85,7 @@ func (c *Compiler) loadBuiltinScope(scopeName string, arguments ...SomeNode) (So
 		return SomeNode{}, ErrTypeError{fmt.Sprintf("wrong type passed in: expected String; got %s", PrettyNodeType(arg.Node))}
 	}
 
-	scope, ok := c.scopes[str.Str]
+	scope, ok := c.scopes[ScopeName(str.Str)]
 	if !ok {
 		return SomeNode{Node: None{}}, nil
 	}
@@ -373,7 +373,7 @@ func (n scopeNode) Serialize() (AstNode, error) {
 	if err != nil {
 		return AstNode{}, err
 	}
-	resultAst, err := n.scope.Node.Serialize()
+	resultAst, err := n.result.Serialize()
 	if err != nil {
 		return AstNode{}, err
 	}
