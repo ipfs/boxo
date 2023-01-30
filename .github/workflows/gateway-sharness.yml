@@ -27,6 +27,7 @@ jobs:
         run: sudo apt install -y socat net-tools fish libxml2-utils
       - name: Install sharness dependencies
         run: make test_sharness_deps
+        working-directory: kubo
       - name: Run Sharness Tests
         run: find . -maxdepth 1 -name "*gateway*" -exec {} \;
         working-directory: kubo/test/sharness
