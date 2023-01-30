@@ -1,0 +1,3 @@
+car index create ${INPUTS}/sample-v1.car sample-v1.car.idx
+car detach-index ${INPUTS}/sample-wrapped-v2.car sample-wrapped-v2.car.idx
+cmp sample-v1.car.idx sample-wrapped-v2.car.idx
