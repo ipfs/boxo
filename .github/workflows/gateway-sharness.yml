@@ -28,6 +28,7 @@ jobs:
         with:
           repository: ipfs/kubo
           path: kubo
+          ref: a059026dbd0a5c18381371554a29965a6b09186d
       - name: Install Missing Tools
         run: sudo apt install -y socat net-tools fish libxml2-utils
       - name: Restore Go Cache
