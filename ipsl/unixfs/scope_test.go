@@ -54,9 +54,9 @@ func TestEverythingThroughScope(t *testing.T) {
 		t.Errorf("bad traversal order: expected: %v; got %v", expectedOrder, result)
 	}
 
-	ast, err := traversal.Serialize()
+	ast, err := ipsl.UncompileNode(traversal)
 	if err != nil {
-		t.Errorf("Serialize: %s", err)
+		t.Errorf("Uncompile: %s", err)
 	}
 
 	serialized := ast.String()

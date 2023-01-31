@@ -21,10 +21,10 @@ type mockTraversal struct {
 	results      []ipsl.CidTraversalPair
 }
 
-func (mockTraversal) Serialize() (ipsl.AstNode, error) {
-	panic("Serialize called on mock traversal")
+func (mockTraversal) Serialize() (ipsl.AstNode, []ipsl.BoundScope, error) {
+	panic("MOCK!")
 }
-func (n mockTraversal) SerializeForNetwork() (ipsl.AstNode, error) {
+func (n mockTraversal) SerializeForNetwork() (ipsl.AstNode, []ipsl.BoundScope, error) {
 	return n.Serialize()
 }
 

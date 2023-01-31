@@ -12,12 +12,8 @@ import (
 	. "github.com/ipfs/go-libipfs/ipsl"
 )
 
-func reflect(expectedScope string) func(string, ...SomeNode) (SomeNode, error) {
-	return func(scope string, nodes ...SomeNode) (SomeNode, error) {
-		if scope != expectedScope {
-			return SomeNode{}, fmt.Errorf("got unexpected scope while compiling reflect: %q instead of: %q", scope, expectedScope)
-		}
-
+func reflect(expectedScope BoundScope) NodeCompiler {
+	return func(nodes ...SomeNode) (SomeNode, error) {
 		if len(nodes) != 1 {
 			return SomeNode{}, fmt.Errorf("got arguments list that is not one while compiling reflect: %#v", nodes)
 		}
@@ -28,7 +24,7 @@ func reflect(expectedScope string) func(string, ...SomeNode) (SomeNode, error) {
 
 func TestBasicCompileWithBuiltin(t *testing.T) {
 	var c Compiler
-	c.SetBuiltin("reflect", reflect(""))
+	c.SetBuiltin("reflect", reflect(nil))
 
 	const code = `(reflect $bafkqaaa)`
 	node, n, err := c.Compile(strings.NewReader(code))
@@ -51,7 +47,7 @@ func TestBasicCompileWithBuiltin(t *testing.T) {
 
 func TestBasic2CompileWithBuiltin(t *testing.T) {
 	var c Compiler
-	c.SetBuiltin("reflect", reflect(""))
+	c.SetBuiltin("reflect", reflect(nil))
 
 	const code = `(reflect{some comment to test ([)] comments}(reflect $bafkqaaa))`
 	node, n, err := c.Compile(strings.NewReader(code))
@@ -73,31 +69,45 @@ func TestBasic2CompileWithBuiltin(t *testing.T) {
 }
 
 type mockScopeNode struct {
-	scope ScopeMapping
+	scope map[string]func(BoundScope) NodeCompiler
 }
 
-func (n mockScopeNode) Serialize() (AstNode, error)           { panic("MOCK!") }
-func (n mockScopeNode) SerializeForNetwork() (AstNode, error) { return n.Serialize() }
+func (n *mockScopeNode) Serialize() (AstNode, []BoundScope, error)           { panic("MOCK!") }
+func (n *mockScopeNode) SerializeForNetwork() (AstNode, []BoundScope, error) { return n.Serialize() }
 
-func (n mockScopeNode) GetScope() (ScopeMapping, error) {
-	return n.scope, nil
+func (n *mockScopeNode) Eq(s Scope) bool {
+	return n == s
+}
+func (n *mockScopeNode) Scope(bound string) (ScopeMapping, error) {
+	b := boundMockScopeNode{n, bound}
+	r := make(ScopeMapping, len(n.scope))
+	for k, v := range n.scope {
+		r[k] = v(b)
+	}
+	return r, nil
+}
+
+type boundMockScopeNode struct {
+	*mockScopeNode
+
+	name string
+}
+
+func (n boundMockScopeNode) Bound() string {
+	return n.name
 }
 
 func TestScopeCompileWithBuiltin(t *testing.T) {
 	var c Compiler
-	c.SetBuiltin("load-test-scope", func(scope string, nodes ...SomeNode) (SomeNode, error) {
-		if scope != "" {
-			return SomeNode{}, fmt.Errorf("got non empty scope while compiling reflect: %q", scope)
-		}
-
+	c.SetBuiltin("load-test-scope", func(nodes ...SomeNode) (SomeNode, error) {
 		if len(nodes) != 0 {
 			return SomeNode{}, fmt.Errorf("got arguments list that is not empty: %#v", nodes)
 		}
 
 		return SomeNode{
-			Node: mockScopeNode{ScopeMapping{
-				"reflect":             reflect("test-scope"),
-				"reflect.cursed.name": reflect("test-scope"),
+			Node: &mockScopeNode{map[string]func(BoundScope) NodeCompiler{
+				"reflect":             reflect,
+				"reflect.cursed.name": reflect,
 			}},
 		}, nil
 	})
@@ -131,7 +141,7 @@ func TestEmpty(t *testing.T) {
 		t.Errorf("unexpected code length returned: expected %d; got %d", len(code), n)
 	}
 
-	ast, err := trav.Serialize()
+	ast, err := UncompileNode(trav)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	} else {
@@ -140,7 +150,7 @@ func TestEmpty(t *testing.T) {
 			t.Errorf("serialized code does not match: expected %q, got %q", code, rebuiltCode)
 		}
 	}
-	ast, err = trav.SerializeForNetwork()
+	ast, err = UncompileNodeForNetwork(trav)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	} else {
@@ -171,7 +181,7 @@ func TestUnexpectedEOFInBrokenNode(t *testing.T) {
 
 func TestStringLiterals(t *testing.T) {
 	var c Compiler
-	c.SetBuiltin("reflect", reflect(""))
+	c.SetBuiltin("reflect", reflect(nil))
 
 	for _, tc := range [...]struct {
 		code   string
@@ -214,7 +224,7 @@ func TestStringLiterals(t *testing.T) {
 
 func TestNone(t *testing.T) {
 	var c Compiler
-	c.SetBuiltin("reflect", reflect(""))
+	c.SetBuiltin("reflect", reflect(nil))
 
 	for _, tc := range [...]string{
 		`°`,
@@ -237,8 +247,8 @@ func TestNone(t *testing.T) {
 
 func TestLoadingCustomBuiltinScopes(t *testing.T) {
 	var c Compiler
-	c.SetBuiltinScope("/mock/scope", mockScopeNode{ScopeMapping{
-		"reflect": reflect("test-scope"),
+	c.SetBuiltinScope("/mock/scope", &mockScopeNode{map[string]func(BoundScope) NodeCompiler{
+		"reflect": reflect,
 	}})
 
 	const code = `[test-scope (load-builtin-scope "/mock/scope") (test-scope.reflect $bafkqaaa)]`
@@ -262,7 +272,7 @@ func TestLoadingCustomBuiltinScopes(t *testing.T) {
 
 func FuzzCompile(f *testing.F) {
 	var c Compiler
-	c.SetBuiltin("reflect", reflect(""))
+	c.SetBuiltin("reflect", reflect(nil))
 
 	f.Add(`(reflect (reflect $bafkqaaa))`)
 	f.Fuzz(func(_ *testing.T, code string) {

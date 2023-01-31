@@ -9,7 +9,7 @@ type frame struct {
 	next *frame
 }
 
-func (f *frame) get(s string) (string, NodeCompiler, bool) {
+func (f *frame) get(s string) (NodeCompiler, bool) {
 	names := strings.SplitN(s, ".", 2)
 	first := names[0]
 	var second string
@@ -25,20 +25,20 @@ func (f *frame) get(s string) (string, NodeCompiler, bool) {
 	{
 		r, ok := f.scope[second]
 		if ok {
-			return first, r, true
+			return r, true
 		}
 	}
 
 Unmatch:
 	if f.next == nil {
-		return "", nil, false
+		return nil, false
 	}
 
 	return f.next.get(s)
 }
 
-type NodeCompiler func(scopeName string, arguments ...SomeNode) (SomeNode, error)
+// NodeCompiler is responsible for compiling arguments to a node.
+// scope will be nil if this is called for the builtin scope.
+type NodeCompiler func(arguments ...SomeNode) (SomeNode, error)
 
 type ScopeMapping map[string]NodeCompiler
-
-type ScopeName string

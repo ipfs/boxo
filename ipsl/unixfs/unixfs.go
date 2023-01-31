@@ -14,32 +14,34 @@ import (
 
 // Everything is a Traversal that will match all the unixfs childs blocks, forever.
 func Everything() ipsl.Traversal {
-	return EverythingNode{"unixfs"}
+	return EverythingNode{boundScope{scope{}, "unixfs"}}
 }
 
-func compileEverything(scopeName string, arguments ...ipsl.SomeNode) (ipsl.SomeNode, error) {
-	if len(arguments) != 0 {
-		return ipsl.SomeNode{}, ipsl.ErrTypeError{Msg: fmt.Sprintf("empty node called with %d arguments, empty does not take arguments", len(arguments))}
-	}
+func compileEverything(s boundScope) ipsl.NodeCompiler {
+	return func(arguments ...ipsl.SomeNode) (ipsl.SomeNode, error) {
+		if len(arguments) != 0 {
+			return ipsl.SomeNode{}, ipsl.ErrTypeError{Msg: fmt.Sprintf("empty node called with %d arguments, empty does not take arguments", len(arguments))}
+		}
 
-	return ipsl.SomeNode{Node: EverythingNode{scopeName}}, nil
+		return ipsl.SomeNode{Node: EverythingNode{s}}, nil
+	}
 }
 
 type EverythingNode struct {
-	ScopeName string
+	scope boundScope
 }
 
-func (n EverythingNode) Serialize() (ipsl.AstNode, error) {
+func (n EverythingNode) Serialize() (ipsl.AstNode, []ipsl.BoundScope, error) {
 	return ipsl.AstNode{
 		Type: ipsl.SyntaxTypeValueNode,
 		Args: []ipsl.AstNode{{
 			Type:    ipsl.SyntaxTypeToken,
-			Literal: n.ScopeName + ".everything",
+			Literal: n.scope.Bound() + ".everything",
 		}},
-	}, nil
+	}, []ipsl.BoundScope{n.scope}, nil
 }
 
-func (n EverythingNode) SerializeForNetwork() (ipsl.AstNode, error) {
+func (n EverythingNode) SerializeForNetwork() (ipsl.AstNode, []ipsl.BoundScope, error) {
 	return n.Serialize()
 }
 

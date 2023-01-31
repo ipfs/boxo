@@ -1,6 +1,7 @@
 package ipsl
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -8,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/blocks"
 )
 
 type UnreadableRuneReader interface {
@@ -41,7 +41,7 @@ func (e ErrSyntaxError) Error() string {
 // The zero value is valid and include the default builtin scope.
 type Compiler struct {
 	builtinFrame frame
-	scopes       map[ScopeName]Scope
+	scopes       map[string]Scope
 	initFrame    sync.Once
 }
 
@@ -51,7 +51,7 @@ func (c *Compiler) initDefaultFrame() {
 			"load-builtin-scope": c.loadBuiltinScope,
 		}
 		c.builtinFrame.next = &defaultBuiltinFrame
-		c.scopes = make(map[ScopeName]Scope)
+		c.scopes = make(map[string]Scope)
 	})
 }
 
@@ -64,16 +64,12 @@ func (c *Compiler) SetBuiltin(name string, nodeCompiler NodeCompiler) {
 
 // SetBuiltinScope add a scope that will be loadable by the load-builtin-scope node.
 // It is not threadsafe with any other method of the Compiler.
-func (c *Compiler) SetBuiltinScope(name ScopeName, scope Scope) {
+func (c *Compiler) SetBuiltinScope(name string, scope Scope) {
 	c.initDefaultFrame()
 	c.scopes[name] = scope
 }
 
-func (c *Compiler) loadBuiltinScope(scopeName string, arguments ...SomeNode) (SomeNode, error) {
-	if scopeName != "" {
-		panic(fmt.Sprintf("called with a non empty scope %q", scopeName))
-	}
-
+func (c *Compiler) loadBuiltinScope(arguments ...SomeNode) (SomeNode, error) {
 	if len(arguments) != 1 {
 		return SomeNode{}, ErrTypeError{fmt.Sprintf("too many arguments: expected 1; got %d", len(arguments))}
 	}
@@ -85,7 +81,7 @@ func (c *Compiler) loadBuiltinScope(scopeName string, arguments ...SomeNode) (So
 		return SomeNode{}, ErrTypeError{fmt.Sprintf("wrong type passed in: expected String; got %s", PrettyNodeType(arg.Node))}
 	}
 
-	scope, ok := c.scopes[ScopeName(str.Str)]
+	scope, ok := c.scopes[str.Str]
 	if !ok {
 		return SomeNode{Node: None{}}, nil
 	}
@@ -281,12 +277,12 @@ argumentLoop:
 	}
 
 	token := string(tokenRunes)
-	scopeName, compiler, ok := f.get(token)
+	compiler, ok := f.get(token)
 	if !ok {
 		return SomeNode{}, sum, ErrTypeError{fmt.Sprintf("did not found token %s in current scope", token)}
 	}
 
-	result, err := compiler(scopeName, arguments...)
+	result, err := compiler(arguments...)
 	return result, sum, err
 }
 
@@ -308,12 +304,13 @@ func (c compiler) compileScopeNode(f *frame) (SomeNode, int, error) {
 		return SomeNode{}, sum, ErrTypeError{fmt.Sprintf("expected Scope type node; got %s", PrettyNodeType(scope.Node))}
 	}
 
-	scopeMap, err := scopeObject.GetScope()
+	boundToken := string(token)
+
+	scopeMap, err := scopeObject.Scope(boundToken)
 	if err != nil {
 		return SomeNode{}, sum, err
 	}
 
-	boundToken := string(token)
 	nextFrame := &frame{
 		prefix: boundToken,
 		scope:  scopeMap,
@@ -338,7 +335,7 @@ func (c compiler) compileScopeNode(f *frame) (SomeNode, int, error) {
 	case ']':
 		break
 	case 0:
-		ast, err := afterNode.Node.Serialize()
+		ast, err := UncompileNode(afterNode.Node)
 		if err != nil {
 			// can't Serialize the node, don't include node in error message
 			return SomeNode{}, sum, ErrSyntaxError{fmt.Sprintf("unexpected node following value node inside scope node %q", ast.String())}
@@ -348,96 +345,7 @@ func (c compiler) compileScopeNode(f *frame) (SomeNode, int, error) {
 		return SomeNode{}, sum, ErrSyntaxError{fmt.Sprintf("incorrect terminator for a scope node %q", string(end))}
 	}
 
-	sn := scopeNode{boundToken, scope, result.Node}
-	switch result.Node.(type) {
-	case CidLiteral:
-		return result, sum, nil
-	case Traversal:
-		return SomeNode{traversalScopeNode{sn}}, sum, nil
-	case Scope:
-		return SomeNode{scopeScopeNode{sn}}, sum, nil
-	// TODO: implement more types when they are added.
-	default:
-		return SomeNode{}, sum, fmt.Errorf("unimplemented type forwarding in scope for %q", PrettyNodeType(result.Node))
-	}
-}
-
-type scopeNode struct {
-	boundToken string
-	scope      SomeNode
-	result     Node
-}
-
-func (n scopeNode) Serialize() (AstNode, error) {
-	scopeAst, err := n.scope.Node.Serialize()
-	if err != nil {
-		return AstNode{}, err
-	}
-	resultAst, err := n.result.Serialize()
-	if err != nil {
-		return AstNode{}, err
-	}
-
-	return AstNode{
-		Type: SyntaxTypeScopeNode,
-		Args: []AstNode{
-			{
-				Type:    SyntaxTypeToken,
-				Literal: n.boundToken,
-			},
-			scopeAst,
-			resultAst,
-		},
-	}, nil
-}
-
-func (n scopeNode) SerializeForNetwork() (AstNode, error) {
-	scopeAst, err := n.scope.Node.SerializeForNetwork()
-	if err != nil {
-		return AstNode{}, err
-	}
-	resultAst, err := n.scope.Node.SerializeForNetwork()
-	if err != nil {
-		return AstNode{}, err
-	}
-
-	return AstNode{
-		Type: SyntaxTypeScopeNode,
-		Args: []AstNode{
-			{
-				Type:    SyntaxTypeToken,
-				Literal: n.boundToken,
-			},
-			scopeAst,
-			resultAst,
-		},
-	}, nil
-}
-
-type traversalScopeNode struct {
-	scopeNode
-}
-
-func (n traversalScopeNode) Traverse(b blocks.Block) ([]CidTraversalPair, error) {
-	r, err := n.scopeNode.result.(Traversal).Traverse(b)
-	if err != nil {
-		return nil, err
-	}
-
-	// Wrap objects in scope nodes so Serialize output the correct scope node first.
-	for i, v := range r {
-		r[i].Traversal = traversalScopeNode{scopeNode{n.scopeNode.boundToken, n.scopeNode.scope, v.Traversal}}
-	}
-
-	return r, nil
-}
-
-type scopeScopeNode struct {
-	scopeNode
-}
-
-func (n scopeScopeNode) GetScope() (ScopeMapping, error) {
-	return n.scopeNode.result.(Scope).GetScope()
+	return result, sum, nil
 }
 
 func (c compiler) skipComment() (int, error) {
@@ -534,6 +442,87 @@ func (a AstNode) String() string {
 	default:
 		return a.Type.String()
 	}
+}
+
+// UniqScopes is gonna Unique the scopes objects, trying to reuse the same backing array.
+func UniqScopes(scopes []BoundScope) []BoundScope {
+	// Reuse the same backing array, that fine because the right most copies we can do is noops.
+	// Else scopes's indexes will shift when we find duplicates.
+	r := scopes[:0]
+argLoop:
+	for _, s := range scopes {
+		// Insertion code because scopes are not certain to be comparable.
+		// We expect to have extremely few unique scopes anyway.
+		for _, v := range r {
+			if !s.Eq(v) {
+				continue
+			}
+
+			continue argLoop // already in r
+		}
+		r = append(r, s) // new scope
+	}
+
+	return r
+}
+
+// uncompile return an AstNode that includes required scopping to be correct.
+func uncompile(n Node, serialize func(Node) (AstNode, []BoundScope, error)) (AstNode, error) {
+	ast, scopes, err := serialize(n)
+	if err != nil {
+		return AstNode{}, err
+	}
+
+	scopes = UniqScopes(scopes)
+
+	// ensure bound names are unique
+	names := make(map[string]BoundScope, len(scopes))
+	for _, s := range scopes {
+		b := s.Bound()
+		other, ok := names[b]
+		if ok {
+			return AstNode{}, fmt.Errorf("duplicated bound scope name %q for %q and %q", b, s, other)
+		}
+		names[b] = s
+	}
+
+	for _, s := range scopes {
+		scopeAst, rscopes, err := serialize(s)
+		if err != nil {
+			return AstNode{}, err
+		}
+		if len(rscopes) != 0 {
+			return AstNode{}, errors.New("uncompile does not support scopped scopes")
+		}
+
+		ast = AstNode{
+			Type: SyntaxTypeScopeNode,
+			Args: []AstNode{
+				{
+					Type:    SyntaxTypeToken,
+					Literal: s.Bound(),
+				},
+				scopeAst,
+				ast,
+			},
+		}
+	}
+
+	return ast, nil
+}
+
+// UncompileNode return an AstNode adding required scopping nodes to be correct
+func UncompileNode(n Node) (AstNode, error) {
+	return uncompile(n, func(n Node) (AstNode, []BoundScope, error) {
+		return n.Serialize()
+	})
+}
+
+// UncompileNodeForNetwork is like UncompileNode but it call SerializeForNetwork.
+func UncompileNodeForNetwork(n Node) (AstNode, error) {
+	return uncompile(n, func(n Node) (AstNode, []BoundScope, error) {
+		return n.SerializeForNetwork()
+	})
 }
 
 type SyntaxType uint8
