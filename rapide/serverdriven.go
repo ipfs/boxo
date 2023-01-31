@@ -14,6 +14,7 @@ import (
 type serverDrivenWorker struct {
 	impl     ServerDrivenDownloader
 	download *download
+	outErr   *error
 
 	current *node
 
@@ -22,22 +23,22 @@ type serverDrivenWorker struct {
 	// TODO: add a dontGoThere map which tells you what part of the dag this node is not able to handle
 }
 
-func (d *download) startServerDrivenWorker(ctx context.Context, impl ServerDrivenDownloader, root *node) {
+func (d *download) startServerDrivenWorker(ctx context.Context, impl ServerDrivenDownloader, root *node, outErr *error) {
 	go (&serverDrivenWorker{
 		impl:     impl,
 		download: d,
+		outErr:   outErr,
 		current:  root,
 		tasks:    make(map[cid.Cid]*node),
 	}).work(ctx)
 }
 
 func (w *serverDrivenWorker) work(ctx context.Context) {
-	defer w.download.workerFinished()
-	defer w.resetAllCurrentNodesWorkState()
-
 	for {
 		workCid, traversal, ok := w.findWork()
 		if !ok {
+			w.resetAllCurrentNodesWorkState()
+			w.download.workerFinished()
 			return // finished
 		}
 
@@ -48,15 +49,16 @@ func (w *serverDrivenWorker) work(ctx context.Context) {
 		tasks[workCid] = w.current
 
 		err := w.doOneDownload(ctx, workCid, traversal)
-		switch {
-		case err == nil || err == io.EOF || err == errGotDoneBlock:
+		switch err {
+		case nil, io.EOF, errGotDoneBlock:
 			w.resetCurrentChildsNodeWorkState()
 			continue
-		case errors.Is(err, context.Canceled):
-			return // request canceled
 		default:
 			// FIXME: support ignoring erroring parts of the tree when searching (dontGoThere)
 			// If the error is that some blocks are not available, we should backtrack and find more work.
+			w.resetAllCurrentNodesWorkState()
+			*w.outErr = err
+			w.download.workerErrored()
 			return
 		}
 	}
@@ -105,6 +107,7 @@ func (w *serverDrivenWorker) doOneDownload(ctx context.Context, workCid cid.Cid,
 			// received unexpected block
 			return errUnexpectedBlock
 		}
+		delete(w.tasks, c)
 
 		task.mu.Lock()
 		if task.state == done {

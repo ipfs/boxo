@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-libipfs/ipsl"
+	"go.uber.org/multierr"
 )
 
 // TODO: Add ordering garentees in the API when we figureout signaling for ordering in the protocol.
@@ -31,15 +33,17 @@ func (c *Client) Get(ctx context.Context, root cid.Cid, traversal ipsl.Traversal
 		out:    out,
 		ctx:    ctx,
 		cancel: cancel,
+		done:   uint64(len(c.ServerDrivenDownloaders)),
 		root: node{
 			state:     todo,
 			cid:       root,
 			traversal: traversal,
 		},
+		errors: make([]error, len(c.ServerDrivenDownloaders)),
 	}
 
-	for _, sdd := range c.ServerDrivenDownloaders {
-		d.startServerDrivenWorker(ctx, sdd, &d.root)
+	for i, sdd := range c.ServerDrivenDownloaders {
+		d.startServerDrivenWorker(ctx, sdd, &d.root, &d.errors[i])
 	}
 
 	return out
@@ -50,6 +54,8 @@ type download struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	root      node
+	errors    []error
+	done      uint64
 	closeOnce sync.Once
 }
 
@@ -73,10 +79,20 @@ func (d *download) finish() {
 }
 
 func (d *download) workerFinished() {
+	// don't decrement d.done because if we suceeded we don't want them to attempt to return an error
 	d.root.mu.Lock()
 	defer d.root.mu.Unlock()
 	if d.root.state == done && len(d.root.childrens) == 0 {
 		d.finish() // file was downloaded !
+	}
+}
+
+func (d *download) workerErrored() {
+	var minusOne uint64
+	minusOne--
+	if atomic.AddUint64(&d.done, minusOne) == 0 {
+		// we were the last worker, error
+		d.err(multierr.Combine(d.errors...))
 	}
 }
 
@@ -101,7 +117,6 @@ func (n *node) expand(d *download, b blocks.Block) error {
 		panic(fmt.Sprintf("expanding a node that is not todo: %d", n.state))
 	}
 
-	n.state = done
 	newResults, err := n.traversal.Traverse(b)
 	if err != nil {
 		d.err(err)
