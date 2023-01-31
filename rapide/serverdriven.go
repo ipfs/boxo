@@ -87,10 +87,8 @@ func (w *serverDrivenWorker) doOneDownload(ctx context.Context, workCid cid.Cid,
 		switch err {
 		case nil:
 		case io.EOF:
-			if len(w.tasks) == 0 {
-				return nil
-			}
-			return io.ErrUnexpectedEOF
+			// FIXME: check why len(w.tasks) == 0 is sometime false here
+			return err
 		default:
 			return err
 		}
