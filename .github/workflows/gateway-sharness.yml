@@ -1,0 +1,51 @@
+name: Gateway Sharness
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['gateway/**']
+  push:
+    branches: ['main']
+    paths: ['gateway/**']
+
+jobs:
+  sharness:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19.1
+      - name: Checkout go-libipfs
+        uses: actions/checkout@v3
+        with:
+          path: go-libipfs
+      - name: Checkout Kubo
+        uses: actions/checkout@v3
+        with:
+          repository: ipfs/kubo
+          path: kubo
+      - name: Install Missing Tools
+        run: sudo apt install -y socat net-tools fish libxml2-utils
+      - name: Restore Go Cache
+        uses: protocol/cache-go-action@v1
+        with:
+          name: ${{ github.job }}
+      - name: Replace go-libipfs in Kubo go.mod
+        run: |
+          go mod edit -replace=github.com/ipfs/go-libipfs=../go-libipfs
+          go mod tidy
+          cat go.mod
+        working-directory: kubo
+      - name: Install sharness dependencies
+        run: make test_sharness_deps
+        working-directory: kubo
+      - name: Run Kubo Sharness Tests
+        run: find . -maxdepth 1 -name "*gateway*.sh" -print0 | xargs -0 -I {} bash -c "echo {}; {}"
+        working-directory: kubo/test/sharness
+      - name: Run Kubo CLI Tests
+        run: go test -v -run=Gateway .
+        working-directory: kubo/test/cli

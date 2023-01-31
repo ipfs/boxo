@@ -211,7 +211,7 @@ func (c *client) provideSignedBitswapRecord(ctx context.Context, bswp *types.Wri
 		return 0, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(b))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewBuffer(b))
 	if err != nil {
 		return 0, err
 	}
