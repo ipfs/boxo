@@ -37,6 +37,7 @@ func (g Gateway) Download(ctx context.Context, root cid.Cid, traversal ipsl.Trav
 		return nil, err
 	}
 	req.Header.Add("Accept", "application/vnd.ipld.car")
+	req.Header.Add("User-Agent", "RAPIDE")
 
 	resp, err := g.getClient().Do(req)
 	if err != nil {
