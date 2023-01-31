@@ -35,7 +35,6 @@ func (w *serverDrivenWorker) work(ctx context.Context) {
 	defer w.download.workerFinished()
 	defer w.resetCurrentChildsNodeWorkState()
 
-workLoop:
 	for {
 		workCid, traversal, ok := w.findWork()
 		if !ok {
@@ -48,96 +47,103 @@ workLoop:
 		}
 		tasks[workCid] = w.current
 
-		ctx, cancelCurrentRequest := context.WithCancel(ctx)
-		stream, err := w.impl.Download(ctx, workCid, traversal)
-		if err != nil {
-			// FIXME: support ignoring erroring parts of the tree when searching
+		err := w.doOneDownload(ctx, workCid, traversal)
+		switch {
+		case err == nil || err == io.EOF || err == errGotDoneBlock:
+			w.resetCurrentChildsNodeWorkState()
+			continue
+		case errors.Is(err, context.Canceled):
+			return // request canceled
+		default:
+			// FIXME: support ignoring erroring parts of the tree when searching (dontGoThere)
 			// If the error is that some blocks are not available, we should backtrack and find more work.
-			cancelCurrentRequest()
 			return
 		}
+	}
+}
 
-		for {
-			if len(tasks) == 0 {
-				cancelCurrentRequest()
-				w.resetCurrentChildsNodeWorkState()
-				continue workLoop
+var errUnexpectedBlock = errors.New("got an unexpected block")
+var errGotDoneBlock = errors.New("downloaded an already done node")
+
+// doOneDownload will return nil when it does not find work
+func (w *serverDrivenWorker) doOneDownload(ctx context.Context, workCid cid.Cid, traversal ipsl.Traversal) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	stream, err := w.impl.Download(ctx, workCid, traversal)
+	if err != nil {
+		// FIXME: support ignoring erroring parts of the tree when searching
+		// If the error is that some blocks are not available, we should backtrack and find more work.
+		return err
+	}
+
+	for {
+		if len(w.tasks) == 0 {
+			return nil
+		}
+		b, err := stream.Next()
+		switch err {
+		case nil:
+		case io.EOF:
+			if len(w.tasks) == 0 {
+				return nil
 			}
-			b, err := stream.Next()
-			if err != nil {
-				switch {
-				case errors.Is(err, context.Canceled):
-					cancelCurrentRequest()
-					return // request canceled
-				case err == io.EOF:
-					cancelCurrentRequest()
-					w.resetCurrentChildsNodeWorkState()
-					continue workLoop
-				default:
-					// FIXME: support ignoring erroring parts of the tree when searching (dontGoThere)
-					// If the error is that some blocks are not available, we should backtrack and find more work.
-					cancelCurrentRequest()
-					return
+			return io.ErrUnexpectedEOF
+		default:
+			return err
+		}
+
+		select {
+		case w.download.out <- blocks.Is(b):
+		case <-ctx.Done():
+			w.download.err(ctx.Err())
+		}
+
+		c := b.Cid()
+		task, ok := w.tasks[c]
+		if !ok {
+			// received unexpected block
+			return errUnexpectedBlock
+		}
+
+		task.mu.Lock()
+		if task.state == done {
+			task.mu.Unlock()
+			// we finished all parts of our tree, cancel current work and restart a new request.
+			return errGotDoneBlock
+		}
+		if err := task.expand(w.download, b); err != nil {
+			task.mu.Unlock()
+			return err
+		}
+
+	Switch:
+		switch len(task.childrens) {
+		case 0:
+			// terminated node, remove them (and all removed parents from our task list)
+			for len(task.childrens) == 0 {
+				task.mu.Unlock()
+				delete(w.tasks, task.cid)
+				task = task.parent
+				if !w.isOurTask(task) {
+					break Switch
+				}
+				task.mu.Lock()
+			}
+			task.mu.Unlock()
+		default:
+			// add new work we discovered
+			for _, child := range task.childrens {
+				child.mu.Lock()
+				if child.state == todo {
+					child.workers += 1
+					child.mu.Unlock()
+					w.tasks[child.cid] = child
+				} else {
+					child.mu.Unlock()
 				}
 			}
-
-			select {
-			case w.download.out <- blocks.Is(b):
-			case <-ctx.Done():
-				w.download.err(ctx.Err())
-			}
-
-			c := b.Cid()
-			task, ok := tasks[c]
-			if !ok {
-				// received unexpected block
-				cancelCurrentRequest()
-				return
-			}
-
-			task.mu.Lock()
-			if task.state == done {
-				task.mu.Unlock()
-				// we finished all parts of our tree, cancel current work and restart a new request.
-				cancelCurrentRequest()
-				w.resetCurrentChildsNodeWorkState()
-				continue workLoop
-			}
-			if err := task.expand(w.download, b); err != nil {
-				task.mu.Unlock()
-				cancelCurrentRequest()
-				w.resetCurrentChildsNodeWorkState()
-				return
-			}
-
-		Switch:
-			switch len(task.childrens) {
-			case 0:
-				// terminated node, remove them (and all removed parents from our task list)
-				for len(task.childrens) == 0 {
-					task.mu.Unlock()
-					delete(tasks, task.cid)
-					task = task.parent
-					if !w.isOurTask(task) {
-						break Switch
-					}
-					task.mu.Lock()
-				}
-				task.mu.Unlock()
-			default:
-				// add new work we discovered
-				for _, child := range task.childrens {
-					child.mu.Lock()
-					if child.state == todo {
-						child.workers += 1
-						child.mu.Unlock()
-						tasks[child.cid] = child
-					} else {
-						child.mu.Unlock()
-					}
-				}
-				task.mu.Unlock()
-			}
+			task.mu.Unlock()
 		}
 	}
 }
@@ -158,20 +164,13 @@ func (w *serverDrivenWorker) findWork() (cid.Cid, ipsl.Traversal, bool) {
 			panic("zero state on node") // unreachable
 		case todo:
 			// start this node
-			if c.workers == 0 {
-				traversal := c.traversal
-				c.workers += 1
-				c.mu.Unlock()
-				w.current = c
-				return c.cid, traversal, true
-			}
-
-			// someone is already taking care of this, backtrack
-			// TODO: add racing support
-			c.workers -= 1
+			traversal := c.traversal
+			c.workers += 1
 			c.mu.Unlock()
-			c = c.parent
-			continue
+			w.current = c
+			return c.cid, traversal, true
+
+			// TODO: add smart racing support, someone is already taking care of this, we should backtrack
 		case done:
 			// first search in it's childs if it has something we could run
 			c.workers += 1
