@@ -64,12 +64,15 @@ func compileAll(scopeName string, arguments ...SomeNode) (SomeNode, error) {
 }
 
 func (n AllNode) Traverse(b blocks.Block) ([]CidTraversalPair, error) {
-	c := b.Cid()
-	r := make([]CidTraversalPair, len(n.Traversals))
-	for i, t := range n.Traversals {
-		r[i] = CidTraversalPair{c, t}
+	var results []CidTraversalPair
+	for _, t := range n.Traversals {
+		r, err := t.Traverse(b)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, r...)
 	}
-	return r, nil
+	return results, nil
 }
 
 func (n AllNode) Serialize() (AstNode, error) {

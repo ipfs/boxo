@@ -154,8 +154,6 @@ func TestSyncDFS(t *testing.T) {
 		leaf1Cid,
 		root2Cid,
 		leaf2Cid,
-		leaf2Cid,
-		leaf2Cid,
 		leaf3Cid,
 		leaf4Cid,
 	}
