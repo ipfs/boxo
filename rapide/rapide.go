@@ -108,6 +108,9 @@ func (n *node) expand(d *download, b blocks.Block) error {
 		return err
 	}
 
+	n.state = done
+	n.traversal = nil // early gc
+
 	childrens := make([]*node, len(newResults))
 	for i, r := range newResults {
 		childrens[i] = &node{
