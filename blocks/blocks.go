@@ -84,3 +84,20 @@ func (b *BasicBlock) Loggable() map[string]interface{} {
 		"block": b.Cid().String(),
 	}
 }
+
+// BlockOrError is either an error or a block.
+type BlockOrError struct {
+	block Block
+	err   error
+}
+
+func Is(b Block) BlockOrError {
+	return BlockOrError{block: b}
+}
+func IsNot(err error) BlockOrError {
+	return BlockOrError{err: err}
+}
+
+func (boe BlockOrError) Get() (Block, error) {
+	return boe.block, boe.err
+}
