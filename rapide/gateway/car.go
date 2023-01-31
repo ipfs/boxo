@@ -26,6 +26,10 @@ type Gateway struct {
 	Client *http.Client
 }
 
+func (g Gateway) String() string {
+	return g.PathName
+}
+
 func (g Gateway) Download(ctx context.Context, root cid.Cid, traversal ipsl.Traversal) (blocks.BlockIterator, error) {
 	_, ok := traversal.(unixfs.EverythingNode)
 	if !ok {
