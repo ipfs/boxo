@@ -33,7 +33,7 @@ func (d *download) startServerDrivenWorker(ctx context.Context, impl ServerDrive
 
 func (w *serverDrivenWorker) work(ctx context.Context) {
 	defer w.download.workerFinished()
-	defer w.resetCurrentChildsNodeWorkState()
+	defer w.resetAllCurrentNodesWorkState()
 
 	for {
 		workCid, traversal, ok := w.findWork()
@@ -224,6 +224,18 @@ func (w *serverDrivenWorker) resetCurrentChildsNodeWorkState() {
 	for _, child := range c.childrens {
 		w.recurseCancelNode(child)
 	}
+}
+
+// resetCurrentChildsNodeWorkState updates the state of the current node to longer count towards it.
+func (w *serverDrivenWorker) resetAllCurrentNodesWorkState() {
+	c := w.current
+	if c == nil {
+		return // nothing to do
+	}
+
+	// recursively walk the state and remove ourself from counters
+	// This is pretty contensius but that should be fine because server driven downloads should be cancel rarely, also most of thoses are gonna go on the fast path anyway.	c.mu.Lock()
+	w.recurseCancelNode(c)
 }
 
 func (w *serverDrivenWorker) recurseCancelNode(c *node) {
