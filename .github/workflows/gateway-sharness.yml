@@ -43,6 +43,9 @@ jobs:
       - name: Install sharness dependencies
         run: make test_sharness_deps
         working-directory: kubo
-      - name: Run Sharness Tests
+      - name: Run Kubo Sharness Tests
         run: find . -maxdepth 1 -name "*gateway*.sh" -print0 | xargs -0 -I {} bash -c "echo {}; {}"
         working-directory: kubo/test/sharness
+      - name: Run Kubo CLI Tests
+        run: go test -v -run=Gateway .
+        working-directory: kubo/test/cli
