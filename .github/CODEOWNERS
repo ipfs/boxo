@@ -7,3 +7,4 @@ gateway/  @lidel @hacdias
 
 # IPSL
 ipsl/* @Jorropo
+rapide/* @Jorropo

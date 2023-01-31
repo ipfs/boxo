@@ -35,7 +35,7 @@ require (
 	github.com/ipfs/go-unixfs v0.4.2
 	github.com/ipfs/interface-go-ipfs-core v0.10.0
 	github.com/ipld/go-car v0.5.0
-	github.com/ipld/go-car/v2 v2.5.1
+	github.com/ipld/go-car/v2 v2.6.0
 	github.com/ipld/go-ipld-prime v0.19.0
 	github.com/jbenet/goprocess v0.1.4
 	github.com/libp2p/go-buffer-pool v0.1.0
@@ -45,19 +45,19 @@ require (
 	github.com/libp2p/go-msgio v0.2.0
 	github.com/multiformats/go-multiaddr v0.8.0
 	github.com/multiformats/go-multibase v0.1.1
-	github.com/multiformats/go-multicodec v0.6.0
+	github.com/multiformats/go-multicodec v0.7.0
 	github.com/multiformats/go-multihash v0.2.1
 	github.com/multiformats/go-multistream v0.3.3
 	github.com/prometheus/client_golang v1.13.0
 	github.com/samber/lo v1.36.0
 	github.com/stretchr/testify v1.8.1
 	go.opencensus.io v0.23.0
-	go.opentelemetry.io/otel v1.7.0
-	go.opentelemetry.io/otel/trace v1.7.0
-	go.uber.org/multierr v1.8.0
-	go.uber.org/zap v1.23.0
-	golang.org/x/exp v0.0.0-20230124195608-d38c7dcee874
-	golang.org/x/sys v0.1.0
+	go.opentelemetry.io/otel v1.12.0
+	go.opentelemetry.io/otel/trace v1.12.0
+	go.uber.org/multierr v1.9.0
+	go.uber.org/zap v1.24.0
+	golang.org/x/exp v0.0.0-20230131160201-f062dba9d201
+	golang.org/x/sys v0.4.0
 )
 
 require (
@@ -81,7 +81,7 @@ require (
 	github.com/ipfs/go-verifcid v0.0.2 // indirect
 	github.com/ipld/go-codec-dagpb v1.5.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
-	github.com/klauspost/cpuid/v2 v2.1.2 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.3 // indirect
 	github.com/koron/go-ssdp v0.0.3 // indirect
 	github.com/libp2p/go-cidranger v1.1.0 // indirect
 	github.com/libp2p/go-libp2p-asn-util v0.2.0 // indirect
@@ -95,14 +95,14 @@ require (
 	github.com/minio/sha256-simd v1.0.0 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-base32 v0.1.0 // indirect
-	github.com/multiformats/go-base36 v0.1.0 // indirect
+	github.com/multiformats/go-base36 v0.2.0 // indirect
 	github.com/multiformats/go-multiaddr-dns v0.3.1 // indirect
 	github.com/multiformats/go-multiaddr-fmt v0.1.0 // indirect
 	github.com/multiformats/go-varint v0.0.7 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/polydawn/refmt v0.0.0-20201211092308-30ac6d18308e // indirect
+	github.com/polydawn/refmt v0.89.0 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
@@ -110,11 +110,11 @@ require (
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/stretchr/objx v0.5.0 // indirect
 	github.com/ucarion/urlpath v0.0.0-20200424170820-7ccc79b76bbb // indirect
-	github.com/whyrusleeping/cbor-gen v0.0.0-20221220214510-0333c149dec0 // indirect
+	github.com/whyrusleeping/cbor-gen v0.0.0-20230126041949-52956bd4c9aa // indirect
 	go.uber.org/atomic v1.10.0 // indirect
-	golang.org/x/crypto v0.1.0 // indirect
+	golang.org/x/crypto v0.5.0 // indirect
 	golang.org/x/mod v0.6.0 // indirect
-	golang.org/x/net v0.1.0 // indirect
+	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
 	golang.org/x/tools v0.2.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
