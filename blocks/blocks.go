@@ -24,6 +24,10 @@ type Block interface {
 	Loggable() map[string]interface{}
 }
 
+type BlockIterator interface {
+	Next() (Block, error)
+}
+
 // A BasicBlock is a singular block of data in ipfs. It implements the Block
 // interface.
 type BasicBlock struct {
