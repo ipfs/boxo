@@ -47,5 +47,5 @@ jobs:
         run: find . -maxdepth 1 -name "*gateway*.sh" -print0 | xargs -0 -I {} bash -c "echo {}; {}"
         working-directory: kubo/test/sharness
       - name: Run Kubo CLI Tests
-        run: go test -v *gateway*.go
+        run: go test -v -run=Gateway .
         working-directory: kubo/test/cli
