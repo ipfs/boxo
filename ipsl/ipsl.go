@@ -45,7 +45,7 @@ func All(traversals ...Traversal) Traversal {
 	return AllNode{traversals}
 }
 
-func CompileAll(scopeName string, arguments ...SomeNode) (SomeNode, error) {
+func compileAll(scopeName string, arguments ...SomeNode) (SomeNode, error) {
 	if scopeName != "" {
 		panic("builtin all called not in the builtin scope")
 	}
@@ -189,7 +189,7 @@ func (c EmptyTraversal) SerializeForNetwork() (AstNode, error) {
 	return c.Serialize()
 }
 
-func CompileEmpty(scopeName string, arguments ...SomeNode) (SomeNode, error) {
+func compileEmpty(scopeName string, arguments ...SomeNode) (SomeNode, error) {
 	if scopeName != "" {
 		panic("builtin empty called not in the builtin scope")
 	}
