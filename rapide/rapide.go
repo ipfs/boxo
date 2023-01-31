@@ -3,6 +3,7 @@ package rapide
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/ipfs/go-cid"
@@ -28,6 +29,7 @@ func (c *Client) Get(ctx context.Context, root cid.Cid, traversal ipsl.Traversal
 	out := make(chan blocks.BlockOrError)
 	d := &download{
 		out:    out,
+		ctx:    ctx,
 		cancel: cancel,
 		root: node{
 			state:     todo,
@@ -45,6 +47,7 @@ func (c *Client) Get(ctx context.Context, root cid.Cid, traversal ipsl.Traversal
 
 type download struct {
 	out       chan<- blocks.BlockOrError
+	ctx       context.Context
 	cancel    context.CancelFunc
 	root      node
 	closeOnce sync.Once
@@ -53,10 +56,28 @@ type download struct {
 // err cuts out the download and make it return an error, this is intended for unrecoverable errors.
 func (d *download) err(err error) {
 	d.closeOnce.Do(func() {
+		select {
+		case d.out <- blocks.IsNot(err):
+		case <-d.ctx.Done():
+		}
 		d.cancel()
-		d.out <- blocks.IsNot(err)
 		close(d.out)
 	})
+}
+
+func (d *download) finish() {
+	d.closeOnce.Do(func() {
+		d.cancel()
+		close(d.out)
+	})
+}
+
+func (d *download) workerFinished() {
+	d.root.mu.Lock()
+	defer d.root.mu.Unlock()
+	if d.root.state == done && len(d.root.childrens) == 0 {
+		d.finish() // file was downloaded !
+	}
 }
 
 type node struct {
@@ -99,6 +120,12 @@ func (n *node) expand(d *download, b blocks.Block) error {
 	n.childrens = childrens
 
 	for node, parent := n, n.parent; len(node.childrens) == 0; node, parent = parent, parent.parent {
+		if parent == nil {
+			// finished!
+			d.finish()
+			return io.EOF
+		}
+
 		// nothing to do, backtrack
 		parent.mu.Lock()
 		for i, v := range parent.childrens {

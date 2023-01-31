@@ -32,7 +32,8 @@ func (d *download) startServerDrivenWorker(ctx context.Context, impl ServerDrive
 }
 
 func (w *serverDrivenWorker) work(ctx context.Context) {
-	defer w.resetCurrentNodesWorkState()
+	defer w.download.workerFinished()
+	defer w.resetCurrentChildsNodeWorkState()
 
 workLoop:
 	for {
@@ -59,7 +60,7 @@ workLoop:
 		for {
 			if len(tasks) == 0 {
 				cancelCurrentRequest()
-				w.resetCurrentNodesWorkState()
+				w.resetCurrentChildsNodeWorkState()
 				continue workLoop
 			}
 			b, err := stream.Next()
@@ -70,7 +71,7 @@ workLoop:
 					return // request canceled
 				case err == io.EOF:
 					cancelCurrentRequest()
-					w.resetCurrentNodesWorkState()
+					w.resetCurrentChildsNodeWorkState()
 					continue workLoop
 				default:
 					// FIXME: support ignoring erroring parts of the tree when searching (dontGoThere)
@@ -99,13 +100,13 @@ workLoop:
 				task.mu.Unlock()
 				// we finished all parts of our tree, cancel current work and restart a new request.
 				cancelCurrentRequest()
-				w.resetCurrentNodesWorkState()
+				w.resetCurrentChildsNodeWorkState()
 				continue workLoop
 			}
 			if err := task.expand(w.download, b); err != nil {
 				task.mu.Unlock()
 				cancelCurrentRequest()
-				w.resetCurrentNodesWorkState()
+				w.resetCurrentChildsNodeWorkState()
 				return
 			}
 
@@ -210,16 +211,20 @@ func (w *serverDrivenWorker) findWork() (cid.Cid, ipsl.Traversal, bool) {
 	}
 }
 
-// resetCurrentNodesWorkState updates the state of the current node to longer count towards it.
-func (w *serverDrivenWorker) resetCurrentNodesWorkState() {
+// resetCurrentChildsNodeWorkState updates the state of the current node to longer count towards it.
+func (w *serverDrivenWorker) resetCurrentChildsNodeWorkState() {
 	c := w.current
 	if c == nil {
 		return // nothing to do
 	}
-	w.current = nil
 
 	// recursively walk the state and remove ourself from counters
-	w.recurseCancelNode(c)
+	// This is pretty contensius but that should be fine because server driven downloads should be cancel rarely, also most of thoses are gonna go on the fast path anyway.	c.mu.Lock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, child := range c.childrens {
+		w.recurseCancelNode(child)
+	}
 }
 
 func (w *serverDrivenWorker) recurseCancelNode(c *node) {
@@ -229,11 +234,11 @@ func (w *serverDrivenWorker) recurseCancelNode(c *node) {
 
 	// This is pretty contensius but that should be fine because server driven downloads should be cancel rarely, also most of thoses are gonna go on the fast path anyway.	c.mu.Lock()
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.workers -= 1
 	for _, child := range c.childrens {
 		w.recurseCancelNode(child)
 	}
-	defer c.mu.Unlock()
 }
 
 func (w *serverDrivenWorker) isOurTask(c *node) bool {
