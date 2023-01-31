@@ -5,33 +5,38 @@ import (
 	"net/http"
 	"sort"
 
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
-	path "github.com/ipfs/interface-go-ipfs-core/path"
+	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-libipfs/blocks"
+	"github.com/ipfs/go-libipfs/files"
+	iface "github.com/ipfs/interface-go-ipfs-core"
+	options "github.com/ipfs/interface-go-ipfs-core/options"
+	"github.com/ipfs/interface-go-ipfs-core/path"
 )
 
-// Config is the configuration that will be applied when creating a new gateway
-// handler.
+// Config is the configuration used when creating a new gateway handler.
 type Config struct {
-	Headers  map[string][]string
-	Writable bool
+	Headers map[string][]string
 }
 
-// NodeAPI defines the minimal set of API services required by a gateway handler
-type NodeAPI interface {
-	// Unixfs returns an implementation of Unixfs API
-	Unixfs() coreiface.UnixfsAPI
+// API defines the minimal set of API services required for a gateway handler.
+type API interface {
+	// GetUnixFsNode returns a read-only handle to a file tree referenced by a path.
+	GetUnixFsNode(context.Context, path.Path) (files.Node, error)
 
-	// Block returns an implementation of Block API
-	Block() coreiface.BlockAPI
+	// LsUnixFsDir returns the list of links in a directory.
+	LsUnixFsDir(context.Context, path.Path, ...options.UnixfsLsOption) (<-chan iface.DirEntry, error)
 
-	// Dag returns an implementation of Dag API
-	Dag() coreiface.APIDagService
+	// GetBlock return a block from a certain CID.
+	GetBlock(context.Context, cid.Cid) (blocks.Block, error)
 
-	// Routing returns an implementation of Routing API.
-	// Used for returning signed IPNS records, see IPIP-0328
-	Routing() coreiface.RoutingAPI
+	// GetIPNSRecord retrieves the best IPNS record for a given CID (libp2p-key)
+	// from the routing system.
+	GetIPNSRecord(context.Context, cid.Cid) ([]byte, error)
 
-	// ResolvePath resolves the path using Unixfs resolver
+	// IsCached returns whether or not the path exists locally.
+	IsCached(context.Context, path.Path) bool
+
+	// ResolvePath resolves the path using UnixFS resolver
 	ResolvePath(context.Context, path.Path) (path.Resolved, error)
 }
 

@@ -23,7 +23,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	defer cancel()
 
 	// Get Unixfs file
-	file, err := i.api.Unixfs().Get(ctx, resolvedPath)
+	file, err := i.api.GetUnixFsNode(ctx, resolvedPath)
 	if err != nil {
 		webError(w, "ipfs cat "+html.EscapeString(contentPath.String()), err, http.StatusBadRequest)
 		return

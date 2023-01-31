@@ -5,17 +5,15 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	cid "github.com/ipfs/go-cid"
-	ipldlegacy "github.com/ipfs/go-ipld-legacy"
 	"github.com/ipfs/go-libipfs/gateway/assets"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
-	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/multicodec"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	mc "github.com/multiformats/go-multicodec"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -163,17 +161,12 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 // serveCodecRaw returns the raw block without any conversion
 func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, name string, modtime time.Time) {
 	blockCid := resolvedPath.Cid()
-	blockReader, err := i.api.Block().Get(ctx, resolvedPath)
+	block, err := i.api.GetBlock(ctx, blockCid)
 	if err != nil {
 		webError(w, "ipfs block get "+blockCid.String(), err, http.StatusInternalServerError)
 		return
 	}
-	block, err := io.ReadAll(blockReader)
-	if err != nil {
-		webError(w, "ipfs block get "+blockCid.String(), err, http.StatusInternalServerError)
-		return
-	}
-	content := bytes.NewReader(block)
+	content := bytes.NewReader(block.RawData())
 
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
@@ -182,19 +175,26 @@ func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *h
 
 // serveCodecConverted returns payload converted to codec specified in toCodec
 func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, toCodec mc.Code, modtime time.Time) {
-	obj, err := i.api.Dag().Get(ctx, resolvedPath.Cid())
+	blockCid := resolvedPath.Cid()
+	block, err := i.api.GetBlock(ctx, blockCid)
 	if err != nil {
-		webError(w, "ipfs dag get "+html.EscapeString(resolvedPath.String()), err, http.StatusInternalServerError)
+		webError(w, "ipfs block get "+html.EscapeString(resolvedPath.String()), err, http.StatusInternalServerError)
 		return
 	}
 
-	universal, ok := obj.(ipldlegacy.UniversalNode)
-	if !ok {
-		err = fmt.Errorf("%T is not a valid IPLD node", obj)
+	codec := blockCid.Prefix().Codec
+	decoder, err := multicodec.LookupDecoder(codec)
+	if err != nil {
 		webError(w, err.Error(), err, http.StatusInternalServerError)
 		return
 	}
-	finalNode := universal.(ipld.Node)
+
+	node := basicnode.Prototype.Any.NewBuilder()
+	err = decoder(node, bytes.NewReader(block.RawData()))
+	if err != nil {
+		webError(w, err.Error(), err, http.StatusInternalServerError)
+		return
+	}
 
 	encoder, err := multicodec.LookupEncoder(uint64(toCodec))
 	if err != nil {
@@ -204,7 +204,7 @@ func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter
 
 	// Ensure IPLD node conforms to the codec specification.
 	var buf bytes.Buffer
-	err = encoder(finalNode, &buf)
+	err = encoder(node.Build(), &buf)
 	if err != nil {
 		webError(w, err.Error(), err, http.StatusInternalServerError)
 		return

@@ -61,7 +61,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 
 	// Check if directory has index.html, if so, serveFile
 	idxPath := ipath.Join(contentPath, "index.html")
-	idx, err := i.api.Unixfs().Get(ctx, idxPath)
+	idx, err := i.api.GetUnixFsNode(ctx, idxPath)
 	switch err.(type) {
 	case nil:
 		f, ok := idx.(files.File)
@@ -107,7 +107,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	// Optimization: use Unixfs.Ls without resolving children, but using the
 	// cumulative DAG size as the file size. This allows for a fast listing
 	// while keeping a good enough Size field.
-	results, err := i.api.Unixfs().Ls(ctx,
+	results, err := i.api.LsUnixFsDir(ctx,
 		resolvedPath,
 		options.Unixfs.ResolveChildren(false),
 		options.Unixfs.UseCumulativeSize(true),

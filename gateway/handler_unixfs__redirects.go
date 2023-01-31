@@ -120,7 +120,7 @@ func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Reques
 
 func (i *handler) getRedirectRules(r *http.Request, redirectsFilePath ipath.Resolved) ([]redirects.Rule, error) {
 	// Convert the path into a file node
-	node, err := i.api.Unixfs().Get(r.Context(), redirectsFilePath)
+	node, err := i.api.GetUnixFsNode(r.Context(), redirectsFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("could not get _redirects: %w", err)
 	}
@@ -170,7 +170,7 @@ func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPat
 		return err
 	}
 
-	node, err := i.api.Unixfs().Get(r.Context(), resolved4xxPath)
+	node, err := i.api.GetUnixFsNode(r.Context(), resolved4xxPath)
 	if err != nil {
 		return err
 	}
@@ -220,7 +220,7 @@ func (i *handler) serveLegacy404IfPresent(w http.ResponseWriter, r *http.Request
 		return false
 	}
 
-	dr, err := i.api.Unixfs().Get(r.Context(), resolved404Path)
+	dr, err := i.api.GetUnixFsNode(r.Context(), resolved404Path)
 	if err != nil {
 		return false
 	}

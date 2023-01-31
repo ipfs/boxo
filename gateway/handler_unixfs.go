@@ -19,7 +19,7 @@ func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *htt
 	defer span.End()
 
 	// Handling UnixFS
-	dr, err := i.api.Unixfs().Get(ctx, resolvedPath)
+	dr, err := i.api.GetUnixFsNode(ctx, resolvedPath)
 	if err != nil {
 		webError(w, "ipfs cat "+html.EscapeString(contentPath.String()), err, http.StatusBadRequest)
 		return
