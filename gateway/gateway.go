@@ -9,7 +9,6 @@ import (
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-libipfs/files"
 	iface "github.com/ipfs/interface-go-ipfs-core"
-	options "github.com/ipfs/interface-go-ipfs-core/options"
 	"github.com/ipfs/interface-go-ipfs-core/path"
 )
 
@@ -21,10 +20,10 @@ type Config struct {
 // API defines the minimal set of API services required for a gateway handler.
 type API interface {
 	// GetUnixFsNode returns a read-only handle to a file tree referenced by a path.
-	GetUnixFsNode(context.Context, path.Path) (files.Node, error)
+	GetUnixFsNode(context.Context, path.Resolved) (files.Node, error)
 
 	// LsUnixFsDir returns the list of links in a directory.
-	LsUnixFsDir(context.Context, path.Path, ...options.UnixfsLsOption) (<-chan iface.DirEntry, error)
+	LsUnixFsDir(context.Context, path.Resolved) (<-chan iface.DirEntry, error)
 
 	// GetBlock return a block from a certain CID.
 	GetBlock(context.Context, cid.Cid) (blocks.Block, error)
@@ -36,7 +35,9 @@ type API interface {
 	// IsCached returns whether or not the path exists locally.
 	IsCached(context.Context, path.Path) bool
 
-	// ResolvePath resolves the path using UnixFS resolver
+	// ResolvePath resolves the path using UnixFS resolver. If the path does not
+	// exist due to a missing link, it should return an error of type:
+	// https://pkg.go.dev/github.com/ipfs/go-path@v0.3.0/resolver#ErrNoLink
 	ResolvePath(context.Context, path.Path) (path.Resolved, error)
 }
 
