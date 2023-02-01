@@ -18,6 +18,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
+	"github.com/ipfs/go-namesys"
 	"github.com/ipfs/go-path/resolver"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
@@ -743,6 +744,10 @@ func (i *handler) handlePathResolution(w http.ResponseWriter, r *http.Request, r
 	case coreiface.ErrOffline:
 		webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusServiceUnavailable)
 		return nil, nil, false
+	case namesys.ErrResolveFailed:
+		// Note: webError will replace http.StatusBadRequest with StatusNotFound or StatusRequestTimeout if necessary
+		webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusInternalServerError)
+		return nil, nil, false
 	default:
 		// The path can't be resolved.
 		if isUnixfsResponseFormat(responseFormat) {
@@ -767,7 +772,7 @@ func (i *handler) handlePathResolution(w http.ResponseWriter, r *http.Request, r
 			}
 		}
 
-		// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
+		// Note: webError will replace http.StatusBadRequest with StatusNotFound or StatusRequestTimeout if necessary
 		webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusBadRequest)
 		return nil, nil, false
 	}
