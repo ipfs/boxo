@@ -81,6 +81,7 @@ func (w *serverDrivenWorker) doOneDownload(ctx context.Context, workCid cid.Cid,
 		// If the error is that some blocks are not available, we should backtrack and find more work.
 		return err
 	}
+	defer stream.Close()
 
 	for {
 		if len(w.tasks) == 0 {

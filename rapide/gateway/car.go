@@ -4,6 +4,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/ipfs/go-cid"
@@ -30,7 +31,7 @@ func (g Gateway) String() string {
 	return g.PathName
 }
 
-func (g Gateway) Download(ctx context.Context, root cid.Cid, traversal ipsl.Traversal) (blocks.BlockIterator, error) {
+func (g Gateway) Download(ctx context.Context, root cid.Cid, traversal ipsl.Traversal) (rapide.ClosableBlockIterator, error) {
 	_, ok := traversal.(unixfs.EverythingNode)
 	if !ok {
 		return nil, fmt.Errorf("http-car only supports unixfs.Everything traversal, got: %q", traversal)
@@ -49,28 +50,22 @@ func (g Gateway) Download(ctx context.Context, root cid.Cid, traversal ipsl.Trav
 	}
 
 	if resp.StatusCode != 200 {
+		resp.Body.Close()
 		return nil, fmt.Errorf("non 200 error code: %d", resp.StatusCode)
 	}
 
 	stream, err := car.NewBlockReader(resp.Body)
 	if err != nil {
+		resp.Body.Close()
 		return nil, err
 	}
 
-	return download{resp.Body.Close, stream}, nil
+	return download{resp.Body, stream}, nil
 }
 
 type download struct {
-	close  func() error
-	stream *car.BlockReader
-}
-
-func (d download) Next() (blocks.Block, error) {
-	b, err := d.stream.Next()
-	if err != nil {
-		d.close()
-	}
-	return b, err
+	io.Closer
+	blocks.BlockIterator
 }
 
 func (g Gateway) getClient() *http.Client {

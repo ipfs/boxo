@@ -19,7 +19,14 @@ type ServerDrivenDownloader interface {
 	// When an error is seen on the channel, it is assumed that no more blocks will ever be received.
 	// Clients are not required to perform traversal validation, the RAPIDE client will takes care of this.
 	// Clients are required to validate hashes.
-	Download(context.Context, cid.Cid, ipsl.Traversal) (blocks.BlockIterator, error)
+	Download(context.Context, cid.Cid, ipsl.Traversal) (ClosableBlockIterator, error)
+}
+
+// ClosableBlockIterator is an interator that implements io.Closer, we will always cancel the context
+// and call close when stopping a request.
+type ClosableBlockIterator interface {
+	io.Closer
+	blocks.BlockIterator
 }
 
 // A Client is a collection of routers and protocols that can be used to do requests.
