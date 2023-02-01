@@ -11,7 +11,7 @@ import (
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
-	"github.com/ipfs/go-libipfs/gateway"
+	gw "github.com/ipfs/go-libipfs/examples/gateway"
 	carblockstore "github.com/ipld/go-car/v2/blockstore"
 )
 
@@ -26,12 +26,12 @@ func main() {
 	}
 	defer f.Close()
 
-	gateway, err := newBlocksGateway(blockService)
+	gateway, err := gw.NewBlocksGateway(blockService, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	handler := newHandler(gateway, *portPtr)
+	handler := gw.NewBlocksHandler(gateway, *portPtr)
 
 	address := "127.0.0.1:" + strconv.Itoa(*portPtr)
 	log.Printf("Listening on http://%s", address)
@@ -63,19 +63,4 @@ func newBlockServiceFromCAR(filepath string) (blockservice.BlockService, []cid.C
 
 	blockService := blockservice.New(bs, offline.Exchange(bs))
 	return blockService, roots, r, nil
-}
-
-func newHandler(gw *blocksGateway, port int) http.Handler {
-	headers := map[string][]string{}
-	gateway.AddAccessControlHeaders(headers)
-
-	conf := gateway.Config{
-		Headers: headers,
-	}
-
-	mux := http.NewServeMux()
-	gwHandler := gateway.NewHandler(conf, gw)
-	mux.Handle("/ipfs/", gwHandler)
-	mux.Handle("/ipns/", gwHandler)
-	return mux
 }

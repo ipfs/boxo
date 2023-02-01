@@ -1,9 +1,9 @@
-package main
+package gateway
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"net/http"
 	gopath "path"
 
 	"github.com/ipfs/go-blockservice"
@@ -13,7 +13,10 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-libipfs/files"
+	"github.com/ipfs/go-libipfs/gateway"
 	"github.com/ipfs/go-merkledag"
+	"github.com/ipfs/go-namesys"
+	"github.com/ipfs/go-namesys/resolve"
 	ipfspath "github.com/ipfs/go-path"
 	"github.com/ipfs/go-path/resolver"
 	"github.com/ipfs/go-unixfs"
@@ -26,16 +29,36 @@ import (
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/schema"
+	"github.com/libp2p/go-libp2p/core/routing"
 )
 
-type blocksGateway struct {
+func NewBlocksHandler(gw *BlocksGateway, port int) http.Handler {
+	headers := map[string][]string{}
+	gateway.AddAccessControlHeaders(headers)
+
+	conf := gateway.Config{
+		Headers: headers,
+	}
+
+	mux := http.NewServeMux()
+	gwHandler := gateway.NewHandler(conf, gw)
+	mux.Handle("/ipfs/", gwHandler)
+	mux.Handle("/ipns/", gwHandler)
+	return mux
+}
+
+type BlocksGateway struct {
 	blockStore   blockstore.Blockstore
 	blockService blockservice.BlockService
 	dagService   format.DAGService
 	resolver     resolver.Resolver
+
+	// Optional routing system to handle /ipns addresses.
+	namesys namesys.NameSystem
+	routing routing.ValueStore
 }
 
-func newBlocksGateway(blockService blockservice.BlockService) (*blocksGateway, error) {
+func NewBlocksGateway(blockService blockservice.BlockService, routing routing.ValueStore) (*BlocksGateway, error) {
 	// Setup the DAG services, which use the CAR block store.
 	dagService := merkledag.NewDAGService(blockService)
 
@@ -50,15 +73,29 @@ func newBlocksGateway(blockService blockservice.BlockService) (*blocksGateway, e
 	fetcher := fetcherConfig.WithReifier(unixfsnode.Reify)
 	resolver := resolver.NewBasicResolver(fetcher)
 
-	return &blocksGateway{
+	// Setup a name system so that we are able to resolve /ipns links.
+	var (
+		ns  namesys.NameSystem
+		err error
+	)
+	if routing != nil {
+		ns, err = namesys.NewNameSystem(routing)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &BlocksGateway{
 		blockStore:   blockService.Blockstore(),
 		blockService: blockService,
 		dagService:   dagService,
 		resolver:     resolver,
+		routing:      routing,
+		namesys:      ns,
 	}, nil
 }
 
-func (api *blocksGateway) GetUnixFsNode(ctx context.Context, p ifacepath.Resolved) (files.Node, error) {
+func (api *BlocksGateway) GetUnixFsNode(ctx context.Context, p ifacepath.Resolved) (files.Node, error) {
 	nd, err := api.resolveNode(ctx, p)
 	if err != nil {
 		return nil, err
@@ -67,7 +104,7 @@ func (api *blocksGateway) GetUnixFsNode(ctx context.Context, p ifacepath.Resolve
 	return ufile.NewUnixfsFile(ctx, api.dagService, nd)
 }
 
-func (api *blocksGateway) LsUnixFsDir(ctx context.Context, p ifacepath.Resolved) (<-chan iface.DirEntry, error) {
+func (api *BlocksGateway) LsUnixFsDir(ctx context.Context, p ifacepath.Resolved) (<-chan iface.DirEntry, error) {
 	node, err := api.resolveNode(ctx, p)
 	if err != nil {
 		return nil, err
@@ -94,15 +131,19 @@ func (api *blocksGateway) LsUnixFsDir(ctx context.Context, p ifacepath.Resolved)
 	return out, nil
 }
 
-func (api *blocksGateway) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+func (api *BlocksGateway) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
 	return api.blockService.GetBlock(ctx, c)
 }
 
-func (api *blocksGateway) GetIPNSRecord(context.Context, cid.Cid) ([]byte, error) {
-	return nil, errors.New("not implemented")
+func (api *BlocksGateway) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
+	if api.routing != nil {
+		return api.routing.GetValue(ctx, "/ipns/"+c.String())
+	}
+
+	return nil, routing.ErrNotSupported
 }
 
-func (api *blocksGateway) IsCached(ctx context.Context, p ifacepath.Path) bool {
+func (api *BlocksGateway) IsCached(ctx context.Context, p ifacepath.Path) bool {
 	rp, err := api.ResolvePath(ctx, p)
 	if err != nil {
 		return false
@@ -112,20 +153,28 @@ func (api *blocksGateway) IsCached(ctx context.Context, p ifacepath.Path) bool {
 	return has
 }
 
-func (api *blocksGateway) ResolvePath(ctx context.Context, p ifacepath.Path) (ifacepath.Resolved, error) {
+func (api *BlocksGateway) ResolvePath(ctx context.Context, p ifacepath.Path) (ifacepath.Resolved, error) {
 	if _, ok := p.(ifacepath.Resolved); ok {
 		return p.(ifacepath.Resolved), nil
 	}
 
-	if err := p.IsValid(); err != nil {
+	err := p.IsValid()
+	if err != nil {
 		return nil, err
 	}
 
-	if p.Namespace() != "ipfs" {
+	ipath := ipfspath.Path(p.String())
+	if ipath.Segments()[0] == "ipns" {
+		ipath, err = resolve.ResolveIPNS(ctx, api.namesys, ipath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if ipath.Segments()[0] != "ipfs" {
 		return nil, fmt.Errorf("unsupported path namespace: %s", p.Namespace())
 	}
 
-	ipath := ipfspath.Path(p.String())
 	node, rest, err := api.resolver.ResolveToLastNode(ctx, ipath)
 	if err != nil {
 		return nil, err
@@ -139,7 +188,7 @@ func (api *blocksGateway) ResolvePath(ctx context.Context, p ifacepath.Path) (if
 	return ifacepath.NewResolvedPath(ipath, node, root, gopath.Join(rest...)), nil
 }
 
-func (api *blocksGateway) resolveNode(ctx context.Context, p ifacepath.Path) (format.Node, error) {
+func (api *BlocksGateway) resolveNode(ctx context.Context, p ifacepath.Path) (format.Node, error) {
 	rp, err := api.ResolvePath(ctx, p)
 	if err != nil {
 		return nil, err
@@ -152,7 +201,7 @@ func (api *blocksGateway) resolveNode(ctx context.Context, p ifacepath.Path) (fo
 	return node, nil
 }
 
-func (api *blocksGateway) processLink(ctx context.Context, result unixfs.LinkResult) iface.DirEntry {
+func (api *BlocksGateway) processLink(ctx context.Context, result unixfs.LinkResult) iface.DirEntry {
 	if result.Err != nil {
 		return iface.DirEntry{Err: result.Err}
 	}
