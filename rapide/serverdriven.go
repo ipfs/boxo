@@ -118,9 +118,10 @@ func (w *serverDrivenWorker) doOneDownload(ctx context.Context, workCid cid.Cid,
 			return errGotDoneBlock
 		}
 		if err := task.expand(w.download, b); err != nil {
-			task.mu.Unlock()
 			return err
 		}
+
+		task.mu.Lock()
 
 	Switch:
 		switch len(task.childrens) {

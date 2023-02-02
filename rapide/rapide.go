@@ -60,12 +60,12 @@ func (c *Client) Get(ctx context.Context, root cid.Cid, traversal ipsl.Traversal
 }
 
 type download struct {
+	done      uint64 // done must be first due to 64bits types allignement issues on 32bits
 	out       chan<- blocks.BlockOrError
 	ctx       context.Context
 	cancel    context.CancelFunc
 	root      node
 	errors    []error
-	done      uint64
 	closeOnce sync.Once
 }
 
@@ -89,11 +89,10 @@ func (d *download) finish() {
 }
 
 func (d *download) workerFinished() {
-	// don't decrement d.done because if we suceeded we don't want them to attempt to return an error
-	d.root.mu.Lock()
-	defer d.root.mu.Unlock()
-	if d.root.state == done && len(d.root.childrens) == 0 {
-		d.finish() // file was downloaded !
+	var minusOne uint64
+	minusOne--
+	if atomic.AddUint64(&d.done, minusOne) == 0 {
+		d.finish()
 	}
 }
 
@@ -121,7 +120,8 @@ type node struct {
 	state     nodeState
 }
 
-// expand will run the Traversal and create childrens, it must be called while holding n.mu.Mutex
+// expand will run the Traversal and create childrens, it must be called while holding n.mu.Mutex.
+// it will unlock n.mu.Mutex
 func (n *node) expand(d *download, b blocks.Block) error {
 	if n.state != todo {
 		panic(fmt.Sprintf("expanding a node that is not todo: %d", n.state))
@@ -130,6 +130,7 @@ func (n *node) expand(d *download, b blocks.Block) error {
 	newResults, err := n.traversal.Traverse(b)
 	if err != nil {
 		d.err(err)
+		n.mu.Unlock()
 		return err
 	}
 
@@ -147,10 +148,18 @@ func (n *node) expand(d *download, b blocks.Block) error {
 	}
 	n.childrens = childrens
 
-	for node, parent := n, n.parent; len(node.childrens) == 0; node, parent = parent, parent.parent {
+	// bubble up node removal
+	node, parent := n, n.parent
+	for {
+		haveChildrens := len(node.childrens) != 0
+		node.mu.Unlock()
+
+		if haveChildrens {
+			break
+		}
+
 		if parent == nil {
 			// finished!
-			d.finish()
 			return io.EOF
 		}
 
@@ -165,7 +174,8 @@ func (n *node) expand(d *download, b blocks.Block) error {
 			parent.childrens = append(childrens, nil)[:len(childrens)] // null out for gc
 			break
 		}
-		parent.mu.Unlock()
+
+		node, parent = parent, parent.parent
 	}
 
 	return nil
