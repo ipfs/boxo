@@ -9,6 +9,7 @@ import (
 	"github.com/ipfs/go-blockservice"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	"github.com/ipfs/go-libipfs/examples/gateway/common"
+	"github.com/ipfs/go-libipfs/gateway"
 )
 
 func main() {
@@ -24,16 +25,28 @@ func main() {
 	routing := newProxyRouting(*gatewayUrlPtr, nil)
 
 	// Creates the gateway with the block service and the routing.
-	gateway, err := common.NewBlocksGateway(blockService, routing)
+	gwAPI, err := common.NewBlocksGateway(blockService, routing)
 	if err != nil {
 		log.Fatal(err)
 	}
+	handler := common.NewBlocksHandler(gwAPI, *portPtr)
 
-	handler := common.NewBlocksHandler(gateway, *portPtr)
-	address := "127.0.0.1:" + strconv.Itoa(*portPtr)
-	log.Printf("Listening on http://%s", address)
+	// Initialize the public gateways that we will want to have available through
+	// Host header rewritting. This step is optional and only required if you're
+	// running multiple public gateways and want different settings and support
+	// for DNSLink and Subdomain Gateways.
+	publicGateways := map[string]*gateway.Specification{
+		"localhost": {
+			Paths:         []string{"/ipfs", "/ipns"},
+			NoDNSLink:     true,
+			UseSubdomains: true,
+		},
+	}
+	noDNSLink := true
+	handler = gateway.WithHostname(handler, gwAPI, publicGateways, noDNSLink)
 
-	if err := http.ListenAndServe(address, handler); err != nil {
+	log.Printf("Listening on http://localhost:%d", *portPtr)
+	if err := http.ListenAndServe(":"+strconv.Itoa(*portPtr), handler); err != nil {
 		log.Fatal(err)
 	}
 }

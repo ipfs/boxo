@@ -31,6 +31,6 @@ types. Once you have it, run the proxy gateway with its address as the host para
 ./verifying-proxy -h https://ipfs.io -p 8040
 ```
 
-Now you can access the gateway in [127.0.0.1:8040](http://127.0.0.1:8040). It will
+Now you can access the gateway in [localhost:8040](http://localhost:8040). It will
 behave like a regular IPFS Gateway, except for the fact that it runs no libp2p, and has no local blockstore.
 All contents are provided by a remote  gateway and fetched as RAW Blocks and Records, and verified locally.

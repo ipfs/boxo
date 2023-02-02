@@ -32,6 +32,12 @@ type API interface {
 	// from the routing system.
 	GetIPNSRecord(context.Context, cid.Cid) ([]byte, error)
 
+	// GetDNSLinkRecord returns the DNSLink TXT record for the provided FQDN.
+	// Unlike ResolvePath, it does not perform recursive resolution. It only
+	// checks for the existence of a DNSLink TXT record with path starting with
+	// /ipfs/ or /ipns/ and returns the path as-is.
+	GetDNSLinkRecord(context.Context, string) (path.Path, error)
+
 	// IsCached returns whether or not the path exists locally.
 	IsCached(context.Context, path.Path) bool
 

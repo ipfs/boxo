@@ -26,7 +26,7 @@ Then, you can start the gateway with:
 ./gateway -c data.car -p 8040
 ```
 
-Now you can access the gateway in [127.0.0.1:8040](http://127.0.0.1:8040). It will
+Now you can access the gateway in [localhost:8040](http://localhost:8040). It will
 behave like a regular IPFS Gateway, except for the fact that all contents are provided
 from the CAR file. Therefore, things such as IPNS resolution and fetching contents
 from nodes in the IPFS network won't work.
