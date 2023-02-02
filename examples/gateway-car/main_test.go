@@ -16,7 +16,7 @@ const (
 )
 
 func newTestServer() (*httptest.Server, io.Closer, error) {
-	blockService, f, err := newBlockServiceFromCAR("./test.car")
+	blockService, _, f, err := newBlockServiceFromCAR("./test.car")
 	if err != nil {
 		return nil, nil, err
 	}
