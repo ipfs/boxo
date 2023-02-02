@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"io"
 	"log"
@@ -21,7 +20,7 @@ func main() {
 	portPtr := flag.Int("p", 8080, "port to run this gateway from")
 	flag.Parse()
 
-	blockService, root, f, err := newBlockServiceFromCAR(*carFilePtr)
+	blockService, roots, f, err := newBlockServiceFromCAR(*carFilePtr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -36,14 +35,16 @@ func main() {
 
 	address := "127.0.0.1:" + strconv.Itoa(*portPtr)
 	log.Printf("Listening on http://%s", address)
-	log.Printf("Hosting CAR root at http://%s/ipfs/%s", address, root.String())
+	for _, cid := range roots {
+		log.Printf("Hosting CAR root at http://%s/ipfs/%s", address, cid.String())
+	}
 
 	if err := http.ListenAndServe(address, handler); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func newBlockServiceFromCAR(filepath string) (blockservice.BlockService, *cid.Cid, io.Closer, error) {
+func newBlockServiceFromCAR(filepath string) (blockservice.BlockService, []cid.Cid, io.Closer, error) {
 	r, err := os.Open(filepath)
 	if err != nil {
 		return nil, nil, nil, err
@@ -60,12 +61,8 @@ func newBlockServiceFromCAR(filepath string) (blockservice.BlockService, *cid.Ci
 		return nil, nil, nil, err
 	}
 
-	if len(roots) == 0 {
-		return nil, nil, nil, errors.New("provided CAR file has no roots")
-	}
-
 	blockService := blockservice.New(bs, offline.Exchange(bs))
-	return blockService, &roots[0], r, nil
+	return blockService, roots, r, nil
 }
 
 func newHandler(gw *blocksGateway, port int) http.Handler {
