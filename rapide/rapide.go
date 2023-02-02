@@ -44,6 +44,7 @@ func (c *Client) Get(ctx context.Context, root cid.Cid, traversal ipsl.Traversal
 		done:   uint64(len(c.ServerDrivenDownloaders)),
 		root: node{
 			state:     todo,
+			workers:   uint(len(c.ServerDrivenDownloaders)),
 			cid:       root,
 			traversal: traversal,
 		},

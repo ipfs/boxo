@@ -178,7 +178,9 @@ func (w *serverDrivenWorker) findWork() (cid.Cid, ipsl.Traversal, bool) {
 			// TODO: add smart racing support, someone is already taking care of this, we should backtrack
 		case done:
 			// first search in it's childs if it has something we could run
-			c.workers += 1
+			if c != w.current {
+				c.workers += 1
+			}
 			var minWorkers, luck uint
 			var min *node
 			for _, child := range c.childrens {
@@ -199,14 +201,17 @@ func (w *serverDrivenWorker) findWork() (cid.Cid, ipsl.Traversal, bool) {
 			c = new
 			continue
 		default:
+			s := c.state
 			c.mu.Unlock()
-			panic(fmt.Sprintf("unkown node state: %d", c.state))
+			panic(fmt.Sprintf("unkown node state: %d", s))
 		}
 	}
 }
 
 func (w *serverDrivenWorker) compareChildWithMinimums(child *node, minWorkers uint, min *node, luck uint) (uint, *node, uint) {
 	child.mu.Lock()
+	defer child.mu.Unlock()
+
 	switch {
 	case min == nil:
 		minWorkers = child.workers
@@ -229,12 +234,11 @@ func (w *serverDrivenWorker) compareChildWithMinimums(child *node, minWorkers ui
 		min = child
 		luck = newLuck
 	}
-	child.mu.Unlock()
 
 	return minWorkers, min, luck
 }
 
-// resetCurrentChildsNodeWorkState updates the state of the current node to longer count towards it.
+// resetCurrentChildsNodeWorkState updates the state of childs of the current node to longer count towards it.
 func (w *serverDrivenWorker) resetCurrentChildsNodeWorkState() {
 	c := w.current
 	if c == nil {
@@ -250,7 +254,7 @@ func (w *serverDrivenWorker) resetCurrentChildsNodeWorkState() {
 	}
 }
 
-// resetCurrentChildsNodeWorkState updates the state of the current node to longer count towards it.
+// resetAllCurrentNodesWorkState updates the state of the current node to longer count towards it.
 func (w *serverDrivenWorker) resetAllCurrentNodesWorkState() {
 	c := w.current
 	if c == nil {
