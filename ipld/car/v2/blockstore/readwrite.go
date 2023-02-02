@@ -16,6 +16,7 @@ import (
 	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
+	"github.com/ipld/go-car/v2/internal/insertionindex"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 )
 
@@ -35,7 +36,7 @@ type ReadWrite struct {
 
 	f          *os.File
 	dataWriter *internalio.OffsetWriteSeeker
-	idx        *insertionIndex
+	idx        *insertionindex.InsertionIndex
 	header     carv2.Header
 
 	opts carv2.Options
@@ -134,7 +135,7 @@ func OpenReadWriteFile(f *os.File, roots []cid.Cid, opts ...carv2.Option) (*Read
 	// Set the header fileld before applying options since padding options may modify header.
 	rwbs := &ReadWrite{
 		f:      f,
-		idx:    newInsertionIndex(),
+		idx:    insertionindex.NewInsertionIndex(),
 		header: carv2.NewHeader(0),
 		opts:   carv2.ApplyOptions(opts...),
 	}
@@ -309,7 +310,7 @@ func (b *ReadWrite) resumeWithRoots(v2 bool, roots []cid.Cid) error {
 		if err != nil {
 			return err
 		}
-		b.idx.insertNoReplace(c, uint64(sectionOffset))
+		b.idx.InsertNoReplace(c, uint64(sectionOffset))
 
 		// Seek to the next section by skipping the block.
 		// The section length includes the CID, so subtract it.
@@ -366,7 +367,7 @@ func (b *ReadWrite) PutMany(ctx context.Context, blks []blocks.Block) error {
 		}
 
 		if !b.opts.BlockstoreAllowDuplicatePuts {
-			if b.ronly.opts.BlockstoreUseWholeCIDs && b.idx.hasExactCID(c) {
+			if b.ronly.opts.BlockstoreUseWholeCIDs && b.idx.HasExactCID(c) {
 				continue // deduplicated by CID
 			}
 			if !b.ronly.opts.BlockstoreUseWholeCIDs {
@@ -381,7 +382,7 @@ func (b *ReadWrite) PutMany(ctx context.Context, blks []blocks.Block) error {
 		if err := util.LdWrite(b.dataWriter, c.Bytes(), bl.RawData()); err != nil {
 			return err
 		}
-		b.idx.insertNoReplace(c, n)
+		b.idx.InsertNoReplace(c, n)
 	}
 	return nil
 }
@@ -428,7 +429,7 @@ func (b *ReadWrite) Finalize() error {
 	defer b.ronly.closeWithoutMutex()
 
 	// TODO if index not needed don't bother flattening it.
-	fi, err := b.idx.flatten(b.opts.IndexCodec)
+	fi, err := b.idx.Flatten(b.opts.IndexCodec)
 	if err != nil {
 		return err
 	}

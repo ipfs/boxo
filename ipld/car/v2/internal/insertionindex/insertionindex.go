@@ -1,4 +1,4 @@
-package blockstore
+package insertionindex
 
 import (
 	"bytes"
@@ -24,16 +24,18 @@ var (
 	insertionIndexCodec = multicodec.Code(0x300003)
 )
 
-type (
-	insertionIndex struct {
-		items llrb.LLRB
-	}
+type InsertionIndex struct {
+	items llrb.LLRB
+}
 
-	recordDigest struct {
-		digest []byte
-		index.Record
-	}
-)
+func NewInsertionIndex() *InsertionIndex {
+	return &InsertionIndex{}
+}
+
+type recordDigest struct {
+	digest []byte
+	index.Record
+}
 
 func (r recordDigest) Less(than llrb.Item) bool {
 	other, ok := than.(recordDigest)
@@ -61,11 +63,11 @@ func newRecordFromCid(c cid.Cid, at uint64) recordDigest {
 	return recordDigest{d.Digest, index.Record{Cid: c, Offset: at}}
 }
 
-func (ii *insertionIndex) insertNoReplace(key cid.Cid, n uint64) {
+func (ii *InsertionIndex) InsertNoReplace(key cid.Cid, n uint64) {
 	ii.items.InsertNoReplace(newRecordFromCid(key, n))
 }
 
-func (ii *insertionIndex) Get(c cid.Cid) (uint64, error) {
+func (ii *InsertionIndex) Get(c cid.Cid) (uint64, error) {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
 		return 0, err
@@ -83,7 +85,7 @@ func (ii *insertionIndex) Get(c cid.Cid) (uint64, error) {
 	return r.Record.Offset, nil
 }
 
-func (ii *insertionIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {
+func (ii *InsertionIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
 		return err
@@ -107,7 +109,7 @@ func (ii *insertionIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {
 	return nil
 }
 
-func (ii *insertionIndex) Marshal(w io.Writer) (uint64, error) {
+func (ii *InsertionIndex) Marshal(w io.Writer) (uint64, error) {
 	l := uint64(0)
 	if err := binary.Write(w, binary.LittleEndian, int64(ii.items.Len())); err != nil {
 		return l, err
@@ -125,7 +127,7 @@ func (ii *insertionIndex) Marshal(w io.Writer) (uint64, error) {
 	return l, err
 }
 
-func (ii *insertionIndex) Unmarshal(r io.Reader) error {
+func (ii *InsertionIndex) Unmarshal(r io.Reader) error {
 	var length int64
 	if err := binary.Read(r, binary.LittleEndian, &length); err != nil {
 		return err
@@ -141,7 +143,7 @@ func (ii *insertionIndex) Unmarshal(r io.Reader) error {
 	return nil
 }
 
-func (ii *insertionIndex) ForEach(f func(multihash.Multihash, uint64) error) error {
+func (ii *InsertionIndex) ForEach(f func(multihash.Multihash, uint64) error) error {
 	var errr error
 	ii.items.AscendGreaterOrEqual(ii.items.Min(), func(i llrb.Item) bool {
 		r := i.(recordDigest).Record
@@ -155,11 +157,11 @@ func (ii *insertionIndex) ForEach(f func(multihash.Multihash, uint64) error) err
 	return errr
 }
 
-func (ii *insertionIndex) Codec() multicodec.Code {
+func (ii *InsertionIndex) Codec() multicodec.Code {
 	return insertionIndexCodec
 }
 
-func (ii *insertionIndex) Load(rs []index.Record) error {
+func (ii *InsertionIndex) Load(rs []index.Record) error {
 	for _, r := range rs {
 		rec := newRecordDigest(r)
 		if rec.digest == nil {
@@ -170,12 +172,8 @@ func (ii *insertionIndex) Load(rs []index.Record) error {
 	return nil
 }
 
-func newInsertionIndex() *insertionIndex {
-	return &insertionIndex{}
-}
-
 // flatten returns a formatted index in the given codec for more efficient subsequent loading.
-func (ii *insertionIndex) flatten(codec multicodec.Code) (index.Index, error) {
+func (ii *InsertionIndex) Flatten(codec multicodec.Code) (index.Index, error) {
 	si, err := index.New(codec)
 	if err != nil {
 		return nil, err
@@ -200,7 +198,7 @@ func (ii *insertionIndex) flatten(codec multicodec.Code) (index.Index, error) {
 // but it's separate as it allows us to compare Record.Cid directly,
 // whereas GetAll just provides Record.Offset.
 
-func (ii *insertionIndex) hasExactCID(c cid.Cid) bool {
+func (ii *InsertionIndex) HasExactCID(c cid.Cid) bool {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
 		panic(err)

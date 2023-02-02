@@ -12,6 +12,7 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	blocks "github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-merkledag"
+	internalio "github.com/ipld/go-car/v2/internal/io"
 )
 
 const DefaultMaxAllowedHeaderSize uint64 = 32 << 20 // 32MiB
@@ -57,6 +58,21 @@ func WriteCar(ctx context.Context, ds format.NodeGetter, roots []cid.Cid, w io.W
 		}
 	}
 	return nil
+}
+
+func ReadHeaderAt(at io.ReaderAt, maxReadBytes uint64) (*CarHeader, error) {
+	var rr io.Reader
+	switch r := at.(type) {
+	case io.Reader:
+		rr = r
+	default:
+		var err error
+		rr, err = internalio.NewOffsetReadSeeker(r, 0)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return ReadHeader(rr, maxReadBytes)
 }
 
 func ReadHeader(r io.Reader, maxReadBytes uint64) (*CarHeader, error) {
