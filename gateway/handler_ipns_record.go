@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/ipfs/go-cid"
 	ipns_pb "github.com/ipfs/go-ipns/pb"
-	path "github.com/ipfs/go-path"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.uber.org/zap"
 )
@@ -24,13 +24,20 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 
 	key := contentPath.String()
 	key = strings.TrimSuffix(key, "/")
-	if strings.Count(key, "/") > 2 {
+	key = strings.TrimPrefix(key, "/ipns/")
+	if strings.Count(key, "/") != 0 {
 		err := errors.New("cannot find ipns key for subpath")
 		webError(w, err.Error(), err, http.StatusBadRequest)
 		return
 	}
 
-	rawRecord, err := i.api.Routing().Get(ctx, key)
+	c, err := cid.Decode(key)
+	if err != nil {
+		webError(w, err.Error(), err, http.StatusBadRequest)
+		return
+	}
+
+	rawRecord, err := i.api.GetIPNSRecord(ctx, c)
 	if err != nil {
 		webError(w, err.Error(), err, http.StatusInternalServerError)
 		return
@@ -60,7 +67,7 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 	if urlFilename := r.URL.Query().Get("filename"); urlFilename != "" {
 		name = urlFilename
 	} else {
-		name = path.SplitList(key)[2] + ".ipns-record"
+		name = key + ".ipns-record"
 	}
 	setContentDispositionHeader(w, name, "attachment")
 
