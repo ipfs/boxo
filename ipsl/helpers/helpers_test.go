@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-libipfs/ipsl"
 	. "github.com/ipfs/go-libipfs/ipsl/helpers"
 	"github.com/multiformats/go-multihash"
@@ -27,13 +28,13 @@ func (n mockTraversal) SerializeForNetwork() (ipsl.AstNode, error) {
 	return n.Serialize()
 }
 
-func (n mockTraversal) Traverse(c cid.Cid, data []byte) ([]ipsl.CidTraversalPair, error) {
+func (n mockTraversal) Traverse(b blocks.Block) ([]ipsl.CidTraversalPair, error) {
 	var bad bool
-	if !bytes.Equal(data, n.expectedData) {
+	if data := b.RawData(); !bytes.Equal(data, n.expectedData) {
 		n.t.Errorf("got wrong bytes in Traverse: expected %#v; got %#v", n.expectedData, data)
 		bad = true
 	}
-	if !c.Equals(n.expectedCid) {
+	if c := b.Cid(); !c.Equals(n.expectedCid) {
 		n.t.Errorf("got wrong cid: expected %v; got %v", n.expectedCid, c)
 		bad = true
 	}
@@ -46,12 +47,27 @@ func (n mockTraversal) Traverse(c cid.Cid, data []byte) ([]ipsl.CidTraversalPair
 
 type mockByteBlockGetter map[cid.Cid][]byte
 
-func (g mockByteBlockGetter) GetBlock(_ context.Context, c cid.Cid) ([]byte, error) {
+func (g mockByteBlockGetter) GetBlock(_ context.Context, c cid.Cid) (blocks.Block, error) {
 	b, ok := g[c]
 	if !ok {
 		panic(fmt.Sprintf("missing block requested %v", c))
 	}
-	return b, nil
+	return blocks.NewBlockWithCid(b, c)
+}
+
+func (g mockByteBlockGetter) GetBlocks(ctx context.Context, cids []cid.Cid) <-chan blocks.Block {
+	r := make(chan blocks.Block, len(cids))
+	defer close(r)
+
+	for _, c := range cids {
+		b, err := g.GetBlock(ctx, c)
+		if err != nil {
+			continue
+		}
+		r <- b
+	}
+
+	return r
 }
 
 func TestSyncDFS(t *testing.T) {
@@ -119,8 +135,9 @@ func TestSyncDFS(t *testing.T) {
 	}}
 
 	var result []cid.Cid
-	err = SyncDFS(ctx, root1Cid, traversal, getter, 10, func(c cid.Cid, data []byte) error {
-		if realBytes := getter[c]; !bytes.Equal(data, realBytes) {
+	err = SyncDFS(ctx, root1Cid, traversal, getter, 10, func(b blocks.Block) error {
+		c := b.Cid()
+		if realBytes, data := getter[c], b.RawData(); !bytes.Equal(data, realBytes) {
 			t.Errorf("got wrong bytes in callBack: expected %#v; got %#v", realBytes, data)
 		}
 

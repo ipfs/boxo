@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-libipfs/blocks"
 	. "github.com/ipfs/go-libipfs/ipsl"
 )
 
@@ -156,7 +157,7 @@ func TestEmpty(t *testing.T) {
 		}
 	}
 
-	cids, err := trav.Traverse(cid.MustParse("bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"), []byte{})
+	cids, err := trav.Traverse(blocks.NewBlock([]byte("some bytes")))
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err.Error())
 	}

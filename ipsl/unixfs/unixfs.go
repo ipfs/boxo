@@ -4,11 +4,11 @@ package unixfs
 import (
 	"fmt"
 
-	"github.com/ipfs/go-libipfs/ipsl"
-	unixfs_pb "github.com/ipfs/go-unixfs/pb"
-
 	"github.com/gogo/protobuf/proto"
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-libipfs/blocks"
+	"github.com/ipfs/go-libipfs/ipsl"
+	unixfs_pb "github.com/ipfs/go-unixfs/pb"
 	"github.com/ipfs/go-merkledag/pb"
 )
 
@@ -35,13 +35,13 @@ func (n EverythingNode) SerializeForNetwork() (ipsl.AstNode, error) {
 	return n.Serialize()
 }
 
-func (n EverythingNode) Traverse(c cid.Cid, bytes []byte) ([]ipsl.CidTraversalPair, error) {
-	switch codec := c.Prefix().Codec; codec {
+func (n EverythingNode) Traverse(b blocks.Block) ([]ipsl.CidTraversalPair, error) {
+	switch codec := b.Cid().Prefix().Codec; codec {
 	case cid.Raw:
 		return []ipsl.CidTraversalPair{}, nil
 	case cid.DagProtobuf:
 		var dagpb merkledag_pb.PBNode
-		err := proto.Unmarshal(bytes, &dagpb)
+		err := proto.Unmarshal(b.RawData(), &dagpb)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing dagpb node: %w", err)
 		}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-libipfs/blocks"
 )
 
 type CidTraversalPair struct {
@@ -16,7 +17,7 @@ type Traversal interface {
 
 	// Traverse must never be called with bytes not matching the cid.
 	// The bytes must never be modified by the implementations.
-	Traverse(cid.Cid, []byte) ([]CidTraversalPair, error)
+	Traverse(blocks.Block) ([]CidTraversalPair, error)
 }
 
 type Node interface {
@@ -61,7 +62,8 @@ func CompileAll(scopeName string, arguments ...SomeNode) (SomeNode, error) {
 	return SomeNode{All(traversals...)}, nil
 }
 
-func (n AllNode) Traverse(c cid.Cid, _ []byte) ([]CidTraversalPair, error) {
+func (n AllNode) Traverse(b blocks.Block) ([]CidTraversalPair, error) {
+	c := b.Cid()
 	r := make([]CidTraversalPair, len(n.Traversals))
 	for i, t := range n.Traversals {
 		r[i] = CidTraversalPair{c, t}
@@ -137,7 +139,7 @@ func Empty() Traversal {
 	return EmptyTraversal{}
 }
 
-func (c EmptyTraversal) Traverse(_ cid.Cid, _ []byte) ([]CidTraversalPair, error) {
+func (c EmptyTraversal) Traverse(_ blocks.Block) ([]CidTraversalPair, error) {
 	return []CidTraversalPair{}, nil
 }
 
