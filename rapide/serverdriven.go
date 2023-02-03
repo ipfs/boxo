@@ -53,7 +53,7 @@ func (w *serverDrivenWorker) work(ctx context.Context) {
 
 		err := w.doOneDownload(ctx, workCid, traversal)
 		switch err {
-		case nil, io.EOF, errGotDoneBlock:
+		case nil, io.EOF, errGotDoneBlock, errGotUnexpectedBlock:
 			w.resetCurrentChildsNodeWorkState()
 			continue
 		default:
@@ -67,7 +67,7 @@ func (w *serverDrivenWorker) work(ctx context.Context) {
 	}
 }
 
-var errUnexpectedBlock = errors.New("got an unexpected block")
+var errGotUnexpectedBlock = errors.New("got an unexpected block")
 var errGotDoneBlock = errors.New("downloaded an already done node")
 
 // doOneDownload will return nil when it does not find work
@@ -107,7 +107,7 @@ func (w *serverDrivenWorker) doOneDownload(ctx context.Context, workCid cid.Cid,
 		task, ok := w.tasks[c]
 		if !ok {
 			// received unexpected block
-			return errUnexpectedBlock
+			return errGotUnexpectedBlock
 		}
 		delete(w.tasks, c)
 
