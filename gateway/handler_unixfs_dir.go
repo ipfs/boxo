@@ -14,7 +14,6 @@ import (
 	"github.com/ipfs/go-libipfs/gateway/assets"
 	path "github.com/ipfs/go-path"
 	"github.com/ipfs/go-path/resolver"
-	options "github.com/ipfs/interface-go-ipfs-core/options"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -61,9 +60,15 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 
 	// Check if directory has index.html, if so, serveFile
 	idxPath := ipath.Join(contentPath, "index.html")
-	idx, err := i.api.Unixfs().Get(ctx, idxPath)
+	idxResolvedPath, err := i.api.ResolvePath(ctx, idxPath)
 	switch err.(type) {
 	case nil:
+		idx, err := i.api.GetUnixFsNode(ctx, idxResolvedPath)
+		if err != nil {
+			internalWebError(w, err)
+			return
+		}
+
 		f, ok := idx.(files.File)
 		if !ok {
 			internalWebError(w, files.ErrNotReader)
@@ -104,14 +109,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		return
 	}
 
-	// Optimization: use Unixfs.Ls without resolving children, but using the
-	// cumulative DAG size as the file size. This allows for a fast listing
-	// while keeping a good enough Size field.
-	results, err := i.api.Unixfs().Ls(ctx,
-		resolvedPath,
-		options.Unixfs.ResolveChildren(false),
-		options.Unixfs.UseCumulativeSize(true),
-	)
+	results, err := i.api.LsUnixFsDir(ctx, resolvedPath)
 	if err != nil {
 		internalWebError(w, err)
 		return

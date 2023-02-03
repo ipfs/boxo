@@ -8,7 +8,6 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	blocks "github.com/ipfs/go-libipfs/blocks"
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	gocar "github.com/ipld/go-car"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
@@ -68,7 +67,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
 	// Same go-car settings as dag.export command
-	store := dagStore{dag: i.api.Dag(), ctx: ctx}
+	store := dagStore{api: i.api, ctx: ctx}
 
 	// TODO: support selectors passed as request param: https://github.com/ipfs/kubo/issues/8769
 	dag := gocar.Dag{Root: rootCid, Selector: selectorparse.CommonSelector_ExploreAllRecursively}
@@ -89,10 +88,10 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 
 // FIXME(@Jorropo): https://github.com/ipld/go-car/issues/315
 type dagStore struct {
-	dag coreiface.APIDagService
+	api API
 	ctx context.Context
 }
 
 func (ds dagStore) Get(_ context.Context, c cid.Cid) (blocks.Block, error) {
-	return ds.dag.Get(ds.ctx, c)
+	return ds.api.GetBlock(ds.ctx, c)
 }

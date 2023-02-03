@@ -15,18 +15,16 @@ headers := map[string][]string{}
 gateway.AddAccessControlHeaders(headers)
 
 conf := gateway.Config{
-  Writable: false,
   Headers:  headers,
 }
 
 // Initialize a NodeAPI interface for both an online and offline versions.
 // The offline version should not make any network request for missing content.
 ipfs := ...
-offlineIPFS := ...
 
 // Create http mux and setup path gateway handler.
 mux := http.NewServeMux()
-gwHandler := gateway.NewHandler(conf, ipfs, offlineIPFS)
+gwHandler := gateway.NewHandler(conf, ipfs)
 mux.Handle("/ipfs/", gwHandler)
 mux.Handle("/ipns/", gwHandler)
 

@@ -3,7 +3,6 @@ package gateway
 import (
 	"bytes"
 	"context"
-	"io"
 	"net/http"
 	"time"
 
@@ -17,17 +16,12 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	ctx, span := spanTrace(ctx, "ServeRawBlock", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 	blockCid := resolvedPath.Cid()
-	blockReader, err := i.api.Block().Get(ctx, resolvedPath)
+	block, err := i.api.GetBlock(ctx, blockCid)
 	if err != nil {
 		webError(w, "ipfs block get "+blockCid.String(), err, http.StatusInternalServerError)
 		return
 	}
-	block, err := io.ReadAll(blockReader)
-	if err != nil {
-		webError(w, "ipfs block get "+blockCid.String(), err, http.StatusInternalServerError)
-		return
-	}
-	content := bytes.NewReader(block)
+	content := bytes.NewReader(block.RawData())
 
 	// Set Content-Disposition
 	var name string
