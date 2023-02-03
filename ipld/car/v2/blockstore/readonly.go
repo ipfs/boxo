@@ -17,7 +17,7 @@ import (
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
 	internalio "github.com/ipld/go-car/v2/internal/io"
-	"github.com/multiformats/go-multihash"
+	"github.com/ipld/go-car/v2/internal/store"
 	"github.com/multiformats/go-varint"
 	"golang.org/x/exp/mmap"
 )
@@ -229,7 +229,7 @@ func (b *ReadOnly) Has(ctx context.Context, key cid.Cid) (bool, error) {
 		// If we don't store identity CIDs then we can return them straight away as if they are here,
 		// otherwise we need to check for their existence.
 		// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
-		if _, ok, err := isIdentity(key); err != nil {
+		if _, ok, err := store.IsIdentity(key); err != nil {
 			return false, err
 		} else if ok {
 			return true, nil
@@ -290,7 +290,7 @@ func (b *ReadOnly) Get(ctx context.Context, key cid.Cid) (blocks.Block, error) {
 		// If we don't store identity CIDs then we can return them straight away as if they are here,
 		// otherwise we need to check for their existence.
 		// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
-		if digest, ok, err := isIdentity(key); err != nil {
+		if digest, ok, err := store.IsIdentity(key); err != nil {
 			return nil, err
 		} else if ok {
 			return blocks.NewBlockWithCid(digest, key)
@@ -343,7 +343,7 @@ func (b *ReadOnly) Get(ctx context.Context, key cid.Cid) (blocks.Block, error) {
 func (b *ReadOnly) GetSize(ctx context.Context, key cid.Cid) (int, error) {
 	// Check if the given CID has multihash.IDENTITY code
 	// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
-	if digest, ok, err := isIdentity(key); err != nil {
+	if digest, ok, err := store.IsIdentity(key); err != nil {
 		return 0, err
 	} else if ok {
 		return len(digest), nil
@@ -399,16 +399,6 @@ func (b *ReadOnly) GetSize(ctx context.Context, key cid.Cid) (int, error) {
 		return -1, format.ErrNotFound{Cid: key}
 	}
 	return fnSize, nil
-}
-
-func isIdentity(key cid.Cid) (digest []byte, ok bool, err error) {
-	dmh, err := multihash.Decode(key.Hash())
-	if err != nil {
-		return nil, false, err
-	}
-	ok = dmh.Code == multihash.IDENTITY
-	digest = dmh.Digest
-	return digest, ok, nil
 }
 
 // Put is not supported and always returns an error.

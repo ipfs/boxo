@@ -68,21 +68,37 @@ func (ii *InsertionIndex) InsertNoReplace(key cid.Cid, n uint64) {
 }
 
 func (ii *InsertionIndex) Get(c cid.Cid) (uint64, error) {
-	d, err := multihash.Decode(c.Hash())
+	record, err := ii.getRecord(c)
 	if err != nil {
 		return 0, err
+	}
+	return record.Offset, nil
+}
+
+func (ii *InsertionIndex) getRecord(c cid.Cid) (index.Record, error) {
+	d, err := multihash.Decode(c.Hash())
+	if err != nil {
+		return index.Record{}, err
 	}
 	entry := recordDigest{digest: d.Digest}
 	e := ii.items.Get(entry)
 	if e == nil {
-		return 0, index.ErrNotFound
+		return index.Record{}, index.ErrNotFound
 	}
 	r, ok := e.(recordDigest)
 	if !ok {
-		return 0, errUnsupported
+		return index.Record{}, errUnsupported
 	}
 
-	return r.Record.Offset, nil
+	return r.Record, nil
+}
+
+func (ii *InsertionIndex) GetCid(c cid.Cid) (uint64, cid.Cid, error) {
+	record, err := ii.getRecord(c)
+	if err != nil {
+		return 0, cid.Undef, err
+	}
+	return record.Offset, record.Cid, nil
 }
 
 func (ii *InsertionIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {

@@ -47,7 +47,7 @@ func TestReadWriteGetReturnsBlockstoreNotFoundWhenCidDoesNotExist(t *testing.T) 
 	require.Nil(t, gotBlock)
 }
 
-func TestBlockstoreX(t *testing.T) {
+func TestBlockstore(t *testing.T) {
 	originalCARv1Path := "../testdata/sample-v1.car"
 	originalCARv1ComparePath := "../testdata/sample-v1-noidentity.car"
 	originalCARv1ComparePathStat, err := os.Stat(originalCARv1ComparePath)

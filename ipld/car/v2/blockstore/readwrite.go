@@ -18,6 +18,7 @@ import (
 	"github.com/ipld/go-car/v2/internal/carv1/util"
 	"github.com/ipld/go-car/v2/internal/insertionindex"
 	internalio "github.com/ipld/go-car/v2/internal/io"
+	"github.com/ipld/go-car/v2/internal/store"
 )
 
 var _ blockstore.Blockstore = (*ReadWrite)(nil)
@@ -350,7 +351,7 @@ func (b *ReadWrite) PutMany(ctx context.Context, blks []blocks.Block) error {
 		// If StoreIdentityCIDs option is disabled then treat IDENTITY CIDs like IdStore.
 		if !b.opts.StoreIdentityCIDs {
 			// Check for IDENTITY CID. If IDENTITY, ignore and move to the next block.
-			if _, ok, err := isIdentity(c); err != nil {
+			if _, ok, err := store.IsIdentity(c); err != nil {
 				return err
 			} else if ok {
 				continue

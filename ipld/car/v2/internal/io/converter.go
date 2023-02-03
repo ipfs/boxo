@@ -10,6 +10,7 @@ var (
 	_ io.ByteReader = (*readSeekerPlusByte)(nil)
 	_ io.ByteReader = (*discardingReadSeekerPlusByte)(nil)
 	_ io.ReadSeeker = (*discardingReadSeekerPlusByte)(nil)
+	_ io.ReadSeeker = (*readerAtSeeker)(nil)
 	_ io.ReaderAt   = (*readSeekerAt)(nil)
 )
 
@@ -42,6 +43,12 @@ type (
 		rs io.ReadSeeker
 		mu sync.Mutex
 	}
+
+	readerAtSeeker struct {
+		ra       io.ReaderAt
+		position int64
+		mu       sync.Mutex
+	}
 )
 
 func ToByteReader(r io.Reader) io.ByteReader {
@@ -59,6 +66,13 @@ func ToByteReadSeeker(r io.Reader) ByteReadSeeker {
 		return &readSeekerPlusByte{ReadSeeker: rs}
 	}
 	return &discardingReadSeekerPlusByte{Reader: r}
+}
+
+func ToReadSeeker(ra io.ReaderAt) io.ReadSeeker {
+	if rs, ok := ra.(io.ReadSeeker); ok {
+		return rs
+	}
+	return &readerAtSeeker{ra: ra}
 }
 
 func ToReaderAt(rs io.ReadSeeker) io.ReaderAt {
@@ -104,6 +118,30 @@ func (drsb *discardingReadSeekerPlusByte) Seek(offset int64, whence int) (int64,
 	default:
 		panic("unsupported whence: io.SeekEnd")
 	}
+}
+
+func (ras *readerAtSeeker) Read(p []byte) (n int, err error) {
+	ras.mu.Lock()
+	defer ras.mu.Unlock()
+	n, err = ras.ra.ReadAt(p, ras.position)
+	ras.position += int64(n)
+	return n, err
+}
+
+func (ras *readerAtSeeker) Seek(offset int64, whence int) (int64, error) {
+	ras.mu.Lock()
+	defer ras.mu.Unlock()
+	switch whence {
+	case io.SeekStart:
+		ras.position = offset
+	case io.SeekCurrent:
+		ras.position += offset
+	case io.SeekEnd:
+		panic("unsupported whence: io.SeekEnd")
+	default:
+		panic("unsupported whence")
+	}
+	return ras.position, nil
 }
 
 func (rsa *readSeekerAt) ReadAt(p []byte, off int64) (n int, err error) {
