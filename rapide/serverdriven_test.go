@@ -65,14 +65,6 @@ func (bs *mockBlockstore) Traverse(b blocks.Block) ([]ipsl.CidTraversalPair, err
 	return childrens, nil
 }
 
-func (*mockBlockstore) Serialize() (ipsl.AstNode, []ipsl.BoundScope, error) {
-	panic("MOCK!")
-}
-
-func (*mockBlockstore) SerializeForNetwork() (ipsl.AstNode, []ipsl.BoundScope, error) {
-	panic("MOCK!")
-}
-
 func (bs *mockBlockstore) Download(ctx context.Context, root cid.Cid, traversal ipsl.Traversal) (ClosableBlockIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	r := make(chan blocks.BlockOrError)

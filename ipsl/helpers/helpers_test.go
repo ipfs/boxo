@@ -21,13 +21,6 @@ type mockTraversal struct {
 	results      []ipsl.CidTraversalPair
 }
 
-func (mockTraversal) Serialize() (ipsl.AstNode, error) {
-	panic("Serialize called on mock traversal")
-}
-func (n mockTraversal) SerializeForNetwork() (ipsl.AstNode, error) {
-	return n.Serialize()
-}
-
 func (n mockTraversal) Traverse(b blocks.Block) ([]ipsl.CidTraversalPair, error) {
 	var bad bool
 	if data := b.RawData(); !bytes.Equal(data, n.expectedData) {

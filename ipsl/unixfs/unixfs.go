@@ -14,34 +14,10 @@ import (
 
 // Everything is a Traversal that will match all the unixfs childs blocks, forever.
 func Everything() ipsl.Traversal {
-	return EverythingNode{"unixfs"}
+	return EverythingNode{}
 }
 
-func compileEverything(scopeName string, arguments ...ipsl.SomeNode) (ipsl.SomeNode, error) {
-	if len(arguments) != 0 {
-		return ipsl.SomeNode{}, ipsl.ErrTypeError{Msg: fmt.Sprintf("empty node called with %d arguments, empty does not take arguments", len(arguments))}
-	}
-
-	return ipsl.SomeNode{Node: EverythingNode{scopeName}}, nil
-}
-
-type EverythingNode struct {
-	ScopeName string
-}
-
-func (n EverythingNode) Serialize() (ipsl.AstNode, error) {
-	return ipsl.AstNode{
-		Type: ipsl.SyntaxTypeValueNode,
-		Args: []ipsl.AstNode{{
-			Type:    ipsl.SyntaxTypeToken,
-			Literal: n.ScopeName + ".everything",
-		}},
-	}, nil
-}
-
-func (n EverythingNode) SerializeForNetwork() (ipsl.AstNode, error) {
-	return n.Serialize()
-}
+type EverythingNode struct{}
 
 func (n EverythingNode) Traverse(b blocks.Block) ([]ipsl.CidTraversalPair, error) {
 	switch codec := b.Cid().Prefix().Codec; codec {
