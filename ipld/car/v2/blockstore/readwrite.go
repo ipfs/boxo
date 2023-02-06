@@ -129,7 +129,8 @@ func OpenReadWriteFile(f *os.File, roots []cid.Cid, opts ...carv2.Option) (*Read
 		offset = 0
 	}
 	rwbs.dataWriter = internalio.NewOffsetWriter(rwbs.f, offset)
-	v1r, err := internalio.NewOffsetReadSeeker(rwbs.f, offset)
+	var v1r internalio.ReadSeekerAt
+	v1r, err = internalio.NewOffsetReadSeeker(rwbs.f, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -137,10 +138,10 @@ func OpenReadWriteFile(f *os.File, roots []cid.Cid, opts ...carv2.Option) (*Read
 	rwbs.ronly.idx = rwbs.idx
 
 	if resume {
-		if err := store.ResumableVersion(f, rwbs.opts.WriteAsCarV1); err != nil {
+		if err = store.ResumableVersion(f, rwbs.opts.WriteAsCarV1); err != nil {
 			return nil, err
 		}
-		if err := store.Resume(
+		if err = store.Resume(
 			f,
 			rwbs.ronly.backing,
 			rwbs.dataWriter,

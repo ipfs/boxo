@@ -23,7 +23,6 @@ import (
 	"github.com/ipld/go-car/v2/storage"
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
-	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
 )
 
@@ -379,7 +378,7 @@ func TestErrorsWhenWritingCidTooLarge(t *testing.T) {
 
 	// normal block but shorten the CID to make it acceptable
 	testCid, testData := randBlock()
-	mh, err := mh.Decode(testCid.Hash())
+	mh, err := multihash.Decode(testCid.Hash())
 	require.NoError(t, err)
 	dig := mh.Digest[:10]
 	shortMh, err := multihash.Encode(dig, mh.Code)
@@ -526,6 +525,7 @@ func TestPutSameHashes(t *testing.T) {
 	countBlocks := func(path string) int {
 		f, err := os.Open(path)
 		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, f.Close()) })
 		rdr, err := carv2.NewBlockReader(f)
 		require.NoError(t, err)
 
@@ -1065,10 +1065,11 @@ func TestReadWriteResumptionMismatchingRootsIsError(t *testing.T) {
 	badRoot := randCid()
 	writer, err := os.OpenFile(tmpPath, os.O_RDWR, 0o666)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, writer.Close()) })
+	t.Cleanup(func() { writer.Close() })
 	subject, err := storage.OpenReadableWritable(writer, []cid.Cid{badRoot})
 	require.EqualError(t, err, "cannot resume on file with mismatching data header")
 	require.Nil(t, subject)
+	require.NoError(t, writer.Close())
 
 	newContent, err := os.ReadFile(tmpPath)
 	require.NoError(t, err)
@@ -1180,7 +1181,7 @@ func randBlock() (cid.Cid, []byte) {
 	rngLk.Lock()
 	rng.Read(data)
 	rngLk.Unlock()
-	h, err := mh.Sum(data, mh.SHA2_512, -1)
+	h, err := multihash.Sum(data, multihash.SHA2_512, -1)
 	if err != nil {
 		panic(err)
 	}
