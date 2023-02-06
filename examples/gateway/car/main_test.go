@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	gw "github.com/ipfs/go-libipfs/examples/gateway"
+	"github.com/ipfs/go-libipfs/examples/gateway/common"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/stretchr/testify/assert"
@@ -22,13 +22,13 @@ func newTestServer() (*httptest.Server, io.Closer, error) {
 		return nil, nil, err
 	}
 
-	gateway, err := gw.NewBlocksGateway(blockService, nil)
+	gateway, err := common.NewBlocksGateway(blockService, nil)
 	if err != nil {
 		_ = f.Close()
 		return nil, nil, err
 	}
 
-	handler := gw.NewBlocksHandler(gateway, 0)
+	handler := common.NewBlocksHandler(gateway, 0)
 	ts := httptest.NewServer(handler)
 	return ts, f, nil
 }

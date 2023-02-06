@@ -8,7 +8,7 @@ import (
 
 	"github.com/ipfs/go-blockservice"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
-	gw "github.com/ipfs/go-libipfs/examples/gateway"
+	"github.com/ipfs/go-libipfs/examples/gateway/common"
 )
 
 func main() {
@@ -24,12 +24,12 @@ func main() {
 	routing := newProxyRouting(*gatewayUrlPtr, nil)
 
 	// Creates the gateway with the block service and the routing.
-	gateway, err := gw.NewBlocksGateway(blockService, routing)
+	gateway, err := common.NewBlocksGateway(blockService, routing)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	handler := gw.NewBlocksHandler(gateway, *portPtr)
+	handler := common.NewBlocksHandler(gateway, *portPtr)
 	address := "127.0.0.1:" + strconv.Itoa(*portPtr)
 	log.Printf("Listening on http://%s", address)
 
