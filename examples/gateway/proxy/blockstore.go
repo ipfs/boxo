@@ -31,6 +31,9 @@ func newProxyStore(gatewayURL string, client *http.Client) blockstore.Blockstore
 	return &proxyStore{
 		gatewayURL: gatewayURL,
 		httpClient: client,
+		// Enables block validation by default. Important since we are
+		// proxying block requests to an untrusted gateway.
+		validate: true,
 	}
 }
 
