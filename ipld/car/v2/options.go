@@ -179,3 +179,53 @@ func MaxAllowedSectionSize(max uint64) Option {
 		o.MaxAllowedSectionSize = max
 	}
 }
+
+// --------------------------------------------------- storage interface options
+
+// UseWholeCIDs is a read option which makes a CAR storage interface (blockstore
+// or storage) identify blocks by whole CIDs, and not just their multihashes.
+// The default is to use multihashes, which matches the current semantics of
+// go-ipfs-blockstore v1.
+//
+// Enabling this option affects a number of methods, including read-only ones:
+//
+//   - Get, Has, and HasSize will only return a block only if the entire CID is
+//     present in the CAR file.
+//
+// • AllKeysChan will return the original whole CIDs, instead of with their
+// multicodec set to "raw" to just provide multihashes.
+//
+// • If AllowDuplicatePuts isn't set, Put and PutMany will deduplicate by the
+// whole CID, allowing different CIDs with equal multihashes.
+//
+// Note that this option only affects the storage interfaces (blockstore
+// or storage), and is ignored by the root go-car/v2 package.
+func UseWholeCIDs(enable bool) Option {
+	return func(o *Options) {
+		o.BlockstoreUseWholeCIDs = enable
+	}
+}
+
+// WriteAsCarV1 is a write option which makes a CAR interface (blockstore or
+// storage) write the output as a CARv1 only, with no CARv2 header or index.
+// Indexing is used internally during write but is discarded upon finalization.
+//
+// Note that this option only affects the storage interfaces (blockstore
+// or storage), and is ignored by the root go-car/v2 package.
+func WriteAsCarV1(asCarV1 bool) Option {
+	return func(o *Options) {
+		o.WriteAsCarV1 = asCarV1
+	}
+}
+
+// AllowDuplicatePuts is a write option which makes a CAR interface (blockstore
+// or storage) not deduplicate blocks in Put and PutMany. The default is to
+// deduplicate, which matches the current semantics of go-ipfs-blockstore v1.
+//
+// Note that this option only affects the storage interfaces (blockstore
+// or storage), and is ignored by the root go-car/v2 package.
+func AllowDuplicatePuts(allow bool) Option {
+	return func(o *Options) {
+		o.BlockstoreAllowDuplicatePuts = allow
+	}
+}

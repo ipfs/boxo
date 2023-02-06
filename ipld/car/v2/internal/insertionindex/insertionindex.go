@@ -93,14 +93,6 @@ func (ii *InsertionIndex) getRecord(c cid.Cid) (index.Record, error) {
 	return r.Record, nil
 }
 
-func (ii *InsertionIndex) GetCid(c cid.Cid) (uint64, cid.Cid, error) {
-	record, err := ii.getRecord(c)
-	if err != nil {
-		return 0, cid.Undef, err
-	}
-	return record.Offset, record.Cid, nil
-}
-
 func (ii *InsertionIndex) GetAll(c cid.Cid, fn func(uint64) bool) error {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {

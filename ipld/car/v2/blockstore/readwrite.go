@@ -2,18 +2,14 @@ package blockstore
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	blocks "github.com/ipfs/go-libipfs/blocks"
-	"github.com/multiformats/go-varint"
 
 	carv2 "github.com/ipld/go-car/v2"
-	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
 	"github.com/ipld/go-car/v2/internal/insertionindex"
@@ -43,29 +39,8 @@ type ReadWrite struct {
 	opts carv2.Options
 }
 
-// WriteAsCarV1 is a write option which makes a CAR blockstore write the output
-// as a CARv1 only, with no CARv2 header or index. Indexing is used internally
-// during write but is discarded upon finalization.
-//
-// Note that this option only affects the blockstore, and is ignored by the root
-// go-car/v2 package.
-func WriteAsCarV1(asCarV1 bool) carv2.Option {
-	return func(o *carv2.Options) {
-		o.WriteAsCarV1 = asCarV1
-	}
-}
-
-// AllowDuplicatePuts is a write option which makes a CAR blockstore not
-// deduplicate blocks in Put and PutMany. The default is to deduplicate,
-// which matches the current semantics of go-ipfs-blockstore v1.
-//
-// Note that this option only affects the blockstore, and is ignored by the root
-// go-car/v2 package.
-func AllowDuplicatePuts(allow bool) carv2.Option {
-	return func(o *carv2.Options) {
-		o.BlockstoreAllowDuplicatePuts = allow
-	}
-}
+var WriteAsCarV1 = carv2.WriteAsCarV1
+var AllowDuplicatePuts = carv2.AllowDuplicatePuts
 
 // OpenReadWrite creates a new ReadWrite at the given path with a provided set of root CIDs and options.
 //
@@ -162,7 +137,20 @@ func OpenReadWriteFile(f *os.File, roots []cid.Cid, opts ...carv2.Option) (*Read
 	rwbs.ronly.idx = rwbs.idx
 
 	if resume {
-		if err = rwbs.resumeWithRoots(!rwbs.opts.WriteAsCarV1, roots); err != nil {
+		if err := store.ResumableVersion(f, rwbs.opts.WriteAsCarV1); err != nil {
+			return nil, err
+		}
+		if err := store.Resume(
+			f,
+			rwbs.ronly.backing,
+			rwbs.dataWriter,
+			rwbs.idx,
+			roots,
+			rwbs.header.DataOffset,
+			rwbs.opts.WriteAsCarV1,
+			rwbs.opts.MaxAllowedHeaderSize,
+			rwbs.opts.ZeroLengthSectionAsEOF,
+		); err != nil {
 			return nil, err
 		}
 	} else {
@@ -181,152 +169,6 @@ func (b *ReadWrite) initWithRoots(v2 bool, roots []cid.Cid) error {
 		}
 	}
 	return carv1.WriteHeader(&carv1.CarHeader{Roots: roots, Version: 1}, b.dataWriter)
-}
-
-func (b *ReadWrite) resumeWithRoots(v2 bool, roots []cid.Cid) error {
-	// On resumption it is expected that the CARv2 Pragma, and the CARv1 header is successfully written.
-	// Otherwise we cannot resume from the file.
-	// Read pragma to assert if b.f is indeed a CARv2.
-	version, err := carv2.ReadVersion(b.f)
-	if err != nil {
-		// The file is not a valid CAR file and cannot resume from it.
-		// Or the write must have failed before pragma was written.
-		return err
-	}
-	switch {
-	case version == 1 && !v2:
-	case version == 2 && v2:
-	default:
-		// The file is not the expected version and we cannot resume from it.
-		return fmt.Errorf("cannot resume on CAR file with version %v", version)
-	}
-
-	var headerInFile carv2.Header
-
-	if v2 {
-		// Check if file was finalized by trying to read the CARv2 header.
-		// We check because if finalized the CARv1 reader behaviour needs to be adjusted since
-		// EOF will not signify end of CARv1 payload. i.e. index is most likely present.
-		r, err := internalio.NewOffsetReadSeeker(b.f, carv2.PragmaSize)
-		if err != nil {
-			return err
-		}
-		_, err = headerInFile.ReadFrom(r)
-
-		// If reading CARv2 header succeeded, and CARv1 offset in header is not zero then the file is
-		// most-likely finalized. Check padding and truncate the file to remove index.
-		// Otherwise, carry on reading the v1 payload at offset determined from b.header.
-		if err == nil && headerInFile.DataOffset != 0 {
-			if headerInFile.DataOffset != b.header.DataOffset {
-				// Assert that the padding on file matches the given WithDataPadding option.
-				wantPadding := headerInFile.DataOffset - carv2.PragmaSize - carv2.HeaderSize
-				gotPadding := b.header.DataOffset - carv2.PragmaSize - carv2.HeaderSize
-				return fmt.Errorf(
-					"cannot resume from file with mismatched CARv1 offset; "+
-						"`WithDataPadding` option must match the padding on file. "+
-						"Expected padding value of %v but got %v", wantPadding, gotPadding,
-				)
-			} else if headerInFile.DataSize == 0 {
-				// If CARv1 size is zero, since CARv1 offset wasn't, then the CARv2 header was
-				// most-likely partially written. Since we write the header last in Finalize then the
-				// file most-likely contains the index and we cannot know where it starts, therefore
-				// can't resume.
-				return errors.New("corrupt CARv2 header; cannot resume from file")
-			}
-		}
-	}
-
-	// Use the given CARv1 padding to instantiate the CARv1 reader on file.
-	v1r, err := internalio.NewOffsetReadSeeker(b.ronly.backing, 0)
-	if err != nil {
-		return err
-	}
-	header, err := carv1.ReadHeader(v1r, b.opts.MaxAllowedHeaderSize)
-	if err != nil {
-		// Cannot read the CARv1 header; the file is most likely corrupt.
-		return fmt.Errorf("error reading car header: %w", err)
-	}
-	if !header.Matches(carv1.CarHeader{Roots: roots, Version: 1}) {
-		// Cannot resume if version and root does not match.
-		return errors.New("cannot resume on file with mismatching data header")
-	}
-
-	if headerInFile.DataOffset != 0 {
-		// If header in file contains the size of car v1, then the index is most likely present.
-		// Since we will need to re-generate the index, as the one in file is flattened, truncate
-		// the file so that the Readonly.backing has the right set of bytes to deal with.
-		// This effectively means resuming from a finalized file will wipe its index even if there
-		// are no blocks put unless the user calls finalize.
-		if err := b.f.Truncate(int64(headerInFile.DataOffset + headerInFile.DataSize)); err != nil {
-			return err
-		}
-	}
-
-	if v2 {
-		// Now that CARv2 header is present on file, clear it to avoid incorrect size and offset in
-		// header in case blocksotre is closed without finalization and is resumed from.
-		if err := b.unfinalize(); err != nil {
-			return fmt.Errorf("could not un-finalize: %w", err)
-		}
-	}
-
-	// TODO See how we can reduce duplicate code here.
-	// The code here comes from car.GenerateIndex.
-	// Copied because we need to populate an insertindex, not a sorted index.
-	// Producing a sorted index via generate, then converting it to insertindex is not possible.
-	// Because Index interface does not expose internal records.
-	// This may be done as part of https://github.com/ipld/go-car/issues/95
-
-	offset, err := carv1.HeaderSize(header)
-	if err != nil {
-		return err
-	}
-	sectionOffset := int64(0)
-	if sectionOffset, err = v1r.Seek(int64(offset), io.SeekStart); err != nil {
-		return err
-	}
-
-	for {
-		// Grab the length of the section.
-		// Note that ReadUvarint wants a ByteReader.
-		length, err := varint.ReadUvarint(v1r)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return err
-		}
-
-		// Null padding; by default it's an error.
-		if length == 0 {
-			if b.ronly.opts.ZeroLengthSectionAsEOF {
-				break
-			} else {
-				return fmt.Errorf("carv1 null padding not allowed by default; see WithZeroLegthSectionAsEOF")
-			}
-		}
-
-		// Grab the CID.
-		n, c, err := cid.CidFromReader(v1r)
-		if err != nil {
-			return err
-		}
-		b.idx.InsertNoReplace(c, uint64(sectionOffset))
-
-		// Seek to the next section by skipping the block.
-		// The section length includes the CID, so subtract it.
-		if sectionOffset, err = v1r.Seek(int64(length)-int64(n), io.SeekCurrent); err != nil {
-			return err
-		}
-	}
-	// Seek to the end of last skipped block where the writer should resume writing.
-	_, err = b.dataWriter.Seek(sectionOffset, io.SeekStart)
-	return err
-}
-
-func (b *ReadWrite) unfinalize() error {
-	_, err := new(carv2.Header).WriteTo(internalio.NewOffsetWriter(b.f, carv2.PragmaSize))
-	return err
 }
 
 // Put puts a given block to the underlying datastore
@@ -348,35 +190,17 @@ func (b *ReadWrite) PutMany(ctx context.Context, blks []blocks.Block) error {
 	for _, bl := range blks {
 		c := bl.Cid()
 
-		// If StoreIdentityCIDs option is disabled then treat IDENTITY CIDs like IdStore.
-		if !b.opts.StoreIdentityCIDs {
-			// Check for IDENTITY CID. If IDENTITY, ignore and move to the next block.
-			if _, ok, err := store.IsIdentity(c); err != nil {
-				return err
-			} else if ok {
-				continue
-			}
-		}
-
-		// Check if its size is too big.
-		// If larger than maximum allowed size, return error.
-		// Note, we need to check this regardless of whether we have IDENTITY CID or not.
-		// Since multhihash codes other than IDENTITY can result in large digests.
-		cSize := uint64(len(c.Bytes()))
-		if cSize > b.opts.MaxIndexCidSize {
-			return &carv2.ErrCidTooLarge{MaxSize: b.opts.MaxIndexCidSize, CurrentSize: cSize}
-		}
-
-		if !b.opts.BlockstoreAllowDuplicatePuts {
-			if b.ronly.opts.BlockstoreUseWholeCIDs && b.idx.HasExactCID(c) {
-				continue // deduplicated by CID
-			}
-			if !b.ronly.opts.BlockstoreUseWholeCIDs {
-				_, err := b.idx.Get(c)
-				if err == nil {
-					continue // deduplicated by hash
-				}
-			}
+		if should, err := store.ShouldPut(
+			b.idx,
+			c,
+			b.opts.MaxIndexCidSize,
+			b.opts.StoreIdentityCIDs,
+			b.opts.BlockstoreAllowDuplicatePuts,
+			b.opts.BlockstoreUseWholeCIDs,
+		); err != nil {
+			return err
+		} else if !should {
+			continue
 		}
 
 		n := uint64(b.dataWriter.Position())
@@ -421,23 +245,11 @@ func (b *ReadWrite) Finalize() error {
 		return fmt.Errorf("called Finalize on a closed blockstore")
 	}
 
-	// TODO check if add index option is set and don't write the index then set index offset to zero.
-	b.header = b.header.WithDataSize(uint64(b.dataWriter.Position()))
-	b.header.Characteristics.SetFullyIndexed(b.opts.StoreIdentityCIDs)
-
 	// Note that we can't use b.Close here, as that tries to grab the same
 	// mutex we're holding here.
 	defer b.ronly.closeWithoutMutex()
 
-	// TODO if index not needed don't bother flattening it.
-	fi, err := b.idx.Flatten(b.opts.IndexCodec)
-	if err != nil {
-		return err
-	}
-	if _, err := index.WriteTo(fi, internalio.NewOffsetWriter(b.f, int64(b.header.IndexOffset))); err != nil {
-		return err
-	}
-	if _, err := b.header.WriteTo(internalio.NewOffsetWriter(b.f, carv2.PragmaSize)); err != nil {
+	if err := store.Finalize(b.f, b.header, b.idx, uint64(b.dataWriter.Position()), b.opts.StoreIdentityCIDs, b.opts.IndexCodec); err != nil {
 		return err
 	}
 

@@ -5,6 +5,7 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
+// IsIdentity inspects the CID and determines whether it is an IDENTITY CID.
 func IsIdentity(key cid.Cid) (digest []byte, ok bool, err error) {
 	dmh, err := multihash.Decode(key.Hash())
 	if err != nil {

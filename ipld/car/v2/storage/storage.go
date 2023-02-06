@@ -17,15 +17,20 @@ import (
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/ipld/go-car/v2/internal/store"
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
-	"github.com/multiformats/go-varint"
 )
 
-var errClosed = fmt.Errorf("cannot use a carv2 storage after closing")
+var errClosed = errors.New("cannot use a CARv2 storage after closing")
+
+type ReaderWriterAt interface {
+	io.ReaderAt
+	io.Writer
+	io.WriterAt
+}
 
 type ReadableCar interface {
 	ipldstorage.ReadableStorage
 	ipldstorage.StreamingReadableStorage
-	Roots() ([]cid.Cid, error)
+	Roots() []cid.Cid
 }
 
 // WritableCar is compatible with storage.WritableStorage but also returns
@@ -35,20 +40,22 @@ type ReadableCar interface {
 // existing storage.PutStream() implementation.
 type WritableCar interface {
 	ipldstorage.WritableStorage
-	Roots() ([]cid.Cid, error)
+	Roots() []cid.Cid
 	Finalize() error
 }
 
 var _ ipldstorage.ReadableStorage = (*StorageCar)(nil)
 var _ ipldstorage.StreamingReadableStorage = (*StorageCar)(nil)
 var _ ReadableCar = (*StorageCar)(nil)
+var _ ipldstorage.WritableStorage = (*StorageCar)(nil)
 
 type StorageCar struct {
-	idx        *insertionindex.InsertionIndex
+	idx        index.Index
 	reader     io.ReaderAt
 	writer     positionedWriter
 	dataWriter *internalio.OffsetWriteSeeker
 	header     carv2.Header
+	roots      []cid.Cid
 	opts       carv2.Options
 
 	closed bool
@@ -61,10 +68,7 @@ type positionedWriter interface {
 }
 
 func NewReadable(reader io.ReaderAt, opts ...carv2.Option) (ReadableCar, error) {
-	sc := &StorageCar{
-		opts: carv2.ApplyOptions(opts...),
-		idx:  insertionindex.NewInsertionIndex(),
-	}
+	sc := &StorageCar{opts: carv2.ApplyOptions(opts...)}
 
 	rr := internalio.ToReadSeeker(reader)
 	header, err := carv1.ReadHeader(rr, sc.opts.MaxAllowedHeaderSize)
@@ -73,39 +77,66 @@ func NewReadable(reader io.ReaderAt, opts ...carv2.Option) (ReadableCar, error) 
 	}
 	switch header.Version {
 	case 1:
+		sc.roots = header.Roots
+		sc.reader = reader
 		rr.Seek(0, io.SeekStart)
+		sc.idx = insertionindex.NewInsertionIndex()
 		if err := carv2.LoadIndex(sc.idx, rr, opts...); err != nil {
 			return nil, err
 		}
-		sc.reader = reader
 	case 2:
 		v2r, err := carv2.NewReader(reader, opts...)
 		if err != nil {
 			return nil, err
 		}
-		dr, err := v2r.DataReader()
+		sc.roots, err = v2r.Roots()
 		if err != nil {
 			return nil, err
 		}
-		if err := carv2.LoadIndex(sc.idx, dr, opts...); err != nil {
-			return nil, err
+		if v2r.Header.HasIndex() {
+			ir, err := v2r.IndexReader()
+			if err != nil {
+				return nil, err
+			}
+			sc.idx, err = index.ReadFrom(ir)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			dr, err := v2r.DataReader()
+			if err != nil {
+				return nil, err
+			}
+			sc.idx = insertionindex.NewInsertionIndex()
+			if err := carv2.LoadIndex(sc.idx, dr, opts...); err != nil {
+				return nil, err
+			}
 		}
 		if sc.reader, err = v2r.DataReader(); err != nil {
 			return nil, err
 		}
 	default:
-		return nil, fmt.Errorf("unsupported car version: %v", header.Version)
+		return nil, fmt.Errorf("unsupported CAR version: %v", header.Version)
 	}
 
 	return sc, nil
 }
 
 func NewWritable(writer io.Writer, roots []cid.Cid, opts ...carv2.Option) (WritableCar, error) {
+	sc, err := newWritable(writer, roots, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return sc.init()
+}
+
+func newWritable(writer io.Writer, roots []cid.Cid, opts ...carv2.Option) (*StorageCar, error) {
 	sc := &StorageCar{
 		writer: &positionTrackingWriter{w: writer},
 		idx:    insertionindex.NewInsertionIndex(),
 		header: carv2.NewHeader(0),
 		opts:   carv2.ApplyOptions(opts...),
+		roots:  roots,
 	}
 
 	if p := sc.opts.DataPadding; p > 0 {
@@ -124,67 +155,120 @@ func NewWritable(writer io.Writer, roots []cid.Cid, opts ...carv2.Option) (Writa
 		sc.dataWriter = internalio.NewOffsetWriter(writerAt, offset)
 	} else {
 		if !sc.opts.WriteAsCarV1 {
-			return nil, fmt.Errorf("cannot write as carv2 to a non-seekable writer")
+			return nil, fmt.Errorf("cannot write as CARv2 to a non-seekable writer")
 		}
-	}
-
-	if err := sc.initWithRoots(writer, !sc.opts.WriteAsCarV1, roots); err != nil {
-		return nil, err
 	}
 
 	return sc, nil
 }
 
-func (sc *StorageCar) initWithRoots(writer io.Writer, v2 bool, roots []cid.Cid) error {
-	if v2 {
-		if _, err := writer.Write(carv2.Pragma); err != nil {
-			return err
-		}
-		return carv1.WriteHeader(&carv1.CarHeader{Roots: roots, Version: 1}, sc.dataWriter)
+func newReadableWritable(rw ReaderWriterAt, roots []cid.Cid, opts ...carv2.Option) (*StorageCar, error) {
+	sc, err := newWritable(rw, roots, opts...)
+	if err != nil {
+		return nil, err
 	}
-	return carv1.WriteHeader(&carv1.CarHeader{Roots: roots, Version: 1}, writer)
+
+	sc.reader = rw
+	if !sc.opts.WriteAsCarV1 {
+		sc.reader, err = internalio.NewOffsetReadSeeker(rw, int64(sc.header.DataOffset))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return sc, nil
+}
+
+func NewReadableWritable(rw ReaderWriterAt, roots []cid.Cid, opts ...carv2.Option) (*StorageCar, error) {
+	sc, err := newReadableWritable(rw, roots, opts...)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := sc.init(); err != nil {
+		return nil, err
+	}
+	return sc, nil
+}
+
+func OpenReadableWritable(rw ReaderWriterAt, roots []cid.Cid, opts ...carv2.Option) (*StorageCar, error) {
+	sc, err := newReadableWritable(rw, roots, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// attempt to resume
+	rs, err := internalio.NewOffsetReadSeeker(rw, 0)
+	if err != nil {
+		return nil, err
+	}
+	if err := store.ResumableVersion(rs, sc.opts.WriteAsCarV1); err != nil {
+		return nil, err
+	}
+	if err := store.Resume(
+		rw,
+		sc.reader,
+		sc.dataWriter,
+		sc.idx.(*insertionindex.InsertionIndex),
+		roots,
+		sc.header.DataOffset,
+		sc.opts.WriteAsCarV1,
+		sc.opts.MaxAllowedHeaderSize,
+		sc.opts.ZeroLengthSectionAsEOF,
+	); err != nil {
+		return nil, err
+	}
+	return sc, nil
+}
+
+func (sc *StorageCar) init() (WritableCar, error) {
+	if !sc.opts.WriteAsCarV1 {
+		if _, err := sc.writer.Write(carv2.Pragma); err != nil {
+			return nil, err
+		}
+	}
+	var w io.Writer = sc.dataWriter
+	if sc.dataWriter == nil {
+		w = sc.writer
+	}
+	if err := carv1.WriteHeader(&carv1.CarHeader{Roots: sc.roots, Version: 1}, w); err != nil {
+		return nil, err
+	}
+	return sc, nil
+}
+
+func (sc *StorageCar) Roots() []cid.Cid {
+	return sc.roots
 }
 
 func (sc *StorageCar) Put(ctx context.Context, keyStr string, data []byte) error {
 	keyCid, err := cid.Cast([]byte(keyStr))
 	if err != nil {
-		return err
+		return fmt.Errorf("bad CID key: %w", err)
 	}
 
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 
-	// If StoreIdentityCIDs option is disabled then treat IDENTITY CIDs like IdStore.
-	if !sc.opts.StoreIdentityCIDs {
-		// Check for IDENTITY CID. If IDENTITY, ignore and move to the next block.
-		if _, ok, err := store.IsIdentity(keyCid); err != nil {
-			return err
-		} else if ok {
-			return nil
-		}
+	if sc.closed {
+		return errClosed
 	}
 
-	// Check if its size is too big.
-	// If larger than maximum allowed size, return error.
-	// Note, we need to check this regardless of whether we have IDENTITY CID or not.
-	// Since multhihash codes other than IDENTITY can result in large digests.
-	cSize := uint64(len(keyCid.Bytes()))
-	if cSize > sc.opts.MaxIndexCidSize {
-		return &carv2.ErrCidTooLarge{MaxSize: sc.opts.MaxIndexCidSize, CurrentSize: cSize}
+	idx, ok := sc.idx.(*insertionindex.InsertionIndex)
+	if !ok || sc.writer == nil {
+		return fmt.Errorf("cannot put into a read-only CAR")
 	}
 
-	// TODO: if we are write-only and BlockstoreAllowDuplicatePuts then we don't
-	// really need an index at all
-	if !sc.opts.BlockstoreAllowDuplicatePuts {
-		if sc.opts.BlockstoreUseWholeCIDs && sc.idx.HasExactCID(keyCid) {
-			return nil // deduplicated by CID
-		}
-		if !sc.opts.BlockstoreUseWholeCIDs {
-			_, err := sc.idx.Get(keyCid)
-			if err == nil {
-				return nil // deduplicated by hash
-			}
-		}
+	if should, err := store.ShouldPut(
+		idx,
+		keyCid,
+		sc.opts.MaxIndexCidSize,
+		sc.opts.StoreIdentityCIDs,
+		sc.opts.BlockstoreAllowDuplicatePuts,
+		sc.opts.BlockstoreUseWholeCIDs,
+	); err != nil {
+		return err
+	} else if !should {
+		return nil
 	}
 
 	w := sc.writer
@@ -195,27 +279,15 @@ func (sc *StorageCar) Put(ctx context.Context, keyStr string, data []byte) error
 	if err := util.LdWrite(w, keyCid.Bytes(), data); err != nil {
 		return err
 	}
-	sc.idx.InsertNoReplace(keyCid, n)
+	idx.InsertNoReplace(keyCid, n)
 
 	return nil
-}
-
-func (sc *StorageCar) Roots() ([]cid.Cid, error) {
-	ors, err := internalio.NewOffsetReadSeeker(sc.reader, 0)
-	if err != nil {
-		return nil, err
-	}
-	header, err := carv1.ReadHeader(ors, sc.opts.MaxAllowedHeaderSize)
-	if err != nil {
-		return nil, fmt.Errorf("error reading car header: %w", err)
-	}
-	return header.Roots, nil
 }
 
 func (sc *StorageCar) Has(ctx context.Context, keyStr string) (bool, error) {
 	keyCid, err := cid.Cast([]byte(keyStr))
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("bad CID key: %w", err)
 	}
 
 	if !sc.opts.StoreIdentityCIDs {
@@ -236,23 +308,21 @@ func (sc *StorageCar) Has(ctx context.Context, keyStr string) (bool, error) {
 		return false, errClosed
 	}
 
-	if sc.opts.BlockstoreUseWholeCIDs {
-		var foundCid cid.Cid
-		_, foundCid, err = sc.idx.GetCid(keyCid)
-		if err != nil {
-			if !foundCid.Equals(keyCid) {
-				return false, nil
-			}
-		}
-	} else {
-		_, err = sc.idx.Get(keyCid)
-	}
+	_, _, size, err := store.FindCid(
+		sc.reader,
+		sc.idx,
+		keyCid,
+		sc.opts.BlockstoreUseWholeCIDs,
+		sc.opts.ZeroLengthSectionAsEOF,
+		sc.opts.MaxAllowedSectionSize,
+		false,
+	)
 	if errors.Is(err, index.ErrNotFound) {
 		return false, nil
 	} else if err != nil {
 		return false, err
 	}
-	return true, nil
+	return size > -1, nil
 }
 
 func (sc *StorageCar) Get(ctx context.Context, keyStr string) ([]byte, error) {
@@ -264,9 +334,13 @@ func (sc *StorageCar) Get(ctx context.Context, keyStr string) ([]byte, error) {
 }
 
 func (sc *StorageCar) GetStream(ctx context.Context, keyStr string) (io.ReadCloser, error) {
+	if sc.reader == nil {
+		return nil, fmt.Errorf("cannot read from a write-only CAR")
+	}
+
 	keyCid, err := cid.Cast([]byte(keyStr))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("bad CID key: %w", err)
 	}
 
 	if !sc.opts.StoreIdentityCIDs {
@@ -287,46 +361,30 @@ func (sc *StorageCar) GetStream(ctx context.Context, keyStr string) (io.ReadClos
 		return nil, errClosed
 	}
 
-	fnSize := -1
-	var offset uint64
-	if sc.opts.BlockstoreUseWholeCIDs {
-		var foundCid cid.Cid
-		offset, foundCid, err = sc.idx.GetCid(keyCid)
-		if err != nil {
-			if !foundCid.Equals(keyCid) {
-				return nil, ErrNotFound{Cid: keyCid}
-			}
-		}
-	} else {
-		offset, err = sc.idx.Get(keyCid)
-	}
+	_, offset, size, err := store.FindCid(
+		sc.reader,
+		sc.idx,
+		keyCid,
+		sc.opts.BlockstoreUseWholeCIDs,
+		sc.opts.ZeroLengthSectionAsEOF,
+		sc.opts.MaxAllowedSectionSize,
+		false,
+	)
 	if errors.Is(err, index.ErrNotFound) {
 		return nil, ErrNotFound{Cid: keyCid}
 	} else if err != nil {
 		return nil, err
 	}
-
-	rdr, err := internalio.NewOffsetReadSeeker(sc.reader, int64(offset))
-	if err != nil {
-		return nil, err
-	}
-	sectionLen, err := varint.ReadUvarint(rdr)
-	if err != nil {
-		return nil, err
-	}
-	cidLen, _, err := cid.CidFromReader(rdr)
-	if err != nil {
-		return nil, err
-	}
-	fnSize = int(sectionLen) - cidLen
-	offset = uint64(rdr.(interface{ Offset() int64 }).Offset())
-	if fnSize == -1 {
-		return nil, ErrNotFound{Cid: keyCid}
-	}
-	return io.NopCloser(io.NewSectionReader(sc.reader, int64(offset), int64(fnSize))), nil
+	return io.NopCloser(io.NewSectionReader(sc.reader, offset, int64(size))), nil
 }
 
 func (sc *StorageCar) Finalize() error {
+	idx, ok := sc.idx.(*insertionindex.InsertionIndex)
+	if !ok || sc.writer == nil {
+		// ignore this, it's not writable
+		return nil
+	}
+
 	if sc.opts.WriteAsCarV1 {
 		return nil
 	}
@@ -342,29 +400,12 @@ func (sc *StorageCar) Finalize() error {
 	if sc.closed {
 		// Allow duplicate Finalize calls, just like Close.
 		// Still error, just like ReadOnly.Close; it should be discarded.
-		return fmt.Errorf("called Finalize on a closed blockstore")
+		return fmt.Errorf("called Finalize on a closed storage CAR")
 	}
-
-	// TODO check if add index option is set and don't write the index then set index offset to zero.
-	sc.header = sc.header.WithDataSize(uint64(sc.dataWriter.Position()))
-	sc.header.Characteristics.SetFullyIndexed(sc.opts.StoreIdentityCIDs)
 
 	sc.closed = true
 
-	fi, err := sc.idx.Flatten(sc.opts.IndexCodec)
-	if err != nil {
-		return err
-	}
-	if _, err := index.WriteTo(fi, internalio.NewOffsetWriter(wat, int64(sc.header.IndexOffset))); err != nil {
-		return err
-	}
-	var buf bytes.Buffer
-	sc.header.WriteTo(&buf)
-	if _, err := sc.header.WriteTo(internalio.NewOffsetWriter(wat, carv2.PragmaSize)); err != nil {
-		return err
-	}
-
-	return nil
+	return store.Finalize(wat, sc.header, idx, uint64(sc.dataWriter.Position()), sc.opts.StoreIdentityCIDs, sc.opts.IndexCodec)
 }
 
 type positionTrackingWriter struct {

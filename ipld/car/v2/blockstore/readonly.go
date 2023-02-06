@@ -1,7 +1,6 @@
 package blockstore
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,7 +14,6 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1"
-	"github.com/ipld/go-car/v2/internal/carv1/util"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/ipld/go-car/v2/internal/store"
 	"github.com/multiformats/go-varint"
@@ -61,29 +59,7 @@ type contextKey string
 
 const asyncErrHandlerKey contextKey = "asyncErrorHandlerKey"
 
-// UseWholeCIDs is a read option which makes a CAR blockstore identify blocks by
-// whole CIDs, and not just their multihashes. The default is to use
-// multihashes, which matches the current semantics of go-ipfs-blockstore v1.
-//
-// Enabling this option affects a number of methods, including read-only ones:
-//
-// • Get, Has, and HasSize will only return a block
-// only if the entire CID is present in the CAR file.
-//
-// • AllKeysChan will return the original whole CIDs, instead of with their
-// multicodec set to "raw" to just provide multihashes.
-//
-// • If AllowDuplicatePuts isn't set,
-// Put and PutMany will deduplicate by the whole CID,
-// allowing different CIDs with equal multihashes.
-//
-// Note that this option only affects the blockstore, and is ignored by the root
-// go-car/v2 package.
-func UseWholeCIDs(enable bool) carv2.Option {
-	return func(o *carv2.Options) {
-		o.BlockstoreUseWholeCIDs = enable
-	}
-}
+var UseWholeCIDs = carv2.UseWholeCIDs
 
 // NewReadOnly creates a new ReadOnly blockstore from the backing with a optional index as idx.
 // This function accepts both CARv1 and CARv2 backing.
@@ -203,14 +179,6 @@ func OpenReadOnly(path string, opts ...carv2.Option) (*ReadOnly, error) {
 	return robs, nil
 }
 
-func (b *ReadOnly) readBlock(idx int64) (cid.Cid, []byte, error) {
-	r, err := internalio.NewOffsetReadSeeker(b.backing, idx)
-	if err != nil {
-		return cid.Cid{}, nil, err
-	}
-	return util.ReadNode(r, b.opts.ZeroLengthSectionAsEOF, b.opts.MaxAllowedSectionSize)
-}
-
 // DeleteBlock is unsupported and always errors.
 func (b *ReadOnly) DeleteBlock(_ context.Context, _ cid.Cid) error {
 	return errReadOnly
@@ -243,38 +211,21 @@ func (b *ReadOnly) Has(ctx context.Context, key cid.Cid) (bool, error) {
 		return false, errClosed
 	}
 
-	var fnFound bool
-	var fnErr error
-	err := b.idx.GetAll(key, func(offset uint64) bool {
-		uar, err := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
-		if err != nil {
-			fnErr = err
-			return false
-		}
-		_, err = varint.ReadUvarint(uar)
-		if err != nil {
-			fnErr = err
-			return false
-		}
-		_, readCid, err := cid.CidFromReader(uar)
-		if err != nil {
-			fnErr = err
-			return false
-		}
-		if b.opts.BlockstoreUseWholeCIDs {
-			fnFound = readCid.Equals(key)
-			return !fnFound // continue looking if we haven't found it
-		} else {
-			fnFound = bytes.Equal(readCid.Hash(), key.Hash())
-			return false
-		}
-	})
+	_, _, size, err := store.FindCid(
+		b.backing,
+		b.idx,
+		key,
+		b.opts.BlockstoreUseWholeCIDs,
+		b.opts.ZeroLengthSectionAsEOF,
+		b.opts.MaxAllowedSectionSize,
+		false,
+	)
 	if errors.Is(err, index.ErrNotFound) {
 		return false, nil
 	} else if err != nil {
 		return false, err
 	}
-	return fnFound, fnErr
+	return size > -1, nil
 }
 
 // Get gets a block corresponding to the given key.
@@ -304,39 +255,21 @@ func (b *ReadOnly) Get(ctx context.Context, key cid.Cid) (blocks.Block, error) {
 		return nil, errClosed
 	}
 
-	var fnData []byte
-	var fnErr error
-	err := b.idx.GetAll(key, func(offset uint64) bool {
-		readCid, data, err := b.readBlock(int64(offset))
-		if err != nil {
-			fnErr = err
-			return false
-		}
-		if b.opts.BlockstoreUseWholeCIDs {
-			if readCid.Equals(key) {
-				fnData = data
-				return false
-			} else {
-				return true // continue looking
-			}
-		} else {
-			if bytes.Equal(readCid.Hash(), key.Hash()) {
-				fnData = data
-			}
-			return false
-		}
-	})
+	data, _, _, err := store.FindCid(
+		b.backing,
+		b.idx,
+		key,
+		b.opts.BlockstoreUseWholeCIDs,
+		b.opts.ZeroLengthSectionAsEOF,
+		b.opts.MaxAllowedSectionSize,
+		true,
+	)
 	if errors.Is(err, index.ErrNotFound) {
 		return nil, format.ErrNotFound{Cid: key}
 	} else if err != nil {
-		return nil, format.ErrNotFound{Cid: key}
-	} else if fnErr != nil {
-		return nil, fnErr
+		return nil, err
 	}
-	if fnData == nil {
-		return nil, format.ErrNotFound{Cid: key}
-	}
-	return blocks.NewBlockWithCid(fnData, key)
+	return blocks.NewBlockWithCid(data, key)
 }
 
 // GetSize gets the size of an item corresponding to the given key.
@@ -356,49 +289,21 @@ func (b *ReadOnly) GetSize(ctx context.Context, key cid.Cid) (int, error) {
 		return 0, errClosed
 	}
 
-	fnSize := -1
-	var fnErr error
-	err := b.idx.GetAll(key, func(offset uint64) bool {
-		rdr, err := internalio.NewOffsetReadSeeker(b.backing, int64(offset))
-		if err != nil {
-			fnErr = err
-			return false
-		}
-		sectionLen, err := varint.ReadUvarint(rdr)
-		if err != nil {
-			fnErr = err
-			return false
-		}
-		cidLen, readCid, err := cid.CidFromReader(rdr)
-		if err != nil {
-			fnErr = err
-			return false
-		}
-		if b.opts.BlockstoreUseWholeCIDs {
-			if readCid.Equals(key) {
-				fnSize = int(sectionLen) - cidLen
-				return false
-			} else {
-				return true // continue looking
-			}
-		} else {
-			if bytes.Equal(readCid.Hash(), key.Hash()) {
-				fnSize = int(sectionLen) - cidLen
-			}
-			return false
-		}
-	})
+	_, _, size, err := store.FindCid(
+		b.backing,
+		b.idx,
+		key,
+		b.opts.BlockstoreUseWholeCIDs,
+		b.opts.ZeroLengthSectionAsEOF,
+		b.opts.MaxAllowedSectionSize,
+		false,
+	)
 	if errors.Is(err, index.ErrNotFound) {
 		return -1, format.ErrNotFound{Cid: key}
 	} else if err != nil {
 		return -1, err
-	} else if fnErr != nil {
-		return -1, fnErr
 	}
-	if fnSize == -1 {
-		return -1, format.ErrNotFound{Cid: key}
-	}
-	return fnSize, nil
+	return size, nil
 }
 
 // Put is not supported and always returns an error.
