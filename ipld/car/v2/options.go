@@ -189,8 +189,8 @@ func MaxAllowedSectionSize(max uint64) Option {
 //
 // Enabling this option affects a number of methods, including read-only ones:
 //
-//   - Get, Has, and HasSize will only return a block only if the entire CID is
-//     present in the CAR file.
+// • Get, Has, and HasSize will only return a block only if the entire CID is
+// present in the CAR file.
 //
 // • AllKeysChan will return the original whole CIDs, instead of with their
 // multicodec set to "raw" to just provide multihashes.

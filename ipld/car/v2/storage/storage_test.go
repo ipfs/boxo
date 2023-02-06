@@ -91,7 +91,7 @@ func TestReadable(t *testing.T) {
 			inputReader, err := os.Open(tt.inputPath)
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, inputReader.Close()) })
-			readable, err := storage.NewReadable(inputReader, tt.opts...)
+			readable, err := storage.OpenReadable(inputReader, tt.opts...)
 			require.NoError(t, err)
 
 			// Setup BlockReader to compare against
@@ -176,7 +176,7 @@ func TestReadableBadVersion(t *testing.T) {
 	f, err := os.Open("../testdata/sample-rootless-v42.car")
 	require.NoError(t, err)
 	t.Cleanup(func() { f.Close() })
-	subject, err := storage.NewReadable(f)
+	subject, err := storage.OpenReadable(f)
 	require.Errorf(t, err, "unsupported car version: 42")
 	require.Nil(t, subject)
 }
@@ -436,7 +436,7 @@ func TestNullPadding(t *testing.T) {
 	paddedV1, err := os.ReadFile("../testdata/sample-v1-with-zero-len-section.car")
 	require.NoError(t, err)
 
-	readable, err := storage.NewReadable(bufferReaderAt(paddedV1), carv2.ZeroLengthSectionAsEOF(true))
+	readable, err := storage.OpenReadable(bufferReaderAt(paddedV1), carv2.ZeroLengthSectionAsEOF(true))
 	require.NoError(t, err)
 
 	roots := readable.Roots()
@@ -590,7 +590,7 @@ func TestReadableCantWrite(t *testing.T) {
 	inp, err := os.Open("../testdata/sample-v1.car")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, inp.Close()) })
-	readable, err := storage.NewReadable(inp)
+	readable, err := storage.OpenReadable(inp)
 	require.NoError(t, err)
 	require.ErrorContains(t, readable.(*storage.StorageCar).Put(context.Background(), randCid().KeyString(), []byte("bar")), "read-only")
 	// Finalize() is nonsense for a readable, but it should be safe

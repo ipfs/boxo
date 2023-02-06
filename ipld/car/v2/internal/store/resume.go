@@ -15,7 +15,6 @@ import (
 
 type ReaderWriterAt interface {
 	io.ReaderAt
-	io.Writer
 	io.WriterAt
 }
 

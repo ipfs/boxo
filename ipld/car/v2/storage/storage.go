@@ -21,7 +21,7 @@ import (
 
 var errClosed = errors.New("cannot use a CARv2 storage after closing")
 
-type ReaderWriterAt interface {
+type ReaderAtWriterAt interface {
 	io.ReaderAt
 	io.Writer
 	io.WriterAt
@@ -44,10 +44,8 @@ type WritableCar interface {
 	Finalize() error
 }
 
-var _ ipldstorage.ReadableStorage = (*StorageCar)(nil)
-var _ ipldstorage.StreamingReadableStorage = (*StorageCar)(nil)
 var _ ReadableCar = (*StorageCar)(nil)
-var _ ipldstorage.WritableStorage = (*StorageCar)(nil)
+var _ WritableCar = (*StorageCar)(nil)
 
 type StorageCar struct {
 	idx        index.Index
@@ -67,7 +65,23 @@ type positionedWriter interface {
 	Position() int64
 }
 
-func NewReadable(reader io.ReaderAt, opts ...carv2.Option) (ReadableCar, error) {
+// OpenReadable opens a CARv1 or CARv2 file for reading as a ReadableStorage
+// and StreamingReadableStorage as defined by
+// github.com/ipld/go-ipld-prime/storage.
+//
+// The returned ReadableStorage is compatible with a linksystem SetReadStorage
+// method as defined by github.com/ipld/go-ipld-prime/linking
+// to provide a block source backed by a CAR.
+//
+// When opening a CAR, an initial scan is performed to generate an index, or
+// load an index from a CARv2 index where available. This index data is kept in
+// memory while the CAR is being used in order to provide efficient random
+// Get access to blocks and Has operations.
+//
+// The Readable supports StreamingReadableStorage, which allows for efficient
+// GetStreaming operations straight out of the underlying CAR where the
+// linksystem can make use of it.
+func OpenReadable(reader io.ReaderAt, opts ...carv2.Option) (ReadableCar, error) {
 	sc := &StorageCar{opts: carv2.ApplyOptions(opts...)}
 
 	rr := internalio.ToReadSeeker(reader)
@@ -122,6 +136,29 @@ func NewReadable(reader io.ReaderAt, opts ...carv2.Option) (ReadableCar, error) 
 	return sc, nil
 }
 
+// NewWritable creates a new WritableStorage as defined by
+// github.com/ipld/go-ipld-prime/storage that writes a CARv1 or CARv2 format to
+// the given io.Writer.
+//
+// The returned WritableStorage is compatible with a linksystem SetWriteStorage
+// method as defined by github.com/ipld/go-ipld-prime/linking
+// to provide a block sink backed by a CAR.
+//
+// The WritableStorage supports Put operations, which will write
+// blocks to the CAR in the order they are received.
+//
+// When writing a CARv2 format (the default), the provided writer must be
+// compatible with io.WriterAt in order to provide random access as the CARv2
+// header must be written after the blocks in order to indicate the size of the
+// CARv2 data payload.
+//
+// A CARv1 (generated using the WriteAsCarV1 option) only requires an io.Writer
+// and can therefore stream CAR contents as blocks are written while still
+// providing Has operations and the ability to avoid writing duplicate blocks
+// as required.
+//
+// When writing a CARv2 format, it is important to call the Finalize method on
+// the returned WritableStorage in order to write the CARv2 header and index.
 func NewWritable(writer io.Writer, roots []cid.Cid, opts ...carv2.Option) (WritableCar, error) {
 	sc, err := newWritable(writer, roots, opts...)
 	if err != nil {
@@ -162,7 +199,7 @@ func newWritable(writer io.Writer, roots []cid.Cid, opts ...carv2.Option) (*Stor
 	return sc, nil
 }
 
-func newReadableWritable(rw ReaderWriterAt, roots []cid.Cid, opts ...carv2.Option) (*StorageCar, error) {
+func newReadableWritable(rw ReaderAtWriterAt, roots []cid.Cid, opts ...carv2.Option) (*StorageCar, error) {
 	sc, err := newWritable(rw, roots, opts...)
 	if err != nil {
 		return nil, err
@@ -179,7 +216,15 @@ func newReadableWritable(rw ReaderWriterAt, roots []cid.Cid, opts ...carv2.Optio
 	return sc, nil
 }
 
-func NewReadableWritable(rw ReaderWriterAt, roots []cid.Cid, opts ...carv2.Option) (*StorageCar, error) {
+// NewReadableWritable creates a new StorageCar that is able to provide both
+// StorageReader and StorageWriter functionality.
+//
+// The returned StorageCar is compatible with a linksystem SetReadStorage and
+// SetWriteStorage methods as defined by github.com/ipld/go-ipld-prime/linking.
+//
+// When writing a CARv2 format, it is important to call the Finalize method on
+// the returned WritableStorage in order to write the CARv2 header and index.
+func NewReadableWritable(rw ReaderAtWriterAt, roots []cid.Cid, opts ...carv2.Option) (*StorageCar, error) {
 	sc, err := newReadableWritable(rw, roots, opts...)
 	if err != nil {
 		return nil, err
@@ -190,7 +235,15 @@ func NewReadableWritable(rw ReaderWriterAt, roots []cid.Cid, opts ...carv2.Optio
 	return sc, nil
 }
 
-func OpenReadableWritable(rw ReaderWriterAt, roots []cid.Cid, opts ...carv2.Option) (*StorageCar, error) {
+// OpenReadableWritable creates a new StorageCar that is able to provide both
+// StorageReader and StorageWriter functionality.
+//
+// The returned StorageCar is compatible with a linksystem SetReadStorage and
+// SetWriteStorage methods as defined by github.com/ipld/go-ipld-prime/linking.
+//
+// It attempts to resume a CARv2 file that was previously written to by
+// NewWritable, or NewReadableWritable.
+func OpenReadableWritable(rw ReaderAtWriterAt, roots []cid.Cid, opts ...carv2.Option) (*StorageCar, error) {
 	sc, err := newReadableWritable(rw, roots, opts...)
 	if err != nil {
 		return nil, err
@@ -236,10 +289,14 @@ func (sc *StorageCar) init() (WritableCar, error) {
 	return sc, nil
 }
 
+// Roots returns the roots of the CAR.
 func (sc *StorageCar) Roots() []cid.Cid {
 	return sc.roots
 }
 
+// Put adds a block to the CAR, where the block is identified by the given CID
+// provided in string form. The keyStr value must be a valid CID binary string
+// (not a multibase string representation), i.e. generated with CID#KeyString().
 func (sc *StorageCar) Put(ctx context.Context, keyStr string, data []byte) error {
 	keyCid, err := cid.Cast([]byte(keyStr))
 	if err != nil {
@@ -284,6 +341,9 @@ func (sc *StorageCar) Put(ctx context.Context, keyStr string, data []byte) error
 	return nil
 }
 
+// Has returns true if the CAR contains a block identified by the given CID
+// provided in string form. The keyStr value must be a valid CID binary string
+// (not a multibase string representation), i.e. generated with CID#KeyString().
 func (sc *StorageCar) Has(ctx context.Context, keyStr string) (bool, error) {
 	keyCid, err := cid.Cast([]byte(keyStr))
 	if err != nil {
@@ -325,6 +385,9 @@ func (sc *StorageCar) Has(ctx context.Context, keyStr string) (bool, error) {
 	return size > -1, nil
 }
 
+// Get returns the block bytes identified by the given CID provided in string
+// form. The keyStr value must be a valid CID binary string (not a multibase
+// string representation), i.e. generated with CID#KeyString().
 func (sc *StorageCar) Get(ctx context.Context, keyStr string) ([]byte, error) {
 	rdr, err := sc.GetStream(ctx, keyStr)
 	if err != nil {
@@ -333,6 +396,9 @@ func (sc *StorageCar) Get(ctx context.Context, keyStr string) ([]byte, error) {
 	return io.ReadAll(rdr)
 }
 
+// GetStream returns a stream of the block bytes identified by the given CID
+// provided in string form. The keyStr value must be a valid CID binary string
+// (not a multibase string representation), i.e. generated with CID#KeyString().
 func (sc *StorageCar) GetStream(ctx context.Context, keyStr string) (io.ReadCloser, error) {
 	if sc.reader == nil {
 		return nil, fmt.Errorf("cannot read from a write-only CAR")
@@ -378,6 +444,10 @@ func (sc *StorageCar) GetStream(ctx context.Context, keyStr string) (io.ReadClos
 	return io.NopCloser(io.NewSectionReader(sc.reader, offset, int64(size))), nil
 }
 
+// Finalize writes the CAR index to the underlying writer if the CAR being
+// written is a CARv2. It also writes a finalized CARv2 header which details
+// payload location. This should be called on a writable StorageCar in order to
+// avoid data loss.
 func (sc *StorageCar) Finalize() error {
 	idx, ok := sc.idx.(*insertionindex.InsertionIndex)
 	if !ok || sc.writer == nil {
