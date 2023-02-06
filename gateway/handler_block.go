@@ -12,14 +12,15 @@ import (
 )
 
 // serveRawBlock returns bytes behind a raw block
-func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time) {
+func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time) bool {
 	ctx, span := spanTrace(ctx, "ServeRawBlock", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
+
 	blockCid := resolvedPath.Cid()
 	block, err := i.api.GetBlock(ctx, blockCid)
 	if err != nil {
 		webError(w, "ipfs block get "+blockCid.String(), err, http.StatusInternalServerError)
-		return
+		return false
 	}
 	content := bytes.NewReader(block.RawData())
 
@@ -45,4 +46,6 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 		// Update metrics
 		i.rawBlockGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 	}
+
+	return dataSent
 }

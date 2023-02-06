@@ -15,7 +15,7 @@ import (
 
 var unixEpochTime = time.Unix(0, 0)
 
-func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) {
+func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
 	ctx, span := spanTrace(ctx, "ServeTAR", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
@@ -26,7 +26,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	file, err := i.api.GetUnixFsNode(ctx, resolvedPath)
 	if err != nil {
 		webError(w, "ipfs cat "+html.EscapeString(contentPath.String()), err, http.StatusBadRequest)
-		return
+		return false
 	}
 	defer file.Close()
 
@@ -46,7 +46,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// Finish early if Etag match
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
-		return
+		return false
 	}
 
 	// Set Content-Disposition
@@ -62,7 +62,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	tarw, err := files.NewTarWriter(w)
 	if err != nil {
 		webError(w, "could not build tar writer", err, http.StatusInternalServerError)
-		return
+		return false
 	}
 	defer tarw.Close()
 
@@ -86,6 +86,10 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		// (1) detect error by having corrupted TAR
 		// (2) be able to reason what went wrong by instecting the tail of TAR stream
 		_, _ = w.Write([]byte(err.Error()))
-		return
+		return false
 	}
+
+	// Update metrics
+	i.tarStreamGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	return true
 }

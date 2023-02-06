@@ -51,7 +51,7 @@ var contentTypeToExtension = map[string]string{
 	"application/vnd.ipld.dag-cbor": ".cbor",
 }
 
-func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, requestedContentType string) {
+func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, requestedContentType string) bool {
 	ctx, span := spanTrace(ctx, "ServeCodec", trace.WithAttributes(attribute.String("path", resolvedPath.String()), attribute.String("requestedContentType", requestedContentType)))
 	defer span.End()
 
@@ -65,7 +65,7 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 		path := strings.TrimSuffix(resolvedPath.String(), resolvedPath.Remainder())
 		err := fmt.Errorf("%q of %q could not be returned: reading IPLD Kinds other than Links (CBOR Tag 42) is not implemented: try reading %q instead", resolvedPath.Remainder(), resolvedPath.String(), path)
 		webError(w, "unsupported pathing", err, http.StatusNotImplemented)
-		return
+		return false
 	}
 
 	// If no explicit content type was requested, the response will have one based on the codec from the CID
@@ -75,7 +75,7 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 			// Should not happen unless function is called with wrong parameters.
 			err := fmt.Errorf("content type not found for codec: %v", cidCodec)
 			webError(w, "internal error", err, http.StatusInternalServerError)
-			return
+			return false
 		}
 		responseContentType = cidContentType
 	}
@@ -94,14 +94,12 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 		download := r.URL.Query().Get("download") == "true"
 
 		if isDAG && acceptsHTML && !download {
-			i.serveCodecHTML(ctx, w, r, resolvedPath, contentPath)
+			return i.serveCodecHTML(ctx, w, r, resolvedPath, contentPath)
 		} else {
 			// This covers CIDs with codec 'json' and 'cbor' as those do not have
 			// an explicit requested content type.
-			i.serveCodecRaw(ctx, w, r, resolvedPath, contentPath, name, modtime)
+			return i.serveCodecRaw(ctx, w, r, resolvedPath, contentPath, name, modtime, begin)
 		}
-
-		return
 	}
 
 	// If DAG-JSON or DAG-CBOR was requested using corresponding plain content type
@@ -110,8 +108,7 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 	if ok {
 		for _, skipCodec := range skipCodecs {
 			if skipCodec == cidCodec {
-				i.serveCodecRaw(ctx, w, r, resolvedPath, contentPath, name, modtime)
-				return
+				return i.serveCodecRaw(ctx, w, r, resolvedPath, contentPath, name, modtime, begin)
 			}
 		}
 	}
@@ -123,14 +120,14 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 		// This is never supposed to happen unless function is called with wrong parameters.
 		err := fmt.Errorf("unsupported content type: %s", requestedContentType)
 		webError(w, err.Error(), err, http.StatusInternalServerError)
-		return
+		return false
 	}
 
 	// This handles DAG-* conversions and validations.
-	i.serveCodecConverted(ctx, w, r, resolvedPath, contentPath, toCodec, modtime)
+	return i.serveCodecConverted(ctx, w, r, resolvedPath, contentPath, toCodec, modtime, begin)
 }
 
-func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path) {
+func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path) bool {
 	// A HTML directory index will be presented, be sure to set the correct
 	// type instead of relying on autodetection (which may fail).
 	w.Header().Set("Content-Type", "text/html")
@@ -155,51 +152,61 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 		CodecHex:  fmt.Sprintf("0x%x", uint64(cidCodec)),
 	}); err != nil {
 		webError(w, "failed to generate HTML listing for this DAG: try fetching raw block with ?format=raw", err, http.StatusInternalServerError)
+		return false
 	}
+
+	return true
 }
 
 // serveCodecRaw returns the raw block without any conversion
-func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, name string, modtime time.Time) {
+func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, name string, modtime, begin time.Time) bool {
 	blockCid := resolvedPath.Cid()
 	block, err := i.api.GetBlock(ctx, blockCid)
 	if err != nil {
 		webError(w, "ipfs block get "+blockCid.String(), err, http.StatusInternalServerError)
-		return
+		return false
 	}
 	content := bytes.NewReader(block.RawData())
 
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
-	_, _, _ = ServeContent(w, r, name, modtime, content)
+	_, dataSent, _ := ServeContent(w, r, name, modtime, content)
+
+	if dataSent {
+		// Update metrics
+		i.jsoncborDocumentGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	}
+
+	return dataSent
 }
 
 // serveCodecConverted returns payload converted to codec specified in toCodec
-func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, toCodec mc.Code, modtime time.Time) {
+func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, toCodec mc.Code, modtime, begin time.Time) bool {
 	blockCid := resolvedPath.Cid()
 	block, err := i.api.GetBlock(ctx, blockCid)
 	if err != nil {
 		webError(w, "ipfs block get "+html.EscapeString(resolvedPath.String()), err, http.StatusInternalServerError)
-		return
+		return false
 	}
 
 	codec := blockCid.Prefix().Codec
 	decoder, err := multicodec.LookupDecoder(codec)
 	if err != nil {
 		webError(w, err.Error(), err, http.StatusInternalServerError)
-		return
+		return false
 	}
 
 	node := basicnode.Prototype.Any.NewBuilder()
 	err = decoder(node, bytes.NewReader(block.RawData()))
 	if err != nil {
 		webError(w, err.Error(), err, http.StatusInternalServerError)
-		return
+		return false
 	}
 
 	encoder, err := multicodec.LookupEncoder(uint64(toCodec))
 	if err != nil {
 		webError(w, err.Error(), err, http.StatusInternalServerError)
-		return
+		return false
 	}
 
 	// Ensure IPLD node conforms to the codec specification.
@@ -207,7 +214,7 @@ func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter
 	err = encoder(node.Build(), &buf)
 	if err != nil {
 		webError(w, err.Error(), err, http.StatusInternalServerError)
-		return
+		return false
 	}
 
 	// Sets correct Last-Modified header. This code is borrowed from the standard
@@ -216,7 +223,14 @@ func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter
 		w.Header().Set("Last-Modified", modtime.UTC().Format(http.TimeFormat))
 	}
 
-	_, _ = w.Write(buf.Bytes())
+	_, err = w.Write(buf.Bytes())
+	if err == nil {
+		// Update metrics
+		i.jsoncborDocumentGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		return true
+	}
+
+	return false
 }
 
 func setCodecContentDisposition(w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentType string) string {

@@ -16,9 +16,10 @@ import (
 )
 
 // serveCAR returns a CAR stream for specific DAG+selector
-func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, carVersion string, begin time.Time) {
+func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, carVersion string, begin time.Time) bool {
 	ctx, span := spanTrace(ctx, "ServeCAR", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -28,7 +29,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	default:
 		err := fmt.Errorf("only version=1 is supported")
 		webError(w, "unsupported CAR version", err, http.StatusBadRequest)
-		return
+		return false
 	}
 	rootCid := resolvedPath.Cid()
 
@@ -55,7 +56,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// Finish early if Etag match
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
-		return
+		return false
 	}
 
 	// Make it clear we don't support range-requests over a car stream
@@ -79,11 +80,12 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		// Due to this, we suggest client always verify that
 		// the received CAR stream response is matching requested DAG selector
 		w.Header().Set("X-Stream-Error", err.Error())
-		return
+		return false
 	}
 
 	// Update metrics
 	i.carStreamGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	return true
 }
 
 // FIXME(@Jorropo): https://github.com/ipld/go-car/issues/315
