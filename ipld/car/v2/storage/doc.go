@@ -1,6 +1,10 @@
 // package storage provides a CAR abstraction for the
 // github.com/ipld/go-ipld-prime/storage interfaces in the form of a StorageCar.
 //
+// THIS PACKAGE IS EXPERIMENTAL. Breaking changes may be introduced in
+// semver-minor releases before this package stabilizes. Use with caution and
+// prefer the blockstore API if stability is required.
+//
 // StorageCar as ReadableStorage provides basic Get and Has operations. It also
 // implements StreamingReadableStorage for the more efficient GetStreaming
 // operation which is easily supported by the CAR format.
