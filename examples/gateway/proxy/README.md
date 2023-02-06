@@ -1,7 +1,11 @@
-# Gateway as a Proxy for Remote Blockstore
+# Gateway as a Verifying Proxy for Untrusted Remote Blockstore
 
 This is an example of building a Gateway that uses  `application/vnd.ipld.raw`
 responses from another gateway acting as a remote blockstore and IPNS resolver.
+
+Key benefits:
+1. Verifies raw blocks and IPNS records fetched from untrusted third-party gateways.
+2. The proxy provides web gateway functionalities: returns deserialized files and websites, including index.html support, while the remote gateway only needs to support block responses.
 
 In this example, we implement two major structures:
 
@@ -9,11 +13,12 @@ In this example, we implement two major structures:
 gateway using `?format=raw`, and
 - [Routing System](./routing.go), which forwards the IPNS requests to the backend
 gateway using `?format=ipns-record`. In addition, DNSLink lookups are done locally.
+  - Note: `ipns-record` was introduced just recently in [IPIP-351](https://github.com/ipfs/specs/pull/351) and reference support for it will ship in Kubo 0.19. Until that happens, it may not be supported by public gateways yet. 
 
 ## Build
 
 ```bash
-> go build -o proxy
+> go build -o verifying-proxy
 ```
 
 ## Usage
@@ -23,7 +28,7 @@ types. Once you have it, run the proxy gateway with its address as the host para
 
 
 ```
-./proxy -h https://ipfs.io -p 8040
+./verifying-proxy -h https://ipfs.io -p 8040
 ```
 
 Now you can access the gateway in [127.0.0.1:8040](http://127.0.0.1:8040). It will
