@@ -13,7 +13,6 @@ import (
 	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
-	"github.com/ipld/go-car/v2/internal/insertionindex"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/ipld/go-car/v2/internal/store"
 	ipldstorage "github.com/ipld/go-ipld-prime/storage"
@@ -94,7 +93,7 @@ func OpenReadable(reader io.ReaderAt, opts ...carv2.Option) (ReadableCar, error)
 		sc.roots = header.Roots
 		sc.reader = reader
 		rr.Seek(0, io.SeekStart)
-		sc.idx = insertionindex.NewInsertionIndex()
+		sc.idx = store.NewInsertionIndex()
 		if err := carv2.LoadIndex(sc.idx, rr, opts...); err != nil {
 			return nil, err
 		}
@@ -121,7 +120,7 @@ func OpenReadable(reader io.ReaderAt, opts ...carv2.Option) (ReadableCar, error)
 			if err != nil {
 				return nil, err
 			}
-			sc.idx = insertionindex.NewInsertionIndex()
+			sc.idx = store.NewInsertionIndex()
 			if err := carv2.LoadIndex(sc.idx, dr, opts...); err != nil {
 				return nil, err
 			}
@@ -170,7 +169,7 @@ func NewWritable(writer io.Writer, roots []cid.Cid, opts ...carv2.Option) (Writa
 func newWritable(writer io.Writer, roots []cid.Cid, opts ...carv2.Option) (*StorageCar, error) {
 	sc := &StorageCar{
 		writer: &positionTrackingWriter{w: writer},
-		idx:    insertionindex.NewInsertionIndex(),
+		idx:    store.NewInsertionIndex(),
 		header: carv2.NewHeader(0),
 		opts:   carv2.ApplyOptions(opts...),
 		roots:  roots,
@@ -261,7 +260,7 @@ func OpenReadableWritable(rw ReaderAtWriterAt, roots []cid.Cid, opts ...carv2.Op
 		rw,
 		sc.reader,
 		sc.dataWriter,
-		sc.idx.(*insertionindex.InsertionIndex),
+		sc.idx.(*store.InsertionIndex),
 		roots,
 		sc.header.DataOffset,
 		sc.opts.WriteAsCarV1,
@@ -310,7 +309,7 @@ func (sc *StorageCar) Put(ctx context.Context, keyStr string, data []byte) error
 		return errClosed
 	}
 
-	idx, ok := sc.idx.(*insertionindex.InsertionIndex)
+	idx, ok := sc.idx.(*store.InsertionIndex)
 	if !ok || sc.writer == nil {
 		return fmt.Errorf("cannot put into a read-only CAR")
 	}
@@ -449,7 +448,7 @@ func (sc *StorageCar) GetStream(ctx context.Context, keyStr string) (io.ReadClos
 // payload location. This should be called on a writable StorageCar in order to
 // avoid data loss.
 func (sc *StorageCar) Finalize() error {
-	idx, ok := sc.idx.(*insertionindex.InsertionIndex)
+	idx, ok := sc.idx.(*store.InsertionIndex)
 	if !ok || sc.writer == nil {
 		// ignore this, it's not writable
 		return nil

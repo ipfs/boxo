@@ -3,7 +3,6 @@ package store
 import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
-	"github.com/ipld/go-car/v2/internal/insertionindex"
 )
 
 // ShouldPut returns true if the block should be put into the CAR according to the options provided
@@ -11,7 +10,7 @@ import (
 // is an identity block and StoreIdentityCIDs is false, or because it already exists and
 // BlockstoreAllowDuplicatePuts is false.
 func ShouldPut(
-	idx *insertionindex.InsertionIndex,
+	idx *InsertionIndex,
 	c cid.Cid,
 	maxIndexCidSize uint64,
 	storeIdentityCIDs bool,

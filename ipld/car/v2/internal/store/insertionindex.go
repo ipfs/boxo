@@ -1,4 +1,4 @@
-package insertionindex
+package store
 
 import (
 	"bytes"

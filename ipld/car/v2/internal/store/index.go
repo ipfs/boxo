@@ -8,7 +8,6 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
-	"github.com/ipld/go-car/v2/internal/insertionindex"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-varint"
@@ -89,7 +88,7 @@ func FindCid(
 
 // Finalize will write the index to the writer at the offset specified in the header. It should only
 // be used for a CARv2 and when the CAR interface is being closed.
-func Finalize(writer io.WriterAt, header carv2.Header, idx *insertionindex.InsertionIndex, dataSize uint64, storeIdentityCIDs bool, indexCodec multicodec.Code) error {
+func Finalize(writer io.WriterAt, header carv2.Header, idx *InsertionIndex, dataSize uint64, storeIdentityCIDs bool, indexCodec multicodec.Code) error {
 	// TODO check if add index option is set and don't write the index then set index offset to zero.
 	header = header.WithDataSize(dataSize)
 	header.Characteristics.SetFullyIndexed(storeIdentityCIDs)

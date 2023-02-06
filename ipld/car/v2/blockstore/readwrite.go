@@ -12,7 +12,6 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
-	"github.com/ipld/go-car/v2/internal/insertionindex"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/ipld/go-car/v2/internal/store"
 )
@@ -33,7 +32,7 @@ type ReadWrite struct {
 
 	f          *os.File
 	dataWriter *internalio.OffsetWriteSeeker
-	idx        *insertionindex.InsertionIndex
+	idx        *store.InsertionIndex
 	header     carv2.Header
 
 	opts carv2.Options
@@ -111,7 +110,7 @@ func OpenReadWriteFile(f *os.File, roots []cid.Cid, opts ...carv2.Option) (*Read
 	// Set the header fileld before applying options since padding options may modify header.
 	rwbs := &ReadWrite{
 		f:      f,
-		idx:    insertionindex.NewInsertionIndex(),
+		idx:    store.NewInsertionIndex(),
 		header: carv2.NewHeader(0),
 		opts:   carv2.ApplyOptions(opts...),
 	}

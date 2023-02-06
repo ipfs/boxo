@@ -8,7 +8,6 @@ import (
 	"github.com/ipfs/go-cid"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/internal/carv1"
-	"github.com/ipld/go-car/v2/internal/insertionindex"
 	internalio "github.com/ipld/go-car/v2/internal/io"
 	"github.com/multiformats/go-varint"
 )
@@ -52,7 +51,7 @@ func Resume(
 	rw ReaderWriterAt,
 	dataReader io.ReaderAt,
 	dataWriter *internalio.OffsetWriteSeeker,
-	idx *insertionindex.InsertionIndex,
+	idx *InsertionIndex,
 	roots []cid.Cid,
 	dataOffset uint64,
 	v1 bool,
