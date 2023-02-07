@@ -20,6 +20,7 @@ import (
 type Specification struct {
 	// Paths is explicit list of path prefixes that should be handled by
 	// this gateway. Example: `["/ipfs", "/ipns"]`
+	// Useful if you only want to support immutable `/ipfs`.
 	Paths []string
 
 	// UseSubdomains indicates whether or not this gateway uses subdomains
@@ -32,13 +33,17 @@ type Specification struct {
 	// for security reasons (Origin isolation).
 	UseSubdomains bool
 
-	// NoDNSLink configures this gateway to _not_ resolve DNSLink for the FQDN
-	// provided in `Host` HTTP header.
+	// NoDNSLink configures this gateway to _not_ resolve DNSLink for the
+	// specific FQDN provided in `Host` HTTP header. Useful when you want to
+	// explicitly allow or refuse hosting a single hostname. To refuse all
+	// DNSLinks in `Host` processing, pass noDNSLink to `WithHostname` instead.
+	// This flag overrides the global one.
 	NoDNSLink bool
 
 	// InlineDNSLink configures this gateway to always inline DNSLink names
 	// (FQDN) into a single DNS label in order to interop with wildcard TLS certs
 	// and Origin per CID isolation provided by rules like https://publicsuffix.org
+	// This should be set to true if you use HTTPS.
 	InlineDNSLink bool
 }
 

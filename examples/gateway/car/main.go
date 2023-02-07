@@ -18,7 +18,7 @@ import (
 
 func main() {
 	carFilePtr := flag.String("c", "", "path to CAR file to back this gateway from")
-	portPtr := flag.Int("p", 8080, "port to run this gateway from")
+	port := flag.Int("p", 8040, "port to run this gateway from")
 	flag.Parse()
 
 	blockService, roots, f, err := newBlockServiceFromCAR(*carFilePtr)
@@ -31,28 +31,35 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	handler := common.NewBlocksHandler(gwAPI, *portPtr)
+	handler := common.NewBlocksHandler(gwAPI, *port)
 
 	// Initialize the public gateways that we will want to have available through
 	// Host header rewritting. This step is optional and only required if you're
 	// running multiple public gateways and want different settings and support
 	// for DNSLink and Subdomain Gateways.
+	noDNSLink := true // If you set DNSLink to point at the CID from CAR, you can load it!
 	publicGateways := map[string]*gateway.Specification{
+		// Support public requests with Host: CID.ipfs.example.net and ID.ipns.example.net
+		"example.net": {
+			Paths:         []string{"/ipfs", "/ipns"},
+			NoDNSLink:     noDNSLink,
+			UseSubdomains: true,
+		},
+		// Support local requests
 		"localhost": {
 			Paths:         []string{"/ipfs", "/ipns"},
-			NoDNSLink:     true,
+			NoDNSLink:     noDNSLink,
 			UseSubdomains: true,
 		},
 	}
-	noDNSLink := true
 	handler = gateway.WithHostname(handler, gwAPI, publicGateways, noDNSLink)
 
-	log.Printf("Listening on http://localhost:%d", *portPtr)
+	log.Printf("Listening on http://localhost:%d", *port)
 	for _, cid := range roots {
-		log.Printf("Hosting CAR root at http://localhost:%d/ipfs/%s", *portPtr, cid.String())
+		log.Printf("Hosting CAR root at http://localhost:%d/ipfs/%s", *port, cid.String())
 	}
 
-	if err := http.ListenAndServe(":"+strconv.Itoa(*portPtr), handler); err != nil {
+	if err := http.ListenAndServe(":"+strconv.Itoa(*port), handler); err != nil {
 		log.Fatal(err)
 	}
 }
