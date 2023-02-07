@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	gopath "path"
@@ -24,6 +25,7 @@ import (
 	uio "github.com/ipfs/go-unixfs/io"
 	"github.com/ipfs/go-unixfsnode"
 	iface "github.com/ipfs/interface-go-ipfs-core"
+	nsopts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 	ifacepath "github.com/ipfs/interface-go-ipfs-core/path"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
@@ -141,6 +143,18 @@ func (api *BlocksGateway) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte,
 	}
 
 	return nil, routing.ErrNotSupported
+}
+
+func (api *BlocksGateway) GetDNSLinkRecord(ctx context.Context, hostname string) (ifacepath.Path, error) {
+	if api.namesys != nil {
+		p, err := api.namesys.Resolve(ctx, "/ipns/"+hostname, nsopts.Depth(1))
+		if err == namesys.ErrResolveRecursion {
+			err = nil
+		}
+		return ifacepath.New(p.String()), err
+	}
+
+	return nil, errors.New("not implemented")
 }
 
 func (api *BlocksGateway) IsCached(ctx context.Context, p ifacepath.Path) bool {
