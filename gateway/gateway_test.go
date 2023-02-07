@@ -309,7 +309,7 @@ func newTestServerAndNode(t *testing.T, ns mockNamesys) (*httptest.Server, *mock
 }
 
 func matchPathOrBreadcrumbs(s string, expected string) bool {
-	matched, _ := regexp.MatchString("Index of\n[\t ]*"+regexp.QuoteMeta(expected), s)
+	matched, _ := regexp.MatchString("Index of(\n|\r\n)[\t ]*"+regexp.QuoteMeta(expected), s)
 	return matched
 }
 
