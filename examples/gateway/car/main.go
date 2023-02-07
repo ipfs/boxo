@@ -39,7 +39,7 @@ func main() {
 	// Host header rewritting. This step is optional and only required if you're
 	// running multiple public gateways and want different settings and support
 	// for DNSLink and Subdomain Gateways.
-	noDNSLink := true // If you set DNSLink to point at the CID from CAR, you can load it!
+	noDNSLink := false // If you set DNSLink to point at the CID from CAR, you can load it!
 	publicGateways := map[string]*gateway.Specification{
 		// Support public requests with Host: CID.ipfs.example.net and ID.ipns.example.net
 		"example.net": {
