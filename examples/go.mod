@@ -22,6 +22,7 @@ require (
 	github.com/ipld/go-codec-dagpb v1.5.0
 	github.com/ipld/go-ipld-prime v0.19.0
 	github.com/libp2p/go-libp2p v0.25.1
+	github.com/multiformats/go-multicodec v0.7.0
 	github.com/prometheus/client_golang v1.14.0
 	github.com/stretchr/testify v1.8.1
 )
@@ -80,7 +81,6 @@ require (
 	github.com/multiformats/go-multiaddr v0.8.0 // indirect
 	github.com/multiformats/go-multiaddr-dns v0.3.1 // indirect
 	github.com/multiformats/go-multibase v0.1.1 // indirect
-	github.com/multiformats/go-multicodec v0.7.0 // indirect
 	github.com/multiformats/go-multihash v0.2.1 // indirect
 	github.com/multiformats/go-multistream v0.4.1 // indirect
 	github.com/multiformats/go-varint v0.0.7 // indirect
