@@ -89,7 +89,6 @@ func (ps *proxyRouting) fetch(ctx context.Context, id peer.ID) ([]byte, error) {
 		},
 	})
 	if err != nil {
-		fmt.Println(err)
 		return nil, err
 	}
 	defer resp.Body.Close()

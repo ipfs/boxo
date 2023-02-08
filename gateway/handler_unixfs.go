@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) {
+func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
 	ctx, span := spanTrace(ctx, "ServeUnixFS", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
@@ -22,7 +22,7 @@ func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *htt
 	dr, err := i.api.GetUnixFsNode(ctx, resolvedPath)
 	if err != nil {
 		webError(w, "ipfs cat "+html.EscapeString(contentPath.String()), err, http.StatusBadRequest)
-		return
+		return false
 	}
 	defer dr.Close()
 
@@ -30,16 +30,17 @@ func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *htt
 	if f, ok := dr.(files.File); ok {
 		logger.Debugw("serving unixfs file", "path", contentPath)
 		i.serveFile(ctx, w, r, resolvedPath, contentPath, f, begin)
-		return
+		return false
 	}
 
 	// Handling Unixfs directory
 	dir, ok := dr.(files.Directory)
 	if !ok {
 		internalWebError(w, fmt.Errorf("unsupported UnixFS type"))
-		return
+		return false
 	}
 
 	logger.Debugw("serving unixfs directory", "path", contentPath)
 	i.serveDirectory(ctx, w, r, resolvedPath, contentPath, dir, begin, logger)
+	return true
 }

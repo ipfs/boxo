@@ -14,6 +14,8 @@ import (
 	"github.com/ipfs/go-libipfs/examples/gateway/common"
 	"github.com/ipfs/go-libipfs/gateway"
 	carblockstore "github.com/ipld/go-car/v2/blockstore"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -52,9 +54,23 @@ func main() {
 			UseSubdomains: true,
 		},
 	}
-	handler = gateway.WithHostname(handler, gwAPI, publicGateways, noDNSLink)
+
+	// Creates a mux to serve the prometheus metrics alongside the gateway. This
+	// step is optional and only required if you need or want to access the metrics.
+	// You may also decide to expose the metrics on a different path, or port.
+	mux := http.NewServeMux()
+	mux.Handle("/debug/metrics/prometheus", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{}))
+	mux.Handle("/", handler)
+
+	// Then wrap the mux with the hostname handler. Please note that the metrics
+	// will not be available under the previously defined publicGateways.
+	// You will be able to access the metrics via 127.0.0.1 but not localhost
+	// or example.net. If you want to expose the metrics on such gateways,
+	// you will have to add the path "/debug" to the variable Paths.
+	handler = gateway.WithHostname(mux, gwAPI, publicGateways, noDNSLink)
 
 	log.Printf("Listening on http://localhost:%d", *port)
+	log.Printf("Metrics available at http://127.0.0.1:%d/debug/metrics/prometheus", *port)
 	for _, cid := range roots {
 		log.Printf("Hosting CAR root at http://localhost:%d/ipfs/%s", *port, cid.String())
 	}

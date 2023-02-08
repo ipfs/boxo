@@ -74,10 +74,14 @@ type handler struct {
 	unixfsGetMetric            *prometheus.SummaryVec // deprecated, use firstContentBlockGetMetric
 
 	// response type metrics
-	unixfsFileGetMetric   *prometheus.HistogramVec
-	unixfsGenDirGetMetric *prometheus.HistogramVec
-	carStreamGetMetric    *prometheus.HistogramVec
-	rawBlockGetMetric     *prometheus.HistogramVec
+	getMetric                 *prometheus.HistogramVec
+	unixfsFileGetMetric       *prometheus.HistogramVec
+	unixfsGenDirGetMetric     *prometheus.HistogramVec
+	carStreamGetMetric        *prometheus.HistogramVec
+	rawBlockGetMetric         *prometheus.HistogramVec
+	tarStreamGetMetric        *prometheus.HistogramVec
+	jsoncborDocumentGetMetric *prometheus.HistogramVec
+	ipnsRecordGetMetric       *prometheus.HistogramVec
 }
 
 // StatusResponseWriter enables us to override HTTP Status Code passed to
@@ -232,6 +236,11 @@ func newHandler(c Config, api API) *handler {
 
 		// Response-type specific metrics
 		// ----------------------------
+		// Generic: time it takes to execute a successful gateway request (all request types)
+		getMetric: newHistogramMetric(
+			"gw_get_duration_seconds",
+			"The time to GET a successful response to a request (all content types).",
+		),
 		// UnixFS: time it takes to return a file
 		unixfsFileGetMetric: newHistogramMetric(
 			"gw_unixfs_file_get_duration_seconds",
@@ -252,13 +261,28 @@ func newHandler(c Config, api API) *handler {
 			"gw_raw_block_get_duration_seconds",
 			"The time to GET an entire raw Block from the gateway.",
 		),
+		// TAR: time it takes to return requested TAR stream
+		tarStreamGetMetric: newHistogramMetric(
+			"gw_tar_stream_get_duration_seconds",
+			"The time to GET an entire TAR stream from the gateway.",
+		),
+		// JSON/CBOR: time it takes to return requested DAG-JSON/-CBOR document
+		jsoncborDocumentGetMetric: newHistogramMetric(
+			"gw_jsoncbor_get_duration_seconds",
+			"The time to GET an entire DAG-JSON/CBOR block from the gateway.",
+		),
+		// IPNS Record: time it takes to return IPNS record
+		ipnsRecordGetMetric: newHistogramMetric(
+			"gw_ipns_record_get_duration_seconds",
+			"The time to GET an entire IPNS Record from the gateway.",
+		),
 
 		// Legacy Metrics
 		// ----------------------------
 		unixfsGetMetric: newSummaryMetric( // TODO: remove?
 			// (deprecated, use firstContentBlockGetMetric instead)
 			"unixfs_get_latency_seconds",
-			"The time to receive the first UnixFS node on a GET from the gateway.",
+			"DEPRECATED: does not do what you think, use gw_first_content_block_get_latency_seconds instead.",
 		),
 	}
 	return i
@@ -372,42 +396,43 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var success bool
+
 	// Support custom response formats passed via ?format or Accept HTTP header
 	switch responseFormat {
 	case "", "application/json", "application/cbor":
 		switch mc.Code(resolvedPath.Cid().Prefix().Codec) {
 		case mc.Json, mc.DagJson, mc.Cbor, mc.DagCbor:
 			logger.Debugw("serving codec", "path", contentPath)
-			i.serveCodec(r.Context(), w, r, resolvedPath, contentPath, begin, responseFormat)
+			success = i.serveCodec(r.Context(), w, r, resolvedPath, contentPath, begin, responseFormat)
 		default:
 			logger.Debugw("serving unixfs", "path", contentPath)
-			i.serveUnixFS(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
+			success = i.serveUnixFS(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
 		}
-		return
 	case "application/vnd.ipld.raw":
 		logger.Debugw("serving raw block", "path", contentPath)
-		i.serveRawBlock(r.Context(), w, r, resolvedPath, contentPath, begin)
-		return
+		success = i.serveRawBlock(r.Context(), w, r, resolvedPath, contentPath, begin)
 	case "application/vnd.ipld.car":
 		logger.Debugw("serving car stream", "path", contentPath)
 		carVersion := formatParams["version"]
-		i.serveCAR(r.Context(), w, r, resolvedPath, contentPath, carVersion, begin)
-		return
+		success = i.serveCAR(r.Context(), w, r, resolvedPath, contentPath, carVersion, begin)
 	case "application/x-tar":
 		logger.Debugw("serving tar file", "path", contentPath)
-		i.serveTAR(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
-		return
+		success = i.serveTAR(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
 	case "application/vnd.ipld.dag-json", "application/vnd.ipld.dag-cbor":
 		logger.Debugw("serving codec", "path", contentPath)
-		i.serveCodec(r.Context(), w, r, resolvedPath, contentPath, begin, responseFormat)
+		success = i.serveCodec(r.Context(), w, r, resolvedPath, contentPath, begin, responseFormat)
 	case "application/vnd.ipfs.ipns-record":
 		logger.Debugw("serving ipns record", "path", contentPath)
-		i.serveIpnsRecord(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
-		return
+		success = i.serveIpnsRecord(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
 	default: // catch-all for unsuported application/vnd.*
 		err := fmt.Errorf("unsupported format %q", responseFormat)
 		webError(w, "failed to respond with requested content type", err, http.StatusBadRequest)
 		return
+	}
+
+	if success {
+		i.getMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 	}
 }
 
