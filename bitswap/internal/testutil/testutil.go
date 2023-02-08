@@ -1,8 +1,8 @@
 package testutil
 
 import (
-	"fmt"
 	"crypto/rand"
+	"fmt"
 
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
