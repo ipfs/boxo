@@ -53,7 +53,7 @@ func main() {
 		},
 	}
 
-	// Creates a mus to serve the prometheus metrics alongside the gateway. This
+	// Creates a mux to serve the prometheus metrics alongside the gateway. This
 	// step is optional and only required if you need or want to access the metrics.
 	// You may also decide to expose the metrics on a different path, or port.
 	mux := http.NewServeMux()
@@ -68,7 +68,9 @@ func main() {
 	handler = gateway.WithHostname(mux, gwAPI, publicGateways, noDNSLink)
 
 	log.Printf("Listening on http://localhost:%d", *port)
-	log.Printf("Prometheus metrics available on http://127.0.0.1:%d/debug/metrics/prometheus", *port)
+	log.Printf("Try loading an image: http://localhost:%d/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi", *port)
+	log.Printf("Try browsing Wikipedia snapshot: http://localhost:%d/ipfs/bafybeiaysi4s6lnjev27ln5icwm6tueaw2vdykrtjkwiphwekaywqhcjze", *port)
+	log.Printf("Metrics available at http://127.0.0.1:%d/debug/metrics/prometheus", *port)
 	if err := http.ListenAndServe(":"+strconv.Itoa(*port), handler); err != nil {
 		log.Fatal(err)
 	}

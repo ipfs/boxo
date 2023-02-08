@@ -239,7 +239,7 @@ func newHandler(c Config, api API) *handler {
 		// Generic: time it takes to execute a successful gateway request (all request types)
 		getMetric: newHistogramMetric(
 			"gw_get_duration_seconds",
-			"The time to GET a successful gateway request (all request types).",
+			"The time to GET a successful response to a request (all content types).",
 		),
 		// UnixFS: time it takes to return a file
 		unixfsFileGetMetric: newHistogramMetric(
@@ -282,7 +282,7 @@ func newHandler(c Config, api API) *handler {
 		unixfsGetMetric: newSummaryMetric( // TODO: remove?
 			// (deprecated, use firstContentBlockGetMetric instead)
 			"unixfs_get_latency_seconds",
-			"The time to receive the first UnixFS node on a GET from the gateway.",
+			"DEPRECATED: does not do what you think, use gw_first_content_block_get_latency_seconds instead.",
 		),
 	}
 	return i

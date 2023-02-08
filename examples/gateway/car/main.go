@@ -55,7 +55,7 @@ func main() {
 		},
 	}
 
-	// Creates a mus to serve the prometheus metrics alongside the gateway. This
+	// Creates a mux to serve the prometheus metrics alongside the gateway. This
 	// step is optional and only required if you need or want to access the metrics.
 	// You may also decide to expose the metrics on a different path, or port.
 	mux := http.NewServeMux()
@@ -70,7 +70,7 @@ func main() {
 	handler = gateway.WithHostname(mux, gwAPI, publicGateways, noDNSLink)
 
 	log.Printf("Listening on http://localhost:%d", *port)
-	log.Printf("Prometheus metrics available on http://127.0.0.1:%d/debug/metrics/prometheus", *port)
+	log.Printf("Metrics available at http://127.0.0.1:%d/debug/metrics/prometheus", *port)
 	for _, cid := range roots {
 		log.Printf("Hosting CAR root at http://localhost:%d/ipfs/%s", *port, cid.String())
 	}
