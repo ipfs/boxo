@@ -2,6 +2,7 @@ package verifcid
 
 import (
 	"fmt"
+
 	cid "github.com/ipfs/go-cid"
 	mh "github.com/multiformats/go-multihash"
 )
