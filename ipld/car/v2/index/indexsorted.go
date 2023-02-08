@@ -5,9 +5,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	internalio "github.com/ipld/go-car/v2/internal/io"
 	"io"
 	"sort"
+
+	internalio "github.com/ipld/go-car/v2/internal/io"
 
 	"github.com/multiformats/go-multicodec"
 

@@ -3,9 +3,10 @@ package index
 import (
 	"encoding/binary"
 	"errors"
-	internalio "github.com/ipld/go-car/v2/internal/io"
 	"io"
 	"sort"
+
+	internalio "github.com/ipld/go-car/v2/internal/io"
 
 	"github.com/ipfs/go-cid"
 	"github.com/multiformats/go-multicodec"
