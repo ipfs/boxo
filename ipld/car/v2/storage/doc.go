@@ -1,4 +1,4 @@
-// package storage provides a CAR abstraction for the
+// Package storage provides a CAR abstraction for the
 // github.com/ipld/go-ipld-prime/storage interfaces in the form of a StorageCar.
 //
 // THIS PACKAGE IS EXPERIMENTAL. Breaking changes may be introduced in
@@ -72,6 +72,4 @@
 // • MaxAllowedHeaderSize
 //
 // • MaxAllowedSectionSize
-//
-
 package storage
