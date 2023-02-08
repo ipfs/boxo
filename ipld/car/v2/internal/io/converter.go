@@ -1,6 +1,7 @@
 package io
 
 import (
+	"errors"
 	"io"
 	"sync"
 )
@@ -108,7 +109,7 @@ func (drsb *discardingReadSeekerPlusByte) Seek(offset int64, whence int) (int64,
 	case io.SeekStart:
 		n := offset - drsb.offset
 		if n < 0 {
-			panic("unsupported rewind via whence: io.SeekStart")
+			return 0, errors.New("unsupported rewind via whence: io.SeekStart")
 		}
 		_, err := io.CopyN(io.Discard, drsb, n)
 		return drsb.offset, err
@@ -116,7 +117,7 @@ func (drsb *discardingReadSeekerPlusByte) Seek(offset int64, whence int) (int64,
 		_, err := io.CopyN(io.Discard, drsb, offset)
 		return drsb.offset, err
 	default:
-		panic("unsupported whence: io.SeekEnd")
+		return 0, errors.New("unsupported whence: io.SeekEnd")
 	}
 }
 
@@ -137,9 +138,9 @@ func (ras *readerAtSeeker) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekCurrent:
 		ras.position += offset
 	case io.SeekEnd:
-		panic("unsupported whence: io.SeekEnd")
+		return 0, errors.New("unsupported whence: io.SeekEnd")
 	default:
-		panic("unsupported whence")
+		return 0, errors.New("unsupported whence")
 	}
 	return ras.position, nil
 }
