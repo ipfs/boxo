@@ -1,30 +1,56 @@
 package iter
 
-// Iter is an iterator of aribtrary values.
+import "io"
+
+// Iter is an iterator of arbitrary values.
 // Iterators are generally not goroutine-safe, to make them safe just read from them into a channel.
 // For our use cases, these usually have a single reader. This motivates iterators instead of channels,
 // since the overhead of goroutines+channels has a significant performance cost.
 // Using an iterator, you can read results directly without necessarily involving the Go scheduler.
 type Iter[T any] interface {
-	// Next returns the next element, true if an attempt was made to get the next element, and any error that occurred.
-	// You should generally check err before ok.
-	Next() (val T, ok bool, err error)
-	Close() error
+	// Next sets the iterator to the next value, returning true if an attempt was made to get the next value.
+	Next() bool
+	Val() T
 }
 
-func ReadAll[T any](iter Iter[T]) ([]T, error) {
+type ResultIter[T any] interface {
+	Next() bool
+	Val() Result[T]
+}
+
+type Result[T any] struct {
+	Val T
+	Err error
+}
+
+// ToResultIter returns an iterator that wraps each value in a Result.
+func ToResultIter[T any](iter Iter[T]) Iter[Result[T]] {
+	return Map(iter, func(t T) Result[T] {
+		return Result[T]{Val: t}
+	})
+}
+
+type ClosingIter[T any] interface {
+	Iter[T]
+	io.Closer
+}
+
+type ClosingResultIter[T any] interface {
+	ResultIter[T]
+	io.Closer
+}
+
+func ReadAll[T any](iter Iter[T]) []T {
 	if iter == nil {
-		return nil, nil
+		return nil
 	}
 	var vs []T
-	for {
-		v, ok, err := iter.Next()
-		if err != nil {
-			return vs, err
-		}
-		if !ok {
-			return vs, nil
-		}
-		vs = append(vs, v)
+	for iter.Next() {
+		vs = append(vs, iter.Val())
 	}
+	return vs
 }
+
+type NoopClosingIter[T any] struct{ Iter[T] }
+
+func (n *NoopClosingIter[T]) Close() error { return nil }

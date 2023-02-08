@@ -22,7 +22,7 @@ const ttl = 24 * time.Hour
 
 type Client interface {
 	ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error)
-	FindProviders(ctx context.Context, key cid.Cid) (iter.Iter[types.ProviderResponse], error)
+	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error)
 }
 
 type contentRouter struct {
@@ -103,26 +103,15 @@ func (c *contentRouter) Ready() bool {
 }
 
 // readProviderResponses reads bitswap records from the iterator into the given channel, dropping non-bitswap records.
-func readProviderResponses(iter iter.Iter[types.ProviderResponse], ch chan<- peer.AddrInfo) {
+func readProviderResponses(iter iter.ResultIter[types.ProviderResponse], ch chan<- peer.AddrInfo) {
 	defer close(ch)
-	var (
-		v   types.ProviderResponse
-		ok  bool
-		err error
-	)
-	for {
-		v, ok, err = iter.Next()
-		if err != nil {
-			logger.Warnw(
-				"error iterating provider responses",
-				"Schema", v.GetSchema(),
-				"Type", reflect.TypeOf(v).String(),
-			)
+	for iter.Next() {
+		res := iter.Val()
+		if res.Err != nil {
+			logger.Warnw("error iterating provider responses: %s", res.Err)
 			continue
 		}
-		if !ok {
-			return
-		}
+		v := res.Val
 		if v.GetSchema() == types.SchemaBitswap {
 			result, ok := v.(*types.ReadBitswapProviderRecord)
 			if !ok {

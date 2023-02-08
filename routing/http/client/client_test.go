@@ -27,9 +27,9 @@ import (
 
 type mockContentRouter struct{ mock.Mock }
 
-func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid) (iter.Iter[types.ProviderResponse], error) {
+func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid) (iter.ClosingResultIter[types.ProviderResponse], error) {
 	args := m.Called(ctx, key)
-	return args.Get(0).(iter.Iter[types.ProviderResponse]), args.Error(1)
+	return args.Get(0).(iter.ClosingResultIter[types.ProviderResponse]), args.Error(1)
 }
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.BitswapWriteProvideRequest) (time.Duration, error) {
 	args := m.Called(ctx, req)
@@ -144,20 +144,34 @@ func makeProviderAndIdentity() (peer.ID, []multiaddr.Multiaddr, crypto.PrivKey) 
 	return peerID, []multiaddr.Multiaddr{ma1, ma2}, priv
 }
 
+type osErrContains struct {
+	expContains    string
+	expContainsWin string
+}
+
+func (e *osErrContains) errContains(t *testing.T, err error) {
+	if runtime.GOOS == "windows" && len(e.expContainsWin) != 0 {
+		assert.ErrorContains(t, err, e.expContainsWin)
+	} else {
+		assert.ErrorContains(t, err, e.expContains)
+	}
+}
+
 func TestClient_FindProviders(t *testing.T) {
 	bsReadProvResp := makeBSReadProviderResp()
-	bitswapProvs := []types.ProviderResponse{&bsReadProvResp}
+	bitswapProvs := []iter.Result[types.ProviderResponse]{
+		{Val: &bsReadProvResp},
+	}
 
 	cases := []struct {
 		name           string
 		httpStatusCode int
 		stopServer     bool
-		routerProvs    []types.ProviderResponse
+		routerProvs    []iter.Result[types.ProviderResponse]
 		routerErr      error
 
-		expProvs          []types.ProviderResponse
-		expErrContains    []string
-		expWinErrContains []string
+		expProvs       []iter.Result[types.ProviderResponse]
+		expErrContains []osErrContains
 	}{
 		{
 			name:        "happy case",
@@ -167,13 +181,15 @@ func TestClient_FindProviders(t *testing.T) {
 		{
 			name:           "returns an error if there's a non-200 response",
 			httpStatusCode: 500,
-			expErrContains: []string{"HTTP error with StatusCode=500: "},
+			expErrContains: []osErrContains{{expContains: "HTTP error with StatusCode=500: "}},
 		},
 		{
-			name:              "returns an error if the HTTP client returns a non-HTTP error",
-			stopServer:        true,
-			expErrContains:    []string{"connect: connection refused"},
-			expWinErrContains: []string{"connectex: No connection could be made because the target machine actively refused it."},
+			name:       "returns an error if the HTTP client returns a non-HTTP error",
+			stopServer: true,
+			expErrContains: []osErrContains{{
+				expContains:    "connect: connection refused",
+				expContainsWin: "connectex: No connection could be made because the target machine actively refused it.",
+			}},
 		},
 	}
 	for _, c := range cases {
@@ -196,30 +212,22 @@ func TestClient_FindProviders(t *testing.T) {
 			}
 			cid := makeCID()
 
-			findProvsIter := iter.FromSlice(c.routerProvs)
+			sliceIter := iter.FromSlice(c.routerProvs)
+			findProvsIter := &iter.NoopClosingIter[iter.Result[types.ProviderResponse]]{Iter: sliceIter}
 
 			router.On("FindProviders", mock.Anything, cid).
 				Return(findProvsIter, c.routerErr)
 
 			provsIter, err := client.FindProviders(ctx, cid)
 
-			var errList []string
-			if runtime.GOOS == "windows" && len(c.expWinErrContains) != 0 {
-				errList = c.expWinErrContains
-			} else {
-				errList = c.expErrContains
+			for _, exp := range c.expErrContains {
+				exp.errContains(t, err)
 			}
-
-			for _, exp := range errList {
-				require.ErrorContains(t, err, exp)
-			}
-			if len(errList) == 0 {
+			if len(c.expErrContains) == 0 {
 				require.NoError(t, err)
 			}
 
-			provs, err := iter.ReadAll(provsIter)
-			require.NoError(t, err)
-
+			provs := iter.ReadAll[iter.Result[types.ProviderResponse]](provsIter)
 			assert.Equal(t, c.expProvs, provs)
 		})
 	}

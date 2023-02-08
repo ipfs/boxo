@@ -22,9 +22,10 @@ func (m *mockClient) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl tim
 	args := m.Called(ctx, keys, ttl)
 	return args.Get(0).(time.Duration), args.Error(1)
 }
-func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) (iter.Iter[types.ProviderResponse], error) {
+
+func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error) {
 	args := m.Called(ctx, key)
-	return args.Get(0).(iter.Iter[types.ProviderResponse]), args.Error(1)
+	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
 }
 func (m *mockClient) Ready(ctx context.Context) (bool, error) {
 	args := m.Called(ctx)
@@ -121,7 +122,7 @@ func TestFindProvidersAsync(t *testing.T) {
 			Protocol: "UNKNOWN",
 		},
 	}
-	aisIter := iter.FromSlice(ais)
+	aisIter := iter.ToResultIter[types.ProviderResponse](iter.FromSlice(ais))
 
 	client.On("FindProviders", ctx, key).Return(aisIter, nil)
 

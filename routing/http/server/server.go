@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	mediaTypeJSON   = "application/json"
-	mediaTypeNDJSON = "application/x-ndjson"
+	mediaTypeJSON    = "application/json"
+	mediaTypeJSONSeq = "application/json-seq"
 )
 
 var logger = logging.Logger("service/server/delegatedrouting")
@@ -39,7 +39,7 @@ type FindProvidersAsyncResponse struct {
 }
 
 type ContentRouter interface {
-	FindProviders(ctx context.Context, key cid.Cid) (iter.Iter[types.ProviderResponse], error)
+	FindProviders(ctx context.Context, key cid.Cid) (iter.ClosingResultIter[types.ProviderResponse], error)
 	ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error)
 	Provide(ctx context.Context, req *WriteProvideRequest) (types.ProviderResponse, error)
 }
@@ -60,10 +60,10 @@ type WriteProvideRequest struct {
 
 type serverOption func(s *server)
 
-// WithStreamingResultsDisabled disables ndjson responses, so that the server only supports JSON responses.
+// WithStreamingResultsDisabled disables jsonseq responses, so that the server only supports JSON responses.
 func WithStreamingResultsDisabled() serverOption {
 	return func(s *server) {
-		s.disableNDJSON = true
+		s.disableJSONSeq = true
 	}
 }
 
@@ -84,8 +84,8 @@ func Handler(svc ContentRouter, opts ...serverOption) http.Handler {
 }
 
 type server struct {
-	svc           ContentRouter
-	disableNDJSON bool
+	svc            ContentRouter
+	disableJSONSeq bool
 }
 
 func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
@@ -164,9 +164,9 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		return
 	}
 
-	var handlerFunc func(w http.ResponseWriter, provIter iter.Iter[types.ProviderResponse])
+	var handlerFunc func(w http.ResponseWriter, provIter iter.ClosingResultIter[types.ProviderResponse])
 
-	var supportsNDJSON bool
+	var supportsJSONSeq bool
 	var supportsJSON bool
 	accepts := httpReq.Header.Values("Accept")
 	if len(accepts) == 0 {
@@ -182,13 +182,13 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 			switch mediaType {
 			case mediaTypeJSON:
 				supportsJSON = true
-			case mediaTypeNDJSON:
-				supportsNDJSON = true
+			case mediaTypeJSONSeq:
+				supportsJSONSeq = true
 			}
 		}
 
-		if supportsNDJSON && !s.disableNDJSON {
-			handlerFunc = s.findProvidersNDJSON
+		if supportsJSONSeq && !s.disableJSONSeq {
+			handlerFunc = s.findProvidersJSONSeq
 		} else if supportsJSON {
 			handlerFunc = s.findProvidersJSON
 		} else {
@@ -206,7 +206,7 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 	handlerFunc(w, provIter)
 }
 
-func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.Iter[types.ProviderResponse]) {
+func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ClosingResultIter[types.ProviderResponse]) {
 	defer provIter.Close()
 
 	var (
@@ -214,45 +214,40 @@ func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.Iter[typ
 		i         int
 	)
 
-	for {
-		v, ok, err := provIter.Next()
-		if err != nil {
-			writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error on result %d: %w", i, err))
+	for provIter.Next() {
+		res := provIter.Val()
+		if res.Err != nil {
+			writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error on result %d: %w", i, res.Err))
+			return
 		}
-		if !ok {
-			break
-		}
-		providers = append(providers, v)
+		providers = append(providers, res.Val)
 		i++
 	}
 	response := jsontypes.ReadProvidersResponse{Providers: providers}
 	writeJSONResult(w, "FindProviders", response)
 }
 
-func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.Iter[types.ProviderResponse]) {
+func (s *server) findProvidersJSONSeq(w http.ResponseWriter, provIter iter.ClosingResultIter[types.ProviderResponse]) {
 	defer provIter.Close()
 
-	w.Header().Set("Content-Type", mediaTypeNDJSON)
+	w.Header().Set("Content-Type", mediaTypeJSONSeq)
 	w.WriteHeader(http.StatusOK)
-	for {
-		v, ok, err := provIter.Next()
-		if err != nil {
-			logger.Errorw("FindProviders ndjson iterator error", "Error", err)
+	for provIter.Next() {
+		res := provIter.Val()
+		if res.Err != nil {
+			logger.Errorw("FindProviders jsonseq iterator error", "Error", res.Err)
 			return
 		}
-		if !ok {
-			break
-		}
 		// don't use an encoder because we can't easily differentiate writer errors from encoding errors
-		b, err := drjson.MarshalJSONBytes(v)
+		b, err := drjson.MarshalJSONBytes(res.Val)
 		if err != nil {
-			logger.Errorw("FindProviders ndjson marshal error", "Error", err)
+			logger.Errorw("FindProviders jsonseq marshal error", "Error", err)
 			return
 		}
 
 		_, err = w.Write(b)
 		if err != nil {
-			logger.Warn("FindProviders ndjson write error", "Error", err)
+			logger.Warn("FindProviders jsonseq write error", "Error", err)
 			return
 		}
 		if f, ok := w.(http.Flusher); ok {

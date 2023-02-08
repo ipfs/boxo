@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"strings"
@@ -19,7 +20,7 @@ import (
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
-	"github.com/ipfs/boxo/routing/http/types/ndjson"
+	"github.com/ipfs/boxo/routing/http/types/jsonseq"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	record "github.com/libp2p/go-libp2p-record"
@@ -34,8 +35,8 @@ var (
 )
 
 const (
-	mediaTypeJSON   = "application/json"
-	mediaTypeNDJSON = "application/x-ndjson"
+	mediaTypeJSON    = "application/json"
+	mediaTypeJSONSeq = "application/json-seq"
 )
 
 type client struct {
@@ -107,7 +108,7 @@ func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) option {
 
 func WithStreamResultsRequired() option {
 	return func(c *client) {
-		c.accepts = mediaTypeNDJSON
+		c.accepts = mediaTypeJSONSeq
 	}
 }
 
@@ -126,7 +127,7 @@ func New(baseURL string, opts ...option) (*client, error) {
 		httpClient: defaultHTTPClient,
 		validator:  ipns.Validator{},
 		clock:      clock.New(),
-		accepts:    strings.Join([]string{mediaTypeNDJSON, mediaTypeJSON}, ","),
+		accepts:    strings.Join([]string{mediaTypeJSONSeq, mediaTypeJSON}, ","),
 	}
 
 	for _, opt := range opts {
@@ -148,17 +149,24 @@ type measuringIter[T any] struct {
 	m   *measurement
 }
 
-func (c *measuringIter[T]) Next() (T, bool, error) {
+func (c *measuringIter[T]) Next() bool {
 	c.m.length++
 	return c.Iter.Next()
 }
 
-func (c *measuringIter[T]) Close() error {
-	c.m.record(c.ctx)
-	return c.Iter.Close()
+func (c *measuringIter[T]) Val() T {
+	return c.Iter.Val()
 }
 
-func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.Iter[types.ProviderResponse], err error) {
+func (c *measuringIter[T]) Close() error {
+	c.m.record(c.ctx)
+	if closer, ok := c.Iter.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.ResultIter[types.ProviderResponse], err error) {
 	// TODO test measurements
 	m := newMeasurement("FindProviders")
 
@@ -205,22 +213,23 @@ func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.Ite
 
 	m.mediaType = mediaType
 
-	var it iter.Iter[types.ProviderResponse]
+	var it iter.ResultIter[types.ProviderResponse]
 	switch mediaType {
 	case mediaTypeJSON:
 		defer resp.Body.Close()
 		parsedResp := &jsontypes.ReadProvidersResponse{}
 		err = json.NewDecoder(resp.Body).Decode(parsedResp)
-		it = iter.FromSlice(parsedResp.Providers)
-	case mediaTypeNDJSON:
-		it = ndjson.NewReadProvidersResponseIter(resp.Body)
+		var sliceIt iter.Iter[types.ProviderResponse] = iter.FromSlice(parsedResp.Providers)
+		it = iter.ToResultIter(sliceIt)
+	case mediaTypeJSONSeq:
+		it = jsonseq.NewReadProvidersResponseIter(resp.Body)
 	default:
 		defer resp.Body.Close()
 		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
 		return nil, errors.New("unknown content type")
 	}
 
-	return &measuringIter[types.ProviderResponse]{Iter: it, ctx: ctx, m: m}, nil
+	return &measuringIter[iter.Result[types.ProviderResponse]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
 func (c *client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {

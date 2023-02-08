@@ -2,22 +2,24 @@ package iter
 
 // FromSlice returns an iterator over the given slice.
 func FromSlice[T any](s []T) *SliceIter[T] {
-	return &SliceIter[T]{Slice: s}
+	return &SliceIter[T]{Slice: s, i: -1}
 }
 
 type SliceIter[T any] struct {
 	Slice []T
 	i     int
+	val   T
 }
 
-func (s *SliceIter[T]) Next() (T, bool, error) {
-	var val T
-	if s.i >= len(s.Slice) {
-		return val, false, nil
-	}
-	val = s.Slice[s.i]
+func (s *SliceIter[T]) Next() bool {
 	s.i++
-	return val, true, nil
+	if s.i >= len(s.Slice) {
+		return false
+	}
+	s.val = s.Slice[s.i]
+	return true
 }
 
-func (s *SliceIter[T]) Close() error { return nil }
+func (s *SliceIter[T]) Val() T {
+	return s.val
+}
