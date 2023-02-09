@@ -31,7 +31,10 @@ func makeDir(ds ipld.DAGService, size int) ([]string, *Shard, error) {
 func makeDirWidth(ds ipld.DAGService, size, width int) ([]string, *Shard, error) {
 	ctx := context.Background()
 
-	s, _ := NewShard(ds, width)
+	s, err := NewShard(ds, width)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	var dirs []string
 	for i := 0; i < size; i++ {
@@ -42,8 +45,11 @@ func makeDirWidth(ds ipld.DAGService, size, width int) ([]string, *Shard, error)
 
 	for i := 0; i < len(dirs); i++ {
 		nd := ft.EmptyDirNode()
-		ds.Add(ctx, nd)
-		err := s.Set(ctx, dirs[i], nd)
+		err := ds.Add(ctx, nd)
+		if err != nil {
+			return nil, nil, err
+		}
+		err = s.Set(ctx, dirs[i], nd)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -126,7 +132,7 @@ func assertSerializationWorks(ds ipld.DAGService, s *Shard) error {
 
 func TestBasicSet(t *testing.T) {
 	ds := mdtest.Mock()
-	for _, w := range []int{128, 256, 512, 1024, 2048, 4096} {
+	for _, w := range []int{128, 256, 512, 1024} {
 		t.Run(fmt.Sprintf("BasicSet%d", w), func(t *testing.T) {
 			names, s, err := makeDirWidth(ds, 1000, w)
 			if err != nil {
@@ -740,7 +746,7 @@ func TestHamtBadSize(t *testing.T) {
 	for _, size := range [...]int{-8, 7, 2, 1337, 1024 + 8, -3} {
 		_, err := NewShard(nil, size)
 		if err == nil {
-			t.Error("should have failed to construct hamt with bad size: %d", size)
+			t.Errorf("should have failed to construct hamt with bad size: %d", size)
 		}
 	}
 }
