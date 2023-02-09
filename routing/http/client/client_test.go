@@ -27,9 +27,9 @@ import (
 
 type mockContentRouter struct{ mock.Mock }
 
-func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid) (iter.ClosingResultIter[types.ProviderResponse], error) {
+func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIterCloser[types.ProviderResponse], error) {
 	args := m.Called(ctx, key)
-	return args.Get(0).(iter.ClosingResultIter[types.ProviderResponse]), args.Error(1)
+	return args.Get(0).(iter.ResultIterCloser[types.ProviderResponse]), args.Error(1)
 }
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.BitswapWriteProvideRequest) (time.Duration, error) {
 	args := m.Called(ctx, req)
@@ -213,7 +213,7 @@ func TestClient_FindProviders(t *testing.T) {
 			cid := makeCID()
 
 			sliceIter := iter.FromSlice(c.routerProvs)
-			findProvsIter := &iter.NoopClosingIter[iter.Result[types.ProviderResponse]]{Iter: sliceIter}
+			findProvsIter := iter.IterCloserNoop[iter.Result[types.ProviderResponse]](sliceIter)
 
 			router.On("FindProviders", mock.Anything, cid).
 				Return(findProvsIter, c.routerErr)
