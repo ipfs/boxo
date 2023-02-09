@@ -2,6 +2,7 @@ package util_test
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"math/rand"
 	"testing"
 
@@ -15,7 +16,7 @@ func TestLdSize(t *testing.T) {
 		data := make([][]byte, 5)
 		for j := 0; j < 5; j++ {
 			data[j] = make([]byte, rand.Intn(30))
-			_, err := rand.Read(data[j])
+			_, err := crand.Read(data[j])
 			require.NoError(t, err)
 		}
 		size := util.LdSize(data...)
