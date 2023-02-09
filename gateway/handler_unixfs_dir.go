@@ -118,7 +118,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	dirListing := make([]assets.DirectoryItem, 0, len(results))
 	for link := range results {
 		if link.Err != nil {
-			internalWebError(w, err)
+			internalWebError(w, link.Err)
 			return
 		}
 
