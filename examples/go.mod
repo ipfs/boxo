@@ -9,7 +9,7 @@ require (
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-fetcher v1.6.1
 	github.com/ipfs/go-ipfs-blockstore v1.2.0
-	github.com/ipfs/go-ipfs-chunker v0.0.1
+	github.com/ipfs/go-ipfs-chunker v0.0.5
 	github.com/ipfs/go-ipfs-exchange-offline v0.3.0
 	github.com/ipfs/go-ipld-format v0.4.0
 	github.com/ipfs/go-ipns v0.3.0
@@ -17,14 +17,14 @@ require (
 	github.com/ipfs/go-merkledag v0.9.0
 	github.com/ipfs/go-namesys v0.7.0
 	github.com/ipfs/go-path v0.3.0
-	github.com/ipfs/go-unixfs v0.3.1
-	github.com/ipfs/go-unixfsnode v1.5.1
+	github.com/ipfs/go-unixfs v0.4.3
+	github.com/ipfs/go-unixfsnode v1.5.2
 	github.com/ipfs/interface-go-ipfs-core v0.10.0
 	github.com/ipld/go-car/v2 v2.6.0
 	github.com/ipld/go-codec-dagpb v1.5.0
 	github.com/ipld/go-ipld-prime v0.19.0
 	github.com/libp2p/go-libp2p v0.25.1
-	github.com/libp2p/go-libp2p-routing-helpers v0.4.0
+	github.com/libp2p/go-libp2p-routing-helpers v0.6.0
 	github.com/multiformats/go-multiaddr v0.8.0
 	github.com/multiformats/go-multicodec v0.7.0
 	github.com/prometheus/client_golang v1.14.0
@@ -54,6 +54,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
+	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
@@ -64,12 +65,11 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/huin/goupnp v1.0.3 // indirect
 	github.com/ipfs/bbloom v0.0.4 // indirect
-	github.com/ipfs/go-bitfield v1.0.0 // indirect
+	github.com/ipfs/go-bitfield v1.1.0 // indirect
 	github.com/ipfs/go-block-format v0.1.1 // indirect
 	github.com/ipfs/go-ipfs-delay v0.0.1 // indirect
 	github.com/ipfs/go-ipfs-ds-help v1.1.0 // indirect
 	github.com/ipfs/go-ipfs-exchange-interface v0.2.0 // indirect
-	github.com/ipfs/go-ipfs-files v0.3.0 // indirect
 	github.com/ipfs/go-ipfs-posinfo v0.0.1 // indirect
 	github.com/ipfs/go-ipfs-pq v0.0.3 // indirect
 	github.com/ipfs/go-ipfs-redirects-file v0.1.1 // indirect
