@@ -483,7 +483,7 @@ func (s *Session) resetIdleTick() {
 		avLat := s.latencyTrkr.averageLatency()
 		tickDelay = s.baseTickDelay + (3 * avLat)
 	}
-	tickDelay = tickDelay * time.Duration(1+s.consecutiveTicks)
+	tickDelay *= time.Duration(1 + s.consecutiveTicks)
 	s.idleTick.Reset(tickDelay)
 }
 

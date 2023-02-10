@@ -563,17 +563,18 @@ func webRequestError(w http.ResponseWriter, err *requestError) {
 }
 
 func webError(w http.ResponseWriter, err error, defaultCode int) {
-	if errors.Is(err, path.ErrInvalidPath{}) {
+	switch {
+	case errors.Is(err, path.ErrInvalidPath{}):
 		webErrorWithCode(w, err, http.StatusBadRequest)
-	} else if isErrNotFound(err) {
+	case isErrNotFound(err):
 		webErrorWithCode(w, err, http.StatusNotFound)
-	} else if errors.Is(err, ErrGatewayTimeout) {
+	case errors.Is(err, ErrGatewayTimeout):
 		webErrorWithCode(w, err, http.StatusGatewayTimeout)
-	} else if errors.Is(err, ErrBadGateway) {
+	case errors.Is(err, ErrBadGateway):
 		webErrorWithCode(w, err, http.StatusBadGateway)
-	} else if errors.Is(err, context.DeadlineExceeded) || err == context.DeadlineExceeded {
+	case errors.Is(err, context.DeadlineExceeded):
 		webErrorWithCode(w, err, http.StatusGatewayTimeout)
-	} else {
+	default:
 		webErrorWithCode(w, err, defaultCode)
 	}
 }

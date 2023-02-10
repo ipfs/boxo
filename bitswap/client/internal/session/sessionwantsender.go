@@ -653,11 +653,12 @@ func (sws *sessionWantSender) updateWantBlockPresence(c cid.Cid, p peer.ID) {
 
 	// If the peer sent us a HAVE or DONT_HAVE for the cid, adjust the
 	// block presence for the peer / cid combination
-	if sws.bpm.PeerHasBlock(p, c) {
+	switch {
+	case sws.bpm.PeerHasBlock(p, c):
 		wi.setPeerBlockPresence(p, BPHave)
-	} else if sws.bpm.PeerDoesNotHaveBlock(p, c) {
+	case sws.bpm.PeerDoesNotHaveBlock(p, c):
 		wi.setPeerBlockPresence(p, BPDontHave)
-	} else {
+	default:
 		wi.setPeerBlockPresence(p, BPUnknown)
 	}
 }
