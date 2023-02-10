@@ -189,11 +189,10 @@ func (db *DagBuilderHelper) FillNodeLayer(node *FSNodeOverDag) error {
 			return err
 		}
 	}
-	node.Commit()
 	// TODO: Do we need to commit here? The caller who created the
 	// `FSNodeOverDag` should be in charge of that.
-
-	return nil
+	_, err := node.Commit()
+	return err
 }
 
 // NewLeafDataNode builds the `node` with the data obtained from the

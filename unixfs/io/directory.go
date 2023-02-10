@@ -164,7 +164,8 @@ func NewDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (Directory, err
 
 func (d *BasicDirectory) computeEstimatedSize() {
 	d.estimatedSize = 0
-	d.ForEachLink(context.TODO(), func(l *ipld.Link) error {
+	// err is just breaking the iteration and we always return nil
+	_ = d.ForEachLink(context.TODO(), func(l *ipld.Link) error {
 		d.addToEstimatedSize(l.Name, l.Cid)
 		return nil
 	})
@@ -570,7 +571,7 @@ func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.No
 	if err != nil {
 		return err
 	}
-	hamtDir.AddChild(ctx, name, nd)
+	err = hamtDir.AddChild(ctx, name, nd)
 	if err != nil {
 		return err
 	}
@@ -600,7 +601,7 @@ func (d *DynamicDirectory) RemoveChild(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	basicDir.RemoveChild(ctx, name)
+	err = basicDir.RemoveChild(ctx, name)
 	if err != nil {
 		return err
 	}
