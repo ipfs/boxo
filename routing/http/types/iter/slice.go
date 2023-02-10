@@ -23,3 +23,7 @@ func (s *SliceIter[T]) Next() bool {
 func (s *SliceIter[T]) Val() T {
 	return s.val
 }
+
+func (s *SliceIter[T]) Close() error {
+	return nil
+}

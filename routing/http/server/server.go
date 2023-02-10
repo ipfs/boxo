@@ -39,7 +39,7 @@ type FindProvidersAsyncResponse struct {
 }
 
 type ContentRouter interface {
-	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIterCloser[types.ProviderResponse], error)
+	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error)
 	ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error)
 	Provide(ctx context.Context, req *WriteProvideRequest) (types.ProviderResponse, error)
 }
@@ -164,7 +164,7 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		return
 	}
 
-	var handlerFunc func(w http.ResponseWriter, provIter iter.ResultIterCloser[types.ProviderResponse])
+	var handlerFunc func(w http.ResponseWriter, provIter iter.ResultIter[types.ProviderResponse])
 
 	var supportsJSONSeq bool
 	var supportsJSON bool
@@ -206,7 +206,7 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 	handlerFunc(w, provIter)
 }
 
-func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIterCloser[types.ProviderResponse]) {
+func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.ProviderResponse]) {
 	defer provIter.Close()
 
 	var (
@@ -227,7 +227,7 @@ func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIt
 	writeJSONResult(w, "FindProviders", response)
 }
 
-func (s *server) findProvidersJSONSeq(w http.ResponseWriter, provIter iter.ResultIterCloser[types.ProviderResponse]) {
+func (s *server) findProvidersJSONSeq(w http.ResponseWriter, provIter iter.ResultIter[types.ProviderResponse]) {
 	defer provIter.Close()
 
 	w.Header().Set("Content-Type", mediaTypeJSONSeq)

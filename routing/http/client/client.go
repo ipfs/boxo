@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"mime"
 	"net/http"
 	"strings"
@@ -160,10 +159,7 @@ func (c *measuringIter[T]) Val() T {
 
 func (c *measuringIter[T]) Close() error {
 	c.m.record(c.ctx)
-	if closer, ok := c.Iter.(io.Closer); ok {
-		return closer.Close()
-	}
-	return nil
+	return c.Iter.Close()
 }
 
 func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.ResultIter[types.ProviderResponse], err error) {

@@ -20,13 +20,12 @@ func TestHeaders(t *testing.T) {
 	t.Cleanup(server.Close)
 	serverAddr := "http://" + server.Listener.Addr().String()
 
-	sliceIter := iter.FromSlice([]iter.Result[types.ProviderResponse]{
+	results := iter.FromSlice([]iter.Result[types.ProviderResponse]{
 		{Val: &types.ReadBitswapProviderRecord{
 			Protocol: "transport-bitswap",
 			Schema:   types.SchemaBitswap,
 		}}},
 	)
-	results := iter.IterCloserNoop[iter.Result[types.ProviderResponse]](sliceIter)
 
 	c := "baeabep4vu3ceru7nerjjbk37sxb7wmftteve4hcosmyolsbsiubw2vr6pqzj6mw7kv6tbn6nqkkldnklbjgm5tzbi4hkpkled4xlcr7xz4bq"
 	cb, err := cid.Decode(c)
@@ -50,9 +49,9 @@ func TestHeaders(t *testing.T) {
 
 type mockContentRouter struct{ mock.Mock }
 
-func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIterCloser[types.ProviderResponse], error) {
+func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error) {
 	args := m.Called(ctx, key)
-	return args.Get(0).(iter.ResultIterCloser[types.ProviderResponse]), args.Error(1)
+	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
 }
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error) {
 	args := m.Called(ctx, req)

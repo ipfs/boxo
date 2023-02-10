@@ -1,13 +1,11 @@
 package iter
 
-import "io"
-
 // Map invokes f on each element of iter.
-func Map[T any, U any](iter Iter[T], f func(t T) U) Iter[U] {
-	return &mapIter[T, U]{iter: iter, f: f}
+func Map[T any, U any](iter Iter[T], f func(t T) U) *MapIter[T, U] {
+	return &MapIter[T, U]{iter: iter, f: f}
 }
 
-type mapIter[T any, U any] struct {
+type MapIter[T any, U any] struct {
 	iter Iter[T]
 	f    func(T) U
 
@@ -15,7 +13,7 @@ type mapIter[T any, U any] struct {
 	val  U
 }
 
-func (m *mapIter[T, U]) Next() bool {
+func (m *MapIter[T, U]) Next() bool {
 	if m.done {
 		return false
 	}
@@ -32,13 +30,10 @@ func (m *mapIter[T, U]) Next() bool {
 	return true
 }
 
-func (m *mapIter[T, U]) Val() U {
+func (m *MapIter[T, U]) Val() U {
 	return m.val
 }
 
-func (m *mapIter[T, U]) Close() error {
-	if closer, ok := m.iter.(io.Closer); ok {
-		return closer.Close()
-	}
-	return nil
+func (m *MapIter[T, U]) Close() error {
+	return m.iter.Close()
 }

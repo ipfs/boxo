@@ -1,7 +1,5 @@
 package iter
 
-import "io"
-
 // Iter is an iterator of arbitrary values.
 // Iterators are generally not goroutine-safe, to make them safe just read from them into a channel.
 // For our use cases, these usually have a single reader. This motivates iterators instead of channels,
@@ -17,12 +15,10 @@ type Iter[T any] interface {
 	// Next sets the iterator to the next value, returning true if an attempt was made to get the next value.
 	Next() bool
 	Val() T
+	Close() error
 }
 
-type ResultIter[T any] interface {
-	Next() bool
-	Val() Result[T]
-}
+type ResultIter[T any] interface{ Iter[Result[T]] }
 
 type Result[T any] struct {
 	Val T
@@ -36,16 +32,6 @@ func ToResultIter[T any](iter Iter[T]) Iter[Result[T]] {
 	})
 }
 
-type IterCloser[T any] interface {
-	Iter[T]
-	io.Closer
-}
-
-type ResultIterCloser[T any] interface {
-	ResultIter[T]
-	io.Closer
-}
-
 func ReadAll[T any](iter Iter[T]) []T {
 	if iter == nil {
 		return nil
@@ -55,13 +41,4 @@ func ReadAll[T any](iter Iter[T]) []T {
 		vs = append(vs, iter.Val())
 	}
 	return vs
-}
-
-// iterCloserNoop creates an io.Closer from an Iter that does nothing on close.
-type iterCloserNoop[T any] struct{ Iter[T] }
-
-func (n *iterCloserNoop[T]) Close() error { return nil }
-
-func IterCloserNoop[T any](it Iter[T]) IterCloser[T] {
-	return &iterCloserNoop[T]{it}
 }

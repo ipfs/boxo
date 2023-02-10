@@ -9,7 +9,7 @@ import (
 )
 
 // NewReadProvidersResponseIter returns an iterator that reads Read Provider Records from the given reader.
-func NewReadProvidersResponseIter(r io.Reader) iter.ResultIter[types.ProviderResponse] {
+func NewReadProvidersResponseIter(r io.Reader) iter.Iter[iter.Result[types.ProviderResponse]] {
 	jsonIter := iter.FromReaderJSON[types.UnknownProviderRecord](r)
 	mapFn := func(upr iter.Result[types.UnknownProviderRecord]) iter.Result[types.ProviderResponse] {
 		var result iter.Result[types.ProviderResponse]

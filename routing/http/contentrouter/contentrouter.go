@@ -105,6 +105,7 @@ func (c *contentRouter) Ready() bool {
 // readProviderResponses reads bitswap records from the iterator into the given channel, dropping non-bitswap records.
 func readProviderResponses(iter iter.ResultIter[types.ProviderResponse], ch chan<- peer.AddrInfo) {
 	defer close(ch)
+	defer iter.Close()
 	for iter.Next() {
 		res := iter.Val()
 		if res.Err != nil {
