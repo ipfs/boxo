@@ -140,7 +140,7 @@ func (f *serialFile) Stat() os.FileInfo {
 
 func (f *serialFile) Size() (int64, error) {
 	if !f.stat.IsDir() {
-		//something went terribly, terribly wrong
+		// something went terribly, terribly wrong
 		return 0, errors.New("serialFile is not a directory")
 	}
 
