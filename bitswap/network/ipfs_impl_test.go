@@ -436,7 +436,7 @@ func TestMessageSendNotSupportedResponse(t *testing.T) {
 
 	eh, bsnet1, _, _, _ := prepareNetwork(t, ctx, p1, r1, p2, r2)
 
-	eh.setError(multistream.ErrNotSupported)
+	eh.setError(multistream.ErrNotSupported[protocol.ID]{})
 	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{
 		MaxRetries:       3,
 		SendTimeout:      100 * time.Millisecond,
