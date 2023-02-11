@@ -1,4 +1,4 @@
-package jsonseq
+package ndjson
 
 import (
 	"encoding/json"

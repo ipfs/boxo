@@ -19,7 +19,7 @@ import (
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
-	"github.com/ipfs/boxo/routing/http/types/jsonseq"
+	"github.com/ipfs/boxo/routing/http/types/ndjson"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	record "github.com/libp2p/go-libp2p-record"
@@ -34,8 +34,8 @@ var (
 )
 
 const (
-	mediaTypeJSON    = "application/json"
-	mediaTypeJSONSeq = "application/json-seq"
+	mediaTypeJSON   = "application/json"
+	mediaTypeNDJSON = "application/x-ndjson"
 )
 
 type client struct {
@@ -107,7 +107,7 @@ func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) option {
 
 func WithStreamResultsRequired() option {
 	return func(c *client) {
-		c.accepts = mediaTypeJSONSeq
+		c.accepts = mediaTypeNDJSON
 	}
 }
 
@@ -126,7 +126,7 @@ func New(baseURL string, opts ...option) (*client, error) {
 		httpClient: defaultHTTPClient,
 		validator:  ipns.Validator{},
 		clock:      clock.New(),
-		accepts:    strings.Join([]string{mediaTypeJSONSeq, mediaTypeJSON}, ","),
+		accepts:    strings.Join([]string{mediaTypeNDJSON, mediaTypeJSON}, ","),
 	}
 
 	for _, opt := range opts {
@@ -217,8 +217,8 @@ func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.Res
 		err = json.NewDecoder(resp.Body).Decode(parsedResp)
 		var sliceIt iter.Iter[types.ProviderResponse] = iter.FromSlice(parsedResp.Providers)
 		it = iter.ToResultIter(sliceIt)
-	case mediaTypeJSONSeq:
-		it = jsonseq.NewReadProvidersResponseIter(resp.Body)
+	case mediaTypeNDJSON:
+		it = ndjson.NewReadProvidersResponseIter(resp.Body)
 	default:
 		defer resp.Body.Close()
 		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
