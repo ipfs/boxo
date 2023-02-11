@@ -31,7 +31,7 @@ wants those blocks.
 
 `go-bitswap` provides an implementation of the Bitswap protocol in go.
 
-[Learn more about how Bitswap works](./docs/how-bitswap-works.md)
+[Learn more about how Bitswap works](./client/docs/how-bitswap-works.md)
 
 ## Usage
 
