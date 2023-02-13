@@ -15,6 +15,7 @@ type Iter[T any] interface {
 	// Next sets the iterator to the next value, returning true if an attempt was made to get the next value.
 	Next() bool
 	Val() T
+	// Close closes the iterator and any underlying resources. Failure to close an iterator may result in resource leakage (goroutines, FDs, conns, etc.).
 	Close() error
 }
 

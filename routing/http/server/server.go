@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	mediaTypeJSON   = "application/json"
-	mediaTypeNDJSON = "application/x-ndjson"
+	mediaTypeJSON     = "application/json"
+	mediaTypeNDJSON   = "application/x-ndjson"
+	mediaTypeWildcard = "*/*"
 )
 
 var logger = logging.Logger("service/server/delegatedrouting")
@@ -180,7 +181,7 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 			}
 
 			switch mediaType {
-			case mediaTypeJSON:
+			case mediaTypeJSON, mediaTypeWildcard:
 				supportsJSON = true
 			case mediaTypeNDJSON:
 				supportsNDJSON = true
