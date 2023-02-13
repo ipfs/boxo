@@ -23,7 +23,7 @@ import (
 // serveDirectory returns the best representation of UnixFS directory
 //
 // It will return index.html if present, or generate directory listing otherwise.
-func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, dir files.Directory, begin time.Time, logger *zap.SugaredLogger) {
+func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, dir files.Directory, begin time.Time, logger *zap.SugaredLogger) bool {
 	ctx, span := spanTrace(ctx, "ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
@@ -35,7 +35,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	requestURI, err := url.ParseRequestURI(r.RequestURI)
 	if err != nil {
 		webError(w, "failed to parse request path", err, http.StatusInternalServerError)
-		return
+		return false
 	}
 	originalURLPath := requestURI.Path
 
@@ -54,7 +54,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 			redirectURL := originalURLPath + suffix
 			logger.Debugw("directory location moved permanently", "status", http.StatusMovedPermanently)
 			http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
-			return
+			return true
 		}
 	}
 
@@ -66,24 +66,23 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		idx, err := i.api.GetUnixFsNode(ctx, idxResolvedPath)
 		if err != nil {
 			internalWebError(w, err)
-			return
+			return false
 		}
 
 		f, ok := idx.(files.File)
 		if !ok {
 			internalWebError(w, files.ErrNotReader)
-			return
+			return false
 		}
 
 		logger.Debugw("serving index.html file", "path", idxPath)
 		// write to request
-		i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
-		return
+		return i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
 	case resolver.ErrNoLink:
 		logger.Debugw("no index.html; noop", "path", idxPath)
 	default:
 		internalWebError(w, err)
-		return
+		return false
 	}
 
 	// See statusResponseWriter.WriteHeader
@@ -93,7 +92,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	if w.Header().Get("Location") != "" {
 		logger.Debugw("location moved permanently", "status", http.StatusMovedPermanently)
 		w.WriteHeader(http.StatusMovedPermanently)
-		return
+		return true
 	}
 
 	// A HTML directory index will be presented, be sure to set the correct
@@ -106,20 +105,20 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 
 	if r.Method == http.MethodHead {
 		logger.Debug("return as request's HTTP method is HEAD")
-		return
+		return true
 	}
 
 	results, err := i.api.LsUnixFsDir(ctx, resolvedPath)
 	if err != nil {
 		internalWebError(w, err)
-		return
+		return false
 	}
 
 	dirListing := make([]assets.DirectoryItem, 0, len(results))
 	for link := range results {
 		if link.Err != nil {
 			internalWebError(w, link.Err)
-			return
+			return false
 		}
 
 		hash := link.Cid.String()
@@ -195,11 +194,12 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 
 	if err := assets.DirectoryTemplate.Execute(w, tplData); err != nil {
 		internalWebError(w, err)
-		return
+		return false
 	}
 
 	// Update metrics
 	i.unixfsGenDirGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	return true
 }
 
 func getDirListingEtag(dirCid cid.Cid) string {
