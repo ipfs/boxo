@@ -74,14 +74,15 @@ type handler struct {
 	unixfsGetMetric            *prometheus.SummaryVec // deprecated, use firstContentBlockGetMetric
 
 	// response type metrics
-	getMetric                 *prometheus.HistogramVec
-	unixfsFileGetMetric       *prometheus.HistogramVec
-	unixfsGenDirGetMetric     *prometheus.HistogramVec
-	carStreamGetMetric        *prometheus.HistogramVec
-	rawBlockGetMetric         *prometheus.HistogramVec
-	tarStreamGetMetric        *prometheus.HistogramVec
-	jsoncborDocumentGetMetric *prometheus.HistogramVec
-	ipnsRecordGetMetric       *prometheus.HistogramVec
+	getMetric                    *prometheus.HistogramVec
+	unixfsFileGetMetric          *prometheus.HistogramVec
+	unixfsDirIndexGetMetric      *prometheus.HistogramVec
+	unixfsGenDirListingGetMetric *prometheus.HistogramVec
+	carStreamGetMetric           *prometheus.HistogramVec
+	rawBlockGetMetric            *prometheus.HistogramVec
+	tarStreamGetMetric           *prometheus.HistogramVec
+	jsoncborDocumentGetMetric    *prometheus.HistogramVec
+	ipnsRecordGetMetric          *prometheus.HistogramVec
 }
 
 // StatusResponseWriter enables us to override HTTP Status Code passed to
@@ -246,8 +247,13 @@ func newHandler(c Config, api API) *handler {
 			"gw_unixfs_file_get_duration_seconds",
 			"The time to serve an entire UnixFS file from the gateway.",
 		),
+		// UnixFS: time it takes to find and serve an index.html file on behalf of a directory.
+		unixfsDirIndexGetMetric: newHistogramMetric(
+			"gw_unixfs_dir_indexhtml_get_duration_seconds",
+			"The time to serve an index.html file on behalf of a directory from the gateway. This is a subset of gw_unixfs_file_get_duration_seconds.",
+		),
 		// UnixFS: time it takes to generate static HTML with directory listing
-		unixfsGenDirGetMetric: newHistogramMetric(
+		unixfsGenDirListingGetMetric: newHistogramMetric(
 			"gw_unixfs_gen_dir_listing_get_duration_seconds",
 			"The time to serve a generated UnixFS HTML directory listing from the gateway.",
 		),

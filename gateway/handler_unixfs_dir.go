@@ -77,7 +77,11 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 
 		logger.Debugw("serving index.html file", "path", idxPath)
 		// write to request
-		return i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
+		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
+		if success {
+			i.unixfsDirIndexGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		}
+		return success
 	case resolver.ErrNoLink:
 		logger.Debugw("no index.html; noop", "path", idxPath)
 	default:
@@ -198,7 +202,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	// Update metrics
-	i.unixfsGenDirGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	i.unixfsGenDirListingGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 	return true
 }
 
