@@ -19,7 +19,7 @@ import (
 
 // serveFile returns data behind a file along with HTTP headers based on
 // the file itself, its CID and the contentPath used for accessing it.
-func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, file files.File, begin time.Time) {
+func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, file files.File, begin time.Time) bool {
 	_, span := spanTrace(ctx, "ServeFile", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
@@ -33,7 +33,7 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 	size, err := file.Size()
 	if err != nil {
 		http.Error(w, "cannot serve files with unknown sizes", http.StatusBadGateway)
-		return
+		return false
 	}
 
 	if size == 0 {
@@ -42,7 +42,7 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 		// TODO: remove this if clause once https://github.com/golang/go/issues/54794 is fixed in two latest releases of go
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		return
+		return true
 	}
 
 	// Lazy seeker enables efficient range-requests and HTTP HEAD responses
@@ -66,14 +66,14 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 			mimeType, err := mimetype.DetectReader(content)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("cannot detect content-type: %s", err.Error()), http.StatusInternalServerError)
-				return
+				return false
 			}
 
 			ctype = mimeType.String()
 			_, err = content.Seek(0, io.SeekStart)
 			if err != nil {
 				http.Error(w, "seeker can't seek", http.StatusInternalServerError)
-				return
+				return false
 			}
 		}
 		// Strip the encoding from the HTML Content-Type header and let the
@@ -100,4 +100,6 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 		// Update metrics
 		i.unixfsFileGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 	}
+
+	return dataSent
 }
