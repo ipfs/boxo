@@ -17,6 +17,7 @@ go-libipfs 🍌
 - [About](#about)
     - [Motivation](#motivation)
 - [What kind of components does go-libipfs have?](#what-kind-of-components-does-go-libipfs-have)
+    - [Does go-libipfs == IPFS?](#does-go-libipfs--ipfs)
     - [Is everything related to IPFS in the Go ecosystem in this repo?](#is-everything-related-to-ipfs-in-the-go-ecosystem-in-this-repo)
 - [Getting started](#getting-started)
 - [Should I add my IPFS component to go-libipfs?](#should-i-add-my-ipfs-component-to-go-libipfs)
@@ -30,7 +31,7 @@ go-libipfs 🍌
 
 ## About
 
-Go-libips is a component library for building IPFS applications and implementations in Go.
+go-libips is a component library for building IPFS applications and implementations in Go.
 
 Some scenarios in which you may find go-libipfs helpful:
 
@@ -39,7 +40,7 @@ Some scenarios in which you may find go-libipfs helpful:
 * You want to reuse some components of IPFS such as its Kademlia DHT, Bitswap, data encoding, etc.
 * You want to experiment with IPFS
 
-Go-libipfs powers [Kubo](https://github.com/ipfs/kubo), which is [the most popular IPFS implementation](https://github.com/protocol/network-measurements/tree/master/reports),
+go-libipfs powers [Kubo](https://github.com/ipfs/kubo), which is [the most popular IPFS implementation](https://github.com/protocol/network-measurements/tree/master/reports),
 so its code has been battle-tested on the IPFS network for years, and is well-understood by the community.
 
 ### Motivation
@@ -61,9 +62,12 @@ Go-libipfs includes high-quality components useful for interacting with IPFS pro
 
 Go-libipfs aims to provide a cohesive interface into these components. Note that not all of the underlying components necessarily reside in this respository.
 
+### Does go-libipfs == IPFS?
+No.  This repo houses some IPFS functionality written in Go that has been useful in practice, and is maintained by a group that has long term commitments to the IPFS project
+
 ### Is everything related to IPFS in the Go ecosystem in this repo?
 
-No.  Not everything related to IPFS is intended to be in go-libipfs. Rather if you’d like to build an IPFS implementation with Go, here are some tools you might want that are maintained by a group that has long term commitments to the IPFS project.  There are certainly repos that others maintainer that aren't included here (e.g., ipfs/go-car) which are still useful to IPFS implementations. It's expected and fine for new IPFS functionality to be developed that won't be part of go-libipfs.  
+No.  Not everything related to IPFS is intended to be in go-libipfs. View it as a starter toolbox (potentially among multiple).  If you’d like to build an IPFS implementation with Go, here are some tools you might want that are maintained by a group that has long term commitments to the IPFS project.  There are certainly repos that others maintainer that aren't included here (e.g., ipfs/go-car) which are still useful to IPFS implementations. It's expected and fine for new IPFS functionality to be developed that won't be part of go-libipfs.  
 
 ## Getting started
 See [examples](./examples/README.md).
