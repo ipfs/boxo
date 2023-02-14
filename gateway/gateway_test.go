@@ -95,7 +95,7 @@ type mockAPI struct {
 }
 
 func newMockAPI(t *testing.T) (*mockAPI, cid.Cid) {
-	r, err := os.Open("./fixtures.car")
+	r, err := os.Open("./testdata/fixtures.car")
 	if err != nil {
 		t.Fatal(err)
 	}
