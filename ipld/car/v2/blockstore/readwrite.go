@@ -260,7 +260,38 @@ func (b *ReadWrite) Finalize() error {
 }
 
 func (b *ReadWrite) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
-	return b.ronly.AllKeysChan(ctx)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	b.ronly.mu.Lock()
+	defer b.ronly.mu.Unlock()
+
+	if b.ronly.closed {
+		return nil, errClosed
+	}
+
+	out := make(chan cid.Cid)
+
+	go func() {
+		defer close(out)
+		err := b.idx.ForEachCid(func(c cid.Cid, _ uint64) error {
+			if !b.opts.BlockstoreUseWholeCIDs {
+				c = cid.NewCidV1(cid.Raw, c.Hash())
+			}
+			select {
+			case out <- c:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			return nil
+		})
+		if err != nil {
+			maybeReportError(ctx, err)
+		}
+	}()
+
+	return out, nil
 }
 
 func (b *ReadWrite) Has(ctx context.Context, key cid.Cid) (bool, error) {

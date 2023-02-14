@@ -152,17 +152,23 @@ func (ii *InsertionIndex) Unmarshal(r io.Reader) error {
 }
 
 func (ii *InsertionIndex) ForEach(f func(multihash.Multihash, uint64) error) error {
-	var errr error
+	var err error
 	ii.items.AscendGreaterOrEqual(ii.items.Min(), func(i llrb.Item) bool {
 		r := i.(recordDigest).Record
-		err := f(r.Cid.Hash(), r.Offset)
-		if err != nil {
-			errr = err
-			return false
-		}
-		return true
+		err = f(r.Cid.Hash(), r.Offset)
+		return err == nil
 	})
-	return errr
+	return err
+}
+
+func (ii *InsertionIndex) ForEachCid(f func(cid.Cid, uint64) error) error {
+	var err error
+	ii.items.AscendGreaterOrEqual(ii.items.Min(), func(i llrb.Item) bool {
+		r := i.(recordDigest).Record
+		err = f(r.Cid, r.Offset)
+		return err == nil
+	})
+	return err
 }
 
 func (ii *InsertionIndex) Codec() multicodec.Code {
