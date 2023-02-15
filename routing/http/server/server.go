@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -59,16 +60,16 @@ type WriteProvideRequest struct {
 	Bytes    []byte
 }
 
-type serverOption func(s *server)
+type Option func(s *server)
 
 // WithStreamingResultsDisabled disables ndjson responses, so that the server only supports JSON responses.
-func WithStreamingResultsDisabled() serverOption {
+func WithStreamingResultsDisabled() Option {
 	return func(s *server) {
 		s.disableNDJSON = true
 	}
 }
 
-func Handler(svc ContentRouter, opts ...serverOption) http.Handler {
+func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	server := &server{
 		svc: svc,
 	}
@@ -169,22 +170,24 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 
 	var supportsNDJSON bool
 	var supportsJSON bool
-	accepts := httpReq.Header.Values("Accept")
-	if len(accepts) == 0 {
+	acceptHeaders := httpReq.Header.Values("Accept")
+	if len(acceptHeaders) == 0 {
 		handlerFunc = s.findProvidersJSON
 	} else {
-		for _, accept := range accepts {
-			mediaType, _, err := mime.ParseMediaType(accept)
-			if err != nil {
-				writeErr(w, "FindProviders", http.StatusBadRequest, fmt.Errorf("unable to parse Accept header: %w", err))
-				return
-			}
+		for _, acceptHeader := range acceptHeaders {
+			for _, accept := range strings.Split(acceptHeader, ",") {
+				mediaType, _, err := mime.ParseMediaType(accept)
+				if err != nil {
+					writeErr(w, "FindProviders", http.StatusBadRequest, fmt.Errorf("unable to parse Accept header: %w", err))
+					return
+				}
 
-			switch mediaType {
-			case mediaTypeJSON, mediaTypeWildcard:
-				supportsJSON = true
-			case mediaTypeNDJSON:
-				supportsNDJSON = true
+				switch mediaType {
+				case mediaTypeJSON, mediaTypeWildcard:
+					supportsJSON = true
+				case mediaTypeNDJSON:
+					supportsNDJSON = true
+				}
 			}
 		}
 

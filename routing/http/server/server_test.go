@@ -42,6 +42,7 @@ func TestHeaders(t *testing.T) {
 
 	resp, err = http.Get(serverAddr + ProvidePath + "BAD_CID")
 	require.NoError(t, err)
+	defer resp.Body.Close()
 	require.Equal(t, 400, resp.StatusCode)
 	header = resp.Header.Get("Content-Type")
 	require.Equal(t, "text/plain; charset=utf-8", header)

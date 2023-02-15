@@ -37,6 +37,7 @@ func ReadAll[T any](iter Iter[T]) []T {
 	if iter == nil {
 		return nil
 	}
+	defer iter.Close()
 	var vs []T
 	for iter.Next() {
 		vs = append(vs, iter.Val())

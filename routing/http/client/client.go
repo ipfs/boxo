@@ -29,8 +29,15 @@ import (
 )
 
 var (
-	_      contentrouter.Client = &client{}
-	logger                      = logging.Logger("service/delegatedrouting")
+	_                 contentrouter.Client = &client{}
+	logger                                 = logging.Logger("service/delegatedrouting")
+	defaultHTTPClient                      = &http.Client{
+		Transport: &ResponseBodyLimitedTransport{
+			RoundTripper: http.DefaultTransport,
+			LimitBytes:   1 << 20,
+			UserAgent:    defaultUserAgent,
+		},
+	}
 )
 
 const (
@@ -65,21 +72,21 @@ type httpClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-type option func(*client)
+type Option func(*client)
 
-func WithIdentity(identity crypto.PrivKey) option {
+func WithIdentity(identity crypto.PrivKey) Option {
 	return func(c *client) {
 		c.identity = identity
 	}
 }
 
-func WithHTTPClient(h httpClient) option {
+func WithHTTPClient(h httpClient) Option {
 	return func(c *client) {
 		c.httpClient = h
 	}
 }
 
-func WithUserAgent(ua string) option {
+func WithUserAgent(ua string) Option {
 	return func(c *client) {
 		if ua == "" {
 			return
@@ -96,7 +103,7 @@ func WithUserAgent(ua string) option {
 	}
 }
 
-func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) option {
+func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
 	return func(c *client) {
 		c.peerID = peerID
 		for _, a := range addrs {
@@ -105,7 +112,7 @@ func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) option {
 	}
 }
 
-func WithStreamResultsRequired() option {
+func WithStreamResultsRequired() Option {
 	return func(c *client) {
 		c.accepts = mediaTypeNDJSON
 	}
@@ -113,14 +120,7 @@ func WithStreamResultsRequired() option {
 
 // New creates a content routing API client.
 // The Provider and identity parameters are option. If they are nil, the `Provide` method will not function.
-func New(baseURL string, opts ...option) (*client, error) {
-	defaultHTTPClient := &http.Client{
-		Transport: &ResponseBodyLimitedTransport{
-			RoundTripper: http.DefaultTransport,
-			LimitBytes:   1 << 20,
-			UserAgent:    defaultUserAgent,
-		},
-	}
+func New(baseURL string, opts ...Option) (*client, error) {
 	client := &client{
 		baseURL:    baseURL,
 		httpClient: defaultHTTPClient,
@@ -171,6 +171,7 @@ func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.Res
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Accept", c.accepts)
 
 	m.host = req.Host
 
@@ -189,13 +190,14 @@ func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.Res
 	if resp.StatusCode == http.StatusNotFound {
 		resp.Body.Close()
 		m.record(ctx)
-		return nil, nil
+		return iter.FromSlice[iter.Result[types.ProviderResponse]](nil), nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		err := httpError(resp.StatusCode, resp.Body)
 		resp.Body.Close()
 		m.record(ctx)
-		return nil, httpError(resp.StatusCode, resp.Body)
+		return nil, err
 	}
 
 	respContentType := resp.Header.Get("Content-Type")
