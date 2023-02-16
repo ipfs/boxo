@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"html"
 	"net/http"
 	"time"
 
@@ -14,27 +13,19 @@ import (
 	"go.uber.org/zap"
 )
 
-func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
+func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, data files.Node, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
 	ctx, span := spanTrace(ctx, "ServeUnixFS", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
-
-	// Handling UnixFS
-	dr, err := i.api.GetUnixFsNode(ctx, resolvedPath)
-	if err != nil {
-		webError(w, "ipfs cat "+html.EscapeString(contentPath.String()), err, http.StatusBadRequest)
-		return false
-	}
-	defer dr.Close()
-
+	
 	// Handling Unixfs file
-	if f, ok := dr.(files.File); ok {
+	if f, ok := data.(files.File); ok {
 		logger.Debugw("serving unixfs file", "path", contentPath)
 		i.serveFile(ctx, w, r, resolvedPath, contentPath, f, begin)
 		return false
 	}
 
 	// Handling Unixfs directory
-	dir, ok := dr.(files.Directory)
+	dir, ok := data.(files.Directory)
 	if !ok {
 		internalWebError(w, fmt.Errorf("unsupported UnixFS type"))
 		return false

@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"html"
 	"net/http"
 	"time"
 
@@ -15,22 +14,25 @@ import (
 
 var unixEpochTime = time.Unix(0, 0)
 
-func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "ServeTAR", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
+	ctx, span := spanTrace(ctx, "ServeTAR", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Get Unixfs file
-	file, err := i.api.GetUnixFsNode(ctx, resolvedPath)
-	if err != nil {
-		webError(w, "ipfs cat "+html.EscapeString(contentPath.String()), err, http.StatusBadRequest)
+	// Get Unixfs file (or directory)
+	gwMetadata, file, err := i.api.Get(ctx, imPath, GetOptions.GetFullDepth())
+	if !i.handleNonUnixFSRequestErrors(w, imPath, err) {
 		return false
 	}
 	defer file.Close()
 
-	rootCid := resolvedPath.Cid()
+	if err := i.setIpfsRootsHeader(w, gwMetadata); err != nil {
+		webRequestError(w, err)
+		return false
+	}
+	rootCid := gwMetadata.LastSegment.Cid()
 
 	// Set Cache-Control and read optional Last-Modified time
 	modtime := addCacheControlHeaders(w, r, contentPath, rootCid)

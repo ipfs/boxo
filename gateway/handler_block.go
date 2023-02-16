@@ -1,8 +1,9 @@
 package gateway
 
 import (
-	"bytes"
 	"context"
+	"fmt"
+	"github.com/ipfs/go-libipfs/files"
 	"net/http"
 	"time"
 
@@ -12,17 +13,27 @@ import (
 )
 
 // serveRawBlock returns bytes behind a raw block
-func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time) bool {
-	ctx, span := spanTrace(ctx, "ServeRawBlock", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time) bool {
+	ctx, span := spanTrace(ctx, "ServeRawBlock", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
-	blockCid := resolvedPath.Cid()
-	block, err := i.api.GetBlock(ctx, blockCid)
-	if err != nil {
-		webError(w, "ipfs block get "+blockCid.String(), err, http.StatusInternalServerError)
+	gwMetadata, data, err := i.api.Get(ctx, imPath, GetOptions.GetRawBlock())
+	if !i.handleNonUnixFSRequestErrors(w, imPath, err) {
 		return false
 	}
-	content := bytes.NewReader(block.RawData())
+	defer data.Close()
+	blockData, ok := data.(files.File)
+	if !ok { // This should not happen
+		webError(w, "invalid data", fmt.Errorf("expected a raw block, did not receive a file"), http.StatusInternalServerError)
+		return false
+	}
+
+	if err := i.setIpfsRootsHeader(w, gwMetadata); err != nil {
+		webRequestError(w, err)
+		return false
+	}
+
+	blockCid := gwMetadata.LastSegment.Cid()
 
 	// Set Content-Disposition
 	var name string
@@ -40,7 +51,7 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
-	_, dataSent, _ := ServeContent(w, r, name, modtime, content)
+	_, dataSent, _ := ServeContent(w, r, name, modtime, blockData)
 
 	if dataSent {
 		// Update metrics

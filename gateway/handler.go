@@ -22,7 +22,6 @@ import (
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	routing "github.com/libp2p/go-libp2p/core/routing"
-	mc "github.com/multiformats/go-multicodec"
 	prometheus "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -366,65 +365,71 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResponseFormat", responseFormat))
 
-	resolvedPath, contentPath, ok := i.handlePathResolution(w, r, responseFormat, contentPath, logger)
-	if !ok {
+	// TODO: Why did the previous code do path resolution, was that a bug?
+	// TODO: Does If-None-Match apply here?
+	if responseFormat == "application/vnd.ipfs.ipns-record" {
+		logger.Debugw("serving ipns record", "path", contentPath)
+
+		i.addUserHeaders(w)                                 // ok, _now_ write user's headers.
+		w.Header().Set("X-Ipfs-Path", contentPath.String()) // TODO: Should we even set this?
+
+		success := i.serveIpnsRecord(r.Context(), w, r, contentPath, begin, logger)
+
+		if success { // TODO: should we even be reporting this
+			i.getMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		}
 		return
 	}
-	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResolvedPath", resolvedPath.String()))
 
-	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
-	if inm := r.Header.Get("If-None-Match"); inm != "" {
-		pathCid := resolvedPath.Cid()
-		// need to check against both File and Dir Etag variants
-		// because this inexpensive check happens before we do any I/O
-		cidEtag := getEtag(r, pathCid)
-		dirEtag := getDirListingEtag(pathCid)
-		if etagMatch(inm, cidEtag, dirEtag) {
-			// Finish early if client already has a matching Etag
-			w.WriteHeader(http.StatusNotModified)
+	var imPath ImmutablePath
+	if contentPath.Mutable() {
+		imPath, err = i.api.ResolveMutable(r.Context(), contentPath)
+		switch err {
+		case nil:
+		case coreiface.ErrOffline: // TODO: What is this for?
+			webError(w, "could not resolve mutable path "+debugStr(contentPath.String()), err, http.StatusServiceUnavailable)
+			return
+		default:
+			// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
+			webError(w, "could not resolve mutable path", err, http.StatusBadRequest) // TODO: better error handling
 			return
 		}
 	}
 
-	if err := i.handleGettingFirstBlock(r, begin, contentPath, resolvedPath); err != nil {
-		webRequestError(w, err)
+	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
+	ifNoneMatchResolvedPath, ok := i.handleIfNoneMatch(w, r, responseFormat, contentPath, imPath, logger)
+	if !ok {
 		return
 	}
 
-	if err := i.setCommonHeaders(w, r, contentPath); err != nil {
-		webRequestError(w, err)
-		return
+	// If we already did the path resolution no need to do it again
+	if ifNoneMatchResolvedPath != nil {
+		imPath = ifNoneMatchResolvedPath
 	}
+
+	i.addUserHeaders(w) // ok, _now_ write user's headers.
+	w.Header().Set("X-Ipfs-Path", contentPath.String())
 
 	var success bool
 
 	// Support custom response formats passed via ?format or Accept HTTP header
 	switch responseFormat {
 	case "", "application/json", "application/cbor":
-		switch mc.Code(resolvedPath.Cid().Prefix().Codec) {
-		case mc.Json, mc.DagJson, mc.Cbor, mc.DagCbor:
-			logger.Debugw("serving codec", "path", contentPath)
-			success = i.serveCodec(r.Context(), w, r, resolvedPath, contentPath, begin, responseFormat)
-		default:
-			logger.Debugw("serving unixfs", "path", contentPath)
-			success = i.serveUnixFS(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
-		}
+		success = i.serveDefaults(r.Context(), w, r, imPath, contentPath, begin, responseFormat, logger)
 	case "application/vnd.ipld.raw":
 		logger.Debugw("serving raw block", "path", contentPath)
-		success = i.serveRawBlock(r.Context(), w, r, resolvedPath, contentPath, begin)
+		success = i.serveRawBlock(r.Context(), w, r, imPath, contentPath, begin)
 	case "application/vnd.ipld.car":
 		logger.Debugw("serving car stream", "path", contentPath)
 		carVersion := formatParams["version"]
-		success = i.serveCAR(r.Context(), w, r, resolvedPath, contentPath, carVersion, begin)
+		success = i.serveCAR(r.Context(), w, r, imPath, contentPath, carVersion, begin)
 	case "application/x-tar":
 		logger.Debugw("serving tar file", "path", contentPath)
-		success = i.serveTAR(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
+		success = i.serveTAR(r.Context(), w, r, imPath, contentPath, begin, logger)
 	case "application/vnd.ipld.dag-json", "application/vnd.ipld.dag-cbor":
 		logger.Debugw("serving codec", "path", contentPath)
-		success = i.serveCodec(r.Context(), w, r, resolvedPath, contentPath, begin, responseFormat)
+		success = i.serveCodec(r.Context(), w, r, imPath, contentPath, begin, responseFormat)
 	case "application/vnd.ipfs.ipns-record":
-		logger.Debugw("serving ipns record", "path", contentPath)
-		success = i.serveIpnsRecord(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
 	default: // catch-all for unsuported application/vnd.*
 		err := fmt.Errorf("unsupported format %q", responseFormat)
 		webError(w, "failed to respond with requested content type", err, http.StatusBadRequest)
@@ -503,7 +508,7 @@ func setContentDispositionHeader(w http.ResponseWriter, filename string, disposi
 }
 
 // Set X-Ipfs-Roots with logical CID array for efficient HTTP cache invalidation.
-func (i *handler) buildIpfsRootsHeader(contentPath string, r *http.Request) (string, error) {
+func (i *handler) setIpfsRootsHeader(w http.ResponseWriter, gwMetadata GatewayMetadata) *requestError {
 	/*
 		These are logical roots where each CID represent one path segment
 		and resolves to either a directory or the root block of a file.
@@ -526,24 +531,16 @@ func (i *handler) buildIpfsRootsHeader(contentPath string, r *http.Request) (str
 		Note that while the top one will change every time any article is changed,
 		the last root (responsible for specific article) may not change at all.
 	*/
-	var sp strings.Builder
+
 	var pathRoots []string
-	pathSegments := strings.Split(contentPath[6:], "/")
-	sp.WriteString(contentPath[:5]) // /ipfs or /ipns
-	for _, root := range pathSegments {
-		if root == "" {
-			continue
-		}
-		sp.WriteString("/")
-		sp.WriteString(root)
-		resolvedSubPath, err := i.api.ResolvePath(r.Context(), ipath.New(sp.String()))
-		if err != nil {
-			return "", err
-		}
-		pathRoots = append(pathRoots, resolvedSubPath.Cid().String())
+	for _, c := range gwMetadata.PathSegmentRoots {
+		pathRoots = append(pathRoots, c.String()) // TODO: should these be normalized?
 	}
+	pathRoots = append(pathRoots, gwMetadata.LastSegment.Cid().String())
 	rootCidList := strings.Join(pathRoots, ",") // convention from rfc2616#sec4.2
-	return rootCidList, nil
+
+	w.Header().Set("X-Ipfs-Roots", rootCidList)
+	return nil
 }
 
 func webRequestError(w http.ResponseWriter, err *requestError) {
@@ -724,46 +721,75 @@ func debugStr(path string) string {
 	return q
 }
 
-// Resolve the provided contentPath including any special handling related to
-// the requested responseFormat. Returned ok flag indicates if gateway handler
-// should continue processing the request.
-func (i *handler) handlePathResolution(w http.ResponseWriter, r *http.Request, responseFormat string, contentPath ipath.Path, logger *zap.SugaredLogger) (resolvedPath ipath.Resolved, newContentPath ipath.Path, ok bool) {
-	// Attempt to resolve the provided path.
-	resolvedPath, err := i.api.ResolvePath(r.Context(), contentPath)
+func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, responseFormat string, contentPath ipath.Path, imPath ImmutablePath, logger *zap.SugaredLogger) (ipath.Resolved, bool) {
+	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
+	if inm := r.Header.Get("If-None-Match"); inm != "" {
+		// TODO: should we be handling _redirect and legacy 404 here?
+		gwMetadata, _, err := i.api.Head(r.Context(), imPath)
+		switch err {
+		case nil:
+		case coreiface.ErrOffline:
+			webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusServiceUnavailable)
+			return nil, false
+		default:
+			// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
+			webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusBadRequest)
+			return nil, false
+		}
 
+		resolvedPath := gwMetadata.LastSegment
+		pathCid := resolvedPath.Cid()
+		// need to check against both File and Dir Etag variants
+		// because this inexpensive check happens before we do any I/O
+		cidEtag := getEtag(r, pathCid)
+		dirEtag := getDirListingEtag(pathCid)
+		if etagMatch(inm, cidEtag, dirEtag) {
+			// Finish early if client already has a matching Etag
+			w.WriteHeader(http.StatusNotModified)
+			return nil, false
+		}
+
+		return resolvedPath, true
+	}
+	return nil, true
+}
+
+func (i *handler) handleNonUnixFSRequestErrors(w http.ResponseWriter, contentPath ImmutablePath, err error) bool {
 	switch err {
 	case nil:
-		return resolvedPath, contentPath, true
+		return true
 	case coreiface.ErrOffline:
-		webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusServiceUnavailable)
-		return nil, nil, false
+		webError(w, "could not fetch content at path "+debugStr(contentPath.String()), err, http.StatusServiceUnavailable)
+		return false
 	default:
-		// The path can't be resolved.
-		if isUnixfsResponseFormat(responseFormat) {
-			// If we have origin isolation (subdomain gw, DNSLink website),
-			// and response type is UnixFS (default for website hosting)
-			// check for presence of _redirects file and apply rules defined there.
-			// See: https://github.com/ipfs/specs/pull/290
-			if hasOriginIsolation(r) {
-				resolvedPath, newContentPath, ok, hadMatchingRule := i.serveRedirectsIfPresent(w, r, resolvedPath, contentPath, logger)
-				if hadMatchingRule {
-					logger.Debugw("applied a rule from _redirects file")
-					return resolvedPath, newContentPath, ok
-				}
-			}
+		// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
+		webError(w, "could not fetch content at path "+debugStr(contentPath.String()), err, http.StatusBadRequest)
+		return false
+	}
+}
 
-			// if Accept is text/html, see if ipfs-404.html is present
-			// This logic isn't documented and will likely be removed at some point.
-			// Any 404 logic in _redirects above will have already run by this time, so it's really an extra fall back
-			if i.serveLegacy404IfPresent(w, r, contentPath) {
-				logger.Debugw("served legacy 404")
-				return nil, nil, false
-			}
+func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Request, contentPath ImmutablePath, err error, logger *zap.SugaredLogger) bool {
+	switch err {
+	case nil:
+		return true
+	case coreiface.ErrOffline:
+		webError(w, "could not fetch content at path "+debugStr(contentPath.String()), err, http.StatusServiceUnavailable)
+		return false
+	default:
+		// While _redirects should already be handled by now if they exist the legacy 404 behavior is not
+		// therefore we handle it here
+
+		// if Accept is text/html, see if ipfs-404.html is present
+		// This logic isn't documented and will likely be removed at some point.
+		// Any 404 logic in _redirects above will have already run by this time, so it's really an extra fall back
+		if i.serveLegacy404IfPresent(w, r, contentPath) {
+			logger.Debugw("served legacy 404")
+			return false
 		}
 
 		// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
-		webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusBadRequest)
-		return nil, nil, false
+		webError(w, "could not fetch content at path "+debugStr(contentPath.String()), err, http.StatusBadRequest)
+		return false
 	}
 }
 
@@ -883,33 +909,6 @@ func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentP
 	}
 
 	return true
-}
-
-func (i *handler) handleGettingFirstBlock(r *http.Request, begin time.Time, contentPath ipath.Path, resolvedPath ipath.Resolved) *requestError {
-	// Update the global metric of the time it takes to read the final root block of the requested resource
-	// NOTE: for legacy reasons this happens before we go into content-type specific code paths
-	_, err := i.api.GetBlock(r.Context(), resolvedPath.Cid())
-	if err != nil {
-		return newRequestError("ipfs block get "+resolvedPath.Cid().String(), err, http.StatusInternalServerError)
-	}
-	ns := contentPath.Namespace()
-	timeToGetFirstContentBlock := time.Since(begin).Seconds()
-	i.unixfsGetMetric.WithLabelValues(ns).Observe(timeToGetFirstContentBlock) // deprecated, use firstContentBlockGetMetric instead
-	i.firstContentBlockGetMetric.WithLabelValues(ns).Observe(timeToGetFirstContentBlock)
-	return nil
-}
-
-func (i *handler) setCommonHeaders(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) *requestError {
-	i.addUserHeaders(w) // ok, _now_ write user's headers.
-	w.Header().Set("X-Ipfs-Path", contentPath.String())
-
-	if rootCids, err := i.buildIpfsRootsHeader(contentPath.String(), r); err == nil {
-		w.Header().Set("X-Ipfs-Roots", rootCids)
-	} else { // this should never happen, as we resolved the contentPath already
-		return newRequestError("error while resolving X-Ipfs-Roots", err, http.StatusInternalServerError)
-	}
-
-	return nil
 }
 
 // spanTrace starts a new span using the standard IPFS tracing conventions.

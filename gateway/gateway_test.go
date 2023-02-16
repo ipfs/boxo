@@ -3,14 +3,13 @@ package gateway
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-libipfs/files"
 	"github.com/ipfs/go-namesys"
 	path "github.com/ipfs/go-path"
-	iface "github.com/ipfs/interface-go-ipfs-core"
 	nsopts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -64,21 +63,27 @@ type mockApi struct {
 	ns mockNamesys
 }
 
+var _ API = (*mockApi)(nil)
+
 func newMockApi() *mockApi {
 	return &mockApi{
 		ns: mockNamesys{},
 	}
 }
 
-func (m *mockApi) GetUnixFsNode(context.Context, ipath.Resolved) (files.Node, error) {
-	return nil, errors.New("not implemented")
+func (m *mockApi) Get(ctx context.Context, immutablePath ImmutablePath, opt ...GetOpt) (GatewayMetadata, files.Node, error) {
+	return GatewayMetadata{}, nil, errors.New("not implemented")
 }
 
-func (m *mockApi) LsUnixFsDir(context.Context, ipath.Resolved) (<-chan iface.DirEntry, error) {
-	return nil, errors.New("not implemented")
+func (m *mockApi) Head(ctx context.Context, immutablePath ImmutablePath) (GatewayMetadata, files.Node, error) {
+	return GatewayMetadata{}, nil, errors.New("not implemented")
 }
 
-func (m *mockApi) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
+func (m *mockApi) GetCAR(ctx context.Context, immutablePath ImmutablePath) (GatewayMetadata, io.ReadSeekCloser, error) {
+	return GatewayMetadata{}, nil, errors.New("not implemented")
+}
+
+func (m *mockApi) ResolveMutable(ctx context.Context, p ipath.Path) (ImmutablePath, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -96,8 +101,4 @@ func (m *mockApi) GetDNSLinkRecord(ctx context.Context, hostname string) (ipath.
 
 func (m *mockApi) IsCached(context.Context, ipath.Path) bool {
 	return false
-}
-
-func (m *mockApi) ResolvePath(context.Context, ipath.Path) (ipath.Resolved, error) {
-	return nil, errors.New("not implemented")
 }

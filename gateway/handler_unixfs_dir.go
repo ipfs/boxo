@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	gopath "path"
@@ -13,12 +14,16 @@ import (
 	"github.com/ipfs/go-libipfs/files"
 	"github.com/ipfs/go-libipfs/gateway/assets"
 	path "github.com/ipfs/go-path"
-	"github.com/ipfs/go-path/resolver"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
+
+// DirEntryMetdata TODO: figure out if we want a separate interface for HEAD requests to deal with this
+type DirEntryMetdata interface {
+	Cid() cid.Cid
+}
 
 // serveDirectory returns the best representation of UnixFS directory
 //
@@ -58,33 +63,35 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		}
 	}
 
-	// Check if directory has index.html, if so, serveFile
-	idxPath := ipath.Join(contentPath, "index.html")
-	idxResolvedPath, err := i.api.ResolvePath(ctx, idxPath)
-	switch err.(type) {
-	case nil:
-		idx, err := i.api.GetUnixFsNode(ctx, idxResolvedPath)
-		if err != nil {
-			internalWebError(w, err)
-			return
-		}
+	// TODO: Was there a reason why this index.html check came after the redirect above that makes the inversion here incorrect?
 
-		f, ok := idx.(files.File)
-		if !ok {
-			internalWebError(w, files.ErrNotReader)
-			return
-		}
-
-		logger.Debugw("serving index.html file", "path", idxPath)
-		// write to request
-		i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
-		return
-	case resolver.ErrNoLink:
-		logger.Debugw("no index.html; noop", "path", idxPath)
-	default:
-		internalWebError(w, err)
-		return
-	}
+	//// Check if directory has index.html, if so, serveFile
+	//idxPath := ipath.Join(contentPath, "index.html")
+	//idxResolvedPath, err := i.api.ResolvePath(ctx, idxPath)
+	//switch err.(type) {
+	//case nil:
+	//	idx, err := i.api.GetUnixFsNode(ctx, idxResolvedPath)
+	//	if err != nil {
+	//		internalWebError(w, err)
+	//		return
+	//	}
+	//
+	//	f, ok := idx.(files.File)
+	//	if !ok {
+	//		internalWebError(w, files.ErrNotReader)
+	//		return
+	//	}
+	//
+	//	logger.Debugw("serving index.html file", "path", idxPath)
+	//	// write to request
+	//	i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
+	//	return
+	//case resolver.ErrNoLink:
+	//	logger.Debugw("no index.html; noop", "path", idxPath)
+	//default:
+	//	internalWebError(w, err)
+	//	return
+	//}
 
 	// See statusResponseWriter.WriteHeader
 	// and https://github.com/ipfs/kubo/issues/7164
@@ -100,7 +107,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	// type instead of relying on autodetection (which may fail).
 	w.Header().Set("Content-Type", "text/html")
 
-	// Generated dir index requires custom Etag (output may change between go-ipfs versions)
+	// Generated dir index requires custom Etag (output may change between go-libipfs versions)
 	dirEtag := getDirListingEtag(resolvedPath.Cid())
 	w.Header().Set("Etag", dirEtag)
 
@@ -109,24 +116,32 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		return
 	}
 
-	results, err := i.api.LsUnixFsDir(ctx, resolvedPath)
-	if err != nil {
-		internalWebError(w, err)
-		return
-	}
-
-	dirListing := make([]assets.DirectoryItem, 0, len(results))
-	for link := range results {
-		if link.Err != nil {
-			internalWebError(w, link.Err)
+	var dirListing []assets.DirectoryItem
+	it := dir.Entries()
+	for it.Next() {
+		if err := it.Err(); err != nil {
+			internalWebError(w, err)
 			return
 		}
 
-		hash := link.Cid.String()
+		name := it.Name()
+		sz, err := it.Node().Size()
+		if err != nil {
+			internalWebError(w, err)
+			return
+		}
+
+		md, ok := it.Node().(DirEntryMetdata)
+		if !ok { // This should never be able to happen
+			internalWebError(w, fmt.Errorf("could not get CID for directory element"))
+			return
+		}
+
+		hash := md.Cid().String()
 		di := assets.DirectoryItem{
-			Size:      humanize.Bytes(uint64(link.Size)),
-			Name:      link.Name,
-			Path:      gopath.Join(originalURLPath, link.Name),
+			Size:      humanize.Bytes(uint64(sz)),
+			Name:      name,
+			Path:      gopath.Join(originalURLPath, name),
 			Hash:      hash,
 			ShortHash: assets.ShortHash(hash),
 		}

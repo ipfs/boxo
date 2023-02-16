@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	gopath "path"
 
@@ -62,6 +63,8 @@ type BlocksGateway struct {
 	routing routing.ValueStore
 }
 
+var _ gateway.API = (*BlocksGateway)(nil)
+
 func NewBlocksGateway(blockService blockservice.BlockService, routing routing.ValueStore) (*BlocksGateway, error) {
 	// Setup the DAG services, which use the CAR block store.
 	dagService := merkledag.NewDAGService(blockService)
@@ -97,6 +100,26 @@ func NewBlocksGateway(blockService blockservice.BlockService, routing routing.Va
 		routing:      routing,
 		namesys:      ns,
 	}, nil
+}
+
+func (api *BlocksGateway) Get(ctx context.Context, path gateway.ImmutablePath, opt ...gateway.GetOpt) (gateway.GatewayMetadata, files.Node, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (api *BlocksGateway) Head(ctx context.Context, path gateway.ImmutablePath) (gateway.GatewayMetadata, files.Node, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (api *BlocksGateway) GetCAR(ctx context.Context, path gateway.ImmutablePath) (gateway.GatewayMetadata, io.ReadSeekCloser, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (api *BlocksGateway) ResolveMutable(ctx context.Context, path ifacepath.Path) (gateway.ImmutablePath, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (api *BlocksGateway) GetUnixFsNode(ctx context.Context, p ifacepath.Resolved) (files.Node, error) {

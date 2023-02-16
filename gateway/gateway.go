@@ -2,13 +2,12 @@ package gateway
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"sort"
 
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-libipfs/files"
-	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/ipfs/interface-go-ipfs-core/path"
 )
 
@@ -17,34 +16,110 @@ type Config struct {
 	Headers map[string][]string
 }
 
-// API defines the minimal set of API services required for a gateway handler.
+// ImmutablePath TODO: This isn't great, as its just a signal and mutable paths fulfill the same interface
+type ImmutablePath interface {
+	// String returns the path as a string.
+	String() string
+
+	// Namespace returns the first component of the path.
+	//
+	// For example path "/ipfs/QmHash", calling Namespace() will return "ipfs"
+	//
+	// Calling this method on invalid paths (IsValid() != nil) will result in
+	// empty string
+	Namespace() string
+
+	// IsValid checks if this path is a valid ipfs Path, returning nil iff it is
+	// valid
+	IsValid() error
+}
+
+type GatewayMetadata struct {
+	PathSegmentRoots []cid.Cid
+	LastSegment      path.Resolved
+	RedirectInfo     RedirectInfo
+}
+
+// RedirectInfo is used to help the gateway figure out what to happen if _redirects were leveraged
+type RedirectInfo struct {
+	RedirectUsed       bool
+	StatusCode         int
+	Redirect4xxPage    files.File
+	Redirect4xxTo      path.Path
+	Redirect4xxPageCid cid.Cid
+	Redirect3xxTo      string
+}
+
+type GetOpt func(*getOpts) error
+type getOpts struct {
+	rangeFrom int
+	rangeTo   int
+
+	fullDepth bool
+	rawBlock  bool
+}
+
+type dummyGetOpts struct{}
+
+var GetOptions dummyGetOpts
+
+// GetRange is a range request for some file data
+// Note: currently a full file object should be returned but reading from values outside the range can error
+func (o dummyGetOpts) GetRange(from, to int) GetOpt {
+	return func(options *getOpts) error {
+		options.rangeFrom = from
+		options.rangeTo = to
+		return nil
+	}
+}
+
+// GetFullDepth fetches all data linked from the last logical node in the path. In particular, recursively fetch an
+// entire UnixFS directory.
+func (o dummyGetOpts) GetFullDepth() GetOpt {
+	return func(options *getOpts) error {
+		options.fullDepth = true
+		return nil
+	}
+}
+
+// GetRawBlock fetches the data at the last path element as if it were a raw block rather than something more complex
+// such as a UnixFS file or directory.
+func (o dummyGetOpts) GetRawBlock() GetOpt {
+	return func(options *getOpts) error {
+		options.rawBlock = true
+		return nil
+	}
+}
+
 type API interface {
-	// GetUnixFsNode returns a read-only handle to a file tree referenced by a path.
-	GetUnixFsNode(context.Context, path.Resolved) (files.Node, error)
+	// Get returns a file or directory depending on what the path is that has been requested.
+	// This Get follows the ipfs:// web semantics which means handling of index.html and _redirects files.
+	// There are multiple options passable to this function, read them for more information.
+	Get(context.Context, ImmutablePath, ...GetOpt) (GatewayMetadata, files.Node, error)
 
-	// LsUnixFsDir returns the list of links in a directory.
-	LsUnixFsDir(context.Context, path.Resolved) (<-chan iface.DirEntry, error)
+	// Head returns a file or directory depending on what the path is that has been requested.
+	// This Head follows the ipfs:// web semantics which means handling of index.html and _redirects files.
+	Head(context.Context, ImmutablePath) (GatewayMetadata, files.Node, error)
 
-	// GetBlock return a block from a certain CID.
-	GetBlock(context.Context, cid.Cid) (blocks.Block, error)
+	// GetCAR returns a CAR file for the given immutable path
+	GetCAR(context.Context, ImmutablePath) (GatewayMetadata, io.ReadSeekCloser, error)
+
+	// IsCached returns whether or not the path exists locally.
+	IsCached(context.Context, path.Path) bool
 
 	// GetIPNSRecord retrieves the best IPNS record for a given CID (libp2p-key)
 	// from the routing system.
 	GetIPNSRecord(context.Context, cid.Cid) ([]byte, error)
+
+	// ResolveMutable takes a mutable path and resolves it into an immutable one. This means recursively resolving any
+	// DNSLink or IPNS records.
+	ResolveMutable(context.Context, path.Path) (ImmutablePath, error)
 
 	// GetDNSLinkRecord returns the DNSLink TXT record for the provided FQDN.
 	// Unlike ResolvePath, it does not perform recursive resolution. It only
 	// checks for the existence of a DNSLink TXT record with path starting with
 	// /ipfs/ or /ipns/ and returns the path as-is.
 	GetDNSLinkRecord(context.Context, string) (path.Path, error)
-
-	// IsCached returns whether or not the path exists locally.
-	IsCached(context.Context, path.Path) bool
-
-	// ResolvePath resolves the path using UnixFS resolver. If the path does not
-	// exist due to a missing link, it should return an error of type:
-	// https://pkg.go.dev/github.com/ipfs/go-path@v0.3.0/resolver#ErrNoLink
-	ResolvePath(context.Context, path.Path) (path.Resolved, error)
 }
 
 // A helper function to clean up a set of headers:
