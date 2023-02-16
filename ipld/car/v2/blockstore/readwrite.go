@@ -18,6 +18,10 @@ import (
 
 var _ blockstore.Blockstore = (*ReadWrite)(nil)
 
+var (
+	errFinalized = fmt.Errorf("cannot write in a carv2 blockstore after finalize")
+)
+
 // ReadWrite implements a blockstore that stores blocks in CARv2 format.
 // Blocks put into the blockstore can be read back once they are successfully written.
 // This implementation is preferable for a write-heavy workload.
@@ -34,6 +38,8 @@ type ReadWrite struct {
 	dataWriter *internalio.OffsetWriteSeeker
 	idx        *store.InsertionIndex
 	header     carv2.Header
+
+	finalized bool // also protected by ronly.mu
 
 	opts carv2.Options
 }
@@ -109,10 +115,11 @@ func OpenReadWriteFile(f *os.File, roots []cid.Cid, opts ...carv2.Option) (*Read
 	// Instantiate block store.
 	// Set the header fileld before applying options since padding options may modify header.
 	rwbs := &ReadWrite{
-		f:      f,
-		idx:    store.NewInsertionIndex(),
-		header: carv2.NewHeader(0),
-		opts:   carv2.ApplyOptions(opts...),
+		f:         f,
+		idx:       store.NewInsertionIndex(),
+		header:    carv2.NewHeader(0),
+		opts:      carv2.ApplyOptions(opts...),
+		finalized: false,
 	}
 	rwbs.ronly.opts = rwbs.opts
 
@@ -186,6 +193,9 @@ func (b *ReadWrite) PutMany(ctx context.Context, blks []blocks.Block) error {
 	if b.ronly.closed {
 		return errClosed
 	}
+	if b.finalized {
+		return errFinalized
+	}
 
 	for _, bl := range blks {
 		c := bl.Cid()
@@ -227,30 +237,70 @@ func (b *ReadWrite) Discard() {
 
 // Finalize finalizes this blockstore by writing the CARv2 header, along with flattened index
 // for more efficient subsequent read.
+// This is the equivalent to calling FinalizeReadOnly and Close.
 // After this call, the blockstore can no longer be used.
 func (b *ReadWrite) Finalize() error {
+	b.ronly.mu.Lock()
+	defer b.ronly.mu.Unlock()
+
+	if err := b.finalizeReadOnlyWithoutMutex(); err != nil {
+		return err
+	}
+	if err := b.closeWithoutMutex(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Finalize finalizes this blockstore by writing the CARv2 header, along with flattened index
+// for more efficient subsequent read, but keep it open read-only.
+// This call should be complemented later by a call to Close.
+func (b *ReadWrite) FinalizeReadOnly() error {
+	b.ronly.mu.Lock()
+	defer b.ronly.mu.Unlock()
+
+	return b.finalizeReadOnlyWithoutMutex()
+}
+
+func (b *ReadWrite) finalizeReadOnlyWithoutMutex() error {
 	if b.opts.WriteAsCarV1 {
 		// all blocks are already properly written to the CARv1 inner container and there's
 		// no additional finalization required at the end of the file for a complete v1
-		b.ronly.Close()
+		b.finalized = true
 		return nil
 	}
-
-	b.ronly.mu.Lock()
-	defer b.ronly.mu.Unlock()
 
 	if b.ronly.closed {
 		// Allow duplicate Finalize calls, just like Close.
 		// Still error, just like ReadOnly.Close; it should be discarded.
-		return fmt.Errorf("called Finalize on a closed blockstore")
+		return fmt.Errorf("called Finalize or FinalizeReadOnly on a closed blockstore")
+	}
+	if b.finalized {
+		return fmt.Errorf("called Finalize or FinalizeReadOnly on an already finalized blockstore")
 	}
 
-	// Note that we can't use b.Close here, as that tries to grab the same
-	// mutex we're holding here.
-	defer b.ronly.closeWithoutMutex()
+	b.finalized = true
 
-	if err := store.Finalize(b.f, b.header, b.idx, uint64(b.dataWriter.Position()), b.opts.StoreIdentityCIDs, b.opts.IndexCodec); err != nil {
-		return err
+	return store.Finalize(b.f, b.header, b.idx, uint64(b.dataWriter.Position()), b.opts.StoreIdentityCIDs, b.opts.IndexCodec)
+}
+
+// Close closes the blockstore.
+// After this call, the blockstore can no longer be used.
+func (b *ReadWrite) Close() error {
+	b.ronly.mu.Lock()
+	defer b.ronly.mu.Unlock()
+
+	return b.closeWithoutMutex()
+}
+
+func (b *ReadWrite) closeWithoutMutex() error {
+	if !b.opts.WriteAsCarV1 && !b.finalized {
+		return fmt.Errorf("called Close without FinalizeReadOnly first")
+	}
+	if b.ronly.closed {
+		// Allow duplicate Close calls
+		// Still error, just like ReadOnly.Close; it should be discarded.
+		return fmt.Errorf("called Close on a closed blockstore")
 	}
 
 	if err := b.ronly.closeWithoutMutex(); err != nil {

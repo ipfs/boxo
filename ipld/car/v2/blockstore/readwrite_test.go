@@ -577,9 +577,6 @@ func TestReadWritePanicsOnlyWhenFinalized(t *testing.T) {
 	require.NoError(t, subject.Finalize())
 	require.Error(t, subject.Finalize())
 
-	_, ok := (interface{})(subject).(io.Closer)
-	require.False(t, ok)
-
 	_, err = subject.Get(ctx, oneTestBlockCid)
 	require.Error(t, err)
 	_, err = subject.GetSize(ctx, anotherTestBlockCid)
@@ -1026,4 +1023,65 @@ func TestBlockstore_IdentityCidWithEmptyDataIsIndexed(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
+}
+
+func TestBlockstoreFinalizeReadOnly(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	root := blocks.NewBlock([]byte("foo"))
+
+	p := filepath.Join(t.TempDir(), "readwrite.car")
+	bs, err := blockstore.OpenReadWrite(p, []cid.Cid{root.Cid()})
+	require.NoError(t, err)
+
+	err = bs.Put(ctx, root)
+	require.NoError(t, err)
+
+	roots, err := bs.Roots()
+	require.NoError(t, err)
+	_, err = bs.Has(ctx, roots[0])
+	require.NoError(t, err)
+	_, err = bs.Get(ctx, roots[0])
+	require.NoError(t, err)
+	_, err = bs.GetSize(ctx, roots[0])
+	require.NoError(t, err)
+	_, err = bs.AllKeysChan(ctx)
+	require.NoError(t, err)
+
+	// soft finalize, we can still read, but not write
+	err = bs.FinalizeReadOnly()
+	require.NoError(t, err)
+
+	_, err = bs.Roots()
+	require.NoError(t, err)
+	_, err = bs.Has(ctx, roots[0])
+	require.NoError(t, err)
+	_, err = bs.Get(ctx, roots[0])
+	require.NoError(t, err)
+	_, err = bs.GetSize(ctx, roots[0])
+	require.NoError(t, err)
+	_, err = bs.AllKeysChan(ctx)
+	require.NoError(t, err)
+
+	err = bs.Put(ctx, root)
+	require.Error(t, err)
+
+	// final close, nothing works anymore
+	err = bs.Close()
+	require.NoError(t, err)
+
+	_, err = bs.Roots()
+	require.Error(t, err)
+	_, err = bs.Has(ctx, roots[0])
+	require.Error(t, err)
+	_, err = bs.Get(ctx, roots[0])
+	require.Error(t, err)
+	_, err = bs.GetSize(ctx, roots[0])
+	require.Error(t, err)
+	_, err = bs.AllKeysChan(ctx)
+	require.Error(t, err)
+
+	err = bs.Put(ctx, root)
+	require.Error(t, err)
 }
