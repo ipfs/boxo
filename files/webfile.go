@@ -71,7 +71,7 @@ func (wf *WebFile) Size() (int64, error) {
 		return 0, err
 	}
 	if wf.contentLength < 0 {
-		return -1, errors.New("Content-Length hearer was not set")
+		return -1, errors.New("Content-Length header was not set")
 	}
 
 	return wf.contentLength, nil
