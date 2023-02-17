@@ -3,8 +3,10 @@ package decision
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +25,7 @@ import (
 	process "github.com/jbenet/goprocess"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	libp2ptest "github.com/libp2p/go-libp2p/core/test"
+	mh "github.com/multiformats/go-multihash"
 )
 
 type peerTag struct {
@@ -1051,6 +1054,12 @@ func TestWantlistForPeer(t *testing.T) {
 	if len(entries) != 4 {
 		t.Fatal("expected wantlist to contain all wants from parter")
 	}
+
+	e.PeerDisconnected(partner)
+	entries = e.WantlistForPeer(partner)
+	if len(entries) != 0 {
+		t.Fatal("expected wantlist to be empty after disconnect")
+	}
 }
 
 func TestTaskComparator(t *testing.T) {
@@ -1628,4 +1637,128 @@ func stringsComplement(set, subset []string) []string {
 		}
 	}
 	return complement
+}
+
+func TestWantlistDoesNotGrowPastLimit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const limit = 32
+	warsaw := newTestEngine(ctx, "warsaw", WithMaxQueuedWantlistEntriesPerPeer(limit))
+	riga := newTestEngine(ctx, "riga")
+
+	// Send in two messages to test reslicing.
+	for i := 2; i != 0; i-- {
+		m := message.New(false)
+		for j := limit * 3 / 4; j != 0; j-- {
+			m.AddEntry(blocks.NewBlock([]byte(fmt.Sprint(i, j))).Cid(), 0, pb.Message_Wantlist_Block, true)
+		}
+		warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+	}
+
+	if warsaw.Peer == riga.Peer {
+		t.Fatal("Sanity Check: Peers have same Key!")
+	}
+
+	wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+	if len(wl) != limit {
+		t.Fatal("wantlist does not match limit", len(wl))
+	}
+}
+
+func TestWantlistGrowsToLimit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const limit = 32
+	warsaw := newTestEngine(ctx, "warsaw", WithMaxQueuedWantlistEntriesPerPeer(limit))
+	riga := newTestEngine(ctx, "riga")
+
+	// Send in two messages to test reslicing.
+	m := message.New(false)
+	for j := limit; j != 0; j-- {
+		m.AddEntry(blocks.NewBlock([]byte(fmt.Sprint(j))).Cid(), 0, pb.Message_Wantlist_Block, true)
+	}
+	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+
+	if warsaw.Peer == riga.Peer {
+		t.Fatal("Sanity Check: Peers have same Key!")
+	}
+
+	wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+	if len(wl) != limit {
+		t.Fatal("wantlist does not match limit", len(wl))
+	}
+}
+
+func TestIgnoresCidsAboveLimit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const cidLimit = 64
+	warsaw := newTestEngine(ctx, "warsaw", WithMaxCidSize(cidLimit))
+	riga := newTestEngine(ctx, "riga")
+
+	// Send in two messages to test reslicing.
+	m := message.New(true)
+
+	m.AddEntry(blocks.NewBlock([]byte("Hæ")).Cid(), 0, pb.Message_Wantlist_Block, true)
+
+	var hash mh.Multihash
+	hash = binary.AppendUvarint(hash, mh.BLAKE3)
+	hash = binary.AppendUvarint(hash, cidLimit)
+	startOfDigest := len(hash)
+	hash = append(hash, make(mh.Multihash, cidLimit)...)
+	rand.Read(hash[startOfDigest:])
+	m.AddEntry(cid.NewCidV1(cid.Raw, hash), 0, pb.Message_Wantlist_Block, true)
+
+	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+
+	if warsaw.Peer == riga.Peer {
+		t.Fatal("Sanity Check: Peers have same Key!")
+	}
+
+	wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+	if len(wl) != 1 {
+		t.Fatal("wantlist add a CID too big")
+	}
+}
+
+func TestKillConnectionForInlineCid(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	warsaw := newTestEngine(ctx, "warsaw")
+	riga := newTestEngine(ctx, "riga")
+
+	if warsaw.Peer == riga.Peer {
+		t.Fatal("Sanity Check: Peers have same Key!")
+	}
+
+	// Send in two messages to test reslicing.
+	m := message.New(true)
+
+	m.AddEntry(blocks.NewBlock([]byte("Hæ")).Cid(), 0, pb.Message_Wantlist_Block, true)
+
+	var hash mh.Multihash
+	hash = binary.AppendUvarint(hash, mh.IDENTITY)
+	const digestSize = 32
+	hash = binary.AppendUvarint(hash, digestSize)
+	startOfDigest := len(hash)
+	hash = append(hash, make(mh.Multihash, digestSize)...)
+	rand.Read(hash[startOfDigest:])
+	m.AddEntry(cid.NewCidV1(cid.Raw, hash), 0, pb.Message_Wantlist_Block, true)
+
+	if !warsaw.Engine.MessageReceived(ctx, riga.Peer, m) {
+		t.Fatal("connection was not killed when receiving inline in cancel")
+	}
+
+	m.Reset(true)
+
+	m.AddEntry(blocks.NewBlock([]byte("Hæ")).Cid(), 0, pb.Message_Wantlist_Block, true)
+	m.Cancel(cid.NewCidV1(cid.Raw, hash))
+
+	if !warsaw.Engine.MessageReceived(ctx, riga.Peer, m) {
+		t.Fatal("connection was not killed when receiving inline in cancel")
+	}
 }
