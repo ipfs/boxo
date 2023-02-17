@@ -24,4 +24,7 @@ const (
 	// provideCollector even before they are actually provided.
 	// TODO: Does this need to be this large givent that?
 	HasBlockBufferSize = 256
+
+	// Maximum size of the wantlist we are willing to keep in memory.
+	MaxQueuedWantlistEntiresPerPeer = 1024
 )

@@ -210,6 +210,16 @@ func MaxOutstandingBytesPerPeer(count int) Option {
 	}
 }
 
+// MaxQueuedWantlistEntriesPerPeer limits how much individual entries each peer is allowed to send.
+// If a peer send us more than this we will truncate newest entries.
+// It defaults to defaults.MaxQueuedWantlistEntiresPerPeer.
+func MaxQueuedWantlistEntriesPerPeer(count uint) Option {
+	o := decision.WithMaxQueuedWantlistEntriesPerPeer(count)
+	return func(bs *Server) {
+		bs.engineOptions = append(bs.engineOptions, o)
+	}
+}
+
 // HasBlockBufferSize configure how big the new blocks buffer should be.
 func HasBlockBufferSize(count int) Option {
 	if count < 0 {
