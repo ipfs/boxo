@@ -29,6 +29,10 @@ func MaxOutstandingBytesPerPeer(count int) Option {
 	return Option{server.MaxOutstandingBytesPerPeer(count)}
 }
 
+func MaxQueuedWantlistEntriesPerPeer(count uint) Option {
+	return Option{server.MaxQueuedWantlistEntriesPerPeer(count)}
+}
+
 func TaskWorkerCount(count int) Option {
 	return Option{server.TaskWorkerCount(count)}
 }
