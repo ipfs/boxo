@@ -25,6 +25,7 @@ import (
 	"github.com/ipfs/go-peertaskqueue/peertracker"
 	process "github.com/jbenet/goprocess"
 	"github.com/libp2p/go-libp2p/core/peer"
+	mh "github.com/multiformats/go-multihash"
 )
 
 // TODO consider taking responsibility for other types of requests. For
@@ -187,6 +188,7 @@ type Engine struct {
 	maxOutstandingBytesPerPeer int
 
 	maxQueuedWantlistEntriesPerPeer uint
+	maxCidSize                      uint
 }
 
 // TaskInfo represents the details of a request from a peer.
@@ -272,10 +274,17 @@ func WithMaxOutstandingBytesPerPeer(count int) Option {
 
 // WithMaxQueuedWantlistEntriesPerPeer limits how much individual entries each peer is allowed to send.
 // If a peer send us more than this we will truncate newest entries.
-// It defaults to DefaultMaxQueuedWantlistEntiresPerPeer.
 func WithMaxQueuedWantlistEntriesPerPeer(count uint) Option {
 	return func(e *Engine) {
 		e.maxQueuedWantlistEntriesPerPeer = count
+	}
+}
+
+// WithMaxQueuedWantlistEntriesPerPeer limits how much individual entries each peer is allowed to send.
+// If a peer send us more than this we will truncate newest entries.
+func WithMaxCidSize(n uint) Option {
+	return func(e *Engine) {
+		e.maxCidSize = n
 	}
 }
 
@@ -357,6 +366,7 @@ func newEngine(
 		tagQueued:                       fmt.Sprintf(tagFormat, "queued", uuid.New().String()),
 		tagUseful:                       fmt.Sprintf(tagFormat, "useful", uuid.New().String()),
 		maxQueuedWantlistEntriesPerPeer: defaults.MaxQueuedWantlistEntiresPerPeer,
+		maxCidSize:                      defaults.MaximumAllowedCid,
 	}
 
 	for _, opt := range opts {
@@ -617,7 +627,7 @@ func (e *Engine) Peers() []peer.ID {
 // MessageReceived is called when a message is received from a remote peer.
 // For each item in the wantlist, add a want-have or want-block entry to the
 // request queue (this is later popped off by the workerTasks)
-func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwapMessage) {
+func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwapMessage) (mustKillConnection bool) {
 	entries := m.Wantlist()
 
 	if len(entries) > 0 {
@@ -676,10 +686,40 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		wants = wants[:available]
 	}
 
+	filteredWants := wants[:0] // shift inplace
+
 	for _, entry := range wants {
+		if entry.Cid.Prefix().MhType == mh.IDENTITY {
+			// This is a truely broken client, let's kill the connection.
+			e.lock.Unlock()
+			log.Warnw("peer wants an identity CID", "local", e.self, "remote", p)
+			return true
+		}
+		if e.maxCidSize != 0 && uint(entry.Cid.ByteLen()) > e.maxCidSize {
+			// Ignore requests about CIDs that big.
+			continue
+		}
+
 		e.peerLedger.Wants(p, entry.Entry)
+		filteredWants = append(filteredWants, entry)
 	}
+	clear := wants[len(filteredWants):]
+	for i := range clear {
+		clear[i] = bsmsg.Entry{} // early GC
+	}
+	wants = filteredWants
 	for _, entry := range cancels {
+		if entry.Cid.Prefix().MhType == mh.IDENTITY {
+			// This is a truely broken client, let's kill the connection.
+			e.lock.Unlock()
+			log.Warnw("peer canceled an identity CID", "local", e.self, "remote", p)
+			return true
+		}
+		if e.maxCidSize != 0 && uint(entry.Cid.ByteLen()) > e.maxCidSize {
+			// Ignore requests about CIDs that big.
+			continue
+		}
+
 		log.Debugw("Bitswap engine <- cancel", "local", e.self, "from", p, "cid", entry.Cid)
 		if e.peerLedger.CancelWant(p, entry.Cid) {
 			e.peerRequestQueue.Remove(entry.Cid, p)
@@ -765,6 +805,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		e.peerRequestQueue.PushTasksTruncated(e.maxQueuedWantlistEntriesPerPeer, p, activeEntries...)
 		e.updateMetrics()
 	}
+	return false
 }
 
 // Split the want-have / want-block entries from the cancel entries
