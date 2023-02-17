@@ -33,6 +33,12 @@ func MaxQueuedWantlistEntriesPerPeer(count uint) Option {
 	return Option{server.MaxQueuedWantlistEntriesPerPeer(count)}
 }
 
+// MaxCidSize only affects the server.
+// If it is 0 no limit is applied.
+func MaxCidSize(n uint) Option {
+	return Option{server.MaxCidSize(n)}
+}
+
 func TaskWorkerCount(count int) Option {
 	return Option{server.TaskWorkerCount(count)}
 }
