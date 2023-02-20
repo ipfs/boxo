@@ -55,7 +55,6 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 
 				// 4xx
 				if ri.StatusCode == 404 || ri.StatusCode == 410 || ri.StatusCode == 451 {
-					// TODO: confirm no need to set roots headers here
 					if err := i.serve4xx(w, r, ri.Redirect4xxTo, ri.Redirect4xxPageCid, ri.Redirect4xxPage, ri.StatusCode); err != nil {
 						webError(w, "unable to serve redirect 404", err, http.StatusInternalServerError)
 						return false
@@ -65,7 +64,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 				// redirect
 				if ri.StatusCode >= 301 && ri.StatusCode <= 308 {
 					http.Redirect(w, r, ri.Redirect3xxTo, ri.StatusCode)
-					return true // TODO: confirm this is reasonable
+					return true
 				}
 			}
 		} else {

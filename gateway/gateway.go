@@ -102,7 +102,7 @@ type API interface {
 	Head(context.Context, ImmutablePath) (GatewayMetadata, files.Node, error)
 
 	// GetCAR returns a CAR file for the given immutable path
-	GetCAR(context.Context, ImmutablePath) (GatewayMetadata, io.ReadSeekCloser, error)
+	GetCAR(context.Context, ImmutablePath) (GatewayMetadata, io.ReadCloser, error)
 
 	// IsCached returns whether or not the path exists locally.
 	IsCached(context.Context, path.Path) bool
