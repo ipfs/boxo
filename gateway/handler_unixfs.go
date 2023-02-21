@@ -29,8 +29,7 @@ func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *htt
 	// Handling Unixfs file
 	if f, ok := dr.(files.File); ok {
 		logger.Debugw("serving unixfs file", "path", contentPath)
-		i.serveFile(ctx, w, r, resolvedPath, contentPath, f, begin)
-		return false
+		return i.serveFile(ctx, w, r, resolvedPath, contentPath, f, begin)
 	}
 
 	// Handling Unixfs directory
@@ -41,6 +40,5 @@ func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 
 	logger.Debugw("serving unixfs directory", "path", contentPath)
-	i.serveDirectory(ctx, w, r, resolvedPath, contentPath, dir, begin, logger)
-	return true
+	return i.serveDirectory(ctx, w, r, resolvedPath, contentPath, dir, begin, logger)
 }

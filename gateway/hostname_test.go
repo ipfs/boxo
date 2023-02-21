@@ -11,14 +11,14 @@ import (
 )
 
 func TestToSubdomainURL(t *testing.T) {
-	gwAPI := newMockApi()
+	gwAPI, _ := newMockAPI(t)
 	testCID, err := cid.Decode("bafkqaglimvwgy3zakrsxg5cun5jxkyten5wwc2lokvjeycq")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	gwAPI.ns["/ipns/dnslink.long-name.example.com"] = path.FromString(testCID.String())
-	gwAPI.ns["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = path.FromString(testCID.String())
+	gwAPI.namesys["/ipns/dnslink.long-name.example.com"] = path.FromString(testCID.String())
+	gwAPI.namesys["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = path.FromString(testCID.String())
 	httpRequest := httptest.NewRequest("GET", "http://127.0.0.1:8080", nil)
 	httpsRequest := httptest.NewRequest("GET", "https://https-request-stub.example.com", nil)
 	httpsProxiedRequest := httptest.NewRequest("GET", "http://proxied-https-request-stub.example.com", nil)
