@@ -3,10 +3,10 @@ package decision
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"crypto/rand"
 	"strings"
 	"sync"
 	"testing"
