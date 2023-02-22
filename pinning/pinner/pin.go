@@ -92,6 +92,8 @@ type Pinner interface {
 	IsPinnedWithType(ctx context.Context, c cid.Cid, mode Mode) (string, bool, error)
 
 	// Pin the given node, optionally recursively.
+	// Pin will make sure that the given node and its children if recursive is set
+	// are stored locally.
 	Pin(ctx context.Context, node ipld.Node, recursive bool) error
 
 	// Unpin the given cid. If recursive is true, removes either a recursive or
@@ -111,12 +113,7 @@ type Pinner interface {
 	// PinWithMode is for manually editing the pin structure. Use with
 	// care! If used improperly, garbage collection may not be
 	// successful.
-	PinWithMode(cid.Cid, Mode)
-
-	// RemovePinWithMode is for manually editing the pin structure.
-	// Use with care! If used improperly, garbage collection may not
-	// be successful.
-	RemovePinWithMode(cid.Cid, Mode)
+	PinWithMode(context.Context, cid.Cid, Mode) error
 
 	// Flush writes the pin state to the backing datastore
 	Flush(ctx context.Context) error

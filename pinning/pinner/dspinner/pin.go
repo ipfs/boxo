@@ -13,14 +13,15 @@ import (
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
-	ipfspinner "github.com/ipfs/go-ipfs-pinner"
-	"github.com/ipfs/go-ipfs-pinner/dsindex"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-merkledag"
 	"github.com/ipfs/go-merkledag/dagutils"
 	"github.com/polydawn/refmt/cbor"
 	"github.com/polydawn/refmt/obj/atlas"
+
+	ipfspinner "github.com/ipfs/go-ipfs-pinner"
+	"github.com/ipfs/go-ipfs-pinner/dsindex"
 )
 
 const (
@@ -179,23 +180,30 @@ func (p *pinner) Pin(ctx context.Context, node ipld.Node, recurse bool) error {
 		return err
 	}
 
-	c := node.Cid()
+	if recurse {
+		return p.doPinRecursive(ctx, node.Cid(), true)
+	} else {
+		return p.doPinDirect(ctx, node.Cid())
+	}
+}
+
+func (p *pinner) doPinRecursive(ctx context.Context, c cid.Cid, fetch bool) error {
 	cidKey := c.KeyString()
 
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	if recurse {
-		found, err := p.cidRIndex.HasAny(ctx, cidKey)
-		if err != nil {
-			return err
-		}
-		if found {
-			return nil
-		}
+	found, err := p.cidRIndex.HasAny(ctx, cidKey)
+	if err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
 
-		dirtyBefore := p.dirty
+	dirtyBefore := p.dirty
 
+	if fetch {
 		// temporary unlock to fetch the entire graph
 		p.lock.Unlock()
 		// Fetch graph starting at node identified by cid
@@ -204,54 +212,63 @@ func (p *pinner) Pin(ctx context.Context, node ipld.Node, recurse bool) error {
 		if err != nil {
 			return err
 		}
+	}
 
-		// If autosyncing, sync dag service before making any change to pins
-		err = p.flushDagService(ctx, false)
-		if err != nil {
-			return err
-		}
+	// If autosyncing, sync dag service before making any change to pins
+	err = p.flushDagService(ctx, false)
+	if err != nil {
+		return err
+	}
 
-		// Only look again if something has changed.
-		if p.dirty != dirtyBefore {
-			found, err = p.cidRIndex.HasAny(ctx, cidKey)
-			if err != nil {
-				return err
-			}
-			if found {
-				return nil
-			}
-		}
-
-		// TODO: remove this to support multiple pins per CID
-		found, err = p.cidDIndex.HasAny(ctx, cidKey)
+	// Only look again if something has changed.
+	if p.dirty != dirtyBefore {
+		found, err = p.cidRIndex.HasAny(ctx, cidKey)
 		if err != nil {
 			return err
 		}
 		if found {
-			_, err = p.removePinsForCid(ctx, c, ipfspinner.Direct)
-			if err != nil {
-				return err
-			}
+			return nil
 		}
+	}
 
-		_, err = p.addPin(ctx, c, ipfspinner.Recursive, "")
-		if err != nil {
-			return err
-		}
-	} else {
-		found, err := p.cidRIndex.HasAny(ctx, cidKey)
-		if err != nil {
-			return err
-		}
-		if found {
-			return fmt.Errorf("%s already pinned recursively", c.String())
-		}
-
-		_, err = p.addPin(ctx, c, ipfspinner.Direct, "")
+	// TODO: remove this to support multiple pins per CID
+	found, err = p.cidDIndex.HasAny(ctx, cidKey)
+	if err != nil {
+		return err
+	}
+	if found {
+		_, err = p.removePinsForCid(ctx, c, ipfspinner.Direct)
 		if err != nil {
 			return err
 		}
 	}
+
+	_, err = p.addPin(ctx, c, ipfspinner.Recursive, "")
+	if err != nil {
+		return err
+	}
+	return p.flushPins(ctx, false)
+}
+
+func (p *pinner) doPinDirect(ctx context.Context, c cid.Cid) error {
+	cidKey := c.KeyString()
+
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	found, err := p.cidRIndex.HasAny(ctx, cidKey)
+	if err != nil {
+		return err
+	}
+	if found {
+		return fmt.Errorf("%s already pinned recursively", c.String())
+	}
+
+	_, err = p.addPin(ctx, c, ipfspinner.Direct, "")
+	if err != nil {
+		return err
+	}
+
 	return p.flushPins(ctx, false)
 }
 
@@ -555,35 +572,6 @@ func (p *pinner) CheckIfPinned(ctx context.Context, cids ...cid.Cid) ([]ipfspinn
 	return pinned, nil
 }
 
-// RemovePinWithMode is for manually editing the pin structure.
-// Use with care! If used improperly, garbage collection may not
-// be successful.
-func (p *pinner) RemovePinWithMode(c cid.Cid, mode ipfspinner.Mode) {
-	ctx := context.TODO()
-	// Check cache to see if CID is pinned
-	switch mode {
-	case ipfspinner.Direct, ipfspinner.Recursive:
-	default:
-		// programmer error, panic OK
-		panic("unrecognized pin type")
-	}
-
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
-	removed, err := p.removePinsForCid(ctx, c, mode)
-	if err != nil {
-		log.Error("cound not remove pins: %s", err)
-		return
-	}
-	if !removed {
-		return
-	}
-	if err = p.flushPins(ctx, false); err != nil {
-		log.Error("cound not remove pins: %s", err)
-	}
-}
-
 // removePinsForCid removes all pins for a cid that has the specified mode.
 // Returns true if any pins, and all corresponding CID index entries, were
 // removed.  Otherwise, returns false.
@@ -826,32 +814,15 @@ func (p *pinner) Flush(ctx context.Context) error {
 
 // PinWithMode allows the user to have fine grained control over pin
 // counts
-func (p *pinner) PinWithMode(c cid.Cid, mode ipfspinner.Mode) {
-	ctx := context.TODO()
-
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
+func (p *pinner) PinWithMode(ctx context.Context, c cid.Cid, mode ipfspinner.Mode) error {
 	// TODO: remove his to support multiple pins per CID
 	switch mode {
 	case ipfspinner.Recursive:
-		if has, _ := p.cidRIndex.HasAny(ctx, c.KeyString()); has {
-			return // already a recursive pin for this CID
-		}
+		return p.doPinRecursive(ctx, c, false)
 	case ipfspinner.Direct:
-		if has, _ := p.cidDIndex.HasAny(ctx, c.KeyString()); has {
-			return // already a direct pin for this CID
-		}
+		return p.doPinDirect(ctx, c)
 	default:
-		panic("unrecognized pin mode")
-	}
-
-	_, err := p.addPin(ctx, c, mode, "")
-	if err != nil {
-		return
-	}
-	if err = p.flushPins(ctx, false); err != nil {
-		log.Errorf("failed to create %s pin: %s", mode, err)
+		return fmt.Errorf("unrecognized pin mode")
 	}
 }
 

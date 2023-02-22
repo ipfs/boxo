@@ -19,10 +19,11 @@ import (
 	lds "github.com/ipfs/go-ds-leveldb"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
-	ipfspin "github.com/ipfs/go-ipfs-pinner"
 	util "github.com/ipfs/go-ipfs-util"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
+
+	ipfspin "github.com/ipfs/go-ipfs-pinner"
 )
 
 var rand = util.NewTimeSeededRand()
@@ -375,45 +376,6 @@ func TestAddLoadPin(t *testing.T) {
 	}
 }
 
-func TestRemovePinWithMode(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	dstore := dssync.MutexWrap(ds.NewMapDatastore())
-	bstore := blockstore.NewBlockstore(dstore)
-	bserv := bs.New(bstore, offline.Exchange(bstore))
-
-	dserv := mdag.NewDAGService(bserv)
-
-	p, err := New(ctx, dstore, dserv)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	a, ak := randNode()
-	err = dserv.Add(ctx, a)
-	if err != nil {
-		panic(err)
-	}
-
-	err = p.Pin(ctx, a, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ok, err := p.removePinsForCid(ctx, ak, ipfspin.Recursive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ok {
-		t.Error("pin should not have been removed")
-	}
-
-	p.RemovePinWithMode(ak, ipfspin.Direct)
-
-	assertUnpinned(t, p, ak, "pin was not removed")
-}
-
 func TestIsPinnedLookup(t *testing.T) {
 	// Test that lookups work in pins which share
 	// the same branches.  For that construct this tree:
@@ -523,7 +485,7 @@ func TestFlush(t *testing.T) {
 	}
 	_, k := randNode()
 
-	p.PinWithMode(k, ipfspin.Recursive)
+	p.PinWithMode(ctx, k, ipfspin.Recursive)
 	if err = p.Flush(ctx); err != nil {
 		t.Fatal(err)
 	}
