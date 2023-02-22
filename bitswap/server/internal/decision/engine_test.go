@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math/rand"
+	"crypto/rand"
 	"strings"
 	"sync"
 	"testing"
