@@ -32,7 +32,7 @@ require (
 	github.com/ipfs/go-merkledag v0.9.0
 	github.com/ipfs/go-metrics-interface v0.0.1
 	github.com/ipfs/go-namesys v0.7.0
-	github.com/ipfs/go-path v0.3.0
+	github.com/ipfs/go-path v0.3.1
 	github.com/ipfs/go-peertaskqueue v0.8.1
 	github.com/ipfs/go-unixfs v0.3.1
 	github.com/ipfs/go-unixfsnode v1.5.1
@@ -56,6 +56,7 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/samber/lo v1.36.0
 	github.com/stretchr/testify v1.8.1
+	github.com/tj/assert v0.0.3
 	go.opencensus.io v0.24.0
 	go.opentelemetry.io/otel v1.7.0
 	go.opentelemetry.io/otel/trace v1.7.0

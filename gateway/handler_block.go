@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -19,7 +20,8 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	blockCid := resolvedPath.Cid()
 	block, err := i.api.GetBlock(ctx, blockCid)
 	if err != nil {
-		webError(w, "ipfs block get "+blockCid.String(), err, http.StatusInternalServerError)
+		err = fmt.Errorf("error getting block %s: %w", blockCid.String(), err)
+		webError(w, err, http.StatusInternalServerError)
 		return false
 	}
 	content := bytes.NewReader(block.RawData())

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -19,6 +20,7 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-namesys"
+	"github.com/ipfs/go-path"
 	"github.com/ipfs/go-path/resolver"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
@@ -42,6 +44,9 @@ const (
 var (
 	onlyASCII = regexp.MustCompile("[[:^ascii:]]")
 	noModtime = time.Unix(0, 0) // disables Last-Modified header if passed as modtime
+
+	ErrGatewayTimeout = errors.New(http.StatusText(http.StatusGatewayTimeout))
+	ErrBadGateway     = errors.New(http.StatusText(http.StatusBadGateway))
 )
 
 // HTML-based redirect for errors which can be recovered from, but we want
@@ -95,7 +100,6 @@ type statusResponseWriter struct {
 
 // Custom type for collecting error details to be handled by `webRequestError`
 type requestError struct {
-	Message    string
 	StatusCode int
 	Err        error
 }
@@ -104,9 +108,8 @@ func (r *requestError) Error() string {
 	return r.Err.Error()
 }
 
-func newRequestError(message string, err error, statusCode int) *requestError {
+func newRequestError(err error, statusCode int) *requestError {
 	return &requestError{
-		Message:    message,
 		Err:        err,
 		StatusCode: statusCode,
 	}
@@ -368,7 +371,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	// Detect when explicit Accept header or ?format parameter are present
 	responseFormat, formatParams, err := customResponseFormat(r)
 	if err != nil {
-		webError(w, "error while processing the Accept header", err, http.StatusBadRequest)
+		webError(w, fmt.Errorf("error while processing the Accept header: %w", err), http.StatusBadRequest)
 		return
 	}
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResponseFormat", responseFormat))
@@ -434,7 +437,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		success = i.serveIpnsRecord(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
 	default: // catch-all for unsuported application/vnd.*
 		err := fmt.Errorf("unsupported format %q", responseFormat)
-		webError(w, "failed to respond with requested content type", err, http.StatusBadRequest)
+		webError(w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -554,33 +557,54 @@ func (i *handler) buildIpfsRootsHeader(contentPath string, r *http.Request) (str
 }
 
 func webRequestError(w http.ResponseWriter, err *requestError) {
-	webError(w, err.Message, err.Err, err.StatusCode)
+	webError(w, err.Err, err.StatusCode)
 }
 
-func webError(w http.ResponseWriter, message string, err error, defaultCode int) {
-	if _, ok := err.(resolver.ErrNoLink); ok {
-		webErrorWithCode(w, message, err, http.StatusNotFound)
-	} else if err == routing.ErrNotFound {
-		webErrorWithCode(w, message, err, http.StatusNotFound)
-	} else if ipld.IsNotFound(err) {
-		webErrorWithCode(w, message, err, http.StatusNotFound)
-	} else if err == context.DeadlineExceeded {
-		webErrorWithCode(w, message, err, http.StatusRequestTimeout)
+func webError(w http.ResponseWriter, err error, defaultCode int) {
+	if errors.Is(err, path.ErrInvalidPath{}) {
+		webErrorWithCode(w, err, http.StatusBadRequest)
+	} else if isErrNotFound(err) {
+		webErrorWithCode(w, err, http.StatusNotFound)
+	} else if errors.Is(err, ErrGatewayTimeout) {
+		webErrorWithCode(w, err, http.StatusGatewayTimeout)
+	} else if errors.Is(err, ErrBadGateway) {
+		webErrorWithCode(w, err, http.StatusBadGateway)
+	} else if errors.Is(err, context.DeadlineExceeded) || err == context.DeadlineExceeded {
+		webErrorWithCode(w, err, http.StatusRequestTimeout)
 	} else {
-		webErrorWithCode(w, message, err, defaultCode)
+		webErrorWithCode(w, err, defaultCode)
 	}
 }
 
-func webErrorWithCode(w http.ResponseWriter, message string, err error, code int) {
-	http.Error(w, fmt.Sprintf("%s: %s", message, err), code)
+func isErrNotFound(err error) bool {
+	return isErrNoLink(err) ||
+		errors.Is(err, routing.ErrNotFound) ||
+		err == routing.ErrNotFound ||
+		ipld.IsNotFound(err)
+}
+
+// isErrNoLink checks if err is a resolver.ErrNoLink. resolver.ErrNoLink
+// does not implement a .Is interface and cannot be directly compared to.
+// Therefore, errors.Is always returns false with it.
+func isErrNoLink(err error) bool {
+	for {
+		_, ok := err.(resolver.ErrNoLink)
+		if ok {
+			return true
+		}
+
+		err = errors.Unwrap(err)
+		if err == nil {
+			return false
+		}
+	}
+}
+
+func webErrorWithCode(w http.ResponseWriter, err error, code int) {
+	http.Error(w, err.Error(), code)
 	if code >= 500 {
-		log.Warnf("server error: %s: %s", message, err)
+		log.Warnf("server error: %s", err)
 	}
-}
-
-// return a 500 error and log
-func internalWebError(w http.ResponseWriter, err error) {
-	webErrorWithCode(w, "internalWebError", err, http.StatusInternalServerError)
 }
 
 func getFilename(contentPath ipath.Path) string {
@@ -742,11 +766,13 @@ func (i *handler) handlePathResolution(w http.ResponseWriter, r *http.Request, r
 	case nil:
 		return resolvedPath, contentPath, true
 	case coreiface.ErrOffline:
-		webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusServiceUnavailable)
+		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+		webError(w, err, http.StatusServiceUnavailable)
 		return nil, nil, false
 	case namesys.ErrResolveFailed:
 		// Note: webError will replace http.StatusBadRequest with StatusNotFound or StatusRequestTimeout if necessary
-		webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusInternalServerError)
+		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+		webError(w, err, http.StatusInternalServerError)
 		return nil, nil, false
 	default:
 		// The path can't be resolved.
@@ -772,8 +798,9 @@ func (i *handler) handlePathResolution(w http.ResponseWriter, r *http.Request, r
 			}
 		}
 
-		// Note: webError will replace http.StatusBadRequest with StatusNotFound or StatusRequestTimeout if necessary
-		webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusBadRequest)
+		// Note: webError will replace http.StatusInternalServerError with StatusNotFound or StatusRequestTimeout if necessary
+		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+		webError(w, err, http.StatusInternalServerError)
 		return nil, nil, false
 	}
 }
@@ -803,8 +830,8 @@ func handleUnsupportedHeaders(r *http.Request) (err *requestError) {
 	// X-Ipfs-Gateway-Prefix was removed (https://github.com/ipfs/kubo/issues/7702)
 	// TODO: remove this after  go-ipfs 0.13 ships
 	if prfx := r.Header.Get("X-Ipfs-Gateway-Prefix"); prfx != "" {
-		err := fmt.Errorf("X-Ipfs-Gateway-Prefix support was removed: https://github.com/ipfs/kubo/issues/7702")
-		return newRequestError("unsupported HTTP header", err, http.StatusBadRequest)
+		err := fmt.Errorf("unsupported HTTP header: X-Ipfs-Gateway-Prefix support was removed: https://github.com/ipfs/kubo/issues/7702")
+		return newRequestError(err, http.StatusBadRequest)
 	}
 	return nil
 }
@@ -817,11 +844,11 @@ func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, logge
 	if uriParam := r.URL.Query().Get("uri"); uriParam != "" {
 		u, err := url.Parse(uriParam)
 		if err != nil {
-			webError(w, "failed to parse uri query parameter", err, http.StatusBadRequest)
+			webError(w, fmt.Errorf("failed to parse uri query parameter: %w", err), http.StatusBadRequest)
 			return true
 		}
 		if u.Scheme != "ipfs" && u.Scheme != "ipns" {
-			webError(w, "uri query parameter scheme must be ipfs or ipns", err, http.StatusBadRequest)
+			webError(w, fmt.Errorf("uri query parameter scheme must be ipfs or ipns: %w", err), http.StatusBadRequest)
 			return true
 		}
 		path := u.Path
@@ -845,7 +872,7 @@ func handleServiceWorkerRegistration(r *http.Request) (err *requestError) {
 		matched, _ := regexp.MatchString(`^/ip[fn]s/[^/]+$`, r.URL.Path)
 		if matched {
 			err := fmt.Errorf("registration is not allowed for this scope")
-			return newRequestError("navigator.serviceWorker", err, http.StatusBadRequest)
+			return newRequestError(fmt.Errorf("navigator.serviceWorker: %w", err), http.StatusBadRequest)
 		}
 	}
 
@@ -870,7 +897,7 @@ func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentP
 	// Attempt to fix the superflous namespace
 	intendedPath := ipath.New(strings.TrimPrefix(r.URL.Path, "/ipfs"))
 	if err := intendedPath.IsValid(); err != nil {
-		webError(w, "invalid ipfs path", err, http.StatusBadRequest)
+		webError(w, fmt.Errorf("invalid ipfs path: %w", err), http.StatusBadRequest)
 		return true
 	}
 	intendedURL := intendedPath.String()
@@ -890,7 +917,7 @@ func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentP
 		SuggestedPath: intendedPath.String(),
 		ErrorMsg:      fmt.Sprintf("invalid path: %q should be %q", r.URL.Path, intendedPath.String()),
 	}); err != nil {
-		webError(w, "failed to redirect when fixing superfluous namespace", err, http.StatusBadRequest)
+		webError(w, fmt.Errorf("failed to redirect when fixing superfluous namespace: %w", err), http.StatusBadRequest)
 	}
 
 	return true
@@ -901,7 +928,8 @@ func (i *handler) handleGettingFirstBlock(r *http.Request, begin time.Time, cont
 	// NOTE: for legacy reasons this happens before we go into content-type specific code paths
 	_, err := i.api.GetBlock(r.Context(), resolvedPath.Cid())
 	if err != nil {
-		return newRequestError("ipfs block get "+resolvedPath.Cid().String(), err, http.StatusInternalServerError)
+		err = fmt.Errorf("could not get block %s: %w", resolvedPath.Cid().String(), err)
+		return newRequestError(err, http.StatusInternalServerError)
 	}
 	ns := contentPath.Namespace()
 	timeToGetFirstContentBlock := time.Since(begin).Seconds()
@@ -917,7 +945,8 @@ func (i *handler) setCommonHeaders(w http.ResponseWriter, r *http.Request, conte
 	if rootCids, err := i.buildIpfsRootsHeader(contentPath.String(), r); err == nil {
 		w.Header().Set("X-Ipfs-Roots", rootCids)
 	} else { // this should never happen, as we resolved the contentPath already
-		return newRequestError("error while resolving X-Ipfs-Roots", err, http.StatusInternalServerError)
+		err = fmt.Errorf("error while resolving X-Ipfs-Roots: %w", err)
+		return newRequestError(err, http.StatusInternalServerError)
 	}
 
 	return nil

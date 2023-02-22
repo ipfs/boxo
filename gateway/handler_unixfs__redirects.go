@@ -41,14 +41,14 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 	if redirectsFile != nil {
 		redirectRules, err := i.getRedirectRules(r, redirectsFile)
 		if err != nil {
-			internalWebError(w, err)
+			webError(w, err, http.StatusInternalServerError)
 			return nil, nil, false, true
 		}
 
 		redirected, newPath, err := i.handleRedirectsFileRules(w, r, contentPath, redirectRules)
 		if err != nil {
 			err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsFile.String(), err)
-			internalWebError(w, err)
+			webError(w, err, http.StatusInternalServerError)
 			return nil, nil, false, true
 		}
 
@@ -62,7 +62,7 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 			contentPath = ipath.New(newPath)
 			resolvedPath, err = i.api.ResolvePath(r.Context(), contentPath)
 			if err != nil {
-				internalWebError(w, err)
+				webError(w, err, http.StatusInternalServerError)
 				return nil, nil, false, true
 			}
 

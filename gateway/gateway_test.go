@@ -292,7 +292,11 @@ func doWithoutRedirect(req *http.Request) (*http.Response, error) {
 
 func newTestServerAndNode(t *testing.T, ns mockNamesys) (*httptest.Server, *mockAPI, cid.Cid) {
 	api, root := newMockAPI(t)
+	ts := newTestServer(t, api)
+	return ts, api, root
+}
 
+func newTestServer(t *testing.T, api API) *httptest.Server {
 	config := Config{Headers: map[string][]string{}}
 	AddAccessControlHeaders(config.Headers)
 
@@ -305,7 +309,7 @@ func newTestServerAndNode(t *testing.T, ns mockNamesys) (*httptest.Server, *mock
 	ts := httptest.NewServer(handler)
 	t.Cleanup(func() { ts.Close() })
 
-	return ts, api, root
+	return ts
 }
 
 func matchPathOrBreadcrumbs(s string, expected string) bool {
@@ -349,17 +353,17 @@ func TestGatewayGet(t *testing.T) {
 		{"127.0.0.1:8080", "/", http.StatusNotFound, "404 page not found\n"},
 		{"127.0.0.1:8080", "/" + k.Cid().String(), http.StatusNotFound, "404 page not found\n"},
 		{"127.0.0.1:8080", k.String(), http.StatusOK, "fnord"},
-		{"127.0.0.1:8080", "/ipns/nxdomain.example.com", http.StatusInternalServerError, "ipfs resolve -r /ipns/nxdomain.example.com: " + namesys.ErrResolveFailed.Error() + "\n"},
-		{"127.0.0.1:8080", "/ipns/%0D%0A%0D%0Ahello", http.StatusInternalServerError, "ipfs resolve -r /ipns/\\r\\n\\r\\nhello: " + namesys.ErrResolveFailed.Error() + "\n"},
+		{"127.0.0.1:8080", "/ipns/nxdomain.example.com", http.StatusInternalServerError, "failed to resolve /ipns/nxdomain.example.com: " + namesys.ErrResolveFailed.Error() + "\n"},
+		{"127.0.0.1:8080", "/ipns/%0D%0A%0D%0Ahello", http.StatusInternalServerError, "failed to resolve /ipns/\\r\\n\\r\\nhello: " + namesys.ErrResolveFailed.Error() + "\n"},
 		{"127.0.0.1:8080", "/ipns/example.com", http.StatusOK, "fnord"},
 		{"example.com", "/", http.StatusOK, "fnord"},
 
 		{"working.example.com", "/", http.StatusOK, "fnord"},
 		{"double.example.com", "/", http.StatusOK, "fnord"},
 		{"triple.example.com", "/", http.StatusOK, "fnord"},
-		{"working.example.com", k.String(), http.StatusNotFound, "ipfs resolve -r /ipns/working.example.com" + k.String() + ": no link named \"ipfs\" under " + k.Cid().String() + "\n"},
-		{"broken.example.com", "/", http.StatusInternalServerError, "ipfs resolve -r /ipns/broken.example.com/: " + namesys.ErrResolveFailed.Error() + "\n"},
-		{"broken.example.com", k.String(), http.StatusInternalServerError, "ipfs resolve -r /ipns/broken.example.com" + k.String() + ": " + namesys.ErrResolveFailed.Error() + "\n"},
+		{"working.example.com", k.String(), http.StatusNotFound, "failed to resolve /ipns/working.example.com" + k.String() + ": no link named \"ipfs\" under " + k.Cid().String() + "\n"},
+		{"broken.example.com", "/", http.StatusInternalServerError, "failed to resolve /ipns/broken.example.com/: " + namesys.ErrResolveFailed.Error() + "\n"},
+		{"broken.example.com", k.String(), http.StatusInternalServerError, "failed to resolve /ipns/broken.example.com" + k.String() + ": " + namesys.ErrResolveFailed.Error() + "\n"},
 		// This test case ensures we don't treat the TLD as a file extension.
 		{"example.man", "/", http.StatusOK, "fnord"},
 	} {
@@ -686,7 +690,7 @@ func TestPretty404(t *testing.T) {
 		{"/nope", "text/html", http.StatusNotFound, "Custom 404"},
 		{"/nope", "text/*", http.StatusNotFound, "Custom 404"},
 		{"/nope", "*/*", http.StatusNotFound, "Custom 404"},
-		{"/nope", "application/json", http.StatusNotFound, fmt.Sprintf("ipfs resolve -r /ipns/example.net/nope: no link named \"nope\" under %s\n", k.Cid().String())},
+		{"/nope", "application/json", http.StatusNotFound, fmt.Sprintf("failed to resolve /ipns/example.net/nope: no link named \"nope\" under %s\n", k.Cid().String())},
 		{"/deeper/nope", "text/html", http.StatusNotFound, "Deep custom 404"},
 		{"/deeper/", "text/html", http.StatusOK, ""},
 		{"/deeper", "text/html", http.StatusOK, ""},

@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"html"
 	"net/http"
 	"time"
 
@@ -21,7 +20,8 @@ func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *htt
 	// Handling UnixFS
 	dr, err := i.api.GetUnixFsNode(ctx, resolvedPath)
 	if err != nil {
-		webError(w, "ipfs cat "+html.EscapeString(contentPath.String()), err, http.StatusBadRequest)
+		err = fmt.Errorf("error while getting UnixFS node: %w", err)
+		webError(w, err, http.StatusInternalServerError)
 		return false
 	}
 	defer dr.Close()
@@ -35,7 +35,7 @@ func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *htt
 	// Handling Unixfs directory
 	dir, ok := dr.(files.Directory)
 	if !ok {
-		internalWebError(w, fmt.Errorf("unsupported UnixFS type"))
+		webError(w, fmt.Errorf("unsupported UnixFS type"), http.StatusInternalServerError)
 		return false
 	}
 
