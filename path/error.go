@@ -4,20 +4,24 @@ import (
 	"fmt"
 )
 
-// helper type so path parsing errors include the path
-type pathError struct {
+type ErrInvalidPath struct {
 	error error
 	path  string
 }
 
-func (e *pathError) Error() string {
+func (e ErrInvalidPath) Error() string {
 	return fmt.Sprintf("invalid path %q: %s", e.path, e.error)
 }
 
-func (e *pathError) Unwrap() error {
+func (e ErrInvalidPath) Unwrap() error {
 	return e.error
 }
 
-func (e *pathError) Path() string {
-	return e.path
+func (e ErrInvalidPath) Is(err error) bool {
+	switch err.(type) {
+	case ErrInvalidPath:
+		return true
+	default:
+		return false
+	}
 }
