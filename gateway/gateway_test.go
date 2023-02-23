@@ -40,6 +40,7 @@ import (
 	"github.com/ipld/go-ipld-prime/schema"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/routing"
+	"github.com/stretchr/testify/assert"
 )
 
 type mockNamesys map[string]path.Path
@@ -96,14 +97,10 @@ type mockAPI struct {
 
 func newMockAPI(t *testing.T) (*mockAPI, cid.Cid) {
 	r, err := os.Open("./testdata/fixtures.car")
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	blockStore, err := carblockstore.NewReadOnly(r, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	t.Cleanup(func() {
 		blockStore.Close()
@@ -111,13 +108,8 @@ func newMockAPI(t *testing.T) (*mockAPI, cid.Cid) {
 	})
 
 	cids, err := blockStore.Roots()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(cids) != 1 {
-		t.Fatal(fmt.Errorf("car has %d roots, expected 1", len(cids)))
-	}
+	assert.Nil(t, err)
+	assert.Len(t, cids, 1)
 
 	blockService := blockservice.New(blockStore, offline.Exchange(blockStore))
 	dagService := merkledag.NewDAGService(blockService)
@@ -325,9 +317,7 @@ func TestGatewayGet(t *testing.T) {
 	defer cancel()
 
 	k, err := api.ResolvePath(ctx, ipath.Join(ipath.IpfsPath(root), t.Name(), "fnord"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	api.namesys["/ipns/example.com"] = path.FromCid(k.Cid())
 	api.namesys["/ipns/working.example.com"] = path.FromString(k.String())
@@ -344,7 +334,7 @@ func TestGatewayGet(t *testing.T) {
 	api.namesys["/ipns/example.man"] = path.FromString(k.String())
 
 	t.Log(ts.URL)
-	for i, test := range []struct {
+	for _, test := range []struct {
 		host   string
 		path   string
 		status int
@@ -369,37 +359,21 @@ func TestGatewayGet(t *testing.T) {
 		// This test case ensures we don't treat the TLD as a file extension.
 		{"example.man", "/", http.StatusOK, "fnord"},
 	} {
-		var c http.Client
-		r, err := http.NewRequest(http.MethodGet, ts.URL+test.path, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		r.Host = test.host
-		resp, err := c.Do(r)
-
-		urlstr := "http://" + test.host + test.path
-		if err != nil {
-			t.Errorf("error requesting %s: %s", urlstr, err)
-			continue
-		}
-		defer resp.Body.Close()
-		contentType := resp.Header.Get("Content-Type")
-		if contentType != "text/plain; charset=utf-8" {
-			t.Errorf("expected content type to be text/plain, got %s", contentType)
-		}
-		body, err := io.ReadAll(resp.Body)
-		if resp.StatusCode != test.status {
-			t.Errorf("(%d) got %d, expected %d from %s", i, resp.StatusCode, test.status, urlstr)
-			t.Errorf("Body: %s", body)
-			continue
-		}
-		if err != nil {
-			t.Fatalf("error reading response from %s: %s", urlstr, err)
-		}
-		if string(body) != test.text {
-			t.Errorf("unexpected response body from %s: expected %q; got %q", urlstr, test.text, body)
-			continue
-		}
+		testName := "http://" + test.host + test.path
+		t.Run(testName, func(t *testing.T) {
+			var c http.Client
+			r, err := http.NewRequest(http.MethodGet, ts.URL+test.path, nil)
+			assert.Nil(t, err)
+			r.Host = test.host
+			resp, err := c.Do(r)
+			assert.Nil(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+			body, err := io.ReadAll(resp.Body)
+			assert.Nil(t, err)
+			assert.Equal(t, test.status, resp.StatusCode, "body", body)
+			assert.Equal(t, test.text, string(body))
+		})
 	}
 }
 
@@ -407,7 +381,7 @@ func TestUriQueryRedirect(t *testing.T) {
 	ts, _, _ := newTestServerAndNode(t, mockNamesys{})
 
 	cid := "QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR"
-	for i, test := range []struct {
+	for _, test := range []struct {
 		path     string
 		status   int
 		location string
@@ -429,25 +403,16 @@ func TestUriQueryRedirect(t *testing.T) {
 		{"/ipfs/?uri=invaliduri", http.StatusBadRequest, ""},
 		{"/ipfs/?uri=" + cid, http.StatusBadRequest, ""},
 	} {
-
-		r, err := http.NewRequest(http.MethodGet, ts.URL+test.path, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp, err := doWithoutRedirect(r)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != test.status {
-			t.Errorf("(%d) got %d, expected %d from %s", i, resp.StatusCode, test.status, ts.URL+test.path)
-		}
-
-		locHdr := resp.Header.Get("Location")
-		if locHdr != test.location {
-			t.Errorf("(%d) location header got %s, expected %s from %s", i, locHdr, test.location, ts.URL+test.path)
-		}
+		testName := ts.URL + test.path
+		t.Run(testName, func(t *testing.T) {
+			r, err := http.NewRequest(http.MethodGet, ts.URL+test.path, nil)
+			assert.Nil(t, err)
+			resp, err := doWithoutRedirect(r)
+			assert.Nil(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, test.status, resp.StatusCode)
+			assert.Equal(t, test.location, resp.Header.Get("Location"))
+		})
 	}
 }
 
@@ -459,74 +424,47 @@ func TestIPNSHostnameRedirect(t *testing.T) {
 	defer cancel()
 
 	k, err := api.ResolvePath(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	t.Logf("k: %s\n", k)
 	api.namesys["/ipns/example.net"] = path.FromString(k.String())
 
 	// make request to directory containing index.html
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/foo", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 	req.Host = "example.net"
 
 	res, err := doWithoutRedirect(req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	// expect 301 redirect to same path, but with trailing slash
-	if res.StatusCode != 301 {
-		t.Errorf("status is %d, expected 301", res.StatusCode)
-	}
+	assert.Equal(t, http.StatusMovedPermanently, res.StatusCode)
 	hdr := res.Header["Location"]
-	if len(hdr) < 1 {
-		t.Errorf("location header not present")
-	} else if hdr[0] != "/foo/" {
-		t.Errorf("location header is %v, expected /foo/", hdr[0])
-	}
+	assert.Positive(t, len(hdr), "location header not present")
+	assert.Equal(t, hdr[0], "/foo/")
 
 	// make request with prefix to directory containing index.html
 	req, err = http.NewRequest(http.MethodGet, ts.URL+"/foo", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 	req.Host = "example.net"
 
 	res, err = doWithoutRedirect(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	assert.Nil(t, err)
 	// expect 301 redirect to same path, but with prefix and trailing slash
-	if res.StatusCode != 301 {
-		t.Errorf("status is %d, expected 301", res.StatusCode)
-	}
+	assert.Equal(t, http.StatusMovedPermanently, res.StatusCode)
+
 	hdr = res.Header["Location"]
-	if len(hdr) < 1 {
-		t.Errorf("location header not present")
-	} else if hdr[0] != "/foo/" {
-		t.Errorf("location header is %v, expected /foo/", hdr[0])
-	}
+	assert.Positive(t, len(hdr), "location header not present")
+	assert.Equal(t, hdr[0], "/foo/")
 
 	// make sure /version isn't exposed
 	req, err = http.NewRequest(http.MethodGet, ts.URL+"/version", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 	req.Host = "example.net"
 
 	res, err = doWithoutRedirect(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if res.StatusCode != 404 {
-		t.Fatalf("expected a 404 error, got: %s", res.Status)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
 }
 
 // Test directory listing on DNSLink website
@@ -541,130 +479,80 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	defer cancel()
 
 	k, err := api.ResolvePath(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	// create /ipns/example.net/foo/
 	k2, err := api.ResolvePath(ctx, ipath.Join(k, "foo? #<'"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	k3, err := api.ResolvePath(ctx, ipath.Join(k, "foo? #<'/bar"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	t.Logf("k: %s\n", k)
 	api.namesys["/ipns/example.net"] = path.FromString(k.String())
 
 	// make request to directory listing
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/foo%3F%20%23%3C%27/", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 	req.Host = "example.net"
 
 	res, err := doWithoutRedirect(req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	// expect correct links
 	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		t.Fatalf("error reading response: %s", err)
-	}
+	assert.Nil(t, err)
 	s := string(body)
 	t.Logf("body: %s\n", string(body))
 
-	if !matchPathOrBreadcrumbs(s, "/ipns/<a href=\"//example.net/\">example.net</a>/<a href=\"//example.net/foo%3F%20%23%3C%27\">foo? #&lt;&#39;</a>") {
-		t.Fatalf("expected a path in directory listing")
-	}
-	if !strings.Contains(s, "<a href=\"/foo%3F%20%23%3C%27/..\">") {
-		t.Fatalf("expected backlink in directory listing")
-	}
-	if !strings.Contains(s, "<a href=\"/foo%3F%20%23%3C%27/file.txt\">") {
-		t.Fatalf("expected file in directory listing")
-	}
-	if !strings.Contains(s, "<a class=\"ipfs-hash\" translate=\"no\" href=\"https://cid.ipfs.tech/#") {
-		// https://github.com/ipfs/dir-index-html/issues/42
-		t.Fatalf("expected links to cid.ipfs.tech in CID column when on DNSLink website")
-	}
-	if !strings.Contains(s, k2.Cid().String()) {
-		t.Fatalf("expected hash in directory listing")
-	}
+	assert.True(t, matchPathOrBreadcrumbs(s, "/ipns/<a href=\"//example.net/\">example.net</a>/<a href=\"//example.net/foo%3F%20%23%3C%27\">foo? #&lt;&#39;</a>"), "expected a path in directory listing")
+	// https://github.com/ipfs/dir-index-html/issues/42
+	assert.Contains(t, s, "<a class=\"ipfs-hash\" translate=\"no\" href=\"https://cid.ipfs.tech/#", "expected links to cid.ipfs.tech in CID column when on DNSLink website")
+	assert.Contains(t, s, "<a href=\"/foo%3F%20%23%3C%27/..\">", "expected backlink in directory listing")
+	assert.Contains(t, s, "<a href=\"/foo%3F%20%23%3C%27/file.txt\">", "expected file in directory listing")
+	assert.Contains(t, s, s, k2.Cid().String(), "expected hash in directory listing")
 
 	// make request to directory listing at root
 	req, err = http.NewRequest(http.MethodGet, ts.URL, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 	req.Host = "example.net"
 
 	res, err = doWithoutRedirect(req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	// expect correct backlinks at root
 	body, err = io.ReadAll(res.Body)
-	if err != nil {
-		t.Fatalf("error reading response: %s", err)
-	}
+	assert.Nil(t, err)
+
 	s = string(body)
 	t.Logf("body: %s\n", string(body))
 
-	if !matchPathOrBreadcrumbs(s, "/") {
-		t.Fatalf("expected a path in directory listing")
-	}
-	if strings.Contains(s, "<a href=\"/\">") {
-		t.Fatalf("expected no backlink in directory listing of the root CID")
-	}
-	if !strings.Contains(s, "<a href=\"/file.txt\">") {
-		t.Fatalf("expected file in directory listing")
-	}
-	if !strings.Contains(s, "<a class=\"ipfs-hash\" translate=\"no\" href=\"https://cid.ipfs.tech/#") {
-		// https://github.com/ipfs/dir-index-html/issues/42
-		t.Fatalf("expected links to cid.ipfs.tech in CID column when on DNSLink website")
-	}
-	if !strings.Contains(s, k.Cid().String()) {
-		t.Fatalf("expected hash in directory listing")
-	}
+	assert.True(t, matchPathOrBreadcrumbs(s, "/"), "expected a path in directory listing")
+	assert.NotContains(t, s, "<a href=\"/\">", "expected no backlink in directory listing of the root CID")
+	assert.Contains(t, s, "<a href=\"/file.txt\">", "expected file in directory listing")
+	// https://github.com/ipfs/dir-index-html/issues/42
+	assert.Contains(t, s, "<a class=\"ipfs-hash\" translate=\"no\" href=\"https://cid.ipfs.tech/#", "expected links to cid.ipfs.tech in CID column when on DNSLink website")
+	assert.Contains(t, s, k.Cid().String(), "expected hash in directory listing")
 
 	// make request to directory listing
 	req, err = http.NewRequest(http.MethodGet, ts.URL+"/foo%3F%20%23%3C%27/bar/", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 	req.Host = "example.net"
 
 	res, err = doWithoutRedirect(req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	// expect correct backlinks
 	body, err = io.ReadAll(res.Body)
-	if err != nil {
-		t.Fatalf("error reading response: %s", err)
-	}
+	assert.Nil(t, err)
+
 	s = string(body)
 	t.Logf("body: %s\n", string(body))
 
-	if !matchPathOrBreadcrumbs(s, "/ipns/<a href=\"//example.net/\">example.net</a>/<a href=\"//example.net/foo%3F%20%23%3C%27\">foo? #&lt;&#39;</a>/<a href=\"//example.net/foo%3F%20%23%3C%27/bar\">bar</a>") {
-		t.Fatalf("expected a path in directory listing")
-	}
-	if !strings.Contains(s, "<a href=\"/foo%3F%20%23%3C%27/bar/..\">") {
-		t.Fatalf("expected backlink in directory listing")
-	}
-	if !strings.Contains(s, "<a href=\"/foo%3F%20%23%3C%27/bar/file.txt\">") {
-		t.Fatalf("expected file in directory listing")
-	}
-	if !strings.Contains(s, k3.Cid().String()) {
-		t.Fatalf("expected hash in directory listing")
-	}
+	assert.True(t, matchPathOrBreadcrumbs(s, "/ipns/<a href=\"//example.net/\">example.net</a>/<a href=\"//example.net/foo%3F%20%23%3C%27\">foo? #&lt;&#39;</a>/<a href=\"//example.net/foo%3F%20%23%3C%27/bar\">bar</a>"), "expected a path in directory listing")
+	assert.Contains(t, s, "<a href=\"/foo%3F%20%23%3C%27/bar/..\">", "expected backlink in directory listing")
+	assert.Contains(t, s, "<a href=\"/foo%3F%20%23%3C%27/bar/file.txt\">", "expected file in directory listing")
+	assert.Contains(t, s, k3.Cid().String(), "expected hash in directory listing")
 }
 
 func TestPretty404(t *testing.T) {
@@ -675,9 +563,7 @@ func TestPretty404(t *testing.T) {
 	defer cancel()
 
 	k, err := api.ResolvePath(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	host := "example.net"
 	api.namesys["/ipns/"+host] = path.FromString(k.String())
@@ -698,31 +584,23 @@ func TestPretty404(t *testing.T) {
 		{"/deeper", "text/html", http.StatusOK, ""},
 		{"/nope/nope", "text/html", http.StatusNotFound, "Custom 404"},
 	} {
-		var c http.Client
-		req, err := http.NewRequest("GET", ts.URL+test.path, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Add("Accept", test.accept)
-		req.Host = host
-		resp, err := c.Do(req)
-
-		if err != nil {
-			t.Fatalf("error requesting %s: %s", test.path, err)
-		}
-
-		defer resp.Body.Close()
-		if resp.StatusCode != test.status {
-			t.Fatalf("got %d, expected %d, from %s", resp.StatusCode, test.status, test.path)
-		}
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatalf("error reading response from %s: %s", test.path, err)
-		}
-
-		if test.text != "" && string(body) != test.text {
-			t.Fatalf("unexpected response body from %s: got %q, expected %q", test.path, body, test.text)
-		}
+		testName := fmt.Sprintf("%s %s", test.path, test.accept)
+		t.Run(testName, func(t *testing.T) {
+			var c http.Client
+			req, err := http.NewRequest("GET", ts.URL+test.path, nil)
+			assert.Nil(t, err)
+			req.Header.Add("Accept", test.accept)
+			req.Host = host
+			resp, err := c.Do(req)
+			assert.Nil(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, test.status, resp.StatusCode)
+			body, err := io.ReadAll(resp.Body)
+			assert.Nil(t, err)
+			if test.text != "" {
+				assert.Equal(t, test.text, string(body))
+			}
+		})
 	}
 }
 
@@ -731,22 +609,16 @@ func TestCacheControlImmutable(t *testing.T) {
 	t.Logf("test server url: %s", ts.URL)
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/"+root.String()+"/", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	res, err := doWithoutRedirect(req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	// check the immutable tag isn't set
 	hdrs, ok := res.Header["Cache-Control"]
 	if ok {
 		for _, hdr := range hdrs {
-			if strings.Contains(hdr, "immutable") {
-				t.Fatalf("unexpected Cache-Control: immutable on directory listing: %s", hdr)
-			}
+			assert.NotContains(t, hdr, "immutable", "unexpected Cache-Control: immutable on directory listing")
 		}
 	}
 }
@@ -757,16 +629,9 @@ func TestGoGetSupport(t *testing.T) {
 
 	// mimic go-get
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/"+root.String()+"?go-get=1", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	res, err := doWithoutRedirect(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if res.StatusCode != 200 {
-		t.Errorf("status is %d, expected 200", res.StatusCode)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
