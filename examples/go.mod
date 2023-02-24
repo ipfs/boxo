@@ -16,7 +16,7 @@ require (
 	github.com/ipfs/go-libipfs v0.4.0
 	github.com/ipfs/go-merkledag v0.9.0
 	github.com/ipfs/go-namesys v0.7.0
-	github.com/ipfs/go-path v0.3.0
+	github.com/ipfs/go-path v0.3.1
 	github.com/ipfs/go-unixfs v0.4.3
 	github.com/ipfs/go-unixfsnode v1.5.2
 	github.com/ipfs/interface-go-ipfs-core v0.10.0

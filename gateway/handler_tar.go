@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"html"
 	"net/http"
 	"time"
@@ -25,7 +26,8 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// Get Unixfs file
 	file, err := i.api.GetUnixFsNode(ctx, resolvedPath)
 	if err != nil {
-		webError(w, "ipfs cat "+html.EscapeString(contentPath.String()), err, http.StatusBadRequest)
+		err = fmt.Errorf("error getting UnixFS node for %s: %w", html.EscapeString(contentPath.String()), err)
+		webError(w, err, http.StatusInternalServerError)
 		return false
 	}
 	defer file.Close()
@@ -61,7 +63,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// Construct the TAR writer
 	tarw, err := files.NewTarWriter(w)
 	if err != nil {
-		webError(w, "could not build tar writer", err, http.StatusInternalServerError)
+		webError(w, fmt.Errorf("could not build tar writer: %w", err), http.StatusInternalServerError)
 		return false
 	}
 	defer tarw.Close()

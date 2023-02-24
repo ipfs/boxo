@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	gopath "path"
@@ -34,7 +35,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	// the redirects and links would end up as http://example.net/ipns/example.net
 	requestURI, err := url.ParseRequestURI(r.RequestURI)
 	if err != nil {
-		webError(w, "failed to parse request path", err, http.StatusInternalServerError)
+		webError(w, fmt.Errorf("failed to parse request path: %w", err), http.StatusInternalServerError)
 		return false
 	}
 	originalURLPath := requestURI.Path
@@ -65,13 +66,13 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	case nil:
 		idx, err := i.api.GetUnixFsNode(ctx, idxResolvedPath)
 		if err != nil {
-			internalWebError(w, err)
+			webError(w, err, http.StatusInternalServerError)
 			return false
 		}
 
 		f, ok := idx.(files.File)
 		if !ok {
-			internalWebError(w, files.ErrNotReader)
+			webError(w, files.ErrNotReader, http.StatusInternalServerError)
 			return false
 		}
 
@@ -85,7 +86,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	case resolver.ErrNoLink:
 		logger.Debugw("no index.html; noop", "path", idxPath)
 	default:
-		internalWebError(w, err)
+		webError(w, err, http.StatusInternalServerError)
 		return false
 	}
 
@@ -114,14 +115,14 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 
 	results, err := i.api.LsUnixFsDir(ctx, resolvedPath)
 	if err != nil {
-		internalWebError(w, err)
+		webError(w, err, http.StatusInternalServerError)
 		return false
 	}
 
 	dirListing := make([]assets.DirectoryItem, 0, len(results))
 	for link := range results {
 		if link.Err != nil {
-			internalWebError(w, link.Err)
+			webError(w, link.Err, http.StatusInternalServerError)
 			return false
 		}
 
@@ -197,7 +198,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	logger.Debugw("request processed", "tplDataDNSLink", dnslink, "tplDataSize", size, "tplDataBackLink", backLink, "tplDataHash", hash)
 
 	if err := assets.DirectoryTemplate.Execute(w, tplData); err != nil {
-		internalWebError(w, err)
+		webError(w, err, http.StatusInternalServerError)
 		return false
 	}
 
