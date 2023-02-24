@@ -116,4 +116,5 @@ type RequestContextKey string
 const (
 	DNSLinkHostnameKey RequestContextKey = "dnslink-hostname"
 	GatewayHostnameKey RequestContextKey = "gw-hostname"
+	ContentPathKey     RequestContextKey = "content-path"
 )

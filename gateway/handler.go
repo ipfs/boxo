@@ -356,6 +356,8 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	contentPath := ipath.New(r.URL.Path)
+	ctx := context.WithValue(r.Context(), ContentPathKey, contentPath)
+	r = r.WithContext(ctx)
 
 	if requestHandled := i.handleOnlyIfCached(w, r, contentPath, logger); requestHandled {
 		return
