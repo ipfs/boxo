@@ -570,7 +570,7 @@ func webError(w http.ResponseWriter, err error, defaultCode int) {
 	} else if errors.Is(err, ErrBadGateway) {
 		webErrorWithCode(w, err, http.StatusBadGateway)
 	} else if errors.Is(err, context.DeadlineExceeded) || err == context.DeadlineExceeded {
-		webErrorWithCode(w, err, http.StatusRequestTimeout)
+		webErrorWithCode(w, err, http.StatusGatewayTimeout)
 	} else {
 		webErrorWithCode(w, err, defaultCode)
 	}
