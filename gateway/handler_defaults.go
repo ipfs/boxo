@@ -2,10 +2,14 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/ipfs/go-libipfs/files"
 	mc "github.com/multiformats/go-multicodec"
 	"net/http"
+	"net/textproto"
+	"strconv"
+	"strings"
 	"time"
 
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
@@ -32,44 +36,20 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		defer data.Close()
 	case http.MethodGet:
 		gwMetadata, data, err = i.api.Get(ctx, imPath)
-		if isUnixfsResponseFormat(requestedContentType) {
-			if !i.handleUnixFSRequestErrors(w, r, imPath, err, logger) {
-				return false
-			}
-
-			if gwMetadata.RedirectInfo.RedirectUsed {
-				// If we have origin isolation (subdomain gw, DNSLink website),
-				// and response type is UnixFS (default for website hosting)
-				// we can leverage the presence of an _redirects file and apply rules defined there.
-				// See: https://github.com/ipfs/specs/pull/290
-				if hasOriginIsolation(r) {
-					logger.Debugw("applied a rule from _redirects file")
-					// TODO: apply 404s amd 300s
-				} else {
-					// This shouldn't be possible to reach
-					webError(w, "invalid use of _redirects", fmt.Errorf("cannot use _redirects without origin isolation"), http.StatusInternalServerError)
+		if err != nil {
+			if isUnixfsResponseFormat(requestedContentType) {
+				forwardedPath, continueProcessing := i.handleUnixFSRequestErrors(w, r, imPath, err, logger)
+				if !continueProcessing {
 					return false
 				}
-
-				ri := gwMetadata.RedirectInfo
-
-				// 4xx
-				if ri.StatusCode == 404 || ri.StatusCode == 410 || ri.StatusCode == 451 {
-					if err := i.serve4xx(w, r, ri.Redirect4xxTo, ri.Redirect4xxPageCid, ri.Redirect4xxPage, ri.StatusCode); err != nil {
-						webError(w, "unable to serve redirect 404", err, http.StatusInternalServerError)
-						return false
-					}
+				gwMetadata, data, err = i.api.Get(ctx, forwardedPath) // TODO: What should the X-Ipfs-Roots header be here?
+				if err != nil {
+					webError(w, "could not fetch content at path "+debugStr(contentPath.String()), err, http.StatusBadRequest)
 				}
-
-				// redirect
-				if ri.StatusCode >= 301 && ri.StatusCode <= 308 {
-					http.Redirect(w, r, ri.Redirect3xxTo, ri.StatusCode)
-					return true
+			} else {
+				if !i.handleNonUnixFSRequestErrors(w, imPath, err) {
+					return false
 				}
-			}
-		} else {
-			if !i.handleNonUnixFSRequestErrors(w, imPath, err) {
-				return false
 			}
 		}
 		defer data.Close()
@@ -99,4 +79,67 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		logger.Debugw("serving unixfs", "path", contentPath)
 		return i.serveUnixFS(r.Context(), w, r, resolvedPath, data, contentPath, begin, logger)
 	}
+}
+
+type httpRange struct {
+	start, end int64
+}
+
+// parseRange parses a Range header string as per RFC 7233.
+// errNoOverlap is returned if none of the ranges overlap.
+func parseRange(s string) ([]httpRange, error) {
+	if s == "" {
+		return nil, nil // header not present
+	}
+	const b = "bytes="
+	if !strings.HasPrefix(s, b) {
+		return nil, errors.New("invalid range")
+	}
+	var ranges []httpRange
+	for _, ra := range strings.Split(s[len(b):], ",") {
+		ra = textproto.TrimString(ra)
+		if ra == "" {
+			continue
+		}
+		start, end, ok := strings.Cut(ra, "-")
+		if !ok {
+			return nil, errors.New("invalid range")
+		}
+		start, end = textproto.TrimString(start), textproto.TrimString(end)
+		var r httpRange
+		if start == "" {
+			r.start = -1
+			// If no start is specified, end specifies the
+			// range start relative to the end of the file,
+			// and we are dealing with <suffix-length>
+			// which has to be a non-negative integer as per
+			// RFC 7233 Section 2.1 "Byte-Ranges".
+			if end == "" || end[0] == '-' {
+				return nil, errors.New("invalid range")
+			}
+			i, err := strconv.ParseInt(end, 10, 64)
+			if i < 0 || err != nil {
+				return nil, errors.New("invalid range")
+			}
+			r.end = i
+		} else {
+			i, err := strconv.ParseInt(start, 10, 64)
+			if err != nil || i < 0 {
+				return nil, errors.New("invalid range")
+			}
+			r.start = i
+			if end == "" {
+				// If no end is specified, range extends to end of the file.
+				r.end = -1
+			} else {
+				i, err := strconv.ParseInt(end, 10, 64)
+				if err != nil || r.start > i {
+					return nil, errors.New("invalid range")
+				}
+				r.end = i
+			}
+		}
+		ranges = append(ranges, r)
+	}
+	return ranges, nil
 }

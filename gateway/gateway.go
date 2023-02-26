@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -16,59 +17,64 @@ type Config struct {
 	Headers map[string][]string
 }
 
-// ImmutablePath TODO: This isn't great, as its just a signal and mutable paths fulfill the same interface
-type ImmutablePath interface {
-	// String returns the path as a string.
-	String() string
-
-	// Namespace returns the first component of the path.
-	//
-	// For example path "/ipfs/QmHash", calling Namespace() will return "ipfs"
-	//
-	// Calling this method on invalid paths (IsValid() != nil) will result in
-	// empty string
-	Namespace() string
-
-	// IsValid checks if this path is a valid ipfs Path, returning nil iff it is
-	// valid
-	IsValid() error
+// TODO: Is this what we want for ImmutablePath?
+type ImmutablePath struct {
+	p path.Path
 }
+
+func NewImmutablePath(p path.Path) (ImmutablePath, error) {
+	if p.Mutable() {
+		return ImmutablePath{}, fmt.Errorf("path cannot be mutable")
+	}
+	return ImmutablePath{p: p}, nil
+}
+
+func (i ImmutablePath) String() string {
+	return i.p.String()
+}
+
+func (i ImmutablePath) Namespace() string {
+	return i.p.Namespace()
+}
+
+func (i ImmutablePath) Mutable() bool {
+	return false
+}
+
+func (i ImmutablePath) IsValid() error {
+	return i.p.IsValid()
+}
+
+var _ path.Path = (*ImmutablePath)(nil)
 
 type GatewayMetadata struct {
 	PathSegmentRoots []cid.Cid
 	LastSegment      path.Resolved
-	RedirectInfo     RedirectInfo
 }
 
-// RedirectInfo is used to help the gateway figure out what to happen if _redirects were leveraged
-type RedirectInfo struct {
-	RedirectUsed       bool
-	StatusCode         int
-	Redirect4xxPage    files.File
-	Redirect4xxTo      path.Path
-	Redirect4xxPageCid cid.Cid
-	Redirect3xxTo      string
-}
+// TODO: These functional options seems a little unwieldly here and require a bunch of text, would just having more functions be better?
+type GetOpt func(*GetOptions) error
 
-type GetOpt func(*getOpts) error
-type getOpts struct {
-	rangeFrom int
-	rangeTo   int
+// GetOptions should exclusively only Range, FullDepth, or RawBlock not a combination
+// If RangeFrom and RangeTo are both 0 it implies wanting the full file
+type GetOptions struct {
+	RangeFrom int
+	RangeTo   int
 
-	fullDepth bool
-	rawBlock  bool
+	FullDepth bool
+	RawBlock  bool
 }
 
 type dummyGetOpts struct{}
 
-var GetOptions dummyGetOpts
+var CommonGetOptions dummyGetOpts
 
 // GetRange is a range request for some file data
 // Note: currently a full file object should be returned but reading from values outside the range can error
 func (o dummyGetOpts) GetRange(from, to int) GetOpt {
-	return func(options *getOpts) error {
-		options.rangeFrom = from
-		options.rangeTo = to
+	return func(options *GetOptions) error {
+		options.RangeFrom = from
+		options.RangeTo = to
 		return nil
 	}
 }
@@ -76,8 +82,8 @@ func (o dummyGetOpts) GetRange(from, to int) GetOpt {
 // GetFullDepth fetches all data linked from the last logical node in the path. In particular, recursively fetch an
 // entire UnixFS directory.
 func (o dummyGetOpts) GetFullDepth() GetOpt {
-	return func(options *getOpts) error {
-		options.fullDepth = true
+	return func(options *GetOptions) error {
+		options.FullDepth = true
 		return nil
 	}
 }
@@ -85,24 +91,31 @@ func (o dummyGetOpts) GetFullDepth() GetOpt {
 // GetRawBlock fetches the data at the last path element as if it were a raw block rather than something more complex
 // such as a UnixFS file or directory.
 func (o dummyGetOpts) GetRawBlock() GetOpt {
-	return func(options *getOpts) error {
-		options.rawBlock = true
+	return func(options *GetOptions) error {
+		options.RawBlock = true
 		return nil
 	}
 }
 
+// API TODO: We might need to define some sentinel errors here to help the Gateway figure out what HTTP Status Code to return
+// For example, distinguishing between timeout/failures to fetch vs receiving invalid data, vs impossible paths vs wrong data types, etc.
 type API interface {
 	// Get returns a file or directory depending on what the path is that has been requested.
-	// This Get follows the ipfs:// web semantics which means handling of index.html and _redirects files.
 	// There are multiple options passable to this function, read them for more information.
 	Get(context.Context, ImmutablePath, ...GetOpt) (GatewayMetadata, files.Node, error)
 
 	// Head returns a file or directory depending on what the path is that has been requested.
-	// This Head follows the ipfs:// web semantics which means handling of index.html and _redirects files.
+	// For UnixFS files should return a file where at least the first 1024 bytes can be read and has the correct file size
+	// For all other data types returning just size information is sufficient
+	// TODO: give function more explicit return types
 	Head(context.Context, ImmutablePath) (GatewayMetadata, files.Node, error)
 
 	// GetCAR returns a CAR file for the given immutable path
-	GetCAR(context.Context, ImmutablePath) (GatewayMetadata, io.ReadCloser, error)
+	// Returns an initial error if there was an issue before the CAR streaming begins as well as a channel with a single
+	// that may contain a single error for if any errors occur during the streaming. If there was an initial error the
+	// error channel is nil
+	// TODO: Make this function signature better
+	GetCAR(context.Context, ImmutablePath) (GatewayMetadata, io.ReadCloser, error, <-chan error)
 
 	// IsCached returns whether or not the path exists locally.
 	IsCached(context.Context, path.Path) bool

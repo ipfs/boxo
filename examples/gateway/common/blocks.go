@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	gopath "path"
+	"strings"
 
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
@@ -28,10 +29,12 @@ import (
 	iface "github.com/ipfs/interface-go-ipfs-core"
 	nsopts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 	ifacepath "github.com/ipfs/interface-go-ipfs-core/path"
+	"github.com/ipld/go-car"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/schema"
+	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	mc "github.com/multiformats/go-multicodec"
@@ -103,23 +106,193 @@ func NewBlocksGateway(blockService blockservice.BlockService, routing routing.Va
 }
 
 func (api *BlocksGateway) Get(ctx context.Context, path gateway.ImmutablePath, opt ...gateway.GetOpt) (gateway.GatewayMetadata, files.Node, error) {
-	//TODO implement me
-	panic("implement me")
+	var opts gateway.GetOptions
+	for _, o := range opt {
+		if err := o(&opts); err != nil {
+			return gateway.GatewayMetadata{}, nil, err
+		}
+	}
+
+	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	if err != nil {
+		return gateway.GatewayMetadata{}, nil, err
+	}
+
+	md := gateway.GatewayMetadata{
+		PathSegmentRoots: roots,
+		LastSegment:      lastSeg,
+	}
+
+	lastRoot := lastSeg.Cid()
+
+	nd, err := api.dagService.Get(ctx, lastRoot)
+	if err != nil {
+		return gateway.GatewayMetadata{}, nil, err
+	}
+
+	if opts.RawBlock {
+		return md, files.NewBytesFile(nd.RawData()), nil
+	}
+
+	// This code path covers full graph, single file/directory, and range requests
+	rootCodec := nd.Cid().Prefix().GetCodec()
+	if rootCodec == uint64(mc.Raw) {
+		return md, files.NewBytesFile(nd.RawData()), nil
+	}
+	if rootCodec != uint64(mc.DagPb) {
+		return md, nil, fmt.Errorf("data is not UnixFS")
+	}
+	f, err := ufile.NewUnixfsFile(ctx, api.dagService, nd)
+	if err != nil {
+		return md, nil, err
+	}
+	return md, f, nil
 }
 
 func (api *BlocksGateway) Head(ctx context.Context, path gateway.ImmutablePath) (gateway.GatewayMetadata, files.Node, error) {
-	//TODO implement me
-	panic("implement me")
+	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	if err != nil {
+		return gateway.GatewayMetadata{}, nil, err
+	}
+
+	md := gateway.GatewayMetadata{
+		PathSegmentRoots: roots,
+		LastSegment:      lastSeg,
+	}
+
+	lastRoot := lastSeg.Cid()
+
+	nd, err := api.dagService.Get(ctx, lastRoot)
+	if err != nil {
+		return gateway.GatewayMetadata{}, nil, err
+	}
+
+	rootCodec := nd.Cid().Prefix().GetCodec()
+	if rootCodec != uint64(mc.DagPb) {
+		return md, files.NewBytesFile(nd.RawData()), nil
+	}
+
+	// TODO: We're not handling non-UnixFS dag-pb. There's a bit of a discrepancy between what we want from a HEAD request and a Resolve request here and we're using this for both
+	fileNode, err := ufile.NewUnixfsFile(ctx, api.dagService, nd)
+	if err != nil {
+		return gateway.GatewayMetadata{}, nil, err
+	}
+
+	return md, fileNode, nil
 }
 
-func (api *BlocksGateway) GetCAR(ctx context.Context, path gateway.ImmutablePath) (gateway.GatewayMetadata, io.ReadSeekCloser, error) {
-	//TODO implement me
-	panic("implement me")
+func (api *BlocksGateway) GetCAR(ctx context.Context, path gateway.ImmutablePath) (gateway.GatewayMetadata, io.ReadCloser, error, <-chan error) {
+	// Same go-car settings as dag.export command
+	store := dagStore{api: api, ctx: ctx}
+
+	// TODO: When switching to exposing path blocks we'll want to add these as well
+	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	if err != nil {
+		return gateway.GatewayMetadata{}, nil, err, nil
+	}
+
+	md := gateway.GatewayMetadata{
+		PathSegmentRoots: roots,
+		LastSegment:      lastSeg,
+	}
+
+	rootCid := lastSeg.Cid()
+
+	// TODO: support selectors passed as request param: https://github.com/ipfs/kubo/issues/8769
+	// TODO: this is very slow if blocks are remote due to linear traversal. Do we need deterministic traversals here?
+	dag := car.Dag{Root: rootCid, Selector: selectorparse.CommonSelector_ExploreAllRecursively}
+	c := car.NewSelectiveCar(ctx, store, []car.Dag{dag}, car.TraverseLinksOnlyOnce())
+	r, w := io.Pipe()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- c.Write(w)
+		close(errCh)
+	}()
+
+	return md, r, nil, errCh
 }
 
-func (api *BlocksGateway) ResolveMutable(ctx context.Context, path ifacepath.Path) (gateway.ImmutablePath, error) {
-	//TODO implement me
-	panic("implement me")
+func (api *BlocksGateway) getPathRoots(ctx context.Context, contentPath gateway.ImmutablePath) ([]cid.Cid, ifacepath.Resolved, error) {
+	/*
+		These are logical roots where each CID represent one path segment
+		and resolves to either a directory or the root block of a file.
+		The main purpose of this header is allow HTTP caches to do smarter decisions
+		around cache invalidation (eg. keep specific subdirectory/file if it did not change)
+		A good example is Wikipedia, which is HAMT-sharded, but we only care about
+		logical roots that represent each segment of the human-readable content
+		path:
+		Given contentPath = /ipns/en.wikipedia-on-ipfs.org/wiki/Block_of_Wikipedia_in_Turkey
+		rootCidList is a generated by doing `ipfs resolve -r` on each sub path:
+			/ipns/en.wikipedia-on-ipfs.org → bafybeiaysi4s6lnjev27ln5icwm6tueaw2vdykrtjkwiphwekaywqhcjze
+			/ipns/en.wikipedia-on-ipfs.org/wiki/ → bafybeihn2f7lhumh4grizksi2fl233cyszqadkn424ptjajfenykpsaiw4
+			/ipns/en.wikipedia-on-ipfs.org/wiki/Block_of_Wikipedia_in_Turkey → bafkreibn6euazfvoghepcm4efzqx5l3hieof2frhp254hio5y7n3hv5rma
+		The result is an ordered array of values:
+			X-Ipfs-Roots: bafybeiaysi4s6lnjev27ln5icwm6tueaw2vdykrtjkwiphwekaywqhcjze,bafybeihn2f7lhumh4grizksi2fl233cyszqadkn424ptjajfenykpsaiw4,bafkreibn6euazfvoghepcm4efzqx5l3hieof2frhp254hio5y7n3hv5rma
+		Note that while the top one will change every time any article is changed,
+		the last root (responsible for specific article) may not change at all.
+	*/
+	var sp strings.Builder
+	var pathRoots []cid.Cid
+	contentPathStr := contentPath.String()
+	pathSegments := strings.Split(contentPathStr[6:], "/")
+	sp.WriteString(contentPathStr[:5]) // /ipfs or /ipns
+	var lastPath ifacepath.Resolved
+	for _, root := range pathSegments {
+		if root == "" {
+			continue
+		}
+		sp.WriteString("/")
+		sp.WriteString(root)
+		resolvedSubPath, err := api.ResolvePath(ctx, ifacepath.New(sp.String()))
+		if err != nil {
+			return nil, nil, err
+		}
+		lastPath = resolvedSubPath
+		pathRoots = append(pathRoots, lastPath.Cid())
+	}
+
+	pathRoots = pathRoots[:len(pathRoots)-1]
+	return pathRoots, lastPath, nil
+}
+
+// FIXME(@Jorropo): https://github.com/ipld/go-car/issues/315
+type dagStore struct {
+	api *BlocksGateway
+	ctx context.Context
+}
+
+func (ds dagStore) Get(_ context.Context, c cid.Cid) (blocks.Block, error) {
+	return ds.api.GetBlock(ds.ctx, c)
+}
+
+func (api *BlocksGateway) ResolveMutable(ctx context.Context, p ifacepath.Path) (gateway.ImmutablePath, error) {
+	err := p.IsValid()
+	if err != nil {
+		return gateway.ImmutablePath{}, err
+	}
+
+	ipath := ipfspath.Path(p.String())
+	switch ipath.Segments()[0] {
+	case "ipns":
+		ipath, err = resolve.ResolveIPNS(ctx, api.namesys, ipath)
+		if err != nil {
+			return gateway.ImmutablePath{}, err
+		}
+		imPath, err := gateway.NewImmutablePath(ifacepath.New(ipath.String()))
+		if err != nil {
+			return gateway.ImmutablePath{}, err
+		}
+		return imPath, nil
+	case "ipfs":
+		imPath, err := gateway.NewImmutablePath(ifacepath.New(ipath.String()))
+		if err != nil {
+			return gateway.ImmutablePath{}, err
+		}
+		return imPath, nil
+	default:
+		return gateway.ImmutablePath{}, fmt.Errorf("unsupported path namespace: %s", p.Namespace())
+	}
 }
 
 func (api *BlocksGateway) GetUnixFsNode(ctx context.Context, p ifacepath.Resolved) (files.Node, error) {

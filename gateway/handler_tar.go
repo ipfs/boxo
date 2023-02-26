@@ -22,7 +22,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	defer cancel()
 
 	// Get Unixfs file (or directory)
-	gwMetadata, file, err := i.api.Get(ctx, imPath, GetOptions.GetFullDepth())
+	gwMetadata, file, err := i.api.Get(ctx, imPath, CommonGetOptions.GetFullDepth())
 	if !i.handleNonUnixFSRequestErrors(w, imPath, err) {
 		return false
 	}

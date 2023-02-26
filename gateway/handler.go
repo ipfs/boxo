@@ -394,6 +394,12 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 			webError(w, "could not resolve mutable path", err, http.StatusBadRequest) // TODO: better error handling
 			return
 		}
+	} else {
+		imPath, err = NewImmutablePath(contentPath)
+		if err != nil {
+			webError(w, "path was expected to be immutable, but was not "+debugStr(contentPath.String()), err, http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
@@ -404,7 +410,11 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// If we already did the path resolution no need to do it again
 	if ifNoneMatchResolvedPath != nil {
-		imPath = ifNoneMatchResolvedPath
+		imPath, err = NewImmutablePath(ifNoneMatchResolvedPath)
+		if err != nil {
+			internalWebError(w, err)
+			return
+		}
 	}
 
 	i.addUserHeaders(w) // ok, _now_ write user's headers.
@@ -768,28 +778,37 @@ func (i *handler) handleNonUnixFSRequestErrors(w http.ResponseWriter, contentPat
 	}
 }
 
-func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Request, contentPath ImmutablePath, err error, logger *zap.SugaredLogger) bool {
+func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Request, contentPath ImmutablePath, err error, logger *zap.SugaredLogger) (ImmutablePath, bool) {
 	switch err {
 	case nil:
-		return true
+		return contentPath, true
 	case coreiface.ErrOffline:
 		webError(w, "could not fetch content at path "+debugStr(contentPath.String()), err, http.StatusServiceUnavailable)
-		return false
+		return ImmutablePath{}, false
 	default:
-		// While _redirects should already be handled by now if they exist the legacy 404 behavior is not
-		// therefore we handle it here
+		// If we have origin isolation (subdomain gw, DNSLink website),
+		// and response type is UnixFS (default for website hosting)
+		// we can leverage the presence of an _redirects file and apply rules defined there.
+		// See: https://github.com/ipfs/specs/pull/290
+		if hasOriginIsolation(r) {
+			newContentPath, ok, hadMatchingRule := i.serveRedirectsIfPresent(w, r, contentPath, logger)
+			if hadMatchingRule {
+				logger.Debugw("applied a rule from _redirects file")
+				return newContentPath, ok
+			}
+		}
 
 		// if Accept is text/html, see if ipfs-404.html is present
 		// This logic isn't documented and will likely be removed at some point.
 		// Any 404 logic in _redirects above will have already run by this time, so it's really an extra fall back
 		if i.serveLegacy404IfPresent(w, r, contentPath) {
 			logger.Debugw("served legacy 404")
-			return false
+			return ImmutablePath{}, false
 		}
 
 		// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
 		webError(w, "could not fetch content at path "+debugStr(contentPath.String()), err, http.StatusBadRequest)
-		return false
+		return ImmutablePath{}, false
 	}
 }
 

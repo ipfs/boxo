@@ -79,12 +79,12 @@ func (m *mockApi) Head(ctx context.Context, immutablePath ImmutablePath) (Gatewa
 	return GatewayMetadata{}, nil, errors.New("not implemented")
 }
 
-func (m *mockApi) GetCAR(ctx context.Context, immutablePath ImmutablePath) (GatewayMetadata, io.ReadSeekCloser, error) {
-	return GatewayMetadata{}, nil, errors.New("not implemented")
+func (m *mockApi) GetCAR(ctx context.Context, immutablePath ImmutablePath) (GatewayMetadata, io.ReadCloser, error, <-chan error) {
+	return GatewayMetadata{}, nil, nil, errors.New("not implemented")
 }
 
 func (m *mockApi) ResolveMutable(ctx context.Context, p ipath.Path) (ImmutablePath, error) {
-	return nil, errors.New("not implemented")
+	return ImmutablePath{}, errors.New("not implemented")
 }
 
 func (m *mockApi) GetIPNSRecord(context.Context, cid.Cid) ([]byte, error) {

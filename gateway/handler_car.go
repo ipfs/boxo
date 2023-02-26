@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"github.com/hashicorp/go-multierror"
 	"io"
 	"net/http"
 	"time"
@@ -29,7 +30,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	gwMetadata, carFile, err := i.api.GetCAR(ctx, imPath)
+	gwMetadata, carFile, err, errCh := i.api.GetCAR(ctx, imPath)
 	if !i.handleNonUnixFSRequestErrors(w, imPath, err) {
 		return false
 	}
@@ -71,12 +72,14 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	w.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
-	if _, err := io.Copy(w, carFile); err != nil {
+	_, copyErr := io.Copy(w, carFile)
+	carErr := <-errCh
+	if copyErr != nil || carErr != nil {
 		// We return error as a trailer, however it is not something browsers can access
 		// (https://github.com/mdn/browser-compat-data/issues/14703)
 		// Due to this, we suggest client always verify that
 		// the received CAR stream response is matching requested DAG selector
-		w.Header().Set("X-Stream-Error", err.Error())
+		w.Header().Set("X-Stream-Error", multierror.Append(err, copyErr).Error())
 		return false
 	}
 

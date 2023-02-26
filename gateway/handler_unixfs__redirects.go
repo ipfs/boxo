@@ -2,160 +2,164 @@ package gateway
 
 import (
 	"fmt"
+	format "github.com/ipfs/go-ipld-format"
+	"go.uber.org/zap"
 	"io"
 	"net/http"
 	gopath "path"
 	"strconv"
 	"strings"
 
-	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/files"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
+
+	redirects "github.com/ipfs/go-ipfs-redirects-file"
 )
 
-//// Resolving a UnixFS path involves determining if the provided `path.Path` exists and returning the `path.Resolved`
-//// corresponding to that path. For UnixFS, path resolution is more involved.
-////
-//// When a path under requested CID does not exist, Gateway will check if a `_redirects` file exists
-//// underneath the root CID of the path, and apply rules defined there.
-//// See sepcification introduced in: https://github.com/ipfs/specs/pull/290
-////
-//// Scenario 1:
-//// If a path exists, we always return the `path.Resolved` corresponding to that path, regardless of the existence of a `_redirects` file.
-////
-//// Scenario 2:
-//// If a path does not exist, usually we should return a `nil` resolution path and an error indicating that the path
-//// doesn't exist.  However, a `_redirects` file may exist and contain a redirect rule that redirects that path to a different path.
-//// We need to evaluate the rule and perform the redirect if present.
-////
-//// Scenario 3:
-//// Another possibility is that the path corresponds to a rewrite rule (i.e. a rule with a status of 200).
-//// In this case, we don't perform a redirect, but do need to return a `path.Resolved` and `path.Path` corresponding to
-//// the rewrite destination path.
-////
-//// Note that for security reasons, redirect rules are only processed when the request has origin isolation.
-//// See https://github.com/ipfs/specs/pull/290 for more information.
-//func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, logger *zap.SugaredLogger) (newResolvedPath ipath.Resolved, newContentPath ipath.Path, continueProcessing bool, hadMatchingRule bool) {
-//	redirectsFile := i.getRedirectsFile(r, contentPath, logger)
-//	if redirectsFile != nil {
-//		redirectRules, err := i.getRedirectRules(r, redirectsFile)
-//		if err != nil {
-//			internalWebError(w, err)
-//			return nil, nil, false, true
-//		}
+// Resolving a UnixFS path involves determining if the provided `path.Path` exists and returning the `path.Resolved`
+// corresponding to that path. For UnixFS, path resolution is more involved.
 //
-//		redirected, newPath, err := i.handleRedirectsFileRules(w, r, contentPath, redirectRules)
-//		if err != nil {
-//			err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsFile.String(), err)
-//			internalWebError(w, err)
-//			return nil, nil, false, true
-//		}
+// When a path under requested CID does not exist, Gateway will check if a `_redirects` file exists
+// underneath the root CID of the path, and apply rules defined there.
+// See sepcification introduced in: https://github.com/ipfs/specs/pull/290
 //
-//		if redirected {
-//			return nil, nil, false, true
-//		}
+// Scenario 1:
+// If a path exists, we always return the `path.Resolved` corresponding to that path, regardless of the existence of a `_redirects` file.
 //
-//		// 200 is treated as a rewrite, so update the path and continue
-//		if newPath != "" {
-//			// Reassign contentPath and resolvedPath since the URL was rewritten
-//			contentPath = ipath.New(newPath)
-//			resolvedPath, err = i.api.ResolvePath(r.Context(), contentPath)
-//			if err != nil {
-//				internalWebError(w, err)
-//				return nil, nil, false, true
-//			}
+// Scenario 2:
+// If a path does not exist, usually we should return a `nil` resolution path and an error indicating that the path
+// doesn't exist.  However, a `_redirects` file may exist and contain a redirect rule that redirects that path to a different path.
+// We need to evaluate the rule and perform the redirect if present.
 //
-//			return resolvedPath, contentPath, true, true
-//		}
-//	}
-//	// No matching rule, paths remain the same, continue regular processing
-//	return resolvedPath, contentPath, true, false
-//}
+// Scenario 3:
+// Another possibility is that the path corresponds to a rewrite rule (i.e. a rule with a status of 200).
+// In this case, we don't perform a redirect, but do need to return a `path.Resolved` and `path.Path` corresponding to
+// the rewrite destination path.
 //
-//func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Request, contentPath ipath.Path, redirectRules []redirects.Rule) (redirected bool, newContentPath string, err error) {
-//	// Attempt to match a rule to the URL path, and perform the corresponding redirect or rewrite
-//	pathParts := strings.Split(contentPath.String(), "/")
-//	if len(pathParts) > 3 {
-//		// All paths should start with /ipfs/cid/, so get the path after that
-//		urlPath := "/" + strings.Join(pathParts[3:], "/")
-//		rootPath := strings.Join(pathParts[:3], "/")
-//		// Trim off the trailing /
-//		urlPath = strings.TrimSuffix(urlPath, "/")
-//
-//		for _, rule := range redirectRules {
-//			// Error right away if the rule is invalid
-//			if !rule.MatchAndExpandPlaceholders(urlPath) {
-//				continue
-//			}
-//
-//			// We have a match!
-//
-//			// Rewrite
-//			if rule.Status == 200 {
-//				// Prepend the rootPath
-//				toPath := rootPath + rule.To
-//				return false, toPath, nil
-//			}
-//
-//			// Or 4xx
-//			if rule.Status == 404 || rule.Status == 410 || rule.Status == 451 {
-//				toPath := rootPath + rule.To
-//				content4xxPath := ipath.New(toPath)
-//				err := i.serve4xx(w, r, content4xxPath, rule.Status)
-//				return true, toPath, err
-//			}
-//
-//			// Or redirect
-//			if rule.Status >= 301 && rule.Status <= 308 {
-//				http.Redirect(w, r, rule.To, rule.Status)
-//				return true, "", nil
-//			}
-//		}
-//	}
-//
-//	// No redirects matched
-//	return false, "", nil
-//}
-//
-//func (i *handler) getRedirectRules(r *http.Request, redirectsFilePath ipath.Resolved) ([]redirects.Rule, error) {
-//	// Convert the path into a file node
-//	node, err := i.api.GetUnixFsNode(r.Context(), redirectsFilePath)
-//	if err != nil {
-//		return nil, fmt.Errorf("could not get _redirects: %w", err)
-//	}
-//	defer node.Close()
-//
-//	// Convert the node into a file
-//	f, ok := node.(files.File)
-//	if !ok {
-//		return nil, fmt.Errorf("could not parse _redirects: %w", err)
-//	}
-//
-//	// Parse redirect rules from file
-//	redirectRules, err := redirects.Parse(f)
-//	if err != nil {
-//		return nil, fmt.Errorf("could not parse _redirects: %w", err)
-//	}
-//
-//	return redirectRules, nil
-//}
-//
-//// Returns a resolved path to the _redirects file located in the root CID path of the requested path
-//func (i *handler) getRedirectsFile(r *http.Request, contentPath ipath.Path, logger *zap.SugaredLogger) ipath.Resolved {
-//	// contentPath is the full ipfs path to the requested resource,
-//	// regardless of whether path or subdomain resolution is used.
-//	rootPath := getRootPath(contentPath)
-//
-//	// Check for _redirects file.
-//	// Any path resolution failures are ignored and we just assume there's no _redirects file.
-//	// Note that ignoring these errors also ensures that the use of the empty CID (bafkqaaa) in tests doesn't fail.
-//	path := ipath.Join(rootPath, "_redirects")
-//	resolvedPath, err := i.api.ResolvePath(r.Context(), path)
-//	if err != nil {
-//		return nil
-//	}
-//	return resolvedPath
-//}
+// Note that for security reasons, redirect rules are only processed when the request has origin isolation.
+// See https://github.com/ipfs/specs/pull/290 for more information.
+func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request, contentPath ImmutablePath, logger *zap.SugaredLogger) (newContentPath ImmutablePath, continueProcessing bool, hadMatchingRule bool) {
+	// contentPath is the full ipfs path to the requested resource,
+	// regardless of whether path or subdomain resolution is used.
+	rootPath := getRootPath(contentPath)
+	redirectsPath := ipath.Join(rootPath, "_redirects")
+	imRedirectsPath, _ := NewImmutablePath(redirectsPath) // TODO: reasonable to ignore the error since it should be impossible, or better to log/panic?
+
+	foundRedirect, redirectRules, err := i.getRedirectRules(r, imRedirectsPath)
+	if err != nil {
+		err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsPath, err)
+		internalWebError(w, err)
+		return ImmutablePath{}, false, true
+	}
+
+	if foundRedirect {
+		redirected, newPath, err := i.handleRedirectsFileRules(w, r, contentPath, redirectRules)
+		if err != nil {
+			err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsPath, err)
+			internalWebError(w, err)
+			return ImmutablePath{}, false, true
+		}
+
+		if redirected {
+			return ImmutablePath{}, false, true
+		}
+
+		// 200 is treated as a rewrite, so update the path and continue
+		if newPath != "" {
+			// Reassign contentPath and resolvedPath since the URL was rewritten
+			p := ipath.New(newPath)
+			contentPath, err = NewImmutablePath(p)
+			if err != nil {
+				err = fmt.Errorf("could not use _redirects file to %q: %w", p, err)
+				internalWebError(w, err)
+				return ImmutablePath{}, false, true
+			}
+			return contentPath, true, true
+		}
+	}
+
+	// No matching rule, paths remain the same, continue regular processing
+	return contentPath, true, false
+}
+
+func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Request, contentPath ipath.Path, redirectRules []redirects.Rule) (redirected bool, newContentPath string, err error) {
+	// Attempt to match a rule to the URL path, and perform the corresponding redirect or rewrite
+	pathParts := strings.Split(contentPath.String(), "/")
+	if len(pathParts) > 3 {
+		// All paths should start with /ipfs/cid/, so get the path after that
+		urlPath := "/" + strings.Join(pathParts[3:], "/")
+		rootPath := strings.Join(pathParts[:3], "/")
+		// Trim off the trailing /
+		urlPath = strings.TrimSuffix(urlPath, "/")
+
+		for _, rule := range redirectRules {
+			// Error right away if the rule is invalid
+			if !rule.MatchAndExpandPlaceholders(urlPath) {
+				continue
+			}
+
+			// We have a match!
+
+			// Rewrite
+			if rule.Status == 200 {
+				// Prepend the rootPath
+				toPath := rootPath + rule.To
+				return false, toPath, nil
+			}
+
+			// Or 4xx
+			if rule.Status == 404 || rule.Status == 410 || rule.Status == 451 {
+				toPath := rootPath + rule.To
+				content4xxPath := ipath.New(toPath)
+				imContent4xxPath, err := NewImmutablePath(content4xxPath)
+				if err != nil {
+					// TODO: this shouldn't happen should we just log? Is this error right?
+					return true, toPath, err
+				}
+				err = i.serve4xx(w, r, imContent4xxPath, rule.Status)
+				return true, toPath, err
+			}
+
+			// Or redirect
+			if rule.Status >= 301 && rule.Status <= 308 {
+				http.Redirect(w, r, rule.To, rule.Status)
+				return true, "", nil
+			}
+		}
+	}
+
+	// No redirects matched
+	return false, "", nil
+}
+
+// getRedirectRules2 fetches the _redirects file corresponding to a given path and returns the rules
+// Returns whether _redirects was found, the rules (if they exist) and if there was an error (other than a missing _redirects)
+// If there is an error returns (false, nil, err)
+func (i *handler) getRedirectRules(r *http.Request, redirectsPath ImmutablePath) (bool, []redirects.Rule, error) {
+	// Check for _redirects file.
+	// Any path resolution failures are ignored and we just assume there's no _redirects file.
+	// Note that ignoring these errors also ensures that the use of the empty CID (bafkqaaa) in tests doesn't fail.
+	_, redirectsFile, err := i.api.Get(r.Context(), redirectsPath)
+	if err != nil {
+		if format.IsNotFound(err) { // TODO: this adds a requirement on the Get interface
+			return false, nil, nil
+		}
+		return false, nil, err
+	}
+	defer redirectsFile.Close()
+
+	f, ok := redirectsFile.(files.File)
+	if !ok {
+		return false, nil, fmt.Errorf(" _redirects is not a file")
+	}
+
+	// Parse redirect rules from file
+	redirectRules, err := redirects.Parse(f)
+	if err != nil {
+		return false, nil, fmt.Errorf("could not parse _redirects: %w", err)
+	}
+	return true, redirectRules, nil
+}
 
 // Returns the root CID Path for the given path
 func getRootPath(path ipath.Path) ipath.Path {
@@ -163,7 +167,19 @@ func getRootPath(path ipath.Path) ipath.Path {
 	return ipath.New(gopath.Join("/", path.Namespace(), parts[2]))
 }
 
-func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPath ipath.Path, content4xxCid cid.Cid, content4xxFile files.File, status int) error {
+func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPath ImmutablePath, status int) error {
+	gwMetadata, node, err := i.api.Get(r.Context(), content4xxPath)
+	if err != nil {
+		return err
+	}
+	defer node.Close()
+
+	content4xxFile, ok := node.(files.File)
+	if !ok {
+		return fmt.Errorf("could not convert node for %d page to file", status)
+	}
+	content4xxCid := gwMetadata.LastSegment.Cid()
+
 	size, err := content4xxFile.Size()
 	if err != nil {
 		return fmt.Errorf("could not get size of %d page", status)
@@ -231,7 +247,11 @@ func (i *handler) searchUpTreeFor404(r *http.Request, imPath ImmutablePath) (fil
 		if parsed404Path.IsValid() != nil {
 			break
 		}
-		_, data, err := i.api.Get(r.Context(), parsed404Path)
+		imparsed404Path, err := NewImmutablePath(parsed404Path)
+		if err != nil {
+			break // TODO: followed the same pattern with IsValid, should these be logging?
+		}
+		_, data, err := i.api.Get(r.Context(), imparsed404Path)
 		if err != nil {
 			continue
 		}
