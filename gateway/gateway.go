@@ -47,7 +47,7 @@ func (i ImmutablePath) IsValid() error {
 
 var _ path.Path = (*ImmutablePath)(nil)
 
-type GatewayMetadata struct {
+type ContentPathMetadata struct {
 	PathSegmentRoots []cid.Cid
 	LastSegment      path.Resolved
 }
@@ -102,20 +102,20 @@ func (o dummyGetOpts) GetRawBlock() GetOpt {
 type API interface {
 	// Get returns a file or directory depending on what the path is that has been requested.
 	// There are multiple options passable to this function, read them for more information.
-	Get(context.Context, ImmutablePath, ...GetOpt) (GatewayMetadata, files.Node, error)
+	Get(context.Context, ImmutablePath, ...GetOpt) (ContentPathMetadata, files.Node, error)
 
 	// Head returns a file or directory depending on what the path is that has been requested.
 	// For UnixFS files should return a file where at least the first 1024 bytes can be read and has the correct file size
 	// For all other data types returning just size information is sufficient
 	// TODO: give function more explicit return types
-	Head(context.Context, ImmutablePath) (GatewayMetadata, files.Node, error)
+	Head(context.Context, ImmutablePath) (ContentPathMetadata, files.Node, error)
 
 	// GetCAR returns a CAR file for the given immutable path
 	// Returns an initial error if there was an issue before the CAR streaming begins as well as a channel with a single
 	// that may contain a single error for if any errors occur during the streaming. If there was an initial error the
 	// error channel is nil
 	// TODO: Make this function signature better
-	GetCAR(context.Context, ImmutablePath) (GatewayMetadata, io.ReadCloser, error, <-chan error)
+	GetCAR(context.Context, ImmutablePath) (ContentPathMetadata, io.ReadCloser, error, <-chan error)
 
 	// IsCached returns whether or not the path exists locally.
 	IsCached(context.Context, path.Path) bool

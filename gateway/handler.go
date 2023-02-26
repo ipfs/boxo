@@ -518,7 +518,7 @@ func setContentDispositionHeader(w http.ResponseWriter, filename string, disposi
 }
 
 // Set X-Ipfs-Roots with logical CID array for efficient HTTP cache invalidation.
-func (i *handler) setIpfsRootsHeader(w http.ResponseWriter, gwMetadata GatewayMetadata) *requestError {
+func (i *handler) setIpfsRootsHeader(w http.ResponseWriter, gwMetadata ContentPathMetadata) *requestError {
 	/*
 		These are logical roots where each CID represent one path segment
 		and resolves to either a directory or the root block of a file.

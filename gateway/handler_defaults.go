@@ -22,7 +22,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	ctx, span := spanTrace(ctx, "ServeDefaults", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
-	var gwMetadata GatewayMetadata
+	var gwMetadata ContentPathMetadata
 	var data files.Node
 	var err error
 

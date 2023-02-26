@@ -105,20 +105,20 @@ func NewBlocksGateway(blockService blockservice.BlockService, routing routing.Va
 	}, nil
 }
 
-func (api *BlocksGateway) Get(ctx context.Context, path gateway.ImmutablePath, opt ...gateway.GetOpt) (gateway.GatewayMetadata, files.Node, error) {
+func (api *BlocksGateway) Get(ctx context.Context, path gateway.ImmutablePath, opt ...gateway.GetOpt) (gateway.ContentPathMetadata, files.Node, error) {
 	var opts gateway.GetOptions
 	for _, o := range opt {
 		if err := o(&opts); err != nil {
-			return gateway.GatewayMetadata{}, nil, err
+			return gateway.ContentPathMetadata{}, nil, err
 		}
 	}
 
 	roots, lastSeg, err := api.getPathRoots(ctx, path)
 	if err != nil {
-		return gateway.GatewayMetadata{}, nil, err
+		return gateway.ContentPathMetadata{}, nil, err
 	}
 
-	md := gateway.GatewayMetadata{
+	md := gateway.ContentPathMetadata{
 		PathSegmentRoots: roots,
 		LastSegment:      lastSeg,
 	}
@@ -127,7 +127,7 @@ func (api *BlocksGateway) Get(ctx context.Context, path gateway.ImmutablePath, o
 
 	nd, err := api.dagService.Get(ctx, lastRoot)
 	if err != nil {
-		return gateway.GatewayMetadata{}, nil, err
+		return gateway.ContentPathMetadata{}, nil, err
 	}
 
 	if opts.RawBlock {
@@ -149,13 +149,13 @@ func (api *BlocksGateway) Get(ctx context.Context, path gateway.ImmutablePath, o
 	return md, f, nil
 }
 
-func (api *BlocksGateway) Head(ctx context.Context, path gateway.ImmutablePath) (gateway.GatewayMetadata, files.Node, error) {
+func (api *BlocksGateway) Head(ctx context.Context, path gateway.ImmutablePath) (gateway.ContentPathMetadata, files.Node, error) {
 	roots, lastSeg, err := api.getPathRoots(ctx, path)
 	if err != nil {
-		return gateway.GatewayMetadata{}, nil, err
+		return gateway.ContentPathMetadata{}, nil, err
 	}
 
-	md := gateway.GatewayMetadata{
+	md := gateway.ContentPathMetadata{
 		PathSegmentRoots: roots,
 		LastSegment:      lastSeg,
 	}
@@ -164,7 +164,7 @@ func (api *BlocksGateway) Head(ctx context.Context, path gateway.ImmutablePath) 
 
 	nd, err := api.dagService.Get(ctx, lastRoot)
 	if err != nil {
-		return gateway.GatewayMetadata{}, nil, err
+		return gateway.ContentPathMetadata{}, nil, err
 	}
 
 	rootCodec := nd.Cid().Prefix().GetCodec()
@@ -175,23 +175,23 @@ func (api *BlocksGateway) Head(ctx context.Context, path gateway.ImmutablePath) 
 	// TODO: We're not handling non-UnixFS dag-pb. There's a bit of a discrepancy between what we want from a HEAD request and a Resolve request here and we're using this for both
 	fileNode, err := ufile.NewUnixfsFile(ctx, api.dagService, nd)
 	if err != nil {
-		return gateway.GatewayMetadata{}, nil, err
+		return gateway.ContentPathMetadata{}, nil, err
 	}
 
 	return md, fileNode, nil
 }
 
-func (api *BlocksGateway) GetCAR(ctx context.Context, path gateway.ImmutablePath) (gateway.GatewayMetadata, io.ReadCloser, error, <-chan error) {
+func (api *BlocksGateway) GetCAR(ctx context.Context, path gateway.ImmutablePath) (gateway.ContentPathMetadata, io.ReadCloser, error, <-chan error) {
 	// Same go-car settings as dag.export command
 	store := dagStore{api: api, ctx: ctx}
 
 	// TODO: When switching to exposing path blocks we'll want to add these as well
 	roots, lastSeg, err := api.getPathRoots(ctx, path)
 	if err != nil {
-		return gateway.GatewayMetadata{}, nil, err, nil
+		return gateway.ContentPathMetadata{}, nil, err, nil
 	}
 
-	md := gateway.GatewayMetadata{
+	md := gateway.ContentPathMetadata{
 		PathSegmentRoots: roots,
 		LastSegment:      lastSeg,
 	}

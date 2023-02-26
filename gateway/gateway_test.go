@@ -71,16 +71,16 @@ func newMockApi() *mockApi {
 	}
 }
 
-func (m *mockApi) Get(ctx context.Context, immutablePath ImmutablePath, opt ...GetOpt) (GatewayMetadata, files.Node, error) {
-	return GatewayMetadata{}, nil, errors.New("not implemented")
+func (m *mockApi) Get(ctx context.Context, immutablePath ImmutablePath, opt ...GetOpt) (ContentPathMetadata, files.Node, error) {
+	return ContentPathMetadata{}, nil, errors.New("not implemented")
 }
 
-func (m *mockApi) Head(ctx context.Context, immutablePath ImmutablePath) (GatewayMetadata, files.Node, error) {
-	return GatewayMetadata{}, nil, errors.New("not implemented")
+func (m *mockApi) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return ContentPathMetadata{}, nil, errors.New("not implemented")
 }
 
-func (m *mockApi) GetCAR(ctx context.Context, immutablePath ImmutablePath) (GatewayMetadata, io.ReadCloser, error, <-chan error) {
-	return GatewayMetadata{}, nil, nil, errors.New("not implemented")
+func (m *mockApi) GetCAR(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, io.ReadCloser, error, <-chan error) {
+	return ContentPathMetadata{}, nil, nil, errors.New("not implemented")
 }
 
 func (m *mockApi) ResolveMutable(ctx context.Context, p ipath.Path) (ImmutablePath, error) {
