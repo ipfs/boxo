@@ -23,7 +23,7 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 
 	if contentPath.Namespace() != "ipns" {
 		err := fmt.Errorf("%s is not an IPNS link", contentPath.String())
-		webError(w, err.Error(), err, http.StatusBadRequest)
+		webError(w, err, http.StatusBadRequest)
 		return false
 	}
 
@@ -32,26 +32,26 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 	key = strings.TrimPrefix(key, "/ipns/")
 	if strings.Count(key, "/") != 0 {
 		err := errors.New("cannot find ipns key for subpath")
-		webError(w, err.Error(), err, http.StatusBadRequest)
+		webError(w, err, http.StatusBadRequest)
 		return false
 	}
 
 	c, err := cid.Decode(key)
 	if err != nil {
-		webError(w, err.Error(), err, http.StatusBadRequest)
+		webError(w, err, http.StatusBadRequest)
 		return false
 	}
 
 	rawRecord, err := i.api.GetIPNSRecord(ctx, c)
 	if err != nil {
-		webError(w, err.Error(), err, http.StatusInternalServerError)
+		webError(w, err, http.StatusInternalServerError)
 		return false
 	}
 
 	var record ipns_pb.IpnsEntry
 	err = proto.Unmarshal(rawRecord, &record)
 	if err != nil {
-		webError(w, err.Error(), err, http.StatusInternalServerError)
+		webError(w, err, http.StatusInternalServerError)
 		return false
 	}
 

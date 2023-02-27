@@ -2,5 +2,8 @@
 # request that modifies code that they own. Code owners are not automatically
 # requested to review draft pull requests.
 
+# Deafult
+* @ipfs/kubo-maintainers 
+
 # HTTP Gateway
 gateway/  @lidel @hacdias

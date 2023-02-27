@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"context"
+	"fmt"
+	"html"
 	"net/http"
 	"time"
 
@@ -63,7 +65,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// Construct the TAR writer
 	tarw, err := files.NewTarWriter(w)
 	if err != nil {
-		webError(w, "could not build tar writer", err, http.StatusInternalServerError)
+		webError(w, fmt.Errorf("could not build tar writer: %w", err), http.StatusInternalServerError)
 		return false
 	}
 	defer tarw.Close()

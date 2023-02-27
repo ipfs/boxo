@@ -40,5 +40,5 @@ func (c *Cid) UnmarshalJSON(data []byte) error {
 }
 
 func (c Cid) Equal(other Cid) bool {
-	return c.Cid.Equals(c.Cid)
+	return c.Cid.Equals(other.Cid)
 }

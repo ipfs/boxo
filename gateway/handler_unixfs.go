@@ -16,22 +16,20 @@ import (
 func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, data files.Node, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
 	ctx, span := spanTrace(ctx, "ServeUnixFS", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
-	
+
 	// Handling Unixfs file
 	if f, ok := data.(files.File); ok {
 		logger.Debugw("serving unixfs file", "path", contentPath)
-		i.serveFile(ctx, w, r, resolvedPath, contentPath, f, begin)
-		return false
+		return i.serveFile(ctx, w, r, resolvedPath, contentPath, f, begin)
 	}
 
 	// Handling Unixfs directory
 	dir, ok := data.(files.Directory)
 	if !ok {
-		internalWebError(w, fmt.Errorf("unsupported UnixFS type"))
+		webError(w, fmt.Errorf("unsupported UnixFS type"), http.StatusInternalServerError)
 		return false
 	}
 
 	logger.Debugw("serving unixfs directory", "path", contentPath)
-	i.serveDirectory(ctx, w, r, resolvedPath, contentPath, dir, begin, logger)
-	return true
+	return i.serveDirectory(ctx, w, r, resolvedPath, contentPath, dir, begin, logger)
 }

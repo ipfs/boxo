@@ -25,8 +25,8 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	case "": // noop, client does not care about version
 	case "1": // noop, we support this
 	default:
-		err := fmt.Errorf("only version=1 is supported")
-		webError(w, "unsupported CAR version", err, http.StatusBadRequest)
+		err := fmt.Errorf("unsupported CAR version: only version=1 is supported")
+		webError(w, err, http.StatusBadRequest)
 		return false
 	}
 

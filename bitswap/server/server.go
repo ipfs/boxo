@@ -210,6 +210,27 @@ func MaxOutstandingBytesPerPeer(count int) Option {
 	}
 }
 
+// MaxQueuedWantlistEntriesPerPeer limits how much individual entries each peer is allowed to send.
+// If a peer send us more than this we will truncate newest entries.
+// It defaults to defaults.MaxQueuedWantlistEntiresPerPeer.
+func MaxQueuedWantlistEntriesPerPeer(count uint) Option {
+	o := decision.WithMaxQueuedWantlistEntriesPerPeer(count)
+	return func(bs *Server) {
+		bs.engineOptions = append(bs.engineOptions, o)
+	}
+}
+
+// MaxCidSize limits how big CIDs we are willing to serve.
+// We will ignore CIDs over this limit.
+// It defaults to [defaults.MaxCidSize].
+// If it is 0 no limit is applied.
+func MaxCidSize(n uint) Option {
+	o := decision.WithMaxCidSize(n)
+	return func(bs *Server) {
+		bs.engineOptions = append(bs.engineOptions, o)
+	}
+}
+
 // HasBlockBufferSize configure how big the new blocks buffer should be.
 func HasBlockBufferSize(count int) Option {
 	if count < 0 {
@@ -501,7 +522,10 @@ func (bs *Server) provideWorker(px process.Process) {
 func (bs *Server) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.BitSwapMessage) {
 	// This call records changes to wantlists, blocks received,
 	// and number of bytes transfered.
-	bs.engine.MessageReceived(ctx, p, incoming)
+	mustKillConnection := bs.engine.MessageReceived(ctx, p, incoming)
+	if mustKillConnection {
+		bs.network.DisconnectFrom(ctx, p)
+	}
 	// TODO: this is bad, and could be easily abused.
 	// Should only track *useful* messages in ledger
 

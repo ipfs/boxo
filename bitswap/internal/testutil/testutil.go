@@ -1,8 +1,8 @@
 package testutil
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
@@ -60,7 +60,7 @@ func GeneratePeers(n int) []peer.ID {
 	peerIds := make([]peer.ID, 0, n)
 	for i := 0; i < n; i++ {
 		peerSeq++
-		p := peer.ID(fmt.Sprint(i))
+		p := peer.ID(fmt.Sprint(peerSeq))
 		peerIds = append(peerIds, p)
 	}
 	return peerIds

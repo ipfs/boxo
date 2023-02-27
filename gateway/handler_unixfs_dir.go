@@ -28,7 +28,7 @@ type DirEntryMetdata interface {
 // serveDirectory returns the best representation of UnixFS directory
 //
 // It will return index.html if present, or generate directory listing otherwise.
-func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, dir files.Directory, begin time.Time, logger *zap.SugaredLogger) {
+func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, dir files.Directory, begin time.Time, logger *zap.SugaredLogger) bool {
 	ctx, span := spanTrace(ctx, "ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
@@ -39,8 +39,8 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	// the redirects and links would end up as http://example.net/ipns/example.net
 	requestURI, err := url.ParseRequestURI(r.RequestURI)
 	if err != nil {
-		webError(w, "failed to parse request path", err, http.StatusInternalServerError)
-		return
+		webError(w, fmt.Errorf("failed to parse request path: %w", err), http.StatusInternalServerError)
+		return false
 	}
 	originalURLPath := requestURI.Path
 
@@ -59,7 +59,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 			redirectURL := originalURLPath + suffix
 			logger.Debugw("directory location moved permanently", "status", http.StatusMovedPermanently)
 			http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
-			return
+			return true
 		}
 	}
 
@@ -78,19 +78,22 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	//
 	//	f, ok := idx.(files.File)
 	//	if !ok {
-	//		internalWebError(w, files.ErrNotReader)
-	//		return
+	//		webError(w, files.ErrNotReader, http.StatusInternalServerError)
+	//		return false
 	//	}
 	//
 	//	logger.Debugw("serving index.html file", "path", idxPath)
 	//	// write to request
-	//	i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
-	//	return
+	//	success := i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
+	//	if success {
+	//		i.unixfsDirIndexGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	//	}
+	//	return success
 	//case resolver.ErrNoLink:
 	//	logger.Debugw("no index.html; noop", "path", idxPath)
 	//default:
-	//	internalWebError(w, err)
-	//	return
+	//	webError(w, err, http.StatusInternalServerError)
+	//	return false
 	//}
 
 	// See statusResponseWriter.WriteHeader
@@ -100,7 +103,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	if w.Header().Get("Location") != "" {
 		logger.Debugw("location moved permanently", "status", http.StatusMovedPermanently)
 		w.WriteHeader(http.StatusMovedPermanently)
-		return
+		return true
 	}
 
 	// A HTML directory index will be presented, be sure to set the correct
@@ -113,28 +116,28 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 
 	if r.Method == http.MethodHead {
 		logger.Debug("return as request's HTTP method is HEAD")
-		return
+		return true
 	}
 
 	var dirListing []assets.DirectoryItem
 	it := dir.Entries()
 	for it.Next() {
 		if err := it.Err(); err != nil {
-			internalWebError(w, err)
-			return
+			webError(w, err, http.StatusInternalServerError)
+			return false
 		}
 
 		name := it.Name()
 		sz, err := it.Node().Size()
 		if err != nil {
-			internalWebError(w, err)
-			return
+			webError(w, err, http.StatusInternalServerError)
+			return false
 		}
 
 		md, ok := it.Node().(DirEntryMetdata)
 		if !ok { // This should never be able to happen
-			internalWebError(w, fmt.Errorf("could not get CID for directory element"))
-			return
+			webError(w, fmt.Errorf("could not get CID for directory element"), http.StatusInternalServerError)
+			return false
 		}
 
 		hash := md.Cid().String()
@@ -209,12 +212,13 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	logger.Debugw("request processed", "tplDataDNSLink", dnslink, "tplDataSize", size, "tplDataBackLink", backLink, "tplDataHash", hash)
 
 	if err := assets.DirectoryTemplate.Execute(w, tplData); err != nil {
-		internalWebError(w, err)
-		return
+		webError(w, err, http.StatusInternalServerError)
+		return false
 	}
 
 	// Update metrics
-	i.unixfsGenDirGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	i.unixfsGenDirListingGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	return true
 }
 
 func getDirListingEtag(dirCid cid.Cid) string {
