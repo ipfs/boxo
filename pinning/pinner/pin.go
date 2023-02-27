@@ -121,7 +121,7 @@ type Pinner interface {
 	// DirectKeys returns all directly pinned cids
 	DirectKeys(ctx context.Context) ([]cid.Cid, error)
 
-	// DirectKeys returns all recursively pinned cids
+	// RecursiveKeys returns all recursively pinned cids
 	RecursiveKeys(ctx context.Context) ([]cid.Cid, error)
 
 	// InternalPins returns all cids kept pinned for the internal state of the
