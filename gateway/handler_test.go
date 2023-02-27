@@ -71,7 +71,7 @@ func (api *errorMockAPI) ResolvePath(ctx context.Context, ip ipath.Path) (ipath.
 	return nil, api.err
 }
 
-func TestGatewayBadRequestInvalidPath(t *testing.T) {
+func TestGatewayInternalServerErrorInvalidPath(t *testing.T) {
 	api, _ := newMockAPI(t)
 	ts := newTestServer(t, api)
 	t.Logf("test server url: %s", ts.URL)
@@ -82,7 +82,7 @@ func TestGatewayBadRequestInvalidPath(t *testing.T) {
 	res, err := ts.Client().Do(req)
 	assert.Nil(t, err)
 
-	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
 }
 
 func TestGatewayTimeoutBubblingFromAPI(t *testing.T) {
