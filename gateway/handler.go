@@ -19,12 +19,9 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
-	"github.com/ipfs/go-namesys"
-	"github.com/ipfs/go-path"
 	"github.com/ipfs/go-path/resolver"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
-	routing "github.com/libp2p/go-libp2p/core/routing"
 	mc "github.com/multiformats/go-multicodec"
 	prometheus "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
@@ -564,8 +561,6 @@ func webRequestError(w http.ResponseWriter, err *requestError) {
 
 func webError(w http.ResponseWriter, err error, defaultCode int) {
 	switch {
-	case errors.Is(err, path.ErrInvalidPath{}):
-		webErrorWithCode(w, err, http.StatusBadRequest)
 	case isErrNotFound(err):
 		webErrorWithCode(w, err, http.StatusNotFound)
 	case errors.Is(err, ErrGatewayTimeout):
@@ -580,16 +575,13 @@ func webError(w http.ResponseWriter, err error, defaultCode int) {
 }
 
 func isErrNotFound(err error) bool {
-	return isErrNoLink(err) ||
-		errors.Is(err, routing.ErrNotFound) ||
-		err == routing.ErrNotFound ||
-		ipld.IsNotFound(err)
-}
+	if ipld.IsNotFound(err) {
+		return true
+	}
 
-// isErrNoLink checks if err is a resolver.ErrNoLink. resolver.ErrNoLink
-// does not implement a .Is interface and cannot be directly compared to.
-// Therefore, errors.Is always returns false with it.
-func isErrNoLink(err error) bool {
+	// Checks if err is a resolver.ErrNoLink. resolver.ErrNoLink does not implement
+	// the .Is interface and cannot be directly compared to. Therefore, errors.Is
+	// always returns false with it.
 	for {
 		_, ok := err.(resolver.ErrNoLink)
 		if ok {
@@ -772,11 +764,6 @@ func (i *handler) handlePathResolution(w http.ResponseWriter, r *http.Request, r
 		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 		webError(w, err, http.StatusServiceUnavailable)
 		return nil, nil, false
-	case namesys.ErrResolveFailed:
-		// Note: webError will replace http.StatusBadRequest with StatusNotFound or StatusRequestTimeout if necessary
-		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-		webError(w, err, http.StatusInternalServerError)
-		return nil, nil, false
 	default:
 		// The path can't be resolved.
 		if isUnixfsResponseFormat(responseFormat) {
@@ -801,7 +788,6 @@ func (i *handler) handlePathResolution(w http.ResponseWriter, r *http.Request, r
 			}
 		}
 
-		// Note: webError will replace http.StatusInternalServerError with StatusNotFound or StatusRequestTimeout if necessary
 		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 		webError(w, err, http.StatusInternalServerError)
 		return nil, nil, false
