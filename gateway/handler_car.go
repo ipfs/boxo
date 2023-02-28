@@ -31,7 +31,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 
 	gwMetadata, carFile, err, errCh := i.api.GetCAR(ctx, imPath)
-	if !i.handleNonUnixFSRequestErrors(w, imPath, err) {
+	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
 		return false
 	}
 	defer carFile.Close()

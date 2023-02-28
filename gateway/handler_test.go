@@ -3,13 +3,12 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"testing"
 
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-libipfs/files"
-	iface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/tj/assert"
 )
@@ -43,16 +42,20 @@ type errorMockAPI struct {
 	err error
 }
 
-func (api *errorMockAPI) GetUnixFsNode(context.Context, ipath.Resolved) (files.Node, error) {
-	return nil, api.err
+func (api *errorMockAPI) Get(ctx context.Context, path ImmutablePath, opt ...GetOpt) (ContentPathMetadata, files.Node, error) {
+	return ContentPathMetadata{}, nil, api.err
 }
 
-func (api *errorMockAPI) LsUnixFsDir(ctx context.Context, p ipath.Resolved) (<-chan iface.DirEntry, error) {
-	return nil, api.err
+func (api *errorMockAPI) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return ContentPathMetadata{}, nil, api.err
 }
 
-func (api *errorMockAPI) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	return nil, api.err
+func (api *errorMockAPI) GetCAR(ctx context.Context, path ImmutablePath) (ContentPathMetadata, io.ReadCloser, error, <-chan error) {
+	return ContentPathMetadata{}, nil, api.err, nil
+}
+
+func (api *errorMockAPI) ResolveMutable(ctx context.Context, path ipath.Path) (ImmutablePath, error) {
+	return ImmutablePath{}, api.err
 }
 
 func (api *errorMockAPI) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
@@ -65,10 +68,6 @@ func (api *errorMockAPI) GetDNSLinkRecord(ctx context.Context, hostname string) 
 
 func (api *errorMockAPI) IsCached(ctx context.Context, p ipath.Path) bool {
 	return false
-}
-
-func (api *errorMockAPI) ResolvePath(ctx context.Context, ip ipath.Path) (ipath.Resolved, error) {
-	return nil, api.err
 }
 
 func TestGatewayBadRequestInvalidPath(t *testing.T) {

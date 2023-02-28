@@ -19,7 +19,6 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
-	"github.com/ipfs/go-namesys"
 	"github.com/ipfs/go-path"
 	"github.com/ipfs/go-path/resolver"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
@@ -399,17 +398,20 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		case nil:
 		case coreiface.ErrOffline: // TODO: What is this for?
-			webError(w, "could not resolve mutable path "+debugStr(contentPath.String()), err, http.StatusServiceUnavailable)
+			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+			webError(w, err, http.StatusServiceUnavailable)
 			return
 		default:
 			// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
-			webError(w, "could not resolve mutable path", err, http.StatusBadRequest) // TODO: better error handling
+			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+			webError(w, err, http.StatusInternalServerError) // TODO: better error handling
 			return
 		}
 	} else {
 		imPath, err = NewImmutablePath(contentPath)
 		if err != nil {
-			webError(w, "path was expected to be immutable, but was not "+debugStr(contentPath.String()), err, http.StatusInternalServerError)
+			err = fmt.Errorf("path was expected to be immutable, but was not %s: %w", debugStr(contentPath.String()), err)
+			webError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -424,7 +426,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	if ifNoneMatchResolvedPath != nil {
 		imPath, err = NewImmutablePath(ifNoneMatchResolvedPath)
 		if err != nil {
-			internalWebError(w, err)
+			webError(w, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -775,10 +777,11 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, resp
 		case coreiface.ErrOffline:
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 			webError(w, err, http.StatusServiceUnavailable)
-			return nil, nil, false
+			return nil, false
 		default:
 			// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
-			webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusBadRequest)
+			err = fmt.Errorf("ipfs resolve -r %s : %w", debugStr(contentPath.String()), err)
+			webError(w, err, http.StatusBadRequest)
 			return nil, false
 		}
 
@@ -799,26 +802,29 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, resp
 	return nil, true
 }
 
-func (i *handler) handleNonUnixFSRequestErrors(w http.ResponseWriter, contentPath ImmutablePath, err error) bool {
+func (i *handler) handleNonUnixFSRequestErrors(w http.ResponseWriter, contentPath ipath.Path, err error) bool {
 	switch err {
 	case nil:
 		return true
 	case coreiface.ErrOffline:
-		webError(w, "could not fetch content at path "+debugStr(contentPath.String()), err, http.StatusServiceUnavailable)
+		err = fmt.Errorf("could not fetch content at path %s: %w", debugStr(contentPath.String()), err)
+		webError(w, err, http.StatusServiceUnavailable)
 		return false
 	default:
 		// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
-		webError(w, "could not fetch content at path "+debugStr(contentPath.String()), err, http.StatusBadRequest)
+		err = fmt.Errorf("could not fetch content at path %s: %w", debugStr(contentPath.String()), err)
+		webError(w, err, http.StatusBadRequest)
 		return false
 	}
 }
 
-func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Request, contentPath ImmutablePath, err error, logger *zap.SugaredLogger) (ImmutablePath, bool) {
+func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, err error, logger *zap.SugaredLogger) (ImmutablePath, bool) {
 	switch err {
 	case nil:
-		return contentPath, true
+		return imPath, true
 	case coreiface.ErrOffline:
-		webError(w, "could not fetch content at path "+debugStr(contentPath.String()), err, http.StatusServiceUnavailable)
+		err = fmt.Errorf("could not fetch content at path %s: %w", debugStr(contentPath.String()), err)
+		webError(w, err, http.StatusServiceUnavailable)
 		return ImmutablePath{}, false
 	default:
 		// If we have origin isolation (subdomain gw, DNSLink website),
@@ -826,7 +832,7 @@ func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Reque
 		// we can leverage the presence of an _redirects file and apply rules defined there.
 		// See: https://github.com/ipfs/specs/pull/290
 		if hasOriginIsolation(r) {
-			newContentPath, ok, hadMatchingRule := i.serveRedirectsIfPresent(w, r, contentPath, logger)
+			newContentPath, ok, hadMatchingRule := i.serveRedirectsIfPresent(w, r, imPath, logger)
 			if hadMatchingRule {
 				logger.Debugw("applied a rule from _redirects file")
 				return newContentPath, ok
@@ -836,7 +842,7 @@ func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Reque
 		// if Accept is text/html, see if ipfs-404.html is present
 		// This logic isn't documented and will likely be removed at some point.
 		// Any 404 logic in _redirects above will have already run by this time, so it's really an extra fall back
-		if i.serveLegacy404IfPresent(w, r, contentPath) {
+		if i.serveLegacy404IfPresent(w, r, imPath) {
 			logger.Debugw("served legacy 404")
 			return ImmutablePath{}, false
 		}

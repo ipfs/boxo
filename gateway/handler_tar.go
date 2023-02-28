@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"html"
 	"net/http"
 	"time"
 
@@ -25,7 +24,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 
 	// Get Unixfs file (or directory)
 	gwMetadata, file, err := i.api.Get(ctx, imPath, CommonGetOptions.GetFullDepth())
-	if !i.handleNonUnixFSRequestErrors(w, imPath, err) {
+	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
 		return false
 	}
 	defer file.Close()

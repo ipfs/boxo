@@ -30,7 +30,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	case http.MethodHead:
 		// TODO: Should these follow _redirects
 		gwMetadata, data, err = i.api.Head(ctx, imPath)
-		if !i.handleNonUnixFSRequestErrors(w, imPath, err) { // TODO: even though this might be UnixFS there shouldn't be anything special for HEAD requests
+		if !i.handleNonUnixFSRequestErrors(w, contentPath, err) { // TODO: even though this might be UnixFS there shouldn't be anything special for HEAD requests
 			return false
 		}
 		defer data.Close()
@@ -38,16 +38,17 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		gwMetadata, data, err = i.api.Get(ctx, imPath)
 		if err != nil {
 			if isUnixfsResponseFormat(requestedContentType) {
-				forwardedPath, continueProcessing := i.handleUnixFSRequestErrors(w, r, imPath, err, logger)
+				forwardedPath, continueProcessing := i.handleUnixFSRequestErrors(w, r, imPath, contentPath, err, logger)
 				if !continueProcessing {
 					return false
 				}
 				gwMetadata, data, err = i.api.Get(ctx, forwardedPath) // TODO: What should the X-Ipfs-Roots header be here?
 				if err != nil {
-					webError(w, "could not fetch content at path "+debugStr(contentPath.String()), err, http.StatusBadRequest)
+					err = fmt.Errorf("could not fetch content at path %s: %w", debugStr(contentPath.String()), err)
+					webError(w, err, http.StatusBadRequest)
 				}
 			} else {
-				if !i.handleNonUnixFSRequestErrors(w, imPath, err) {
+				if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
 					return false
 				}
 			}
@@ -55,11 +56,12 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		defer data.Close()
 	default:
 		// This shouldn't be possible to reach which is why it is a 500 rather than 4XX error
-		webError(w, "invalid method", fmt.Errorf("cannot use this HTTP method with the given request"), http.StatusInternalServerError)
+		webError(w, fmt.Errorf("invalid method: cannot use this HTTP method with the given request"), http.StatusInternalServerError)
 		return false
 	}
 
 	// TODO: should this include _redirects 200s?
+	// TODO: should this include index.html?
 	if err := i.setIpfsRootsHeader(w, gwMetadata); err != nil {
 		webRequestError(w, err)
 		return false
@@ -70,7 +72,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	case mc.Json, mc.DagJson, mc.Cbor, mc.DagCbor:
 		blockData, ok := data.(files.File)
 		if !ok { // This should never happen
-			webError(w, "decoding error", fmt.Errorf("data not a usable as a file"), http.StatusInternalServerError)
+			webError(w, fmt.Errorf("decoding error: data not a usable as a file"), http.StatusInternalServerError)
 			return false
 		}
 		logger.Debugw("serving codec", "path", contentPath)
@@ -87,6 +89,7 @@ type httpRange struct {
 
 // parseRange parses a Range header string as per RFC 7233.
 // errNoOverlap is returned if none of the ranges overlap.
+// TODO: handle range requests
 func parseRange(s string) ([]httpRange, error) {
 	if s == "" {
 		return nil, nil // header not present

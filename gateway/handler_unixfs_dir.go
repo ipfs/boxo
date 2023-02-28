@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"github.com/ipfs/go-path/resolver"
 	"net/http"
 	"net/url"
 	gopath "path"
@@ -65,36 +66,35 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 
 	// TODO: Was there a reason why this index.html check came after the redirect above that makes the inversion here incorrect?
 
-	//// Check if directory has index.html, if so, serveFile
-	//idxPath := ipath.Join(contentPath, "index.html")
-	//idxResolvedPath, err := i.api.ResolvePath(ctx, idxPath)
-	//switch err.(type) {
-	//case nil:
-	//	idx, err := i.api.GetUnixFsNode(ctx, idxResolvedPath)
-	//	if err != nil {
-	//		internalWebError(w, err)
-	//		return
-	//	}
-	//
-	//	f, ok := idx.(files.File)
-	//	if !ok {
-	//		webError(w, files.ErrNotReader, http.StatusInternalServerError)
-	//		return false
-	//	}
-	//
-	//	logger.Debugw("serving index.html file", "path", idxPath)
-	//	// write to request
-	//	success := i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
-	//	if success {
-	//		i.unixfsDirIndexGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
-	//	}
-	//	return success
-	//case resolver.ErrNoLink:
-	//	logger.Debugw("no index.html; noop", "path", idxPath)
-	//default:
-	//	webError(w, err, http.StatusInternalServerError)
-	//	return false
-	//}
+	// Check if directory has index.html, if so, serveFile
+	idxPath := ipath.Join(resolvedPath, "index.html")
+	imIndexPath, err := NewImmutablePath(idxPath)
+	if err != nil {
+		webError(w, err, http.StatusInternalServerError)
+		return false
+	}
+	_, idx, err := i.api.Get(ctx, imIndexPath)
+	switch err.(type) {
+	case nil:
+		f, ok := idx.(files.File)
+		if !ok {
+			webError(w, files.ErrNotReader, http.StatusInternalServerError) // TODO: isn't this the same as a traversal error?
+			return false
+		}
+
+		logger.Debugw("serving index.html file", "path", idxPath)
+		// write to request
+		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
+		if success {
+			i.unixfsDirIndexGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		}
+		return success
+	case resolver.ErrNoLink: //TODO: figure out the correct sentinel error to return here
+		logger.Debugw("no index.html; noop", "path", idxPath)
+	default:
+		webError(w, err, http.StatusInternalServerError)
+		return false
+	}
 
 	// See statusResponseWriter.WriteHeader
 	// and https://github.com/ipfs/kubo/issues/7164

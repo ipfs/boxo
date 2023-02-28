@@ -18,13 +18,13 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	defer span.End()
 
 	gwMetadata, data, err := i.api.Get(ctx, imPath, CommonGetOptions.GetRawBlock())
-	if !i.handleNonUnixFSRequestErrors(w, imPath, err) {
+	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
 		return false
 	}
 	defer data.Close()
 	blockData, ok := data.(files.File)
 	if !ok { // This should not happen
-		webError(w, "invalid data", fmt.Errorf("expected a raw block, did not receive a file"), http.StatusInternalServerError)
+		webError(w, fmt.Errorf("invalid data: expected a raw block, did not receive a file"), http.StatusInternalServerError)
 		return false
 	}
 

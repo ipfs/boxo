@@ -20,7 +20,7 @@ require (
 	github.com/ipfs/go-unixfs v0.4.3
 	github.com/ipfs/go-unixfsnode v1.5.2
 	github.com/ipfs/interface-go-ipfs-core v0.10.0
-	github.com/ipld/go-car v0.5.0
+	github.com/ipld/go-car v0.6.0
 	github.com/ipld/go-car/v2 v2.6.0
 	github.com/ipld/go-codec-dagpb v1.5.0
 	github.com/ipld/go-ipld-prime v0.19.0
@@ -165,3 +165,5 @@ require (
 )
 
 replace github.com/ipfs/go-libipfs => ../
+
+replace github.com/ipfs/go-unixfs => ../../go-unixfs

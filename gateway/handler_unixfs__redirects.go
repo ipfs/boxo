@@ -3,6 +3,7 @@ package gateway
 import (
 	"fmt"
 	format "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-path/resolver"
 	"go.uber.org/zap"
 	"io"
 	"net/http"
@@ -141,7 +142,12 @@ func (i *handler) getRedirectRules(r *http.Request, redirectsPath ImmutablePath)
 	// Note that ignoring these errors also ensures that the use of the empty CID (bafkqaaa) in tests doesn't fail.
 	_, redirectsFile, err := i.api.Get(r.Context(), redirectsPath)
 	if err != nil {
-		if format.IsNotFound(err) { // TODO: this adds a requirement on the Get interface
+		// TODO: this adds a requirement on the Get interface
+		if format.IsNotFound(err) {
+			return false, nil, nil
+		}
+		switch err.(type) {
+		case resolver.ErrNoLink:
 			return false, nil, nil
 		}
 		return false, nil, err
