@@ -270,9 +270,11 @@ func TestGatewayGet(t *testing.T) {
 	}{
 		{"127.0.0.1:8080", "/", http.StatusNotFound, "404 page not found\n"},
 		{"127.0.0.1:8080", "/" + k.Cid().String(), http.StatusNotFound, "404 page not found\n"},
+		{"127.0.0.1:8080", "/ipfs/this-is-not-a-cid", http.StatusInternalServerError, "failed to resolve /ipfs/this-is-not-a-cid: invalid path \"/ipfs/this-is-not-a-cid\": invalid CID: illegal base32 data at input byte 3\n"},
 		{"127.0.0.1:8080", k.String(), http.StatusOK, "fnord"},
 		{"127.0.0.1:8080", "/ipns/nxdomain.example.com", http.StatusInternalServerError, "failed to resolve /ipns/nxdomain.example.com: " + namesys.ErrResolveFailed.Error() + "\n"},
 		{"127.0.0.1:8080", "/ipns/%0D%0A%0D%0Ahello", http.StatusInternalServerError, "failed to resolve /ipns/\\r\\n\\r\\nhello: " + namesys.ErrResolveFailed.Error() + "\n"},
+		{"127.0.0.1:8080", "/ipns/k51qzi5uqu5djucgtwlxrbfiyfez1nb0ct58q5s4owg6se02evza05dfgi6tw5", http.StatusInternalServerError, "failed to resolve /ipns/k51qzi5uqu5djucgtwlxrbfiyfez1nb0ct58q5s4owg6se02evza05dfgi6tw5: " + namesys.ErrResolveFailed.Error() + "\n"},
 		{"127.0.0.1:8080", "/ipns/example.com", http.StatusOK, "fnord"},
 		{"example.com", "/", http.StatusOK, "fnord"},
 
