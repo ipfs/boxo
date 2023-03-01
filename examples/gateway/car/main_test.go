@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/ipfs/go-libipfs/gateway"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,7 +23,7 @@ func newTestServer() (*httptest.Server, io.Closer, error) {
 		return nil, nil, err
 	}
 
-	gateway, err := common.NewBlocksGateway(blockService, nil)
+	gateway, err := gateway.NewBlocksGateway(blockService)
 	if err != nil {
 		_ = f.Close()
 		return nil, nil, err
