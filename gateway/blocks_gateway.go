@@ -271,6 +271,11 @@ func (api *BlocksGateway) getPathRoots(ctx context.Context, contentPath Immutabl
 		sp.WriteString(root)
 		resolvedSubPath, err := api.ResolvePath(ctx, ifacepath.New(sp.String()))
 		if err != nil {
+			// TODO: should we be more explicit here and is this part of the Gateway API contract?
+			// The issue here was that we returned datamodel.ErrWrongKind instead of this resolver error
+			if isErrNotFound(err) {
+				return nil, nil, resolver.ErrNoLink{Name: root, Node: lastPath.Cid()}
+			}
 			return nil, nil, err
 		}
 		lastPath = resolvedSubPath
