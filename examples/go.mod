@@ -165,5 +165,3 @@ require (
 )
 
 replace github.com/ipfs/go-libipfs => ../
-
-replace github.com/ipfs/go-unixfs => ../../go-unixfs

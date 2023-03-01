@@ -35,7 +35,7 @@ require (
 	github.com/ipfs/go-namesys v0.7.0
 	github.com/ipfs/go-path v0.3.1
 	github.com/ipfs/go-peertaskqueue v0.8.1
-	github.com/ipfs/go-unixfs v0.4.3
+	github.com/ipfs/go-unixfs v0.4.4-0.20230210132922-b7f6de0737d9
 	github.com/ipfs/go-unixfsnode v1.5.2
 	github.com/ipfs/interface-go-ipfs-core v0.10.0
 	github.com/ipld/go-car v0.6.0
@@ -133,5 +133,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.1.7 // indirect
 )
-
-replace github.com/ipfs/go-unixfs => ../go-unixfs
