@@ -67,8 +67,8 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	// TODO: Was there a reason why this index.html check came after the redirect above that makes the inversion here incorrect?
 
 	// Check if directory has index.html, if so, serveFile
-	idxPath := ipath.Join(resolvedPath, "index.html")
-	imIndexPath, err := NewImmutablePath(idxPath)
+	idxPath := ipath.Join(contentPath, "index.html")
+	imIndexPath, err := NewImmutablePath(ipath.Join(resolvedPath, "index.html"))
 	if err != nil {
 		webError(w, err, http.StatusInternalServerError)
 		return false
