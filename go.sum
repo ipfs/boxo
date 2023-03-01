@@ -448,8 +448,8 @@ github.com/ipfs/go-path v0.3.1/go.mod h1:eNLsxJEEMxn/CDzUJ6wuNl+6No6tEUhOZcPKsZs
 github.com/ipfs/go-peertaskqueue v0.7.0/go.mod h1:M/akTIE/z1jGNXMU7kFB4TeSEFvj68ow0Rrb04donIU=
 github.com/ipfs/go-peertaskqueue v0.8.1 h1:YhxAs1+wxb5jk7RvS0LHdyiILpNmRIRnZVztekOF0pg=
 github.com/ipfs/go-peertaskqueue v0.8.1/go.mod h1:Oxxd3eaK279FxeydSPPVGHzbwVeHjatZ2GA8XD+KbPU=
-github.com/ipfs/go-unixfs v0.4.4-0.20230301081715-0c17d7b4c2df h1:BJPLKdA3OgwkMnMXgeELdzEAWwRpcqdvR6QYZ8dkyJk=
-github.com/ipfs/go-unixfs v0.4.4-0.20230301081715-0c17d7b4c2df/go.mod h1:TSG7G1UuT+l4pNj91raXAPkX0BhJi3jST1FDTfQ5QyM=
+github.com/ipfs/go-unixfs v0.4.4-0.20230301082657-5fd2773dcaaa h1:X8DPpsI3xvdsNxrsHi+ji39rjIvfPna3+XD+iQehbNQ=
+github.com/ipfs/go-unixfs v0.4.4-0.20230301082657-5fd2773dcaaa/go.mod h1:TSG7G1UuT+l4pNj91raXAPkX0BhJi3jST1FDTfQ5QyM=
 github.com/ipfs/go-unixfsnode v1.5.2 h1:CvsiTt58W2uR5dD8bqQv+aAY0c1qolmXmSyNbPHYiew=
 github.com/ipfs/go-unixfsnode v1.5.2/go.mod h1:NlOebRwYx8lMCNMdhAhEspYPBD3obp7TE0LvBqHY+ks=
 github.com/ipfs/go-verifcid v0.0.1/go.mod h1:5Hrva5KBeIog4A+UpqlaIU+DEstipcJYQQZc0g37pY0=

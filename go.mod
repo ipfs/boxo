@@ -35,7 +35,7 @@ require (
 	github.com/ipfs/go-namesys v0.7.0
 	github.com/ipfs/go-path v0.3.1
 	github.com/ipfs/go-peertaskqueue v0.8.1
-	github.com/ipfs/go-unixfs v0.4.4-0.20230301081715-0c17d7b4c2df
+	github.com/ipfs/go-unixfs v0.4.4-0.20230301082657-5fd2773dcaaa
 	github.com/ipfs/go-unixfsnode v1.5.2
 	github.com/ipfs/interface-go-ipfs-core v0.10.0
 	github.com/ipld/go-car v0.5.0

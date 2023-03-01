@@ -13,7 +13,7 @@ require (
 	github.com/ipfs/go-ipns v0.3.0
 	github.com/ipfs/go-libipfs v0.4.0
 	github.com/ipfs/go-merkledag v0.9.0
-	github.com/ipfs/go-unixfs v0.4.4-0.20230301081715-0c17d7b4c2df
+	github.com/ipfs/go-unixfs v0.4.4-0.20230301082657-5fd2773dcaaa
 	github.com/ipld/go-car/v2 v2.6.0
 	github.com/ipld/go-ipld-prime v0.19.0
 	github.com/libp2p/go-libp2p v0.25.1
