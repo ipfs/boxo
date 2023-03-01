@@ -22,6 +22,7 @@ import (
 	"github.com/ipfs/go-path/resolver"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	prometheus "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -598,6 +599,16 @@ func isErrNotFound(err error) bool {
 			return true
 		}
 
+		_, ok = err.(datamodel.ErrWrongKind)
+		if ok {
+			return true
+		}
+
+		_, ok = err.(datamodel.ErrNotExists)
+		if ok {
+			return true
+		}
+
 		err = errors.Unwrap(err)
 		if err == nil {
 			return false
@@ -800,12 +811,12 @@ func (i *handler) handleNonUnixFSRequestErrors(w http.ResponseWriter, contentPat
 	case nil:
 		return true
 	case coreiface.ErrOffline:
-		err = fmt.Errorf("could not fetch content at path %s: %w", debugStr(contentPath.String()), err)
+		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 		webError(w, err, http.StatusServiceUnavailable)
 		return false
 	default:
 		// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
-		err = fmt.Errorf("could not fetch content at path %s: %w", debugStr(contentPath.String()), err)
+		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 		webError(w, err, http.StatusBadRequest)
 		return false
 	}
@@ -816,7 +827,7 @@ func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Reque
 	case nil:
 		return imPath, true
 	case coreiface.ErrOffline:
-		err = fmt.Errorf("could not fetch content at path %s: %w", debugStr(contentPath.String()), err)
+		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 		webError(w, err, http.StatusServiceUnavailable)
 		return ImmutablePath{}, false
 	default:
@@ -840,7 +851,7 @@ func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Reque
 			return ImmutablePath{}, false
 		}
 
-		err = fmt.Errorf("could not fetch content at path %s: %w", debugStr(contentPath.String()), err)
+		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 		webError(w, err, http.StatusInternalServerError)
 		return ImmutablePath{}, false
 	}

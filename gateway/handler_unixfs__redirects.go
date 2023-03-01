@@ -2,8 +2,6 @@ package gateway
 
 import (
 	"fmt"
-	format "github.com/ipfs/go-ipld-format"
-	"github.com/ipfs/go-path/resolver"
 	"go.uber.org/zap"
 	"io"
 	"net/http"
@@ -143,11 +141,7 @@ func (i *handler) getRedirectRules(r *http.Request, redirectsPath ImmutablePath)
 	_, redirectsFile, err := i.api.Get(r.Context(), redirectsPath)
 	if err != nil {
 		// TODO: this adds a requirement on the Get interface
-		if format.IsNotFound(err) {
-			return false, nil, nil
-		}
-		switch err.(type) {
-		case resolver.ErrNoLink:
+		if isErrNotFound(err) {
 			return false, nil, nil
 		}
 		return false, nil, err

@@ -44,7 +44,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 				}
 				gwMetadata, data, err = i.api.Get(ctx, forwardedPath) // TODO: What should the X-Ipfs-Roots header be here?
 				if err != nil {
-					err = fmt.Errorf("could not fetch content at path %s: %w", debugStr(contentPath.String()), err)
+					err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 					webError(w, err, http.StatusBadRequest)
 				}
 			} else {
