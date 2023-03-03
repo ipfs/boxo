@@ -42,7 +42,13 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 	// regardless of whether path or subdomain resolution is used.
 	rootPath := getRootPath(contentPath)
 	redirectsPath := ipath.Join(rootPath, "_redirects")
-	imRedirectsPath, _ := NewImmutablePath(redirectsPath) // TODO: reasonable to ignore the error since it should be impossible, or better to log/panic?
+	imRedirectsPath, err := NewImmutablePath(redirectsPath)
+	if err != nil {
+		err = fmt.Errorf("trouble processing _redirects path %q: %w", redirectsPath, err)
+		webError(w, err, http.StatusInternalServerError)
+		// TODO: Is this ok? This isn't quite a matching rule since we don't know _redirects exists, but this error is severe enough we don't want to continue anymore
+		return ImmutablePath{}, false, true
+	}
 
 	foundRedirect, redirectRules, err := i.getRedirectRules(r, imRedirectsPath)
 	if err != nil {
