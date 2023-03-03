@@ -105,15 +105,18 @@ func (o dummyGetOpts) GetRawBlock() GetOpt {
 	}
 }
 
-// API TODO: We might need to define some sentinel errors here to help the Gateway figure out what HTTP Status Code to return
-// For example, distinguishing between timeout/failures to fetch vs receiving invalid data, vs impossible paths vs wrong data types, etc.
+// API is the required set of functionality used to implement the IPFS HTTP Gateway specification.
+// To signal error types to the gateway code (so that not everything is a 500) return a (wrapped) error defined in this package.
+// There are also some existing error types that the gateway code knows how to handle (e.g. context.DeadlineExceeded
+// and various IPLD pathing related errors).
 type API interface {
 	// Get returns a file or directory depending on what the path is that has been requested.
 	// There are multiple options passable to this function, read them for more information.
 	Get(context.Context, ImmutablePath, ...GetOpt) (ContentPathMetadata, files.Node, error)
 
 	// Head returns a file or directory depending on what the path is that has been requested.
-	// For UnixFS files should return a file where at least the first 1024 bytes can be read and has the correct file size
+	// For UnixFS files should return a file which has the correct file size and either returns the content type or
+	// enough data (e.g. 3kiB) such that the content type can be determined by sniffing.
 	// For all other data types returning just size information is sufficient
 	// TODO: give function more explicit return types
 	Head(context.Context, ImmutablePath) (ContentPathMetadata, files.Node, error)
