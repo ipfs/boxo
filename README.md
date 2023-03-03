@@ -31,7 +31,7 @@ go-libipfs 🍌
 
 ## About
 
-go-libips is a component library for building IPFS applications and implementations in Go.
+go-libipfs is a component library for building IPFS applications and implementations in Go.
 
 Some scenarios in which you may find go-libipfs helpful:
 
