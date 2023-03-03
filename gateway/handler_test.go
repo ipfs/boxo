@@ -14,7 +14,7 @@ import (
 	"github.com/ipfs/go-path/resolver"
 	iface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
-	"github.com/tj/assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestEtagMatch(t *testing.T) {
