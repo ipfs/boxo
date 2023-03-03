@@ -41,9 +41,6 @@ const (
 var (
 	onlyASCII = regexp.MustCompile("[[:^ascii:]]")
 	noModtime = time.Unix(0, 0) // disables Last-Modified header if passed as modtime
-
-	ErrGatewayTimeout = errors.New(http.StatusText(http.StatusGatewayTimeout))
-	ErrBadGateway     = errors.New(http.StatusText(http.StatusBadGateway))
 )
 
 // HTML-based redirect for errors which can be recovered from, but we want

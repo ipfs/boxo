@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,11 @@ import (
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/files"
 	"github.com/ipfs/interface-go-ipfs-core/path"
+)
+
+var (
+	ErrGatewayTimeout = errors.New(http.StatusText(http.StatusGatewayTimeout))
+	ErrBadGateway     = errors.New(http.StatusText(http.StatusBadGateway))
 )
 
 // Config is the configuration used when creating a new gateway handler.
