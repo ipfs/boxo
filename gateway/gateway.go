@@ -50,6 +50,7 @@ var _ path.Path = (*ImmutablePath)(nil)
 type ContentPathMetadata struct {
 	PathSegmentRoots []cid.Cid
 	LastSegment      path.Resolved
+	ContentType      string // Only used for UnixFS requests
 }
 
 // TODO: These functional options seems a little unwieldly here and require a bunch of text, would just having more functions be better?

@@ -79,7 +79,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		return i.renderCodec(r.Context(), w, r, resolvedPath, blockData, contentPath, begin, requestedContentType)
 	default:
 		logger.Debugw("serving unixfs", "path", contentPath)
-		return i.serveUnixFS(r.Context(), w, r, resolvedPath, data, contentPath, begin, logger)
+		return i.serveUnixFS(r.Context(), w, r, resolvedPath, data, gwMetadata.ContentType, contentPath, begin, logger)
 	}
 }
 

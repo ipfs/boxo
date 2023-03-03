@@ -13,14 +13,14 @@ import (
 	"go.uber.org/zap"
 )
 
-func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, data files.Node, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
+func (i *handler) serveUnixFS(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, data files.Node, fileContentType string, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
 	ctx, span := spanTrace(ctx, "ServeUnixFS", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
 	// Handling Unixfs file
 	if f, ok := data.(files.File); ok {
 		logger.Debugw("serving unixfs file", "path", contentPath)
-		return i.serveFile(ctx, w, r, resolvedPath, contentPath, f, begin)
+		return i.serveFile(ctx, w, r, resolvedPath, contentPath, f, fileContentType, begin)
 	}
 
 	// Handling Unixfs directory
