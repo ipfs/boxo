@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -17,9 +16,7 @@ import (
 	"time"
 
 	cid "github.com/ipfs/go-cid"
-	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
-	"github.com/ipfs/go-path/resolver"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	mc "github.com/multiformats/go-multicodec"
@@ -41,9 +38,6 @@ const (
 var (
 	onlyASCII = regexp.MustCompile("[[:^ascii:]]")
 	noModtime = time.Unix(0, 0) // disables Last-Modified header if passed as modtime
-
-	ErrGatewayTimeout = errors.New(http.StatusText(http.StatusGatewayTimeout))
-	ErrBadGateway     = errors.New(http.StatusText(http.StatusBadGateway))
 )
 
 // HTML-based redirect for errors which can be recovered from, but we want
@@ -93,23 +87,6 @@ type handler struct {
 // presence of HTTP Headers such as Location.
 type statusResponseWriter struct {
 	http.ResponseWriter
-}
-
-// Custom type for collecting error details to be handled by `webRequestError`
-type requestError struct {
-	StatusCode int
-	Err        error
-}
-
-func (r *requestError) Error() string {
-	return r.Err.Error()
-}
-
-func newRequestError(err error, statusCode int) *requestError {
-	return &requestError{
-		Err:        err,
-		StatusCode: statusCode,
-	}
 }
 
 func (sw *statusResponseWriter) WriteHeader(code int) {
@@ -553,53 +530,6 @@ func (i *handler) buildIpfsRootsHeader(contentPath string, r *http.Request) (str
 	}
 	rootCidList := strings.Join(pathRoots, ",") // convention from rfc2616#sec4.2
 	return rootCidList, nil
-}
-
-func webRequestError(w http.ResponseWriter, err *requestError) {
-	webError(w, err.Err, err.StatusCode)
-}
-
-func webError(w http.ResponseWriter, err error, defaultCode int) {
-	switch {
-	case isErrNotFound(err):
-		webErrorWithCode(w, err, http.StatusNotFound)
-	case errors.Is(err, ErrGatewayTimeout):
-		webErrorWithCode(w, err, http.StatusGatewayTimeout)
-	case errors.Is(err, ErrBadGateway):
-		webErrorWithCode(w, err, http.StatusBadGateway)
-	case errors.Is(err, context.DeadlineExceeded):
-		webErrorWithCode(w, err, http.StatusGatewayTimeout)
-	default:
-		webErrorWithCode(w, err, defaultCode)
-	}
-}
-
-func isErrNotFound(err error) bool {
-	if ipld.IsNotFound(err) {
-		return true
-	}
-
-	// Checks if err is a resolver.ErrNoLink. resolver.ErrNoLink does not implement
-	// the .Is interface and cannot be directly compared to. Therefore, errors.Is
-	// always returns false with it.
-	for {
-		_, ok := err.(resolver.ErrNoLink)
-		if ok {
-			return true
-		}
-
-		err = errors.Unwrap(err)
-		if err == nil {
-			return false
-		}
-	}
-}
-
-func webErrorWithCode(w http.ResponseWriter, err error, code int) {
-	http.Error(w, err.Error(), code)
-	if code >= 500 {
-		log.Warnf("server error: %s", err)
-	}
 }
 
 func getFilename(contentPath ipath.Path) string {
