@@ -137,7 +137,7 @@ func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Reques
 	return false, "", nil
 }
 
-// getRedirectRules2 fetches the _redirects file corresponding to a given path and returns the rules
+// getRedirectRules fetches the _redirects file corresponding to a given path and returns the rules
 // Returns whether _redirects was found, the rules (if they exist) and if there was an error (other than a missing _redirects)
 // If there is an error returns (false, nil, err)
 func (i *handler) getRedirectRules(r *http.Request, redirectsPath ImmutablePath) (bool, []redirects.Rule, error) {
