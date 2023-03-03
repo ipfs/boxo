@@ -133,6 +133,9 @@ type API interface {
 
 	// ResolveMutable takes a mutable path and resolves it into an immutable one. This means recursively resolving any
 	// DNSLink or IPNS records.
+	//
+	// For example, given a mapping from `/ipns/dnslink.tld -> /ipns/ipns-id/mydirectory` and `/ipns/ipns-id` to
+	// `/ipfs/some-cid`, the result of passing `/ipns/dnslink.tld/myfile` would be `/ipfs/some-cid/mydirectory/myfile`.
 	ResolveMutable(context.Context, path.Path) (ImmutablePath, error)
 
 	// GetDNSLinkRecord returns the DNSLink TXT record for the provided FQDN.
