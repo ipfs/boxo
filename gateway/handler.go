@@ -20,7 +20,6 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-path/resolver"
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	prometheus "github.com/prometheus/client_golang/prometheus"
@@ -391,17 +390,10 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	var imPath ImmutablePath
 	if contentPath.Mutable() {
 		imPath, err = i.api.ResolveMutable(r.Context(), contentPath)
-		switch err {
-		case nil:
-		case coreiface.ErrOffline: // TODO: What is this for?
+		if err != nil {
+			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-			webError(w, err, http.StatusServiceUnavailable)
-			return
-		default:
-			// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
-			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-			webError(w, err, http.StatusInternalServerError) // TODO: better error handling
-			return
+			webError(w, err, http.StatusInternalServerError)
 		}
 	} else {
 		imPath, err = NewImmutablePath(contentPath)
@@ -575,6 +567,8 @@ func webError(w http.ResponseWriter, err error, defaultCode int) {
 		webErrorWithCode(w, err, http.StatusGatewayTimeout)
 	case errors.Is(err, ErrBadGateway):
 		webErrorWithCode(w, err, http.StatusBadGateway)
+	case errors.Is(err, ErrServiceUnavailable):
+		webErrorWithCode(w, err, http.StatusServiceUnavailable)
 	case errors.Is(err, context.DeadlineExceeded):
 		webErrorWithCode(w, err, http.StatusGatewayTimeout)
 	default:
@@ -773,16 +767,10 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, resp
 	if inm := r.Header.Get("If-None-Match"); inm != "" {
 		// TODO: should we be handling _redirect and legacy 404 here?
 		gwMetadata, _, err := i.api.Head(r.Context(), imPath)
-		switch err {
-		case nil:
-		case coreiface.ErrOffline:
+		if err != nil {
+			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-			webError(w, err, http.StatusServiceUnavailable)
-			return nil, false
-		default:
-			// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
-			err = fmt.Errorf("ipfs resolve -r %s : %w", debugStr(contentPath.String()), err)
-			webError(w, err, http.StatusBadRequest)
+			webError(w, err, http.StatusInternalServerError)
 			return nil, false
 		}
 
@@ -804,54 +792,49 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, resp
 }
 
 func (i *handler) handleNonUnixFSRequestErrors(w http.ResponseWriter, contentPath ipath.Path, err error) bool {
-	switch err {
-	case nil:
+	if err == nil {
 		return true
-	case coreiface.ErrOffline:
-		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-		webError(w, err, http.StatusServiceUnavailable)
-		return false
-	default:
-		// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
-		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-		webError(w, err, http.StatusBadRequest)
-		return false
 	}
+	// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
+	err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+	webError(w, err, http.StatusInternalServerError)
+	return false
 }
 
 func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, err error, logger *zap.SugaredLogger) (ImmutablePath, bool) {
-	switch err {
-	case nil:
+	if err == nil {
 		return imPath, true
-	case coreiface.ErrOffline:
+	}
+
+	if errors.Is(err, ErrServiceUnavailable) {
 		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 		webError(w, err, http.StatusServiceUnavailable)
 		return ImmutablePath{}, false
-	default:
-		// If we have origin isolation (subdomain gw, DNSLink website),
-		// and response type is UnixFS (default for website hosting)
-		// we can leverage the presence of an _redirects file and apply rules defined there.
-		// See: https://github.com/ipfs/specs/pull/290
-		if hasOriginIsolation(r) {
-			newContentPath, ok, hadMatchingRule := i.serveRedirectsIfPresent(w, r, imPath, logger)
-			if hadMatchingRule {
-				logger.Debugw("applied a rule from _redirects file")
-				return newContentPath, ok
-			}
-		}
+	}
 
-		// if Accept is text/html, see if ipfs-404.html is present
-		// This logic isn't documented and will likely be removed at some point.
-		// Any 404 logic in _redirects above will have already run by this time, so it's really an extra fall back
-		if i.serveLegacy404IfPresent(w, r, imPath) {
-			logger.Debugw("served legacy 404")
-			return ImmutablePath{}, false
+	// If we have origin isolation (subdomain gw, DNSLink website),
+	// and response type is UnixFS (default for website hosting)
+	// we can leverage the presence of an _redirects file and apply rules defined there.
+	// See: https://github.com/ipfs/specs/pull/290
+	if hasOriginIsolation(r) {
+		newContentPath, ok, hadMatchingRule := i.serveRedirectsIfPresent(w, r, imPath, logger)
+		if hadMatchingRule {
+			logger.Debugw("applied a rule from _redirects file")
+			return newContentPath, ok
 		}
+	}
 
-		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-		webError(w, err, http.StatusInternalServerError)
+	// if Accept is text/html, see if ipfs-404.html is present
+	// This logic isn't documented and will likely be removed at some point.
+	// Any 404 logic in _redirects above will have already run by this time, so it's really an extra fall back
+	if i.serveLegacy404IfPresent(w, r, imPath) {
+		logger.Debugw("served legacy 404")
 		return ImmutablePath{}, false
 	}
+
+	err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+	webError(w, err, http.StatusInternalServerError)
+	return ImmutablePath{}, false
 }
 
 // Detect 'Cache-Control: only-if-cached' in request and return data if it is already in the local datastore.

@@ -14,8 +14,9 @@ import (
 )
 
 var (
-	ErrGatewayTimeout = errors.New(http.StatusText(http.StatusGatewayTimeout))
-	ErrBadGateway     = errors.New(http.StatusText(http.StatusBadGateway))
+	ErrGatewayTimeout     = errors.New(http.StatusText(http.StatusGatewayTimeout))
+	ErrBadGateway         = errors.New(http.StatusText(http.StatusBadGateway))
+	ErrServiceUnavailable = errors.New(http.StatusText(http.StatusServiceUnavailable))
 )
 
 // Config is the configuration used when creating a new gateway handler.
