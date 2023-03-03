@@ -42,10 +42,10 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 				if !continueProcessing {
 					return false
 				}
-				gwMetadata, data, err = i.api.Get(ctx, forwardedPath) // TODO: What should the X-Ipfs-Roots header be here?
+				gwMetadata, data, err = i.api.Get(ctx, forwardedPath)
 				if err != nil {
 					err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-					webError(w, err, http.StatusBadRequest)
+					webError(w, err, http.StatusInternalServerError)
 				}
 			} else {
 				if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
@@ -60,8 +60,6 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		return false
 	}
 
-	// TODO: should this include _redirects 200s?
-	// TODO: should this include index.html?
 	if err := i.setIpfsRootsHeader(w, gwMetadata); err != nil {
 		webRequestError(w, err)
 		return false
