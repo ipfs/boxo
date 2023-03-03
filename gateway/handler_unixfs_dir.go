@@ -20,8 +20,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// DirEntryMetdata get the CID of the referenced data
-type DirEntryMetdata interface {
+// dirEntryMetadata allows getting the CID of the referenced data
+type dirEntryMetadata interface {
 	Cid() cid.Cid
 }
 
@@ -132,7 +132,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 			return false
 		}
 
-		md, ok := it.Node().(DirEntryMetdata)
+		md, ok := it.Node().(dirEntryMetadata)
 		if !ok { // This should never be able to happen
 			webError(w, fmt.Errorf("could not get CID for directory element"), http.StatusInternalServerError)
 			return false
