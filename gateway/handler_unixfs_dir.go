@@ -20,7 +20,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// DirEntryMetdata TODO: figure out if we want a separate interface for HEAD requests to deal with this
+// DirEntryMetdata get the CID of the referenced data
 type DirEntryMetdata interface {
 	Cid() cid.Cid
 }
@@ -62,8 +62,6 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 			return true
 		}
 	}
-
-	// TODO: Was there a reason why this index.html check came after the redirect above that makes the inversion here incorrect?
 
 	// Check if directory has index.html, if so, serveFile
 	idxPath := ipath.Join(contentPath, "index.html")
