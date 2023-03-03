@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"github.com/ipfs/go-path/resolver"
 	"net/http"
 	"net/url"
 	gopath "path"
@@ -74,24 +73,25 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		return false
 	}
 	_, idx, err := i.api.Get(ctx, imIndexPath)
-	switch err.(type) {
-	case nil:
+	if err == nil {
 		f, ok := idx.(files.File)
 		if !ok {
-			webError(w, files.ErrNotReader, http.StatusInternalServerError) // TODO: isn't this the same as a traversal error?
+			webError(w, files.ErrNotReader, http.StatusNotFound)
 			return false
 		}
 
 		logger.Debugw("serving index.html file", "path", idxPath)
 		// write to request
-		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
+		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, f, "text/html", begin)
 		if success {
 			i.unixfsDirIndexGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 		}
 		return success
-	case resolver.ErrNoLink: //TODO: figure out the correct sentinel error to return here
+	}
+
+	if isErrNotFound(err) {
 		logger.Debugw("no index.html; noop", "path", idxPath)
-	default:
+	} else if err != nil {
 		webError(w, err, http.StatusInternalServerError)
 		return false
 	}
