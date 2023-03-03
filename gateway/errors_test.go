@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -13,7 +14,7 @@ import (
 func TestErrTooManyRequestsIs(t *testing.T) {
 	var err error
 
-	err = &ErrTooManyRequests{RetryAfter: 10}
+	err = &ErrTooManyRequests{RetryAfter: 10 * time.Second}
 	assert.True(t, errors.Is(err, &ErrTooManyRequests{}), "pointer to error must be error")
 
 	err = fmt.Errorf("wrapped: %w", err)
@@ -26,13 +27,13 @@ func TestErrTooManyRequestsAs(t *testing.T) {
 		errTMR *ErrTooManyRequests
 	)
 
-	err = &ErrTooManyRequests{RetryAfter: 25}
+	err = &ErrTooManyRequests{RetryAfter: 25 * time.Second}
 	assert.True(t, errors.As(err, &errTMR), "pointer to error must be error")
-	assert.EqualValues(t, errTMR.RetryAfter, 25)
+	assert.EqualValues(t, errTMR.RetryAfter, 25*time.Second)
 
 	err = fmt.Errorf("wrapped: %w", err)
 	assert.True(t, errors.As(err, &errTMR), "wrapped pointer to error must be error")
-	assert.EqualValues(t, errTMR.RetryAfter, 25)
+	assert.EqualValues(t, errTMR.RetryAfter, 25*time.Second)
 }
 
 func TestWebError(t *testing.T) {
@@ -47,7 +48,7 @@ func TestWebError(t *testing.T) {
 	})
 
 	t.Run("429 Too Many Requests with Retry-After header", func(t *testing.T) {
-		err := &ErrTooManyRequests{RetryAfter: 25}
+		err := &ErrTooManyRequests{RetryAfter: 25 * time.Second}
 		w := httptest.NewRecorder()
 		webError(w, err, http.StatusInternalServerError)
 		assert.Equal(t, http.StatusTooManyRequests, w.Result().StatusCode)

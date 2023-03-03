@@ -3,8 +3,10 @@ package gateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-path/resolver"
@@ -16,11 +18,15 @@ var (
 )
 
 type ErrTooManyRequests struct {
-	RetryAfter uint64
+	RetryAfter time.Duration
 }
 
 func (e *ErrTooManyRequests) Error() string {
-	return http.StatusText(http.StatusTooManyRequests)
+	text := http.StatusText(http.StatusTooManyRequests)
+	if e.RetryAfter != 0 {
+		text += fmt.Sprintf(", retry after %s", e.RetryAfterHuman())
+	}
+	return text
 }
 
 func (e *ErrTooManyRequests) Is(err error) bool {
@@ -30,6 +36,18 @@ func (e *ErrTooManyRequests) Is(err error) bool {
 	default:
 		return false
 	}
+}
+
+func (e *ErrTooManyRequests) RetryAfterRoundSeconds() time.Duration {
+	return e.RetryAfter.Round(time.Second)
+}
+
+func (e *ErrTooManyRequests) RetryAfterHuman() string {
+	return e.RetryAfterRoundSeconds().String()
+}
+
+func (e *ErrTooManyRequests) RetryAfterHeader() string {
+	return strconv.Itoa(int(e.RetryAfterRoundSeconds().Seconds()))
 }
 
 func webError(w http.ResponseWriter, err error, defaultCode int) {
@@ -47,16 +65,13 @@ func webError(w http.ResponseWriter, err error, defaultCode int) {
 		var tooManyRequests *ErrTooManyRequests
 		_ = errors.As(err, &tooManyRequests)
 		if tooManyRequests.RetryAfter > 0 {
-			w.Header().Set("Retry-After", strconv.FormatUint(tooManyRequests.RetryAfter, 10))
+			w.Header().Set("Retry-After", tooManyRequests.RetryAfterHeader())
 		}
 
 		code = http.StatusTooManyRequests
 	}
 
 	http.Error(w, err.Error(), code)
-	if code >= 500 {
-		log.Warnf("server error: %s", err)
-	}
 }
 
 func isErrNotFound(err error) bool {

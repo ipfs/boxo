@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -123,7 +124,7 @@ func TestErrorBubblingFromAPI(t *testing.T) {
 		headerLength int // how many times was headerName set
 	}{
 		{"429 Too Many Requests without Retry-After header", &ErrTooManyRequests{}, http.StatusTooManyRequests, "Retry-After", "", 0},
-		{"429 Too Many Requests with Retry-After header", &ErrTooManyRequests{RetryAfter: 3600}, http.StatusTooManyRequests, "Retry-After", "3600", 1},
+		{"429 Too Many Requests with Retry-After header", &ErrTooManyRequests{RetryAfter: 3600 * time.Second}, http.StatusTooManyRequests, "Retry-After", "3600", 1},
 	} {
 		api := &errorMockAPI{err: fmt.Errorf("wrapped for testing purposes: %w", test.err)}
 		ts := newTestServer(t, api)
