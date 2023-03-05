@@ -2,12 +2,13 @@ package gateway
 
 import (
 	"fmt"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
 	gopath "path"
 	"strconv"
 	"strings"
+
+	"go.uber.org/zap"
 
 	"github.com/ipfs/go-libipfs/files"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"

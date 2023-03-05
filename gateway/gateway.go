@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"sort"
 
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/files"
 	"github.com/ipfs/interface-go-ipfs-core/path"
 )

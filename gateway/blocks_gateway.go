@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
-	"go.uber.org/multierr"
 	"io"
 	gopath "path"
 	"strings"
+
+	"go.uber.org/multierr"
 
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
@@ -32,6 +32,7 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/schema"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	mc "github.com/multiformats/go-multicodec"
