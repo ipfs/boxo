@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
+	"go.uber.org/multierr"
 	"io"
 	gopath "path"
 	"strings"
@@ -229,7 +230,9 @@ func (api *BlocksGateway) GetCAR(ctx context.Context, path ImmutablePath) (Conte
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- c.Write(w)
+		carWriteErr := c.Write(w)
+		pipeCloseErr := w.Close()
+		errCh <- multierr.Combine(carWriteErr, pipeCloseErr)
 		close(errCh)
 	}()
 
