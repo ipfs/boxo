@@ -36,6 +36,11 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 	defer carFile.Close()
 
+	if err := i.setIpfsRootsHeader(w, gwMetadata); err != nil {
+		webRequestError(w, err)
+		return false
+	}
+
 	rootCid := gwMetadata.LastSegment.Cid()
 
 	// Set Content-Disposition
