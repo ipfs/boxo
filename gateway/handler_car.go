@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"github.com/hashicorp/go-multierror"
 	"io"
 	"net/http"
 	"time"
@@ -11,6 +10,7 @@ import (
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/multierr"
 )
 
 // serveCAR returns a CAR stream for specific DAG+selector
@@ -79,7 +79,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		// (https://github.com/mdn/browser-compat-data/issues/14703)
 		// Due to this, we suggest client always verify that
 		// the received CAR stream response is matching requested DAG selector
-		w.Header().Set("X-Stream-Error", multierror.Append(err, copyErr).Error())
+		w.Header().Set("X-Stream-Error", multierr.Combine(err, copyErr).Error())
 		return false
 	}
 
