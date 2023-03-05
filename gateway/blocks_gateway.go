@@ -156,15 +156,16 @@ func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath, opt ...Ge
 		return md, files.NewBytesFile(nd.RawData()), nil
 	}
 
-	// This code path covers full graph, single file/directory, and range requests
 	rootCodec := nd.Cid().Prefix().GetCodec()
-	if rootCodec == uint64(mc.Raw) {
+	// This covers both Raw blocks and terminal IPLD codecs like dag-cbor and dag-json
+	// Note: while only cbor, json, dag-cbor, and dag-json are currently supported by gateways this could change
+	if rootCodec != uint64(mc.DagPb) {
 		return md, files.NewBytesFile(nd.RawData()), nil
 	}
-	if rootCodec != uint64(mc.DagPb) {
-		return md, nil, fmt.Errorf("data is not UnixFS")
-	}
+
+	// This code path covers full graph, single file/directory, and range requests
 	f, err := ufile.NewUnixfsFile(ctx, api.dagService, nd)
+	// Note: there is an assumption here that non-UnixFS dag-pb should not be returned which is currently valid
 	if err != nil {
 		return md, nil, err
 	}
