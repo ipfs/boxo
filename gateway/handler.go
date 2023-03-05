@@ -387,16 +387,16 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var imPath ImmutablePath
+	var immutableContentPath ImmutablePath
 	if contentPath.Mutable() {
-		imPath, err = i.api.ResolveMutable(r.Context(), contentPath)
+		immutableContentPath, err = i.api.ResolveMutable(r.Context(), contentPath)
 		if err != nil {
 			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 			webError(w, err, http.StatusInternalServerError)
 		}
 	} else {
-		imPath, err = NewImmutablePath(contentPath)
+		immutableContentPath, err = NewImmutablePath(contentPath)
 		if err != nil {
 			err = fmt.Errorf("path was expected to be immutable, but was not %s: %w", debugStr(contentPath.String()), err)
 			webError(w, err, http.StatusInternalServerError)
@@ -405,14 +405,15 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
-	ifNoneMatchResolvedPath, ok := i.handleIfNoneMatch(w, r, responseFormat, contentPath, imPath, logger)
+	ifNoneMatchResolvedPath, ok := i.handleIfNoneMatch(w, r, responseFormat, contentPath, immutableContentPath, logger)
 	if !ok {
 		return
 	}
 
 	// If we already did the path resolution no need to do it again
+	maybeResolvedImPath := immutableContentPath
 	if ifNoneMatchResolvedPath != nil {
-		imPath, err = NewImmutablePath(ifNoneMatchResolvedPath)
+		maybeResolvedImPath, err = NewImmutablePath(ifNoneMatchResolvedPath)
 		if err != nil {
 			webError(w, err, http.StatusInternalServerError)
 			return
@@ -427,20 +428,20 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	// Support custom response formats passed via ?format or Accept HTTP header
 	switch responseFormat {
 	case "", "application/json", "application/cbor":
-		success = i.serveDefaults(r.Context(), w, r, imPath, contentPath, begin, responseFormat, logger)
+		success = i.serveDefaults(r.Context(), w, r, maybeResolvedImPath, immutableContentPath, contentPath, begin, responseFormat, logger)
 	case "application/vnd.ipld.raw":
 		logger.Debugw("serving raw block", "path", contentPath)
-		success = i.serveRawBlock(r.Context(), w, r, imPath, contentPath, begin)
+		success = i.serveRawBlock(r.Context(), w, r, maybeResolvedImPath, contentPath, begin)
 	case "application/vnd.ipld.car":
 		logger.Debugw("serving car stream", "path", contentPath)
 		carVersion := formatParams["version"]
-		success = i.serveCAR(r.Context(), w, r, imPath, contentPath, carVersion, begin)
+		success = i.serveCAR(r.Context(), w, r, maybeResolvedImPath, contentPath, carVersion, begin)
 	case "application/x-tar":
 		logger.Debugw("serving tar file", "path", contentPath)
-		success = i.serveTAR(r.Context(), w, r, imPath, contentPath, begin, logger)
+		success = i.serveTAR(r.Context(), w, r, maybeResolvedImPath, contentPath, begin, logger)
 	case "application/vnd.ipld.dag-json", "application/vnd.ipld.dag-cbor":
 		logger.Debugw("serving codec", "path", contentPath)
-		success = i.serveCodec(r.Context(), w, r, imPath, contentPath, begin, responseFormat)
+		success = i.serveCodec(r.Context(), w, r, maybeResolvedImPath, contentPath, begin, responseFormat)
 	case "application/vnd.ipfs.ipns-record":
 	default: // catch-all for unsuported application/vnd.*
 		err := fmt.Errorf("unsupported format %q", responseFormat)
@@ -801,9 +802,9 @@ func (i *handler) handleNonUnixFSRequestErrors(w http.ResponseWriter, contentPat
 	return false
 }
 
-func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, err error, logger *zap.SugaredLogger) (ImmutablePath, bool) {
+func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Request, maybeResolvedImPath, immutableContentPath ImmutablePath, contentPath ipath.Path, err error, logger *zap.SugaredLogger) (ImmutablePath, bool) {
 	if err == nil {
-		return imPath, true
+		return maybeResolvedImPath, true
 	}
 
 	if errors.Is(err, ErrServiceUnavailable) {
@@ -817,7 +818,7 @@ func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Reque
 	// we can leverage the presence of an _redirects file and apply rules defined there.
 	// See: https://github.com/ipfs/specs/pull/290
 	if hasOriginIsolation(r) {
-		newContentPath, ok, hadMatchingRule := i.serveRedirectsIfPresent(w, r, imPath, logger)
+		newContentPath, ok, hadMatchingRule := i.serveRedirectsIfPresent(w, r, maybeResolvedImPath, immutableContentPath, contentPath, logger)
 		if hadMatchingRule {
 			logger.Debugw("applied a rule from _redirects file")
 			return newContentPath, ok
@@ -827,7 +828,7 @@ func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Reque
 	// if Accept is text/html, see if ipfs-404.html is present
 	// This logic isn't documented and will likely be removed at some point.
 	// Any 404 logic in _redirects above will have already run by this time, so it's really an extra fall back
-	if i.serveLegacy404IfPresent(w, r, imPath) {
+	if i.serveLegacy404IfPresent(w, r, immutableContentPath) {
 		logger.Debugw("served legacy 404")
 		return ImmutablePath{}, false
 	}

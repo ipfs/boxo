@@ -37,10 +37,10 @@ import (
 //
 // Note that for security reasons, redirect rules are only processed when the request has origin isolation.
 // See https://github.com/ipfs/specs/pull/290 for more information.
-func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request, contentPath ImmutablePath, logger *zap.SugaredLogger) (newContentPath ImmutablePath, continueProcessing bool, hadMatchingRule bool) {
+func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request, maybeResolvedImPath, immutableContentPath ImmutablePath, contentPath ipath.Path, logger *zap.SugaredLogger) (newContentPath ImmutablePath, continueProcessing bool, hadMatchingRule bool) {
 	// contentPath is the full ipfs path to the requested resource,
 	// regardless of whether path or subdomain resolution is used.
-	rootPath := getRootPath(contentPath)
+	rootPath := getRootPath(maybeResolvedImPath)
 	redirectsPath := ipath.Join(rootPath, "_redirects")
 	imRedirectsPath, err := NewImmutablePath(redirectsPath)
 	if err != nil {
@@ -58,7 +58,7 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 	}
 
 	if foundRedirect {
-		redirected, newPath, err := i.handleRedirectsFileRules(w, r, contentPath, redirectRules)
+		redirected, newPath, err := i.handleRedirectsFileRules(w, r, immutableContentPath, contentPath, redirectRules)
 		if err != nil {
 			err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsPath, err)
 			webError(w, err, http.StatusInternalServerError)
@@ -73,23 +73,23 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 		if newPath != "" {
 			// Reassign contentPath and resolvedPath since the URL was rewritten
 			p := ipath.New(newPath)
-			contentPath, err = NewImmutablePath(p)
+			imPath, err := NewImmutablePath(p)
 			if err != nil {
 				err = fmt.Errorf("could not use _redirects file to %q: %w", p, err)
 				webError(w, err, http.StatusInternalServerError)
 				return ImmutablePath{}, false, true
 			}
-			return contentPath, true, true
+			return imPath, true, true
 		}
 	}
 
 	// No matching rule, paths remain the same, continue regular processing
-	return contentPath, true, false
+	return maybeResolvedImPath, true, false
 }
 
-func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Request, contentPath ipath.Path, redirectRules []redirects.Rule) (redirected bool, newContentPath string, err error) {
+func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Request, immutableContentPath ImmutablePath, cPath ipath.Path, redirectRules []redirects.Rule) (redirected bool, newContentPath string, err error) {
 	// Attempt to match a rule to the URL path, and perform the corresponding redirect or rewrite
-	pathParts := strings.Split(contentPath.String(), "/")
+	pathParts := strings.Split(immutableContentPath.String(), "/")
 	if len(pathParts) > 3 {
 		// All paths should start with /ipfs/cid/, so get the path after that
 		urlPath := "/" + strings.Join(pathParts[3:], "/")
@@ -115,13 +115,23 @@ func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Reques
 			// Or 4xx
 			if rule.Status == 404 || rule.Status == 410 || rule.Status == 451 {
 				toPath := rootPath + rule.To
-				content4xxPath := ipath.New(toPath)
-				imContent4xxPath, err := NewImmutablePath(content4xxPath)
+				imContent4xxPath, err := NewImmutablePath(ipath.New(toPath))
 				if err != nil {
 					// TODO: this shouldn't happen should we just log? Is this error right?
 					return true, toPath, err
 				}
-				err = i.serve4xx(w, r, imContent4xxPath, rule.Status)
+
+				// While we have the immutable path which is enough to fetch the data we need to track mutability for
+				// headers.
+				contentPathParts := strings.Split(cPath.String(), "/")
+				if len(contentPathParts) <= 3 {
+					// Match behavior as with the immutable path
+					return false, "", nil
+				}
+				// All paths should start with /ip(f|n)s/<root>/, so get the path after that
+				contentRootPath := strings.Join(contentPathParts[:3], "/")
+				content4xxPath := ipath.New(contentRootPath + rule.To)
+				err = i.serve4xx(w, r, imContent4xxPath, content4xxPath, rule.Status)
 				return true, toPath, err
 			}
 
@@ -173,8 +183,8 @@ func getRootPath(path ipath.Path) ipath.Path {
 	return ipath.New(gopath.Join("/", path.Namespace(), parts[2]))
 }
 
-func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPath ImmutablePath, status int) error {
-	gwMetadata, node, err := i.api.Get(r.Context(), content4xxPath)
+func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPathImPath ImmutablePath, content4xxPath ipath.Path, status int) error {
+	gwMetadata, node, err := i.api.Get(r.Context(), content4xxPathImPath)
 	if err != nil {
 		return err
 	}

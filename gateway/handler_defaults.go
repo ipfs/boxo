@@ -18,8 +18,8 @@ import (
 	"go.uber.org/zap"
 )
 
-func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time, requestedContentType string, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "ServeDefaults", trace.WithAttributes(attribute.String("path", imPath.String())))
+func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *http.Request, maybeResolvedImPath ImmutablePath, immutableContentPath ImmutablePath, contentPath ipath.Path, begin time.Time, requestedContentType string, logger *zap.SugaredLogger) bool {
+	ctx, span := spanTrace(ctx, "ServeDefaults", trace.WithAttributes(attribute.String("path", contentPath.String())))
 	defer span.End()
 
 	var gwMetadata ContentPathMetadata
@@ -29,16 +29,16 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	switch r.Method {
 	case http.MethodHead:
 		// TODO: Should these follow _redirects
-		gwMetadata, data, err = i.api.Head(ctx, imPath)
+		gwMetadata, data, err = i.api.Head(ctx, maybeResolvedImPath)
 		if !i.handleNonUnixFSRequestErrors(w, contentPath, err) { // TODO: even though this might be UnixFS there shouldn't be anything special for HEAD requests
 			return false
 		}
 		defer data.Close()
 	case http.MethodGet:
-		gwMetadata, data, err = i.api.Get(ctx, imPath)
+		gwMetadata, data, err = i.api.Get(ctx, maybeResolvedImPath)
 		if err != nil {
 			if isUnixfsResponseFormat(requestedContentType) {
-				forwardedPath, continueProcessing := i.handleUnixFSRequestErrors(w, r, imPath, contentPath, err, logger)
+				forwardedPath, continueProcessing := i.handleUnixFSRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
 				if !continueProcessing {
 					return false
 				}
