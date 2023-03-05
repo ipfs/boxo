@@ -21,11 +21,8 @@ import (
 	"github.com/ipfs/go-namesys/resolve"
 	ipfspath "github.com/ipfs/go-path"
 	"github.com/ipfs/go-path/resolver"
-	"github.com/ipfs/go-unixfs"
 	ufile "github.com/ipfs/go-unixfs/file"
-	uio "github.com/ipfs/go-unixfs/io"
 	"github.com/ipfs/go-unixfsnode"
-	iface "github.com/ipfs/interface-go-ipfs-core"
 	nsopts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 	ifacepath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/ipld/go-car"
@@ -325,42 +322,6 @@ func (api *BlocksGateway) ResolveMutable(ctx context.Context, p ifacepath.Path) 
 	}
 }
 
-func (api *BlocksGateway) GetUnixFsNode(ctx context.Context, p ifacepath.Resolved) (files.Node, error) {
-	nd, err := api.resolveNode(ctx, p)
-	if err != nil {
-		return nil, err
-	}
-
-	return ufile.NewUnixfsFile(ctx, api.dagService, nd)
-}
-
-func (api *BlocksGateway) LsUnixFsDir(ctx context.Context, p ifacepath.Resolved) (<-chan iface.DirEntry, error) {
-	node, err := api.resolveNode(ctx, p)
-	if err != nil {
-		return nil, err
-	}
-
-	dir, err := uio.NewDirectoryFromNode(api.dagService, node)
-	if err != nil {
-		return nil, err
-	}
-
-	out := make(chan iface.DirEntry, uio.DefaultShardWidth)
-
-	go func() {
-		defer close(out)
-		for l := range dir.EnumLinksAsync(ctx) {
-			select {
-			case out <- api.processLink(ctx, l):
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	return out, nil
-}
-
 func (api *BlocksGateway) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
 	return api.blockService.GetBlock(ctx, c)
 }
@@ -453,25 +414,4 @@ func (api *BlocksGateway) resolveNode(ctx context.Context, p ifacepath.Path) (fo
 		return nil, fmt.Errorf("get node: %w", err)
 	}
 	return node, nil
-}
-
-func (api *BlocksGateway) processLink(ctx context.Context, result unixfs.LinkResult) iface.DirEntry {
-	if result.Err != nil {
-		return iface.DirEntry{Err: result.Err}
-	}
-
-	link := iface.DirEntry{
-		Name: result.Link.Name,
-		Cid:  result.Link.Cid,
-	}
-
-	switch link.Cid.Type() {
-	case cid.Raw:
-		link.Type = iface.TFile
-		link.Size = result.Link.Size
-	case cid.DagProtobuf:
-		link.Size = result.Link.Size
-	}
-
-	return link
 }
