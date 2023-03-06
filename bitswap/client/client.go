@@ -79,6 +79,19 @@ func WithBlockReceivedNotifier(brn BlockReceivedNotifier) Option {
 	}
 }
 
+// WithoutDuplicatedBlockStats disable collecting counts of duplicated blocks
+// received. This counter requires triggering a blockstore.Has() call for
+// every block received by launching goroutines in parallel. In the worst case
+// (no caching/blooms etc), this is an expensive call for the datastore to
+// answer. In a normal case (caching), this has the power of evicting a
+// different block from intermediary caches. In the best case, it doesn't
+// affect performance. Use if this stat is not relevant.
+func WithoutDuplicatedBlockStats() Option {
+	return func(bs *Client) {
+		bs.skipDuplicatedBlocksStats = true
+	}
+}
+
 type BlockReceivedNotifier interface {
 	// ReceivedBlocks notifies the decision engine that a peer is well-behaving
 	// and gave us useful data, potentially increasing its score and making us
@@ -226,6 +239,9 @@ type Client struct {
 
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
+
+	// dupMetric will stay at 0
+	skipDuplicatedBlocksStats bool
 }
 
 type counters struct {
@@ -373,7 +389,12 @@ func (bs *Client) updateReceiveCounters(blocks []blocks.Block) {
 	// Check which blocks are in the datastore
 	// (Note: any errors from the blockstore are simply logged out in
 	// blockstoreHas())
-	blocksHas := bs.blockstoreHas(blocks)
+	var blocksHas []bool
+	if !bs.skipDuplicatedBlocksStats {
+		blocksHas = bs.blockstoreHas(blocks)
+	} else {
+		blocksHas = make([]bool, len(blocks))
+	}
 
 	bs.counterLk.Lock()
 	defer bs.counterLk.Unlock()
