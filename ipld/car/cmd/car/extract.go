@@ -103,15 +103,19 @@ func extractRoot(c *cli.Context, ls *ipld.LinkSystem, root cid.Cid, outputDir st
 		return 0, err
 	}
 
-	outputResolvedDir, err := filepath.EvalSymlinks(outputDir)
-	if err != nil {
-		return 0, err
-	}
-	if _, err := os.Stat(outputResolvedDir); os.IsNotExist(err) {
-		if err := os.Mkdir(outputResolvedDir, 0755); err != nil {
+	var outputResolvedDir string
+	if outputDir != "-" {
+		outputResolvedDir, err = filepath.EvalSymlinks(outputDir)
+		if err != nil {
 			return 0, err
 		}
+		if _, err := os.Stat(outputResolvedDir); os.IsNotExist(err) {
+			if err := os.Mkdir(outputResolvedDir, 0755); err != nil {
+				return 0, err
+			}
+		}
 	}
+
 	count, err := extractDir(c, ls, ufn, outputResolvedDir, "/", path)
 	if err != nil {
 		if !errors.Is(err, ErrNotDir) {
@@ -131,8 +135,12 @@ func extractRoot(c *cli.Context, ls *ipld.LinkSystem, root cid.Cid, outputDir st
 		if err != nil {
 			return 0, err
 		}
+		var outputName string
+		if outputDir != "-" {
+			outputName = filepath.Join(outputResolvedDir, "unknown")
+		}
 		if ufsNode.DataType.Int() == data.Data_File || ufsNode.DataType.Int() == data.Data_Raw {
-			if err := extractFile(c, ls, pbnode, filepath.Join(outputResolvedDir, "unknown")); err != nil {
+			if err := extractFile(c, ls, pbnode, outputName); err != nil {
 				return 0, err
 			}
 		}
@@ -161,13 +169,15 @@ func resolvePath(root, pth string) (string, error) {
 }
 
 func extractDir(c *cli.Context, ls *ipld.LinkSystem, n ipld.Node, outputRoot, outputPath string, matchPath []string) (int, error) {
-	dirPath, err := resolvePath(outputRoot, outputPath)
-	if err != nil {
-		return 0, err
-	}
-	// make the directory.
-	if err := os.MkdirAll(dirPath, 0755); err != nil {
-		return 0, err
+	if outputRoot != "" {
+		dirPath, err := resolvePath(outputRoot, outputPath)
+		if err != nil {
+			return 0, err
+		}
+		// make the directory.
+		if err := os.MkdirAll(dirPath, 0755); err != nil {
+			return 0, err
+		}
 	}
 
 	if n.Kind() != ipld.Kind_Map {
@@ -180,12 +190,16 @@ func extractDir(c *cli.Context, ls *ipld.LinkSystem, n ipld.Node, outputRoot, ou
 	}
 
 	extractElement := func(name string, n ipld.Node) (int, error) {
-		nextRes, err := resolvePath(outputRoot, path.Join(outputPath, name))
-		if err != nil {
-			return 0, err
-		}
-		if c.IsSet("verbose") {
-			fmt.Fprintf(c.App.Writer, "%s\n", nextRes)
+		var nextRes string
+		if outputRoot != "" {
+			var err error
+			nextRes, err = resolvePath(outputRoot, path.Join(outputPath, name))
+			if err != nil {
+				return 0, err
+			}
+			if c.IsSet("verbose") {
+				fmt.Fprintf(c.App.Writer, "%s\n", nextRes)
+			}
 		}
 
 		if n.Kind() != ipld.Kind_Link {
@@ -246,6 +260,9 @@ func extractDir(c *cli.Context, ls *ipld.LinkSystem, n ipld.Node, outputRoot, ou
 			}
 			return 1, nil
 		case data.Data_Symlink:
+			if nextRes == "" {
+				return 0, fmt.Errorf("cannot extract a symlink to stdout")
+			}
 			data := ufsNode.Data.Must().Bytes()
 			if err := os.Symlink(string(data), nextRes); err != nil {
 				return 0, err
@@ -263,6 +280,10 @@ func extractDir(c *cli.Context, ls *ipld.LinkSystem, n ipld.Node, outputRoot, ou
 			return 0, err
 		}
 		return extractElement(matchPath[0], val)
+	}
+
+	if outputPath == "-" && len(matchPath) == 0 {
+		return 0, fmt.Errorf("cannot extract a directory to stdout, use a path to extract a specific file")
 	}
 
 	// everything
@@ -296,14 +317,17 @@ func extractFile(c *cli.Context, ls *ipld.LinkSystem, n ipld.Node, outputName st
 	if err != nil {
 		return err
 	}
-
-	f, err := os.Create(outputName)
-	if err != nil {
-		return err
+	var f *os.File
+	if outputName == "" {
+		f = os.Stdout
+	} else {
+		f, err = os.Create(outputName)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
 	}
-	defer f.Close()
 	_, err = io.Copy(f, nlr)
-
 	return err
 }
 

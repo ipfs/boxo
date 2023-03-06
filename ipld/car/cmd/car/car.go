@@ -71,10 +71,11 @@ func main1() int {
 				}},
 			},
 			{
-				Name:    "extract",
-				Aliases: []string{"x"},
-				Usage:   "Extract the contents of a car when the car encodes UnixFS data",
-				Action:  ExtractCar,
+				Name:      "extract",
+				Aliases:   []string{"x"},
+				Usage:     "Extract the contents of a car when the car encodes UnixFS data",
+				Action:    ExtractCar,
+				ArgsUsage: "[output directory|-]",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:      "file",
