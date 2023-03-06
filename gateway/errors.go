@@ -26,7 +26,7 @@ type ErrorRetryAfter struct {
 }
 
 // NewErrorWithRetryAfter wraps any error in RetryAfter hint that
-// gets passed to HTTP clients in Retry-After HTTP header
+// gets passed to HTTP clients in Retry-After HTTP header.
 func NewErrorRetryAfter(err error, retryAfter time.Duration) *ErrorRetryAfter {
 	if err == nil {
 		err = ErrServiceUnavailable
@@ -79,6 +79,46 @@ func (e *ErrorRetryAfter) HTTPHeaderValue() string {
 	return strconv.Itoa(int(e.RoundSeconds().Seconds()))
 }
 
+// Custom type for collecting error details to be handled by `webError`. When an error
+// of this type is returned to the gateway handler, the StatusCode will be used for
+// the response status.
+type ErrorResponse struct {
+	StatusCode int
+	Err        error
+}
+
+func NewErrorResponseForCode(statusCode int) *ErrorResponse {
+	return NewErrorResponse(errors.New(http.StatusText(statusCode)), statusCode)
+}
+
+func NewErrorResponse(err error, statusCode int) *ErrorResponse {
+	return &ErrorResponse{
+		Err:        err,
+		StatusCode: statusCode,
+	}
+}
+
+func (e *ErrorResponse) Is(err error) bool {
+	switch err.(type) {
+	case *ErrorResponse:
+		return true
+	default:
+		return false
+	}
+}
+
+func (e *ErrorResponse) Error() string {
+	var text string
+	if e.Err != nil {
+		text = e.Err.Error()
+	}
+	return text
+}
+
+func (e *ErrorResponse) Unwrap() error {
+	return e.Err
+}
+
 func webError(w http.ResponseWriter, err error, defaultCode int) {
 	code := defaultCode
 
@@ -95,7 +135,7 @@ func webError(w http.ResponseWriter, err error, defaultCode int) {
 		err = era.Unwrap()
 	}
 
-	// Handle Status Code
+	// Handle status code
 	switch {
 	case isErrNotFound(err):
 		code = http.StatusNotFound
@@ -135,42 +175,4 @@ func isErrNotFound(err error) bool {
 
 func webRequestError(w http.ResponseWriter, err *ErrorResponse) {
 	webError(w, err.Err, err.StatusCode)
-}
-
-// Custom type for collecting error details to be handled by `webError`
-type ErrorResponse struct {
-	StatusCode int
-	Err        error
-}
-
-func NewErrorResponseForCode(statusCode int) *ErrorResponse {
-	return NewErrorResponse(errors.New(http.StatusText(statusCode)), statusCode)
-}
-
-func NewErrorResponse(err error, statusCode int) *ErrorResponse {
-	return &ErrorResponse{
-		Err:        err,
-		StatusCode: statusCode,
-	}
-}
-
-func (e *ErrorResponse) Is(err error) bool {
-	switch err.(type) {
-	case *ErrorResponse:
-		return true
-	default:
-		return false
-	}
-}
-
-func (e *ErrorResponse) Error() string {
-	var text string
-	if e.Err != nil {
-		text = e.Err.Error()
-	}
-	return text
-}
-
-func (e *ErrorResponse) Unwrap() error {
-	return e.Err
 }

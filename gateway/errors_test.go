@@ -54,4 +54,12 @@ func TestWebError(t *testing.T) {
 		assert.Equal(t, http.StatusTooManyRequests, w.Result().StatusCode)
 		assert.Equal(t, "25", w.Result().Header.Get("Retry-After"))
 	})
+
+	t.Run("503 Service Unavailable with Retry-After header", func(t *testing.T) {
+		err := NewErrorRetryAfter(ErrServiceUnavailable, 50*time.Second)
+		w := httptest.NewRecorder()
+		webError(w, err, http.StatusInternalServerError)
+		assert.Equal(t, http.StatusServiceUnavailable, w.Result().StatusCode)
+		assert.Equal(t, "50", w.Result().Header.Get("Retry-After"))
+	})
 }
