@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -17,9 +16,7 @@ import (
 	"time"
 
 	cid "github.com/ipfs/go-cid"
-	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
-	"github.com/ipfs/go-path/resolver"
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	mc "github.com/multiformats/go-multicodec"
@@ -41,9 +38,6 @@ const (
 var (
 	onlyASCII = regexp.MustCompile("[[:^ascii:]]")
 	noModtime = time.Unix(0, 0) // disables Last-Modified header if passed as modtime
-
-	ErrGatewayTimeout = errors.New(http.StatusText(http.StatusGatewayTimeout))
-	ErrBadGateway     = errors.New(http.StatusText(http.StatusBadGateway))
 )
 
 // HTML-based redirect for errors which can be recovered from, but we want
@@ -93,23 +87,6 @@ type handler struct {
 // presence of HTTP Headers such as Location.
 type statusResponseWriter struct {
 	http.ResponseWriter
-}
-
-// Custom type for collecting error details to be handled by `webRequestError`
-type requestError struct {
-	StatusCode int
-	Err        error
-}
-
-func (r *requestError) Error() string {
-	return r.Err.Error()
-}
-
-func newRequestError(err error, statusCode int) *requestError {
-	return &requestError{
-		Err:        err,
-		StatusCode: statusCode,
-	}
 }
 
 func (sw *statusResponseWriter) WriteHeader(code int) {
@@ -555,53 +532,6 @@ func (i *handler) buildIpfsRootsHeader(contentPath string, r *http.Request) (str
 	return rootCidList, nil
 }
 
-func webRequestError(w http.ResponseWriter, err *requestError) {
-	webError(w, err.Err, err.StatusCode)
-}
-
-func webError(w http.ResponseWriter, err error, defaultCode int) {
-	switch {
-	case isErrNotFound(err):
-		webErrorWithCode(w, err, http.StatusNotFound)
-	case errors.Is(err, ErrGatewayTimeout):
-		webErrorWithCode(w, err, http.StatusGatewayTimeout)
-	case errors.Is(err, ErrBadGateway):
-		webErrorWithCode(w, err, http.StatusBadGateway)
-	case errors.Is(err, context.DeadlineExceeded):
-		webErrorWithCode(w, err, http.StatusGatewayTimeout)
-	default:
-		webErrorWithCode(w, err, defaultCode)
-	}
-}
-
-func isErrNotFound(err error) bool {
-	if ipld.IsNotFound(err) {
-		return true
-	}
-
-	// Checks if err is a resolver.ErrNoLink. resolver.ErrNoLink does not implement
-	// the .Is interface and cannot be directly compared to. Therefore, errors.Is
-	// always returns false with it.
-	for {
-		_, ok := err.(resolver.ErrNoLink)
-		if ok {
-			return true
-		}
-
-		err = errors.Unwrap(err)
-		if err == nil {
-			return false
-		}
-	}
-}
-
-func webErrorWithCode(w http.ResponseWriter, err error, code int) {
-	http.Error(w, err.Error(), code)
-	if code >= 500 {
-		log.Warnf("server error: %s", err)
-	}
-}
-
 func getFilename(contentPath ipath.Path) string {
 	s := contentPath.String()
 	if (strings.HasPrefix(s, ipfsPathPrefix) || strings.HasPrefix(s, ipnsPathPrefix)) && strings.Count(gopath.Clean(s), "/") <= 2 {
@@ -815,12 +745,12 @@ func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, con
 	return false
 }
 
-func handleUnsupportedHeaders(r *http.Request) (err *requestError) {
+func handleUnsupportedHeaders(r *http.Request) (err *ErrorResponse) {
 	// X-Ipfs-Gateway-Prefix was removed (https://github.com/ipfs/kubo/issues/7702)
 	// TODO: remove this after  go-ipfs 0.13 ships
 	if prfx := r.Header.Get("X-Ipfs-Gateway-Prefix"); prfx != "" {
 		err := fmt.Errorf("unsupported HTTP header: X-Ipfs-Gateway-Prefix support was removed: https://github.com/ipfs/kubo/issues/7702")
-		return newRequestError(err, http.StatusBadRequest)
+		return NewErrorResponse(err, http.StatusBadRequest)
 	}
 	return nil
 }
@@ -856,12 +786,12 @@ func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, logge
 
 // Disallow Service Worker registration on namespace roots
 // https://github.com/ipfs/kubo/issues/4025
-func handleServiceWorkerRegistration(r *http.Request) (err *requestError) {
+func handleServiceWorkerRegistration(r *http.Request) (err *ErrorResponse) {
 	if r.Header.Get("Service-Worker") == "script" {
 		matched, _ := regexp.MatchString(`^/ip[fn]s/[^/]+$`, r.URL.Path)
 		if matched {
 			err := fmt.Errorf("registration is not allowed for this scope")
-			return newRequestError(fmt.Errorf("navigator.serviceWorker: %w", err), http.StatusBadRequest)
+			return NewErrorResponse(fmt.Errorf("navigator.serviceWorker: %w", err), http.StatusBadRequest)
 		}
 	}
 
@@ -912,13 +842,13 @@ func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentP
 	return true
 }
 
-func (i *handler) handleGettingFirstBlock(r *http.Request, begin time.Time, contentPath ipath.Path, resolvedPath ipath.Resolved) *requestError {
+func (i *handler) handleGettingFirstBlock(r *http.Request, begin time.Time, contentPath ipath.Path, resolvedPath ipath.Resolved) *ErrorResponse {
 	// Update the global metric of the time it takes to read the final root block of the requested resource
 	// NOTE: for legacy reasons this happens before we go into content-type specific code paths
 	_, err := i.api.GetBlock(r.Context(), resolvedPath.Cid())
 	if err != nil {
 		err = fmt.Errorf("could not get block %s: %w", resolvedPath.Cid().String(), err)
-		return newRequestError(err, http.StatusInternalServerError)
+		return NewErrorResponse(err, http.StatusInternalServerError)
 	}
 	ns := contentPath.Namespace()
 	timeToGetFirstContentBlock := time.Since(begin).Seconds()
@@ -927,7 +857,7 @@ func (i *handler) handleGettingFirstBlock(r *http.Request, begin time.Time, cont
 	return nil
 }
 
-func (i *handler) setCommonHeaders(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) *requestError {
+func (i *handler) setCommonHeaders(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) *ErrorResponse {
 	i.addUserHeaders(w) // ok, _now_ write user's headers.
 	w.Header().Set("X-Ipfs-Path", contentPath.String())
 
@@ -935,7 +865,7 @@ func (i *handler) setCommonHeaders(w http.ResponseWriter, r *http.Request, conte
 		w.Header().Set("X-Ipfs-Roots", rootCids)
 	} else { // this should never happen, as we resolved the contentPath already
 		err = fmt.Errorf("error while resolving X-Ipfs-Roots: %w", err)
-		return newRequestError(err, http.StatusInternalServerError)
+		return NewErrorResponse(err, http.StatusInternalServerError)
 	}
 
 	return nil
