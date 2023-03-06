@@ -35,7 +35,20 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		}
 		defer data.Close()
 	case http.MethodGet:
-		gwMetadata, data, err = i.api.Get(ctx, maybeResolvedImPath)
+		rangeHeader := r.Header.Get("Range")
+		if rangeHeader == "" {
+			gwMetadata, data, err = i.api.Get(ctx, maybeResolvedImPath)
+		} else {
+			// TODO: Add tests for range parsing
+			ranges, err := parseRange(rangeHeader)
+			if err != nil {
+				// This shouldn't be possible to reach which is why it is a 500 rather than 4XX error
+				webError(w, fmt.Errorf("invalid range request: %w", err), http.StatusBadRequest)
+				return false
+			}
+			gwMetadata, data, err = i.api.GetRange(ctx, maybeResolvedImPath, ranges...)
+		}
+
 		if err != nil {
 			if isUnixfsResponseFormat(requestedContentType) {
 				forwardedPath, continueProcessing := i.handleUnixFSRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
@@ -81,14 +94,8 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	}
 }
 
-type httpRange struct {
-	start, end int64
-}
-
 // parseRange parses a Range header string as per RFC 7233.
-// errNoOverlap is returned if none of the ranges overlap.
-// TODO: handle range requests
-func parseRange(s string) ([]httpRange, error) {
+func parseRange(s string) ([]GetRange, error) {
 	if s == "" {
 		return nil, nil // header not present
 	}
@@ -96,7 +103,7 @@ func parseRange(s string) ([]httpRange, error) {
 	if !strings.HasPrefix(s, b) {
 		return nil, errors.New("invalid range")
 	}
-	var ranges []httpRange
+	var ranges []GetRange
 	for _, ra := range strings.Split(s[len(b):], ",") {
 		ra = textproto.TrimString(ra)
 		if ra == "" {
@@ -107,9 +114,9 @@ func parseRange(s string) ([]httpRange, error) {
 			return nil, errors.New("invalid range")
 		}
 		start, end = textproto.TrimString(start), textproto.TrimString(end)
-		var r httpRange
+		var r GetRange
 		if start == "" {
-			r.start = -1
+			r.From = 0
 			// If no start is specified, end specifies the
 			// range start relative to the end of the file,
 			// and we are dealing with <suffix-length>
@@ -122,22 +129,22 @@ func parseRange(s string) ([]httpRange, error) {
 			if i < 0 || err != nil {
 				return nil, errors.New("invalid range")
 			}
-			r.end = i
+			r.To = &i
 		} else {
-			i, err := strconv.ParseInt(start, 10, 64)
+			i, err := strconv.ParseUint(start, 10, 64)
 			if err != nil || i < 0 {
 				return nil, errors.New("invalid range")
 			}
-			r.start = i
+			r.From = i
 			if end == "" {
 				// If no end is specified, range extends to end of the file.
-				r.end = -1
+				r.To = nil
 			} else {
 				i, err := strconv.ParseInt(end, 10, 64)
-				if err != nil || r.start > i {
+				if err != nil || i < 0 || r.From > uint64(i) {
 					return nil, errors.New("invalid range")
 				}
-				r.end = i
+				r.To = &i
 			}
 		}
 		ranges = append(ranges, r)

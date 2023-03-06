@@ -45,7 +45,19 @@ type errorMockAPI struct {
 	err error
 }
 
-func (api *errorMockAPI) Get(ctx context.Context, path ImmutablePath, opt ...GetOpt) (ContentPathMetadata, files.Node, error) {
+func (api *errorMockAPI) Get(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return ContentPathMetadata{}, nil, api.err
+}
+
+func (api *errorMockAPI) GetRange(ctx context.Context, path ImmutablePath, getRange ...GetRange) (ContentPathMetadata, files.File, error) {
+	return ContentPathMetadata{}, nil, api.err
+}
+
+func (api *errorMockAPI) GetAll(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return ContentPathMetadata{}, nil, api.err
+}
+
+func (api *errorMockAPI) GetBlock(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.File, error) {
 	return ContentPathMetadata{}, nil, api.err
 }
 

@@ -53,49 +53,13 @@ type ContentPathMetadata struct {
 	ContentType      string // Only used for UnixFS requests
 }
 
-// TODO: These functional options seems a little unwieldly here and require a bunch of text, would just having more functions be better?
-type GetOpt func(*GetOptions) error
-
-// GetOptions should exclusively only Range, FullDepth, or RawBlock not a combination
-// If RangeFrom and RangeTo are both 0 it implies wanting the full file
-type GetOptions struct {
-	RangeFrom int
-	RangeTo   int
-
-	FullDepth bool
-	RawBlock  bool
-}
-
-type dummyGetOpts struct{}
-
-var CommonGetOptions dummyGetOpts
-
-// GetRange is a range request for some file data
-// Note: currently a full file object should be returned but reading from values outside the range can error
-func (o dummyGetOpts) GetRange(from, to int) GetOpt {
-	return func(options *GetOptions) error {
-		options.RangeFrom = from
-		options.RangeTo = to
-		return nil
-	}
-}
-
-// GetFullDepth fetches all data linked from the last logical node in the path. In particular, recursively fetch an
-// entire UnixFS directory.
-func (o dummyGetOpts) GetFullDepth() GetOpt {
-	return func(options *GetOptions) error {
-		options.FullDepth = true
-		return nil
-	}
-}
-
-// GetRawBlock fetches the data at the last path element as if it were a raw block rather than something more complex
-// such as a UnixFS file or directory.
-func (o dummyGetOpts) GetRawBlock() GetOpt {
-	return func(options *GetOptions) error {
-		options.RawBlock = true
-		return nil
-	}
+// GetRange describes a range request within a UnixFS file. From and To mostly follow HTTP Range Request semantics.
+// From >= 0 and To = nil: Get the file (From, Length)
+// From >= 0 and To >= 0: Get the range (From, To)
+// From >= 0 and To <0: Get the range (From, Length - To)
+type GetRange struct {
+	From uint64
+	To   *int64
 }
 
 // API is the required set of functionality used to implement the IPFS HTTP Gateway specification.
@@ -103,9 +67,21 @@ func (o dummyGetOpts) GetRawBlock() GetOpt {
 // There are also some existing error types that the gateway code knows how to handle (e.g. context.DeadlineExceeded
 // and various IPLD pathing related errors).
 type API interface {
-	// Get returns a file or directory depending on what the path is that has been requested.
-	// There are multiple options passable to this function, read them for more information.
-	Get(context.Context, ImmutablePath, ...GetOpt) (ContentPathMetadata, files.Node, error)
+	// Get returns a UnixFS file, UnixFS directory, or an IPLD block depending on what the path is that has been
+	// requested. Directories' files.DirEntry objects do not need to contain content, but must contain Name,
+	// Size, and Cid.
+	// TODO: Should we export or just better describe the Cid metadata interface implemented in go-unixfs?
+	Get(context.Context, ImmutablePath) (ContentPathMetadata, files.Node, error)
+
+	// GetRange returns a full UnixFS file object, however reading from values outside the given ranges can error
+	GetRange(context.Context, ImmutablePath, ...GetRange) (ContentPathMetadata, files.File, error)
+
+	// GetAll returns a UnixFS file or directory depending on what the path is that has been requested. Directories should
+	// include all content recursively.
+	GetAll(context.Context, ImmutablePath) (ContentPathMetadata, files.Node, error)
+
+	// GetBlock returns a single block of data
+	GetBlock(context.Context, ImmutablePath) (ContentPathMetadata, files.File, error)
 
 	// Head returns a file or directory depending on what the path is that has been requested.
 	// For UnixFS files should return a file which has the correct file size and either returns the content type or

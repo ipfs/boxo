@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	gopath "path"
 	"strings"
 
@@ -129,14 +130,7 @@ func NewBlocksGateway(blockService blockservice.BlockService, opts ...BlockGatew
 	}, nil
 }
 
-func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath, opt ...GetOpt) (ContentPathMetadata, files.Node, error) {
-	var opts GetOptions
-	for _, o := range opt {
-		if err := o(&opts); err != nil {
-			return ContentPathMetadata{}, nil, err
-		}
-	}
-
+func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
 	roots, lastSeg, err := api.getPathRoots(ctx, path)
 	if err != nil {
 		return ContentPathMetadata{}, nil, err
@@ -154,10 +148,6 @@ func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath, opt ...Ge
 		return ContentPathMetadata{}, nil, err
 	}
 
-	if opts.RawBlock {
-		return md, files.NewBytesFile(nd.RawData()), nil
-	}
-
 	rootCodec := nd.Cid().Prefix().GetCodec()
 	// This covers both Raw blocks and terminal IPLD codecs like dag-cbor and dag-json
 	// Note: while only cbor, json, dag-cbor, and dag-json are currently supported by gateways this could change
@@ -172,6 +162,85 @@ func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath, opt ...Ge
 		return md, nil, err
 	}
 	return md, f, nil
+}
+
+func (api *BlocksGateway) GetRange(ctx context.Context, path ImmutablePath, ranges ...GetRange) (ContentPathMetadata, files.File, error) {
+	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	if err != nil {
+		return ContentPathMetadata{}, nil, err
+	}
+
+	md := ContentPathMetadata{
+		PathSegmentRoots: roots,
+		LastSegment:      lastSeg,
+	}
+
+	lastRoot := lastSeg.Cid()
+
+	nd, err := api.dagService.Get(ctx, lastRoot)
+	if err != nil {
+		return ContentPathMetadata{}, nil, err
+	}
+
+	// This code path covers full graph, single file/directory, and range requests
+	n, err := ufile.NewUnixfsFile(ctx, api.dagService, nd)
+	if err != nil {
+		return md, nil, err
+	}
+	f, ok := n.(files.File)
+	if !ok {
+		// TODO: Should we use either a general IPLD error code here, or one for gateways?
+		return ContentPathMetadata{}, nil, NewErrorResponse(fmt.Errorf("can only do range requests on files, but did not get a file"), http.StatusBadRequest)
+	}
+
+	return md, f, nil
+}
+
+func (api *BlocksGateway) GetAll(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	if err != nil {
+		return ContentPathMetadata{}, nil, err
+	}
+
+	md := ContentPathMetadata{
+		PathSegmentRoots: roots,
+		LastSegment:      lastSeg,
+	}
+
+	lastRoot := lastSeg.Cid()
+
+	nd, err := api.dagService.Get(ctx, lastRoot)
+	if err != nil {
+		return ContentPathMetadata{}, nil, err
+	}
+
+	// This code path covers full graph, single file/directory, and range requests
+	n, err := ufile.NewUnixfsFile(ctx, api.dagService, nd)
+	if err != nil {
+		return md, nil, err
+	}
+	return md, n, nil
+}
+
+func (api *BlocksGateway) GetBlock(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.File, error) {
+	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	if err != nil {
+		return ContentPathMetadata{}, nil, err
+	}
+
+	md := ContentPathMetadata{
+		PathSegmentRoots: roots,
+		LastSegment:      lastSeg,
+	}
+
+	lastRoot := lastSeg.Cid()
+
+	nd, err := api.dagService.Get(ctx, lastRoot)
+	if err != nil {
+		return ContentPathMetadata{}, nil, err
+	}
+
+	return md, files.NewBytesFile(nd.RawData()), nil
 }
 
 func (api *BlocksGateway) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
@@ -295,7 +364,7 @@ type dagStore struct {
 }
 
 func (ds dagStore) Get(_ context.Context, c cid.Cid) (blocks.Block, error) {
-	return ds.api.GetBlock(ds.ctx, c)
+	return ds.api.blockService.GetBlock(ds.ctx, c)
 }
 
 func (api *BlocksGateway) ResolveMutable(ctx context.Context, p ifacepath.Path) (ImmutablePath, error) {
@@ -325,10 +394,6 @@ func (api *BlocksGateway) ResolveMutable(ctx context.Context, p ifacepath.Path) 
 	default:
 		return ImmutablePath{}, fmt.Errorf("unsupported path namespace: %s", p.Namespace())
 	}
-}
-
-func (api *BlocksGateway) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	return api.blockService.GetBlock(ctx, c)
 }
 
 func (api *BlocksGateway) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {

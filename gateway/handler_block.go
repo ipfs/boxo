@@ -17,7 +17,7 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	ctx, span := spanTrace(ctx, "ServeRawBlock", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
-	gwMetadata, data, err := i.api.Get(ctx, imPath, CommonGetOptions.GetRawBlock())
+	gwMetadata, data, err := i.api.GetBlock(ctx, imPath)
 	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
 		return false
 	}

@@ -56,7 +56,7 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 	ctx, span := spanTrace(ctx, "ServeCodec", trace.WithAttributes(attribute.String("path", imPath.String()), attribute.String("requestedContentType", requestedContentType)))
 	defer span.End()
 
-	gwMetadata, data, err := i.api.Get(ctx, imPath, CommonGetOptions.GetRawBlock())
+	gwMetadata, data, err := i.api.GetBlock(ctx, imPath)
 	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
 		return false
 	}

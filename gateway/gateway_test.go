@@ -115,8 +115,20 @@ func newMockAPI(t *testing.T) (*mockAPI, cid.Cid) {
 	}, cids[0]
 }
 
-func (api *mockAPI) Get(ctx context.Context, immutablePath ImmutablePath, opt ...GetOpt) (ContentPathMetadata, files.Node, error) {
-	return api.gw.Get(ctx, immutablePath, opt...)
+func (api *mockAPI) Get(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return api.gw.Get(ctx, immutablePath)
+}
+
+func (api *mockAPI) GetRange(ctx context.Context, immutablePath ImmutablePath, ranges ...GetRange) (ContentPathMetadata, files.File, error) {
+	return api.gw.GetRange(ctx, immutablePath, ranges...)
+}
+
+func (api *mockAPI) GetAll(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return api.gw.GetAll(ctx, immutablePath)
+}
+
+func (api *mockAPI) GetBlock(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.File, error) {
+	return api.gw.GetBlock(ctx, immutablePath)
 }
 
 func (api *mockAPI) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
