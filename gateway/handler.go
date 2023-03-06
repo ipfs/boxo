@@ -17,11 +17,8 @@ import (
 	"time"
 
 	cid "github.com/ipfs/go-cid"
-	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
-	"github.com/ipfs/go-path/resolver"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
-	"github.com/ipld/go-ipld-prime/datamodel"
 	prometheus "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -89,23 +86,6 @@ type handler struct {
 // presence of HTTP Headers such as Location.
 type statusResponseWriter struct {
 	http.ResponseWriter
-}
-
-// Custom type for collecting error details to be handled by `webRequestError`
-type requestError struct {
-	StatusCode int
-	Err        error
-}
-
-func (r *requestError) Error() string {
-	return r.Err.Error()
-}
-
-func newRequestError(err error, statusCode int) *requestError {
-	return &requestError{
-		Err:        err,
-		StatusCode: statusCode,
-	}
 }
 
 func (sw *statusResponseWriter) WriteHeader(code int) {
@@ -521,7 +501,7 @@ func setContentDispositionHeader(w http.ResponseWriter, filename string, disposi
 }
 
 // Set X-Ipfs-Roots with logical CID array for efficient HTTP cache invalidation.
-func (i *handler) setIpfsRootsHeader(w http.ResponseWriter, gwMetadata ContentPathMetadata) *requestError {
+func (i *handler) setIpfsRootsHeader(w http.ResponseWriter, gwMetadata ContentPathMetadata) *ErrorResponse {
 	/*
 		These are logical roots where each CID represent one path segment
 		and resolves to either a directory or the root block of a file.
@@ -554,65 +534,6 @@ func (i *handler) setIpfsRootsHeader(w http.ResponseWriter, gwMetadata ContentPa
 
 	w.Header().Set("X-Ipfs-Roots", rootCidList)
 	return nil
-}
-
-func webRequestError(w http.ResponseWriter, err *requestError) {
-	webError(w, err.Err, err.StatusCode)
-}
-
-func webError(w http.ResponseWriter, err error, defaultCode int) {
-	switch {
-	case isErrNotFound(err):
-		webErrorWithCode(w, err, http.StatusNotFound)
-	case errors.Is(err, ErrGatewayTimeout):
-		webErrorWithCode(w, err, http.StatusGatewayTimeout)
-	case errors.Is(err, ErrBadGateway):
-		webErrorWithCode(w, err, http.StatusBadGateway)
-	case errors.Is(err, ErrServiceUnavailable):
-		webErrorWithCode(w, err, http.StatusServiceUnavailable)
-	case errors.Is(err, context.DeadlineExceeded):
-		webErrorWithCode(w, err, http.StatusGatewayTimeout)
-	default:
-		webErrorWithCode(w, err, defaultCode)
-	}
-}
-
-func isErrNotFound(err error) bool {
-	if ipld.IsNotFound(err) {
-		return true
-	}
-
-	// Checks if err is a resolver.ErrNoLink. resolver.ErrNoLink does not implement
-	// the .Is interface and cannot be directly compared to. Therefore, errors.Is
-	// always returns false with it.
-	for {
-		_, ok := err.(resolver.ErrNoLink)
-		if ok {
-			return true
-		}
-
-		_, ok = err.(datamodel.ErrWrongKind)
-		if ok {
-			return true
-		}
-
-		_, ok = err.(datamodel.ErrNotExists)
-		if ok {
-			return true
-		}
-
-		err = errors.Unwrap(err)
-		if err == nil {
-			return false
-		}
-	}
-}
-
-func webErrorWithCode(w http.ResponseWriter, err error, code int) {
-	http.Error(w, err.Error(), code)
-	if code >= 500 {
-		log.Warnf("server error: %s", err)
-	}
 }
 
 func getFilename(contentPath ipath.Path) string {
@@ -859,12 +780,12 @@ func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, con
 	return false
 }
 
-func handleUnsupportedHeaders(r *http.Request) (err *requestError) {
+func handleUnsupportedHeaders(r *http.Request) (err *ErrorResponse) {
 	// X-Ipfs-Gateway-Prefix was removed (https://github.com/ipfs/kubo/issues/7702)
 	// TODO: remove this after  go-ipfs 0.13 ships
 	if prfx := r.Header.Get("X-Ipfs-Gateway-Prefix"); prfx != "" {
 		err := fmt.Errorf("unsupported HTTP header: X-Ipfs-Gateway-Prefix support was removed: https://github.com/ipfs/kubo/issues/7702")
-		return newRequestError(err, http.StatusBadRequest)
+		return NewErrorResponse(err, http.StatusBadRequest)
 	}
 	return nil
 }
@@ -900,12 +821,12 @@ func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, logge
 
 // Disallow Service Worker registration on namespace roots
 // https://github.com/ipfs/kubo/issues/4025
-func handleServiceWorkerRegistration(r *http.Request) (err *requestError) {
+func handleServiceWorkerRegistration(r *http.Request) (err *ErrorResponse) {
 	if r.Header.Get("Service-Worker") == "script" {
 		matched, _ := regexp.MatchString(`^/ip[fn]s/[^/]+$`, r.URL.Path)
 		if matched {
 			err := fmt.Errorf("registration is not allowed for this scope")
-			return newRequestError(fmt.Errorf("navigator.serviceWorker: %w", err), http.StatusBadRequest)
+			return NewErrorResponse(fmt.Errorf("navigator.serviceWorker: %w", err), http.StatusBadRequest)
 		}
 	}
 

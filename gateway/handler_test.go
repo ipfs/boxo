@@ -6,11 +6,14 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	cid "github.com/ipfs/go-cid"
+	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-libipfs/files"
+	"github.com/ipfs/go-path/resolver"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
-	"github.com/tj/assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestEtagMatch(t *testing.T) {
@@ -84,28 +87,56 @@ func TestGatewayInternalServerErrorInvalidPath(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
 }
 
-func TestGatewayTimeoutBubblingFromAPI(t *testing.T) {
-	api := &errorMockAPI{err: fmt.Errorf("the mock api has timed out: %w", ErrGatewayTimeout)}
-	ts := newTestServer(t, api)
-	t.Logf("test server url: %s", ts.URL)
+func TestErrorBubblingFromAPI(t *testing.T) {
+	t.Parallel()
 
-	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipns/en.wikipedia-on-ipfs.org", nil)
-	assert.Nil(t, err)
+	for _, test := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"404 Not Found from IPLD", &ipld.ErrNotFound{}, http.StatusNotFound},
+		{"404 Not Found from path resolver", resolver.ErrNoLink{}, http.StatusNotFound},
+		{"502 Bad Gateway", ErrBadGateway, http.StatusBadGateway},
+		{"504 Gateway Timeout", ErrGatewayTimeout, http.StatusGatewayTimeout},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			api := &errorMockAPI{err: fmt.Errorf("wrapped for testing purposes: %w", test.err)}
+			ts := newTestServer(t, api)
+			t.Logf("test server url: %s", ts.URL)
 
-	res, err := ts.Client().Do(req)
-	assert.Nil(t, err)
-	assert.Equal(t, http.StatusGatewayTimeout, res.StatusCode)
-}
+			req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipns/en.wikipedia-on-ipfs.org", nil)
+			assert.Nil(t, err)
 
-func TestBadGatewayBubblingFromAPI(t *testing.T) {
-	api := &errorMockAPI{err: fmt.Errorf("the mock api has a bad gateway: %w", ErrBadGateway)}
-	ts := newTestServer(t, api)
-	t.Logf("test server url: %s", ts.URL)
+			res, err := ts.Client().Do(req)
+			assert.Nil(t, err)
+			assert.Equal(t, test.status, res.StatusCode)
+		})
+	}
 
-	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipns/en.wikipedia-on-ipfs.org", nil)
-	assert.Nil(t, err)
+	for _, test := range []struct {
+		name         string
+		err          error
+		status       int
+		headerName   string
+		headerValue  string
+		headerLength int // how many times was headerName set
+	}{
+		{"429 Too Many Requests without Retry-After header", ErrTooManyRequests, http.StatusTooManyRequests, "Retry-After", "", 0},
+		{"429 Too Many Requests without Retry-After header", NewErrorRetryAfter(ErrTooManyRequests, 0*time.Second), http.StatusTooManyRequests, "Retry-After", "", 0},
+		{"429 Too Many Requests with Retry-After header", NewErrorRetryAfter(ErrTooManyRequests, 3600*time.Second), http.StatusTooManyRequests, "Retry-After", "3600", 1},
+	} {
+		api := &errorMockAPI{err: fmt.Errorf("wrapped for testing purposes: %w", test.err)}
+		ts := newTestServer(t, api)
+		t.Logf("test server url: %s", ts.URL)
 
-	res, err := ts.Client().Do(req)
-	assert.Nil(t, err)
-	assert.Equal(t, http.StatusBadGateway, res.StatusCode)
+		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipns/en.wikipedia-on-ipfs.org", nil)
+		assert.Nil(t, err)
+
+		res, err := ts.Client().Do(req)
+		assert.Nil(t, err)
+		assert.Equal(t, test.status, res.StatusCode)
+		assert.Equal(t, test.headerValue, res.Header.Get(test.headerName))
+		assert.Equal(t, test.headerLength, len(res.Header.Values(test.headerName)))
+	}
 }
