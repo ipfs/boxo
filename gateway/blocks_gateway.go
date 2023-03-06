@@ -340,7 +340,7 @@ func (api *BlocksGateway) getPathRoots(ctx context.Context, contentPath Immutabl
 		}
 		sp.WriteString("/")
 		sp.WriteString(root)
-		resolvedSubPath, err := api.ResolvePath(ctx, ifacepath.New(sp.String()))
+		resolvedSubPath, err := api.resolvePath(ctx, ifacepath.New(sp.String()))
 		if err != nil {
 			// TODO: should we be more explicit here and is this part of the Gateway API contract?
 			// The issue here was that we returned datamodel.ErrWrongKind instead of this resolver error
@@ -429,7 +429,7 @@ func (api *BlocksGateway) GetDNSLinkRecord(ctx context.Context, hostname string)
 }
 
 func (api *BlocksGateway) IsCached(ctx context.Context, p ifacepath.Path) bool {
-	rp, err := api.ResolvePath(ctx, p)
+	rp, err := api.resolvePath(ctx, p)
 	if err != nil {
 		return false
 	}
@@ -438,7 +438,19 @@ func (api *BlocksGateway) IsCached(ctx context.Context, p ifacepath.Path) bool {
 	return has
 }
 
-func (api *BlocksGateway) ResolvePath(ctx context.Context, p ifacepath.Path) (ifacepath.Resolved, error) {
+func (api *BlocksGateway) ResolvePath(ctx context.Context, path ImmutablePath) (ContentPathMetadata, error) {
+	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	if err != nil {
+		return ContentPathMetadata{}, err
+	}
+	md := ContentPathMetadata{
+		PathSegmentRoots: roots,
+		LastSegment:      lastSeg,
+	}
+	return md, nil
+}
+
+func (api *BlocksGateway) resolvePath(ctx context.Context, p ifacepath.Path) (ifacepath.Resolved, error) {
 	if _, ok := p.(ifacepath.Resolved); ok {
 		return p.(ifacepath.Resolved), nil
 	}
@@ -474,7 +486,7 @@ func (api *BlocksGateway) ResolvePath(ctx context.Context, p ifacepath.Path) (if
 }
 
 func (api *BlocksGateway) resolveNode(ctx context.Context, p ifacepath.Path) (format.Node, error) {
-	rp, err := api.ResolvePath(ctx, p)
+	rp, err := api.resolvePath(ctx, p)
 	if err != nil {
 		return nil, err
 	}

@@ -85,6 +85,10 @@ func (api *errorMockAPI) IsCached(ctx context.Context, p ipath.Path) bool {
 	return false
 }
 
+func (api *errorMockAPI) ResolvePath(ctx context.Context, path ImmutablePath) (ContentPathMetadata, error) {
+	return ContentPathMetadata{}, api.err
+}
+
 func TestGatewayInternalServerErrorInvalidPath(t *testing.T) {
 	api, _ := newMockAPI(t)
 	ts := newTestServer(t, api)

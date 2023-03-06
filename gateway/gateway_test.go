@@ -163,7 +163,11 @@ func (api *mockAPI) IsCached(ctx context.Context, p ipath.Path) bool {
 	return api.gw.IsCached(ctx, p)
 }
 
-func (api *mockAPI) ResolvePath(ctx context.Context, ip ipath.Path) (ipath.Resolved, error) {
+func (api *mockAPI) ResolvePath(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, error) {
+	return api.gw.ResolvePath(ctx, immutablePath)
+}
+
+func (api *mockAPI) resolvePathNoRootsReturned(ctx context.Context, ip ipath.Path) (ipath.Resolved, error) {
 	var imPath ImmutablePath
 	var err error
 	if ip.Mutable() {
@@ -178,7 +182,7 @@ func (api *mockAPI) ResolvePath(ctx context.Context, ip ipath.Path) (ipath.Resol
 		}
 	}
 
-	md, _, err := api.Head(ctx, imPath)
+	md, err := api.ResolvePath(ctx, imPath)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +237,7 @@ func TestGatewayGet(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := api.ResolvePath(ctx, ipath.Join(ipath.IpfsPath(root), t.Name(), "fnord"))
+	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name(), "fnord"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +371,7 @@ func TestIPNSHostnameRedirect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := api.ResolvePath(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
+	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,18 +453,18 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := api.ResolvePath(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
+	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// create /ipns/example.net/foo/
-	k2, err := api.ResolvePath(ctx, ipath.Join(k, "foo? #<'"))
+	k2, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(k, "foo? #<'"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	k3, err := api.ResolvePath(ctx, ipath.Join(k, "foo? #<'/bar"))
+	k3, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(k, "foo? #<'/bar"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -583,7 +587,7 @@ func TestPretty404(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := api.ResolvePath(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
+	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
 	if err != nil {
 		t.Fatal(err)
 	}

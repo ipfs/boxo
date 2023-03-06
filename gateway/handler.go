@@ -688,7 +688,7 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, resp
 	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
 	if inm := r.Header.Get("If-None-Match"); inm != "" {
 		// TODO: should we be handling _redirect and legacy 404 here?
-		gwMetadata, _, err := i.api.Head(r.Context(), imPath)
+		gwMetadata, err := i.api.ResolvePath(r.Context(), imPath)
 		if err != nil {
 			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
