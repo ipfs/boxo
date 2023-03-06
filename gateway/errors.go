@@ -10,6 +10,7 @@ import (
 
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-path/resolver"
+	"github.com/ipld/go-ipld-prime/datamodel"
 )
 
 var (
@@ -162,6 +163,16 @@ func isErrNotFound(err error) bool {
 	// always returns false with it.
 	for {
 		_, ok := err.(resolver.ErrNoLink)
+		if ok {
+			return true
+		}
+
+		_, ok = err.(datamodel.ErrWrongKind)
+		if ok {
+			return true
+		}
+
+		_, ok = err.(datamodel.ErrNotExists)
 		if ok {
 			return true
 		}
