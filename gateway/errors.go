@@ -99,8 +99,7 @@ func webError(w http.ResponseWriter, err error, defaultCode int) {
 	switch {
 	case isErrNotFound(err):
 		code = http.StatusNotFound
-	case errors.Is(err, ErrGatewayTimeout),
-		errors.Is(err, context.DeadlineExceeded):
+	case errors.Is(err, context.DeadlineExceeded):
 		code = http.StatusGatewayTimeout
 	}
 
