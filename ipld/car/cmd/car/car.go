@@ -79,9 +79,15 @@ func main1() int {
 					&cli.StringFlag{
 						Name:      "file",
 						Aliases:   []string{"f"},
-						Usage:     "The car file to extract from",
+						Usage:     "The car file to extract from, or '-' to read from stdin",
 						Required:  true,
 						TakesFile: true,
+					},
+					&cli.StringFlag{
+						Name:     "path",
+						Aliases:  []string{"p"},
+						Usage:    "The unixfs path to extract",
+						Required: false,
 					},
 					&cli.BoolFlag{
 						Name:    "verbose",
