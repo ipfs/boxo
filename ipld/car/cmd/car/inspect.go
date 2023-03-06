@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -22,13 +23,22 @@ func InspectCar(c *cli.Context) (err error) {
 		}
 	}
 
-	rd, err := carv2.NewReader(inStream)
+	rd, err := carv2.NewReader(inStream, carv2.ZeroLengthSectionAsEOF(true))
 	if err != nil {
 		return err
 	}
 	stats, err := rd.Inspect(c.IsSet("full"))
 	if err != nil {
 		return err
+	}
+
+	if stats.Version == 1 && c.IsSet("full") { // check that we've read all the data
+		got, err := inStream.Read(make([]byte, 1)) // force EOF
+		if err != nil && err != io.EOF {
+			return err
+		} else if got > 0 {
+			return fmt.Errorf("unexpected data after EOF: %d", got)
+		}
 	}
 
 	var v2s string
