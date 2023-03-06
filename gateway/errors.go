@@ -13,74 +13,77 @@ import (
 )
 
 var (
-	ErrInternalServerError = errors.New(http.StatusText(http.StatusInternalServerError))
-	ErrGatewayTimeout      = errors.New(http.StatusText(http.StatusGatewayTimeout))
-	ErrBadGateway          = errors.New(http.StatusText(http.StatusBadGateway))
-	ErrServiceUnavailable  = errors.New(http.StatusText(http.StatusServiceUnavailable))
-	ErrTooManyRequests     = errors.New(http.StatusText(http.StatusTooManyRequests))
+	ErrInternalServerError = NewErrorResponseForCode(http.StatusInternalServerError)
+	ErrGatewayTimeout      = NewErrorResponseForCode(http.StatusGatewayTimeout)
+	ErrBadGateway          = NewErrorResponseForCode(http.StatusBadGateway)
+	ErrServiceUnavailable  = NewErrorResponseForCode(http.StatusServiceUnavailable)
+	ErrTooManyRequests     = NewErrorResponseForCode(http.StatusTooManyRequests)
 )
 
-type errRetryAfter struct {
-	RetryAfter time.Duration
+type ErrorRetryAfter struct {
 	Err        error
+	RetryAfter time.Duration
 }
 
 // NewErrorWithRetryAfter wraps any error in RetryAfter hint that
 // gets passed to HTTP clients in Retry-After HTTP header
-func NewErrorWithRetryAfter(err error, retryAfter time.Duration) *errRetryAfter {
+func NewErrorRetryAfter(err error, retryAfter time.Duration) *ErrorRetryAfter {
 	if err == nil {
 		err = ErrServiceUnavailable
 	}
 	if retryAfter < 0 {
 		retryAfter = 0
 	}
-	return &errRetryAfter{
+	return &ErrorRetryAfter{
 		RetryAfter: retryAfter,
 		Err:        err,
 	}
 }
 
-func (e *errRetryAfter) Error() string {
-	text := e.Err.Error()
+func (e *ErrorRetryAfter) Error() string {
+	var text string
+	if e.Err != nil {
+		text = e.Err.Error()
+	}
 	if e.RetryAfter != 0 {
 		text += fmt.Sprintf(", retry after %s", e.Humanized())
 	}
 	return text
 }
 
-func (e *errRetryAfter) Unwrap() error {
+func (e *ErrorRetryAfter) Unwrap() error {
 	return e.Err
 }
 
-func (e *errRetryAfter) Is(err error) bool {
+func (e *ErrorRetryAfter) Is(err error) bool {
 	switch err.(type) {
-	case *errRetryAfter:
+	case *ErrorRetryAfter:
 		return true
 	default:
 		return false
 	}
 }
 
-func (e *errRetryAfter) RoundSeconds() time.Duration {
+func (e *ErrorRetryAfter) RoundSeconds() time.Duration {
 	return e.RetryAfter.Round(time.Second)
 }
 
-func (e *errRetryAfter) Humanized() string {
+func (e *ErrorRetryAfter) Humanized() string {
 	return e.RoundSeconds().String()
 }
 
 // HTTPHeaderValue returns the Retry-After header value as a string, representing the number
 // of seconds to wait before making a new request, rounded to the nearest second.
 // This function follows the Retry-After header definition as specified in RFC 9110.
-func (e *errRetryAfter) HTTPHeaderValue() string {
+func (e *ErrorRetryAfter) HTTPHeaderValue() string {
 	return strconv.Itoa(int(e.RoundSeconds().Seconds()))
 }
 
 func webError(w http.ResponseWriter, err error, defaultCode int) {
 	code := defaultCode
 
-	// Handle Retry-After header
-	var era *errRetryAfter
+	// Pass Retry-After hint to the client
+	var era *ErrorRetryAfter
 	if errors.As(err, &era) {
 		if era.RetryAfter > 0 {
 			w.Header().Set("Retry-After", era.HTTPHeaderValue())
@@ -99,12 +102,12 @@ func webError(w http.ResponseWriter, err error, defaultCode int) {
 	case errors.Is(err, ErrGatewayTimeout),
 		errors.Is(err, context.DeadlineExceeded):
 		code = http.StatusGatewayTimeout
-	case errors.Is(err, ErrBadGateway):
-		code = http.StatusBadGateway
-	case errors.Is(err, ErrTooManyRequests):
-		code = http.StatusTooManyRequests
-	case errors.Is(err, ErrServiceUnavailable):
-		code = http.StatusServiceUnavailable
+	}
+
+	// Handle explicit code in ErrorResponse
+	var gwErr *ErrorResponse
+	if errors.As(err, &gwErr) {
+		code = gwErr.StatusCode
 	}
 
 	http.Error(w, err.Error(), code)
@@ -131,19 +134,44 @@ func isErrNotFound(err error) bool {
 	}
 }
 
-func webRequestError(w http.ResponseWriter, err *requestError) {
+func webRequestError(w http.ResponseWriter, err *ErrorResponse) {
 	webError(w, err.Err, err.StatusCode)
 }
 
-// Custom type for collecting error details to be handled by `webRequestError`
-type requestError struct {
+// Custom type for collecting error details to be handled by `webError`
+type ErrorResponse struct {
 	StatusCode int
 	Err        error
 }
 
-func newRequestError(err error, statusCode int) *requestError {
-	return &requestError{
+func NewErrorResponseForCode(statusCode int) *ErrorResponse {
+	return NewErrorResponse(errors.New(http.StatusText(statusCode)), statusCode)
+}
+
+func NewErrorResponse(err error, statusCode int) *ErrorResponse {
+	return &ErrorResponse{
 		Err:        err,
 		StatusCode: statusCode,
 	}
+}
+
+func (e *ErrorResponse) Is(err error) bool {
+	switch err.(type) {
+	case *ErrorResponse:
+		return true
+	default:
+		return false
+	}
+}
+
+func (e *ErrorResponse) Error() string {
+	var text string
+	if e.Err != nil {
+		text = e.Err.Error()
+	}
+	return text
+}
+
+func (e *ErrorResponse) Unwrap() error {
+	return e.Err
 }

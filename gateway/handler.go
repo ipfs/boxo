@@ -745,12 +745,12 @@ func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, con
 	return false
 }
 
-func handleUnsupportedHeaders(r *http.Request) (err *requestError) {
+func handleUnsupportedHeaders(r *http.Request) (err *ErrorResponse) {
 	// X-Ipfs-Gateway-Prefix was removed (https://github.com/ipfs/kubo/issues/7702)
 	// TODO: remove this after  go-ipfs 0.13 ships
 	if prfx := r.Header.Get("X-Ipfs-Gateway-Prefix"); prfx != "" {
 		err := fmt.Errorf("unsupported HTTP header: X-Ipfs-Gateway-Prefix support was removed: https://github.com/ipfs/kubo/issues/7702")
-		return newRequestError(err, http.StatusBadRequest)
+		return NewErrorResponse(err, http.StatusBadRequest)
 	}
 	return nil
 }
@@ -786,12 +786,12 @@ func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, logge
 
 // Disallow Service Worker registration on namespace roots
 // https://github.com/ipfs/kubo/issues/4025
-func handleServiceWorkerRegistration(r *http.Request) (err *requestError) {
+func handleServiceWorkerRegistration(r *http.Request) (err *ErrorResponse) {
 	if r.Header.Get("Service-Worker") == "script" {
 		matched, _ := regexp.MatchString(`^/ip[fn]s/[^/]+$`, r.URL.Path)
 		if matched {
 			err := fmt.Errorf("registration is not allowed for this scope")
-			return newRequestError(fmt.Errorf("navigator.serviceWorker: %w", err), http.StatusBadRequest)
+			return NewErrorResponse(fmt.Errorf("navigator.serviceWorker: %w", err), http.StatusBadRequest)
 		}
 	}
 
@@ -842,13 +842,13 @@ func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentP
 	return true
 }
 
-func (i *handler) handleGettingFirstBlock(r *http.Request, begin time.Time, contentPath ipath.Path, resolvedPath ipath.Resolved) *requestError {
+func (i *handler) handleGettingFirstBlock(r *http.Request, begin time.Time, contentPath ipath.Path, resolvedPath ipath.Resolved) *ErrorResponse {
 	// Update the global metric of the time it takes to read the final root block of the requested resource
 	// NOTE: for legacy reasons this happens before we go into content-type specific code paths
 	_, err := i.api.GetBlock(r.Context(), resolvedPath.Cid())
 	if err != nil {
 		err = fmt.Errorf("could not get block %s: %w", resolvedPath.Cid().String(), err)
-		return newRequestError(err, http.StatusInternalServerError)
+		return NewErrorResponse(err, http.StatusInternalServerError)
 	}
 	ns := contentPath.Namespace()
 	timeToGetFirstContentBlock := time.Since(begin).Seconds()
@@ -857,7 +857,7 @@ func (i *handler) handleGettingFirstBlock(r *http.Request, begin time.Time, cont
 	return nil
 }
 
-func (i *handler) setCommonHeaders(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) *requestError {
+func (i *handler) setCommonHeaders(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) *ErrorResponse {
 	i.addUserHeaders(w) // ok, _now_ write user's headers.
 	w.Header().Set("X-Ipfs-Path", contentPath.String())
 
@@ -865,7 +865,7 @@ func (i *handler) setCommonHeaders(w http.ResponseWriter, r *http.Request, conte
 		w.Header().Set("X-Ipfs-Roots", rootCids)
 	} else { // this should never happen, as we resolved the contentPath already
 		err = fmt.Errorf("error while resolving X-Ipfs-Roots: %w", err)
-		return newRequestError(err, http.StatusInternalServerError)
+		return NewErrorResponse(err, http.StatusInternalServerError)
 	}
 
 	return nil

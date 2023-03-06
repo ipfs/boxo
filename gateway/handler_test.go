@@ -124,8 +124,8 @@ func TestErrorBubblingFromAPI(t *testing.T) {
 		headerLength int // how many times was headerName set
 	}{
 		{"429 Too Many Requests without Retry-After header", ErrTooManyRequests, http.StatusTooManyRequests, "Retry-After", "", 0},
-		{"429 Too Many Requests without Retry-After header", NewErrorWithRetryAfter(ErrTooManyRequests, 0*time.Second), http.StatusTooManyRequests, "Retry-After", "", 0},
-		{"429 Too Many Requests with Retry-After header", NewErrorWithRetryAfter(ErrTooManyRequests, 3600*time.Second), http.StatusTooManyRequests, "Retry-After", "3600", 1},
+		{"429 Too Many Requests without Retry-After header", NewErrorRetryAfter(ErrTooManyRequests, 0*time.Second), http.StatusTooManyRequests, "Retry-After", "", 0},
+		{"429 Too Many Requests with Retry-After header", NewErrorRetryAfter(ErrTooManyRequests, 3600*time.Second), http.StatusTooManyRequests, "Retry-After", "3600", 1},
 	} {
 		api := &errorMockAPI{err: fmt.Errorf("wrapped for testing purposes: %w", test.err)}
 		ts := newTestServer(t, api)
