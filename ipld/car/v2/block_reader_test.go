@@ -179,6 +179,40 @@ func TestMaxSectionLength(t *testing.T) {
 	require.True(t, bytes.Equal(block, readBlock.RawData()))
 }
 
+func TestTrustedCAR(t *testing.T) {
+	// headerHex is the zero-roots CARv1 header
+	const headerHex = "11a265726f6f7473806776657273696f6e01"
+	headerBytes, _ := hex.DecodeString(headerHex)
+	// block of zeros
+	block := make([]byte, 5)
+	// CID for that block
+	pfx := cid.NewPrefixV1(cid.Raw, mh.SHA2_256)
+	cid, err := pfx.Sum(block)
+	require.NoError(t, err)
+
+	// Modify the block so it won't match CID anymore
+	block[2] = 0xFF
+	// construct CAR
+	var buf bytes.Buffer
+	buf.Write(headerBytes)
+	buf.Write(varint.ToUvarint(uint64(len(cid.Bytes()) + len(block))))
+	buf.Write(cid.Bytes())
+	buf.Write(block)
+
+	// try to read it as trusted
+	car, err := carv2.NewBlockReader(bytes.NewReader(buf.Bytes()), carv2.WithTrustedCAR(true))
+	require.NoError(t, err)
+	_, err = car.Next()
+	require.NoError(t, err)
+
+	// Try to read it as untrusted - should fail
+	car, err = carv2.NewBlockReader(bytes.NewReader(buf.Bytes()), carv2.WithTrustedCAR(false))
+	require.NoError(t, err)
+	// error should occur on first section read
+	_, err = car.Next()
+	require.EqualError(t, err, "mismatch in content integrity, expected: bafkreieikviivlpbn3cxhuq6njef37ikoysaqxa2cs26zxleqxpay2bzuq, got: bafkreidgklrppelx4fxcsna7cxvo3g7ayedfojkqeuus6kz6e4hy7gukmy")
+}
+
 func TestMaxHeaderLength(t *testing.T) {
 	// headerHex is the is a 5 root CARv1 header
 	const headerHex = "de01a265726f6f747385d82a58250001711220785197229dc8bb1152945da58e2348f7e279eeded06cc2ca736d0e879858b501d82a58250001711220785197229dc8bb1152945da58e2348f7e279eeded06cc2ca736d0e879858b501d82a58250001711220785197229dc8bb1152945da58e2348f7e279eeded06cc2ca736d0e879858b501d82a58250001711220785197229dc8bb1152945da58e2348f7e279eeded06cc2ca736d0e879858b501d82a58250001711220785197229dc8bb1152945da58e2348f7e279eeded06cc2ca736d0e879858b5016776657273696f6e01"

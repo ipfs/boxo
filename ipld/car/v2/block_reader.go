@@ -120,13 +120,15 @@ func (br *BlockReader) Next() (blocks.Block, error) {
 		return nil, err
 	}
 
-	hashed, err := c.Prefix().Sum(data)
-	if err != nil {
-		return nil, err
-	}
+	if !br.opts.TrustedCAR {
+		hashed, err := c.Prefix().Sum(data)
+		if err != nil {
+			return nil, err
+		}
 
-	if !hashed.Equals(c) {
-		return nil, fmt.Errorf("mismatch in content integrity, expected: %s, got: %s", c, hashed)
+		if !hashed.Equals(c) {
+			return nil, fmt.Errorf("mismatch in content integrity, expected: %s, got: %s", c, hashed)
+		}
 	}
 
 	ss := uint64(c.ByteLen()) + uint64(len(data))

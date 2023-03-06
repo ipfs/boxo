@@ -60,6 +60,7 @@ type Options struct {
 	MaxTraversalLinks            uint64
 	WriteAsCarV1                 bool
 	TraversalPrototypeChooser    traversal.LinkTargetNodePrototypeChooser
+	TrustedCAR                   bool
 
 	MaxAllowedHeaderSize  uint64
 	MaxAllowedSectionSize uint64
@@ -157,6 +158,14 @@ func MaxIndexCidSize(s uint64) Option {
 func WithTraversalPrototypeChooser(t traversal.LinkTargetNodePrototypeChooser) Option {
 	return func(o *Options) {
 		o.TraversalPrototypeChooser = t
+	}
+}
+
+// WithTrustedCAR specifies whether CIDs match the block data as they are read
+// from the CAR files.
+func WithTrustedCAR(t bool) Option {
+	return func(o *Options) {
+		o.TrustedCAR = t
 	}
 }
 
