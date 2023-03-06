@@ -13,46 +13,86 @@ import (
 )
 
 var (
-	ErrGatewayTimeout = errors.New(http.StatusText(http.StatusGatewayTimeout))
-	ErrBadGateway     = errors.New(http.StatusText(http.StatusBadGateway))
+	ErrInternalServerError = errors.New(http.StatusText(http.StatusInternalServerError))
+	ErrGatewayTimeout      = errors.New(http.StatusText(http.StatusGatewayTimeout))
+	ErrBadGateway          = errors.New(http.StatusText(http.StatusBadGateway))
+	ErrServiceUnavailable  = errors.New(http.StatusText(http.StatusServiceUnavailable))
+	ErrTooManyRequests     = errors.New(http.StatusText(http.StatusTooManyRequests))
 )
 
-type ErrTooManyRequests struct {
+type errRetryAfter struct {
 	RetryAfter time.Duration
+	Err        error
 }
 
-func (e *ErrTooManyRequests) Error() string {
-	text := http.StatusText(http.StatusTooManyRequests)
+// NewErrorWithRetryAfter wraps any error in RetryAfter hint that
+// gets passed to HTTP clients in Retry-After HTTP header
+func NewErrorWithRetryAfter(err error, retryAfter time.Duration) *errRetryAfter {
+	if err == nil {
+		err = ErrServiceUnavailable
+	}
+	if retryAfter < 0 {
+		retryAfter = 0
+	}
+	return &errRetryAfter{
+		RetryAfter: retryAfter,
+		Err:        err,
+	}
+}
+
+func (e *errRetryAfter) Error() string {
+	text := e.Err.Error()
 	if e.RetryAfter != 0 {
-		text += fmt.Sprintf(", retry after %s", e.RetryAfterHuman())
+		text += fmt.Sprintf(", retry after %s", e.Humanized())
 	}
 	return text
 }
 
-func (e *ErrTooManyRequests) Is(err error) bool {
+func (e *errRetryAfter) Unwrap() error {
+	return e.Err
+}
+
+func (e *errRetryAfter) Is(err error) bool {
 	switch err.(type) {
-	case *ErrTooManyRequests:
+	case *errRetryAfter:
 		return true
 	default:
 		return false
 	}
 }
 
-func (e *ErrTooManyRequests) RetryAfterRoundSeconds() time.Duration {
+func (e *errRetryAfter) RoundSeconds() time.Duration {
 	return e.RetryAfter.Round(time.Second)
 }
 
-func (e *ErrTooManyRequests) RetryAfterHuman() string {
-	return e.RetryAfterRoundSeconds().String()
+func (e *errRetryAfter) Humanized() string {
+	return e.RoundSeconds().String()
 }
 
-func (e *ErrTooManyRequests) RetryAfterHeader() string {
-	return strconv.Itoa(int(e.RetryAfterRoundSeconds().Seconds()))
+// HTTPHeaderValue returns the Retry-After header value as a string, representing the number
+// of seconds to wait before making a new request, rounded to the nearest second.
+// This function follows the Retry-After header definition as specified in RFC 9110.
+func (e *errRetryAfter) HTTPHeaderValue() string {
+	return strconv.Itoa(int(e.RoundSeconds().Seconds()))
 }
 
 func webError(w http.ResponseWriter, err error, defaultCode int) {
 	code := defaultCode
 
+	// Handle Retry-After header
+	var era *errRetryAfter
+	if errors.As(err, &era) {
+		if era.RetryAfter > 0 {
+			w.Header().Set("Retry-After", era.HTTPHeaderValue())
+			// Adjust defaultCode if needed
+			if code != http.StatusTooManyRequests && code != http.StatusServiceUnavailable {
+				code = http.StatusTooManyRequests
+			}
+		}
+		err = era.Unwrap()
+	}
+
+	// Handle Status Code
 	switch {
 	case isErrNotFound(err):
 		code = http.StatusNotFound
@@ -61,14 +101,10 @@ func webError(w http.ResponseWriter, err error, defaultCode int) {
 		code = http.StatusGatewayTimeout
 	case errors.Is(err, ErrBadGateway):
 		code = http.StatusBadGateway
-	case errors.Is(err, &ErrTooManyRequests{}):
-		var tooManyRequests *ErrTooManyRequests
-		_ = errors.As(err, &tooManyRequests)
-		if tooManyRequests.RetryAfter > 0 {
-			w.Header().Set("Retry-After", tooManyRequests.RetryAfterHeader())
-		}
-
+	case errors.Is(err, ErrTooManyRequests):
 		code = http.StatusTooManyRequests
+	case errors.Is(err, ErrServiceUnavailable):
+		code = http.StatusServiceUnavailable
 	}
 
 	http.Error(w, err.Error(), code)
