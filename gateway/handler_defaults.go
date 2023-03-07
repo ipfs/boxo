@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ipfs/go-libipfs/files"
-	mc "github.com/multiformats/go-multicodec"
 	"net/http"
 	"net/textproto"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ipfs/go-libipfs/files"
+	mc "github.com/multiformats/go-multicodec"
 
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
@@ -133,7 +134,7 @@ func parseRange(s string) ([]GetRange, error) {
 			r.To = &i
 		} else {
 			i, err := strconv.ParseUint(start, 10, 64)
-			if err != nil || i < 0 {
+			if err != nil {
 				return nil, errors.New("invalid range")
 			}
 			r.From = i
