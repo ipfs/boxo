@@ -14,7 +14,9 @@ USAGE:
    car [global options] command [command options] [arguments...]
 
 COMMANDS:
+   compile        compile a car file from a debug patch
    create, c      Create a car file
+   debug          debug a car file
    detach-index   Detach an index to a detached file
    extract, x     Extract the contents of a car when the car encodes UnixFS data
    filter, f      Filter the CIDs in a car
