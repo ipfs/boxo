@@ -65,8 +65,8 @@ func (api *errorMockAPI) Head(ctx context.Context, path ImmutablePath) (ContentP
 	return ContentPathMetadata{}, nil, api.err
 }
 
-func (api *errorMockAPI) GetCAR(ctx context.Context, path ImmutablePath) (ContentPathMetadata, io.ReadCloser, error, <-chan error) {
-	return ContentPathMetadata{}, nil, api.err, nil
+func (api *errorMockAPI) GetCAR(ctx context.Context, path ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
+	return ContentPathMetadata{}, nil, nil, api.err
 }
 
 func (api *errorMockAPI) ResolveMutable(ctx context.Context, path ipath.Path) (ImmutablePath, error) {

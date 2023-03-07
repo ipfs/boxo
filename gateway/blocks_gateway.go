@@ -273,14 +273,14 @@ func (api *BlocksGateway) Head(ctx context.Context, path ImmutablePath) (Content
 	return md, fileNode, nil
 }
 
-func (api *BlocksGateway) GetCAR(ctx context.Context, path ImmutablePath) (ContentPathMetadata, io.ReadCloser, error, <-chan error) {
+func (api *BlocksGateway) GetCAR(ctx context.Context, path ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
 	// Same go-car settings as dag.export command
 	store := dagStore{api: api, ctx: ctx}
 
 	// TODO: When switching to exposing path blocks we'll want to add these as well
 	roots, lastSeg, err := api.getPathRoots(ctx, path)
 	if err != nil {
-		return ContentPathMetadata{}, nil, err, nil
+		return ContentPathMetadata{}, nil, nil, err
 	}
 
 	md := ContentPathMetadata{
@@ -304,7 +304,7 @@ func (api *BlocksGateway) GetCAR(ctx context.Context, path ImmutablePath) (Conte
 		close(errCh)
 	}()
 
-	return md, r, nil, errCh
+	return md, r, errCh, nil
 }
 
 func (api *BlocksGateway) getPathRoots(ctx context.Context, contentPath ImmutablePath) ([]cid.Cid, ifacepath.Resolved, error) {

@@ -135,7 +135,7 @@ func (api *mockAPI) Head(ctx context.Context, immutablePath ImmutablePath) (Cont
 	return api.gw.Head(ctx, immutablePath)
 }
 
-func (api *mockAPI) GetCAR(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, io.ReadCloser, error, <-chan error) {
+func (api *mockAPI) GetCAR(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
 	return api.gw.GetCAR(ctx, immutablePath)
 }
 

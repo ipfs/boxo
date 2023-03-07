@@ -30,7 +30,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	gwMetadata, carFile, err, errCh := i.api.GetCAR(ctx, imPath)
+	gwMetadata, carFile, errCh, err := i.api.GetCAR(ctx, imPath)
 	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
 		return false
 	}

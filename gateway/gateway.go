@@ -101,7 +101,7 @@ type API interface {
 	// that may contain a single error for if any errors occur during the streaming. If there was an initial error the
 	// error channel is nil
 	// TODO: Make this function signature better
-	GetCAR(context.Context, ImmutablePath) (ContentPathMetadata, io.ReadCloser, error, <-chan error)
+	GetCAR(context.Context, ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error)
 
 	// IsCached returns whether or not the path exists locally.
 	IsCached(context.Context, path.Path) bool
