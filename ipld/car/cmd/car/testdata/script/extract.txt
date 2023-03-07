@@ -15,7 +15,7 @@ cmp actual-full/c/8/H.txt expected/c/8/H.txt
 # full DAG export, everything in the CAR, accepted from stdin
 mkdir actual-stdin
 stdin ${INPUTS}/simple-unixfs.car
-car extract -f - actual-stdin
+car extract actual-stdin
 stderr '^extracted 9 file\(s\)$'
 cmp actual-stdin/a/1/A.txt expected/a/1/A.txt
 cmp actual-stdin/a/2/B.txt expected/a/2/B.txt

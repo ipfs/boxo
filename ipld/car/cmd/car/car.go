@@ -80,8 +80,8 @@ func main1() int {
 					&cli.StringFlag{
 						Name:      "file",
 						Aliases:   []string{"f"},
-						Usage:     "The car file to extract from, or '-' to read from stdin",
-						Required:  true,
+						Usage:     "The car file to extract from, or stdin if omitted",
+						Required:  false,
 						TakesFile: true,
 					},
 					&cli.StringFlag{
