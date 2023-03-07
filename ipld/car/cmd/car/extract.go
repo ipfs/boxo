@@ -93,7 +93,7 @@ func ExtractCar(c *cli.Context) error {
 		extractedFiles += count
 	}
 	if extractedFiles == 0 {
-		fmt.Fprintf(c.App.ErrWriter, "no files extracted\n")
+		return cli.Exit("no files extracted", 1)
 	} else {
 		fmt.Fprintf(c.App.ErrWriter, "extracted %d file(s)\n", extractedFiles)
 	}

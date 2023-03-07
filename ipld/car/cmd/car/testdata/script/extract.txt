@@ -72,6 +72,10 @@ cmp actual-single/a/2/B.txt expected/a/2/B.txt
 ! exists actual-single/c/7/G.txt
 ! exists actual-single/c/8/H.txt
 
+# extract that doesn't yield any files should error
+! car extract -f ${INPUTS}/simple-unixfs-missing-blocks.car -p b
+stderr '^no files extracted$'
+
 # car with only one file, nested inside sharded directory, output to stdout
 car extract -f ${INPUTS}/wikipedia-cryptographic-hash-function.car -p wiki/Cryptographic_hash_function -
 stderr '^extracted 1 file\(s\)$'
