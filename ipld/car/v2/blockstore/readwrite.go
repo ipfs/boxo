@@ -243,11 +243,10 @@ func (b *ReadWrite) Finalize() error {
 	b.ronly.mu.Lock()
 	defer b.ronly.mu.Unlock()
 
-	if err := b.finalizeReadOnlyWithoutMutex(); err != nil {
-		return err
-	}
-	if err := b.closeWithoutMutex(); err != nil {
-		return err
+	for _, err := range []error{b.finalizeReadOnlyWithoutMutex(), b.closeWithoutMutex()} {
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
