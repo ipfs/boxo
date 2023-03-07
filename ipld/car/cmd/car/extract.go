@@ -213,7 +213,7 @@ func extractDir(c *cli.Context, ls *ipld.LinkSystem, n ipld.Node, outputRoot, ou
 		dest, err := ls.Load(ipld.LinkContext{}, vl, basicnode.Prototype.Any)
 		if err != nil {
 			if nf, ok := err.(interface{ NotFound() bool }); ok && nf.NotFound() {
-				fmt.Fprintf(c.App.ErrWriter, "data for directory entry not found: %s (skipping...)\n", name)
+				fmt.Fprintf(c.App.ErrWriter, "data for entry not found: %s (skipping...)\n", name)
 				return 0, nil
 			}
 			return 0, err

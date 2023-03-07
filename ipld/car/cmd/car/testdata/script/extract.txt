@@ -1,0 +1,97 @@
+# full DAG export, everything in the CAR
+mkdir actual-full
+car extract -f ${INPUTS}/simple-unixfs.car actual-full
+stderr '^extracted 9 file\(s\)$'
+cmp actual-full/a/1/A.txt expected/a/1/A.txt
+cmp actual-full/a/2/B.txt expected/a/2/B.txt
+cmp actual-full/a/3/C.txt expected/a/3/C.txt
+cmp actual-full/b/5/E.txt expected/b/5/E.txt
+cmp actual-full/b/6/F.txt expected/b/6/F.txt
+cmp actual-full/b/4/D.txt expected/b/4/D.txt
+cmp actual-full/c/9/I.txt expected/c/9/I.txt
+cmp actual-full/c/7/G.txt expected/c/7/G.txt
+cmp actual-full/c/8/H.txt expected/c/8/H.txt
+
+# full DAG export, everything in the CAR, accepted from stdin
+mkdir actual-stdin
+stdin ${INPUTS}/simple-unixfs.car
+car extract -f - actual-stdin
+stderr '^extracted 9 file\(s\)$'
+cmp actual-stdin/a/1/A.txt expected/a/1/A.txt
+cmp actual-stdin/a/2/B.txt expected/a/2/B.txt
+cmp actual-stdin/a/3/C.txt expected/a/3/C.txt
+cmp actual-stdin/b/5/E.txt expected/b/5/E.txt
+cmp actual-stdin/b/6/F.txt expected/b/6/F.txt
+cmp actual-stdin/b/4/D.txt expected/b/4/D.txt
+cmp actual-stdin/c/9/I.txt expected/c/9/I.txt
+cmp actual-stdin/c/7/G.txt expected/c/7/G.txt
+cmp actual-stdin/c/8/H.txt expected/c/8/H.txt
+
+# full DAG export, everything in the CAR, but the CAR is missing blocks (incomplete DAG)
+mkdir actual-missing
+car extract -f ${INPUTS}/simple-unixfs-missing-blocks.car actual-missing
+stderr -count=1 'data for entry not found: 4 \(skipping\.\.\.\)'
+stderr -count=1 'data for entry not found: E.txt \(skipping\.\.\.\)'
+stderr -count=1 'data for entry not found: 6 \(skipping\.\.\.\)'
+stderr -count=1 '^extracted 6 file\(s\)$'
+cmp actual-missing/a/1/A.txt expected/a/1/A.txt
+cmp actual-missing/a/2/B.txt expected/a/2/B.txt
+cmp actual-missing/a/3/C.txt expected/a/3/C.txt
+! exists actual-missing/b/5/E.txt
+! exists actual-missing/b/6/F.txt
+! exists actual-missing/b/4/D.txt
+cmp actual-missing/c/9/I.txt expected/c/9/I.txt
+cmp actual-missing/c/7/G.txt expected/c/7/G.txt
+cmp actual-missing/c/8/H.txt expected/c/8/H.txt
+
+# path-based partial export, everything under the path specified (also without leading / in path)
+mkdir actual-partial
+car extract -f ${INPUTS}/simple-unixfs.car -p b actual-partial
+stderr '^extracted 3 file\(s\)$'
+! exists actual-partial/a/1/A.txt
+! exists actual-partial/a/2/B.txt
+! exists actual-partial/a/3/C.txt
+cmp actual-partial/b/5/E.txt expected/b/5/E.txt
+cmp actual-partial/b/6/F.txt expected/b/6/F.txt
+cmp actual-partial/b/4/D.txt expected/b/4/D.txt
+! exists actual-partial/c/9/I.txt
+! exists actual-partial/c/7/G.txt
+! exists actual-partial/c/8/H.txt
+
+# path-based single-file export (also with leading /)
+mkdir actual-single
+car extract -f ${INPUTS}/simple-unixfs.car -p /a/2/B.txt actual-single
+stderr '^extracted 1 file\(s\)$'
+! exists actual-single/a/1/A.txt
+cmp actual-single/a/2/B.txt expected/a/2/B.txt
+! exists actual-single/a/3/C.txt
+! exists actual-single/b/5/E.txt
+! exists actual-single/b/6/F.txt
+! exists actual-single/b/4/D.txt
+! exists actual-single/c/9/I.txt
+! exists actual-single/c/7/G.txt
+! exists actual-single/c/8/H.txt
+
+# car with only one file, nested inside sharded directory, output to stdout
+car extract -f ${INPUTS}/wikipedia-cryptographic-hash-function.car -p wiki/Cryptographic_hash_function -
+stderr '^extracted 1 file\(s\)$'
+stdout -count=1 '^  <title>Cryptographic hash function</title>$'
+
+-- expected/a/1/A.txt --
+a1A
+-- expected/a/2/B.txt --
+a2B
+-- expected/a/3/C.txt --
+a3C
+-- expected/b/5/E.txt --
+b5E
+-- expected/b/6/F.txt --
+b6F
+-- expected/b/4/D.txt --
+b4D
+-- expected/c/9/I.txt --
+c9I
+-- expected/c/7/G.txt --
+c7G
+-- expected/c/8/H.txt --
+c8H
