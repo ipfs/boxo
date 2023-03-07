@@ -2,11 +2,9 @@ package gateway
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/ipfs/go-libipfs/files"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -22,11 +20,6 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 		return false
 	}
 	defer data.Close()
-	blockData, ok := data.(files.File)
-	if !ok { // This should not happen
-		webError(w, fmt.Errorf("invalid data: expected a raw block, did not receive a file"), http.StatusInternalServerError)
-		return false
-	}
 
 	if err := i.setIpfsRootsHeader(w, gwMetadata); err != nil {
 		webRequestError(w, err)
@@ -51,7 +44,7 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
-	_, dataSent, _ := ServeContent(w, r, name, modtime, blockData)
+	_, dataSent, _ := ServeContent(w, r, name, modtime, data)
 
 	if dataSent {
 		// Update metrics

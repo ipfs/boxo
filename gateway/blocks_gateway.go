@@ -52,8 +52,6 @@ type BlocksGateway struct {
 
 var _ API = (*BlocksGateway)(nil)
 
-type gwOpts struct{}
-
 type gwOptions struct {
 	ns namesys.NameSystem
 	vs routing.ValueStore
@@ -483,17 +481,4 @@ func (api *BlocksGateway) resolvePath(ctx context.Context, p ifacepath.Path) (if
 	}
 
 	return ifacepath.NewResolvedPath(ipath, node, root, gopath.Join(rest...)), nil
-}
-
-func (api *BlocksGateway) resolveNode(ctx context.Context, p ifacepath.Path) (format.Node, error) {
-	rp, err := api.resolvePath(ctx, p)
-	if err != nil {
-		return nil, err
-	}
-
-	node, err := api.dagService.Get(ctx, rp.Cid())
-	if err != nil {
-		return nil, fmt.Errorf("get node: %w", err)
-	}
-	return node, nil
 }

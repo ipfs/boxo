@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/files"
 	"github.com/ipfs/go-libipfs/gateway/assets"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/ipld/go-ipld-prime/multicodec"
@@ -61,11 +60,6 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 		return false
 	}
 	defer data.Close()
-	blockData, ok := data.(files.File)
-	if !ok { // This should not happen
-		webError(w, fmt.Errorf("invalid data: expected a raw block, did not receive a file"), http.StatusInternalServerError)
-		return false
-	}
 
 	if err := i.setIpfsRootsHeader(w, gwMetadata); err != nil {
 		webRequestError(w, err)
@@ -73,7 +67,7 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 	}
 
 	resolvedPath := gwMetadata.LastSegment
-	return i.renderCodec(ctx, w, r, resolvedPath, blockData, contentPath, begin, requestedContentType)
+	return i.renderCodec(ctx, w, r, resolvedPath, data, contentPath, begin, requestedContentType)
 }
 
 func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, blockData io.ReadSeekCloser, contentPath ipath.Path, begin time.Time, requestedContentType string) bool {
