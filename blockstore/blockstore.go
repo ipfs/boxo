@@ -145,10 +145,18 @@ func NewBlockstore(d ds.Batching, opts ...Option) Blockstore {
 	}
 
 	if !bs.noPrefix {
-		dd := dsns.Wrap(d, BlockPrefix)
-		bs.datastore = dd
+		bs.datastore = dsns.Wrap(bs.datastore, BlockPrefix)
 	}
 	return bs
+}
+
+// NewBlockstoreNoPrefix returns a default Blockstore implementation
+// using the provided datastore.Batching backend.
+// This constructor does not modify input keys in any way
+//
+// Deprecated: Use NewBlockstore with the NoPrefix option instead.
+func NewBlockstoreNoPrefix(d ds.Batching) Blockstore {
+	return NewBlockstore(d, NoPrefix())
 }
 
 type blockstore struct {
