@@ -133,7 +133,7 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 				// dnslink, then output a more specific error message
 				if rootResErr == ErrResolveFailed && subResErr == ErrResolveFailed {
 					// Wrap error so that it can be tested if it is a ErrResolveFailed
-					err := fmt.Errorf("%w: %q is missing a DNSLink record (https://docs.ipfs.io/concepts/dnslink/)", ErrResolveFailed, gpath.Base(name))
+					err := fmt.Errorf("%w: _dnslink subdomain at %q is missing a TXT record (https://docs.ipfs.tech/concepts/dnslink/)", ErrResolveFailed, gpath.Base(name))
 					emitOnceResult(ctx, out, onceResult{err: err})
 				}
 				return
