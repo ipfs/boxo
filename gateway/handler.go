@@ -283,6 +283,8 @@ func (i *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			log.Error("A panic occurred in the gateway handler!")
 			log.Error(r)
 			debug.PrintStack()
+
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}()
 
