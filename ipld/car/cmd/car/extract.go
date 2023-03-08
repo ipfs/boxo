@@ -230,7 +230,7 @@ func extractDir(c *cli.Context, ls *ipld.LinkSystem, n ipld.Node, outputRoot, ou
 		dest, err := ls.Load(ipld.LinkContext{}, vl, basicnode.Prototype.Any)
 		if err != nil {
 			if nf, ok := err.(interface{ NotFound() bool }); ok && nf.NotFound() {
-				fmt.Fprintf(c.App.ErrWriter, "data for entry not found: %s (skipping...)\n", name)
+				fmt.Fprintf(c.App.ErrWriter, "data for entry not found: %s (skipping...)\n", path.Join(outputPath, name))
 				return 0, nil
 			}
 			return 0, err
@@ -305,10 +305,15 @@ func extractDir(c *cli.Context, ls *ipld.LinkSystem, n ipld.Node, outputRoot, ou
 
 	// everything
 	var count int
+	var shardSkip int
 	mi := n.MapIterator()
 	for !mi.Done() {
 		key, val, err := mi.Next()
 		if err != nil {
+			if nf, ok := err.(interface{ NotFound() bool }); ok && nf.NotFound() {
+				shardSkip++
+				continue
+			}
 			return 0, err
 		}
 		ks, err := key.AsString()
@@ -321,7 +326,9 @@ func extractDir(c *cli.Context, ls *ipld.LinkSystem, n ipld.Node, outputRoot, ou
 		}
 		count += ecount
 	}
-
+	if shardSkip > 0 {
+		fmt.Fprintf(c.App.ErrWriter, "data for entry not found for %d unknown sharded entries (skipped...)\n", shardSkip)
+	}
 	return count, nil
 }
 

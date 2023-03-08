@@ -30,9 +30,9 @@ cmp actual-stdin/c/8/H.txt expected/c/8/H.txt
 # full DAG export, everything in the CAR, but the CAR is missing blocks (incomplete DAG)
 mkdir actual-missing
 car extract -f ${INPUTS}/simple-unixfs-missing-blocks.car actual-missing
-stderr -count=1 'data for entry not found: 4 \(skipping\.\.\.\)'
-stderr -count=1 'data for entry not found: E.txt \(skipping\.\.\.\)'
-stderr -count=1 'data for entry not found: 6 \(skipping\.\.\.\)'
+stderr -count=1 'data for entry not found: /b/4 \(skipping\.\.\.\)'
+stderr -count=1 'data for entry not found: /b/5/E.txt \(skipping\.\.\.\)'
+stderr -count=1 'data for entry not found: /b/6 \(skipping\.\.\.\)'
 stderr -count=1 '^extracted 6 file\(s\)$'
 cmp actual-missing/a/1/A.txt expected/a/1/A.txt
 cmp actual-missing/a/2/B.txt expected/a/2/B.txt
@@ -80,6 +80,18 @@ stderr '^no files extracted$'
 car extract -f ${INPUTS}/wikipedia-cryptographic-hash-function.car -p wiki/Cryptographic_hash_function -
 stderr '^extracted 1 file\(s\)$'
 stdout -count=1 '^  <title>Cryptographic hash function</title>$'
+
+# car with only one file, full extract, lots of errors
+mkdir actual-wiki
+car extract -f ${INPUTS}/wikipedia-cryptographic-hash-function.car actual-wiki
+stderr '^extracted 1 file\(s\)$'
+stderr -count=1 '^data for entry not found for 570 unknown sharded entries \(skipped\.\.\.\)$'
+# random sampling of expected skip errors
+stderr -count=1 '^data for entry not found: /wiki/1969_Men''s_World_Ice_Hockey_Championships \(skipping\.\.\.\)$'
+stderr -count=1 '^data for entry not found: /wiki/Wrestle_mania_30 \(skipping\.\.\.\)$'
+stderr -count=1 '^data for entry not found: /zimdump_version \(skipping\.\.\.\)$'
+stderr -count=1 '^data for entry not found: /favicon.ico \(skipping\.\.\.\)$'
+stderr -count=1 '^data for entry not found: /index.html \(skipping\.\.\.\)$'
 
 -- expected/a/1/A.txt --
 a1A
