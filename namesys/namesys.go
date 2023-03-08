@@ -24,6 +24,7 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/ipfs/go-path"
+	iface "github.com/ipfs/interface-go-ipfs-core"
 	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 	ci "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -87,6 +88,23 @@ func WithDatastore(ds ds.Datastore) Option {
 	}
 }
 
+func loadStaticMap(list string) (map[string]path.Path, error) {
+	staticMap := make(map[string]path.Path)
+	for _, pair := range strings.Split(list, ",") {
+		mapping := strings.SplitN(pair, ":", 2)
+		key := mapping[0]
+		value := path.FromString(mapping[1])
+
+		ipnsKey, err := peer.Decode(key)
+		if err == nil {
+			key = iface.FormatKeyID(ipnsKey)
+		}
+
+		staticMap[key] = value
+	}
+	return staticMap, nil
+}
+
 // NewNameSystem will construct the IPFS naming system based on Routing
 func NewNameSystem(r routing.ValueStore, opts ...Option) (NameSystem, error) {
 	var staticMap map[string]path.Path
@@ -96,12 +114,11 @@ func NewNameSystem(r routing.ValueStore, opts ...Option) (NameSystem, error) {
 	// Example:
 	// IPFS_NS_MAP="dnslink-test.example.com:/ipfs/bafkreicysg23kiwv34eg2d7qweipxwosdo2py4ldv42nbauguluen5v6am"
 	if list := os.Getenv("IPFS_NS_MAP"); list != "" {
-		staticMap = make(map[string]path.Path)
-		for _, pair := range strings.Split(list, ",") {
-			mapping := strings.SplitN(pair, ":", 2)
-			key := mapping[0]
-			value := path.FromString(mapping[1])
-			staticMap[key] = value
+		var err error
+		staticMap, err = loadStaticMap(list)
+
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -215,7 +232,7 @@ func (ns *mpns) resolveOnceAsync(ctx context.Context, name string, options opts.
 
 	cacheKey := key
 	if err == nil {
-		cacheKey = string(ipnsKey)
+		cacheKey = iface.FormatKeyID(ipnsKey)
 	}
 
 	if p, ok := ns.cacheGet(cacheKey); ok {
