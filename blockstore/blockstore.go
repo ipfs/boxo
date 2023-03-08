@@ -107,47 +107,56 @@ type gcBlockstore struct {
 	GCLocker
 }
 
+// Option is a default implementation Blockstore option
+type Option struct {
+	f func(bs *blockstore)
+}
+
+// WriteThrough skips checking if the blockstore already has a block before
+// writing it.
+func WriteThrough() Option {
+	return Option{
+		func(bs *blockstore) {
+			bs.writeThrough = true
+		},
+	}
+}
+
+// NoPrefix avoids wrapping the blockstore into the BlockPrefix namespace
+// ("/blocks"), so keys will not be modified in any way.
+func NoPrefix() Option {
+	return Option{
+		func(bs *blockstore) {
+			bs.noPrefix = true
+		},
+	}
+}
+
 // NewBlockstore returns a default Blockstore implementation
 // using the provided datastore.Batching backend.
-func NewBlockstore(d ds.Batching) Blockstore {
-	var dsb ds.Batching
-	dd := dsns.Wrap(d, BlockPrefix)
-	dsb = dd
-	return &blockstore{
-		datastore:  dsb,
-		rehash:     uatomic.NewBool(false),
-		checkFirst: true,
-	}
-}
-
-// NewWriteThrough returns a default Blockstore implementation
-// which does not tries to check if blocks exist prior to writing.
-func NewWriteThrough(d ds.Batching) Blockstore {
-	var dsb ds.Batching
-	dd := dsns.Wrap(d, BlockPrefix)
-	dsb = dd
-	return &blockstore{
-		datastore:  dsb,
-		rehash:     uatomic.NewBool(false),
-		checkFirst: false,
-	}
-}
-
-// NewBlockstoreNoPrefix returns a default Blockstore implementation
-// using the provided datastore.Batching backend.
-// This constructor does not modify input keys in any way
-func NewBlockstoreNoPrefix(d ds.Batching) Blockstore {
-	return &blockstore{
+func NewBlockstore(d ds.Batching, opts ...Option) Blockstore {
+	bs := &blockstore{
 		datastore: d,
 		rehash:    uatomic.NewBool(false),
 	}
+
+	for _, o := range opts {
+		o.f(bs)
+	}
+
+	if !bs.noPrefix {
+		dd := dsns.Wrap(d, BlockPrefix)
+		bs.datastore = dd
+	}
+	return bs
 }
 
 type blockstore struct {
 	datastore ds.Batching
 
-	rehash     *uatomic.Bool
-	checkFirst bool
+	rehash       *uatomic.Bool
+	writeThrough bool
+	noPrefix     bool
 }
 
 func (bs *blockstore) HashOnRead(enabled bool) {
@@ -185,7 +194,7 @@ func (bs *blockstore) Put(ctx context.Context, block blocks.Block) error {
 	k := dshelp.MultihashToDsKey(block.Cid().Hash())
 
 	// Has is cheaper than Put, so see if we already have it
-	if bs.checkFirst {
+	if !bs.writeThrough {
 		exists, err := bs.datastore.Has(ctx, k)
 		if err == nil && exists {
 			return nil // already stored.
@@ -207,7 +216,7 @@ func (bs *blockstore) PutMany(ctx context.Context, blocks []blocks.Block) error 
 	for _, b := range blocks {
 		k := dshelp.MultihashToDsKey(b.Cid().Hash())
 
-		if bs.checkFirst {
+		if !bs.writeThrough {
 			exists, err := bs.datastore.Has(ctx, k)
 			if err == nil && exists {
 				continue
