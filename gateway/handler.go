@@ -351,19 +351,18 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResponseFormat", responseFormat))
 
+	i.addUserHeaders(w) // ok, _now_ write user's headers.
+	w.Header().Set("X-Ipfs-Path", contentPath.String())
+
 	// TODO: Why did the previous code do path resolution, was that a bug?
 	// TODO: Does If-None-Match apply here?
 	if responseFormat == "application/vnd.ipfs.ipns-record" {
 		logger.Debugw("serving ipns record", "path", contentPath)
-
-		i.addUserHeaders(w)                                 // ok, _now_ write user's headers.
-		w.Header().Set("X-Ipfs-Path", contentPath.String()) // TODO: Should we even set this?
-
 		success := i.serveIpnsRecord(r.Context(), w, r, contentPath, begin, logger)
-
 		if success {
 			i.getMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 		}
+
 		return
 	}
 
@@ -399,9 +398,6 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	i.addUserHeaders(w) // ok, _now_ write user's headers.
-	w.Header().Set("X-Ipfs-Path", contentPath.String())
 
 	var success bool
 
@@ -527,7 +523,7 @@ func (i *handler) setIpfsRootsHeader(w http.ResponseWriter, gwMetadata ContentPa
 
 	var pathRoots []string
 	for _, c := range gwMetadata.PathSegmentRoots {
-		pathRoots = append(pathRoots, c.String()) // TODO: should these be normalized?
+		pathRoots = append(pathRoots, c.String())
 	}
 	pathRoots = append(pathRoots, gwMetadata.LastSegment.Cid().String())
 	rootCidList := strings.Join(pathRoots, ",") // convention from rfc2616#sec4.2
@@ -687,7 +683,6 @@ func debugStr(path string) string {
 func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, responseFormat string, contentPath ipath.Path, imPath ImmutablePath, logger *zap.SugaredLogger) (ipath.Resolved, bool) {
 	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
 	if inm := r.Header.Get("If-None-Match"); inm != "" {
-		// TODO: should we be handling _redirect and legacy 404 here?
 		gwMetadata, err := i.api.ResolvePath(r.Context(), imPath)
 		if err != nil {
 			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
