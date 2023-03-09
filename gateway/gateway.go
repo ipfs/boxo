@@ -92,8 +92,7 @@ type IPFSBackend interface {
 
 	// ResolvePath resolves the path using UnixFS resolver. If the path does not
 	// exist due to a missing link, it should return an error of type:
-	// https://pkg.go.dev/github.com/ipfs/go-path@v0.3.0/resolver#ErrNoLink
-	// TODO: Should we be more liberal in IPLD pathing errors returned here and/or provide some tooling to help unify errors here?
+	// NewErrorResponse(fmt.Errorf("no link named %q under %s", name, cid), http.StatusNotFound)
 	ResolvePath(context.Context, ImmutablePath) (ContentPathMetadata, error)
 
 	// GetCAR returns a CAR file for the given immutable path

@@ -163,7 +163,6 @@ func (api *BlocksGateway) GetRange(ctx context.Context, path ImmutablePath, rang
 	}
 	f, ok := n.(files.File)
 	if !ok {
-		// TODO: Should we use either a general IPLD error code here, or one for gateways?
 		return ContentPathMetadata{}, nil, NewErrorResponse(fmt.Errorf("can only do range requests on files, but did not get a file"), http.StatusBadRequest)
 	}
 
