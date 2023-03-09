@@ -1,11 +1,12 @@
 package common
 
 import (
-	"github.com/ipfs/go-libipfs/gateway"
 	"net/http"
+
+	"github.com/ipfs/go-libipfs/gateway"
 )
 
-func NewBlocksHandler(gw gateway.API, port int) http.Handler {
+func NewBlocksHandler(gw gateway.IPFSBackend, port int) http.Handler {
 	headers := map[string][]string{}
 	gateway.AddAccessControlHeaders(headers)
 

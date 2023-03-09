@@ -50,7 +50,7 @@ type BlocksGateway struct {
 	routing routing.ValueStore
 }
 
-var _ API = (*BlocksGateway)(nil)
+var _ IPFSBackend = (*BlocksGateway)(nil)
 
 type gwOptions struct {
 	ns namesys.NameSystem
@@ -129,21 +129,9 @@ func NewBlocksGateway(blockService blockservice.BlockService, opts ...BlockGatew
 }
 
 func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
-	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	md, nd, err := api.getNode(ctx, path)
 	if err != nil {
-		return ContentPathMetadata{}, nil, err
-	}
-
-	md := ContentPathMetadata{
-		PathSegmentRoots: roots,
-		LastSegment:      lastSeg,
-	}
-
-	lastRoot := lastSeg.Cid()
-
-	nd, err := api.dagService.Get(ctx, lastRoot)
-	if err != nil {
-		return ContentPathMetadata{}, nil, err
+		return md, nil, err
 	}
 
 	rootCodec := nd.Cid().Prefix().GetCodec()
@@ -163,21 +151,9 @@ func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath) (ContentP
 }
 
 func (api *BlocksGateway) GetRange(ctx context.Context, path ImmutablePath, ranges ...GetRange) (ContentPathMetadata, files.File, error) {
-	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	md, nd, err := api.getNode(ctx, path)
 	if err != nil {
-		return ContentPathMetadata{}, nil, err
-	}
-
-	md := ContentPathMetadata{
-		PathSegmentRoots: roots,
-		LastSegment:      lastSeg,
-	}
-
-	lastRoot := lastSeg.Cid()
-
-	nd, err := api.dagService.Get(ctx, lastRoot)
-	if err != nil {
-		return ContentPathMetadata{}, nil, err
+		return md, nil, err
 	}
 
 	// This code path covers full graph, single file/directory, and range requests
@@ -195,21 +171,9 @@ func (api *BlocksGateway) GetRange(ctx context.Context, path ImmutablePath, rang
 }
 
 func (api *BlocksGateway) GetAll(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
-	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	md, nd, err := api.getNode(ctx, path)
 	if err != nil {
-		return ContentPathMetadata{}, nil, err
-	}
-
-	md := ContentPathMetadata{
-		PathSegmentRoots: roots,
-		LastSegment:      lastSeg,
-	}
-
-	lastRoot := lastSeg.Cid()
-
-	nd, err := api.dagService.Get(ctx, lastRoot)
-	if err != nil {
-		return ContentPathMetadata{}, nil, err
+		return md, nil, err
 	}
 
 	// This code path covers full graph, single file/directory, and range requests
@@ -221,42 +185,18 @@ func (api *BlocksGateway) GetAll(ctx context.Context, path ImmutablePath) (Conte
 }
 
 func (api *BlocksGateway) GetBlock(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.File, error) {
-	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	md, nd, err := api.getNode(ctx, path)
 	if err != nil {
-		return ContentPathMetadata{}, nil, err
-	}
-
-	md := ContentPathMetadata{
-		PathSegmentRoots: roots,
-		LastSegment:      lastSeg,
-	}
-
-	lastRoot := lastSeg.Cid()
-
-	nd, err := api.dagService.Get(ctx, lastRoot)
-	if err != nil {
-		return ContentPathMetadata{}, nil, err
+		return md, nil, err
 	}
 
 	return md, files.NewBytesFile(nd.RawData()), nil
 }
 
 func (api *BlocksGateway) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
-	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	md, nd, err := api.getNode(ctx, path)
 	if err != nil {
-		return ContentPathMetadata{}, nil, err
-	}
-
-	md := ContentPathMetadata{
-		PathSegmentRoots: roots,
-		LastSegment:      lastSeg,
-	}
-
-	lastRoot := lastSeg.Cid()
-
-	nd, err := api.dagService.Get(ctx, lastRoot)
-	if err != nil {
-		return ContentPathMetadata{}, nil, err
+		return md, nil, err
 	}
 
 	rootCodec := nd.Cid().Prefix().GetCodec()
@@ -305,6 +245,27 @@ func (api *BlocksGateway) GetCAR(ctx context.Context, path ImmutablePath) (Conte
 	}()
 
 	return md, r, errCh, nil
+}
+
+func (api *BlocksGateway) getNode(ctx context.Context, path ImmutablePath) (ContentPathMetadata, format.Node, error) {
+	roots, lastSeg, err := api.getPathRoots(ctx, path)
+	if err != nil {
+		return ContentPathMetadata{}, nil, err
+	}
+
+	md := ContentPathMetadata{
+		PathSegmentRoots: roots,
+		LastSegment:      lastSeg,
+	}
+
+	lastRoot := lastSeg.Cid()
+
+	nd, err := api.dagService.Get(ctx, lastRoot)
+	if err != nil {
+		return ContentPathMetadata{}, nil, err
+	}
+
+	return md, nd, err
 }
 
 func (api *BlocksGateway) getPathRoots(ctx context.Context, contentPath ImmutablePath) ([]cid.Cid, ifacepath.Resolved, error) {
@@ -390,19 +351,19 @@ func (api *BlocksGateway) ResolveMutable(ctx context.Context, p ifacepath.Path) 
 		}
 		return imPath, nil
 	default:
-		return ImmutablePath{}, fmt.Errorf("unsupported path namespace: %s", p.Namespace())
+		return ImmutablePath{}, NewErrorResponse(fmt.Errorf("unsupported path namespace: %s", p.Namespace()), http.StatusNotImplemented)
 	}
 }
 
 func (api *BlocksGateway) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
 	if api.routing == nil {
-		return nil, routing.ErrNotSupported
+		return nil, NewErrorResponse(errors.New("IPNS Record responses are not supported by this gateway"), http.StatusNotImplemented)
 	}
 
 	// Fails fast if the CID is not an encoded Libp2p Key, avoids wasteful
 	// round trips to the remote routing provider.
 	if mc.Code(c.Type()) != mc.Libp2pKey {
-		return nil, errors.New("provided cid is not an encoded libp2p key")
+		return nil, NewErrorResponse(errors.New("cid codec must be libp2p-key"), http.StatusBadRequest)
 	}
 
 	// The value store expects the key itself to be encoded as a multihash.
@@ -423,7 +384,7 @@ func (api *BlocksGateway) GetDNSLinkRecord(ctx context.Context, hostname string)
 		return ifacepath.New(p.String()), err
 	}
 
-	return nil, errors.New("not implemented")
+	return nil, NewErrorResponse(errors.New("not implemented"), http.StatusNotImplemented)
 }
 
 func (api *BlocksGateway) IsCached(ctx context.Context, p ifacepath.Path) bool {

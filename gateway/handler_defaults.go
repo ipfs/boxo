@@ -44,7 +44,6 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 			var ranges []GetRange
 			ranges, err = parseRange(rangeHeader)
 			if err != nil {
-				// This shouldn't be possible to reach which is why it is a 500 rather than 4XX error
 				webError(w, fmt.Errorf("invalid range request: %w", err), http.StatusBadRequest)
 				return false
 			}

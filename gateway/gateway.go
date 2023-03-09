@@ -62,11 +62,11 @@ type GetRange struct {
 	To   *int64
 }
 
-// API is the required set of functionality used to implement the IPFS HTTP Gateway specification.
-// To signal error types to the gateway code (so that not everything is a 500) return a (wrapped) error defined in this package.
+// IPFSBackend is the required set of functionality used to implement the IPFS HTTP Gateway specification.
+// To signal error types to the gateway code (so that not everything is a HTTP 500) return an error wrapped with NewErrorResponse.
 // There are also some existing error types that the gateway code knows how to handle (e.g. context.DeadlineExceeded
 // and various IPLD pathing related errors).
-type API interface {
+type IPFSBackend interface {
 	// Get returns a UnixFS file, UnixFS directory, or an IPLD block depending on what the path is that has been
 	// requested. Directories' files.DirEntry objects do not need to contain content, but must contain Name,
 	// Size, and Cid.
@@ -84,7 +84,7 @@ type API interface {
 	GetBlock(context.Context, ImmutablePath) (ContentPathMetadata, files.File, error)
 
 	// Head returns a file or directory depending on what the path is that has been requested.
-	// For UnixFS files should return a file which has the correct file size and either returns the content type or
+	// For UnixFS files should return a file which has the correct file size and either returns the ContentType in ContentPathMetadata or
 	// enough data (e.g. 3kiB) such that the content type can be determined by sniffing.
 	// For all other data types returning just size information is sufficient
 	// TODO: give function more explicit return types

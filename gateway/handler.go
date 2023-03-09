@@ -63,7 +63,7 @@ type redirectTemplateData struct {
 // (it serves requests like GET /ipfs/QmVRzPKPzNtSrEzBFm2UZfxmPAgnaLke4DMcerbsGGSaFe/link)
 type handler struct {
 	config Config
-	api    API
+	api    IPFSBackend
 
 	// generic metrics
 	firstContentBlockGetMetric *prometheus.HistogramVec
@@ -195,11 +195,11 @@ func newHistogramMetric(name string, help string) *prometheus.HistogramVec {
 
 // NewHandler returns an http.Handler that can act as a gateway to IPFS content
 // offlineApi is a version of the API that should not make network requests for missing data
-func NewHandler(c Config, api API) http.Handler {
+func NewHandler(c Config, api IPFSBackend) http.Handler {
 	return newHandler(c, api)
 }
 
-func newHandler(c Config, api API) *handler {
+func newHandler(c Config, api IPFSBackend) *handler {
 	i := &handler{
 		config: c,
 		api:    api,
@@ -361,7 +361,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 
 		success := i.serveIpnsRecord(r.Context(), w, r, contentPath, begin, logger)
 
-		if success { // TODO: should we even be reporting this
+		if success {
 			i.getMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 		}
 		return

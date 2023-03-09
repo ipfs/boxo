@@ -70,11 +70,11 @@ func (m mockNamesys) GetResolver(subs string) (namesys.Resolver, bool) {
 }
 
 type mockAPI struct {
-	gw      API
+	gw      IPFSBackend
 	namesys mockNamesys
 }
 
-var _ API = (*mockAPI)(nil)
+var _ IPFSBackend = (*mockAPI)(nil)
 
 func newMockAPI(t *testing.T) (*mockAPI, cid.Cid) {
 	r, err := os.Open("./testdata/fixtures.car")
@@ -209,7 +209,7 @@ func newTestServerAndNode(t *testing.T, ns mockNamesys) (*httptest.Server, *mock
 	return ts, api, root
 }
 
-func newTestServer(t *testing.T, api API) *httptest.Server {
+func newTestServer(t *testing.T, api IPFSBackend) *httptest.Server {
 	config := Config{Headers: map[string][]string{}}
 	AddAccessControlHeaders(config.Headers)
 
