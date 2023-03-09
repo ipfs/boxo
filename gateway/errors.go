@@ -158,9 +158,8 @@ func isErrNotFound(err error) bool {
 		return true
 	}
 
-	// Checks if err is a resolver.ErrNoLink. resolver.ErrNoLink does not implement
-	// the .Is interface and cannot be directly compared to. Therefore, errors.Is
-	// always returns false with it.
+	// Checks if err is of a type that does not implement the .Is interface and
+	// cannot be directly compared to. Therefore, errors.Is cannot be used.
 	for {
 		_, ok := err.(resolver.ErrNoLink)
 		if ok {
