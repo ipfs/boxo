@@ -47,7 +47,6 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		err = fmt.Errorf("trouble processing _redirects path %q: %w", redirectsPath, err)
 		webError(w, err, http.StatusInternalServerError)
-		// TODO: Is this ok? This isn't quite a matching rule since we don't know _redirects exists, but this error is severe enough we don't want to continue anymore
 		return ImmutablePath{}, false, true
 	}
 
@@ -118,7 +117,6 @@ func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Reques
 				toPath := rootPath + rule.To
 				imContent4xxPath, err := NewImmutablePath(ipath.New(toPath))
 				if err != nil {
-					// TODO: this shouldn't happen should we just log? Is this error right?
 					return true, toPath, err
 				}
 
@@ -157,7 +155,6 @@ func (i *handler) getRedirectRules(r *http.Request, redirectsPath ImmutablePath)
 	// Note that ignoring these errors also ensures that the use of the empty CID (bafkqaaa) in tests doesn't fail.
 	_, redirectsFile, err := i.api.Get(r.Context(), redirectsPath)
 	if err != nil {
-		// TODO: this adds a requirement on the Get interface
 		if isErrNotFound(err) {
 			return false, nil, nil
 		}
@@ -185,7 +182,7 @@ func getRootPath(path ipath.Path) ipath.Path {
 }
 
 func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPathImPath ImmutablePath, content4xxPath ipath.Path, status int) error {
-	gwMetadata, node, err := i.api.Get(r.Context(), content4xxPathImPath)
+	pathMetadata, node, err := i.api.Get(r.Context(), content4xxPathImPath)
 	if err != nil {
 		return err
 	}
@@ -195,7 +192,7 @@ func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPat
 	if !ok {
 		return fmt.Errorf("could not convert node for %d page to file", status)
 	}
-	content4xxCid := gwMetadata.LastSegment.Cid()
+	content4xxCid := pathMetadata.LastSegment.Cid()
 
 	size, err := content4xxFile.Size()
 	if err != nil {
@@ -266,7 +263,7 @@ func (i *handler) searchUpTreeFor404(r *http.Request, imPath ImmutablePath) (fil
 		}
 		imparsed404Path, err := NewImmutablePath(parsed404Path)
 		if err != nil {
-			break // TODO: followed the same pattern with IsValid, should these be logging?
+			break
 		}
 		_, data, err := i.api.Get(r.Context(), imparsed404Path)
 		if err != nil {

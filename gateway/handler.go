@@ -498,7 +498,7 @@ func setContentDispositionHeader(w http.ResponseWriter, filename string, disposi
 }
 
 // Set X-Ipfs-Roots with logical CID array for efficient HTTP cache invalidation.
-func (i *handler) setIpfsRootsHeader(w http.ResponseWriter, gwMetadata ContentPathMetadata) *ErrorResponse {
+func (i *handler) setIpfsRootsHeader(w http.ResponseWriter, pathMetadata ContentPathMetadata) *ErrorResponse {
 	/*
 		These are logical roots where each CID represent one path segment
 		and resolves to either a directory or the root block of a file.
@@ -523,10 +523,10 @@ func (i *handler) setIpfsRootsHeader(w http.ResponseWriter, gwMetadata ContentPa
 	*/
 
 	var pathRoots []string
-	for _, c := range gwMetadata.PathSegmentRoots {
+	for _, c := range pathMetadata.PathSegmentRoots {
 		pathRoots = append(pathRoots, c.String())
 	}
-	pathRoots = append(pathRoots, gwMetadata.LastSegment.Cid().String())
+	pathRoots = append(pathRoots, pathMetadata.LastSegment.Cid().String())
 	rootCidList := strings.Join(pathRoots, ",") // convention from rfc2616#sec4.2
 
 	w.Header().Set("X-Ipfs-Roots", rootCidList)
@@ -684,7 +684,7 @@ func debugStr(path string) string {
 func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, responseFormat string, contentPath ipath.Path, imPath ImmutablePath, logger *zap.SugaredLogger) (ipath.Resolved, bool) {
 	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
 	if inm := r.Header.Get("If-None-Match"); inm != "" {
-		gwMetadata, err := i.api.ResolvePath(r.Context(), imPath)
+		pathMetadata, err := i.api.ResolvePath(r.Context(), imPath)
 		if err != nil {
 			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
@@ -692,7 +692,7 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, resp
 			return nil, false
 		}
 
-		resolvedPath := gwMetadata.LastSegment
+		resolvedPath := pathMetadata.LastSegment
 		pathCid := resolvedPath.Cid()
 		// need to check against both File and Dir Etag variants
 		// because this inexpensive check happens before we do any I/O

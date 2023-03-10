@@ -30,18 +30,18 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	gwMetadata, carFile, errCh, err := i.api.GetCAR(ctx, imPath)
+	pathMetadata, carFile, errCh, err := i.api.GetCAR(ctx, imPath)
 	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
 		return false
 	}
 	defer carFile.Close()
 
-	if err := i.setIpfsRootsHeader(w, gwMetadata); err != nil {
+	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
 		webRequestError(w, err)
 		return false
 	}
 
-	rootCid := gwMetadata.LastSegment.Cid()
+	rootCid := pathMetadata.LastSegment.Cid()
 
 	// Set Content-Disposition
 	var name string

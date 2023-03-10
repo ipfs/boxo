@@ -15,18 +15,18 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	ctx, span := spanTrace(ctx, "ServeRawBlock", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
-	gwMetadata, data, err := i.api.GetBlock(ctx, imPath)
+	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
 	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
 		return false
 	}
 	defer data.Close()
 
-	if err := i.setIpfsRootsHeader(w, gwMetadata); err != nil {
+	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
 		webRequestError(w, err)
 		return false
 	}
 
-	blockCid := gwMetadata.LastSegment.Cid()
+	blockCid := pathMetadata.LastSegment.Cid()
 
 	// Set Content-Disposition
 	var name string

@@ -55,18 +55,18 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 	ctx, span := spanTrace(ctx, "ServeCodec", trace.WithAttributes(attribute.String("path", imPath.String()), attribute.String("requestedContentType", requestedContentType)))
 	defer span.End()
 
-	gwMetadata, data, err := i.api.GetBlock(ctx, imPath)
+	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
 	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
 		return false
 	}
 	defer data.Close()
 
-	if err := i.setIpfsRootsHeader(w, gwMetadata); err != nil {
+	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
 		webRequestError(w, err)
 		return false
 	}
 
-	resolvedPath := gwMetadata.LastSegment
+	resolvedPath := pathMetadata.LastSegment
 	return i.renderCodec(ctx, w, r, resolvedPath, data, contentPath, begin, requestedContentType)
 }
 

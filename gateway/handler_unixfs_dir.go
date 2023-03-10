@@ -74,7 +74,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	if err == nil {
 		f, ok := idx.(files.File)
 		if !ok {
-			webError(w, files.ErrNotReader, http.StatusNotFound)
+			webError(w, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
 			return false
 		}
 

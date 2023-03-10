@@ -23,17 +23,17 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	defer cancel()
 
 	// Get Unixfs file (or directory)
-	gwMetadata, file, err := i.api.GetAll(ctx, imPath)
+	pathMetadata, file, err := i.api.GetAll(ctx, imPath)
 	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
 		return false
 	}
 	defer file.Close()
 
-	if err := i.setIpfsRootsHeader(w, gwMetadata); err != nil {
+	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
 		webRequestError(w, err)
 		return false
 	}
-	rootCid := gwMetadata.LastSegment.Cid()
+	rootCid := pathMetadata.LastSegment.Cid()
 
 	// Set Cache-Control and read optional Last-Modified time
 	modtime := addCacheControlHeaders(w, r, contentPath, rootCid)

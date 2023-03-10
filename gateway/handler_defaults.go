@@ -23,14 +23,15 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	ctx, span := spanTrace(ctx, "ServeDefaults", trace.WithAttributes(attribute.String("path", contentPath.String())))
 	defer span.End()
 
-	var gwMetadata ContentPathMetadata
-	var data files.Node
-	var err error
+	var (
+		pathMetadata ContentPathMetadata
+		data         files.Node
+		err          error
+	)
 
 	switch r.Method {
 	case http.MethodHead:
-		// TODO: Should these follow _redirects
-		gwMetadata, data, err = i.api.Head(ctx, maybeResolvedImPath)
+		pathMetadata, data, err = i.api.Head(ctx, maybeResolvedImPath)
 		if !i.handleNonUnixFSRequestErrors(w, contentPath, err) { // TODO: even though this might be UnixFS there shouldn't be anything special for HEAD requests
 			return false
 		}
@@ -38,7 +39,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	case http.MethodGet:
 		rangeHeader := r.Header.Get("Range")
 		if rangeHeader == "" {
-			gwMetadata, data, err = i.api.Get(ctx, maybeResolvedImPath)
+			pathMetadata, data, err = i.api.Get(ctx, maybeResolvedImPath)
 		} else {
 			// TODO: Add tests for range parsing
 			var ranges []GetRange
@@ -47,7 +48,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 				webError(w, fmt.Errorf("invalid range request: %w", err), http.StatusBadRequest)
 				return false
 			}
-			gwMetadata, data, err = i.api.GetRange(ctx, maybeResolvedImPath, ranges...)
+			pathMetadata, data, err = i.api.GetRange(ctx, maybeResolvedImPath, ranges...)
 		}
 
 		if err != nil {
@@ -56,7 +57,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 				if !continueProcessing {
 					return false
 				}
-				gwMetadata, data, err = i.api.Get(ctx, forwardedPath)
+				pathMetadata, data, err = i.api.Get(ctx, forwardedPath)
 				if err != nil {
 					err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 					webError(w, err, http.StatusInternalServerError)
@@ -74,12 +75,12 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		return false
 	}
 
-	if err := i.setIpfsRootsHeader(w, gwMetadata); err != nil {
+	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
 		webRequestError(w, err)
 		return false
 	}
 
-	resolvedPath := gwMetadata.LastSegment
+	resolvedPath := pathMetadata.LastSegment
 	switch mc.Code(resolvedPath.Cid().Prefix().Codec) {
 	case mc.Json, mc.DagJson, mc.Cbor, mc.DagCbor:
 		blockData, ok := data.(files.File)
@@ -91,7 +92,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		return i.renderCodec(r.Context(), w, r, resolvedPath, blockData, contentPath, begin, requestedContentType)
 	default:
 		logger.Debugw("serving unixfs", "path", contentPath)
-		return i.serveUnixFS(r.Context(), w, r, resolvedPath, data, gwMetadata.ContentType, contentPath, begin, logger)
+		return i.serveUnixFS(r.Context(), w, r, resolvedPath, data, pathMetadata.ContentType, contentPath, begin, logger)
 	}
 }
 
