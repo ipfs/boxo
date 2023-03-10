@@ -179,6 +179,12 @@ func OpenReadOnly(path string, opts ...carv2.Option) (*ReadOnly, error) {
 	return robs, nil
 }
 
+// Index gives direct access to the index.
+// You should never add records on your own there.
+func (b *ReadOnly) Index() index.Index {
+	return b.idx
+}
+
 // DeleteBlock is unsupported and always errors.
 func (b *ReadOnly) DeleteBlock(_ context.Context, _ cid.Cid) error {
 	return errReadOnly

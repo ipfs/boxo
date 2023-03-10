@@ -10,6 +10,7 @@ import (
 	blocks "github.com/ipfs/go-libipfs/blocks"
 
 	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/index"
 	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/ipld/go-car/v2/internal/carv1/util"
 	internalio "github.com/ipld/go-car/v2/internal/io"
@@ -176,6 +177,12 @@ func (b *ReadWrite) initWithRoots(v2 bool, roots []cid.Cid) error {
 		}
 	}
 	return carv1.WriteHeader(&carv1.CarHeader{Roots: roots, Version: 1}, b.dataWriter)
+}
+
+// Index gives direct access to the index.
+// You should never add records on your own there.
+func (b *ReadWrite) Index() index.Index {
+	return b.idx
 }
 
 // Put puts a given block to the underlying datastore

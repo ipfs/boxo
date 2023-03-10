@@ -18,14 +18,15 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	blocks "github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-merkledag"
-	carv2 "github.com/ipld/go-car/v2"
-	"github.com/ipld/go-car/v2/blockstore"
-	"github.com/ipld/go-car/v2/index"
-	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/blockstore"
+	"github.com/ipld/go-car/v2/index"
+	"github.com/ipld/go-car/v2/internal/carv1"
 )
 
 var (
@@ -1133,5 +1134,44 @@ func TestWholeCID(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, has, !whole)
 		})
+	}
+}
+
+func TestReadWriteIndex(t *testing.T) {
+	tmpPath := requireTmpCopy(t, "../testdata/sample-wrapped-v2.car")
+
+	root := cid.MustParse("bafy2bzaced4ueelaegfs5fqu4tzsh6ywbbpfk3cxppupmxfdhbpbhzawfw5oy")
+	subject, err := blockstore.OpenReadWrite(tmpPath, []cid.Cid{root})
+	require.NoError(t, err)
+
+	defer func() {
+		err = subject.Finalize()
+		require.NoError(t, err)
+	}()
+
+	var wantCids []cid.Cid
+	var wantMh []multihash.Multihash
+	ch, err := subject.AllKeysChan(context.Background())
+	require.NoError(t, err)
+	for c := range ch {
+		wantCids = append(wantCids, c)
+		wantMh = append(wantMh, c.Hash())
+	}
+
+	idx := subject.Index()
+
+	for _, c := range wantCids {
+		_, err = index.GetFirst(idx, c)
+		require.NoError(t, err)
+	}
+
+	if idx, ok := idx.(index.IterableIndex); ok {
+		var got []multihash.Multihash
+		err = idx.ForEach(func(m multihash.Multihash, u uint64) error {
+			got = append(got, m)
+			return nil
+		})
+		require.NoError(t, err)
+		require.ElementsMatch(t, wantMh, got)
 	}
 }

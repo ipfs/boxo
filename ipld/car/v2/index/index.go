@@ -134,7 +134,7 @@ func WriteTo(idx Index, w io.Writer) (uint64, error) {
 // Returns error if the encoding is not known.
 //
 // Attempting to read index data from untrusted sources is not recommended.
-// Instead the index should be regenerated from the CARv2 data payload.
+// Instead, the index should be regenerated from the CARv2 data payload.
 func ReadFrom(r io.Reader) (Index, error) {
 	codec, err := ReadCodec(r)
 	if err != nil {

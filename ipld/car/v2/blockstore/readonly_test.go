@@ -12,10 +12,14 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	blocks "github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-merkledag"
-	carv2 "github.com/ipld/go-car/v2"
-	"github.com/ipld/go-car/v2/internal/carv1"
 	"github.com/multiformats/go-multicodec"
+	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/require"
+
+	carv2 "github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/index"
+	"github.com/ipld/go-car/v2/internal/carv1"
+	"github.com/ipld/go-car/v2/internal/store"
 )
 
 func TestReadOnlyGetReturnsBlockstoreNotFoundWhenCidDoesNotExist(t *testing.T) {
@@ -330,4 +334,63 @@ func TestNewReadOnly_CarV1WithoutIndexWorksAsExpected(t *testing.T) {
 	gotBlock, err := subject.Get(context.TODO(), wantBlock.Cid())
 	require.NoError(t, err)
 	require.Equal(t, wantBlock, gotBlock)
+}
+
+func TestReadOnlyIndex(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		wantCIDs []cid.Cid
+	}{
+		{
+			"IndexCarV1",
+			"../testdata/sample-v1.car",
+			listCids(t, newV1ReaderFromV1File(t, "../testdata/sample-v1.car", false)),
+		},
+		{
+			"IndexCarV2",
+			"../testdata/sample-wrapped-v2.car",
+			listCids(t, newV1ReaderFromV2File(t, "../testdata/sample-wrapped-v2.car", false)),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			subject, err := OpenReadOnly(tt.path, UseWholeCIDs(true))
+			require.NoError(t, err)
+
+			idx := subject.Index()
+
+			for _, c := range tt.wantCIDs {
+				_, isIdentity, err := store.IsIdentity(c)
+				require.NoError(t, err)
+				if isIdentity {
+					// the index doesn't hold identity CIDs
+					continue
+				}
+				_, err = index.GetFirst(idx, c)
+				require.NoError(t, err)
+			}
+
+			if idx, ok := idx.(index.IterableIndex); ok {
+				expected := make([]multihash.Multihash, 0, len(tt.wantCIDs))
+				for _, c := range tt.wantCIDs {
+					_, isIdentity, err := store.IsIdentity(c)
+					require.NoError(t, err)
+					if isIdentity {
+						// the index doesn't hold identity CIDs
+						continue
+					}
+					expected = append(expected, c.Hash())
+				}
+
+				var got []multihash.Multihash
+				err = idx.ForEach(func(m multihash.Multihash, u uint64) error {
+					got = append(got, m)
+					return nil
+				})
+				require.NoError(t, err)
+				require.ElementsMatch(t, expected, got)
+			}
+		})
+	}
 }
