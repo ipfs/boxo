@@ -373,6 +373,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 			webError(w, err, http.StatusInternalServerError)
+			return
 		}
 	} else {
 		immutableContentPath, err = NewImmutablePath(contentPath)
