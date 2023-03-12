@@ -365,6 +365,9 @@ func TestSymlinkWithModTime(t *testing.T) {
 	if !symlinksEnabled {
 		t.Skip("symlinks disabled on this platform", symlinksEnabledErr)
 	}
+	if runtime.GOOS == "darwin" {
+		t.Skip("changing symlink modification time is not currently supported on darwin")
+	}
 	tm := time.Unix(660000000, 0)
 	add5 := func() time.Time {
 		tm = tm.Add(5 * time.Second)
