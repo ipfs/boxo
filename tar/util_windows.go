@@ -28,4 +28,5 @@ func updateMtime(path string, mtime time.Time) error {
 	if !mtime.IsZero() {
 		return os.Chtimes(path, mtime, mtime)
 	}
+	return nil
 }
