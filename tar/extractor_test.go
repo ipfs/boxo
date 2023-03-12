@@ -299,7 +299,11 @@ func TestFilesAndFoldersWithMetadata(t *testing.T) {
 	entries := []tarEntry{
 		&dirTarEntry{path: "root", mtime: tm.Add(5 * time.Second)},
 		&dirTarEntry{path: "root/childdir", mode: 03775},
-		&fileTarEntry{path: "root/childdir/file1", buf: []byte("some data"), mode: 04764,
+		&fileTarEntry{path: "root/childdir/file1", buf: []byte("some data"), mode: 04744,
+			mtime: tm.Add(10 * time.Second)},
+		&fileTarEntry{path: "root/childdir/file2", buf: []byte("some data"), mode: 0560,
+			mtime: tm.Add(10 * time.Second)},
+		&fileTarEntry{path: "root/childdir/file3", buf: []byte("some data"), mode: 06540,
 			mtime: tm.Add(10 * time.Second)},
 	}
 
@@ -311,18 +315,43 @@ func TestFilesAndFoldersWithMetadata(t *testing.T) {
 					return err
 				}
 				switch walkIndex {
-				case 0:
+				case 0: // root
 					assert.Equal(t, tm.Add(5*time.Second), fi.ModTime())
-				case 1:
-					assert.Equal(t, 0775, int(fi.Mode()&0xFFF))
-					assert.Equal(t, os.ModeSetgid, fi.Mode()&os.ModeSetgid)
-					assert.Equal(t, os.ModeSticky, fi.Mode()&os.ModeSticky)
-				case 2:
-					assert.Equal(t, 0764, int(fi.Mode()&0xFFF))
-					assert.Equal(t, os.ModeSetuid, fi.Mode()&os.ModeSetuid)
+				case 1: // childdir
+					if runtime.GOOS != "windows" {
+						assert.Equal(t, 0775, int(fi.Mode()&0xFFF))
+						assert.Equal(t, os.ModeSetgid, fi.Mode()&os.ModeSetgid)
+						assert.Equal(t, os.ModeSticky, fi.Mode()&os.ModeSticky)
+					} else {
+						assert.Equal(t, 0777, int(fi.Mode()&0xFFF))
+					}
+				case 2: // file1
 					assert.Equal(t, tm.Add(10*time.Second), fi.ModTime())
+					if runtime.GOOS != "windows" {
+						assert.Equal(t, 0744, int(fi.Mode()&0xFFF))
+						assert.Equal(t, os.ModeSetuid, fi.Mode()&os.ModeSetuid)
+					} else {
+						assert.Equal(t, 0666, int(fi.Mode()&0xFFF))
+					}
+				case 3: // file2
+					assert.Equal(t, tm.Add(10*time.Second), fi.ModTime())
+					if runtime.GOOS != "windows" {
+						assert.Equal(t, 0560, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0, int(fi.Mode()&os.ModeSetuid))
+					} else {
+						assert.Equal(t, 0666, int(fi.Mode()&0xFFF))
+					}
+				case 4: // file3
+					assert.Equal(t, tm.Add(10*time.Second), fi.ModTime())
+					if runtime.GOOS != "windows" {
+						assert.Equal(t, 0540, int(fi.Mode()&0xFFF))
+						assert.Equal(t, os.ModeSetgid, fi.Mode()&os.ModeSetgid)
+						assert.Equal(t, os.ModeSetuid, fi.Mode()&os.ModeSetuid)
+					} else {
+						assert.Equal(t, 0444, int(fi.Mode()&0xFFF))
+					}
 				default:
-					assert.Fail(t, "has more than 3 entries", path)
+					assert.Fail(t, "has more than 5 entries", path)
 				}
 				walkIndex++
 				return nil
@@ -518,6 +547,15 @@ func testMeta(t *testing.T, path string, mode int, now time.Time) {
 	fi, err := os.Lstat(path)
 	assert.NoError(t, err)
 	m := files.ModePermsToUnixPerms(fi.Mode())
+	if runtime.GOOS == "windows" {
+		if fi.IsDir() {
+			mode = 0777
+		} else if mode&0220 != 0 {
+			mode = 0666
+		} else if mode&0440 != 0 {
+			mode = 0444
+		}
+	}
 	assert.Equal(t, mode, int(m))
 	assert.Equal(t, now.Unix(), fi.ModTime().Unix())
 }

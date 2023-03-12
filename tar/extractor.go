@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"errors"
 	"fmt"
-	"github.com/ipfs/go-libipfs/files"
 	"io"
 	"os"
 	fp "path/filepath"
@@ -415,10 +414,13 @@ func updateMeta(path string, mode int64, mtime time.Time) error {
 	if err := updateModTime(path, mtime); err != nil {
 		return err
 	}
-	if mode != 0 {
-		if err := os.Chmod(path, files.UnixPermsToModePerms(uint32(mode))); err != nil {
-			return fmt.Errorf("failed to update file mode on '%s'", path)
-		}
+	return updateFileMode(path, mode)
+}
+
+// updateFileMode sets the unix mode of the filesystem object referenced by path
+func updateFileMode(path string, mode int64) error {
+	if err := updateMode(path, mode); err != nil {
+		return fmt.Errorf("[%v] failed to update file mode on '%s'", err, path)
 	}
 	return nil
 }
@@ -428,7 +430,7 @@ func updateMeta(path string, mode int64, mtime time.Time) error {
 // When the given path references a symlink, if supported the symlink is updated.
 func updateModTime(path string, mtime time.Time) error {
 	if err := updateMtime(path, mtime); err != nil {
-		return fmt.Errorf("[%v] failed to update last modification time on '%s'", path, err)
+		return fmt.Errorf("[%v] failed to update last modification time on '%s'", err, path)
 	}
 	return nil
 }
