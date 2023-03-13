@@ -24,6 +24,7 @@ import (
 	ipfspath "github.com/ipfs/go-path"
 	"github.com/ipfs/go-path/resolver"
 	ufile "github.com/ipfs/go-unixfs/file"
+	uio "github.com/ipfs/go-unixfs/io"
 	"github.com/ipfs/go-unixfsnode"
 	nsopts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
 	ifacepath "github.com/ipfs/interface-go-ipfs-core/path"
@@ -147,6 +148,15 @@ func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath) (ContentP
 	if err != nil {
 		return md, nil, err
 	}
+
+	if _, ok := f.(files.Directory); ok {
+		dir, err := uio.NewDirectoryFromNode(api.dagService, nd)
+		if err != nil {
+			return md, nil, err
+		}
+		return md, &wrappedDirectory{node: f, dir: dir.EnumLinksAsync(ctx)}, nil
+	}
+
 	return md, f, nil
 }
 
