@@ -94,7 +94,9 @@ type IPFSBackend interface {
 	// Size, and Cid.
 	Get(context.Context, ImmutablePath) (ContentPathMetadata, *GetResponse, error)
 
-	// GetRange returns a full UnixFS file object, however reading from values outside the given ranges can error
+	// GetRange returns a full UnixFS file object. Ranges passed in are advisory for pre-fetching data, however
+	// consumers of this function may require extra data beyond the passed ranges (e.g. the initial bit of the file
+	// might be used for content type sniffing even if only the end of the file is requested).
 	GetRange(context.Context, ImmutablePath, ...GetRange) (ContentPathMetadata, files.File, error)
 
 	// GetAll returns a UnixFS file or directory depending on what the path is that has been requested. Directories should
