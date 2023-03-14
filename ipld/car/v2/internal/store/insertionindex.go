@@ -212,10 +212,10 @@ func (ii *InsertionIndex) Flatten(codec multicodec.Code) (index.Index, error) {
 // but it's separate as it allows us to compare Record.Cid directly,
 // whereas GetAll just provides Record.Offset.
 
-func (ii *InsertionIndex) HasExactCID(c cid.Cid) bool {
+func (ii *InsertionIndex) HasExactCID(c cid.Cid) (bool, error) {
 	d, err := multihash.Decode(c.Hash())
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 	entry := recordDigest{digest: d.Digest}
 
@@ -235,5 +235,30 @@ func (ii *InsertionIndex) HasExactCID(c cid.Cid) bool {
 		return true
 	}
 	ii.items.AscendGreaterOrEqual(entry, iter)
-	return found
+	return found, nil
+}
+
+func (ii *InsertionIndex) HasMultihash(mh multihash.Multihash) (bool, error) {
+	d, err := multihash.Decode(mh)
+	if err != nil {
+		return false, err
+	}
+	entry := recordDigest{digest: d.Digest}
+
+	found := false
+	iter := func(i llrb.Item) bool {
+		existing := i.(recordDigest)
+		if !bytes.Equal(existing.digest, entry.digest) {
+			// We've already looked at all entries with matching digests.
+			return false
+		}
+		if bytes.Equal(existing.Record.Cid.Hash(), mh) {
+			found = true
+			return false
+		}
+		// Continue looking in ascending order.
+		return true
+	}
+	ii.items.AscendGreaterOrEqual(entry, iter)
+	return found, nil
 }

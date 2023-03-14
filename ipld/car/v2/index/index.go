@@ -13,7 +13,7 @@ import (
 	"github.com/multiformats/go-varint"
 )
 
-// CarIndexNone is a sentinal value used as a multicodec code for the index indicating no index.
+// CarIndexNone is a sentinel value used as a multicodec code for the index indicating no index.
 const CarIndexNone = 0x300000
 
 type (
@@ -46,7 +46,7 @@ type (
 		// Unmarshal decodes the index from its serial form.
 		// Note, this function will copy the entire index into memory.
 		//
-		// Do not unmarshal index from untrusted CARv2 files. Instead the index should be
+		// Do not unmarshal index from untrusted CARv2 files. Instead, the index should be
 		// regenerated from the CARv2 data payload.
 		Unmarshal(r io.Reader) error
 
@@ -84,7 +84,7 @@ type (
 		// and the ForEach function returns the error to the user.
 		//
 		// An index may contain multiple offsets corresponding to the same multihash, e.g. via duplicate blocks.
-		// In such cases, the given function may be called multiple times with the same multhihash but different offset.
+		// In such cases, the given function may be called multiple times with the same multihash but different offset.
 		//
 		// The order of calls to the given function is deterministic, but entirely index-specific.
 		ForEach(func(multihash.Multihash, uint64) error) error

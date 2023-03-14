@@ -38,8 +38,12 @@ func ShouldPut(
 	}
 
 	if !blockstoreAllowDuplicatePuts {
-		if blockstoreUseWholeCIDs && idx.HasExactCID(c) {
-			return false, nil // deduplicated by CID
+		if blockstoreUseWholeCIDs {
+			has, err := idx.HasExactCID(c)
+			if err != nil {
+				return false, err
+			}
+			return !has, nil // deduplicated by CID
 		}
 		if !blockstoreUseWholeCIDs {
 			_, err := idx.Get(c)
