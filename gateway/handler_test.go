@@ -44,7 +44,7 @@ type errorMockAPI struct {
 	err error
 }
 
-func (api *errorMockAPI) Get(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (api *errorMockAPI) Get(ctx context.Context, path ImmutablePath) (ContentPathMetadata, *GetResponse, error) {
 	return ContentPathMetadata{}, nil, api.err
 }
 

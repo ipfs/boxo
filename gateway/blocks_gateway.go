@@ -133,7 +133,7 @@ func NewBlocksGateway(blockService blockservice.BlockService, opts ...BlockGatew
 	}, nil
 }
 
-func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath) (ContentPathMetadata, *GetResponse, error) {
 	md, nd, err := api.getNode(ctx, path)
 	if err != nil {
 		return md, nil, err
@@ -143,7 +143,7 @@ func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath) (ContentP
 	// This covers both Raw blocks and terminal IPLD codecs like dag-cbor and dag-json
 	// Note: while only cbor, json, dag-cbor, and dag-json are currently supported by gateways this could change
 	if rootCodec != uint64(mc.DagPb) {
-		return md, files.NewBytesFile(nd.RawData()), nil
+		return md, NewGetResponseFromFile(files.NewBytesFile(nd.RawData())), nil
 	}
 
 	// This code path covers full graph, single file/directory, and range requests
@@ -153,15 +153,25 @@ func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath) (ContentP
 		return md, nil, err
 	}
 
-	if _, ok := f.(files.Directory); ok {
+	if d, ok := f.(files.Directory); ok {
 		dir, err := uio.NewDirectoryFromNode(api.dagService, nd)
 		if err != nil {
 			return md, nil, err
 		}
-		return md, &wrappedDirectory{node: f, dir: dir.EnumLinksAsync(ctx)}, nil
+		sz, err := d.Size()
+		if err != nil {
+			return ContentPathMetadata{}, nil, fmt.Errorf("could not get cumulative directory graph size: %w", err)
+		}
+		if sz < 0 {
+			return ContentPathMetadata{}, nil, fmt.Errorf("directory cumulative graph size cannot be negative")
+		}
+		return md, NewGetResponseFromDirectoryListing(uint64(sz), dir.EnumLinksAsync(ctx)), nil
+	}
+	if file, ok := f.(files.File); ok {
+		return md, NewGetResponseFromFile(file), nil
 	}
 
-	return md, f, nil
+	return ContentPathMetadata{}, nil, fmt.Errorf("data was not a valid file or directory: %w", ErrInternalServerError) // TODO: should there be a gateway invalid content type to abstract over the various IPLD error types?
 }
 
 func (api *BlocksGateway) GetRange(ctx context.Context, path ImmutablePath, ranges ...GetRange) (ContentPathMetadata, files.File, error) {

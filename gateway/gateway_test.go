@@ -107,7 +107,7 @@ func newMockAPI(t *testing.T) (*mockAPI, cid.Cid) {
 	}, cids[0]
 }
 
-func (api *mockAPI) Get(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (api *mockAPI) Get(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, *GetResponse, error) {
 	return api.gw.Get(ctx, immutablePath)
 }
 

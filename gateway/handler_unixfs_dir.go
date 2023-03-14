@@ -20,15 +20,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// dirEntryMetadata allows getting the CID of the referenced data
-type dirEntryMetadata interface {
-	Cid() cid.Cid
-}
-
 // serveDirectory returns the best representation of UnixFS directory
 //
 // It will return index.html if present, or generate directory listing otherwise.
-func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, dir files.Directory, begin time.Time, logger *zap.SugaredLogger) bool {
+func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, isHeadRequest bool, dirResp *directoryResponse, begin time.Time, logger *zap.SugaredLogger) bool {
 	ctx, span := spanTrace(ctx, "ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
@@ -70,17 +65,36 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		webError(w, err, http.StatusInternalServerError)
 		return false
 	}
-	_, idx, err := i.api.Get(ctx, imIndexPath)
-	if err == nil {
-		f, ok := idx.(files.File)
-		if !ok {
-			webError(w, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
-			return false
-		}
 
+	// TODO: could/should this all be skipped to have HEAD requests just return html content type and save the complexity? If so can we skip the above code as well?
+	var idxFile files.File
+	if isHeadRequest {
+		var idx files.Node
+		_, idx, err = i.api.Head(ctx, imIndexPath)
+		if err == nil {
+			f, ok := idx.(files.File)
+			if !ok {
+				webError(w, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
+				return false
+			}
+			idxFile = f
+		}
+	} else {
+		var getResp *GetResponse
+		_, getResp, err = i.api.Get(ctx, imIndexPath)
+		if err == nil {
+			if getResp.bytes == nil {
+				webError(w, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
+				return false
+			}
+			idxFile = getResp.bytes
+		}
+	}
+
+	if err == nil {
 		logger.Debugw("serving index.html file", "path", idxPath)
 		// write to request
-		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, f, "text/html", begin)
+		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, idxFile, "text/html", begin)
 		if success {
 			i.unixfsDirIndexGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 		}
@@ -118,29 +132,19 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	var dirListing []assets.DirectoryItem
-	it := dir.Entries()
-	for it.Next() {
-		if err := it.Err(); err != nil {
-			webError(w, err, http.StatusInternalServerError)
+	for l := range dirResp.directory {
+		if l.Err != nil {
+			webError(w, l.Err, http.StatusInternalServerError)
 			return false
 		}
 
-		name := it.Name()
-		sz, err := it.Node().Size()
-		if err != nil {
-			webError(w, err, http.StatusInternalServerError)
-			return false
-		}
+		name := l.Link.Name
+		sz := l.Link.Size
+		linkCid := l.Link.Cid
 
-		md, ok := it.Node().(dirEntryMetadata)
-		if !ok { // This should never be able to happen
-			webError(w, fmt.Errorf("could not get CID for directory element"), http.StatusInternalServerError)
-			return false
-		}
-
-		hash := md.Cid().String()
+		hash := linkCid.String()
 		di := assets.DirectoryItem{
-			Size:      humanize.Bytes(uint64(sz)),
+			Size:      humanize.Bytes(sz),
 			Name:      name,
 			Path:      gopath.Join(originalURLPath, name),
 			Hash:      hash,
@@ -173,11 +177,9 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		}
 	}
 
-	size := "?"
-	if s, err := dir.Size(); err == nil {
-		// Size may not be defined/supported. Continue anyways.
-		size = humanize.Bytes(uint64(s))
-	}
+	// TODO: Why was size allowed to be undefined/supported with continuing anyways? Is this an oversight?
+	// Note: If in the future size is not required we can use "?" to denote unknown size
+	size := humanize.Bytes(dirResp.size)
 
 	hash := resolvedPath.Cid().String()
 

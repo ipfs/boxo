@@ -9,6 +9,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/files"
+	"github.com/ipfs/go-unixfs"
 	"github.com/ipfs/interface-go-ipfs-core/path"
 )
 
@@ -62,6 +63,27 @@ type GetRange struct {
 	To   *int64
 }
 
+type GetResponse struct {
+	bytes     files.File
+	directory *directoryResponse
+}
+
+type directoryResponse struct {
+	size      uint64
+	directory <-chan unixfs.LinkResult
+}
+
+func NewGetResponseFromFile(file files.File) *GetResponse {
+	return &GetResponse{bytes: file}
+}
+
+func NewGetResponseFromDirectoryListing(cumulativeTreeSize uint64, dirEntries <-chan unixfs.LinkResult) *GetResponse {
+	return &GetResponse{directory: &directoryResponse{
+		size:      cumulativeTreeSize,
+		directory: dirEntries,
+	}}
+}
+
 // IPFSBackend is the required set of functionality used to implement the IPFS HTTP Gateway specification.
 // To signal error types to the gateway code (so that not everything is a HTTP 500) return an error wrapped with NewErrorResponse.
 // There are also some existing error types that the gateway code knows how to handle (e.g. context.DeadlineExceeded
@@ -70,8 +92,7 @@ type IPFSBackend interface {
 	// Get returns a UnixFS file, UnixFS directory, or an IPLD block depending on what the path is that has been
 	// requested. Directories' files.DirEntry objects do not need to contain content, but must contain Name,
 	// Size, and Cid.
-	// TODO: Should we export or just better describe the Cid metadata interface implemented in go-unixfs?
-	Get(context.Context, ImmutablePath) (ContentPathMetadata, files.Node, error)
+	Get(context.Context, ImmutablePath) (ContentPathMetadata, *GetResponse, error)
 
 	// GetRange returns a full UnixFS file object, however reading from values outside the given ranges can error
 	GetRange(context.Context, ImmutablePath, ...GetRange) (ContentPathMetadata, files.File, error)

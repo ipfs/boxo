@@ -24,22 +24,57 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	defer span.End()
 
 	var (
-		pathMetadata ContentPathMetadata
-		data         files.Node
-		err          error
+		pathMetadata           ContentPathMetadata
+		bytesResponse          files.File
+		isDirectoryHeadRequest bool
+		dirListing             *directoryResponse
+		err                    error
 	)
 
 	switch r.Method {
 	case http.MethodHead:
+		var data files.Node
 		pathMetadata, data, err = i.api.Head(ctx, maybeResolvedImPath)
 		if !i.handleNonUnixFSRequestErrors(w, contentPath, err) { // TODO: even though this might be UnixFS there shouldn't be anything special for HEAD requests
 			return false
 		}
 		defer data.Close()
+		if _, ok := data.(files.Directory); ok {
+			isDirectoryHeadRequest = true
+		} else if f, ok := data.(files.File); ok {
+			bytesResponse = f
+		} else {
+			webError(w, fmt.Errorf("unsupported response type"), http.StatusInternalServerError)
+			return false
+		}
 	case http.MethodGet:
 		rangeHeader := r.Header.Get("Range")
 		if rangeHeader == "" {
-			pathMetadata, data, err = i.api.Get(ctx, maybeResolvedImPath)
+			var getResp *GetResponse
+			pathMetadata, getResp, err = i.api.Get(ctx, maybeResolvedImPath)
+			if err != nil {
+				if isUnixfsResponseFormat(requestedContentType) {
+					forwardedPath, continueProcessing := i.handleUnixFSRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
+					if !continueProcessing {
+						return false
+					}
+					pathMetadata, getResp, err = i.api.Get(ctx, forwardedPath)
+					if err != nil {
+						err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+						webError(w, err, http.StatusInternalServerError)
+					}
+				} else {
+					if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
+						return false
+					}
+				}
+			}
+			if getResp.bytes != nil {
+				bytesResponse = getResp.bytes
+				defer bytesResponse.Close()
+			} else {
+				dirListing = getResp.directory
+			}
 		} else {
 			// TODO: Add tests for range parsing
 			var ranges []GetRange
@@ -48,27 +83,26 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 				webError(w, fmt.Errorf("invalid range request: %w", err), http.StatusBadRequest)
 				return false
 			}
-			pathMetadata, data, err = i.api.GetRange(ctx, maybeResolvedImPath, ranges...)
-		}
-
-		if err != nil {
-			if isUnixfsResponseFormat(requestedContentType) {
-				forwardedPath, continueProcessing := i.handleUnixFSRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
-				if !continueProcessing {
-					return false
-				}
-				pathMetadata, data, err = i.api.Get(ctx, forwardedPath)
-				if err != nil {
-					err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-					webError(w, err, http.StatusInternalServerError)
-				}
-			} else {
-				if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
-					return false
+			pathMetadata, bytesResponse, err = i.api.GetRange(ctx, maybeResolvedImPath, ranges...)
+			if err != nil {
+				if isUnixfsResponseFormat(requestedContentType) {
+					forwardedPath, continueProcessing := i.handleUnixFSRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
+					if !continueProcessing {
+						return false
+					}
+					pathMetadata, bytesResponse, err = i.api.GetRange(ctx, forwardedPath, ranges...)
+					if err != nil {
+						err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+						webError(w, err, http.StatusInternalServerError)
+					}
+				} else {
+					if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
+						return false
+					}
 				}
 			}
+			defer bytesResponse.Close()
 		}
-		defer data.Close()
 	default:
 		// This shouldn't be possible to reach which is why it is a 500 rather than 4XX error
 		webError(w, fmt.Errorf("invalid method: cannot use this HTTP method with the given request"), http.StatusInternalServerError)
@@ -83,16 +117,31 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	resolvedPath := pathMetadata.LastSegment
 	switch mc.Code(resolvedPath.Cid().Prefix().Codec) {
 	case mc.Json, mc.DagJson, mc.Cbor, mc.DagCbor:
-		blockData, ok := data.(files.File)
-		if !ok { // This should never happen
+		if bytesResponse == nil { // This should never happen
 			webError(w, fmt.Errorf("decoding error: data not a usable as a file"), http.StatusInternalServerError)
 			return false
 		}
 		logger.Debugw("serving codec", "path", contentPath)
-		return i.renderCodec(r.Context(), w, r, resolvedPath, blockData, contentPath, begin, requestedContentType)
+		return i.renderCodec(r.Context(), w, r, resolvedPath, bytesResponse, contentPath, begin, requestedContentType)
 	default:
 		logger.Debugw("serving unixfs", "path", contentPath)
-		return i.serveUnixFS(r.Context(), w, r, resolvedPath, data, pathMetadata.ContentType, contentPath, begin, logger)
+		ctx, span := spanTrace(ctx, "ServeUnixFS", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+		defer span.End()
+
+		// Handling Unixfs file
+		if bytesResponse != nil {
+			logger.Debugw("serving unixfs file", "path", contentPath)
+			return i.serveFile(ctx, w, r, resolvedPath, contentPath, bytesResponse, pathMetadata.ContentType, begin)
+		}
+
+		// Handling Unixfs directory
+		if !isDirectoryHeadRequest && dirListing == nil {
+			webError(w, fmt.Errorf("unsupported UnixFS type"), http.StatusInternalServerError)
+			return false
+		}
+
+		logger.Debugw("serving unixfs directory", "path", contentPath)
+		return i.serveDirectory(ctx, w, r, resolvedPath, contentPath, isDirectoryHeadRequest, dirListing, begin, logger)
 	}
 }
 

@@ -153,19 +153,19 @@ func (i *handler) getRedirectRules(r *http.Request, redirectsPath ImmutablePath)
 	// Check for _redirects file.
 	// Any path resolution failures are ignored and we just assume there's no _redirects file.
 	// Note that ignoring these errors also ensures that the use of the empty CID (bafkqaaa) in tests doesn't fail.
-	_, redirectsFile, err := i.api.Get(r.Context(), redirectsPath)
+	_, redirectsFileGetResp, err := i.api.Get(r.Context(), redirectsPath)
 	if err != nil {
 		if isErrNotFound(err) {
 			return false, nil, nil
 		}
 		return false, nil, err
 	}
-	defer redirectsFile.Close()
 
-	f, ok := redirectsFile.(files.File)
-	if !ok {
+	if redirectsFileGetResp.bytes == nil {
 		return false, nil, fmt.Errorf(" _redirects is not a file")
 	}
+	f := redirectsFileGetResp.bytes
+	defer f.Close()
 
 	// Parse redirect rules from file
 	redirectRules, err := redirects.Parse(f)
@@ -182,16 +182,17 @@ func getRootPath(path ipath.Path) ipath.Path {
 }
 
 func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPathImPath ImmutablePath, content4xxPath ipath.Path, status int) error {
-	pathMetadata, node, err := i.api.Get(r.Context(), content4xxPathImPath)
+	pathMetadata, getresp, err := i.api.Get(r.Context(), content4xxPathImPath)
 	if err != nil {
 		return err
 	}
-	defer node.Close()
 
-	content4xxFile, ok := node.(files.File)
-	if !ok {
+	if getresp.bytes == nil {
 		return fmt.Errorf("could not convert node for %d page to file", status)
 	}
+	content4xxFile := getresp.bytes
+	defer content4xxFile.Close()
+
 	content4xxCid := pathMetadata.LastSegment.Cid()
 
 	size, err := content4xxFile.Size()
@@ -265,15 +266,15 @@ func (i *handler) searchUpTreeFor404(r *http.Request, imPath ImmutablePath) (fil
 		if err != nil {
 			break
 		}
-		_, data, err := i.api.Get(r.Context(), imparsed404Path)
+
+		_, getResp, err := i.api.Get(r.Context(), imparsed404Path)
 		if err != nil {
 			continue
 		}
-		f, ok := data.(files.File)
-		if !ok {
+		if getResp.bytes == nil {
 			return nil, "", fmt.Errorf("found a pretty 404 but it was not a file")
 		}
-		return f, ctype, nil
+		return getResp.bytes, ctype, nil
 	}
 
 	return nil, "", fmt.Errorf("no pretty 404 in any parent folder")
