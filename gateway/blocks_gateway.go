@@ -101,9 +101,8 @@ func NewBlocksGateway(blockService blockservice.BlockService, opts ...BlockGatew
 
 	// Setup a name system so that we are able to resolve /ipns links.
 	var (
-		ns  namesys.NameSystem
-		err error
-		vs  routing.ValueStore
+		ns namesys.NameSystem
+		vs routing.ValueStore
 	)
 
 	vs = compiledOptions.vs
@@ -113,7 +112,12 @@ func NewBlocksGateway(blockService blockservice.BlockService, opts ...BlockGatew
 
 	ns = compiledOptions.ns
 	if ns == nil {
-		ns, err = namesys.NewNameSystem(vs)
+		dns, err := NewDNSResolver(nil, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		ns, err = namesys.NewNameSystem(vs, namesys.WithDNSResolver(dns))
 		if err != nil {
 			return nil, err
 		}
