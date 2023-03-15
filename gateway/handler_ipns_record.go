@@ -13,23 +13,22 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/ipfs/go-cid"
 	ipns_pb "github.com/ipfs/go-ipns/pb"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
-func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "ServeIPNSRecord", trace.WithAttributes(attribute.String("path", contentPath.String())))
+func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath contentPathRequest, begin time.Time, logger *zap.SugaredLogger) bool {
+	ctx, span := spanTrace(ctx, "ServeIPNSRecord", trace.WithAttributes(attribute.String("path", contentPath.originalRequestedPath.String())))
 	defer span.End()
 
-	if contentPath.Namespace() != "ipns" {
-		err := fmt.Errorf("%s is not an IPNS link", contentPath.String())
+	if contentPath.originalRequestedPath.Namespace() != "ipns" {
+		err := fmt.Errorf("%s is not an IPNS link", contentPath.originalRequestedPath.String())
 		webError(w, err, http.StatusBadRequest)
 		return false
 	}
 
-	key := contentPath.String()
+	key := contentPath.originalRequestedPath.String()
 	key = strings.TrimSuffix(key, "/")
 	key = strings.TrimPrefix(key, "/ipns/")
 	if strings.Count(key, "/") != 0 {
@@ -85,7 +84,7 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 	_, err = w.Write(rawRecord)
 	if err == nil {
 		// Update metrics
-		i.ipnsRecordGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		i.ipnsRecordGetMetric.WithLabelValues(contentPath.originalRequestedPath.Namespace()).Observe(time.Since(begin).Seconds())
 		return true
 	}
 

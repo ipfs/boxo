@@ -11,7 +11,6 @@ import (
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/gateway/assets"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/ipld/go-ipld-prime/multicodec"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	mc "github.com/multiformats/go-multicodec"
@@ -51,12 +50,12 @@ var contentTypeToExtension = map[string]string{
 	"application/vnd.ipld.dag-cbor": ".cbor",
 }
 
-func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time, requestedContentType string) bool {
-	ctx, span := spanTrace(ctx, "ServeCodec", trace.WithAttributes(attribute.String("path", imPath.String()), attribute.String("requestedContentType", requestedContentType)))
+func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath contentPathRequest, begin time.Time, requestedContentType string) bool {
+	ctx, span := spanTrace(ctx, "ServeCodec", trace.WithAttributes(attribute.String("path", contentPath.immutablePartiallyResolvedPath.String()), attribute.String("requestedContentType", requestedContentType)))
 	defer span.End()
 
-	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
-	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
+	pathMetadata, data, err := i.api.GetBlock(ctx, contentPath.immutablePartiallyResolvedPath)
+	if !i.handleNonUnixFSRequestErrors(w, contentPath.originalRequestedPath, err) {
 		return false
 	}
 	defer data.Close()
@@ -66,24 +65,24 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 		return false
 	}
 
-	resolvedPath := pathMetadata.LastSegment
-	return i.renderCodec(ctx, w, r, resolvedPath, data, contentPath, begin, requestedContentType)
+	contentPath.finalResolvedPath = pathMetadata.LastSegment
+	return i.renderCodec(ctx, w, r, contentPath, data, begin, requestedContentType)
 }
 
-func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, blockData io.ReadSeekCloser, contentPath ipath.Path, begin time.Time, requestedContentType string) bool {
-	ctx, span := spanTrace(ctx, "RenderCodec", trace.WithAttributes(attribute.String("path", resolvedPath.String()), attribute.String("requestedContentType", requestedContentType)))
+func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath contentPathRequest, blockData io.ReadSeekCloser, begin time.Time, requestedContentType string) bool {
+	ctx, span := spanTrace(ctx, "RenderCodec", trace.WithAttributes(attribute.String("path", contentPath.finalResolvedPath.String()), attribute.String("requestedContentType", requestedContentType)))
 	defer span.End()
 
-	blockCid := resolvedPath.Cid()
+	blockCid := contentPath.finalResolvedPath.Cid()
 	cidCodec := mc.Code(blockCid.Prefix().Codec)
 	responseContentType := requestedContentType
 
 	// If the resolved path still has some remainder, return error for now.
 	// TODO: handle this when we have IPLD Patch (https://ipld.io/specs/patch/) via HTTP PUT
 	// TODO: (depends on https://github.com/ipfs/kubo/issues/4801 and https://github.com/ipfs/kubo/issues/4782)
-	if resolvedPath.Remainder() != "" {
-		path := strings.TrimSuffix(resolvedPath.String(), resolvedPath.Remainder())
-		err := fmt.Errorf("%q of %q could not be returned: reading IPLD Kinds other than Links (CBOR Tag 42) is not implemented: try reading %q instead", resolvedPath.Remainder(), resolvedPath.String(), path)
+	if contentPath.finalResolvedPath.Remainder() != "" {
+		path := strings.TrimSuffix(contentPath.finalResolvedPath.String(), contentPath.finalResolvedPath.Remainder())
+		err := fmt.Errorf("%q of %q could not be returned: reading IPLD Kinds other than Links (CBOR Tag 42) is not implemented: try reading %q instead", contentPath.finalResolvedPath.Remainder(), contentPath.finalResolvedPath.String(), path)
 		webError(w, err, http.StatusNotImplemented)
 		return false
 	}
@@ -101,8 +100,8 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 
 	// Set HTTP headers (for caching etc)
-	modtime := addCacheControlHeaders(w, r, contentPath, resolvedPath.Cid())
-	name := setCodecContentDisposition(w, r, resolvedPath, responseContentType)
+	modtime := addCacheControlHeaders(w, r, contentPath, contentPath.finalResolvedPath.Cid())
+	name := setCodecContentDisposition(w, r, contentPath, responseContentType)
 	w.Header().Set("Content-Type", responseContentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
@@ -114,7 +113,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 		download := r.URL.Query().Get("download") == "true"
 
 		if isDAG && acceptsHTML && !download {
-			return i.serveCodecHTML(ctx, w, r, resolvedPath, contentPath)
+			return i.serveCodecHTML(ctx, w, r, contentPath)
 		} else {
 			// This covers CIDs with codec 'json' and 'cbor' as those do not have
 			// an explicit requested content type.
@@ -147,7 +146,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	return i.serveCodecConverted(ctx, w, r, blockCid, blockData, contentPath, toCodec, modtime, begin)
 }
 
-func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path) bool {
+func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath contentPathRequest) bool {
 	// A HTML directory index will be presented, be sure to set the correct
 	// type instead of relying on autodetection (which may fail).
 	w.Header().Set("Content-Type", "text/html")
@@ -156,7 +155,7 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 	w.Header().Del("Content-Disposition")
 
 	// Generated index requires custom Etag (output may change between Kubo versions)
-	dagEtag := getDagIndexEtag(resolvedPath.Cid())
+	dagEtag := getDagIndexEtag(contentPath.finalResolvedPath.Cid())
 	w.Header().Set("Etag", dagEtag)
 
 	// Remove Cache-Control for now to match UnixFS dir-index-html responses
@@ -164,10 +163,10 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 	// TODO: if we ever change behavior for UnixFS dir listings, same changes should be applied here
 	w.Header().Del("Cache-Control")
 
-	cidCodec := mc.Code(resolvedPath.Cid().Prefix().Codec)
+	cidCodec := mc.Code(contentPath.finalResolvedPath.Cid().Prefix().Codec)
 	if err := assets.DagTemplate.Execute(w, assets.DagTemplateData{
-		Path:      contentPath.String(),
-		CID:       resolvedPath.Cid().String(),
+		Path:      contentPath.originalRequestedPath.String(),
+		CID:       contentPath.finalResolvedPath.Cid().String(),
 		CodecName: cidCodec.String(),
 		CodecHex:  fmt.Sprintf("0x%x", uint64(cidCodec)),
 	}); err != nil {
@@ -180,21 +179,21 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 }
 
 // serveCodecRaw returns the raw block without any conversion
-func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, blockData io.ReadSeekCloser, contentPath ipath.Path, name string, modtime, begin time.Time) bool {
+func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, blockData io.ReadSeekCloser, contentPath contentPathRequest, name string, modtime, begin time.Time) bool {
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
 	_, dataSent, _ := ServeContent(w, r, name, modtime, blockData)
 
 	if dataSent {
 		// Update metrics
-		i.jsoncborDocumentGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		i.jsoncborDocumentGetMetric.WithLabelValues(contentPath.originalRequestedPath.Namespace()).Observe(time.Since(begin).Seconds())
 	}
 
 	return dataSent
 }
 
 // serveCodecConverted returns payload converted to codec specified in toCodec
-func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.ReadSeekCloser, contentPath ipath.Path, toCodec mc.Code, modtime, begin time.Time) bool {
+func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.ReadSeekCloser, contentPath contentPathRequest, toCodec mc.Code, modtime, begin time.Time) bool {
 	codec := blockCid.Prefix().Codec
 	decoder, err := multicodec.LookupDecoder(codec)
 	if err != nil {
@@ -232,14 +231,14 @@ func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter
 	_, err = w.Write(buf.Bytes())
 	if err == nil {
 		// Update metrics
-		i.jsoncborDocumentGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		i.jsoncborDocumentGetMetric.WithLabelValues(contentPath.originalRequestedPath.Namespace()).Observe(time.Since(begin).Seconds())
 		return true
 	}
 
 	return false
 }
 
-func setCodecContentDisposition(w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentType string) string {
+func setCodecContentDisposition(w http.ResponseWriter, r *http.Request, contentPath contentPathRequest, contentType string) string {
 	var dispType, name string
 
 	ext, ok := contentTypeToExtension[contentType]
@@ -251,7 +250,7 @@ func setCodecContentDisposition(w http.ResponseWriter, r *http.Request, resolved
 	if urlFilename := r.URL.Query().Get("filename"); urlFilename != "" {
 		name = urlFilename
 	} else {
-		name = resolvedPath.Cid().String() + ext
+		name = contentPath.finalResolvedPath.Cid().String() + ext
 	}
 
 	// JSON should be inlined, but ?download=true should still override

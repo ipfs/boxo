@@ -331,7 +331,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contentPath := ipath.New(r.URL.Path)
+	contentPath := newPath(ipath.New(r.URL.Path))
 	ctx := context.WithValue(r.Context(), ContentPathKey, contentPath)
 	r = r.WithContext(ctx)
 
@@ -352,7 +352,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResponseFormat", responseFormat))
 
 	i.addUserHeaders(w) // ok, _now_ write user's headers.
-	w.Header().Set("X-Ipfs-Path", contentPath.String())
+	w.Header().Set("X-Ipfs-Path", contentPath.originalRequestedPath.String())
 
 	// TODO: Why did the previous code do path resolution, was that a bug?
 	// TODO: Does If-None-Match apply here?
@@ -360,44 +360,46 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Debugw("serving ipns record", "path", contentPath)
 		success := i.serveIpnsRecord(r.Context(), w, r, contentPath, begin, logger)
 		if success {
-			i.getMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+			i.getMetric.WithLabelValues(contentPath.originalRequestedPath.Namespace()).Observe(time.Since(begin).Seconds())
 		}
 
 		return
 	}
 
-	var immutableContentPath ImmutablePath
-	if contentPath.Mutable() {
-		immutableContentPath, err = i.api.ResolveMutable(r.Context(), contentPath)
+	if contentPath.originalRequestedPath.Mutable() {
+		immutableContentPath, err := i.api.ResolveMutable(r.Context(), contentPath.originalRequestedPath)
 		if err != nil {
 			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
-			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.originalRequestedPath.String()), err)
 			webError(w, err, http.StatusInternalServerError)
 			return
 		}
+		contentPath.immutableRequestedPath = immutableContentPath
 	} else {
-		immutableContentPath, err = NewImmutablePath(contentPath)
+		immutableContentPath, err := NewImmutablePath(contentPath.originalRequestedPath)
 		if err != nil {
-			err = fmt.Errorf("path was expected to be immutable, but was not %s: %w", debugStr(contentPath.String()), err)
+			err = fmt.Errorf("path was expected to be immutable, but was not %s: %w", debugStr(contentPath.originalRequestedPath.String()), err)
 			webError(w, err, http.StatusInternalServerError)
 			return
 		}
+		contentPath.immutableRequestedPath = immutableContentPath
 	}
+	contentPath.immutablePartiallyResolvedPath = contentPath.immutableRequestedPath
 
 	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
-	ifNoneMatchResolvedPath, ok := i.handleIfNoneMatch(w, r, responseFormat, contentPath, immutableContentPath, logger)
+	ifNoneMatchResolvedPath, ok := i.handleIfNoneMatch(w, r, responseFormat, contentPath, logger)
 	if !ok {
 		return
 	}
 
 	// If we already did the path resolution no need to do it again
-	maybeResolvedImPath := immutableContentPath
 	if ifNoneMatchResolvedPath != nil {
-		maybeResolvedImPath, err = NewImmutablePath(ifNoneMatchResolvedPath)
+		maybeResolvedImPath, err := NewImmutablePath(ifNoneMatchResolvedPath)
 		if err != nil {
 			webError(w, err, http.StatusInternalServerError)
 			return
 		}
+		contentPath.immutablePartiallyResolvedPath = maybeResolvedImPath
 	}
 
 	var success bool
@@ -405,20 +407,20 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	// Support custom response formats passed via ?format or Accept HTTP header
 	switch responseFormat {
 	case "", "application/json", "application/cbor":
-		success = i.serveDefaults(r.Context(), w, r, maybeResolvedImPath, immutableContentPath, contentPath, begin, responseFormat, logger)
+		success = i.serveDefaults(r.Context(), w, r, contentPath, begin, responseFormat, logger)
 	case "application/vnd.ipld.raw":
 		logger.Debugw("serving raw block", "path", contentPath)
-		success = i.serveRawBlock(r.Context(), w, r, maybeResolvedImPath, contentPath, begin)
+		success = i.serveRawBlock(r.Context(), w, r, contentPath, begin)
 	case "application/vnd.ipld.car":
 		logger.Debugw("serving car stream", "path", contentPath)
 		carVersion := formatParams["version"]
-		success = i.serveCAR(r.Context(), w, r, maybeResolvedImPath, contentPath, carVersion, begin)
+		success = i.serveCAR(r.Context(), w, r, contentPath, carVersion, begin)
 	case "application/x-tar":
 		logger.Debugw("serving tar file", "path", contentPath)
-		success = i.serveTAR(r.Context(), w, r, maybeResolvedImPath, contentPath, begin, logger)
+		success = i.serveTAR(r.Context(), w, r, contentPath, begin, logger)
 	case "application/vnd.ipld.dag-json", "application/vnd.ipld.dag-cbor":
 		logger.Debugw("serving codec", "path", contentPath)
-		success = i.serveCodec(r.Context(), w, r, maybeResolvedImPath, contentPath, begin, responseFormat)
+		success = i.serveCodec(r.Context(), w, r, contentPath, begin, responseFormat)
 	case "application/vnd.ipfs.ipns-record":
 	default: // catch-all for unsuported application/vnd.*
 		err := fmt.Errorf("unsupported format %q", responseFormat)
@@ -427,7 +429,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if success {
-		i.getMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		i.getMetric.WithLabelValues(contentPath.originalRequestedPath.Namespace()).Observe(time.Since(begin).Seconds())
 	}
 }
 
@@ -437,12 +439,12 @@ func (i *handler) addUserHeaders(w http.ResponseWriter) {
 	}
 }
 
-func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath ipath.Path, fileCid cid.Cid) (modtime time.Time) {
+func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath contentPathRequest, fileCid cid.Cid) (modtime time.Time) {
 	// Set Etag to based on CID (override whatever was set before)
 	w.Header().Set("Etag", getEtag(r, fileCid))
 
 	// Set Cache-Control and Last-Modified based on contentPath properties
-	if contentPath.Mutable() {
+	if contentPath.originalRequestedPath.Mutable() {
 		// mutable namespaces such as /ipns/ can't be cached forever
 
 		/* For now we set Last-Modified to Now() to leverage caching heuristics built into modern browsers:
@@ -681,13 +683,13 @@ func debugStr(path string) string {
 	return q
 }
 
-func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, responseFormat string, contentPath ipath.Path, imPath ImmutablePath, logger *zap.SugaredLogger) (ipath.Resolved, bool) {
+func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, responseFormat string, contentPath contentPathRequest, logger *zap.SugaredLogger) (ipath.Resolved, bool) {
 	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
 	if inm := r.Header.Get("If-None-Match"); inm != "" {
-		pathMetadata, err := i.api.ResolvePath(r.Context(), imPath)
+		pathMetadata, err := i.api.ResolvePath(r.Context(), contentPath.immutableRequestedPath)
 		if err != nil {
 			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
-			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.originalRequestedPath.String()), err)
 			webError(w, err, http.StatusInternalServerError)
 			return nil, false
 		}
@@ -719,13 +721,13 @@ func (i *handler) handleNonUnixFSRequestErrors(w http.ResponseWriter, contentPat
 	return false
 }
 
-func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Request, maybeResolvedImPath, immutableContentPath ImmutablePath, contentPath ipath.Path, err error, logger *zap.SugaredLogger) (ImmutablePath, bool) {
+func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Request, contentPath contentPathRequest, err error, logger *zap.SugaredLogger) (ImmutablePath, bool) {
 	if err == nil {
-		return maybeResolvedImPath, true
+		return contentPath.immutablePartiallyResolvedPath, true
 	}
 
 	if errors.Is(err, ErrServiceUnavailable) {
-		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.originalRequestedPath.String()), err)
 		webError(w, err, http.StatusServiceUnavailable)
 		return ImmutablePath{}, false
 	}
@@ -735,7 +737,7 @@ func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Reque
 	// we can leverage the presence of an _redirects file and apply rules defined there.
 	// See: https://github.com/ipfs/specs/pull/290
 	if hasOriginIsolation(r) {
-		newContentPath, ok, hadMatchingRule := i.serveRedirectsIfPresent(w, r, maybeResolvedImPath, immutableContentPath, contentPath, logger)
+		newContentPath, ok, hadMatchingRule := i.serveRedirectsIfPresent(w, r, contentPath, logger)
 		if hadMatchingRule {
 			logger.Debugw("applied a rule from _redirects file")
 			return newContentPath, ok
@@ -745,26 +747,26 @@ func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Reque
 	// if Accept is text/html, see if ipfs-404.html is present
 	// This logic isn't documented and will likely be removed at some point.
 	// Any 404 logic in _redirects above will have already run by this time, so it's really an extra fall back
-	if i.serveLegacy404IfPresent(w, r, immutableContentPath) {
+	if i.serveLegacy404IfPresent(w, r, contentPath.immutableRequestedPath) {
 		logger.Debugw("served legacy 404")
 		return ImmutablePath{}, false
 	}
 
-	err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+	err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.originalRequestedPath.String()), err)
 	webError(w, err, http.StatusInternalServerError)
 	return ImmutablePath{}, false
 }
 
 // Detect 'Cache-Control: only-if-cached' in request and return data if it is already in the local datastore.
 // https://github.com/ipfs/specs/blob/main/http-gateways/PATH_GATEWAY.md#cache-control-request-header
-func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, contentPath ipath.Path, logger *zap.SugaredLogger) (requestHandled bool) {
+func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, contentPath contentPathRequest, logger *zap.SugaredLogger) (requestHandled bool) {
 	if r.Header.Get("Cache-Control") == "only-if-cached" {
-		if !i.api.IsCached(r.Context(), contentPath) {
+		if !i.api.IsCached(r.Context(), contentPath.originalRequestedPath) {
 			if r.Method == http.MethodHead {
 				w.WriteHeader(http.StatusPreconditionFailed)
 				return true
 			}
-			errMsg := fmt.Sprintf("%q not in local datastore", contentPath.String())
+			errMsg := fmt.Sprintf("%q not in local datastore", contentPath.originalRequestedPath.String())
 			http.Error(w, errMsg, http.StatusPreconditionFailed)
 			return true
 		}
@@ -833,9 +835,9 @@ func handleServiceWorkerRegistration(r *http.Request) (err *ErrorResponse) {
 // 'intended' path is valid.  This is in case gremlins were tickled
 // wrong way and user ended up at /ipfs/ipfs/{cid} or /ipfs/ipns/{id}
 // like in bafybeien3m7mdn6imm425vc2s22erzyhbvk5n3ofzgikkhmdkh5cuqbpbq :^))
-func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) (requestHandled bool) {
+func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentPath contentPathRequest) (requestHandled bool) {
 	// If the path is valid, there's nothing to do
-	if pathErr := contentPath.IsValid(); pathErr == nil {
+	if pathErr := contentPath.originalRequestedPath.IsValid(); pathErr == nil {
 		return false
 	}
 

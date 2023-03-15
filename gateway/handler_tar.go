@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ipfs/go-libipfs/files"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -15,16 +14,16 @@ import (
 
 var unixEpochTime = time.Unix(0, 0)
 
-func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "ServeTAR", trace.WithAttributes(attribute.String("path", imPath.String())))
+func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath contentPathRequest, begin time.Time, logger *zap.SugaredLogger) bool {
+	ctx, span := spanTrace(ctx, "ServeTAR", trace.WithAttributes(attribute.String("path", contentPath.immutablePartiallyResolvedPath.String())))
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Get Unixfs file (or directory)
-	pathMetadata, file, err := i.api.GetAll(ctx, imPath)
-	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
+	pathMetadata, file, err := i.api.GetAll(ctx, contentPath.immutablePartiallyResolvedPath)
+	if !i.handleNonUnixFSRequestErrors(w, contentPath.originalRequestedPath, err) {
 		return false
 	}
 	defer file.Close()
@@ -93,6 +92,6 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 
 	// Update metrics
-	i.tarStreamGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	i.tarStreamGetMetric.WithLabelValues(contentPath.originalRequestedPath.Namespace()).Observe(time.Since(begin).Seconds())
 	return true
 }

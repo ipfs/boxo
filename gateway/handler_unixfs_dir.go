@@ -23,8 +23,8 @@ import (
 // serveDirectory returns the best representation of UnixFS directory
 //
 // It will return index.html if present, or generate directory listing otherwise.
-func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, isHeadRequest bool, dirResp *directoryResponse, begin time.Time, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath contentPathRequest, isHeadRequest bool, dirResp *directoryResponse, begin time.Time, logger *zap.SugaredLogger) bool {
+	ctx, span := spanTrace(ctx, "ServeDirectory", trace.WithAttributes(attribute.String("path", contentPath.finalResolvedPath.String())))
 	defer span.End()
 
 	// HostnameOption might have constructed an IPNS/IPFS path using the Host header.
@@ -59,32 +59,40 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	// Check if directory has index.html, if so, serveFile
-	idxPath := ipath.Join(contentPath, "index.html")
-	imIndexPath, err := NewImmutablePath(ipath.Join(resolvedPath, "index.html"))
+	idxPath := newPath(ipath.Join(contentPath.originalRequestedPath, "index.html"))
+	idxPathIm, err := NewImmutablePath(ipath.Join(contentPath.immutableRequestedPath, "index.html"))
 	if err != nil {
 		webError(w, err, http.StatusInternalServerError)
 		return false
 	}
+	idxPath.immutableRequestedPath = idxPathIm
+	idxPathPartiallyResolved, err := NewImmutablePath(ipath.Join(contentPath.finalResolvedPath, "index.html"))
+	if err != nil {
+		webError(w, err, http.StatusInternalServerError)
+		return false
+	}
+	idxPath.immutablePartiallyResolvedPath = idxPathPartiallyResolved
 
 	// TODO: could/should this all be skipped to have HEAD requests just return html content type and save the complexity? If so can we skip the above code as well?
 	var idxFile files.File
+	var idxPathMd ContentPathMetadata
 	if isHeadRequest {
 		var idx files.Node
-		_, idx, err = i.api.Head(ctx, imIndexPath)
+		idxPathMd, idx, err = i.api.Head(ctx, idxPath.immutablePartiallyResolvedPath)
 		if err == nil {
 			f, ok := idx.(files.File)
 			if !ok {
-				webError(w, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
+				webError(w, fmt.Errorf("%q could not be read: %w", idxPath.immutablePartiallyResolvedPath, files.ErrNotReader), http.StatusUnprocessableEntity)
 				return false
 			}
 			idxFile = f
 		}
 	} else {
 		var getResp *GetResponse
-		_, getResp, err = i.api.Get(ctx, imIndexPath)
+		idxPathMd, getResp, err = i.api.Get(ctx, idxPath.immutablePartiallyResolvedPath)
 		if err == nil {
 			if getResp.bytes == nil {
-				webError(w, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
+				webError(w, fmt.Errorf("%q could not be read: %w", idxPath.immutablePartiallyResolvedPath, files.ErrNotReader), http.StatusUnprocessableEntity)
 				return false
 			}
 			idxFile = getResp.bytes
@@ -92,17 +100,18 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	if err == nil {
-		logger.Debugw("serving index.html file", "path", idxPath)
+		logger.Debugw("serving index.html file", "path", idxPath.originalRequestedPath)
+		idxPath.finalResolvedPath = idxPathMd.LastSegment
 		// write to request
-		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, idxFile, "text/html", begin)
+		success := i.serveFile(ctx, w, r, idxPath, idxFile, "text/html", begin)
 		if success {
-			i.unixfsDirIndexGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+			i.unixfsDirIndexGetMetric.WithLabelValues(contentPath.originalRequestedPath.Namespace()).Observe(time.Since(begin).Seconds())
 		}
 		return success
 	}
 
 	if isErrNotFound(err) {
-		logger.Debugw("no index.html; noop", "path", idxPath)
+		logger.Debugw("no index.html; noop", "path", idxPath.originalRequestedPath)
 	} else if err != nil {
 		webError(w, err, http.StatusInternalServerError)
 		return false
@@ -123,7 +132,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	w.Header().Set("Content-Type", "text/html")
 
 	// Generated dir index requires custom Etag (output may change between go-libipfs versions)
-	dirEtag := getDirListingEtag(resolvedPath.Cid())
+	dirEtag := getDirListingEtag(contentPath.finalResolvedPath.Cid())
 	w.Header().Set("Etag", dirEtag)
 
 	if r.Method == http.MethodHead {
@@ -158,7 +167,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	backLink := originalURLPath
 
 	// don't go further up than /ipfs/$hash/
-	pathSplit := path.SplitList(contentPath.String())
+	pathSplit := path.SplitList(contentPath.originalRequestedPath.String())
 	switch {
 	// skip backlink when listing a content root
 	case len(pathSplit) == 3: // url: /ipfs/$hash
@@ -181,7 +190,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	// Note: If in the future size is not required we can use "?" to denote unknown size
 	size := humanize.Bytes(dirResp.size)
 
-	hash := resolvedPath.Cid().String()
+	hash := contentPath.finalResolvedPath.Cid().String()
 
 	// Gateway root URL to be used when linking to other rootIDs.
 	// This will be blank unless subdomain or DNSLink resolution is being used
@@ -195,7 +204,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		gwURL = ""
 	}
 
-	dnslink := assets.HasDNSLinkOrigin(gwURL, contentPath.String())
+	dnslink := assets.HasDNSLinkOrigin(gwURL, contentPath.originalRequestedPath.String())
 
 	// See comment above where originalUrlPath is declared.
 	tplData := assets.DirectoryTemplateData{
@@ -203,8 +212,8 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		DNSLink:     dnslink,
 		Listing:     dirListing,
 		Size:        size,
-		Path:        contentPath.String(),
-		Breadcrumbs: assets.Breadcrumbs(contentPath.String(), dnslink),
+		Path:        contentPath.originalRequestedPath.String(),
+		Breadcrumbs: assets.Breadcrumbs(contentPath.originalRequestedPath.String(), dnslink),
 		BackLink:    backLink,
 		Hash:        hash,
 	}
@@ -217,7 +226,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	// Update metrics
-	i.unixfsGenDirListingGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	i.unixfsGenDirListingGetMetric.WithLabelValues(contentPath.originalRequestedPath.Namespace()).Observe(time.Since(begin).Seconds())
 	return true
 }
 

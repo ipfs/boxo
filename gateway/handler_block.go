@@ -5,18 +5,17 @@ import (
 	"net/http"
 	"time"
 
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // serveRawBlock returns bytes behind a raw block
-func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time) bool {
-	ctx, span := spanTrace(ctx, "ServeRawBlock", trace.WithAttributes(attribute.String("path", imPath.String())))
+func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath contentPathRequest, begin time.Time) bool {
+	ctx, span := spanTrace(ctx, "ServeRawBlock", trace.WithAttributes(attribute.String("path", contentPath.immutablePartiallyResolvedPath.String())))
 	defer span.End()
 
-	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
-	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
+	pathMetadata, data, err := i.api.GetBlock(ctx, contentPath.immutablePartiallyResolvedPath)
+	if !i.handleNonUnixFSRequestErrors(w, contentPath.immutablePartiallyResolvedPath, err) {
 		return false
 	}
 	defer data.Close()
@@ -48,7 +47,7 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 
 	if dataSent {
 		// Update metrics
-		i.rawBlockGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		i.rawBlockGetMetric.WithLabelValues(contentPath.originalRequestedPath.Namespace()).Observe(time.Since(begin).Seconds())
 	}
 
 	return dataSent

@@ -7,15 +7,14 @@ import (
 	"net/http"
 	"time"
 
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/multierr"
 )
 
 // serveCAR returns a CAR stream for specific DAG+selector
-func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, carVersion string, begin time.Time) bool {
-	ctx, span := spanTrace(ctx, "ServeCAR", trace.WithAttributes(attribute.String("path", imPath.String())))
+func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath contentPathRequest, carVersion string, begin time.Time) bool {
+	ctx, span := spanTrace(ctx, "ServeCAR", trace.WithAttributes(attribute.String("path", contentPath.immutablePartiallyResolvedPath.String())))
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -30,8 +29,8 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	pathMetadata, carFile, errCh, err := i.api.GetCAR(ctx, imPath)
-	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
+	pathMetadata, carFile, errCh, err := i.api.GetCAR(ctx, contentPath.immutablePartiallyResolvedPath)
+	if !i.handleNonUnixFSRequestErrors(w, contentPath.originalRequestedPath, err) {
 		return false
 	}
 	defer carFile.Close()
@@ -89,6 +88,6 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 
 	// Update metrics
-	i.carStreamGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	i.carStreamGetMetric.WithLabelValues(contentPath.originalRequestedPath.Namespace()).Observe(time.Since(begin).Seconds())
 	return true
 }

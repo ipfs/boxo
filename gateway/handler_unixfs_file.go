@@ -12,22 +12,21 @@ import (
 
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/ipfs/go-libipfs/files"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // serveFile returns data behind a file along with HTTP headers based on
 // the file itself, its CID and the contentPath used for accessing it.
-func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, file files.File, fileContentType string, begin time.Time) bool {
-	_, span := spanTrace(ctx, "ServeFile", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath contentPathRequest, file files.File, fileContentType string, begin time.Time) bool {
+	_, span := spanTrace(ctx, "ServeFile", trace.WithAttributes(attribute.String("path", contentPath.finalResolvedPath.String())))
 	defer span.End()
 
 	// Set Cache-Control and read optional Last-Modified time
-	modtime := addCacheControlHeaders(w, r, contentPath, resolvedPath.Cid())
+	modtime := addCacheControlHeaders(w, r, contentPath, contentPath.finalResolvedPath.Cid())
 
 	// Set Content-Disposition
-	name := addContentDispositionHeader(w, r, contentPath)
+	name := addContentDispositionHeader(w, r, contentPath.originalRequestedPath)
 
 	// Prepare size value for Content-Length HTTP header (set inside of http.ServeContent)
 	size, err := file.Size()
@@ -101,7 +100,7 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 	// Was response successful?
 	if dataSent {
 		// Update metrics
-		i.unixfsFileGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		i.unixfsFileGetMetric.WithLabelValues(contentPath.originalRequestedPath.Namespace()).Observe(time.Since(begin).Seconds())
 	}
 
 	return dataSent
