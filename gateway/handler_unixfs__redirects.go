@@ -41,7 +41,7 @@ import (
 func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request, maybeResolvedImPath, immutableContentPath ImmutablePath, contentPath ipath.Path, logger *zap.SugaredLogger) (newContentPath ImmutablePath, continueProcessing bool, hadMatchingRule bool) {
 	// contentPath is the full ipfs path to the requested resource,
 	// regardless of whether path or subdomain resolution is used.
-	rootPath := getRootPath(maybeResolvedImPath)
+	rootPath := getRootPath(immutableContentPath)
 	redirectsPath := ipath.Join(rootPath, "_redirects")
 	imRedirectsPath, err := NewImmutablePath(redirectsPath)
 	if err != nil {
