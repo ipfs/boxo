@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
 	"testing"
 	"time"
 
@@ -35,9 +36,7 @@ func TestEtagMatch(t *testing.T) {
 		{`*`, `"etag"`, "", true},                        // wildcard etag match
 	} {
 		result := etagMatch(test.header, test.cidEtag, test.dirEtag)
-		if result != test.expected {
-			t.Fatalf("unexpected result of etagMatch(%q, %q, %q), got %t, expected %t", test.header, test.cidEtag, test.dirEtag, result, test.expected)
-		}
+		assert.Equalf(t, test.expected, result, "etagMatch(%q, %q, %q)", test.header, test.cidEtag, test.dirEtag)
 	}
 }
 
