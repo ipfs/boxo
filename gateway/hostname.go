@@ -61,6 +61,8 @@ func WithHostname(next http.Handler, api API, publicGateways map[string]*Specifi
 	gateways := prepareHostnameGateways(publicGateways)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer panicHandler(w)
+
 		// Unfortunately, many (well, ipfs.io) gateways use
 		// DNSLink so if we blindly rewrite with DNSLink, we'll
 		// break /ipfs links.

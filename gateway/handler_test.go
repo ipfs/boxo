@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -139,4 +140,69 @@ func TestErrorBubblingFromAPI(t *testing.T) {
 		assert.Equal(t, test.headerValue, res.Header.Get(test.headerName))
 		assert.Equal(t, test.headerLength, len(res.Header.Values(test.headerName)))
 	}
+}
+
+type panicMockAPI struct {
+	panicOnHostnameHandler bool
+}
+
+func (api *panicMockAPI) GetUnixFsNode(context.Context, ipath.Resolved) (files.Node, error) {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) LsUnixFsDir(ctx context.Context, p ipath.Resolved) (<-chan iface.DirEntry, error) {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) GetDNSLinkRecord(ctx context.Context, hostname string) (ipath.Path, error) {
+	// GetDNSLinkRecord is also called on the WithHostname handler. We have this option
+	// to disable panicking here so we can test if both the regular gateway handler
+	// and the hostname handler can handle panics.
+	if api.panicOnHostnameHandler {
+		panic("i am panicking")
+	}
+
+	return nil, errors.New("not implemented")
+}
+
+func (api *panicMockAPI) IsCached(ctx context.Context, p ipath.Path) bool {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) ResolvePath(ctx context.Context, ip ipath.Path) (ipath.Resolved, error) {
+	panic("i am panicking")
+}
+
+func TestGatewayStatusCodeOnPanic(t *testing.T) {
+	api := &panicMockAPI{}
+	ts := newTestServer(t, api)
+	t.Logf("test server url: %s", ts.URL)
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e", nil)
+	assert.Nil(t, err)
+
+	res, err := ts.Client().Do(req)
+	assert.Nil(t, err)
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+}
+
+func TestGatewayStatusCodeOnHostnamePanic(t *testing.T) {
+	api := &panicMockAPI{panicOnHostnameHandler: true}
+	ts := newTestServer(t, api)
+	t.Logf("test server url: %s", ts.URL)
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e", nil)
+	assert.Nil(t, err)
+
+	res, err := ts.Client().Do(req)
+	assert.Nil(t, err)
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
 }
