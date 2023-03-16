@@ -86,6 +86,12 @@ func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.Option) (*ReadWri
 	if err != nil {
 		return nil, fmt.Errorf("could not open read/write file: %w", err)
 	}
+	// If construction of blockstore fails, make sure to close off the open file.
+	defer func() {
+		if err != nil {
+			f.Close()
+		}
+	}()
 	rwbs, err := OpenReadWriteFile(f, roots, opts...)
 	if err != nil {
 		return nil, err
@@ -100,17 +106,11 @@ func OpenReadWrite(path string, roots []cid.Cid, opts ...carv2.Option) (*ReadWri
 func OpenReadWriteFile(f *os.File, roots []cid.Cid, opts ...carv2.Option) (*ReadWrite, error) {
 	stat, err := f.Stat()
 	if err != nil {
-		// Note, we should not get a an os.ErrNotExist here because the flags used to open file includes os.O_CREATE
+		// Note, we should not get an os.ErrNotExist here because the flags used to open file includes os.O_CREATE
 		return nil, err
 	}
 	// Try and resume by default if the file size is non-zero.
 	resume := stat.Size() != 0
-	// If construction of blockstore fails, make sure to close off the open file.
-	defer func() {
-		if err != nil {
-			f.Close()
-		}
-	}()
 
 	// Instantiate block store.
 	// Set the header fileld before applying options since padding options may modify header.
