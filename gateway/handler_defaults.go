@@ -135,13 +135,13 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		}
 
 		// Handling Unixfs directory
-		if !isDirectoryHeadRequest && dirListing == nil {
-			webError(w, fmt.Errorf("unsupported UnixFS type"), http.StatusInternalServerError)
-			return false
+		if dirListing != nil || isDirectoryHeadRequest {
+			logger.Debugw("serving unixfs directory", "path", contentPath)
+			return i.serveDirectory(ctx, w, r, resolvedPath, contentPath, isDirectoryHeadRequest, dirListing, begin, logger)
 		}
 
-		logger.Debugw("serving unixfs directory", "path", contentPath)
-		return i.serveDirectory(ctx, w, r, resolvedPath, contentPath, isDirectoryHeadRequest, dirListing, begin, logger)
+		webError(w, fmt.Errorf("unsupported UnixFS type"), http.StatusInternalServerError)
+		return false
 	}
 }
 
