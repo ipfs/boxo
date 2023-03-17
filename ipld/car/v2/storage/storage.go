@@ -349,6 +349,25 @@ func (sc *StorageCar) Has(ctx context.Context, keyStr string) (bool, error) {
 		return false, fmt.Errorf("bad CID key: %w", err)
 	}
 
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+
+	if sc.closed {
+		return false, errClosed
+	}
+
+	if idx, ok := sc.idx.(*store.InsertionIndex); ok && sc.writer != nil {
+		// writable CAR, fast path using InsertionIndex
+		return store.Has(
+			idx,
+			keyCid,
+			sc.opts.MaxIndexCidSize,
+			sc.opts.StoreIdentityCIDs,
+			sc.opts.BlockstoreAllowDuplicatePuts,
+			sc.opts.BlockstoreUseWholeCIDs,
+		)
+	}
+
 	if !sc.opts.StoreIdentityCIDs {
 		// If we don't store identity CIDs then we can return them straight away as if they are here,
 		// otherwise we need to check for their existence.
@@ -358,13 +377,6 @@ func (sc *StorageCar) Has(ctx context.Context, keyStr string) (bool, error) {
 		} else if ok {
 			return true, nil
 		}
-	}
-
-	sc.mu.RLock()
-	defer sc.mu.RUnlock()
-
-	if sc.closed {
-		return false, errClosed
 	}
 
 	_, _, size, err := store.FindCid(

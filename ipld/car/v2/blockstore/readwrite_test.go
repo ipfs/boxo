@@ -1085,3 +1085,53 @@ func TestBlockstoreFinalizeReadOnly(t *testing.T) {
 	err = bs.Put(ctx, root)
 	require.Error(t, err)
 }
+
+func TestWholeCID(t *testing.T) {
+	for _, whole := range []bool{true, false} {
+		whole := whole
+		t.Run(fmt.Sprintf("whole=%t", whole), func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			path := filepath.Join(t.TempDir(), fmt.Sprintf("writable_%t.car", whole))
+			rw, err := blockstore.OpenReadWrite(path, []cid.Cid{}, carv2.UseWholeCIDs(whole))
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, rw.Finalize()) })
+
+			require.NoError(t, rw.Put(ctx, oneTestBlockWithCidV1))
+			has, err := rw.Has(ctx, oneTestBlockWithCidV1.Cid())
+			require.NoError(t, err)
+			require.True(t, has)
+
+			pref := oneTestBlockWithCidV1.Cid().Prefix()
+			pref.Codec = cid.DagCBOR
+			pref.Version = 1
+			cpb1, err := pref.Sum(oneTestBlockWithCidV1.RawData())
+			require.NoError(t, err)
+
+			has, err = rw.Has(ctx, cpb1)
+			require.NoError(t, err)
+			require.Equal(t, has, !whole)
+
+			require.NoError(t, rw.Put(ctx, anotherTestBlockWithCidV0))
+			has, err = rw.Has(ctx, anotherTestBlockWithCidV0.Cid())
+			require.NoError(t, err)
+			require.True(t, has)
+			has, err = rw.Has(ctx, cpb1)
+			require.NoError(t, err)
+			require.Equal(t, has, !whole)
+
+			pref = anotherTestBlockWithCidV0.Cid().Prefix()
+			pref.Codec = cid.DagJSON
+			pref.Version = 1
+			cpb2, err := pref.Sum(anotherTestBlockWithCidV0.RawData())
+			require.NoError(t, err)
+
+			has, err = rw.Has(ctx, cpb2)
+			require.NoError(t, err)
+			require.Equal(t, has, !whole)
+			has, err = rw.Has(ctx, cpb1)
+			require.NoError(t, err)
+			require.Equal(t, has, !whole)
+		})
+	}
+}

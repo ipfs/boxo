@@ -55,3 +55,30 @@ func ShouldPut(
 
 	return true, nil
 }
+
+// Has returns true if the block exists in in the store according to the various
+// rules associated with the options. Similar to ShouldPut, but for the simpler
+// Has() case.
+func Has(
+	idx *InsertionIndex,
+	c cid.Cid,
+	maxIndexCidSize uint64,
+	storeIdentityCIDs bool,
+	blockstoreAllowDuplicatePuts bool,
+	blockstoreUseWholeCIDs bool,
+) (bool, error) {
+
+	// If StoreIdentityCIDs option is disabled then treat IDENTITY CIDs like IdStore.
+	if !storeIdentityCIDs {
+		if _, ok, err := IsIdentity(c); err != nil {
+			return false, err
+		} else if ok {
+			return true, nil
+		}
+	}
+
+	if blockstoreUseWholeCIDs {
+		return idx.HasExactCID(c)
+	}
+	return idx.HasMultihash(c.Hash())
+}

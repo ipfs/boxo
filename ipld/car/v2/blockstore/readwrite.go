@@ -344,21 +344,6 @@ func (b *ReadWrite) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 }
 
 func (b *ReadWrite) Has(ctx context.Context, key cid.Cid) (bool, error) {
-	if !b.opts.StoreIdentityCIDs {
-		// If we don't store identity CIDs then we can return them straight away as if they are here,
-		// otherwise we need to check for their existence.
-		// Note, we do this without locking, since there is no shared information to lock for in order to perform the check.
-		if _, ok, err := store.IsIdentity(key); err != nil {
-			return false, err
-		} else if ok {
-			return true, nil
-		}
-	}
-
-	if ctx.Err() != nil {
-		return false, ctx.Err()
-	}
-
 	b.ronly.mu.Lock()
 	defer b.ronly.mu.Unlock()
 
@@ -366,7 +351,14 @@ func (b *ReadWrite) Has(ctx context.Context, key cid.Cid) (bool, error) {
 		return false, errClosed
 	}
 
-	return b.idx.HasMultihash(key.Hash())
+	return store.Has(
+		b.idx,
+		key,
+		b.opts.MaxIndexCidSize,
+		b.opts.StoreIdentityCIDs,
+		b.opts.BlockstoreAllowDuplicatePuts,
+		b.opts.BlockstoreUseWholeCIDs,
+	)
 }
 
 func (b *ReadWrite) Get(ctx context.Context, key cid.Cid) (blocks.Block, error) {

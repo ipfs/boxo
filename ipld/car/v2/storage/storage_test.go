@@ -1156,6 +1156,61 @@ func TestOperationsErrorWithBadCidStrings(t *testing.T) {
 	require.Nil(t, got)
 }
 
+func TestWholeCID(t *testing.T) {
+	for _, whole := range []bool{true, false} {
+		whole := whole
+		t.Run(fmt.Sprintf("whole=%t", whole), func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			path := filepath.Join(t.TempDir(), fmt.Sprintf("writable_%t.car", whole))
+			out, err := os.Create(path)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, out.Close()) })
+			store, err := storage.NewReadableWritable(out, []cid.Cid{}, carv2.UseWholeCIDs(whole))
+			require.NoError(t, err)
+
+			c1, b1 := randBlock()
+			c2, b2 := randBlock()
+
+			require.NoError(t, store.Put(ctx, c1.KeyString(), b1))
+			has, err := store.Has(ctx, c1.KeyString())
+			require.NoError(t, err)
+			require.True(t, has)
+
+			pref := c1.Prefix()
+			pref.Codec = cid.DagProtobuf
+			pref.Version = 1
+			cpb1, err := pref.Sum(b1)
+			require.NoError(t, err)
+
+			has, err = store.Has(ctx, cpb1.KeyString())
+			require.NoError(t, err)
+			require.Equal(t, has, !whole)
+
+			require.NoError(t, store.Put(ctx, c2.KeyString(), b1))
+			has, err = store.Has(ctx, c2.KeyString())
+			require.NoError(t, err)
+			require.True(t, has)
+			has, err = store.Has(ctx, cpb1.KeyString())
+			require.NoError(t, err)
+			require.Equal(t, has, !whole)
+
+			pref = c2.Prefix()
+			pref.Codec = cid.DagProtobuf
+			pref.Version = 1
+			cpb2, err := pref.Sum(b2)
+			require.NoError(t, err)
+
+			has, err = store.Has(ctx, cpb2.KeyString())
+			require.NoError(t, err)
+			require.Equal(t, has, !whole)
+			has, err = store.Has(ctx, cpb1.KeyString())
+			require.NoError(t, err)
+			require.Equal(t, has, !whole)
+		})
+	}
+}
+
 type writerOnly struct {
 	io.Writer
 }
