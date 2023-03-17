@@ -20,7 +20,7 @@ import (
 )
 
 var importChanges = map[string]string{
-	"github.com/ipfs/go-bitswap":                        "github.com/ipfs/go-libipfs/bitswap",
+	"github.com/ipfs/go-bitswap":                     "github.com/ipfs/go-libipfs/bitswap",
 	"github.com/ipfs/go-ipfs-files":                  "github.com/ipfs/go-libipfs/files",
 	"github.com/ipfs/tar-utils":                      "github.com/ipfs/go-libipfs/tar",
 	"gihtub.com/ipfs/go-block-format":                "github.com/ipfs/go-libipfs/blocks",
@@ -83,9 +83,11 @@ func updateImports(filePath string, dryRun bool) error {
 			// we take the first matching prefix, so you need to make sure you don't have ambiguous mappings
 			for from, to := range importChanges {
 				if strings.HasPrefix(val, from) {
-					fmt.Printf("changing %s => %s in %s\n", x.Path.Value, to, filePath)
+					suffix := strings.TrimPrefix(val, from)
+					newVal := to + suffix
+					fmt.Printf("changing %s => %s in %s\n", x.Path.Value, newVal, filePath)
 					if !dryRun {
-						x.Path.Value = fmt.Sprintf(`"%s"`, to)
+						x.Path.Value = fmt.Sprintf(`"%s"`, newVal)
 						fileChanged = true
 					}
 				}
