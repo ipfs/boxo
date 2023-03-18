@@ -16,7 +16,7 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	defer span.End()
 
 	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
-	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
+	if !i.handleRequestErrors(w, contentPath, err) {
 		return false
 	}
 	defer data.Close()

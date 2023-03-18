@@ -35,7 +35,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	case http.MethodHead:
 		var data files.Node
 		pathMetadata, data, err = i.api.Head(ctx, maybeResolvedImPath)
-		if !i.handleNonUnixFSRequestErrors(w, contentPath, err) { // TODO: even though this might be UnixFS there shouldn't be anything special for HEAD requests
+		if !i.handleRequestErrors(w, contentPath, err) {
 			return false
 		}
 		defer data.Close()
@@ -48,13 +48,15 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 			return false
 		}
 	case http.MethodGet:
+		// TODO: refactor below: we should not have 2x20 duplicated flow control when the only difference is ranges.
 		rangeHeader := r.Header.Get("Range")
 		if rangeHeader == "" {
 			var getResp *GetResponse
+			// TODO: passing resolved path here, instead of contentPath is harming content routing. Knowing original immutableContentPath will allow backend to find  providers for parents, even when internal CIDs are not announced, and will provide better key for caching related DAGs.
 			pathMetadata, getResp, err = i.api.Get(ctx, maybeResolvedImPath)
 			if err != nil {
-				if isUnixfsResponseFormat(requestedContentType) {
-					forwardedPath, continueProcessing := i.handleUnixFSRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
+				if isWebRequest(requestedContentType) {
+					forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
 					if !continueProcessing {
 						return false
 					}
@@ -64,7 +66,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 						webError(w, err, http.StatusInternalServerError)
 					}
 				} else {
-					if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
+					if !i.handleRequestErrors(w, contentPath, err) {
 						return false
 					}
 				}
@@ -85,8 +87,8 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 			}
 			pathMetadata, bytesResponse, err = i.api.GetRange(ctx, maybeResolvedImPath, ranges...)
 			if err != nil {
-				if isUnixfsResponseFormat(requestedContentType) {
-					forwardedPath, continueProcessing := i.handleUnixFSRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
+				if isWebRequest(requestedContentType) {
+					forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
 					if !continueProcessing {
 						return false
 					}
@@ -96,7 +98,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 						webError(w, err, http.StatusInternalServerError)
 					}
 				} else {
-					if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
+					if !i.handleRequestErrors(w, contentPath, err) {
 						return false
 					}
 				}
@@ -109,6 +111,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		return false
 	}
 
+	// TODO: check if we have a bug when maybeResolvedImPath is resolved and i.setIpfsRootsHeader works with pathMetadata returned by GetRange(maybeResolvedImPath)
 	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
 		webRequestError(w, err)
 		return false
@@ -118,7 +121,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	switch mc.Code(resolvedPath.Cid().Prefix().Codec) {
 	case mc.Json, mc.DagJson, mc.Cbor, mc.DagCbor:
 		if bytesResponse == nil { // This should never happen
-			webError(w, fmt.Errorf("decoding error: data not a usable as a file"), http.StatusInternalServerError)
+			webError(w, fmt.Errorf("decoding error: data not usable as a file"), http.StatusInternalServerError)
 			return false
 		}
 		logger.Debugw("serving codec", "path", contentPath)

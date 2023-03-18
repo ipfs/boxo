@@ -56,7 +56,7 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 	defer span.End()
 
 	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
-	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
+	if !i.handleRequestErrors(w, contentPath, err) {
 		return false
 	}
 	defer data.Close()

@@ -220,11 +220,6 @@ func hasOriginIsolation(r *http.Request) bool {
 	return false
 }
 
-func isUnixfsResponseFormat(responseFormat string) bool {
-	// The implicit response format is UnixFS
-	return responseFormat == ""
-}
-
 // Deprecated: legacy ipfs-404.html files are superseded by _redirects file
 // This is provided only for backward-compatibility, until websites migrate
 // to 404s managed via _redirects file (https://github.com/ipfs/specs/pull/290)

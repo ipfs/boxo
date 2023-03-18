@@ -24,7 +24,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 
 	// Get Unixfs file (or directory)
 	pathMetadata, file, err := i.api.GetAll(ctx, imPath)
-	if !i.handleNonUnixFSRequestErrors(w, contentPath, err) {
+	if !i.handleRequestErrors(w, contentPath, err) {
 		return false
 	}
 	defer file.Close()

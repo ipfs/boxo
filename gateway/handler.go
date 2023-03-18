@@ -672,6 +672,13 @@ func customResponseFormat(r *http.Request) (mediaType string, params map[string]
 	return "", nil, nil
 }
 
+// check if request was for one of known explicit formats,
+// or should use the default, implicit Web+UnixFS behaviors.
+func isWebRequest(responseFormat string) bool {
+	// The implicit response format is ""
+	return responseFormat == ""
+}
+
 // returns unquoted path with all special characters revealed as \u codes
 func debugStr(path string) string {
 	q := fmt.Sprintf("%+q", path)
@@ -709,7 +716,8 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, resp
 	return nil, true
 }
 
-func (i *handler) handleNonUnixFSRequestErrors(w http.ResponseWriter, contentPath ipath.Path, err error) bool {
+// handleRequestErrors is used when request type is other than Web+UnixFS
+func (i *handler) handleRequestErrors(w http.ResponseWriter, contentPath ipath.Path, err error) bool {
 	if err == nil {
 		return true
 	}
@@ -719,7 +727,9 @@ func (i *handler) handleNonUnixFSRequestErrors(w http.ResponseWriter, contentPat
 	return false
 }
 
-func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Request, maybeResolvedImPath, immutableContentPath ImmutablePath, contentPath ipath.Path, err error, logger *zap.SugaredLogger) (ImmutablePath, bool) {
+// handleWebRequestErrors is used when request type is Web+UnixFS and err could
+// be a 404 (Not Found) that should be recovered via _redirects file (IPIP-290)
+func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request, maybeResolvedImPath, immutableContentPath ImmutablePath, contentPath ipath.Path, err error, logger *zap.SugaredLogger) (ImmutablePath, bool) {
 	if err == nil {
 		return maybeResolvedImPath, true
 	}
@@ -745,6 +755,8 @@ func (i *handler) handleUnixFSRequestErrors(w http.ResponseWriter, r *http.Reque
 	// if Accept is text/html, see if ipfs-404.html is present
 	// This logic isn't documented and will likely be removed at some point.
 	// Any 404 logic in _redirects above will have already run by this time, so it's really an extra fall back
+	// PLEASE do not use this for new websites,
+	// follow https://docs.ipfs.tech/how-to/websites-on-ipfs/redirects-and-custom-404s/ instead.
 	if i.serveLegacy404IfPresent(w, r, immutableContentPath) {
 		logger.Debugw("served legacy 404")
 		return ImmutablePath{}, false
