@@ -23,7 +23,7 @@ import (
 // serveDirectory returns the best representation of UnixFS directory
 //
 // It will return index.html if present, or generate directory listing otherwise.
-func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, isHeadRequest bool, dirResp *directoryResponse, begin time.Time, logger *zap.SugaredLogger) bool {
+func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, isHeadRequest bool, directoryMetadata *directoryMetadata, begin time.Time, logger *zap.SugaredLogger) bool {
 	ctx, span := spanTrace(ctx, "ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
@@ -132,7 +132,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	var dirListing []assets.DirectoryItem
-	for l := range dirResp.directory {
+	for l := range directoryMetadata.entries {
 		if l.Err != nil {
 			webError(w, l.Err, http.StatusInternalServerError)
 			return false
@@ -177,9 +177,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		}
 	}
 
-	// TODO: Why was size allowed to be undefined/supported with continuing anyways? Is this an oversight?
-	// Note: If in the future size is not required we can use "?" to denote unknown size
-	size := humanize.Bytes(dirResp.size)
+	size := humanize.Bytes(directoryMetadata.dagSize)
 
 	hash := resolvedPath.Cid().String()
 

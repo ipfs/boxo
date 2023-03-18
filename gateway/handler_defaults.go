@@ -27,7 +27,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		pathMetadata           ContentPathMetadata
 		bytesResponse          files.File
 		isDirectoryHeadRequest bool
-		dirListing             *directoryResponse
+		directoryMetadata      *directoryMetadata
 		err                    error
 	)
 
@@ -75,7 +75,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 				bytesResponse = getResp.bytes
 				defer bytesResponse.Close()
 			} else {
-				dirListing = getResp.directory
+				directoryMetadata = getResp.directoryMetadata
 			}
 		} else {
 			// TODO: Add tests for range parsing
@@ -138,9 +138,9 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		}
 
 		// Handling Unixfs directory
-		if dirListing != nil || isDirectoryHeadRequest {
+		if directoryMetadata != nil || isDirectoryHeadRequest {
 			logger.Debugw("serving unixfs directory", "path", contentPath)
-			return i.serveDirectory(ctx, w, r, resolvedPath, contentPath, isDirectoryHeadRequest, dirListing, begin, logger)
+			return i.serveDirectory(ctx, w, r, resolvedPath, contentPath, isDirectoryHeadRequest, directoryMetadata, begin, logger)
 		}
 
 		webError(w, fmt.Errorf("unsupported UnixFS type"), http.StatusInternalServerError)

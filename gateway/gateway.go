@@ -64,24 +64,21 @@ type GetRange struct {
 }
 
 type GetResponse struct {
-	bytes     files.File
-	directory *directoryResponse
+	bytes             files.File
+	directoryMetadata *directoryMetadata
 }
 
-type directoryResponse struct {
-	size      uint64
-	directory <-chan unixfs.LinkResult
+type directoryMetadata struct {
+	dagSize uint64
+	entries <-chan unixfs.LinkResult
 }
 
 func NewGetResponseFromFile(file files.File) *GetResponse {
 	return &GetResponse{bytes: file}
 }
 
-func NewGetResponseFromDirectoryListing(cumulativeTreeSize uint64, dirEntries <-chan unixfs.LinkResult) *GetResponse {
-	return &GetResponse{directory: &directoryResponse{
-		size:      cumulativeTreeSize,
-		directory: dirEntries,
-	}}
+func NewGetResponseFromDirectoryListing(dagSize uint64, entries <-chan unixfs.LinkResult) *GetResponse {
+	return &GetResponse{directoryMetadata: &directoryMetadata{dagSize, entries}}
 }
 
 // IPFSBackend is the required set of functionality used to implement the IPFS HTTP Gateway specification.
