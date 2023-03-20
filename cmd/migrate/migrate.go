@@ -1,211 +1,105 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"go/ast"
-	"go/format"
-	"go/parser"
-	"go/token"
-	"io"
 	"log"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
 	"strings"
 
+	"github.com/ipfs/go-libipfs/migrate"
 	"github.com/urfave/cli/v2"
 )
 
-var importChanges = map[string]string{
-	"github.com/ipfs/go-bitswap":                     "github.com/ipfs/go-libipfs/bitswap",
-	"github.com/ipfs/go-ipfs-files":                  "github.com/ipfs/go-libipfs/files",
-	"github.com/ipfs/tar-utils":                      "github.com/ipfs/go-libipfs/tar",
-	"gihtub.com/ipfs/go-block-format":                "github.com/ipfs/go-libipfs/blocks",
-	"github.com/ipfs/interface-go-ipfs-core":         "github.com/ipfs/go-libipfs/coreiface",
-	"github.com/ipfs/go-unixfs":                      "github.com/ipfs/go-libipfs/unixfs",
-	"github.com/ipfs/go-pinning-service-http-client": "github.com/ipfs/go-libipfs/pinning/remote/client",
-	"github.com/ipfs/go-path":                        "github.com/ipfs/go-libipfs/path",
-	"github.com/ipfs/go-namesys":                     "github.com/ipfs/go-libipfs/namesys",
-	"github.com/ipfs/go-mfs":                         "github.com/ipfs/go-libipfs/mfs",
-	"github.com/ipfs/go-ipfs-provider":               "github.com/ipfs/go-libipfs/provider",
-	"github.com/ipfs/go-ipfs-pinner":                 "github.com/ipfs/go-libipfs/pinning/pinner",
-	"github.com/ipfs/go-ipfs-keystore":               "github.com/ipfs/go-libipfs/keystore",
-	"github.com/ipfs/go-filestore":                   "github.com/ipfs/go-libipfs/filestore",
-	"github.com/ipfs/go-ipns":                        "github.com/ipfs/go-libipfs/ipns",
-	"github.com/ipfs/go-blockservice":                "github.com/ipfs/go-libipfs/blockservice",
-	"github.com/ipfs/go-ipfs-chunker":                "github.com/ipfs/go-libipfs/chunker",
-	"github.com/ipfs/go-fetcher":                     "github.com/ipfs/go-libipfs/fetcher",
-	"github.com/ipfs/go-ipfs-blockstore":             "github.com/ipfs/go-libipfs/blockstore",
-	"github.com/ipfs/go-ipfs-posinfo":                "github.com/ipfs/go-libipfs/filestore/posinfo",
-	"github.com/ipfs/go-ipfs-util":                   "github.com/ipfs/go-libipfs/util",
-	"github.com/ipfs/go-ipfs-ds-help":                "github.com/ipfs/go-libipfs/datastore/dshelp",
-	"github.com/ipfs/go-verifcid":                    "github.com/ipfs/go-libipfs/verifcid",
-	"github.com/ipfs/go-ipfs-exchange-offline":       "github.com/ipfs/go-libipfs/exchange/offline",
-	"github.com/ipfs/go-ipfs-routing":                "github.com/ipfs/go-libipfs/routing",
-	"github.com/ipfs/go-ipfs-exchange-interface":     "github.com/ipfs/go-libipfs/exchange",
-}
-
-type pkgJSON struct {
-	Dir            string
-	GoFiles        []string
-	IgnoredGoFiles []string
-	TestGoFiles    []string
-	CgoFiles       []string
-}
-
-func (p *pkgJSON) allSourceFiles() []string {
-	var files []string
-	lists := [][]string{p.GoFiles, p.IgnoredGoFiles, p.TestGoFiles, p.CgoFiles}
-	for _, l := range lists {
-		for _, f := range l {
-			files = append(files, filepath.Join(p.Dir, f))
+func loadConfig(configFile string) (migrate.Config, error) {
+	if configFile != "" {
+		f, err := os.Open(configFile)
+		if err != nil {
+			return migrate.Config{}, fmt.Errorf("opening config file: %w", err)
 		}
+		defer f.Close()
+		return migrate.ReadConfig(f)
 	}
-	return files
+	return migrate.DefaultConfig, nil
 }
 
-func updateImports(filePath string, dryRun bool) error {
-	fset := token.NewFileSet()
-	astFile, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+func buildMigrator(dryrun bool, configFile string) (*migrate.Migrator, error) {
+	config, err := loadConfig(configFile)
 	if err != nil {
-		return fmt.Errorf("parsing %q: %w", filePath, err)
+		return nil, err
 	}
-
-	var fileChanged bool
-
-	var errr error
-	ast.Inspect(astFile, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.ImportSpec:
-			val, err := strconv.Unquote(x.Path.Value)
-			if err != nil {
-				errr = err
-				return false
-			}
-			// we take the first matching prefix, so you need to make sure you don't have ambiguous mappings
-			for from, to := range importChanges {
-				if strings.HasPrefix(val, from) {
-					var newVal string
-					switch {
-					case len(val) == len(from):
-						newVal = to
-					case val[len(from)] != '/':
-						continue
-					default:
-						newVal = to + val[len(from):]
-					}
-					fmt.Printf("changing %s => %s in %s\n", x.Path.Value, newVal, filePath)
-					if !dryRun {
-						x.Path.Value = strconv.Quote(newVal)
-						fileChanged = true
-					}
-				}
-			}
-		}
-		return true
-	})
-	if errr != nil {
-		return errr
-	}
-
-	if !fileChanged {
-		return nil
-	}
-
-	f, err := os.Create(filePath)
+	dir, err := os.Getwd()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("getting working dir: %w", err)
 	}
-	err = format.Node(f, fset, astFile)
-	if err != nil {
-		f.Close()
-		return fmt.Errorf("formatting %q: %w", filePath, err)
-	}
-	err = f.Close()
-	if err != nil {
-		return fmt.Errorf("closing %q: %w", filePath, err)
-	}
-
-	return nil
-}
-
-func readMappings(mappingsFile string) (map[string]string, error) {
-	f, err := os.Open(mappingsFile)
-	if err != nil {
-		return nil, fmt.Errorf("opening mappings file: %w", err)
-	}
-	defer f.Close()
-	mappings := map[string]string{}
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		vals := strings.Split(line, " ")
-		from := strings.TrimSpace(vals[0])
-		to := strings.TrimSpace(vals[1])
-		mappings[from] = to
-	}
-	return mappings, nil
+	return &migrate.Migrator{
+		DryRun: dryrun,
+		Dir:    dir,
+		Config: config,
+	}, nil
 }
 
 func main() {
 	app := &cli.App{
-		Name:  "migrate",
-		Usage: "migrates a repo to libipfs by rewriting import paths, operating on the current directory",
+		Name: "migrate",
 		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name: "dryrun",
-			},
 			&cli.StringFlag{
-				Name:  "mappings",
-				Usage: "a file with import path mappings, each line containing two space-separated values like 'github.com/ipfs/from github.com/ipfs/to'",
+				Name:  "config",
+				Usage: "a JSON config file",
 			},
 		},
-		Action: func(clictx *cli.Context) error {
-			dryrun := clictx.Bool("dryrun")
-			mappingsFile := clictx.String("mappings")
+		Commands: []*cli.Command{
+			{
+				Name:  "update-imports",
+				Usage: "rewrites imports of the current module for go-libipfs repos",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name: "dryrun",
+					},
+				},
+				Action: func(clictx *cli.Context) error {
+					dryrun := clictx.Bool("dryrun")
+					configFile := clictx.String("config")
 
-			if mappingsFile != "" {
-				mappings, err := readMappings(mappingsFile)
-				if err != nil {
-					return err
-				}
-				importChanges = mappings
-			}
-
-			stdout := &bytes.Buffer{}
-			stderr := &bytes.Buffer{}
-			cmd := exec.Command("go", "list", "-json", "./...")
-			cmd.Stdout = stdout
-			cmd.Stderr = stderr
-			err := cmd.Run()
-			if err != nil {
-				return fmt.Errorf("running 'go list': %w\nstderr:\n%s", err, stderr)
-			}
-
-			dec := json.NewDecoder(stdout)
-
-			for {
-				var pkg pkgJSON
-				err = dec.Decode(&pkg)
-				if err == io.EOF {
-					return nil
-				}
-				if err != nil {
-					return fmt.Errorf("decoding JSON: %w", err)
-				}
-				for _, filePath := range pkg.allSourceFiles() {
-					if err := updateImports(filePath, dryrun); err != nil {
-						return fmt.Errorf("updating file %q: %w", filePath, err)
+					migrator, err := buildMigrator(dryrun, configFile)
+					if err != nil {
+						return err
 					}
-				}
-			}
+					if err := migrator.UpdateImports(); err != nil {
+						return err
+					}
+
+					return nil
+				},
+			},
+			{
+				Name:  "check-dependencies",
+				Usage: "checks the current module for dependencies that have migrated to go-libipfs",
+				Action: func(clictx *cli.Context) error {
+					configFile := clictx.String("config")
+
+					migrator, err := buildMigrator(false, configFile)
+					if err != nil {
+						return err
+					}
+
+					deps, err := migrator.FindMigratedDependencies()
+					if err != nil {
+						return err
+					}
+					if len(deps) > 0 {
+						fmt.Println(strings.Join([]string{
+							"You still have dependencies on repos which have migrated to go-libipfs.",
+							"You should consider not having these dependencies to avoid multiple versions of the same code.",
+							"You can use 'go mod why' or 'go mod graph' to find the reason for these dependencies.",
+							"",
+							"Dependent module versions:",
+							"",
+							strings.Join(deps, "\n"),
+						}, "\n"))
+					}
+					return nil
+				},
+			},
 		},
 	}
 	err := app.Run(os.Args)
