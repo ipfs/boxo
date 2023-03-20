@@ -16,9 +16,9 @@ import (
 	"time"
 
 	cid "github.com/ipfs/go-cid"
+	coreiface "github.com/ipfs/go-libipfs/coreiface"
+	ipath "github.com/ipfs/go-libipfs/coreiface/path"
 	logging "github.com/ipfs/go-log"
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	mc "github.com/multiformats/go-multicodec"
 	prometheus "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"

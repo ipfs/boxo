@@ -13,9 +13,9 @@ import (
 	"github.com/ipfs/go-metrics-interface"
 
 	"github.com/ipfs/go-cid"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	blocks "github.com/ipfs/go-libipfs/blocks"
+	blockstore "github.com/ipfs/go-libipfs/blockstore"
+	exchange "github.com/ipfs/go-libipfs/exchange"
 	logging "github.com/ipfs/go-log"
 	"github.com/libp2p/go-libp2p/core/peer"
 

@@ -9,8 +9,8 @@ import (
 	pb "github.com/ipfs/go-libipfs/bitswap/message/pb"
 
 	cid "github.com/ipfs/go-cid"
-	u "github.com/ipfs/go-ipfs-util"
 	blocks "github.com/ipfs/go-libipfs/blocks"
+	u "github.com/ipfs/go-libipfs/util"
 )
 
 func mkFakeCid(s string) cid.Cid {

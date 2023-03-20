@@ -12,10 +12,10 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-libipfs/blocks"
+	iface "github.com/ipfs/go-libipfs/coreiface"
+	ipath "github.com/ipfs/go-libipfs/coreiface/path"
 	"github.com/ipfs/go-libipfs/files"
-	"github.com/ipfs/go-path/resolver"
-	iface "github.com/ipfs/interface-go-ipfs-core"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
+	"github.com/ipfs/go-libipfs/path/resolver"
 	"github.com/stretchr/testify/assert"
 )
 

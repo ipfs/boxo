@@ -29,7 +29,7 @@ const (
 	// Maximum size of the wantlist we are willing to keep in memory.
 	MaxQueuedWantlistEntiresPerPeer = 1024
 
-	// Copied from github.com/ipfs/go-verifcid#maximumHashLength
+	// Copied from github.com/ipfs/go-libipfs/verifcid#maximumHashLength
 	// FIXME: expose this in go-verifcid.
 	MaximumHashLength = 128
 	MaximumAllowedCid = binary.MaxVarintLen64*4 + MaximumHashLength

@@ -6,9 +6,9 @@ import (
 	"sync"
 
 	cid "github.com/ipfs/go-cid"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
 	ipld "github.com/ipfs/go-ipld-format"
 	blocks "github.com/ipfs/go-libipfs/blocks"
+	bstore "github.com/ipfs/go-libipfs/blockstore"
 	"github.com/ipfs/go-metrics-interface"
 )
 

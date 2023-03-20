@@ -15,7 +15,7 @@ import (
 
 	"github.com/cespare/xxhash"
 
-	ipfspath "github.com/ipfs/go-path"
+	ipfspath "github.com/ipfs/go-libipfs/path"
 )
 
 //go:embed dag-index.html directory-index.html knownIcons.txt

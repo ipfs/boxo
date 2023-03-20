@@ -9,7 +9,7 @@ import (
 	"net/url"
 
 	"github.com/ipfs/go-cid"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	blockstore "github.com/ipfs/go-libipfs/blockstore"
 	"github.com/ipfs/go-libipfs/blocks"
 )
 

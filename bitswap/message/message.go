@@ -13,7 +13,7 @@ import (
 	pool "github.com/libp2p/go-buffer-pool"
 	msgio "github.com/libp2p/go-msgio"
 
-	u "github.com/ipfs/go-ipfs-util"
+	u "github.com/ipfs/go-libipfs/util"
 	"github.com/libp2p/go-libp2p/core/network"
 )
 

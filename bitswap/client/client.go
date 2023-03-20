@@ -14,8 +14,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ipfs/go-cid"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	bsbpm "github.com/ipfs/go-libipfs/bitswap/client/internal/blockpresencemanager"
 	bsgetter "github.com/ipfs/go-libipfs/bitswap/client/internal/getter"
 	bsmq "github.com/ipfs/go-libipfs/bitswap/client/internal/messagequeue"
@@ -33,6 +31,8 @@ import (
 	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
 	"github.com/ipfs/go-libipfs/bitswap/tracer"
 	blocks "github.com/ipfs/go-libipfs/blocks"
+	blockstore "github.com/ipfs/go-libipfs/blockstore"
+	exchange "github.com/ipfs/go-libipfs/exchange"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-metrics-interface"
 	process "github.com/jbenet/goprocess"

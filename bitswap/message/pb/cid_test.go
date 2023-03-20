@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/ipfs/go-cid"
-	u "github.com/ipfs/go-ipfs-util"
+	u "github.com/ipfs/go-libipfs/util"
 
 	pb "github.com/ipfs/go-libipfs/bitswap/message/pb"
 )

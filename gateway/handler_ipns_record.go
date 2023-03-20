@@ -10,8 +10,8 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/ipfs/go-cid"
-	ipns_pb "github.com/ipfs/go-ipns/pb"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
+	ipath "github.com/ipfs/go-libipfs/coreiface/path"
+	ipns_pb "github.com/ipfs/go-libipfs/ipns/pb"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"

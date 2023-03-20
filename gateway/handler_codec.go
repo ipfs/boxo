@@ -9,8 +9,8 @@ import (
 	"time"
 
 	cid "github.com/ipfs/go-cid"
+	ipath "github.com/ipfs/go-libipfs/coreiface/path"
 	"github.com/ipfs/go-libipfs/gateway/assets"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/ipld/go-ipld-prime/multicodec"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	mc "github.com/multiformats/go-multicodec"

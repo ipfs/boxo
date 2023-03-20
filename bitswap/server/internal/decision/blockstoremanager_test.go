@@ -11,10 +11,10 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	delay "github.com/ipfs/go-ipfs-delay"
 	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
 	blocks "github.com/ipfs/go-libipfs/blocks"
+	blockstore "github.com/ipfs/go-libipfs/blockstore"
 	"github.com/ipfs/go-libipfs/internal/test"
 	"github.com/ipfs/go-metrics-interface"
 )

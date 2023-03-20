@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ipfs/go-blockservice"
-	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	"github.com/ipfs/go-libipfs/blockservice"
+	offline "github.com/ipfs/go-libipfs/exchange/offline"
 	"github.com/ipfs/go-libipfs/examples/gateway/common"
 	"github.com/ipfs/go-libipfs/gateway"
 	"github.com/prometheus/client_golang/prometheus"

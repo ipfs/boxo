@@ -10,7 +10,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/ipfs/go-path/resolver"
+	"github.com/ipfs/go-libipfs/path/resolver"
 )
 
 var (

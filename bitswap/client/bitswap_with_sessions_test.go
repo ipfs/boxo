@@ -9,13 +9,13 @@ import (
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	delay "github.com/ipfs/go-ipfs-delay"
-	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 	"github.com/ipfs/go-libipfs/bitswap"
 	"github.com/ipfs/go-libipfs/bitswap/client/internal/session"
 	testinstance "github.com/ipfs/go-libipfs/bitswap/testinstance"
 	tn "github.com/ipfs/go-libipfs/bitswap/testnet"
 	blocks "github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-libipfs/internal/test"
+	mockrouting "github.com/ipfs/go-libipfs/routing/mock"
 	tu "github.com/libp2p/go-libp2p-testing/etc"
 )
 

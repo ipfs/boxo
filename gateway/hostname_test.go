@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	cid "github.com/ipfs/go-cid"
-	path "github.com/ipfs/go-path"
+	path "github.com/ipfs/go-libipfs/path"
 	"github.com/stretchr/testify/assert"
 )
 

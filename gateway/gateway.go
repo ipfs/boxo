@@ -7,9 +7,9 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-libipfs/blocks"
+	iface "github.com/ipfs/go-libipfs/coreiface"
+	"github.com/ipfs/go-libipfs/coreiface/path"
 	"github.com/ipfs/go-libipfs/files"
-	iface "github.com/ipfs/interface-go-ipfs-core"
-	"github.com/ipfs/interface-go-ipfs-core/path"
 )
 
 // Config is the configuration used when creating a new gateway handler.
@@ -43,7 +43,7 @@ type API interface {
 
 	// ResolvePath resolves the path using UnixFS resolver. If the path does not
 	// exist due to a missing link, it should return an error of type:
-	// https://pkg.go.dev/github.com/ipfs/go-path@v0.3.0/resolver#ErrNoLink
+	// https://pkg.go.dev/github.com/ipfs/go-libipfs/path@v0.3.0/resolver#ErrNoLink
 	ResolvePath(context.Context, path.Path) (path.Resolved, error)
 }
 

@@ -8,9 +8,9 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/ipfs/go-blockservice"
+	"github.com/ipfs/go-libipfs/blockservice"
 	"github.com/ipfs/go-cid"
-	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	offline "github.com/ipfs/go-libipfs/exchange/offline"
 	"github.com/ipfs/go-libipfs/examples/gateway/common"
 	"github.com/ipfs/go-libipfs/gateway"
 	carblockstore "github.com/ipld/go-car/v2/blockstore"

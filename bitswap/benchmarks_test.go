@@ -18,11 +18,11 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
-	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 	"github.com/ipfs/go-libipfs/bitswap"
 	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
 	testinstance "github.com/ipfs/go-libipfs/bitswap/testinstance"
 	tn "github.com/ipfs/go-libipfs/bitswap/testnet"
+	mockrouting "github.com/ipfs/go-libipfs/routing/mock"
 )
 
 type fetchFunc func(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid)

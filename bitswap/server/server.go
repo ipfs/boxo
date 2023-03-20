@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/ipfs/go-libipfs/bitswap/internal/defaults"
 	"github.com/ipfs/go-libipfs/bitswap/message"
 	pb "github.com/ipfs/go-libipfs/bitswap/message/pb"
@@ -18,6 +17,7 @@ import (
 	"github.com/ipfs/go-libipfs/bitswap/server/internal/decision"
 	"github.com/ipfs/go-libipfs/bitswap/tracer"
 	blocks "github.com/ipfs/go-libipfs/blocks"
+	blockstore "github.com/ipfs/go-libipfs/blockstore"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-metrics-interface"
 	process "github.com/jbenet/goprocess"

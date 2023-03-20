@@ -13,7 +13,7 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
-	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
+	mockrouting "github.com/ipfs/go-libipfs/routing/mock"
 
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/connmgr"

@@ -11,12 +11,12 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	exchange "github.com/ipfs/go-ipfs-exchange-interface"
 	"github.com/ipfs/go-libipfs/bitswap/client/internal"
 	bsbpm "github.com/ipfs/go-libipfs/bitswap/client/internal/blockpresencemanager"
 	notifications "github.com/ipfs/go-libipfs/bitswap/client/internal/notifications"
 	bssession "github.com/ipfs/go-libipfs/bitswap/client/internal/session"
 	bssim "github.com/ipfs/go-libipfs/bitswap/client/internal/sessioninterestmanager"
+	exchange "github.com/ipfs/go-libipfs/exchange"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 

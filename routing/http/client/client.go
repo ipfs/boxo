@@ -11,7 +11,7 @@ import (
 
 	"github.com/benbjohnson/clock"
 	"github.com/ipfs/go-cid"
-	ipns "github.com/ipfs/go-ipns"
+	ipns "github.com/ipfs/go-libipfs/ipns"
 	"github.com/ipfs/go-libipfs/routing/http/contentrouter"
 	"github.com/ipfs/go-libipfs/routing/http/internal/drjson"
 	"github.com/ipfs/go-libipfs/routing/http/server"
