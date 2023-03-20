@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	blocks "github.com/ipfs/boxo/blocks"
 	cid "github.com/ipfs/go-cid"
-	blocks "github.com/ipfs/go-libipfs/blocks"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	gocar "github.com/ipld/go-car"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"

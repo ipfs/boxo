@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/ipfs/boxo/blocks"
 	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	"github.com/ipfs/go-libipfs/blocks"
 )
 
 var (

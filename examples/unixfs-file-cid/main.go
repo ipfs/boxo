@@ -34,10 +34,10 @@ import (
 	uih "github.com/ipfs/go-unixfs/importer/helpers"
 	"github.com/libp2p/go-libp2p-routing-helpers"
 
-	bsclient "github.com/ipfs/go-libipfs/bitswap/client"
-	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
-	bsserver "github.com/ipfs/go-libipfs/bitswap/server"
-	"github.com/ipfs/go-libipfs/files"
+	bsclient "github.com/ipfs/boxo/bitswap/client"
+	bsnet "github.com/ipfs/boxo/bitswap/network"
+	bsserver "github.com/ipfs/boxo/bitswap/server"
+	"github.com/ipfs/boxo/files"
 )
 
 const exampleBinaryName = "unixfs-file-cid"

@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ipfs/go-libipfs/bitswap/client/internal"
-	notifications "github.com/ipfs/go-libipfs/bitswap/client/internal/notifications"
+	"github.com/ipfs/boxo/bitswap/client/internal"
+	notifications "github.com/ipfs/boxo/bitswap/client/internal/notifications"
 	logging "github.com/ipfs/go-log"
 
+	blocks "github.com/ipfs/boxo/blocks"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
-	blocks "github.com/ipfs/go-libipfs/blocks"
 )
 
 var log = logging.Logger("bitswap")

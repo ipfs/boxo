@@ -3,7 +3,7 @@ package sessioninterestmanager
 import (
 	"sync"
 
-	blocks "github.com/ipfs/go-libipfs/blocks"
+	blocks "github.com/ipfs/boxo/blocks"
 
 	cid "github.com/ipfs/go-cid"
 )

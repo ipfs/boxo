@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/ipfs/boxo/bitswap/client/wantlist"
+	pb "github.com/ipfs/boxo/bitswap/message/pb"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
-	"github.com/ipfs/go-libipfs/bitswap/client/wantlist"
-	pb "github.com/ipfs/go-libipfs/bitswap/message/pb"
 
+	blocks "github.com/ipfs/boxo/blocks"
 	cid "github.com/ipfs/go-cid"
 	u "github.com/ipfs/go-ipfs-util"
-	blocks "github.com/ipfs/go-libipfs/blocks"
 )
 
 func mkFakeCid(s string) cid.Cid {

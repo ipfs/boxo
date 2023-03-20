@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/ipfs/boxo/files"
+	"github.com/ipfs/boxo/gateway/assets"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/files"
-	"github.com/ipfs/go-libipfs/gateway/assets"
 	path "github.com/ipfs/go-path"
 	"github.com/ipfs/go-path/resolver"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"

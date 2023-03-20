@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/boxo/blocks"
+	"github.com/ipfs/boxo/files"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/ipfs/go-libipfs/blocks"
-	"github.com/ipfs/go-libipfs/files"
 	"github.com/ipfs/go-path/resolver"
 	iface "github.com/ipfs/interface-go-ipfs-core"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
