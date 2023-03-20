@@ -160,10 +160,10 @@ func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath) (ContentP
 		}
 		sz, err := d.Size()
 		if err != nil {
-			return ContentPathMetadata{}, nil, fmt.Errorf("could not get cumulative directory graph size: %w", err)
+			return ContentPathMetadata{}, nil, fmt.Errorf("could not get cumulative directory DAG size: %w", err)
 		}
 		if sz < 0 {
-			return ContentPathMetadata{}, nil, fmt.Errorf("directory cumulative graph size cannot be negative")
+			return ContentPathMetadata{}, nil, fmt.Errorf("directory cumulative DAG size cannot be negative")
 		}
 		return md, NewGetResponseFromDirectoryListing(uint64(sz), dir.EnumLinksAsync(ctx)), nil
 	}
