@@ -100,7 +100,7 @@ func updateImports(filePath string, dryRun bool) error {
 					}
 					fmt.Printf("changing %s => %s in %s\n", x.Path.Value, newVal, filePath)
 					if !dryRun {
-						x.Path.Value = fmt.Sprintf(`"%s"`, newVal)
+						x.Path.Value = strconv.Quote(newVal)
 						fileChanged = true
 					}
 				}
