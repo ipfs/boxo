@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/urfave/cli/v2"
@@ -76,15 +77,27 @@ func updateImports(filePath string, dryRun bool) error {
 
 	var fileChanged bool
 
+	var errr error
 	ast.Inspect(astFile, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.ImportSpec:
-			val := strings.Trim(x.Path.Value, `"`)
+			val, err := strconv.Unquote(x.Path.Value)
+			if err != nil {
+				errr = err
+				return false
+			}
 			// we take the first matching prefix, so you need to make sure you don't have ambiguous mappings
 			for from, to := range importChanges {
 				if strings.HasPrefix(val, from) {
-					suffix := strings.TrimPrefix(val, from)
-					newVal := to + suffix
+					var newVal string
+					switch {
+					case len(val) == len(from):
+						newVal = to
+					case val[len(from)] != '/':
+						continue
+					default:
+						newVal = to + val[len(from):]
+					}
 					fmt.Printf("changing %s => %s in %s\n", x.Path.Value, newVal, filePath)
 					if !dryRun {
 						x.Path.Value = fmt.Sprintf(`"%s"`, newVal)
@@ -95,6 +108,9 @@ func updateImports(filePath string, dryRun bool) error {
 		}
 		return true
 	})
+	if errr != nil {
+		return errr
+	}
 
 	if !fileChanged {
 		return nil
