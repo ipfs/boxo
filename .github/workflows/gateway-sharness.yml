@@ -19,10 +19,10 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: 1.19.1
-      - name: Checkout go-libipfs
+      - name: Checkout boxo
         uses: actions/checkout@v3
         with:
-          path: go-libipfs
+          path: boxo
       - name: Checkout Kubo
         uses: actions/checkout@v3
         with:
@@ -34,9 +34,9 @@ jobs:
         uses: protocol/cache-go-action@v1
         with:
           name: ${{ github.job }}
-      - name: Replace go-libipfs in Kubo go.mod
+      - name: Replace boxo in Kubo go.mod
         run: |
-          go mod edit -replace=github.com/ipfs/go-libipfs=../go-libipfs
+          go mod edit -replace=github.com/ipfs/boxo=../boxo
           go mod tidy
           cat go.mod
         working-directory: kubo

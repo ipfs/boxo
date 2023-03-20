@@ -7,11 +7,11 @@ import (
 	"time"
 
 	cid "github.com/ipfs/go-cid"
-	bsbpm "github.com/ipfs/go-libipfs/bitswap/client/internal/blockpresencemanager"
-	bspm "github.com/ipfs/go-libipfs/bitswap/client/internal/peermanager"
-	bsspm "github.com/ipfs/go-libipfs/bitswap/client/internal/sessionpeermanager"
-	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
-	"github.com/ipfs/go-libipfs/internal/test"
+	bsbpm "github.com/ipfs/boxo/bitswap/client/internal/blockpresencemanager"
+	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
+	bsspm "github.com/ipfs/boxo/bitswap/client/internal/sessionpeermanager"
+	"github.com/ipfs/boxo/bitswap/internal/testutil"
+	"github.com/ipfs/boxo/internal/test"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 

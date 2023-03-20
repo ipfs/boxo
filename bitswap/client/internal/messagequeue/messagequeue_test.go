@@ -11,11 +11,11 @@ import (
 
 	"github.com/benbjohnson/clock"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
-	bsmsg "github.com/ipfs/go-libipfs/bitswap/message"
-	pb "github.com/ipfs/go-libipfs/bitswap/message/pb"
-	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
-	"github.com/ipfs/go-libipfs/internal/test"
+	"github.com/ipfs/boxo/bitswap/internal/testutil"
+	bsmsg "github.com/ipfs/boxo/bitswap/message"
+	pb "github.com/ipfs/boxo/bitswap/message/pb"
+	bsnet "github.com/ipfs/boxo/bitswap/network"
+	"github.com/ipfs/boxo/internal/test"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )

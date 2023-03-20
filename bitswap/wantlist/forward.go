@@ -2,7 +2,7 @@ package wantlist
 
 import (
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/bitswap/client/wantlist"
+	"github.com/ipfs/boxo/bitswap/client/wantlist"
 )
 
 type (

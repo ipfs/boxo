@@ -6,9 +6,9 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
-	"github.com/ipfs/go-libipfs/bitswap/client/wantlist"
-	bsmsg "github.com/ipfs/go-libipfs/bitswap/message"
-	blocks "github.com/ipfs/go-libipfs/blocks"
+	"github.com/ipfs/boxo/bitswap/client/wantlist"
+	bsmsg "github.com/ipfs/boxo/bitswap/message"
+	blocks "github.com/ipfs/boxo/blocks"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 

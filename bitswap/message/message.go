@@ -5,11 +5,11 @@ import (
 	"errors"
 	"io"
 
-	"github.com/ipfs/go-libipfs/bitswap/client/wantlist"
-	pb "github.com/ipfs/go-libipfs/bitswap/message/pb"
+	"github.com/ipfs/boxo/bitswap/client/wantlist"
+	pb "github.com/ipfs/boxo/bitswap/message/pb"
 
 	cid "github.com/ipfs/go-cid"
-	blocks "github.com/ipfs/go-libipfs/blocks"
+	blocks "github.com/ipfs/boxo/blocks"
 	pool "github.com/libp2p/go-buffer-pool"
 	msgio "github.com/libp2p/go-msgio"
 

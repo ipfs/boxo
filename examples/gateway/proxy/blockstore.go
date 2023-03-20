@@ -10,7 +10,7 @@ import (
 
 	"github.com/ipfs/go-cid"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	"github.com/ipfs/go-libipfs/blocks"
+	"github.com/ipfs/boxo/blocks"
 )
 
 var (

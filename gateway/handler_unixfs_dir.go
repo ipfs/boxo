@@ -11,8 +11,8 @@ import (
 
 	"github.com/dustin/go-humanize"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/files"
-	"github.com/ipfs/go-libipfs/gateway/assets"
+	"github.com/ipfs/boxo/files"
+	"github.com/ipfs/boxo/gateway/assets"
 	path "github.com/ipfs/go-path"
 	"github.com/ipfs/go-path/resolver"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"

@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
-	"github.com/ipfs/go-libipfs/internal/test"
+	"github.com/ipfs/boxo/bitswap/internal/testutil"
+	"github.com/ipfs/boxo/internal/test"
 )
 
 func TestEmpty(t *testing.T) {

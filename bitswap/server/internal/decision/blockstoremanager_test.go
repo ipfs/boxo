@@ -13,9 +13,9 @@ import (
 	ds_sync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	delay "github.com/ipfs/go-ipfs-delay"
-	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
-	blocks "github.com/ipfs/go-libipfs/blocks"
-	"github.com/ipfs/go-libipfs/internal/test"
+	"github.com/ipfs/boxo/bitswap/internal/testutil"
+	blocks "github.com/ipfs/boxo/blocks"
+	"github.com/ipfs/boxo/internal/test"
 	"github.com/ipfs/go-metrics-interface"
 )
 

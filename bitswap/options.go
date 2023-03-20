@@ -4,9 +4,9 @@ import (
 	"time"
 
 	delay "github.com/ipfs/go-ipfs-delay"
-	"github.com/ipfs/go-libipfs/bitswap/client"
-	"github.com/ipfs/go-libipfs/bitswap/server"
-	"github.com/ipfs/go-libipfs/bitswap/tracer"
+	"github.com/ipfs/boxo/bitswap/client"
+	"github.com/ipfs/boxo/bitswap/server"
+	"github.com/ipfs/boxo/bitswap/tracer"
 )
 
 type option func(*Bitswap)

@@ -6,8 +6,8 @@ import (
 	"sort"
 
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/blocks"
-	"github.com/ipfs/go-libipfs/files"
+	"github.com/ipfs/boxo/blocks"
+	"github.com/ipfs/boxo/files"
 	iface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/ipfs/interface-go-ipfs-core/path"
 )

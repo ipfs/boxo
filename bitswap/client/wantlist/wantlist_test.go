@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	cid "github.com/ipfs/go-cid"
-	pb "github.com/ipfs/go-libipfs/bitswap/message/pb"
-	"github.com/ipfs/go-libipfs/internal/test"
+	pb "github.com/ipfs/boxo/bitswap/message/pb"
+	"github.com/ipfs/boxo/internal/test"
 	"github.com/stretchr/testify/require"
 )
 

@@ -6,7 +6,7 @@ import (
 
 	pubsub "github.com/cskr/pubsub"
 	cid "github.com/ipfs/go-cid"
-	blocks "github.com/ipfs/go-libipfs/blocks"
+	blocks "github.com/ipfs/boxo/blocks"
 )
 
 const bufferSize = 16

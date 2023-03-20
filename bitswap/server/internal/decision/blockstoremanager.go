@@ -8,7 +8,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	ipld "github.com/ipfs/go-ipld-format"
-	blocks "github.com/ipfs/go-libipfs/blocks"
+	blocks "github.com/ipfs/boxo/blocks"
 	"github.com/ipfs/go-metrics-interface"
 )
 

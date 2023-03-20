@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	redirects "github.com/ipfs/go-ipfs-redirects-file"
-	"github.com/ipfs/go-libipfs/files"
+	"github.com/ipfs/boxo/files"
 	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.uber.org/zap"
 )

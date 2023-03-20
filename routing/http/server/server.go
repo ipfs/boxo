@@ -12,8 +12,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/routing/http/internal/drjson"
-	"github.com/ipfs/go-libipfs/routing/http/types"
+	"github.com/ipfs/boxo/routing/http/internal/drjson"
+	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 

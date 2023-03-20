@@ -8,8 +8,8 @@ import (
 
 	"github.com/ipfs/go-blockservice"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
-	"github.com/ipfs/go-libipfs/blocks"
-	"github.com/ipfs/go-libipfs/examples/gateway/common"
+	"github.com/ipfs/boxo/blocks"
+	"github.com/ipfs/boxo/examples/gateway/common"
 	"github.com/stretchr/testify/assert"
 )
 

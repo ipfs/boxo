@@ -3,7 +3,7 @@ package testutil
 import (
 	"testing"
 
-	blocks "github.com/ipfs/go-libipfs/blocks"
+	blocks "github.com/ipfs/boxo/blocks"
 )
 
 func TestGenerateBlocksOfSize(t *testing.T) {

@@ -1,9 +1,10 @@
-module github.com/ipfs/go-libipfs/examples
+module github.com/ipfs/boxo/examples
 
 go 1.19
 
 require (
 	github.com/gogo/protobuf v1.3.2
+	github.com/ipfs/boxo v0.4.0
 	github.com/ipfs/go-blockservice v0.5.0
 	github.com/ipfs/go-cid v0.4.0
 	github.com/ipfs/go-datastore v0.6.0
@@ -13,7 +14,6 @@ require (
 	github.com/ipfs/go-ipfs-exchange-offline v0.3.0
 	github.com/ipfs/go-ipld-format v0.4.0
 	github.com/ipfs/go-ipns v0.3.0
-	github.com/ipfs/go-libipfs v0.4.0
 	github.com/ipfs/go-merkledag v0.9.0
 	github.com/ipfs/go-namesys v0.7.0
 	github.com/ipfs/go-path v0.3.1
@@ -76,6 +76,7 @@ require (
 	github.com/ipfs/go-ipfs-util v0.0.2 // indirect
 	github.com/ipfs/go-ipld-cbor v0.0.6 // indirect
 	github.com/ipfs/go-ipld-legacy v0.1.1 // indirect
+	github.com/ipfs/go-libipfs v0.4.0 // indirect
 	github.com/ipfs/go-log v1.0.5 // indirect
 	github.com/ipfs/go-log/v2 v2.5.1 // indirect
 	github.com/ipfs/go-metrics-interface v0.0.1 // indirect
@@ -164,4 +165,4 @@ require (
 	nhooyr.io/websocket v1.8.7 // indirect
 )
 
-replace github.com/ipfs/go-libipfs => ../
+replace github.com/ipfs/boxo => ../

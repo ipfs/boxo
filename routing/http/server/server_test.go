@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/routing/http/types"
+	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
