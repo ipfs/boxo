@@ -161,15 +161,31 @@ type panicMockAPI struct {
 	panicOnHostnameHandler bool
 }
 
-func (api *panicMockAPI) GetUnixFsNode(context.Context, ipath.Resolved) (files.Node, error) {
+func (api *panicMockAPI) Get(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, *GetResponse, error) {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) LsUnixFsDir(ctx context.Context, p ipath.Resolved) (<-chan iface.DirEntry, error) {
+func (api *panicMockAPI) GetRange(ctx context.Context, immutablePath ImmutablePath, ranges ...GetRange) (ContentPathMetadata, files.File, error) {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+func (api *panicMockAPI) GetAll(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) GetBlock(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.File, error) {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) GetCAR(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) ResolveMutable(ctx context.Context, p ipath.Path) (ImmutablePath, error) {
 	panic("i am panicking")
 }
 
@@ -192,7 +208,7 @@ func (api *panicMockAPI) IsCached(ctx context.Context, p ipath.Path) bool {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) ResolvePath(ctx context.Context, ip ipath.Path) (ipath.Resolved, error) {
+func (api *panicMockAPI) ResolvePath(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, error) {
 	panic("i am panicking")
 }
 
