@@ -38,6 +38,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	mc "github.com/multiformats/go-multicodec"
+
+	// Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/cbor"
+	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
+	_ "github.com/ipld/go-ipld-prime/codec/dagjson"
+	_ "github.com/ipld/go-ipld-prime/codec/json"
 )
 
 type BlocksGateway struct {
