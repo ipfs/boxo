@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-path/resolver"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -138,6 +139,8 @@ func webError(w http.ResponseWriter, err error, defaultCode int) {
 
 	// Handle status code
 	switch {
+	case errors.Is(err, &cid.ErrInvalidCid{}):
+		code = http.StatusBadRequest
 	case isErrNotFound(err):
 		code = http.StatusNotFound
 	case errors.Is(err, context.DeadlineExceeded):

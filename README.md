@@ -50,6 +50,8 @@ The maintainers primarily aim to help people trying to build with IPFS in Go tha
 
 We’d also like to make life easier on ourselves as the maintainers by reducing the maintenance burden that comes from being the owners on [many repos](https://github.com/ipfs/kubo/issues/8543) and then use that time to contribute more to the community in the form of easier to use libraries, better implementations, improved protocols, new protocols, etc. 
 
+Go-libipfs is not exhaustive nor comprehensive--there are plenty of useful IPFS protocols, specs, libraries, etc. that are not in go-libipfs. The goal of go-libipfs is to provide cohesive and well-maintained components for common IPFS use cases.
+
 ## What kind of components does go-libipfs have?
 
 Go-libipfs includes high-quality components useful for interacting with IPFS protocols, public and private IPFS networks, and content-addressed data, such as:
@@ -87,7 +89,7 @@ We happily accept external contributions! However, go-libipfs maintains a high q
   * Complex components should have their own doc.go or README.md describing the component, its use cases, tradeoffs, design rationale, etc.
 * If the maintainers are not go-libipfs maintainers, then the component must include a CODEOWNERS file with at least two code owners who can commit to reviewing PRs
 
-If you have some experimental component that you think would benefit the IPFS community, we suggest you build the component in your own repository until it's clear that there's community demand for it, and then open an issue in this repository to discuss including it in go-libipfs.
+If you have some experimental component that you think would benefit the IPFS community, we suggest you build the component in your own repository until it's clear that there's community demand for it, and then open an issue/PR in this repository to discuss including it in go-libipfs.
 
 ## Help
 

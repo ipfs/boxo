@@ -13,7 +13,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/ipfs/go-blockservice v0.5.0
-	github.com/ipfs/go-cid v0.3.2
+	github.com/ipfs/go-cid v0.4.0
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-detect-race v0.0.1
 	github.com/ipfs/go-fetcher v1.6.1

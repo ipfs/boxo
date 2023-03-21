@@ -272,18 +272,12 @@ func newHandler(c Config, api IPFSBackend) *handler {
 }
 
 func (i *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer panicHandler(w)
+
 	// the hour is a hard fallback, we don't expect it to happen, but just in case
 	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
 	defer cancel()
 	r = r.WithContext(ctx)
-
-	defer func() {
-		if r := recover(); r != nil {
-			log.Error("A panic occurred in the gateway handler!")
-			log.Error(r)
-			debug.PrintStack()
-		}
-	}()
 
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
@@ -434,6 +428,15 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 func (i *handler) addUserHeaders(w http.ResponseWriter) {
 	for k, v := range i.config.Headers {
 		w.Header()[k] = v
+	}
+}
+
+func panicHandler(w http.ResponseWriter) {
+	if r := recover(); r != nil {
+		log.Error("A panic occurred in the gateway handler!")
+		log.Error(r)
+		debug.PrintStack()
+		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
 
