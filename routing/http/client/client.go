@@ -211,18 +211,24 @@ func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.Res
 
 	m.mediaType = mediaType
 
+	var skipBodyClose bool
+	defer func() {
+		if !skipBodyClose {
+			resp.Body.Close()
+		}
+	}()
+
 	var it iter.ResultIter[types.ProviderResponse]
 	switch mediaType {
 	case mediaTypeJSON:
-		defer resp.Body.Close()
 		parsedResp := &jsontypes.ReadProvidersResponse{}
 		err = json.NewDecoder(resp.Body).Decode(parsedResp)
 		var sliceIt iter.Iter[types.ProviderResponse] = iter.FromSlice(parsedResp.Providers)
 		it = iter.ToResultIter(sliceIt)
 	case mediaTypeNDJSON:
+		skipBodyClose = true
 		it = ndjson.NewReadProvidersResponseIter(resp.Body)
 	default:
-		defer resp.Body.Close()
 		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
 		return nil, errors.New("unknown content type")
 	}
