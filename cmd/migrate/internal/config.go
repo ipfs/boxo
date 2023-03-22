@@ -39,6 +39,8 @@ var DefaultConfig = Config{
 		"github.com/ipfs/go-ipfs-exchange-offline":       "github.com/ipfs/boxo/exchange/offline",
 		"github.com/ipfs/go-ipfs-routing":                "github.com/ipfs/boxo/routing",
 		"github.com/ipfs/go-ipfs-exchange-interface":     "github.com/ipfs/boxo/exchange",
+		"github.com/ipfs/go-merkledag":                   "github.com/ipfs/boxo/ipld/merkledag",
+		"github.com/ipld/go-car":                         "github.com/ipfs/boxo/ipld/car",
 
 		// Pre Boxo rename
 		"github.com/ipfs/go-libipfs/bitswap":               "github.com/ipfs/boxo/bitswap",
