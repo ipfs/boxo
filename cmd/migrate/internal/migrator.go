@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -30,18 +31,30 @@ func (m *Migrator) updateFileImports(filePath string) error {
 
 	var fileChanged bool
 
+	var errr error
 	ast.Inspect(astFile, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.ImportSpec:
-			val := strings.Trim(x.Path.Value, `"`)
+			val, err := strconv.Unquote(x.Path.Value)
+			if err != nil {
+				errr = err
+				return false
+			}
 			// we take the first matching prefix, so you need to make sure you don't have ambiguous mappings
 			for from, to := range m.Config.ImportPaths {
 				if strings.HasPrefix(val, from) {
-					suffix := strings.TrimPrefix(val, from)
-					newVal := to + suffix
+					var newVal string
+					switch {
+					case len(val) == len(from):
+						newVal = to
+					case val[len(from)] != '/':
+						continue
+					default:
+						newVal = to + val[len(from):]
+					}
 					fmt.Printf("changing %s => %s in %s\n", x.Path.Value, newVal, filePath)
 					if !m.DryRun {
-						x.Path.Value = fmt.Sprintf(`"%s"`, newVal)
+						x.Path.Value = strconv.Quote(newVal)
 						fileChanged = true
 					}
 				}
@@ -49,6 +62,9 @@ func (m *Migrator) updateFileImports(filePath string) error {
 		}
 		return true
 	})
+	if errr != nil {
+		return errr
+	}
 
 	if !fileChanged {
 		return nil
