@@ -71,6 +71,10 @@ No.  This repo houses some IPFS functionality written in Go that has been useful
 
 No.  Not everything related to IPFS is intended to be in go-libipfs. View it as a starter toolbox (potentially among multiple).  If you’d like to build an IPFS implementation with Go, here are some tools you might want that are maintained by a group that has long term commitments to the IPFS project.  There are certainly repos that others maintainer that aren't included here (e.g., ipfs/go-car) which are still useful to IPFS implementations. It's expected and fine for new IPFS functionality to be developed that won't be part of go-libipfs.  
 
+### Why is the code coverage so bad?
+
+The code coverage of this repo is not currently representative of the actual test coverage of this code. Much of the code in this repo is currently covered by integration tests in [Kubo](https://github.com/ipfs/kubo). We are in the process of moving those tests here, and as that continues the code coverage will significantly increase.
+
 ## Getting started
 See [examples](./examples/README.md).
 
