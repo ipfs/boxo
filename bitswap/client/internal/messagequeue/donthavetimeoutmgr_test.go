@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
+	"github.com/ipfs/boxo/bitswap/internal/testutil"
+	"github.com/ipfs/boxo/internal/test"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
-	"github.com/ipfs/go-libipfs/internal/test"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 

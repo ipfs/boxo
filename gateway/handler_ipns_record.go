@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	ipath "github.com/ipfs/boxo/coreiface/path"
+	ipns_pb "github.com/ipfs/boxo/ipns/pb"
 	"github.com/ipfs/go-cid"
-	ipns_pb "github.com/ipfs/go-ipns/pb"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"

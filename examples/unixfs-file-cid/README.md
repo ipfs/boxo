@@ -10,7 +10,7 @@ In client mode, it will start up, connect to the server, request the data needed
 
 ## Build
 
-From the `go-libipfs/examples` directory run the following:
+From the `boxo/examples` directory run the following:
 
 ```
 > cd unixfs-file-cid/

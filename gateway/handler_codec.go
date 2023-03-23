@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	ipath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/gateway/assets"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/gateway/assets"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/ipld/go-ipld-prime/multicodec"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	mc "github.com/multiformats/go-multicodec"

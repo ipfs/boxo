@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ipfs/boxo/path/resolver"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/ipfs/go-path/resolver"
 )
 
 var (

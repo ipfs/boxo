@@ -19,24 +19,25 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: 1.19.1
-      - name: Checkout go-libipfs
+      - name: Checkout boxo
         uses: actions/checkout@v3
         with:
-          path: go-libipfs
+          path: boxo
       - name: Checkout Kubo
         uses: actions/checkout@v3
         with:
           repository: ipfs/kubo
           path: kubo
+          ref: 503edee648e29c62888f05fa146ab13d9c65077d
       - name: Install Missing Tools
         run: sudo apt install -y socat net-tools fish libxml2-utils
       - name: Restore Go Cache
         uses: protocol/cache-go-action@v1
         with:
           name: ${{ github.job }}
-      - name: Replace go-libipfs in Kubo go.mod
+      - name: Replace boxo in Kubo go.mod
         run: |
-          go mod edit -replace=github.com/ipfs/go-libipfs=../go-libipfs
+          go mod edit -replace=github.com/ipfs/boxo=../boxo
           go mod tidy
           cat go.mod
         working-directory: kubo
@@ -47,5 +48,5 @@ jobs:
         run: find . -maxdepth 1 -name "*gateway*.sh" -print0 | xargs -0 -I {} bash -c "echo {}; {}"
         working-directory: kubo/test/sharness
       - name: Run Kubo CLI Tests
-        run: go test -v -run=Gateway .
+        run: go test -run=Gateway .
         working-directory: kubo/test/cli

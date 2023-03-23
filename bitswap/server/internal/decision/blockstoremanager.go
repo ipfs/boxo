@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"sync"
 
+	bstore "github.com/ipfs/boxo/blockstore"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
 	ipld "github.com/ipfs/go-ipld-format"
-	blocks "github.com/ipfs/go-libipfs/blocks"
 	"github.com/ipfs/go-metrics-interface"
 )
 

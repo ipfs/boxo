@@ -8,12 +8,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	bsmsg "github.com/ipfs/go-libipfs/bitswap/message"
-	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
+	bsmsg "github.com/ipfs/boxo/bitswap/message"
+	bsnet "github.com/ipfs/boxo/bitswap/network"
 
+	mockrouting "github.com/ipfs/boxo/routing/mock"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
-	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
 
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/connmgr"

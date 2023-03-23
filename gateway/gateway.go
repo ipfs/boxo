@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"sort"
 
+	iface "github.com/ipfs/boxo/coreiface"
+	"github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/files"
+	"github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/blocks"
-	"github.com/ipfs/go-libipfs/files"
-	iface "github.com/ipfs/interface-go-ipfs-core"
-	"github.com/ipfs/interface-go-ipfs-core/path"
 )
 
 // Config is the configuration used when creating a new gateway handler.

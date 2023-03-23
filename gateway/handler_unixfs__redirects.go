@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
+	ipath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/files"
 	redirects "github.com/ipfs/go-ipfs-redirects-file"
-	"github.com/ipfs/go-libipfs/files"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.uber.org/zap"
 )
 
