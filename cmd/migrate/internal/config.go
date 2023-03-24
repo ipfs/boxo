@@ -16,7 +16,7 @@ var DefaultConfig = Config{
 		"github.com/ipfs/go-bitswap":                     "github.com/ipfs/boxo/bitswap",
 		"github.com/ipfs/go-ipfs-files":                  "github.com/ipfs/boxo/files",
 		"github.com/ipfs/tar-utils":                      "github.com/ipfs/boxo/tar",
-		"gihtub.com/ipfs/go-block-format":                "github.com/ipfs/boxo/blocks",
+		"github.com/ipfs/go-block-format":                "github.com/ipfs/boxo/blocks",
 		"github.com/ipfs/interface-go-ipfs-core":         "github.com/ipfs/boxo/coreiface",
 		"github.com/ipfs/go-unixfs":                      "github.com/ipfs/boxo/ipld/unixfs",
 		"github.com/ipfs/go-pinning-service-http-client": "github.com/ipfs/boxo/pinning/remote/client",
@@ -41,6 +41,7 @@ var DefaultConfig = Config{
 		"github.com/ipfs/go-ipfs-exchange-interface":     "github.com/ipfs/boxo/exchange",
 		"github.com/ipfs/go-merkledag":                   "github.com/ipfs/boxo/ipld/merkledag",
 		"github.com/ipld/go-car":                         "github.com/ipfs/boxo/ipld/car",
+		"github.com/ipfs/go-ipld-format":                 "github.com/ipfs/boxo/ipld/format",
 
 		// Pre Boxo rename
 		"github.com/ipfs/go-libipfs/gateway":               "github.com/ipfs/boxo/gateway",
