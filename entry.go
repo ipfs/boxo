@@ -160,7 +160,8 @@ func (d *downloader) Read(b []byte) (int, error) {
 		pref := c.Prefix()
 		switch pref.MhType {
 		case mh.IDENTITY:
-			data = data[1+len(data)-pref.MhLength:] // skip the 0x00 prefix and the multihash length
+			data = c.Hash()
+			data = data[len(data)-pref.MhLength:] // extract digest
 		default:
 			if err := verifcid.ValidateCid(c); err != nil {
 				return 0, fmt.Errorf("cid %s don't pass safe test: %w", cidStringTruncate(c), err)
