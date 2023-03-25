@@ -105,18 +105,6 @@ func (m *Migrator) run(cmdName string, args ...string) (int, string, string, err
 	return state.ExitCode(), strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), nil
 }
 
-func (m *Migrator) currentModule() (string, error) {
-	exitCode, stdout, stderr, err := m.run("go", "list", "-m")
-	if err != nil {
-		return "", fmt.Errorf("finding current module: %w", err)
-	}
-	if exitCode != 0 {
-		return "", fmt.Errorf("non-zero exit code %d finding current module, stderr:\n%s\n", exitCode, stderr)
-	}
-	return strings.TrimSpace(stdout), nil
-
-}
-
 // FindMigratedDependencies returns a list of dependent module versions like 'module v0.1.0' that have been migrated to go-libipfs.
 func (m *Migrator) FindMigratedDependencies() ([]string, error) {
 	var modVersions []string
@@ -132,7 +120,7 @@ func (m *Migrator) FindMigratedDependencies() ([]string, error) {
 			}
 		} else {
 			if !strings.Contains(stderr, "not a known dependency") {
-				return nil, fmt.Errorf("non-zero exit code %d finding if current module depends on %q, stderr:\n%s\n", exitCode, mod, stderr)
+				return nil, fmt.Errorf("non-zero exit code %d finding if current module depends on %q, stderr:\n%s\n", exitCode, mod, stderr) // nolint
 			}
 		}
 	}
@@ -145,7 +133,7 @@ func (m *Migrator) findSourceFiles() ([]string, error) {
 		return nil, fmt.Errorf("finding source files: %w", err)
 	}
 	if exitCode != 0 {
-		return nil, fmt.Errorf("non-zero exit code %d finding source files, stderr:\n%s\n", exitCode, stderr)
+		return nil, fmt.Errorf("non-zero exit code %d finding source files, stderr:\n%s\n", exitCode, stderr) // nolint
 	}
 
 	var files []string
