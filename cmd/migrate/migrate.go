@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ipfs/go-libipfs/cmd/migrate/internal"
+	migrate "github.com/ipfs/boxo/cmd/migrate/internal"
 	"github.com/urfave/cli/v2"
 )
 
