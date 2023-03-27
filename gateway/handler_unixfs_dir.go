@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	cid "github.com/ipfs/go-cid"
+	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/gateway/assets"
 	path "github.com/ipfs/boxo/path"
-	ipath "github.com/ipfs/boxo/coreiface/path"
+	cid "github.com/ipfs/go-cid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"

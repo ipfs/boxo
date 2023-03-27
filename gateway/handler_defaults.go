@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ipfs/go-libipfs/files"
+	"github.com/ipfs/boxo/files"
 	mc "github.com/multiformats/go-multicodec"
 
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
+	ipath "github.com/ipfs/boxo/coreiface/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"

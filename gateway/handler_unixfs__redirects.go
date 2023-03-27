@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ipfs/boxo/files"
 	ipath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/files"
 
 	redirects "github.com/ipfs/go-ipfs-redirects-file"
 )

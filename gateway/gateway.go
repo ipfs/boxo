@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/ipfs/go-cid"
+	"github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/files"
-	"github.com/ipfs/boxo/iplpd/unixfs"
-	"github.com/boxo/coreiface/path"
+	"github.com/ipfs/boxo/ipld/unixfs"
+	"github.com/ipfs/go-cid"
 )
 
 // Config is the configuration used when creating a new gateway handler.

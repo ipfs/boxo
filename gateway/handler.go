@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
+	ipath "github.com/ipfs/boxo/coreiface/path"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
-	ipath "github.com/ipfs/boxo/coreiface/path"
 	prometheus "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
