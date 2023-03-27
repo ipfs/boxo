@@ -74,6 +74,7 @@ func (m *Migrator) updateFileImports(filePath string) error {
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 	err = format.Node(f, fset, astFile)
 	if err != nil {
 		f.Close()
@@ -120,7 +121,7 @@ func (m *Migrator) FindMigratedDependencies() ([]string, error) {
 			}
 		} else {
 			if !strings.Contains(stderr, "not a known dependency") {
-				return nil, fmt.Errorf("non-zero exit code %d finding if current module depends on %q, stderr:\n%s\n", exitCode, mod, stderr) // nolint
+				return nil, fmt.Errorf("non-zero exit code %d finding if current module depends on %q, stderr:\n%s", exitCode, mod, stderr)
 			}
 		}
 	}
@@ -133,7 +134,7 @@ func (m *Migrator) findSourceFiles() ([]string, error) {
 		return nil, fmt.Errorf("finding source files: %w", err)
 	}
 	if exitCode != 0 {
-		return nil, fmt.Errorf("non-zero exit code %d finding source files, stderr:\n%s\n", exitCode, stderr) // nolint
+		return nil, fmt.Errorf("non-zero exit code %d finding source files, stderr:\n%s", exitCode, stderr)
 	}
 
 	var files []string
