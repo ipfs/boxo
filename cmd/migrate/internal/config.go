@@ -101,6 +101,8 @@ var DefaultConfig = Config{
 		"github.com/ipfs/go-ipfs-routing",
 		"github.com/ipfs/go-ipfs-exchange-interface",
 		"github.com/ipfs/go-libipfs",
+		"github.com/ipld/go-car",
+		"github.com/ipfs/go-merkledag",
 	},
 }
 
