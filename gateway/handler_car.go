@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
+	ipath "github.com/ipfs/boxo/coreiface/path"
+	gocar "github.com/ipfs/boxo/ipld/car"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	blocks "github.com/ipfs/go-libipfs/blocks"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
-	gocar "github.com/ipld/go-car"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"

@@ -5,8 +5,8 @@ import (
 	"sync"
 
 	pubsub "github.com/cskr/pubsub"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	blocks "github.com/ipfs/go-libipfs/blocks"
 )
 
 const bufferSize = 16

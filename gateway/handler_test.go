@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
+	iface "github.com/ipfs/boxo/coreiface"
+	ipath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/files"
+	"github.com/ipfs/boxo/path/resolver"
+	"github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/ipfs/go-libipfs/blocks"
-	"github.com/ipfs/go-libipfs/files"
-	"github.com/ipfs/go-path/resolver"
-	iface "github.com/ipfs/interface-go-ipfs-core"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -15,10 +15,10 @@ import (
 	"strings"
 	"time"
 
+	coreiface "github.com/ipfs/boxo/coreiface"
+	ipath "github.com/ipfs/boxo/coreiface/path"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	mc "github.com/multiformats/go-multicodec"
 	prometheus "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
@@ -876,5 +876,5 @@ func (i *handler) setCommonHeaders(w http.ResponseWriter, r *http.Request, conte
 
 // spanTrace starts a new span using the standard IPFS tracing conventions.
 func spanTrace(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return otel.Tracer("go-libipfs").Start(ctx, fmt.Sprintf("%s.%s", " Gateway", spanName), opts...)
+	return otel.Tracer("boxo").Start(ctx, fmt.Sprintf("%s.%s", " Gateway", spanName), opts...)
 }

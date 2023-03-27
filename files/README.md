@@ -1,14 +1,14 @@
-# go-libipfs/files
+# boxo/files
 
 > File interfaces and utils used in GO implementations of [IPFS](https://ipfs.tech)
 
 ## Documentation
 
-https://pkg.go.dev/github.com/ipfs/go-libipfs/files
+https://pkg.go.dev/github.com/ipfs/boxo/files
 
 ## Contribute
 
-Feel free to join in. All welcome. Open an [issue](https://github.com/ipfs/go-libipfs/issues)!
+Feel free to join in. All welcome. Open an [issue](https://github.com/ipfs/boxo/issues)!
 
 This repository falls under the IPFS [Code of Conduct](https://github.com/ipfs/community/blob/master/code-of-conduct.md).
 

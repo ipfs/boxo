@@ -37,7 +37,7 @@ jobs:
       - name: Run tests
         uses: protocol/multiple-go-modules@v1.2
         with:
-          run: go test -v -shuffle=on ./...
+          run: go test -shuffle=on ./...
       - name: Run tests (32 bit)
         if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
         uses: protocol/multiple-go-modules@v1.2
@@ -46,9 +46,9 @@ jobs:
         with:
           run: |
             export "PATH=${{ env.PATH_386 }}:$PATH"
-            go test -v -shuffle=on ./...
+            go test -shuffle=on ./...
       - name: Run tests with race detector
         if: ${{ matrix.os == 'ubuntu' }} # speed things up. Windows and OSX VMs are slow
         uses: protocol/multiple-go-modules@v1.2
         with:
-          run: go test -v -race ./...
+          run: go test -race ./...
