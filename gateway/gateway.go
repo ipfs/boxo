@@ -8,9 +8,9 @@ import (
 	"sort"
 
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/files"
-	"github.com/ipfs/go-unixfs"
-	"github.com/ipfs/interface-go-ipfs-core/path"
+	"github.com/ipfs/boxo/files"
+	"github.com/ipfs/boxo/iplpd/unixfs"
+	"github.com/boxo/coreiface/path"
 )
 
 // Config is the configuration used when creating a new gateway handler.

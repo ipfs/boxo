@@ -3,7 +3,7 @@ package common
 import (
 	"net/http"
 
-	"github.com/ipfs/go-libipfs/gateway"
+	"github.com/ipfs/boxo/gateway"
 )
 
 func NewBlocksHandler(gw gateway.IPFSBackend, port int) http.Handler {

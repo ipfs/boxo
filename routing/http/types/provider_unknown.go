@@ -3,7 +3,7 @@ package types
 import (
 	"encoding/json"
 
-	"github.com/ipfs/go-libipfs/routing/http/internal/drjson"
+	"github.com/ipfs/boxo/routing/http/internal/drjson"
 )
 
 var _ ReadProviderRecord = &UnknownProviderRecord{}

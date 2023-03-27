@@ -8,12 +8,12 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/ipfs/go-blockservice"
+	"github.com/ipfs/boxo/blockservice"
+	"github.com/ipfs/boxo/examples/gateway/common"
+	offline "github.com/ipfs/boxo/exchange/offline"
+	"github.com/ipfs/boxo/gateway"
+	carblockstore "github.com/ipfs/boxo/ipld/car/v2/blockstore"
 	"github.com/ipfs/go-cid"
-	offline "github.com/ipfs/go-ipfs-exchange-offline"
-	"github.com/ipfs/go-libipfs/examples/gateway/common"
-	"github.com/ipfs/go-libipfs/gateway"
-	carblockstore "github.com/ipld/go-car/v2/blockstore"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

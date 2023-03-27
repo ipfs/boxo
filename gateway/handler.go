@@ -18,7 +18,7 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
+	ipath "github.com/ipfs/boxo/coreiface/path"
 	prometheus "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -890,5 +890,5 @@ func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentP
 
 // spanTrace starts a new span using the standard IPFS tracing conventions.
 func spanTrace(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return otel.Tracer("go-libipfs").Start(ctx, fmt.Sprintf("%s.%s", " Gateway", spanName), opts...)
+	return otel.Tracer("boxo").Start(ctx, fmt.Sprintf("%s.%s", " Gateway", spanName), opts...)
 }

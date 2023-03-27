@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/boxo/bitswap/internal/testutil"
+	blockstore "github.com/ipfs/boxo/blockstore"
+	"github.com/ipfs/boxo/internal/test"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	delay "github.com/ipfs/go-ipfs-delay"
-	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
-	blocks "github.com/ipfs/go-libipfs/blocks"
-	"github.com/ipfs/go-libipfs/internal/test"
 	"github.com/ipfs/go-metrics-interface"
 )
 

@@ -40,8 +40,8 @@ wants those blocks.
 ```golang
 import (
   "context"
-  bitswap "github.com/ipfs/go-libipfs/bitswap"
-  bsnet "github.com/ipfs/go-libipfs/bitswap/network"
+  bitswap "github.com/ipfs/boxo/bitswap"
+  bsnet "github.com/ipfs/boxo/bitswap/network"
   blockstore "github.com/ipfs/go-ipfs-blockstore"
   "github.com/libp2p/go-libp2p-core/routing"
   "github.com/libp2p/go-libp2p-core/host"

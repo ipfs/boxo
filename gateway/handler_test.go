@@ -12,9 +12,9 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/ipfs/go-libipfs/files"
-	"github.com/ipfs/go-path/resolver"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
+	"github.com/ipfs/boxo/files"
+	"github.com/ipfs/boxo/path/resolver"
+	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/stretchr/testify/assert"
 )
 
