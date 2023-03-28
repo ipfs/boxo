@@ -38,6 +38,7 @@ import (
 	bsnet "github.com/ipfs/boxo/bitswap/network"
 	bsserver "github.com/ipfs/boxo/bitswap/server"
 	"github.com/ipfs/boxo/files"
+	boxolibp2p "github.com/ipfs/boxo/libp2p"
 )
 
 const exampleBinaryName = "unixfs-file-cid"
@@ -111,7 +112,7 @@ func makeHost(listenPort int, randseed int64) (host.Host, error) {
 		libp2p.Identity(priv),
 	}
 
-	return libp2p.New(opts...)
+	return boxolibp2p.NewHost(opts...)
 }
 
 func getHostAddress(h host.Host) string {
