@@ -29,7 +29,7 @@ func main() {
 	}
 	defer f.Close()
 
-	gwAPI, err := common.NewBlocksGateway(blockService, nil)
+	gwAPI, err := gateway.NewBlocksGateway(blockService)
 	if err != nil {
 		log.Fatal(err)
 	}

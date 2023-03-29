@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"html"
 	"net/http"
 	"time"
 
@@ -16,23 +15,25 @@ import (
 
 var unixEpochTime = time.Unix(0, 0)
 
-func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "ServeTAR", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
+	ctx, span := spanTrace(ctx, "ServeTAR", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Get Unixfs file
-	file, err := i.api.GetUnixFsNode(ctx, resolvedPath)
-	if err != nil {
-		err = fmt.Errorf("error getting UnixFS node for %s: %w", html.EscapeString(contentPath.String()), err)
-		webError(w, err, http.StatusInternalServerError)
+	// Get Unixfs file (or directory)
+	pathMetadata, file, err := i.api.GetAll(ctx, imPath)
+	if !i.handleRequestErrors(w, contentPath, err) {
 		return false
 	}
 	defer file.Close()
 
-	rootCid := resolvedPath.Cid()
+	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
+		webRequestError(w, err)
+		return false
+	}
+	rootCid := pathMetadata.LastSegment.Cid()
 
 	// Set Cache-Control and read optional Last-Modified time
 	modtime := addCacheControlHeaders(w, r, contentPath, rootCid)

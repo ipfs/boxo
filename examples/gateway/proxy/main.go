@@ -27,7 +27,7 @@ func main() {
 	routing := newProxyRouting(*gatewayUrlPtr, nil)
 
 	// Creates the gateway with the block service and the routing.
-	gwAPI, err := common.NewBlocksGateway(blockService, routing)
+	gwAPI, err := gateway.NewBlocksGateway(blockService, gateway.WithValueStore(routing))
 	if err != nil {
 		log.Fatal(err)
 	}

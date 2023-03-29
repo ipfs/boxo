@@ -9,6 +9,7 @@ import (
 	"github.com/ipfs/boxo/blockservice"
 	"github.com/ipfs/boxo/examples/gateway/common"
 	offline "github.com/ipfs/boxo/exchange/offline"
+	"github.com/ipfs/boxo/gateway"
 	"github.com/ipfs/go-block-format"
 	"github.com/stretchr/testify/assert"
 )
@@ -22,12 +23,12 @@ func newProxyGateway(t *testing.T, rs *httptest.Server) *httptest.Server {
 	blockService := blockservice.New(blockStore, offline.Exchange(blockStore))
 	routing := newProxyRouting(rs.URL, nil)
 
-	gateway, err := common.NewBlocksGateway(blockService, routing)
+	gw, err := gateway.NewBlocksGateway(blockService, gateway.WithValueStore(routing))
 	if err != nil {
 		t.Error(err)
 	}
 
-	handler := common.NewBlocksHandler(gateway, 0)
+	handler := common.NewBlocksHandler(gw, 0)
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
 

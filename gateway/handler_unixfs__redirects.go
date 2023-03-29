@@ -8,10 +8,12 @@ import (
 	"strconv"
 	"strings"
 
+	"go.uber.org/zap"
+
 	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/files"
+
 	redirects "github.com/ipfs/go-ipfs-redirects-file"
-	"go.uber.org/zap"
 )
 
 // Resolving a UnixFS path involves determining if the provided `path.Path` exists and returning the `path.Resolved`
@@ -36,46 +38,58 @@ import (
 //
 // Note that for security reasons, redirect rules are only processed when the request has origin isolation.
 // See https://github.com/ipfs/specs/pull/290 for more information.
-func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, logger *zap.SugaredLogger) (newResolvedPath ipath.Resolved, newContentPath ipath.Path, continueProcessing bool, hadMatchingRule bool) {
-	redirectsFile := i.getRedirectsFile(r, contentPath, logger)
-	if redirectsFile != nil {
-		redirectRules, err := i.getRedirectRules(r, redirectsFile)
-		if err != nil {
-			webError(w, err, http.StatusInternalServerError)
-			return nil, nil, false, true
-		}
+func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request, maybeResolvedImPath, immutableContentPath ImmutablePath, contentPath ipath.Path, logger *zap.SugaredLogger) (newContentPath ImmutablePath, continueProcessing bool, hadMatchingRule bool) {
+	// contentPath is the full ipfs path to the requested resource,
+	// regardless of whether path or subdomain resolution is used.
+	rootPath := getRootPath(immutableContentPath)
+	redirectsPath := ipath.Join(rootPath, "_redirects")
+	imRedirectsPath, err := NewImmutablePath(redirectsPath)
+	if err != nil {
+		err = fmt.Errorf("trouble processing _redirects path %q: %w", redirectsPath, err)
+		webError(w, err, http.StatusInternalServerError)
+		return ImmutablePath{}, false, true
+	}
 
-		redirected, newPath, err := i.handleRedirectsFileRules(w, r, contentPath, redirectRules)
+	foundRedirect, redirectRules, err := i.getRedirectRules(r, imRedirectsPath)
+	if err != nil {
+		err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsPath, err)
+		webError(w, err, http.StatusInternalServerError)
+		return ImmutablePath{}, false, true
+	}
+
+	if foundRedirect {
+		redirected, newPath, err := i.handleRedirectsFileRules(w, r, immutableContentPath, contentPath, redirectRules)
 		if err != nil {
-			err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsFile.String(), err)
+			err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsPath, err)
 			webError(w, err, http.StatusInternalServerError)
-			return nil, nil, false, true
+			return ImmutablePath{}, false, true
 		}
 
 		if redirected {
-			return nil, nil, false, true
+			return ImmutablePath{}, false, true
 		}
 
 		// 200 is treated as a rewrite, so update the path and continue
 		if newPath != "" {
 			// Reassign contentPath and resolvedPath since the URL was rewritten
-			contentPath = ipath.New(newPath)
-			resolvedPath, err = i.api.ResolvePath(r.Context(), contentPath)
+			p := ipath.New(newPath)
+			imPath, err := NewImmutablePath(p)
 			if err != nil {
+				err = fmt.Errorf("could not use _redirects file to %q: %w", p, err)
 				webError(w, err, http.StatusInternalServerError)
-				return nil, nil, false, true
+				return ImmutablePath{}, false, true
 			}
-
-			return resolvedPath, contentPath, true, true
+			return imPath, true, true
 		}
 	}
+
 	// No matching rule, paths remain the same, continue regular processing
-	return resolvedPath, contentPath, true, false
+	return maybeResolvedImPath, true, false
 }
 
-func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Request, contentPath ipath.Path, redirectRules []redirects.Rule) (redirected bool, newContentPath string, err error) {
+func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Request, immutableContentPath ImmutablePath, cPath ipath.Path, redirectRules []redirects.Rule) (redirected bool, newContentPath string, err error) {
 	// Attempt to match a rule to the URL path, and perform the corresponding redirect or rewrite
-	pathParts := strings.Split(contentPath.String(), "/")
+	pathParts := strings.Split(immutableContentPath.String(), "/")
 	if len(pathParts) > 3 {
 		// All paths should start with /ipfs/cid/, so get the path after that
 		urlPath := "/" + strings.Join(pathParts[3:], "/")
@@ -101,8 +115,22 @@ func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Reques
 			// Or 4xx
 			if rule.Status == 404 || rule.Status == 410 || rule.Status == 451 {
 				toPath := rootPath + rule.To
-				content4xxPath := ipath.New(toPath)
-				err := i.serve4xx(w, r, content4xxPath, rule.Status)
+				imContent4xxPath, err := NewImmutablePath(ipath.New(toPath))
+				if err != nil {
+					return true, toPath, err
+				}
+
+				// While we have the immutable path which is enough to fetch the data we need to track mutability for
+				// headers.
+				contentPathParts := strings.Split(cPath.String(), "/")
+				if len(contentPathParts) <= 3 {
+					// Match behavior as with the immutable path
+					return false, "", nil
+				}
+				// All paths should start with /ip(f|n)s/<root>/, so get the path after that
+				contentRootPath := strings.Join(contentPathParts[:3], "/")
+				content4xxPath := ipath.New(contentRootPath + rule.To)
+				err = i.serve4xx(w, r, imContent4xxPath, content4xxPath, rule.Status)
 				return true, toPath, err
 			}
 
@@ -118,44 +146,33 @@ func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Reques
 	return false, "", nil
 }
 
-func (i *handler) getRedirectRules(r *http.Request, redirectsFilePath ipath.Resolved) ([]redirects.Rule, error) {
-	// Convert the path into a file node
-	node, err := i.api.GetUnixFsNode(r.Context(), redirectsFilePath)
+// getRedirectRules fetches the _redirects file corresponding to a given path and returns the rules
+// Returns whether _redirects was found, the rules (if they exist) and if there was an error (other than a missing _redirects)
+// If there is an error returns (false, nil, err)
+func (i *handler) getRedirectRules(r *http.Request, redirectsPath ImmutablePath) (bool, []redirects.Rule, error) {
+	// Check for _redirects file.
+	// Any path resolution failures are ignored and we just assume there's no _redirects file.
+	// Note that ignoring these errors also ensures that the use of the empty CID (bafkqaaa) in tests doesn't fail.
+	_, redirectsFileGetResp, err := i.api.Get(r.Context(), redirectsPath)
 	if err != nil {
-		return nil, fmt.Errorf("could not get _redirects: %w", err)
+		if isErrNotFound(err) {
+			return false, nil, nil
+		}
+		return false, nil, err
 	}
-	defer node.Close()
 
-	// Convert the node into a file
-	f, ok := node.(files.File)
-	if !ok {
-		return nil, fmt.Errorf("could not parse _redirects: %w", err)
+	if redirectsFileGetResp.bytes == nil {
+		return false, nil, fmt.Errorf(" _redirects is not a file")
 	}
+	f := redirectsFileGetResp.bytes
+	defer f.Close()
 
 	// Parse redirect rules from file
 	redirectRules, err := redirects.Parse(f)
 	if err != nil {
-		return nil, fmt.Errorf("could not parse _redirects: %w", err)
+		return false, nil, fmt.Errorf("could not parse _redirects: %w", err)
 	}
-
-	return redirectRules, nil
-}
-
-// Returns a resolved path to the _redirects file located in the root CID path of the requested path
-func (i *handler) getRedirectsFile(r *http.Request, contentPath ipath.Path, logger *zap.SugaredLogger) ipath.Resolved {
-	// contentPath is the full ipfs path to the requested resource,
-	// regardless of whether path or subdomain resolution is used.
-	rootPath := getRootPath(contentPath)
-
-	// Check for _redirects file.
-	// Any path resolution failures are ignored and we just assume there's no _redirects file.
-	// Note that ignoring these errors also ensures that the use of the empty CID (bafkqaaa) in tests doesn't fail.
-	path := ipath.Join(rootPath, "_redirects")
-	resolvedPath, err := i.api.ResolvePath(r.Context(), path)
-	if err != nil {
-		return nil
-	}
-	return resolvedPath
+	return true, redirectRules, nil
 }
 
 // Returns the root CID Path for the given path
@@ -164,24 +181,21 @@ func getRootPath(path ipath.Path) ipath.Path {
 	return ipath.New(gopath.Join("/", path.Namespace(), parts[2]))
 }
 
-func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPath ipath.Path, status int) error {
-	resolved4xxPath, err := i.api.ResolvePath(r.Context(), content4xxPath)
+func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPathImPath ImmutablePath, content4xxPath ipath.Path, status int) error {
+	pathMetadata, getresp, err := i.api.Get(r.Context(), content4xxPathImPath)
 	if err != nil {
 		return err
 	}
 
-	node, err := i.api.GetUnixFsNode(r.Context(), resolved4xxPath)
-	if err != nil {
-		return err
-	}
-	defer node.Close()
-
-	f, ok := node.(files.File)
-	if !ok {
+	if getresp.bytes == nil {
 		return fmt.Errorf("could not convert node for %d page to file", status)
 	}
+	content4xxFile := getresp.bytes
+	defer content4xxFile.Close()
 
-	size, err := f.Size()
+	content4xxCid := pathMetadata.LastSegment.Cid()
+
+	size, err := content4xxFile.Size()
 	if err != nil {
 		return fmt.Errorf("could not get size of %d page", status)
 	}
@@ -189,9 +203,9 @@ func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPat
 	log.Debugf("using _redirects: custom %d file at %q", status, content4xxPath)
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-	addCacheControlHeaders(w, r, content4xxPath, resolved4xxPath.Cid())
+	addCacheControlHeaders(w, r, content4xxPath, content4xxCid)
 	w.WriteHeader(status)
-	_, err = io.CopyN(w, f, size)
+	_, err = io.CopyN(w, content4xxFile, size)
 	return err
 }
 
@@ -206,51 +220,36 @@ func hasOriginIsolation(r *http.Request) bool {
 	return false
 }
 
-func isUnixfsResponseFormat(responseFormat string) bool {
-	// The implicit response format is UnixFS
-	return responseFormat == ""
-}
-
 // Deprecated: legacy ipfs-404.html files are superseded by _redirects file
 // This is provided only for backward-compatibility, until websites migrate
 // to 404s managed via _redirects file (https://github.com/ipfs/specs/pull/290)
-func (i *handler) serveLegacy404IfPresent(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) bool {
-	resolved404Path, ctype, err := i.searchUpTreeFor404(r, contentPath)
+func (i *handler) serveLegacy404IfPresent(w http.ResponseWriter, r *http.Request, imPath ImmutablePath) bool {
+	resolved404File, ctype, err := i.searchUpTreeFor404(r, imPath)
+	if err != nil {
+		return false
+	}
+	defer resolved404File.Close()
+
+	size, err := resolved404File.Size()
 	if err != nil {
 		return false
 	}
 
-	dr, err := i.api.GetUnixFsNode(r.Context(), resolved404Path)
-	if err != nil {
-		return false
-	}
-	defer dr.Close()
-
-	f, ok := dr.(files.File)
-	if !ok {
-		return false
-	}
-
-	size, err := f.Size()
-	if err != nil {
-		return false
-	}
-
-	log.Debugw("using pretty 404 file", "path", contentPath)
+	log.Debugw("using pretty 404 file", "path", imPath)
 	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusNotFound)
-	_, err = io.CopyN(w, f, size)
+	_, err = io.CopyN(w, resolved404File, size)
 	return err == nil
 }
 
-func (i *handler) searchUpTreeFor404(r *http.Request, contentPath ipath.Path) (ipath.Resolved, string, error) {
+func (i *handler) searchUpTreeFor404(r *http.Request, imPath ImmutablePath) (files.File, string, error) {
 	filename404, ctype, err := preferred404Filename(r.Header.Values("Accept"))
 	if err != nil {
 		return nil, "", err
 	}
 
-	pathComponents := strings.Split(contentPath.String(), "/")
+	pathComponents := strings.Split(imPath.String(), "/")
 
 	for idx := len(pathComponents); idx >= 3; idx-- {
 		pretty404 := gopath.Join(append(pathComponents[0:idx], filename404)...)
@@ -258,11 +257,19 @@ func (i *handler) searchUpTreeFor404(r *http.Request, contentPath ipath.Path) (i
 		if parsed404Path.IsValid() != nil {
 			break
 		}
-		resolvedPath, err := i.api.ResolvePath(r.Context(), parsed404Path)
+		imparsed404Path, err := NewImmutablePath(parsed404Path)
+		if err != nil {
+			break
+		}
+
+		_, getResp, err := i.api.Get(r.Context(), imparsed404Path)
 		if err != nil {
 			continue
 		}
-		return resolvedPath, ctype, nil
+		if getResp.bytes == nil {
+			return nil, "", fmt.Errorf("found a pretty 404 but it was not a file")
+		}
+		return getResp.bytes, ctype, nil
 	}
 
 	return nil, "", fmt.Errorf("no pretty 404 in any parent folder")

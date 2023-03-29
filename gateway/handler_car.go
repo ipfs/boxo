@@ -3,21 +3,19 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
 	ipath "github.com/ipfs/boxo/coreiface/path"
-	gocar "github.com/ipfs/boxo/ipld/car"
-	blocks "github.com/ipfs/go-block-format"
-	cid "github.com/ipfs/go-cid"
-	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/multierr"
 )
 
 // serveCAR returns a CAR stream for specific DAG+selector
-func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, carVersion string, begin time.Time) bool {
-	ctx, span := spanTrace(ctx, "ServeCAR", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, carVersion string, begin time.Time) bool {
+	ctx, span := spanTrace(ctx, "ServeCAR", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -31,7 +29,19 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		webError(w, err, http.StatusBadRequest)
 		return false
 	}
-	rootCid := resolvedPath.Cid()
+
+	pathMetadata, carFile, errCh, err := i.api.GetCAR(ctx, imPath)
+	if !i.handleRequestErrors(w, contentPath, err) {
+		return false
+	}
+	defer carFile.Close()
+
+	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
+		webRequestError(w, err)
+		return false
+	}
+
+	rootCid := pathMetadata.LastSegment.Cid()
 
 	// Set Content-Disposition
 	var name string
@@ -67,33 +77,18 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	w.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
-	// Same go-car settings as dag.export command
-	store := dagStore{api: i.api, ctx: ctx}
-
-	// TODO: support selectors passed as request param: https://github.com/ipfs/kubo/issues/8769
-	dag := gocar.Dag{Root: rootCid, Selector: selectorparse.CommonSelector_ExploreAllRecursively}
-	car := gocar.NewSelectiveCar(ctx, store, []gocar.Dag{dag}, gocar.TraverseLinksOnlyOnce())
-
-	if err := car.Write(w); err != nil {
+	_, copyErr := io.Copy(w, carFile)
+	carErr := <-errCh
+	if copyErr != nil || carErr != nil {
 		// We return error as a trailer, however it is not something browsers can access
 		// (https://github.com/mdn/browser-compat-data/issues/14703)
 		// Due to this, we suggest client always verify that
 		// the received CAR stream response is matching requested DAG selector
-		w.Header().Set("X-Stream-Error", err.Error())
+		w.Header().Set("X-Stream-Error", multierr.Combine(err, copyErr).Error())
 		return false
 	}
 
 	// Update metrics
 	i.carStreamGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 	return true
-}
-
-// FIXME(@Jorropo): https://github.com/ipld/go-car/issues/315
-type dagStore struct {
-	api API
-	ctx context.Context
-}
-
-func (ds dagStore) Get(_ context.Context, c cid.Cid) (blocks.Block, error) {
-	return ds.api.GetBlock(ds.ctx, c)
 }

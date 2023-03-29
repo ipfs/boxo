@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cespare/xxhash"
 	"github.com/gogo/protobuf/proto"
 	ipath "github.com/ipfs/boxo/coreiface/path"
 	ipns_pb "github.com/ipfs/boxo/ipns/pb"
@@ -17,8 +19,8 @@ import (
 	"go.uber.org/zap"
 )
 
-func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "ServeIPNSRecord", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
+	ctx, span := spanTrace(ctx, "ServeIPNSRecord", trace.WithAttributes(attribute.String("path", contentPath.String())))
 	defer span.End()
 
 	if contentPath.Namespace() != "ipns" {
@@ -59,7 +61,8 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 	// TTL is not present, we use the Last-Modified tag. We are tracking IPNS
 	// caching on: https://github.com/ipfs/kubo/issues/1818.
 	// TODO: use addCacheControlHeaders once #1818 is fixed.
-	w.Header().Set("Etag", getEtag(r, resolvedPath.Cid()))
+	recordEtag := strconv.FormatUint(xxhash.Sum64(rawRecord), 32)
+	w.Header().Set("Etag", recordEtag)
 	if record.Ttl != nil {
 		seconds := int(time.Duration(*record.Ttl).Seconds())
 		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", seconds))

@@ -18,7 +18,18 @@ type ReaderFile struct {
 }
 
 func NewBytesFile(b []byte) File {
-	return &ReaderFile{"", NewReaderFile(bytes.NewReader(b)), nil, int64(len(b))}
+	return &ReaderFile{"", bytesReaderCloser{bytes.NewReader(b)}, nil, int64(len(b))}
+}
+
+// TODO: Is this the best way to fix this bug?
+// The bug is we want to be an io.ReadSeekCloser, but bytes.NewReader only gives a io.ReadSeeker and io.NopCloser
+// effectively removes the io.Seeker ability from the passed in io.Reader
+type bytesReaderCloser struct {
+	*bytes.Reader
+}
+
+func (b bytesReaderCloser) Close() error {
+	return nil
 }
 
 func NewReaderFile(reader io.Reader) File {

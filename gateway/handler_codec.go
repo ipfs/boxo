@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/gateway/assets"
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/multicodec"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	mc "github.com/multiformats/go-multicodec"
@@ -56,11 +57,31 @@ var contentTypeToExtension = map[string]string{
 	"application/vnd.ipld.dag-cbor": ".cbor",
 }
 
-func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, requestedContentType string) bool {
-	ctx, span := spanTrace(ctx, "ServeCodec", trace.WithAttributes(attribute.String("path", resolvedPath.String()), attribute.String("requestedContentType", requestedContentType)))
+func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time, requestedContentType string) bool {
+	ctx, span := spanTrace(ctx, "ServeCodec", trace.WithAttributes(attribute.String("path", imPath.String()), attribute.String("requestedContentType", requestedContentType)))
 	defer span.End()
 
-	cidCodec := mc.Code(resolvedPath.Cid().Prefix().Codec)
+	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
+	if !i.handleRequestErrors(w, contentPath, err) {
+		return false
+	}
+	defer data.Close()
+
+	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
+		webRequestError(w, err)
+		return false
+	}
+
+	resolvedPath := pathMetadata.LastSegment
+	return i.renderCodec(ctx, w, r, resolvedPath, data, contentPath, begin, requestedContentType)
+}
+
+func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, blockData io.ReadSeekCloser, contentPath ipath.Path, begin time.Time, requestedContentType string) bool {
+	ctx, span := spanTrace(ctx, "RenderCodec", trace.WithAttributes(attribute.String("path", resolvedPath.String()), attribute.String("requestedContentType", requestedContentType)))
+	defer span.End()
+
+	blockCid := resolvedPath.Cid()
+	cidCodec := mc.Code(blockCid.Prefix().Codec)
 	responseContentType := requestedContentType
 
 	// If the resolved path still has some remainder, return error for now.
@@ -103,7 +124,7 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 		} else {
 			// This covers CIDs with codec 'json' and 'cbor' as those do not have
 			// an explicit requested content type.
-			return i.serveCodecRaw(ctx, w, r, resolvedPath, contentPath, name, modtime, begin)
+			return i.serveCodecRaw(ctx, w, r, blockData, contentPath, name, modtime, begin)
 		}
 	}
 
@@ -113,7 +134,7 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 	if ok {
 		for _, skipCodec := range skipCodecs {
 			if skipCodec == cidCodec {
-				return i.serveCodecRaw(ctx, w, r, resolvedPath, contentPath, name, modtime, begin)
+				return i.serveCodecRaw(ctx, w, r, blockData, contentPath, name, modtime, begin)
 			}
 		}
 	}
@@ -129,7 +150,7 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 	}
 
 	// This handles DAG-* conversions and validations.
-	return i.serveCodecConverted(ctx, w, r, resolvedPath, contentPath, toCodec, modtime, begin)
+	return i.serveCodecConverted(ctx, w, r, blockCid, blockData, contentPath, toCodec, modtime, begin)
 }
 
 func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path) bool {
@@ -165,19 +186,10 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 }
 
 // serveCodecRaw returns the raw block without any conversion
-func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, name string, modtime, begin time.Time) bool {
-	blockCid := resolvedPath.Cid()
-	block, err := i.api.GetBlock(ctx, blockCid)
-	if err != nil {
-		err = fmt.Errorf("error getting block %s: %w", blockCid.String(), err)
-		webError(w, err, http.StatusInternalServerError)
-		return false
-	}
-	content := bytes.NewReader(block.RawData())
-
+func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, blockData io.ReadSeekCloser, contentPath ipath.Path, name string, modtime, begin time.Time) bool {
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
-	_, dataSent, _ := ServeContent(w, r, name, modtime, content)
+	_, dataSent, _ := ServeContent(w, r, name, modtime, blockData)
 
 	if dataSent {
 		// Update metrics
@@ -188,15 +200,7 @@ func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *h
 }
 
 // serveCodecConverted returns payload converted to codec specified in toCodec
-func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, toCodec mc.Code, modtime, begin time.Time) bool {
-	blockCid := resolvedPath.Cid()
-	block, err := i.api.GetBlock(ctx, blockCid)
-	if err != nil {
-		err = fmt.Errorf("error getting block %s: %w", blockCid.String(), err)
-		webError(w, err, http.StatusInternalServerError)
-		return false
-	}
-
+func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.ReadSeekCloser, contentPath ipath.Path, toCodec mc.Code, modtime, begin time.Time) bool {
 	codec := blockCid.Prefix().Codec
 	decoder, err := multicodec.LookupDecoder(codec)
 	if err != nil {
@@ -205,7 +209,7 @@ func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter
 	}
 
 	node := basicnode.Prototype.Any.NewBuilder()
-	err = decoder(node, bytes.NewReader(block.RawData()))
+	err = decoder(node, blockData)
 	if err != nil {
 		webError(w, err, http.StatusInternalServerError)
 		return false

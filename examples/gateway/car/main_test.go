@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ipfs/boxo/examples/gateway/common"
+	"github.com/ipfs/boxo/gateway"
 	"github.com/ipld/go-ipld-prime/codec/dagjson"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +23,7 @@ func newTestServer() (*httptest.Server, io.Closer, error) {
 		return nil, nil, err
 	}
 
-	gateway, err := common.NewBlocksGateway(blockService, nil)
+	gateway, err := gateway.NewBlocksGateway(blockService)
 	if err != nil {
 		_ = f.Close()
 		return nil, nil, err

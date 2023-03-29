@@ -57,7 +57,7 @@ type Specification struct {
 // noDNSLink configures the gateway to _not_ perform DNS TXT record lookups in
 // response to requests with values in `Host` HTTP header. This flag can be overridden
 // per FQDN in publicGateways.
-func WithHostname(next http.Handler, api API, publicGateways map[string]*Specification, noDNSLink bool) http.HandlerFunc {
+func WithHostname(next http.Handler, api IPFSBackend, publicGateways map[string]*Specification, noDNSLink bool) http.HandlerFunc {
 	gateways := prepareHostnameGateways(publicGateways)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -268,7 +268,7 @@ func isDomainNameAndNotPeerID(hostname string) bool {
 }
 
 // hasDNSLinkRecord returns if a DNS TXT record exists for the provided host.
-func hasDNSLinkRecord(ctx context.Context, api API, host string) bool {
+func hasDNSLinkRecord(ctx context.Context, api IPFSBackend, host string) bool {
 	dnslinkName := stripPort(host)
 
 	if !isDomainNameAndNotPeerID(dnslinkName) {
@@ -355,7 +355,7 @@ func toDNSLinkFQDN(dnsLabel string) (fqdn string) {
 }
 
 // Converts a hostname/path to a subdomain-based URL, if applicable.
-func toSubdomainURL(hostname, path string, r *http.Request, inlineDNSLink bool, api API) (redirURL string, err error) {
+func toSubdomainURL(hostname, path string, r *http.Request, inlineDNSLink bool, api IPFSBackend) (redirURL string, err error) {
 	var scheme, ns, rootID, rest string
 
 	query := r.URL.RawQuery
