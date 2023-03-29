@@ -14,7 +14,6 @@ import (
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/gateway/assets"
 	path "github.com/ipfs/boxo/path"
-	"github.com/ipfs/boxo/path/resolver"
 	cid "github.com/ipfs/go-cid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -24,7 +23,7 @@ import (
 // serveDirectory returns the best representation of UnixFS directory
 //
 // It will return index.html if present, or generate directory listing otherwise.
-func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, dir files.Directory, begin time.Time, logger *zap.SugaredLogger) bool {
+func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, isHeadRequest bool, directoryMetadata *directoryMetadata, begin time.Time, logger *zap.SugaredLogger) bool {
 	ctx, span := spanTrace(ctx, "ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
@@ -61,31 +60,50 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 
 	// Check if directory has index.html, if so, serveFile
 	idxPath := ipath.Join(contentPath, "index.html")
-	idxResolvedPath, err := i.api.ResolvePath(ctx, idxPath)
-	switch err.(type) {
-	case nil:
-		idx, err := i.api.GetUnixFsNode(ctx, idxResolvedPath)
-		if err != nil {
-			webError(w, err, http.StatusInternalServerError)
-			return false
-		}
+	imIndexPath, err := NewImmutablePath(ipath.Join(resolvedPath, "index.html"))
+	if err != nil {
+		webError(w, err, http.StatusInternalServerError)
+		return false
+	}
 
-		f, ok := idx.(files.File)
-		if !ok {
-			webError(w, files.ErrNotReader, http.StatusInternalServerError)
-			return false
+	// TODO: could/should this all be skipped to have HEAD requests just return html content type and save the complexity? If so can we skip the above code as well?
+	var idxFile files.File
+	if isHeadRequest {
+		var idx files.Node
+		_, idx, err = i.api.Head(ctx, imIndexPath)
+		if err == nil {
+			f, ok := idx.(files.File)
+			if !ok {
+				webError(w, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
+				return false
+			}
+			idxFile = f
 		}
+	} else {
+		var getResp *GetResponse
+		_, getResp, err = i.api.Get(ctx, imIndexPath)
+		if err == nil {
+			if getResp.bytes == nil {
+				webError(w, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
+				return false
+			}
+			idxFile = getResp.bytes
+		}
+	}
 
+	if err == nil {
 		logger.Debugw("serving index.html file", "path", idxPath)
 		// write to request
-		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
+		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, idxFile, "text/html", begin)
 		if success {
 			i.unixfsDirIndexGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 		}
 		return success
-	case resolver.ErrNoLink:
+	}
+
+	if isErrNotFound(err) {
 		logger.Debugw("no index.html; noop", "path", idxPath)
-	default:
+	} else if err != nil {
 		webError(w, err, http.StatusInternalServerError)
 		return false
 	}
@@ -104,7 +122,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	// type instead of relying on autodetection (which may fail).
 	w.Header().Set("Content-Type", "text/html")
 
-	// Generated dir index requires custom Etag (output may change between go-ipfs versions)
+	// Generated dir index requires custom Etag (output may change between go-libipfs versions)
 	dirEtag := getDirListingEtag(resolvedPath.Cid())
 	w.Header().Set("Etag", dirEtag)
 
@@ -113,24 +131,22 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		return true
 	}
 
-	results, err := i.api.LsUnixFsDir(ctx, resolvedPath)
-	if err != nil {
-		webError(w, err, http.StatusInternalServerError)
-		return false
-	}
-
-	dirListing := make([]assets.DirectoryItem, 0, len(results))
-	for link := range results {
-		if link.Err != nil {
-			webError(w, link.Err, http.StatusInternalServerError)
+	var dirListing []assets.DirectoryItem
+	for l := range directoryMetadata.entries {
+		if l.Err != nil {
+			webError(w, l.Err, http.StatusInternalServerError)
 			return false
 		}
 
-		hash := link.Cid.String()
+		name := l.Link.Name
+		sz := l.Link.Size
+		linkCid := l.Link.Cid
+
+		hash := linkCid.String()
 		di := assets.DirectoryItem{
-			Size:      humanize.Bytes(uint64(link.Size)),
-			Name:      link.Name,
-			Path:      gopath.Join(originalURLPath, link.Name),
+			Size:      humanize.Bytes(sz),
+			Name:      name,
+			Path:      gopath.Join(originalURLPath, name),
 			Hash:      hash,
 			ShortHash: assets.ShortHash(hash),
 		}
@@ -161,11 +177,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		}
 	}
 
-	size := "?"
-	if s, err := dir.Size(); err == nil {
-		// Size may not be defined/supported. Continue anyways.
-		size = humanize.Bytes(uint64(s))
-	}
+	size := humanize.Bytes(directoryMetadata.dagSize)
 
 	hash := resolvedPath.Cid().String()
 

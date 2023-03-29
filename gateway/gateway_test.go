@@ -8,36 +8,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	gopath "path"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/ipfs/boxo/blockservice"
-	blockstore "github.com/ipfs/boxo/blockstore"
-	iface "github.com/ipfs/boxo/coreiface"
 	nsopts "github.com/ipfs/boxo/coreiface/options/namesys"
 	ipath "github.com/ipfs/boxo/coreiface/path"
 	offline "github.com/ipfs/boxo/exchange/offline"
-	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/files"
 	carblockstore "github.com/ipfs/boxo/ipld/car/v2/blockstore"
-	"github.com/ipfs/boxo/ipld/merkledag"
-	"github.com/ipfs/boxo/ipld/unixfs"
-	ufile "github.com/ipfs/boxo/ipld/unixfs/file"
-	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 	"github.com/ipfs/boxo/namesys"
-	"github.com/ipfs/boxo/namesys/resolve"
 	path "github.com/ipfs/boxo/path"
-	"github.com/ipfs/boxo/path/resolver"
-	"github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	format "github.com/ipfs/go-ipld-format"
-	"github.com/ipfs/go-unixfsnode"
-	dagpb "github.com/ipld/go-codec-dagpb"
-	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/node/basicnode"
-	"github.com/ipld/go-ipld-prime/schema"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/stretchr/testify/assert"
@@ -88,12 +71,11 @@ func (m mockNamesys) GetResolver(subs string) (namesys.Resolver, bool) {
 }
 
 type mockAPI struct {
-	blockStore   blockstore.Blockstore
-	blockService blockservice.BlockService
-	dagService   format.DAGService
-	resolver     resolver.Resolver
-	namesys      mockNamesys
+	gw      IPFSBackend
+	namesys mockNamesys
 }
+
+var _ IPFSBackend = (*mockAPI)(nil)
 
 func newMockAPI(t *testing.T) (*mockAPI, cid.Cid) {
 	r, err := os.Open("./testdata/fixtures.car")
@@ -112,65 +94,45 @@ func newMockAPI(t *testing.T) (*mockAPI, cid.Cid) {
 	assert.Len(t, cids, 1)
 
 	blockService := blockservice.New(blockStore, offline.Exchange(blockStore))
-	dagService := merkledag.NewDAGService(blockService)
 
-	fetcherConfig := bsfetcher.NewFetcherConfig(blockService)
-	fetcherConfig.PrototypeChooser = dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
-		if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
-			return tlnkNd.LinkTargetNodePrototype(), nil
-		}
-		return basicnode.Prototype.Any, nil
-	})
-	fetcher := fetcherConfig.WithReifier(unixfsnode.Reify)
-	resolver := resolver.NewBasicResolver(fetcher)
+	n := mockNamesys{}
+	gwApi, err := NewBlocksGateway(blockService, WithNameSystem(n))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	return &mockAPI{
-		blockStore:   blockService.Blockstore(),
-		blockService: blockService,
-		dagService:   dagService,
-		resolver:     resolver,
-		namesys:      mockNamesys{},
+		gw:      gwApi,
+		namesys: n,
 	}, cids[0]
 }
 
-func (api *mockAPI) GetUnixFsNode(ctx context.Context, p ipath.Resolved) (files.Node, error) {
-	nd, err := api.resolveNode(ctx, p)
-	if err != nil {
-		return nil, err
-	}
-
-	return ufile.NewUnixfsFile(ctx, api.dagService, nd)
+func (api *mockAPI) Get(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, *GetResponse, error) {
+	return api.gw.Get(ctx, immutablePath)
 }
 
-func (api *mockAPI) LsUnixFsDir(ctx context.Context, p ipath.Resolved) (<-chan iface.DirEntry, error) {
-	node, err := api.resolveNode(ctx, p)
-	if err != nil {
-		return nil, err
-	}
-
-	dir, err := uio.NewDirectoryFromNode(api.dagService, node)
-	if err != nil {
-		return nil, err
-	}
-
-	out := make(chan iface.DirEntry, uio.DefaultShardWidth)
-
-	go func() {
-		defer close(out)
-		for l := range dir.EnumLinksAsync(ctx) {
-			select {
-			case out <- api.processLink(ctx, l):
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	return out, nil
+func (api *mockAPI) GetRange(ctx context.Context, immutablePath ImmutablePath, ranges ...GetRange) (ContentPathMetadata, files.File, error) {
+	return api.gw.GetRange(ctx, immutablePath, ranges...)
 }
 
-func (api *mockAPI) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	return api.blockService.GetBlock(ctx, c)
+func (api *mockAPI) GetAll(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return api.gw.GetAll(ctx, immutablePath)
+}
+
+func (api *mockAPI) GetBlock(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.File, error) {
+	return api.gw.GetBlock(ctx, immutablePath)
+}
+
+func (api *mockAPI) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return api.gw.Head(ctx, immutablePath)
+}
+
+func (api *mockAPI) GetCAR(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
+	return api.gw.GetCAR(ctx, immutablePath)
+}
+
+func (api *mockAPI) ResolveMutable(ctx context.Context, p ipath.Path) (ImmutablePath, error) {
+	return api.gw.ResolveMutable(ctx, p)
 }
 
 func (api *mockAPI) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
@@ -190,82 +152,33 @@ func (api *mockAPI) GetDNSLinkRecord(ctx context.Context, hostname string) (ipat
 }
 
 func (api *mockAPI) IsCached(ctx context.Context, p ipath.Path) bool {
-	rp, err := api.ResolvePath(ctx, p)
-	if err != nil {
-		return false
-	}
-
-	has, _ := api.blockStore.Has(ctx, rp.Cid())
-	return has
+	return api.gw.IsCached(ctx, p)
 }
 
-func (api *mockAPI) ResolvePath(ctx context.Context, ip ipath.Path) (ipath.Resolved, error) {
-	if _, ok := ip.(ipath.Resolved); ok {
-		return ip.(ipath.Resolved), nil
-	}
+func (api *mockAPI) ResolvePath(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, error) {
+	return api.gw.ResolvePath(ctx, immutablePath)
+}
 
-	err := ip.IsValid()
-	if err != nil {
-		return nil, err
-	}
-
-	p := path.Path(ip.String())
-	if p.Segments()[0] == "ipns" {
-		p, err = resolve.ResolveIPNS(ctx, api.namesys, p)
+func (api *mockAPI) resolvePathNoRootsReturned(ctx context.Context, ip ipath.Path) (ipath.Resolved, error) {
+	var imPath ImmutablePath
+	var err error
+	if ip.Mutable() {
+		imPath, err = api.ResolveMutable(ctx, ip)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		imPath, err = NewImmutablePath(ip)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if p.Segments()[0] != "ipfs" {
-		return nil, fmt.Errorf("unsupported path namespace: %s", ip.Namespace())
-	}
-
-	node, rest, err := api.resolver.ResolveToLastNode(ctx, p)
+	md, err := api.ResolvePath(ctx, imPath)
 	if err != nil {
 		return nil, err
 	}
-
-	root, err := cid.Parse(p.Segments()[1])
-	if err != nil {
-		return nil, err
-	}
-
-	return ipath.NewResolvedPath(p, node, root, gopath.Join(rest...)), nil
-}
-
-func (api *mockAPI) resolveNode(ctx context.Context, p ipath.Path) (format.Node, error) {
-	rp, err := api.ResolvePath(ctx, p)
-	if err != nil {
-		return nil, err
-	}
-
-	node, err := api.dagService.Get(ctx, rp.Cid())
-	if err != nil {
-		return nil, fmt.Errorf("get node: %w", err)
-	}
-	return node, nil
-}
-
-func (api *mockAPI) processLink(ctx context.Context, result unixfs.LinkResult) iface.DirEntry {
-	if result.Err != nil {
-		return iface.DirEntry{Err: result.Err}
-	}
-
-	link := iface.DirEntry{
-		Name: result.Link.Name,
-		Cid:  result.Link.Cid,
-	}
-
-	switch link.Cid.Type() {
-	case cid.Raw:
-		link.Type = iface.TFile
-		link.Size = result.Link.Size
-	case cid.DagProtobuf:
-		link.Size = result.Link.Size
-	}
-
-	return link
+	return md.LastSegment, nil
 }
 
 func doWithoutRedirect(req *http.Request) (*http.Response, error) {
@@ -288,7 +201,7 @@ func newTestServerAndNode(t *testing.T, ns mockNamesys) (*httptest.Server, *mock
 	return ts, api, root
 }
 
-func newTestServer(t *testing.T, api API) *httptest.Server {
+func newTestServer(t *testing.T, api IPFSBackend) *httptest.Server {
 	config := Config{Headers: map[string][]string{}}
 	AddAccessControlHeaders(config.Headers)
 
@@ -316,7 +229,7 @@ func TestGatewayGet(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := api.ResolvePath(ctx, ipath.Join(ipath.IpfsPath(root), t.Name(), "fnord"))
+	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name(), "fnord"))
 	assert.Nil(t, err)
 
 	api.namesys["/ipns/example.com"] = path.FromCid(k.Cid())
@@ -423,7 +336,7 @@ func TestIPNSHostnameRedirect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := api.ResolvePath(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
+	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
 	assert.Nil(t, err)
 
 	t.Logf("k: %s\n", k)
@@ -478,14 +391,14 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := api.ResolvePath(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
+	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
 	assert.Nil(t, err)
 
 	// create /ipns/example.net/foo/
-	k2, err := api.ResolvePath(ctx, ipath.Join(k, "foo? #<'"))
+	k2, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(k, "foo? #<'"))
 	assert.Nil(t, err)
 
-	k3, err := api.ResolvePath(ctx, ipath.Join(k, "foo? #<'/bar"))
+	k3, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(k, "foo? #<'/bar"))
 	assert.Nil(t, err)
 
 	t.Logf("k: %s\n", k)
@@ -562,7 +475,7 @@ func TestPretty404(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := api.ResolvePath(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
+	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
 	assert.Nil(t, err)
 
 	host := "example.net"

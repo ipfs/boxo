@@ -4,16 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"testing"
 	"time"
 
-	iface "github.com/ipfs/boxo/coreiface"
 	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/path/resolver"
-	"github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/stretchr/testify/assert"
@@ -46,16 +45,32 @@ type errorMockAPI struct {
 	err error
 }
 
-func (api *errorMockAPI) GetUnixFsNode(context.Context, ipath.Resolved) (files.Node, error) {
-	return nil, api.err
+func (api *errorMockAPI) Get(ctx context.Context, path ImmutablePath) (ContentPathMetadata, *GetResponse, error) {
+	return ContentPathMetadata{}, nil, api.err
 }
 
-func (api *errorMockAPI) LsUnixFsDir(ctx context.Context, p ipath.Resolved) (<-chan iface.DirEntry, error) {
-	return nil, api.err
+func (api *errorMockAPI) GetRange(ctx context.Context, path ImmutablePath, getRange ...GetRange) (ContentPathMetadata, files.File, error) {
+	return ContentPathMetadata{}, nil, api.err
 }
 
-func (api *errorMockAPI) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	return nil, api.err
+func (api *errorMockAPI) GetAll(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return ContentPathMetadata{}, nil, api.err
+}
+
+func (api *errorMockAPI) GetBlock(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.File, error) {
+	return ContentPathMetadata{}, nil, api.err
+}
+
+func (api *errorMockAPI) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return ContentPathMetadata{}, nil, api.err
+}
+
+func (api *errorMockAPI) GetCAR(ctx context.Context, path ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
+	return ContentPathMetadata{}, nil, nil, api.err
+}
+
+func (api *errorMockAPI) ResolveMutable(ctx context.Context, path ipath.Path) (ImmutablePath, error) {
+	return ImmutablePath{}, api.err
 }
 
 func (api *errorMockAPI) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
@@ -70,8 +85,8 @@ func (api *errorMockAPI) IsCached(ctx context.Context, p ipath.Path) bool {
 	return false
 }
 
-func (api *errorMockAPI) ResolvePath(ctx context.Context, ip ipath.Path) (ipath.Resolved, error) {
-	return nil, api.err
+func (api *errorMockAPI) ResolvePath(ctx context.Context, path ImmutablePath) (ContentPathMetadata, error) {
+	return ContentPathMetadata{}, api.err
 }
 
 func TestGatewayBadRequestInvalidPath(t *testing.T) {
@@ -146,15 +161,31 @@ type panicMockAPI struct {
 	panicOnHostnameHandler bool
 }
 
-func (api *panicMockAPI) GetUnixFsNode(context.Context, ipath.Resolved) (files.Node, error) {
+func (api *panicMockAPI) Get(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, *GetResponse, error) {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) LsUnixFsDir(ctx context.Context, p ipath.Resolved) (<-chan iface.DirEntry, error) {
+func (api *panicMockAPI) GetRange(ctx context.Context, immutablePath ImmutablePath, ranges ...GetRange) (ContentPathMetadata, files.File, error) {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+func (api *panicMockAPI) GetAll(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) GetBlock(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.File, error) {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) GetCAR(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
+	panic("i am panicking")
+}
+
+func (api *panicMockAPI) ResolveMutable(ctx context.Context, p ipath.Path) (ImmutablePath, error) {
 	panic("i am panicking")
 }
 
@@ -177,7 +208,7 @@ func (api *panicMockAPI) IsCached(ctx context.Context, p ipath.Path) bool {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) ResolvePath(ctx context.Context, ip ipath.Path) (ipath.Resolved, error) {
+func (api *panicMockAPI) ResolvePath(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, error) {
 	panic("i am panicking")
 }
 
