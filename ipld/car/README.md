@@ -1,9 +1,18 @@
-go-car (go!)
-==================
+# ❗ About CAR libraries written in go
+As of 202303, this is a copy of [`ipld/go-car`](github.com/ipld/go-car).
+`ipld/go-car` is a full-featured car library that is actively maintained.
+Boxo has smaller car needs and will be will be refactored and thinned out soon.
+Boxo can't depend on `ipld/go-car` because it would cause `ipld/go-car` to have dependency on Boxo, 
+and `ipld/go-car` maintainers want to be able to develop indepdently.
 
-[![](https://img.shields.io/badge/made%20by-Protocol%20Labs-blue.svg?style=flat-square)](https://protocol.ai)
-[![Go Reference](https://pkg.go.dev/badge/github.com/boxo/ipld/car.svg)](https://pkg.go.dev/github.com/boxo/ipld/car)
+***A user can always use `ipld/go-car` in conjuection with `boxo/ipld/car`.***
+Please use `ipld/go-car` as needed!
 
+More details and discussion are [here](https://github.com/ipfs/boxo/issues/218).
+
+---
+
+# About this module
 > Work with car (Content addressed ARchive) files!
 
 This is a Golang implementation of the [CAR specifications](https://ipld.io/specs/transport/car/), both [CARv1](https://ipld.io/specs/transport/car/carv1/) and [CARv2](https://ipld.io/specs/transport/car/carv2/).
@@ -15,11 +24,6 @@ As a format, there are two major module versions:
 * `go-car`, in the root directory, only supports reading and writing CARv1 files.
 
 Most users should use v2, especially for new software, since the v2 API transparently supports both CAR formats.
-
-# **Unstable**
-
-This package will be refactored and thinned out soon. You can find an
-implementation that supports indexes and go-ipld-prime there at [`ipld/go-car`](github.com/ipld/go-car).
 
 ## Usage / Installation
 
