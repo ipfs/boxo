@@ -111,7 +111,7 @@ func (api *mockAPI) Get(ctx context.Context, immutablePath ImmutablePath) (Conte
 	return api.gw.Get(ctx, immutablePath)
 }
 
-func (api *mockAPI) GetRange(ctx context.Context, immutablePath ImmutablePath, ranges ...GetRange) (ContentPathMetadata, files.File, error) {
+func (api *mockAPI) GetRange(ctx context.Context, immutablePath ImmutablePath, ranges ...GetRange) (ContentPathMetadata, *GetResponse, error) {
 	return api.gw.GetRange(ctx, immutablePath, ranges...)
 }
 
