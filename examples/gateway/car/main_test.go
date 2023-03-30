@@ -29,7 +29,7 @@ func newTestServer() (*httptest.Server, io.Closer, error) {
 		return nil, nil, err
 	}
 
-	handler := common.NewBlocksHandler(gateway, 0)
+	handler := common.NewHandler(gateway)
 	ts := httptest.NewServer(handler)
 	return ts, f, nil
 }
