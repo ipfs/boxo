@@ -176,8 +176,8 @@ func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 	logger.Debugf("BlockService.BlockAdded %s", c)
 
 	if s.exchange != nil {
-		if err := s.exchange.NotifyNewBlocks(ctx, o); err != nil {
-			logger.Errorf("NotifyNewBlocks: %s", err.Error())
+		if err := s.exchange.NotifyNewBlock(ctx, o); err != nil {
+			logger.Errorf("NotifyNewBlock: %s", err.Error())
 		}
 	}
 
@@ -282,7 +282,7 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 		return nil, err
 	}
 	if ex := bs.Exchange(); ex != nil {
-		err = ex.NotifyNewBlocks(ctx, blk)
+		err = ex.NotifyNewBlock(ctx, blk)
 		if err != nil {
 			return nil, err
 		}
@@ -364,7 +364,6 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 		}
 
 		ex := blockservice.Exchange()
-		var cache [1]blocks.Block // preallocate once for all iterations
 		for {
 			var b blocks.Block
 			select {
@@ -386,13 +385,11 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 
 			if ex != nil {
 				// inform the exchange that the blocks are available
-				cache[0] = b
-				err = ex.NotifyNewBlocks(ctx, cache[:]...)
+				err = ex.NotifyNewBlock(ctx, b)
 				if err != nil {
 					logger.Errorf("could not tell the exchange about new blocks: %s", err)
 					return
 				}
-				cache[0] = nil // early gc
 			}
 
 			select {
@@ -423,6 +420,11 @@ func (s *blockService) Close() error {
 		return nil
 	}
 	return s.exchange.Close()
+}
+
+type notifier interface {
+	NotifyNewBlock(context.Context, blocks.Block) error
+	NotifyNewBlocks(context.Context, ...blocks.Block) error
 }
 
 // Session is a helper type to provide higher level access to bitswap sessions

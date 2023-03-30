@@ -13,6 +13,8 @@ import (
 type Interface interface { // type Exchanger interface
 	Fetcher
 
+	// NotifyNewBlock tells the exchange that a new block is available and can be served.
+	NotifyNewBlock(ctx context.Context, blocks blocks.Block) error
 	// NotifyNewBlocks tells the exchange that new blocks are available and can be served.
 	NotifyNewBlocks(ctx context.Context, blocks ...blocks.Block) error
 

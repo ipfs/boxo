@@ -34,6 +34,12 @@ func (e *offlineExchange) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block
 	return blk, err
 }
 
+// NotifyNewBlock tells the exchange that a new block is available and can be served.
+func (e *offlineExchange) NotifyNewBlock(ctx context.Context, block blocks.Block) error {
+	// as an offline exchange we have nothing to do
+	return nil
+}
+
 // NotifyNewBlocks tells the exchange that new blocks are available and can be served.
 func (e *offlineExchange) NotifyNewBlocks(ctx context.Context, blocks ...blocks.Block) error {
 	// as an offline exchange we have nothing to do

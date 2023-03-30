@@ -205,6 +205,11 @@ type notifyCountingExchange struct {
 	notifyCount int
 }
 
+func (n *notifyCountingExchange) NotifyNewBlock(ctx context.Context, blocks blocks.Block) error {
+	n.notifyCount++
+	return n.Interface.NotifyNewBlock(ctx, blocks)
+}
+
 func (n *notifyCountingExchange) NotifyNewBlocks(ctx context.Context, blocks ...blocks.Block) error {
 	n.notifyCount += len(blocks)
 	return n.Interface.NotifyNewBlocks(ctx, blocks...)
