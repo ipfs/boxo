@@ -39,7 +39,10 @@ var DefaultConfig = Config{
 		"github.com/ipfs/go-ipfs-routing":                "github.com/ipfs/boxo/routing",
 		"github.com/ipfs/go-ipfs-exchange-interface":     "github.com/ipfs/boxo/exchange",
 		"github.com/ipfs/go-merkledag":                   "github.com/ipfs/boxo/ipld/merkledag",
-		"github.com/ipld/go-car":                         "github.com/ipfs/boxo/ipld/car",
+		// By default, users can/should keep using ipld/go-car.
+		// Updating ipld/go-car was useful for other repos that are also maintained by Boxo maintainers like Kubo
+		// More info is in https://github.com/ipfs/boxo/issues/218
+		// "github.com/ipld/go-car":                         "github.com/ipfs/boxo/ipld/car",
 
 		// Pre Boxo rename
 		"github.com/ipfs/go-libipfs/gateway":               "github.com/ipfs/boxo/gateway",
