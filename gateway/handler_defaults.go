@@ -29,6 +29,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		isDirectoryHeadRequest bool
 		directoryMetadata      *directoryMetadata
 		err                    error
+		ranges                 []GetRange
 	)
 
 	switch r.Method {
@@ -48,63 +49,51 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 			return false
 		}
 	case http.MethodGet:
-		// TODO: refactor below: we should not have 2x20 duplicated flow control when the only difference is ranges.
 		rangeHeader := r.Header.Get("Range")
-		if rangeHeader == "" {
-			var getResp *GetResponse
-			// TODO: passing resolved path here, instead of contentPath is harming content routing. Knowing original immutableContentPath will allow backend to find  providers for parents, even when internal CIDs are not announced, and will provide better key for caching related DAGs.
-			pathMetadata, getResp, err = i.api.Get(ctx, maybeResolvedImPath)
-			if err != nil {
-				if isWebRequest(requestedContentType) {
-					forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
-					if !continueProcessing {
-						return false
-					}
-					pathMetadata, getResp, err = i.api.Get(ctx, forwardedPath)
-					if err != nil {
-						err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-						webError(w, err, http.StatusInternalServerError)
-					}
-				} else {
-					if !i.handleRequestErrors(w, contentPath, err) {
-						return false
-					}
-				}
-			}
-			if getResp.bytes != nil {
-				bytesResponse = getResp.bytes
-				defer bytesResponse.Close()
-			} else {
-				directoryMetadata = getResp.directoryMetadata
-			}
-		} else {
+		if rangeHeader != "" {
 			// TODO: Add tests for range parsing
-			var ranges []GetRange
 			ranges, err = parseRange(rangeHeader)
 			if err != nil {
 				webError(w, fmt.Errorf("invalid range request: %w", err), http.StatusBadRequest)
 				return false
 			}
-			pathMetadata, bytesResponse, err = i.api.GetRange(ctx, maybeResolvedImPath, ranges...)
-			if err != nil {
-				if isWebRequest(requestedContentType) {
-					forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
-					if !continueProcessing {
-						return false
-					}
-					pathMetadata, bytesResponse, err = i.api.GetRange(ctx, forwardedPath, ranges...)
-					if err != nil {
-						err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-						webError(w, err, http.StatusInternalServerError)
-					}
+		}
+
+		var getResp *GetResponse
+		// TODO: passing resolved path here, instead of contentPath is harming content routing. Knowing original immutableContentPath will allow backend to find  providers for parents, even when internal CIDs are not announced, and will provide better key for caching related DAGs.
+		if len(ranges) == 0 {
+			pathMetadata, getResp, err = i.api.Get(ctx, maybeResolvedImPath)
+		} else {
+			pathMetadata, getResp, err = i.api.GetRange(ctx, maybeResolvedImPath, ranges...)
+		}
+		if err != nil {
+			if isWebRequest(requestedContentType) {
+				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
+				if !continueProcessing {
+					return false
+				}
+				if len(ranges) == 0 {
+					pathMetadata, getResp, err = i.api.Get(ctx, forwardedPath)
 				} else {
-					if !i.handleRequestErrors(w, contentPath, err) {
-						return false
-					}
+					pathMetadata, getResp, err = i.api.GetRange(ctx, forwardedPath, ranges...)
+				}
+				if err != nil {
+					err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+					webError(w, err, http.StatusInternalServerError)
+				}
+			} else {
+				if !i.handleRequestErrors(w, contentPath, err) {
+					return false
 				}
 			}
-			defer bytesResponse.Close()
 		}
+		if getResp.bytes != nil {
+			bytesResponse = getResp.bytes
+			defer bytesResponse.Close()
+		} else {
+			directoryMetadata = getResp.directoryMetadata
+		}
+
 	default:
 		// This shouldn't be possible to reach which is why it is a 500 rather than 4XX error
 		webError(w, fmt.Errorf("invalid method: cannot use this HTTP method with the given request"), http.StatusInternalServerError)
@@ -140,7 +129,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		// Handling Unixfs directory
 		if directoryMetadata != nil || isDirectoryHeadRequest {
 			logger.Debugw("serving unixfs directory", "path", contentPath)
-			return i.serveDirectory(ctx, w, r, resolvedPath, contentPath, isDirectoryHeadRequest, directoryMetadata, begin, logger)
+			return i.serveDirectory(ctx, w, r, resolvedPath, contentPath, isDirectoryHeadRequest, directoryMetadata, ranges, begin, logger)
 		}
 
 		webError(w, fmt.Errorf("unsupported UnixFS type"), http.StatusInternalServerError)
