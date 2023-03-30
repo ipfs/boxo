@@ -19,6 +19,8 @@ import (
 	ipath "github.com/ipfs/boxo/coreiface/path"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multibase"
 	prometheus "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -201,6 +203,10 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := handleServiceWorkerRegistration(r); err != nil {
 		webRequestError(w, err)
+		return
+	}
+
+	if handleIpnsB58mhToCidRedirection(w, r) {
 		return
 	}
 
@@ -726,6 +732,57 @@ func handleServiceWorkerRegistration(r *http.Request) (err *ErrorResponse) {
 	}
 
 	return nil
+}
+
+// handleIpnsB58mhToCidRedirection redirects from /ipns/b58mh to /ipns/cid in
+// the most cost-effective way.
+func handleIpnsB58mhToCidRedirection(w http.ResponseWriter, r *http.Request) bool {
+	if _, dnslink := r.Context().Value(DNSLinkHostnameKey).(string); dnslink {
+		// For DNSLink hostnames, do not perform redirection in order to not break
+		// website. For example, if `example.net` is backed by `/ipns/base58`, we
+		// must NOT redirect to `example.net/ipns/base36-id`.
+		return false
+	}
+
+	if w.Header().Get("Location") != "" {
+		// Ignore this if there is already a redirection in place. This happens
+		// if there is a subdomain redirection. In that case, the path is already
+		// converted to CIDv1.
+		return false
+	}
+
+	pathParts := strings.Split(r.URL.Path, "/")
+	if len(pathParts) < 3 {
+		return false
+	}
+
+	if pathParts[1] != "ipns" {
+		return false
+	}
+
+	id, err := peer.Decode(pathParts[2])
+	if err != nil {
+		return false
+	}
+
+	// Convert the peer ID to a CIDv1.
+	cid := peer.ToCid(id)
+
+	// Encode CID in base36 to match the subdomain URLs.
+	encodedCID, err := cid.StringOfBase(multibase.Base36)
+	if err != nil {
+		return false
+	}
+
+	// If the CID was already encoded, do not redirect.
+	if encodedCID == pathParts[2] {
+		return false
+	}
+
+	pathParts[2] = encodedCID
+	r.URL.Path = strings.Join(pathParts, "/")
+	http.Redirect(w, r, r.URL.String(), http.StatusFound)
+	return true
 }
 
 // Attempt to fix redundant /ipfs/ namespace as long as resulting
