@@ -160,6 +160,7 @@ func (i *handler) getRedirectRules(r *http.Request, redirectsPath ImmutablePath)
 		}
 		return false, nil, err
 	}
+	defer redirectsFileGetResp.Close()
 
 	if redirectsFileGetResp.bytes == nil {
 		return false, nil, fmt.Errorf(" _redirects is not a file")
@@ -186,6 +187,7 @@ func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPat
 	if err != nil {
 		return err
 	}
+	defer getresp.Close()
 
 	if getresp.bytes == nil {
 		return fmt.Errorf("could not convert node for %d page to file", status)
@@ -266,6 +268,7 @@ func (i *handler) searchUpTreeFor404(r *http.Request, imPath ImmutablePath) (fil
 		if err != nil {
 			continue
 		}
+		defer getResp.Close()
 		if getResp.bytes == nil {
 			return nil, "", fmt.Errorf("found a pretty 404 but it was not a file")
 		}

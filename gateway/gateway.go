@@ -66,6 +66,18 @@ type GetRange struct {
 type GetResponse struct {
 	bytes             files.File
 	directoryMetadata *directoryMetadata
+	closeFn           func() error
+}
+
+func (g *GetResponse) Close() error {
+	if g.closeFn == nil {
+		return nil
+	}
+	return g.closeFn()
+}
+
+func (g *GetResponse) SetCloser(closeFn func() error) {
+	g.closeFn = closeFn
 }
 
 type directoryMetadata struct {
