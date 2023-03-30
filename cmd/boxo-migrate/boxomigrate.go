@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	migrate "github.com/ipfs/boxo/cmd/migrate/internal"
+	migrate "github.com/ipfs/boxo/cmd/boxo-migrate/internal"
 	"github.com/urfave/cli/v2"
 )
 
@@ -64,9 +64,30 @@ func main() {
 					if err != nil {
 						return err
 					}
+
+					fmt.Printf("\n\n")
+
+					if !dryrun {
+						err := migrator.GoGet("github.com/ipfs/boxo@v0.8.0-rc3")
+						if err != nil {
+							return err
+						}
+					}
+
 					if err := migrator.UpdateImports(); err != nil {
 						return err
 					}
+
+					if dryrun {
+						return nil
+					}
+
+					if err := migrator.GoModTidy(); err != nil {
+						return err
+					}
+
+					fmt.Printf("Your code has been successfully updated. Note that you might still need to manually fix up parts of your code.\n\n")
+					fmt.Printf("You should also consider running the 'boxo-migrate check-dependencies' command to see if you have any other dependencies on migrated code.\n\n")
 
 					return nil
 				},
@@ -88,7 +109,7 @@ func main() {
 					}
 					if len(deps) > 0 {
 						fmt.Println(strings.Join([]string{
-							"You still have dependencies on repos which have migrated to go-libipfs.",
+							"You still have dependencies on repos which have migrated to Boxo.",
 							"You should consider not having these dependencies to avoid multiple versions of the same code.",
 							"You can use 'go mod why' or 'go mod graph' to find the reason for these dependencies.",
 							"",
