@@ -180,23 +180,8 @@ func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath) (ContentP
 	return ContentPathMetadata{}, nil, fmt.Errorf("data was not a valid file or directory: %w", ErrInternalServerError) // TODO: should there be a gateway invalid content type to abstract over the various IPLD error types?
 }
 
-func (api *BlocksGateway) GetRange(ctx context.Context, path ImmutablePath, ranges ...GetRange) (ContentPathMetadata, files.File, error) {
-	md, nd, err := api.getNode(ctx, path)
-	if err != nil {
-		return md, nil, err
-	}
-
-	// This code path covers full graph, single file/directory, and range requests
-	n, err := ufile.NewUnixfsFile(ctx, api.dagService, nd)
-	if err != nil {
-		return md, nil, err
-	}
-	f, ok := n.(files.File)
-	if !ok {
-		return ContentPathMetadata{}, nil, NewErrorResponse(fmt.Errorf("can only do range requests on files, but did not get a file"), http.StatusBadRequest)
-	}
-
-	return md, f, nil
+func (api *BlocksGateway) GetRange(ctx context.Context, path ImmutablePath, ranges ...GetRange) (ContentPathMetadata, *GetResponse, error) {
+	return api.Get(ctx, path)
 }
 
 func (api *BlocksGateway) GetAll(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
