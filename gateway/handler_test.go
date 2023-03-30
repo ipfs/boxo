@@ -49,7 +49,7 @@ func (api *errorMockAPI) Get(ctx context.Context, path ImmutablePath) (ContentPa
 	return ContentPathMetadata{}, nil, api.err
 }
 
-func (api *errorMockAPI) GetRange(ctx context.Context, path ImmutablePath, getRange ...GetRange) (ContentPathMetadata, files.File, error) {
+func (api *errorMockAPI) GetRange(ctx context.Context, path ImmutablePath, getRange ...GetRange) (ContentPathMetadata, *GetResponse, error) {
 	return ContentPathMetadata{}, nil, api.err
 }
 
@@ -165,7 +165,7 @@ func (api *panicMockAPI) Get(ctx context.Context, immutablePath ImmutablePath) (
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) GetRange(ctx context.Context, immutablePath ImmutablePath, ranges ...GetRange) (ContentPathMetadata, files.File, error) {
+func (api *panicMockAPI) GetRange(ctx context.Context, immutablePath ImmutablePath, ranges ...GetRange) (ContentPathMetadata, *GetResponse, error) {
 	panic("i am panicking")
 }
 

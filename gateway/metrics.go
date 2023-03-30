@@ -67,7 +67,7 @@ func (b *ipfsBackendWithMetrics) Get(ctx context.Context, path ImmutablePath) (C
 	return md, n, err
 }
 
-func (b *ipfsBackendWithMetrics) GetRange(ctx context.Context, path ImmutablePath, ranges ...GetRange) (ContentPathMetadata, files.File, error) {
+func (b *ipfsBackendWithMetrics) GetRange(ctx context.Context, path ImmutablePath, ranges ...GetRange) (ContentPathMetadata, *GetResponse, error) {
 	begin := time.Now()
 	name := "IPFSBackend.GetRange"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
