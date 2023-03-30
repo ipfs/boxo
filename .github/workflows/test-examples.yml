@@ -1,5 +1,10 @@
-on: [push, pull_request]
 name: Go Test Examples
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   unit:
