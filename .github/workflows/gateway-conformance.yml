@@ -47,7 +47,7 @@ jobs:
           xml: output.xml
           html: output.html
           markdown: output.md
-          specs: -subdomain-gateway
+          subdomain-url: http://example.net
           args: -skip 'TestGatewayCar/GET_response_for_application/vnd.ipld.car/Header_Content-Length'
 
       # 5. Upload the results
