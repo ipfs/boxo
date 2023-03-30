@@ -106,6 +106,17 @@ func (m *Migrator) run(cmdName string, args ...string) (int, string, string, err
 	return state.ExitCode(), strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), nil
 }
 
+func (m *Migrator) runOrErr(cmdName string, args ...string) (string, error) {
+	exitCode, stdout, stderr, err := m.run(cmdName, args...)
+	if err != nil {
+		return "", err
+	}
+	if exitCode != 0 {
+		return "", fmt.Errorf("non-zero exit code %d, stderr:\n%s", exitCode, stderr)
+	}
+	return stdout, nil
+}
+
 // FindMigratedDependencies returns a list of dependent module versions like 'module v0.1.0' that have been migrated to go-libipfs.
 func (m *Migrator) FindMigratedDependencies() ([]string, error) {
 	var modVersions []string
@@ -129,12 +140,9 @@ func (m *Migrator) FindMigratedDependencies() ([]string, error) {
 }
 
 func (m *Migrator) findSourceFiles() ([]string, error) {
-	exitCode, stdout, stderr, err := m.run("go", "list", "-json", "./...")
+	stdout, err := m.runOrErr("go", "list", "-json", "./...")
 	if err != nil {
 		return nil, fmt.Errorf("finding source files: %w", err)
-	}
-	if exitCode != 0 {
-		return nil, fmt.Errorf("non-zero exit code %d finding source files, stderr:\n%s", exitCode, stderr)
 	}
 
 	var files []string
@@ -163,6 +171,24 @@ func (m *Migrator) UpdateImports() error {
 		if err != nil {
 			return fmt.Errorf("updating imports in %q: %w", sourceFile, err)
 		}
+	}
+	return nil
+}
+
+func (m *Migrator) GoModTidy() error {
+	fmt.Printf("\n\nRunning 'go mod tidy'...\n\n")
+	_, err := m.runOrErr("go", "mod", "tidy")
+	if err != nil {
+		return fmt.Errorf("running 'go mod tidy': %w", err)
+	}
+	return nil
+}
+
+func (m *Migrator) GoGet(mod string) error {
+	fmt.Printf("Adding module: %q\n\n", mod)
+	_, err := m.runOrErr("go", "get", mod)
+	if err != nil {
+		return fmt.Errorf("running 'go get %s': %w", mod, err)
 	}
 	return nil
 }
