@@ -7,10 +7,12 @@ import (
 	"testing"
 
 	"github.com/ipfs/boxo/blockservice"
+	"github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/examples/gateway/common"
-	offline "github.com/ipfs/boxo/exchange/offline"
 	"github.com/ipfs/boxo/gateway"
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,8 +21,9 @@ const (
 )
 
 func newProxyGateway(t *testing.T, rs *httptest.Server) *httptest.Server {
-	blockStore := newProxyStore(rs.URL, nil)
-	blockService := blockservice.New(blockStore, offline.Exchange(blockStore))
+	blockStore := blockstore.NewBlockstore(dssync.MutexWrap(datastore.NewMapDatastore()))
+	exch := newProxyExchange(rs.URL, nil)
+	blockService := blockservice.New(blockStore, exch)
 	routing := newProxyRouting(rs.URL, nil)
 
 	gw, err := gateway.NewBlocksGateway(blockService, gateway.WithValueStore(routing))
