@@ -20,6 +20,7 @@ Boxo 🍌
     - [Does Boxo == IPFS?](#does-boxo--ipfs)
     - [Is everything related to IPFS in the Go ecosystem in this repo?](#is-everything-related-to-ipfs-in-the-go-ecosystem-in-this-repo)
 - [Getting started](#getting-started)
+- [Migrating to Boxo](#migrating-to-boxo)
 - [Should I add my IPFS component to Boxo?](#should-i-add-my-ipfs-component-to-boxo)
 - [Help](#help)
 - [Governance and Access](#governance-and-access)
@@ -69,7 +70,7 @@ No.  This repo houses some IPFS functionality written in Go that has been useful
 
 ### Is everything related to IPFS in the Go ecosystem in this repo?
 
-No.  Not everything related to IPFS is intended to be in Boxo. View it as a starter toolbox (potentially among multiple).  If you’d like to build an IPFS implementation with Go, here are some tools you might want that are maintained by a group that has long term commitments to the IPFS project.  There are certainly repos that others maintainer that aren't included here (e.g., ipfs/go-car) which are still useful to IPFS implementations. It's expected and fine for new IPFS functionality to be developed that won't be part of Boxo.  
+No.  Not everything related to IPFS is intended to be in Boxo. View it as a starter toolbox (potentially among multiple).  If you’d like to build an IPFS implementation with Go, here are some tools you might want that are maintained by a group that has long term commitments to the IPFS project.  There are certainly repos that others maintainer that aren't included here (e.g., ipfs/go-car) which are still useful to IPFS implementations. It's expected and fine for new IPFS functionality to be developed that won't be part of Boxo.
 
 ### Why is the code coverage so bad?
 
@@ -77,6 +78,24 @@ The code coverage of this repo is not currently representative of the actual tes
 
 ## Getting started
 See [examples](./examples/README.md).
+
+If you are migrating to Boxo, see [Migrating to Boxo](#migrating-to-boxo).
+
+## Migrating to Boxo
+Many Go modules under github.com/ipfs have moved here. Boxo provides a tool to ease this migration, which does most of the work for you:
+
+* `cd` into the root directory of your module (where the `go.mod` file is)
+* Run: `go run github.com/ipfs/boxo/cmd/boxo-migrate@latest update-imports`
+  * This will upgrade your module to Boxo v0.8.0 and rewrite your import paths
+* Run: `go run github.com/ipfs/boxo/cmd/boxo-migrate@latest check-dependencies`
+  * This will print unmaintained dependencies you still have
+  * These aren't necessarily an immediate problem, but you should eventually get them out of your dependency graph
+  
+This tool only upgrades your module to Boxo v0.8.0, to minimize backwards-incompatible changes. Depending on the versions of IPFS modules before the upgrade, your code may require additional changes to build.
+
+We recommend upgrading to v0.8.0 first, and _then_ upgrading to the latest Boxo release.
+
+If you encounter any challenges, please [open an issue](https://github.com/ipfs/boxo/issues/new/choose) and Boxo maintainers will help you.
 
 ## Should I add my IPFS component to Boxo?
 We happily accept external contributions! However, Boxo maintains a high quality bar, so code accepted into Boxo must meet some minimum maintenance criteria:
