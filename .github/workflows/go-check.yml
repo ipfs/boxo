@@ -1,8 +1,15 @@
 # File managed by web3-bot. DO NOT EDIT.
 # See https://github.com/protocol/.github/ for details.
 
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches: 
 name: Go Checks
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   unit:
