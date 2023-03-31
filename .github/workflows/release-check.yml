@@ -6,6 +6,10 @@ on:
   pull_request_target:
     paths: [ 'version.json' ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release-check:
     uses: protocol/.github/.github/workflows/release-check.yml@master

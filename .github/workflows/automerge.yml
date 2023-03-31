@@ -4,6 +4,10 @@
 name: Automerge
 on: [ pull_request ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   automerge:
     uses: protocol/.github/.github/workflows/automerge.yml@master
