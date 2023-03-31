@@ -1,8 +1,15 @@
 # File managed by web3-bot. DO NOT EDIT.
 # See https://github.com/protocol/.github/ for details.
 
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches: 
 name: Go Test
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   unit:
@@ -12,7 +19,9 @@ jobs:
         os: [ "ubuntu", "windows", "macos" ]
         go: ["1.19.x","1.20.x"]
     env:
-      COVERAGES: ""
+      GOTESTFLAGS: -shuffle=on -cover -coverprofile=module-coverage.txt -coverpkg=./...
+      GO386FLAGS: -shuffle=on
+      GORACEFLAGS: -shuffle=on
     runs-on: ${{ fromJSON(vars[format('UCI_GO_TEST_RUNNER_{0}', matrix.os)] || format('"{0}-latest"', matrix.os)) }}
     name: ${{ matrix.os }} (go ${{ matrix.go }})
     steps:
@@ -42,11 +51,10 @@ jobs:
       - name: Run tests
         if: contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
         uses: protocol/multiple-go-modules@v1.2
+        env:
+          GOFLAGS: ${{ format('{0} {1}', env.GOTESTFLAGS, env.GOFLAGS) }}
         with:
-          # Use -coverpkg=./..., so that we include cross-package coverage.
-          # If package ./A imports ./B, and ./A's tests also cover ./B,
-          # this means ./B's coverage will be significantly higher than 0%.
-          run: go test -shuffle=on -coverprofile=module-coverage.txt -coverpkg=./... ./...
+          run: go test -v ./...
       - name: Run tests (32 bit)
         # can't run 32 bit tests on OSX.
         if: matrix.os != 'macos' &&
@@ -55,22 +63,26 @@ jobs:
         uses: protocol/multiple-go-modules@v1.2
         env:
           GOARCH: 386
+          GOFLAGS: ${{ format('{0} {1}', env.GO386FLAGS, env.GOFLAGS) }}
         with:
           run: |
             export "PATH=$PATH_386:$PATH"
-            go test -shuffle=on ./...
+            go test -v ./...
       - name: Run tests with race detector
         # speed things up. Windows and OSX VMs are slow
         if: matrix.os == 'ubuntu' &&
           contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
         uses: protocol/multiple-go-modules@v1.2
+        env:
+          GOFLAGS: ${{ format('{0} {1}', env.GORACEFLAGS, env.GOFLAGS) }}
         with:
-          run: go test -race ./...
+          run: go test -v -race ./...
       - name: Collect coverage files
+        id: coverages
         shell: bash
-        run: echo "COVERAGES=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_ENV
+        run: echo "files=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_OUTPUT
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70 # v3.1.1
         with:
-          files: '${{ env.COVERAGES }}'
+          files: ${{ steps.coverages.outputs.files }}
           env_vars: OS=${{ matrix.os }}, GO=${{ matrix.go }}
