@@ -7,9 +7,11 @@ import (
 	"strconv"
 
 	"github.com/ipfs/boxo/blockservice"
+	"github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/examples/gateway/common"
-	offline "github.com/ipfs/boxo/exchange/offline"
 	"github.com/ipfs/boxo/gateway"
+	"github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 )
 
 func main() {
@@ -17,9 +19,14 @@ func main() {
 	port := flag.Int("p", 8040, "port to run this gateway from")
 	flag.Parse()
 
-	// Sets up the block store, which will proxy the block requests to the given gateway.
-	blockStore := newProxyStore(*gatewayUrlPtr, nil)
-	blockService := blockservice.New(blockStore, offline.Exchange(blockStore))
+	// Sets up a blockstore to hold the blocks we request from the gateway
+	// Note: in a production environment you would likely want to choose a more efficient datastore implementation
+	// as well as one that has a way of pruning storage so as not to hold data in memory indefinitely.
+	blockStore := blockstore.NewBlockstore(dssync.MutexWrap(datastore.NewMapDatastore()))
+
+	// Sets up the exchange, which will proxy the block requests to the given gateway.
+	e := newProxyExchange(*gatewayUrlPtr, nil)
+	blockService := blockservice.New(blockStore, e)
 
 	// Sets up the routing system, which will proxy the IPNS routing requests to the given gateway.
 	routing := newProxyRouting(*gatewayUrlPtr, nil)
