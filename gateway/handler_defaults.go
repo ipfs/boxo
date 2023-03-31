@@ -29,7 +29,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		isDirectoryHeadRequest bool
 		directoryMetadata      *directoryMetadata
 		err                    error
-		ranges                 []GetRange
+		ranges                 []ByteRange
 	)
 
 	switch r.Method {
@@ -60,23 +60,19 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		}
 
 		var getResp *GetResponse
-		// TODO: passing resolved path here, instead of contentPath is harming content routing. Knowing original immutableContentPath will allow backend to find  providers for parents, even when internal CIDs are not announced, and will provide better key for caching related DAGs.
-		if len(ranges) == 0 {
-			pathMetadata, getResp, err = i.api.Get(ctx, maybeResolvedImPath)
-		} else {
-			pathMetadata, getResp, err = i.api.GetRange(ctx, maybeResolvedImPath, ranges...)
-		}
+		// TODO: passing only resolved path here, instead of contentPath is
+		// harming content routing. Knowing original immutableContentPath will
+		// allow backend to find  providers for parents, even when internal
+		// CIDs are not announced, and will provide better key for caching
+		// related DAGs.
+		pathMetadata, getResp, err = i.api.Get(ctx, maybeResolvedImPath, ranges...)
 		if err != nil {
 			if isWebRequest(requestedContentType) {
 				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
 				if !continueProcessing {
 					return false
 				}
-				if len(ranges) == 0 {
-					pathMetadata, getResp, err = i.api.Get(ctx, forwardedPath)
-				} else {
-					pathMetadata, getResp, err = i.api.GetRange(ctx, forwardedPath, ranges...)
-				}
+				pathMetadata, getResp, err = i.api.Get(ctx, forwardedPath, ranges...)
 				if err != nil {
 					err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 					webError(w, err, http.StatusInternalServerError)
@@ -100,7 +96,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		return false
 	}
 
-	// TODO: check if we have a bug when maybeResolvedImPath is resolved and i.setIpfsRootsHeader works with pathMetadata returned by GetRange(maybeResolvedImPath)
+	// TODO: check if we have a bug when maybeResolvedImPath is resolved and i.setIpfsRootsHeader works with pathMetadata returned by Get(maybeResolvedImPath)
 	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
 		webRequestError(w, err)
 		return false
@@ -138,7 +134,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 }
 
 // parseRange parses a Range header string as per RFC 7233.
-func parseRange(s string) ([]GetRange, error) {
+func parseRange(s string) ([]ByteRange, error) {
 	if s == "" {
 		return nil, nil // header not present
 	}
@@ -146,7 +142,7 @@ func parseRange(s string) ([]GetRange, error) {
 	if !strings.HasPrefix(s, b) {
 		return nil, errors.New("invalid range")
 	}
-	var ranges []GetRange
+	var ranges []ByteRange
 	for _, ra := range strings.Split(s[len(b):], ",") {
 		ra = textproto.TrimString(ra)
 		if ra == "" {
@@ -157,7 +153,7 @@ func parseRange(s string) ([]GetRange, error) {
 			return nil, errors.New("invalid range")
 		}
 		start, end = textproto.TrimString(start), textproto.TrimString(end)
-		var r GetRange
+		var r ByteRange
 		if start == "" {
 			r.From = 0
 			// If no start is specified, end specifies the

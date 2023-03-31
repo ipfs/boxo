@@ -55,25 +55,13 @@ func (b *ipfsBackendWithMetrics) updateApiCallMetric(name string, err error, beg
 	}
 }
 
-func (b *ipfsBackendWithMetrics) Get(ctx context.Context, path ImmutablePath) (ContentPathMetadata, *GetResponse, error) {
+func (b *ipfsBackendWithMetrics) Get(ctx context.Context, path ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
 	begin := time.Now()
 	name := "IPFSBackend.Get"
-	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
+	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String()), attribute.Int("ranges", len(ranges))))
 	defer span.End()
 
-	md, n, err := b.api.Get(ctx, path)
-
-	b.updateApiCallMetric(name, err, begin)
-	return md, n, err
-}
-
-func (b *ipfsBackendWithMetrics) GetRange(ctx context.Context, path ImmutablePath, ranges ...GetRange) (ContentPathMetadata, *GetResponse, error) {
-	begin := time.Now()
-	name := "IPFSBackend.GetRange"
-	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
-	defer span.End()
-
-	md, f, err := b.api.GetRange(ctx, path, ranges...)
+	md, f, err := b.api.Get(ctx, path, ranges...)
 
 	b.updateApiCallMetric(name, err, begin)
 	return md, f, err
