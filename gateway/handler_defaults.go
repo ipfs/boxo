@@ -71,6 +71,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 					}
 				}
 			}
+			defer getResp.Close()
 			if getResp.bytes != nil {
 				bytesResponse = getResp.bytes
 				defer bytesResponse.Close()

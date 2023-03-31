@@ -83,6 +83,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		var getResp *GetResponse
 		_, getResp, err = i.api.Get(ctx, imIndexPath)
 		if err == nil {
+			defer getResp.Close()
 			if getResp.bytes == nil {
 				webError(w, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
 				return false
