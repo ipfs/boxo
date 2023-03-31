@@ -54,11 +54,13 @@ type ContentPathMetadata struct {
 	ContentType      string // Only used for UnixFS requests
 }
 
-// GetRange describes a range request within a UnixFS file. From and To mostly follow HTTP Range Request semantics.
+// ByteRange describes a range request within a UnixFS file. From and To mostly follow [HTTP Byte Range] Request semantics.
 // From >= 0 and To = nil: Get the file (From, Length)
 // From >= 0 and To >= 0: Get the range (From, To)
 // From >= 0 and To <0: Get the range (From, Length - To)
-type GetRange struct {
+//
+// [HTTP Byte Range]: https://httpwg.org/specs/rfc9110.html#rfc.section.14.1.2
+type ByteRange struct {
 	From uint64
 	To   *int64
 }
@@ -86,16 +88,24 @@ func NewGetResponseFromDirectoryListing(dagSize uint64, entries <-chan unixfs.Li
 // There are also some existing error types that the gateway code knows how to handle (e.g. context.DeadlineExceeded
 // and various IPLD pathing related errors).
 type IPFSBackend interface {
-	// Get returns a UnixFS file, UnixFS directory, or an IPLD block depending on what the path is that has been
-	// requested. Directories' files.DirEntry objects do not need to contain content, but must contain Name,
-	// Size, and Cid.
-	Get(context.Context, ImmutablePath) (ContentPathMetadata, *GetResponse, error)
 
-	// GetRange returns a full UnixFS file object, or a UnixFS directory. Ranges passed in are advisory for pre-fetching
-	// data, however consumers of this function may require extra data beyond the passed ranges (e.g. the initial bit of
-	// the file might be used for content type sniffing even if only the end of the file is requested).
-	// Note: there is currently no semantic meaning attached to a range request for a directory
-	GetRange(context.Context, ImmutablePath, ...GetRange) (ContentPathMetadata, *GetResponse, error)
+	// Get returns a GetResponse with UnixFS file, directory or a block in IPLD
+	// format e.g., (DAG-)CBOR/JSON.
+	//
+	// Returned Directories are preferably a minimum info required for enumeration: Name, Size, and Cid.
+	//
+	// Optional ranges follow [HTTP Byte Ranges] notation and can be used for
+	// pre-fetching specific sections of a file or a block.
+	//
+	// Range notes:
+	//   - Generating response to a range request may require additional data
+	//     beyond the passed ranges (e.g. a single byte range from the middle of a
+	//     file will still need magic bytes from the very beginning for content
+	//     type sniffing).
+	//   - A range request for a directory currently holds no semantic meaning.
+	//
+	// [HTTP Byte Ranges]: https://httpwg.org/specs/rfc9110.html#rfc.section.14.1.2
+	Get(context.Context, ImmutablePath, ...ByteRange) (ContentPathMetadata, *GetResponse, error)
 
 	// GetAll returns a UnixFS file or directory depending on what the path is that has been requested. Directories should
 	// include all content recursively.

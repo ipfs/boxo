@@ -139,7 +139,7 @@ func NewBlocksGateway(blockService blockservice.BlockService, opts ...BlockGatew
 	}, nil
 }
 
-func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath) (ContentPathMetadata, *GetResponse, error) {
+func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
 	md, nd, err := api.getNode(ctx, path)
 	if err != nil {
 		return md, nil, err
@@ -178,10 +178,6 @@ func (api *BlocksGateway) Get(ctx context.Context, path ImmutablePath) (ContentP
 	}
 
 	return ContentPathMetadata{}, nil, fmt.Errorf("data was not a valid file or directory: %w", ErrInternalServerError) // TODO: should there be a gateway invalid content type to abstract over the various IPLD error types?
-}
-
-func (api *BlocksGateway) GetRange(ctx context.Context, path ImmutablePath, ranges ...GetRange) (ContentPathMetadata, *GetResponse, error) {
-	return api.Get(ctx, path)
 }
 
 func (api *BlocksGateway) GetAll(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
