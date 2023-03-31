@@ -23,7 +23,7 @@ import (
 // serveDirectory returns the best representation of UnixFS directory
 //
 // It will return index.html if present, or generate directory listing otherwise.
-func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, isHeadRequest bool, directoryMetadata *directoryMetadata, ranges []GetRange, begin time.Time, logger *zap.SugaredLogger) bool {
+func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, isHeadRequest bool, directoryMetadata *directoryMetadata, ranges []ByteRange, begin time.Time, logger *zap.SugaredLogger) bool {
 	ctx, span := spanTrace(ctx, "ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
@@ -81,11 +81,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		}
 	} else {
 		var getResp *GetResponse
-		if len(ranges) == 0 {
-			_, getResp, err = i.api.Get(ctx, imIndexPath)
-		} else {
-			_, getResp, err = i.api.GetRange(ctx, imIndexPath, ranges...)
-		}
+		_, getResp, err = i.api.Get(ctx, imIndexPath, ranges...)
 		if err == nil {
 			if getResp.bytes == nil {
 				webError(w, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)

@@ -45,11 +45,7 @@ type errorMockAPI struct {
 	err error
 }
 
-func (api *errorMockAPI) Get(ctx context.Context, path ImmutablePath) (ContentPathMetadata, *GetResponse, error) {
-	return ContentPathMetadata{}, nil, api.err
-}
-
-func (api *errorMockAPI) GetRange(ctx context.Context, path ImmutablePath, getRange ...GetRange) (ContentPathMetadata, *GetResponse, error) {
+func (api *errorMockAPI) Get(ctx context.Context, path ImmutablePath, getRange ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
 	return ContentPathMetadata{}, nil, api.err
 }
 
@@ -161,11 +157,7 @@ type panicMockAPI struct {
 	panicOnHostnameHandler bool
 }
 
-func (api *panicMockAPI) Get(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, *GetResponse, error) {
-	panic("i am panicking")
-}
-
-func (api *panicMockAPI) GetRange(ctx context.Context, immutablePath ImmutablePath, ranges ...GetRange) (ContentPathMetadata, *GetResponse, error) {
+func (api *panicMockAPI) Get(ctx context.Context, immutablePath ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
 	panic("i am panicking")
 }
 
