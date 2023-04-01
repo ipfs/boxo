@@ -244,7 +244,7 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget fun
 
 		// TODO be careful checking ErrNotFound. If the underlying
 		// implementation changes, this will break.
-		logger.Debug("Blockservice: Searching bitswap")
+		logger.Debug("BlockService: Searching")
 		blk, err := f.GetBlock(ctx, c)
 		if err != nil {
 			return nil, err
@@ -262,7 +262,7 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget fun
 		return blk, nil
 	}
 
-	logger.Debug("Blockservice GetBlock: Not found")
+	logger.Debug("BlockService GetBlock: Not found")
 	return nil, err
 }
 
