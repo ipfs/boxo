@@ -79,12 +79,13 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 
 	_, copyErr := io.Copy(w, carFile)
 	carErr := <-errCh
-	if copyErr != nil || carErr != nil {
+	streamErr := multierr.Combine(carErr, copyErr)
+	if streamErr != nil {
 		// We return error as a trailer, however it is not something browsers can access
 		// (https://github.com/mdn/browser-compat-data/issues/14703)
 		// Due to this, we suggest client always verify that
 		// the received CAR stream response is matching requested DAG selector
-		w.Header().Set("X-Stream-Error", multierr.Combine(err, copyErr).Error())
+		w.Header().Set("X-Stream-Error", streamErr.Error())
 		return false
 	}
 
