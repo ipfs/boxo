@@ -242,6 +242,13 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	i.addUserHeaders(w) // ok, _now_ write user's headers.
 	w.Header().Set("X-Ipfs-Path", contentPath.String())
 
+	// Fail fast if unsupported request type was sent to a Trustless Gateway.
+	if !i.isDeserializedResponsePossible(r) && !i.isTrustlessRequest(contentPath, responseFormat) {
+		err := errors.New("only trustless requests are accepted on this gateway: https://specs.ipfs.tech/http-gateways/trustless-gateway/")
+		webError(w, err, http.StatusNotAcceptable)
+		return
+	}
+
 	// TODO: Why did the previous code do path resolution, was that a bug?
 	// TODO: Does If-None-Match apply here?
 	if responseFormat == "application/vnd.ipfs.ipns-record" {
@@ -322,6 +329,75 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 func (i *handler) addUserHeaders(w http.ResponseWriter) {
 	for k, v := range i.config.Headers {
 		w.Header()[k] = v
+	}
+}
+
+// isDeserializedResponsePossible returns true if deserialized responses
+// are allowed on the specified hostname, or globally. Host-specific rules
+// override global config.
+func (i *handler) isDeserializedResponsePossible(r *http.Request) bool {
+	// Get the value from HTTP Host header
+	host := r.Host
+
+	// If this request went through WithHostname, use the key in the context.
+	if h, ok := r.Context().Value(GatewayHostnameKey).(string); ok {
+		host = h
+	}
+
+	// If a reverse-proxy passed explicit hostname override
+	// in the X-Forwarded-Host header, it takes precedence above everything else.
+	if xHost := r.Header.Get("X-Forwarded-Host"); xHost != "" {
+		host = xHost
+	}
+
+	// If the gateway is defined, return whatever is set.
+	if gw, ok := i.config.PublicGateways[host]; ok {
+		return gw.DeserializedResponses
+	}
+
+	// Otherwise, the default.
+	return i.config.DeserializedResponses
+}
+
+// isTrustlessRequest returns true if the responseFormat and contentPath allow
+// client to trustlessly verify response. Relevant response formats are defined
+// in the [Trustless Gateway] spec.
+//
+// [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
+func (i *handler) isTrustlessRequest(contentPath ipath.Path, responseFormat string) bool {
+	// Only allow "/{#1}/{#2}"-like paths.
+	trimmedPath := strings.Trim(contentPath.String(), "/")
+	pathComponents := strings.Split(trimmedPath, "/")
+	if len(pathComponents) != 2 {
+		return false
+	}
+
+	if contentPath.Namespace() == "ipns" {
+		// TODO: only ipns records allowed until https://github.com/ipfs/specs/issues/369 is resolved
+		if responseFormat != "application/vnd.ipfs.ipns-record" {
+			return false
+		}
+
+		// Only valid, cryptographically verifiable IPNS record names (no DNSLink on trustless gateways)
+		// TODO: replace with ipns.Name as part of https://github.com/ipfs/specs/issues/376
+		if _, err := peer.Decode(pathComponents[1]); err != nil {
+			return false
+		}
+
+		return true
+	}
+
+	// Only valid CIDs.
+	if _, err := cid.Decode(pathComponents[1]); err != nil {
+		return false
+	}
+
+	switch responseFormat {
+	case "application/vnd.ipld.raw",
+		"application/vnd.ipld.car":
+		return true
+	default:
+		return false
 	}
 }
 

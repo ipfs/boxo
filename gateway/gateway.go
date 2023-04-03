@@ -15,7 +15,69 @@ import (
 
 // Config is the configuration used when creating a new gateway handler.
 type Config struct {
+	// Headers is a map containing all the headers that should be sent by default
+	// in all requests. You can define custom headers, as well as add the recommended
+	// headers via AddAccessControlHeaders.
 	Headers map[string][]string
+
+	// DeserializedResponses configures this gateway to support returning data
+	// in deserialized format. By default, the gateway will only support
+	// trustless, verifiable [application/vnd.ipld.raw] and
+	// [application/vnd.ipld.car] responses, operating as a [Trustless Gateway].
+	//
+	// This global flag can be overridden per FQDN in PublicGateways map.
+	//
+	// [application/vnd.ipld.raw]: https://www.iana.org/assignments/media-types/application/vnd.ipld.raw
+	// [application/vnd.ipld.car]: https://www.iana.org/assignments/media-types/application/vnd.ipld.car
+	// [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
+	DeserializedResponses bool
+
+	// NoDNSLink configures the gateway to _not_ perform DNS TXT record lookups in
+	// response to requests with values in `Host` HTTP header. This flag can be
+	// overridden per FQDN in PublicGateways. To be used with WithHostname.
+	NoDNSLink bool
+
+	// PublicGateways configures the behavior of known public gateways. Each key is
+	// a fully qualified domain name (FQDN). To be used with WithHostname.
+	PublicGateways map[string]*Specification
+}
+
+// Specification is the specification of an IPFS Public Gateway.
+type Specification struct {
+	// Paths is explicit list of path prefixes that should be handled by
+	// this gateway. Example: `["/ipfs", "/ipns"]`
+	// Useful if you only want to support immutable `/ipfs`.
+	Paths []string
+
+	// UseSubdomains indicates whether or not this is a [Subdomain Gateway].
+	//
+	// If this flag is set, any `/ipns/$id` and/or `/ipfs/$id` paths in Paths
+	// will be permanently redirected to `http(s)://$id.[ipns|ipfs].$gateway/`.
+	//
+	// We do not support using both paths and subdomains for a single domain
+	// for security reasons ([Origin isolation]).
+	//
+	// [Subdomain Gateway]: https://specs.ipfs.tech/http-gateways/subdomain-gateway/
+	// [Origin isolation]: https://en.wikipedia.org/wiki/Same-origin_policy
+	UseSubdomains bool
+
+	// NoDNSLink configures this gateway to _not_ resolve DNSLink for the
+	// specific FQDN provided in `Host` HTTP header. Useful when you want to
+	// explicitly allow or refuse hosting a single hostname. To refuse all
+	// DNSLinks in `Host` processing, set NoDNSLink in Config instead. This setting
+	// overrides the global setting.
+	NoDNSLink bool
+
+	// InlineDNSLink configures this gateway to always inline DNSLink names
+	// (FQDN) into a single DNS label in order to interop with wildcard TLS certs
+	// and Origin per CID isolation provided by rules like https://publicsuffix.org
+	//
+	// This should be set to true if you use HTTPS.
+	InlineDNSLink bool
+
+	// DeserializedResponses configures this gateway to support returning data
+	// in deserialized format. This setting overrides the global setting.
+	DeserializedResponses bool
 }
 
 // TODO: Is this what we want for ImmutablePath?
@@ -221,7 +283,17 @@ func AddAccessControlHeaders(headers map[string][]string) {
 type RequestContextKey string
 
 const (
-	DNSLinkHostnameKey RequestContextKey = "dnslink-hostname"
+	// GatewayHostnameKey is the key for the hostname at which the gateway is
+	// operating. It may be a DNSLink, Subdomain or Regular gateway.
 	GatewayHostnameKey RequestContextKey = "gw-hostname"
-	ContentPathKey     RequestContextKey = "content-path"
+
+	// DNSLinkHostnameKey is the key for the hostname of a DNSLink Gateway:
+	// https://specs.ipfs.tech/http-gateways/dnslink-gateway/
+	DNSLinkHostnameKey RequestContextKey = "dnslink-hostname"
+
+	// SubdomainHostnameKey is the key for the hostname of a Subdomain Gateway:
+	// https://specs.ipfs.tech/http-gateways/subdomain-gateway/
+	SubdomainHostnameKey RequestContextKey = "subdomain-hostname"
+
+	ContentPathKey RequestContextKey = "content-path"
 )

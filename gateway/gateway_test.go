@@ -198,14 +198,20 @@ func newTestServerAndNode(t *testing.T, ns mockNamesys) (*httptest.Server, *mock
 }
 
 func newTestServer(t *testing.T, api IPFSBackend) *httptest.Server {
-	config := Config{Headers: map[string][]string{}}
+	return newTestServerWithConfig(t, api, Config{
+		Headers:               map[string][]string{},
+		DeserializedResponses: true,
+	})
+}
+
+func newTestServerWithConfig(t *testing.T, api IPFSBackend, config Config) *httptest.Server {
 	AddAccessControlHeaders(config.Headers)
 
 	handler := NewHandler(config, api)
 	mux := http.NewServeMux()
 	mux.Handle("/ipfs/", handler)
 	mux.Handle("/ipns/", handler)
-	handler = WithHostname(mux, api, map[string]*Specification{}, false)
+	handler = WithHostname(config, api, mux)
 
 	ts := httptest.NewServer(handler)
 	t.Cleanup(func() { ts.Close() })
@@ -572,4 +578,129 @@ func TestIpnsBase58MultihashRedirect(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, "/ipns/k2k4r8ol4m8kkcqz509c1rcjwunebj02gcnm5excpx842u736nja8ger?keep=query", res.Header.Get("Location"))
 	})
+}
+
+func TestIpfsTrustlessMode(t *testing.T) {
+	api, root := newMockAPI(t)
+
+	ts := newTestServerWithConfig(t, api, Config{
+		Headers:   map[string][]string{},
+		NoDNSLink: false,
+		PublicGateways: map[string]*Specification{
+			"trustless.com": {
+				Paths: []string{"/ipfs", "/ipns"},
+			},
+			"trusted.com": {
+				Paths:                 []string{"/ipfs", "/ipns"},
+				DeserializedResponses: true,
+			},
+		},
+	})
+	t.Logf("test server url: %s", ts.URL)
+
+	trustedFormats := []string{"", "dag-json", "dag-cbor", "tar", "json", "cbor"}
+	trustlessFormats := []string{"raw", "car"}
+
+	doRequest := func(t *testing.T, path, host string, expectedStatus int) {
+		req, err := http.NewRequest(http.MethodGet, ts.URL+path, nil)
+		assert.Nil(t, err)
+
+		if host != "" {
+			req.Host = host
+		}
+
+		res, err := doWithoutRedirect(req)
+		assert.Nil(t, err)
+		defer res.Body.Close()
+		assert.Equal(t, expectedStatus, res.StatusCode)
+	}
+
+	doIpfsCidRequests := func(t *testing.T, formats []string, host string, expectedStatus int) {
+		for _, format := range formats {
+			doRequest(t, "/ipfs/"+root.String()+"/?format="+format, host, expectedStatus)
+		}
+	}
+
+	doIpfsCidPathRequests := func(t *testing.T, formats []string, host string, expectedStatus int) {
+		for _, format := range formats {
+			doRequest(t, "/ipfs/"+root.String()+"/EmptyDir/?format="+format, host, expectedStatus)
+		}
+	}
+
+	trustedTests := func(t *testing.T, host string) {
+		doIpfsCidRequests(t, trustlessFormats, host, http.StatusOK)
+		doIpfsCidRequests(t, trustedFormats, host, http.StatusOK)
+		doIpfsCidPathRequests(t, trustlessFormats, host, http.StatusOK)
+		doIpfsCidPathRequests(t, trustedFormats, host, http.StatusOK)
+	}
+
+	trustlessTests := func(t *testing.T, host string) {
+		doIpfsCidRequests(t, trustlessFormats, host, http.StatusOK)
+		doIpfsCidRequests(t, trustedFormats, host, http.StatusNotAcceptable)
+		doIpfsCidPathRequests(t, trustlessFormats, host, http.StatusNotAcceptable)
+		doIpfsCidPathRequests(t, trustedFormats, host, http.StatusNotAcceptable)
+	}
+
+	t.Run("Explicit Trustless Gateway", func(t *testing.T) {
+		t.Parallel()
+		trustlessTests(t, "trustless.com")
+	})
+
+	t.Run("Explicit Trusted Gateway", func(t *testing.T) {
+		t.Parallel()
+		trustedTests(t, "trusted.com")
+	})
+
+	t.Run("Implicit Default Trustless Gateway", func(t *testing.T) {
+		t.Parallel()
+		trustlessTests(t, "not.configured.com")
+		trustlessTests(t, "localhost")
+		trustlessTests(t, "127.0.0.1")
+		trustlessTests(t, "::1")
+	})
+}
+
+func TestIpnsTrustlessMode(t *testing.T) {
+	api, root := newMockAPI(t)
+	api.namesys["/ipns/trustless.com"] = path.FromCid(root)
+	api.namesys["/ipns/trusted.com"] = path.FromCid(root)
+
+	ts := newTestServerWithConfig(t, api, Config{
+		Headers:   map[string][]string{},
+		NoDNSLink: false,
+		PublicGateways: map[string]*Specification{
+			"trustless.com": {
+				Paths: []string{"/ipfs", "/ipns"},
+			},
+			"trusted.com": {
+				Paths:                 []string{"/ipfs", "/ipns"},
+				DeserializedResponses: true,
+			},
+		},
+	})
+	t.Logf("test server url: %s", ts.URL)
+
+	doRequest := func(t *testing.T, path, host string, expectedStatus int) {
+		req, err := http.NewRequest(http.MethodGet, ts.URL+path, nil)
+		assert.Nil(t, err)
+
+		if host != "" {
+			req.Host = host
+		}
+
+		res, err := doWithoutRedirect(req)
+		assert.Nil(t, err)
+		defer res.Body.Close()
+		assert.Equal(t, expectedStatus, res.StatusCode)
+	}
+
+	// DNSLink only. Not supported for trustless. Supported for trusted, except
+	// format=ipns-record which is unavailable for DNSLink.
+	doRequest(t, "/", "trustless.com", http.StatusNotAcceptable)
+	doRequest(t, "/EmptyDir/", "trustless.com", http.StatusNotAcceptable)
+	doRequest(t, "/?format=ipns-record", "trustless.com", http.StatusNotAcceptable)
+
+	doRequest(t, "/", "trusted.com", http.StatusOK)
+	doRequest(t, "/EmptyDir/", "trusted.com", http.StatusOK)
+	doRequest(t, "/?format=ipns-record", "trusted.com", http.StatusBadRequest)
 }

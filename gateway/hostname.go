@@ -16,49 +16,11 @@ import (
 	mbase "github.com/multiformats/go-multibase"
 )
 
-// Specification is the specification of an IPFS Public Gateway.
-type Specification struct {
-	// Paths is explicit list of path prefixes that should be handled by
-	// this gateway. Example: `["/ipfs", "/ipns"]`
-	// Useful if you only want to support immutable `/ipfs`.
-	Paths []string
-
-	// UseSubdomains indicates whether or not this gateway uses subdomains
-	// for IPFS resources instead of paths. That is: http://CID.ipfs.GATEWAY/...
-	//
-	// If this flag is set, any /ipns/$id and/or /ipfs/$id paths in Paths
-	// will be permanently redirected to http://$id.[ipns|ipfs].$gateway/.
-	//
-	// We do not support using both paths and subdomains for a single domain
-	// for security reasons (Origin isolation).
-	UseSubdomains bool
-
-	// NoDNSLink configures this gateway to _not_ resolve DNSLink for the
-	// specific FQDN provided in `Host` HTTP header. Useful when you want to
-	// explicitly allow or refuse hosting a single hostname. To refuse all
-	// DNSLinks in `Host` processing, pass noDNSLink to `WithHostname` instead.
-	// This flag overrides the global one.
-	NoDNSLink bool
-
-	// InlineDNSLink configures this gateway to always inline DNSLink names
-	// (FQDN) into a single DNS label in order to interop with wildcard TLS certs
-	// and Origin per CID isolation provided by rules like https://publicsuffix.org
-	// This should be set to true if you use HTTPS.
-	InlineDNSLink bool
-}
-
 // WithHostname is a middleware that can wrap an http.Handler in order to parse the
 // Host header and translating it to the content path. This is useful for Subdomain
 // and DNSLink gateways.
-//
-// publicGateways configures the behavior of known public gateways. Each key is a
-// fully qualified domain name (FQDN).
-//
-// noDNSLink configures the gateway to _not_ perform DNS TXT record lookups in
-// response to requests with values in `Host` HTTP header. This flag can be overridden
-// per FQDN in publicGateways.
-func WithHostname(next http.Handler, api IPFSBackend, publicGateways map[string]*Specification, noDNSLink bool) http.HandlerFunc {
-	gateways := prepareHostnameGateways(publicGateways)
+func WithHostname(c Config, api IPFSBackend, next http.Handler) http.HandlerFunc {
+	gateways := prepareHostnameGateways(c.PublicGateways)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer panicHandler(w)
@@ -112,7 +74,7 @@ func WithHostname(next http.Handler, api IPFSBackend, publicGateways map[string]
 
 				// Not a subdomain resource, continue with path processing
 				// Example: 127.0.0.1:8080/ipfs/{CID}, ipfs.io/ipfs/{CID} etc
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, withHostnameContext(r, host))
 				return
 			}
 			// Not a whitelisted path
@@ -121,7 +83,7 @@ func WithHostname(next http.Handler, api IPFSBackend, publicGateways map[string]
 			if !gw.NoDNSLink && hasDNSLinkRecord(r.Context(), api, host) {
 				// rewrite path and handle as DNSLink
 				r.URL.Path = "/ipns/" + stripPort(host) + r.URL.Path
-				next.ServeHTTP(w, withHostnameContext(r, host))
+				next.ServeHTTP(w, withDNSLinkContext(r, host))
 				return
 			}
 
@@ -219,7 +181,7 @@ func WithHostname(next http.Handler, api IPFSBackend, publicGateways map[string]
 			r.URL.Path = pathPrefix + r.URL.Path
 
 			// Serve path request
-			next.ServeHTTP(w, withHostnameContext(r, gwHostname))
+			next.ServeHTTP(w, withSubdomainContext(r, gwHostname))
 			return
 		}
 
@@ -229,11 +191,10 @@ func WithHostname(next http.Handler, api IPFSBackend, publicGateways map[string]
 		// 1. is wildcard DNSLink enabled (Gateway.NoDNSLink=false)?
 		// 2. does Host header include a fully qualified domain name (FQDN)?
 		// 3. does DNSLink record exist in DNS?
-		if !noDNSLink && hasDNSLinkRecord(r.Context(), api, host) {
+		if !c.NoDNSLink && hasDNSLinkRecord(r.Context(), api, host) {
 			// rewrite path and handle as DNSLink
 			r.URL.Path = "/ipns/" + stripPort(host) + r.URL.Path
-			ctx := context.WithValue(r.Context(), DNSLinkHostnameKey, host)
-			next.ServeHTTP(w, withHostnameContext(r.WithContext(ctx), host))
+			next.ServeHTTP(w, withDNSLinkContext(r, host))
 			return
 		}
 
@@ -243,14 +204,23 @@ func WithHostname(next http.Handler, api IPFSBackend, publicGateways map[string]
 	})
 }
 
-// Extends request context to include hostname of a canonical gateway root
-// (subdomain root or dnslink fqdn)
+// withDNSLinkContext extends the context to include the hostname of the DNSLink
+// Gateway (https://specs.ipfs.tech/http-gateways/dnslink-gateway/).
+func withDNSLinkContext(r *http.Request, hostname string) *http.Request {
+	ctx := context.WithValue(r.Context(), DNSLinkHostnameKey, hostname)
+	return withHostnameContext(r.WithContext(ctx), hostname)
+}
+
+// withSubdomainContext extends the context to include the hostname of the
+// Subdomain Gateway (https://specs.ipfs.tech/http-gateways/subdomain-gateway/).
+func withSubdomainContext(r *http.Request, hostname string) *http.Request {
+	ctx := context.WithValue(r.Context(), SubdomainHostnameKey, hostname)
+	return withHostnameContext(r.WithContext(ctx), hostname)
+}
+
+// withHostnameContext extends the context to include the canonical gateway root,
+// which can be a Subdomain Gateway, a DNSLink Gateway, or just a regular gateway.
 func withHostnameContext(r *http.Request, hostname string) *http.Request {
-	// This is required for links on directory listing pages to work correctly
-	// on subdomain and dnslink gateways. While DNSlink could read value from
-	// Host header, subdomain gateways have more comples rules (knownSubdomainDetails)
-	// More: https://github.com/ipfs/dir-index-html/issues/42
-	// nolint: staticcheck // non-backward compatible change
 	ctx := context.WithValue(r.Context(), GatewayHostnameKey, hostname)
 	return r.WithContext(ctx)
 }
