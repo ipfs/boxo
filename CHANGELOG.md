@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.8.0] - 2023-04-04
+## [0.8.0] - 2023-04-05
 ### Added
 
 - Migrated repositories into Boxo
@@ -48,7 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deprecated
 
+None
+
 ### Removed
+
+None
 
 ### Fixed
 
@@ -57,3 +61,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed a panic in the gateway handler when returning errors
 
 ### Security
+
+None
