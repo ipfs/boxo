@@ -12,7 +12,7 @@ import (
 
 // serveRawBlock returns bytes behind a raw block
 func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time) bool {
-	ctx, span := spanTrace(ctx, "ServeRawBlock", trace.WithAttributes(attribute.String("path", imPath.String())))
+	ctx, span := spanTrace(ctx, "Handler.ServeRawBlock", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
 	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)

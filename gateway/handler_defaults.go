@@ -20,7 +20,7 @@ import (
 )
 
 func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *http.Request, maybeResolvedImPath ImmutablePath, immutableContentPath ImmutablePath, contentPath ipath.Path, begin time.Time, requestedContentType string, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "ServeDefaults", trace.WithAttributes(attribute.String("path", contentPath.String())))
+	ctx, span := spanTrace(ctx, "Handler.ServeDefaults", trace.WithAttributes(attribute.String("path", contentPath.String())))
 	defer span.End()
 
 	var (
@@ -113,7 +113,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		return i.renderCodec(r.Context(), w, r, resolvedPath, bytesResponse, contentPath, begin, requestedContentType)
 	default:
 		logger.Debugw("serving unixfs", "path", contentPath)
-		ctx, span := spanTrace(ctx, "ServeUnixFS", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+		ctx, span := spanTrace(ctx, "Handler.ServeUnixFS", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 		defer span.End()
 
 		// Handling Unixfs file

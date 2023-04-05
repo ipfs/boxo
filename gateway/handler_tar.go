@@ -16,7 +16,7 @@ import (
 var unixEpochTime = time.Unix(0, 0)
 
 func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "ServeTAR", trace.WithAttributes(attribute.String("path", imPath.String())))
+	ctx, span := spanTrace(ctx, "Handler.ServeTAR", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)

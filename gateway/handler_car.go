@@ -15,7 +15,7 @@ import (
 
 // serveCAR returns a CAR stream for specific DAG+selector
 func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, carVersion string, begin time.Time) bool {
-	ctx, span := spanTrace(ctx, "ServeCAR", trace.WithAttributes(attribute.String("path", imPath.String())))
+	ctx, span := spanTrace(ctx, "Handler.ServeCAR", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)

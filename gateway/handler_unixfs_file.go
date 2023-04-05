@@ -20,7 +20,7 @@ import (
 // serveFile returns data behind a file along with HTTP headers based on
 // the file itself, its CID and the contentPath used for accessing it.
 func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, file files.File, fileContentType string, begin time.Time) bool {
-	_, span := spanTrace(ctx, "ServeFile", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+	_, span := spanTrace(ctx, "Handler.ServeFile", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
 	// Set Cache-Control and read optional Last-Modified time
