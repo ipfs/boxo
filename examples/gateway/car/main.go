@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"io"
 	"log"
@@ -21,12 +22,23 @@ func main() {
 	port := flag.Int("p", 8040, "port to run this gateway from")
 	flag.Parse()
 
+	// Setups up tracing. This is optional and only required if the implementer
+	// wants to be able to enable tracing.
+	tp, err := common.SetupTracing("CAR Gateway Example")
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx := context.Background()
+	defer (func() { _ = tp.Shutdown(ctx) })()
+
+	// Sets up a block service based on the CAR file.
 	blockService, roots, f, err := newBlockServiceFromCAR(*carFilePtr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer f.Close()
 
+	// Creates the gateway API with the block service.
 	gwAPI, err := gateway.NewBlocksGateway(blockService)
 	if err != nil {
 		log.Fatal(err)

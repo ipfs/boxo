@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/ipfs/boxo/examples/gateway/common"
 	"github.com/ipfs/boxo/ipns"
 	ipns_pb "github.com/ipfs/boxo/ipns/pb"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -23,7 +23,7 @@ type proxyRouting struct {
 
 func newProxyRouting(gatewayURL string, client *http.Client) routing.ValueStore {
 	if client == nil {
-		client = http.DefaultClient
+		client = common.NewClient()
 	}
 
 	return &proxyRouting{
@@ -77,17 +77,18 @@ func (ps *proxyRouting) SearchValue(ctx context.Context, k string, opts ...routi
 }
 
 func (ps *proxyRouting) fetch(ctx context.Context, id peer.ID) ([]byte, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/ipns/%s", ps.gatewayURL, peer.ToCid(id).String()))
+	urlStr := fmt.Sprintf("%s/ipns/%s", ps.gatewayURL, peer.ToCid(id).String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := ps.httpClient.Do(&http.Request{
-		Method: http.MethodGet,
-		URL:    u,
-		Header: http.Header{
-			"Accept": []string{"application/vnd.ipfs.ipns-record"},
-		},
-	})
+	req.Header.Set("Accept", "application/vnd.ipfs.ipns-record")
+	resp, err := ps.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
 	if err != nil {
 		return nil, err
 	}

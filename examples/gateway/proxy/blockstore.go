@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 
+	"github.com/ipfs/boxo/examples/gateway/common"
 	"github.com/ipfs/boxo/exchange"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -19,7 +19,7 @@ type proxyExchange struct {
 
 func newProxyExchange(gatewayURL string, client *http.Client) exchange.Interface {
 	if client == nil {
-		client = http.DefaultClient
+		client = common.NewClient()
 	}
 
 	return &proxyExchange{
@@ -29,17 +29,13 @@ func newProxyExchange(gatewayURL string, client *http.Client) exchange.Interface
 }
 
 func (e *proxyExchange) fetch(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/ipfs/%s?format=raw", e.gatewayURL, c))
+	urlStr := fmt.Sprintf("%s/ipfs/%s?format=raw", e.gatewayURL, c)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := e.httpClient.Do(&http.Request{
-		Method: http.MethodGet,
-		URL:    u,
-		Header: http.Header{
-			"Accept": []string{"application/vnd.ipld.raw"},
-		},
-	})
+	req.Header.Set("Accept", "application/vnd.ipld.raw")
+	resp, err := e.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
