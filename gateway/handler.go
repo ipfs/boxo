@@ -64,10 +64,6 @@ type handler struct {
 	config Config
 	api    IPFSBackend
 
-	// generic metrics
-	firstContentBlockGetMetric *prometheus.HistogramVec
-	unixfsGetMetric            *prometheus.SummaryVec // deprecated, use firstContentBlockGetMetric
-
 	// response type metrics
 	getMetric                    *prometheus.HistogramVec
 	unixfsFileGetMetric          *prometheus.HistogramVec

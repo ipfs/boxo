@@ -15,6 +15,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// Duration histograms measure things like API call execution, how long returning specific
+// CID/path, how long CAR fetch form backend took, etc.
+// We use fixed definition here, as we don't want to break existing buckets if we need to add more.
+var defaultDurationHistogramBuckets = []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 240, 480, 960, 1920}
+
 type ipfsBackendWithMetrics struct {
 	api           IPFSBackend
 	apiCallMetric *prometheus.HistogramVec
@@ -30,7 +35,7 @@ func newIPFSBackendWithMetrics(api IPFSBackend) *ipfsBackendWithMetrics {
 			Subsystem: "gw_backend",
 			Name:      "api_call_duration_seconds",
 			Help:      "The time spent in IPFSBackend API calls that returned success.",
-			Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60},
+			Buckets:   defaultDurationHistogramBuckets,
 		},
 		[]string{"name", "result"},
 	)
@@ -182,14 +187,6 @@ func newHandlerWithMetrics(c Config, api IPFSBackend) *handler {
 	i := &handler{
 		config: c,
 		api:    newIPFSBackendWithMetrics(api),
-		// Improved Metrics
-		// ----------------------------
-		// Time till the first content block (bar in /ipfs/cid/foo/bar)
-		// (format-agnostic, across all response types)
-		firstContentBlockGetMetric: newHistogramMetric(
-			"gw_first_content_block_get_latency_seconds",
-			"The time till the first content block is received on GET from the gateway.",
-		),
 
 		// Response-type specific metrics
 		// ----------------------------
@@ -238,49 +235,20 @@ func newHandlerWithMetrics(c Config, api IPFSBackend) *handler {
 			"gw_ipns_record_get_duration_seconds",
 			"The time to GET an entire IPNS Record from the gateway.",
 		),
-
-		// Legacy Metrics
-		// ----------------------------
-		unixfsGetMetric: newSummaryMetric( // TODO: remove?
-			// (deprecated, use firstContentBlockGetMetric instead)
-			"unixfs_get_latency_seconds",
-			"DEPRECATED: does not do what you think, use gw_first_content_block_get_latency_seconds instead.",
-		),
 	}
 	return i
-}
-
-func newSummaryMetric(name string, help string) *prometheus.SummaryVec {
-	summaryMetric := prometheus.NewSummaryVec(
-		prometheus.SummaryOpts{
-			Namespace: "ipfs",
-			Subsystem: "http",
-			Name:      name,
-			Help:      help,
-		},
-		[]string{"gateway"},
-	)
-	if err := prometheus.Register(summaryMetric); err != nil {
-		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			summaryMetric = are.ExistingCollector.(*prometheus.SummaryVec)
-		} else {
-			log.Errorf("failed to register ipfs_http_%s: %v", name, err)
-		}
-	}
-	return summaryMetric
 }
 
 func newHistogramMetric(name string, help string) *prometheus.HistogramVec {
 	// We can add buckets as a parameter in the future, but for now using static defaults
 	// suggested in https://github.com/ipfs/kubo/issues/8441
-	defaultBuckets := []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60}
 	histogramMetric := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "ipfs",
 			Subsystem: "http",
 			Name:      name,
 			Help:      help,
-			Buckets:   defaultBuckets,
+			Buckets:   defaultDurationHistogramBuckets,
 		},
 		[]string{"gateway"},
 	)
