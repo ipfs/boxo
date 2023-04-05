@@ -102,7 +102,7 @@ check by adding the --force flag.`)
 					}
 
 					if !dryrun {
-						err := migrator.GoGet("github.com/ipfs/boxo@v0.8.0-rc3")
+						err := migrator.GoGet("github.com/ipfs/boxo@v0.8.0")
 						if err != nil {
 							return err
 						}
