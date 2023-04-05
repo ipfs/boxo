@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	migrate "github.com/ipfs/boxo/cmd/boxo-migrate/internal"
@@ -55,9 +56,14 @@ func main() {
 					&cli.BoolFlag{
 						Name: "dryrun",
 					},
+					&cli.BoolFlag{
+						Name:  "force",
+						Usage: "run even if no .git folder is found",
+					},
 				},
 				Action: func(clictx *cli.Context) error {
 					dryrun := clictx.Bool("dryrun")
+					force := clictx.Bool("force")
 					configFile := clictx.String("config")
 
 					migrator, err := buildMigrator(dryrun, configFile)
@@ -67,8 +73,36 @@ func main() {
 
 					fmt.Printf("\n\n")
 
+					if !force {
+						p, err := os.Getwd()
+						if err != nil {
+							return fmt.Errorf("failed to fetch current working directory: %w", err)
+						}
+
+						for {
+							g := filepath.Join(p, ".git")
+							_, err := os.Stat(g)
+							if err == nil {
+								break
+							}
+							newP := filepath.Dir(p)
+							if p == newP {
+								return fmt.Errorf(`
+⚠️ Version Control System Check ⚠️
+
+We couldn't locate a .git folder in any parent paths. We strongly recommend
+using a Version Control System to help you easily compare and revert to a
+previous state if needed, as this tool doesn't have an undo feature.
+
+If you're using a different VCS or like to live dangerously, you can bypass this
+check by adding the --force flag.`)
+							}
+							p = newP
+						}
+					}
+
 					if !dryrun {
-						err := migrator.GoGet("github.com/ipfs/boxo@v0.8.0-rc3")
+						err := migrator.GoGet("github.com/ipfs/boxo@v0.8.0")
 						if err != nil {
 							return err
 						}
