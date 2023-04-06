@@ -4,7 +4,7 @@
 on:
   pull_request:
   push:
-    branches: ["main"]
+    branches: ["self-hosted"]
 name: Go Test
 
 concurrency:
@@ -16,13 +16,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ "ubuntu", "windows", "macos" ]
+        os: [ "ubuntu" ]
         go: ["1.19.x","1.20.x"]
     env:
       GOTESTFLAGS: -shuffle=on -cover -coverprofile=module-coverage.txt -coverpkg=./...
       GO386FLAGS: -shuffle=on
       GORACEFLAGS: -shuffle=on
-    runs-on: ${{ fromJSON(vars[format('UCI_GO_TEST_RUNNER_{0}', matrix.os)] || format('"{0}-latest"', matrix.os)) }}
+    runs-on: ['self-hosted', 'linux', 'x64', 'boxo']
     name: ${{ matrix.os }} (go ${{ matrix.go }})
     steps:
       - uses: actions/checkout@v3
