@@ -216,6 +216,11 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := contentPath.IsValid(); err != nil {
+		webError(w, err, http.StatusBadRequest)
+		return
+	}
+
 	// Detect when explicit Accept header or ?format parameter are present
 	responseFormat, formatParams, err := customResponseFormat(r)
 	if err != nil {
