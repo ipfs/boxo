@@ -1,7 +1,7 @@
 # ❗ About CAR libraries written in go
 As of 202303, this is a copy of [`ipld/go-car`](github.com/ipld/go-car).
 `ipld/go-car` is a full-featured car library that is actively maintained.
-Boxo has smaller car needs and will be will be refactored and thinned out soon.
+Boxo has smaller car needs and will be will be refactored and thinned out in the future.
 Boxo can't depend on `ipld/go-car` because it would cause `ipld/go-car` to have dependency on Boxo, 
 and `ipld/go-car` maintainers want to be able to develop indepdently.
 
