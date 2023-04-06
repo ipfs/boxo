@@ -145,20 +145,19 @@ TODO: fill this in.  New issues and PRs to this repo are usually looked at on a 
 
 ### What are some projects that depend on this project?
 The exhaustive list is https://github.com/ipfs/boxo/network/dependents.  Some notable projects include:
-1. ipfs/kubo
-2. filecoin-project/lotus
-3. protocol/bifrost-gateway
-4. ipfs-shipyard/ipfs-check
+1. [Kubo](https://github.com/ipfs/kubo), an IPFS implementation in Go
+2. [Lotus](https://github.com/filecoin-project/lotus), a Filecoin implementation in Go
+3. [Bifrost Gateway](https://github.com/protocol/bifrost-gateway), a dedicated IPFS gateway
+4. [ipfs-check](https://github.com/ipfs-shipyard/ipfs-check), checks IPFS data availability
 
 ### Governance and Access
 See [CODEOWNERS](./docs/CODEOWNERS) for the current maintainers list.  Governance for graduating additional maintainers hasn't been established.  Repo permissions are all managed through [ipfs/github-mgmt](https://github.com/ipfs/github-mgmt).
 
 ### Why is this named "Boxo"?
 See https://github.com/ipfs/boxo/issues/215. 
->>>>>>> 15bf447c0 (Added FAQ and README updates)
 
-### Additional FAQs
-See [docs/FAQ.md](./docs/FAQ.md).
+### Additional Docs & FAQs
+See [the wiki](https://github.com/ipfs/boxo/wiki).
 
 ### License
 
