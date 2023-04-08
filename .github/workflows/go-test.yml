@@ -40,8 +40,22 @@ jobs:
           go env
       - run: ip -6 addr show scope global
       - run: sudo iptables -I INPUT -m conntrack --ctstate INVALID -j DROP
-      - run: sudo sysctl -w net.netfilter.nf_conntrack_sctp_timeout_heartbeat_acked=45
+      - id: tcpdump
+        run: |
+          sudo tcpdump -i eth0 -vnnlp -s1 -w capture.pcap > /dev/null 2>&1 &
+          echo "pid=$!" >> $GITHUB_OUTPUT
       - name: Run tests
         uses: protocol/multiple-go-modules@v1.2
         with:
           run: go mod download -x
+      - if: always()
+        name: Kill tcpdump
+        env:
+          PID: ${{ steps.tcpdump.outputs.pid }}
+        run: sudo kill "$PID"
+      - if: failure()
+        name: Upload tcpdump
+        uses: actions/upload-artifact@v2
+        with:
+          name: tcpdump-${{ matrix.os }}-${{ matrix.go }}-${{ matrix.iterator }}
+          path: capture.pcap
