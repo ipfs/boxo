@@ -22,7 +22,7 @@ jobs:
       GOTESTFLAGS: -shuffle=on -cover -coverprofile=module-coverage.txt -coverpkg=./...
       GO386FLAGS: -shuffle=on
       GORACEFLAGS: -shuffle=on
-      GOPROXY: https://proxy.golang.org|direct
+      # GOPROXY: https://proxy.golang.org|direct
     runs-on: ['self-hosted', 'linux', 'x64', '2xlarge']
     name: ${{ matrix.os }} (go ${{ matrix.go }})
     steps:
@@ -38,6 +38,7 @@ jobs:
         run: |
           go version
           go env
+      - run: ip -6 addr show scope global
       - name: Run tests
         uses: protocol/multiple-go-modules@v1.2
         with:
