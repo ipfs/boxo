@@ -29,7 +29,8 @@ jobs:
       - run: ip a
       - run: sudo tcpdump -i ens5 -vnnlp -s96 -w capture.pcap > /dev/null 2>&1 &
       - run: sudo ethtool -G ens5 rx 16384 tx 1024
-      - run: sudo ifconfig ens5 mtu 1500
+      # - run: sudo ip -6 address change $(ip -6 address show dev ens5 | grep inet6 | head -1 | awk '{print $2}') preferred_lft forever valid_lft forever dev ens5
+      - run: sudo ip link set dev ens5 mtu 1500
       - run: ethtool -g ens5
       - run: ip a
       - run: sudo iptables -L -v -n
