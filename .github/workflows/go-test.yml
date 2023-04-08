@@ -42,4 +42,4 @@ jobs:
       - name: Run tests
         uses: protocol/multiple-go-modules@v1.2
         with:
-          run: go mod download
+          run: go mod download -x
