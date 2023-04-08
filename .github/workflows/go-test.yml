@@ -15,39 +15,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ "ubuntu" ]
-        go: ["1.19.x","1.20.x"]
-        iterator: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        iterator: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     env:
-      GOTESTFLAGS: -shuffle=on -cover -coverprofile=module-coverage.txt -coverpkg=./...
-      GO386FLAGS: -shuffle=on
-      GORACEFLAGS: -shuffle=on
       GOPROXY: https://proxy.golang.org,direct
     runs-on: ['self-hosted', 'linux', 'x64', '2xlarge']
-    name: ${{ matrix.os }} (go ${{ matrix.go }})
+    name: ${{ matrix.iterator }}
     steps:
       - uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      - id: config
-        uses: protocol/.github/.github/actions/read-config@master
       - uses: actions/setup-go@v3
-        with:
-          go-version: ${{ matrix.go }}
-      - name: Go information
-        run: |
-          go version
-          go env
-      - run: sudo apt-get install conntrack
-      - run: ip -6 addr show scope global
-      # - run: sudo iptables -I INPUT -m conntrack --ctstate INVALID -j DROP
-      - run: sudo iptables -I FORWARD 4 -o docker0 -m conntrack --ctstate INVALID -j DROP
-      - id: tcpdump
-        run: |
-          sudo tcpdump -i ens5 -vnnlp -s96 -w capture.pcap > /dev/null 2>&1 &
-          echo "pid=$!" >> $GITHUB_OUTPUT
-      - run: sudo ethtool -G ens5 rx 16384
-      - run: sudo ethtool -G ens5 tx 128
+      - run: sudo tcpdump -i ens5 -vnnlp -s96 -w capture.pcap > /dev/null 2>&1 &
+      - run: sudo ethtool -G ens5 rx 16384 tx 1024
       - run: ethtool -g ens5
       - run: ip a
       - run: sudo iptables -L -v -n
@@ -55,13 +32,6 @@ jobs:
         uses: protocol/multiple-go-modules@v1.2
         with:
           run: go mod download -x
-      # - if: always()
-      #   name: Kill tcpdump
-      #   env:
-      #     PID: ${{ steps.tcpdump.outputs.pid }}
-      #   run: sudo kill "$PID"
-      - if: failure()
-        run: sudo conntrack -S
       - if: failure()
         name: Upload tcpdump
         uses: actions/upload-artifact@v2
