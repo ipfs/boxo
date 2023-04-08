@@ -44,15 +44,19 @@ jobs:
         run: |
           sudo tcpdump -i eth0 -vnnlp -s1 -w capture.pcap > /dev/null 2>&1 &
           echo "pid=$!" >> $GITHUB_OUTPUT
+      - run: ip a
+      - run: sudo iptables -L -v -n
       - name: Run tests
         uses: protocol/multiple-go-modules@v1.2
         with:
           run: go mod download -x
-      - if: always()
-        name: Kill tcpdump
-        env:
-          PID: ${{ steps.tcpdump.outputs.pid }}
-        run: sudo kill "$PID"
+      # - if: always()
+      #   name: Kill tcpdump
+      #   env:
+      #     PID: ${{ steps.tcpdump.outputs.pid }}
+      #   run: sudo kill "$PID"
+      - if: failure()
+        run: sudo conntrack -S
       - if: failure()
         name: Upload tcpdump
         uses: actions/upload-artifact@v2
