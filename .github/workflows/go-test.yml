@@ -23,8 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
+        with:
+          version: 1.19.x
       - run: sudo tcpdump -i ens5 -vnnlp -s96 -w capture.pcap > /dev/null 2>&1 &
-      - run: sudo ethtool -G ens5 rx 16384 tx 1024
+      # - run: sudo ethtool -G ens5 rx 16384 tx 1024
       - run: ethtool -g ens5
       - run: ip a
       - run: sudo iptables -L -v -n
@@ -36,5 +38,5 @@ jobs:
         name: Upload tcpdump
         uses: actions/upload-artifact@v2
         with:
-          name: tcpdump-${{ matrix.os }}-${{ matrix.go }}-${{ matrix.iterator }}
+          name: tcpdump-${{ matrix.iterator }}
           path: capture.pcap
