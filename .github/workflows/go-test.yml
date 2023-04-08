@@ -41,7 +41,7 @@ jobs:
       - run: sudo apt-get install conntrack
       - run: ip -6 addr show scope global
       # - run: sudo iptables -I INPUT -m conntrack --ctstate INVALID -j DROP
-      - run: sudo iptables -A FORWARD -i docker0 -m conntrack --ctstate INVALID -j DROP
+      - run: sudo iptables -I FORWARD 4 -i docker0 -m conntrack --ctstate INVALID -j DROP
       - id: tcpdump
         run: |
           sudo tcpdump -i ens5 -vnnlp -s1 -w capture.pcap > /dev/null 2>&1 &
