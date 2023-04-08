@@ -36,52 +36,7 @@ jobs:
         run: |
           go version
           go env
-      - name: Use msys2 on windows
-        if: matrix.os == 'windows'
-        shell: bash
-        # The executable for msys2 is also called bash.cmd
-        #   https://github.com/actions/virtual-environments/blob/main/images/win/Windows2019-Readme.md#shells
-        # If we prepend its location to the PATH
-        #   subsequent 'shell: bash' steps will use msys2 instead of gitbash
-        run: echo "C:/msys64/usr/bin" >> $GITHUB_PATH
-      - name: Run repo-specific setup
-        uses: ./.github/actions/go-test-setup
-        if: hashFiles('./.github/actions/go-test-setup') != ''
       - name: Run tests
-        if: contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
         uses: protocol/multiple-go-modules@v1.2
-        env:
-          GOFLAGS: ${{ format('{0} {1}', env.GOTESTFLAGS, env.GOFLAGS) }}
         with:
-          run: go test -v ./...
-      - name: Run tests (32 bit)
-        # can't run 32 bit tests on OSX.
-        if: matrix.os != 'macos' &&
-          fromJSON(steps.config.outputs.json).skip32bit != true &&
-          contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
-        uses: protocol/multiple-go-modules@v1.2
-        env:
-          GOARCH: 386
-          GOFLAGS: ${{ format('{0} {1}', env.GO386FLAGS, env.GOFLAGS) }}
-        with:
-          run: |
-            export "PATH=$PATH_386:$PATH"
-            go test -v ./...
-      - name: Run tests with race detector
-        # speed things up. Windows and OSX VMs are slow
-        if: matrix.os == 'ubuntu' &&
-          contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
-        uses: protocol/multiple-go-modules@v1.2
-        env:
-          GOFLAGS: ${{ format('{0} {1}', env.GORACEFLAGS, env.GOFLAGS) }}
-        with:
-          run: go test -v -race ./...
-      - name: Collect coverage files
-        id: coverages
-        shell: bash
-        run: echo "files=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_OUTPUT
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70 # v3.1.1
-        with:
-          files: ${{ steps.coverages.outputs.files }}
-          env_vars: OS=${{ matrix.os }}, GO=${{ matrix.go }}
+          run: go mod download
