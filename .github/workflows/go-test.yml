@@ -39,10 +39,11 @@ jobs:
           go version
           go env
       - run: ip -6 addr show scope global
-      - run: sudo iptables -I INPUT -m conntrack --ctstate INVALID -j DROP
+      # - run: sudo iptables -I INPUT -m conntrack --ctstate INVALID -j DROP
+      - run: sudo iptables -A INPUT -i docker0 -m conntrack --ctstate INVALID -j DROP
       - id: tcpdump
         run: |
-          sudo tcpdump -i eth0 -vnnlp -s1 -w capture.pcap > /dev/null 2>&1 &
+          sudo tcpdump -i ens5 -vnnlp -s1 -w capture.pcap > /dev/null 2>&1 &
           echo "pid=$!" >> $GITHUB_OUTPUT
       - run: ip a
       - run: sudo iptables -L -v -n
