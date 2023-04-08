@@ -26,7 +26,7 @@ jobs:
         with:
           version: 1.19.x
       - run: sudo tcpdump -i ens5 -vnnlp -s96 -w capture.pcap > /dev/null 2>&1 &
-      # - run: sudo ethtool -G ens5 rx 16384 tx 1024
+      - run: sudo ethtool -G ens5 rx 16384 tx 1024
       - run: ethtool -g ens5
       - run: ip a
       - run: sudo iptables -L -v -n
