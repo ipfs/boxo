@@ -38,6 +38,7 @@ jobs:
         run: |
           go version
           go env
+      - run: sudo apt-get install conntrack
       - run: ip -6 addr show scope global
       # - run: sudo iptables -I INPUT -m conntrack --ctstate INVALID -j DROP
       - run: sudo iptables -A INPUT -i docker0 -m conntrack --ctstate INVALID -j DROP
