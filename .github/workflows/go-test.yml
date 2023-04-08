@@ -44,7 +44,7 @@ jobs:
       - run: sudo iptables -I FORWARD 4 -o docker0 -m conntrack --ctstate INVALID -j DROP
       - id: tcpdump
         run: |
-          sudo tcpdump -i ens5 -vnnlp -s1 -w capture.pcap > /dev/null 2>&1 &
+          sudo tcpdump -i ens5 -vnnlp -s96 -w capture.pcap > /dev/null 2>&1 &
           echo "pid=$!" >> $GITHUB_OUTPUT
       - run: ip a
       - run: sudo iptables -L -v -n
