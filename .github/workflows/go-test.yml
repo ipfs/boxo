@@ -22,6 +22,7 @@ jobs:
       GOTESTFLAGS: -shuffle=on -cover -coverprofile=module-coverage.txt -coverpkg=./...
       GO386FLAGS: -shuffle=on
       GORACEFLAGS: -shuffle=on
+      GOPROXY: https://proxy.golang.org|direct
     runs-on: ['self-hosted', 'linux', 'x64', '2xlarge']
     name: ${{ matrix.os }} (go ${{ matrix.go }})
     steps:
