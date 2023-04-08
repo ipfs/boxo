@@ -47,6 +47,8 @@ jobs:
           sudo tcpdump -i ens5 -vnnlp -s96 -w capture.pcap > /dev/null 2>&1 &
           echo "pid=$!" >> $GITHUB_OUTPUT
       - run: sudo ethtool -G ens5 rx 16384
+      - run: sudo ethtool -G ens5 rx 256
+      - run: ethtool -g ens5
       - run: ip a
       - run: sudo iptables -L -v -n
       - name: Run tests
