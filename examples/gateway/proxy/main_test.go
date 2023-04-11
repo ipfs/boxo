@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ipfs/boxo/blockservice"
@@ -51,7 +54,7 @@ func TestErrorOnInvalidContent(t *testing.T) {
 	body, err := io.ReadAll(res.Body)
 	res.Body.Close()
 	assert.Nil(t, err)
-	assert.EqualValues(t, res.StatusCode, http.StatusInternalServerError)
+	assert.EqualValues(t, http.StatusInternalServerError, res.StatusCode)
 	assert.Contains(t, string(body), blocks.ErrWrongHash.Error())
 }
 
@@ -68,6 +71,71 @@ func TestPassOnOnCorrectContent(t *testing.T) {
 	body, err := io.ReadAll(res.Body)
 	res.Body.Close()
 	assert.Nil(t, err)
-	assert.EqualValues(t, res.StatusCode, http.StatusOK)
+	assert.EqualValues(t, http.StatusOK, res.StatusCode)
 	assert.EqualValues(t, string(body), "hello world")
+}
+
+func TestTraceContext(t *testing.T) {
+	doCheckRequest := func(t *testing.T, req *http.Request) {
+		res, err := http.DefaultClient.Do(req)
+		assert.Nil(t, err)
+		assert.EqualValues(t, http.StatusOK, res.StatusCode)
+		defer res.Body.Close()
+
+		body, err := io.ReadAll(res.Body)
+		assert.Nil(t, err)
+		assert.EqualValues(t, string(body), "hello world")
+	}
+
+	const (
+		traceVersion  = "00"
+		traceID       = "4bf92f3577b34da6a3ce929d0e0e4736"
+		traceParentID = "00f067aa0ba902b7"
+		traceFlags    = "00"
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	tp, err := common.SetupTracing(ctx, "Proxy Test")
+	assert.Nil(t, err)
+	defer (func() { _ = tp.Shutdown(ctx) })()
+
+	t.Run("Re-use Traceparent Trace ID Of Initial Request", func(t *testing.T) {
+		rs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// The expected prefix for the traceparent header consists of the version and trace id.
+			expectedPrefix := fmt.Sprintf("%s-%s-", traceVersion, traceID)
+			if !strings.HasPrefix(r.Header.Get("traceparent"), expectedPrefix) {
+				w.WriteHeader(http.StatusBadRequest)
+			} else {
+				w.Write([]byte("hello world"))
+			}
+		}))
+
+		t.Cleanup(rs.Close)
+		ts := newProxyGateway(t, rs)
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/"+HelloWorldCID, nil)
+		assert.Nil(t, err)
+		req.Header.Set("Traceparent", fmt.Sprintf("%s-%s-%s-%s", traceVersion, traceID, traceParentID, traceFlags))
+		doCheckRequest(t, req)
+	})
+
+	t.Run("Create New Trace ID If Not Given", func(t *testing.T) {
+		rs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// In this request we are not sending a traceparent header, so a new one should be created.
+			if r.Header.Get("traceparent") == "" {
+				w.WriteHeader(http.StatusBadRequest)
+			} else {
+				w.Write([]byte("hello world"))
+			}
+		}))
+
+		t.Cleanup(rs.Close)
+		ts := newProxyGateway(t, rs)
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/"+HelloWorldCID, nil)
+		assert.Nil(t, err)
+		doCheckRequest(t, req)
+	})
 }

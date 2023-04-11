@@ -6,6 +6,7 @@ import (
 	"github.com/ipfs/boxo/gateway"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func NewHandler(gwAPI gateway.IPFSBackend) http.Handler {
@@ -58,9 +59,15 @@ func NewHandler(gwAPI gateway.IPFSBackend) http.Handler {
 	var handler http.Handler
 	handler = gateway.WithHostname(mux, gwAPI, publicGateways, noDNSLink)
 
-	// Finally, wrap with the withConnect middleware. This is required since we use
+	// Then, wrap with the withConnect middleware. This is required since we use
 	// http.ServeMux which does not support CONNECT by default.
 	handler = withConnect(handler)
+
+	// Finally, wrap with the otelhttp handler. This will allow the tracing system
+	// to work and for correct propagation of tracing headers. This step is optional
+	// and only required if you want to use tracing. Note that OTel must be correctly
+	// setup in order for this to have an effect.
+	handler = otelhttp.NewHandler(handler, "Gateway.Request")
 
 	return handler
 }
