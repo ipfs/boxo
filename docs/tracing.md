@@ -95,7 +95,7 @@ $ docker run --rm -it --name jaeger \
     jaegertracing/all-in-one
 ```
 
-Then, in other terminal, start the Kubo daemon, with Jaeger tracing enabled:
+Then, in other terminal, start the app that uses `boxo/tracing` internally (e.g., a Kubo daemon), with Jaeger exporter enabled:
 
 ```
 $ OTEL_TRACES_EXPORTER=jaeger ipfs daemon
