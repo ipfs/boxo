@@ -8,12 +8,12 @@ import (
 	"strings"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/ipfs/boxo/examples/gateway/common"
 	"github.com/ipfs/boxo/ipns"
 	ipns_pb "github.com/ipfs/boxo/ipns/pb"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type proxyRouting struct {
@@ -23,7 +23,9 @@ type proxyRouting struct {
 
 func newProxyRouting(gatewayURL string, client *http.Client) routing.ValueStore {
 	if client == nil {
-		client = common.NewClient()
+		client = &http.Client{
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		}
 	}
 
 	return &proxyRouting{

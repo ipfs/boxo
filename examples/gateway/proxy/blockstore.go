@@ -6,10 +6,10 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/ipfs/boxo/examples/gateway/common"
 	"github.com/ipfs/boxo/exchange"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type proxyExchange struct {
@@ -19,7 +19,9 @@ type proxyExchange struct {
 
 func newProxyExchange(gatewayURL string, client *http.Client) exchange.Interface {
 	if client == nil {
-		client = common.NewClient()
+		client = &http.Client{
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		}
 	}
 
 	return &proxyExchange{

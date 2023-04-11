@@ -1,9 +1,9 @@
 package common
 
 import (
-	"net/http"
+	"context"
 
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"github.com/ipfs/boxo/tracing"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -11,31 +11,17 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
-// SetupTracing setups Open Telemetry tracing with some defaults that will enable
-// tracing in this system. Please note that in a real-case scenario this would
-// look slightly different and include more configurations.
-func SetupTracing(serviceName string) (*trace.TracerProvider, error) {
-	// Creates the resources to create a new tracing provider.
-	r, err := resource.Merge(
-		resource.Default(),
-		resource.NewSchemaless(
-			semconv.ServiceNameKey.String(serviceName),
-		),
-	)
+// SetupTracing sets up the tracing based on the OTEL_* environment variables,
+// and the provided service name. It returns a trace.TracerProvider.
+func SetupTracing(ctx context.Context, serviceName string) (*trace.TracerProvider, error) {
+	tp, err := NewTracerProvider(ctx, serviceName)
 	if err != nil {
 		return nil, err
 	}
 
-	// Creates a new tracing provider. In a real-case scenario, this trace provider
-	// will likely be configured with exporters in order to be able to access
-	// the tracing information. https://opentelemetry.io/docs/instrumentation/go/exporters/
-	tp := trace.NewTracerProvider(
-		trace.WithResource(r),
-	)
-
 	// Sets the default trace provider for this process. If this is not done, tracing
 	// will not be enabled. Please note that this will apply to the entire process
-	// as it is set as the default tracer.
+	// as it is set as the default tracer, as per OTel recommendations.
 	otel.SetTracerProvider(tp)
 
 	// Configures the default propagators used by the Open Telemetry library. By
@@ -48,12 +34,28 @@ func SetupTracing(serviceName string) (*trace.TracerProvider, error) {
 	return tp, nil
 }
 
-// NewClient creates a new HTTP Client wraped with the OTel transport. This will
-// ensure correct propagation of tracing headers across multiple HTTP requests when
-// Open Telemetry is configured. Please note that NewClient will use the default
-// global trace provider and propagators. Therefore, SetupTracing must be called first.
-func NewClient() *http.Client {
-	return &http.Client{
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
+// NewTracerProvider creates and configures a TracerProvider.
+func NewTracerProvider(ctx context.Context, serviceName string) (*trace.TracerProvider, error) {
+	exporters, err := tracing.NewSpanExporters(ctx)
+	if err != nil {
+		return nil, err
 	}
+
+	options := []trace.TracerProviderOption{}
+
+	for _, exporter := range exporters {
+		options = append(options, trace.WithBatcher(exporter))
+	}
+
+	r, err := resource.Merge(
+		resource.Default(),
+		resource.NewSchemaless(
+			semconv.ServiceNameKey.String(serviceName),
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+	options = append(options, trace.WithResource(r))
+	return trace.NewTracerProvider(options...), nil
 }

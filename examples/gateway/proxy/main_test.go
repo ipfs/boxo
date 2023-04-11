@@ -94,11 +94,12 @@ func TestTraceContext(t *testing.T) {
 		traceFlags    = "00"
 	)
 
-	// Creating a trace provider and registering it will make OTel enable tracing.
-	tp, err := common.SetupTracing("Proxy Test")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	tp, err := common.SetupTracing(ctx, "Proxy Test")
 	assert.Nil(t, err)
-	ctx := context.Background()
-	t.Cleanup(func() { _ = tp.Shutdown(ctx) })
+	defer (func() { _ = tp.Shutdown(ctx) })()
 
 	t.Run("Re-use Traceparent Trace ID Of Initial Request", func(t *testing.T) {
 		rs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

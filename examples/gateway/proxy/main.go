@@ -16,17 +16,19 @@ import (
 )
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	gatewayUrlPtr := flag.String("g", "", "gateway to proxy to")
 	port := flag.Int("p", 8040, "port to run this gateway from")
 	flag.Parse()
 
 	// Setups up tracing. This is optional and only required if the implementer
 	// wants to be able to enable tracing.
-	tp, err := common.SetupTracing("Proxy Gateway Example")
+	tp, err := common.SetupTracing(ctx, "CAR Gateway Example")
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx := context.Background()
 	defer (func() { _ = tp.Shutdown(ctx) })()
 
 	// Sets up a blockstore to hold the blocks we request from the gateway
