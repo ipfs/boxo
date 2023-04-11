@@ -77,7 +77,7 @@ See [General SDK Configuration](https://github.com/open-telemetry/opentelemetry-
 ## Using Jaeger UI
 
 One can use the `jaegertracing/all-in-one` Docker image to run a full Jaeger stack
-and configure the gateway examples, or Kubo, to publish traces to it. Here, in an
+and configure the Kubo daemon, or gateway examples, to publish traces to it. Here, in an
 ephemeral container:
 
 ```console
@@ -95,11 +95,10 @@ $ docker run --rm -it --name jaeger \
     jaegertracing/all-in-one
 ```
 
-Then, in other terminal, start the CAR Gateway example (or Kubo), with Jaeger
-tracing enabled:
+Then, in other terminal, start the Kubo daemon, with Jaeger tracing enabled:
 
 ```
-$ OTEL_TRACES_EXPORTER=jaeger ./car-gateway -c data.car -p 8040
+$ OTEL_TRACES_EXPORTER=jaeger ipfs daemon
 ```
 
 Finally, the [Jaeger UI] is available at http://localhost:16686.
@@ -123,8 +122,8 @@ To generate a valid `Traceparent` header value, the following script can be used
 version="00" # fixed in spec at 00
 trace_id="$(cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 32 | head -n 1)"
 parent_id="00$(cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 14 | head -n 1)"
-tace_flag="01"   # sampled
-traceparent="$version-$trace_id-$parent_id-$tace_flag"
+trace_flag="01"   # sampled
+traceparent="$version-$trace_id-$parent_id-$trace_flag"
 echo $traceparent
 ```
 
