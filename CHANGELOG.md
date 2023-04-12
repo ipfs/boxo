@@ -2,15 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Note:
+* The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+* This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+( More notes about versioning and our release policies are [here](./RELEASE.md).
 
-We follow semver.  More notes about versioning and our release policies are [here](./RELEASE.md).
-
-Legend:
-
+## Legend
+The following emojis are used to highlight certain changes:
 * 🛠 - BREAKING CHANGE.  Action is required if you use this functionality.
-* ✨ - Noteworthy change to aware of.
+* ✨ - Noteworthy change to be aware of.
 
 ## [Unreleased]
 

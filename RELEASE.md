@@ -8,7 +8,7 @@ There are two kinds of breaking changes to consider:
 
 1. **API refactors/changes**. There is equivalent functionality, but the API has changed. Generally adapting to these changes is trivial, and release notes will contain information about how to adapt.
 
-1. **Removal of a module or functionality**. In this case, Boxo maintainers will deprecate the relevant types in at least one release prior to their removal, and users will be forewarned in release notes. We strive to remove functionality as rarely as possible.
+1. **Removal of a module or functionality**. In this case, Boxo maintainers will deprecate the relevant types in at least one release prior to their removal, and users will be forewarned in release notes. This will not be done casually and justification will be provided.
 
 We know that breaking changes may cause short-term pain, and we only make breaking changes when we believe the long-term gain is much greater than the short-term pain.
 
@@ -34,14 +34,17 @@ Boxo releases occur _at least_ on every Kubo release. Releases can also be initi
 
 The [release process](#release-process) below describes how maintainers perform a release.
 
-Boxo may release on Fridays or even weekends. This is in contrast to Kubo, which does not release on Fridays since it is a deployable binary, to avoid weekend surprises.
+Boxo may release on Fridays or even weekends. This is in contrast to Kubo the deployable binary, which does not release on Fridays to avoid weekend surprises.
 
 ### Testing
-Boxo maintainers are in the process of moving tests into Boxo from Kubo (see [#275](https://github.com/ipfs/boxo/issues/275)) . Until that's done, Boxo releases rely on Kubo tests for extra confidence. So releases must plumb Boxo into Kubo and ensure its tests pass. See [Release Process](#release-process) for details.
+Boxo maintainers are in the process of moving tests into Boxo from Kubo (see [#275](https://github.com/ipfs/boxo/issues/275)) . Until that's done, Boxo releases rely on Kubo tests for extra confidence. As a result releases must plumb Boxo into Kubo and ensure its tests pass. See [Release Process](#release-process) for details.
 
 ### Changelogs
 Boxo loosely follows the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format. New commits should add changelog entries into the `[Unreleased]` section so that there is no changelog scramble when a new version needs to be released.
 
+We take to heart the "guiding principle" that "changelogs are for humans, not machines.".  As a result:
+* Breaking changes and notable features are called out following the changelog emoji legend.
+* Changelog entries provide links to a relevant issue/PR so an interested party can learn more.
 We intend to use the standardized changelog to automate releases by onboarding with [Changelog Driven Release](https://github.com/pl-strflt/changelog-driven-release) (see [#269](https://github.com/ipfs/boxo/issues/269)).
 
 ### Related Work
