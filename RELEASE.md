@@ -83,11 +83,9 @@ Below are links of related/adjacent work that has informed some of the decisions
 - [ ] Merge the PR into `release`, _using "Create a Merge Commit"_, and do not delete the `release-vX.Y.X` branch
   - [ ] Verify the tag is created
 - [ ] Announce the release
-  - [ ] Create an [IPFS Discourse](https://discuss.ipfs.tech) topic
-    - [ ] use `Boxo vX.Y.Z is out!` as the title
-    - [ ] use `boxo` as the topic
-    - [ ] repeat the title as a heading (`##`) in the description
-    - [ ] link to the GitHub Release and release notes in the description
+  - [ ] Click [this link](https://discuss.ipfs.tech/new-topic?title=Boxo%20vX.Y.Z%20is%20out%21&tags=boxo&category=News&body=%23%23%20Boxo%20vX.Y.Z%20is%20out%21%0A%0ASee%3A%0A-%20Code%3A%20https%3A%2F%2Fgithub.com%2Fipfs%2Fboxo%2Freleases%2Ftag%2FvX.Y.Z%0A-%20Release%20Notes%3A%20https%3A%2F%2Fgithub.com%2Fipfs%2Fboxo%2Fblob%2Frelease-vX.Y.Z%2FCHANGELOG.md) to start a new Discourse topic <!--docs: https://meta.discourse.org/t/create-a-link-to-start-a-new-topic-with-pre-filled-information/28074 -->
+    - [ ] Update `vX.Y.Z` in the title and body
+	- [ ] Create the topic
 - [ ] Create a PR merging `release` into `main`
   - [ ] Name it "Merge release vX.Y.Z"
   - [ ] Wait for approval
