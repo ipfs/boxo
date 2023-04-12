@@ -97,6 +97,9 @@ We recommend upgrading to v0.8.0 first, and _then_ upgrading to the latest Boxo 
 
 If you encounter any challenges, please [open an issue](https://github.com/ipfs/boxo/issues/new/choose) and Boxo maintainers will help you.
 
+## Deprecations & Breaking Changes
+See [RELEASE.md](./RELEASE.md).
+
 ## Should I add my IPFS component to Boxo?
 We happily accept external contributions! However, Boxo maintains a high quality bar, so code accepted into Boxo must meet some minimum maintenance criteria:
 
@@ -122,7 +125,7 @@ If you have questions, feel free to open an issue. You can also find the Boxo ma
 See [CODEOWNERS](./docs/CODEOWNERS) for the current maintainers list.  Governance for graduating additional maintainers hasn't been established.  Repo permissions are all managed through [ipfs/github-mgmt](https://github.com/ipfs/github-mgmt).
 
 ## Release Process
-To be documented: https://github.com/ipfs/boxo/issues/170
+See [RELEASE.md](./RELEASE.md).
 
 ## Related Items
 * [Initial proposal for "Consolidate IPFS Repositories" that spawned this project](https://github.com/ipfs/kubo/issues/8543)
