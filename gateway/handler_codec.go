@@ -58,7 +58,7 @@ var contentTypeToExtension = map[string]string{
 }
 
 func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time, requestedContentType string) bool {
-	ctx, span := spanTrace(ctx, "ServeCodec", trace.WithAttributes(attribute.String("path", imPath.String()), attribute.String("requestedContentType", requestedContentType)))
+	ctx, span := spanTrace(ctx, "Handler.ServeCodec", trace.WithAttributes(attribute.String("path", imPath.String()), attribute.String("requestedContentType", requestedContentType)))
 	defer span.End()
 
 	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
@@ -77,7 +77,7 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 }
 
 func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, blockData io.ReadSeekCloser, contentPath ipath.Path, begin time.Time, requestedContentType string) bool {
-	ctx, span := spanTrace(ctx, "RenderCodec", trace.WithAttributes(attribute.String("path", resolvedPath.String()), attribute.String("requestedContentType", requestedContentType)))
+	ctx, span := spanTrace(ctx, "Handler.RenderCodec", trace.WithAttributes(attribute.String("path", resolvedPath.String()), attribute.String("requestedContentType", requestedContentType)))
 	defer span.End()
 
 	blockCid := resolvedPath.Cid()

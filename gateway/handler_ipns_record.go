@@ -20,7 +20,7 @@ import (
 )
 
 func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "ServeIPNSRecord", trace.WithAttributes(attribute.String("path", contentPath.String())))
+	ctx, span := spanTrace(ctx, "Handler.ServeIPNSRecord", trace.WithAttributes(attribute.String("path", contentPath.String())))
 	defer span.End()
 
 	if contentPath.Namespace() != "ipns" {

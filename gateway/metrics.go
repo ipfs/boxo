@@ -262,7 +262,8 @@ func newHistogramMetric(name string, help string) *prometheus.HistogramVec {
 	return histogramMetric
 }
 
-// spanTrace starts a new span using the standard IPFS tracing conventions.
+var tracer = otel.Tracer("boxo/gateway")
+
 func spanTrace(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return otel.Tracer("boxo").Start(ctx, fmt.Sprintf("%s.%s", " Gateway", spanName), opts...)
+	return tracer.Start(ctx, fmt.Sprintf("Gateway.%s", spanName), opts...)
 }
