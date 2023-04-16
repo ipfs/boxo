@@ -33,6 +33,13 @@ var goodset = map[uint64]bool{
 	mh.SHA1: true, // not really secure but still useful
 }
 
+func AddGoodHash(code uint64) {
+	good, found := goodset[code]
+	if !found || !good {
+		goodset[code] = true
+	}
+}
+
 func IsGoodHash(code uint64) bool {
 	good, found := goodset[code]
 	if good {
