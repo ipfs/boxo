@@ -21,6 +21,8 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	delete(w.Header(), "Content-Length")
+
 	switch carVersion {
 	case "": // noop, client does not care about version
 	case "1": // noop, we support this
