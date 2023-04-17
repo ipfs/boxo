@@ -21,8 +21,6 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	delete(w.Header(), "Content-Length")
-
 	switch carVersion {
 	case "": // noop, client does not care about version
 	case "1": // noop, we support this
@@ -78,6 +76,8 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 
 	w.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
+
+	delete(w.Header(), "Content-Length")
 
 	_, copyErr := io.Copy(w, carFile)
 	carErr := <-errCh
