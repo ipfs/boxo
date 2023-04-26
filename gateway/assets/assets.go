@@ -13,7 +13,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/cespare/xxhash"
+	"github.com/cespare/xxhash/v2"
 
 	ipfspath "github.com/ipfs/boxo/path"
 )

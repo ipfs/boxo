@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cespare/xxhash"
+	"github.com/cespare/xxhash/v2"
 	"github.com/gogo/protobuf/proto"
 	ipath "github.com/ipfs/boxo/coreiface/path"
 	ipns_pb "github.com/ipfs/boxo/ipns/pb"
