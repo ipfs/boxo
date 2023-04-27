@@ -18,7 +18,6 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
-	"github.com/ipfs/go-datastore/sync"
 	dssync "github.com/ipfs/go-datastore/sync"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
@@ -891,7 +890,7 @@ func (d *batchWrap) Batch(_ context.Context) (ds.Batch, error) {
 
 func makeStore() (ds.Datastore, ipld.DAGService) {
 	md := ds.NewMapDatastore()
-	wmd := sync.MutexWrap(md)
+	wmd := dssync.MutexWrap(md)
 	dstore := &batchWrap{wmd}
 	bstore := blockstore.NewBlockstore(dstore)
 	bserv := bs.New(bstore, offline.Exchange(bstore))
