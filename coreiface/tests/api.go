@@ -37,10 +37,6 @@ func (tp *TestSuite) makeAPI(ctx context.Context) (coreiface.CoreAPI, error) {
 	return api[0], nil
 }
 
-func (tp *TestSuite) MakeAPISwarm(ctx context.Context, fullIdentity bool, n int) ([]coreiface.CoreAPI, error) {
-	return tp.makeAPISwarm(ctx, fullIdentity, fullIdentity, n)
-}
-
 func (tp *TestSuite) makeAPIWithIdentityAndOffline(ctx context.Context) (coreiface.CoreAPI, error) {
 	api, err := tp.makeAPISwarm(ctx, true, false, 1)
 	if err != nil {
@@ -48,6 +44,10 @@ func (tp *TestSuite) makeAPIWithIdentityAndOffline(ctx context.Context) (coreifa
 	}
 
 	return api[0], nil
+}
+
+func (tp *TestSuite) MakeAPISwarm(ctx context.Context, n int) ([]coreiface.CoreAPI, error) {
+	return tp.makeAPISwarm(ctx, true, true, n)
 }
 
 type TestSuite struct {
