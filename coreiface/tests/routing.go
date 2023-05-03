@@ -24,15 +24,10 @@ func (tp *TestSuite) TestRouting(t *testing.T) {
 	t.Run("TestRoutingPutOffline", tp.TestRoutingPutOffline)
 }
 
-func (tp *TestSuite) testRoutingPublishKey(t *testing.T, ctx context.Context, api iface.CoreAPI) iface.IpnsEntry {
+func (tp *TestSuite) testRoutingPublishKey(t *testing.T, ctx context.Context, api iface.CoreAPI, opts ...options.NamePublishOption) iface.IpnsEntry {
 	p, err := addTestObject(ctx, api)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// TODO: make sure we are fine with that implicit allow offline
-	opts := []options.NamePublishOption{
-		options.Name.AllowOffline(true),
 	}
 
 	entry, err := api.Name().Publish(ctx, p, opts...)
@@ -108,7 +103,7 @@ func (tp *TestSuite) TestRoutingPutOffline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ipnsEntry := tp.testRoutingPublishKey(t, ctx, apis[0])
+	ipnsEntry := tp.testRoutingPublishKey(t, ctx, apis[0], options.Name.AllowOffline(true))
 	data, err := apis[0].Routing().Get(ctx, "/ipns/"+ipnsEntry.Name())
 	if err != nil {
 		t.Fatal(err)
