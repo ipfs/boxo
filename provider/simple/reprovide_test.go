@@ -6,12 +6,6 @@ import (
 	"testing"
 	"time"
 
-	bsrv "github.com/ipfs/boxo/blockservice"
-	blockstore "github.com/ipfs/boxo/blockstore"
-	offline "github.com/ipfs/boxo/exchange/offline"
-	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
-	"github.com/ipfs/boxo/internal/test"
-	mock "github.com/ipfs/boxo/routing/mock"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
@@ -24,6 +18,14 @@ import (
 	testutil "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/peer"
 	mh "github.com/multiformats/go-multihash"
+
+	bsrv "github.com/ipfs/boxo/blockservice"
+	blockstore "github.com/ipfs/boxo/blockstore"
+	offline "github.com/ipfs/boxo/exchange/offline"
+	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
+	"github.com/ipfs/boxo/internal/test"
+	pin "github.com/ipfs/boxo/pinning/pinner"
+	mock "github.com/ipfs/boxo/routing/mock"
 
 	. "github.com/ipfs/boxo/provider/simple"
 )
@@ -224,12 +226,34 @@ type mockPinner struct {
 	direct    []cid.Cid
 }
 
-func (mp *mockPinner) DirectKeys(ctx context.Context) ([]cid.Cid, error) {
-	return mp.direct, nil
+func (mp *mockPinner) DirectKeys(ctx context.Context) <-chan pin.StreamedCid {
+	out := make(chan pin.StreamedCid)
+	go func() {
+		defer close(out)
+		for _, c := range mp.direct {
+			select {
+			case <-ctx.Done():
+				return
+			case out <- pin.StreamedCid{C: c}:
+			}
+		}
+	}()
+	return out
 }
 
-func (mp *mockPinner) RecursiveKeys(ctx context.Context) ([]cid.Cid, error) {
-	return mp.recursive, nil
+func (mp *mockPinner) RecursiveKeys(ctx context.Context) <-chan pin.StreamedCid {
+	out := make(chan pin.StreamedCid)
+	go func() {
+		defer close(out)
+		for _, c := range mp.recursive {
+			select {
+			case <-ctx.Done():
+				return
+			case out <- pin.StreamedCid{C: c}:
+			}
+		}
+	}()
+	return out
 }
 
 func TestReprovidePinned(t *testing.T) {

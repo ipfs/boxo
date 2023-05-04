@@ -12,15 +12,16 @@ import (
 	bs "github.com/ipfs/boxo/blockservice"
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
 
-	blockstore "github.com/ipfs/boxo/blockstore"
-	offline "github.com/ipfs/boxo/exchange/offline"
-	util "github.com/ipfs/boxo/util"
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
 	dssync "github.com/ipfs/go-datastore/sync"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
+
+	blockstore "github.com/ipfs/boxo/blockstore"
+	offline "github.com/ipfs/boxo/exchange/offline"
+	util "github.com/ipfs/boxo/util"
 
 	ipfspin "github.com/ipfs/boxo/pinning/pinner"
 )
@@ -198,10 +199,21 @@ func TestPinnerBasic(t *testing.T) {
 	dk := d.Cid()
 	assertPinned(t, p, dk, "pinned node not found.")
 
-	cids, err := p.RecursiveKeys(ctx)
-	if err != nil {
-		t.Fatal(err)
+	allCids := func(ch <-chan ipfspin.StreamedCid) (cids []cid.Cid) {
+		for {
+			val, ok := <-ch
+			if !ok {
+				break
+			}
+			if val.Err != nil {
+				t.Fatal(val.Err)
+			}
+			cids = append(cids, val.C)
+		}
+		return cids
 	}
+
+	cids := allCids(p.RecursiveKeys(ctx))
 	if len(cids) != 2 {
 		t.Error("expected 2 recursive pins")
 	}
@@ -243,10 +255,7 @@ func TestPinnerBasic(t *testing.T) {
 		}
 	}
 
-	cids, err = p.DirectKeys(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	cids = allCids(p.DirectKeys(ctx))
 	if len(cids) != 1 {
 		t.Error("expected 1 direct pin")
 	}
@@ -254,9 +263,9 @@ func TestPinnerBasic(t *testing.T) {
 		t.Error("wrong direct pin")
 	}
 
-	cids, _ = p.InternalPins(ctx)
+	cids = allCids(p.InternalPins(ctx))
 	if len(cids) != 0 {
-		t.Error("shound not have internal keys")
+		t.Error("should not have internal keys")
 	}
 
 	err = p.Unpin(ctx, dk, false)

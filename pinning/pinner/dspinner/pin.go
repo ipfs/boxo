@@ -10,8 +10,6 @@ import (
 	"path"
 	"sync"
 
-	"github.com/ipfs/boxo/ipld/merkledag"
-	"github.com/ipfs/boxo/ipld/merkledag/dagutils"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
@@ -19,6 +17,9 @@ import (
 	logging "github.com/ipfs/go-log"
 	"github.com/polydawn/refmt/cbor"
 	"github.com/polydawn/refmt/obj/atlas"
+
+	"github.com/ipfs/boxo/ipld/merkledag"
+	"github.com/ipfs/boxo/ipld/merkledag/dagutils"
 
 	ipfspinner "github.com/ipfs/boxo/pinning/pinner"
 	"github.com/ipfs/boxo/pinning/pinner/dsindex"
@@ -665,61 +666,56 @@ func (p *pinner) loadPin(ctx context.Context, pid string) (*pin, error) {
 }
 
 // DirectKeys returns a slice containing the directly pinned keys
-func (p *pinner) DirectKeys(ctx context.Context) ([]cid.Cid, error) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-
-	cidSet := cid.NewSet()
-	var e error
-	err := p.cidDIndex.ForEach(ctx, "", func(key, value string) bool {
-		var c cid.Cid
-		c, e = cid.Cast([]byte(key))
-		if e != nil {
-			return false
-		}
-		cidSet.Add(c)
-		return true
-	})
-	if err != nil {
-		return nil, err
-	}
-	if e != nil {
-		return nil, e
-	}
-
-	return cidSet.Keys(), nil
+func (p *pinner) DirectKeys(ctx context.Context) <-chan ipfspinner.StreamedCid {
+	return p.streamIndex(ctx, p.cidDIndex)
 }
 
 // RecursiveKeys returns a slice containing the recursively pinned keys
-func (p *pinner) RecursiveKeys(ctx context.Context) ([]cid.Cid, error) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
+func (p *pinner) RecursiveKeys(ctx context.Context) <-chan ipfspinner.StreamedCid {
+	return p.streamIndex(ctx, p.cidRIndex)
+}
 
-	cidSet := cid.NewSet()
-	var e error
-	err := p.cidRIndex.ForEach(ctx, "", func(key, value string) bool {
-		var c cid.Cid
-		c, e = cid.Cast([]byte(key))
-		if e != nil {
-			return false
+func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer) <-chan ipfspinner.StreamedCid {
+	out := make(chan ipfspinner.StreamedCid)
+
+	go func() {
+		defer close(out)
+
+		p.lock.RLock()
+		defer p.lock.RUnlock()
+
+		cidSet := cid.NewSet()
+
+		err := index.ForEach(ctx, "", func(key, value string) bool {
+			c, err := cid.Cast([]byte(key))
+			if err != nil {
+				out <- ipfspinner.StreamedCid{Err: err}
+				return false
+			}
+			if !cidSet.Has(c) {
+				select {
+				case <-ctx.Done():
+					return false
+				case out <- ipfspinner.StreamedCid{C: c}:
+				}
+				cidSet.Add(c)
+			}
+			return true
+		})
+		if err != nil {
+			out <- ipfspinner.StreamedCid{Err: err}
 		}
-		cidSet.Add(c)
-		return true
-	})
-	if err != nil {
-		return nil, err
-	}
-	if e != nil {
-		return nil, e
-	}
+	}()
 
-	return cidSet.Keys(), nil
+	return out
 }
 
 // InternalPins returns all cids kept pinned for the internal state of the
 // pinner
-func (p *pinner) InternalPins(ctx context.Context) ([]cid.Cid, error) {
-	return nil, nil
+func (p *pinner) InternalPins(ctx context.Context) <-chan ipfspinner.StreamedCid {
+	c := make(chan ipfspinner.StreamedCid)
+	close(c)
+	return c
 }
 
 // Update updates a recursive pin from one cid to another.  This is equivalent
