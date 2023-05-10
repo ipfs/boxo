@@ -12,7 +12,9 @@ import (
 	"github.com/benbjohnson/clock"
 	"github.com/ipfs/boxo/routing/http/server"
 	"github.com/ipfs/boxo/routing/http/types"
+	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
+
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -25,9 +27,9 @@ import (
 
 type mockContentRouter struct{ mock.Mock }
 
-func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid) ([]types.ProviderResponse, error) {
+func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error) {
 	args := m.Called(ctx, key)
-	return args.Get(0).([]types.ProviderResponse), args.Error(1)
+	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
 }
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.BitswapWriteProvideRequest) (time.Duration, error) {
 	args := m.Called(ctx, req)
@@ -40,45 +42,76 @@ func (m *mockContentRouter) Provide(ctx context.Context, req *server.WriteProvid
 }
 
 type testDeps struct {
-	router *mockContentRouter
-	server *httptest.Server
-	peerID peer.ID
-	addrs  []multiaddr.Multiaddr
-	client *client
+	// recordingHandler records requests received on the server side
+	recordingHandler *recordingHandler
+	// recordingHTTPClient records responses received on the client side
+	recordingHTTPClient *recordingHTTPClient
+	router              *mockContentRouter
+	server              *httptest.Server
+	peerID              peer.ID
+	addrs               []multiaddr.Multiaddr
+	client              *client
 }
 
-func makeTestDeps(t *testing.T) testDeps {
+type recordingHandler struct {
+	http.Handler
+	f []func(*http.Request)
+}
+
+func (h *recordingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	for _, f := range h.f {
+		f(r)
+	}
+	h.Handler.ServeHTTP(w, r)
+}
+
+type recordingHTTPClient struct {
+	httpClient
+	f []func(*http.Response)
+}
+
+func (c *recordingHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	resp, err := c.httpClient.Do(req)
+	for _, f := range c.f {
+		f(resp)
+	}
+	return resp, err
+}
+
+func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option) testDeps {
 	const testUserAgent = "testUserAgent"
 	peerID, addrs, identity := makeProviderAndIdentity()
 	router := &mockContentRouter{}
-	server := httptest.NewServer(server.Handler(router))
+	recordingHandler := &recordingHandler{
+		Handler: server.Handler(router, serverOpts...),
+		f: []func(*http.Request){
+			func(r *http.Request) {
+				assert.Equal(t, testUserAgent, r.Header.Get("User-Agent"))
+			},
+		},
+	}
+	server := httptest.NewServer(recordingHandler)
 	t.Cleanup(server.Close)
 	serverAddr := "http://" + server.Listener.Addr().String()
-	c, err := New(serverAddr, WithProviderInfo(peerID, addrs), WithIdentity(identity), WithUserAgent(testUserAgent))
+	recordingHTTPClient := &recordingHTTPClient{httpClient: defaultHTTPClient}
+	defaultClientOpts := []Option{
+		WithProviderInfo(peerID, addrs),
+		WithIdentity(identity),
+		WithUserAgent(testUserAgent),
+		WithHTTPClient(recordingHTTPClient),
+	}
+	c, err := New(serverAddr, append(defaultClientOpts, clientsOpts...)...)
 	if err != nil {
 		panic(err)
 	}
-	assertUserAgentOverride(t, c, testUserAgent)
 	return testDeps{
-		router: router,
-		server: server,
-		peerID: peerID,
-		addrs:  addrs,
-		client: c,
-	}
-}
-
-func assertUserAgentOverride(t *testing.T, c *client, expected string) {
-	httpClient, ok := c.httpClient.(*http.Client)
-	if !ok {
-		t.Error("invalid c.httpClient")
-	}
-	transport, ok := httpClient.Transport.(*ResponseBodyLimitedTransport)
-	if !ok {
-		t.Error("invalid httpClient.Transport")
-	}
-	if transport.UserAgent != expected {
-		t.Error("invalid httpClient.Transport.UserAgent")
+		recordingHandler:    recordingHandler,
+		recordingHTTPClient: recordingHTTPClient,
+		router:              router,
+		server:              server,
+		peerID:              peerID,
+		addrs:               addrs,
+		client:              c,
 	}
 }
 
@@ -142,43 +175,119 @@ func makeProviderAndIdentity() (peer.ID, []multiaddr.Multiaddr, crypto.PrivKey) 
 	return peerID, []multiaddr.Multiaddr{ma1, ma2}, priv
 }
 
+type osErrContains struct {
+	expContains    string
+	expContainsWin string
+}
+
+func (e *osErrContains) errContains(t *testing.T, err error) {
+	if e.expContains == "" && e.expContainsWin == "" {
+		assert.NoError(t, err)
+		return
+	}
+	if runtime.GOOS == "windows" && len(e.expContainsWin) != 0 {
+		assert.ErrorContains(t, err, e.expContainsWin)
+	} else {
+		assert.ErrorContains(t, err, e.expContains)
+	}
+}
+
 func TestClient_FindProviders(t *testing.T) {
 	bsReadProvResp := makeBSReadProviderResp()
-	bitswapProvs := []types.ProviderResponse{&bsReadProvResp}
+	bitswapProvs := []iter.Result[types.ProviderResponse]{
+		{Val: &bsReadProvResp},
+	}
 
 	cases := []struct {
-		name           string
-		httpStatusCode int
-		stopServer     bool
-		routerProvs    []types.ProviderResponse
-		routerErr      error
+		name                    string
+		httpStatusCode          int
+		stopServer              bool
+		routerProvs             []iter.Result[types.ProviderResponse]
+		routerErr               error
+		clientRequiresStreaming bool
+		serverStreamingDisabled bool
 
-		expProvs          []types.ProviderResponse
-		expErrContains    []string
-		expWinErrContains []string
+		expErrContains       osErrContains
+		expProvs             []iter.Result[types.ProviderResponse]
+		expStreamingResponse bool
+		expJSONResponse      bool
 	}{
 		{
-			name:        "happy case",
-			routerProvs: bitswapProvs,
-			expProvs:    bitswapProvs,
+			name:                 "happy case",
+			routerProvs:          bitswapProvs,
+			expProvs:             bitswapProvs,
+			expStreamingResponse: true,
+		},
+		{
+			name:                    "server doesn't support streaming",
+			routerProvs:             bitswapProvs,
+			expProvs:                bitswapProvs,
+			serverStreamingDisabled: true,
+			expJSONResponse:         true,
+		},
+		{
+			name:                    "client requires streaming but server doesn't support it",
+			serverStreamingDisabled: true,
+			clientRequiresStreaming: true,
+			expErrContains:          osErrContains{expContains: "HTTP error with StatusCode=400: no supported content types"},
 		},
 		{
 			name:           "returns an error if there's a non-200 response",
 			httpStatusCode: 500,
-			expErrContains: []string{"HTTP error with StatusCode=500: "},
+			expErrContains: osErrContains{expContains: "HTTP error with StatusCode=500"},
 		},
 		{
-			name:              "returns an error if the HTTP client returns a non-HTTP error",
-			stopServer:        true,
-			expErrContains:    []string{"connect: connection refused"},
-			expWinErrContains: []string{"connectex: No connection could be made because the target machine actively refused it."},
+			name:       "returns an error if the HTTP client returns a non-HTTP error",
+			stopServer: true,
+			expErrContains: osErrContains{
+				expContains:    "connect: connection refused",
+				expContainsWin: "connectex: No connection could be made because the target machine actively refused it.",
+			},
+		},
+		{
+			name:           "returns no providers if the HTTP server returns a 404 respones",
+			httpStatusCode: 404,
+			expProvs:       nil,
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			deps := makeTestDeps(t)
+			var clientOpts []Option
+			var serverOpts []server.Option
+			var onRespReceived []func(*http.Response)
+			var onReqReceived []func(*http.Request)
+
+			if c.serverStreamingDisabled {
+				serverOpts = append(serverOpts, server.WithStreamingResultsDisabled())
+			}
+			if c.clientRequiresStreaming {
+				clientOpts = append(clientOpts, WithStreamResultsRequired())
+				onReqReceived = append(onReqReceived, func(r *http.Request) {
+					assert.Equal(t, mediaTypeNDJSON, r.Header.Get("Accept"))
+				})
+			}
+
+			if c.expStreamingResponse {
+				onRespReceived = append(onRespReceived, func(r *http.Response) {
+					assert.Equal(t, mediaTypeNDJSON, r.Header.Get("Content-Type"))
+				})
+			}
+			if c.expJSONResponse {
+				onRespReceived = append(onRespReceived, func(r *http.Response) {
+					assert.Equal(t, mediaTypeJSON, r.Header.Get("Content-Type"))
+				})
+			}
+
+			deps := makeTestDeps(t, clientOpts, serverOpts)
+
+			deps.recordingHTTPClient.f = append(deps.recordingHTTPClient.f, onRespReceived...)
+			deps.recordingHandler.f = append(deps.recordingHandler.f, onReqReceived...)
+
 			client := deps.client
 			router := deps.router
+
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
 
 			if c.httpStatusCode != 0 {
 				deps.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -191,25 +300,16 @@ func TestClient_FindProviders(t *testing.T) {
 			}
 			cid := makeCID()
 
+			findProvsIter := iter.FromSlice(c.routerProvs)
+
 			router.On("FindProviders", mock.Anything, cid).
-				Return(c.routerProvs, c.routerErr)
+				Return(findProvsIter, c.routerErr)
 
-			provs, err := client.FindProviders(context.Background(), cid)
+			provsIter, err := client.FindProviders(ctx, cid)
 
-			var errList []string
-			if runtime.GOOS == "windows" && len(c.expWinErrContains) != 0 {
-				errList = c.expWinErrContains
-			} else {
-				errList = c.expErrContains
-			}
+			c.expErrContains.errContains(t, err)
 
-			for _, exp := range errList {
-				require.ErrorContains(t, err, exp)
-			}
-			if len(errList) == 0 {
-				require.NoError(t, err)
-			}
-
+			provs := iter.ReadAll[iter.Result[types.ProviderResponse]](provsIter)
 			assert.Equal(t, c.expProvs, provs)
 		})
 	}
@@ -247,8 +347,7 @@ func TestClient_Provide(t *testing.T) {
 			name:            "should return a 403 if the payload signature verification fails",
 			cids:            []cid.Cid{},
 			mangleSignature: true,
-
-			expErrContains: "HTTP error with StatusCode=403",
+			expErrContains:  "HTTP error with StatusCode=403",
 		},
 		{
 			name:           "should return error if identity is not provided",
@@ -274,8 +373,7 @@ func TestClient_Provide(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			//			deps := makeTestDeps(t)
-			deps := makeTestDeps(t)
+			deps := makeTestDeps(t, nil, nil)
 			client := deps.client
 			router := deps.router
 
