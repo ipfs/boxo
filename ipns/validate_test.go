@@ -19,6 +19,7 @@ import (
 	pstore "github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/multiformats/go-multicodec"
+	"github.com/stretchr/testify/assert"
 )
 
 func testValidatorCase(t *testing.T, priv crypto.PrivKey, kbook pstore.KeyBook, key string, val []byte, eol time.Time, exp error) {
@@ -143,8 +144,6 @@ func TestEmbeddedPubKeyValidate(t *testing.T) {
 }
 
 func TestPeerIDPubKeyValidate(t *testing.T) {
-	t.Skip("disabled until libp2p/go-libp2p-crypto#51 is fixed")
-
 	goodeol := time.Now().Add(time.Hour)
 	kbook, err := pstoremem.NewPeerstore()
 	if err != nil {
@@ -412,4 +411,39 @@ func genKeys(t *testing.T) (crypto.PrivKey, peer.ID, string) {
 	ipnsKey := RecordKey(pid)
 
 	return priv, pid, ipnsKey
+}
+
+func TestValidateWithPeerID(t *testing.T) {
+	path := []byte("/ipfs/bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
+	eol := time.Now().Add(time.Hour)
+
+	rnd := rand.New(rand.NewSource(42))
+
+	sk, pk, err := crypto.GenerateEd25519Key(rnd)
+	assert.NoError(t, err)
+
+	pid, err := peer.IDFromPublicKey(pk)
+	assert.NoError(t, err)
+
+	entry, err := Create(sk, path, 1, eol, 0)
+	assert.NoError(t, err)
+
+	t.Run("valid peer ID", func(t *testing.T) {
+		t.Parallel()
+		err = ValidateWithPeerID(pid, entry)
+		assert.NoError(t, err)
+	})
+
+	t.Run("invalid peer ID", func(t *testing.T) {
+		t.Parallel()
+
+		_, pk2, err := crypto.GenerateEd25519Key(rnd)
+		assert.NoError(t, err)
+
+		pid2, err := peer.IDFromPublicKey(pk2)
+		assert.NoError(t, err)
+
+		err = ValidateWithPeerID(pid2, entry)
+		assert.ErrorIs(t, err, ErrSignature)
+	})
 }
