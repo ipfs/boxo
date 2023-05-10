@@ -10,9 +10,8 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/gogo/protobuf/proto"
 	ipath "github.com/ipfs/boxo/coreiface/path"
-	ipns_pb "github.com/ipfs/boxo/ipns/pb"
+	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/go-cid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -50,8 +49,7 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 		return false
 	}
 
-	var record ipns_pb.IpnsEntry
-	err = proto.Unmarshal(rawRecord, &record)
+	record, err := ipns.UnmarshalIpnsEntry(rawRecord)
 	if err != nil {
 		webError(w, err, http.StatusInternalServerError)
 		return false
