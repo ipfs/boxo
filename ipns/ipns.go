@@ -130,6 +130,16 @@ func createCborDataForIpnsEntry(e *pb.IpnsEntry) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// ValidateWithPeerID validates the given IPNS entry against the given peer ID.
+func ValidateWithPeerID(pid peer.ID, entry *pb.IpnsEntry) error {
+	pk, err := ExtractPublicKey(pid, entry)
+	if err != nil {
+		return err
+	}
+
+	return Validate(pk, entry)
+}
+
 // Validates validates the given IPNS entry against the given public key.
 func Validate(pk ic.PubKey, entry *pb.IpnsEntry) error {
 	// Make sure max size is respected
@@ -285,6 +295,17 @@ func EmbedPublicKey(pk ic.PubKey, entry *pb.IpnsEntry) error {
 	}
 	entry.PubKey = pkBytes
 	return nil
+}
+
+// UnmarshalIpnsEntry unmarshalls an IPNS entry from a slice of bytes.
+func UnmarshalIpnsEntry(data []byte) (*pb.IpnsEntry, error) {
+	var entry pb.IpnsEntry
+	err := proto.Unmarshal(data, &entry)
+	if err != nil {
+		return nil, err
+	}
+
+	return &entry, nil
 }
 
 // ExtractPublicKey extracts a public key matching `pid` from the IPNS record,
