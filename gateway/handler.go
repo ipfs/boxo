@@ -17,6 +17,7 @@ import (
 	"time"
 
 	ipath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/gateway/assets"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -907,4 +908,26 @@ func (i *handler) handleSuperfluousNamespace(w http.ResponseWriter, r *http.Requ
 	}
 
 	return true
+}
+
+// getTemplateGlobalData returns the global data necessary by most templates.
+func (i *handler) getTemplateGlobalData(r *http.Request, contentPath ipath.Path) assets.GlobalData {
+	// gatewayURL is used to link to other root CIDs. THis will be blank unless
+	// subdomain or DNSLink resolution is being used for this request.
+	var gatewayURL string
+	if h, ok := r.Context().Value(SubdomainHostnameKey).(string); ok {
+		gatewayURL = "//" + h
+	} else if h, ok := r.Context().Value(DNSLinkHostnameKey).(string); ok {
+		gatewayURL = "//" + h
+	} else {
+		gatewayURL = ""
+	}
+
+	dnsLink := assets.HasDNSLinkOrigin(gatewayURL, contentPath.String())
+
+	return assets.GlobalData{
+		Menu:       i.config.Menu,
+		GatewayURL: gatewayURL,
+		DNSLink:    dnsLink,
+	}
 }

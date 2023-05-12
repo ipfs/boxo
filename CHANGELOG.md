@@ -18,6 +18,7 @@ The following emojis are used to highlight certain changes:
   - New human-friendly error messages.
   - Updated, higher-definition icons in directory listings.
   - Customizable menu items next to "About IPFS" and "Install IPFS".
+  - Valid DAG-CBOR and DAG-JSON blocks now provide a preview, where links can be followed.
 
 ## [0.8.0] - 2023-04-05
 ### Added

@@ -120,7 +120,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 		download := r.URL.Query().Get("download") == "true"
 
 		if isDAG && acceptsHTML && !download {
-			return i.serveCodecHTML(ctx, w, r, resolvedPath, contentPath)
+			return i.serveCodecHTML(ctx, w, r, blockCid, blockData, resolvedPath, contentPath)
 		} else {
 			// This covers CIDs with codec 'json' and 'cbor' as those do not have
 			// an explicit requested content type.
@@ -152,7 +152,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	return i.serveCodecConverted(ctx, w, r, blockCid, blockData, contentPath, toCodec, modtime, begin)
 }
 
-func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path) bool {
+func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.ReadSeekCloser, resolvedPath ipath.Resolved, contentPath ipath.Path) bool {
 	// A HTML directory index will be presented, be sure to set the correct
 	// type instead of relying on autodetection (which may fail).
 	w.Header().Set("Content-Type", "text/html")
@@ -171,13 +171,12 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 
 	cidCodec := mc.Code(resolvedPath.Cid().Prefix().Codec)
 	if err := assets.DagTemplate.Execute(w, assets.DagTemplateData{
-		GlobalData: assets.GlobalData{
-			Menu: i.config.Menu,
-		},
-		Path:      contentPath.String(),
-		CID:       resolvedPath.Cid().String(),
-		CodecName: cidCodec.String(),
-		CodecHex:  fmt.Sprintf("0x%x", uint64(cidCodec)),
+		GlobalData: i.getTemplateGlobalData(r, contentPath),
+		Path:       contentPath.String(),
+		CID:        resolvedPath.Cid().String(),
+		CodecName:  cidCodec.String(),
+		CodecHex:   fmt.Sprintf("0x%x", uint64(cidCodec)),
+		Node:       parseNode(blockCid, blockData),
 	}); err != nil {
 		err = fmt.Errorf("failed to generate HTML listing for this DAG: try fetching raw block with ?format=raw: %w", err)
 		i.webError(w, r, err, http.StatusInternalServerError)
@@ -185,6 +184,30 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	return true
+}
+
+// parseNode does a best effort attempt to parse this request's block such that
+// a preview can be displayed in the gateway. If something fails along the way,
+// returns nil, therefore not displaying the preview.
+func parseNode(blockCid cid.Cid, blockData io.ReadSeekCloser) *assets.ParsedNode {
+	codec := blockCid.Prefix().Codec
+	decoder, err := multicodec.LookupDecoder(codec)
+	if err != nil {
+		return nil
+	}
+
+	nodeBuilder := basicnode.Prototype.Any.NewBuilder()
+	err = decoder(nodeBuilder, blockData)
+	if err != nil {
+		return nil
+	}
+
+	parsedNode, err := assets.ParseNode(nodeBuilder.Build())
+	if err != nil {
+		return nil
+	}
+
+	return parsedNode
 }
 
 // serveCodecRaw returns the raw block without any conversion

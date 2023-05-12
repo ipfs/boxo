@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -741,4 +742,29 @@ func TestIpnsTrustlessMode(t *testing.T) {
 	doRequest(t, "/", "trusted.com", http.StatusOK)
 	doRequest(t, "/EmptyDir/", "trusted.com", http.StatusOK)
 	doRequest(t, "/?format=ipns-record", "trusted.com", http.StatusBadRequest)
+}
+
+func TestDagJsonCborPreview(t *testing.T) {
+	ts, _, root := newTestServerAndNode(t, nil)
+	t.Logf("test server url: %s", ts.URL)
+	url := path.Join([]string{"/ipfs", root.String(), t.Name(), "example"})
+
+	t.Run("Strings Are Escaped", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, ts.URL+url, nil)
+		req.Header.Add("Accept", "text/html")
+		assert.NoError(t, err)
+
+		res, err := doWithoutRedirect(req)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		assert.NoError(t, err)
+
+		script := "<string>window.alert('hacked')</string>"
+		escaped := html.EscapeString(script)
+
+		assert.Contains(t, string(body), escaped)
+		assert.NotContains(t, string(body), script)
+	})
 }

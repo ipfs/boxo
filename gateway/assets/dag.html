@@ -13,10 +13,10 @@
   <main id="main">
     <header>
       <div>
-        <strong>CID: <code translate="no">{{.CID}}</code></strong>
+        <strong>CID: <code translate="no">{{ .CID }}</code></strong>
       </div>
       <div>
-        <strong>Codec</strong>: <code translate="no">{{.CodecName}} ({{.CodecHex}})</code>
+        <strong>Codec</strong>: <code translate="no">{{ .CodecName }} ({{ .CodecHex }})</code>
       </div>
     </header>
     <section class="container">
@@ -28,6 +28,33 @@
         <li><a href="?format=dag-cbor" rel="nofollow">Valid DAG-CBOR</a> (specs at <a href="https://ipld.io/specs/codecs/dag-cbor/spec/" target="_blank" rel="noopener noreferrer">IPLD</a> and <a href="https://www.iana.org/assignments/media-types/application/vnd.ipld.dag-cbor" target="_blank" rel="noopener noreferrer">IANA</a>)</li>
       </ul>
     </section>
+    {{ with .Node }}
+      <section class="full-width">
+        <header>
+          <strong><span translate="no" style="text-transform: uppercase;">{{ $.CodecName }}</span> Preview</strong>
+        </header>
+      {{ template "node" (args $ .) }}
+      </section>
+    {{ end }}
   </main>
 </body>
 </html>
+
+{{ define "node" }}
+  {{ $root := index . 0 }}
+  {{ $node := index . 1 }}
+  {{ if len $node.Values }}
+    <div class="grid dag">
+    {{ range $index, $key := $node.Keys }}
+      {{ template "node" (args $root $key) }}
+      {{ template "node" (args $root (index $node.Values $index)) }}
+    {{ end }}
+    </div>
+  {{ else }}
+    <div translate="no">
+      {{ with $node.CID }}<a class="ipfs-hash" href={{ if $root.DNSLink }}"https://cid.ipfs.tech/#{{ . | urlEscape}}" target="_blank" rel="noreferrer noopener"{{ else }}"{{ $root.GatewayURL }}/ipfs/{{ . | urlEscape}}"{{ end }}>{{ end }}
+        <code class="nowrap">{{- $node.Value -}}</code>
+      {{ with $node.CID }}</a>{{ end }}
+    </div>
+  {{ end }}
+{{ end }}
