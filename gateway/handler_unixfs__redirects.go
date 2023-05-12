@@ -46,14 +46,14 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 	imRedirectsPath, err := NewImmutablePath(redirectsPath)
 	if err != nil {
 		err = fmt.Errorf("trouble processing _redirects path %q: %w", redirectsPath, err)
-		webError(w, err, http.StatusInternalServerError)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return ImmutablePath{}, false, true
 	}
 
 	foundRedirect, redirectRules, err := i.getRedirectRules(r, imRedirectsPath)
 	if err != nil {
 		err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsPath, err)
-		webError(w, err, http.StatusInternalServerError)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return ImmutablePath{}, false, true
 	}
 
@@ -61,7 +61,7 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 		redirected, newPath, err := i.handleRedirectsFileRules(w, r, immutableContentPath, contentPath, redirectRules)
 		if err != nil {
 			err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsPath, err)
-			webError(w, err, http.StatusInternalServerError)
+			i.webError(w, r, err, http.StatusInternalServerError)
 			return ImmutablePath{}, false, true
 		}
 
@@ -76,7 +76,7 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 			imPath, err := NewImmutablePath(p)
 			if err != nil {
 				err = fmt.Errorf("could not use _redirects file to %q: %w", p, err)
-				webError(w, err, http.StatusInternalServerError)
+				i.webError(w, r, err, http.StatusInternalServerError)
 				return ImmutablePath{}, false, true
 			}
 			return imPath, true, true

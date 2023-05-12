@@ -62,13 +62,13 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 	defer span.End()
 
 	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
-	if !i.handleRequestErrors(w, contentPath, err) {
+	if !i.handleRequestErrors(w, r, contentPath, err) {
 		return false
 	}
 	defer data.Close()
 
 	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
-		webRequestError(w, err)
+		i.webRequestError(w, r, err)
 		return false
 	}
 
@@ -90,7 +90,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	if resolvedPath.Remainder() != "" {
 		path := strings.TrimSuffix(resolvedPath.String(), resolvedPath.Remainder())
 		err := fmt.Errorf("%q of %q could not be returned: reading IPLD Kinds other than Links (CBOR Tag 42) is not implemented: try reading %q instead", resolvedPath.Remainder(), resolvedPath.String(), path)
-		webError(w, err, http.StatusNotImplemented)
+		i.webError(w, r, err, http.StatusNotImplemented)
 		return false
 	}
 
@@ -100,7 +100,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 		if !ok {
 			// Should not happen unless function is called with wrong parameters.
 			err := fmt.Errorf("content type not found for codec: %v", cidCodec)
-			webError(w, err, http.StatusInternalServerError)
+			i.webError(w, r, err, http.StatusInternalServerError)
 			return false
 		}
 		responseContentType = cidContentType
@@ -143,9 +143,8 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	// Let's first get the codecs that can be used with this content type.
 	toCodec, ok := contentTypeToCodec[requestedContentType]
 	if !ok {
-		// This is never supposed to happen unless function is called with wrong parameters.
-		err := fmt.Errorf("unsupported content type: %q", requestedContentType)
-		webError(w, err, http.StatusInternalServerError)
+		err := fmt.Errorf("converting from %q to %q is not supported", cidCodec.String(), requestedContentType)
+		i.webError(w, r, err, http.StatusBadRequest)
 		return false
 	}
 
@@ -172,13 +171,16 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 
 	cidCodec := mc.Code(resolvedPath.Cid().Prefix().Codec)
 	if err := assets.DagTemplate.Execute(w, assets.DagTemplateData{
+		GlobalData: assets.GlobalData{
+			Menu: i.config.Menu,
+		},
 		Path:      contentPath.String(),
 		CID:       resolvedPath.Cid().String(),
 		CodecName: cidCodec.String(),
 		CodecHex:  fmt.Sprintf("0x%x", uint64(cidCodec)),
 	}); err != nil {
 		err = fmt.Errorf("failed to generate HTML listing for this DAG: try fetching raw block with ?format=raw: %w", err)
-		webError(w, err, http.StatusInternalServerError)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
 	}
 
@@ -204,20 +206,20 @@ func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter
 	codec := blockCid.Prefix().Codec
 	decoder, err := multicodec.LookupDecoder(codec)
 	if err != nil {
-		webError(w, err, http.StatusInternalServerError)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
 	}
 
 	node := basicnode.Prototype.Any.NewBuilder()
 	err = decoder(node, blockData)
 	if err != nil {
-		webError(w, err, http.StatusInternalServerError)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
 	}
 
 	encoder, err := multicodec.LookupEncoder(uint64(toCodec))
 	if err != nil {
-		webError(w, err, http.StatusInternalServerError)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
 	}
 
@@ -225,7 +227,7 @@ func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter
 	var buf bytes.Buffer
 	err = encoder(node.Build(), &buf)
 	if err != nil {
-		webError(w, err, http.StatusInternalServerError)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
 	}
 

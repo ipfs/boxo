@@ -9,6 +9,7 @@ import (
 
 	"github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/files"
+	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/ipld/unixfs"
 	"github.com/ipfs/go-cid"
 )
@@ -40,6 +41,11 @@ type Config struct {
 	// PublicGateways configures the behavior of known public gateways. Each key is
 	// a fully qualified domain name (FQDN). To be used with WithHostname.
 	PublicGateways map[string]*Specification
+
+	// Menu adds items to the gateway menu that are shown in pages, such as
+	// directory listings, DAG previews and errors. These will be displayed to the
+	// right of "About IPFS" and "Install IPFS".
+	Menu []assets.MenuItem
 }
 
 // Specification is the specification of an IPFS Public Gateway.

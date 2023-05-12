@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/ipfs/boxo/gateway"
+	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -45,6 +46,14 @@ func NewHandler(gwAPI gateway.IPFSBackend) http.Handler {
 				// Localhost is considered trusted, ok to allow deserialized responses
 				// as long it is not exposed to the internet.
 				DeserializedResponses: true,
+			},
+		},
+
+		// Add an example menu item called 'Boxo', linking to our library.
+		Menu: []assets.MenuItem{
+			{
+				URL:   "https://github.com/ipfs/boxo",
+				Title: "Boxo",
 			},
 		},
 	}

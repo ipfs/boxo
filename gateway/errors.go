@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/path/resolver"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -121,7 +123,7 @@ func (e *ErrorResponse) Unwrap() error {
 	return e.Err
 }
 
-func webError(w http.ResponseWriter, err error, defaultCode int) {
+func (i *handler) webError(w http.ResponseWriter, r *http.Request, err error, defaultCode int) {
 	code := defaultCode
 
 	// Pass Retry-After hint to the client
@@ -153,7 +155,21 @@ func webError(w http.ResponseWriter, err error, defaultCode int) {
 		code = gwErr.StatusCode
 	}
 
-	http.Error(w, err.Error(), code)
+	acceptsHTML := strings.Contains(r.Header.Get("Accept"), "text/html")
+	if acceptsHTML {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(code)
+		_ = assets.ErrorTemplate.Execute(w, assets.ErrorTemplateData{
+			GlobalData: assets.GlobalData{
+				Menu: i.config.Menu,
+			},
+			StatusCode: code,
+			StatusText: http.StatusText(code),
+			Error:      err.Error(),
+		})
+	} else {
+		http.Error(w, err.Error(), code)
+	}
 }
 
 func isErrNotFound(err error) bool {
@@ -186,6 +202,6 @@ func isErrNotFound(err error) bool {
 	}
 }
 
-func webRequestError(w http.ResponseWriter, err *ErrorResponse) {
-	webError(w, err.Err, err.StatusCode)
+func (i *handler) webRequestError(w http.ResponseWriter, r *http.Request, err *ErrorResponse) {
+	i.webError(w, r, err.Err, err.StatusCode)
 }

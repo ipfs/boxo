@@ -14,6 +14,11 @@ The following emojis are used to highlight certain changes:
 
 ## [Unreleased]
 
+- ✨ The gateway templates were updated to provide better features for users and gateway implementers:
+  - New human-friendly error messages.
+  - Updated, higher-definition icons in directory listings.
+  - Customizable menu items next to "About IPFS" and "Install IPFS".
+
 ## [0.8.0] - 2023-04-05
 ### Added
 

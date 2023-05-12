@@ -36,7 +36,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	case http.MethodHead:
 		var data files.Node
 		pathMetadata, data, err = i.api.Head(ctx, maybeResolvedImPath)
-		if !i.handleRequestErrors(w, contentPath, err) {
+		if !i.handleRequestErrors(w, r, contentPath, err) {
 			return false
 		}
 		defer data.Close()
@@ -45,7 +45,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		} else if f, ok := data.(files.File); ok {
 			bytesResponse = f
 		} else {
-			webError(w, fmt.Errorf("unsupported response type"), http.StatusInternalServerError)
+			i.webError(w, r, fmt.Errorf("unsupported response type"), http.StatusInternalServerError)
 			return false
 		}
 	case http.MethodGet:
@@ -54,7 +54,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 			// TODO: Add tests for range parsing
 			ranges, err = parseRange(rangeHeader)
 			if err != nil {
-				webError(w, fmt.Errorf("invalid range request: %w", err), http.StatusBadRequest)
+				i.webError(w, r, fmt.Errorf("invalid range request: %w", err), http.StatusBadRequest)
 				return false
 			}
 		}
@@ -75,11 +75,11 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 				pathMetadata, getResp, err = i.api.Get(ctx, forwardedPath, ranges...)
 				if err != nil {
 					err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-					webError(w, err, http.StatusInternalServerError)
+					i.webError(w, r, err, http.StatusInternalServerError)
 					return false
 				}
 			} else {
-				if !i.handleRequestErrors(w, contentPath, err) {
+				if !i.handleRequestErrors(w, r, contentPath, err) {
 					return false
 				}
 			}
@@ -93,13 +93,13 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 
 	default:
 		// This shouldn't be possible to reach which is why it is a 500 rather than 4XX error
-		webError(w, fmt.Errorf("invalid method: cannot use this HTTP method with the given request"), http.StatusInternalServerError)
+		i.webError(w, r, fmt.Errorf("invalid method: cannot use this HTTP method with the given request"), http.StatusInternalServerError)
 		return false
 	}
 
 	// TODO: check if we have a bug when maybeResolvedImPath is resolved and i.setIpfsRootsHeader works with pathMetadata returned by Get(maybeResolvedImPath)
 	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
-		webRequestError(w, err)
+		i.webRequestError(w, r, err)
 		return false
 	}
 
@@ -107,7 +107,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	switch mc.Code(resolvedPath.Cid().Prefix().Codec) {
 	case mc.Json, mc.DagJson, mc.Cbor, mc.DagCbor:
 		if bytesResponse == nil { // This should never happen
-			webError(w, fmt.Errorf("decoding error: data not usable as a file"), http.StatusInternalServerError)
+			i.webError(w, r, fmt.Errorf("decoding error: data not usable as a file"), http.StatusInternalServerError)
 			return false
 		}
 		logger.Debugw("serving codec", "path", contentPath)
@@ -129,7 +129,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 			return i.serveDirectory(ctx, w, r, resolvedPath, contentPath, isDirectoryHeadRequest, directoryMetadata, ranges, begin, logger)
 		}
 
-		webError(w, fmt.Errorf("unsupported UnixFS type"), http.StatusInternalServerError)
+		i.webError(w, r, fmt.Errorf("unsupported UnixFS type"), http.StatusInternalServerError)
 		return false
 	}
 }

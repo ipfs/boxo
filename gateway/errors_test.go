@@ -39,10 +39,16 @@ func TestErrRetryAfterAs(t *testing.T) {
 func TestWebError(t *testing.T) {
 	t.Parallel()
 
+	// Create a handler to be able to test `webError`.
+	api, _ := newMockAPI(t)
+	config := Config{Headers: map[string][]string{}}
+	handler := NewHandler(config, api).(*handler)
+
 	t.Run("429 Too Many Requests", func(t *testing.T) {
 		err := fmt.Errorf("wrapped for testing: %w", NewErrorRetryAfter(ErrTooManyRequests, 0))
 		w := httptest.NewRecorder()
-		webError(w, err, http.StatusInternalServerError)
+		r := httptest.NewRequest(http.MethodGet, "/blah", nil)
+		handler.webError(w, r, err, http.StatusInternalServerError)
 		assert.Equal(t, http.StatusTooManyRequests, w.Result().StatusCode)
 		assert.Zero(t, len(w.Result().Header.Values("Retry-After")))
 	})
@@ -50,7 +56,8 @@ func TestWebError(t *testing.T) {
 	t.Run("429 Too Many Requests with Retry-After header", func(t *testing.T) {
 		err := NewErrorRetryAfter(ErrTooManyRequests, 25*time.Second)
 		w := httptest.NewRecorder()
-		webError(w, err, http.StatusInternalServerError)
+		r := httptest.NewRequest(http.MethodGet, "/blah", nil)
+		handler.webError(w, r, err, http.StatusInternalServerError)
 		assert.Equal(t, http.StatusTooManyRequests, w.Result().StatusCode)
 		assert.Equal(t, "25", w.Result().Header.Get("Retry-After"))
 	})
@@ -58,7 +65,8 @@ func TestWebError(t *testing.T) {
 	t.Run("503 Service Unavailable with Retry-After header", func(t *testing.T) {
 		err := NewErrorRetryAfter(ErrServiceUnavailable, 50*time.Second)
 		w := httptest.NewRecorder()
-		webError(w, err, http.StatusInternalServerError)
+		r := httptest.NewRequest(http.MethodGet, "/blah", nil)
+		handler.webError(w, r, err, http.StatusInternalServerError)
 		assert.Equal(t, http.StatusServiceUnavailable, w.Result().StatusCode)
 		assert.Equal(t, "50", w.Result().Header.Get("Retry-After"))
 	})

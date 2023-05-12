@@ -521,6 +521,44 @@ func TestPretty404(t *testing.T) {
 	}
 }
 
+func TestBrowserErrorHTML(t *testing.T) {
+	ts, _, root := newTestServerAndNode(t, nil)
+	t.Logf("test server url: %s", ts.URL)
+
+	t.Run("plain error if request does not have Accept: text/html", func(t *testing.T) {
+		t.Parallel()
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/"+root.String()+"/nonexisting-link", nil)
+		assert.Nil(t, err)
+
+		res, err := doWithoutRedirect(req)
+		assert.Nil(t, err)
+		assert.Equal(t, http.StatusNotFound, res.StatusCode)
+		assert.NotContains(t, res.Header.Get("Content-Type"), "text/html")
+
+		body, err := io.ReadAll(res.Body)
+		assert.Nil(t, err)
+		assert.NotContains(t, string(body), "<!DOCTYPE html>")
+	})
+
+	t.Run("html error if request has Accept: text/html", func(t *testing.T) {
+		t.Parallel()
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/"+root.String()+"/nonexisting-link", nil)
+		assert.Nil(t, err)
+		req.Header.Set("Accept", "text/html")
+
+		res, err := doWithoutRedirect(req)
+		assert.Nil(t, err)
+		assert.Equal(t, http.StatusNotFound, res.StatusCode)
+		assert.Contains(t, res.Header.Get("Content-Type"), "text/html")
+
+		body, err := io.ReadAll(res.Body)
+		assert.Nil(t, err)
+		assert.Contains(t, string(body), "<!DOCTYPE html>")
+	})
+}
+
 func TestCacheControlImmutable(t *testing.T) {
 	ts, _, root := newTestServerAndNode(t, nil)
 	t.Logf("test server url: %s", ts.URL)

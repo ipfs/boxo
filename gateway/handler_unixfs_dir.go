@@ -34,7 +34,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	// the redirects and links would end up as http://example.net/ipns/example.net
 	requestURI, err := url.ParseRequestURI(r.RequestURI)
 	if err != nil {
-		webError(w, fmt.Errorf("failed to parse request path: %w", err), http.StatusInternalServerError)
+		i.webError(w, r, fmt.Errorf("failed to parse request path: %w", err), http.StatusInternalServerError)
 		return false
 	}
 	originalURLPath := requestURI.Path
@@ -62,7 +62,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	idxPath := ipath.Join(contentPath, "index.html")
 	imIndexPath, err := NewImmutablePath(ipath.Join(resolvedPath, "index.html"))
 	if err != nil {
-		webError(w, err, http.StatusInternalServerError)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
 	}
 
@@ -74,7 +74,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		if err == nil {
 			f, ok := idx.(files.File)
 			if !ok {
-				webError(w, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
+				i.webError(w, r, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
 				return false
 			}
 			idxFile = f
@@ -84,7 +84,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		_, getResp, err = i.api.Get(ctx, imIndexPath, ranges...)
 		if err == nil {
 			if getResp.bytes == nil {
-				webError(w, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
+				i.webError(w, r, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
 				return false
 			}
 			idxFile = getResp.bytes
@@ -104,7 +104,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	if isErrNotFound(err) {
 		logger.Debugw("no index.html; noop", "path", idxPath)
 	} else if err != nil {
-		webError(w, err, http.StatusInternalServerError)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
 	}
 
@@ -134,7 +134,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	var dirListing []assets.DirectoryItem
 	for l := range directoryMetadata.entries {
 		if l.Err != nil {
-			webError(w, l.Err, http.StatusInternalServerError)
+			i.webError(w, r, l.Err, http.StatusInternalServerError)
 			return false
 		}
 
@@ -199,6 +199,9 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 
 	// See comment above where originalUrlPath is declared.
 	tplData := assets.DirectoryTemplateData{
+		GlobalData: assets.GlobalData{
+			Menu: i.config.Menu,
+		},
 		GatewayURL:  gwURL,
 		DNSLink:     dnslink,
 		Listing:     dirListing,
@@ -212,7 +215,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	logger.Debugw("request processed", "tplDataDNSLink", dnslink, "tplDataSize", size, "tplDataBackLink", backLink, "tplDataHash", hash)
 
 	if err := assets.DirectoryTemplate.Execute(w, tplData); err != nil {
-		webError(w, err, http.StatusInternalServerError)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
 	}
 
