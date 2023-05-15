@@ -41,7 +41,9 @@ type FindProvidersAsyncResponse struct {
 }
 
 type ContentRouter interface {
-	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error)
+	// FindProviders searches for peers who are able to provide a given key. Stream
+	// indicates whether or not this request will be responded as a stream.
+	FindProviders(ctx context.Context, key cid.Cid, stream bool) (iter.ResultIter[types.ProviderResponse], error)
 	ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error)
 	Provide(ctx context.Context, req *WriteProvideRequest) (types.ProviderResponse, error)
 }
@@ -170,9 +172,11 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 
 	var supportsNDJSON bool
 	var supportsJSON bool
+	var streaming bool
 	acceptHeaders := httpReq.Header.Values("Accept")
 	if len(acceptHeaders) == 0 {
 		handlerFunc = s.findProvidersJSON
+		streaming = false
 	} else {
 		for _, acceptHeader := range acceptHeaders {
 			for _, accept := range strings.Split(acceptHeader, ",") {
@@ -193,15 +197,17 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 
 		if supportsNDJSON && !s.disableNDJSON {
 			handlerFunc = s.findProvidersNDJSON
+			streaming = true
 		} else if supportsJSON {
 			handlerFunc = s.findProvidersJSON
+			streaming = false
 		} else {
 			writeErr(w, "FindProviders", http.StatusBadRequest, errors.New("no supported content types"))
 			return
 		}
 	}
 
-	provIter, err := s.svc.FindProviders(httpReq.Context(), cid)
+	provIter, err := s.svc.FindProviders(httpReq.Context(), cid, streaming)
 	if err != nil {
 		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return

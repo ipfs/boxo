@@ -27,8 +27,8 @@ import (
 
 type mockContentRouter struct{ mock.Mock }
 
-func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error) {
-	args := m.Called(ctx, key)
+func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, stream bool) (iter.ResultIter[types.ProviderResponse], error) {
+	args := m.Called(ctx, key, stream)
 	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
 }
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.BitswapWriteProvideRequest) (time.Duration, error) {
@@ -302,7 +302,7 @@ func TestClient_FindProviders(t *testing.T) {
 
 			findProvsIter := iter.FromSlice(c.routerProvs)
 
-			router.On("FindProviders", mock.Anything, cid).
+			router.On("FindProviders", mock.Anything, cid, c.expStreamingResponse).
 				Return(findProvsIter, c.routerErr)
 
 			provsIter, err := client.FindProviders(ctx, cid)

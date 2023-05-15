@@ -33,7 +33,7 @@ func TestHeaders(t *testing.T) {
 	cb, err := cid.Decode(c)
 	require.NoError(t, err)
 
-	router.On("FindProviders", mock.Anything, cb).
+	router.On("FindProviders", mock.Anything, cb, false).
 		Return(results, nil)
 
 	resp, err := http.Get(serverAddr + ProvidePath + c)
@@ -63,7 +63,7 @@ func TestResponse(t *testing.T) {
 	cid, err := cid.Decode(cidStr)
 	require.NoError(t, err)
 
-	runTest := func(t *testing.T, contentType string, expected string) {
+	runTest := func(t *testing.T, contentType string, expectedStream bool, expectedBody string) {
 		t.Parallel()
 
 		results := iter.FromSlice([]iter.Result[types.ProviderResponse]{
@@ -85,7 +85,7 @@ func TestResponse(t *testing.T) {
 		server := httptest.NewServer(Handler(router))
 		t.Cleanup(server.Close)
 		serverAddr := "http://" + server.Listener.Addr().String()
-		router.On("FindProviders", mock.Anything, cid).Return(results, nil)
+		router.On("FindProviders", mock.Anything, cid, expectedStream).Return(results, nil)
 		urlStr := serverAddr + ProvidePath + cidStr
 
 		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
@@ -101,22 +101,22 @@ func TestResponse(t *testing.T) {
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		require.Equal(t, string(body), expected)
+		require.Equal(t, string(body), expectedBody)
 	}
 
 	t.Run("JSON Response", func(t *testing.T) {
-		runTest(t, mediaTypeJSON, `{"Providers":[{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Addrs":[]},{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz","Addrs":[]}]}`)
+		runTest(t, mediaTypeJSON, false, `{"Providers":[{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Addrs":[]},{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz","Addrs":[]}]}`)
 	})
 
 	t.Run("NDJSON Response", func(t *testing.T) {
-		runTest(t, mediaTypeNDJSON, `{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Addrs":[]}`+"\n"+`{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz","Addrs":[]}`+"\n")
+		runTest(t, mediaTypeNDJSON, true, `{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Addrs":[]}`+"\n"+`{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz","Addrs":[]}`+"\n")
 	})
 }
 
 type mockContentRouter struct{ mock.Mock }
 
-func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error) {
-	args := m.Called(ctx, key)
+func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, stream bool) (iter.ResultIter[types.ProviderResponse], error) {
+	args := m.Called(ctx, key, stream)
 	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
 }
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error) {
