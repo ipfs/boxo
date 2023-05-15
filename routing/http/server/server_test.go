@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -46,6 +48,60 @@ func TestHeaders(t *testing.T) {
 	require.Equal(t, 400, resp.StatusCode)
 	header = resp.Header.Get("Content-Type")
 	require.Equal(t, "text/plain; charset=utf-8", header)
+}
+
+func TestResponse(t *testing.T) {
+	pidStr := "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn"
+	cidStr := "bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4"
+
+	pid, err := peer.Decode(pidStr)
+	require.NoError(t, err)
+
+	cid, err := cid.Decode(cidStr)
+	require.NoError(t, err)
+
+	runTest := func(t *testing.T, contentType string, expected string) {
+		t.Parallel()
+
+		results := iter.FromSlice([]iter.Result[types.ProviderResponse]{
+			{Val: &types.ReadBitswapProviderRecord{
+				Protocol: "transport-bitswap",
+				Schema:   types.SchemaBitswap,
+				ID:       &pid,
+				Addrs:    []types.Multiaddr{},
+			}}},
+		)
+
+		router := &mockContentRouter{}
+		server := httptest.NewServer(Handler(router))
+		t.Cleanup(server.Close)
+		serverAddr := "http://" + server.Listener.Addr().String()
+		router.On("FindProviders", mock.Anything, cid).Return(results, nil)
+		urlStr := serverAddr + ProvidePath + cidStr
+
+		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", contentType)
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.StatusCode)
+		header := resp.Header.Get("Content-Type")
+		require.Equal(t, contentType, header)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		require.Equal(t, string(body), expected)
+	}
+
+	t.Run("JSON Response", func(t *testing.T) {
+		runTest(t, mediaTypeJSON, `{"Providers":[{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Addrs":[]}]}`)
+	})
+
+	t.Run("NDJSON Response", func(t *testing.T) {
+		runTest(t, mediaTypeNDJSON, `{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Addrs":[]}`+"\n")
+	})
 }
 
 type mockContentRouter struct{ mock.Mock }

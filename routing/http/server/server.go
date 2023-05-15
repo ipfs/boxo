@@ -254,6 +254,13 @@ func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.Result
 			logger.Warn("FindProviders ndjson write error", "Error", err)
 			return
 		}
+
+		_, err = w.Write([]byte{'\n'})
+		if err != nil {
+			logger.Warn("FindProviders ndjson write error", "Error", err)
+			return
+		}
+
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
