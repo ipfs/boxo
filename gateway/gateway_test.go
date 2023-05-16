@@ -546,3 +546,30 @@ func TestGoGetSupport(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
+
+func TestIpnsBase58MultihashRedirect(t *testing.T) {
+	ts, _, _ := newTestServerAndNode(t, nil)
+	t.Logf("test server url: %s", ts.URL)
+
+	t.Run("ED25519 Base58-encoded key", func(t *testing.T) {
+		t.Parallel()
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipns/12D3KooWRBy97UB99e3J6hiPesre1MZeuNQvfan4gBziswrRJsNK?keep=query", nil)
+		assert.Nil(t, err)
+
+		res, err := doWithoutRedirect(req)
+		assert.Nil(t, err)
+		assert.Equal(t, "/ipns/k51qzi5uqu5dlvj2baxnqndepeb86cbk3ng7n3i46uzyxzyqj2xjonzllnv0v8?keep=query", res.Header.Get("Location"))
+	})
+
+	t.Run("RSA Base58-encoded key", func(t *testing.T) {
+		t.Parallel()
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipns/QmcJM7PRfkSbcM5cf1QugM5R37TLRKyJGgBEhXjLTB8uA2?keep=query", nil)
+		assert.Nil(t, err)
+
+		res, err := doWithoutRedirect(req)
+		assert.Nil(t, err)
+		assert.Equal(t, "/ipns/k2k4r8ol4m8kkcqz509c1rcjwunebj02gcnm5excpx842u736nja8ger?keep=query", res.Header.Get("Location"))
+	})
+}
