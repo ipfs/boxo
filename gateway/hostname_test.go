@@ -15,7 +15,7 @@ import (
 func TestToSubdomainURL(t *testing.T) {
 	gwAPI, _ := newMockAPI(t)
 	testCID, err := cid.Decode("bafkqaglimvwgy3zakrsxg5cun5jxkyten5wwc2lokvjeycq")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	gwAPI.namesys["/ipns/dnslink.long-name.example.com"] = path.FromString(testCID.String())
 	gwAPI.namesys["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = path.FromString(testCID.String())

@@ -91,10 +91,10 @@ func TestGatewayBadRequestInvalidPath(t *testing.T) {
 	t.Logf("test server url: %s", ts.URL)
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/QmInvalid/Path", nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	res, err := ts.Client().Do(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
 }
@@ -118,10 +118,10 @@ func TestErrorBubblingFromAPI(t *testing.T) {
 			t.Logf("test server url: %s", ts.URL)
 
 			req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipns/en.wikipedia-on-ipfs.org", nil)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 
 			res, err := ts.Client().Do(req)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			assert.Equal(t, test.status, res.StatusCode)
 		})
 	}
@@ -143,10 +143,10 @@ func TestErrorBubblingFromAPI(t *testing.T) {
 		t.Logf("test server url: %s", ts.URL)
 
 		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipns/en.wikipedia-on-ipfs.org", nil)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		res, err := ts.Client().Do(req)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, test.status, res.StatusCode)
 		assert.Equal(t, test.headerValue, res.Header.Get(test.headerName))
 		assert.Equal(t, test.headerLength, len(res.Header.Values(test.headerName)))
@@ -210,10 +210,10 @@ func TestGatewayStatusCodeOnPanic(t *testing.T) {
 	t.Logf("test server url: %s", ts.URL)
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e", nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	res, err := ts.Client().Do(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
 }
 
@@ -223,9 +223,9 @@ func TestGatewayStatusCodeOnHostnamePanic(t *testing.T) {
 	t.Logf("test server url: %s", ts.URL)
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e", nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	res, err := ts.Client().Do(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
 }

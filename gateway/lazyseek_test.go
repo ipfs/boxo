@@ -30,26 +30,26 @@ func TestLazySeekerError(t *testing.T) {
 		size:   underlyingBuffer.Size(),
 	}
 	off, err := s.Seek(0, io.SeekEnd)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, s.size, off, "expected to seek to the end")
 
 	// shouldn't have actually seeked.
 	b, err := io.ReadAll(s)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 0, len(b), "expected to read nothing")
 
 	// shouldn't need to actually seek.
 	off, err = s.Seek(0, io.SeekStart)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, int64(0), off, "expected to seek to the start")
 
 	b, err = io.ReadAll(s)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, "fubar", string(b), "expected to read string")
 
 	// should fail the second time.
 	off, err = s.Seek(0, io.SeekStart)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, int64(0), off, "expected to seek to the start")
 
 	// right here...
@@ -69,7 +69,7 @@ func TestLazySeeker(t *testing.T) {
 		t.Helper()
 		var buf [1]byte
 		n, err := io.ReadFull(s, buf[:])
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, 1, n, "expected to read one byte, read %d", n)
 		assert.Equal(t, b, buf[0])
 	}
@@ -77,7 +77,7 @@ func TestLazySeeker(t *testing.T) {
 		t.Helper()
 		n, err := s.Seek(off, whence)
 		if expErr == "" {
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 		} else {
 			assert.EqualError(t, err, expErr)
 		}
@@ -86,7 +86,7 @@ func TestLazySeeker(t *testing.T) {
 
 	expectSeek(io.SeekEnd, 0, s.size, "")
 	b, err := io.ReadAll(s)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 0, len(b), "expected to read nothing")
 	expectSeek(io.SeekEnd, -1, s.size-1, "")
 	expectByte('r')

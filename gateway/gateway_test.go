@@ -79,10 +79,10 @@ var _ IPFSBackend = (*mockAPI)(nil)
 
 func newMockAPI(t *testing.T) (*mockAPI, cid.Cid) {
 	r, err := os.Open("./testdata/fixtures.car")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	blockStore, err := carblockstore.NewReadOnly(r, nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	t.Cleanup(func() {
 		blockStore.Close()
@@ -90,7 +90,7 @@ func newMockAPI(t *testing.T) (*mockAPI, cid.Cid) {
 	})
 
 	cids, err := blockStore.Roots()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Len(t, cids, 1)
 
 	blockService := blockservice.New(blockStore, offline.Exchange(blockStore))
@@ -226,7 +226,7 @@ func TestGatewayGet(t *testing.T) {
 	defer cancel()
 
 	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name(), "fnord"))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	api.namesys["/ipns/example.com"] = path.FromCid(k.Cid())
 	api.namesys["/ipns/working.example.com"] = path.FromString(k.String())
@@ -274,14 +274,14 @@ func TestGatewayGet(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			var c http.Client
 			r, err := http.NewRequest(http.MethodGet, ts.URL+test.path, nil)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			r.Host = test.host
 			resp, err := c.Do(r)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			defer resp.Body.Close()
 			assert.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 			body, err := io.ReadAll(resp.Body)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			assert.Equal(t, test.status, resp.StatusCode, "body", body)
 			assert.Equal(t, test.text, string(body))
 		})
@@ -317,9 +317,9 @@ func TestUriQueryRedirect(t *testing.T) {
 		testName := ts.URL + test.path
 		t.Run(testName, func(t *testing.T) {
 			r, err := http.NewRequest(http.MethodGet, ts.URL+test.path, nil)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			resp, err := doWithoutRedirect(r)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			defer resp.Body.Close()
 			assert.Equal(t, test.status, resp.StatusCode)
 			assert.Equal(t, test.location, resp.Header.Get("Location"))
@@ -335,18 +335,18 @@ func TestIPNSHostnameRedirect(t *testing.T) {
 	defer cancel()
 
 	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	t.Logf("k: %s\n", k)
 	api.namesys["/ipns/example.net"] = path.FromString(k.String())
 
 	// make request to directory containing index.html
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/foo", nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	req.Host = "example.net"
 
 	res, err := doWithoutRedirect(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// expect 301 redirect to same path, but with trailing slash
 	assert.Equal(t, http.StatusMovedPermanently, res.StatusCode)
@@ -356,11 +356,11 @@ func TestIPNSHostnameRedirect(t *testing.T) {
 
 	// make request with prefix to directory containing index.html
 	req, err = http.NewRequest(http.MethodGet, ts.URL+"/foo", nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	req.Host = "example.net"
 
 	res, err = doWithoutRedirect(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	// expect 301 redirect to same path, but with prefix and trailing slash
 	assert.Equal(t, http.StatusMovedPermanently, res.StatusCode)
 
@@ -370,11 +370,11 @@ func TestIPNSHostnameRedirect(t *testing.T) {
 
 	// make sure /version isn't exposed
 	req, err = http.NewRequest(http.MethodGet, ts.URL+"/version", nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	req.Host = "example.net"
 
 	res, err = doWithoutRedirect(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, res.StatusCode)
 }
 
@@ -390,29 +390,29 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	defer cancel()
 
 	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// create /ipns/example.net/foo/
 	k2, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(k, "foo? #<'"))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	k3, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(k, "foo? #<'/bar"))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	t.Logf("k: %s\n", k)
 	api.namesys["/ipns/example.net"] = path.FromString(k.String())
 
 	// make request to directory listing
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/foo%3F%20%23%3C%27/", nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	req.Host = "example.net"
 
 	res, err := doWithoutRedirect(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// expect correct links
 	body, err := io.ReadAll(res.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	s := string(body)
 	t.Logf("body: %s\n", string(body))
 
@@ -425,15 +425,15 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 
 	// make request to directory listing at root
 	req, err = http.NewRequest(http.MethodGet, ts.URL, nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	req.Host = "example.net"
 
 	res, err = doWithoutRedirect(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// expect correct backlinks at root
 	body, err = io.ReadAll(res.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	s = string(body)
 	t.Logf("body: %s\n", string(body))
@@ -447,15 +447,15 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 
 	// make request to directory listing
 	req, err = http.NewRequest(http.MethodGet, ts.URL+"/foo%3F%20%23%3C%27/bar/", nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	req.Host = "example.net"
 
 	res, err = doWithoutRedirect(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// expect correct backlinks
 	body, err = io.ReadAll(res.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	s = string(body)
 	t.Logf("body: %s\n", string(body))
@@ -474,7 +474,7 @@ func TestPretty404(t *testing.T) {
 	defer cancel()
 
 	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	host := "example.net"
 	api.namesys["/ipns/"+host] = path.FromString(k.String())
@@ -499,15 +499,15 @@ func TestPretty404(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			var c http.Client
 			req, err := http.NewRequest("GET", ts.URL+test.path, nil)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			req.Header.Add("Accept", test.accept)
 			req.Host = host
 			resp, err := c.Do(req)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			defer resp.Body.Close()
 			assert.Equal(t, test.status, resp.StatusCode)
 			body, err := io.ReadAll(resp.Body)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			if test.text != "" {
 				assert.Equal(t, test.text, string(body))
 			}
@@ -520,10 +520,10 @@ func TestCacheControlImmutable(t *testing.T) {
 	t.Logf("test server url: %s", ts.URL)
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/"+root.String()+"/", nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	res, err := doWithoutRedirect(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// check the immutable tag isn't set
 	hdrs, ok := res.Header["Cache-Control"]
@@ -540,9 +540,9 @@ func TestGoGetSupport(t *testing.T) {
 
 	// mimic go-get
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/"+root.String()+"?go-get=1", nil)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	res, err := doWithoutRedirect(req)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
