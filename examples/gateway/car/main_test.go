@@ -36,39 +36,39 @@ func newTestServer() (*httptest.Server, io.Closer, error) {
 
 func TestDirectoryTraverse(t *testing.T) {
 	ts, f, err := newTestServer()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	defer f.Close()
 
 	res, err := http.Get(ts.URL + "/ipfs/" + BaseCID + "/hello.txt")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	body, err := io.ReadAll(res.Body)
 	res.Body.Close()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.EqualValues(t, string(body), "hello world\n")
 }
 
 func TestFile(t *testing.T) {
 	ts, f, err := newTestServer()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	defer f.Close()
 
 	res, err := http.Get(ts.URL + "/ipfs/bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	body, err := io.ReadAll(res.Body)
 	res.Body.Close()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.EqualValues(t, string(body), "hello world\n")
 }
 
 func TestDirectoryAsDAG(t *testing.T) {
 	ts, f, err := newTestServer()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	defer f.Close()
 
 	res, err := http.Get(ts.URL + "/ipfs/" + BaseCID + "?format=dag-json")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	defer res.Body.Close()
 
 	contentType := res.Header.Get("Content-Type")
@@ -77,33 +77,33 @@ func TestDirectoryAsDAG(t *testing.T) {
 	// Parses the DAG-JSON response.
 	dag := basicnode.Prototype.Any.NewBuilder()
 	err = dagjson.Decode(dag, res.Body)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// Checks for the links inside the logical model.
 	links, err := dag.Build().LookupByString("Links")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// Checks if there are 2 links.
 	assert.EqualValues(t, links.Length(), 2)
 
 	// Check if the first item is correct.
 	n, err := links.LookupByIndex(0)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.NotNil(t, n)
 
 	nameNode, err := n.LookupByString("Name")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.NotNil(t, nameNode)
 
 	name, err := nameNode.AsString()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.EqualValues(t, name, "eye.png")
 
 	hashNode, err := n.LookupByString("Hash")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.NotNil(t, hashNode)
 
 	hash, err := hashNode.AsLink()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.EqualValues(t, hash.String(), "bafybeigmlfksb374fdkxih4urny2yiyazyra2375y2e4a72b3jcrnthnau")
 }

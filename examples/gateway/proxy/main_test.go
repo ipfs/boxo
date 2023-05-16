@@ -49,11 +49,11 @@ func TestErrorOnInvalidContent(t *testing.T) {
 	ts := newProxyGateway(t, rs)
 
 	res, err := http.Get(ts.URL + "/ipfs/" + HelloWorldCID)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	body, err := io.ReadAll(res.Body)
 	res.Body.Close()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.EqualValues(t, http.StatusInternalServerError, res.StatusCode)
 	assert.Contains(t, string(body), blocks.ErrWrongHash.Error())
 }
@@ -66,11 +66,11 @@ func TestPassOnOnCorrectContent(t *testing.T) {
 	ts := newProxyGateway(t, rs)
 
 	res, err := http.Get(ts.URL + "/ipfs/" + HelloWorldCID)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	body, err := io.ReadAll(res.Body)
 	res.Body.Close()
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.EqualValues(t, http.StatusOK, res.StatusCode)
 	assert.EqualValues(t, string(body), "hello world")
 }
@@ -78,12 +78,12 @@ func TestPassOnOnCorrectContent(t *testing.T) {
 func TestTraceContext(t *testing.T) {
 	doCheckRequest := func(t *testing.T, req *http.Request) {
 		res, err := http.DefaultClient.Do(req)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.EqualValues(t, http.StatusOK, res.StatusCode)
 		defer res.Body.Close()
 
 		body, err := io.ReadAll(res.Body)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.EqualValues(t, string(body), "hello world")
 	}
 
@@ -98,7 +98,7 @@ func TestTraceContext(t *testing.T) {
 	defer cancel()
 
 	tp, err := common.SetupTracing(ctx, "Proxy Test")
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	defer (func() { _ = tp.Shutdown(ctx) })()
 
 	t.Run("Re-use Traceparent Trace ID Of Initial Request", func(t *testing.T) {
@@ -116,7 +116,7 @@ func TestTraceContext(t *testing.T) {
 		ts := newProxyGateway(t, rs)
 
 		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/"+HelloWorldCID, nil)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		req.Header.Set("Traceparent", fmt.Sprintf("%s-%s-%s-%s", traceVersion, traceID, traceParentID, traceFlags))
 		doCheckRequest(t, req)
 	})
@@ -135,7 +135,7 @@ func TestTraceContext(t *testing.T) {
 		ts := newProxyGateway(t, rs)
 
 		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/"+HelloWorldCID, nil)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		doCheckRequest(t, req)
 	})
 }
