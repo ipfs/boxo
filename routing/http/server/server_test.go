@@ -52,9 +52,12 @@ func TestHeaders(t *testing.T) {
 
 func TestResponse(t *testing.T) {
 	pidStr := "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn"
+	pid2Str := "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"
 	cidStr := "bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4"
 
 	pid, err := peer.Decode(pidStr)
+	require.NoError(t, err)
+	pid2, err := peer.Decode(pid2Str)
 	require.NoError(t, err)
 
 	cid, err := cid.Decode(cidStr)
@@ -68,6 +71,12 @@ func TestResponse(t *testing.T) {
 				Protocol: "transport-bitswap",
 				Schema:   types.SchemaBitswap,
 				ID:       &pid,
+				Addrs:    []types.Multiaddr{},
+			}},
+			{Val: &types.ReadBitswapProviderRecord{
+				Protocol: "transport-bitswap",
+				Schema:   types.SchemaBitswap,
+				ID:       &pid2,
 				Addrs:    []types.Multiaddr{},
 			}}},
 		)
@@ -96,11 +105,11 @@ func TestResponse(t *testing.T) {
 	}
 
 	t.Run("JSON Response", func(t *testing.T) {
-		runTest(t, mediaTypeJSON, `{"Providers":[{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Addrs":[]}]}`)
+		runTest(t, mediaTypeJSON, `{"Providers":[{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Addrs":[]},{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz","Addrs":[]}]}`)
 	})
 
 	t.Run("NDJSON Response", func(t *testing.T) {
-		runTest(t, mediaTypeNDJSON, `{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Addrs":[]}`+"\n")
+		runTest(t, mediaTypeNDJSON, `{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Addrs":[]}`+"\n"+`{"Protocol":"transport-bitswap","Schema":"bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz","Addrs":[]}`+"\n")
 	})
 }
 
