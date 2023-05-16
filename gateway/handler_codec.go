@@ -107,8 +107,8 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 		responseContentType = cidContentType
 	}
 
-	// Set HTTP headers (for caching etc)
-	modtime := addCacheControlHeaders(w, r, contentPath, resolvedPath.Cid())
+	// Set HTTP headers (for caching, etc). Etag will be replaced if handled by serveCodecHTML.
+	modtime := addCacheControlHeaders(w, r, contentPath, resolvedPath.Cid(), responseContentType)
 	name := setCodecContentDisposition(w, r, resolvedPath, responseContentType)
 	w.Header().Set("Content-Type", responseContentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")

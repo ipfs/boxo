@@ -264,8 +264,10 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
-	ifNoneMatchResolvedPath, ok := i.handleIfNoneMatch(w, r, responseFormat, contentPath, immutableContentPath, logger)
+	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified.
+	// For CARs and IPNS Records, ETags are built differently. The If-None-Match header
+	// is checked on their respective HTTP handlers.
+	ifNoneMatchResolvedPath, ok := i.handleIfNoneMatch(w, r, responseFormat, contentPath, immutableContentPath)
 	if !ok {
 		return
 	}
@@ -292,7 +294,9 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	case "application/vnd.ipld.car":
 		logger.Debugw("serving car stream", "path", contentPath)
 		carVersion := formatParams["version"]
-		success = i.serveCAR(r.Context(), w, r, maybeResolvedImPath, contentPath, carVersion, begin)
+		// Note: we are intentionally passing the full immutable content path rather than a resolved path since we
+		// want the CAR export to contain the entire path
+		success = i.serveCAR(r.Context(), w, r, immutableContentPath, contentPath, carVersion, begin)
 	case "application/x-tar":
 		logger.Debugw("serving tar file", "path", contentPath)
 		success = i.serveTAR(r.Context(), w, r, maybeResolvedImPath, contentPath, begin, logger)
@@ -395,9 +399,12 @@ func panicHandler(w http.ResponseWriter) {
 	}
 }
 
-func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath ipath.Path, fileCid cid.Cid) (modtime time.Time) {
-	// Set Etag to based on CID (override whatever was set before)
-	w.Header().Set("Etag", getEtag(r, fileCid))
+func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath ipath.Path, cid cid.Cid, responseFormat string) (modtime time.Time) {
+	// Best effort attempt to set an Etag based on the CID and response format.
+	// Setting an ETag is handled separately for CARs and IPNS records.
+	if etag := getEtag(r, cid, responseFormat); etag != "" {
+		w.Header().Set("Etag", etag)
+	}
 
 	// Set Cache-Control and Last-Modified based on contentPath properties
 	if contentPath.Mutable() {
@@ -528,6 +535,7 @@ func etagMatch(ifNoneMatchHeader string, etagsToCheck ...string) bool {
 				return true
 			}
 		}
+
 		buf = remain
 	}
 	return false
@@ -567,19 +575,31 @@ func etagWeakMatch(a, b string) bool {
 	return strings.TrimPrefix(a, "W/") == strings.TrimPrefix(b, "W/")
 }
 
-// generate Etag value based on HTTP request and CID
-func getEtag(r *http.Request, cid cid.Cid) string {
+// getEtag generates an ETag value based on an HTTP Request, a CID and a response
+// format. This function DOES NOT generate ETags for CARs or IPNS Records.
+func getEtag(r *http.Request, cid cid.Cid, responseFormat string) string {
 	prefix := `"`
 	suffix := `"`
-	responseFormat, _, err := customResponseFormat(r)
-	if err == nil && responseFormat != "" {
+
+	switch responseFormat {
+	case "":
+		// Do nothing.
+	case "application/vnd.ipld.car", "application/vnd.ipfs.ipns-record":
+		// CARs and IPNS Record ETags are handled differently, in their respective handler.
+		return ""
+	case "application/x-tar":
+		// Weak Etag W/ for formats that we can't guarantee byte-for-byte identical
+		// responses, but still want to benefit from HTTP Caching.
+		prefix = "W/" + prefix
+		fallthrough
+	default:
 		// application/vnd.ipld.foo → foo
 		// application/x-bar → x-bar
 		shortFormat := responseFormat[strings.LastIndexAny(responseFormat, "/.")+1:]
 		// Etag: "cid.shortFmt" (gives us nice compression together with Content-Disposition in block (raw) and car responses)
 		suffix = `.` + shortFormat + suffix
 	}
-	// TODO: include selector suffix when https://github.com/ipfs/kubo/issues/8769 lands
+
 	return prefix + cid.String() + suffix
 }
 
@@ -648,9 +668,9 @@ func debugStr(path string) string {
 	return q
 }
 
-func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, responseFormat string, contentPath ipath.Path, imPath ImmutablePath, logger *zap.SugaredLogger) (ipath.Resolved, bool) {
+func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, responseFormat string, contentPath ipath.Path, imPath ImmutablePath) (ipath.Resolved, bool) {
 	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
-	if inm := r.Header.Get("If-None-Match"); inm != "" {
+	if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" {
 		pathMetadata, err := i.api.ResolvePath(r.Context(), imPath)
 		if err != nil {
 			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
@@ -661,12 +681,14 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, resp
 
 		resolvedPath := pathMetadata.LastSegment
 		pathCid := resolvedPath.Cid()
-		// need to check against both File and Dir Etag variants
-		// because this inexpensive check happens before we do any I/O
-		cidEtag := getEtag(r, pathCid)
+
+		// Checks against both file, dir listing, and dag index Etags.
+		// This is an inexpensive check, and it happens before we do any I/O.
+		cidEtag := getEtag(r, pathCid, responseFormat)
 		dirEtag := getDirListingEtag(pathCid)
 		dagEtag := getDagIndexEtag(pathCid)
-		if etagMatch(inm, cidEtag, dirEtag, dagEtag) {
+
+		if etagMatch(ifNoneMatch, cidEtag, dirEtag, dagEtag) {
 			// Finish early if client already has a matching Etag
 			w.WriteHeader(http.StatusNotModified)
 			return nil, false

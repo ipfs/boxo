@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,15 +10,15 @@ import (
 	gopath "path"
 	"strings"
 
-	"go.uber.org/multierr"
-
 	"github.com/ipfs/boxo/blockservice"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	nsopts "github.com/ipfs/boxo/coreiface/options/namesys"
 	ifacepath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/fetcher"
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/files"
-	"github.com/ipfs/boxo/ipld/car"
+	"github.com/ipfs/boxo/ipld/car/v2"
+	"github.com/ipfs/boxo/ipld/car/v2/storage"
 	"github.com/ipfs/boxo/ipld/merkledag"
 	ufile "github.com/ipfs/boxo/ipld/unixfs/file"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
@@ -29,10 +30,15 @@ import (
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-unixfsnode"
+	"github.com/ipfs/go-unixfsnode/data"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/datamodel"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/ipld/go-ipld-prime/schema"
+	"github.com/ipld/go-ipld-prime/traversal"
+	"github.com/ipld/go-ipld-prime/traversal/selector"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -223,38 +229,218 @@ func (api *BlocksGateway) Head(ctx context.Context, path ImmutablePath) (Content
 	return md, fileNode, nil
 }
 
-func (api *BlocksGateway) GetCAR(ctx context.Context, path ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
-	// Same go-car settings as dag.export command
-	store := dagStore{api: api, ctx: ctx}
-
-	// TODO: When switching to exposing path blocks we'll want to add these as well
-	roots, lastSeg, err := api.getPathRoots(ctx, path)
+func (api *BlocksGateway) GetCAR(ctx context.Context, p ImmutablePath, params CarParams) (io.ReadCloser, error) {
+	contentPathStr := p.String()
+	if !strings.HasPrefix(contentPathStr, "/ipfs/") {
+		return nil, fmt.Errorf("path does not have /ipfs/ prefix")
+	}
+	firstSegment, _, _ := strings.Cut(contentPathStr[6:], "/")
+	rootCid, err := cid.Decode(firstSegment)
 	if err != nil {
-		return ContentPathMetadata{}, nil, nil, err
+		return nil, err
 	}
 
-	md := ContentPathMetadata{
-		PathSegmentRoots: roots,
-		LastSegment:      lastSeg,
-	}
-
-	rootCid := lastSeg.Cid()
-
-	// TODO: support selectors passed as request param: https://github.com/ipfs/kubo/issues/8769
-	// TODO: this is very slow if blocks are remote due to linear traversal. Do we need deterministic traversals here?
-	dag := car.Dag{Root: rootCid, Selector: selectorparse.CommonSelector_ExploreAllRecursively}
-	c := car.NewSelectiveCar(ctx, store, []car.Dag{dag}, car.TraverseLinksOnlyOnce())
 	r, w := io.Pipe()
-
-	errCh := make(chan error, 1)
 	go func() {
-		carWriteErr := c.Write(w)
-		pipeCloseErr := w.Close()
-		errCh <- multierr.Combine(carWriteErr, pipeCloseErr)
-		close(errCh)
+		cw, err := storage.NewWritable(w, []cid.Cid{rootCid}, car.WriteAsCarV1(true))
+		if err != nil {
+			// io.PipeWriter.CloseWithError always returns nil.
+			_ = w.CloseWithError(err)
+			return
+		}
+
+		blockGetter := merkledag.NewDAGService(api.blockService).Session(ctx)
+
+		blockGetter = &nodeGetterToCarExporer{
+			ng: blockGetter,
+			cw: cw,
+		}
+
+		// Setup the UnixFS resolver.
+		f := newNodeGetterFetcherSingleUseFactory(ctx, blockGetter)
+		pathResolver := resolver.NewBasicResolver(f)
+
+		lsys := cidlink.DefaultLinkSystem()
+		unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
+		lsys.StorageReadOpener = blockOpener(ctx, blockGetter)
+
+		// TODO: support selectors passed as request param: https://github.com/ipfs/kubo/issues/8769
+		// TODO: this is very slow if blocks are remote due to linear traversal. Do we need deterministic traversals here?
+		carWriteErr := walkGatewaySimpleSelector(ctx, ipfspath.Path(contentPathStr), params, &lsys, pathResolver)
+
+		// io.PipeWriter.CloseWithError always returns nil.
+		_ = w.CloseWithError(carWriteErr)
 	}()
 
-	return md, r, errCh, nil
+	return r, nil
+}
+
+// walkGatewaySimpleSelector walks the subgraph described by the path and terminal element parameters
+func walkGatewaySimpleSelector(ctx context.Context, p ipfspath.Path, params CarParams, lsys *ipld.LinkSystem, pathResolver resolver.Resolver) error {
+	// First resolve the path since we always need to.
+	lastCid, remainder, err := pathResolver.ResolveToLastNode(ctx, p)
+	if err != nil {
+		return err
+	}
+
+	lctx := ipld.LinkContext{Ctx: ctx}
+	pathTerminalCidLink := cidlink.Link{Cid: lastCid}
+
+	// If the scope is the block, now we only need to retrieve the root block of the last element of the path.
+	if params.Scope == dagScopeBlock {
+		_, err = lsys.LoadRaw(lctx, pathTerminalCidLink)
+		return err
+	}
+
+	// If we're asking for everything then give it
+	if params.Scope == dagScopeAll {
+		lastCidNode, err := lsys.Load(lctx, pathTerminalCidLink, basicnode.Prototype.Any)
+		if err != nil {
+			return err
+		}
+
+		sel, err := selector.ParseSelector(selectorparse.CommonSelector_ExploreAllRecursively)
+		if err != nil {
+			return err
+		}
+
+		progress := traversal.Progress{
+			Cfg: &traversal.Config{
+				Ctx:                            ctx,
+				LinkSystem:                     *lsys,
+				LinkTargetNodePrototypeChooser: bsfetcher.DefaultPrototypeChooser,
+				LinkVisitOnlyOnce:              true, // This is safe for the "all" selector
+			},
+		}
+
+		if err := progress.WalkMatching(lastCidNode, sel, func(progress traversal.Progress, node datamodel.Node) error {
+			return nil
+		}); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// From now on, dag-scope=entity!
+	// Since we need more of the graph load it to figure out what we have
+	// This includes determining if the terminal node is UnixFS or not
+	pc := dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
+		if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
+			return tlnkNd.LinkTargetNodePrototype(), nil
+		}
+		return basicnode.Prototype.Any, nil
+	})
+
+	np, err := pc(pathTerminalCidLink, lctx)
+	if err != nil {
+		return err
+	}
+
+	lastCidNode, err := lsys.Load(lctx, pathTerminalCidLink, np)
+	if err != nil {
+		return err
+	}
+
+	if pbn, ok := lastCidNode.(dagpb.PBNode); !ok {
+		// If it's not valid dag-pb then we're done
+		return nil
+	} else if len(remainder) > 0 {
+		// If we're trying to path into dag-pb node that's invalid and we're done
+		return nil
+	} else if !pbn.FieldData().Exists() {
+		// If it's not valid UnixFS then we're done
+		return nil
+	} else if unixfsFieldData, decodeErr := data.DecodeUnixFSData(pbn.Data.Must().Bytes()); decodeErr != nil {
+		// If it's not valid dag-pb and UnixFS then we're done
+		return nil
+	} else {
+		switch unixfsFieldData.FieldDataType().Int() {
+		case data.Data_Directory, data.Data_Symlink:
+			// These types are non-recursive so we're done
+			return nil
+		case data.Data_Raw, data.Data_Metadata:
+			// TODO: Is Data_Raw actually different from Data_File or is that a fiction?
+			// TODO: Deal with UnixFS Metadata being handled differently in boxo/ipld/unixfs than go-unixfsnode
+			// Not sure what to do here so just returning
+			return nil
+		case data.Data_HAMTShard:
+			// Return all elements in the map
+			_, err := lsys.KnownReifiers["unixfs-preload"](lctx, lastCidNode, lsys)
+			if err != nil {
+				return err
+			}
+			return nil
+		case data.Data_File:
+			nd, err := unixfsnode.Reify(lctx, lastCidNode, lsys)
+			if err != nil {
+				return err
+			}
+
+			fnd, ok := nd.(datamodel.LargeBytesNode)
+			if !ok {
+				return fmt.Errorf("could not process file since it did not present as large bytes")
+			}
+			f, err := fnd.AsLargeBytes()
+			if err != nil {
+				return err
+			}
+
+			// Get the entity range. If it's empty, assume the defaults (whole file).
+			entityRange := params.Range
+			if entityRange == nil {
+				entityRange = &DagEntityByteRange{
+					From: 0,
+				}
+			}
+
+			from := entityRange.From
+
+			// If we're starting to read based on the end of the file, find out where that is.
+			var fileLength int64
+			foundFileLength := false
+			if entityRange.From < 0 {
+				fileLength, err = f.Seek(0, io.SeekEnd)
+				if err != nil {
+					return err
+				}
+				from = fileLength + entityRange.From
+				foundFileLength = true
+			}
+
+			// If we're reading until the end of the file then do it
+			if entityRange.To == nil {
+				if _, err := f.Seek(from, io.SeekStart); err != nil {
+					return err
+				}
+				_, err = io.Copy(io.Discard, f)
+				return err
+			}
+
+			to := *entityRange.To
+			if (*entityRange.To) < 0 && !foundFileLength {
+				fileLength, err = f.Seek(0, io.SeekEnd)
+				if err != nil {
+					return err
+				}
+				to = fileLength + *entityRange.To
+				foundFileLength = true
+			}
+
+			numToRead := 1 + to - from
+			if numToRead < 0 {
+				return fmt.Errorf("tried to read less than zero bytes")
+			}
+
+			if _, err := f.Seek(from, io.SeekStart); err != nil {
+				return err
+			}
+			_, err = io.CopyN(io.Discard, f, numToRead)
+			return err
+		default:
+			// Not a supported type, so we're done
+			return nil
+		}
+	}
 }
 
 func (api *BlocksGateway) getNode(ctx context.Context, path ImmutablePath) (ContentPathMetadata, format.Node, error) {
@@ -324,16 +510,6 @@ func (api *BlocksGateway) getPathRoots(ctx context.Context, contentPath Immutabl
 
 	pathRoots = pathRoots[:len(pathRoots)-1]
 	return pathRoots, lastPath, nil
-}
-
-// FIXME(@Jorropo): https://github.com/ipld/go-car/issues/315
-type dagStore struct {
-	api *BlocksGateway
-	ctx context.Context
-}
-
-func (ds dagStore) Get(_ context.Context, c cid.Cid) (blocks.Block, error) {
-	return ds.api.blockService.GetBlock(ds.ctx, c)
 }
 
 func (api *BlocksGateway) ResolveMutable(ctx context.Context, p ifacepath.Path) (ImmutablePath, error) {
@@ -453,3 +629,147 @@ func (api *BlocksGateway) resolvePath(ctx context.Context, p ifacepath.Path) (if
 
 	return ifacepath.NewResolvedPath(ipath, node, root, gopath.Join(rest...)), nil
 }
+
+type nodeGetterToCarExporer struct {
+	ng format.NodeGetter
+	cw storage.WritableCar
+}
+
+func (n *nodeGetterToCarExporer) Get(ctx context.Context, c cid.Cid) (format.Node, error) {
+	nd, err := n.ng.Get(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := n.trySendBlock(ctx, nd); err != nil {
+		return nil, err
+	}
+
+	return nd, nil
+}
+
+func (n *nodeGetterToCarExporer) GetMany(ctx context.Context, cids []cid.Cid) <-chan *format.NodeOption {
+	ndCh := n.ng.GetMany(ctx, cids)
+	outCh := make(chan *format.NodeOption)
+	go func() {
+		defer close(outCh)
+		for nd := range ndCh {
+			if nd.Err == nil {
+				if err := n.trySendBlock(ctx, nd.Node); err != nil {
+					select {
+					case outCh <- &format.NodeOption{Err: err}:
+					case <-ctx.Done():
+					}
+					return
+				}
+				select {
+				case outCh <- nd:
+				case <-ctx.Done():
+				}
+			}
+		}
+	}()
+	return outCh
+}
+
+func (n *nodeGetterToCarExporer) trySendBlock(ctx context.Context, block blocks.Block) error {
+	return n.cw.Put(ctx, block.Cid().KeyString(), block.RawData())
+}
+
+var _ format.NodeGetter = (*nodeGetterToCarExporer)(nil)
+
+type nodeGetterFetcherSingleUseFactory struct {
+	linkSystem   ipld.LinkSystem
+	protoChooser traversal.LinkTargetNodePrototypeChooser
+}
+
+func newNodeGetterFetcherSingleUseFactory(ctx context.Context, ng format.NodeGetter) *nodeGetterFetcherSingleUseFactory {
+	ls := cidlink.DefaultLinkSystem()
+	ls.TrustedStorage = true
+	ls.StorageReadOpener = blockOpener(ctx, ng)
+	ls.NodeReifier = unixfsnode.Reify
+
+	pc := dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
+		if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
+			return tlnkNd.LinkTargetNodePrototype(), nil
+		}
+		return basicnode.Prototype.Any, nil
+	})
+
+	return &nodeGetterFetcherSingleUseFactory{ls, pc}
+}
+
+func (n *nodeGetterFetcherSingleUseFactory) NewSession(ctx context.Context) fetcher.Fetcher {
+	return n
+}
+
+func (n *nodeGetterFetcherSingleUseFactory) NodeMatching(ctx context.Context, root ipld.Node, selector ipld.Node, cb fetcher.FetchCallback) error {
+	return n.nodeMatching(ctx, n.blankProgress(ctx), root, selector, cb)
+}
+
+func (n *nodeGetterFetcherSingleUseFactory) BlockOfType(ctx context.Context, link ipld.Link, nodePrototype ipld.NodePrototype) (ipld.Node, error) {
+	return n.linkSystem.Load(ipld.LinkContext{}, link, nodePrototype)
+}
+
+func (n *nodeGetterFetcherSingleUseFactory) BlockMatchingOfType(ctx context.Context, root ipld.Link, selector ipld.Node, nodePrototype ipld.NodePrototype, cb fetcher.FetchCallback) error {
+	// retrieve first node
+	prototype, err := n.PrototypeFromLink(root)
+	if err != nil {
+		return err
+	}
+	node, err := n.BlockOfType(ctx, root, prototype)
+	if err != nil {
+		return err
+	}
+
+	progress := n.blankProgress(ctx)
+	progress.LastBlock.Link = root
+	return n.nodeMatching(ctx, progress, node, selector, cb)
+}
+
+func (n *nodeGetterFetcherSingleUseFactory) PrototypeFromLink(lnk ipld.Link) (ipld.NodePrototype, error) {
+	return n.protoChooser(lnk, ipld.LinkContext{})
+}
+
+func (n *nodeGetterFetcherSingleUseFactory) nodeMatching(ctx context.Context, initialProgress traversal.Progress, node ipld.Node, match ipld.Node, cb fetcher.FetchCallback) error {
+	matchSelector, err := selector.ParseSelector(match)
+	if err != nil {
+		return err
+	}
+	return initialProgress.WalkMatching(node, matchSelector, func(prog traversal.Progress, n ipld.Node) error {
+		return cb(fetcher.FetchResult{
+			Node:          n,
+			Path:          prog.Path,
+			LastBlockPath: prog.LastBlock.Path,
+			LastBlockLink: prog.LastBlock.Link,
+		})
+	})
+}
+
+func (n *nodeGetterFetcherSingleUseFactory) blankProgress(ctx context.Context) traversal.Progress {
+	return traversal.Progress{
+		Cfg: &traversal.Config{
+			LinkSystem:                     n.linkSystem,
+			LinkTargetNodePrototypeChooser: n.protoChooser,
+		},
+	}
+}
+
+func blockOpener(ctx context.Context, ng format.NodeGetter) ipld.BlockReadOpener {
+	return func(_ ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
+		cidLink, ok := lnk.(cidlink.Link)
+		if !ok {
+			return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
+		}
+
+		blk, err := ng.Get(ctx, cidLink.Cid)
+		if err != nil {
+			return nil, err
+		}
+
+		return bytes.NewReader(blk.RawData()), nil
+	}
+}
+
+var _ fetcher.Fetcher = (*nodeGetterFetcherSingleUseFactory)(nil)
+var _ fetcher.Factory = (*nodeGetterFetcherSingleUseFactory)(nil)

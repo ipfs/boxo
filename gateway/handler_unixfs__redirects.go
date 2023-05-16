@@ -203,7 +203,7 @@ func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPat
 	log.Debugf("using _redirects: custom %d file at %q", status, content4xxPath)
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-	addCacheControlHeaders(w, r, content4xxPath, content4xxCid)
+	addCacheControlHeaders(w, r, content4xxPath, content4xxCid, "")
 	w.WriteHeader(status)
 	_, err = io.CopyN(w, content4xxFile, size)
 	return err

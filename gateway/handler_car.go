@@ -5,12 +5,22 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	ipath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/go-cid"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/multierr"
+)
+
+const (
+	carRangeBytesKey          = "entity-bytes"
+	carTerminalElementTypeKey = "dag-scope"
 )
 
 // serveCAR returns a CAR stream for specific DAG+selector
@@ -30,44 +40,52 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	pathMetadata, carFile, errCh, err := i.api.GetCAR(ctx, imPath)
-	if !i.handleRequestErrors(w, r, contentPath, err) {
-		return false
-	}
-	defer carFile.Close()
-
-	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
-		i.webRequestError(w, r, err)
+	params, err := getCarParams(r)
+	if err != nil {
+		i.webError(w, r, err, http.StatusBadRequest)
 		return false
 	}
 
-	rootCid := pathMetadata.LastSegment.Cid()
+	rootCid, lastSegment, err := getCarRootCidAndLastSegment(imPath)
+	if err != nil {
+		i.webError(w, r, err, http.StatusInternalServerError)
+		return false
+	}
+
+	w.Header().Set("X-Ipfs-Roots", rootCid.String())
 
 	// Set Content-Disposition
 	var name string
 	if urlFilename := r.URL.Query().Get("filename"); urlFilename != "" {
 		name = urlFilename
 	} else {
-		name = rootCid.String() + ".car"
+		name = rootCid.String()
+		if lastSegment != "" {
+			name += "_" + lastSegment
+		}
+		name += ".car"
 	}
 	setContentDispositionHeader(w, name, "attachment")
 
 	// Set Cache-Control (same logic as for a regular files)
-	addCacheControlHeaders(w, r, contentPath, rootCid)
+	addCacheControlHeaders(w, r, contentPath, rootCid, "application/vnd.ipld.car")
 
-	// Weak Etag W/ because we can't guarantee byte-for-byte identical
-	// responses, but still want to benefit from HTTP Caching. Two CAR
-	// responses for the same CID and selector will be logically equivalent,
-	// but when CAR is streamed, then in theory, blocks may arrive from
-	// datastore in non-deterministic order.
-	etag := `W/` + getEtag(r, rootCid)
+	// Generate the CAR Etag.
+	etag := getCarEtag(r, imPath, params, rootCid)
 	w.Header().Set("Etag", etag)
 
-	// Finish early if Etag match
-	if r.Header.Get("If-None-Match") == etag {
+	// Terminate early if Etag matches. We cannot rely on handleIfNoneMatch since
+	// since it does not contain the parameters information we retrieve here.
+	if etagMatch(r.Header.Get("If-None-Match"), etag) {
 		w.WriteHeader(http.StatusNotModified)
 		return false
 	}
+
+	carFile, err := i.api.GetCAR(ctx, imPath, params)
+	if !i.handleRequestErrors(w, r, contentPath, err) {
+		return false
+	}
+	defer carFile.Close()
 
 	// Make it clear we don't support range-requests over a car stream
 	// Partial downloads and resumes should be handled using requests for
@@ -78,7 +96,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
 	_, copyErr := io.Copy(w, carFile)
-	carErr := <-errCh
+	carErr := carFile.Close()
 	streamErr := multierr.Combine(carErr, copyErr)
 	if streamErr != nil {
 		// Update fail metric
@@ -95,4 +113,110 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// Update metrics
 	i.carStreamGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 	return true
+}
+
+func getCarParams(r *http.Request) (CarParams, error) {
+	queryParams := r.URL.Query()
+	rangeStr, hasRange := queryParams.Get(carRangeBytesKey), queryParams.Has(carRangeBytesKey)
+	scopeStr, hasScope := queryParams.Get(carTerminalElementTypeKey), queryParams.Has(carTerminalElementTypeKey)
+
+	params := CarParams{}
+	if hasRange {
+		rng, err := rangeStrToByteRange(rangeStr)
+		if err != nil {
+			err = fmt.Errorf("invalid entity-bytes: %w", err)
+			return CarParams{}, err
+		}
+		params.Range = &rng
+	}
+
+	if hasScope {
+		switch s := DagScope(scopeStr); s {
+		case dagScopeEntity, dagScopeAll, dagScopeBlock:
+			params.Scope = s
+		default:
+			err := fmt.Errorf("unsupported dag-scope %s", scopeStr)
+			return CarParams{}, err
+		}
+	} else {
+		params.Scope = dagScopeAll
+	}
+
+	return params, nil
+}
+
+func rangeStrToByteRange(rangeStr string) (DagEntityByteRange, error) {
+	rangeElems := strings.Split(rangeStr, ":")
+	if len(rangeElems) != 2 {
+		return DagEntityByteRange{}, fmt.Errorf("range must have two numbers separated with ':'")
+	}
+	from, err := strconv.ParseInt(rangeElems[0], 10, 64)
+	if err != nil {
+		return DagEntityByteRange{}, err
+	}
+
+	if rangeElems[1] == "*" {
+		return DagEntityByteRange{
+			From: from,
+			To:   nil,
+		}, nil
+	}
+
+	to, err := strconv.ParseInt(rangeElems[1], 10, 64)
+	if err != nil {
+		return DagEntityByteRange{}, err
+	}
+
+	if from >= 0 && to >= 0 && from > to {
+		return DagEntityByteRange{}, fmt.Errorf("cannot have an entity-bytes range where 'from' is after 'to'")
+	}
+
+	if from < 0 && to < 0 && from > to {
+		return DagEntityByteRange{}, fmt.Errorf("cannot have an entity-bytes range where 'from' is after 'to'")
+	}
+
+	return DagEntityByteRange{
+		From: from,
+		To:   &to,
+	}, nil
+}
+
+func getCarRootCidAndLastSegment(imPath ImmutablePath) (cid.Cid, string, error) {
+	imPathStr := imPath.String()
+	if !strings.HasPrefix(imPathStr, "/ipfs/") {
+		return cid.Undef, "", fmt.Errorf("path does not have /ipfs/ prefix")
+	}
+
+	firstSegment, remainingSegments, _ := strings.Cut(imPathStr[6:], "/")
+	rootCid, err := cid.Decode(firstSegment)
+	if err != nil {
+		return cid.Undef, "", err
+	}
+
+	// Almost like path.Base(remainingSegments), but without special case for empty strings.
+	lastSegment := strings.TrimRight(remainingSegments, "/")
+	if i := strings.LastIndex(lastSegment, "/"); i >= 0 {
+		lastSegment = lastSegment[i+1:]
+	}
+
+	return rootCid, lastSegment, err
+}
+
+func getCarEtag(r *http.Request, imPath ImmutablePath, params CarParams, rootCid cid.Cid) string {
+	data := imPath.String()
+	if params.Scope != dagScopeAll {
+		data += "." + string(params.Scope)
+	}
+
+	if params.Range != nil {
+		if params.Range.From != 0 || params.Range.To != nil {
+			data += "." + strconv.FormatInt(params.Range.From, 10)
+			if params.Range.To != nil {
+				data += "." + strconv.FormatInt(*params.Range.To, 10)
+			}
+		}
+	}
+
+	suffix := strconv.FormatUint(xxhash.Sum64([]byte(data)), 32)
+	return `W/"` + rootCid.String() + ".car." + suffix + `"`
 }

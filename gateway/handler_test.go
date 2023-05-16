@@ -61,8 +61,8 @@ func (api *errorMockAPI) Head(ctx context.Context, path ImmutablePath) (ContentP
 	return ContentPathMetadata{}, nil, api.err
 }
 
-func (api *errorMockAPI) GetCAR(ctx context.Context, path ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
-	return ContentPathMetadata{}, nil, nil, api.err
+func (api *errorMockAPI) GetCAR(ctx context.Context, path ImmutablePath, params CarParams) (io.ReadCloser, error) {
+	return nil, api.err
 }
 
 func (api *errorMockAPI) ResolveMutable(ctx context.Context, path ipath.Path) (ImmutablePath, error) {
@@ -173,7 +173,7 @@ func (api *panicMockAPI) Head(ctx context.Context, immutablePath ImmutablePath) 
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) GetCAR(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
+func (api *panicMockAPI) GetCAR(ctx context.Context, immutablePath ImmutablePath, params CarParams) (io.ReadCloser, error) {
 	panic("i am panicking")
 }
 

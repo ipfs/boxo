@@ -38,7 +38,7 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	setContentDispositionHeader(w, name, "attachment")
 
 	// Set remaining headers
-	modtime := addCacheControlHeaders(w, r, contentPath, blockCid)
+	modtime := addCacheControlHeaders(w, r, contentPath, blockCid, "application/vnd.ipld.raw")
 	w.Header().Set("Content-Type", "application/vnd.ipld.raw")
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 

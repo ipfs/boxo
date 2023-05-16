@@ -61,6 +61,14 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 	// TODO: use addCacheControlHeaders once #1818 is fixed.
 	recordEtag := strconv.FormatUint(xxhash.Sum64(rawRecord), 32)
 	w.Header().Set("Etag", recordEtag)
+
+	// Terminate early if Etag matches. We cannot rely on handleIfNoneMatch since
+	// we use the raw record to generate the etag value.
+	if etagMatch(r.Header.Get("If-None-Match"), recordEtag) {
+		w.WriteHeader(http.StatusNotModified)
+		return false
+	}
+
 	if record.Ttl != nil {
 		seconds := int(time.Duration(*record.Ttl).Seconds())
 		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", seconds))

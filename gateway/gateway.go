@@ -116,6 +116,34 @@ func (i ImmutablePath) IsValid() error {
 
 var _ path.Path = (*ImmutablePath)(nil)
 
+type CarParams struct {
+	Range *DagEntityByteRange
+	Scope DagScope
+}
+
+// DagEntityByteRange describes a range request within a UnixFS file.
+// From and To mostly follow [HTTP Byte Range] Request semantics.
+// From >= 0 and To = nil: Get the file (From, Length)
+// From >= 0 and To >= 0: Get the range (From, To)
+// From >= 0 and To <0: Get the range (From, Length - To)
+// From < 0 and To = nil: Get the file (Length - From, Length)
+// From < 0 and To >= 0: Get the range (Length - From, To)
+// From < 0 and To <0: Get the range (Length - From, Length - To)
+//
+// [HTTP Byte Range]: https://httpwg.org/specs/rfc9110.html#rfc.section.14.1.2
+type DagEntityByteRange struct {
+	From int64
+	To   *int64
+}
+
+type DagScope string
+
+const (
+	dagScopeAll    DagScope = "all"
+	dagScopeEntity DagScope = "entity"
+	dagScopeBlock  DagScope = "block"
+)
+
 type ContentPathMetadata struct {
 	PathSegmentRoots []cid.Cid
 	LastSegment      path.Resolved
@@ -194,12 +222,9 @@ type IPFSBackend interface {
 	// NewErrorResponse(fmt.Errorf("no link named %q under %s", name, cid), http.StatusNotFound)
 	ResolvePath(context.Context, ImmutablePath) (ContentPathMetadata, error)
 
-	// GetCAR returns a CAR file for the given immutable path
-	// Returns an initial error if there was an issue before the CAR streaming begins as well as a channel with a single
-	// that may contain a single error for if any errors occur during the streaming. If there was an initial error the
-	// error channel is nil
-	// TODO: Make this function signature better
-	GetCAR(context.Context, ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error)
+	// GetCAR returns a CAR file for the given immutable path. It returns an error
+	// if there was an issue before the CAR streaming begins.
+	GetCAR(context.Context, ImmutablePath, CarParams) (io.ReadCloser, error)
 
 	// IsCached returns whether or not the path exists locally.
 	IsCached(context.Context, path.Path) bool
