@@ -4,7 +4,7 @@
 on:
   pull_request:
   push:
-    branches: ["main"]
+    branches: ["main","release"]
 name: Go Test
 
 concurrency:
@@ -19,9 +19,9 @@ jobs:
         os: [ "ubuntu", "windows", "macos" ]
         go: ["1.19.x","1.20.x"]
     env:
-      GOTESTFLAGS: -shuffle=on -cover -coverprofile=module-coverage.txt -coverpkg=./...
-      GO386FLAGS: -shuffle=on
-      GORACEFLAGS: -shuffle=on
+      GOTESTFLAGS: -cover -coverprofile=module-coverage.txt -coverpkg=./...
+      GO386FLAGS: ''
+      GORACEFLAGS: ''
     runs-on: ${{ fromJSON(vars[format('UCI_GO_TEST_RUNNER_{0}', matrix.os)] || format('"{0}-latest"', matrix.os)) }}
     name: ${{ matrix.os }} (go ${{ matrix.go }})
     steps:
@@ -30,6 +30,16 @@ jobs:
           submodules: recursive
       - id: config
         uses: protocol/.github/.github/actions/read-config@master
+      - if: toJSON(fromJSON(steps.config.outputs.json).shuffle) != 'false'
+        run: |
+          echo "GOTESTFLAGS=-shuffle=on $GOTESTFLAGS"
+          echo "GO386FLAGS=-shuffle=on $GO386FLAGS"
+          echo "GORACEFLAGS=-shuffle=on $GORACEFLAGS"
+      - if: toJSON(fromJSON(steps.config.outputs.json).verbose) != 'false'
+        run: |
+          echo "GOTESTFLAGS=-v $GOTESTFLAGS"
+          echo "GO386FLAGS=-v $GO386FLAGS"
+          echo "GORACEFLAGS=-v $GORACEFLAGS"
       - uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go }}
@@ -54,7 +64,7 @@ jobs:
         env:
           GOFLAGS: ${{ format('{0} {1}', env.GOTESTFLAGS, env.GOFLAGS) }}
         with:
-          run: go test -v ./...
+          run: go test ./...
       - name: Run tests (32 bit)
         # can't run 32 bit tests on OSX.
         if: matrix.os != 'macos' &&
@@ -67,7 +77,7 @@ jobs:
         with:
           run: |
             export "PATH=$PATH_386:$PATH"
-            go test -v ./...
+            go test ./...
       - name: Run tests with race detector
         # speed things up. Windows and OSX VMs are slow
         if: matrix.os == 'ubuntu' &&
@@ -76,7 +86,7 @@ jobs:
         env:
           GOFLAGS: ${{ format('{0} {1}', env.GORACEFLAGS, env.GOFLAGS) }}
         with:
-          run: go test -v -race ./...
+          run: go test -race ./...
       - name: Collect coverage files
         id: coverages
         shell: bash
