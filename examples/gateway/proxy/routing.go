@@ -10,7 +10,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/ipfs/boxo/ipns"
 	ipns_pb "github.com/ipfs/boxo/ipns/pb"
-	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -111,19 +110,7 @@ func (ps *proxyRouting) fetch(ctx context.Context, id peer.ID) ([]byte, error) {
 		return nil, err
 	}
 
-	pub, err := id.ExtractPublicKey()
-	if err != nil {
-		// Make sure it works with all those RSA that cannot be embedded into the
-		// Peer ID.
-		if len(entry.PubKey) > 0 {
-			pub, err = ic.UnmarshalPublicKey(entry.PubKey)
-		}
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	err = ipns.Validate(pub, &entry)
+	err = ipns.ValidateWithPeerID(id, &entry)
 	if err != nil {
 		return nil, err
 	}
