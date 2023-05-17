@@ -32,14 +32,14 @@ jobs:
         uses: protocol/.github/.github/actions/read-config@master
       - if: toJSON(fromJSON(steps.config.outputs.json).shuffle) != 'false'
         run: |
-          echo "GOTESTFLAGS=-shuffle=on $GOTESTFLAGS"
-          echo "GO386FLAGS=-shuffle=on $GO386FLAGS"
-          echo "GORACEFLAGS=-shuffle=on $GORACEFLAGS"
+          echo "GOTESTFLAGS=-shuffle=on $GOTESTFLAGS" >> $GITHUB_ENV
+          echo "GO386FLAGS=-shuffle=on $GO386FLAGS" >> $GITHUB_ENV
+          echo "GORACEFLAGS=-shuffle=on $GORACEFLAGS" >> $GITHUB_ENV
       - if: toJSON(fromJSON(steps.config.outputs.json).verbose) != 'false'
         run: |
-          echo "GOTESTFLAGS=-v $GOTESTFLAGS"
-          echo "GO386FLAGS=-v $GO386FLAGS"
-          echo "GORACEFLAGS=-v $GORACEFLAGS"
+          echo "GOTESTFLAGS=-v $GOTESTFLAGS" >> $GITHUB_ENV
+          echo "GO386FLAGS=-v $GO386FLAGS" >> $GITHUB_ENV
+          echo "GORACEFLAGS=-v $GORACEFLAGS" >> $GITHUB_ENV
       - uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go }}
