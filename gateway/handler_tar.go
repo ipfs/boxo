@@ -81,6 +81,9 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 
 	// The TAR has a top-level directory (or file) named by the CID.
 	if err := tarw.WriteFile(file, rootCid.String()); err != nil {
+		// Update fail metric
+		i.tarStreamFailMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+
 		w.Header().Set("X-Stream-Error", err.Error())
 		// Trailer headers do not work in web browsers
 		// (see https://github.com/mdn/browser-compat-data/issues/14703)

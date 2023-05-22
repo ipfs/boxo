@@ -73,8 +73,10 @@ type handler struct {
 	unixfsDirIndexGetMetric      *prometheus.HistogramVec
 	unixfsGenDirListingGetMetric *prometheus.HistogramVec
 	carStreamGetMetric           *prometheus.HistogramVec
+	carStreamFailMetric          *prometheus.HistogramVec
 	rawBlockGetMetric            *prometheus.HistogramVec
 	tarStreamGetMetric           *prometheus.HistogramVec
+	tarStreamFailMetric          *prometheus.HistogramVec
 	jsoncborDocumentGetMetric    *prometheus.HistogramVec
 	ipnsRecordGetMetric          *prometheus.HistogramVec
 }

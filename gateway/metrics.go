@@ -219,6 +219,10 @@ func newHandlerWithMetrics(c Config, api IPFSBackend) *handler {
 			"gw_car_stream_get_duration_seconds",
 			"The time to GET an entire CAR stream from the gateway.",
 		),
+		carStreamFailMetric: newHistogramMetric(
+			"gw_car_stream_fail_duration_seconds",
+			"How long a CAR was streamed before failing mid-stream.",
+		),
 		// Block: time it takes to return requested Block
 		rawBlockGetMetric: newHistogramMetric(
 			"gw_raw_block_get_duration_seconds",
@@ -228,6 +232,11 @@ func newHandlerWithMetrics(c Config, api IPFSBackend) *handler {
 		tarStreamGetMetric: newHistogramMetric(
 			"gw_tar_stream_get_duration_seconds",
 			"The time to GET an entire TAR stream from the gateway.",
+		),
+		// TAR: time it takes to return requested TAR stream
+		tarStreamFailMetric: newHistogramMetric(
+			"gw_tar_stream_fail_duration_seconds",
+			"How long a TAR was streamed before failing mid-stream.",
 		),
 		// JSON/CBOR: time it takes to return requested DAG-JSON/-CBOR document
 		jsoncborDocumentGetMetric: newHistogramMetric(
