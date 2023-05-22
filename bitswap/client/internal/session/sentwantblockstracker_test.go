@@ -4,12 +4,9 @@ import (
 	"testing"
 
 	"github.com/ipfs/boxo/bitswap/internal/testutil"
-	"github.com/ipfs/boxo/internal/test"
 )
 
 func TestSendWantBlocksTracker(t *testing.T) {
-	test.Flaky(t)
-
 	peers := testutil.GeneratePeers(2)
 	cids := testutil.GenerateCids(2)
 	swbt := newSentWantBlocksTracker()

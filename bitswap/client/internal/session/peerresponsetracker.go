@@ -57,14 +57,9 @@ func (prt *peerResponseTracker) choose(peers []peer.ID) peer.ID {
 }
 
 // getPeerCount returns the number of times the peer was first to send us a
-// block
+// block plus one (in order to never get a zero chance).
 func (prt *peerResponseTracker) getPeerCount(p peer.ID) int {
-	count, ok := prt.firstResponder[p]
-	if ok {
-		return count
-	}
-
 	// Make sure there is always at least a small chance a new peer
 	// will be chosen
-	return 1
+	return prt.firstResponder[p] + 1
 }
