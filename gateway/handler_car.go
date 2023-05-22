@@ -81,6 +81,9 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	carErr := <-errCh
 	streamErr := multierr.Combine(carErr, copyErr)
 	if streamErr != nil {
+		// Update fail metric
+		i.carStreamFailMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+
 		// We return error as a trailer, however it is not something browsers can access
 		// (https://github.com/mdn/browser-compat-data/issues/14703)
 		// Due to this, we suggest client always verify that
