@@ -190,6 +190,10 @@ func newHandlerWithMetrics(c Config, api IPFSBackend) *handler {
 
 		// Response-type specific metrics
 		// ----------------------------
+		requestTypeMetric: newRequestTypeMetric(
+			"gw_request_types",
+			"The number of requests per implicit or explicit request type.",
+		),
 		// Generic: time it takes to execute a successful gateway request (all request types)
 		getMetric: newHistogramMetric(
 			"gw_get_duration_seconds",
@@ -237,6 +241,28 @@ func newHandlerWithMetrics(c Config, api IPFSBackend) *handler {
 		),
 	}
 	return i
+}
+
+func newRequestTypeMetric(name string, help string) *prometheus.CounterVec {
+	// We can add buckets as a parameter in the future, but for now using static defaults
+	// suggested in https://github.com/ipfs/kubo/issues/8441
+	metric := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "ipfs",
+			Subsystem: "http",
+			Name:      name,
+			Help:      help,
+		},
+		[]string{"gateway", "type"},
+	)
+	if err := prometheus.Register(metric); err != nil {
+		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			metric = are.ExistingCollector.(*prometheus.CounterVec)
+		} else {
+			log.Errorf("failed to register ipfs_http_%s: %v", name, err)
+		}
+	}
+	return metric
 }
 
 func newHistogramMetric(name string, help string) *prometheus.HistogramVec {

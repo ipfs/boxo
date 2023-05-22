@@ -67,6 +67,7 @@ type handler struct {
 	api    IPFSBackend
 
 	// response type metrics
+	requestTypeMetric            *prometheus.CounterVec
 	getMetric                    *prometheus.HistogramVec
 	unixfsFileGetMetric          *prometheus.HistogramVec
 	unixfsDirIndexGetMetric      *prometheus.HistogramVec
@@ -234,6 +235,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResponseFormat", responseFormat))
+	i.requestTypeMetric.WithLabelValues(contentPath.Namespace(), responseFormat).Inc()
 
 	i.addUserHeaders(w) // ok, _now_ write user's headers.
 	w.Header().Set("X-Ipfs-Path", contentPath.String())
