@@ -33,7 +33,7 @@ func TestHeaders(t *testing.T) {
 	cb, err := cid.Decode(c)
 	require.NoError(t, err)
 
-	router.On("FindProviders", mock.Anything, cb, false).
+	router.On("FindProviders", mock.Anything, cb, DefaultRecordsLimit).
 		Return(results, nil)
 
 	resp, err := http.Get(serverAddr + ProvidePath + c)
@@ -85,7 +85,11 @@ func TestResponse(t *testing.T) {
 		server := httptest.NewServer(Handler(router))
 		t.Cleanup(server.Close)
 		serverAddr := "http://" + server.Listener.Addr().String()
-		router.On("FindProviders", mock.Anything, cid, expectedStream).Return(results, nil)
+		limit := DefaultRecordsLimit
+		if expectedStream {
+			limit = DefaultStreamingRecordsLimit
+		}
+		router.On("FindProviders", mock.Anything, cid, limit).Return(results, nil)
 		urlStr := serverAddr + ProvidePath + cidStr
 
 		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
@@ -115,8 +119,8 @@ func TestResponse(t *testing.T) {
 
 type mockContentRouter struct{ mock.Mock }
 
-func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, stream bool) (iter.ResultIter[types.ProviderResponse], error) {
-	args := m.Called(ctx, key, stream)
+func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.ProviderResponse], error) {
+	args := m.Called(ctx, key, limit)
 	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
 }
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error) {

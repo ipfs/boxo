@@ -28,6 +28,9 @@ const (
 	mediaTypeJSON     = "application/json"
 	mediaTypeNDJSON   = "application/x-ndjson"
 	mediaTypeWildcard = "*/*"
+
+	DefaultRecordsLimit          = 20
+	DefaultStreamingRecordsLimit = 0
 )
 
 var logger = logging.Logger("service/server/delegatedrouting")
@@ -41,9 +44,9 @@ type FindProvidersAsyncResponse struct {
 }
 
 type ContentRouter interface {
-	// FindProviders searches for peers who are able to provide a given key. Stream
-	// indicates whether or not this request will be responded as a stream.
-	FindProviders(ctx context.Context, key cid.Cid, stream bool) (iter.ResultIter[types.ProviderResponse], error)
+	// FindProviders searches for peers who are able to provide a given key. Limit
+	// indicates the maximum amount of results to return. 0 means unbounded.
+	FindProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.ProviderResponse], error)
 	ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error)
 	Provide(ctx context.Context, req *WriteProvideRequest) (types.ProviderResponse, error)
 }
@@ -71,9 +74,27 @@ func WithStreamingResultsDisabled() Option {
 	}
 }
 
+// WithRecordsLimit sets a limit that will be passed to ContentRouter.FindProviders
+// for non-streaming requests (application/json). Default is DefaultRecordsLimit.
+func WithRecordsLimit(limit int) Option {
+	return func(s *server) {
+		s.recordsLimit = limit
+	}
+}
+
+// WithStreamingRecordsLimit sets a limit that will be passed to ContentRouter.FindProviders
+// for streaming requests (application/x-ndjson). Default is DefaultStreamingRecordsLimit.
+func WithStreamingRecordsLimit(limit int) Option {
+	return func(s *server) {
+		s.streamingRecordsLimit = limit
+	}
+}
+
 func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	server := &server{
-		svc: svc,
+		svc:                   svc,
+		recordsLimit:          DefaultRecordsLimit,
+		streamingRecordsLimit: DefaultStreamingRecordsLimit,
 	}
 
 	for _, opt := range opts {
@@ -88,8 +109,10 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 }
 
 type server struct {
-	svc           ContentRouter
-	disableNDJSON bool
+	svc                   ContentRouter
+	disableNDJSON         bool
+	recordsLimit          int
+	streamingRecordsLimit int
 }
 
 func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
@@ -172,11 +195,11 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 
 	var supportsNDJSON bool
 	var supportsJSON bool
-	var streaming bool
+	var recordsLimit int
 	acceptHeaders := httpReq.Header.Values("Accept")
 	if len(acceptHeaders) == 0 {
 		handlerFunc = s.findProvidersJSON
-		streaming = false
+		recordsLimit = s.recordsLimit
 	} else {
 		for _, acceptHeader := range acceptHeaders {
 			for _, accept := range strings.Split(acceptHeader, ",") {
@@ -197,17 +220,17 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 
 		if supportsNDJSON && !s.disableNDJSON {
 			handlerFunc = s.findProvidersNDJSON
-			streaming = true
+			recordsLimit = s.streamingRecordsLimit
 		} else if supportsJSON {
 			handlerFunc = s.findProvidersJSON
-			streaming = false
+			recordsLimit = s.recordsLimit
 		} else {
 			writeErr(w, "FindProviders", http.StatusBadRequest, errors.New("no supported content types"))
 			return
 		}
 	}
 
-	provIter, err := s.svc.FindProviders(httpReq.Context(), cid, streaming)
+	provIter, err := s.svc.FindProviders(httpReq.Context(), cid, recordsLimit)
 	if err != nil {
 		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
