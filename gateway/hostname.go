@@ -326,24 +326,10 @@ func toDNSLinkFQDN(dnsLabel string) (fqdn string) {
 
 // Converts a hostname/path to a subdomain-based URL, if applicable.
 func toSubdomainURL(hostname, path string, r *http.Request, inlineDNSLink bool, api IPFSBackend) (redirURL string, err error) {
-	var scheme, ns, rootID, rest string
+	var ns, rootID, rest string
 
-	query := r.URL.RawQuery
 	parts := strings.SplitN(path, "/", 4)
 	isHTTPS := isHTTPSRequest(r)
-	safeRedirectURL := func(in string) (out string, err error) {
-		safeURI, err := url.ParseRequestURI(in)
-		if err != nil {
-			return "", err
-		}
-		return safeURI.String(), nil
-	}
-
-	if isHTTPS {
-		scheme = "https:"
-	} else {
-		scheme = "http:"
-	}
 
 	switch len(parts) {
 	case 4:
@@ -358,11 +344,6 @@ func toSubdomainURL(hostname, path string, r *http.Request, inlineDNSLink bool, 
 
 	if !isSubdomainNamespace(ns) {
 		return "", nil
-	}
-
-	// add prefix if query is present
-	if query != "" {
-		query = "?" + query
 	}
 
 	// Normalize problematic PeerIDs (eg. ed25519+identity) to CID representation
@@ -441,15 +422,19 @@ func toSubdomainURL(hostname, path string, r *http.Request, inlineDNSLink bool, 
 		}
 	}
 
-	return safeRedirectURL(fmt.Sprintf(
-		"%s//%s.%s.%s/%s%s",
-		scheme,
-		rootID,
-		ns,
-		hostname,
-		rest,
-		query,
-	))
+	u, err := url.Parse(fmt.Sprintf("http://%s.%s.%s/", rootID, ns, hostname))
+	if err != nil {
+		return "", err
+	}
+	u.RawFragment = r.URL.RawFragment
+	u.RawQuery = r.URL.RawQuery
+	if rest != "" {
+		u.Path = rest
+	}
+	if isHTTPS {
+		u.Scheme = "https"
+	}
+	return u.String(), nil
 }
 
 func hasPrefix(path string, prefixes ...string) bool {

@@ -34,7 +34,6 @@ func TestToSubdomainURL(t *testing.T) {
 		url string
 		err error
 	}{
-
 		// DNSLink
 		{httpRequest, "localhost", false, "/ipns/dnslink.io", "http://dnslink.io.ipns.localhost/", nil},
 		// Hostname with port
@@ -56,6 +55,9 @@ func TestToSubdomainURL(t *testing.T) {
 		// HTTP requests can also be converted to fit into a single DNS label - https://github.com/ipfs/kubo/issues/9243
 		{httpRequest, "localhost", true, "/ipns/dnslink.long-name.example.com", "http://dnslink-long--name-example-com.ipns.localhost/", nil},
 		{httpRequest, "dweb.link", true, "/ipns/dnslink.long-name.example.com", "http://dnslink-long--name-example-com.ipns.dweb.link/", nil},
+		// Correctly redirects paths when there is a ? (question mark) character - https://github.com/ipfs/kubo/issues/9882
+		{httpRequest, "localhost", false, "/ipns/example.com/this is a file with some spaces . dots and - but also a ?.png", "http://example.com.ipns.localhost/this%20is%20a%20file%20with%20some%20spaces%20.%20dots%20and%20-%20but%20also%20a%20%3F.png", nil},
+		{httpRequest, "localhost", false, "/ipfs/QmbCMUZw6JFeZ7Wp9jkzbye3Fzp2GGcPgC3nmeUjfVF87n/this is a file with some spaces . dots and - but also a ?.png", "http://bafybeif7a7gdklt6hodwdrmwmxnhksctcuav6lfxlcyfz4khzl3qfmvcgu.ipfs.localhost/this%20is%20a%20file%20with%20some%20spaces%20.%20dots%20and%20-%20but%20also%20a%20%3F.png", nil},
 	} {
 		testName := fmt.Sprintf("%s, %v, %s", test.gwHostname, test.inlineDNSLink, test.path)
 		t.Run(testName, func(t *testing.T) {
