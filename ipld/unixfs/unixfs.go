@@ -6,6 +6,8 @@ package unixfs
 import (
 	"errors"
 	"fmt"
+	"os"
+	"time"
 
 	proto "github.com/gogo/protobuf/proto"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
@@ -77,7 +79,7 @@ func FolderPBData() []byte {
 
 	data, err := proto.Marshal(pbfile)
 	if err != nil {
-		//this really shouldnt happen, i promise
+		// this really shouldnt happen, i promise
 		panic(err)
 	}
 	return data
@@ -113,6 +115,88 @@ func SymlinkData(path string) ([]byte, error) {
 	}
 
 	return out, nil
+}
+
+// FileMode returns the optional file mode bits
+func (n *FSNode) FileMode() os.FileMode {
+	// mask unknown bits as per https://github.com/ipfs/specs/blob/master/UNIXFS.md#metadata
+	mode := os.FileMode(n.format.GetMode() & 0o7777)
+	if mode != 0 {
+		return mode
+	}
+
+	// Defaults if unset
+	switch n.Type() {
+	case pb.Data_Directory, pb.Data_HAMTShard:
+		return 0o0755
+	case pb.Data_Raw, pb.Data_File, pb.Data_Symlink:
+		return 0o0644
+	default:
+		return 0
+	}
+}
+
+// SetFileMode sets the file mode bits
+func (n *FSNode) SetFileMode(m os.FileMode) {
+	// Special case, don't add a zero mode unless mode bits already exist
+	// This preserves binary compatibility with unixfs 1.0
+	if m == 0 && n.format.Mode == nil {
+		return
+	}
+
+	// mask unknown bits as per https://github.com/ipfs/specs/blob/master/UNIXFS.md#metadata
+	mode := (uint32(m) & 0o7777) | (n.format.GetMode() & 0xFFFFF000)
+	n.format.Mode = &mode
+}
+
+// ModTime returns the optional modification time of the file.
+func (n *FSNode) ModTime() time.Time {
+	mtime := n.format.GetMtime()
+	if mtime == nil {
+		// return an unspecified time
+		return time.Time{}
+	}
+
+	secs := mtime.GetSeconds()
+	nsecs := uint32(0)
+	if mtime.FractionalNanoseconds != nil {
+		if *mtime.FractionalNanoseconds < 1 || *mtime.FractionalNanoseconds > 999999999 {
+			// Invalid time, return an unspecified time
+			return time.Time{}
+		}
+		nsecs = *mtime.FractionalNanoseconds
+	}
+
+	return time.Unix(secs, int64(nsecs))
+}
+
+// SetModTime sets the modification time of the file.
+func (n *FSNode) SetModTime(t time.Time) {
+	if t.IsZero() {
+		// unset the mtime since unix timestamp is not defined for an unitialized time value
+		n.format.Mtime = nil
+		return
+	}
+	unixnano := t.UnixNano()
+
+	secs := unixnano / int64(time.Second)
+	nanos := uint32(unixnano - secs*int64(time.Second))
+
+	if n.format.Mtime == nil {
+		n.format.Mtime = &pb.UnixTime{}
+	}
+
+	n.format.Mtime.Seconds = &secs
+
+	// From spec https://github.com/ipfs/specs/blob/master/UNIXFS.md#metadata
+	// An mtime structure with FractionalNanoseconds outside of the on-wire range [1, 999999999] is not valid. This includes
+	// a fractional value of 0. Implementations encountering such values should consider the entire enclosing metadata
+	// block malformed and abort processing the corresponding DAG.
+	if nanos == 0 {
+		n.format.Mtime.FractionalNanoseconds = nil
+	} else {
+		n.format.Mtime.FractionalNanoseconds = &nanos
+	}
 }
 
 // HAMTShardData return a `Data_HAMTShard` protobuf message
@@ -174,7 +258,6 @@ func size(pbdata *pb.Data) (uint64, error) {
 // to guarantee that the required (`Type` and `Filesize`) fields in the `format`
 // structure are initialized before marshaling (in `GetBytes()`).
 type FSNode struct {
-
 	// UnixFS format defined as a protocol buffers message.
 	format pb.Data
 }

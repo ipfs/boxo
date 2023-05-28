@@ -6,13 +6,16 @@ import (
 	"fmt"
 	"io"
 	mrand "math/rand"
+	"os"
 	"testing"
+	"time"
 
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	h "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 
 	chunker "github.com/ipfs/boxo/chunker"
+	files "github.com/ipfs/boxo/files"
 	merkledag "github.com/ipfs/boxo/ipld/merkledag"
 	mdtest "github.com/ipfs/boxo/ipld/merkledag/test"
 	u "github.com/ipfs/boxo/util"
@@ -37,7 +40,10 @@ func buildTestDag(ds ipld.DAGService, spl chunker.Splitter, rawLeaves UseRawLeav
 		Maxlinks:  h.DefaultLinksPerBlock,
 		RawLeaves: bool(rawLeaves),
 	}
+	return buildTestDagWithParams(ds, spl, dbp)
+}
 
+func buildTestDagWithParams(ds ipld.DAGService, spl chunker.Splitter, dbp h.DagBuilderParams) (*merkledag.ProtoNode, error) {
 	db, err := dbp.New(spl)
 	if err != nil {
 		return nil, err
@@ -57,7 +63,7 @@ func buildTestDag(ds ipld.DAGService, spl chunker.Splitter, rawLeaves UseRawLeav
 		Getter:      ds,
 		Direct:      dbp.Maxlinks,
 		LayerRepeat: depthRepeat,
-		RawLeaves:   bool(rawLeaves),
+		RawLeaves:   dbp.RawLeaves,
 	})
 }
 
@@ -431,7 +437,6 @@ func testSeekingStress(t *testing.T, rawLeaves UseRawLeaves) {
 			t.Fatal(err)
 		}
 	}
-
 }
 
 func TestSeekingConsistency(t *testing.T) {
@@ -662,5 +667,103 @@ func TestAppendSingleBytesToEmpty(t *testing.T) {
 	err = arrComp(out, data)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMetadata(t *testing.T) {
+	runBothSubtests(t, testMetadata)
+}
+
+func testMetadata(t *testing.T, rawLeaves UseRawLeaves) {
+	nbytes := 3 * chunker.DefaultBlockSize
+	buf := new(bytes.Buffer)
+	io.CopyN(buf, u.NewTimeSeededRand(), int64(nbytes))
+
+	dagserv := mdtest.Mock()
+	dbp := h.DagBuilderParams{
+		Dagserv:   dagserv,
+		Maxlinks:  h.DefaultLinksPerBlock,
+		RawLeaves: bool(rawLeaves),
+		FileMode:  0o522,
+		ModTime:   time.Unix(1638111600, 76552),
+	}
+
+	nd, err := buildTestDagWithParams(dagserv, chunker.DefaultSplitter(buf), dbp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dr, err := uio.NewDagReader(context.Background(), nd, dagserv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !dr.ModTime().Equal(dbp.ModTime) {
+		t.Errorf("got modtime %v, wanted %v", dr.ModTime(), dbp.ModTime)
+	}
+
+	if dr.FileMode() != dbp.FileMode {
+		t.Errorf("got filemode %o, wanted %o", dr.FileMode(), dbp.FileMode)
+	}
+}
+
+func TestMetadataFromFilestore(t *testing.T) {
+	runBothSubtests(t, testMetadataFromFilestore)
+}
+
+type fileinfo struct {
+	name  string
+	size  int64
+	mode  os.FileMode
+	mtime time.Time
+}
+
+func (fi *fileinfo) Name() string       { return fi.name }
+func (fi *fileinfo) Size() int64        { return fi.size }
+func (fi *fileinfo) Mode() os.FileMode  { return fi.mode }
+func (fi *fileinfo) ModTime() time.Time { return fi.mtime }
+func (fi *fileinfo) IsDir() bool        { return false }
+func (fi *fileinfo) Sys() interface{}   { return nil }
+
+func testMetadataFromFilestore(t *testing.T, rawLeaves UseRawLeaves) {
+	nbytes := 3 * chunker.DefaultBlockSize
+	buf := new(bytes.Buffer)
+	io.CopyN(buf, u.NewTimeSeededRand(), int64(nbytes))
+
+	fi := &fileinfo{
+		mode:  0o522,
+		mtime: time.Unix(1638111600, 76552),
+	}
+
+	rpf, err := files.NewReaderPathFile("/path", io.NopCloser(buf), fi)
+	if err != nil {
+		t.Fatalf("new reader path file: %v", err)
+	}
+
+	dagserv := mdtest.Mock()
+
+	dbp := h.DagBuilderParams{
+		Dagserv:   dagserv,
+		Maxlinks:  h.DefaultLinksPerBlock,
+		RawLeaves: bool(rawLeaves),
+		NoCopy:    true,
+	}
+
+	nd, err := buildTestDagWithParams(dagserv, chunker.DefaultSplitter(rpf), dbp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dr, err := uio.NewDagReader(context.Background(), nd, dagserv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !dr.ModTime().Equal(fi.mtime) {
+		t.Errorf("got modtime %v, wanted %v", dr.ModTime(), fi.mtime)
+	}
+
+	if dr.FileMode() != fi.mode {
+		t.Errorf("got filemode %o, wanted %o", dr.FileMode(), fi.mode)
 	}
 }

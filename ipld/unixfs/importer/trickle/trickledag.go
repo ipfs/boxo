@@ -38,6 +38,7 @@ const depthRepeat = 4
 // explanation.
 func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 	newRoot := db.NewFSNodeOverDag(ft.TFile)
+	db.FillMetadata(newRoot)
 	root, _, err := fillTrickleRec(db, newRoot, -1)
 	if err != nil {
 		return nil, err

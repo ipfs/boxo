@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"time"
 
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
 	unixfs "github.com/ipfs/boxo/ipld/unixfs"
@@ -29,6 +31,8 @@ var (
 type DagReader interface {
 	ReadSeekCloser
 	Size() uint64
+	FileMode() os.FileMode
+	ModTime() time.Time
 	CtxReadFull(context.Context, []byte) (int, error)
 }
 
@@ -44,6 +48,8 @@ type ReadSeekCloser interface {
 // the given node, using the passed in DAGService for data retrieval.
 func NewDagReader(ctx context.Context, n ipld.Node, serv ipld.NodeGetter) (DagReader, error) {
 	var size uint64
+	var mode os.FileMode
+	var mtime time.Time
 
 	switch n := n.(type) {
 	case *mdag.RawNode:
@@ -58,6 +64,8 @@ func NewDagReader(ctx context.Context, n ipld.Node, serv ipld.NodeGetter) (DagRe
 		switch fsNode.Type() {
 		case unixfs.TFile, unixfs.TRaw:
 			size = fsNode.FileSize()
+			mode = fsNode.FileMode()
+			mtime = fsNode.ModTime()
 
 		case unixfs.TDirectory, unixfs.THAMTShard:
 			// Dont allow reading directories
@@ -93,6 +101,8 @@ func NewDagReader(ctx context.Context, n ipld.Node, serv ipld.NodeGetter) (DagRe
 		cancel:    cancel,
 		serv:      serv,
 		size:      size,
+		mode:      mode,
+		mtime:     mtime,
 		rootNode:  n,
 		dagWalker: ipld.NewWalker(ctxWithCancel, ipld.NewNavigableIPLDNode(n, serv)),
 	}, nil
@@ -100,7 +110,6 @@ func NewDagReader(ctx context.Context, n ipld.Node, serv ipld.NodeGetter) (DagRe
 
 // dagReader provides a way to easily read the data contained in a dag.
 type dagReader struct {
-
 	// Structure to perform the DAG iteration and search, the reader
 	// just needs to add logic to the `Visitor` callback passed to
 	// `Iterate` and `Seek`.
@@ -114,6 +123,12 @@ type dagReader struct {
 
 	// Implements the `Size()` API.
 	size uint64
+
+	// mode is the optional file mode bits metadata from the unixfs dag
+	mode os.FileMode
+
+	// mtime is the optional modification time metadata from the unixfs dag
+	mtime time.Time
 
 	// Current offset for the read head within the DAG file.
 	offset int64
@@ -136,6 +151,16 @@ type dagReader struct {
 // Size returns the total size of the data from the DAG structured file.
 func (dr *dagReader) Size() uint64 {
 	return dr.size
+}
+
+// FileMode returns the optional file mode bits
+func (dr *dagReader) FileMode() os.FileMode {
+	return dr.mode
+}
+
+// ModTime returns the optional modification time of the file.
+func (dr *dagReader) ModTime() time.Time {
+	return dr.mtime
 }
 
 // Read implements the `io.Reader` interface through the `CtxReadFull`
@@ -227,7 +252,6 @@ func (dr *dagReader) saveNodeData(node ipld.Node) error {
 // any errors as it's always reading from a `bytes.Reader` and asking only
 // the available data in it.
 func (dr *dagReader) readNodeDataBuffer(out []byte) int {
-
 	n, _ := dr.currentNodeData.Read(out)
 	// Ignore the error as the EOF may not be returned in the first
 	// `Read` call, explicitly ask for an empty buffer below to check
@@ -253,7 +277,6 @@ func (dr *dagReader) readNodeDataBuffer(out []byte) int {
 // TODO: Check what part of the logic between the two functions
 // can be extracted away.
 func (dr *dagReader) writeNodeDataBuffer(w io.Writer) (int64, error) {
-
 	n, err := dr.currentNodeData.WriteTo(w)
 	if err != nil {
 		return n, err
@@ -450,7 +473,6 @@ func (dr *dagReader) Seek(offset int64, whence int) (int64, error) {
 				// In the leaf node case the search will stop here.
 			}
 		})
-
 		if err != nil {
 			return 0, err
 		}

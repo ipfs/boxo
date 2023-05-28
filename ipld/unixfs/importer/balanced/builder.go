@@ -166,10 +166,23 @@ func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 		// Fill the `newRoot` (that has the old `root` already as child)
 		// and make it the current `root` for the next iteration (when
 		// it will become "old").
-		root, fileSize, err = fillNodeRec(db, newRoot, depth)
+		var potentialRoot *h.FSNodeOverDag
+		potentialRoot, fileSize, err = fillNodeRec(db, newRoot, depth)
+
 		if err != nil {
 			return nil, err
 		}
+
+		// Only add file metadata to the top level root
+		if db.Done() {
+			db.FillMetadata(potentialRoot)
+		}
+
+		root, err = potentialRoot.Commit()
+		if err != nil {
+			return nil, err
+		}
+
 	}
 
 	return root, db.Add(root)
@@ -215,7 +228,7 @@ func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 // seeking through the DAG when reading data later).
 //
 // warning: **children** pinned indirectly, but input node IS NOT pinned.
-func fillNodeRec(db *h.DagBuilderHelper, node *h.FSNodeOverDag, depth int) (filledNode ipld.Node, nodeFileSize uint64, err error) {
+func fillNodeRec(db *h.DagBuilderHelper, node *h.FSNodeOverDag, depth int) (filledNode *h.FSNodeOverDag, nodeFileSize uint64, err error) {
 	if depth < 1 {
 		return nil, 0, errors.New("attempt to fillNode at depth < 1")
 	}
@@ -243,10 +256,17 @@ func fillNodeRec(db *h.DagBuilderHelper, node *h.FSNodeOverDag, depth int) (fill
 		} else {
 			// Recursion case: create an internal node to in turn keep
 			// descending in the DAG and adding child nodes to it.
-			childNode, childFileSize, err = fillNodeRec(db, nil, depth-1)
+			var internalNode *h.FSNodeOverDag
+			internalNode, childFileSize, err = fillNodeRec(db, nil, depth-1)
 			if err != nil {
 				return nil, 0, err
 			}
+
+			childNode, err = internalNode.Commit()
+			if err != nil {
+				return nil, 0, err
+			}
+
 		}
 
 		err = node.AddChild(childNode, childFileSize, db)
@@ -257,11 +277,5 @@ func fillNodeRec(db *h.DagBuilderHelper, node *h.FSNodeOverDag, depth int) (fill
 
 	nodeFileSize = node.FileSize()
 
-	// Get the final `dag.ProtoNode` with the `FSNode` data encoded inside.
-	filledNode, err = node.Commit()
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return filledNode, nodeFileSize, nil
+	return node, nodeFileSize, nil
 }

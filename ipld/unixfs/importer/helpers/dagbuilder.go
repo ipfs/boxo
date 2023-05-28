@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"time"
 
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 
@@ -30,6 +31,8 @@ type DagBuilderHelper struct {
 	nextData   []byte // the next item to return.
 	maxlinks   int
 	cidBuilder cid.Builder
+	modTime    time.Time
+	fileMode   os.FileMode
 
 	// Filestore support variables.
 	// ----------------------------
@@ -65,6 +68,14 @@ type DagBuilderParams struct {
 	// NoCopy signals to the chunker that it should track fileinfo for
 	// filestore adds
 	NoCopy bool
+
+	// ModTime is the optional file modification time to be embedded in the final dag
+	// Note that this will be overwritten by the fileinfo of the underlying filestore file if NoCopy is true
+	ModTime time.Time
+
+	// FileMode is the optional file mode metadata to be embedded in the final dag
+	// Note that this will be overwritten by the fileinfo of the underlying filestore file if NoCopy is true
+	FileMode os.FileMode
 }
 
 // New generates a new DagBuilderHelper from the given params and a given
@@ -76,10 +87,16 @@ func (dbp *DagBuilderParams) New(spl chunker.Splitter) (*DagBuilderHelper, error
 		rawLeaves:  dbp.RawLeaves,
 		cidBuilder: dbp.CidBuilder,
 		maxlinks:   dbp.Maxlinks,
+		modTime:    dbp.ModTime,
+		fileMode:   dbp.FileMode,
 	}
 	if fi, ok := spl.Reader().(files.FileInfo); dbp.NoCopy && ok {
 		db.fullPath = fi.AbsPath()
 		db.stat = fi.Stat()
+		if db.stat != nil {
+			db.modTime = db.stat.ModTime()
+			db.fileMode = db.stat.Mode()
+		}
 	}
 
 	if dbp.NoCopy && db.fullPath == "" { // Enforce NoCopy
@@ -177,7 +194,6 @@ func (db *DagBuilderHelper) NewLeafNode(data []byte, fsNodeType pb.Data_DataType
 // NOTE: This function creates raw data nodes so it only works
 // for the `trickle.Layout`.
 func (db *DagBuilderHelper) FillNodeLayer(node *FSNodeOverDag) error {
-
 	// while we have room AND we're not done
 	for node.NumChildren() < db.maxlinks && !db.Done() {
 		child, childFileSize, err := db.NewLeafDataNode(ft.TRaw)
@@ -231,7 +247,7 @@ func (db *DagBuilderHelper) NewLeafDataNode(fsNodeType pb.Data_DataType) (node i
 // offset is more related to this function).
 func (db *DagBuilderHelper) ProcessFileStore(node ipld.Node, dataSize uint64) ipld.Node {
 	// Check if Filestore is being used.
-	if db.fullPath != "" {
+	if db.isUsingFilestore() {
 		// Check if the node is actually a raw node (needed for
 		// Filestore support).
 		if _, ok := node.(*dag.RawNode); ok {
@@ -253,6 +269,18 @@ func (db *DagBuilderHelper) ProcessFileStore(node ipld.Node, dataSize uint64) ip
 
 	// Filestore is not used, return the same `node` argument.
 	return node
+}
+
+func (db *DagBuilderHelper) isUsingFilestore() bool {
+	return db.fullPath != ""
+}
+
+// FillMetadata sets metadata attributes on the supplied node.
+func (db *DagBuilderHelper) FillMetadata(node *FSNodeOverDag) error {
+	node.SetFileMode(db.fileMode)
+	node.SetModTime(db.modTime)
+
+	return nil
 }
 
 // Add inserts the given node in the DAGService.
@@ -396,4 +424,28 @@ func (n *FSNodeOverDag) GetChild(ctx context.Context, i int, ds ipld.DAGService)
 	}
 
 	return NewFSNFromDag(pbn)
+}
+
+// FileMode returns the file mode bits from the underlying
+// representation of the `ft.FSNode`.
+func (n *FSNodeOverDag) FileMode() os.FileMode {
+	return n.file.FileMode()
+}
+
+// SetFileMode sets the file mode bits in the underlying
+// representation of the `ft.FSNode`.
+func (n *FSNodeOverDag) SetFileMode(m os.FileMode) {
+	n.file.SetFileMode(m)
+}
+
+// ModTime returns the modification time of the file from the underlying
+// representation of the `ft.FSNode`.
+func (n *FSNodeOverDag) ModTime() time.Time {
+	return n.file.ModTime()
+}
+
+// SetModTime sets the modification time of the file in the underlying
+// representation of the `ft.FSNode`.
+func (n *FSNodeOverDag) SetModTime(t time.Time) {
+	n.file.SetModTime(t)
 }

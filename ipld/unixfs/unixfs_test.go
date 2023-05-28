@@ -2,7 +2,9 @@ package unixfs
 
 import (
 	"bytes"
+	"os"
 	"testing"
+	"time"
 
 	proto "github.com/gogo/protobuf/proto"
 
@@ -165,7 +167,6 @@ func TestMetadata(t *testing.T) {
 	if !mimeAiff {
 		t.Fatal("Metadata does not Marshal and Unmarshal properly!")
 	}
-
 }
 
 func TestIsDir(t *testing.T) {
@@ -182,5 +183,143 @@ func TestIsDir(t *testing.T) {
 		if fsn.IsDir() != v {
 			t.Fatalf("type %v, IsDir() should be %v, but %v", typ, v, fsn.IsDir())
 		}
+	}
+}
+
+func TestMtime(t *testing.T) {
+	fsn := NewFSNode(TFile)
+	fsn.SetData(make([]byte, 128))
+	fsn.SetModTime(time.Unix(1638111600, 76552))
+
+	b, err := fsn.GetBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pbn := new(pb.Data)
+	err = proto.Unmarshal(b, pbn)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if pbn.Mtime == nil {
+		t.Fatal("mtime is nil")
+	}
+
+	if pbn.Mtime.Seconds == nil {
+		t.Fatal("mtime.Seconds is nil")
+	}
+
+	if *pbn.Mtime.Seconds != 1638111600 {
+		t.Errorf("got mtime seconds %d, wanted %d", *pbn.Mtime.Seconds, 1638111600)
+	}
+
+	if pbn.Mtime.FractionalNanoseconds == nil {
+		t.Fatal("mtime.FractionalNanoseconds is nil")
+	}
+
+	if *pbn.Mtime.FractionalNanoseconds != 76552 {
+		t.Errorf("got mtime seconds %d, wanted %d", *pbn.Mtime.FractionalNanoseconds, 76552)
+	}
+}
+
+func TestMtimeWholeSeconds(t *testing.T) {
+	fsn := NewFSNode(TFile)
+	fsn.SetData(make([]byte, 128))
+	fsn.SetModTime(time.Unix(1638111600, 0)) // filesystems such as NFS only have 1sec resolution for mtime
+
+	b, err := fsn.GetBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pbn := new(pb.Data)
+	err = proto.Unmarshal(b, pbn)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if pbn.Mtime == nil {
+		t.Fatal("mtime is nil")
+	}
+
+	if pbn.Mtime.Seconds == nil {
+		t.Fatal("mtime.Seconds is nil")
+	}
+
+	if *pbn.Mtime.Seconds != 1638111600 {
+		t.Errorf("got mtime seconds %d, wanted %d", *pbn.Mtime.Seconds, 1638111600)
+	}
+
+	if pbn.Mtime.FractionalNanoseconds != nil {
+		t.Fatalf("got mtime.FractionalNanoseconds %v, wanted nil", *pbn.Mtime.FractionalNanoseconds)
+	}
+}
+
+func TestMode(t *testing.T) {
+	fsn := NewFSNode(TFile)
+	fsn.SetData(make([]byte, 128))
+	fsn.SetFileMode(os.FileMode(0o521))
+
+	b, err := fsn.GetBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pbn := new(pb.Data)
+	err = proto.Unmarshal(b, pbn)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if pbn.Mode == nil {
+		t.Fatal("mode is nil")
+	}
+
+	if *pbn.Mode != 0o521 {
+		t.Errorf("got mode %d, wanted %d", *pbn.Mode, 0o521)
+	}
+}
+
+func TestModePreservesUnknownBits(t *testing.T) {
+	pbn := new(pb.Data)
+	typ := pb.Data_File
+	pbn.Type = &typ
+
+	// set mode with undefined bits set
+	origmode := uint32(0o12340755)
+	pbn.Mode = &origmode
+
+	b, err := proto.Marshal(pbn)
+	if err != nil {
+		t.Fatalf("failed to marshal protobuf: %v", err)
+	}
+
+	fsn, err := FSNodeFromBytes(b)
+	if err != nil {
+		t.Fatalf("failed to unmarshal protobuf: %v", err)
+	}
+
+	// set mode should not affect undefined bits
+	fsn.SetFileMode(os.FileMode(0o0521))
+
+	// Marshal
+	b2, err := proto.Marshal(&fsn.format)
+	if err != nil {
+		t.Fatalf("failed to marshal protobuf: %v", err)
+	}
+
+	pbn2 := new(pb.Data)
+	err = proto.Unmarshal(b2, pbn2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if pbn2.Mode == nil {
+		t.Fatal("mode is nil")
+	}
+
+	if *pbn2.Mode != 0o12340521 {
+		t.Errorf("got mode %o, wanted %o", *pbn2.Mode, 0o12340521)
 	}
 }
