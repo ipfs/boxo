@@ -210,10 +210,10 @@ func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPat
 }
 
 func hasOriginIsolation(r *http.Request) bool {
-	_, gw := r.Context().Value(GatewayHostnameKey).(string)
+	_, subdomainGw := r.Context().Value(SubdomainHostnameKey).(string)
 	_, dnslink := r.Context().Value(DNSLinkHostnameKey).(string)
 
-	if gw || dnslink {
+	if subdomainGw || dnslink {
 		return true
 	}
 

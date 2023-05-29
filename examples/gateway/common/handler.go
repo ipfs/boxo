@@ -10,33 +10,47 @@ import (
 )
 
 func NewHandler(gwAPI gateway.IPFSBackend) http.Handler {
-	// Initialize the headers and gateway configuration. For this example, we do
-	// not add any special headers, but the required ones.
-	headers := map[string][]string{}
-	gateway.AddAccessControlHeaders(headers)
 	conf := gateway.Config{
-		Headers: headers,
+		// Initialize the headers. For this example, we do not add any special headers,
+		// only the required ones via gateway.AddAccessControlHeaders.
+		Headers: map[string][]string{},
+
+		// If you set DNSLink to point at the CID from CAR, you can load it!
+		NoDNSLink: false,
+
+		// For these examples we have the trusted mode enabled by default. That is,
+		// all types of requests will be accepted. By default, only Trustless Gateway
+		// requests work: https://specs.ipfs.tech/http-gateways/trustless-gateway/
+		DeserializedResponses: true,
+
+		// Initialize the public gateways that we will want to have available
+		// through Host header rewriting. This step is optional, but required
+		// if you're running multiple public gateways on different hostnames
+		// and want different settings such as support for Deserialized
+		// Responses on localhost, or DNSLink and Subdomain Gateways.
+		PublicGateways: map[string]*gateway.Specification{
+			// Support public requests with Host: CID.ipfs.example.net and ID.ipns.example.net
+			"example.net": {
+				Paths:         []string{"/ipfs", "/ipns"},
+				NoDNSLink:     false,
+				UseSubdomains: true,
+				// This subdomain gateway is used for testing and therefore we make non-trustless requests.
+				DeserializedResponses: true,
+			},
+			// Support local requests
+			"localhost": {
+				Paths:         []string{"/ipfs", "/ipns"},
+				NoDNSLink:     false,
+				UseSubdomains: true,
+				// Localhost is considered trusted, ok to allow deserialized responses
+				// as long it is not exposed to the internet.
+				DeserializedResponses: true,
+			},
+		},
 	}
 
-	// Initialize the public gateways that we will want to have available through
-	// Host header rewriting. This step is optional and only required if you're
-	// running multiple public gateways and want different settings and support
-	// for DNSLink and Subdomain Gateways.
-	noDNSLink := false // If you set DNSLink to point at the CID from CAR, you can load it!
-	publicGateways := map[string]*gateway.Specification{
-		// Support public requests with Host: CID.ipfs.example.net and ID.ipns.example.net
-		"example.net": {
-			Paths:         []string{"/ipfs", "/ipns"},
-			NoDNSLink:     noDNSLink,
-			UseSubdomains: true,
-		},
-		// Support local requests
-		"localhost": {
-			Paths:         []string{"/ipfs", "/ipns"},
-			NoDNSLink:     noDNSLink,
-			UseSubdomains: true,
-		},
-	}
+	// Add required access control headers to the configuration.
+	gateway.AddAccessControlHeaders(conf.Headers)
 
 	// Creates a mux to serve the gateway paths. This is not strictly necessary
 	// and gwHandler could be used directly. However, on the next step we also want
@@ -57,7 +71,7 @@ func NewHandler(gwAPI gateway.IPFSBackend) http.Handler {
 	// or example.net. If you want to expose the metrics on such gateways,
 	// you will have to add the path "/debug" to the variable Paths.
 	var handler http.Handler
-	handler = gateway.WithHostname(mux, gwAPI, publicGateways, noDNSLink)
+	handler = gateway.WithHostname(conf, gwAPI, mux)
 
 	// Then, wrap with the withConnect middleware. This is required since we use
 	// http.ServeMux which does not support CONNECT by default.

@@ -186,8 +186,10 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	// for this request.
 	var gwURL string
 
-	// Get gateway hostname and build gateway URL.
-	if h, ok := r.Context().Value(GatewayHostnameKey).(string); ok {
+	// Ensure correct URL in DNSLink and Subdomain Gateways.
+	if h, ok := r.Context().Value(SubdomainHostnameKey).(string); ok {
+		gwURL = "//" + h
+	} else if h, ok := r.Context().Value(DNSLinkHostnameKey).(string); ok {
 		gwURL = "//" + h
 	} else {
 		gwURL = ""
