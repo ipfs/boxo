@@ -76,6 +76,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 				if err != nil {
 					err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 					webError(w, err, http.StatusInternalServerError)
+					return false
 				}
 			} else {
 				if !i.handleRequestErrors(w, contentPath, err) {
