@@ -196,16 +196,16 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	logger.Debug("http request received")
 
 	if err := handleUnsupportedHeaders(r); err != nil {
-		webRequestError(w, err)
+		i.webRequestError(w, r, err)
 		return
 	}
 
-	if requestHandled := handleProtocolHandlerRedirect(w, r, logger); requestHandled {
+	if requestHandled := i.handleProtocolHandlerRedirect(w, r, logger); requestHandled {
 		return
 	}
 
 	if err := handleServiceWorkerRegistration(r); err != nil {
-		webRequestError(w, err)
+		i.webRequestError(w, r, err)
 		return
 	}
 
@@ -221,19 +221,19 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if requestHandled := handleSuperfluousNamespace(w, r, contentPath); requestHandled {
+	if requestHandled := i.handleSuperfluousNamespace(w, r, contentPath); requestHandled {
 		return
 	}
 
 	if err := contentPath.IsValid(); err != nil {
-		webError(w, err, http.StatusBadRequest)
+		i.webError(w, r, err, http.StatusBadRequest)
 		return
 	}
 
 	// Detect when explicit Accept header or ?format parameter are present
 	responseFormat, formatParams, err := customResponseFormat(r)
 	if err != nil {
-		webError(w, fmt.Errorf("error while processing the Accept header: %w", err), http.StatusBadRequest)
+		i.webError(w, r, fmt.Errorf("error while processing the Accept header: %w", err), http.StatusBadRequest)
 		return
 	}
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResponseFormat", responseFormat))
@@ -245,7 +245,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	// Fail fast if unsupported request type was sent to a Trustless Gateway.
 	if !i.isDeserializedResponsePossible(r) && !i.isTrustlessRequest(contentPath, responseFormat) {
 		err := errors.New("only trustless requests are accepted on this gateway: https://specs.ipfs.tech/http-gateways/trustless-gateway/")
-		webError(w, err, http.StatusNotAcceptable)
+		i.webError(w, r, err, http.StatusNotAcceptable)
 		return
 	}
 
@@ -267,14 +267,14 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-			webError(w, err, http.StatusInternalServerError)
+			i.webError(w, r, err, http.StatusInternalServerError)
 			return
 		}
 	} else {
 		immutableContentPath, err = NewImmutablePath(contentPath)
 		if err != nil {
 			err = fmt.Errorf("path was expected to be immutable, but was not %s: %w", debugStr(contentPath.String()), err)
-			webError(w, err, http.StatusInternalServerError)
+			i.webError(w, r, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -290,7 +290,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	if ifNoneMatchResolvedPath != nil {
 		maybeResolvedImPath, err = NewImmutablePath(ifNoneMatchResolvedPath)
 		if err != nil {
-			webError(w, err, http.StatusInternalServerError)
+			i.webError(w, r, err, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -317,7 +317,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	case "application/vnd.ipfs.ipns-record":
 	default: // catch-all for unsuported application/vnd.*
 		err := fmt.Errorf("unsupported format %q", responseFormat)
-		webError(w, err, http.StatusBadRequest)
+		i.webError(w, r, err, http.StatusBadRequest)
 		return
 	}
 
@@ -668,7 +668,7 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, resp
 		if err != nil {
 			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-			webError(w, err, http.StatusInternalServerError)
+			i.webError(w, r, err, http.StatusInternalServerError)
 			return nil, false
 		}
 
@@ -690,13 +690,13 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, resp
 }
 
 // handleRequestErrors is used when request type is other than Web+UnixFS
-func (i *handler) handleRequestErrors(w http.ResponseWriter, contentPath ipath.Path, err error) bool {
+func (i *handler) handleRequestErrors(w http.ResponseWriter, r *http.Request, contentPath ipath.Path, err error) bool {
 	if err == nil {
 		return true
 	}
 	// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
 	err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-	webError(w, err, http.StatusInternalServerError)
+	i.webError(w, r, err, http.StatusInternalServerError)
 	return false
 }
 
@@ -709,7 +709,7 @@ func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request,
 
 	if errors.Is(err, ErrServiceUnavailable) {
 		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-		webError(w, err, http.StatusServiceUnavailable)
+		i.webError(w, r, err, http.StatusServiceUnavailable)
 		return ImmutablePath{}, false
 	}
 
@@ -736,7 +736,7 @@ func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request,
 	}
 
 	err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-	webError(w, err, http.StatusInternalServerError)
+	i.webError(w, r, err, http.StatusInternalServerError)
 	return ImmutablePath{}, false
 }
 
@@ -775,15 +775,15 @@ func handleUnsupportedHeaders(r *http.Request) (err *ErrorResponse) {
 // via navigator.registerProtocolHandler Web API
 // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/registerProtocolHandler
 // TLDR: redirect /ipfs/?uri=ipfs%3A%2F%2Fcid%3Fquery%3Dval to /ipfs/cid?query=val
-func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, logger *zap.SugaredLogger) (requestHandled bool) {
+func (i *handler) handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, logger *zap.SugaredLogger) (requestHandled bool) {
 	if uriParam := r.URL.Query().Get("uri"); uriParam != "" {
 		u, err := url.Parse(uriParam)
 		if err != nil {
-			webError(w, fmt.Errorf("failed to parse uri query parameter: %w", err), http.StatusBadRequest)
+			i.webError(w, r, fmt.Errorf("failed to parse uri query parameter: %w", err), http.StatusBadRequest)
 			return true
 		}
 		if u.Scheme != "ipfs" && u.Scheme != "ipns" {
-			webError(w, fmt.Errorf("uri query parameter scheme must be ipfs or ipns: %w", err), http.StatusBadRequest)
+			i.webError(w, r, fmt.Errorf("uri query parameter scheme must be ipfs or ipns: %w", err), http.StatusBadRequest)
 			return true
 		}
 		path := u.Path
@@ -869,7 +869,7 @@ func handleIpnsB58mhToCidRedirection(w http.ResponseWriter, r *http.Request) boo
 // 'intended' path is valid.  This is in case gremlins were tickled
 // wrong way and user ended up at /ipfs/ipfs/{cid} or /ipfs/ipns/{id}
 // like in bafybeien3m7mdn6imm425vc2s22erzyhbvk5n3ofzgikkhmdkh5cuqbpbq :^))
-func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) (requestHandled bool) {
+func (i *handler) handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) (requestHandled bool) {
 	// If the path is valid, there's nothing to do
 	if pathErr := contentPath.IsValid(); pathErr == nil {
 		return false
@@ -883,7 +883,7 @@ func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentP
 	// Attempt to fix the superflous namespace
 	intendedPath := ipath.New(strings.TrimPrefix(r.URL.Path, "/ipfs"))
 	if err := intendedPath.IsValid(); err != nil {
-		webError(w, fmt.Errorf("invalid ipfs path: %w", err), http.StatusBadRequest)
+		i.webError(w, r, fmt.Errorf("invalid ipfs path: %w", err), http.StatusBadRequest)
 		return true
 	}
 	intendedURL := intendedPath.String()
@@ -903,7 +903,7 @@ func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentP
 		SuggestedPath: intendedPath.String(),
 		ErrorMsg:      fmt.Sprintf("invalid path: %q should be %q", r.URL.Path, intendedPath.String()),
 	}); err != nil {
-		webError(w, fmt.Errorf("failed to redirect when fixing superfluous namespace: %w", err), http.StatusBadRequest)
+		i.webError(w, r, fmt.Errorf("failed to redirect when fixing superfluous namespace: %w", err), http.StatusBadRequest)
 	}
 
 	return true

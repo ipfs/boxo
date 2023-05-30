@@ -16,13 +16,13 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	defer span.End()
 
 	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
-	if !i.handleRequestErrors(w, contentPath, err) {
+	if !i.handleRequestErrors(w, r, contentPath, err) {
 		return false
 	}
 	defer data.Close()
 
 	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
-		webRequestError(w, err)
+		i.webRequestError(w, r, err)
 		return false
 	}
 

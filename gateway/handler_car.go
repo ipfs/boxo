@@ -26,18 +26,18 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	case "1": // noop, we support this
 	default:
 		err := fmt.Errorf("unsupported CAR version: only version=1 is supported")
-		webError(w, err, http.StatusBadRequest)
+		i.webError(w, r, err, http.StatusBadRequest)
 		return false
 	}
 
 	pathMetadata, carFile, errCh, err := i.api.GetCAR(ctx, imPath)
-	if !i.handleRequestErrors(w, contentPath, err) {
+	if !i.handleRequestErrors(w, r, contentPath, err) {
 		return false
 	}
 	defer carFile.Close()
 
 	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
-		webRequestError(w, err)
+		i.webRequestError(w, r, err)
 		return false
 	}
 

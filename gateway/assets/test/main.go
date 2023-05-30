@@ -2,23 +2,27 @@ package main
 
 import (
 	"fmt"
-	"html/template"
 	"net/http"
-	"net/url"
 	"os"
+	"strconv"
+
+	"github.com/ipfs/boxo/gateway/assets"
 )
 
 const (
-	directoryTemplateFile = "../directory-index.html"
-	dagTemplateFile       = "../dag-index.html"
-
 	testPath = "/ipfs/QmFooBarQXB2mzChmMeKY47C43LxUdg1NDJ5MWcKMKxDu7/a/b/c"
 )
 
-var directoryTestData = DirectoryTemplateData{
+var directoryTestData = assets.DirectoryTemplateData{
+	GlobalData: assets.GlobalData{
+		Menu: []assets.MenuItem{{
+			URL:   "http://example.com",
+			Title: "Support",
+		}},
+	},
 	GatewayURL: "//localhost:3000",
 	DNSLink:    true,
-	Listing: []DirectoryItem{{
+	Listing: []assets.DirectoryItem{{
 		Size:      "25 MiB",
 		Name:      "short-film.mov",
 		Path:      testPath + "/short-film.mov",
@@ -39,7 +43,7 @@ var directoryTestData = DirectoryTemplateData{
 	}},
 	Size: "25 MiB",
 	Path: testPath,
-	Breadcrumbs: []Breadcrumb{{
+	Breadcrumbs: []assets.Breadcrumb{{
 		Name: "ipfs",
 	}, {
 		Name: "QmFooBarQXB2mzChmMeKY47C43LxUdg1NDJ5MWcKMKxDu7",
@@ -58,11 +62,44 @@ var directoryTestData = DirectoryTemplateData{
 	Hash:     "QmFooBazBar2mzChmMeKY47C43LxUdg1NDJ5MWcKMKxDu7",
 }
 
-var dagTestData = DagTemplateData{
+var dagTestData = assets.DagTemplateData{
+	GlobalData: assets.GlobalData{
+		Menu: []assets.MenuItem{{
+			URL:   "http://example.com",
+			Title: "Support",
+		}},
+	},
 	Path:      "/ipfs/baguqeerabn4wonmz6icnk7dfckuizcsf4e4igua2ohdboecku225xxmujepa",
 	CID:       "baguqeerabn4wonmz6icnk7dfckuizcsf4e4igua2ohdboecku225xxmujepa",
 	CodecName: "dag-json",
 	CodecHex:  "0x129",
+}
+
+func init() {
+	// Append all types so we can preview the icons for all file types.
+	for ext := range assets.KnownIcons {
+		directoryTestData.Listing = append(directoryTestData.Listing, assets.DirectoryItem{
+			Size:      "1 MiB",
+			Name:      "file" + ext,
+			Path:      testPath + "/" + "file" + ext,
+			Hash:      "QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR",
+			ShortHash: "QmbW\u2026sMnR",
+		})
+	}
+}
+
+func runTemplate(w http.ResponseWriter, filename string, data interface{}) {
+	fs := os.DirFS(".")
+	tpl, err := assets.BuildTemplate(fs, filename)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse template file: %s", err), http.StatusInternalServerError)
+		return
+	}
+	err = tpl.Execute(w, data)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to execute template: %s", err), http.StatusInternalServerError)
+		return
+	}
 }
 
 func main() {
@@ -70,87 +107,33 @@ func main() {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/dag":
-			dagTemplate, err := template.New("dag-index.html").ParseFiles(dagTemplateFile)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("failed to parse template file: %s", err), http.StatusInternalServerError)
-				return
-			}
-			err = dagTemplate.Execute(w, &dagTestData)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("failed to execute template: %s", err), http.StatusInternalServerError)
-				return
-			}
+			runTemplate(w, "dag.html", dagTestData)
 		case "/directory":
-			directoryTemplate, err := template.New("directory-index.html").Funcs(template.FuncMap{
-				"iconFromExt": func(name string) string {
-					return "ipfs-_blank" // place-holder
-				},
-				"urlEscape": func(rawUrl string) string {
-					pathURL := url.URL{Path: rawUrl}
-					return pathURL.String()
-				},
-			}).ParseFiles(directoryTemplateFile)
+			runTemplate(w, "directory.html", directoryTestData)
+		case "/error":
+			statusCode, err := strconv.Atoi(r.URL.Query().Get("code"))
 			if err != nil {
-				http.Error(w, fmt.Sprintf("failed to parse template file: %s", err), http.StatusInternalServerError)
-				return
+				statusCode = 500
 			}
-			err = directoryTemplate.Execute(w, &directoryTestData)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("failed to execute template: %s", err), http.StatusInternalServerError)
-				return
-			}
+			runTemplate(w, "error.html", &assets.ErrorTemplateData{
+				GlobalData: assets.GlobalData{
+					Menu: []assets.MenuItem{{
+						URL:   "http://example.com",
+						Title: "Support",
+					}},
+				},
+				StatusCode: statusCode,
+				StatusText: http.StatusText(statusCode),
+				Error:      "this is the verbatim error: lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua",
+			})
 		case "/":
-			html := `<p>Test paths: <a href="/dag">DAG</a>, <a href="/directory">Directory</a>.`
+			html := `<p>Test paths: <a href="/dag">DAG</a>, <a href="/directory">Directory</a>, <a href="/error?code=500">Error</a>.`
 			_, _ = w.Write([]byte(html))
 		default:
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 		}
 	})
 
-	if _, err := os.Stat(directoryTemplateFile); err != nil {
-		wd, _ := os.Getwd()
-		fmt.Printf("could not open template file %q, relative to %q: %s\n", directoryTemplateFile, wd, err)
-		os.Exit(1)
-	}
-
-	if _, err := os.Stat(dagTemplateFile); err != nil {
-		wd, _ := os.Getwd()
-		fmt.Printf("could not open template file %q, relative to %q: %s\n", dagTemplateFile, wd, err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("listening on localhost:3000\n")
+	fmt.Printf("listening on http://localhost:3000/\n")
 	_ = http.ListenAndServe("localhost:3000", mux)
-}
-
-// Copied from ../assets.go
-type DagTemplateData struct {
-	Path      string
-	CID       string
-	CodecName string
-	CodecHex  string
-}
-
-type DirectoryTemplateData struct {
-	GatewayURL  string
-	DNSLink     bool
-	Listing     []DirectoryItem
-	Size        string
-	Path        string
-	Breadcrumbs []Breadcrumb
-	BackLink    string
-	Hash        string
-}
-
-type DirectoryItem struct {
-	Size      string
-	Name      string
-	Path      string
-	Hash      string
-	ShortHash string
-}
-
-type Breadcrumb struct {
-	Name string
-	Path string
 }

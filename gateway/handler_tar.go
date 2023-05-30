@@ -24,13 +24,13 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 
 	// Get Unixfs file (or directory)
 	pathMetadata, file, err := i.api.GetAll(ctx, imPath)
-	if !i.handleRequestErrors(w, contentPath, err) {
+	if !i.handleRequestErrors(w, r, contentPath, err) {
 		return false
 	}
 	defer file.Close()
 
 	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
-		webRequestError(w, err)
+		i.webRequestError(w, r, err)
 		return false
 	}
 	rootCid := pathMetadata.LastSegment.Cid()
@@ -64,7 +64,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// Construct the TAR writer
 	tarw, err := files.NewTarWriter(w)
 	if err != nil {
-		webError(w, fmt.Errorf("could not build tar writer: %w", err), http.StatusInternalServerError)
+		i.webError(w, r, fmt.Errorf("could not build tar writer: %w", err), http.StatusInternalServerError)
 		return false
 	}
 	defer tarw.Close()
