@@ -123,7 +123,7 @@ func (e *ErrorResponse) Unwrap() error {
 	return e.Err
 }
 
-func (i *handler) webError(w http.ResponseWriter, r *http.Request, err error, defaultCode int) {
+func (i *handler) webError(w http.ResponseWriter, r *http.Request, err error, defaultCode int) bool {
 	code := defaultCode
 
 	// Pass Retry-After hint to the client
@@ -170,6 +170,8 @@ func (i *handler) webError(w http.ResponseWriter, r *http.Request, err error, de
 	} else {
 		http.Error(w, err.Error(), code)
 	}
+
+	return false
 }
 
 func isErrNotFound(err error) bool {
