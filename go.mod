@@ -27,7 +27,7 @@ require (
 	github.com/ipfs/go-ipfs-redirects-file v0.1.1
 	github.com/ipfs/go-ipld-cbor v0.0.6
 	github.com/ipfs/go-ipld-format v0.4.0
-	github.com/ipfs/go-ipld-legacy v0.1.1
+	github.com/ipfs/go-ipld-legacy v0.1.2-0.20230530145437-25f06f837f87
 	github.com/ipfs/go-log v1.0.5
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/ipfs/go-metrics-interface v0.0.1
