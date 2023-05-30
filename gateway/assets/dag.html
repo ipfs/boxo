@@ -53,7 +53,11 @@
   {{ else }}
     <div translate="no">
       {{ with $node.CID }}<a class="ipfs-hash" href={{ if $root.DNSLink }}"https://cid.ipfs.tech/#{{ . | urlEscape}}" target="_blank" rel="noreferrer noopener"{{ else }}"{{ $root.GatewayURL }}/ipfs/{{ . | urlEscape}}"{{ end }}>{{ end }}
-        <code class="nowrap">{{- $node.Value -}}</code>
+        {{ if $node.Long }}
+          <pre>{{- $node.Value -}}</pre>
+        {{ else }}
+          <code class="nowrap">{{- $node.Value -}}</code>
+        {{ end }}
       {{ with $node.CID }}</a>{{ end }}
     </div>
   {{ end }}

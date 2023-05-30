@@ -171,7 +171,7 @@ func main() {
 		case "/dag":
 			cid := r.URL.Query().Get("cid")
 			if cid == "" {
-				cid = "bafyreifqscjzoqx6rs6niehqo4jcsc63ihej2hxnskywhs7bx5t3prhpdu"
+				cid = "bafyreiaocls5bt2ha5vszv5pwz34zzcdf3axk3uqa56bgsgvlkbezw67hq"
 			}
 
 			runTemplate(w, "dag.html", dagTestData[cid])

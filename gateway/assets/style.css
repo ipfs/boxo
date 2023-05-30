@@ -189,6 +189,10 @@ main section header {
 	grid-template-columns: max-content 1fr;
 }
 
+.grid.dag pre {
+	margin: 0;
+}
+
 .grid.dag .grid {
 	padding: 0;
 }

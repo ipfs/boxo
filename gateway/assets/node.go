@@ -13,6 +13,7 @@ type ParsedNode struct {
 	Values []*ParsedNode
 	Value  string
 	CID    string
+	Long   bool
 }
 
 func ParseNode(node datamodel.Node) (*ParsedNode, error) {
@@ -86,7 +87,8 @@ func ParseNode(node datamodel.Node) (*ParsedNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		dag.Value = hex.EncodeToString(v)
+		dag.Long = true
+		dag.Value = hex.Dump(v)
 	case datamodel.Kind_Link:
 		lnk, err := node.AsLink()
 		if err != nil {
