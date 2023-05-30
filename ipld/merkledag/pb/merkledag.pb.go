@@ -160,8 +160,8 @@ func (m *PBNode) GetData() []byte {
 }
 
 func init() {
-	proto.RegisterType((*PBLink)(nil), "merkledag.pb.PBLink")
-	proto.RegisterType((*PBNode)(nil), "merkledag.pb.PBNode")
+	proto.RegisterType((*PBLink)(nil), "merkledag.v1.pb.PBLink")
+	proto.RegisterType((*PBNode)(nil), "merkledag.v1.pb.PBNode")
 }
 
 func init() { proto.RegisterFile("merkledag.proto", fileDescriptor_10837cc3557cec00) }
