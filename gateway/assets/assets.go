@@ -86,7 +86,9 @@ type MenuItem struct {
 }
 
 type GlobalData struct {
-	Menu []MenuItem
+	Menu       []MenuItem
+	GatewayURL string
+	DNSLink    bool
 }
 
 type DagTemplateData struct {
@@ -95,6 +97,7 @@ type DagTemplateData struct {
 	CID       string
 	CodecName string
 	CodecHex  string
+	Node      *ParsedNode
 }
 
 type ErrorTemplateData struct {
@@ -106,8 +109,6 @@ type ErrorTemplateData struct {
 
 type DirectoryTemplateData struct {
 	GlobalData
-	GatewayURL  string
-	DNSLink     bool
 	Listing     []DirectoryItem
 	Size        string
 	Path        string

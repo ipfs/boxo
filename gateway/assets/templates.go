@@ -24,9 +24,15 @@ func iconFromExt(filename string) string {
 	return "ipfs-_blank" // Default is blank icon.
 }
 
+// args is a helper function to allow sending more than one object to a template.
+func args(args ...interface{}) []interface{} {
+	return args
+}
+
 var funcMap = template.FuncMap{
 	"iconFromExt": iconFromExt,
 	"urlEscape":   urlEscape,
+	"args":        args,
 }
 
 func readFile(fs fs.FS, filename string) ([]byte, error) {

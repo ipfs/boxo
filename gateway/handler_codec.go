@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -120,7 +121,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 		download := r.URL.Query().Get("download") == "true"
 
 		if isDAG && acceptsHTML && !download {
-			return i.serveCodecHTML(ctx, w, r, resolvedPath, contentPath)
+			return i.serveCodecHTML(ctx, w, r, blockCid, blockData, resolvedPath, contentPath)
 		} else {
 			// This covers CIDs with codec 'json' and 'cbor' as those do not have
 			// an explicit requested content type.
@@ -152,7 +153,34 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	return i.serveCodecConverted(ctx, w, r, blockCid, blockData, contentPath, toCodec, modtime, begin)
 }
 
-func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path) bool {
+func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.ReadSeekCloser, resolvedPath ipath.Resolved, contentPath ipath.Path) bool {
+	// If a redirect is setup (e.g. subdomains), do it and do not render the HTML.
+	if w.Header().Get("Location") != "" {
+		w.WriteHeader(http.StatusMovedPermanently)
+		return true
+	}
+
+	// WithHostname may have constructed an IPFS (or IPNS) path using the Host header.
+	// In this case, we need the original path for constructing the redirect.
+	requestURI, err := url.ParseRequestURI(r.RequestURI)
+	if err != nil {
+		i.webError(w, r, fmt.Errorf("failed to parse request path: %w", err), http.StatusInternalServerError)
+		return false
+	}
+
+	// Ensure HTML rendering is in a path that ends with trailing slash.
+	if requestURI.Path[len(requestURI.Path)-1] != '/' {
+		suffix := "/"
+		// preserve query parameters
+		if r.URL.RawQuery != "" {
+			suffix = suffix + "?" + r.URL.RawQuery
+		}
+		// /ipfs/cid/foo?bar must be redirected to /ipfs/cid/foo/?bar
+		redirectURL := requestURI.Path + suffix
+		http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
+		return true
+	}
+
 	// A HTML directory index will be presented, be sure to set the correct
 	// type instead of relying on autodetection (which may fail).
 	w.Header().Set("Content-Type", "text/html")
@@ -171,13 +199,12 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 
 	cidCodec := mc.Code(resolvedPath.Cid().Prefix().Codec)
 	if err := assets.DagTemplate.Execute(w, assets.DagTemplateData{
-		GlobalData: assets.GlobalData{
-			Menu: i.config.Menu,
-		},
-		Path:      contentPath.String(),
-		CID:       resolvedPath.Cid().String(),
-		CodecName: cidCodec.String(),
-		CodecHex:  fmt.Sprintf("0x%x", uint64(cidCodec)),
+		GlobalData: i.getTemplateGlobalData(r, contentPath),
+		Path:       contentPath.String(),
+		CID:        resolvedPath.Cid().String(),
+		CodecName:  cidCodec.String(),
+		CodecHex:   fmt.Sprintf("0x%x", uint64(cidCodec)),
+		Node:       parseNode(blockCid, blockData),
 	}); err != nil {
 		err = fmt.Errorf("failed to generate HTML listing for this DAG: try fetching raw block with ?format=raw: %w", err)
 		i.webError(w, r, err, http.StatusInternalServerError)
@@ -187,8 +214,35 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 	return true
 }
 
+// parseNode does a best effort attempt to parse this request's block such that
+// a preview can be displayed in the gateway. If something fails along the way,
+// returns nil, therefore not displaying the preview.
+func parseNode(blockCid cid.Cid, blockData io.ReadSeekCloser) *assets.ParsedNode {
+	codec := blockCid.Prefix().Codec
+	decoder, err := multicodec.LookupDecoder(codec)
+	if err != nil {
+		return nil
+	}
+
+	nodeBuilder := basicnode.Prototype.Any.NewBuilder()
+	err = decoder(nodeBuilder, blockData)
+	if err != nil {
+		return nil
+	}
+
+	parsedNode, err := assets.ParseNode(nodeBuilder.Build())
+	if err != nil {
+		return nil
+	}
+
+	return parsedNode
+}
+
 // serveCodecRaw returns the raw block without any conversion
 func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, blockData io.ReadSeekCloser, contentPath ipath.Path, name string, modtime, begin time.Time) bool {
+	// Special fix around redirects.
+	w = &statusResponseWriter{w}
+
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
 	_, dataSent, _ := ServeContent(w, r, name, modtime, blockData)
@@ -203,6 +257,9 @@ func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *h
 
 // serveCodecConverted returns payload converted to codec specified in toCodec
 func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.ReadSeekCloser, contentPath ipath.Path, toCodec mc.Code, modtime, begin time.Time) bool {
+	// Special fix around redirects.
+	w = &statusResponseWriter{w}
+
 	codec := blockCid.Prefix().Codec
 	decoder, err := multicodec.LookupDecoder(codec)
 	if err != nil {
