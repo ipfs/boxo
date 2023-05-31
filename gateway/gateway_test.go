@@ -745,12 +745,61 @@ func TestIpnsTrustlessMode(t *testing.T) {
 }
 
 func TestDagJsonCborPreview(t *testing.T) {
-	ts, _, root := newTestServerAndNode(t, nil)
-	t.Logf("test server url: %s", ts.URL)
-	url := path.Join([]string{"/ipfs", root.String(), t.Name(), "example"})
+	api, root := newMockAPI(t)
 
-	t.Run("Strings Are Escaped", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodGet, ts.URL+url, nil)
+	ts := newTestServerWithConfig(t, api, Config{
+		Headers:   map[string][]string{},
+		NoDNSLink: false,
+		PublicGateways: map[string]*Specification{
+			"example.com": {
+				Paths:                 []string{"/ipfs", "/ipns"},
+				UseSubdomains:         true,
+				DeserializedResponses: true,
+			},
+		},
+		DeserializedResponses: true,
+	})
+	t.Logf("test server url: %s", ts.URL)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	resolvedPath, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name(), "example"))
+	assert.NoError(t, err)
+
+	cidStr := resolvedPath.Cid().String()
+
+	t.Run("path gateway normalizes to trailing slash", func(t *testing.T) {
+		t.Parallel()
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/"+cidStr, nil)
+		req.Header.Add("Accept", "text/html")
+		assert.NoError(t, err)
+
+		res, err := doWithoutRedirect(req)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusMovedPermanently, res.StatusCode)
+		assert.Equal(t, "/ipfs/"+cidStr+"/", res.Header.Get("Location"))
+	})
+
+	t.Run("subdomain gateway correctly redirects", func(t *testing.T) {
+		t.Parallel()
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/"+cidStr, nil)
+		req.Header.Add("Accept", "text/html")
+		req.Host = "example.com"
+		assert.NoError(t, err)
+
+		res, err := doWithoutRedirect(req)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusMovedPermanently, res.StatusCode)
+		assert.Equal(t, "http://"+cidStr+".ipfs.example.com/", res.Header.Get("Location"))
+	})
+
+	t.Run("preview strings are correctly escaped", func(t *testing.T) {
+		t.Parallel()
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+resolvedPath.String()+"/", nil)
 		req.Header.Add("Accept", "text/html")
 		assert.NoError(t, err)
 

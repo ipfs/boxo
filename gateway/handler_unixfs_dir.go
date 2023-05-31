@@ -27,9 +27,9 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	ctx, span := spanTrace(ctx, "Handler.ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
-	// HostnameOption might have constructed an IPNS/IPFS path using the Host header.
-	// In this case, we need the original path for constructing redirects
-	// and links that match the requested URL.
+	// WithHostname might have constructed an IPNS/IPFS path using the Host header.
+	// In this case, we need the original path for constructing redirects and links
+	// that match the requested URL.
 	// For example, http://example.net would become /ipns/example.net, and
 	// the redirects and links would end up as http://example.net/ipns/example.net
 	requestURI, err := url.ParseRequestURI(r.RequestURI)
