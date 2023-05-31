@@ -108,16 +108,6 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		return false
 	}
 
-	// See statusResponseWriter.WriteHeader
-	// and https://github.com/ipfs/kubo/issues/7164
-	// Note: this needs to occur before listingTemplate.Execute otherwise we get
-	// superfluous response.WriteHeader call from prometheus/client_golang
-	if w.Header().Get("Location") != "" {
-		logger.Debugw("location moved permanently", "status", http.StatusMovedPermanently)
-		w.WriteHeader(http.StatusMovedPermanently)
-		return true
-	}
-
 	// A HTML directory index will be presented, be sure to set the correct
 	// type instead of relying on autodetection (which may fail).
 	w.Header().Set("Content-Type", "text/html")

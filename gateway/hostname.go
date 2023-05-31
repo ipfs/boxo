@@ -25,6 +25,15 @@ func WithHostname(c Config, api IPFSBackend, next http.Handler) http.HandlerFunc
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer panicHandler(w)
 
+		// First check for protocol handler redirects.
+		if redirectURL, err := getProtocolHandlerRedirect(r); err != nil {
+			webError(w, r, &c, err, http.StatusBadRequest)
+			return
+		} else if redirectURL != "" {
+			http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
+			return
+		}
+
 		// Unfortunately, many (well, ipfs.io) gateways use
 		// DNSLink so if we blindly rewrite with DNSLink, we'll
 		// break /ipfs links.
@@ -56,19 +65,12 @@ func WithHostname(c Config, api IPFSBackend, next http.Handler) http.HandlerFunc
 					useInlinedDNSLink := gw.InlineDNSLink
 					newURL, err := toSubdomainURL(host, r.URL.Path, r, useInlinedDNSLink, api)
 					if err != nil {
-						http.Error(w, err.Error(), http.StatusBadRequest)
+						webError(w, r, &c, err, http.StatusBadRequest)
 						return
 					}
 					if newURL != "" {
-						// Set "Location" header with redirect destination.
-						// It is ignored by curl in default mode, but will
-						// be respected by user agents that follow
-						// redirects by default, namely web browsers
-						w.Header().Set("Location", newURL)
-
-						// Note: we continue regular gateway processing:
-						// HTTP Status Code http.StatusMovedPermanently
-						// will be set later, in statusResponseWriter
+						http.Redirect(w, r, newURL, http.StatusMovedPermanently)
+						return
 					}
 				}
 
@@ -117,14 +119,14 @@ func WithHostname(c Config, api IPFSBackend, next http.Handler) http.HandlerFunc
 				// Do we need to redirect root CID to a canonical DNS representation?
 				dnsCID, err := toDNSLabel(rootID, rootCID)
 				if err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
+					webError(w, r, &c, err, http.StatusBadRequest)
 					return
 				}
 				if !strings.HasPrefix(r.Host, dnsCID) {
 					dnsPrefix := "/" + ns + "/" + dnsCID
 					newURL, err := toSubdomainURL(gwHostname, dnsPrefix+r.URL.Path, r, useInlinedDNSLink, api)
 					if err != nil {
-						http.Error(w, err.Error(), http.StatusBadRequest)
+						webError(w, r, &c, err, http.StatusBadRequest)
 						return
 					}
 					if newURL != "" {
@@ -140,7 +142,7 @@ func WithHostname(c Config, api IPFSBackend, next http.Handler) http.HandlerFunc
 					if rootCID.Type() != cid.Libp2pKey {
 						newURL, err := toSubdomainURL(gwHostname, pathPrefix+r.URL.Path, r, useInlinedDNSLink, api)
 						if err != nil {
-							http.Error(w, err.Error(), http.StatusBadRequest)
+							webError(w, r, &c, err, http.StatusBadRequest)
 							return
 						}
 						if newURL != "" {
@@ -438,7 +440,16 @@ func toSubdomainURL(hostname, path string, r *http.Request, inlineDNSLink bool, 
 				// update path prefix to use real FQDN with DNSLink
 				rootID = dnsLabel
 			}
+		} else if ns == "ipfs" {
+			// If rootID is not a CID, but it's within the IPFS namespace, let it
+			// be handled by the regular handler.
+			return "", nil
 		}
+	}
+
+	if rootID == "" {
+		// If the rootID is empty, then we cannot produce a redirect URL.
+		return "", nil
 	}
 
 	return safeRedirectURL(fmt.Sprintf(

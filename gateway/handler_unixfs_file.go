@@ -91,9 +91,6 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 	// (unifies behavior across gateways and web browsers)
 	w.Header().Set("Content-Type", ctype)
 
-	// special fixup around redirects
-	w = &statusResponseWriter{w}
-
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
 	_, dataSent, _ := ServeContent(w, r, name, modtime, content)
