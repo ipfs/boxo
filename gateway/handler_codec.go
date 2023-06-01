@@ -154,12 +154,6 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 }
 
 func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.ReadSeekCloser, resolvedPath ipath.Resolved, contentPath ipath.Path) bool {
-	// If a redirect is setup (e.g. subdomains), do it and do not render the HTML.
-	if w.Header().Get("Location") != "" {
-		w.WriteHeader(http.StatusMovedPermanently)
-		return true
-	}
-
 	// WithHostname may have constructed an IPFS (or IPNS) path using the Host header.
 	// In this case, we need the original path for constructing the redirect.
 	requestURI, err := url.ParseRequestURI(r.RequestURI)
@@ -240,9 +234,6 @@ func parseNode(blockCid cid.Cid, blockData io.ReadSeekCloser) *assets.ParsedNode
 
 // serveCodecRaw returns the raw block without any conversion
 func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, blockData io.ReadSeekCloser, contentPath ipath.Path, name string, modtime, begin time.Time) bool {
-	// Special fix around redirects.
-	w = &statusResponseWriter{w}
-
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
 	_, dataSent, _ := ServeContent(w, r, name, modtime, blockData)
@@ -257,9 +248,6 @@ func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *h
 
 // serveCodecConverted returns payload converted to codec specified in toCodec
 func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.ReadSeekCloser, contentPath ipath.Path, toCodec mc.Code, modtime, begin time.Time) bool {
-	// Special fix around redirects.
-	w = &statusResponseWriter{w}
-
 	codec := blockCid.Prefix().Codec
 	decoder, err := multicodec.LookupDecoder(codec)
 	if err != nil {
