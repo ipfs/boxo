@@ -123,7 +123,7 @@ func (e *ErrorResponse) Unwrap() error {
 	return e.Err
 }
 
-func (i *handler) webError(w http.ResponseWriter, r *http.Request, err error, defaultCode int) {
+func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defaultCode int) {
 	code := defaultCode
 
 	// Pass Retry-After hint to the client
@@ -161,7 +161,7 @@ func (i *handler) webError(w http.ResponseWriter, r *http.Request, err error, de
 		w.WriteHeader(code)
 		_ = assets.ErrorTemplate.Execute(w, assets.ErrorTemplateData{
 			GlobalData: assets.GlobalData{
-				Menu: i.config.Menu,
+				Menu: c.Menu,
 			},
 			StatusCode: code,
 			StatusText: http.StatusText(code),

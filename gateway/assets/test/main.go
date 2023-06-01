@@ -1,13 +1,29 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/ipfs/boxo/gateway/assets"
+	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime/multicodec"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
+	mc "github.com/multiformats/go-multicodec"
+
+	// Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/cbor"
+	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
+	_ "github.com/ipld/go-ipld-prime/codec/dagjson"
+	_ "github.com/ipld/go-ipld-prime/codec/json"
+	_ "github.com/ipld/go-ipld-prime/codec/raw"
 )
+
+//go:embed dag/*.block
+var embeds embed.FS
 
 const (
 	testPath = "/ipfs/QmFooBarQXB2mzChmMeKY47C43LxUdg1NDJ5MWcKMKxDu7/a/b/c"
@@ -19,9 +35,9 @@ var directoryTestData = assets.DirectoryTemplateData{
 			URL:   "http://example.com",
 			Title: "Support",
 		}},
+		GatewayURL: "//localhost:3000",
+		DNSLink:    true,
 	},
-	GatewayURL: "//localhost:3000",
-	DNSLink:    true,
 	Listing: []assets.DirectoryItem{{
 		Size:      "25 MiB",
 		Name:      "short-film.mov",
@@ -62,17 +78,61 @@ var directoryTestData = assets.DirectoryTemplateData{
 	Hash:     "QmFooBazBar2mzChmMeKY47C43LxUdg1NDJ5MWcKMKxDu7",
 }
 
-var dagTestData = assets.DagTemplateData{
-	GlobalData: assets.GlobalData{
-		Menu: []assets.MenuItem{{
-			URL:   "http://example.com",
-			Title: "Support",
-		}},
-	},
-	Path:      "/ipfs/baguqeerabn4wonmz6icnk7dfckuizcsf4e4igua2ohdboecku225xxmujepa",
-	CID:       "baguqeerabn4wonmz6icnk7dfckuizcsf4e4igua2ohdboecku225xxmujepa",
-	CodecName: "dag-json",
-	CodecHex:  "0x129",
+var dagTestData = map[string]*assets.DagTemplateData{}
+
+func loadDagTestData() {
+	entries, err := embeds.ReadDir("dag")
+	if err != nil {
+		panic(err)
+	}
+
+	for _, entry := range entries {
+		cidStr := strings.TrimSuffix(entry.Name(), ".block")
+		cid, err := cid.Decode(cidStr)
+		if err != nil {
+			panic(err)
+		}
+
+		f, err := embeds.Open("dag/" + entry.Name())
+		if err != nil {
+			panic(err)
+		}
+
+		codec := cid.Prefix().Codec
+		decoder, err := multicodec.LookupDecoder(codec)
+		if err != nil {
+			panic(err)
+		}
+
+		node := basicnode.Prototype.Any.NewBuilder()
+		err = decoder(node, f)
+		if err != nil {
+			panic(err)
+		}
+
+		cidCodec := mc.Code(cid.Prefix().Codec)
+
+		dag, err := assets.ParseNode(node.Build())
+		if err != nil {
+			panic(err)
+		}
+
+		dagTestData[cid.String()] = &assets.DagTemplateData{
+			GlobalData: assets.GlobalData{
+				Menu: []assets.MenuItem{{
+					URL:   "http://example.com",
+					Title: "Support",
+				}},
+				GatewayURL: "//localhost:3000",
+				DNSLink:    true,
+			},
+			Path:      "/ipfs/" + cid.String(),
+			CID:       cid.String(),
+			CodecName: cidCodec.String(),
+			CodecHex:  fmt.Sprintf("0x%x", uint64(cidCodec)),
+			Node:      dag,
+		}
+	}
 }
 
 func init() {
@@ -86,6 +146,8 @@ func init() {
 			ShortHash: "QmbW\u2026sMnR",
 		})
 	}
+
+	loadDagTestData()
 }
 
 func runTemplate(w http.ResponseWriter, filename string, data interface{}) {
@@ -107,7 +169,12 @@ func main() {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/dag":
-			runTemplate(w, "dag.html", dagTestData)
+			cid := r.URL.Query().Get("cid")
+			if cid == "" {
+				cid = "bafyreiaocls5bt2ha5vszv5pwz34zzcdf3axk3uqa56bgsgvlkbezw67hq"
+			}
+
+			runTemplate(w, "dag.html", dagTestData[cid])
 		case "/directory":
 			runTemplate(w, "directory.html", directoryTestData)
 		case "/error":

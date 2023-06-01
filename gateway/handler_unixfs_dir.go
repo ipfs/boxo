@@ -27,9 +27,9 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	ctx, span := spanTrace(ctx, "Handler.ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
-	// HostnameOption might have constructed an IPNS/IPFS path using the Host header.
-	// In this case, we need the original path for constructing redirects
-	// and links that match the requested URL.
+	// WithHostname might have constructed an IPNS/IPFS path using the Host header.
+	// In this case, we need the original path for constructing redirects and links
+	// that match the requested URL.
 	// For example, http://example.net would become /ipns/example.net, and
 	// the redirects and links would end up as http://example.net/ipns/example.net
 	requestURI, err := url.ParseRequestURI(r.RequestURI)
@@ -108,16 +108,6 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		return false
 	}
 
-	// See statusResponseWriter.WriteHeader
-	// and https://github.com/ipfs/kubo/issues/7164
-	// Note: this needs to occur before listingTemplate.Execute otherwise we get
-	// superfluous response.WriteHeader call from prometheus/client_golang
-	if w.Header().Get("Location") != "" {
-		logger.Debugw("location moved permanently", "status", http.StatusMovedPermanently)
-		w.WriteHeader(http.StatusMovedPermanently)
-		return true
-	}
-
 	// A HTML directory index will be presented, be sure to set the correct
 	// type instead of relying on autodetection (which may fail).
 	w.Header().Set("Content-Type", "text/html")
@@ -178,41 +168,21 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	size := humanize.Bytes(directoryMetadata.dagSize)
-
 	hash := resolvedPath.Cid().String()
-
-	// Gateway root URL to be used when linking to other rootIDs.
-	// This will be blank unless subdomain or DNSLink resolution is being used
-	// for this request.
-	var gwURL string
-
-	// Ensure correct URL in DNSLink and Subdomain Gateways.
-	if h, ok := r.Context().Value(SubdomainHostnameKey).(string); ok {
-		gwURL = "//" + h
-	} else if h, ok := r.Context().Value(DNSLinkHostnameKey).(string); ok {
-		gwURL = "//" + h
-	} else {
-		gwURL = ""
-	}
-
-	dnslink := assets.HasDNSLinkOrigin(gwURL, contentPath.String())
+	globalData := i.getTemplateGlobalData(r, contentPath)
 
 	// See comment above where originalUrlPath is declared.
 	tplData := assets.DirectoryTemplateData{
-		GlobalData: assets.GlobalData{
-			Menu: i.config.Menu,
-		},
-		GatewayURL:  gwURL,
-		DNSLink:     dnslink,
+		GlobalData:  globalData,
 		Listing:     dirListing,
 		Size:        size,
 		Path:        contentPath.String(),
-		Breadcrumbs: assets.Breadcrumbs(contentPath.String(), dnslink),
+		Breadcrumbs: assets.Breadcrumbs(contentPath.String(), globalData.DNSLink),
 		BackLink:    backLink,
 		Hash:        hash,
 	}
 
-	logger.Debugw("request processed", "tplDataDNSLink", dnslink, "tplDataSize", size, "tplDataBackLink", backLink, "tplDataHash", hash)
+	logger.Debugw("request processed", "tplDataDNSLink", globalData.DNSLink, "tplDataSize", size, "tplDataBackLink", backLink, "tplDataHash", hash)
 
 	if err := assets.DirectoryTemplate.Execute(w, tplData); err != nil {
 		i.webError(w, r, err, http.StatusInternalServerError)

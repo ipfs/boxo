@@ -43,10 +43,8 @@ func TestBasicOperation(t *testing.T) {
 	defer ctx.Done()
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	queue, err := NewQueue(ctx, "test", ds)
-	if err != nil {
-		t.Fatal(err)
-	}
+	queue := NewQueue(ds)
+	defer queue.Close()
 
 	cids := makeCids(10)
 
@@ -63,10 +61,8 @@ func TestMangledData(t *testing.T) {
 	defer ctx.Done()
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	queue, err := NewQueue(ctx, "test", ds)
-	if err != nil {
-		t.Fatal(err)
-	}
+	queue := NewQueue(ds)
+	defer queue.Close()
 
 	cids := makeCids(10)
 	for _, c := range cids {
@@ -75,7 +71,7 @@ func TestMangledData(t *testing.T) {
 
 	// put bad data in the queue
 	queueKey := datastore.NewKey("/test/0")
-	err = queue.ds.Put(ctx, queueKey, []byte("borked"))
+	err := queue.ds.Put(ctx, queueKey, []byte("borked"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,10 +87,8 @@ func TestInitialization(t *testing.T) {
 	defer ctx.Done()
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	queue, err := NewQueue(ctx, "test", ds)
-	if err != nil {
-		t.Fatal(err)
-	}
+	queue := NewQueue(ds)
+	defer queue.Close()
 
 	cids := makeCids(10)
 	for _, c := range cids {
@@ -104,10 +98,8 @@ func TestInitialization(t *testing.T) {
 	assertOrdered(cids[:5], queue, t)
 
 	// make a new queue, same data
-	queue, err = NewQueue(ctx, "test", ds)
-	if err != nil {
-		t.Fatal(err)
-	}
+	queue = NewQueue(ds)
+	defer queue.Close()
 
 	assertOrdered(cids[5:], queue, t)
 }
@@ -118,21 +110,18 @@ func TestInitializationWithManyCids(t *testing.T) {
 	defer ctx.Done()
 
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	queue, err := NewQueue(ctx, "test", ds)
-	if err != nil {
-		t.Fatal(err)
-	}
+	queue := NewQueue(ds)
 
 	cids := makeCids(25)
 	for _, c := range cids {
 		queue.Enqueue(c)
 	}
 
+	queue.Close()
+
 	// make a new queue, same data
-	queue, err = NewQueue(ctx, "test", ds)
-	if err != nil {
-		t.Fatal(err)
-	}
+	queue = NewQueue(ds)
+	defer queue.Close()
 
 	assertOrdered(cids, queue, t)
 }
