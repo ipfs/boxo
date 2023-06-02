@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/alecthomas/units v0.0.0-20210927113745-59d0afb8317a
 	github.com/benbjohnson/clock v1.3.0
+	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/crackcomm/go-gitignore v0.0.0-20170627025303-887ab5e44cc3
 	github.com/cskr/pubsub v1.0.2

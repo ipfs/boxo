@@ -3,7 +3,6 @@ package queue
 import (
 	"context"
 	"fmt"
-
 	cid "github.com/ipfs/go-cid"
 	datastore "github.com/ipfs/go-datastore"
 	namespace "github.com/ipfs/go-datastore/namespace"
@@ -21,6 +20,7 @@ var log = logging.Logger("provider.queue")
 type Queue struct {
 	// used to differentiate queues in datastore
 	// e.g. provider vs reprovider
+	name    string
 	ctx     context.Context
 	ds      datastore.Datastore // Must be threadsafe
 	dequeue chan cid.Cid
@@ -32,10 +32,11 @@ type Queue struct {
 }
 
 // NewQueue creates a queue for cids
-func NewQueue(ds datastore.Datastore) *Queue {
-	namespaced := namespace.Wrap(ds, datastore.NewKey("/queue"))
-	cancelCtx, cancel := context.WithCancel(context.Background())
+func NewQueue(ctx context.Context, name string, ds datastore.Datastore) (*Queue, error) {
+	namespaced := namespace.Wrap(ds, datastore.NewKey("/"+name+"/queue/"))
+	cancelCtx, cancel := context.WithCancel(ctx)
 	q := &Queue{
+		name:    name,
 		ctx:     cancelCtx,
 		ds:      namespaced,
 		dequeue: make(chan cid.Cid),
@@ -44,16 +45,13 @@ func NewQueue(ds datastore.Datastore) *Queue {
 		closed:  make(chan struct{}, 1),
 	}
 	q.work()
-	return q
+	return q, nil
 }
 
 // Close stops the queue
 func (q *Queue) Close() error {
 	q.close()
 	<-q.closed
-	// We don't close dequeue because the provider which consume this get caught in
-	// an infinite loop dequeing cid.Undef if we do that.
-	// The provider has it's own select on top of dequeue and will handle this by itself.
 	return nil
 }
 
@@ -81,6 +79,8 @@ func (q *Queue) work() {
 		defer func() {
 			// also cancels any in-progess enqueue tasks.
 			q.close()
+			// unblocks anyone waiting
+			close(q.dequeue)
 			// unblocks the close call
 			close(q.closed)
 		}()
@@ -120,12 +120,6 @@ func (q *Queue) work() {
 				keyPath := fmt.Sprintf("%020d/%s", q.counter, c.String())
 				q.counter++
 				nextKey := datastore.NewKey(keyPath)
-
-				if c == cid.Undef {
-					// fast path, skip rereading the datastore if we don't have anything in hand yet
-					c = toQueue
-					k = nextKey
-				}
 
 				if err := q.ds.Put(q.ctx, nextKey, toQueue.Bytes()); err != nil {
 					log.Errorf("Failed to enqueue cid: %s", err)
