@@ -198,8 +198,8 @@ func (tp *TestSuite) TestPinRecursive(t *testing.T) {
 	}
 	n := 0
 	for r := range res {
-		if r.Err() != nil {
-			t.Error(r.Err())
+		if err := r.Err(); err != nil {
+			t.Error(err)
 		}
 		if !r.Ok() {
 			t.Error("expected pin to be ok")
