@@ -20,7 +20,6 @@ import (
 
 	"github.com/ipfs/boxo/ipld/merkledag"
 	"github.com/ipfs/boxo/ipld/merkledag/dagutils"
-
 	ipfspinner "github.com/ipfs/boxo/pinning/pinner"
 	"github.com/ipfs/boxo/pinning/pinner/dsindex"
 )
