@@ -7,15 +7,17 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff"
-	blocks "github.com/ipfs/boxo/blockstore"
-	"github.com/ipfs/boxo/fetcher"
-	fetcherhelpers "github.com/ipfs/boxo/fetcher/helpers"
-	"github.com/ipfs/boxo/verifcid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-cidutil"
 	logging "github.com/ipfs/go-log"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/routing"
+
+	blocks "github.com/ipfs/boxo/blockstore"
+	"github.com/ipfs/boxo/fetcher"
+	fetcherhelpers "github.com/ipfs/boxo/fetcher/helpers"
+	pin "github.com/ipfs/boxo/pinning/pinner"
+	"github.com/ipfs/boxo/verifcid"
 )
 
 var logR = logging.Logger("reprovider.simple")
@@ -180,8 +182,8 @@ func NewBlockstoreProvider(bstore blocks.Blockstore) KeyChanFunc {
 // Pinner interface defines how the simple.Reprovider wants to interact
 // with a Pinning service
 type Pinner interface {
-	DirectKeys(ctx context.Context) ([]cid.Cid, error)
-	RecursiveKeys(ctx context.Context) ([]cid.Cid, error)
+	DirectKeys(ctx context.Context) <-chan pin.StreamedCid
+	RecursiveKeys(ctx context.Context) <-chan pin.StreamedCid
 }
 
 // NewPinnedProvider returns provider supplying pinned keys
@@ -217,26 +219,25 @@ func pinSet(ctx context.Context, pinning Pinner, fetchConfig fetcher.Factory, on
 		defer cancel()
 		defer close(set.New)
 
-		dkeys, err := pinning.DirectKeys(ctx)
-		if err != nil {
-			logR.Errorf("reprovide direct pins: %s", err)
-			return
-		}
-		for _, key := range dkeys {
-			set.Visitor(ctx)(key)
-		}
-
-		rkeys, err := pinning.RecursiveKeys(ctx)
-		if err != nil {
-			logR.Errorf("reprovide indirect pins: %s", err)
-			return
+		dkeys := pinning.DirectKeys(ctx)
+		for wrapper := range dkeys {
+			if wrapper.Err != nil {
+				logR.Errorf("reprovide direct pins: %s", wrapper.Err)
+				return
+			}
+			set.Visitor(ctx)(wrapper.C)
 		}
 
+		rkeys := pinning.RecursiveKeys(ctx)
 		session := fetchConfig.NewSession(ctx)
-		for _, key := range rkeys {
-			set.Visitor(ctx)(key)
+		for wrapper := range rkeys {
+			if wrapper.Err != nil {
+				logR.Errorf("reprovide indirect pins: %s", wrapper.Err)
+				return
+			}
+			set.Visitor(ctx)(wrapper.C)
 			if !onlyRoots {
-				err := fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: key}, func(res fetcher.FetchResult) error {
+				err := fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: wrapper.C}, func(res fetcher.FetchResult) error {
 					clink, ok := res.LastBlockLink.(cidlink.Link)
 					if ok {
 						set.Visitor(ctx)(clink.Cid)

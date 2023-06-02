@@ -38,7 +38,7 @@ const (
 	// Internal pins are cids used to keep the internal state of the pinner.
 	Internal
 
-	// NotPinned
+	// NotPinned is a value to indicated that a cid is not pinned.
 	NotPinned
 
 	// Any refers to any pinned cid
@@ -80,7 +80,7 @@ var ErrNotPinned = fmt.Errorf("not pinned or pinned indirectly")
 
 // A Pinner provides the necessary methods to keep track of Nodes which are
 // to be kept locally, according to a pin mode. In practice, a Pinner is in
-// in charge of keeping the list of items from the local storage that should
+// charge of keeping the list of items from the local storage that should
 // not be garbage-collected.
 type Pinner interface {
 	// IsPinned returns whether or not the given cid is pinned
@@ -119,14 +119,14 @@ type Pinner interface {
 	Flush(ctx context.Context) error
 
 	// DirectKeys returns all directly pinned cids
-	DirectKeys(ctx context.Context) ([]cid.Cid, error)
+	DirectKeys(ctx context.Context) <-chan StreamedCid
 
 	// RecursiveKeys returns all recursively pinned cids
-	RecursiveKeys(ctx context.Context) ([]cid.Cid, error)
+	RecursiveKeys(ctx context.Context) <-chan StreamedCid
 
 	// InternalPins returns all cids kept pinned for the internal state of the
 	// pinner
-	InternalPins(ctx context.Context) ([]cid.Cid, error)
+	InternalPins(ctx context.Context) <-chan StreamedCid
 }
 
 // Pinned represents CID which has been pinned with a pinning strategy.
@@ -155,4 +155,10 @@ func (p Pinned) String() string {
 		modeStr, _ := ModeToString(p.Mode)
 		return fmt.Sprintf("pinned: %s", modeStr)
 	}
+}
+
+// StreamedCid encapsulate a Cid and an error for a function to return a channel of Cids.
+type StreamedCid struct {
+	C   cid.Cid
+	Err error
 }
