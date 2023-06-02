@@ -454,9 +454,13 @@ reprovideCidLoop:
 			case s.reprovideCh <- c:
 			case <-ctx.Done():
 				return ctx.Err()
+			case <-s.ctx.Done():
+				return errors.New("failed to reprovide: shutting down")
 			}
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-s.ctx.Done():
+			return errors.New("failed to reprovide: shutting down")
 		}
 	}
 
