@@ -200,11 +200,7 @@ func TestPinnerBasic(t *testing.T) {
 	assertPinned(t, p, dk, "pinned node not found.")
 
 	allCids := func(ch <-chan ipfspin.StreamedCid) (cids []cid.Cid) {
-		for {
-			val, ok := <-ch
-			if !ok {
-				break
-			}
+		for val := range ch {
 			if val.Err != nil {
 				t.Fatal(val.Err)
 			}
