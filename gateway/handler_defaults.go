@@ -67,6 +67,9 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		// related DAGs.
 		pathMetadata, getResp, err = i.api.Get(ctx, maybeResolvedImPath, ranges...)
 		if err != nil {
+			log.Infow("boxo Get error", "path", maybeResolvedImPath.String(),
+				"err", err, "http request context error", ctx.Err())
+
 			if isWebRequest(requestedContentType) {
 				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
 				if !continueProcessing {
