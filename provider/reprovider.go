@@ -1,26 +1,44 @@
-package batched
+package provider
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"time"
 
-	provider "github.com/ipfs/boxo/provider"
-	"github.com/ipfs/boxo/provider/queue"
-	"github.com/ipfs/boxo/provider/simple"
+	"github.com/ipfs/boxo/provider/internal/queue"
 	"github.com/ipfs/boxo/verifcid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
+	namespace "github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log"
 	"github.com/multiformats/go-multihash"
 )
 
+const (
+	// MAGIC: how long we wait before reproviding a key
+	DefaultReproviderInterval = time.Hour * 22 // https://github.com/ipfs/kubo/pull/9326
+
+	// MAGIC: If the reprovide ticker is larger than a minute (likely), provide
+	// once after we've been up a minute. Don't provide _immediately_ as we
+	// might be just about to stop.
+	defaultInitialReprovideDelay = time.Minute
+
+	// MAGIC: how long we wait between the first provider we hear about and
+	// batching up the provides to send out
+	pauseDetectionThreshold = time.Millisecond * 500
+
+	// MAGIC: how long we are willing to collect providers for the batch after
+	// we receive the first one
+	maxCollectionDuration = time.Minute * 10
+)
+
 var log = logging.Logger("provider.batched")
 
-type BatchProvidingSystem struct {
+type reprovider struct {
 	ctx     context.Context
 	close   context.CancelFunc
 	closewg sync.WaitGroup
@@ -29,39 +47,64 @@ type BatchProvidingSystem struct {
 	initalReprovideDelay     time.Duration
 	initialReprovideDelaySet bool
 
-	rsys        provideMany
-	keyProvider simple.KeyChanFunc
+	rsys        Provide
+	keyProvider KeyChanFunc
 
 	q  *queue.Queue
 	ds datastore.Batching
 
 	reprovideCh chan cid.Cid
 
-	totalProvides, lastReprovideBatchSize     int
+	maxReprovideBatchSize uint
+
+	statLk                                    sync.Mutex
+	totalProvides, lastReprovideBatchSize     uint64
 	avgProvideDuration, lastReprovideDuration time.Duration
+
+	throughputCallback ThroughputCallback
+	// throughputProvideCurrentCount counts how many provides has been done since the last call to throughputCallback
+	throughputProvideCurrentCount uint
+	// throughputDurationSum sums up durations between two calls to the throughputCallback
+	throughputDurationSum     time.Duration
+	throughputMinimumProvides uint
+
+	keyPrefix datastore.Key
 }
 
-var _ provider.System = (*BatchProvidingSystem)(nil)
+var _ System = (*reprovider)(nil)
 
-type provideMany interface {
+type Provide interface {
+	Provide(context.Context, cid.Cid, bool) error
+}
+
+type ProvideMany interface {
 	ProvideMany(ctx context.Context, keys []multihash.Multihash) error
+}
+
+type Ready interface {
 	Ready() bool
 }
 
 // Option defines the functional option type that can be used to configure
 // BatchProvidingSystem instances
-type Option func(system *BatchProvidingSystem) error
+type Option func(system *reprovider) error
 
-var lastReprovideKey = datastore.NewKey("/provider/reprovide/lastreprovide")
+var lastReprovideKey = datastore.NewKey("/reprovide/lastreprovide")
+var DefaultKeyPrefix = datastore.NewKey("/provider")
 
-func New(provider provideMany, q *queue.Queue, opts ...Option) (*BatchProvidingSystem, error) {
-	s := &BatchProvidingSystem{
-		reprovideInterval: time.Hour * 24,
-		rsys:              provider,
-		keyProvider:       nil,
-		q:                 q,
-		ds:                datastore.NewMapDatastore(),
-		reprovideCh:       make(chan cid.Cid),
+// New creates a new [System]. By default it is offline, that means it will
+// enqueue tasks in ds.
+// To have it publish records in the network use the [Online] option.
+// If provider casts to [ProvideMany] the [ProvideMany.ProvideMany] method will
+// be called instead.
+//
+// If provider casts to [Ready], it will wait until [Ready.Ready] is true.
+func New(ds datastore.Batching, opts ...Option) (System, error) {
+	s := &reprovider{
+		reprovideInterval:     DefaultReproviderInterval,
+		maxReprovideBatchSize: math.MaxUint,
+		keyPrefix:             DefaultKeyPrefix,
+		reprovideCh:           make(chan cid.Cid),
 	}
 
 	for _, o := range opts {
@@ -71,13 +114,8 @@ func New(provider provideMany, q *queue.Queue, opts ...Option) (*BatchProvidingS
 	}
 
 	// Setup default behavior for the initial reprovide delay
-	//
-	// If the reprovide ticker is larger than a minute (likely),
-	// provide once after we've been up a minute.
-	//
-	// Don't provide _immediately_ as we might be just about to stop.
-	if !s.initialReprovideDelaySet && s.reprovideInterval > time.Minute {
-		s.initalReprovideDelay = time.Minute
+	if !s.initialReprovideDelaySet && s.reprovideInterval > defaultInitialReprovideDelay {
+		s.initalReprovideDelay = defaultInitialReprovideDelay
 		s.initialReprovideDelaySet = true
 	}
 
@@ -89,50 +127,87 @@ func New(provider provideMany, q *queue.Queue, opts ...Option) (*BatchProvidingS
 		}
 	}
 
+	s.ds = namespace.Wrap(ds, s.keyPrefix)
+	s.q = queue.NewQueue(s.ds)
+
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options
 	ctx, cancel := context.WithCancel(context.Background())
 	s.ctx = ctx
 	s.close = cancel
 
+	if s.rsys != nil {
+		if _, ok := s.rsys.(ProvideMany); !ok {
+			s.maxReprovideBatchSize = 1
+		}
+
+		s.run()
+	}
+
 	return s, nil
 }
 
-func Datastore(batching datastore.Batching) Option {
-	return func(system *BatchProvidingSystem) error {
-		system.ds = batching
-		return nil
-	}
-}
-
 func ReproviderInterval(duration time.Duration) Option {
-	return func(system *BatchProvidingSystem) error {
+	return func(system *reprovider) error {
 		system.reprovideInterval = duration
 		return nil
 	}
 }
 
-func KeyProvider(fn simple.KeyChanFunc) Option {
-	return func(system *BatchProvidingSystem) error {
+func KeyProvider(fn KeyChanFunc) Option {
+	return func(system *reprovider) error {
 		system.keyProvider = fn
 		return nil
 	}
 }
 
+// DatastorePrefix sets a prefix for internal state stored in the Datastore.
+// Defaults to [DefaultKeyPrefix].
+func DatastorePrefix(k datastore.Key) Option {
+	return func(system *reprovider) error {
+		system.keyPrefix = k
+		return nil
+	}
+}
+
+// ThroughputReport will fire the callback synchronously once at least limit
+// multihashes have been advertised, it will then wait until a new set of at least
+// limit multihashes has been advertised.
+// While ThroughputReport is set batches will be at most minimumProvides big.
+// If it returns false it wont ever be called again.
+func ThroughputReport(f ThroughputCallback, minimumProvides uint) Option {
+	return func(system *reprovider) error {
+		system.throughputCallback = f
+		system.throughputMinimumProvides = minimumProvides
+		return nil
+	}
+}
+
+type ThroughputCallback = func(reprovide bool, complete bool, totalKeysProvided uint, totalDuration time.Duration) (continueWatching bool)
+
+// Online will enable the router and make it send publishes online.
+// nil can be used to turn the router offline.
+// You can't register multiple providers, if this option is passed multiple times
+// it will error.
+func Online(rsys Provide) Option {
+	return func(system *reprovider) error {
+		if system.rsys != nil {
+			return fmt.Errorf("trying to register two provider on the same reprovider")
+		}
+		system.rsys = rsys
+		return nil
+	}
+}
+
 func initialReprovideDelay(duration time.Duration) Option {
-	return func(system *BatchProvidingSystem) error {
+	return func(system *reprovider) error {
 		system.initialReprovideDelaySet = true
 		system.initalReprovideDelay = duration
 		return nil
 	}
 }
 
-func (s *BatchProvidingSystem) Run() {
-	// how long we wait between the first provider we hear about and batching up the provides to send out
-	const pauseDetectionThreshold = time.Millisecond * 500
-	// how long we are willing to collect providers for the batch after we receive the first one
-	const maxCollectionDuration = time.Minute * 10
-
+func (s *reprovider) run() {
 	provCh := s.q.Dequeue()
 
 	s.closewg.Add(1)
@@ -166,27 +241,16 @@ func (s *BatchProvidingSystem) Run() {
 
 		for {
 			performedReprovide := false
+			complete := false
+
+			batchSize := s.maxReprovideBatchSize
+			if s.throughputCallback != nil && s.throughputMinimumProvides < batchSize {
+				batchSize = s.throughputMinimumProvides
+			}
 
 			// at the start of every loop the maxCollectionDurationTimer and pauseDetectTimer should be already be
 			// stopped and have empty channels
-		loop:
-			for {
-				select {
-				case <-maxCollectionDurationTimer.C:
-					// if this timer has fired then the pause timer has started so let's stop and empty it
-					stopAndEmptyTimer(pauseDetectTimer)
-					break loop
-				default:
-				}
-
-				select {
-				case c := <-provCh:
-					resetTimersAfterReceivingProvide()
-					m[c] = struct{}{}
-					continue
-				default:
-				}
-
+			for uint(len(m)) < batchSize {
 				select {
 				case c := <-provCh:
 					resetTimersAfterReceivingProvide()
@@ -198,15 +262,19 @@ func (s *BatchProvidingSystem) Run() {
 				case <-pauseDetectTimer.C:
 					// if this timer has fired then the max collection timer has started so let's stop and empty it
 					stopAndEmptyTimer(maxCollectionDurationTimer)
-					break loop
+					complete = true
+					goto AfterLoop
 				case <-maxCollectionDurationTimer.C:
 					// if this timer has fired then the pause timer has started so let's stop and empty it
 					stopAndEmptyTimer(pauseDetectTimer)
-					break loop
+					goto AfterLoop
 				case <-s.ctx.Done():
 					return
 				}
 			}
+			stopAndEmptyTimer(pauseDetectTimer)
+			stopAndEmptyTimer(maxCollectionDurationTimer)
+		AfterLoop:
 
 			if len(m) == 0 {
 				continue
@@ -230,34 +298,44 @@ func (s *BatchProvidingSystem) Run() {
 				continue
 			}
 
-			for !s.rsys.Ready() {
-				log.Debugf("reprovider system not ready")
-				select {
-				case <-time.After(time.Minute):
-				case <-s.ctx.Done():
-					return
+			if r, ok := s.rsys.(Ready); ok {
+				ticker := time.NewTicker(time.Minute)
+				for !r.Ready() {
+					log.Debugf("reprovider system not ready")
+					select {
+					case <-ticker.C:
+					case <-s.ctx.Done():
+						return
+					}
 				}
+				ticker.Stop()
 			}
 
 			log.Debugf("starting provide of %d keys", len(keys))
 			start := time.Now()
-			err := s.rsys.ProvideMany(s.ctx, keys)
+			err := doProvideMany(s.ctx, s.rsys, keys)
 			if err != nil {
 				log.Debugf("providing failed %v", err)
 				continue
 			}
 			dur := time.Since(start)
 
-			totalProvideTime := int64(s.totalProvides) * int64(s.avgProvideDuration)
-			recentAvgProvideDuration := time.Duration(int64(dur) / int64(len(keys)))
-			s.avgProvideDuration = time.Duration((totalProvideTime + int64(dur)) / int64(s.totalProvides+len(keys)))
-			s.totalProvides += len(keys)
+			totalProvideTime := time.Duration(s.totalProvides) * s.avgProvideDuration
+			recentAvgProvideDuration := dur / time.Duration(len(keys))
+
+			s.statLk.Lock()
+			s.avgProvideDuration = time.Duration((totalProvideTime + dur) / (time.Duration(s.totalProvides) + time.Duration(len(keys))))
+			s.totalProvides += uint64(len(keys))
 
 			log.Debugf("finished providing of %d keys. It took %v with an average of %v per provide", len(keys), dur, recentAvgProvideDuration)
 
 			if performedReprovide {
-				s.lastReprovideBatchSize = len(keys)
+				s.lastReprovideBatchSize = uint64(len(keys))
 				s.lastReprovideDuration = dur
+
+				s.statLk.Unlock()
+
+				// Don't hold the lock while writing to disk, consumers don't need to wait on IO to read thoses fields.
 
 				if err := s.ds.Put(s.ctx, lastReprovideKey, storeTime(time.Now())); err != nil {
 					log.Errorf("could not store last reprovide time: %v", err)
@@ -265,6 +343,18 @@ func (s *BatchProvidingSystem) Run() {
 				if err := s.ds.Sync(s.ctx, lastReprovideKey); err != nil {
 					log.Errorf("could not perform sync of last reprovide time: %v", err)
 				}
+			} else {
+				s.statLk.Unlock()
+			}
+
+			s.throughputDurationSum += dur
+			s.throughputProvideCurrentCount += uint(len(keys))
+			if s.throughputCallback != nil && s.throughputProvideCurrentCount >= s.throughputMinimumProvides {
+				if more := s.throughputCallback(performedReprovide, complete, s.throughputProvideCurrentCount, s.throughputDurationSum); !more {
+					s.throughputCallback = nil
+				}
+				s.throughputProvideCurrentCount = 0
+				s.throughputDurationSum = 0
 			}
 		}
 	}()
@@ -327,22 +417,22 @@ func parseTime(b []byte) (time.Time, error) {
 	return time.Unix(0, tns), nil
 }
 
-func (s *BatchProvidingSystem) Close() error {
+func (s *reprovider) Close() error {
 	s.close()
 	err := s.q.Close()
 	s.closewg.Wait()
 	return err
 }
 
-func (s *BatchProvidingSystem) Provide(cid cid.Cid) error {
+func (s *reprovider) Provide(cid cid.Cid) error {
 	return s.q.Enqueue(cid)
 }
 
-func (s *BatchProvidingSystem) Reprovide(ctx context.Context) error {
+func (s *reprovider) Reprovide(ctx context.Context) error {
 	return s.reprovide(ctx, true)
 }
 
-func (s *BatchProvidingSystem) reprovide(ctx context.Context, force bool) error {
+func (s *reprovider) reprovide(ctx context.Context, force bool) error {
 	if !s.shouldReprovide() && !force {
 		return nil
 	}
@@ -373,7 +463,7 @@ reprovideCidLoop:
 	return nil
 }
 
-func (s *BatchProvidingSystem) getLastReprovideTime() (time.Time, error) {
+func (s *reprovider) getLastReprovideTime() (time.Time, error) {
 	val, err := s.ds.Get(s.ctx, lastReprovideKey)
 	if errors.Is(err, datastore.ErrNotFound) {
 		return time.Time{}, nil
@@ -390,31 +480,45 @@ func (s *BatchProvidingSystem) getLastReprovideTime() (time.Time, error) {
 	return t, nil
 }
 
-func (s *BatchProvidingSystem) shouldReprovide() bool {
+func (s *reprovider) shouldReprovide() bool {
 	t, err := s.getLastReprovideTime()
 	if err != nil {
 		log.Debugf("getting last reprovide time failed: %s", err)
 		return false
 	}
 
-	if time.Since(t) < time.Duration(float64(s.reprovideInterval)*0.5) {
+	if time.Since(t) < s.reprovideInterval {
 		return false
 	}
 	return true
 }
 
-type BatchedProviderStats struct {
-	TotalProvides, LastReprovideBatchSize     int
+type ReproviderStats struct {
+	TotalProvides, LastReprovideBatchSize     uint64
 	AvgProvideDuration, LastReprovideDuration time.Duration
 }
 
 // Stat returns various stats about this provider system
-func (s *BatchProvidingSystem) Stat(ctx context.Context) (BatchedProviderStats, error) {
-	// TODO: Does it matter that there is no locking around the total+average values?
-	return BatchedProviderStats{
+func (s *reprovider) Stat() (ReproviderStats, error) {
+	s.statLk.Lock()
+	defer s.statLk.Unlock()
+	return ReproviderStats{
 		TotalProvides:          s.totalProvides,
 		LastReprovideBatchSize: s.lastReprovideBatchSize,
 		AvgProvideDuration:     s.avgProvideDuration,
 		LastReprovideDuration:  s.lastReprovideDuration,
 	}, nil
+}
+
+func doProvideMany(ctx context.Context, r Provide, keys []multihash.Multihash) error {
+	if many, ok := r.(ProvideMany); ok {
+		return many.ProvideMany(ctx, keys)
+	}
+
+	for _, k := range keys {
+		if err := r.Provide(ctx, cid.NewCidV1(cid.Raw, k), true); err != nil {
+			return err
+		}
+	}
+	return nil
 }
