@@ -24,6 +24,15 @@ The following emojis are used to highlight certain changes:
   - `DirectKeys`
   - `RecursiveKeys`
   - `InternalKeys`
+- 🛠 Provider API refactor
+  - `provider/queue` has been moved to `provider/internal/queue`.
+  - `provider/batched.New` has been moved to `provider.New` and arguments has been changed:
+    - a routing system is now passed with the `provider.Online` option, by default the system run in offline mode (push stuff onto the queue); and
+    - you do not have to pass a queue anymore, you pass a `datastore.Datastore` exclusively.
+  - `provider/simple` has been removed, now instead `provider.New` will accept non batched routing systems and use type assertion for the `ProvideMany` call, giving a single implementation.
+  - `provider.NewOfflineProvider` has been renamed to `provider.NewNoopProvider` to show more clearly that is does nothing.
+  - `provider.NewSystem` has been removed, `provider.New` now returns a `provider.System` directly.
+  - `provider.Provider` and `provider.Reprovider` has been merged under one `provider.System`
 
 ## [0.8.0] - 2023-04-05
 ### Added

@@ -5,7 +5,6 @@ go 1.19
 require (
 	github.com/alecthomas/units v0.0.0-20210927113745-59d0afb8317a
 	github.com/benbjohnson/clock v1.3.0
-	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/crackcomm/go-gitignore v0.0.0-20170627025303-887ab5e44cc3
 	github.com/cskr/pubsub v1.0.2
@@ -41,7 +40,7 @@ require (
 	github.com/libp2p/go-libp2p v0.26.3
 	github.com/libp2p/go-libp2p-kad-dht v0.21.1
 	github.com/libp2p/go-libp2p-record v0.2.0
-	github.com/libp2p/go-libp2p-routing-helpers v0.4.0
+	github.com/libp2p/go-libp2p-routing-helpers v0.7.0
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/libp2p/go-msgio v0.3.0
 	github.com/miekg/dns v1.1.50
