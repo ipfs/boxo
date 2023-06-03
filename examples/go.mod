@@ -10,7 +10,7 @@ require (
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipld/go-ipld-prime v0.20.0
 	github.com/libp2p/go-libp2p v0.26.3
-	github.com/libp2p/go-libp2p-routing-helpers v0.6.0
+	github.com/libp2p/go-libp2p-routing-helpers v0.7.0
 	github.com/multiformats/go-multiaddr v0.8.0
 	github.com/multiformats/go-multicodec v0.8.1
 	github.com/prometheus/client_golang v1.14.0
