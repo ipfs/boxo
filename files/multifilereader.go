@@ -130,8 +130,7 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 	}
 
 	// otherwise, read from file data
-	switch f := mfr.currentFile.(type) {
-	case File:
+	if f, ok := mfr.currentFile.(File); ok {
 		written, err = f.Read(buf)
 		if err != io.EOF {
 			return written, err

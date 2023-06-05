@@ -1,8 +1,15 @@
 # File managed by web3-bot. DO NOT EDIT.
 # See https://github.com/protocol/.github/ for details.
 
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches: ["main","release"]
 name: Go Test
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   unit:
@@ -10,15 +17,29 @@ jobs:
       fail-fast: false
       matrix:
         os: [ "ubuntu", "windows", "macos" ]
-        go: [ "1.18.x", "1.19.x" ]
+        go: ["1.19.x","1.20.x"]
     env:
-      COVERAGES: ""
-    runs-on: ${{ format('{0}-latest', matrix.os) }}
+      GOTESTFLAGS: -cover -coverprofile=module-coverage.txt -coverpkg=./...
+      GO386FLAGS: ''
+      GORACEFLAGS: ''
+    runs-on: ${{ fromJSON(vars[format('UCI_GO_TEST_RUNNER_{0}', matrix.os)] || format('"{0}-latest"', matrix.os)) }}
     name: ${{ matrix.os }} (go ${{ matrix.go }})
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: recursive
+      - id: config
+        uses: protocol/.github/.github/actions/read-config@master
+      - if: toJSON(fromJSON(steps.config.outputs.json).shuffle) != 'false'
+        run: |
+          echo "GOTESTFLAGS=-shuffle=on $GOTESTFLAGS" >> $GITHUB_ENV
+          echo "GO386FLAGS=-shuffle=on $GO386FLAGS" >> $GITHUB_ENV
+          echo "GORACEFLAGS=-shuffle=on $GORACEFLAGS" >> $GITHUB_ENV
+      - if: toJSON(fromJSON(steps.config.outputs.json).verbose) != 'false'
+        run: |
+          echo "GOTESTFLAGS=-v $GOTESTFLAGS" >> $GITHUB_ENV
+          echo "GO386FLAGS=-v $GO386FLAGS" >> $GITHUB_ENV
+          echo "GORACEFLAGS=-v $GORACEFLAGS" >> $GITHUB_ENV
       - uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go }}
@@ -27,7 +48,7 @@ jobs:
           go version
           go env
       - name: Use msys2 on windows
-        if: ${{ matrix.os == 'windows' }}
+        if: matrix.os == 'windows'
         shell: bash
         # The executable for msys2 is also called bash.cmd
         #   https://github.com/actions/virtual-environments/blob/main/images/win/Windows2019-Readme.md#shells
@@ -38,31 +59,40 @@ jobs:
         uses: ./.github/actions/go-test-setup
         if: hashFiles('./.github/actions/go-test-setup') != ''
       - name: Run tests
+        if: contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
         uses: protocol/multiple-go-modules@v1.2
+        env:
+          GOFLAGS: ${{ format('{0} {1}', env.GOTESTFLAGS, env.GOFLAGS) }}
         with:
-          # Use -coverpkg=./..., so that we include cross-package coverage.
-          # If package ./A imports ./B, and ./A's tests also cover ./B,
-          # this means ./B's coverage will be significantly higher than 0%.
-          run: go test -v -shuffle=on -coverprofile=module-coverage.txt -coverpkg=./... ./...
+          run: go test ./...
       - name: Run tests (32 bit)
-        if: ${{ matrix.os != 'macos' }} # can't run 32 bit tests on OSX.
+        # can't run 32 bit tests on OSX.
+        if: matrix.os != 'macos' &&
+          fromJSON(steps.config.outputs.json).skip32bit != true &&
+          contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
         uses: protocol/multiple-go-modules@v1.2
         env:
           GOARCH: 386
+          GOFLAGS: ${{ format('{0} {1}', env.GO386FLAGS, env.GOFLAGS) }}
         with:
           run: |
-            export "PATH=${{ env.PATH_386 }}:$PATH"
-            go test -v -shuffle=on ./...
+            export "PATH=$PATH_386:$PATH"
+            go test ./...
       - name: Run tests with race detector
-        if: ${{ matrix.os == 'ubuntu' }} # speed things up. Windows and OSX VMs are slow
+        # speed things up. Windows and OSX VMs are slow
+        if: matrix.os == 'ubuntu' &&
+          contains(fromJSON(steps.config.outputs.json).skipOSes, matrix.os) == false
         uses: protocol/multiple-go-modules@v1.2
+        env:
+          GOFLAGS: ${{ format('{0} {1}', env.GORACEFLAGS, env.GOFLAGS) }}
         with:
-          run: go test -v -race ./...
+          run: go test -race ./...
       - name: Collect coverage files
+        id: coverages
         shell: bash
-        run: echo "COVERAGES=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_ENV
+        run: echo "files=$(find . -type f -name 'module-coverage.txt' | tr -s '\n' ',' | sed 's/,$//')" >> $GITHUB_OUTPUT
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@81cd2dc8148241f03f5839d295e000b8f761e378 # v3.1.0
+        uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70 # v3.1.1
         with:
-          files: '${{ env.COVERAGES }}'
+          files: ${{ steps.coverages.outputs.files }}
           env_vars: OS=${{ matrix.os }}, GO=${{ matrix.go }}

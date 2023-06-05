@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/boxo/routing/http/types"
+	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/routing/http/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
@@ -21,9 +22,10 @@ func (m *mockClient) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl tim
 	args := m.Called(ctx, keys, ttl)
 	return args.Get(0).(time.Duration), args.Error(1)
 }
-func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) ([]types.ProviderResponse, error) {
+
+func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error) {
 	args := m.Called(ctx, key)
-	return args.Get(0).([]types.ProviderResponse), args.Error(1)
+	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
 }
 func (m *mockClient) Ready(ctx context.Context) (bool, error) {
 	args := m.Called(ctx)
@@ -120,8 +122,9 @@ func TestFindProvidersAsync(t *testing.T) {
 			Protocol: "UNKNOWN",
 		},
 	}
+	aisIter := iter.ToResultIter[types.ProviderResponse](iter.FromSlice(ais))
 
-	client.On("FindProviders", ctx, key).Return(ais, nil)
+	client.On("FindProviders", ctx, key).Return(aisIter, nil)
 
 	aiChan := crc.FindProvidersAsync(ctx, key, 2)
 

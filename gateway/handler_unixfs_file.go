@@ -11,16 +11,16 @@ import (
 	"time"
 
 	"github.com/gabriel-vasile/mimetype"
-	"github.com/ipfs/go-libipfs/files"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
+	ipath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/files"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // serveFile returns data behind a file along with HTTP headers based on
 // the file itself, its CID and the contentPath used for accessing it.
-func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, file files.File, begin time.Time) {
-	_, span := spanTrace(ctx, "ServeFile", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, file files.File, fileContentType string, begin time.Time) bool {
+	_, span := spanTrace(ctx, "Handler.ServeFile", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
 	// Set Cache-Control and read optional Last-Modified time
@@ -33,7 +33,7 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 	size, err := file.Size()
 	if err != nil {
 		http.Error(w, "cannot serve files with unknown sizes", http.StatusBadGateway)
-		return
+		return false
 	}
 
 	if size == 0 {
@@ -42,7 +42,7 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 		// TODO: remove this if clause once https://github.com/golang/go/issues/54794 is fixed in two latest releases of go
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		return
+		return true
 	}
 
 	// Lazy seeker enables efficient range-requests and HTTP HEAD responses
@@ -61,19 +61,22 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 	} else {
 		ctype = mime.TypeByExtension(gopath.Ext(name))
 		if ctype == "" {
+			ctype = fileContentType
+		}
+		if ctype == "" {
 			// uses https://github.com/gabriel-vasile/mimetype library to determine the content type.
 			// Fixes https://github.com/ipfs/kubo/issues/7252
 			mimeType, err := mimetype.DetectReader(content)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("cannot detect content-type: %s", err.Error()), http.StatusInternalServerError)
-				return
+				return false
 			}
 
 			ctype = mimeType.String()
 			_, err = content.Seek(0, io.SeekStart)
 			if err != nil {
 				http.Error(w, "seeker can't seek", http.StatusInternalServerError)
-				return
+				return false
 			}
 		}
 		// Strip the encoding from the HTML Content-Type header and let the
@@ -88,9 +91,6 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 	// (unifies behavior across gateways and web browsers)
 	w.Header().Set("Content-Type", ctype)
 
-	// special fixup around redirects
-	w = &statusResponseWriter{w}
-
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
 	_, dataSent, _ := ServeContent(w, r, name, modtime, content)
@@ -100,4 +100,6 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 		// Update metrics
 		i.unixfsFileGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 	}
+
+	return dataSent
 }

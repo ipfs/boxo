@@ -1,4 +1,3 @@
-//go:generate ./build.sh
 package assets
 
 import (
@@ -9,17 +8,15 @@ import (
 	"strconv"
 
 	"html/template"
-	"net/url"
-	"path"
 	"strings"
 
-	"github.com/cespare/xxhash"
+	"github.com/cespare/xxhash/v2"
 
-	ipfspath "github.com/ipfs/go-path"
+	ipfspath "github.com/ipfs/boxo/path"
 )
 
-//go:embed dag-index.html directory-index.html knownIcons.txt
-var asset embed.FS
+//go:embed *.html *.css
+var assets embed.FS
 
 // AssetHash a non-cryptographic hash of all embedded assets
 var AssetHash string
@@ -27,6 +24,7 @@ var AssetHash string
 var (
 	DirectoryTemplate *template.Template
 	DagTemplate       *template.Template
+	ErrorTemplate     *template.Template
 )
 
 func init() {
@@ -36,7 +34,7 @@ func init() {
 
 func initAssetsHash() {
 	sum := xxhash.New()
-	err := fs.WalkDir(asset, ".", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(assets, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -45,7 +43,7 @@ func initAssetsHash() {
 			return nil
 		}
 
-		file, err := asset.Open(path)
+		file, err := assets.Open(path)
 		if err != nil {
 			return err
 		}
@@ -61,62 +59,56 @@ func initAssetsHash() {
 }
 
 func initTemplates() {
-	knownIconsBytes, err := asset.ReadFile("knownIcons.txt")
-	if err != nil {
-		panic(err)
-	}
-	knownIcons := make(map[string]struct{})
-	for _, ext := range strings.Split(strings.TrimSuffix(string(knownIconsBytes), "\n"), "\n") {
-		knownIcons[ext] = struct{}{}
-	}
-
-	// helper to guess the type/icon for it by the extension name
-	iconFromExt := func(name string) string {
-		ext := path.Ext(name)
-		_, ok := knownIcons[ext]
-		if !ok {
-			// default blank icon
-			return "ipfs-_blank"
-		}
-		return "ipfs-" + ext[1:] // slice of the first dot
-	}
-
-	// custom template-escaping function to escape a full path, including '#' and '?'
-	urlEscape := func(rawUrl string) string {
-		pathURL := url.URL{Path: rawUrl}
-		return pathURL.String()
-	}
+	var err error
 
 	// Directory listing template
-	dirIndexBytes, err := asset.ReadFile("directory-index.html")
+	DirectoryTemplate, err = BuildTemplate(assets, "directory.html")
 	if err != nil {
 		panic(err)
 	}
-
-	DirectoryTemplate = template.Must(template.New("dir").Funcs(template.FuncMap{
-		"iconFromExt": iconFromExt,
-		"urlEscape":   urlEscape,
-	}).Parse(string(dirIndexBytes)))
 
 	// DAG Index template
-	dagIndexBytes, err := asset.ReadFile("dag-index.html")
+	DagTemplate, err = BuildTemplate(assets, "dag.html")
 	if err != nil {
 		panic(err)
 	}
 
-	DagTemplate = template.Must(template.New("dir").Parse(string(dagIndexBytes)))
+	// Error template
+	ErrorTemplate, err = BuildTemplate(assets, "error.html")
+	if err != nil {
+		panic(err)
+	}
+}
+
+type MenuItem struct {
+	URL   string
+	Title string
+}
+
+type GlobalData struct {
+	Menu       []MenuItem
+	GatewayURL string
+	DNSLink    bool
 }
 
 type DagTemplateData struct {
+	GlobalData
 	Path      string
 	CID       string
 	CodecName string
 	CodecHex  string
+	Node      *ParsedNode
+}
+
+type ErrorTemplateData struct {
+	GlobalData
+	StatusCode int
+	StatusText string
+	Error      string
 }
 
 type DirectoryTemplateData struct {
-	GatewayURL  string
-	DNSLink     bool
+	GlobalData
 	Listing     []DirectoryItem
 	Size        string
 	Path        string

@@ -1,28 +1,32 @@
 package gateway
 
 import (
-	"bytes"
 	"context"
 	"net/http"
 	"time"
 
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
+	ipath "github.com/ipfs/boxo/coreiface/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // serveRawBlock returns bytes behind a raw block
-func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time) bool {
-	ctx, span := spanTrace(ctx, "ServeRawBlock", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeRawBlock", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
-	blockCid := resolvedPath.Cid()
-	block, err := i.api.GetBlock(ctx, blockCid)
-	if err != nil {
-		webError(w, "ipfs block get "+blockCid.String(), err, http.StatusInternalServerError)
+	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
+	if !i.handleRequestErrors(w, r, contentPath, err) {
 		return false
 	}
-	content := bytes.NewReader(block.RawData())
+	defer data.Close()
+
+	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
+		i.webRequestError(w, r, err)
+		return false
+	}
+
+	blockCid := pathMetadata.LastSegment.Cid()
 
 	// Set Content-Disposition
 	var name string
@@ -40,7 +44,7 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
-	_, dataSent, _ := ServeContent(w, r, name, modtime, content)
+	_, dataSent, _ := ServeContent(w, r, name, modtime, data)
 
 	if dataSent {
 		// Update metrics

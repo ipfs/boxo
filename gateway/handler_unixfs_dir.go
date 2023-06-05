@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	gopath "path"
@@ -9,12 +10,11 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	ipath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/files"
+	"github.com/ipfs/boxo/gateway/assets"
+	path "github.com/ipfs/boxo/path"
 	cid "github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/files"
-	"github.com/ipfs/go-libipfs/gateway/assets"
-	path "github.com/ipfs/go-path"
-	"github.com/ipfs/go-path/resolver"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -23,19 +23,19 @@ import (
 // serveDirectory returns the best representation of UnixFS directory
 //
 // It will return index.html if present, or generate directory listing otherwise.
-func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, dir files.Directory, begin time.Time, logger *zap.SugaredLogger) {
-	ctx, span := spanTrace(ctx, "ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, isHeadRequest bool, directoryMetadata *directoryMetadata, ranges []ByteRange, begin time.Time, logger *zap.SugaredLogger) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
-	// HostnameOption might have constructed an IPNS/IPFS path using the Host header.
-	// In this case, we need the original path for constructing redirects
-	// and links that match the requested URL.
+	// WithHostname might have constructed an IPNS/IPFS path using the Host header.
+	// In this case, we need the original path for constructing redirects and links
+	// that match the requested URL.
 	// For example, http://example.net would become /ipns/example.net, and
 	// the redirects and links would end up as http://example.net/ipns/example.net
 	requestURI, err := url.ParseRequestURI(r.RequestURI)
 	if err != nil {
-		webError(w, "failed to parse request path", err, http.StatusInternalServerError)
-		return
+		i.webError(w, r, fmt.Errorf("failed to parse request path: %w", err), http.StatusInternalServerError)
+		return false
 	}
 	originalURLPath := requestURI.Path
 
@@ -54,79 +54,89 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 			redirectURL := originalURLPath + suffix
 			logger.Debugw("directory location moved permanently", "status", http.StatusMovedPermanently)
 			http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
-			return
+			return true
 		}
 	}
 
 	// Check if directory has index.html, if so, serveFile
 	idxPath := ipath.Join(contentPath, "index.html")
-	idxResolvedPath, err := i.api.ResolvePath(ctx, idxPath)
-	switch err.(type) {
-	case nil:
-		idx, err := i.api.GetUnixFsNode(ctx, idxResolvedPath)
-		if err != nil {
-			internalWebError(w, err)
-			return
-		}
-
-		f, ok := idx.(files.File)
-		if !ok {
-			internalWebError(w, files.ErrNotReader)
-			return
-		}
-
-		logger.Debugw("serving index.html file", "path", idxPath)
-		// write to request
-		i.serveFile(ctx, w, r, resolvedPath, idxPath, f, begin)
-		return
-	case resolver.ErrNoLink:
-		logger.Debugw("no index.html; noop", "path", idxPath)
-	default:
-		internalWebError(w, err)
-		return
+	imIndexPath, err := NewImmutablePath(ipath.Join(resolvedPath, "index.html"))
+	if err != nil {
+		i.webError(w, r, err, http.StatusInternalServerError)
+		return false
 	}
 
-	// See statusResponseWriter.WriteHeader
-	// and https://github.com/ipfs/kubo/issues/7164
-	// Note: this needs to occur before listingTemplate.Execute otherwise we get
-	// superfluous response.WriteHeader call from prometheus/client_golang
-	if w.Header().Get("Location") != "" {
-		logger.Debugw("location moved permanently", "status", http.StatusMovedPermanently)
-		w.WriteHeader(http.StatusMovedPermanently)
-		return
+	// TODO: could/should this all be skipped to have HEAD requests just return html content type and save the complexity? If so can we skip the above code as well?
+	var idxFile files.File
+	if isHeadRequest {
+		var idx files.Node
+		_, idx, err = i.api.Head(ctx, imIndexPath)
+		if err == nil {
+			f, ok := idx.(files.File)
+			if !ok {
+				i.webError(w, r, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
+				return false
+			}
+			idxFile = f
+		}
+	} else {
+		var getResp *GetResponse
+		_, getResp, err = i.api.Get(ctx, imIndexPath, ranges...)
+		if err == nil {
+			if getResp.bytes == nil {
+				i.webError(w, r, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
+				return false
+			}
+			idxFile = getResp.bytes
+		}
+	}
+
+	if err == nil {
+		logger.Debugw("serving index.html file", "path", idxPath)
+		// write to request
+		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, idxFile, "text/html", begin)
+		if success {
+			i.unixfsDirIndexGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		}
+		return success
+	}
+
+	if isErrNotFound(err) {
+		logger.Debugw("no index.html; noop", "path", idxPath)
+	} else if err != nil {
+		i.webError(w, r, err, http.StatusInternalServerError)
+		return false
 	}
 
 	// A HTML directory index will be presented, be sure to set the correct
 	// type instead of relying on autodetection (which may fail).
 	w.Header().Set("Content-Type", "text/html")
 
-	// Generated dir index requires custom Etag (output may change between go-ipfs versions)
+	// Generated dir index requires custom Etag (output may change between go-libipfs versions)
 	dirEtag := getDirListingEtag(resolvedPath.Cid())
 	w.Header().Set("Etag", dirEtag)
 
 	if r.Method == http.MethodHead {
 		logger.Debug("return as request's HTTP method is HEAD")
-		return
+		return true
 	}
 
-	results, err := i.api.LsUnixFsDir(ctx, resolvedPath)
-	if err != nil {
-		internalWebError(w, err)
-		return
-	}
-
-	dirListing := make([]assets.DirectoryItem, 0, len(results))
-	for link := range results {
-		if link.Err != nil {
-			internalWebError(w, link.Err)
-			return
+	var dirListing []assets.DirectoryItem
+	for l := range directoryMetadata.entries {
+		if l.Err != nil {
+			i.webError(w, r, l.Err, http.StatusInternalServerError)
+			return false
 		}
 
-		hash := link.Cid.String()
+		name := l.Link.Name
+		sz := l.Link.Size
+		linkCid := l.Link.Cid
+
+		hash := linkCid.String()
 		di := assets.DirectoryItem{
-			Size:      humanize.Bytes(uint64(link.Size)),
-			Name:      link.Name,
-			Path:      gopath.Join(originalURLPath, link.Name),
+			Size:      humanize.Bytes(sz),
+			Name:      name,
+			Path:      gopath.Join(originalURLPath, name),
 			Hash:      hash,
 			ShortHash: assets.ShortHash(hash),
 		}
@@ -157,49 +167,31 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		}
 	}
 
-	size := "?"
-	if s, err := dir.Size(); err == nil {
-		// Size may not be defined/supported. Continue anyways.
-		size = humanize.Bytes(uint64(s))
-	}
-
+	size := humanize.Bytes(directoryMetadata.dagSize)
 	hash := resolvedPath.Cid().String()
-
-	// Gateway root URL to be used when linking to other rootIDs.
-	// This will be blank unless subdomain or DNSLink resolution is being used
-	// for this request.
-	var gwURL string
-
-	// Get gateway hostname and build gateway URL.
-	if h, ok := r.Context().Value(GatewayHostnameKey).(string); ok {
-		gwURL = "//" + h
-	} else {
-		gwURL = ""
-	}
-
-	dnslink := assets.HasDNSLinkOrigin(gwURL, contentPath.String())
+	globalData := i.getTemplateGlobalData(r, contentPath)
 
 	// See comment above where originalUrlPath is declared.
 	tplData := assets.DirectoryTemplateData{
-		GatewayURL:  gwURL,
-		DNSLink:     dnslink,
+		GlobalData:  globalData,
 		Listing:     dirListing,
 		Size:        size,
 		Path:        contentPath.String(),
-		Breadcrumbs: assets.Breadcrumbs(contentPath.String(), dnslink),
+		Breadcrumbs: assets.Breadcrumbs(contentPath.String(), globalData.DNSLink),
 		BackLink:    backLink,
 		Hash:        hash,
 	}
 
-	logger.Debugw("request processed", "tplDataDNSLink", dnslink, "tplDataSize", size, "tplDataBackLink", backLink, "tplDataHash", hash)
+	logger.Debugw("request processed", "tplDataDNSLink", globalData.DNSLink, "tplDataSize", size, "tplDataBackLink", backLink, "tplDataHash", hash)
 
 	if err := assets.DirectoryTemplate.Execute(w, tplData); err != nil {
-		internalWebError(w, err)
-		return
+		i.webError(w, r, err, http.StatusInternalServerError)
+		return false
 	}
 
 	// Update metrics
-	i.unixfsGenDirGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	i.unixfsGenDirListingGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	return true
 }
 
 func getDirListingEtag(dirCid cid.Cid) string {

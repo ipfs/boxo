@@ -5,25 +5,26 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
+	"github.com/cespare/xxhash/v2"
+	ipath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/go-cid"
-	ipns_pb "github.com/ipfs/go-ipns/pb"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
-func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "ServeIPNSRecord", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeIPNSRecord", trace.WithAttributes(attribute.String("path", contentPath.String())))
 	defer span.End()
 
 	if contentPath.Namespace() != "ipns" {
 		err := fmt.Errorf("%s is not an IPNS link", contentPath.String())
-		webError(w, err.Error(), err, http.StatusBadRequest)
+		i.webError(w, r, err, http.StatusBadRequest)
 		return false
 	}
 
@@ -32,26 +33,25 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 	key = strings.TrimPrefix(key, "/ipns/")
 	if strings.Count(key, "/") != 0 {
 		err := errors.New("cannot find ipns key for subpath")
-		webError(w, err.Error(), err, http.StatusBadRequest)
+		i.webError(w, r, err, http.StatusBadRequest)
 		return false
 	}
 
 	c, err := cid.Decode(key)
 	if err != nil {
-		webError(w, err.Error(), err, http.StatusBadRequest)
+		i.webError(w, r, err, http.StatusBadRequest)
 		return false
 	}
 
 	rawRecord, err := i.api.GetIPNSRecord(ctx, c)
 	if err != nil {
-		webError(w, err.Error(), err, http.StatusInternalServerError)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
 	}
 
-	var record ipns_pb.IpnsEntry
-	err = proto.Unmarshal(rawRecord, &record)
+	record, err := ipns.UnmarshalIpnsEntry(rawRecord)
 	if err != nil {
-		webError(w, err.Error(), err, http.StatusInternalServerError)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
 	}
 
@@ -59,7 +59,8 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 	// TTL is not present, we use the Last-Modified tag. We are tracking IPNS
 	// caching on: https://github.com/ipfs/kubo/issues/1818.
 	// TODO: use addCacheControlHeaders once #1818 is fixed.
-	w.Header().Set("Etag", getEtag(r, resolvedPath.Cid()))
+	recordEtag := strconv.FormatUint(xxhash.Sum64(rawRecord), 32)
+	w.Header().Set("Etag", recordEtag)
 	if record.Ttl != nil {
 		seconds := int(time.Duration(*record.Ttl).Seconds())
 		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", seconds))

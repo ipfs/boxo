@@ -2,23 +2,23 @@ package gateway
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	path "github.com/ipfs/boxo/path"
 	cid "github.com/ipfs/go-cid"
-	path "github.com/ipfs/go-path"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestToSubdomainURL(t *testing.T) {
-	gwAPI := newMockApi()
+	gwAPI, _ := newMockAPI(t)
 	testCID, err := cid.Decode("bafkqaglimvwgy3zakrsxg5cun5jxkyten5wwc2lokvjeycq")
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 
-	gwAPI.ns["/ipns/dnslink.long-name.example.com"] = path.FromString(testCID.String())
-	gwAPI.ns["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = path.FromString(testCID.String())
+	gwAPI.namesys["/ipns/dnslink.long-name.example.com"] = path.FromString(testCID.String())
+	gwAPI.namesys["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = path.FromString(testCID.String())
 	httpRequest := httptest.NewRequest("GET", "http://127.0.0.1:8080", nil)
 	httpsRequest := httptest.NewRequest("GET", "https://https-request-stub.example.com", nil)
 	httpsProxiedRequest := httptest.NewRequest("GET", "http://proxied-https-request-stub.example.com", nil)
@@ -34,7 +34,6 @@ func TestToSubdomainURL(t *testing.T) {
 		url string
 		err error
 	}{
-
 		// DNSLink
 		{httpRequest, "localhost", false, "/ipns/dnslink.io", "http://dnslink.io.ipns.localhost/", nil},
 		// Hostname with port
@@ -56,12 +55,16 @@ func TestToSubdomainURL(t *testing.T) {
 		// HTTP requests can also be converted to fit into a single DNS label - https://github.com/ipfs/kubo/issues/9243
 		{httpRequest, "localhost", true, "/ipns/dnslink.long-name.example.com", "http://dnslink-long--name-example-com.ipns.localhost/", nil},
 		{httpRequest, "dweb.link", true, "/ipns/dnslink.long-name.example.com", "http://dnslink-long--name-example-com.ipns.dweb.link/", nil},
+		// Correctly redirects paths when there is a ? (question mark) character - https://github.com/ipfs/kubo/issues/9882
+		{httpRequest, "localhost", false, "/ipns/example.com/this is a file with some spaces . dots and - but also a ?.png", "http://example.com.ipns.localhost/this%20is%20a%20file%20with%20some%20spaces%20.%20dots%20and%20-%20but%20also%20a%20%3F.png", nil},
+		{httpRequest, "localhost", false, "/ipfs/QmbCMUZw6JFeZ7Wp9jkzbye3Fzp2GGcPgC3nmeUjfVF87n/this is a file with some spaces . dots and - but also a ?.png", "http://bafybeif7a7gdklt6hodwdrmwmxnhksctcuav6lfxlcyfz4khzl3qfmvcgu.ipfs.localhost/this%20is%20a%20file%20with%20some%20spaces%20.%20dots%20and%20-%20but%20also%20a%20%3F.png", nil},
 	} {
-
-		url, err := toSubdomainURL(test.gwHostname, test.path, test.request, test.inlineDNSLink, gwAPI)
-		if url != test.url || !equalError(err, test.err) {
-			t.Errorf("(%s, %v, %s) returned (%s, %v), expected (%s, %v)", test.gwHostname, test.inlineDNSLink, test.path, url, err, test.url, test.err)
-		}
+		testName := fmt.Sprintf("%s, %v, %s", test.gwHostname, test.inlineDNSLink, test.path)
+		t.Run(testName, func(t *testing.T) {
+			url, err := toSubdomainURL(test.gwHostname, test.path, test.request, test.inlineDNSLink, gwAPI)
+			assert.Equal(t, test.url, url)
+			assert.Equal(t, test.err, err)
+		})
 	}
 }
 
@@ -74,10 +77,11 @@ func TestToDNSLinkDNSLabel(t *testing.T) {
 		{"dnslink.long-name.example.com", "dnslink-long--name-example-com", nil},
 		{"dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com", "", errors.New("DNSLink representation incompatible with DNS label length limit of 63: dnslink-too--long-f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o-example-com")},
 	} {
-		out, err := toDNSLinkDNSLabel(test.in)
-		if out != test.out || !equalError(err, test.err) {
-			t.Errorf("(%s) returned (%s, %v), expected (%s, %v)", test.in, out, err, test.out, test.err)
-		}
+		t.Run(test.in, func(t *testing.T) {
+			out, err := toDNSLinkDNSLabel(test.in)
+			assert.Equal(t, test.out, out)
+			assert.Equal(t, test.err, err)
+		})
 	}
 }
 
@@ -90,10 +94,10 @@ func TestToDNSLinkFQDN(t *testing.T) {
 		{"docs-ipfs-tech", "docs.ipfs.tech"},
 		{"dnslink-long--name-example-com", "dnslink.long-name.example.com"},
 	} {
-		out := toDNSLinkFQDN(test.in)
-		if out != test.out {
-			t.Errorf("(%s) returned (%s), expected (%s)", test.in, out, test.out)
-		}
+		t.Run(test.in, func(t *testing.T) {
+			out := toDNSLinkFQDN(test.in)
+			assert.Equal(t, test.out, out)
+		})
 	}
 }
 
@@ -115,10 +119,11 @@ func TestIsHTTPSRequest(t *testing.T) {
 		{httpProxiedRequest, false},
 		{oddballRequest, false},
 	} {
-		out := isHTTPSRequest(test.in)
-		if out != test.out {
-			t.Errorf("(%+v): returned %t, expected %t", test.in, out, test.out)
-		}
+		testName := fmt.Sprintf("%+v", test.in)
+		t.Run(testName, func(t *testing.T) {
+			out := isHTTPSRequest(test.in)
+			assert.Equal(t, test.out, out)
+		})
 	}
 }
 
@@ -133,10 +138,11 @@ func TestHasPrefix(t *testing.T) {
 		{[]string{"/version/"}, "/version", true},
 		{[]string{"/version"}, "/version", true},
 	} {
-		out := hasPrefix(test.path, test.prefixes...)
-		if out != test.out {
-			t.Errorf("(%+v, %s) returned '%t', expected '%t'", test.prefixes, test.path, out, test.out)
-		}
+		testName := fmt.Sprintf("%+v, %s", test.prefixes, test.path)
+		t.Run(testName, func(t *testing.T) {
+			out := hasPrefix(test.path, test.prefixes...)
+			assert.Equal(t, test.out, out)
+		})
 	}
 }
 
@@ -152,10 +158,10 @@ func TestIsDomainNameAndNotPeerID(t *testing.T) {
 		{"12D3KooWFB51PRY9BxcXSH6khFXw1BZeszeLDy7C8GciskqCTZn5", false},           // valid peerid
 		{"k51qzi5uqu5di608geewp3nqkg0bpujoasmka7ftkyxgcm3fh1aroup0gsdrna", false}, // valid peerid
 	} {
-		out := isDomainNameAndNotPeerID(test.hostname)
-		if out != test.out {
-			t.Errorf("(%s) returned '%t', expected '%t'", test.hostname, out, test.out)
-		}
+		t.Run(test.hostname, func(t *testing.T) {
+			out := isDomainNameAndNotPeerID(test.hostname)
+			assert.Equal(t, test.out, out)
+		})
 	}
 }
 
@@ -172,10 +178,10 @@ func TestPortStripping(t *testing.T) {
 		{"localhost", "localhost"},
 		{"[::1]:8080", "::1"},
 	} {
-		out := stripPort(test.in)
-		if out != test.out {
-			t.Errorf("(%s): returned '%s', expected '%s'", test.in, out, test.out)
-		}
+		t.Run(test.in, func(t *testing.T) {
+			out := stripPort(test.in)
+			assert.Equal(t, test.out, out)
+		})
 	}
 }
 
@@ -194,13 +200,13 @@ func TestToDNSLabel(t *testing.T) {
 		// CIDv1 with long sha512 → error
 		{"bafkrgqe3ohjcjplc6n4f3fwunlj6upltggn7xqujbsvnvyw764srszz4u4rshq6ztos4chl4plgg4ffyyxnayrtdi5oc4xb2332g645433aeg", "", errors.New("CID incompatible with DNS label length limit of 63: kf1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5oj")},
 	} {
-		inCID, _ := cid.Decode(test.in)
-		out, err := toDNSLabel(test.in, inCID)
-		if out != test.out || !equalError(err, test.err) {
-			t.Errorf("(%s): returned (%s, %v) expected (%s, %v)", test.in, out, err, test.out, test.err)
-		}
+		t.Run(test.in, func(t *testing.T) {
+			inCID, _ := cid.Decode(test.in)
+			out, err := toDNSLabel(test.in, inCID)
+			assert.Equal(t, test.out, out)
+			assert.Equal(t, test.err, err)
+		})
 	}
-
 }
 
 func TestKnownSubdomainDetails(t *testing.T) {
@@ -274,26 +280,13 @@ func TestKnownSubdomainDetails(t *testing.T) {
 		{"bafkreicysg23kiwv34eg2d7qweipxwosdo2py4ldv42nbauguluen5v6am.ipfs.sub1.sub2.wildcard1.tld", nil, "", "", "", false},
 		{"bafkreicysg23kiwv34eg2d7qweipxwosdo2py4ldv42nbauguluen5v6am.ipfs.sub1.sub2.wildcard2.tld", gwWildcard2, "sub1.sub2.wildcard2.tld", "ipfs", "bafkreicysg23kiwv34eg2d7qweipxwosdo2py4ldv42nbauguluen5v6am", true},
 	} {
-		gw, hostname, ns, rootID, ok := gateways.knownSubdomainDetails(test.hostHeader)
-		if ok != test.ok {
-			t.Errorf("knownSubdomainDetails(%s): ok is %t, expected %t", test.hostHeader, ok, test.ok)
-		}
-		if rootID != test.rootID {
-			t.Errorf("knownSubdomainDetails(%s): rootID is '%s', expected '%s'", test.hostHeader, rootID, test.rootID)
-		}
-		if ns != test.ns {
-			t.Errorf("knownSubdomainDetails(%s): ns is '%s', expected '%s'", test.hostHeader, ns, test.ns)
-		}
-		if hostname != test.hostname {
-			t.Errorf("knownSubdomainDetails(%s): hostname is '%s', expected '%s'", test.hostHeader, hostname, test.hostname)
-		}
-		if gw != test.gw {
-			t.Errorf("knownSubdomainDetails(%s): gw is  %+v, expected %+v", test.hostHeader, gw, test.gw)
-		}
+		t.Run(test.hostHeader, func(t *testing.T) {
+			gw, hostname, ns, rootID, ok := gateways.knownSubdomainDetails(test.hostHeader)
+			assert.Equal(t, test.ok, ok)
+			assert.Equal(t, test.rootID, rootID)
+			assert.Equal(t, test.ns, ns)
+			assert.Equal(t, test.hostname, hostname)
+			assert.Equal(t, test.gw, gw)
+		})
 	}
-
-}
-
-func equalError(a, b error) bool {
-	return (a == nil && b == nil) || (a != nil && b != nil && a.Error() == b.Error())
 }

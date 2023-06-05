@@ -2,12 +2,12 @@ package gateway
 
 import (
 	"context"
-	"html"
+	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/ipfs/go-libipfs/files"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
+	ipath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/files"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -15,22 +15,25 @@ import (
 
 var unixEpochTime = time.Unix(0, 0)
 
-func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "ServeTAR", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeTAR", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Get Unixfs file
-	file, err := i.api.GetUnixFsNode(ctx, resolvedPath)
-	if err != nil {
-		webError(w, "ipfs cat "+html.EscapeString(contentPath.String()), err, http.StatusBadRequest)
+	// Get Unixfs file (or directory)
+	pathMetadata, file, err := i.api.GetAll(ctx, imPath)
+	if !i.handleRequestErrors(w, r, contentPath, err) {
 		return false
 	}
 	defer file.Close()
 
-	rootCid := resolvedPath.Cid()
+	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
+		i.webRequestError(w, r, err)
+		return false
+	}
+	rootCid := pathMetadata.LastSegment.Cid()
 
 	// Set Cache-Control and read optional Last-Modified time
 	modtime := addCacheControlHeaders(w, r, contentPath, rootCid)
@@ -61,7 +64,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// Construct the TAR writer
 	tarw, err := files.NewTarWriter(w)
 	if err != nil {
-		webError(w, "could not build tar writer", err, http.StatusInternalServerError)
+		i.webError(w, r, fmt.Errorf("could not build tar writer: %w", err), http.StatusInternalServerError)
 		return false
 	}
 	defer tarw.Close()
@@ -78,6 +81,9 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 
 	// The TAR has a top-level directory (or file) named by the CID.
 	if err := tarw.WriteFile(file, rootCid.String()); err != nil {
+		// Update fail metric
+		i.tarStreamFailMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+
 		w.Header().Set("X-Stream-Error", err.Error())
 		// Trailer headers do not work in web browsers
 		// (see https://github.com/mdn/browser-compat-data/issues/14703)

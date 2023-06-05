@@ -23,6 +23,7 @@ var (
 	keyHost       = tag.MustNewKey("host")
 	keyStatusCode = tag.MustNewKey("code")
 	keyError      = tag.MustNewKey("error")
+	keyMediaType  = tag.MustNewKey("mediatype")
 
 	ViewLatency = &view.View{
 		Measure:     measureLatency,
@@ -42,6 +43,7 @@ var (
 )
 
 type measurement struct {
+	mediaType  string
 	operation  string
 	err        error
 	latency    time.Duration
@@ -51,32 +53,22 @@ type measurement struct {
 }
 
 func (m measurement) record(ctx context.Context) {
-	stats.RecordWithTags(
-		ctx,
-		[]tag.Mutator{
-			tag.Upsert(keyHost, m.host),
-			tag.Upsert(keyOperation, m.operation),
-			tag.Upsert(keyStatusCode, strconv.Itoa(m.statusCode)),
-			tag.Upsert(keyError, metricsErrStr(m.err)),
-		},
-		measureLatency.M(m.latency.Milliseconds()),
-	)
-	if m.err == nil {
-		stats.RecordWithTags(
-			ctx,
-			[]tag.Mutator{
-				tag.Upsert(keyHost, m.host),
-				tag.Upsert(keyOperation, m.operation),
-			},
-			measureLength.M(int64(m.length)),
-		)
+	muts := []tag.Mutator{
+		tag.Upsert(keyHost, m.host),
+		tag.Upsert(keyOperation, m.operation),
+		tag.Upsert(keyStatusCode, strconv.Itoa(m.statusCode)),
+		tag.Upsert(keyError, metricsErrStr(m.err)),
+		tag.Upsert(keyMediaType, m.mediaType),
 	}
+	stats.RecordWithTags(ctx, muts, measureLatency.M(m.latency.Milliseconds()))
+	stats.RecordWithTags(ctx, muts, measureLength.M(int64(m.length)))
 }
 
-func newMeasurement(operation string) measurement {
-	return measurement{
+func newMeasurement(operation string) *measurement {
+	return &measurement{
 		operation: operation,
 		host:      "None",
+		mediaType: "None",
 	}
 }
 

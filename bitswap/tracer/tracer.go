@@ -1,7 +1,7 @@
 package tracer
 
 import (
-	bsmsg "github.com/ipfs/go-libipfs/bitswap/message"
+	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 

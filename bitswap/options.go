@@ -3,10 +3,10 @@ package bitswap
 import (
 	"time"
 
+	"github.com/ipfs/boxo/bitswap/client"
+	"github.com/ipfs/boxo/bitswap/server"
+	"github.com/ipfs/boxo/bitswap/tracer"
 	delay "github.com/ipfs/go-ipfs-delay"
-	"github.com/ipfs/go-libipfs/bitswap/client"
-	"github.com/ipfs/go-libipfs/bitswap/server"
-	"github.com/ipfs/go-libipfs/bitswap/tracer"
 )
 
 type option func(*Bitswap)
@@ -27,6 +27,16 @@ func EngineTaskWorkerCount(count int) Option {
 
 func MaxOutstandingBytesPerPeer(count int) Option {
 	return Option{server.MaxOutstandingBytesPerPeer(count)}
+}
+
+func MaxQueuedWantlistEntriesPerPeer(count uint) Option {
+	return Option{server.MaxQueuedWantlistEntriesPerPeer(count)}
+}
+
+// MaxCidSize only affects the server.
+// If it is 0 no limit is applied.
+func MaxCidSize(n uint) Option {
+	return Option{server.MaxCidSize(n)}
 }
 
 func TaskWorkerCount(count int) Option {

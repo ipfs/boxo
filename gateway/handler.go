@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -15,16 +16,13 @@ import (
 	"strings"
 	"time"
 
+	ipath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/gateway/assets"
 	cid "github.com/ipfs/go-cid"
-	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log"
-	"github.com/ipfs/go-path/resolver"
-	coreiface "github.com/ipfs/interface-go-ipfs-core"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
-	routing "github.com/libp2p/go-libp2p/core/routing"
-	mc "github.com/multiformats/go-multicodec"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multibase"
 	prometheus "github.com/prometheus/client_golang/prometheus"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -67,60 +65,27 @@ type redirectTemplateData struct {
 // (it serves requests like GET /ipfs/QmVRzPKPzNtSrEzBFm2UZfxmPAgnaLke4DMcerbsGGSaFe/link)
 type handler struct {
 	config Config
-	api    API
-
-	// generic metrics
-	firstContentBlockGetMetric *prometheus.HistogramVec
-	unixfsGetMetric            *prometheus.SummaryVec // deprecated, use firstContentBlockGetMetric
+	api    IPFSBackend
 
 	// response type metrics
-	getMetric                 *prometheus.HistogramVec
-	unixfsFileGetMetric       *prometheus.HistogramVec
-	unixfsGenDirGetMetric     *prometheus.HistogramVec
-	carStreamGetMetric        *prometheus.HistogramVec
-	rawBlockGetMetric         *prometheus.HistogramVec
-	tarStreamGetMetric        *prometheus.HistogramVec
-	jsoncborDocumentGetMetric *prometheus.HistogramVec
-	ipnsRecordGetMetric       *prometheus.HistogramVec
+	requestTypeMetric            *prometheus.CounterVec
+	getMetric                    *prometheus.HistogramVec
+	unixfsFileGetMetric          *prometheus.HistogramVec
+	unixfsDirIndexGetMetric      *prometheus.HistogramVec
+	unixfsGenDirListingGetMetric *prometheus.HistogramVec
+	carStreamGetMetric           *prometheus.HistogramVec
+	carStreamFailMetric          *prometheus.HistogramVec
+	rawBlockGetMetric            *prometheus.HistogramVec
+	tarStreamGetMetric           *prometheus.HistogramVec
+	tarStreamFailMetric          *prometheus.HistogramVec
+	jsoncborDocumentGetMetric    *prometheus.HistogramVec
+	ipnsRecordGetMetric          *prometheus.HistogramVec
 }
 
-// StatusResponseWriter enables us to override HTTP Status Code passed to
-// WriteHeader function inside of http.ServeContent.  Decision is based on
-// presence of HTTP Headers such as Location.
-type statusResponseWriter struct {
-	http.ResponseWriter
-}
-
-// Custom type for collecting error details to be handled by `webRequestError`
-type requestError struct {
-	Message    string
-	StatusCode int
-	Err        error
-}
-
-func (r *requestError) Error() string {
-	return r.Err.Error()
-}
-
-func newRequestError(message string, err error, statusCode int) *requestError {
-	return &requestError{
-		Message:    message,
-		Err:        err,
-		StatusCode: statusCode,
-	}
-}
-
-func (sw *statusResponseWriter) WriteHeader(code int) {
-	// Check if we need to adjust Status Code to account for scheduled redirect
-	// This enables us to return payload along with HTTP 301
-	// for subdomain redirect in web browsers while also returning body for cli
-	// tools which do not follow redirects by default (curl, wget).
-	redirect := sw.ResponseWriter.Header().Get("Location")
-	if redirect != "" && code == http.StatusOK {
-		code = http.StatusMovedPermanently
-		log.Debugw("subdomain redirect", "location", redirect, "status", code)
-	}
-	sw.ResponseWriter.WriteHeader(code)
+// NewHandler returns an http.Handler that can act as a gateway to IPFS content
+// offlineApi is a version of the API that should not make network requests for missing data
+func NewHandler(c Config, api IPFSBackend) http.Handler {
+	return newHandlerWithMetrics(c, api)
 }
 
 // ServeContent replies to the request using the content in the provided ReadSeeker
@@ -171,136 +136,13 @@ func (w *errRecordingResponseWriter) ReadFrom(r io.Reader) (n int64, err error) 
 	return n, err
 }
 
-func newSummaryMetric(name string, help string) *prometheus.SummaryVec {
-	summaryMetric := prometheus.NewSummaryVec(
-		prometheus.SummaryOpts{
-			Namespace: "ipfs",
-			Subsystem: "http",
-			Name:      name,
-			Help:      help,
-		},
-		[]string{"gateway"},
-	)
-	if err := prometheus.Register(summaryMetric); err != nil {
-		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			summaryMetric = are.ExistingCollector.(*prometheus.SummaryVec)
-		} else {
-			log.Errorf("failed to register ipfs_http_%s: %v", name, err)
-		}
-	}
-	return summaryMetric
-}
-
-func newHistogramMetric(name string, help string) *prometheus.HistogramVec {
-	// We can add buckets as a parameter in the future, but for now using static defaults
-	// suggested in https://github.com/ipfs/kubo/issues/8441
-	defaultBuckets := []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60}
-	histogramMetric := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Namespace: "ipfs",
-			Subsystem: "http",
-			Name:      name,
-			Help:      help,
-			Buckets:   defaultBuckets,
-		},
-		[]string{"gateway"},
-	)
-	if err := prometheus.Register(histogramMetric); err != nil {
-		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			histogramMetric = are.ExistingCollector.(*prometheus.HistogramVec)
-		} else {
-			log.Errorf("failed to register ipfs_http_%s: %v", name, err)
-		}
-	}
-	return histogramMetric
-}
-
-// NewHandler returns an http.Handler that can act as a gateway to IPFS content
-// offlineApi is a version of the API that should not make network requests for missing data
-func NewHandler(c Config, api API) http.Handler {
-	return newHandler(c, api)
-}
-
-func newHandler(c Config, api API) *handler {
-	i := &handler{
-		config: c,
-		api:    api,
-		// Improved Metrics
-		// ----------------------------
-		// Time till the first content block (bar in /ipfs/cid/foo/bar)
-		// (format-agnostic, across all response types)
-		firstContentBlockGetMetric: newHistogramMetric(
-			"gw_first_content_block_get_latency_seconds",
-			"The time till the first content block is received on GET from the gateway.",
-		),
-
-		// Response-type specific metrics
-		// ----------------------------
-		// Generic: time it takes to execute a successful gateway request (all request types)
-		getMetric: newHistogramMetric(
-			"gw_get_duration_seconds",
-			"The time to GET a successful response to a request (all content types).",
-		),
-		// UnixFS: time it takes to return a file
-		unixfsFileGetMetric: newHistogramMetric(
-			"gw_unixfs_file_get_duration_seconds",
-			"The time to serve an entire UnixFS file from the gateway.",
-		),
-		// UnixFS: time it takes to generate static HTML with directory listing
-		unixfsGenDirGetMetric: newHistogramMetric(
-			"gw_unixfs_gen_dir_listing_get_duration_seconds",
-			"The time to serve a generated UnixFS HTML directory listing from the gateway.",
-		),
-		// CAR: time it takes to return requested CAR stream
-		carStreamGetMetric: newHistogramMetric(
-			"gw_car_stream_get_duration_seconds",
-			"The time to GET an entire CAR stream from the gateway.",
-		),
-		// Block: time it takes to return requested Block
-		rawBlockGetMetric: newHistogramMetric(
-			"gw_raw_block_get_duration_seconds",
-			"The time to GET an entire raw Block from the gateway.",
-		),
-		// TAR: time it takes to return requested TAR stream
-		tarStreamGetMetric: newHistogramMetric(
-			"gw_tar_stream_get_duration_seconds",
-			"The time to GET an entire TAR stream from the gateway.",
-		),
-		// JSON/CBOR: time it takes to return requested DAG-JSON/-CBOR document
-		jsoncborDocumentGetMetric: newHistogramMetric(
-			"gw_jsoncbor_get_duration_seconds",
-			"The time to GET an entire DAG-JSON/CBOR block from the gateway.",
-		),
-		// IPNS Record: time it takes to return IPNS record
-		ipnsRecordGetMetric: newHistogramMetric(
-			"gw_ipns_record_get_duration_seconds",
-			"The time to GET an entire IPNS Record from the gateway.",
-		),
-
-		// Legacy Metrics
-		// ----------------------------
-		unixfsGetMetric: newSummaryMetric( // TODO: remove?
-			// (deprecated, use firstContentBlockGetMetric instead)
-			"unixfs_get_latency_seconds",
-			"DEPRECATED: does not do what you think, use gw_first_content_block_get_latency_seconds instead.",
-		),
-	}
-	return i
-}
-
 func (i *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer panicHandler(w)
+
 	// the hour is a hard fallback, we don't expect it to happen, but just in case
 	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
 	defer cancel()
 	r = r.WithContext(ctx)
-
-	defer func() {
-		if r := recover(); r != nil {
-			log.Error("A panic occurred in the gateway handler!")
-			log.Error(r)
-			debug.PrintStack()
-		}
-	}()
 
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
@@ -335,65 +177,107 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	logger.Debug("http request received")
 
 	if err := handleUnsupportedHeaders(r); err != nil {
-		webRequestError(w, err)
+		i.webRequestError(w, r, err)
 		return
 	}
 
-	if requestHandled := handleProtocolHandlerRedirect(w, r, logger); requestHandled {
+	if redirectURL, err := getProtocolHandlerRedirect(r); err != nil {
+		i.webError(w, r, err, http.StatusBadRequest)
+		return
+	} else if redirectURL != "" {
+		http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
 		return
 	}
 
 	if err := handleServiceWorkerRegistration(r); err != nil {
-		webRequestError(w, err)
+		i.webRequestError(w, r, err)
+		return
+	}
+
+	if handleIpnsB58mhToCidRedirection(w, r) {
 		return
 	}
 
 	contentPath := ipath.New(r.URL.Path)
+	ctx := context.WithValue(r.Context(), ContentPathKey, contentPath)
+	r = r.WithContext(ctx)
 
 	if requestHandled := i.handleOnlyIfCached(w, r, contentPath, logger); requestHandled {
 		return
 	}
 
-	if requestHandled := handleSuperfluousNamespace(w, r, contentPath); requestHandled {
+	if requestHandled := i.handleSuperfluousNamespace(w, r, contentPath); requestHandled {
+		return
+	}
+
+	if err := contentPath.IsValid(); err != nil {
+		i.webError(w, r, err, http.StatusBadRequest)
 		return
 	}
 
 	// Detect when explicit Accept header or ?format parameter are present
 	responseFormat, formatParams, err := customResponseFormat(r)
 	if err != nil {
-		webError(w, "error while processing the Accept header", err, http.StatusBadRequest)
+		i.webError(w, r, fmt.Errorf("error while processing the Accept header: %w", err), http.StatusBadRequest)
 		return
 	}
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResponseFormat", responseFormat))
+	i.requestTypeMetric.WithLabelValues(contentPath.Namespace(), responseFormat).Inc()
 
-	resolvedPath, contentPath, ok := i.handlePathResolution(w, r, responseFormat, contentPath, logger)
-	if !ok {
+	i.addUserHeaders(w) // ok, _now_ write user's headers.
+	w.Header().Set("X-Ipfs-Path", contentPath.String())
+
+	// Fail fast if unsupported request type was sent to a Trustless Gateway.
+	if !i.isDeserializedResponsePossible(r) && !i.isTrustlessRequest(contentPath, responseFormat) {
+		err := errors.New("only trustless requests are accepted on this gateway: https://specs.ipfs.tech/http-gateways/trustless-gateway/")
+		i.webError(w, r, err, http.StatusNotAcceptable)
 		return
 	}
-	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResolvedPath", resolvedPath.String()))
 
-	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
-	if inm := r.Header.Get("If-None-Match"); inm != "" {
-		pathCid := resolvedPath.Cid()
-		// need to check against both File and Dir Etag variants
-		// because this inexpensive check happens before we do any I/O
-		cidEtag := getEtag(r, pathCid)
-		dirEtag := getDirListingEtag(pathCid)
-		if etagMatch(inm, cidEtag, dirEtag) {
-			// Finish early if client already has a matching Etag
-			w.WriteHeader(http.StatusNotModified)
+	// TODO: Why did the previous code do path resolution, was that a bug?
+	// TODO: Does If-None-Match apply here?
+	if responseFormat == "application/vnd.ipfs.ipns-record" {
+		logger.Debugw("serving ipns record", "path", contentPath)
+		success := i.serveIpnsRecord(r.Context(), w, r, contentPath, begin, logger)
+		if success {
+			i.getMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		}
+
+		return
+	}
+
+	var immutableContentPath ImmutablePath
+	if contentPath.Mutable() {
+		immutableContentPath, err = i.api.ResolveMutable(r.Context(), contentPath)
+		if err != nil {
+			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
+			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+			i.webError(w, r, err, http.StatusInternalServerError)
+			return
+		}
+	} else {
+		immutableContentPath, err = NewImmutablePath(contentPath)
+		if err != nil {
+			err = fmt.Errorf("path was expected to be immutable, but was not %s: %w", debugStr(contentPath.String()), err)
+			i.webError(w, r, err, http.StatusInternalServerError)
 			return
 		}
 	}
 
-	if err := i.handleGettingFirstBlock(r, begin, contentPath, resolvedPath); err != nil {
-		webRequestError(w, err)
+	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
+	ifNoneMatchResolvedPath, ok := i.handleIfNoneMatch(w, r, responseFormat, contentPath, immutableContentPath, logger)
+	if !ok {
 		return
 	}
 
-	if err := i.setCommonHeaders(w, r, contentPath); err != nil {
-		webRequestError(w, err)
-		return
+	// If we already did the path resolution no need to do it again
+	maybeResolvedImPath := immutableContentPath
+	if ifNoneMatchResolvedPath != nil {
+		maybeResolvedImPath, err = NewImmutablePath(ifNoneMatchResolvedPath)
+		if err != nil {
+			i.webError(w, r, err, http.StatusInternalServerError)
+			return
+		}
 	}
 
 	var success bool
@@ -401,33 +285,24 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	// Support custom response formats passed via ?format or Accept HTTP header
 	switch responseFormat {
 	case "", "application/json", "application/cbor":
-		switch mc.Code(resolvedPath.Cid().Prefix().Codec) {
-		case mc.Json, mc.DagJson, mc.Cbor, mc.DagCbor:
-			logger.Debugw("serving codec", "path", contentPath)
-			success = i.serveCodec(r.Context(), w, r, resolvedPath, contentPath, begin, responseFormat)
-		default:
-			logger.Debugw("serving unixfs", "path", contentPath)
-			success = i.serveUnixFS(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
-		}
+		success = i.serveDefaults(r.Context(), w, r, maybeResolvedImPath, immutableContentPath, contentPath, begin, responseFormat, logger)
 	case "application/vnd.ipld.raw":
 		logger.Debugw("serving raw block", "path", contentPath)
-		success = i.serveRawBlock(r.Context(), w, r, resolvedPath, contentPath, begin)
+		success = i.serveRawBlock(r.Context(), w, r, maybeResolvedImPath, contentPath, begin)
 	case "application/vnd.ipld.car":
 		logger.Debugw("serving car stream", "path", contentPath)
 		carVersion := formatParams["version"]
-		success = i.serveCAR(r.Context(), w, r, resolvedPath, contentPath, carVersion, begin)
+		success = i.serveCAR(r.Context(), w, r, maybeResolvedImPath, contentPath, carVersion, begin)
 	case "application/x-tar":
 		logger.Debugw("serving tar file", "path", contentPath)
-		success = i.serveTAR(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
+		success = i.serveTAR(r.Context(), w, r, maybeResolvedImPath, contentPath, begin, logger)
 	case "application/vnd.ipld.dag-json", "application/vnd.ipld.dag-cbor":
 		logger.Debugw("serving codec", "path", contentPath)
-		success = i.serveCodec(r.Context(), w, r, resolvedPath, contentPath, begin, responseFormat)
+		success = i.serveCodec(r.Context(), w, r, maybeResolvedImPath, contentPath, begin, responseFormat)
 	case "application/vnd.ipfs.ipns-record":
-		logger.Debugw("serving ipns record", "path", contentPath)
-		success = i.serveIpnsRecord(r.Context(), w, r, resolvedPath, contentPath, begin, logger)
 	default: // catch-all for unsuported application/vnd.*
 		err := fmt.Errorf("unsupported format %q", responseFormat)
-		webError(w, "failed to respond with requested content type", err, http.StatusBadRequest)
+		i.webError(w, r, err, http.StatusBadRequest)
 		return
 	}
 
@@ -439,6 +314,84 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 func (i *handler) addUserHeaders(w http.ResponseWriter) {
 	for k, v := range i.config.Headers {
 		w.Header()[k] = v
+	}
+}
+
+// isDeserializedResponsePossible returns true if deserialized responses
+// are allowed on the specified hostname, or globally. Host-specific rules
+// override global config.
+func (i *handler) isDeserializedResponsePossible(r *http.Request) bool {
+	// Get the value from HTTP Host header
+	host := r.Host
+
+	// If this request went through WithHostname, use the key in the context.
+	if h, ok := r.Context().Value(GatewayHostnameKey).(string); ok {
+		host = h
+	}
+
+	// If a reverse-proxy passed explicit hostname override
+	// in the X-Forwarded-Host header, it takes precedence above everything else.
+	if xHost := r.Header.Get("X-Forwarded-Host"); xHost != "" {
+		host = xHost
+	}
+
+	// If the gateway is defined, return whatever is set.
+	if gw, ok := i.config.PublicGateways[host]; ok {
+		return gw.DeserializedResponses
+	}
+
+	// Otherwise, the default.
+	return i.config.DeserializedResponses
+}
+
+// isTrustlessRequest returns true if the responseFormat and contentPath allow
+// client to trustlessly verify response. Relevant response formats are defined
+// in the [Trustless Gateway] spec.
+//
+// [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
+func (i *handler) isTrustlessRequest(contentPath ipath.Path, responseFormat string) bool {
+	// Only allow "/{#1}/{#2}"-like paths.
+	trimmedPath := strings.Trim(contentPath.String(), "/")
+	pathComponents := strings.Split(trimmedPath, "/")
+	if len(pathComponents) != 2 {
+		return false
+	}
+
+	if contentPath.Namespace() == "ipns" {
+		// TODO: only ipns records allowed until https://github.com/ipfs/specs/issues/369 is resolved
+		if responseFormat != "application/vnd.ipfs.ipns-record" {
+			return false
+		}
+
+		// Only valid, cryptographically verifiable IPNS record names (no DNSLink on trustless gateways)
+		// TODO: replace with ipns.Name as part of https://github.com/ipfs/specs/issues/376
+		if _, err := peer.Decode(pathComponents[1]); err != nil {
+			return false
+		}
+
+		return true
+	}
+
+	// Only valid CIDs.
+	if _, err := cid.Decode(pathComponents[1]); err != nil {
+		return false
+	}
+
+	switch responseFormat {
+	case "application/vnd.ipld.raw",
+		"application/vnd.ipld.car":
+		return true
+	default:
+		return false
+	}
+}
+
+func panicHandler(w http.ResponseWriter) {
+	if r := recover(); r != nil {
+		log.Error("A panic occurred in the gateway handler!")
+		log.Error(r)
+		debug.PrintStack()
+		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
 
@@ -503,7 +456,7 @@ func setContentDispositionHeader(w http.ResponseWriter, filename string, disposi
 }
 
 // Set X-Ipfs-Roots with logical CID array for efficient HTTP cache invalidation.
-func (i *handler) buildIpfsRootsHeader(contentPath string, r *http.Request) (string, error) {
+func (i *handler) setIpfsRootsHeader(w http.ResponseWriter, pathMetadata ContentPathMetadata) *ErrorResponse {
 	/*
 		These are logical roots where each CID represent one path segment
 		and resolves to either a directory or the root block of a file.
@@ -526,54 +479,16 @@ func (i *handler) buildIpfsRootsHeader(contentPath string, r *http.Request) (str
 		Note that while the top one will change every time any article is changed,
 		the last root (responsible for specific article) may not change at all.
 	*/
-	var sp strings.Builder
+
 	var pathRoots []string
-	pathSegments := strings.Split(contentPath[6:], "/")
-	sp.WriteString(contentPath[:5]) // /ipfs or /ipns
-	for _, root := range pathSegments {
-		if root == "" {
-			continue
-		}
-		sp.WriteString("/")
-		sp.WriteString(root)
-		resolvedSubPath, err := i.api.ResolvePath(r.Context(), ipath.New(sp.String()))
-		if err != nil {
-			return "", err
-		}
-		pathRoots = append(pathRoots, resolvedSubPath.Cid().String())
+	for _, c := range pathMetadata.PathSegmentRoots {
+		pathRoots = append(pathRoots, c.String())
 	}
+	pathRoots = append(pathRoots, pathMetadata.LastSegment.Cid().String())
 	rootCidList := strings.Join(pathRoots, ",") // convention from rfc2616#sec4.2
-	return rootCidList, nil
-}
 
-func webRequestError(w http.ResponseWriter, err *requestError) {
-	webError(w, err.Message, err.Err, err.StatusCode)
-}
-
-func webError(w http.ResponseWriter, message string, err error, defaultCode int) {
-	if _, ok := err.(resolver.ErrNoLink); ok {
-		webErrorWithCode(w, message, err, http.StatusNotFound)
-	} else if err == routing.ErrNotFound {
-		webErrorWithCode(w, message, err, http.StatusNotFound)
-	} else if ipld.IsNotFound(err) {
-		webErrorWithCode(w, message, err, http.StatusNotFound)
-	} else if err == context.DeadlineExceeded {
-		webErrorWithCode(w, message, err, http.StatusRequestTimeout)
-	} else {
-		webErrorWithCode(w, message, err, defaultCode)
-	}
-}
-
-func webErrorWithCode(w http.ResponseWriter, message string, err error, code int) {
-	http.Error(w, fmt.Sprintf("%s: %s", message, err), code)
-	if code >= 500 {
-		log.Warnf("server error: %s: %s", message, err)
-	}
-}
-
-// return a 500 error and log
-func internalWebError(w http.ResponseWriter, err error) {
-	webErrorWithCode(w, "internalWebError", err, http.StatusInternalServerError)
+	w.Header().Set("X-Ipfs-Roots", rootCidList)
+	return nil
 }
 
 func getFilename(contentPath ipath.Path) string {
@@ -586,9 +501,9 @@ func getFilename(contentPath ipath.Path) string {
 }
 
 // etagMatch evaluates if we can respond with HTTP 304 Not Modified
-// It supports multiple weak and strong etags passed in If-None-Matc stringh
+// It supports multiple weak and strong etags passed in If-None-Match string
 // including the wildcard one.
-func etagMatch(ifNoneMatchHeader string, cidEtag string, dirEtag string) bool {
+func etagMatch(ifNoneMatchHeader string, etagsToCheck ...string) bool {
 	buf := ifNoneMatchHeader
 	for {
 		buf = textproto.TrimString(buf)
@@ -608,8 +523,10 @@ func etagMatch(ifNoneMatchHeader string, cidEtag string, dirEtag string) bool {
 			break
 		}
 		// Check for match both strong and weak etags
-		if etagWeakMatch(etag, cidEtag) || etagWeakMatch(etag, dirEtag) {
-			return true
+		for _, etagToCheck := range etagsToCheck {
+			if etagWeakMatch(etag, etagToCheck) {
+				return true
+			}
 		}
 		buf = remain
 	}
@@ -715,6 +632,13 @@ func customResponseFormat(r *http.Request) (mediaType string, params map[string]
 	return "", nil, nil
 }
 
+// check if request was for one of known explicit formats,
+// or should use the default, implicit Web+UnixFS behaviors.
+func isWebRequest(responseFormat string) bool {
+	// The implicit response format is ""
+	return responseFormat == ""
+}
+
 // returns unquoted path with all special characters revealed as \u codes
 func debugStr(path string) string {
 	q := fmt.Sprintf("%+q", path)
@@ -724,47 +648,84 @@ func debugStr(path string) string {
 	return q
 }
 
-// Resolve the provided contentPath including any special handling related to
-// the requested responseFormat. Returned ok flag indicates if gateway handler
-// should continue processing the request.
-func (i *handler) handlePathResolution(w http.ResponseWriter, r *http.Request, responseFormat string, contentPath ipath.Path, logger *zap.SugaredLogger) (resolvedPath ipath.Resolved, newContentPath ipath.Path, ok bool) {
-	// Attempt to resolve the provided path.
-	resolvedPath, err := i.api.ResolvePath(r.Context(), contentPath)
-
-	switch err {
-	case nil:
-		return resolvedPath, contentPath, true
-	case coreiface.ErrOffline:
-		webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusServiceUnavailable)
-		return nil, nil, false
-	default:
-		// The path can't be resolved.
-		if isUnixfsResponseFormat(responseFormat) {
-			// If we have origin isolation (subdomain gw, DNSLink website),
-			// and response type is UnixFS (default for website hosting)
-			// check for presence of _redirects file and apply rules defined there.
-			// See: https://github.com/ipfs/specs/pull/290
-			if hasOriginIsolation(r) {
-				resolvedPath, newContentPath, ok, hadMatchingRule := i.serveRedirectsIfPresent(w, r, resolvedPath, contentPath, logger)
-				if hadMatchingRule {
-					logger.Debugw("applied a rule from _redirects file")
-					return resolvedPath, newContentPath, ok
-				}
-			}
-
-			// if Accept is text/html, see if ipfs-404.html is present
-			// This logic isn't documented and will likely be removed at some point.
-			// Any 404 logic in _redirects above will have already run by this time, so it's really an extra fall back
-			if i.serveLegacy404IfPresent(w, r, contentPath) {
-				logger.Debugw("served legacy 404")
-				return nil, nil, false
-			}
+func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, responseFormat string, contentPath ipath.Path, imPath ImmutablePath, logger *zap.SugaredLogger) (ipath.Resolved, bool) {
+	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
+	if inm := r.Header.Get("If-None-Match"); inm != "" {
+		pathMetadata, err := i.api.ResolvePath(r.Context(), imPath)
+		if err != nil {
+			// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
+			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+			i.webError(w, r, err, http.StatusInternalServerError)
+			return nil, false
 		}
 
-		// Note: webError will replace http.StatusBadRequest  with StatusNotFound if necessary
-		webError(w, "ipfs resolve -r "+debugStr(contentPath.String()), err, http.StatusBadRequest)
-		return nil, nil, false
+		resolvedPath := pathMetadata.LastSegment
+		pathCid := resolvedPath.Cid()
+		// need to check against both File and Dir Etag variants
+		// because this inexpensive check happens before we do any I/O
+		cidEtag := getEtag(r, pathCid)
+		dirEtag := getDirListingEtag(pathCid)
+		dagEtag := getDagIndexEtag(pathCid)
+		if etagMatch(inm, cidEtag, dirEtag, dagEtag) {
+			// Finish early if client already has a matching Etag
+			w.WriteHeader(http.StatusNotModified)
+			return nil, false
+		}
+
+		return resolvedPath, true
 	}
+	return nil, true
+}
+
+// handleRequestErrors is used when request type is other than Web+UnixFS
+func (i *handler) handleRequestErrors(w http.ResponseWriter, r *http.Request, contentPath ipath.Path, err error) bool {
+	if err == nil {
+		return true
+	}
+	// Note: webError will replace http.StatusInternalServerError with a more appropriate error (e.g. StatusNotFound, StatusRequestTimeout, StatusServiceUnavailable, etc.) if necessary
+	err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+	i.webError(w, r, err, http.StatusInternalServerError)
+	return false
+}
+
+// handleWebRequestErrors is used when request type is Web+UnixFS and err could
+// be a 404 (Not Found) that should be recovered via _redirects file (IPIP-290)
+func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request, maybeResolvedImPath, immutableContentPath ImmutablePath, contentPath ipath.Path, err error, logger *zap.SugaredLogger) (ImmutablePath, bool) {
+	if err == nil {
+		return maybeResolvedImPath, true
+	}
+
+	if errors.Is(err, ErrServiceUnavailable) {
+		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+		i.webError(w, r, err, http.StatusServiceUnavailable)
+		return ImmutablePath{}, false
+	}
+
+	// If we have origin isolation (subdomain gw, DNSLink website),
+	// and response type is UnixFS (default for website hosting)
+	// we can leverage the presence of an _redirects file and apply rules defined there.
+	// See: https://github.com/ipfs/specs/pull/290
+	if hasOriginIsolation(r) {
+		newContentPath, ok, hadMatchingRule := i.serveRedirectsIfPresent(w, r, maybeResolvedImPath, immutableContentPath, contentPath, logger)
+		if hadMatchingRule {
+			logger.Debugw("applied a rule from _redirects file")
+			return newContentPath, ok
+		}
+	}
+
+	// if Accept is text/html, see if ipfs-404.html is present
+	// This logic isn't documented and will likely be removed at some point.
+	// Any 404 logic in _redirects above will have already run by this time, so it's really an extra fall back
+	// PLEASE do not use this for new websites,
+	// follow https://docs.ipfs.tech/how-to/websites-on-ipfs/redirects-and-custom-404s/ instead.
+	if i.serveLegacy404IfPresent(w, r, immutableContentPath) {
+		logger.Debugw("served legacy 404")
+		return ImmutablePath{}, false
+	}
+
+	err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+	i.webError(w, r, err, http.StatusInternalServerError)
+	return ImmutablePath{}, false
 }
 
 // Detect 'Cache-Control: only-if-cached' in request and return data if it is already in the local datastore.
@@ -788,12 +749,12 @@ func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, con
 	return false
 }
 
-func handleUnsupportedHeaders(r *http.Request) (err *requestError) {
+func handleUnsupportedHeaders(r *http.Request) (err *ErrorResponse) {
 	// X-Ipfs-Gateway-Prefix was removed (https://github.com/ipfs/kubo/issues/7702)
 	// TODO: remove this after  go-ipfs 0.13 ships
 	if prfx := r.Header.Get("X-Ipfs-Gateway-Prefix"); prfx != "" {
-		err := fmt.Errorf("X-Ipfs-Gateway-Prefix support was removed: https://github.com/ipfs/kubo/issues/7702")
-		return newRequestError("unsupported HTTP header", err, http.StatusBadRequest)
+		err := fmt.Errorf("unsupported HTTP header: X-Ipfs-Gateway-Prefix support was removed: https://github.com/ipfs/kubo/issues/7702")
+		return NewErrorResponse(err, http.StatusBadRequest)
 	}
 	return nil
 }
@@ -802,16 +763,14 @@ func handleUnsupportedHeaders(r *http.Request) (err *requestError) {
 // via navigator.registerProtocolHandler Web API
 // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/registerProtocolHandler
 // TLDR: redirect /ipfs/?uri=ipfs%3A%2F%2Fcid%3Fquery%3Dval to /ipfs/cid?query=val
-func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, logger *zap.SugaredLogger) (requestHandled bool) {
+func getProtocolHandlerRedirect(r *http.Request) (string, error) {
 	if uriParam := r.URL.Query().Get("uri"); uriParam != "" {
 		u, err := url.Parse(uriParam)
 		if err != nil {
-			webError(w, "failed to parse uri query parameter", err, http.StatusBadRequest)
-			return true
+			return "", fmt.Errorf("failed to parse uri query parameter: %w", err)
 		}
 		if u.Scheme != "ipfs" && u.Scheme != "ipns" {
-			webError(w, "uri query parameter scheme must be ipfs or ipns", err, http.StatusBadRequest)
-			return true
+			return "", fmt.Errorf("uri query parameter scheme must be ipfs or ipns: %w", err)
 		}
 		path := u.Path
 		if u.RawQuery != "" { // preserve query if present
@@ -819,33 +778,75 @@ func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, logge
 		}
 
 		redirectURL := gopath.Join("/", u.Scheme, u.Host, path)
-		logger.Debugw("uri param, redirect", "to", redirectURL, "status", http.StatusMovedPermanently)
-		http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
-		return true
+		return redirectURL, nil
 	}
 
-	return false
+	return "", nil
 }
 
 // Disallow Service Worker registration on namespace roots
 // https://github.com/ipfs/kubo/issues/4025
-func handleServiceWorkerRegistration(r *http.Request) (err *requestError) {
+func handleServiceWorkerRegistration(r *http.Request) (err *ErrorResponse) {
 	if r.Header.Get("Service-Worker") == "script" {
 		matched, _ := regexp.MatchString(`^/ip[fn]s/[^/]+$`, r.URL.Path)
 		if matched {
 			err := fmt.Errorf("registration is not allowed for this scope")
-			return newRequestError("navigator.serviceWorker", err, http.StatusBadRequest)
+			return NewErrorResponse(fmt.Errorf("navigator.serviceWorker: %w", err), http.StatusBadRequest)
 		}
 	}
 
 	return nil
 }
 
+// handleIpnsB58mhToCidRedirection redirects from /ipns/b58mh to /ipns/cid in
+// the most cost-effective way.
+func handleIpnsB58mhToCidRedirection(w http.ResponseWriter, r *http.Request) bool {
+	if _, dnslink := r.Context().Value(DNSLinkHostnameKey).(string); dnslink {
+		// For DNSLink hostnames, do not perform redirection in order to not break
+		// website. For example, if `example.net` is backed by `/ipns/base58`, we
+		// must NOT redirect to `example.net/ipns/base36-id`.
+		return false
+	}
+
+	pathParts := strings.Split(r.URL.Path, "/")
+	if len(pathParts) < 3 {
+		return false
+	}
+
+	if pathParts[1] != "ipns" {
+		return false
+	}
+
+	id, err := peer.Decode(pathParts[2])
+	if err != nil {
+		return false
+	}
+
+	// Convert the peer ID to a CIDv1.
+	cid := peer.ToCid(id)
+
+	// Encode CID in base36 to match the subdomain URLs.
+	encodedCID, err := cid.StringOfBase(multibase.Base36)
+	if err != nil {
+		return false
+	}
+
+	// If the CID was already encoded, do not redirect.
+	if encodedCID == pathParts[2] {
+		return false
+	}
+
+	pathParts[2] = encodedCID
+	r.URL.Path = strings.Join(pathParts, "/")
+	http.Redirect(w, r, r.URL.String(), http.StatusFound)
+	return true
+}
+
 // Attempt to fix redundant /ipfs/ namespace as long as resulting
 // 'intended' path is valid.  This is in case gremlins were tickled
 // wrong way and user ended up at /ipfs/ipfs/{cid} or /ipfs/ipns/{id}
 // like in bafybeien3m7mdn6imm425vc2s22erzyhbvk5n3ofzgikkhmdkh5cuqbpbq :^))
-func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) (requestHandled bool) {
+func (i *handler) handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) (requestHandled bool) {
 	// If the path is valid, there's nothing to do
 	if pathErr := contentPath.IsValid(); pathErr == nil {
 		return false
@@ -859,7 +860,7 @@ func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentP
 	// Attempt to fix the superflous namespace
 	intendedPath := ipath.New(strings.TrimPrefix(r.URL.Path, "/ipfs"))
 	if err := intendedPath.IsValid(); err != nil {
-		webError(w, "invalid ipfs path", err, http.StatusBadRequest)
+		i.webError(w, r, fmt.Errorf("invalid ipfs path: %w", err), http.StatusBadRequest)
 		return true
 	}
 	intendedURL := intendedPath.String()
@@ -879,40 +880,34 @@ func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentP
 		SuggestedPath: intendedPath.String(),
 		ErrorMsg:      fmt.Sprintf("invalid path: %q should be %q", r.URL.Path, intendedPath.String()),
 	}); err != nil {
-		webError(w, "failed to redirect when fixing superfluous namespace", err, http.StatusBadRequest)
+		i.webError(w, r, fmt.Errorf("failed to redirect when fixing superfluous namespace: %w", err), http.StatusBadRequest)
 	}
 
 	return true
 }
 
-func (i *handler) handleGettingFirstBlock(r *http.Request, begin time.Time, contentPath ipath.Path, resolvedPath ipath.Resolved) *requestError {
-	// Update the global metric of the time it takes to read the final root block of the requested resource
-	// NOTE: for legacy reasons this happens before we go into content-type specific code paths
-	_, err := i.api.GetBlock(r.Context(), resolvedPath.Cid())
-	if err != nil {
-		return newRequestError("ipfs block get "+resolvedPath.Cid().String(), err, http.StatusInternalServerError)
-	}
-	ns := contentPath.Namespace()
-	timeToGetFirstContentBlock := time.Since(begin).Seconds()
-	i.unixfsGetMetric.WithLabelValues(ns).Observe(timeToGetFirstContentBlock) // deprecated, use firstContentBlockGetMetric instead
-	i.firstContentBlockGetMetric.WithLabelValues(ns).Observe(timeToGetFirstContentBlock)
-	return nil
-}
-
-func (i *handler) setCommonHeaders(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) *requestError {
-	i.addUserHeaders(w) // ok, _now_ write user's headers.
-	w.Header().Set("X-Ipfs-Path", contentPath.String())
-
-	if rootCids, err := i.buildIpfsRootsHeader(contentPath.String(), r); err == nil {
-		w.Header().Set("X-Ipfs-Roots", rootCids)
-	} else { // this should never happen, as we resolved the contentPath already
-		return newRequestError("error while resolving X-Ipfs-Roots", err, http.StatusInternalServerError)
+// getTemplateGlobalData returns the global data necessary by most templates.
+func (i *handler) getTemplateGlobalData(r *http.Request, contentPath ipath.Path) assets.GlobalData {
+	// gatewayURL is used to link to other root CIDs. THis will be blank unless
+	// subdomain or DNSLink resolution is being used for this request.
+	var gatewayURL string
+	if h, ok := r.Context().Value(SubdomainHostnameKey).(string); ok {
+		gatewayURL = "//" + h
+	} else if h, ok := r.Context().Value(DNSLinkHostnameKey).(string); ok {
+		gatewayURL = "//" + h
+	} else {
+		gatewayURL = ""
 	}
 
-	return nil
+	dnsLink := assets.HasDNSLinkOrigin(gatewayURL, contentPath.String())
+
+	return assets.GlobalData{
+		Menu:       i.config.Menu,
+		GatewayURL: gatewayURL,
+		DNSLink:    dnsLink,
+	}
 }
 
-// spanTrace starts a new span using the standard IPFS tracing conventions.
-func spanTrace(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return otel.Tracer("go-libipfs").Start(ctx, fmt.Sprintf("%s.%s", " Gateway", spanName), opts...)
+func (i *handler) webError(w http.ResponseWriter, r *http.Request, err error, defaultCode int) {
+	webError(w, r, &i.config, err, defaultCode)
 }

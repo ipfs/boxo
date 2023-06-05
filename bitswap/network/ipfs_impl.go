@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	bsmsg "github.com/ipfs/go-libipfs/bitswap/message"
-	"github.com/ipfs/go-libipfs/bitswap/network/internal"
+	bsmsg "github.com/ipfs/boxo/bitswap/message"
+	"github.com/ipfs/boxo/bitswap/network/internal"
 
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
@@ -370,7 +370,7 @@ func (bsnet *impl) ConnectTo(ctx context.Context, p peer.ID) error {
 }
 
 func (bsnet *impl) DisconnectFrom(ctx context.Context, p peer.ID) error {
-	panic("Not implemented: DisconnectFrom() is only used by tests")
+	return bsnet.host.Network().ClosePeer(p)
 }
 
 // FindProvidersAsync returns a channel of providers for the given key.

@@ -4,15 +4,15 @@ import (
 	"context"
 	"time"
 
+	"github.com/ipfs/boxo/bitswap/client/internal"
+	bsbpm "github.com/ipfs/boxo/bitswap/client/internal/blockpresencemanager"
+	bsgetter "github.com/ipfs/boxo/bitswap/client/internal/getter"
+	notifications "github.com/ipfs/boxo/bitswap/client/internal/notifications"
+	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
+	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
-	"github.com/ipfs/go-libipfs/bitswap/client/internal"
-	bsbpm "github.com/ipfs/go-libipfs/bitswap/client/internal/blockpresencemanager"
-	bsgetter "github.com/ipfs/go-libipfs/bitswap/client/internal/getter"
-	notifications "github.com/ipfs/go-libipfs/bitswap/client/internal/notifications"
-	bspm "github.com/ipfs/go-libipfs/bitswap/client/internal/peermanager"
-	bssim "github.com/ipfs/go-libipfs/bitswap/client/internal/sessioninterestmanager"
-	blocks "github.com/ipfs/go-libipfs/blocks"
 	logging "github.com/ipfs/go-log"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
@@ -483,7 +483,7 @@ func (s *Session) resetIdleTick() {
 		avLat := s.latencyTrkr.averageLatency()
 		tickDelay = s.baseTickDelay + (3 * avLat)
 	}
-	tickDelay = tickDelay * time.Duration(1+s.consecutiveTicks)
+	tickDelay *= time.Duration(1 + s.consecutiveTicks)
 	s.idleTick.Reset(tickDelay)
 }
 

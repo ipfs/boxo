@@ -3,21 +3,19 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
-	cid "github.com/ipfs/go-cid"
-	blocks "github.com/ipfs/go-libipfs/blocks"
-	ipath "github.com/ipfs/interface-go-ipfs-core/path"
-	gocar "github.com/ipld/go-car"
-	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
+	ipath "github.com/ipfs/boxo/coreiface/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/multierr"
 )
 
 // serveCAR returns a CAR stream for specific DAG+selector
-func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, carVersion string, begin time.Time) bool {
-	ctx, span := spanTrace(ctx, "ServeCAR", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
+func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, carVersion string, begin time.Time) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeCAR", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -30,11 +28,23 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	case "": // noop, client does not care about version
 	case "1": // noop, we support this
 	default:
-		err := fmt.Errorf("only version=1 is supported")
-		webError(w, "unsupported CAR version", err, http.StatusBadRequest)
+		err := fmt.Errorf("unsupported CAR version: only version=1 is supported")
+		i.webError(w, r, err, http.StatusBadRequest)
 		return false
 	}
-	rootCid := resolvedPath.Cid()
+
+	pathMetadata, carFile, errCh, err := i.api.GetCAR(ctx, imPath)
+	if !i.handleRequestErrors(w, r, contentPath, err) {
+		return false
+	}
+	defer carFile.Close()
+
+	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
+		i.webRequestError(w, r, err)
+		return false
+	}
+
+	rootCid := pathMetadata.LastSegment.Cid()
 
 	// Set Content-Disposition
 	var name string
@@ -70,33 +80,22 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	w.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
-	// Same go-car settings as dag.export command
-	store := dagStore{api: i.api, ctx: ctx}
+	_, copyErr := io.Copy(w, carFile)
+	carErr := <-errCh
+	streamErr := multierr.Combine(carErr, copyErr)
+	if streamErr != nil {
+		// Update fail metric
+		i.carStreamFailMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 
-	// TODO: support selectors passed as request param: https://github.com/ipfs/kubo/issues/8769
-	dag := gocar.Dag{Root: rootCid, Selector: selectorparse.CommonSelector_ExploreAllRecursively}
-	car := gocar.NewSelectiveCar(ctx, store, []gocar.Dag{dag}, gocar.TraverseLinksOnlyOnce())
-
-	if err := car.Write(w); err != nil {
 		// We return error as a trailer, however it is not something browsers can access
 		// (https://github.com/mdn/browser-compat-data/issues/14703)
 		// Due to this, we suggest client always verify that
 		// the received CAR stream response is matching requested DAG selector
-		w.Header().Set("X-Stream-Error", err.Error())
+		w.Header().Set("X-Stream-Error", streamErr.Error())
 		return false
 	}
 
 	// Update metrics
 	i.carStreamGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 	return true
-}
-
-// FIXME(@Jorropo): https://github.com/ipld/go-car/issues/315
-type dagStore struct {
-	api API
-	ctx context.Context
-}
-
-func (ds dagStore) Get(_ context.Context, c cid.Cid) (blocks.Block, error) {
-	return ds.api.GetBlock(ds.ctx, c)
 }

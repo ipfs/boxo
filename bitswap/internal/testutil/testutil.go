@@ -1,14 +1,14 @@
 package testutil
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 
+	"github.com/ipfs/boxo/bitswap/client/wantlist"
+	bsmsg "github.com/ipfs/boxo/bitswap/message"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
-	"github.com/ipfs/go-libipfs/bitswap/client/wantlist"
-	bsmsg "github.com/ipfs/go-libipfs/bitswap/message"
-	blocks "github.com/ipfs/go-libipfs/blocks"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -60,7 +60,7 @@ func GeneratePeers(n int) []peer.ID {
 	peerIds := make([]peer.ID, 0, n)
 	for i := 0; i < n; i++ {
 		peerSeq++
-		p := peer.ID(fmt.Sprint(i))
+		p := peer.ID(fmt.Sprint(peerSeq))
 		peerIds = append(peerIds, p)
 	}
 	return peerIds

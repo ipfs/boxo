@@ -12,17 +12,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/go-libipfs/bitswap/internal/testutil"
-	blocks "github.com/ipfs/go-libipfs/blocks"
+	"github.com/ipfs/boxo/bitswap/internal/testutil"
+	blocks "github.com/ipfs/go-block-format"
 	protocol "github.com/libp2p/go-libp2p/core/protocol"
 
+	"github.com/ipfs/boxo/bitswap"
+	bsnet "github.com/ipfs/boxo/bitswap/network"
+	testinstance "github.com/ipfs/boxo/bitswap/testinstance"
+	tn "github.com/ipfs/boxo/bitswap/testnet"
+	mockrouting "github.com/ipfs/boxo/routing/mock"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
-	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
-	"github.com/ipfs/go-libipfs/bitswap"
-	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
-	testinstance "github.com/ipfs/go-libipfs/bitswap/testinstance"
-	tn "github.com/ipfs/go-libipfs/bitswap/testnet"
 )
 
 type fetchFunc func(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid)

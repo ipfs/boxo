@@ -5,9 +5,10 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/ipfs/boxo/routing/http/internal"
+	"github.com/ipfs/boxo/routing/http/types"
+	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-libipfs/routing/http/internal"
-	"github.com/ipfs/go-libipfs/routing/http/types"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
@@ -21,7 +22,7 @@ const ttl = 24 * time.Hour
 
 type Client interface {
 	ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error)
-	FindProviders(ctx context.Context, key cid.Cid) ([]types.ProviderResponse, error)
+	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error)
 }
 
 type contentRouter struct {
@@ -101,24 +102,24 @@ func (c *contentRouter) Ready() bool {
 	return true
 }
 
-func (c *contentRouter) FindProvidersAsync(ctx context.Context, key cid.Cid, numResults int) <-chan peer.AddrInfo {
-	results, err := c.client.FindProviders(ctx, key)
-	if err != nil {
-		logger.Warnw("error finding providers", "CID", key, "Error", err)
-		ch := make(chan peer.AddrInfo)
-		close(ch)
-		return ch
-	}
-
-	ch := make(chan peer.AddrInfo, len(results))
-	for _, r := range results {
-		if r.GetSchema() == types.SchemaBitswap {
-			result, ok := r.(*types.ReadBitswapProviderRecord)
+// readProviderResponses reads bitswap records from the iterator into the given channel, dropping non-bitswap records.
+func readProviderResponses(iter iter.ResultIter[types.ProviderResponse], ch chan<- peer.AddrInfo) {
+	defer close(ch)
+	defer iter.Close()
+	for iter.Next() {
+		res := iter.Val()
+		if res.Err != nil {
+			logger.Warnw("error iterating provider responses: %s", res.Err)
+			continue
+		}
+		v := res.Val
+		if v.GetSchema() == types.SchemaBitswap {
+			result, ok := v.(*types.ReadBitswapProviderRecord)
 			if !ok {
 				logger.Errorw(
 					"problem casting find providers result",
-					"Schema", r.GetSchema(),
-					"Type", reflect.TypeOf(r).String(),
+					"Schema", v.GetSchema(),
+					"Type", reflect.TypeOf(v).String(),
 				)
 				continue
 			}
@@ -133,8 +134,18 @@ func (c *contentRouter) FindProvidersAsync(ctx context.Context, key cid.Cid, num
 				Addrs: addrs,
 			}
 		}
-
 	}
-	close(ch)
+}
+
+func (c *contentRouter) FindProvidersAsync(ctx context.Context, key cid.Cid, numResults int) <-chan peer.AddrInfo {
+	resultsIter, err := c.client.FindProviders(ctx, key)
+	if err != nil {
+		logger.Warnw("error finding providers", "CID", key, "Error", err)
+		ch := make(chan peer.AddrInfo)
+		close(ch)
+		return ch
+	}
+	ch := make(chan peer.AddrInfo)
+	go readProviderResponses(resultsIter, ch)
 	return ch
 }

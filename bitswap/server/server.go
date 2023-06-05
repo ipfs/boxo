@@ -8,16 +8,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ipfs/boxo/bitswap/internal/defaults"
+	"github.com/ipfs/boxo/bitswap/message"
+	pb "github.com/ipfs/boxo/bitswap/message/pb"
+	bmetrics "github.com/ipfs/boxo/bitswap/metrics"
+	bsnet "github.com/ipfs/boxo/bitswap/network"
+	"github.com/ipfs/boxo/bitswap/server/internal/decision"
+	"github.com/ipfs/boxo/bitswap/tracer"
+	blockstore "github.com/ipfs/boxo/blockstore"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	"github.com/ipfs/go-libipfs/bitswap/internal/defaults"
-	"github.com/ipfs/go-libipfs/bitswap/message"
-	pb "github.com/ipfs/go-libipfs/bitswap/message/pb"
-	bmetrics "github.com/ipfs/go-libipfs/bitswap/metrics"
-	bsnet "github.com/ipfs/go-libipfs/bitswap/network"
-	"github.com/ipfs/go-libipfs/bitswap/server/internal/decision"
-	"github.com/ipfs/go-libipfs/bitswap/tracer"
-	blocks "github.com/ipfs/go-libipfs/blocks"
 	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-metrics-interface"
 	process "github.com/jbenet/goprocess"
@@ -205,6 +205,27 @@ func WithTargetMessageSize(tms int) Option {
 // given time. Setting it to 0 will disable any limiting.
 func MaxOutstandingBytesPerPeer(count int) Option {
 	o := decision.WithMaxOutstandingBytesPerPeer(count)
+	return func(bs *Server) {
+		bs.engineOptions = append(bs.engineOptions, o)
+	}
+}
+
+// MaxQueuedWantlistEntriesPerPeer limits how much individual entries each peer is allowed to send.
+// If a peer send us more than this we will truncate newest entries.
+// It defaults to defaults.MaxQueuedWantlistEntiresPerPeer.
+func MaxQueuedWantlistEntriesPerPeer(count uint) Option {
+	o := decision.WithMaxQueuedWantlistEntriesPerPeer(count)
+	return func(bs *Server) {
+		bs.engineOptions = append(bs.engineOptions, o)
+	}
+}
+
+// MaxCidSize limits how big CIDs we are willing to serve.
+// We will ignore CIDs over this limit.
+// It defaults to [defaults.MaxCidSize].
+// If it is 0 no limit is applied.
+func MaxCidSize(n uint) Option {
+	o := decision.WithMaxCidSize(n)
 	return func(bs *Server) {
 		bs.engineOptions = append(bs.engineOptions, o)
 	}
@@ -501,7 +522,10 @@ func (bs *Server) provideWorker(px process.Process) {
 func (bs *Server) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.BitSwapMessage) {
 	// This call records changes to wantlists, blocks received,
 	// and number of bytes transfered.
-	bs.engine.MessageReceived(ctx, p, incoming)
+	mustKillConnection := bs.engine.MessageReceived(ctx, p, incoming)
+	if mustKillConnection {
+		bs.network.DisconnectFrom(ctx, p)
+	}
 	// TODO: this is bad, and could be easily abused.
 	// Should only track *useful* messages in ledger
 

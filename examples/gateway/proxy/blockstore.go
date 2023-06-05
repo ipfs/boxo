@@ -2,53 +2,42 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 
+	"github.com/ipfs/boxo/exchange"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	"github.com/ipfs/go-libipfs/blocks"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
-var (
-	errNotImplemented = errors.New("not implemented")
-)
-
-type proxyStore struct {
+type proxyExchange struct {
 	httpClient *http.Client
 	gatewayURL string
-	validate   bool
 }
 
-func newProxyStore(gatewayURL string, client *http.Client) blockstore.Blockstore {
+func newProxyExchange(gatewayURL string, client *http.Client) exchange.Interface {
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+		}
 	}
 
-	return &proxyStore{
+	return &proxyExchange{
 		gatewayURL: gatewayURL,
 		httpClient: client,
-		// Enables block validation by default. Important since we are
-		// proxying block requests to an untrusted gateway.
-		validate: true,
 	}
 }
 
-func (ps *proxyStore) fetch(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/ipfs/%s?format=raw", ps.gatewayURL, c))
+func (e *proxyExchange) fetch(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+	urlStr := fmt.Sprintf("%s/ipfs/%s?format=raw", e.gatewayURL, c)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := ps.httpClient.Do(&http.Request{
-		Method: http.MethodGet,
-		URL:    u,
-		Header: http.Header{
-			"Accept": []string{"application/vnd.ipld.raw"},
-		},
-	})
+	req.Header.Set("Accept", "application/vnd.ipld.raw")
+	resp, err := e.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -63,57 +52,60 @@ func (ps *proxyStore) fetch(ctx context.Context, c cid.Cid) (blocks.Block, error
 		return nil, err
 	}
 
-	if ps.validate {
-		nc, err := c.Prefix().Sum(rb)
-		if err != nil {
-			return nil, blocks.ErrWrongHash
-		}
-		if !nc.Equals(c) {
-			fmt.Printf("got %s vs %s\n", nc, c)
-			return nil, blocks.ErrWrongHash
-		}
+	// Validate incoming blocks
+	// This is important since we are proxying block requests to an untrusted gateway.
+	nc, err := c.Prefix().Sum(rb)
+	if err != nil {
+		return nil, blocks.ErrWrongHash
 	}
+	if !nc.Equals(c) {
+		fmt.Printf("got %s vs %s\n", nc, c)
+		return nil, blocks.ErrWrongHash
+	}
+
 	return blocks.NewBlockWithCid(rb, c)
 }
 
-func (ps *proxyStore) Has(ctx context.Context, c cid.Cid) (bool, error) {
-	blk, err := ps.fetch(ctx, c)
-	if err != nil {
-		return false, err
-	}
-	return blk != nil, nil
-}
-
-func (ps *proxyStore) Get(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	blk, err := ps.fetch(ctx, c)
+func (e *proxyExchange) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+	blk, err := e.fetch(ctx, c)
 	if err != nil {
 		return nil, err
 	}
 	return blk, nil
 }
 
-func (ps *proxyStore) GetSize(ctx context.Context, c cid.Cid) (int, error) {
-	blk, err := ps.fetch(ctx, c)
-	if err != nil {
-		return 0, err
-	}
-	return len(blk.RawData()), nil
+func (e *proxyExchange) GetBlocks(ctx context.Context, cids []cid.Cid) (<-chan blocks.Block, error) {
+	ch := make(chan blocks.Block)
+
+	// Note: this implementation of GetBlocks does not make use of worker pools or parallelism
+	// However, production implementations generally will, and an advanced
+	// version of this can be found in https://github.com/ipfs/bifrost-gateway/
+	go func() {
+		defer close(ch)
+		for _, c := range cids {
+			blk, err := e.fetch(ctx, c)
+			if err != nil {
+				return
+			}
+			select {
+			case ch <- blk:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return ch, nil
 }
 
-func (ps *proxyStore) HashOnRead(enabled bool) {
-	ps.validate = enabled
+func (e *proxyExchange) NotifyNewBlocks(ctx context.Context, blocks ...blocks.Block) error {
+	// Note: while not required this function could be used optimistically to prevent fetching
+	// of data that the client has retrieved already even though a Get call is in progress.
+	return nil
 }
 
-func (c *proxyStore) Put(context.Context, blocks.Block) error {
-	return errNotImplemented
-}
-
-func (c *proxyStore) PutMany(context.Context, []blocks.Block) error {
-	return errNotImplemented
-}
-func (c *proxyStore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
-	return nil, errNotImplemented
-}
-func (c *proxyStore) DeleteBlock(context.Context, cid.Cid) error {
-	return errNotImplemented
+func (e *proxyExchange) Close() error {
+	// Note: while nothing is strictly required to happen here it would be reasonable to close
+	// existing connections and prevent new operations from starting.
+	return nil
 }
