@@ -23,13 +23,13 @@ func newTestServer() (*httptest.Server, io.Closer, error) {
 		return nil, nil, err
 	}
 
-	gateway, err := gateway.NewBlocksGateway(blockService)
+	backend, err := gateway.NewBlocksBackend(blockService)
 	if err != nil {
 		_ = f.Close()
 		return nil, nil, err
 	}
 
-	handler := common.NewHandler(gateway)
+	handler := common.NewHandler(backend)
 	ts := httptest.NewServer(handler)
 	return ts, f, nil
 }

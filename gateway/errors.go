@@ -17,20 +17,23 @@ import (
 )
 
 var (
-	ErrInternalServerError = NewErrorResponseForCode(http.StatusInternalServerError)
-	ErrGatewayTimeout      = NewErrorResponseForCode(http.StatusGatewayTimeout)
-	ErrBadGateway          = NewErrorResponseForCode(http.StatusBadGateway)
-	ErrServiceUnavailable  = NewErrorResponseForCode(http.StatusServiceUnavailable)
-	ErrTooManyRequests     = NewErrorResponseForCode(http.StatusTooManyRequests)
+	ErrInternalServerError = NewErrorStatusCodeFromStatus(http.StatusInternalServerError)
+	ErrGatewayTimeout      = NewErrorStatusCodeFromStatus(http.StatusGatewayTimeout)
+	ErrBadGateway          = NewErrorStatusCodeFromStatus(http.StatusBadGateway)
+	ErrServiceUnavailable  = NewErrorStatusCodeFromStatus(http.StatusServiceUnavailable)
+	ErrTooManyRequests     = NewErrorStatusCodeFromStatus(http.StatusTooManyRequests)
 )
 
+// ErrorRetryAfter wraps any error with "retry after" hint. When an error of this type
+// returned to the gateway handler by an [IPFSBackend], the retry after value will be
+// passed to the HTTP client in a [Retry-After] HTTP header.
+//
+// [Retry-After]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
 type ErrorRetryAfter struct {
 	Err        error
 	RetryAfter time.Duration
 }
 
-// NewErrorWithRetryAfter wraps any error in RetryAfter hint that
-// gets passed to HTTP clients in Retry-After HTTP header.
 func NewErrorRetryAfter(err error, retryAfter time.Duration) *ErrorRetryAfter {
 	if err == nil {
 		err = ErrServiceUnavailable
@@ -50,7 +53,7 @@ func (e *ErrorRetryAfter) Error() string {
 		text = e.Err.Error()
 	}
 	if e.RetryAfter != 0 {
-		text += fmt.Sprintf(", retry after %s", e.Humanized())
+		text += fmt.Sprintf(", retry after %s", e.humanizedRoundSeconds())
 	}
 	return text
 }
@@ -68,50 +71,52 @@ func (e *ErrorRetryAfter) Is(err error) bool {
 	}
 }
 
-func (e *ErrorRetryAfter) RoundSeconds() time.Duration {
+// RetryAfterHeader returns the [Retry-After] header value as a string, representing the number
+// of seconds to wait before making a new request, rounded to the nearest second.
+// This function follows the [Retry-After] header definition as specified in RFC 9110.
+//
+// [Retry-After]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
+func (e *ErrorRetryAfter) RetryAfterHeader() string {
+	return strconv.Itoa(int(e.roundSeconds().Seconds()))
+}
+
+func (e *ErrorRetryAfter) roundSeconds() time.Duration {
 	return e.RetryAfter.Round(time.Second)
 }
 
-func (e *ErrorRetryAfter) Humanized() string {
-	return e.RoundSeconds().String()
+func (e *ErrorRetryAfter) humanizedRoundSeconds() string {
+	return e.roundSeconds().String()
 }
 
-// HTTPHeaderValue returns the Retry-After header value as a string, representing the number
-// of seconds to wait before making a new request, rounded to the nearest second.
-// This function follows the Retry-After header definition as specified in RFC 9110.
-func (e *ErrorRetryAfter) HTTPHeaderValue() string {
-	return strconv.Itoa(int(e.RoundSeconds().Seconds()))
-}
-
-// Custom type for collecting error details to be handled by `webError`. When an error
-// of this type is returned to the gateway handler, the StatusCode will be used for
-// the response status.
-type ErrorResponse struct {
+// ErrorStatusCode wraps any error with a specific HTTP status code. When an error
+// of this type is returned to the gateway handler by an [IPFSBackend], the status
+// code will be used for the response status.
+type ErrorStatusCode struct {
 	StatusCode int
 	Err        error
 }
 
-func NewErrorResponseForCode(statusCode int) *ErrorResponse {
-	return NewErrorResponse(errors.New(http.StatusText(statusCode)), statusCode)
+func NewErrorStatusCodeFromStatus(statusCode int) *ErrorStatusCode {
+	return NewErrorStatusCode(errors.New(http.StatusText(statusCode)), statusCode)
 }
 
-func NewErrorResponse(err error, statusCode int) *ErrorResponse {
-	return &ErrorResponse{
+func NewErrorStatusCode(err error, statusCode int) *ErrorStatusCode {
+	return &ErrorStatusCode{
 		Err:        err,
 		StatusCode: statusCode,
 	}
 }
 
-func (e *ErrorResponse) Is(err error) bool {
+func (e *ErrorStatusCode) Is(err error) bool {
 	switch err.(type) {
-	case *ErrorResponse:
+	case *ErrorStatusCode:
 		return true
 	default:
 		return false
 	}
 }
 
-func (e *ErrorResponse) Error() string {
+func (e *ErrorStatusCode) Error() string {
 	var text string
 	if e.Err != nil {
 		text = e.Err.Error()
@@ -119,7 +124,7 @@ func (e *ErrorResponse) Error() string {
 	return text
 }
 
-func (e *ErrorResponse) Unwrap() error {
+func (e *ErrorStatusCode) Unwrap() error {
 	return e.Err
 }
 
@@ -130,7 +135,7 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 	var era *ErrorRetryAfter
 	if errors.As(err, &era) {
 		if era.RetryAfter > 0 {
-			w.Header().Set("Retry-After", era.HTTPHeaderValue())
+			w.Header().Set("Retry-After", era.RetryAfterHeader())
 			// Adjust defaultCode if needed
 			if code != http.StatusTooManyRequests && code != http.StatusServiceUnavailable {
 				code = http.StatusTooManyRequests
@@ -150,7 +155,7 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 	}
 
 	// Handle explicit code in ErrorResponse
-	var gwErr *ErrorResponse
+	var gwErr *ErrorStatusCode
 	if errors.As(err, &gwErr) {
 		code = gwErr.StatusCode
 	}
@@ -200,8 +205,4 @@ func isErrNotFound(err error) bool {
 			return false
 		}
 	}
-}
-
-func (i *handler) webRequestError(w http.ResponseWriter, r *http.Request, err *ErrorResponse) {
-	i.webError(w, r, err.Err, err.StatusCode)
 }

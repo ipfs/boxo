@@ -25,16 +25,16 @@ func newResolver(url string, opts ...doh.Option) (madns.BasicResolver, error) {
 // NewDNSResolver creates a new DNS resolver based on the default resolvers and
 // the provided resolvers.
 //
-// The argument 'resolvers' is a map of FQDNs to URLs for custom DNS resolution.
-// URLs starting with `https://` indicate DoH endpoints. Support for other resolver
+// The argument 'resolvers' is a map of [FQDNs] to URLs for custom DNS resolution.
+// URLs starting with "https://" indicate [DoH] endpoints. Support for other resolver
 // types may be added in the future.
 //
-//	https://en.wikipedia.org/wiki/Fully_qualified_domain_name
-//	https://en.wikipedia.org/wiki/DNS_over_HTTPS
-//
 // Example:
-// - Custom resolver for ENS:          `eth.` → `https://eth.link/dns-query`
-// - Override the default OS resolver: `.`    → `https://doh.applied-privacy.net/query`
+//   - Custom resolver for ENS:          "eth." → "https://eth.link/dns-query"
+//   - Override the default OS resolver: "."    → "https://doh.applied-privacy.net/query"
+//
+// [FQDNs]: https://en.wikipedia.org/wiki/Fully_qualified_domain_name
+// [DoH]: https://en.wikipedia.org/wiki/DNS_over_HTTPS
 func NewDNSResolver(resolvers map[string]string, dohOpts ...doh.Option) (*madns.Resolver, error) {
 	var opts []madns.Option
 	var err error

@@ -21,15 +21,15 @@ import (
 var defaultDurationHistogramBuckets = []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 240, 480, 960, 1920}
 
 type ipfsBackendWithMetrics struct {
-	api           IPFSBackend
-	apiCallMetric *prometheus.HistogramVec
+	backend           IPFSBackend
+	backendCallMetric *prometheus.HistogramVec
 }
 
-func newIPFSBackendWithMetrics(api IPFSBackend) *ipfsBackendWithMetrics {
+func newIPFSBackendWithMetrics(backend IPFSBackend) *ipfsBackendWithMetrics {
 	// We can add buckets as a parameter in the future, but for now using static defaults
 	// suggested in https://github.com/ipfs/kubo/issues/8441
 
-	apiCallMetric := prometheus.NewHistogramVec(
+	backendCallMetric := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "ipfs",
 			Subsystem: "gw_backend",
@@ -40,23 +40,23 @@ func newIPFSBackendWithMetrics(api IPFSBackend) *ipfsBackendWithMetrics {
 		[]string{"name", "result"},
 	)
 
-	if err := prometheus.Register(apiCallMetric); err != nil {
+	if err := prometheus.Register(backendCallMetric); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-			apiCallMetric = are.ExistingCollector.(*prometheus.HistogramVec)
+			backendCallMetric = are.ExistingCollector.(*prometheus.HistogramVec)
 		} else {
 			log.Errorf("failed to register ipfs_gw_backend_api_call_duration_seconds: %v", err)
 		}
 	}
 
-	return &ipfsBackendWithMetrics{api, apiCallMetric}
+	return &ipfsBackendWithMetrics{backend, backendCallMetric}
 }
 
-func (b *ipfsBackendWithMetrics) updateApiCallMetric(name string, err error, begin time.Time) {
+func (b *ipfsBackendWithMetrics) updateBackendCallMetric(name string, err error, begin time.Time) {
 	end := time.Since(begin).Seconds()
 	if err == nil {
-		b.apiCallMetric.WithLabelValues(name, "success").Observe(end)
+		b.backendCallMetric.WithLabelValues(name, "success").Observe(end)
 	} else {
-		b.apiCallMetric.WithLabelValues(name, "failure").Observe(end)
+		b.backendCallMetric.WithLabelValues(name, "failure").Observe(end)
 	}
 }
 
@@ -66,9 +66,9 @@ func (b *ipfsBackendWithMetrics) Get(ctx context.Context, path ImmutablePath, ra
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String()), attribute.Int("ranges", len(ranges))))
 	defer span.End()
 
-	md, f, err := b.api.Get(ctx, path, ranges...)
+	md, f, err := b.backend.Get(ctx, path, ranges...)
 
-	b.updateApiCallMetric(name, err, begin)
+	b.updateBackendCallMetric(name, err, begin)
 	return md, f, err
 }
 
@@ -78,9 +78,9 @@ func (b *ipfsBackendWithMetrics) GetAll(ctx context.Context, path ImmutablePath)
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
 	defer span.End()
 
-	md, n, err := b.api.GetAll(ctx, path)
+	md, n, err := b.backend.GetAll(ctx, path)
 
-	b.updateApiCallMetric(name, err, begin)
+	b.updateBackendCallMetric(name, err, begin)
 	return md, n, err
 }
 
@@ -90,9 +90,9 @@ func (b *ipfsBackendWithMetrics) GetBlock(ctx context.Context, path ImmutablePat
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
 	defer span.End()
 
-	md, n, err := b.api.GetBlock(ctx, path)
+	md, n, err := b.backend.GetBlock(ctx, path)
 
-	b.updateApiCallMetric(name, err, begin)
+	b.updateBackendCallMetric(name, err, begin)
 	return md, n, err
 }
 
@@ -102,9 +102,9 @@ func (b *ipfsBackendWithMetrics) Head(ctx context.Context, path ImmutablePath) (
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
 	defer span.End()
 
-	md, n, err := b.api.Head(ctx, path)
+	md, n, err := b.backend.Head(ctx, path)
 
-	b.updateApiCallMetric(name, err, begin)
+	b.updateBackendCallMetric(name, err, begin)
 	return md, n, err
 }
 
@@ -114,9 +114,9 @@ func (b *ipfsBackendWithMetrics) ResolvePath(ctx context.Context, path Immutable
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
 	defer span.End()
 
-	md, err := b.api.ResolvePath(ctx, path)
+	md, err := b.backend.ResolvePath(ctx, path)
 
-	b.updateApiCallMetric(name, err, begin)
+	b.updateBackendCallMetric(name, err, begin)
 	return md, err
 }
 
@@ -126,10 +126,10 @@ func (b *ipfsBackendWithMetrics) GetCAR(ctx context.Context, path ImmutablePath,
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
 	defer span.End()
 
-	rc, err := b.api.GetCAR(ctx, path, params)
+	rc, err := b.backend.GetCAR(ctx, path, params)
 
 	// TODO: handle errCh
-	b.updateApiCallMetric(name, err, begin)
+	b.updateBackendCallMetric(name, err, begin)
 	return rc, err
 }
 
@@ -139,9 +139,9 @@ func (b *ipfsBackendWithMetrics) IsCached(ctx context.Context, path path.Path) b
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
 	defer span.End()
 
-	bln := b.api.IsCached(ctx, path)
+	bln := b.backend.IsCached(ctx, path)
 
-	b.updateApiCallMetric(name, nil, begin)
+	b.updateBackendCallMetric(name, nil, begin)
 	return bln
 }
 
@@ -151,9 +151,9 @@ func (b *ipfsBackendWithMetrics) GetIPNSRecord(ctx context.Context, cid cid.Cid)
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("cid", cid.String())))
 	defer span.End()
 
-	r, err := b.api.GetIPNSRecord(ctx, cid)
+	r, err := b.backend.GetIPNSRecord(ctx, cid)
 
-	b.updateApiCallMetric(name, err, begin)
+	b.updateBackendCallMetric(name, err, begin)
 	return r, err
 }
 
@@ -163,9 +163,9 @@ func (b *ipfsBackendWithMetrics) ResolveMutable(ctx context.Context, path path.P
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
 	defer span.End()
 
-	p, err := b.api.ResolveMutable(ctx, path)
+	p, err := b.backend.ResolveMutable(ctx, path)
 
-	b.updateApiCallMetric(name, err, begin)
+	b.updateBackendCallMetric(name, err, begin)
 	return p, err
 }
 
@@ -175,18 +175,18 @@ func (b *ipfsBackendWithMetrics) GetDNSLinkRecord(ctx context.Context, fqdn stri
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("fqdn", fqdn)))
 	defer span.End()
 
-	p, err := b.api.GetDNSLinkRecord(ctx, fqdn)
+	p, err := b.backend.GetDNSLinkRecord(ctx, fqdn)
 
-	b.updateApiCallMetric(name, err, begin)
+	b.updateBackendCallMetric(name, err, begin)
 	return p, err
 }
 
 var _ IPFSBackend = (*ipfsBackendWithMetrics)(nil)
 
-func newHandlerWithMetrics(c Config, api IPFSBackend) *handler {
+func newHandlerWithMetrics(c *Config, backend IPFSBackend) *handler {
 	i := &handler{
-		config: c,
-		api:    newIPFSBackendWithMetrics(api),
+		config:  c,
+		backend: newIPFSBackendWithMetrics(backend),
 
 		// Response-type specific metrics
 		// ----------------------------

@@ -29,49 +29,46 @@ import (
 // codecToContentType maps the supported IPLD codecs to the HTTP Content
 // Type they should have.
 var codecToContentType = map[mc.Code]string{
-	mc.Json:    "application/json",
-	mc.Cbor:    "application/cbor",
-	mc.DagJson: "application/vnd.ipld.dag-json",
-	mc.DagCbor: "application/vnd.ipld.dag-cbor",
+	mc.Json:    jsonResponseFormat,
+	mc.Cbor:    cborResponseFormat,
+	mc.DagJson: dagJsonResponseFormat,
+	mc.DagCbor: dagCborResponseFormat,
 }
 
 // contentTypeToRaw maps the HTTP Content Type to the respective codec that
 // allows raw response without any conversion.
 var contentTypeToRaw = map[string][]mc.Code{
-	"application/json": {mc.Json, mc.DagJson},
-	"application/cbor": {mc.Cbor, mc.DagCbor},
+	jsonResponseFormat: {mc.Json, mc.DagJson},
+	cborResponseFormat: {mc.Cbor, mc.DagCbor},
 }
 
 // contentTypeToCodec maps the HTTP Content Type to the respective codec. We
 // only add here the codecs that we want to convert-to-from.
 var contentTypeToCodec = map[string]mc.Code{
-	"application/vnd.ipld.dag-json": mc.DagJson,
-	"application/vnd.ipld.dag-cbor": mc.DagCbor,
+	dagJsonResponseFormat: mc.DagJson,
+	dagCborResponseFormat: mc.DagCbor,
 }
 
 // contentTypeToExtension maps the HTTP Content Type to the respective file
 // extension, used in Content-Disposition header when downloading the file.
 var contentTypeToExtension = map[string]string{
-	"application/json":              ".json",
-	"application/vnd.ipld.dag-json": ".json",
-	"application/cbor":              ".cbor",
-	"application/vnd.ipld.dag-cbor": ".cbor",
+	jsonResponseFormat:    ".json",
+	dagJsonResponseFormat: ".json",
+	cborResponseFormat:    ".cbor",
+	dagCborResponseFormat: ".cbor",
 }
 
 func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time, requestedContentType string) bool {
 	ctx, span := spanTrace(ctx, "Handler.ServeCodec", trace.WithAttributes(attribute.String("path", imPath.String()), attribute.String("requestedContentType", requestedContentType)))
 	defer span.End()
 
-	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
+	pathMetadata, data, err := i.backend.GetBlock(ctx, imPath)
 	if !i.handleRequestErrors(w, r, contentPath, err) {
 		return false
 	}
 	defer data.Close()
 
-	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
-		i.webRequestError(w, r, err)
-		return false
-	}
+	setIpfsRootsHeader(w, pathMetadata)
 
 	resolvedPath := pathMetadata.LastSegment
 	return i.renderCodec(ctx, w, r, resolvedPath, data, contentPath, begin, requestedContentType)
@@ -236,7 +233,7 @@ func parseNode(blockCid cid.Cid, blockData io.ReadSeekCloser) *assets.ParsedNode
 func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, blockData io.ReadSeekCloser, contentPath ipath.Path, name string, modtime, begin time.Time) bool {
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
-	_, dataSent, _ := ServeContent(w, r, name, modtime, blockData)
+	_, dataSent, _ := serveContent(w, r, name, modtime, blockData)
 
 	if dataSent {
 		// Update metrics

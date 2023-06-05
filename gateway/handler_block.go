@@ -15,16 +15,13 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	ctx, span := spanTrace(ctx, "Handler.ServeRawBlock", trace.WithAttributes(attribute.String("path", imPath.String())))
 	defer span.End()
 
-	pathMetadata, data, err := i.api.GetBlock(ctx, imPath)
+	pathMetadata, data, err := i.backend.GetBlock(ctx, imPath)
 	if !i.handleRequestErrors(w, r, contentPath, err) {
 		return false
 	}
 	defer data.Close()
 
-	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
-		i.webRequestError(w, r, err)
-		return false
-	}
+	setIpfsRootsHeader(w, pathMetadata)
 
 	blockCid := pathMetadata.LastSegment.Cid()
 
@@ -38,13 +35,13 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	setContentDispositionHeader(w, name, "attachment")
 
 	// Set remaining headers
-	modtime := addCacheControlHeaders(w, r, contentPath, blockCid, "application/vnd.ipld.raw")
-	w.Header().Set("Content-Type", "application/vnd.ipld.raw")
+	modtime := addCacheControlHeaders(w, r, contentPath, blockCid, rawResponseFormat)
+	w.Header().Set("Content-Type", rawResponseFormat)
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
-	_, dataSent, _ := ServeContent(w, r, name, modtime, data)
+	_, dataSent, _ := serveContent(w, r, name, modtime, data)
 
 	if dataSent {
 		// Update metrics

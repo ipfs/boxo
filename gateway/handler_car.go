@@ -52,6 +52,8 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
+	// TODO(hacdias): this is incorrect and should have the full list of CIDs.
+	// https://github.com/ipfs/boxo/issues/221
 	w.Header().Set("X-Ipfs-Roots", rootCid.String())
 
 	// Set Content-Disposition
@@ -68,10 +70,10 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	setContentDispositionHeader(w, name, "attachment")
 
 	// Set Cache-Control (same logic as for a regular files)
-	addCacheControlHeaders(w, r, contentPath, rootCid, "application/vnd.ipld.car")
+	addCacheControlHeaders(w, r, contentPath, rootCid, carResponseFormat)
 
 	// Generate the CAR Etag.
-	etag := getCarEtag(r, imPath, params, rootCid)
+	etag := getCarEtag(imPath, params, rootCid)
 	w.Header().Set("Etag", etag)
 
 	// Terminate early if Etag matches. We cannot rely on handleIfNoneMatch since
@@ -81,7 +83,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	carFile, err := i.api.GetCAR(ctx, imPath, params)
+	carFile, err := i.backend.GetCAR(ctx, imPath, params)
 	if !i.handleRequestErrors(w, r, contentPath, err) {
 		return false
 	}
@@ -92,7 +94,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// sub-DAGs and IPLD selectors: https://github.com/ipfs/go-ipfs/issues/8769
 	w.Header().Set("Accept-Ranges", "none")
 
-	w.Header().Set("Content-Type", "application/vnd.ipld.car; version=1")
+	w.Header().Set("Content-Type", carResponseFormat+"; version=1")
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
 	_, copyErr := io.Copy(w, carFile)
@@ -122,7 +124,7 @@ func getCarParams(r *http.Request) (CarParams, error) {
 
 	params := CarParams{}
 	if hasRange {
-		rng, err := rangeStrToByteRange(rangeStr)
+		rng, err := NewDagByteRange(rangeStr)
 		if err != nil {
 			err = fmt.Errorf("invalid entity-bytes: %w", err)
 			return CarParams{}, err
@@ -132,53 +134,17 @@ func getCarParams(r *http.Request) (CarParams, error) {
 
 	if hasScope {
 		switch s := DagScope(scopeStr); s {
-		case dagScopeEntity, dagScopeAll, dagScopeBlock:
+		case DagScopeEntity, DagScopeAll, DagScopeBlock:
 			params.Scope = s
 		default:
 			err := fmt.Errorf("unsupported dag-scope %s", scopeStr)
 			return CarParams{}, err
 		}
 	} else {
-		params.Scope = dagScopeAll
+		params.Scope = DagScopeAll
 	}
 
 	return params, nil
-}
-
-func rangeStrToByteRange(rangeStr string) (DagEntityByteRange, error) {
-	rangeElems := strings.Split(rangeStr, ":")
-	if len(rangeElems) != 2 {
-		return DagEntityByteRange{}, fmt.Errorf("range must have two numbers separated with ':'")
-	}
-	from, err := strconv.ParseInt(rangeElems[0], 10, 64)
-	if err != nil {
-		return DagEntityByteRange{}, err
-	}
-
-	if rangeElems[1] == "*" {
-		return DagEntityByteRange{
-			From: from,
-			To:   nil,
-		}, nil
-	}
-
-	to, err := strconv.ParseInt(rangeElems[1], 10, 64)
-	if err != nil {
-		return DagEntityByteRange{}, err
-	}
-
-	if from >= 0 && to >= 0 && from > to {
-		return DagEntityByteRange{}, fmt.Errorf("cannot have an entity-bytes range where 'from' is after 'to'")
-	}
-
-	if from < 0 && to < 0 && from > to {
-		return DagEntityByteRange{}, fmt.Errorf("cannot have an entity-bytes range where 'from' is after 'to'")
-	}
-
-	return DagEntityByteRange{
-		From: from,
-		To:   &to,
-	}, nil
 }
 
 func getCarRootCidAndLastSegment(imPath ImmutablePath) (cid.Cid, string, error) {
@@ -202,9 +168,9 @@ func getCarRootCidAndLastSegment(imPath ImmutablePath) (cid.Cid, string, error) 
 	return rootCid, lastSegment, err
 }
 
-func getCarEtag(r *http.Request, imPath ImmutablePath, params CarParams, rootCid cid.Cid) string {
+func getCarEtag(imPath ImmutablePath, params CarParams, rootCid cid.Cid) string {
 	data := imPath.String()
-	if params.Scope != dagScopeAll {
+	if params.Scope != DagScopeAll {
 		data += "." + string(params.Scope)
 	}
 

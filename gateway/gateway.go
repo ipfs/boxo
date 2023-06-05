@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/files"
@@ -40,7 +42,7 @@ type Config struct {
 
 	// PublicGateways configures the behavior of known public gateways. Each key is
 	// a fully qualified domain name (FQDN). To be used with WithHostname.
-	PublicGateways map[string]*Specification
+	PublicGateways map[string]*PublicGateway
 
 	// Menu adds items to the gateway menu that are shown in pages, such as
 	// directory listings, DAG previews and errors. These will be displayed to the
@@ -48,8 +50,8 @@ type Config struct {
 	Menu []assets.MenuItem
 }
 
-// Specification is the specification of an IPFS Public Gateway.
-type Specification struct {
+// PublicGateway is the specification of an IPFS Public Gateway.
+type PublicGateway struct {
 	// Paths is explicit list of path prefixes that should be handled by
 	// this gateway. Example: `["/ipfs", "/ipns"]`
 	// Useful if you only want to support immutable `/ipfs`.
@@ -86,6 +88,8 @@ type Specification struct {
 	DeserializedResponses bool
 }
 
+// ImmutablePath represents a [path.Path] that is not mutable.
+//
 // TODO: Is this what we want for ImmutablePath?
 type ImmutablePath struct {
 	p path.Path
@@ -117,31 +121,72 @@ func (i ImmutablePath) IsValid() error {
 var _ path.Path = (*ImmutablePath)(nil)
 
 type CarParams struct {
-	Range *DagEntityByteRange
+	Range *DagByteRange
 	Scope DagScope
 }
 
-// DagEntityByteRange describes a range request within a UnixFS file.
-// From and To mostly follow [HTTP Byte Range] Request semantics.
-// From >= 0 and To = nil: Get the file (From, Length)
-// From >= 0 and To >= 0: Get the range (From, To)
-// From >= 0 and To <0: Get the range (From, Length - To)
-// From < 0 and To = nil: Get the file (Length - From, Length)
-// From < 0 and To >= 0: Get the range (Length - From, To)
-// From < 0 and To <0: Get the range (Length - From, Length - To)
+// DagByteRange describes a range request within a UnixFS file. "From" and
+// "To" mostly follow the [HTTP Byte Range] Request semantics:
+//
+//   - From >= 0 and To = nil: Get the file (From, Length)
+//   - From >= 0 and To >= 0: Get the range (From, To)
+//   - From >= 0 and To <0: Get the range (From, Length - To)
+//   - From < 0 and To = nil: Get the file (Length - From, Length)
+//   - From < 0 and To >= 0: Get the range (Length - From, To)
+//   - From < 0 and To <0: Get the range (Length - From, Length - To)
 //
 // [HTTP Byte Range]: https://httpwg.org/specs/rfc9110.html#rfc.section.14.1.2
-type DagEntityByteRange struct {
+type DagByteRange struct {
 	From int64
 	To   *int64
 }
 
+func NewDagByteRange(rangeStr string) (DagByteRange, error) {
+	rangeElems := strings.Split(rangeStr, ":")
+	if len(rangeElems) != 2 {
+		return DagByteRange{}, fmt.Errorf("range must have two numbers separated with ':'")
+	}
+	from, err := strconv.ParseInt(rangeElems[0], 10, 64)
+	if err != nil {
+		return DagByteRange{}, err
+	}
+
+	if rangeElems[1] == "*" {
+		return DagByteRange{
+			From: from,
+			To:   nil,
+		}, nil
+	}
+
+	to, err := strconv.ParseInt(rangeElems[1], 10, 64)
+	if err != nil {
+		return DagByteRange{}, err
+	}
+
+	if from >= 0 && to >= 0 && from > to {
+		return DagByteRange{}, fmt.Errorf("cannot have an entity-bytes range where 'from' is after 'to'")
+	}
+
+	if from < 0 && to < 0 && from > to {
+		return DagByteRange{}, fmt.Errorf("cannot have an entity-bytes range where 'from' is after 'to'")
+	}
+
+	return DagByteRange{
+		From: from,
+		To:   &to,
+	}, nil
+}
+
+// DagScope describes the scope of the requested DAG, as per the [Trustless Gateway]
+// specification.
+//
+// [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
 type DagScope string
 
 const (
-	dagScopeAll    DagScope = "all"
-	dagScopeEntity DagScope = "entity"
-	dagScopeBlock  DagScope = "block"
+	DagScopeAll    DagScope = "all"
+	DagScopeEntity DagScope = "entity"
+	DagScopeBlock  DagScope = "block"
 )
 
 type ContentPathMetadata struct {
@@ -150,10 +195,12 @@ type ContentPathMetadata struct {
 	ContentType      string // Only used for UnixFS requests
 }
 
-// ByteRange describes a range request within a UnixFS file. From and To mostly follow [HTTP Byte Range] Request semantics.
-// From >= 0 and To = nil: Get the file (From, Length)
-// From >= 0 and To >= 0: Get the range (From, To)
-// From >= 0 and To <0: Get the range (From, Length - To)
+// ByteRange describes a range request within a UnixFS file. "From" and "To" mostly
+// follow [HTTP Byte Range] Request semantics:
+//
+//   - From >= 0 and To = nil: Get the file (From, Length)
+//   - From >= 0 and To >= 0: Get the range (From, To)
+//   - From >= 0 and To <0: Get the range (From, Length - To)
 //
 // [HTTP Byte Range]: https://httpwg.org/specs/rfc9110.html#rfc.section.14.1.2
 type ByteRange struct {
@@ -179,14 +226,22 @@ func NewGetResponseFromDirectoryListing(dagSize uint64, entries <-chan unixfs.Li
 	return &GetResponse{directoryMetadata: &directoryMetadata{dagSize, entries}}
 }
 
-// IPFSBackend is the required set of functionality used to implement the IPFS HTTP Gateway specification.
-// To signal error types to the gateway code (so that not everything is a HTTP 500) return an error wrapped with NewErrorResponse.
-// There are also some existing error types that the gateway code knows how to handle (e.g. context.DeadlineExceeded
-// and various IPLD pathing related errors).
+// IPFSBackend is the required set of functionality used to implement the IPFS
+// [HTTP Gateway] specification.
+//
+// The error returned by the implementer influences the status code that the user
+// receives. By default, the gateway is able to handle a few error types, such as
+// [context.DeadlineExceeded], [cid.ErrInvalidCid] and various IPLD-pathing related
+// errors.
+//
+// To signal custom error types to the gateway, such that not everything is an
+// 500 Internal Server Error, implementers can return errors wrapped in either
+// [ErrorRetryAfter] or [ErrorStatusCode].
+//
+// [HTTP Gateway]: https://specs.ipfs.tech/http-gateways/
 type IPFSBackend interface {
-
-	// Get returns a GetResponse with UnixFS file, directory or a block in IPLD
-	// format e.g., (DAG-)CBOR/JSON.
+	// Get returns a [GetResponse] with UnixFS file, directory or a block in IPLD
+	// format, e.g. (DAG-)CBOR/JSON.
 	//
 	// Returned Directories are preferably a minimum info required for enumeration: Name, Size, and Cid.
 	//
@@ -247,10 +302,8 @@ type IPFSBackend interface {
 	GetDNSLinkRecord(context.Context, string) (path.Path, error)
 }
 
-// A helper function to clean up a set of headers:
-// 1. Canonicalizes.
-// 2. Deduplicates.
-// 3. Sorts.
+// cleanHeaderSet is an helper function that cleans a set of headers by
+// (1) canonicalizing, (2) de-duplicating and (3) sorting.
 func cleanHeaderSet(headers []string) []string {
 	// Deduplicate and canonicalize.
 	m := make(map[string]struct{}, len(headers))
@@ -267,15 +320,20 @@ func cleanHeaderSet(headers []string) []string {
 	return result
 }
 
-// AddAccessControlHeaders adds default headers used for controlling
+// AddAccessControlHeaders adds default HTTP headers used for controlling
 // cross-origin requests. This function adds several values to the
-// Access-Control-Allow-Headers and Access-Control-Expose-Headers entries.
+// [Access-Control-Allow-Headers] and [Access-Control-Expose-Headers] entries.
+//
 // If the Access-Control-Allow-Origin entry is missing a value of '*' is
 // added, indicating that browsers should allow requesting code from any
 // origin to access the resource.
+//
 // If the Access-Control-Allow-Methods entry is missing a value of 'GET' is
 // added, indicating that browsers may use the GET method when issuing cross
 // origin requests.
+//
+// [Access-Control-Allow-Headers]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers
+// [Access-Control-Expose-Headers]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Expose-Headers
 func AddAccessControlHeaders(headers map[string][]string) {
 	// Hard-coded headers.
 	const ACAHeadersName = "Access-Control-Allow-Headers"
@@ -311,6 +369,7 @@ func AddAccessControlHeaders(headers map[string][]string) {
 		}, headers[ACEHeadersName]...))
 }
 
+// RequestContextKey is a type representing a [context.Context] value key.
 type RequestContextKey string
 
 const (
@@ -318,13 +377,16 @@ const (
 	// operating. It may be a DNSLink, Subdomain or Regular gateway.
 	GatewayHostnameKey RequestContextKey = "gw-hostname"
 
-	// DNSLinkHostnameKey is the key for the hostname of a DNSLink Gateway:
-	// https://specs.ipfs.tech/http-gateways/dnslink-gateway/
+	// DNSLinkHostnameKey is the key for the hostname of a [DNSLink Gateway].
+	//
+	// [DNSLink Gateway]: https://specs.ipfs.tech/http-gateways/dnslink-gateway/
 	DNSLinkHostnameKey RequestContextKey = "dnslink-hostname"
 
-	// SubdomainHostnameKey is the key for the hostname of a Subdomain Gateway:
-	// https://specs.ipfs.tech/http-gateways/subdomain-gateway/
+	// SubdomainHostnameKey is the key for the hostname of a [Subdomain Gateway].
+	//
+	// [Subdomain Gateway]: https://specs.ipfs.tech/http-gateways/subdomain-gateway/
 	SubdomainHostnameKey RequestContextKey = "subdomain-hostname"
 
+	// ContentPathKey is the key for the original [http.Request] URL Path, as an [ipath.Path].
 	ContentPathKey RequestContextKey = "content-path"
 )

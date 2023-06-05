@@ -44,12 +44,12 @@ func main() {
 	routing := newProxyRouting(*gatewayUrlPtr, nil)
 
 	// Creates the gateway with the block service and the routing.
-	gwAPI, err := gateway.NewBlocksGateway(blockService, gateway.WithValueStore(routing))
+	backend, err := gateway.NewBlocksBackend(blockService, gateway.WithValueStore(routing))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	handler := common.NewHandler(gwAPI)
+	handler := common.NewHandler(backend)
 
 	log.Printf("Listening on http://localhost:%d", *port)
 	log.Printf("Try loading an image: http://localhost:%d/ipfs/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi", *port)

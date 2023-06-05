@@ -58,7 +58,7 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 	}
 
 	if foundRedirect {
-		redirected, newPath, err := i.handleRedirectsFileRules(w, r, immutableContentPath, contentPath, redirectRules)
+		redirected, newPath, err := i.handleRedirectsFileRules(w, r, immutableContentPath, contentPath, redirectRules, logger)
 		if err != nil {
 			err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsPath, err)
 			i.webError(w, r, err, http.StatusInternalServerError)
@@ -87,7 +87,7 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 	return maybeResolvedImPath, true, false
 }
 
-func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Request, immutableContentPath ImmutablePath, cPath ipath.Path, redirectRules []redirects.Rule) (redirected bool, newContentPath string, err error) {
+func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Request, immutableContentPath ImmutablePath, cPath ipath.Path, redirectRules []redirects.Rule, logger *zap.SugaredLogger) (redirected bool, newContentPath string, err error) {
 	// Attempt to match a rule to the URL path, and perform the corresponding redirect or rewrite
 	pathParts := strings.Split(immutableContentPath.String(), "/")
 	if len(pathParts) > 3 {
@@ -130,7 +130,7 @@ func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Reques
 				// All paths should start with /ip(f|n)s/<root>/, so get the path after that
 				contentRootPath := strings.Join(contentPathParts[:3], "/")
 				content4xxPath := ipath.New(contentRootPath + rule.To)
-				err = i.serve4xx(w, r, imContent4xxPath, content4xxPath, rule.Status)
+				err = i.serve4xx(w, r, imContent4xxPath, content4xxPath, rule.Status, logger)
 				return true, toPath, err
 			}
 
@@ -153,7 +153,7 @@ func (i *handler) getRedirectRules(r *http.Request, redirectsPath ImmutablePath)
 	// Check for _redirects file.
 	// Any path resolution failures are ignored and we just assume there's no _redirects file.
 	// Note that ignoring these errors also ensures that the use of the empty CID (bafkqaaa) in tests doesn't fail.
-	_, redirectsFileGetResp, err := i.api.Get(r.Context(), redirectsPath)
+	_, redirectsFileGetResp, err := i.backend.Get(r.Context(), redirectsPath)
 	if err != nil {
 		if isErrNotFound(err) {
 			return false, nil, nil
@@ -181,8 +181,8 @@ func getRootPath(path ipath.Path) ipath.Path {
 	return ipath.New(gopath.Join("/", path.Namespace(), parts[2]))
 }
 
-func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPathImPath ImmutablePath, content4xxPath ipath.Path, status int) error {
-	pathMetadata, getresp, err := i.api.Get(r.Context(), content4xxPathImPath)
+func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPathImPath ImmutablePath, content4xxPath ipath.Path, status int, logger *zap.SugaredLogger) error {
+	pathMetadata, getresp, err := i.backend.Get(r.Context(), content4xxPathImPath)
 	if err != nil {
 		return err
 	}
@@ -200,7 +200,7 @@ func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPat
 		return fmt.Errorf("could not get size of %d page", status)
 	}
 
-	log.Debugf("using _redirects: custom %d file at %q", status, content4xxPath)
+	logger.Debugf("using _redirects: custom %d file at %q", status, content4xxPath)
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	addCacheControlHeaders(w, r, content4xxPath, content4xxCid, "")
@@ -223,7 +223,7 @@ func hasOriginIsolation(r *http.Request) bool {
 // Deprecated: legacy ipfs-404.html files are superseded by _redirects file
 // This is provided only for backward-compatibility, until websites migrate
 // to 404s managed via _redirects file (https://github.com/ipfs/specs/pull/290)
-func (i *handler) serveLegacy404IfPresent(w http.ResponseWriter, r *http.Request, imPath ImmutablePath) bool {
+func (i *handler) serveLegacy404IfPresent(w http.ResponseWriter, r *http.Request, imPath ImmutablePath, logger *zap.SugaredLogger) bool {
 	resolved404File, ctype, err := i.searchUpTreeFor404(r, imPath)
 	if err != nil {
 		return false
@@ -235,7 +235,7 @@ func (i *handler) serveLegacy404IfPresent(w http.ResponseWriter, r *http.Request
 		return false
 	}
 
-	log.Debugw("using pretty 404 file", "path", imPath)
+	logger.Debugw("using pretty 404 file", "path", imPath)
 	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusNotFound)
@@ -262,7 +262,7 @@ func (i *handler) searchUpTreeFor404(r *http.Request, imPath ImmutablePath) (fil
 			break
 		}
 
-		_, getResp, err := i.api.Get(r.Context(), imparsed404Path)
+		_, getResp, err := i.backend.Get(r.Context(), imparsed404Path)
 		if err != nil {
 			continue
 		}

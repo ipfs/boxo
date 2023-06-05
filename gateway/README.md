@@ -4,10 +4,14 @@
 
 ## Documentation
 
-* Go Documentation: https://pkg.go.dev/github.com/ipfs/boxo/gateway
-* Gateway Specification: https://github.com/ipfs/specs/tree/main/http-gateways#readme
-* Types of HTTP Gateways: https://docs.ipfs.tech/how-to/address-ipfs-on-web/#http-gateways
+- Go Documentation: https://pkg.go.dev/github.com/ipfs/boxo/gateway
+- Gateway Specification: https://specs.ipfs.tech/
+- Types of HTTP Gateways: https://docs.ipfs.tech/how-to/address-ipfs-on-web/#http-gateways
+
 ## Example
+
+This example shows how you can start your own gateway, assuming you have an `IPFSBackend`
+implementation.
 
 ```go
 // Initialize your headers and apply the default headers.
@@ -18,15 +22,15 @@ conf := gateway.Config{
   Headers:  headers,
 }
 
-// Initialize a NodeAPI interface for both an online and offline versions.
+// Initialize an IPFSBackend interface for both an online and offline versions.
 // The offline version should not make any network request for missing content.
-ipfs := ...
+ipfsBackend := ...
 
 // Create http mux and setup path gateway handler.
 mux := http.NewServeMux()
-gwHandler := gateway.NewHandler(conf, ipfs)
-mux.Handle("/ipfs/", gwHandler)
-mux.Handle("/ipns/", gwHandler)
+handler := gateway.NewHandler(conf, ipfsBackend)
+mux.Handle("/ipfs/", handler)
+mux.Handle("/ipns/", handler)
 
 // Start the server on :8080 and voilá! You have a basic IPFS gateway running
 // in http://localhost:8080.

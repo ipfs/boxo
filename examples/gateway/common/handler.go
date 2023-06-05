@@ -29,7 +29,7 @@ func NewHandler(gwAPI gateway.IPFSBackend) http.Handler {
 		// if you're running multiple public gateways on different hostnames
 		// and want different settings such as support for Deserialized
 		// Responses on localhost, or DNSLink and Subdomain Gateways.
-		PublicGateways: map[string]*gateway.Specification{
+		PublicGateways: map[string]*gateway.PublicGateway{
 			// Support public requests with Host: CID.ipfs.example.net and ID.ipns.example.net
 			"example.net": {
 				Paths:         []string{"/ipfs", "/ipns"},
@@ -80,7 +80,7 @@ func NewHandler(gwAPI gateway.IPFSBackend) http.Handler {
 	// or example.net. If you want to expose the metrics on such gateways,
 	// you will have to add the path "/debug" to the variable Paths.
 	var handler http.Handler
-	handler = gateway.WithHostname(conf, gwAPI, mux)
+	handler = gateway.NewHostnameHandler(conf, gwAPI, mux)
 
 	// Then, wrap with the withConnect middleware. This is required since we use
 	// http.ServeMux which does not support CONNECT by default.

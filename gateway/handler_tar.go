@@ -23,20 +23,17 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	defer cancel()
 
 	// Get Unixfs file (or directory)
-	pathMetadata, file, err := i.api.GetAll(ctx, imPath)
+	pathMetadata, file, err := i.backend.GetAll(ctx, imPath)
 	if !i.handleRequestErrors(w, r, contentPath, err) {
 		return false
 	}
 	defer file.Close()
 
-	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
-		i.webRequestError(w, r, err)
-		return false
-	}
+	setIpfsRootsHeader(w, pathMetadata)
 	rootCid := pathMetadata.LastSegment.Cid()
 
 	// Set Cache-Control and read optional Last-Modified time
-	modtime := addCacheControlHeaders(w, r, contentPath, rootCid, "application/x-tar")
+	modtime := addCacheControlHeaders(w, r, contentPath, rootCid, tarResponseFormat)
 
 	// Set Content-Disposition
 	var name string
@@ -62,7 +59,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		w.Header().Set("Last-Modified", modtime.UTC().Format(http.TimeFormat))
 	}
 
-	w.Header().Set("Content-Type", "application/x-tar")
+	w.Header().Set("Content-Type", tarResponseFormat)
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
 	// The TAR has a top-level directory (or file) named by the CID.

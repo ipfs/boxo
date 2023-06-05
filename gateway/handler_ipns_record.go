@@ -43,7 +43,7 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 		return false
 	}
 
-	rawRecord, err := i.api.GetIPNSRecord(ctx, c)
+	rawRecord, err := i.backend.GetIPNSRecord(ctx, c)
 	if err != nil {
 		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
@@ -85,7 +85,7 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 	}
 	setContentDispositionHeader(w, name, "attachment")
 
-	w.Header().Set("Content-Type", "application/vnd.ipfs.ipns-record")
+	w.Header().Set("Content-Type", ipnsRecordResponseFormat)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
 	_, err = w.Write(rawRecord)

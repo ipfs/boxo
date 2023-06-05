@@ -29,12 +29,12 @@ func newProxyGateway(t *testing.T, rs *httptest.Server) *httptest.Server {
 	blockService := blockservice.New(blockStore, exch)
 	routing := newProxyRouting(rs.URL, nil)
 
-	gw, err := gateway.NewBlocksGateway(blockService, gateway.WithValueStore(routing))
+	backend, err := gateway.NewBlocksBackend(blockService, gateway.WithValueStore(routing))
 	if err != nil {
 		t.Error(err)
 	}
 
-	handler := common.NewHandler(gw)
+	handler := common.NewHandler(backend)
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
 

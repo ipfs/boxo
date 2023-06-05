@@ -41,12 +41,12 @@ func main() {
 	defer f.Close()
 
 	// Creates the gateway API with the block service.
-	gwAPI, err := gateway.NewBlocksGateway(blockService)
+	backend, err := gateway.NewBlocksBackend(blockService)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	handler := common.NewHandler(gwAPI)
+	handler := common.NewHandler(backend)
 
 	log.Printf("Listening on http://localhost:%d", *port)
 	log.Printf("Metrics available at http://127.0.0.1:%d/debug/metrics/prometheus", *port)
