@@ -9,10 +9,13 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/gorilla/mux"
+	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/routing/http/internal/drjson"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
@@ -25,9 +28,10 @@ import (
 )
 
 const (
-	mediaTypeJSON     = "application/json"
-	mediaTypeNDJSON   = "application/x-ndjson"
-	mediaTypeWildcard = "*/*"
+	mediaTypeJSON       = "application/json"
+	mediaTypeNDJSON     = "application/x-ndjson"
+	mediaTypeWildcard   = "*/*"
+	mediaTypeIPNSRecord = "application/vnd.ipfs.ipns-record"
 
 	DefaultRecordsLimit          = 20
 	DefaultStreamingRecordsLimit = 0
@@ -35,8 +39,11 @@ const (
 
 var logger = logging.Logger("service/server/delegatedrouting")
 
-const ProvidePath = "/routing/v1/providers/"
-const FindProvidersPath = "/routing/v1/providers/{cid}"
+const (
+	ProvidePath       = "/routing/v1/providers/"
+	FindProvidersPath = "/routing/v1/providers/{cid}"
+	IPNSPath          = "/routing/v1/ipns/{cid}"
+)
 
 type FindProvidersAsyncResponse struct {
 	ProviderResponse types.ProviderResponse
@@ -49,6 +56,13 @@ type ContentRouter interface {
 	FindProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.ProviderResponse], error)
 	ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error)
 	Provide(ctx context.Context, req *WriteProvideRequest) (types.ProviderResponse, error)
+
+	// FindIPNSRecord searches for an [ipns.Record] for the given [ipns.Name].
+	FindIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error)
+
+	// ProvideIPNSRecord stores the provided [ipns.Record] for the given [ipns.Name]. It is
+	// guaranteed that the record matches the provided name.
+	ProvideIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error
 }
 
 type BitswapWriteProvideRequest struct {
@@ -104,6 +118,9 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	r := mux.NewRouter()
 	r.HandleFunc(ProvidePath, server.provide).Methods(http.MethodPut)
 	r.HandleFunc(FindProvidersPath, server.findProviders).Methods(http.MethodGet)
+
+	r.HandleFunc(IPNSPath, server.getIPNSRecord).Methods(http.MethodGet)
+	r.HandleFunc(IPNSPath, server.putIPNSRecord).Methods(http.MethodPut)
 
 	return r
 }
@@ -294,6 +311,98 @@ func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.Result
 			f.Flush()
 		}
 	}
+}
+
+func (s *server) getIPNSRecord(w http.ResponseWriter, r *http.Request) {
+	if !strings.Contains(r.Header.Get("Accept"), mediaTypeIPNSRecord) {
+		writeErr(w, "GetIPNSRecord", http.StatusNotAcceptable, errors.New("content type in 'Accept' header is missing or not supported"))
+		return
+	}
+
+	vars := mux.Vars(r)
+	cidStr := vars["cid"]
+	cid, err := cid.Decode(cidStr)
+	if err != nil {
+		writeErr(w, "GetIPNSRecord", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
+		return
+	}
+
+	name, err := ipns.NameFromCid(cid)
+	if err != nil {
+		writeErr(w, "GetIPNSRecord", http.StatusBadRequest, fmt.Errorf("peer ID CID is not valid: %w", err))
+		return
+	}
+
+	record, err := s.svc.FindIPNSRecord(r.Context(), name)
+	if err != nil {
+		writeErr(w, "GetIPNSRecord", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+		return
+	}
+
+	rawRecord, err := ipns.MarshalRecord(record)
+	if err != nil {
+		writeErr(w, "GetIPNSRecord", http.StatusInternalServerError, err)
+		return
+	}
+
+	if ttl, err := record.TTL(); err == nil {
+		w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", int(ttl.Seconds())))
+	} else {
+		w.Header().Set("Cache-Control", "max-age=60")
+	}
+
+	recordEtag := strconv.FormatUint(xxhash.Sum64(rawRecord), 32)
+	w.Header().Set("Etag", recordEtag)
+	w.Header().Set("Content-Type", mediaTypeIPNSRecord)
+	w.Write(rawRecord)
+}
+
+func (s *server) putIPNSRecord(w http.ResponseWriter, r *http.Request) {
+	if !strings.Contains(r.Header.Get("Content-Type"), mediaTypeIPNSRecord) {
+		writeErr(w, "PutIPNSRecord", http.StatusNotAcceptable, errors.New("content type in 'Content-Type' header is missing or not supported"))
+		return
+	}
+
+	vars := mux.Vars(r)
+	cidStr := vars["cid"]
+	cid, err := cid.Decode(cidStr)
+	if err != nil {
+		writeErr(w, "PutIPNSRecord", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
+		return
+	}
+
+	name, err := ipns.NameFromCid(cid)
+	if err != nil {
+		writeErr(w, "PutIPNSRecord", http.StatusBadRequest, fmt.Errorf("peer ID CID is not valid: %w", err))
+		return
+	}
+
+	// Limit the reader to the maximum record size.
+	rawRecord, err := io.ReadAll(io.LimitReader(r.Body, int64(ipns.MaxRecordSize)))
+	if err != nil {
+		writeErr(w, "PutIPNSRecord", http.StatusBadRequest, fmt.Errorf("provided record is too long: %w", err))
+		return
+	}
+
+	record, err := ipns.UnmarshalRecord(rawRecord)
+	if err != nil {
+		writeErr(w, "PutIPNSRecord", http.StatusBadRequest, fmt.Errorf("provided record is invalid: %w", err))
+		return
+	}
+
+	err = ipns.ValidateWithName(record, name)
+	if err != nil {
+		writeErr(w, "PutIPNSRecord", http.StatusBadRequest, fmt.Errorf("provided record is invalid: %w", err))
+		return
+	}
+
+	err = s.svc.ProvideIPNSRecord(r.Context(), name, record)
+	if err != nil {
+		writeErr(w, "PutIPNSRecord", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func writeJSONResult(w http.ResponseWriter, method string, val any) {

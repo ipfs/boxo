@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+* The `routing/http` client and server now support Delegated IPNS as per [IPIP-379](https://specs.ipfs.tech/ipips/ipip-0379/).
+
 ### Changed
 
 ### Removed
