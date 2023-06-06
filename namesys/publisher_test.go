@@ -56,7 +56,10 @@ func testNamekeyPublisher(t *testing.T, keyType int, expectedErr error, expected
 	}
 
 	// Value
-	value := path.Path("ipfs/TESTING")
+	value, err := path.NewPath("/ipfs/bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Seqnum
 	seqnum := uint64(0)
@@ -125,7 +128,7 @@ func TestAsyncDS(t *testing.T) {
 	publisher := NewIpnsPublisher(rt, ds)
 
 	ipnsFakeID := testutil.RandIdentityOrFatal(t)
-	ipnsVal, err := path.ParsePath("/ipns/foo.bar")
+	ipnsVal, err := path.NewPath("/ipns/foo.bar")
 	if err != nil {
 		t.Fatal(err)
 	}

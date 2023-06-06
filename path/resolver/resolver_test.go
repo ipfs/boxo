@@ -21,7 +21,7 @@ import (
 
 	merkledag "github.com/ipfs/boxo/ipld/merkledag"
 	dagmock "github.com/ipfs/boxo/ipld/merkledag/test"
-	path "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
 	"github.com/ipfs/go-unixfsnode"
 	dagcbor "github.com/ipld/go-ipld-prime/codec/dagcbor"
@@ -65,8 +65,7 @@ func TestRecurivePathResolution(t *testing.T) {
 
 	aKey := a.Cid()
 
-	segments := []string{aKey.String(), "child", "grandchild"}
-	p, err := path.FromSegments("/ipfs/", segments...)
+	p, err := path.Join(path.NewIPFSPath(aKey), "child", "grandchild")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,10 +111,7 @@ func TestRecurivePathResolution(t *testing.T) {
 			p.String(), rCid.String(), cKey.String()))
 	}
 
-	p2, err := path.FromSegments("/ipfs/", aKey.String())
-	if err != nil {
-		t.Fatal(err)
-	}
+	p2 := path.NewIPFSPath(aKey)
 
 	rCid, rest, err = resolver.ResolveToLastNode(ctx, p2)
 	if err != nil {
@@ -171,8 +167,7 @@ func TestResolveToLastNode_ErrNoLink(t *testing.T) {
 	r := resolver.NewBasicResolver(fetcherFactory)
 
 	// test missing link intermediate segment
-	segments := []string{aKey.String(), "cheese", "time"}
-	p, err := path.FromSegments("/ipfs/", segments...)
+	p, err := path.Join(path.NewIPFSPath(aKey), "cheese", "time")
 	require.NoError(t, err)
 
 	_, _, err = r.ResolveToLastNode(ctx, p)
@@ -180,8 +175,7 @@ func TestResolveToLastNode_ErrNoLink(t *testing.T) {
 
 	// test missing link at end
 	bKey := b.Cid()
-	segments = []string{aKey.String(), "child", "apples"}
-	p, err = path.FromSegments("/ipfs/", segments...)
+	p, err = path.Join(path.NewIPFSPath(aKey), "child", "apples")
 	require.NoError(t, err)
 
 	_, _, err = r.ResolveToLastNode(ctx, p)
@@ -203,8 +197,7 @@ func TestResolveToLastNode_NoUnnecessaryFetching(t *testing.T) {
 
 	aKey := a.Cid()
 
-	segments := []string{aKey.String(), "child"}
-	p, err := path.FromSegments("/ipfs/", segments...)
+	p, err := path.Join(path.NewIPFSPath(aKey), "child")
 	require.NoError(t, err)
 
 	fetcherFactory := bsfetcher.NewFetcherConfig(bsrv)
@@ -248,11 +241,14 @@ func TestPathRemainder(t *testing.T) {
 	fetcherFactory := bsfetcher.NewFetcherConfig(bsrv)
 	resolver := resolver.NewBasicResolver(fetcherFactory)
 
-	rp1, remainder, err := resolver.ResolveToLastNode(ctx, path.FromString(lnk.String()+"/foo/bar"))
+	newPath, err := path.Join(path.NewIPFSPath(lnk), "foo", "bar")
+	require.NoError(t, err)
+
+	rp1, remainder, err := resolver.ResolveToLastNode(ctx, newPath)
 	require.NoError(t, err)
 
 	assert.Equal(t, lnk, rp1)
-	require.Equal(t, "foo/bar", path.Join(remainder))
+	require.Equal(t, "foo/bar", strings.Join(remainder, "/"))
 }
 
 func TestResolveToLastNode_MixedSegmentTypes(t *testing.T) {
@@ -286,7 +282,10 @@ func TestResolveToLastNode_MixedSegmentTypes(t *testing.T) {
 	fetcherFactory := bsfetcher.NewFetcherConfig(bsrv)
 	resolver := resolver.NewBasicResolver(fetcherFactory)
 
-	cid, remainder, err := resolver.ResolveToLastNode(ctx, path.FromString(lnk.String()+"/foo/bar/1/boom/3"))
+	newPath, err := path.Join(path.NewIPFSPath(lnk), "foo", "bar", "1", "boom", "3")
+	require.NoError(t, err)
+
+	cid, remainder, err := resolver.ResolveToLastNode(ctx, newPath)
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, len(remainder))

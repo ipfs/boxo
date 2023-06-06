@@ -8,8 +8,7 @@ import (
 
 	iface "github.com/ipfs/boxo/coreiface"
 	opt "github.com/ipfs/boxo/coreiface/options"
-	"github.com/ipfs/boxo/coreiface/path"
-
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 	ipldcbor "github.com/ipfs/go-ipld-cbor"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -134,12 +133,12 @@ func (tp *TestSuite) TestPinRecursive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, path.IpldPath(nd2.Cid()))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(nd2.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, path.IpldPath(nd3.Cid()), opt.Pin.Recursive(false))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(nd3.Cid()), opt.Pin.Recursive(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,8 +161,8 @@ func (tp *TestSuite) TestPinRecursive(t *testing.T) {
 		t.Errorf("unexpected pin list len: %d", len(list))
 	}
 
-	if list[0].Path().String() != path.IpldPath(nd3.Cid()).String() {
-		t.Errorf("unexpected path, %s != %s", list[0].Path().String(), path.IpfsPath(nd3.Cid()).String())
+	if list[0].Path().String() != path.NewIPLDPath(nd3.Cid()).String() {
+		t.Errorf("unexpected path, %s != %s", list[0].Path().String(), path.NewIPFSPath(nd3.Cid()).String())
 	}
 
 	list, err = accPins(api.Pin().Ls(ctx, opt.Pin.Ls.Recursive()))
@@ -175,8 +174,8 @@ func (tp *TestSuite) TestPinRecursive(t *testing.T) {
 		t.Errorf("unexpected pin list len: %d", len(list))
 	}
 
-	if list[0].Path().String() != path.IpldPath(nd2.Cid()).String() {
-		t.Errorf("unexpected path, %s != %s", list[0].Path().String(), path.IpldPath(nd2.Cid()).String())
+	if list[0].Path().String() != path.NewIPLDPath(nd2.Cid()).String() {
+		t.Errorf("unexpected path, %s != %s", list[0].Path().String(), path.NewIPLDPath(nd2.Cid()).String())
 	}
 
 	list, err = accPins(api.Pin().Ls(ctx, opt.Pin.Ls.Indirect()))
@@ -259,12 +258,12 @@ func (tp *TestSuite) TestPinLsIndirect(t *testing.T) {
 
 	leaf, parent, grandparent := getThreeChainedNodes(t, ctx, api, "foo")
 
-	err = api.Pin().Add(ctx, path.IpldPath(grandparent.Cid()))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(grandparent.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, path.IpldPath(parent.Cid()), opt.Pin.Recursive(false))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(parent.Cid()), opt.Pin.Recursive(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,12 +292,12 @@ func (tp *TestSuite) TestPinLsPredenceRecursiveIndirect(t *testing.T) {
 	// Test recursive > indirect
 	leaf, parent, grandparent := getThreeChainedNodes(t, ctx, api, "recursive > indirect")
 
-	err = api.Pin().Add(ctx, path.IpldPath(grandparent.Cid()))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(grandparent.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, path.IpldPath(parent.Cid()))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(parent.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,12 +316,12 @@ func (tp *TestSuite) TestPinLsPrecedenceDirectIndirect(t *testing.T) {
 	// Test direct > indirect
 	leaf, parent, grandparent := getThreeChainedNodes(t, ctx, api, "direct > indirect")
 
-	err = api.Pin().Add(ctx, path.IpldPath(grandparent.Cid()))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(grandparent.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, path.IpldPath(parent.Cid()), opt.Pin.Recursive(false))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(parent.Cid()), opt.Pin.Recursive(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,24 +340,24 @@ func (tp *TestSuite) TestPinLsPrecedenceRecursiveDirect(t *testing.T) {
 	// Test recursive > direct
 	leaf, parent, grandparent := getThreeChainedNodes(t, ctx, api, "recursive + direct = error")
 
-	err = api.Pin().Add(ctx, path.IpldPath(parent.Cid()))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(parent.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, path.IpldPath(parent.Cid()), opt.Pin.Recursive(false))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(parent.Cid()), opt.Pin.Recursive(false))
 	if err == nil {
 		t.Fatal("expected error directly pinning a recursively pinned node")
 	}
 
 	assertPinTypes(t, ctx, api, []cidContainer{parent}, []cidContainer{}, []cidContainer{leaf})
 
-	err = api.Pin().Add(ctx, path.IpldPath(grandparent.Cid()), opt.Pin.Recursive(false))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(grandparent.Cid()), opt.Pin.Recursive(false))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, path.IpldPath(grandparent.Cid()))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(grandparent.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,27 +375,27 @@ func (tp *TestSuite) TestPinIsPinned(t *testing.T) {
 
 	leaf, parent, grandparent := getThreeChainedNodes(t, ctx, api, "foofoo")
 
-	assertNotPinned(t, ctx, api, path.IpldPath(grandparent.Cid()))
-	assertNotPinned(t, ctx, api, path.IpldPath(parent.Cid()))
-	assertNotPinned(t, ctx, api, path.IpldPath(leaf.Cid()))
+	assertNotPinned(t, ctx, api, path.NewIPLDPath(grandparent.Cid()))
+	assertNotPinned(t, ctx, api, path.NewIPLDPath(parent.Cid()))
+	assertNotPinned(t, ctx, api, path.NewIPLDPath(leaf.Cid()))
 
-	err = api.Pin().Add(ctx, path.IpldPath(parent.Cid()), opt.Pin.Recursive(true))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(parent.Cid()), opt.Pin.Recursive(true))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	assertNotPinned(t, ctx, api, path.IpldPath(grandparent.Cid()))
-	assertIsPinned(t, ctx, api, path.IpldPath(parent.Cid()), "recursive")
-	assertIsPinned(t, ctx, api, path.IpldPath(leaf.Cid()), "indirect")
+	assertNotPinned(t, ctx, api, path.NewIPLDPath(grandparent.Cid()))
+	assertIsPinned(t, ctx, api, path.NewIPLDPath(parent.Cid()), "recursive")
+	assertIsPinned(t, ctx, api, path.NewIPLDPath(leaf.Cid()), "indirect")
 
-	err = api.Pin().Add(ctx, path.IpldPath(grandparent.Cid()), opt.Pin.Recursive(false))
+	err = api.Pin().Add(ctx, path.NewIPLDPath(grandparent.Cid()), opt.Pin.Recursive(false))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	assertIsPinned(t, ctx, api, path.IpldPath(grandparent.Cid()), "direct")
-	assertIsPinned(t, ctx, api, path.IpldPath(parent.Cid()), "recursive")
-	assertIsPinned(t, ctx, api, path.IpldPath(leaf.Cid()), "indirect")
+	assertIsPinned(t, ctx, api, path.NewIPLDPath(grandparent.Cid()), "direct")
+	assertIsPinned(t, ctx, api, path.NewIPLDPath(parent.Cid()), "recursive")
+	assertIsPinned(t, ctx, api, path.NewIPLDPath(leaf.Cid()), "indirect")
 }
 
 type cidContainer interface {

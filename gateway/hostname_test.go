@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	path "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	cid "github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,8 +20,8 @@ func TestToSubdomainURL(t *testing.T) {
 	testCID, err := cid.Decode("bafkqaglimvwgy3zakrsxg5cun5jxkyten5wwc2lokvjeycq")
 	require.NoError(t, err)
 
-	backend.namesys["/ipns/dnslink.long-name.example.com"] = path.FromString(testCID.String())
-	backend.namesys["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = path.FromString(testCID.String())
+	backend.namesys["/ipns/dnslink.long-name.example.com"] = path.NewIPFSPath(testCID)
+	backend.namesys["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = path.NewIPFSPath(testCID)
 	httpRequest := httptest.NewRequest("GET", "http://127.0.0.1:8080", nil)
 	httpsRequest := httptest.NewRequest("GET", "https://https-request-stub.example.com", nil)
 	httpsProxiedRequest := httptest.NewRequest("GET", "http://proxied-https-request-stub.example.com", nil)

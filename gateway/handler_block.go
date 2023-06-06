@@ -54,7 +54,7 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 
 	if dataSent {
 		// Update metrics
-		i.rawBlockGetMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
+		i.rawBlockGetMetric.WithLabelValues(rq.contentPath.Namespace().String()).Observe(time.Since(rq.begin).Seconds())
 	}
 
 	return dataSent

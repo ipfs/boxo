@@ -100,7 +100,10 @@ func NewNameSystem(r routing.ValueStore, opts ...Option) (NameSystem, error) {
 		for _, pair := range strings.Split(list, ",") {
 			mapping := strings.SplitN(pair, ":", 2)
 			key := mapping[0]
-			value := path.FromString(mapping[1])
+			value, err := path.NewPath(mapping[1])
+			if err != nil {
+				return nil, err
+			}
 			staticMap[key] = value
 		}
 	}
@@ -139,11 +142,11 @@ func (ns *mpns) Resolve(ctx context.Context, name string, options ...opts.Resolv
 	defer span.End()
 
 	if strings.HasPrefix(name, "/ipfs/") {
-		return path.ParsePath(name)
+		return path.NewPath(name)
 	}
 
 	if !strings.HasPrefix(name, "/") {
-		return path.ParsePath("/ipfs/" + name)
+		return path.NewPath("/ipfs/" + name)
 	}
 
 	return resolve(ctx, ns, name, opts.ProcessOpts(options))
@@ -154,7 +157,7 @@ func (ns *mpns) ResolveAsync(ctx context.Context, name string, options ...opts.R
 	defer span.End()
 
 	if strings.HasPrefix(name, "/ipfs/") {
-		p, err := path.ParsePath(name)
+		p, err := path.NewPath(name)
 		res := make(chan Result, 1)
 		res <- Result{p, err}
 		close(res)
@@ -162,7 +165,7 @@ func (ns *mpns) ResolveAsync(ctx context.Context, name string, options ...opts.R
 	}
 
 	if !strings.HasPrefix(name, "/") {
-		p, err := path.ParsePath("/ipfs/" + name)
+		p, err := path.NewPath("/ipfs/" + name)
 		res := make(chan Result, 1)
 		res <- Result{p, err}
 		close(res)
@@ -220,7 +223,7 @@ func (ns *mpns) resolveOnceAsync(ctx context.Context, name string, options opts.
 	if p, ok := ns.cacheGet(cacheKey); ok {
 		var err error
 		if len(segments) > 3 {
-			p, err = path.FromSegments("", strings.TrimRight(p.String(), "/"), segments[3])
+			p, err = path.Join(p, segments[3])
 		}
 		span.SetAttributes(attribute.Bool("CacheHit", true))
 		span.RecordError(err)
@@ -263,7 +266,7 @@ func (ns *mpns) resolveOnceAsync(ctx context.Context, name string, options opts.
 
 				// Attach rest of the path
 				if len(segments) > 3 {
-					p, err = path.FromSegments("", strings.TrimRight(p.String(), "/"), segments[3])
+					p, err = path.Join(p, segments[3])
 				}
 
 				emitOnceResult(ctx, out, onceResult{value: p, ttl: ttl, err: err})

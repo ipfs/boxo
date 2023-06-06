@@ -9,7 +9,6 @@ import (
 
 	keystore "github.com/ipfs/boxo/keystore"
 	"github.com/ipfs/boxo/namesys"
-	"github.com/ipfs/boxo/path"
 	"go.opentelemetry.io/otel/attribute"
 
 	opts "github.com/ipfs/boxo/coreiface/options/namesys"
@@ -165,7 +164,7 @@ func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) erro
 	if prevEol.After(eol) {
 		eol = prevEol
 	}
-	err = rp.ns.Publish(ctx, priv, path.Path(p.String()), opts.PublishWithEOL(eol))
+	err = rp.ns.Publish(ctx, priv, p, opts.PublishWithEOL(eol))
 	span.RecordError(err)
 	return err
 }

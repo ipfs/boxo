@@ -3,13 +3,11 @@ package tests
 import (
 	"context"
 	"math"
-	gopath "path"
 	"strings"
 	"testing"
 
-	path "github.com/ipfs/boxo/coreiface/path"
-
 	coreiface "github.com/ipfs/boxo/coreiface"
+	"github.com/ipfs/boxo/path"
 
 	ipldcbor "github.com/ipfs/go-ipld-cbor"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -113,7 +111,10 @@ func (tp *TestSuite) TestDagPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := path.New(gopath.Join(nd.Cid().String(), "lnk"))
+	p, err := path.Join(path.NewIPFSPath(nd.Cid()), "lnk")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	rp, err := api.ResolvePath(ctx, p)
 	if err != nil {

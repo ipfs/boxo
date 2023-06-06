@@ -17,9 +17,17 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const (
-	testPath = path.Path("/ipfs/bafkqac3jobxhgidsn5rww4yk")
+var (
+	testPath path.Path
 )
+
+func init() {
+	var err error
+	testPath, err = path.NewPath("/ipfs/bafkqac3jobxhgidsn5rww4yk")
+	if err != nil {
+		panic(err)
+	}
+}
 
 func mustKeyPair(t *testing.T, typ int) (ic.PrivKey, ic.PubKey, Name) {
 	sr := util.NewTimeSeededRand()
@@ -195,14 +203,15 @@ func TestCBORDataSerialization(t *testing.T) {
 	sk, _, _ := mustKeyPair(t, ic.Ed25519)
 
 	eol := time.Now().Add(time.Hour)
-	path := path.FromString(string(append([]byte("/path/1"), 0x00)))
+	path, err := path.Join(testPath, string([]byte{0x00}))
+	require.NoError(t, err)
 	seq := uint64(1)
 	ttl := time.Hour
 
 	rec := mustNewRecord(t, sk, path, seq, eol, ttl)
 
 	builder := basicnode.Prototype__Map{}.NewBuilder()
-	err := dagcbor.Decode(builder, bytes.NewReader(rec.pb.GetData()))
+	err = dagcbor.Decode(builder, bytes.NewReader(rec.pb.GetData()))
 	require.NoError(t, err)
 
 	node := builder.Build()
@@ -218,7 +227,7 @@ func TestCBORDataSerialization(t *testing.T) {
 		case cborValueKey:
 			b, err := v.AsBytes()
 			require.NoError(t, err)
-			require.Equal(t, b, []byte(path))
+			require.Equal(t, b, []byte(path.String()))
 		case cborSequenceKey:
 			s, err := v.AsInt()
 			require.NoError(t, err)

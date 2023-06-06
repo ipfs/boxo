@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/ipld/unixfs"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 )
 
@@ -92,38 +92,6 @@ type PublicGateway struct {
 	// in deserialized format. This setting overrides the global setting.
 	DeserializedResponses bool
 }
-
-// ImmutablePath represents a [path.Path] that is not mutable.
-//
-// TODO: Is this what we want for ImmutablePath?
-type ImmutablePath struct {
-	p path.Path
-}
-
-func NewImmutablePath(p path.Path) (ImmutablePath, error) {
-	if p.Mutable() {
-		return ImmutablePath{}, fmt.Errorf("path cannot be mutable")
-	}
-	return ImmutablePath{p: p}, nil
-}
-
-func (i ImmutablePath) String() string {
-	return i.p.String()
-}
-
-func (i ImmutablePath) Namespace() string {
-	return i.p.Namespace()
-}
-
-func (i ImmutablePath) Mutable() bool {
-	return false
-}
-
-func (i ImmutablePath) IsValid() error {
-	return i.p.IsValid()
-}
-
-var _ path.Path = (*ImmutablePath)(nil)
 
 type CarParams struct {
 	Range      *DagByteRange
@@ -242,7 +210,7 @@ func (d DuplicateBlocksPolicy) String() string {
 
 type ContentPathMetadata struct {
 	PathSegmentRoots []cid.Cid
-	LastSegment      path.Resolved
+	LastSegment      path.ResolvedPath
 	ContentType      string // Only used for UnixFS requests
 }
 
@@ -363,14 +331,14 @@ type IPFSBackend interface {
 	//     block rather than as an [io.ReadCloser] that starts at the beginning of the range request.
 	//
 	// [HTTP Byte Ranges]: https://httpwg.org/specs/rfc9110.html#rfc.section.14.1.2
-	Get(context.Context, ImmutablePath, ...ByteRange) (ContentPathMetadata, *GetResponse, error)
+	Get(context.Context, path.ImmutablePath, ...ByteRange) (ContentPathMetadata, *GetResponse, error)
 
 	// GetAll returns a UnixFS file or directory depending on what the path is that has been requested. Directories should
 	// include all content recursively.
-	GetAll(context.Context, ImmutablePath) (ContentPathMetadata, files.Node, error)
+	GetAll(context.Context, path.ImmutablePath) (ContentPathMetadata, files.Node, error)
 
 	// GetBlock returns a single block of data
-	GetBlock(context.Context, ImmutablePath) (ContentPathMetadata, files.File, error)
+	GetBlock(context.Context, path.ImmutablePath) (ContentPathMetadata, files.File, error)
 
 	// Head returns a [HeadResponse] depending on what the path is that has been requested.
 	// For UnixFS files (and raw blocks) should return the size of the file and either set the ContentType in
@@ -381,16 +349,16 @@ type IPFSBackend interface {
 	//
 	// For all other data types (e.g. (DAG-)CBOR/JSON blocks) returning the size information as a file while setting
 	// the content-type is sufficient.
-	Head(context.Context, ImmutablePath) (ContentPathMetadata, *HeadResponse, error)
+	Head(context.Context, path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error)
 
 	// ResolvePath resolves the path using UnixFS resolver. If the path does not
 	// exist due to a missing link, it should return an error of type:
 	// NewErrorResponse(fmt.Errorf("no link named %q under %s", name, cid), http.StatusNotFound)
-	ResolvePath(context.Context, ImmutablePath) (ContentPathMetadata, error)
+	ResolvePath(context.Context, path.ImmutablePath) (ContentPathMetadata, error)
 
 	// GetCAR returns a CAR file for the given immutable path. It returns an error
 	// if there was an issue before the CAR streaming begins.
-	GetCAR(context.Context, ImmutablePath, CarParams) (ContentPathMetadata, io.ReadCloser, error)
+	GetCAR(context.Context, path.ImmutablePath, CarParams) (ContentPathMetadata, io.ReadCloser, error)
 
 	// IsCached returns whether or not the path exists locally.
 	IsCached(context.Context, path.Path) bool
@@ -404,7 +372,7 @@ type IPFSBackend interface {
 	//
 	// For example, given a mapping from `/ipns/dnslink.tld -> /ipns/ipns-id/mydirectory` and `/ipns/ipns-id` to
 	// `/ipfs/some-cid`, the result of passing `/ipns/dnslink.tld/myfile` would be `/ipfs/some-cid/mydirectory/myfile`.
-	ResolveMutable(context.Context, path.Path) (ImmutablePath, error)
+	ResolveMutable(context.Context, path.Path) (path.ImmutablePath, error)
 
 	// GetDNSLinkRecord returns the DNSLink TXT record for the provided FQDN.
 	// Unlike ResolvePath, it does not perform recursive resolution. It only

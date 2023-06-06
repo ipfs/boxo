@@ -6,9 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/ipns"
-	ipfspath "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
@@ -217,11 +216,11 @@ func makeIPNSRecord(t *testing.T, sk crypto.PrivKey, opts ...ipns.Option) (*ipns
 	cid, err := cid.Decode("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
 	require.NoError(t, err)
 
-	path := path.IpfsPath(cid)
+	path := path.NewIPFSPath(cid)
 	eol := time.Now().Add(time.Hour * 48)
 	ttl := time.Second * 20
 
-	record, err := ipns.NewRecord(sk, ipfspath.FromString(path.String()), 1, eol, ttl, opts...)
+	record, err := ipns.NewRecord(sk, path, 1, eol, ttl, opts...)
 	require.NoError(t, err)
 
 	rawRecord, err := ipns.MarshalRecord(record)

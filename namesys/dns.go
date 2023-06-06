@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	gpath "path"
+	gopath "path"
 	"strings"
 
 	opts "github.com/ipfs/boxo/coreiface/options/namesys"
-	path "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
+	"github.com/ipfs/go-cid"
 	dns "github.com/miekg/dns"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -84,7 +85,7 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 
 	appendPath := func(p path.Path) (path.Path, error) {
 		if len(segments) > 1 {
-			return path.FromSegments("", strings.TrimRight(p.String(), "/"), segments[1])
+			return path.Join(p, segments[1])
 		}
 		return p, nil
 	}
@@ -133,7 +134,7 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 				// dnslink, then output a more specific error message
 				if rootResErr == ErrResolveFailed && subResErr == ErrResolveFailed {
 					// Wrap error so that it can be tested if it is a ErrResolveFailed
-					err := fmt.Errorf("%w: _dnslink subdomain at %q is missing a TXT record (https://docs.ipfs.tech/concepts/dnslink/)", ErrResolveFailed, gpath.Base(name))
+					err := fmt.Errorf("%w: _dnslink subdomain at %q is missing a TXT record (https://docs.ipfs.tech/concepts/dnslink/)", ErrResolveFailed, gopath.Base(name))
 					emitOnceResult(ctx, out, onceResult{err: err})
 				}
 				return
@@ -160,7 +161,7 @@ func workDomain(ctx context.Context, r *DNSResolver, name string, res chan looku
 			}
 		}
 		// Could not look up any text records for name
-		res <- lookupRes{"", err}
+		res <- lookupRes{nil, err}
 		return
 	}
 
@@ -173,13 +174,18 @@ func workDomain(ctx context.Context, r *DNSResolver, name string, res chan looku
 	}
 
 	// There were no TXT records with a dnslink
-	res <- lookupRes{"", ErrResolveFailed}
+	res <- lookupRes{nil, ErrResolveFailed}
 }
 
 func parseEntry(txt string) (path.Path, error) {
-	p, err := path.ParseCidToPath(txt) // bare IPFS multihashes
+	p, err := path.NewPath(txt) // bare IPFS multihashes
 	if err == nil {
 		return p, nil
+	}
+
+	// Support legacy DNSLink entries composed by the CID only.
+	if cid, err := cid.Decode(txt); err == nil {
+		return path.NewIPFSPath(cid), nil
 	}
 
 	return tryParseDNSLink(txt)
@@ -188,8 +194,16 @@ func parseEntry(txt string) (path.Path, error) {
 func tryParseDNSLink(txt string) (path.Path, error) {
 	parts := strings.SplitN(txt, "=", 2)
 	if len(parts) == 2 && parts[0] == "dnslink" {
-		return path.ParsePath(parts[1])
+		p, err := path.NewPath(parts[1])
+		if err == nil {
+			return p, nil
+		}
+
+		// Support legacy DNSLink entries composed by "dnslink={CID}".
+		if cid, err := cid.Decode(parts[1]); err == nil {
+			return path.NewIPFSPath(cid), nil
+		}
 	}
 
-	return "", errors.New("not a valid dnslink entry")
+	return nil, errors.New("not a valid dnslink entry")
 }

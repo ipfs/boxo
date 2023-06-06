@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -89,7 +90,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	streamErr := multierr.Combine(carErr, copyErr)
 	if streamErr != nil {
 		// Update fail metric
-		i.carStreamFailMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
+		i.carStreamFailMetric.WithLabelValues(rq.contentPath.Namespace().String()).Observe(time.Since(rq.begin).Seconds())
 
 		// We return error as a trailer, however it is not something browsers can access
 		// (https://github.com/mdn/browser-compat-data/issues/14703)
@@ -100,7 +101,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 
 	// Update metrics
-	i.carStreamGetMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
+	i.carStreamGetMetric.WithLabelValues(rq.contentPath.Namespace().String()).Observe(time.Since(rq.begin).Seconds())
 	return true
 }
 
@@ -203,7 +204,7 @@ func buildContentTypeFromCarParams(params CarParams) string {
 	return h.String()
 }
 
-func getCarRootCidAndLastSegment(imPath ImmutablePath) (cid.Cid, string, error) {
+func getCarRootCidAndLastSegment(imPath path.ImmutablePath) (cid.Cid, string, error) {
 	imPathStr := imPath.String()
 	if !strings.HasPrefix(imPathStr, "/ipfs/") {
 		return cid.Undef, "", fmt.Errorf("path does not have /ipfs/ prefix")
@@ -224,7 +225,7 @@ func getCarRootCidAndLastSegment(imPath ImmutablePath) (cid.Cid, string, error) 
 	return rootCid, lastSegment, err
 }
 
-func getCarEtag(imPath ImmutablePath, params CarParams, rootCid cid.Cid) string {
+func getCarEtag(imPath path.ImmutablePath, params CarParams, rootCid cid.Cid) string {
 	data := imPath.String()
 	if params.Scope != DagScopeAll {
 		data += string(params.Scope)

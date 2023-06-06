@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -143,7 +143,7 @@ func TestGetCarEtag(t *testing.T) {
 	cid, err := cid.Parse("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
 	require.NoError(t, err)
 
-	imPath, err := NewImmutablePath(path.IpfsPath(cid))
+	imPath, err := path.NewImmutablePath(path.NewIPFSPath(cid))
 	require.NoError(t, err)
 
 	t.Run("Etag with entity-bytes=0:* is the same as without query param", func(t *testing.T) {

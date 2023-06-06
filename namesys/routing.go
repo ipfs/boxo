@@ -136,7 +136,7 @@ func (r *IpnsResolver) resolveOnceAsync(ctx context.Context, name string, option
 					return
 				}
 
-				emitOnceResult(ctx, out, onceResult{value: path.Path(p.String()), ttl: ttl})
+				emitOnceResult(ctx, out, onceResult{value: p, ttl: ttl})
 			case <-ctx.Done():
 				return
 			}

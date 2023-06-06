@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	ipath "github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,7 +31,10 @@ func TestDagJsonCborPreview(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	resolvedPath, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "subdir", "dag-cbor-document"))
+	p, err := path.Join(path.NewIPFSPath(root), "subdir", "dag-cbor-document")
+	require.NoError(t, err)
+
+	resolvedPath, err := backend.resolvePathNoRootsReturned(ctx, p)
 	require.NoError(t, err)
 
 	cidStr := resolvedPath.Cid().String()

@@ -63,7 +63,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// The TAR has a top-level directory (or file) named by the CID.
 	if err := tarw.WriteFile(file, rootCid.String()); err != nil {
 		// Update fail metric
-		i.tarStreamFailMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
+		i.tarStreamFailMetric.WithLabelValues(rq.contentPath.Namespace().String()).Observe(time.Since(rq.begin).Seconds())
 
 		w.Header().Set("X-Stream-Error", err.Error())
 		// Trailer headers do not work in web browsers
@@ -77,6 +77,6 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 
 	// Update metrics
-	i.tarStreamGetMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
+	i.tarStreamGetMetric.WithLabelValues(rq.contentPath.Namespace().String()).Observe(time.Since(rq.begin).Seconds())
 	return true
 }

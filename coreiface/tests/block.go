@@ -9,9 +9,8 @@ import (
 
 	coreiface "github.com/ipfs/boxo/coreiface"
 	opt "github.com/ipfs/boxo/coreiface/options"
-	"github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/path"
 	ipld "github.com/ipfs/go-ipld-format"
-
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -219,7 +218,7 @@ func (tp *TestSuite) TestBlockGet(t *testing.T) {
 		t.Error("didn't get correct data back")
 	}
 
-	p := path.New("/ipfs/" + res.Path().Cid().String())
+	p := path.NewIPFSPath(res.Path().Cid())
 
 	rp, err := api.ResolvePath(ctx, p)
 	if err != nil {

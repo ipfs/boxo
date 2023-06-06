@@ -19,7 +19,7 @@ func (e ErrInvalidPath) Unwrap() error {
 
 func (e ErrInvalidPath) Is(err error) bool {
 	switch err.(type) {
-	case ErrInvalidPath:
+	case ErrInvalidPath, *ErrInvalidPath:
 		return true
 	default:
 		return false

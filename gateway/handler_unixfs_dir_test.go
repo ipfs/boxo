@@ -6,8 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	ipath "github.com/ipfs/boxo/coreiface/path"
-	path "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,13 +18,17 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	defer cancel()
 
 	// create /ipns/example.net/foo/
-	k2, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "foo? #<'"))
+	p2, err := path.Join(path.NewIPFSPath(root), "foo? #<'")
+	require.NoError(t, err)
+	k2, err := backend.resolvePathNoRootsReturned(ctx, p2)
 	require.NoError(t, err)
 
-	k3, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "foo? #<'/bar"))
+	p3, err := path.Join(path.NewIPFSPath(root), "foo? #<'/bar")
+	require.NoError(t, err)
+	k3, err := backend.resolvePathNoRootsReturned(ctx, p3)
 	require.NoError(t, err)
 
-	backend.namesys["/ipns/example.net"] = path.FromCid(root)
+	backend.namesys["/ipns/example.net"] = path.NewIPFSPath(root)
 
 	// make request to directory listing
 	req := mustNewRequest(t, http.MethodGet, ts.URL+"/foo%3F%20%23%3C%27/", nil)

@@ -168,7 +168,7 @@ func (p *IpnsPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 		if err != nil {
 			return nil, err
 		}
-		if value != path.Path(p.String()) {
+		if value.String() != p.String() {
 			// Don't bother incrementing the sequence number unless the
 			// value changes.
 			seqno++
