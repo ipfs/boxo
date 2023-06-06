@@ -19,7 +19,7 @@ The following emojis are used to highlight certain changes:
   - Updated, higher-definition icons in directory listings.
   - Customizable menu items next to "About IPFS" and "Install IPFS".
   - Valid DAG-CBOR and DAG-JSON blocks now provide a preview, where links can be followed.
-- 🛠 In [`boxo/pinner`](./boxo/pinner) some listing methods have been changed to now return a `<-chan StreamedCid`, this allows to consume the list of pins *while* the pinner is listing them, as for huge pinset this can take a long time.
+- 🛠 In [`boxo/pinner`](./boxo/pinner), some listing methods have been changed to now return a `<-chan StreamedCid`.  This allows the consumption of pins *while* the pinner is listing them, which for large pinset can take a long time.
   The concerned methods are:
   - `DirectKeys`
   - `RecursiveKeys`
