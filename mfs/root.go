@@ -13,7 +13,7 @@ import (
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 
 	ipld "github.com/ipfs/go-ipld-format"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 )
 
 // TODO: Remove if not used.

@@ -17,7 +17,7 @@ import (
 	"github.com/ipfs/boxo/ipns"
 	pb "github.com/ipfs/boxo/ipns/pb"
 	ds "github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/jbenet/goprocess"
 	gpctx "github.com/jbenet/goprocess/context"
 	ic "github.com/libp2p/go-libp2p/core/crypto"

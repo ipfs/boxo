@@ -11,7 +11,7 @@ import (
 	pb "github.com/ipfs/boxo/ipns/pb"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"

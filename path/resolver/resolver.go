@@ -16,7 +16,7 @@ import (
 	"github.com/ipfs/boxo/path/internal"
 	cid "github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
@@ -190,34 +190,26 @@ func ResolveSingle(ctx context.Context, ds format.NodeGetter, nd format.Node, na
 //
 // Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
 // possible to load certain values.
-func (r *basicResolver) ResolvePathComponents(ctx context.Context, fpath path.Path) ([]ipld.Node, error) {
+func (r *basicResolver) ResolvePathComponents(ctx context.Context, fpath path.Path) (nodes []ipld.Node, err error) {
 	ctx, span := internal.StartSpan(ctx, "basicResolver.ResolvePathComponents", trace.WithAttributes(attribute.Stringer("Path", fpath)))
 	defer span.End()
 
-	//lint:ignore SA1019 TODO: replace EventBegin
-	evt := log.EventBegin(ctx, "resolvePathComponents", logging.LoggableMap{"fpath": fpath})
-	defer evt.Done()
+	defer log.Debugw("resolvePathComponents", "fpath", fpath, "error", err)
 
 	// validate path
 	if err := fpath.IsValid(); err != nil {
-		evt.Append(logging.LoggableMap{"error": err.Error()})
 		return nil, err
 	}
 
 	c, p, err := path.SplitAbsPath(fpath)
 	if err != nil {
-		evt.Append(logging.LoggableMap{"error": err.Error()})
 		return nil, err
 	}
 
 	// create a selector to traverse and match all path segments
 	pathSelector := pathAllSelector(p)
 
-	nodes, _, _, err := r.resolveNodes(ctx, c, pathSelector)
-	if err != nil {
-		evt.Append(logging.LoggableMap{"error": err.Error()})
-	}
-
+	nodes, _, _, err = r.resolveNodes(ctx, c, pathSelector)
 	return nodes, err
 }
 
@@ -231,27 +223,23 @@ func (r *basicResolver) ResolvePathComponents(ctx context.Context, fpath path.Pa
 //
 // Note: if/when the context is cancelled or expires then if a multi-block ADL node is returned then it may not be
 // possible to load certain values.
-func (r *basicResolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []string) ([]ipld.Node, error) {
+func (r *basicResolver) ResolveLinks(ctx context.Context, ndd ipld.Node, names []string) (nodes []ipld.Node, err error) {
 	ctx, span := internal.StartSpan(ctx, "basicResolver.ResolveLinks")
 	defer span.End()
 
-	//lint:ignore SA1019 TODO: replace EventBegin
-	evt := log.EventBegin(ctx, "resolveLinks", logging.LoggableMap{"names": names})
-	defer evt.Done()
-
+	defer log.Debugw("resolvePathComponents", "names", names, "error", err)
 	// create a selector to traverse and match all path segments
 	pathSelector := pathAllSelector(names)
 
 	session := r.FetcherFactory.NewSession(ctx)
 
 	// traverse selector
-	nodes := []ipld.Node{ndd}
-	err := session.NodeMatching(ctx, ndd, pathSelector, func(res fetcher.FetchResult) error {
+	nodes = []ipld.Node{ndd}
+	err = session.NodeMatching(ctx, ndd, pathSelector, func(res fetcher.FetchResult) error {
 		nodes = append(nodes, res.Node)
 		return nil
 	})
 	if err != nil {
-		evt.Append(logging.LoggableMap{"error": err.Error()})
 		return nil, err
 	}
 

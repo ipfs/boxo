@@ -13,7 +13,7 @@ import (
 	format "github.com/ipfs/boxo/ipld/unixfs"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 )
 
 var log = logging.Logger("unixfs")
