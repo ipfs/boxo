@@ -12,10 +12,8 @@ import (
 	"github.com/ipfs/boxo/path"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/gogo/protobuf/proto"
 	opts "github.com/ipfs/boxo/coreiface/options/namesys"
 	"github.com/ipfs/boxo/ipns"
-	pb "github.com/ipfs/boxo/ipns/pb"
 	ds "github.com/ipfs/go-datastore"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/jbenet/goprocess"
@@ -140,7 +138,7 @@ func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) erro
 	log.Debugf("republishing ipns entry for %s", id)
 
 	// Look for it locally only
-	e, err := rp.getLastIPNSEntry(ctx, id)
+	rec, err := rp.getLastIPNSRecord(ctx, id)
 	if err != nil {
 		if err == errNoEntry {
 			span.SetAttributes(attribute.Bool("NoEntry", true))
@@ -150,8 +148,13 @@ func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) erro
 		return err
 	}
 
-	p := path.Path(e.GetValue())
-	prevEol, err := ipns.GetEOL(e)
+	p, err := rec.Value()
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	prevEol, err := rec.Validity()
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -162,12 +165,12 @@ func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) erro
 	if prevEol.After(eol) {
 		eol = prevEol
 	}
-	err = rp.ns.Publish(ctx, priv, p, opts.PublishWithEOL(eol))
+	err = rp.ns.Publish(ctx, priv, path.Path(p.String()), opts.PublishWithEOL(eol))
 	span.RecordError(err)
 	return err
 }
 
-func (rp *Republisher) getLastIPNSEntry(ctx context.Context, id peer.ID) (*pb.IpnsEntry, error) {
+func (rp *Republisher) getLastIPNSRecord(ctx context.Context, id peer.ID) (*ipns.Record, error) {
 	// Look for it locally only
 	val, err := rp.ds.Get(ctx, namesys.IpnsDsKey(id))
 	switch err {
@@ -178,9 +181,5 @@ func (rp *Republisher) getLastIPNSEntry(ctx context.Context, id peer.ID) (*pb.Ip
 		return nil, err
 	}
 
-	e := new(pb.IpnsEntry)
-	if err := proto.Unmarshal(val, e); err != nil {
-		return nil, err
-	}
-	return e, nil
+	return ipns.UnmarshalRecord(val)
 }

@@ -6,10 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	opts "github.com/ipfs/boxo/coreiface/options/namesys"
 	"github.com/ipfs/boxo/ipns"
-	pb "github.com/ipfs/boxo/ipns/pb"
 	"github.com/ipfs/boxo/path"
 	ds "github.com/ipfs/go-datastore"
 	dsquery "github.com/ipfs/go-datastore/query"
@@ -68,7 +66,7 @@ func IpnsDsKey(id peer.ID) ds.Key {
 //
 // This method will not search the routing system for records published by other
 // nodes.
-func (p *IpnsPublisher) ListPublished(ctx context.Context) (map[peer.ID]*pb.IpnsEntry, error) {
+func (p *IpnsPublisher) ListPublished(ctx context.Context) (map[peer.ID]*ipns.Record, error) {
 	query, err := p.ds.Query(ctx, dsquery.Query{
 		Prefix: ipnsPrefix,
 	})
@@ -77,7 +75,7 @@ func (p *IpnsPublisher) ListPublished(ctx context.Context) (map[peer.ID]*pb.Ipns
 	}
 	defer query.Close()
 
-	records := make(map[peer.ID]*pb.IpnsEntry)
+	records := make(map[peer.ID]*ipns.Record)
 	for {
 		select {
 		case result, ok := <-query.Next():
@@ -87,8 +85,8 @@ func (p *IpnsPublisher) ListPublished(ctx context.Context) (map[peer.ID]*pb.Ipns
 			if result.Error != nil {
 				return nil, result.Error
 			}
-			e := new(pb.IpnsEntry)
-			if err := proto.Unmarshal(result.Value, e); err != nil {
+			rec, err := ipns.UnmarshalRecord(result.Value)
+			if err != nil {
 				// Might as well return what we can.
 				log.Error("found an invalid IPNS entry:", err)
 				continue
@@ -103,7 +101,7 @@ func (p *IpnsPublisher) ListPublished(ctx context.Context) (map[peer.ID]*pb.Ipns
 				log.Errorf("ipns ds key invalid: %s", result.Key)
 				continue
 			}
-			records[peer.ID(pid)] = e
+			records[peer.ID(pid)] = rec
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -115,7 +113,7 @@ func (p *IpnsPublisher) ListPublished(ctx context.Context) (map[peer.ID]*pb.Ipns
 //
 // If `checkRouting` is true and we have no existing record, this method will
 // check the routing system for any existing records.
-func (p *IpnsPublisher) GetPublished(ctx context.Context, id peer.ID, checkRouting bool) (*pb.IpnsEntry, error) {
+func (p *IpnsPublisher) GetPublished(ctx context.Context, id peer.ID, checkRouting bool) (*ipns.Record, error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
 	defer cancel()
 
@@ -126,7 +124,7 @@ func (p *IpnsPublisher) GetPublished(ctx context.Context, id peer.ID, checkRouti
 		if !checkRouting {
 			return nil, nil
 		}
-		ipnskey := ipns.RecordKey(id)
+		ipnskey := string(ipns.NameFromPeer(id).RoutingKey())
 		value, err = p.routing.GetValue(ctx, ipnskey)
 		if err != nil {
 			// Not found or other network issue. Can't really do
@@ -140,14 +138,11 @@ func (p *IpnsPublisher) GetPublished(ctx context.Context, id peer.ID, checkRouti
 	default:
 		return nil, err
 	}
-	e := new(pb.IpnsEntry)
-	if err := proto.Unmarshal(value, e); err != nil {
-		return nil, err
-	}
-	return e, nil
+
+	return ipns.UnmarshalRecord(value)
 }
 
-func (p *IpnsPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, value path.Path, options ...opts.PublishOption) (*pb.IpnsEntry, error) {
+func (p *IpnsPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, value path.Path, options ...opts.PublishOption) (*ipns.Record, error) {
 	id, err := peer.IDFromPrivateKey(k)
 	if err != nil {
 		return nil, err
@@ -162,22 +157,33 @@ func (p *IpnsPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 		return nil, err
 	}
 
-	seqno := rec.GetSequence() // returns 0 if rec is nil
-	if rec != nil && value != path.Path(rec.GetValue()) {
-		// Don't bother incrementing the sequence number unless the
-		// value changes.
-		seqno++
+	seqno := uint64(0)
+	if rec != nil {
+		seqno, err = rec.Sequence()
+		if err != nil {
+			return nil, err
+		}
+
+		p, err := rec.Value()
+		if err != nil {
+			return nil, err
+		}
+		if value != path.Path(p.String()) {
+			// Don't bother incrementing the sequence number unless the
+			// value changes.
+			seqno++
+		}
 	}
 
 	opts := opts.ProcessPublishOptions(options)
 
 	// Create record
-	entry, err := ipns.Create(k, []byte(value), seqno, opts.EOL, opts.TTL)
+	r, err := ipns.NewRecord(k, value, seqno, opts.EOL, opts.TTL)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := proto.Marshal(entry)
+	data, err := ipns.MarshalRecord(r)
 	if err != nil {
 		return nil, err
 	}
@@ -190,13 +196,13 @@ func (p *IpnsPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 	if err := p.ds.Sync(ctx, key); err != nil {
 		return nil, err
 	}
-	return entry, nil
+	return r, nil
 }
 
 // PutRecordToRouting publishes the given entry using the provided ValueStore,
 // keyed on the ID associated with the provided public key. The public key is
 // also made available to the routing system so that entries can be verified.
-func PutRecordToRouting(ctx context.Context, r routing.ValueStore, k crypto.PubKey, entry *pb.IpnsEntry) error {
+func PutRecordToRouting(ctx context.Context, r routing.ValueStore, k crypto.PubKey, rec *ipns.Record) error {
 	ctx, span := StartSpan(ctx, "PutRecordToRouting")
 	defer span.End()
 
@@ -205,17 +211,13 @@ func PutRecordToRouting(ctx context.Context, r routing.ValueStore, k crypto.PubK
 
 	errs := make(chan error, 2) // At most two errors (IPNS, and public key)
 
-	if err := ipns.EmbedPublicKey(k, entry); err != nil {
-		return err
-	}
-
 	id, err := peer.IDFromPublicKey(k)
 	if err != nil {
 		return err
 	}
 
 	go func() {
-		errs <- PublishEntry(ctx, r, ipns.RecordKey(id), entry)
+		errs <- PublishEntry(ctx, r, string(ipns.NameFromPeer(id).RoutingKey()), rec)
 	}()
 
 	// Publish the public key if a public key cannot be extracted from the ID
@@ -225,7 +227,7 @@ func PutRecordToRouting(ctx context.Context, r routing.ValueStore, k crypto.PubK
 	// NOTE: This check actually checks if the public key has been embedded
 	// in the IPNS entry. This check is sufficient because we embed the
 	// public key in the IPNS entry if it can't be extracted from the ID.
-	if entry.PubKey != nil {
+	if _, err := rec.PubKey(); err == nil {
 		go func() {
 			errs <- PublishPublicKey(ctx, r, PkKeyForID(id), k)
 		}()
@@ -265,11 +267,11 @@ func PublishPublicKey(ctx context.Context, r routing.ValueStore, k string, pubk 
 
 // PublishEntry stores the given IpnsEntry in the ValueStore with the given
 // ipnskey.
-func PublishEntry(ctx context.Context, r routing.ValueStore, ipnskey string, rec *pb.IpnsEntry) error {
+func PublishEntry(ctx context.Context, r routing.ValueStore, ipnskey string, rec *ipns.Record) error {
 	ctx, span := StartSpan(ctx, "PublishEntry", trace.WithAttributes(attribute.String("IPNSKey", ipnskey)))
 	defer span.End()
 
-	data, err := proto.Marshal(rec)
+	data, err := ipns.MarshalRecord(rec)
 	if err != nil {
 		return err
 	}

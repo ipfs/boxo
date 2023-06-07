@@ -7,10 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/ipfs/boxo/ipns"
-	ipns_pb "github.com/ipfs/boxo/ipns/pb"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -42,13 +39,12 @@ func (ps *proxyRouting) GetValue(ctx context.Context, k string, opts ...routing.
 		return nil, routing.ErrNotSupported
 	}
 
-	k = strings.TrimPrefix(k, "/ipns/")
-	id, err := peer.IDFromBytes([]byte(k))
+	name, err := ipns.NameFromRoutingKey([]byte(k))
 	if err != nil {
 		return nil, err
 	}
 
-	return ps.fetch(ctx, id)
+	return ps.fetch(ctx, name)
 }
 
 func (ps *proxyRouting) SearchValue(ctx context.Context, k string, opts ...routing.Option) (<-chan []byte, error) {
@@ -56,8 +52,7 @@ func (ps *proxyRouting) SearchValue(ctx context.Context, k string, opts ...routi
 		return nil, routing.ErrNotSupported
 	}
 
-	k = strings.TrimPrefix(k, "/ipns/")
-	id, err := peer.IDFromBytes([]byte(k))
+	name, err := ipns.NameFromRoutingKey([]byte(k))
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +60,7 @@ func (ps *proxyRouting) SearchValue(ctx context.Context, k string, opts ...routi
 	ch := make(chan []byte)
 
 	go func() {
-		v, err := ps.fetch(ctx, id)
+		v, err := ps.fetch(ctx, name)
 		if err != nil {
 			close(ch)
 		} else {
@@ -77,8 +72,8 @@ func (ps *proxyRouting) SearchValue(ctx context.Context, k string, opts ...routi
 	return ch, nil
 }
 
-func (ps *proxyRouting) fetch(ctx context.Context, id peer.ID) ([]byte, error) {
-	urlStr := fmt.Sprintf("%s/ipns/%s", ps.gatewayURL, peer.ToCid(id).String())
+func (ps *proxyRouting) fetch(ctx context.Context, name ipns.Name) ([]byte, error) {
+	urlStr := fmt.Sprintf("%s/ipns/%s", ps.gatewayURL, name.String())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, err
@@ -104,13 +99,12 @@ func (ps *proxyRouting) fetch(ctx context.Context, id peer.ID) ([]byte, error) {
 		return nil, err
 	}
 
-	var entry ipns_pb.IpnsEntry
-	err = proto.Unmarshal(rb, &entry)
+	rec, err := ipns.UnmarshalRecord(rb)
 	if err != nil {
 		return nil, err
 	}
 
-	err = ipns.ValidateWithPeerID(id, &entry)
+	err = ipns.ValidateWithName(rec, name)
 	if err != nil {
 		return nil, err
 	}

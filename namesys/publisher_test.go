@@ -56,7 +56,7 @@ func testNamekeyPublisher(t *testing.T, keyType int, expectedErr error, expected
 	}
 
 	// Value
-	value := []byte("ipfs/TESTING")
+	value := path.Path("ipfs/TESTING")
 
 	// Seqnum
 	seqnum := uint64(0)
@@ -76,12 +76,12 @@ func testNamekeyPublisher(t *testing.T, keyType int, expectedErr error, expected
 	serv := mockrouting.NewServer()
 	r := serv.ClientWithDatastore(context.Background(), &identity{p}, dstore)
 
-	entry, err := ipns.Create(privKey, value, seqnum, eol, 0)
+	rec, err := ipns.NewRecord(privKey, value, seqnum, eol, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = PutRecordToRouting(ctx, r, pubKey, entry)
+	err = PutRecordToRouting(ctx, r, pubKey, rec)
 	if err != nil {
 		t.Fatal(err)
 	}

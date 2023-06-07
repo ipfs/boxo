@@ -49,7 +49,7 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 		return false
 	}
 
-	record, err := ipns.UnmarshalIpnsEntry(rawRecord)
+	record, err := ipns.UnmarshalRecord(rawRecord)
 	if err != nil {
 		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
@@ -69,9 +69,8 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 		return false
 	}
 
-	if record.Ttl != nil {
-		seconds := int(time.Duration(*record.Ttl).Seconds())
-		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", seconds))
+	if ttl, err := record.TTL(); err == nil {
+		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(ttl.Seconds())))
 	} else {
 		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 	}
