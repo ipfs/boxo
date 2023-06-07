@@ -14,7 +14,7 @@ import (
 	"github.com/ipfs/boxo/verifcid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/multiformats/go-multihash"
 )
 

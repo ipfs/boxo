@@ -19,7 +19,7 @@ import (
 	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/gateway/assets"
 	cid "github.com/ipfs/go-cid"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multibase"
 	prometheus "github.com/prometheus/client_golang/prometheus"

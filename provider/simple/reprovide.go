@@ -9,7 +9,7 @@ import (
 	"github.com/cenkalti/backoff"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-cidutil"
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/libp2p/go-libp2p/core/routing"
 

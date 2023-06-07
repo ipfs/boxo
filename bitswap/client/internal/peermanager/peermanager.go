@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
 
 	cid "github.com/ipfs/go-cid"

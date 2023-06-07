@@ -7,7 +7,7 @@ package chunk
 import (
 	"io"
 
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
 )
 
