@@ -23,6 +23,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multibase"
+	mc "github.com/multiformats/go-multicodec"
 	prometheus "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -171,6 +172,29 @@ func (i *handler) optionsHandler(w http.ResponseWriter, r *http.Request) {
 	i.addUserHeaders(w) // return all custom headers (including CORS ones, if set)
 }
 
+type requestData struct {
+	// Defined for all requests.
+	begin          time.Time
+	logger         *zap.SugaredLogger
+	contentPath    ipath.Path
+	responseFormat string
+	responseParams map[string]string
+
+	// Defined for non IPNS Record requests.
+	immutablePath ImmutablePath
+
+	// Defined if resolution has already happened.
+	pathMetadata *ContentPathMetadata
+	resolvedPath *ImmutablePath
+}
+
+func (rq *requestData) maybeResolvedPath() ImmutablePath {
+	if rq.resolvedPath != nil {
+		return *rq.resolvedPath
+	}
+	return rq.immutablePath
+}
+
 func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	begin := time.Now()
 
@@ -223,25 +247,32 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rq := &requestData{
+		begin:          begin,
+		logger:         logger,
+		contentPath:    contentPath,
+		responseFormat: responseFormat,
+		responseParams: formatParams,
+	}
+
 	// IPNS Record response format can be handled now, since (1) it needs the
 	// non-resolved mutable path, and (2) has custom If-None-Match header handling
 	// due to custom ETag.
 	if responseFormat == ipnsRecordResponseFormat {
 		logger.Debugw("serving ipns record", "path", contentPath)
-		success = i.serveIpnsRecord(r.Context(), w, r, contentPath, begin, logger)
+		success = i.serveIpnsRecord(r.Context(), w, r, rq)
 		return
 	}
 
-	var immutableContentPath ImmutablePath
 	if contentPath.Mutable() {
-		immutableContentPath, err = i.backend.ResolveMutable(r.Context(), contentPath)
+		rq.immutablePath, err = i.backend.ResolveMutable(r.Context(), contentPath)
 		if err != nil {
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 			i.webError(w, r, err, http.StatusInternalServerError)
 			return
 		}
 	} else {
-		immutableContentPath, err = NewImmutablePath(contentPath)
+		rq.immutablePath, err = NewImmutablePath(contentPath)
 		if err != nil {
 			err = fmt.Errorf("path was expected to be immutable, but was not %s: %w", debugStr(contentPath.String()), err)
 			i.webError(w, r, err, http.StatusInternalServerError)
@@ -254,36 +285,28 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	// header handling due to custom ETag.
 	if responseFormat == carResponseFormat {
 		logger.Debugw("serving car stream", "path", contentPath)
-		carVersion := formatParams["version"]
-		success = i.serveCAR(r.Context(), w, r, immutableContentPath, contentPath, carVersion, begin)
+		success = i.serveCAR(r.Context(), w, r, rq)
 		return
 	}
 
 	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified.
-	ifNoneMatchResolvedPath, handled := i.handleIfNoneMatch(w, r, responseFormat, contentPath, immutableContentPath)
-	if handled {
+	if i.handleIfNoneMatch(w, r, rq) {
 		return
-	}
-
-	// If we already did the path resolution no need to do it again
-	maybeResolvedImPath := immutableContentPath
-	if ifNoneMatchResolvedPath != nil {
-		maybeResolvedImPath = *ifNoneMatchResolvedPath
 	}
 
 	// Support custom response formats passed via ?format or Accept HTTP header
 	switch responseFormat {
 	case "", jsonResponseFormat, cborResponseFormat:
-		success = i.serveDefaults(r.Context(), w, r, maybeResolvedImPath, immutableContentPath, contentPath, begin, responseFormat, logger)
+		success = i.serveDefaults(r.Context(), w, r, rq)
 	case rawResponseFormat:
 		logger.Debugw("serving raw block", "path", contentPath)
-		success = i.serveRawBlock(r.Context(), w, r, maybeResolvedImPath, contentPath, begin)
+		success = i.serveRawBlock(r.Context(), w, r, rq)
 	case tarResponseFormat:
 		logger.Debugw("serving tar file", "path", contentPath)
-		success = i.serveTAR(r.Context(), w, r, maybeResolvedImPath, contentPath, begin, logger)
+		success = i.serveTAR(r.Context(), w, r, rq)
 	case dagJsonResponseFormat, dagCborResponseFormat:
 		logger.Debugw("serving codec", "path", contentPath)
-		success = i.serveCodec(r.Context(), w, r, maybeResolvedImPath, contentPath, begin, responseFormat)
+		success = i.serveCodec(r.Context(), w, r, rq)
 	default: // catch-all for unsuported application/vnd.*
 		err := fmt.Errorf("unsupported format %q", responseFormat)
 		i.webError(w, r, err, http.StatusBadRequest)
@@ -552,6 +575,14 @@ func getEtag(r *http.Request, cid cid.Cid, responseFormat string) string {
 	prefix := `"`
 	suffix := `"`
 
+	// For Codecs, ensure that we have the right content-type.
+	if responseFormat == "" {
+		cidCodec := mc.Code(cid.Prefix().Codec)
+		if contentType, ok := codecToContentType[cidCodec]; ok {
+			responseFormat = contentType
+		}
+	}
+
 	switch responseFormat {
 	case "":
 		// Do nothing.
@@ -645,14 +676,14 @@ func debugStr(path string) string {
 	return q
 }
 
-func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, responseFormat string, contentPath ipath.Path, imPath ImmutablePath) (*ImmutablePath, bool) {
+func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, rq *requestData) bool {
 	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
 	if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" {
-		pathMetadata, err := i.backend.ResolvePath(r.Context(), imPath)
+		pathMetadata, err := i.backend.ResolvePath(r.Context(), rq.immutablePath)
 		if err != nil {
-			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+			err = fmt.Errorf("failed to resolve %s: %w", debugStr(rq.contentPath.String()), err)
 			i.webError(w, r, err, http.StatusInternalServerError)
-			return nil, true
+			return true
 		}
 
 		resolvedPath := pathMetadata.LastSegment
@@ -660,25 +691,28 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, resp
 
 		// Checks against both file, dir listing, and dag index Etags.
 		// This is an inexpensive check, and it happens before we do any I/O.
-		cidEtag := getEtag(r, pathCid, responseFormat)
+		cidEtag := getEtag(r, pathCid, rq.responseFormat)
 		dirEtag := getDirListingEtag(pathCid)
 		dagEtag := getDagIndexEtag(pathCid)
 
 		if etagMatch(ifNoneMatch, cidEtag, dirEtag, dagEtag) {
 			// Finish early if client already has a matching Etag
 			w.WriteHeader(http.StatusNotModified)
-			return nil, true
+			return true
 		}
 
 		resolvedImPath, err := NewImmutablePath(resolvedPath)
 		if err != nil {
 			i.webError(w, r, err, http.StatusInternalServerError)
-			return nil, true
+			return true
 		}
 
-		return &resolvedImPath, true
+		rq.pathMetadata = &pathMetadata
+		rq.resolvedPath = &resolvedImPath
+		return false
 	}
-	return nil, false
+
+	return false
 }
 
 // check if request was for one of known explicit formats,

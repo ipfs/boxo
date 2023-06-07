@@ -8,19 +8,16 @@ import (
 	"net/textproto"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ipfs/boxo/files"
 	mc "github.com/multiformats/go-multicodec"
 
-	ipath "github.com/ipfs/boxo/coreiface/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 )
 
-func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *http.Request, maybeResolvedImPath ImmutablePath, immutableContentPath ImmutablePath, contentPath ipath.Path, begin time.Time, requestedContentType string, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "Handler.ServeDefaults", trace.WithAttributes(attribute.String("path", contentPath.String())))
+func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeDefaults", trace.WithAttributes(attribute.String("path", rq.contentPath.String())))
 	defer span.End()
 
 	var (
@@ -35,8 +32,8 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	switch r.Method {
 	case http.MethodHead:
 		var data files.Node
-		pathMetadata, data, err = i.backend.Head(ctx, maybeResolvedImPath)
-		if !i.handleRequestErrors(w, r, contentPath, err) {
+		pathMetadata, data, err = i.backend.Head(ctx, rq.maybeResolvedPath())
+		if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 			return false
 		}
 		defer data.Close()
@@ -65,21 +62,21 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		// allow backend to find  providers for parents, even when internal
 		// CIDs are not announced, and will provide better key for caching
 		// related DAGs.
-		pathMetadata, getResp, err = i.backend.Get(ctx, maybeResolvedImPath, ranges...)
+		pathMetadata, getResp, err = i.backend.Get(ctx, rq.maybeResolvedPath(), ranges...)
 		if err != nil {
-			if isWebRequest(requestedContentType) {
-				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
+			if isWebRequest(rq.responseFormat) {
+				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, rq.maybeResolvedPath(), rq.immutablePath, rq.contentPath, err, rq.logger)
 				if !continueProcessing {
 					return false
 				}
 				pathMetadata, getResp, err = i.backend.Get(ctx, forwardedPath, ranges...)
 				if err != nil {
-					err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+					err = fmt.Errorf("failed to resolve %s: %w", debugStr(rq.contentPath.String()), err)
 					i.webError(w, r, err, http.StatusInternalServerError)
 					return false
 				}
 			} else {
-				if !i.handleRequestErrors(w, r, contentPath, err) {
+				if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 					return false
 				}
 			}
@@ -97,8 +94,10 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		return false
 	}
 
-	// TODO: check if we have a bug when maybeResolvedImPath is resolved and i.setIpfsRootsHeader works with pathMetadata returned by Get(maybeResolvedImPath)
-	setIpfsRootsHeader(w, pathMetadata)
+	if rq.pathMetadata == nil {
+		rq.pathMetadata = &pathMetadata
+	}
+	setIpfsRootsHeader(w, *rq.pathMetadata)
 
 	resolvedPath := pathMetadata.LastSegment
 	switch mc.Code(resolvedPath.Cid().Prefix().Codec) {
@@ -107,23 +106,23 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 			i.webError(w, r, fmt.Errorf("decoding error: data not usable as a file"), http.StatusInternalServerError)
 			return false
 		}
-		logger.Debugw("serving codec", "path", contentPath)
-		return i.renderCodec(r.Context(), w, r, resolvedPath, bytesResponse, contentPath, begin, requestedContentType)
+		rq.logger.Debugw("serving codec", "path", rq.contentPath)
+		return i.renderCodec(r.Context(), w, r, rq, bytesResponse)
 	default:
-		logger.Debugw("serving unixfs", "path", contentPath)
+		rq.logger.Debugw("serving unixfs", "path", rq.contentPath)
 		ctx, span := spanTrace(ctx, "Handler.ServeUnixFS", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 		defer span.End()
 
 		// Handling Unixfs file
 		if bytesResponse != nil {
-			logger.Debugw("serving unixfs file", "path", contentPath)
-			return i.serveFile(ctx, w, r, resolvedPath, contentPath, bytesResponse, pathMetadata.ContentType, begin)
+			rq.logger.Debugw("serving unixfs file", "path", rq.contentPath)
+			return i.serveFile(ctx, w, r, resolvedPath, rq.contentPath, bytesResponse, pathMetadata.ContentType, rq.begin)
 		}
 
 		// Handling Unixfs directory
 		if directoryMetadata != nil || isDirectoryHeadRequest {
-			logger.Debugw("serving unixfs directory", "path", contentPath)
-			return i.serveDirectory(ctx, w, r, resolvedPath, contentPath, isDirectoryHeadRequest, directoryMetadata, ranges, begin, logger)
+			rq.logger.Debugw("serving unixfs directory", "path", rq.contentPath)
+			return i.serveDirectory(ctx, w, r, resolvedPath, rq.contentPath, isDirectoryHeadRequest, directoryMetadata, ranges, rq.begin, rq.logger)
 		}
 
 		i.webError(w, r, fmt.Errorf("unsupported UnixFS type"), http.StatusInternalServerError)
