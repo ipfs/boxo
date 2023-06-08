@@ -47,6 +47,8 @@ We take to heart the "guiding principle" that "changelogs are for humans, not ma
 * Changelog entries provide links to a relevant issue/PR so an interested party can learn more.
 We intend to use the standardized changelog to automate releases by onboarding with [Changelog Driven Release](https://github.com/pl-strflt/changelog-driven-release) (see [#269](https://github.com/ipfs/boxo/issues/269)).
 
+At least as of 2023-06-08, changelog test is manually copied from [CHANGELOG.md] to https://github.com/ipfs/boxo/releases.  This means that any updates to the changelog after a release need to be manually copied as well.
+
 ### Related Work
 Below are links of related/adjacent work that has informed some of the decisions in this document:
 1. https://github.com/ipfs/boxo/issues/170
