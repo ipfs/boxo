@@ -14,25 +14,84 @@ The following emojis are used to highlight certain changes:
 
 ## [Unreleased]
 
-- ✨ The gateway templates were updated to provide better features for users and gateway implementers:
+### Added
+
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.9.0] - 2023-06-08
+
+### Added
+
+- ✨ `gateway` The gateway were updated to provide better features for users and gateway implementers:
   - New human-friendly error messages.
   - Updated, higher-definition icons in directory listings.
   - Customizable menu items next to "About IPFS" and "Install IPFS".
   - Valid DAG-CBOR and DAG-JSON blocks now provide a preview, where links can be followed.
-- 🛠 In [`boxo/pinner`](./boxo/pinner), some listing methods have been changed to now return a `<-chan StreamedCid`.  This allows the consumption of pins *while* the pinner is listing them, which for large pinset can take a long time.
+- `ipns` add `ValidateWithPeerID` and `UnmarshalIpnsEntry` helpers. (https://github.com/ipfs/boxo/pulls/292)
+- 🛠 `coreiface/tests` add `*testing.T` argument to the swarm provider. (https://github.com/ipfs/boxo/pulls/321)
+
+### Changed
+
+- 🛠 `boxo/pinner` some listing methods have been changed to now return a `<-chan StreamedCid`.  This allows the consumption of pins *while* the pinner is listing them, which for large pinset can take a long time. (https://github.com/ipfs/boxo/pulls/336)
   The concerned methods are:
   - `DirectKeys`
   - `RecursiveKeys`
   - `InternalKeys`
-- 🛠 Provider API refactor
-  - `provider/queue` has been moved to `provider/internal/queue`.
-  - `provider/batched.New` has been moved to `provider.New` and arguments has been changed:
-    - a routing system is now passed with the `provider.Online` option, by default the system run in offline mode (push stuff onto the queue); and
-    - you do not have to pass a queue anymore, you pass a `datastore.Datastore` exclusively.
-  - `provider/simple` has been removed, now instead `provider.New` will accept non batched routing systems and use type assertion for the `ProvideMany` call, giving a single implementation.
-  - `provider.NewOfflineProvider` has been renamed to `provider.NewNoopProvider` to show more clearly that is does nothing.
-  - `provider.NewSystem` has been removed, `provider.New` now returns a `provider.System` directly.
-  - `provider.Provider` and `provider.Reprovider` has been merged under one `provider.System`
+- 🛠 `provider/batched.New` has been moved to `provider.New` and arguments has been changed. (https://github.com/ipfs/boxo/pulls/273)
+  - a routing system is now passed with the `provider.Online` option, by default the system run in offline mode (push stuff onto the queue); and
+  - you do not have to pass a queue anymore, you pass a `datastore.Datastore` exclusively.
+- 🛠 `provider.NewOfflineProvider` has been renamed to `provider.NewNoopProvider` to show more clearly that is does nothing. (https://github.com/ipfs/boxo/pulls/273)
+- 🛠 `provider.Provider` and `provider.Reprovider` has been merged under one `provider.System`. (https://github.com/ipfs/boxo/pulls/273)
+- 🛠 `routing/http` responses now return a streaming `iter.ResultIter` generic interface. (https://github.com/ipfs/boxo/pulls/18)
+- 🛠 `coreiface` add options and `AllowOffline` option to `RoutingAPI.Put`. (https://github.com/ipfs/boxo/pulls/278)
+
+### Removed
+
+- 🛠 `provider/queue` has been moved to `provider/internal/queue`. (https://github.com/ipfs/boxo/pulls/273)
+- 🛠 `provider/simple` has been removed, now instead you can use `provider.New` because it accept non batched routing systems and use type assertion for the `ProvideMany` call, giving a single implementation. (https://github.com/ipfs/boxo/pulls/273)
+- 🛠 `provider.NewSystem` has been removed, `provider.New` now returns a `provider.System` directly. (https://github.com/ipfs/boxo/pulls/273)
+
+### Fixed
+
+- `gateway` fix panics by returning in all error cases. (https://github.com/ipfs/boxo/pulls/314)
+- `gateway` avoid duplicate payload during subdomain redirects. (https://github.com/ipfs/boxo/pulls/326)
+- `gateway` correctly handle question marks in URL when redirecting. (https://github.com/ipfs/boxo/pulls/#313)
+
+### Security
+
+None
+
+## [0.8.1] - 2023-04-25
+
+### Added
+
+- `gateway` trace context header support (https://github.com/ipfs/boxo/pull/256)
+
+### Changed
+
+- `gateway` widen duration histograms and cleanup (https://github.com/ipfs/boxo/pull/265)
+
+### Deprecated
+
+None
+
+### Removed
+
+None
+
+### Fixed
+
+- `gateway` panic on path without enough components (https://github.com/ipfs/boxo/pull/272)
+
+### Security
+
+None
 
 ## [0.8.0] - 2023-04-05
 ### Added
