@@ -14,6 +14,8 @@ The following emojis are used to highlight certain changes:
 
 ## [Unreleased]
 
+* ✨ The gateway now supports partial CAR exports via query parameters from [IPIP-402](https://github.com/ipfs/specs/pull/402).
+
 ### Added
 
 ### Changed
