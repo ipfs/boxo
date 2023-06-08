@@ -52,10 +52,6 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	// TODO(hacdias): this is incorrect and should have the full list of CIDs.
-	// https://github.com/ipfs/boxo/issues/221
-	w.Header().Set("X-Ipfs-Roots", rootCid.String())
-
 	// Set Content-Disposition
 	var name string
 	if urlFilename := r.URL.Query().Get("filename"); urlFilename != "" {
@@ -83,11 +79,12 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	carFile, err := i.backend.GetCAR(ctx, imPath, params)
+	md, carFile, err := i.backend.GetCAR(ctx, imPath, params)
 	if !i.handleRequestErrors(w, r, contentPath, err) {
 		return false
 	}
 	defer carFile.Close()
+	setIpfsRootsHeader(w, md)
 
 	// Make it clear we don't support range-requests over a car stream
 	// Partial downloads and resumes should be handled using requests for

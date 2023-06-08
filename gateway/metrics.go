@@ -120,17 +120,15 @@ func (b *ipfsBackendWithMetrics) ResolvePath(ctx context.Context, path Immutable
 	return md, err
 }
 
-func (b *ipfsBackendWithMetrics) GetCAR(ctx context.Context, path ImmutablePath, params CarParams) (io.ReadCloser, error) {
+func (b *ipfsBackendWithMetrics) GetCAR(ctx context.Context, path ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	begin := time.Now()
 	name := "IPFSBackend.GetCAR"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
 	defer span.End()
 
-	rc, err := b.backend.GetCAR(ctx, path, params)
-
-	// TODO: handle errCh
+	md, rc, err := b.backend.GetCAR(ctx, path, params)
 	b.updateBackendCallMetric(name, err, begin)
-	return rc, err
+	return md, rc, err
 }
 
 func (b *ipfsBackendWithMetrics) IsCached(ctx context.Context, path path.Path) bool {

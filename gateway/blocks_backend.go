@@ -232,20 +232,20 @@ func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentP
 	return md, fileNode, nil
 }
 
-func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params CarParams) (io.ReadCloser, error) {
+func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+	pathMetadata, err := bb.ResolvePath(ctx, p)
+	if err != nil {
+		return ContentPathMetadata{}, nil, err
+	}
+
 	contentPathStr := p.String()
 	if !strings.HasPrefix(contentPathStr, "/ipfs/") {
-		return nil, fmt.Errorf("path does not have /ipfs/ prefix")
-	}
-	firstSegment, _, _ := strings.Cut(contentPathStr[6:], "/")
-	rootCid, err := cid.Decode(firstSegment)
-	if err != nil {
-		return nil, err
+		return ContentPathMetadata{}, nil, fmt.Errorf("path does not have /ipfs/ prefix")
 	}
 
 	r, w := io.Pipe()
 	go func() {
-		cw, err := storage.NewWritable(w, []cid.Cid{rootCid}, car.WriteAsCarV1(true))
+		cw, err := storage.NewWritable(w, []cid.Cid{pathMetadata.LastSegment.Cid()}, car.WriteAsCarV1(true))
 		if err != nil {
 			// io.PipeWriter.CloseWithError always returns nil.
 			_ = w.CloseWithError(err)
@@ -275,7 +275,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params Car
 		_ = w.CloseWithError(carWriteErr)
 	}()
 
-	return r, nil
+	return pathMetadata, r, nil
 }
 
 // walkGatewaySimpleSelector walks the subgraph described by the path and terminal element parameters

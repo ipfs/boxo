@@ -124,7 +124,7 @@ func (mb *mockBackend) Head(ctx context.Context, immutablePath ImmutablePath) (C
 	return mb.gw.Head(ctx, immutablePath)
 }
 
-func (mb *mockBackend) GetCAR(ctx context.Context, immutablePath ImmutablePath, params CarParams) (io.ReadCloser, error) {
+func (mb *mockBackend) GetCAR(ctx context.Context, immutablePath ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	return mb.gw.GetCAR(ctx, immutablePath, params)
 }
 

@@ -61,8 +61,8 @@ func (mb *errorMockBackend) Head(ctx context.Context, path ImmutablePath) (Conte
 	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (mb *errorMockBackend) GetCAR(ctx context.Context, path ImmutablePath, params CarParams) (io.ReadCloser, error) {
-	return nil, mb.err
+func (mb *errorMockBackend) GetCAR(ctx context.Context, path ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+	return ContentPathMetadata{}, nil, mb.err
 }
 
 func (mb *errorMockBackend) ResolveMutable(ctx context.Context, path ipath.Path) (ImmutablePath, error) {
@@ -173,7 +173,7 @@ func (mb *panicMockBackend) Head(ctx context.Context, immutablePath ImmutablePat
 	panic("i am panicking")
 }
 
-func (mb *panicMockBackend) GetCAR(ctx context.Context, immutablePath ImmutablePath, params CarParams) (io.ReadCloser, error) {
+func (mb *panicMockBackend) GetCAR(ctx context.Context, immutablePath ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	panic("i am panicking")
 }
 

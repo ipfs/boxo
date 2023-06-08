@@ -279,7 +279,7 @@ type IPFSBackend interface {
 
 	// GetCAR returns a CAR file for the given immutable path. It returns an error
 	// if there was an issue before the CAR streaming begins.
-	GetCAR(context.Context, ImmutablePath, CarParams) (io.ReadCloser, error)
+	GetCAR(context.Context, ImmutablePath, CarParams) (ContentPathMetadata, io.ReadCloser, error)
 
 	// IsCached returns whether or not the path exists locally.
 	IsCached(context.Context, path.Path) bool
