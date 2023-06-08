@@ -50,6 +50,7 @@ The following emojis are used to highlight certain changes:
 - 🛠 `provider.Provider` and `provider.Reprovider` has been merged under one `provider.System`. (https://github.com/ipfs/boxo/pulls/273)
 - 🛠 `routing/http` responses now return a streaming `iter.ResultIter` generic interface. (https://github.com/ipfs/boxo/pulls/18)
 - 🛠 `coreiface` add options and `AllowOffline` option to `RoutingAPI.Put`. (https://github.com/ipfs/boxo/pulls/278)
+- 🛠 `gateway` now has deserialized responses turned off by default. This can be configured via `DeserializedResponses`. (https://github.com/ipfs/boxo/pull/252)
 
 ### Removed
 
