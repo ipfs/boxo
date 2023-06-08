@@ -41,53 +41,53 @@ func TestEtagMatch(t *testing.T) {
 	}
 }
 
-type errorMockAPI struct {
+type errorMockBackend struct {
 	err error
 }
 
-func (api *errorMockAPI) Get(ctx context.Context, path ImmutablePath, getRange ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
-	return ContentPathMetadata{}, nil, api.err
+func (mb *errorMockBackend) Get(ctx context.Context, path ImmutablePath, getRange ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
+	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (api *errorMockAPI) GetAll(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
-	return ContentPathMetadata{}, nil, api.err
+func (mb *errorMockBackend) GetAll(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (api *errorMockAPI) GetBlock(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.File, error) {
-	return ContentPathMetadata{}, nil, api.err
+func (mb *errorMockBackend) GetBlock(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.File, error) {
+	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (api *errorMockAPI) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
-	return ContentPathMetadata{}, nil, api.err
+func (mb *errorMockBackend) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (api *errorMockAPI) GetCAR(ctx context.Context, path ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
-	return ContentPathMetadata{}, nil, nil, api.err
+func (mb *errorMockBackend) GetCAR(ctx context.Context, path ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (api *errorMockAPI) ResolveMutable(ctx context.Context, path ipath.Path) (ImmutablePath, error) {
-	return ImmutablePath{}, api.err
+func (mb *errorMockBackend) ResolveMutable(ctx context.Context, path ipath.Path) (ImmutablePath, error) {
+	return ImmutablePath{}, mb.err
 }
 
-func (api *errorMockAPI) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
-	return nil, api.err
+func (mb *errorMockBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
+	return nil, mb.err
 }
 
-func (api *errorMockAPI) GetDNSLinkRecord(ctx context.Context, hostname string) (ipath.Path, error) {
-	return nil, api.err
+func (mb *errorMockBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (ipath.Path, error) {
+	return nil, mb.err
 }
 
-func (api *errorMockAPI) IsCached(ctx context.Context, p ipath.Path) bool {
+func (mb *errorMockBackend) IsCached(ctx context.Context, p ipath.Path) bool {
 	return false
 }
 
-func (api *errorMockAPI) ResolvePath(ctx context.Context, path ImmutablePath) (ContentPathMetadata, error) {
-	return ContentPathMetadata{}, api.err
+func (mb *errorMockBackend) ResolvePath(ctx context.Context, path ImmutablePath) (ContentPathMetadata, error) {
+	return ContentPathMetadata{}, mb.err
 }
 
 func TestGatewayBadRequestInvalidPath(t *testing.T) {
-	api, _ := newMockAPI(t)
-	ts := newTestServer(t, api)
+	backend, _ := newMockBackend(t)
+	ts := newTestServer(t, backend)
 	t.Logf("test server url: %s", ts.URL)
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/QmInvalid/Path", nil)
@@ -99,7 +99,7 @@ func TestGatewayBadRequestInvalidPath(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
 }
 
-func TestErrorBubblingFromAPI(t *testing.T) {
+func TestErrorBubblingFromBackend(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []struct {
@@ -113,8 +113,8 @@ func TestErrorBubblingFromAPI(t *testing.T) {
 		{"504 Gateway Timeout", ErrGatewayTimeout, http.StatusGatewayTimeout},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			api := &errorMockAPI{err: fmt.Errorf("wrapped for testing purposes: %w", test.err)}
-			ts := newTestServer(t, api)
+			backend := &errorMockBackend{err: fmt.Errorf("wrapped for testing purposes: %w", test.err)}
+			ts := newTestServer(t, backend)
 			t.Logf("test server url: %s", ts.URL)
 
 			req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipns/en.wikipedia-on-ipfs.org", nil)
@@ -138,8 +138,8 @@ func TestErrorBubblingFromAPI(t *testing.T) {
 		{"429 Too Many Requests without Retry-After header", NewErrorRetryAfter(ErrTooManyRequests, 0*time.Second), http.StatusTooManyRequests, "Retry-After", "", 0},
 		{"429 Too Many Requests with Retry-After header", NewErrorRetryAfter(ErrTooManyRequests, 3600*time.Second), http.StatusTooManyRequests, "Retry-After", "3600", 1},
 	} {
-		api := &errorMockAPI{err: fmt.Errorf("wrapped for testing purposes: %w", test.err)}
-		ts := newTestServer(t, api)
+		backend := &errorMockBackend{err: fmt.Errorf("wrapped for testing purposes: %w", test.err)}
+		ts := newTestServer(t, backend)
 		t.Logf("test server url: %s", ts.URL)
 
 		req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipns/en.wikipedia-on-ipfs.org", nil)
@@ -153,60 +153,60 @@ func TestErrorBubblingFromAPI(t *testing.T) {
 	}
 }
 
-type panicMockAPI struct {
+type panicMockBackend struct {
 	panicOnHostnameHandler bool
 }
 
-func (api *panicMockAPI) Get(ctx context.Context, immutablePath ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
+func (mb *panicMockBackend) Get(ctx context.Context, immutablePath ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) GetAll(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (mb *panicMockBackend) GetAll(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) GetBlock(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.File, error) {
+func (mb *panicMockBackend) GetBlock(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.File, error) {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (mb *panicMockBackend) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) GetCAR(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
+func (mb *panicMockBackend) GetCAR(ctx context.Context, immutablePath ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) ResolveMutable(ctx context.Context, p ipath.Path) (ImmutablePath, error) {
+func (mb *panicMockBackend) ResolveMutable(ctx context.Context, p ipath.Path) (ImmutablePath, error) {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
+func (mb *panicMockBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) GetDNSLinkRecord(ctx context.Context, hostname string) (ipath.Path, error) {
+func (mb *panicMockBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (ipath.Path, error) {
 	// GetDNSLinkRecord is also called on the WithHostname handler. We have this option
 	// to disable panicking here so we can test if both the regular gateway handler
 	// and the hostname handler can handle panics.
-	if api.panicOnHostnameHandler {
+	if mb.panicOnHostnameHandler {
 		panic("i am panicking")
 	}
 
 	return nil, errors.New("not implemented")
 }
 
-func (api *panicMockAPI) IsCached(ctx context.Context, p ipath.Path) bool {
+func (mb *panicMockBackend) IsCached(ctx context.Context, p ipath.Path) bool {
 	panic("i am panicking")
 }
 
-func (api *panicMockAPI) ResolvePath(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, error) {
+func (mb *panicMockBackend) ResolvePath(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, error) {
 	panic("i am panicking")
 }
 
 func TestGatewayStatusCodeOnPanic(t *testing.T) {
-	api := &panicMockAPI{}
-	ts := newTestServer(t, api)
+	backend := &panicMockBackend{}
+	ts := newTestServer(t, backend)
 	t.Logf("test server url: %s", ts.URL)
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e", nil)
@@ -218,8 +218,8 @@ func TestGatewayStatusCodeOnPanic(t *testing.T) {
 }
 
 func TestGatewayStatusCodeOnHostnamePanic(t *testing.T) {
-	api := &panicMockAPI{panicOnHostnameHandler: true}
-	ts := newTestServer(t, api)
+	backend := &panicMockBackend{panicOnHostnameHandler: true}
+	ts := newTestServer(t, backend)
 	t.Logf("test server url: %s", ts.URL)
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/ipfs/bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e", nil)

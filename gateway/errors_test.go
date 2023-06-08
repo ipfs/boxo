@@ -68,4 +68,12 @@ func TestWebError(t *testing.T) {
 		assert.Equal(t, http.StatusServiceUnavailable, w.Result().StatusCode)
 		assert.Equal(t, "50", w.Result().Header.Get("Retry-After"))
 	})
+
+	t.Run("ErrorStatusCode propagates HTTP Status Code", func(t *testing.T) {
+		err := NewErrorStatusCodeFromStatus(http.StatusTeapot)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/blah", nil)
+		webError(w, r, config, err, http.StatusInternalServerError)
+		assert.Equal(t, http.StatusTeapot, w.Result().StatusCode)
+	})
 }

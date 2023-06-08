@@ -13,12 +13,12 @@ import (
 )
 
 func TestToSubdomainURL(t *testing.T) {
-	gwAPI, _ := newMockAPI(t)
+	backend, _ := newMockBackend(t)
 	testCID, err := cid.Decode("bafkqaglimvwgy3zakrsxg5cun5jxkyten5wwc2lokvjeycq")
 	assert.NoError(t, err)
 
-	gwAPI.namesys["/ipns/dnslink.long-name.example.com"] = path.FromString(testCID.String())
-	gwAPI.namesys["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = path.FromString(testCID.String())
+	backend.namesys["/ipns/dnslink.long-name.example.com"] = path.FromString(testCID.String())
+	backend.namesys["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = path.FromString(testCID.String())
 	httpRequest := httptest.NewRequest("GET", "http://127.0.0.1:8080", nil)
 	httpsRequest := httptest.NewRequest("GET", "https://https-request-stub.example.com", nil)
 	httpsProxiedRequest := httptest.NewRequest("GET", "http://proxied-https-request-stub.example.com", nil)
@@ -61,7 +61,7 @@ func TestToSubdomainURL(t *testing.T) {
 	} {
 		testName := fmt.Sprintf("%s, %v, %s", test.gwHostname, test.inlineDNSLink, test.path)
 		t.Run(testName, func(t *testing.T) {
-			url, err := toSubdomainURL(test.gwHostname, test.path, test.request, test.inlineDNSLink, gwAPI)
+			url, err := toSubdomainURL(test.gwHostname, test.path, test.request, test.inlineDNSLink, backend)
 			assert.Equal(t, test.url, url)
 			assert.Equal(t, test.err, err)
 		})
@@ -210,13 +210,13 @@ func TestToDNSLabel(t *testing.T) {
 }
 
 func TestKnownSubdomainDetails(t *testing.T) {
-	gwLocalhost := &Specification{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}
-	gwDweb := &Specification{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}
-	gwLong := &Specification{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}
-	gwWildcard1 := &Specification{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}
-	gwWildcard2 := &Specification{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}
+	gwLocalhost := &PublicGateway{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}
+	gwDweb := &PublicGateway{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}
+	gwLong := &PublicGateway{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}
+	gwWildcard1 := &PublicGateway{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}
+	gwWildcard2 := &PublicGateway{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}
 
-	gateways := prepareHostnameGateways(map[string]*Specification{
+	gateways := prepareHostnameGateways(map[string]*PublicGateway{
 		"localhost":               gwLocalhost,
 		"dweb.link":               gwDweb,
 		"devgateway.dweb.link":    gwDweb,
@@ -229,7 +229,7 @@ func TestKnownSubdomainDetails(t *testing.T) {
 		// in:
 		hostHeader string
 		// out:
-		gw       *Specification
+		gw       *PublicGateway
 		hostname string
 		ns       string
 		rootID   string

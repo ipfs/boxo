@@ -16,21 +16,20 @@ import (
 	mbase "github.com/multiformats/go-multibase"
 )
 
-// WithHostname is a middleware that can wrap an http.Handler in order to parse the
-// Host header and translating it to the content path. This is useful for Subdomain
-// and DNSLink gateways.
-func WithHostname(c Config, api IPFSBackend, next http.Handler) http.HandlerFunc {
+// NewHostnameHandler is a middleware that wraps an [http.Handler] in order to
+// parse the Host header and translate it into the content path. This is useful
+// for creating [Subdomain Gateways] or [DNSLink Gateways].
+//
+// [Subdomain Gateways]: https://specs.ipfs.tech/http-gateways/subdomain-gateway/
+// [DNSLink Gateways]: https://specs.ipfs.tech/http-gateways/dnslink-gateway/
+func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.HandlerFunc {
 	gateways := prepareHostnameGateways(c.PublicGateways)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer panicHandler(w)
 
 		// First check for protocol handler redirects.
-		if redirectURL, err := getProtocolHandlerRedirect(r); err != nil {
-			webError(w, r, &c, err, http.StatusBadRequest)
-			return
-		} else if redirectURL != "" {
-			http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
+		if handleProtocolHandlerRedirect(w, r, &c) {
 			return
 		}
 
@@ -63,7 +62,7 @@ func WithHostname(c Config, api IPFSBackend, next http.Handler) http.HandlerFunc
 					// Yes, redirect if applicable
 					// Example: dweb.link/ipfs/{cid} → {cid}.ipfs.dweb.link
 					useInlinedDNSLink := gw.InlineDNSLink
-					newURL, err := toSubdomainURL(host, r.URL.Path, r, useInlinedDNSLink, api)
+					newURL, err := toSubdomainURL(host, r.URL.Path, r, useInlinedDNSLink, backend)
 					if err != nil {
 						webError(w, r, &c, err, http.StatusBadRequest)
 						return
@@ -82,7 +81,7 @@ func WithHostname(c Config, api IPFSBackend, next http.Handler) http.HandlerFunc
 			// Not a whitelisted path
 
 			// Try DNSLink, if it was not explicitly disabled for the hostname
-			if !gw.NoDNSLink && hasDNSLinkRecord(r.Context(), api, host) {
+			if !gw.NoDNSLink && hasDNSLinkRecord(r.Context(), backend, host) {
 				// rewrite path and handle as DNSLink
 				r.URL.Path = "/ipns/" + stripPort(host) + r.URL.Path
 				next.ServeHTTP(w, withDNSLinkContext(r, host))
@@ -124,7 +123,7 @@ func WithHostname(c Config, api IPFSBackend, next http.Handler) http.HandlerFunc
 				}
 				if !strings.HasPrefix(r.Host, dnsCID) {
 					dnsPrefix := "/" + ns + "/" + dnsCID
-					newURL, err := toSubdomainURL(gwHostname, dnsPrefix+r.URL.Path, r, useInlinedDNSLink, api)
+					newURL, err := toSubdomainURL(gwHostname, dnsPrefix+r.URL.Path, r, useInlinedDNSLink, backend)
 					if err != nil {
 						webError(w, r, &c, err, http.StatusBadRequest)
 						return
@@ -140,7 +139,7 @@ func WithHostname(c Config, api IPFSBackend, next http.Handler) http.HandlerFunc
 				// Do we need to fix multicodec in PeerID represented as CIDv1?
 				if isPeerIDNamespace(ns) {
 					if rootCID.Type() != cid.Libp2pKey {
-						newURL, err := toSubdomainURL(gwHostname, pathPrefix+r.URL.Path, r, useInlinedDNSLink, api)
+						newURL, err := toSubdomainURL(gwHostname, pathPrefix+r.URL.Path, r, useInlinedDNSLink, backend)
 						if err != nil {
 							webError(w, r, &c, err, http.StatusBadRequest)
 							return
@@ -168,10 +167,10 @@ func WithHostname(c Config, api IPFSBackend, next http.Handler) http.HandlerFunc
 				// https://my-v--long-example-com.ipns.dweb.link
 				if ns == "ipns" && !strings.Contains(rootID, ".") {
 					// if there is no TXT recordfor rootID
-					if !hasDNSLinkRecord(r.Context(), api, rootID) {
+					if !hasDNSLinkRecord(r.Context(), backend, rootID) {
 						// my-v--long-example-com → my.v-long.example.com
 						dnslinkFQDN := toDNSLinkFQDN(rootID)
-						if hasDNSLinkRecord(r.Context(), api, dnslinkFQDN) {
+						if hasDNSLinkRecord(r.Context(), backend, dnslinkFQDN) {
 							// update path prefix to use real FQDN with DNSLink
 							pathPrefix = "/ipns/" + dnslinkFQDN
 						}
@@ -193,7 +192,7 @@ func WithHostname(c Config, api IPFSBackend, next http.Handler) http.HandlerFunc
 		// 1. is wildcard DNSLink enabled (Gateway.NoDNSLink=false)?
 		// 2. does Host header include a fully qualified domain name (FQDN)?
 		// 3. does DNSLink record exist in DNS?
-		if !c.NoDNSLink && hasDNSLinkRecord(r.Context(), api, host) {
+		if !c.NoDNSLink && hasDNSLinkRecord(r.Context(), backend, host) {
 			// rewrite path and handle as DNSLink
 			r.URL.Path = "/ipns/" + stripPort(host) + r.URL.Path
 			next.ServeHTTP(w, withDNSLinkContext(r, host))
@@ -240,14 +239,14 @@ func isDomainNameAndNotPeerID(hostname string) bool {
 }
 
 // hasDNSLinkRecord returns if a DNS TXT record exists for the provided host.
-func hasDNSLinkRecord(ctx context.Context, api IPFSBackend, host string) bool {
+func hasDNSLinkRecord(ctx context.Context, backend IPFSBackend, host string) bool {
 	dnslinkName := stripPort(host)
 
 	if !isDomainNameAndNotPeerID(dnslinkName) {
 		return false
 	}
 
-	_, err := api.GetDNSLinkRecord(ctx, dnslinkName)
+	_, err := backend.GetDNSLinkRecord(ctx, dnslinkName)
 	return err == nil
 }
 
@@ -327,7 +326,7 @@ func toDNSLinkFQDN(dnsLabel string) (fqdn string) {
 }
 
 // Converts a hostname/path to a subdomain-based URL, if applicable.
-func toSubdomainURL(hostname, path string, r *http.Request, inlineDNSLink bool, api IPFSBackend) (redirURL string, err error) {
+func toSubdomainURL(hostname, path string, r *http.Request, inlineDNSLink bool, backend IPFSBackend) (redirURL string, err error) {
 	var ns, rootID, rest string
 
 	parts := strings.SplitN(path, "/", 4)
@@ -412,7 +411,7 @@ func toSubdomainURL(hostname, path string, r *http.Request, inlineDNSLink bool, 
 		// represented as a single DNS label:
 		// https://my-v--long-example-com.ipns.dweb.link
 		if (inlineDNSLink || isHTTPS) && ns == "ipns" && strings.Contains(rootID, ".") {
-			if hasDNSLinkRecord(r.Context(), api, rootID) {
+			if hasDNSLinkRecord(r.Context(), backend, rootID) {
 				// my.v-long.example.com → my-v--long-example-com
 				dnsLabel, err := toDNSLinkDNSLabel(rootID)
 				if err != nil {
@@ -471,16 +470,16 @@ func stripPort(hostname string) string {
 }
 
 type hostnameGateways struct {
-	exact    map[string]*Specification
-	wildcard map[*regexp.Regexp]*Specification
+	exact    map[string]*PublicGateway
+	wildcard map[*regexp.Regexp]*PublicGateway
 }
 
 // prepareHostnameGateways converts the user given gateways into an internal format
 // split between exact and wildcard-based gateway hostnames.
-func prepareHostnameGateways(gateways map[string]*Specification) *hostnameGateways {
+func prepareHostnameGateways(gateways map[string]*PublicGateway) *hostnameGateways {
 	h := &hostnameGateways{
-		exact:    map[string]*Specification{},
-		wildcard: map[*regexp.Regexp]*Specification{},
+		exact:    map[string]*PublicGateway{},
+		wildcard: map[*regexp.Regexp]*PublicGateway{},
 	}
 
 	for hostname, gw := range gateways {
@@ -508,7 +507,7 @@ func prepareHostnameGateways(gateways map[string]*Specification) *hostnameGatewa
 
 // isKnownHostname checks the given hostname gateways and returns a matching
 // specification with graceful fallback to version without port.
-func (gws *hostnameGateways) isKnownHostname(hostname string) (gw *Specification, ok bool) {
+func (gws *hostnameGateways) isKnownHostname(hostname string) (gw *PublicGateway, ok bool) {
 	// Try hostname (host+optional port - value from Host header as-is)
 	if gw, ok := gws.exact[hostname]; ok {
 		return gw, ok
@@ -532,7 +531,7 @@ func (gws *hostnameGateways) isKnownHostname(hostname string) (gw *Specification
 // the subdomain host. If found, returns a Specification and the subdomain components
 // extracted from Host header: {rootID}.{ns}.{gwHostname}.
 // Note: hostname is host + optional port
-func (gws *hostnameGateways) knownSubdomainDetails(hostname string) (gw *Specification, gwHostname, ns, rootID string, ok bool) {
+func (gws *hostnameGateways) knownSubdomainDetails(hostname string) (gw *PublicGateway, gwHostname, ns, rootID string, ok bool) {
 	labels := strings.Split(hostname, ".")
 	// Look for FQDN of a known gateway hostname.
 	// Example: given "dist.ipfs.tech.ipns.dweb.link":

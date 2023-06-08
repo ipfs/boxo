@@ -23,34 +23,17 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	defer cancel()
 
 	// Get Unixfs file (or directory)
-	pathMetadata, file, err := i.api.GetAll(ctx, imPath)
+	pathMetadata, file, err := i.backend.GetAll(ctx, imPath)
 	if !i.handleRequestErrors(w, r, contentPath, err) {
 		return false
 	}
 	defer file.Close()
 
-	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
-		i.webRequestError(w, r, err)
-		return false
-	}
+	setIpfsRootsHeader(w, pathMetadata)
 	rootCid := pathMetadata.LastSegment.Cid()
 
 	// Set Cache-Control and read optional Last-Modified time
-	modtime := addCacheControlHeaders(w, r, contentPath, rootCid)
-
-	// Weak Etag W/ because we can't guarantee byte-for-byte identical
-	// responses, but still want to benefit from HTTP Caching. Two TAR
-	// responses for the same CID will be logically equivalent,
-	// but when TAR is streamed, then in theory, files and directories
-	// may arrive in different order (depends on TAR lib and filesystem/inodes).
-	etag := `W/` + getEtag(r, rootCid)
-	w.Header().Set("Etag", etag)
-
-	// Finish early if Etag match
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
-		return false
-	}
+	modtime := addCacheControlHeaders(w, r, contentPath, rootCid, tarResponseFormat)
 
 	// Set Content-Disposition
 	var name string
@@ -76,7 +59,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		w.Header().Set("Last-Modified", modtime.UTC().Format(http.TimeFormat))
 	}
 
-	w.Header().Set("Content-Type", "application/x-tar")
+	w.Header().Set("Content-Type", tarResponseFormat)
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
 	// The TAR has a top-level directory (or file) named by the CID.

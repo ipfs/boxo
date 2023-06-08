@@ -24,7 +24,7 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 	defer span.End()
 
 	// Set Cache-Control and read optional Last-Modified time
-	modtime := addCacheControlHeaders(w, r, contentPath, resolvedPath.Cid())
+	modtime := addCacheControlHeaders(w, r, contentPath, resolvedPath.Cid(), "")
 
 	// Set Content-Disposition
 	name := addContentDispositionHeader(w, r, contentPath)
@@ -93,7 +93,7 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
-	_, dataSent, _ := ServeContent(w, r, name, modtime, content)
+	_, dataSent, _ := serveContent(w, r, name, modtime, content)
 
 	// Was response successful?
 	if dataSent {

@@ -35,7 +35,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	switch r.Method {
 	case http.MethodHead:
 		var data files.Node
-		pathMetadata, data, err = i.api.Head(ctx, maybeResolvedImPath)
+		pathMetadata, data, err = i.backend.Head(ctx, maybeResolvedImPath)
 		if !i.handleRequestErrors(w, r, contentPath, err) {
 			return false
 		}
@@ -65,14 +65,14 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		// allow backend to find  providers for parents, even when internal
 		// CIDs are not announced, and will provide better key for caching
 		// related DAGs.
-		pathMetadata, getResp, err = i.api.Get(ctx, maybeResolvedImPath, ranges...)
+		pathMetadata, getResp, err = i.backend.Get(ctx, maybeResolvedImPath, ranges...)
 		if err != nil {
 			if isWebRequest(requestedContentType) {
 				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
 				if !continueProcessing {
 					return false
 				}
-				pathMetadata, getResp, err = i.api.Get(ctx, forwardedPath, ranges...)
+				pathMetadata, getResp, err = i.backend.Get(ctx, forwardedPath, ranges...)
 				if err != nil {
 					err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 					i.webError(w, r, err, http.StatusInternalServerError)
@@ -98,10 +98,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	}
 
 	// TODO: check if we have a bug when maybeResolvedImPath is resolved and i.setIpfsRootsHeader works with pathMetadata returned by Get(maybeResolvedImPath)
-	if err := i.setIpfsRootsHeader(w, pathMetadata); err != nil {
-		i.webRequestError(w, r, err)
-		return false
-	}
+	setIpfsRootsHeader(w, pathMetadata)
 
 	resolvedPath := pathMetadata.LastSegment
 	switch mc.Code(resolvedPath.Cid().Prefix().Codec) {

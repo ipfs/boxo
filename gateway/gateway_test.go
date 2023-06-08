@@ -71,14 +71,14 @@ func (m mockNamesys) GetResolver(subs string) (namesys.Resolver, bool) {
 	return nil, false
 }
 
-type mockAPI struct {
+type mockBackend struct {
 	gw      IPFSBackend
 	namesys mockNamesys
 }
 
-var _ IPFSBackend = (*mockAPI)(nil)
+var _ IPFSBackend = (*mockBackend)(nil)
 
-func newMockAPI(t *testing.T) (*mockAPI, cid.Cid) {
+func newMockBackend(t *testing.T) (*mockBackend, cid.Cid) {
 	r, err := os.Open("./testdata/fixtures.car")
 	assert.NoError(t, err)
 
@@ -97,48 +97,48 @@ func newMockAPI(t *testing.T) (*mockAPI, cid.Cid) {
 	blockService := blockservice.New(blockStore, offline.Exchange(blockStore))
 
 	n := mockNamesys{}
-	gwApi, err := NewBlocksGateway(blockService, WithNameSystem(n))
+	backend, err := NewBlocksBackend(blockService, WithNameSystem(n))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return &mockAPI{
-		gw:      gwApi,
+	return &mockBackend{
+		gw:      backend,
 		namesys: n,
 	}, cids[0]
 }
 
-func (api *mockAPI) Get(ctx context.Context, immutablePath ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
-	return api.gw.Get(ctx, immutablePath, ranges...)
+func (mb *mockBackend) Get(ctx context.Context, immutablePath ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
+	return mb.gw.Get(ctx, immutablePath, ranges...)
 }
 
-func (api *mockAPI) GetAll(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
-	return api.gw.GetAll(ctx, immutablePath)
+func (mb *mockBackend) GetAll(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return mb.gw.GetAll(ctx, immutablePath)
 }
 
-func (api *mockAPI) GetBlock(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.File, error) {
-	return api.gw.GetBlock(ctx, immutablePath)
+func (mb *mockBackend) GetBlock(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.File, error) {
+	return mb.gw.GetBlock(ctx, immutablePath)
 }
 
-func (api *mockAPI) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
-	return api.gw.Head(ctx, immutablePath)
+func (mb *mockBackend) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	return mb.gw.Head(ctx, immutablePath)
 }
 
-func (api *mockAPI) GetCAR(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, io.ReadCloser, <-chan error, error) {
-	return api.gw.GetCAR(ctx, immutablePath)
+func (mb *mockBackend) GetCAR(ctx context.Context, immutablePath ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+	return mb.gw.GetCAR(ctx, immutablePath, params)
 }
 
-func (api *mockAPI) ResolveMutable(ctx context.Context, p ipath.Path) (ImmutablePath, error) {
-	return api.gw.ResolveMutable(ctx, p)
+func (mb *mockBackend) ResolveMutable(ctx context.Context, p ipath.Path) (ImmutablePath, error) {
+	return mb.gw.ResolveMutable(ctx, p)
 }
 
-func (api *mockAPI) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
+func (mb *mockBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
 	return nil, routing.ErrNotSupported
 }
 
-func (api *mockAPI) GetDNSLinkRecord(ctx context.Context, hostname string) (ipath.Path, error) {
-	if api.namesys != nil {
-		p, err := api.namesys.Resolve(ctx, "/ipns/"+hostname, nsopts.Depth(1))
+func (mb *mockBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (ipath.Path, error) {
+	if mb.namesys != nil {
+		p, err := mb.namesys.Resolve(ctx, "/ipns/"+hostname, nsopts.Depth(1))
 		if err == namesys.ErrResolveRecursion {
 			err = nil
 		}
@@ -148,19 +148,19 @@ func (api *mockAPI) GetDNSLinkRecord(ctx context.Context, hostname string) (ipat
 	return nil, errors.New("not implemented")
 }
 
-func (api *mockAPI) IsCached(ctx context.Context, p ipath.Path) bool {
-	return api.gw.IsCached(ctx, p)
+func (mb *mockBackend) IsCached(ctx context.Context, p ipath.Path) bool {
+	return mb.gw.IsCached(ctx, p)
 }
 
-func (api *mockAPI) ResolvePath(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, error) {
-	return api.gw.ResolvePath(ctx, immutablePath)
+func (mb *mockBackend) ResolvePath(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, error) {
+	return mb.gw.ResolvePath(ctx, immutablePath)
 }
 
-func (api *mockAPI) resolvePathNoRootsReturned(ctx context.Context, ip ipath.Path) (ipath.Resolved, error) {
+func (mb *mockBackend) resolvePathNoRootsReturned(ctx context.Context, ip ipath.Path) (ipath.Resolved, error) {
 	var imPath ImmutablePath
 	var err error
 	if ip.Mutable() {
-		imPath, err = api.ResolveMutable(ctx, ip)
+		imPath, err = mb.ResolveMutable(ctx, ip)
 		if err != nil {
 			return nil, err
 		}
@@ -171,7 +171,7 @@ func (api *mockAPI) resolvePathNoRootsReturned(ctx context.Context, ip ipath.Pat
 		}
 	}
 
-	md, err := api.ResolvePath(ctx, imPath)
+	md, err := mb.ResolvePath(ctx, imPath)
 	if err != nil {
 		return nil, err
 	}
@@ -192,27 +192,27 @@ func doWithoutRedirect(req *http.Request) (*http.Response, error) {
 	return res, nil
 }
 
-func newTestServerAndNode(t *testing.T, ns mockNamesys) (*httptest.Server, *mockAPI, cid.Cid) {
-	api, root := newMockAPI(t)
-	ts := newTestServer(t, api)
-	return ts, api, root
+func newTestServerAndNode(t *testing.T, ns mockNamesys) (*httptest.Server, *mockBackend, cid.Cid) {
+	backend, root := newMockBackend(t)
+	ts := newTestServer(t, backend)
+	return ts, backend, root
 }
 
-func newTestServer(t *testing.T, api IPFSBackend) *httptest.Server {
-	return newTestServerWithConfig(t, api, Config{
+func newTestServer(t *testing.T, backend IPFSBackend) *httptest.Server {
+	return newTestServerWithConfig(t, backend, Config{
 		Headers:               map[string][]string{},
 		DeserializedResponses: true,
 	})
 }
 
-func newTestServerWithConfig(t *testing.T, api IPFSBackend, config Config) *httptest.Server {
+func newTestServerWithConfig(t *testing.T, backend IPFSBackend, config Config) *httptest.Server {
 	AddAccessControlHeaders(config.Headers)
 
-	handler := NewHandler(config, api)
+	handler := NewHandler(config, backend)
 	mux := http.NewServeMux()
 	mux.Handle("/ipfs/", handler)
 	mux.Handle("/ipns/", handler)
-	handler = WithHostname(config, api, mux)
+	handler = NewHostnameHandler(config, backend, mux)
 
 	ts := httptest.NewServer(handler)
 	t.Cleanup(func() { ts.Close() })
@@ -226,20 +226,20 @@ func matchPathOrBreadcrumbs(s string, expected string) bool {
 }
 
 func TestGatewayGet(t *testing.T) {
-	ts, api, root := newTestServerAndNode(t, nil)
+	ts, backend, root := newTestServerAndNode(t, nil)
 	t.Logf("test server url: %s", ts.URL)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name(), "fnord"))
+	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name(), "fnord"))
 	assert.NoError(t, err)
 
-	api.namesys["/ipns/example.com"] = path.FromCid(k.Cid())
-	api.namesys["/ipns/working.example.com"] = path.FromString(k.String())
-	api.namesys["/ipns/double.example.com"] = path.FromString("/ipns/working.example.com")
-	api.namesys["/ipns/triple.example.com"] = path.FromString("/ipns/double.example.com")
-	api.namesys["/ipns/broken.example.com"] = path.FromString("/ipns/" + k.Cid().String())
+	backend.namesys["/ipns/example.com"] = path.FromCid(k.Cid())
+	backend.namesys["/ipns/working.example.com"] = path.FromString(k.String())
+	backend.namesys["/ipns/double.example.com"] = path.FromString("/ipns/working.example.com")
+	backend.namesys["/ipns/triple.example.com"] = path.FromString("/ipns/double.example.com")
+	backend.namesys["/ipns/broken.example.com"] = path.FromString("/ipns/" + k.Cid().String())
 	// We picked .man because:
 	// 1. It's a valid TLD.
 	// 2. Go treats it as the file extension for "man" files (even though
@@ -247,7 +247,7 @@ func TestGatewayGet(t *testing.T) {
 	//
 	// Unfortunately, this may not work on all platforms as file type
 	// detection is platform dependent.
-	api.namesys["/ipns/example.man"] = path.FromString(k.String())
+	backend.namesys["/ipns/example.man"] = path.FromString(k.String())
 
 	t.Log(ts.URL)
 	for _, test := range []struct {
@@ -335,17 +335,17 @@ func TestUriQueryRedirect(t *testing.T) {
 }
 
 func TestIPNSHostnameRedirect(t *testing.T) {
-	ts, api, root := newTestServerAndNode(t, nil)
+	ts, backend, root := newTestServerAndNode(t, nil)
 	t.Logf("test server url: %s", ts.URL)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
+	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
 	assert.NoError(t, err)
 
 	t.Logf("k: %s\n", k)
-	api.namesys["/ipns/example.net"] = path.FromString(k.String())
+	backend.namesys["/ipns/example.net"] = path.FromString(k.String())
 
 	// make request to directory containing index.html
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/foo", nil)
@@ -390,24 +390,24 @@ func TestIPNSHostnameRedirect(t *testing.T) {
 // This is basic regression test: additional end-to-end tests
 // can be found in test/sharness/t0115-gateway-dir-listing.sh
 func TestIPNSHostnameBacklinks(t *testing.T) {
-	ts, api, root := newTestServerAndNode(t, nil)
+	ts, backend, root := newTestServerAndNode(t, nil)
 	t.Logf("test server url: %s", ts.URL)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
+	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
 	assert.NoError(t, err)
 
 	// create /ipns/example.net/foo/
-	k2, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(k, "foo? #<'"))
+	k2, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(k, "foo? #<'"))
 	assert.NoError(t, err)
 
-	k3, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(k, "foo? #<'/bar"))
+	k3, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(k, "foo? #<'/bar"))
 	assert.NoError(t, err)
 
 	t.Logf("k: %s\n", k)
-	api.namesys["/ipns/example.net"] = path.FromString(k.String())
+	backend.namesys["/ipns/example.net"] = path.FromString(k.String())
 
 	// make request to directory listing
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/foo%3F%20%23%3C%27/", nil)
@@ -474,17 +474,17 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 }
 
 func TestPretty404(t *testing.T) {
-	ts, api, root := newTestServerAndNode(t, nil)
+	ts, backend, root := newTestServerAndNode(t, nil)
 	t.Logf("test server url: %s", ts.URL)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
+	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
 	assert.NoError(t, err)
 
 	host := "example.net"
-	api.namesys["/ipns/"+host] = path.FromString(k.String())
+	backend.namesys["/ipns/"+host] = path.FromString(k.String())
 
 	for _, test := range []struct {
 		path   string
@@ -620,12 +620,12 @@ func TestIpnsBase58MultihashRedirect(t *testing.T) {
 }
 
 func TestIpfsTrustlessMode(t *testing.T) {
-	api, root := newMockAPI(t)
+	backend, root := newMockBackend(t)
 
-	ts := newTestServerWithConfig(t, api, Config{
+	ts := newTestServerWithConfig(t, backend, Config{
 		Headers:   map[string][]string{},
 		NoDNSLink: false,
-		PublicGateways: map[string]*Specification{
+		PublicGateways: map[string]*PublicGateway{
 			"trustless.com": {
 				Paths: []string{"/ipfs", "/ipns"},
 			},
@@ -700,14 +700,14 @@ func TestIpfsTrustlessMode(t *testing.T) {
 }
 
 func TestIpnsTrustlessMode(t *testing.T) {
-	api, root := newMockAPI(t)
-	api.namesys["/ipns/trustless.com"] = path.FromCid(root)
-	api.namesys["/ipns/trusted.com"] = path.FromCid(root)
+	backend, root := newMockBackend(t)
+	backend.namesys["/ipns/trustless.com"] = path.FromCid(root)
+	backend.namesys["/ipns/trusted.com"] = path.FromCid(root)
 
-	ts := newTestServerWithConfig(t, api, Config{
+	ts := newTestServerWithConfig(t, backend, Config{
 		Headers:   map[string][]string{},
 		NoDNSLink: false,
-		PublicGateways: map[string]*Specification{
+		PublicGateways: map[string]*PublicGateway{
 			"trustless.com": {
 				Paths: []string{"/ipfs", "/ipns"},
 			},
@@ -745,12 +745,12 @@ func TestIpnsTrustlessMode(t *testing.T) {
 }
 
 func TestDagJsonCborPreview(t *testing.T) {
-	api, root := newMockAPI(t)
+	backend, root := newMockBackend(t)
 
-	ts := newTestServerWithConfig(t, api, Config{
+	ts := newTestServerWithConfig(t, backend, Config{
 		Headers:   map[string][]string{},
 		NoDNSLink: false,
-		PublicGateways: map[string]*Specification{
+		PublicGateways: map[string]*PublicGateway{
 			"example.com": {
 				Paths:                 []string{"/ipfs", "/ipns"},
 				UseSubdomains:         true,
@@ -764,7 +764,7 @@ func TestDagJsonCborPreview(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	resolvedPath, err := api.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name(), "example"))
+	resolvedPath, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name(), "example"))
 	assert.NoError(t, err)
 
 	cidStr := resolvedPath.Cid().String()

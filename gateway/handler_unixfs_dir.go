@@ -70,7 +70,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	var idxFile files.File
 	if isHeadRequest {
 		var idx files.Node
-		_, idx, err = i.api.Head(ctx, imIndexPath)
+		_, idx, err = i.backend.Head(ctx, imIndexPath)
 		if err == nil {
 			f, ok := idx.(files.File)
 			if !ok {
@@ -81,7 +81,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		}
 	} else {
 		var getResp *GetResponse
-		_, getResp, err = i.api.Get(ctx, imIndexPath, ranges...)
+		_, getResp, err = i.backend.Get(ctx, imIndexPath, ranges...)
 		if err == nil {
 			if getResp.bytes == nil {
 				i.webError(w, r, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
