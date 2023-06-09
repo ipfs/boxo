@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type badSeeker struct {
@@ -30,33 +30,33 @@ func TestLazySeekerError(t *testing.T) {
 		size:   underlyingBuffer.Size(),
 	}
 	off, err := s.Seek(0, io.SeekEnd)
-	assert.NoError(t, err)
-	assert.Equal(t, s.size, off, "expected to seek to the end")
+	require.NoError(t, err)
+	require.Equal(t, s.size, off, "expected to seek to the end")
 
 	// shouldn't have actually seeked.
 	b, err := io.ReadAll(s)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, len(b), "expected to read nothing")
+	require.NoError(t, err)
+	require.Equal(t, 0, len(b), "expected to read nothing")
 
 	// shouldn't need to actually seek.
 	off, err = s.Seek(0, io.SeekStart)
-	assert.NoError(t, err)
-	assert.Equal(t, int64(0), off, "expected to seek to the start")
+	require.NoError(t, err)
+	require.Equal(t, int64(0), off, "expected to seek to the start")
 
 	b, err = io.ReadAll(s)
-	assert.NoError(t, err)
-	assert.Equal(t, "fubar", string(b), "expected to read string")
+	require.NoError(t, err)
+	require.Equal(t, "fubar", string(b), "expected to read string")
 
 	// should fail the second time.
 	off, err = s.Seek(0, io.SeekStart)
-	assert.NoError(t, err)
-	assert.Equal(t, int64(0), off, "expected to seek to the start")
+	require.NoError(t, err)
+	require.Equal(t, int64(0), off, "expected to seek to the start")
 
 	// right here...
 	b, err = io.ReadAll(s)
-	assert.NotNil(t, err)
-	assert.Equal(t, errBadSeek, err)
-	assert.Equal(t, 0, len(b), "expected to read nothing")
+	require.NotNil(t, err)
+	require.Equal(t, errBadSeek, err)
+	require.Equal(t, 0, len(b), "expected to read nothing")
 }
 
 func TestLazySeeker(t *testing.T) {
@@ -69,25 +69,25 @@ func TestLazySeeker(t *testing.T) {
 		t.Helper()
 		var buf [1]byte
 		n, err := io.ReadFull(s, buf[:])
-		assert.NoError(t, err)
-		assert.Equal(t, 1, n, "expected to read one byte, read %d", n)
-		assert.Equal(t, b, buf[0])
+		require.NoError(t, err)
+		require.Equal(t, 1, n, "expected to read one byte, read %d", n)
+		require.Equal(t, b, buf[0])
 	}
 	expectSeek := func(whence int, off, expOff int64, expErr string) {
 		t.Helper()
 		n, err := s.Seek(off, whence)
 		if expErr == "" {
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		} else {
-			assert.EqualError(t, err, expErr)
+			require.EqualError(t, err, expErr)
 		}
-		assert.Equal(t, expOff, n)
+		require.Equal(t, expOff, n)
 	}
 
 	expectSeek(io.SeekEnd, 0, s.size, "")
 	b, err := io.ReadAll(s)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, len(b), "expected to read nothing")
+	require.NoError(t, err)
+	require.Equal(t, 0, len(b), "expected to read nothing")
 	expectSeek(io.SeekEnd, -1, s.size-1, "")
 	expectByte('r')
 	expectSeek(io.SeekStart, 0, 0, "")
