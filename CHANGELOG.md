@@ -14,8 +14,6 @@ The following emojis are used to highlight certain changes:
 
 ## [Unreleased]
 
-* ✨ The gateway now supports partial CAR exports via query parameters from [IPIP-402](https://github.com/ipfs/specs/pull/402).
-
 ### Added
 
 ### Changed
@@ -25,6 +23,38 @@ The following emojis are used to highlight certain changes:
 ### Fixed
 
 ### Security
+
+## [0.10.0] - 2023-06-09
+
+### Added
+
+* ✨ The gateway now supports partial CAR exports via query parameters from [IPIP-402](https://github.com/ipfs/specs/pull/402).
+
+### Changed
+
+* 🛠 A few trivial breaking changes have been done to the gateway:
+  * The signature of `IPFSBackend.GetCAR` has been adapted to support [IPIP-402](https://github.com/ipfs/specs/pull/402) CAR Parameters.
+  * A few variables have been renamed for consistency:
+    * `WithHostname` -> `NewHostnameHandler`
+    * `Specification` -> `PublicGateway`
+    * `NewErrorResponse` -> `NewErrorStatusCode`
+    * `NewErrorResponseForCode` -> `NewErrorStatusCodeFromStatus`
+    * `BlocksGateway` -> `BlocksBackend`
+    * `BlocksGatewayOption` -> `BlocksBackendOption`
+    * `NewBlocksGateway` -> `NewBlocksBackend`
+  * Some functions that are not supposed to be outside of the package were removed: `ServeContent`.
+
+### Removed
+
+None.
+
+### Fixed
+
+None.
+
+### Security
+
+None.
 
 ## [0.9.0] - 2023-06-08
 
