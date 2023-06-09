@@ -18,7 +18,7 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
+	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "subdir-special-chars"))
 	require.NoError(t, err)
 
 	// create /ipns/example.net/foo/

@@ -26,7 +26,7 @@ func TestGatewayGet(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name(), "fnord"))
+	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "subdir", "fnord"))
 	require.NoError(t, err)
 
 	backend.namesys["/ipns/example.com"] = path.FromCid(k.Cid())
@@ -92,7 +92,7 @@ func TestPretty404(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), t.Name()))
+	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "subdir-404"))
 	assert.NoError(t, err)
 
 	host := "example.net"
@@ -131,19 +131,171 @@ func TestPretty404(t *testing.T) {
 	}
 }
 
-func TestCacheControlImmutable(t *testing.T) {
+func TestHeaders(t *testing.T) {
+	t.Parallel()
+
 	ts, _, root := newTestServerAndNode(t, nil)
 
-	req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+root.String()+"/", nil)
-	res := mustDoWithoutRedirect(t, req)
+	var (
+		dirCID   = "bafybeihta5xfgxcmyxyq6druvidc7es6ogffdd6zel22l3y4wddju5xxsu"
+		dirPath  = "/ipfs/" + root.String() + "/subdir/"
+		dirRoots = "bafybeifhvgr4ufgwpoj2iyrymrigjhpexvsyfm2elafebkmrei4skunihe," + dirCID
 
-	// check the immutable tag isn't set
-	hdrs, ok := res.Header["Cache-Control"]
-	if ok {
-		for _, hdr := range hdrs {
-			assert.NotContains(t, hdr, "immutable", "unexpected Cache-Control: immutable on directory listing")
+		fileCID   = "bafkreiba3vpkcqpc6xtp3hsatzcod6iwneouzjoq7ymy4m2js6gc3czt6i"
+		filePath  = "/ipfs/" + root.String() + "/subdir/fnord"
+		fileRoots = dirRoots + "," + fileCID
+
+		dagCborCID   = "bafyreiaocls5bt2ha5vszv5pwz34zzcdf3axk3uqa56bgsgvlkbezw67hq"
+		dagCborPath  = "/ipfs/" + root.String() + "/subdir/dag-cbor-document"
+		dagCborRoots = dirRoots + "," + dagCborCID
+	)
+
+	t.Run("Control-Cache-Immutable is not immutable for directories", func(t *testing.T) {
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+root.String()+"/", nil)
+		res := mustDoWithoutRedirect(t, req)
+
+		// check the immutable tag isn't set
+		hdrs, ok := res.Header["Cache-Control"]
+		if ok {
+			for _, hdr := range hdrs {
+				assert.NotContains(t, hdr, "immutable", "unexpected Cache-Control: immutable on directory listing")
+			}
 		}
-	}
+	})
+
+	t.Run("ETag contains expected values", func(t *testing.T) {
+		test := func(responseFormat string, path string, format string, args ...any) {
+			t.Run(responseFormat, func(t *testing.T) {
+				url := ts.URL + path
+				req := mustNewRequest(t, http.MethodGet, url, nil)
+				req.Header.Add("Accept", responseFormat)
+				res := mustDoWithoutRedirect(t, req)
+				require.Equal(t, http.StatusOK, res.StatusCode)
+				require.Regexp(t, `^`+fmt.Sprintf(format, args...)+`$`, res.Header.Get("Etag"))
+			})
+		}
+		test("", dirPath, `"DirIndex-(.*)_CID-%s"`, dirCID)
+		test("text/html", dirPath, `"DirIndex-(.*)_CID-%s"`, dirCID)
+		test(carResponseFormat, dirPath, `W/"%s.car.5ovg7dign8ug"`, root.String()) // ETags of CARs on a Path have the root CID in the Etag and hashed information to derive the correct Etag of the full request.
+		test(rawResponseFormat, dirPath, `"%s.raw"`, dirCID)
+		test(tarResponseFormat, dirPath, `W/"%s.x-tar"`, dirCID)
+
+		test("", filePath, `"%s"`, fileCID)
+		test("text/html", filePath, `"%s"`, fileCID)
+		test(carResponseFormat, filePath, `W/"%s.car.fivdlu5uk7ab6"`, root.String())
+		test(rawResponseFormat, filePath, `"%s.raw"`, fileCID)
+		test(tarResponseFormat, filePath, `W/"%s.x-tar"`, fileCID)
+
+		test("", dagCborPath, `"%s.dag-cbor"`, dagCborCID)
+		test("text/html", dagCborPath+"/", `"DagIndex-(.*)_CID-%s"`, dagCborCID)
+		test(carResponseFormat, dagCborPath, `W/"%s.car.5b4vl0vt6odpt"`, root.String())
+		test(rawResponseFormat, dagCborPath, `"%s.raw"`, dagCborCID)
+		test(dagJsonResponseFormat, dagCborPath, `"%s.dag-json"`, dagCborCID)
+		test(dagCborResponseFormat, dagCborPath, `"%s.dag-cbor"`, dagCborCID)
+	})
+
+	t.Run("If-None-Match with previous Etag returns Not Modified", func(t *testing.T) {
+		test := func(responseFormat string, path string) {
+			t.Run(responseFormat, func(t *testing.T) {
+				url := ts.URL + path
+				req := mustNewRequest(t, http.MethodGet, url, nil)
+				req.Header.Add("Accept", responseFormat)
+				res := mustDoWithoutRedirect(t, req)
+				require.Equal(t, http.StatusOK, res.StatusCode)
+				etag := res.Header.Get("Etag")
+				require.NotEmpty(t, etag)
+				req = mustNewRequest(t, http.MethodGet, url, nil)
+				req.Header.Add("Accept", responseFormat)
+				req.Header.Add("If-None-Match", etag)
+				res = mustDoWithoutRedirect(t, req)
+				require.Equal(t, http.StatusNotModified, res.StatusCode)
+			})
+		}
+
+		test("", dirPath)
+		test("text/html", dirPath)
+		test(carResponseFormat, dirPath)
+		test(rawResponseFormat, dirPath)
+		test(tarResponseFormat, dirPath)
+
+		test("", filePath)
+		test("text/html", filePath)
+		test(carResponseFormat, filePath)
+		test(rawResponseFormat, filePath)
+		test(tarResponseFormat, filePath)
+
+		test("", dagCborPath)
+		test("text/html", dagCborPath+"/")
+		test(carResponseFormat, dagCborPath)
+		test(rawResponseFormat, dagCborPath)
+		test(dagJsonResponseFormat, dagCborPath)
+		test(dagCborResponseFormat, dagCborPath)
+	})
+
+	t.Run("X-Ipfs-Roots contains expected values", func(t *testing.T) {
+		test := func(responseFormat string, path string, roots string) {
+			t.Run(responseFormat, func(t *testing.T) {
+				url := ts.URL + path
+				req := mustNewRequest(t, http.MethodGet, url, nil)
+				req.Header.Add("Accept", responseFormat)
+				res := mustDoWithoutRedirect(t, req)
+				require.Equal(t, http.StatusOK, res.StatusCode)
+				require.Equal(t, roots, res.Header.Get("X-Ipfs-Roots"))
+			})
+		}
+
+		test("", dirPath, dirRoots)
+		test("text/html", dirPath, dirRoots)
+		test(carResponseFormat, dirPath, dirRoots)
+		test(rawResponseFormat, dirPath, dirRoots)
+		test(tarResponseFormat, dirPath, dirRoots)
+
+		test("", filePath, fileRoots)
+		test("text/html", filePath, fileRoots)
+		test(carResponseFormat, filePath, fileRoots)
+		test(rawResponseFormat, filePath, fileRoots)
+		test(tarResponseFormat, filePath, fileRoots)
+
+		test("", dagCborPath, dagCborRoots)
+		test("text/html", dagCborPath+"/", dagCborRoots)
+		test(carResponseFormat, dagCborPath, dagCborRoots)
+		test(rawResponseFormat, dagCborPath, dagCborRoots)
+		test(dagJsonResponseFormat, dagCborPath, dagCborRoots)
+		test(dagCborResponseFormat, dagCborPath, dagCborRoots)
+	})
+
+	t.Run("If-None-Match with wrong value forces path resolution, but X-Ipfs-Roots is correct (regression)", func(t *testing.T) {
+		test := func(responseFormat string, path string, roots string) {
+			t.Run(responseFormat, func(t *testing.T) {
+				url := ts.URL + path
+				req := mustNewRequest(t, http.MethodGet, url, nil)
+				req.Header.Add("Accept", responseFormat)
+				req.Header.Add("If-None-Match", "just-some-gibberish")
+				res := mustDoWithoutRedirect(t, req)
+				require.Equal(t, http.StatusOK, res.StatusCode)
+				require.Equal(t, roots, res.Header.Get("X-Ipfs-Roots"))
+			})
+		}
+
+		test("", dirPath, dirRoots)
+		test("text/html", dirPath, dirRoots)
+		test(carResponseFormat, dirPath, dirRoots)
+		test(rawResponseFormat, dirPath, dirRoots)
+		test(tarResponseFormat, dirPath, dirRoots)
+
+		test("", filePath, fileRoots)
+		test("text/html", filePath, fileRoots)
+		test(carResponseFormat, filePath, fileRoots)
+		test(rawResponseFormat, filePath, fileRoots)
+		test(tarResponseFormat, filePath, fileRoots)
+
+		test("", dagCborPath, dagCborRoots)
+		test("text/html", dagCborPath+"/", dagCborRoots)
+		test(carResponseFormat, dagCborPath, dagCborRoots)
+		test(rawResponseFormat, dagCborPath, dagCborRoots)
+		test(dagJsonResponseFormat, dagCborPath, dagCborRoots)
+		test(dagCborResponseFormat, dagCborPath, dagCborRoots)
+	})
 }
 
 func TestGoGetSupport(t *testing.T) {
@@ -157,7 +309,6 @@ func TestGoGetSupport(t *testing.T) {
 
 func TestRedirects(t *testing.T) {
 	t.Parallel()
-	// Move here?
 
 	t.Run("IPNS Base58 Multihash Redirect", func(t *testing.T) {
 		ts, _, _ := newTestServerAndNode(t, nil)
@@ -282,7 +433,6 @@ func TestDeserializedResponses(t *testing.T) {
 				},
 			},
 		})
-		t.Logf("test server url: %s", ts.URL)
 
 		trustedFormats := []string{"", "dag-json", "dag-cbor", "tar", "json", "cbor"}
 		trustlessFormats := []string{"raw", "car"}
@@ -305,7 +455,7 @@ func TestDeserializedResponses(t *testing.T) {
 
 		doIpfsCidPathRequests := func(t *testing.T, formats []string, host string, expectedStatus int) {
 			for _, format := range formats {
-				doRequest(t, "/ipfs/"+root.String()+"/EmptyDir/?format="+format, host, expectedStatus)
+				doRequest(t, "/ipfs/"+root.String()+"/empty-dir/?format="+format, host, expectedStatus)
 			}
 		}
 
@@ -363,7 +513,6 @@ func TestDeserializedResponses(t *testing.T) {
 				},
 			},
 		})
-		t.Logf("test server url: %s", ts.URL)
 
 		doRequest := func(t *testing.T, path, host string, expectedStatus int) {
 			req := mustNewRequest(t, http.MethodGet, ts.URL+path, nil)
@@ -378,11 +527,11 @@ func TestDeserializedResponses(t *testing.T) {
 		// DNSLink only. Not supported for trustless. Supported for trusted, except
 		// format=ipns-record which is unavailable for DNSLink.
 		doRequest(t, "/", "trustless.com", http.StatusNotAcceptable)
-		doRequest(t, "/EmptyDir/", "trustless.com", http.StatusNotAcceptable)
+		doRequest(t, "/empty-dir/", "trustless.com", http.StatusNotAcceptable)
 		doRequest(t, "/?format=ipns-record", "trustless.com", http.StatusNotAcceptable)
 
 		doRequest(t, "/", "trusted.com", http.StatusOK)
-		doRequest(t, "/EmptyDir/", "trusted.com", http.StatusOK)
+		doRequest(t, "/empty-dir/", "trusted.com", http.StatusOK)
 		doRequest(t, "/?format=ipns-record", "trusted.com", http.StatusBadRequest)
 	})
 }
