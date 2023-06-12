@@ -17,7 +17,7 @@ require (
 	github.com/ipfs/bbloom v0.0.4
 	github.com/ipfs/go-bitfield v1.1.0
 	github.com/ipfs/go-block-format v0.1.2
-	github.com/ipfs/go-cid v0.4.0
+	github.com/ipfs/go-cid v0.4.2-0.20230612091241-80d1e915f662
 	github.com/ipfs/go-cidutil v0.1.0
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-detect-race v0.0.1
@@ -48,9 +48,9 @@ require (
 	github.com/multiformats/go-base32 v0.1.0
 	github.com/multiformats/go-multiaddr v0.8.0
 	github.com/multiformats/go-multiaddr-dns v0.3.1
-	github.com/multiformats/go-multibase v0.1.1
+	github.com/multiformats/go-multibase v0.2.0
 	github.com/multiformats/go-multicodec v0.8.1
-	github.com/multiformats/go-multihash v0.2.1
+	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.4.1
 	github.com/multiformats/go-varint v0.0.7
 	github.com/petar/GoLLRB v0.0.0-20210522233825-ae3b015fd3e9

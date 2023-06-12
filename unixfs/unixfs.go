@@ -17,14 +17,14 @@ import (
 )
 
 // Entry is a basic unit block.
-type Entry struct {
-	Cid cid.Cid
+type Entry[S cid.Storage] struct {
+	Cid cid.GenericCid[S]
 	// tSize encode the comulative size of the DAG.
 	// the zero value indicates tsize is missing.
 	tSize uint64
 }
 
-func (e Entry) TSize() (tsize uint64, ok bool) {
+func (e Entry[S]) TSize() (tsize uint64, ok bool) {
 	if e.tSize == 0 {
 		return 0, false
 	}
@@ -32,47 +32,47 @@ func (e Entry) TSize() (tsize uint64, ok bool) {
 	return e.tSize - 1, true
 }
 
-func (e Entry) Untyped() Entry {
+func (e Entry[S]) Untyped() Entry[S] {
 	return e
 }
 
-var _ Node = File{}
+var _ Node[string] = File[string, string]{}
 
-type File struct {
+type File[Self, Children cid.Storage] struct {
 	badge
-	Entry
+	Entry[Self]
 	Data      []byte
-	Childrens []FileEntry
+	Childrens []FileEntry[Children]
 }
 
-func FileEntryWithTSize(c cid.Cid, fileSize, tSize uint64) FileEntry {
-	return FileEntry{Entry: Entry{Cid: c, tSize: tSize + 1}, FileSize: fileSize}
+func FileEntryWithTSize[S cid.Storage](c cid.GenericCid[S], fileSize, tSize uint64) FileEntry[S] {
+	return FileEntry[S]{Entry: Entry[S]{Cid: c, tSize: tSize + 1}, FileSize: fileSize}
 }
 
-type FileEntry struct {
-	Entry
+type FileEntry[S cid.Storage] struct {
+	Entry[S]
 	// FileSize is the logical size of the file at this location once decoded.
 	FileSize uint64
 }
 
-var _ Node = Directory{}
+var _ Node[string] = Directory[string, string]{}
 
-type Directory struct {
+type Directory[Self, Children cid.Storage] struct {
 	badge
-	Entry
-	Childrens []DirectoryEntry
+	Entry[Self]
+	Childrens []DirectoryEntry[Children]
 }
 
-type DirectoryEntry struct {
-	Entry
+type DirectoryEntry[S cid.Storage] struct {
+	Entry[S]
 	Name AliasableString
 }
 
-var _ Node = Symlink{}
+var _ Node[string] = Symlink[string]{}
 
-type Symlink struct {
+type Symlink[S cid.Storage] struct {
 	badge
-	Entry
+	Entry[S]
 	Value []byte
 }
 
@@ -86,9 +86,9 @@ func (badge) nodeBadge() {
 
 // Node is an interface that can exclusively be a [File], [Directory] or [Symlink]. We might add more in the future.
 // You MUST NOT embed this interface, it's only purpose is to provide type safe enums.
-type Node interface {
+type Node[S cid.Storage] interface {
 	// Untyped returns the untyped [Entry] for that value stripped of all type related information.
-	Untyped() Entry
+	Untyped() Entry[S]
 	// nodeBadge must never be called it's just here to trick the type checker.
 	nodeBadge()
 }
@@ -97,8 +97,8 @@ type Node interface {
 // [File.Data], [DirectoryEntry.Name] and [Symlink.Value] values are aliased to b.RawData().
 // The data argument MUST hash to cid, this wont check the validaty of the hash.
 // It assumes the size of the block is limited and reasonable.
-func Parse(b blocks.Block) (Node, error) {
-	switch t, f, d, s, err := ParseAppend(nil, nil, b.Cid(), b.RawData()); t {
+func Parse[Children cid.Storage](b blocks.Block) (Node[string], error) {
+	switch t, f, d, s, err := ParseAppend[string, Children](nil, nil, b.Cid(), b.RawData()); t {
 	case TError:
 		return nil, err
 	case TFile:
@@ -121,7 +121,11 @@ func Parse(b blocks.Block) (Node, error) {
 // It only ever clobber extra capacity within the slices, it may do so in the case of an error.
 // The data argument MUST hash to cid, this wont check the validaty of the hash.
 // It assumes the size of the block is limited and reasonable.
-func ParseAppend(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry, inCid cid.Cid, data []byte) (t Type, f File, d Directory, s Symlink, err error) {
+func ParseAppend[Self, Children cid.Storage](
+	fileChildrens []FileEntry[Children],
+	directoryChildrens []DirectoryEntry[Children],
+	inCid cid.GenericCid[Self], data []byte,
+) (t Type, f File[Self, Children], d Directory[Self, Children], s Symlink[Self], err error) {
 	// Avoid clobbering the used part of the slice.
 	fileChildrens = fileChildrens[len(fileChildrens):]
 	directoryChildrens = directoryChildrens[len(directoryChildrens):]
@@ -130,8 +134,8 @@ func ParseAppend(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry,
 	switch c := multicodec.Code(pref.Codec); c {
 	case multicodec.Raw:
 		t = TFile
-		f = File{
-			Entry: Entry{
+		f = File[Self, Children]{
+			Entry: Entry[Self]{
 				Cid:   inCid,
 				tSize: uint64(len(data)) + 1,
 			},
@@ -140,7 +144,7 @@ func ParseAppend(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry,
 		}
 		return
 	case multicodec.DagPb:
-		return parsePB(fileChildrens, directoryChildrens, inCid, data)
+		return parsePB[Self, Children](fileChildrens, directoryChildrens, inCid, data)
 	default:
 		err = errors.New("unsupported codec: " + c.String())
 		return

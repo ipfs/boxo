@@ -69,7 +69,11 @@ const (
 // 	  optional Data Data = 1;
 // 	}
 
-func parsePB(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry, inCid cid.Cid, origData []byte) (typ Type, file File, dir Directory, sym Symlink, err error) {
+func parsePB[Self, Children cid.Storage](
+	fileChildrens []FileEntry[Children],
+	directoryChildrens []DirectoryEntry[Children],
+	inCid cid.GenericCid[Self], origData []byte,
+) (typ Type, file File[Self, Children], dir Directory[Self, Children], sym Symlink[Self], err error) {
 	var dataType uint64
 	var fileLinks, blocksizes uint
 	var content []byte
@@ -81,8 +85,8 @@ func parsePB(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry, inC
 		// FIXME: is an empty name a valid file name in a directory ?
 		directoryChildrens = slices.Grow(directoryChildrens, len(fileChildrens)+extra)
 		for _, v := range fileChildrens {
-			directoryChildrens = append(directoryChildrens, DirectoryEntry{
-				Entry: Entry{Cid: v.Cid, tSize: v.tSize},
+			directoryChildrens = append(directoryChildrens, DirectoryEntry[Children]{
+				Entry: Entry[Children]{Cid: v.Cid, tSize: v.tSize},
 				Name:  AliasableString{},
 			})
 		}
@@ -125,8 +129,7 @@ func parsePB(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry, inC
 				return
 			}
 
-			// FIXME: add support aliased CIDs in github.com/ipfs/go-cid
-			var c cid.Cid
+			var c cid.GenericCid[Children]
 			var name []byte
 			var tSize uint64 // will be offset by +1, zero means not found
 
@@ -182,7 +185,7 @@ func parsePB(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry, inC
 								fileChildrens[blocksizes].FileSize = blocksize
 							} else {
 								// we have discovered more blocksizes than links at this point, add new entries
-								fileChildrens = append(fileChildrens, FileEntry{FileSize: blocksize})
+								fileChildrens = append(fileChildrens, FileEntry[Children]{FileSize: blocksize})
 							}
 							blocksizes++
 							return nil
@@ -244,7 +247,7 @@ func parsePB(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry, inC
 							}
 							mData = mData[l:]
 
-							c, err = cid.Cast(cBytes)
+							c, err = cid.CastGeneric[Children](cBytes)
 							if err != nil {
 								err = fmt.Errorf("failed to decode cid: %w", err)
 								return
@@ -293,7 +296,7 @@ func parsePB(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry, inC
 
 			if outerNumber == 2 {
 				// repeated PBLink Links = 2;
-				if c == cid.Undef {
+				if !c.Defined() {
 					err = errors.New("link is missing CID")
 				}
 
@@ -310,8 +313,8 @@ func parsePB(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry, inC
 						moveZeroNamedDirectoryEntriesToDirectoryChildrens(1)
 					}
 
-					directoryChildrens = append(directoryChildrens, DirectoryEntry{
-						Entry: Entry{Cid: c, tSize: tSize},
+					directoryChildrens = append(directoryChildrens, DirectoryEntry[Children]{
+						Entry: Entry[Children]{Cid: c, tSize: tSize},
 						Name:  AliasableString(name),
 					})
 				} else {
@@ -322,7 +325,7 @@ func parsePB(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry, inC
 						fileChildrens[fileLinks].tSize = tSize
 					} else {
 						// we have discovered more links than blocksizes at this point, add new entries
-						fileChildrens = append(fileChildrens, FileEntry{Entry: Entry{Cid: c, tSize: tSize}})
+						fileChildrens = append(fileChildrens, FileEntry[Children]{Entry: Entry[Children]{Cid: c, tSize: tSize}})
 					}
 					fileLinks++
 				}
@@ -354,8 +357,8 @@ func parsePB(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry, inC
 		}
 
 		typ = TFile
-		file = File{
-			Entry:     Entry{Cid: inCid, tSize: selfTSize + uint64(len(origData))},
+		file = File[Self, Children]{
+			Entry:     Entry[Self]{Cid: inCid, tSize: selfTSize + uint64(len(origData))},
 			Data:      content,
 			Childrens: fileChildrens,
 		}

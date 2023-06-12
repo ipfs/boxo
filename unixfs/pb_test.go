@@ -19,10 +19,10 @@ func BenchmarkPB(b *testing.B) {
 	if err != nil {
 		b.Fatal()
 	}
-	c := cid.NewCidV0(mh)
+	c := cid.NewCidV0Generic[[]byte](mh)
 
 	b.ResetTimer()
-	var out []FileEntry
+	var out []FileEntry[[]byte]
 	for i := b.N; i != 0; i-- {
 		_, f, _, _, _ := parsePB(out[:0], nil, c, data)
 		out = f.Childrens
@@ -40,6 +40,7 @@ func FuzzPB(f *testing.F) {
 			// Assume a block limit is inplace.
 			return
 		}
-		parsePB(nil, nil, cid.Undef, b)
+		var zero cid.GenericCid[[]byte]
+		parsePB[[]byte, []byte](nil, nil, zero, b)
 	})
 }

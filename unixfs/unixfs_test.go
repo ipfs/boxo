@@ -9,6 +9,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	mh "github.com/multiformats/go-multihash"
+	"golang.org/x/exp/slices"
 )
 
 func TestRaw(t *testing.T) {
@@ -20,7 +21,7 @@ func TestRaw(t *testing.T) {
 	}
 	c := cid.NewCidV1(cid.Raw, mh)
 
-	validate := func(t *testing.T, f File) {
+	validate := func(t *testing.T, f File[string, string]) {
 		if !bytes.Equal(data, f.Data) {
 			t.Errorf("expected %v got %v", data, f.Data)
 		}
@@ -44,11 +45,11 @@ func TestRaw(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		a, err := Parse(b)
+		a, err := Parse[string](b)
 		if err != nil {
 			t.Fatal(err)
 		}
-		f, ok := a.(File)
+		f, ok := a.(File[string, string])
 		if !ok {
 			t.Fatalf("expected File got %T", a)
 		}
@@ -56,7 +57,7 @@ func TestRaw(t *testing.T) {
 	})
 	t.Run("ParseAppend", func(t *testing.T) {
 		t.Parallel()
-		var someArr [2]FileEntry
+		var someArr [2]FileEntry[string]
 		typ, f, _, _, err := ParseAppend(someArr[:1], nil, c, data)
 		if err != nil {
 			t.Fatal(err)
@@ -86,12 +87,12 @@ func TestFilePB(t *testing.T) {
 
 	const firstChildrenTSize = 45623854
 	const secondChildrenTSize = 1690667
-	expectedChildrens := [2]FileEntry{
+	expectedChildrens := [2]FileEntry[string]{
 		FileEntryWithTSize(cid.MustParse("QmUBwP7RczPWbJSCpR4BygzvTNbJ2sfjt5yuRphSVYaJar"), 45613056, firstChildrenTSize),
 		FileEntryWithTSize(cid.MustParse("QmeKhUSkRVDFbxssXpnb15UQf25YdWN9Ck3rjfZA3tvD8h"), 1690225, secondChildrenTSize),
 	}
 
-	validate := func(t *testing.T, f File) {
+	validate := func(t *testing.T, f File[string, string]) {
 		if f.Cid != c {
 			t.Errorf("expected %v cid got %v", c, f.Cid)
 		}
@@ -109,7 +110,7 @@ func TestFilePB(t *testing.T) {
 
 		if len(f.Childrens) != 2 {
 			t.Errorf("expected 2 childrens got %v", f.Childrens)
-		} else if *(*[2]FileEntry)(f.Childrens) != expectedChildrens {
+		} else if !slices.Equal(f.Childrens, expectedChildrens[:]) {
 			t.Errorf("childrens don't match, expected %v got %v", expectedChildrens, f.Childrens)
 		}
 	}
@@ -120,11 +121,11 @@ func TestFilePB(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		a, err := Parse(b)
+		a, err := Parse[string](b)
 		if err != nil {
 			t.Fatal(err)
 		}
-		f, ok := a.(File)
+		f, ok := a.(File[string, string])
 		if !ok {
 			t.Fatalf("expected File got %T", a)
 		}
@@ -132,7 +133,7 @@ func TestFilePB(t *testing.T) {
 	})
 	t.Run("ParseAppend", func(t *testing.T) {
 		t.Parallel()
-		var someArr [3]FileEntry
+		var someArr [3]FileEntry[string]
 		typ, f, _, _, err := ParseAppend(someArr[:1], nil, c, data)
 		if err != nil {
 			t.Fatal(err)
