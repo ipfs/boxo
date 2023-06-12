@@ -96,6 +96,7 @@ type Node interface {
 // Parse it provides a type safe solution to Decode using the badged interface [Node].
 // [File.Data], [DirectoryEntry.Name] and [Symlink.Value] values are aliased to b.RawData().
 // The data argument MUST hash to cid, this wont check the validaty of the hash.
+// It assumes the size of the block is limited and reasonable.
 func Parse(b blocks.Block) (Node, error) {
 	switch t, f, d, s, err := ParseAppend(nil, nil, b.Cid(), b.RawData()); t {
 	case TError:
@@ -119,24 +120,27 @@ func Parse(b blocks.Block) (Node, error) {
 // It is only ever gonna clobber the slice related to the type of data decoded.
 // It only ever clobber extra capacity within the slices, it may do so in the case of an error.
 // The data argument MUST hash to cid, this wont check the validaty of the hash.
-func ParseAppend(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry, cid cid.Cid, data []byte) (t Type, f File, d Directory, s Symlink, err error) {
+// It assumes the size of the block is limited and reasonable.
+func ParseAppend(fileChildrens []FileEntry, directoryChildrens []DirectoryEntry, inCid cid.Cid, data []byte) (t Type, f File, d Directory, s Symlink, err error) {
 	// Avoid clobbering the used part of the slice.
 	fileChildrens = fileChildrens[len(fileChildrens):]
 	directoryChildrens = directoryChildrens[len(directoryChildrens):]
 
-	pref := cid.Prefix()
+	pref := inCid.Prefix()
 	switch c := multicodec.Code(pref.Codec); c {
 	case multicodec.Raw:
 		t = TFile
 		f = File{
 			Entry: Entry{
-				Cid:   cid,
+				Cid:   inCid,
 				tSize: uint64(len(data)) + 1,
 			},
 			Data:      data,
 			Childrens: fileChildrens,
 		}
 		return
+	case multicodec.DagPb:
+		return parsePB(fileChildrens, directoryChildrens, inCid, data)
 	default:
 		err = errors.New("unsupported codec: " + c.String())
 		return
