@@ -176,8 +176,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := log.With("from", r.RequestURI)
 	logger.Debug("http request received")
 
-	if i.handleUnsupportedHeaders(w, r) ||
-		handleProtocolHandlerRedirect(w, r, i.config) ||
+	if handleProtocolHandlerRedirect(w, r, i.config) ||
 		i.handleServiceWorkerRegistration(w, r) ||
 		handleIpnsB58mhToCidRedirection(w, r) {
 		return
@@ -756,17 +755,6 @@ func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, con
 			w.WriteHeader(http.StatusOK)
 			return true
 		}
-	}
-	return false
-}
-
-func (i *handler) handleUnsupportedHeaders(w http.ResponseWriter, r *http.Request) bool {
-	// X-Ipfs-Gateway-Prefix was removed (https://github.com/ipfs/kubo/issues/7702)
-	// TODO: remove this after  go-ipfs 0.13 ships
-	if prfx := r.Header.Get("X-Ipfs-Gateway-Prefix"); prfx != "" {
-		err := fmt.Errorf("unsupported HTTP header: X-Ipfs-Gateway-Prefix support was removed: https://github.com/ipfs/kubo/issues/7702")
-		i.webError(w, r, err, http.StatusBadRequest)
-		return true
 	}
 	return false
 }
