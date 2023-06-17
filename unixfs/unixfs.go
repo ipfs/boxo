@@ -11,7 +11,7 @@ package unixfs
 import (
 	"errors"
 
-	"github.com/ipfs/go-block-format"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/multiformats/go-multicodec"
 )
@@ -39,6 +39,7 @@ func (e Entry[S]) Untyped() Entry[S] {
 var _ Node[string] = File[string, string]{}
 
 type File[Self, Children cid.Storage] struct {
+	//lint:ignore U1000 this is a badge patern
 	badge
 	Entry[Self]
 	Data      []byte
@@ -58,6 +59,7 @@ type FileEntry[S cid.Storage] struct {
 var _ Node[string] = Directory[string, string]{}
 
 type Directory[Self, Children cid.Storage] struct {
+	//lint:ignore U1000 this is a badge patern
 	badge
 	Entry[Self]
 	Childrens []DirectoryEntry[Children]
@@ -71,6 +73,7 @@ type DirectoryEntry[S cid.Storage] struct {
 var _ Node[string] = Symlink[string]{}
 
 type Symlink[S cid.Storage] struct {
+	//lint:ignore U1000 this is a badge patern
 	badge
 	Entry[S]
 	Value []byte
@@ -80,6 +83,7 @@ type Symlink[S cid.Storage] struct {
 // If you add a new type using this you need to update [Parse].
 type badge struct{}
 
+//lint:ignore U1000 this is a badge patern
 func (badge) nodeBadge() {
 	panic("badge was called even tho it only exists as a way to trick the type checker")
 }
@@ -144,7 +148,7 @@ func ParseAppend[Self, Children cid.Storage](
 		}
 		return
 	case multicodec.DagPb:
-		return parsePB[Self, Children](fileChildrens, directoryChildrens, inCid, data)
+		return parsePB(fileChildrens, directoryChildrens, inCid, data)
 	default:
 		err = errors.New("unsupported codec: " + c.String())
 		return
