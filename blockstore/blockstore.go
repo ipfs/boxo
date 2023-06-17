@@ -16,7 +16,6 @@ import (
 	dsq "github.com/ipfs/go-datastore/query"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
-	uatomic "go.uber.org/atomic"
 )
 
 var logger = logging.Logger("blockstore")
@@ -137,7 +136,6 @@ func NoPrefix() Option {
 func NewBlockstore(d ds.Batching, opts ...Option) Blockstore {
 	bs := &blockstore{
 		datastore: d,
-		rehash:    uatomic.NewBool(false),
 	}
 
 	for _, o := range opts {
@@ -162,7 +160,7 @@ func NewBlockstoreNoPrefix(d ds.Batching) Blockstore {
 type blockstore struct {
 	datastore ds.Batching
 
-	rehash       *uatomic.Bool
+	rehash       atomic.Bool
 	writeThrough bool
 	noPrefix     bool
 }
