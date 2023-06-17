@@ -374,47 +374,51 @@ func parsePB[Self, Children cid.Storage](
 // pbHandleUnknownField must be called right after the tag, it will handle
 // skipping uneeded values if needed.
 func pbHandleUnknownField(t protowire.Type, data []byte) ([]byte, error) {
-	var l int
-	switch t {
-	case protowire.BytesType:
-		_, l = protowire.ConsumeBytes(data)
-	case protowire.VarintType:
-		_, l = protowire.ConsumeVarint(data)
-	case protowire.Fixed64Type:
-		_, l = protowire.ConsumeFixed64(data)
-	case protowire.Fixed32Type:
-		_, l = protowire.ConsumeFixed32(data)
-	case protowire.StartGroupType:
-		// Walks over the group, it must be called after SGROUP tag and before EGROUP.
-		// Groups are an ancient way to create sub messages, they work with start and end tags.
-		// We found an unknown group, skip all of it by tracking the stack of start and ends.
-		groupStack := 1
-		for groupStack != 0 && len(data) != 0 {
-			_, t, l := protowire.ConsumeTag(data)
-			if l < 0 {
-				return nil, protowire.ParseError(l)
-			}
-			data = data[l:]
-			switch t {
-			case protowire.StartGroupType:
-				groupStack++
-			case protowire.EndGroupType:
-				groupStack--
-			}
-		}
-		if groupStack != 0 {
-			return nil, errors.New("unterminated group")
-		}
-		return data, nil
-	case protowire.EndGroupType:
-		return nil, errors.New("unmatched end-group")
-	default:
-		return nil, fmt.Errorf("unknown protobuf type: %v", t)
+	if len(data) == 0 {
+		return nil, errors.New("no field to consume")
 	}
-	if l < 0 {
-		return nil, protowire.ParseError(l)
+
+	var groupStack uint
+	for {
+		var l int
+		switch t {
+		case protowire.BytesType:
+			_, l = protowire.ConsumeBytes(data)
+		case protowire.VarintType:
+			_, l = protowire.ConsumeVarint(data)
+		case protowire.Fixed64Type:
+			_, l = protowire.ConsumeFixed64(data)
+		case protowire.Fixed32Type:
+			_, l = protowire.ConsumeFixed32(data)
+		case protowire.StartGroupType:
+			groupStack++
+			goto next
+		case protowire.EndGroupType:
+			if groupStack == 0 {
+				return nil, errors.New("unmatched end group")
+			}
+			groupStack--
+			goto next
+		default:
+			return nil, fmt.Errorf("unknown protobuf type: %v", t)
+		}
+		if l < 0 {
+			return nil, protowire.ParseError(l)
+		}
+		data = data[l:]
+
+	next:
+		if groupStack == 0 {
+			break
+		}
+
+		_, t, l = protowire.ConsumeTag(data)
+		if l < 0 {
+			return nil, protowire.ParseError(l)
+		}
+		data = data[l:]
 	}
-	return data[l:], nil
+	return data, nil
 }
 
 // pbDecodeNumber will decode a uint64 as best as it can.
