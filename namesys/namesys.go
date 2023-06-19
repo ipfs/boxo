@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 	opts "github.com/ipfs/boxo/coreiface/options/namesys"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
@@ -48,7 +48,7 @@ type mpns struct {
 	ipnsPublisher             Publisher
 
 	staticMap map[string]path.Path
-	cache     *lru.Cache
+	cache     *lru.Cache[string, any]
 }
 
 type Option func(*mpns) error
@@ -60,7 +60,7 @@ func WithCache(size int) Option {
 			return fmt.Errorf("invalid cache size %d; must be > 0", size)
 		}
 
-		cache, err := lru.New(size)
+		cache, err := lru.New[string, any](size)
 		if err != nil {
 			return err
 		}

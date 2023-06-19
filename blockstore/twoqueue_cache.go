@@ -5,7 +5,7 @@ import (
 	"sort"
 	"sync"
 
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -20,15 +20,17 @@ type lock struct {
 	refcnt int
 }
 
-// arccache wraps a BlockStore with an Adaptive Replacement Cache (ARC) that
+// tqcache wraps a BlockStore with an [TwoQueueCache] that
 // does not store the actual blocks, just metadata about them: existence and
 // size. This provides block access-time improvements, allowing
 // to short-cut many searches without querying the underlying datastore.
-type arccache struct {
+//
+// [TwoQueueCache]: https://pkg.go.dev/github.com/hashicorp/golang-lru/v2#TwoQueueCache
+type tqcache struct {
 	lklk sync.Mutex
 	lks  map[string]*lock
 
-	cache *lru.TwoQueueCache
+	cache *lru.TwoQueueCache[string, any]
 
 	blockstore Blockstore
 	viewer     Viewer
@@ -37,24 +39,25 @@ type arccache struct {
 	total metrics.Counter
 }
 
-var _ Blockstore = (*arccache)(nil)
-var _ Viewer = (*arccache)(nil)
+var _ Blockstore = (*tqcache)(nil)
+var _ Viewer = (*tqcache)(nil)
 
-func newARCCachedBS(ctx context.Context, bs Blockstore, lruSize int) (*arccache, error) {
-	cache, err := lru.New2Q(lruSize)
+func newTwoQueueCachedBS(ctx context.Context, bs Blockstore, lruSize int) (*tqcache, error) {
+	cache, err := lru.New2Q[string, any](lruSize)
 	if err != nil {
 		return nil, err
 	}
-	c := &arccache{cache: cache, blockstore: bs, lks: make(map[string]*lock)}
-	c.hits = metrics.NewCtx(ctx, "arc.hits_total", "Number of ARC cache hits").Counter()
-	c.total = metrics.NewCtx(ctx, "arc_total", "Total number of ARC cache requests").Counter()
+
+	c := &tqcache{cache: cache, blockstore: bs, lks: make(map[string]*lock)}
+	c.hits = metrics.NewCtx(ctx, "boxo_blockstore.cache_hits", "Number of blockstore cache hits").Counter()
+	c.total = metrics.NewCtx(ctx, "boxo_blockstore.cache_total", "Total number of blockstore cache requests").Counter()
 	if v, ok := bs.(Viewer); ok {
 		c.viewer = v
 	}
 	return c, nil
 }
 
-func (b *arccache) lock(k string, write bool) {
+func (b *tqcache) lock(k string, write bool) {
 	b.lklk.Lock()
 	lk, ok := b.lks[k]
 	if !ok {
@@ -70,7 +73,7 @@ func (b *arccache) lock(k string, write bool) {
 	}
 }
 
-func (b *arccache) unlock(key string, write bool) {
+func (b *tqcache) unlock(key string, write bool) {
 	b.lklk.Lock()
 	lk := b.lks[key]
 	lk.refcnt--
@@ -89,7 +92,7 @@ func cacheKey(k cid.Cid) string {
 	return string(k.Hash())
 }
 
-func (b *arccache) DeleteBlock(ctx context.Context, k cid.Cid) error {
+func (b *tqcache) DeleteBlock(ctx context.Context, k cid.Cid) error {
 	if !k.Defined() {
 		return nil
 	}
@@ -112,9 +115,9 @@ func (b *arccache) DeleteBlock(ctx context.Context, k cid.Cid) error {
 	return err
 }
 
-func (b *arccache) Has(ctx context.Context, k cid.Cid) (bool, error) {
+func (b *tqcache) Has(ctx context.Context, k cid.Cid) (bool, error) {
 	if !k.Defined() {
-		logger.Error("undefined cid in arccache")
+		logger.Error("undefined cid in tqcache")
 		// Return cache invalid so the call to blockstore happens
 		// in case of invalid key and correct error is created.
 		return false, nil
@@ -137,7 +140,7 @@ func (b *arccache) Has(ctx context.Context, k cid.Cid) (bool, error) {
 	return has, nil
 }
 
-func (b *arccache) GetSize(ctx context.Context, k cid.Cid) (int, error) {
+func (b *tqcache) GetSize(ctx context.Context, k cid.Cid) (int, error) {
 	if !k.Defined() {
 		return -1, ipld.ErrNotFound{Cid: k}
 	}
@@ -168,7 +171,7 @@ func (b *arccache) GetSize(ctx context.Context, k cid.Cid) (int, error) {
 	return blockSize, err
 }
 
-func (b *arccache) View(ctx context.Context, k cid.Cid, callback func([]byte) error) error {
+func (b *tqcache) View(ctx context.Context, k cid.Cid, callback func([]byte) error) error {
 	// shortcircuit and fall back to Get if the underlying store
 	// doesn't support Viewer.
 	if b.viewer == nil {
@@ -212,7 +215,7 @@ func (b *arccache) View(ctx context.Context, k cid.Cid, callback func([]byte) er
 	return cberr
 }
 
-func (b *arccache) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
+func (b *tqcache) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
 	if !k.Defined() {
 		return nil, ipld.ErrNotFound{Cid: k}
 	}
@@ -235,7 +238,7 @@ func (b *arccache) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
 	return bl, err
 }
 
-func (b *arccache) Put(ctx context.Context, bl blocks.Block) error {
+func (b *tqcache) Put(ctx context.Context, bl blocks.Block) error {
 	key := cacheKey(bl.Cid())
 
 	if has, _, ok := b.queryCache(key); ok && has {
@@ -310,7 +313,7 @@ func newKeyedBlocks(cap int) *keyedBlocks {
 	}
 }
 
-func (b *arccache) PutMany(ctx context.Context, bs []blocks.Block) error {
+func (b *tqcache) PutMany(ctx context.Context, bs []blocks.Block) error {
 	good := newKeyedBlocks(len(bs))
 	for _, blk := range bs {
 		// call put on block if result is inconclusive or we are sure that
@@ -348,19 +351,19 @@ func (b *arccache) PutMany(ctx context.Context, bs []blocks.Block) error {
 	return nil
 }
 
-func (b *arccache) HashOnRead(enabled bool) {
+func (b *tqcache) HashOnRead(enabled bool) {
 	b.blockstore.HashOnRead(enabled)
 }
 
-func (b *arccache) cacheHave(key string, have bool) {
+func (b *tqcache) cacheHave(key string, have bool) {
 	b.cache.Add(key, cacheHave(have))
 }
 
-func (b *arccache) cacheSize(key string, blockSize int) {
+func (b *tqcache) cacheSize(key string, blockSize int) {
 	b.cache.Add(key, cacheSize(blockSize))
 }
 
-func (b *arccache) cacheInvalidate(key string) {
+func (b *tqcache) cacheInvalidate(key string) {
 	b.cache.Remove(key)
 }
 
@@ -375,7 +378,7 @@ func (b *arccache) cacheInvalidate(key string) {
 //
 // When ok is true, exists carries the correct answer, and size carries the
 // size, if known, or -1 if not.
-func (b *arccache) queryCache(k string) (exists bool, size int, ok bool) {
+func (b *tqcache) queryCache(k string) (exists bool, size int, ok bool) {
 	b.total.Inc()
 
 	h, ok := b.cache.Get(k)
@@ -391,18 +394,18 @@ func (b *arccache) queryCache(k string) (exists bool, size int, ok bool) {
 	return false, -1, false
 }
 
-func (b *arccache) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
+func (b *tqcache) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return b.blockstore.AllKeysChan(ctx)
 }
 
-func (b *arccache) GCLock(ctx context.Context) Unlocker {
+func (b *tqcache) GCLock(ctx context.Context) Unlocker {
 	return b.blockstore.(GCBlockstore).GCLock(ctx)
 }
 
-func (b *arccache) PinLock(ctx context.Context) Unlocker {
+func (b *tqcache) PinLock(ctx context.Context) Unlocker {
 	return b.blockstore.(GCBlockstore).PinLock(ctx)
 }
 
-func (b *arccache) GCRequested(ctx context.Context) bool {
+func (b *tqcache) GCRequested(ctx context.Context) bool {
 	return b.blockstore.(GCBlockstore).GCRequested(ctx)
 }
