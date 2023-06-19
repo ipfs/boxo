@@ -676,8 +676,9 @@ func TestIpfsTrustlessMode(t *testing.T) {
 	trustlessTests := func(t *testing.T, host string) {
 		doIpfsCidRequests(t, trustlessFormats, host, http.StatusOK)
 		doIpfsCidRequests(t, trustedFormats, host, http.StatusNotAcceptable)
-		doIpfsCidPathRequests(t, trustlessFormats, host, http.StatusNotAcceptable)
 		doIpfsCidPathRequests(t, trustedFormats, host, http.StatusNotAcceptable)
+		doIpfsCidPathRequests(t, []string{"raw"}, host, http.StatusNotAcceptable)
+		doIpfsCidPathRequests(t, []string{"car"}, host, http.StatusOK)
 	}
 
 	t.Run("Explicit Trustless Gateway", func(t *testing.T) {
