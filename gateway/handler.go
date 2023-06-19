@@ -331,7 +331,7 @@ func (i *handler) isTrustlessRequest(contentPath ipath.Path, responseFormat stri
 	// Only allow "/{#1}/{#2}"-like paths.
 	trimmedPath := strings.Trim(contentPath.String(), "/")
 	pathComponents := strings.Split(trimmedPath, "/")
-	if len(pathComponents) != 2 {
+	if responseFormat != carResponseFormat && len(pathComponents) != 2 {
 		return false
 	}
 
