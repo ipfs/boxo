@@ -28,6 +28,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- Removed mentions of unused ARC algorithm ([#336](https://github.com/ipfs/boxo/issues/366#issuecomment-1597253540))
+
 ### Security
 
 ## [0.10.1] - 2023-06-19
