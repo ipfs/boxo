@@ -178,7 +178,7 @@ func (p *IpnsPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 	opts := opts.ProcessPublishOptions(options)
 
 	// Create record
-	r, err := ipns.NewRecord(k, value, seqno, opts.EOL, opts.TTL)
+	r, err := ipns.NewRecord(k, value, seqno, opts.EOL, opts.TTL, ipns.WithV1Compatibility(opts.CompatibleWithV1))
 	if err != nil {
 		return nil, err
 	}
