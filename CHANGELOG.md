@@ -18,6 +18,12 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+* 🛠 The `ipns` package has been refactored. You should no longer use the direct Protobuf
+  version of the IPNS Record. Instead, we have a shiny new `ipns.Record` type that wraps
+  all the required functionality to work the best as possible with IPNS v2 Records. Please
+  check the [documentation](https://pkg.go.dev/github.com/ipfs/boxo/ipns) for more information,
+  and follow [ipfs/specs#376](https://github.com/ipfs/specs/issues/376) for related IPIP.
+
 ### Removed
 
 ### Fixed

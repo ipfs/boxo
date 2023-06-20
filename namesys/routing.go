@@ -5,17 +5,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	opts "github.com/ipfs/boxo/coreiface/options/namesys"
 	"github.com/ipfs/boxo/ipns"
-	pb "github.com/ipfs/boxo/ipns/pb"
 	"github.com/ipfs/boxo/path"
-	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
-	mh "github.com/multiformats/go-multihash"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -81,7 +77,7 @@ func (r *IpnsResolver) resolveOnceAsync(ctx context.Context, name string, option
 	// Use the routing system to get the name.
 	// Note that the DHT will call the ipns validator when retrieving
 	// the value, which in turn verifies the ipns record signature
-	ipnsKey := ipns.RecordKey(pid)
+	ipnsKey := string(ipns.NameFromPeer(pid).RoutingKey())
 
 	vals, err := r.routing.SearchValue(ctx, ipnsKey, dht.Quorum(int(options.DhtRecordCount)))
 	if err != nil {
@@ -105,34 +101,25 @@ func (r *IpnsResolver) resolveOnceAsync(ctx context.Context, name string, option
 					return
 				}
 
-				entry := new(pb.IpnsEntry)
-				err = proto.Unmarshal(val, entry)
+				rec, err := ipns.UnmarshalRecord(val)
 				if err != nil {
 					log.Debugf("RoutingResolver: could not unmarshal value for name %s: %s", name, err)
 					emitOnceResult(ctx, out, onceResult{err: err})
 					return
 				}
 
-				var p path.Path
-				// check for old style record:
-				if valh, err := mh.Cast(entry.GetValue()); err == nil {
-					// Its an old style multihash record
-					log.Debugf("encountered CIDv0 ipns entry: %s", valh)
-					p = path.FromCid(cid.NewCidV0(valh))
-				} else {
-					// Not a multihash, probably a new style record
-					p, err = path.ParsePath(string(entry.GetValue()))
-					if err != nil {
-						emitOnceResult(ctx, out, onceResult{err: err})
-						return
-					}
+				p, err := rec.Value()
+				if err != nil {
+					emitOnceResult(ctx, out, onceResult{err: err})
+					return
 				}
 
 				ttl := DefaultResolverCacheTTL
-				if entry.Ttl != nil {
-					ttl = time.Duration(*entry.Ttl)
+				if recordTTL, err := rec.TTL(); err == nil {
+					ttl = recordTTL
 				}
-				switch eol, err := ipns.GetEOL(entry); err {
+
+				switch eol, err := rec.Validity(); err {
 				case ipns.ErrUnrecognizedValidity:
 					// No EOL.
 				case nil:
@@ -149,7 +136,7 @@ func (r *IpnsResolver) resolveOnceAsync(ctx context.Context, name string, option
 					return
 				}
 
-				emitOnceResult(ctx, out, onceResult{value: p, ttl: ttl})
+				emitOnceResult(ctx, out, onceResult{value: path.Path(p.String()), ttl: ttl})
 			case <-ctx.Done():
 				return
 			}

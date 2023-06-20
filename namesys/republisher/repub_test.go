@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
-
 	"github.com/jbenet/goprocess"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
@@ -18,7 +16,6 @@ import (
 
 	opts "github.com/ipfs/boxo/coreiface/options/namesys"
 	"github.com/ipfs/boxo/ipns"
-	ipns_pb "github.com/ipfs/boxo/ipns/pb"
 	"github.com/ipfs/boxo/path"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
@@ -208,12 +205,12 @@ func TestLongEOLRepublish(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entry, err := getLastIPNSEntry(ctx, publisher.store, publisher.h.ID())
+	rec, err := getLastIPNSRecord(ctx, publisher.store, publisher.h.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	finalEol, err := ipns.GetEOL(entry)
+	finalEol, err := rec.Validity()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,18 +220,14 @@ func TestLongEOLRepublish(t *testing.T) {
 	}
 }
 
-func getLastIPNSEntry(ctx context.Context, dstore ds.Datastore, id peer.ID) (*ipns_pb.IpnsEntry, error) {
+func getLastIPNSRecord(ctx context.Context, dstore ds.Datastore, id peer.ID) (*ipns.Record, error) {
 	// Look for it locally only
 	val, err := dstore.Get(ctx, namesys.IpnsDsKey(id))
 	if err != nil {
 		return nil, err
 	}
 
-	e := new(ipns_pb.IpnsEntry)
-	if err := proto.Unmarshal(val, e); err != nil {
-		return nil, err
-	}
-	return e, nil
+	return ipns.UnmarshalRecord(val)
 }
 
 func verifyResolution(nsystems []namesys.NameSystem, key string, exp path.Path) error {

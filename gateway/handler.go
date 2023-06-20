@@ -18,6 +18,7 @@ import (
 
 	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/gateway/assets"
+	"github.com/ipfs/boxo/ipns"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -342,8 +343,7 @@ func (i *handler) isTrustlessRequest(contentPath ipath.Path, responseFormat stri
 		}
 
 		// Only valid, cryptographically verifiable IPNS record names (no DNSLink on trustless gateways)
-		// TODO: replace with ipns.Name as part of https://github.com/ipfs/specs/issues/376
-		if _, err := peer.Decode(pathComponents[1]); err != nil {
+		if _, err := ipns.NameFromString(pathComponents[1]); err != nil {
 			return false
 		}
 
