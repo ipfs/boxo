@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	gopath "path"
@@ -67,34 +68,44 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	// TODO: could/should this all be skipped to have HEAD requests just return html content type and save the complexity? If so can we skip the above code as well?
-	var idxFile files.File
+	var idxFileBytes io.ReadCloser
+	var idxFileSize int64
+	var returnRangeStartsAtZero bool
 	if isHeadRequest {
-		var idx files.Node
-		_, idx, err = i.backend.Head(ctx, imIndexPath)
+		var idxHeadResp *HeadResponse
+		_, idxHeadResp, err = i.backend.Head(ctx, imIndexPath)
 		if err == nil {
-			f, ok := idx.(files.File)
-			if !ok {
+			defer idxHeadResp.Close()
+			if !idxHeadResp.isFile {
 				i.webError(w, r, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
 				return false
 			}
-			idxFile = f
+			returnRangeStartsAtZero = true
+			idxFileBytes = idxHeadResp.startingBytes
+			idxFileSize = idxHeadResp.size
 		}
 	} else {
-		var getResp *GetResponse
-		_, getResp, err = i.backend.Get(ctx, imIndexPath, ranges...)
+		var idxGetResp *GetResponse
+		_, idxGetResp, err = i.backend.Get(ctx, imIndexPath, ranges...)
 		if err == nil {
-			if getResp.bytes == nil {
+			defer idxGetResp.Close()
+			if idxGetResp.bytes == nil {
 				i.webError(w, r, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
 				return false
 			}
-			idxFile = getResp.bytes
+			if len(ranges) > 0 {
+				ra := ranges[0]
+				returnRangeStartsAtZero = ra.From == 0
+			}
+			idxFileBytes = idxGetResp.bytes
+			idxFileSize = idxGetResp.bytesSize
 		}
 	}
 
 	if err == nil {
 		logger.Debugw("serving index.html file", "path", idxPath)
 		// write to request
-		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, idxFile, "text/html", begin)
+		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, idxFileSize, idxFileBytes, false, returnRangeStartsAtZero, "text/html", begin)
 		if success {
 			i.unixfsDirIndexGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 		}
