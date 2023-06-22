@@ -222,24 +222,22 @@ func TestValidate(t *testing.T) {
 func TestValidateWithName(t *testing.T) {
 	t.Parallel()
 
-	sk, _, pid := mustKeyPair(t, ic.Ed25519)
+	sk, _, name := mustKeyPair(t, ic.Ed25519)
 	eol := time.Now().Add(time.Hour)
-
-	r, err := NewRecord(sk, testPath, 1, eol, 0)
-	require.NoError(t, err)
+	r := mustNewRecord(t, sk, testPath, 1, eol, 0)
 
 	t.Run("valid peer ID", func(t *testing.T) {
 		t.Parallel()
 
-		err = ValidateWithName(r, pid)
+		err := ValidateWithName(r, name)
 		assert.NoError(t, err)
 	})
 
 	t.Run("invalid peer ID", func(t *testing.T) {
 		t.Parallel()
 
-		_, _, pid2 := mustKeyPair(t, ic.Ed25519)
-		err = ValidateWithName(r, pid2)
+		_, _, name2 := mustKeyPair(t, ic.Ed25519)
+		err := ValidateWithName(r, name2)
 		assert.ErrorIs(t, err, ErrSignature)
 	})
 }
