@@ -5,6 +5,7 @@ package blockstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -62,6 +63,12 @@ type Blockstore interface {
 	// HashOnRead specifies if every read block should be
 	// rehashed to make sure it matches its CID.
 	HashOnRead(enabled bool)
+}
+
+// GetManyBlockstore is a blockstore interface that supports a GetMany method
+type GetManyBlockstore interface {
+	Blockstore
+	GetMany(context.Context, []cid.Cid) ([]blocks.Block, []cid.Cid, error)
 }
 
 // Viewer can be implemented by blockstores that offer zero-copy access to
@@ -268,6 +275,227 @@ func (bs *blockstore) DeleteBlock(ctx context.Context, k cid.Cid) error {
 //
 // AllKeysChan respects context.
 func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
+	// KeysOnly, because that would be _a lot_ of data.
+	q := dsq.Query{KeysOnly: true}
+	res, err := bs.datastore.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+
+	output := make(chan cid.Cid, dsq.KeysOnlyBufSize)
+	go func() {
+		defer func() {
+			res.Close() // ensure exit (signals early exit, too)
+			close(output)
+		}()
+
+		for {
+			e, ok := res.NextSync()
+			if !ok {
+				return
+			}
+			if e.Error != nil {
+				logger.Errorf("blockstore.AllKeysChan got err: %s", e.Error)
+				return
+			}
+
+			// need to convert to key.Key using key.KeyFromDsKey.
+			bk, err := dshelp.BinaryFromDsKey(ds.RawKey(e.Key))
+			if err != nil {
+				logger.Warnf("error parsing key from binary: %s", err)
+				continue
+			}
+			k := cid.NewCidV1(cid.Raw, bk)
+			select {
+			case <-ctx.Done():
+				return
+			case output <- k:
+			}
+		}
+	}()
+
+	return output, nil
+}
+
+// GetManyOption is a getManyBlockStore option implementation
+type GetManyOption struct {
+	f func(bs *getManyBlockStore)
+}
+
+// NewGetManyBlockstore returns a default GetManyBlockstore implementation
+// using the provided datastore.TxnDatastore backend.
+func NewGetManyBlockstore(d ds.TxnDatastore, opts ...GetManyOption) GetManyBlockstore {
+	bs := &getManyBlockStore{
+		datastore: d,
+	}
+
+	for _, o := range opts {
+		o.f(bs)
+	}
+
+	if !bs.noPrefix {
+		bs.datastore = dsns.Wrap(bs.datastore, BlockPrefix)
+	}
+	return bs
+}
+
+type getManyBlockStore struct {
+	datastore ds.TxnDatastore
+
+	rehash       atomic.Bool
+	writeThrough bool
+	noPrefix     bool
+}
+
+func (bs *getManyBlockStore) HashOnRead(enabled bool) {
+	bs.rehash.Store(enabled)
+}
+
+func (bs *getManyBlockStore) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
+	if !k.Defined() {
+		logger.Error("undefined cid in blockstore")
+		return nil, ipld.ErrNotFound{Cid: k}
+	}
+	bdata, err := bs.datastore.Get(ctx, dshelp.MultihashToDsKey(k.Hash()))
+	if err == ds.ErrNotFound {
+		return nil, ipld.ErrNotFound{Cid: k}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if bs.rehash.Load() {
+		rbcid, err := k.Prefix().Sum(bdata)
+		if err != nil {
+			return nil, err
+		}
+
+		if !rbcid.Equals(k) {
+			return nil, ErrHashMismatch
+		}
+
+		return blocks.NewBlockWithCid(bdata, rbcid)
+	}
+	return blocks.NewBlockWithCid(bdata, k)
+}
+
+func (bs *getManyBlockStore) GetMany(ctx context.Context, cs []cid.Cid) ([]blocks.Block, []cid.Cid, error) {
+	if len(cs) == 1 {
+		// performance fast-path
+		block, err := bs.Get(ctx, cs[0])
+		return []blocks.Block{block}, nil, err
+	}
+
+	t, err := bs.datastore.NewTransaction(ctx, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	blks := make([]blocks.Block, 0, len(cs))
+	missingCIDs := make([]cid.Cid, 0, len(cs))
+	for _, c := range cs {
+		if !c.Defined() {
+			logger.Error("undefined cid in blockstore")
+			return nil, nil, ipld.ErrNotFound{Cid: c}
+		}
+		bdata, err := t.Get(ctx, dshelp.MultihashToDsKey(c.Hash()))
+		if err != nil {
+			if err == ds.ErrNotFound {
+				missingCIDs = append(missingCIDs, c)
+			} else {
+				return nil, nil, err
+			}
+		} else {
+			if bs.rehash.Load() {
+				rbcid, err := c.Prefix().Sum(bdata)
+				if err != nil {
+					return nil, nil, err
+				}
+
+				if !rbcid.Equals(c) {
+					return nil, nil, fmt.Errorf("block in storage has different hash (%x) than requested (%x)", rbcid.Hash(), c.Hash())
+				}
+
+				blk, err := blocks.NewBlockWithCid(bdata, rbcid)
+				if err != nil {
+					return nil, nil, err
+				}
+
+				blks = append(blks, blk)
+			} else {
+				blk, err := blocks.NewBlockWithCid(bdata, c)
+				if err != nil {
+					return nil, nil, err
+				}
+
+				blks = append(blks, blk)
+			}
+		}
+	}
+	return blks, missingCIDs, t.Commit(ctx)
+}
+
+func (bs *getManyBlockStore) Put(ctx context.Context, block blocks.Block) error {
+	k := dshelp.MultihashToDsKey(block.Cid().Hash())
+
+	// Has is cheaper than Put, so see if we already have it
+	if !bs.writeThrough {
+		exists, err := bs.datastore.Has(ctx, k)
+		if err == nil && exists {
+			return nil // already stored.
+		}
+	}
+	return bs.datastore.Put(ctx, k, block.RawData())
+}
+
+func (bs *getManyBlockStore) PutMany(ctx context.Context, blocks []blocks.Block) error {
+	if len(blocks) == 1 {
+		// performance fast-path
+		return bs.Put(ctx, blocks[0])
+	}
+
+	t, err := bs.datastore.NewTransaction(ctx, false)
+	if err != nil {
+		return err
+	}
+	for _, b := range blocks {
+		k := dshelp.MultihashToDsKey(b.Cid().Hash())
+
+		if !bs.writeThrough {
+			exists, err := bs.datastore.Has(ctx, k)
+			if err == nil && exists {
+				continue
+			}
+		}
+
+		err = t.Put(ctx, k, b.RawData())
+		if err != nil {
+			return err
+		}
+	}
+	return t.Commit(ctx)
+}
+
+func (bs *getManyBlockStore) Has(ctx context.Context, k cid.Cid) (bool, error) {
+	return bs.datastore.Has(ctx, dshelp.MultihashToDsKey(k.Hash()))
+}
+
+func (bs *getManyBlockStore) GetSize(ctx context.Context, k cid.Cid) (int, error) {
+	size, err := bs.datastore.GetSize(ctx, dshelp.MultihashToDsKey(k.Hash()))
+	if err == ds.ErrNotFound {
+		return -1, ipld.ErrNotFound{Cid: k}
+	}
+	return size, err
+}
+
+func (bs *getManyBlockStore) DeleteBlock(ctx context.Context, k cid.Cid) error {
+	return bs.datastore.Delete(ctx, dshelp.MultihashToDsKey(k.Hash()))
+}
+
+// AllKeysChan runs a query for keys from the blockstore.
+// this is very simplistic, in the future, take dsq.Query as a param?
+//
+// AllKeysChan respects context.
+func (bs *getManyBlockStore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
+
 	// KeysOnly, because that would be _a lot_ of data.
 	q := dsq.Query{KeysOnly: true}
 	res, err := bs.datastore.Query(ctx, q)
