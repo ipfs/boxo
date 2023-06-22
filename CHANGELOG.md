@@ -16,6 +16,11 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+* ✨ The gateway now supports the optional `order` and `dups` CAR parameters
+  from [IPIP-412](https://github.com/ipfs/specs/pull/412). `BlocksBackend` only
+  DFS ordering. If the request explicitly requests an ordering other than `dfs`
+  and `unk`, the request will return an error.
+
 ### Changed
 
 * 🛠 The `ipns` package has been refactored. You should no longer use the direct Protobuf

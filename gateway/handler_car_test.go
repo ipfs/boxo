@@ -28,7 +28,7 @@ func TestCarParams(t *testing.T) {
 		}
 		for _, test := range tests {
 			r := mustNewRequest(t, http.MethodGet, "http://example.com/?"+test.query, nil)
-			params, err := getCarParams(r)
+			params, err := getCarParams(r, map[string]string{})
 			if test.expectedError {
 				assert.Error(t, err)
 			} else {
@@ -60,7 +60,7 @@ func TestCarParams(t *testing.T) {
 		}
 		for _, test := range tests {
 			r := mustNewRequest(t, http.MethodGet, "http://example.com/?"+test.query, nil)
-			params, err := getCarParams(r)
+			params, err := getCarParams(r, map[string]string{})
 			if test.hasError {
 				assert.Error(t, err)
 			} else {
@@ -73,6 +73,67 @@ func TestCarParams(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("order and duplicates parsing", func(t *testing.T) {
+		t.Parallel()
+
+		T := true
+		F := false
+
+		tests := []struct {
+			acceptHeader       string
+			expectedOrder      DagOrder
+			expectedDuplicates *bool
+		}{
+			{"application/vnd.ipld.car; order=dfs; dups=y", DagOrderDFS, &T},
+			{"application/vnd.ipld.car; order=unk; dups=n", DagOrderUnknown, &F},
+			{"application/vnd.ipld.car; order=unk", DagOrderUnknown, nil},
+			{"application/vnd.ipld.car; dups=y", DagOrderUnknown, &T},
+			{"application/vnd.ipld.car; dups=n", DagOrderUnknown, &F},
+			{"application/vnd.ipld.car", DagOrderUnknown, nil},
+		}
+		for _, test := range tests {
+			r := mustNewRequest(t, http.MethodGet, "http://example.com/", nil)
+			r.Header.Set("Accept", test.acceptHeader)
+
+			mediaType, formatParams, err := customResponseFormat(r)
+			assert.NoError(t, err)
+			assert.Equal(t, carResponseFormat, mediaType)
+
+			params, err := getCarParams(r, formatParams)
+			assert.NoError(t, err)
+			require.Equal(t, test.expectedOrder, params.Order)
+
+			if test.expectedDuplicates == nil {
+				require.Nil(t, params.Duplicates)
+			} else {
+				require.Equal(t, *test.expectedDuplicates, *params.Duplicates)
+			}
+		}
+	})
+}
+
+func TestContentTypeFromCarParams(t *testing.T) {
+	t.Parallel()
+
+	T := true
+	F := false
+
+	tests := []struct {
+		params CarParams
+		header string
+	}{
+		{CarParams{}, "application/vnd.ipld.car; version=1; order=unk"},
+		{CarParams{Order: DagOrderDFS, Duplicates: &T}, "application/vnd.ipld.car; version=1; order=dfs; dups=y"},
+		{CarParams{Order: DagOrderUnknown, Duplicates: &T}, "application/vnd.ipld.car; version=1; order=unk; dups=y"},
+		{CarParams{Order: DagOrderUnknown}, "application/vnd.ipld.car; version=1; order=unk"},
+		{CarParams{Duplicates: &T}, "application/vnd.ipld.car; version=1; order=unk; dups=y"},
+		{CarParams{Duplicates: &F}, "application/vnd.ipld.car; version=1; order=unk; dups=n"},
+	}
+	for _, test := range tests {
+		header := getContentTypeFromCarParams(&test.params)
+		assert.Equal(t, test.header, header)
+	}
 }
 
 func TestGetCarEtag(t *testing.T) {
@@ -87,24 +148,24 @@ func TestGetCarEtag(t *testing.T) {
 	t.Run("Etag with entity-bytes=0:* is the same as without query param", func(t *testing.T) {
 		t.Parallel()
 
-		noRange := getCarEtag(imPath, CarParams{}, cid)
-		withRange := getCarEtag(imPath, CarParams{Range: &DagByteRange{From: 0}}, cid)
+		noRange := getCarEtag(imPath, &CarParams{}, cid)
+		withRange := getCarEtag(imPath, &CarParams{Range: &DagByteRange{From: 0}}, cid)
 		require.Equal(t, noRange, withRange)
 	})
 
 	t.Run("Etag with entity-bytes=1:* is different than without query param", func(t *testing.T) {
 		t.Parallel()
 
-		noRange := getCarEtag(imPath, CarParams{}, cid)
-		withRange := getCarEtag(imPath, CarParams{Range: &DagByteRange{From: 1}}, cid)
+		noRange := getCarEtag(imPath, &CarParams{}, cid)
+		withRange := getCarEtag(imPath, &CarParams{Range: &DagByteRange{From: 1}}, cid)
 		require.NotEqual(t, noRange, withRange)
 	})
 
 	t.Run("Etags with different dag-scope are different", func(t *testing.T) {
 		t.Parallel()
 
-		a := getCarEtag(imPath, CarParams{Scope: DagScopeAll}, cid)
-		b := getCarEtag(imPath, CarParams{Scope: DagScopeEntity}, cid)
+		a := getCarEtag(imPath, &CarParams{Scope: DagScopeAll}, cid)
+		b := getCarEtag(imPath, &CarParams{Scope: DagScopeEntity}, cid)
 		require.NotEqual(t, a, b)
 	})
 }

@@ -39,7 +39,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	params, err := getCarParams(r)
+	params, err := getCarParams(r, rq.responseParams)
 	if err != nil {
 		i.webError(w, r, err, http.StatusBadRequest)
 		return false
@@ -90,7 +90,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// sub-DAGs and IPLD selectors: https://github.com/ipfs/go-ipfs/issues/8769
 	w.Header().Set("Accept-Ranges", "none")
 
-	w.Header().Set("Content-Type", carResponseFormat+"; version=1")
+	w.Header().Set("Content-Type", getContentTypeFromCarParams(params))
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
 	_, copyErr := io.Copy(w, carFile)
@@ -113,7 +113,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	return true
 }
 
-func getCarParams(r *http.Request) (CarParams, error) {
+func getCarParams(r *http.Request, formatParams map[string]string) (*CarParams, error) {
 	queryParams := r.URL.Query()
 	rangeStr, hasRange := queryParams.Get(carRangeBytesKey), queryParams.Has(carRangeBytesKey)
 	scopeStr, hasScope := queryParams.Get(carTerminalElementTypeKey), queryParams.Has(carTerminalElementTypeKey)
@@ -123,7 +123,7 @@ func getCarParams(r *http.Request) (CarParams, error) {
 		rng, err := NewDagByteRange(rangeStr)
 		if err != nil {
 			err = fmt.Errorf("invalid entity-bytes: %w", err)
-			return CarParams{}, err
+			return nil, err
 		}
 		params.Range = &rng
 	}
@@ -134,13 +134,58 @@ func getCarParams(r *http.Request) (CarParams, error) {
 			params.Scope = s
 		default:
 			err := fmt.Errorf("unsupported dag-scope %s", scopeStr)
-			return CarParams{}, err
+			return nil, err
 		}
 	} else {
 		params.Scope = DagScopeAll
 	}
 
-	return params, nil
+	switch order := DagOrder(formatParams["order"]); order {
+	case DagOrderUnknown, DagOrderDFS:
+		params.Order = order
+	case "":
+		params.Order = DagOrderUnknown
+	default:
+		return nil, fmt.Errorf("unsupported order %s", order)
+	}
+
+	switch dups := formatParams["dups"]; dups {
+	case "y":
+		v := true
+		params.Duplicates = &v
+	case "n":
+		v := false
+		params.Duplicates = &v
+	case "":
+		// Acceptable, we do not set anything.
+	default:
+		return nil, fmt.Errorf("unsupported dups %s", dups)
+	}
+
+	return &params, nil
+}
+
+func getContentTypeFromCarParams(params *CarParams) string {
+	h := strings.Builder{}
+	h.WriteString(carResponseFormat)
+	h.WriteString("; version=1; order=")
+
+	if params.Order != "" {
+		h.WriteString(string(params.Order))
+	} else {
+		h.WriteString(string(DagOrderUnknown))
+	}
+
+	if params.Duplicates != nil {
+		h.WriteString("; dups=")
+		if *params.Duplicates {
+			h.WriteString("y")
+		} else {
+			h.WriteString("n")
+		}
+	}
+
+	return h.String()
 }
 
 func getCarRootCidAndLastSegment(imPath ImmutablePath) (cid.Cid, string, error) {
@@ -164,7 +209,7 @@ func getCarRootCidAndLastSegment(imPath ImmutablePath) (cid.Cid, string, error) 
 	return rootCid, lastSegment, err
 }
 
-func getCarEtag(imPath ImmutablePath, params CarParams, rootCid cid.Cid) string {
+func getCarEtag(imPath ImmutablePath, params *CarParams, rootCid cid.Cid) string {
 	data := imPath.String()
 	if params.Scope != DagScopeAll {
 		data += "." + string(params.Scope)
