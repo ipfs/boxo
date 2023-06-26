@@ -3,6 +3,7 @@ package mfs
 import (
 	"bytes"
 	"context"
+	crand "crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -629,8 +630,6 @@ func TestMfsDirListNames(t *testing.T) {
 
 	rootdir := rt.GetDirectory()
 
-	rand.Seed(time.Now().UTC().UnixNano())
-
 	total := rand.Intn(10) + 1
 	fNames := make([]string, 0, total)
 
@@ -789,7 +788,9 @@ func actorWriteFile(d *Directory) error {
 
 	size := rand.Intn(1024) + 1
 	buf := make([]byte, size)
-	rand.Read(buf)
+	if _, err := crand.Read(buf); err != nil {
+		return err
+	}
 
 	s, err := fi.Size()
 	if err != nil {
@@ -1067,8 +1068,9 @@ func TestConcurrentReads(t *testing.T) {
 	d := mkdirP(t, rootdir, path)
 
 	buf := make([]byte, 2048)
-	rand.Read(buf)
-
+	if _, err := crand.Read(buf); err != nil {
+		t.Fatal(err)
+	}
 	fi := fileNodeFromReader(t, ds, bytes.NewReader(buf))
 	err := d.AddChild("afile", fi)
 	if err != nil {
