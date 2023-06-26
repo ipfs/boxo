@@ -8,25 +8,25 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	mrand "math/rand"
+	"math/rand"
 	"os"
+	gopath "path"
 	"sort"
 	"sync"
 	"testing"
 	"time"
 
-	path "github.com/ipfs/boxo/path"
-
 	bserv "github.com/ipfs/boxo/blockservice"
+	bstore "github.com/ipfs/boxo/blockstore"
+	chunker "github.com/ipfs/boxo/chunker"
+	offline "github.com/ipfs/boxo/exchange/offline"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	importer "github.com/ipfs/boxo/ipld/unixfs/importer"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
-
-	bstore "github.com/ipfs/boxo/blockstore"
-	chunker "github.com/ipfs/boxo/chunker"
-	offline "github.com/ipfs/boxo/exchange/offline"
+	path "github.com/ipfs/boxo/path"
 	u "github.com/ipfs/boxo/util"
+
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
@@ -37,7 +37,8 @@ func emptyDirNode() *dag.ProtoNode {
 	return dag.NodeWithData(ft.FolderPBData())
 }
 
-func getDagserv(t *testing.T) ipld.DAGService {
+func getDagserv(t testing.TB) ipld.DAGService {
+	t.Helper()
 	db := dssync.MutexWrap(ds.NewMapDatastore())
 	bs := bstore.NewBlockstore(db)
 	blockserv := bserv.New(bs, offline.Exchange(bs))
@@ -202,7 +203,9 @@ func catNode(ds ipld.DAGService, nd *dag.ProtoNode) ([]byte, error) {
 	return io.ReadAll(r)
 }
 
-func setupRoot(ctx context.Context, t *testing.T) (ipld.DAGService, *Root) {
+func setupRoot(ctx context.Context, t testing.TB) (ipld.DAGService, *Root) {
+	t.Helper()
+
 	ds := getDagserv(t)
 
 	root := emptyDirNode()
@@ -627,13 +630,13 @@ func TestMfsDirListNames(t *testing.T) {
 
 	rootdir := rt.GetDirectory()
 
-	total := mrand.Intn(10) + 1
+	total := rand.Intn(10) + 1
 	fNames := make([]string, 0, total)
 
 	for i := 0; i < total; i++ {
 		fn := randomName()
 		fNames = append(fNames, fn)
-		nd := getRandFile(t, ds, mrand.Int63n(1000)+1)
+		nd := getRandFile(t, ds, rand.Int63n(1000)+1)
 		err := rootdir.AddChild(fn, nd)
 		if err != nil {
 			t.Fatal(err)
@@ -677,7 +680,7 @@ func randomWalk(d *Directory, n int) (*Directory, error) {
 			return d, nil
 		}
 
-		next := childdirs[mrand.Intn(len(childdirs))].Name
+		next := childdirs[rand.Intn(len(childdirs))].Name
 
 		nextD, err := d.Child(next)
 		if err != nil {
@@ -691,17 +694,17 @@ func randomWalk(d *Directory, n int) (*Directory, error) {
 
 func randomName() string {
 	set := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_"
-	length := mrand.Intn(10) + 2
+	length := rand.Intn(10) + 2
 	var out string
 	for i := 0; i < length; i++ {
-		j := mrand.Intn(len(set))
+		j := rand.Intn(len(set))
 		out += set[j : j+1]
 	}
 	return out
 }
 
 func actorMakeFile(d *Directory) error {
-	d, err := randomWalk(d, mrand.Intn(7))
+	d, err := randomWalk(d, rand.Intn(7))
 	if err != nil {
 		return err
 	}
@@ -717,8 +720,8 @@ func actorMakeFile(d *Directory) error {
 		return err
 	}
 
-	rread := mrand.New(mrand.NewSource(time.Now().UnixNano()))
-	r := io.LimitReader(rread, int64(77*mrand.Intn(123)+1))
+	rread := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r := io.LimitReader(rread, int64(77*rand.Intn(123)+1))
 	_, err = io.Copy(wfd, r)
 	if err != nil {
 		return err
@@ -728,7 +731,7 @@ func actorMakeFile(d *Directory) error {
 }
 
 func actorMkdir(d *Directory) error {
-	d, err := randomWalk(d, mrand.Intn(7))
+	d, err := randomWalk(d, rand.Intn(7))
 	if err != nil {
 		return err
 	}
@@ -739,7 +742,7 @@ func actorMkdir(d *Directory) error {
 }
 
 func randomFile(d *Directory) (*File, error) {
-	d, err := randomWalk(d, mrand.Intn(6))
+	d, err := randomWalk(d, rand.Intn(6))
 	if err != nil {
 		return nil, err
 	}
@@ -760,7 +763,7 @@ func randomFile(d *Directory) (*File, error) {
 		return nil, nil
 	}
 
-	fname := files[mrand.Intn(len(files))]
+	fname := files[rand.Intn(len(files))]
 	fsn, err := d.Child(fname)
 	if err != nil {
 		return nil, err
@@ -783,9 +786,11 @@ func actorWriteFile(d *Directory) error {
 		return nil
 	}
 
-	size := mrand.Intn(1024) + 1
+	size := rand.Intn(1024) + 1
 	buf := make([]byte, size)
-	crand.Read(buf)
+	if _, err := crand.Read(buf); err != nil {
+		return err
+	}
 
 	s, err := fi.Size()
 	if err != nil {
@@ -797,7 +802,7 @@ func actorWriteFile(d *Directory) error {
 		return err
 	}
 
-	offset := mrand.Int63n(s)
+	offset := rand.Int63n(s)
 
 	n, err := wfd.WriteAt(buf, offset)
 	if err != nil {
@@ -840,7 +845,7 @@ func actorReadFile(d *Directory) error {
 func testActor(rt *Root, iterations int, errs chan error) {
 	d := rt.GetDirectory()
 	for i := 0; i < iterations; i++ {
-		switch mrand.Intn(5) {
+		switch rand.Intn(5) {
 		case 0:
 			if err := actorMkdir(d); err != nil {
 				errs <- err
@@ -1063,8 +1068,9 @@ func TestConcurrentReads(t *testing.T) {
 	d := mkdirP(t, rootdir, path)
 
 	buf := make([]byte, 2048)
-	crand.Read(buf)
-
+	if _, err := crand.Read(buf); err != nil {
+		t.Fatal(err)
+	}
 	fi := fileNodeFromReader(t, ds, bytes.NewReader(buf))
 	err := d.AddChild("afile", fi)
 	if err != nil {
@@ -1079,8 +1085,8 @@ func TestConcurrentReads(t *testing.T) {
 			defer wg.Done()
 			mybuf := make([]byte, len(buf))
 			for j := 0; j < nloops; j++ {
-				offset := mrand.Intn(len(buf))
-				length := mrand.Intn(len(buf) - offset)
+				offset := rand.Intn(len(buf))
+				length := rand.Intn(len(buf) - offset)
 
 				err := readFile(rt, "/a/b/c/afile", int64(offset), mybuf[:length])
 				if err != nil {
@@ -1417,4 +1423,149 @@ func TestFSNodeType(t *testing.T) {
 	if !ret {
 		t.Fatal("FSNode type should be file, but not")
 	}
+}
+
+func getParentDir(root *Root, dir string) (*Directory, error) {
+	parent, err := Lookup(root, dir)
+	if err != nil {
+		return nil, err
+	}
+
+	pdir, ok := parent.(*Directory)
+	if !ok {
+		return nil, errors.New("expected *Directory, didn't get it. This is likely a race condition")
+	}
+	return pdir, nil
+}
+
+func getFileHandle(r *Root, path string, create bool, builder cid.Builder) (*File, error) {
+	target, err := Lookup(r, path)
+	switch err {
+	case nil:
+		fi, ok := target.(*File)
+		if !ok {
+			return nil, fmt.Errorf("%s was not a file", path)
+		}
+		return fi, nil
+
+	case os.ErrNotExist:
+		if !create {
+			return nil, err
+		}
+
+		// if create is specified and the file doesn't exist, we create the file
+		dirname, fname := gopath.Split(path)
+		pdir, err := getParentDir(r, dirname)
+		if err != nil {
+			return nil, err
+		}
+
+		if builder == nil {
+			builder = pdir.GetCidBuilder()
+		}
+
+		nd := dag.NodeWithData(ft.FilePBData(nil, 0))
+		nd.SetCidBuilder(builder)
+		err = pdir.AddChild(fname, nd)
+		if err != nil {
+			return nil, err
+		}
+
+		fsn, err := pdir.Child(fname)
+		if err != nil {
+			return nil, err
+		}
+
+		fi, ok := fsn.(*File)
+		if !ok {
+			return nil, errors.New("expected *File, didn't get it. This is likely a race condition")
+		}
+		return fi, nil
+
+	default:
+		return nil, err
+	}
+}
+
+func FuzzMkdirAndWriteConcurrently(f *testing.F) {
+
+	testCases := []struct {
+		flush     bool
+		mkparents bool
+		dir       string
+
+		filepath string
+		content  []byte
+	}{
+		{
+			flush:     true,
+			mkparents: true,
+			dir:       "/test/dir1",
+
+			filepath: "/test/dir1/file.txt",
+			content:  []byte("file content on dir 1"),
+		},
+		{
+			flush:     true,
+			mkparents: false,
+			dir:       "/test/dir2",
+
+			filepath: "/test/dir2/file.txt",
+			content:  []byte("file content on dir 2"),
+		},
+		{
+			flush:     false,
+			mkparents: true,
+			dir:       "/test/dir3",
+
+			filepath: "/test/dir3/file.txt",
+			content:  []byte("file content on dir 3"),
+		},
+		{
+			flush:     false,
+			mkparents: false,
+			dir:       "/test/dir4",
+
+			filepath: "/test/dir4/file.txt",
+			content:  []byte("file content on dir 4"),
+		},
+	}
+
+	for _, tc := range testCases {
+		f.Add(tc.flush, tc.mkparents, tc.dir, tc.filepath, tc.content)
+	}
+
+	_, root := setupRoot(context.Background(), f)
+
+	f.Fuzz(func(t *testing.T, flush bool, mkparents bool, dir string, filepath string, filecontent []byte) {
+		err := Mkdir(root, dir, MkdirOpts{
+			Mkparents: mkparents,
+			Flush:     flush,
+		})
+		if err != nil {
+			t.Logf("error making dir %s: %s", dir, err)
+			return
+		}
+
+		fi, err := getFileHandle(root, filepath, true, nil)
+		if err != nil {
+			t.Logf("error getting file handle on path %s: %s", filepath, err)
+			return
+		}
+		wfd, err := fi.Open(Flags{Write: true, Sync: flush})
+		if err != nil {
+			t.Logf("error opening file from filepath %s: %s", filepath, err)
+			return
+		}
+
+		t.Cleanup(func() {
+			wfd.Close()
+		})
+
+		_, err = wfd.Write(filecontent)
+		if err != nil {
+			t.Logf("error writting to file from filepath %s: %s", filepath, err)
+		}
+	})
+
 }
