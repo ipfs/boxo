@@ -21,7 +21,7 @@ import (
 )
 
 func TestGatewayGet(t *testing.T) {
-	ts, backend, root := newTestServerAndNode(t, nil)
+	ts, backend, root := newTestServerAndNode(t, nil, "fixtures.car")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -86,17 +86,11 @@ func TestGatewayGet(t *testing.T) {
 }
 
 func TestPretty404(t *testing.T) {
-	ts, backend, root := newTestServerAndNode(t, nil)
+	ts, backend, root := newTestServerAndNode(t, nil, "pretty-404.car")
 	t.Logf("test server url: %s", ts.URL)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "subdir-404"))
-	assert.NoError(t, err)
-
 	host := "example.net"
-	backend.namesys["/ipns/"+host] = path.FromString(k.String())
+	backend.namesys["/ipns/"+host] = path.FromCid(root)
 
 	for _, test := range []struct {
 		path   string
@@ -108,7 +102,7 @@ func TestPretty404(t *testing.T) {
 		{"/nope", "text/html", http.StatusNotFound, "Custom 404"},
 		{"/nope", "text/*", http.StatusNotFound, "Custom 404"},
 		{"/nope", "*/*", http.StatusNotFound, "Custom 404"},
-		{"/nope", "application/json", http.StatusNotFound, fmt.Sprintf("failed to resolve /ipns/example.net/nope: no link named \"nope\" under %s\n", k.Cid().String())},
+		{"/nope", "application/json", http.StatusNotFound, fmt.Sprintf("failed to resolve /ipns/example.net/nope: no link named \"nope\" under %s\n", root.String())},
 		{"/deeper/nope", "text/html", http.StatusNotFound, "Deep custom 404"},
 		{"/deeper/", "text/html", http.StatusOK, ""},
 		{"/deeper", "text/html", http.StatusOK, ""},
@@ -134,12 +128,12 @@ func TestPretty404(t *testing.T) {
 func TestHeaders(t *testing.T) {
 	t.Parallel()
 
-	ts, _, root := newTestServerAndNode(t, nil)
+	ts, _, root := newTestServerAndNode(t, nil, "headers-test.car")
 
 	var (
 		dirCID   = "bafybeihta5xfgxcmyxyq6druvidc7es6ogffdd6zel22l3y4wddju5xxsu"
 		dirPath  = "/ipfs/" + root.String() + "/subdir/"
-		dirRoots = "bafybeifhvgr4ufgwpoj2iyrymrigjhpexvsyfm2elafebkmrei4skunihe," + dirCID
+		dirRoots = root.String() + "," + dirCID
 
 		fileCID   = "bafkreiba3vpkcqpc6xtp3hsatzcod6iwneouzjoq7ymy4m2js6gc3czt6i"
 		filePath  = "/ipfs/" + root.String() + "/subdir/fnord"
@@ -176,19 +170,19 @@ func TestHeaders(t *testing.T) {
 		}
 		test("", dirPath, `"DirIndex-(.*)_CID-%s"`, dirCID)
 		test("text/html", dirPath, `"DirIndex-(.*)_CID-%s"`, dirCID)
-		test(carResponseFormat, dirPath, `W/"%s.car.5ovg7dign8ug"`, root.String()) // ETags of CARs on a Path have the root CID in the Etag and hashed information to derive the correct Etag of the full request.
+		test(carResponseFormat, dirPath, `W/"%s.car.7of9u8ojv38vd"`, root.String()) // ETags of CARs on a Path have the root CID in the Etag and hashed information to derive the correct Etag of the full request.
 		test(rawResponseFormat, dirPath, `"%s.raw"`, dirCID)
 		test(tarResponseFormat, dirPath, `W/"%s.x-tar"`, dirCID)
 
 		test("", filePath, `"%s"`, fileCID)
 		test("text/html", filePath, `"%s"`, fileCID)
-		test(carResponseFormat, filePath, `W/"%s.car.fivdlu5uk7ab6"`, root.String())
+		test(carResponseFormat, filePath, `W/"%s.car.fgq8i0qnhsq01"`, root.String())
 		test(rawResponseFormat, filePath, `"%s.raw"`, fileCID)
 		test(tarResponseFormat, filePath, `W/"%s.x-tar"`, fileCID)
 
 		test("", dagCborPath, `"%s.dag-cbor"`, dagCborCID)
 		test("text/html", dagCborPath+"/", `"DagIndex-(.*)_CID-%s"`, dagCborCID)
-		test(carResponseFormat, dagCborPath, `W/"%s.car.5b4vl0vt6odpt"`, root.String())
+		test(carResponseFormat, dagCborPath, `W/"%s.car.5mg3mekeviba5"`, root.String())
 		test(rawResponseFormat, dagCborPath, `"%s.raw"`, dagCborCID)
 		test(dagJsonResponseFormat, dagCborPath, `"%s.dag-json"`, dagCborCID)
 		test(dagCborResponseFormat, dagCborPath, `"%s.dag-cbor"`, dagCborCID)
@@ -299,7 +293,7 @@ func TestHeaders(t *testing.T) {
 }
 
 func TestGoGetSupport(t *testing.T) {
-	ts, _, root := newTestServerAndNode(t, nil)
+	ts, _, root := newTestServerAndNode(t, nil, "fixtures.car")
 
 	// mimic go-get
 	req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+root.String()+"?go-get=1", nil)
@@ -311,7 +305,7 @@ func TestRedirects(t *testing.T) {
 	t.Parallel()
 
 	t.Run("IPNS Base58 Multihash Redirect", func(t *testing.T) {
-		ts, _, _ := newTestServerAndNode(t, nil)
+		ts, _, _ := newTestServerAndNode(t, nil, "fixtures.car")
 
 		t.Run("ED25519 Base58-encoded key", func(t *testing.T) {
 			t.Parallel()
@@ -332,7 +326,7 @@ func TestRedirects(t *testing.T) {
 
 	t.Run("URI Query Redirects", func(t *testing.T) {
 		t.Parallel()
-		ts, _, _ := newTestServerAndNode(t, mockNamesys{})
+		ts, _, _ := newTestServerAndNode(t, mockNamesys{}, "fixtures.car")
 
 		cid := "QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR"
 		for _, test := range []struct {
@@ -371,16 +365,8 @@ func TestRedirects(t *testing.T) {
 	t.Run("IPNS Hostname Redirects", func(t *testing.T) {
 		t.Parallel()
 
-		ts, backend, root := newTestServerAndNode(t, nil)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "TestIPNSHostnameRedirect"))
-		require.NoError(t, err)
-
-		t.Logf("k: %s\n", k)
-		backend.namesys["/ipns/example.net"] = path.FromString(k.String())
+		ts, backend, root := newTestServerAndNode(t, nil, "ipns-hostname-redirects.car")
+		backend.namesys["/ipns/example.net"] = path.FromCid(root)
 
 		// make request to directory containing index.html
 		req := mustNewRequest(t, http.MethodGet, ts.URL+"/foo", nil)
@@ -418,7 +404,7 @@ func TestDeserializedResponses(t *testing.T) {
 	t.Run("IPFS", func(t *testing.T) {
 		t.Parallel()
 
-		backend, root := newMockBackend(t)
+		backend, root := newMockBackend(t, "fixtures.car")
 
 		ts := newTestServerWithConfig(t, backend, Config{
 			Headers:   map[string][]string{},
@@ -496,7 +482,7 @@ func TestDeserializedResponses(t *testing.T) {
 	t.Run("IPNS", func(t *testing.T) {
 		t.Parallel()
 
-		backend, root := newMockBackend(t)
+		backend, root := newMockBackend(t, "fixtures.car")
 		backend.namesys["/ipns/trustless.com"] = path.FromCid(root)
 		backend.namesys["/ipns/trusted.com"] = path.FromCid(root)
 
@@ -697,7 +683,7 @@ func TestPanicStatusCode(t *testing.T) {
 
 func TestBrowserErrorHTML(t *testing.T) {
 	t.Parallel()
-	ts, _, root := newTestServerAndNode(t, nil)
+	ts, _, root := newTestServerAndNode(t, nil, "fixtures.car")
 
 	t.Run("plain error if request does not have Accept: text/html", func(t *testing.T) {
 		t.Parallel()

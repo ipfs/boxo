@@ -13,23 +13,19 @@ import (
 
 func TestIPNSHostnameBacklinks(t *testing.T) {
 	// Test if directory listing on DNSLink Websites have correct backlinks.
-	ts, backend, root := newTestServerAndNode(t, nil)
+	ts, backend, root := newTestServerAndNode(t, nil, "dir-special-chars.car")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "subdir-special-chars"))
-	require.NoError(t, err)
-
 	// create /ipns/example.net/foo/
-	k2, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(k, "foo? #<'"))
+	k2, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "foo? #<'"))
 	require.NoError(t, err)
 
-	k3, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(k, "foo? #<'/bar"))
+	k3, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "foo? #<'/bar"))
 	require.NoError(t, err)
 
-	t.Logf("k: %s\n", k)
-	backend.namesys["/ipns/example.net"] = path.FromString(k.String())
+	backend.namesys["/ipns/example.net"] = path.FromCid(root)
 
 	// make request to directory listing
 	req := mustNewRequest(t, http.MethodGet, ts.URL+"/foo%3F%20%23%3C%27/", nil)
@@ -69,7 +65,7 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	require.Contains(t, s, "<a href=\"/file.txt\">", "expected file in directory listing")
 	// https://github.com/ipfs/dir-index-html/issues/42
 	require.Contains(t, s, "<a class=\"ipfs-hash\" translate=\"no\" href=\"https://cid.ipfs.tech/#", "expected links to cid.ipfs.tech in CID column when on DNSLink website")
-	require.Contains(t, s, k.Cid().String(), "expected hash in directory listing")
+	require.Contains(t, s, root.String(), "expected hash in directory listing")
 
 	// make request to directory listing
 	req = mustNewRequest(t, http.MethodGet, ts.URL+"/foo%3F%20%23%3C%27/bar/", nil)

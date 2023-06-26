@@ -13,7 +13,7 @@ import (
 
 func TestDagJsonCborPreview(t *testing.T) {
 	t.Parallel()
-	backend, root := newMockBackend(t)
+	backend, root := newMockBackend(t, "fixtures.car")
 
 	ts := newTestServerWithConfig(t, backend, Config{
 		Headers:   map[string][]string{},

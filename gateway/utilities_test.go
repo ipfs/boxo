@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -102,8 +103,8 @@ type mockBackend struct {
 
 var _ IPFSBackend = (*mockBackend)(nil)
 
-func newMockBackend(t *testing.T) (*mockBackend, cid.Cid) {
-	r, err := os.Open("./testdata/fixtures.car")
+func newMockBackend(t *testing.T, fixturesFile string) (*mockBackend, cid.Cid) {
+	r, err := os.Open(filepath.Join("./testdata", fixturesFile))
 	assert.NoError(t, err)
 
 	blockStore, err := carblockstore.NewReadOnly(r, nil)
@@ -202,8 +203,8 @@ func (mb *mockBackend) resolvePathNoRootsReturned(ctx context.Context, ip ipath.
 	return md.LastSegment, nil
 }
 
-func newTestServerAndNode(t *testing.T, ns mockNamesys) (*httptest.Server, *mockBackend, cid.Cid) {
-	backend, root := newMockBackend(t)
+func newTestServerAndNode(t *testing.T, ns mockNamesys, fixturesFile string) (*httptest.Server, *mockBackend, cid.Cid) {
+	backend, root := newMockBackend(t, fixturesFile)
 	ts := newTestServer(t, backend)
 	return ts, backend, root
 }

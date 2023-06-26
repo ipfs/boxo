@@ -16,7 +16,7 @@ import (
 func TestToSubdomainURL(t *testing.T) {
 	t.Parallel()
 
-	backend, _ := newMockBackend(t)
+	backend, _ := newMockBackend(t, "fixtures.car")
 	testCID, err := cid.Decode("bafkqaglimvwgy3zakrsxg5cun5jxkyten5wwc2lokvjeycq")
 	require.NoError(t, err)
 
