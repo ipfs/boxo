@@ -73,11 +73,8 @@ func parsePB[Self, Children cid.Storage](
 	fileChildrens []FileEntry[Children],
 	directoryChildrens []DirectoryEntry[Children],
 	inCid cid.GenericCid[Self], origData []byte,
-) (typ Type, file File[Self, Children], dir Directory[Self, Children], sym Symlink[Self], err error) {
-	var dataType uint64
-	var fileLinks, blocksizes uint
-	var content []byte
-	selfTSize := uint64(1)
+) (dataType uint64, _ []FileEntry[Children], fileLinks, blocksizes uint, _ []DirectoryEntry[Children], content []byte, selfTSize uint64, _ error) {
+	selfTSize = 1
 	data := origData
 
 	moveZeroNamedDirectoryEntriesToDirectoryChildrens := func(extra int) {
@@ -97,8 +94,7 @@ func parsePB[Self, Children cid.Storage](
 	for len(data) != 0 { // iterate at the root level of the message
 		outerNumber, t, l := protowire.ConsumeTag(data)
 		if l < 0 {
-			err = protowire.ParseError(l)
-			return
+			return 0, nil, 0, 0, nil, nil, 0, protowire.ParseError(l)
 		}
 		data = data[l:]
 		switch outerNumber {
@@ -116,17 +112,17 @@ func parsePB[Self, Children cid.Storage](
 				// length prefixed message
 				mData, l = protowire.ConsumeBytes(data)
 				if l < 0 {
-					err = protowire.ParseError(l)
-					return
+					return 0, nil, 0, 0, nil, nil, 0, protowire.ParseError(l)
 				}
 				data = data[l:] // we just extracted the message so walk over it completely
 			default:
+				var err error
 				if outerNumber == 1 {
 					err = fmt.Errorf("unknown type for Data field %v", t)
 				} else {
 					err = fmt.Errorf("unknown type for Links field %v", t)
 				}
-				return
+				return 0, nil, 0, 0, nil, nil, 0, err
 			}
 
 			var c cid.GenericCid[Children]
@@ -136,8 +132,7 @@ func parsePB[Self, Children cid.Storage](
 			for len(mData) != 0 {
 				n, t, l := protowire.ConsumeTag(mData)
 				if l < 0 {
-					err = protowire.ParseError(l)
-					return
+					return 0, nil, 0, 0, nil, nil, 0, protowire.ParseError(l)
 				}
 				mData = mData[l:]
 
@@ -151,9 +146,10 @@ func parsePB[Self, Children cid.Storage](
 					switch n {
 					case 1:
 						// required DataType Type = 1;
+						var err error
 						mData, dataType, err = pbDecodeNumber(t, mData)
 						if err != nil {
-							return
+							return 0, nil, 0, 0, nil, nil, 0, err
 						}
 						// due to how "Last One Wins" we can't do anything meaningfull without fully decoding the message first.
 
@@ -163,14 +159,12 @@ func parsePB[Self, Children cid.Storage](
 						case protowire.BytesType:
 							content, l = protowire.ConsumeBytes(mData)
 							if l < 0 {
-								err = protowire.ParseError(l)
-								return
+								return 0, nil, 0, 0, nil, nil, 0, protowire.ParseError(l)
 							}
 							mData = mData[l:]
 
 						default:
-							err = fmt.Errorf("unknown type for Data.Data field %v", t)
-							return
+							return 0, nil, 0, 0, nil, nil, 0, fmt.Errorf("unknown type for Data.Data field %v", t)
 						}
 
 					case 4:
@@ -196,9 +190,10 @@ func parsePB[Self, Children cid.Storage](
 						//        I mean it works but do other protobuf parsers do this ?
 						case protowire.VarintType, protowire.Fixed64Type, protowire.Fixed32Type:
 							var blocksize uint64
+							var err error
 							mData, blocksize, err = pbDecodeNumber(t, mData)
 							if err != nil {
-								return
+								return 0, nil, 0, 0, nil, nil, 0, err
 							}
 							addBlocksize(blocksize)
 
@@ -206,16 +201,14 @@ func parsePB[Self, Children cid.Storage](
 							// packed representation
 							packed, l := protowire.ConsumeBytes(mData)
 							if l < 0 {
-								err = protowire.ParseError(l)
-								return
+								return 0, nil, 0, 0, nil, nil, 0, protowire.ParseError(l)
 							}
 							mData = mData[l:]
 
 							for len(packed) != 0 {
 								blocksize, l := protowire.ConsumeVarint(packed)
 								if l < 0 {
-									err = protowire.ParseError(l)
-									return
+									return 0, nil, 0, 0, nil, nil, 0, protowire.ParseError(l)
 								}
 								packed = packed[l:]
 
@@ -223,14 +216,14 @@ func parsePB[Self, Children cid.Storage](
 							}
 
 						default:
-							err = fmt.Errorf("unknown type for Data.Blocksizes field %v", t)
-							return
+							return 0, nil, 0, 0, nil, nil, 0, fmt.Errorf("unknown type for Data.Blocksizes field %v", t)
 						}
 
 					default:
+						var err error
 						mData, err = pbHandleUnknownField(t, mData)
 						if err != nil {
-							return
+							return 0, nil, 0, 0, nil, nil, 0, err
 						}
 					}
 				} else {
@@ -242,19 +235,17 @@ func parsePB[Self, Children cid.Storage](
 						case protowire.BytesType:
 							cBytes, l := protowire.ConsumeBytes(mData)
 							if l < 0 {
-								err = protowire.ParseError(l)
-								return
+								return 0, nil, 0, 0, nil, nil, 0, protowire.ParseError(l)
 							}
 							mData = mData[l:]
 
+							var err error
 							c, err = cid.CastGeneric[Children](cBytes)
 							if err != nil {
-								err = fmt.Errorf("failed to decode cid: %w", err)
-								return
+								return 0, nil, 0, 0, nil, nil, 0, fmt.Errorf("failed to decode cid: %w", err)
 							}
 						default:
-							err = fmt.Errorf("unknown type for Links.Hash field %v", t)
-							return
+							return 0, nil, 0, 0, nil, nil, 0, fmt.Errorf("unknown type for Links.Hash field %v", t)
 						}
 
 					case 2:
@@ -263,19 +254,21 @@ func parsePB[Self, Children cid.Storage](
 						case protowire.BytesType:
 							name, l = protowire.ConsumeBytes(mData)
 							if l < 0 {
-								err = protowire.ParseError(l)
-								return
+								return 0, nil, 0, 0, nil, nil, 0, protowire.ParseError(l)
 							}
 							mData = mData[l:]
 
 						default:
-							err = fmt.Errorf("unknown type for Links.Name field %v", t)
-							return
+							return 0, nil, 0, 0, nil, nil, 0, fmt.Errorf("unknown type for Links.Name field %v", t)
 						}
 
 					case 3:
 						// optional uint64 Tsize = 3;
+						var err error
 						mData, tSize, err = pbDecodeNumber(t, mData)
+						if err != nil {
+							return 0, nil, 0, 0, nil, nil, 0, err
+						}
 						if selfTSize != 0 {
 							if tSize == 0 {
 								selfTSize = 0
@@ -286,9 +279,10 @@ func parsePB[Self, Children cid.Storage](
 						tSize++
 
 					default:
+						var err error
 						mData, err = pbHandleUnknownField(t, mData)
 						if err != nil {
-							return
+							return 0, nil, 0, 0, nil, nil, 0, err
 						}
 					}
 				}
@@ -297,7 +291,7 @@ func parsePB[Self, Children cid.Storage](
 			if outerNumber == 2 {
 				// repeated PBLink Links = 2;
 				if !c.Defined() {
-					err = errors.New("link is missing CID")
+					return 0, nil, 0, 0, nil, nil, 0, errors.New("link is missing CID")
 				}
 
 				// note we accept present but empty name entries on files because some historic
@@ -305,8 +299,7 @@ func parsePB[Self, Children cid.Storage](
 				if len(name) != 0 || len(directoryChildrens) != 0 {
 					// Directory entry
 					if blocksizes != 0 {
-						err = errors.New("mixed use of blocksizes and named links")
-						return
+						return 0, nil, 0, 0, nil, nil, 0, errors.New("mixed use of blocksizes and named links")
 					}
 
 					if len(fileChildrens) != 0 {
@@ -337,38 +330,15 @@ func parsePB[Self, Children cid.Storage](
 			}
 
 		default:
+			var err error
 			data, err = pbHandleUnknownField(t, data)
 			if err != nil {
-				return
+				return 0, nil, 0, 0, nil, nil, 0, err
 			}
 		}
 	}
 
-	switch dataType {
-	case pbFile:
-		if len(directoryChildrens) != 0 {
-			err = errors.New("named links in file")
-			return
-		}
-
-		if fileLinks != blocksizes {
-			err = fmt.Errorf("unmatched links (%d) and blocksizes (%d) sisterlists", uint(len(fileChildrens)), blocksizes)
-			return
-		}
-
-		typ = TFile
-		file = File[Self, Children]{
-			Entry:     Entry[Self]{Cid: inCid, tSize: selfTSize + uint64(len(origData))},
-			Data:      content,
-			Childrens: fileChildrens,
-		}
-
-		// TODO: directory and symlink
-		return
-	default:
-		err = fmt.Errorf("unknown node type: %d", dataType)
-		return
-	}
+	return dataType, fileChildrens, fileLinks, blocksizes, directoryChildrens, content, selfTSize, nil
 }
 
 // pbHandleUnknownField must be called right after the tag, it will handle

@@ -10,6 +10,7 @@ package unixfs
 
 import (
 	"errors"
+	"fmt"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -42,7 +43,8 @@ type File[Self, Children cid.Storage] struct {
 	//lint:ignore U1000 this is a badge patern
 	badge
 	Entry[Self]
-	Data      []byte
+	Data []byte
+
 	Childrens []FileEntry[Children]
 }
 
@@ -134,6 +136,10 @@ func ParseAppend[Self, Children cid.Storage](
 	fileChildrens = fileChildrens[len(fileChildrens):]
 	directoryChildrens = directoryChildrens[len(directoryChildrens):]
 
+	var dataType, selfTSize uint64
+	var fileLinks, blocksizes uint
+	var content []byte
+
 	pref := inCid.Prefix()
 	switch c := multicodec.Code(pref.Codec); c {
 	case multicodec.Raw:
@@ -148,9 +154,36 @@ func ParseAppend[Self, Children cid.Storage](
 		}
 		return
 	case multicodec.DagPb:
-		return parsePB(fileChildrens, directoryChildrens, inCid, data)
+		dataType, fileChildrens, fileLinks, blocksizes, directoryChildrens, content, selfTSize, err = parsePB(fileChildrens, directoryChildrens, inCid, data)
 	default:
 		err = errors.New("unsupported codec: " + c.String())
+		return
+	}
+	if err != nil {
+		return
+	}
+
+	if fileLinks != blocksizes {
+		err = fmt.Errorf("unmatched links (%d) and blocksizes (%d) sisterlists", uint(len(fileChildrens)), blocksizes)
+		return
+	}
+
+	switch dataType {
+	case pbFile:
+		if len(directoryChildrens) != 0 {
+			err = errors.New("named links in file")
+			return
+		}
+
+		return TFile, File[Self, Children]{
+			Entry:     Entry[Self]{Cid: inCid, tSize: selfTSize + uint64(len(data))},
+			Data:      content,
+			Childrens: fileChildrens,
+		}, Directory[Self, Children]{}, Symlink[Self]{}, nil
+
+		// TODO: directory and symlink
+	default:
+		err = fmt.Errorf("unknown node type: %d", dataType)
 		return
 	}
 }

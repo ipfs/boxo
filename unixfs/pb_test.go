@@ -24,8 +24,7 @@ func BenchmarkPB(b *testing.B) {
 	b.ResetTimer()
 	var out []FileEntry[[]byte]
 	for i := b.N; i != 0; i-- {
-		_, f, _, _, _ := parsePB(out[:0], nil, c, data)
-		out = f.Childrens
+		_, out, _, _, _, _, _, _ = parsePB(out[:0], nil, c, data)
 	}
 }
 
