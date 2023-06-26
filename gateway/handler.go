@@ -185,12 +185,20 @@ type requestData struct {
 
 	// Defined if resolution has already happened.
 	pathMetadata *ContentPathMetadata
-	resolvedPath *ImmutablePath
 }
 
-func (rq *requestData) maybeResolvedPath() ImmutablePath {
-	if rq.resolvedPath != nil {
-		return *rq.resolvedPath
+// mostlyResolvedPath is an opportunistic optimization that returns the mostly
+// resolved version of ImmutablePath available. It does not guarantee it is fully
+// resolved, nor that it is the original.
+func (rq *requestData) mostlyResolvedPath() ImmutablePath {
+	if rq.pathMetadata != nil {
+		imPath, err := NewImmutablePath(rq.pathMetadata.LastSegment)
+		if err != nil {
+			// This will never happen. This error has previously been checked in
+			// [handleIfNoneMatch] and the request will have returned 500.
+			panic(err)
+		}
+		return imPath
 	}
 	return rq.immutablePath
 }
@@ -469,7 +477,12 @@ func setContentDispositionHeader(w http.ResponseWriter, filename string, disposi
 
 // setIpfsRootsHeader sets the X-Ipfs-Roots header with logical CID array for
 // efficient HTTP cache invalidation.
-func setIpfsRootsHeader(w http.ResponseWriter, pathMetadata ContentPathMetadata) {
+func setIpfsRootsHeader(w http.ResponseWriter, rq *requestData, md *ContentPathMetadata) {
+	// Update requestData with the latest ContentPathMetadata if it wasn't set yet.
+	if rq.pathMetadata == nil {
+		rq.pathMetadata = md
+	}
+
 	// These are logical roots where each CID represent one path segment
 	// and resolves to either a directory or the root block of a file.
 	// The main purpose of this header is allow HTTP caches to do smarter decisions
@@ -492,10 +505,10 @@ func setIpfsRootsHeader(w http.ResponseWriter, pathMetadata ContentPathMetadata)
 	// the last root (responsible for specific article) may not change at all.
 
 	var pathRoots []string
-	for _, c := range pathMetadata.PathSegmentRoots {
+	for _, c := range rq.pathMetadata.PathSegmentRoots {
 		pathRoots = append(pathRoots, c.String())
 	}
-	pathRoots = append(pathRoots, pathMetadata.LastSegment.Cid().String())
+	pathRoots = append(pathRoots, rq.pathMetadata.LastSegment.Cid().String())
 	rootCidList := strings.Join(pathRoots, ",") // convention from rfc2616#sec4.2
 
 	w.Header().Set("X-Ipfs-Roots", rootCidList)
@@ -686,8 +699,7 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, rq *
 			return true
 		}
 
-		resolvedPath := pathMetadata.LastSegment
-		pathCid := resolvedPath.Cid()
+		pathCid := pathMetadata.LastSegment.Cid()
 
 		// Checks against both file, dir listing, and dag index Etags.
 		// This is an inexpensive check, and it happens before we do any I/O.
@@ -701,14 +713,14 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, rq *
 			return true
 		}
 
-		resolvedImPath, err := NewImmutablePath(resolvedPath)
+		// Check if the resolvedPath is an immutable path.
+		_, err = NewImmutablePath(pathMetadata.LastSegment)
 		if err != nil {
 			i.webError(w, r, err, http.StatusInternalServerError)
 			return true
 		}
 
 		rq.pathMetadata = &pathMetadata
-		rq.resolvedPath = &resolvedImPath
 		return false
 	}
 

@@ -62,16 +62,13 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 	ctx, span := spanTrace(ctx, "Handler.ServeCodec", trace.WithAttributes(attribute.String("path", rq.immutablePath.String()), attribute.String("requestedContentType", rq.responseFormat)))
 	defer span.End()
 
-	pathMetadata, data, err := i.backend.GetBlock(ctx, rq.maybeResolvedPath())
+	pathMetadata, data, err := i.backend.GetBlock(ctx, rq.mostlyResolvedPath())
 	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 		return false
 	}
-	if rq.pathMetadata == nil {
-		rq.pathMetadata = &pathMetadata
-	}
 	defer data.Close()
 
-	setIpfsRootsHeader(w, *rq.pathMetadata)
+	setIpfsRootsHeader(w, rq, &pathMetadata)
 	return i.renderCodec(ctx, w, r, rq, data)
 }
 

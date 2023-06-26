@@ -83,7 +83,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 	defer carFile.Close()
-	setIpfsRootsHeader(w, md)
+	setIpfsRootsHeader(w, rq, &md)
 
 	// Make it clear we don't support range-requests over a car stream
 	// Partial downloads and resumes should be handled using requests for

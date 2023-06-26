@@ -150,7 +150,7 @@ func TestHeaders(t *testing.T) {
 		dagCborRoots = dirRoots + "," + dagCborCID
 	)
 
-	t.Run("Control-Cache-Immutable is not immutable for directories", func(t *testing.T) {
+	t.Run("Cache-Control is not immutable on generated /ipfs/  HTML dir listings", func(t *testing.T) {
 		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+root.String()+"/", nil)
 		res := mustDoWithoutRedirect(t, req)
 
@@ -163,7 +163,7 @@ func TestHeaders(t *testing.T) {
 		}
 	})
 
-	t.Run("ETag contains expected values", func(t *testing.T) {
+	t.Run("ETag is based on CID and response format", func(t *testing.T) {
 		test := func(responseFormat string, path string, format string, args ...any) {
 			t.Run(responseFormat, func(t *testing.T) {
 				url := ts.URL + path

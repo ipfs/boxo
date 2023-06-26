@@ -21,16 +21,13 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	defer cancel()
 
 	// Get Unixfs file (or directory)
-	pathMetadata, file, err := i.backend.GetAll(ctx, rq.maybeResolvedPath())
+	pathMetadata, file, err := i.backend.GetAll(ctx, rq.mostlyResolvedPath())
 	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 		return false
 	}
-	if rq.pathMetadata == nil {
-		rq.pathMetadata = &pathMetadata
-	}
 	defer file.Close()
 
-	setIpfsRootsHeader(w, *rq.pathMetadata)
+	setIpfsRootsHeader(w, rq, &pathMetadata)
 	rootCid := pathMetadata.LastSegment.Cid()
 
 	// Set Cache-Control and read optional Last-Modified time

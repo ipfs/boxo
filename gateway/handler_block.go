@@ -14,16 +14,13 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	ctx, span := spanTrace(ctx, "Handler.ServeRawBlock", trace.WithAttributes(attribute.String("path", rq.immutablePath.String())))
 	defer span.End()
 
-	pathMetadata, data, err := i.backend.GetBlock(ctx, rq.maybeResolvedPath())
+	pathMetadata, data, err := i.backend.GetBlock(ctx, rq.mostlyResolvedPath())
 	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 		return false
 	}
-	if rq.pathMetadata == nil {
-		rq.pathMetadata = &pathMetadata
-	}
 	defer data.Close()
 
-	setIpfsRootsHeader(w, *rq.pathMetadata)
+	setIpfsRootsHeader(w, rq, &pathMetadata)
 
 	blockCid := pathMetadata.LastSegment.Cid()
 

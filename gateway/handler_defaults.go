@@ -32,7 +32,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	switch r.Method {
 	case http.MethodHead:
 		var data files.Node
-		pathMetadata, data, err = i.backend.Head(ctx, rq.maybeResolvedPath())
+		pathMetadata, data, err = i.backend.Head(ctx, rq.mostlyResolvedPath())
 		if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 			return false
 		}
@@ -62,10 +62,10 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		// allow backend to find  providers for parents, even when internal
 		// CIDs are not announced, and will provide better key for caching
 		// related DAGs.
-		pathMetadata, getResp, err = i.backend.Get(ctx, rq.maybeResolvedPath(), ranges...)
+		pathMetadata, getResp, err = i.backend.Get(ctx, rq.mostlyResolvedPath(), ranges...)
 		if err != nil {
 			if isWebRequest(rq.responseFormat) {
-				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, rq.maybeResolvedPath(), rq.immutablePath, rq.contentPath, err, rq.logger)
+				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, rq.mostlyResolvedPath(), rq.immutablePath, rq.contentPath, err, rq.logger)
 				if !continueProcessing {
 					return false
 				}
@@ -94,10 +94,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		return false
 	}
 
-	if rq.pathMetadata == nil {
-		rq.pathMetadata = &pathMetadata
-	}
-	setIpfsRootsHeader(w, *rq.pathMetadata)
+	setIpfsRootsHeader(w, rq, &pathMetadata)
 
 	resolvedPath := pathMetadata.LastSegment
 	switch mc.Code(resolvedPath.Cid().Prefix().Codec) {
