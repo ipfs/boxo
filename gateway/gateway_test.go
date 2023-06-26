@@ -128,28 +128,30 @@ func TestPretty404(t *testing.T) {
 func TestHeaders(t *testing.T) {
 	t.Parallel()
 
-	ts, _, root := newTestServerAndNode(t, nil, "headers-test.car")
+	ts, _, _ := newTestServerAndNode(t, nil, "headers-test.car")
 
 	var (
+		rootCID = "bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky"
+
 		dirCID   = "bafybeihta5xfgxcmyxyq6druvidc7es6ogffdd6zel22l3y4wddju5xxsu"
-		dirPath  = "/ipfs/bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky/subdir/"
-		dirRoots = "bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky," + dirCID
+		dirPath  = "/ipfs/" + rootCID + "/subdir/"
+		dirRoots = rootCID + "," + dirCID
 
 		hamtCID   = "bafybeidbclfqleg2uojchspzd4bob56dqetqjsj27gy2cq3klkkgxtpn4i"
-		hamtPath  = "/ipfs/bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky/hamt/"
-		hamtRoots = "bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky," + hamtCID
+		hamtPath  = "/ipfs/" + rootCID + "/hamt/"
+		hamtRoots = rootCID + "," + hamtCID
 
 		fileCID   = "bafkreiba3vpkcqpc6xtp3hsatzcod6iwneouzjoq7ymy4m2js6gc3czt6i"
-		filePath  = "/ipfs/bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky/subdir/fnord"
+		filePath  = "/ipfs/" + rootCID + "/subdir/fnord"
 		fileRoots = dirRoots + "," + fileCID
 
 		dagCborCID   = "bafyreiaocls5bt2ha5vszv5pwz34zzcdf3axk3uqa56bgsgvlkbezw67hq"
-		dagCborPath  = "/ipfs/bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky/subdir/dag-cbor-document"
+		dagCborPath  = "/ipfs/" + rootCID + "/subdir/dag-cbor-document"
 		dagCborRoots = dirRoots + "," + dagCborCID
 	)
 
 	t.Run("Cache-Control is not immutable on generated /ipfs/  HTML dir listings", func(t *testing.T) {
-		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+root.String()+"/", nil)
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+rootCID+"/", nil)
 		res := mustDoWithoutRedirect(t, req)
 
 		// check the immutable tag isn't set
@@ -177,25 +179,25 @@ func TestHeaders(t *testing.T) {
 		}
 		test("", dirPath, `"DirIndex-(.*)_CID-%s"`, dirCID)
 		test("text/html", dirPath, `"DirIndex-(.*)_CID-%s"`, dirCID)
-		test(carResponseFormat, dirPath, `W/"%s.car.7of9u8ojv38vd"`, root.String()) // ETags of CARs on a Path have the root CID in the Etag and hashed information to derive the correct Etag of the full request.
+		test(carResponseFormat, dirPath, `W/"%s.car.7of9u8ojv38vd"`, rootCID) // ETags of CARs on a Path have the root CID in the Etag and hashed information to derive the correct Etag of the full request.
 		test(rawResponseFormat, dirPath, `"%s.raw"`, dirCID)
 		test(tarResponseFormat, dirPath, `W/"%s.x-tar"`, dirCID)
 
 		test("", hamtPath, `"DirIndex-(.*)_CID-%s"`, hamtCID)
 		test("text/html", hamtPath, `"DirIndex-(.*)_CID-%s"`, hamtCID)
-		test(carResponseFormat, hamtPath, `W/"%s.car.35kkb3vmh1o1r"`, root.String()) // ETags of CARs on a Path have the root CID in the Etag and hashed information to derive the correct Etag of the full request.
+		test(carResponseFormat, hamtPath, `W/"%s.car.35kkb3vmh1o1r"`, rootCID) // ETags of CARs on a Path have the root CID in the Etag and hashed information to derive the correct Etag of the full request.
 		test(rawResponseFormat, hamtPath, `"%s.raw"`, hamtCID)
 		test(tarResponseFormat, hamtPath, `W/"%s.x-tar"`, hamtCID)
 
 		test("", filePath, `"%s"`, fileCID)
 		test("text/html", filePath, `"%s"`, fileCID)
-		test(carResponseFormat, filePath, `W/"%s.car.fgq8i0qnhsq01"`, root.String())
+		test(carResponseFormat, filePath, `W/"%s.car.fgq8i0qnhsq01"`, rootCID)
 		test(rawResponseFormat, filePath, `"%s.raw"`, fileCID)
 		test(tarResponseFormat, filePath, `W/"%s.x-tar"`, fileCID)
 
 		test("", dagCborPath, `"%s.dag-cbor"`, dagCborCID)
 		test("text/html", dagCborPath+"/", `"DagIndex-(.*)_CID-%s"`, dagCborCID)
-		test(carResponseFormat, dagCborPath, `W/"%s.car.5mg3mekeviba5"`, root.String())
+		test(carResponseFormat, dagCborPath, `W/"%s.car.5mg3mekeviba5"`, rootCID)
 		test(rawResponseFormat, dagCborPath, `"%s.raw"`, dagCborCID)
 		test(dagJsonResponseFormat, dagCborPath, `"%s.dag-json"`, dagCborCID)
 		test(dagCborResponseFormat, dagCborPath, `"%s.dag-cbor"`, dagCborCID)
