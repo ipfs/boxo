@@ -132,15 +132,19 @@ func TestHeaders(t *testing.T) {
 
 	var (
 		dirCID   = "bafybeihta5xfgxcmyxyq6druvidc7es6ogffdd6zel22l3y4wddju5xxsu"
-		dirPath  = "/ipfs/" + root.String() + "/subdir/"
-		dirRoots = root.String() + "," + dirCID
+		dirPath  = "/ipfs/bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky/subdir/"
+		dirRoots = "bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky," + dirCID
+
+		hamtCID   = "bafybeidbclfqleg2uojchspzd4bob56dqetqjsj27gy2cq3klkkgxtpn4i"
+		hamtPath  = "/ipfs/bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky/hamt/"
+		hamtRoots = "bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky," + hamtCID
 
 		fileCID   = "bafkreiba3vpkcqpc6xtp3hsatzcod6iwneouzjoq7ymy4m2js6gc3czt6i"
-		filePath  = "/ipfs/" + root.String() + "/subdir/fnord"
+		filePath  = "/ipfs/bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky/subdir/fnord"
 		fileRoots = dirRoots + "," + fileCID
 
 		dagCborCID   = "bafyreiaocls5bt2ha5vszv5pwz34zzcdf3axk3uqa56bgsgvlkbezw67hq"
-		dagCborPath  = "/ipfs/" + root.String() + "/subdir/dag-cbor-document"
+		dagCborPath  = "/ipfs/bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky/subdir/dag-cbor-document"
 		dagCborRoots = dirRoots + "," + dagCborCID
 	)
 
@@ -164,6 +168,9 @@ func TestHeaders(t *testing.T) {
 				req := mustNewRequest(t, http.MethodGet, url, nil)
 				req.Header.Add("Accept", responseFormat)
 				res := mustDoWithoutRedirect(t, req)
+				_, err := io.Copy(io.Discard, res.Body)
+				require.NoError(t, err)
+				defer res.Body.Close()
 				require.Equal(t, http.StatusOK, res.StatusCode)
 				require.Regexp(t, `^`+fmt.Sprintf(format, args...)+`$`, res.Header.Get("Etag"))
 			})
@@ -173,6 +180,12 @@ func TestHeaders(t *testing.T) {
 		test(carResponseFormat, dirPath, `W/"%s.car.7of9u8ojv38vd"`, root.String()) // ETags of CARs on a Path have the root CID in the Etag and hashed information to derive the correct Etag of the full request.
 		test(rawResponseFormat, dirPath, `"%s.raw"`, dirCID)
 		test(tarResponseFormat, dirPath, `W/"%s.x-tar"`, dirCID)
+
+		test("", hamtPath, `"DirIndex-(.*)_CID-%s"`, hamtCID)
+		test("text/html", hamtPath, `"DirIndex-(.*)_CID-%s"`, hamtCID)
+		test(carResponseFormat, hamtPath, `W/"%s.car.35kkb3vmh1o1r"`, root.String()) // ETags of CARs on a Path have the root CID in the Etag and hashed information to derive the correct Etag of the full request.
+		test(rawResponseFormat, hamtPath, `"%s.raw"`, hamtCID)
+		test(tarResponseFormat, hamtPath, `W/"%s.x-tar"`, hamtCID)
 
 		test("", filePath, `"%s"`, fileCID)
 		test("text/html", filePath, `"%s"`, fileCID)
@@ -195,13 +208,20 @@ func TestHeaders(t *testing.T) {
 				req := mustNewRequest(t, http.MethodGet, url, nil)
 				req.Header.Add("Accept", responseFormat)
 				res := mustDoWithoutRedirect(t, req)
+				_, err := io.Copy(io.Discard, res.Body)
+				require.NoError(t, err)
+				defer res.Body.Close()
 				require.Equal(t, http.StatusOK, res.StatusCode)
 				etag := res.Header.Get("Etag")
 				require.NotEmpty(t, etag)
+
 				req = mustNewRequest(t, http.MethodGet, url, nil)
 				req.Header.Add("Accept", responseFormat)
 				req.Header.Add("If-None-Match", etag)
 				res = mustDoWithoutRedirect(t, req)
+				_, err = io.Copy(io.Discard, res.Body)
+				require.NoError(t, err)
+				defer res.Body.Close()
 				require.Equal(t, http.StatusNotModified, res.StatusCode)
 			})
 		}
@@ -211,6 +231,12 @@ func TestHeaders(t *testing.T) {
 		test(carResponseFormat, dirPath)
 		test(rawResponseFormat, dirPath)
 		test(tarResponseFormat, dirPath)
+
+		test("", hamtPath)
+		test("text/html", hamtPath)
+		test(carResponseFormat, hamtPath)
+		test(rawResponseFormat, hamtPath)
+		test(tarResponseFormat, hamtPath)
 
 		test("", filePath)
 		test("text/html", filePath)
@@ -233,6 +259,9 @@ func TestHeaders(t *testing.T) {
 				req := mustNewRequest(t, http.MethodGet, url, nil)
 				req.Header.Add("Accept", responseFormat)
 				res := mustDoWithoutRedirect(t, req)
+				_, err := io.Copy(io.Discard, res.Body)
+				require.NoError(t, err)
+				defer res.Body.Close()
 				require.Equal(t, http.StatusOK, res.StatusCode)
 				require.Equal(t, roots, res.Header.Get("X-Ipfs-Roots"))
 			})
@@ -243,6 +272,12 @@ func TestHeaders(t *testing.T) {
 		test(carResponseFormat, dirPath, dirRoots)
 		test(rawResponseFormat, dirPath, dirRoots)
 		test(tarResponseFormat, dirPath, dirRoots)
+
+		test("", hamtPath, hamtRoots)
+		test("text/html", hamtPath, hamtRoots)
+		test(carResponseFormat, hamtPath, hamtRoots)
+		test(rawResponseFormat, hamtPath, hamtRoots)
+		test(tarResponseFormat, hamtPath, hamtRoots)
 
 		test("", filePath, fileRoots)
 		test("text/html", filePath, fileRoots)
@@ -266,6 +301,9 @@ func TestHeaders(t *testing.T) {
 				req.Header.Add("Accept", responseFormat)
 				req.Header.Add("If-None-Match", "just-some-gibberish")
 				res := mustDoWithoutRedirect(t, req)
+				_, err := io.Copy(io.Discard, res.Body)
+				require.NoError(t, err)
+				defer res.Body.Close()
 				require.Equal(t, http.StatusOK, res.StatusCode)
 				require.Equal(t, roots, res.Header.Get("X-Ipfs-Roots"))
 			})
@@ -276,6 +314,12 @@ func TestHeaders(t *testing.T) {
 		test(carResponseFormat, dirPath, dirRoots)
 		test(rawResponseFormat, dirPath, dirRoots)
 		test(tarResponseFormat, dirPath, dirRoots)
+
+		test("", hamtPath, hamtRoots)
+		test("text/html", hamtPath, hamtRoots)
+		test(carResponseFormat, hamtPath, hamtRoots)
+		test(rawResponseFormat, hamtPath, hamtRoots)
+		test(tarResponseFormat, hamtPath, hamtRoots)
 
 		test("", filePath, fileRoots)
 		test("text/html", filePath, fileRoots)
