@@ -128,7 +128,7 @@ func TestPretty404(t *testing.T) {
 func TestHeaders(t *testing.T) {
 	t.Parallel()
 
-	ts, _, _ := newTestServerAndNode(t, nil, "headers-test.car")
+	ts, backend, root := newTestServerAndNode(t, nil, "headers-test.car")
 
 	var (
 		rootCID = "bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky"
@@ -335,6 +335,87 @@ func TestHeaders(t *testing.T) {
 		test(rawResponseFormat, dagCborPath, dagCborRoots)
 		test(dagJsonResponseFormat, dagCborPath, dagCborRoots)
 		test(dagCborResponseFormat, dagCborPath, dagCborRoots)
+	})
+
+	// Ensures CORS headers are present in HTTP OPTIONS responses
+	// https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request
+	t.Run("CORS Preflight Headers", func(t *testing.T) {
+		// Expect boxo/gateway library's default CORS allowlist for Method
+		headerACAM := "Access-Control-Allow-Methods"
+		expectedACAM := []string{http.MethodGet, http.MethodHead, http.MethodOptions}
+
+		// Set custom CORS policy to ensure we test user config end-to-end
+		headerACAO := "Access-Control-Allow-Origin"
+		expectedACAO := "https://other.example.net"
+		headers := map[string][]string{}
+		headers[headerACAO] = []string{expectedACAO}
+
+		ts := newTestServerWithConfig(t, backend, Config{
+			Headers: headers,
+			PublicGateways: map[string]*PublicGateway{
+				"subgw.example.com": {
+					Paths:                 []string{"/ipfs", "/ipns"},
+					UseSubdomains:         true,
+					DeserializedResponses: true,
+				},
+			},
+			DeserializedResponses: true,
+		})
+		t.Logf("test server url: %s", ts.URL)
+
+		testCORSPreflightRequest := func(t *testing.T, path, hostHeader string, requestOriginHeader string, code int) {
+			req, err := http.NewRequest(http.MethodOptions, ts.URL+path, nil)
+			assert.Nil(t, err)
+
+			if hostHeader != "" {
+				req.Host = hostHeader
+			}
+
+			if requestOriginHeader != "" {
+				req.Header.Add("Origin", requestOriginHeader)
+			}
+
+			t.Logf("test req: %+v", req)
+
+			// Expect no redirect for OPTIONS request -- https://github.com/ipfs/kubo/issues/9983#issuecomment-1599673976
+			res := mustDoWithoutRedirect(t, req)
+			defer res.Body.Close()
+
+			t.Logf("test res: %+v", res)
+
+			// Expect success
+			assert.Equal(t, code, res.StatusCode)
+
+			// Expect OPTIONS response to have custom CORS header set by user
+			assert.Equal(t, expectedACAO, res.Header.Get(headerACAO))
+
+			// Expect OPTIONS response to have implicit default Allow-Methods
+			// set by boxo/gateway library
+			assert.Equal(t, expectedACAM, res.Header[headerACAM])
+
+		}
+
+		cid := root.String()
+
+		t.Run("HTTP OPTIONS response is OK and has defined headers", func(t *testing.T) {
+			t.Parallel()
+			testCORSPreflightRequest(t, "/ipfs/"+cid, "", "", http.StatusOK)
+		})
+
+		t.Run("HTTP OPTIONS response for cross-origin /ipfs/cid is OK and has CORS headers", func(t *testing.T) {
+			t.Parallel()
+			testCORSPreflightRequest(t, "/ipfs/"+cid, "", "https://other.example.net", http.StatusOK)
+		})
+
+		t.Run("HTTP OPTIONS response for cross-origin /ipfs/cid is HTTP 301 and includes CORS headers (path gw redirect on subdomain gw)", func(t *testing.T) {
+			t.Parallel()
+			testCORSPreflightRequest(t, "/ipfs/"+cid, "subgw.example.com", "https://other.example.net", http.StatusMovedPermanently)
+		})
+
+		t.Run("HTTP OPTIONS response for cross-origin is HTTP 200 and has CORS headers (host header on subdomain gw)", func(t *testing.T) {
+			t.Parallel()
+			testCORSPreflightRequest(t, "/", cid+".ipfs.subgw.example.com", "https://other.example.net", http.StatusOK)
+		})
 	})
 }
 

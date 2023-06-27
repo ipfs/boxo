@@ -320,20 +320,22 @@ func cleanHeaderSet(headers []string) []string {
 	return result
 }
 
-// AddAccessControlHeaders adds default HTTP headers used for controlling
-// cross-origin requests. This function adds several values to the
-// [Access-Control-Allow-Headers] and [Access-Control-Expose-Headers] entries.
+// AddAccessControlHeaders ensures safe default HTTP headers are used for
+// controlling cross-origin requests. This function adds several values to the
+// [Access-Control-Allow-Headers] and [Access-Control-Expose-Headers] entries
+// to be exposed on GET and OPTIONS responses, including [CORS Preflight].
 //
-// If the Access-Control-Allow-Origin entry is missing a value of '*' is
+// If the Access-Control-Allow-Origin entry is missing, a default value of '*' is
 // added, indicating that browsers should allow requesting code from any
 // origin to access the resource.
 //
-// If the Access-Control-Allow-Methods entry is missing a value of 'GET' is
-// added, indicating that browsers may use the GET method when issuing cross
+// If the Access-Control-Allow-Methods entry is missing a value, 'GET, HEAD,
+// OPTIONS' is added, indicating that browsers may use them when issuing cross
 // origin requests.
 //
 // [Access-Control-Allow-Headers]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers
 // [Access-Control-Expose-Headers]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Expose-Headers
+// [CORS Preflight]: https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request
 func AddAccessControlHeaders(headers map[string][]string) {
 	// Hard-coded headers.
 	const ACAHeadersName = "Access-Control-Allow-Headers"
@@ -346,8 +348,12 @@ func AddAccessControlHeaders(headers map[string][]string) {
 		headers[ACAOriginName] = []string{"*"}
 	}
 	if _, ok := headers[ACAMethodsName]; !ok {
-		// Default to GET
-		headers[ACAMethodsName] = []string{http.MethodGet}
+		// Default to GET, HEAD, OPTIONS
+		headers[ACAMethodsName] = []string{
+			http.MethodGet,
+			http.MethodHead,
+			http.MethodOptions,
+		}
 	}
 
 	headers[ACAHeadersName] = cleanHeaderSet(

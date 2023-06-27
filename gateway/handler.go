@@ -156,19 +156,25 @@ func (i *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Add("Allow", http.MethodGet)
-	w.Header().Add("Allow", http.MethodHead)
-	w.Header().Add("Allow", http.MethodOptions)
+	addAllowHeader(w)
 
 	errmsg := "Method " + r.Method + " not allowed: read only access"
 	http.Error(w, errmsg, http.StatusMethodNotAllowed)
 }
 
 func (i *handler) optionsHandler(w http.ResponseWriter, r *http.Request) {
+	addAllowHeader(w)
 	// OPTIONS is a noop request that is used by the browsers to check if server accepts
 	// cross-site XMLHttpRequest, which is indicated by the presence of CORS headers:
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS#Preflighted_requests
-	i.addUserHeaders(w) // return all custom headers (including CORS ones, if set)
+	addCustomHeaders(w, i.config.Headers) // return all custom headers (including CORS ones, if set)
+}
+
+// addAllowHeader sets Allow header with supported HTTP methods
+func addAllowHeader(w http.ResponseWriter) {
+	w.Header().Add("Allow", http.MethodGet)
+	w.Header().Add("Allow", http.MethodHead)
+	w.Header().Add("Allow", http.MethodOptions)
 }
 
 type requestData struct {
@@ -244,7 +250,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResponseFormat", responseFormat))
 	i.requestTypeMetric.WithLabelValues(contentPath.Namespace(), responseFormat).Inc()
 
-	i.addUserHeaders(w) // ok, _now_ write user's headers.
+	addCustomHeaders(w, i.config.Headers) // ok, _now_ write user's headers.
 	w.Header().Set("X-Ipfs-Path", contentPath.String())
 
 	// Fail fast if unsupported request type was sent to a Trustless Gateway.
@@ -320,9 +326,9 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (i *handler) addUserHeaders(w http.ResponseWriter) {
-	for k, v := range i.config.Headers {
-		w.Header()[k] = v
+func addCustomHeaders(w http.ResponseWriter, headers map[string][]string) {
+	for k, v := range headers {
+		w.Header()[http.CanonicalHeaderKey(k)] = v
 	}
 }
 
