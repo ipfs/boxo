@@ -7,9 +7,12 @@ import (
 	"github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCarParams(t *testing.T) {
+	t.Parallel()
+
 	t.Run("dag-scope parsing", func(t *testing.T) {
 		t.Parallel()
 
@@ -24,11 +27,8 @@ func TestCarParams(t *testing.T) {
 			{"dag-scope=what-is-this", "", true},
 		}
 		for _, test := range tests {
-			r, err := http.NewRequest(http.MethodGet, "http://example.com/?"+test.query, nil)
-			assert.NoError(t, err)
-
+			r := mustNewRequest(t, http.MethodGet, "http://example.com/?"+test.query, nil)
 			params, err := getCarParams(r)
-
 			if test.expectedError {
 				assert.Error(t, err)
 			} else {
@@ -59,11 +59,8 @@ func TestCarParams(t *testing.T) {
 			{"entity-bytes=123:bbb", true, 0, true, 0},
 		}
 		for _, test := range tests {
-			r, err := http.NewRequest(http.MethodGet, "http://example.com/?"+test.query, nil)
-			assert.NoError(t, err)
-
+			r := mustNewRequest(t, http.MethodGet, "http://example.com/?"+test.query, nil)
 			params, err := getCarParams(r)
-
 			if test.hasError {
 				assert.Error(t, err)
 			} else {
@@ -78,19 +75,21 @@ func TestCarParams(t *testing.T) {
 	})
 }
 
-func TestCarEtag(t *testing.T) {
+func TestGetCarEtag(t *testing.T) {
+	t.Parallel()
+
 	cid, err := cid.Parse("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	imPath, err := NewImmutablePath(path.IpfsPath(cid))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	t.Run("Etag with entity-bytes=0:* is the same as without query param", func(t *testing.T) {
 		t.Parallel()
 
 		noRange := getCarEtag(imPath, CarParams{}, cid)
 		withRange := getCarEtag(imPath, CarParams{Range: &DagByteRange{From: 0}}, cid)
-		assert.Equal(t, noRange, withRange)
+		require.Equal(t, noRange, withRange)
 	})
 
 	t.Run("Etag with entity-bytes=1:* is different than without query param", func(t *testing.T) {
@@ -98,7 +97,7 @@ func TestCarEtag(t *testing.T) {
 
 		noRange := getCarEtag(imPath, CarParams{}, cid)
 		withRange := getCarEtag(imPath, CarParams{Range: &DagByteRange{From: 1}}, cid)
-		assert.NotEqual(t, noRange, withRange)
+		require.NotEqual(t, noRange, withRange)
 	})
 
 	t.Run("Etags with different dag-scope are different", func(t *testing.T) {
@@ -106,6 +105,6 @@ func TestCarEtag(t *testing.T) {
 
 		a := getCarEtag(imPath, CarParams{Scope: DagScopeAll}, cid)
 		b := getCarEtag(imPath, CarParams{Scope: DagScopeEntity}, cid)
-		assert.NotEqual(t, a, b)
+		require.NotEqual(t, a, b)
 	})
 }

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
-	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/go-cid"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -24,14 +23,14 @@ const (
 )
 
 // serveCAR returns a CAR stream for specific DAG+selector
-func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, carVersion string, begin time.Time) bool {
-	ctx, span := spanTrace(ctx, "Handler.ServeCAR", trace.WithAttributes(attribute.String("path", imPath.String())))
+func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeCAR", trace.WithAttributes(attribute.String("path", rq.immutablePath.String())))
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	switch carVersion {
+	switch rq.responseParams["version"] {
 	case "": // noop, client does not care about version
 	case "1": // noop, we support this
 	default:
@@ -46,7 +45,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	rootCid, lastSegment, err := getCarRootCidAndLastSegment(imPath)
+	rootCid, lastSegment, err := getCarRootCidAndLastSegment(rq.immutablePath)
 	if err != nil {
 		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
@@ -66,10 +65,10 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	setContentDispositionHeader(w, name, "attachment")
 
 	// Set Cache-Control (same logic as for a regular files)
-	addCacheControlHeaders(w, r, contentPath, rootCid, carResponseFormat)
+	addCacheControlHeaders(w, r, rq.contentPath, rootCid, carResponseFormat)
 
 	// Generate the CAR Etag.
-	etag := getCarEtag(imPath, params, rootCid)
+	etag := getCarEtag(rq.immutablePath, params, rootCid)
 	w.Header().Set("Etag", etag)
 
 	// Terminate early if Etag matches. We cannot rely on handleIfNoneMatch since
@@ -79,12 +78,12 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	md, carFile, err := i.backend.GetCAR(ctx, imPath, params)
-	if !i.handleRequestErrors(w, r, contentPath, err) {
+	md, carFile, err := i.backend.GetCAR(ctx, rq.immutablePath, params)
+	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 		return false
 	}
 	defer carFile.Close()
-	setIpfsRootsHeader(w, md)
+	setIpfsRootsHeader(w, rq, &md)
 
 	// Make it clear we don't support range-requests over a car stream
 	// Partial downloads and resumes should be handled using requests for
@@ -99,7 +98,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	streamErr := multierr.Combine(carErr, copyErr)
 	if streamErr != nil {
 		// Update fail metric
-		i.carStreamFailMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		i.carStreamFailMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 
 		// We return error as a trailer, however it is not something browsers can access
 		// (https://github.com/mdn/browser-compat-data/issues/14703)
@@ -110,7 +109,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 
 	// Update metrics
-	i.carStreamGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	i.carStreamGetMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 	return true
 }
 
