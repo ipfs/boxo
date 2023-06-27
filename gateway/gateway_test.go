@@ -137,9 +137,9 @@ func TestHeaders(t *testing.T) {
 		dirPath  = "/ipfs/" + rootCID + "/subdir/"
 		dirRoots = rootCID + "," + dirCID
 
-		hamtCID   = "bafybeidbclfqleg2uojchspzd4bob56dqetqjsj27gy2cq3klkkgxtpn4i"
-		hamtPath  = "/ipfs/" + rootCID + "/hamt/"
-		hamtRoots = rootCID + "," + hamtCID
+		hamtFileCID   = "bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa"
+		hamtFilePath  = "/ipfs/" + rootCID + "/hamt/685.txt"
+		hamtFileRoots = rootCID + ",bafybeidbclfqleg2uojchspzd4bob56dqetqjsj27gy2cq3klkkgxtpn4i," + hamtFileCID
 
 		fileCID   = "bafkreiba3vpkcqpc6xtp3hsatzcod6iwneouzjoq7ymy4m2js6gc3czt6i"
 		filePath  = "/ipfs/" + rootCID + "/subdir/fnord"
@@ -183,11 +183,11 @@ func TestHeaders(t *testing.T) {
 		test(rawResponseFormat, dirPath, `"%s.raw"`, dirCID)
 		test(tarResponseFormat, dirPath, `W/"%s.x-tar"`, dirCID)
 
-		test("", hamtPath, `"DirIndex-(.*)_CID-%s"`, hamtCID)
-		test("text/html", hamtPath, `"DirIndex-(.*)_CID-%s"`, hamtCID)
-		test(carResponseFormat, hamtPath, `W/"%s.car.35kkb3vmh1o1r"`, rootCID) // ETags of CARs on a Path have the root CID in the Etag and hashed information to derive the correct Etag of the full request.
-		test(rawResponseFormat, hamtPath, `"%s.raw"`, hamtCID)
-		test(tarResponseFormat, hamtPath, `W/"%s.x-tar"`, hamtCID)
+		test("", hamtFilePath, `"%s"`, hamtFileCID)
+		test("text/html", hamtFilePath, `"%s"`, hamtFileCID)
+		test(carResponseFormat, hamtFilePath, `W/"%s.car.2uq26jdcsk50p"`, rootCID) // ETags of CARs on a Path have the root CID in the Etag and hashed information to derive the correct Etag of the full request.
+		test(rawResponseFormat, hamtFilePath, `"%s.raw"`, hamtFileCID)
+		test(tarResponseFormat, hamtFilePath, `W/"%s.x-tar"`, hamtFileCID)
 
 		test("", filePath, `"%s"`, fileCID)
 		test("text/html", filePath, `"%s"`, fileCID)
@@ -234,11 +234,11 @@ func TestHeaders(t *testing.T) {
 		test(rawResponseFormat, dirPath)
 		test(tarResponseFormat, dirPath)
 
-		test("", hamtPath)
-		test("text/html", hamtPath)
-		test(carResponseFormat, hamtPath)
-		test(rawResponseFormat, hamtPath)
-		test(tarResponseFormat, hamtPath)
+		test("", hamtFilePath)
+		test("text/html", hamtFilePath)
+		test(carResponseFormat, hamtFilePath)
+		test(rawResponseFormat, hamtFilePath)
+		test(tarResponseFormat, hamtFilePath)
 
 		test("", filePath)
 		test("text/html", filePath)
@@ -275,11 +275,11 @@ func TestHeaders(t *testing.T) {
 		test(rawResponseFormat, dirPath, dirRoots)
 		test(tarResponseFormat, dirPath, dirRoots)
 
-		test("", hamtPath, hamtRoots)
-		test("text/html", hamtPath, hamtRoots)
-		test(carResponseFormat, hamtPath, hamtRoots)
-		test(rawResponseFormat, hamtPath, hamtRoots)
-		test(tarResponseFormat, hamtPath, hamtRoots)
+		test("", hamtFilePath, hamtFileRoots)
+		test("text/html", hamtFilePath, hamtFileRoots)
+		test(carResponseFormat, hamtFilePath, hamtFileRoots)
+		test(rawResponseFormat, hamtFilePath, hamtFileRoots)
+		test(tarResponseFormat, hamtFilePath, hamtFileRoots)
 
 		test("", filePath, fileRoots)
 		test("text/html", filePath, fileRoots)
@@ -317,11 +317,11 @@ func TestHeaders(t *testing.T) {
 		test(rawResponseFormat, dirPath, dirRoots)
 		test(tarResponseFormat, dirPath, dirRoots)
 
-		test("", hamtPath, hamtRoots)
-		test("text/html", hamtPath, hamtRoots)
-		test(carResponseFormat, hamtPath, hamtRoots)
-		test(rawResponseFormat, hamtPath, hamtRoots)
-		test(tarResponseFormat, hamtPath, hamtRoots)
+		test("", hamtFilePath, hamtFileRoots)
+		test("text/html", hamtFilePath, hamtFileRoots)
+		test(carResponseFormat, hamtFilePath, hamtFileRoots)
+		test(rawResponseFormat, hamtFilePath, hamtFileRoots)
+		test(tarResponseFormat, hamtFilePath, hamtFileRoots)
 
 		test("", filePath, fileRoots)
 		test("text/html", filePath, fileRoots)
