@@ -21,7 +21,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ENDPOINT: repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files
-          SELECTOR: '.[] | select(.filename == "CHANGELOG.md") | length'
+          SELECTOR: 'map(select(.filename == "CHANGELOG.md")) | length'
         run: gh api "$ENDPOINT" --jq "$SELECTOR" | xargs -I{} echo "modified={}" | tee -a $GITHUB_OUTPUT
       - if: steps.changelog.outputs.modified == '0'
         env:
