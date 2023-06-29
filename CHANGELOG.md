@@ -14,8 +14,6 @@ The following emojis are used to highlight certain changes:
 
 ## [Unreleased]
 
-## [0.10.1] - 2023-06-19
-
 ### Added
 
 ### Changed
@@ -24,9 +22,36 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+### Security
+
+## [0.10.2] - 2023-06-29
+
+### Fixed
+
+- Gateway: include CORS on subdomain redirects.
+- Gateway: ensure 'X-Ipfs-Root' header is valid.
+
+## [0.10.1] - 2023-06-19
+
+### Added
+
+None.
+
+### Changed
+
+None.
+
+### Removed
+
+None.
+
+### Fixed
+
 - Allow CAR requests with a path when `DeserializedResponses` is `false`.
 
 ### Security
+
+None.
 
 ## [0.10.0] - 2023-06-09
 
