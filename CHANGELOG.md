@@ -24,6 +24,13 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
+## [0.10.2] - 2023-06-29
+
+### Fixed
+
+- Gateway: include CORS on subdomain redirects.
+- Gateway: ensure 'X-Ipfs-Root' header is valid.
+
 ## [0.10.1] - 2023-06-19
 
 ### Added
