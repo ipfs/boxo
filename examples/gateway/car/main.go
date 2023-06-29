@@ -13,8 +13,8 @@ import (
 	"github.com/ipfs/boxo/examples/gateway/common"
 	offline "github.com/ipfs/boxo/exchange/offline"
 	"github.com/ipfs/boxo/gateway"
-	carblockstore "github.com/ipfs/boxo/ipld/car/v2/blockstore"
 	"github.com/ipfs/go-cid"
+	carblockstore "github.com/ipld/go-car/v2/blockstore"
 )
 
 func main() {
