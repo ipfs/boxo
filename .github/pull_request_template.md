@@ -1,5 +1,5 @@
 <!--
-Please update the CHANGELOG.md. If your change does not require a CHANGELOG entry, please do one of the following:
+Please update the CHANGELOG.md if you're modifying Go files. If your change does not require a changelog entry, please do one of the following:
 - add `[skip changelog]` to the PR title
 - label the PR with `skip/changelog`
 -->
