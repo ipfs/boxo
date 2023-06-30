@@ -27,6 +27,7 @@ The following emojis are used to highlight certain changes:
   * The only change to the default behavior on CAR responses is that we follow
     IPIP-412 and make `order=dfs;dups=n` explicit in the returned
     `Content-Type` HTTP header.
+* ✨ While the call signature remains the same, the blocks that Bitswap returns can now be cast to [traceability.Block](./bitswap/client/traceability/block.go), which will additionally tell you where the Block came from and how long it took to fetch. This helps consumers of Bitswap collect better metrics on Bitswap behavior.
 
 ### Changed
 
