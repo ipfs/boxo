@@ -7,13 +7,14 @@ require (
 	github.com/ipfs/go-block-format v0.1.2
 	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-datastore v0.6.0
+	github.com/ipld/go-car/v2 v2.10.2-0.20230622090957-499d0c909d33
 	github.com/ipld/go-ipld-prime v0.20.0
 	github.com/libp2p/go-libp2p v0.26.3
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.0
 	github.com/multiformats/go-multiaddr v0.8.0
 	github.com/multiformats/go-multicodec v0.9.0
 	github.com/prometheus/client_golang v1.14.0
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.8.4
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.40.0
 	go.opentelemetry.io/contrib/propagators/autoprop v0.40.0
 	go.opentelemetry.io/otel v1.14.0

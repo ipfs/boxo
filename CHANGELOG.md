@@ -26,11 +26,39 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+- 🛠 `ipld/car`  has been removed. Please use [ipld/go-car](https://github.com/ipld/go-car) instead.
+  More information regarding this decision can be found in [issue 218](https://github.com/ipfs/boxo/issues/218).
+
 ### Fixed
 
 - Removed mentions of unused ARC algorithm ([#336](https://github.com/ipfs/boxo/issues/366#issuecomment-1597253540))
 
 ### Security
+
+## [0.10.1] - 2023-06-19
+
+### Added
+
+None.
+
+### Changed
+
+None.
+
+### Removed
+
+None.
+
+### Fixed
+
+### Security
+
+## [0.10.2] - 2023-06-29
+
+### Fixed
+
+- Gateway: include CORS on subdomain redirects.
+- Gateway: ensure 'X-Ipfs-Root' header is valid.
 
 ## [0.10.1] - 2023-06-19
 
