@@ -7,7 +7,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-// Block is a block whos provenance has been tracked.
+// Block is a block whose provenance has been tracked.
 type Block struct {
 	blocks.Block
 
