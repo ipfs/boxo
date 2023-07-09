@@ -16,6 +16,12 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+* The `verifycid` package has been updated with the new Allowlist interface as part of
+  reducing globals efforts. Still, existing global accessor funcs are kept for
+  backwards-compatibility.
+* The `blockservice` and `provider` packages has been updated to accommodate for 
+  changes in `verifycid`.
+
 ### Changed
 
 ### Removed

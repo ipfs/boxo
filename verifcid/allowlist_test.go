@@ -5,10 +5,10 @@ import (
 
 	mh "github.com/multiformats/go-multihash"
 
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 )
 
-func TestValidateCids(t *testing.T) {
+func TestDefaultAllowList(t *testing.T) {
 	assertTrue := func(v bool) {
 		t.Helper()
 		if !v {
@@ -21,17 +21,6 @@ func TestValidateCids(t *testing.T) {
 			t.Fatal("expected failure")
 		}
 	}
-
-	assertTrue(IsGoodHash(mh.SHA2_256))
-	assertTrue(IsGoodHash(mh.BLAKE2B_MIN + 32))
-	assertTrue(IsGoodHash(mh.DBL_SHA2_256))
-	assertTrue(IsGoodHash(mh.KECCAK_256))
-	assertTrue(IsGoodHash(mh.SHA3))
-
-	assertTrue(IsGoodHash(mh.SHA1))
-
-	assertFalse(IsGoodHash(mh.BLAKE2B_MIN + 5))
-
 	mhcid := func(code uint64, length int) cid.Cid {
 		mhash, err := mh.Sum([]byte{}, code, length)
 		if err != nil {
@@ -39,6 +28,15 @@ func TestValidateCids(t *testing.T) {
 		}
 		return cid.NewCidV1(cid.DagCBOR, mhash)
 	}
+
+	allowlist := DefaultAllowlist
+	assertTrue(allowlist.IsAllowed(mh.SHA2_256))
+	assertTrue(allowlist.IsAllowed(mh.BLAKE2B_MIN + 32))
+	assertTrue(allowlist.IsAllowed(mh.DBL_SHA2_256))
+	assertTrue(allowlist.IsAllowed(mh.KECCAK_256))
+	assertTrue(allowlist.IsAllowed(mh.SHA3))
+	assertTrue(allowlist.IsAllowed(mh.SHA1))
+	assertFalse(allowlist.IsAllowed(mh.BLAKE2B_MIN + 5))
 
 	cases := []struct {
 		cid cid.Cid
@@ -53,9 +51,9 @@ func TestValidateCids(t *testing.T) {
 	}
 
 	for i, cas := range cases {
-		if ValidateCid(cas.cid) != cas.err {
+		if ValidateCid(allowlist, cas.cid) != cas.err {
 			t.Errorf("wrong result in case of %s (index %d). Expected: %s, got %s",
-				cas.cid, i, cas.err, ValidateCid(cas.cid))
+				cas.cid, i, cas.err, ValidateCid(DefaultAllowlist, cas.cid))
 		}
 	}
 
@@ -64,7 +62,7 @@ func TestValidateCids(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to produce a multihash from the long blake3 hash: %v", err)
 	}
-	if ValidateCid(cid.NewCidV1(cid.DagCBOR, longBlake3Mh)) != ErrAboveMaximumHashLength {
+	if ValidateCid(allowlist, cid.NewCidV1(cid.DagCBOR, longBlake3Mh)) != ErrAboveMaximumHashLength {
 		t.Errorf("a CID that was longer than the maximum hash length did not error with ErrAboveMaximumHashLength")
 	}
 }
