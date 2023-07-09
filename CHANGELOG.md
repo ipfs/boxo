@@ -14,6 +14,8 @@ The following emojis are used to highlight certain changes:
 
 ## [Unreleased]
 
+* ❔ Allows redirects of URLs by query parameter (in addition to path). A `_redirects` file containing `/from type=:type /to/:type.html 200` will respond to a request of `/from?type=thing` with `/to/thing.html`.
+
 ### Added
 
 ### Changed

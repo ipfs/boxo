@@ -99,7 +99,7 @@ func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Reques
 
 		for _, rule := range redirectRules {
 			// Error right away if the rule is invalid
-			if !rule.MatchAndExpandPlaceholders(urlPath) {
+			if !rule.MatchAndExpandPlaceholders(urlPath, r.URL.Query()) {
 				continue
 			}
 
