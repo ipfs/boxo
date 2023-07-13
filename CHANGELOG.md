@@ -17,17 +17,29 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 * ✨ The gateway now supports the optional `order` and `dups` CAR parameters
-  from [IPIP-412](https://github.com/ipfs/specs/pull/412). `BlocksBackend` only
-  DFS ordering. If the request explicitly requests an ordering other than `dfs`
-  and `unk`, the request will return an error.
+  from [IPIP-412](https://github.com/ipfs/specs/pull/412).
+  * The `BlocksBackend` only implements `order=dfs` (Depth-First Search)
+    ordering, which was already the default behavior.
+  * If a request specifies no `dups`, response with `dups=n` is returned, which
+    was already the default behavior.
+  * If a request explicitly specifies a CAR `order` other than `dfs`, it will
+    result in an error.
+  * The only change to the default behavior on CAR responses is that we follow
+    IPIP-412 and make `order=dfs;dups=n` explicit in the returned
+    `Content-Type` HTTP header.
 
 ### Changed
 
-* 🛠 The `ipns` package has been refactored. You should no longer use the direct Protobuf
-  version of the IPNS Record. Instead, we have a shiny new `ipns.Record` type that wraps
-  all the required functionality to work the best as possible with IPNS v2 Records. Please
-  check the [documentation](https://pkg.go.dev/github.com/ipfs/boxo/ipns) for more information,
-  and follow [ipfs/specs#376](https://github.com/ipfs/specs/issues/376) for related IPIP.
+* 🛠 The `ipns` package has been refactored.
+  * You should no longer use the direct Protobuf version of the IPNS Record.
+    Instead, we have a shiny new `ipns.Record` type that wraps all the required
+    functionality to work the best as possible with IPNS v2 Records. Please
+    check the [documentation](https://pkg.go.dev/github.com/ipfs/boxo/ipns) for
+    more information, and follow
+    [ipfs/specs#376](https://github.com/ipfs/specs/issues/376) for related
+    IPIP.
+  * There is no change to IPNS Records produced by `boxo/ipns`, it still
+    produces both V1 and V2 signatures by default, it is still backward-compatible.
 
 ### Removed
 

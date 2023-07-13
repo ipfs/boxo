@@ -242,7 +242,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params *Ca
 	case DagOrderDFS:
 		// Do nothing
 	default:
-		return ContentPathMetadata{}, nil, fmt.Errorf("unsupported order: %s", params.Order)
+		return ContentPathMetadata{}, nil, fmt.Errorf("unsupported application/vnd.ipld.car block order parameter: %q", params.Order)
 	}
 
 	// Similarly, if params.Duplicates is not set, let's set it to false.

@@ -122,7 +122,7 @@ func getCarParams(r *http.Request, formatParams map[string]string) (*CarParams, 
 	if hasRange {
 		rng, err := NewDagByteRange(rangeStr)
 		if err != nil {
-			err = fmt.Errorf("invalid entity-bytes: %w", err)
+			err = fmt.Errorf("invalid application/vnd.ipld.car entity-bytes URL parameter: %w", err)
 			return nil, err
 		}
 		params.Range = &rng
@@ -133,7 +133,7 @@ func getCarParams(r *http.Request, formatParams map[string]string) (*CarParams, 
 		case DagScopeEntity, DagScopeAll, DagScopeBlock:
 			params.Scope = s
 		default:
-			err := fmt.Errorf("unsupported dag-scope %s", scopeStr)
+			err := fmt.Errorf("unsupported application/vnd.ipld.car dag-scope URL parameter: %q", scopeStr)
 			return nil, err
 		}
 	} else {
@@ -146,7 +146,7 @@ func getCarParams(r *http.Request, formatParams map[string]string) (*CarParams, 
 	case "":
 		params.Order = DagOrderUnknown
 	default:
-		return nil, fmt.Errorf("unsupported order %s", order)
+		return nil, fmt.Errorf("unsupported application/vnd.ipld.car content type order parameter: %q", order)
 	}
 
 	switch dups := formatParams["dups"]; dups {
@@ -159,7 +159,7 @@ func getCarParams(r *http.Request, formatParams map[string]string) (*CarParams, 
 	case "":
 		// Acceptable, we do not set anything.
 	default:
-		return nil, fmt.Errorf("unsupported dups %s", dups)
+		return nil, fmt.Errorf("unsupported application/vnd.ipld.car content type  dups parameter:  %q", dups)
 	}
 
 	return &params, nil
