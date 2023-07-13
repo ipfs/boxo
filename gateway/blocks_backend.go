@@ -232,25 +232,7 @@ func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentP
 	return md, fileNode, nil
 }
 
-func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params *CarParams) (ContentPathMetadata, io.ReadCloser, error) {
-	// Check if we support the request order. On unknown, change it to DFS. We change
-	// the parameter directly, which means that the caller can use the value to later construct
-	// the Content-Type header.
-	switch params.Order {
-	case DagOrderUnknown:
-		params.Order = DagOrderDFS
-	case DagOrderDFS:
-		// Do nothing
-	default:
-		return ContentPathMetadata{}, nil, fmt.Errorf("unsupported application/vnd.ipld.car block order parameter: %q", params.Order)
-	}
-
-	// Similarly, if params.Duplicates is not set, let's set it to false.
-	if params.Duplicates == nil {
-		v := false
-		params.Duplicates = &v
-	}
-
+func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	pathMetadata, err := bb.ResolvePath(ctx, p)
 	if err != nil {
 		return ContentPathMetadata{}, nil, err
@@ -267,7 +249,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params *Ca
 			w,
 			[]cid.Cid{pathMetadata.LastSegment.Cid()},
 			car.WriteAsCarV1(true),
-			car.AllowDuplicatePuts(*params.Duplicates),
+			car.AllowDuplicatePuts(params.Duplicates.Bool()),
 		)
 		if err != nil {
 			// io.PipeWriter.CloseWithError always returns nil.
@@ -302,7 +284,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params *Ca
 }
 
 // walkGatewaySimpleSelector walks the subgraph described by the path and terminal element parameters
-func walkGatewaySimpleSelector(ctx context.Context, p ipfspath.Path, params *CarParams, lsys *ipld.LinkSystem, pathResolver resolver.Resolver) error {
+func walkGatewaySimpleSelector(ctx context.Context, p ipfspath.Path, params CarParams, lsys *ipld.LinkSystem, pathResolver resolver.Resolver) error {
 	// First resolve the path since we always need to.
 	lastCid, remainder, err := pathResolver.ResolveToLastNode(ctx, p)
 	if err != nil {
@@ -335,7 +317,7 @@ func walkGatewaySimpleSelector(ctx context.Context, p ipfspath.Path, params *Car
 				Ctx:                            ctx,
 				LinkSystem:                     *lsys,
 				LinkTargetNodePrototypeChooser: bsfetcher.DefaultPrototypeChooser,
-				LinkVisitOnlyOnce:              !*params.Duplicates,
+				LinkVisitOnlyOnce:              !params.Duplicates.Bool(),
 			},
 		}
 

@@ -124,7 +124,7 @@ type CarParams struct {
 	Range      *DagByteRange
 	Scope      DagScope
 	Order      DagOrder
-	Duplicates *bool
+	Duplicates DuplicateBlocksPolicy
 }
 
 // DagByteRange describes a range request within a UnixFS file. "From" and
@@ -194,9 +194,46 @@ const (
 type DagOrder string
 
 const (
-	DagOrderDFS     DagOrder = "dfs"
-	DagOrderUnknown DagOrder = "unk"
+	DagOrderUnspecified DagOrder = ""
+	DagOrderUnknown     DagOrder = "unk"
+	DagOrderDFS         DagOrder = "dfs"
 )
+
+// DuplicateBlocksPolicy represents the content type parameter 'dups' (IPIP-412)
+type DuplicateBlocksPolicy int
+
+const (
+	DuplicateBlocksUnspecified DuplicateBlocksPolicy = iota // 0 - implicit default
+	DuplicateBlocksIncluded                                 // 1 - explicitly include duplicates
+	DuplicateBlocksExcluded                                 // 2 - explicitly NOT include duplicates
+)
+
+// NewDuplicateBlocksPolicy returns DuplicateBlocksPolicy based on the content type parameter 'dups' (IPIP-412)
+func NewDuplicateBlocksPolicy(dupsValue string) DuplicateBlocksPolicy {
+	switch dupsValue {
+	case "y":
+		return DuplicateBlocksIncluded
+	case "n":
+		return DuplicateBlocksExcluded
+	}
+	return DuplicateBlocksUnspecified
+}
+
+func (d DuplicateBlocksPolicy) Bool() bool {
+	// duplicates should be returned only when explicitly requested,
+	// so any other state than DuplicateBlocksIncluded should return false
+	return d == DuplicateBlocksIncluded
+}
+
+func (d DuplicateBlocksPolicy) String() string {
+	switch d {
+	case DuplicateBlocksIncluded:
+		return "y"
+	case DuplicateBlocksExcluded:
+		return "n"
+	}
+	return ""
+}
 
 type ContentPathMetadata struct {
 	PathSegmentRoots []cid.Cid
@@ -287,11 +324,8 @@ type IPFSBackend interface {
 	ResolvePath(context.Context, ImmutablePath) (ContentPathMetadata, error)
 
 	// GetCAR returns a CAR file for the given immutable path. It returns an error
-	// if there was an issue before the CAR streaming begins. If [CarParams.Duplicates]
-	// is nil, or if [CaraParams.Order] is Unknown, the implementer should change it
-	// such that the caller can form the response "Content-Type" header with the most
-	// amount of information.
-	GetCAR(context.Context, ImmutablePath, *CarParams) (ContentPathMetadata, io.ReadCloser, error)
+	// if there was an issue before the CAR streaming begins.
+	GetCAR(context.Context, ImmutablePath, CarParams) (ContentPathMetadata, io.ReadCloser, error)
 
 	// IsCached returns whether or not the path exists locally.
 	IsCached(context.Context, path.Path) bool

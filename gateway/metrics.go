@@ -120,7 +120,7 @@ func (b *ipfsBackendWithMetrics) ResolvePath(ctx context.Context, path Immutable
 	return md, err
 }
 
-func (b *ipfsBackendWithMetrics) GetCAR(ctx context.Context, path ImmutablePath, params *CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+func (b *ipfsBackendWithMetrics) GetCAR(ctx context.Context, path ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	begin := time.Now()
 	name := "IPFSBackend.GetCAR"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))

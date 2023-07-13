@@ -30,16 +30,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	switch rq.responseParams["version"] {
-	case "": // noop, client does not care about version
-	case "1": // noop, we support this
-	default:
-		err := fmt.Errorf("unsupported CAR version: only version=1 is supported")
-		i.webError(w, r, err, http.StatusBadRequest)
-		return false
-	}
-
-	params, err := getCarParams(r, rq.responseParams)
+	params, err := buildCarParams(r, rq.responseParams)
 	if err != nil {
 		i.webError(w, r, err, http.StatusBadRequest)
 		return false
@@ -90,7 +81,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// sub-DAGs and IPLD selectors: https://github.com/ipfs/go-ipfs/issues/8769
 	w.Header().Set("Accept-Ranges", "none")
 
-	w.Header().Set("Content-Type", getContentTypeFromCarParams(params))
+	w.Header().Set("Content-Type", buildContentTypeFromCarParams(params))
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
 	_, copyErr := io.Copy(w, carFile)
@@ -113,7 +104,15 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	return true
 }
 
-func getCarParams(r *http.Request, formatParams map[string]string) (*CarParams, error) {
+// buildCarParams returns CarParams based on the request, any optional parameters
+// passed in URL, Accept header and the implicit defaults specific to boxo
+// implementation, such as block order and duplicates status.
+//
+// If any of the optional content type parameters (e.g., CAR order or
+// duplicates) are unspecified or empty, the function will automatically infer
+// default values.
+func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarParams, error) {
+	// URL query parameters
 	queryParams := r.URL.Query()
 	rangeStr, hasRange := queryParams.Get(carRangeBytesKey), queryParams.Has(carRangeBytesKey)
 	scopeStr, hasScope := queryParams.Get(carTerminalElementTypeKey), queryParams.Has(carTerminalElementTypeKey)
@@ -123,7 +122,7 @@ func getCarParams(r *http.Request, formatParams map[string]string) (*CarParams, 
 		rng, err := NewDagByteRange(rangeStr)
 		if err != nil {
 			err = fmt.Errorf("invalid application/vnd.ipld.car entity-bytes URL parameter: %w", err)
-			return nil, err
+			return CarParams{}, err
 		}
 		params.Range = &rng
 	}
@@ -134,55 +133,72 @@ func getCarParams(r *http.Request, formatParams map[string]string) (*CarParams, 
 			params.Scope = s
 		default:
 			err := fmt.Errorf("unsupported application/vnd.ipld.car dag-scope URL parameter: %q", scopeStr)
-			return nil, err
+			return CarParams{}, err
 		}
 	} else {
 		params.Scope = DagScopeAll
 	}
 
-	switch order := DagOrder(formatParams["order"]); order {
-	case DagOrderUnknown, DagOrderDFS:
-		params.Order = order
-	case "":
-		params.Order = DagOrderUnknown
+	// application/vnd.ipld.car content type parameters from Accept header
+
+	// version of CAR format
+	switch contentTypeParams["version"] {
+	case "": // noop, client does not care about version
+	case "1": // noop, we support this
 	default:
-		return nil, fmt.Errorf("unsupported application/vnd.ipld.car content type order parameter: %q", order)
+		return CarParams{}, fmt.Errorf("unsupported application/vnd.ipld.car version: only version=1 is supported")
 	}
 
-	switch dups := formatParams["dups"]; dups {
-	case "y":
-		v := true
-		params.Duplicates = &v
-	case "n":
-		v := false
-		params.Duplicates = &v
-	case "":
-		// Acceptable, we do not set anything.
-	default:
-		return nil, fmt.Errorf("unsupported application/vnd.ipld.car content type  dups parameter:  %q", dups)
+	// optional order from IPIP-412
+	if order := DagOrder(contentTypeParams["order"]); order != DagOrderUnspecified {
+		switch order {
+		case DagOrderUnknown, DagOrderDFS:
+			params.Order = order
+		default:
+			return CarParams{}, fmt.Errorf("unsupported application/vnd.ipld.car content type order parameter: %q", order)
+		}
+	} else {
+		// when order is not specified, we use DFS as the implicit default
+		// as this has always been the default behavior and we should not break
+		// legacy clients
+		params.Order = DagOrderDFS
 	}
 
-	return &params, nil
+	// optional dups from IPIP-412
+	if dups := NewDuplicateBlocksPolicy(contentTypeParams["dups"]); dups != DuplicateBlocksUnspecified {
+		switch dups {
+		case DuplicateBlocksExcluded, DuplicateBlocksIncluded:
+			params.Duplicates = dups
+		default:
+			return CarParams{}, fmt.Errorf("unsupported application/vnd.ipld.car content type dups parameter:  %q", dups)
+		}
+	} else {
+		// when duplicate block preference is not specified, we set it to
+		// false, as this has always been the default behavior, we should
+		// not break legacy clients, and responses to requests made via ?format=car
+		// should benefit from block deduplication
+		params.Duplicates = DuplicateBlocksExcluded
+
+	}
+
+	return params, nil
 }
 
-func getContentTypeFromCarParams(params *CarParams) string {
+// buildContentTypeFromCarParams returns a string for Content-Type header.
+// It does not change any values, CarParams are respected as-is.
+func buildContentTypeFromCarParams(params CarParams) string {
 	h := strings.Builder{}
 	h.WriteString(carResponseFormat)
-	h.WriteString("; version=1; order=")
+	h.WriteString("; version=1")
 
-	if params.Order != "" {
+	if params.Order != DagOrderUnspecified {
+		h.WriteString("; order=")
 		h.WriteString(string(params.Order))
-	} else {
-		h.WriteString(string(DagOrderUnknown))
 	}
 
-	if params.Duplicates != nil {
+	if params.Duplicates != DuplicateBlocksUnspecified {
 		h.WriteString("; dups=")
-		if *params.Duplicates {
-			h.WriteString("y")
-		} else {
-			h.WriteString("n")
-		}
+		h.WriteString(params.Duplicates.String())
 	}
 
 	return h.String()
@@ -209,17 +225,28 @@ func getCarRootCidAndLastSegment(imPath ImmutablePath) (cid.Cid, string, error) 
 	return rootCid, lastSegment, err
 }
 
-func getCarEtag(imPath ImmutablePath, params *CarParams, rootCid cid.Cid) string {
+func getCarEtag(imPath ImmutablePath, params CarParams, rootCid cid.Cid) string {
 	data := imPath.String()
 	if params.Scope != DagScopeAll {
-		data += "." + string(params.Scope)
+		data += string(params.Scope)
+	}
+
+	// 'order' from IPIP-412 impact Etag only if set to something else
+	// than DFS (which is the implicit default)
+	if params.Order != DagOrderDFS {
+		data += string(params.Order)
+	}
+
+	// 'dups' from IPIP-412 impact Etag only if 'y'
+	if dups := params.Duplicates.String(); dups == "y" {
+		data += dups
 	}
 
 	if params.Range != nil {
 		if params.Range.From != 0 || params.Range.To != nil {
-			data += "." + strconv.FormatInt(params.Range.From, 10)
+			data += strconv.FormatInt(params.Range.From, 10)
 			if params.Range.To != nil {
-				data += "." + strconv.FormatInt(*params.Range.To, 10)
+				data += strconv.FormatInt(*params.Range.To, 10)
 			}
 		}
 	}
