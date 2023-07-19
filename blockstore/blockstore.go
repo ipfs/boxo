@@ -334,7 +334,7 @@ func NewGetManyBlockstore(d ds.TxnDatastore, opts ...GetManyOption) GetManyBlock
 	}
 
 	if !bs.noPrefix {
-		bs.datastore = dsns.Wrap(bs.datastore, BlockPrefix)
+		bs.datastore = dsns.WrapTxnDatastore(bs.datastore, BlockPrefix)
 	}
 	return bs
 }
