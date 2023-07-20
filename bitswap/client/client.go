@@ -66,12 +66,13 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 	}
 }
 
-// Configures the Client to use given tracer.
+// WithTracer configures the Client to use given tracer.
 // This provides methods to access all messages sent and received by the Client.
 // This interface can be used to implement various statistics (this is original intent).
+// This can be passed multiple times to register multiple tracers.
 func WithTracer(tap tracer.Tracer) Option {
 	return func(bs *Client) {
-		bs.tracer = tap
+		bs.tracers = append(bs.tracers, tap)
 	}
 }
 
@@ -208,7 +209,7 @@ type Client struct {
 	allMetric metrics.Histogram
 
 	// External statistics interface
-	tracer tracer.Tracer
+	tracers []tracer.Tracer
 
 	// the SessionManager routes requests to interested sessions
 	sm *bssm.SessionManager
@@ -342,8 +343,8 @@ func (bs *Client) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg.
 	bs.counters.messagesRecvd++
 	bs.counterLk.Unlock()
 
-	if bs.tracer != nil {
-		bs.tracer.MessageReceived(p, incoming)
+	for _, t := range bs.tracers {
+		t.MessageReceived(p, incoming)
 	}
 
 	iblocks := incoming.Blocks()

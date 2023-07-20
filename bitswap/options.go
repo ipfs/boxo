@@ -79,11 +79,12 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 	return Option{client.SetSimulateDontHavesOnTimeout(send)}
 }
 
+// WithTracer can be passed multiple times to register multiple tracers.
 func WithTracer(tap tracer.Tracer) Option {
 	// Only trace the server, both receive the same messages anyway
 	return Option{
 		option(func(bs *Bitswap) {
-			bs.tracer = tap
+			bs.tracers = append(bs.tracers, tap)
 		}),
 	}
 }

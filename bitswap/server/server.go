@@ -46,7 +46,7 @@ type Server struct {
 	network bsnet.BitSwapNetwork
 
 	// External statistics interface
-	tracer tracer.Tracer
+	tracers []tracer.Tracer
 
 	// Counters for various statistics
 	counterLk sync.Mutex
@@ -123,9 +123,10 @@ func TaskWorkerCount(count int) Option {
 	}
 }
 
+// WithTracer can be passed multiple times to register multiple tracers.
 func WithTracer(tap tracer.Tracer) Option {
 	return func(bs *Server) {
-		bs.tracer = tap
+		bs.tracers = append(bs.tracers, tap)
 	}
 }
 
@@ -294,8 +295,8 @@ func (bs *Server) taskWorker(ctx context.Context, id int) {
 				// Ideally, yes. But we'd need some way to trigger a retry and/or drop
 				// the peer.
 				bs.engine.MessageSent(envelope.Peer, envelope.Message)
-				if bs.tracer != nil {
-					bs.tracer.MessageSent(envelope.Peer, envelope.Message)
+				for _, t := range bs.tracers {
+					t.MessageSent(envelope.Peer, envelope.Message)
 				}
 				bs.sendBlocks(ctx, envelope)
 
@@ -529,8 +530,8 @@ func (bs *Server) ReceiveMessage(ctx context.Context, p peer.ID, incoming messag
 	// TODO: this is bad, and could be easily abused.
 	// Should only track *useful* messages in ledger
 
-	if bs.tracer != nil {
-		bs.tracer.MessageReceived(p, incoming)
+	for _, t := range bs.tracers {
+		t.MessageReceived(p, incoming)
 	}
 }
 

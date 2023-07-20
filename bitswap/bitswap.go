@@ -52,8 +52,8 @@ type Bitswap struct {
 	*client.Client
 	*server.Server
 
-	tracer tracer.Tracer
-	net    network.BitSwapNetwork
+	tracers []tracer.Tracer
+	net     network.BitSwapNetwork
 }
 
 func New(ctx context.Context, net network.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Bitswap {
@@ -77,8 +77,8 @@ func New(ctx context.Context, net network.BitSwapNetwork, bstore blockstore.Bloc
 		}
 	}
 
-	if bs.tracer != nil {
-		var tracer tracer.Tracer = nopReceiveTracer{bs.tracer}
+	for _, t := range bs.tracers {
+		var tracer tracer.Tracer = nopReceiveTracer{t}
 		clientOptions = append(clientOptions, client.WithTracer(tracer))
 		serverOptions = append(serverOptions, server.WithTracer(tracer))
 	}
@@ -172,8 +172,8 @@ func (bs *Bitswap) ReceiveError(err error) {
 }
 
 func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.BitSwapMessage) {
-	if bs.tracer != nil {
-		bs.tracer.MessageReceived(p, incoming)
+	for _, t := range bs.tracers {
+		t.MessageReceived(p, incoming)
 	}
 
 	bs.Client.ReceiveMessage(ctx, p, incoming)
