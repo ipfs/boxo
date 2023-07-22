@@ -116,8 +116,9 @@ None.
   - `RecursiveKeys`
   - `InternalKeys`
 - 🛠 `provider/batched.New` has been moved to `provider.New` and arguments has been changed. (https://github.com/ipfs/boxo/pulls/273)
-  - a routing system is now passed with the `provider.Online` option, by default the system run in offline mode (push stuff onto the queue); and
-  - you do not have to pass a queue anymore, you pass a `datastore.Datastore` exclusively.
+  - A routing system is now passed with the `provider.Online` option, by default the system run in offline mode (push stuff onto the queue).
+  - When using `provider.Online` calling the `.Run` method is not required anymore, the background worker is implicitely started in the background by `provider.New`.
+  - You do not have to pass a queue anymore, you pass a `datastore.Datastore` exclusively.
 - 🛠 `provider.NewOfflineProvider` has been renamed to `provider.NewNoopProvider` to show more clearly that is does nothing. (https://github.com/ipfs/boxo/pulls/273)
 - 🛠 `provider.Provider` and `provider.Reprovider` has been merged under one `provider.System`. (https://github.com/ipfs/boxo/pulls/273)
 - 🛠 `routing/http` responses now return a streaming `iter.ResultIter` generic interface. (https://github.com/ipfs/boxo/pulls/18)
