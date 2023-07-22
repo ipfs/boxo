@@ -35,24 +35,6 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
-## [0.10.1] - 2023-06-19
-
-### Added
-
-None.
-
-### Changed
-
-None.
-
-### Removed
-
-None.
-
-### Fixed
-
-### Security
-
 ## [0.10.2] - 2023-06-29
 
 ### Fixed
