@@ -245,7 +245,12 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params Car
 
 	r, w := io.Pipe()
 	go func() {
-		cw, err := storage.NewWritable(w, []cid.Cid{pathMetadata.LastSegment.Cid()}, car.WriteAsCarV1(true))
+		cw, err := storage.NewWritable(
+			w,
+			[]cid.Cid{pathMetadata.LastSegment.Cid()},
+			car.WriteAsCarV1(true),
+			car.AllowDuplicatePuts(params.Duplicates.Bool()),
+		)
 		if err != nil {
 			// io.PipeWriter.CloseWithError always returns nil.
 			_ = w.CloseWithError(err)
@@ -312,7 +317,7 @@ func walkGatewaySimpleSelector(ctx context.Context, p ipfspath.Path, params CarP
 				Ctx:                            ctx,
 				LinkSystem:                     *lsys,
 				LinkTargetNodePrototypeChooser: bsfetcher.DefaultPrototypeChooser,
-				LinkVisitOnlyOnce:              true, // This is safe for the "all" selector
+				LinkVisitOnlyOnce:              !params.Duplicates.Bool(),
 			},
 		}
 

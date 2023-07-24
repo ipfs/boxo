@@ -637,28 +637,9 @@ const (
 
 // return explicit response format if specified in request as query parameter or via Accept HTTP header
 func customResponseFormat(r *http.Request) (mediaType string, params map[string]string, err error) {
-	// Translate query param to a content type, if present.
-	if formatParam := r.URL.Query().Get("format"); formatParam != "" {
-		switch formatParam {
-		case "raw":
-			return rawResponseFormat, nil, nil
-		case "car":
-			return carResponseFormat, nil, nil
-		case "tar":
-			return tarResponseFormat, nil, nil
-		case "json":
-			return jsonResponseFormat, nil, nil
-		case "cbor":
-			return cborResponseFormat, nil, nil
-		case "dag-json":
-			return dagJsonResponseFormat, nil, nil
-		case "dag-cbor":
-			return dagCborResponseFormat, nil, nil
-		case "ipns-record":
-			return ipnsRecordResponseFormat, nil, nil
-		}
-	}
-
+	// First, inspect Accept header, as it may not only include content type, but also optional parameters.
+	// such as CAR version or additional ones from IPIP-412.
+	//
 	// Browsers and other user agents will send Accept header with generic types like:
 	// Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
 	// We only care about explicit, vendor-specific content-types and respond to the first match (in order).
@@ -678,6 +659,28 @@ func customResponseFormat(r *http.Request) (mediaType string, params map[string]
 				}
 				return mediatype, params, nil
 			}
+		}
+	}
+
+	// If no Accept header, translate query param to a content type, if present.
+	if formatParam := r.URL.Query().Get("format"); formatParam != "" {
+		switch formatParam {
+		case "raw":
+			return rawResponseFormat, nil, nil
+		case "car":
+			return carResponseFormat, nil, nil
+		case "tar":
+			return tarResponseFormat, nil, nil
+		case "json":
+			return jsonResponseFormat, nil, nil
+		case "cbor":
+			return cborResponseFormat, nil, nil
+		case "dag-json":
+			return dagJsonResponseFormat, nil, nil
+		case "dag-cbor":
+			return dagCborResponseFormat, nil, nil
+		case "ipns-record":
+			return ipnsRecordResponseFormat, nil, nil
 		}
 	}
 

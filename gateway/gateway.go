@@ -121,8 +121,10 @@ func (i ImmutablePath) IsValid() error {
 var _ path.Path = (*ImmutablePath)(nil)
 
 type CarParams struct {
-	Range *DagByteRange
-	Scope DagScope
+	Range      *DagByteRange
+	Scope      DagScope
+	Order      DagOrder
+	Duplicates DuplicateBlocksPolicy
 }
 
 // DagByteRange describes a range request within a UnixFS file. "From" and
@@ -188,6 +190,50 @@ const (
 	DagScopeEntity DagScope = "entity"
 	DagScopeBlock  DagScope = "block"
 )
+
+type DagOrder string
+
+const (
+	DagOrderUnspecified DagOrder = ""
+	DagOrderUnknown     DagOrder = "unk"
+	DagOrderDFS         DagOrder = "dfs"
+)
+
+// DuplicateBlocksPolicy represents the content type parameter 'dups' (IPIP-412)
+type DuplicateBlocksPolicy int
+
+const (
+	DuplicateBlocksUnspecified DuplicateBlocksPolicy = iota // 0 - implicit default
+	DuplicateBlocksIncluded                                 // 1 - explicitly include duplicates
+	DuplicateBlocksExcluded                                 // 2 - explicitly NOT include duplicates
+)
+
+// NewDuplicateBlocksPolicy returns DuplicateBlocksPolicy based on the content type parameter 'dups' (IPIP-412)
+func NewDuplicateBlocksPolicy(dupsValue string) DuplicateBlocksPolicy {
+	switch dupsValue {
+	case "y":
+		return DuplicateBlocksIncluded
+	case "n":
+		return DuplicateBlocksExcluded
+	}
+	return DuplicateBlocksUnspecified
+}
+
+func (d DuplicateBlocksPolicy) Bool() bool {
+	// duplicates should be returned only when explicitly requested,
+	// so any other state than DuplicateBlocksIncluded should return false
+	return d == DuplicateBlocksIncluded
+}
+
+func (d DuplicateBlocksPolicy) String() string {
+	switch d {
+	case DuplicateBlocksIncluded:
+		return "y"
+	case DuplicateBlocksExcluded:
+		return "n"
+	}
+	return ""
+}
 
 type ContentPathMetadata struct {
 	PathSegmentRoots []cid.Cid

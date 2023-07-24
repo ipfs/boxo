@@ -28,7 +28,7 @@ func TestCarParams(t *testing.T) {
 		}
 		for _, test := range tests {
 			r := mustNewRequest(t, http.MethodGet, "http://example.com/?"+test.query, nil)
-			params, err := getCarParams(r)
+			params, err := buildCarParams(r, map[string]string{})
 			if test.expectedError {
 				assert.Error(t, err)
 			} else {
@@ -60,7 +60,7 @@ func TestCarParams(t *testing.T) {
 		}
 		for _, test := range tests {
 			r := mustNewRequest(t, http.MethodGet, "http://example.com/?"+test.query, nil)
-			params, err := getCarParams(r)
+			params, err := buildCarParams(r, map[string]string{})
 			if test.hasError {
 				assert.Error(t, err)
 			} else {
@@ -73,6 +73,68 @@ func TestCarParams(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("buildCarParams from Accept header: order and dups parsing", func(t *testing.T) {
+		t.Parallel()
+
+		// below ensure the implicit default (DFS and no duplicates) is correctly inferred
+		// from the value read from Accept header
+		tests := []struct {
+			acceptHeader       string
+			expectedOrder      DagOrder
+			expectedDuplicates DuplicateBlocksPolicy
+		}{
+			{"application/vnd.ipld.car; order=dfs; dups=y", DagOrderDFS, DuplicateBlocksIncluded},
+			{"application/vnd.ipld.car; order=unk; dups=n", DagOrderUnknown, DuplicateBlocksExcluded},
+			{"application/vnd.ipld.car; order=unk", DagOrderUnknown, DuplicateBlocksExcluded},
+			{"application/vnd.ipld.car; dups=y", DagOrderDFS, DuplicateBlocksIncluded},
+			{"application/vnd.ipld.car; dups=n", DagOrderDFS, DuplicateBlocksExcluded},
+			{"application/vnd.ipld.car", DagOrderDFS, DuplicateBlocksExcluded},
+			{"application/vnd.ipld.car;version=1;order=dfs;dups=y", DagOrderDFS, DuplicateBlocksIncluded},
+		}
+		for _, test := range tests {
+			r := mustNewRequest(t, http.MethodGet, "http://example.com/", nil)
+			r.Header.Set("Accept", test.acceptHeader)
+
+			mediaType, formatParams, err := customResponseFormat(r)
+			assert.NoError(t, err)
+			assert.Equal(t, carResponseFormat, mediaType)
+
+			params, err := buildCarParams(r, formatParams)
+			assert.NoError(t, err)
+
+			// order from IPIP-412
+			require.Equal(t, test.expectedOrder, params.Order)
+
+			// dups from IPIP-412
+			require.Equal(t, test.expectedDuplicates.String(), params.Duplicates.String())
+		}
+	})
+}
+
+func TestContentTypeFromCarParams(t *testing.T) {
+	t.Parallel()
+
+	// below ensures buildContentTypeFromCarParams produces correct Content-Type
+	// at this point we do not do any inferring, it happens in buildCarParams instead
+	// and tests of *Unspecified here are just present for completenes and to guard
+	// against regressions between refactors
+	tests := []struct {
+		params CarParams
+		header string
+	}{
+		{CarParams{}, "application/vnd.ipld.car; version=1"},
+		{CarParams{Order: DagOrderUnspecified, Duplicates: DuplicateBlocksUnspecified}, "application/vnd.ipld.car; version=1"},
+		{CarParams{Order: DagOrderDFS, Duplicates: DuplicateBlocksIncluded}, "application/vnd.ipld.car; version=1; order=dfs; dups=y"},
+		{CarParams{Order: DagOrderUnknown, Duplicates: DuplicateBlocksIncluded}, "application/vnd.ipld.car; version=1; order=unk; dups=y"},
+		{CarParams{Order: DagOrderUnknown}, "application/vnd.ipld.car; version=1; order=unk"},
+		{CarParams{Duplicates: DuplicateBlocksIncluded}, "application/vnd.ipld.car; version=1; dups=y"},
+		{CarParams{Duplicates: DuplicateBlocksExcluded}, "application/vnd.ipld.car; version=1; dups=n"},
+	}
+	for _, test := range tests {
+		header := buildContentTypeFromCarParams(test.params)
+		assert.Equal(t, test.header, header)
+	}
 }
 
 func TestGetCarEtag(t *testing.T) {
