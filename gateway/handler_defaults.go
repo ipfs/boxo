@@ -33,8 +33,23 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	case http.MethodHead:
 		var data files.Node
 		pathMetadata, data, err = i.backend.Head(ctx, rq.mostlyResolvedPath())
-		if !i.handleRequestErrors(w, r, rq.contentPath, err) {
-			return false
+		if err != nil {
+			if isWebRequest(rq.responseFormat) {
+				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, rq.mostlyResolvedPath(), rq.immutablePath, rq.contentPath, err, rq.logger)
+				if !continueProcessing {
+					return false
+				}
+				pathMetadata, data, err = i.backend.Head(ctx, forwardedPath)
+				if err != nil {
+					err = fmt.Errorf("failed to resolve %s: %w", debugStr(rq.contentPath.String()), err)
+					i.webError(w, r, err, http.StatusInternalServerError)
+					return false
+				}
+			} else {
+				if !i.handleRequestErrors(w, r, rq.contentPath, err) {
+					return false
+				}
+			}
 		}
 		defer data.Close()
 		if _, ok := data.(files.Directory); ok {
