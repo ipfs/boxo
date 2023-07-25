@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- Handle `_redirects` file when `If-None-Match` header is present ([#412](https://github.com/ipfs/boxo/pull/412))
+
 ### Security
 
 ## [0.10.2] - 2023-06-29
