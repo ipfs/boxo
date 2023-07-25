@@ -49,6 +49,7 @@ The following emojis are used to highlight certain changes:
 ### Fixed
 
 - Removed mentions of unused ARC algorithm ([#336](https://github.com/ipfs/boxo/issues/366#issuecomment-1597253540))
+- Handle `_redirects` file when `If-None-Match` header is present ([#412](https://github.com/ipfs/boxo/pull/412))
 
 ### Security
 
