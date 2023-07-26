@@ -30,7 +30,6 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 
 	switch r.Method {
 	case http.MethodHead:
-		var headResp *HeadResponse
 		pathMetadata, headResp, err = i.backend.Head(ctx, rq.mostlyResolvedPath())
 		if err != nil {
 			if isWebRequest(rq.responseFormat) {
