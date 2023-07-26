@@ -748,6 +748,13 @@ func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request,
 		return ImmutablePath{}, false
 	}
 
+	// If the error is not an IPLD traversal error then we should not be looking for _redirects or legacy 404s
+	if !isErrNotFound(err) {
+		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+		i.webError(w, r, err, http.StatusInternalServerError)
+		return ImmutablePath{}, false
+	}
+
 	// If we have origin isolation (subdomain gw, DNSLink website),
 	// and response type is UnixFS (default for website hosting)
 	// we can leverage the presence of an _redirects file and apply rules defined there.
