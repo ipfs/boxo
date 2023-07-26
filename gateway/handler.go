@@ -18,6 +18,7 @@ import (
 
 	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/gateway/assets"
+	"github.com/ipfs/boxo/ipns"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -379,8 +380,7 @@ func (i *handler) isTrustlessRequest(contentPath ipath.Path, responseFormat stri
 		}
 
 		// Only valid, cryptographically verifiable IPNS record names (no DNSLink on trustless gateways)
-		// TODO: replace with ipns.Name as part of https://github.com/ipfs/specs/issues/376
-		if _, err := peer.Decode(pathComponents[1]); err != nil {
+		if _, err := ipns.NameFromString(pathComponents[1]); err != nil {
 			return false
 		}
 
@@ -637,28 +637,9 @@ const (
 
 // return explicit response format if specified in request as query parameter or via Accept HTTP header
 func customResponseFormat(r *http.Request) (mediaType string, params map[string]string, err error) {
-	// Translate query param to a content type, if present.
-	if formatParam := r.URL.Query().Get("format"); formatParam != "" {
-		switch formatParam {
-		case "raw":
-			return rawResponseFormat, nil, nil
-		case "car":
-			return carResponseFormat, nil, nil
-		case "tar":
-			return tarResponseFormat, nil, nil
-		case "json":
-			return jsonResponseFormat, nil, nil
-		case "cbor":
-			return cborResponseFormat, nil, nil
-		case "dag-json":
-			return dagJsonResponseFormat, nil, nil
-		case "dag-cbor":
-			return dagCborResponseFormat, nil, nil
-		case "ipns-record":
-			return ipnsRecordResponseFormat, nil, nil
-		}
-	}
-
+	// First, inspect Accept header, as it may not only include content type, but also optional parameters.
+	// such as CAR version or additional ones from IPIP-412.
+	//
 	// Browsers and other user agents will send Accept header with generic types like:
 	// Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
 	// We only care about explicit, vendor-specific content-types and respond to the first match (in order).
@@ -681,6 +662,28 @@ func customResponseFormat(r *http.Request) (mediaType string, params map[string]
 		}
 	}
 
+	// If no Accept header, translate query param to a content type, if present.
+	if formatParam := r.URL.Query().Get("format"); formatParam != "" {
+		switch formatParam {
+		case "raw":
+			return rawResponseFormat, nil, nil
+		case "car":
+			return carResponseFormat, nil, nil
+		case "tar":
+			return tarResponseFormat, nil, nil
+		case "json":
+			return jsonResponseFormat, nil, nil
+		case "cbor":
+			return cborResponseFormat, nil, nil
+		case "dag-json":
+			return dagJsonResponseFormat, nil, nil
+		case "dag-cbor":
+			return dagCborResponseFormat, nil, nil
+		case "ipns-record":
+			return ipnsRecordResponseFormat, nil, nil
+		}
+	}
+
 	// If none of special-cased content types is found, return empty string
 	// to indicate default, implicit UnixFS response should be prepared
 	return "", nil, nil
@@ -700,9 +703,19 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, rq *
 	if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" {
 		pathMetadata, err := i.backend.ResolvePath(r.Context(), rq.immutablePath)
 		if err != nil {
-			err = fmt.Errorf("failed to resolve %s: %w", debugStr(rq.contentPath.String()), err)
-			i.webError(w, r, err, http.StatusInternalServerError)
-			return true
+			var forwardedPath ImmutablePath
+			var continueProcessing bool
+			if isWebRequest(rq.responseFormat) {
+				forwardedPath, continueProcessing = i.handleWebRequestErrors(w, r, rq.mostlyResolvedPath(), rq.immutablePath, rq.contentPath, err, rq.logger)
+				if continueProcessing {
+					pathMetadata, err = i.backend.ResolvePath(r.Context(), forwardedPath)
+				}
+			}
+			if !continueProcessing || err != nil {
+				err = fmt.Errorf("failed to resolve %s: %w", debugStr(rq.contentPath.String()), err)
+				i.webError(w, r, err, http.StatusInternalServerError)
+				return true
+			}
 		}
 
 		pathCid := pathMetadata.LastSegment.Cid()

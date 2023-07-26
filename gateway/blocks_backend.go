@@ -17,8 +17,6 @@ import (
 	"github.com/ipfs/boxo/fetcher"
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/files"
-	"github.com/ipfs/boxo/ipld/car/v2"
-	"github.com/ipfs/boxo/ipld/car/v2/storage"
 	"github.com/ipfs/boxo/ipld/merkledag"
 	ufile "github.com/ipfs/boxo/ipld/unixfs/file"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
@@ -31,6 +29,8 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipfs/go-unixfsnode/data"
+	"github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/storage"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -245,7 +245,12 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params Car
 
 	r, w := io.Pipe()
 	go func() {
-		cw, err := storage.NewWritable(w, []cid.Cid{pathMetadata.LastSegment.Cid()}, car.WriteAsCarV1(true))
+		cw, err := storage.NewWritable(
+			w,
+			[]cid.Cid{pathMetadata.LastSegment.Cid()},
+			car.WriteAsCarV1(true),
+			car.AllowDuplicatePuts(params.Duplicates.Bool()),
+		)
 		if err != nil {
 			// io.PipeWriter.CloseWithError always returns nil.
 			_ = w.CloseWithError(err)
@@ -312,7 +317,7 @@ func walkGatewaySimpleSelector(ctx context.Context, p ipfspath.Path, params CarP
 				Ctx:                            ctx,
 				LinkSystem:                     *lsys,
 				LinkTargetNodePrototypeChooser: bsfetcher.DefaultPrototypeChooser,
-				LinkVisitOnlyOnce:              true, // This is safe for the "all" selector
+				LinkVisitOnlyOnce:              !params.Duplicates.Bool(),
 			},
 		}
 

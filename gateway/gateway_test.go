@@ -523,6 +523,61 @@ func TestRedirects(t *testing.T) {
 		res = mustDoWithoutRedirect(t, req)
 		require.Equal(t, http.StatusNotFound, res.StatusCode)
 	})
+
+	t.Run("_redirects file with If-None-Match header", func(t *testing.T) {
+		t.Parallel()
+
+		backend, root := newMockBackend(t, "redirects-spa.car")
+		backend.namesys["/ipns/example.com"] = path.FromCid(root)
+
+		ts := newTestServerWithConfig(t, backend, Config{
+			Headers:   map[string][]string{},
+			NoDNSLink: false,
+			PublicGateways: map[string]*PublicGateway{
+				"example.com": {
+					UseSubdomains:         true,
+					DeserializedResponses: true,
+				},
+			},
+			DeserializedResponses: true,
+		})
+
+		missingPageURL := ts.URL + "/missing-page"
+
+		do := func(method string) {
+			// Make initial request to non-existing page that should return the contents
+			// of index.html as per the _redirects file.
+			req := mustNewRequest(t, method, missingPageURL, nil)
+			req.Header.Add("Accept", "text/html")
+			req.Host = "example.com"
+
+			res := mustDoWithoutRedirect(t, req)
+			defer res.Body.Close()
+
+			// Check statuses and body.
+			require.Equal(t, http.StatusOK, res.StatusCode)
+			body, err := io.ReadAll(res.Body)
+			require.NoError(t, err)
+			require.Equal(t, "hello world\n", string(body))
+
+			// Check Etag.
+			etag := res.Header.Get("Etag")
+			require.NotEmpty(t, etag)
+
+			// Repeat request with Etag as If-None-Match value. Expect 304 Not Modified.
+			req = mustNewRequest(t, method, missingPageURL, nil)
+			req.Header.Add("Accept", "text/html")
+			req.Host = "example.com"
+			req.Header.Add("If-None-Match", etag)
+
+			res = mustDoWithoutRedirect(t, req)
+			defer res.Body.Close()
+			require.Equal(t, http.StatusNotModified, res.StatusCode)
+		}
+
+		do(http.MethodGet)
+		do(http.MethodHead)
+	})
 }
 
 func TestDeserializedResponses(t *testing.T) {

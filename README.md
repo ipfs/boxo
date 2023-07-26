@@ -1,10 +1,9 @@
 <h1 align="center">
-Boxo 🍌
+<img src="https://github.com/ipfs/boxo/assets/157609/3c5e7391-fbc2-405b-9efc-920f4fd13b39" alt="Boxo logo" title="Boxo logo" width="200">
 <br>
-<img src="https://raw.githubusercontent.com/ipfs/boxo/main/logo.svg" alt="Boxo logo" title="Boxo logo" width="200">
-<br>
+BOXO: IPFS SDK for GO
 </h1>
-<p align="center" style="font-size: 1.2rem;">A library for building IPFS applications and implementations.</p>
+<p align="center" style="font-size: 1.2rem;">A set of libraries for building IPFS applications and implementations in GO.</p>
 
 <hr />
 

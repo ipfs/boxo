@@ -24,6 +24,48 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
+## [v0.11.0]
+
+### Added
+
+* ✨ The gateway now supports the optional `order` and `dups` CAR parameters
+  from [IPIP-412](https://github.com/ipfs/specs/pull/412).
+  * The `BlocksBackend` only implements `order=dfs` (Depth-First Search)
+    ordering, which was already the default behavior.
+  * If a request specifies no `dups`, response with `dups=n` is returned, which
+    was already the default behavior.
+  * If a request explicitly specifies a CAR `order` other than `dfs`, it will
+    result in an error.
+  * The only change to the default behavior on CAR responses is that we follow
+    IPIP-412 and make `order=dfs;dups=n` explicit in the returned
+    `Content-Type` HTTP header.
+* ✨ While the call signature remains the same, the blocks that Bitswap returns can now be cast to [traceability.Block](./bitswap/client/traceability/block.go), which will additionally tell you where the Block came from and how long it took to fetch. This helps consumers of Bitswap collect better metrics on Bitswap behavior.
+
+### Changed
+
+* 🛠 The `ipns` package has been refactored.
+  * You should no longer use the direct Protobuf version of the IPNS Record.
+    Instead, we have a shiny new `ipns.Record` type that wraps all the required
+    functionality to work the best as possible with IPNS v2 Records. Please
+    check the [documentation](https://pkg.go.dev/github.com/ipfs/boxo/ipns) for
+    more information, and follow
+    [ipfs/specs#376](https://github.com/ipfs/specs/issues/376) for related
+    IPIP.
+  * There is no change to IPNS Records produced by `boxo/ipns`, it still
+    produces both V1 and V2 signatures by default, it is still backward-compatible.
+
+### Removed
+
+- 🛠 `ipld/car`  has been removed. Please use [ipld/go-car](https://github.com/ipld/go-car) instead.
+  More information regarding this decision can be found in [issue 218](https://github.com/ipfs/boxo/issues/218).
+
+### Fixed
+
+- Removed mentions of unused ARC algorithm ([#336](https://github.com/ipfs/boxo/issues/366#issuecomment-1597253540))
+- Handle `_redirects` file when `If-None-Match` header is present ([#412](https://github.com/ipfs/boxo/pull/412))
+
+### Security
+
 ## [0.10.2] - 2023-06-29
 
 ### Fixed
@@ -105,8 +147,9 @@ None.
   - `RecursiveKeys`
   - `InternalKeys`
 - 🛠 `provider/batched.New` has been moved to `provider.New` and arguments has been changed. (https://github.com/ipfs/boxo/pulls/273)
-  - a routing system is now passed with the `provider.Online` option, by default the system run in offline mode (push stuff onto the queue); and
-  - you do not have to pass a queue anymore, you pass a `datastore.Datastore` exclusively.
+  - A routing system is now passed with the `provider.Online` option, by default the system run in offline mode (push stuff onto the queue).
+  - When using `provider.Online` calling the `.Run` method is not required anymore, the background worker is implicitely started in the background by `provider.New`.
+  - You do not have to pass a queue anymore, you pass a `datastore.Datastore` exclusively.
 - 🛠 `provider.NewOfflineProvider` has been renamed to `provider.NewNoopProvider` to show more clearly that is does nothing. (https://github.com/ipfs/boxo/pulls/273)
 - 🛠 `provider.Provider` and `provider.Reprovider` has been merged under one `provider.System`. (https://github.com/ipfs/boxo/pulls/273)
 - 🛠 `routing/http` responses now return a streaming `iter.ResultIter` generic interface. (https://github.com/ipfs/boxo/pulls/18)

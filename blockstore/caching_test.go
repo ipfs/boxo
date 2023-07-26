@@ -7,7 +7,7 @@ import (
 
 func TestCachingOptsLessThanZero(t *testing.T) {
 	opts := DefaultCacheOpts()
-	opts.HasARCCacheSize = -1
+	opts.HasTwoQueueCacheSize = -1
 
 	if _, err := CachedBlockstore(context.TODO(), nil, opts); err == nil {
 		t.Error("wrong ARC setting was not detected")

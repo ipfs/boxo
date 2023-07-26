@@ -4,41 +4,45 @@ import (
 	"errors"
 )
 
-// ErrExpiredRecord should be returned when an ipns record is
-// invalid due to being too old
-var ErrExpiredRecord = errors.New("expired record")
-
-// ErrUnrecognizedValidity is returned when an IpnsRecord has an
-// unknown validity type.
-var ErrUnrecognizedValidity = errors.New("unrecognized validity type")
-
-// ErrInvalidPath should be returned when an ipns record path
-// is not in a valid format
-var ErrInvalidPath = errors.New("record path invalid")
-
-// ErrSignature should be returned when an ipns record fails
-// signature verification
-var ErrSignature = errors.New("record signature verification failed")
-
-// ErrKeyFormat should be returned when an ipns record key is
-// incorrectly formatted (not a peer ID)
-var ErrKeyFormat = errors.New("record key could not be parsed into peer ID")
-
-// ErrPublicKeyNotFound should be returned when the public key
-// corresponding to the ipns record path cannot be retrieved
-// from the peer store
-var ErrPublicKeyNotFound = errors.New("public key not found in peer store")
-
-// ErrPublicKeyMismatch should be returned when the public key embedded in the
-// record doesn't match the expected public key.
-var ErrPublicKeyMismatch = errors.New("public key in record did not match expected pubkey")
-
-// ErrBadRecord should be returned when an ipns record cannot be unmarshalled
-var ErrBadRecord = errors.New("record could not be unmarshalled")
-
-// 10 KiB limit defined in https://github.com/ipfs/specs/pull/319
+// MaxRecordSize is the IPNS Record [size limit].
+//
+// [size limit]: https://specs.ipfs.tech/ipns/ipns-record/#record-size-limit
 const MaxRecordSize int = 10 << (10 * 1)
 
-// ErrRecordSize should be returned when an ipns record is
-// invalid due to being too big
+// ErrExpiredRecord is returned when an IPNS [Record] is invalid due to being expired.
+var ErrExpiredRecord = errors.New("record is expired")
+
+// ErrUnrecognizedValidity is returned when an IPNS [Record] has an unknown validity type.
+var ErrUnrecognizedValidity = errors.New("record contains an unrecognized validity type")
+
+// ErrInvalidValidity is returned when an IPNS [Record] has a known validity type,
+// but the validity value is invalid.
+var ErrInvalidValidity = errors.New("record contains an invalid validity")
+
+// ErrRecordSize is returned when an IPNS [Record] exceeds the maximum size.
 var ErrRecordSize = errors.New("record exceeds allowed size limit")
+
+// ErrDataMissing is returned when an IPNS [Record] is missing the data field.
+var ErrDataMissing = errors.New("record is missing the dag-cbor data field")
+
+// ErrInvalidRecord is returned when an IPNS [Record] is malformed.
+var ErrInvalidRecord = errors.New("record is malformed")
+
+// ErrPublicKeyMismatch is return when the public key embedded in an IPNS [Record]
+// does not match the expected public key.
+var ErrPublicKeyMismatch = errors.New("record public key does not match the expected public key")
+
+// ErrPublicKeyNotFound is returned when the public key is not found.
+var ErrPublicKeyNotFound = errors.New("public key not found")
+
+// ErrInvalidPublicKey is returned when an IPNS [Record] has an invalid public key,
+var ErrInvalidPublicKey = errors.New("public key invalid")
+
+// ErrSignature is returned when an IPNS [Record] fails signature verification.
+var ErrSignature = errors.New("signature verification failed")
+
+// ErrInvalidName is returned when an IPNS [Name] is invalid.
+var ErrInvalidName = errors.New("name is invalid")
+
+// ErrInvalidPath is returned when an IPNS [Record] has an invalid path.
+var ErrInvalidPath = errors.New("value is not a valid content path")
