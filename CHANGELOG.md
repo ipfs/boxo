@@ -16,6 +16,18 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [v0.11.0]
+
+### Added
+
 * ✨ The gateway now supports the optional `order` and `dups` CAR parameters
   from [IPIP-412](https://github.com/ipfs/specs/pull/412).
   * The `BlocksBackend` only implements `order=dfs` (Depth-First Search)
