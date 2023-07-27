@@ -467,7 +467,7 @@ func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
 	return sk, ipns.NameFromPeer(pid)
 }
 
-func makeIPNSRecord(t *testing.T, sk crypto.PrivKey) (*ipns.Record, []byte) {
+func makeIPNSRecord(t *testing.T, sk crypto.PrivKey, opts ...ipns.Option) (*ipns.Record, []byte) {
 	cid, err := cid.Decode("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
 	require.NoError(t, err)
 
@@ -475,7 +475,7 @@ func makeIPNSRecord(t *testing.T, sk crypto.PrivKey) (*ipns.Record, []byte) {
 	eol := time.Now().Add(time.Hour * 48)
 	ttl := time.Second * 20
 
-	record, err := ipns.NewRecord(sk, ipfspath.FromString(path.String()), 1, eol, ttl)
+	record, err := ipns.NewRecord(sk, ipfspath.FromString(path.String()), 1, eol, ttl, opts...)
 	require.NoError(t, err)
 
 	rawRecord, err := ipns.MarshalRecord(record)
@@ -485,37 +485,6 @@ func makeIPNSRecord(t *testing.T, sk crypto.PrivKey) (*ipns.Record, []byte) {
 }
 
 func TestClient_IPNS(t *testing.T) {
-	t.Run("Find IPNS Record", func(t *testing.T) {
-		sk, name := makeName(t)
-		record, _ := makeIPNSRecord(t, sk)
-
-		deps := makeTestDeps(t, nil, nil)
-		client := deps.client
-		router := deps.router
-
-		router.On("FindIPNSRecord", mock.Anything, name).Return(record, nil)
-
-		receivedRecord, err := client.FindIPNSRecord(context.Background(), name)
-		require.NoError(t, err)
-		require.Equal(t, record, receivedRecord)
-	})
-
-	t.Run("Find IPNS Record returns error if server sends bad data", func(t *testing.T) {
-		sk, _ := makeName(t)
-		record, _ := makeIPNSRecord(t, sk)
-		_, name2 := makeName(t)
-
-		deps := makeTestDeps(t, nil, nil)
-		client := deps.client
-		router := deps.router
-
-		router.On("FindIPNSRecord", mock.Anything, name2).Return(record, nil)
-
-		receivedRecord, err := client.FindIPNSRecord(context.Background(), name2)
-		require.Error(t, err)
-		require.Nil(t, receivedRecord)
-	})
-
 	t.Run("Find IPNS Record returns error if server errors", func(t *testing.T) {
 		_, name := makeName(t)
 
@@ -530,17 +499,58 @@ func TestClient_IPNS(t *testing.T) {
 		require.Nil(t, receivedRecord)
 	})
 
-	t.Run("Provide IPNS Record", func(t *testing.T) {
-		sk, name := makeName(t)
-		record, _ := makeIPNSRecord(t, sk)
+	runWithRecordOptions := func(t *testing.T, opts ...ipns.Option) {
+		t.Run("Find IPNS Record", func(t *testing.T) {
+			sk, name := makeName(t)
+			record, _ := makeIPNSRecord(t, sk, opts...)
 
-		deps := makeTestDeps(t, nil, nil)
-		client := deps.client
-		router := deps.router
+			deps := makeTestDeps(t, nil, nil)
+			client := deps.client
+			router := deps.router
 
-		router.On("ProvideIPNSRecord", mock.Anything, name, record).Return(nil)
+			router.On("FindIPNSRecord", mock.Anything, name).Return(record, nil)
 
-		err := client.ProvideIPNSRecord(context.Background(), name, record)
-		require.NoError(t, err)
+			receivedRecord, err := client.FindIPNSRecord(context.Background(), name)
+			require.NoError(t, err)
+			require.Equal(t, record, receivedRecord)
+		})
+
+		t.Run("Find IPNS Record returns error if server sends bad data", func(t *testing.T) {
+			sk, _ := makeName(t)
+			record, _ := makeIPNSRecord(t, sk, opts...)
+			_, name2 := makeName(t)
+
+			deps := makeTestDeps(t, nil, nil)
+			client := deps.client
+			router := deps.router
+
+			router.On("FindIPNSRecord", mock.Anything, name2).Return(record, nil)
+
+			receivedRecord, err := client.FindIPNSRecord(context.Background(), name2)
+			require.Error(t, err)
+			require.Nil(t, receivedRecord)
+		})
+
+		t.Run("Provide IPNS Record", func(t *testing.T) {
+			sk, name := makeName(t)
+			record, _ := makeIPNSRecord(t, sk, opts...)
+
+			deps := makeTestDeps(t, nil, nil)
+			client := deps.client
+			router := deps.router
+
+			router.On("ProvideIPNSRecord", mock.Anything, name, record).Return(nil)
+
+			err := client.ProvideIPNSRecord(context.Background(), name, record)
+			require.NoError(t, err)
+		})
+	}
+
+	t.Run("V1+V2 IPNS Records", func(t *testing.T) {
+		runWithRecordOptions(t, ipns.WithV1Compatibility(true))
+	})
+
+	t.Run("V2 IPNS Records", func(t *testing.T) {
+		runWithRecordOptions(t, ipns.WithV1Compatibility(false))
 	})
 }

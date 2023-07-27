@@ -133,12 +133,12 @@ func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
 	return sk, ipns.NameFromPeer(pid)
 }
 
-func makeIPNSRecord(t *testing.T, cid cid.Cid, sk crypto.PrivKey) (*ipns.Record, []byte) {
+func makeIPNSRecord(t *testing.T, cid cid.Cid, sk crypto.PrivKey, opts ...ipns.Option) (*ipns.Record, []byte) {
 	path := path.IpfsPath(cid)
 	eol := time.Now().Add(time.Hour * 48)
 	ttl := time.Second * 20
 
-	record, err := ipns.NewRecord(sk, ipfspath.FromString(path.String()), 1, eol, ttl)
+	record, err := ipns.NewRecord(sk, ipfspath.FromString(path.String()), 1, eol, ttl, opts...)
 	require.NoError(t, err)
 
 	rawRecord, err := ipns.MarshalRecord(record)
@@ -150,11 +150,6 @@ func makeIPNSRecord(t *testing.T, cid cid.Cid, sk crypto.PrivKey) (*ipns.Record,
 func TestIPNS(t *testing.T) {
 	cid1, err := cid.Decode("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
 	require.NoError(t, err)
-
-	sk, name1 := makeName(t)
-	record1, rawRecord1 := makeIPNSRecord(t, cid1, sk)
-
-	_, name2 := makeName(t)
 
 	makeRequest := func(t *testing.T, router *mockContentRouter, path string) *http.Response {
 		server := httptest.NewServer(Handler(router))
@@ -169,77 +164,94 @@ func TestIPNS(t *testing.T) {
 		return resp
 	}
 
-	t.Run("GET /routing/v1/ipns/{cid-peer-id} returns 200", func(t *testing.T) {
-		t.Parallel()
+	runWithRecordOptions := func(t *testing.T, opts ...ipns.Option) {
+		sk, name1 := makeName(t)
+		record1, rawRecord1 := makeIPNSRecord(t, cid1, sk)
 
-		rec, err := ipns.UnmarshalRecord(rawRecord1)
-		require.NoError(t, err)
+		_, name2 := makeName(t)
 
-		router := &mockContentRouter{}
-		router.On("FindIPNSRecord", mock.Anything, name1).Return(rec, nil)
+		t.Run("GET /routing/v1/ipns/{cid-peer-id} returns 200", func(t *testing.T) {
+			t.Parallel()
 
-		resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String())
-		require.Equal(t, 200, resp.StatusCode)
-		require.Equal(t, mediaTypeIPNSRecord, resp.Header.Get("Content-Type"))
-		require.NotEmpty(t, resp.Header.Get("Etag"))
-		require.Equal(t, "max-age=20", resp.Header.Get("Cache-Control"))
+			rec, err := ipns.UnmarshalRecord(rawRecord1)
+			require.NoError(t, err)
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, body, rawRecord1)
+			router := &mockContentRouter{}
+			router.On("FindIPNSRecord", mock.Anything, name1).Return(rec, nil)
+
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String())
+			require.Equal(t, 200, resp.StatusCode)
+			require.Equal(t, mediaTypeIPNSRecord, resp.Header.Get("Content-Type"))
+			require.NotEmpty(t, resp.Header.Get("Etag"))
+			require.Equal(t, "max-age=20", resp.Header.Get("Cache-Control"))
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, body, rawRecord1)
+		})
+
+		t.Run("GET /routing/v1/ipns/{non-peer-cid} returns 400", func(t *testing.T) {
+			t.Parallel()
+
+			router := &mockContentRouter{}
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+cid1.String())
+			require.Equal(t, 400, resp.StatusCode)
+		})
+
+		t.Run("GET /routing/v1/ipns/{peer-id} returns 400", func(t *testing.T) {
+			t.Parallel()
+
+			router := &mockContentRouter{}
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.Peer().String())
+			require.Equal(t, 400, resp.StatusCode)
+		})
+
+		t.Run("PUT /routing/v1/ipns/{cid-peer-id} returns 200", func(t *testing.T) {
+			t.Parallel()
+
+			router := &mockContentRouter{}
+			router.On("ProvideIPNSRecord", mock.Anything, name1, record1).Return(nil)
+
+			server := httptest.NewServer(Handler(router))
+			t.Cleanup(server.Close)
+			serverAddr := "http://" + server.Listener.Addr().String()
+			urlStr := serverAddr + "/routing/v1/ipns/" + name1.String()
+
+			req, err := http.NewRequest(http.MethodPut, urlStr, bytes.NewReader(rawRecord1))
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", mediaTypeIPNSRecord)
+
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, 200, resp.StatusCode)
+		})
+
+		t.Run("PUT /routing/v1/ipns/{cid-peer-id} returns 400 for wrong record", func(t *testing.T) {
+			t.Parallel()
+
+			router := &mockContentRouter{}
+
+			server := httptest.NewServer(Handler(router))
+			t.Cleanup(server.Close)
+			serverAddr := "http://" + server.Listener.Addr().String()
+			urlStr := serverAddr + "/routing/v1/ipns/" + name2.String()
+
+			req, err := http.NewRequest(http.MethodPut, urlStr, bytes.NewReader(rawRecord1))
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", mediaTypeIPNSRecord)
+
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, 400, resp.StatusCode)
+		})
+	}
+
+	t.Run("V1+V2 IPNS Records", func(t *testing.T) {
+		runWithRecordOptions(t, ipns.WithV1Compatibility(true))
 	})
 
-	t.Run("GET /routing/v1/ipns/{non-peer-cid} returns 400", func(t *testing.T) {
-		t.Parallel()
-		router := &mockContentRouter{}
-		resp := makeRequest(t, router, "/routing/v1/ipns/"+cid1.String())
-		require.Equal(t, 400, resp.StatusCode)
-	})
-
-	t.Run("GET /routing/v1/ipns/{peer-id} returns 400", func(t *testing.T) {
-		t.Parallel()
-		router := &mockContentRouter{}
-		resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.Peer().String())
-		require.Equal(t, 400, resp.StatusCode)
-	})
-
-	t.Run("PUT /routing/v1/ipns/{cid-peer-id} returns 200", func(t *testing.T) {
-		t.Parallel()
-
-		router := &mockContentRouter{}
-		router.On("ProvideIPNSRecord", mock.Anything, name1, record1).Return(nil)
-
-		server := httptest.NewServer(Handler(router))
-		t.Cleanup(server.Close)
-		serverAddr := "http://" + server.Listener.Addr().String()
-		urlStr := serverAddr + "/routing/v1/ipns/" + name1.String()
-
-		req, err := http.NewRequest(http.MethodPut, urlStr, bytes.NewReader(rawRecord1))
-		require.NoError(t, err)
-		req.Header.Set("Content-Type", mediaTypeIPNSRecord)
-
-		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		require.Equal(t, 200, resp.StatusCode)
-	})
-
-	t.Run("PUT /routing/v1/ipns/{cid-peer-id} returns 400 for wrong record", func(t *testing.T) {
-		t.Parallel()
-
-		router := &mockContentRouter{}
-
-		server := httptest.NewServer(Handler(router))
-		t.Cleanup(server.Close)
-		serverAddr := "http://" + server.Listener.Addr().String()
-		urlStr := serverAddr + "/routing/v1/ipns/" + name2.String()
-
-		req, err := http.NewRequest(http.MethodPut, urlStr, bytes.NewReader(rawRecord1))
-		require.NoError(t, err)
-		req.Header.Set("Content-Type", mediaTypeIPNSRecord)
-
-		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		require.Equal(t, 400, resp.StatusCode)
+	t.Run("V2 IPNS Records", func(t *testing.T) {
+		runWithRecordOptions(t, ipns.WithV1Compatibility(false))
 	})
 }
 
