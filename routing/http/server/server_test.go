@@ -43,13 +43,13 @@ func TestHeaders(t *testing.T) {
 	router.On("FindProviders", mock.Anything, cb, DefaultRecordsLimit).
 		Return(results, nil)
 
-	resp, err := http.Get(serverAddr + ProvidePath + c)
+	resp, err := http.Get(serverAddr + "/routing/v1/providers/" + c)
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	header := resp.Header.Get("Content-Type")
 	require.Equal(t, mediaTypeJSON, header)
 
-	resp, err = http.Get(serverAddr + ProvidePath + "BAD_CID")
+	resp, err = http.Get(serverAddr + "/routing/v1/providers/" + "BAD_CID")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, 400, resp.StatusCode)
@@ -98,7 +98,7 @@ func TestResponse(t *testing.T) {
 			limit = DefaultStreamingRecordsLimit
 		}
 		router.On("FindProviders", mock.Anything, cid, limit).Return(results, nil)
-		urlStr := serverAddr + ProvidePath + cidStr
+		urlStr := serverAddr + "/routing/v1/providers/" + cidStr
 
 		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 		require.NoError(t, err)
@@ -262,16 +262,6 @@ type mockContentRouter struct{ mock.Mock }
 func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.ProviderResponse], error) {
 	args := m.Called(ctx, key, limit)
 	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
-}
-
-func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error) {
-	args := m.Called(ctx, req)
-	return args.Get(0).(time.Duration), args.Error(1)
-}
-
-func (m *mockContentRouter) Provide(ctx context.Context, req *WriteProvideRequest) (types.ProviderResponse, error) {
-	args := m.Called(ctx, req)
-	return args.Get(0).(types.ProviderResponse), args.Error(1)
 }
 
 func (m *mockContentRouter) FindIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {

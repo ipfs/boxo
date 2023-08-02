@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,7 +10,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/gorilla/mux"
@@ -21,8 +19,6 @@ import (
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/go-cid"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/multiformats/go-multiaddr"
 
 	logging "github.com/ipfs/go-log/v2"
 )
@@ -40,7 +36,6 @@ const (
 var logger = logging.Logger("service/server/delegatedrouting")
 
 const (
-	ProvidePath       = "/routing/v1/providers/"
 	FindProvidersPath = "/routing/v1/providers/{cid}"
 	IPNSPath          = "/routing/v1/ipns/{cid}"
 )
@@ -54,8 +49,6 @@ type ContentRouter interface {
 	// FindProviders searches for peers who are able to provide a given key. Limit
 	// indicates the maximum amount of results to return. 0 means unbounded.
 	FindProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.ProviderResponse], error)
-	ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error)
-	Provide(ctx context.Context, req *WriteProvideRequest) (types.ProviderResponse, error)
 
 	// FindIPNSRecord searches for an [ipns.Record] for the given [ipns.Name].
 	FindIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error)
@@ -63,20 +56,6 @@ type ContentRouter interface {
 	// ProvideIPNSRecord stores the provided [ipns.Record] for the given [ipns.Name]. It is
 	// guaranteed that the record matches the provided name.
 	ProvideIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error
-}
-
-type BitswapWriteProvideRequest struct {
-	Keys        []cid.Cid
-	Timestamp   time.Time
-	AdvisoryTTL time.Duration
-	ID          peer.ID
-	Addrs       []multiaddr.Multiaddr
-}
-
-type WriteProvideRequest struct {
-	Protocol string
-	Schema   string
-	Bytes    []byte
 }
 
 type Option func(s *server)
@@ -116,7 +95,6 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	}
 
 	r := mux.NewRouter()
-	r.HandleFunc(ProvidePath, server.provide).Methods(http.MethodPut)
 	r.HandleFunc(FindProvidersPath, server.findProviders).Methods(http.MethodGet)
 
 	r.HandleFunc(IPNSPath, server.getIPNSRecord).Methods(http.MethodGet)
@@ -130,72 +108,6 @@ type server struct {
 	disableNDJSON         bool
 	recordsLimit          int
 	streamingRecordsLimit int
-}
-
-func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
-	req := jsontypes.WriteProvidersRequest{}
-	err := json.NewDecoder(httpReq.Body).Decode(&req)
-	_ = httpReq.Body.Close()
-	if err != nil {
-		writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
-		return
-	}
-
-	resp := jsontypes.WriteProvidersResponse{}
-
-	for i, prov := range req.Providers {
-		switch v := prov.(type) {
-		case *types.WriteBitswapProviderRecord:
-			err := v.Verify()
-			if err != nil {
-				logErr("Provide", "signature verification failed", err)
-				writeErr(w, "Provide", http.StatusForbidden, errors.New("signature verification failed"))
-				return
-			}
-
-			keys := make([]cid.Cid, len(v.Payload.Keys))
-			for i, k := range v.Payload.Keys {
-				keys[i] = k.Cid
-			}
-			addrs := make([]multiaddr.Multiaddr, len(v.Payload.Addrs))
-			for i, a := range v.Payload.Addrs {
-				addrs[i] = a.Multiaddr
-			}
-			advisoryTTL, err := s.svc.ProvideBitswap(httpReq.Context(), &BitswapWriteProvideRequest{
-				Keys:        keys,
-				Timestamp:   v.Payload.Timestamp.Time,
-				AdvisoryTTL: v.Payload.AdvisoryTTL.Duration,
-				ID:          *v.Payload.ID,
-				Addrs:       addrs,
-			})
-			if err != nil {
-				writeErr(w, "Provide", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-				return
-			}
-			resp.ProvideResults = append(resp.ProvideResults,
-				&types.WriteBitswapProviderRecordResponse{
-					Protocol:    v.Protocol,
-					Schema:      v.Schema,
-					AdvisoryTTL: &types.Duration{Duration: advisoryTTL},
-				},
-			)
-		case *types.UnknownProviderRecord:
-			provResp, err := s.svc.Provide(httpReq.Context(), &WriteProvideRequest{
-				Protocol: v.Protocol,
-				Schema:   v.Schema,
-				Bytes:    v.Bytes,
-			})
-			if err != nil {
-				writeErr(w, "Provide", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-				return
-			}
-			resp.ProvideResults = append(resp.ProvideResults, provResp)
-		default:
-			writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("provider record %d does not contain a protocol", i))
-			return
-		}
-	}
-	writeJSONResult(w, "Provide", resp)
 }
 
 func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
@@ -272,7 +184,7 @@ func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIt
 		providers = append(providers, res.Val)
 		i++
 	}
-	response := jsontypes.ReadProvidersResponse{Providers: providers}
+	response := jsontypes.ProvidersResponse{Providers: providers}
 	writeJSONResult(w, "FindProviders", response)
 }
 

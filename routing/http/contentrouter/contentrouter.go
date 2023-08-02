@@ -5,11 +5,11 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/ipfs/boxo/routing/http/internal"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
+	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
@@ -21,37 +21,21 @@ var logger = logging.Logger("service/contentrouting")
 const ttl = 24 * time.Hour
 
 type Client interface {
-	ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error)
 	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error)
 }
 
 type contentRouter struct {
-	client                Client
-	maxProvideConcurrency int
-	maxProvideBatchSize   int
+	client Client
 }
 
 var _ routing.ContentRouting = (*contentRouter)(nil)
+var _ routinghelpers.ProvideManyRouter = (*contentRouter)(nil)
 
 type option func(c *contentRouter)
 
-func WithMaxProvideConcurrency(max int) option {
-	return func(c *contentRouter) {
-		c.maxProvideConcurrency = max
-	}
-}
-
-func WithMaxProvideBatchSize(max int) option {
-	return func(c *contentRouter) {
-		c.maxProvideBatchSize = max
-	}
-}
-
 func NewContentRoutingClient(c Client, opts ...option) *contentRouter {
 	cr := &contentRouter{
-		client:                c,
-		maxProvideConcurrency: 5,
-		maxProvideBatchSize:   100,
+		client: c,
 	}
 	for _, opt := range opts {
 		opt(cr)
@@ -60,41 +44,11 @@ func NewContentRoutingClient(c Client, opts ...option) *contentRouter {
 }
 
 func (c *contentRouter) Provide(ctx context.Context, key cid.Cid, announce bool) error {
-	// If 'true' is
-	// passed, it also announces it, otherwise it is just kept in the local
-	// accounting of which objects are being provided.
-	if !announce {
-		return nil
-	}
-
-	_, err := c.client.ProvideBitswap(ctx, []cid.Cid{key}, ttl)
-	return err
+	return routing.ErrNotSupported
 }
 
-// ProvideMany provides a set of keys to the remote delegate.
-// Large sets of keys are chunked into multiple requests and sent concurrently, according to the concurrency configuration.
-// TODO: implement retries through transient errors
 func (c *contentRouter) ProvideMany(ctx context.Context, mhKeys []multihash.Multihash) error {
-	keys := make([]cid.Cid, 0, len(mhKeys))
-	for _, m := range mhKeys {
-		keys = append(keys, cid.NewCidV1(cid.Raw, m))
-	}
-
-	if len(keys) <= c.maxProvideBatchSize {
-		_, err := c.client.ProvideBitswap(ctx, keys, ttl)
-		return err
-	}
-
-	return internal.DoBatch(
-		ctx,
-		c.maxProvideBatchSize,
-		c.maxProvideConcurrency,
-		keys,
-		func(ctx context.Context, batch []cid.Cid) error {
-			_, err := c.client.ProvideBitswap(ctx, batch, ttl)
-			return err
-		},
-	)
+	return routing.ErrNotSupported
 }
 
 // Ready is part of the existing `ProvideMany` interface.

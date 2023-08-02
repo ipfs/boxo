@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benbjohnson/clock"
 	"github.com/ipfs/boxo/coreiface/path"
 	ipns "github.com/ipfs/boxo/ipns"
 	ipfspath "github.com/ipfs/boxo/path"
@@ -22,7 +21,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
-	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -34,16 +32,6 @@ type mockContentRouter struct{ mock.Mock }
 func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.ProviderResponse], error) {
 	args := m.Called(ctx, key, limit)
 	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
-}
-
-func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.BitswapWriteProvideRequest) (time.Duration, error) {
-	args := m.Called(ctx, req)
-	return args.Get(0).(time.Duration), args.Error(1)
-}
-
-func (m *mockContentRouter) Provide(ctx context.Context, req *server.WriteProvideRequest) (types.ProviderResponse, error) {
-	args := m.Called(ctx, req)
-	return args.Get(0).(types.ProviderResponse), args.Error(1)
 }
 
 func (m *mockContentRouter) FindIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
@@ -63,8 +51,6 @@ type testDeps struct {
 	recordingHTTPClient *recordingHTTPClient
 	router              *mockContentRouter
 	server              *httptest.Server
-	peerID              peer.ID
-	addrs               []multiaddr.Multiaddr
 	client              *client
 }
 
@@ -95,7 +81,6 @@ func (c *recordingHTTPClient) Do(req *http.Request) (*http.Response, error) {
 
 func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option) testDeps {
 	const testUserAgent = "testUserAgent"
-	peerID, addrs, identity := makeProviderAndIdentity()
 	router := &mockContentRouter{}
 	recordingHandler := &recordingHandler{
 		Handler: server.Handler(router, serverOpts...),
@@ -110,8 +95,6 @@ func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option
 	serverAddr := "http://" + server.Listener.Addr().String()
 	recordingHTTPClient := &recordingHTTPClient{httpClient: defaultHTTPClient}
 	defaultClientOpts := []Option{
-		WithProviderInfo(peerID, addrs),
-		WithIdentity(identity),
 		WithUserAgent(testUserAgent),
 		WithHTTPClient(recordingHTTPClient),
 	}
@@ -124,8 +107,6 @@ func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option
 		recordingHTTPClient: recordingHTTPClient,
 		router:              router,
 		server:              server,
-		peerID:              peerID,
-		addrs:               addrs,
 		client:              c,
 	}
 }
@@ -147,13 +128,6 @@ func makeCID() cid.Cid {
 func addrsToDRAddrs(addrs []multiaddr.Multiaddr) (drmas []types.Multiaddr) {
 	for _, a := range addrs {
 		drmas = append(drmas, types.Multiaddr{Multiaddr: a})
-	}
-	return
-}
-
-func drAddrsToAddrs(drmas []types.Multiaddr) (addrs []multiaddr.Multiaddr) {
-	for _, a := range drmas {
-		addrs = append(addrs, a.Multiaddr)
 	}
 	return
 }
@@ -329,130 +303,6 @@ func TestClient_FindProviders(t *testing.T) {
 
 			provs := iter.ReadAll[iter.Result[types.ProviderResponse]](provsIter)
 			assert.Equal(t, c.expProvs, provs)
-		})
-	}
-}
-
-func TestClient_Provide(t *testing.T) {
-	cases := []struct {
-		name            string
-		manglePath      bool
-		mangleSignature bool
-		stopServer      bool
-		noProviderInfo  bool
-		noIdentity      bool
-
-		cids []cid.Cid
-		ttl  time.Duration
-
-		routerAdvisoryTTL time.Duration
-		routerErr         error
-
-		expErrContains    string
-		expWinErrContains string
-
-		expAdvisoryTTL time.Duration
-	}{
-		{
-			name:              "happy case",
-			cids:              []cid.Cid{makeCID()},
-			ttl:               1 * time.Hour,
-			routerAdvisoryTTL: 1 * time.Minute,
-
-			expAdvisoryTTL: 1 * time.Minute,
-		},
-		{
-			name:            "should return a 403 if the payload signature verification fails",
-			cids:            []cid.Cid{},
-			mangleSignature: true,
-			expErrContains:  "HTTP error with StatusCode=403",
-		},
-		{
-			name:           "should return error if identity is not provided",
-			noIdentity:     true,
-			expErrContains: "cannot provide Bitswap records without an identity",
-		},
-		{
-			name:           "should return error if provider is not provided",
-			noProviderInfo: true,
-			expErrContains: "cannot provide Bitswap records without a peer ID",
-		},
-		{
-			name:           "returns an error if there's a non-200 response",
-			manglePath:     true,
-			expErrContains: "HTTP error with StatusCode=404: 404 page not found",
-		},
-		{
-			name:              "returns an error if the HTTP client returns a non-HTTP error",
-			stopServer:        true,
-			expErrContains:    "connect: connection refused",
-			expWinErrContains: "connectex: No connection could be made because the target machine actively refused it.",
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			deps := makeTestDeps(t, nil, nil)
-			client := deps.client
-			router := deps.router
-
-			if c.noIdentity {
-				client.identity = nil
-			}
-			if c.noProviderInfo {
-				client.peerID = ""
-				client.addrs = nil
-			}
-
-			clock := clock.NewMock()
-			clock.Set(time.Now())
-			client.clock = clock
-
-			ctx := context.Background()
-
-			if c.manglePath {
-				client.baseURL += "/foo"
-			}
-			if c.stopServer {
-				deps.server.Close()
-			}
-			if c.mangleSignature {
-				client.afterSignCallback = func(req *types.WriteBitswapProviderRecord) {
-					mh, err := multihash.Encode([]byte("boom"), multihash.SHA2_256)
-					require.NoError(t, err)
-					mb, err := multibase.Encode(multibase.Base64, mh)
-					require.NoError(t, err)
-
-					req.Signature = mb
-				}
-			}
-
-			expectedProvReq := &server.BitswapWriteProvideRequest{
-				Keys:        c.cids,
-				Timestamp:   clock.Now().Truncate(time.Millisecond),
-				AdvisoryTTL: c.ttl,
-				Addrs:       drAddrsToAddrs(client.addrs),
-				ID:          client.peerID,
-			}
-
-			router.On("ProvideBitswap", mock.Anything, expectedProvReq).
-				Return(c.routerAdvisoryTTL, c.routerErr)
-
-			advisoryTTL, err := client.ProvideBitswap(ctx, c.cids, c.ttl)
-
-			var errorString string
-			if runtime.GOOS == "windows" && c.expWinErrContains != "" {
-				errorString = c.expWinErrContains
-			} else {
-				errorString = c.expErrContains
-			}
-
-			if errorString != "" {
-				require.ErrorContains(t, err, errorString)
-			} else {
-				require.NoError(t, err)
-			}
-
-			assert.Equal(t, c.expAdvisoryTTL, advisoryTTL)
 		})
 	}
 }
