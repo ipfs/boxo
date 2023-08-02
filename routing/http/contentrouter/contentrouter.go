@@ -3,7 +3,6 @@ package contentrouter
 import (
 	"context"
 	"reflect"
-	"time"
 
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
@@ -18,10 +17,8 @@ import (
 
 var logger = logging.Logger("service/contentrouting")
 
-const ttl = 24 * time.Hour
-
 type Client interface {
-	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error)
+	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error)
 }
 
 type contentRouter struct {
@@ -57,7 +54,7 @@ func (c *contentRouter) Ready() bool {
 }
 
 // readProviderResponses reads bitswap records from the iterator into the given channel, dropping non-bitswap records.
-func readProviderResponses(iter iter.ResultIter[types.ProviderResponse], ch chan<- peer.AddrInfo) {
+func readProviderResponses(iter iter.ResultIter[types.Record], ch chan<- peer.AddrInfo) {
 	defer close(ch)
 	defer iter.Close()
 	for iter.Next() {
@@ -67,8 +64,8 @@ func readProviderResponses(iter iter.ResultIter[types.ProviderResponse], ch chan
 			continue
 		}
 		v := res.Val
-		if v.GetSchema() == types.SchemaBitswap {
-			result, ok := v.(*types.ReadBitswapProviderRecord)
+		if v.GetSchema() == types.SchemaPeer {
+			result, ok := v.(*types.PeerRecord)
 			if !ok {
 				logger.Errorw(
 					"problem casting find providers result",

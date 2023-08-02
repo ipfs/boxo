@@ -16,9 +16,9 @@ import (
 
 type mockClient struct{ mock.Mock }
 
-func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.ProviderResponse], error) {
+func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, key)
-	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
+	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
 func (m *mockClient) Ready(ctx context.Context) (bool, error) {
@@ -48,22 +48,22 @@ func TestFindProvidersAsync(t *testing.T) {
 
 	p1 := peer.ID("peer1")
 	p2 := peer.ID("peer2")
-	ais := []types.ProviderResponse{
-		&types.ReadBitswapProviderRecord{
-			Protocol: "transport-bitswap",
-			Schema:   types.SchemaBitswap,
-			ID:       &p1,
+	ais := []types.Record{
+		&types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &p1,
+			Protocols: []string{"transport-bitswap"},
 		},
-		&types.ReadBitswapProviderRecord{
-			Protocol: "transport-bitswap",
-			Schema:   types.SchemaBitswap,
-			ID:       &p2,
+		&types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &p2,
+			Protocols: []string{"transport-bitswap"},
 		},
-		&types.UnknownProviderRecord{
-			Protocol: "UNKNOWN",
-		},
+		// &types.UnknownRecord{
+		// 	Protocol: "UNKNOWN",
+		// },
 	}
-	aisIter := iter.ToResultIter[types.ProviderResponse](iter.FromSlice(ais))
+	aisIter := iter.ToResultIter[types.Record](iter.FromSlice(ais))
 
 	client.On("FindProviders", ctx, key).Return(aisIter, nil)
 

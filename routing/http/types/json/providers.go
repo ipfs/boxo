@@ -8,7 +8,7 @@ import (
 
 // ProvidersResponse is the result of a GET Providers request.
 type ProvidersResponse struct {
-	Providers []types.ProviderResponse
+	Providers []types.Record
 }
 
 func (r *ProvidersResponse) UnmarshalJSON(b []byte) error {
@@ -19,16 +19,16 @@ func (r *ProvidersResponse) UnmarshalJSON(b []byte) error {
 	}
 
 	for _, provBytes := range tempFPR.Providers {
-		var readProv types.UnknownProviderRecord
+		var readProv types.UnknownRecord
 		err := json.Unmarshal(provBytes, &readProv)
 		if err != nil {
 			return err
 		}
 
 		switch readProv.Schema {
-		case types.SchemaBitswap:
-			var prov types.ReadBitswapProviderRecord
-			err := json.Unmarshal(readProv.Bytes, &prov)
+		case types.SchemaPeer:
+			var prov types.PeerRecord
+			err := json.Unmarshal(provBytes, &prov)
 			if err != nil {
 				return err
 			}

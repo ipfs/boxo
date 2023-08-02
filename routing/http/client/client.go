@@ -127,7 +127,7 @@ func (c *measuringIter[T]) Close() error {
 	return c.Iter.Close()
 }
 
-func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.ResultIter[types.ProviderResponse], err error) {
+func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.ResultIter[types.Record], err error) {
 	// TODO test measurements
 	m := newMeasurement("FindProviders")
 
@@ -155,7 +155,7 @@ func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.Res
 	if resp.StatusCode == http.StatusNotFound {
 		resp.Body.Close()
 		m.record(ctx)
-		return iter.FromSlice[iter.Result[types.ProviderResponse]](nil), nil
+		return iter.FromSlice[iter.Result[types.Record]](nil), nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -183,22 +183,22 @@ func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.Res
 		}
 	}()
 
-	var it iter.ResultIter[types.ProviderResponse]
+	var it iter.ResultIter[types.Record]
 	switch mediaType {
 	case mediaTypeJSON:
 		parsedResp := &jsontypes.ProvidersResponse{}
 		err = json.NewDecoder(resp.Body).Decode(parsedResp)
-		var sliceIt iter.Iter[types.ProviderResponse] = iter.FromSlice(parsedResp.Providers)
+		var sliceIt iter.Iter[types.Record] = iter.FromSlice(parsedResp.Providers)
 		it = iter.ToResultIter(sliceIt)
 	case mediaTypeNDJSON:
 		skipBodyClose = true
-		it = ndjson.NewReadProvidersResponseIter(resp.Body)
+		it = ndjson.NewProvidersResponseIter(resp.Body)
 	default:
 		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
 		return nil, errors.New("unknown content type")
 	}
 
-	return &measuringIter[iter.Result[types.ProviderResponse]]{Iter: it, ctx: ctx, m: m}, nil
+	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
 func (c *client) FindIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {

@@ -41,14 +41,14 @@ const (
 )
 
 type FindProvidersAsyncResponse struct {
-	ProviderResponse types.ProviderResponse
+	ProviderResponse types.Record
 	Error            error
 }
 
 type ContentRouter interface {
 	// FindProviders searches for peers who are able to provide a given key. Limit
 	// indicates the maximum amount of results to return. 0 means unbounded.
-	FindProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.ProviderResponse], error)
+	FindProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.Record], error)
 
 	// FindIPNSRecord searches for an [ipns.Record] for the given [ipns.Name].
 	FindIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error)
@@ -119,7 +119,7 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		return
 	}
 
-	var handlerFunc func(w http.ResponseWriter, provIter iter.ResultIter[types.ProviderResponse])
+	var handlerFunc func(w http.ResponseWriter, provIter iter.ResultIter[types.Record])
 
 	var supportsNDJSON bool
 	var supportsJSON bool
@@ -167,11 +167,11 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 	handlerFunc(w, provIter)
 }
 
-func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.ProviderResponse]) {
+func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record]) {
 	defer provIter.Close()
 
 	var (
-		providers []types.ProviderResponse
+		providers []types.Record
 		i         int
 	)
 
@@ -188,7 +188,7 @@ func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIt
 	writeJSONResult(w, "FindProviders", response)
 }
 
-func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.ProviderResponse]) {
+func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record]) {
 	defer provIter.Close()
 
 	w.Header().Set("Content-Type", mediaTypeNDJSON)
