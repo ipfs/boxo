@@ -4,13 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/boxo/internal/test"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSendTimeout(t *testing.T) {
-	test.Flaky(t)
-
 	require.Equal(t, minSendTimeout, sendTimeout(0))
 	require.Equal(t, maxSendTimeout, sendTimeout(1<<30))
 

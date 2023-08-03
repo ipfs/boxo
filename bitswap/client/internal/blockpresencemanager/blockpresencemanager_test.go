@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/ipfs/boxo/bitswap/internal/testutil"
-	"github.com/ipfs/boxo/internal/test"
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
@@ -17,8 +16,6 @@ const (
 )
 
 func TestBlockPresenceManager(t *testing.T) {
-	test.Flaky(t)
-
 	bpm := New()
 
 	p := testutil.GeneratePeers(1)[0]
@@ -99,8 +96,6 @@ func TestBlockPresenceManager(t *testing.T) {
 }
 
 func TestAddRemoveMulti(t *testing.T) {
-	test.Flaky(t)
-
 	bpm := New()
 
 	peers := testutil.GeneratePeers(2)
@@ -184,8 +179,6 @@ func TestAddRemoveMulti(t *testing.T) {
 }
 
 func TestAllPeersDoNotHaveBlock(t *testing.T) {
-	test.Flaky(t)
-
 	bpm := New()
 
 	peers := testutil.GeneratePeers(3)
