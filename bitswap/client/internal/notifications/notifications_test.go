@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/boxo/internal/test"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
@@ -14,7 +13,6 @@ import (
 )
 
 func TestDuplicates(t *testing.T) {
-	test.Flaky(t)
 	var zero peer.ID // this test doesn't check the peer id
 
 	b1 := blocks.NewBlock([]byte("1"))
@@ -42,7 +40,6 @@ func TestDuplicates(t *testing.T) {
 }
 
 func TestPublishSubscribe(t *testing.T) {
-	test.Flaky(t)
 	var zero peer.ID // this test doesn't check the peer id
 
 	blockSent := blocks.NewBlock([]byte("Greetings from The Interval"))
@@ -61,7 +58,6 @@ func TestPublishSubscribe(t *testing.T) {
 }
 
 func TestSubscribeMany(t *testing.T) {
-	test.Flaky(t)
 	var zero peer.ID // this test doesn't check the peer id
 
 	e1 := blocks.NewBlock([]byte("1"))
@@ -89,7 +85,6 @@ func TestSubscribeMany(t *testing.T) {
 // TestDuplicateSubscribe tests a scenario where a given block
 // would be requested twice at the same time.
 func TestDuplicateSubscribe(t *testing.T) {
-	test.Flaky(t)
 	var zero peer.ID // this test doesn't check the peer id
 
 	e1 := blocks.NewBlock([]byte("1"))
@@ -114,8 +109,6 @@ func TestDuplicateSubscribe(t *testing.T) {
 }
 
 func TestShutdownBeforeUnsubscribe(t *testing.T) {
-	test.Flaky(t)
-
 	e1 := blocks.NewBlock([]byte("1"))
 
 	n := New()
@@ -135,8 +128,6 @@ func TestShutdownBeforeUnsubscribe(t *testing.T) {
 }
 
 func TestSubscribeIsANoopWhenCalledWithNoKeys(t *testing.T) {
-	test.Flaky(t)
-
 	n := New()
 	defer n.Shutdown()
 	ch := n.Subscribe(context.Background()) // no keys provided
@@ -146,8 +137,6 @@ func TestSubscribeIsANoopWhenCalledWithNoKeys(t *testing.T) {
 }
 
 func TestCarryOnWhenDeadlineExpires(t *testing.T) {
-	test.Flaky(t)
-
 	impossibleDeadline := time.Nanosecond
 	fastExpiringCtx, cancel := context.WithTimeout(context.Background(), impossibleDeadline)
 	defer cancel()
@@ -161,7 +150,6 @@ func TestCarryOnWhenDeadlineExpires(t *testing.T) {
 }
 
 func TestDoesNotDeadLockIfContextCancelledBeforePublish(t *testing.T) {
-	test.Flaky(t)
 	var zero peer.ID // this test doesn't check the peer id
 
 	g := blocksutil.NewBlockGenerator()

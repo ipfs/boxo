@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/bitswap/internal/testutil"
-	"github.com/ipfs/boxo/internal/test"
 	cid "github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
@@ -59,8 +58,6 @@ func (fpn *fakeProviderNetwork) FindProvidersAsync(ctx context.Context, k cid.Ci
 }
 
 func TestNormalSimultaneousFetch(t *testing.T) {
-	test.Flaky(t)
-
 	peers := testutil.GeneratePeers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
@@ -98,8 +95,6 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 }
 
 func TestDedupingProviderRequests(t *testing.T) {
-	test.Flaky(t)
-
 	peers := testutil.GeneratePeers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
@@ -140,8 +135,6 @@ func TestDedupingProviderRequests(t *testing.T) {
 }
 
 func TestCancelOneRequestDoesNotTerminateAnother(t *testing.T) {
-	test.Flaky(t)
-
 	peers := testutil.GeneratePeers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
@@ -186,8 +179,6 @@ func TestCancelOneRequestDoesNotTerminateAnother(t *testing.T) {
 }
 
 func TestCancelManagerExitsGracefully(t *testing.T) {
-	test.Flaky(t)
-
 	peers := testutil.GeneratePeers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
@@ -223,8 +214,6 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 }
 
 func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
-	test.Flaky(t)
-
 	peers := testutil.GeneratePeers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound:   peers,
@@ -258,8 +247,6 @@ func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
 }
 
 func TestRateLimitingRequests(t *testing.T) {
-	test.Flaky(t)
-
 	peers := testutil.GeneratePeers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
@@ -299,8 +286,6 @@ func TestRateLimitingRequests(t *testing.T) {
 }
 
 func TestFindProviderTimeout(t *testing.T) {
-	test.Flaky(t)
-
 	peers := testutil.GeneratePeers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
@@ -325,8 +310,6 @@ func TestFindProviderTimeout(t *testing.T) {
 }
 
 func TestFindProviderPreCanceled(t *testing.T) {
-	test.Flaky(t)
-
 	peers := testutil.GeneratePeers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
@@ -352,8 +335,6 @@ func TestFindProviderPreCanceled(t *testing.T) {
 }
 
 func TestCancelFindProvidersAfterCompletion(t *testing.T) {
-	test.Flaky(t)
-
 	peers := testutil.GeneratePeers(2)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
