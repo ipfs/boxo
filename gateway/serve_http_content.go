@@ -440,3 +440,25 @@ func sumRangesSize(ranges []httpRange) (size int64) {
 	}
 	return
 }
+
+// seekToStartOfFirstRange seeks to the start of the first Range if the request is an HTTP Range Request
+func (i *handler) seekToStartOfFirstRange(w http.ResponseWriter, r *http.Request, data io.Seeker) bool {
+	rangeHeader := r.Header.Get("Range")
+	if rangeHeader != "" {
+		ranges, err := parseRangeWithoutLength(rangeHeader)
+		if err != nil {
+			i.webError(w, r, fmt.Errorf("invalid range request: %w", err), http.StatusBadRequest)
+			return false
+		}
+		if len(ranges) > 0 {
+			ra := ranges[0]
+			// Seek to start of first range
+			_, err := data.Seek(int64(ra.From), io.SeekStart)
+			if err != nil {
+				i.webError(w, r, fmt.Errorf("could not seek to location in range request: %w", err), http.StatusBadRequest)
+				return false
+			}
+		}
+	}
+	return true
+}
