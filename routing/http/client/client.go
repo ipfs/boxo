@@ -127,9 +127,9 @@ func (c *measuringIter[T]) Close() error {
 	return c.Iter.Close()
 }
 
-func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.ResultIter[types.Record], err error) {
+func (c *client) GetProviders(ctx context.Context, key cid.Cid) (provs iter.ResultIter[types.Record], err error) {
 	// TODO test measurements
-	m := newMeasurement("FindProviders")
+	m := newMeasurement("GetProviders")
 
 	url := c.baseURL + "/routing/v1/providers/" + key.String()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -201,7 +201,7 @@ func (c *client) FindProviders(ctx context.Context, key cid.Cid) (provs iter.Res
 	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
-func (c *client) FindIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+func (c *client) GetIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -239,7 +239,7 @@ func (c *client) FindIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Reco
 	return record, nil
 }
 
-func (c *client) ProvideIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+func (c *client) PutIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
 	rawRecord, err := ipns.MarshalRecord(record)

@@ -18,7 +18,7 @@ import (
 var logger = logging.Logger("service/contentrouting")
 
 type Client interface {
-	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error)
+	GetProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error)
 }
 
 type contentRouter struct {
@@ -89,7 +89,7 @@ func readProviderResponses(iter iter.ResultIter[types.Record], ch chan<- peer.Ad
 }
 
 func (c *contentRouter) FindProvidersAsync(ctx context.Context, key cid.Cid, numResults int) <-chan peer.AddrInfo {
-	resultsIter, err := c.client.FindProviders(ctx, key)
+	resultsIter, err := c.client.GetProviders(ctx, key)
 	if err != nil {
 		logger.Warnw("error finding providers", "CID", key, "Error", err)
 		ch := make(chan peer.AddrInfo)

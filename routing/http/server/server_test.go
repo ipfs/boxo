@@ -39,7 +39,7 @@ func TestHeaders(t *testing.T) {
 	cb, err := cid.Decode(c)
 	require.NoError(t, err)
 
-	router.On("FindProviders", mock.Anything, cb, DefaultRecordsLimit).
+	router.On("GetProviders", mock.Anything, cb, DefaultRecordsLimit).
 		Return(results, nil)
 
 	resp, err := http.Get(serverAddr + "/routing/v1/providers/" + c)
@@ -95,7 +95,7 @@ func TestResponse(t *testing.T) {
 		if expectedStream {
 			limit = DefaultStreamingRecordsLimit
 		}
-		router.On("FindProviders", mock.Anything, cid, limit).Return(results, nil)
+		router.On("GetProviders", mock.Anything, cid, limit).Return(results, nil)
 		urlStr := serverAddr + "/routing/v1/providers/" + cidStr
 
 		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
@@ -177,7 +177,7 @@ func TestIPNS(t *testing.T) {
 			require.NoError(t, err)
 
 			router := &mockContentRouter{}
-			router.On("FindIPNSRecord", mock.Anything, name1).Return(rec, nil)
+			router.On("GetIPNSRecord", mock.Anything, name1).Return(rec, nil)
 
 			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String())
 			require.Equal(t, 200, resp.StatusCode)
@@ -210,7 +210,7 @@ func TestIPNS(t *testing.T) {
 			t.Parallel()
 
 			router := &mockContentRouter{}
-			router.On("ProvideIPNSRecord", mock.Anything, name1, record1).Return(nil)
+			router.On("PutIPNSRecord", mock.Anything, name1, record1).Return(nil)
 
 			server := httptest.NewServer(Handler(router))
 			t.Cleanup(server.Close)
@@ -257,17 +257,17 @@ func TestIPNS(t *testing.T) {
 
 type mockContentRouter struct{ mock.Mock }
 
-func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.Record], error) {
+func (m *mockContentRouter) GetProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, key, limit)
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
-func (m *mockContentRouter) FindIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+func (m *mockContentRouter) GetIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
 	return args.Get(0).(*ipns.Record), args.Error(1)
 }
 
-func (m *mockContentRouter) ProvideIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+func (m *mockContentRouter) PutIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	args := m.Called(ctx, name, record)
 	return args.Error(0)
 }

@@ -16,7 +16,7 @@ import (
 
 type mockClient struct{ mock.Mock }
 
-func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error) {
+func (m *mockClient) GetProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, key)
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
@@ -40,7 +40,7 @@ func makeCID() cid.Cid {
 	return c
 }
 
-func TestFindProvidersAsync(t *testing.T) {
+func TestGetProvidersAsync(t *testing.T) {
 	key := makeCID()
 	ctx := context.Background()
 	client := &mockClient{}
@@ -65,7 +65,7 @@ func TestFindProvidersAsync(t *testing.T) {
 	}
 	aisIter := iter.ToResultIter[types.Record](iter.FromSlice(ais))
 
-	client.On("FindProviders", ctx, key).Return(aisIter, nil)
+	client.On("GetProviders", ctx, key).Return(aisIter, nil)
 
 	aiChan := crc.FindProvidersAsync(ctx, key, 2)
 

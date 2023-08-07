@@ -30,17 +30,17 @@ import (
 
 type mockContentRouter struct{ mock.Mock }
 
-func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.Record], error) {
+func (m *mockContentRouter) GetProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, key, limit)
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
-func (m *mockContentRouter) FindIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+func (m *mockContentRouter) GetIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
 	return args.Get(0).(*ipns.Record), args.Error(1)
 }
 
-func (m *mockContentRouter) ProvideIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+func (m *mockContentRouter) PutIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	args := m.Called(ctx, name, record)
 	return args.Error(0)
 }
@@ -183,7 +183,7 @@ func (e *osErrContains) errContains(t *testing.T, err error) {
 	}
 }
 
-func TestClient_FindProviders(t *testing.T) {
+func TestClient_GetProviders(t *testing.T) {
 	bsReadProvResp := makeBSReadProviderResp()
 	bitswapProvs := []iter.Result[types.Record]{
 		{Val: &bsReadProvResp},
@@ -294,12 +294,12 @@ func TestClient_FindProviders(t *testing.T) {
 			findProvsIter := iter.FromSlice(c.routerProvs)
 
 			if c.expStreamingResponse {
-				router.On("FindProviders", mock.Anything, cid, 0).Return(findProvsIter, c.routerErr)
+				router.On("GetProviders", mock.Anything, cid, 0).Return(findProvsIter, c.routerErr)
 			} else {
-				router.On("FindProviders", mock.Anything, cid, 20).Return(findProvsIter, c.routerErr)
+				router.On("GetProviders", mock.Anything, cid, 20).Return(findProvsIter, c.routerErr)
 			}
 
-			provsIter, err := client.FindProviders(ctx, cid)
+			provsIter, err := client.GetProviders(ctx, cid)
 
 			c.expErrContains.errContains(t, err)
 
@@ -344,9 +344,9 @@ func TestClient_IPNS(t *testing.T) {
 		client := deps.client
 		router := deps.router
 
-		router.On("FindIPNSRecord", mock.Anything, name).Return(nil, errors.New("something wrong happened"))
+		router.On("GetIPNSRecord", mock.Anything, name).Return(nil, errors.New("something wrong happened"))
 
-		receivedRecord, err := client.FindIPNSRecord(context.Background(), name)
+		receivedRecord, err := client.GetIPNSRecord(context.Background(), name)
 		require.Error(t, err)
 		require.Nil(t, receivedRecord)
 	})
@@ -360,9 +360,9 @@ func TestClient_IPNS(t *testing.T) {
 			client := deps.client
 			router := deps.router
 
-			router.On("FindIPNSRecord", mock.Anything, name).Return(record, nil)
+			router.On("GetIPNSRecord", mock.Anything, name).Return(record, nil)
 
-			receivedRecord, err := client.FindIPNSRecord(context.Background(), name)
+			receivedRecord, err := client.GetIPNSRecord(context.Background(), name)
 			require.NoError(t, err)
 			require.Equal(t, record, receivedRecord)
 		})
@@ -376,9 +376,9 @@ func TestClient_IPNS(t *testing.T) {
 			client := deps.client
 			router := deps.router
 
-			router.On("FindIPNSRecord", mock.Anything, name2).Return(record, nil)
+			router.On("GetIPNSRecord", mock.Anything, name2).Return(record, nil)
 
-			receivedRecord, err := client.FindIPNSRecord(context.Background(), name2)
+			receivedRecord, err := client.GetIPNSRecord(context.Background(), name2)
 			require.Error(t, err)
 			require.Nil(t, receivedRecord)
 		})
@@ -391,9 +391,9 @@ func TestClient_IPNS(t *testing.T) {
 			client := deps.client
 			router := deps.router
 
-			router.On("ProvideIPNSRecord", mock.Anything, name, record).Return(nil)
+			router.On("PutIPNSRecord", mock.Anything, name, record).Return(nil)
 
-			err := client.ProvideIPNSRecord(context.Background(), name, record)
+			err := client.PutIPNSRecord(context.Background(), name, record)
 			require.NoError(t, err)
 		})
 	}
