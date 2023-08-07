@@ -171,4 +171,4 @@ require (
 	lukechampine.com/blake3 v1.2.1 // indirect
 )
 
-replace github.com/ipfs/go-datastore => /Users/iannorden/go/src/github.com/ipfs/go-datastore
+replace github.com/ipfs/go-datastore => github.com/vulcanize/go-datastore v0.6.1-internal
