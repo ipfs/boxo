@@ -35,6 +35,11 @@ func (m *mockContentRouter) GetProviders(ctx context.Context, key cid.Cid, limit
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
+func (m *mockContentRouter) GetPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.Record], error) {
+	args := m.Called(ctx, pid, limit)
+	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
+}
+
 func (m *mockContentRouter) GetIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
 	return args.Get(0).(*ipns.Record), args.Error(1)

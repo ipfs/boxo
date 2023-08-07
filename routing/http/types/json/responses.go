@@ -8,17 +8,25 @@ import (
 
 // ProvidersResponse is the result of a GET Providers request.
 type ProvidersResponse struct {
-	Providers []types.Record
+	Providers RecordsArray
 }
 
-func (r *ProvidersResponse) UnmarshalJSON(b []byte) error {
-	var tempFPR struct{ Providers []json.RawMessage }
-	err := json.Unmarshal(b, &tempFPR)
+// PeersResponse is the result of a GET Peers request.
+type PeersResponse struct {
+	Peers RecordsArray
+}
+
+// RecordsArray is an array of [types.Record]
+type RecordsArray []types.Record
+
+func (r *RecordsArray) UnmarshalJSON(b []byte) error {
+	var tempRecords []json.RawMessage
+	err := json.Unmarshal(b, &tempRecords)
 	if err != nil {
 		return err
 	}
 
-	for _, provBytes := range tempFPR.Providers {
+	for _, provBytes := range tempRecords {
 		var readProv types.UnknownRecord
 		err := json.Unmarshal(provBytes, &readProv)
 		if err != nil {
@@ -32,9 +40,9 @@ func (r *ProvidersResponse) UnmarshalJSON(b []byte) error {
 			if err != nil {
 				return err
 			}
-			r.Providers = append(r.Providers, &prov)
+			*r = append(*r, &prov)
 		default:
-			r.Providers = append(r.Providers, &readProv)
+			*r = append(*r, &readProv)
 		}
 
 	}

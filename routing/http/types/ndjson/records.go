@@ -8,8 +8,8 @@ import (
 	"github.com/ipfs/boxo/routing/http/types/iter"
 )
 
-// NewProvidersResponseIter returns an iterator that reads [types.Record] from the given [io.Reader].
-func NewProvidersResponseIter(r io.Reader) iter.Iter[iter.Result[types.Record]] {
+// NewRecordsIter returns an iterator that reads [types.Record] from the given [io.Reader].
+func NewRecordsIter(r io.Reader) iter.Iter[iter.Result[types.Record]] {
 	jsonIter := iter.FromReaderJSON[types.UnknownRecord](r)
 	mapFn := func(upr iter.Result[types.UnknownRecord]) iter.Result[types.Record] {
 		var result iter.Result[types.Record]

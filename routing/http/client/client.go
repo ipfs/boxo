@@ -192,7 +192,7 @@ func (c *client) GetProviders(ctx context.Context, key cid.Cid) (provs iter.Resu
 		it = iter.ToResultIter(sliceIt)
 	case mediaTypeNDJSON:
 		skipBodyClose = true
-		it = ndjson.NewProvidersResponseIter(resp.Body)
+		it = ndjson.NewRecordsIter(resp.Body)
 	default:
 		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
 		return nil, errors.New("unknown content type")
