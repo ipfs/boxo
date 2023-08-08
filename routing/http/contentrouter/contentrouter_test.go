@@ -4,11 +4,17 @@ import (
 	"context"
 	"crypto/rand"
 	"testing"
+	"time"
 
+	"github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/ipns"
+	ipfspath "github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -20,10 +26,21 @@ func (m *mockClient) GetProviders(ctx context.Context, key cid.Cid) (iter.Result
 	args := m.Called(ctx, key)
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
-
+func (m *mockClient) GetPeers(ctx context.Context, pid peer.ID) (iter.ResultIter[types.Record], error) {
+	args := m.Called(ctx, pid)
+	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
+}
 func (m *mockClient) Ready(ctx context.Context) (bool, error) {
 	args := m.Called(ctx)
 	return args.Bool(0), args.Error(1)
+}
+func (m *mockClient) GetIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+	args := m.Called(ctx, name)
+	return args.Get(0).(*ipns.Record), args.Error(1)
+}
+func (m *mockClient) PutIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+	args := m.Called(ctx, name, record)
+	return args.Error(0)
 }
 
 func makeCID() cid.Cid {
@@ -40,7 +57,7 @@ func makeCID() cid.Cid {
 	return c
 }
 
-func TestGetProvidersAsync(t *testing.T) {
+func TestFindProvidersAsync(t *testing.T) {
 	key := makeCID()
 	ctx := context.Background()
 	client := &mockClient{}
@@ -80,4 +97,113 @@ func TestGetProvidersAsync(t *testing.T) {
 	}
 
 	require.Equal(t, expected, actualAIs)
+}
+
+func TestFindPeer(t *testing.T) {
+	ctx := context.Background()
+	client := &mockClient{}
+	crc := NewContentRoutingClient(client)
+
+	p1 := peer.ID("peer1")
+	ais := []types.Record{
+		&types.UnknownRecord{
+			Schema: "Unknown",
+		},
+		&types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &p1,
+			Protocols: []string{"transport-bitswap"},
+		},
+	}
+	aisIter := iter.ToResultIter[types.Record](iter.FromSlice(ais))
+
+	client.On("GetPeers", ctx, p1).Return(aisIter, nil)
+
+	peer, err := crc.FindPeer(ctx, p1)
+	require.NoError(t, err)
+	require.Equal(t, peer.ID, p1)
+}
+
+func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
+	sk, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+
+	pid, err := peer.IDFromPrivateKey(sk)
+	require.NoError(t, err)
+
+	return sk, ipns.NameFromPeer(pid)
+}
+
+func makeIPNSRecord(t *testing.T, sk crypto.PrivKey, opts ...ipns.Option) (*ipns.Record, []byte) {
+	cid, err := cid.Decode("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
+	require.NoError(t, err)
+
+	path := path.IpfsPath(cid)
+	eol := time.Now().Add(time.Hour * 48)
+	ttl := time.Second * 20
+
+	record, err := ipns.NewRecord(sk, ipfspath.FromString(path.String()), 1, eol, ttl, opts...)
+	require.NoError(t, err)
+
+	rawRecord, err := ipns.MarshalRecord(record)
+	require.NoError(t, err)
+
+	return record, rawRecord
+}
+
+func TestGetValue(t *testing.T) {
+	ctx := context.Background()
+	client := &mockClient{}
+	crc := NewContentRoutingClient(client)
+
+	t.Run("Fail On Unsupported Key", func(t *testing.T) {
+		v, err := crc.GetValue(ctx, "/something/unsupported")
+		require.Nil(t, v)
+		require.ErrorIs(t, err, routing.ErrNotSupported)
+	})
+
+	t.Run("Fail On Invalid IPNS Name", func(t *testing.T) {
+		v, err := crc.GetValue(ctx, "/ipns/invalid")
+		require.Nil(t, v)
+		require.Error(t, err)
+	})
+
+	t.Run("Succeeds On Valid IPNS Name", func(t *testing.T) {
+		sk, name := makeName(t)
+		rec, rawRec := makeIPNSRecord(t, sk)
+		client.On("GetIPNSRecord", ctx, name).Return(rec, nil)
+		v, err := crc.GetValue(ctx, string(name.RoutingKey()))
+		require.NoError(t, err)
+		require.Equal(t, rawRec, v)
+	})
+}
+
+func TestPutValue(t *testing.T) {
+	ctx := context.Background()
+	client := &mockClient{}
+	crc := NewContentRoutingClient(client)
+
+	sk, name := makeName(t)
+	_, rawRec := makeIPNSRecord(t, sk)
+
+	t.Run("Fail On Unsupported Key", func(t *testing.T) {
+		err := crc.PutValue(ctx, "/something/unsupported", rawRec)
+		require.ErrorIs(t, err, routing.ErrNotSupported)
+	})
+
+	t.Run("Fail On Invalid IPNS Name", func(t *testing.T) {
+		err := crc.PutValue(ctx, "/ipns/invalid", rawRec)
+		require.Error(t, err)
+	})
+
+	t.Run("Fail On Invalid IPNS Record", func(t *testing.T) {
+		err := crc.PutValue(ctx, string(name.RoutingKey()), []byte("gibberish"))
+		require.Error(t, err)
+	})
+
+	t.Run("Succeeds On Valid IPNS Name & Record", func(t *testing.T) {
+		client.On("PutIPNSRecord", ctx, name, mock.Anything).Return(nil)
+		err := crc.PutValue(ctx, string(name.RoutingKey()), rawRec)
+		require.NoError(t, err)
+	})
 }

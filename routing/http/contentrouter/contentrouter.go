@@ -3,7 +3,9 @@ package contentrouter
 import (
 	"context"
 	"reflect"
+	"strings"
 
+	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
@@ -19,6 +21,9 @@ var logger = logging.Logger("routing/http/contentrouter")
 
 type Client interface {
 	GetProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error)
+	GetPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[types.Record], err error)
+	GetIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error)
+	PutIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error
 }
 
 type contentRouter struct {
@@ -26,6 +31,8 @@ type contentRouter struct {
 }
 
 var _ routing.ContentRouting = (*contentRouter)(nil)
+var _ routing.PeerRouting = (*contentRouter)(nil)
+var _ routing.ValueStore = (*contentRouter)(nil)
 var _ routinghelpers.ProvideManyRouter = (*contentRouter)(nil)
 var _ routinghelpers.ReadyAbleRouter = (*contentRouter)(nil)
 
@@ -100,4 +107,112 @@ func (c *contentRouter) FindProvidersAsync(ctx context.Context, key cid.Cid, num
 	ch := make(chan peer.AddrInfo)
 	go readProviderResponses(resultsIter, ch)
 	return ch
+}
+
+func (c *contentRouter) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInfo, error) {
+	iter, err := c.client.GetPeers(ctx, pid)
+	if err != nil {
+		return peer.AddrInfo{}, err
+	}
+	defer iter.Close()
+
+	for iter.Next() {
+		res := iter.Val()
+		if res.Err != nil {
+			logger.Warnw("error iterating provider responses: %s", res.Err)
+			continue
+		}
+		v := res.Val
+		if v.GetSchema() == types.SchemaPeer {
+			result, ok := v.(*types.PeerRecord)
+			if !ok {
+				logger.Errorw(
+					"problem casting find providers result",
+					"Schema", v.GetSchema(),
+					"Type", reflect.TypeOf(v).String(),
+				)
+				continue
+			}
+
+			var addrs []multiaddr.Multiaddr
+			for _, a := range result.Addrs {
+				addrs = append(addrs, a.Multiaddr)
+			}
+
+			return peer.AddrInfo{
+				ID:    *result.ID,
+				Addrs: addrs,
+			}, nil
+		}
+	}
+
+	return peer.AddrInfo{}, err
+}
+
+func (c *contentRouter) PutValue(ctx context.Context, key string, data []byte, opts ...routing.Option) error {
+	if !strings.HasPrefix(key, "/ipns/") {
+		return routing.ErrNotSupported
+	}
+
+	name, err := ipns.NameFromRoutingKey([]byte(key))
+	if err != nil {
+		return err
+	}
+
+	record, err := ipns.UnmarshalRecord(data)
+	if err != nil {
+		return err
+	}
+
+	return c.client.PutIPNSRecord(ctx, name, record)
+}
+
+func (c *contentRouter) GetValue(ctx context.Context, key string, opts ...routing.Option) ([]byte, error) {
+	if !strings.HasPrefix(key, "/ipns/") {
+		return nil, routing.ErrNotSupported
+	}
+
+	name, err := ipns.NameFromRoutingKey([]byte(key))
+	if err != nil {
+		return nil, err
+	}
+
+	record, err := c.client.GetIPNSRecord(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	return ipns.MarshalRecord(record)
+}
+
+func (c *contentRouter) SearchValue(ctx context.Context, key string, opts ...routing.Option) (<-chan []byte, error) {
+	if !strings.HasPrefix(key, "/ipns/") {
+		return nil, routing.ErrNotSupported
+	}
+
+	name, err := ipns.NameFromRoutingKey([]byte(key))
+	if err != nil {
+		return nil, err
+	}
+
+	ch := make(chan []byte)
+
+	go func() {
+		record, err := c.client.GetIPNSRecord(ctx, name)
+		if err != nil {
+			close(ch)
+			return
+		}
+
+		raw, err := ipns.MarshalRecord(record)
+		if err != nil {
+			close(ch)
+			return
+		}
+
+		ch <- raw
+		close(ch)
+	}()
+
+	return ch, nil
 }
