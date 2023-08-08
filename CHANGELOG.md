@@ -34,13 +34,28 @@ The following emojis are used to highlight certain changes:
   reducing globals efforts.
 * The `blockservice` and `provider` packages has been updated to accommodate for 
   changes in `verifycid`.
+* ✨ The `routing/http` package has received the following additions:
+  * Supports Delegated IPNS as per [IPIP-379](https://specs.ipfs.tech/ipips/ipip-0379/).
+  * Supports Delegated Peer Routing as per [IPIP-417](https://github.com/ipfs/specs/pull/417).
 
 ### Changed
 
 * 🛠 `blockservice.New` now accepts a variadic of func options following the [Functional
   Options pattern](https://www.sohamkamani.com/golang/options-pattern/).
+* 🛠 The `routing/http` package has suffered the following modifications:
+  * Client `FindProviders` has been renamed to `GetProviders`. Similarly, the
+    required function names in the server `ContentRouter` have also been updated
+    for higher consistency with the remaining code and the specifications.
+  * Many types regarding response types were updated to conform to the updated
+    Peer Schema discussed in [IPIP-417](https://github.com/ipfs/specs/pull/417).
 
 ### Removed
+
+* 🛠 The `routing/http` package has suffered the following removals:
+  * Server and client no longer support the `Provide*` methods for content routing.
+    These methods did not conform to any specification, as it is still being worked
+    out in [IPIP-378](https://github.com/ipfs/specs/pull/378).
+  * Server no longer exports `FindProvidersPath` and `ProvidePath`.
 
 ### Fixed
 

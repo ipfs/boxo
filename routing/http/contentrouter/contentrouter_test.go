@@ -59,9 +59,9 @@ func TestGetProvidersAsync(t *testing.T) {
 			ID:        &p2,
 			Protocols: []string{"transport-bitswap"},
 		},
-		// &types.UnknownRecord{
-		// 	Protocol: "UNKNOWN",
-		// },
+		&types.UnknownRecord{
+			Schema: "UNKNOWN",
+		},
 	}
 	aisIter := iter.ToResultIter[types.Record](iter.FromSlice(ais))
 

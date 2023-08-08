@@ -34,12 +34,12 @@ const (
 	DefaultStreamingRecordsLimit = 0
 )
 
-var logger = logging.Logger("service/server/delegatedrouting")
+var logger = logging.Logger("routing/http/server")
 
 const (
-	GetProvidersPath  = "/routing/v1/providers/{cid}"
-	GetPeersPath      = "/routing/v1/peers/{peer-id}"
-	GetIPNSRecordPath = "/routing/v1/ipns/{cid}"
+	getProvidersPath  = "/routing/v1/providers/{cid}"
+	getPeersPath      = "/routing/v1/peers/{peer-id}"
+	getIPNSRecordPath = "/routing/v1/ipns/{cid}"
 )
 
 type GetProvidersAsyncResponse struct {
@@ -50,7 +50,7 @@ type GetProvidersAsyncResponse struct {
 type ContentRouter interface {
 	// GetProviders searches for peers who are able to provide the given [cid.Cid].
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
-	GetProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.Record], error)
+	GetProviders(ctx context.Context, cid cid.Cid, limit int) (iter.ResultIter[types.Record], error)
 
 	// GetPeers searches for peers who have the provided [peer.ID].
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
@@ -74,7 +74,8 @@ func WithStreamingResultsDisabled() Option {
 }
 
 // WithRecordsLimit sets a limit that will be passed to [ContentRouter.GetProviders]
-// for non-streaming requests (application/json). Default is [DefaultRecordsLimit].
+// and [ContentRouter.GetPeers] for non-streaming requests (application/json).
+// Default is [DefaultRecordsLimit].
 func WithRecordsLimit(limit int) Option {
 	return func(s *server) {
 		s.recordsLimit = limit
@@ -82,7 +83,8 @@ func WithRecordsLimit(limit int) Option {
 }
 
 // WithStreamingRecordsLimit sets a limit that will be passed to [ContentRouter.GetProviders]
-// for streaming requests (application/x-ndjson). Default is [DefaultStreamingRecordsLimit].
+// and [ContentRouter.GetPeers] for streaming requests (application/x-ndjson).
+// Default is [DefaultStreamingRecordsLimit].
 func WithStreamingRecordsLimit(limit int) Option {
 	return func(s *server) {
 		s.streamingRecordsLimit = limit
@@ -101,11 +103,10 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	}
 
 	r := mux.NewRouter()
-	r.HandleFunc(GetProvidersPath, server.getProviders).Methods(http.MethodGet)
-	r.HandleFunc(GetPeersPath, server.getPeers).Methods(http.MethodGet)
-	r.HandleFunc(GetIPNSRecordPath, server.getIPNSRecord).Methods(http.MethodGet)
-	r.HandleFunc(GetIPNSRecordPath, server.putIPNSRecord).Methods(http.MethodPut)
-
+	r.HandleFunc(getProvidersPath, server.getProviders).Methods(http.MethodGet)
+	r.HandleFunc(getPeersPath, server.getPeers).Methods(http.MethodGet)
+	r.HandleFunc(getIPNSRecordPath, server.getIPNSRecord).Methods(http.MethodGet)
+	r.HandleFunc(getIPNSRecordPath, server.putIPNSRecord).Methods(http.MethodPut)
 	return r
 }
 

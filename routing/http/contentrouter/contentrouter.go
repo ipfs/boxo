@@ -15,7 +15,7 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
-var logger = logging.Logger("service/contentrouting")
+var logger = logging.Logger("routing/http/contentrouter")
 
 type Client interface {
 	GetProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error)
@@ -27,6 +27,7 @@ type contentRouter struct {
 
 var _ routing.ContentRouting = (*contentRouter)(nil)
 var _ routinghelpers.ProvideManyRouter = (*contentRouter)(nil)
+var _ routinghelpers.ReadyAbleRouter = (*contentRouter)(nil)
 
 type option func(c *contentRouter)
 
@@ -48,7 +49,7 @@ func (c *contentRouter) ProvideMany(ctx context.Context, mhKeys []multihash.Mult
 	return routing.ErrNotSupported
 }
 
-// Ready is part of the existing `ProvideMany` interface.
+// Ready is part of the existing [routing.ReadyAbleRouter] interface.
 func (c *contentRouter) Ready() bool {
 	return true
 }
