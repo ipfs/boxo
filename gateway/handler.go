@@ -700,9 +700,19 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, rq *
 	if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" {
 		pathMetadata, err := i.backend.ResolvePath(r.Context(), rq.immutablePath)
 		if err != nil {
-			err = fmt.Errorf("failed to resolve %s: %w", debugStr(rq.contentPath.String()), err)
-			i.webError(w, r, err, http.StatusInternalServerError)
-			return true
+			var forwardedPath ImmutablePath
+			var continueProcessing bool
+			if isWebRequest(rq.responseFormat) {
+				forwardedPath, continueProcessing = i.handleWebRequestErrors(w, r, rq.mostlyResolvedPath(), rq.immutablePath, rq.contentPath, err, rq.logger)
+				if continueProcessing {
+					pathMetadata, err = i.backend.ResolvePath(r.Context(), forwardedPath)
+				}
+			}
+			if !continueProcessing || err != nil {
+				err = fmt.Errorf("failed to resolve %s: %w", debugStr(rq.contentPath.String()), err)
+				i.webError(w, r, err, http.StatusInternalServerError)
+				return true
+			}
 		}
 
 		pathCid := pathMetadata.LastSegment.Cid()
