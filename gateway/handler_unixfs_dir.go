@@ -60,8 +60,16 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	// Check if directory has index.html, if so, serveFile
-	idxPath := ipath.Join(contentPath, "index.html")
-	imIndexPath, err := NewImmutablePath(ipath.Join(resolvedPath, "index.html"))
+	appendIndexHtml := func(p ipath.Path) ipath.Path {
+		basePath := p.String()
+		if basePath[len(basePath)-1] == '/' {
+			return ipath.New(basePath + "index.html")
+		}
+		return ipath.New(basePath + "/index.html")
+	}
+
+	idxPath := appendIndexHtml(contentPath)
+	imIndexPath, err := NewImmutablePath(appendIndexHtml(resolvedPath))
 	if err != nil {
 		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
