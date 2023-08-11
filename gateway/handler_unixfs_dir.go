@@ -90,7 +90,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 			}
 			returnRangeStartsAtZero = true
 			idxFileBytes = idxHeadResp.startingBytes
-			idxFileSize = idxHeadResp.size
+			idxFileSize = idxHeadResp.bytesSize
 		}
 	} else {
 		var idxGetResp *GetResponse

@@ -101,7 +101,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		var blockSize int64
 		var dataToRender io.ReadCloser
 		if headResp != nil {
-			blockSize = headResp.size
+			blockSize = headResp.bytesSize
 			dataToRender = nil
 		} else {
 			blockSize = getResp.bytesSize
@@ -117,10 +117,10 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		if headResp != nil {
 			if headResp.isFile {
 				rq.logger.Debugw("serving unixfs file", "path", rq.contentPath)
-				return i.serveFile(ctx, w, r, resolvedPath, rq.contentPath, headResp.size, headResp.startingBytes, false, true, pathMetadata.ContentType, rq.begin)
+				return i.serveFile(ctx, w, r, resolvedPath, rq.contentPath, headResp.bytesSize, headResp.startingBytes, false, true, pathMetadata.ContentType, rq.begin)
 			} else if headResp.isSymLink {
 				rq.logger.Debugw("serving unixfs file", "path", rq.contentPath)
-				return i.serveFile(ctx, w, r, resolvedPath, rq.contentPath, headResp.size, nil, true, true, pathMetadata.ContentType, rq.begin)
+				return i.serveFile(ctx, w, r, resolvedPath, rq.contentPath, headResp.bytesSize, nil, true, true, pathMetadata.ContentType, rq.begin)
 			} else if headResp.isDir {
 				rq.logger.Debugw("serving unixfs directory", "path", rq.contentPath)
 				return i.serveDirectory(ctx, w, r, resolvedPath, rq.contentPath, true, nil, ranges, rq.begin, rq.logger)

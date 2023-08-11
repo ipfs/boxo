@@ -304,7 +304,7 @@ func NewGetResponseFromDirectoryListing(dagSize uint64, entries <-chan unixfs.Li
 }
 
 type HeadResponse struct {
-	size          int64
+	bytesSize     int64
 	startingBytes io.ReadCloser
 	isFile        bool
 	isSymLink     bool
@@ -319,15 +319,15 @@ func (r *HeadResponse) Close() error {
 }
 
 func NewHeadResponseForFile(startingBytes io.ReadCloser, size int64) *HeadResponse {
-	return &HeadResponse{startingBytes: startingBytes, isFile: true, size: size}
+	return &HeadResponse{startingBytes: startingBytes, isFile: true, bytesSize: size}
 }
 
 func NewHeadResponseForSymlink(symlinkSize int64) *HeadResponse {
-	return &HeadResponse{isSymLink: true, size: symlinkSize}
+	return &HeadResponse{isSymLink: true, bytesSize: symlinkSize}
 }
 
 func NewHeadResponseForDirectory(dagSize int64) *HeadResponse {
-	return &HeadResponse{isDir: true, size: dagSize}
+	return &HeadResponse{isDir: true, bytesSize: dagSize}
 }
 
 // IPFSBackend is the required set of functionality used to implement the IPFS

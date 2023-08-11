@@ -56,7 +56,7 @@ func httpServeContent(w http.ResponseWriter, r *http.Request, modtime time.Time,
 	// handle Content-Range header.
 	sendSize := size
 	if size >= 0 {
-		ranges, err := parsehttpRange(rangeReq, size)
+		ranges, err := parseRange(rangeReq, size)
 		if err != nil {
 			if err == errNoOverlap {
 				w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", size))
@@ -360,7 +360,7 @@ func (r httpRange) contentRange(size int64) string {
 
 // parseRange parses a Range header string as per RFC 7233.
 // errNoOverlap is returned if none of the ranges overlap.
-func parsehttpRange(s string, size int64) ([]httpRange, error) {
+func parseRange(s string, size int64) ([]httpRange, error) {
 	if s == "" {
 		return nil, nil // header not present
 	}
