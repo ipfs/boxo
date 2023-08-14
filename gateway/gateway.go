@@ -210,7 +210,7 @@ func (d DuplicateBlocksPolicy) String() string {
 
 type ContentPathMetadata struct {
 	PathSegmentRoots []cid.Cid
-	LastSegment      path.ResolvedPath
+	LastSegment      path.ImmutablePath
 	ContentType      string // Only used for UnixFS requests
 }
 

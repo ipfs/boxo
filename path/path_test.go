@@ -113,7 +113,7 @@ func TestNewPath(t *testing.T) {
 		for _, testCase := range testCases {
 			p, err := NewPath(testCase.src)
 			assert.NoError(t, err)
-			assert.IsType(t, ImmutablePath{}, p)
+			assert.IsType(t, immutablePath{}, p)
 		}
 	})
 }

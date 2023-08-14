@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/ipfs/go-cid"
-	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type Namespace uint
@@ -56,12 +55,6 @@ type Path interface {
 	// of "/ipfs/bafy" is "ipfs".
 	Namespace() Namespace
 
-	// Root returns the [cid.Cid] of the root object of the path. Root can return
-	// [cid.Undef] for Mutable IPNS paths that use [DNSLink].
-	//
-	// [DNSLink]: https://dnslink.dev/
-	Root() cid.Cid
-
 	// Segments returns the different elements of a path delimited by a forward
 	// slash ("/"). The returned array must not contain any empty segments, and
 	// must have a length of at least two: the first element must be the namespace,
@@ -74,51 +67,10 @@ type Path interface {
 	Segments() []string
 }
 
-// ResolvedPath is a [Path] which was resolved to the last resolvable node.
-type ResolvedPath interface {
-	Path
-
-	// Cid returns the [cid.Cid] of the node referenced by the path.
-	Cid() cid.Cid
-
-	// Remainder returns the unresolved parts of the path.
-	Remainder() string
-}
-
-var _ Path = ImmutablePath{}
-
-// ImmutablePath is a [Path] which is guaranteed to return "false" to [Path.Mutable].
-type ImmutablePath struct {
-	path Path
-}
-
-func NewImmutablePath(p Path) (ImmutablePath, error) {
-	if p.Namespace().Mutable() {
-		return ImmutablePath{}, fmt.Errorf("path was expected to be immutable: %s", p.String())
-	}
-
-	return ImmutablePath{path: p}, nil
-}
-
-func (ip ImmutablePath) String() string {
-	return ip.path.String()
-}
-
-func (ip ImmutablePath) Namespace() Namespace {
-	return ip.path.Namespace()
-}
-
-func (ip ImmutablePath) Root() cid.Cid {
-	return ip.path.Root()
-}
-
-func (ip ImmutablePath) Segments() []string {
-	return ip.path.Segments()
-}
+var _ Path = path{}
 
 type path struct {
 	str       string
-	root      cid.Cid
 	namespace Namespace
 }
 
@@ -130,10 +82,6 @@ func (p path) Namespace() Namespace {
 	return p.namespace
 }
 
-func (p path) Root() cid.Cid {
-	return p.root
-}
-
 func (p path) Segments() []string {
 	// Trim slashes from beginning and end, such that we do not return empty segments.
 	str := strings.TrimSuffix(p.str, "/")
@@ -142,43 +90,82 @@ func (p path) Segments() []string {
 	return strings.Split(str, "/")
 }
 
-type resolvedPath struct {
-	path
-	cid       cid.Cid
-	remainder string
+// ImmutablePath is a [Path] which is guaranteed to have an immutable [Namespace].
+type ImmutablePath interface {
+	Path
+
+	// Cid returns the [cid.Cid] of the root object of the path.
+	Cid() cid.Cid
+
+	// Remainder returns the unresolved parts of the path.
+	Remainder() string
 }
 
-func (p resolvedPath) Cid() cid.Cid {
-	return p.cid
+var _ Path = immutablePath{}
+var _ ImmutablePath = immutablePath{}
+
+type immutablePath struct {
+	path Path
+	cid  cid.Cid
 }
 
-func (p resolvedPath) Remainder() string {
-	return p.remainder
+func NewImmutablePath(p Path) (ImmutablePath, error) {
+	if p.Namespace().Mutable() {
+		return nil, fmt.Errorf("path was expected to be immutable: %s", p.String())
+	}
+
+	segments := p.Segments()
+	cid, err := cid.Decode(segments[1])
+	if err != nil {
+		return nil, &ErrInvalidPath{error: fmt.Errorf("invalid CID: %w", err), path: p.String()}
+	}
+
+	return immutablePath{path: p, cid: cid}, nil
+}
+
+func (ip immutablePath) String() string {
+	return ip.path.String()
+}
+
+func (ip immutablePath) Namespace() Namespace {
+	return ip.path.Namespace()
+}
+
+func (ip immutablePath) Segments() []string {
+	return ip.path.Segments()
+}
+
+func (ip immutablePath) Cid() cid.Cid {
+	return ip.cid
+}
+
+func (ip immutablePath) Remainder() string {
+	remainder := strings.Join(ip.Segments()[2:], "/")
+	if remainder != "" {
+		remainder = "/" + remainder
+	}
+	return remainder
 }
 
 // NewIPFSPath returns a new "/ipfs" path with the provided CID.
-func NewIPFSPath(cid cid.Cid) ResolvedPath {
-	return &resolvedPath{
+func NewIPFSPath(cid cid.Cid) ImmutablePath {
+	return &immutablePath{
 		path: path{
 			str:       fmt.Sprintf("/%s/%s", IPFSNamespace, cid.String()),
-			root:      cid,
 			namespace: IPFSNamespace,
 		},
-		cid:       cid,
-		remainder: "",
+		cid: cid,
 	}
 }
 
 // NewIPLDPath returns a new "/ipld" path with the provided CID.
-func NewIPLDPath(cid cid.Cid) ResolvedPath {
-	return &resolvedPath{
+func NewIPLDPath(cid cid.Cid) ImmutablePath {
+	return &immutablePath{
 		path: path{
 			str:       fmt.Sprintf("/%s/%s", IPLDNamespace, cid.String()),
-			root:      cid,
 			namespace: IPLDNamespace,
 		},
-		cid:       cid,
-		remainder: "",
+		cid: cid,
 	}
 }
 
@@ -208,7 +195,7 @@ func NewPath(str string) (Path, error) {
 			return nil, &ErrInvalidPath{error: fmt.Errorf("not enough path components"), path: str}
 		}
 
-		root, err := cid.Decode(components[2])
+		cid, err := cid.Decode(components[2])
 		if err != nil {
 			return nil, &ErrInvalidPath{error: fmt.Errorf("invalid CID: %w", err), path: str}
 		}
@@ -218,28 +205,20 @@ func NewPath(str string) (Path, error) {
 			ns = IPLDNamespace
 		}
 
-		return NewImmutablePath(&path{
-			str:       cleaned,
-			root:      root,
-			namespace: ns,
-		})
+		return immutablePath{
+			path: path{
+				str:       cleaned,
+				namespace: ns,
+			},
+			cid: cid,
+		}, nil
 	case "ipns":
 		if components[2] == "" {
 			return nil, &ErrInvalidPath{error: fmt.Errorf("not enough path components"), path: str}
 		}
 
-		var root cid.Cid
-		pid, err := peer.Decode(components[2])
-		if err != nil {
-			// DNSLink.
-			root = cid.Undef
-		} else {
-			root = peer.ToCid(pid)
-		}
-
-		return &path{
+		return path{
 			str:       cleaned,
-			root:      root,
 			namespace: IPNSNamespace,
 		}, nil
 	default:
@@ -253,21 +232,6 @@ func NewPath(str string) (Path, error) {
 // information about how segments must be structured.
 func NewPathFromSegments(segments ...string) (Path, error) {
 	return NewPath("/" + strings.Join(segments, "/"))
-}
-
-// NewResolvedPath creates a new [ResolvedPath] from an existing path, with a
-// resolved CID and remainder path. This function is intended to be used only
-// by resolver implementations.
-func NewResolvedPath(p Path, cid cid.Cid, remainder string) ResolvedPath {
-	return &resolvedPath{
-		path: path{
-			str:       p.String(),
-			root:      p.Root(),
-			namespace: p.Namespace(),
-		},
-		cid:       cid,
-		remainder: remainder,
-	}
 }
 
 // Join joins a [Path] with certain segments and returns a new [Path].

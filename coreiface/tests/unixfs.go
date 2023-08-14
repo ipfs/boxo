@@ -105,7 +105,7 @@ func (tp *TestSuite) TestAdd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := func(h string) path.ResolvedPath {
+	p := func(h string) path.ImmutablePath {
 		c, err := cid.Parse(h)
 		if err != nil {
 			t.Fatal(err)

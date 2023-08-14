@@ -180,7 +180,7 @@ func (mb *mockBackend) ResolvePath(ctx context.Context, immutablePath path.Immut
 	return mb.gw.ResolvePath(ctx, immutablePath)
 }
 
-func (mb *mockBackend) resolvePathNoRootsReturned(ctx context.Context, ip path.Path) (path.ResolvedPath, error) {
+func (mb *mockBackend) resolvePathNoRootsReturned(ctx context.Context, ip path.Path) (path.ImmutablePath, error) {
 	var imPath path.ImmutablePath
 	var err error
 	if ip.Namespace().Mutable() {

@@ -155,7 +155,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	return i.serveCodecConverted(ctx, w, r, blockCid, blockData, rq.contentPath, toCodec, modtime, rq.begin)
 }
 
-func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.Reader, resolvedPath path.ResolvedPath, contentPath path.Path) bool {
+func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.Reader, resolvedPath path.ImmutablePath, contentPath path.Path) bool {
 	// WithHostname may have constructed an IPFS (or IPNS) path using the Host header.
 	// In this case, we need the original path for constructing the redirect.
 	requestURI, err := url.ParseRequestURI(r.RequestURI)
@@ -298,7 +298,7 @@ func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter
 	return false
 }
 
-func setCodecContentDisposition(w http.ResponseWriter, r *http.Request, resolvedPath path.ResolvedPath, contentType string) string {
+func setCodecContentDisposition(w http.ResponseWriter, r *http.Request, resolvedPath path.ImmutablePath, contentType string) string {
 	var dispType, name string
 
 	ext, ok := contentTypeToExtension[contentType]

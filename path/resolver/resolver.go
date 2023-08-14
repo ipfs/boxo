@@ -310,5 +310,5 @@ func splitImmutablePath(p path.Path) (cid.Cid, []string, error) {
 		return cid.Undef, nil, err
 	}
 
-	return imPath.Root(), imPath.Segments()[2:], nil
+	return imPath.Cid(), imPath.Segments()[2:], nil
 }

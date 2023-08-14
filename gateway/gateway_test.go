@@ -736,7 +736,7 @@ func (mb *errorMockBackend) GetCAR(ctx context.Context, path path.ImmutablePath,
 }
 
 func (mb *errorMockBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, error) {
-	return path.ImmutablePath{}, mb.err
+	return nil, mb.err
 }
 
 func (mb *errorMockBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {

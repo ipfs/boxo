@@ -42,28 +42,28 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		err = fmt.Errorf("trouble processing _redirects path %q: %w", immutableContentPath.String(), err)
 		i.webError(w, r, err, http.StatusInternalServerError)
-		return path.ImmutablePath{}, false, true
+		return nil, false, true
 	}
 
 	redirectsPath, err := path.Join(rootPath, "_redirects")
 	if err != nil {
 		err = fmt.Errorf("trouble processing _redirects path %q: %w", rootPath.String(), err)
 		i.webError(w, r, err, http.StatusInternalServerError)
-		return path.ImmutablePath{}, false, true
+		return nil, false, true
 	}
 
 	imRedirectsPath, err := path.NewImmutablePath(redirectsPath)
 	if err != nil {
 		err = fmt.Errorf("trouble processing _redirects path %q: %w", redirectsPath, err)
 		i.webError(w, r, err, http.StatusInternalServerError)
-		return path.ImmutablePath{}, false, true
+		return nil, false, true
 	}
 
 	foundRedirect, redirectRules, err := i.getRedirectRules(r, imRedirectsPath)
 	if err != nil {
 		err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsPath, err)
 		i.webError(w, r, err, http.StatusInternalServerError)
-		return path.ImmutablePath{}, false, true
+		return nil, false, true
 	}
 
 	if foundRedirect {
@@ -71,11 +71,11 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 		if err != nil {
 			err = fmt.Errorf("trouble processing _redirects file at %q: %w", redirectsPath, err)
 			i.webError(w, r, err, http.StatusInternalServerError)
-			return path.ImmutablePath{}, false, true
+			return nil, false, true
 		}
 
 		if redirected {
-			return path.ImmutablePath{}, false, true
+			return nil, false, true
 		}
 
 		// 200 is treated as a rewrite, so update the path and continue
@@ -85,13 +85,13 @@ func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request
 			if err != nil {
 				err = fmt.Errorf("could not use _redirects file to %q: %w", p, err)
 				i.webError(w, r, err, http.StatusInternalServerError)
-				return path.ImmutablePath{}, false, true
+				return nil, false, true
 			}
 			imPath, err := path.NewImmutablePath(p)
 			if err != nil {
 				err = fmt.Errorf("could not use _redirects file to %q: %w", p, err)
 				i.webError(w, r, err, http.StatusInternalServerError)
-				return path.ImmutablePath{}, false, true
+				return nil, false, true
 			}
 			return imPath, true, true
 		}

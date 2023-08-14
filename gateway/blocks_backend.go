@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	gopath "path"
 	"strings"
 
 	"github.com/ipfs/boxo/blockservice"
@@ -318,7 +317,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 		if isErrNotFound(err) {
 			return ContentPathMetadata{
 				PathSegmentRoots: nil,
-				LastSegment:      path.NewResolvedPath(p, rootCid, ""),
+				LastSegment:      path.NewIPFSPath(rootCid),
 				ContentType:      "",
 			}, io.NopCloser(&buf), nil
 		}
@@ -559,7 +558,7 @@ func (bb *BlocksBackend) getNode(ctx context.Context, path path.ImmutablePath) (
 	return md, nd, err
 }
 
-func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.ImmutablePath) ([]cid.Cid, path.ResolvedPath, error) {
+func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.ImmutablePath) ([]cid.Cid, path.ImmutablePath, error) {
 	/*
 		These are logical roots where each CID represent one path segment
 		and resolves to either a directory or the root block of a file.
@@ -583,7 +582,7 @@ func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.Immu
 	contentPathStr := contentPath.String()
 	pathSegments := strings.Split(contentPathStr[6:], "/")
 	sp.WriteString(contentPathStr[:5]) // /ipfs or /ipns
-	var lastPath path.ResolvedPath
+	var lastPath path.ImmutablePath
 	for _, root := range pathSegments {
 		if root == "" {
 			continue
@@ -616,13 +615,13 @@ func (bb *BlocksBackend) ResolveMutable(ctx context.Context, p path.Path) (path.
 	case path.IPNSNamespace:
 		p, err := resolve.ResolveIPNS(ctx, bb.namesys, p)
 		if err != nil {
-			return path.ImmutablePath{}, err
+			return nil, err
 		}
 		return path.NewImmutablePath(p)
 	case path.IPFSNamespace:
 		return path.NewImmutablePath(p)
 	default:
-		return path.ImmutablePath{}, NewErrorStatusCode(fmt.Errorf("unsupported path namespace: %s", p.Namespace()), http.StatusNotImplemented)
+		return nil, NewErrorStatusCode(fmt.Errorf("unsupported path namespace: %s", p.Namespace()), http.StatusNotImplemented)
 	}
 }
 
@@ -680,11 +679,7 @@ func (bb *BlocksBackend) ResolvePath(ctx context.Context, path path.ImmutablePat
 	return md, nil
 }
 
-func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.ResolvedPath, error) {
-	if _, ok := p.(path.ResolvedPath); ok {
-		return p.(path.ResolvedPath), nil
-	}
-
+func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.ImmutablePath, error) {
 	var err error
 	if p.Namespace() == path.IPNSNamespace {
 		p, err = resolve.ResolveIPNS(ctx, bb.namesys, p)
@@ -702,7 +697,12 @@ func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.Res
 		return nil, err
 	}
 
-	return path.NewResolvedPath(p, node, gopath.Join(rest...)), nil
+	p, err = path.Join(path.NewIPFSPath(node), rest...)
+	if err != nil {
+		return nil, err
+	}
+
+	return path.NewImmutablePath(p)
 }
 
 type nodeGetterToCarExporer struct {
