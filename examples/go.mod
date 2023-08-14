@@ -1,6 +1,6 @@
 module github.com/ipfs/boxo/examples
 
-go 1.19
+go 1.20
 
 require (
 	github.com/ipfs/boxo v0.8.0
