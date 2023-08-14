@@ -31,11 +31,17 @@ func TestGatewayGet(t *testing.T) {
 	k, err := backend.resolvePathNoRootsReturned(ctx, p)
 	require.NoError(t, err)
 
+	mustMakeDNSLinkPath := func(domain string) path.Path {
+		p, err := path.NewPath("/ipns/" + domain)
+		require.NoError(t, err)
+		return p
+	}
+
 	backend.namesys["/ipns/example.com"] = path.NewIPFSPath(k.Cid())
 	backend.namesys["/ipns/working.example.com"] = k
-	backend.namesys["/ipns/double.example.com"] = path.NewDNSLinkPath("working.example.com")
-	backend.namesys["/ipns/triple.example.com"] = path.NewDNSLinkPath("double.example.com")
-	backend.namesys["/ipns/broken.example.com"] = path.NewDNSLinkPath(k.Cid().String())
+	backend.namesys["/ipns/double.example.com"] = mustMakeDNSLinkPath("working.example.com")
+	backend.namesys["/ipns/triple.example.com"] = mustMakeDNSLinkPath("double.example.com")
+	backend.namesys["/ipns/broken.example.com"] = mustMakeDNSLinkPath(k.Cid().String())
 	// We picked .man because:
 	// 1. It's a valid TLD.
 	// 2. Go treats it as the file extension for "man" files (even though

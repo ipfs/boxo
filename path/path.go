@@ -182,24 +182,6 @@ func NewIPLDPath(cid cid.Cid) ResolvedPath {
 	}
 }
 
-// NewIPNSPath returns a new "/ipns" path with the provided CID.
-func NewIPNSPath(cid cid.Cid) Path {
-	return &path{
-		str:       fmt.Sprintf("/%s/%s", IPNSNamespace, cid.String()),
-		root:      cid,
-		namespace: IPNSNamespace,
-	}
-}
-
-// NewDNSLinkPath returns a new "/ipns" path with the provided domain.
-func NewDNSLinkPath(domain string) Path {
-	return &path{
-		str:       fmt.Sprintf("/%s/%s", IPNSNamespace, domain),
-		root:      cid.Undef,
-		namespace: IPNSNamespace,
-	}
-}
-
 // NewPath takes the given string and returns a well-forme and sanitized [Path].
 // The given string is cleaned through [gopath.Clean], but preserving the final
 // trailing slash. This function returns an error when the given string is not
