@@ -62,10 +62,10 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	// Check if directory has index.html, if so, serveFile
 	appendIndexHtml := func(p ipath.Path) ipath.Path {
 		basePath := p.String()
-		if basePath[len(basePath)-1] == '/' {
-			return ipath.New(basePath + "index.html")
+		if basePath[len(basePath)-1] != '/' {
+			basePath += "/"
 		}
-		return ipath.New(basePath + "/index.html")
+		return ipath.New(basePath + "index.html")
 	}
 
 	idxPath := appendIndexHtml(contentPath)
