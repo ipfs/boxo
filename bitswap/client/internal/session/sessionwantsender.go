@@ -576,6 +576,7 @@ func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.ID) {
 // sendWants sends want-have and want-blocks to the appropriate peers
 func (sws *sessionWantSender) sendWants(sends allWants) {
 	// For each peer we're sending a request to
+	log.Debugw("sws sending wants", "sends", len(sends))
 	for p, snd := range sends {
 		// Piggyback some other want-haves onto the request to the peer
 		for _, c := range sws.getPiggybackWantHaves(p, snd.wantBlocks) {

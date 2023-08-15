@@ -88,6 +88,8 @@ func (pm *PeerManager) Connected(p peer.ID) {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
+	log.Debugw("pm Connected", "peer", p.String())
+
 	pq := pm.getOrCreate(p)
 
 	// Inform the peer want manager that there's a new peer
@@ -102,9 +104,12 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
+	log.Debugw("pm Disconnected", "peer", p.String())
+
 	pq, ok := pm.peerQueues[p]
 
 	if !ok {
+		log.Debugw("pm Disconnected peer unknown", "peer", p.String())
 		return
 	}
 
@@ -147,8 +152,11 @@ func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []ci
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
+	log.Debugw("pm SendWants", "peer", p.String(), "wantBlocks", len(wantBlocks), "wantHaves", len(wantHaves))
 	if _, ok := pm.peerQueues[p]; ok {
 		pm.pwm.sendWants(p, wantBlocks, wantHaves)
+	} else {
+		log.Debugw("pm SendWants no peerQueue for", "peer", p.String())
 	}
 }
 
@@ -192,6 +200,7 @@ func (pm *PeerManager) getOrCreate(p peer.ID) PeerQueue {
 		pq = pm.createPeerQueue(pm.ctx, p)
 		pq.Startup()
 		pm.peerQueues[p] = pq
+		log.Debugw("pm getOrCreate new peer", "peer", p.String())
 	}
 	return pq
 }
