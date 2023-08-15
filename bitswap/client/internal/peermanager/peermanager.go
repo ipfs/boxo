@@ -211,6 +211,8 @@ func (pm *PeerManager) RegisterSession(p peer.ID, s Session) {
 	pm.psLk.Lock()
 	defer pm.psLk.Unlock()
 
+	log.Debugw("pm RegisterSession", "peer", p.String(), "session", s.ID())
+
 	if _, ok := pm.sessions[s.ID()]; !ok {
 		pm.sessions[s.ID()] = s
 	}

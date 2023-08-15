@@ -381,6 +381,7 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 				// Protect the connection to this peer so that we can ensure
 				// that the connection doesn't get pruned by the connection
 				// manager
+				log.Debugw("sws processUpdates protect connection", "peerID", upd.from)
 				sws.spm.ProtectConnection(upd.from)
 			}
 			delete(sws.peerConsecutiveDontHaves, upd.from)

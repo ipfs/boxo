@@ -241,11 +241,13 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 				wg.Add(1)
 				go func(p peer.ID) {
 					defer wg.Done()
+					log.Debugf("Connecting to provider %s...", p)
 					err := pqm.network.ConnectTo(findProviderCtx, p)
 					if err != nil {
 						log.Debugf("failed to connect to provider %s: %s", p, err)
 						return
 					}
+					log.Debugf("Connected to provider %s", p)
 					select {
 					case pqm.providerQueryMessages <- &receivedProviderMessage{
 						ctx: findProviderCtx,
@@ -259,6 +261,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 			}
 			wg.Wait()
 			cancel()
+			log.Debugf("Found %d providers for cid: %s", len(providers), k.String())
 			select {
 			case pqm.providerQueryMessages <- &finishedProviderQueryMessage{
 				ctx: findProviderCtx,
