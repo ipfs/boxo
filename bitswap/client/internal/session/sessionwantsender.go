@@ -531,6 +531,8 @@ func (aw allWants) forPeer(p peer.ID) *wantSets {
 func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.ID) {
 	toSend := make(allWants)
 
+	log.Debugw("sws send next wants", "newly available", newlyAvailable)
+
 	for c, wi := range sws.wants {
 		// Ensure we send want-haves to any newly available peers
 		for _, p := range newlyAvailable {
@@ -540,16 +542,19 @@ func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.ID) {
 		// We already sent a want-block to a peer and haven't yet received a
 		// response yet
 		if wi.sentTo != "" {
+			log.Debugw("sws want block in process, no new want block sent", "cid", c)
 			continue
 		}
 
 		// All the peers have indicated that they don't have the block
 		// corresponding to this want, so we must wait to discover more peers
 		if wi.bestPeer == "" {
+			log.Debugw("sws no best peer, no want block sent", "cid", c)
 			// TODO: work this out in real time instead of using bestP?
 			continue
 		}
 
+		log.Debugw("sws send new want block", "cid", c, "peerID", wi.bestPeer)
 		// Record that we are sending a want-block for this want to the peer
 		sws.setWantSentTo(c, wi.bestPeer)
 
@@ -638,6 +643,7 @@ func (sws *sessionWantSender) updateWantsPeerAvailability(p peer.ID, isNowAvaila
 		if isNowAvailable {
 			sws.updateWantBlockPresence(c, p)
 		} else {
+			log.Debugw("sws remove peer", "cid", c, "peerID", p)
 			wi.removePeer(p)
 		}
 	}
@@ -646,6 +652,8 @@ func (sws *sessionWantSender) updateWantsPeerAvailability(p peer.ID, isNowAvaila
 // updateWantBlockPresence is called when a HAVE / DONT_HAVE is received for the given
 // want / peer
 func (sws *sessionWantSender) updateWantBlockPresence(c cid.Cid, p peer.ID) {
+	log.Debugw("sws update want block presence", "cid", c, "peerID", p)
+
 	wi, ok := sws.wants[c]
 	if !ok {
 		return
@@ -723,6 +731,7 @@ func (wi *wantInfo) removePeer(p peer.ID) {
 	}
 	delete(wi.blockPresence, p)
 	wi.calculateBestPeer()
+	log.Debugw("sws remove peer", "peerID", p)
 }
 
 // calculateBestPeer finds the best peer to send the want to next
@@ -750,6 +759,7 @@ func (wi *wantInfo) calculateBestPeer() {
 		return
 	}
 
+	log.Debugw("sws new best peer", "peerID", wi.bestPeer)
 	// If there was only one peer with the best block presence, we're done
 	if countWithBest <= 1 {
 		return
@@ -764,4 +774,5 @@ func (wi *wantInfo) calculateBestPeer() {
 		}
 	}
 	wi.bestPeer = wi.peerRspTrkr.choose(peersWithBest)
+	log.Debugw("sws new best peer", "peerID", wi.bestPeer)
 }
