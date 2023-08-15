@@ -277,7 +277,7 @@ func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 	defer mq.wllock.Unlock()
 
 	for _, c := range wantHaves {
-		log.Debugf("mq: add want have from broadcast", "cid", c, "peerID", mq.p)
+		log.Debugw("mq: add want have from broadcast", "cid", c, "peerID", mq.p)
 		mq.bcstWants.Add(c, mq.priority, pb.Message_Wantlist_Have)
 		mq.priority--
 
@@ -300,7 +300,7 @@ func (mq *MessageQueue) AddWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 	defer mq.wllock.Unlock()
 
 	for _, c := range wantHaves {
-		log.Debugf("mq: add want have", "cid", c, "peerID", mq.p)
+		log.Debugw("mq: add want have", "cid", c, "peerID", mq.p)
 		mq.peerWants.Add(c, mq.priority, pb.Message_Wantlist_Have)
 		mq.priority--
 
@@ -309,7 +309,7 @@ func (mq *MessageQueue) AddWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 		mq.cancels.Remove(c)
 	}
 	for _, c := range wantBlocks {
-		log.Debugf("mq: add want block", "cid", c, "peerID", mq.p)
+		log.Debugw("mq: add want block", "cid", c, "peerID", mq.p)
 		mq.peerWants.Add(c, mq.priority, pb.Message_Wantlist_Block)
 		mq.priority--
 

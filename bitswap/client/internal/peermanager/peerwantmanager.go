@@ -169,6 +169,8 @@ func (pwm *peerWantManager) sendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves
 		return
 	}
 
+	log.Debugw("pwm.sendWants", "pid", p.String(), "wantBlocks", len(wantBlocks), "wantHaves", len(wantHaves), "pws.wantHaves", pws.wantHaves.Len(), "pws.wantBlocks", pws.wantBlocks.Len())
+
 	// Iterate over the requested want-blocks
 	for _, c := range wantBlocks {
 		// If the want-block hasn't been sent to the peer
@@ -224,6 +226,8 @@ func (pwm *peerWantManager) sendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves
 			pwm.reverseIndexAdd(c, p)
 		}
 	}
+
+	log.Debugw("pwm.sendWants post-update, adding to queue", "pid", p.String(), "pws.wantHaves", pws.wantHaves.Len(), "pws.wantBlocks", pws.wantBlocks.Len(), "fltWantBlks", len(fltWantBlks), "fltWantHvs", len(fltWantHvs))
 
 	// Send the want-blocks and want-haves to the peer
 	pws.peerQueue.AddWants(fltWantBlks, fltWantHvs)
