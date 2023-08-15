@@ -137,6 +137,7 @@ func (c *connectEventManager) worker() {
 			}
 		case stateResponsive:
 			c.lk.Unlock()
+			log.Debugw("connectEventManager detected peer connectivity", "peer", pid)
 			for _, v := range c.connListeners {
 				v.PeerConnected(pid)
 			}
@@ -155,6 +156,7 @@ func (c *connectEventManager) Connected(p peer.ID) {
 	if c.getState(p) == stateResponsive {
 		return
 	}
+	log.Debugw("connectEventManager connected to peer, setting responsive", "peer", p)
 	c.setState(p, stateResponsive)
 }
 
