@@ -24,6 +24,9 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+* 🛠 `blockservice.New` now accepts a variadic of func options following the [Functional
+  Options pattern](https://www.sohamkamani.com/golang/options-pattern/).
+
 ### Removed
 
 ### Fixed

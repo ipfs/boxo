@@ -80,43 +80,49 @@ type blockService struct {
 	checkFirst bool
 }
 
+type Option func(*blockService)
+
+// WriteThrough disable cache checks for writes and make them go straight to
+// the blockstore.
+func WriteThrough() Option {
+	return func(bs *blockService) {
+		bs.checkFirst = false
+	}
+}
+
+// WithAllowlist sets a custom [verifcid.Allowlist] which will be used
+func WithAllowlist(allowlist verifcid.Allowlist) Option {
+	return func(bs *blockService) {
+		bs.allowlist = allowlist
+	}
+}
+
 // New creates a BlockService with given datastore instance.
-func New(bs blockstore.Blockstore, exchange exchange.Interface) BlockService {
+func New(bs blockstore.Blockstore, exchange exchange.Interface, opts ...Option) BlockService {
 	if exchange == nil {
 		logger.Debug("blockservice running in local (offline) mode.")
 	}
 
-	return &blockService{
+	service := &blockService{
 		allowlist:  verifcid.DefaultAllowlist,
 		blockstore: bs,
 		exchange:   exchange,
 		checkFirst: true,
 	}
+
+	for _, opt := range opts {
+		opt(service)
+	}
+
+	return service
 }
 
 // NewWriteThrough creates a BlockService that guarantees writes will go
 // through to the blockstore and are not skipped by cache checks.
+//
+// Deprecated: Use [New] with the [WriteThrough] option.
 func NewWriteThrough(bs blockstore.Blockstore, exchange exchange.Interface) BlockService {
-	if exchange == nil {
-		logger.Debug("blockservice running in local (offline) mode.")
-	}
-
-	return &blockService{
-		allowlist:  verifcid.DefaultAllowlist,
-		blockstore: bs,
-		exchange:   exchange,
-		checkFirst: false,
-	}
-}
-
-// NewWithAllowList creates a BlockService with customized multihash Allowlist.
-func NewWithAllowList(bs blockstore.Blockstore, exchange exchange.Interface, allowlist verifcid.Allowlist) BlockService {
-	return &blockService{
-		allowlist:  allowlist,
-		blockstore: bs,
-		exchange:   exchange,
-		checkFirst: true,
-	}
+	return New(bs, exchange, WriteThrough())
 }
 
 // Blockstore returns the blockstore behind this blockservice.

@@ -7,15 +7,20 @@ import (
 	blockstore "github.com/ipfs/boxo/blockstore"
 	exchange "github.com/ipfs/boxo/exchange"
 	offline "github.com/ipfs/boxo/exchange/offline"
+	"github.com/ipfs/boxo/verifcid"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	butil "github.com/ipfs/go-ipfs-blocksutil"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/multiformats/go-multihash"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestWriteThroughWorks(t *testing.T) {
+	t.Parallel()
+
 	bstore := &PutCountingBlockstore{
 		blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())),
 		0,
@@ -46,6 +51,8 @@ func TestWriteThroughWorks(t *testing.T) {
 }
 
 func TestExchangeWrite(t *testing.T) {
+	t.Parallel()
+
 	bstore := &PutCountingBlockstore{
 		blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())),
 		0,
@@ -117,6 +124,8 @@ func TestExchangeWrite(t *testing.T) {
 }
 
 func TestLazySessionInitialization(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -215,6 +224,8 @@ func (fe *fakeSessionExchange) NewSession(ctx context.Context) exchange.Fetcher 
 }
 
 func TestNilExchange(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -240,4 +251,40 @@ func TestNilExchange(t *testing.T) {
 	if b.Cid() != block.Cid() {
 		t.Fatal("got the wrong block")
 	}
+}
+
+func TestAllowlist(t *testing.T) {
+	t.Parallel()
+	a := assert.New(t)
+
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	bgen := butil.NewBlockGenerator()
+	block := bgen.Next()
+
+	data := []byte("this is some blake3 block")
+	mh, err := multihash.Sum(data, multihash.BLAKE3, -1)
+	a.NoError(err)
+	blake3 := cid.NewCidV1(cid.Raw, mh)
+
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	a.NoError(bs.Put(ctx, block))
+	b, err := blocks.NewBlockWithCid(data, blake3)
+	a.NoError(err)
+	a.NoError(bs.Put(ctx, b))
+
+	check := func(getBlock func(context.Context, cid.Cid) (blocks.Block, error)) {
+		_, err := getBlock(ctx, block.Cid())
+		a.Error(err)
+		a.ErrorIs(err, verifcid.ErrPossiblyInsecureHashFunction)
+
+		_, err = getBlock(ctx, blake3)
+		a.NoError(err)
+	}
+
+	blockservice := New(bs, nil, WithAllowlist(verifcid.NewAllowlist(map[uint64]bool{multihash.BLAKE3: true})))
+	check(blockservice.GetBlock)
+	check(NewSession(ctx, blockservice).GetBlock)
 }
