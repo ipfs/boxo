@@ -75,6 +75,15 @@ func (c *connectEventManager) getState(p peer.ID) state {
 	}
 }
 
+func (c *connectEventManager) makeWaitFunc(handled chan struct{}) waitFn {
+	return func() {
+		select {
+		case <-handled:
+		case <-c.done:
+		}
+	}
+}
+
 func (c *connectEventManager) setState(p peer.ID, newState state) waitFn {
 	state, ok := c.peers[p]
 	if !ok {
@@ -87,10 +96,15 @@ func (c *connectEventManager) setState(p peer.ID, newState state) waitFn {
 		change := change{p, make(chan struct{})}
 		c.changeQueue = append(c.changeQueue, change)
 		c.cond.Broadcast()
-		return func() {
-			// Wait until the change has been handled
-			<-change.handled
+		return c.makeWaitFunc(change.handled)
+	} else if state.pending {
+		// Find the change in the queue and return a wait function for it
+		for _, change := range c.changeQueue {
+			if change.pid == p {
+				return c.makeWaitFunc(change.handled)
+			}
 		}
+		log.Error("a peer was marked as change pending but not found in the change queue")
 	}
 	return waitNoop
 }
