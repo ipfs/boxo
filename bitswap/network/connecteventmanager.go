@@ -25,15 +25,24 @@ type connectEventManager struct {
 	cond          sync.Cond
 	peers         map[peer.ID]*peerState
 
-	changeQueue []peer.ID
+	changeQueue []change
 	stop        bool
 	done        chan struct{}
+}
+
+type change struct {
+	pid     peer.ID
+	handled chan struct{}
 }
 
 type peerState struct {
 	newState, curState state
 	pending            bool
 }
+
+type waitFn func()
+
+func waitNoop() {}
 
 func newConnectEventManager(connListeners ...ConnectionListener) *connectEventManager {
 	evtManager := &connectEventManager{
@@ -66,7 +75,16 @@ func (c *connectEventManager) getState(p peer.ID) state {
 	}
 }
 
-func (c *connectEventManager) setState(p peer.ID, newState state) {
+func (c *connectEventManager) makeWaitFunc(handled chan struct{}) waitFn {
+	return func() {
+		select {
+		case <-handled:
+		case <-c.done:
+		}
+	}
+}
+
+func (c *connectEventManager) setState(p peer.ID, newState state) waitFn {
 	state, ok := c.peers[p]
 	if !ok {
 		state = new(peerState)
@@ -75,9 +93,20 @@ func (c *connectEventManager) setState(p peer.ID, newState state) {
 	state.newState = newState
 	if !state.pending && state.newState != state.curState {
 		state.pending = true
-		c.changeQueue = append(c.changeQueue, p)
+		change := change{p, make(chan struct{})}
+		c.changeQueue = append(c.changeQueue, change)
 		c.cond.Broadcast()
+		return c.makeWaitFunc(change.handled)
+	} else if state.pending {
+		// Find the change in the queue and return a wait function for it
+		for _, change := range c.changeQueue {
+			if change.pid == p {
+				return c.makeWaitFunc(change.handled)
+			}
+		}
+		log.Error("a peer was marked as change pending but not found in the change queue")
 	}
+	return waitNoop
 }
 
 // Waits for a change to be enqueued, or for the event manager to be stopped. Returns false if the
@@ -95,67 +124,70 @@ func (c *connectEventManager) worker() {
 	defer close(c.done)
 
 	for c.waitChange() {
-		pid := c.changeQueue[0]
-		c.changeQueue[0] = peer.ID("") // free the peer ID (slicing won't do that)
+		pch := c.changeQueue[0]
+		c.changeQueue[0] = change{} // free the resources (slicing won't do that)
 		c.changeQueue = c.changeQueue[1:]
 
-		state, ok := c.peers[pid]
+		state, ok := c.peers[pch.pid]
 		// If we've disconnected and forgotten, continue.
 		if !ok {
 			// This shouldn't be possible because _this_ thread is responsible for
 			// removing peers from this map, and we shouldn't get duplicate entries in
 			// the change queue.
 			log.Error("a change was enqueued for a peer we're not tracking")
+			close(pch.handled)
 			continue
+		}
+
+		// Is there anything to do?
+		if state.curState != state.newState {
+			// Record the state update, then apply it.
+			oldState := state.curState
+			state.curState = state.newState
+
+			switch state.newState {
+			case stateDisconnected:
+				delete(c.peers, pch.pid)
+				fallthrough
+			case stateUnresponsive:
+				// Only trigger a disconnect event if the peer was responsive.
+				// We could be transitioning from unresponsive to disconnected.
+				if oldState == stateResponsive {
+					c.lk.Unlock()
+					for _, v := range c.connListeners {
+						v.PeerDisconnected(pch.pid)
+					}
+					c.lk.Lock()
+				}
+			case stateResponsive:
+				c.lk.Unlock()
+				for _, v := range c.connListeners {
+					v.PeerConnected(pch.pid)
+				}
+				c.lk.Lock()
+			}
 		}
 
 		// Record the fact that this "state" is no longer in the queue.
 		state.pending = false
-
-		// Then, if there's nothing to do, continue.
-		if state.curState == state.newState {
-			continue
-		}
-
-		// Or record the state update, then apply it.
-		oldState := state.curState
-		state.curState = state.newState
-
-		switch state.newState {
-		case stateDisconnected:
-			delete(c.peers, pid)
-			fallthrough
-		case stateUnresponsive:
-			// Only trigger a disconnect event if the peer was responsive.
-			// We could be transitioning from unresponsive to disconnected.
-			if oldState == stateResponsive {
-				c.lk.Unlock()
-				for _, v := range c.connListeners {
-					v.PeerDisconnected(pid)
-				}
-				c.lk.Lock()
-			}
-		case stateResponsive:
-			c.lk.Unlock()
-			for _, v := range c.connListeners {
-				v.PeerConnected(pid)
-			}
-			c.lk.Lock()
-		}
+		// Signal that we've handled the state change
+		close(pch.handled)
 	}
 }
 
 // Called whenever we receive a new connection. May be called many times.
 func (c *connectEventManager) Connected(p peer.ID) {
 	c.lk.Lock()
-	defer c.lk.Unlock()
 
 	// !responsive -> responsive
 
 	if c.getState(p) == stateResponsive {
+		c.lk.Unlock()
 		return
 	}
-	c.setState(p, stateResponsive)
+	wait := c.setState(p, stateResponsive)
+	c.lk.Unlock()
+	wait()
 }
 
 // Called when we drop the final connection to a peer.
