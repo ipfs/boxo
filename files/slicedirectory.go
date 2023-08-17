@@ -1,6 +1,10 @@
 package files
 
-import "sort"
+import (
+	"os"
+	"sort"
+	"time"
+)
 
 type fileEntry struct {
 	name string
@@ -49,9 +53,32 @@ func (it *sliceIterator) Err() error {
 // SliceFiles are always directories, and can't be read from or closed.
 type SliceFile struct {
 	files []DirEntry
+	stat  os.FileInfo
+}
+
+func (f *SliceFile) Mode() os.FileMode {
+	if f.stat != nil {
+		return f.stat.Mode()
+	}
+	return 0
+}
+
+func (f *SliceFile) ModTime() time.Time {
+	if f.stat != nil {
+		return f.stat.ModTime()
+	}
+	return time.Time{}
 }
 
 func NewMapDirectory(f map[string]Node) Directory {
+	return NewSliceDirectory(sortDirEntries(f))
+}
+
+func NewMapStatDirectory(f map[string]Node, stat os.FileInfo) Directory {
+	return NewSliceStatDirectory(sortDirEntries(f), stat)
+}
+
+func sortDirEntries(f map[string]Node) []DirEntry {
 	ents := make([]DirEntry, 0, len(f))
 	for name, nd := range f {
 		ents = append(ents, FileEntry(name, nd))
@@ -59,12 +86,15 @@ func NewMapDirectory(f map[string]Node) Directory {
 	sort.Slice(ents, func(i, j int) bool {
 		return ents[i].Name() < ents[j].Name()
 	})
-
-	return NewSliceDirectory(ents)
+	return ents
 }
 
 func NewSliceDirectory(files []DirEntry) Directory {
-	return &SliceFile{files}
+	return &SliceFile{files: files}
+}
+
+func NewSliceStatDirectory(files []DirEntry, stat os.FileInfo) Directory {
+	return &SliceFile{files: files, stat: stat}
 }
 
 func (f *SliceFile) Entries() DirIterator {
