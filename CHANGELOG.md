@@ -31,6 +31,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- Address a Bitswap findpeers / connect race condition that can prevent peer communication ([#435](https://github.com/ipfs/boxo/issues/435))
+
 ### Security
 
 ## [v0.11.0]
@@ -72,7 +74,6 @@ The following emojis are used to highlight certain changes:
 
 - Removed mentions of unused ARC algorithm ([#336](https://github.com/ipfs/boxo/issues/366#issuecomment-1597253540))
 - Handle `_redirects` file when `If-None-Match` header is present ([#412](https://github.com/ipfs/boxo/pull/412))
-- Address a Bitswap findpeers / connect race condition that can prevent peer communication ([#435](https://github.com/ipfs/boxo/issues/435))
 
 ### Security
 
