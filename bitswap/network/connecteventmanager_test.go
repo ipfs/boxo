@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/bitswap/internal/testutil"
-	"github.com/ipfs/boxo/internal/test"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
@@ -50,8 +49,6 @@ func wait(t *testing.T, c *connectEventManager) {
 }
 
 func TestConnectEventManagerConnectDisconnect(t *testing.T) {
-	test.Flaky(t)
-
 	connListener := newMockConnListener()
 	peers := testutil.GeneratePeers(2)
 	cem := newConnectEventManager(connListener)
@@ -68,31 +65,26 @@ func TestConnectEventManagerConnectDisconnect(t *testing.T) {
 		connected: true,
 	})
 
-	// Flush the event queue.
-	wait(t, cem)
 	require.Equal(t, expectedEvents, connListener.events)
 
-	// Block up the event loop.
-	connListener.Lock()
 	cem.Connected(peers[1])
 	expectedEvents = append(expectedEvents, mockConnEvent{
 		peer:      peers[1],
 		connected: true,
 	})
+	require.Equal(t, expectedEvents, connListener.events)
 
-	// We don't expect this to show up.
 	cem.Disconnected(peers[0])
-	cem.Connected(peers[0])
-
-	connListener.Unlock()
-
+	expectedEvents = append(expectedEvents, mockConnEvent{
+		peer:      peers[0],
+		connected: false,
+	})
+	// Flush the event queue.
 	wait(t, cem)
 	require.Equal(t, expectedEvents, connListener.events)
 }
 
 func TestConnectEventManagerMarkUnresponsive(t *testing.T) {
-	test.Flaky(t)
-
 	connListener := newMockConnListener()
 	p := testutil.GeneratePeers(1)[0]
 	cem := newConnectEventManager(connListener)
@@ -142,8 +134,6 @@ func TestConnectEventManagerMarkUnresponsive(t *testing.T) {
 }
 
 func TestConnectEventManagerDisconnectAfterMarkUnresponsive(t *testing.T) {
-	test.Flaky(t)
-
 	connListener := newMockConnListener()
 	p := testutil.GeneratePeers(1)[0]
 	cem := newConnectEventManager(connListener)
