@@ -38,7 +38,6 @@ var DefaultShardWidth = 256
 // directory trees is out of its scope, they are managed by the MFS layer
 // (which is the main consumer of this interface).
 type Directory interface {
-
 	// SetCidBuilder sets the CID Builder of the root node.
 	SetCidBuilder(cid.Builder)
 

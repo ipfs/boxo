@@ -12,35 +12,34 @@ import (
 	"go.opencensus.io/tag"
 )
 
-var (
-	distMS     = view.Distribution(0, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000)
-	distLength = view.Distribution(0, 1, 2, 5, 10, 11, 12, 15, 20, 50, 100, 200, 500)
+var distMS = view.Distribution(0, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000)
+var distLength = view.Distribution(0, 1, 2, 5, 10, 11, 12, 15, 20, 50, 100, 200, 500)
 
-	measureLatency = stats.Int64("routing_http_client_latency", "the latency of operations by the routing HTTP client", stats.UnitMilliseconds)
-	measureLength  = stats.Int64("routing_http_client_length", "the number of elements in a response collection", stats.UnitDimensionless)
+var measureLatency = stats.Int64("routing_http_client_latency", "the latency of operations by the routing HTTP client", stats.UnitMilliseconds)
+var measureLength = stats.Int64("routing_http_client_length", "the number of elements in a response collection", stats.UnitDimensionless)
 
-	keyOperation  = tag.MustNewKey("operation")
-	keyHost       = tag.MustNewKey("host")
-	keyStatusCode = tag.MustNewKey("code")
-	keyError      = tag.MustNewKey("error")
-	keyMediaType  = tag.MustNewKey("mediatype")
+var keyOperation = tag.MustNewKey("operation")
+var keyHost = tag.MustNewKey("host")
+var keyStatusCode = tag.MustNewKey("code")
+var keyError = tag.MustNewKey("error")
+var keyMediaType = tag.MustNewKey("mediatype")
 
-	ViewLatency = &view.View{
-		Measure:     measureLatency,
-		Aggregation: distMS,
-		TagKeys:     []tag.Key{keyOperation, keyHost, keyStatusCode, keyError},
-	}
-	ViewLength = &view.View{
-		Measure:     measureLength,
-		Aggregation: distLength,
-		TagKeys:     []tag.Key{keyOperation, keyHost},
-	}
+var ViewLatency = &view.View{
+	Measure:     measureLatency,
+	Aggregation: distMS,
+	TagKeys:     []tag.Key{keyOperation, keyHost, keyStatusCode, keyError},
+}
 
-	OpenCensusViews = []*view.View{
-		ViewLatency,
-		ViewLength,
-	}
-)
+var ViewLength = &view.View{
+	Measure:     measureLength,
+	Aggregation: distLength,
+	TagKeys:     []tag.Key{keyOperation, keyHost},
+}
+
+var OpenCensusViews = []*view.View{
+	ViewLatency,
+	ViewLength,
+}
 
 type measurement struct {
 	mediaType  string

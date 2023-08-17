@@ -19,9 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const (
-	HelloWorldCID = "bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e"
-)
+const HelloWorldCID = "bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e"
 
 func newProxyGateway(t *testing.T, rs *httptest.Server) *httptest.Server {
 	blockStore := blockstore.NewBlockstore(dssync.MutexWrap(datastore.NewMapDatastore()))

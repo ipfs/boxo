@@ -32,16 +32,12 @@ import (
 
 var log = logging.Logger("boxo/gateway")
 
-const (
-	ipfsPathPrefix        = "/ipfs/"
-	ipnsPathPrefix        = "/ipns/"
-	immutableCacheControl = "public, max-age=29030400, immutable"
-)
+const ipfsPathPrefix = "/ipfs/"
+const ipnsPathPrefix = "/ipns/"
+const immutableCacheControl = "public, max-age=29030400, immutable"
 
-var (
-	onlyASCII = regexp.MustCompile("[[:^ascii:]]")
-	noModtime = time.Unix(0, 0) // disables Last-Modified header if passed as modtime
-)
+var onlyASCII = regexp.MustCompile("[[:^ascii:]]")
+var noModtime = time.Unix(0, 0) // disables Last-Modified header if passed as modtime
 
 // HTML-based redirect for errors which can be recovered from, but we want
 // to provide hint to people that they should fix things on their end.
@@ -624,16 +620,14 @@ func getEtag(r *http.Request, cid cid.Cid, responseFormat string) string {
 	return prefix + cid.String() + suffix
 }
 
-const (
-	rawResponseFormat        = "application/vnd.ipld.raw"
-	carResponseFormat        = "application/vnd.ipld.car"
-	tarResponseFormat        = "application/x-tar"
-	jsonResponseFormat       = "application/json"
-	cborResponseFormat       = "application/cbor"
-	dagJsonResponseFormat    = "application/vnd.ipld.dag-json"
-	dagCborResponseFormat    = "application/vnd.ipld.dag-cbor"
-	ipnsRecordResponseFormat = "application/vnd.ipfs.ipns-record"
-)
+const rawResponseFormat = "application/vnd.ipld.raw"
+const carResponseFormat = "application/vnd.ipld.car"
+const tarResponseFormat = "application/x-tar"
+const jsonResponseFormat = "application/json"
+const cborResponseFormat = "application/cbor"
+const dagJsonResponseFormat = "application/vnd.ipld.dag-json"
+const dagCborResponseFormat = "application/vnd.ipld.dag-cbor"
+const ipnsRecordResponseFormat = "application/vnd.ipfs.ipns-record"
 
 // return explicit response format if specified in request as query parameter or via Accept HTTP header
 func customResponseFormat(r *http.Request) (mediaType string, params map[string]string, err error) {

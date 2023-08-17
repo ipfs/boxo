@@ -2,11 +2,11 @@ package decision
 
 import "github.com/ipfs/boxo/bitswap/server"
 
-type (
-	// Deprecated: use server.Receipt instead
-	Receipt = server.Receipt
-	// Deprecated: use server.ScoreLedger instead
-	ScoreLedger = server.ScoreLedger
-	// Deprecated: use server.ScorePeerFunc instead
-	ScorePeerFunc = server.ScorePeerFunc
-)
+// Deprecated: use server.Receipt instead
+type Receipt = server.Receipt
+
+// Deprecated: use server.ScoreLedger instead
+type ScoreLedger = server.ScoreLedger
+
+// Deprecated: use server.ScorePeerFunc instead
+type ScorePeerFunc = server.ScorePeerFunc

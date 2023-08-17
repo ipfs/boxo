@@ -85,7 +85,6 @@ func IsFile(fsn FSNode) bool {
 
 // Root represents the root of a filesystem tree.
 type Root struct {
-
 	// Root directory of the MFS layout.
 	dir *Directory
 
@@ -94,7 +93,6 @@ type Root struct {
 
 // NewRoot creates a new Root and starts up a republisher routine for it.
 func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc) (*Root, error) {
-
 	var repub *Republisher
 	if pf != nil {
 		repub = NewRepublisher(parent, pf, time.Millisecond*300, time.Second*3)

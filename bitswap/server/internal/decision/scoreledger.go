@@ -8,26 +8,24 @@ import (
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
-const (
-	// the alpha for the EWMA used to track short term usefulness
-	shortTermAlpha = 0.5
+// the alpha for the EWMA used to track short term usefulness
+const shortTermAlpha = 0.5
 
-	// the alpha for the EWMA used to track long term usefulness
-	longTermAlpha = 0.05
+// the alpha for the EWMA used to track long term usefulness
+const longTermAlpha = 0.05
 
-	// how frequently the engine should sample usefulness. Peers that
-	// interact every shortTerm time period are considered "active".
-	shortTerm = 10 * time.Second
+// how frequently the engine should sample usefulness. Peers that
+// interact every shortTerm time period are considered "active".
+const shortTerm = 10 * time.Second
 
-	// long term ratio defines what "long term" means in terms of the
-	// shortTerm duration. Peers that interact once every longTermRatio are
-	// considered useful over the long term.
-	longTermRatio = 10
+// long term ratio defines what "long term" means in terms of the
+// shortTerm duration. Peers that interact once every longTermRatio are
+// considered useful over the long term.
+const longTermRatio = 10
 
-	// long/short term scores for tagging peers
-	longTermScore  = 10 // this is a high tag but it grows _very_ slowly.
-	shortTermScore = 10 // this is a high tag but it'll go away quickly if we aren't using the peer.
-)
+// long/short term scores for tagging peers
+const longTermScore = 10  // this is a high tag but it grows _very_ slowly.
+const shortTermScore = 10 // this is a high tag but it'll go away quickly if we aren't using the peer.
 
 // Stores the data exchange relationship between two peers.
 type scoreledger struct {

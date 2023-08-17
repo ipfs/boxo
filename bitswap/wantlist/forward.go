@@ -5,12 +5,11 @@ import (
 	"github.com/ipfs/go-cid"
 )
 
-type (
-	// Deprecated: use wantlist.Entry instead
-	Entry = wantlist.Entry
-	// Deprecated: use wantlist.Wantlist instead
-	Wantlist = wantlist.Wantlist
-)
+// Deprecated: use wantlist.Entry instead
+type Entry = wantlist.Entry
+
+// Deprecated: use wantlist.Wantlist instead
+type Wantlist = wantlist.Wantlist
 
 // Deprecated: use wantlist.New instead
 func New() *Wantlist {

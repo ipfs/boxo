@@ -545,11 +545,12 @@ func (*Server) ReceiveError(err error) {
 	log.Infof("Bitswap Client ReceiveError: %s", err)
 	// TODO log the network error
 	// TODO bubble the network error up to the parent context/error logger
-
 }
+
 func (bs *Server) PeerConnected(p peer.ID) {
 	bs.engine.PeerConnected(p)
 }
+
 func (bs *Server) PeerDisconnected(p peer.ID) {
 	bs.engine.PeerDisconnected(p)
 }

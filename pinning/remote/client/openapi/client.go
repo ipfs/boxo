@@ -32,10 +32,8 @@ import (
 	"golang.org/x/oauth2"
 )
 
-var (
-	jsonCheck = regexp.MustCompile(`(?i:(?:application|text)/(?:vnd\.[^;]+\+)?json)`)
-	xmlCheck  = regexp.MustCompile(`(?i:(?:application|text)/xml)`)
-)
+var jsonCheck = regexp.MustCompile(`(?i:(?:application|text)/(?:vnd\.[^;]+\+)?json)`)
+var xmlCheck = regexp.MustCompile(`(?i:(?:application|text)/xml)`)
 
 // APIClient manages communication with the IPFS Pinning Service API API v0.1.1
 // In most cases there should be only one, shared, APIClient.
@@ -168,8 +166,8 @@ func (c *APIClient) prepareRequest(
 	formParams url.Values,
 	formFileName string,
 	fileName string,
-	fileBytes []byte) (localVarRequest *http.Request, err error) {
-
+	fileBytes []byte,
+) (localVarRequest *http.Request, err error) {
 	var body *bytes.Buffer
 
 	// Detect postBody type and post.

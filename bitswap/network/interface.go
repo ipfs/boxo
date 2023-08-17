@@ -14,16 +14,17 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
-var (
-	// ProtocolBitswapNoVers is equivalent to the legacy bitswap protocol
-	ProtocolBitswapNoVers = internal.ProtocolBitswapNoVers
-	// ProtocolBitswapOneZero is the prefix for the legacy bitswap protocol
-	ProtocolBitswapOneZero = internal.ProtocolBitswapOneZero
-	// ProtocolBitswapOneOne is the the prefix for version 1.1.0
-	ProtocolBitswapOneOne = internal.ProtocolBitswapOneOne
-	// ProtocolBitswap is the current version of the bitswap protocol: 1.2.0
-	ProtocolBitswap = internal.ProtocolBitswap
-)
+// ProtocolBitswapNoVers is equivalent to the legacy bitswap protocol
+var ProtocolBitswapNoVers = internal.ProtocolBitswapNoVers
+
+// ProtocolBitswapOneZero is the prefix for the legacy bitswap protocol
+var ProtocolBitswapOneZero = internal.ProtocolBitswapOneZero
+
+// ProtocolBitswapOneOne is the the prefix for version 1.1.0
+var ProtocolBitswapOneOne = internal.ProtocolBitswapOneOne
+
+// ProtocolBitswap is the current version of the bitswap protocol: 1.2.0
+var ProtocolBitswap = internal.ProtocolBitswap
 
 // BitSwapNetwork provides network connectivity for BitSwap sessions.
 type BitSwapNetwork interface {

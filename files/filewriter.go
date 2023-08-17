@@ -33,7 +33,7 @@ func WriteTo(nd Node, fpath string) error {
 		}
 		return nil
 	case Directory:
-		err := os.Mkdir(fpath, 0777)
+		err := os.Mkdir(fpath, 0o777)
 		if err != nil {
 			return err
 		}

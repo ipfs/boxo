@@ -21,10 +21,8 @@ import (
 
 type UseRawLeaves bool
 
-const (
-	ProtoBufLeaves UseRawLeaves = false
-	RawLeaves      UseRawLeaves = true
-)
+const ProtoBufLeaves UseRawLeaves = false
+const RawLeaves UseRawLeaves = true
 
 func runBothSubtests(t *testing.T, tfunc func(*testing.T, UseRawLeaves)) {
 	t.Run("leaves=ProtoBuf", func(t *testing.T) { tfunc(t, ProtoBufLeaves) })
@@ -431,7 +429,6 @@ func testSeekingStress(t *testing.T, rawLeaves UseRawLeaves) {
 			t.Fatal(err)
 		}
 	}
-
 }
 
 func TestSeekingConsistency(t *testing.T) {

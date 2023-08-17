@@ -101,8 +101,8 @@ func (f *fetcherSession) NodeMatching(ctx context.Context, node ipld.Node, match
 }
 
 func (f *fetcherSession) BlockMatchingOfType(ctx context.Context, root ipld.Link, match ipld.Node,
-	_ ipld.NodePrototype, cb fetcher.FetchCallback) error {
-
+	_ ipld.NodePrototype, cb fetcher.FetchCallback,
+) error {
 	// retrieve first node
 	prototype, err := f.PrototypeFromLink(root)
 	if err != nil {

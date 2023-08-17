@@ -16,13 +16,11 @@ import (
 	"github.com/ipld/go-ipld-prime/datamodel"
 )
 
-var (
-	ErrInternalServerError = NewErrorStatusCodeFromStatus(http.StatusInternalServerError)
-	ErrGatewayTimeout      = NewErrorStatusCodeFromStatus(http.StatusGatewayTimeout)
-	ErrBadGateway          = NewErrorStatusCodeFromStatus(http.StatusBadGateway)
-	ErrServiceUnavailable  = NewErrorStatusCodeFromStatus(http.StatusServiceUnavailable)
-	ErrTooManyRequests     = NewErrorStatusCodeFromStatus(http.StatusTooManyRequests)
-)
+var ErrInternalServerError = NewErrorStatusCodeFromStatus(http.StatusInternalServerError)
+var ErrGatewayTimeout = NewErrorStatusCodeFromStatus(http.StatusGatewayTimeout)
+var ErrBadGateway = NewErrorStatusCodeFromStatus(http.StatusBadGateway)
+var ErrServiceUnavailable = NewErrorStatusCodeFromStatus(http.StatusServiceUnavailable)
+var ErrTooManyRequests = NewErrorStatusCodeFromStatus(http.StatusTooManyRequests)
 
 // ErrorRetryAfter wraps any error with "retry after" hint. When an error of this type
 // returned to the gateway handler by an [IPFSBackend], the retry after value will be

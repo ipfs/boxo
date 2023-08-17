@@ -93,6 +93,7 @@ func TestReturnsErrorWhenSizeNegative(t *testing.T) {
 		t.Fail()
 	}
 }
+
 func TestHasIsBloomCached(t *testing.T) {
 	cd := &callbackDatastore{f: func() {}, ds: ds.NewMapDatastore()}
 	bs := NewBlockstore(syncds.MutexWrap(cd))

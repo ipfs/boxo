@@ -10,15 +10,13 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
-const (
-	linkRecursive = "recursive"
-	linkDirect    = "direct"
-	linkIndirect  = "indirect"
-	linkInternal  = "internal"
-	linkNotPinned = "not pinned"
-	linkAny       = "any"
-	linkAll       = "all"
-)
+const linkRecursive = "recursive"
+const linkDirect = "direct"
+const linkIndirect = "indirect"
+const linkInternal = "internal"
+const linkNotPinned = "not pinned"
+const linkAny = "any"
+const linkAll = "all"
 
 // Mode allows to specify different types of pin (recursive, direct etc.).
 // See the Pin Modes constants for a full list.

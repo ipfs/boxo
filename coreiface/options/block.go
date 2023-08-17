@@ -131,7 +131,6 @@ func (blockOpts) Format(format string) BlockPutOption {
 
 		return nil
 	}
-
 }
 
 // Hash is an option for Block.Put which specifies the multihash settings to use

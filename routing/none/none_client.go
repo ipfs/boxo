@@ -13,8 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/routing"
 )
 
-type nilclient struct {
-}
+type nilclient struct{}
 
 func (c *nilclient) PutValue(_ context.Context, _ string, _ []byte, _ ...routing.Option) error {
 	return nil

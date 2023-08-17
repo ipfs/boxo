@@ -185,13 +185,11 @@ func (rec *Record) getIntValue(key string) (int64, error) {
 	return value, nil
 }
 
-const (
-	cborValidityKey     = "Validity"
-	cborValidityTypeKey = "ValidityType"
-	cborValueKey        = "Value"
-	cborSequenceKey     = "Sequence"
-	cborTTLKey          = "TTL"
-)
+const cborValidityKey = "Validity"
+const cborValidityTypeKey = "ValidityType"
+const cborValueKey = "Value"
+const cborSequenceKey = "Sequence"
+const cborTTLKey = "TTL"
 
 type options struct {
 	v1Compatibility bool

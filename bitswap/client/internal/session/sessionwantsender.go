@@ -9,13 +9,12 @@ import (
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
-const (
-	// Maximum number of changes to accept before blocking
-	changesBufferSize = 128
-	// If the session receives this many DONT_HAVEs in a row from a peer,
-	// it prunes the peer from the session
-	peerDontHaveLimit = 16
-)
+// Maximum number of changes to accept before blocking
+const changesBufferSize = 128
+
+// If the session receives this many DONT_HAVEs in a row from a peer,
+// it prunes the peer from the session
+const peerDontHaveLimit = 16
 
 // BlockPresence indicates whether a peer has a block.
 // Note that the order is important, we decide which peer to send a want to
@@ -111,8 +110,8 @@ type sessionWantSender struct {
 }
 
 func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager, canceller SessionWantsCanceller,
-	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn) sessionWantSender {
-
+	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn,
+) sessionWantSender {
 	ctx, cancel := context.WithCancel(context.Background())
 	sws := sessionWantSender{
 		ctx:                      ctx,

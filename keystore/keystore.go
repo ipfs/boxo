@@ -1,12 +1,11 @@
 package keystore
 
 import (
+	"encoding/base32"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"encoding/base32"
 
 	logging "github.com/ipfs/go-log/v2"
 	ci "github.com/libp2p/go-libp2p/core/crypto"
@@ -46,7 +45,7 @@ type FSKeystore struct {
 
 // NewFSKeystore returns a new filesystem-backed keystore.
 func NewFSKeystore(dir string) (*FSKeystore, error) {
-	err := os.Mkdir(dir, 0700)
+	err := os.Mkdir(dir, 0o700)
 	switch {
 	case os.IsExist(err):
 	case err == nil:
@@ -87,7 +86,7 @@ func (ks *FSKeystore) Put(name string, k ci.PrivKey) error {
 
 	kp := filepath.Join(ks.dir, name)
 
-	fi, err := os.OpenFile(kp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0400)
+	fi, err := os.OpenFile(kp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o400)
 	if err != nil {
 		if os.IsExist(err) {
 			err = ErrKeyExists

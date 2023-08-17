@@ -62,24 +62,24 @@ import (
 
 var log = logging.Logger("engine")
 
-const (
-	// outboxChanBuffer must be 0 to prevent stale messages from being sent
-	outboxChanBuffer = 0
-	// targetMessageSize is the ideal size of the batched payload. We try to
-	// pop this much data off the request queue, but it may be a little more
-	// or less depending on what's in the queue.
-	defaultTargetMessageSize = 16 * 1024
-	// tagFormat is the tag given to peers associated an engine
-	tagFormat = "bs-engine-%s-%s"
+// outboxChanBuffer must be 0 to prevent stale messages from being sent
+const outboxChanBuffer = 0
 
-	// queuedTagWeight is the default weight for peers that have work queued
-	// on their behalf.
-	queuedTagWeight = 10
+// targetMessageSize is the ideal size of the batched payload. We try to
+// pop this much data off the request queue, but it may be a little more
+// or less depending on what's in the queue.
+const defaultTargetMessageSize = 16 * 1024
 
-	// maxBlockSizeReplaceHasWithBlock is the maximum size of the block in
-	// bytes up to which we will replace a want-have with a want-block
-	maxBlockSizeReplaceHasWithBlock = 1024
-)
+// tagFormat is the tag given to peers associated an engine
+const tagFormat = "bs-engine-%s-%s"
+
+// queuedTagWeight is the default weight for peers that have work queued
+// on their behalf.
+const queuedTagWeight = 10
+
+// maxBlockSizeReplaceHasWithBlock is the maximum size of the block in
+// bytes up to which we will replace a want-have with a want-block
+const maxBlockSizeReplaceHasWithBlock = 1024
 
 // Envelope contains a message for a Peer.
 type Envelope struct {
@@ -456,7 +456,6 @@ func (e *Engine) StartWorkers(ctx context.Context, px process.Process) {
 			e.taskWorker(ctx)
 		})
 	}
-
 }
 
 func (e *Engine) onPeerAdded(p peer.ID) {

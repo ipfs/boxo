@@ -6,12 +6,10 @@ import (
 	"os"
 )
 
-var (
-	ErrNotDirectory = errors.New("file isn't a directory")
-	ErrNotReader    = errors.New("file isn't a regular file")
+var ErrNotDirectory = errors.New("file isn't a directory")
+var ErrNotReader = errors.New("file isn't a regular file")
 
-	ErrNotSupported = errors.New("operation not supported")
-)
+var ErrNotSupported = errors.New("operation not supported")
 
 // Node is a common interface for files, directories and other special files
 type Node interface {

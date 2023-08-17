@@ -219,7 +219,6 @@ func TestDiffEnumFail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 }
 
 func TestDiffEnumRecurse(t *testing.T) {

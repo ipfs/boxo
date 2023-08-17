@@ -21,9 +21,7 @@ import (
 var log = logging.Logger("bs:sess")
 var sflog = log.Desugar()
 
-const (
-	broadcastLiveWantsLimit = 64
-)
+const broadcastLiveWantsLimit = 64
 
 // PeerManager keeps track of which sessions are interested in which peers
 // and takes care of sending wants for the sessions
@@ -146,8 +144,8 @@ func New(
 	notif notifications.PubSub,
 	initialSearchDelay time.Duration,
 	periodicSearchDelay delay.D,
-	self peer.ID) *Session {
-
+	self peer.ID,
+) *Session {
 	ctx, cancel := context.WithCancel(ctx)
 	s := &Session{
 		sw:                  newSessionWants(broadcastLiveWantsLimit),

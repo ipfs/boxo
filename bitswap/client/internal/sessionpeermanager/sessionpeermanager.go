@@ -11,11 +11,9 @@ import (
 
 var log = logging.Logger("bs:sprmgr")
 
-const (
-	// Connection Manager tag value for session peers. Indicates to connection
-	// manager that it should keep the connection to the peer.
-	sessionPeerTagValue = 5
-)
+// Connection Manager tag value for session peers. Indicates to connection
+// manager that it should keep the connection to the peer.
+const sessionPeerTagValue = 5
 
 // PeerTagger is an interface for tagging peers with metadata
 type PeerTagger interface {

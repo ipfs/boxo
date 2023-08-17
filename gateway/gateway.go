@@ -185,19 +185,15 @@ func NewDagByteRange(rangeStr string) (DagByteRange, error) {
 // [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
 type DagScope string
 
-const (
-	DagScopeAll    DagScope = "all"
-	DagScopeEntity DagScope = "entity"
-	DagScopeBlock  DagScope = "block"
-)
+const DagScopeAll DagScope = "all"
+const DagScopeEntity DagScope = "entity"
+const DagScopeBlock DagScope = "block"
 
 type DagOrder string
 
-const (
-	DagOrderUnspecified DagOrder = ""
-	DagOrderUnknown     DagOrder = "unk"
-	DagOrderDFS         DagOrder = "dfs"
-)
+const DagOrderUnspecified DagOrder = ""
+const DagOrderUnknown DagOrder = "unk"
+const DagOrderDFS DagOrder = "dfs"
 
 // DuplicateBlocksPolicy represents the content type parameter 'dups' (IPIP-412)
 type DuplicateBlocksPolicy int
@@ -424,21 +420,19 @@ func AddAccessControlHeaders(headers map[string][]string) {
 // RequestContextKey is a type representing a [context.Context] value key.
 type RequestContextKey string
 
-const (
-	// GatewayHostnameKey is the key for the hostname at which the gateway is
-	// operating. It may be a DNSLink, Subdomain or Regular gateway.
-	GatewayHostnameKey RequestContextKey = "gw-hostname"
+// GatewayHostnameKey is the key for the hostname at which the gateway is
+// operating. It may be a DNSLink, Subdomain or Regular gateway.
+const GatewayHostnameKey RequestContextKey = "gw-hostname"
 
-	// DNSLinkHostnameKey is the key for the hostname of a [DNSLink Gateway].
-	//
-	// [DNSLink Gateway]: https://specs.ipfs.tech/http-gateways/dnslink-gateway/
-	DNSLinkHostnameKey RequestContextKey = "dnslink-hostname"
+// DNSLinkHostnameKey is the key for the hostname of a [DNSLink Gateway].
+//
+// [DNSLink Gateway]: https://specs.ipfs.tech/http-gateways/dnslink-gateway/
+const DNSLinkHostnameKey RequestContextKey = "dnslink-hostname"
 
-	// SubdomainHostnameKey is the key for the hostname of a [Subdomain Gateway].
-	//
-	// [Subdomain Gateway]: https://specs.ipfs.tech/http-gateways/subdomain-gateway/
-	SubdomainHostnameKey RequestContextKey = "subdomain-hostname"
+// SubdomainHostnameKey is the key for the hostname of a [Subdomain Gateway].
+//
+// [Subdomain Gateway]: https://specs.ipfs.tech/http-gateways/subdomain-gateway/
+const SubdomainHostnameKey RequestContextKey = "subdomain-hostname"
 
-	// ContentPathKey is the key for the original [http.Request] URL Path, as an [ipath.Path].
-	ContentPathKey RequestContextKey = "content-path"
-)
+// ContentPathKey is the key for the original [http.Request] URL Path, as an [ipath.Path].
+const ContentPathKey RequestContextKey = "content-path"

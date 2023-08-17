@@ -64,7 +64,6 @@ func NewPinnedProvider(onlyRoots bool, pinning pin.Pinner, fetchConfig fetcher.F
 				case outCh <- c:
 				}
 			}
-
 		}()
 
 		return outCh, nil

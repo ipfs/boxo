@@ -28,22 +28,18 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
-var (
-	_                 contentrouter.Client = &client{}
-	logger                                 = logging.Logger("service/delegatedrouting")
-	defaultHTTPClient                      = &http.Client{
-		Transport: &ResponseBodyLimitedTransport{
-			RoundTripper: http.DefaultTransport,
-			LimitBytes:   1 << 20,
-			UserAgent:    defaultUserAgent,
-		},
-	}
-)
+var _ contentrouter.Client = &client{}
+var logger = logging.Logger("service/delegatedrouting")
+var defaultHTTPClient = &http.Client{
+	Transport: &ResponseBodyLimitedTransport{
+		RoundTripper: http.DefaultTransport,
+		LimitBytes:   1 << 20,
+		UserAgent:    defaultUserAgent,
+	},
+}
 
-const (
-	mediaTypeJSON   = "application/json"
-	mediaTypeNDJSON = "application/x-ndjson"
-)
+const mediaTypeJSON = "application/json"
+const mediaTypeNDJSON = "application/x-ndjson"
 
 type client struct {
 	baseURL    string

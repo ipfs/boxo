@@ -10,33 +10,31 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
-const (
-	// dontHaveTimeout is used to simulate a DONT_HAVE when communicating with
-	// a peer whose Bitswap client doesn't support the DONT_HAVE response,
-	// or when the peer takes too long to respond.
-	// If the peer doesn't respond to a want-block within the timeout, the
-	// local node assumes that the peer doesn't have the block.
-	dontHaveTimeout = 5 * time.Second
+// dontHaveTimeout is used to simulate a DONT_HAVE when communicating with
+// a peer whose Bitswap client doesn't support the DONT_HAVE response,
+// or when the peer takes too long to respond.
+// If the peer doesn't respond to a want-block within the timeout, the
+// local node assumes that the peer doesn't have the block.
+const dontHaveTimeout = 5 * time.Second
 
-	// maxExpectedWantProcessTime is the maximum amount of time we expect a
-	// peer takes to process a want and initiate sending a response to us
-	maxExpectedWantProcessTime = 2 * time.Second
+// maxExpectedWantProcessTime is the maximum amount of time we expect a
+// peer takes to process a want and initiate sending a response to us
+const maxExpectedWantProcessTime = 2 * time.Second
 
-	// maxTimeout is the maximum allowed timeout, regardless of latency
-	maxTimeout = dontHaveTimeout + maxExpectedWantProcessTime
+// maxTimeout is the maximum allowed timeout, regardless of latency
+const maxTimeout = dontHaveTimeout + maxExpectedWantProcessTime
 
-	// pingLatencyMultiplier is multiplied by the average ping time to
-	// get an upper bound on how long we expect to wait for a peer's response
-	// to arrive
-	pingLatencyMultiplier = 3
+// pingLatencyMultiplier is multiplied by the average ping time to
+// get an upper bound on how long we expect to wait for a peer's response
+// to arrive
+const pingLatencyMultiplier = 3
 
-	// messageLatencyAlpha is the alpha supplied to the message latency EWMA
-	messageLatencyAlpha = 0.5
+// messageLatencyAlpha is the alpha supplied to the message latency EWMA
+const messageLatencyAlpha = 0.5
 
-	// To give a margin for error, the timeout is calculated as
-	// messageLatencyMultiplier * message latency
-	messageLatencyMultiplier = 2
-)
+// To give a margin for error, the timeout is calculated as
+// messageLatencyMultiplier * message latency
+const messageLatencyMultiplier = 2
 
 // PeerConnection is a connection to a peer that can be pinged, and the
 // average latency measured
@@ -107,8 +105,8 @@ func newDontHaveTimeoutMgrWithParams(
 	messageLatencyMultiplier int,
 	maxExpectedWantProcessTime time.Duration,
 	clock clock.Clock,
-	timeoutsTriggered chan struct{}) *dontHaveTimeoutMgr {
-
+	timeoutsTriggered chan struct{},
+) *dontHaveTimeoutMgr {
 	ctx, shutdown := context.WithCancel(context.Background())
 	mqp := &dontHaveTimeoutMgr{
 		clock:                      clock,
@@ -222,7 +220,6 @@ func (dhtm *dontHaveTimeoutMgr) measurePingLatency() {
 // checkForTimeouts checks pending wants to see if any are over the timeout.
 // Note: this function should only be called within the lock.
 func (dhtm *dontHaveTimeoutMgr) checkForTimeouts() {
-
 	if len(dhtm.wantQueue) == 0 {
 		return
 	}

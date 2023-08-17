@@ -9,16 +9,12 @@ import (
 	"strings"
 )
 
-const (
-	multipartFormdataType = "multipart/form-data"
-	multipartMixedType    = "multipart/mixed"
+const multipartFormdataType = "multipart/form-data"
 
-	applicationDirectory = "application/x-directory"
-	applicationSymlink   = "application/symlink"
-	applicationFile      = "application/octet-stream"
+const applicationDirectory = "application/x-directory"
+const applicationSymlink = "application/symlink"
 
-	contentTypeHeader = "Content-Type"
-)
+const contentTypeHeader = "Content-Type"
 
 type multipartDirectory struct {
 	path   string

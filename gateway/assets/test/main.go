@@ -25,9 +25,7 @@ import (
 //go:embed dag/*.block
 var embeds embed.FS
 
-const (
-	testPath = "/ipfs/QmFooBarQXB2mzChmMeKY47C43LxUdg1NDJ5MWcKMKxDu7/a/b/c"
-)
+const testPath = "/ipfs/QmFooBarQXB2mzChmMeKY47C43LxUdg1NDJ5MWcKMKxDu7/a/b/c"
 
 var directoryTestData = assets.DirectoryTemplateData{
 	GlobalData: assets.GlobalData{

@@ -69,13 +69,11 @@ func (p *pinObject) GetCid() cid.Cid {
 
 type Status string
 
-const (
-	StatusUnknown Status = ""
-	StatusQueued  Status = Status(openapi.QUEUED)
-	StatusPinning Status = Status(openapi.PINNING)
-	StatusPinned  Status = Status(openapi.PINNED)
-	StatusFailed  Status = Status(openapi.FAILED)
-)
+const StatusUnknown Status = ""
+const StatusQueued Status = Status(openapi.QUEUED)
+const StatusPinning Status = Status(openapi.PINNING)
+const StatusPinned Status = Status(openapi.PINNED)
+const StatusFailed Status = Status(openapi.FAILED)
 
 func (s Status) String() string {
 	switch s {

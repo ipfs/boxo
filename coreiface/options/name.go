@@ -6,9 +6,7 @@ import (
 	ropts "github.com/ipfs/boxo/coreiface/options/namesys"
 )
 
-const (
-	DefaultNameValidTime = 24 * time.Hour
-)
+const DefaultNameValidTime = 24 * time.Hour
 
 type NamePublishSettings struct {
 	ValidTime        time.Duration

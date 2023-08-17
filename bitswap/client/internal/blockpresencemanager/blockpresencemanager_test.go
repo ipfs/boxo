@@ -9,12 +9,10 @@ import (
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
-const (
-	expHasFalseMsg         = "Expected PeerHasBlock to return false"
-	expHasTrueMsg          = "Expected PeerHasBlock to return true"
-	expDoesNotHaveFalseMsg = "Expected PeerDoesNotHaveBlock to return false"
-	expDoesNotHaveTrueMsg  = "Expected PeerDoesNotHaveBlock to return true"
-)
+const expHasFalseMsg = "Expected PeerHasBlock to return false"
+const expHasTrueMsg = "Expected PeerHasBlock to return true"
+const expDoesNotHaveFalseMsg = "Expected PeerDoesNotHaveBlock to return false"
+const expDoesNotHaveTrueMsg = "Expected PeerDoesNotHaveBlock to return true"
 
 func TestBlockPresenceManager(t *testing.T) {
 	test.Flaky(t)

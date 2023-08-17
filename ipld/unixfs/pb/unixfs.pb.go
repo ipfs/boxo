@@ -5,8 +5,9 @@ package unixfs_pb
 
 import (
 	fmt "fmt"
-	proto "github.com/gogo/protobuf/proto"
 	math "math"
+
+	proto "github.com/gogo/protobuf/proto"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -22,14 +23,12 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type Data_DataType int32
 
-const (
-	Data_Raw       Data_DataType = 0
-	Data_Directory Data_DataType = 1
-	Data_File      Data_DataType = 2
-	Data_Metadata  Data_DataType = 3
-	Data_Symlink   Data_DataType = 4
-	Data_HAMTShard Data_DataType = 5
-)
+const Data_Raw Data_DataType = 0
+const Data_Directory Data_DataType = 1
+const Data_File Data_DataType = 2
+const Data_Metadata Data_DataType = 3
+const Data_Symlink Data_DataType = 4
+const Data_HAMTShard Data_DataType = 5
 
 var Data_DataType_name = map[int32]string{
 	0: "Raw",
@@ -90,18 +89,23 @@ func (*Data) ProtoMessage()    {}
 func (*Data) Descriptor() ([]byte, []int) {
 	return fileDescriptor_e2fd76cc44dfc7c3, []int{0}
 }
+
 func (m *Data) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Data.Unmarshal(m, b)
 }
+
 func (m *Data) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	return xxx_messageInfo_Data.Marshal(b, m, deterministic)
 }
+
 func (m *Data) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_Data.Merge(m, src)
 }
+
 func (m *Data) XXX_Size() int {
 	return xxx_messageInfo_Data.Size(m)
 }
+
 func (m *Data) XXX_DiscardUnknown() {
 	xxx_messageInfo_Data.DiscardUnknown(m)
 }
@@ -163,18 +167,23 @@ func (*Metadata) ProtoMessage()    {}
 func (*Metadata) Descriptor() ([]byte, []int) {
 	return fileDescriptor_e2fd76cc44dfc7c3, []int{1}
 }
+
 func (m *Metadata) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Metadata.Unmarshal(m, b)
 }
+
 func (m *Metadata) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	return xxx_messageInfo_Metadata.Marshal(b, m, deterministic)
 }
+
 func (m *Metadata) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_Metadata.Merge(m, src)
 }
+
 func (m *Metadata) XXX_Size() int {
 	return xxx_messageInfo_Metadata.Size(m)
 }
+
 func (m *Metadata) XXX_DiscardUnknown() {
 	xxx_messageInfo_Metadata.DiscardUnknown(m)
 }

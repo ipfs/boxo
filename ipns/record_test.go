@@ -17,9 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const (
-	testPath = path.Path("/ipfs/bafkqac3jobxhgidsn5rww4yk")
-)
+const testPath = path.Path("/ipfs/bafkqac3jobxhgidsn5rww4yk")
 
 func mustKeyPair(t *testing.T, typ int) (ic.PrivKey, ic.PubKey, Name) {
 	sr := util.NewTimeSeededRand()

@@ -18,23 +18,21 @@ import (
 	"github.com/multiformats/go-multihash"
 )
 
-const (
-	// MAGIC: how long we wait before reproviding a key
-	DefaultReproviderInterval = time.Hour * 22 // https://github.com/ipfs/kubo/pull/9326
+// MAGIC: how long we wait before reproviding a key
+const DefaultReproviderInterval = time.Hour * 22 // https://github.com/ipfs/kubo/pull/9326
 
-	// MAGIC: If the reprovide ticker is larger than a minute (likely), provide
-	// once after we've been up a minute. Don't provide _immediately_ as we
-	// might be just about to stop.
-	defaultInitialReprovideDelay = time.Minute
+// MAGIC: If the reprovide ticker is larger than a minute (likely), provide
+// once after we've been up a minute. Don't provide _immediately_ as we
+// might be just about to stop.
+const defaultInitialReprovideDelay = time.Minute
 
-	// MAGIC: how long we wait between the first provider we hear about and
-	// batching up the provides to send out
-	pauseDetectionThreshold = time.Millisecond * 500
+// MAGIC: how long we wait between the first provider we hear about and
+// batching up the provides to send out
+const pauseDetectionThreshold = time.Millisecond * 500
 
-	// MAGIC: how long we are willing to collect providers for the batch after
-	// we receive the first one
-	maxCollectionDuration = time.Minute * 10
-)
+// MAGIC: how long we are willing to collect providers for the batch after
+// we receive the first one
+const maxCollectionDuration = time.Minute * 10
 
 var log = logging.Logger("provider.batched")
 

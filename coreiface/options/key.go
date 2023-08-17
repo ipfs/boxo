@@ -1,11 +1,9 @@
 package options
 
-const (
-	RSAKey     = "rsa"
-	Ed25519Key = "ed25519"
+const RSAKey = "rsa"
+const Ed25519Key = "ed25519"
 
-	DefaultRSALen = 2048
-)
+const DefaultRSALen = 2048
 
 type KeyGenerateSettings struct {
 	Algorithm string

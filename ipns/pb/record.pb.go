@@ -7,24 +7,22 @@
 package pb
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
-const (
-	// Verify that this generated code is sufficiently up-to-date.
-	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
-	// Verify that runtime/protoimpl is sufficiently up-to-date.
-	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
-)
+// Verify that this generated code is sufficiently up-to-date.
+const _ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
+
+// Verify that runtime/protoimpl is sufficiently up-to-date.
+const _ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 
 type IpnsRecord_ValidityType int32
 
-const (
-	IpnsRecord_EOL IpnsRecord_ValidityType = 0
-)
+const IpnsRecord_EOL IpnsRecord_ValidityType = 0
 
 // Enum value maps for IpnsRecord_ValidityType.
 var (
@@ -214,10 +212,8 @@ var file_record_proto_rawDesc = []byte{
 	0x74, 0x6f, 0x33,
 }
 
-var (
-	file_record_proto_rawDescOnce sync.Once
-	file_record_proto_rawDescData = file_record_proto_rawDesc
-)
+var file_record_proto_rawDescOnce sync.Once
+var file_record_proto_rawDescData = file_record_proto_rawDesc
 
 func file_record_proto_rawDescGZIP() []byte {
 	file_record_proto_rawDescOnce.Do(func() {
@@ -232,6 +228,7 @@ var file_record_proto_goTypes = []interface{}{
 	(IpnsRecord_ValidityType)(0), // 0: github.com.boxo.ipns.pb.IpnsRecord.ValidityType
 	(*IpnsRecord)(nil),           // 1: github.com.boxo.ipns.pb.IpnsRecord
 }
+
 var file_record_proto_depIdxs = []int32{
 	0, // 0: github.com.boxo.ipns.pb.IpnsRecord.validityType:type_name -> github.com.boxo.ipns.pb.IpnsRecord.ValidityType
 	1, // [1:1] is the sub-list for method output_type

@@ -24,26 +24,22 @@ import (
 	"github.com/ipfs/boxo/pinning/pinner/dsindex"
 )
 
-const (
-	basePath     = "/pins"
-	pinKeyPath   = "/pins/pin"
-	indexKeyPath = "/pins/index"
-	dirtyKeyPath = "/pins/state/dirty"
-)
+const basePath = "/pins"
+const pinKeyPath = "/pins/pin"
+const indexKeyPath = "/pins/index"
+const dirtyKeyPath = "/pins/state/dirty"
 
-var (
-	log logging.StandardLogger = logging.Logger("pin")
+var log logging.StandardLogger = logging.Logger("pin")
 
-	linkDirect, linkRecursive string
+var linkDirect, linkRecursive string
 
-	pinCidDIndexPath string
-	pinCidRIndexPath string
-	pinNameIndexPath string
+var pinCidDIndexPath string
+var pinCidRIndexPath string
+var pinNameIndexPath string
 
-	dirtyKey = ds.NewKey(dirtyKeyPath)
+var dirtyKey = ds.NewKey(dirtyKeyPath)
 
-	pinAtl atlas.Atlas
-)
+var pinAtl atlas.Atlas
 
 func init() {
 	directStr, ok := ipfspinner.ModeToString(ipfspinner.Direct)

@@ -24,14 +24,12 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 )
 
-const (
-	mediaTypeJSON     = "application/json"
-	mediaTypeNDJSON   = "application/x-ndjson"
-	mediaTypeWildcard = "*/*"
+const mediaTypeJSON = "application/json"
+const mediaTypeNDJSON = "application/x-ndjson"
+const mediaTypeWildcard = "*/*"
 
-	DefaultRecordsLimit          = 20
-	DefaultStreamingRecordsLimit = 0
-)
+const DefaultRecordsLimit = 20
+const DefaultStreamingRecordsLimit = 0
 
 var logger = logging.Logger("service/server/delegatedrouting")
 
@@ -139,7 +137,6 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 			keys := make([]cid.Cid, len(v.Payload.Keys))
 			for i, k := range v.Payload.Keys {
 				keys[i] = k.Cid
-
 			}
 			addrs := make([]multiaddr.Multiaddr, len(v.Payload.Addrs))
 			for i, a := range v.Payload.Addrs {

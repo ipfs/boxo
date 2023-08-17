@@ -4,11 +4,9 @@ import (
 	"github.com/ipfs/boxo/bitswap/server/internal/decision"
 )
 
-type (
-	Receipt                = decision.Receipt
-	PeerBlockRequestFilter = decision.PeerBlockRequestFilter
-	TaskComparator         = decision.TaskComparator
-	TaskInfo               = decision.TaskInfo
-	ScoreLedger            = decision.ScoreLedger
-	ScorePeerFunc          = decision.ScorePeerFunc
-)
+type Receipt = decision.Receipt
+type PeerBlockRequestFilter = decision.PeerBlockRequestFilter
+type TaskComparator = decision.TaskComparator
+type TaskInfo = decision.TaskInfo
+type ScoreLedger = decision.ScoreLedger
+type ScorePeerFunc = decision.ScorePeerFunc

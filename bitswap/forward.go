@@ -5,13 +5,14 @@ import (
 	"github.com/ipfs/boxo/bitswap/tracer"
 )
 
-type (
-	// DEPRECATED
-	PeerBlockRequestFilter = server.PeerBlockRequestFilter
-	// DEPRECATED
-	TaskComparator = server.TaskComparator
-	// DEPRECATED
-	TaskInfo = server.TaskInfo
-	// DEPRECATED
-	Tracer = tracer.Tracer
-)
+// DEPRECATED
+type PeerBlockRequestFilter = server.PeerBlockRequestFilter
+
+// DEPRECATED
+type TaskComparator = server.TaskComparator
+
+// DEPRECATED
+type TaskInfo = server.TaskInfo
+
+// DEPRECATED
+type Tracer = tracer.Tracer

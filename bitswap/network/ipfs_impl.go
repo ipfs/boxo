@@ -284,7 +284,6 @@ func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *Messag
 		_, err := sender.Connect(ctx)
 		return err
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -320,8 +319,8 @@ func sendTimeout(size int) time.Duration {
 func (bsnet *impl) SendMessage(
 	ctx context.Context,
 	p peer.ID,
-	outgoing bsmsg.BitSwapMessage) error {
-
+	outgoing bsmsg.BitSwapMessage,
+) error {
 	tctx, cancel := context.WithTimeout(ctx, connectTimeout)
 	defer cancel()
 
@@ -357,7 +356,6 @@ func (bsnet *impl) Start(r ...Receiver) {
 	}
 	bsnet.host.Network().Notify((*netNotifiee)(bsnet))
 	bsnet.connectEvtMgr.Start()
-
 }
 
 func (bsnet *impl) Stop() {
@@ -458,6 +456,7 @@ func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
 
 	nn.impl().connectEvtMgr.Connected(v.RemotePeer())
 }
+
 func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
 	// Only record a "disconnect" when we actually disconnect.
 	if n.Connectedness(v.RemotePeer()) == network.Connected {

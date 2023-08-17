@@ -58,7 +58,6 @@ func TestPublishSubscribe(t *testing.T) {
 	}
 
 	assertBlocksEqual(t, blockRecvd, blockSent)
-
 }
 
 func TestSubscribeMany(t *testing.T) {

@@ -13,10 +13,8 @@ import (
 	mh "github.com/multiformats/go-multihash"
 )
 
-const (
-	// NamespacePrefix is the prefix of the IPNS namespace.
-	NamespacePrefix = "/ipns/"
-)
+// NamespacePrefix is the prefix of the IPNS namespace.
+const NamespacePrefix = "/ipns/"
 
 // Name represents a [Multihash] of a serialized public key according to the
 // [IPNS Name] specifications.

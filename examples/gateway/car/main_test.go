@@ -13,9 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const (
-	BaseCID = "bafybeidhua2wpy27vo3t7ms22ybc7m7iqkm2opiebpjmo24lvixcnvznnu"
-)
+const BaseCID = "bafybeidhua2wpy27vo3t7ms22ybc7m7iqkm2opiebpjmo24lvixcnvznnu"
 
 func newTestServer() (*httptest.Server, io.Closer, error) {
 	blockService, _, f, err := newBlockServiceFromCAR("./test.car")

@@ -2,12 +2,11 @@ package assets
 
 import (
 	"embed"
+	"html/template"
 	"io"
 	"io/fs"
 	"net"
 	"strconv"
-
-	"html/template"
 	"strings"
 
 	"github.com/cespare/xxhash/v2"
@@ -21,11 +20,9 @@ var assets embed.FS
 // AssetHash a non-cryptographic hash of all embedded assets
 var AssetHash string
 
-var (
-	DirectoryTemplate *template.Template
-	DagTemplate       *template.Template
-	ErrorTemplate     *template.Template
-)
+var DirectoryTemplate *template.Template
+var DagTemplate *template.Template
+var ErrorTemplate *template.Template
 
 func init() {
 	initAssetsHash()

@@ -213,7 +213,7 @@ func (tp *TestSuite) TestAdd(t *testing.T) {
 			path: "/ipfs/bafkqaaa",
 			opts: []options.UnixfsAddOption{options.Unixfs.InlineLimit(0), options.Unixfs.Inline(true), options.Unixfs.RawLeaves(true)},
 		},
-		{ //TODO: after coreapi add is used in `ipfs add`, consider making this default for inline
+		{ // TODO: after coreapi add is used in `ipfs add`, consider making this default for inline
 			name: "addInlineRaw",
 			data: strFile(helloStr),
 			path: "/ipfs/bafkqadlimvwgy3zmeb3w64tmmqqq",

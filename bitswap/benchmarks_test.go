@@ -114,7 +114,7 @@ func BenchmarkFixedDelay(b *testing.B) {
 	}
 
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = os.WriteFile("tmp/benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/benchmark.json", out, 0o666)
 	printResults(benchmarkLog)
 }
 
@@ -182,7 +182,7 @@ func BenchmarkFetchFromOldBitswap(b *testing.B) {
 	}
 
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = os.WriteFile("tmp/benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/benchmark.json", out, 0o666)
 	printResults(benchmarkLog)
 }
 
@@ -240,7 +240,7 @@ func BenchmarkRealWorld(b *testing.B) {
 		subtestDistributeAndFetchRateLimited(b, 300, 200, slowNetworkDelay, slowBandwidthGenerator, stdBlockSize, bstoreLatency, allToAll, batchFetchAll)
 	})
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = os.WriteFile("tmp/rw-benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/rw-benchmark.json", out, 0o666)
 	printResults(benchmarkLog)
 }
 
@@ -263,7 +263,7 @@ func BenchmarkDatacenter(b *testing.B) {
 		subtestDistributeAndFetchRateLimited(b, 3, 100, datacenterNetworkDelay, datacenterBandwidthGenerator, largeBlockSize, bstoreLatency, allToAll, unixfsFileFetch)
 	})
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = os.WriteFile("tmp/rb-benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/rb-benchmark.json", out, 0o666)
 	printResults(benchmarkLog)
 }
 
@@ -304,7 +304,7 @@ func BenchmarkDatacenterMultiLeechMultiSeed(b *testing.B) {
 	})
 
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = os.WriteFile("tmp/rb-benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/rb-benchmark.json", out, 0o666)
 	printResults(benchmarkLog)
 }
 

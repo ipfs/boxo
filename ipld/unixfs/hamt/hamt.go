@@ -39,10 +39,8 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
-const (
-	// HashMurmur3 is the multiformats identifier for Murmur3
-	HashMurmur3 uint64 = 0x22
-)
+// HashMurmur3 is the multiformats identifier for Murmur3
+const HashMurmur3 uint64 = 0x22
 
 func init() {
 	internal.HAMTHashFunction = murmur3Hash

@@ -4,25 +4,23 @@ import (
 	"time"
 )
 
-const (
-	// DefaultDepthLimit is the default depth limit used by Resolve.
-	DefaultDepthLimit = 32
+// DefaultDepthLimit is the default depth limit used by Resolve.
+const DefaultDepthLimit = 32
 
-	// UnlimitedDepth allows infinite recursion in Resolve.  You
-	// probably don't want to use this, but it's here if you absolutely
-	// trust resolution to eventually complete and can't put an upper
-	// limit on how many steps it will take.
-	UnlimitedDepth = 0
+// UnlimitedDepth allows infinite recursion in Resolve.  You
+// probably don't want to use this, but it's here if you absolutely
+// trust resolution to eventually complete and can't put an upper
+// limit on how many steps it will take.
+const UnlimitedDepth = 0
 
-	// DefaultIPNSRecordTTL specifies the time that the record can be cached
-	// before checking if its validity again.
-	DefaultIPNSRecordTTL = time.Minute
+// DefaultIPNSRecordTTL specifies the time that the record can be cached
+// before checking if its validity again.
+const DefaultIPNSRecordTTL = time.Minute
 
-	// DefaultIPNSRecordEOL specifies the time that the network will cache IPNS
-	// records after being published. Records should be re-published before this
-	// interval expires. We use the same default expiration as the DHT.
-	DefaultIPNSRecordEOL = 48 * time.Hour
-)
+// DefaultIPNSRecordEOL specifies the time that the network will cache IPNS
+// records after being published. Records should be re-published before this
+// interval expires. We use the same default expiration as the DHT.
+const DefaultIPNSRecordEOL = 48 * time.Hour
 
 // ResolveOpts specifies options for resolving an IPNS path
 type ResolveOpts struct {

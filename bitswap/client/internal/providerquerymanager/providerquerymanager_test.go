@@ -95,7 +95,6 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	if fpn.queriesMade != 2 {
 		t.Fatal("Did not dedup provider requests running simultaneously")
 	}
-
 }
 
 func TestDedupingProviderRequests(t *testing.T) {
@@ -256,7 +255,6 @@ func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
 	if len(firstPeersReceived) != 0 || len(secondPeersReceived) != 0 {
 		t.Fatal("Did not filter out peers with connection issues")
 	}
-
 }
 
 func TestRateLimitingRequests(t *testing.T) {

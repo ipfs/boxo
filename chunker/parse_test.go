@@ -6,9 +6,7 @@ import (
 	"testing"
 )
 
-const (
-	testTwoThirdsOfChunkLimit = 2 * (float32(ChunkSizeLimit) / float32(3))
-)
+const testTwoThirdsOfChunkLimit = 2 * (float32(ChunkSizeLimit) / float32(3))
 
 func TestParseRabin(t *testing.T) {
 	r := bytes.NewReader(randBuf(t, 1000))
@@ -52,7 +50,6 @@ func TestParseRabin(t *testing.T) {
 	if err != ErrSizeMax {
 		t.Fatalf("Expected 'ErrSizeMax', got: %#v", err)
 	}
-
 }
 
 func TestParseSize(t *testing.T) {

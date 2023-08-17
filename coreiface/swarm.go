@@ -12,10 +12,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-var (
-	ErrNotConnected = errors.New("not connected")
-	ErrConnNotFound = errors.New("conn not found")
-)
+var ErrNotConnected = errors.New("not connected")
+var ErrConnNotFound = errors.New("conn not found")
 
 // ConnectionInfo contains information about a peer
 type ConnectionInfo interface {

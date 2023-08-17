@@ -27,7 +27,8 @@ func InternetLatencyDelayGenerator(
 	percentMedium float64,
 	percentLarge float64,
 	std time.Duration,
-	rng *rand.Rand) delay.Generator {
+	rng *rand.Rand,
+) delay.Generator {
 	if rng == nil {
 		rng = sharedRNG
 	}

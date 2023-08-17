@@ -21,30 +21,36 @@ import (
 var log = logging.Logger("bitswap")
 var sflog = log.Desugar()
 
-const (
-	defaultRebroadcastInterval = 30 * time.Second
-	// maxRetries is the number of times to attempt to send a message before
-	// giving up
-	maxRetries  = 3
-	sendTimeout = 30 * time.Second
-	// maxMessageSize is the maximum message size in bytes
-	maxMessageSize = 1024 * 1024 * 2
-	// sendErrorBackoff is the time to wait before retrying to connect after
-	// an error when trying to send a message
-	sendErrorBackoff = 100 * time.Millisecond
-	// maxPriority is the max priority as defined by the bitswap protocol
-	maxPriority = math.MaxInt32
-	// sendMessageDebounce is the debounce duration when calling sendMessage()
-	sendMessageDebounce = time.Millisecond
-	// when we reach sendMessageCutoff wants/cancels, we'll send the message immediately.
-	sendMessageCutoff = 256
-	// when we debounce for more than sendMessageMaxDelay, we'll send the
-	// message immediately.
-	sendMessageMaxDelay = 20 * time.Millisecond
-	// The maximum amount of time in which to accept a response as being valid
-	// for latency calculation (as opposed to discarding it as an outlier)
-	maxValidLatency = 30 * time.Second
-)
+const defaultRebroadcastInterval = 30 * time.Second
+
+// maxRetries is the number of times to attempt to send a message before
+// giving up
+const maxRetries = 3
+const sendTimeout = 30 * time.Second
+
+// maxMessageSize is the maximum message size in bytes
+const maxMessageSize = 1024 * 1024 * 2
+
+// sendErrorBackoff is the time to wait before retrying to connect after
+// an error when trying to send a message
+const sendErrorBackoff = 100 * time.Millisecond
+
+// maxPriority is the max priority as defined by the bitswap protocol
+const maxPriority = math.MaxInt32
+
+// sendMessageDebounce is the debounce duration when calling sendMessage()
+const sendMessageDebounce = time.Millisecond
+
+// when we reach sendMessageCutoff wants/cancels, we'll send the message immediately.
+const sendMessageCutoff = 256
+
+// when we debounce for more than sendMessageMaxDelay, we'll send the
+// message immediately.
+const sendMessageMaxDelay = 20 * time.Millisecond
+
+// The maximum amount of time in which to accept a response as being valid
+// for latency calculation (as opposed to discarding it as an outlier)
+const maxValidLatency = 30 * time.Second
 
 // MessageNetwork is any network that can connect peers and generate a message
 // sender.
@@ -240,8 +246,8 @@ func newMessageQueue(
 	maxValidLatency time.Duration,
 	dhTimeoutMgr DontHaveTimeoutManager,
 	clock clock.Clock,
-	events chan messageEvent) *MessageQueue {
-
+	events chan messageEvent,
+) *MessageQueue {
 	ctx, cancel := context.WithCancel(ctx)
 	return &MessageQueue{
 		ctx:                 ctx,

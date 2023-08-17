@@ -252,7 +252,7 @@ func (te *Extractor) outputPath(basePlatformPath, relativeTarPath string) (strin
 var errExtractedDirToSymlink = errors.New("cannot extract to symlink")
 
 func (te *Extractor) extractDir(path string) error {
-	err := os.MkdirAll(path, 0755)
+	err := os.MkdirAll(path, 0o755)
 	if err != nil {
 		return err
 	}

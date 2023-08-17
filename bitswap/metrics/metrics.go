@@ -6,12 +6,10 @@ import (
 	"github.com/ipfs/go-metrics-interface"
 )
 
-var (
-	// the 1<<18+15 is to observe old file chunks that are 1<<18 + 14 in size
-	metricsBuckets = []float64{1 << 6, 1 << 10, 1 << 14, 1 << 18, 1<<18 + 15, 1 << 22}
+// the 1<<18+15 is to observe old file chunks that are 1<<18 + 14 in size
+var metricsBuckets = []float64{1 << 6, 1 << 10, 1 << 14, 1 << 18, 1<<18 + 15, 1 << 22}
 
-	timeMetricsBuckets = []float64{1, 10, 30, 60, 90, 120, 600}
-)
+var timeMetricsBuckets = []float64{1, 10, 30, 60, 90, 120, 600}
 
 func DupHist(ctx context.Context) metrics.Histogram {
 	return metrics.NewCtx(ctx, "recv_dup_blocks_bytes", "Summary of duplicate data blocks recived").Histogram(metricsBuckets)

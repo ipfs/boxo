@@ -140,7 +140,6 @@ type sesGetter struct {
 // Get gets a single node from the DAG.
 func (sg *sesGetter) Get(ctx context.Context, c cid.Cid) (format.Node, error) {
 	blk, err := sg.bs.GetBlock(ctx, c)
-
 	if err != nil {
 		return nil, err
 	}

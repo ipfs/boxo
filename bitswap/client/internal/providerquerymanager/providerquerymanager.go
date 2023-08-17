@@ -13,11 +13,9 @@ import (
 
 var log = logging.Logger("bitswap")
 
-const (
-	maxProviders         = 10
-	maxInProcessRequests = 6
-	defaultTimeout       = 10 * time.Second
-)
+const maxProviders = 10
+const maxInProcessRequests = 6
+const defaultTimeout = 10 * time.Second
 
 type inProgressRequestStatus struct {
 	ctx            context.Context
