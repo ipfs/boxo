@@ -33,6 +33,7 @@ The following emojis are used to highlight certain changes:
 
 - Address a Bitswap findpeers / connect race condition that can prevent peer communication ([#435](https://github.com/ipfs/boxo/issues/435))
 - HTTP Gateway API: Not having a block will result in a 5xx error rather than 404
+- HTTP Gateway API: CAR requests will return 200s and a CAR file proving a requested path does not exist rather than returning an error
 
 ### Security
 
