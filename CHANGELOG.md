@@ -31,6 +31,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- Address a Bitswap findpeers / connect race condition that can prevent peer communication ([#432](https://github.com/ipfs/boxo/issues/432)).
+
 ### Security
 
 ## [v0.11.0]

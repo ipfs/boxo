@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -49,6 +50,8 @@ func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) B
 		protocolBitswap:        s.ProtocolPrefix + ProtocolBitswap,
 
 		supportedProtocols: s.SupportedProtocols,
+
+		peers: make(map[peer.ID]*peerState),
 	}
 
 	return &bitswapNetwork
@@ -72,9 +75,8 @@ type impl struct {
 	// alignment.
 	stats Stats
 
-	host          host.Host
-	routing       routing.ContentRouting
-	connectEvtMgr *connectEventManager
+	host    host.Host
+	routing routing.ContentRouting
 
 	protocolBitswapNoVers  protocol.ID
 	protocolBitswapOneZero protocol.ID
@@ -85,6 +87,16 @@ type impl struct {
 
 	// inbound messages from the network are forwarded to the receiver
 	receivers []Receiver
+
+	peersLk sync.Mutex
+	peers   map[peer.ID]*peerState
+}
+
+type peerState struct {
+	lk         sync.Mutex
+	responsive bool
+	// isAResponsiveWaiting is protected by impl.peersLk.
+	isAResponsiveWaiting bool
 }
 
 type streamMessageSender struct {
@@ -166,7 +178,7 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func() error)
 
 		// Protocol is not supported, so no need to try multiple times
 		if errors.Is(err, multistream.ErrNotSupported[protocol.ID]{}) {
-			s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
+			s.bsnet.markPeerUnresponsive(s.to)
 			return err
 		}
 
@@ -175,7 +187,7 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func() error)
 
 		// Failed too many times so mark the peer as unresponsive and return an error
 		if i == s.opts.MaxRetries-1 {
-			s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
+			s.bsnet.markPeerUnresponsive(s.to)
 			return err
 		}
 
@@ -345,23 +357,13 @@ func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stre
 
 func (bsnet *impl) Start(r ...Receiver) {
 	bsnet.receivers = r
-	{
-		connectionListeners := make([]ConnectionListener, len(r))
-		for i, v := range r {
-			connectionListeners[i] = v
-		}
-		bsnet.connectEvtMgr = newConnectEventManager(connectionListeners...)
-	}
 	for _, proto := range bsnet.supportedProtocols {
 		bsnet.host.SetStreamHandler(proto, bsnet.handleNewStream)
 	}
 	bsnet.host.Network().Notify((*netNotifiee)(bsnet))
-	bsnet.connectEvtMgr.Start()
-
 }
 
 func (bsnet *impl) Stop() {
-	bsnet.connectEvtMgr.Stop()
 	bsnet.host.Network().StopNotify((*netNotifiee)(bsnet))
 }
 
@@ -425,7 +427,7 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 		p := s.Conn().RemotePeer()
 		ctx := context.Background()
 		log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())
-		bsnet.connectEvtMgr.OnMessage(s.Conn().RemotePeer())
+		bsnet.markPeerResponsive(s.Conn().RemotePeer())
 		atomic.AddUint64(&bsnet.stats.MessagesRecvd, 1)
 		for _, v := range bsnet.receivers {
 			v.ReceiveMessage(ctx, p, received)
@@ -444,6 +446,65 @@ func (bsnet *impl) Stats() Stats {
 	}
 }
 
+func (bsnet *impl) markPeerResponsive(p peer.ID) {
+	bsnet.peersLk.Lock()
+	state, ok := bsnet.peers[p]
+	if !ok {
+		state = &peerState{}
+		bsnet.peers[p] = state
+	}
+	// isAResponsiveWaiting let a potential markPeerUnresponsive concurrent
+	// know that it must not remove it from bsnet.peers.
+	state.isAResponsiveWaiting = true
+	bsnet.peersLk.Unlock()
+
+	state.lk.Lock()
+
+	bsnet.peersLk.Lock()
+	state.isAResponsiveWaiting = false
+	bsnet.peersLk.Unlock()
+
+	defer state.lk.Unlock()
+	if state.responsive {
+		return
+	}
+	state.responsive = true
+
+	for _, list := range bsnet.receivers {
+		list.PeerConnected(p)
+	}
+}
+
+func (bsnet *impl) markPeerUnresponsive(p peer.ID) {
+	bsnet.peersLk.Lock()
+	state, ok := bsnet.peers[p]
+	bsnet.peersLk.Unlock()
+	if !ok {
+		// we are not connected anyway
+		return
+	}
+
+	state.lk.Lock()
+	if !state.responsive {
+		state.lk.Unlock()
+		return
+	}
+	state.responsive = false
+
+	for _, list := range bsnet.receivers {
+		list.PeerDisconnected(p)
+	}
+
+	bsnet.peersLk.Lock()
+	state.lk.Unlock()
+	defer bsnet.peersLk.Unlock()
+	if state.isAResponsiveWaiting {
+		// someone is about to transition that back to connected so let them do their thing.
+		return
+	}
+	delete(bsnet.peers, p)
+}
+
 type netNotifiee impl
 
 func (nn *netNotifiee) impl() *impl {
@@ -456,15 +517,21 @@ func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
 		return
 	}
 
-	nn.impl().connectEvtMgr.Connected(v.RemotePeer())
+	// optimistically try to contact new peers
+	nn.impl().markPeerResponsive(v.RemotePeer())
 }
 func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
+	// ignore transient connections
+	if v.Stat().Transient {
+		return
+	}
 	// Only record a "disconnect" when we actually disconnect.
-	if n.Connectedness(v.RemotePeer()) == network.Connected {
+	p := v.RemotePeer()
+	if n.Connectedness(p) == network.Connected {
 		return
 	}
 
-	nn.impl().connectEvtMgr.Disconnected(v.RemotePeer())
+	nn.impl().markPeerUnresponsive(p)
 }
 func (nn *netNotifiee) OpenedStream(n network.Network, s network.Stream) {}
 func (nn *netNotifiee) ClosedStream(n network.Network, v network.Stream) {}
