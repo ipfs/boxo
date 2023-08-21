@@ -10,6 +10,7 @@ import (
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -135,8 +136,8 @@ func TestFindProvidersAsync(t *testing.T) {
 	}
 
 	expected := []peer.AddrInfo{
-		{ID: p1},
-		{ID: p2},
+		{ID: p1, Addrs: []multiaddr.Multiaddr{}},
+		{ID: p2, Addrs: []multiaddr.Multiaddr{}},
 	}
 
 	require.Equal(t, expected, actualAIs)

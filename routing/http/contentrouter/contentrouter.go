@@ -124,9 +124,9 @@ func readProviderResponses(iter iter.ResultIter[types.ProviderResponse], ch chan
 				continue
 			}
 
-			var addrs []multiaddr.Multiaddr
-			for _, a := range result.Addrs {
-				addrs = append(addrs, a.Multiaddr)
+			addrs := make([]multiaddr.Multiaddr, len(result.Addrs))
+			for i, a := range result.Addrs {
+				addrs[i] = a.Multiaddr
 			}
 
 			ch <- peer.AddrInfo{

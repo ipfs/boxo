@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -54,7 +55,7 @@ type client struct {
 	accepts string
 
 	peerID   peer.ID
-	addrs    []types.Multiaddr
+	addrs    func() ([]types.Multiaddr, error)
 	identity crypto.PrivKey
 
 	// called immeidately after signing a provide req
@@ -104,10 +105,37 @@ func WithUserAgent(ua string) Option {
 }
 
 func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
+	taddrs := make([]types.Multiaddr, len(addrs))
+	for i, v := range addrs {
+		taddrs[i] = types.Multiaddr{Multiaddr: v}
+	}
+
 	return func(c *client) {
 		c.peerID = peerID
-		for _, a := range addrs {
-			c.addrs = append(c.addrs, types.Multiaddr{Multiaddr: a})
+		c.addrs = func() ([]types.Multiaddr, error) {
+			return taddrs, nil
+		}
+	}
+}
+
+// WithDynamicProviderInfo is like [WithProviderInfo] but the addresses will be queried on each publish operation.
+// This is usefull for nodes with changing addresses, like P2P daemons behind NATs.
+// Note: due to API limitations can't trivially batch update previous records with new addresses, so you are still relient
+// on an consumers using a PeerRouter able to follow your new addresses, for example the IPFS DHT.
+func WithDynamicProviderInfo(peerID peer.ID, addrs func() ([]multiaddr.Multiaddr, error)) Option {
+	return func(c *client) {
+		c.peerID = peerID
+		c.addrs = func() ([]types.Multiaddr, error) {
+			addrs, err := addrs()
+			if err != nil {
+				return nil, err
+			}
+
+			taddrs := make([]types.Multiaddr, len(addrs))
+			for i, v := range addrs {
+				taddrs[i] = types.Multiaddr{Multiaddr: v}
+			}
+			return taddrs, nil
 		}
 	}
 }
@@ -120,6 +148,7 @@ func WithStreamResultsRequired() Option {
 
 // New creates a content routing API client.
 // The Provider and identity parameters are option. If they are nil, the `Provide` method will not function.
+// Consider using the more type-safe option [NewURL].
 func New(baseURL string, opts ...Option) (*client, error) {
 	client := &client{
 		baseURL:    baseURL,
@@ -138,6 +167,11 @@ func New(baseURL string, opts ...Option) (*client, error) {
 	}
 
 	return client, nil
+}
+
+// NewURL is a more type-safe version of [New], it takes in an [url.URL].
+func NewURL(baseURL url.URL, opts ...Option) (*client, error) {
+	return New(baseURL.String(), opts...)
 }
 
 // measuringIter measures the length of the iter and then publishes metrics about the whole req once the iter is closed.
@@ -251,6 +285,11 @@ func (c *client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 
 	now := c.clock.Now()
 
+	addrs, err := c.addrs()
+	if err != nil {
+		return 0, fmt.Errorf("failed to query our addresses: %w", err)
+	}
+
 	req := types.WriteBitswapProviderRecord{
 		Protocol: "transport-bitswap",
 		Schema:   types.SchemaBitswap,
@@ -259,10 +298,10 @@ func (c *client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 			AdvisoryTTL: &types.Duration{Duration: ttl},
 			Timestamp:   &types.Time{Time: now},
 			ID:          &c.peerID,
-			Addrs:       c.addrs,
+			Addrs:       addrs,
 		},
 	}
-	err := req.Sign(c.peerID, c.identity)
+	err = req.Sign(c.peerID, c.identity)
 	if err != nil {
 		return 0, err
 	}

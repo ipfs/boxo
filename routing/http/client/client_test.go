@@ -144,7 +144,7 @@ func drAddrsToAddrs(drmas []types.Multiaddr) (addrs []multiaddr.Multiaddr) {
 	return
 }
 
-func makeBSReadProviderResp() types.ReadBitswapProviderRecord {
+func makeBSReadProviderResp(t *testing.T) types.ReadBitswapProviderRecord {
 	peerID, addrs, _ := makeProviderAndIdentity()
 	return types.ReadBitswapProviderRecord{
 		Protocol: "transport-bitswap",
@@ -194,7 +194,7 @@ func (e *osErrContains) errContains(t *testing.T, err error) {
 }
 
 func TestClient_FindProviders(t *testing.T) {
-	bsReadProvResp := makeBSReadProviderResp()
+	bsReadProvResp := makeBSReadProviderResp(t)
 	bitswapProvs := []iter.Result[types.ProviderResponse]{
 		{Val: &bsReadProvResp},
 	}
@@ -412,11 +412,18 @@ func TestClient_Provide(t *testing.T) {
 				}
 			}
 
+			var addrs []types.Multiaddr
+			if f := client.addrs; f != nil {
+				var err error
+				addrs, err = client.addrs()
+				require.NoError(t, err)
+			}
+
 			expectedProvReq := &server.BitswapWriteProvideRequest{
 				Keys:        c.cids,
 				Timestamp:   clock.Now().Truncate(time.Millisecond),
 				AdvisoryTTL: c.ttl,
-				Addrs:       drAddrsToAddrs(client.addrs),
+				Addrs:       drAddrsToAddrs(addrs),
 				ID:          client.peerID,
 			}
 
@@ -441,4 +448,63 @@ func TestClient_Provide(t *testing.T) {
 			assert.Equal(t, c.expAdvisoryTTL, advisoryTTL)
 		})
 	}
+}
+
+func TestWithDynamicClient(t *testing.T) {
+	t.Parallel()
+
+	const ttl = time.Hour
+
+	const testUserAgent = "testUserAgent"
+	peerID, addrs, identity := makeProviderAndIdentity()
+	router := &mockContentRouter{}
+	recordingHandler := &recordingHandler{
+		Handler: server.Handler(router),
+		f: []func(*http.Request){
+			func(r *http.Request) {
+				assert.Equal(t, testUserAgent, r.Header.Get("User-Agent"))
+			},
+		},
+	}
+	srv := httptest.NewServer(recordingHandler)
+	t.Cleanup(srv.Close)
+	serverAddr := "http://" + srv.Listener.Addr().String()
+	recordingHTTPClient := &recordingHTTPClient{httpClient: defaultHTTPClient}
+	var rAddrs []multiaddr.Multiaddr
+	client, err := New(serverAddr,
+		WithDynamicProviderInfo(peerID, func() ([]multiaddr.Multiaddr, error) { return rAddrs, nil }),
+		WithIdentity(identity),
+		WithUserAgent(testUserAgent),
+		WithHTTPClient(recordingHTTPClient),
+	)
+	require.NoError(t, err)
+
+	c := makeCID()
+	rAddrs = addrs[:1]
+
+	clock := clock.NewMock()
+	clock.Set(time.Now())
+	client.clock = clock
+
+	expectedProvReq := &server.BitswapWriteProvideRequest{
+		Keys:        []cid.Cid{c},
+		Timestamp:   clock.Now().Truncate(time.Millisecond),
+		AdvisoryTTL: ttl,
+		Addrs:       rAddrs,
+		ID:          peerID,
+	}
+	router.On("ProvideBitswap", mock.Anything, expectedProvReq).Return(ttl, nil)
+
+	ctx := context.Background()
+	_, err = client.ProvideBitswap(ctx, []cid.Cid{c}, ttl)
+	require.NoError(t, err)
+
+	c = makeCID()
+	rAddrs = addrs[1:]
+
+	expectedProvReq.Keys[0] = c
+	expectedProvReq.Addrs = rAddrs
+
+	_, err = client.ProvideBitswap(ctx, []cid.Cid{c}, ttl)
+	require.NoError(t, err)
 }
