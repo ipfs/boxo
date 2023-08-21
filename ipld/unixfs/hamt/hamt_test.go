@@ -163,8 +163,6 @@ func TestDirBuilding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// printDag(ds, nd, 0)
-
 	k := nd.Cid()
 
 	if k.String() != "QmY89TkSEVHykWMHDmyejSWFj9CYNtvzw4UwnT9xbc4Zjc" {

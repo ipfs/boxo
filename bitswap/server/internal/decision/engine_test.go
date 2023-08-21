@@ -104,8 +104,7 @@ func newTestEngineWithSampling(ctx context.Context, idStr string, peerSampleInte
 	e := newEngineForTesting(ctx, bs, fpt, "localhost", 0, append(opts[:len(opts):len(opts)], WithScoreLedger(NewTestScoreLedger(peerSampleInterval, sampleCh, clock)), WithBlockstoreWorkerCount(4))...)
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 	return engineSet{
-		Peer: peer.ID(idStr),
-		// Strategy: New(true),
+		Peer:       peer.ID(idStr),
 		PeerTagger: fpt,
 		Blockstore: bs,
 		Engine:     e,
