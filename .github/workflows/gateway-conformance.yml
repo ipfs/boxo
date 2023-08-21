@@ -61,3 +61,9 @@ jobs:
         with:
           name: gateway-conformance.html
           path: output.html
+      - name: Upload JSON report
+        if: failure() || success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: gateway-conformance.json
+          path: output.json

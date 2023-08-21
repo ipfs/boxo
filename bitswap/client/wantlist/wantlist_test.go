@@ -24,7 +24,6 @@ func init() {
 		}
 		testcids = append(testcids, c)
 	}
-
 }
 
 type wli interface {
@@ -236,7 +235,6 @@ func TestSortEntries(t *testing.T) {
 		!entries[2].Cid.Equals(testcids[0]) {
 		t.Fatal("wrong order")
 	}
-
 }
 
 // Test adding and removing interleaved with checking entries to make sure we clear the cache.

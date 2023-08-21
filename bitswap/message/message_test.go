@@ -47,7 +47,6 @@ func TestNewMessageFromProto(t *testing.T) {
 }
 
 func TestAppendBlock(t *testing.T) {
-
 	strs := make([]string, 2)
 	strs = append(strs, "Celeritas")
 	strs = append(strs, "Incendia")
@@ -78,7 +77,6 @@ func TestWantlist(t *testing.T) {
 	for _, k := range exported {
 		present := false
 		for _, s := range keystrs {
-
 			if s.Equals(k.Cid) {
 				present = true
 			}
@@ -135,7 +133,6 @@ func TestToNetFromNetPreservesWantList(t *testing.T) {
 }
 
 func TestToAndFromNetMessage(t *testing.T) {
-
 	original := New(true)
 	original.AddBlock(blocks.NewBlock([]byte("W")))
 	original.AddBlock(blocks.NewBlock([]byte("E")))

@@ -68,7 +68,8 @@ type WantFunc func(context.Context, []cid.Cid)
 // blocks, a want function, and a close function, and returns a channel of
 // incoming blocks.
 func AsyncGetBlocks(ctx context.Context, sessctx context.Context, keys []cid.Cid, notif notifications.PubSub,
-	want WantFunc, cwants func([]cid.Cid)) (<-chan blocks.Block, error) {
+	want WantFunc, cwants func([]cid.Cid),
+) (<-chan blocks.Block, error) {
 	ctx, span := internal.StartSpan(ctx, "Getter.AsyncGetBlocks")
 	defer span.End()
 
@@ -99,8 +100,8 @@ func AsyncGetBlocks(ctx context.Context, sessctx context.Context, keys []cid.Cid
 // If the context is cancelled or the incoming channel closes, calls cfun with
 // any keys corresponding to blocks that were never received.
 func handleIncoming(ctx context.Context, sessctx context.Context, remaining *cid.Set,
-	in <-chan blocks.Block, out chan blocks.Block, cfun func([]cid.Cid)) {
-
+	in <-chan blocks.Block, out chan blocks.Block, cfun func([]cid.Cid),
+) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	// Clean up before exiting this function, and call the cancel function on

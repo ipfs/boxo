@@ -110,7 +110,6 @@ type clipReader struct {
 }
 
 func (s *clipReader) Read(buf []byte) (int, error) {
-
 	// clip the incoming buffer to produce smaller chunks
 	if len(buf) > s.size {
 		buf = buf[:s.size]

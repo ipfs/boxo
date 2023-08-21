@@ -44,9 +44,11 @@ type bitswap interface {
 	WantlistForPeer(p peer.ID) []cid.Cid
 }
 
-var _ exchange.SessionExchange = (*Bitswap)(nil)
-var _ bitswap = (*Bitswap)(nil)
-var HasBlockBufferSize = defaults.HasBlockBufferSize
+var (
+	_                  exchange.SessionExchange = (*Bitswap)(nil)
+	_                  bitswap                  = (*Bitswap)(nil)
+	HasBlockBufferSize                          = defaults.HasBlockBufferSize
+)
 
 type Bitswap struct {
 	*client.Client

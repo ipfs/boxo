@@ -30,10 +30,12 @@ var log = logging.Logger("bitswap_network")
 
 var connectTimeout = time.Second * 5
 
-var maxSendTimeout = 2 * time.Minute
-var minSendTimeout = 10 * time.Second
-var sendLatency = 2 * time.Second
-var minSendRate = (100 * 1000) / 8 // 100kbit/s
+var (
+	maxSendTimeout = 2 * time.Minute
+	minSendTimeout = 10 * time.Second
+	sendLatency    = 2 * time.Second
+	minSendRate    = (100 * 1000) / 8 // 100kbit/s
+)
 
 // NewFromIpfsHost returns a BitSwapNetwork supported by underlying IPFS host.
 func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) BitSwapNetwork {
@@ -284,7 +286,6 @@ func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *Messag
 		_, err := sender.Connect(ctx)
 		return err
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -320,8 +321,8 @@ func sendTimeout(size int) time.Duration {
 func (bsnet *impl) SendMessage(
 	ctx context.Context,
 	p peer.ID,
-	outgoing bsmsg.BitSwapMessage) error {
-
+	outgoing bsmsg.BitSwapMessage,
+) error {
 	tctx, cancel := context.WithTimeout(ctx, connectTimeout)
 	defer cancel()
 
@@ -357,7 +358,6 @@ func (bsnet *impl) Start(r ...Receiver) {
 	}
 	bsnet.host.Network().Notify((*netNotifiee)(bsnet))
 	bsnet.connectEvtMgr.Start()
-
 }
 
 func (bsnet *impl) Stop() {
@@ -458,6 +458,7 @@ func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
 
 	nn.impl().connectEvtMgr.Connected(v.RemotePeer())
 }
+
 func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
 	// Only record a "disconnect" when we actually disconnect.
 	if n.Connectedness(v.RemotePeer()) == network.Connected {

@@ -186,7 +186,6 @@ func TestRelativeSeek(t *testing.T) {
 		}
 		reader.Seek(-5, io.SeekCurrent) // seek 4 bytes but we read one byte every time so 5 bytes
 	}
-
 }
 
 func TestTypeFailures(t *testing.T) {
@@ -283,7 +282,6 @@ func TestWriteTo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 }
 
 func TestReaderSzie(t *testing.T) {

@@ -32,7 +32,8 @@ func TestHeaders(t *testing.T) {
 		{Val: &types.ReadBitswapProviderRecord{
 			Protocol: "transport-bitswap",
 			Schema:   types.SchemaBitswap,
-		}}},
+		}},
+	},
 	)
 
 	c := "baeabep4vu3ceru7nerjjbk37sxb7wmftteve4hcosmyolsbsiubw2vr6pqzj6mw7kv6tbn6nqkkldnklbjgm5tzbi4hkpkled4xlcr7xz4bq"
@@ -84,7 +85,8 @@ func TestResponse(t *testing.T) {
 				Schema:   types.SchemaBitswap,
 				ID:       &pid2,
 				Addrs:    []types.Multiaddr{},
-			}}},
+			}},
+		},
 		)
 
 		router := &mockContentRouter{}
@@ -261,6 +263,7 @@ func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limi
 	args := m.Called(ctx, key, limit)
 	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
 }
+
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(time.Duration), args.Error(1)

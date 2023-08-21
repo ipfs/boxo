@@ -52,7 +52,6 @@ func TestParseRabin(t *testing.T) {
 	if err != ErrSizeMax {
 		t.Fatalf("Expected 'ErrSizeMax', got: %#v", err)
 	}
-
 }
 
 func TestParseSize(t *testing.T) {

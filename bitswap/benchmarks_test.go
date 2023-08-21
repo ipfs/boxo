@@ -114,7 +114,7 @@ func BenchmarkFixedDelay(b *testing.B) {
 	}
 
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = os.WriteFile("tmp/benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/benchmark.json", out, 0o666)
 	printResults(benchmarkLog)
 }
 
@@ -182,28 +182,30 @@ func BenchmarkFetchFromOldBitswap(b *testing.B) {
 	}
 
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = os.WriteFile("tmp/benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/benchmark.json", out, 0o666)
 	printResults(benchmarkLog)
 }
 
-const datacenterSpeed = 5 * time.Millisecond
-const fastSpeed = 60 * time.Millisecond
-const mediumSpeed = 200 * time.Millisecond
-const slowSpeed = 800 * time.Millisecond
-const superSlowSpeed = 4000 * time.Millisecond
-const datacenterDistribution = 3 * time.Millisecond
-const distribution = 20 * time.Millisecond
-const datacenterBandwidth = 125000000.0
-const datacenterBandwidthDeviation = 3000000.0
-const fastBandwidth = 1250000.0
-const fastBandwidthDeviation = 300000.0
-const mediumBandwidth = 500000.0
-const mediumBandwidthDeviation = 80000.0
-const slowBandwidth = 100000.0
-const slowBandwidthDeviation = 16500.0
-const rootBlockSize = 800
-const stdBlockSize = 8000
-const largeBlockSize = int64(256 * 1024)
+const (
+	datacenterSpeed              = 5 * time.Millisecond
+	fastSpeed                    = 60 * time.Millisecond
+	mediumSpeed                  = 200 * time.Millisecond
+	slowSpeed                    = 800 * time.Millisecond
+	superSlowSpeed               = 4000 * time.Millisecond
+	datacenterDistribution       = 3 * time.Millisecond
+	distribution                 = 20 * time.Millisecond
+	datacenterBandwidth          = 125000000.0
+	datacenterBandwidthDeviation = 3000000.0
+	fastBandwidth                = 1250000.0
+	fastBandwidthDeviation       = 300000.0
+	mediumBandwidth              = 500000.0
+	mediumBandwidthDeviation     = 80000.0
+	slowBandwidth                = 100000.0
+	slowBandwidthDeviation       = 16500.0
+	rootBlockSize                = 800
+	stdBlockSize                 = 8000
+	largeBlockSize               = int64(256 * 1024)
+)
 
 func BenchmarkRealWorld(b *testing.B) {
 	benchmarkLog = nil
@@ -240,7 +242,7 @@ func BenchmarkRealWorld(b *testing.B) {
 		subtestDistributeAndFetchRateLimited(b, 300, 200, slowNetworkDelay, slowBandwidthGenerator, stdBlockSize, bstoreLatency, allToAll, batchFetchAll)
 	})
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = os.WriteFile("tmp/rw-benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/rw-benchmark.json", out, 0o666)
 	printResults(benchmarkLog)
 }
 
@@ -263,7 +265,7 @@ func BenchmarkDatacenter(b *testing.B) {
 		subtestDistributeAndFetchRateLimited(b, 3, 100, datacenterNetworkDelay, datacenterBandwidthGenerator, largeBlockSize, bstoreLatency, allToAll, unixfsFileFetch)
 	})
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = os.WriteFile("tmp/rb-benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/rb-benchmark.json", out, 0o666)
 	printResults(benchmarkLog)
 }
 
@@ -304,7 +306,7 @@ func BenchmarkDatacenterMultiLeechMultiSeed(b *testing.B) {
 	})
 
 	out, _ := json.MarshalIndent(benchmarkLog, "", "  ")
-	_ = os.WriteFile("tmp/rb-benchmark.json", out, 0666)
+	_ = os.WriteFile("tmp/rb-benchmark.json", out, 0o666)
 	printResults(benchmarkLog)
 }
 

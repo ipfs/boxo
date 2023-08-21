@@ -263,7 +263,6 @@ func TestLinkChecking(t *testing.T) {
 }
 
 func TestNode(t *testing.T) {
-
 	n1 := NodeWithData([]byte("beep"))
 	n2 := NodeWithData([]byte("boop"))
 	n3 := NodeWithData([]byte("beep boop"))
@@ -572,7 +571,6 @@ func TestFetchGraphWithDepthLimit(t *testing.T) {
 				return true
 			}
 			return false
-
 		}
 
 		err = WalkDepth(context.Background(), offlineDS.GetLinks, root.Cid(), visitF)
@@ -756,7 +754,6 @@ func TestGetRawNodes(t *testing.T) {
 }
 
 func TestProtoNodeResolve(t *testing.T) {
-
 	nd := new(ProtoNode)
 	nd.SetLinks([]*ipld.Link{{Name: "foo", Cid: someCid}})
 

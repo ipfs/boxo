@@ -12,8 +12,10 @@ import (
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
-var blockGenerator = blocksutil.NewBlockGenerator()
-var prioritySeq int32
+var (
+	blockGenerator = blocksutil.NewBlockGenerator()
+	prioritySeq    int32
+)
 
 // GenerateBlocksOfSize generates a series of blocks of the given byte size
 func GenerateBlocksOfSize(n int, size int64) []blocks.Block {

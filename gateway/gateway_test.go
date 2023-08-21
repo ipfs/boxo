@@ -392,7 +392,6 @@ func TestHeaders(t *testing.T) {
 			// Expect OPTIONS response to have implicit default Allow-Methods
 			// set by boxo/gateway library
 			assert.Equal(t, expectedACAM, res.Header[headerACAM])
-
 		}
 
 		cid := root.String()
@@ -763,7 +762,7 @@ func TestErrorBubblingFromBackend(t *testing.T) {
 		})
 	}
 
-	testError("404 Not Found from IPLD", &ipld.ErrNotFound{}, http.StatusNotFound)
+	testError("500 Not Found from IPLD", &ipld.ErrNotFound{}, http.StatusInternalServerError)
 	testError("404 Not Found from path resolver", resolver.ErrNoLink{}, http.StatusNotFound)
 	testError("502 Bad Gateway", ErrBadGateway, http.StatusBadGateway)
 	testError("504 Gateway Timeout", ErrGatewayTimeout, http.StatusGatewayTimeout)

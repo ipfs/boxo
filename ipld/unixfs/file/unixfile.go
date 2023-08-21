@@ -179,5 +179,7 @@ func NewUnixfsFile(ctx context.Context, dserv ipld.DAGService, nd ipld.Node) (fi
 	}, nil
 }
 
-var _ files.Directory = &ufsDirectory{}
-var _ files.File = &ufsFile{}
+var (
+	_ files.Directory = &ufsDirectory{}
+	_ files.File      = &ufsFile{}
+)

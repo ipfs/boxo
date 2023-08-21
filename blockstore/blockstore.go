@@ -268,7 +268,6 @@ func (bs *blockstore) DeleteBlock(ctx context.Context, k cid.Cid) error {
 //
 // AllKeysChan respects context.
 func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
-
 	// KeysOnly, because that would be _a lot_ of data.
 	q := dsq.Query{KeysOnly: true}
 	res, err := bs.datastore.Query(ctx, q)
