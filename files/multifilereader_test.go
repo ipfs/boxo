@@ -1,6 +1,7 @@
 package files
 
 import (
+	"bytes"
 	"io"
 	"mime/multipart"
 	"testing"
@@ -10,6 +11,10 @@ import (
 
 var text = "Some text! :)"
 
+func newBytesFileWithPath(abspath string, b []byte) File {
+	return &ReaderFile{abspath, bytesReaderCloser{bytes.NewReader(b)}, nil, int64(len(b))}
+}
+
 func makeMultiFileReader(t *testing.T, binaryFileName, rawAbsPath bool) (string, *MultiFileReader) {
 	var (
 		filename string
@@ -18,19 +23,19 @@ func makeMultiFileReader(t *testing.T, binaryFileName, rawAbsPath bool) (string,
 
 	if binaryFileName {
 		filename = "bad\x7fname.txt"
-		file = NewBytesFileWithPath("/my/path/boop/bad\x7fname.txt", []byte("bloop"))
+		file = newBytesFileWithPath("/my/path/boop/bad\x7fname.txt", []byte("bloop"))
 	} else {
 		filename = "résumé🥳.txt"
-		file = NewBytesFileWithPath("/my/path/boop/résumé🥳.txt", []byte("bloop"))
+		file = newBytesFileWithPath("/my/path/boop/résumé🥳.txt", []byte("bloop"))
 	}
 
 	sf := NewMapDirectory(map[string]Node{
-		"file.txt": NewBytesFileWithPath("/my/path/file.txt", []byte(text)),
+		"file.txt": newBytesFileWithPath("/my/path/file.txt", []byte(text)),
 		"boop": NewMapDirectory(map[string]Node{
-			"a.txt":  NewBytesFileWithPath("/my/path/boop/a.txt", []byte("bleep")),
+			"a.txt":  newBytesFileWithPath("/my/path/boop/a.txt", []byte("bleep")),
 			filename: file,
 		}),
-		"beep.txt": NewBytesFileWithPath("/my/path/beep.txt", []byte("beep")),
+		"beep.txt": newBytesFileWithPath("/my/path/beep.txt", []byte("beep")),
 	})
 
 	return filename, NewMultiFileReader(sf, true, rawAbsPath)
