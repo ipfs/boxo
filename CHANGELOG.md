@@ -31,9 +31,14 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-- Address a Bitswap findpeers / connect race condition that can prevent peer communication ([#435](https://github.com/ipfs/boxo/issues/435))
 - HTTP Gateway API: Not having a block will result in a 5xx error rather than 404
 - HTTP Gateway API: CAR requests will return 200s and a CAR file proving a requested path does not exist rather than returning an error
+- 🛠 `MultiFileReader` has been updated with a new header with the encoded file name instead of the plain filename, due to a regression found in  [`net/textproto`](https://github.com/golang/go/issues/60674). This only affects files with binary characters in their name. By keeping the old header, we maximize backwards compatibility.
+  |            | New Client | Old Client  |
+  |------------|------------|-------------|
+  | New Server | ✅         | 🟡*         |
+  | Old Server | ✅         | ✅          |
+   *Old clients can only send Unicode file paths to the server.
 
 ### Security
 
