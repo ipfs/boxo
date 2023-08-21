@@ -5,14 +5,17 @@ package unixfs_pb
 
 import (
 	fmt "fmt"
-	proto "github.com/gogo/protobuf/proto"
 	math "math"
+
+	proto "github.com/gogo/protobuf/proto"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
-var _ = proto.Marshal
-var _ = fmt.Errorf
-var _ = math.Inf
+var (
+	_ = proto.Marshal
+	_ = fmt.Errorf
+	_ = math.Inf
+)
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the proto package it is being compiled against.
@@ -90,18 +93,23 @@ func (*Data) ProtoMessage()    {}
 func (*Data) Descriptor() ([]byte, []int) {
 	return fileDescriptor_e2fd76cc44dfc7c3, []int{0}
 }
+
 func (m *Data) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Data.Unmarshal(m, b)
 }
+
 func (m *Data) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	return xxx_messageInfo_Data.Marshal(b, m, deterministic)
 }
+
 func (m *Data) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_Data.Merge(m, src)
 }
+
 func (m *Data) XXX_Size() int {
 	return xxx_messageInfo_Data.Size(m)
 }
+
 func (m *Data) XXX_DiscardUnknown() {
 	xxx_messageInfo_Data.DiscardUnknown(m)
 }
@@ -163,18 +171,23 @@ func (*Metadata) ProtoMessage()    {}
 func (*Metadata) Descriptor() ([]byte, []int) {
 	return fileDescriptor_e2fd76cc44dfc7c3, []int{1}
 }
+
 func (m *Metadata) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Metadata.Unmarshal(m, b)
 }
+
 func (m *Metadata) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	return xxx_messageInfo_Metadata.Marshal(b, m, deterministic)
 }
+
 func (m *Metadata) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_Metadata.Merge(m, src)
 }
+
 func (m *Metadata) XXX_Size() int {
 	return xxx_messageInfo_Metadata.Size(m)
 }
+
 func (m *Metadata) XXX_DiscardUnknown() {
 	xxx_messageInfo_Metadata.DiscardUnknown(m)
 }

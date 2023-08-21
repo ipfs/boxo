@@ -27,10 +27,12 @@ func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) (iter.Resul
 	args := m.Called(ctx, key)
 	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
 }
+
 func (m *mockClient) Ready(ctx context.Context) (bool, error) {
 	args := m.Called(ctx)
 	return args.Bool(0), args.Error(1)
 }
+
 func makeCID() cid.Cid {
 	buf := make([]byte, 63)
 	_, err := rand.Read(buf)
@@ -78,7 +80,6 @@ func TestProvide(t *testing.T) {
 			if c.expNotProvided {
 				client.AssertNumberOfCalls(t, "ProvideBitswap", 0)
 			}
-
 		})
 	}
 }

@@ -16,6 +16,7 @@ type gauge struct {
 func (g *gauge) Inc() {
 	g.count++
 }
+
 func (g *gauge) Dec() {
 	g.count--
 }
@@ -40,13 +41,16 @@ func (mpq *mockPQ) Shutdown() {}
 func (mpq *mockPQ) AddBroadcastWantHaves(whs []cid.Cid) {
 	mpq.bcst = append(mpq.bcst, whs...)
 }
+
 func (mpq *mockPQ) AddWants(wbs []cid.Cid, whs []cid.Cid) {
 	mpq.wbs = append(mpq.wbs, wbs...)
 	mpq.whs = append(mpq.whs, whs...)
 }
+
 func (mpq *mockPQ) AddCancels(cs []cid.Cid) {
 	mpq.cancels = append(mpq.cancels, cs...)
 }
+
 func (mpq *mockPQ) ResponseReceived(ks []cid.Cid) {
 }
 

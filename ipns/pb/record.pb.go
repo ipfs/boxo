@@ -7,10 +7,11 @@
 package pb
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -226,12 +227,15 @@ func file_record_proto_rawDescGZIP() []byte {
 	return file_record_proto_rawDescData
 }
 
-var file_record_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_record_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_record_proto_goTypes = []interface{}{
-	(IpnsRecord_ValidityType)(0), // 0: github.com.boxo.ipns.pb.IpnsRecord.ValidityType
-	(*IpnsRecord)(nil),           // 1: github.com.boxo.ipns.pb.IpnsRecord
-}
+var (
+	file_record_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+	file_record_proto_msgTypes  = make([]protoimpl.MessageInfo, 1)
+	file_record_proto_goTypes   = []interface{}{
+		(IpnsRecord_ValidityType)(0), // 0: github.com.boxo.ipns.pb.IpnsRecord.ValidityType
+		(*IpnsRecord)(nil),           // 1: github.com.boxo.ipns.pb.IpnsRecord
+	}
+)
+
 var file_record_proto_depIdxs = []int32{
 	0, // 0: github.com.boxo.ipns.pb.IpnsRecord.validityType:type_name -> github.com.boxo.ipns.pb.IpnsRecord.ValidityType
 	1, // [1:1] is the sub-list for method output_type

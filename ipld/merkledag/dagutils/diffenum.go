@@ -72,7 +72,7 @@ func getLinkDiff(a, b ipld.Node) []diffpair {
 		inb[l.Cid.KeyString()] = l
 	}
 	for _, l := range a.Links() {
-		var key = l.Cid.KeyString()
+		key := l.Cid.KeyString()
 		ina[key] = l
 		if inb[key] == nil {
 			aonly = append(aonly, l.Cid)

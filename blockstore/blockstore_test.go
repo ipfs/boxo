@@ -229,7 +229,7 @@ func TestAllKeysRespectsContext(t *testing.T) {
 	}
 
 	var results dsq.Results
-	var resultsmu = make(chan struct{})
+	resultsmu := make(chan struct{})
 	resultChan := make(chan dsq.Result)
 	d.SetFunc(func(q dsq.Query) (dsq.Results, error) {
 		results = dsq.ResultsWithChan(q, resultChan)
@@ -265,7 +265,6 @@ func TestAllKeysRespectsContext(t *testing.T) {
 		}
 		t.Error(err)
 	}
-
 }
 
 func expectMatches(t *testing.T, expect, actual []cid.Cid) {
@@ -328,6 +327,7 @@ func (c *queryTestDS) Sync(ctx context.Context, key ds.Key) error {
 func (c *queryTestDS) Batch(_ context.Context) (ds.Batch, error) {
 	return ds.NewBasicBatch(c), nil
 }
+
 func (c *queryTestDS) Close() error {
 	return nil
 }

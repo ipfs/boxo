@@ -67,8 +67,10 @@ type change struct {
 	availability peerAvailability
 }
 
-type onSendFn func(to peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid)
-type onPeersExhaustedFn func([]cid.Cid)
+type (
+	onSendFn           func(to peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid)
+	onPeersExhaustedFn func([]cid.Cid)
+)
 
 // sessionWantSender is responsible for sending want-have and want-block to
 // peers. For each want, it sends a single optimistic want-block request to
@@ -111,8 +113,8 @@ type sessionWantSender struct {
 }
 
 func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager, canceller SessionWantsCanceller,
-	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn) sessionWantSender {
-
+	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn,
+) sessionWantSender {
 	ctx, cancel := context.WithCancel(context.Background())
 	sws := sessionWantSender{
 		ctx:                      ctx,

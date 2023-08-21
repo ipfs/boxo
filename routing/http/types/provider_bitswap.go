@@ -162,8 +162,10 @@ func (wbprr *WriteBitswapProviderRecordResponse) GetSchema() string {
 	return wbprr.Schema
 }
 
-var _ ReadProviderRecord = &ReadBitswapProviderRecord{}
-var _ ProviderResponse = &ReadBitswapProviderRecord{}
+var (
+	_ ReadProviderRecord = &ReadBitswapProviderRecord{}
+	_ ProviderResponse   = &ReadBitswapProviderRecord{}
+)
 
 // ReadBitswapProviderRecord is a provider result with parameters for bitswap providers
 type ReadBitswapProviderRecord struct {

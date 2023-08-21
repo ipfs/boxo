@@ -35,8 +35,10 @@ const (
 
 var logger = logging.Logger("service/server/delegatedrouting")
 
-const ProvidePath = "/routing/v1/providers/"
-const FindProvidersPath = "/routing/v1/providers/{cid}"
+const (
+	ProvidePath       = "/routing/v1/providers/"
+	FindProvidersPath = "/routing/v1/providers/{cid}"
+)
 
 type FindProvidersAsyncResponse struct {
 	ProviderResponse types.ProviderResponse
@@ -139,7 +141,6 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 			keys := make([]cid.Cid, len(v.Payload.Keys))
 			for i, k := range v.Payload.Keys {
 				keys[i] = k.Cid
-
 			}
 			addrs := make([]multiaddr.Multiaddr, len(v.Payload.Addrs))
 			for i, a := range v.Payload.Addrs {

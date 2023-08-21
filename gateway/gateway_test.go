@@ -392,7 +392,6 @@ func TestHeaders(t *testing.T) {
 			// Expect OPTIONS response to have implicit default Allow-Methods
 			// set by boxo/gateway library
 			assert.Equal(t, expectedACAM, res.Header[headerACAM])
-
 		}
 
 		cid := root.String()

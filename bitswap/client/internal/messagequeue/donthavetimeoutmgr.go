@@ -107,8 +107,8 @@ func newDontHaveTimeoutMgrWithParams(
 	messageLatencyMultiplier int,
 	maxExpectedWantProcessTime time.Duration,
 	clock clock.Clock,
-	timeoutsTriggered chan struct{}) *dontHaveTimeoutMgr {
-
+	timeoutsTriggered chan struct{},
+) *dontHaveTimeoutMgr {
 	ctx, shutdown := context.WithCancel(context.Background())
 	mqp := &dontHaveTimeoutMgr{
 		clock:                      clock,
@@ -222,7 +222,6 @@ func (dhtm *dontHaveTimeoutMgr) measurePingLatency() {
 // checkForTimeouts checks pending wants to see if any are over the timeout.
 // Note: this function should only be called within the lock.
 func (dhtm *dontHaveTimeoutMgr) checkForTimeouts() {
-
 	if len(dhtm.wantQueue) == 0 {
 		return
 	}

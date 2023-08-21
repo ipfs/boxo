@@ -34,13 +34,14 @@ func (sw *sentWants) add(wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 			sw.wantHaves.Add(c)
 		}
 	}
-
 }
+
 func (sw *sentWants) wantHavesKeys() []cid.Cid {
 	sw.Lock()
 	defer sw.Unlock()
 	return sw.wantHaves.Keys()
 }
+
 func (sw *sentWants) wantBlocksKeys() []cid.Cid {
 	sw.Lock()
 	defer sw.Unlock()

@@ -132,6 +132,7 @@ func TestRecurivePathResolution(t *testing.T) {
 			p.String(), rCid.String(), cKey.String()))
 	}
 }
+
 func TestResolveToLastNode_ErrNoLink(t *testing.T) {
 	ctx := context.Background()
 	bsrv := dagmock.Bserv()

@@ -3,8 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
-	"github.com/ipfs/go-cid"
 	"testing"
+
+	"github.com/ipfs/go-cid"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 )

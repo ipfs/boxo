@@ -63,7 +63,6 @@ func (t *traversal) callFunc(next State) error {
 //
 // the error handling is a little complicated.
 func (t *traversal) getNode(link *ipld.Link) (ipld.Node, error) {
-
 	getNode := func(l *ipld.Link) (ipld.Node, error) {
 		next, err := l.GetNode(context.TODO(), t.opts.DAG)
 		if err != nil {
@@ -164,7 +163,6 @@ func dfsDescend(df dfsFunc, curr State, t *traversal) error {
 }
 
 func bfsTraverse(root State, t *traversal) error {
-
 	if skip, err := t.shouldSkip(root.Node); skip || err != nil {
 		return err
 	}
