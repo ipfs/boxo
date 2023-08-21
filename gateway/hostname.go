@@ -201,7 +201,6 @@ func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.H
 
 		// else, treat it as an old school gateway, I guess.
 		next.ServeHTTP(w, r)
-
 	})
 }
 

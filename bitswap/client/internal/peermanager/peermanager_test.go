@@ -30,12 +30,15 @@ func (fp *mockPeerQueue) Shutdown() {}
 func (fp *mockPeerQueue) AddBroadcastWantHaves(whs []cid.Cid) {
 	fp.msgs <- msg{fp.p, nil, whs, nil}
 }
+
 func (fp *mockPeerQueue) AddWants(wbs []cid.Cid, whs []cid.Cid) {
 	fp.msgs <- msg{fp.p, wbs, whs, nil}
 }
+
 func (fp *mockPeerQueue) AddCancels(cs []cid.Cid) {
 	fp.msgs <- msg{fp.p, nil, nil, cs}
 }
+
 func (fp *mockPeerQueue) ResponseReceived(ks []cid.Cid) {
 }
 
@@ -271,6 +274,7 @@ func TestSendCancels(t *testing.T) {
 func (s *sess) ID() uint64 {
 	return s.id
 }
+
 func (s *sess) SignalAvailability(p peer.ID, isAvailable bool) {
 	s.available[p] = isAvailable
 }
@@ -332,8 +336,7 @@ func TestSessionRegistration(t *testing.T) {
 	}
 }
 
-type benchPeerQueue struct {
-}
+type benchPeerQueue struct{}
 
 func (*benchPeerQueue) Startup()  {}
 func (*benchPeerQueue) Shutdown() {}

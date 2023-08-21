@@ -213,7 +213,6 @@ func setupRoot(ctx context.Context, t testing.TB) (ipld.DAGService, *Root) {
 		fmt.Println("PUBLISHED: ", c)
 		return nil
 	})
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -644,7 +643,6 @@ func TestMfsDirListNames(t *testing.T) {
 	}
 
 	list, err := rootdir.ListNames(ctx)
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1488,7 +1486,6 @@ func getFileHandle(r *Root, path string, create bool, builder cid.Builder) (*Fil
 }
 
 func FuzzMkdirAndWriteConcurrently(f *testing.F) {
-
 	testCases := []struct {
 		flush     bool
 		mkparents bool
@@ -1567,5 +1564,4 @@ func FuzzMkdirAndWriteConcurrently(f *testing.F) {
 			t.Logf("error writting to file from filepath %s: %s", filepath, err)
 		}
 	})
-
 }

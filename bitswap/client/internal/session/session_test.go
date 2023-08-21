@@ -170,7 +170,6 @@ func TestSessionGetBlocks(t *testing.T) {
 	}
 
 	_, err := session.GetBlocks(ctx, cids)
-
 	if err != nil {
 		t.Fatal("error getting blocks")
 	}
@@ -344,7 +343,6 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 		cids = append(cids, block.Cid())
 	}
 	_, err := session.GetBlocks(ctx, cids)
-
 	if err != nil {
 		t.Fatal("error getting blocks")
 	}

@@ -816,5 +816,7 @@ func blockOpener(ctx context.Context, ng format.NodeGetter) ipld.BlockReadOpener
 	}
 }
 
-var _ fetcher.Fetcher = (*nodeGetterFetcherSingleUseFactory)(nil)
-var _ fetcher.Factory = (*nodeGetterFetcherSingleUseFactory)(nil)
+var (
+	_ fetcher.Fetcher = (*nodeGetterFetcherSingleUseFactory)(nil)
+	_ fetcher.Factory = (*nodeGetterFetcherSingleUseFactory)(nil)
+)

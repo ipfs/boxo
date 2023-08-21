@@ -132,7 +132,8 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		notif notifications.PubSub,
 		provSearchDelay time.Duration,
 		rebroadcastDelay delay.D,
-		self peer.ID) bssm.Session {
+		self peer.ID,
+	) bssm.Session {
 		return bssession.New(sessctx, sessmgr, id, spm, pqm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {

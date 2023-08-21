@@ -31,6 +31,7 @@ func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limi
 	args := m.Called(ctx, key, limit)
 	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
 }
+
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.BitswapWriteProvideRequest) (time.Duration, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(time.Duration), args.Error(1)

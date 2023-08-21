@@ -15,9 +15,11 @@ type idstore struct {
 	viewer Viewer
 }
 
-var _ Blockstore = (*idstore)(nil)
-var _ Viewer = (*idstore)(nil)
-var _ io.Closer = (*idstore)(nil)
+var (
+	_ Blockstore = (*idstore)(nil)
+	_ Viewer     = (*idstore)(nil)
+	_ io.Closer  = (*idstore)(nil)
+)
 
 func NewIdStore(bs Blockstore) Blockstore {
 	ids := &idstore{bs: bs}

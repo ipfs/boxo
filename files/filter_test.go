@@ -40,7 +40,7 @@ func TestFileFilter(t *testing.T) {
 	}
 	ignoreFilePath := filepath.Join(tmppath, "ignoreFile")
 	ignoreFileContents := []byte("a.txt")
-	if err := os.WriteFile(ignoreFilePath, ignoreFileContents, 0666); err != nil {
+	if err := os.WriteFile(ignoreFilePath, ignoreFileContents, 0o666); err != nil {
 		t.Fatal(err)
 	}
 	filterWithIgnoreFile, err := NewFilter(ignoreFilePath, nil, false)

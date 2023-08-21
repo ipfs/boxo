@@ -140,7 +140,6 @@ func TestKeystoreBasics(t *testing.T) {
 
 func TestInvalidKeyFiles(t *testing.T) {
 	tdir, err := os.MkdirTemp("", "keystore-test")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,12 +163,12 @@ func TestInvalidKeyFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = os.WriteFile(filepath.Join(ks.dir, encodedName), bytes, 0644)
+	err = os.WriteFile(filepath.Join(ks.dir, encodedName), bytes, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = os.WriteFile(filepath.Join(ks.dir, "z.invalid"), bytes, 0644)
+	err = os.WriteFile(filepath.Join(ks.dir, "z.invalid"), bytes, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -93,5 +93,7 @@ func (f *SliceFile) Size() (int64, error) {
 	return size, nil
 }
 
-var _ Directory = &SliceFile{}
-var _ DirEntry = fileEntry{}
+var (
+	_ Directory = &SliceFile{}
+	_ DirEntry  = fileEntry{}
+)

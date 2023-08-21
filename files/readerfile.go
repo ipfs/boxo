@@ -88,5 +88,7 @@ func (f *ReaderFile) Seek(offset int64, whence int) (int64, error) {
 	return 0, ErrNotSupported
 }
 
-var _ File = &ReaderFile{}
-var _ FileInfo = &ReaderFile{}
+var (
+	_ File     = &ReaderFile{}
+	_ FileInfo = &ReaderFile{}
+)

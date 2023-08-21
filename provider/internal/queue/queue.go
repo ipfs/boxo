@@ -130,7 +130,6 @@ func (q *Queue) worker() {
 			}
 		case dequeue <- c:
 			err := q.ds.Delete(q.ctx, k)
-
 			if err != nil {
 				log.Errorf("Failed to delete queued cid %s with key %s: %s", c, k, err)
 				continue

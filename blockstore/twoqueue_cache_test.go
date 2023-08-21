@@ -46,6 +46,7 @@ func trap(message string, cd *callbackDatastore, t *testing.T) {
 		t.Fatal(message)
 	})
 }
+
 func untrap(cd *callbackDatastore) {
 	cd.SetFunc(func() {})
 }
@@ -317,7 +318,7 @@ func BenchmarkTwoQueueCacheConcurrentOps(b *testing.B) {
 
 	// We always mix just two operations at a time.
 	const numOps = 2
-	var testOps = []struct {
+	testOps := []struct {
 		name string
 		ops  [numOps]func(*tqcache, blocks.Block)
 	}{
@@ -393,7 +394,6 @@ func BenchmarkTwoQueueCacheConcurrentOps(b *testing.B) {
 					b.Fatalf("op %d ran %fx as many times as %d", maxIdx, ratio, minIdx)
 				}
 			}
-
 		})
 	}
 }

@@ -61,6 +61,7 @@ func (fp *fakeDontHaveTimeoutMgr) AddPending(ks []cid.Cid) {
 	}
 	fp.ks = s.Keys()
 }
+
 func (fp *fakeDontHaveTimeoutMgr) CancelPending(ks []cid.Cid) {
 	fp.lk.Lock()
 	defer fp.lk.Unlock()
@@ -74,18 +75,21 @@ func (fp *fakeDontHaveTimeoutMgr) CancelPending(ks []cid.Cid) {
 	}
 	fp.ks = s.Keys()
 }
+
 func (fp *fakeDontHaveTimeoutMgr) UpdateMessageLatency(elapsed time.Duration) {
 	fp.lk.Lock()
 	defer fp.lk.Unlock()
 
 	fp.latencyUpds = append(fp.latencyUpds, elapsed)
 }
+
 func (fp *fakeDontHaveTimeoutMgr) latencyUpdates() []time.Duration {
 	fp.lk.Lock()
 	defer fp.lk.Unlock()
 
 	return fp.latencyUpds
 }
+
 func (fp *fakeDontHaveTimeoutMgr) pendingCount() int {
 	fp.lk.Lock()
 	defer fp.lk.Unlock()
@@ -101,8 +105,8 @@ type fakeMessageSender struct {
 }
 
 func newFakeMessageSender(reset chan<- struct{},
-	messagesSent chan<- []bsmsg.Entry, supportsHave bool) *fakeMessageSender {
-
+	messagesSent chan<- []bsmsg.Entry, supportsHave bool,
+) *fakeMessageSender {
 	return &fakeMessageSender{
 		reset:        reset,
 		messagesSent: messagesSent,
@@ -126,7 +130,8 @@ func mockTimeoutCb(peer.ID, []cid.Cid) {}
 func collectMessages(ctx context.Context,
 	t *testing.T,
 	messagesSent <-chan []bsmsg.Entry,
-	timeout time.Duration) [][]bsmsg.Entry {
+	timeout time.Duration,
+) [][]bsmsg.Entry {
 	var messagesReceived [][]bsmsg.Entry
 	timeoutctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

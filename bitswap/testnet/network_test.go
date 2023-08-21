@@ -31,8 +31,8 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 	responder.Start(lambda(func(
 		ctx context.Context,
 		fromWaiter peer.ID,
-		msgFromWaiter bsmsg.BitSwapMessage) {
-
+		msgFromWaiter bsmsg.BitSwapMessage,
+	) {
 		msgToWaiter := bsmsg.New(true)
 		msgToWaiter.AddBlock(blocks.NewBlock([]byte(expectedStr)))
 		err := waiter.SendMessage(ctx, fromWaiter, msgToWaiter)
@@ -45,8 +45,8 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 	waiter.Start(lambda(func(
 		ctx context.Context,
 		fromResponder peer.ID,
-		msgFromResponder bsmsg.BitSwapMessage) {
-
+		msgFromResponder bsmsg.BitSwapMessage,
+	) {
 		// TODO assert that this came from the correct peer and that the message contents are as expected
 		ok := false
 		for _, b := range msgFromResponder.Blocks() {
@@ -88,7 +88,8 @@ type lambdaImpl struct {
 }
 
 func (lam *lambdaImpl) ReceiveMessage(ctx context.Context,
-	p peer.ID, incoming bsmsg.BitSwapMessage) {
+	p peer.ID, incoming bsmsg.BitSwapMessage,
+) {
 	lam.f(ctx, p, incoming)
 }
 
@@ -99,6 +100,7 @@ func (lam *lambdaImpl) ReceiveError(err error) {
 func (lam *lambdaImpl) PeerConnected(p peer.ID) {
 	// TODO
 }
+
 func (lam *lambdaImpl) PeerDisconnected(peer.ID) {
 	// TODO
 }

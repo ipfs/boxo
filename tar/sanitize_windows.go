@@ -9,7 +9,7 @@ import (
 // https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx
 var reservedNames = [...]string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"}
 
-const reservedCharsStr = `[<>:"\|?*]` + "\x00" //NOTE: `/` is not included as it is our standard path separator
+const reservedCharsStr = `[<>:"\|?*]` + "\x00" // NOTE: `/` is not included as it is our standard path separator
 
 func isNullDevice(path string) bool {
 	// This is a case insensitive comparison to NUL
@@ -30,7 +30,7 @@ func isNullDevice(path string) bool {
 
 // validatePathComponent returns an error if the given path component is not allowed on the platform
 func validatePathComponent(c string) error {
-	//MSDN: Do not end a file or directory name with a space or a period
+	// MSDN: Do not end a file or directory name with a space or a period
 	if strings.HasSuffix(c, ".") {
 		return fmt.Errorf("invalid platform path: path components cannot end with '.' : %q", c)
 	}

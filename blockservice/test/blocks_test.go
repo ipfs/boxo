@@ -65,7 +65,7 @@ func makeObjects(n int) []blocks.Block {
 }
 
 func TestGetBlocksSequential(t *testing.T) {
-	var servs = Mocks(4)
+	servs := Mocks(4)
 	for _, s := range servs {
 		defer s.Close()
 	}

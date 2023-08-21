@@ -91,8 +91,10 @@ type Ready interface {
 // BatchProvidingSystem instances
 type Option func(system *reprovider) error
 
-var lastReprovideKey = datastore.NewKey("/reprovide/lastreprovide")
-var DefaultKeyPrefix = datastore.NewKey("/provider")
+var (
+	lastReprovideKey = datastore.NewKey("/reprovide/lastreprovide")
+	DefaultKeyPrefix = datastore.NewKey("/provider")
+)
 
 // New creates a new [System]. By default it is offline, that means it will
 // enqueue tasks in ds.

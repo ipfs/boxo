@@ -77,7 +77,7 @@ func FolderPBData() []byte {
 
 	data, err := proto.Marshal(pbfile)
 	if err != nil {
-		//this really shouldnt happen, i promise
+		// this really shouldnt happen, i promise
 		panic(err)
 	}
 	return data
@@ -174,7 +174,6 @@ func size(pbdata *pb.Data) (uint64, error) {
 // to guarantee that the required (`Type` and `Filesize`) fields in the `format`
 // structure are initialized before marshaling (in `GetBytes()`).
 type FSNode struct {
-
 	// UnixFS format defined as a protocol buffers message.
 	format pb.Data
 }

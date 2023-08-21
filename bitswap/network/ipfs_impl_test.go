@@ -47,7 +47,8 @@ func newReceiver() *receiver {
 func (r *receiver) ReceiveMessage(
 	ctx context.Context,
 	sender peer.ID,
-	incoming bsmsg.BitSwapMessage) {
+	incoming bsmsg.BitSwapMessage,
+) {
 	r.lastSender = sender
 	r.lastMessage = incoming
 	select {

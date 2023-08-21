@@ -85,5 +85,7 @@ func (wf *WebFile) Stat() os.FileInfo {
 	return nil
 }
 
-var _ File = &WebFile{}
-var _ FileInfo = &WebFile{}
+var (
+	_ File     = &WebFile{}
+	_ FileInfo = &WebFile{}
+)

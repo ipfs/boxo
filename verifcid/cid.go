@@ -7,12 +7,16 @@ import (
 	mh "github.com/multiformats/go-multihash"
 )
 
-var ErrPossiblyInsecureHashFunction = fmt.Errorf("potentially insecure hash functions not allowed")
-var ErrBelowMinimumHashLength = fmt.Errorf("hashes must be at least %d bytes long", minimumHashLength)
-var ErrAboveMaximumHashLength = fmt.Errorf("hashes must be at most %d bytes long", maximumHashLength)
+var (
+	ErrPossiblyInsecureHashFunction = fmt.Errorf("potentially insecure hash functions not allowed")
+	ErrBelowMinimumHashLength       = fmt.Errorf("hashes must be at least %d bytes long", minimumHashLength)
+	ErrAboveMaximumHashLength       = fmt.Errorf("hashes must be at most %d bytes long", maximumHashLength)
+)
 
-const minimumHashLength = 20
-const maximumHashLength = 128
+const (
+	minimumHashLength = 20
+	maximumHashLength = 128
+)
 
 // ValidateCid validates multihash allowance behind given CID.
 func ValidateCid(allowlist Allowlist, c cid.Cid) error {
