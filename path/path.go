@@ -111,13 +111,13 @@ type immutablePath struct {
 
 func NewImmutablePath(p Path) (ImmutablePath, error) {
 	if p.Namespace().Mutable() {
-		return nil, fmt.Errorf("path was expected to be immutable: %s", p.String())
+		return nil, ErrInvalidPath{err: ErrExpectedImmutable, path: p.String()}
 	}
 
 	segments := p.Segments()
 	cid, err := cid.Decode(segments[1])
 	if err != nil {
-		return nil, &ErrInvalidPath{error: fmt.Errorf("invalid CID: %w", err), path: p.String()}
+		return nil, &ErrInvalidPath{err: err, path: p.String()}
 	}
 
 	return immutablePath{path: p, cid: cid}, nil
@@ -149,7 +149,7 @@ func (ip immutablePath) Remainder() string {
 
 // NewIPFSPath returns a new "/ipfs" path with the provided CID.
 func NewIPFSPath(cid cid.Cid) ImmutablePath {
-	return &immutablePath{
+	return immutablePath{
 		path: path{
 			str:       fmt.Sprintf("/%s/%s", IPFSNamespace, cid.String()),
 			namespace: IPFSNamespace,
@@ -160,7 +160,7 @@ func NewIPFSPath(cid cid.Cid) ImmutablePath {
 
 // NewIPLDPath returns a new "/ipld" path with the provided CID.
 func NewIPLDPath(cid cid.Cid) ImmutablePath {
-	return &immutablePath{
+	return immutablePath{
 		path: path{
 			str:       fmt.Sprintf("/%s/%s", IPLDNamespace, cid.String()),
 			namespace: IPLDNamespace,
@@ -169,10 +169,10 @@ func NewIPLDPath(cid cid.Cid) ImmutablePath {
 	}
 }
 
-// NewPath takes the given string and returns a well-forme and sanitized [Path].
+// NewPath takes the given string and returns a well-formed and sanitized [Path].
 // The given string is cleaned through [gopath.Clean], but preserving the final
 // trailing slash. This function returns an error when the given string is not
-// a valid path.
+// a valid content path.
 func NewPath(str string) (Path, error) {
 	cleaned := gopath.Clean(str)
 	components := strings.Split(cleaned, "/")
@@ -186,18 +186,18 @@ func NewPath(str string) (Path, error) {
 	// components: [" " "{namespace}" "{element}"]. The first component must therefore
 	// be empty.
 	if len(components) < 3 || components[0] != "" {
-		return nil, &ErrInvalidPath{error: fmt.Errorf("not enough path components"), path: str}
+		return nil, &ErrInvalidPath{err: ErrInsufficientComponents, path: str}
 	}
 
 	switch components[1] {
 	case "ipfs", "ipld":
 		if components[2] == "" {
-			return nil, &ErrInvalidPath{error: fmt.Errorf("not enough path components"), path: str}
+			return nil, &ErrInvalidPath{err: ErrInsufficientComponents, path: str}
 		}
 
 		cid, err := cid.Decode(components[2])
 		if err != nil {
-			return nil, &ErrInvalidPath{error: fmt.Errorf("invalid CID: %w", err), path: str}
+			return nil, &ErrInvalidPath{err: err, path: str}
 		}
 
 		ns := IPFSNamespace
@@ -214,7 +214,7 @@ func NewPath(str string) (Path, error) {
 		}, nil
 	case "ipns":
 		if components[2] == "" {
-			return nil, &ErrInvalidPath{error: fmt.Errorf("not enough path components"), path: str}
+			return nil, &ErrInvalidPath{err: ErrInsufficientComponents, path: str}
 		}
 
 		return path{
@@ -222,7 +222,7 @@ func NewPath(str string) (Path, error) {
 			namespace: IPNSNamespace,
 		}, nil
 	default:
-		return nil, &ErrInvalidPath{error: fmt.Errorf("unknown namespace %q", components[1]), path: str}
+		return nil, &ErrInvalidPath{err: fmt.Errorf("%w: %q", ErrUnknownNamespace, components[1]), path: str}
 	}
 }
 
