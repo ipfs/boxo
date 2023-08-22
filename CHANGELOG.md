@@ -18,6 +18,11 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+* `boxo/gateway`
+  * 🛠 The `IPFSBackend` interface was updated to make the responses of the
+    `Head` method more explicit. It now returns a `HeadResponse` instead of a
+    `files.Node`.
+
 ### Removed
 
 ### Fixed
@@ -131,8 +136,6 @@ The following emojis are used to highlight certain changes:
     IPIP.
   * There is no change to IPNS Records produced by `boxo/ipns`, it still
     produces both V1 and V2 signatures by default, it is still backward-compatible.
-* 🛠 The `IPFSBackend` interface was updated to make the responses of the `Head` method
-  more explicit. It now returns a `HeadResponse` instead of a `files.Node`.
 
 ### Removed
 
