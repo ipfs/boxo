@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"strings"
@@ -41,8 +42,9 @@ var (
 )
 
 const (
-	mediaTypeJSON   = "application/json"
-	mediaTypeNDJSON = "application/x-ndjson"
+	mediaTypeJSON       = "application/json"
+	mediaTypeNDJSON     = "application/x-ndjson"
+	mediaTypeIPNSRecord = "application/vnd.ipfs.ipns-record"
 )
 
 type client struct {
@@ -323,4 +325,69 @@ func (c *client) provideSignedBitswapRecord(ctx context.Context, bswp *types.Wri
 	}
 
 	return 0, nil
+}
+
+func (c *client) FindIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+	url := c.baseURL + "/routing/v1/ipns/" + name.String()
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Accept", mediaTypeIPNSRecord)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("making HTTP req to get IPNS record: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, httpError(resp.StatusCode, resp.Body)
+	}
+
+	// Limit the reader to the maximum record size.
+	rawRecord, err := io.ReadAll(io.LimitReader(resp.Body, int64(ipns.MaxRecordSize)))
+	if err != nil {
+		return nil, fmt.Errorf("making HTTP req to get IPNS record: %w", err)
+	}
+
+	record, err := ipns.UnmarshalRecord(rawRecord)
+	if err != nil {
+		return nil, fmt.Errorf("IPNS record from remote endpoint is not valid: %w", err)
+	}
+
+	err = ipns.ValidateWithName(record, name)
+	if err != nil {
+		return nil, fmt.Errorf("IPNS record from remote endpoint is not valid: %w", err)
+	}
+
+	return record, nil
+}
+
+func (c *client) ProvideIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+	url := c.baseURL + "/routing/v1/ipns/" + name.String()
+
+	rawRecord, err := ipns.MarshalRecord(record)
+	if err != nil {
+		return err
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(rawRecord))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", mediaTypeIPNSRecord)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("making HTTP req to get IPNS record: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return httpError(resp.StatusCode, resp.Body)
+	}
+
+	return nil
 }
