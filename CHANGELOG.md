@@ -43,7 +43,7 @@ The following emojis are used to highlight certain changes:
 * 🛠 `blockservice.New` now accepts a variadic of func options following the [Functional
   Options pattern](https://www.sohamkamani.com/golang/options-pattern/).
 * 🛠 The `routing/http` package has suffered the following modifications:
-  * Client `FindProviders` has been renamed to `GetProviders`. Similarly, the
+  * Client `FindProviders` has been renamed to `FindProviders`. Similarly, the
     required function names in the server `ContentRouter` have also been updated
     for higher consistency with the remaining code and the specifications.
   * Many types regarding response types were updated to conform to the updated

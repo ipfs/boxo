@@ -37,31 +37,31 @@ const (
 var logger = logging.Logger("routing/http/server")
 
 const (
-	getProvidersPath  = "/routing/v1/providers/{cid}"
-	getPeersPath      = "/routing/v1/peers/{peer-id}"
-	getIPNSRecordPath = "/routing/v1/ipns/{cid}"
+	findProvidersPath = "/routing/v1/providers/{cid}"
+	findPeersPath     = "/routing/v1/peers/{peer-id}"
+	findIPNSPath      = "/routing/v1/ipns/{cid}"
 )
 
-type GetProvidersAsyncResponse struct {
+type FindProvidersAsyncResponse struct {
 	ProviderResponse types.Record
 	Error            error
 }
 
 type ContentRouter interface {
-	// GetProviders searches for peers who are able to provide the given [cid.Cid].
+	// FindProviders searches for peers who are able to provide the given [cid.Cid].
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
-	GetProviders(ctx context.Context, cid cid.Cid, limit int) (iter.ResultIter[types.Record], error)
+	FindProviders(ctx context.Context, cid cid.Cid, limit int) (iter.ResultIter[types.Record], error)
 
-	// GetPeers searches for peers who have the provided [peer.ID].
+	// FindPeers searches for peers who have the provided [peer.ID].
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
-	GetPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.Record], error)
+	FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.Record], error)
 
-	// GetIPNSRecord searches for an [ipns.Record] for the given [ipns.Name].
-	GetIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error)
+	// FindIPNS searches for an [ipns.Record] for the given [ipns.Name].
+	FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
 
-	// PutIPNSRecord stores the provided [ipns.Record] for the given [ipns.Name].
+	// ProvideIPNS stores the provided [ipns.Record] for the given [ipns.Name].
 	// It is guaranteed that the record matches the provided name.
-	PutIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error
+	ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
 }
 
 type Option func(s *server)
@@ -73,8 +73,8 @@ func WithStreamingResultsDisabled() Option {
 	}
 }
 
-// WithRecordsLimit sets a limit that will be passed to [ContentRouter.GetProviders]
-// and [ContentRouter.GetPeers] for non-streaming requests (application/json).
+// WithRecordsLimit sets a limit that will be passed to [ContentRouter.FindProviders]
+// and [ContentRouter.FindPeers] for non-streaming requests (application/json).
 // Default is [DefaultRecordsLimit].
 func WithRecordsLimit(limit int) Option {
 	return func(s *server) {
@@ -82,8 +82,8 @@ func WithRecordsLimit(limit int) Option {
 	}
 }
 
-// WithStreamingRecordsLimit sets a limit that will be passed to [ContentRouter.GetProviders]
-// and [ContentRouter.GetPeers] for streaming requests (application/x-ndjson).
+// WithStreamingRecordsLimit sets a limit that will be passed to [ContentRouter.FindProviders]
+// and [ContentRouter.FindPeers] for streaming requests (application/x-ndjson).
 // Default is [DefaultStreamingRecordsLimit].
 func WithStreamingRecordsLimit(limit int) Option {
 	return func(s *server) {
@@ -103,10 +103,10 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	}
 
 	r := mux.NewRouter()
-	r.HandleFunc(getProvidersPath, server.getProviders).Methods(http.MethodGet)
-	r.HandleFunc(getPeersPath, server.getPeers).Methods(http.MethodGet)
-	r.HandleFunc(getIPNSRecordPath, server.getIPNSRecord).Methods(http.MethodGet)
-	r.HandleFunc(getIPNSRecordPath, server.putIPNSRecord).Methods(http.MethodPut)
+	r.HandleFunc(findProvidersPath, server.findProviders).Methods(http.MethodGet)
+	r.HandleFunc(findPeersPath, server.findPeers).Methods(http.MethodGet)
+	r.HandleFunc(findIPNSPath, server.findIPNS).Methods(http.MethodGet)
+	r.HandleFunc(findIPNSPath, server.provideIPNS).Methods(http.MethodPut)
 	return r
 }
 
@@ -154,18 +154,18 @@ func (s *server) detectResponseType(r *http.Request) (string, error) {
 	}
 }
 
-func (s *server) getProviders(w http.ResponseWriter, httpReq *http.Request) {
+func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 	vars := mux.Vars(httpReq)
 	cidStr := vars["cid"]
 	cid, err := cid.Decode(cidStr)
 	if err != nil {
-		writeErr(w, "GetProviders", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
+		writeErr(w, "FindProviders", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
 		return
 	}
 
 	mediaType, err := s.detectResponseType(httpReq)
 	if err != nil {
-		writeErr(w, "GetProviders", http.StatusBadRequest, err)
+		writeErr(w, "FindProviders", http.StatusBadRequest, err)
 		return
 	}
 
@@ -175,60 +175,60 @@ func (s *server) getProviders(w http.ResponseWriter, httpReq *http.Request) {
 	)
 
 	if mediaType == mediaTypeNDJSON {
-		handlerFunc = s.getProvidersNDJSON
+		handlerFunc = s.findProvidersNDJSON
 		recordsLimit = s.streamingRecordsLimit
 	} else {
-		handlerFunc = s.getProvidersJSON
+		handlerFunc = s.findProvidersJSON
 		recordsLimit = s.recordsLimit
 	}
 
-	provIter, err := s.svc.GetProviders(httpReq.Context(), cid, recordsLimit)
+	provIter, err := s.svc.FindProviders(httpReq.Context(), cid, recordsLimit)
 	if err != nil {
-		writeErr(w, "GetProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
 	}
 
 	handlerFunc(w, provIter)
 }
 
-func (s *server) getProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record]) {
+func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record]) {
 	defer provIter.Close()
 
 	providers, err := iter.ReadAllResults(provIter)
 	if err != nil {
-		writeErr(w, "GetProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
 	}
 
-	writeJSONResult(w, "GetProviders", jsontypes.ProvidersResponse{
+	writeJSONResult(w, "FindProviders", jsontypes.ProvidersResponse{
 		Providers: providers,
 	})
 }
 
-func (s *server) getProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record]) {
+func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record]) {
 	writeResultsIterNDJSON(w, provIter)
 }
 
-func (s *server) getPeers(w http.ResponseWriter, r *http.Request) {
+func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	pidStr := mux.Vars(r)["peer-id"]
 
 	// pidStr must be in CIDv1 format. Therefore, use [cid.Decode]. We can't use
 	// [peer.Decode] because that would allow other formats to pass through.
 	cid, err := cid.Decode(pidStr)
 	if err != nil {
-		writeErr(w, "GetPeers", http.StatusBadRequest, fmt.Errorf("unable to parse peer ID: %w", err))
+		writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse peer ID: %w", err))
 		return
 	}
 
 	pid, err := peer.FromCid(cid)
 	if err != nil {
-		writeErr(w, "GetPeers", http.StatusBadRequest, fmt.Errorf("unable to parse peer ID: %w", err))
+		writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse peer ID: %w", err))
 		return
 	}
 
 	mediaType, err := s.detectResponseType(r)
 	if err != nil {
-		writeErr(w, "GetPeers", http.StatusBadRequest, err)
+		writeErr(w, "FindPeers", http.StatusBadRequest, err)
 		return
 	}
 
@@ -238,43 +238,43 @@ func (s *server) getPeers(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if mediaType == mediaTypeNDJSON {
-		handlerFunc = s.getPeersNDJSON
+		handlerFunc = s.findPeersNDJSON
 		recordsLimit = s.streamingRecordsLimit
 	} else {
-		handlerFunc = s.getPeersJSON
+		handlerFunc = s.findPeersJSON
 		recordsLimit = s.recordsLimit
 	}
 
-	provIter, err := s.svc.GetPeers(r.Context(), pid, recordsLimit)
+	provIter, err := s.svc.FindPeers(r.Context(), pid, recordsLimit)
 	if err != nil {
-		writeErr(w, "GetPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+		writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
 	}
 
 	handlerFunc(w, provIter)
 }
 
-func (s *server) getPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[types.Record]) {
+func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[types.Record]) {
 	defer peersIter.Close()
 
 	peers, err := iter.ReadAllResults(peersIter)
 	if err != nil {
-		writeErr(w, "GetPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+		writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
 	}
 
-	writeJSONResult(w, "GetPeers", jsontypes.PeersResponse{
+	writeJSONResult(w, "FindPeers", jsontypes.PeersResponse{
 		Peers: peers,
 	})
 }
 
-func (s *server) getPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIter[types.Record]) {
+func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIter[types.Record]) {
 	writeResultsIterNDJSON(w, peersIter)
 }
 
-func (s *server) getIPNSRecord(w http.ResponseWriter, r *http.Request) {
+func (s *server) findIPNS(w http.ResponseWriter, r *http.Request) {
 	if !strings.Contains(r.Header.Get("Accept"), mediaTypeIPNSRecord) {
-		writeErr(w, "GetIPNSRecord", http.StatusNotAcceptable, errors.New("content type in 'Accept' header is missing or not supported"))
+		writeErr(w, "FindIPNS", http.StatusNotAcceptable, errors.New("content type in 'Accept' header is missing or not supported"))
 		return
 	}
 
@@ -282,25 +282,25 @@ func (s *server) getIPNSRecord(w http.ResponseWriter, r *http.Request) {
 	cidStr := vars["cid"]
 	cid, err := cid.Decode(cidStr)
 	if err != nil {
-		writeErr(w, "GetIPNSRecord", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
+		writeErr(w, "FindIPNS", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
 		return
 	}
 
 	name, err := ipns.NameFromCid(cid)
 	if err != nil {
-		writeErr(w, "GetIPNSRecord", http.StatusBadRequest, fmt.Errorf("peer ID CID is not valid: %w", err))
+		writeErr(w, "FindIPNS", http.StatusBadRequest, fmt.Errorf("peer ID CID is not valid: %w", err))
 		return
 	}
 
-	record, err := s.svc.GetIPNSRecord(r.Context(), name)
+	record, err := s.svc.FindIPNS(r.Context(), name)
 	if err != nil {
-		writeErr(w, "GetIPNSRecord", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+		writeErr(w, "FindIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
 	}
 
 	rawRecord, err := ipns.MarshalRecord(record)
 	if err != nil {
-		writeErr(w, "GetIPNSRecord", http.StatusInternalServerError, err)
+		writeErr(w, "FindIPNS", http.StatusInternalServerError, err)
 		return
 	}
 
@@ -316,9 +316,9 @@ func (s *server) getIPNSRecord(w http.ResponseWriter, r *http.Request) {
 	w.Write(rawRecord)
 }
 
-func (s *server) putIPNSRecord(w http.ResponseWriter, r *http.Request) {
+func (s *server) provideIPNS(w http.ResponseWriter, r *http.Request) {
 	if !strings.Contains(r.Header.Get("Content-Type"), mediaTypeIPNSRecord) {
-		writeErr(w, "PutIPNSRecord", http.StatusNotAcceptable, errors.New("content type in 'Content-Type' header is missing or not supported"))
+		writeErr(w, "ProvideIPNS", http.StatusNotAcceptable, errors.New("content type in 'Content-Type' header is missing or not supported"))
 		return
 	}
 
@@ -326,38 +326,38 @@ func (s *server) putIPNSRecord(w http.ResponseWriter, r *http.Request) {
 	cidStr := vars["cid"]
 	cid, err := cid.Decode(cidStr)
 	if err != nil {
-		writeErr(w, "PutIPNSRecord", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
+		writeErr(w, "ProvideIPNS", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
 		return
 	}
 
 	name, err := ipns.NameFromCid(cid)
 	if err != nil {
-		writeErr(w, "PutIPNSRecord", http.StatusBadRequest, fmt.Errorf("peer ID CID is not valid: %w", err))
+		writeErr(w, "ProvideIPNS", http.StatusBadRequest, fmt.Errorf("peer ID CID is not valid: %w", err))
 		return
 	}
 
 	// Limit the reader to the maximum record size.
 	rawRecord, err := io.ReadAll(io.LimitReader(r.Body, int64(ipns.MaxRecordSize)))
 	if err != nil {
-		writeErr(w, "PutIPNSRecord", http.StatusBadRequest, fmt.Errorf("provided record is too long: %w", err))
+		writeErr(w, "ProvideIPNS", http.StatusBadRequest, fmt.Errorf("provided record is too long: %w", err))
 		return
 	}
 
 	record, err := ipns.UnmarshalRecord(rawRecord)
 	if err != nil {
-		writeErr(w, "PutIPNSRecord", http.StatusBadRequest, fmt.Errorf("provided record is invalid: %w", err))
+		writeErr(w, "ProvideIPNS", http.StatusBadRequest, fmt.Errorf("provided record is invalid: %w", err))
 		return
 	}
 
 	err = ipns.ValidateWithName(record, name)
 	if err != nil {
-		writeErr(w, "PutIPNSRecord", http.StatusBadRequest, fmt.Errorf("provided record is invalid: %w", err))
+		writeErr(w, "ProvideIPNS", http.StatusBadRequest, fmt.Errorf("provided record is invalid: %w", err))
 		return
 	}
 
-	err = s.svc.PutIPNSRecord(r.Context(), name, record)
+	err = s.svc.ProvideIPNS(r.Context(), name, record)
 	if err != nil {
-		writeErr(w, "PutIPNSRecord", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+		writeErr(w, "ProvideIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
 	}
 

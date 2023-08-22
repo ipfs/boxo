@@ -40,7 +40,7 @@ func TestHeaders(t *testing.T) {
 	cb, err := cid.Decode(c)
 	require.NoError(t, err)
 
-	router.On("GetProviders", mock.Anything, cb, DefaultRecordsLimit).
+	router.On("FindProviders", mock.Anything, cb, DefaultRecordsLimit).
 		Return(results, nil)
 
 	resp, err := http.Get(serverAddr + "/routing/v1/providers/" + c)
@@ -106,7 +106,7 @@ func TestProviders(t *testing.T) {
 		if expectedStream {
 			limit = DefaultStreamingRecordsLimit
 		}
-		router.On("GetProviders", mock.Anything, cid, limit).Return(results, nil)
+		router.On("FindProviders", mock.Anything, cid, limit).Return(results, nil)
 		urlStr := serverAddr + "/routing/v1/providers/" + cidStr
 
 		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
@@ -183,7 +183,7 @@ func TestPeers(t *testing.T) {
 		})
 
 		router := &mockContentRouter{}
-		router.On("GetPeers", mock.Anything, pid, 20).Return(results, nil)
+		router.On("FindPeers", mock.Anything, pid, 20).Return(results, nil)
 
 		resp := makeRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String())
 		require.Equal(t, 200, resp.StatusCode)
@@ -218,7 +218,7 @@ func TestPeers(t *testing.T) {
 		})
 
 		router := &mockContentRouter{}
-		router.On("GetPeers", mock.Anything, pid, 0).Return(results, nil)
+		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
 
 		resp := makeRequest(t, router, mediaTypeNDJSON, peer.ToCid(pid).String())
 		require.Equal(t, 200, resp.StatusCode)
@@ -283,7 +283,7 @@ func TestIPNS(t *testing.T) {
 			require.NoError(t, err)
 
 			router := &mockContentRouter{}
-			router.On("GetIPNSRecord", mock.Anything, name1).Return(rec, nil)
+			router.On("FindIPNS", mock.Anything, name1).Return(rec, nil)
 
 			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String())
 			require.Equal(t, 200, resp.StatusCode)
@@ -316,7 +316,7 @@ func TestIPNS(t *testing.T) {
 			t.Parallel()
 
 			router := &mockContentRouter{}
-			router.On("PutIPNSRecord", mock.Anything, name1, record1).Return(nil)
+			router.On("ProvideIPNS", mock.Anything, name1, record1).Return(nil)
 
 			server := httptest.NewServer(Handler(router))
 			t.Cleanup(server.Close)
@@ -363,22 +363,22 @@ func TestIPNS(t *testing.T) {
 
 type mockContentRouter struct{ mock.Mock }
 
-func (m *mockContentRouter) GetProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.Record], error) {
+func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, key, limit)
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
-func (m *mockContentRouter) GetPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.Record], error) {
+func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, pid, limit)
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
-func (m *mockContentRouter) GetIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+func (m *mockContentRouter) FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
 	return args.Get(0).(*ipns.Record), args.Error(1)
 }
 
-func (m *mockContentRouter) PutIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+func (m *mockContentRouter) ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	args := m.Called(ctx, name, record)
 	return args.Error(0)
 }

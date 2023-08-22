@@ -586,7 +586,7 @@ func (bb *BlocksBackend) ResolveMutable(ctx context.Context, p ifacepath.Path) (
 	}
 }
 
-func (bb *BlocksBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
+func (bb *BlocksBackend) FindIPNS(ctx context.Context, c cid.Cid) ([]byte, error) {
 	if bb.routing == nil {
 		return nil, NewErrorStatusCode(errors.New("IPNS Record responses are not supported by this gateway"), http.StatusNotImplemented)
 	}

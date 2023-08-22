@@ -127,9 +127,9 @@ func (c *measuringIter[T]) Close() error {
 	return c.Iter.Close()
 }
 
-func (c *client) GetProviders(ctx context.Context, key cid.Cid) (providers iter.ResultIter[types.Record], err error) {
+func (c *client) FindProviders(ctx context.Context, key cid.Cid) (providers iter.ResultIter[types.Record], err error) {
 	// TODO test measurements
-	m := newMeasurement("GetProviders")
+	m := newMeasurement("FindProviders")
 
 	url := c.baseURL + "/routing/v1/providers/" + key.String()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -201,8 +201,8 @@ func (c *client) GetProviders(ctx context.Context, key cid.Cid) (providers iter.
 	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
-func (c *client) GetPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[types.Record], err error) {
-	m := newMeasurement("GetPeers")
+func (c *client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[types.Record], err error) {
+	m := newMeasurement("FindPeers")
 
 	url := c.baseURL + "/routing/v1/peers/" + peer.ToCid(pid).String()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -274,7 +274,7 @@ func (c *client) GetPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIt
 	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
-func (c *client) GetIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+func (c *client) FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -312,7 +312,7 @@ func (c *client) GetIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Recor
 	return record, nil
 }
 
-func (c *client) PutIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+func (c *client) ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
 	rawRecord, err := ipns.MarshalRecord(record)

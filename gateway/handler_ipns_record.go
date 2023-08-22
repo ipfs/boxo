@@ -41,7 +41,7 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 		return false
 	}
 
-	rawRecord, err := i.backend.GetIPNSRecord(ctx, c)
+	rawRecord, err := i.backend.FindIPNS(ctx, c)
 	if err != nil {
 		i.webError(w, r, err, http.StatusInternalServerError)
 		return false

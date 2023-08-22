@@ -22,11 +22,11 @@ import (
 
 type mockClient struct{ mock.Mock }
 
-func (m *mockClient) GetProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error) {
+func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, key)
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
-func (m *mockClient) GetPeers(ctx context.Context, pid peer.ID) (iter.ResultIter[types.Record], error) {
+func (m *mockClient) FindPeers(ctx context.Context, pid peer.ID) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, pid)
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
@@ -34,11 +34,11 @@ func (m *mockClient) Ready(ctx context.Context) (bool, error) {
 	args := m.Called(ctx)
 	return args.Bool(0), args.Error(1)
 }
-func (m *mockClient) GetIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+func (m *mockClient) FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
 	return args.Get(0).(*ipns.Record), args.Error(1)
 }
-func (m *mockClient) PutIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+func (m *mockClient) ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	args := m.Called(ctx, name, record)
 	return args.Error(0)
 }
@@ -82,7 +82,7 @@ func TestFindProvidersAsync(t *testing.T) {
 	}
 	aisIter := iter.ToResultIter[types.Record](iter.FromSlice(ais))
 
-	client.On("GetProviders", ctx, key).Return(aisIter, nil)
+	client.On("FindProviders", ctx, key).Return(aisIter, nil)
 
 	aiChan := crc.FindProvidersAsync(ctx, key, 2)
 
@@ -117,7 +117,7 @@ func TestFindPeer(t *testing.T) {
 	}
 	aisIter := iter.ToResultIter[types.Record](iter.FromSlice(ais))
 
-	client.On("GetPeers", ctx, p1).Return(aisIter, nil)
+	client.On("FindPeers", ctx, p1).Return(aisIter, nil)
 
 	peer, err := crc.FindPeer(ctx, p1)
 	require.NoError(t, err)
@@ -171,7 +171,7 @@ func TestGetValue(t *testing.T) {
 	t.Run("Succeeds On Valid IPNS Name", func(t *testing.T) {
 		sk, name := makeName(t)
 		rec, rawRec := makeIPNSRecord(t, sk)
-		client.On("GetIPNSRecord", ctx, name).Return(rec, nil)
+		client.On("FindIPNS", ctx, name).Return(rec, nil)
 		v, err := crc.GetValue(ctx, string(name.RoutingKey()))
 		require.NoError(t, err)
 		require.Equal(t, rawRec, v)
@@ -202,7 +202,7 @@ func TestPutValue(t *testing.T) {
 	})
 
 	t.Run("Succeeds On Valid IPNS Name & Record", func(t *testing.T) {
-		client.On("PutIPNSRecord", ctx, name, mock.Anything).Return(nil)
+		client.On("ProvideIPNS", ctx, name, mock.Anything).Return(nil)
 		err := crc.PutValue(ctx, string(name.RoutingKey()), rawRec)
 		require.NoError(t, err)
 	})
