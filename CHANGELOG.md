@@ -16,11 +16,22 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [v0.12.0]
+
+### Added
+
 * The `routing/http` client and server now support Delegated IPNS at `/routing/v1`
   as per [IPIP-379](https://specs.ipfs.tech/ipips/ipip-0379/).
-* The `verifycid` package has been updated with the new Allowlist interface as part of
-  reducing globals efforts. Still, existing global accessor funcs are kept for
-  backwards-compatibility.
+* 🛠 The `verifycid` package has been updated with the new Allowlist interface as part of
+  reducing globals efforts.
 * The `blockservice` and `provider` packages has been updated to accommodate for 
   changes in `verifycid`.
 
