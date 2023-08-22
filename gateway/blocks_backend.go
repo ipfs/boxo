@@ -153,7 +153,9 @@ func (bb *BlocksBackend) Get(ctx context.Context, path ImmutablePath, ranges ...
 		return md, nil, err
 	}
 
-	// Only a single range is supported
+	// Only a single range is supported in responses to HTTP Range Requests.
+	// When more than one is passed in the Range header, this library will
+	// return a response for the first one and ignores remaining ones.
 	var ra *ByteRange
 	if len(ranges) > 0 {
 		ra = &ranges[0]
@@ -170,10 +172,8 @@ func (bb *BlocksBackend) Get(ctx context.Context, path ImmutablePath, ranges ...
 			return ContentPathMetadata{}, nil, err
 		}
 
-		if ra != nil && ra.From != 0 {
-			if _, err := f.Seek(int64(ra.From), io.SeekStart); err != nil {
-				return ContentPathMetadata{}, nil, err
-			}
+		if err := seekToRangeStart(f, ra); err != nil {
+			return ContentPathMetadata{}, nil, err
 		}
 
 		return md, NewGetResponseFromReader(f, fileSize), nil
@@ -206,10 +206,8 @@ func (bb *BlocksBackend) Get(ctx context.Context, path ImmutablePath, ranges ...
 			return ContentPathMetadata{}, nil, err
 		}
 
-		if ra != nil && ra.From != 0 {
-			if _, err := file.Seek(int64(ra.From), io.SeekStart); err != nil {
-				return ContentPathMetadata{}, nil, err
-			}
+		if err := seekToRangeStart(file, ra); err != nil {
+			return ContentPathMetadata{}, nil, err
 		}
 
 		if s, ok := f.(*files.Symlink); ok {

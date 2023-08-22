@@ -451,9 +451,8 @@ func (i *handler) seekToStartOfFirstRange(w http.ResponseWriter, r *http.Request
 			return false
 		}
 		if len(ranges) > 0 {
-			ra := ranges[0]
-			// Seek to start of first range
-			_, err := data.Seek(int64(ra.From), io.SeekStart)
+			ra := &ranges[0]
+			err = seekToRangeStart(data, ra)
 			if err != nil {
 				i.webError(w, r, fmt.Errorf("could not seek to location in range request: %w", err), http.StatusBadRequest)
 				return false
@@ -461,4 +460,13 @@ func (i *handler) seekToStartOfFirstRange(w http.ResponseWriter, r *http.Request
 		}
 	}
 	return true
+}
+
+func seekToRangeStart(data io.Seeker, ra *ByteRange) error {
+	if ra != nil && ra.From != 0 {
+		if _, err := data.Seek(int64(ra.From), io.SeekStart); err != nil {
+			return err
+		}
+	}
+	return nil
 }
