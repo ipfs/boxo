@@ -8,7 +8,7 @@ require (
 	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipld/go-car/v2 v2.10.2-0.20230622090957-499d0c909d33
-	github.com/ipld/go-ipld-prime v0.20.0
+	github.com/ipld/go-ipld-prime v0.21.0
 	github.com/libp2p/go-libp2p v0.26.3
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.0
 	github.com/multiformats/go-multiaddr v0.8.0
