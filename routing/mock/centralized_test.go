@@ -13,10 +13,9 @@ import (
 )
 
 func TestKeyNotFound(t *testing.T) {
-
-	var pi = tnet.RandIdentityOrFatal(t)
-	var key = cid.NewCidV0(u.Hash([]byte("mock key")))
-	var ctx = context.Background()
+	pi := tnet.RandIdentityOrFatal(t)
+	key := cid.NewCidV0(u.Hash([]byte("mock key")))
+	ctx := context.Background()
 
 	rs := NewServer()
 	providers := rs.Client(pi).FindProvidersAsync(ctx, key, 10)

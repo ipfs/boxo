@@ -456,7 +456,6 @@ func (e *Engine) StartWorkers(ctx context.Context, px process.Process) {
 			e.taskWorker(ctx)
 		})
 	}
-
 }
 
 func (e *Engine) onPeerAdded(p peer.ID) {

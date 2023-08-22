@@ -6,9 +6,11 @@ import (
 	"github.com/ipfs/boxo/routing/http/internal/drjson"
 )
 
-var _ ReadProviderRecord = &UnknownProviderRecord{}
-var _ WriteProviderRecord = &UnknownProviderRecord{}
-var _ ProviderResponse = &UnknownProviderRecord{}
+var (
+	_ ReadProviderRecord  = &UnknownProviderRecord{}
+	_ WriteProviderRecord = &UnknownProviderRecord{}
+	_ ProviderResponse    = &UnknownProviderRecord{}
+)
 
 // UnknownProviderRecord is used when we cannot parse the provider record using `GetProtocol`
 type UnknownProviderRecord struct {

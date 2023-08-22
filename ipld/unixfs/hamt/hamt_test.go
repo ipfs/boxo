@@ -79,7 +79,6 @@ func assertLink(s *Shard, name string, found bool) error {
 }
 
 func assertLinksEqual(linksA []*ipld.Link, linksB []*ipld.Link) error {
-
 	if len(linksA) != len(linksB) {
 		return fmt.Errorf("links arrays are different sizes")
 	}
@@ -163,8 +162,6 @@ func TestDirBuilding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	//printDag(ds, nd, 0)
 
 	k := nd.Cid()
 

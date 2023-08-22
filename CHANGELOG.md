@@ -24,6 +24,37 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
+## [v0.12.0]
+
+### Added
+
+* The `routing/http` client and server now support Delegated IPNS at `/routing/v1`
+  as per [IPIP-379](https://specs.ipfs.tech/ipips/ipip-0379/).
+* 🛠 The `verifycid` package has been updated with the new Allowlist interface as part of
+  reducing globals efforts.
+* The `blockservice` and `provider` packages has been updated to accommodate for 
+  changes in `verifycid`.
+
+### Changed
+
+* 🛠 `blockservice.New` now accepts a variadic of func options following the [Functional
+  Options pattern](https://www.sohamkamani.com/golang/options-pattern/).
+
+### Removed
+
+### Fixed
+
+- HTTP Gateway API: Not having a block will result in a 5xx error rather than 404
+- HTTP Gateway API: CAR requests will return 200s and a CAR file proving a requested path does not exist rather than returning an error
+- 🛠 `MultiFileReader` has been updated with a new header with the encoded file name instead of the plain filename, due to a regression found in  [`net/textproto`](https://github.com/golang/go/issues/60674). This only affects files with binary characters in their name. By keeping the old header, we maximize backwards compatibility.
+  |            | New Client | Old Client  |
+  |------------|------------|-------------|
+  | New Server | ✅         | 🟡*         |
+  | Old Server | ✅         | ✅          |
+   *Old clients can only send Unicode file paths to the server.
+
+### Security
+
 ## [v0.11.0]
 
 ### Added
@@ -62,6 +93,20 @@ The following emojis are used to highlight certain changes:
 ### Fixed
 
 - Removed mentions of unused ARC algorithm ([#336](https://github.com/ipfs/boxo/issues/366#issuecomment-1597253540))
+- Handle `_redirects` file when `If-None-Match` header is present ([#412](https://github.com/ipfs/boxo/pull/412))
+
+### Security
+
+## [0.10.3] - 2023-08-08
+
+### Added
+
+### Changed
+
+### Removed
+
+### Fixed
+
 - Handle `_redirects` file when `If-None-Match` header is present ([#412](https://github.com/ipfs/boxo/pull/412))
 
 ### Security

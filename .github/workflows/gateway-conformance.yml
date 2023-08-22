@@ -16,7 +16,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.2
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.3
         with:
           output: fixtures
           merged: true
@@ -40,7 +40,7 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests
-        uses: ipfs/gateway-conformance/.github/actions/test@v0.2
+        uses: ipfs/gateway-conformance/.github/actions/test@v0.3
         with:
           gateway-url: http://127.0.0.1:8040
           json: output.json
@@ -61,3 +61,9 @@ jobs:
         with:
           name: gateway-conformance.html
           path: output.html
+      - name: Upload JSON report
+        if: failure() || success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: gateway-conformance.json
+          path: output.json

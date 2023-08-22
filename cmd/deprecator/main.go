@@ -143,7 +143,6 @@ func inspectASTNode(addComment func(string, *dst.Decorations), n dst.Node) bool 
 		}
 	}
 	return true
-
 }
 
 func getModulePath(dir string) (string, error) {

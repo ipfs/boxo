@@ -298,7 +298,6 @@ func TestSeekingStress(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-
 }
 
 func TestSeekingConsistency(t *testing.T) {

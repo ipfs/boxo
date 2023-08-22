@@ -81,7 +81,7 @@ No.  This repo houses some IPFS functionality written in Go that has been useful
 
 ### Is everything related to IPFS in the Go ecosystem in this repo?
 
-No.  Not everything related to IPFS is intended to be in Boxo. View it as a starter toolbox (potentially among multiple).  If you’d like to build an IPFS implementation with Go, here are some tools you might want that are maintained by a group that has long term commitments to the IPFS project.  There are certainly repos that others maintainer that aren't included here (e.g., ipfs/go-car) which are still useful to IPFS implementations. It's expected and fine for new IPFS functionality to be developed that won't be part of Boxo.
+No.  Not everything related to IPFS is intended to be in Boxo. View it as a starter toolbox (potentially among multiple).  If you’d like to build an IPFS implementation with Go, here are some tools you might want that are maintained by a group that has long term commitments to the IPFS project.  There are certainly repos that others maintain that aren't included here (e.g., ipfs/go-car) which are still useful to IPFS implementations. It's expected and fine for new IPFS functionality to be developed that won't be part of Boxo.
 
 
 ## Consuming

@@ -12,7 +12,6 @@ import (
 	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/path/resolver"
 	"github.com/ipfs/go-cid"
-	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipld/go-ipld-prime/datamodel"
 )
 
@@ -177,11 +176,9 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 	}
 }
 
+// isErrNotFound returns true for IPLD errors that should return 4xx errors (e.g. the path doesn't exist, the data is
+// the wrong type, etc.), rather than issues with just finding and retrieving the data.
 func isErrNotFound(err error) bool {
-	if ipld.IsNotFound(err) {
-		return true
-	}
-
 	// Checks if err is of a type that does not implement the .Is interface and
 	// cannot be directly compared to. Therefore, errors.Is cannot be used.
 	for {

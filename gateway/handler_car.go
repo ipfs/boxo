@@ -178,7 +178,6 @@ func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarPa
 		// not break legacy clients, and responses to requests made via ?format=car
 		// should benefit from block deduplication
 		params.Duplicates = DuplicateBlocksExcluded
-
 	}
 
 	return params, nil

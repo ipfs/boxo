@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -10,6 +11,9 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
+	"github.com/ipfs/boxo/coreiface/path"
+	ipns "github.com/ipfs/boxo/ipns"
+	ipfspath "github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/http/server"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
@@ -31,6 +35,7 @@ func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limi
 	args := m.Called(ctx, key, limit)
 	return args.Get(0).(iter.ResultIter[types.ProviderResponse]), args.Error(1)
 }
+
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.BitswapWriteProvideRequest) (time.Duration, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(time.Duration), args.Error(1)
@@ -39,6 +44,16 @@ func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.Bits
 func (m *mockContentRouter) Provide(ctx context.Context, req *server.WriteProvideRequest) (types.ProviderResponse, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(types.ProviderResponse), args.Error(1)
+}
+
+func (m *mockContentRouter) FindIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+	args := m.Called(ctx, name)
+	return args.Get(0).(*ipns.Record), args.Error(1)
+}
+
+func (m *mockContentRouter) ProvideIPNSRecord(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+	args := m.Called(ctx, name, record)
+	return args.Error(0)
 }
 
 type testDeps struct {
@@ -440,4 +455,102 @@ func TestClient_Provide(t *testing.T) {
 			assert.Equal(t, c.expAdvisoryTTL, advisoryTTL)
 		})
 	}
+}
+
+func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
+	sk, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+
+	pid, err := peer.IDFromPrivateKey(sk)
+	require.NoError(t, err)
+
+	return sk, ipns.NameFromPeer(pid)
+}
+
+func makeIPNSRecord(t *testing.T, sk crypto.PrivKey, opts ...ipns.Option) (*ipns.Record, []byte) {
+	cid, err := cid.Decode("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
+	require.NoError(t, err)
+
+	path := path.IpfsPath(cid)
+	eol := time.Now().Add(time.Hour * 48)
+	ttl := time.Second * 20
+
+	record, err := ipns.NewRecord(sk, ipfspath.FromString(path.String()), 1, eol, ttl, opts...)
+	require.NoError(t, err)
+
+	rawRecord, err := ipns.MarshalRecord(record)
+	require.NoError(t, err)
+
+	return record, rawRecord
+}
+
+func TestClient_IPNS(t *testing.T) {
+	t.Run("Find IPNS Record returns error if server errors", func(t *testing.T) {
+		_, name := makeName(t)
+
+		deps := makeTestDeps(t, nil, nil)
+		client := deps.client
+		router := deps.router
+
+		router.On("FindIPNSRecord", mock.Anything, name).Return(nil, errors.New("something wrong happened"))
+
+		receivedRecord, err := client.FindIPNSRecord(context.Background(), name)
+		require.Error(t, err)
+		require.Nil(t, receivedRecord)
+	})
+
+	runWithRecordOptions := func(t *testing.T, opts ...ipns.Option) {
+		t.Run("Find IPNS Record", func(t *testing.T) {
+			sk, name := makeName(t)
+			record, _ := makeIPNSRecord(t, sk, opts...)
+
+			deps := makeTestDeps(t, nil, nil)
+			client := deps.client
+			router := deps.router
+
+			router.On("FindIPNSRecord", mock.Anything, name).Return(record, nil)
+
+			receivedRecord, err := client.FindIPNSRecord(context.Background(), name)
+			require.NoError(t, err)
+			require.Equal(t, record, receivedRecord)
+		})
+
+		t.Run("Find IPNS Record returns error if server sends bad data", func(t *testing.T) {
+			sk, _ := makeName(t)
+			record, _ := makeIPNSRecord(t, sk, opts...)
+			_, name2 := makeName(t)
+
+			deps := makeTestDeps(t, nil, nil)
+			client := deps.client
+			router := deps.router
+
+			router.On("FindIPNSRecord", mock.Anything, name2).Return(record, nil)
+
+			receivedRecord, err := client.FindIPNSRecord(context.Background(), name2)
+			require.Error(t, err)
+			require.Nil(t, receivedRecord)
+		})
+
+		t.Run("Provide IPNS Record", func(t *testing.T) {
+			sk, name := makeName(t)
+			record, _ := makeIPNSRecord(t, sk, opts...)
+
+			deps := makeTestDeps(t, nil, nil)
+			client := deps.client
+			router := deps.router
+
+			router.On("ProvideIPNSRecord", mock.Anything, name, record).Return(nil)
+
+			err := client.ProvideIPNSRecord(context.Background(), name, record)
+			require.NoError(t, err)
+		})
+	}
+
+	t.Run("V1+V2 IPNS Records", func(t *testing.T) {
+		runWithRecordOptions(t, ipns.WithV1Compatibility(true))
+	})
+
+	t.Run("V2 IPNS Records", func(t *testing.T) {
+		runWithRecordOptions(t, ipns.WithV1Compatibility(false))
+	})
 }

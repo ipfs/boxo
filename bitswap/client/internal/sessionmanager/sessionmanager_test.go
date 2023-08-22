@@ -33,23 +33,26 @@ type fakeSession struct {
 func (*fakeSession) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
 	return nil, nil
 }
+
 func (*fakeSession) GetBlocks(context.Context, []cid.Cid) (<-chan blocks.Block, error) {
 	return nil, nil
 }
+
 func (fs *fakeSession) ID() uint64 {
 	return fs.id
 }
+
 func (fs *fakeSession) ReceiveFrom(p peer.ID, ks []cid.Cid, wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 	fs.ks = append(fs.ks, ks...)
 	fs.wantBlocks = append(fs.wantBlocks, wantBlocks...)
 	fs.wantHaves = append(fs.wantHaves, wantHaves...)
 }
+
 func (fs *fakeSession) Shutdown() {
 	fs.sm.RemoveSession(fs.id)
 }
 
-type fakeSesPeerManager struct {
-}
+type fakeSesPeerManager struct{}
 
 func (*fakeSesPeerManager) Peers() []peer.ID          { return nil }
 func (*fakeSesPeerManager) PeersDiscovered() bool     { return false }
@@ -73,6 +76,7 @@ func (fpm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid) 
 	defer fpm.lk.Unlock()
 	fpm.cancels = append(fpm.cancels, cancels...)
 }
+
 func (fpm *fakePeerManager) cancelled() []cid.Cid {
 	fpm.lk.Lock()
 	defer fpm.lk.Unlock()
@@ -89,7 +93,8 @@ func sessionFactory(ctx context.Context,
 	notif notifications.PubSub,
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D,
-	self peer.ID) Session {
+	self peer.ID,
+) Session {
 	fs := &fakeSession{
 		id:    id,
 		pm:    sprm.(*fakeSesPeerManager),

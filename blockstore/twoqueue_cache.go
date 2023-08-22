@@ -12,8 +12,10 @@ import (
 	metrics "github.com/ipfs/go-metrics-interface"
 )
 
-type cacheHave bool
-type cacheSize int
+type (
+	cacheHave bool
+	cacheSize int
+)
 
 type lock struct {
 	mu     sync.RWMutex
@@ -39,8 +41,10 @@ type tqcache struct {
 	total metrics.Counter
 }
 
-var _ Blockstore = (*tqcache)(nil)
-var _ Viewer = (*tqcache)(nil)
+var (
+	_ Blockstore = (*tqcache)(nil)
+	_ Viewer     = (*tqcache)(nil)
+)
 
 func newTwoQueueCachedBS(ctx context.Context, bs Blockstore, lruSize int) (*tqcache, error) {
 	cache, err := lru.New2Q[string, any](lruSize)

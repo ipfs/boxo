@@ -57,7 +57,7 @@ func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
 		if c != "" {
 			continue
 		}
-		if err := os.MkdirAll(path, 0777); err != nil {
+		if err := os.MkdirAll(path, 0o777); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -67,7 +67,7 @@ func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
 		if c == "" {
 			continue
 		}
-		if err := os.WriteFile(path, []byte(c), 0666); err != nil {
+		if err := os.WriteFile(path, []byte(c), 0o666); err != nil {
 			t.Fatal(err)
 		}
 	}

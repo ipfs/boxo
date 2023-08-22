@@ -362,5 +362,4 @@ func TestNodeReification(t *testing.T) {
 	require.NoError(t, err)
 	underlying4 := retrievedNode4.(*selfLoader).Node
 	assert.Equal(t, node4, underlying4)
-
 }

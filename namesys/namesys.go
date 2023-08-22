@@ -198,7 +198,6 @@ func (ns *mpns) resolveOnceAsync(ctx context.Context, name string, options opts.
 
 	var res resolver
 	ipnsKey, err := peer.Decode(key)
-
 	// CIDs in IPNS are expected to have libp2p-key multicodec
 	// We ease the transition by returning a more meaningful error with a valid CID
 	if err != nil {

@@ -390,7 +390,6 @@ func TestSendToWantingPeer(t *testing.T) {
 	if !blkrecvd.Cid().Equals(alpha.Cid()) {
 		t.Fatal("Wrong block!")
 	}
-
 }
 
 func TestEmptyKey(t *testing.T) {
@@ -828,6 +827,7 @@ func (tsl *testingScoreLedger) Start(scorePeer server.ScorePeerFunc) {
 	tsl.scorePeer = scorePeer
 	close(tsl.started)
 }
+
 func (tsl *testingScoreLedger) Stop() {
 	close(tsl.closed)
 }
