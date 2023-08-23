@@ -82,7 +82,7 @@ func (*mockPeerManager) UnregisterSession(uint64)                      {}
 func (*mockPeerManager) BroadcastWantHaves(context.Context, []cid.Cid) {}
 func (*mockPeerManager) SendCancels(context.Context, []cid.Cid)        {}
 
-func (pm *mockPeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) {
+func (pm *mockPeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) error {
 	pm.lk.Lock()
 	defer pm.lk.Unlock()
 
@@ -92,6 +92,7 @@ func (pm *mockPeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks 
 		pm.peerSends[p] = sw
 	}
 	sw.add(wantBlocks, wantHaves)
+	return nil
 }
 
 func (pm *mockPeerManager) waitNextWants() map[peer.ID]*sentWants {
