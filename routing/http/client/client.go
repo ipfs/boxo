@@ -10,17 +10,21 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/benbjohnson/clock"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/routing/http/contentrouter"
+	"github.com/ipfs/boxo/routing/http/internal/drjson"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/boxo/routing/http/types/ndjson"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 )
 
 var (
@@ -46,6 +50,15 @@ type client struct {
 	httpClient httpClient
 	clock      clock.Clock
 	accepts    string
+
+	peerID   peer.ID
+	addrs    []types.Multiaddr
+	identity crypto.PrivKey
+
+	// Called immediately after signing a provide request. It is used
+	// for testing, e.g., testing the server with a mangled signature.
+	//lint:ignore SA1019 // ignore staticcheck
+	afterSignCallback func(req *types.WriteBitswapRecord)
 }
 
 // defaultUserAgent is used as a fallback to inform HTTP server which library
@@ -59,6 +72,12 @@ type httpClient interface {
 }
 
 type Option func(*client)
+
+func WithIdentity(identity crypto.PrivKey) Option {
+	return func(c *client) {
+		c.identity = identity
+	}
+}
 
 func WithHTTPClient(h httpClient) Option {
 	return func(c *client) {
@@ -83,6 +102,15 @@ func WithUserAgent(ua string) Option {
 	}
 }
 
+func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
+	return func(c *client) {
+		c.peerID = peerID
+		for _, a := range addrs {
+			c.addrs = append(c.addrs, types.Multiaddr{Multiaddr: a})
+		}
+	}
+}
+
 func WithStreamResultsRequired() Option {
 	return func(c *client) {
 		c.accepts = mediaTypeNDJSON
@@ -90,6 +118,7 @@ func WithStreamResultsRequired() Option {
 }
 
 // New creates a content routing API client.
+// The Provider and identity parameters are option. If they are nil, the [client.ProvideBitswap] method will not function.
 func New(baseURL string, opts ...Option) (*client, error) {
 	client := &client{
 		baseURL:    baseURL,
@@ -100,6 +129,10 @@ func New(baseURL string, opts ...Option) (*client, error) {
 
 	for _, opt := range opts {
 		opt(client)
+	}
+
+	if client.identity != nil && client.peerID.Size() != 0 && !client.peerID.MatchesPublicKey(client.identity.GetPublic()) {
+		return nil, errors.New("identity does not match provider")
 	}
 
 	return client, nil
@@ -199,6 +232,104 @@ func (c *client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 	}
 
 	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
+}
+
+// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
+//
+// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+func (c *client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {
+	if c.identity == nil {
+		return 0, errors.New("cannot provide Bitswap records without an identity")
+	}
+	if c.peerID.Size() == 0 {
+		return 0, errors.New("cannot provide Bitswap records without a peer ID")
+	}
+
+	ks := make([]types.CID, len(keys))
+	for i, c := range keys {
+		ks[i] = types.CID{Cid: c}
+	}
+
+	now := c.clock.Now()
+
+	req := types.WriteBitswapRecord{
+		Protocol: "transport-bitswap",
+		Schema:   types.SchemaBitswap,
+		Payload: types.BitswapPayload{
+			Keys:        ks,
+			AdvisoryTTL: &types.Duration{Duration: ttl},
+			Timestamp:   &types.Time{Time: now},
+			ID:          &c.peerID,
+			Addrs:       c.addrs,
+		},
+	}
+	err := req.Sign(c.peerID, c.identity)
+	if err != nil {
+		return 0, err
+	}
+
+	if c.afterSignCallback != nil {
+		c.afterSignCallback(&req)
+	}
+
+	advisoryTTL, err := c.provideSignedBitswapRecord(ctx, &req)
+	if err != nil {
+		return 0, err
+	}
+
+	return advisoryTTL, err
+}
+
+// ProvideAsync makes a provide request to a delegated router
+//
+//lint:ignore SA1019 // ignore staticcheck
+func (c *client) provideSignedBitswapRecord(ctx context.Context, bswp *types.WriteBitswapRecord) (time.Duration, error) {
+	//lint:ignore SA1019 // ignore staticcheck
+	req := jsontypes.WriteProvidersRequest{Providers: []types.Record{bswp}}
+
+	url := c.baseURL + "/routing/v1/providers/"
+
+	b, err := drjson.MarshalJSONBytes(req)
+	if err != nil {
+		return 0, err
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewBuffer(b))
+	if err != nil {
+		return 0, err
+	}
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return 0, fmt.Errorf("making HTTP req to provide a signed record: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, httpError(resp.StatusCode, resp.Body)
+	}
+
+	//lint:ignore SA1019 // ignore staticcheck
+	var provideResult jsontypes.WriteProvidersResponse
+	err = json.NewDecoder(resp.Body).Decode(&provideResult)
+	if err != nil {
+		return 0, err
+	}
+	if len(provideResult.ProvideResults) != 1 {
+		return 0, fmt.Errorf("expected 1 result but got %d", len(provideResult.ProvideResults))
+	}
+
+	//lint:ignore SA1019 // ignore staticcheck
+	v, ok := provideResult.ProvideResults[0].(*types.WriteBitswapRecordResponse)
+	if !ok {
+		return 0, fmt.Errorf("expected AdvisoryTTL field")
+	}
+
+	if v.AdvisoryTTL != nil {
+		return v.AdvisoryTTL.Duration, nil
+	}
+
+	return 0, nil
 }
 
 func (c *client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[types.Record], err error) {

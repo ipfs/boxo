@@ -368,6 +368,11 @@ func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limi
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
+func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error) {
+	args := m.Called(ctx, req)
+	return args.Get(0).(time.Duration), args.Error(1)
+}
+
 func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, pid, limit)
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)

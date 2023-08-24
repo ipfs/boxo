@@ -26,6 +26,16 @@ func NewRecordsIter(r io.Reader) iter.Iter[iter.Result[types.Record]] {
 				return result
 			}
 			result.Val = &prov
+		//lint:ignore SA1019 // ignore staticcheck
+		case types.SchemaBitswap:
+			//lint:ignore SA1019 // ignore staticcheck
+			var prov types.BitswapRecord
+			err := json.Unmarshal(upr.Val.Bytes, &prov)
+			if err != nil {
+				result.Err = err
+				return result
+			}
+			result.Val = &prov
 		default:
 			result.Val = &upr.Val
 		}

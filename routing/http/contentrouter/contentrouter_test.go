@@ -16,31 +16,94 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multihash"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 type mockClient struct{ mock.Mock }
 
+func (m *mockClient) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {
+	args := m.Called(ctx, keys, ttl)
+	return args.Get(0).(time.Duration), args.Error(1)
+}
+
 func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, key)
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
+
 func (m *mockClient) FindPeers(ctx context.Context, pid peer.ID) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, pid)
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
+
 func (m *mockClient) Ready(ctx context.Context) (bool, error) {
 	args := m.Called(ctx)
 	return args.Bool(0), args.Error(1)
 }
+
 func (m *mockClient) FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
 	return args.Get(0).(*ipns.Record), args.Error(1)
 }
+
 func (m *mockClient) ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	args := m.Called(ctx, name, record)
 	return args.Error(0)
+}
+
+func TestProvide(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		announce bool
+
+		expNotProvided bool
+	}{
+		{
+			name:           "announce=false results in no client request",
+			announce:       false,
+			expNotProvided: true,
+		},
+		{
+			name:     "announce=true results in a client req",
+			announce: true,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := context.Background()
+			key := makeCID()
+			client := &mockClient{}
+			crc := NewContentRoutingClient(client)
+
+			if !c.expNotProvided {
+				client.On("ProvideBitswap", ctx, []cid.Cid{key}, ttl).Return(time.Minute, nil)
+			}
+
+			err := crc.Provide(ctx, key, c.announce)
+			assert.NoError(t, err)
+
+			if c.expNotProvided {
+				client.AssertNumberOfCalls(t, "ProvideBitswap", 0)
+			}
+		})
+	}
+}
+
+func TestProvideMany(t *testing.T) {
+	cids := []cid.Cid{makeCID(), makeCID()}
+	var mhs []multihash.Multihash
+	for _, c := range cids {
+		mhs = append(mhs, c.Hash())
+	}
+	ctx := context.Background()
+	client := &mockClient{}
+	crc := NewContentRoutingClient(client)
+
+	client.On("ProvideBitswap", ctx, cids, ttl).Return(time.Minute, nil)
+
+	err := crc.ProvideMany(ctx, mhs)
+	require.NoError(t, err)
 }
 
 func makeCID() cid.Cid {
@@ -65,16 +128,30 @@ func TestFindProvidersAsync(t *testing.T) {
 
 	p1 := peer.ID("peer1")
 	p2 := peer.ID("peer2")
+	p3 := peer.ID("peer3")
+	p4 := peer.ID("peer4")
 	ais := []types.Record{
 		&types.PeerRecord{
 			Schema:    types.SchemaPeer,
 			ID:        &p1,
 			Protocols: []string{"transport-bitswap"},
 		},
+		//lint:ignore SA1019 // ignore staticcheck
+		&types.BitswapRecord{
+			//lint:ignore SA1019 // ignore staticcheck
+			Schema:   types.SchemaBitswap,
+			ID:       &p2,
+			Protocol: "transport-bitswap",
+		},
 		&types.PeerRecord{
 			Schema:    types.SchemaPeer,
-			ID:        &p2,
+			ID:        &p3,
 			Protocols: []string{"transport-bitswap"},
+		},
+		&types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &p4,
+			Protocols: []string{"transport-horse"},
 		},
 		&types.UnknownRecord{
 			Schema: "UNKNOWN",
@@ -84,7 +161,7 @@ func TestFindProvidersAsync(t *testing.T) {
 
 	client.On("FindProviders", ctx, key).Return(aisIter, nil)
 
-	aiChan := crc.FindProvidersAsync(ctx, key, 2)
+	aiChan := crc.FindProvidersAsync(ctx, key, 3)
 
 	var actualAIs []peer.AddrInfo
 	for ai := range aiChan {
@@ -94,6 +171,7 @@ func TestFindProvidersAsync(t *testing.T) {
 	expected := []peer.AddrInfo{
 		{ID: p1},
 		{ID: p2},
+		{ID: p3},
 	}
 
 	require.Equal(t, expected, actualAIs)

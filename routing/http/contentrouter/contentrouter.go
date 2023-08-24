@@ -4,8 +4,10 @@ import (
 	"context"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/ipfs/boxo/ipns"
+	"github.com/ipfs/boxo/routing/http/internal"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
@@ -15,19 +17,25 @@ import (
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
+	"github.com/samber/lo"
 )
 
 var logger = logging.Logger("routing/http/contentrouter")
 
+const ttl = 24 * time.Hour
+
 type Client interface {
 	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error)
+	ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error)
 	FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[types.Record], err error)
 	FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
 	ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
 }
 
 type contentRouter struct {
-	client Client
+	client                Client
+	maxProvideConcurrency int
+	maxProvideBatchSize   int
 }
 
 var _ routing.ContentRouting = (*contentRouter)(nil)
@@ -38,9 +46,23 @@ var _ routinghelpers.ReadyAbleRouter = (*contentRouter)(nil)
 
 type option func(c *contentRouter)
 
+func WithMaxProvideConcurrency(max int) option {
+	return func(c *contentRouter) {
+		c.maxProvideConcurrency = max
+	}
+}
+
+func WithMaxProvideBatchSize(max int) option {
+	return func(c *contentRouter) {
+		c.maxProvideBatchSize = max
+	}
+}
+
 func NewContentRoutingClient(c Client, opts ...option) *contentRouter {
 	cr := &contentRouter{
-		client: c,
+		client:                c,
+		maxProvideConcurrency: 5,
+		maxProvideBatchSize:   100,
 	}
 	for _, opt := range opts {
 		opt(cr)
@@ -49,11 +71,40 @@ func NewContentRoutingClient(c Client, opts ...option) *contentRouter {
 }
 
 func (c *contentRouter) Provide(ctx context.Context, key cid.Cid, announce bool) error {
-	return routing.ErrNotSupported
+	// If 'true' is passed, it also announces it, otherwise it is just kept in the local
+	// accounting of which objects are being provided.
+	if !announce {
+		return nil
+	}
+
+	_, err := c.client.ProvideBitswap(ctx, []cid.Cid{key}, ttl)
+	return err
 }
 
+// ProvideMany provides a set of keys to the remote delegate.
+// Large sets of keys are chunked into multiple requests and sent concurrently, according to the concurrency configuration.
+// TODO: switch to use [client.Provide] when ready.
 func (c *contentRouter) ProvideMany(ctx context.Context, mhKeys []multihash.Multihash) error {
-	return routing.ErrNotSupported
+	keys := make([]cid.Cid, 0, len(mhKeys))
+	for _, m := range mhKeys {
+		keys = append(keys, cid.NewCidV1(cid.Raw, m))
+	}
+
+	if len(keys) <= c.maxProvideBatchSize {
+		_, err := c.client.ProvideBitswap(ctx, keys, ttl)
+		return err
+	}
+
+	return internal.DoBatch(
+		ctx,
+		c.maxProvideBatchSize,
+		c.maxProvideConcurrency,
+		keys,
+		func(ctx context.Context, batch []cid.Cid) error {
+			_, err := c.client.ProvideBitswap(ctx, batch, ttl)
+			return err
+		},
+	)
 }
 
 // Ready is part of the existing [routing.ReadyAbleRouter] interface.
@@ -72,8 +123,36 @@ func readProviderResponses(iter iter.ResultIter[types.Record], ch chan<- peer.Ad
 			continue
 		}
 		v := res.Val
-		if v.GetSchema() == types.SchemaPeer {
+		switch v.GetSchema() {
+		case types.SchemaPeer:
 			result, ok := v.(*types.PeerRecord)
+			if !ok {
+				logger.Errorw(
+					"problem casting find providers result",
+					"Schema", v.GetSchema(),
+					"Type", reflect.TypeOf(v).String(),
+				)
+				continue
+			}
+
+			// We only care about Bitswap records here.
+			if !lo.Contains(result.Protocols, "transport-bitswap") {
+				continue
+			}
+
+			var addrs []multiaddr.Multiaddr
+			for _, a := range result.Addrs {
+				addrs = append(addrs, a.Multiaddr)
+			}
+
+			ch <- peer.AddrInfo{
+				ID:    *result.ID,
+				Addrs: addrs,
+			}
+		//lint:ignore SA1019 // ignore staticcheck
+		case types.SchemaBitswap:
+			//lint:ignore SA1019 // ignore staticcheck
+			result, ok := v.(*types.BitswapRecord)
 			if !ok {
 				logger.Errorw(
 					"problem casting find providers result",

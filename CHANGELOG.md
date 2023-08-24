@@ -43,11 +43,12 @@ The following emojis are used to highlight certain changes:
 * 🛠 `blockservice.New` now accepts a variadic of func options following the [Functional
   Options pattern](https://www.sohamkamani.com/golang/options-pattern/).
 * 🛠 The `routing/http` package has suffered the following modifications:
-  * Client `FindProviders` has been renamed to `FindProviders`. Similarly, the
-    required function names in the server `ContentRouter` have also been updated
-    for higher consistency with the remaining code and the specifications.
-  * Many types regarding response types were updated to conform to the updated
-    Peer Schema discussed in [IPIP-417](https://github.com/ipfs/specs/pull/417).
+  * Client `GetIPNSRecord` and `PutIPNSRecord` have been renamed to `FindIPNS` and
+    `ProvideIPNS`, respectively. Similarly, the required function names in the server
+    `ContentRouter` have also been updated.
+  * `ReadBitswapProviderRecord` has been renamed to `BitswapRecord` and marked as deprecated.
+    From now on, please use the protocol-agnostic `PeerRecord` for most use cases. The new
+    Peer Schema has been introduced in [IPIP-417](https://github.com/ipfs/specs/pull/417).
 
 ### Removed
 

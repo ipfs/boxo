@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/gorilla/mux"
@@ -20,6 +22,7 @@ import (
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 
 	logging "github.com/ipfs/go-log/v2"
 )
@@ -37,6 +40,7 @@ const (
 var logger = logging.Logger("routing/http/server")
 
 const (
+	providePath       = "/routing/v1/providers/"
 	findProvidersPath = "/routing/v1/providers/{cid}"
 	findPeersPath     = "/routing/v1/peers/{peer-id}"
 	findIPNSPath      = "/routing/v1/ipns/{cid}"
@@ -52,6 +56,11 @@ type ContentRouter interface {
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
 	FindProviders(ctx context.Context, cid cid.Cid, limit int) (iter.ResultIter[types.Record], error)
 
+	// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
+	//
+	// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+	ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error)
+
 	// FindPeers searches for peers who have the provided [peer.ID].
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
 	FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.Record], error)
@@ -62,6 +71,26 @@ type ContentRouter interface {
 	// ProvideIPNS stores the provided [ipns.Record] for the given [ipns.Name].
 	// It is guaranteed that the record matches the provided name.
 	ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
+}
+
+// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
+//
+// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+type BitswapWriteProvideRequest struct {
+	Keys        []cid.Cid
+	Timestamp   time.Time
+	AdvisoryTTL time.Duration
+	ID          peer.ID
+	Addrs       []multiaddr.Multiaddr
+}
+
+// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
+//
+// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+type WriteProvideRequest struct {
+	Protocol string
+	Schema   string
+	Bytes    []byte
 }
 
 type Option func(s *server)
@@ -104,6 +133,7 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 
 	r := mux.NewRouter()
 	r.HandleFunc(findProvidersPath, server.findProviders).Methods(http.MethodGet)
+	r.HandleFunc(providePath, server.provide).Methods(http.MethodPut)
 	r.HandleFunc(findPeersPath, server.findPeers).Methods(http.MethodGet)
 	r.HandleFunc(findIPNSPath, server.findIPNS).Methods(http.MethodGet)
 	r.HandleFunc(findIPNSPath, server.provideIPNS).Methods(http.MethodPut)
@@ -252,6 +282,65 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	handlerFunc(w, provIter)
+}
+
+func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
+	//lint:ignore SA1019 // ignore staticcheck
+	req := jsontypes.WriteProvidersRequest{}
+	err := json.NewDecoder(httpReq.Body).Decode(&req)
+	_ = httpReq.Body.Close()
+	if err != nil {
+		writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
+		return
+	}
+
+	//lint:ignore SA1019 // ignore staticcheck
+	resp := jsontypes.WriteProvidersResponse{}
+
+	for i, prov := range req.Providers {
+		switch v := prov.(type) {
+		//lint:ignore SA1019 // ignore staticcheck
+		case *types.WriteBitswapRecord:
+			err := v.Verify()
+			if err != nil {
+				logErr("Provide", "signature verification failed", err)
+				writeErr(w, "Provide", http.StatusForbidden, errors.New("signature verification failed"))
+				return
+			}
+
+			keys := make([]cid.Cid, len(v.Payload.Keys))
+			for i, k := range v.Payload.Keys {
+				keys[i] = k.Cid
+			}
+			addrs := make([]multiaddr.Multiaddr, len(v.Payload.Addrs))
+			for i, a := range v.Payload.Addrs {
+				addrs[i] = a.Multiaddr
+			}
+			advisoryTTL, err := s.svc.ProvideBitswap(httpReq.Context(), &BitswapWriteProvideRequest{
+				Keys:        keys,
+				Timestamp:   v.Payload.Timestamp.Time,
+				AdvisoryTTL: v.Payload.AdvisoryTTL.Duration,
+				ID:          *v.Payload.ID,
+				Addrs:       addrs,
+			})
+			if err != nil {
+				writeErr(w, "Provide", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+				return
+			}
+			resp.ProvideResults = append(resp.ProvideResults,
+				//lint:ignore SA1019 // ignore staticcheck
+				&types.WriteBitswapRecordResponse{
+					Protocol:    v.Protocol,
+					Schema:      v.Schema,
+					AdvisoryTTL: &types.Duration{Duration: advisoryTTL},
+				},
+			)
+		default:
+			writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("provider record %d is not bitswap", i))
+			return
+		}
+	}
+	writeJSONResult(w, "Provide", resp)
 }
 
 func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[types.Record]) {
