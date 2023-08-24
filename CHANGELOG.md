@@ -16,9 +16,25 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+* ✨ The `routing/http` not supports Delegated Peer Routing as per [IPIP-417](https://github.com/ipfs/specs/pull/417).
+
 ### Changed
 
+* 🛠 The `routing/http` package has suffered the following modifications:
+  * Client `GetIPNSRecord` and `PutIPNSRecord` have been renamed to `FindIPNS` and
+    `ProvideIPNS`, respectively. Similarly, the required function names in the server
+    `ContentRouter` have also been updated.
+  * `ReadBitswapProviderRecord` has been renamed to `BitswapRecord` and marked as deprecated.
+    From now on, please use the protocol-agnostic `PeerRecord` for most use cases. The new
+    Peer Schema has been introduced in [IPIP-417](https://github.com/ipfs/specs/pull/417).
+
 ### Removed
+
+* 🛠 The `routing/http` package has suffered the following removals:
+  * Server and client no longer support the generic `Provide` method for content routing.
+    `ProvideBitswap` is still usable, but marked as deprecated. A protocol-agnostic 
+    provide mechanism is being worked on in [IPIP-378](https://github.com/ipfs/specs/pull/378).
+  * Server no longer exports `FindProvidersPath` and `ProvidePath`.
 
 ### Fixed
 
@@ -32,31 +48,15 @@ The following emojis are used to highlight certain changes:
   as per [IPIP-379](https://specs.ipfs.tech/ipips/ipip-0379/).
 * 🛠 The `verifycid` package has been updated with the new Allowlist interface as part of
   reducing globals efforts.
-* The `blockservice` and `provider` packages has been updated to accommodate for 
+* The `blockservice` and `provider` packages has been updated to accommodate for
   changes in `verifycid`.
-* ✨ The `routing/http` package has received the following additions:
-  * Supports Delegated IPNS as per [IPIP-379](https://specs.ipfs.tech/ipips/ipip-0379/).
-  * Supports Delegated Peer Routing as per [IPIP-417](https://github.com/ipfs/specs/pull/417).
 
 ### Changed
 
 * 🛠 `blockservice.New` now accepts a variadic of func options following the [Functional
   Options pattern](https://www.sohamkamani.com/golang/options-pattern/).
-* 🛠 The `routing/http` package has suffered the following modifications:
-  * Client `GetIPNSRecord` and `PutIPNSRecord` have been renamed to `FindIPNS` and
-    `ProvideIPNS`, respectively. Similarly, the required function names in the server
-    `ContentRouter` have also been updated.
-  * `ReadBitswapProviderRecord` has been renamed to `BitswapRecord` and marked as deprecated.
-    From now on, please use the protocol-agnostic `PeerRecord` for most use cases. The new
-    Peer Schema has been introduced in [IPIP-417](https://github.com/ipfs/specs/pull/417).
 
 ### Removed
-
-* 🛠 The `routing/http` package has suffered the following removals:
-  * Server and client no longer support the `Provide*` methods for content routing.
-    These methods did not conform to any specification, as it is still being worked
-    out in [IPIP-378](https://github.com/ipfs/specs/pull/378).
-  * Server no longer exports `FindProvidersPath` and `ProvidePath`.
 
 ### Fixed
 
