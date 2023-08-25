@@ -1,5 +1,7 @@
 package iter
 
+import "fmt"
+
 // Iter is an iterator of arbitrary values.
 // Iterators are generally not goroutine-safe, to make them safe just read from them into a channel.
 // For our use cases, these usually have a single reader. This motivates iterators instead of channels,
@@ -43,4 +45,22 @@ func ReadAll[T any](iter Iter[T]) []T {
 		vs = append(vs, iter.Val())
 	}
 	return vs
+}
+
+func ReadAllResults[T any](iter ResultIter[T]) ([]T, error) {
+	var (
+		vs []T
+		i  int
+	)
+
+	for iter.Next() {
+		res := iter.Val()
+		if res.Err != nil {
+			return nil, fmt.Errorf("error on result %d: %w", i, res.Err)
+		}
+		vs = append(vs, res.Val)
+		i++
+	}
+
+	return vs, nil
 }

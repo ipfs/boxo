@@ -12,14 +12,37 @@ import (
 	"github.com/multiformats/go-multibase"
 )
 
+// Deprecated: use the more versatile [SchemaPeer] instead. For more information, read [IPIP-417].
+//
+// [IPIP-417]: https://github.com/ipfs/specs/pull/417
 const SchemaBitswap = "bitswap"
 
-var _ WriteProviderRecord = &WriteBitswapProviderRecord{}
+var (
+	_ Record = &BitswapRecord{}
+)
 
-// WriteBitswapProviderRecord is used when we want to add a new provider record that is using bitswap.
-type WriteBitswapProviderRecord struct {
-	Protocol  string
+// Deprecated: use the more versatile [PeerRecord] instead. For more information, read [IPIP-417].
+//
+// [IPIP-417]: https://github.com/ipfs/specs/pull/417
+type BitswapRecord struct {
+	Schema   string
+	Protocol string
+	ID       *peer.ID
+	Addrs    []Multiaddr `json:",omitempty"`
+}
+
+func (br *BitswapRecord) GetSchema() string {
+	return br.Schema
+}
+
+var _ Record = &WriteBitswapRecord{}
+
+// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
+//
+// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+type WriteBitswapRecord struct {
 	Schema    string
+	Protocol  string
 	Signature string
 
 	// this content must be untouched because it is signed and we need to verify it
@@ -35,11 +58,13 @@ type BitswapPayload struct {
 	Addrs       []Multiaddr
 }
 
-func (*WriteBitswapProviderRecord) IsWriteProviderRecord() {}
+func (wr *WriteBitswapRecord) GetSchema() string {
+	return wr.Schema
+}
 
-type tmpBWPR WriteBitswapProviderRecord
+type tmpBWPR WriteBitswapRecord
 
-func (p *WriteBitswapProviderRecord) UnmarshalJSON(b []byte) error {
+func (p *WriteBitswapRecord) UnmarshalJSON(b []byte) error {
 	var bwp tmpBWPR
 	err := json.Unmarshal(b, &bwp)
 	if err != nil {
@@ -54,11 +79,11 @@ func (p *WriteBitswapProviderRecord) UnmarshalJSON(b []byte) error {
 	return json.Unmarshal(bwp.RawPayload, &p.Payload)
 }
 
-func (p *WriteBitswapProviderRecord) IsSigned() bool {
+func (p *WriteBitswapRecord) IsSigned() bool {
 	return p.Signature != ""
 }
 
-func (p *WriteBitswapProviderRecord) setRawPayload() error {
+func (p *WriteBitswapRecord) setRawPayload() error {
 	payloadBytes, err := drjson.MarshalJSONBytes(p.Payload)
 	if err != nil {
 		return fmt.Errorf("marshaling bitswap write provider payload: %w", err)
@@ -69,7 +94,7 @@ func (p *WriteBitswapProviderRecord) setRawPayload() error {
 	return nil
 }
 
-func (p *WriteBitswapProviderRecord) Sign(peerID peer.ID, key crypto.PrivKey) error {
+func (p *WriteBitswapRecord) Sign(peerID peer.ID, key crypto.PrivKey) error {
 	if p.IsSigned() {
 		return errors.New("already signed")
 	}
@@ -105,7 +130,7 @@ func (p *WriteBitswapProviderRecord) Sign(peerID peer.ID, key crypto.PrivKey) er
 	return nil
 }
 
-func (p *WriteBitswapProviderRecord) Verify() error {
+func (p *WriteBitswapRecord) Verify() error {
 	if !p.IsSigned() {
 		return errors.New("not signed")
 	}
@@ -145,42 +170,17 @@ func (p *WriteBitswapProviderRecord) Verify() error {
 	return nil
 }
 
-var _ ProviderResponse = &WriteBitswapProviderRecordResponse{}
+var _ Record = &WriteBitswapRecordResponse{}
 
-// WriteBitswapProviderRecordResponse will be returned as a result of WriteBitswapProviderRecord
-type WriteBitswapProviderRecordResponse struct {
-	Protocol    string
+// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
+//
+// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+type WriteBitswapRecordResponse struct {
 	Schema      string
+	Protocol    string
 	AdvisoryTTL *Duration
 }
 
-func (wbprr *WriteBitswapProviderRecordResponse) GetProtocol() string {
-	return wbprr.Protocol
+func (r *WriteBitswapRecordResponse) GetSchema() string {
+	return r.Schema
 }
-
-func (wbprr *WriteBitswapProviderRecordResponse) GetSchema() string {
-	return wbprr.Schema
-}
-
-var (
-	_ ReadProviderRecord = &ReadBitswapProviderRecord{}
-	_ ProviderResponse   = &ReadBitswapProviderRecord{}
-)
-
-// ReadBitswapProviderRecord is a provider result with parameters for bitswap providers
-type ReadBitswapProviderRecord struct {
-	Protocol string
-	Schema   string
-	ID       *peer.ID
-	Addrs    []Multiaddr
-}
-
-func (rbpr *ReadBitswapProviderRecord) GetProtocol() string {
-	return rbpr.Protocol
-}
-
-func (rbpr *ReadBitswapProviderRecord) GetSchema() string {
-	return rbpr.Schema
-}
-
-func (*ReadBitswapProviderRecord) IsReadProviderRecord() {}
