@@ -154,7 +154,7 @@ func TestFindProvidersAsync(t *testing.T) {
 			Protocols: []string{"transport-horse"},
 		},
 		&types.UnknownRecord{
-			Schema: "UNKNOWN",
+			Schema: "unknown",
 		},
 	}
 	aisIter := iter.ToResultIter[types.Record](iter.FromSlice(ais))
@@ -185,7 +185,7 @@ func TestFindPeer(t *testing.T) {
 	p1 := peer.ID("peer1")
 	ais := []types.Record{
 		&types.UnknownRecord{
-			Schema: "Unknown",
+			Schema: "unknown",
 		},
 		&types.PeerRecord{
 			Schema:    types.SchemaPeer,
