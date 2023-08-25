@@ -21,8 +21,8 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 * 🛠 The `routing/http` package has suffered the following modifications:
-  * Client `GetIPNSRecord` and `PutIPNSRecord` have been renamed to `FindIPNS` and
-    `ProvideIPNS`, respectively. Similarly, the required function names in the server
+  * Client `GetIPNSRecord` and `PutIPNSRecord` have been renamed to `GetIPNS` and
+    `PutIPNS`, respectively. Similarly, the required function names in the server
     `ContentRouter` have also been updated.
   * `ReadBitswapProviderRecord` has been renamed to `BitswapRecord` and marked as deprecated.
     From now on, please use the protocol-agnostic `PeerRecord` for most use cases. The new

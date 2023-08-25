@@ -48,12 +48,12 @@ func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit in
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
-func (m *mockContentRouter) FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+func (m *mockContentRouter) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
 	return args.Get(0).(*ipns.Record), args.Error(1)
 }
 
-func (m *mockContentRouter) ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+func (m *mockContentRouter) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	args := m.Called(ctx, name, record)
 	return args.Error(0)
 }
@@ -648,9 +648,9 @@ func TestClient_IPNS(t *testing.T) {
 		client := deps.client
 		router := deps.router
 
-		router.On("FindIPNS", mock.Anything, name).Return(nil, errors.New("something wrong happened"))
+		router.On("GetIPNS", mock.Anything, name).Return(nil, errors.New("something wrong happened"))
 
-		receivedRecord, err := client.FindIPNS(context.Background(), name)
+		receivedRecord, err := client.GetIPNS(context.Background(), name)
 		require.Error(t, err)
 		require.Nil(t, receivedRecord)
 	})
@@ -664,9 +664,9 @@ func TestClient_IPNS(t *testing.T) {
 			client := deps.client
 			router := deps.router
 
-			router.On("FindIPNS", mock.Anything, name).Return(record, nil)
+			router.On("GetIPNS", mock.Anything, name).Return(record, nil)
 
-			receivedRecord, err := client.FindIPNS(context.Background(), name)
+			receivedRecord, err := client.GetIPNS(context.Background(), name)
 			require.NoError(t, err)
 			require.Equal(t, record, receivedRecord)
 		})
@@ -680,9 +680,9 @@ func TestClient_IPNS(t *testing.T) {
 			client := deps.client
 			router := deps.router
 
-			router.On("FindIPNS", mock.Anything, name2).Return(record, nil)
+			router.On("GetIPNS", mock.Anything, name2).Return(record, nil)
 
-			receivedRecord, err := client.FindIPNS(context.Background(), name2)
+			receivedRecord, err := client.GetIPNS(context.Background(), name2)
 			require.Error(t, err)
 			require.Nil(t, receivedRecord)
 		})
@@ -695,9 +695,9 @@ func TestClient_IPNS(t *testing.T) {
 			client := deps.client
 			router := deps.router
 
-			router.On("ProvideIPNS", mock.Anything, name, record).Return(nil)
+			router.On("PutIPNS", mock.Anything, name, record).Return(nil)
 
-			err := client.ProvideIPNS(context.Background(), name, record)
+			err := client.PutIPNS(context.Background(), name, record)
 			require.NoError(t, err)
 		})
 	}

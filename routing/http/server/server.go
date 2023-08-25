@@ -43,7 +43,7 @@ const (
 	providePath       = "/routing/v1/providers/"
 	findProvidersPath = "/routing/v1/providers/{cid}"
 	findPeersPath     = "/routing/v1/peers/{peer-id}"
-	findIPNSPath      = "/routing/v1/ipns/{cid}"
+	GetIPNSPath       = "/routing/v1/ipns/{cid}"
 )
 
 type FindProvidersAsyncResponse struct {
@@ -65,12 +65,12 @@ type ContentRouter interface {
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
 	FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.Record], error)
 
-	// FindIPNS searches for an [ipns.Record] for the given [ipns.Name].
-	FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
+	// GetIPNS searches for an [ipns.Record] for the given [ipns.Name].
+	GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
 
-	// ProvideIPNS stores the provided [ipns.Record] for the given [ipns.Name].
+	// PutIPNS stores the provided [ipns.Record] for the given [ipns.Name].
 	// It is guaranteed that the record matches the provided name.
-	ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
+	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
 }
 
 // Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
@@ -135,8 +135,8 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	r.HandleFunc(findProvidersPath, server.findProviders).Methods(http.MethodGet)
 	r.HandleFunc(providePath, server.provide).Methods(http.MethodPut)
 	r.HandleFunc(findPeersPath, server.findPeers).Methods(http.MethodGet)
-	r.HandleFunc(findIPNSPath, server.findIPNS).Methods(http.MethodGet)
-	r.HandleFunc(findIPNSPath, server.provideIPNS).Methods(http.MethodPut)
+	r.HandleFunc(GetIPNSPath, server.GetIPNS).Methods(http.MethodGet)
+	r.HandleFunc(GetIPNSPath, server.PutIPNS).Methods(http.MethodPut)
 	return r
 }
 
@@ -361,9 +361,9 @@ func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIte
 	writeResultsIterNDJSON(w, peersIter)
 }
 
-func (s *server) findIPNS(w http.ResponseWriter, r *http.Request) {
+func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 	if !strings.Contains(r.Header.Get("Accept"), mediaTypeIPNSRecord) {
-		writeErr(w, "FindIPNS", http.StatusNotAcceptable, errors.New("content type in 'Accept' header is missing or not supported"))
+		writeErr(w, "GetIPNS", http.StatusNotAcceptable, errors.New("content type in 'Accept' header is missing or not supported"))
 		return
 	}
 
@@ -371,25 +371,25 @@ func (s *server) findIPNS(w http.ResponseWriter, r *http.Request) {
 	cidStr := vars["cid"]
 	cid, err := cid.Decode(cidStr)
 	if err != nil {
-		writeErr(w, "FindIPNS", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
+		writeErr(w, "GetIPNS", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
 		return
 	}
 
 	name, err := ipns.NameFromCid(cid)
 	if err != nil {
-		writeErr(w, "FindIPNS", http.StatusBadRequest, fmt.Errorf("peer ID CID is not valid: %w", err))
+		writeErr(w, "GetIPNS", http.StatusBadRequest, fmt.Errorf("peer ID CID is not valid: %w", err))
 		return
 	}
 
-	record, err := s.svc.FindIPNS(r.Context(), name)
+	record, err := s.svc.GetIPNS(r.Context(), name)
 	if err != nil {
-		writeErr(w, "FindIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+		writeErr(w, "GetIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
 	}
 
 	rawRecord, err := ipns.MarshalRecord(record)
 	if err != nil {
-		writeErr(w, "FindIPNS", http.StatusInternalServerError, err)
+		writeErr(w, "GetIPNS", http.StatusInternalServerError, err)
 		return
 	}
 
@@ -405,9 +405,9 @@ func (s *server) findIPNS(w http.ResponseWriter, r *http.Request) {
 	w.Write(rawRecord)
 }
 
-func (s *server) provideIPNS(w http.ResponseWriter, r *http.Request) {
+func (s *server) PutIPNS(w http.ResponseWriter, r *http.Request) {
 	if !strings.Contains(r.Header.Get("Content-Type"), mediaTypeIPNSRecord) {
-		writeErr(w, "ProvideIPNS", http.StatusNotAcceptable, errors.New("content type in 'Content-Type' header is missing or not supported"))
+		writeErr(w, "PutIPNS", http.StatusNotAcceptable, errors.New("content type in 'Content-Type' header is missing or not supported"))
 		return
 	}
 
@@ -415,38 +415,38 @@ func (s *server) provideIPNS(w http.ResponseWriter, r *http.Request) {
 	cidStr := vars["cid"]
 	cid, err := cid.Decode(cidStr)
 	if err != nil {
-		writeErr(w, "ProvideIPNS", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
+		writeErr(w, "PutIPNS", http.StatusBadRequest, fmt.Errorf("unable to parse CID: %w", err))
 		return
 	}
 
 	name, err := ipns.NameFromCid(cid)
 	if err != nil {
-		writeErr(w, "ProvideIPNS", http.StatusBadRequest, fmt.Errorf("peer ID CID is not valid: %w", err))
+		writeErr(w, "PutIPNS", http.StatusBadRequest, fmt.Errorf("peer ID CID is not valid: %w", err))
 		return
 	}
 
 	// Limit the reader to the maximum record size.
 	rawRecord, err := io.ReadAll(io.LimitReader(r.Body, int64(ipns.MaxRecordSize)))
 	if err != nil {
-		writeErr(w, "ProvideIPNS", http.StatusBadRequest, fmt.Errorf("provided record is too long: %w", err))
+		writeErr(w, "PutIPNS", http.StatusBadRequest, fmt.Errorf("provided record is too long: %w", err))
 		return
 	}
 
 	record, err := ipns.UnmarshalRecord(rawRecord)
 	if err != nil {
-		writeErr(w, "ProvideIPNS", http.StatusBadRequest, fmt.Errorf("provided record is invalid: %w", err))
+		writeErr(w, "PutIPNS", http.StatusBadRequest, fmt.Errorf("provided record is invalid: %w", err))
 		return
 	}
 
 	err = ipns.ValidateWithName(record, name)
 	if err != nil {
-		writeErr(w, "ProvideIPNS", http.StatusBadRequest, fmt.Errorf("provided record is invalid: %w", err))
+		writeErr(w, "PutIPNS", http.StatusBadRequest, fmt.Errorf("provided record is invalid: %w", err))
 		return
 	}
 
-	err = s.svc.ProvideIPNS(r.Context(), name, record)
+	err = s.svc.PutIPNS(r.Context(), name, record)
 	if err != nil {
-		writeErr(w, "ProvideIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+		writeErr(w, "PutIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
 	}
 

@@ -28,8 +28,8 @@ type Client interface {
 	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error)
 	ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error)
 	FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[types.Record], err error)
-	FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
-	ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
+	GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
+	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
 }
 
 type contentRouter struct {
@@ -243,7 +243,7 @@ func (c *contentRouter) PutValue(ctx context.Context, key string, data []byte, o
 		return err
 	}
 
-	return c.client.ProvideIPNS(ctx, name, record)
+	return c.client.PutIPNS(ctx, name, record)
 }
 
 func (c *contentRouter) GetValue(ctx context.Context, key string, opts ...routing.Option) ([]byte, error) {
@@ -256,7 +256,7 @@ func (c *contentRouter) GetValue(ctx context.Context, key string, opts ...routin
 		return nil, err
 	}
 
-	record, err := c.client.FindIPNS(ctx, name)
+	record, err := c.client.GetIPNS(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +277,7 @@ func (c *contentRouter) SearchValue(ctx context.Context, key string, opts ...rou
 	ch := make(chan []byte)
 
 	go func() {
-		record, err := c.client.FindIPNS(ctx, name)
+		record, err := c.client.GetIPNS(ctx, name)
 		if err != nil {
 			close(ch)
 			return

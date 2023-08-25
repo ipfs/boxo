@@ -731,7 +731,7 @@ func (mb *errorMockBackend) ResolveMutable(ctx context.Context, path ipath.Path)
 	return ImmutablePath{}, mb.err
 }
 
-func (mb *errorMockBackend) FindIPNS(ctx context.Context, c cid.Cid) ([]byte, error) {
+func (mb *errorMockBackend) GetIPNS(ctx context.Context, c cid.Cid) ([]byte, error) {
 	return nil, mb.err
 }
 
@@ -815,7 +815,7 @@ func (mb *panicMockBackend) ResolveMutable(ctx context.Context, p ipath.Path) (I
 	panic("i am panicking")
 }
 
-func (mb *panicMockBackend) FindIPNS(ctx context.Context, c cid.Cid) ([]byte, error) {
+func (mb *panicMockBackend) GetIPNS(ctx context.Context, c cid.Cid) ([]byte, error) {
 	panic("i am panicking")
 }
 

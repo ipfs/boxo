@@ -43,12 +43,12 @@ func (m *mockClient) Ready(ctx context.Context) (bool, error) {
 	return args.Bool(0), args.Error(1)
 }
 
-func (m *mockClient) FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+func (m *mockClient) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
 	return args.Get(0).(*ipns.Record), args.Error(1)
 }
 
-func (m *mockClient) ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+func (m *mockClient) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	args := m.Called(ctx, name, record)
 	return args.Error(0)
 }
@@ -249,7 +249,7 @@ func TestGetValue(t *testing.T) {
 	t.Run("Succeeds On Valid IPNS Name", func(t *testing.T) {
 		sk, name := makeName(t)
 		rec, rawRec := makeIPNSRecord(t, sk)
-		client.On("FindIPNS", ctx, name).Return(rec, nil)
+		client.On("GetIPNS", ctx, name).Return(rec, nil)
 		v, err := crc.GetValue(ctx, string(name.RoutingKey()))
 		require.NoError(t, err)
 		require.Equal(t, rawRec, v)
@@ -280,7 +280,7 @@ func TestPutValue(t *testing.T) {
 	})
 
 	t.Run("Succeeds On Valid IPNS Name & Record", func(t *testing.T) {
-		client.On("ProvideIPNS", ctx, name, mock.Anything).Return(nil)
+		client.On("PutIPNS", ctx, name, mock.Anything).Return(nil)
 		err := crc.PutValue(ctx, string(name.RoutingKey()), rawRec)
 		require.NoError(t, err)
 	})

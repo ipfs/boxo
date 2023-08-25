@@ -405,7 +405,7 @@ func (c *client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
-func (c *client) FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+func (c *client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -443,7 +443,7 @@ func (c *client) FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, er
 	return record, nil
 }
 
-func (c *client) ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+func (c *client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
 	rawRecord, err := ipns.MarshalRecord(record)

@@ -157,7 +157,7 @@ func (mb *mockBackend) ResolveMutable(ctx context.Context, p ipath.Path) (Immuta
 	return mb.gw.ResolveMutable(ctx, p)
 }
 
-func (mb *mockBackend) FindIPNS(ctx context.Context, c cid.Cid) ([]byte, error) {
+func (mb *mockBackend) GetIPNS(ctx context.Context, c cid.Cid) ([]byte, error) {
 	return nil, routing.ErrNotSupported
 }
 

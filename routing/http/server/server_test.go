@@ -285,7 +285,7 @@ func TestIPNS(t *testing.T) {
 			require.NoError(t, err)
 
 			router := &mockContentRouter{}
-			router.On("FindIPNS", mock.Anything, name1).Return(rec, nil)
+			router.On("GetIPNS", mock.Anything, name1).Return(rec, nil)
 
 			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String())
 			require.Equal(t, 200, resp.StatusCode)
@@ -318,7 +318,7 @@ func TestIPNS(t *testing.T) {
 			t.Parallel()
 
 			router := &mockContentRouter{}
-			router.On("ProvideIPNS", mock.Anything, name1, record1).Return(nil)
+			router.On("PutIPNS", mock.Anything, name1, record1).Return(nil)
 
 			server := httptest.NewServer(Handler(router))
 			t.Cleanup(server.Close)
@@ -380,12 +380,12 @@ func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit in
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
-func (m *mockContentRouter) FindIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+func (m *mockContentRouter) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
 	return args.Get(0).(*ipns.Record), args.Error(1)
 }
 
-func (m *mockContentRouter) ProvideIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+func (m *mockContentRouter) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	args := m.Called(ctx, name, record)
 	return args.Error(0)
 }
