@@ -172,6 +172,7 @@ func TestFindProvidersAsync(t *testing.T) {
 		{ID: p1},
 		{ID: p2},
 		{ID: p3},
+		{ID: p4},
 	}
 
 	require.Equal(t, expected, actualAIs)

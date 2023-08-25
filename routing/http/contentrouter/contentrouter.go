@@ -17,7 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
-	"github.com/samber/lo"
 )
 
 var logger = logging.Logger("routing/http/contentrouter")
@@ -112,7 +111,8 @@ func (c *contentRouter) Ready() bool {
 	return true
 }
 
-// readProviderResponses reads bitswap records from the iterator into the given channel, dropping non-bitswap records.
+// readProviderResponses reads peer records (and bitswap records for legacy
+// compatibility) from the iterator into the given channel.
 func readProviderResponses(iter iter.ResultIter[types.Record], ch chan<- peer.AddrInfo) {
 	defer close(ch)
 	defer iter.Close()
@@ -132,11 +132,6 @@ func readProviderResponses(iter iter.ResultIter[types.Record], ch chan<- peer.Ad
 					"Schema", v.GetSchema(),
 					"Type", reflect.TypeOf(v).String(),
 				)
-				continue
-			}
-
-			// We only care about Bitswap records here.
-			if !lo.Contains(result.Protocols, "transport-bitswap") {
 				continue
 			}
 
