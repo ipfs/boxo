@@ -143,13 +143,13 @@ func (b *ipfsBackendWithMetrics) IsCached(ctx context.Context, path path.Path) b
 	return bln
 }
 
-func (b *ipfsBackendWithMetrics) GetIPNS(ctx context.Context, cid cid.Cid) ([]byte, error) {
+func (b *ipfsBackendWithMetrics) GetIPNSRecord(ctx context.Context, cid cid.Cid) ([]byte, error) {
 	begin := time.Now()
-	name := "IPFSBackend.GetIPNS"
+	name := "IPFSBackend.GetIPNSRecord"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("cid", cid.String())))
 	defer span.End()
 
-	r, err := b.backend.GetIPNS(ctx, cid)
+	r, err := b.backend.GetIPNSRecord(ctx, cid)
 
 	b.updateBackendCallMetric(name, err, begin)
 	return r, err

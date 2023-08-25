@@ -330,9 +330,9 @@ type IPFSBackend interface {
 	// IsCached returns whether or not the path exists locally.
 	IsCached(context.Context, path.Path) bool
 
-	// GetIPNS retrieves the best IPNS record for a given CID (libp2p-key)
+	// GetIPNSRecord retrieves the best IPNS record for a given CID (libp2p-key)
 	// from the routing system.
-	GetIPNS(context.Context, cid.Cid) ([]byte, error)
+	GetIPNSRecord(context.Context, cid.Cid) ([]byte, error)
 
 	// ResolveMutable takes a mutable path and resolves it into an immutable one. This means recursively resolving any
 	// DNSLink or IPNS records.
