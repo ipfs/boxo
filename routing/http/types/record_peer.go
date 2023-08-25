@@ -64,9 +64,18 @@ func (pr PeerRecord) MarshalJSON() ([]byte, error) {
 			m[key] = val
 		}
 	}
+
+	// Schema and ID must always be set.
 	m["Schema"] = pr.Schema
 	m["ID"] = pr.ID
-	m["Addrs"] = pr.Addrs
-	m["Protocols"] = pr.Protocols
+
+	if pr.Addrs != nil {
+		m["Addrs"] = pr.Addrs
+	}
+
+	if pr.Protocols != nil {
+		m["Protocols"] = pr.Protocols
+	}
+
 	return drjson.MarshalJSONBytes(m)
 }
