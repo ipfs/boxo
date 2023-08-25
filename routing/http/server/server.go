@@ -246,7 +246,11 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	// [peer.Decode] because that would allow other formats to pass through.
 	cid, err := cid.Decode(pidStr)
 	if err != nil {
-		writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse peer ID: %w", err))
+		if pid, err := peer.Decode(pidStr); err == nil {
+			writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("the value is a peer ID, try using its CID representation: %s", peer.ToCid(pid).String()))
+		} else {
+			writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse peer ID: %w", err))
+		}
 		return
 	}
 
