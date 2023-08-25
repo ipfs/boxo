@@ -16,11 +16,11 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-* ✨ The `routing/http` not supports Delegated Peer Routing as per [IPIP-417](https://github.com/ipfs/specs/pull/417).
+* ✨ The `routing/http` implements Delegated Peer Routing introduced in [IPIP-417](https://github.com/ipfs/specs/pull/417).
 
 ### Changed
 
-* 🛠 The `routing/http` package has suffered the following modifications:
+* 🛠 The `routing/http` package received the following modifications:
   * Client `GetIPNSRecord` and `PutIPNSRecord` have been renamed to `GetIPNS` and
     `PutIPNS`, respectively. Similarly, the required function names in the server
     `ContentRouter` have also been updated.
@@ -30,8 +30,8 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
-* 🛠 The `routing/http` package has suffered the following removals:
-  * Server and client no longer support the generic `Provide` method for content routing.
+* 🛠 The `routing/http` package experienced following removals:
+  * Server and client no longer support the experimental `Provide` method.
     `ProvideBitswap` is still usable, but marked as deprecated. A protocol-agnostic 
     provide mechanism is being worked on in [IPIP-378](https://github.com/ipfs/specs/pull/378).
   * Server no longer exports `FindProvidersPath` and `ProvidePath`.
