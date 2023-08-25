@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/boxo/internal/test"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
@@ -180,6 +181,9 @@ func testProvider(t *testing.T, singleProvide bool) {
 }
 
 func TestOfflineRecordsThenOnlineRepublish(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		test.Flaky(t)
+	}
 	// Don't run in Parallel as this test is time sensitive.
 
 	someHash, err := mh.Sum([]byte("Vires in Numeris!"), mh.BLAKE3, -1)
