@@ -122,13 +122,13 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		if headResp != nil {
 			if headResp.isFile {
 				rq.logger.Debugw("serving unixfs file", "path", rq.contentPath)
-				return i.serveFile(ctx, w, r, resolvedPath, rq.contentPath, headResp.bytesSize, headResp.startingBytes, false, true, pathMetadata.ContentType, rq.begin)
+				return i.serveFile(ctx, w, r, resolvedPath, rq, headResp.bytesSize, headResp.startingBytes, false, true, pathMetadata.ContentType)
 			} else if headResp.isSymLink {
 				rq.logger.Debugw("serving unixfs file", "path", rq.contentPath)
-				return i.serveFile(ctx, w, r, resolvedPath, rq.contentPath, headResp.bytesSize, nil, true, true, pathMetadata.ContentType, rq.begin)
+				return i.serveFile(ctx, w, r, resolvedPath, rq, headResp.bytesSize, nil, true, true, pathMetadata.ContentType)
 			} else if headResp.isDir {
 				rq.logger.Debugw("serving unixfs directory", "path", rq.contentPath)
-				return i.serveDirectory(ctx, w, r, resolvedPath, rq.contentPath, true, nil, ranges, rq.begin, rq.logger)
+				return i.serveDirectory(ctx, w, r, resolvedPath, rq, true, nil, ranges)
 			}
 		} else {
 			if getResp.bytes != nil {
@@ -140,14 +140,14 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 						rangeRequestStartsAtZero = false
 					}
 				}
-				return i.serveFile(ctx, w, r, resolvedPath, rq.contentPath, getResp.bytesSize, getResp.bytes, false, rangeRequestStartsAtZero, pathMetadata.ContentType, rq.begin)
+				return i.serveFile(ctx, w, r, resolvedPath, rq, getResp.bytesSize, getResp.bytes, false, rangeRequestStartsAtZero, pathMetadata.ContentType)
 			} else if getResp.symlink != nil {
 				rq.logger.Debugw("serving unixfs file", "path", rq.contentPath)
 				// Note: this ignores range requests against symlinks
-				return i.serveFile(ctx, w, r, resolvedPath, rq.contentPath, getResp.bytesSize, getResp.symlink, true, true, pathMetadata.ContentType, rq.begin)
+				return i.serveFile(ctx, w, r, resolvedPath, rq, getResp.bytesSize, getResp.symlink, true, true, pathMetadata.ContentType)
 			} else if getResp.directoryMetadata != nil {
 				rq.logger.Debugw("serving unixfs directory", "path", rq.contentPath)
-				return i.serveDirectory(ctx, w, r, resolvedPath, rq.contentPath, false, getResp.directoryMetadata, ranges, rq.begin, rq.logger)
+				return i.serveDirectory(ctx, w, r, resolvedPath, rq, false, getResp.directoryMetadata, ranges)
 			}
 		}
 

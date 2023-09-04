@@ -155,16 +155,16 @@ func (b *ipfsBackendWithMetrics) GetIPNSRecord(ctx context.Context, cid cid.Cid)
 	return r, err
 }
 
-func (b *ipfsBackendWithMetrics) ResolveMutable(ctx context.Context, path path.Path) (path.ImmutablePath, error) {
+func (b *ipfsBackendWithMetrics) ResolveMutable(ctx context.Context, path path.Path) (path.ImmutablePath, time.Duration, time.Time, error) {
 	begin := time.Now()
 	name := "IPFSBackend.ResolveMutable"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
 	defer span.End()
 
-	p, err := b.backend.ResolveMutable(ctx, path)
+	p, ttl, lastMod, err := b.backend.ResolveMutable(ctx, path)
 
 	b.updateBackendCallMetric(name, err, begin)
-	return p, err
+	return p, ttl, lastMod, err
 }
 
 func (b *ipfsBackendWithMetrics) GetDNSLinkRecord(ctx context.Context, fqdn string) (path.Path, error) {

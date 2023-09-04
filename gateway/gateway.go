@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/gateway/assets"
@@ -369,11 +370,11 @@ type IPFSBackend interface {
 	GetIPNSRecord(context.Context, cid.Cid) ([]byte, error)
 
 	// ResolveMutable takes a mutable path and resolves it into an immutable one. This means recursively resolving any
-	// DNSLink or IPNS records.
+	// DNSLink or IPNS records. It should also return a TTL. If the TTL is unknown, 0 should be returned.
 	//
 	// For example, given a mapping from `/ipns/dnslink.tld -> /ipns/ipns-id/mydirectory` and `/ipns/ipns-id` to
 	// `/ipfs/some-cid`, the result of passing `/ipns/dnslink.tld/myfile` would be `/ipfs/some-cid/mydirectory/myfile`.
-	ResolveMutable(context.Context, path.Path) (path.ImmutablePath, error)
+	ResolveMutable(context.Context, path.Path) (path.ImmutablePath, time.Duration, time.Time, error)
 
 	// GetDNSLinkRecord returns the DNSLink TXT record for the provided FQDN.
 	// Unlike ResolvePath, it does not perform recursive resolution. It only

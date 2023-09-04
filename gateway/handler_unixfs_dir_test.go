@@ -28,7 +28,7 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	k3, err := backend.resolvePathNoRootsReturned(ctx, p3)
 	require.NoError(t, err)
 
-	backend.namesys["/ipns/example.net"] = path.FromCid(root)
+	backend.namesys["/ipns/example.net"] = newMockNamesysItem(path.FromCid(root), 0)
 
 	// make request to directory listing
 	req := mustNewRequest(t, http.MethodGet, ts.URL+"/foo%3F%20%23%3C%27/", nil)

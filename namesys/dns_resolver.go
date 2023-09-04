@@ -7,9 +7,9 @@ import (
 	"net"
 	gopath "path"
 	"strings"
+	"time"
 
-	opts "github.com/ipfs/boxo/coreiface/options/namesys"
-	"github.com/ipfs/boxo/path"
+	path "github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 	dns "github.com/miekg/dns"
 	"go.opentelemetry.io/otel/attribute"
@@ -19,80 +19,65 @@ import (
 // LookupTXTFunc is a function that lookups TXT record values.
 type LookupTXTFunc func(ctx context.Context, name string) (txt []string, err error)
 
-// DNSResolver implements a Resolver on DNS domains
+// DNSResolver implements [Resolver] on DNS domains.
 type DNSResolver struct {
 	lookupTXT LookupTXTFunc
-	// TODO: maybe some sort of caching?
-	// cache would need a timeout
 }
+
+var _ Resolver = &DNSResolver{}
 
 // NewDNSResolver constructs a name resolver using DNS TXT records.
 func NewDNSResolver(lookup LookupTXTFunc) *DNSResolver {
 	return &DNSResolver{lookupTXT: lookup}
 }
 
-// Resolve implements Resolver.
-func (r *DNSResolver) Resolve(ctx context.Context, name string, options ...opts.ResolveOpt) (path.Path, error) {
-	ctx, span := StartSpan(ctx, "DNSResolver.Resolve")
+func (r *DNSResolver) Resolve(ctx context.Context, p path.Path, options ...ResolveOption) (ResolveResult, error) {
+	ctx, span := startSpan(ctx, "DNSResolver.Resolve", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
-	return resolve(ctx, r, name, opts.ProcessOpts(options))
+	return resolve(ctx, r, p, ProcessResolveOptions(options))
 }
 
-// ResolveAsync implements Resolver.
-func (r *DNSResolver) ResolveAsync(ctx context.Context, name string, options ...opts.ResolveOpt) <-chan Result {
-	ctx, span := StartSpan(ctx, "DNSResolver.ResolveAsync")
+func (r *DNSResolver) ResolveAsync(ctx context.Context, p path.Path, options ...ResolveOption) <-chan ResolveAsyncResult {
+	ctx, span := startSpan(ctx, "DNSResolver.ResolveAsync", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
-	return resolveAsync(ctx, r, name, opts.ProcessOpts(options))
+	return resolveAsync(ctx, r, p, ProcessResolveOptions(options))
 }
 
-type lookupRes struct {
-	path  path.Path
-	error error
-}
-
-// resolveOnce implements resolver.
-// TXT records for a given domain name should contain a b58
-// encoded multihash.
-func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options opts.ResolveOpts) <-chan onceResult {
-	ctx, span := StartSpan(ctx, "DNSResolver.ResolveOnceAsync")
+func (r *DNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options ResolveOptions) <-chan ResolveAsyncResult {
+	ctx, span := startSpan(ctx, "DNSResolver.ResolveOnceAsync", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
-	var fqdn string
-	out := make(chan onceResult, 1)
-	segments := strings.SplitN(name, "/", 2)
-	domain := segments[0]
-
-	if _, ok := dns.IsDomainName(domain); !ok {
-		out <- onceResult{err: fmt.Errorf("not a valid domain name: %s", domain)}
+	out := make(chan ResolveAsyncResult, 1)
+	if p.Namespace() != path.IPNSNamespace {
+		out <- ResolveAsyncResult{Err: fmt.Errorf("unsupported namespace: %s", p.Namespace())}
 		close(out)
 		return out
 	}
-	log.Debugf("DNSResolver resolving %s", domain)
 
-	if strings.HasSuffix(domain, ".") {
-		fqdn = domain
-	} else {
-		fqdn = domain + "."
+	fqdn := p.Segments()[1]
+	if _, ok := dns.IsDomainName(fqdn); !ok {
+		out <- ResolveAsyncResult{Err: fmt.Errorf("not a valid domain name: %q", fqdn)}
+		close(out)
+		return out
 	}
 
-	rootChan := make(chan lookupRes, 1)
+	log.Debugf("DNSResolver resolving %s", fqdn)
+
+	if !strings.HasSuffix(fqdn, ".") {
+		fqdn += "."
+	}
+
+	rootChan := make(chan ResolveAsyncResult, 1)
 	go workDomain(ctx, r, fqdn, rootChan)
 
-	subChan := make(chan lookupRes, 1)
+	subChan := make(chan ResolveAsyncResult, 1)
 	go workDomain(ctx, r, "_dnslink."+fqdn, subChan)
-
-	appendPath := func(p path.Path) (path.Path, error) {
-		if len(segments) > 1 {
-			return path.Join(p, segments[1])
-		}
-		return p, nil
-	}
 
 	go func() {
 		defer close(out)
-		ctx, span := StartSpan(ctx, "DNSResolver.ResolveOnceAsync.Worker")
+		ctx, span := startSpan(ctx, "DNSResolver.ResolveOnceAsync.Worker")
 		defer span.End()
 
 		var rootResErr, subResErr error
@@ -103,26 +88,26 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 					subChan = nil
 					break
 				}
-				if subRes.error == nil {
-					p, err := appendPath(subRes.path)
-					emitOnceResult(ctx, out, onceResult{value: p, err: err})
+				if subRes.Err == nil {
+					p, err := joinPaths(subRes.Path, p)
+					emitOnceResult(ctx, out, ResolveAsyncResult{Path: p, LastMod: time.Now(), Err: err})
 					// Return without waiting for rootRes, since this result
 					// (for "_dnslink."+fqdn) takes precedence
 					return
 				}
-				subResErr = subRes.error
+				subResErr = subRes.Err
 			case rootRes, ok := <-rootChan:
 				if !ok {
 					rootChan = nil
 					break
 				}
-				if rootRes.error == nil {
-					p, err := appendPath(rootRes.path)
-					emitOnceResult(ctx, out, onceResult{value: p, err: err})
+				if rootRes.Err == nil {
+					p, err := joinPaths(rootRes.Path, p)
+					emitOnceResult(ctx, out, ResolveAsyncResult{Path: p, LastMod: time.Now(), Err: err})
 					// Do not return here.  Wait for subRes so that it is
 					// output last if good, thereby giving subRes precedence.
 				} else {
-					rootResErr = rootRes.error
+					rootResErr = rootRes.Err
 				}
 			case <-ctx.Done():
 				return
@@ -134,8 +119,8 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 				// dnslink, then output a more specific error message
 				if rootResErr == ErrResolveFailed && subResErr == ErrResolveFailed {
 					// Wrap error so that it can be tested if it is a ErrResolveFailed
-					err := fmt.Errorf("%w: _dnslink subdomain at %q is missing a TXT record (https://docs.ipfs.tech/concepts/dnslink/)", ErrResolveFailed, gopath.Base(name))
-					emitOnceResult(ctx, out, onceResult{err: err})
+					err := fmt.Errorf("%w: _dnslink subdomain at %q is missing a TXT record (https://docs.ipfs.tech/concepts/dnslink/)", ErrResolveFailed, gopath.Base(fqdn))
+					emitOnceResult(ctx, out, ResolveAsyncResult{Err: err})
 				}
 				return
 			}
@@ -145,8 +130,8 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 	return out
 }
 
-func workDomain(ctx context.Context, r *DNSResolver, name string, res chan lookupRes) {
-	ctx, span := StartSpan(ctx, "DNSResolver.WorkDomain", trace.WithAttributes(attribute.String("Name", name)))
+func workDomain(ctx context.Context, r *DNSResolver, name string, res chan ResolveAsyncResult) {
+	ctx, span := startSpan(ctx, "DNSResolver.WorkDomain", trace.WithAttributes(attribute.String("Name", name)))
 	defer span.End()
 
 	defer close(res)
@@ -161,20 +146,20 @@ func workDomain(ctx context.Context, r *DNSResolver, name string, res chan looku
 			}
 		}
 		// Could not look up any text records for name
-		res <- lookupRes{nil, err}
+		res <- ResolveAsyncResult{Err: err}
 		return
 	}
 
 	for _, t := range txt {
 		p, err := parseEntry(t)
 		if err == nil {
-			res <- lookupRes{p, nil}
+			res <- ResolveAsyncResult{Path: p}
 			return
 		}
 	}
 
 	// There were no TXT records with a dnslink
-	res <- lookupRes{nil, ErrResolveFailed}
+	res <- ResolveAsyncResult{Err: ErrResolveFailed}
 }
 
 func parseEntry(txt string) (path.Path, error) {

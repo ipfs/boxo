@@ -11,9 +11,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ipfs/boxo/blockservice"
-	nsopts "github.com/ipfs/boxo/coreiface/options/namesys"
 	offline "github.com/ipfs/boxo/exchange/offline"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/namesys"
@@ -51,43 +51,60 @@ func mustDo(t *testing.T, req *http.Request) *http.Response {
 	return res
 }
 
-type mockNamesys map[string]path.Path
+type mockNamesysItem struct {
+	path path.Path
+	ttl  time.Duration
+}
 
-func (m mockNamesys) Resolve(ctx context.Context, name string, opts ...nsopts.ResolveOpt) (value path.Path, err error) {
-	cfg := nsopts.DefaultResolveOpts()
+func newMockNamesysItem(p path.Path, ttl time.Duration) *mockNamesysItem {
+	return &mockNamesysItem{path: p, ttl: ttl}
+}
+
+type mockNamesys map[string]*mockNamesysItem
+
+func (m mockNamesys) Resolve(ctx context.Context, p path.Path, opts ...namesys.ResolveOption) (result namesys.ResolveResult, err error) {
+	cfg := namesys.DefaultResolveOptions()
 	for _, o := range opts {
 		o(&cfg)
 	}
 	depth := cfg.Depth
-	if depth == nsopts.UnlimitedDepth {
+	if depth == namesys.UnlimitedDepth {
 		// max uint
 		depth = ^uint(0)
 	}
+	var (
+		value path.Path
+		ttl   time.Duration
+	)
+	name := path.SegmentsToString(p.Segments()[:2]...)
 	for strings.HasPrefix(name, "/ipns/") {
 		if depth == 0 {
-			return value, namesys.ErrResolveRecursion
+			return namesys.ResolveResult{Path: value, TTL: ttl}, namesys.ErrResolveRecursion
 		}
 		depth--
 
-		var ok bool
-		value, ok = m[name]
+		v, ok := m[name]
 		if !ok {
-			return nil, namesys.ErrResolveFailed
+			return namesys.ResolveResult{}, namesys.ErrResolveFailed
 		}
+		value = v.path
+		ttl = v.ttl
 		name = value.String()
 	}
-	return value, nil
+
+	value, err = path.Join(value, p.Segments()[2:]...)
+	return namesys.ResolveResult{Path: value, TTL: ttl}, err
 }
 
-func (m mockNamesys) ResolveAsync(ctx context.Context, name string, opts ...nsopts.ResolveOpt) <-chan namesys.Result {
-	out := make(chan namesys.Result, 1)
-	v, err := m.Resolve(ctx, name, opts...)
-	out <- namesys.Result{Path: v, Err: err}
+func (m mockNamesys) ResolveAsync(ctx context.Context, p path.Path, opts ...namesys.ResolveOption) <-chan namesys.ResolveAsyncResult {
+	out := make(chan namesys.ResolveAsyncResult, 1)
+	res, err := m.Resolve(ctx, p, opts...)
+	out <- namesys.ResolveAsyncResult{Path: res.Path, TTL: res.TTL, LastMod: res.LastMod, Err: err}
 	close(out)
 	return out
 }
 
-func (m mockNamesys) Publish(ctx context.Context, name crypto.PrivKey, value path.Path, opts ...nsopts.PublishOption) error {
+func (m mockNamesys) Publish(ctx context.Context, name crypto.PrivKey, value path.Path, opts ...namesys.PublishOption) error {
 	return errors.New("not implemented for mockNamesys")
 }
 
@@ -152,7 +169,7 @@ func (mb *mockBackend) GetCAR(ctx context.Context, immutablePath path.ImmutableP
 	return mb.gw.GetCAR(ctx, immutablePath, params)
 }
 
-func (mb *mockBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, error) {
+func (mb *mockBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, time.Duration, time.Time, error) {
 	return mb.gw.ResolveMutable(ctx, p)
 }
 
@@ -162,10 +179,15 @@ func (mb *mockBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, er
 
 func (mb *mockBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (path.Path, error) {
 	if mb.namesys != nil {
-		p, err := mb.namesys.Resolve(ctx, "/ipns/"+hostname, nsopts.Depth(1))
+		p, err := path.NewPath("/ipns/" + hostname)
+		if err != nil {
+			return nil, err
+		}
+		res, err := mb.namesys.Resolve(ctx, p, namesys.ResolveWithDepth(1))
 		if err == namesys.ErrResolveRecursion {
 			err = nil
 		}
+		p = res.Path
 		return p, err
 	}
 
@@ -184,7 +206,7 @@ func (mb *mockBackend) resolvePathNoRootsReturned(ctx context.Context, ip path.P
 	var imPath path.ImmutablePath
 	var err error
 	if ip.Mutable() {
-		imPath, err = mb.ResolveMutable(ctx, ip)
+		imPath, _, _, err = mb.ResolveMutable(ctx, ip)
 		if err != nil {
 			return path.ImmutablePath{}, err
 		}
