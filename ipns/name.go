@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	mb "github.com/multiformats/go-multibase"
@@ -132,4 +133,13 @@ func (n Name) MarshalJSON() ([]byte, error) {
 // Equal returns whether the records are equal.
 func (n Name) Equal(other Name) bool {
 	return bytes.Equal(n.src, other.src)
+}
+
+// AsPath returns the IPNS Name as a [path.Path] prefixed by [path.IPNSNamespace].
+func (n Name) AsPath() path.Path {
+	p, err := path.NewPathFromSegments(path.IPNSNamespace.String(), n.String())
+	if err != nil {
+		panic(fmt.Errorf("path.NewPathFromSegments was called with invalid parameters: %w", err))
+	}
+	return p
 }

@@ -44,7 +44,7 @@ const (
 //
 //  1. Namespace is "ipfs", "ipld", or "ipns".
 //  2. If namespace is "ipfs" or "ipld", "root" must be a valid [cid.Cid].
-//  3. If namespace is "ipns", "root" may be a [ipns.Name] or a DNSLink FQDN.
+//  3. If namespace is "ipns", "root" may be a [ipns.Name] or a [DNSLink] FQDN.
 //
 // [DNSLink]: https://dnslink.dev/
 type Path interface {
