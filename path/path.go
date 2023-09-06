@@ -111,7 +111,7 @@ type immutablePath struct {
 
 func NewImmutablePath(p Path) (ImmutablePath, error) {
 	if p.Namespace().Mutable() {
-		return nil, ErrInvalidPath{err: ErrExpectedImmutable, path: p.String()}
+		return nil, &ErrInvalidPath{err: ErrExpectedImmutable, path: p.String()}
 	}
 
 	segments := p.Segments()

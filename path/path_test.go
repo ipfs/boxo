@@ -86,7 +86,7 @@ func TestNewPath(t *testing.T) {
 			{"/ipfs/", ErrInsufficientComponents},
 			{"ipfs/", ErrInsufficientComponents},
 			{"ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", ErrInsufficientComponents},
-			{"/ipld/foo", ErrInvalidPath{}},
+			{"/ipld/foo", &ErrInvalidPath{}},
 			{"/ipld/", ErrInsufficientComponents},
 			{"ipld/", ErrInsufficientComponents},
 			{"ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", ErrInsufficientComponents},
@@ -102,7 +102,7 @@ func TestNewPath(t *testing.T) {
 		for _, testCase := range testCases {
 			_, err := NewPath(testCase.src)
 			assert.ErrorIs(t, err, testCase.err)
-			assert.ErrorIs(t, err, ErrInvalidPath{}) // Always an ErrInvalidPath!
+			assert.ErrorIs(t, err, &ErrInvalidPath{}) // Always an ErrInvalidPath!
 		}
 	})
 
@@ -218,7 +218,7 @@ func TestNewImmutablePath(t *testing.T) {
 
 			_, err = NewImmutablePath(p)
 			assert.ErrorIs(t, err, ErrExpectedImmutable)
-			assert.ErrorIs(t, err, ErrInvalidPath{})
+			assert.ErrorIs(t, err, &ErrInvalidPath{})
 		}
 	})
 
