@@ -369,7 +369,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 }
 
 // walkGatewaySimpleSelector walks the subgraph described by the path and terminal element parameters
-func walkGatewaySimpleSelector(ctx context.Context, p path.Path, params CarParams, lsys *ipld.LinkSystem, pathResolver resolver.Resolver) error {
+func walkGatewaySimpleSelector(ctx context.Context, p path.ImmutablePath, params CarParams, lsys *ipld.LinkSystem, pathResolver resolver.Resolver) error {
 	// First resolve the path since we always need to.
 	lastCid, remainder, err := pathResolver.ResolveToLastNode(ctx, p)
 	if err != nil {
@@ -598,7 +598,7 @@ func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.Immu
 			// TODO: should we be more explicit here and is this part of the IPFSBackend contract?
 			// The issue here was that we returned datamodel.ErrWrongKind instead of this resolver error
 			if isErrNotFound(err) {
-				return nil, nil, resolver.ErrNoLink{Name: root, Node: lastPath.Cid()}
+				return nil, nil, &resolver.ErrNoLink{Name: root, Node: lastPath.Cid()}
 			}
 			return nil, nil, err
 		}
@@ -692,7 +692,12 @@ func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.Imm
 		return nil, fmt.Errorf("unsupported path namespace: %s", p.Namespace())
 	}
 
-	node, rest, err := bb.resolver.ResolveToLastNode(ctx, p)
+	imPath, err := path.NewImmutablePath(p)
+	if err != nil {
+		return nil, err
+	}
+
+	node, rest, err := bb.resolver.ResolveToLastNode(ctx, imPath)
 	if err != nil {
 		return nil, err
 	}
