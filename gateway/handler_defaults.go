@@ -99,14 +99,19 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	case mc.Json, mc.DagJson, mc.Cbor, mc.DagCbor:
 		rq.logger.Debugw("serving codec", "path", rq.contentPath)
 		var blockSize int64
-		var dataToRender io.ReadCloser
+		var dataToRender io.ReadSeekCloser
 		if headResp != nil {
 			blockSize = headResp.bytesSize
 			dataToRender = nil
 		} else {
 			blockSize = getResp.bytesSize
-			dataToRender = getResp.bytes
+			dataAsReadSeekCloser, ok := getResp.bytes.(io.ReadSeekCloser)
+			if !ok {
+				i.webError(w, r, fmt.Errorf("expected returned non-UnixFS data to be seekable"), http.StatusInternalServerError)
+			}
+			dataToRender = dataAsReadSeekCloser
 		}
+
 		return i.renderCodec(r.Context(), w, r, rq, blockSize, dataToRender)
 	default:
 		rq.logger.Debugw("serving unixfs", "path", rq.contentPath)

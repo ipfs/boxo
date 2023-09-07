@@ -162,8 +162,10 @@ func (bb *BlocksBackend) Get(ctx context.Context, path ImmutablePath, ranges ...
 	}
 
 	rootCodec := nd.Cid().Prefix().GetCodec()
+
 	// This covers both Raw blocks and terminal IPLD codecs like dag-cbor and dag-json
 	// Note: while only cbor, json, dag-cbor, and dag-json are currently supported by gateways this could change
+	// Note: For the raw codec we return just the relevant range rather than the entire block
 	if rootCodec != uint64(mc.DagPb) {
 		f := files.NewBytesFile(nd.RawData())
 
@@ -172,8 +174,10 @@ func (bb *BlocksBackend) Get(ctx context.Context, path ImmutablePath, ranges ...
 			return ContentPathMetadata{}, nil, err
 		}
 
-		if err := seekToRangeStart(f, ra); err != nil {
-			return ContentPathMetadata{}, nil, err
+		if rootCodec == uint64(mc.Raw) {
+			if err := seekToRangeStart(f, ra); err != nil {
+				return ContentPathMetadata{}, nil, err
+			}
 		}
 
 		return md, NewGetResponseFromReader(f, fileSize), nil

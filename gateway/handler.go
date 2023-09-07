@@ -92,7 +92,7 @@ func NewHandler(c Config, backend IPFSBackend) http.Handler {
 	return newHandlerWithMetrics(&c, backend)
 }
 
-// serveContent replies to the request using the content in the provided ReadSeeker
+// serveContent replies to the request using the content in the provided Reader
 // and returns the status code written and any error encountered during a write.
 // It wraps httpServeContent (a close clone of http.ServeContent) which takes care of If-None-Match+Etag,
 // Content-Length and range requests.

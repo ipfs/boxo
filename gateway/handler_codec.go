@@ -75,14 +75,10 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 		return false
 	}
 
-	if !i.seekToStartOfFirstRange(w, r, data) {
-		return false
-	}
-
 	return i.renderCodec(ctx, w, r, rq, blockSize, data)
 }
 
-func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData, blockSize int64, blockData io.ReadCloser) bool {
+func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData, blockSize int64, blockData io.ReadSeekCloser) bool {
 	resolvedPath := rq.pathMetadata.LastSegment
 	ctx, span := spanTrace(ctx, "Handler.RenderCodec", trace.WithAttributes(attribute.String("path", resolvedPath.String()), attribute.String("requestedContentType", rq.responseFormat)))
 	defer span.End()
@@ -239,9 +235,13 @@ func parseNode(blockCid cid.Cid, blockData io.Reader) *assets.ParsedNode {
 }
 
 // serveCodecRaw returns the raw block without any conversion
-func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, blockSize int64, blockData io.ReadCloser, contentPath ipath.Path, modtime, begin time.Time) bool {
+func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, blockSize int64, blockData io.ReadSeekCloser, contentPath ipath.Path, modtime, begin time.Time) bool {
 	// ServeContent will take care of
-	// If-None-Match+Etag, Content-Length and range requests
+	// If-None-Match+Etag, Content-Length and setting range request headers after we've already seeked to the start of
+	// the first range
+	if !i.seekToStartOfFirstRange(w, r, blockData) {
+		return false
+	}
 	_, dataSent, _ := serveContent(w, r, modtime, blockSize, blockData)
 
 	if dataSent {

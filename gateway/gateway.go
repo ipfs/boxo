@@ -358,6 +358,9 @@ type IPFSBackend interface {
 	//     file will still need magic bytes from the very beginning for content
 	//     type sniffing).
 	//   - A range request for a directory currently holds no semantic meaning.
+	//   - For non-UnixFS (and non-raw data) such as terminal IPLD dag-cbor/json, etc. blocks the returned response
+	//     bytes should be the complete block and returned as an [io.ReadSeekCloser] starting at the beginning of the
+	//     block rather than as an [io.ReadCloser] that starts at the beginning of the range request.
 	//
 	// [HTTP Byte Ranges]: https://httpwg.org/specs/rfc9110.html#rfc.section.14.1.2
 	Get(context.Context, ImmutablePath, ...ByteRange) (ContentPathMetadata, *GetResponse, error)
