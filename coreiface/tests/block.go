@@ -220,7 +220,7 @@ func (tp *TestSuite) TestBlockGet(t *testing.T) {
 
 	p := path.NewIPFSPath(res.Path().Cid())
 
-	rp, err := api.ResolvePath(ctx, p)
+	rp, _, err := api.ResolvePath(ctx, p)
 	if err != nil {
 		t.Fatal(err)
 	}

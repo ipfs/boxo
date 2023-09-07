@@ -90,9 +90,10 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	// If the resolved path still has some remainder, return error for now.
 	// TODO: handle this when we have IPLD Patch (https://ipld.io/specs/patch/) via HTTP PUT
 	// TODO: (depends on https://github.com/ipfs/kubo/issues/4801 and https://github.com/ipfs/kubo/issues/4782)
-	if resolvedPath.Remainder() != "" {
-		path := strings.TrimSuffix(resolvedPath.String(), resolvedPath.Remainder())
-		err := fmt.Errorf("%q of %q could not be returned: reading IPLD Kinds other than Links (CBOR Tag 42) is not implemented: try reading %q instead", resolvedPath.Remainder(), resolvedPath.String(), path)
+	if len(rq.pathMetadata.LastSegmentRemainder) != 0 {
+		remainderStr := path.SegmentsToString(rq.pathMetadata.LastSegmentRemainder...)
+		path := strings.TrimSuffix(resolvedPath.String(), remainderStr)
+		err := fmt.Errorf("%q of %q could not be returned: reading IPLD Kinds other than Links (CBOR Tag 42) is not implemented: try reading %q instead", remainderStr, resolvedPath.String(), path)
 		i.webError(w, r, err, http.StatusNotImplemented)
 		return false
 	}

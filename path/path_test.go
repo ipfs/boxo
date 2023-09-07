@@ -224,21 +224,20 @@ func TestNewImmutablePath(t *testing.T) {
 
 	t.Run("Succeeds on Immutable Path", func(t *testing.T) {
 		testCases := []struct {
-			path      string
-			cid       cid.Cid
-			remainder string
+			path string
+			cid  cid.Cid
 		}{
-			{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", cid.MustParse("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n"), ""},
-			{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b", cid.MustParse("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n"), "/a/b"},
-			{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/", cid.MustParse("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n"), "/a/b"},
+			{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", cid.MustParse("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")},
+			{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b", cid.MustParse("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")},
+			{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/", cid.MustParse("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")},
 
-			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"), ""},
-			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"), "/a/b"},
-			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"), "/a/b"},
+			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")},
+			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")},
+			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")},
 
-			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"), ""},
-			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"), "/a/b"},
-			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"), "/a/b"},
+			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")},
+			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")},
+			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")},
 		}
 
 		for _, testCase := range testCases {
@@ -249,7 +248,6 @@ func TestNewImmutablePath(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, testCase.path, ip.String())
 			assert.Equal(t, testCase.cid, ip.Cid())
-			assert.Equal(t, testCase.remainder, ip.Remainder())
 		}
 	})
 }
@@ -283,5 +281,42 @@ func TestJoin(t *testing.T) {
 		jp, err := Join(p, testCase.segments...)
 		assert.NoError(t, err)
 		assert.Equal(t, testCase.expected, jp.String())
+	}
+}
+
+func TestStringToSegments(t *testing.T) {
+	testCases := []struct {
+		str      string
+		expected []string
+	}{
+		{"", nil},
+		{"/..", nil},
+		{"/a/b/c/d/./../../../../../..", nil},
+		{"/a/b/c/d/./../../../", []string{"a"}},
+		{"/a/b//c/d/./../../", []string{"a", "b"}},
+		{"/a/b/////c/../d///f", []string{"a", "b", "d", "f"}},
+	}
+
+	for _, testCase := range testCases {
+		segments := StringToSegments(testCase.str)
+		assert.Equal(t, testCase.expected, segments)
+	}
+}
+
+func TestSegmentsToString(t *testing.T) {
+	testCases := []struct {
+		segments []string
+		expected string
+	}{
+		{[]string{"a", "b"}, "/a/b"},
+		{[]string{"a", "b", "d", "f"}, "/a/b/d/f"},
+		{[]string{""}, ""},
+		{[]string{}, ""},
+		{nil, ""},
+	}
+
+	for _, testCase := range testCases {
+		str := SegmentsToString(testCase.segments...)
+		assert.Equal(t, testCase.expected, str)
 	}
 }

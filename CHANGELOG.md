@@ -28,6 +28,8 @@ The following emojis are used to highlight certain changes:
   condensed the different path-related packages under a single one. Therefore, there
   are many breaking changes. Please consult the [documentation](https://pkg.go.dev/github.com/ipfs/boxo/path)
   for more details on how to use the new package.
+* 🛠 The signature of `CoreAPI.ResolvePath` in  `coreiface` has changed to now return
+  the remainder segments as a second return value, matching the signature of `resolver.ResolveToLastNode`.
 
 ### Removed
 

@@ -83,11 +83,7 @@ func (p path) Namespace() Namespace {
 }
 
 func (p path) Segments() []string {
-	// Trim slashes from beginning and end, such that we do not return empty segments.
-	str := strings.TrimSuffix(p.str, "/")
-	str = strings.TrimPrefix(str, "/")
-
-	return strings.Split(str, "/")
+	return StringToSegments(p.str)
 }
 
 // ImmutablePath is a [Path] which is guaranteed to have an immutable [Namespace].
@@ -96,9 +92,6 @@ type ImmutablePath interface {
 
 	// Cid returns the [cid.Cid] of the root object of the path.
 	Cid() cid.Cid
-
-	// Remainder returns the unresolved parts of the path.
-	Remainder() string
 }
 
 var _ Path = immutablePath{}
@@ -139,14 +132,6 @@ func (ip immutablePath) Cid() cid.Cid {
 	return ip.cid
 }
 
-func (ip immutablePath) Remainder() string {
-	remainder := strings.Join(ip.Segments()[2:], "/")
-	if remainder != "" {
-		remainder = "/" + remainder
-	}
-	return remainder
-}
-
 // NewIPFSPath returns a new "/ipfs" path with the provided CID.
 func NewIPFSPath(cid cid.Cid) ImmutablePath {
 	return immutablePath{
@@ -174,34 +159,31 @@ func NewIPLDPath(cid cid.Cid) ImmutablePath {
 // trailing slash. This function returns an error when the given string is not
 // a valid content path.
 func NewPath(str string) (Path, error) {
-	cleaned := gopath.Clean(str)
-	components := strings.Split(cleaned, "/")
+	segments := StringToSegments(str)
 
-	if strings.HasSuffix(str, "/") {
-		// Do not forget to store the trailing slash!
-		cleaned += "/"
-	}
-
-	// Shortest valid path is "/{namespace}/{element}". That yields at least three
-	// components: [" " "{namespace}" "{element}"]. The first component must therefore
-	// be empty.
-	if len(components) < 3 || components[0] != "" {
+	// Shortest valid path is "/{namespace}/{root}". That yields at least two
+	// segments: ["{namespace}" "{root}"]. Therefore, here we check if the original
+	// string begins with "/" (any path must), if we have at least two segments, and if
+	// the root is non-empty. The namespace is checked further below.
+	if !strings.HasPrefix(str, "/") || len(segments) < 2 || segments[1] == "" {
 		return nil, &ErrInvalidPath{err: ErrInsufficientComponents, path: str}
 	}
 
-	switch components[1] {
-	case "ipfs", "ipld":
-		if components[2] == "" {
-			return nil, &ErrInvalidPath{err: ErrInsufficientComponents, path: str}
-		}
+	cleaned := SegmentsToString(segments...)
+	if strings.HasSuffix(str, "/") {
+		// Do not forget to preserve the trailing slash!
+		cleaned += "/"
+	}
 
-		cid, err := cid.Decode(components[2])
+	switch segments[0] {
+	case "ipfs", "ipld":
+		cid, err := cid.Decode(segments[1])
 		if err != nil {
 			return nil, &ErrInvalidPath{err: err, path: str}
 		}
 
 		ns := IPFSNamespace
-		if components[1] == "ipld" {
+		if segments[0] == "ipld" {
 			ns = IPLDNamespace
 		}
 
@@ -213,16 +195,12 @@ func NewPath(str string) (Path, error) {
 			cid: cid,
 		}, nil
 	case "ipns":
-		if components[2] == "" {
-			return nil, &ErrInvalidPath{err: ErrInsufficientComponents, path: str}
-		}
-
 		return path{
 			str:       cleaned,
 			namespace: IPNSNamespace,
 		}, nil
 	default:
-		return nil, &ErrInvalidPath{err: fmt.Errorf("%w: %q", ErrUnknownNamespace, components[1]), path: str}
+		return nil, &ErrInvalidPath{err: fmt.Errorf("%w: %q", ErrUnknownNamespace, segments[0]), path: str}
 	}
 }
 
@@ -231,7 +209,7 @@ func NewPath(str string) (Path, error) {
 // using a forward slash "/" as separator. Please see [Path.Segments] for more
 // information about how segments must be structured.
 func NewPathFromSegments(segments ...string) (Path, error) {
-	return NewPath("/" + strings.Join(segments, "/"))
+	return NewPath(SegmentsToString(segments...))
 }
 
 // Join joins a [Path] with certain segments and returns a new [Path].
@@ -239,4 +217,33 @@ func Join(p Path, segments ...string) (Path, error) {
 	s := p.Segments()
 	s = append(s, segments...)
 	return NewPathFromSegments(s...)
+}
+
+// SegmentsToString converts an array of segments into a string. The returned string
+// will always be prefixed with a "/" if there are any segments. For example, if the
+// given segments array is ["foo", "bar"], the returned value will be "/foo/bar".
+// Given an empty array, an empty string is returned.
+func SegmentsToString(segments ...string) string {
+	str := strings.Join(segments, "/")
+	if str != "" {
+		str = "/" + str
+	}
+	return str
+}
+
+// StringToSegments converts a string into an array of segments. This function follows
+// the rules of [Path.Segments]: the path is first cleaned through [gopath.Clean] and
+// no empty segments are returned.
+func StringToSegments(str string) []string {
+	str = gopath.Clean(str)
+	if str == "." {
+		return nil
+	}
+	// Trim slashes from beginning and end, such that we do not return empty segments.
+	str = strings.TrimSuffix(str, "/")
+	str = strings.TrimPrefix(str, "/")
+	if str == "" {
+		return nil
+	}
+	return strings.Split(str, "/")
 }

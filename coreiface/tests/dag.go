@@ -116,7 +116,7 @@ func (tp *TestSuite) TestDagPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rp, err := api.ResolvePath(ctx, p)
+	rp, _, err := api.ResolvePath(ctx, p)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -55,9 +55,9 @@ func (tp *TestSuite) TestPathRemainder(t *testing.T) {
 	p, err := path.Join(path.NewIPFSPath(nd.Cid()), "foo", "bar")
 	require.NoError(t, err)
 
-	rp1, err := api.ResolvePath(ctx, p)
+	_, remainder, err := api.ResolvePath(ctx, p)
 	require.NoError(t, err)
-	require.Equal(t, "/foo/bar", rp1.Remainder())
+	require.Equal(t, "/foo/bar", path.SegmentsToString(remainder...))
 }
 
 func (tp *TestSuite) TestEmptyPathRemainder(t *testing.T) {
@@ -74,9 +74,9 @@ func (tp *TestSuite) TestEmptyPathRemainder(t *testing.T) {
 	err = api.Dag().Add(ctx, nd)
 	require.NoError(t, err)
 
-	rp1, err := api.ResolvePath(ctx, path.NewIPFSPath(nd.Cid()))
+	_, remainder, err := api.ResolvePath(ctx, path.NewIPFSPath(nd.Cid()))
 	require.NoError(t, err)
-	require.Empty(t, rp1.Remainder())
+	require.Empty(t, remainder)
 }
 
 func (tp *TestSuite) TestInvalidPathRemainder(t *testing.T) {
@@ -96,7 +96,7 @@ func (tp *TestSuite) TestInvalidPathRemainder(t *testing.T) {
 	p, err := path.Join(path.NewIPLDPath(nd.Cid()), "/bar/baz")
 	require.NoError(t, err)
 
-	_, err = api.ResolvePath(ctx, p)
+	_, _, err = api.ResolvePath(ctx, p)
 	require.NotNil(t, err)
 	require.ErrorContains(t, err, `no link named "bar"`)
 }
@@ -122,7 +122,7 @@ func (tp *TestSuite) TestPathRoot(t *testing.T) {
 	p, err := path.Join(path.NewIPLDPath(nd.Cid()), "/foo")
 	require.NoError(t, err)
 
-	rp, err := api.ResolvePath(ctx, p)
+	rp, _, err := api.ResolvePath(ctx, p)
 	require.NoError(t, err)
 	require.Equal(t, rp.Cid().String(), blk.Path().Cid().String())
 }

@@ -209,9 +209,10 @@ func (d DuplicateBlocksPolicy) String() string {
 }
 
 type ContentPathMetadata struct {
-	PathSegmentRoots []cid.Cid
-	LastSegment      path.ImmutablePath
-	ContentType      string // Only used for UnixFS requests
+	PathSegmentRoots     []cid.Cid
+	LastSegment          path.ImmutablePath
+	LastSegmentRemainder []string
+	ContentType          string // Only used for UnixFS requests
 }
 
 // ByteRange describes a range request within a UnixFS file. "From" and "To" mostly
