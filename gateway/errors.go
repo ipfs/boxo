@@ -159,7 +159,7 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 		code = gwErr.StatusCode
 	}
 
-	acceptsHTML := strings.Contains(r.Header.Get("Accept"), "text/html")
+	acceptsHTML := !c.DisableHTMLErrors && strings.Contains(r.Header.Get("Accept"), "text/html")
 	if acceptsHTML {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(code)
