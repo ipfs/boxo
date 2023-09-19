@@ -38,6 +38,9 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+* The normalization of DNSLink identifiers in `gateway` has been corrected in the edge
+  case where the value passed to the path component of the URL is already normalized.
+
 ### Security
 
 ## [v0.12.0]
