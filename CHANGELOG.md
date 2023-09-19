@@ -29,6 +29,9 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 * ✨ The `routing/http` implements Delegated Peer Routing introduced in [IPIP-417](https://github.com/ipfs/specs/pull/417).
+* An option `DisableHTMLErrors` has been added to `gateway.Config`. When this option
+  is `true`, pretty HTML error pages for web browsers are disabled. Instead, a
+  `text/plain` page with the raw error message as the body is returned.
 
 ### Changed
 
