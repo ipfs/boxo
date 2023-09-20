@@ -16,6 +16,18 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [v0.13.0]
+
+### Added
+
 * ✨ The `routing/http` implements Delegated Peer Routing introduced in [IPIP-417](https://github.com/ipfs/specs/pull/417).
 
 ### Changed
