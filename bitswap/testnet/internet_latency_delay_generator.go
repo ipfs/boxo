@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/ipfs/go-ipfs-delay"
+	delay "github.com/ipfs/go-ipfs-delay"
 )
 
 var sharedRNG = rand.New(rand.NewSource(time.Now().UnixNano()))

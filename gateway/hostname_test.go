@@ -55,9 +55,12 @@ func TestToSubdomainURL(t *testing.T) {
 		{httpRequest, "dweb.link", false, "/ipns/dnslink.long-name.example.com", "http://dnslink.long-name.example.com.ipns.dweb.link/", nil},
 		{httpsRequest, "dweb.link", false, "/ipns/dnslink.long-name.example.com", "https://dnslink-long--name-example-com.ipns.dweb.link/", nil},
 		{httpsProxiedRequest, "dweb.link", false, "/ipns/dnslink.long-name.example.com", "https://dnslink-long--name-example-com.ipns.dweb.link/", nil},
-		// HTTP requests can also be converted to fit into a single DNS label - https://github.com/ipfs/kubo/issues/9243
+		// Enabling DNS label inlining: HTTP requests can also be converted to fit into a single DNS label when it matters - https://github.com/ipfs/kubo/issues/9243
 		{httpRequest, "localhost", true, "/ipns/dnslink.long-name.example.com", "http://dnslink-long--name-example-com.ipns.localhost/", nil},
 		{httpRequest, "dweb.link", true, "/ipns/dnslink.long-name.example.com", "http://dnslink-long--name-example-com.ipns.dweb.link/", nil},
+		// Disabling DNS label inlining: should un-inline any inlined DNS labels put in a path
+		{httpRequest, "localhost", false, "/ipns/dnslink-long--name-example-com", "http://dnslink.long-name.example.com.ipns.localhost/", nil},
+		{httpRequest, "dweb.link", false, "/ipns/dnslink-long--name-example-com", "http://dnslink.long-name.example.com.ipns.dweb.link/", nil},
 		// Correctly redirects paths when there is a ? (question mark) character - https://github.com/ipfs/kubo/issues/9882
 		{httpRequest, "localhost", false, "/ipns/example.com/this is a file with some spaces . dots and - but also a ?.png", "http://example.com.ipns.localhost/this%20is%20a%20file%20with%20some%20spaces%20.%20dots%20and%20-%20but%20also%20a%20%3F.png", nil},
 		{httpRequest, "localhost", false, "/ipfs/QmbCMUZw6JFeZ7Wp9jkzbye3Fzp2GGcPgC3nmeUjfVF87n/this is a file with some spaces . dots and - but also a ?.png", "http://bafybeif7a7gdklt6hodwdrmwmxnhksctcuav6lfxlcyfz4khzl3qfmvcgu.ipfs.localhost/this%20is%20a%20file%20with%20some%20spaces%20.%20dots%20and%20-%20but%20also%20a%20%3F.png", nil},

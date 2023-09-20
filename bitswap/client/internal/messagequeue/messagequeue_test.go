@@ -161,8 +161,6 @@ func expectEvent(t *testing.T, events <-chan messageEvent, expectedEvent message
 }
 
 func TestStartupAndShutdown(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -201,8 +199,6 @@ func TestStartupAndShutdown(t *testing.T) {
 }
 
 func TestSendingMessagesDeduped(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -316,8 +312,6 @@ func TestSendingMessagesPriority(t *testing.T) {
 }
 
 func TestCancelOverridesPendingWants(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -368,8 +362,6 @@ func TestCancelOverridesPendingWants(t *testing.T) {
 }
 
 func TestWantOverridesPendingCancels(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -416,8 +408,6 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 }
 
 func TestWantlistRebroadcast(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -526,8 +516,6 @@ func TestWantlistRebroadcast(t *testing.T) {
 }
 
 func TestSendingLargeMessages(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -557,8 +545,6 @@ func TestSendingLargeMessages(t *testing.T) {
 }
 
 func TestSendToPeerThatDoesntSupportHave(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -613,8 +599,6 @@ func TestSendToPeerThatDoesntSupportHave(t *testing.T) {
 }
 
 func TestSendToPeerThatDoesntSupportHaveMonitorsTimeouts(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -646,8 +630,6 @@ func TestSendToPeerThatDoesntSupportHaveMonitorsTimeouts(t *testing.T) {
 }
 
 func TestResponseReceived(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -697,8 +679,6 @@ func TestResponseReceived(t *testing.T) {
 }
 
 func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -743,8 +723,6 @@ func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
 }
 
 func TestResponseReceivedDiscardsOutliers(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)

@@ -4,13 +4,10 @@ import (
 	"testing"
 
 	"github.com/ipfs/boxo/bitswap/internal/testutil"
-	"github.com/ipfs/boxo/internal/test"
 	cid "github.com/ipfs/go-cid"
 )
 
 func TestEmpty(t *testing.T) {
-	test.Flaky(t)
-
 	sim := New()
 
 	ses := uint64(1)
@@ -25,8 +22,6 @@ func TestEmpty(t *testing.T) {
 }
 
 func TestBasic(t *testing.T) {
-	test.Flaky(t)
-
 	sim := New()
 
 	ses1 := uint64(1)
@@ -62,8 +57,6 @@ func TestBasic(t *testing.T) {
 }
 
 func TestInterestedSessions(t *testing.T) {
-	test.Flaky(t)
-
 	sim := New()
 
 	ses := uint64(1)
@@ -91,8 +84,6 @@ func TestInterestedSessions(t *testing.T) {
 }
 
 func TestRemoveSession(t *testing.T) {
-	test.Flaky(t)
-
 	sim := New()
 
 	ses1 := uint64(1)
@@ -121,8 +112,6 @@ func TestRemoveSession(t *testing.T) {
 }
 
 func TestRemoveSessionInterested(t *testing.T) {
-	test.Flaky(t)
-
 	sim := New()
 
 	ses1 := uint64(1)
@@ -159,8 +148,6 @@ func TestRemoveSessionInterested(t *testing.T) {
 }
 
 func TestSplitWantedUnwanted(t *testing.T) {
-	test.Flaky(t)
-
 	blks := testutil.GenerateBlocksOfSize(3, 1024)
 	sim := New()
 	ses1 := uint64(1)

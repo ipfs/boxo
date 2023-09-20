@@ -24,6 +24,37 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
+## [v0.13.0]
+
+### Added
+
+* ✨ The `routing/http` implements Delegated Peer Routing introduced in [IPIP-417](https://github.com/ipfs/specs/pull/417).
+
+### Changed
+
+* 🛠 The `routing/http` package received the following modifications:
+  * Client `GetIPNSRecord` and `PutIPNSRecord` have been renamed to `GetIPNS` and
+    `PutIPNS`, respectively. Similarly, the required function names in the server
+    `ContentRouter` have also been updated.
+  * `ReadBitswapProviderRecord` has been renamed to `BitswapRecord` and marked as deprecated.
+    From now on, please use the protocol-agnostic `PeerRecord` for most use cases. The new
+    Peer Schema has been introduced in [IPIP-417](https://github.com/ipfs/specs/pull/417).
+
+### Removed
+
+* 🛠 The `routing/http` package experienced following removals:
+  * Server and client no longer support the experimental `Provide` method.
+    `ProvideBitswap` is still usable, but marked as deprecated. A protocol-agnostic 
+    provide mechanism is being worked on in [IPIP-378](https://github.com/ipfs/specs/pull/378).
+  * Server no longer exports `FindProvidersPath` and `ProvidePath`.
+
+### Fixed
+
+* The normalization of DNSLink identifiers in `gateway` has been corrected in the edge
+  case where the value passed to the path component of the URL is already normalized.
+
+### Security
+
 ## [v0.12.0]
 
 ### Added
@@ -32,7 +63,7 @@ The following emojis are used to highlight certain changes:
   as per [IPIP-379](https://specs.ipfs.tech/ipips/ipip-0379/).
 * 🛠 The `verifycid` package has been updated with the new Allowlist interface as part of
   reducing globals efforts.
-* The `blockservice` and `provider` packages has been updated to accommodate for 
+* The `blockservice` and `provider` packages has been updated to accommodate for
   changes in `verifycid`.
 
 ### Changed

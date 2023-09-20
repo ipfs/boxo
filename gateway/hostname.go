@@ -300,7 +300,7 @@ func isHTTPSRequest(r *http.Request) bool {
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Proto
 	xproto := r.Header.Get("X-Forwarded-Proto")
 	// Is request a native TLS (not used atm, but future-proofing)
-	// or a proxied HTTPS (eg. go-ipfs behind nginx at a public gw)?
+	// or a proxied HTTPS (eg. Kubo behind nginx at a public gw)?
 	return r.URL.Scheme == "https" || xproto == "https"
 }
 
@@ -396,27 +396,40 @@ func toSubdomainURL(hostname, path string, r *http.Request, inlineDNSLink bool, 
 		}
 	} else { // rootID is not a CID
 
-		// Check if rootID is a FQDN with DNSLink and convert it to TLS-safe
-		// representation that fits in a single DNS label.  We support this so
-		// loading DNSLink names over TLS "just works" on public HTTP gateways
-		// that pass 'https' in X-Forwarded-Proto to go-ipfs.
-		//
-		// Rationale can be found under "Option C"
-		// at: https://github.com/ipfs/in-web-browsers/issues/169
-		//
-		// TLDR is:
-		// /ipns/my.v-long.example.com
-		// can be loaded from a subdomain gateway with a wildcard TLS cert if
-		// represented as a single DNS label:
-		// https://my-v--long-example-com.ipns.dweb.link
+		// If rootID is an inlined notation of a FQDN with DNSLink we need to
+		// un-inline it first, to make it work in contexts where subdomain
+		// identifier is used on a path (/ipns/my-v--long-example-com)
+		// e.g. when ipfs-companion extension passes value from subdomain gateway
+		// for further normalization: https://github.com/ipfs/ipfs-companion/issues/1278#issuecomment-1724550623
+		if ns == "ipns" && !strings.Contains(rootID, ".") && strings.Contains(rootID, "-") {
+			dnsLinkFqdn := toDNSLinkFQDN(rootID) // my-v--long-example-com → my.v-long.example.com
+			if hasDNSLinkRecord(r.Context(), backend, dnsLinkFqdn) {
+				// update path prefix to use real FQDN with DNSLink
+				rootID = dnsLinkFqdn
+			}
+		}
+
 		if (inlineDNSLink || isHTTPS) && ns == "ipns" && strings.Contains(rootID, ".") {
+			// If rootID is a FQDN with DNSLink we need to inline it to make it TLS-safe
+			// representation that fits in a single DNS label.  We support this so
+			// loading DNSLink names over TLS "just works" on public HTTP gateways
+			// that pass 'https' in X-Forwarded-Proto to Kubo.
+			//
+			// Rationale can be found under "Option C"
+			// at: https://github.com/ipfs/in-web-browsers/issues/169
+			//
+			// TLDR is:
+			// /ipns/my.v-long.example.com
+			// can be loaded from a subdomain gateway with a wildcard TLS cert if
+			// represented as a single DNS label:
+			// https://my-v--long-example-com.ipns.dweb.link
 			if hasDNSLinkRecord(r.Context(), backend, rootID) {
 				// my.v-long.example.com → my-v--long-example-com
 				dnsLabel, err := toDNSLinkDNSLabel(rootID)
 				if err != nil {
 					return "", err
 				}
-				// update path prefix to use real FQDN with DNSLink
+				// update path prefix to use inlined FQDN with DNSLink as a single DNS label
 				rootID = dnsLabel
 			}
 		} else if ns == "ipfs" {
