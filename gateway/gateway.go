@@ -40,6 +40,11 @@ type Config struct {
 	// overridden per FQDN in PublicGateways. To be used with WithHostname.
 	NoDNSLink bool
 
+	// DisableHTMLErrors disables pretty HTML pages when an error occurs. Instead, a `text/plain`
+	// page will be sent with the raw error message. This can be useful if this gateway
+	// is being proxied by other service, which wants to use the error message.
+	DisableHTMLErrors bool
+
 	// PublicGateways configures the behavior of known public gateways. Each key is
 	// a fully qualified domain name (FQDN). To be used with WithHostname.
 	PublicGateways map[string]*PublicGateway
