@@ -1,15 +1,24 @@
 <h1 align="center">
-<img src="https://github.com/ipfs/boxo/assets/157609/3c5e7391-fbc2-405b-9efc-920f4fd13b39" alt="Boxo logo" title="Boxo logo" width="200">
-<br>
-BOXO: IPFS SDK for GO
+  <br>
+  <a href="#readme"><img src="https://github.com/ipfs/boxo/assets/157609/3c5e7391-fbc2-405b-9efc-920f4fd13b39" alt="Boxo logo" title="Boxo logo" width="200"></a>
+  <br>
+  BOXO: IPFS SDK for GO
+  <br>
 </h1>
+
 <p align="center" style="font-size: 1.2rem;">A set of libraries for building IPFS applications and implementations in GO.</p>
 
-<hr />
+<p align="center">
+  <a href="https://ipfs.tech"><img src="https://img.shields.io/badge/project-IPFS-blue.svg?style=flat-square" alt="Official Part of IPFS Project"></a>
+  <a href="https://discuss.ipfs.tech"><img alt="Discourse Forum" src="https://img.shields.io/discourse/posts?server=https%3A%2F%2Fdiscuss.ipfs.tech"></a>
+  <a href="https://matrix.to/#/#ipfs-space:ipfs.io"><img alt="Matrix" src="https://img.shields.io/matrix/ipfs-space%3Aipfs.io?server_fqdn=matrix.org"></a>
+  <a href="https://github.com/ipfs/boxo/actions"><img src="https://img.shields.io/github/actions/workflow/status/ipfs/boxo/go-test.yml?branch=main" alt="ci"></a>
+  <a href="https://codecov.io/gh/ipfs/boxo"><img src="https://codecov.io/gh/ipfs/boxo/branch/main/graph/badge.svg?token=9eG7d8fbCB" alt="coverage"></a>
+  <a href="https://github.com/ipfs/boxo/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/ipfs/boxo?filter=!*rc*"></a>
+  <a href="https://godoc.org/github.com/ipfs/boxo"><img src="https://img.shields.io/badge/godoc-reference-5272B4.svg?style=flat-square" alt="godoc reference"></a>  
+</p>
 
-[![Go Test](https://github.com/ipfs/boxo/actions/workflows/go-test.yml/badge.svg)](https://github.com/ipfs/boxo/actions/workflows/go-test.yml)
-[![Go Docs](https://img.shields.io/badge/godoc-reference-blue.svg)](https://pkg.go.dev/github.com/ipfs/boxo)
-[![codecov](https://codecov.io/gh/ipfs/boxo/branch/main/graph/badge.svg?token=9eG7d8fbCB)](https://codecov.io/gh/ipfs/boxo)
+<hr />
 
 <!-- TOC -->
 
@@ -146,7 +155,7 @@ TODO: fill this in.  New issues and PRs to this repo are usually looked at on a 
 The exhaustive list is https://github.com/ipfs/boxo/network/dependents.  Some notable projects include:
 1. [Kubo](https://github.com/ipfs/kubo), an IPFS implementation in Go
 2. [Lotus](https://github.com/filecoin-project/lotus), a Filecoin implementation in Go
-3. [Bifrost Gateway](https://github.com/protocol/bifrost-gateway), a dedicated IPFS gateway
+3. [Bifrost Gateway](https://github.com/ipfs/bifrost-gateway), a dedicated IPFS gateway
 4. [ipfs-check](https://github.com/ipfs-shipyard/ipfs-check), checks IPFS data availability
 
 ### Governance and Access
