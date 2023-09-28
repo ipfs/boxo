@@ -209,7 +209,7 @@ func (ps *PeeringService) GetState() State {
 }
 
 // Stop stops the peering service.
-func (ps *PeeringService) Stop() error {
+func (ps *PeeringService) Stop() {
 	ps.host.Network().StopNotify((*netNotifee)(ps))
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
@@ -222,7 +222,6 @@ func (ps *PeeringService) Stop() error {
 		}
 		ps.state = StateStopped
 	}
-	return nil
 }
 
 // AddPeer adds a peer to the peering service. This function may be safely
