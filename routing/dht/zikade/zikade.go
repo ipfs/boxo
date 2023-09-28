@@ -1,4 +1,5 @@
-package dhtv2
+// Package zikade provides routing using the Zikade IPFS DHT implementation.
+package zikade
 
 import (
 	"fmt"
@@ -13,13 +14,14 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-var logger = logging.Logger("routing/dhtv2")
+var logger = logging.Logger("routing/dht/zikade")
 
 type config struct {
 	dht *dht.Config
 	rt  *triert.Config[kadt.Key, kadt.PeerID]
 }
 
+// NewRouter creates a new router using the Zikade IPFS DHT implementation.
 func NewRouter(h host.Host, opts ...Option) (routing.Routing, error) {
 	cfg := &config{
 		dht: dht.DefaultConfig(),

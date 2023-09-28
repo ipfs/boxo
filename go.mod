@@ -3,7 +3,7 @@ module github.com/ipfs/boxo
 go 1.20
 
 // go-libp2p-kad-dht v2-develop
-require github.com/libp2p/go-libp2p-kad-dht/v2 v2.0.0-20230925134614-09dd7b0b2f50
+require github.com/libp2p/go-libp2p-kad-dht/v2 v2.0.0-20230928104808-03adce677e4e
 
 require (
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137
@@ -78,9 +78,12 @@ require (
 )
 
 require (
+	github.com/plprobelab/go-kademlia v0.0.0-20230913171354-443ec1f56080
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.18.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.18.0
 	go.opentelemetry.io/otel/exporters/zipkin v1.18.0
+	go.uber.org/zap/exp v0.1.0
+	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63
 )
 
 require (
@@ -145,7 +148,6 @@ require (
 	github.com/openzipkin/zipkin-go v0.4.2 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/petar/GoLLRB v0.0.0-20210522233825-ae3b015fd3e9 // indirect
-	github.com/plprobelab/go-kademlia v0.0.0-20230913171354-443ec1f56080 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.44.0 // indirect
@@ -167,9 +169,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.0.0 // indirect
 	go.uber.org/dig v1.17.0 // indirect
 	go.uber.org/fx v1.20.0 // indirect
-	go.uber.org/zap/exp v0.1.0 // indirect
 	golang.org/x/crypto v0.12.0 // indirect
-	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.14.0 // indirect
 	golang.org/x/text v0.12.0 // indirect
