@@ -142,8 +142,8 @@ func TestPeeringService(t *testing.T) {
 	}, 30*time.Second, 1*time.Second)
 
 	// Should be able to repeatedly stop.
-	require.NoError(t, ps1.Stop())
-	require.NoError(t, ps1.Stop())
+	ps1.Stop()
+	ps1.Stop()
 
 	// Adding and removing should work after stopping.
 	ps1.AddPeer(peer.AddrInfo{ID: h4.ID(), Addrs: h4.Addrs()})
