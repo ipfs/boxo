@@ -8,7 +8,6 @@ import (
 	dht "github.com/libp2p/go-libp2p-kad-dht/v2"
 	"github.com/libp2p/go-libp2p-kad-dht/v2/kadt"
 	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/plprobelab/go-kademlia/routing/triert"
 	"go.uber.org/zap/exp/zapslog"
 	"golang.org/x/exp/slog"
@@ -22,7 +21,7 @@ type config struct {
 }
 
 // NewRouter creates a new router using the Zikade IPFS DHT implementation.
-func NewRouter(h host.Host, opts ...Option) (routing.Routing, error) {
+func NewRouter(h host.Host, opts ...Option) (*dht.DHT, error) {
 	cfg := &config{
 		dht: dht.DefaultConfig(),
 		rt:  triert.DefaultConfig[kadt.Key, kadt.PeerID](),
