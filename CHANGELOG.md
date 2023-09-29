@@ -24,6 +24,7 @@ The following emojis are used to highlight certain changes:
 * ✨ Migrated repositories into Boxo
   * [`github.com/ipfs/kubo/peering`](https://pkg.go.dev/github.com/ipfs/kubo/peering) => [`./peering`](./peering)
     A service which establish, overwatch and maintain long lived connections.
+  * github.com/ipfs/kubo/core/bootstrap => ./bootstrap
 
 ### Changed
 
