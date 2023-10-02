@@ -145,7 +145,7 @@ func (mb *mockBackend) GetBlock(ctx context.Context, immutablePath ImmutablePath
 	return mb.gw.GetBlock(ctx, immutablePath)
 }
 
-func (mb *mockBackend) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (mb *mockBackend) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	return mb.gw.Head(ctx, immutablePath)
 }
 

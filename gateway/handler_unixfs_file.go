@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -12,14 +13,13 @@ import (
 
 	"github.com/gabriel-vasile/mimetype"
 	ipath "github.com/ipfs/boxo/coreiface/path"
-	"github.com/ipfs/boxo/files"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // serveFile returns data behind a file along with HTTP headers based on
 // the file itself, its CID and the contentPath used for accessing it.
-func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, file files.File, fileContentType string, begin time.Time) bool {
+func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, fileSize int64, fileBytes io.ReadCloser, isSymlink bool, returnRangeStartsAtZero bool, fileContentType string, begin time.Time) bool {
 	_, span := spanTrace(ctx, "Handler.ServeFile", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
@@ -29,14 +29,7 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 	// Set Content-Disposition
 	name := addContentDispositionHeader(w, r, contentPath)
 
-	// Prepare size value for Content-Length HTTP header (set inside of http.ServeContent)
-	size, err := file.Size()
-	if err != nil {
-		http.Error(w, "cannot serve files with unknown sizes", http.StatusBadGateway)
-		return false
-	}
-
-	if size == 0 {
+	if fileSize == 0 {
 		// We override null files to 200 to avoid issues with fragment caching reverse proxies.
 		// Also whatever you are asking for, it's cheaper to just give you the complete file (nothing).
 		// TODO: remove this if clause once https://github.com/golang/go/issues/54794 is fixed in two latest releases of go
@@ -45,16 +38,11 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 		return true
 	}
 
-	// Lazy seeker enables efficient range-requests and HTTP HEAD responses
-	content := &lazySeeker{
-		size:   size,
-		reader: file,
-	}
-
+	var content io.Reader = fileBytes
 	// Calculate deterministic value for Content-Type HTTP header
 	// (we prefer to do it here, rather than using implicit sniffing in http.ServeContent)
 	var ctype string
-	if _, isSymlink := file.(*files.Symlink); isSymlink {
+	if isSymlink {
 		// We should be smarter about resolving symlinks but this is the
 		// "most correct" we can be without doing that.
 		ctype = "inode/symlink"
@@ -63,21 +51,24 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 		if ctype == "" {
 			ctype = fileContentType
 		}
-		if ctype == "" {
+		if ctype == "" && returnRangeStartsAtZero {
 			// uses https://github.com/gabriel-vasile/mimetype library to determine the content type.
 			// Fixes https://github.com/ipfs/kubo/issues/7252
-			mimeType, err := mimetype.DetectReader(content)
+
+			// We read from a TeeReader into a buffer and then put the buffer in front of the original reader to
+			// simulate the behavior of being able to read from the start and then seek back to the beginning while
+			// only having a Reader and not a ReadSeeker
+			var buf bytes.Buffer
+			tr := io.TeeReader(fileBytes, &buf)
+
+			mimeType, err := mimetype.DetectReader(tr)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("cannot detect content-type: %s", err.Error()), http.StatusInternalServerError)
 				return false
 			}
 
 			ctype = mimeType.String()
-			_, err = content.Seek(0, io.SeekStart)
-			if err != nil {
-				http.Error(w, "seeker can't seek", http.StatusInternalServerError)
-				return false
-			}
+			content = io.MultiReader(&buf, fileBytes)
 		}
 		// Strip the encoding from the HTML Content-Type header and let the
 		// browser figure it out.
@@ -93,7 +84,7 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
-	_, dataSent, _ := serveContent(w, r, name, modtime, content)
+	_, dataSent, _ := serveContent(w, r, modtime, fileSize, content)
 
 	// Was response successful?
 	if dataSent {

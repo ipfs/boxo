@@ -96,7 +96,7 @@ func (b *ipfsBackendWithMetrics) GetBlock(ctx context.Context, path ImmutablePat
 	return md, n, err
 }
 
-func (b *ipfsBackendWithMetrics) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (b *ipfsBackendWithMetrics) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	begin := time.Now()
 	name := "IPFSBackend.Head"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))

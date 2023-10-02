@@ -719,7 +719,7 @@ func (mb *errorMockBackend) GetBlock(ctx context.Context, path ImmutablePath) (C
 	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (mb *errorMockBackend) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (mb *errorMockBackend) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	return ContentPathMetadata{}, nil, mb.err
 }
 
@@ -803,7 +803,7 @@ func (mb *panicMockBackend) GetBlock(ctx context.Context, immutablePath Immutabl
 	panic("i am panicking")
 }
 
-func (mb *panicMockBackend) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (mb *panicMockBackend) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	panic("i am panicking")
 }
 

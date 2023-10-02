@@ -18,6 +18,11 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+* `boxo/gateway`
+  * 🛠 The `IPFSBackend` interface was updated to make the responses of the
+    `Head` method more explicit. It now returns a `HeadResponse` instead of a
+    `files.Node`.
+
 ### Removed
 
 ### Fixed

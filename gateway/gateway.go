@@ -260,21 +260,74 @@ type ByteRange struct {
 }
 
 type GetResponse struct {
-	bytes             files.File
+	bytes             io.ReadCloser
+	bytesSize         int64
+	symlink           *files.Symlink
 	directoryMetadata *directoryMetadata
 }
+
+func (r *GetResponse) Close() error {
+	if r.bytes != nil {
+		return r.bytes.Close()
+	}
+	if r.symlink != nil {
+		return r.symlink.Close()
+	}
+	if r.directoryMetadata != nil {
+		if r.directoryMetadata.closeFn == nil {
+			return nil
+		}
+		return r.directoryMetadata.closeFn()
+	}
+	// Should be unreachable
+	return nil
+}
+
+var _ io.Closer = (*GetResponse)(nil)
 
 type directoryMetadata struct {
 	dagSize uint64
 	entries <-chan unixfs.LinkResult
+	closeFn func() error
 }
 
-func NewGetResponseFromFile(file files.File) *GetResponse {
-	return &GetResponse{bytes: file}
+func NewGetResponseFromReader(file io.ReadCloser, fullFileSize int64) *GetResponse {
+	return &GetResponse{bytes: file, bytesSize: fullFileSize}
 }
 
-func NewGetResponseFromDirectoryListing(dagSize uint64, entries <-chan unixfs.LinkResult) *GetResponse {
-	return &GetResponse{directoryMetadata: &directoryMetadata{dagSize, entries}}
+func NewGetResponseFromSymlink(symlink *files.Symlink, size int64) *GetResponse {
+	return &GetResponse{symlink: symlink, bytesSize: size}
+}
+
+func NewGetResponseFromDirectoryListing(dagSize uint64, entries <-chan unixfs.LinkResult, closeFn func() error) *GetResponse {
+	return &GetResponse{directoryMetadata: &directoryMetadata{dagSize: dagSize, entries: entries, closeFn: closeFn}}
+}
+
+type HeadResponse struct {
+	bytesSize     int64
+	startingBytes io.ReadCloser
+	isFile        bool
+	isSymLink     bool
+	isDir         bool
+}
+
+func (r *HeadResponse) Close() error {
+	if r.startingBytes != nil {
+		return r.startingBytes.Close()
+	}
+	return nil
+}
+
+func NewHeadResponseForFile(startingBytes io.ReadCloser, size int64) *HeadResponse {
+	return &HeadResponse{startingBytes: startingBytes, isFile: true, bytesSize: size}
+}
+
+func NewHeadResponseForSymlink(symlinkSize int64) *HeadResponse {
+	return &HeadResponse{isSymLink: true, bytesSize: symlinkSize}
+}
+
+func NewHeadResponseForDirectory(dagSize int64) *HeadResponse {
+	return &HeadResponse{isDir: true, bytesSize: dagSize}
 }
 
 // IPFSBackend is the required set of functionality used to implement the IPFS
@@ -305,6 +358,9 @@ type IPFSBackend interface {
 	//     file will still need magic bytes from the very beginning for content
 	//     type sniffing).
 	//   - A range request for a directory currently holds no semantic meaning.
+	//   - For non-UnixFS (and non-raw data) such as terminal IPLD dag-cbor/json, etc. blocks the returned response
+	//     bytes should be the complete block and returned as an [io.ReadSeekCloser] starting at the beginning of the
+	//     block rather than as an [io.ReadCloser] that starts at the beginning of the range request.
 	//
 	// [HTTP Byte Ranges]: https://httpwg.org/specs/rfc9110.html#rfc.section.14.1.2
 	Get(context.Context, ImmutablePath, ...ByteRange) (ContentPathMetadata, *GetResponse, error)
@@ -316,12 +372,16 @@ type IPFSBackend interface {
 	// GetBlock returns a single block of data
 	GetBlock(context.Context, ImmutablePath) (ContentPathMetadata, files.File, error)
 
-	// Head returns a file or directory depending on what the path is that has been requested.
-	// For UnixFS files should return a file which has the correct file size and either returns the ContentType in ContentPathMetadata or
-	// enough data (e.g. 3kiB) such that the content type can be determined by sniffing.
-	// For all other data types returning just size information is sufficient
-	// TODO: give function more explicit return types
-	Head(context.Context, ImmutablePath) (ContentPathMetadata, files.Node, error)
+	// Head returns a [HeadResponse] depending on what the path is that has been requested.
+	// For UnixFS files (and raw blocks) should return the size of the file and either set the ContentType in
+	// ContentPathMetadata or send back a reader from the beginning of the file with enough data (e.g. 3kiB) such that
+	// the content type can be determined by sniffing.
+	//
+	// For UnixFS directories and symlinks only setting the size and type are necessary.
+	//
+	// For all other data types (e.g. (DAG-)CBOR/JSON blocks) returning the size information as a file while setting
+	// the content-type is sufficient.
+	Head(context.Context, ImmutablePath) (ContentPathMetadata, *HeadResponse, error)
 
 	// ResolvePath resolves the path using UnixFS resolver. If the path does not
 	// exist due to a missing link, it should return an error of type:

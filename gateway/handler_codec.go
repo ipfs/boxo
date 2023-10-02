@@ -69,10 +69,16 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 	defer data.Close()
 
 	setIpfsRootsHeader(w, rq, &pathMetadata)
-	return i.renderCodec(ctx, w, r, rq, data)
+
+	blockSize, err := data.Size()
+	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
+		return false
+	}
+
+	return i.renderCodec(ctx, w, r, rq, blockSize, data)
 }
 
-func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData, blockData io.ReadSeekCloser) bool {
+func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData, blockSize int64, blockData io.ReadSeekCloser) bool {
 	resolvedPath := rq.pathMetadata.LastSegment
 	ctx, span := spanTrace(ctx, "Handler.RenderCodec", trace.WithAttributes(attribute.String("path", resolvedPath.String()), attribute.String("requestedContentType", rq.responseFormat)))
 	defer span.End()
@@ -105,7 +111,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 
 	// Set HTTP headers (for caching, etc). Etag will be replaced if handled by serveCodecHTML.
 	modtime := addCacheControlHeaders(w, r, rq.contentPath, resolvedPath.Cid(), responseContentType)
-	name := setCodecContentDisposition(w, r, resolvedPath, responseContentType)
+	_ = setCodecContentDisposition(w, r, resolvedPath, responseContentType)
 	w.Header().Set("Content-Type", responseContentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
@@ -121,7 +127,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 		} else {
 			// This covers CIDs with codec 'json' and 'cbor' as those do not have
 			// an explicit requested content type.
-			return i.serveCodecRaw(ctx, w, r, blockData, rq.contentPath, name, modtime, rq.begin)
+			return i.serveCodecRaw(ctx, w, r, blockSize, blockData, rq.contentPath, modtime, rq.begin)
 		}
 	}
 
@@ -131,7 +137,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	if ok {
 		for _, skipCodec := range skipCodecs {
 			if skipCodec == cidCodec {
-				return i.serveCodecRaw(ctx, w, r, blockData, rq.contentPath, name, modtime, rq.begin)
+				return i.serveCodecRaw(ctx, w, r, blockSize, blockData, rq.contentPath, modtime, rq.begin)
 			}
 		}
 	}
@@ -149,7 +155,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	return i.serveCodecConverted(ctx, w, r, blockCid, blockData, rq.contentPath, toCodec, modtime, rq.begin)
 }
 
-func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.ReadSeekCloser, resolvedPath ipath.Resolved, contentPath ipath.Path) bool {
+func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.Reader, resolvedPath ipath.Resolved, contentPath ipath.Path) bool {
 	// WithHostname may have constructed an IPFS (or IPNS) path using the Host header.
 	// In this case, we need the original path for constructing the redirect.
 	requestURI, err := url.ParseRequestURI(r.RequestURI)
@@ -207,7 +213,7 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 // parseNode does a best effort attempt to parse this request's block such that
 // a preview can be displayed in the gateway. If something fails along the way,
 // returns nil, therefore not displaying the preview.
-func parseNode(blockCid cid.Cid, blockData io.ReadSeekCloser) *assets.ParsedNode {
+func parseNode(blockCid cid.Cid, blockData io.Reader) *assets.ParsedNode {
 	codec := blockCid.Prefix().Codec
 	decoder, err := multicodec.LookupDecoder(codec)
 	if err != nil {
@@ -229,10 +235,14 @@ func parseNode(blockCid cid.Cid, blockData io.ReadSeekCloser) *assets.ParsedNode
 }
 
 // serveCodecRaw returns the raw block without any conversion
-func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, blockData io.ReadSeekCloser, contentPath ipath.Path, name string, modtime, begin time.Time) bool {
+func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *http.Request, blockSize int64, blockData io.ReadSeekCloser, contentPath ipath.Path, modtime, begin time.Time) bool {
 	// ServeContent will take care of
-	// If-None-Match+Etag, Content-Length and range requests
-	_, dataSent, _ := serveContent(w, r, name, modtime, blockData)
+	// If-None-Match+Etag, Content-Length and setting range request headers after we've already seeked to the start of
+	// the first range
+	if !i.seekToStartOfFirstRange(w, r, blockData) {
+		return false
+	}
+	_, dataSent, _ := serveContent(w, r, modtime, blockSize, blockData)
 
 	if dataSent {
 		// Update metrics
@@ -243,7 +253,7 @@ func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *h
 }
 
 // serveCodecConverted returns payload converted to codec specified in toCodec
-func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.ReadSeekCloser, contentPath ipath.Path, toCodec mc.Code, modtime, begin time.Time) bool {
+func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.ReadCloser, contentPath ipath.Path, toCodec mc.Code, modtime, begin time.Time) bool {
 	codec := blockCid.Prefix().Codec
 	decoder, err := multicodec.LookupDecoder(codec)
 	if err != nil {

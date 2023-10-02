@@ -11,8 +11,6 @@ import (
 	"go.uber.org/zap"
 
 	ipath "github.com/ipfs/boxo/coreiface/path"
-	"github.com/ipfs/boxo/files"
-
 	redirects "github.com/ipfs/go-ipfs-redirects-file"
 )
 
@@ -160,12 +158,12 @@ func (i *handler) getRedirectRules(r *http.Request, redirectsPath ImmutablePath)
 		}
 		return false, nil, err
 	}
+	defer redirectsFileGetResp.Close()
 
 	if redirectsFileGetResp.bytes == nil {
 		return false, nil, fmt.Errorf(" _redirects is not a file")
 	}
 	f := redirectsFileGetResp.bytes
-	defer f.Close()
 
 	// Parse redirect rules from file
 	redirectRules, err := redirects.Parse(f)
@@ -186,19 +184,16 @@ func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPat
 	if err != nil {
 		return err
 	}
+	defer getresp.Close()
 
 	if getresp.bytes == nil {
 		return fmt.Errorf("could not convert node for %d page to file", status)
 	}
 	content4xxFile := getresp.bytes
-	defer content4xxFile.Close()
 
 	content4xxCid := pathMetadata.LastSegment.Cid()
 
-	size, err := content4xxFile.Size()
-	if err != nil {
-		return fmt.Errorf("could not get size of %d page", status)
-	}
+	size := getresp.bytesSize
 
 	logger.Debugf("using _redirects: custom %d file at %q", status, content4xxPath)
 	w.Header().Set("Content-Type", "text/html")
@@ -224,29 +219,24 @@ func hasOriginIsolation(r *http.Request) bool {
 // This is provided only for backward-compatibility, until websites migrate
 // to 404s managed via _redirects file (https://github.com/ipfs/specs/pull/290)
 func (i *handler) serveLegacy404IfPresent(w http.ResponseWriter, r *http.Request, imPath ImmutablePath, logger *zap.SugaredLogger) bool {
-	resolved404File, ctype, err := i.searchUpTreeFor404(r, imPath)
+	resolved404File, resolved404FileSize, ctype, err := i.searchUpTreeFor404(r, imPath)
 	if err != nil {
 		return false
 	}
 	defer resolved404File.Close()
 
-	size, err := resolved404File.Size()
-	if err != nil {
-		return false
-	}
-
 	logger.Debugw("using pretty 404 file", "path", imPath)
 	w.Header().Set("Content-Type", ctype)
-	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	w.Header().Set("Content-Length", strconv.FormatInt(resolved404FileSize, 10))
 	w.WriteHeader(http.StatusNotFound)
-	_, err = io.CopyN(w, resolved404File, size)
+	_, err = io.CopyN(w, resolved404File, resolved404FileSize)
 	return err == nil
 }
 
-func (i *handler) searchUpTreeFor404(r *http.Request, imPath ImmutablePath) (files.File, string, error) {
+func (i *handler) searchUpTreeFor404(r *http.Request, imPath ImmutablePath) (io.ReadCloser, int64, string, error) {
 	filename404, ctype, err := preferred404Filename(r.Header.Values("Accept"))
 	if err != nil {
-		return nil, "", err
+		return nil, 0, "", err
 	}
 
 	pathComponents := strings.Split(imPath.String(), "/")
@@ -267,12 +257,14 @@ func (i *handler) searchUpTreeFor404(r *http.Request, imPath ImmutablePath) (fil
 			continue
 		}
 		if getResp.bytes == nil {
-			return nil, "", fmt.Errorf("found a pretty 404 but it was not a file")
+			// Close the response here if not returning bytes, otherwise it's the caller's responsibility to close the io.ReadCloser
+			getResp.Close()
+			return nil, 0, "", fmt.Errorf("found a pretty 404 but it was not a file")
 		}
-		return getResp.bytes, ctype, nil
+		return getResp.bytes, getResp.bytesSize, ctype, nil
 	}
 
-	return nil, "", fmt.Errorf("no pretty 404 in any parent folder")
+	return nil, 0, "", fmt.Errorf("no pretty 404 in any parent folder")
 }
 
 func preferred404Filename(acceptHeaders []string) (string, string, error) {

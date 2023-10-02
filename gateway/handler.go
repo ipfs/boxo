@@ -92,13 +92,19 @@ func NewHandler(c Config, backend IPFSBackend) http.Handler {
 	return newHandlerWithMetrics(&c, backend)
 }
 
-// serveContent replies to the request using the content in the provided ReadSeeker
+// serveContent replies to the request using the content in the provided Reader
 // and returns the status code written and any error encountered during a write.
-// It wraps http.serveContent which takes care of If-None-Match+Etag,
+// It wraps httpServeContent (a close clone of http.ServeContent) which takes care of If-None-Match+Etag,
 // Content-Length and range requests.
-func serveContent(w http.ResponseWriter, req *http.Request, name string, modtime time.Time, content io.ReadSeeker) (int, bool, error) {
+//
+// Notes:
+// 1. For HEAD requests the io.Reader may be nil/undefined
+// 2. When the io.Reader is needed it must start at the beginning of the first Range Request component if it exists
+// 3. Only a single HTTP Range Request is supported, if more than one are requested only the first will be honored
+// 4. The Content-Type header must already be set
+func serveContent(w http.ResponseWriter, req *http.Request, modtime time.Time, size int64, content io.Reader) (int, bool, error) {
 	ew := &errRecordingResponseWriter{ResponseWriter: w}
-	http.ServeContent(ew, req, name, modtime, content)
+	httpServeContent(ew, req, modtime, size, content)
 
 	// When we calculate some metrics we want a flag that lets us to ignore
 	// errors and 304 Not Modified, and only care when requested data
@@ -554,40 +560,6 @@ func etagMatch(ifNoneMatchHeader string, etagsToCheck ...string) bool {
 	return false
 }
 
-// scanETag determines if a syntactically valid ETag is present at s. If so,
-// the ETag and remaining text after consuming ETag is returned. Otherwise,
-// it returns "", "".
-// (This is the same logic as one executed inside of http.ServeContent)
-func scanETag(s string) (etag string, remain string) {
-	s = textproto.TrimString(s)
-	start := 0
-	if strings.HasPrefix(s, "W/") {
-		start = 2
-	}
-	if len(s[start:]) < 2 || s[start] != '"' {
-		return "", ""
-	}
-	// ETag is either W/"text" or "text".
-	// See RFC 7232 2.3.
-	for i := start + 1; i < len(s); i++ {
-		c := s[i]
-		switch {
-		// Character values allowed in ETags.
-		case c == 0x21 || c >= 0x23 && c <= 0x7E || c >= 0x80:
-		case c == '"':
-			return s[:i+1], s[i+1:]
-		default:
-			return "", ""
-		}
-	}
-	return "", ""
-}
-
-// etagWeakMatch reports whether a and b match using weak ETag comparison.
-func etagWeakMatch(a, b string) bool {
-	return strings.TrimPrefix(a, "W/") == strings.TrimPrefix(b, "W/")
-}
-
 // getEtag generates an ETag value based on an HTTP Request, a CID and a response
 // format. This function DOES NOT generate ETags for CARs or IPNS Records.
 func getEtag(r *http.Request, cid cid.Cid, responseFormat string) string {
@@ -773,6 +745,13 @@ func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request,
 	if errors.Is(err, ErrServiceUnavailable) {
 		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 		i.webError(w, r, err, http.StatusServiceUnavailable)
+		return ImmutablePath{}, false
+	}
+
+	// If the error is not an IPLD traversal error then we should not be looking for _redirects or legacy 404s
+	if !isErrNotFound(err) {
+		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+		i.webError(w, r, err, http.StatusInternalServerError)
 		return ImmutablePath{}, false
 	}
 

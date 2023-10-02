@@ -153,11 +153,34 @@ func (bb *BlocksBackend) Get(ctx context.Context, path ImmutablePath, ranges ...
 		return md, nil, err
 	}
 
+	// Only a single range is supported in responses to HTTP Range Requests.
+	// When more than one is passed in the Range header, this library will
+	// return a response for the first one and ignores remaining ones.
+	var ra *ByteRange
+	if len(ranges) > 0 {
+		ra = &ranges[0]
+	}
+
 	rootCodec := nd.Cid().Prefix().GetCodec()
+
 	// This covers both Raw blocks and terminal IPLD codecs like dag-cbor and dag-json
 	// Note: while only cbor, json, dag-cbor, and dag-json are currently supported by gateways this could change
+	// Note: For the raw codec we return just the relevant range rather than the entire block
 	if rootCodec != uint64(mc.DagPb) {
-		return md, NewGetResponseFromFile(files.NewBytesFile(nd.RawData())), nil
+		f := files.NewBytesFile(nd.RawData())
+
+		fileSize, err := f.Size()
+		if err != nil {
+			return ContentPathMetadata{}, nil, err
+		}
+
+		if rootCodec == uint64(mc.Raw) {
+			if err := seekToRangeStart(f, ra); err != nil {
+				return ContentPathMetadata{}, nil, err
+			}
+		}
+
+		return md, NewGetResponseFromReader(f, fileSize), nil
 	}
 
 	// This code path covers full graph, single file/directory, and range requests
@@ -179,10 +202,23 @@ func (bb *BlocksBackend) Get(ctx context.Context, path ImmutablePath, ranges ...
 		if sz < 0 {
 			return ContentPathMetadata{}, nil, fmt.Errorf("directory cumulative DAG size cannot be negative")
 		}
-		return md, NewGetResponseFromDirectoryListing(uint64(sz), dir.EnumLinksAsync(ctx)), nil
+		return md, NewGetResponseFromDirectoryListing(uint64(sz), dir.EnumLinksAsync(ctx), nil), nil
 	}
 	if file, ok := f.(files.File); ok {
-		return md, NewGetResponseFromFile(file), nil
+		fileSize, err := f.Size()
+		if err != nil {
+			return ContentPathMetadata{}, nil, err
+		}
+
+		if err := seekToRangeStart(file, ra); err != nil {
+			return ContentPathMetadata{}, nil, err
+		}
+
+		if s, ok := f.(*files.Symlink); ok {
+			return md, NewGetResponseFromSymlink(s, fileSize), nil
+		}
+
+		return md, NewGetResponseFromReader(file, fileSize), nil
 	}
 
 	return ContentPathMetadata{}, nil, fmt.Errorf("data was not a valid file or directory: %w", ErrInternalServerError) // TODO: should there be a gateway invalid content type to abstract over the various IPLD error types?
@@ -211,7 +247,7 @@ func (bb *BlocksBackend) GetBlock(ctx context.Context, path ImmutablePath) (Cont
 	return md, files.NewBytesFile(nd.RawData()), nil
 }
 
-func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	md, nd, err := bb.getNode(ctx, path)
 	if err != nil {
 		return md, nil, err
@@ -219,7 +255,7 @@ func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentP
 
 	rootCodec := nd.Cid().Prefix().GetCodec()
 	if rootCodec != uint64(mc.DagPb) {
-		return md, files.NewBytesFile(nd.RawData()), nil
+		return md, NewHeadResponseForFile(files.NewBytesFile(nd.RawData()), int64(len(nd.RawData()))), nil
 	}
 
 	// TODO: We're not handling non-UnixFS dag-pb. There's a bit of a discrepancy
@@ -229,7 +265,24 @@ func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentP
 		return ContentPathMetadata{}, nil, err
 	}
 
-	return md, fileNode, nil
+	sz, err := fileNode.Size()
+	if err != nil {
+		return ContentPathMetadata{}, nil, err
+	}
+
+	if _, ok := fileNode.(files.Directory); ok {
+		return md, NewHeadResponseForDirectory(sz), nil
+	}
+
+	if _, ok := fileNode.(*files.Symlink); ok {
+		return md, NewHeadResponseForSymlink(sz), nil
+	}
+
+	if f, ok := fileNode.(files.File); ok {
+		return md, NewHeadResponseForFile(f, sz), nil
+	}
+
+	return ContentPathMetadata{}, nil, fmt.Errorf("unsupported UnixFS file type")
 }
 
 // emptyRoot is a CAR root with the empty identity CID. CAR files are recommended
