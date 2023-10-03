@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	logging "github.com/ipfs/go-log/v2"
-	dht "github.com/libp2p/go-libp2p-kad-dht/v2"
-	"github.com/libp2p/go-libp2p-kad-dht/v2/kadt"
 	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/plprobelab/go-kademlia/routing/triert"
+	"github.com/plprobelab/go-libdht/kad/triert"
+	"github.com/plprobelab/zikade"
+	"github.com/plprobelab/zikade/kadt"
 	"go.uber.org/zap/exp/zapslog"
 	"golang.org/x/exp/slog"
 )
@@ -16,17 +16,17 @@ import (
 var logger = logging.Logger("routing/dht/zikade")
 
 type config struct {
-	dht *dht.Config
+	dht *zikade.Config
 	rt  *triert.Config[kadt.Key, kadt.PeerID]
 }
 
 // NewRouter creates a new router using the Zikade IPFS DHT implementation.
-func NewRouter(h host.Host, opts ...Option) (*dht.DHT, error) {
+func NewRouter(h host.Host, opts ...Option) (*zikade.DHT, error) {
 	cfg := &config{
-		dht: dht.DefaultConfig(),
+		dht: zikade.DefaultConfig(),
 		rt:  triert.DefaultConfig[kadt.Key, kadt.PeerID](),
 	}
-	cfg.dht.ProtocolID = dht.ProtocolIPFS
+	cfg.dht.ProtocolID = zikade.ProtocolIPFS
 	cfg.dht.Logger = slog.New(zapslog.NewHandler(logger.Desugar().Core()))
 
 	for _, opt := range opts {
@@ -42,7 +42,7 @@ func NewRouter(h host.Host, opts ...Option) (*dht.DHT, error) {
 	}
 	cfg.dht.RoutingTable = rt
 
-	d, err := dht.New(h, cfg.dht)
+	d, err := zikade.New(h, cfg.dht)
 
 	return d, err
 }

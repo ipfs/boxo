@@ -2,9 +2,6 @@ module github.com/ipfs/boxo
 
 go 1.20
 
-// go-libp2p-kad-dht v2-develop
-require github.com/libp2p/go-libp2p-kad-dht/v2 v2.0.0-20230928104808-03adce677e4e
-
 require (
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137
 	github.com/benbjohnson/clock v1.3.5
@@ -78,7 +75,8 @@ require (
 )
 
 require (
-	github.com/plprobelab/go-kademlia v0.0.0-20230913171354-443ec1f56080
+	github.com/plprobelab/go-libdht v0.0.0-20230928202609-8c74cc7954b3
+	github.com/plprobelab/zikade v0.0.0-20231002151622-5323fffc1882
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.18.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.18.0
 	go.opentelemetry.io/otel/exporters/zipkin v1.18.0

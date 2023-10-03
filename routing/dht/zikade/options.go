@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/ipfs/go-datastore"
-	dht "github.com/libp2p/go-libp2p-kad-dht/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/plprobelab/zikade"
 )
 
 // Option is a configuration option for the DHT
@@ -17,7 +17,7 @@ type Option func(*config) error
 // Defaults to an in-memory leveldb datastore.
 func Datastore(dstore datastore.Batching) Option {
 	return func(c *config) error {
-		ds, ok := dstore.(dht.Datastore)
+		ds, ok := dstore.(zikade.Datastore)
 		if !ok {
 			ds = noopTxnDatastore{dstore}
 		}
@@ -29,27 +29,27 @@ func Datastore(dstore datastore.Batching) Option {
 
 // ModeClient configures the DHT to always operate in client mode.
 func ModeClient(c *config) error {
-	c.dht.Mode = dht.ModeOptClient
+	c.dht.Mode = zikade.ModeOptClient
 	return nil
 }
 
 // ModeServer configures the DHT to always operate in server mode.
 func ModeServer(c *config) error {
-	c.dht.Mode = dht.ModeOptServer
+	c.dht.Mode = zikade.ModeOptServer
 	return nil
 }
 
 // ModeAutoClient configures the DHT to start operating in client mode
 // and if publicly reachability is detected to switch to server mode.
 func ModeAutoClient(c *config) error {
-	c.dht.Mode = dht.ModeOptAutoClient
+	c.dht.Mode = zikade.ModeOptAutoClient
 	return nil
 }
 
 // ModeAutoServer configures the DHT to start operating in server mode,
 // and if publicly reachability is not detected to switch to client mode.
 func ModeAutoServer(c *config) error {
-	c.dht.Mode = dht.ModeOptAutoServer
+	c.dht.Mode = zikade.ModeOptAutoServer
 	return nil
 }
 
@@ -96,16 +96,8 @@ func QueryRequestTimeout(v time.Duration) Option {
 	}
 }
 
-// // Validator configures the DHT to use the specified validator.
-// func Validator(v record.Validator) Option {
-// 	return func(c *config) error {
-// 		c.dht.Validator = v
-// 		return nil
-// 	}
-// }
-
 var (
-	_ dht.Datastore             = noopTxnDatastore{}
+	_ zikade.Datastore          = noopTxnDatastore{}
 	_ datastore.Datastore       = noopTxnDatastore{}
 	_ datastore.BatchingFeature = noopTxnDatastore{}
 	_ datastore.TxnFeature      = noopTxnDatastore{}
