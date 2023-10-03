@@ -3,16 +3,15 @@ package iface
 import (
 	"context"
 
-	"github.com/ipfs/boxo/coreiface/path"
-
 	"github.com/ipfs/boxo/coreiface/options"
+	"github.com/ipfs/boxo/coreiface/path"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 // DhtAPI specifies the interface to the DHT
-// Note: This API will likely get deprecated in near future, see
-// https://github.com/ipfs/interface-ipfs-core/issues/249 for more context.
+//
+// Deprecated: Use [RoutingAPI] instead, see https://github.com/ipfs/interface-ipfs-core/issues/249 for more context.
 type DhtAPI interface {
 	// FindPeer queries the DHT for all of the multiaddresses associated with a
 	// Peer ID
