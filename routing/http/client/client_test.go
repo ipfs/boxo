@@ -67,7 +67,7 @@ type testDeps struct {
 	server              *httptest.Server
 	peerID              peer.ID
 	addrs               []multiaddr.Multiaddr
-	client              *client
+	client              *Client
 }
 
 type recordingHandler struct {
