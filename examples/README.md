@@ -1,8 +1,8 @@
-# boxo examples and tutorials
+# Boxo Examples and Tutorials
 
-In this folder, you can find some examples to help you get started using boxo and its associated libraries in your applications.
+In this folder, you can find some examples to help you get started using Boxo and its associated libraries in your applications.
 
-Let us know if you find any issue or if you want to contribute and add a new tutorial, feel welcome to submit a pr, thank you!
+Let us know if you find any issue or if you want to contribute and add a new tutorial, feel welcome to submit a PR, thank you!
 
 ## Examples and Tutorials
 
