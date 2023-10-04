@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
   * 🛠 The `IPFSBackend` interface was updated to make the responses of the
     `Head` method more explicit. It now returns a `HeadResponse` instead of a
     `files.Node`.
+* `boxo/routing/http/client.Client` is now exported. This means you can now pass
+  it around functions, or add it to a struct if you want.
 
 ### Removed
 
