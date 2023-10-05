@@ -61,11 +61,11 @@ require (
 	github.com/whyrusleeping/base32 v0.0.0-20170828182744-c30ac30633cc
 	github.com/whyrusleeping/chunker v0.0.0-20181014151217-fe64bd25879f
 	go.opencensus.io v0.24.0
-	go.opentelemetry.io/otel v1.18.0
+	go.opentelemetry.io/otel v1.19.0
 	go.opentelemetry.io/otel/exporters/jaeger v1.16.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.18.0
-	go.opentelemetry.io/otel/sdk v1.18.0
-	go.opentelemetry.io/otel/trace v1.18.0
+	go.opentelemetry.io/otel/sdk v1.19.0
+	go.opentelemetry.io/otel/trace v1.19.0
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.25.0
 	golang.org/x/oauth2 v0.10.0
@@ -76,10 +76,12 @@ require (
 
 require (
 	github.com/plprobelab/go-libdht v0.0.0-20230928202609-8c74cc7954b3
-	github.com/plprobelab/zikade v0.0.0-20231002151622-5323fffc1882
+	github.com/plprobelab/zikade v0.0.0-20231005134401-f9b6f3275245
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.18.0
+	go.opentelemetry.io/otel/exporters/prometheus v0.42.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.18.0
 	go.opentelemetry.io/otel/exporters/zipkin v1.18.0
+	go.opentelemetry.io/otel/sdk/metric v1.19.0
 	go.uber.org/zap/exp v0.1.0
 	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63
 )
@@ -162,8 +164,7 @@ require (
 	github.com/whyrusleeping/cbor-gen v0.0.0-20230126041949-52956bd4c9aa // indirect
 	github.com/whyrusleeping/go-keyspace v0.0.0-20160322163242-5b898ac5add1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.18.0 // indirect
-	go.opentelemetry.io/otel/metric v1.18.0 // indirect
-	go.opentelemetry.io/otel/sdk/metric v0.41.0 // indirect
+	go.opentelemetry.io/otel/metric v1.19.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.0.0 // indirect
 	go.uber.org/dig v1.17.0 // indirect
 	go.uber.org/fx v1.20.0 // indirect

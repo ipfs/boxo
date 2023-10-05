@@ -9,6 +9,9 @@ import (
 	"github.com/plprobelab/go-libdht/kad/triert"
 	"github.com/plprobelab/zikade"
 	"github.com/plprobelab/zikade/kadt"
+	"github.com/plprobelab/zikade/tele"
+	oprom "go.opentelemetry.io/otel/exporters/prometheus"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/zap/exp/zapslog"
 	"golang.org/x/exp/slog"
 )
@@ -28,6 +31,12 @@ func NewRouter(h host.Host, opts ...Option) (*zikade.DHT, error) {
 	}
 	cfg.dht.ProtocolID = zikade.ProtocolIPFS
 	cfg.dht.Logger = slog.New(zapslog.NewHandler(logger.Desugar().Core()))
+
+	exporter, err := oprom.New(oprom.WithNamespace("zikade"))
+	if err != nil {
+		return nil, fmt.Errorf("prometheus exporter: %w", err)
+	}
+	cfg.dht.MeterProvider = sdkmetric.NewMeterProvider(append(tele.MeterProviderOpts, sdkmetric.WithReader(exporter))...)
 
 	for _, opt := range opts {
 		if err := opt(cfg); err != nil {
