@@ -2,15 +2,25 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
 
 	"github.com/ipfs/boxo/coreiface/options"
 	"github.com/ipfs/boxo/path"
+	"github.com/ipfs/go-cid"
 	ipldcbor "github.com/ipfs/go-ipld-cbor"
 	"github.com/stretchr/testify/require"
 )
+
+func newIPLDPath(t *testing.T, cid cid.Cid) path.ImmutablePath {
+	p, err := path.NewPath(fmt.Sprintf("/%s/%s", path.IPLDNamespace, cid.String()))
+	require.NoError(t, err)
+	im, err := path.NewImmutablePath(p)
+	require.NoError(t, err)
+	return im
+}
 
 func (tp *TestSuite) TestPath(t *testing.T) {
 	t.Run("TestMutablePath", tp.TestMutablePath)
@@ -52,7 +62,7 @@ func (tp *TestSuite) TestPathRemainder(t *testing.T) {
 	err = api.Dag().Add(ctx, nd)
 	require.NoError(t, err)
 
-	p, err := path.Join(path.NewIPFSPath(nd.Cid()), "foo", "bar")
+	p, err := path.Join(path.FromCid(nd.Cid()), "foo", "bar")
 	require.NoError(t, err)
 
 	_, remainder, err := api.ResolvePath(ctx, p)
@@ -74,7 +84,7 @@ func (tp *TestSuite) TestEmptyPathRemainder(t *testing.T) {
 	err = api.Dag().Add(ctx, nd)
 	require.NoError(t, err)
 
-	_, remainder, err := api.ResolvePath(ctx, path.NewIPFSPath(nd.Cid()))
+	_, remainder, err := api.ResolvePath(ctx, path.FromCid(nd.Cid()))
 	require.NoError(t, err)
 	require.Empty(t, remainder)
 }
@@ -93,7 +103,7 @@ func (tp *TestSuite) TestInvalidPathRemainder(t *testing.T) {
 	err = api.Dag().Add(ctx, nd)
 	require.NoError(t, err)
 
-	p, err := path.Join(path.NewIPLDPath(nd.Cid()), "/bar/baz")
+	p, err := path.Join(newIPLDPath(t, nd.Cid()), "/bar/baz")
 	require.NoError(t, err)
 
 	_, _, err = api.ResolvePath(ctx, p)
@@ -119,7 +129,7 @@ func (tp *TestSuite) TestPathRoot(t *testing.T) {
 	err = api.Dag().Add(ctx, nd)
 	require.NoError(t, err)
 
-	p, err := path.Join(path.NewIPLDPath(nd.Cid()), "/foo")
+	p, err := path.Join(newIPLDPath(t, nd.Cid()), "/foo")
 	require.NoError(t, err)
 
 	rp, _, err := api.ResolvePath(ctx, p)

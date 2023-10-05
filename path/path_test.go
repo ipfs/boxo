@@ -1,11 +1,22 @@
 package path
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/assert"
 )
+
+func newIPLDPath(cid cid.Cid) ImmutablePath {
+	return immutablePath{
+		path: path{
+			str:       fmt.Sprintf("/%s/%s", IPLDNamespace, cid.String()),
+			namespace: IPLDNamespace,
+		},
+		cid: cid,
+	}
+}
 
 func TestNewPath(t *testing.T) {
 	t.Parallel()
@@ -128,7 +139,7 @@ func TestNewPath(t *testing.T) {
 	})
 }
 
-func TestNewIPFSPath(t *testing.T) {
+func TestFromCid(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Works with CIDv0", func(t *testing.T) {
@@ -137,7 +148,7 @@ func TestNewIPFSPath(t *testing.T) {
 		c, err := cid.Decode("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")
 		assert.NoError(t, err)
 
-		p := NewIPFSPath(c)
+		p := FromCid(c)
 		assert.IsType(t, immutablePath{}, p)
 		assert.Equal(t, "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", p.String())
 		assert.Equal(t, c, p.Cid())
@@ -149,17 +160,17 @@ func TestNewIPFSPath(t *testing.T) {
 		c, err := cid.Decode("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")
 		assert.NoError(t, err)
 
-		p := NewIPFSPath(c)
+		p := FromCid(c)
 		assert.IsType(t, immutablePath{}, p)
 		assert.Equal(t, "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", p.String())
 		assert.Equal(t, c, p.Cid())
 	})
 
-	t.Run("NewIPLDPath returns correct ImmutablePath", func(t *testing.T) {
+	t.Run("newIPLDPath returns correct ImmutablePath", func(t *testing.T) {
 		c, err := cid.Decode("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")
 		assert.NoError(t, err)
 
-		p := NewIPLDPath(c)
+		p := newIPLDPath(c)
 		assert.IsType(t, immutablePath{}, p)
 		assert.Equal(t, "/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", p.String())
 		assert.Equal(t, c, p.Cid())
@@ -168,35 +179,7 @@ func TestNewIPFSPath(t *testing.T) {
 		c, err = cid.Decode("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")
 		assert.NoError(t, err)
 
-		p = NewIPLDPath(c)
-		assert.IsType(t, immutablePath{}, p)
-		assert.Equal(t, "/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", p.String())
-		assert.Equal(t, c, p.Cid())
-	})
-}
-
-func TestNewIPLDPath(t *testing.T) {
-	t.Parallel()
-
-	t.Run("Works with CIDv0", func(t *testing.T) {
-		t.Parallel()
-
-		c, err := cid.Decode("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")
-		assert.NoError(t, err)
-
-		p := NewIPLDPath(c)
-		assert.IsType(t, immutablePath{}, p)
-		assert.Equal(t, "/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", p.String())
-		assert.Equal(t, c, p.Cid())
-	})
-
-	t.Run("Works with CIDv1", func(t *testing.T) {
-		t.Parallel()
-
-		c, err := cid.Decode("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")
-		assert.NoError(t, err)
-
-		p := NewIPLDPath(c)
+		p = newIPLDPath(c)
 		assert.IsType(t, immutablePath{}, p)
 		assert.Equal(t, "/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", p.String())
 		assert.Equal(t, c, p.Cid())

@@ -81,7 +81,7 @@ func makeNameAndRecord(t *testing.T) (ipns.Name, []byte) {
 	cid, err := cid.Decode("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
 	require.NoError(t, err)
 
-	path := path.NewIPFSPath(cid)
+	path := path.FromCid(cid)
 	eol := time.Now().Add(time.Hour * 48)
 	ttl := time.Second * 20
 

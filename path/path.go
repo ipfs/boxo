@@ -122,23 +122,12 @@ func (ip immutablePath) Cid() cid.Cid {
 	return ip.cid
 }
 
-// NewIPFSPath returns a new "/ipfs" path with the provided CID.
-func NewIPFSPath(cid cid.Cid) ImmutablePath {
+// FromCid returns a new "/ipfs" path with the provided CID.
+func FromCid(cid cid.Cid) ImmutablePath {
 	return immutablePath{
 		path: path{
 			str:       fmt.Sprintf("/%s/%s", IPFSNamespace, cid.String()),
 			namespace: IPFSNamespace,
-		},
-		cid: cid,
-	}
-}
-
-// NewIPLDPath returns a new "/ipld" path with the provided CID.
-func NewIPLDPath(cid cid.Cid) ImmutablePath {
-	return immutablePath{
-		path: path{
-			str:       fmt.Sprintf("/%s/%s", IPLDNamespace, cid.String()),
-			namespace: IPLDNamespace,
 		},
 		cid: cid,
 	}

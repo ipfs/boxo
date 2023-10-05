@@ -216,7 +216,7 @@ func makeIPNSRecord(t *testing.T, sk crypto.PrivKey, opts ...ipns.Option) (*ipns
 	cid, err := cid.Decode("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
 	require.NoError(t, err)
 
-	path := path.NewIPFSPath(cid)
+	path := path.FromCid(cid)
 	eol := time.Now().Add(time.Hour * 48)
 	ttl := time.Second * 20
 

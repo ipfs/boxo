@@ -241,7 +241,7 @@ func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
 }
 
 func makeIPNSRecord(t *testing.T, cid cid.Cid, sk crypto.PrivKey, opts ...ipns.Option) (*ipns.Record, []byte) {
-	path := path.NewIPFSPath(cid)
+	path := path.FromCid(cid)
 	eol := time.Now().Add(time.Hour * 48)
 	ttl := time.Second * 20
 

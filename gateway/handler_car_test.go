@@ -143,7 +143,7 @@ func TestGetCarEtag(t *testing.T) {
 	cid, err := cid.Parse("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
 	require.NoError(t, err)
 
-	imPath, err := path.NewImmutablePath(path.NewIPFSPath(cid))
+	imPath, err := path.NewImmutablePath(path.FromCid(cid))
 	require.NoError(t, err)
 
 	t.Run("Etag with entity-bytes=0:* is the same as without query param", func(t *testing.T) {

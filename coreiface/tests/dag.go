@@ -111,7 +111,7 @@ func (tp *TestSuite) TestDagPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p, err := path.Join(path.NewIPFSPath(nd.Cid()), "lnk")
+	p, err := path.Join(path.FromCid(nd.Cid()), "lnk")
 	if err != nil {
 		t.Fatal(err)
 	}

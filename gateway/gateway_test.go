@@ -25,7 +25,7 @@ func TestGatewayGet(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	p, err := path.Join(path.NewIPFSPath(root), "subdir", "fnord")
+	p, err := path.Join(path.FromCid(root), "subdir", "fnord")
 	require.NoError(t, err)
 
 	k, err := backend.resolvePathNoRootsReturned(ctx, p)
@@ -37,7 +37,7 @@ func TestGatewayGet(t *testing.T) {
 		return p
 	}
 
-	backend.namesys["/ipns/example.com"] = path.NewIPFSPath(k.Cid())
+	backend.namesys["/ipns/example.com"] = path.FromCid(k.Cid())
 	backend.namesys["/ipns/working.example.com"] = k
 	backend.namesys["/ipns/double.example.com"] = mustMakeDNSLinkPath("working.example.com")
 	backend.namesys["/ipns/triple.example.com"] = mustMakeDNSLinkPath("double.example.com")
@@ -98,7 +98,7 @@ func TestPretty404(t *testing.T) {
 	t.Logf("test server url: %s", ts.URL)
 
 	host := "example.net"
-	backend.namesys["/ipns/"+host] = path.NewIPFSPath(root)
+	backend.namesys["/ipns/"+host] = path.FromCid(root)
 
 	for _, test := range []struct {
 		path   string
@@ -500,7 +500,7 @@ func TestRedirects(t *testing.T) {
 		t.Parallel()
 
 		ts, backend, root := newTestServerAndNode(t, nil, "ipns-hostname-redirects.car")
-		backend.namesys["/ipns/example.net"] = path.NewIPFSPath(root)
+		backend.namesys["/ipns/example.net"] = path.FromCid(root)
 
 		// make request to directory containing index.html
 		req := mustNewRequest(t, http.MethodGet, ts.URL+"/foo", nil)
@@ -535,7 +535,7 @@ func TestRedirects(t *testing.T) {
 		t.Parallel()
 
 		backend, root := newMockBackend(t, "redirects-spa.car")
-		backend.namesys["/ipns/example.com"] = path.NewIPFSPath(root)
+		backend.namesys["/ipns/example.com"] = path.FromCid(root)
 
 		ts := newTestServerWithConfig(t, backend, Config{
 			Headers:   map[string][]string{},
@@ -672,8 +672,8 @@ func TestDeserializedResponses(t *testing.T) {
 		t.Parallel()
 
 		backend, root := newMockBackend(t, "fixtures.car")
-		backend.namesys["/ipns/trustless.com"] = path.NewIPFSPath(root)
-		backend.namesys["/ipns/trusted.com"] = path.NewIPFSPath(root)
+		backend.namesys["/ipns/trustless.com"] = path.FromCid(root)
+		backend.namesys["/ipns/trusted.com"] = path.FromCid(root)
 
 		ts := newTestServerWithConfig(t, backend, Config{
 			Headers:   map[string][]string{},

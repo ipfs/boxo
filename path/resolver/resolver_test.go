@@ -55,7 +55,7 @@ func TestRecursivePathResolution(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	p, err := path.Join(path.NewIPFSPath(a.Cid()), "child", "grandchild")
+	p, err := path.Join(path.FromCid(a.Cid()), "child", "grandchild")
 	require.NoError(t, err)
 
 	imPath, err := path.NewImmutablePath(p)
@@ -87,7 +87,7 @@ func TestRecursivePathResolution(t *testing.T) {
 	require.Empty(t, remainder)
 	require.Equal(t, c.Cid().String(), rCid.String())
 
-	rCid, remainder, err = resolver.ResolveToLastNode(ctx, path.NewIPFSPath(a.Cid()))
+	rCid, remainder, err = resolver.ResolveToLastNode(ctx, path.FromCid(a.Cid()))
 	require.NoError(t, err)
 	require.Empty(t, remainder)
 	require.Equal(t, a.Cid().String(), rCid.String())
@@ -123,7 +123,7 @@ func TestResolveToLastNode_ErrNoLink(t *testing.T) {
 	r := resolver.NewBasicResolver(fetcherFactory)
 
 	// test missing link intermediate segment
-	p, err := path.Join(path.NewIPFSPath(a.Cid()), "cheese", "time")
+	p, err := path.Join(path.FromCid(a.Cid()), "cheese", "time")
 	require.NoError(t, err)
 
 	imPath, err := path.NewImmutablePath(p)
@@ -135,7 +135,7 @@ func TestResolveToLastNode_ErrNoLink(t *testing.T) {
 	require.Equal(t, a.Cid(), err.(*resolver.ErrNoLink).Node)
 
 	// test missing link at end
-	p, err = path.Join(path.NewIPFSPath(a.Cid()), "child", "apples")
+	p, err = path.Join(path.FromCid(a.Cid()), "child", "apples")
 	require.NoError(t, err)
 
 	imPath, err = path.NewImmutablePath(p)
@@ -159,7 +159,7 @@ func TestResolveToLastNode_NoUnnecessaryFetching(t *testing.T) {
 	err = bsrv.AddBlock(ctx, a)
 	require.NoError(t, err)
 
-	p, err := path.Join(path.NewIPFSPath(a.Cid()), "child")
+	p, err := path.Join(path.FromCid(a.Cid()), "child")
 	require.NoError(t, err)
 
 	imPath, err := path.NewImmutablePath(p)
@@ -210,7 +210,7 @@ func TestPathRemainder(t *testing.T) {
 	fetcherFactory := bsfetcher.NewFetcherConfig(bsrv)
 	resolver := resolver.NewBasicResolver(fetcherFactory)
 
-	p, err := path.Join(path.NewIPFSPath(lnk), "foo", "bar")
+	p, err := path.Join(path.FromCid(lnk), "foo", "bar")
 	require.NoError(t, err)
 
 	imPath, err := path.NewImmutablePath(p)
@@ -257,7 +257,7 @@ func TestResolveToLastNode_MixedSegmentTypes(t *testing.T) {
 	fetcherFactory := bsfetcher.NewFetcherConfig(bsrv)
 	resolver := resolver.NewBasicResolver(fetcherFactory)
 
-	newPath, err := path.Join(path.NewIPFSPath(lnk), "foo", "bar", "1", "boom", "3")
+	newPath, err := path.Join(path.FromCid(lnk), "foo", "bar", "1", "boom", "3")
 	require.NoError(t, err)
 
 	imPath, err := path.NewImmutablePath(newPath)

@@ -185,7 +185,7 @@ func parseEntry(txt string) (path.Path, error) {
 
 	// Support legacy DNSLink entries composed by the CID only.
 	if cid, err := cid.Decode(txt); err == nil {
-		return path.NewIPFSPath(cid), nil
+		return path.FromCid(cid), nil
 	}
 
 	return tryParseDNSLink(txt)
@@ -201,7 +201,7 @@ func tryParseDNSLink(txt string) (path.Path, error) {
 
 		// Support legacy DNSLink entries composed by "dnslink={CID}".
 		if cid, err := cid.Decode(parts[1]); err == nil {
-			return path.NewIPFSPath(cid), nil
+			return path.FromCid(cid), nil
 		}
 	}
 

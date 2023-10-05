@@ -31,7 +31,7 @@ func TestDagJsonCborPreview(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	p, err := path.Join(path.NewIPFSPath(root), "subdir", "dag-cbor-document")
+	p, err := path.Join(path.FromCid(root), "subdir", "dag-cbor-document")
 	require.NoError(t, err)
 
 	resolvedPath, err := backend.resolvePathNoRootsReturned(ctx, p)

@@ -218,7 +218,7 @@ func (tp *TestSuite) TestBlockGet(t *testing.T) {
 		t.Error("didn't get correct data back")
 	}
 
-	p := path.NewIPFSPath(res.Path().Cid())
+	p := path.FromCid(res.Path().Cid())
 
 	rp, _, err := api.ResolvePath(ctx, p)
 	if err != nil {

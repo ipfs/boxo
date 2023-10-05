@@ -317,7 +317,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 		if isErrNotFound(err) {
 			return ContentPathMetadata{
 				PathSegmentRoots: nil,
-				LastSegment:      path.NewIPFSPath(rootCid),
+				LastSegment:      path.FromCid(rootCid),
 				ContentType:      "",
 			}, io.NopCloser(&buf), nil
 		}
@@ -708,7 +708,7 @@ func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.Imm
 		return nil, nil, err
 	}
 
-	p, err = path.Join(path.NewIPFSPath(node), remainder...)
+	p, err = path.Join(path.FromCid(node), remainder...)
 	if err != nil {
 		return nil, nil, err
 	}

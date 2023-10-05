@@ -110,7 +110,7 @@ func (tp *TestSuite) TestAdd(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return path.NewIPFSPath(c)
+		return path.FromCid(c)
 	}
 
 	rf, err := os.CreateTemp(os.TempDir(), "unixfs-add-real")
@@ -628,18 +628,18 @@ func (tp *TestSuite) TestGetDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := path.NewIPFSPath(edir.Cid())
+	p := path.FromCid(edir.Cid())
 
 	emptyDir, err := api.Object().New(ctx, options.Object.Type("unixfs-dir"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if p.String() != path.NewIPFSPath(emptyDir.Cid()).String() {
+	if p.String() != path.FromCid(emptyDir.Cid()).String() {
 		t.Fatalf("expected path %s, got: %s", emptyDir.Cid(), p.String())
 	}
 
-	r, err := api.Unixfs().Get(ctx, path.NewIPFSPath(emptyDir.Cid()))
+	r, err := api.Unixfs().Get(ctx, path.FromCid(emptyDir.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -663,7 +663,7 @@ func (tp *TestSuite) TestGetNonUnixfs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = api.Unixfs().Get(ctx, path.NewIPFSPath(nd.Cid()))
+	_, err = api.Unixfs().Get(ctx, path.FromCid(nd.Cid()))
 	if !strings.Contains(err.Error(), "proto: required field") {
 		t.Fatalf("expected protobuf error, got: %s", err)
 	}
@@ -789,7 +789,7 @@ func (tp *TestSuite) TestLsEmptyDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	links, err := api.Unixfs().Ls(ctx, path.NewIPFSPath(emptyDir.Cid()))
+	links, err := api.Unixfs().Ls(ctx, path.FromCid(emptyDir.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -818,7 +818,7 @@ func (tp *TestSuite) TestLsNonUnixfs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	links, err := api.Unixfs().Ls(ctx, path.NewIPFSPath(nd.Cid()))
+	links, err := api.Unixfs().Ls(ctx, path.FromCid(nd.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
