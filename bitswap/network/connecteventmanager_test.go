@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/bitswap/internal/testutil"
-	"github.com/ipfs/boxo/internal/test"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
@@ -46,8 +45,6 @@ func wait(t *testing.T, c *connectEventManager) {
 }
 
 func TestConnectEventManagerConnectDisconnect(t *testing.T) {
-	test.Flaky(t)
-
 	connListener := newMockConnListener()
 	peers := testutil.GeneratePeers(2)
 	cem := newConnectEventManager(connListener)
@@ -87,8 +84,6 @@ func TestConnectEventManagerConnectDisconnect(t *testing.T) {
 }
 
 func TestConnectEventManagerMarkUnresponsive(t *testing.T) {
-	test.Flaky(t)
-
 	connListener := newMockConnListener()
 	p := testutil.GeneratePeers(1)[0]
 	cem := newConnectEventManager(connListener)
@@ -138,8 +133,6 @@ func TestConnectEventManagerMarkUnresponsive(t *testing.T) {
 }
 
 func TestConnectEventManagerDisconnectAfterMarkUnresponsive(t *testing.T) {
-	test.Flaky(t)
-
 	connListener := newMockConnListener()
 	p := testutil.GeneratePeers(1)[0]
 	cem := newConnectEventManager(connListener)

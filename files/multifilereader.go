@@ -29,19 +29,26 @@ type MultiFileReader struct {
 	// if true, the content disposition will be "form-data"
 	// if false, the content disposition will be "attachment"
 	form bool
+
+	// if true, 'abspath' header will be sent with raw (potentially binary) file
+	// name. This must only be used for legacy purposes to talk with old servers.
+	// if false, 'abspath-encoded' header will be sent with %-encoded filename
+	rawAbsPath bool
 }
 
 // NewMultiFileReader constructs a MultiFileReader. `file` can be any `commands.Directory`.
 // If `form` is set to true, the Content-Disposition will be "form-data".
-// Otherwise, it will be "attachment".
-func NewMultiFileReader(file Directory, form bool) *MultiFileReader {
+// Otherwise, it will be "attachment". If `rawAbsPath` is set to true, the
+// "abspath" header will be sent. Otherwise, the "abspath-encoded" header will be sent.
+func NewMultiFileReader(file Directory, form, rawAbsPath bool) *MultiFileReader {
 	it := file.Entries()
 
 	mfr := &MultiFileReader{
-		files: []DirIterator{it},
-		path:  []string{""},
-		form:  form,
-		mutex: &sync.Mutex{},
+		files:      []DirIterator{it},
+		path:       []string{""},
+		form:       form,
+		rawAbsPath: rawAbsPath,
+		mutex:      &sync.Mutex{},
 	}
 	mfr.mpWriter = multipart.NewWriter(&mfr.buf)
 
@@ -114,7 +121,12 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 
 			header.Set("Content-Type", contentType)
 			if rf, ok := entry.Node().(FileInfo); ok {
-				header.Set("abspath", rf.AbsPath())
+				if mfr.rawAbsPath {
+					// Legacy compatibility with old servers.
+					header.Set("abspath", rf.AbsPath())
+				} else {
+					header.Set("abspath-encoded", url.QueryEscape(rf.AbsPath()))
+				}
 			}
 
 			_, err := mfr.mpWriter.CreatePart(header)

@@ -1,31 +1,48 @@
-## Usage
+# IPNS
 
-To create a new IPNS record:
+> A reference implementation of the IPNS Record and Verification specification.
+
+## Documentation
+
+- Go Documentation: https://pkg.go.dev/github.com/ipfs/boxo/ipns
+- IPNS Record Specification: https://specs.ipfs.tech/ipns/ipns-record/
+
+## Example
+
+Here's an example on how to create an IPNS Record:
 
 ```go
 import (
+	"crypto/rand"
 	"time"
 
-	ipns "github.com/ipfs/boxo/ipns"
-	crypto "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/ipfs/boxo/ipns"
+	"github.com/ipfs/boxo/path"
+	ic "github.com/libp2p/go-libp2p/core/crypto"
 )
 
-// Generate a private key to sign the IPNS record with. Most of the time,
-// however, you'll want to retrieve an already-existing key from IPFS using the
-// go-ipfs/core/coreapi CoreAPI.KeyAPI() interface.
-privateKey, publicKey, err := crypto.GenerateKeyPair(crypto.RSA, 2048)
-if err != nil {
-  panic(err)
-}
+func main() {
+	// Create a private key to sign your IPNS record. Most of the time, you
+	// will want to retrieve an already-existing key from Kubo, for example.
+	sk, _, err := ic.GenerateEd25519Key(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
 
-// Create an IPNS record that expires in one hour and points to the IPFS address
-// /ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5
-ipnsRecord, err := ipns.Create(privateKey, []byte("/ipfs/Qme1knMqwt1hKZbc1BmQFmnm9f36nyQGwXxPGVpVJ9rMK5"), 0, time.Now().Add(1*time.Hour))
-if err != nil {
-	panic(err)
+	// Define the path this record will point to.
+	path := path.FromString("/ipfs/bafkqac3jobxhgidsn5rww4yk")
+
+	// Until when the record is valid.
+	eol := time.Now().Add(time.Hour)
+
+	// For how long should caches cache the record.
+	ttl := time.Second * 20
+
+	record, err := ipns.NewRecord(sk, path, 1, eol, ttl)
+	if err != nil {
+		panic(err)
+	}
+
+	// Now you have an IPNS Record.
 }
 ```
-
-Once you have the record, you’ll need to use IPFS to *publish* it.
-
-There are several other major operations you can do with `go-ipns`. Check out the [API docs](https://pkg.go.dev/github.com/ipfs/boxo/ipns) or look at the tests in this repo for examples.

@@ -1,4 +1,4 @@
-// package blockservice implements a BlockService interface that provides
+// Package blockservice implements a BlockService interface that provides
 // a single GetBlock/AddBlock interface that seamlessly retrieves data either
 // locally or from a remote peer through the exchange.
 package blockservice
@@ -11,11 +11,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	blockstore "github.com/ipfs/boxo/blockstore"
-	exchange "github.com/ipfs/boxo/exchange"
+	"github.com/ipfs/boxo/blockstore"
+	"github.com/ipfs/boxo/exchange"
 	"github.com/ipfs/boxo/verifcid"
 	blocks "github.com/ipfs/go-block-format"
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
 
@@ -64,7 +64,15 @@ type BlockService interface {
 	DeleteBlock(ctx context.Context, o cid.Cid) error
 }
 
+// BoundedBlockService is a Blockservice bounded via strict multihash Allowlist.
+type BoundedBlockService interface {
+	BlockService
+
+	Allowlist() verifcid.Allowlist
+}
+
 type blockService struct {
+	allowlist  verifcid.Allowlist
 	blockstore blockstore.Blockstore
 	exchange   exchange.Interface
 	// If checkFirst is true then first check that a block doesn't
@@ -72,31 +80,49 @@ type blockService struct {
 	checkFirst bool
 }
 
-// NewBlockService creates a BlockService with given datastore instance.
-func New(bs blockstore.Blockstore, rem exchange.Interface) BlockService {
-	if rem == nil {
+type Option func(*blockService)
+
+// WriteThrough disable cache checks for writes and make them go straight to
+// the blockstore.
+func WriteThrough() Option {
+	return func(bs *blockService) {
+		bs.checkFirst = false
+	}
+}
+
+// WithAllowlist sets a custom [verifcid.Allowlist] which will be used
+func WithAllowlist(allowlist verifcid.Allowlist) Option {
+	return func(bs *blockService) {
+		bs.allowlist = allowlist
+	}
+}
+
+// New creates a BlockService with given datastore instance.
+func New(bs blockstore.Blockstore, exchange exchange.Interface, opts ...Option) BlockService {
+	if exchange == nil {
 		logger.Debug("blockservice running in local (offline) mode.")
 	}
 
-	return &blockService{
+	service := &blockService{
+		allowlist:  verifcid.DefaultAllowlist,
 		blockstore: bs,
-		exchange:   rem,
+		exchange:   exchange,
 		checkFirst: true,
 	}
+
+	for _, opt := range opts {
+		opt(service)
+	}
+
+	return service
 }
 
 // NewWriteThrough creates a BlockService that guarantees writes will go
 // through to the blockstore and are not skipped by cache checks.
-func NewWriteThrough(bs blockstore.Blockstore, rem exchange.Interface) BlockService {
-	if rem == nil {
-		logger.Debug("blockservice running in local (offline) mode.")
-	}
-
-	return &blockService{
-		blockstore: bs,
-		exchange:   rem,
-		checkFirst: false,
-	}
+//
+// Deprecated: Use [New] with the [WriteThrough] option.
+func NewWriteThrough(bs blockstore.Blockstore, exchange exchange.Interface) BlockService {
+	return New(bs, exchange, WriteThrough())
 }
 
 // Blockstore returns the blockstore behind this blockservice.
@@ -109,27 +135,37 @@ func (s *blockService) Exchange() exchange.Interface {
 	return s.exchange
 }
 
+func (s *blockService) Allowlist() verifcid.Allowlist {
+	return s.allowlist
+}
+
 // NewSession creates a new session that allows for
 // controlled exchange of wantlists to decrease the bandwidth overhead.
 // If the current exchange is a SessionExchange, a new exchange
 // session will be created. Otherwise, the current exchange will be used
 // directly.
 func NewSession(ctx context.Context, bs BlockService) *Session {
+	allowlist := verifcid.Allowlist(verifcid.DefaultAllowlist)
+	if bbs, ok := bs.(BoundedBlockService); ok {
+		allowlist = bbs.Allowlist()
+	}
 	exch := bs.Exchange()
 	if sessEx, ok := exch.(exchange.SessionExchange); ok {
 		return &Session{
-			sessCtx:  ctx,
-			ses:      nil,
-			sessEx:   sessEx,
-			bs:       bs.Blockstore(),
-			notifier: exch,
+			allowlist: allowlist,
+			sessCtx:   ctx,
+			ses:       nil,
+			sessEx:    sessEx,
+			bs:        bs.Blockstore(),
+			notifier:  exch,
 		}
 	}
 	return &Session{
-		ses:      exch,
-		sessCtx:  ctx,
-		bs:       bs.Blockstore(),
-		notifier: exch,
+		allowlist: allowlist,
+		ses:       exch,
+		sessCtx:   ctx,
+		bs:        bs.Blockstore(),
+		notifier:  exch,
 	}
 }
 
@@ -139,8 +175,7 @@ func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 	defer span.End()
 
 	c := o.Cid()
-	// hash security
-	err := verifcid.ValidateCid(c)
+	err := verifcid.ValidateCid(s.allowlist, c) // hash security
 	if err != nil {
 		return err
 	}
@@ -171,7 +206,7 @@ func (s *blockService) AddBlocks(ctx context.Context, bs []blocks.Block) error {
 
 	// hash security
 	for _, b := range bs {
-		err := verifcid.ValidateCid(b.Cid())
+		err := verifcid.ValidateCid(s.allowlist, b.Cid())
 		if err != nil {
 			return err
 		}
@@ -221,15 +256,15 @@ func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, e
 		f = s.getExchange
 	}
 
-	return getBlock(ctx, c, s.blockstore, f) // hash security
+	return getBlock(ctx, c, s.blockstore, s.allowlist, f)
 }
 
 func (s *blockService) getExchange() notifiableFetcher {
 	return s.exchange
 }
 
-func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, fget func() notifiableFetcher) (blocks.Block, error) {
-	err := verifcid.ValidateCid(c) // hash security
+func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, allowlist verifcid.Allowlist, fget func() notifiableFetcher) (blocks.Block, error) {
+	err := verifcid.ValidateCid(allowlist, c) // hash security
 	if err != nil {
 		return nil, err
 	}
@@ -278,10 +313,10 @@ func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan block
 		f = s.getExchange
 	}
 
-	return getBlocks(ctx, ks, s.blockstore, f) // hash security
+	return getBlocks(ctx, ks, s.blockstore, s.allowlist, f)
 }
 
-func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget func() notifiableFetcher) <-chan blocks.Block {
+func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, allowlist verifcid.Allowlist, fget func() notifiableFetcher) <-chan blocks.Block {
 	out := make(chan blocks.Block)
 
 	go func() {
@@ -289,7 +324,7 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 
 		allValid := true
 		for _, c := range ks {
-			if err := verifcid.ValidateCid(c); err != nil {
+			if err := verifcid.ValidateCid(allowlist, c); err != nil {
 				allValid = false
 				break
 			}
@@ -300,7 +335,7 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, fget
 			ks2 := make([]cid.Cid, 0, len(ks))
 			for _, c := range ks {
 				// hash security
-				if err := verifcid.ValidateCid(c); err == nil {
+				if err := verifcid.ValidateCid(allowlist, c); err == nil {
 					ks2 = append(ks2, c)
 				} else {
 					logger.Errorf("unsafe CID (%s) passed to blockService.GetBlocks: %s", c, err)
@@ -396,12 +431,13 @@ type notifier interface {
 
 // Session is a helper type to provide higher level access to bitswap sessions
 type Session struct {
-	bs       blockstore.Blockstore
-	ses      exchange.Fetcher
-	sessEx   exchange.SessionExchange
-	sessCtx  context.Context
-	notifier notifier
-	lk       sync.Mutex
+	allowlist verifcid.Allowlist
+	bs        blockstore.Blockstore
+	ses       exchange.Fetcher
+	sessEx    exchange.SessionExchange
+	sessCtx   context.Context
+	notifier  notifier
+	lk        sync.Mutex
 }
 
 type notifiableFetcher interface {
@@ -444,7 +480,7 @@ func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error)
 	ctx, span := internal.StartSpan(ctx, "Session.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
 	defer span.End()
 
-	return getBlock(ctx, c, s.bs, s.getFetcherFactory()) // hash security
+	return getBlock(ctx, c, s.bs, s.allowlist, s.getFetcherFactory())
 }
 
 // GetBlocks gets blocks in the context of a request session
@@ -452,7 +488,7 @@ func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Blo
 	ctx, span := internal.StartSpan(ctx, "Session.GetBlocks")
 	defer span.End()
 
-	return getBlocks(ctx, ks, s.bs, s.getFetcherFactory()) // hash security
+	return getBlocks(ctx, ks, s.bs, s.allowlist, s.getFetcherFactory())
 }
 
 var _ BlockGetter = (*Session)(nil)

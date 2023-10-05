@@ -100,9 +100,19 @@ func (w *multipartWalker) nextFile() (Node, error) {
 
 		return NewLinkFile(string(out), nil), nil
 	default:
+		var absPath string
+		if absPathEncoded := part.Header.Get("abspath-encoded"); absPathEncoded != "" {
+			absPath, err = url.QueryUnescape(absPathEncoded)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			absPath = part.Header.Get("abspath")
+		}
+
 		return &ReaderFile{
 			reader:  part,
-			abspath: part.Header.Get("abspath"),
+			abspath: absPath,
 		}, nil
 	}
 }

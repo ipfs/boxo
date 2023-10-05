@@ -58,29 +58,28 @@ var contentTypeToExtension = map[string]string{
 	dagCborResponseFormat: ".cbor",
 }
 
-func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time, requestedContentType string) bool {
-	ctx, span := spanTrace(ctx, "Handler.ServeCodec", trace.WithAttributes(attribute.String("path", imPath.String()), attribute.String("requestedContentType", requestedContentType)))
+func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeCodec", trace.WithAttributes(attribute.String("path", rq.immutablePath.String()), attribute.String("requestedContentType", rq.responseFormat)))
 	defer span.End()
 
-	pathMetadata, data, err := i.backend.GetBlock(ctx, imPath)
-	if !i.handleRequestErrors(w, r, contentPath, err) {
+	pathMetadata, data, err := i.backend.GetBlock(ctx, rq.mostlyResolvedPath())
+	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 		return false
 	}
 	defer data.Close()
 
-	setIpfsRootsHeader(w, pathMetadata)
-
-	resolvedPath := pathMetadata.LastSegment
-	return i.renderCodec(ctx, w, r, resolvedPath, data, contentPath, begin, requestedContentType)
+	setIpfsRootsHeader(w, rq, &pathMetadata)
+	return i.renderCodec(ctx, w, r, rq, data)
 }
 
-func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, blockData io.ReadSeekCloser, contentPath ipath.Path, begin time.Time, requestedContentType string) bool {
-	ctx, span := spanTrace(ctx, "Handler.RenderCodec", trace.WithAttributes(attribute.String("path", resolvedPath.String()), attribute.String("requestedContentType", requestedContentType)))
+func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData, blockData io.ReadSeekCloser) bool {
+	resolvedPath := rq.pathMetadata.LastSegment
+	ctx, span := spanTrace(ctx, "Handler.RenderCodec", trace.WithAttributes(attribute.String("path", resolvedPath.String()), attribute.String("requestedContentType", rq.responseFormat)))
 	defer span.End()
 
 	blockCid := resolvedPath.Cid()
 	cidCodec := mc.Code(blockCid.Prefix().Codec)
-	responseContentType := requestedContentType
+	responseContentType := rq.responseFormat
 
 	// If the resolved path still has some remainder, return error for now.
 	// TODO: handle this when we have IPLD Patch (https://ipld.io/specs/patch/) via HTTP PUT
@@ -93,7 +92,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 
 	// If no explicit content type was requested, the response will have one based on the codec from the CID
-	if requestedContentType == "" {
+	if rq.responseFormat == "" {
 		cidContentType, ok := codecToContentType[cidCodec]
 		if !ok {
 			// Should not happen unless function is called with wrong parameters.
@@ -105,49 +104,49 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 
 	// Set HTTP headers (for caching, etc). Etag will be replaced if handled by serveCodecHTML.
-	modtime := addCacheControlHeaders(w, r, contentPath, resolvedPath.Cid(), responseContentType)
+	modtime := addCacheControlHeaders(w, r, rq.contentPath, resolvedPath.Cid(), responseContentType)
 	name := setCodecContentDisposition(w, r, resolvedPath, responseContentType)
 	w.Header().Set("Content-Type", responseContentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
 	// No content type is specified by the user (via Accept, or format=). However,
 	// we support this format. Let's handle it.
-	if requestedContentType == "" {
+	if rq.responseFormat == "" {
 		isDAG := cidCodec == mc.DagJson || cidCodec == mc.DagCbor
 		acceptsHTML := strings.Contains(r.Header.Get("Accept"), "text/html")
 		download := r.URL.Query().Get("download") == "true"
 
 		if isDAG && acceptsHTML && !download {
-			return i.serveCodecHTML(ctx, w, r, blockCid, blockData, resolvedPath, contentPath)
+			return i.serveCodecHTML(ctx, w, r, blockCid, blockData, resolvedPath, rq.contentPath)
 		} else {
 			// This covers CIDs with codec 'json' and 'cbor' as those do not have
 			// an explicit requested content type.
-			return i.serveCodecRaw(ctx, w, r, blockData, contentPath, name, modtime, begin)
+			return i.serveCodecRaw(ctx, w, r, blockData, rq.contentPath, name, modtime, rq.begin)
 		}
 	}
 
 	// If DAG-JSON or DAG-CBOR was requested using corresponding plain content type
 	// return raw block as-is, without conversion
-	skipCodecs, ok := contentTypeToRaw[requestedContentType]
+	skipCodecs, ok := contentTypeToRaw[rq.responseFormat]
 	if ok {
 		for _, skipCodec := range skipCodecs {
 			if skipCodec == cidCodec {
-				return i.serveCodecRaw(ctx, w, r, blockData, contentPath, name, modtime, begin)
+				return i.serveCodecRaw(ctx, w, r, blockData, rq.contentPath, name, modtime, rq.begin)
 			}
 		}
 	}
 
 	// Otherwise, the user has requested a specific content type (a DAG-* variant).
 	// Let's first get the codecs that can be used with this content type.
-	toCodec, ok := contentTypeToCodec[requestedContentType]
+	toCodec, ok := contentTypeToCodec[rq.responseFormat]
 	if !ok {
-		err := fmt.Errorf("converting from %q to %q is not supported", cidCodec.String(), requestedContentType)
+		err := fmt.Errorf("converting from %q to %q is not supported", cidCodec.String(), rq.responseFormat)
 		i.webError(w, r, err, http.StatusBadRequest)
 		return false
 	}
 
 	// This handles DAG-* conversions and validations.
-	return i.serveCodecConverted(ctx, w, r, blockCid, blockData, contentPath, toCodec, modtime, begin)
+	return i.serveCodecConverted(ctx, w, r, blockCid, blockData, rq.contentPath, toCodec, modtime, rq.begin)
 }
 
 func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.ReadSeekCloser, resolvedPath ipath.Resolved, contentPath ipath.Path) bool {

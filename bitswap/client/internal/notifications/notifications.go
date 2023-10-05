@@ -3,10 +3,13 @@ package notifications
 import (
 	"context"
 	"sync"
+	"time"
 
 	pubsub "github.com/cskr/pubsub"
+	"github.com/ipfs/boxo/bitswap/client/traceability"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 const bufferSize = 16
@@ -15,7 +18,7 @@ const bufferSize = 16
 // for cids. It's used internally by bitswap to decouple receiving blocks
 // and actually providing them back to the GetBlocks caller.
 type PubSub interface {
-	Publish(blocks ...blocks.Block)
+	Publish(from peer.ID, blocks ...blocks.Block)
 	Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Block
 	Shutdown()
 }
@@ -35,7 +38,7 @@ type impl struct {
 	closed chan struct{}
 }
 
-func (ps *impl) Publish(blocks ...blocks.Block) {
+func (ps *impl) Publish(from peer.ID, blocks ...blocks.Block) {
 	ps.lk.RLock()
 	defer ps.lk.RUnlock()
 	select {
@@ -45,7 +48,7 @@ func (ps *impl) Publish(blocks ...blocks.Block) {
 	}
 
 	for _, block := range blocks {
-		ps.wrapped.Pub(block, block.Cid().KeyString())
+		ps.wrapped.Pub(traceability.Block{Block: block, From: from}, block.Cid().KeyString())
 	}
 }
 
@@ -65,7 +68,6 @@ func (ps *impl) Shutdown() {
 // is closed if the |ctx| times out or is cancelled, or after receiving the blocks
 // corresponding to |keys|.
 func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Block {
-
 	blocksCh := make(chan blocks.Block, len(keys))
 	valuesCh := make(chan interface{}, len(keys)) // provide our own channel to control buffer, prevent blocking
 	if len(keys) == 0 {
@@ -83,6 +85,8 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 		return blocksCh
 	default:
 	}
+
+	subscribe := time.Now()
 
 	// AddSubOnceEach listens for each key in the list, and closes the channel
 	// once all keys have been received
@@ -113,10 +117,13 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 				if !ok {
 					return
 				}
-				block, ok := val.(blocks.Block)
+				block, ok := val.(traceability.Block)
 				if !ok {
+					// FIXME: silently dropping errors wtf ?
 					return
 				}
+				block.Delay = time.Since(subscribe)
+
 				select {
 				case <-ctx.Done():
 					return

@@ -48,6 +48,7 @@ func TestReaderFiles(t *testing.T) {
 		t.Fatal("Expected EOF when reading after close")
 	}
 }
+
 func TestMultipartFiles(t *testing.T) {
 	data := `
 --Boundary!

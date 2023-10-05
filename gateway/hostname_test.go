@@ -10,12 +10,15 @@ import (
 	path "github.com/ipfs/boxo/path"
 	cid "github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestToSubdomainURL(t *testing.T) {
-	backend, _ := newMockBackend(t)
+	t.Parallel()
+
+	backend, _ := newMockBackend(t, "fixtures.car")
 	testCID, err := cid.Decode("bafkqaglimvwgy3zakrsxg5cun5jxkyten5wwc2lokvjeycq")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	backend.namesys["/ipns/dnslink.long-name.example.com"] = path.FromString(testCID.String())
 	backend.namesys["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = path.FromString(testCID.String())
@@ -52,9 +55,12 @@ func TestToSubdomainURL(t *testing.T) {
 		{httpRequest, "dweb.link", false, "/ipns/dnslink.long-name.example.com", "http://dnslink.long-name.example.com.ipns.dweb.link/", nil},
 		{httpsRequest, "dweb.link", false, "/ipns/dnslink.long-name.example.com", "https://dnslink-long--name-example-com.ipns.dweb.link/", nil},
 		{httpsProxiedRequest, "dweb.link", false, "/ipns/dnslink.long-name.example.com", "https://dnslink-long--name-example-com.ipns.dweb.link/", nil},
-		// HTTP requests can also be converted to fit into a single DNS label - https://github.com/ipfs/kubo/issues/9243
+		// Enabling DNS label inlining: HTTP requests can also be converted to fit into a single DNS label when it matters - https://github.com/ipfs/kubo/issues/9243
 		{httpRequest, "localhost", true, "/ipns/dnslink.long-name.example.com", "http://dnslink-long--name-example-com.ipns.localhost/", nil},
 		{httpRequest, "dweb.link", true, "/ipns/dnslink.long-name.example.com", "http://dnslink-long--name-example-com.ipns.dweb.link/", nil},
+		// Disabling DNS label inlining: should un-inline any inlined DNS labels put in a path
+		{httpRequest, "localhost", false, "/ipns/dnslink-long--name-example-com", "http://dnslink.long-name.example.com.ipns.localhost/", nil},
+		{httpRequest, "dweb.link", false, "/ipns/dnslink-long--name-example-com", "http://dnslink.long-name.example.com.ipns.dweb.link/", nil},
 		// Correctly redirects paths when there is a ? (question mark) character - https://github.com/ipfs/kubo/issues/9882
 		{httpRequest, "localhost", false, "/ipns/example.com/this is a file with some spaces . dots and - but also a ?.png", "http://example.com.ipns.localhost/this%20is%20a%20file%20with%20some%20spaces%20.%20dots%20and%20-%20but%20also%20a%20%3F.png", nil},
 		{httpRequest, "localhost", false, "/ipfs/QmbCMUZw6JFeZ7Wp9jkzbye3Fzp2GGcPgC3nmeUjfVF87n/this is a file with some spaces . dots and - but also a ?.png", "http://bafybeif7a7gdklt6hodwdrmwmxnhksctcuav6lfxlcyfz4khzl3qfmvcgu.ipfs.localhost/this%20is%20a%20file%20with%20some%20spaces%20.%20dots%20and%20-%20but%20also%20a%20%3F.png", nil},
@@ -62,13 +68,14 @@ func TestToSubdomainURL(t *testing.T) {
 		testName := fmt.Sprintf("%s, %v, %s", test.gwHostname, test.inlineDNSLink, test.path)
 		t.Run(testName, func(t *testing.T) {
 			url, err := toSubdomainURL(test.gwHostname, test.path, test.request, test.inlineDNSLink, backend)
-			assert.Equal(t, test.url, url)
-			assert.Equal(t, test.err, err)
+			require.Equal(t, test.url, url)
+			require.Equal(t, test.err, err)
 		})
 	}
 }
 
 func TestToDNSLinkDNSLabel(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		in  string
 		out string
@@ -79,13 +86,14 @@ func TestToDNSLinkDNSLabel(t *testing.T) {
 	} {
 		t.Run(test.in, func(t *testing.T) {
 			out, err := toDNSLinkDNSLabel(test.in)
-			assert.Equal(t, test.out, out)
-			assert.Equal(t, test.err, err)
+			require.Equal(t, test.out, out)
+			require.Equal(t, test.err, err)
 		})
 	}
 }
 
 func TestToDNSLinkFQDN(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		in  string
 		out string
@@ -96,12 +104,13 @@ func TestToDNSLinkFQDN(t *testing.T) {
 	} {
 		t.Run(test.in, func(t *testing.T) {
 			out := toDNSLinkFQDN(test.in)
-			assert.Equal(t, test.out, out)
+			require.Equal(t, test.out, out)
 		})
 	}
 }
 
 func TestIsHTTPSRequest(t *testing.T) {
+	t.Parallel()
 	httpRequest := httptest.NewRequest("GET", "http://127.0.0.1:8080", nil)
 	httpsRequest := httptest.NewRequest("GET", "https://https-request-stub.example.com", nil)
 	httpsProxiedRequest := httptest.NewRequest("GET", "http://proxied-https-request-stub.example.com", nil)
@@ -122,12 +131,13 @@ func TestIsHTTPSRequest(t *testing.T) {
 		testName := fmt.Sprintf("%+v", test.in)
 		t.Run(testName, func(t *testing.T) {
 			out := isHTTPSRequest(test.in)
-			assert.Equal(t, test.out, out)
+			require.Equal(t, test.out, out)
 		})
 	}
 }
 
 func TestHasPrefix(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		prefixes []string
 		path     string
@@ -141,12 +151,13 @@ func TestHasPrefix(t *testing.T) {
 		testName := fmt.Sprintf("%+v, %s", test.prefixes, test.path)
 		t.Run(testName, func(t *testing.T) {
 			out := hasPrefix(test.path, test.prefixes...)
-			assert.Equal(t, test.out, out)
+			require.Equal(t, test.out, out)
 		})
 	}
 }
 
 func TestIsDomainNameAndNotPeerID(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		hostname string
 		out      bool
@@ -160,12 +171,13 @@ func TestIsDomainNameAndNotPeerID(t *testing.T) {
 	} {
 		t.Run(test.hostname, func(t *testing.T) {
 			out := isDomainNameAndNotPeerID(test.hostname)
-			assert.Equal(t, test.out, out)
+			require.Equal(t, test.out, out)
 		})
 	}
 }
 
 func TestPortStripping(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		in  string
 		out string
@@ -180,12 +192,13 @@ func TestPortStripping(t *testing.T) {
 	} {
 		t.Run(test.in, func(t *testing.T) {
 			out := stripPort(test.in)
-			assert.Equal(t, test.out, out)
+			require.Equal(t, test.out, out)
 		})
 	}
 }
 
 func TestToDNSLabel(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		in  string
 		out string
@@ -203,13 +216,15 @@ func TestToDNSLabel(t *testing.T) {
 		t.Run(test.in, func(t *testing.T) {
 			inCID, _ := cid.Decode(test.in)
 			out, err := toDNSLabel(test.in, inCID)
-			assert.Equal(t, test.out, out)
-			assert.Equal(t, test.err, err)
+			require.Equal(t, test.out, out)
+			require.Equal(t, test.err, err)
 		})
 	}
 }
 
 func TestKnownSubdomainDetails(t *testing.T) {
+	t.Parallel()
+
 	gwLocalhost := &PublicGateway{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}
 	gwDweb := &PublicGateway{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}
 	gwLong := &PublicGateway{Paths: []string{"/ipfs", "/ipns", "/api"}, UseSubdomains: true}

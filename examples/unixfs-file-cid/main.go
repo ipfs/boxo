@@ -32,7 +32,7 @@ import (
 	unixfile "github.com/ipfs/boxo/ipld/unixfs/file"
 	"github.com/ipfs/boxo/ipld/unixfs/importer/balanced"
 	uih "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
-	"github.com/libp2p/go-libp2p-routing-helpers"
+	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 
 	bsclient "github.com/ipfs/boxo/bitswap/client"
 	bsnet "github.com/ipfs/boxo/bitswap/network"

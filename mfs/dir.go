@@ -17,9 +17,11 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
-var ErrNotYetImplemented = errors.New("not yet implemented")
-var ErrInvalidChild = errors.New("invalid child node")
-var ErrDirExists = errors.New("directory already has entry by that name")
+var (
+	ErrNotYetImplemented = errors.New("not yet implemented")
+	ErrInvalidChild      = errors.New("invalid child node")
+	ErrDirExists         = errors.New("directory already has entry by that name")
+)
 
 // TODO: There's too much functionality associated with this structure,
 // let's organize it (and if possible extract part of it elsewhere)

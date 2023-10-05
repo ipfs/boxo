@@ -40,6 +40,11 @@ type Config struct {
 	// overridden per FQDN in PublicGateways. To be used with WithHostname.
 	NoDNSLink bool
 
+	// DisableHTMLErrors disables pretty HTML pages when an error occurs. Instead, a `text/plain`
+	// page will be sent with the raw error message. This can be useful if this gateway
+	// is being proxied by other service, which wants to use the error message.
+	DisableHTMLErrors bool
+
 	// PublicGateways configures the behavior of known public gateways. Each key is
 	// a fully qualified domain name (FQDN). To be used with WithHostname.
 	PublicGateways map[string]*PublicGateway
@@ -121,8 +126,10 @@ func (i ImmutablePath) IsValid() error {
 var _ path.Path = (*ImmutablePath)(nil)
 
 type CarParams struct {
-	Range *DagByteRange
-	Scope DagScope
+	Range      *DagByteRange
+	Scope      DagScope
+	Order      DagOrder
+	Duplicates DuplicateBlocksPolicy
 }
 
 // DagByteRange describes a range request within a UnixFS file. "From" and
@@ -188,6 +195,50 @@ const (
 	DagScopeEntity DagScope = "entity"
 	DagScopeBlock  DagScope = "block"
 )
+
+type DagOrder string
+
+const (
+	DagOrderUnspecified DagOrder = ""
+	DagOrderUnknown     DagOrder = "unk"
+	DagOrderDFS         DagOrder = "dfs"
+)
+
+// DuplicateBlocksPolicy represents the content type parameter 'dups' (IPIP-412)
+type DuplicateBlocksPolicy int
+
+const (
+	DuplicateBlocksUnspecified DuplicateBlocksPolicy = iota // 0 - implicit default
+	DuplicateBlocksIncluded                                 // 1 - explicitly include duplicates
+	DuplicateBlocksExcluded                                 // 2 - explicitly NOT include duplicates
+)
+
+// NewDuplicateBlocksPolicy returns DuplicateBlocksPolicy based on the content type parameter 'dups' (IPIP-412)
+func NewDuplicateBlocksPolicy(dupsValue string) DuplicateBlocksPolicy {
+	switch dupsValue {
+	case "y":
+		return DuplicateBlocksIncluded
+	case "n":
+		return DuplicateBlocksExcluded
+	}
+	return DuplicateBlocksUnspecified
+}
+
+func (d DuplicateBlocksPolicy) Bool() bool {
+	// duplicates should be returned only when explicitly requested,
+	// so any other state than DuplicateBlocksIncluded should return false
+	return d == DuplicateBlocksIncluded
+}
+
+func (d DuplicateBlocksPolicy) String() string {
+	switch d {
+	case DuplicateBlocksIncluded:
+		return "y"
+	case DuplicateBlocksExcluded:
+		return "n"
+	}
+	return ""
+}
 
 type ContentPathMetadata struct {
 	PathSegmentRoots []cid.Cid
@@ -320,20 +371,22 @@ func cleanHeaderSet(headers []string) []string {
 	return result
 }
 
-// AddAccessControlHeaders adds default HTTP headers used for controlling
-// cross-origin requests. This function adds several values to the
-// [Access-Control-Allow-Headers] and [Access-Control-Expose-Headers] entries.
+// AddAccessControlHeaders ensures safe default HTTP headers are used for
+// controlling cross-origin requests. This function adds several values to the
+// [Access-Control-Allow-Headers] and [Access-Control-Expose-Headers] entries
+// to be exposed on GET and OPTIONS responses, including [CORS Preflight].
 //
-// If the Access-Control-Allow-Origin entry is missing a value of '*' is
+// If the Access-Control-Allow-Origin entry is missing, a default value of '*' is
 // added, indicating that browsers should allow requesting code from any
 // origin to access the resource.
 //
-// If the Access-Control-Allow-Methods entry is missing a value of 'GET' is
-// added, indicating that browsers may use the GET method when issuing cross
+// If the Access-Control-Allow-Methods entry is missing a value, 'GET, HEAD,
+// OPTIONS' is added, indicating that browsers may use them when issuing cross
 // origin requests.
 //
 // [Access-Control-Allow-Headers]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers
 // [Access-Control-Expose-Headers]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Expose-Headers
+// [CORS Preflight]: https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request
 func AddAccessControlHeaders(headers map[string][]string) {
 	// Hard-coded headers.
 	const ACAHeadersName = "Access-Control-Allow-Headers"
@@ -346,8 +399,12 @@ func AddAccessControlHeaders(headers map[string][]string) {
 		headers[ACAOriginName] = []string{"*"}
 	}
 	if _, ok := headers[ACAMethodsName]; !ok {
-		// Default to GET
-		headers[ACAMethodsName] = []string{http.MethodGet}
+		// Default to GET, HEAD, OPTIONS
+		headers[ACAMethodsName] = []string{
+			http.MethodGet,
+			http.MethodHead,
+			http.MethodOptions,
+		}
 	}
 
 	headers[ACAHeadersName] = cleanHeaderSet(

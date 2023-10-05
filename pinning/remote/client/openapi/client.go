@@ -168,8 +168,8 @@ func (c *APIClient) prepareRequest(
 	formParams url.Values,
 	formFileName string,
 	fileName string,
-	fileBytes []byte) (localVarRequest *http.Request, err error) {
-
+	fileBytes []byte,
+) (localVarRequest *http.Request, err error) {
 	var body *bytes.Buffer
 
 	// Detect postBody type and post.

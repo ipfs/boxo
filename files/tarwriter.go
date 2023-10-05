@@ -10,9 +10,7 @@ import (
 	"time"
 )
 
-var (
-	ErrUnixFSPathOutsideRoot = errors.New("relative UnixFS paths outside the root are now allowed, use CAR instead")
-)
+var ErrUnixFSPathOutsideRoot = errors.New("relative UnixFS paths outside the root are now allowed, use CAR instead")
 
 type TarWriter struct {
 	TarW       *tar.Writer
@@ -110,7 +108,7 @@ func writeDirHeader(w *tar.Writer, fpath string) error {
 	return w.WriteHeader(&tar.Header{
 		Name:     fpath,
 		Typeflag: tar.TypeDir,
-		Mode:     0777,
+		Mode:     0o777,
 		ModTime:  time.Now().Truncate(time.Second),
 		// TODO: set mode, dates, etc. when added to unixFS
 	})
@@ -121,7 +119,7 @@ func writeFileHeader(w *tar.Writer, fpath string, size uint64) error {
 		Name:     fpath,
 		Size:     int64(size),
 		Typeflag: tar.TypeReg,
-		Mode:     0644,
+		Mode:     0o644,
 		ModTime:  time.Now().Truncate(time.Second),
 		// TODO: set mode, dates, etc. when added to unixFS
 	})
@@ -131,7 +129,7 @@ func writeSymlinkHeader(w *tar.Writer, target, fpath string) error {
 	return w.WriteHeader(&tar.Header{
 		Name:     fpath,
 		Linkname: target,
-		Mode:     0777,
+		Mode:     0o777,
 		Typeflag: tar.TypeSymlink,
 	})
 }

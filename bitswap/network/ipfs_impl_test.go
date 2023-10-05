@@ -12,7 +12,6 @@ import (
 	bsnet "github.com/ipfs/boxo/bitswap/network"
 	"github.com/ipfs/boxo/bitswap/network/internal"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
-	"github.com/ipfs/boxo/internal/test"
 	mockrouting "github.com/ipfs/boxo/routing/mock"
 	ds "github.com/ipfs/go-datastore"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
@@ -47,7 +46,8 @@ func newReceiver() *receiver {
 func (r *receiver) ReceiveMessage(
 	ctx context.Context,
 	sender peer.ID,
-	incoming bsmsg.BitSwapMessage) {
+	incoming bsmsg.BitSwapMessage,
+) {
 	r.lastSender = sender
 	r.lastMessage = incoming
 	select {
@@ -163,8 +163,6 @@ func (eh *ErrHost) setTimeoutState(timingOut bool) {
 }
 
 func TestMessageSendAndReceive(t *testing.T) {
-	test.Flaky(t)
-
 	// create network
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -333,8 +331,6 @@ func prepareNetwork(t *testing.T, ctx context.Context, p1 tnet.Identity, r1 *rec
 }
 
 func TestMessageResendAfterError(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -381,8 +377,6 @@ func TestMessageResendAfterError(t *testing.T) {
 }
 
 func TestMessageSendTimeout(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -424,8 +418,6 @@ func TestMessageSendTimeout(t *testing.T) {
 }
 
 func TestMessageSendNotSupportedResponse(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -458,8 +450,6 @@ func TestMessageSendNotSupportedResponse(t *testing.T) {
 }
 
 func TestSupportsHave(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	mn := mocknet.New()
 	defer mn.Close()
@@ -674,8 +664,6 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 }
 
 func TestNetworkCounters(t *testing.T) {
-	test.Flaky(t)
-
 	for n := 0; n < 11; n++ {
 		testNetworkCounters(t, 10-n, n)
 	}

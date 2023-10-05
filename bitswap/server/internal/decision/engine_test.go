@@ -17,7 +17,6 @@ import (
 	message "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
 	blockstore "github.com/ipfs/boxo/blockstore"
-	"github.com/ipfs/boxo/internal/test"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
@@ -104,8 +103,7 @@ func newTestEngineWithSampling(ctx context.Context, idStr string, peerSampleInte
 	e := newEngineForTesting(ctx, bs, fpt, "localhost", 0, append(opts[:len(opts):len(opts)], WithScoreLedger(NewTestScoreLedger(peerSampleInterval, sampleCh, clock)), WithBlockstoreWorkerCount(4))...)
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 	return engineSet{
-		Peer: peer.ID(idStr),
-		//Strategy: New(true),
+		Peer:       peer.ID(idStr),
 		PeerTagger: fpt,
 		Blockstore: bs,
 		Engine:     e,
@@ -113,8 +111,6 @@ func newTestEngineWithSampling(ctx context.Context, idStr string, peerSampleInte
 }
 
 func TestConsistentAccounting(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sender := newTestEngine(ctx, "Ernie")
@@ -150,8 +146,6 @@ func TestConsistentAccounting(t *testing.T) {
 }
 
 func TestPeerIsAddedToPeersWhenMessageSent(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sanfrancisco := newTestEngine(ctx, "sf")
@@ -206,8 +200,6 @@ func newEngineForTesting(
 }
 
 func TestOutboxClosedWhenEngineClosed(t *testing.T) {
-	test.Flaky(t)
-
 	t.SkipNow() // TODO implement *Engine.Close
 	ctx := context.Background()
 	e := newEngineForTesting(ctx, blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
@@ -228,8 +220,6 @@ func TestOutboxClosedWhenEngineClosed(t *testing.T) {
 }
 
 func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
-	test.Flaky(t)
-
 	alphabet := "abcdefghijklmnopqrstuvwxyz"
 	vowels := "aeiou"
 
@@ -570,8 +560,6 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 }
 
 func TestPartnerWantHaveWantBlockActive(t *testing.T) {
-	test.Flaky(t)
-
 	alphabet := "abcdefghijklmnopqrstuvwxyz"
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
@@ -844,8 +832,6 @@ func formatPresencesDiff(presences []message.BlockPresence, expHaves []string, e
 }
 
 func TestPartnerWantsThenCancels(t *testing.T) {
-	test.Flaky(t)
-
 	numRounds := 10
 	if testing.Short() {
 		numRounds = 1
@@ -908,8 +894,6 @@ func TestPartnerWantsThenCancels(t *testing.T) {
 }
 
 func TestSendReceivedBlocksToPeersThatWantThem(t *testing.T) {
-	test.Flaky(t)
-
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	partner := libp2ptest.RandPeerIDFatal(t)
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
@@ -956,8 +940,6 @@ func TestSendReceivedBlocksToPeersThatWantThem(t *testing.T) {
 }
 
 func TestSendDontHave(t *testing.T) {
-	test.Flaky(t)
-
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	partner := libp2ptest.RandPeerIDFatal(t)
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
@@ -1024,8 +1006,6 @@ func TestSendDontHave(t *testing.T) {
 }
 
 func TestWantlistForPeer(t *testing.T) {
-	test.Flaky(t)
-
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	partner := libp2ptest.RandPeerIDFatal(t)
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
@@ -1063,8 +1043,6 @@ func TestWantlistForPeer(t *testing.T) {
 }
 
 func TestTaskComparator(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
@@ -1119,8 +1097,6 @@ func TestTaskComparator(t *testing.T) {
 }
 
 func TestPeerBlockFilter(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
@@ -1280,8 +1256,6 @@ func TestPeerBlockFilter(t *testing.T) {
 }
 
 func TestPeerBlockFilterMutability(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
@@ -1451,8 +1425,6 @@ func TestPeerBlockFilterMutability(t *testing.T) {
 }
 
 func TestTaggingPeers(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 	sanfrancisco := newTestEngine(ctx, "sf")
@@ -1481,8 +1453,6 @@ func TestTaggingPeers(t *testing.T) {
 }
 
 func TestTaggingUseful(t *testing.T) {
-	test.Flaky(t)
-
 	peerSampleIntervalHalf := 10 * time.Millisecond
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

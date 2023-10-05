@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
-	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/go-cid"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -24,29 +23,20 @@ const (
 )
 
 // serveCAR returns a CAR stream for specific DAG+selector
-func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, carVersion string, begin time.Time) bool {
-	ctx, span := spanTrace(ctx, "Handler.ServeCAR", trace.WithAttributes(attribute.String("path", imPath.String())))
+func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeCAR", trace.WithAttributes(attribute.String("path", rq.immutablePath.String())))
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	switch carVersion {
-	case "": // noop, client does not care about version
-	case "1": // noop, we support this
-	default:
-		err := fmt.Errorf("unsupported CAR version: only version=1 is supported")
-		i.webError(w, r, err, http.StatusBadRequest)
-		return false
-	}
-
-	params, err := getCarParams(r)
+	params, err := buildCarParams(r, rq.responseParams)
 	if err != nil {
 		i.webError(w, r, err, http.StatusBadRequest)
 		return false
 	}
 
-	rootCid, lastSegment, err := getCarRootCidAndLastSegment(imPath)
+	rootCid, lastSegment, err := getCarRootCidAndLastSegment(rq.immutablePath)
 	if err != nil {
 		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
@@ -66,10 +56,10 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	setContentDispositionHeader(w, name, "attachment")
 
 	// Set Cache-Control (same logic as for a regular files)
-	addCacheControlHeaders(w, r, contentPath, rootCid, carResponseFormat)
+	addCacheControlHeaders(w, r, rq.contentPath, rootCid, carResponseFormat)
 
 	// Generate the CAR Etag.
-	etag := getCarEtag(imPath, params, rootCid)
+	etag := getCarEtag(rq.immutablePath, params, rootCid)
 	w.Header().Set("Etag", etag)
 
 	// Terminate early if Etag matches. We cannot rely on handleIfNoneMatch since
@@ -79,19 +69,19 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	md, carFile, err := i.backend.GetCAR(ctx, imPath, params)
-	if !i.handleRequestErrors(w, r, contentPath, err) {
+	md, carFile, err := i.backend.GetCAR(ctx, rq.immutablePath, params)
+	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 		return false
 	}
 	defer carFile.Close()
-	setIpfsRootsHeader(w, md)
+	setIpfsRootsHeader(w, rq, &md)
 
 	// Make it clear we don't support range-requests over a car stream
 	// Partial downloads and resumes should be handled using requests for
 	// sub-DAGs and IPLD selectors: https://github.com/ipfs/go-ipfs/issues/8769
 	w.Header().Set("Accept-Ranges", "none")
 
-	w.Header().Set("Content-Type", carResponseFormat+"; version=1")
+	w.Header().Set("Content-Type", buildContentTypeFromCarParams(params))
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
 	_, copyErr := io.Copy(w, carFile)
@@ -99,7 +89,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	streamErr := multierr.Combine(carErr, copyErr)
 	if streamErr != nil {
 		// Update fail metric
-		i.carStreamFailMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		i.carStreamFailMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 
 		// We return error as a trailer, however it is not something browsers can access
 		// (https://github.com/mdn/browser-compat-data/issues/14703)
@@ -110,11 +100,19 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 
 	// Update metrics
-	i.carStreamGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	i.carStreamGetMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 	return true
 }
 
-func getCarParams(r *http.Request) (CarParams, error) {
+// buildCarParams returns CarParams based on the request, any optional parameters
+// passed in URL, Accept header and the implicit defaults specific to boxo
+// implementation, such as block order and duplicates status.
+//
+// If any of the optional content type parameters (e.g., CAR order or
+// duplicates) are unspecified or empty, the function will automatically infer
+// default values.
+func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarParams, error) {
+	// URL query parameters
 	queryParams := r.URL.Query()
 	rangeStr, hasRange := queryParams.Get(carRangeBytesKey), queryParams.Has(carRangeBytesKey)
 	scopeStr, hasScope := queryParams.Get(carTerminalElementTypeKey), queryParams.Has(carTerminalElementTypeKey)
@@ -123,7 +121,7 @@ func getCarParams(r *http.Request) (CarParams, error) {
 	if hasRange {
 		rng, err := NewDagByteRange(rangeStr)
 		if err != nil {
-			err = fmt.Errorf("invalid entity-bytes: %w", err)
+			err = fmt.Errorf("invalid application/vnd.ipld.car entity-bytes URL parameter: %w", err)
 			return CarParams{}, err
 		}
 		params.Range = &rng
@@ -134,14 +132,75 @@ func getCarParams(r *http.Request) (CarParams, error) {
 		case DagScopeEntity, DagScopeAll, DagScopeBlock:
 			params.Scope = s
 		default:
-			err := fmt.Errorf("unsupported dag-scope %s", scopeStr)
+			err := fmt.Errorf("unsupported application/vnd.ipld.car dag-scope URL parameter: %q", scopeStr)
 			return CarParams{}, err
 		}
 	} else {
 		params.Scope = DagScopeAll
 	}
 
+	// application/vnd.ipld.car content type parameters from Accept header
+
+	// version of CAR format
+	switch contentTypeParams["version"] {
+	case "": // noop, client does not care about version
+	case "1": // noop, we support this
+	default:
+		return CarParams{}, fmt.Errorf("unsupported application/vnd.ipld.car version: only version=1 is supported")
+	}
+
+	// optional order from IPIP-412
+	if order := DagOrder(contentTypeParams["order"]); order != DagOrderUnspecified {
+		switch order {
+		case DagOrderUnknown, DagOrderDFS:
+			params.Order = order
+		default:
+			return CarParams{}, fmt.Errorf("unsupported application/vnd.ipld.car content type order parameter: %q", order)
+		}
+	} else {
+		// when order is not specified, we use DFS as the implicit default
+		// as this has always been the default behavior and we should not break
+		// legacy clients
+		params.Order = DagOrderDFS
+	}
+
+	// optional dups from IPIP-412
+	if dups := NewDuplicateBlocksPolicy(contentTypeParams["dups"]); dups != DuplicateBlocksUnspecified {
+		switch dups {
+		case DuplicateBlocksExcluded, DuplicateBlocksIncluded:
+			params.Duplicates = dups
+		default:
+			return CarParams{}, fmt.Errorf("unsupported application/vnd.ipld.car content type dups parameter:  %q", dups)
+		}
+	} else {
+		// when duplicate block preference is not specified, we set it to
+		// false, as this has always been the default behavior, we should
+		// not break legacy clients, and responses to requests made via ?format=car
+		// should benefit from block deduplication
+		params.Duplicates = DuplicateBlocksExcluded
+	}
+
 	return params, nil
+}
+
+// buildContentTypeFromCarParams returns a string for Content-Type header.
+// It does not change any values, CarParams are respected as-is.
+func buildContentTypeFromCarParams(params CarParams) string {
+	h := strings.Builder{}
+	h.WriteString(carResponseFormat)
+	h.WriteString("; version=1")
+
+	if params.Order != DagOrderUnspecified {
+		h.WriteString("; order=")
+		h.WriteString(string(params.Order))
+	}
+
+	if params.Duplicates != DuplicateBlocksUnspecified {
+		h.WriteString("; dups=")
+		h.WriteString(params.Duplicates.String())
+	}
+
+	return h.String()
 }
 
 func getCarRootCidAndLastSegment(imPath ImmutablePath) (cid.Cid, string, error) {
@@ -168,14 +227,25 @@ func getCarRootCidAndLastSegment(imPath ImmutablePath) (cid.Cid, string, error) 
 func getCarEtag(imPath ImmutablePath, params CarParams, rootCid cid.Cid) string {
 	data := imPath.String()
 	if params.Scope != DagScopeAll {
-		data += "." + string(params.Scope)
+		data += string(params.Scope)
+	}
+
+	// 'order' from IPIP-412 impact Etag only if set to something else
+	// than DFS (which is the implicit default)
+	if params.Order != DagOrderDFS {
+		data += string(params.Order)
+	}
+
+	// 'dups' from IPIP-412 impact Etag only if 'y'
+	if dups := params.Duplicates.String(); dups == "y" {
+		data += dups
 	}
 
 	if params.Range != nil {
 		if params.Range.From != 0 || params.Range.To != nil {
-			data += "." + strconv.FormatInt(params.Range.From, 10)
+			data += strconv.FormatInt(params.Range.From, 10)
 			if params.Range.To != nil {
-				data += "." + strconv.FormatInt(*params.Range.To, 10)
+				data += strconv.FormatInt(*params.Range.To, 10)
 			}
 		}
 	}

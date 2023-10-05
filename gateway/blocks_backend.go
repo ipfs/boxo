@@ -17,8 +17,6 @@ import (
 	"github.com/ipfs/boxo/fetcher"
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/files"
-	"github.com/ipfs/boxo/ipld/car/v2"
-	"github.com/ipfs/boxo/ipld/car/v2/storage"
 	"github.com/ipfs/boxo/ipld/merkledag"
 	ufile "github.com/ipfs/boxo/ipld/unixfs/file"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
@@ -31,6 +29,8 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-unixfsnode"
 	"github.com/ipfs/go-unixfsnode/data"
+	"github.com/ipld/go-car/v2"
+	"github.com/ipld/go-car/v2/storage"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -232,9 +232,45 @@ func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentP
 	return md, fileNode, nil
 }
 
+// emptyRoot is a CAR root with the empty identity CID. CAR files are recommended
+// to always include a CID in their root, even if it's just the empty CID.
+// https://ipld.io/specs/transport/car/carv1/#number-of-roots
+var emptyRoot = []cid.Cid{cid.MustParse("bafkqaaa")}
+
 func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	pathMetadata, err := bb.ResolvePath(ctx, p)
 	if err != nil {
+		rootCid, err := cid.Decode(strings.Split(p.String(), "/")[2])
+		if err != nil {
+			return ContentPathMetadata{}, nil, err
+		}
+
+		var buf bytes.Buffer
+		cw, err := storage.NewWritable(&buf, emptyRoot, car.WriteAsCarV1(true))
+		if err != nil {
+			return ContentPathMetadata{}, nil, err
+		}
+
+		blockGetter := merkledag.NewDAGService(bb.blockService).Session(ctx)
+
+		blockGetter = &nodeGetterToCarExporer{
+			ng: blockGetter,
+			cw: cw,
+		}
+
+		// Setup the UnixFS resolver.
+		f := newNodeGetterFetcherSingleUseFactory(ctx, blockGetter)
+		pathResolver := resolver.NewBasicResolver(f)
+		ip := ipfspath.FromString(p.String())
+		_, _, err = pathResolver.ResolveToLastNode(ctx, ip)
+
+		if isErrNotFound(err) {
+			return ContentPathMetadata{
+				PathSegmentRoots: nil,
+				LastSegment:      ifacepath.NewResolvedPath(ip, rootCid, rootCid, ""),
+				ContentType:      "",
+			}, io.NopCloser(&buf), nil
+		}
 		return ContentPathMetadata{}, nil, err
 	}
 
@@ -245,7 +281,12 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params Car
 
 	r, w := io.Pipe()
 	go func() {
-		cw, err := storage.NewWritable(w, []cid.Cid{pathMetadata.LastSegment.Cid()}, car.WriteAsCarV1(true))
+		cw, err := storage.NewWritable(
+			w,
+			[]cid.Cid{pathMetadata.LastSegment.Cid()},
+			car.WriteAsCarV1(true),
+			car.AllowDuplicatePuts(params.Duplicates.Bool()),
+		)
 		if err != nil {
 			// io.PipeWriter.CloseWithError always returns nil.
 			_ = w.CloseWithError(err)
@@ -312,7 +353,7 @@ func walkGatewaySimpleSelector(ctx context.Context, p ipfspath.Path, params CarP
 				Ctx:                            ctx,
 				LinkSystem:                     *lsys,
 				LinkTargetNodePrototypeChooser: bsfetcher.DefaultPrototypeChooser,
-				LinkVisitOnlyOnce:              true, // This is safe for the "all" selector
+				LinkVisitOnlyOnce:              !params.Duplicates.Bool(),
 			},
 		}
 
@@ -775,5 +816,7 @@ func blockOpener(ctx context.Context, ng format.NodeGetter) ipld.BlockReadOpener
 	}
 }
 
-var _ fetcher.Fetcher = (*nodeGetterFetcherSingleUseFactory)(nil)
-var _ fetcher.Factory = (*nodeGetterFetcherSingleUseFactory)(nil)
+var (
+	_ fetcher.Fetcher = (*nodeGetterFetcherSingleUseFactory)(nil)
+	_ fetcher.Factory = (*nodeGetterFetcherSingleUseFactory)(nil)
+)

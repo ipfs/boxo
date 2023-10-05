@@ -18,10 +18,12 @@ import (
 
 	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/gateway/assets"
+	"github.com/ipfs/boxo/ipns"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multibase"
+	mc "github.com/multiformats/go-multicodec"
 	prometheus "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -155,19 +157,56 @@ func (i *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Add("Allow", http.MethodGet)
-	w.Header().Add("Allow", http.MethodHead)
-	w.Header().Add("Allow", http.MethodOptions)
+	addAllowHeader(w)
 
 	errmsg := "Method " + r.Method + " not allowed: read only access"
 	http.Error(w, errmsg, http.StatusMethodNotAllowed)
 }
 
 func (i *handler) optionsHandler(w http.ResponseWriter, r *http.Request) {
+	addAllowHeader(w)
 	// OPTIONS is a noop request that is used by the browsers to check if server accepts
 	// cross-site XMLHttpRequest, which is indicated by the presence of CORS headers:
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS#Preflighted_requests
-	i.addUserHeaders(w) // return all custom headers (including CORS ones, if set)
+	addCustomHeaders(w, i.config.Headers) // return all custom headers (including CORS ones, if set)
+}
+
+// addAllowHeader sets Allow header with supported HTTP methods
+func addAllowHeader(w http.ResponseWriter) {
+	w.Header().Add("Allow", http.MethodGet)
+	w.Header().Add("Allow", http.MethodHead)
+	w.Header().Add("Allow", http.MethodOptions)
+}
+
+type requestData struct {
+	// Defined for all requests.
+	begin          time.Time
+	logger         *zap.SugaredLogger
+	contentPath    ipath.Path
+	responseFormat string
+	responseParams map[string]string
+
+	// Defined for non IPNS Record requests.
+	immutablePath ImmutablePath
+
+	// Defined if resolution has already happened.
+	pathMetadata *ContentPathMetadata
+}
+
+// mostlyResolvedPath is an opportunistic optimization that returns the mostly
+// resolved version of ImmutablePath available. It does not guarantee it is fully
+// resolved, nor that it is the original.
+func (rq *requestData) mostlyResolvedPath() ImmutablePath {
+	if rq.pathMetadata != nil {
+		imPath, err := NewImmutablePath(rq.pathMetadata.LastSegment)
+		if err != nil {
+			// This will never happen. This error has previously been checked in
+			// [handleIfNoneMatch] and the request will have returned 500.
+			panic(err)
+		}
+		return imPath
+	}
+	return rq.immutablePath
 }
 
 func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
@@ -176,8 +215,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := log.With("from", r.RequestURI)
 	logger.Debug("http request received")
 
-	if i.handleUnsupportedHeaders(w, r) ||
-		handleProtocolHandlerRedirect(w, r, i.config) ||
+	if handleProtocolHandlerRedirect(w, r, i.config) ||
 		i.handleServiceWorkerRegistration(w, r) ||
 		handleIpnsB58mhToCidRedirection(w, r) {
 		return
@@ -213,7 +251,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResponseFormat", responseFormat))
 	i.requestTypeMetric.WithLabelValues(contentPath.Namespace(), responseFormat).Inc()
 
-	i.addUserHeaders(w) // ok, _now_ write user's headers.
+	addCustomHeaders(w, i.config.Headers) // ok, _now_ write user's headers.
 	w.Header().Set("X-Ipfs-Path", contentPath.String())
 
 	// Fail fast if unsupported request type was sent to a Trustless Gateway.
@@ -223,25 +261,32 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rq := &requestData{
+		begin:          begin,
+		logger:         logger,
+		contentPath:    contentPath,
+		responseFormat: responseFormat,
+		responseParams: formatParams,
+	}
+
 	// IPNS Record response format can be handled now, since (1) it needs the
 	// non-resolved mutable path, and (2) has custom If-None-Match header handling
 	// due to custom ETag.
 	if responseFormat == ipnsRecordResponseFormat {
 		logger.Debugw("serving ipns record", "path", contentPath)
-		success = i.serveIpnsRecord(r.Context(), w, r, contentPath, begin, logger)
+		success = i.serveIpnsRecord(r.Context(), w, r, rq)
 		return
 	}
 
-	var immutableContentPath ImmutablePath
 	if contentPath.Mutable() {
-		immutableContentPath, err = i.backend.ResolveMutable(r.Context(), contentPath)
+		rq.immutablePath, err = i.backend.ResolveMutable(r.Context(), contentPath)
 		if err != nil {
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 			i.webError(w, r, err, http.StatusInternalServerError)
 			return
 		}
 	} else {
-		immutableContentPath, err = NewImmutablePath(contentPath)
+		rq.immutablePath, err = NewImmutablePath(contentPath)
 		if err != nil {
 			err = fmt.Errorf("path was expected to be immutable, but was not %s: %w", debugStr(contentPath.String()), err)
 			i.webError(w, r, err, http.StatusInternalServerError)
@@ -254,45 +299,37 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	// header handling due to custom ETag.
 	if responseFormat == carResponseFormat {
 		logger.Debugw("serving car stream", "path", contentPath)
-		carVersion := formatParams["version"]
-		success = i.serveCAR(r.Context(), w, r, immutableContentPath, contentPath, carVersion, begin)
+		success = i.serveCAR(r.Context(), w, r, rq)
 		return
 	}
 
 	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified.
-	ifNoneMatchResolvedPath, handled := i.handleIfNoneMatch(w, r, responseFormat, contentPath, immutableContentPath)
-	if handled {
+	if i.handleIfNoneMatch(w, r, rq) {
 		return
-	}
-
-	// If we already did the path resolution no need to do it again
-	maybeResolvedImPath := immutableContentPath
-	if ifNoneMatchResolvedPath != nil {
-		maybeResolvedImPath = *ifNoneMatchResolvedPath
 	}
 
 	// Support custom response formats passed via ?format or Accept HTTP header
 	switch responseFormat {
 	case "", jsonResponseFormat, cborResponseFormat:
-		success = i.serveDefaults(r.Context(), w, r, maybeResolvedImPath, immutableContentPath, contentPath, begin, responseFormat, logger)
+		success = i.serveDefaults(r.Context(), w, r, rq)
 	case rawResponseFormat:
 		logger.Debugw("serving raw block", "path", contentPath)
-		success = i.serveRawBlock(r.Context(), w, r, maybeResolvedImPath, contentPath, begin)
+		success = i.serveRawBlock(r.Context(), w, r, rq)
 	case tarResponseFormat:
 		logger.Debugw("serving tar file", "path", contentPath)
-		success = i.serveTAR(r.Context(), w, r, maybeResolvedImPath, contentPath, begin, logger)
+		success = i.serveTAR(r.Context(), w, r, rq)
 	case dagJsonResponseFormat, dagCborResponseFormat:
 		logger.Debugw("serving codec", "path", contentPath)
-		success = i.serveCodec(r.Context(), w, r, maybeResolvedImPath, contentPath, begin, responseFormat)
+		success = i.serveCodec(r.Context(), w, r, rq)
 	default: // catch-all for unsuported application/vnd.*
 		err := fmt.Errorf("unsupported format %q", responseFormat)
 		i.webError(w, r, err, http.StatusBadRequest)
 	}
 }
 
-func (i *handler) addUserHeaders(w http.ResponseWriter) {
-	for k, v := range i.config.Headers {
-		w.Header()[k] = v
+func addCustomHeaders(w http.ResponseWriter, headers map[string][]string) {
+	for k, v := range headers {
+		w.Header()[http.CanonicalHeaderKey(k)] = v
 	}
 }
 
@@ -332,7 +369,7 @@ func (i *handler) isTrustlessRequest(contentPath ipath.Path, responseFormat stri
 	// Only allow "/{#1}/{#2}"-like paths.
 	trimmedPath := strings.Trim(contentPath.String(), "/")
 	pathComponents := strings.Split(trimmedPath, "/")
-	if len(pathComponents) != 2 {
+	if responseFormat != carResponseFormat && len(pathComponents) != 2 {
 		return false
 	}
 
@@ -343,8 +380,7 @@ func (i *handler) isTrustlessRequest(contentPath ipath.Path, responseFormat stri
 		}
 
 		// Only valid, cryptographically verifiable IPNS record names (no DNSLink on trustless gateways)
-		// TODO: replace with ipns.Name as part of https://github.com/ipfs/specs/issues/376
-		if _, err := peer.Decode(pathComponents[1]); err != nil {
+		if _, err := ipns.NameFromString(pathComponents[1]); err != nil {
 			return false
 		}
 
@@ -447,7 +483,12 @@ func setContentDispositionHeader(w http.ResponseWriter, filename string, disposi
 
 // setIpfsRootsHeader sets the X-Ipfs-Roots header with logical CID array for
 // efficient HTTP cache invalidation.
-func setIpfsRootsHeader(w http.ResponseWriter, pathMetadata ContentPathMetadata) {
+func setIpfsRootsHeader(w http.ResponseWriter, rq *requestData, md *ContentPathMetadata) {
+	// Update requestData with the latest ContentPathMetadata if it wasn't set yet.
+	if rq.pathMetadata == nil {
+		rq.pathMetadata = md
+	}
+
 	// These are logical roots where each CID represent one path segment
 	// and resolves to either a directory or the root block of a file.
 	// The main purpose of this header is allow HTTP caches to do smarter decisions
@@ -470,10 +511,10 @@ func setIpfsRootsHeader(w http.ResponseWriter, pathMetadata ContentPathMetadata)
 	// the last root (responsible for specific article) may not change at all.
 
 	var pathRoots []string
-	for _, c := range pathMetadata.PathSegmentRoots {
+	for _, c := range rq.pathMetadata.PathSegmentRoots {
 		pathRoots = append(pathRoots, c.String())
 	}
-	pathRoots = append(pathRoots, pathMetadata.LastSegment.Cid().String())
+	pathRoots = append(pathRoots, rq.pathMetadata.LastSegment.Cid().String())
 	rootCidList := strings.Join(pathRoots, ",") // convention from rfc2616#sec4.2
 
 	w.Header().Set("X-Ipfs-Roots", rootCidList)
@@ -553,6 +594,14 @@ func getEtag(r *http.Request, cid cid.Cid, responseFormat string) string {
 	prefix := `"`
 	suffix := `"`
 
+	// For Codecs, ensure that we have the right content-type.
+	if responseFormat == "" {
+		cidCodec := mc.Code(cid.Prefix().Codec)
+		if contentType, ok := codecToContentType[cidCodec]; ok {
+			responseFormat = contentType
+		}
+	}
+
 	switch responseFormat {
 	case "":
 		// Do nothing.
@@ -588,28 +637,9 @@ const (
 
 // return explicit response format if specified in request as query parameter or via Accept HTTP header
 func customResponseFormat(r *http.Request) (mediaType string, params map[string]string, err error) {
-	// Translate query param to a content type, if present.
-	if formatParam := r.URL.Query().Get("format"); formatParam != "" {
-		switch formatParam {
-		case "raw":
-			return rawResponseFormat, nil, nil
-		case "car":
-			return carResponseFormat, nil, nil
-		case "tar":
-			return tarResponseFormat, nil, nil
-		case "json":
-			return jsonResponseFormat, nil, nil
-		case "cbor":
-			return cborResponseFormat, nil, nil
-		case "dag-json":
-			return dagJsonResponseFormat, nil, nil
-		case "dag-cbor":
-			return dagCborResponseFormat, nil, nil
-		case "ipns-record":
-			return ipnsRecordResponseFormat, nil, nil
-		}
-	}
-
+	// First, inspect Accept header, as it may not only include content type, but also optional parameters.
+	// such as CAR version or additional ones from IPIP-412.
+	//
 	// Browsers and other user agents will send Accept header with generic types like:
 	// Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
 	// We only care about explicit, vendor-specific content-types and respond to the first match (in order).
@@ -632,6 +662,28 @@ func customResponseFormat(r *http.Request) (mediaType string, params map[string]
 		}
 	}
 
+	// If no Accept header, translate query param to a content type, if present.
+	if formatParam := r.URL.Query().Get("format"); formatParam != "" {
+		switch formatParam {
+		case "raw":
+			return rawResponseFormat, nil, nil
+		case "car":
+			return carResponseFormat, nil, nil
+		case "tar":
+			return tarResponseFormat, nil, nil
+		case "json":
+			return jsonResponseFormat, nil, nil
+		case "cbor":
+			return cborResponseFormat, nil, nil
+		case "dag-json":
+			return dagJsonResponseFormat, nil, nil
+		case "dag-cbor":
+			return dagCborResponseFormat, nil, nil
+		case "ipns-record":
+			return ipnsRecordResponseFormat, nil, nil
+		}
+	}
+
 	// If none of special-cased content types is found, return empty string
 	// to indicate default, implicit UnixFS response should be prepared
 	return "", nil, nil
@@ -646,40 +698,52 @@ func debugStr(path string) string {
 	return q
 }
 
-func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, responseFormat string, contentPath ipath.Path, imPath ImmutablePath) (*ImmutablePath, bool) {
+func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, rq *requestData) bool {
 	// Detect when If-None-Match HTTP header allows returning HTTP 304 Not Modified
 	if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" {
-		pathMetadata, err := i.backend.ResolvePath(r.Context(), imPath)
+		pathMetadata, err := i.backend.ResolvePath(r.Context(), rq.immutablePath)
 		if err != nil {
-			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
-			i.webError(w, r, err, http.StatusInternalServerError)
-			return nil, true
+			var forwardedPath ImmutablePath
+			var continueProcessing bool
+			if isWebRequest(rq.responseFormat) {
+				forwardedPath, continueProcessing = i.handleWebRequestErrors(w, r, rq.mostlyResolvedPath(), rq.immutablePath, rq.contentPath, err, rq.logger)
+				if continueProcessing {
+					pathMetadata, err = i.backend.ResolvePath(r.Context(), forwardedPath)
+				}
+			}
+			if !continueProcessing || err != nil {
+				err = fmt.Errorf("failed to resolve %s: %w", debugStr(rq.contentPath.String()), err)
+				i.webError(w, r, err, http.StatusInternalServerError)
+				return true
+			}
 		}
 
-		resolvedPath := pathMetadata.LastSegment
-		pathCid := resolvedPath.Cid()
+		pathCid := pathMetadata.LastSegment.Cid()
 
 		// Checks against both file, dir listing, and dag index Etags.
 		// This is an inexpensive check, and it happens before we do any I/O.
-		cidEtag := getEtag(r, pathCid, responseFormat)
+		cidEtag := getEtag(r, pathCid, rq.responseFormat)
 		dirEtag := getDirListingEtag(pathCid)
 		dagEtag := getDagIndexEtag(pathCid)
 
 		if etagMatch(ifNoneMatch, cidEtag, dirEtag, dagEtag) {
 			// Finish early if client already has a matching Etag
 			w.WriteHeader(http.StatusNotModified)
-			return nil, true
+			return true
 		}
 
-		resolvedImPath, err := NewImmutablePath(resolvedPath)
+		// Check if the resolvedPath is an immutable path.
+		_, err = NewImmutablePath(pathMetadata.LastSegment)
 		if err != nil {
 			i.webError(w, r, err, http.StatusInternalServerError)
-			return nil, true
+			return true
 		}
 
-		return &resolvedImPath, true
+		rq.pathMetadata = &pathMetadata
+		return false
 	}
-	return nil, false
+
+	return false
 }
 
 // check if request was for one of known explicit formats,
@@ -756,17 +820,6 @@ func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, con
 			w.WriteHeader(http.StatusOK)
 			return true
 		}
-	}
-	return false
-}
-
-func (i *handler) handleUnsupportedHeaders(w http.ResponseWriter, r *http.Request) bool {
-	// X-Ipfs-Gateway-Prefix was removed (https://github.com/ipfs/kubo/issues/7702)
-	// TODO: remove this after  go-ipfs 0.13 ships
-	if prfx := r.Header.Get("X-Ipfs-Gateway-Prefix"); prfx != "" {
-		err := fmt.Errorf("unsupported HTTP header: X-Ipfs-Gateway-Prefix support was removed: https://github.com/ipfs/kubo/issues/7702")
-		i.webError(w, r, err, http.StatusBadRequest)
-		return true
 	}
 	return false
 }

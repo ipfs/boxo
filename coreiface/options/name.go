@@ -11,12 +11,11 @@ const (
 )
 
 type NamePublishSettings struct {
-	ValidTime time.Duration
-	Key       string
-
-	TTL *time.Duration
-
-	AllowOffline bool
+	ValidTime        time.Duration
+	Key              string
+	TTL              *time.Duration
+	CompatibleWithV1 bool
+	AllowOffline     bool
 }
 
 type NameResolveSettings struct {
@@ -25,8 +24,10 @@ type NameResolveSettings struct {
 	ResolveOpts []ropts.ResolveOpt
 }
 
-type NamePublishOption func(*NamePublishSettings) error
-type NameResolveOption func(*NameResolveSettings) error
+type (
+	NamePublishOption func(*NamePublishSettings) error
+	NameResolveOption func(*NameResolveSettings) error
+)
 
 func NamePublishOptions(opts ...NamePublishOption) (*NamePublishSettings, error) {
 	options := &NamePublishSettings{
@@ -100,6 +101,15 @@ func (nameOpts) AllowOffline(allow bool) NamePublishOption {
 func (nameOpts) TTL(ttl time.Duration) NamePublishOption {
 	return func(settings *NamePublishSettings) error {
 		settings.TTL = &ttl
+		return nil
+	}
+}
+
+// CompatibleWithV1 is an option for [Name.Publish] which specifies if the
+// created record should be backwards compatible with V1 IPNS Records.
+func (nameOpts) CompatibleWithV1(compatible bool) NamePublishOption {
+	return func(settings *NamePublishSettings) error {
+		settings.CompatibleWithV1 = compatible
 		return nil
 	}
 }

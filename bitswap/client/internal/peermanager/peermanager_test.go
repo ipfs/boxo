@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/bitswap/internal/testutil"
-	"github.com/ipfs/boxo/internal/test"
 	cid "github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
@@ -30,12 +29,15 @@ func (fp *mockPeerQueue) Shutdown() {}
 func (fp *mockPeerQueue) AddBroadcastWantHaves(whs []cid.Cid) {
 	fp.msgs <- msg{fp.p, nil, whs, nil}
 }
+
 func (fp *mockPeerQueue) AddWants(wbs []cid.Cid, whs []cid.Cid) {
 	fp.msgs <- msg{fp.p, wbs, whs, nil}
 }
+
 func (fp *mockPeerQueue) AddCancels(cs []cid.Cid) {
 	fp.msgs <- msg{fp.p, nil, nil, cs}
 }
+
 func (fp *mockPeerQueue) ResponseReceived(ks []cid.Cid) {
 }
 
@@ -77,8 +79,6 @@ func makePeerQueueFactory(msgs chan msg) PeerQueueFactory {
 }
 
 func TestAddingAndRemovingPeers(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	msgs := make(chan msg, 16)
 	peerQueueFactory := makePeerQueueFactory(msgs)
@@ -122,8 +122,6 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 }
 
 func TestBroadcastOnConnect(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	msgs := make(chan msg, 16)
@@ -145,8 +143,6 @@ func TestBroadcastOnConnect(t *testing.T) {
 }
 
 func TestBroadcastWantHaves(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	msgs := make(chan msg, 16)
@@ -188,8 +184,6 @@ func TestBroadcastWantHaves(t *testing.T) {
 }
 
 func TestSendWants(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	msgs := make(chan msg, 16)
@@ -224,8 +218,6 @@ func TestSendWants(t *testing.T) {
 }
 
 func TestSendCancels(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	msgs := make(chan msg, 16)
@@ -271,6 +263,7 @@ func TestSendCancels(t *testing.T) {
 func (s *sess) ID() uint64 {
 	return s.id
 }
+
 func (s *sess) SignalAvailability(p peer.ID, isAvailable bool) {
 	s.available[p] = isAvailable
 }
@@ -285,8 +278,6 @@ func newSess(id uint64) *sess {
 }
 
 func TestSessionRegistration(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	msgs := make(chan msg, 16)
@@ -332,8 +323,7 @@ func TestSessionRegistration(t *testing.T) {
 	}
 }
 
-type benchPeerQueue struct {
-}
+type benchPeerQueue struct{}
 
 func (*benchPeerQueue) Startup()  {}
 func (*benchPeerQueue) Shutdown() {}

@@ -5,13 +5,8 @@ package client
 import (
 	"context"
 	"errors"
-
 	"sync"
 	"time"
-
-	delay "github.com/ipfs/go-ipfs-delay"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 
 	bsbpm "github.com/ipfs/boxo/bitswap/client/internal/blockpresencemanager"
 	bsgetter "github.com/ipfs/boxo/bitswap/client/internal/getter"
@@ -33,11 +28,14 @@ import (
 	exchange "github.com/ipfs/boxo/exchange"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
 	process "github.com/jbenet/goprocess"
 	procctx "github.com/jbenet/goprocess/context"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var log = logging.Logger("bitswap-client")
@@ -134,7 +132,8 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		notif notifications.PubSub,
 		provSearchDelay time.Duration,
 		rebroadcastDelay delay.D,
-		self peer.ID) bssm.Session {
+		self peer.ID,
+	) bssm.Session {
 		return bssession.New(sessctx, sessmgr, id, spm, pqm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
@@ -239,6 +238,7 @@ type counters struct {
 
 // GetBlock attempts to retrieve a particular block from peers within the
 // deadline enforced by the context.
+// It returns a [github.com/ipfs/boxo/bitswap/client/traceability.Block] assertable [blocks.Block].
 func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error) {
 	ctx, span := internal.StartSpan(ctx, "GetBlock", trace.WithAttributes(attribute.String("Key", k.String())))
 	defer span.End()
@@ -248,6 +248,7 @@ func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
 // GetBlocks returns a channel where the caller may receive blocks that
 // correspond to the provided |keys|. Returns an error if BitSwap is unable to
 // begin this request within the deadline enforced by the context.
+// It returns a [github.com/ipfs/boxo/bitswap/client/traceability.Block] assertable [blocks.Block].
 //
 // NB: Your request remains open until the context expires. To conserve
 // resources, provide a context with a reasonably short deadline (ie. not one
@@ -284,7 +285,8 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 	// Publish the block to any Bitswap clients that had requested blocks.
 	// (the sessions use this pubsub mechanism to inform clients of incoming
 	// blocks)
-	bs.notif.Publish(blks...)
+	var zero peer.ID
+	bs.notif.Publish(zero, blks...)
 
 	return nil
 }
@@ -325,7 +327,7 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	// (the sessions use this pubsub mechanism to inform clients of incoming
 	// blocks)
 	for _, b := range wanted {
-		bs.notif.Publish(b)
+		bs.notif.Publish(from, b)
 	}
 
 	for _, b := range wanted {

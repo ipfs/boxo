@@ -75,6 +75,7 @@ func fromImmutableNode(encoded *immutableProtoNode) *ProtoNode {
 	// serialized form needs to be stable, until we start mutating the ProtoNode
 	return n
 }
+
 func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
 	links := n.Links()
 	nd, err := qp.BuildMap(dagpb.Type.PBNode, 2, func(ma ipld.MapAssembler) {

@@ -10,9 +10,11 @@ import (
 	"strings"
 )
 
-var errTraverseSymlink = errors.New("cannot traverse symlinks")
-var errInvalidRoot = errors.New("tar has invalid root")
-var errInvalidRootMultipleRoots = fmt.Errorf("contains more than one root or the root directory is not the first entry : %w", errInvalidRoot)
+var (
+	errTraverseSymlink          = errors.New("cannot traverse symlinks")
+	errInvalidRoot              = errors.New("tar has invalid root")
+	errInvalidRootMultipleRoots = fmt.Errorf("contains more than one root or the root directory is not the first entry : %w", errInvalidRoot)
+)
 
 // Extractor is used for extracting tar files to a filesystem.
 //
@@ -252,7 +254,7 @@ func (te *Extractor) outputPath(basePlatformPath, relativeTarPath string) (strin
 var errExtractedDirToSymlink = errors.New("cannot extract to symlink")
 
 func (te *Extractor) extractDir(path string) error {
-	err := os.MkdirAll(path, 0755)
+	err := os.MkdirAll(path, 0o755)
 	if err != nil {
 		return err
 	}

@@ -13,7 +13,6 @@ import (
 	bssession "github.com/ipfs/boxo/bitswap/client/internal/session"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
 	"github.com/ipfs/boxo/bitswap/internal/testutil"
-	"github.com/ipfs/boxo/internal/test"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
@@ -33,23 +32,26 @@ type fakeSession struct {
 func (*fakeSession) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
 	return nil, nil
 }
+
 func (*fakeSession) GetBlocks(context.Context, []cid.Cid) (<-chan blocks.Block, error) {
 	return nil, nil
 }
+
 func (fs *fakeSession) ID() uint64 {
 	return fs.id
 }
+
 func (fs *fakeSession) ReceiveFrom(p peer.ID, ks []cid.Cid, wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 	fs.ks = append(fs.ks, ks...)
 	fs.wantBlocks = append(fs.wantBlocks, wantBlocks...)
 	fs.wantHaves = append(fs.wantHaves, wantHaves...)
 }
+
 func (fs *fakeSession) Shutdown() {
 	fs.sm.RemoveSession(fs.id)
 }
 
-type fakeSesPeerManager struct {
-}
+type fakeSesPeerManager struct{}
 
 func (*fakeSesPeerManager) Peers() []peer.ID          { return nil }
 func (*fakeSesPeerManager) PeersDiscovered() bool     { return false }
@@ -73,6 +75,7 @@ func (fpm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid) 
 	defer fpm.lk.Unlock()
 	fpm.cancels = append(fpm.cancels, cancels...)
 }
+
 func (fpm *fakePeerManager) cancelled() []cid.Cid {
 	fpm.lk.Lock()
 	defer fpm.lk.Unlock()
@@ -89,7 +92,8 @@ func sessionFactory(ctx context.Context,
 	notif notifications.PubSub,
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D,
-	self peer.ID) Session {
+	self peer.ID,
+) Session {
 	fs := &fakeSession{
 		id:    id,
 		pm:    sprm.(*fakeSesPeerManager),
@@ -108,8 +112,6 @@ func peerManagerFactory(ctx context.Context, id uint64) bssession.SessionPeerMan
 }
 
 func TestReceiveFrom(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -157,8 +159,6 @@ func TestReceiveFrom(t *testing.T) {
 }
 
 func TestReceiveBlocksWhenManagerShutdown(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -194,8 +194,6 @@ func TestReceiveBlocksWhenManagerShutdown(t *testing.T) {
 }
 
 func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	notif := notifications.New()
@@ -231,8 +229,6 @@ func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
 }
 
 func TestShutdown(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

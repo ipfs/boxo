@@ -29,8 +29,10 @@ var (
 var log = logging.Logger("merkledag")
 
 // for testing custom CidBuilders
-var zeros [256]byte
-var zeroCid = mustZeroCid()
+var (
+	zeros   [256]byte
+	zeroCid = mustZeroCid()
+)
 
 type immutableProtoNode struct {
 	encoded []byte

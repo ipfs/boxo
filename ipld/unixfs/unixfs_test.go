@@ -165,7 +165,6 @@ func TestMetadata(t *testing.T) {
 	if !mimeAiff {
 		t.Fatal("Metadata does not Marshal and Unmarshal properly!")
 	}
-
 }
 
 func TestIsDir(t *testing.T) {

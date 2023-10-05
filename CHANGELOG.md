@@ -14,8 +14,6 @@ The following emojis are used to highlight certain changes:
 
 ## [Unreleased]
 
-* ✨ The gateway now supports partial CAR exports via query parameters from [IPIP-402](https://github.com/ipfs/specs/pull/402).
-
 ### Added
 
 ### Changed
@@ -25,6 +23,201 @@ The following emojis are used to highlight certain changes:
 ### Fixed
 
 ### Security
+
+## [v0.13.1]
+
+### Added
+
+* An option `DisableHTMLErrors` has been added to `gateway.Config`. When this option
+  is `true`, pretty HTML error pages for web browsers are disabled. Instead, a
+  `text/plain` page with the raw error message as the body is returned.
+
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [v0.13.0]
+
+### Added
+
+* ✨ The `routing/http` implements Delegated Peer Routing introduced in [IPIP-417](https://github.com/ipfs/specs/pull/417).
+
+### Changed
+
+* 🛠 The `routing/http` package received the following modifications:
+  * Client `GetIPNSRecord` and `PutIPNSRecord` have been renamed to `GetIPNS` and
+    `PutIPNS`, respectively. Similarly, the required function names in the server
+    `ContentRouter` have also been updated.
+  * `ReadBitswapProviderRecord` has been renamed to `BitswapRecord` and marked as deprecated.
+    From now on, please use the protocol-agnostic `PeerRecord` for most use cases. The new
+    Peer Schema has been introduced in [IPIP-417](https://github.com/ipfs/specs/pull/417).
+
+### Removed
+
+* 🛠 The `routing/http` package experienced following removals:
+  * Server and client no longer support the experimental `Provide` method.
+    `ProvideBitswap` is still usable, but marked as deprecated. A protocol-agnostic 
+    provide mechanism is being worked on in [IPIP-378](https://github.com/ipfs/specs/pull/378).
+  * Server no longer exports `FindProvidersPath` and `ProvidePath`.
+
+### Fixed
+
+* The normalization of DNSLink identifiers in `gateway` has been corrected in the edge
+  case where the value passed to the path component of the URL is already normalized.
+
+### Security
+
+## [v0.12.0]
+
+### Added
+
+* The `routing/http` client and server now support Delegated IPNS at `/routing/v1`
+  as per [IPIP-379](https://specs.ipfs.tech/ipips/ipip-0379/).
+* 🛠 The `verifycid` package has been updated with the new Allowlist interface as part of
+  reducing globals efforts.
+* The `blockservice` and `provider` packages has been updated to accommodate for
+  changes in `verifycid`.
+
+### Changed
+
+* 🛠 `blockservice.New` now accepts a variadic of func options following the [Functional
+  Options pattern](https://www.sohamkamani.com/golang/options-pattern/).
+
+### Removed
+
+### Fixed
+
+- HTTP Gateway API: Not having a block will result in a 5xx error rather than 404
+- HTTP Gateway API: CAR requests will return 200s and a CAR file proving a requested path does not exist rather than returning an error
+- 🛠 `MultiFileReader` has been updated with a new header with the encoded file name instead of the plain filename, due to a regression found in  [`net/textproto`](https://github.com/golang/go/issues/60674). This only affects files with binary characters in their name. By keeping the old header, we maximize backwards compatibility.
+  |            | New Client | Old Client  |
+  |------------|------------|-------------|
+  | New Server | ✅         | 🟡*         |
+  | Old Server | ✅         | ✅          |
+   *Old clients can only send Unicode file paths to the server.
+
+### Security
+
+## [v0.11.0]
+
+### Added
+
+* ✨ The gateway now supports the optional `order` and `dups` CAR parameters
+  from [IPIP-412](https://github.com/ipfs/specs/pull/412).
+  * The `BlocksBackend` only implements `order=dfs` (Depth-First Search)
+    ordering, which was already the default behavior.
+  * If a request specifies no `dups`, response with `dups=n` is returned, which
+    was already the default behavior.
+  * If a request explicitly specifies a CAR `order` other than `dfs`, it will
+    result in an error.
+  * The only change to the default behavior on CAR responses is that we follow
+    IPIP-412 and make `order=dfs;dups=n` explicit in the returned
+    `Content-Type` HTTP header.
+* ✨ While the call signature remains the same, the blocks that Bitswap returns can now be cast to [traceability.Block](./bitswap/client/traceability/block.go), which will additionally tell you where the Block came from and how long it took to fetch. This helps consumers of Bitswap collect better metrics on Bitswap behavior.
+
+### Changed
+
+* 🛠 The `ipns` package has been refactored.
+  * You should no longer use the direct Protobuf version of the IPNS Record.
+    Instead, we have a shiny new `ipns.Record` type that wraps all the required
+    functionality to work the best as possible with IPNS v2 Records. Please
+    check the [documentation](https://pkg.go.dev/github.com/ipfs/boxo/ipns) for
+    more information, and follow
+    [ipfs/specs#376](https://github.com/ipfs/specs/issues/376) for related
+    IPIP.
+  * There is no change to IPNS Records produced by `boxo/ipns`, it still
+    produces both V1 and V2 signatures by default, it is still backward-compatible.
+
+### Removed
+
+- 🛠 `ipld/car`  has been removed. Please use [ipld/go-car](https://github.com/ipld/go-car) instead.
+  More information regarding this decision can be found in [issue 218](https://github.com/ipfs/boxo/issues/218).
+
+### Fixed
+
+- Removed mentions of unused ARC algorithm ([#336](https://github.com/ipfs/boxo/issues/366#issuecomment-1597253540))
+- Handle `_redirects` file when `If-None-Match` header is present ([#412](https://github.com/ipfs/boxo/pull/412))
+
+### Security
+
+## [0.10.3] - 2023-08-08
+
+### Added
+
+### Changed
+
+### Removed
+
+### Fixed
+
+- Handle `_redirects` file when `If-None-Match` header is present ([#412](https://github.com/ipfs/boxo/pull/412))
+
+### Security
+
+## [0.10.2] - 2023-06-29
+
+### Fixed
+
+- Gateway: include CORS on subdomain redirects.
+- Gateway: ensure 'X-Ipfs-Root' header is valid.
+
+## [0.10.1] - 2023-06-19
+
+### Added
+
+None.
+
+### Changed
+
+None.
+
+### Removed
+
+None.
+
+### Fixed
+
+- Allow CAR requests with a path when `DeserializedResponses` is `false`.
+
+### Security
+
+None.
+
+## [0.10.0] - 2023-06-09
+
+### Added
+
+* ✨ The gateway now supports partial CAR exports via query parameters from [IPIP-402](https://github.com/ipfs/specs/pull/402).
+
+### Changed
+
+* 🛠 A few trivial breaking changes have been done to the gateway:
+  * The signature of `IPFSBackend.GetCAR` has been adapted to support [IPIP-402](https://github.com/ipfs/specs/pull/402) CAR Parameters.
+  * A few variables have been renamed for consistency:
+    * `WithHostname` -> `NewHostnameHandler`
+    * `Specification` -> `PublicGateway`
+    * `NewErrorResponse` -> `NewErrorStatusCode`
+    * `NewErrorResponseForCode` -> `NewErrorStatusCodeFromStatus`
+    * `BlocksGateway` -> `BlocksBackend`
+    * `BlocksGatewayOption` -> `BlocksBackendOption`
+    * `NewBlocksGateway` -> `NewBlocksBackend`
+  * Some functions that are not supposed to be outside of the package were removed: `ServeContent`.
+
+### Removed
+
+None.
+
+### Fixed
+
+None.
+
+### Security
+
+None.
 
 ## [0.9.0] - 2023-06-08
 
@@ -46,8 +239,9 @@ The following emojis are used to highlight certain changes:
   - `RecursiveKeys`
   - `InternalKeys`
 - 🛠 `provider/batched.New` has been moved to `provider.New` and arguments has been changed. (https://github.com/ipfs/boxo/pulls/273)
-  - a routing system is now passed with the `provider.Online` option, by default the system run in offline mode (push stuff onto the queue); and
-  - you do not have to pass a queue anymore, you pass a `datastore.Datastore` exclusively.
+  - A routing system is now passed with the `provider.Online` option, by default the system run in offline mode (push stuff onto the queue).
+  - When using `provider.Online` calling the `.Run` method is not required anymore, the background worker is implicitely started in the background by `provider.New`.
+  - You do not have to pass a queue anymore, you pass a `datastore.Datastore` exclusively.
 - 🛠 `provider.NewOfflineProvider` has been renamed to `provider.NewNoopProvider` to show more clearly that is does nothing. (https://github.com/ipfs/boxo/pulls/273)
 - 🛠 `provider.Provider` and `provider.Reprovider` has been merged under one `provider.System`. (https://github.com/ipfs/boxo/pulls/273)
 - 🛠 `routing/http` responses now return a streaming `iter.ResultIter` generic interface. (https://github.com/ipfs/boxo/pulls/18)

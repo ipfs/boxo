@@ -164,5 +164,7 @@ func (f *serialFile) Size() (int64, error) {
 	return du, err
 }
 
-var _ Directory = &serialFile{}
-var _ DirIterator = &serialIterator{}
+var (
+	_ Directory   = &serialFile{}
+	_ DirIterator = &serialIterator{}
+)

@@ -2,12 +2,11 @@ package assets
 
 import (
 	"embed"
+	"html/template"
 	"io"
 	"io/fs"
 	"net"
 	"strconv"
-
-	"html/template"
 	"strings"
 
 	"github.com/cespare/xxhash/v2"

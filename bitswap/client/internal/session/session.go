@@ -18,8 +18,10 @@ import (
 	"go.uber.org/zap"
 )
 
-var log = logging.Logger("bs:sess")
-var sflog = log.Desugar()
+var (
+	log   = logging.Logger("bs:sess")
+	sflog = log.Desugar()
+)
 
 const (
 	broadcastLiveWantsLimit = 64
@@ -146,8 +148,8 @@ func New(
 	notif notifications.PubSub,
 	initialSearchDelay time.Duration,
 	periodicSearchDelay delay.D,
-	self peer.ID) *Session {
-
+	self peer.ID,
+) *Session {
 	ctx, cancel := context.WithCancel(ctx)
 	s := &Session{
 		sw:                  newSessionWants(broadcastLiveWantsLimit),

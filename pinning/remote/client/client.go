@@ -114,8 +114,10 @@ func (pinLsOpts) FilterAfter(t time.Time) LsOption {
 	}
 }
 
-const recordLimit = 1000
-const defaultLimit = 10
+const (
+	recordLimit  = 1000
+	defaultLimit = 10
+)
 
 func (pinLsOpts) Limit(limit int) LsOption {
 	return func(options *lsSettings) error {

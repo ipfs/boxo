@@ -15,8 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var symlinksEnabled bool
-var symlinksEnabledErr error
+var (
+	symlinksEnabled    bool
+	symlinksEnabledErr error
+)
 
 func init() {
 	// check if the platform supports symlinks
@@ -320,7 +322,7 @@ func testTarExtraction(t *testing.T, setup func(t *testing.T, rootDir string), t
 	rootDir, err := os.MkdirTemp("", "tar-extraction-test")
 	assert.NoError(t, err)
 	extractDir := fp.Join(rootDir, tarOutRoot)
-	err = os.MkdirAll(extractDir, 0755)
+	err = os.MkdirAll(extractDir, 0o755)
 	assert.NoError(t, err)
 
 	// Generated TAR file.
@@ -376,9 +378,11 @@ type tarEntry interface {
 	write(tw *tar.Writer) error
 }
 
-var _ tarEntry = (*fileTarEntry)(nil)
-var _ tarEntry = (*dirTarEntry)(nil)
-var _ tarEntry = (*symlinkTarEntry)(nil)
+var (
+	_ tarEntry = (*fileTarEntry)(nil)
+	_ tarEntry = (*dirTarEntry)(nil)
+	_ tarEntry = (*symlinkTarEntry)(nil)
+)
 
 type fileTarEntry struct {
 	path string
@@ -397,12 +401,13 @@ func (e *fileTarEntry) write(tw *tar.Writer) error {
 	tw.Flush()
 	return nil
 }
+
 func writeFileHeader(w *tar.Writer, fpath string, size uint64) error {
 	return w.WriteHeader(&tar.Header{
 		Name:     fpath,
 		Size:     int64(size),
 		Typeflag: tar.TypeReg,
-		Mode:     0644,
+		Mode:     0o644,
 		ModTime:  time.Now(),
 		// TODO: set mode, dates, etc. when added to unixFS
 	})
@@ -416,7 +421,7 @@ func (e *dirTarEntry) write(tw *tar.Writer) error {
 	return tw.WriteHeader(&tar.Header{
 		Name:     e.path,
 		Typeflag: tar.TypeDir,
-		Mode:     0777,
+		Mode:     0o777,
 		ModTime:  time.Now(),
 		// TODO: set mode, dates, etc. when added to unixFS
 	})
@@ -431,7 +436,7 @@ func (e *symlinkTarEntry) write(w *tar.Writer) error {
 	return w.WriteHeader(&tar.Header{
 		Name:     e.path,
 		Linkname: e.target,
-		Mode:     0777,
+		Mode:     0o777,
 		Typeflag: tar.TypeSymlink,
 	})
 }

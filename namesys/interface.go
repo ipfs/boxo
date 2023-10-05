@@ -30,9 +30,8 @@ For command-line bindings to this functionality, see:
 package namesys
 
 import (
-	"errors"
-
 	"context"
+	"errors"
 
 	opts "github.com/ipfs/boxo/coreiface/options/namesys"
 	"github.com/ipfs/boxo/path"
@@ -69,7 +68,6 @@ type Result struct {
 
 // Resolver is an object capable of resolving names.
 type Resolver interface {
-
 	// Resolve performs a recursive lookup, returning the dereferenced
 	// path.  For example, if ipfs.io has a DNS TXT record pointing to
 	//   /ipns/QmatmE9msSfkKxoffpHwNLNKgwZG8eT9Bud6YoPab52vpy

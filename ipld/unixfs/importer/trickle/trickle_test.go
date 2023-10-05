@@ -431,7 +431,6 @@ func testSeekingStress(t *testing.T, rawLeaves UseRawLeaves) {
 			t.Fatal(err)
 		}
 	}
-
 }
 
 func TestSeekingConsistency(t *testing.T) {

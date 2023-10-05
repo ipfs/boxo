@@ -14,7 +14,6 @@ import (
 	"github.com/ipfs/boxo/bitswap/server"
 	testinstance "github.com/ipfs/boxo/bitswap/testinstance"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
-	"github.com/ipfs/boxo/internal/test"
 	mockrouting "github.com/ipfs/boxo/routing/mock"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -49,8 +48,6 @@ func addBlock(t *testing.T, ctx context.Context, inst testinstance.Instance, blk
 const kNetworkDelay = 0 * time.Millisecond
 
 func TestClose(t *testing.T) {
-	test.Flaky(t)
-
 	vnet := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
@@ -67,8 +64,6 @@ func TestClose(t *testing.T) {
 }
 
 func TestProviderForKeyButNetworkCannotFind(t *testing.T) { // TODO revisit this
-	test.Flaky(t)
-
 	rs := mockrouting.NewServer()
 	net := tn.VirtualNetwork(rs, delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
@@ -94,8 +89,6 @@ func TestProviderForKeyButNetworkCannotFind(t *testing.T) { // TODO revisit this
 }
 
 func TestGetBlockFromPeerAfterPeerAnnounces(t *testing.T) {
-	test.Flaky(t)
-
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	block := blocks.NewBlock([]byte("block"))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
@@ -124,8 +117,6 @@ func TestGetBlockFromPeerAfterPeerAnnounces(t *testing.T) {
 }
 
 func TestDoesNotProvideWhenConfiguredNotTo(t *testing.T) {
-	test.Flaky(t)
-
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	block := blocks.NewBlock([]byte("block"))
 	bsOpts := []bitswap.Option{bitswap.ProvideEnabled(false), bitswap.ProviderSearchDelay(50 * time.Millisecond)}
@@ -158,8 +149,6 @@ func TestDoesNotProvideWhenConfiguredNotTo(t *testing.T) {
 // Tests that a received block is not stored in the blockstore if the block was
 // not requested by the client
 func TestUnwantedBlockNotAdded(t *testing.T) {
-	test.Flaky(t)
-
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	block := blocks.NewBlock([]byte("block"))
 	bsMessage := bsmsg.New(true)
@@ -195,8 +184,6 @@ func TestUnwantedBlockNotAdded(t *testing.T) {
 //
 //	(because the live request queue is full)
 func TestPendingBlockAdded(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	bg := blocksutil.NewBlockGenerator()
@@ -245,8 +232,6 @@ func TestPendingBlockAdded(t *testing.T) {
 }
 
 func TestLargeSwarm(t *testing.T) {
-	test.Flaky(t)
-
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -279,8 +264,6 @@ func TestLargeFile(t *testing.T) {
 }
 
 func TestLargeFileTwoPeers(t *testing.T) {
-	test.Flaky(t)
-
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -290,8 +273,6 @@ func TestLargeFileTwoPeers(t *testing.T) {
 }
 
 func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	if testing.Short() {
 		t.SkipNow()
@@ -349,8 +330,6 @@ func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
 
 // TODO simplify this test. get to the _essence_!
 func TestSendToWantingPeer(t *testing.T) {
-	test.Flaky(t)
-
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -390,12 +369,9 @@ func TestSendToWantingPeer(t *testing.T) {
 	if !blkrecvd.Cid().Equals(alpha.Cid()) {
 		t.Fatal("Wrong block!")
 	}
-
 }
 
 func TestEmptyKey(t *testing.T) {
-	test.Flaky(t)
-
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
@@ -429,8 +405,6 @@ func assertStat(t *testing.T, st *bitswap.Stat, sblks, rblks, sdata, rdata uint6
 }
 
 func TestBasicBitswap(t *testing.T) {
-	test.Flaky(t)
-
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
@@ -503,8 +477,6 @@ func TestBasicBitswap(t *testing.T) {
 }
 
 func TestDoubleGet(t *testing.T) {
-	test.Flaky(t)
-
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
@@ -570,8 +542,6 @@ func TestDoubleGet(t *testing.T) {
 }
 
 func TestWantlistCleanup(t *testing.T) {
-	test.Flaky(t)
-
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
@@ -694,8 +664,6 @@ func newReceipt(sent, recv, exchanged uint64) *server.Receipt {
 }
 
 func TestBitswapLedgerOneWay(t *testing.T) {
-	test.Flaky(t)
-
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
@@ -745,8 +713,6 @@ func TestBitswapLedgerOneWay(t *testing.T) {
 }
 
 func TestBitswapLedgerTwoWay(t *testing.T) {
-	test.Flaky(t)
-
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
@@ -828,14 +794,13 @@ func (tsl *testingScoreLedger) Start(scorePeer server.ScorePeerFunc) {
 	tsl.scorePeer = scorePeer
 	close(tsl.started)
 }
+
 func (tsl *testingScoreLedger) Stop() {
 	close(tsl.closed)
 }
 
 // Tests start and stop of a custom decision logic
 func TestWithScoreLedger(t *testing.T) {
-	test.Flaky(t)
-
 	tsl := newTestingScoreLedger()
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	bsOpts := []bitswap.Option{bitswap.WithScoreLedger(tsl)}

@@ -16,7 +16,6 @@ import (
 	dsq "github.com/ipfs/go-datastore/query"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
-	uatomic "go.uber.org/atomic"
 )
 
 var logger = logging.Logger("blockstore")
@@ -48,6 +47,16 @@ type Blockstore interface {
 	// AllKeysChan returns a channel from which
 	// the CIDs in the Blockstore can be read. It should respect
 	// the given context, closing the channel if it becomes Done.
+	//
+	// AllKeysChan treats the underlying blockstore as a set, and returns that
+	// set in full. The only guarantee is that the consumer of AKC will
+	// encounter every CID in the underlying set, at least once. If the
+	// underlying blockstore supports duplicate CIDs it is up to the
+	// implementation to elect to return such duplicates or not. Similarly no
+	// guarantees are made regarding CID ordering.
+	//
+	// When underlying blockstore is operating on Multihash and codec information
+	// is not preserved, returned CIDs will use Raw (0x55) codec.
 	AllKeysChan(ctx context.Context) (<-chan cid.Cid, error)
 
 	// HashOnRead specifies if every read block should be
@@ -137,7 +146,6 @@ func NoPrefix() Option {
 func NewBlockstore(d ds.Batching, opts ...Option) Blockstore {
 	bs := &blockstore{
 		datastore: d,
-		rehash:    uatomic.NewBool(false),
 	}
 
 	for _, o := range opts {
@@ -162,7 +170,7 @@ func NewBlockstoreNoPrefix(d ds.Batching) Blockstore {
 type blockstore struct {
 	datastore ds.Batching
 
-	rehash       *uatomic.Bool
+	rehash       atomic.Bool
 	writeThrough bool
 	noPrefix     bool
 }
@@ -260,7 +268,6 @@ func (bs *blockstore) DeleteBlock(ctx context.Context, k cid.Cid) error {
 //
 // AllKeysChan respects context.
 func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
-
 	// KeysOnly, because that would be _a lot_ of data.
 	q := dsq.Query{KeysOnly: true}
 	res, err := bs.datastore.Query(ctx, q)
