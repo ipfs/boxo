@@ -4,36 +4,26 @@ package path
 import (
 	"fmt"
 	gopath "path"
-	"strconv"
 	"strings"
 
 	"github.com/ipfs/go-cid"
 )
 
-type Namespace uint
+type Namespace string
 
 func (namespace Namespace) String() string {
-	switch namespace {
-	case IPFSNamespace:
-		return "ipfs"
-	case IPNSNamespace:
-		return "ipns"
-	case IPLDNamespace:
-		return "ipld"
-	default:
-		return "unknown path namespace: " + strconv.FormatUint(uint64(namespace), 10)
-	}
+	return string(namespace)
 }
 
 // Mutable returns false if the data under this namespace is guaranteed to not change.
 func (namespace Namespace) Mutable() bool {
-	return namespace == IPNSNamespace
+	return namespace != IPFSNamespace && namespace != IPLDNamespace
 }
 
 const (
-	IPFSNamespace Namespace = iota
-	IPNSNamespace
-	IPLDNamespace
+	IPFSNamespace Namespace = "ipfs"
+	IPNSNamespace Namespace = "ipns"
+	IPLDNamespace Namespace = "ipld"
 )
 
 // Path is a generic, valid, and well-formed path. A valid path is shaped as follows:
