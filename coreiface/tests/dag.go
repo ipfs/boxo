@@ -121,7 +121,7 @@ func (tp *TestSuite) TestDagPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ndd, err := api.Dag().Get(ctx, rp.Cid())
+	ndd, err := api.Dag().Get(ctx, rp.RootCid())
 	if err != nil {
 		t.Fatal(err)
 	}

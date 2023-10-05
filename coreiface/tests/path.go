@@ -123,7 +123,7 @@ func (tp *TestSuite) TestPathRoot(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, api.Dag())
 
-	nd, err := ipldcbor.FromJSON(strings.NewReader(`{"foo": {"/": "`+blk.Path().Cid().String()+`"}}`), math.MaxUint64, -1)
+	nd, err := ipldcbor.FromJSON(strings.NewReader(`{"foo": {"/": "`+blk.Path().RootCid().String()+`"}}`), math.MaxUint64, -1)
 	require.NoError(t, err)
 
 	err = api.Dag().Add(ctx, nd)
@@ -134,7 +134,7 @@ func (tp *TestSuite) TestPathRoot(t *testing.T) {
 
 	rp, _, err := api.ResolvePath(ctx, p)
 	require.NoError(t, err)
-	require.Equal(t, rp.Cid().String(), blk.Path().Cid().String())
+	require.Equal(t, rp.RootCid().String(), blk.Path().RootCid().String())
 }
 
 func (tp *TestSuite) TestPathJoin(t *testing.T) {

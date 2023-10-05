@@ -22,7 +22,7 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 
 	setIpfsRootsHeader(w, rq, &pathMetadata)
 
-	blockCid := pathMetadata.LastSegment.Cid()
+	blockCid := pathMetadata.LastSegment.RootCid()
 
 	// Set Content-Disposition
 	var name string

@@ -14,7 +14,7 @@ func newIPLDPath(cid cid.Cid) ImmutablePath {
 			str:       fmt.Sprintf("/%s/%s", IPLDNamespace, cid.String()),
 			namespace: IPLDNamespace,
 		},
-		cid: cid,
+		rootCid: cid,
 	}
 }
 
@@ -151,7 +151,7 @@ func TestFromCid(t *testing.T) {
 		p := FromCid(c)
 		assert.IsType(t, immutablePath{}, p)
 		assert.Equal(t, "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", p.String())
-		assert.Equal(t, c, p.Cid())
+		assert.Equal(t, c, p.RootCid())
 	})
 
 	t.Run("Works with CIDv1", func(t *testing.T) {
@@ -163,7 +163,7 @@ func TestFromCid(t *testing.T) {
 		p := FromCid(c)
 		assert.IsType(t, immutablePath{}, p)
 		assert.Equal(t, "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", p.String())
-		assert.Equal(t, c, p.Cid())
+		assert.Equal(t, c, p.RootCid())
 	})
 
 	t.Run("newIPLDPath returns correct ImmutablePath", func(t *testing.T) {
@@ -173,7 +173,7 @@ func TestFromCid(t *testing.T) {
 		p := newIPLDPath(c)
 		assert.IsType(t, immutablePath{}, p)
 		assert.Equal(t, "/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", p.String())
-		assert.Equal(t, c, p.Cid())
+		assert.Equal(t, c, p.RootCid())
 
 		// Check if CID encoding is preserved.
 		c, err = cid.Decode("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")
@@ -182,7 +182,7 @@ func TestFromCid(t *testing.T) {
 		p = newIPLDPath(c)
 		assert.IsType(t, immutablePath{}, p)
 		assert.Equal(t, "/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", p.String())
-		assert.Equal(t, c, p.Cid())
+		assert.Equal(t, c, p.RootCid())
 	})
 }
 
@@ -230,7 +230,7 @@ func TestNewImmutablePath(t *testing.T) {
 			ip, err := NewImmutablePath(p)
 			assert.NoError(t, err)
 			assert.Equal(t, testCase.path, ip.String())
-			assert.Equal(t, testCase.cid, ip.Cid())
+			assert.Equal(t, testCase.cid, ip.RootCid())
 		}
 	})
 }

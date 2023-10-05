@@ -80,16 +80,16 @@ func (p path) Segments() []string {
 type ImmutablePath interface {
 	Path
 
-	// Cid returns the [cid.Cid] of the root object of the path.
-	Cid() cid.Cid
+	// RootCid returns the [cid.Cid] of the root object of the path.
+	RootCid() cid.Cid
 }
 
 var _ Path = immutablePath{}
 var _ ImmutablePath = immutablePath{}
 
 type immutablePath struct {
-	path Path
-	cid  cid.Cid
+	path    Path
+	rootCid cid.Cid
 }
 
 func NewImmutablePath(p Path) (ImmutablePath, error) {
@@ -103,7 +103,7 @@ func NewImmutablePath(p Path) (ImmutablePath, error) {
 		return nil, &ErrInvalidPath{err: err, path: p.String()}
 	}
 
-	return immutablePath{path: p, cid: cid}, nil
+	return immutablePath{path: p, rootCid: cid}, nil
 }
 
 func (ip immutablePath) String() string {
@@ -118,8 +118,8 @@ func (ip immutablePath) Segments() []string {
 	return ip.path.Segments()
 }
 
-func (ip immutablePath) Cid() cid.Cid {
-	return ip.cid
+func (ip immutablePath) RootCid() cid.Cid {
+	return ip.rootCid
 }
 
 // FromCid returns a new "/ipfs" path with the provided CID.
@@ -129,7 +129,7 @@ func FromCid(cid cid.Cid) ImmutablePath {
 			str:       fmt.Sprintf("/%s/%s", IPFSNamespace, cid.String()),
 			namespace: IPFSNamespace,
 		},
-		cid: cid,
+		rootCid: cid,
 	}
 }
 
@@ -171,7 +171,7 @@ func NewPath(str string) (Path, error) {
 				str:       cleaned,
 				namespace: ns,
 			},
-			cid: cid,
+			rootCid: cid,
 		}, nil
 	case "ipns":
 		return path{

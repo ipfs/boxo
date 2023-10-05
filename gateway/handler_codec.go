@@ -83,7 +83,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	ctx, span := spanTrace(ctx, "Handler.RenderCodec", trace.WithAttributes(attribute.String("path", resolvedPath.String()), attribute.String("requestedContentType", rq.responseFormat)))
 	defer span.End()
 
-	blockCid := resolvedPath.Cid()
+	blockCid := resolvedPath.RootCid()
 	cidCodec := mc.Code(blockCid.Prefix().Codec)
 	responseContentType := rq.responseFormat
 
@@ -111,7 +111,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 
 	// Set HTTP headers (for caching, etc). Etag will be replaced if handled by serveCodecHTML.
-	modtime := addCacheControlHeaders(w, r, rq.contentPath, resolvedPath.Cid(), responseContentType)
+	modtime := addCacheControlHeaders(w, r, rq.contentPath, resolvedPath.RootCid(), responseContentType)
 	_ = setCodecContentDisposition(w, r, resolvedPath, responseContentType)
 	w.Header().Set("Content-Type", responseContentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -186,7 +186,7 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 	w.Header().Del("Content-Disposition")
 
 	// Generated index requires custom Etag (output may change between Kubo versions)
-	dagEtag := getDagIndexEtag(resolvedPath.Cid())
+	dagEtag := getDagIndexEtag(resolvedPath.RootCid())
 	w.Header().Set("Etag", dagEtag)
 
 	// Remove Cache-Control for now to match UnixFS dir-index-html responses
@@ -194,11 +194,11 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 	// TODO: if we ever change behavior for UnixFS dir listings, same changes should be applied here
 	w.Header().Del("Cache-Control")
 
-	cidCodec := mc.Code(resolvedPath.Cid().Prefix().Codec)
+	cidCodec := mc.Code(resolvedPath.RootCid().Prefix().Codec)
 	if err := assets.DagTemplate.Execute(w, assets.DagTemplateData{
 		GlobalData: i.getTemplateGlobalData(r, contentPath),
 		Path:       contentPath.String(),
-		CID:        resolvedPath.Cid().String(),
+		CID:        resolvedPath.RootCid().String(),
 		CodecName:  cidCodec.String(),
 		CodecHex:   fmt.Sprintf("0x%x", uint64(cidCodec)),
 		Node:       parseNode(blockCid, blockData),
@@ -311,7 +311,7 @@ func setCodecContentDisposition(w http.ResponseWriter, r *http.Request, resolved
 	if urlFilename := r.URL.Query().Get("filename"); urlFilename != "" {
 		name = urlFilename
 	} else {
-		name = resolvedPath.Cid().String() + ext
+		name = resolvedPath.RootCid().String() + ext
 	}
 
 	// JSON should be inlined, but ?download=true should still override

@@ -134,7 +134,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	w.Header().Set("Content-Type", "text/html")
 
 	// Generated dir index requires custom Etag (output may change between go-libipfs versions)
-	dirEtag := getDirListingEtag(resolvedPath.Cid())
+	dirEtag := getDirListingEtag(resolvedPath.RootCid())
 	w.Header().Set("Etag", dirEtag)
 
 	if r.Method == http.MethodHead {
@@ -189,7 +189,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	size := humanize.Bytes(directoryMetadata.dagSize)
-	hash := resolvedPath.Cid().String()
+	hash := resolvedPath.RootCid().String()
 	globalData := i.getTemplateGlobalData(r, contentPath)
 
 	// See comment above where originalUrlPath is declared.

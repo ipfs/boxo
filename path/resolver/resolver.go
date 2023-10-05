@@ -81,7 +81,7 @@ func (r *basicResolver) ResolveToLastNode(ctx context.Context, fpath path.Immuta
 	ctx, span := startSpan(ctx, "basicResolver.ResolveToLastNode", trace.WithAttributes(attribute.Stringer("Path", fpath)))
 	defer span.End()
 
-	c, remainder := fpath.Cid(), fpath.Segments()[2:]
+	c, remainder := fpath.RootCid(), fpath.Segments()[2:]
 
 	if len(remainder) == 0 {
 		return c, nil, nil
@@ -146,7 +146,7 @@ func (r *basicResolver) ResolvePath(ctx context.Context, fpath path.ImmutablePat
 	ctx, span := startSpan(ctx, "basicResolver.ResolvePath", trace.WithAttributes(attribute.Stringer("Path", fpath)))
 	defer span.End()
 
-	c, remainder := fpath.Cid(), fpath.Segments()[2:]
+	c, remainder := fpath.RootCid(), fpath.Segments()[2:]
 
 	// create a selector to traverse all path segments but only match the last
 	pathSelector := pathLeafSelector(remainder)
@@ -171,7 +171,7 @@ func (r *basicResolver) ResolvePathComponents(ctx context.Context, fpath path.Im
 
 	defer log.Debugw("resolvePathComponents", "fpath", fpath, "error", err)
 
-	c, remainder := fpath.Cid(), fpath.Segments()[2:]
+	c, remainder := fpath.RootCid(), fpath.Segments()[2:]
 
 	// create a selector to traverse and match all path segments
 	pathSelector := pathAllSelector(remainder)

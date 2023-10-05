@@ -37,7 +37,7 @@ func TestDagJsonCborPreview(t *testing.T) {
 	resolvedPath, err := backend.resolvePathNoRootsReturned(ctx, p)
 	require.NoError(t, err)
 
-	cidStr := resolvedPath.Cid().String()
+	cidStr := resolvedPath.RootCid().String()
 
 	t.Run("path gateway normalizes to trailing slash", func(t *testing.T) {
 		t.Parallel()

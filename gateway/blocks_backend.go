@@ -332,7 +332,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 	go func() {
 		cw, err := storage.NewWritable(
 			w,
-			[]cid.Cid{pathMetadata.LastSegment.Cid()},
+			[]cid.Cid{pathMetadata.LastSegment.RootCid()},
 			car.WriteAsCarV1(true),
 			car.AllowDuplicatePuts(params.Duplicates.Bool()),
 		)
@@ -549,7 +549,7 @@ func (bb *BlocksBackend) getNode(ctx context.Context, path path.ImmutablePath) (
 		LastSegmentRemainder: remainder,
 	}
 
-	lastRoot := lastSeg.Cid()
+	lastRoot := lastSeg.RootCid()
 
 	nd, err := bb.dagService.Get(ctx, lastRoot)
 	if err != nil {
@@ -602,13 +602,13 @@ func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.Immu
 			// TODO: should we be more explicit here and is this part of the IPFSBackend contract?
 			// The issue here was that we returned datamodel.ErrWrongKind instead of this resolver error
 			if isErrNotFound(err) {
-				return nil, nil, nil, &resolver.ErrNoLink{Name: root, Node: lastPath.Cid()}
+				return nil, nil, nil, &resolver.ErrNoLink{Name: root, Node: lastPath.RootCid()}
 			}
 			return nil, nil, nil, err
 		}
 		lastPath = resolvedSubPath
 		remainder = remainderSubPath
-		pathRoots = append(pathRoots, lastPath.Cid())
+		pathRoots = append(pathRoots, lastPath.RootCid())
 	}
 
 	pathRoots = pathRoots[:len(pathRoots)-1]
@@ -668,7 +668,7 @@ func (bb *BlocksBackend) IsCached(ctx context.Context, p path.Path) bool {
 		return false
 	}
 
-	has, _ := bb.blockStore.Has(ctx, rp.Cid())
+	has, _ := bb.blockStore.Has(ctx, rp.RootCid())
 	return has
 }
 

@@ -76,7 +76,7 @@ func (tp *TestSuite) TestPinSimple(t *testing.T) {
 		t.Errorf("unexpected pin list len: %d", len(list))
 	}
 
-	if list[0].Path().Cid().String() != p.Cid().String() {
+	if list[0].Path().RootCid().String() != p.RootCid().String() {
 		t.Error("paths don't match")
 	}
 
@@ -119,12 +119,12 @@ func (tp *TestSuite) TestPinRecursive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nd2, err := ipldcbor.FromJSON(strings.NewReader(`{"lnk": {"/": "`+p0.Cid().String()+`"}}`), math.MaxUint64, -1)
+	nd2, err := ipldcbor.FromJSON(strings.NewReader(`{"lnk": {"/": "`+p0.RootCid().String()+`"}}`), math.MaxUint64, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	nd3, err := ipldcbor.FromJSON(strings.NewReader(`{"lnk": {"/": "`+p1.Cid().String()+`"}}`), math.MaxUint64, -1)
+	nd3, err := ipldcbor.FromJSON(strings.NewReader(`{"lnk": {"/": "`+p1.RootCid().String()+`"}}`), math.MaxUint64, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,8 +187,8 @@ func (tp *TestSuite) TestPinRecursive(t *testing.T) {
 		t.Errorf("unexpected pin list len: %d", len(list))
 	}
 
-	if list[0].Path().Cid().String() != p0.Cid().String() {
-		t.Errorf("unexpected path, %s != %s", list[0].Path().Cid().String(), p0.Cid().String())
+	if list[0].Path().RootCid().String() != p0.RootCid().String() {
+		t.Errorf("unexpected path, %s != %s", list[0].Path().RootCid().String(), p0.RootCid().String())
 	}
 
 	res, err := api.Pin().Verify(ctx)
@@ -402,13 +402,21 @@ type cidContainer interface {
 	Cid() cid.Cid
 }
 
+type immutablePathCidContainer struct {
+	path.ImmutablePath
+}
+
+func (i immutablePathCidContainer) Cid() cid.Cid {
+	return i.RootCid()
+}
+
 func getThreeChainedNodes(t *testing.T, ctx context.Context, api iface.CoreAPI, leafData string) (cidContainer, cidContainer, cidContainer) {
 	leaf, err := api.Unixfs().Add(ctx, strFile(leafData)())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	parent, err := ipldcbor.FromJSON(strings.NewReader(`{"lnk": {"/": "`+leaf.Cid().String()+`"}}`), math.MaxUint64, -1)
+	parent, err := ipldcbor.FromJSON(strings.NewReader(`{"lnk": {"/": "`+leaf.RootCid().String()+`"}}`), math.MaxUint64, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +430,7 @@ func getThreeChainedNodes(t *testing.T, ctx context.Context, api iface.CoreAPI, 
 		t.Fatal(err)
 	}
 
-	return leaf, parent, grandparent
+	return immutablePathCidContainer{leaf}, parent, grandparent
 }
 
 func assertPinTypes(t *testing.T, ctx context.Context, api iface.CoreAPI, recusive, direct, indirect []cidContainer) {
@@ -465,7 +473,7 @@ func assertPinCids(t *testing.T, pins []iface.Pin, cids ...cidContainer) {
 
 	valid := true
 	for _, p := range pins {
-		c := p.Path().Cid()
+		c := p.Path().RootCid()
 		if cSet.Has(c) {
 			cSet.Remove(c)
 		} else {
@@ -479,7 +487,7 @@ func assertPinCids(t *testing.T, pins []iface.Pin, cids ...cidContainer) {
 	if !valid {
 		pinStrs := make([]string, len(pins))
 		for i, p := range pins {
-			pinStrs[i] = p.Path().Cid().String()
+			pinStrs[i] = p.Path().RootCid().String()
 		}
 		pathStrs := make([]string, len(cids))
 		for i, c := range cids {
@@ -510,13 +518,13 @@ func assertPinLsAllConsistency(t *testing.T, ctx context.Context, api iface.Core
 	}
 
 	for _, p := range allPins {
-		if !all.Visit(p.Path().Cid()) {
+		if !all.Visit(p.Path().RootCid()) {
 			t.Fatalf("pin ls returned the same cid multiple times")
 		}
 
 		typeStr := p.Type()
 		if typeSet, ok := typeMap[p.Type()]; ok {
-			typeSet.Add(p.Path().Cid())
+			typeSet.Add(p.Path().RootCid())
 		} else {
 			t.Fatalf("unknown pin type: %s", typeStr)
 		}
@@ -537,7 +545,7 @@ func assertPinLsAllConsistency(t *testing.T, ctx context.Context, api iface.Core
 				t.Fatalf("returned wrong pin type: expected %s, got %s", typeStr, pinType)
 			}
 
-			if c := p.Path().Cid(); !pinProps.Has(c) {
+			if c := p.Path().RootCid(); !pinProps.Has(c) {
 				t.Fatalf("%s expected to be in pin ls all as type %s", c.String(), typeStr)
 			}
 		}

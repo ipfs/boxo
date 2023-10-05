@@ -409,7 +409,7 @@ func (tp *TestSuite) TestAdd(t *testing.T) {
 						}
 
 						if expected[0].Path != nil && event.Path != nil {
-							if expected[0].Path.Cid().String() != event.Path.Cid().String() {
+							if expected[0].Path.RootCid().String() != event.Path.RootCid().String() {
 								t.Errorf("Event.Hash didn't match, %s != %s", expected[0].Path, event.Path)
 							}
 						} else if event.Path != expected[0].Path {

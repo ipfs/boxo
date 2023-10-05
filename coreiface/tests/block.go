@@ -67,8 +67,8 @@ func (tp *TestSuite) TestBlockPut(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res.Path().Cid().String() != rawCid {
-		t.Errorf("got wrong cid: %s", res.Path().Cid().String())
+	if res.Path().RootCid().String() != rawCid {
+		t.Errorf("got wrong cid: %s", res.Path().RootCid().String())
 	}
 }
 
@@ -87,8 +87,8 @@ func (tp *TestSuite) TestBlockPutFormatDagCbor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res.Path().Cid().String() != cborCid {
-		t.Errorf("got wrong cid: %s", res.Path().Cid().String())
+	if res.Path().RootCid().String() != cborCid {
+		t.Errorf("got wrong cid: %s", res.Path().RootCid().String())
 	}
 }
 
@@ -107,8 +107,8 @@ func (tp *TestSuite) TestBlockPutFormatDagPb(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res.Path().Cid().String() != pbCid {
-		t.Errorf("got wrong cid: %s", res.Path().Cid().String())
+	if res.Path().RootCid().String() != pbCid {
+		t.Errorf("got wrong cid: %s", res.Path().RootCid().String())
 	}
 }
 
@@ -127,8 +127,8 @@ func (tp *TestSuite) TestBlockPutFormatV0(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res.Path().Cid().String() != pbCidV0 {
-		t.Errorf("got wrong cid: %s", res.Path().Cid().String())
+	if res.Path().RootCid().String() != pbCidV0 {
+		t.Errorf("got wrong cid: %s", res.Path().RootCid().String())
 	}
 }
 
@@ -145,8 +145,8 @@ func (tp *TestSuite) TestBlockPutCidCodecDagCbor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res.Path().Cid().String() != cborCid {
-		t.Errorf("got wrong cid: %s", res.Path().Cid().String())
+	if res.Path().RootCid().String() != cborCid {
+		t.Errorf("got wrong cid: %s", res.Path().RootCid().String())
 	}
 }
 
@@ -163,8 +163,8 @@ func (tp *TestSuite) TestBlockPutCidCodecDagPb(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res.Path().Cid().String() != pbCid {
-		t.Errorf("got wrong cid: %s", res.Path().Cid().String())
+	if res.Path().RootCid().String() != pbCid {
+		t.Errorf("got wrong cid: %s", res.Path().RootCid().String())
 	}
 }
 
@@ -186,8 +186,8 @@ func (tp *TestSuite) TestBlockPutHash(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if res.Path().Cid().String() != cborKCid {
-		t.Errorf("got wrong cid: %s", res.Path().Cid().String())
+	if res.Path().RootCid().String() != cborKCid {
+		t.Errorf("got wrong cid: %s", res.Path().RootCid().String())
 	}
 }
 
@@ -218,13 +218,13 @@ func (tp *TestSuite) TestBlockGet(t *testing.T) {
 		t.Error("didn't get correct data back")
 	}
 
-	p := path.FromCid(res.Path().Cid())
+	p := path.FromCid(res.Path().RootCid())
 
 	rp, _, err := api.ResolvePath(ctx, p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rp.Cid().String() != res.Path().Cid().String() {
+	if rp.RootCid().String() != res.Path().RootCid().String() {
 		t.Error("paths didn't match")
 	}
 }

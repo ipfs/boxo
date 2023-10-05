@@ -47,7 +47,7 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	require.Contains(t, s, "<a class=\"ipfs-hash\" translate=\"no\" href=\"https://cid.ipfs.tech/#", "expected links to cid.ipfs.tech in CID column when on DNSLink website")
 	require.Contains(t, s, "<a href=\"/foo%3F%20%23%3C%27/..\">", "expected backlink in directory listing")
 	require.Contains(t, s, "<a href=\"/foo%3F%20%23%3C%27/file.txt\">", "expected file in directory listing")
-	require.Contains(t, s, s, k2.Cid().String(), "expected hash in directory listing")
+	require.Contains(t, s, s, k2.RootCid().String(), "expected hash in directory listing")
 
 	// make request to directory listing at root
 	req = mustNewRequest(t, http.MethodGet, ts.URL, nil)
@@ -86,5 +86,5 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	require.True(t, matchPathOrBreadcrumbs(s, "/ipns/<a href=\"//example.net/\">example.net</a>/<a href=\"//example.net/foo%3F%20%23%3C%27\">foo? #&lt;&#39;</a>/<a href=\"//example.net/foo%3F%20%23%3C%27/bar\">bar</a>"), "expected a path in directory listing")
 	require.Contains(t, s, "<a href=\"/foo%3F%20%23%3C%27/bar/..\">", "expected backlink in directory listing")
 	require.Contains(t, s, "<a href=\"/foo%3F%20%23%3C%27/bar/file.txt\">", "expected file in directory listing")
-	require.Contains(t, s, k3.Cid().String(), "expected hash in directory listing")
+	require.Contains(t, s, k3.RootCid().String(), "expected hash in directory listing")
 }

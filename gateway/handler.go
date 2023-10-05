@@ -520,7 +520,7 @@ func setIpfsRootsHeader(w http.ResponseWriter, rq *requestData, md *ContentPathM
 	for _, c := range rq.pathMetadata.PathSegmentRoots {
 		pathRoots = append(pathRoots, c.String())
 	}
-	pathRoots = append(pathRoots, rq.pathMetadata.LastSegment.Cid().String())
+	pathRoots = append(pathRoots, rq.pathMetadata.LastSegment.RootCid().String())
 	rootCidList := strings.Join(pathRoots, ",") // convention from rfc2616#sec4.2
 
 	w.Header().Set("X-Ipfs-Roots", rootCidList)
@@ -690,7 +690,7 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, rq *
 			}
 		}
 
-		pathCid := pathMetadata.LastSegment.Cid()
+		pathCid := pathMetadata.LastSegment.RootCid()
 
 		// Checks against both file, dir listing, and dag index Etags.
 		// This is an inexpensive check, and it happens before we do any I/O.

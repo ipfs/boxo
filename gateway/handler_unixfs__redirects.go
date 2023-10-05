@@ -216,7 +216,7 @@ func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPat
 	}
 	content4xxFile := getresp.bytes
 
-	content4xxCid := pathMetadata.LastSegment.Cid()
+	content4xxCid := pathMetadata.LastSegment.RootCid()
 
 	size := getresp.bytesSize
 
