@@ -89,7 +89,7 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 	_, err = w.Write(rawRecord)
 	if err == nil {
 		// Update metrics
-		i.ipnsRecordGetMetric.WithLabelValues(rq.contentPath.Namespace().String()).Observe(time.Since(rq.begin).Seconds())
+		i.ipnsRecordGetMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 		return true
 	}
 

@@ -183,7 +183,7 @@ func (mb *mockBackend) ResolvePath(ctx context.Context, immutablePath path.Immut
 func (mb *mockBackend) resolvePathNoRootsReturned(ctx context.Context, ip path.Path) (path.ImmutablePath, error) {
 	var imPath path.ImmutablePath
 	var err error
-	if ip.Namespace().Mutable() {
+	if ip.Mutable() {
 		imPath, err = mb.ResolveMutable(ctx, ip)
 		if err != nil {
 			return nil, err

@@ -247,7 +247,7 @@ func (i *handler) serveCodecRaw(ctx context.Context, w http.ResponseWriter, r *h
 
 	if dataSent {
 		// Update metrics
-		i.jsoncborDocumentGetMetric.WithLabelValues(contentPath.Namespace().String()).Observe(time.Since(begin).Seconds())
+		i.jsoncborDocumentGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 	}
 
 	return dataSent
@@ -292,7 +292,7 @@ func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter
 	_, err = w.Write(buf.Bytes())
 	if err == nil {
 		// Update metrics
-		i.jsoncborDocumentGetMetric.WithLabelValues(contentPath.Namespace().String()).Observe(time.Since(begin).Seconds())
+		i.jsoncborDocumentGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 		return true
 	}
 

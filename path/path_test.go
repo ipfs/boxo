@@ -27,7 +27,7 @@ func TestNewPath(t *testing.T) {
 		testCases := []struct {
 			src       string
 			canonical string
-			namespace Namespace
+			namespace string
 			mutable   bool
 		}{
 			// IPFS CIDv0
@@ -77,7 +77,7 @@ func TestNewPath(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, testCase.canonical, p.String())
 			assert.Equal(t, testCase.namespace, p.Namespace())
-			assert.Equal(t, testCase.mutable, p.Namespace().Mutable())
+			assert.Equal(t, testCase.mutable, p.Mutable())
 		}
 	})
 

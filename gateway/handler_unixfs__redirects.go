@@ -201,7 +201,7 @@ func (i *handler) getRedirectRules(r *http.Request, redirectsPath path.Immutable
 // Returns the root CID Path for the given path
 func getRootPath(p path.Path) (path.Path, error) {
 	parts := strings.Split(p.String(), "/")
-	return path.NewPath(gopath.Join("/", p.Namespace().String(), parts[2]))
+	return path.NewPath(gopath.Join("/", p.Namespace(), parts[2]))
 }
 
 func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPathImPath path.ImmutablePath, content4xxPath path.Path, status int, logger *zap.SugaredLogger) error {

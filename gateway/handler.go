@@ -240,7 +240,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if success {
-			i.getMetric.WithLabelValues(contentPath.Namespace().String()).Observe(time.Since(begin).Seconds())
+			i.getMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
 		}
 	}()
 
@@ -255,7 +255,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResponseFormat", responseFormat))
-	i.requestTypeMetric.WithLabelValues(contentPath.Namespace().String(), responseFormat).Inc()
+	i.requestTypeMetric.WithLabelValues(contentPath.Namespace(), responseFormat).Inc()
 
 	addCustomHeaders(w, i.config.Headers) // ok, _now_ write user's headers.
 	w.Header().Set("X-Ipfs-Path", contentPath.String())
@@ -284,7 +284,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if contentPath.Namespace().Mutable() {
+	if contentPath.Mutable() {
 		rq.immutablePath, err = i.backend.ResolveMutable(r.Context(), contentPath)
 		if err != nil {
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
@@ -423,7 +423,7 @@ func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath 
 	}
 
 	// Set Cache-Control and Last-Modified based on contentPath properties
-	if contentPath.Namespace().Mutable() {
+	if contentPath.Mutable() {
 		// mutable namespaces such as /ipns/ can't be cached forever
 
 		// For now we set Last-Modified to Now() to leverage caching heuristics built into modern browsers:

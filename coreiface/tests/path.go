@@ -40,12 +40,12 @@ func (tp *TestSuite) TestMutablePath(t *testing.T) {
 
 	blk, err := api.Block().Put(ctx, strings.NewReader(`foo`))
 	require.NoError(t, err)
-	require.False(t, blk.Path().Namespace().Mutable())
+	require.False(t, blk.Path().Mutable())
 	require.NotNil(t, api.Key())
 
 	keys, err := api.Key().List(ctx)
 	require.NoError(t, err)
-	require.True(t, keys[0].Path().Namespace().Mutable())
+	require.True(t, keys[0].Path().Mutable())
 }
 
 func (tp *TestSuite) TestPathRemainder(t *testing.T) {

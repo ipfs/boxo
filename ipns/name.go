@@ -137,7 +137,7 @@ func (n Name) Equal(other Name) bool {
 
 // AsPath returns the IPNS Name as a [path.Path] prefixed by [path.IPNSNamespace].
 func (n Name) AsPath() path.Path {
-	p, err := path.NewPathFromSegments(path.IPNSNamespace.String(), n.String())
+	p, err := path.NewPathFromSegments(path.IPNSNamespace, n.String())
 	if err != nil {
 		panic(fmt.Errorf("path.NewPathFromSegments was called with invalid parameters: %w", err))
 	}

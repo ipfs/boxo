@@ -9,21 +9,10 @@ import (
 	"github.com/ipfs/go-cid"
 )
 
-type Namespace string
-
-func (namespace Namespace) String() string {
-	return string(namespace)
-}
-
-// Mutable returns false if the data under this namespace is guaranteed to not change.
-func (namespace Namespace) Mutable() bool {
-	return namespace != IPFSNamespace && namespace != IPLDNamespace
-}
-
 const (
-	IPFSNamespace Namespace = "ipfs"
-	IPNSNamespace Namespace = "ipns"
-	IPLDNamespace Namespace = "ipld"
+	IPFSNamespace = "ipfs"
+	IPNSNamespace = "ipns"
+	IPLDNamespace = "ipld"
 )
 
 // Path is a generic, valid, and well-formed path. A valid path is shaped as follows:
@@ -43,7 +32,10 @@ type Path interface {
 
 	// Namespace returns the first component of the path. For example, the namespace
 	// of "/ipfs/bafy" is "ipfs".
-	Namespace() Namespace
+	Namespace() string
+
+	// Mutable returns false if the data under this path's namespace is guaranteed to not change.
+	Mutable() bool
 
 	// Segments returns the different elements of a path delimited by a forward
 	// slash ("/"). The returned array must not contain any empty segments, and
@@ -61,15 +53,19 @@ var _ Path = path{}
 
 type path struct {
 	str       string
-	namespace Namespace
+	namespace string
 }
 
 func (p path) String() string {
 	return p.str
 }
 
-func (p path) Namespace() Namespace {
+func (p path) Namespace() string {
 	return p.namespace
+}
+
+func (p path) Mutable() bool {
+	return p.Namespace() != IPFSNamespace && p.Namespace() != IPLDNamespace
 }
 
 func (p path) Segments() []string {
@@ -93,7 +89,7 @@ type immutablePath struct {
 }
 
 func NewImmutablePath(p Path) (ImmutablePath, error) {
-	if p.Namespace().Mutable() {
+	if p.Mutable() {
 		return nil, &ErrInvalidPath{err: ErrExpectedImmutable, path: p.String()}
 	}
 
@@ -110,8 +106,12 @@ func (ip immutablePath) String() string {
 	return ip.path.String()
 }
 
-func (ip immutablePath) Namespace() Namespace {
+func (ip immutablePath) Namespace() string {
 	return ip.path.Namespace()
+}
+
+func (ip immutablePath) Mutable() bool {
+	return false
 }
 
 func (ip immutablePath) Segments() []string {
@@ -155,28 +155,23 @@ func NewPath(str string) (Path, error) {
 	}
 
 	switch segments[0] {
-	case "ipfs", "ipld":
+	case IPFSNamespace, IPLDNamespace:
 		cid, err := cid.Decode(segments[1])
 		if err != nil {
 			return nil, &ErrInvalidPath{err: err, path: str}
 		}
 
-		ns := IPFSNamespace
-		if segments[0] == "ipld" {
-			ns = IPLDNamespace
-		}
-
 		return immutablePath{
 			path: path{
 				str:       cleaned,
-				namespace: ns,
+				namespace: segments[0],
 			},
 			rootCid: cid,
 		}, nil
 	case "ipns":
 		return path{
 			str:       cleaned,
-			namespace: IPNSNamespace,
+			namespace: segments[0],
 		}, nil
 	default:
 		return nil, &ErrInvalidPath{err: fmt.Errorf("%w: %q", ErrUnknownNamespace, segments[0]), path: str}
