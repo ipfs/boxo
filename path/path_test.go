@@ -9,7 +9,7 @@ import (
 )
 
 func newIPLDPath(cid cid.Cid) ImmutablePath {
-	return immutablePath{
+	return ImmutablePath{
 		path: path{
 			str:       fmt.Sprintf("/%s/%s", IPLDNamespace, cid.String()),
 			namespace: IPLDNamespace,
@@ -134,7 +134,7 @@ func TestNewPath(t *testing.T) {
 		for _, testCase := range testCases {
 			p, err := NewPath(testCase.src)
 			assert.NoError(t, err)
-			assert.IsType(t, immutablePath{}, p)
+			assert.IsType(t, ImmutablePath{}, p)
 		}
 	})
 }
@@ -149,7 +149,7 @@ func TestFromCid(t *testing.T) {
 		assert.NoError(t, err)
 
 		p := FromCid(c)
-		assert.IsType(t, immutablePath{}, p)
+		assert.IsType(t, ImmutablePath{}, p)
 		assert.Equal(t, "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", p.String())
 		assert.Equal(t, c, p.RootCid())
 	})
@@ -161,7 +161,7 @@ func TestFromCid(t *testing.T) {
 		assert.NoError(t, err)
 
 		p := FromCid(c)
-		assert.IsType(t, immutablePath{}, p)
+		assert.IsType(t, ImmutablePath{}, p)
 		assert.Equal(t, "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", p.String())
 		assert.Equal(t, c, p.RootCid())
 	})
@@ -171,7 +171,7 @@ func TestFromCid(t *testing.T) {
 		assert.NoError(t, err)
 
 		p := newIPLDPath(c)
-		assert.IsType(t, immutablePath{}, p)
+		assert.IsType(t, ImmutablePath{}, p)
 		assert.Equal(t, "/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", p.String())
 		assert.Equal(t, c, p.RootCid())
 
@@ -180,7 +180,7 @@ func TestFromCid(t *testing.T) {
 		assert.NoError(t, err)
 
 		p = newIPLDPath(c)
-		assert.IsType(t, immutablePath{}, p)
+		assert.IsType(t, ImmutablePath{}, p)
 		assert.Equal(t, "/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", p.String())
 		assert.Equal(t, c, p.RootCid())
 	})

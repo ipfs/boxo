@@ -595,16 +595,16 @@ func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.Immu
 		sp.WriteString(root)
 		p, err := path.NewPath(sp.String())
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, path.ImmutablePath{}, nil, err
 		}
 		resolvedSubPath, remainderSubPath, err := bb.resolvePath(ctx, p)
 		if err != nil {
 			// TODO: should we be more explicit here and is this part of the IPFSBackend contract?
 			// The issue here was that we returned datamodel.ErrWrongKind instead of this resolver error
 			if isErrNotFound(err) {
-				return nil, nil, nil, &resolver.ErrNoLink{Name: root, Node: lastPath.RootCid()}
+				return nil, path.ImmutablePath{}, nil, &resolver.ErrNoLink{Name: root, Node: lastPath.RootCid()}
 			}
-			return nil, nil, nil, err
+			return nil, path.ImmutablePath{}, nil, err
 		}
 		lastPath = resolvedSubPath
 		remainder = remainderSubPath
@@ -620,13 +620,13 @@ func (bb *BlocksBackend) ResolveMutable(ctx context.Context, p path.Path) (path.
 	case path.IPNSNamespace:
 		p, err := resolve.ResolveIPNS(ctx, bb.namesys, p)
 		if err != nil {
-			return nil, err
+			return path.ImmutablePath{}, err
 		}
 		return path.NewImmutablePath(p)
 	case path.IPFSNamespace:
 		return path.NewImmutablePath(p)
 	default:
-		return nil, NewErrorStatusCode(fmt.Errorf("unsupported path namespace: %s", p.Namespace()), http.StatusNotImplemented)
+		return path.ImmutablePath{}, NewErrorStatusCode(fmt.Errorf("unsupported path namespace: %s", p.Namespace()), http.StatusNotImplemented)
 	}
 }
 
@@ -690,32 +690,32 @@ func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.Imm
 	if p.Namespace() == path.IPNSNamespace {
 		p, err = resolve.ResolveIPNS(ctx, bb.namesys, p)
 		if err != nil {
-			return nil, nil, err
+			return path.ImmutablePath{}, nil, err
 		}
 	}
 
 	if p.Namespace() != path.IPFSNamespace {
-		return nil, nil, fmt.Errorf("unsupported path namespace: %s", p.Namespace())
+		return path.ImmutablePath{}, nil, fmt.Errorf("unsupported path namespace: %s", p.Namespace())
 	}
 
 	imPath, err := path.NewImmutablePath(p)
 	if err != nil {
-		return nil, nil, err
+		return path.ImmutablePath{}, nil, err
 	}
 
 	node, remainder, err := bb.resolver.ResolveToLastNode(ctx, imPath)
 	if err != nil {
-		return nil, nil, err
+		return path.ImmutablePath{}, nil, err
 	}
 
 	p, err = path.Join(path.FromCid(node), remainder...)
 	if err != nil {
-		return nil, nil, err
+		return path.ImmutablePath{}, nil, err
 	}
 
 	imPath, err = path.NewImmutablePath(p)
 	if err != nil {
-		return nil, nil, err
+		return path.ImmutablePath{}, nil, err
 	}
 
 	return imPath, remainder, nil

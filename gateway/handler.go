@@ -745,14 +745,14 @@ func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request,
 	if errors.Is(err, ErrServiceUnavailable) {
 		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 		i.webError(w, r, err, http.StatusServiceUnavailable)
-		return nil, false
+		return path.ImmutablePath{}, false
 	}
 
 	// If the error is not an IPLD traversal error then we should not be looking for _redirects or legacy 404s
 	if !isErrNotFound(err) {
 		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 		i.webError(w, r, err, http.StatusInternalServerError)
-		return nil, false
+		return path.ImmutablePath{}, false
 	}
 
 	// If we have origin isolation (subdomain gw, DNSLink website),
@@ -774,12 +774,12 @@ func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request,
 	// follow https://docs.ipfs.tech/how-to/websites-on-ipfs/redirects-and-custom-404s/ instead.
 	if i.serveLegacy404IfPresent(w, r, immutableContentPath, logger) {
 		logger.Debugw("served legacy 404")
-		return nil, false
+		return path.ImmutablePath{}, false
 	}
 
 	err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 	i.webError(w, r, err, http.StatusInternalServerError)
-	return nil, false
+	return path.ImmutablePath{}, false
 }
 
 // Detect 'Cache-Control: only-if-cached' in request and return data if it is already in the local datastore.
