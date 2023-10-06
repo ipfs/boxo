@@ -7,13 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	gopath "path"
 	"strings"
 
 	"github.com/ipfs/boxo/blockservice"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	nsopts "github.com/ipfs/boxo/coreiface/options/namesys"
-	ifacepath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/fetcher"
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/files"
@@ -22,7 +20,7 @@ import (
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 	"github.com/ipfs/boxo/namesys"
 	"github.com/ipfs/boxo/namesys/resolve"
-	ipfspath "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -147,7 +145,7 @@ func NewBlocksBackend(blockService blockservice.BlockService, opts ...BlocksBack
 	}, nil
 }
 
-func (bb *BlocksBackend) Get(ctx context.Context, path ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
+func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
 	md, nd, err := bb.getNode(ctx, path)
 	if err != nil {
 		return md, nil, err
@@ -224,7 +222,7 @@ func (bb *BlocksBackend) Get(ctx context.Context, path ImmutablePath, ranges ...
 	return ContentPathMetadata{}, nil, fmt.Errorf("data was not a valid file or directory: %w", ErrInternalServerError) // TODO: should there be a gateway invalid content type to abstract over the various IPLD error types?
 }
 
-func (bb *BlocksBackend) GetAll(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (bb *BlocksBackend) GetAll(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.Node, error) {
 	md, nd, err := bb.getNode(ctx, path)
 	if err != nil {
 		return md, nil, err
@@ -238,7 +236,7 @@ func (bb *BlocksBackend) GetAll(ctx context.Context, path ImmutablePath) (Conten
 	return md, n, nil
 }
 
-func (bb *BlocksBackend) GetBlock(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.File, error) {
+func (bb *BlocksBackend) GetBlock(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.File, error) {
 	md, nd, err := bb.getNode(ctx, path)
 	if err != nil {
 		return md, nil, err
@@ -247,7 +245,7 @@ func (bb *BlocksBackend) GetBlock(ctx context.Context, path ImmutablePath) (Cont
 	return md, files.NewBytesFile(nd.RawData()), nil
 }
 
-func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
+func (bb *BlocksBackend) Head(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	md, nd, err := bb.getNode(ctx, path)
 	if err != nil {
 		return md, nil, err
@@ -290,7 +288,7 @@ func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentP
 // https://ipld.io/specs/transport/car/carv1/#number-of-roots
 var emptyRoot = []cid.Cid{cid.MustParse("bafkqaaa")}
 
-func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	pathMetadata, err := bb.ResolvePath(ctx, p)
 	if err != nil {
 		rootCid, err := cid.Decode(strings.Split(p.String(), "/")[2])
@@ -314,21 +312,19 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params Car
 		// Setup the UnixFS resolver.
 		f := newNodeGetterFetcherSingleUseFactory(ctx, blockGetter)
 		pathResolver := resolver.NewBasicResolver(f)
-		ip := ipfspath.FromString(p.String())
-		_, _, err = pathResolver.ResolveToLastNode(ctx, ip)
+		_, _, err = pathResolver.ResolveToLastNode(ctx, p)
 
 		if isErrNotFound(err) {
 			return ContentPathMetadata{
 				PathSegmentRoots: nil,
-				LastSegment:      ifacepath.NewResolvedPath(ip, rootCid, rootCid, ""),
+				LastSegment:      path.FromCid(rootCid),
 				ContentType:      "",
 			}, io.NopCloser(&buf), nil
 		}
 		return ContentPathMetadata{}, nil, err
 	}
 
-	contentPathStr := p.String()
-	if !strings.HasPrefix(contentPathStr, "/ipfs/") {
+	if p.Namespace() != path.IPFSNamespace {
 		return ContentPathMetadata{}, nil, fmt.Errorf("path does not have /ipfs/ prefix")
 	}
 
@@ -336,7 +332,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params Car
 	go func() {
 		cw, err := storage.NewWritable(
 			w,
-			[]cid.Cid{pathMetadata.LastSegment.Cid()},
+			[]cid.Cid{pathMetadata.LastSegment.RootCid()},
 			car.WriteAsCarV1(true),
 			car.AllowDuplicatePuts(params.Duplicates.Bool()),
 		)
@@ -363,7 +359,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params Car
 
 		// TODO: support selectors passed as request param: https://github.com/ipfs/kubo/issues/8769
 		// TODO: this is very slow if blocks are remote due to linear traversal. Do we need deterministic traversals here?
-		carWriteErr := walkGatewaySimpleSelector(ctx, ipfspath.Path(contentPathStr), params, &lsys, pathResolver)
+		carWriteErr := walkGatewaySimpleSelector(ctx, p, params, &lsys, pathResolver)
 
 		// io.PipeWriter.CloseWithError always returns nil.
 		_ = w.CloseWithError(carWriteErr)
@@ -373,7 +369,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params Car
 }
 
 // walkGatewaySimpleSelector walks the subgraph described by the path and terminal element parameters
-func walkGatewaySimpleSelector(ctx context.Context, p ipfspath.Path, params CarParams, lsys *ipld.LinkSystem, pathResolver resolver.Resolver) error {
+func walkGatewaySimpleSelector(ctx context.Context, p path.ImmutablePath, params CarParams, lsys *ipld.LinkSystem, pathResolver resolver.Resolver) error {
 	// First resolve the path since we always need to.
 	lastCid, remainder, err := pathResolver.ResolveToLastNode(ctx, p)
 	if err != nil {
@@ -541,18 +537,19 @@ func walkGatewaySimpleSelector(ctx context.Context, p ipfspath.Path, params CarP
 	}
 }
 
-func (bb *BlocksBackend) getNode(ctx context.Context, path ImmutablePath) (ContentPathMetadata, format.Node, error) {
-	roots, lastSeg, err := bb.getPathRoots(ctx, path)
+func (bb *BlocksBackend) getNode(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, format.Node, error) {
+	roots, lastSeg, remainder, err := bb.getPathRoots(ctx, path)
 	if err != nil {
 		return ContentPathMetadata{}, nil, err
 	}
 
 	md := ContentPathMetadata{
-		PathSegmentRoots: roots,
-		LastSegment:      lastSeg,
+		PathSegmentRoots:     roots,
+		LastSegment:          lastSeg,
+		LastSegmentRemainder: remainder,
 	}
 
-	lastRoot := lastSeg.Cid()
+	lastRoot := lastSeg.RootCid()
 
 	nd, err := bb.dagService.Get(ctx, lastRoot)
 	if err != nil {
@@ -562,7 +559,7 @@ func (bb *BlocksBackend) getNode(ctx context.Context, path ImmutablePath) (Conte
 	return md, nd, err
 }
 
-func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath ImmutablePath) ([]cid.Cid, ifacepath.Resolved, error) {
+func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.ImmutablePath) ([]cid.Cid, path.ImmutablePath, []string, error) {
 	/*
 		These are logical roots where each CID represent one path segment
 		and resolves to either a directory or the root block of a file.
@@ -586,56 +583,50 @@ func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath Immutable
 	contentPathStr := contentPath.String()
 	pathSegments := strings.Split(contentPathStr[6:], "/")
 	sp.WriteString(contentPathStr[:5]) // /ipfs or /ipns
-	var lastPath ifacepath.Resolved
+	var (
+		lastPath  path.ImmutablePath
+		remainder []string
+	)
 	for _, root := range pathSegments {
 		if root == "" {
 			continue
 		}
 		sp.WriteString("/")
 		sp.WriteString(root)
-		resolvedSubPath, err := bb.resolvePath(ctx, ifacepath.New(sp.String()))
+		p, err := path.NewPath(sp.String())
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		resolvedSubPath, remainderSubPath, err := bb.resolvePath(ctx, p)
 		if err != nil {
 			// TODO: should we be more explicit here and is this part of the IPFSBackend contract?
 			// The issue here was that we returned datamodel.ErrWrongKind instead of this resolver error
 			if isErrNotFound(err) {
-				return nil, nil, resolver.ErrNoLink{Name: root, Node: lastPath.Cid()}
+				return nil, nil, nil, &resolver.ErrNoLink{Name: root, Node: lastPath.RootCid()}
 			}
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		lastPath = resolvedSubPath
-		pathRoots = append(pathRoots, lastPath.Cid())
+		remainder = remainderSubPath
+		pathRoots = append(pathRoots, lastPath.RootCid())
 	}
 
 	pathRoots = pathRoots[:len(pathRoots)-1]
-	return pathRoots, lastPath, nil
+	return pathRoots, lastPath, remainder, nil
 }
 
-func (bb *BlocksBackend) ResolveMutable(ctx context.Context, p ifacepath.Path) (ImmutablePath, error) {
-	err := p.IsValid()
-	if err != nil {
-		return ImmutablePath{}, err
-	}
-
-	ipath := ipfspath.Path(p.String())
-	switch ipath.Segments()[0] {
-	case "ipns":
-		ipath, err = resolve.ResolveIPNS(ctx, bb.namesys, ipath)
+func (bb *BlocksBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, error) {
+	switch p.Namespace() {
+	case path.IPNSNamespace:
+		p, err := resolve.ResolveIPNS(ctx, bb.namesys, p)
 		if err != nil {
-			return ImmutablePath{}, err
+			return nil, err
 		}
-		imPath, err := NewImmutablePath(ifacepath.New(ipath.String()))
-		if err != nil {
-			return ImmutablePath{}, err
-		}
-		return imPath, nil
-	case "ipfs":
-		imPath, err := NewImmutablePath(ifacepath.New(ipath.String()))
-		if err != nil {
-			return ImmutablePath{}, err
-		}
-		return imPath, nil
+		return path.NewImmutablePath(p)
+	case path.IPFSNamespace:
+		return path.NewImmutablePath(p)
 	default:
-		return ImmutablePath{}, NewErrorStatusCode(fmt.Errorf("unsupported path namespace: %s", p.Namespace()), http.StatusNotImplemented)
+		return nil, NewErrorStatusCode(fmt.Errorf("unsupported path namespace: %s", p.Namespace()), http.StatusNotImplemented)
 	}
 }
 
@@ -659,73 +650,75 @@ func (bb *BlocksBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, 
 	return bb.routing.GetValue(ctx, "/ipns/"+string(id))
 }
 
-func (bb *BlocksBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (ifacepath.Path, error) {
+func (bb *BlocksBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (path.Path, error) {
 	if bb.namesys != nil {
 		p, err := bb.namesys.Resolve(ctx, "/ipns/"+hostname, nsopts.Depth(1))
 		if err == namesys.ErrResolveRecursion {
 			err = nil
 		}
-		return ifacepath.New(p.String()), err
+		return p, err
 	}
 
 	return nil, NewErrorStatusCode(errors.New("not implemented"), http.StatusNotImplemented)
 }
 
-func (bb *BlocksBackend) IsCached(ctx context.Context, p ifacepath.Path) bool {
-	rp, err := bb.resolvePath(ctx, p)
+func (bb *BlocksBackend) IsCached(ctx context.Context, p path.Path) bool {
+	rp, _, err := bb.resolvePath(ctx, p)
 	if err != nil {
 		return false
 	}
 
-	has, _ := bb.blockStore.Has(ctx, rp.Cid())
+	has, _ := bb.blockStore.Has(ctx, rp.RootCid())
 	return has
 }
 
-func (bb *BlocksBackend) ResolvePath(ctx context.Context, path ImmutablePath) (ContentPathMetadata, error) {
-	roots, lastSeg, err := bb.getPathRoots(ctx, path)
+func (bb *BlocksBackend) ResolvePath(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, error) {
+	roots, lastSeg, remainder, err := bb.getPathRoots(ctx, path)
 	if err != nil {
 		return ContentPathMetadata{}, err
 	}
 	md := ContentPathMetadata{
-		PathSegmentRoots: roots,
-		LastSegment:      lastSeg,
+		PathSegmentRoots:     roots,
+		LastSegment:          lastSeg,
+		LastSegmentRemainder: remainder,
 	}
 	return md, nil
 }
 
-func (bb *BlocksBackend) resolvePath(ctx context.Context, p ifacepath.Path) (ifacepath.Resolved, error) {
-	if _, ok := p.(ifacepath.Resolved); ok {
-		return p.(ifacepath.Resolved), nil
-	}
-
-	err := p.IsValid()
-	if err != nil {
-		return nil, err
-	}
-
-	ipath := ipfspath.Path(p.String())
-	if ipath.Segments()[0] == "ipns" {
-		ipath, err = resolve.ResolveIPNS(ctx, bb.namesys, ipath)
+func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.ImmutablePath, []string, error) {
+	var err error
+	if p.Namespace() == path.IPNSNamespace {
+		p, err = resolve.ResolveIPNS(ctx, bb.namesys, p)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
-	if ipath.Segments()[0] != "ipfs" {
-		return nil, fmt.Errorf("unsupported path namespace: %s", p.Namespace())
+	if p.Namespace() != path.IPFSNamespace {
+		return nil, nil, fmt.Errorf("unsupported path namespace: %s", p.Namespace())
 	}
 
-	node, rest, err := bb.resolver.ResolveToLastNode(ctx, ipath)
+	imPath, err := path.NewImmutablePath(p)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	root, err := cid.Parse(ipath.Segments()[1])
+	node, remainder, err := bb.resolver.ResolveToLastNode(ctx, imPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return ifacepath.NewResolvedPath(ipath, node, root, gopath.Join(rest...)), nil
+	p, err = path.Join(path.FromCid(node), remainder...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	imPath, err = path.NewImmutablePath(p)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return imPath, remainder, nil
 }
 
 type nodeGetterToCarExporer struct {

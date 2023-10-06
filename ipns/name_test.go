@@ -34,6 +34,16 @@ func TestName(t *testing.T) {
 		})
 	}
 
+	testPath := func(t *testing.T, name, input, expected string) {
+		t.Run("AsPath method: "+name, func(t *testing.T) {
+			t.Parallel()
+
+			name, err := NameFromString(input)
+			require.NoError(t, err)
+			require.Equal(t, expected, name.AsPath().String())
+		})
+	}
+
 	testMarshalJSON := func(t *testing.T, name, input, expected string) {
 		t.Run("Marshal JSON: "+name, func(t *testing.T) {
 			t.Parallel()
@@ -66,6 +76,7 @@ func TestName(t *testing.T) {
 		testFromCid(t, v[0], v[2], v[2])
 		testString(t, v[0], v[1], v[2])
 		testString(t, v[0], NamespacePrefix+v[1], v[2])
+		testPath(t, v[0], v[1], NamespacePrefix+v[2])
 		testMarshalJSON(t, v[0], v[1], `"`+v[2]+`"`)
 		testMarshalJSON(t, v[0], NamespacePrefix+v[1], `"`+v[2]+`"`)
 		testUnmarshalJSON(t, v[0], []byte(`"`+v[2]+`"`), v[2])

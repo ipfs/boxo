@@ -12,6 +12,7 @@ import (
 	"os"
 	gopath "path"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,7 +25,6 @@ import (
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	importer "github.com/ipfs/boxo/ipld/unixfs/importer"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
-	path "github.com/ipfs/boxo/path"
 	u "github.com/ipfs/boxo/util"
 
 	cid "github.com/ipfs/go-cid"
@@ -59,7 +59,7 @@ func fileNodeFromReader(t *testing.T, ds ipld.DAGService, r io.Reader) ipld.Node
 }
 
 func mkdirP(t *testing.T, root *Directory, pth string) *Directory {
-	dirs := path.SplitList(pth)
+	dirs := strings.Split(pth, "/")
 	cur := root
 	for _, d := range dirs {
 		n, err := cur.Mkdir(d)
@@ -145,7 +145,7 @@ func assertFileAtPath(ds ipld.DAGService, root *Directory, expn ipld.Node, pth s
 		return dag.ErrNotProtobuf
 	}
 
-	parts := path.SplitList(pth)
+	parts := strings.Split(pth, "/")
 	cur := root
 	for i, d := range parts[:len(parts)-1] {
 		next, err := cur.Child(d)

@@ -17,6 +17,7 @@ import (
 	ci "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
+	"github.com/stretchr/testify/assert"
 )
 
 type mockResolver struct {
@@ -31,15 +32,15 @@ func testResolution(t *testing.T, resolver Resolver, name string, depth uint, ex
 			"expected %s with a depth of %d to have a '%s' error, but got '%s'",
 			name, depth, expError, err))
 	}
-	if p.String() != expected {
-		t.Fatal(fmt.Errorf(
-			"%s with depth %d resolved to %s != %s",
-			name, depth, p.String(), expected))
+	if expected == "" {
+		assert.Nil(t, p, "%s with depth %d", name, depth)
+	} else {
+		assert.Equal(t, p.String(), expected, "%s with depth %d", name, depth)
 	}
 }
 
 func (r *mockResolver) resolveOnceAsync(ctx context.Context, name string, options opts.ResolveOpts) <-chan onceResult {
-	p, err := path.ParsePath(r.entries[name])
+	p, err := path.NewPath(r.entries[name])
 	out := make(chan onceResult, 1)
 	out <- onceResult{value: p, err: err}
 	close(out)
@@ -118,7 +119,7 @@ func TestPublishWithCache0(t *testing.T) {
 	}
 
 	// CID is arbitrary.
-	p, err := path.ParsePath("QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
+	p, err := path.NewPath("/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +159,7 @@ func TestPublishWithTTL(t *testing.T) {
 	}
 
 	// CID is arbitrary.
-	p, err := path.ParsePath("QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
+	p, err := path.NewPath("/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
 	if err != nil {
 		t.Fatal(err)
 	}

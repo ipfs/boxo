@@ -11,10 +11,9 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/gateway/assets"
-	path "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	cid "github.com/ipfs/go-cid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -24,7 +23,7 @@ import (
 // serveDirectory returns the best representation of UnixFS directory
 //
 // It will return index.html if present, or generate directory listing otherwise.
-func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath ipath.Resolved, contentPath ipath.Path, isHeadRequest bool, directoryMetadata *directoryMetadata, ranges []ByteRange, begin time.Time, logger *zap.SugaredLogger) bool {
+func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath path.ImmutablePath, contentPath path.Path, isHeadRequest bool, directoryMetadata *directoryMetadata, ranges []ByteRange, begin time.Time, logger *zap.SugaredLogger) bool {
 	ctx, span := spanTrace(ctx, "Handler.ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
@@ -60,16 +59,19 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	// Check if directory has index.html, if so, serveFile
-	appendIndexHtml := func(p ipath.Path) ipath.Path {
-		basePath := p.String()
-		if basePath[len(basePath)-1] != '/' {
-			basePath += "/"
-		}
-		return ipath.New(basePath + "index.html")
+	idxPath, err := path.Join(contentPath, "index.html")
+	if err != nil {
+		i.webError(w, r, err, http.StatusInternalServerError)
+		return false
 	}
 
-	idxPath := appendIndexHtml(contentPath)
-	imIndexPath, err := NewImmutablePath(appendIndexHtml(resolvedPath))
+	indexPath, err := path.Join(resolvedPath, "index.html")
+	if err != nil {
+		i.webError(w, r, err, http.StatusInternalServerError)
+		return false
+	}
+
+	imIndexPath, err := path.NewImmutablePath(indexPath)
 	if err != nil {
 		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
@@ -132,7 +134,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	w.Header().Set("Content-Type", "text/html")
 
 	// Generated dir index requires custom Etag (output may change between go-libipfs versions)
-	dirEtag := getDirListingEtag(resolvedPath.Cid())
+	dirEtag := getDirListingEtag(resolvedPath.RootCid())
 	w.Header().Set("Etag", dirEtag)
 
 	if r.Method == http.MethodHead {
@@ -167,7 +169,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	backLink := originalURLPath
 
 	// don't go further up than /ipfs/$hash/
-	pathSplit := path.SplitList(contentPath.String())
+	pathSplit := strings.Split(contentPath.String(), "/")
 	switch {
 	// skip backlink when listing a content root
 	case len(pathSplit) == 3: // url: /ipfs/$hash
@@ -187,7 +189,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	size := humanize.Bytes(directoryMetadata.dagSize)
-	hash := resolvedPath.Cid().String()
+	hash := resolvedPath.RootCid().String()
 	globalData := i.getTemplateGlobalData(r, contentPath)
 
 	// See comment above where originalUrlPath is declared.

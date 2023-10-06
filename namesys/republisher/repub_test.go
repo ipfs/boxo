@@ -91,7 +91,11 @@ func TestRepublish(t *testing.T) {
 	// have one node publish a record that is valid for 1 second
 	publisher := nodes[3]
 
-	p := path.FromString("/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn") // does not need to be valid
+	p, err := path.NewPath("/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn") // does not need to be valid
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	rp := namesys.NewIpnsPublisher(publisher.dht, publisher.store)
 	name := "/ipns/" + publisher.id
 
@@ -172,12 +176,16 @@ func TestLongEOLRepublish(t *testing.T) {
 
 	// have one node publish a record that is valid for 1 second
 	publisher := nodes[3]
-	p := path.FromString("/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn") // does not need to be valid
+	p, err := path.NewPath("/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn") // does not need to be valid
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	rp := namesys.NewIpnsPublisher(publisher.dht, publisher.store)
 	name := "/ipns/" + publisher.id
 
 	expiration := time.Now().Add(time.Hour)
-	err := rp.Publish(ctx, publisher.privKey, p, opts.PublishWithEOL(expiration))
+	err = rp.Publish(ctx, publisher.privKey, p, opts.PublishWithEOL(expiration))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +247,7 @@ func verifyResolution(nsystems []namesys.NameSystem, key string, exp path.Path) 
 			return err
 		}
 
-		if val != exp {
+		if val.String() != exp.String() {
 			return errors.New("resolved wrong record")
 		}
 	}

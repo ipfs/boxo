@@ -95,7 +95,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	setIpfsRootsHeader(w, rq, &pathMetadata)
 
 	resolvedPath := pathMetadata.LastSegment
-	switch mc.Code(resolvedPath.Cid().Prefix().Codec) {
+	switch mc.Code(resolvedPath.RootCid().Prefix().Codec) {
 	case mc.Json, mc.DagJson, mc.Cbor, mc.DagCbor:
 		rq.logger.Debugw("serving codec", "path", rq.contentPath)
 		var blockSize int64

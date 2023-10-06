@@ -9,9 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/ipns"
-	ipfspath "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -82,11 +81,11 @@ func makeNameAndRecord(t *testing.T) (ipns.Name, []byte) {
 	cid, err := cid.Decode("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
 	require.NoError(t, err)
 
-	path := path.IpfsPath(cid)
+	path := path.FromCid(cid)
 	eol := time.Now().Add(time.Hour * 48)
 	ttl := time.Second * 20
 
-	record, err := ipns.NewRecord(sk, ipfspath.FromString(path.String()), 1, eol, ttl)
+	record, err := ipns.NewRecord(sk, path, 1, eol, ttl)
 	require.NoError(t, err)
 
 	rawRecord, err := ipns.MarshalRecord(record)

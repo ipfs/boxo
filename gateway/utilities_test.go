@@ -14,11 +14,10 @@ import (
 
 	"github.com/ipfs/boxo/blockservice"
 	nsopts "github.com/ipfs/boxo/coreiface/options/namesys"
-	ipath "github.com/ipfs/boxo/coreiface/path"
 	offline "github.com/ipfs/boxo/exchange/offline"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/namesys"
-	path "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 	carblockstore "github.com/ipld/go-car/v2/blockstore"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -73,7 +72,7 @@ func (m mockNamesys) Resolve(ctx context.Context, name string, opts ...nsopts.Re
 		var ok bool
 		value, ok = m[name]
 		if !ok {
-			return "", namesys.ErrResolveFailed
+			return nil, namesys.ErrResolveFailed
 		}
 		name = value.String()
 	}
@@ -133,27 +132,27 @@ func newMockBackend(t *testing.T, fixturesFile string) (*mockBackend, cid.Cid) {
 	}, cids[0]
 }
 
-func (mb *mockBackend) Get(ctx context.Context, immutablePath ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
+func (mb *mockBackend) Get(ctx context.Context, immutablePath path.ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
 	return mb.gw.Get(ctx, immutablePath, ranges...)
 }
 
-func (mb *mockBackend) GetAll(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (mb *mockBackend) GetAll(ctx context.Context, immutablePath path.ImmutablePath) (ContentPathMetadata, files.Node, error) {
 	return mb.gw.GetAll(ctx, immutablePath)
 }
 
-func (mb *mockBackend) GetBlock(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.File, error) {
+func (mb *mockBackend) GetBlock(ctx context.Context, immutablePath path.ImmutablePath) (ContentPathMetadata, files.File, error) {
 	return mb.gw.GetBlock(ctx, immutablePath)
 }
 
-func (mb *mockBackend) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
+func (mb *mockBackend) Head(ctx context.Context, immutablePath path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	return mb.gw.Head(ctx, immutablePath)
 }
 
-func (mb *mockBackend) GetCAR(ctx context.Context, immutablePath ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+func (mb *mockBackend) GetCAR(ctx context.Context, immutablePath path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	return mb.gw.GetCAR(ctx, immutablePath, params)
 }
 
-func (mb *mockBackend) ResolveMutable(ctx context.Context, p ipath.Path) (ImmutablePath, error) {
+func (mb *mockBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, error) {
 	return mb.gw.ResolveMutable(ctx, p)
 }
 
@@ -161,28 +160,28 @@ func (mb *mockBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, er
 	return nil, routing.ErrNotSupported
 }
 
-func (mb *mockBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (ipath.Path, error) {
+func (mb *mockBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (path.Path, error) {
 	if mb.namesys != nil {
 		p, err := mb.namesys.Resolve(ctx, "/ipns/"+hostname, nsopts.Depth(1))
 		if err == namesys.ErrResolveRecursion {
 			err = nil
 		}
-		return ipath.New(p.String()), err
+		return p, err
 	}
 
 	return nil, errors.New("not implemented")
 }
 
-func (mb *mockBackend) IsCached(ctx context.Context, p ipath.Path) bool {
+func (mb *mockBackend) IsCached(ctx context.Context, p path.Path) bool {
 	return mb.gw.IsCached(ctx, p)
 }
 
-func (mb *mockBackend) ResolvePath(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, error) {
+func (mb *mockBackend) ResolvePath(ctx context.Context, immutablePath path.ImmutablePath) (ContentPathMetadata, error) {
 	return mb.gw.ResolvePath(ctx, immutablePath)
 }
 
-func (mb *mockBackend) resolvePathNoRootsReturned(ctx context.Context, ip ipath.Path) (ipath.Resolved, error) {
-	var imPath ImmutablePath
+func (mb *mockBackend) resolvePathNoRootsReturned(ctx context.Context, ip path.Path) (path.ImmutablePath, error) {
+	var imPath path.ImmutablePath
 	var err error
 	if ip.Mutable() {
 		imPath, err = mb.ResolveMutable(ctx, ip)
@@ -190,7 +189,7 @@ func (mb *mockBackend) resolvePathNoRootsReturned(ctx context.Context, ip ipath.
 			return nil, err
 		}
 	} else {
-		imPath, err = NewImmutablePath(ip)
+		imPath, err = path.NewImmutablePath(ip)
 		if err != nil {
 			return nil, err
 		}

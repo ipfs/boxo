@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/ipns"
+	"github.com/ipfs/boxo/path"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -188,12 +188,12 @@ type requestData struct {
 	// Defined for all requests.
 	begin          time.Time
 	logger         *zap.SugaredLogger
-	contentPath    ipath.Path
+	contentPath    path.Path
 	responseFormat string
 	responseParams map[string]string
 
 	// Defined for non IPNS Record requests.
-	immutablePath ImmutablePath
+	immutablePath path.ImmutablePath
 
 	// Defined if resolution has already happened.
 	pathMetadata *ContentPathMetadata
@@ -202,9 +202,9 @@ type requestData struct {
 // mostlyResolvedPath is an opportunistic optimization that returns the mostly
 // resolved version of ImmutablePath available. It does not guarantee it is fully
 // resolved, nor that it is the original.
-func (rq *requestData) mostlyResolvedPath() ImmutablePath {
+func (rq *requestData) mostlyResolvedPath() path.ImmutablePath {
 	if rq.pathMetadata != nil {
-		imPath, err := NewImmutablePath(rq.pathMetadata.LastSegment)
+		imPath, err := path.NewImmutablePath(rq.pathMetadata.LastSegment)
 		if err != nil {
 			// This will never happen. This error has previously been checked in
 			// [handleIfNoneMatch] and the request will have returned 500.
@@ -223,12 +223,18 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 
 	if handleProtocolHandlerRedirect(w, r, i.config) ||
 		i.handleServiceWorkerRegistration(w, r) ||
-		handleIpnsB58mhToCidRedirection(w, r) {
+		handleIpnsB58mhToCidRedirection(w, r) ||
+		i.handleSuperfluousNamespace(w, r) {
 		return
 	}
 
 	var success bool
-	contentPath := ipath.New(r.URL.Path)
+	contentPath, err := path.NewPath(r.URL.Path)
+	if err != nil {
+		i.webError(w, r, err, http.StatusBadRequest)
+		return
+	}
+
 	ctx := context.WithValue(r.Context(), ContentPathKey, contentPath)
 	r = r.WithContext(ctx)
 
@@ -238,13 +244,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	if i.handleOnlyIfCached(w, r, contentPath) ||
-		i.handleSuperfluousNamespace(w, r, contentPath) {
-		return
-	}
-
-	if err := contentPath.IsValid(); err != nil {
-		i.webError(w, r, err, http.StatusBadRequest)
+	if i.handleOnlyIfCached(w, r, contentPath) {
 		return
 	}
 
@@ -292,7 +292,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		rq.immutablePath, err = NewImmutablePath(contentPath)
+		rq.immutablePath, err = path.NewImmutablePath(contentPath)
 		if err != nil {
 			err = fmt.Errorf("path was expected to be immutable, but was not %s: %w", debugStr(contentPath.String()), err)
 			i.webError(w, r, err, http.StatusInternalServerError)
@@ -371,7 +371,7 @@ func (i *handler) isDeserializedResponsePossible(r *http.Request) bool {
 // in the [Trustless Gateway] spec.
 //
 // [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
-func (i *handler) isTrustlessRequest(contentPath ipath.Path, responseFormat string) bool {
+func (i *handler) isTrustlessRequest(contentPath path.Path, responseFormat string) bool {
 	// Only allow "/{#1}/{#2}"-like paths.
 	trimmedPath := strings.Trim(contentPath.String(), "/")
 	pathComponents := strings.Split(trimmedPath, "/")
@@ -379,7 +379,7 @@ func (i *handler) isTrustlessRequest(contentPath ipath.Path, responseFormat stri
 		return false
 	}
 
-	if contentPath.Namespace() == "ipns" {
+	if contentPath.Namespace() == path.IPNSNamespace {
 		// TODO: only ipns records allowed until https://github.com/ipfs/specs/issues/369 is resolved
 		if responseFormat != ipnsRecordResponseFormat {
 			return false
@@ -415,7 +415,7 @@ func panicHandler(w http.ResponseWriter) {
 	}
 }
 
-func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath ipath.Path, cid cid.Cid, responseFormat string) (modtime time.Time) {
+func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath path.Path, cid cid.Cid, responseFormat string) (modtime time.Time) {
 	// Best effort attempt to set an Etag based on the CID and response format.
 	// Setting an ETag is handled separately for CARs and IPNS records.
 	if etag := getEtag(r, cid, responseFormat); etag != "" {
@@ -452,7 +452,7 @@ func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath 
 //   - Creation of HTML links that trigger "Save As.." dialog instead of being rendered by the browser
 //   - Overriding the filename used when saving sub-resource assets on HTML page
 //   - providing a default filename for HTTP clients when downloading direct /ipfs/CID without any subpath
-func addContentDispositionHeader(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) string {
+func addContentDispositionHeader(w http.ResponseWriter, r *http.Request, contentPath path.Path) string {
 	// URL param ?filename=cat.jpg triggers Content-Disposition: [..] filename
 	// which impacts default name used in "Save As.." dialog
 	name := getFilename(contentPath)
@@ -470,7 +470,7 @@ func addContentDispositionHeader(w http.ResponseWriter, r *http.Request, content
 	return name
 }
 
-func getFilename(contentPath ipath.Path) string {
+func getFilename(contentPath path.Path) string {
 	s := contentPath.String()
 	if (strings.HasPrefix(s, ipfsPathPrefix) || strings.HasPrefix(s, ipnsPathPrefix)) && strings.Count(gopath.Clean(s), "/") <= 2 {
 		// Don't want to treat ipfs.io in /ipns/ipfs.io as a filename.
@@ -520,7 +520,7 @@ func setIpfsRootsHeader(w http.ResponseWriter, rq *requestData, md *ContentPathM
 	for _, c := range rq.pathMetadata.PathSegmentRoots {
 		pathRoots = append(pathRoots, c.String())
 	}
-	pathRoots = append(pathRoots, rq.pathMetadata.LastSegment.Cid().String())
+	pathRoots = append(pathRoots, rq.pathMetadata.LastSegment.RootCid().String())
 	rootCidList := strings.Join(pathRoots, ",") // convention from rfc2616#sec4.2
 
 	w.Header().Set("X-Ipfs-Roots", rootCidList)
@@ -675,7 +675,7 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, rq *
 	if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" {
 		pathMetadata, err := i.backend.ResolvePath(r.Context(), rq.immutablePath)
 		if err != nil {
-			var forwardedPath ImmutablePath
+			var forwardedPath path.ImmutablePath
 			var continueProcessing bool
 			if isWebRequest(rq.responseFormat) {
 				forwardedPath, continueProcessing = i.handleWebRequestErrors(w, r, rq.mostlyResolvedPath(), rq.immutablePath, rq.contentPath, err, rq.logger)
@@ -690,7 +690,7 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, rq *
 			}
 		}
 
-		pathCid := pathMetadata.LastSegment.Cid()
+		pathCid := pathMetadata.LastSegment.RootCid()
 
 		// Checks against both file, dir listing, and dag index Etags.
 		// This is an inexpensive check, and it happens before we do any I/O.
@@ -705,7 +705,7 @@ func (i *handler) handleIfNoneMatch(w http.ResponseWriter, r *http.Request, rq *
 		}
 
 		// Check if the resolvedPath is an immutable path.
-		_, err = NewImmutablePath(pathMetadata.LastSegment)
+		_, err = path.NewImmutablePath(pathMetadata.LastSegment)
 		if err != nil {
 			i.webError(w, r, err, http.StatusInternalServerError)
 			return true
@@ -726,7 +726,7 @@ func isWebRequest(responseFormat string) bool {
 }
 
 // handleRequestErrors is used when request type is other than Web+UnixFS
-func (i *handler) handleRequestErrors(w http.ResponseWriter, r *http.Request, contentPath ipath.Path, err error) bool {
+func (i *handler) handleRequestErrors(w http.ResponseWriter, r *http.Request, contentPath path.Path, err error) bool {
 	if err == nil {
 		return true
 	}
@@ -737,7 +737,7 @@ func (i *handler) handleRequestErrors(w http.ResponseWriter, r *http.Request, co
 
 // handleWebRequestErrors is used when request type is Web+UnixFS and err could
 // be a 404 (Not Found) that should be recovered via _redirects file (IPIP-290)
-func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request, maybeResolvedImPath, immutableContentPath ImmutablePath, contentPath ipath.Path, err error, logger *zap.SugaredLogger) (ImmutablePath, bool) {
+func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request, maybeResolvedImPath, immutableContentPath path.ImmutablePath, contentPath path.Path, err error, logger *zap.SugaredLogger) (path.ImmutablePath, bool) {
 	if err == nil {
 		return maybeResolvedImPath, true
 	}
@@ -745,14 +745,14 @@ func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request,
 	if errors.Is(err, ErrServiceUnavailable) {
 		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 		i.webError(w, r, err, http.StatusServiceUnavailable)
-		return ImmutablePath{}, false
+		return nil, false
 	}
 
 	// If the error is not an IPLD traversal error then we should not be looking for _redirects or legacy 404s
 	if !isErrNotFound(err) {
 		err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 		i.webError(w, r, err, http.StatusInternalServerError)
-		return ImmutablePath{}, false
+		return nil, false
 	}
 
 	// If we have origin isolation (subdomain gw, DNSLink website),
@@ -774,17 +774,17 @@ func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request,
 	// follow https://docs.ipfs.tech/how-to/websites-on-ipfs/redirects-and-custom-404s/ instead.
 	if i.serveLegacy404IfPresent(w, r, immutableContentPath, logger) {
 		logger.Debugw("served legacy 404")
-		return ImmutablePath{}, false
+		return nil, false
 	}
 
 	err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 	i.webError(w, r, err, http.StatusInternalServerError)
-	return ImmutablePath{}, false
+	return nil, false
 }
 
 // Detect 'Cache-Control: only-if-cached' in request and return data if it is already in the local datastore.
 // https://github.com/ipfs/specs/blob/main/http-gateways/PATH_GATEWAY.md#cache-control-request-header
-func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) bool {
+func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, contentPath path.Path) bool {
 	if r.Header.Get("Cache-Control") == "only-if-cached" {
 		if !i.backend.IsCached(r.Context(), contentPath) {
 			if r.Method == http.MethodHead {
@@ -894,23 +894,19 @@ func handleIpnsB58mhToCidRedirection(w http.ResponseWriter, r *http.Request) boo
 // 'intended' path is valid.  This is in case gremlins were tickled
 // wrong way and user ended up at /ipfs/ipfs/{cid} or /ipfs/ipns/{id}
 // like in bafybeien3m7mdn6imm425vc2s22erzyhbvk5n3ofzgikkhmdkh5cuqbpbq :^))
-func (i *handler) handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentPath ipath.Path) bool {
-	// If the path is valid, there's nothing to do
-	if pathErr := contentPath.IsValid(); pathErr == nil {
-		return false
-	}
-
+func (i *handler) handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request) bool {
 	// If there's no superflous namespace, there's nothing to do
 	if !(strings.HasPrefix(r.URL.Path, "/ipfs/ipfs/") || strings.HasPrefix(r.URL.Path, "/ipfs/ipns/")) {
 		return false
 	}
 
 	// Attempt to fix the superflous namespace
-	intendedPath := ipath.New(strings.TrimPrefix(r.URL.Path, "/ipfs"))
-	if err := intendedPath.IsValid(); err != nil {
+	intendedPath, err := path.NewPath(strings.TrimPrefix(r.URL.Path, "/ipfs"))
+	if err != nil {
 		i.webError(w, r, fmt.Errorf("invalid ipfs path: %w", err), http.StatusBadRequest)
 		return true
 	}
+
 	intendedURL := intendedPath.String()
 	if r.URL.RawQuery != "" {
 		// we render HTML, so ensure query entries are properly escaped
@@ -935,7 +931,7 @@ func (i *handler) handleSuperfluousNamespace(w http.ResponseWriter, r *http.Requ
 }
 
 // getTemplateGlobalData returns the global data necessary by most templates.
-func (i *handler) getTemplateGlobalData(r *http.Request, contentPath ipath.Path) assets.GlobalData {
+func (i *handler) getTemplateGlobalData(r *http.Request, contentPath path.Path) assets.GlobalData {
 	// gatewayURL is used to link to other root CIDs. THis will be blank unless
 	// subdomain or DNSLink resolution is being used for this request.
 	var gatewayURL string

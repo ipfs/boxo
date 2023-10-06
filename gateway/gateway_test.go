@@ -9,10 +9,9 @@ import (
 	"testing"
 	"time"
 
-	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/namesys"
-	path "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -26,14 +25,23 @@ func TestGatewayGet(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	k, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "subdir", "fnord"))
+	p, err := path.Join(path.FromCid(root), "subdir", "fnord")
 	require.NoError(t, err)
 
-	backend.namesys["/ipns/example.com"] = path.FromCid(k.Cid())
-	backend.namesys["/ipns/working.example.com"] = path.FromString(k.String())
-	backend.namesys["/ipns/double.example.com"] = path.FromString("/ipns/working.example.com")
-	backend.namesys["/ipns/triple.example.com"] = path.FromString("/ipns/double.example.com")
-	backend.namesys["/ipns/broken.example.com"] = path.FromString("/ipns/" + k.Cid().String())
+	k, err := backend.resolvePathNoRootsReturned(ctx, p)
+	require.NoError(t, err)
+
+	mustMakeDNSLinkPath := func(domain string) path.Path {
+		p, err := path.NewPath("/ipns/" + domain)
+		require.NoError(t, err)
+		return p
+	}
+
+	backend.namesys["/ipns/example.com"] = path.FromCid(k.RootCid())
+	backend.namesys["/ipns/working.example.com"] = k
+	backend.namesys["/ipns/double.example.com"] = mustMakeDNSLinkPath("working.example.com")
+	backend.namesys["/ipns/triple.example.com"] = mustMakeDNSLinkPath("double.example.com")
+	backend.namesys["/ipns/broken.example.com"] = mustMakeDNSLinkPath(k.RootCid().String())
 	// We picked .man because:
 	// 1. It's a valid TLD.
 	// 2. Go treats it as the file extension for "man" files (even though
@@ -41,7 +49,7 @@ func TestGatewayGet(t *testing.T) {
 	//
 	// Unfortunately, this may not work on all platforms as file type
 	// detection is platform dependent.
-	backend.namesys["/ipns/example.man"] = path.FromString(k.String())
+	backend.namesys["/ipns/example.man"] = k
 
 	for _, test := range []struct {
 		host   string
@@ -50,10 +58,10 @@ func TestGatewayGet(t *testing.T) {
 		text   string
 	}{
 		{"127.0.0.1:8080", "/", http.StatusNotFound, "404 page not found\n"},
-		{"127.0.0.1:8080", "/ipfs", http.StatusBadRequest, "invalid path \"/ipfs/\": not enough path components\n"},
-		{"127.0.0.1:8080", "/ipns", http.StatusBadRequest, "invalid path \"/ipns/\": not enough path components\n"},
-		{"127.0.0.1:8080", "/" + k.Cid().String(), http.StatusNotFound, "404 page not found\n"},
-		{"127.0.0.1:8080", "/ipfs/this-is-not-a-cid", http.StatusBadRequest, "invalid path \"/ipfs/this-is-not-a-cid\": invalid CID: invalid cid: illegal base32 data at input byte 3\n"},
+		{"127.0.0.1:8080", "/ipfs", http.StatusBadRequest, "invalid path \"/ipfs/\": path does not have enough components\n"},
+		{"127.0.0.1:8080", "/ipns", http.StatusBadRequest, "invalid path \"/ipns/\": path does not have enough components\n"},
+		{"127.0.0.1:8080", "/" + k.RootCid().String(), http.StatusNotFound, "404 page not found\n"},
+		{"127.0.0.1:8080", "/ipfs/this-is-not-a-cid", http.StatusBadRequest, "invalid path \"/ipfs/this-is-not-a-cid\": invalid cid: illegal base32 data at input byte 3\n"},
 		{"127.0.0.1:8080", k.String(), http.StatusOK, "fnord"},
 		{"127.0.0.1:8080", "/ipns/nxdomain.example.com", http.StatusInternalServerError, "failed to resolve /ipns/nxdomain.example.com: " + namesys.ErrResolveFailed.Error() + "\n"},
 		{"127.0.0.1:8080", "/ipns/%0D%0A%0D%0Ahello", http.StatusInternalServerError, "failed to resolve /ipns/\\r\\n\\r\\nhello: " + namesys.ErrResolveFailed.Error() + "\n"},
@@ -64,7 +72,7 @@ func TestGatewayGet(t *testing.T) {
 		{"working.example.com", "/", http.StatusOK, "fnord"},
 		{"double.example.com", "/", http.StatusOK, "fnord"},
 		{"triple.example.com", "/", http.StatusOK, "fnord"},
-		{"working.example.com", k.String(), http.StatusNotFound, "failed to resolve /ipns/working.example.com" + k.String() + ": no link named \"ipfs\" under " + k.Cid().String() + "\n"},
+		{"working.example.com", k.String(), http.StatusNotFound, "failed to resolve /ipns/working.example.com" + k.String() + ": no link named \"ipfs\" under " + k.RootCid().String() + "\n"},
 		{"broken.example.com", "/", http.StatusInternalServerError, "failed to resolve /ipns/broken.example.com/: " + namesys.ErrResolveFailed.Error() + "\n"},
 		{"broken.example.com", k.String(), http.StatusInternalServerError, "failed to resolve /ipns/broken.example.com" + k.String() + ": " + namesys.ErrResolveFailed.Error() + "\n"},
 		// This test case ensures we don't treat the TLD as a file extension.
@@ -707,43 +715,43 @@ type errorMockBackend struct {
 	err error
 }
 
-func (mb *errorMockBackend) Get(ctx context.Context, path ImmutablePath, getRange ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
+func (mb *errorMockBackend) Get(ctx context.Context, path path.ImmutablePath, getRange ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
 	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (mb *errorMockBackend) GetAll(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (mb *errorMockBackend) GetAll(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.Node, error) {
 	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (mb *errorMockBackend) GetBlock(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.File, error) {
+func (mb *errorMockBackend) GetBlock(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.File, error) {
 	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (mb *errorMockBackend) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
+func (mb *errorMockBackend) Head(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (mb *errorMockBackend) GetCAR(ctx context.Context, path ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+func (mb *errorMockBackend) GetCAR(ctx context.Context, path path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (mb *errorMockBackend) ResolveMutable(ctx context.Context, path ipath.Path) (ImmutablePath, error) {
-	return ImmutablePath{}, mb.err
+func (mb *errorMockBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, error) {
+	return nil, mb.err
 }
 
 func (mb *errorMockBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
 	return nil, mb.err
 }
 
-func (mb *errorMockBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (ipath.Path, error) {
+func (mb *errorMockBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (path.Path, error) {
 	return nil, mb.err
 }
 
-func (mb *errorMockBackend) IsCached(ctx context.Context, p ipath.Path) bool {
+func (mb *errorMockBackend) IsCached(ctx context.Context, p path.Path) bool {
 	return false
 }
 
-func (mb *errorMockBackend) ResolvePath(ctx context.Context, path ImmutablePath) (ContentPathMetadata, error) {
+func (mb *errorMockBackend) ResolvePath(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, error) {
 	return ContentPathMetadata{}, mb.err
 }
 
@@ -763,7 +771,7 @@ func TestErrorBubblingFromBackend(t *testing.T) {
 	}
 
 	testError("500 Not Found from IPLD", &ipld.ErrNotFound{}, http.StatusInternalServerError)
-	testError("404 Not Found from path resolver", resolver.ErrNoLink{}, http.StatusNotFound)
+	testError("404 Not Found from path resolver", &resolver.ErrNoLink{}, http.StatusNotFound)
 	testError("502 Bad Gateway", ErrBadGateway, http.StatusBadGateway)
 	testError("504 Gateway Timeout", ErrGatewayTimeout, http.StatusGatewayTimeout)
 
@@ -791,27 +799,27 @@ type panicMockBackend struct {
 	panicOnHostnameHandler bool
 }
 
-func (mb *panicMockBackend) Get(ctx context.Context, immutablePath ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
+func (mb *panicMockBackend) Get(ctx context.Context, immutablePath path.ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
 	panic("i am panicking")
 }
 
-func (mb *panicMockBackend) GetAll(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (mb *panicMockBackend) GetAll(ctx context.Context, immutablePath path.ImmutablePath) (ContentPathMetadata, files.Node, error) {
 	panic("i am panicking")
 }
 
-func (mb *panicMockBackend) GetBlock(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, files.File, error) {
+func (mb *panicMockBackend) GetBlock(ctx context.Context, immutablePath path.ImmutablePath) (ContentPathMetadata, files.File, error) {
 	panic("i am panicking")
 }
 
-func (mb *panicMockBackend) Head(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
+func (mb *panicMockBackend) Head(ctx context.Context, immutablePath path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	panic("i am panicking")
 }
 
-func (mb *panicMockBackend) GetCAR(ctx context.Context, immutablePath ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+func (mb *panicMockBackend) GetCAR(ctx context.Context, immutablePath path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	panic("i am panicking")
 }
 
-func (mb *panicMockBackend) ResolveMutable(ctx context.Context, p ipath.Path) (ImmutablePath, error) {
+func (mb *panicMockBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, error) {
 	panic("i am panicking")
 }
 
@@ -819,7 +827,7 @@ func (mb *panicMockBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byt
 	panic("i am panicking")
 }
 
-func (mb *panicMockBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (ipath.Path, error) {
+func (mb *panicMockBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (path.Path, error) {
 	// GetDNSLinkRecord is also called on the WithHostname handler. We have this option
 	// to disable panicking here so we can test if both the regular gateway handler
 	// and the hostname handler can handle panics.
@@ -830,11 +838,11 @@ func (mb *panicMockBackend) GetDNSLinkRecord(ctx context.Context, hostname strin
 	return nil, errors.New("not implemented")
 }
 
-func (mb *panicMockBackend) IsCached(ctx context.Context, p ipath.Path) bool {
+func (mb *panicMockBackend) IsCached(ctx context.Context, p path.Path) bool {
 	panic("i am panicking")
 }
 
-func (mb *panicMockBackend) ResolvePath(ctx context.Context, immutablePath ImmutablePath) (ContentPathMetadata, error) {
+func (mb *panicMockBackend) ResolvePath(ctx context.Context, immutablePath path.ImmutablePath) (ContentPathMetadata, error) {
 	panic("i am panicking")
 }
 

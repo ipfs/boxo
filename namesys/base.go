@@ -6,7 +6,7 @@ import (
 	"time"
 
 	opts "github.com/ipfs/boxo/coreiface/options/namesys"
-	path "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 )
 
 type onceResult struct {

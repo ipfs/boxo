@@ -24,6 +24,17 @@ The following emojis are used to highlight certain changes:
     `files.Node`.
 * `boxo/routing/http/client.Client` is now exported. This means you can now pass
   it around functions, or add it to a struct if you want.
+* 🛠 The `path` package has been massively refactored. With this refactor, we have
+  condensed the different path-related and/or Kubo-specific packages under a single generic one. Therefore, there
+  are many breaking changes. Please consult the [documentation](https://pkg.go.dev/github.com/ipfs/boxo/path)
+  for more details on how to use the new package.
+  * Note: content paths created with `boxo/path` are automatically normalized:
+    - Replace multiple slashes with a single slash.
+    - Eliminate each `.` path name element (the current directory).
+    - Eliminate each inner `..` path name element (the parent directory) along with the non-`..` element that precedes it.
+    - Eliminate `..` elements that begin a rooted path: that is, replace "`/..`" by "`/`" at the beginning of a path.
+* 🛠 The signature of `CoreAPI.ResolvePath` in  `coreiface` has changed to now return
+  the remainder segments as a second return value, matching the signature of `resolver.ResolveToLastNode`.
 
 ### Removed
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -203,7 +204,7 @@ func buildContentTypeFromCarParams(params CarParams) string {
 	return h.String()
 }
 
-func getCarRootCidAndLastSegment(imPath ImmutablePath) (cid.Cid, string, error) {
+func getCarRootCidAndLastSegment(imPath path.ImmutablePath) (cid.Cid, string, error) {
 	imPathStr := imPath.String()
 	if !strings.HasPrefix(imPathStr, "/ipfs/") {
 		return cid.Undef, "", fmt.Errorf("path does not have /ipfs/ prefix")
@@ -224,7 +225,7 @@ func getCarRootCidAndLastSegment(imPath ImmutablePath) (cid.Cid, string, error) 
 	return rootCid, lastSegment, err
 }
 
-func getCarEtag(imPath ImmutablePath, params CarParams, rootCid cid.Cid) string {
+func getCarEtag(imPath path.ImmutablePath, params CarParams, rootCid cid.Cid) string {
 	data := imPath.String()
 	if params.Scope != DagScopeAll {
 		data += string(params.Scope)
