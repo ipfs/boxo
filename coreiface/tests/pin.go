@@ -133,12 +133,12 @@ func (tp *TestSuite) TestPinRecursive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, newIPLDPath(t, nd2.Cid()))
+	err = api.Pin().Add(ctx, path.FromCid(nd2.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, newIPLDPath(t, nd3.Cid()), opt.Pin.Recursive(false))
+	err = api.Pin().Add(ctx, path.FromCid(nd3.Cid()), opt.Pin.Recursive(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func (tp *TestSuite) TestPinRecursive(t *testing.T) {
 		t.Errorf("unexpected pin list len: %d", len(list))
 	}
 
-	if list[0].Path().String() != newIPLDPath(t, nd3.Cid()).String() {
+	if list[0].Path().String() != path.FromCid(nd3.Cid()).String() {
 		t.Errorf("unexpected path, %s != %s", list[0].Path().String(), path.FromCid(nd3.Cid()).String())
 	}
 
@@ -174,8 +174,8 @@ func (tp *TestSuite) TestPinRecursive(t *testing.T) {
 		t.Errorf("unexpected pin list len: %d", len(list))
 	}
 
-	if list[0].Path().String() != newIPLDPath(t, nd2.Cid()).String() {
-		t.Errorf("unexpected path, %s != %s", list[0].Path().String(), newIPLDPath(t, nd2.Cid()).String())
+	if list[0].Path().String() != path.FromCid(nd2.Cid()).String() {
+		t.Errorf("unexpected path, %s != %s", list[0].Path().String(), path.FromCid(nd2.Cid()).String())
 	}
 
 	list, err = accPins(api.Pin().Ls(ctx, opt.Pin.Ls.Indirect()))
@@ -258,12 +258,12 @@ func (tp *TestSuite) TestPinLsIndirect(t *testing.T) {
 
 	leaf, parent, grandparent := getThreeChainedNodes(t, ctx, api, "foo")
 
-	err = api.Pin().Add(ctx, newIPLDPath(t, grandparent.Cid()))
+	err = api.Pin().Add(ctx, path.FromCid(grandparent.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, newIPLDPath(t, parent.Cid()), opt.Pin.Recursive(false))
+	err = api.Pin().Add(ctx, path.FromCid(parent.Cid()), opt.Pin.Recursive(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,12 +292,12 @@ func (tp *TestSuite) TestPinLsPredenceRecursiveIndirect(t *testing.T) {
 	// Test recursive > indirect
 	leaf, parent, grandparent := getThreeChainedNodes(t, ctx, api, "recursive > indirect")
 
-	err = api.Pin().Add(ctx, newIPLDPath(t, grandparent.Cid()))
+	err = api.Pin().Add(ctx, path.FromCid(grandparent.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, newIPLDPath(t, parent.Cid()))
+	err = api.Pin().Add(ctx, path.FromCid(parent.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,12 +316,12 @@ func (tp *TestSuite) TestPinLsPrecedenceDirectIndirect(t *testing.T) {
 	// Test direct > indirect
 	leaf, parent, grandparent := getThreeChainedNodes(t, ctx, api, "direct > indirect")
 
-	err = api.Pin().Add(ctx, newIPLDPath(t, grandparent.Cid()))
+	err = api.Pin().Add(ctx, path.FromCid(grandparent.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, newIPLDPath(t, parent.Cid()), opt.Pin.Recursive(false))
+	err = api.Pin().Add(ctx, path.FromCid(parent.Cid()), opt.Pin.Recursive(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,24 +340,24 @@ func (tp *TestSuite) TestPinLsPrecedenceRecursiveDirect(t *testing.T) {
 	// Test recursive > direct
 	leaf, parent, grandparent := getThreeChainedNodes(t, ctx, api, "recursive + direct = error")
 
-	err = api.Pin().Add(ctx, newIPLDPath(t, parent.Cid()))
+	err = api.Pin().Add(ctx, path.FromCid(parent.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, newIPLDPath(t, parent.Cid()), opt.Pin.Recursive(false))
+	err = api.Pin().Add(ctx, path.FromCid(parent.Cid()), opt.Pin.Recursive(false))
 	if err == nil {
 		t.Fatal("expected error directly pinning a recursively pinned node")
 	}
 
 	assertPinTypes(t, ctx, api, []cidContainer{parent}, []cidContainer{}, []cidContainer{leaf})
 
-	err = api.Pin().Add(ctx, newIPLDPath(t, grandparent.Cid()), opt.Pin.Recursive(false))
+	err = api.Pin().Add(ctx, path.FromCid(grandparent.Cid()), opt.Pin.Recursive(false))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = api.Pin().Add(ctx, newIPLDPath(t, grandparent.Cid()))
+	err = api.Pin().Add(ctx, path.FromCid(grandparent.Cid()))
 	if err != nil {
 		t.Fatal(err)
 	}

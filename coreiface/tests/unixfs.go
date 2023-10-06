@@ -552,7 +552,7 @@ func (tp *TestSuite) TestAddPinned(t *testing.T) {
 		t.Fatalf("expected 1 pin, got %d", len(pins))
 	}
 
-	if pins[0].Path().String() != "/ipld/QmQy2Dw4Wk7rdJKjThjYXzfFJNaRKRHhHP5gHHXroJMYxk" {
+	if pins[0].Path().String() != "/ipfs/QmQy2Dw4Wk7rdJKjThjYXzfFJNaRKRHhHP5gHHXroJMYxk" {
 		t.Fatalf("got unexpected pin: %s", pins[0].Path().String())
 	}
 }
