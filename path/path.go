@@ -73,58 +73,50 @@ func (p path) Segments() []string {
 }
 
 // ImmutablePath is a [Path] which is guaranteed to have an immutable [Namespace].
-type ImmutablePath interface {
-	Path
-
-	// RootCid returns the [cid.Cid] of the root object of the path.
-	RootCid() cid.Cid
-}
-
-var _ Path = immutablePath{}
-var _ ImmutablePath = immutablePath{}
-
-type immutablePath struct {
+type ImmutablePath struct {
 	path    Path
 	rootCid cid.Cid
 }
 
+var _ Path = ImmutablePath{}
+
 func NewImmutablePath(p Path) (ImmutablePath, error) {
 	if p.Mutable() {
-		return nil, &ErrInvalidPath{err: ErrExpectedImmutable, path: p.String()}
+		return ImmutablePath{}, &ErrInvalidPath{err: ErrExpectedImmutable, path: p.String()}
 	}
 
 	segments := p.Segments()
 	cid, err := cid.Decode(segments[1])
 	if err != nil {
-		return nil, &ErrInvalidPath{err: err, path: p.String()}
+		return ImmutablePath{}, &ErrInvalidPath{err: err, path: p.String()}
 	}
 
-	return immutablePath{path: p, rootCid: cid}, nil
+	return ImmutablePath{path: p, rootCid: cid}, nil
 }
 
-func (ip immutablePath) String() string {
+func (ip ImmutablePath) String() string {
 	return ip.path.String()
 }
 
-func (ip immutablePath) Namespace() string {
+func (ip ImmutablePath) Namespace() string {
 	return ip.path.Namespace()
 }
 
-func (ip immutablePath) Mutable() bool {
+func (ip ImmutablePath) Mutable() bool {
 	return false
 }
 
-func (ip immutablePath) Segments() []string {
+func (ip ImmutablePath) Segments() []string {
 	return ip.path.Segments()
 }
 
-func (ip immutablePath) RootCid() cid.Cid {
+func (ip ImmutablePath) RootCid() cid.Cid {
 	return ip.rootCid
 }
 
 // FromCid returns a new "/ipfs" path with the provided CID.
 func FromCid(cid cid.Cid) ImmutablePath {
-	return immutablePath{
+	return ImmutablePath{
 		path: path{
 			str:       fmt.Sprintf("/%s/%s", IPFSNamespace, cid.String()),
 			namespace: IPFSNamespace,
@@ -161,7 +153,7 @@ func NewPath(str string) (Path, error) {
 			return nil, &ErrInvalidPath{err: err, path: str}
 		}
 
-		return immutablePath{
+		return ImmutablePath{
 			path: path{
 				str:       cleaned,
 				namespace: segments[0],
