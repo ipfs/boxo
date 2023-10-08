@@ -58,11 +58,10 @@ type downloader struct {
 }
 
 func DownloadFile(c cid.Cid) (io.ReadCloser, error) {
-	req, err := http.NewRequest("GET", gateway+c.String(), bytes.NewReader(nil))
+	req, err := http.NewRequest("GET", gateway+c.String()+"?dag-scope=entity&dups=y", bytes.NewReader(nil))
 	if err != nil {
 		return nil, err
 	}
-	// FIXME: Specify ordered DFS with duplicates
 	req.Header.Add("Accept", "application/vnd.ipld.car")
 
 	resp, err := http.DefaultClient.Do(req)
