@@ -105,12 +105,6 @@ func DownloadFile(c cid.Cid) (io.ReadCloser, error) {
 	if h.Version != supportedVersion {
 		return nil, fmt.Errorf("unsupported version %d instead of %d", h.Version, supportedVersion)
 	}
-	if len(h.Roots) != 1 {
-		return nil, fmt.Errorf("header has more roots than expected %d instead of 1", len(h.Roots))
-	}
-	if h.Roots[0] != c {
-		return nil, fmt.Errorf("header root don't match, got %s instead of %s", cidStringTruncate(h.Roots[0]), c.String())
-	}
 
 	good = true
 
