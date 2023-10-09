@@ -40,13 +40,13 @@ Example:
 
 	r, err := feather.DownloadFile(c)
 	if err != nil {
-		return fmt.Errorf("Error starting file download: %w", err)
+		return fmt.Errorf("error starting file download: %w", err)
 	}
 	defer r.Close()
 
 	_, err = io.Copy(os.Stdout, r)
 	if err != nil {
-		return fmt.Errorf("Error downloading file: %w", err)
+		return fmt.Errorf("error downloading file: %w", err)
 	}
 	return nil
 }
