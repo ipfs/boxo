@@ -252,7 +252,7 @@ func emitOnceResult(ctx context.Context, outCh chan<- ResolveAsyncResult, r Reso
 
 // Publish implements Publisher
 func (ns *namesys) Publish(ctx context.Context, name ci.PrivKey, value path.Path, options ...PublishOption) error {
-	ctx, span := startSpan(ctx, "MPNS.Publish")
+	ctx, span := startSpan(ctx, "namesys.Publish")
 	defer span.End()
 
 	// This is a bit hacky. We do this because the EOL is based on the current

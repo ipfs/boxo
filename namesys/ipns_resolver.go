@@ -87,7 +87,7 @@ func (r *IPNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, option
 	go func() {
 		defer cancel()
 		defer close(out)
-		ctx, span := startSpan(ctx, "IpnsResolver.ResolveOnceAsync.Worker")
+		ctx, span := startSpan(ctx, "IPNSResolver.ResolveOnceAsync.Worker")
 		defer span.End()
 
 		for {

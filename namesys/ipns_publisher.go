@@ -43,7 +43,7 @@ func NewIPNSPublisher(route routing.ValueStore, ds ds.Datastore) *IPNSPublisher 
 func (p *IPNSPublisher) Publish(ctx context.Context, priv crypto.PrivKey, value path.Path, options ...PublishOption) error {
 	log.Debugf("Publish %s", value)
 
-	ctx, span := startSpan(ctx, "IpnsPublisher.Publish", trace.WithAttributes(attribute.String("Value", value.String())))
+	ctx, span := startSpan(ctx, "IPNSPublisher.Publish", trace.WithAttributes(attribute.String("Value", value.String())))
 	defer span.End()
 
 	record, err := p.updateRecord(ctx, priv, value, options...)
@@ -203,7 +203,7 @@ func (p *IPNSPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 // the provided [routing.ValueStore]. The public key is also made available to the routing
 // system if it cannot be derived from the corresponding [peer.ID].
 func PublishIPNSRecord(ctx context.Context, r routing.ValueStore, pubKey crypto.PubKey, rec *ipns.Record) error {
-	ctx, span := startSpan(ctx, "PutRecordToRouting")
+	ctx, span := startSpan(ctx, "PublishIPNSRecord")
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -249,7 +249,7 @@ func waitOnErrChan(ctx context.Context, errs chan error) error {
 // PutPublicKey puts the given [crypto.PubKey] for the given [peer.ID] in the [routing.ValueStore].
 func PutPublicKey(ctx context.Context, r routing.ValueStore, pid peer.ID, pubKey crypto.PubKey) error {
 	routingKey := PkRoutingKey(pid)
-	ctx, span := startSpan(ctx, "PublishPublicKey", trace.WithAttributes(attribute.String("Key", routingKey)))
+	ctx, span := startSpan(ctx, "PutPublicKey", trace.WithAttributes(attribute.String("Key", routingKey)))
 	defer span.End()
 
 	bytes, err := crypto.MarshalPublicKey(pubKey)
@@ -269,7 +269,7 @@ func PkRoutingKey(id peer.ID) string {
 // PutIPNSRecord puts the given [ipns.Record] for the given [ipns.Name] in the [routing.ValueStore].
 func PutIPNSRecord(ctx context.Context, r routing.ValueStore, name ipns.Name, rec *ipns.Record) error {
 	routingKey := string(name.RoutingKey())
-	ctx, span := startSpan(ctx, "PublishEntry", trace.WithAttributes(attribute.String("IPNSKey", routingKey)))
+	ctx, span := startSpan(ctx, "PutIPNSRecord", trace.WithAttributes(attribute.String("IPNSKey", routingKey)))
 	defer span.End()
 
 	bytes, err := ipns.MarshalRecord(rec)
