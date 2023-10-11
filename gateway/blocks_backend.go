@@ -67,6 +67,7 @@ var _ IPFSBackend = (*BlocksBackend)(nil)
 type blocksBackendOptions struct {
 	ns namesys.NameSystem
 	vs routing.ValueStore
+	r  resolver.Resolver
 }
 
 // WithNameSystem sets the name system to use with the [BlocksBackend]. If not set
@@ -83,6 +84,14 @@ func WithNameSystem(ns namesys.NameSystem) BlocksBackendOption {
 func WithValueStore(vs routing.ValueStore) BlocksBackendOption {
 	return func(opts *blocksBackendOptions) error {
 		opts.vs = vs
+		return nil
+	}
+}
+
+// WithResolver sets the [resolver.Resolver] to use with the [BlocksBackend].
+func WithResolver(r resolver.Resolver) BlocksBackendOption {
+	return func(opts *blocksBackendOptions) error {
+		opts.r = r
 		return nil
 	}
 }
@@ -108,13 +117,12 @@ func NewBlocksBackend(blockService blockservice.BlockService, opts ...BlocksBack
 		}
 		return basicnode.Prototype.Any, nil
 	})
-	fetcher := fetcherConfig.WithReifier(unixfsnode.Reify)
-	r := resolver.NewBasicResolver(fetcher)
 
 	// Setup a name system so that we are able to resolve /ipns links.
 	var (
 		ns namesys.NameSystem
 		vs routing.ValueStore
+		r  resolver.Resolver
 	)
 
 	vs = compiledOptions.vs
@@ -133,6 +141,12 @@ func NewBlocksBackend(blockService blockservice.BlockService, opts ...BlocksBack
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	r = compiledOptions.r
+	if r == nil {
+		fetcher := fetcherConfig.WithReifier(unixfsnode.Reify)
+		r = resolver.NewBasicResolver(fetcher)
 	}
 
 	return &BlocksBackend{
