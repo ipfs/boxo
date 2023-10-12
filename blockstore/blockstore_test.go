@@ -131,6 +131,9 @@ func TestPutsThenGetManyBlock(t *testing.T) {
 	if !bytes.Equal(blocksFromBlockstore[2].RawData(), block4.RawData()) {
 		t.Fail()
 	}
+	if !bytes.Equal(missingCIDs[0].Bytes(), block3.Cid().Bytes()) {
+		t.Fail()
+	}
 }
 
 func TestCidv0v1Many(t *testing.T) {
@@ -166,6 +169,9 @@ func TestCidv0v1Many(t *testing.T) {
 		t.Fail()
 	}
 	if !bytes.Equal(blocksFromBlockstore[2].RawData(), block4.RawData()) {
+		t.Fail()
+	}
+	if !bytes.Equal(missingCIDs[0].Bytes(), cid.NewCidV1(cid.DagProtobuf, block3.Cid().Hash()).Bytes()) {
 		t.Fail()
 	}
 }
