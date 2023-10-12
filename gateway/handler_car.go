@@ -166,20 +166,18 @@ func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarPa
 	}
 
 	// optional dups from IPIP-412
-	if dups := NewDuplicateBlocksPolicy(contentTypeParams["dups"]); dups != DuplicateBlocksUnspecified {
-		switch dups {
-		case DuplicateBlocksExcluded, DuplicateBlocksIncluded:
-			params.Duplicates = dups
-		default:
-			return CarParams{}, fmt.Errorf("unsupported application/vnd.ipld.car content type dups parameter:  %q", dups)
-		}
-	} else {
+	dups, err := NewDuplicateBlocksPolicy(contentTypeParams["dups"])
+	if err != nil {
+		return CarParams{}, err
+	}
+	if dups == DuplicateBlocksUnspecified {
 		// when duplicate block preference is not specified, we set it to
 		// false, as this has always been the default behavior, we should
 		// not break legacy clients, and responses to requests made via ?format=car
 		// should benefit from block deduplication
-		params.Duplicates = DuplicateBlocksExcluded
+		dups = DuplicateBlocksExcluded
 	}
+	params.Duplicates = dups
 
 	return params, nil
 }
