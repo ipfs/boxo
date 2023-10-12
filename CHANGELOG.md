@@ -16,6 +16,9 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+* `boxo/gateway`:
+  * A new `WithResolver(...)` option can be used with `NewBlocksBackend(...)` allowing the user to pass their custom `Resolver` implementation.
+
 ### Changed
 
 * `boxo/gateway`
