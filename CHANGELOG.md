@@ -18,6 +18,8 @@ The following emojis are used to highlight certain changes:
 
 * `boxo/gateway`:
   * A new `WithResolver(...)` option can be used with `NewBlocksBackend(...)` allowing the user to pass their custom `Resolver` implementation.
+* `boxo/bitswap/client`:
+  * A new `WithoutDuplicatedBlockStats()` option can be used with `bitswap.New` and `bsclient.New`. This disable accounting for duplicated blocks, which requires a `blockstore.Has()` lookup for every received block and thus, can impact performance.
 
 ### Changed
 
