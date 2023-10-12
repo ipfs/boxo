@@ -109,15 +109,6 @@ func NewBlocksBackend(blockService blockservice.BlockService, opts ...BlocksBack
 	// Setup the DAG services, which use the CAR block store.
 	dagService := merkledag.NewDAGService(blockService)
 
-	// Setup the UnixFS resolver.
-	fetcherConfig := bsfetcher.NewFetcherConfig(blockService)
-	fetcherConfig.PrototypeChooser = dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
-		if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
-			return tlnkNd.LinkTargetNodePrototype(), nil
-		}
-		return basicnode.Prototype.Any, nil
-	})
-
 	// Setup a name system so that we are able to resolve /ipns links.
 	var (
 		ns namesys.NameSystem
@@ -145,7 +136,8 @@ func NewBlocksBackend(blockService blockservice.BlockService, opts ...BlocksBack
 
 	r = compiledOptions.r
 	if r == nil {
-		fetcher := fetcherConfig.WithReifier(unixfsnode.Reify)
+		// Setup the UnixFS resolver.
+		fetcher := bsfetcher.NewFetcherConfig(blockService)
 		r = resolver.NewBasicResolver(fetcher)
 	}
 
