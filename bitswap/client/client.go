@@ -392,8 +392,6 @@ func (bs *Client) updateReceiveCounters(blocks []blocks.Block) {
 	var blocksHas []bool
 	if !bs.skipDuplicatedBlocksStats {
 		blocksHas = bs.blockstoreHas(blocks)
-	} else {
-		blocksHas = make([]bool, len(blocks))
 	}
 
 	bs.counterLk.Lock()
@@ -401,7 +399,7 @@ func (bs *Client) updateReceiveCounters(blocks []blocks.Block) {
 
 	// Do some accounting for each block
 	for i, b := range blocks {
-		has := blocksHas[i]
+		has := (blocksHas != nil) && blocksHas[i]
 
 		blkLen := len(b.RawData())
 		bs.allMetric.Observe(float64(blkLen))
