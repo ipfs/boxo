@@ -94,7 +94,7 @@ func TestGetManyWhenKeyNotPresent(t *testing.T) {
 
 func TestGetManyWhenKeyIsNil(t *testing.T) {
 	bs := NewGetManyBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
-	_, _, err := bs.GetMany(bg, []cid.Cid{cid.Cid{}, cid.Cid{}})
+	_, _, err := bs.GetMany(bg, []cid.Cid{{}, {}})
 	if !ipld.IsNotFound(err) {
 		t.Fail()
 	}
