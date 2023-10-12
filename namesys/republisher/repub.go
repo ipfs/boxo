@@ -141,7 +141,7 @@ func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) erro
 	log.Debugf("republishing ipns entry for %s", id)
 
 	// Look for it locally only
-	rec, err := rp.getLastIPNSRecord(ctx, id)
+	rec, err := rp.getLastIPNSRecord(ctx, ipns.NameFromPeer(id))
 	if err != nil {
 		if err == errNoEntry {
 			span.SetAttributes(attribute.Bool("NoEntry", true))
@@ -173,9 +173,9 @@ func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) erro
 	return err
 }
 
-func (rp *Republisher) getLastIPNSRecord(ctx context.Context, id peer.ID) (*ipns.Record, error) {
+func (rp *Republisher) getLastIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	// Look for it locally only
-	val, err := rp.ds.Get(ctx, namesys.IpnsDsKey(id))
+	val, err := rp.ds.Get(ctx, namesys.IpnsDsKey(name))
 	switch err {
 	case nil:
 	case ds.ErrNotFound:

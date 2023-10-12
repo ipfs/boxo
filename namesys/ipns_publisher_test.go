@@ -99,7 +99,7 @@ func TestAsyncDS(t *testing.T) {
 	err = publisher.Publish(ctx, ipnsFakeID.PrivateKey(), ipnsVal)
 	require.NoError(t, err)
 
-	ipnsKey := IpnsDsKey(ipnsFakeID.ID())
+	ipnsKey := IpnsDsKey(ipns.NameFromPeer(ipnsFakeID.ID()))
 
 	for k := range ds.syncKeys {
 		if k.IsAncestorOf(ipnsKey) || k.Equal(ipnsKey) {

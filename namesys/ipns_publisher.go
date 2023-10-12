@@ -56,8 +56,8 @@ func (p *IPNSPublisher) Publish(ctx context.Context, priv crypto.PrivKey, value 
 
 // IpnsDsKey returns a datastore key given an IPNS identifier (peer
 // ID). Defines the storage key for IPNS records in the local datastore.
-func IpnsDsKey(id peer.ID) ds.Key {
-	return ds.NewKey("/ipns/" + base32.RawStdEncoding.EncodeToString([]byte(id)))
+func IpnsDsKey(name ipns.Name) ds.Key {
+	return ds.NewKey("/ipns/" + base32.RawStdEncoding.EncodeToString([]byte(name.Peer())))
 }
 
 // ListPublished returns the latest IPNS records published by this node and
@@ -65,7 +65,7 @@ func IpnsDsKey(id peer.ID) ds.Key {
 //
 // This method will not search the routing system for records published by other
 // nodes.
-func (p *IPNSPublisher) ListPublished(ctx context.Context) (map[peer.ID]*ipns.Record, error) {
+func (p *IPNSPublisher) ListPublished(ctx context.Context) (map[ipns.Name]*ipns.Record, error) {
 	query, err := p.ds.Query(ctx, dsquery.Query{
 		Prefix: ipns.NamespacePrefix,
 	})
@@ -74,7 +74,7 @@ func (p *IPNSPublisher) ListPublished(ctx context.Context) (map[peer.ID]*ipns.Re
 	}
 	defer query.Close()
 
-	records := make(map[peer.ID]*ipns.Record)
+	records := make(map[ipns.Name]*ipns.Record)
 	for {
 		select {
 		case result, ok := <-query.Next():
@@ -100,7 +100,7 @@ func (p *IPNSPublisher) ListPublished(ctx context.Context) (map[peer.ID]*ipns.Re
 				log.Errorf("ipns ds key invalid: %s", result.Key)
 				continue
 			}
-			records[peer.ID(pid)] = rec
+			records[ipns.NameFromPeer(peer.ID(pid))] = rec
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -112,24 +112,24 @@ func (p *IPNSPublisher) ListPublished(ctx context.Context) (map[peer.ID]*ipns.Re
 //
 // If `checkRouting` is true and we have no existing record, this method will
 // check the routing system for any existing records.
-func (p *IPNSPublisher) GetPublished(ctx context.Context, id peer.ID, checkRouting bool) (*ipns.Record, error) {
+func (p *IPNSPublisher) GetPublished(ctx context.Context, name ipns.Name, checkRouting bool) (*ipns.Record, error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
 	defer cancel()
 
-	value, err := p.ds.Get(ctx, IpnsDsKey(id))
+	value, err := p.ds.Get(ctx, IpnsDsKey(name))
 	switch err {
 	case nil:
 	case ds.ErrNotFound:
 		if !checkRouting {
 			return nil, nil
 		}
-		routingKey := ipns.NameFromPeer(id).RoutingKey()
+		routingKey := name.RoutingKey()
 		value, err = p.routing.GetValue(ctx, string(routingKey))
 		if err != nil {
 			// Not found or other network issue. Can't really do
 			// anything about this case.
 			if err != routing.ErrNotFound {
-				log.Debugf("error when determining the last published IPNS record for %s: %s", id, err)
+				log.Debugf("error when determining the last published IPNS record for %s: %s", name, err)
 			}
 
 			return nil, nil
@@ -146,12 +146,13 @@ func (p *IPNSPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 	if err != nil {
 		return nil, err
 	}
+	name := ipns.NameFromPeer(id)
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	// get previous records sequence number
-	rec, err := p.GetPublished(ctx, id, true)
+	rec, err := p.GetPublished(ctx, name, true)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +189,7 @@ func (p *IPNSPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 	}
 
 	// Put the new record.
-	dsKey := IpnsDsKey(id)
+	dsKey := IpnsDsKey(name)
 	if err := p.ds.Put(ctx, dsKey, data); err != nil {
 		return nil, err
 	}

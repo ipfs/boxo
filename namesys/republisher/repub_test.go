@@ -191,7 +191,7 @@ func TestLongEOLRepublish(t *testing.T) {
 	err = verifyResolution(nsystems, name, p)
 	require.NoError(t, err)
 
-	rec, err := getLastIPNSRecord(ctx, publisher.store, publisher.h.ID())
+	rec, err := getLastIPNSRecord(ctx, publisher.store, ipns.NameFromPeer(publisher.h.ID()))
 	require.NoError(t, err)
 
 	finalEol, err := rec.Validity()
@@ -199,9 +199,9 @@ func TestLongEOLRepublish(t *testing.T) {
 	require.Equal(t, expiration.UTC(), finalEol.UTC())
 }
 
-func getLastIPNSRecord(ctx context.Context, dstore ds.Datastore, id peer.ID) (*ipns.Record, error) {
+func getLastIPNSRecord(ctx context.Context, dstore ds.Datastore, name ipns.Name) (*ipns.Record, error) {
 	// Look for it locally only
-	val, err := dstore.Get(ctx, namesys.IpnsDsKey(id))
+	val, err := dstore.Get(ctx, namesys.IpnsDsKey(name))
 	if err != nil {
 		return nil, err
 	}

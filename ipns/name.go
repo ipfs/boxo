@@ -25,7 +25,7 @@ const (
 // [Multihash]: https://multiformats.io/multihash/
 // [IPNS Name]: https://specs.ipfs.tech/ipns/ipns-record/#ipns-name
 type Name struct {
-	src []byte
+	src string
 }
 
 // NameFromString creates a [Name] from the given IPNS Name in its [string representation].
@@ -57,7 +57,7 @@ func NameFromRoutingKey(data []byte) (Name, error) {
 
 // NameFromPeer creates a [Name] from the given [peer.ID].
 func NameFromPeer(pid peer.ID) Name {
-	return Name{src: []byte(pid)}
+	return Name{src: string(pid)}
 }
 
 // NameFromCid creates a [Name] from the given [cid.Cid].
@@ -66,7 +66,7 @@ func NameFromCid(c cid.Cid) (Name, error) {
 	if code != mc.Libp2pKey {
 		return Name{}, fmt.Errorf("CID codec %q is not allowed for IPNS Names, use  %q instead", code, mc.Libp2pKey)
 	}
-	return Name{src: c.Hash()}, nil
+	return Name{src: string(c.Hash())}, nil
 }
 
 // RoutingKey returns the binary IPNS Routing Key for the given [Name]. Note that
@@ -77,7 +77,7 @@ func NameFromCid(c cid.Cid) (Name, error) {
 func (n Name) RoutingKey() []byte {
 	var buffer bytes.Buffer
 	buffer.WriteString(NamespacePrefix)
-	buffer.Write(n.src) // Note: we append raw multihash bytes (no multibase)
+	buffer.WriteString(n.src) // Note: we append raw multihash bytes (no multibase)
 	return buffer.Bytes()
 }
 
@@ -132,7 +132,7 @@ func (n Name) MarshalJSON() ([]byte, error) {
 
 // Equal returns whether the records are equal.
 func (n Name) Equal(other Name) bool {
-	return bytes.Equal(n.src, other.src)
+	return n.src == other.src
 }
 
 // AsPath returns the IPNS Name as a [path.Path] prefixed by [path.IPNSNamespace].
