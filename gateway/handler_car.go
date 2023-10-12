@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net/http"
@@ -224,31 +225,43 @@ func getCarRootCidAndLastSegment(imPath path.ImmutablePath) (cid.Cid, string, er
 }
 
 func getCarEtag(imPath path.ImmutablePath, params CarParams, rootCid cid.Cid) string {
-	data := imPath.String()
+	h := xxhash.New()
+	h.WriteString(imPath.String())
+	// be careful with hashes here, we need boundries and per entry salt, we don't want a request that has:
+	//   - scope = dfs
+	// and:
+	//   - order = dfs
+	// to result in the same hash because if we just do hash(scope + order) they would both yield hash("dfs").
 	if params.Scope != DagScopeAll {
-		data += string(params.Scope)
+		h.WriteString("\x00scope=")
+		h.WriteString(string(params.Scope))
 	}
 
 	// 'order' from IPIP-412 impact Etag only if set to something else
 	// than DFS (which is the implicit default)
 	if params.Order != DagOrderDFS {
-		data += string(params.Order)
+		h.WriteString("\x00order=")
+		h.WriteString(string(params.Order))
 	}
 
 	// 'dups' from IPIP-412 impact Etag only if 'y'
-	if dups := params.Duplicates.String(); dups == "y" {
-		data += dups
+	if dups := params.Duplicates; dups == DuplicateBlocksIncluded {
+		h.WriteString("\x00dups=y")
 	}
 
 	if params.Range != nil {
 		if params.Range.From != 0 || params.Range.To != nil {
-			data += strconv.FormatInt(params.Range.From, 10)
+			h.WriteString("\x00range=")
+			var b [8]byte
+			binary.LittleEndian.PutUint64(b[:], uint64(params.Range.From))
+			h.Write(b[:])
 			if params.Range.To != nil {
-				data += strconv.FormatInt(*params.Range.To, 10)
+				binary.LittleEndian.PutUint64(b[:], uint64(*params.Range.To))
+				h.Write(b[:])
 			}
 		}
 	}
 
-	suffix := strconv.FormatUint(xxhash.Sum64([]byte(data)), 32)
+	suffix := strconv.FormatUint(h.Sum64(), 32)
 	return `W/"` + rootCid.String() + ".car." + suffix + `"`
 }
