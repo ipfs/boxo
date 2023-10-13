@@ -44,14 +44,20 @@ var log = logging.Logger("bitswap-client")
 // bitswap instances
 type Option func(*Client)
 
-// ProviderSearchDelay overwrites the global provider search delay
+// ProviderSearchDelay sets idle-delay value.  When the session
+// idles (does not receive any blocks) for this duration, a broadcast is
+// triggered. The broadcast finds new peers and sends the wantlist. See
+// [defaults.ProvSearchDelay] for the default (1s as of this writing).
 func ProviderSearchDelay(newProvSearchDelay time.Duration) Option {
 	return func(bs *Client) {
 		bs.provSearchDelay = newProvSearchDelay
 	}
 }
 
-// RebroadcastDelay overwrites the global provider rebroadcast delay
+// RebroadcastDelay sets a custom delay for periodic search of a random want.
+// When the value ellapses, a random CID from the wantlist is chosen and the
+// client attempts to find more peers for it and sends them the single want.
+// Default is set to 1 minute in [New].
 func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
 	return func(bs *Client) {
 		bs.rebroadcastDelay = newRebroadcastDelay
