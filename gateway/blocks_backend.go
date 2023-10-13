@@ -137,7 +137,7 @@ func NewBlocksBackend(blockService blockservice.BlockService, opts ...BlocksBack
 	r = compiledOptions.r
 	if r == nil {
 		// Setup the UnixFS resolver.
-		fetcher := bsfetcher.NewFetcherConfig(blockService)
+		fetcher := bsfetcher.NewFetcherConfig(blockService).WithReifier(unixfsnode.Reify)
 		r = resolver.NewBasicResolver(fetcher)
 	}
 
