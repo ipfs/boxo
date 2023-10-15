@@ -95,10 +95,11 @@ type PublicGateway struct {
 }
 
 type CarParams struct {
-	Range      *DagByteRange
-	Scope      DagScope
-	Order      DagOrder
-	Duplicates DuplicateBlocksPolicy
+	Range         *DagByteRange
+	Scope         DagScope
+	Order         DagOrder
+	Duplicates    DuplicateBlocksPolicy
+	SkipRawBlocks SkipRawBlocksPolicy
 }
 
 // DagByteRange describes a range request within a UnixFS file. "From" and
@@ -209,6 +210,46 @@ func (d DuplicateBlocksPolicy) String() string {
 		return "n"
 	}
 	return ""
+}
+
+// SkipRawBlocksPolicy represents the get parameter 'skip-raw-blocks' (IPIP-445)
+type SkipRawBlocksPolicy uint8
+
+const (
+	SkipRawBlocksImplicit SkipRawBlocksPolicy = iota // implicit default and not skip leaves
+	SendRawBlocks                                    // explicitely do not skip leaves
+	SkipRawBlocks                                    // explicitly skip leaves
+)
+
+func NewSkipRawBlocksPolicy(v string) (SkipRawBlocksPolicy, error) {
+	switch v {
+	case "y":
+		return SkipRawBlocks, nil
+	case "n":
+		return SendRawBlocks, nil
+	case "":
+		return SkipRawBlocksImplicit, nil
+	}
+	return 0, fmt.Errorf("unsupported skip-raw-blocks GET parameter: %q", v)
+}
+
+func (d SkipRawBlocksPolicy) Bool() bool {
+	// duplicates should be returned only when explicitly requested,
+	// so any other state than SkipRawBlocksIncluded should return false
+	return d == SkipRawBlocks
+}
+
+func (d SkipRawBlocksPolicy) String() string {
+	switch d {
+	case SkipRawBlocksImplicit:
+		return ""
+	case SkipRawBlocks:
+		return "y"
+	case SendRawBlocks:
+		return "n"
+	default:
+		return strconv.FormatUint(uint64(d), 10)
+	}
 }
 
 type ContentPathMetadata struct {
