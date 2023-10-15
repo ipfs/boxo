@@ -27,7 +27,7 @@ The amount of backporting of a fix depends on the severity of the issue and the 
 As a result, Boxo maintainers recommend that consumers stay up-to-date with Boxo releases.
 
 ### Go Compatibility
-At any given point, the Go team supports only the latest two versions of Go released (see https://go.dev/doc/devel/release). Boxo maintainers will strive to maintain compatibilty with the older of the two supported versions, so that Boxo is also compatible with the latest two versions of Go.
+At any given point, the Go team supports only the latest two versions of Go released (see https://go.dev/doc/devel/release). Boxo maintainers will strive to maintain compatibility with the older of the two supported versions, so that Boxo is also compatible with the latest two versions of Go.
 
 ### Release Criteria
 Boxo releases occur _at least_ on every Kubo release. Releases can also be initiated on-demand, regardless of Kubo's release cadence, whenever there are significant changes (new features, refactorings, deprecations, etc.).
