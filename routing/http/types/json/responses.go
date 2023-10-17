@@ -13,7 +13,7 @@ type ProvidersResponse struct {
 
 // PeersResponse is the result of a GET Peers request.
 type PeersResponse struct {
-	Peers []types.PeerRecord
+	Peers []*types.PeerRecord
 }
 
 // RecordsArray is an array of [types.Record]

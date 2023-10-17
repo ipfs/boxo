@@ -168,14 +168,14 @@ func TestPeers(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
-		results := iter.FromSlice([]iter.Result[types.PeerRecord]{
-			{Val: types.PeerRecord{
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{
+			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-bitswap", "transport-foo"},
 				Addrs:     []types.Multiaddr{},
 			}},
-			{Val: types.PeerRecord{
+			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-foo"},
@@ -203,14 +203,14 @@ func TestPeers(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
-		results := iter.FromSlice([]iter.Result[types.PeerRecord]{
-			{Val: types.PeerRecord{
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{
+			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-bitswap", "transport-foo"},
 				Addrs:     []types.Multiaddr{},
 			}},
-			{Val: types.PeerRecord{
+			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-foo"},
@@ -374,9 +374,9 @@ func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *BitswapWrit
 	return args.Get(0).(time.Duration), args.Error(1)
 }
 
-func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.PeerRecord], error) {
+func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[*types.PeerRecord], error) {
 	args := m.Called(ctx, pid, limit)
-	return args.Get(0).(iter.ResultIter[types.PeerRecord]), args.Error(1)
+	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
 func (m *mockContentRouter) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {

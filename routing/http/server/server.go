@@ -63,7 +63,7 @@ type ContentRouter interface {
 
 	// FindPeers searches for peers who have the provided [peer.ID].
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
-	FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.PeerRecord], error)
+	FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[*types.PeerRecord], error)
 
 	// GetIPNS searches for an [ipns.Record] for the given [ipns.Name].
 	GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
@@ -267,7 +267,7 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		handlerFunc  func(w http.ResponseWriter, provIter iter.ResultIter[types.PeerRecord])
+		handlerFunc  func(w http.ResponseWriter, provIter iter.ResultIter[*types.PeerRecord])
 		recordsLimit int
 	)
 
@@ -347,7 +347,7 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 	writeJSONResult(w, "Provide", resp)
 }
 
-func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[types.PeerRecord]) {
+func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord]) {
 	defer peersIter.Close()
 
 	peers, err := iter.ReadAllResults(peersIter)
@@ -361,7 +361,7 @@ func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[
 	})
 }
 
-func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIter[types.PeerRecord]) {
+func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord]) {
 	writeResultsIterNDJSON(w, peersIter)
 }
 

@@ -335,7 +335,7 @@ func (c *Client) provideSignedBitswapRecord(ctx context.Context, bswp *types.Wri
 }
 
 // FindPeers searches for information for the given [peer.ID].
-func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[types.PeerRecord], err error) {
+func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error) {
 	m := newMeasurement("FindPeers")
 
 	url := c.baseURL + "/routing/v1/peers/" + peer.ToCid(pid).String()
@@ -362,7 +362,7 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 	if resp.StatusCode == http.StatusNotFound {
 		resp.Body.Close()
 		m.record(ctx)
-		return iter.FromSlice[iter.Result[types.PeerRecord]](nil), nil
+		return iter.FromSlice[iter.Result[*types.PeerRecord]](nil), nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -390,12 +390,12 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 		}
 	}()
 
-	var it iter.ResultIter[types.PeerRecord]
+	var it iter.ResultIter[*types.PeerRecord]
 	switch mediaType {
 	case mediaTypeJSON:
 		parsedResp := &jsontypes.PeersResponse{}
 		err = json.NewDecoder(resp.Body).Decode(parsedResp)
-		var sliceIt iter.Iter[types.PeerRecord] = iter.FromSlice(parsedResp.Peers)
+		var sliceIt iter.Iter[*types.PeerRecord] = iter.FromSlice(parsedResp.Peers)
 		it = iter.ToResultIter(sliceIt)
 	case mediaTypeNDJSON:
 		skipBodyClose = true
@@ -405,7 +405,7 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 		return nil, errors.New("unknown content type")
 	}
 
-	return &measuringIter[iter.Result[types.PeerRecord]]{Iter: it, ctx: ctx, m: m}, nil
+	return &measuringIter[iter.Result[*types.PeerRecord]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
 // GetIPNS tries to retrieve the [ipns.Record] for the given [ipns.Name]. The record is
