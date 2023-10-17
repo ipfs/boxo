@@ -69,22 +69,6 @@ func findProviders(w io.Writer, ctx context.Context, client *client.Client, cidS
 	return printIter(w, recordsIter)
 }
 
-func findPeers(w io.Writer, ctx context.Context, client *client.Client, pidStr string) error {
-	// Parses the given Peer ID to lookup the information for.
-	pid, err := peer.Decode(pidStr)
-	if err != nil {
-		return err
-	}
-
-	// Ask for information about the peer with the given peer ID.
-	recordsIter, err := client.FindPeers(ctx, pid)
-	if err != nil {
-		return err
-	}
-	defer recordsIter.Close()
-	return printIter(w, recordsIter)
-}
-
 func printIter(w io.Writer, iter iter.ResultIter[types.Record]) error {
 	// The response is streamed. Alternatively, you could use [iter.ReadAll]
 	// to fetch all the results all at once, instead of iterating as they are
@@ -113,6 +97,44 @@ func printIter(w io.Writer, iter iter.ResultIter[types.Record]) error {
 			// the schemas you want, or that you know, but not fail.
 			log.Printf("unrecognized schema: %s", res.Val.GetSchema())
 		}
+	}
+
+	return nil
+}
+
+func findPeers(w io.Writer, ctx context.Context, client *client.Client, pidStr string) error {
+	// Parses the given Peer ID to lookup the information for.
+	pid, err := peer.Decode(pidStr)
+	if err != nil {
+		return err
+	}
+
+	// Ask for information about the peer with the given peer ID.
+	recordsIter, err := client.FindPeers(ctx, pid)
+	if err != nil {
+		return err
+	}
+	defer recordsIter.Close()
+
+	// The response is streamed. Alternatively, you could use [iter.ReadAll]
+	// to fetch all the results all at once, instead of iterating as they are
+	// streamed.
+	for recordsIter.Next() {
+		res := recordsIter.Val()
+
+		// Check for error, but do not complain if we exceeded the timeout. We are
+		// expecting that to happen: we explicitly defined a timeout.
+		if res.Err != nil {
+			if !errors.Is(res.Err, context.DeadlineExceeded) {
+				return res.Err
+			}
+
+			return nil
+		}
+
+		fmt.Fprintln(w, res.Val.ID)
+		fmt.Fprintln(w, "\tProtocols:", res.Val.Protocols)
+		fmt.Fprintln(w, "\tAddresses:", res.Val.Addrs)
 	}
 
 	return nil

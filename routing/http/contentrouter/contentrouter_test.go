@@ -32,9 +32,9 @@ func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) (iter.Resul
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
-func (m *mockClient) FindPeers(ctx context.Context, pid peer.ID) (iter.ResultIter[types.Record], error) {
+func (m *mockClient) FindPeers(ctx context.Context, pid peer.ID) (iter.ResultIter[types.PeerRecord], error) {
 	args := m.Called(ctx, pid)
-	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
+	return args.Get(0).(iter.ResultIter[types.PeerRecord]), args.Error(1)
 }
 
 func (m *mockClient) Ready(ctx context.Context) (bool, error) {
@@ -183,17 +183,14 @@ func TestFindPeer(t *testing.T) {
 	crc := NewContentRoutingClient(client)
 
 	p1 := peer.ID("peer1")
-	ais := []types.Record{
-		&types.UnknownRecord{
-			Schema: "unknown",
-		},
-		&types.PeerRecord{
+	ais := []types.PeerRecord{
+		{
 			Schema:    types.SchemaPeer,
 			ID:        &p1,
 			Protocols: []string{"transport-bitswap"},
 		},
 	}
-	aisIter := iter.ToResultIter[types.Record](iter.FromSlice(ais))
+	aisIter := iter.ToResultIter[types.PeerRecord](iter.FromSlice(ais))
 
 	client.On("FindPeers", ctx, p1).Return(aisIter, nil)
 
