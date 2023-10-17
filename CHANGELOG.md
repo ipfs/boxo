@@ -15,9 +15,8 @@ The following emojis are used to highlight certain changes:
 ## [Unreleased]
 
 ### Added
-* [GetMany blockstore implementation](https://github.com/vulcanize/boxo/pull/1)
-  * Requires https://github.com/vulcanize/go-datastore/releases/tag/v0.6.1-internal
-
+* `boxo/blockstore`:
+  * [GetMany blockstore implementation](https://github.com/ipfs/boxo/pull/492)
 * `boxo/gateway`:
   * A new `WithResolver(...)` option can be used with `NewBlocksBackend(...)` allowing the user to pass their custom `Resolver` implementation.
 * `boxo/bitswap/client`:
