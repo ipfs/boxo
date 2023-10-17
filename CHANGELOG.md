@@ -53,8 +53,8 @@ The following emojis are used to highlight certain changes:
   * `namesys/resolver.ResolveIPNS` has been moved to `namesys.ResolveIPNS` and now returns a TTL
     in addition to the resolved path.
 * ✨ `boxo/ipns` record defaults follow recommendations from [IPNS Record Specification](https://specs.ipfs.tech/ipns/ipns-record/#ipns-record):
-    * `DefaultRecordTTL` is now set to 1h
-    * `DefaultRecordLifetime` now match the expiration window of Amino DHT and is set to 48h
+    * `DefaultRecordTTL` is now set to `1h`
+    * `DefaultRecordLifetime` follows the increased expiration window of Amino DHT ([go-libp2p-kad-dht#793](https://github.com/libp2p/go-libp2p-kad-dht/pull/793)) and is set to `48h`
 * 🛠 The `gateway`'s `IPFSBackend.ResolveMutable` is now expected to return a TTL in addition to
     the resolved path. If the TTL is unknown, 0 should be returned.
 

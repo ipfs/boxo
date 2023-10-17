@@ -51,7 +51,7 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options
 
 	out := make(chan ResolveAsyncResult, 1)
 	if p.Namespace() != path.IPNSNamespace {
-		out <- ResolveAsyncResult{Err: fmt.Errorf("unsupported namespace: %s", p.Namespace())}
+		out <- ResolveAsyncResult{Err: fmt.Errorf("unsupported namespace: %q", p.Namespace())}
 		close(out)
 		return out
 	}
@@ -63,7 +63,7 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options
 		return out
 	}
 
-	log.Debugf("DNSResolver resolving %s", fqdn)
+	log.Debugf("DNSResolver resolving %q", fqdn)
 
 	if !strings.HasSuffix(fqdn, ".") {
 		fqdn += "."

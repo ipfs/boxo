@@ -173,7 +173,7 @@ type PublishOptions struct {
 	// EOL defines for how long the published value is valid.
 	EOL time.Time
 
-	// TTL defines for how long the published value is valid.
+	// TTL defines for how long the published value is cached locally before checking for updates.
 	TTL time.Duration
 
 	// IPNSOptions are options passed by [IPNSPublisher] to [ipns.NewRecord] when
