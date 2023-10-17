@@ -160,6 +160,7 @@ func (c *measuringIter[T]) Close() error {
 	return c.Iter.Close()
 }
 
+// FindProviders searches for providers that are able to provide the given [cid.Cid].
 func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter.ResultIter[types.Record], err error) {
 	// TODO test measurements
 	m := newMeasurement("FindProviders")
@@ -332,6 +333,7 @@ func (c *Client) provideSignedBitswapRecord(ctx context.Context, bswp *types.Wri
 	return 0, nil
 }
 
+// FindPeers searches for information for the given [peer.ID].
 func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[types.PeerRecord], err error) {
 	m := newMeasurement("FindPeers")
 
@@ -405,6 +407,8 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 	return &measuringIter[iter.Result[types.PeerRecord]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
+// GetIPNS tries to retrieve the [ipns.Record] for the given [ipns.Name]. The record is
+// validated against the given name. If validation fails, an error is returned.
 func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
@@ -443,6 +447,7 @@ func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, err
 	return record, nil
 }
 
+// PutIPNS attempts at putting the given [ipns.Record] for the given [ipns.Name].
 func (c *Client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
