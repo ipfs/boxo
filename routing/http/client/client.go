@@ -161,6 +161,7 @@ func (c *measuringIter[T]) Close() error {
 }
 
 // FindProviders searches for providers that are able to provide the given [cid.Cid].
+// In a more generic way, it is also used as a mapping between CIDs and relevant metadata.
 func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter.ResultIter[types.Record], err error) {
 	// TODO test measurements
 	m := newMeasurement("FindProviders")
@@ -408,7 +409,8 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 }
 
 // GetIPNS tries to retrieve the [ipns.Record] for the given [ipns.Name]. The record is
-// validated against the given name. If validation fails, an error is returned.
+// validated against the given name. If validation fails, an error is returned, but no
+// record.
 func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
