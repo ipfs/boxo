@@ -33,6 +33,15 @@ const (
 	// complete and can't put an upper limit on how many steps it will take.
 	UnlimitedDepth = 0
 
+	// DefaultResolverRecordCount is the number of IPNS Record copies to
+	// retrieve from the routing system like Amino DHT (the best record is
+	// selected from this set).
+	DefaultResolverDhtRecordCount = 16
+
+	// DefaultResolverDhtTimeout is the amount of time to wait for records to be fetched
+	// and verified.
+	DefaultResolverDhtTimeout = time.Minute
+
 	// DefaultResolverCacheTTL defines default TTL of a record placed in [NameSystem] cache.
 	DefaultResolverCacheTTL = time.Minute
 )
@@ -100,13 +109,14 @@ type ResolveOptions struct {
 	// Depth is the recursion depth limit.
 	Depth uint
 
-	// DhtRecordCount is the number of IPNS Records to retrieve from the DHT
+	// DhtRecordCount is the number of IPNS Records to retrieve from the routing system
 	// (the best record is selected from this set).
 	DhtRecordCount uint
 
-	// DhtTimeout is the amount of time to wait for DHT records to be fetched
-	// and verified. A zero value indicates that there is no explicit timeout
-	// (although there is an implicit timeout due to dial timeouts within the DHT).
+	// DhtTimeout is the amount of time to wait for records to be fetched and
+	// verified. A zero value indicates that there is no explicit timeout
+	// (although there may be an implicit timeout due to dial timeouts within
+	// the specific routing system like DHT).
 	DhtTimeout time.Duration
 }
 
@@ -114,8 +124,8 @@ type ResolveOptions struct {
 func DefaultResolveOptions() ResolveOptions {
 	return ResolveOptions{
 		Depth:          DefaultDepthLimit,
-		DhtRecordCount: 16,
-		DhtTimeout:     time.Minute,
+		DhtRecordCount: DefaultResolverDhtRecordCount,
+		DhtTimeout:     DefaultResolverDhtTimeout,
 	}
 }
 
