@@ -89,24 +89,6 @@ func GetenvBool(name string) bool {
 	return v == "true" || v == "t" || v == "1"
 }
 
-// MultiErr is a util to return multiple errors
-type MultiErr []error
-
-func (m MultiErr) Error() string {
-	if len(m) == 0 {
-		return "no errors"
-	}
-
-	s := "Multiple errors: "
-	for i, e := range m {
-		if i != 0 {
-			s += ", "
-		}
-		s += e.Error()
-	}
-	return s
-}
-
 // Partition splits a subject 3 parts: prefix, separator, suffix.
 // The first occurrence of the separator will be matched.
 // ie. Partition("Ready, steady, go!", ", ") -> ["Ready", ", ", "steady, go!"]

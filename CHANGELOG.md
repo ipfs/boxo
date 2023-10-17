@@ -43,6 +43,8 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+* 🛠 `util.MultiErr` has been removed. Please use Go's native support for wrapping errors, or `errors.Join` instead.
+
 ### Fixed
 
 ### Security
