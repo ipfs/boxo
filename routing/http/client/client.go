@@ -160,6 +160,8 @@ func (c *measuringIter[T]) Close() error {
 	return c.Iter.Close()
 }
 
+// FindProviders searches for providers that are able to provide the given [cid.Cid].
+// In a more generic way, it is also used as a mapping between CIDs and relevant metadata.
 func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter.ResultIter[types.Record], err error) {
 	// TODO test measurements
 	m := newMeasurement("FindProviders")
@@ -332,7 +334,8 @@ func (c *Client) provideSignedBitswapRecord(ctx context.Context, bswp *types.Wri
 	return 0, nil
 }
 
-func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[types.Record], err error) {
+// FindPeers searches for information for the given [peer.ID].
+func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error) {
 	m := newMeasurement("FindPeers")
 
 	url := c.baseURL + "/routing/v1/peers/" + peer.ToCid(pid).String()
@@ -359,7 +362,7 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 	if resp.StatusCode == http.StatusNotFound {
 		resp.Body.Close()
 		m.record(ctx)
-		return iter.FromSlice[iter.Result[types.Record]](nil), nil
+		return iter.FromSlice[iter.Result[*types.PeerRecord]](nil), nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -387,24 +390,27 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 		}
 	}()
 
-	var it iter.ResultIter[types.Record]
+	var it iter.ResultIter[*types.PeerRecord]
 	switch mediaType {
 	case mediaTypeJSON:
 		parsedResp := &jsontypes.PeersResponse{}
 		err = json.NewDecoder(resp.Body).Decode(parsedResp)
-		var sliceIt iter.Iter[types.Record] = iter.FromSlice(parsedResp.Peers)
+		var sliceIt iter.Iter[*types.PeerRecord] = iter.FromSlice(parsedResp.Peers)
 		it = iter.ToResultIter(sliceIt)
 	case mediaTypeNDJSON:
 		skipBodyClose = true
-		it = ndjson.NewRecordsIter(resp.Body)
+		it = ndjson.NewPeerRecordsIter(resp.Body)
 	default:
 		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
 		return nil, errors.New("unknown content type")
 	}
 
-	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
+	return &measuringIter[iter.Result[*types.PeerRecord]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
+// GetIPNS tries to retrieve the [ipns.Record] for the given [ipns.Name]. The record is
+// validated against the given name. If validation fails, an error is returned, but no
+// record.
 func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
@@ -443,6 +449,7 @@ func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, err
 	return record, nil
 }
 
+// PutIPNS attempts at putting the given [ipns.Record] for the given [ipns.Name].
 func (c *Client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 

@@ -40,6 +40,7 @@ The following emojis are used to highlight certain changes:
     - Eliminate `..` elements that begin a rooted path: that is, replace "`/..`" by "`/`" at the beginning of a path.
 * 🛠 The signature of `CoreAPI.ResolvePath` in  `coreiface` has changed to now return
   the remainder segments as a second return value, matching the signature of `resolver.ResolveToLastNode`.
+* 🛠 `routing/http/client.FindPeers` now returns `iter.ResultIter[types.PeerRecord]` instead of `iter.ResultIter[types.Record]`. The specification indicates that records for this method will always be Peer Records.
 
 ### Removed
 

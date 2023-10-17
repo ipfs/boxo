@@ -42,9 +42,9 @@ func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.Bits
 	return args.Get(0).(time.Duration), args.Error(1)
 }
 
-func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.Record], error) {
+func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[*types.PeerRecord], error) {
 	args := m.Called(ctx, pid, limit)
-	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
+	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
 func (m *mockContentRouter) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
@@ -486,7 +486,7 @@ func TestClient_Provide(t *testing.T) {
 
 func TestClient_FindPeers(t *testing.T) {
 	peerRecord := makePeerRecord()
-	peerRecords := []iter.Result[types.Record]{
+	peerRecords := []iter.Result[*types.PeerRecord]{
 		{Val: &peerRecord},
 	}
 	pid := *peerRecord.ID
@@ -495,13 +495,13 @@ func TestClient_FindPeers(t *testing.T) {
 		name                    string
 		httpStatusCode          int
 		stopServer              bool
-		routerResult            []iter.Result[types.Record]
+		routerResult            []iter.Result[*types.PeerRecord]
 		routerErr               error
 		clientRequiresStreaming bool
 		serverStreamingDisabled bool
 
 		expErrContains       osErrContains
-		expResult            []iter.Result[types.Record]
+		expResult            []iter.Result[*types.PeerRecord]
 		expStreamingResponse bool
 		expJSONResponse      bool
 	}{
@@ -606,7 +606,7 @@ func TestClient_FindPeers(t *testing.T) {
 			resultIter, err := client.FindPeers(ctx, pid)
 			c.expErrContains.errContains(t, err)
 
-			results := iter.ReadAll[iter.Result[types.Record]](resultIter)
+			results := iter.ReadAll[iter.Result[*types.PeerRecord]](resultIter)
 			assert.Equal(t, c.expResult, results)
 		})
 	}
