@@ -17,7 +17,7 @@ import (
 // IPNSResolver implements [Resolver] for IPNS Records. This resolver always returns
 // a TTL if the record is still valid. It happens as follows:
 //
-//  1. Provisory TTL is chosen: record TTL if it exists, otherwise [DefaultIPNSRecordTTL].
+//  1. Provisory TTL is chosen: record TTL if it exists, otherwise `ipns.DefaultRecordTTL`.
 //  2. If provisory TTL expires before EOL, then returned TTL is duration between EOL and now.
 //  3. If record is expired, 0 is returned as TTL.
 type IPNSResolver struct {

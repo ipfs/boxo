@@ -39,7 +39,7 @@ const (
 	FailureRetryInterval = time.Minute * 5
 
 	// DefaultRecordLifetime is the default lifetime for IPNS records
-	DefaultRecordLifetime = time.Hour * 24
+	DefaultRecordLifetime = ipns.DefaultRecordLifetime
 )
 
 // Republisher facilitates the regular publishing of all the IPNS records
