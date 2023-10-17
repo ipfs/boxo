@@ -33,9 +33,9 @@ const (
 	// complete and can't put an upper limit on how many steps it will take.
 	UnlimitedDepth = 0
 
-	// DefaultIPNSRecordTTL specifies the time that the record can be cached before
-	// checking if its validity again.
-	DefaultIPNSRecordTTL = time.Minute
+	// DefaultIPNSRecordTTL specifies how long the record can be returned from
+	// cache before checking for update again.
+	DefaultIPNSRecordTTL = 1 * time.Hour
 
 	// DefaultIPNSRecordEOL specifies the time that the network will cache IPNS
 	// records after being published. Records should be re-published before this
