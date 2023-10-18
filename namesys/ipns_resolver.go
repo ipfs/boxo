@@ -37,27 +37,27 @@ func NewIPNSResolver(route routing.ValueStore) *IPNSResolver {
 	}
 }
 
-func (r *IPNSResolver) Resolve(ctx context.Context, p path.Path, options ...ResolveOption) (ResolveResult, error) {
+func (r *IPNSResolver) Resolve(ctx context.Context, p path.Path, options ...ResolveOption) (Result, error) {
 	ctx, span := startSpan(ctx, "IPNSResolver.Resolve", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
 	return resolve(ctx, r, p, ProcessResolveOptions(options))
 }
 
-func (r *IPNSResolver) ResolveAsync(ctx context.Context, p path.Path, options ...ResolveOption) <-chan ResolveAsyncResult {
+func (r *IPNSResolver) ResolveAsync(ctx context.Context, p path.Path, options ...ResolveOption) <-chan AsyncResult {
 	ctx, span := startSpan(ctx, "IPNSResolver.ResolveAsync", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
 	return resolveAsync(ctx, r, p, ProcessResolveOptions(options))
 }
 
-func (r *IPNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options ResolveOptions) <-chan ResolveAsyncResult {
+func (r *IPNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options ResolveOptions) <-chan AsyncResult {
 	ctx, span := startSpan(ctx, "IPNSResolver.ResolveOnceAsync", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
-	out := make(chan ResolveAsyncResult, 1)
+	out := make(chan AsyncResult, 1)
 	if p.Namespace() != path.IPNSNamespace {
-		out <- ResolveAsyncResult{Err: fmt.Errorf("unsupported namespace: %s", p.Namespace())}
+		out <- AsyncResult{Err: fmt.Errorf("unsupported namespace: %s", p.Namespace())}
 		close(out)
 		return out
 	}
@@ -70,7 +70,7 @@ func (r *IPNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, option
 
 	name, err := ipns.NameFromString(p.Segments()[1])
 	if err != nil {
-		out <- ResolveAsyncResult{Err: err}
+		out <- AsyncResult{Err: err}
 		close(out)
 		cancel()
 		return out
@@ -78,7 +78,7 @@ func (r *IPNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, option
 
 	vals, err := r.routing.SearchValue(ctx, string(name.RoutingKey()), dht.Quorum(int(options.DhtRecordCount)))
 	if err != nil {
-		out <- ResolveAsyncResult{Err: err}
+		out <- AsyncResult{Err: err}
 		close(out)
 		cancel()
 		return out
@@ -99,31 +99,31 @@ func (r *IPNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, option
 
 				rec, err := ipns.UnmarshalRecord(val)
 				if err != nil {
-					emitOnceResult(ctx, out, ResolveAsyncResult{Err: err})
+					emitOnceResult(ctx, out, AsyncResult{Err: err})
 					return
 				}
 
 				resolvedBase, err := rec.Value()
 				if err != nil {
-					emitOnceResult(ctx, out, ResolveAsyncResult{Err: err})
+					emitOnceResult(ctx, out, AsyncResult{Err: err})
 					return
 				}
 
 				resolvedBase, err = joinPaths(resolvedBase, p)
 				if err != nil {
-					emitOnceResult(ctx, out, ResolveAsyncResult{Err: err})
+					emitOnceResult(ctx, out, AsyncResult{Err: err})
 					return
 				}
 
 				ttl, err := calculateBestTTL(rec)
 				if err != nil {
-					emitOnceResult(ctx, out, ResolveAsyncResult{Err: err})
+					emitOnceResult(ctx, out, AsyncResult{Err: err})
 					return
 				}
 
 				// TODO: in the future it would be interesting to set the last modified date
 				// as the date in which the record has been signed.
-				emitOnceResult(ctx, out, ResolveAsyncResult{Path: resolvedBase, TTL: ttl, LastMod: time.Now()})
+				emitOnceResult(ctx, out, AsyncResult{Path: resolvedBase, TTL: ttl, LastMod: time.Now()})
 			case <-ctx.Done():
 				return
 			}

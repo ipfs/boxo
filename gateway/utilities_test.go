@@ -62,7 +62,7 @@ func newMockNamesysItem(p path.Path, ttl time.Duration) *mockNamesysItem {
 
 type mockNamesys map[string]*mockNamesysItem
 
-func (m mockNamesys) Resolve(ctx context.Context, p path.Path, opts ...namesys.ResolveOption) (result namesys.ResolveResult, err error) {
+func (m mockNamesys) Resolve(ctx context.Context, p path.Path, opts ...namesys.ResolveOption) (result namesys.Result, err error) {
 	cfg := namesys.DefaultResolveOptions()
 	for _, o := range opts {
 		o(&cfg)
@@ -79,13 +79,13 @@ func (m mockNamesys) Resolve(ctx context.Context, p path.Path, opts ...namesys.R
 	name := path.SegmentsToString(p.Segments()[:2]...)
 	for strings.HasPrefix(name, "/ipns/") {
 		if depth == 0 {
-			return namesys.ResolveResult{Path: value, TTL: ttl}, namesys.ErrResolveRecursion
+			return namesys.Result{Path: value, TTL: ttl}, namesys.ErrResolveRecursion
 		}
 		depth--
 
 		v, ok := m[name]
 		if !ok {
-			return namesys.ResolveResult{}, namesys.ErrResolveFailed
+			return namesys.Result{}, namesys.ErrResolveFailed
 		}
 		value = v.path
 		ttl = v.ttl
@@ -93,13 +93,13 @@ func (m mockNamesys) Resolve(ctx context.Context, p path.Path, opts ...namesys.R
 	}
 
 	value, err = path.Join(value, p.Segments()[2:]...)
-	return namesys.ResolveResult{Path: value, TTL: ttl}, err
+	return namesys.Result{Path: value, TTL: ttl}, err
 }
 
-func (m mockNamesys) ResolveAsync(ctx context.Context, p path.Path, opts ...namesys.ResolveOption) <-chan namesys.ResolveAsyncResult {
-	out := make(chan namesys.ResolveAsyncResult, 1)
+func (m mockNamesys) ResolveAsync(ctx context.Context, p path.Path, opts ...namesys.ResolveOption) <-chan namesys.AsyncResult {
+	out := make(chan namesys.AsyncResult, 1)
 	res, err := m.Resolve(ctx, p, opts...)
-	out <- namesys.ResolveAsyncResult{Path: res.Path, TTL: res.TTL, LastMod: res.LastMod, Err: err}
+	out <- namesys.AsyncResult{Path: res.Path, TTL: res.TTL, LastMod: res.LastMod, Err: err}
 	close(out)
 	return out
 }

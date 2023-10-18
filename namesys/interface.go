@@ -58,15 +58,15 @@ type NameSystem interface {
 	Publisher
 }
 
-// ResolveResult is the return type for [Resolver.Resolve].
-type ResolveResult struct {
+// Result is the return type for [Resolver.Resolve].
+type Result struct {
 	Path    path.Path
 	TTL     time.Duration
 	LastMod time.Time
 }
 
-// ResolveAsyncResult is the return type for [Resolver.ResolveAsync].
-type ResolveAsyncResult struct {
+// AsyncResult is the return type for [Resolver.ResolveAsync].
+type AsyncResult struct {
 	Path    path.Path
 	TTL     time.Duration
 	LastMod time.Time
@@ -96,12 +96,12 @@ type Resolver interface {
 	//
 	// There is a default depth-limit to avoid infinite recursion. Most users will be fine with
 	// this default limit, but if you need to adjust the limit you can specify it as an option.
-	Resolve(context.Context, path.Path, ...ResolveOption) (ResolveResult, error)
+	Resolve(context.Context, path.Path, ...ResolveOption) (Result, error)
 
 	// ResolveAsync performs recursive name lookup, like Resolve, but it returns entries as
 	// they are discovered in the DHT. Each returned result is guaranteed to be "better"
 	// (which usually means newer) than the previous one.
-	ResolveAsync(context.Context, path.Path, ...ResolveOption) <-chan ResolveAsyncResult
+	ResolveAsync(context.Context, path.Path, ...ResolveOption) <-chan AsyncResult
 }
 
 // ResolveOptions specifies options for resolving an IPNS Path.

@@ -11,11 +11,11 @@ import (
 )
 
 type resolver interface {
-	resolveOnceAsync(context.Context, path.Path, ResolveOptions) <-chan ResolveAsyncResult
+	resolveOnceAsync(context.Context, path.Path, ResolveOptions) <-chan AsyncResult
 }
 
 // resolve is a helper for implementing Resolver.ResolveN using resolveOnce.
-func resolve(ctx context.Context, r resolver, p path.Path, options ResolveOptions) (result ResolveResult, err error) {
+func resolve(ctx context.Context, r resolver, p path.Path, options ResolveOptions) (result Result, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -32,20 +32,20 @@ func resolve(ctx context.Context, r resolver, p path.Path, options ResolveOption
 	return result, err
 }
 
-func resolveAsync(ctx context.Context, r resolver, p path.Path, options ResolveOptions) <-chan ResolveAsyncResult {
+func resolveAsync(ctx context.Context, r resolver, p path.Path, options ResolveOptions) <-chan AsyncResult {
 	ctx, span := startSpan(ctx, "ResolveAsync")
 	defer span.End()
 
 	resCh := r.resolveOnceAsync(ctx, p, options)
 	depth := options.Depth
-	outCh := make(chan ResolveAsyncResult, 1)
+	outCh := make(chan AsyncResult, 1)
 
 	go func() {
 		defer close(outCh)
 		ctx, span := startSpan(ctx, "ResolveAsync.Worker")
 		defer span.End()
 
-		var subCh <-chan ResolveAsyncResult
+		var subCh <-chan AsyncResult
 		var cancelSub context.CancelFunc
 		defer func() {
 			if cancelSub != nil {
@@ -114,7 +114,7 @@ func resolveAsync(ctx context.Context, r resolver, p path.Path, options ResolveO
 	return outCh
 }
 
-func emitResult(ctx context.Context, outCh chan<- ResolveAsyncResult, r ResolveAsyncResult) {
+func emitResult(ctx context.Context, outCh chan<- AsyncResult, r AsyncResult) {
 	select {
 	case outCh <- r:
 	case <-ctx.Done():

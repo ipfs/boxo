@@ -31,34 +31,34 @@ func NewDNSResolver(lookup LookupTXTFunc) *DNSResolver {
 	return &DNSResolver{lookupTXT: lookup}
 }
 
-func (r *DNSResolver) Resolve(ctx context.Context, p path.Path, options ...ResolveOption) (ResolveResult, error) {
+func (r *DNSResolver) Resolve(ctx context.Context, p path.Path, options ...ResolveOption) (Result, error) {
 	ctx, span := startSpan(ctx, "DNSResolver.Resolve", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
 	return resolve(ctx, r, p, ProcessResolveOptions(options))
 }
 
-func (r *DNSResolver) ResolveAsync(ctx context.Context, p path.Path, options ...ResolveOption) <-chan ResolveAsyncResult {
+func (r *DNSResolver) ResolveAsync(ctx context.Context, p path.Path, options ...ResolveOption) <-chan AsyncResult {
 	ctx, span := startSpan(ctx, "DNSResolver.ResolveAsync", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
 	return resolveAsync(ctx, r, p, ProcessResolveOptions(options))
 }
 
-func (r *DNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options ResolveOptions) <-chan ResolveAsyncResult {
+func (r *DNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options ResolveOptions) <-chan AsyncResult {
 	ctx, span := startSpan(ctx, "DNSResolver.ResolveOnceAsync", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
-	out := make(chan ResolveAsyncResult, 1)
+	out := make(chan AsyncResult, 1)
 	if p.Namespace() != path.IPNSNamespace {
-		out <- ResolveAsyncResult{Err: fmt.Errorf("unsupported namespace: %q", p.Namespace())}
+		out <- AsyncResult{Err: fmt.Errorf("unsupported namespace: %q", p.Namespace())}
 		close(out)
 		return out
 	}
 
 	fqdn := p.Segments()[1]
 	if _, ok := dns.IsDomainName(fqdn); !ok {
-		out <- ResolveAsyncResult{Err: fmt.Errorf("not a valid domain name: %q", fqdn)}
+		out <- AsyncResult{Err: fmt.Errorf("not a valid domain name: %q", fqdn)}
 		close(out)
 		return out
 	}
@@ -69,10 +69,10 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options
 		fqdn += "."
 	}
 
-	rootChan := make(chan ResolveAsyncResult, 1)
+	rootChan := make(chan AsyncResult, 1)
 	go workDomain(ctx, r, fqdn, rootChan)
 
-	subChan := make(chan ResolveAsyncResult, 1)
+	subChan := make(chan AsyncResult, 1)
 	go workDomain(ctx, r, "_dnslink."+fqdn, subChan)
 
 	go func() {
@@ -90,7 +90,7 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options
 				}
 				if subRes.Err == nil {
 					p, err := joinPaths(subRes.Path, p)
-					emitOnceResult(ctx, out, ResolveAsyncResult{Path: p, LastMod: time.Now(), Err: err})
+					emitOnceResult(ctx, out, AsyncResult{Path: p, LastMod: time.Now(), Err: err})
 					// Return without waiting for rootRes, since this result
 					// (for "_dnslink."+fqdn) takes precedence
 					return
@@ -103,7 +103,7 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options
 				}
 				if rootRes.Err == nil {
 					p, err := joinPaths(rootRes.Path, p)
-					emitOnceResult(ctx, out, ResolveAsyncResult{Path: p, LastMod: time.Now(), Err: err})
+					emitOnceResult(ctx, out, AsyncResult{Path: p, LastMod: time.Now(), Err: err})
 					// Do not return here.  Wait for subRes so that it is
 					// output last if good, thereby giving subRes precedence.
 				} else {
@@ -120,7 +120,7 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options
 				if rootResErr == ErrResolveFailed && subResErr == ErrResolveFailed {
 					// Wrap error so that it can be tested if it is a ErrResolveFailed
 					err := fmt.Errorf("%w: _dnslink subdomain at %q is missing a TXT record (https://docs.ipfs.tech/concepts/dnslink/)", ErrResolveFailed, gopath.Base(fqdn))
-					emitOnceResult(ctx, out, ResolveAsyncResult{Err: err})
+					emitOnceResult(ctx, out, AsyncResult{Err: err})
 				}
 				return
 			}
@@ -130,7 +130,7 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options
 	return out
 }
 
-func workDomain(ctx context.Context, r *DNSResolver, name string, res chan ResolveAsyncResult) {
+func workDomain(ctx context.Context, r *DNSResolver, name string, res chan AsyncResult) {
 	ctx, span := startSpan(ctx, "DNSResolver.WorkDomain", trace.WithAttributes(attribute.String("Name", name)))
 	defer span.End()
 
@@ -146,20 +146,20 @@ func workDomain(ctx context.Context, r *DNSResolver, name string, res chan Resol
 			}
 		}
 		// Could not look up any text records for name
-		res <- ResolveAsyncResult{Err: err}
+		res <- AsyncResult{Err: err}
 		return
 	}
 
 	for _, t := range txt {
 		p, err := parseEntry(t)
 		if err == nil {
-			res <- ResolveAsyncResult{Path: p}
+			res <- AsyncResult{Path: p}
 			return
 		}
 	}
 
 	// There were no TXT records with a dnslink
-	res <- ResolveAsyncResult{Err: ErrResolveFailed}
+	res <- AsyncResult{Err: ErrResolveFailed}
 }
 
 func parseEntry(txt string) (path.Path, error) {

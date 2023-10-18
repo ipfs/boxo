@@ -138,14 +138,14 @@ func NewNameSystem(r routing.ValueStore, opts ...Option) (NameSystem, error) {
 }
 
 // Resolve implements Resolver.
-func (ns *namesys) Resolve(ctx context.Context, p path.Path, options ...ResolveOption) (ResolveResult, error) {
+func (ns *namesys) Resolve(ctx context.Context, p path.Path, options ...ResolveOption) (Result, error) {
 	ctx, span := startSpan(ctx, "namesys.Resolve", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
 	return resolve(ctx, ns, p, ProcessResolveOptions(options))
 }
 
-func (ns *namesys) ResolveAsync(ctx context.Context, p path.Path, options ...ResolveOption) <-chan ResolveAsyncResult {
+func (ns *namesys) ResolveAsync(ctx context.Context, p path.Path, options ...ResolveOption) <-chan AsyncResult {
 	ctx, span := startSpan(ctx, "namesys.ResolveAsync", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
@@ -153,13 +153,13 @@ func (ns *namesys) ResolveAsync(ctx context.Context, p path.Path, options ...Res
 }
 
 // resolveOnce implements resolver.
-func (ns *namesys) resolveOnceAsync(ctx context.Context, p path.Path, options ResolveOptions) <-chan ResolveAsyncResult {
+func (ns *namesys) resolveOnceAsync(ctx context.Context, p path.Path, options ResolveOptions) <-chan AsyncResult {
 	ctx, span := startSpan(ctx, "namesys.ResolveOnceAsync", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
-	out := make(chan ResolveAsyncResult, 1)
+	out := make(chan AsyncResult, 1)
 	if !p.Mutable() {
-		out <- ResolveAsyncResult{Path: p}
+		out <- AsyncResult{Path: p}
 		close(out)
 		return out
 	}
@@ -167,7 +167,7 @@ func (ns *namesys) resolveOnceAsync(ctx context.Context, p path.Path, options Re
 	segments := p.Segments()
 	resolvablePath, err := path.NewPathFromSegments(segments[0], segments[1])
 	if err != nil {
-		out <- ResolveAsyncResult{Err: err}
+		out <- AsyncResult{Err: err}
 		close(out)
 		return out
 	}
@@ -176,7 +176,7 @@ func (ns *namesys) resolveOnceAsync(ctx context.Context, p path.Path, options Re
 		p, err = joinPaths(resolvedBase, p)
 		span.SetAttributes(attribute.Bool("CacheHit", true))
 		span.RecordError(err)
-		out <- ResolveAsyncResult{Path: p, TTL: ttl, LastMod: lastMod, Err: err}
+		out <- AsyncResult{Path: p, TTL: ttl, LastMod: lastMod, Err: err}
 		close(out)
 		return out
 	} else {
@@ -200,9 +200,9 @@ func (ns *namesys) resolveOnceAsync(ctx context.Context, p path.Path, options Re
 			fixedCid := cid.NewCidV1(cid.Libp2pKey, ipnsCid.Hash()).String()
 			codecErr := fmt.Errorf("peer ID represented as CIDv1 require libp2p-key multicodec: retry with /ipns/%s", fixedCid)
 			log.Debugf("RoutingResolver: could not convert public key hash %q to peer ID: %s\n", segments[1], codecErr)
-			out <- ResolveAsyncResult{Err: codecErr}
+			out <- AsyncResult{Err: codecErr}
 		} else {
-			out <- ResolveAsyncResult{Err: fmt.Errorf("cannot resolve: %q", resolvablePath.String())}
+			out <- AsyncResult{Err: fmt.Errorf("cannot resolve: %q", resolvablePath.String())}
 		}
 
 		close(out)
@@ -210,14 +210,14 @@ func (ns *namesys) resolveOnceAsync(ctx context.Context, p path.Path, options Re
 	}
 
 	resCh := res.resolveOnceAsync(ctx, resolvablePath, options)
-	var best ResolveAsyncResult
+	var best AsyncResult
 	go func() {
 		defer close(out)
 		for {
 			select {
 			case res, ok := <-resCh:
 				if !ok {
-					if best != (ResolveAsyncResult{}) {
+					if best != (AsyncResult{}) {
 						ns.cacheSet(resolvablePath.String(), best.Path, best.TTL, best.LastMod)
 					}
 					return
@@ -233,7 +233,7 @@ func (ns *namesys) resolveOnceAsync(ctx context.Context, p path.Path, options Re
 					res.Err = multierr.Combine(err, res.Err)
 				}
 
-				emitOnceResult(ctx, out, ResolveAsyncResult{Path: p, TTL: res.TTL, LastMod: res.LastMod, Err: res.Err})
+				emitOnceResult(ctx, out, AsyncResult{Path: p, TTL: res.TTL, LastMod: res.LastMod, Err: res.Err})
 			case <-ctx.Done():
 				return
 			}
@@ -243,7 +243,7 @@ func (ns *namesys) resolveOnceAsync(ctx context.Context, p path.Path, options Re
 	return out
 }
 
-func emitOnceResult(ctx context.Context, outCh chan<- ResolveAsyncResult, r ResolveAsyncResult) {
+func emitOnceResult(ctx context.Context, outCh chan<- AsyncResult, r AsyncResult) {
 	select {
 	case outCh <- r:
 	case <-ctx.Done():
@@ -294,12 +294,12 @@ func (ns *namesys) Publish(ctx context.Context, name ci.PrivKey, value path.Path
 // Resolve is an utility function that takes a [NameSystem] and a [path.Path], and
 // returns the result of [NameSystem.Resolve] for the given path. If the given namesys
 // is nil, [ErrNoNamesys] is returned.
-func Resolve(ctx context.Context, ns NameSystem, p path.Path) (ResolveResult, error) {
+func Resolve(ctx context.Context, ns NameSystem, p path.Path) (Result, error) {
 	ctx, span := startSpan(ctx, "Resolve", trace.WithAttributes(attribute.Stringer("Path", p)))
 	defer span.End()
 
 	if ns == nil {
-		return ResolveResult{}, ErrNoNamesys
+		return Result{}, ErrNoNamesys
 	}
 
 	return ns.Resolve(ctx, p)

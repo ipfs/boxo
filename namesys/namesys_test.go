@@ -36,10 +36,10 @@ func testResolution(t *testing.T, resolver Resolver, name string, depth uint, ex
 	}
 }
 
-func (r *mockResolver) resolveOnceAsync(ctx context.Context, p path.Path, options ResolveOptions) <-chan ResolveAsyncResult {
+func (r *mockResolver) resolveOnceAsync(ctx context.Context, p path.Path, options ResolveOptions) <-chan AsyncResult {
 	p, err := path.NewPath(r.entries[p.String()])
-	out := make(chan ResolveAsyncResult, 1)
-	out <- ResolveAsyncResult{Path: p, Err: err}
+	out := make(chan AsyncResult, 1)
+	out <- AsyncResult{Path: p, Err: err}
 	close(out)
 	return out
 }
