@@ -65,9 +65,10 @@ type Blockstore interface {
 	HashOnRead(enabled bool)
 }
 
-// GetManyBlockstore is a blockstore interface that supports a GetMany method
-type GetManyBlockstore interface {
+// TxnBlockstore is a blockstore interface that supports GetMany and PutMany methods using ds.TxnDatastore
+type TxnBlockstore interface {
 	Blockstore
+	PutMany(ctx context.Context, blocks []blocks.Block) error
 	GetMany(context.Context, []cid.Cid) ([]blocks.Block, []cid.Cid, error)
 }
 
@@ -317,15 +318,15 @@ func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return output, nil
 }
 
-// GetManyOption is a getManyBlockStore option implementation
-type GetManyOption struct {
-	f func(bs *getManyBlockStore)
+// TxnBlockstoreOption is a txnBlockstore option implementation
+type TxnBlockstoreOption struct {
+	f func(bs *txnBlockstore)
 }
 
-// NewGetManyBlockstore returns a default GetManyBlockstore implementation
+// NewTxnBlockstore returns a default TxnBlockstore implementation
 // using the provided datastore.TxnDatastore backend.
-func NewGetManyBlockstore(d ds.TxnDatastore, opts ...GetManyOption) GetManyBlockstore {
-	bs := &getManyBlockStore{
+func NewTxnBlockstore(d ds.TxnDatastore, opts ...TxnBlockstoreOption) TxnBlockstore {
+	bs := &txnBlockstore{
 		datastore: d,
 	}
 
@@ -339,7 +340,7 @@ func NewGetManyBlockstore(d ds.TxnDatastore, opts ...GetManyOption) GetManyBlock
 	return bs
 }
 
-type getManyBlockStore struct {
+type txnBlockstore struct {
 	datastore ds.TxnDatastore
 
 	rehash       atomic.Bool
@@ -347,11 +348,11 @@ type getManyBlockStore struct {
 	noPrefix     bool
 }
 
-func (bs *getManyBlockStore) HashOnRead(enabled bool) {
+func (bs *txnBlockstore) HashOnRead(enabled bool) {
 	bs.rehash.Store(enabled)
 }
 
-func (bs *getManyBlockStore) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
+func (bs *txnBlockstore) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
 	if !k.Defined() {
 		logger.Error("undefined cid in blockstore")
 		return nil, ipld.ErrNotFound{Cid: k}
@@ -378,7 +379,7 @@ func (bs *getManyBlockStore) Get(ctx context.Context, k cid.Cid) (blocks.Block, 
 	return blocks.NewBlockWithCid(bdata, k)
 }
 
-func (bs *getManyBlockStore) GetMany(ctx context.Context, cs []cid.Cid) ([]blocks.Block, []cid.Cid, error) {
+func (bs *txnBlockstore) GetMany(ctx context.Context, cs []cid.Cid) ([]blocks.Block, []cid.Cid, error) {
 	if len(cs) == 1 {
 		// performance fast-path
 		block, err := bs.Get(ctx, cs[0])
@@ -433,7 +434,7 @@ func (bs *getManyBlockStore) GetMany(ctx context.Context, cs []cid.Cid) ([]block
 	return blks, missingCIDs, t.Commit(ctx)
 }
 
-func (bs *getManyBlockStore) Put(ctx context.Context, block blocks.Block) error {
+func (bs *txnBlockstore) Put(ctx context.Context, block blocks.Block) error {
 	k := dshelp.MultihashToDsKey(block.Cid().Hash())
 
 	// Has is cheaper than Put, so see if we already have it
@@ -446,7 +447,7 @@ func (bs *getManyBlockStore) Put(ctx context.Context, block blocks.Block) error 
 	return bs.datastore.Put(ctx, k, block.RawData())
 }
 
-func (bs *getManyBlockStore) PutMany(ctx context.Context, blocks []blocks.Block) error {
+func (bs *txnBlockstore) PutMany(ctx context.Context, blocks []blocks.Block) error {
 	if len(blocks) == 1 {
 		// performance fast-path
 		return bs.Put(ctx, blocks[0])
@@ -474,11 +475,11 @@ func (bs *getManyBlockStore) PutMany(ctx context.Context, blocks []blocks.Block)
 	return t.Commit(ctx)
 }
 
-func (bs *getManyBlockStore) Has(ctx context.Context, k cid.Cid) (bool, error) {
+func (bs *txnBlockstore) Has(ctx context.Context, k cid.Cid) (bool, error) {
 	return bs.datastore.Has(ctx, dshelp.MultihashToDsKey(k.Hash()))
 }
 
-func (bs *getManyBlockStore) GetSize(ctx context.Context, k cid.Cid) (int, error) {
+func (bs *txnBlockstore) GetSize(ctx context.Context, k cid.Cid) (int, error) {
 	size, err := bs.datastore.GetSize(ctx, dshelp.MultihashToDsKey(k.Hash()))
 	if err == ds.ErrNotFound {
 		return -1, ipld.ErrNotFound{Cid: k}
@@ -486,7 +487,7 @@ func (bs *getManyBlockStore) GetSize(ctx context.Context, k cid.Cid) (int, error
 	return size, err
 }
 
-func (bs *getManyBlockStore) DeleteBlock(ctx context.Context, k cid.Cid) error {
+func (bs *txnBlockstore) DeleteBlock(ctx context.Context, k cid.Cid) error {
 	return bs.datastore.Delete(ctx, dshelp.MultihashToDsKey(k.Hash()))
 }
 
@@ -494,7 +495,7 @@ func (bs *getManyBlockStore) DeleteBlock(ctx context.Context, k cid.Cid) error {
 // this is very simplistic, in the future, take dsq.Query as a param?
 //
 // AllKeysChan respects context.
-func (bs *getManyBlockStore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
+func (bs *txnBlockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 
 	// KeysOnly, because that would be _a lot_ of data.
 	q := dsq.Query{KeysOnly: true}

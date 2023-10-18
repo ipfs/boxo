@@ -75,7 +75,7 @@ func TestCidv0v1(t *testing.T) {
 }
 
 func TestGetManyWhenKeyNotPresent(t *testing.T) {
-	bs := NewGetManyBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
+	bs := NewTxnBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
 	c1 := cid.NewCidV0(u.Hash([]byte("stuff")))
 	c2 := cid.NewCidV0(u.Hash([]byte("stuff2")))
 
@@ -93,7 +93,7 @@ func TestGetManyWhenKeyNotPresent(t *testing.T) {
 }
 
 func TestGetManyWhenKeyIsNil(t *testing.T) {
-	bs := NewGetManyBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
+	bs := NewTxnBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
 	_, _, err := bs.GetMany(bg, []cid.Cid{{}, {}})
 	if !ipld.IsNotFound(err) {
 		t.Fail()
@@ -101,7 +101,7 @@ func TestGetManyWhenKeyIsNil(t *testing.T) {
 }
 
 func TestPutsThenGetManyBlock(t *testing.T) {
-	bs := NewGetManyBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
+	bs := NewTxnBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
 	block1 := blocks.NewBlock([]byte("some data1"))
 	block2 := blocks.NewBlock([]byte("some data2"))
 	block3 := blocks.NewBlock([]byte("some data3"))
@@ -137,7 +137,7 @@ func TestPutsThenGetManyBlock(t *testing.T) {
 }
 
 func TestCidv0v1Many(t *testing.T) {
-	bs := NewGetManyBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
+	bs := NewTxnBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
 	block1 := blocks.NewBlock([]byte("some data1"))
 	block2 := blocks.NewBlock([]byte("some data2"))
 	block3 := blocks.NewBlock([]byte("some data3"))
