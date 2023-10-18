@@ -8,18 +8,18 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ipfs/boxo/blockservice"
 	blockstore "github.com/ipfs/boxo/blockstore"
-	nsopts "github.com/ipfs/boxo/coreiface/options/namesys"
 	"github.com/ipfs/boxo/fetcher"
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/ipld/merkledag"
 	ufile "github.com/ipfs/boxo/ipld/unixfs/file"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
+	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/namesys"
-	"github.com/ipfs/boxo/namesys/resolve"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
 	blocks "github.com/ipfs/go-block-format"
@@ -39,7 +39,6 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	mc "github.com/multiformats/go-multicodec"
 
@@ -623,18 +622,23 @@ func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.Immu
 	return pathRoots, lastPath, remainder, nil
 }
 
-func (bb *BlocksBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, error) {
+func (bb *BlocksBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, time.Duration, time.Time, error) {
 	switch p.Namespace() {
 	case path.IPNSNamespace:
-		p, err := resolve.ResolveIPNS(ctx, bb.namesys, p)
+		res, err := namesys.Resolve(ctx, bb.namesys, p)
 		if err != nil {
-			return path.ImmutablePath{}, err
+			return path.ImmutablePath{}, 0, time.Time{}, err
 		}
-		return path.NewImmutablePath(p)
+		ip, err := path.NewImmutablePath(res.Path)
+		if err != nil {
+			return path.ImmutablePath{}, 0, time.Time{}, err
+		}
+		return ip, res.TTL, res.LastMod, nil
 	case path.IPFSNamespace:
-		return path.NewImmutablePath(p)
+		ip, err := path.NewImmutablePath(p)
+		return ip, 0, time.Time{}, err
 	default:
-		return path.ImmutablePath{}, NewErrorStatusCode(fmt.Errorf("unsupported path namespace: %s", p.Namespace()), http.StatusNotImplemented)
+		return path.ImmutablePath{}, 0, time.Time{}, NewErrorStatusCode(fmt.Errorf("unsupported path namespace: %s", p.Namespace()), http.StatusNotImplemented)
 	}
 }
 
@@ -643,28 +647,25 @@ func (bb *BlocksBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, 
 		return nil, NewErrorStatusCode(errors.New("IPNS Record responses are not supported by this gateway"), http.StatusNotImplemented)
 	}
 
-	// Fails fast if the CID is not an encoded Libp2p Key, avoids wasteful
-	// round trips to the remote routing provider.
-	if mc.Code(c.Type()) != mc.Libp2pKey {
-		return nil, NewErrorStatusCode(errors.New("cid codec must be libp2p-key"), http.StatusBadRequest)
-	}
-
-	// The value store expects the key itself to be encoded as a multihash.
-	id, err := peer.FromCid(c)
+	name, err := ipns.NameFromCid(c)
 	if err != nil {
-		return nil, err
+		return nil, NewErrorStatusCode(err, http.StatusBadRequest)
 	}
 
-	return bb.routing.GetValue(ctx, "/ipns/"+string(id))
+	return bb.routing.GetValue(ctx, string(name.RoutingKey()))
 }
 
 func (bb *BlocksBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (path.Path, error) {
 	if bb.namesys != nil {
-		p, err := bb.namesys.Resolve(ctx, "/ipns/"+hostname, nsopts.Depth(1))
+		p, err := path.NewPath("/ipns/" + hostname)
+		if err != nil {
+			return nil, err
+		}
+		res, err := bb.namesys.Resolve(ctx, p, namesys.ResolveWithDepth(1))
 		if err == namesys.ErrResolveRecursion {
 			err = nil
 		}
-		return p, err
+		return res.Path, err
 	}
 
 	return nil, NewErrorStatusCode(errors.New("not implemented"), http.StatusNotImplemented)
@@ -696,10 +697,11 @@ func (bb *BlocksBackend) ResolvePath(ctx context.Context, path path.ImmutablePat
 func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.ImmutablePath, []string, error) {
 	var err error
 	if p.Namespace() == path.IPNSNamespace {
-		p, err = resolve.ResolveIPNS(ctx, bb.namesys, p)
+		res, err := namesys.Resolve(ctx, bb.namesys, p)
 		if err != nil {
 			return path.ImmutablePath{}, nil, err
 		}
+		p = res.Path
 	}
 
 	if p.Namespace() != path.IPFSNamespace {

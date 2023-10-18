@@ -7,6 +7,7 @@ import (
 	gopath "path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ipfs/boxo/path"
 	redirects "github.com/ipfs/go-ipfs-redirects-file"
@@ -223,7 +224,7 @@ func (i *handler) serve4xx(w http.ResponseWriter, r *http.Request, content4xxPat
 	logger.Debugf("using _redirects: custom %d file at %q", status, content4xxPath)
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-	addCacheControlHeaders(w, r, content4xxPath, content4xxCid, "")
+	addCacheControlHeaders(w, r, content4xxPath, 0, time.Time{}, content4xxCid, "")
 	w.WriteHeader(status)
 	_, err = io.CopyN(w, content4xxFile, size)
 	return err

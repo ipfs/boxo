@@ -18,6 +18,7 @@ The following emojis are used to highlight certain changes:
 
 * `boxo/gateway`:
   * A new `WithResolver(...)` option can be used with `NewBlocksBackend(...)` allowing the user to pass their custom `Resolver` implementation.
+  * The gateway now sets a `Cache-Control` header for requests under the `/ipns/` namespace if the TTL for the corresponding IPNS Records or DNSLink entities is known.
 * `boxo/bitswap/client`:
   * A new `WithoutDuplicatedBlockStats()` option can be used with `bitswap.New` and `bsclient.New`. This disable accounting for duplicated blocks, which requires a `blockstore.Has()` lookup for every received block and thus, can impact performance.
 
@@ -41,6 +42,21 @@ The following emojis are used to highlight certain changes:
 * 🛠 The signature of `CoreAPI.ResolvePath` in  `coreiface` has changed to now return
   the remainder segments as a second return value, matching the signature of `resolver.ResolveToLastNode`.
 * 🛠 `routing/http/client.FindPeers` now returns `iter.ResultIter[types.PeerRecord]` instead of `iter.ResultIter[types.Record]`. The specification indicates that records for this method will always be Peer Records.
+* 🛠 The `namesys` package has been refactored. The following are the largest modifications:
+  * The options in `coreiface/options/namesys` have been moved to `namesys` and their names
+    have been made more consistent.
+  * Many of the exported structs and functions have been renamed in order to be consistent with
+    the remaining packages.
+  * `namesys.Resolver.Resolve` now returns a TTL, in addition to the resolved path. If the
+    TTL is unknown, 0 is returned. `IPNSResolver` is able to resolve a TTL, while `DNSResolver`
+    is not.
+  * `namesys/resolver.ResolveIPNS` has been moved to `namesys.ResolveIPNS` and now returns a TTL
+    in addition to the resolved path.
+* ✨ `boxo/ipns` record defaults follow recommendations from [IPNS Record Specification](https://specs.ipfs.tech/ipns/ipns-record/#ipns-record):
+    * `DefaultRecordTTL` is now set to `1h`
+    * `DefaultRecordLifetime` follows the increased expiration window of Amino DHT ([go-libp2p-kad-dht#793](https://github.com/libp2p/go-libp2p-kad-dht/pull/793)) and is set to `48h`
+* 🛠 The `gateway`'s `IPFSBackend.ResolveMutable` is now expected to return a TTL in addition to
+    the resolved path. If the TTL is unknown, 0 should be returned.
 
 ### Removed
 

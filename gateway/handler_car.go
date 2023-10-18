@@ -57,7 +57,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	setContentDispositionHeader(w, name, "attachment")
 
 	// Set Cache-Control (same logic as for a regular files)
-	addCacheControlHeaders(w, r, rq.contentPath, rootCid, carResponseFormat)
+	addCacheControlHeaders(w, r, rq.contentPath, rq.ttl, rq.lastMod, rootCid, carResponseFormat)
 
 	// Generate the CAR Etag.
 	etag := getCarEtag(rq.immutablePath, params, rootCid)

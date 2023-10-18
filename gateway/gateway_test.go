@@ -37,11 +37,11 @@ func TestGatewayGet(t *testing.T) {
 		return p
 	}
 
-	backend.namesys["/ipns/example.com"] = path.FromCid(k.RootCid())
-	backend.namesys["/ipns/working.example.com"] = k
-	backend.namesys["/ipns/double.example.com"] = mustMakeDNSLinkPath("working.example.com")
-	backend.namesys["/ipns/triple.example.com"] = mustMakeDNSLinkPath("double.example.com")
-	backend.namesys["/ipns/broken.example.com"] = mustMakeDNSLinkPath(k.RootCid().String())
+	backend.namesys["/ipns/example.com"] = newMockNamesysItem(path.FromCid(k.RootCid()), 0)
+	backend.namesys["/ipns/working.example.com"] = newMockNamesysItem(k, 0)
+	backend.namesys["/ipns/double.example.com"] = newMockNamesysItem(mustMakeDNSLinkPath("working.example.com"), 0)
+	backend.namesys["/ipns/triple.example.com"] = newMockNamesysItem(mustMakeDNSLinkPath("double.example.com"), 0)
+	backend.namesys["/ipns/broken.example.com"] = newMockNamesysItem(mustMakeDNSLinkPath(k.RootCid().String()), 0)
 	// We picked .man because:
 	// 1. It's a valid TLD.
 	// 2. Go treats it as the file extension for "man" files (even though
@@ -49,7 +49,7 @@ func TestGatewayGet(t *testing.T) {
 	//
 	// Unfortunately, this may not work on all platforms as file type
 	// detection is platform dependent.
-	backend.namesys["/ipns/example.man"] = k
+	backend.namesys["/ipns/example.man"] = newMockNamesysItem(k, 0)
 
 	for _, test := range []struct {
 		host   string
@@ -98,7 +98,7 @@ func TestPretty404(t *testing.T) {
 	t.Logf("test server url: %s", ts.URL)
 
 	host := "example.net"
-	backend.namesys["/ipns/"+host] = path.FromCid(root)
+	backend.namesys["/ipns/"+host] = newMockNamesysItem(path.FromCid(root), 0)
 
 	for _, test := range []struct {
 		path   string
@@ -158,7 +158,41 @@ func TestHeaders(t *testing.T) {
 		dagCborRoots = dirRoots + "," + dagCborCID
 	)
 
-	t.Run("Cache-Control is not immutable on generated /ipfs/  HTML dir listings", func(t *testing.T) {
+	t.Run("Cache-Control uses TTL for /ipns/ when it is known", func(t *testing.T) {
+		t.Parallel()
+
+		ts, backend, root := newTestServerAndNode(t, nil, "ipns-hostname-redirects.car")
+		backend.namesys["/ipns/example.net"] = newMockNamesysItem(path.FromCid(root), time.Second*30)
+		backend.namesys["/ipns/example.com"] = newMockNamesysItem(path.FromCid(root), time.Second*55)
+		backend.namesys["/ipns/unknown.com"] = newMockNamesysItem(path.FromCid(root), 0)
+
+		testCases := []struct {
+			path         string
+			cacheControl string
+		}{
+			{"/ipns/example.net/", "public, max-age=30"},                 // As generated directory listing
+			{"/ipns/example.com/", "public, max-age=55"},                 // As generated directory listing (different)
+			{"/ipns/unknown.com/", ""},                                   // As generated directory listing (unknown)
+			{"/ipns/example.net/foo/", "public, max-age=30"},             // As index.html directory listing
+			{"/ipns/example.net/foo/index.html", "public, max-age=30"},   // As deserialized UnixFS file
+			{"/ipns/example.net/?format=raw", "public, max-age=30"},      // As Raw block
+			{"/ipns/example.net/?format=dag-json", "public, max-age=30"}, // As DAG-JSON block
+			{"/ipns/example.net/?format=dag-cbor", "public, max-age=30"}, // As DAG-CBOR block
+			{"/ipns/example.net/?format=car", "public, max-age=30"},      // As CAR block
+		}
+
+		for _, testCase := range testCases {
+			req := mustNewRequest(t, http.MethodGet, ts.URL+testCase.path, nil)
+			res := mustDoWithoutRedirect(t, req)
+			if testCase.cacheControl == "" {
+				assert.Empty(t, res.Header["Cache-Control"])
+			} else {
+				assert.Equal(t, testCase.cacheControl, res.Header.Get("Cache-Control"))
+			}
+		}
+	})
+
+	t.Run("Cache-Control is not immutable on generated /ipfs/ HTML dir listings", func(t *testing.T) {
 		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+rootCID+"/", nil)
 		res := mustDoWithoutRedirect(t, req)
 
@@ -500,7 +534,7 @@ func TestRedirects(t *testing.T) {
 		t.Parallel()
 
 		ts, backend, root := newTestServerAndNode(t, nil, "ipns-hostname-redirects.car")
-		backend.namesys["/ipns/example.net"] = path.FromCid(root)
+		backend.namesys["/ipns/example.net"] = newMockNamesysItem(path.FromCid(root), 0)
 
 		// make request to directory containing index.html
 		req := mustNewRequest(t, http.MethodGet, ts.URL+"/foo", nil)
@@ -535,7 +569,7 @@ func TestRedirects(t *testing.T) {
 		t.Parallel()
 
 		backend, root := newMockBackend(t, "redirects-spa.car")
-		backend.namesys["/ipns/example.com"] = path.FromCid(root)
+		backend.namesys["/ipns/example.com"] = newMockNamesysItem(path.FromCid(root), 0)
 
 		ts := newTestServerWithConfig(t, backend, Config{
 			Headers:   map[string][]string{},
@@ -672,8 +706,8 @@ func TestDeserializedResponses(t *testing.T) {
 		t.Parallel()
 
 		backend, root := newMockBackend(t, "fixtures.car")
-		backend.namesys["/ipns/trustless.com"] = path.FromCid(root)
-		backend.namesys["/ipns/trusted.com"] = path.FromCid(root)
+		backend.namesys["/ipns/trustless.com"] = newMockNamesysItem(path.FromCid(root), 0)
+		backend.namesys["/ipns/trusted.com"] = newMockNamesysItem(path.FromCid(root), 0)
 
 		ts := newTestServerWithConfig(t, backend, Config{
 			Headers:   map[string][]string{},
@@ -735,8 +769,8 @@ func (mb *errorMockBackend) GetCAR(ctx context.Context, path path.ImmutablePath,
 	return ContentPathMetadata{}, nil, mb.err
 }
 
-func (mb *errorMockBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, error) {
-	return path.ImmutablePath{}, mb.err
+func (mb *errorMockBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, time.Duration, time.Time, error) {
+	return path.ImmutablePath{}, 0, time.Time{}, mb.err
 }
 
 func (mb *errorMockBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
@@ -819,7 +853,7 @@ func (mb *panicMockBackend) GetCAR(ctx context.Context, immutablePath path.Immut
 	panic("i am panicking")
 }
 
-func (mb *panicMockBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, error) {
+func (mb *panicMockBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, time.Duration, time.Time, error) {
 	panic("i am panicking")
 }
 

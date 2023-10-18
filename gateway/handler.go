@@ -34,7 +34,7 @@ var log = logging.Logger("boxo/gateway")
 
 const (
 	ipfsPathPrefix        = "/ipfs/"
-	ipnsPathPrefix        = "/ipns/"
+	ipnsPathPrefix        = ipns.NamespacePrefix
 	immutableCacheControl = "public, max-age=29030400, immutable"
 )
 
@@ -194,6 +194,8 @@ type requestData struct {
 
 	// Defined for non IPNS Record requests.
 	immutablePath path.ImmutablePath
+	ttl           time.Duration
+	lastMod       time.Time
 
 	// Defined if resolution has already happened.
 	pathMetadata *ContentPathMetadata
@@ -285,7 +287,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if contentPath.Mutable() {
-		rq.immutablePath, err = i.backend.ResolveMutable(r.Context(), contentPath)
+		rq.immutablePath, rq.ttl, rq.lastMod, err = i.backend.ResolveMutable(r.Context(), contentPath)
 		if err != nil {
 			err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 			i.webError(w, r, err, http.StatusInternalServerError)
@@ -415,7 +417,7 @@ func panicHandler(w http.ResponseWriter) {
 	}
 }
 
-func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath path.Path, cid cid.Cid, responseFormat string) (modtime time.Time) {
+func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath path.Path, ttl time.Duration, lastMod time.Time, cid cid.Cid, responseFormat string) (modtime time.Time) {
 	// Best effort attempt to set an Etag based on the CID and response format.
 	// Setting an ETag is handled separately for CARs and IPNS records.
 	if etag := getEtag(r, cid, responseFormat); etag != "" {
@@ -424,23 +426,24 @@ func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath 
 
 	// Set Cache-Control and Last-Modified based on contentPath properties
 	if contentPath.Mutable() {
-		// mutable namespaces such as /ipns/ can't be cached forever
+		if ttl > 0 {
+			// When we know the TTL, set the Cache-Control header and disable Last-Modified.
+			w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(ttl.Seconds())))
+		}
 
-		// For now we set Last-Modified to Now() to leverage caching heuristics built into modern browsers:
-		// https://github.com/ipfs/kubo/pull/8074#pullrequestreview-645196768
-		// but we should not set it to fake values and use Cache-Control based on TTL instead
-		modtime = time.Now()
-
-		// TODO: set Cache-Control based on TTL of IPNS/DNSLink: https://github.com/ipfs/kubo/issues/1818#issuecomment-1015849462
-		// TODO: set Last-Modified based on /ipns/ publishing timestamp?
+		if lastMod.IsZero() {
+			// Otherwise, we set Last-Modified to the current time to leverage caching heuristics
+			// built into modern browsers: https://github.com/ipfs/kubo/pull/8074#pullrequestreview-645196768
+			modtime = time.Now()
+		} else {
+			modtime = lastMod
+		}
 	} else {
-		// immutable! CACHE ALL THE THINGS, FOREVER! wolololol
 		w.Header().Set("Cache-Control", immutableCacheControl)
+		modtime = noModtime // disable Last-Modified
 
-		// Set modtime to 'zero time' to disable Last-Modified header (superseded by Cache-Control)
-		modtime = noModtime
-
-		// TODO: set Last-Modified? - TBD - /ipfs/ modification metadata is present in unixfs 1.5 https://github.com/ipfs/kubo/issues/6920?
+		// TODO: consider setting Last-Modified if UnixFS V1.5 ever gets released
+		// with metadata: https://github.com/ipfs/kubo/issues/6920
 	}
 
 	return modtime

@@ -17,13 +17,12 @@ import (
 	cid "github.com/ipfs/go-cid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 )
 
 // serveDirectory returns the best representation of UnixFS directory
 //
 // It will return index.html if present, or generate directory listing otherwise.
-func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath path.ImmutablePath, contentPath path.Path, isHeadRequest bool, directoryMetadata *directoryMetadata, ranges []ByteRange, begin time.Time, logger *zap.SugaredLogger) bool {
+func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *http.Request, resolvedPath path.ImmutablePath, rq *requestData, isHeadRequest bool, directoryMetadata *directoryMetadata, ranges []ByteRange) bool {
 	ctx, span := spanTrace(ctx, "Handler.ServeDirectory", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 	defer span.End()
 
@@ -52,14 +51,14 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 			}
 			// /ipfs/cid/foo?bar must be redirected to /ipfs/cid/foo/?bar
 			redirectURL := originalURLPath + suffix
-			logger.Debugw("directory location moved permanently", "status", http.StatusMovedPermanently)
+			rq.logger.Debugw("directory location moved permanently", "status", http.StatusMovedPermanently)
 			http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
 			return true
 		}
 	}
 
 	// Check if directory has index.html, if so, serveFile
-	idxPath, err := path.Join(contentPath, "index.html")
+	idxPath, err := path.Join(rq.contentPath, "index.html")
 	if err != nil {
 		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
@@ -113,17 +112,19 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	if err == nil {
-		logger.Debugw("serving index.html file", "path", idxPath)
+		rq.logger.Debugw("serving index.html file", "path", idxPath)
+		originalContentPath := rq.contentPath
+		rq.contentPath = idxPath
 		// write to request
-		success := i.serveFile(ctx, w, r, resolvedPath, idxPath, idxFileSize, idxFileBytes, false, returnRangeStartsAtZero, "text/html", begin)
+		success := i.serveFile(ctx, w, r, resolvedPath, rq, idxFileSize, idxFileBytes, false, returnRangeStartsAtZero, "text/html")
 		if success {
-			i.unixfsDirIndexGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+			i.unixfsDirIndexGetMetric.WithLabelValues(originalContentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 		}
 		return success
 	}
 
 	if isErrNotFound(err) {
-		logger.Debugw("no index.html; noop", "path", idxPath)
+		rq.logger.Debugw("no index.html; noop", "path", idxPath)
 	} else if err != nil {
 		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
@@ -137,8 +138,13 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	dirEtag := getDirListingEtag(resolvedPath.RootCid())
 	w.Header().Set("Etag", dirEtag)
 
+	// Add TTL if known.
+	if rq.ttl > 0 {
+		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(rq.ttl.Seconds())))
+	}
+
 	if r.Method == http.MethodHead {
-		logger.Debug("return as request's HTTP method is HEAD")
+		rq.logger.Debug("return as request's HTTP method is HEAD")
 		return true
 	}
 
@@ -169,7 +175,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	backLink := originalURLPath
 
 	// don't go further up than /ipfs/$hash/
-	pathSplit := strings.Split(contentPath.String(), "/")
+	pathSplit := strings.Split(rq.contentPath.String(), "/")
 	switch {
 	// skip backlink when listing a content root
 	case len(pathSplit) == 3: // url: /ipfs/$hash
@@ -190,20 +196,20 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 
 	size := humanize.Bytes(directoryMetadata.dagSize)
 	hash := resolvedPath.RootCid().String()
-	globalData := i.getTemplateGlobalData(r, contentPath)
+	globalData := i.getTemplateGlobalData(r, rq.contentPath)
 
 	// See comment above where originalUrlPath is declared.
 	tplData := assets.DirectoryTemplateData{
 		GlobalData:  globalData,
 		Listing:     dirListing,
 		Size:        size,
-		Path:        contentPath.String(),
-		Breadcrumbs: assets.Breadcrumbs(contentPath.String(), globalData.DNSLink),
+		Path:        rq.contentPath.String(),
+		Breadcrumbs: assets.Breadcrumbs(rq.contentPath.String(), globalData.DNSLink),
 		BackLink:    backLink,
 		Hash:        hash,
 	}
 
-	logger.Debugw("request processed", "tplDataDNSLink", globalData.DNSLink, "tplDataSize", size, "tplDataBackLink", backLink, "tplDataHash", hash)
+	rq.logger.Debugw("request processed", "tplDataDNSLink", globalData.DNSLink, "tplDataSize", size, "tplDataBackLink", backLink, "tplDataHash", hash)
 
 	if err := assets.DirectoryTemplate.Execute(w, tplData); err != nil {
 		i.webError(w, r, err, http.StatusInternalServerError)
@@ -211,7 +217,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	}
 
 	// Update metrics
-	i.unixfsGenDirListingGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	i.unixfsGenDirListingGetMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 	return true
 }
 
