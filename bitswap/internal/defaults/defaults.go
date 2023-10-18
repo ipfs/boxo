@@ -3,6 +3,8 @@ package defaults
 import (
 	"encoding/binary"
 	"time"
+
+	delay "github.com/ipfs/go-ipfs-delay"
 )
 
 const (
@@ -33,4 +35,10 @@ const (
 	// FIXME: expose this in go-verifcid.
 	MaximumHashLength = 128
 	MaximumAllowedCid = binary.MaxVarintLen64*4 + MaximumHashLength
+)
+
+var (
+	// RebroadcastDelay is the default delay to trigger broadcast of
+	// random CIDs in the wantlist.
+	RebroadcastDelay = delay.Fixed(time.Minute)
 )
