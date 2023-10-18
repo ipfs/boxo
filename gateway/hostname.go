@@ -165,15 +165,32 @@ func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.H
 				// can be loaded from a subdomain gateway with a wildcard
 				// TLS cert if represented as a single DNS label:
 				// https://my-v--long-example-com.ipns.dweb.link
-				if ns == "ipns" && !strings.Contains(rootID, ".") {
-					// if there is no TXT recordfor rootID
-					if !hasDNSLinkRecord(r.Context(), backend, rootID) {
-						// my-v--long-example-com → my.v-long.example.com
-						dnslinkFQDN := toDNSLinkFQDN(rootID)
-						if hasDNSLinkRecord(r.Context(), backend, dnslinkFQDN) {
-							// update path prefix to use real FQDN with DNSLink
-							pathPrefix = "/ipns/" + dnslinkFQDN
-						}
+				if ns == "ipns" && !strings.Contains(rootID, ".") && strings.Contains(rootID, "-") {
+					// If there are no '.' but '-' is present in rootID, we most
+					// likely have an inlined DNSLink (like my-v--long-example-com)
+
+					// We un-inline and check for DNSLink presence on domain with '.'
+					// first to minimize the amount of DNS lookups:
+					// my-v--long-example-com → my.v-long.example.com
+					dnslinkFQDN := toDNSLinkFQDN(rootID)
+
+					// Does _dnslink.my.v-long.example.com exist?
+					if hasDNSLinkRecord(r.Context(), backend, dnslinkFQDN) {
+						// Un-inlined DNS name has a valid DNSLink record.
+						// Update path prefix to use un-inlined FQDN in gateway processing.
+						pathPrefix = "/ipns/" + dnslinkFQDN // → /ipns/my.v-long.example.com
+
+					} else if !hasDNSLinkRecord(r.Context(), backend, rootID) {
+						// Inspected _dnslink.my-v--long-example-com as a
+						// fallback, but it had no DNSLink record either.
+
+						// At this point it is more likely the un-inlined
+						// dnslinkFQDN is what the end user wanted to load, so
+						// we switch to that. This ensures the error message
+						// about missing DNSLink will use the un-inlined FQDN,
+						// and not the inlined one.
+						pathPrefix = "/ipns/" + dnslinkFQDN
+
 					}
 				}
 			}
