@@ -343,8 +343,13 @@ func addCustomHeaders(w http.ResponseWriter, headers map[string][]string) {
 
 // isDeserializedResponsePossible returns true if deserialized responses
 // are allowed on the specified hostname, or globally. Host-specific rules
-// override global config.
+// or client preference override global config.
 func (i *handler) isDeserializedResponsePossible(r *http.Request) bool {
+	// If client requested trustless mode, we return false immediatelly
+	if r.Header.Get(GatewayModeHeader) == "trustless" {
+		return false
+	}
+
 	// Get the value from HTTP Host header
 	host := r.Host
 

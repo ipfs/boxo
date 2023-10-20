@@ -646,60 +646,84 @@ func TestDeserializedResponses(t *testing.T) {
 		trustedFormats := []string{"", "dag-json", "dag-cbor", "tar", "json", "cbor"}
 		trustlessFormats := []string{"raw", "car"}
 
-		doRequest := func(t *testing.T, path, host string, expectedStatus int) {
+		// Ipfs-Gateway-Mode header is an opt-in way a HTTP client can
+		// request more strict mode, turning a deserializing gateway into trustless one,
+		// that errors on deserialized request. Unknown modes are ignored.
+		clientModeNotSet := ""
+		clientModeTrustless := "trustless"
+		allClientModes := []string{clientModeNotSet, clientModeTrustless, "path", "something-unknown"}
+
+		doRequest := func(t *testing.T, path, host string, clientMode string, expectedStatus int) {
 			req := mustNewRequest(t, http.MethodGet, ts.URL+path, nil)
 			if host != "" {
 				req.Host = host
 			}
+			if clientMode != "" {
+				req.Header.Add(GatewayModeHeader, clientMode)
+			}
 			res := mustDoWithoutRedirect(t, req)
 			defer res.Body.Close()
-			assert.Equal(t, expectedStatus, res.StatusCode)
+
+			assert.Equal(t, expectedStatus, res.StatusCode, "request for %q (with Host=%q and Ipfs-Gateway-Mode=%q) expected to return HTTP status code %d, but was %d", ts.URL+path, host, clientMode, expectedStatus, res.StatusCode)
 		}
 
-		doIpfsCidRequests := func(t *testing.T, formats []string, host string, expectedStatus int) {
+		doIpfsCidRequests := func(t *testing.T, formats []string, host string, clientMode string, expectedStatus int) {
 			for _, format := range formats {
-				doRequest(t, "/ipfs/"+root.String()+"/?format="+format, host, expectedStatus)
+				doRequest(t, "/ipfs/"+root.String()+"/?format="+format, host, clientMode, expectedStatus)
 			}
 		}
 
-		doIpfsCidPathRequests := func(t *testing.T, formats []string, host string, expectedStatus int) {
+		doIpfsCidPathRequests := func(t *testing.T, formats []string, host string, clientMode string, expectedStatus int) {
 			for _, format := range formats {
-				doRequest(t, "/ipfs/"+root.String()+"/empty-dir/?format="+format, host, expectedStatus)
+				doRequest(t, "/ipfs/"+root.String()+"/empty-dir/?format="+format, host, clientMode, expectedStatus)
 			}
 		}
 
-		trustedTests := func(t *testing.T, host string) {
-			doIpfsCidRequests(t, trustlessFormats, host, http.StatusOK)
-			doIpfsCidRequests(t, trustedFormats, host, http.StatusOK)
-			doIpfsCidPathRequests(t, trustlessFormats, host, http.StatusOK)
-			doIpfsCidPathRequests(t, trustedFormats, host, http.StatusOK)
+		expectTrustedBehavior := func(t *testing.T, host string, clientMode string) {
+
+			doIpfsCidRequests(t, trustlessFormats, host, clientMode, http.StatusOK)
+			doIpfsCidRequests(t, trustedFormats, host, clientMode, http.StatusOK)
+			doIpfsCidPathRequests(t, trustlessFormats, host, clientMode, http.StatusOK)
+			doIpfsCidPathRequests(t, trustedFormats, host, clientMode, http.StatusOK)
 		}
 
-		trustlessTests := func(t *testing.T, host string) {
-			doIpfsCidRequests(t, trustlessFormats, host, http.StatusOK)
-			doIpfsCidRequests(t, trustedFormats, host, http.StatusNotAcceptable)
-			doIpfsCidPathRequests(t, trustedFormats, host, http.StatusNotAcceptable)
-			doIpfsCidPathRequests(t, []string{"raw"}, host, http.StatusNotAcceptable)
-			doIpfsCidPathRequests(t, []string{"car"}, host, http.StatusOK)
+		expectTrustlessBehavior := func(t *testing.T, host string, clientMode string) {
+			doIpfsCidRequests(t, trustlessFormats, host, clientMode, http.StatusOK)
+			doIpfsCidRequests(t, trustedFormats, host, clientMode, http.StatusNotAcceptable)
+			doIpfsCidPathRequests(t, trustedFormats, host, clientMode, http.StatusNotAcceptable)
+			doIpfsCidPathRequests(t, []string{"raw"}, host, clientMode, http.StatusNotAcceptable)
+			doIpfsCidPathRequests(t, []string{"car"}, host, clientMode, http.StatusOK)
 		}
 
 		t.Run("Explicit Trustless Gateway", func(t *testing.T) {
 			t.Parallel()
-			trustlessTests(t, "trustless.com")
+			// Trustless should always work, no matter what
+			for _, clientMode := range allClientModes {
+				expectTrustlessBehavior(t, "trustless.com", clientMode)
+			}
 		})
 
+		// Deserialized (Trusted) mode on configured hostname
 		t.Run("Explicit Trusted Gateway", func(t *testing.T) {
 			t.Parallel()
-			trustedTests(t, "trusted.com")
+			expectTrustedBehavior(t, "trusted.com", clientModeNotSet)
+
+			// 'Ipfs-Gateway-Mode: trustless' sent by client must override server config
+			expectTrustlessBehavior(t, "trusted.com", clientModeTrustless)
 		})
 
-		t.Run("Implicit Default Trustless Gateway", func(t *testing.T) {
+		// Trustless mode should always work
+		t.Run("Implicit Default for unknown (not configured) hostnames is Trustless Gateway", func(t *testing.T) {
 			t.Parallel()
-			trustlessTests(t, "not.configured.com")
-			trustlessTests(t, "localhost")
-			trustlessTests(t, "127.0.0.1")
-			trustlessTests(t, "::1")
+
+			for _, clientMode := range allClientModes {
+				expectTrustlessBehavior(t, "not.configured.com", clientMode)
+				expectTrustlessBehavior(t, "localhost", clientMode)
+				expectTrustlessBehavior(t, "127.0.0.1", clientMode)
+				expectTrustlessBehavior(t, "::1", clientMode)
+			}
 		})
+
 	})
 
 	t.Run("IPNS", func(t *testing.T) {
