@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 
+	dstest "github.com/ipfs/go-datastore/test"
+
 	u "github.com/ipfs/boxo/util"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -68,6 +70,126 @@ func TestCidv0v1(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(block.RawData(), blockFromBlockstore.RawData()) {
+		t.Fail()
+	}
+}
+
+func TestGetManyWhenKeyNotPresent(t *testing.T) {
+	bs := NewGetManyBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
+	c1 := cid.NewCidV0(u.Hash([]byte("stuff")))
+	c2 := cid.NewCidV0(u.Hash([]byte("stuff2")))
+
+	blks, missingCIDs, err := bs.GetMany(bg, []cid.Cid{c1, c2})
+
+	if len(blks) != 0 {
+		t.Error("no blocks expected")
+	}
+	if len(missingCIDs) != 2 {
+		t.Error("2 missing cids expected")
+	}
+	if err != nil {
+		t.Error("no error expected")
+	}
+}
+
+func TestGetManyWhenKeyIsNil(t *testing.T) {
+	bs := NewGetManyBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
+	_, _, err := bs.GetMany(bg, []cid.Cid{{}, {}})
+	if !ipld.IsNotFound(err) {
+		t.Fail()
+	}
+}
+
+func TestGetManyBlockstorePutThenGetBlock(t *testing.T) {
+	bs := NewGetManyBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
+	block := blocks.NewBlock([]byte("some data"))
+
+	err := bs.Put(bg, block)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blockFromBlockstore, err := bs.Get(bg, block.Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(block.RawData(), blockFromBlockstore.RawData()) {
+		t.Fail()
+	}
+}
+
+func TestPutsThenGetManyBlock(t *testing.T) {
+	bs := NewGetManyBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
+	block1 := blocks.NewBlock([]byte("some data1"))
+	block2 := blocks.NewBlock([]byte("some data2"))
+	block3 := blocks.NewBlock([]byte("some data3"))
+	block4 := blocks.NewBlock([]byte("some data4"))
+
+	err := bs.PutMany(bg, []blocks.Block{block1, block2, block4})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blocksFromBlockstore, missingCIDs, err := bs.GetMany(bg, []cid.Cid{block1.Cid(), block2.Cid(), block3.Cid(), block4.Cid()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocksFromBlockstore) != 3 {
+		t.Fatal("unexpected number of blocks")
+	}
+	if len(missingCIDs) != 1 {
+		t.Fatal("unexpected number of missing CIDs")
+	}
+	if !bytes.Equal(blocksFromBlockstore[0].RawData(), block1.RawData()) {
+		t.Fail()
+	}
+	if !bytes.Equal(blocksFromBlockstore[1].RawData(), block2.RawData()) {
+		t.Fail()
+	}
+	if !bytes.Equal(blocksFromBlockstore[2].RawData(), block4.RawData()) {
+		t.Fail()
+	}
+	if !bytes.Equal(missingCIDs[0].Bytes(), block3.Cid().Bytes()) {
+		t.Fail()
+	}
+}
+
+func TestCidv0v1Many(t *testing.T) {
+	bs := NewGetManyBlockstore(dstest.NewTestTxnDatastore(ds.NewMapDatastore(), false))
+	block1 := blocks.NewBlock([]byte("some data1"))
+	block2 := blocks.NewBlock([]byte("some data2"))
+	block3 := blocks.NewBlock([]byte("some data3"))
+	block4 := blocks.NewBlock([]byte("some data4"))
+
+	err := bs.PutMany(bg, []blocks.Block{block1, block2, block4})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blocksFromBlockstore, missingCIDs, err := bs.GetMany(bg,
+		[]cid.Cid{cid.NewCidV1(cid.DagProtobuf, block1.Cid().Hash()),
+			cid.NewCidV1(cid.DagProtobuf, block2.Cid().Hash()),
+			cid.NewCidV1(cid.DagProtobuf, block3.Cid().Hash()),
+			cid.NewCidV1(cid.DagProtobuf, block4.Cid().Hash())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocksFromBlockstore) != 3 {
+		t.Fatal("unexpected number of blocks")
+	}
+	if len(missingCIDs) != 1 {
+		t.Fatal("unexpected number of missing CIDs")
+	}
+	if !bytes.Equal(blocksFromBlockstore[0].RawData(), block1.RawData()) {
+		t.Fail()
+	}
+	if !bytes.Equal(blocksFromBlockstore[1].RawData(), block2.RawData()) {
+		t.Fail()
+	}
+	if !bytes.Equal(blocksFromBlockstore[2].RawData(), block4.RawData()) {
+		t.Fail()
+	}
+	if !bytes.Equal(missingCIDs[0].Bytes(), cid.NewCidV1(cid.DagProtobuf, block3.Cid().Hash()).Bytes()) {
 		t.Fail()
 	}
 }

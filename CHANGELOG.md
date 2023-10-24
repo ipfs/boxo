@@ -15,7 +15,8 @@ The following emojis are used to highlight certain changes:
 ## [Unreleased]
 
 ### Added
-
+* `boxo/blockstore`:
+  * [GetMany blockstore implementation](https://github.com/ipfs/boxo/pull/492)
 * `boxo/gateway`:
   * A new `WithResolver(...)` option can be used with `NewBlocksBackend(...)` allowing the user to pass their custom `Resolver` implementation.
   * The gateway now sets a `Cache-Control` header for requests under the `/ipns/` namespace if the TTL for the corresponding IPNS Records or DNSLink entities is known.

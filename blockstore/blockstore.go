@@ -5,6 +5,7 @@ package blockstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -62,6 +63,13 @@ type Blockstore interface {
 	// HashOnRead specifies if every read block should be
 	// rehashed to make sure it matches its CID.
 	HashOnRead(enabled bool)
+}
+
+// GetManyBlockstore is a blockstore interface that supports GetMany and PutMany methods using ds.TxnDatastore
+type GetManyBlockstore interface {
+	Blockstore
+	PutMany(ctx context.Context, blocks []blocks.Block) error
+	GetMany(context.Context, []cid.Cid) ([]blocks.Block, []cid.Cid, error)
 }
 
 // Viewer can be implemented by blockstores that offer zero-copy access to
@@ -308,6 +316,123 @@ func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	}()
 
 	return output, nil
+}
+
+// NewGetManyBlockstore returns a default GetManyBlockstore implementation
+// using the provided datastore.TxnDatastore backend.
+func NewGetManyBlockstore(d ds.TxnDatastore, opts ...Option) GetManyBlockstore {
+	bs := &blockstore{
+		datastore: batchingTxnDatastoreStub{TxnDatastore: d},
+	}
+
+	for _, o := range opts {
+		o.f(bs)
+	}
+
+	if !bs.noPrefix {
+		bs.datastore = dsns.Wrap(bs.datastore, BlockPrefix)
+		d = dsns.WrapTxnDatastore(d, BlockPrefix)
+	}
+
+	gmbs := &getManyBlockstore{
+		blockstore: bs,
+		datastore:  d,
+	}
+
+	return gmbs
+}
+
+type getManyBlockstore struct {
+	*blockstore
+	datastore ds.TxnDatastore
+}
+
+type batchingTxnDatastoreStub struct {
+	ds.BatchingFeature
+	ds.TxnDatastore
+}
+
+func (bs *getManyBlockstore) GetMany(ctx context.Context, cs []cid.Cid) ([]blocks.Block, []cid.Cid, error) {
+	if len(cs) == 1 {
+		// performance fast-path
+		block, err := bs.Get(ctx, cs[0])
+		return []blocks.Block{block}, nil, err
+	}
+
+	t, err := bs.datastore.NewTransaction(ctx, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	blks := make([]blocks.Block, 0, len(cs))
+	missingCIDs := make([]cid.Cid, 0, len(cs))
+	for _, c := range cs {
+		if !c.Defined() {
+			logger.Error("undefined cid in blockstore")
+			return nil, nil, ipld.ErrNotFound{Cid: c}
+		}
+		bdata, err := t.Get(ctx, dshelp.MultihashToDsKey(c.Hash()))
+		if err != nil {
+			if err == ds.ErrNotFound {
+				missingCIDs = append(missingCIDs, c)
+			} else {
+				return nil, nil, err
+			}
+		} else {
+			if bs.blockstore.rehash.Load() {
+				rbcid, err := c.Prefix().Sum(bdata)
+				if err != nil {
+					return nil, nil, err
+				}
+
+				if !rbcid.Equals(c) {
+					return nil, nil, fmt.Errorf("block in storage has different hash (%x) than requested (%x)", rbcid.Hash(), c.Hash())
+				}
+
+				blk, err := blocks.NewBlockWithCid(bdata, rbcid)
+				if err != nil {
+					return nil, nil, err
+				}
+
+				blks = append(blks, blk)
+			} else {
+				blk, err := blocks.NewBlockWithCid(bdata, c)
+				if err != nil {
+					return nil, nil, err
+				}
+
+				blks = append(blks, blk)
+			}
+		}
+	}
+	return blks, missingCIDs, t.Commit(ctx)
+}
+
+func (bs *getManyBlockstore) PutMany(ctx context.Context, blocks []blocks.Block) error {
+	if len(blocks) == 1 {
+		// performance fast-path
+		return bs.Put(ctx, blocks[0])
+	}
+
+	t, err := bs.datastore.NewTransaction(ctx, false)
+	if err != nil {
+		return err
+	}
+	for _, b := range blocks {
+		k := dshelp.MultihashToDsKey(b.Cid().Hash())
+
+		if !bs.blockstore.writeThrough {
+			exists, err := bs.datastore.Has(ctx, k)
+			if err == nil && exists {
+				continue
+			}
+		}
+
+		err = t.Put(ctx, k, b.RawData())
+		if err != nil {
+			return err
+		}
+	}
+	return t.Commit(ctx)
 }
 
 // NewGCLocker returns a default implementation of
