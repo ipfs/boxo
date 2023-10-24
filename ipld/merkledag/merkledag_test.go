@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1220,7 +1221,7 @@ func mkNodeWithChildren(getChild func() *ProtoNode, width int) *ProtoNode {
 
 	for i := 0; i < width; i++ {
 		c := getChild()
-		if err := cur.AddNodeLink(fmt.Sprint(i), c); err != nil {
+		if err := cur.AddNodeLink(strconv.Itoa(i), c); err != nil {
 			panic(err)
 		}
 	}

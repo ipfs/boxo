@@ -2,7 +2,7 @@ package merkledag_test
 
 import (
 	"bytes"
-	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/ipfs/boxo/ipld/merkledag"
@@ -20,7 +20,7 @@ func init() {
 	node := &merkledag.ProtoNode{}
 	node.SetData(someData)
 	for i := 0; i < 10; i++ {
-		node.AddRawLink(fmt.Sprintf("%d", i), &ipld.Link{
+		node.AddRawLink(strconv.Itoa(i), &ipld.Link{
 			Size: 10,
 			Cid:  someCid,
 		})

@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -682,7 +683,7 @@ func BenchmarkHAMTWalk(b *testing.B) {
 	}
 
 	for j := 0; j < 1000; j++ {
-		err = s.Set(ctx, fmt.Sprintf("%d", j), ft.EmptyDirNode())
+		err = s.Set(ctx, strconv.Itoa(j), ft.EmptyDirNode())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -725,7 +726,7 @@ func BenchmarkHAMTSet(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		err = s.Set(context.TODO(), fmt.Sprint(i), ft.EmptyDirNode())
+		err = s.Set(context.TODO(), strconv.Itoa(i), ft.EmptyDirNode())
 		if err != nil {
 			b.Fatal(err)
 		}

@@ -425,7 +425,7 @@ func stopAndEmptyTimer(t *time.Timer) {
 }
 
 func storeTime(t time.Time) []byte {
-	val := []byte(fmt.Sprintf("%d", t.UnixNano()))
+	val := []byte(strconv.FormatInt(t.UnixNano(), 10))
 	return val
 }
 

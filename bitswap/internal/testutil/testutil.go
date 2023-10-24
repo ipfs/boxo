@@ -2,7 +2,7 @@ package testutil
 
 import (
 	"crypto/rand"
-	"fmt"
+	"strconv"
 
 	"github.com/ipfs/boxo/bitswap/client/wantlist"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
@@ -62,7 +62,7 @@ func GeneratePeers(n int) []peer.ID {
 	peerIds := make([]peer.ID, 0, n)
 	for i := 0; i < n; i++ {
 		peerSeq++
-		p := peer.ID(fmt.Sprint(peerSeq))
+		p := peer.ID(strconv.Itoa(peerSeq))
 		peerIds = append(peerIds, p)
 	}
 	return peerIds
