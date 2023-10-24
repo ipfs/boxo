@@ -15,9 +15,6 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
-// Seed the random number generator.
-//
-// We don't need good randomness, but we do need randomness.
 const (
 	// maxBackoff is the maximum time between reconnect attempts.
 	maxBackoff = 10 * time.Minute
