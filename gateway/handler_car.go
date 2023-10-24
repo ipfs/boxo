@@ -227,7 +227,7 @@ func getCarRootCidAndLastSegment(imPath path.ImmutablePath) (cid.Cid, string, er
 func getCarEtag(imPath path.ImmutablePath, params CarParams, rootCid cid.Cid) string {
 	h := xxhash.New()
 	h.WriteString(imPath.String())
-	// be careful with hashes here, we need boundries and per entry salt, we don't want a request that has:
+	// be careful with hashes here, we need boundaries and per entry salt, we don't want a request that has:
 	//   - scope = dfs
 	// and:
 	//   - order = dfs
