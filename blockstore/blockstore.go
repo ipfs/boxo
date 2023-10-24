@@ -65,8 +65,8 @@ type Blockstore interface {
 	HashOnRead(enabled bool)
 }
 
-// TxnBlockstore is a blockstore interface that supports GetMany and PutMany methods using ds.TxnDatastore
-type TxnBlockstore interface {
+// GetManyBlockstore is a blockstore interface that supports GetMany and PutMany methods using ds.TxnDatastore
+type GetManyBlockstore interface {
 	Blockstore
 	PutMany(ctx context.Context, blocks []blocks.Block) error
 	GetMany(context.Context, []cid.Cid) ([]blocks.Block, []cid.Cid, error)
@@ -318,16 +318,11 @@ func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return output, nil
 }
 
-// TxnBlockstoreOption is a txnBlockstore option implementation
-type TxnBlockstoreOption struct {
-	f func(bs *txnBlockstore)
-}
-
-// NewTxnBlockstore returns a default TxnBlockstore implementation
+// NewGetManyBlockstore returns a default GetManyBlockstore implementation
 // using the provided datastore.TxnDatastore backend.
-func NewTxnBlockstore(d ds.TxnDatastore, opts ...TxnBlockstoreOption) TxnBlockstore {
-	bs := &txnBlockstore{
-		datastore: d,
+func NewGetManyBlockstore(d ds.TxnDatastore, opts ...Option) GetManyBlockstore {
+	bs := &blockstore{
+		datastore: batchingTxnDatastoreStub{TxnDatastore: d},
 	}
 
 	for _, o := range opts {
@@ -335,51 +330,29 @@ func NewTxnBlockstore(d ds.TxnDatastore, opts ...TxnBlockstoreOption) TxnBlockst
 	}
 
 	if !bs.noPrefix {
-		bs.datastore = dsns.WrapTxnDatastore(bs.datastore, BlockPrefix)
+		bs.datastore = dsns.Wrap(bs.datastore, BlockPrefix)
+		d = dsns.WrapTxnDatastore(d, BlockPrefix)
 	}
-	return bs
+
+	gmbs := &getManyBlockstore{
+		blockstore: bs,
+		datastore:  d,
+	}
+
+	return gmbs
 }
 
-type txnBlockstore struct {
+type getManyBlockstore struct {
+	*blockstore
 	datastore ds.TxnDatastore
-
-	rehash       atomic.Bool
-	writeThrough bool
-	noPrefix     bool
 }
 
-func (bs *txnBlockstore) HashOnRead(enabled bool) {
-	bs.rehash.Store(enabled)
+type batchingTxnDatastoreStub struct {
+	ds.BatchingFeature
+	ds.TxnDatastore
 }
 
-func (bs *txnBlockstore) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
-	if !k.Defined() {
-		logger.Error("undefined cid in blockstore")
-		return nil, ipld.ErrNotFound{Cid: k}
-	}
-	bdata, err := bs.datastore.Get(ctx, dshelp.MultihashToDsKey(k.Hash()))
-	if err == ds.ErrNotFound {
-		return nil, ipld.ErrNotFound{Cid: k}
-	}
-	if err != nil {
-		return nil, err
-	}
-	if bs.rehash.Load() {
-		rbcid, err := k.Prefix().Sum(bdata)
-		if err != nil {
-			return nil, err
-		}
-
-		if !rbcid.Equals(k) {
-			return nil, ErrHashMismatch
-		}
-
-		return blocks.NewBlockWithCid(bdata, rbcid)
-	}
-	return blocks.NewBlockWithCid(bdata, k)
-}
-
-func (bs *txnBlockstore) GetMany(ctx context.Context, cs []cid.Cid) ([]blocks.Block, []cid.Cid, error) {
+func (bs *getManyBlockstore) GetMany(ctx context.Context, cs []cid.Cid) ([]blocks.Block, []cid.Cid, error) {
 	if len(cs) == 1 {
 		// performance fast-path
 		block, err := bs.Get(ctx, cs[0])
@@ -405,7 +378,7 @@ func (bs *txnBlockstore) GetMany(ctx context.Context, cs []cid.Cid) ([]blocks.Bl
 				return nil, nil, err
 			}
 		} else {
-			if bs.rehash.Load() {
+			if bs.blockstore.rehash.Load() {
 				rbcid, err := c.Prefix().Sum(bdata)
 				if err != nil {
 					return nil, nil, err
@@ -434,20 +407,7 @@ func (bs *txnBlockstore) GetMany(ctx context.Context, cs []cid.Cid) ([]blocks.Bl
 	return blks, missingCIDs, t.Commit(ctx)
 }
 
-func (bs *txnBlockstore) Put(ctx context.Context, block blocks.Block) error {
-	k := dshelp.MultihashToDsKey(block.Cid().Hash())
-
-	// Has is cheaper than Put, so see if we already have it
-	if !bs.writeThrough {
-		exists, err := bs.datastore.Has(ctx, k)
-		if err == nil && exists {
-			return nil // already stored.
-		}
-	}
-	return bs.datastore.Put(ctx, k, block.RawData())
-}
-
-func (bs *txnBlockstore) PutMany(ctx context.Context, blocks []blocks.Block) error {
+func (bs *getManyBlockstore) PutMany(ctx context.Context, blocks []blocks.Block) error {
 	if len(blocks) == 1 {
 		// performance fast-path
 		return bs.Put(ctx, blocks[0])
@@ -460,7 +420,7 @@ func (bs *txnBlockstore) PutMany(ctx context.Context, blocks []blocks.Block) err
 	for _, b := range blocks {
 		k := dshelp.MultihashToDsKey(b.Cid().Hash())
 
-		if !bs.writeThrough {
+		if !bs.blockstore.writeThrough {
 			exists, err := bs.datastore.Has(ctx, k)
 			if err == nil && exists {
 				continue
@@ -473,70 +433,6 @@ func (bs *txnBlockstore) PutMany(ctx context.Context, blocks []blocks.Block) err
 		}
 	}
 	return t.Commit(ctx)
-}
-
-func (bs *txnBlockstore) Has(ctx context.Context, k cid.Cid) (bool, error) {
-	return bs.datastore.Has(ctx, dshelp.MultihashToDsKey(k.Hash()))
-}
-
-func (bs *txnBlockstore) GetSize(ctx context.Context, k cid.Cid) (int, error) {
-	size, err := bs.datastore.GetSize(ctx, dshelp.MultihashToDsKey(k.Hash()))
-	if err == ds.ErrNotFound {
-		return -1, ipld.ErrNotFound{Cid: k}
-	}
-	return size, err
-}
-
-func (bs *txnBlockstore) DeleteBlock(ctx context.Context, k cid.Cid) error {
-	return bs.datastore.Delete(ctx, dshelp.MultihashToDsKey(k.Hash()))
-}
-
-// AllKeysChan runs a query for keys from the blockstore.
-// this is very simplistic, in the future, take dsq.Query as a param?
-//
-// AllKeysChan respects context.
-func (bs *txnBlockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
-
-	// KeysOnly, because that would be _a lot_ of data.
-	q := dsq.Query{KeysOnly: true}
-	res, err := bs.datastore.Query(ctx, q)
-	if err != nil {
-		return nil, err
-	}
-
-	output := make(chan cid.Cid, dsq.KeysOnlyBufSize)
-	go func() {
-		defer func() {
-			res.Close() // ensure exit (signals early exit, too)
-			close(output)
-		}()
-
-		for {
-			e, ok := res.NextSync()
-			if !ok {
-				return
-			}
-			if e.Error != nil {
-				logger.Errorf("blockstore.AllKeysChan got err: %s", e.Error)
-				return
-			}
-
-			// need to convert to key.Key using key.KeyFromDsKey.
-			bk, err := dshelp.BinaryFromDsKey(ds.RawKey(e.Key))
-			if err != nil {
-				logger.Warnf("error parsing key from binary: %s", err)
-				continue
-			}
-			k := cid.NewCidV1(cid.Raw, bk)
-			select {
-			case <-ctx.Done():
-				return
-			case output <- k:
-			}
-		}
-	}()
-
-	return output, nil
 }
 
 // NewGCLocker returns a default implementation of
