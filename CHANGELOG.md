@@ -24,7 +24,8 @@ The following emojis are used to highlight certain changes:
 * ✨ Migrated repositories into Boxo
   * [`github.com/ipfs/kubo/peering`](https://pkg.go.dev/github.com/ipfs/kubo/peering) => [`./peering`](./peering)
     A service which establish, overwatch and maintain long lived connections.
-  * github.com/ipfs/kubo/core/bootstrap => ./bootstrap
+  * [`github.com/ipfs/kubo/core/bootstrap`](https://pkg.go.dev/github.com/ipfs/kubo/core/bootstrap) => [`./bootstrap](./bootstrap)
+    A service that maintains connections to a number of bootstrap peers.
 
 ### Changed
 
