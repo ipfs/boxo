@@ -67,7 +67,7 @@ type BootstrapConfig struct {
 var DefaultBootstrapConfig = BootstrapConfig{
 	MinPeerThreshold:        4,
 	Period:                  30 * time.Second,
-	ConnectionTimeout:       (30 * time.Second) / 3, // Perod / 3
+	ConnectionTimeout:       (30 * time.Second) / 3, // Period / 3
 	BackupBootstrapInterval: 1 * time.Hour,
 	MaxBackupBootstrapSize:  20,
 }
