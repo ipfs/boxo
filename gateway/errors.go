@@ -149,6 +149,8 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 		code = http.StatusBadRequest
 	case isErrNotFound(err):
 		code = http.StatusNotFound
+	case isErrContentBlocked(err):
+		code = http.StatusGone
 	case errors.Is(err, context.DeadlineExceeded):
 		code = http.StatusGatewayTimeout
 	}
@@ -201,4 +203,11 @@ func isErrNotFound(err error) bool {
 			return false
 		}
 	}
+}
+
+// isErrContentBlocked returns true for content filtering system errors
+func isErrContentBlocked(err error) bool {
+	// TODO: we match error message to avoid pulling nopfs as a dependency
+	// Ref. https://github.com/ipfs-shipyard/nopfs/blob/cde3b5ba964c13e977f4a95f3bd8ca7d7710fbda/status.go#L87-L89
+	return strings.Contains(err.Error(), "blocked and cannot be provided")
 }
