@@ -16,6 +16,9 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+ * Package `routing/dht/zikade` adds the [Zikade](https://github.com/plprobelab/zikade) 
+   Amino DHT implementation as a routing choice.
+
 ### Changed
 
 ### Removed
