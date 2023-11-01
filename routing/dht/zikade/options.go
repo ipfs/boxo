@@ -63,8 +63,8 @@ func BucketSize(bucketSize int) Option {
 	}
 }
 
-// BootstrapPeers configures the bootstrapping nodes that the DHT will connect to to seed
-// and the Routing Table.
+// BootstrapPeers configures the bootstrapping nodes that the DHT will connect to to
+// seed and the Routing Table.
 func BootstrapPeers(bootstrappers ...peer.AddrInfo) Option {
 	return func(c *config) error {
 		c.dht.BootstrapPeers = bootstrappers
@@ -72,7 +72,28 @@ func BootstrapPeers(bootstrappers ...peer.AddrInfo) Option {
 	}
 }
 
-// QueryConcurrency defines the maximum number of in-flight queries that may be waiting for message responses at any one time.
+// TimeoutStreamIdle configures the duration to wait without receiving data before
+// closing/resetting a stream.
+func TimeoutStreamIdle(timeout time.Duration) Option {
+	return func(c *config) error {
+		c.dht.TimeoutStreamIdle = timeout
+		return nil
+	}
+}
+
+// AddressFilter configures a filter to apply to addresses put into the peer store.
+//
+// The default is to use [zikade.AddrFilterPrivate] which filters out any multiaddresses
+// that are private.
+func AddressFilter(filter zikade.AddressFilter) Option {
+	return func(c *config) error {
+		c.dht.AddressFilter = filter
+		return nil
+	}
+}
+
+// QueryConcurrency defines the maximum number of in-flight queries that may be waiting
+// for message responses at any one time.
 func QueryConcurrency(v int) Option {
 	return func(c *config) error {
 		c.dht.Query.Concurrency = v
@@ -80,7 +101,8 @@ func QueryConcurrency(v int) Option {
 	}
 }
 
-// QueryRequestConcurrency defines the maximum number of concurrent requests that each query may have in flight.
+// QueryRequestConcurrency defines the maximum number of concurrent requests that each
+// query may have in flight.
 func QueryRequestConcurrency(v int) Option {
 	return func(c *config) error {
 		c.dht.Query.RequestConcurrency = v
@@ -88,10 +110,20 @@ func QueryRequestConcurrency(v int) Option {
 	}
 }
 
-// QueryRequestTimeout defines the time a query will wait before terminating a request to a node that has not responded.
+// QueryRequestTimeout defines the time a query will wait before terminating a request
+// to a node that has not responded.
 func QueryRequestTimeout(v time.Duration) Option {
 	return func(c *config) error {
 		c.dht.Query.RequestTimeout = v
+		return nil
+	}
+}
+
+// QueryDefaultQuorum defines the minimum number of identical responses before a
+// SearchValue/GetValue operation returns.
+func QueryDefaultQuorum(v int) Option {
+	return func(c *config) error {
+		c.dht.Query.DefaultQuorum = v
 		return nil
 	}
 }
