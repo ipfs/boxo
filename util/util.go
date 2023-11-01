@@ -3,6 +3,7 @@
 package util
 
 import (
+	"crypto/subtle"
 	"errors"
 	"io"
 	"math/rand"
@@ -88,24 +89,6 @@ func GetenvBool(name string) bool {
 	return v == "true" || v == "t" || v == "1"
 }
 
-// MultiErr is a util to return multiple errors
-type MultiErr []error
-
-func (m MultiErr) Error() string {
-	if len(m) == 0 {
-		return "no errors"
-	}
-
-	s := "Multiple errors: "
-	for i, e := range m {
-		if i != 0 {
-			s += ", "
-		}
-		s += e.Error()
-	}
-	return s
-}
-
 // Partition splits a subject 3 parts: prefix, separator, suffix.
 // The first occurrence of the separator will be matched.
 // ie. Partition("Ready, steady, go!", ", ") -> ["Ready", ", ", "steady, go!"]
@@ -150,9 +133,9 @@ func IsValidHash(s string) bool {
 
 // XOR takes two byte slices, XORs them together, returns the resulting slice.
 func XOR(a, b []byte) []byte {
+	_ = b[len(a)-1] // keeping same behaviour as previously but this looks like a bug
+
 	c := make([]byte, len(a))
-	for i := 0; i < len(a); i++ {
-		c[i] = a[i] ^ b[i]
-	}
+	subtle.XORBytes(c, a, b)
 	return c
 }

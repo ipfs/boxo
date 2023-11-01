@@ -149,6 +149,8 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 		code = http.StatusBadRequest
 	case isErrNotFound(err):
 		code = http.StatusNotFound
+	case isErrContentBlocked(err):
+		code = http.StatusGone
 	case errors.Is(err, context.DeadlineExceeded):
 		code = http.StatusGatewayTimeout
 	}
@@ -179,15 +181,14 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 // isErrNotFound returns true for IPLD errors that should return 4xx errors (e.g. the path doesn't exist, the data is
 // the wrong type, etc.), rather than issues with just finding and retrieving the data.
 func isErrNotFound(err error) bool {
+	if errors.Is(err, &resolver.ErrNoLink{}) {
+		return true
+	}
+
 	// Checks if err is of a type that does not implement the .Is interface and
 	// cannot be directly compared to. Therefore, errors.Is cannot be used.
 	for {
-		_, ok := err.(resolver.ErrNoLink)
-		if ok {
-			return true
-		}
-
-		_, ok = err.(datamodel.ErrWrongKind)
+		_, ok := err.(datamodel.ErrWrongKind)
 		if ok {
 			return true
 		}
@@ -202,4 +203,11 @@ func isErrNotFound(err error) bool {
 			return false
 		}
 	}
+}
+
+// isErrContentBlocked returns true for content filtering system errors
+func isErrContentBlocked(err error) bool {
+	// TODO: we match error message to avoid pulling nopfs as a dependency
+	// Ref. https://github.com/ipfs-shipyard/nopfs/blob/cde3b5ba964c13e977f4a95f3bd8ca7d7710fbda/status.go#L87-L89
+	return strings.Contains(err.Error(), "blocked and cannot be provided")
 }

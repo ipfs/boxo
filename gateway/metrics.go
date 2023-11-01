@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/files"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 	prometheus "github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
@@ -60,7 +60,7 @@ func (b *ipfsBackendWithMetrics) updateBackendCallMetric(name string, err error,
 	}
 }
 
-func (b *ipfsBackendWithMetrics) Get(ctx context.Context, path ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
+func (b *ipfsBackendWithMetrics) Get(ctx context.Context, path path.ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
 	begin := time.Now()
 	name := "IPFSBackend.Get"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String()), attribute.Int("ranges", len(ranges))))
@@ -72,7 +72,7 @@ func (b *ipfsBackendWithMetrics) Get(ctx context.Context, path ImmutablePath, ra
 	return md, f, err
 }
 
-func (b *ipfsBackendWithMetrics) GetAll(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (b *ipfsBackendWithMetrics) GetAll(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.Node, error) {
 	begin := time.Now()
 	name := "IPFSBackend.GetAll"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
@@ -84,7 +84,7 @@ func (b *ipfsBackendWithMetrics) GetAll(ctx context.Context, path ImmutablePath)
 	return md, n, err
 }
 
-func (b *ipfsBackendWithMetrics) GetBlock(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.File, error) {
+func (b *ipfsBackendWithMetrics) GetBlock(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.File, error) {
 	begin := time.Now()
 	name := "IPFSBackend.GetBlock"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
@@ -96,7 +96,7 @@ func (b *ipfsBackendWithMetrics) GetBlock(ctx context.Context, path ImmutablePat
 	return md, n, err
 }
 
-func (b *ipfsBackendWithMetrics) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (b *ipfsBackendWithMetrics) Head(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	begin := time.Now()
 	name := "IPFSBackend.Head"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
@@ -108,7 +108,7 @@ func (b *ipfsBackendWithMetrics) Head(ctx context.Context, path ImmutablePath) (
 	return md, n, err
 }
 
-func (b *ipfsBackendWithMetrics) ResolvePath(ctx context.Context, path ImmutablePath) (ContentPathMetadata, error) {
+func (b *ipfsBackendWithMetrics) ResolvePath(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, error) {
 	begin := time.Now()
 	name := "IPFSBackend.ResolvePath"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
@@ -120,7 +120,7 @@ func (b *ipfsBackendWithMetrics) ResolvePath(ctx context.Context, path Immutable
 	return md, err
 }
 
-func (b *ipfsBackendWithMetrics) GetCAR(ctx context.Context, path ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+func (b *ipfsBackendWithMetrics) GetCAR(ctx context.Context, path path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	begin := time.Now()
 	name := "IPFSBackend.GetCAR"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
@@ -155,16 +155,16 @@ func (b *ipfsBackendWithMetrics) GetIPNSRecord(ctx context.Context, cid cid.Cid)
 	return r, err
 }
 
-func (b *ipfsBackendWithMetrics) ResolveMutable(ctx context.Context, path path.Path) (ImmutablePath, error) {
+func (b *ipfsBackendWithMetrics) ResolveMutable(ctx context.Context, path path.Path) (path.ImmutablePath, time.Duration, time.Time, error) {
 	begin := time.Now()
 	name := "IPFSBackend.ResolveMutable"
 	ctx, span := spanTrace(ctx, name, trace.WithAttributes(attribute.String("path", path.String())))
 	defer span.End()
 
-	p, err := b.backend.ResolveMutable(ctx, path)
+	p, ttl, lastMod, err := b.backend.ResolveMutable(ctx, path)
 
 	b.updateBackendCallMetric(name, err, begin)
-	return p, err
+	return p, ttl, lastMod, err
 }
 
 func (b *ipfsBackendWithMetrics) GetDNSLinkRecord(ctx context.Context, fqdn string) (path.Path, error) {

@@ -1,128 +1,305 @@
 package path
 
 import (
-	"strings"
+	"fmt"
 	"testing"
+
+	"github.com/ipfs/go-cid"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestPathParsing(t *testing.T) {
-	cases := map[string]bool{
-		"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":             true,
-		"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a":           true,
-		"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/c/d/e/f": true,
-		"/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":             true,
-		"/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a":           true,
-		"/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/c/d/e/f": true,
-		"/ipns/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/c/d/e/f": true,
-		"/ipns/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":             true,
-		"QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/c/d/e/f":       true,
-		"QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":                   true,
-		"/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":                  false,
-		"/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a":                false,
-		"/ipfs/foo": false,
-		"/ipfs/":    false,
-		"ipfs/":     false,
-		"ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n": false,
-		"/ipld/foo": false,
-		"/ipld/":    false,
-		"ipld/":     false,
-		"ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n": false,
-	}
-
-	for p, expected := range cases {
-		_, err := ParsePath(p)
-		valid := err == nil
-		if valid != expected {
-			t.Fatalf("expected %s to have valid == %t", p, expected)
-		}
+func newIPLDPath(cid cid.Cid) ImmutablePath {
+	return ImmutablePath{
+		path: path{
+			str:       fmt.Sprintf("/%s/%s", IPLDNamespace, cid.String()),
+			namespace: IPLDNamespace,
+		},
+		rootCid: cid,
 	}
 }
 
-func TestNoComponents(t *testing.T) {
-	for _, s := range []string{
-		"/ipfs/",
-		"/ipns/",
-		"/ipld/",
-	} {
-		_, err := ParsePath(s)
-		if err == nil || !strings.Contains(err.Error(), "not enough path components") || !strings.Contains(err.Error(), s) {
-			t.Error("wrong error")
+func TestNewPath(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Valid Paths", func(t *testing.T) {
+		t.Parallel()
+
+		testCases := []struct {
+			src       string
+			canonical string
+			namespace string
+			mutable   bool
+		}{
+			// IPFS CIDv0
+			{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", IPFSNamespace, false},
+			{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a", "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a", IPFSNamespace, false},
+			{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/c/d/e/f", "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/c/d/e/f", IPFSNamespace, false},
+
+			// IPFS CIDv1
+			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", IPFSNamespace, false},
+			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a", "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a", IPFSNamespace, false},
+			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/c/d/e/f", "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/c/d/e/f", IPFSNamespace, false},
+
+			// IPLD CIDv0
+			{"/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", "/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", IPLDNamespace, false},
+			{"/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a", "/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a", IPLDNamespace, false},
+			{"/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/c/d/e/f", "/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/c/d/e/f", IPLDNamespace, false},
+
+			// IPLD CIDv1
+			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", "/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", IPLDNamespace, false},
+			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a", "/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a", IPLDNamespace, false},
+			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/c/d/e/f", "/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/c/d/e/f", IPLDNamespace, false},
+
+			// IPNS CIDv0
+			{"/ipns/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", "/ipns/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", IPNSNamespace, true},
+			{"/ipns/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a", "/ipns/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a", IPNSNamespace, true},
+			{"/ipns/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/c/d/e/f", "/ipns/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/c/d/e/f", IPNSNamespace, true},
+
+			// IPNS CIDv1
+			{"/ipns/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", "/ipns/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", IPNSNamespace, true},
+			{"/ipns/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a", "/ipns/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a", IPNSNamespace, true},
+			{"/ipns/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/c/d/e/f", "/ipns/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/c/d/e/f", IPNSNamespace, true},
+
+			// IPNS DNSLink
+			{"/ipns/domain.net", "/ipns/domain.net", IPNSNamespace, true},
+			{"/ipns/domain.net/a/b/c/d", "/ipns/domain.net/a/b/c/d", IPNSNamespace, true},
+
+			// Cleaning checks
+			{"/ipfs/bafkqaaa/", "/ipfs/bafkqaaa/", IPFSNamespace, false},
+			{"/ipfs/bafkqaaa//", "/ipfs/bafkqaaa/", IPFSNamespace, false},
+			{"/ipfs///bafkqaaa//", "/ipfs/bafkqaaa/", IPFSNamespace, false},
+			{"/ipfs///bafkqaaa/a/b/../c", "/ipfs/bafkqaaa/a/c", IPFSNamespace, false},
+			{"/ipfs///bafkqaaa/a/b/../c/", "/ipfs/bafkqaaa/a/c/", IPFSNamespace, false},
 		}
+
+		for _, testCase := range testCases {
+			p, err := NewPath(testCase.src)
+			assert.NoError(t, err)
+			assert.Equal(t, testCase.canonical, p.String())
+			assert.Equal(t, testCase.namespace, p.Namespace())
+			assert.Equal(t, testCase.mutable, p.Mutable())
+		}
+	})
+
+	t.Run("Invalid Paths", func(t *testing.T) {
+		t.Parallel()
+
+		testCases := []struct {
+			src string
+			err error
+		}{
+			{"QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", ErrInsufficientComponents},
+			{"QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a", ErrInsufficientComponents},
+			{"bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a", ErrInsufficientComponents},
+			{"/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", ErrInsufficientComponents},
+			{"/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a", ErrUnknownNamespace},
+			{"/ipfs/foo", cid.ErrInvalidCid{}},
+			{"/ipfs/", ErrInsufficientComponents},
+			{"ipfs/", ErrInsufficientComponents},
+			{"ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", ErrInsufficientComponents},
+			{"/ipld/foo", &ErrInvalidPath{}},
+			{"/ipld/", ErrInsufficientComponents},
+			{"ipld/", ErrInsufficientComponents},
+			{"ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", ErrInsufficientComponents},
+			{"/ipns", ErrInsufficientComponents},
+			{"/ipfs/", ErrInsufficientComponents},
+			{"/ipns/", ErrInsufficientComponents},
+			{"/ipld/", ErrInsufficientComponents},
+			{"/ipfs", ErrInsufficientComponents},
+			{"/testfs", ErrInsufficientComponents},
+			{"/", ErrInsufficientComponents},
+		}
+
+		for _, testCase := range testCases {
+			_, err := NewPath(testCase.src)
+			assert.ErrorIs(t, err, testCase.err)
+			assert.ErrorIs(t, err, &ErrInvalidPath{}) // Always an ErrInvalidPath!
+		}
+	})
+
+	t.Run("Returns ImmutablePath for IPFS and IPLD Paths", func(t *testing.T) {
+		t.Parallel()
+
+		testCases := []struct {
+			src string
+		}{
+			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"},
+			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a"},
+			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/c/d/e/f"},
+			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"},
+			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a"},
+			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/c/d/e/f"},
+		}
+
+		for _, testCase := range testCases {
+			p, err := NewPath(testCase.src)
+			assert.NoError(t, err)
+			assert.IsType(t, ImmutablePath{}, p)
+		}
+	})
+}
+
+func TestFromCid(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Works with CIDv0", func(t *testing.T) {
+		t.Parallel()
+
+		c, err := cid.Decode("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")
+		assert.NoError(t, err)
+
+		p := FromCid(c)
+		assert.IsType(t, ImmutablePath{}, p)
+		assert.Equal(t, "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", p.String())
+		assert.Equal(t, c, p.RootCid())
+	})
+
+	t.Run("Works with CIDv1", func(t *testing.T) {
+		t.Parallel()
+
+		c, err := cid.Decode("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")
+		assert.NoError(t, err)
+
+		p := FromCid(c)
+		assert.IsType(t, ImmutablePath{}, p)
+		assert.Equal(t, "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", p.String())
+		assert.Equal(t, c, p.RootCid())
+	})
+
+	t.Run("newIPLDPath returns correct ImmutablePath", func(t *testing.T) {
+		c, err := cid.Decode("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")
+		assert.NoError(t, err)
+
+		p := newIPLDPath(c)
+		assert.IsType(t, ImmutablePath{}, p)
+		assert.Equal(t, "/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", p.String())
+		assert.Equal(t, c, p.RootCid())
+
+		// Check if CID encoding is preserved.
+		c, err = cid.Decode("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")
+		assert.NoError(t, err)
+
+		p = newIPLDPath(c)
+		assert.IsType(t, ImmutablePath{}, p)
+		assert.Equal(t, "/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", p.String())
+		assert.Equal(t, c, p.RootCid())
+	})
+}
+
+func TestNewImmutablePath(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Fails on Mutable Path", func(t *testing.T) {
+		for _, path := range []string{
+			"/ipns/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n",
+			"/ipns/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+			"/ipns/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/with/path",
+			"/ipns/domain.net",
+		} {
+			p, err := NewPath(path)
+			assert.NoError(t, err)
+
+			_, err = NewImmutablePath(p)
+			assert.ErrorIs(t, err, ErrExpectedImmutable)
+			assert.ErrorIs(t, err, &ErrInvalidPath{})
+		}
+	})
+
+	t.Run("Succeeds on Immutable Path", func(t *testing.T) {
+		testCases := []struct {
+			path string
+			cid  cid.Cid
+		}{
+			{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", cid.MustParse("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")},
+			{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b", cid.MustParse("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")},
+			{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/", cid.MustParse("QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")},
+
+			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")},
+			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")},
+			{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")},
+
+			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")},
+			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")},
+			{"/ipld/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/", cid.MustParse("bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku")},
+		}
+
+		for _, testCase := range testCases {
+			p, err := NewPath(testCase.path)
+			assert.NoError(t, err)
+
+			ip, err := NewImmutablePath(p)
+			assert.NoError(t, err)
+			assert.Equal(t, testCase.path, ip.String())
+			assert.Equal(t, testCase.cid, ip.RootCid())
+		}
+	})
+}
+
+func TestJoin(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		path     string
+		segments []string
+		expected string
+	}{
+		{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", []string{"a/b"}, "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b"},
+		{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", []string{"/a/b"}, "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b"},
+		{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/", []string{"/a/b"}, "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b"},
+		{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", []string{"a", "b"}, "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b"},
+		{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", []string{"a/b/../"}, "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/"},
+		{"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", []string{"a/b", "/"}, "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b/"},
+
+		{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", []string{"a/b"}, "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b"},
+		{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", []string{"/a/b"}, "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b"},
+		{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/", []string{"/a/b"}, "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b"},
+		{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", []string{"a", "b"}, "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b"},
+		{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", []string{"a/b/../"}, "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/"},
+		{"/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku", []string{"a/b", "/"}, "/ipfs/bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku/a/b/"},
+	}
+
+	for _, testCase := range testCases {
+		p, err := NewPath(testCase.path)
+		assert.NoError(t, err)
+		jp, err := Join(p, testCase.segments...)
+		assert.NoError(t, err)
+		assert.Equal(t, testCase.expected, jp.String())
 	}
 }
 
-func TestInvalidPaths(t *testing.T) {
-	for _, s := range []string{
-		"/ipfs",
-		"/testfs",
-		"/",
-	} {
-		_, err := ParsePath(s)
-		if err == nil || !strings.Contains(err.Error(), "invalid ipfs path") || !strings.Contains(err.Error(), s) {
-			t.Error("wrong error")
-		}
+func TestStringToSegments(t *testing.T) {
+	testCases := []struct {
+		str      string
+		expected []string
+	}{
+		{"", nil},
+		{"/..", nil},
+		{"/a/b/c/d/./../../../../../..", nil},
+		{"/a/b/c/d/./../../../", []string{"a"}},
+		{"/a/b//c/d/./../../", []string{"a", "b"}},
+		{"/a/b/////c/../d///f", []string{"a", "b", "d", "f"}},
+	}
+
+	for _, testCase := range testCases {
+		segments := StringToSegments(testCase.str)
+		assert.Equal(t, testCase.expected, segments)
 	}
 }
 
-func TestIsJustAKey(t *testing.T) {
-	cases := map[string]bool{
-		"QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":           true,
-		"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":     true,
-		"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a":   false,
-		"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b": false,
-		"/ipns/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":     false,
-		"/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b": false,
-		"/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":     true,
+func TestSegmentsToString(t *testing.T) {
+	testCases := []struct {
+		segments []string
+		expected string
+	}{
+		{[]string{"a", "b"}, "/a/b"},
+		{[]string{"a", "b", "d", "f"}, "/a/b/d/f"},
+		{[]string{""}, ""},
+		{[]string{}, ""},
+		{nil, ""},
 	}
 
-	for p, expected := range cases {
-		path, err := ParsePath(p)
-		if err != nil {
-			t.Fatalf("ParsePath failed to parse \"%s\", but should have succeeded", p)
-		}
-		result := path.IsJustAKey()
-		if result != expected {
-			t.Fatalf("expected IsJustAKey(%s) to return %v, not %v", p, expected, result)
-		}
-	}
-}
-
-func TestPopLastSegment(t *testing.T) {
-	cases := map[string][]string{
-		"QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":             {"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", ""},
-		"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n":       {"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", ""},
-		"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a":     {"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n", "a"},
-		"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a/b":   {"/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/a", "b"},
-		"/ipns/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/x/y/z": {"/ipns/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/x/y", "z"},
-		"/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/x/y/z": {"/ipld/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n/x/y", "z"},
-	}
-
-	for p, expected := range cases {
-		path, err := ParsePath(p)
-		if err != nil {
-			t.Fatalf("ParsePath failed to parse \"%s\", but should have succeeded", p)
-		}
-		head, tail, err := path.PopLastSegment()
-		if err != nil {
-			t.Fatalf("PopLastSegment failed, but should have succeeded: %s", err)
-		}
-		headStr := head.String()
-		if headStr != expected[0] {
-			t.Fatalf("expected head of PopLastSegment(%s) to return %v, not %v", p, expected[0], headStr)
-		}
-		if tail != expected[1] {
-			t.Fatalf("expected tail of PopLastSegment(%s) to return %v, not %v", p, expected[1], tail)
-		}
-	}
-}
-
-func TestV0ErrorDueToLowercase(t *testing.T) {
-	badb58 := "/ipfs/qmbwqxbekc3p8tqskc98xmwnzrzdtrlmimpl8wbutgsmnr"
-	_, err := ParsePath(badb58)
-	if err == nil {
-		t.Fatal("should have failed to decode")
-	}
-	if !strings.HasSuffix(err.Error(), "(possible lowercased CIDv0; consider converting to a case-agnostic CIDv1, such as base32)") {
-		t.Fatal("should have meaningful info about case-insensitive fix")
+	for _, testCase := range testCases {
+		str := SegmentsToString(testCase.segments...)
+		assert.Equal(t, testCase.expected, str)
 	}
 }

@@ -8,11 +8,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/ipld/unixfs"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 )
 
@@ -92,38 +93,6 @@ type PublicGateway struct {
 	// in deserialized format. This setting overrides the global setting.
 	DeserializedResponses bool
 }
-
-// ImmutablePath represents a [path.Path] that is not mutable.
-//
-// TODO: Is this what we want for ImmutablePath?
-type ImmutablePath struct {
-	p path.Path
-}
-
-func NewImmutablePath(p path.Path) (ImmutablePath, error) {
-	if p.Mutable() {
-		return ImmutablePath{}, fmt.Errorf("path cannot be mutable")
-	}
-	return ImmutablePath{p: p}, nil
-}
-
-func (i ImmutablePath) String() string {
-	return i.p.String()
-}
-
-func (i ImmutablePath) Namespace() string {
-	return i.p.Namespace()
-}
-
-func (i ImmutablePath) Mutable() bool {
-	return false
-}
-
-func (i ImmutablePath) IsValid() error {
-	return i.p.IsValid()
-}
-
-var _ path.Path = (*ImmutablePath)(nil)
 
 type CarParams struct {
 	Range      *DagByteRange
@@ -205,7 +174,7 @@ const (
 )
 
 // DuplicateBlocksPolicy represents the content type parameter 'dups' (IPIP-412)
-type DuplicateBlocksPolicy int
+type DuplicateBlocksPolicy uint8
 
 const (
 	DuplicateBlocksUnspecified DuplicateBlocksPolicy = iota // 0 - implicit default
@@ -214,14 +183,16 @@ const (
 )
 
 // NewDuplicateBlocksPolicy returns DuplicateBlocksPolicy based on the content type parameter 'dups' (IPIP-412)
-func NewDuplicateBlocksPolicy(dupsValue string) DuplicateBlocksPolicy {
+func NewDuplicateBlocksPolicy(dupsValue string) (DuplicateBlocksPolicy, error) {
 	switch dupsValue {
 	case "y":
-		return DuplicateBlocksIncluded
+		return DuplicateBlocksIncluded, nil
 	case "n":
-		return DuplicateBlocksExcluded
+		return DuplicateBlocksExcluded, nil
+	case "":
+		return DuplicateBlocksUnspecified, nil
 	}
-	return DuplicateBlocksUnspecified
+	return 0, fmt.Errorf("unsupported application/vnd.ipld.car content type dups parameter: %q", dupsValue)
 }
 
 func (d DuplicateBlocksPolicy) Bool() bool {
@@ -241,9 +212,10 @@ func (d DuplicateBlocksPolicy) String() string {
 }
 
 type ContentPathMetadata struct {
-	PathSegmentRoots []cid.Cid
-	LastSegment      path.Resolved
-	ContentType      string // Only used for UnixFS requests
+	PathSegmentRoots     []cid.Cid
+	LastSegment          path.ImmutablePath
+	LastSegmentRemainder []string
+	ContentType          string // Only used for UnixFS requests
 }
 
 // ByteRange describes a range request within a UnixFS file. "From" and "To" mostly
@@ -260,21 +232,74 @@ type ByteRange struct {
 }
 
 type GetResponse struct {
-	bytes             files.File
+	bytes             io.ReadCloser
+	bytesSize         int64
+	symlink           *files.Symlink
 	directoryMetadata *directoryMetadata
 }
+
+func (r *GetResponse) Close() error {
+	if r.bytes != nil {
+		return r.bytes.Close()
+	}
+	if r.symlink != nil {
+		return r.symlink.Close()
+	}
+	if r.directoryMetadata != nil {
+		if r.directoryMetadata.closeFn == nil {
+			return nil
+		}
+		return r.directoryMetadata.closeFn()
+	}
+	// Should be unreachable
+	return nil
+}
+
+var _ io.Closer = (*GetResponse)(nil)
 
 type directoryMetadata struct {
 	dagSize uint64
 	entries <-chan unixfs.LinkResult
+	closeFn func() error
 }
 
-func NewGetResponseFromFile(file files.File) *GetResponse {
-	return &GetResponse{bytes: file}
+func NewGetResponseFromReader(file io.ReadCloser, fullFileSize int64) *GetResponse {
+	return &GetResponse{bytes: file, bytesSize: fullFileSize}
 }
 
-func NewGetResponseFromDirectoryListing(dagSize uint64, entries <-chan unixfs.LinkResult) *GetResponse {
-	return &GetResponse{directoryMetadata: &directoryMetadata{dagSize, entries}}
+func NewGetResponseFromSymlink(symlink *files.Symlink, size int64) *GetResponse {
+	return &GetResponse{symlink: symlink, bytesSize: size}
+}
+
+func NewGetResponseFromDirectoryListing(dagSize uint64, entries <-chan unixfs.LinkResult, closeFn func() error) *GetResponse {
+	return &GetResponse{directoryMetadata: &directoryMetadata{dagSize: dagSize, entries: entries, closeFn: closeFn}}
+}
+
+type HeadResponse struct {
+	bytesSize     int64
+	startingBytes io.ReadCloser
+	isFile        bool
+	isSymLink     bool
+	isDir         bool
+}
+
+func (r *HeadResponse) Close() error {
+	if r.startingBytes != nil {
+		return r.startingBytes.Close()
+	}
+	return nil
+}
+
+func NewHeadResponseForFile(startingBytes io.ReadCloser, size int64) *HeadResponse {
+	return &HeadResponse{startingBytes: startingBytes, isFile: true, bytesSize: size}
+}
+
+func NewHeadResponseForSymlink(symlinkSize int64) *HeadResponse {
+	return &HeadResponse{isSymLink: true, bytesSize: symlinkSize}
+}
+
+func NewHeadResponseForDirectory(dagSize int64) *HeadResponse {
+	return &HeadResponse{isDir: true, bytesSize: dagSize}
 }
 
 // IPFSBackend is the required set of functionality used to implement the IPFS
@@ -305,32 +330,39 @@ type IPFSBackend interface {
 	//     file will still need magic bytes from the very beginning for content
 	//     type sniffing).
 	//   - A range request for a directory currently holds no semantic meaning.
+	//   - For non-UnixFS (and non-raw data) such as terminal IPLD dag-cbor/json, etc. blocks the returned response
+	//     bytes should be the complete block and returned as an [io.ReadSeekCloser] starting at the beginning of the
+	//     block rather than as an [io.ReadCloser] that starts at the beginning of the range request.
 	//
 	// [HTTP Byte Ranges]: https://httpwg.org/specs/rfc9110.html#rfc.section.14.1.2
-	Get(context.Context, ImmutablePath, ...ByteRange) (ContentPathMetadata, *GetResponse, error)
+	Get(context.Context, path.ImmutablePath, ...ByteRange) (ContentPathMetadata, *GetResponse, error)
 
 	// GetAll returns a UnixFS file or directory depending on what the path is that has been requested. Directories should
 	// include all content recursively.
-	GetAll(context.Context, ImmutablePath) (ContentPathMetadata, files.Node, error)
+	GetAll(context.Context, path.ImmutablePath) (ContentPathMetadata, files.Node, error)
 
 	// GetBlock returns a single block of data
-	GetBlock(context.Context, ImmutablePath) (ContentPathMetadata, files.File, error)
+	GetBlock(context.Context, path.ImmutablePath) (ContentPathMetadata, files.File, error)
 
-	// Head returns a file or directory depending on what the path is that has been requested.
-	// For UnixFS files should return a file which has the correct file size and either returns the ContentType in ContentPathMetadata or
-	// enough data (e.g. 3kiB) such that the content type can be determined by sniffing.
-	// For all other data types returning just size information is sufficient
-	// TODO: give function more explicit return types
-	Head(context.Context, ImmutablePath) (ContentPathMetadata, files.Node, error)
+	// Head returns a [HeadResponse] depending on what the path is that has been requested.
+	// For UnixFS files (and raw blocks) should return the size of the file and either set the ContentType in
+	// ContentPathMetadata or send back a reader from the beginning of the file with enough data (e.g. 3kiB) such that
+	// the content type can be determined by sniffing.
+	//
+	// For UnixFS directories and symlinks only setting the size and type are necessary.
+	//
+	// For all other data types (e.g. (DAG-)CBOR/JSON blocks) returning the size information as a file while setting
+	// the content-type is sufficient.
+	Head(context.Context, path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error)
 
 	// ResolvePath resolves the path using UnixFS resolver. If the path does not
 	// exist due to a missing link, it should return an error of type:
 	// NewErrorResponse(fmt.Errorf("no link named %q under %s", name, cid), http.StatusNotFound)
-	ResolvePath(context.Context, ImmutablePath) (ContentPathMetadata, error)
+	ResolvePath(context.Context, path.ImmutablePath) (ContentPathMetadata, error)
 
 	// GetCAR returns a CAR file for the given immutable path. It returns an error
 	// if there was an issue before the CAR streaming begins.
-	GetCAR(context.Context, ImmutablePath, CarParams) (ContentPathMetadata, io.ReadCloser, error)
+	GetCAR(context.Context, path.ImmutablePath, CarParams) (ContentPathMetadata, io.ReadCloser, error)
 
 	// IsCached returns whether or not the path exists locally.
 	IsCached(context.Context, path.Path) bool
@@ -340,11 +372,11 @@ type IPFSBackend interface {
 	GetIPNSRecord(context.Context, cid.Cid) ([]byte, error)
 
 	// ResolveMutable takes a mutable path and resolves it into an immutable one. This means recursively resolving any
-	// DNSLink or IPNS records.
+	// DNSLink or IPNS records. It should also return a TTL. If the TTL is unknown, 0 should be returned.
 	//
 	// For example, given a mapping from `/ipns/dnslink.tld -> /ipns/ipns-id/mydirectory` and `/ipns/ipns-id` to
 	// `/ipfs/some-cid`, the result of passing `/ipns/dnslink.tld/myfile` would be `/ipfs/some-cid/mydirectory/myfile`.
-	ResolveMutable(context.Context, path.Path) (ImmutablePath, error)
+	ResolveMutable(context.Context, path.Path) (path.ImmutablePath, time.Duration, time.Time, error)
 
 	// GetDNSLinkRecord returns the DNSLink TXT record for the provided FQDN.
 	// Unlike ResolvePath, it does not perform recursive resolution. It only

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ipfs/boxo/coreiface/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -110,6 +110,30 @@ func TestCarParams(t *testing.T) {
 			require.Equal(t, test.expectedDuplicates.String(), params.Duplicates.String())
 		}
 	})
+
+	t.Run("buildCarParams from Accept header: order and dups parsing (invalid)", func(t *testing.T) {
+		t.Parallel()
+
+		// below ensure the implicit default (DFS and no duplicates) is correctly inferred
+		// from the value read from Accept header
+		tests := []string{
+			"application/vnd.ipld.car; dups=invalid",
+			"application/vnd.ipld.car; order=invalid",
+			"application/vnd.ipld.car; order=dfs; dups=invalid",
+			"application/vnd.ipld.car; order=invalid; dups=y",
+		}
+		for _, test := range tests {
+			r := mustNewRequest(t, http.MethodGet, "http://example.com/", nil)
+			r.Header.Set("Accept", test)
+
+			mediaType, formatParams, err := customResponseFormat(r)
+			assert.NoError(t, err)
+			assert.Equal(t, carResponseFormat, mediaType)
+
+			_, err = buildCarParams(r, formatParams)
+			assert.ErrorContains(t, err, "unsupported application/vnd.ipld.car content type")
+		}
+	})
 }
 
 func TestContentTypeFromCarParams(t *testing.T) {
@@ -143,7 +167,7 @@ func TestGetCarEtag(t *testing.T) {
 	cid, err := cid.Parse("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
 	require.NoError(t, err)
 
-	imPath, err := NewImmutablePath(path.IpfsPath(cid))
+	imPath, err := path.NewImmutablePath(path.FromCid(cid))
 	require.NoError(t, err)
 
 	t.Run("Etag with entity-bytes=0:* is the same as without query param", func(t *testing.T) {

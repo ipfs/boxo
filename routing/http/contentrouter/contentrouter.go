@@ -26,7 +26,7 @@ const ttl = 24 * time.Hour
 type Client interface {
 	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error)
 	ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error)
-	FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[types.Record], err error)
+	FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error)
 	GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
 }
@@ -196,28 +196,15 @@ func (c *contentRouter) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInf
 			logger.Warnw("error iterating provider responses: %s", res.Err)
 			continue
 		}
-		v := res.Val
-		if v.GetSchema() == types.SchemaPeer {
-			result, ok := v.(*types.PeerRecord)
-			if !ok {
-				logger.Errorw(
-					"problem casting find providers result",
-					"Schema", v.GetSchema(),
-					"Type", reflect.TypeOf(v).String(),
-				)
-				continue
-			}
-
-			var addrs []multiaddr.Multiaddr
-			for _, a := range result.Addrs {
-				addrs = append(addrs, a.Multiaddr)
-			}
-
-			return peer.AddrInfo{
-				ID:    *result.ID,
-				Addrs: addrs,
-			}, nil
+		var addrs []multiaddr.Multiaddr
+		for _, a := range res.Val.Addrs {
+			addrs = append(addrs, a.Multiaddr)
 		}
+
+		return peer.AddrInfo{
+			ID:    *res.Val.ID,
+			Addrs: addrs,
+		}, nil
 	}
 
 	return peer.AddrInfo{}, err

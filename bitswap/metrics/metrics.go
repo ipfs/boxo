@@ -14,11 +14,11 @@ var (
 )
 
 func DupHist(ctx context.Context) metrics.Histogram {
-	return metrics.NewCtx(ctx, "recv_dup_blocks_bytes", "Summary of duplicate data blocks recived").Histogram(metricsBuckets)
+	return metrics.NewCtx(ctx, "recv_dup_blocks_bytes", "Summary of duplicate data blocks received").Histogram(metricsBuckets)
 }
 
 func AllHist(ctx context.Context) metrics.Histogram {
-	return metrics.NewCtx(ctx, "recv_all_blocks_bytes", "Summary of all data blocks recived").Histogram(metricsBuckets)
+	return metrics.NewCtx(ctx, "recv_all_blocks_bytes", "Summary of all data blocks received").Histogram(metricsBuckets)
 }
 
 func SentHist(ctx context.Context) metrics.Histogram {

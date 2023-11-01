@@ -21,7 +21,7 @@ type GetBlocksFunc func(context.Context, []cid.Cid) (<-chan blocks.Block, error)
 
 // SyncGetBlock takes a block cid and an async function for getting several
 // blocks that returns a channel, and uses that function to return the
-// block syncronously.
+// block synchronously.
 func SyncGetBlock(p context.Context, k cid.Cid, gb GetBlocksFunc) (blocks.Block, error) {
 	p, span := internal.StartSpan(p, "Getter.SyncGetBlock")
 	defer span.End()

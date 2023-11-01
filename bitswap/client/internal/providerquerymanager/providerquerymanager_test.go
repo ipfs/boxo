@@ -281,7 +281,7 @@ func TestRateLimitingRequests(t *testing.T) {
 	defer fpn.queriesMadeMutex.Unlock()
 	if fpn.queriesMade != maxInProcessRequests+1 {
 		t.Logf("Queries made: %d\n", fpn.queriesMade)
-		t.Fatal("Did not make all seperate requests")
+		t.Fatal("Did not make all separate requests")
 	}
 }
 

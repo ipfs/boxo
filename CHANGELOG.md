@@ -24,6 +24,65 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
+## [v0.14.0]
+
+### Added
+
+* `boxo/gateway`:
+  * A new `WithResolver(...)` option can be used with `NewBlocksBackend(...)` allowing the user to pass their custom `Resolver` implementation.
+  * The gateway now sets a `Cache-Control` header for requests under the `/ipns/` namespace if the TTL for the corresponding IPNS Records or DNSLink entities is known.
+* `boxo/bitswap/client`:
+  * A new `WithoutDuplicatedBlockStats()` option can be used with `bitswap.New` and `bsclient.New`. This disable accounting for duplicated blocks, which requires a `blockstore.Has()` lookup for every received block and thus, can impact performance.
+* ✨ Migrated repositories into Boxo
+  * [`github.com/ipfs/kubo/peering`](https://pkg.go.dev/github.com/ipfs/kubo/peering) => [`./peering`](./peering)
+    A service which establish, overwatch and maintain long lived connections.
+  * [`github.com/ipfs/kubo/core/bootstrap`](https://pkg.go.dev/github.com/ipfs/kubo/core/bootstrap) => [`./bootstrap](./bootstrap)
+    A service that maintains connections to a number of bootstrap peers.
+
+### Changed
+
+* `boxo/gateway`
+  * 🛠 The `IPFSBackend` interface was updated to make the responses of the
+    `Head` method more explicit. It now returns a `HeadResponse` instead of a
+    `files.Node`.
+* `boxo/routing/http/client.Client` is now exported. This means you can now pass
+  it around functions, or add it to a struct if you want.
+* 🛠 The `path` package has been massively refactored. With this refactor, we have
+  condensed the different path-related and/or Kubo-specific packages under a single generic one. Therefore, there
+  are many breaking changes. Please consult the [documentation](https://pkg.go.dev/github.com/ipfs/boxo/path)
+  for more details on how to use the new package.
+  * Note: content paths created with `boxo/path` are automatically normalized:
+    - Replace multiple slashes with a single slash.
+    - Eliminate each `.` path name element (the current directory).
+    - Eliminate each inner `..` path name element (the parent directory) along with the non-`..` element that precedes it.
+    - Eliminate `..` elements that begin a rooted path: that is, replace "`/..`" by "`/`" at the beginning of a path.
+* 🛠 The signature of `CoreAPI.ResolvePath` in  `coreiface` has changed to now return
+  the remainder segments as a second return value, matching the signature of `resolver.ResolveToLastNode`.
+* 🛠 `routing/http/client.FindPeers` now returns `iter.ResultIter[types.PeerRecord]` instead of `iter.ResultIter[types.Record]`. The specification indicates that records for this method will always be Peer Records.
+* 🛠 The `namesys` package has been refactored. The following are the largest modifications:
+  * The options in `coreiface/options/namesys` have been moved to `namesys` and their names
+    have been made more consistent.
+  * Many of the exported structs and functions have been renamed in order to be consistent with
+    the remaining packages.
+  * `namesys.Resolver.Resolve` now returns a TTL, in addition to the resolved path. If the
+    TTL is unknown, 0 is returned. `IPNSResolver` is able to resolve a TTL, while `DNSResolver`
+    is not.
+  * `namesys/resolver.ResolveIPNS` has been moved to `namesys.ResolveIPNS` and now returns a TTL
+    in addition to the resolved path.
+* ✨ `boxo/ipns` record defaults follow recommendations from [IPNS Record Specification](https://specs.ipfs.tech/ipns/ipns-record/#ipns-record):
+    * `DefaultRecordTTL` is now set to `1h`
+    * `DefaultRecordLifetime` follows the increased expiration window of Amino DHT ([go-libp2p-kad-dht#793](https://github.com/libp2p/go-libp2p-kad-dht/pull/793)) and is set to `48h`
+* 🛠 The `gateway`'s `IPFSBackend.ResolveMutable` is now expected to return a TTL in addition to
+    the resolved path. If the TTL is unknown, 0 should be returned.
+
+### Removed
+
+* 🛠 `util.MultiErr` has been removed. Please use Go's native support for wrapping errors, or `errors.Join` instead.
+
+### Fixed
+
+### Security
+
 ## [v0.13.1]
 
 ### Added
@@ -240,7 +299,7 @@ None.
   - `InternalKeys`
 - 🛠 `provider/batched.New` has been moved to `provider.New` and arguments has been changed. (https://github.com/ipfs/boxo/pulls/273)
   - A routing system is now passed with the `provider.Online` option, by default the system run in offline mode (push stuff onto the queue).
-  - When using `provider.Online` calling the `.Run` method is not required anymore, the background worker is implicitely started in the background by `provider.New`.
+  - When using `provider.Online` calling the `.Run` method is not required anymore, the background worker is implicitly started in the background by `provider.New`.
   - You do not have to pass a queue anymore, you pass a `datastore.Datastore` exclusively.
 - 🛠 `provider.NewOfflineProvider` has been renamed to `provider.NewNoopProvider` to show more clearly that is does nothing. (https://github.com/ipfs/boxo/pulls/273)
 - 🛠 `provider.Provider` and `provider.Reprovider` has been merged under one `provider.System`. (https://github.com/ipfs/boxo/pulls/273)
