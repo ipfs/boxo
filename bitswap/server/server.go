@@ -398,7 +398,7 @@ func (bs *Server) Stat() (Stat, error) {
 	peers := bs.engine.Peers()
 	peersStr := make([]string, len(peers))
 	for i, p := range peers {
-		peersStr[i] = p.Pretty()
+		peersStr[i] = p.String()
 	}
 	sort.Strings(peersStr)
 	s.Peers = peersStr
