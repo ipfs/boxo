@@ -24,6 +24,12 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
+## [v0.15.0]
+
+### Changed
+
+* 🛠 Bumped to [`go-libp2p` 0.32](https://github.com/libp2p/go-libp2p/releases/tag/v0.32.0).
+
 ## [v0.14.0]
 
 ### Added
