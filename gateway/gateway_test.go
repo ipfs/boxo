@@ -93,46 +93,6 @@ func TestGatewayGet(t *testing.T) {
 	}
 }
 
-func TestPretty404(t *testing.T) {
-	ts, backend, root := newTestServerAndNode(t, nil, "pretty-404.car")
-	t.Logf("test server url: %s", ts.URL)
-
-	host := "example.net"
-	backend.namesys["/ipns/"+host] = newMockNamesysItem(path.FromCid(root), 0)
-
-	for _, test := range []struct {
-		path   string
-		accept string
-		status int
-		text   string
-	}{
-		{"/ipfs-404.html", "text/html", http.StatusOK, "Custom 404"},
-		{"/nope", "text/html", http.StatusNotFound, "Custom 404"},
-		{"/nope", "text/*", http.StatusNotFound, "Custom 404"},
-		{"/nope", "*/*", http.StatusNotFound, "Custom 404"},
-		{"/nope", "application/json", http.StatusNotFound, fmt.Sprintf("failed to resolve /ipns/example.net/nope: no link named \"nope\" under %s\n", root.String())},
-		{"/deeper/nope", "text/html", http.StatusNotFound, "Deep custom 404"},
-		{"/deeper/", "text/html", http.StatusOK, ""},
-		{"/deeper", "text/html", http.StatusOK, ""},
-		{"/nope/nope", "text/html", http.StatusNotFound, "Custom 404"},
-	} {
-		testName := fmt.Sprintf("%s %s", test.path, test.accept)
-		t.Run(testName, func(t *testing.T) {
-			req := mustNewRequest(t, "GET", ts.URL+test.path, nil)
-			req.Header.Add("Accept", test.accept)
-			req.Host = host
-			resp := mustDo(t, req)
-			defer resp.Body.Close()
-			require.Equal(t, test.status, resp.StatusCode)
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			if test.text != "" {
-				require.Equal(t, test.text, string(body))
-			}
-		})
-	}
-}
-
 func TestHeaders(t *testing.T) {
 	t.Parallel()
 

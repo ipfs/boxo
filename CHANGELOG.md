@@ -19,6 +19,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 ### Removed
+* 🛠 `boxo/gateway`: removed support for undocumented legacy `ipfs-404.html`. Use [`_redirects`](https://specs.ipfs.tech/http-gateways/web-redirects-file/) instead.
 
 ### Fixed
 
