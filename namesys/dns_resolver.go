@@ -12,6 +12,7 @@ import (
 	path "github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 	dns "github.com/miekg/dns"
+	"github.com/samber/lo"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -138,11 +139,12 @@ func workDomain(ctx context.Context, r *DNSResolver, name string, res chan Async
 
 	txt, err := r.lookupTXT(ctx, name)
 	if err != nil {
-		if dnsErr, ok := err.(*net.DNSError); ok {
+		var dnsErr *net.DNSError
+		if errors.As(err, &dnsErr) {
 			// If no TXT records found, return same error as when no text
 			// records contain dnslink. Otherwise, return the actual error.
 			if dnsErr.IsNotFound {
-				err = ErrResolveFailed
+				err = ErrMissingDNSLinkRecord
 			}
 		}
 		// Could not look up any text records for name
@@ -150,16 +152,32 @@ func workDomain(ctx context.Context, r *DNSResolver, name string, res chan Async
 		return
 	}
 
+	// Convert all the found TXT records into paths. Ignore invalid ones.
+	var paths []path.Path
 	for _, t := range txt {
 		p, err := parseEntry(t)
 		if err == nil {
-			res <- AsyncResult{Path: p}
-			return
+			paths = append(paths, p)
 		}
 	}
 
-	// There were no TXT records with a dnslink
-	res <- AsyncResult{Err: ErrResolveFailed}
+	// Filter only the IPFS and IPNS paths.
+	paths = lo.Filter(paths, func(item path.Path, index int) bool {
+		return item.Namespace() == path.IPFSNamespace ||
+			item.Namespace() == path.IPNSNamespace
+	})
+
+	switch len(paths) {
+	case 0:
+		// There were no TXT records with a dnslink
+		res <- AsyncResult{Err: ErrMissingDNSLinkRecord}
+	case 1:
+		// Found 1 valid! Return it.
+		res <- AsyncResult{Path: paths[0]}
+	default:
+		// Found more than 1 IPFS/IPNS path.
+		res <- AsyncResult{Err: ErrMultipleDNSLinkRecords}
+	}
 }
 
 func parseEntry(txt string) (path.Path, error) {

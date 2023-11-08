@@ -3,6 +3,7 @@ package namesys
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ipfs/boxo/ipns"
@@ -22,6 +23,12 @@ var (
 
 	// ErrNoNamesys is an explicit error for when no [NameSystem] is provided.
 	ErrNoNamesys = errors.New("no namesys has been provided")
+
+	// ErrMultipleDNSLinkRecords signals that the domain had multiple valid DNSLink TXT entries.
+	ErrMultipleDNSLinkRecords = fmt.Errorf("%w: DNSLink lookup returned more than one IPFS content path; ask domain owner to remove duplicate TXT records", ErrResolveFailed)
+
+	// ErrMissingDNSLinkRecord signals that the domain has no DNSLink TXT entries.
+	ErrMissingDNSLinkRecord = fmt.Errorf("%w: DNSLink lookup could not find a TXT record (https://docs.ipfs.tech/concepts/dnslink/)", ErrResolveFailed)
 )
 
 const (
