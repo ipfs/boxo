@@ -18,9 +18,12 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+* 🛠 `boxo/namesys`: now fails when multiple valid DNSLink entries are found for the same domain. This used to cause undefined behavior before. Now, we return an error, according to the [specification](https://dnslink.dev/).
+
 ### Removed
 
 * 🛠 `boxo/gateway`: removed support for undocumented legacy `ipfs-404.html`. Use [`_redirects`](https://specs.ipfs.tech/http-gateways/web-redirects-file/) instead.
+* 🛠 `boxo/namesys`: removed support for legacy DNSLink entries at the root of the domain. Use [`_dnslink.` TXT record](https://docs.ipfs.tech/concepts/dnslink/) instead.
 
 ### Fixed
 
