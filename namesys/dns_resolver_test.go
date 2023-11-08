@@ -2,7 +2,7 @@ package namesys
 
 import (
 	"context"
-	"fmt"
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -52,7 +52,7 @@ type mockDNS struct {
 func (m *mockDNS) lookupTXT(ctx context.Context, name string) (txt []string, err error) {
 	txt, ok := m.entries[name]
 	if !ok {
-		return nil, fmt.Errorf("no TXT entry for %s", name)
+		return nil, &net.DNSError{IsNotFound: true}
 	}
 	return txt, nil
 }
@@ -60,33 +60,39 @@ func (m *mockDNS) lookupTXT(ctx context.Context, name string) (txt []string, err
 func newMockDNS() *mockDNS {
 	return &mockDNS{
 		entries: map[string][]string{
-			"multihash.example.com.": {
+			"_dnslink.multihash.example.com.": {
 				"dnslink=QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD",
 			},
-			"ipfs.example.com.": {
+			"_dnslink.ipfs.example.com.": {
 				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD",
 			},
 			"_dnslink.dipfs.example.com.": {
 				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD",
 			},
-			"dns1.example.com.": {
+			"_dnslink.dns1.example.com.": {
 				"dnslink=/ipns/ipfs.example.com",
 			},
-			"dns2.example.com.": {
+			"_dnslink.dns2.example.com.": {
 				"dnslink=/ipns/dns1.example.com",
 			},
-			"multi.example.com.": {
+			"_dnslink.multi.example.com.": {
 				"some stuff",
 				"dnslink=/ipns/dns1.example.com",
 				"masked dnslink=/ipns/example.invalid",
 			},
-			"equals.example.com.": {
+			"_dnslink.multivalid.example.com.": {
+				"some stuff",
+				"dnslink=/ipns/dns1.example.com",
+				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD",
+				"masked dnslink=/ipns/example.invalid",
+			},
+			"_dnslink.equals.example.com.": {
 				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD/=equals",
 			},
-			"loop1.example.com.": {
+			"_dnslink.loop1.example.com.": {
 				"dnslink=/ipns/loop2.example.com",
 			},
-			"loop2.example.com.": {
+			"_dnslink.loop2.example.com.": {
 				"dnslink=/ipns/loop1.example.com",
 			},
 			"_dnslink.dloop1.example.com.": {
@@ -95,46 +101,43 @@ func newMockDNS() *mockDNS {
 			"_dnslink.dloop2.example.com.": {
 				"dnslink=/ipns/loop1.example.com",
 			},
-			"bad.example.com.": {
+			"_dnslink.bad.example.com.": {
 				"dnslink=",
 			},
-			"withsegment.example.com.": {
+			"_dnslink.withsegment.example.com.": {
 				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD/sub/segment",
 			},
-			"withrecsegment.example.com.": {
+			"_dnslink.withrecsegment.example.com.": {
 				"dnslink=/ipns/withsegment.example.com/subsub",
 			},
-			"withtrailing.example.com.": {
+			"_dnslink.withtrailing.example.com.": {
 				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD/sub/",
 			},
-			"withtrailingrec.example.com.": {
+			"_dnslink.withtrailingrec.example.com.": {
 				"dnslink=/ipns/withtrailing.example.com/segment/",
-			},
-			"double.example.com.": {
-				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD",
 			},
 			"_dnslink.double.example.com.": {
 				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD",
 			},
-			"double.conflict.com.": {
+			"_dnslink.double.conflict.com.": {
 				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD",
 			},
 			"_dnslink.conflict.example.com.": {
 				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjE",
 			},
-			"fqdn.example.com.": {
+			"_dnslink.fqdn.example.com.": {
 				"dnslink=/ipfs/QmYvMB9yrsSf7RKBghkfwmHJkzJhW2ZgVwq3LxBXXPasFr",
 			},
-			"en.wikipedia-on-ipfs.org.": {
+			"_dnslink.en.wikipedia-on-ipfs.org.": {
 				"dnslink=/ipfs/bafybeiaysi4s6lnjev27ln5icwm6tueaw2vdykrtjkwiphwekaywqhcjze",
 			},
-			"custom.non-icann.tldextravaganza.": {
+			"_dnslink.custom.non-icann.tldextravaganza.": {
 				"dnslink=/ipfs/bafybeieto6mcuvqlechv4iadoqvnffondeiwxc2bcfcewhvpsd2odvbmvm",
 			},
-			"singlednslabelshouldbeok.": {
+			"_dnslink.singlednslabelshouldbeok.": {
 				"dnslink=/ipfs/bafybeih4a6ylafdki6ailjrdvmr7o4fbbeceeeuty4v3qyyouiz5koqlpi",
 			},
-			"www.wealdtech.eth.": {
+			"_dnslink.www.wealdtech.eth.": {
 				"dnslink=/ipns/ipfs.example.com",
 			},
 		},
@@ -162,6 +165,7 @@ func TestDNSResolution(t *testing.T) {
 		{"/ipns/multi.example.com", DefaultDepthLimit, "/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD", nil},
 		{"/ipns/multi.example.com", 1, "/ipns/dns1.example.com", ErrResolveRecursion},
 		{"/ipns/multi.example.com", 2, "/ipns/ipfs.example.com", ErrResolveRecursion},
+		{"/ipns/multivalid.example.com", 2, "", ErrMultipleDNSLinkRecords},
 		{"/ipns/equals.example.com", DefaultDepthLimit, "/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD/=equals", nil},
 		{"/ipns/loop1.example.com", 1, "/ipns/loop2.example.com", ErrResolveRecursion},
 		{"/ipns/loop1.example.com", 2, "/ipns/loop1.example.com", ErrResolveRecursion},
