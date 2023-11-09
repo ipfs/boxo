@@ -22,6 +22,7 @@ import (
 const (
 	carRangeBytesKey          = "entity-bytes"
 	carTerminalElementTypeKey = "dag-scope"
+	carSkipRawBlocksTypeKey   = "skip-raw-blocks"
 )
 
 // serveCAR returns a CAR stream for specific DAG+selector
@@ -118,6 +119,7 @@ func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarPa
 	queryParams := r.URL.Query()
 	rangeStr, hasRange := queryParams.Get(carRangeBytesKey), queryParams.Has(carRangeBytesKey)
 	scopeStr, hasScope := queryParams.Get(carTerminalElementTypeKey), queryParams.Has(carTerminalElementTypeKey)
+	skipRawBlocksStr, hasSkipRawBlocks := queryParams.Get(carSkipRawBlocksTypeKey), queryParams.Has(carSkipRawBlocksTypeKey)
 
 	params := CarParams{}
 	if hasRange {
@@ -139,6 +141,15 @@ func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarPa
 		}
 	} else {
 		params.Scope = DagScopeAll
+	}
+
+	if hasSkipRawBlocks {
+		// skip leaves from IPIP-445
+		skip, err := NewSkipRawBlocksPolicy(skipRawBlocksStr)
+		if err != nil {
+			return CarParams{}, err
+		}
+		params.SkipRawBlocks = skip
 	}
 
 	// application/vnd.ipld.car content type parameters from Accept header
@@ -247,6 +258,11 @@ func getCarEtag(imPath path.ImmutablePath, params CarParams, rootCid cid.Cid) st
 	// 'dups' from IPIP-412 impact Etag only if 'y'
 	if dups := params.Duplicates; dups == DuplicateBlocksIncluded {
 		h.WriteString("\x00dups=y")
+	}
+
+	// 'skip-leaves' from IPIP-445 impact Etag only if 'y'
+	if skip := params.SkipRawBlocks; skip == SkipRawBlocks {
+		h.WriteString("\x00skip-leaves=y")
 	}
 
 	if params.Range != nil {

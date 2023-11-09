@@ -296,6 +296,10 @@ func (bb *BlocksBackend) Head(ctx context.Context, path path.ImmutablePath) (Con
 var emptyRoot = []cid.Cid{cid.MustParse("bafkqaaa")}
 
 func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+	if params.SkipRawBlocks.Bool() && p.RootCid().Prefix().Codec == cid.Raw {
+
+	}
+
 	pathMetadata, err := bb.ResolvePath(ctx, p)
 	if err != nil {
 		rootCid, err := cid.Decode(strings.Split(p.String(), "/")[2])
@@ -312,8 +316,9 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 		blockGetter := merkledag.NewDAGService(bb.blockService).Session(ctx)
 
 		blockGetter = &nodeGetterToCarExporer{
-			ng: blockGetter,
-			cw: cw,
+			ng:            blockGetter,
+			cw:            cw,
+			skipRawBlocks: params.SkipRawBlocks.Bool(),
 		}
 
 		// Setup the UnixFS resolver.
@@ -352,8 +357,9 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 		blockGetter := merkledag.NewDAGService(bb.blockService).Session(ctx)
 
 		blockGetter = &nodeGetterToCarExporer{
-			ng: blockGetter,
-			cw: cw,
+			ng:            blockGetter,
+			cw:            cw,
+			skipRawBlocks: params.SkipRawBlocks.Bool(),
 		}
 
 		// Setup the UnixFS resolver.
@@ -732,8 +738,9 @@ func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.Imm
 }
 
 type nodeGetterToCarExporer struct {
-	ng format.NodeGetter
-	cw storage.WritableCar
+	ng            format.NodeGetter
+	cw            storage.WritableCar
+	skipRawBlocks bool
 }
 
 func (n *nodeGetterToCarExporer) Get(ctx context.Context, c cid.Cid) (format.Node, error) {
@@ -774,6 +781,19 @@ func (n *nodeGetterToCarExporer) GetMany(ctx context.Context, cids []cid.Cid) <-
 }
 
 func (n *nodeGetterToCarExporer) trySendBlock(ctx context.Context, block blocks.Block) error {
+	// FIXME(@Jorropo): this is very inneficient, we fetch all blocks even if we don't send them.
+	// I've tried doing so using the ipld stack however the problem is that filtering on the
+	// selector or traversal callback does not work because the unixfs reifier is ran before,
+	// so trying to filter raw links do nothing because go-unixfsnode removed them already,
+	// so we need to filter in a callback from unixfsnode but the reifier does not know a about
+	// [traversal.SkipMe] making it a lost cause. I've looked into updating unixfsnode but this
+	// much more work because there are no easy way to pass options or understand what the side
+	// effects of this would be.
+	// Abstractions everywhere yet a simple small behaviour change require rethinking everything :'(.
+	// Will fix with boxo/unixfs.
+	if n.skipRawBlocks && block.Cid().Prefix().Codec == cid.Raw {
+		return nil
+	}
 	return n.cw.Put(ctx, block.Cid().KeyString(), block.RawData())
 }
 
