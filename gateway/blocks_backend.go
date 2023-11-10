@@ -296,8 +296,8 @@ func (bb *BlocksBackend) Head(ctx context.Context, path path.ImmutablePath) (Con
 var emptyRoot = []cid.Cid{cid.MustParse("bafkqaaa")}
 
 func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
-	pathMetadata, err := bb.ResolvePath(ctx, p)
-	if err != nil {
+	pathMetadata, resolveErr := bb.ResolvePath(ctx, p)
+	if resolveErr != nil {
 		rootCid, err := cid.Decode(strings.Split(p.String(), "/")[2])
 		if err != nil {
 			return ContentPathMetadata{}, nil, err
@@ -327,8 +327,11 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 				LastSegment:      path.FromCid(rootCid),
 				ContentType:      "",
 			}, io.NopCloser(&buf), nil
+		} else if err != nil {
+			return ContentPathMetadata{}, nil, err
+		} else {
+			return ContentPathMetadata{}, nil, resolveErr
 		}
-		return ContentPathMetadata{}, nil, err
 	}
 
 	if p.Namespace() != path.IPFSNamespace {
