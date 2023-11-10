@@ -58,6 +58,8 @@ type downloader struct {
 }
 
 func DownloadFile(c cid.Cid) (io.ReadCloser, error) {
+	c = normalizeCidv0(c)
+
 	req, err := http.NewRequest("GET", gateway+c.String()+"?dag-scope=entity", bytes.NewReader(nil))
 	if err != nil {
 		return nil, err
@@ -149,6 +151,7 @@ func (d *downloader) Read(b []byte) (int, error) {
 
 		var data []byte
 		c := todo.c
+		c = normalizeCidv0(c)
 
 		pref := c.Prefix()
 		switch pref.MhType {
@@ -201,6 +204,7 @@ func (d *downloader) Read(b []byte) (int, error) {
 			if err != nil {
 				return 0, fmt.Errorf("hashing data for %s: %w", cidStringTruncate(c), err)
 			}
+			cidGot = normalizeCidv0(cidGot)
 
 			if cidGot != c {
 				return 0, fmt.Errorf("data integrity failed, expected %s; got %s", cidStringTruncate(c), cidStringTruncate(cidGot))
@@ -254,4 +258,11 @@ func (d *downloader) Read(b []byte) (int, error) {
 	}
 
 	return n, nil
+}
+
+func normalizeCidv0(c cid.Cid) cid.Cid {
+	if c.Version() == 0 {
+		return cid.NewCidV1(cid.DagProtobuf, c.Hash())
+	}
+	return c
 }

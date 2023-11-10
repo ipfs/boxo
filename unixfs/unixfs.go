@@ -160,6 +160,7 @@ func ParseAppend[Self, Children cid.Storage](
 		return
 	}
 	if err != nil {
+		err = fmt.Errorf("failed to parse: %w", err)
 		return
 	}
 
