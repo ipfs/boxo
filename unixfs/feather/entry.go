@@ -58,11 +58,11 @@ type downloader struct {
 }
 
 func DownloadFile(c cid.Cid) (io.ReadCloser, error) {
-	req, err := http.NewRequest("GET", gateway+c.String()+"?dag-scope=entity&dups=y", bytes.NewReader(nil))
+	req, err := http.NewRequest("GET", gateway+c.String()+"?dag-scope=entity", bytes.NewReader(nil))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("Accept", "application/vnd.ipld.car")
+	req.Header.Add("Accept", "application/vnd.ipld.car;dups=y;order=dfs;version=1")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
