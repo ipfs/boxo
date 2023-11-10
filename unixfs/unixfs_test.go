@@ -45,7 +45,7 @@ func TestRaw(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		a, err := Parse[string](b)
+		a, err := Parse(b)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -121,7 +121,7 @@ func TestFilePB(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		a, err := Parse[string](b)
+		a, err := Parse(b)
 		if err != nil {
 			t.Fatal(err)
 		}

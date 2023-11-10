@@ -37,7 +37,7 @@ func (e Entry[S]) Untyped() Entry[S] {
 	return e
 }
 
-var _ Node[string] = File[string, string]{}
+var _ Node = File[string, string]{}
 
 type File[Self, Children cid.Storage] struct {
 	//lint:ignore U1000 this is a badge patern
@@ -58,7 +58,7 @@ type FileEntry[S cid.Storage] struct {
 	FileSize uint64
 }
 
-var _ Node[string] = Directory[string, string]{}
+var _ Node = Directory[string, string]{}
 
 type Directory[Self, Children cid.Storage] struct {
 	//lint:ignore U1000 this is a badge patern
@@ -72,7 +72,7 @@ type DirectoryEntry[S cid.Storage] struct {
 	Name AliasableString
 }
 
-var _ Node[string] = Symlink[string]{}
+var _ Node = Symlink[string]{}
 
 type Symlink[S cid.Storage] struct {
 	//lint:ignore U1000 this is a badge patern
@@ -92,9 +92,9 @@ func (badge) nodeBadge() {
 
 // Node is an interface that can exclusively be a [File], [Directory] or [Symlink]. We might add more in the future.
 // You MUST NOT embed this interface, it's only purpose is to provide type safe enums.
-type Node[S cid.Storage] interface {
+type Node interface {
 	// Untyped returns the untyped [Entry] for that value stripped of all type related information.
-	Untyped() Entry[S]
+	Untyped() Entry[string]
 	// nodeBadge must never be called it's just here to trick the type checker.
 	nodeBadge()
 }
@@ -103,8 +103,8 @@ type Node[S cid.Storage] interface {
 // [File.Data], [DirectoryEntry.Name] and [Symlink.Value] values are aliased to b.RawData().
 // The data argument MUST hash to cid, this wont check the validaty of the hash.
 // It assumes the size of the block is limited and reasonable.
-func Parse[Children cid.Storage](b blocks.Block) (Node[string], error) {
-	switch t, f, d, s, err := ParseAppend[string, Children](nil, nil, b.Cid(), b.RawData()); t {
+func Parse(b blocks.Block) (Node, error) {
+	switch t, f, d, s, err := ParseAppend[string, string](nil, nil, b.Cid(), b.RawData()); t {
 	case TError:
 		return nil, err
 	case TFile:
