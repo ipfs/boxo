@@ -27,7 +27,7 @@ func (s *AliasableString) UnmarshalText(b []byte) error {
 	// UnmarshalText must copy the text if it wishes to retain the text after returning.
 	new := make([]byte, len(b))
 	copy(new, b)
-	*s = b
+	*s = new
 	return nil
 }
 
