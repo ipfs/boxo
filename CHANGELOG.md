@@ -24,7 +24,7 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-* `boxo/gateway`: a request-only panic could sporadically be triggered inside a CAR request, if the right [conditions were met](https://github.com/ipfs/boxo/pull/511).
+* `boxo/gateway`: a panic (which is recovered) could sporadically be triggered inside a CAR request, if the right [conditions were met](https://github.com/ipfs/boxo/pull/511). 
 
 ### Security
 
