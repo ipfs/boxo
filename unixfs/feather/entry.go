@@ -8,9 +8,9 @@ import (
 	"io"
 	"net/http"
 
-	pb "github.com/ipfs/boxo/unixfs/feather/internal/pb"
+	"github.com/ipfs/boxo/unixfs"
+	blocks "github.com/ipfs/go-block-format"
 	"golang.org/x/exp/slices"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/ipfs/boxo/verifcid"
 	"github.com/ipfs/go-cid"
@@ -207,81 +207,41 @@ func (d *downloader) Read(b []byte) (int, error) {
 			}
 		}
 
-		switch pref.Codec {
-		case cid.Raw:
+		b, err := blocks.NewBlockWithCid(data, c)
+		if err != nil {
+			return 0, err
+		}
+		node, err := unixfs.Parse(b)
+		if err != nil {
+			return 0, err
+		}
+
+		switch n := node.(type) {
+		case unixfs.File[string, string]:
+			d.curBlock = n.Data
+
+			filesize := uint64(len(n.Data))
+			if childs := n.Childrens; len(childs) != 0 {
+				regions := slices.Grow(d.state, len(childs))
+				for i := len(childs); i > 0; {
+					i--
+					regions = append(regions, region{
+						c:          childs[i].Cid,
+						size:       childs[i].FileSize,
+						rangeKnown: true,
+					})
+					filesize += childs[i].FileSize
+				}
+				d.state = regions
+			}
+
 			if todo.rangeKnown {
-				if uint64(len(data)) != todo.size {
-					return 0, fmt.Errorf("leaf isn't size is incorrect for %s, expected %d; got %d", cidStringTruncate(c), todo.size, len(data))
+				if todo.size != filesize {
+					return 0, fmt.Errorf("inconsistent filesize for %s, expected %d; got %d", cidStringTruncate(c), todo.size, filesize)
 				}
 			}
-			d.curBlock = data
-		case cid.DagProtobuf:
-			var block pb.PBNode
-			err := proto.Unmarshal(data, &block)
-			if err != nil {
-				return 0, fmt.Errorf("parsing block for %s: %w", cidStringTruncate(c), err)
-			}
-
-			if len(block.Data) == 0 {
-				return 0, fmt.Errorf("block %s is missing Data field", cidStringTruncate(c))
-			}
-
-			var metadata pb.UnixfsData
-			err = proto.Unmarshal(block.Data, &metadata)
-			if err != nil {
-				return 0, fmt.Errorf("parsing metadata for %s: %w", cidStringTruncate(c), err)
-			}
-
-			if metadata.Type == nil {
-				return 0, fmt.Errorf("missing unixfs node Type for %s", cidStringTruncate(c))
-			}
-			switch *metadata.Type {
-			case pb.UnixfsData_File:
-				blocksizes := metadata.Blocksizes
-				links := block.Links
-				if len(blocksizes) != len(links) {
-					return 0, fmt.Errorf("inconsistent sisterlists for %s, %d vs %d", cidStringTruncate(c), len(blocksizes), len(links))
-				}
-
-				d.curBlock = metadata.Data
-
-				filesize := uint64(len(metadata.Data))
-				if len(blocksizes) != 0 {
-					regions := slices.Grow(d.state, len(blocksizes))
-					for i := len(blocksizes); i > 0; {
-						i--
-						bs := blocksizes[i]
-						subCid, err := loadCidFromBytes(links[i].Hash)
-						if err != nil {
-							return 0, fmt.Errorf("link %d of %s: %w", i, cidStringTruncate(c), err)
-						}
-
-						regions = append(regions, region{
-							c:          subCid,
-							size:       bs,
-							rangeKnown: true,
-						})
-						filesize += bs
-					}
-					d.state = regions
-				}
-
-				if todo.rangeKnown {
-					if todo.size != filesize {
-						return 0, fmt.Errorf("inconsistent filesize for %s, expected %d; got %d", cidStringTruncate(c), todo.size, filesize)
-					}
-				}
-				if metadata.Filesize != nil {
-					if *metadata.Filesize != filesize {
-						return 0, fmt.Errorf("inconsistent Filesize metadata field for %s, expected %d; got %d", cidStringTruncate(c), filesize, *metadata.Filesize)
-					}
-				}
-			default:
-				return 0, fmt.Errorf("unkown unixfs node type for %s: %s", cidStringTruncate(c), metadata.Type.String())
-			}
-
 		default:
-			return 0, fmt.Errorf("unknown codec type %d for %s; expected Raw or Dag-PB", pref.Codec, cidStringTruncate(c))
+			return 0, fmt.Errorf("unknown unixfs type, got %T for %s", node, cidStringTruncate(c))
 		}
 
 		good = true
