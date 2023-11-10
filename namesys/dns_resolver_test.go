@@ -80,11 +80,17 @@ func newMockDNS() *mockDNS {
 				"dnslink=/ipns/dns1.example.com",
 				"masked dnslink=/ipns/example.invalid",
 			},
-			"_dnslink.multivalid.example.com.": {
+			"_dnslink.multi-invalid.example.com.": {
 				"some stuff",
-				"dnslink=/ipns/dns1.example.com",
+				"dnslink=/ipns/dns1.example.com", // we must error when >1 value with /ipns or /ipfs exists
 				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD",
-				"masked dnslink=/ipns/example.invalid",
+				"broken dnslink=/ipns/example.invalid",
+			},
+			"_dnslink.multi-valid.example.com.": {
+				"some stuff",
+				"dnslink=/foo/bar", // duplicate dnslink= is fine as long it is not /ipfs or /ipns, which must be unique
+				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD",
+				"broken dnslink=/ipns/example.invalid",
 			},
 			"_dnslink.equals.example.com.": {
 				"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD/=equals",
@@ -165,7 +171,8 @@ func TestDNSResolution(t *testing.T) {
 		{"/ipns/multi.example.com", DefaultDepthLimit, "/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD", nil},
 		{"/ipns/multi.example.com", 1, "/ipns/dns1.example.com", ErrResolveRecursion},
 		{"/ipns/multi.example.com", 2, "/ipns/ipfs.example.com", ErrResolveRecursion},
-		{"/ipns/multivalid.example.com", 2, "", ErrMultipleDNSLinkRecords},
+		{"/ipns/multi-invalid.example.com", 2, "", ErrMultipleDNSLinkRecords},
+		{"/ipns/multi-valid.example.com", DefaultDepthLimit, "/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD", nil},
 		{"/ipns/equals.example.com", DefaultDepthLimit, "/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD/=equals", nil},
 		{"/ipns/loop1.example.com", 1, "/ipns/loop2.example.com", ErrResolveRecursion},
 		{"/ipns/loop1.example.com", 2, "/ipns/loop1.example.com", ErrResolveRecursion},
