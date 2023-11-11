@@ -55,6 +55,7 @@ type downloader struct {
 	buf      bufio.Reader
 	state    []region
 	curBlock []byte
+	readErr  error
 }
 
 // DownloadFile takes in a [cid.Cid] and return an [io.ReadCloser] which streams the deserialized file.
@@ -131,7 +132,13 @@ func loadCidFromBytes(cidBytes []byte) (cid.Cid, error) {
 	return c, nil
 }
 
-func (d *downloader) Read(b []byte) (int, error) {
+func (d *downloader) Read(b []byte) (_ int, err error) {
+	if d.readErr != nil {
+		return 0, d.readErr
+	}
+	defer func() {
+		d.readErr = err
+	}()
 	for len(d.curBlock) == 0 {
 		// have to fill more data in the buffer
 		if len(d.state) == 0 {
