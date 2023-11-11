@@ -239,10 +239,8 @@ func (d *downloader) Read(b []byte) (int, error) {
 				d.state = regions
 			}
 
-			if todo.rangeKnown {
-				if todo.size != filesize {
-					return 0, fmt.Errorf("inconsistent filesize for %s, expected %d; got %d", cidStringTruncate(c), todo.size, filesize)
-				}
+			if todo.rangeKnown && todo.size != filesize {
+				return 0, fmt.Errorf("inconsistent filesize for %s, expected %d; got %d", cidStringTruncate(c), todo.size, filesize)
 			}
 		default:
 			return 0, fmt.Errorf("unknown unixfs type, got %T for %s", node, cidStringTruncate(c))
