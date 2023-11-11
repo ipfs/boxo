@@ -57,6 +57,8 @@ type downloader struct {
 	curBlock []byte
 }
 
+// DownloadFile takes in a [cid.Cid] and return an [io.ReadCloser] which streams the deserialized file.
+// You MUST always call the Close method when you are done using it else it would leak resources.
 func DownloadFile(c cid.Cid) (io.ReadCloser, error) {
 	c = normalizeCidv0(c)
 
@@ -136,13 +138,6 @@ func (d *downloader) Read(b []byte) (int, error) {
 			// no more data remaining
 			return 0, io.EOF
 		}
-
-		var good bool
-		defer func() {
-			if !good {
-				d.Close()
-			}
-		}()
 
 		// pop current item from the DFS stack
 		last := len(d.state) - 1
@@ -245,8 +240,6 @@ func (d *downloader) Read(b []byte) (int, error) {
 		default:
 			return 0, fmt.Errorf("unknown unixfs type, got %T for %s", node, cidStringTruncate(c))
 		}
-
-		good = true
 	}
 
 	n := copy(b, d.curBlock)
