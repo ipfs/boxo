@@ -253,9 +253,6 @@ func (d *downloader) Read(b []byte) (int, error) {
 
 	n := copy(b, d.curBlock)
 	d.curBlock = d.curBlock[n:]
-	if len(d.curBlock) == 0 {
-		d.curBlock = nil // early gc
-	}
 
 	return n, nil
 }
