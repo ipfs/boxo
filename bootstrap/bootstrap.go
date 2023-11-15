@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	logging "github.com/ipfs/go-log"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/jbenet/goprocess"
 	goprocessctx "github.com/jbenet/goprocess/context"
 	periodicproc "github.com/jbenet/goprocess/periodic"
