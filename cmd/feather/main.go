@@ -38,15 +38,20 @@ Example:
 %s bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi`, err, os.Args[0], os.Args[0])
 	}
 
-	r, err := feather.DownloadFile(c)
+	f, err := feather.NewClient(feather.WithStaticGateway("http://localhost:8080/"))
 	if err != nil {
-		return fmt.Errorf("error starting file download: %w", err)
+		return fmt.Errorf("creating feather client: %w", err)
+	}
+
+	r, err := f.DownloadFile(c)
+	if err != nil {
+		return fmt.Errorf("starting file download: %w", err)
 	}
 	defer r.Close()
 
 	_, err = io.Copy(os.Stdout, r)
 	if err != nil {
-		return fmt.Errorf("error downloading file: %w", err)
+		return fmt.Errorf("downloading file: %w", err)
 	}
 	return nil
 }

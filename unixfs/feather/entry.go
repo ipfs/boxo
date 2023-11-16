@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,7 +37,6 @@ func init() {
 	cbor.RegisterCborType(carHeader{})
 }
 
-const gateway = "http://localhost:8080/ipfs/"
 const maxHeaderSize = 32 * 1024 * 1024 // 32MiB
 const maxBlockSize = 2 * 1024 * 1024   // 2MiB
 const maxCidSize = 4096
@@ -58,18 +58,66 @@ type downloader struct {
 	readErr  error
 }
 
+type Client struct {
+	httpClient *http.Client
+	hostname   string
+}
+
+type Option func(*Client) error
+
+// WithHTTPClient allows to use a [http.Client] of your choice.
+func WithHTTPClient(client *http.Client) Option {
+	return func(c *Client) error {
+		c.httpClient = client
+		return nil
+	}
+}
+
+// WithStaticGateway sets a static gateway which will be used for all requests.
+func WithStaticGateway(gateway string) Option {
+	if len(gateway) != 0 && gateway[len(gateway)-1] == '/' {
+		gateway = gateway[:len(gateway)-1]
+	}
+	gateway += "/ipfs/"
+
+	return func(c *Client) error {
+		c.hostname = gateway
+		return nil
+	}
+}
+
+var ErrNoAvailableDataSource = errors.New("no data source")
+
+func NewClient(opts ...Option) (*Client, error) {
+	c := &Client{
+		httpClient: http.DefaultClient,
+	}
+
+	for _, opt := range opts {
+		if err := opt(c); err != nil {
+			return nil, err
+		}
+	}
+
+	if c.hostname == "" {
+		return nil, ErrNoAvailableDataSource
+	}
+
+	return c, nil
+}
+
 // DownloadFile takes in a [cid.Cid] and return an [io.ReadCloser] which streams the deserialized file.
 // You MUST always call the Close method when you are done using it else it would leak resources.
-func DownloadFile(c cid.Cid) (io.ReadCloser, error) {
+func (client *Client) DownloadFile(c cid.Cid) (io.ReadCloser, error) {
 	c = normalizeCidv0(c)
 
-	req, err := http.NewRequest("GET", gateway+c.String()+"?dag-scope=entity", bytes.NewReader(nil))
+	req, err := http.NewRequest("GET", client.hostname+c.String()+"?dag-scope=entity", bytes.NewReader(nil))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Add("Accept", "application/vnd.ipld.car;dups=y;order=dfs;version=1")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
