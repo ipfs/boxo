@@ -215,7 +215,6 @@ func (d *downloader) Read(b []byte) (_ int, err error) {
 			if blockSize > maxBlockSize {
 				return 0, fmt.Errorf("block %s is too big (%d) max %d", cidStringTruncate(c), blockSize, maxBlockSize)
 			}
-			// TODO: fast path read directly into b if len(b) <= blockSize and type is raw
 			data, err = d.buf.Peek(blockSize)
 			if err != nil {
 				if err == io.EOF {
