@@ -228,6 +228,7 @@ func (d *downloader) Read(b []byte) (_ int, err error) {
 			if cidLen > maxCidSize {
 				return 0, fmt.Errorf("cidFound for %s is too big at %d bytes", cidStringTruncate(c), cidLen)
 			}
+			cidFound = normalizeCidv0(cidFound)
 			if cidFound != c {
 				return 0, fmt.Errorf("downloading %s but got %s instead", cidStringTruncate(c), cidStringTruncate(cidFound))
 			}
