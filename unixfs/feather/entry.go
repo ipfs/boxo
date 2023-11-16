@@ -15,7 +15,6 @@ import (
 
 	"github.com/ipfs/boxo/verifcid"
 	"github.com/ipfs/go-cid"
-	cbor "github.com/ipfs/go-ipld-cbor"
 	mh "github.com/multiformats/go-multihash"
 )
 
@@ -26,15 +25,6 @@ func cidStringTruncate(c cid.Cid) string {
 		cidStr = cidStr[:maxCidCharDisplay] + "..."
 	}
 	return cidStr
-}
-
-type carHeader struct {
-	Roots   []cid.Cid
-	Version uint64
-}
-
-func init() {
-	cbor.RegisterCborType(carHeader{})
 }
 
 const maxHeaderSize = 32 * 1024 * 1024 // 32MiB
@@ -142,21 +132,9 @@ func (client *Client) DownloadFile(c cid.Cid) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("header is to big at %d instead of %d", headerSize, maxHeaderSize)
 	}
 
-	b := make([]byte, headerSize)
-	_, err = io.ReadFull(&r.buf, b)
+	_, err = r.buf.Discard(int(headerSize))
 	if err != nil {
 		return nil, err
-	}
-
-	h := carHeader{}
-	err = cbor.DecodeInto(b, &h)
-	if err != nil {
-		return nil, err
-	}
-
-	const supportedVersion = 1
-	if h.Version != supportedVersion {
-		return nil, fmt.Errorf("unsupported version %d instead of %d", h.Version, supportedVersion)
 	}
 
 	good = true
