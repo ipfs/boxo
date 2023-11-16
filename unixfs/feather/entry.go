@@ -40,12 +40,12 @@ type region struct {
 }
 
 type downloader struct {
-	io.Closer
-
 	buf      bufio.Reader
 	state    []region
 	curBlock []byte
 	readErr  error
+	client   *Client
+	stream   io.Closer
 }
 
 type Client struct {
@@ -101,15 +101,30 @@ func NewClient(opts ...Option) (*Client, error) {
 func (client *Client) DownloadFile(c cid.Cid) (io.ReadCloser, error) {
 	c = normalizeCidv0(c)
 
-	req, err := http.NewRequest("GET", client.hostname+c.String()+"?dag-scope=entity", bytes.NewReader(nil))
-	if err != nil {
+	d := &downloader{
+		client: client,
+		state:  []region{{c: c}},
+		buf:    *bufio.NewReaderSize(nil, maxElementSize*2),
+	}
+
+	if err := d.startStream(); err != nil {
 		return nil, err
+	}
+
+	return d, nil
+}
+
+func (d *downloader) startStream() error {
+	next := d.state[len(d.state)-1]
+	req, err := http.NewRequest("GET", d.client.hostname+next.c.String()+"?dag-scope=entity", bytes.NewReader(nil))
+	if err != nil {
+		return err
 	}
 	req.Header.Add("Accept", "application/vnd.ipld.car;dups=y;order=dfs;version=1")
 
-	resp, err := client.httpClient.Do(req)
+	resp, err := d.client.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	var good bool
 	defer func() {
@@ -118,28 +133,25 @@ func (client *Client) DownloadFile(c cid.Cid) (io.ReadCloser, error) {
 		}
 	}()
 
-	r := &downloader{
-		Closer: resp.Body,
-		state:  []region{{c: c}},
-	}
-	r.buf = *bufio.NewReaderSize(resp.Body, maxElementSize*2)
+	d.stream = resp.Body
+	d.buf.Reset(resp.Body)
 
-	headerSize, err := binary.ReadUvarint(&r.buf)
+	headerSize, err := binary.ReadUvarint(&d.buf)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if headerSize > maxHeaderSize {
-		return nil, fmt.Errorf("header is to big at %d instead of %d", headerSize, maxHeaderSize)
+		return fmt.Errorf("header is to big at %d instead of %d", headerSize, maxHeaderSize)
 	}
 
-	_, err = r.buf.Discard(int(headerSize))
+	_, err = d.buf.Discard(int(headerSize))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	good = true
 
-	return r, nil
+	return nil
 }
 
 func loadCidFromBytes(cidBytes []byte) (cid.Cid, error) {
@@ -190,52 +202,9 @@ func (d *downloader) Read(b []byte) (_ int, err error) {
 			if err := verifcid.ValidateCid(verifcid.DefaultAllowlist, c); err != nil {
 				return 0, fmt.Errorf("cid %s don't pass safe test: %w", cidStringTruncate(c), err)
 			}
-			itemLenU, err := binary.ReadUvarint(&d.buf)
+			data, err = d.readBlockFromStream(c)
 			if err != nil {
-				return 0, err
-			}
-			if itemLenU > maxBlockSize+maxCidSize {
-				return 0, fmt.Errorf("item size (%d) for %s exceed maxBlockSize+maxCidSize (%d)", itemLenU, cidStringTruncate(c), maxBlockSize+maxCidSize)
-			}
-			itemLen := int(itemLenU)
-
-			cidLen, cidFound, err := cid.CidFromReader(&d.buf)
-			if err != nil {
-				return 0, fmt.Errorf("trying to read %s failed to read cid: %w", cidStringTruncate(c), err)
-			}
-			if cidLen > maxCidSize {
-				return 0, fmt.Errorf("cidFound for %s is too big at %d bytes", cidStringTruncate(c), cidLen)
-			}
-			cidFound = normalizeCidv0(cidFound)
-			if cidFound != c {
-				return 0, fmt.Errorf("downloading %s but got %s instead", cidStringTruncate(c), cidStringTruncate(cidFound))
-			}
-
-			blockSize := itemLen - cidLen
-			if blockSize > maxBlockSize {
-				return 0, fmt.Errorf("block %s is too big (%d) max %d", cidStringTruncate(c), blockSize, maxBlockSize)
-			}
-			data, err = d.buf.Peek(blockSize)
-			if err != nil {
-				if err == io.EOF {
-					// don't show io.EOF in case peeking is too short
-					err = io.ErrUnexpectedEOF
-				}
-				return 0, fmt.Errorf("peeking at block data for %s verification: %w", cidStringTruncate(c), err)
-			}
-			_, err = d.buf.Discard(len(data))
-			if err != nil {
-				return 0, fmt.Errorf("critical: Discard is supposed to always succeed as long as we don't read less than buffered: %w", err)
-			}
-
-			cidGot, err := pref.Sum(data)
-			if err != nil {
-				return 0, fmt.Errorf("hashing data for %s: %w", cidStringTruncate(c), err)
-			}
-			cidGot = normalizeCidv0(cidGot)
-
-			if cidGot != c {
-				return 0, fmt.Errorf("data integrity failed, expected %s; got %s", cidStringTruncate(c), cidStringTruncate(cidGot))
+				return 0, fmt.Errorf("reading block: %w", err)
 			}
 		}
 
@@ -279,6 +248,63 @@ func (d *downloader) Read(b []byte) (_ int, err error) {
 	d.curBlock = d.curBlock[n:]
 
 	return n, nil
+}
+
+// readBlockFromStream must return a hash checked block.
+func (d *downloader) readBlockFromStream(expectedCid cid.Cid) ([]byte, error) {
+	itemLenU, err := binary.ReadUvarint(&d.buf)
+	if err != nil {
+		return nil, err
+	}
+	if itemLenU > maxBlockSize+maxCidSize {
+		return nil, fmt.Errorf("item size (%d) for %s exceed maxBlockSize+maxCidSize (%d)", itemLenU, cidStringTruncate(expectedCid), maxBlockSize+maxCidSize)
+	}
+	itemLen := int(itemLenU)
+
+	cidLen, cidFound, err := cid.CidFromReader(&d.buf)
+	if err != nil {
+		return nil, fmt.Errorf("trying to read %s failed to read cid: %w", cidStringTruncate(expectedCid), err)
+	}
+	if cidLen > maxCidSize {
+		return nil, fmt.Errorf("cidFound for %s is too big at %d bytes", cidStringTruncate(expectedCid), cidLen)
+	}
+	cidFound = normalizeCidv0(cidFound)
+	if cidFound != expectedCid {
+		return nil, fmt.Errorf("downloading %s but got %s instead", cidStringTruncate(expectedCid), cidStringTruncate(cidFound))
+	}
+
+	blockSize := itemLen - cidLen
+	if blockSize > maxBlockSize {
+		return nil, fmt.Errorf("block %s is too big (%d) max %d", cidStringTruncate(expectedCid), blockSize, maxBlockSize)
+	}
+	data, err := d.buf.Peek(blockSize)
+	if err != nil {
+		if err == io.EOF {
+			// don't show io.EOF in case peeking is too short
+			err = io.ErrUnexpectedEOF
+		}
+		return nil, fmt.Errorf("peeking at block data for %s verification: %w", cidStringTruncate(expectedCid), err)
+	}
+	_, err = d.buf.Discard(len(data))
+	if err != nil {
+		return nil, fmt.Errorf("critical: Discard is supposed to always succeed as long as we don't read less than buffered: %w", err)
+	}
+
+	cidGot, err := expectedCid.Prefix().Sum(data)
+	if err != nil {
+		return nil, fmt.Errorf("hashing data for %s: %w", cidStringTruncate(expectedCid), err)
+	}
+	cidGot = normalizeCidv0(cidGot)
+
+	if cidGot != expectedCid {
+		return nil, fmt.Errorf("data integrity failed, expected %s; got %s", cidStringTruncate(expectedCid), cidStringTruncate(cidGot))
+	}
+
+	return data, nil
+}
+
+func (d *downloader) Close() error {
+	return d.stream.Close()
 }
 
 func normalizeCidv0(c cid.Cid) cid.Cid {
