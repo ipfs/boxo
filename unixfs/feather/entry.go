@@ -11,12 +11,11 @@ import (
 	"net/http"
 
 	"github.com/ipfs/boxo/unixfs"
-	blocks "github.com/ipfs/go-block-format"
-	"golang.org/x/exp/slices"
-
 	"github.com/ipfs/boxo/verifcid"
+	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	mh "github.com/multiformats/go-multihash"
+	"golang.org/x/exp/slices"
 )
 
 func cidStringTruncate(c cid.Cid) string {
