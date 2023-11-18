@@ -110,15 +110,13 @@ func NewClient(opts ...Option) (*Client, error) {
 // DownloadFile takes in a [cid.Cid] and return an [io.ReadCloser] which streams the deserialized file.
 // You MUST always call the Close method when you are done using it else it would leak resources.
 func (client *Client) DownloadFile(c cid.Cid) (io.ReadCloser, error) {
-	c = normalizeCidv0(c)
-
 	attempts := client.retries
 	if attempts != math.MaxUint {
 		attempts++
 	}
 	d := &downloader{
 		client:            client,
-		state:             []region{{c: c}},
+		state:             []region{{c: normalizeCidv0(c)}},
 		buf:               *bufio.NewReaderSize(nil, maxElementSize*2),
 		remainingAttempts: attempts,
 	}
@@ -202,7 +200,6 @@ func (d *downloader) Read(b []byte) (_ int, err error) {
 
 		var data []byte
 		c := todo.c
-		c = normalizeCidv0(c)
 
 		pref := c.Prefix()
 		switch pref.MhType {
@@ -235,7 +232,7 @@ func (d *downloader) Read(b []byte) (_ int, err error) {
 				for i := len(childs); i > 0; {
 					i--
 					regions = append(regions, region{
-						c:          childs[i].Cid,
+						c:          normalizeCidv0(childs[i].Cid),
 						size:       childs[i].FileSize,
 						rangeKnown: true,
 					})
