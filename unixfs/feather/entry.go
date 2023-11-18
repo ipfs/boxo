@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 
 	"github.com/ipfs/boxo/unixfs"
@@ -40,17 +41,19 @@ type region struct {
 }
 
 type downloader struct {
-	buf      bufio.Reader
-	state    []region
-	curBlock []byte
-	readErr  error
-	client   *Client
-	stream   io.Closer
+	buf               bufio.Reader
+	state             []region
+	curBlock          []byte
+	readErr           error
+	client            *Client
+	remainingAttempts uint
+	stream            io.Closer
 }
 
 type Client struct {
 	httpClient *http.Client
 	hostname   string
+	retries    uint
 }
 
 type Option func(*Client) error
@@ -59,6 +62,15 @@ type Option func(*Client) error
 func WithHTTPClient(client *http.Client) Option {
 	return func(c *Client) error {
 		c.httpClient = client
+		return nil
+	}
+}
+
+// WithRetries allows to specify how many times we should retry.
+// [math.MaxUint] indicate infinite.
+func WithRetries(n uint) Option {
+	return func(c *Client) error {
+		c.retries = n
 		return nil
 	}
 }
@@ -101,22 +113,22 @@ func NewClient(opts ...Option) (*Client, error) {
 func (client *Client) DownloadFile(c cid.Cid) (io.ReadCloser, error) {
 	c = normalizeCidv0(c)
 
-	d := &downloader{
-		client: client,
-		state:  []region{{c: c}},
-		buf:    *bufio.NewReaderSize(nil, maxElementSize*2),
+	attempts := client.retries
+	if attempts != math.MaxUint {
+		attempts++
 	}
-
-	if err := d.startStream(); err != nil {
-		return nil, err
+	d := &downloader{
+		client:            client,
+		state:             []region{{c: c}},
+		buf:               *bufio.NewReaderSize(nil, maxElementSize*2),
+		remainingAttempts: attempts,
 	}
 
 	return d, nil
 }
 
-func (d *downloader) startStream() error {
-	next := d.state[len(d.state)-1]
-	req, err := http.NewRequest("GET", d.client.hostname+next.c.String()+"?dag-scope=entity", bytes.NewReader(nil))
+func (d *downloader) startStream(todo region) error {
+	req, err := http.NewRequest("GET", d.client.hostname+todo.c.String()+"?dag-scope=entity", bytes.NewReader(nil))
 	if err != nil {
 		return err
 	}
@@ -129,7 +141,7 @@ func (d *downloader) startStream() error {
 	var good bool
 	defer func() {
 		if !good {
-			resp.Body.Close()
+			d.Close()
 		}
 	}()
 
@@ -202,9 +214,23 @@ func (d *downloader) Read(b []byte) (_ int, err error) {
 			if err := verifcid.ValidateCid(verifcid.DefaultAllowlist, c); err != nil {
 				return 0, fmt.Errorf("cid %s don't pass safe test: %w", cidStringTruncate(c), err)
 			}
-			data, err = d.readBlockFromStream(c)
-			if err != nil {
-				return 0, fmt.Errorf("reading block: %w", err)
+			var errStartStream, errRead error
+			for {
+				if d.stream == nil {
+					if attempts := d.remainingAttempts; attempts != math.MaxUint {
+						if attempts == 0 {
+							return 0, errors.Join(errRead, errStartStream)
+						}
+						d.remainingAttempts = attempts - 1
+					}
+					errStartStream = d.startStream(todo)
+				}
+				data, errRead = d.readBlockFromStream(c)
+				if errRead == nil {
+					break
+				}
+				d.stream.Close()
+				d.stream = nil
 			}
 		}
 
@@ -250,7 +276,9 @@ func (d *downloader) Read(b []byte) (_ int, err error) {
 	return n, nil
 }
 
-// readBlockFromStream must return a hash checked block.
+// readBlockFromStream must perform hash verification on the input.
+// The slice returned only has to be valid between two readBlockFromStream and Close calls.
+// Implementations should reuse buffers to avoid allocations.
 func (d *downloader) readBlockFromStream(expectedCid cid.Cid) ([]byte, error) {
 	itemLenU, err := binary.ReadUvarint(&d.buf)
 	if err != nil {
@@ -304,7 +332,11 @@ func (d *downloader) readBlockFromStream(expectedCid cid.Cid) ([]byte, error) {
 }
 
 func (d *downloader) Close() error {
-	return d.stream.Close()
+	if s := d.stream; s != nil {
+		d.stream = nil
+		return s.Close()
+	}
+	return nil
 }
 
 func normalizeCidv0(c cid.Cid) cid.Cid {
