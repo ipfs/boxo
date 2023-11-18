@@ -46,7 +46,6 @@ func newGateway(t *testing.T, fixture string) (*httptest.Server, cid.Cid) {
 
 	ts := httptest.NewServer(handler)
 	t.Cleanup(func() { ts.Close() })
-	t.Logf("test server url: %s", ts.URL)
 
 	return ts, cids[0]
 }

@@ -210,26 +210,9 @@ func (d *downloader) Read(b []byte) (_ int, err error) {
 			data = c.Hash()
 			data = data[len(data)-pref.MhLength:] // extract digest
 		default:
-			if err := verifcid.ValidateCid(verifcid.DefaultAllowlist, c); err != nil {
-				return 0, fmt.Errorf("cid %s don't pass safe test: %w", cidStringTruncate(c), err)
-			}
-			var errStartStream, errRead error
-			for {
-				if d.stream == nil {
-					if attempts := d.remainingAttempts; attempts != math.MaxUint {
-						if attempts == 0 {
-							return 0, errors.Join(errRead, errStartStream)
-						}
-						d.remainingAttempts = attempts - 1
-					}
-					errStartStream = d.startStream(todo)
-				}
-				data, errRead = d.readBlockFromStream(c)
-				if errRead == nil {
-					break
-				}
-				d.stream.Close()
-				d.stream = nil
+			data, err = d.next(todo)
+			if err != nil {
+				return 0, err
 			}
 		}
 
@@ -273,6 +256,34 @@ func (d *downloader) Read(b []byte) (_ int, err error) {
 	d.curBlock = d.curBlock[n:]
 
 	return n, nil
+}
+
+// next download the next block, it also handles performing retries if needed.
+// The data return is hash correct.
+func (d *downloader) next(todo region) ([]byte, error) {
+	c := todo.c
+	if err := verifcid.ValidateCid(verifcid.DefaultAllowlist, c); err != nil {
+		return nil, fmt.Errorf("cid %s don't pass safe test: %w", cidStringTruncate(c), err)
+	}
+	var errStartStream, errRead error
+	for {
+		if d.stream == nil {
+			if attempts := d.remainingAttempts; attempts != math.MaxUint {
+				if attempts == 0 {
+					return nil, fmt.Errorf("could not download next block: %w", errors.Join(errRead, errStartStream))
+				}
+				d.remainingAttempts = attempts - 1
+			}
+			errStartStream = d.startStream(todo)
+		}
+		var data []byte
+		data, errRead = d.readBlockFromStream(c)
+		if errRead == nil {
+			return data, nil
+		}
+		d.stream.Close()
+		d.stream = nil
+	}
 }
 
 // readBlockFromStream must perform hash verification on the input.
