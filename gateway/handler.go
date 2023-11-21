@@ -912,13 +912,11 @@ func (i *handler) handleSuperfluousNamespace(w http.ResponseWriter, r *http.Requ
 	// - redirects to intendedURL after a short delay
 
 	w.WriteHeader(http.StatusBadRequest)
-	if err := redirectTemplate.Execute(w, redirectTemplateData{
+	_ = redirectTemplate.Execute(w, redirectTemplateData{
 		RedirectURL:   intendedURL,
 		SuggestedPath: intendedPath.String(),
 		ErrorMsg:      fmt.Sprintf("invalid path: %q should be %q", r.URL.Path, intendedPath.String()),
-	}); err != nil {
-		i.webError(w, r, fmt.Errorf("failed to redirect when fixing superfluous namespace: %w", err), http.StatusBadRequest)
-	}
+	})
 
 	return true
 }

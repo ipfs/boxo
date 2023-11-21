@@ -157,11 +157,7 @@ func runTemplate(w http.ResponseWriter, filename string, data interface{}) {
 		http.Error(w, fmt.Sprintf("failed to parse template file: %s", err), http.StatusInternalServerError)
 		return
 	}
-	err = tpl.Execute(w, data)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to execute template: %s", err), http.StatusInternalServerError)
-		return
-	}
+	_ = tpl.Execute(w, data)
 }
 
 func main() {

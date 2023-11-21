@@ -212,7 +212,6 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	rq.logger.Debugw("request processed", "tplDataDNSLink", globalData.DNSLink, "tplDataSize", size, "tplDataBackLink", backLink, "tplDataHash", hash)
 
 	if err := assets.DirectoryTemplate.Execute(w, tplData); err != nil {
-		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
 	}
 
