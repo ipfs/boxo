@@ -159,8 +159,7 @@ func runTemplate(w http.ResponseWriter, filename string, data interface{}) {
 	}
 	err = tpl.Execute(w, data)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to execute template: %s", err), http.StatusInternalServerError)
-		return
+		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
 	}
 }
 

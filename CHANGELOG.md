@@ -27,7 +27,9 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-* `boxo/gateway`: a panic (which is recovered) could sporadically be triggered inside a CAR request, if the right [conditions were met](https://github.com/ipfs/boxo/pull/511). 
+* `boxo/gateway`
+  * a panic (which is recovered) could sporadically be triggered inside a CAR request, if the right [conditions were met](https://github.com/ipfs/boxo/pull/511). 
+  * no longer emits `http: superfluous response.WriteHeader` warnings when an error happens.
 
 ### Security
 

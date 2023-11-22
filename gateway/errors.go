@@ -165,7 +165,7 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 	if acceptsHTML {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(code)
-		_ = assets.ErrorTemplate.Execute(w, assets.ErrorTemplateData{
+		err = assets.ErrorTemplate.Execute(w, assets.ErrorTemplateData{
 			GlobalData: assets.GlobalData{
 				Menu: c.Menu,
 			},
@@ -173,6 +173,9 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 			StatusText: http.StatusText(code),
 			Error:      err.Error(),
 		})
+		if err != nil {
+			_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
+		}
 	} else {
 		http.Error(w, err.Error(), code)
 	}
