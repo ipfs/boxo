@@ -44,14 +44,21 @@ var log = logging.Logger("bitswap-client")
 // bitswap instances
 type Option func(*Client)
 
-// ProviderSearchDelay overwrites the global provider search delay
+// ProviderSearchDelay sets the initial dely before triggering a provider
+// search to find more peers and broadcast the want list. It also partially
+// controls re-broadcasts delay when the session idles (does not receive any
+// blocks), but these have back-off logic to increase the interval. See
+// [defaults.ProvSearchDelay] for the default.
 func ProviderSearchDelay(newProvSearchDelay time.Duration) Option {
 	return func(bs *Client) {
 		bs.provSearchDelay = newProvSearchDelay
 	}
 }
 
-// RebroadcastDelay overwrites the global provider rebroadcast delay
+// RebroadcastDelay sets a custom delay for periodic search of a random want.
+// When the value ellapses, a random CID from the wantlist is chosen and the
+// client attempts to find more peers for it and sends them the single want.
+// [defaults.RebroadcastDelay] for the default.
 func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
 	return func(bs *Client) {
 		bs.rebroadcastDelay = newRebroadcastDelay
@@ -168,7 +175,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		dupMetric:                  bmetrics.DupHist(ctx),
 		allMetric:                  bmetrics.AllHist(ctx),
 		provSearchDelay:            defaults.ProvSearchDelay,
-		rebroadcastDelay:           delay.Fixed(time.Minute),
+		rebroadcastDelay:           delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout: true,
 	}
 
