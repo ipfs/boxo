@@ -157,7 +157,10 @@ func runTemplate(w http.ResponseWriter, filename string, data interface{}) {
 		http.Error(w, fmt.Sprintf("failed to parse template file: %s", err), http.StatusInternalServerError)
 		return
 	}
-	_ = tpl.Execute(w, data)
+	err = tpl.Execute(w, data)
+	if err != nil {
+		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
+	}
 }
 
 func main() {
