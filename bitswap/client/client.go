@@ -175,7 +175,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		dupMetric:                  bmetrics.DupHist(ctx),
 		allMetric:                  bmetrics.AllHist(ctx),
 		provSearchDelay:            defaults.ProvSearchDelay,
-		rebroadcastDelay:           delay.Fixed(time.Minute),
+		rebroadcastDelay:           delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout: true,
 	}
 
