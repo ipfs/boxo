@@ -1,6 +1,7 @@
 package files
 
 import (
+	"fmt"
 	"os"
 
 	ignore "github.com/crackcomm/go-gitignore"
@@ -44,6 +45,9 @@ func (filter *Filter) ShouldExclude(fileInfo os.FileInfo) (result bool) {
 	path := fileInfo.Name()
 	if !filter.IncludeHidden && isHidden(fileInfo) {
 		return true
+	}
+	if fileInfo.IsDir() {
+		path = fmt.Sprintf("%s/", path)
 	}
 	return filter.Rules.MatchesPath(path)
 }
