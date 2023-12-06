@@ -195,20 +195,19 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 	w.Header().Del("Cache-Control")
 
 	cidCodec := mc.Code(resolvedPath.RootCid().Prefix().Codec)
-	if err := assets.DagTemplate.Execute(w, assets.DagTemplateData{
+	err = assets.DagTemplate.Execute(w, assets.DagTemplateData{
 		GlobalData: i.getTemplateGlobalData(r, contentPath),
 		Path:       contentPath.String(),
 		CID:        resolvedPath.RootCid().String(),
 		CodecName:  cidCodec.String(),
 		CodecHex:   fmt.Sprintf("0x%x", uint64(cidCodec)),
 		Node:       parseNode(blockCid, blockData),
-	}); err != nil {
-		err = fmt.Errorf("failed to generate HTML listing for this DAG: try fetching raw block with ?format=raw: %w", err)
-		i.webError(w, r, err, http.StatusInternalServerError)
-		return false
+	})
+	if err != nil {
+		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
 	}
 
-	return true
+	return err == nil
 }
 
 // parseNode does a best effort attempt to parse this request's block such that

@@ -770,16 +770,6 @@ func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
-	// if Accept is text/html, see if ipfs-404.html is present
-	// This logic isn't documented and will likely be removed at some point.
-	// Any 404 logic in _redirects above will have already run by this time, so it's really an extra fall back
-	// PLEASE do not use this for new websites,
-	// follow https://docs.ipfs.tech/how-to/websites-on-ipfs/redirects-and-custom-404s/ instead.
-	if i.serveLegacy404IfPresent(w, r, immutableContentPath, logger) {
-		logger.Debugw("served legacy 404")
-		return path.ImmutablePath{}, false
-	}
-
 	err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 	i.webError(w, r, err, http.StatusInternalServerError)
 	return path.ImmutablePath{}, false
@@ -922,12 +912,13 @@ func (i *handler) handleSuperfluousNamespace(w http.ResponseWriter, r *http.Requ
 	// - redirects to intendedURL after a short delay
 
 	w.WriteHeader(http.StatusBadRequest)
-	if err := redirectTemplate.Execute(w, redirectTemplateData{
+	err = redirectTemplate.Execute(w, redirectTemplateData{
 		RedirectURL:   intendedURL,
 		SuggestedPath: intendedPath.String(),
 		ErrorMsg:      fmt.Sprintf("invalid path: %q should be %q", r.URL.Path, intendedPath.String()),
-	}); err != nil {
-		i.webError(w, r, fmt.Errorf("failed to redirect when fixing superfluous namespace: %w", err), http.StatusBadRequest)
+	})
+	if err != nil {
+		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
 	}
 
 	return true

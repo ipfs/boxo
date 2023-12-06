@@ -20,9 +20,25 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+### Security
+
+## [v0.16.0]
+
+### Changed
+
+* 🛠 `boxo/namesys`: now fails when multiple valid DNSLink entries are found for the same domain. This used to cause undefined behavior before. Now, we return an error, according to the [specification](https://dnslink.dev/).
+
+### Removed
+
+* 🛠 `boxo/gateway`: removed support for undocumented legacy `ipfs-404.html`. Use [`_redirects`](https://specs.ipfs.tech/http-gateways/web-redirects-file/) instead.
+* 🛠 `boxo/namesys`: removed support for legacy DNSLink entries at the root of the domain. Use [`_dnslink.` TXT record](https://docs.ipfs.tech/concepts/dnslink/) instead.
+* 🛠 `boxo/coreapi`, an intrinsic part of Kubo, has been removed and moved to `kubo/core/coreiface`.
+
 ### Fixed
 
-### Security
+* `boxo/gateway`
+  * a panic (which is recovered) could sporadically be triggered inside a CAR request, if the right [conditions were met](https://github.com/ipfs/boxo/pull/511). 
+  * no longer emits `http: superfluous response.WriteHeader` warnings when an error happens.
 
 ## [v0.15.0]
 

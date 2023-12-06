@@ -12,6 +12,7 @@ import (
 	path "github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 	dns "github.com/miekg/dns"
+	"github.com/samber/lo"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -69,61 +70,31 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, p path.Path, options
 		fqdn += "."
 	}
 
-	rootChan := make(chan AsyncResult, 1)
-	go workDomain(ctx, r, fqdn, rootChan)
-
-	subChan := make(chan AsyncResult, 1)
-	go workDomain(ctx, r, "_dnslink."+fqdn, subChan)
+	resChan := make(chan AsyncResult, 1)
+	go workDomain(ctx, r, "_dnslink."+fqdn, resChan)
 
 	go func() {
 		defer close(out)
 		ctx, span := startSpan(ctx, "DNSResolver.ResolveOnceAsync.Worker")
 		defer span.End()
 
-		var rootResErr, subResErr error
-		for {
-			select {
-			case subRes, ok := <-subChan:
-				if !ok {
-					subChan = nil
-					break
-				}
-				if subRes.Err == nil {
-					p, err := joinPaths(subRes.Path, p)
-					emitOnceResult(ctx, out, AsyncResult{Path: p, LastMod: time.Now(), Err: err})
-					// Return without waiting for rootRes, since this result
-					// (for "_dnslink."+fqdn) takes precedence
-					return
-				}
-				subResErr = subRes.Err
-			case rootRes, ok := <-rootChan:
-				if !ok {
-					rootChan = nil
-					break
-				}
-				if rootRes.Err == nil {
-					p, err := joinPaths(rootRes.Path, p)
-					emitOnceResult(ctx, out, AsyncResult{Path: p, LastMod: time.Now(), Err: err})
-					// Do not return here.  Wait for subRes so that it is
-					// output last if good, thereby giving subRes precedence.
-				} else {
-					rootResErr = rootRes.Err
-				}
-			case <-ctx.Done():
-				return
+		select {
+		case subRes, ok := <-resChan:
+			if !ok {
+				break
 			}
-			if subChan == nil && rootChan == nil {
-				// If here, then both lookups are done
-				//
-				// If both lookups failed due to no TXT records with a
-				// dnslink, then output a more specific error message
-				if rootResErr == ErrResolveFailed && subResErr == ErrResolveFailed {
-					// Wrap error so that it can be tested if it is a ErrResolveFailed
-					err := fmt.Errorf("%w: _dnslink subdomain at %q is missing a TXT record (https://docs.ipfs.tech/concepts/dnslink/)", ErrResolveFailed, gopath.Base(fqdn))
-					emitOnceResult(ctx, out, AsyncResult{Err: err})
-				}
-				return
+			if subRes.Err == nil {
+				p, err := joinPaths(subRes.Path, p)
+				emitOnceResult(ctx, out, AsyncResult{Path: p, LastMod: time.Now(), Err: err})
+				// Return without waiting for rootRes, since this result
+				// (for "_dnslink."+fqdn) takes precedence
+			} else {
+				err := fmt.Errorf("DNSLink lookup for %q failed: %w", gopath.Base(fqdn), subRes.Err)
+				emitOnceResult(ctx, out, AsyncResult{Err: err})
 			}
+			return
+		case <-ctx.Done():
+			return
 		}
 	}()
 
@@ -138,11 +109,12 @@ func workDomain(ctx context.Context, r *DNSResolver, name string, res chan Async
 
 	txt, err := r.lookupTXT(ctx, name)
 	if err != nil {
-		if dnsErr, ok := err.(*net.DNSError); ok {
+		var dnsErr *net.DNSError
+		if errors.As(err, &dnsErr) {
 			// If no TXT records found, return same error as when no text
 			// records contain dnslink. Otherwise, return the actual error.
 			if dnsErr.IsNotFound {
-				err = ErrResolveFailed
+				err = ErrMissingDNSLinkRecord
 			}
 		}
 		// Could not look up any text records for name
@@ -150,16 +122,32 @@ func workDomain(ctx context.Context, r *DNSResolver, name string, res chan Async
 		return
 	}
 
+	// Convert all the found TXT records into paths. Ignore invalid ones.
+	var paths []path.Path
 	for _, t := range txt {
 		p, err := parseEntry(t)
 		if err == nil {
-			res <- AsyncResult{Path: p}
-			return
+			paths = append(paths, p)
 		}
 	}
 
-	// There were no TXT records with a dnslink
-	res <- AsyncResult{Err: ErrResolveFailed}
+	// Filter only the IPFS and IPNS paths.
+	paths = lo.Filter(paths, func(item path.Path, index int) bool {
+		return item.Namespace() == path.IPFSNamespace ||
+			item.Namespace() == path.IPNSNamespace
+	})
+
+	switch len(paths) {
+	case 0:
+		// There were no TXT records with a dnslink
+		res <- AsyncResult{Err: ErrMissingDNSLinkRecord}
+	case 1:
+		// Found 1 valid! Return it.
+		res <- AsyncResult{Path: paths[0]}
+	default:
+		// Found more than 1 IPFS/IPNS path.
+		res <- AsyncResult{Err: ErrMultipleDNSLinkRecords}
+	}
 }
 
 func parseEntry(txt string) (path.Path, error) {
