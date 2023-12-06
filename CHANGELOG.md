@@ -18,6 +18,14 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+### Removed
+
+### Security
+
+## [v0.16.0]
+
+### Changed
+
 * 🛠 `boxo/namesys`: now fails when multiple valid DNSLink entries are found for the same domain. This used to cause undefined behavior before. Now, we return an error, according to the [specification](https://dnslink.dev/).
 
 ### Removed
@@ -31,8 +39,6 @@ The following emojis are used to highlight certain changes:
 * `boxo/gateway`
   * a panic (which is recovered) could sporadically be triggered inside a CAR request, if the right [conditions were met](https://github.com/ipfs/boxo/pull/511). 
   * no longer emits `http: superfluous response.WriteHeader` warnings when an error happens.
-
-### Security
 
 ## [v0.15.0]
 
