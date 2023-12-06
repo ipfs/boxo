@@ -22,7 +22,7 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 
 	setIpfsRootsHeader(w, rq, &pathMetadata)
 
-	blockCid := pathMetadata.LastSegment.Cid()
+	blockCid := pathMetadata.LastSegment.RootCid()
 
 	// Set Content-Disposition
 	var name string
@@ -34,13 +34,23 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	setContentDispositionHeader(w, name, "attachment")
 
 	// Set remaining headers
-	modtime := addCacheControlHeaders(w, r, rq.contentPath, blockCid, rawResponseFormat)
+	modtime := addCacheControlHeaders(w, r, rq.contentPath, rq.ttl, rq.lastMod, blockCid, rawResponseFormat)
 	w.Header().Set("Content-Type", rawResponseFormat)
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
+	sz, err := data.Size()
+	if err != nil {
+		i.handleRequestErrors(w, r, rq.contentPath, err)
+		return false
+	}
+
+	if !i.seekToStartOfFirstRange(w, r, data) {
+		return false
+	}
+
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
-	_, dataSent, _ := serveContent(w, r, name, modtime, data)
+	_, dataSent, _ := serveContent(w, r, modtime, sz, data)
 
 	if dataSent {
 		// Update metrics

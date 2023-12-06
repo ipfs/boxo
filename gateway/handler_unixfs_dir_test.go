@@ -6,8 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	ipath "github.com/ipfs/boxo/coreiface/path"
-	path "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,13 +18,17 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	defer cancel()
 
 	// create /ipns/example.net/foo/
-	k2, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "foo? #<'"))
+	p2, err := path.Join(path.FromCid(root), "foo? #<'")
+	require.NoError(t, err)
+	k2, err := backend.resolvePathNoRootsReturned(ctx, p2)
 	require.NoError(t, err)
 
-	k3, err := backend.resolvePathNoRootsReturned(ctx, ipath.Join(ipath.IpfsPath(root), "foo? #<'/bar"))
+	p3, err := path.Join(path.FromCid(root), "foo? #<'/bar")
+	require.NoError(t, err)
+	k3, err := backend.resolvePathNoRootsReturned(ctx, p3)
 	require.NoError(t, err)
 
-	backend.namesys["/ipns/example.net"] = path.FromCid(root)
+	backend.namesys["/ipns/example.net"] = newMockNamesysItem(path.FromCid(root), 0)
 
 	// make request to directory listing
 	req := mustNewRequest(t, http.MethodGet, ts.URL+"/foo%3F%20%23%3C%27/", nil)
@@ -44,7 +47,7 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	require.Contains(t, s, "<a class=\"ipfs-hash\" translate=\"no\" href=\"https://cid.ipfs.tech/#", "expected links to cid.ipfs.tech in CID column when on DNSLink website")
 	require.Contains(t, s, "<a href=\"/foo%3F%20%23%3C%27/..\">", "expected backlink in directory listing")
 	require.Contains(t, s, "<a href=\"/foo%3F%20%23%3C%27/file.txt\">", "expected file in directory listing")
-	require.Contains(t, s, s, k2.Cid().String(), "expected hash in directory listing")
+	require.Contains(t, s, s, k2.RootCid().String(), "expected hash in directory listing")
 
 	// make request to directory listing at root
 	req = mustNewRequest(t, http.MethodGet, ts.URL, nil)
@@ -83,5 +86,5 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 	require.True(t, matchPathOrBreadcrumbs(s, "/ipns/<a href=\"//example.net/\">example.net</a>/<a href=\"//example.net/foo%3F%20%23%3C%27\">foo? #&lt;&#39;</a>/<a href=\"//example.net/foo%3F%20%23%3C%27/bar\">bar</a>"), "expected a path in directory listing")
 	require.Contains(t, s, "<a href=\"/foo%3F%20%23%3C%27/bar/..\">", "expected backlink in directory listing")
 	require.Contains(t, s, "<a href=\"/foo%3F%20%23%3C%27/bar/file.txt\">", "expected file in directory listing")
-	require.Contains(t, s, k3.Cid().String(), "expected hash in directory listing")
+	require.Contains(t, s, k3.RootCid().String(), "expected hash in directory listing")
 }

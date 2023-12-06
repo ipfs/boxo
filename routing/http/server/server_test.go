@@ -10,9 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/ipns"
-	ipfspath "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
@@ -169,7 +168,7 @@ func TestPeers(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
-		results := iter.FromSlice([]iter.Result[types.Record]{
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
@@ -204,7 +203,7 @@ func TestPeers(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
-		results := iter.FromSlice([]iter.Result[types.Record]{
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
@@ -242,11 +241,11 @@ func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
 }
 
 func makeIPNSRecord(t *testing.T, cid cid.Cid, sk crypto.PrivKey, opts ...ipns.Option) (*ipns.Record, []byte) {
-	path := path.IpfsPath(cid)
+	path := path.FromCid(cid)
 	eol := time.Now().Add(time.Hour * 48)
 	ttl := time.Second * 20
 
-	record, err := ipns.NewRecord(sk, ipfspath.FromString(path.String()), 1, eol, ttl, opts...)
+	record, err := ipns.NewRecord(sk, path, 1, eol, ttl, opts...)
 	require.NoError(t, err)
 
 	rawRecord, err := ipns.MarshalRecord(record)
@@ -375,9 +374,9 @@ func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *BitswapWrit
 	return args.Get(0).(time.Duration), args.Error(1)
 }
 
-func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.Record], error) {
+func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[*types.PeerRecord], error) {
 	args := m.Called(ctx, pid, limit)
-	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
+	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
 func (m *mockContentRouter) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {

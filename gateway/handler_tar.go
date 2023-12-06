@@ -28,10 +28,10 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	defer file.Close()
 
 	setIpfsRootsHeader(w, rq, &pathMetadata)
-	rootCid := pathMetadata.LastSegment.Cid()
+	rootCid := pathMetadata.LastSegment.RootCid()
 
 	// Set Cache-Control and read optional Last-Modified time
-	modtime := addCacheControlHeaders(w, r, rq.contentPath, rootCid, tarResponseFormat)
+	modtime := addCacheControlHeaders(w, r, rq.contentPath, rq.ttl, rq.lastMod, rootCid, tarResponseFormat)
 
 	// Set Content-Disposition
 	var name string

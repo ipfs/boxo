@@ -164,8 +164,14 @@ func TestValidate(t *testing.T) {
 
 		v := Validator{}
 
-		rec1 := mustNewRecord(t, sk, path.FromString("/path/1"), 1, eol, 0, WithV1Compatibility(true))
-		rec2 := mustNewRecord(t, sk, path.FromString("/path/2"), 2, eol, 0, WithV1Compatibility(true))
+		path1, err := path.Join(testPath, "1")
+		require.NoError(t, err)
+
+		path2, err := path.Join(testPath, "2")
+		require.NoError(t, err)
+
+		rec1 := mustNewRecord(t, sk, path1, 1, eol, 0, WithV1Compatibility(true))
+		rec2 := mustNewRecord(t, sk, path2, 2, eol, 0, WithV1Compatibility(true))
 
 		best, err := v.Select(ipnsRoutingKey, [][]byte{mustMarshal(t, rec1), mustMarshal(t, rec2)})
 		require.NoError(t, err)
@@ -210,8 +216,10 @@ func TestValidate(t *testing.T) {
 		sk, pk, _ := mustKeyPair(t, ic.RSA)
 
 		// Create a record that is too large (value + other fields).
-		value := make([]byte, MaxRecordSize)
-		rec, err := NewRecord(sk, path.FromString(string(value)), 1, eol, 0)
+		path, err := path.Join(testPath, string(make([]byte, MaxRecordSize)))
+		require.NoError(t, err)
+
+		rec, err := NewRecord(sk, path, 1, eol, 0)
 		require.NoError(t, err)
 
 		err = Validate(rec, pk)

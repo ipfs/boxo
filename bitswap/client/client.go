@@ -44,14 +44,21 @@ var log = logging.Logger("bitswap-client")
 // bitswap instances
 type Option func(*Client)
 
-// ProviderSearchDelay overwrites the global provider search delay
+// ProviderSearchDelay sets the initial dely before triggering a provider
+// search to find more peers and broadcast the want list. It also partially
+// controls re-broadcasts delay when the session idles (does not receive any
+// blocks), but these have back-off logic to increase the interval. See
+// [defaults.ProvSearchDelay] for the default.
 func ProviderSearchDelay(newProvSearchDelay time.Duration) Option {
 	return func(bs *Client) {
 		bs.provSearchDelay = newProvSearchDelay
 	}
 }
 
-// RebroadcastDelay overwrites the global provider rebroadcast delay
+// RebroadcastDelay sets a custom delay for periodic search of a random want.
+// When the value ellapses, a random CID from the wantlist is chosen and the
+// client attempts to find more peers for it and sends them the single want.
+// [defaults.RebroadcastDelay] for the default.
 func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
 	return func(bs *Client) {
 		bs.rebroadcastDelay = newRebroadcastDelay
@@ -76,6 +83,19 @@ func WithTracer(tap tracer.Tracer) Option {
 func WithBlockReceivedNotifier(brn BlockReceivedNotifier) Option {
 	return func(bs *Client) {
 		bs.blockReceivedNotifier = brn
+	}
+}
+
+// WithoutDuplicatedBlockStats disable collecting counts of duplicated blocks
+// received. This counter requires triggering a blockstore.Has() call for
+// every block received by launching goroutines in parallel. In the worst case
+// (no caching/blooms etc), this is an expensive call for the datastore to
+// answer. In a normal case (caching), this has the power of evicting a
+// different block from intermediary caches. In the best case, it doesn't
+// affect performance. Use if this stat is not relevant.
+func WithoutDuplicatedBlockStats() Option {
+	return func(bs *Client) {
+		bs.skipDuplicatedBlocksStats = true
 	}
 }
 
@@ -155,7 +175,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		dupMetric:                  bmetrics.DupHist(ctx),
 		allMetric:                  bmetrics.AllHist(ctx),
 		provSearchDelay:            defaults.ProvSearchDelay,
-		rebroadcastDelay:           delay.Fixed(time.Minute),
+		rebroadcastDelay:           delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout: true,
 	}
 
@@ -226,6 +246,9 @@ type Client struct {
 
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
+
+	// dupMetric will stay at 0
+	skipDuplicatedBlocksStats bool
 }
 
 type counters struct {
@@ -373,14 +396,17 @@ func (bs *Client) updateReceiveCounters(blocks []blocks.Block) {
 	// Check which blocks are in the datastore
 	// (Note: any errors from the blockstore are simply logged out in
 	// blockstoreHas())
-	blocksHas := bs.blockstoreHas(blocks)
+	var blocksHas []bool
+	if !bs.skipDuplicatedBlocksStats {
+		blocksHas = bs.blockstoreHas(blocks)
+	}
 
 	bs.counterLk.Lock()
 	defer bs.counterLk.Unlock()
 
 	// Do some accounting for each block
 	for i, b := range blocks {
-		has := blocksHas[i]
+		has := (blocksHas != nil) && blocksHas[i]
 
 		blkLen := len(b.RawData())
 		bs.allMetric.Observe(float64(blkLen))

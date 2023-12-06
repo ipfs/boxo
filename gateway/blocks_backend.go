@@ -7,22 +7,20 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	gopath "path"
 	"strings"
+	"time"
 
 	"github.com/ipfs/boxo/blockservice"
 	blockstore "github.com/ipfs/boxo/blockstore"
-	nsopts "github.com/ipfs/boxo/coreiface/options/namesys"
-	ifacepath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/fetcher"
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/ipld/merkledag"
 	ufile "github.com/ipfs/boxo/ipld/unixfs/file"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
+	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/namesys"
-	"github.com/ipfs/boxo/namesys/resolve"
-	ipfspath "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -41,7 +39,6 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	mc "github.com/multiformats/go-multicodec"
 
@@ -69,6 +66,7 @@ var _ IPFSBackend = (*BlocksBackend)(nil)
 type blocksBackendOptions struct {
 	ns namesys.NameSystem
 	vs routing.ValueStore
+	r  resolver.Resolver
 }
 
 // WithNameSystem sets the name system to use with the [BlocksBackend]. If not set
@@ -89,6 +87,14 @@ func WithValueStore(vs routing.ValueStore) BlocksBackendOption {
 	}
 }
 
+// WithResolver sets the [resolver.Resolver] to use with the [BlocksBackend].
+func WithResolver(r resolver.Resolver) BlocksBackendOption {
+	return func(opts *blocksBackendOptions) error {
+		opts.r = r
+		return nil
+	}
+}
+
 type BlocksBackendOption func(options *blocksBackendOptions) error
 
 func NewBlocksBackend(blockService blockservice.BlockService, opts ...BlocksBackendOption) (*BlocksBackend, error) {
@@ -102,21 +108,11 @@ func NewBlocksBackend(blockService blockservice.BlockService, opts ...BlocksBack
 	// Setup the DAG services, which use the CAR block store.
 	dagService := merkledag.NewDAGService(blockService)
 
-	// Setup the UnixFS resolver.
-	fetcherConfig := bsfetcher.NewFetcherConfig(blockService)
-	fetcherConfig.PrototypeChooser = dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
-		if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
-			return tlnkNd.LinkTargetNodePrototype(), nil
-		}
-		return basicnode.Prototype.Any, nil
-	})
-	fetcher := fetcherConfig.WithReifier(unixfsnode.Reify)
-	r := resolver.NewBasicResolver(fetcher)
-
 	// Setup a name system so that we are able to resolve /ipns links.
 	var (
 		ns namesys.NameSystem
 		vs routing.ValueStore
+		r  resolver.Resolver
 	)
 
 	vs = compiledOptions.vs
@@ -137,6 +133,15 @@ func NewBlocksBackend(blockService blockservice.BlockService, opts ...BlocksBack
 		}
 	}
 
+	r = compiledOptions.r
+	if r == nil {
+		// Setup the UnixFS resolver.
+		fetcherCfg := bsfetcher.NewFetcherConfig(blockService)
+		fetcherCfg.PrototypeChooser = dagpb.AddSupportToChooser(bsfetcher.DefaultPrototypeChooser)
+		fetcher := fetcherCfg.WithReifier(unixfsnode.Reify)
+		r = resolver.NewBasicResolver(fetcher)
+	}
+
 	return &BlocksBackend{
 		blockStore:   blockService.Blockstore(),
 		blockService: blockService,
@@ -147,17 +152,40 @@ func NewBlocksBackend(blockService blockservice.BlockService, opts ...BlocksBack
 	}, nil
 }
 
-func (bb *BlocksBackend) Get(ctx context.Context, path ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
+func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
 	md, nd, err := bb.getNode(ctx, path)
 	if err != nil {
 		return md, nil, err
 	}
 
+	// Only a single range is supported in responses to HTTP Range Requests.
+	// When more than one is passed in the Range header, this library will
+	// return a response for the first one and ignores remaining ones.
+	var ra *ByteRange
+	if len(ranges) > 0 {
+		ra = &ranges[0]
+	}
+
 	rootCodec := nd.Cid().Prefix().GetCodec()
+
 	// This covers both Raw blocks and terminal IPLD codecs like dag-cbor and dag-json
 	// Note: while only cbor, json, dag-cbor, and dag-json are currently supported by gateways this could change
+	// Note: For the raw codec we return just the relevant range rather than the entire block
 	if rootCodec != uint64(mc.DagPb) {
-		return md, NewGetResponseFromFile(files.NewBytesFile(nd.RawData())), nil
+		f := files.NewBytesFile(nd.RawData())
+
+		fileSize, err := f.Size()
+		if err != nil {
+			return ContentPathMetadata{}, nil, err
+		}
+
+		if rootCodec == uint64(mc.Raw) {
+			if err := seekToRangeStart(f, ra); err != nil {
+				return ContentPathMetadata{}, nil, err
+			}
+		}
+
+		return md, NewGetResponseFromReader(f, fileSize), nil
 	}
 
 	// This code path covers full graph, single file/directory, and range requests
@@ -179,16 +207,29 @@ func (bb *BlocksBackend) Get(ctx context.Context, path ImmutablePath, ranges ...
 		if sz < 0 {
 			return ContentPathMetadata{}, nil, fmt.Errorf("directory cumulative DAG size cannot be negative")
 		}
-		return md, NewGetResponseFromDirectoryListing(uint64(sz), dir.EnumLinksAsync(ctx)), nil
+		return md, NewGetResponseFromDirectoryListing(uint64(sz), dir.EnumLinksAsync(ctx), nil), nil
 	}
 	if file, ok := f.(files.File); ok {
-		return md, NewGetResponseFromFile(file), nil
+		fileSize, err := f.Size()
+		if err != nil {
+			return ContentPathMetadata{}, nil, err
+		}
+
+		if err := seekToRangeStart(file, ra); err != nil {
+			return ContentPathMetadata{}, nil, err
+		}
+
+		if s, ok := f.(*files.Symlink); ok {
+			return md, NewGetResponseFromSymlink(s, fileSize), nil
+		}
+
+		return md, NewGetResponseFromReader(file, fileSize), nil
 	}
 
 	return ContentPathMetadata{}, nil, fmt.Errorf("data was not a valid file or directory: %w", ErrInternalServerError) // TODO: should there be a gateway invalid content type to abstract over the various IPLD error types?
 }
 
-func (bb *BlocksBackend) GetAll(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (bb *BlocksBackend) GetAll(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.Node, error) {
 	md, nd, err := bb.getNode(ctx, path)
 	if err != nil {
 		return md, nil, err
@@ -202,7 +243,7 @@ func (bb *BlocksBackend) GetAll(ctx context.Context, path ImmutablePath) (Conten
 	return md, n, nil
 }
 
-func (bb *BlocksBackend) GetBlock(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.File, error) {
+func (bb *BlocksBackend) GetBlock(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.File, error) {
 	md, nd, err := bb.getNode(ctx, path)
 	if err != nil {
 		return md, nil, err
@@ -211,7 +252,7 @@ func (bb *BlocksBackend) GetBlock(ctx context.Context, path ImmutablePath) (Cont
 	return md, files.NewBytesFile(nd.RawData()), nil
 }
 
-func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (bb *BlocksBackend) Head(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	md, nd, err := bb.getNode(ctx, path)
 	if err != nil {
 		return md, nil, err
@@ -219,7 +260,7 @@ func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentP
 
 	rootCodec := nd.Cid().Prefix().GetCodec()
 	if rootCodec != uint64(mc.DagPb) {
-		return md, files.NewBytesFile(nd.RawData()), nil
+		return md, NewHeadResponseForFile(files.NewBytesFile(nd.RawData()), int64(len(nd.RawData()))), nil
 	}
 
 	// TODO: We're not handling non-UnixFS dag-pb. There's a bit of a discrepancy
@@ -229,7 +270,24 @@ func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentP
 		return ContentPathMetadata{}, nil, err
 	}
 
-	return md, fileNode, nil
+	sz, err := fileNode.Size()
+	if err != nil {
+		return ContentPathMetadata{}, nil, err
+	}
+
+	if _, ok := fileNode.(files.Directory); ok {
+		return md, NewHeadResponseForDirectory(sz), nil
+	}
+
+	if _, ok := fileNode.(*files.Symlink); ok {
+		return md, NewHeadResponseForSymlink(sz), nil
+	}
+
+	if f, ok := fileNode.(files.File); ok {
+		return md, NewHeadResponseForFile(f, sz), nil
+	}
+
+	return ContentPathMetadata{}, nil, fmt.Errorf("unsupported UnixFS file type")
 }
 
 // emptyRoot is a CAR root with the empty identity CID. CAR files are recommended
@@ -237,9 +295,9 @@ func (bb *BlocksBackend) Head(ctx context.Context, path ImmutablePath) (ContentP
 // https://ipld.io/specs/transport/car/carv1/#number-of-roots
 var emptyRoot = []cid.Cid{cid.MustParse("bafkqaaa")}
 
-func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
-	pathMetadata, err := bb.ResolvePath(ctx, p)
-	if err != nil {
+func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+	pathMetadata, resolveErr := bb.ResolvePath(ctx, p)
+	if resolveErr != nil {
 		rootCid, err := cid.Decode(strings.Split(p.String(), "/")[2])
 		if err != nil {
 			return ContentPathMetadata{}, nil, err
@@ -261,21 +319,22 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params Car
 		// Setup the UnixFS resolver.
 		f := newNodeGetterFetcherSingleUseFactory(ctx, blockGetter)
 		pathResolver := resolver.NewBasicResolver(f)
-		ip := ipfspath.FromString(p.String())
-		_, _, err = pathResolver.ResolveToLastNode(ctx, ip)
+		_, _, err = pathResolver.ResolveToLastNode(ctx, p)
 
 		if isErrNotFound(err) {
 			return ContentPathMetadata{
 				PathSegmentRoots: nil,
-				LastSegment:      ifacepath.NewResolvedPath(ip, rootCid, rootCid, ""),
+				LastSegment:      path.FromCid(rootCid),
 				ContentType:      "",
 			}, io.NopCloser(&buf), nil
+		} else if err != nil {
+			return ContentPathMetadata{}, nil, err
+		} else {
+			return ContentPathMetadata{}, nil, resolveErr
 		}
-		return ContentPathMetadata{}, nil, err
 	}
 
-	contentPathStr := p.String()
-	if !strings.HasPrefix(contentPathStr, "/ipfs/") {
+	if p.Namespace() != path.IPFSNamespace {
 		return ContentPathMetadata{}, nil, fmt.Errorf("path does not have /ipfs/ prefix")
 	}
 
@@ -283,7 +342,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params Car
 	go func() {
 		cw, err := storage.NewWritable(
 			w,
-			[]cid.Cid{pathMetadata.LastSegment.Cid()},
+			[]cid.Cid{pathMetadata.LastSegment.RootCid()},
 			car.WriteAsCarV1(true),
 			car.AllowDuplicatePuts(params.Duplicates.Bool()),
 		)
@@ -310,7 +369,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params Car
 
 		// TODO: support selectors passed as request param: https://github.com/ipfs/kubo/issues/8769
 		// TODO: this is very slow if blocks are remote due to linear traversal. Do we need deterministic traversals here?
-		carWriteErr := walkGatewaySimpleSelector(ctx, ipfspath.Path(contentPathStr), params, &lsys, pathResolver)
+		carWriteErr := walkGatewaySimpleSelector(ctx, p, params, &lsys, pathResolver)
 
 		// io.PipeWriter.CloseWithError always returns nil.
 		_ = w.CloseWithError(carWriteErr)
@@ -320,7 +379,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p ImmutablePath, params Car
 }
 
 // walkGatewaySimpleSelector walks the subgraph described by the path and terminal element parameters
-func walkGatewaySimpleSelector(ctx context.Context, p ipfspath.Path, params CarParams, lsys *ipld.LinkSystem, pathResolver resolver.Resolver) error {
+func walkGatewaySimpleSelector(ctx context.Context, p path.ImmutablePath, params CarParams, lsys *ipld.LinkSystem, pathResolver resolver.Resolver) error {
 	// First resolve the path since we always need to.
 	lastCid, remainder, err := pathResolver.ResolveToLastNode(ctx, p)
 	if err != nil {
@@ -488,18 +547,19 @@ func walkGatewaySimpleSelector(ctx context.Context, p ipfspath.Path, params CarP
 	}
 }
 
-func (bb *BlocksBackend) getNode(ctx context.Context, path ImmutablePath) (ContentPathMetadata, format.Node, error) {
-	roots, lastSeg, err := bb.getPathRoots(ctx, path)
+func (bb *BlocksBackend) getNode(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, format.Node, error) {
+	roots, lastSeg, remainder, err := bb.getPathRoots(ctx, path)
 	if err != nil {
 		return ContentPathMetadata{}, nil, err
 	}
 
 	md := ContentPathMetadata{
-		PathSegmentRoots: roots,
-		LastSegment:      lastSeg,
+		PathSegmentRoots:     roots,
+		LastSegment:          lastSeg,
+		LastSegmentRemainder: remainder,
 	}
 
-	lastRoot := lastSeg.Cid()
+	lastRoot := lastSeg.RootCid()
 
 	nd, err := bb.dagService.Get(ctx, lastRoot)
 	if err != nil {
@@ -509,7 +569,7 @@ func (bb *BlocksBackend) getNode(ctx context.Context, path ImmutablePath) (Conte
 	return md, nd, err
 }
 
-func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath ImmutablePath) ([]cid.Cid, ifacepath.Resolved, error) {
+func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.ImmutablePath) ([]cid.Cid, path.ImmutablePath, []string, error) {
 	/*
 		These are logical roots where each CID represent one path segment
 		and resolves to either a directory or the root block of a file.
@@ -533,56 +593,55 @@ func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath Immutable
 	contentPathStr := contentPath.String()
 	pathSegments := strings.Split(contentPathStr[6:], "/")
 	sp.WriteString(contentPathStr[:5]) // /ipfs or /ipns
-	var lastPath ifacepath.Resolved
+	var (
+		lastPath  path.ImmutablePath
+		remainder []string
+	)
 	for _, root := range pathSegments {
 		if root == "" {
 			continue
 		}
 		sp.WriteString("/")
 		sp.WriteString(root)
-		resolvedSubPath, err := bb.resolvePath(ctx, ifacepath.New(sp.String()))
+		p, err := path.NewPath(sp.String())
+		if err != nil {
+			return nil, path.ImmutablePath{}, nil, err
+		}
+		resolvedSubPath, remainderSubPath, err := bb.resolvePath(ctx, p)
 		if err != nil {
 			// TODO: should we be more explicit here and is this part of the IPFSBackend contract?
 			// The issue here was that we returned datamodel.ErrWrongKind instead of this resolver error
 			if isErrNotFound(err) {
-				return nil, nil, resolver.ErrNoLink{Name: root, Node: lastPath.Cid()}
+				return nil, path.ImmutablePath{}, nil, &resolver.ErrNoLink{Name: root, Node: lastPath.RootCid()}
 			}
-			return nil, nil, err
+			return nil, path.ImmutablePath{}, nil, err
 		}
 		lastPath = resolvedSubPath
-		pathRoots = append(pathRoots, lastPath.Cid())
+		remainder = remainderSubPath
+		pathRoots = append(pathRoots, lastPath.RootCid())
 	}
 
 	pathRoots = pathRoots[:len(pathRoots)-1]
-	return pathRoots, lastPath, nil
+	return pathRoots, lastPath, remainder, nil
 }
 
-func (bb *BlocksBackend) ResolveMutable(ctx context.Context, p ifacepath.Path) (ImmutablePath, error) {
-	err := p.IsValid()
-	if err != nil {
-		return ImmutablePath{}, err
-	}
-
-	ipath := ipfspath.Path(p.String())
-	switch ipath.Segments()[0] {
-	case "ipns":
-		ipath, err = resolve.ResolveIPNS(ctx, bb.namesys, ipath)
+func (bb *BlocksBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, time.Duration, time.Time, error) {
+	switch p.Namespace() {
+	case path.IPNSNamespace:
+		res, err := namesys.Resolve(ctx, bb.namesys, p)
 		if err != nil {
-			return ImmutablePath{}, err
+			return path.ImmutablePath{}, 0, time.Time{}, err
 		}
-		imPath, err := NewImmutablePath(ifacepath.New(ipath.String()))
+		ip, err := path.NewImmutablePath(res.Path)
 		if err != nil {
-			return ImmutablePath{}, err
+			return path.ImmutablePath{}, 0, time.Time{}, err
 		}
-		return imPath, nil
-	case "ipfs":
-		imPath, err := NewImmutablePath(ifacepath.New(ipath.String()))
-		if err != nil {
-			return ImmutablePath{}, err
-		}
-		return imPath, nil
+		return ip, res.TTL, res.LastMod, nil
+	case path.IPFSNamespace:
+		ip, err := path.NewImmutablePath(p)
+		return ip, 0, time.Time{}, err
 	default:
-		return ImmutablePath{}, NewErrorStatusCode(fmt.Errorf("unsupported path namespace: %s", p.Namespace()), http.StatusNotImplemented)
+		return path.ImmutablePath{}, 0, time.Time{}, NewErrorStatusCode(fmt.Errorf("unsupported path namespace: %s", p.Namespace()), http.StatusNotImplemented)
 	}
 }
 
@@ -591,88 +650,88 @@ func (bb *BlocksBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, 
 		return nil, NewErrorStatusCode(errors.New("IPNS Record responses are not supported by this gateway"), http.StatusNotImplemented)
 	}
 
-	// Fails fast if the CID is not an encoded Libp2p Key, avoids wasteful
-	// round trips to the remote routing provider.
-	if mc.Code(c.Type()) != mc.Libp2pKey {
-		return nil, NewErrorStatusCode(errors.New("cid codec must be libp2p-key"), http.StatusBadRequest)
-	}
-
-	// The value store expects the key itself to be encoded as a multihash.
-	id, err := peer.FromCid(c)
+	name, err := ipns.NameFromCid(c)
 	if err != nil {
-		return nil, err
+		return nil, NewErrorStatusCode(err, http.StatusBadRequest)
 	}
 
-	return bb.routing.GetValue(ctx, "/ipns/"+string(id))
+	return bb.routing.GetValue(ctx, string(name.RoutingKey()))
 }
 
-func (bb *BlocksBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (ifacepath.Path, error) {
+func (bb *BlocksBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (path.Path, error) {
 	if bb.namesys != nil {
-		p, err := bb.namesys.Resolve(ctx, "/ipns/"+hostname, nsopts.Depth(1))
+		p, err := path.NewPath("/ipns/" + hostname)
+		if err != nil {
+			return nil, err
+		}
+		res, err := bb.namesys.Resolve(ctx, p, namesys.ResolveWithDepth(1))
 		if err == namesys.ErrResolveRecursion {
 			err = nil
 		}
-		return ifacepath.New(p.String()), err
+		return res.Path, err
 	}
 
 	return nil, NewErrorStatusCode(errors.New("not implemented"), http.StatusNotImplemented)
 }
 
-func (bb *BlocksBackend) IsCached(ctx context.Context, p ifacepath.Path) bool {
-	rp, err := bb.resolvePath(ctx, p)
+func (bb *BlocksBackend) IsCached(ctx context.Context, p path.Path) bool {
+	rp, _, err := bb.resolvePath(ctx, p)
 	if err != nil {
 		return false
 	}
 
-	has, _ := bb.blockStore.Has(ctx, rp.Cid())
+	has, _ := bb.blockStore.Has(ctx, rp.RootCid())
 	return has
 }
 
-func (bb *BlocksBackend) ResolvePath(ctx context.Context, path ImmutablePath) (ContentPathMetadata, error) {
-	roots, lastSeg, err := bb.getPathRoots(ctx, path)
+func (bb *BlocksBackend) ResolvePath(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, error) {
+	roots, lastSeg, remainder, err := bb.getPathRoots(ctx, path)
 	if err != nil {
 		return ContentPathMetadata{}, err
 	}
 	md := ContentPathMetadata{
-		PathSegmentRoots: roots,
-		LastSegment:      lastSeg,
+		PathSegmentRoots:     roots,
+		LastSegment:          lastSeg,
+		LastSegmentRemainder: remainder,
 	}
 	return md, nil
 }
 
-func (bb *BlocksBackend) resolvePath(ctx context.Context, p ifacepath.Path) (ifacepath.Resolved, error) {
-	if _, ok := p.(ifacepath.Resolved); ok {
-		return p.(ifacepath.Resolved), nil
-	}
-
-	err := p.IsValid()
-	if err != nil {
-		return nil, err
-	}
-
-	ipath := ipfspath.Path(p.String())
-	if ipath.Segments()[0] == "ipns" {
-		ipath, err = resolve.ResolveIPNS(ctx, bb.namesys, ipath)
+func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.ImmutablePath, []string, error) {
+	var err error
+	if p.Namespace() == path.IPNSNamespace {
+		res, err := namesys.Resolve(ctx, bb.namesys, p)
 		if err != nil {
-			return nil, err
+			return path.ImmutablePath{}, nil, err
 		}
+		p = res.Path
 	}
 
-	if ipath.Segments()[0] != "ipfs" {
-		return nil, fmt.Errorf("unsupported path namespace: %s", p.Namespace())
+	if p.Namespace() != path.IPFSNamespace {
+		return path.ImmutablePath{}, nil, fmt.Errorf("unsupported path namespace: %s", p.Namespace())
 	}
 
-	node, rest, err := bb.resolver.ResolveToLastNode(ctx, ipath)
+	imPath, err := path.NewImmutablePath(p)
 	if err != nil {
-		return nil, err
+		return path.ImmutablePath{}, nil, err
 	}
 
-	root, err := cid.Parse(ipath.Segments()[1])
+	node, remainder, err := bb.resolver.ResolveToLastNode(ctx, imPath)
 	if err != nil {
-		return nil, err
+		return path.ImmutablePath{}, nil, err
 	}
 
-	return ifacepath.NewResolvedPath(ipath, node, root, gopath.Join(rest...)), nil
+	p, err = path.Join(path.FromCid(node), remainder...)
+	if err != nil {
+		return path.ImmutablePath{}, nil, err
+	}
+
+	imPath, err = path.NewImmutablePath(p)
+	if err != nil {
+		return path.ImmutablePath{}, nil, err
+	}
+
+	return imPath, remainder, nil
 }
 
 type nodeGetterToCarExporer struct {

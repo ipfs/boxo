@@ -30,7 +30,10 @@ func main() {
 	}
 
 	// Define the path this record will point to.
-	path := path.FromString("/ipfs/bafkqac3jobxhgidsn5rww4yk")
+	path, err := path.NewPath("/ipfs/bafkqac3jobxhgidsn5rww4yk")
+	if err != nil {
+		panic(err)
+	}
 
 	// Until when the record is valid.
 	eol := time.Now().Add(time.Hour)

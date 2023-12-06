@@ -12,9 +12,8 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
-	"github.com/ipfs/boxo/coreiface/path"
 	ipns "github.com/ipfs/boxo/ipns"
-	ipfspath "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/http/server"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
@@ -43,9 +42,9 @@ func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.Bits
 	return args.Get(0).(time.Duration), args.Error(1)
 }
 
-func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[types.Record], error) {
+func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[*types.PeerRecord], error) {
 	args := m.Called(ctx, pid, limit)
-	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
+	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
 func (m *mockContentRouter) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
@@ -67,7 +66,7 @@ type testDeps struct {
 	server              *httptest.Server
 	peerID              peer.ID
 	addrs               []multiaddr.Multiaddr
-	client              *client
+	client              *Client
 }
 
 type recordingHandler struct {
@@ -487,7 +486,7 @@ func TestClient_Provide(t *testing.T) {
 
 func TestClient_FindPeers(t *testing.T) {
 	peerRecord := makePeerRecord()
-	peerRecords := []iter.Result[types.Record]{
+	peerRecords := []iter.Result[*types.PeerRecord]{
 		{Val: &peerRecord},
 	}
 	pid := *peerRecord.ID
@@ -496,13 +495,13 @@ func TestClient_FindPeers(t *testing.T) {
 		name                    string
 		httpStatusCode          int
 		stopServer              bool
-		routerResult            []iter.Result[types.Record]
+		routerResult            []iter.Result[*types.PeerRecord]
 		routerErr               error
 		clientRequiresStreaming bool
 		serverStreamingDisabled bool
 
 		expErrContains       osErrContains
-		expResult            []iter.Result[types.Record]
+		expResult            []iter.Result[*types.PeerRecord]
 		expStreamingResponse bool
 		expJSONResponse      bool
 	}{
@@ -607,7 +606,7 @@ func TestClient_FindPeers(t *testing.T) {
 			resultIter, err := client.FindPeers(ctx, pid)
 			c.expErrContains.errContains(t, err)
 
-			results := iter.ReadAll[iter.Result[types.Record]](resultIter)
+			results := iter.ReadAll[iter.Result[*types.PeerRecord]](resultIter)
 			assert.Equal(t, c.expResult, results)
 		})
 	}
@@ -627,11 +626,11 @@ func makeIPNSRecord(t *testing.T, sk crypto.PrivKey, opts ...ipns.Option) (*ipns
 	cid, err := cid.Decode("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
 	require.NoError(t, err)
 
-	path := path.IpfsPath(cid)
+	path := path.FromCid(cid)
 	eol := time.Now().Add(time.Hour * 48)
 	ttl := time.Second * 20
 
-	record, err := ipns.NewRecord(sk, ipfspath.FromString(path.String()), 1, eol, ttl, opts...)
+	record, err := ipns.NewRecord(sk, path, 1, eol, ttl, opts...)
 	require.NoError(t, err)
 
 	rawRecord, err := ipns.MarshalRecord(record)

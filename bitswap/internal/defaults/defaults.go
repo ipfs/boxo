@@ -33,4 +33,8 @@ const (
 	// FIXME: expose this in go-verifcid.
 	MaximumHashLength = 128
 	MaximumAllowedCid = binary.MaxVarintLen64*4 + MaximumHashLength
+
+	// RebroadcastDelay is the default delay to trigger broadcast of
+	// random CIDs in the wantlist.
+	RebroadcastDelay = time.Minute
 )

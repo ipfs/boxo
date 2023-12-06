@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
-	path "github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/path"
 	cid "github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,8 +21,8 @@ func TestToSubdomainURL(t *testing.T) {
 	testCID, err := cid.Decode("bafkqaglimvwgy3zakrsxg5cun5jxkyten5wwc2lokvjeycq")
 	require.NoError(t, err)
 
-	backend.namesys["/ipns/dnslink.long-name.example.com"] = path.FromString(testCID.String())
-	backend.namesys["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = path.FromString(testCID.String())
+	backend.namesys["/ipns/dnslink.long-name.example.com"] = newMockNamesysItem(path.FromCid(testCID), 0)
+	backend.namesys["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = newMockNamesysItem(path.FromCid(testCID), 0)
 	httpRequest := httptest.NewRequest("GET", "http://127.0.0.1:8080", nil)
 	httpsRequest := httptest.NewRequest("GET", "https://https-request-stub.example.com", nil)
 	httpsProxiedRequest := httptest.NewRequest("GET", "http://proxied-https-request-stub.example.com", nil)
@@ -82,10 +83,13 @@ func TestToDNSLinkDNSLabel(t *testing.T) {
 		err error
 	}{
 		{"dnslink.long-name.example.com", "dnslink-long--name-example-com", nil},
-		{"dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com", "", errors.New("DNSLink representation incompatible with DNS label length limit of 63: dnslink-too--long-f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o-example-com")},
+		{"singlelabel", "singlelabel", nil},
+		{"example.com", "example-com", nil},
+		{"en.wikipedia-on-ipfs.org", "en-wikipedia--on--ipfs-org", nil},
+		{"dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com", "", errors.New(`inlined DNSLink incompatible with DNS label length limit of 63: "dnslink-too--long-f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o-example-com"`)},
 	} {
 		t.Run(test.in, func(t *testing.T) {
-			out, err := toDNSLinkDNSLabel(test.in)
+			out, err := InlineDNSLink(test.in)
 			require.Equal(t, test.out, out)
 			require.Equal(t, test.err, err)
 		})
@@ -99,11 +103,14 @@ func TestToDNSLinkFQDN(t *testing.T) {
 		out string
 	}{
 		{"singlelabel", "singlelabel"},
+		{"no--tld", "no-tld"},
+		{"example.com", "example.com"},
 		{"docs-ipfs-tech", "docs.ipfs.tech"},
+		{"en-wikipedia--on--ipfs-org", "en.wikipedia-on-ipfs.org"},
 		{"dnslink-long--name-example-com", "dnslink.long-name.example.com"},
 	} {
 		t.Run(test.in, func(t *testing.T) {
-			out := toDNSLinkFQDN(test.in)
+			out := UninlineDNSLink(test.in)
 			require.Equal(t, test.out, out)
 		})
 	}
@@ -303,5 +310,57 @@ func TestKnownSubdomainDetails(t *testing.T) {
 			assert.Equal(t, test.hostname, hostname)
 			assert.Equal(t, test.gw, gw)
 		})
+	}
+}
+
+const testInlinedDNSLinkA = "example-com"
+const testInlinedDNSLinkB = "docs-ipfs-tech"
+const testInlinedDNSLinkC = "en-wikipedia--on--ipfs-org"
+const testDNSLinkA = "example.com"
+const testDNSLinkB = "docs.ipfs.tech"
+const testDNSLinkC = "en.wikipedia-on-ipfs.org"
+
+func inlineDNSLinkSimple(fqdn string) (dnsLabel string, err error) {
+	dnsLabel = strings.ReplaceAll(fqdn, "-", "--")
+	dnsLabel = strings.ReplaceAll(dnsLabel, ".", "-")
+	if len(dnsLabel) > dnsLabelMaxLength {
+		return "", fmt.Errorf("inlined DNSLink incompatible with DNS label length limit of 63: %q", dnsLabel)
+	}
+	return dnsLabel, nil
+}
+func uninlineDNSLinkSimple(dnsLabel string) (fqdn string) {
+	fqdn = strings.ReplaceAll(dnsLabel, "--", "@") // @ placeholder is unused in DNS labels
+	fqdn = strings.ReplaceAll(fqdn, "-", ".")
+	fqdn = strings.ReplaceAll(fqdn, "@", "-")
+	return fqdn
+}
+
+func BenchmarkUninlineDNSLinkSimple(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = uninlineDNSLinkSimple(testInlinedDNSLinkA)
+		_ = uninlineDNSLinkSimple(testInlinedDNSLinkB)
+		_ = uninlineDNSLinkSimple(testInlinedDNSLinkC)
+	}
+}
+func BenchmarkUninlineDNSLink(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = UninlineDNSLink(testInlinedDNSLinkA)
+		_ = UninlineDNSLink(testInlinedDNSLinkB)
+		_ = UninlineDNSLink(testInlinedDNSLinkC)
+	}
+}
+
+func BenchmarkInlineDNSLinkSimple(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, _ = inlineDNSLinkSimple(testDNSLinkA)
+		_, _ = inlineDNSLinkSimple(testDNSLinkB)
+		_, _ = inlineDNSLinkSimple(testDNSLinkC)
+	}
+}
+func BenchmarkInlineDNSLink(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, _ = InlineDNSLink(testDNSLinkA)
+		_, _ = InlineDNSLink(testDNSLinkB)
+		_, _ = InlineDNSLink(testDNSLinkC)
 	}
 }
