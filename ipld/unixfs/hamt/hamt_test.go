@@ -2,10 +2,12 @@ package hamt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -80,7 +82,7 @@ func assertLink(s *Shard, name string, found bool) error {
 
 func assertLinksEqual(linksA []*ipld.Link, linksB []*ipld.Link) error {
 	if len(linksA) != len(linksB) {
-		return fmt.Errorf("links arrays are different sizes")
+		return errors.New("links arrays are different sizes")
 	}
 
 	sort.Stable(dag.LinkSlice(linksA))
@@ -88,15 +90,15 @@ func assertLinksEqual(linksA []*ipld.Link, linksB []*ipld.Link) error {
 	for i, a := range linksA {
 		b := linksB[i]
 		if a.Name != b.Name {
-			return fmt.Errorf("links names mismatch")
+			return errors.New("links names mismatch")
 		}
 
 		if a.Cid.String() != b.Cid.String() {
-			return fmt.Errorf("link hashes dont match")
+			return errors.New("link hashes dont match")
 		}
 
 		if a.Size != b.Size {
-			return fmt.Errorf("link sizes not the same")
+			return errors.New("link sizes not the same")
 		}
 	}
 
@@ -682,7 +684,7 @@ func BenchmarkHAMTWalk(b *testing.B) {
 	}
 
 	for j := 0; j < 1000; j++ {
-		err = s.Set(ctx, fmt.Sprintf("%d", j), ft.EmptyDirNode())
+		err = s.Set(ctx, strconv.Itoa(j), ft.EmptyDirNode())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -725,7 +727,7 @@ func BenchmarkHAMTSet(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		err = s.Set(context.TODO(), fmt.Sprint(i), ft.EmptyDirNode())
+		err = s.Set(context.TODO(), strconv.Itoa(i), ft.EmptyDirNode())
 		if err != nil {
 			b.Fatal(err)
 		}

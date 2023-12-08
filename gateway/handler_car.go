@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -148,7 +149,7 @@ func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarPa
 	case "": // noop, client does not care about version
 	case "1": // noop, we support this
 	default:
-		return CarParams{}, fmt.Errorf("unsupported application/vnd.ipld.car version: only version=1 is supported")
+		return CarParams{}, errors.New("unsupported application/vnd.ipld.car version: only version=1 is supported")
 	}
 
 	// optional order from IPIP-412
@@ -206,7 +207,7 @@ func buildContentTypeFromCarParams(params CarParams) string {
 func getCarRootCidAndLastSegment(imPath path.ImmutablePath) (cid.Cid, string, error) {
 	imPathStr := imPath.String()
 	if !strings.HasPrefix(imPathStr, "/ipfs/") {
-		return cid.Undef, "", fmt.Errorf("path does not have /ipfs/ prefix")
+		return cid.Undef, "", errors.New("path does not have /ipfs/ prefix")
 	}
 
 	firstSegment, remainingSegments, _ := strings.Cut(imPathStr[6:], "/")

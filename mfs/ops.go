@@ -2,6 +2,7 @@ package mfs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	gopath "path"
@@ -105,7 +106,7 @@ func lookupDir(r *Root, path string) (*Directory, error) {
 func PutNode(r *Root, path string, nd ipld.Node) error {
 	dirp, filename := gopath.Split(path)
 	if filename == "" {
-		return fmt.Errorf("cannot create file with empty name")
+		return errors.New("cannot create file with empty name")
 	}
 
 	pdir, err := lookupDir(r, dirp)
@@ -127,7 +128,7 @@ type MkdirOpts struct {
 // intermediary directories as needed if 'mkparents' is set to true
 func Mkdir(r *Root, pth string, opts MkdirOpts) error {
 	if pth == "" {
-		return fmt.Errorf("no path given to Mkdir")
+		return errors.New("no path given to Mkdir")
 	}
 	parts := strings.Split(pth, "/")
 	if parts[0] == "" {
@@ -144,7 +145,7 @@ func Mkdir(r *Root, pth string, opts MkdirOpts) error {
 		if opts.Mkparents {
 			return nil
 		}
-		return fmt.Errorf("cannot create directory '/': Already exists")
+		return errors.New("cannot create directory '/': Already exists")
 	}
 
 	cur := r.GetDirectory()

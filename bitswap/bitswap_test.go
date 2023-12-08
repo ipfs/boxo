@@ -3,6 +3,7 @@ package bitswap_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -432,10 +433,10 @@ func TestBasicBitswap(t *testing.T) {
 	// peer should no longer keep second peer's want
 	if err = tu.WaitFor(ctx, func() error {
 		if len(instances[2].Exchange.WantlistForPeer(instances[1].Peer)) != 0 {
-			return fmt.Errorf("should have no items in other peers wantlist")
+			return errors.New("should have no items in other peers wantlist")
 		}
 		if len(instances[1].Exchange.GetWantlist()) != 0 {
-			return fmt.Errorf("shouldnt have anything in wantlist")
+			return errors.New("shouldnt have anything in wantlist")
 		}
 		return nil
 	}); err != nil {

@@ -52,7 +52,7 @@ func (e *ErrorRetryAfter) Error() string {
 		text = e.Err.Error()
 	}
 	if e.RetryAfter != 0 {
-		text += fmt.Sprintf(", retry after %s", e.humanizedRoundSeconds())
+		text += ", retry after " + e.humanizedRoundSeconds()
 	}
 	return text
 }

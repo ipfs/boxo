@@ -355,7 +355,7 @@ func (rpm *receivedProviderMessage) handle(pqm *ProviderQueryManager) {
 }
 
 func (fpqm *finishedProviderQueryMessage) debugMessage() string {
-	return fmt.Sprintf("Finished Provider Query on cid: %s", fpqm.k.String())
+	return "Finished Provider Query on cid: " + fpqm.k.String()
 }
 
 func (fpqm *finishedProviderQueryMessage) handle(pqm *ProviderQueryManager) {
@@ -372,7 +372,7 @@ func (fpqm *finishedProviderQueryMessage) handle(pqm *ProviderQueryManager) {
 }
 
 func (npqm *newProvideQueryMessage) debugMessage() string {
-	return fmt.Sprintf("New Provider Query on cid: %s", npqm.k.String())
+	return "New Provider Query on cid: " + npqm.k.String()
 }
 
 func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
@@ -407,7 +407,7 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 }
 
 func (crm *cancelRequestMessage) debugMessage() string {
-	return fmt.Sprintf("Cancel provider query on cid: %s", crm.k.String())
+	return "Cancel provider query on cid: " + crm.k.String()
 }
 
 func (crm *cancelRequestMessage) handle(pqm *ProviderQueryManager) {

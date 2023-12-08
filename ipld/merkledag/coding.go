@@ -1,6 +1,7 @@
 package merkledag
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -199,7 +200,7 @@ func DecodeProtobuf(encoded []byte) (*ProtoNode, error) {
 func DecodeProtobufBlock(b blocks.Block) (format.Node, error) {
 	c := b.Cid()
 	if c.Type() != cid.DagProtobuf {
-		return nil, fmt.Errorf("this function can only decode protobuf nodes")
+		return nil, errors.New("this function can only decode protobuf nodes")
 	}
 
 	decnd, err := DecodeProtobuf(b.RawData())

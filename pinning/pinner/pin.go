@@ -4,6 +4,7 @@ package pin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	cid "github.com/ipfs/go-cid"
@@ -76,7 +77,7 @@ func StringToMode(s string) (Mode, bool) {
 }
 
 // ErrNotPinned is returned when trying to unpin items that are not pinned.
-var ErrNotPinned = fmt.Errorf("not pinned or pinned indirectly")
+var ErrNotPinned = errors.New("not pinned or pinned indirectly")
 
 // A Pinner provides the necessary methods to keep track of Nodes which are
 // to be kept locally, according to a pin mode. In practice, a Pinner is in
@@ -153,7 +154,7 @@ func (p Pinned) String() string {
 		return fmt.Sprintf("pinned via %s", p.Via)
 	default:
 		modeStr, _ := ModeToString(p.Mode)
-		return fmt.Sprintf("pinned: %s", modeStr)
+		return "pinned: " + modeStr
 	}
 }
 

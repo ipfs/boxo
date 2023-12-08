@@ -205,7 +205,7 @@ type ThroughputCallback = func(reprovide bool, complete bool, totalKeysProvided 
 func Online(rsys Provide) Option {
 	return func(system *reprovider) error {
 		if system.rsys != nil {
-			return fmt.Errorf("trying to register two provider on the same reprovider")
+			return errors.New("trying to register two provider on the same reprovider")
 		}
 		system.rsys = rsys
 		return nil
@@ -425,7 +425,7 @@ func stopAndEmptyTimer(t *time.Timer) {
 }
 
 func storeTime(t time.Time) []byte {
-	val := []byte(fmt.Sprintf("%d", t.UnixNano()))
+	val := []byte(strconv.FormatInt(t.UnixNano(), 10))
 	return val
 }
 
@@ -501,7 +501,7 @@ func (s *reprovider) getLastReprovideTime() (time.Time, error) {
 		return time.Time{}, nil
 	}
 	if err != nil {
-		return time.Time{}, fmt.Errorf("could not get last reprovide time")
+		return time.Time{}, errors.New("could not get last reprovide time")
 	}
 
 	t, err := parseTime(val)

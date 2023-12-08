@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"time"
 
@@ -298,5 +297,5 @@ func newHistogramMetric(name string, help string) *prometheus.HistogramVec {
 var tracer = otel.Tracer("boxo/gateway")
 
 func spanTrace(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return tracer.Start(ctx, fmt.Sprintf("Gateway.%s", spanName), opts...)
+	return tracer.Start(ctx, "Gateway."+spanName, opts...)
 }

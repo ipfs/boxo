@@ -2,7 +2,7 @@ package messagequeue
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"math"
 	"math/rand"
 	"sync"
@@ -40,7 +40,7 @@ func (fmn *fakeMessageNetwork) NewMessageSender(context.Context, peer.ID, *bsnet
 func (fms *fakeMessageNetwork) Self() peer.ID                 { return "" }
 func (fms *fakeMessageNetwork) Latency(peer.ID) time.Duration { return 0 }
 func (fms *fakeMessageNetwork) Ping(context.Context, peer.ID) ping.Result {
-	return ping.Result{Error: fmt.Errorf("ping error")}
+	return ping.Result{Error: errors.New("ping error")}
 }
 
 type fakeDontHaveTimeoutMgr struct {

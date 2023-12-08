@@ -49,7 +49,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		return err
 	}
 	if header == nil || err == io.EOF {
-		return fmt.Errorf("empty tar file")
+		return errors.New("empty tar file")
 	}
 
 	// Specially handle the first entry assuming it is a single root object (e.g. root directory, single file,
@@ -164,7 +164,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		}
 		for _, e := range strings.Split(fp.ToSlash(rel), "/") {
 			if e == ".." {
-				return fmt.Errorf("relative path contains '..'")
+				return errors.New("relative path contains '..'")
 			}
 		}
 
@@ -191,7 +191,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 // validateTarPath returns an error if the path has problematic characters
 func validateTarPath(tarPath string) error {
 	if len(tarPath) == 0 {
-		return fmt.Errorf("path is empty")
+		return errors.New("path is empty")
 	}
 
 	if tarPath[0] == '/' {
