@@ -2,7 +2,7 @@ package io
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"os"
 
 	"github.com/ipfs/boxo/ipld/unixfs/hamt"
@@ -132,7 +132,7 @@ func NewDirectory(dserv ipld.DAGService) Directory {
 }
 
 // ErrNotADir implies that the given node was not a unixfs directory
-var ErrNotADir = fmt.Errorf("merkledag node was not a directory or shard")
+var ErrNotADir = errors.New("merkledag node was not a directory or shard")
 
 // NewDirectoryFromNode loads a unixfs directory from the given IPLD node and
 // DAGService.

@@ -3,7 +3,6 @@ package gateway
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -63,7 +62,7 @@ func (i *handler) serveFile(ctx context.Context, w http.ResponseWriter, r *http.
 
 			mimeType, err := mimetype.DetectReader(tr)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("cannot detect content-type: %s", err.Error()), http.StatusInternalServerError)
+				http.Error(w, "cannot detect content-type: "+err.Error(), http.StatusInternalServerError)
 				return false
 			}
 

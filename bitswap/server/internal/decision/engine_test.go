@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1647,7 +1648,7 @@ func TestWantlistGrowsToLimit(t *testing.T) {
 	// Send in two messages to test reslicing.
 	m := message.New(false)
 	for j := limit; j != 0; j-- {
-		m.AddEntry(blocks.NewBlock([]byte(fmt.Sprint(j))).Cid(), 0, pb.Message_Wantlist_Block, true)
+		m.AddEntry(blocks.NewBlock([]byte(strconv.Itoa(j))).Cid(), 0, pb.Message_Wantlist_Block, true)
 	}
 	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
 

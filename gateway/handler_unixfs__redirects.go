@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -187,7 +188,7 @@ func (i *handler) getRedirectRules(r *http.Request, redirectsPath path.Immutable
 	defer redirectsFileGetResp.Close()
 
 	if redirectsFileGetResp.bytes == nil {
-		return false, nil, fmt.Errorf(" _redirects is not a file")
+		return false, nil, errors.New(" _redirects is not a file")
 	}
 	f := redirectsFileGetResp.bytes
 

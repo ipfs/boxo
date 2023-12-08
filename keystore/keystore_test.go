@@ -2,6 +2,7 @@ package keystore
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -230,7 +231,7 @@ func assertGetKey(ks Keystore, name string, exp ci.PrivKey) error {
 	}
 
 	if !outK.Equals(exp) {
-		return fmt.Errorf("key we got out didn't match expectation")
+		return errors.New("key we got out didn't match expectation")
 	}
 
 	return nil
@@ -258,12 +259,12 @@ func assertDirContents(dir string, exp []string) error {
 	sort.Strings(names)
 	sort.Strings(exp)
 	if len(names) != len(exp) {
-		return fmt.Errorf("directory had wrong number of entries in it")
+		return errors.New("directory had wrong number of entries in it")
 	}
 
 	for i, v := range names {
 		if v != exp[i] {
-			return fmt.Errorf("had wrong entry in directory")
+			return errors.New("had wrong entry in directory")
 		}
 	}
 	return nil

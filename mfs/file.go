@@ -2,7 +2,7 @@ package mfs
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 
 	dag "github.com/ipfs/boxo/ipld/merkledag"
@@ -68,7 +68,7 @@ func (fi *File) Open(flags Flags) (_ FileDescriptor, _retErr error) {
 			}
 		}()
 	} else {
-		return nil, fmt.Errorf("file opened for neither reading nor writing")
+		return nil, errors.New("file opened for neither reading nor writing")
 	}
 
 	fi.nodeLock.RLock()
@@ -88,9 +88,9 @@ func (fi *File) Open(flags Flags) (_ FileDescriptor, _retErr error) {
 
 		switch fsn.Type() {
 		default:
-			return nil, fmt.Errorf("unsupported fsnode type for 'file'")
+			return nil, errors.New("unsupported fsnode type for 'file'")
 		case ft.TSymlink:
-			return nil, fmt.Errorf("symlinks not yet supported")
+			return nil, errors.New("symlinks not yet supported")
 		case ft.TFile, ft.TRaw:
 			// OK case
 		}
@@ -133,7 +133,7 @@ func (fi *File) Size() (int64, error) {
 	case *dag.RawNode:
 		return int64(len(nd.RawData())), nil
 	default:
-		return 0, fmt.Errorf("unrecognized node type in mfs/file.Size()")
+		return 0, errors.New("unrecognized node type in mfs/file.Size()")
 	}
 }
 

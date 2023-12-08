@@ -3,6 +3,7 @@ package io
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -50,7 +51,7 @@ func CreateCompleteHAMT(ds ipld.DAGService, treeHeight int, childsPerNode int) (
 		return nil, err
 	}
 	if log2ofChilds*treeHeight%8 != 0 {
-		return nil, fmt.Errorf("childsPerNode * treeHeight should be multiple of 8")
+		return nil, errors.New("childsPerNode * treeHeight should be multiple of 8")
 	}
 	bytesInKey := log2ofChilds * treeHeight / 8
 	for i := 0; i < totalChildren; i++ {

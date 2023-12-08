@@ -88,7 +88,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		defer getResp.Close()
 	default:
 		// This shouldn't be possible to reach which is why it is a 500 rather than 4XX error
-		i.webError(w, r, fmt.Errorf("invalid method: cannot use this HTTP method with the given request"), http.StatusInternalServerError)
+		i.webError(w, r, errors.New("invalid method: cannot use this HTTP method with the given request"), http.StatusInternalServerError)
 		return false
 	}
 
@@ -107,7 +107,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 			blockSize = getResp.bytesSize
 			dataAsReadSeekCloser, ok := getResp.bytes.(io.ReadSeekCloser)
 			if !ok {
-				i.webError(w, r, fmt.Errorf("expected returned non-UnixFS data to be seekable"), http.StatusInternalServerError)
+				i.webError(w, r, errors.New("expected returned non-UnixFS data to be seekable"), http.StatusInternalServerError)
 			}
 			dataToRender = dataAsReadSeekCloser
 		}
@@ -151,7 +151,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 			}
 		}
 
-		i.webError(w, r, fmt.Errorf("unsupported UnixFS type"), http.StatusInternalServerError)
+		i.webError(w, r, errors.New("unsupported UnixFS type"), http.StatusInternalServerError)
 		return false
 	}
 }

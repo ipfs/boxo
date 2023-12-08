@@ -2,7 +2,6 @@ package namesys
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/ipfs/boxo/path"
@@ -142,5 +141,5 @@ func joinPaths(resolvedBase, unresolvedPath path.Path) (path.Path, error) {
 var tracer = otel.Tracer("boxo/namesys")
 
 func startSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return tracer.Start(ctx, fmt.Sprintf("Namesys.%s", name))
+	return tracer.Start(ctx, "Namesys."+name)
 }

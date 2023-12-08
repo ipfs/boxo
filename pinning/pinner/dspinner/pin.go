@@ -817,7 +817,7 @@ func (p *pinner) PinWithMode(ctx context.Context, c cid.Cid, mode ipfspinner.Mod
 	case ipfspinner.Direct:
 		return p.doPinDirect(ctx, c)
 	default:
-		return fmt.Errorf("unrecognized pin mode")
+		return errors.New("unrecognized pin mode")
 	}
 }
 

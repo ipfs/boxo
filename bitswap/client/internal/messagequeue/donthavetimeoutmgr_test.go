@@ -2,7 +2,7 @@ package messagequeue
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -342,7 +342,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 	tr := timeoutRecorder{}
 	clock := clock.NewMock()
 	pinged := make(chan struct{})
-	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged, err: fmt.Errorf("ping error")}
+	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged, err: errors.New("ping error")}
 	timeoutsTriggered := make(chan struct{})
 
 	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,

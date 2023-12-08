@@ -1,7 +1,7 @@
 package gateway
 
 import (
-	"fmt"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -13,7 +13,7 @@ type badSeeker struct {
 	io.ReadSeeker
 }
 
-var errBadSeek = fmt.Errorf("bad seeker")
+var errBadSeek = errors.New("bad seeker")
 
 func (bs badSeeker) Seek(offset int64, whence int) (int64, error) {
 	off, err := bs.ReadSeeker.Seek(0, io.SeekCurrent)

@@ -193,7 +193,7 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 		d.entriesCache[name] = nfi
 		return nfi, nil
 	default:
-		return nil, fmt.Errorf("unrecognized node type in cache node")
+		return nil, errors.New("unrecognized node type in cache node")
 	}
 }
 

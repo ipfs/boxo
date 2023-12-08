@@ -5,7 +5,6 @@ package republisher
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/ipfs/boxo/keystore"
@@ -190,5 +189,5 @@ func (rp *Republisher) getLastIPNSRecord(ctx context.Context, name ipns.Name) (*
 var tracer = otel.Tracer("boxo/namesys/republisher")
 
 func startSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return tracer.Start(ctx, fmt.Sprintf("Namesys.%s", name))
+	return tracer.Start(ctx, "Namesys."+name)
 }

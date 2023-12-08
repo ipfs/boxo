@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -64,7 +65,7 @@ func (q *Queue) Enqueue(cid cid.Cid) error {
 	case q.enqueue <- cid:
 		return nil
 	case <-q.ctx.Done():
-		return fmt.Errorf("failed to enqueue CID: shutting down")
+		return errors.New("failed to enqueue CID: shutting down")
 	}
 }
 
