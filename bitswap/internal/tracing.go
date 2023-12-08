@@ -8,5 +8,10 @@ import (
 )
 
 func StartSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return otel.Tracer("go-bitswap").Start(ctx, "Bitswap."+name, opts...)
+	return startSpan(ctx, "Bitswap."+name, opts...)
+}
+
+// outline logic so the string concatenation can be inlined and executed at compile time
+func startSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	return otel.Tracer("go-bitswap").Start(ctx, name, opts...)
 }
