@@ -508,6 +508,9 @@ func walkGatewaySimpleSelector(ctx context.Context, p path.ImmutablePath, params
 					return err
 				}
 				from = fileLength + entityRange.From
+				if from < 0 {
+					from = 0
+				}
 				foundFileLength = true
 			}
 
