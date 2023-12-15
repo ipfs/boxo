@@ -85,7 +85,7 @@ func pinSet(ctx context.Context, pinning pin.Pinner, fetchConfig fetcher.Factory
 				logR.Errorf("reprovide direct pins: %s", sc.Err)
 				return
 			}
-			set.Visitor(ctx)(sc.C)
+			set.Visitor(ctx)(sc.Pin.Key)
 		}
 
 		session := fetchConfig.NewSession(ctx)
@@ -94,9 +94,9 @@ func pinSet(ctx context.Context, pinning pin.Pinner, fetchConfig fetcher.Factory
 				logR.Errorf("reprovide recursive pins: %s", sc.Err)
 				return
 			}
-			set.Visitor(ctx)(sc.C)
+			set.Visitor(ctx)(sc.Pin.Key)
 			if !onlyRoots {
-				err := fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: sc.C}, func(res fetcher.FetchResult) error {
+				err := fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: sc.Pin.Key}, func(res fetcher.FetchResult) error {
 					clink, ok := res.LastBlockLink.(cidlink.Link)
 					if ok {
 						set.Visitor(ctx)(clink.Cid)
