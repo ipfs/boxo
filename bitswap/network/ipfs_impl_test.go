@@ -669,3 +669,66 @@ func TestNetworkCounters(t *testing.T) {
 		testNetworkCounters(t, 10-n, n)
 	}
 }
+
+func TestPeerDiscovery(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	mn := mocknet.New()
+	defer mn.Close()
+
+	mr := mockrouting.NewServer()
+	streamNet, err := tn.StreamNet(ctx, mn, mr)
+	if err != nil {
+		t.Fatal("Unable to setup network")
+	}
+
+	// start 2 disconnected nodes
+	p1 := tnet.RandIdentityOrFatal(t)
+	p2 := tnet.RandIdentityOrFatal(t)
+
+	bsnet1 := streamNet.Adapter(p1)
+	bsnet2 := streamNet.Adapter(p2)
+	r1 := newReceiver()
+	r2 := newReceiver()
+	bsnet1.Start(r1)
+	t.Cleanup(bsnet1.Stop)
+	bsnet2.Start(r2)
+	t.Cleanup(bsnet2.Stop)
+
+	err = mn.LinkAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// send request from node 1 to node 2
+	blockGenerator := blocksutil.NewBlockGenerator()
+	block := blockGenerator.Next()
+	sent := bsmsg.New(false)
+	sent.AddBlock(block)
+
+	err = bsnet1.SendMessage(ctx, p2.ID(), sent)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// node 2 should connect to node 1
+	select {
+	case <-ctx.Done():
+		t.Fatal("did not connect peer")
+	case <-r2.connectionEvent:
+	}
+
+	// verify the message is received
+	select {
+	case <-ctx.Done():
+		t.Fatal("did not receive message sent")
+	case <-r2.messageReceived:
+	}
+
+	sender := r2.lastSender
+	if sender != p1.ID() {
+		t.Fatal("received message from wrong node")
+	}
+}
