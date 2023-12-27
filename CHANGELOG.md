@@ -20,6 +20,8 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+- 🛠 `bitswap` & `bitswap/server` no longer provide to content routers, instead you can use the `provider` package because it uses a datastore queue and batches calls to ProvideMany.
+
 ### Security
 
 ## [v0.16.0]
