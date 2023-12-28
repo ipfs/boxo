@@ -99,6 +99,18 @@ func WithoutDuplicatedBlockStats() Option {
 	}
 }
 
+type ContentSearcher = bspqm.ContentRouter
+
+// WithContentSearch allows the client to search for providers when it is not
+// able to find the content itself.
+// Helps seeding sessions in networks where a significant amount of the peers
+// connected do not have the content you want to download.
+func WithContentSearch(router ContentSearcher) Option {
+	return func(bs *Client) {
+		bs.router = router
+	}
+}
+
 type BlockReceivedNotifier interface {
 	// ReceivedBlocks notifies the decision engine that a peer is well-behaving
 	// and gave us useful data, potentially increasing its score and making us
@@ -121,56 +133,13 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		return nil
 	})
 
-	// onDontHaveTimeout is called when a want-block is sent to a peer that
-	// has an old version of Bitswap that doesn't support DONT_HAVE messages,
-	// or when no response is received within a timeout.
-	var sm *bssm.SessionManager
-	var bs *Client
-	onDontHaveTimeout := func(p peer.ID, dontHaves []cid.Cid) {
-		// Simulate a message arriving with DONT_HAVEs
-		if bs.simulateDontHavesOnTimeout {
-			sm.ReceiveFrom(ctx, p, nil, nil, dontHaves)
-		}
-	}
-	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
-		return bsmq.New(ctx, p, network, onDontHaveTimeout)
-	}
-
-	sim := bssim.New()
-	bpm := bsbpm.New()
-	pm := bspm.New(ctx, peerQueueFactory, network.Self())
-	pqm := bspqm.New(ctx, network)
-
-	sessionFactory := func(
-		sessctx context.Context,
-		sessmgr bssession.SessionManager,
-		id uint64,
-		spm bssession.SessionPeerManager,
-		sim *bssim.SessionInterestManager,
-		pm bssession.PeerManager,
-		bpm *bsbpm.BlockPresenceManager,
-		notif notifications.PubSub,
-		provSearchDelay time.Duration,
-		rebroadcastDelay delay.D,
-		self peer.ID,
-	) bssm.Session {
-		return bssession.New(sessctx, sessmgr, id, spm, pqm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
-	}
-	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
-		return bsspm.New(id, network.ConnectionManager())
-	}
-	notif := notifications.New()
-	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
-
-	bs = &Client{
+	bs := &Client{
+		ctx:                        ctx,
 		blockstore:                 bstore,
 		network:                    network,
 		process:                    px,
-		pm:                         pm,
-		pqm:                        pqm,
-		sm:                         sm,
-		sim:                        sim,
-		notif:                      notif,
+		sim:                        bssim.New(),
+		notif:                      notifications.New(),
 		counters:                   new(counters),
 		dupMetric:                  bmetrics.DupHist(ctx),
 		allMetric:                  bmetrics.AllHist(ctx),
@@ -178,21 +147,26 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		rebroadcastDelay:           delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout: true,
 	}
+	bs.pm = bspm.New(ctx, bs.peerQueueFactory, network.Self())
+	bs.sm = bssm.New(ctx, bs.sessionFactory, bs.sim, bs.sessionPeerManagerFactory, bsbpm.New(), bs.pm, bs.notif, network.Self())
 
 	// apply functional options before starting and running bitswap
 	for _, option := range options {
 		option(bs)
 	}
 
-	bs.pqm.Startup()
+	if bs.router != nil {
+		bs.pqm = bspqm.New(ctx, network, bs.router)
+		bs.pqm.Startup()
+	}
 
 	// bind the context and process.
 	// do it over here to avoid closing before all setup is done.
 	go func() {
 		<-px.Closing() // process closes first
-		sm.Shutdown()
+		bs.sm.Shutdown()
 		cancelFunc()
-		notif.Shutdown()
+		bs.notif.Shutdown()
 	}()
 	procctx.CloseAfterContext(px, ctx) // parent cancelled first
 
@@ -201,9 +175,12 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 
 // Client instances implement the bitswap protocol.
 type Client struct {
+	ctx context.Context
+
 	pm *bspm.PeerManager
 
 	// the provider query manager manages requests to find providers
+	// is nil if content routing is disabled
 	pqm *bspqm.ProviderQueryManager
 
 	// network delivers messages on behalf of the session
@@ -244,11 +221,54 @@ type Client struct {
 
 	blockReceivedNotifier BlockReceivedNotifier
 
+	// optional content router
+	router ContentSearcher
+
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
 
 	// dupMetric will stay at 0
 	skipDuplicatedBlocksStats bool
+}
+
+func (bs *Client) sessionFactory(
+	sessctx context.Context,
+	sessmgr bssession.SessionManager,
+	id uint64,
+	spm bssession.SessionPeerManager,
+	sim *bssim.SessionInterestManager,
+	pm bssession.PeerManager,
+	bpm *bsbpm.BlockPresenceManager,
+	notif notifications.PubSub,
+	provSearchDelay time.Duration,
+	rebroadcastDelay delay.D,
+	self peer.ID,
+) bssm.Session {
+	// avoid typed nils
+	var pqm bssession.ProviderFinder
+	if bs.pqm != nil {
+		pqm = bs.pqm
+	}
+
+	return bssession.New(sessctx, sessmgr, id, spm, pqm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
+}
+
+// onDontHaveTimeout is called when a want-block is sent to a peer that
+// has an old version of Bitswap that doesn't support DONT_HAVE messages,
+// or when no response is received within a timeout.
+func (bs *Client) onDontHaveTimeout(p peer.ID, dontHaves []cid.Cid) {
+	// Simulate a message arriving with DONT_HAVEs
+	if bs.simulateDontHavesOnTimeout {
+		bs.sm.ReceiveFrom(bs.ctx, p, nil, nil, dontHaves)
+	}
+}
+
+func (bs *Client) peerQueueFactory(ctx context.Context, p peer.ID) bspm.PeerQueue {
+	return bsmq.New(ctx, p, bs.network, bs.onDontHaveTimeout)
+}
+
+func (bs *Client) sessionPeerManagerFactory(ctx context.Context, id uint64) bssession.SessionPeerManager {
+	return bsspm.New(id, bs.network.ConnectionManager())
 }
 
 type counters struct {

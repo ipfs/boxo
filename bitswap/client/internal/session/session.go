@@ -108,7 +108,7 @@ type Session struct {
 	sm             SessionManager
 	pm             PeerManager
 	sprm           SessionPeerManager
-	providerFinder ProviderFinder
+	providerFinder ProviderFinder // optional, nil when missing
 	sim            *bssim.SessionInterestManager
 
 	sw  sessionWants
@@ -141,6 +141,7 @@ func New(
 	sm SessionManager,
 	id uint64,
 	sprm SessionPeerManager,
+	// providerFinder might be nil
 	providerFinder ProviderFinder,
 	sim *bssim.SessionInterestManager,
 	pm PeerManager,
@@ -391,6 +392,10 @@ func (s *Session) handlePeriodicSearch(ctx context.Context) {
 // findMorePeers attempts to find more peers for a session by searching for
 // providers for the given Cid
 func (s *Session) findMorePeers(ctx context.Context, c cid.Cid) {
+	if s.providerFinder == nil {
+		// ¯\_(ツ)_/¯
+		return
+	}
 	go func(k cid.Cid) {
 		for p := range s.providerFinder.FindProvidersAsync(ctx, k) {
 			// When a provider indicates that it has a cid, it's equivalent to

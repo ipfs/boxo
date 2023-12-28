@@ -14,6 +14,7 @@ import (
 )
 
 type fakeProviderNetwork struct {
+	self             peer.ID
 	peersFound       []peer.ID
 	connectError     error
 	delay            time.Duration
@@ -23,17 +24,21 @@ type fakeProviderNetwork struct {
 	liveQueries      int
 }
 
-func (fpn *fakeProviderNetwork) ConnectTo(context.Context, peer.ID) error {
+func (fpn *fakeProviderNetwork) Self() peer.ID {
+	return fpn.self
+}
+
+func (fpn *fakeProviderNetwork) ConnectTo(context.Context, peer.AddrInfo) error {
 	time.Sleep(fpn.connectDelay)
 	return fpn.connectError
 }
 
-func (fpn *fakeProviderNetwork) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.ID {
+func (fpn *fakeProviderNetwork) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.AddrInfo {
 	fpn.queriesMadeMutex.Lock()
 	fpn.queriesMade++
 	fpn.liveQueries++
 	fpn.queriesMadeMutex.Unlock()
-	incomingPeers := make(chan peer.ID)
+	incomingPeers := make(chan peer.AddrInfo)
 	go func() {
 		defer close(incomingPeers)
 		for _, p := range fpn.peersFound {
@@ -44,7 +49,7 @@ func (fpn *fakeProviderNetwork) FindProvidersAsync(ctx context.Context, k cid.Ci
 			default:
 			}
 			select {
-			case incomingPeers <- p:
+			case incomingPeers <- peer.AddrInfo{ID: p}:
 			case <-ctx.Done():
 				return
 			}
@@ -64,7 +69,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 		delay:      1 * time.Millisecond,
 	}
 	ctx := context.Background()
-	providerQueryManager := New(ctx, fpn)
+	providerQueryManager := New(ctx, fpn, fpn)
 	providerQueryManager.Startup()
 	keys := testutil.GenerateCids(2)
 
@@ -101,7 +106,7 @@ func TestDedupingProviderRequests(t *testing.T) {
 		delay:      1 * time.Millisecond,
 	}
 	ctx := context.Background()
-	providerQueryManager := New(ctx, fpn)
+	providerQueryManager := New(ctx, fpn, fpn)
 	providerQueryManager.Startup()
 	key := testutil.GenerateCids(1)[0]
 
@@ -141,7 +146,7 @@ func TestCancelOneRequestDoesNotTerminateAnother(t *testing.T) {
 		delay:      1 * time.Millisecond,
 	}
 	ctx := context.Background()
-	providerQueryManager := New(ctx, fpn)
+	providerQueryManager := New(ctx, fpn, fpn)
 	providerQueryManager.Startup()
 
 	key := testutil.GenerateCids(1)[0]
@@ -187,7 +192,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	ctx := context.Background()
 	managerCtx, managerCancel := context.WithTimeout(ctx, 5*time.Millisecond)
 	defer managerCancel()
-	providerQueryManager := New(managerCtx, fpn)
+	providerQueryManager := New(managerCtx, fpn, fpn)
 	providerQueryManager.Startup()
 
 	key := testutil.GenerateCids(1)[0]
@@ -221,7 +226,7 @@ func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
 		delay:        1 * time.Millisecond,
 	}
 	ctx := context.Background()
-	providerQueryManager := New(ctx, fpn)
+	providerQueryManager := New(ctx, fpn, fpn)
 	providerQueryManager.Startup()
 
 	key := testutil.GenerateCids(1)[0]
@@ -255,7 +260,7 @@ func TestRateLimitingRequests(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	providerQueryManager := New(ctx, fpn)
+	providerQueryManager := New(ctx, fpn, fpn)
 	providerQueryManager.Startup()
 
 	keys := testutil.GenerateCids(maxInProcessRequests + 1)
@@ -292,7 +297,7 @@ func TestFindProviderTimeout(t *testing.T) {
 		delay:      10 * time.Millisecond,
 	}
 	ctx := context.Background()
-	providerQueryManager := New(ctx, fpn)
+	providerQueryManager := New(ctx, fpn, fpn)
 	providerQueryManager.Startup()
 	providerQueryManager.SetFindProviderTimeout(2 * time.Millisecond)
 	keys := testutil.GenerateCids(1)
@@ -316,7 +321,7 @@ func TestFindProviderPreCanceled(t *testing.T) {
 		delay:      1 * time.Millisecond,
 	}
 	ctx := context.Background()
-	providerQueryManager := New(ctx, fpn)
+	providerQueryManager := New(ctx, fpn, fpn)
 	providerQueryManager.Startup()
 	providerQueryManager.SetFindProviderTimeout(100 * time.Millisecond)
 	keys := testutil.GenerateCids(1)
@@ -341,7 +346,7 @@ func TestCancelFindProvidersAfterCompletion(t *testing.T) {
 		delay:      1 * time.Millisecond,
 	}
 	ctx := context.Background()
-	providerQueryManager := New(ctx, fpn)
+	providerQueryManager := New(ctx, fpn, fpn)
 	providerQueryManager.Startup()
 	providerQueryManager.SetFindProviderTimeout(100 * time.Millisecond)
 	keys := testutil.GenerateCids(1)

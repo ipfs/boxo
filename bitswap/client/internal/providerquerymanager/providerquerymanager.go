@@ -34,8 +34,12 @@ type findProviderRequest struct {
 // ProviderQueryNetwork is an interface for finding providers and connecting to
 // peers.
 type ProviderQueryNetwork interface {
-	ConnectTo(context.Context, peer.ID) error
-	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.ID
+	Self() peer.ID
+	ConnectTo(context.Context, peer.AddrInfo) error
+}
+
+type ContentRouter interface {
+	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.AddrInfo
 }
 
 type providerQueryMessage interface {
@@ -75,6 +79,7 @@ type cancelRequestMessage struct {
 type ProviderQueryManager struct {
 	ctx                          context.Context
 	network                      ProviderQueryNetwork
+	router                       ContentRouter
 	providerQueryMessages        chan providerQueryMessage
 	providerRequestsProcessing   chan *findProviderRequest
 	incomingFindProviderRequests chan *findProviderRequest
@@ -88,10 +93,11 @@ type ProviderQueryManager struct {
 
 // New initializes a new ProviderQueryManager for a given context and a given
 // network provider.
-func New(ctx context.Context, network ProviderQueryNetwork) *ProviderQueryManager {
+func New(ctx context.Context, network ProviderQueryNetwork, router ContentRouter) *ProviderQueryManager {
 	return &ProviderQueryManager{
 		ctx:                          ctx,
 		network:                      network,
+		router:                       router,
 		providerQueryMessages:        make(chan providerQueryMessage, 16),
 		providerRequestsProcessing:   make(chan *findProviderRequest),
 		incomingFindProviderRequests: make(chan *findProviderRequest),
@@ -235,11 +241,15 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 			pqm.timeoutMutex.RLock()
 			findProviderCtx, cancel := context.WithTimeout(fpr.ctx, pqm.findProviderTimeout)
 			pqm.timeoutMutex.RUnlock()
-			providers := pqm.network.FindProvidersAsync(findProviderCtx, k, maxProviders)
+			providers := pqm.router.FindProvidersAsync(findProviderCtx, k, maxProviders)
 			wg := &sync.WaitGroup{}
 			for p := range providers {
+				if p.ID == pqm.network.Self() {
+					continue // ignore self as provider
+				}
+
 				wg.Add(1)
-				go func(p peer.ID) {
+				go func(p peer.AddrInfo) {
 					defer wg.Done()
 					err := pqm.network.ConnectTo(findProviderCtx, p)
 					if err != nil {
@@ -250,7 +260,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 					case pqm.providerQueryMessages <- &receivedProviderMessage{
 						ctx: findProviderCtx,
 						k:   k,
-						p:   p,
+						p:   p.ID,
 					}:
 					case <-pqm.ctx.Done():
 						return

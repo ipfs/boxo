@@ -20,7 +20,6 @@ import (
 	bsnet "github.com/ipfs/boxo/bitswap/network"
 	testinstance "github.com/ipfs/boxo/bitswap/testinstance"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
-	mockrouting "github.com/ipfs/boxo/routing/mock"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 )
@@ -142,7 +141,7 @@ func BenchmarkFetchFromOldBitswap(b *testing.B) {
 			oldSeedCount := bch.oldSeedCount
 			newSeedCount := bch.nodeCount - (fetcherCount + oldSeedCount)
 
-			net := tn.VirtualNetwork(mockrouting.NewServer(), fixedDelay)
+			net := tn.VirtualNetwork(fixedDelay)
 
 			// Simulate an older Bitswap node (old protocol ID) that doesn't
 			// send DONT_HAVE responses
@@ -294,7 +293,7 @@ func BenchmarkDatacenterMultiLeechMultiSeed(b *testing.B) {
 		numblks := 1000
 
 		for i := 0; i < b.N; i++ {
-			net := tn.RateLimitedVirtualNetwork(mockrouting.NewServer(), d, rateLimitGenerator)
+			net := tn.RateLimitedVirtualNetwork(d, rateLimitGenerator)
 
 			ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 			defer ig.Close()
@@ -312,7 +311,7 @@ func BenchmarkDatacenterMultiLeechMultiSeed(b *testing.B) {
 
 func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, bstoreLatency time.Duration, df distFunc, ff fetchFunc) {
 	for i := 0; i < b.N; i++ {
-		net := tn.VirtualNetwork(mockrouting.NewServer(), d)
+		net := tn.VirtualNetwork(d)
 
 		ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 
@@ -327,7 +326,7 @@ func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, b
 
 func subtestDistributeAndFetchRateLimited(b *testing.B, numnodes, numblks int, d delay.D, rateLimitGenerator tn.RateLimitGenerator, blockSize int64, bstoreLatency time.Duration, df distFunc, ff fetchFunc) {
 	for i := 0; i < b.N; i++ {
-		net := tn.RateLimitedVirtualNetwork(mockrouting.NewServer(), d, rateLimitGenerator)
+		net := tn.RateLimitedVirtualNetwork(d, rateLimitGenerator)
 
 		ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 		defer ig.Close()
