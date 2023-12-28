@@ -75,6 +75,10 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 	return Option{client.SetSimulateDontHavesOnTimeout(send)}
 }
 
+func WithContentSearch(router client.ContentSearcher) Option {
+	return Option{client.WithContentSearch(router)}
+}
+
 func WithTracer(tap tracer.Tracer) Option {
 	// Only trace the server, both receive the same messages anyway
 	return Option{

@@ -26,10 +26,6 @@ type fakeMessageNetwork struct {
 	messageSender      bsnet.MessageSender
 }
 
-func (fmn *fakeMessageNetwork) ConnectTo(context.Context, peer.ID) error {
-	return fmn.connectError
-}
-
 func (fmn *fakeMessageNetwork) NewMessageSender(context.Context, peer.ID, *bsnet.MessageSenderOpts) (bsnet.MessageSender, error) {
 	if fmn.messageSenderError == nil {
 		return fmn.messageSender, nil

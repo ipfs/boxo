@@ -10,6 +10,7 @@ import (
 	"github.com/ipfs/boxo/bitswap"
 	"github.com/ipfs/boxo/bitswap/client/internal/session"
 	"github.com/ipfs/boxo/bitswap/client/traceability"
+	bsnet "github.com/ipfs/boxo/bitswap/network"
 	testinstance "github.com/ipfs/boxo/bitswap/testinstance"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
 	mockrouting "github.com/ipfs/boxo/routing/mock"
@@ -18,13 +19,15 @@ import (
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	delay "github.com/ipfs/go-ipfs-delay"
 	tu "github.com/libp2p/go-libp2p-testing/etc"
+	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/stretchr/testify/require"
 )
 
 func getVirtualNetwork() tn.Network {
 	// FIXME: the tests are really sensitive to the network delay. fix them to work
 	// well under varying conditions
-	return tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0))
+	return tn.VirtualNetwork(delay.Fixed(0))
 }
 
 func addBlock(t *testing.T, ctx context.Context, inst testinstance.Instance, blk blocks.Block) {
@@ -34,10 +37,6 @@ func addBlock(t *testing.T, ctx context.Context, inst testinstance.Instance, blk
 		t.Fatal(err)
 	}
 	err = inst.Exchange.NotifyNewBlocks(ctx, blk)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = inst.Adapter.Provide(ctx, blk.Cid())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +113,7 @@ func TestSessionBetweenPeers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	vnet := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(time.Millisecond))
+	vnet := tn.VirtualNetwork(delay.Fixed(time.Millisecond))
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, []bitswap.Option{bitswap.SetSimulateDontHavesOnTimeout(false)})
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
@@ -219,16 +218,23 @@ func TestFetchNotConnected(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
+	rs := mockrouting.NewServer()
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, []bitswap.Option{bitswap.ProviderSearchDelay(10 * time.Millisecond)})
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
-	other := ig.Next()
+	var otherClient mockrouting.Client
+	other := ig.NextWithExtraOptions(func(id tnet.Identity) ([]bsnet.NetOpt, []bitswap.Option) {
+		otherClient = rs.Client(id)
+		return nil, nil // don't add content search, only the client needs it
+	})
 
 	// Provide 10 blocks on Peer A
 	blks := bgen.Blocks(10)
 	for _, block := range blks {
 		addBlock(t, ctx, other, block)
+		err := otherClient.Provide(ctx, block.Cid(), true)
+		require.NoError(t, err)
 	}
 
 	var cids []cid.Cid
@@ -239,7 +245,9 @@ func TestFetchNotConnected(t *testing.T) {
 	// Request blocks with Peer B
 	// Note: Peer A and Peer B are not initially connected, so this tests
 	// that Peer B will search for and find Peer A
-	thisNode := ig.Next()
+	thisNode := ig.NextWithExtraOptions(func(id tnet.Identity) ([]bsnet.NetOpt, []bitswap.Option) {
+		return nil, []bitswap.Option{bitswap.WithContentSearch(rs.Client(id))}
+	})
 	ses := thisNode.Exchange.NewSession(ctx).(*session.Session)
 	ses.SetBaseTickDelay(time.Millisecond * 10)
 
@@ -262,6 +270,7 @@ func TestFetchAfterDisconnect(t *testing.T) {
 	defer cancel()
 
 	vnet := getVirtualNetwork()
+	rs := mockrouting.NewServer()
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, []bitswap.Option{
 		bitswap.ProviderSearchDelay(10 * time.Millisecond),
 		bitswap.RebroadcastDelay(delay.Fixed(15 * time.Millisecond)),
@@ -269,9 +278,11 @@ func TestFetchAfterDisconnect(t *testing.T) {
 	defer ig.Close()
 	bgen := blocksutil.NewBlockGenerator()
 
-	inst := ig.Instances(2)
-	peerA := inst[0]
-	peerB := inst[1]
+	var aClient mockrouting.Client
+	peerA := ig.NextWithExtraOptions(func(id tnet.Identity) ([]bsnet.NetOpt, []bitswap.Option) {
+		aClient = rs.Client(id)
+		return nil, nil // don't add content search, only the client needs it
+	})
 
 	// Provide 5 blocks on Peer A
 	blks := bgen.Blocks(10)
@@ -283,9 +294,14 @@ func TestFetchAfterDisconnect(t *testing.T) {
 	firstBlks := blks[:5]
 	for _, block := range firstBlks {
 		addBlock(t, ctx, peerA, block)
+		err := aClient.Provide(ctx, block.Cid(), true)
+		require.NoError(t, err)
 	}
 
 	// Request all blocks with Peer B
+	peerB := ig.NextWithExtraOptions(func(id tnet.Identity) ([]bsnet.NetOpt, []bitswap.Option) {
+		return nil, []bitswap.Option{bitswap.WithContentSearch(rs.Client(id))}
+	})
 	ses := peerB.Exchange.NewSession(ctx).(*session.Session)
 	ses.SetBaseTickDelay(time.Millisecond * 10)
 
@@ -317,6 +333,8 @@ func TestFetchAfterDisconnect(t *testing.T) {
 	lastBlks := blks[5:]
 	for _, block := range lastBlks {
 		addBlock(t, ctx, peerA, block)
+		err := aClient.Provide(ctx, block.Cid(), true)
+		require.NoError(t, err)
 	}
 
 	// Peer B should call FindProviders() and find Peer A

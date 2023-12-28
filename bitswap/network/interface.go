@@ -7,8 +7,6 @@ import (
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	"github.com/ipfs/boxo/bitswap/network/internal"
 
-	cid "github.com/ipfs/go-cid"
-
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -40,7 +38,8 @@ type BitSwapNetwork interface {
 	// Stop stops the network service.
 	Stop()
 
-	ConnectTo(context.Context, peer.ID) error
+	// ConnectTo attempts to connect to the peer, using the passed addresses as a hint, they can be empty.
+	ConnectTo(context.Context, peer.AddrInfo) error
 	DisconnectFrom(context.Context, peer.ID) error
 
 	NewMessageSender(context.Context, peer.ID, *MessageSenderOpts) (MessageSender, error)
@@ -48,8 +47,6 @@ type BitSwapNetwork interface {
 	ConnectionManager() connmgr.ConnManager
 
 	Stats() Stats
-
-	Routing
 
 	Pinger
 }
@@ -82,16 +79,6 @@ type Receiver interface {
 	// Connected/Disconnected warns bitswap about peer connections.
 	PeerConnected(peer.ID)
 	PeerDisconnected(peer.ID)
-}
-
-// Routing is an interface to providing and finding providers on a bitswap
-// network.
-type Routing interface {
-	// FindProvidersAsync returns a channel of providers for the given key.
-	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.ID
-
-	// Provide provides the key to the network.
-	Provide(context.Context, cid.Cid) error
 }
 
 // Pinger is an interface to ping a peer and get the average latency of all pings
