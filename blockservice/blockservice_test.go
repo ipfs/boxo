@@ -288,3 +288,72 @@ func TestAllowlist(t *testing.T) {
 	check(blockservice.GetBlock)
 	check(NewSession(ctx, blockservice).GetBlock)
 }
+
+type mockProvider []cid.Cid
+
+func (p *mockProvider) Provide(c cid.Cid) error {
+	*p = append(*p, c)
+	return nil
+}
+func TestProviding(t *testing.T) {
+	t.Parallel()
+	a := assert.New(t)
+
+	bgen := butil.NewBlockGenerator()
+	blocks := bgen.Blocks(9)
+
+	exchange := blockstore.NewBlockstore(ds.NewMapDatastore())
+
+	prov := mockProvider{}
+	blockservice := New(blockstore.NewBlockstore(ds.NewMapDatastore()), offline.Exchange(exchange), WithProvider(&prov))
+	var added []cid.Cid
+
+	// Adding one block provide it.
+	a.NoError(blockservice.AddBlock(context.Background(), blocks[0]))
+	added = append(added, blocks[0].Cid())
+	blocks = blocks[1:]
+
+	// Adding multiple blocks provide them.
+	a.NoError(blockservice.AddBlocks(context.Background(), blocks[0:2]))
+	added = append(added, blocks[0].Cid(), blocks[1].Cid())
+	blocks = blocks[2:]
+
+	// Downloading one block provide it.
+	a.NoError(exchange.Put(context.Background(), blocks[0]))
+	_, err := blockservice.GetBlock(context.Background(), blocks[0].Cid())
+	a.NoError(err)
+	added = append(added, blocks[0].Cid())
+	blocks = blocks[1:]
+
+	// Downloading multiple blocks provide them.
+	a.NoError(exchange.PutMany(context.Background(), blocks[0:2]))
+	cids := []cid.Cid{blocks[0].Cid(), blocks[1].Cid()}
+	var got []cid.Cid
+	for b := range blockservice.GetBlocks(context.Background(), cids) {
+		got = append(got, b.Cid())
+	}
+	added = append(added, cids...)
+	a.ElementsMatch(cids, got)
+	blocks = blocks[2:]
+
+	session := NewSession(context.Background(), blockservice)
+
+	// Downloading one block over a session provide it.
+	a.NoError(exchange.Put(context.Background(), blocks[0]))
+	_, err = session.GetBlock(context.Background(), blocks[0].Cid())
+	a.NoError(err)
+	added = append(added, blocks[0].Cid())
+	blocks = blocks[1:]
+
+	// Downloading multiple blocks over a session provide them.
+	a.NoError(exchange.PutMany(context.Background(), blocks[0:2]))
+	cids = []cid.Cid{blocks[0].Cid(), blocks[1].Cid()}
+	got = nil
+	for b := range session.GetBlocks(context.Background(), cids) {
+		got = append(got, b.Cid())
+	}
+	a.ElementsMatch(cids, got)
+	added = append(added, cids...)
+
+	a.ElementsMatch(added, []cid.Cid(prov))
+}

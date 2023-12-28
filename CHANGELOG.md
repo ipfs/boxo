@@ -19,6 +19,7 @@ The following emojis are used to highlight certain changes:
 - `blockservice.NewWritethrough` deprecated function has been removed, instead you can do `blockservice.New(..., ..., WriteThrough())` like previously.
 - `gateway`: a new header configuration middleware has been added to replace the existing header configuration, which can be used more generically.
 - `namesys` now has a `WithMaxCacheTTL` option, which allows you to define a maximum TTL that will be used for caching IPNS entries.
+- `blockservice` now have a `WithProvider` option, this allows to recreate the behavior of advertising added blocks the bitswap server used to do.
 
 ### Changed
 
