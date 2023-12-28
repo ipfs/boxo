@@ -13,6 +13,7 @@ import (
 
 	"github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/exchange"
+	"github.com/ipfs/boxo/provider"
 	"github.com/ipfs/boxo/verifcid"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -71,10 +72,19 @@ type BoundedBlockService interface {
 	Allowlist() verifcid.Allowlist
 }
 
+// ProvidingBlockService is a [Blockservice] which announces new cids to a [provider.Provider].
+type ProvidingBlockService interface {
+	BlockService
+
+	// Provider can return [nil] if there is no provider used.
+	Provider() provider.Provider
+}
+
 type blockService struct {
 	allowlist  verifcid.Allowlist
 	blockstore blockstore.Blockstore
 	exchange   exchange.Interface
+	provider   provider.Provider
 	// If checkFirst is true then first check that a block doesn't
 	// already exist to avoid republishing the block on the exchange.
 	checkFirst bool
@@ -94,6 +104,13 @@ func WriteThrough() Option {
 func WithAllowlist(allowlist verifcid.Allowlist) Option {
 	return func(bs *blockService) {
 		bs.allowlist = allowlist
+	}
+}
+
+// WithProvider allows to advertise anything that is added through the blockservice.
+func WithProvider(prov provider.Provider) Option {
+	return func(bs *blockService) {
+		bs.provider = prov
 	}
 }
 
@@ -139,6 +156,10 @@ func (s *blockService) Allowlist() verifcid.Allowlist {
 	return s.allowlist
 }
 
+func (s *blockService) Provider() provider.Provider {
+	return s.provider
+}
+
 // NewSession creates a new session that allows for
 // controlled exchange of wantlists to decrease the bandwidth overhead.
 // If the current exchange is a SessionExchange, a new exchange
@@ -149,6 +170,12 @@ func NewSession(ctx context.Context, bs BlockService) *Session {
 	if bbs, ok := bs.(BoundedBlockService); ok {
 		allowlist = bbs.Allowlist()
 	}
+
+	var prov provider.Provider
+	if bprov, ok := bs.(ProvidingBlockService); ok {
+		prov = bprov.Provider()
+	}
+
 	exch := bs.Exchange()
 	if sessEx, ok := exch.(exchange.SessionExchange); ok {
 		return &Session{
@@ -158,6 +185,7 @@ func NewSession(ctx context.Context, bs BlockService) *Session {
 			sessEx:    sessEx,
 			bs:        bs.Blockstore(),
 			notifier:  exch,
+			provider:  prov,
 		}
 	}
 	return &Session{
@@ -166,6 +194,7 @@ func NewSession(ctx context.Context, bs BlockService) *Session {
 		sessCtx:   ctx,
 		bs:        bs.Blockstore(),
 		notifier:  exch,
+		provider:  prov,
 	}
 }
 
@@ -194,6 +223,11 @@ func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 	if s.exchange != nil {
 		if err := s.exchange.NotifyNewBlocks(ctx, o); err != nil {
 			logger.Errorf("NotifyNewBlocks: %s", err.Error())
+		}
+	}
+	if s.provider != nil {
+		if err := s.provider.Provide(o.Cid()); err != nil {
+			logger.Errorf("Provide: %s", err.Error())
 		}
 	}
 
@@ -242,6 +276,14 @@ func (s *blockService) AddBlocks(ctx context.Context, bs []blocks.Block) error {
 			logger.Errorf("NotifyNewBlocks: %s", err.Error())
 		}
 	}
+	if s.provider != nil {
+		for _, o := range toput {
+			if err := s.provider.Provide(o.Cid()); err != nil {
+				logger.Errorf("Provide: %s", err.Error())
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -256,14 +298,14 @@ func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, e
 		f = s.getExchange
 	}
 
-	return getBlock(ctx, c, s.blockstore, s.allowlist, f)
+	return getBlock(ctx, c, s.blockstore, s.allowlist, f, s.provider)
 }
 
 func (s *blockService) getExchange() notifiableFetcher {
 	return s.exchange
 }
 
-func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, allowlist verifcid.Allowlist, fget func() notifiableFetcher) (blocks.Block, error) {
+func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, allowlist verifcid.Allowlist, fget func() notifiableFetcher, prov provider.Provider) (blocks.Block, error) {
 	err := verifcid.ValidateCid(allowlist, c) // hash security
 	if err != nil {
 		return nil, err
@@ -293,6 +335,12 @@ func getBlock(ctx context.Context, c cid.Cid, bs blockstore.Blockstore, allowlis
 		if err != nil {
 			return nil, err
 		}
+		if prov != nil {
+			err = prov.Provide(blk.Cid())
+			if err != nil {
+				return nil, err
+			}
+		}
 		logger.Debugf("BlockService.BlockFetched %s", c)
 		return blk, nil
 	}
@@ -313,10 +361,10 @@ func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan block
 		f = s.getExchange
 	}
 
-	return getBlocks(ctx, ks, s.blockstore, s.allowlist, f)
+	return getBlocks(ctx, ks, s.blockstore, s.allowlist, f, s.provider)
 }
 
-func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, allowlist verifcid.Allowlist, fget func() notifiableFetcher) <-chan blocks.Block {
+func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, allowlist verifcid.Allowlist, fget func() notifiableFetcher, prov provider.Provider) <-chan blocks.Block {
 	out := make(chan blocks.Block)
 
 	go func() {
@@ -398,6 +446,14 @@ func getBlocks(ctx context.Context, ks []cid.Cid, bs blockstore.Blockstore, allo
 			}
 			cache[0] = nil // early gc
 
+			if prov != nil {
+				err = prov.Provide(b.Cid())
+				if err != nil {
+					logger.Errorf("could not tell the provider about new blocks: %s", err)
+					return
+				}
+			}
+
 			select {
 			case out <- b:
 			case <-ctx.Done():
@@ -437,6 +493,7 @@ type Session struct {
 	sessEx    exchange.SessionExchange
 	sessCtx   context.Context
 	notifier  notifier
+	provider  provider.Provider
 	lk        sync.Mutex
 }
 
@@ -480,7 +537,7 @@ func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error)
 	ctx, span := internal.StartSpan(ctx, "Session.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
 	defer span.End()
 
-	return getBlock(ctx, c, s.bs, s.allowlist, s.getFetcherFactory())
+	return getBlock(ctx, c, s.bs, s.allowlist, s.getFetcherFactory(), s.provider)
 }
 
 // GetBlocks gets blocks in the context of a request session
@@ -488,7 +545,7 @@ func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Blo
 	ctx, span := internal.StartSpan(ctx, "Session.GetBlocks")
 	defer span.End()
 
-	return getBlocks(ctx, ks, s.bs, s.allowlist, s.getFetcherFactory())
+	return getBlocks(ctx, ks, s.bs, s.allowlist, s.getFetcherFactory(), s.provider)
 }
 
 var _ BlockGetter = (*Session)(nil)

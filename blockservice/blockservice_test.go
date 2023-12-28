@@ -288,3 +288,31 @@ func TestAllowlist(t *testing.T) {
 	check(blockservice.GetBlock)
 	check(NewSession(ctx, blockservice).GetBlock)
 }
+
+type mockProvider []cid.Cid
+
+func (p *mockProvider) Provide(c cid.Cid) error {
+	*p = append(*p, c)
+	return nil
+}
+
+func TestProviding(t *testing.T) {
+	t.Parallel()
+	a := assert.New(t)
+
+	bgen := butil.NewBlockGenerator()
+	blocks := bgen.Blocks(3)
+
+	prov := mockProvider{}
+	blockservice := New(blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), nil, WithProvider(&prov))
+	var added []cid.Cid
+
+	a.NoError(blockservice.AddBlock(context.Background(), blocks[0]))
+	added = append(added, blocks[0].Cid())
+
+	a.NoError(blockservice.AddBlocks(context.Background(), blocks[1:]))
+	added = append(added, blocks[1].Cid())
+	added = append(added, blocks[2].Cid())
+
+	a.ElementsMatch(added, []cid.Cid(prov))
+}
