@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+- 🛠 `tracing` `jaeger` exporter has been removed due to it's deprecation and removal from upstream, you should use `otlp` exporter instead. See the [docs](./docs/tracing.md) for an example.
+
 ### Security
 
 ## [v0.16.0]

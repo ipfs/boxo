@@ -15,7 +15,6 @@ to use the Jaeger UI. The [Gateway examples](../examples/gateway/) fully support
 - [Environment Variables](#environment-variables)
   - [`OTEL_TRACES_EXPORTER`](#otel_traces_exporter)
   - [`OTLP Exporter`](#otlp-exporter)
-  - [`Jaeger Exporter`](#jaeger-exporter)
   - [`Zipkin Exporter`](#zipkin-exporter)
   - [`File Exporter`](#file-exporter)
   - [`OTEL_PROPAGATORS`](#otel_propagators)
@@ -34,7 +33,6 @@ set of additional environment variables used to configure it. The following valu
 are supported:
 
 - `otlp`
-- `jaeger`
 - `zipkin`
 - `stdout`
 - `file` -- appends traces to a JSON file on the filesystem
@@ -53,10 +51,6 @@ Specifies the OTLP protocol to use, which is one of:
 - `http/protobuf`
 
 Default: `"grpc"`
-
-### `Jaeger Exporter`
-
-See [Jaeger Exporter](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/sdk-environment-variables.md#jaeger-exporter).
 
 ### `Zipkin Exporter`
 
@@ -81,24 +75,27 @@ and configure the Kubo daemon, or gateway examples, to publish traces to it. Her
 ephemeral container:
 
 ```console
-$ docker run --rm -it --name jaeger \
-    -e COLLECTOR_ZIPKIN_HOST_PORT=:9411 \
-    -p 5775:5775/udp \
-    -p 6831:6831/udp \
-    -p 6832:6832/udp \
-    -p 5778:5778 \
-    -p 16686:16686 \
-    -p 14268:14268 \
-    -p 14269:14269 \
-    -p 14250:14250 \
-    -p 9411:9411 \
-    jaegertracing/all-in-one
+$ docker run -d --rm --name jaeger \
+  -e COLLECTOR_OTLP_ENABLED=true \
+  -e COLLECTOR_ZIPKIN_HOST_PORT=:9411 \
+  -p 5775:5775/udp \
+  -p 6831:6831/udp \
+  -p 6832:6832/udp \
+  -p 5778:5778 \
+  -p 16686:16686 \
+  -p 14250:14250 \
+  -p 14268:14268 \
+  -p 14269:14269 \
+  -p 4317:4317 \
+  -p 4318:4318 \
+  -p 9411:9411 \
+  jaegertracing/all-in-one
 ```
 
 Then, in other terminal, start the app that uses `boxo/tracing` internally (e.g., a Kubo daemon), with Jaeger exporter enabled:
 
-```
-$ OTEL_TRACES_EXPORTER=jaeger ipfs daemon
+```console
+$ OTEL_EXPORTER_OTLP_INSECURE=true OTEL_TRACES_EXPORTER=otlp ipfs daemon --init
 ```
 
 Finally, the [Jaeger UI] is available at http://localhost:16686.
