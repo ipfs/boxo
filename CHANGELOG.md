@@ -28,6 +28,7 @@ The following emojis are used to highlight certain changes:
 ### Removed
 
 - 🛠 `bitswap` & `bitswap/server` no longer provide to content routers, instead you can use the `provider` package because it uses a datastore queue and batches calls to ProvideMany.
+- 🛠 `tracing` `jaeger` exporter has been removed due to it's deprecation and removal from upstream, you should use `otlp` exporter instead. See the [docs](./docs/tracing.md) for an example.
 
 ### Security
 
