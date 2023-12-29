@@ -13,7 +13,6 @@ import (
 	bsmq "github.com/ipfs/boxo/bitswap/client/internal/messagequeue"
 	"github.com/ipfs/boxo/bitswap/client/internal/notifications"
 	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
-	bspqm "github.com/ipfs/boxo/bitswap/client/internal/providerquerymanager"
 	bssession "github.com/ipfs/boxo/bitswap/client/internal/session"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
 	bssm "github.com/ipfs/boxo/bitswap/client/internal/sessionmanager"
@@ -99,7 +98,7 @@ func WithoutDuplicatedBlockStats() Option {
 	}
 }
 
-type ContentSearcher = bspqm.ContentRouter
+type ContentSearcher = bssession.ProviderFinder
 
 // WithContentSearch allows the client to search for providers when it is not
 // able to find the content itself.
@@ -155,11 +154,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		option(bs)
 	}
 
-	if bs.router != nil {
-		bs.pqm = bspqm.New(ctx, network, bs.router)
-		bs.pqm.Startup()
-	}
-
 	// bind the context and process.
 	// do it over here to avoid closing before all setup is done.
 	go func() {
@@ -178,10 +172,6 @@ type Client struct {
 	ctx context.Context
 
 	pm *bspm.PeerManager
-
-	// the provider query manager manages requests to find providers
-	// is nil if content routing is disabled
-	pqm *bspqm.ProviderQueryManager
 
 	// network delivers messages on behalf of the session
 	network bsnet.BitSwapNetwork
@@ -244,13 +234,7 @@ func (bs *Client) sessionFactory(
 	rebroadcastDelay delay.D,
 	self peer.ID,
 ) bssm.Session {
-	// avoid typed nils
-	var pqm bssession.ProviderFinder
-	if bs.pqm != nil {
-		pqm = bs.pqm
-	}
-
-	return bssession.New(sessctx, sessmgr, id, spm, pqm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
+	return bssession.New(sessctx, sessmgr, id, spm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, bs.router, bs.network)
 }
 
 // onDontHaveTimeout is called when a want-block is sent to a peer that
