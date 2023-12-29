@@ -478,6 +478,9 @@ func (s *blockService) DeleteBlock(ctx context.Context, c cid.Cid) error {
 
 func (s *blockService) Close() error {
 	logger.Debug("blockservice is shutting down...")
+	if s.exchange == nil {
+		return nil
+	}
 	return s.exchange.Close()
 }
 
