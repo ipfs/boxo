@@ -7,7 +7,6 @@ import (
 	"path"
 	"strings"
 
-	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
@@ -52,12 +51,6 @@ func NewSpanExporters(ctx context.Context) ([]trace.SpanExporter, error) {
 			default:
 				return nil, fmt.Errorf("unknown or unsupported OTLP exporter '%s'", exporterStr)
 			}
-		case "jaeger":
-			exporter, err := jaeger.New(jaeger.WithCollectorEndpoint())
-			if err != nil {
-				return nil, fmt.Errorf("building Jaeger exporter: %w", err)
-			}
-			exporters = append(exporters, exporter)
 		case "zipkin":
 			exporter, err := zipkin.New("")
 			if err != nil {
