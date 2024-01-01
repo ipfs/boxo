@@ -4,7 +4,7 @@ Tracing across the stack follows, as much as possible, the [Open Telemetry]
 specifications. Configuration environment variables are specified in the
 [OpenTelemetry Environment Variable Specification].
 
-We use the [opentelemtry-go] package, which currently does not have default support
+We use the [opentelemetry-go] package, which currently does not have default support
 for the `OTEL_TRACES_EXPORTER` environment variables. Therefore, we provide some
 helper functions under [`boxo/tracing`](../tracing/) to support these.
 
