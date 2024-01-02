@@ -665,16 +665,16 @@ func (p *pinner) loadPin(ctx context.Context, pid string) (*pin, error) {
 }
 
 // DirectKeys returns a slice containing the directly pinned keys
-func (p *pinner) DirectKeys(ctx context.Context) <-chan ipfspinner.StreamedPin {
-	return p.streamIndex(ctx, p.cidDIndex)
+func (p *pinner) DirectKeys(ctx context.Context, detailed bool) <-chan ipfspinner.StreamedPin {
+	return p.streamIndex(ctx, p.cidDIndex, detailed)
 }
 
 // RecursiveKeys returns a slice containing the recursively pinned keys
-func (p *pinner) RecursiveKeys(ctx context.Context) <-chan ipfspinner.StreamedPin {
-	return p.streamIndex(ctx, p.cidRIndex)
+func (p *pinner) RecursiveKeys(ctx context.Context, detailed bool) <-chan ipfspinner.StreamedPin {
+	return p.streamIndex(ctx, p.cidRIndex, detailed)
 }
 
-func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer) <-chan ipfspinner.StreamedPin {
+func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer, detailed bool) <-chan ipfspinner.StreamedPin {
 	out := make(chan ipfspinner.StreamedPin)
 
 	go func() {
@@ -692,21 +692,26 @@ func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer) <-chan 
 				return false
 			}
 
-			pp, err := p.loadPin(ctx, value)
-			if err != nil {
-				out <- ipfspinner.StreamedPin{Err: err}
-				return false
+			var pin ipfspinner.Pinned
+			if detailed {
+				pp, err := p.loadPin(ctx, value)
+				if err != nil {
+					out <- ipfspinner.StreamedPin{Err: err}
+					return false
+				}
+
+				pin.Key = pp.Cid
+				pin.Mode = pp.Mode
+				pin.Name = pp.Name
+			} else {
+				pin.Key = c
 			}
 
 			if !cidSet.Has(c) {
 				select {
 				case <-ctx.Done():
 					return false
-				case out <- ipfspinner.StreamedPin{Pin: ipfspinner.Pinned{
-					Key:  pp.Cid,
-					Mode: pp.Mode,
-					Name: pp.Name,
-				}}:
+				case out <- ipfspinner.StreamedPin{Pin: pin}:
 				}
 				cidSet.Add(c)
 			}
@@ -722,7 +727,7 @@ func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer) <-chan 
 
 // InternalPins returns all cids kept pinned for the internal state of the
 // pinner
-func (p *pinner) InternalPins(ctx context.Context) <-chan ipfspinner.StreamedPin {
+func (p *pinner) InternalPins(ctx context.Context, detailed bool) <-chan ipfspinner.StreamedPin {
 	c := make(chan ipfspinner.StreamedPin)
 	close(c)
 	return c

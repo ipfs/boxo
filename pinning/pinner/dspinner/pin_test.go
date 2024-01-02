@@ -11,6 +11,7 @@ import (
 
 	bs "github.com/ipfs/boxo/blockservice"
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
+	"github.com/stretchr/testify/require"
 
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
@@ -210,7 +211,7 @@ func TestPinnerBasic(t *testing.T) {
 		return pins
 	}
 
-	pins := allPins(p.RecursiveKeys(ctx))
+	pins := allPins(p.RecursiveKeys(ctx, true))
 	if len(pins) != 2 {
 		t.Error("expected 2 recursive pins")
 	}
@@ -255,7 +256,7 @@ func TestPinnerBasic(t *testing.T) {
 		}
 	}
 
-	pins = allPins(p.DirectKeys(ctx))
+	pins = allPins(p.DirectKeys(ctx, false))
 	if len(pins) != 1 {
 		t.Error("expected 1 direct pin")
 	}
@@ -263,7 +264,7 @@ func TestPinnerBasic(t *testing.T) {
 		t.Error("wrong direct pin")
 	}
 
-	pins = allPins(p.InternalPins(ctx))
+	pins = allPins(p.InternalPins(ctx, false))
 	if len(pins) != 0 {
 		t.Error("should not have internal keys")
 	}
@@ -1350,4 +1351,43 @@ func verifyIndexValue(ctx context.Context, pinner *pinner, cidKey, expectedPid s
 		return errors.New("should not have a direct index")
 	}
 	return nil
+}
+
+func BenchmarkDetails(b *testing.B) {
+	for count := 128; count <= 16386; count <<= 1 {
+		b.Run(fmt.Sprint("Keys-NoDetails-", count), func(b *testing.B) {
+			benchmarkDetails(b, count, false)
+		})
+
+		b.Run(fmt.Sprint("Keys-Details-", count), func(b *testing.B) {
+			benchmarkDetails(b, count, true)
+		})
+	}
+}
+
+func benchmarkDetails(b *testing.B, count int, details bool) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dstore, dserv := makeStore()
+	pinner, err := New(ctx, dstore, dserv)
+	require.NoError(b, err)
+	nodes := makeNodes(count, dserv)
+
+	// Pin all the nodes one at a time.
+	for j := range nodes {
+		err := pinner.Pin(ctx, nodes[j], true, "")
+		require.NoError(b, err)
+
+		err = pinner.Flush(ctx)
+		require.NoError(b, err)
+	}
+
+	// Reset the timer and execute actual benchmark.
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for val := range pinner.RecursiveKeys(ctx, details) {
+			require.NoError(b, val.Err)
+		}
+	}
 }

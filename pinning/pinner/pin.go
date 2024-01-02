@@ -120,14 +120,14 @@ type Pinner interface {
 	Flush(ctx context.Context) error
 
 	// DirectKeys returns all directly pinned cids
-	DirectKeys(ctx context.Context) <-chan StreamedPin
+	DirectKeys(ctx context.Context, detailed bool) <-chan StreamedPin
 
 	// RecursiveKeys returns all recursively pinned cids
-	RecursiveKeys(ctx context.Context) <-chan StreamedPin
+	RecursiveKeys(ctx context.Context, detailed bool) <-chan StreamedPin
 
 	// InternalPins returns all cids kept pinned for the internal state of the
 	// pinner
-	InternalPins(ctx context.Context) <-chan StreamedPin
+	InternalPins(ctx context.Context, detailed bool) <-chan StreamedPin
 }
 
 // Pinned represents CID which has been pinned with a pinning strategy.
