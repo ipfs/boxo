@@ -16,7 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-* 🛠 `pinning/pinner`: you can now give a custom name when pinning a CID. To reflect this, the `Pinner` has been adjusted.
+* 🛠 `pinning/pinner`: you can now give a custom name when pinning a CID. To reflect this, the `Pinner` has been adjusted. Note that calling `Pin` for the same CID with a different name will replace its current name by the newly given name.
 
 ### Changed
 

@@ -99,6 +99,16 @@ func assertUnpinned(t *testing.T, p ipfspin.Pinner, c cid.Cid, failmsg string) {
 	}
 }
 
+func allPins(t *testing.T, ch <-chan ipfspin.StreamedPin) (pins []ipfspin.Pinned) {
+	for val := range ch {
+		if val.Err != nil {
+			t.Fatal(val.Err)
+		}
+		pins = append(pins, val.Pin)
+	}
+	return pins
+}
+
 func TestPinnerBasic(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -201,17 +211,7 @@ func TestPinnerBasic(t *testing.T) {
 	dk := d.Cid()
 	assertPinned(t, p, dk, "pinned node not found.")
 
-	allPins := func(ch <-chan ipfspin.StreamedPin) (pins []ipfspin.Pinned) {
-		for val := range ch {
-			if val.Err != nil {
-				t.Fatal(val.Err)
-			}
-			pins = append(pins, val.Pin)
-		}
-		return pins
-	}
-
-	pins := allPins(p.RecursiveKeys(ctx, true))
+	pins := allPins(t, p.RecursiveKeys(ctx, true))
 	if len(pins) != 2 {
 		t.Error("expected 2 recursive pins")
 	}
@@ -256,7 +256,7 @@ func TestPinnerBasic(t *testing.T) {
 		}
 	}
 
-	pins = allPins(p.DirectKeys(ctx, false))
+	pins = allPins(t, p.DirectKeys(ctx, false))
 	if len(pins) != 1 {
 		t.Error("expected 1 direct pin")
 	}
@@ -264,7 +264,7 @@ func TestPinnerBasic(t *testing.T) {
 		t.Error("wrong direct pin")
 	}
 
-	pins = allPins(p.InternalPins(ctx, false))
+	pins = allPins(t, p.InternalPins(ctx, false))
 	if len(pins) != 0 {
 		t.Error("should not have internal keys")
 	}
@@ -383,6 +383,56 @@ func TestAddLoadPin(t *testing.T) {
 	if pinData.Name != name {
 		t.Error("wrong pin name; expected", name, "got", pinData.Name)
 	}
+}
+
+func TestPinAddOverwriteName(t *testing.T) {
+	makeTest := func(recursive bool) func(t *testing.T) {
+		return func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			dstore := dssync.MutexWrap(ds.NewMapDatastore())
+			bstore := blockstore.NewBlockstore(dstore)
+			bserv := bs.New(bstore, offline.Exchange(bstore))
+
+			dserv := mdag.NewDAGService(bserv)
+
+			p, err := New(ctx, dstore, dserv)
+			require.NoError(t, err)
+
+			a, aCid := randNode()
+			err = dserv.Add(ctx, a)
+			require.NoError(t, err)
+
+			var (
+				getPins func(ctx context.Context, detailed bool) <-chan ipfspin.StreamedPin
+				mode    ipfspin.Mode
+			)
+
+			if recursive {
+				getPins = p.RecursiveKeys
+				mode = ipfspin.Recursive
+			} else {
+				getPins = p.DirectKeys
+				mode = ipfspin.Direct
+			}
+
+			for _, name := range []string{"", "pin label", "yet another pin label"} {
+				err = p.Pin(ctx, a, recursive, name)
+				require.NoError(t, err)
+
+				err = p.Flush(ctx)
+				require.NoError(t, err)
+				pins := allPins(t, getPins(ctx, true))
+				require.Len(t, pins, 1)
+				require.Equal(t, aCid, pins[0].Key)
+				require.Equal(t, mode, pins[0].Mode)
+				require.Equal(t, name, pins[0].Name)
+			}
+		}
+	}
+
+	t.Run("Direct", makeTest(false))
+	t.Run("Recursive", makeTest(true))
 }
 
 func TestIsPinnedLookup(t *testing.T) {
