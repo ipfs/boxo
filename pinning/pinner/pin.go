@@ -94,7 +94,8 @@ type Pinner interface {
 
 	// Pin the given node, optionally recursively.
 	// Pin will make sure that the given node and its children if recursive is set
-	// are stored locally.
+	// are stored locally. Pinning with a different name for an already existing
+	// pin must replace the existing name.
 	Pin(ctx context.Context, node ipld.Node, recursive bool, name string) error
 
 	// Unpin the given cid. If recursive is true, removes either a recursive or

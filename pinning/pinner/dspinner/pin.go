@@ -197,8 +197,15 @@ func (p *pinner) doPinRecursive(ctx context.Context, c cid.Cid, fetch bool, name
 	if err != nil {
 		return err
 	}
+	// Do not return immediately! Just remove the recursive pins for the current CID.
+	// This allows the process to continue and the pin to be re-added with a new name.
+	//
+	// TODO: remove this to support multiple pins per CID
 	if found {
-		return nil
+		_, err = p.removePinsForCid(ctx, c, ipfspinner.Recursive)
+		if err != nil {
+			return err
+		}
 	}
 
 	dirtyBefore := p.dirty
@@ -222,7 +229,7 @@ func (p *pinner) doPinRecursive(ctx context.Context, c cid.Cid, fetch bool, name
 
 	// Only look again if something has changed.
 	if p.dirty != dirtyBefore {
-		found, err = p.cidRIndex.HasAny(ctx, cidKey)
+		found, err := p.cidRIndex.HasAny(ctx, cidKey)
 		if err != nil {
 			return err
 		}
@@ -262,6 +269,22 @@ func (p *pinner) doPinDirect(ctx context.Context, c cid.Cid, name string) error 
 	}
 	if found {
 		return fmt.Errorf("%s already pinned recursively", c.String())
+	}
+
+	// Remove existing direct pins for this CID. This ensures that the pin will be
+	// re-saved with the new name and that there aren't clashing pins for the same
+	// CID.
+	//
+	// TODO: remove this to support multiple pins per CID.
+	found, err = p.cidDIndex.HasAny(ctx, cidKey)
+	if err != nil {
+		return err
+	}
+	if found {
+		_, err = p.removePinsForCid(ctx, c, ipfspinner.Direct)
+		if err != nil {
+			return err
+		}
 	}
 
 	_, err = p.addPin(ctx, c, ipfspinner.Direct, name)
