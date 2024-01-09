@@ -2,6 +2,7 @@ package ndjson
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"github.com/ipfs/boxo/routing/http/types"
@@ -26,10 +27,8 @@ func NewRecordsIter(r io.Reader) iter.Iter[iter.Result[types.Record]] {
 				return result
 			}
 			result.Val = &prov
-		//lint:ignore SA1019 // ignore staticcheck
-		case types.SchemaBitswap:
-			//lint:ignore SA1019 // ignore staticcheck
-			var prov types.BitswapRecord
+		case types.SchemaAnnouncement:
+			var prov types.AnnouncementRecord
 			err := json.Unmarshal(upr.Val.Bytes, &prov)
 			if err != nil {
 				result.Err = err
@@ -45,29 +44,42 @@ func NewRecordsIter(r io.Reader) iter.Iter[iter.Result[types.Record]] {
 	return iter.Map[iter.Result[types.UnknownRecord]](jsonIter, mapFn)
 }
 
-// NewPeerRecordsIter returns an iterator that reads [types.PeerRecord] from the given [io.Reader].
-// Records with a different schema are safely ignored. If you want to read all records, use
+// NewAnnouncementRecordsIter returns an iterator that reads [types.AnnouncementRecord]
+// from the given [io.Reader]. Records with a different schema are ignored. To read all
+// records, use [NewRecordsIter] instead.
+func NewAnnouncementRecordsIter(r io.Reader) iter.Iter[iter.Result[*types.AnnouncementRecord]] {
+	return newFilteredRecords[*types.AnnouncementRecord](r, types.SchemaPeer)
+}
+
+// NewPeerRecordsIter returns an iterator that reads [types.PeerRecord] from the given
+// [io.Reader]. Records with a different schema are ignored. To read all records, use
 // [NewRecordsIter] instead.
 func NewPeerRecordsIter(r io.Reader) iter.Iter[iter.Result[*types.PeerRecord]] {
-	jsonIter := iter.FromReaderJSON[types.UnknownRecord](r)
-	mapFn := func(upr iter.Result[types.UnknownRecord]) iter.Result[*types.PeerRecord] {
-		var result iter.Result[*types.PeerRecord]
-		if upr.Err != nil {
-			result.Err = upr.Err
-			return result
-		}
-		switch upr.Val.Schema {
-		case types.SchemaPeer:
-			var prov types.PeerRecord
-			err := json.Unmarshal(upr.Val.Bytes, &prov)
-			if err != nil {
-				result.Err = err
+	return newFilteredRecords[*types.PeerRecord](r, types.SchemaPeer)
+}
+
+func newFilteredRecords[T any](r io.Reader, schema string) iter.Iter[iter.Result[T]] {
+	return iter.Map[iter.Result[types.Record]](
+		iter.Filter(NewRecordsIter(r), func(t iter.Result[types.Record]) bool {
+			return t.Val.GetSchema() == schema
+		}),
+		func(upr iter.Result[types.Record]) iter.Result[T] {
+			var result iter.Result[T]
+			if upr.Err != nil {
+				result.Err = upr.Err
 				return result
 			}
-			result.Val = &prov
-		}
-		return result
-	}
 
-	return iter.Map[iter.Result[types.UnknownRecord]](jsonIter, mapFn)
+			// Note that this should never happen unless [NewRecordsIter] is not well
+			// is not well implemented.
+			val, ok := upr.Val.(T)
+			if !ok {
+				result.Err = fmt.Errorf("type incompatible with schema %s", schema)
+				return result
+			}
+
+			result.Val = val
+			return result
+		},
+	)
 }
