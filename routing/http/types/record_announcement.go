@@ -63,11 +63,25 @@ func (ap AnnouncementPayload) MarshalJSON() ([]byte, error) {
 	}
 
 	// TODO: is scope not set when empty? Affects signature.
-	m["Scope"] = basicnode.NewString(string(ap.Scope))
-	m["Timestamp"] = basicnode.NewString(util.FormatRFC3339(ap.Timestamp))
-	m["TTL"] = basicnode.NewInt(ap.TTL.Milliseconds())
-	m["ID"] = basicnode.NewString(ap.ID.String())
-	m["Metadata"] = basicnode.NewString(ap.Metadata)
+	if ap.Scope != "" {
+		m["Scope"] = basicnode.NewString(string(ap.Scope))
+	}
+
+	if !ap.Timestamp.IsZero() {
+		m["Timestamp"] = basicnode.NewString(util.FormatRFC3339(ap.Timestamp))
+	}
+
+	if ap.TTL != 0 {
+		m["TTL"] = basicnode.NewInt(ap.TTL.Milliseconds())
+	}
+
+	if ap.ID != nil {
+		m["ID"] = basicnode.NewString(ap.ID.String())
+	}
+
+	if ap.Metadata != "" {
+		m["Metadata"] = basicnode.NewString(ap.Metadata)
+	}
 
 	// TODO: or goes empty if len == 0? Affects signature.
 	addrs := []ipld.Node{}
@@ -142,9 +156,11 @@ func (ap *AnnouncementPayload) UnmarshalJSON(b []byte) error {
 		}
 	}
 
-	ap.Timestamp, err = util.ParseRFC3339(v.Timestamp)
-	if err != nil {
-		return err
+	if v.Timestamp != "" {
+		ap.Timestamp, err = util.ParseRFC3339(v.Timestamp)
+		if err != nil {
+			return err
+		}
 	}
 
 	ap.TTL = time.Duration(v.TTL) * time.Millisecond

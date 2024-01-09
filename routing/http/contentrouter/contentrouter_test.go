@@ -22,14 +22,14 @@ import (
 
 type mockClient struct{ mock.Mock }
 
-func (m *mockClient) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {
-	args := m.Called(ctx, keys, ttl)
-	return args.Get(0).(time.Duration), args.Error(1)
-}
-
 func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, key)
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
+}
+
+func (m *mockClient) Provide(ctx context.Context, announcements ...types.AnnouncementRequest) (iter.ResultIter[*types.AnnouncementRecord], error) {
+	args := m.Called(ctx, announcements)
+	return args.Get(0).(iter.ResultIter[*types.AnnouncementRecord]), args.Error(1)
 }
 
 func (m *mockClient) FindPeers(ctx context.Context, pid peer.ID) (iter.ResultIter[*types.PeerRecord], error) {
@@ -76,14 +76,17 @@ func TestProvide(t *testing.T) {
 			crc := NewContentRoutingClient(client)
 
 			if !c.expNotProvided {
-				client.On("ProvideBitswap", ctx, []cid.Cid{key}, ttl).Return(time.Minute, nil)
+				res := []*types.AnnouncementRecord{
+					{Payload: types.AnnouncementPayload{TTL: time.Minute}},
+				}
+				client.On("Provide", ctx, []types.AnnouncementRequest{{CID: key, TTL: ttl}}).Return(iter.ToResultIter[*types.AnnouncementRecord](iter.FromSlice(res)), nil)
 			}
 
 			err := crc.Provide(ctx, key, c.announce)
 			assert.NoError(t, err)
 
 			if c.expNotProvided {
-				client.AssertNumberOfCalls(t, "ProvideBitswap", 0)
+				client.AssertNumberOfCalls(t, "Provide", 0)
 			}
 		})
 	}
@@ -98,9 +101,10 @@ func TestProvideMany(t *testing.T) {
 	ctx := context.Background()
 	client := &mockClient{}
 	crc := NewContentRoutingClient(client)
-
-	client.On("ProvideBitswap", ctx, cids, ttl).Return(time.Minute, nil)
-
+	res := []*types.AnnouncementRecord{
+		{Payload: types.AnnouncementPayload{TTL: time.Minute}},
+	}
+	client.On("Provide", ctx, makeBatchAnnouncements(cids, ttl)).Return(iter.ToResultIter[*types.AnnouncementRecord](iter.FromSlice(res)), nil)
 	err := crc.ProvideMany(ctx, mhs)
 	require.NoError(t, err)
 }
@@ -135,12 +139,10 @@ func TestFindProvidersAsync(t *testing.T) {
 			ID:        &p1,
 			Protocols: []string{"transport-bitswap"},
 		},
-		//lint:ignore SA1019 // ignore staticcheck
-		&types.BitswapRecord{
-			//lint:ignore SA1019 // ignore staticcheck
-			Schema:   types.SchemaBitswap,
-			ID:       &p2,
-			Protocol: "transport-bitswap",
+		&types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &p2,
+			Protocols: []string{"transport-bitswap"},
 		},
 		&types.PeerRecord{
 			Schema:    types.SchemaPeer,

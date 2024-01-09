@@ -25,6 +25,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multibase"
 )
 
 var (
@@ -44,14 +45,14 @@ type Client struct {
 	clock      clock.Clock
 	accepts    string
 
-	peerID   peer.ID
-	addrs    []types.Multiaddr
-	identity crypto.PrivKey
+	identity  crypto.PrivKey
+	peerID    peer.ID
+	addrs     []types.Multiaddr
+	protocols []string
 
-	// Called immediately after signing a provide request. It is used
+	// Called immediately after signing a provide (peer) request. It is used
 	// for testing, e.g., testing the server with a mangled signature.
-	//lint:ignore SA1019 // ignore staticcheck
-	afterSignCallback func(req *types.WriteBitswapRecord)
+	afterSignCallback func(req *types.AnnouncementRecord)
 }
 
 // defaultUserAgent is used as a fallback to inform HTTP server which library
@@ -115,9 +116,10 @@ func WithUserAgent(ua string) Option {
 	}
 }
 
-func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
+func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr, protocols []string) Option {
 	return func(c *Client) error {
 		c.peerID = peerID
+		c.protocols = protocols
 		for _, a := range addrs {
 			c.addrs = append(c.addrs, types.Multiaddr{Multiaddr: a})
 		}
@@ -254,102 +256,121 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
-// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
-//
-// [IPIP-378]: https://github.com/ipfs/specs/pull/378
-func (c *Client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {
-	if c.identity == nil {
-		return 0, errors.New("cannot provide Bitswap records without an identity")
-	}
-	if c.peerID.Size() == 0 {
-		return 0, errors.New("cannot provide Bitswap records without a peer ID")
-	}
-
-	ks := make([]types.CID, len(keys))
-	for i, c := range keys {
-		ks[i] = types.CID{Cid: c}
+func (c *Client) Provide(ctx context.Context, announcements ...types.AnnouncementRequest) (iter.ResultIter[*types.AnnouncementRecord], error) {
+	if err := c.canProvide(); err != nil {
+		return nil, err
 	}
 
 	now := c.clock.Now()
+	records := make([]types.Record, len(announcements))
 
-	req := types.WriteBitswapRecord{
-		Protocol: "transport-bitswap",
-		Schema:   types.SchemaBitswap,
-		Payload: types.BitswapPayload{
-			Keys:        ks,
-			AdvisoryTTL: &types.Duration{Duration: ttl},
-			Timestamp:   &types.Time{Time: now},
-			ID:          &c.peerID,
-			Addrs:       c.addrs,
-		},
-	}
-	err := req.Sign(c.peerID, c.identity)
-	if err != nil {
-		return 0, err
+	for i, announcement := range announcements {
+		record := &types.AnnouncementRecord{
+			Schema: types.SchemaAnnouncement,
+			Payload: types.AnnouncementPayload{
+				CID:       announcement.CID,
+				Scope:     announcement.Scope,
+				Timestamp: now,
+				TTL:       announcement.TTL,
+				ID:        &c.peerID,
+				Addrs:     c.addrs,
+				Protocols: c.protocols,
+			},
+		}
+
+		if len(announcement.Metadata) != 0 {
+			var err error
+			record.Payload.Metadata, err = multibase.Encode(multibase.Base64, announcement.Metadata)
+			if err != nil {
+				return nil, fmt.Errorf("multibase-encoding metadata: %w", err)
+			}
+		}
+
+		err := record.Sign(c.peerID, c.identity)
+		if err != nil {
+			return nil, err
+		}
+
+		if c.afterSignCallback != nil {
+			c.afterSignCallback(record)
+		}
+
+		records[i] = record
 	}
 
-	if c.afterSignCallback != nil {
-		c.afterSignCallback(&req)
+	// TODO: trailing slash?
+	url := c.baseURL + "/routing/v1/providers"
+	req := jsontypes.AnnounceProvidersRequest{
+		Providers: records,
 	}
 
-	advisoryTTL, err := c.provideSignedBitswapRecord(ctx, &req)
-	if err != nil {
-		return 0, err
-	}
-
-	return advisoryTTL, err
+	return c.provide(ctx, url, req)
 }
 
-// ProvideAsync makes a provide request to a delegated router
-//
-//lint:ignore SA1019 // ignore staticcheck
-func (c *Client) provideSignedBitswapRecord(ctx context.Context, bswp *types.WriteBitswapRecord) (time.Duration, error) {
-	//lint:ignore SA1019 // ignore staticcheck
-	req := jsontypes.WriteProvidersRequest{Providers: []types.Record{bswp}}
-
-	url := c.baseURL + "/routing/v1/providers/"
-
+func (c *Client) provide(ctx context.Context, url string, req interface{}) (iter.ResultIter[*types.AnnouncementRecord], error) {
 	b, err := drjson.MarshalJSONBytes(req)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewBuffer(b))
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return 0, fmt.Errorf("making HTTP req to provide a signed record: %w", err)
+		return nil, fmt.Errorf("making HTTP req to provide a signed peer record: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, httpError(resp.StatusCode, resp.Body)
+		resp.Body.Close()
+		return nil, httpError(resp.StatusCode, resp.Body)
 	}
 
-	//lint:ignore SA1019 // ignore staticcheck
-	var provideResult jsontypes.WriteProvidersResponse
-	err = json.NewDecoder(resp.Body).Decode(&provideResult)
+	respContentType := resp.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(respContentType)
 	if err != nil {
-		return 0, err
-	}
-	if len(provideResult.ProvideResults) != 1 {
-		return 0, fmt.Errorf("expected 1 result but got %d", len(provideResult.ProvideResults))
+		resp.Body.Close()
+		return nil, fmt.Errorf("parsing Content-Type: %w", err)
 	}
 
-	//lint:ignore SA1019 // ignore staticcheck
-	v, ok := provideResult.ProvideResults[0].(*types.WriteBitswapRecordResponse)
-	if !ok {
-		return 0, errors.New("expected AdvisoryTTL field")
+	var skipBodyClose bool
+	defer func() {
+		if !skipBodyClose {
+			resp.Body.Close()
+		}
+	}()
+
+	var it iter.ResultIter[*types.AnnouncementRecord]
+	switch mediaType {
+	case mediaTypeJSON:
+		parsedResp := &jsontypes.AnnouncePeersResponse{}
+		err = json.NewDecoder(resp.Body).Decode(parsedResp)
+		if err != nil {
+			return nil, err
+		}
+		var sliceIt iter.Iter[*types.AnnouncementRecord] = iter.FromSlice(parsedResp.ProvideResults)
+		it = iter.ToResultIter(sliceIt)
+	case mediaTypeNDJSON:
+		skipBodyClose = true
+		it = ndjson.NewAnnouncementRecordsIter(resp.Body)
+	default:
+		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
+		return nil, errors.New("unknown content type")
 	}
 
-	if v.AdvisoryTTL != nil {
-		return v.AdvisoryTTL.Duration, nil
-	}
+	return it, nil
+}
 
-	return 0, nil
+func (c *Client) canProvide() error {
+	if c.identity == nil {
+		return errors.New("cannot provide without identity")
+	}
+	if c.peerID.Size() == 0 {
+		return errors.New("cannot provide without peer ID")
+	}
+	return nil
 }
 
 // FindPeers searches for information for the given [peer.ID].
@@ -413,6 +434,9 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 	case mediaTypeJSON:
 		parsedResp := &jsontypes.PeersResponse{}
 		err = json.NewDecoder(resp.Body).Decode(parsedResp)
+		if err != nil {
+			return nil, err
+		}
 		var sliceIt iter.Iter[*types.PeerRecord] = iter.FromSlice(parsedResp.Peers)
 		it = iter.ToResultIter(sliceIt)
 	case mediaTypeNDJSON:
@@ -424,6 +448,50 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 	}
 
 	return &measuringIter[iter.Result[*types.PeerRecord]]{Iter: it, ctx: ctx, m: m}, nil
+}
+
+// ProvidePeer provides information regarding your own peer, setup with [WithProviderInfo].
+func (c *Client) ProvidePeer(ctx context.Context, ttl time.Duration, metadata []byte) (iter.ResultIter[*types.AnnouncementRecord], error) {
+	if err := c.canProvide(); err != nil {
+		return nil, err
+	}
+
+	record := &types.AnnouncementRecord{
+		Schema: types.SchemaAnnouncement,
+		Payload: types.AnnouncementPayload{
+			// TODO: CID, Scope not present for /routing/v1/peers, right?
+			Timestamp: time.Now(),
+			TTL:       ttl,
+			ID:        &c.peerID,
+			Addrs:     c.addrs,
+			Protocols: c.protocols,
+		},
+	}
+
+	if len(metadata) != 0 {
+		var err error
+		record.Payload.Metadata, err = multibase.Encode(multibase.Base64, metadata)
+		if err != nil {
+			return nil, fmt.Errorf("multibase-encoding metadata: %w", err)
+		}
+	}
+
+	err := record.Sign(c.peerID, c.identity)
+	if err != nil {
+		return nil, err
+	}
+
+	if c.afterSignCallback != nil {
+		c.afterSignCallback(record)
+	}
+
+	// TODO: trailing slash?
+	url := c.baseURL + "/routing/v1/peers"
+	req := jsontypes.AnnouncePeersRequest{
+		Providers: []types.Record{record},
+	}
+
+	return c.provide(ctx, url, req)
 }
 
 // GetIPNS tries to retrieve the [ipns.Record] for the given [ipns.Name]. The record is

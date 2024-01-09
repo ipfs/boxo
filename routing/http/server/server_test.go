@@ -89,13 +89,11 @@ func TestProviders(t *testing.T) {
 				Protocols: []string{"transport-bitswap"},
 				Addrs:     []types.Multiaddr{},
 			}},
-			//lint:ignore SA1019 // ignore staticcheck
-			{Val: &types.BitswapRecord{
-				//lint:ignore SA1019 // ignore staticcheck
-				Schema:   types.SchemaBitswap,
-				ID:       &pid2,
-				Protocol: "transport-bitswap",
-				Addrs:    []types.Multiaddr{},
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid2,
+				Protocols: []string{"transport-bitswap"},
+				Addrs:     []types.Multiaddr{},
 			}}},
 		)
 
@@ -127,11 +125,11 @@ func TestProviders(t *testing.T) {
 	}
 
 	t.Run("JSON Response", func(t *testing.T) {
-		runTest(t, mediaTypeJSON, false, `{"Providers":[{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"},{"Schema":"bitswap","Protocol":"transport-bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"}]}`)
+		runTest(t, mediaTypeJSON, false, `{"Providers":[{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"},{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz","Protocols":["transport-bitswap"],"Schema":"peer"}]}`)
 	})
 
 	t.Run("NDJSON Response", func(t *testing.T) {
-		runTest(t, mediaTypeNDJSON, true, `{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n"+`{"Schema":"bitswap","Protocol":"transport-bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"}`+"\n")
+		runTest(t, mediaTypeNDJSON, true, `{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n"+`{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n")
 	})
 }
 
@@ -369,7 +367,7 @@ func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limi
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
-func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error) {
+func (m *mockContentRouter) Provide(ctx context.Context, req *ProvideRequest) (time.Duration, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(time.Duration), args.Error(1)
 }
@@ -377,6 +375,11 @@ func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *BitswapWrit
 func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[*types.PeerRecord], error) {
 	args := m.Called(ctx, pid, limit)
 	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
+}
+
+func (m *mockContentRouter) ProvidePeer(ctx context.Context, req *ProvidePeerRequest) (time.Duration, error) {
+	args := m.Called(ctx, req)
+	return args.Get(0).(time.Duration), args.Error(1)
 }
 
 func (m *mockContentRouter) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {

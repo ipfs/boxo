@@ -25,7 +25,7 @@ const ttl = 24 * time.Hour
 
 type Client interface {
 	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error)
-	ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error)
+	Provide(ctx context.Context, announcements ...types.AnnouncementRequest) (iter.ResultIter[*types.AnnouncementRecord], error)
 	FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error)
 	GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
@@ -76,7 +76,7 @@ func (c *contentRouter) Provide(ctx context.Context, key cid.Cid, announce bool)
 		return nil
 	}
 
-	_, err := c.client.ProvideBitswap(ctx, []cid.Cid{key}, ttl)
+	_, err := c.client.Provide(ctx, types.AnnouncementRequest{CID: key, TTL: ttl})
 	return err
 }
 
@@ -90,7 +90,7 @@ func (c *contentRouter) ProvideMany(ctx context.Context, mhKeys []multihash.Mult
 	}
 
 	if len(keys) <= c.maxProvideBatchSize {
-		_, err := c.client.ProvideBitswap(ctx, keys, ttl)
+		_, err := c.client.Provide(ctx, makeBatchAnnouncements(keys, ttl)...)
 		return err
 	}
 
@@ -100,7 +100,7 @@ func (c *contentRouter) ProvideMany(ctx context.Context, mhKeys []multihash.Mult
 		c.maxProvideConcurrency,
 		keys,
 		func(ctx context.Context, batch []cid.Cid) error {
-			_, err := c.client.ProvideBitswap(ctx, batch, ttl)
+			_, err := c.client.Provide(ctx, makeBatchAnnouncements(batch, ttl)...)
 			return err
 		},
 	)
@@ -111,8 +111,7 @@ func (c *contentRouter) Ready() bool {
 	return true
 }
 
-// readProviderResponses reads peer records (and bitswap records for legacy
-// compatibility) from the iterator into the given channel.
+// readProviderResponses reads peer records from the iterator into the given channel.
 func readProviderResponses(iter iter.ResultIter[types.Record], ch chan<- peer.AddrInfo) {
 	defer close(ch)
 	defer iter.Close()
@@ -144,30 +143,16 @@ func readProviderResponses(iter iter.ResultIter[types.Record], ch chan<- peer.Ad
 				ID:    *result.ID,
 				Addrs: addrs,
 			}
-		//lint:ignore SA1019 // ignore staticcheck
-		case types.SchemaBitswap:
-			//lint:ignore SA1019 // ignore staticcheck
-			result, ok := v.(*types.BitswapRecord)
-			if !ok {
-				logger.Errorw(
-					"problem casting find providers result",
-					"Schema", v.GetSchema(),
-					"Type", reflect.TypeOf(v).String(),
-				)
-				continue
-			}
-
-			var addrs []multiaddr.Multiaddr
-			for _, a := range result.Addrs {
-				addrs = append(addrs, a.Multiaddr)
-			}
-
-			ch <- peer.AddrInfo{
-				ID:    *result.ID,
-				Addrs: addrs,
-			}
 		}
 	}
+}
+
+func makeBatchAnnouncements(keys []cid.Cid, ttl time.Duration) []types.AnnouncementRequest {
+	reqs := make([]types.AnnouncementRequest, len(keys))
+	for i, key := range keys {
+		reqs[i] = types.AnnouncementRequest{CID: key, TTL: ttl}
+	}
+	return reqs
 }
 
 func (c *contentRouter) FindProvidersAsync(ctx context.Context, key cid.Cid, numResults int) <-chan peer.AddrInfo {

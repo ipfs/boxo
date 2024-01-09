@@ -40,10 +40,11 @@ const (
 var logger = logging.Logger("routing/http/server")
 
 const (
-	providePath       = "/routing/v1/providers/"
+	providePath       = "/routing/v1/providers" // TODO: with trailing slash?
 	findProvidersPath = "/routing/v1/providers/{cid}"
+	providePeersPath  = "/routing/v1/peers" // TODO: with trailing slash?
 	findPeersPath     = "/routing/v1/peers/{peer-id}"
-	GetIPNSPath       = "/routing/v1/ipns/{cid}"
+	getIPNSPath       = "/routing/v1/ipns/{cid}"
 )
 
 type FindProvidersAsyncResponse struct {
@@ -56,14 +57,17 @@ type ContentRouter interface {
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
 	FindProviders(ctx context.Context, cid cid.Cid, limit int) (iter.ResultIter[types.Record], error)
 
-	// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
-	//
-	// [IPIP-378]: https://github.com/ipfs/specs/pull/378
-	ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error)
+	// Provide stores the provided [ProvideRequest] record for CIDs. Can return
+	// a different TTL than the provided.
+	Provide(ctx context.Context, req *ProvideRequest) (time.Duration, error)
 
 	// FindPeers searches for peers who have the provided [peer.ID].
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
 	FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[*types.PeerRecord], error)
+
+	// ProvidePeer stores the provided [ProvidePeerRequest] record for peers. Can
+	// return a different TTL than the provided.
+	ProvidePeer(ctx context.Context, req *ProvidePeerRequest) (time.Duration, error)
 
 	// GetIPNS searches for an [ipns.Record] for the given [ipns.Name].
 	GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
@@ -73,24 +77,26 @@ type ContentRouter interface {
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
 }
 
-// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
-//
-// [IPIP-378]: https://github.com/ipfs/specs/pull/378
-type BitswapWriteProvideRequest struct {
-	Keys        []cid.Cid
-	Timestamp   time.Time
-	AdvisoryTTL time.Duration
-	ID          peer.ID
-	Addrs       []multiaddr.Multiaddr
+// ProvideRequest is a content provide request.
+type ProvideRequest struct {
+	CID       cid.Cid
+	Scope     types.AnnouncementScope
+	Timestamp time.Time
+	TTL       time.Duration
+	ID        peer.ID
+	Addrs     []multiaddr.Multiaddr
+	Protocols []string
+	Metadata  string
 }
 
-// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
-//
-// [IPIP-378]: https://github.com/ipfs/specs/pull/378
-type WriteProvideRequest struct {
-	Protocol string
-	Schema   string
-	Bytes    []byte
+// ProvidePeerRequest is a peer provide request.
+type ProvidePeerRequest struct {
+	Timestamp time.Time
+	TTL       time.Duration
+	ID        peer.ID
+	Addrs     []multiaddr.Multiaddr
+	Protocols []string
+	Metadata  string
 }
 
 type Option func(s *server)
@@ -135,8 +141,9 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	r.HandleFunc(findProvidersPath, server.findProviders).Methods(http.MethodGet)
 	r.HandleFunc(providePath, server.provide).Methods(http.MethodPut)
 	r.HandleFunc(findPeersPath, server.findPeers).Methods(http.MethodGet)
-	r.HandleFunc(GetIPNSPath, server.GetIPNS).Methods(http.MethodGet)
-	r.HandleFunc(GetIPNSPath, server.PutIPNS).Methods(http.MethodPut)
+	r.HandleFunc(providePeersPath, server.providePeers).Methods(http.MethodPut)
+	r.HandleFunc(getIPNSPath, server.GetIPNS).Methods(http.MethodGet)
+	r.HandleFunc(getIPNSPath, server.PutIPNS).Methods(http.MethodPut)
 	return r
 }
 
@@ -288,63 +295,143 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	handlerFunc(w, provIter)
 }
 
-func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
-	//lint:ignore SA1019 // ignore staticcheck
-	req := jsontypes.WriteProvidersRequest{}
-	err := json.NewDecoder(httpReq.Body).Decode(&req)
-	_ = httpReq.Body.Close()
+func (s *server) providePeers(w http.ResponseWriter, r *http.Request) {
+	req := jsontypes.AnnouncePeersRequest{}
+	err := json.NewDecoder(r.Body).Decode(&req)
+	_ = r.Body.Close()
+	if err != nil {
+		writeErr(w, "ProvidePeers", http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
+		return
+	}
+
+	responseIter := iter.Map[types.Record, *types.AnnouncementRecord](iter.FromSlice(req.Providers), func(t types.Record) *types.AnnouncementRecord {
+		resRecord := &types.AnnouncementRecord{
+			Schema: types.SchemaAnnouncement,
+		}
+
+		reqRecord, err := s.provideCheckAnnouncement("Provide", t)
+		if err != nil {
+			resRecord.Error = err.Error()
+			return resRecord
+		}
+
+		req := &ProvidePeerRequest{
+			Timestamp: reqRecord.Payload.Timestamp,
+			TTL:       reqRecord.Payload.TTL,
+			ID:        *reqRecord.Payload.ID,
+			Addrs:     make([]multiaddr.Multiaddr, len(reqRecord.Payload.Addrs)),
+			Protocols: reqRecord.Payload.Protocols,
+			Metadata:  reqRecord.Payload.Metadata,
+		}
+
+		for i, addr := range reqRecord.Payload.Addrs {
+			req.Addrs[i] = addr.Multiaddr
+		}
+
+		ttl, err := s.svc.ProvidePeer(r.Context(), req)
+		if err != nil {
+			resRecord.Error = err.Error()
+			return resRecord
+		}
+
+		resRecord.Payload.TTL = ttl
+		resRecord.Payload.ID = &req.ID
+		return resRecord
+	})
+
+	mediaType, err := s.detectResponseType(r)
+	if err != nil {
+		writeErr(w, "FindPeers", http.StatusBadRequest, err)
+		return
+	}
+
+	if mediaType == mediaTypeNDJSON {
+		writeResultsIterNDJSON[*types.AnnouncementRecord](w, iter.ToResultIter[*types.AnnouncementRecord](responseIter))
+	} else {
+		writeJSONResult(w, "ProvidePeers", jsontypes.AnnouncePeersResponse{
+			ProvideResults: iter.ReadAll[*types.AnnouncementRecord](responseIter),
+		})
+	}
+}
+
+func (s *server) provide(w http.ResponseWriter, r *http.Request) {
+	req := jsontypes.AnnounceProvidersRequest{}
+	err := json.NewDecoder(r.Body).Decode(&req)
+	_ = r.Body.Close()
 	if err != nil {
 		writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
 		return
 	}
 
-	//lint:ignore SA1019 // ignore staticcheck
-	resp := jsontypes.WriteProvidersResponse{}
-
-	for i, prov := range req.Providers {
-		switch v := prov.(type) {
-		//lint:ignore SA1019 // ignore staticcheck
-		case *types.WriteBitswapRecord:
-			err := v.Verify()
-			if err != nil {
-				logErr("Provide", "signature verification failed", err)
-				writeErr(w, "Provide", http.StatusForbidden, errors.New("signature verification failed"))
-				return
-			}
-
-			keys := make([]cid.Cid, len(v.Payload.Keys))
-			for i, k := range v.Payload.Keys {
-				keys[i] = k.Cid
-			}
-			addrs := make([]multiaddr.Multiaddr, len(v.Payload.Addrs))
-			for i, a := range v.Payload.Addrs {
-				addrs[i] = a.Multiaddr
-			}
-			advisoryTTL, err := s.svc.ProvideBitswap(httpReq.Context(), &BitswapWriteProvideRequest{
-				Keys:        keys,
-				Timestamp:   v.Payload.Timestamp.Time,
-				AdvisoryTTL: v.Payload.AdvisoryTTL.Duration,
-				ID:          *v.Payload.ID,
-				Addrs:       addrs,
-			})
-			if err != nil {
-				writeErr(w, "Provide", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-				return
-			}
-			resp.ProvideResults = append(resp.ProvideResults,
-				//lint:ignore SA1019 // ignore staticcheck
-				&types.WriteBitswapRecordResponse{
-					Protocol:    v.Protocol,
-					Schema:      v.Schema,
-					AdvisoryTTL: &types.Duration{Duration: advisoryTTL},
-				},
-			)
-		default:
-			writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("provider record %d is not bitswap", i))
-			return
+	responseIter := iter.Map[types.Record, *types.AnnouncementRecord](iter.FromSlice(req.Providers), func(t types.Record) *types.AnnouncementRecord {
+		resRecord := &types.AnnouncementRecord{
+			Schema: types.SchemaAnnouncement,
 		}
+
+		reqRecord, err := s.provideCheckAnnouncement("Provide", t)
+		if err != nil {
+			resRecord.Error = err.Error()
+			return resRecord
+		}
+
+		req := &ProvideRequest{
+			CID:       reqRecord.Payload.CID,
+			Scope:     reqRecord.Payload.Scope,
+			Timestamp: reqRecord.Payload.Timestamp,
+			TTL:       reqRecord.Payload.TTL,
+			ID:        *reqRecord.Payload.ID,
+			Addrs:     make([]multiaddr.Multiaddr, len(reqRecord.Payload.Addrs)),
+			Protocols: reqRecord.Payload.Protocols,
+			Metadata:  reqRecord.Payload.Metadata,
+		}
+
+		for i, addr := range reqRecord.Payload.Addrs {
+			req.Addrs[i] = addr.Multiaddr
+		}
+
+		ttl, err := s.svc.Provide(r.Context(), req)
+		if err != nil {
+			resRecord.Error = err.Error()
+			return resRecord
+		}
+
+		resRecord.Payload.TTL = ttl
+		resRecord.Payload.CID = req.CID
+		resRecord.Payload.ID = &req.ID
+		return resRecord
+	})
+
+	mediaType, err := s.detectResponseType(r)
+	if err != nil {
+		writeErr(w, "FindPeers", http.StatusBadRequest, err)
+		return
 	}
-	writeJSONResult(w, "Provide", resp)
+
+	if mediaType == mediaTypeNDJSON {
+		writeResultsIterNDJSON[*types.AnnouncementRecord](w, iter.ToResultIter[*types.AnnouncementRecord](responseIter))
+	} else {
+		writeJSONResult(w, "Provide", jsontypes.AnnounceProvidersResponse{
+			ProvideResults: iter.ReadAll[*types.AnnouncementRecord](responseIter),
+		})
+	}
+}
+
+func (s *server) provideCheckAnnouncement(method string, r types.Record) (*types.AnnouncementRecord, error) {
+	if r.GetSchema() != types.SchemaAnnouncement {
+		return nil, fmt.Errorf("%s: invalid schema %s", method, r.GetSchema())
+	}
+
+	rec, ok := r.(*types.AnnouncementRecord)
+	if !ok {
+		return nil, fmt.Errorf("%s: invalid type", method)
+	}
+
+	err := rec.Verify()
+	if err != nil {
+		return nil, fmt.Errorf("%s: signature verification failed: %w", method, err)
+	}
+
+	return rec, nil
 }
 
 func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord]) {
