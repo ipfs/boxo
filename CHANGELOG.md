@@ -16,15 +16,21 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-* 🛠 `pinning/pinner`: you can now give a custom name when pinning a CID. To reflect this, the `Pinner` has been adjusted. Note that calling `Pin` for the same CID with a different name will replace its current name by the newly given name.
-
 ### Changed
 
 ### Removed
 
-- 🛠 `tracing` `jaeger` exporter has been removed due to it's deprecation and removal from upstream, you should use `otlp` exporter instead. See the [docs](./docs/tracing.md) for an example.
-
 ### Security
+
+## [v0.17.0]
+
+### Added
+
+* 🛠 `pinning/pinner`: you can now give a custom name when pinning a CID. To reflect this, the `Pinner` has been adjusted. Note that calling `Pin` for the same CID with a different name will replace its current name by the newly given name.
+
+### Removed
+
+- 🛠 `tracing` `jaeger` exporter has been removed due to it's deprecation and removal from upstream, you should use `otlp` exporter instead. See the [docs](./docs/tracing.md) for an example.
 
 ## [v0.16.0]
 
