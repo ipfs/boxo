@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -120,7 +121,7 @@ type DagByteRange struct {
 func NewDagByteRange(rangeStr string) (DagByteRange, error) {
 	rangeElems := strings.Split(rangeStr, ":")
 	if len(rangeElems) != 2 {
-		return DagByteRange{}, fmt.Errorf("range must have two numbers separated with ':'")
+		return DagByteRange{}, errors.New("range must have two numbers separated with ':'")
 	}
 	from, err := strconv.ParseInt(rangeElems[0], 10, 64)
 	if err != nil {
@@ -140,11 +141,11 @@ func NewDagByteRange(rangeStr string) (DagByteRange, error) {
 	}
 
 	if from >= 0 && to >= 0 && from > to {
-		return DagByteRange{}, fmt.Errorf("cannot have an entity-bytes range where 'from' is after 'to'")
+		return DagByteRange{}, errors.New("cannot have an entity-bytes range where 'from' is after 'to'")
 	}
 
 	if from < 0 && to < 0 && from > to {
-		return DagByteRange{}, fmt.Errorf("cannot have an entity-bytes range where 'from' is after 'to'")
+		return DagByteRange{}, errors.New("cannot have an entity-bytes range where 'from' is after 'to'")
 	}
 
 	return DagByteRange{

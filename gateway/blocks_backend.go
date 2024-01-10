@@ -205,7 +205,7 @@ func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, range
 			return ContentPathMetadata{}, nil, fmt.Errorf("could not get cumulative directory DAG size: %w", err)
 		}
 		if sz < 0 {
-			return ContentPathMetadata{}, nil, fmt.Errorf("directory cumulative DAG size cannot be negative")
+			return ContentPathMetadata{}, nil, errors.New("directory cumulative DAG size cannot be negative")
 		}
 		return md, NewGetResponseFromDirectoryListing(uint64(sz), dir.EnumLinksAsync(ctx), nil), nil
 	}
@@ -287,7 +287,7 @@ func (bb *BlocksBackend) Head(ctx context.Context, path path.ImmutablePath) (Con
 		return md, NewHeadResponseForFile(f, sz), nil
 	}
 
-	return ContentPathMetadata{}, nil, fmt.Errorf("unsupported UnixFS file type")
+	return ContentPathMetadata{}, nil, errors.New("unsupported UnixFS file type")
 }
 
 // emptyRoot is a CAR root with the empty identity CID. CAR files are recommended
@@ -335,7 +335,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 	}
 
 	if p.Namespace() != path.IPFSNamespace {
-		return ContentPathMetadata{}, nil, fmt.Errorf("path does not have /ipfs/ prefix")
+		return ContentPathMetadata{}, nil, errors.New("path does not have /ipfs/ prefix")
 	}
 
 	r, w := io.Pipe()
@@ -482,7 +482,7 @@ func walkGatewaySimpleSelector(ctx context.Context, p path.ImmutablePath, params
 
 			fnd, ok := nd.(datamodel.LargeBytesNode)
 			if !ok {
-				return fmt.Errorf("could not process file since it did not present as large bytes")
+				return errors.New("could not process file since it did not present as large bytes")
 			}
 			f, err := fnd.AsLargeBytes()
 			if err != nil {
@@ -532,7 +532,7 @@ func walkGatewaySimpleSelector(ctx context.Context, p path.ImmutablePath, params
 
 			numToRead := 1 + to - from
 			if numToRead < 0 {
-				return fmt.Errorf("tried to read less than zero bytes")
+				return errors.New("tried to read less than zero bytes")
 			}
 
 			if _, err := f.Seek(from, io.SeekStart); err != nil {

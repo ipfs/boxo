@@ -3,6 +3,7 @@ package mdutils
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -70,7 +71,7 @@ func (dg *DAGGenerator) generate(adder func(ctx context.Context, node format.Nod
 func (dg *DAGGenerator) encodeBlock(adder func(ctx context.Context, node format.Node) error, links ...*format.Link) (cid.Cid, uint64, error) {
 	dg.seq++
 	nd := &merkledag.ProtoNode{}
-	nd.SetData([]byte(fmt.Sprint(dg.seq)))
+	nd.SetData([]byte(strconv.Itoa(dg.seq)))
 	for i, link := range links {
 		err := nd.AddRawLink(fmt.Sprintf("link-%d", i), link)
 		if err != nil {

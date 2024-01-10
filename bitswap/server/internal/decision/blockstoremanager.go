@@ -2,7 +2,7 @@ package decision
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 
 	bstore "github.com/ipfs/boxo/blockstore"
@@ -77,7 +77,7 @@ func (bsm *blockstoreManager) addJob(ctx context.Context, job func()) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-bsm.stopChan:
-		return fmt.Errorf("shutting down")
+		return errors.New("shutting down")
 	case bsm.jobs <- job:
 		bsm.pendingGauge.Inc()
 		return nil

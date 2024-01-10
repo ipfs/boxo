@@ -80,23 +80,23 @@ func pinSet(ctx context.Context, pinning pin.Pinner, fetchConfig fetcher.Factory
 		defer cancel()
 		defer close(set.New)
 
-		for sc := range pinning.DirectKeys(ctx) {
+		for sc := range pinning.DirectKeys(ctx, false) {
 			if sc.Err != nil {
 				logR.Errorf("reprovide direct pins: %s", sc.Err)
 				return
 			}
-			set.Visitor(ctx)(sc.C)
+			set.Visitor(ctx)(sc.Pin.Key)
 		}
 
 		session := fetchConfig.NewSession(ctx)
-		for sc := range pinning.RecursiveKeys(ctx) {
+		for sc := range pinning.RecursiveKeys(ctx, false) {
 			if sc.Err != nil {
 				logR.Errorf("reprovide recursive pins: %s", sc.Err)
 				return
 			}
-			set.Visitor(ctx)(sc.C)
+			set.Visitor(ctx)(sc.Pin.Key)
 			if !onlyRoots {
-				err := fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: sc.C}, func(res fetcher.FetchResult) error {
+				err := fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: sc.Pin.Key}, func(res fetcher.FetchResult) error {
 					clink, ok := res.LastBlockLink.(cidlink.Link)
 					if ok {
 						set.Visitor(ctx)(clink.Cid)

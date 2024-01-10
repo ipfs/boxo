@@ -830,7 +830,7 @@ func (i *handler) handleServiceWorkerRegistration(w http.ResponseWriter, r *http
 	if r.Header.Get("Service-Worker") == "script" {
 		matched, _ := regexp.MatchString(`^/ip[fn]s/[^/]+$`, r.URL.Path)
 		if matched {
-			err := fmt.Errorf("navigator.serviceWorker: registration is not allowed for this scope")
+			err := errors.New("navigator.serviceWorker: registration is not allowed for this scope")
 			i.webError(w, r, err, http.StatusBadRequest)
 			return true
 		}

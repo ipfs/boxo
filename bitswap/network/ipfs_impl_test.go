@@ -2,6 +2,7 @@ package network_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -69,7 +70,7 @@ func (r *receiver) PeerDisconnected(p peer.ID) {
 	r.connectionEvent <- false
 }
 
-var errMockNetErr = fmt.Errorf("network err")
+var errMockNetErr = errors.New("network err")
 
 type ErrStream struct {
 	network.Stream

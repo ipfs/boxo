@@ -1,6 +1,7 @@
 package verifcid
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/ipfs/go-cid"
@@ -8,7 +9,7 @@ import (
 )
 
 var (
-	ErrPossiblyInsecureHashFunction = fmt.Errorf("potentially insecure hash functions not allowed")
+	ErrPossiblyInsecureHashFunction = errors.New("potentially insecure hash functions not allowed")
 	ErrBelowMinimumHashLength       = fmt.Errorf("hashes must be at least %d bytes long", minimumHashLength)
 	ErrAboveMaximumHashLength       = fmt.Errorf("hashes must be at most %d bytes long", maximumHashLength)
 )

@@ -324,7 +324,7 @@ func (c *Client) provideSignedBitswapRecord(ctx context.Context, bswp *types.Wri
 	//lint:ignore SA1019 // ignore staticcheck
 	v, ok := provideResult.ProvideResults[0].(*types.WriteBitswapRecordResponse)
 	if !ok {
-		return 0, fmt.Errorf("expected AdvisoryTTL field")
+		return 0, errors.New("expected AdvisoryTTL field")
 	}
 
 	if v.AdvisoryTTL != nil {

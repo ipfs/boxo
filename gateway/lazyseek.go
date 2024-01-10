@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
@@ -23,7 +24,7 @@ func (s *lazySeeker) Seek(offset int64, whence int) (int64, error) {
 		return s.Seek(s.offset+offset, io.SeekStart)
 	case io.SeekStart:
 		if offset < 0 {
-			return s.offset, fmt.Errorf("invalid seek offset")
+			return s.offset, errors.New("invalid seek offset")
 		}
 		s.offset = offset
 		return s.offset, nil

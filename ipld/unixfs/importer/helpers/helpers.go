@@ -1,7 +1,7 @@
 package helpers
 
 import (
-	"fmt"
+	"errors"
 )
 
 // BlockSizeLimit specifies the maximum size an imported block can have.
@@ -30,4 +30,4 @@ var (
 var DefaultLinksPerBlock = roughLinkBlockSize / roughLinkSize
 
 // ErrSizeLimitExceeded signals that a block is larger than BlockSizeLimit.
-var ErrSizeLimitExceeded = fmt.Errorf("object size limit exceeded")
+var ErrSizeLimitExceeded = errors.New("object size limit exceeded")

@@ -2,6 +2,7 @@ package client_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -489,7 +490,7 @@ func TestWantlistClearsOnCancel(t *testing.T) {
 
 	if err := tu.WaitFor(ctx, func() error {
 		if len(a.Exchange.GetWantlist()) > 0 {
-			return fmt.Errorf("expected empty wantlist")
+			return errors.New("expected empty wantlist")
 		}
 		return nil
 	}); err != nil {

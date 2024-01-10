@@ -3,6 +3,7 @@ package assets
 import (
 	"encoding/hex"
 	"fmt"
+	"strconv"
 
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
@@ -55,7 +56,7 @@ func ParseNode(node datamodel.Node) (*ParsedNode, error) {
 				return nil, err
 			}
 
-			dag.Keys = append(dag.Keys, &ParsedNode{Value: fmt.Sprintf("%d", k)})
+			dag.Keys = append(dag.Keys, &ParsedNode{Value: strconv.FormatInt(k, 10)})
 			dag.Values = append(dag.Values, vd)
 		}
 	case datamodel.Kind_Bool:
@@ -63,13 +64,13 @@ func ParseNode(node datamodel.Node) (*ParsedNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		dag.Value = fmt.Sprintf("%t", v)
+		dag.Value = strconv.FormatBool(v)
 	case datamodel.Kind_Int:
 		v, err := node.AsInt()
 		if err != nil {
 			return nil, err
 		}
-		dag.Value = fmt.Sprintf("%d", v)
+		dag.Value = strconv.FormatInt(v, 10)
 	case datamodel.Kind_Float:
 		v, err := node.AsFloat()
 		if err != nil {

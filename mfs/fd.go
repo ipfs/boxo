@@ -1,6 +1,7 @@
 package mfs
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -54,7 +55,7 @@ func (fi *fileDescriptor) checkWrite() error {
 		return ErrClosed
 	}
 	if !fi.flags.Write {
-		return fmt.Errorf("file is read-only")
+		return errors.New("file is read-only")
 	}
 	return nil
 }
@@ -64,7 +65,7 @@ func (fi *fileDescriptor) checkRead() error {
 		return ErrClosed
 	}
 	if !fi.flags.Read {
-		return fmt.Errorf("file is write-only")
+		return errors.New("file is write-only")
 	}
 	return nil
 }

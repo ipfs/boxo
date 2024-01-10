@@ -244,5 +244,5 @@ func pathSelector(path []string, ssb builder.SelectorSpecBuilder, reduce func(st
 }
 
 func startSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return otel.Tracer("boxo/path/resolver").Start(ctx, fmt.Sprintf("Path.%s", name), opts...)
+	return otel.Tracer("boxo/path/resolver").Start(ctx, "Path."+name, opts...)
 }
