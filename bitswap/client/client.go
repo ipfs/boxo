@@ -283,6 +283,16 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 	return session.GetBlocks(ctx, keys)
 }
 
+// NotifyNewBlock announces the existence of blocks to this bitswap service.
+// Bitswap itself doesn't store new blocks. It's the caller responsibility to ensure
+// that those blocks are available in the blockstore before calling this function.
+func (bs *Client) NotifyNewBlock(ctx context.Context, blk blocks.Block) error {
+	// Call to the variadic to avoid code duplication.
+	// This is actually fine to do because no calls is virtual the compiler is able
+	// to see that the slice does not leak and the slice is stack allocated.
+	return bs.NotifyNewBlocks(ctx, blk)
+}
+
 // NotifyNewBlocks announces the existence of blocks to this bitswap service.
 // Bitswap itself doesn't store new blocks. It's the caller responsibility to ensure
 // that those blocks are available in the blockstore before calling this function.

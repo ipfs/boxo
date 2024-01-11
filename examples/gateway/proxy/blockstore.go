@@ -98,6 +98,10 @@ func (e *proxyExchange) GetBlocks(ctx context.Context, cids []cid.Cid) (<-chan b
 	return ch, nil
 }
 
+func (e *proxyExchange) NotifyNewBlock(ctx context.Context, block blocks.Block) error {
+	return e.NotifyNewBlocks(ctx, block)
+}
+
 func (e *proxyExchange) NotifyNewBlocks(ctx context.Context, blocks ...blocks.Block) error {
 	// Note: while not required this function could be used optimistically to prevent fetching
 	// of data that the client has retrieved already even though a Get call is in progress.
