@@ -209,7 +209,12 @@ func runClient(ctx context.Context, h host.Host, c cid.Cid, targetPeer string) (
 		return nil, err
 	}
 
-	dserv := merkledag.NewReadOnlyDagService(merkledag.NewSession(ctx, merkledag.NewDAGService(blockservice.New(blockstore.NewBlockstore(datastore.NewNullDatastore()), bswap))))
+	bservice := blockservice.New(blockstore.NewBlockstore(datastore.NewNullDatastore()), bswap)
+	// using a session allows bitswap to more orrelate related block requests together
+	// this would have more impact if we were connected to more than one peers.
+	ctx = blockservice.ContextWithSession(ctx, bservice)
+
+	dserv := merkledag.NewReadOnlyDagService(merkledag.NewSession(ctx, merkledag.NewDAGService(bservice)))
 	nd, err := dserv.Get(ctx, c)
 	if err != nil {
 		return nil, err
