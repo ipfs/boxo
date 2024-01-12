@@ -386,6 +386,14 @@ type IPFSBackend interface {
 	GetDNSLinkRecord(context.Context, string) (path.Path, error)
 }
 
+// WithContextHint allows an [IPFSBackend] to inject custom [context.Context] configurations.
+// This should be considered optional, consumers might only make a best effort attempt at calling WrapContextForRequest on requests.
+type WithContextHint interface {
+	// WrapContextForRequest allows the backend to add request scopped modifications to the context, like debug values or value caches.
+	// There are no promises on actual usage in consumers.
+	WrapContextForRequest(context.Context) context.Context
+}
+
 // cleanHeaderSet is an helper function that cleans a set of headers by
 // (1) canonicalizing, (2) de-duplicating and (3) sorting.
 func cleanHeaderSet(headers []string) []string {

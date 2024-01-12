@@ -152,6 +152,11 @@ func (i *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// the hour is a hard fallback, we don't expect it to happen, but just in case
 	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
 	defer cancel()
+
+	if withCtxWrap, ok := i.backend.(WithContextHint); ok {
+		ctx = withCtxWrap.WrapContextForRequest(ctx)
+	}
+
 	r = r.WithContext(ctx)
 
 	switch r.Method {
