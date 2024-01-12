@@ -179,6 +179,14 @@ func (b *ipfsBackendWithMetrics) GetDNSLinkRecord(ctx context.Context, fqdn stri
 }
 
 var _ IPFSBackend = (*ipfsBackendWithMetrics)(nil)
+var _ WithContextHint = (*ipfsBackendWithMetrics)(nil)
+
+func (b *ipfsBackendWithMetrics) WrapContextForRequest(ctx context.Context) context.Context {
+	if withCtxWrap, ok := b.backend.(WithContextHint); ok {
+		return withCtxWrap.WrapContextForRequest(ctx)
+	}
+	return ctx
+}
 
 func newHandlerWithMetrics(c *Config, backend IPFSBackend) *handler {
 	i := &handler{
