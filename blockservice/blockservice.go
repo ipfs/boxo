@@ -151,6 +151,11 @@ func NewSession(ctx context.Context, bs BlockService) *Session {
 		return ses
 	}
 
+	return newSession(ctx, bs)
+}
+
+// newSession is like [NewSession] but it does not attempt to reuse session from the existing context.
+func newSession(ctx context.Context, bs BlockService) *Session {
 	var allowlist verifcid.Allowlist = verifcid.DefaultAllowlist
 	if bbs, ok := bs.(BoundedBlockService); ok {
 		allowlist = bbs.Allowlist()
@@ -487,7 +492,7 @@ func ContextWithSession(ctx context.Context, bs BlockService) context.Context {
 	if grabSessionFromContext(ctx, bs) != nil {
 		return ctx
 	}
-	return EmbedSessionInContext(ctx, NewSession(ctx, bs))
+	return EmbedSessionInContext(ctx, newSession(ctx, bs))
 }
 
 // EmbedSessionInContext is like [NewSessionContext] but it allows to embed an existing session.
