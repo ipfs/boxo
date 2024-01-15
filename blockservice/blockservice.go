@@ -156,12 +156,7 @@ func NewSession(ctx context.Context, bs BlockService) *Session {
 
 // newSession is like [NewSession] but it does not attempt to reuse session from the existing context.
 func newSession(ctx context.Context, bs BlockService) *Session {
-	var allowlist verifcid.Allowlist = verifcid.DefaultAllowlist
-	if bbs, ok := bs.(BoundedBlockService); ok {
-		allowlist = bbs.Allowlist()
-	}
-
-	return &Session{bs: bs, allowlist: allowlist, sesctx: ctx}
+	return &Session{bs: bs, sesctx: ctx}
 }
 
 // AddBlock adds a particular block to the service, Putting it into the datastore.
@@ -250,7 +245,7 @@ func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, e
 	ctx, span := internal.StartSpan(ctx, "blockService.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
 	defer span.End()
 
-	return getBlock(ctx, c, s, s.allowlist, s.getExchangeFetcher)
+	return getBlock(ctx, c, s, s.getExchangeFetcher)
 }
 
 // Look at what I have to do, no interface covariance :'(
@@ -258,8 +253,8 @@ func (s *blockService) getExchangeFetcher() exchange.Fetcher {
 	return s.exchange
 }
 
-func getBlock(ctx context.Context, c cid.Cid, bs BlockService, allowlist verifcid.Allowlist, fetchFactory func() exchange.Fetcher) (blocks.Block, error) {
-	err := verifcid.ValidateCid(allowlist, c) // hash security
+func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func() exchange.Fetcher) (blocks.Block, error) {
+	err := verifcid.ValidateCid(grabAllowlistFromBlockservice(bs), c) // hash security
 	if err != nil {
 		return nil, err
 	}
@@ -313,14 +308,16 @@ func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan block
 	ctx, span := internal.StartSpan(ctx, "blockService.GetBlocks")
 	defer span.End()
 
-	return getBlocks(ctx, ks, s, s.allowlist, s.getExchangeFetcher)
+	return getBlocks(ctx, ks, s, s.getExchangeFetcher)
 }
 
-func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, allowlist verifcid.Allowlist, fetchFactory func() exchange.Fetcher) <-chan blocks.Block {
+func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fetchFactory func() exchange.Fetcher) <-chan blocks.Block {
 	out := make(chan blocks.Block)
 
 	go func() {
 		defer close(out)
+
+		allowlist := grabAllowlistFromBlockservice(blockservice)
 
 		allValid := true
 		for _, c := range ks {
@@ -439,7 +436,6 @@ type Session struct {
 	bs            BlockService
 	ses           exchange.Fetcher
 	sesctx        context.Context
-	allowlist     verifcid.Allowlist
 }
 
 // grabSession is used to lazily create sessions.
@@ -470,7 +466,7 @@ func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error)
 	ctx, span := internal.StartSpan(ctx, "Session.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
 	defer span.End()
 
-	return getBlock(ctx, c, s.bs, s.allowlist, s.grabSession)
+	return getBlock(ctx, c, s.bs, s.grabSession)
 }
 
 // GetBlocks gets blocks in the context of a request session
@@ -478,7 +474,7 @@ func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Blo
 	ctx, span := internal.StartSpan(ctx, "Session.GetBlocks")
 	defer span.End()
 
-	return getBlocks(ctx, ks, s.bs, s.allowlist, s.grabSession)
+	return getBlocks(ctx, ks, s.bs, s.grabSession)
 }
 
 var _ BlockGetter = (*Session)(nil)
@@ -518,4 +514,12 @@ func grabSessionFromContext(ctx context.Context, bs BlockService) *Session {
 	}
 
 	return ss
+}
+
+// grabAllowlistFromBlockservice never returns nil
+func grabAllowlistFromBlockservice(bs BlockService) verifcid.Allowlist {
+	if bbs, ok := bs.(BoundedBlockService); ok {
+		return bbs.Allowlist()
+	}
+	return verifcid.DefaultAllowlist
 }
