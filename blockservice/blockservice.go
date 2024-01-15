@@ -494,7 +494,7 @@ func ContextWithSession(ctx context.Context, bs BlockService) context.Context {
 	return EmbedSessionInContext(ctx, newSession(ctx, bs))
 }
 
-// EmbedSessionInContext is like [NewSessionContext] but it allows to embed an existing session.
+// EmbedSessionInContext is like [ContextWithSession] but it allows to embed an existing session.
 func EmbedSessionInContext(ctx context.Context, ses *Session) context.Context {
 	// use ses.bs as a key, so if multiple blockservices use embeded sessions it gets dispatched to the matching blockservice.
 	return context.WithValue(ctx, ses.bs, ses)
