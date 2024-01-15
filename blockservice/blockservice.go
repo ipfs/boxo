@@ -47,11 +47,8 @@ type BlockService interface {
 	io.Closer
 	BlockGetter
 
-	// Blockstore returns a reference to the underlying blockstore
-	Blockstore() blockstore.Blockstore
-
-	// Exchange returns a reference to the underlying exchange (usually bitswap)
-	Exchange() exchange.Interface
+	// Has indicates if a block is present locally.
+	Has(ctx context.Context, c cid.Cid) (bool, error)
 
 	// AddBlock puts a given block to the underlying datastore
 	AddBlock(ctx context.Context, o blocks.Block) error
@@ -123,20 +120,6 @@ func New(bs blockstore.Blockstore, exchange exchange.Interface, opts ...Option) 
 	}
 
 	return service
-}
-
-// Blockstore returns the blockstore behind this blockservice.
-func (s *blockService) Blockstore() blockstore.Blockstore {
-	return s.blockstore
-}
-
-// Exchange returns the exchange behind this blockservice.
-func (s *blockService) Exchange() exchange.Interface {
-	return s.exchange
-}
-
-func (s *blockService) Allowlist() verifcid.Allowlist {
-	return s.allowlist
 }
 
 func (s *blockService) NewSession(ctx context.Context) BlockGetter {
@@ -439,14 +422,13 @@ func (s *session) grabSession() exchange.Fetcher {
 			s.sesctx = nil // early gc
 		}()
 
-		ex := s.bs.Exchange()
-		if ex == nil {
+		if s.bs.exchange == nil {
 			return
 		}
-		s.ses = ex // always fallback to non session fetches
 
-		sesEx, ok := ex.(exchange.SessionExchange)
+		sesEx, ok := s.bs.exchange.(exchange.SessionExchange)
 		if !ok {
+			s.ses = s.bs.exchange // always fallback to non session fetches
 			return
 		}
 		s.ses = sesEx.NewSession(s.sesctx)
@@ -490,4 +472,12 @@ func (s *blockService) grabSessionFromContext(ctx context.Context) *session {
 	}
 
 	return sss
+}
+
+func (s *blockService) Has(ctx context.Context, c cid.Cid) (bool, error) {
+	if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
+		return false, err
+	}
+
+	return s.blockstore.Has(ctx, c)
 }
