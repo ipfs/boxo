@@ -67,7 +67,7 @@ func TestExchangeWrite(t *testing.T) {
 
 	for name, fetcher := range map[string]BlockGetter{
 		"blockservice": bserv,
-		"session":      NewSession(context.Background(), bserv),
+		"session":      bserv.NewSession(context.Background()),
 	} {
 		t.Run(name, func(t *testing.T) {
 			// GetBlock
@@ -133,9 +133,9 @@ func TestLazySessionInitialization(t *testing.T) {
 	bstore := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	bstore2 := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	bstore3 := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	session := offline.Exchange(bstore2)
+	ses := offline.Exchange(bstore2)
 	exch := offline.Exchange(bstore3)
-	sessionExch := &fakeSessionExchange{Interface: exch, session: session}
+	sessionExch := &fakeSessionExchange{Interface: exch, session: ses}
 	bservSessEx := New(bstore, sessionExch, WriteThrough())
 	bgen := butil.NewBlockGenerator()
 
@@ -149,12 +149,12 @@ func TestLazySessionInitialization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = session.NotifyNewBlocks(ctx, block2)
+	err = ses.NotifyNewBlocks(ctx, block2)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	bsession := NewSession(ctx, bservSessEx)
+	bsession := bservSessEx.NewSession(ctx).(*session)
 	if bsession.ses != nil {
 		t.Fatal("Session exchange should not instantiated session immediately")
 	}
@@ -175,7 +175,7 @@ func TestLazySessionInitialization(t *testing.T) {
 	if returnedBlock.Cid() != block2.Cid() {
 		t.Fatal("Got incorrect block")
 	}
-	if bsession.ses != session {
+	if bsession.ses != ses {
 		t.Fatal("Should have initialized session to fetch block")
 	}
 }
@@ -235,7 +235,7 @@ func TestNilExchange(t *testing.T) {
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	bserv := New(bs, nil, WriteThrough())
-	sess := NewSession(ctx, bserv)
+	sess := bserv.NewSession(ctx)
 	_, err := sess.GetBlock(ctx, block.Cid())
 	if !ipld.IsNotFound(err) {
 		t.Fatal("expected block to not be found")
@@ -286,7 +286,7 @@ func TestAllowlist(t *testing.T) {
 
 	blockservice := New(bs, nil, WithAllowlist(verifcid.NewAllowlist(map[uint64]bool{multihash.BLAKE3: true})))
 	check(blockservice.GetBlock)
-	check(NewSession(ctx, blockservice).GetBlock)
+	check(blockservice.NewSession(ctx).GetBlock)
 }
 
 type fakeIsNewSessionCreateExchange struct {
@@ -335,7 +335,7 @@ func TestContextSession(t *testing.T) {
 
 	service := New(blockstore.NewBlockstore(ds.NewMapDatastore()), sesEx)
 
-	ctx = ContextWithSession(ctx, service)
+	ctx = service.ContextWithSession(ctx)
 
 	b, err := service.GetBlock(ctx, block1.Cid())
 	a.NoError(err)
@@ -348,8 +348,8 @@ func TestContextSession(t *testing.T) {
 	a.False(sesEx.newSessionWasCalled, "session should be reused in context")
 
 	a.Equal(
-		NewSession(ctx, service),
-		NewSession(ContextWithSession(ctx, service), service),
+		service.NewSession(ctx),
+		service.NewSession(service.ContextWithSession(ctx)),
 		"session must be deduped in all invocations on the same context",
 	)
 }

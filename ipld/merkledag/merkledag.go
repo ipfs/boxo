@@ -133,7 +133,7 @@ func GetLinksDirect(serv format.NodeGetter) GetLinks {
 }
 
 type sesGetter struct {
-	bs      *bserv.Session
+	bs      bserv.BlockGetter
 	decoder *legacy.Decoder
 }
 
@@ -153,7 +153,7 @@ func (sg *sesGetter) GetMany(ctx context.Context, keys []cid.Cid) <-chan *format
 }
 
 // WrapSession wraps a blockservice session to satisfy the format.NodeGetter interface
-func WrapSession(s *bserv.Session) format.NodeGetter {
+func WrapSession(s bserv.BlockGetter) format.NodeGetter {
 	return &sesGetter{
 		bs:      s,
 		decoder: ipldLegacyDecoder,
@@ -162,7 +162,7 @@ func WrapSession(s *bserv.Session) format.NodeGetter {
 
 // Session returns a NodeGetter using a new session for block fetches.
 func (n *dagService) Session(ctx context.Context) format.NodeGetter {
-	session := bserv.NewSession(ctx, n.Blocks)
+	session := n.Blocks.NewSession(ctx)
 	return &sesGetter{
 		bs:      session,
 		decoder: n.decoder,

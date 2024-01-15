@@ -62,16 +62,22 @@ type BlockService interface {
 
 	// DeleteBlock deletes the given block from the blockservice.
 	DeleteBlock(ctx context.Context, o cid.Cid) error
+
+	// NewSession creates a new session that allows for
+	// controlled exchange of wantlists to decrease the bandwidth overhead.
+	// If the current exchange is a [fetcher.SessionExchange], a new exchange
+	// session will be created. Otherwise, the current exchange will be used
+	// directly.
+	// Sessions are lazily setup, this is cheap.
+	NewSession(context.Context) BlockGetter
+
+	// ContextWithSession is creates a context with an embded session,
+	// future calls to [BlockService.GetBlock], [BlockService.GetBlocks] and [BlockService.NewSession]
+	// will be redirected to this same session instead.
+	// Sessions are lazily setup, this is cheap.
+	// It wont make a new session if one exists already in the context.
+	ContextWithSession(ctx context.Context) context.Context
 }
-
-// BoundedBlockService is a Blockservice bounded via strict multihash Allowlist.
-type BoundedBlockService interface {
-	BlockService
-
-	Allowlist() verifcid.Allowlist
-}
-
-var _ BoundedBlockService = (*blockService)(nil)
 
 type blockService struct {
 	allowlist  verifcid.Allowlist
@@ -133,24 +139,25 @@ func (s *blockService) Allowlist() verifcid.Allowlist {
 	return s.allowlist
 }
 
-// NewSession creates a new session that allows for
-// controlled exchange of wantlists to decrease the bandwidth overhead.
-// If the current exchange is a SessionExchange, a new exchange
-// session will be created. Otherwise, the current exchange will be used
-// directly.
-// Sessions are lazily setup, this is cheap.
-func NewSession(ctx context.Context, bs BlockService) *Session {
-	ses := grabSessionFromContext(ctx, bs)
+func (s *blockService) NewSession(ctx context.Context) BlockGetter {
+	ses := s.grabSessionFromContext(ctx)
 	if ses != nil {
 		return ses
 	}
 
-	return newSession(ctx, bs)
+	return s.newSession(ctx)
 }
 
 // newSession is like [NewSession] but it does not attempt to reuse session from the existing context.
-func newSession(ctx context.Context, bs BlockService) *Session {
-	return &Session{bs: bs, sesctx: ctx}
+func (s *blockService) newSession(ctx context.Context) *session {
+	return &session{bs: s, sesctx: ctx}
+}
+
+func (s *blockService) ContextWithSession(ctx context.Context) context.Context {
+	if s.grabSessionFromContext(ctx) != nil {
+		return ctx
+	}
+	return context.WithValue(ctx, s, s.newSession(ctx))
 }
 
 // AddBlock adds a particular block to the service, Putting it into the datastore.
@@ -232,30 +239,27 @@ func (s *blockService) AddBlocks(ctx context.Context, bs []blocks.Block) error {
 // GetBlock retrieves a particular block from the service,
 // Getting it from the datastore using the key (hash).
 func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	if ses := grabSessionFromContext(ctx, s); ses != nil {
+	if ses := s.grabSessionFromContext(ctx); ses != nil {
 		return ses.GetBlock(ctx, c)
 	}
 
 	ctx, span := internal.StartSpan(ctx, "blockService.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
 	defer span.End()
 
-	return getBlock(ctx, c, s, s.getExchangeFetcher)
+	return s.getBlock(ctx, c, s.getExchangeFetcher)
 }
 
-// Look at what I have to do, no interface covariance :'(
 func (s *blockService) getExchangeFetcher() exchange.Fetcher {
 	return s.exchange
 }
 
-func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func() exchange.Fetcher) (blocks.Block, error) {
-	err := verifcid.ValidateCid(grabAllowlistFromBlockservice(bs), c) // hash security
+func (s *blockService) getBlock(ctx context.Context, c cid.Cid, fetchFactory func() exchange.Fetcher) (blocks.Block, error) {
+	err := verifcid.ValidateCid(s.allowlist, c) // hash security
 	if err != nil {
 		return nil, err
 	}
 
-	blockstore := bs.Blockstore()
-
-	block, err := blockstore.Get(ctx, c)
+	block, err := s.blockstore.Get(ctx, c)
 	switch {
 	case err == nil:
 		return block, nil
@@ -277,12 +281,12 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 		return nil, err
 	}
 	// also write in the blockstore for caching, inform the exchange that the block is available
-	err = blockstore.Put(ctx, blk)
+	err = s.blockstore.Put(ctx, blk)
 	if err != nil {
 		return nil, err
 	}
-	if ex := bs.Exchange(); ex != nil {
-		err = ex.NotifyNewBlocks(ctx, blk)
+	if s.exchange != nil {
+		err = s.exchange.NotifyNewBlocks(ctx, blk)
 		if err != nil {
 			return nil, err
 		}
@@ -295,28 +299,26 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 // the returned channel.
 // NB: No guarantees are made about order.
 func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
-	if ses := grabSessionFromContext(ctx, s); ses != nil {
+	if ses := s.grabSessionFromContext(ctx); ses != nil {
 		return ses.GetBlocks(ctx, ks)
 	}
 
 	ctx, span := internal.StartSpan(ctx, "blockService.GetBlocks")
 	defer span.End()
 
-	return getBlocks(ctx, ks, s, s.getExchangeFetcher)
+	return s.getBlocks(ctx, ks, s.getExchangeFetcher)
 }
 
-func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fetchFactory func() exchange.Fetcher) <-chan blocks.Block {
+func (s *blockService) getBlocks(ctx context.Context, ks []cid.Cid, fetchFactory func() exchange.Fetcher) <-chan blocks.Block {
 	out := make(chan blocks.Block)
 
 	go func() {
 		defer close(out)
 
-		allowlist := grabAllowlistFromBlockservice(blockservice)
-
 		var lastAllValidIndex int
 		var c cid.Cid
 		for lastAllValidIndex, c = range ks {
-			if err := verifcid.ValidateCid(allowlist, c); err != nil {
+			if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
 				break
 			}
 		}
@@ -327,7 +329,7 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 			copy(ks2, ks[:lastAllValidIndex])          // fast path for already filtered elements
 			for _, c := range ks[lastAllValidIndex:] { // don't rescan already scanned elements
 				// hash security
-				if err := verifcid.ValidateCid(allowlist, c); err == nil {
+				if err := verifcid.ValidateCid(s.allowlist, c); err == nil {
 					ks2 = append(ks2, c)
 				} else {
 					logger.Errorf("unsafe CID (%s) passed to blockService.GetBlocks: %s", c, err)
@@ -336,11 +338,9 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 			ks = ks2
 		}
 
-		bs := blockservice.Blockstore()
-
 		var misses []cid.Cid
 		for _, c := range ks {
-			hit, err := bs.Get(ctx, c)
+			hit, err := s.blockstore.Get(ctx, c)
 			if err != nil {
 				misses = append(misses, c)
 				continue
@@ -363,7 +363,6 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 			return
 		}
 
-		ex := blockservice.Exchange()
 		var cache [1]blocks.Block // preallocate once for all iterations
 		for {
 			var b blocks.Block
@@ -378,16 +377,16 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 			}
 
 			// write in the blockstore for caching
-			err = bs.Put(ctx, b)
+			err = s.blockstore.Put(ctx, b)
 			if err != nil {
 				logger.Errorf("could not write blocks from the network to the blockstore: %s", err)
 				return
 			}
 
-			if ex != nil {
+			if s.exchange != nil {
 				// inform the exchange that the blocks are available
 				cache[0] = b
-				err = ex.NotifyNewBlocks(ctx, cache[:]...)
+				err = s.exchange.NotifyNewBlocks(ctx, cache[:]...)
 				if err != nil {
 					logger.Errorf("could not tell the exchange about new blocks: %s", err)
 					return
@@ -425,16 +424,16 @@ func (s *blockService) Close() error {
 	return s.exchange.Close()
 }
 
-// Session is a helper type to provide higher level access to bitswap sessions
-type Session struct {
+// session is a helper type to provide higher level access to bitswap sessions
+type session struct {
 	createSession sync.Once
-	bs            BlockService
+	bs            *blockService
 	ses           exchange.Fetcher
 	sesctx        context.Context
 }
 
 // grabSession is used to lazily create sessions.
-func (s *Session) grabSession() exchange.Fetcher {
+func (s *session) grabSession() exchange.Fetcher {
 	s.createSession.Do(func() {
 		defer func() {
 			s.sesctx = nil // early gc
@@ -457,64 +456,38 @@ func (s *Session) grabSession() exchange.Fetcher {
 }
 
 // GetBlock gets a block in the context of a request session
-func (s *Session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	ctx, span := internal.StartSpan(ctx, "Session.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
+func (s *session) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
+	ctx, span := internal.StartSpan(ctx, "session.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
 	defer span.End()
 
-	return getBlock(ctx, c, s.bs, s.grabSession)
+	return s.bs.getBlock(ctx, c, s.grabSession)
 }
 
 // GetBlocks gets blocks in the context of a request session
-func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
-	ctx, span := internal.StartSpan(ctx, "Session.GetBlocks")
+func (s *session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
+	ctx, span := internal.StartSpan(ctx, "session.GetBlocks")
 	defer span.End()
 
-	return getBlocks(ctx, ks, s.bs, s.grabSession)
+	return s.bs.getBlocks(ctx, ks, s.grabSession)
 }
 
-var _ BlockGetter = (*Session)(nil)
-
-// ContextWithSession is a helper which creates a context with an embded session,
-// future calls to [BlockGetter.GetBlock], [BlockGetter.GetBlocks] and [NewSession] with the same [BlockService]
-// will be redirected to this same session instead.
-// Sessions are lazily setup, this is cheap.
-// It wont make a new session if one exists already in the context.
-func ContextWithSession(ctx context.Context, bs BlockService) context.Context {
-	if grabSessionFromContext(ctx, bs) != nil {
-		return ctx
-	}
-	return EmbedSessionInContext(ctx, newSession(ctx, bs))
-}
-
-// EmbedSessionInContext is like [ContextWithSession] but it allows to embed an existing session.
-func EmbedSessionInContext(ctx context.Context, ses *Session) context.Context {
-	// use ses.bs as a key, so if multiple blockservices use embeded sessions it gets dispatched to the matching blockservice.
-	return context.WithValue(ctx, ses.bs, ses)
-}
+var _ BlockGetter = (*session)(nil)
 
 // grabSessionFromContext returns nil if the session was not found
 // This is a private API on purposes, I dislike when consumers tradeoff compiletime typesafety with runtime typesafety,
-// if this API is public it is too easy to forget to pass a [BlockService] or [Session] object around in your app.
+// if this API is public it is too easy to forget to pass a [BlockService] or [session] object around in your app.
 // By having this private we allow consumers to follow the trace of where the blockservice is passed and used.
-func grabSessionFromContext(ctx context.Context, bs BlockService) *Session {
-	s := ctx.Value(bs)
+func (s *blockService) grabSessionFromContext(ctx context.Context) *session {
+	ss := ctx.Value(s)
 	if s == nil {
 		return nil
 	}
 
-	ss, ok := s.(*Session)
+	sss, ok := ss.(*session)
 	if !ok {
 		// idk what to do here, that kinda sucks, giveup
 		return nil
 	}
 
-	return ss
-}
-
-// grabAllowlistFromBlockservice never returns nil
-func grabAllowlistFromBlockservice(bs BlockService) verifcid.Allowlist {
-	if bbs, ok := bs.(BoundedBlockService); ok {
-		return bbs.Allowlist()
-	}
-	return verifcid.DefaultAllowlist
+	return sss
 }

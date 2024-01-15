@@ -39,10 +39,10 @@ func NewFetcherConfig(blockService blockservice.BlockService) FetcherConfig {
 // NewSession creates a session from which nodes may be retrieved.
 // The session ends when the provided context is canceled.
 func (fc FetcherConfig) NewSession(ctx context.Context) fetcher.Fetcher {
-	return fc.FetcherWithSession(ctx, blockservice.NewSession(ctx, fc.blockService))
+	return fc.FetcherWithSession(ctx, fc.blockService.NewSession(ctx))
 }
 
-func (fc FetcherConfig) FetcherWithSession(ctx context.Context, s *blockservice.Session) fetcher.Fetcher {
+func (fc FetcherConfig) FetcherWithSession(ctx context.Context, s blockservice.BlockGetter) fetcher.Fetcher {
 	ls := cidlink.DefaultLinkSystem()
 	// while we may be loading blocks remotely, they are already hash verified by the time they load
 	// into ipld-prime
@@ -131,7 +131,7 @@ var DefaultPrototypeChooser = func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld
 	return basicnode.Prototype.Any, nil
 }
 
-func blockOpener(ctx context.Context, bs *blockservice.Session) ipld.BlockReadOpener {
+func blockOpener(ctx context.Context, bs blockservice.BlockGetter) ipld.BlockReadOpener {
 	return func(_ ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
 		cidLink, ok := lnk.(cidlink.Link)
 		if !ok {
