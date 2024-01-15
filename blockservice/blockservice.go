@@ -119,14 +119,6 @@ func New(bs blockstore.Blockstore, exchange exchange.Interface, opts ...Option) 
 	return service
 }
 
-// NewWriteThrough creates a BlockService that guarantees writes will go
-// through to the blockstore and are not skipped by cache checks.
-//
-// Deprecated: Use [New] with the [WriteThrough] option.
-func NewWriteThrough(bs blockstore.Blockstore, exchange exchange.Interface) BlockService {
-	return New(bs, exchange, WriteThrough())
-}
-
 // Blockstore returns the blockstore behind this blockservice.
 func (s *blockService) Blockstore() blockstore.Blockstore {
 	return s.blockstore
