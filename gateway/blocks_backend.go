@@ -52,7 +52,7 @@ import (
 // BlocksBackend is an [IPFSBackend] implementation based on a [blockservice.BlockService].
 type BlocksBackend struct {
 	blockStore   blockstore.Blockstore
-	blockService blockservice.BlockService
+	blockService *blockservice.BlockService
 	dagService   format.DAGService
 	resolver     resolver.Resolver
 
@@ -97,7 +97,7 @@ func WithResolver(r resolver.Resolver) BlocksBackendOption {
 
 type BlocksBackendOption func(options *blocksBackendOptions) error
 
-func NewBlocksBackend(blockService blockservice.BlockService, opts ...BlocksBackendOption) (*BlocksBackend, error) {
+func NewBlocksBackend(blockService *blockservice.BlockService, opts ...BlocksBackendOption) (*BlocksBackend, error) {
 	var compiledOptions blocksBackendOptions
 	for _, o := range opts {
 		if err := o(&compiledOptions); err != nil {
@@ -687,7 +687,7 @@ func (bb *BlocksBackend) IsCached(ctx context.Context, p path.Path) bool {
 var _ WithContextHint = (*BlocksBackend)(nil)
 
 func (bb *BlocksBackend) WrapContextForRequest(ctx context.Context) context.Context {
-	return blockservice.ContextWithSession(ctx, bb.blockService)
+	return bb.blockService.ContextWithSession(ctx)
 }
 
 func (bb *BlocksBackend) ResolvePath(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, error) {

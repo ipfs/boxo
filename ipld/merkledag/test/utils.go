@@ -17,7 +17,7 @@ func Mock() ipld.DAGService {
 }
 
 // Bserv returns a new, thread-safe, mock BlockService.
-func Bserv() bsrv.BlockService {
+func Bserv() *bsrv.BlockService {
 	bstore := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	return bsrv.New(bstore, offline.Exchange(bstore))
 }

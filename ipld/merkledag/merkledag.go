@@ -35,7 +35,7 @@ const progressContextKey contextKey = "progress"
 
 // NewDAGService constructs a new DAGService (using the default implementation).
 // Note that the default implementation is also an ipld.LinkGetter.
-func NewDAGService(bs bserv.BlockService) *dagService {
+func NewDAGService(bs *bserv.BlockService) *dagService {
 	return &dagService{
 		Blocks:  bs,
 		decoder: ipldLegacyDecoder,
@@ -49,7 +49,7 @@ func NewDAGService(bs bserv.BlockService) *dagService {
 //
 //	able to free some of them when vm pressure is high
 type dagService struct {
-	Blocks  bserv.BlockService
+	Blocks  *bserv.BlockService
 	decoder *legacy.Decoder
 }
 
@@ -162,7 +162,7 @@ func WrapSession(s *bserv.Session) format.NodeGetter {
 
 // Session returns a NodeGetter using a new session for block fetches.
 func (n *dagService) Session(ctx context.Context) format.NodeGetter {
-	session := bserv.NewSession(ctx, n.Blocks)
+	session := n.Blocks.NewSession(ctx)
 	return &sesGetter{
 		bs:      session,
 		decoder: n.decoder,

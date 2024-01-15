@@ -18,6 +18,7 @@ The following emojis are used to highlight certain changes:
 
 - `blockservice` now has `ContextWithSession` and `EmbedSessionInContext` functions, which allows to embed a session in a context. Future calls to `BlockGetter.GetBlock`, `BlockGetter.GetBlocks` and `NewSession` will use the session in the context.
 - `blockservice.NewWritethrough` deprecated function has been removed, instead you can do `blockservice.New(..., ..., WriteThrough())` like previously.
+- `blockservice` now has `WithContentBlocker` option which allows to filter Add and Get requests by CID.
 
 ### Changed
 

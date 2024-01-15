@@ -23,13 +23,13 @@ type fetcherSession struct {
 
 // FetcherConfig defines a configuration object from which Fetcher instances are constructed
 type FetcherConfig struct {
-	blockService     blockservice.BlockService
+	blockService     *blockservice.BlockService
 	NodeReifier      ipld.NodeReifier
 	PrototypeChooser traversal.LinkTargetNodePrototypeChooser
 }
 
 // NewFetcherConfig creates a FetchConfig from which session may be created and nodes retrieved.
-func NewFetcherConfig(blockService blockservice.BlockService) FetcherConfig {
+func NewFetcherConfig(blockService *blockservice.BlockService) FetcherConfig {
 	return FetcherConfig{
 		blockService:     blockService,
 		PrototypeChooser: DefaultPrototypeChooser,
@@ -39,7 +39,7 @@ func NewFetcherConfig(blockService blockservice.BlockService) FetcherConfig {
 // NewSession creates a session from which nodes may be retrieved.
 // The session ends when the provided context is canceled.
 func (fc FetcherConfig) NewSession(ctx context.Context) fetcher.Fetcher {
-	return fc.FetcherWithSession(ctx, blockservice.NewSession(ctx, fc.blockService))
+	return fc.FetcherWithSession(ctx, fc.blockService.NewSession(ctx))
 }
 
 func (fc FetcherConfig) FetcherWithSession(ctx context.Context, s *blockservice.Session) fetcher.Fetcher {

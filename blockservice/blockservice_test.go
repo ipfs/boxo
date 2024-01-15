@@ -2,6 +2,7 @@ package blockservice
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	blockstore "github.com/ipfs/boxo/blockstore"
@@ -67,7 +68,7 @@ func TestExchangeWrite(t *testing.T) {
 
 	for name, fetcher := range map[string]BlockGetter{
 		"blockservice": bserv,
-		"session":      NewSession(context.Background(), bserv),
+		"session":      bserv.NewSession(context.Background()),
 	} {
 		t.Run(name, func(t *testing.T) {
 			// GetBlock
@@ -154,7 +155,7 @@ func TestLazySessionInitialization(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bsession := NewSession(ctx, bservSessEx)
+	bsession := bservSessEx.NewSession(ctx)
 	if bsession.ses != nil {
 		t.Fatal("Session exchange should not instantiated session immediately")
 	}
@@ -235,7 +236,7 @@ func TestNilExchange(t *testing.T) {
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	bserv := New(bs, nil, WriteThrough())
-	sess := NewSession(ctx, bserv)
+	sess := bserv.NewSession(ctx)
 	_, err := sess.GetBlock(ctx, block.Cid())
 	if !ipld.IsNotFound(err) {
 		t.Fatal("expected block to not be found")
@@ -286,7 +287,7 @@ func TestAllowlist(t *testing.T) {
 
 	blockservice := New(bs, nil, WithAllowlist(verifcid.NewAllowlist(map[uint64]bool{multihash.BLAKE3: true})))
 	check(blockservice.GetBlock)
-	check(NewSession(ctx, blockservice).GetBlock)
+	check(blockservice.NewSession(ctx).GetBlock)
 }
 
 type fakeIsNewSessionCreateExchange struct {
@@ -335,7 +336,7 @@ func TestContextSession(t *testing.T) {
 
 	service := New(blockstore.NewBlockstore(ds.NewMapDatastore()), sesEx)
 
-	ctx = ContextWithSession(ctx, service)
+	ctx = service.ContextWithSession(ctx)
 
 	b, err := service.GetBlock(ctx, block1.Cid())
 	a.NoError(err)
@@ -348,8 +349,77 @@ func TestContextSession(t *testing.T) {
 	a.False(sesEx.newSessionWasCalled, "session should be reused in context")
 
 	a.Equal(
-		NewSession(ctx, service),
-		NewSession(ContextWithSession(ctx, service), service),
+		service.NewSession(ctx),
+		service.NewSession(service.ContextWithSession(ctx)),
 		"session must be deduped in all invocations on the same context",
 	)
+}
+
+func TestBlocker(t *testing.T) {
+	t.Parallel()
+	a := assert.New(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	bgen := butil.NewBlockGenerator()
+	allowed := bgen.Next()
+	notAllowed := bgen.Next()
+
+	var disallowed = errors.New("disallowed")
+
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	service := New(bs, nil, WithContentBlocker(func(c cid.Cid) error {
+		if c == notAllowed.Cid() {
+			return disallowed
+		}
+		return nil
+	}))
+
+	// try putting
+	a.NoError(service.AddBlock(ctx, allowed))
+	has, err := bs.Has(ctx, allowed.Cid())
+	a.NoError(err)
+	a.True(has, "block was not added even tho it is not blocked")
+	a.NoError(service.DeleteBlock(ctx, allowed.Cid()))
+
+	a.ErrorIs(service.AddBlock(ctx, notAllowed), disallowed)
+	has, err = bs.Has(ctx, notAllowed.Cid())
+	a.NoError(err)
+	a.False(has, "block was added even tho it is blocked")
+
+	a.NoError(service.AddBlocks(ctx, []blocks.Block{allowed}))
+	has, err = bs.Has(ctx, allowed.Cid())
+	a.NoError(err)
+	a.True(has, "block was not added even tho it is not blocked")
+	a.NoError(service.DeleteBlock(ctx, allowed.Cid()))
+
+	a.ErrorIs(service.AddBlocks(ctx, []blocks.Block{notAllowed}), disallowed)
+	has, err = bs.Has(ctx, notAllowed.Cid())
+	a.NoError(err)
+	a.False(has, "block was added even tho it is blocked")
+
+	// now try fetch
+	a.NoError(bs.Put(ctx, allowed))
+	a.NoError(bs.Put(ctx, notAllowed))
+
+	block, err := service.GetBlock(ctx, allowed.Cid())
+	a.NoError(err)
+	a.Equal(block.RawData(), allowed.RawData())
+
+	_, err = service.GetBlock(ctx, notAllowed.Cid())
+	a.ErrorIs(err, disallowed)
+
+	var gotAllowed bool
+	for block := range service.GetBlocks(ctx, []cid.Cid{allowed.Cid(), notAllowed.Cid()}) {
+		switch block.Cid() {
+		case allowed.Cid():
+			gotAllowed = true
+		case notAllowed.Cid():
+			t.Error("got disallowed block")
+		default:
+			t.Fatalf("got unrelated block: %s", block.Cid())
+		}
+	}
+	a.True(gotAllowed, "did not got allowed block")
 }
