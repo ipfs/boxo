@@ -27,7 +27,7 @@ func TestWriteThroughWorks(t *testing.T) {
 	}
 	exchbstore := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	exch := offline.Exchange(exchbstore)
-	bserv := NewWriteThrough(bstore, exch)
+	bserv := New(bstore, exch, WriteThrough())
 	bgen := butil.NewBlockGenerator()
 
 	block := bgen.Next()
@@ -62,7 +62,7 @@ func TestExchangeWrite(t *testing.T) {
 		offline.Exchange(exchbstore),
 		0,
 	}
-	bserv := NewWriteThrough(bstore, exch)
+	bserv := New(bstore, exch, WriteThrough())
 	bgen := butil.NewBlockGenerator()
 
 	for name, fetcher := range map[string]BlockGetter{
@@ -136,7 +136,7 @@ func TestLazySessionInitialization(t *testing.T) {
 	session := offline.Exchange(bstore2)
 	exch := offline.Exchange(bstore3)
 	sessionExch := &fakeSessionExchange{Interface: exch, session: session}
-	bservSessEx := NewWriteThrough(bstore, sessionExch)
+	bservSessEx := New(bstore, sessionExch, WriteThrough())
 	bgen := butil.NewBlockGenerator()
 
 	block := bgen.Next()
@@ -234,7 +234,7 @@ func TestNilExchange(t *testing.T) {
 	block := bgen.Next()
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	bserv := NewWriteThrough(bs, nil)
+	bserv := New(bs, nil, WriteThrough())
 	sess := NewSession(ctx, bserv)
 	_, err := sess.GetBlock(ctx, block.Cid())
 	if !ipld.IsNotFound(err) {
