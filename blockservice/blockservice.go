@@ -321,18 +321,19 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 
 		allowlist := grabAllowlistFromBlockservice(blockservice)
 
-		allValid := true
-		for _, c := range ks {
+		var lastAllValidIndex int
+		var c cid.Cid
+		for lastAllValidIndex, c = range ks {
 			if err := verifcid.ValidateCid(allowlist, c); err != nil {
-				allValid = false
 				break
 			}
 		}
 
-		if !allValid {
+		if lastAllValidIndex != len(ks) {
 			// can't shift in place because we don't want to clobber callers.
-			ks2 := make([]cid.Cid, 0, len(ks))
-			for _, c := range ks {
+			ks2 := make([]cid.Cid, lastAllValidIndex, len(ks))
+			copy(ks2, ks[:lastAllValidIndex])          // fast path for already filtered elements
+			for _, c := range ks[lastAllValidIndex:] { // don't rescan already scanned elements
 				// hash security
 				if err := verifcid.ValidateCid(allowlist, c); err == nil {
 					ks2 = append(ks2, c)
