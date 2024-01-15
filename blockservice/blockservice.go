@@ -71,10 +71,24 @@ type BoundedBlockService interface {
 	Allowlist() verifcid.Allowlist
 }
 
+// Blocker returns err != nil if the CID is disallowed to be fetched or stored in blockservice.
+// It returns an error so error messages could be passed.
+type Blocker func(cid.Cid) error
+
+// BlockedBlockService is a Blockservice bounded via an arbitrary cid [Blocker].
+type BlockedBlockService interface {
+	BlockService
+
+	// Blocker might return [nil], then no blocking is to be done.
+	Blocker() Blocker
+}
+
 var _ BoundedBlockService = (*blockService)(nil)
+var _ BlockedBlockService = (*blockService)(nil)
 
 type blockService struct {
 	allowlist  verifcid.Allowlist
+	blocker    Blocker
 	blockstore blockstore.Blockstore
 	exchange   exchange.Interface
 	// If checkFirst is true then first check that a block doesn't
@@ -96,6 +110,13 @@ func WriteThrough() Option {
 func WithAllowlist(allowlist verifcid.Allowlist) Option {
 	return func(bs *blockService) {
 		bs.allowlist = allowlist
+	}
+}
+
+// WithContentBlocker allows to filter what blocks can be fetched or added to the blockservice.
+func WithContentBlocker(blocker Blocker) Option {
+	return func(bs *blockService) {
+		bs.blocker = blocker
 	}
 }
 
@@ -141,6 +162,10 @@ func (s *blockService) Allowlist() verifcid.Allowlist {
 	return s.allowlist
 }
 
+func (s *blockService) Blocker() Blocker {
+	return s.blocker
+}
+
 // NewSession creates a new session that allows for
 // controlled exchange of wantlists to decrease the bandwidth overhead.
 // If the current exchange is a SessionExchange, a new exchange
@@ -171,6 +196,13 @@ func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 	if err != nil {
 		return err
 	}
+
+	if s.blocker != nil {
+		if err := s.blocker(c); err != nil {
+			return err
+		}
+	}
+
 	if s.checkFirst {
 		if has, err := s.blockstore.Has(ctx, c); has || err != nil {
 			return err
@@ -198,9 +230,16 @@ func (s *blockService) AddBlocks(ctx context.Context, bs []blocks.Block) error {
 
 	// hash security
 	for _, b := range bs {
-		err := verifcid.ValidateCid(s.allowlist, b.Cid())
+		c := b.Cid()
+		err := verifcid.ValidateCid(s.allowlist, c)
 		if err != nil {
 			return err
+		}
+
+		if s.blocker != nil {
+			if err := s.blocker(c); err != nil {
+				return err
+			}
 		}
 	}
 	var toput []blocks.Block
@@ -259,6 +298,12 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 	err := verifcid.ValidateCid(grabAllowlistFromBlockservice(bs), c) // hash security
 	if err != nil {
 		return nil, err
+	}
+
+	if blocker := grabBlockerFromBlockservice(bs); blocker != nil {
+		if err := blocker(c); err != nil {
+			return nil, err
+		}
 	}
 
 	blockstore := bs.Blockstore()
@@ -320,12 +365,20 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 		defer close(out)
 
 		allowlist := grabAllowlistFromBlockservice(blockservice)
+		blocker := grabBlockerFromBlockservice(blockservice)
 
 		allValid := true
 		for _, c := range ks {
 			if err := verifcid.ValidateCid(allowlist, c); err != nil {
 				allValid = false
 				break
+			}
+
+			if blocker != nil {
+				if err := blocker(c); err != nil {
+					allValid = false
+					break
+				}
 			}
 		}
 
@@ -334,11 +387,19 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 			ks2 := make([]cid.Cid, 0, len(ks))
 			for _, c := range ks {
 				// hash security
-				if err := verifcid.ValidateCid(allowlist, c); err == nil {
-					ks2 = append(ks2, c)
-				} else {
+				if err := verifcid.ValidateCid(allowlist, c); err != nil {
 					logger.Errorf("unsafe CID (%s) passed to blockService.GetBlocks: %s", c, err)
+					continue
 				}
+
+				if blocker != nil {
+					if err := blocker(c); err != nil {
+						logger.Errorf("blocked CID (%s) passed to blockService.GetBlocks: %s", c, err)
+						continue
+					}
+				}
+
+				ks2 = append(ks2, c)
 			}
 			ks = ks2
 		}
@@ -524,4 +585,11 @@ func grabAllowlistFromBlockservice(bs BlockService) verifcid.Allowlist {
 		return bbs.Allowlist()
 	}
 	return verifcid.DefaultAllowlist
+}
+
+func grabBlockerFromBlockservice(bs BlockService) Blocker {
+	if bbs, ok := bs.(BlockedBlockService); ok {
+		return bbs.Blocker()
+	}
+	return nil
 }
