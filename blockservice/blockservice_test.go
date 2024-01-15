@@ -2,6 +2,7 @@ package blockservice
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	blockstore "github.com/ipfs/boxo/blockstore"
@@ -352,4 +353,73 @@ func TestContextSession(t *testing.T) {
 		NewSession(ContextWithSession(ctx, service), service),
 		"session must be deduped in all invocations on the same context",
 	)
+}
+
+func TestBlocker(t *testing.T) {
+	t.Parallel()
+	a := assert.New(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	bgen := butil.NewBlockGenerator()
+	allowed := bgen.Next()
+	notAllowed := bgen.Next()
+
+	var disallowed = errors.New("disallowed")
+
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	service := New(bs, nil, WithContentBlocker(func(c cid.Cid) error {
+		if c == notAllowed.Cid() {
+			return disallowed
+		}
+		return nil
+	}))
+
+	// try putting
+	a.NoError(service.AddBlock(ctx, allowed))
+	has, err := bs.Has(ctx, allowed.Cid())
+	a.NoError(err)
+	a.True(has, "block was not added even tho it is not blocked")
+	a.NoError(service.DeleteBlock(ctx, allowed.Cid()))
+
+	a.ErrorIs(service.AddBlock(ctx, notAllowed), disallowed)
+	has, err = bs.Has(ctx, notAllowed.Cid())
+	a.NoError(err)
+	a.False(has, "block was added even tho it is blocked")
+
+	a.NoError(service.AddBlocks(ctx, []blocks.Block{allowed}))
+	has, err = bs.Has(ctx, allowed.Cid())
+	a.NoError(err)
+	a.True(has, "block was not added even tho it is not blocked")
+	a.NoError(service.DeleteBlock(ctx, allowed.Cid()))
+
+	a.ErrorIs(service.AddBlocks(ctx, []blocks.Block{notAllowed}), disallowed)
+	has, err = bs.Has(ctx, notAllowed.Cid())
+	a.NoError(err)
+	a.False(has, "block was added even tho it is blocked")
+
+	// now try fetch
+	a.NoError(bs.Put(ctx, allowed))
+	a.NoError(bs.Put(ctx, notAllowed))
+
+	block, err := service.GetBlock(ctx, allowed.Cid())
+	a.NoError(err)
+	a.Equal(block.RawData(), allowed.RawData())
+
+	_, err = service.GetBlock(ctx, notAllowed.Cid())
+	a.ErrorIs(err, disallowed)
+
+	var gotAllowed bool
+	for block := range service.GetBlocks(ctx, []cid.Cid{allowed.Cid(), notAllowed.Cid()}) {
+		switch block.Cid() {
+		case allowed.Cid():
+			gotAllowed = true
+		case notAllowed.Cid():
+			t.Error("got disallowed block")
+		default:
+			t.Fatalf("got unrelated block: %s", block.Cid())
+		}
+	}
+	a.True(gotAllowed, "did not got allowed block")
 }
