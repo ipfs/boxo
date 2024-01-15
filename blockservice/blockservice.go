@@ -71,6 +71,8 @@ type BoundedBlockService interface {
 	Allowlist() verifcid.Allowlist
 }
 
+var _ BoundedBlockService = (*blockService)(nil)
+
 type blockService struct {
 	allowlist  verifcid.Allowlist
 	blockstore blockstore.Blockstore
