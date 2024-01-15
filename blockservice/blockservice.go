@@ -99,24 +99,6 @@ func New(bs blockstore.Blockstore, exchange exchange.Interface, opts ...Option) 
 	return service
 }
 
-// Blockstore returns the blockstore behind this blockservice.
-func (s *BlockService) Blockstore() blockstore.Blockstore {
-	return s.blockstore
-}
-
-// Exchange returns the exchange behind this blockservice.
-func (s *BlockService) Exchange() exchange.Interface {
-	return s.exchange
-}
-
-func (s *BlockService) Allowlist() verifcid.Allowlist {
-	return s.allowlist
-}
-
-func (s *BlockService) Blocker() Blocker {
-	return s.blocker
-}
-
 // NewSession creates a new session that allows for
 // controlled exchange of wantlists to decrease the bandwidth overhead.
 // If the current exchange is a SessionExchange, a new exchange
@@ -257,9 +239,7 @@ func (s *BlockService) getBlock(ctx context.Context, c cid.Cid, fetchFactory fun
 		}
 	}
 
-	blockstore := s.Blockstore()
-
-	block, err := blockstore.Get(ctx, c)
+	block, err := s.blockstore.Get(ctx, c)
 	switch {
 	case err == nil:
 		return block, nil
@@ -281,12 +261,12 @@ func (s *BlockService) getBlock(ctx context.Context, c cid.Cid, fetchFactory fun
 		return nil, err
 	}
 	// also write in the blockstore for caching, inform the exchange that the block is available
-	err = blockstore.Put(ctx, blk)
+	err = s.blockstore.Put(ctx, blk)
 	if err != nil {
 		return nil, err
 	}
-	if ex := s.Exchange(); ex != nil {
-		err = ex.NotifyNewBlocks(ctx, blk)
+	if s.exchange != nil {
+		err = s.exchange.NotifyNewBlocks(ctx, blk)
 		if err != nil {
 			return nil, err
 		}
@@ -352,11 +332,9 @@ func (s *BlockService) getBlocks(ctx context.Context, ks []cid.Cid, fetchFactory
 			ks = ks2
 		}
 
-		bs := s.Blockstore()
-
 		var misses []cid.Cid
 		for _, c := range ks {
-			hit, err := bs.Get(ctx, c)
+			hit, err := s.blockstore.Get(ctx, c)
 			if err != nil {
 				misses = append(misses, c)
 				continue
@@ -379,7 +357,6 @@ func (s *BlockService) getBlocks(ctx context.Context, ks []cid.Cid, fetchFactory
 			return
 		}
 
-		ex := s.Exchange()
 		var cache [1]blocks.Block // preallocate once for all iterations
 		for {
 			var b blocks.Block
@@ -394,16 +371,16 @@ func (s *BlockService) getBlocks(ctx context.Context, ks []cid.Cid, fetchFactory
 			}
 
 			// write in the blockstore for caching
-			err = bs.Put(ctx, b)
+			err = s.blockstore.Put(ctx, b)
 			if err != nil {
 				logger.Errorf("could not write blocks from the network to the blockstore: %s", err)
 				return
 			}
 
-			if ex != nil {
+			if s.exchange != nil {
 				// inform the exchange that the blocks are available
 				cache[0] = b
-				err = ex.NotifyNewBlocks(ctx, cache[:]...)
+				err = s.exchange.NotifyNewBlocks(ctx, cache[:]...)
 				if err != nil {
 					logger.Errorf("could not tell the exchange about new blocks: %s", err)
 					return
@@ -456,14 +433,13 @@ func (s *Session) grabSession() exchange.Fetcher {
 			s.sesctx = nil // early gc
 		}()
 
-		ex := s.bs.Exchange()
-		if ex == nil {
+		if s.bs.exchange == nil {
 			return
 		}
-		s.ses = ex // always fallback to non session fetches
 
-		sesEx, ok := ex.(exchange.SessionExchange)
+		sesEx, ok := s.bs.exchange.(exchange.SessionExchange)
 		if !ok {
+			s.ses = s.bs.exchange // always fallback to non session fetches
 			return
 		}
 		s.ses = sesEx.NewSession(s.sesctx)
@@ -525,4 +501,18 @@ func grabSessionFromContext(ctx context.Context, bs *BlockService) *Session {
 	}
 
 	return ss
+}
+
+func (s *BlockService) Has(ctx context.Context, c cid.Cid) (bool, error) {
+	if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
+		return false, err
+	}
+
+	if s.blocker != nil {
+		if err := s.blocker(c); err != nil {
+			return false, err
+		}
+	}
+
+	return s.blockstore.Has(ctx, c)
 }

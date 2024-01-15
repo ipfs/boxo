@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/blockservice"
-	blockstore "github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/fetcher"
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/files"
@@ -51,7 +50,6 @@ import (
 
 // BlocksBackend is an [IPFSBackend] implementation based on a [blockservice.BlockService].
 type BlocksBackend struct {
-	blockStore   blockstore.Blockstore
 	blockService *blockservice.BlockService
 	dagService   format.DAGService
 	resolver     resolver.Resolver
@@ -143,7 +141,6 @@ func NewBlocksBackend(blockService *blockservice.BlockService, opts ...BlocksBac
 	}
 
 	return &BlocksBackend{
-		blockStore:   blockService.Blockstore(),
 		blockService: blockService,
 		dagService:   dagService,
 		resolver:     r,
@@ -680,7 +677,7 @@ func (bb *BlocksBackend) IsCached(ctx context.Context, p path.Path) bool {
 		return false
 	}
 
-	has, _ := bb.blockStore.Has(ctx, rp.RootCid())
+	has, _ := bb.blockService.Has(ctx, rp.RootCid())
 	return has
 }
 
