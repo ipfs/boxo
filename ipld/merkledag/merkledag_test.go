@@ -16,9 +16,13 @@ import (
 	"testing"
 	"time"
 
+	testinstance "github.com/ipfs/boxo/bitswap/testinstance"
+	tn "github.com/ipfs/boxo/bitswap/testnet"
 	. "github.com/ipfs/boxo/ipld/merkledag"
 	mdpb "github.com/ipfs/boxo/ipld/merkledag/pb"
 	dstest "github.com/ipfs/boxo/ipld/merkledag/test"
+	mockrouting "github.com/ipfs/boxo/routing/mock"
+	delay "github.com/ipfs/go-ipfs-delay"
 
 	bserv "github.com/ipfs/boxo/blockservice"
 	bstest "github.com/ipfs/boxo/blockservice/test"
@@ -507,10 +511,12 @@ func TestCantGet(t *testing.T) {
 }
 
 func TestFetchGraph(t *testing.T) {
-	var dservs []ipld.DAGService
-	bsis := bstest.Mocks(2)
-	for _, bsi := range bsis {
-		dservs = append(dservs, NewDAGService(bsi))
+	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0))
+	sg := testinstance.NewTestInstanceGenerator(net, nil, nil)
+	instances := sg.Instances(2)
+	dservs := [2]ipld.DAGService{
+		NewDAGService(bserv.New(instances[0].Blockstore(), instances[0].Exchange)),
+		NewDAGService(bserv.New(instances[1].Blockstore(), instances[1].Exchange)),
 	}
 
 	read := io.LimitReader(u.NewTimeSeededRand(), 1024*32)
@@ -522,7 +528,7 @@ func TestFetchGraph(t *testing.T) {
 	}
 
 	// create an offline dagstore and ensure all blocks were fetched
-	bs := bserv.New(bsis[1].Blockstore(), offline.Exchange(bsis[1].Blockstore()))
+	bs := bserv.New(instances[1].Blockstore(), nil)
 
 	offlineDS := NewDAGService(bs)
 
@@ -547,10 +553,12 @@ func TestFetchGraphWithDepthLimit(t *testing.T) {
 	}
 
 	testF := func(t *testing.T, tc testcase) {
-		var dservs []ipld.DAGService
-		bsis := bstest.Mocks(2)
-		for _, bsi := range bsis {
-			dservs = append(dservs, NewDAGService(bsi))
+		net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0))
+		sg := testinstance.NewTestInstanceGenerator(net, nil, nil)
+		instances := sg.Instances(2)
+		dservs := [2]ipld.DAGService{
+			NewDAGService(bserv.New(instances[0].Blockstore(), instances[0].Exchange)),
+			NewDAGService(bserv.New(instances[1].Blockstore(), instances[1].Exchange)),
 		}
 
 		root := makeDepthTestingGraph(t, dservs[0])
@@ -561,7 +569,7 @@ func TestFetchGraphWithDepthLimit(t *testing.T) {
 		}
 
 		// create an offline dagstore and ensure all blocks were fetched
-		bs := bserv.New(bsis[1].Blockstore(), offline.Exchange(bsis[1].Blockstore()))
+		bs := bserv.New(instances[1].Blockstore(), offline.Exchange(instances[1].Blockstore()))
 
 		offlineDS := NewDAGService(bs)
 
