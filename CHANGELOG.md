@@ -18,10 +18,13 @@ The following emojis are used to highlight certain changes:
 
 - `blockservice` now has `ContextWithSession` and `EmbedSessionInContext` functions, which allows to embed a session in a context. Future calls to `BlockGetter.GetBlock`, `BlockGetter.GetBlocks` and `NewSession` will use the session in the context.
 - `blockservice.NewWritethrough` deprecated function has been removed, instead you can do `blockservice.New(..., ..., WriteThrough())` like previously.
+- `gateway`: a new header configuration middleware has been added to replace the existing header configuration, which can be used more generically.
 
 ### Changed
 
 ### Removed
+
+- 🛠 `gateway`: the header configuration `Config.Headers` and `AddAccessControlHeaders` has been replaced by the new middleware provided by `NewHeaders`.
 
 ### Security
 

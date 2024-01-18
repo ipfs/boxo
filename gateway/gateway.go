@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,11 +18,6 @@ import (
 
 // Config is the configuration used when creating a new gateway handler.
 type Config struct {
-	// Headers is a map containing all the headers that should be sent by default
-	// in all requests. You can define custom headers, as well as add the recommended
-	// headers via AddAccessControlHeaders.
-	Headers map[string][]string
-
 	// DeserializedResponses configures this gateway to support returning data
 	// in deserialized format. By default, the gateway will only support
 	// trustless, verifiable [application/vnd.ipld.raw] and
@@ -392,79 +385,6 @@ type WithContextHint interface {
 	// WrapContextForRequest allows the backend to add request scopped modifications to the context, like debug values or value caches.
 	// There are no promises on actual usage in consumers.
 	WrapContextForRequest(context.Context) context.Context
-}
-
-// cleanHeaderSet is an helper function that cleans a set of headers by
-// (1) canonicalizing, (2) de-duplicating and (3) sorting.
-func cleanHeaderSet(headers []string) []string {
-	// Deduplicate and canonicalize.
-	m := make(map[string]struct{}, len(headers))
-	for _, h := range headers {
-		m[http.CanonicalHeaderKey(h)] = struct{}{}
-	}
-	result := make([]string, 0, len(m))
-	for k := range m {
-		result = append(result, k)
-	}
-
-	// Sort
-	sort.Strings(result)
-	return result
-}
-
-// AddAccessControlHeaders ensures safe default HTTP headers are used for
-// controlling cross-origin requests. This function adds several values to the
-// [Access-Control-Allow-Headers] and [Access-Control-Expose-Headers] entries
-// to be exposed on GET and OPTIONS responses, including [CORS Preflight].
-//
-// If the Access-Control-Allow-Origin entry is missing, a default value of '*' is
-// added, indicating that browsers should allow requesting code from any
-// origin to access the resource.
-//
-// If the Access-Control-Allow-Methods entry is missing a value, 'GET, HEAD,
-// OPTIONS' is added, indicating that browsers may use them when issuing cross
-// origin requests.
-//
-// [Access-Control-Allow-Headers]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers
-// [Access-Control-Expose-Headers]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Expose-Headers
-// [CORS Preflight]: https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request
-func AddAccessControlHeaders(headers map[string][]string) {
-	// Hard-coded headers.
-	const ACAHeadersName = "Access-Control-Allow-Headers"
-	const ACEHeadersName = "Access-Control-Expose-Headers"
-	const ACAOriginName = "Access-Control-Allow-Origin"
-	const ACAMethodsName = "Access-Control-Allow-Methods"
-
-	if _, ok := headers[ACAOriginName]; !ok {
-		// Default to *all*
-		headers[ACAOriginName] = []string{"*"}
-	}
-	if _, ok := headers[ACAMethodsName]; !ok {
-		// Default to GET, HEAD, OPTIONS
-		headers[ACAMethodsName] = []string{
-			http.MethodGet,
-			http.MethodHead,
-			http.MethodOptions,
-		}
-	}
-
-	headers[ACAHeadersName] = cleanHeaderSet(
-		append([]string{
-			"Content-Type",
-			"User-Agent",
-			"Range",
-			"X-Requested-With",
-		}, headers[ACAHeadersName]...))
-
-	headers[ACEHeadersName] = cleanHeaderSet(
-		append([]string{
-			"Content-Length",
-			"Content-Range",
-			"X-Chunked-Output",
-			"X-Stream-Output",
-			"X-Ipfs-Path",
-			"X-Ipfs-Roots",
-		}, headers[ACEHeadersName]...))
 }
 
 // RequestContextKey is a type representing a [context.Context] value key.
