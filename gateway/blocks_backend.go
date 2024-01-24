@@ -524,13 +524,15 @@ func walkGatewaySimpleSelector(ctx context.Context, p path.ImmutablePath, params
 			}
 
 			to := *entityRange.To
-			if (*entityRange.To) < 0 && !foundFileLength {
-				fileLength, err = f.Seek(0, io.SeekEnd)
-				if err != nil {
-					return err
+			if (*entityRange.To) < 0 {
+				if !foundFileLength {
+					fileLength, err = f.Seek(0, io.SeekEnd)
+					if err != nil {
+						return err
+					}
+					foundFileLength = true
 				}
 				to = fileLength + *entityRange.To
-				foundFileLength = true
 			}
 
 			numToRead := 1 + to - from
