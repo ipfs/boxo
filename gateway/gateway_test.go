@@ -352,8 +352,7 @@ func TestHeaders(t *testing.T) {
 		headers := map[string][]string{}
 		headers[headerACAO] = []string{expectedACAO}
 
-		ts := newTestServerWithConfig(t, backend, Config{
-			Headers: headers,
+		ts := newTestServerWithConfigAndHeaders(t, backend, Config{
 			PublicGateways: map[string]*PublicGateway{
 				"subgw.example.com": {
 					Paths:                 []string{"/ipfs", "/ipns"},
@@ -362,7 +361,7 @@ func TestHeaders(t *testing.T) {
 				},
 			},
 			DeserializedResponses: true,
-		})
+		}, headers)
 		t.Logf("test server url: %s", ts.URL)
 
 		testCORSPreflightRequest := func(t *testing.T, path, hostHeader string, requestOriginHeader string, code int) {
@@ -532,7 +531,6 @@ func TestRedirects(t *testing.T) {
 		backend.namesys["/ipns/example.com"] = newMockNamesysItem(path.FromCid(root), 0)
 
 		ts := newTestServerWithConfig(t, backend, Config{
-			Headers:   map[string][]string{},
 			NoDNSLink: false,
 			PublicGateways: map[string]*PublicGateway{
 				"example.com": {
@@ -590,7 +588,6 @@ func TestDeserializedResponses(t *testing.T) {
 		backend, root := newMockBackend(t, "fixtures.car")
 
 		ts := newTestServerWithConfig(t, backend, Config{
-			Headers:   map[string][]string{},
 			NoDNSLink: false,
 			PublicGateways: map[string]*PublicGateway{
 				"trustless.com": {
@@ -670,7 +667,6 @@ func TestDeserializedResponses(t *testing.T) {
 		backend.namesys["/ipns/trusted.com"] = newMockNamesysItem(path.FromCid(root), 0)
 
 		ts := newTestServerWithConfig(t, backend, Config{
-			Headers:   map[string][]string{},
 			NoDNSLink: false,
 			PublicGateways: map[string]*PublicGateway{
 				"trustless.com": {
