@@ -12,7 +12,7 @@ type Headers struct {
 
 // NewHeaders creates a new [Headers] middleware that applies the given headers
 // to all requests. If you call [Headers.ApplyCors], the default CORS configuration
-// will also be applied.
+// will also be applied, if any of the CORS headers is missing.
 func NewHeaders(headers map[string][]string) *Headers {
 	h := &Headers{
 		headers: map[string][]string{},
