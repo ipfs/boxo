@@ -14,13 +14,7 @@ This example shows how you can start your own gateway, assuming you have an `IPF
 implementation.
 
 ```go
-// Initialize your headers and apply the default headers.
-headers := map[string][]string{}
-gateway.AddAccessControlHeaders(headers)
-
-conf := gateway.Config{
-  Headers:  headers,
-}
+conf := gateway.Config{}
 
 // Initialize an IPFSBackend interface for both an online and offline versions.
 // The offline version should not make any network request for missing content.
@@ -29,8 +23,10 @@ ipfsBackend := ...
 // Create http mux and setup path gateway handler.
 mux := http.NewServeMux()
 handler := gateway.NewHandler(conf, ipfsBackend)
+handler = gateway.NewHeaders(nil).ApplyCors().Wrap(handler)
 mux.Handle("/ipfs/", handler)
 mux.Handle("/ipns/", handler)
+
 
 // Start the server on :8080 and voilá! You have a basic IPFS gateway running
 // in http://localhost:8080.

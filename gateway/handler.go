@@ -179,7 +179,6 @@ func (i *handler) optionsHandler(w http.ResponseWriter, r *http.Request) {
 	// OPTIONS is a noop request that is used by the browsers to check if server accepts
 	// cross-site XMLHttpRequest, which is indicated by the presence of CORS headers:
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Access_control_CORS#Preflighted_requests
-	addCustomHeaders(w, i.config.Headers) // return all custom headers (including CORS ones, if set)
 }
 
 // addAllowHeader sets Allow header with supported HTTP methods
@@ -264,7 +263,6 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResponseFormat", responseFormat))
 	i.requestTypeMetric.WithLabelValues(contentPath.Namespace(), responseFormat).Inc()
 
-	addCustomHeaders(w, i.config.Headers) // ok, _now_ write user's headers.
 	w.Header().Set("X-Ipfs-Path", contentPath.String())
 
 	// Fail fast if unsupported request type was sent to a Trustless Gateway.
@@ -337,12 +335,6 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	default: // catch-all for unsuported application/vnd.*
 		err := fmt.Errorf("unsupported format %q", responseFormat)
 		i.webError(w, r, err, http.StatusBadRequest)
-	}
-}
-
-func addCustomHeaders(w http.ResponseWriter, headers map[string][]string) {
-	for k, v := range headers {
-		w.Header()[http.CanonicalHeaderKey(k)] = v
 	}
 }
 

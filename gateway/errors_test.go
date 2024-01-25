@@ -43,7 +43,7 @@ func TestWebError(t *testing.T) {
 	t.Parallel()
 
 	// Create a handler to be able to test `webError`.
-	config := &Config{Headers: map[string][]string{}}
+	config := &Config{}
 
 	t.Run("429 Too Many Requests", func(t *testing.T) {
 		t.Parallel()
@@ -113,7 +113,7 @@ func TestWebError(t *testing.T) {
 	t.Run("Error is sent as plain text when 'Accept' header contains 'text/html' and config.DisableHTMLErrors is true", func(t *testing.T) {
 		t.Parallel()
 
-		config := &Config{Headers: map[string][]string{}, DisableHTMLErrors: true}
+		config := &Config{DisableHTMLErrors: true}
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/blah", nil)
 		r.Header.Set("Accept", "something/else, text/html")
