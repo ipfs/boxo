@@ -60,12 +60,20 @@ func (ns *namesys) cacheSet(name string, val path.Path, ttl time.Duration, lastM
 		}
 	}
 
+	// The cache TTL is capped at the configured maxCacheTTL. If not
+	// configured, the entry TTL will always be used.
+	cacheTTL := ttl
+	if ns.maxCacheTTL != nil && cacheTTL > *ns.maxCacheTTL {
+		cacheTTL = *ns.maxCacheTTL
+	}
+	cacheEOL := time.Now().Add(cacheTTL)
+
 	// Add automatically evicts previous entry, so it works for updating.
 	ns.cache.Add(name, cacheEntry{
 		val:      val,
 		ttl:      ttl,
 		lastMod:  lastMod,
-		cacheEOL: time.Now().Add(ttl),
+		cacheEOL: cacheEOL,
 	})
 }
 
