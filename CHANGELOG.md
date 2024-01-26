@@ -16,9 +16,23 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- ✨ `routing/http`: delegated content and peer routing ([IPIP-378](https://github.com/ipfs/specs/pull/378)) has been implemented. This includes the following additions:
+  - `client`: now includes `Provide` and `ProvidePeer` methods, which can be used to provide signed records for content routing and peer routing.
+  - `types`: types related to the Announcement schema record have been added. A `types/iter.Filter` utility has also been added if you want to filter on top of an iterator.
+
 ### Changed
 
+- ✨🛠 `routing/http`: delegated content and peer routing ([IPIP-378](https://github.com/ipfs/specs/pull/378)) has been implemented. This includes the following changes:
+  - `client`: `WithProviderInfo` now accepts a third parameter, `protocols`, whose value is used when providing the peer.
+  - `contentrouter`: the `Client` interface has been updated to reflect the changes made to the client, that is, replacing the `ProvideBitswap` method by the generic `Provide` method.
+  - `server`: the `ContentRouter` interface now includes a `Provide` and a `ProvidePeer` functions.
+
 ### Removed
+
+- ✨🛠 `routing/http`: delegated content and peer routing ([IPIP-378](https://github.com/ipfs/specs/pull/378)) has been implemented. This includes the following removals:
+  - Deprecated Bitswap-schema related types and functions have been removed (e.g. `ProvideBitswap`, `BitswapRecord`, `SchemaBitswap`, `WriteProvidersRequest`, `WriteProvidersResponse`).
+  - `server`: `ContentRouter` no longer includes `ProvideBitswap`
+  - `contentrouter`: the content router adaptor no longer supports the previously deprecated Bitswap schema.
 
 ### Fixed
 
