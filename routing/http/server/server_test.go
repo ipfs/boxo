@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,10 +15,13 @@ import (
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
+	tjson "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	b58 "github.com/mr-tron/base58/base58"
+	"github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -66,26 +70,35 @@ func makePeerID(t *testing.T) (crypto.PrivKey, peer.ID) {
 	return sk, pid
 }
 
+func makeCID(t *testing.T) cid.Cid {
+	buf := make([]byte, 63)
+	_, err := rand.Read(buf)
+	require.NoError(t, err)
+	mh, err := multihash.Encode(buf, multihash.SHA2_256)
+	require.NoError(t, err)
+	c := cid.NewCidV1(0, mh)
+	return c
+}
+
 func TestProviders(t *testing.T) {
-	pidStr := "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn"
-	pid2Str := "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"
-	cidStr := "bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4"
+	// Prepare some variables common to all tests.
+	sk1, pid1 := makePeerID(t)
+	pid1Str := pid1.String()
 
-	pid, err := peer.Decode(pidStr)
-	require.NoError(t, err)
-	pid2, err := peer.Decode(pid2Str)
-	require.NoError(t, err)
+	sk2, pid2 := makePeerID(t)
+	pid2Str := pid2.String()
 
-	cid, err := cid.Decode(cidStr)
-	require.NoError(t, err)
+	cid1 := makeCID(t)
+	cid1Str := cid1.String()
 
-	runTest := func(t *testing.T, contentType string, expectedStream bool, expectedBody string) {
+	// GET Tests
+	runGetTest := func(t *testing.T, contentType string, expectedStream bool, expectedBody string) {
 		t.Parallel()
 
 		results := iter.FromSlice([]iter.Result[types.Record]{
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
-				ID:        &pid,
+				ID:        &pid1,
 				Protocols: []string{"transport-bitswap"},
 				Addrs:     []types.Multiaddr{},
 			}},
@@ -105,8 +118,8 @@ func TestProviders(t *testing.T) {
 		if expectedStream {
 			limit = DefaultStreamingRecordsLimit
 		}
-		router.On("FindProviders", mock.Anything, cid, limit).Return(results, nil)
-		urlStr := serverAddr + "/routing/v1/providers/" + cidStr
+		router.On("FindProviders", mock.Anything, cid1, limit).Return(results, nil)
+		urlStr := serverAddr + "/routing/v1/providers/" + cid1Str
 
 		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 		require.NoError(t, err)
@@ -124,17 +137,100 @@ func TestProviders(t *testing.T) {
 		require.Equal(t, expectedBody, string(body))
 	}
 
-	t.Run("JSON Response", func(t *testing.T) {
-		runTest(t, mediaTypeJSON, false, `{"Providers":[{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"},{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz","Protocols":["transport-bitswap"],"Schema":"peer"}]}`)
+	t.Run("GET /routing/v1/peers/{cid} (JSON Response)", func(t *testing.T) {
+		runGetTest(t, mediaTypeJSON, false, `{"Providers":[{"Addrs":[],"ID":"`+pid1Str+`","Protocols":["transport-bitswap"],"Schema":"peer"},{"Addrs":[],"ID":"`+pid2Str+`","Protocols":["transport-bitswap"],"Schema":"peer"}]}`)
 	})
 
-	t.Run("NDJSON Response", func(t *testing.T) {
-		runTest(t, mediaTypeNDJSON, true, `{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n"+`{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n")
+	t.Run("GET /routing/v1/peers/{cid} (NDJSON Response)", func(t *testing.T) {
+		runGetTest(t, mediaTypeNDJSON, true, `{"Addrs":[],"ID":"`+pid1Str+`","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n"+`{"Addrs":[],"ID":"`+pid2Str+`","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n")
+	})
+
+	runPutTest := func(t *testing.T, contentType string, expectedBody string) {
+		t.Parallel()
+
+		rec1 := &types.AnnouncementRecord{
+			Schema: types.SchemaAnnouncement,
+			Payload: types.AnnouncementPayload{
+				CID:       cid1,
+				Timestamp: time.Now().UTC(),
+				TTL:       time.Hour,
+				ID:        &pid1,
+				Protocols: []string{"transport-🌈"},
+			},
+		}
+		err := rec1.Sign(pid1, sk1)
+		require.NoError(t, err)
+
+		rec2 := &types.AnnouncementRecord{
+			Schema: types.SchemaAnnouncement,
+			Payload: types.AnnouncementPayload{
+				CID:       cid1,
+				Timestamp: time.Now().UTC(),
+				TTL:       time.Hour,
+				ID:        &pid2,
+				Protocols: []string{"transport-🌈"},
+			},
+		}
+		err = rec2.Sign(pid2, sk2)
+		require.NoError(t, err)
+
+		req := tjson.AnnounceProvidersRequest{Providers: []types.Record{rec1, rec2}}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		router := &mockContentRouter{}
+		server := httptest.NewServer(Handler(router))
+		t.Cleanup(server.Close)
+
+		serverAddr := "http://" + server.Listener.Addr().String()
+
+		router.On("Provide", mock.Anything, &ProvideRequest{
+			CID:       cid1,
+			Timestamp: rec1.Payload.Timestamp,
+			TTL:       rec1.Payload.TTL,
+			ID:        pid1,
+			Addrs:     []multiaddr.Multiaddr{},
+			Protocols: rec1.Payload.Protocols,
+		}).Return(time.Hour, nil)
+
+		router.On("Provide", mock.Anything, &ProvideRequest{
+			CID:       cid1,
+			Timestamp: rec2.Payload.Timestamp,
+			TTL:       rec2.Payload.TTL,
+			ID:        pid2,
+			Addrs:     []multiaddr.Multiaddr{},
+			Protocols: rec2.Payload.Protocols,
+		}).Return(time.Minute, nil)
+
+		urlStr := serverAddr + "/routing/v1/providers"
+
+		httpReq, err := http.NewRequest(http.MethodPut, urlStr, bytes.NewReader(body))
+		require.NoError(t, err)
+		httpReq.Header.Set("Accept", contentType)
+
+		resp, err := http.DefaultClient.Do(httpReq)
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.StatusCode)
+		header := resp.Header.Get("Content-Type")
+		require.Equal(t, contentType, header)
+
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		require.Equal(t, expectedBody, string(body))
+	}
+
+	t.Run("PUT /routing/v1/providers (JSON Response)", func(t *testing.T) {
+		runPutTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement","Payload":{"Addrs":[],"CID":"`+cid1Str+`","ID":"`+pid1Str+`","Protocols":[],"TTL":3600000}},{"Schema":"announcement","Payload":{"Addrs":[],"CID":"`+cid1Str+`","ID":"`+pid2Str+`","Protocols":[],"TTL":60000}}]}`)
+	})
+
+	t.Run("PUT /routing/v1/providers (NDJSON Response)", func(t *testing.T) {
+		runPutTest(t, mediaTypeNDJSON, `{"Schema":"announcement","Payload":{"Addrs":[],"CID":"`+cid1Str+`","ID":"`+pid1Str+`","Protocols":[],"TTL":3600000}}`+"\n"+`{"Schema":"announcement","Payload":{"Addrs":[],"CID":"`+cid1Str+`","ID":"`+pid2Str+`","Protocols":[],"TTL":60000}}`+"\n")
 	})
 }
 
 func TestPeers(t *testing.T) {
-	makeRequest := func(t *testing.T, router *mockContentRouter, contentType, arg string) *http.Response {
+	makeGetRequest := func(t *testing.T, router *mockContentRouter, contentType, arg string) *http.Response {
 		server := httptest.NewServer(Handler(router))
 		t.Cleanup(server.Close)
 		req, err := http.NewRequest(http.MethodGet, "http://"+server.Listener.Addr().String()+"/routing/v1/peers/"+arg, nil)
@@ -149,7 +245,7 @@ func TestPeers(t *testing.T) {
 		t.Parallel()
 
 		router := &mockContentRouter{}
-		resp := makeRequest(t, router, mediaTypeJSON, "bafkqaaa")
+		resp := makeGetRequest(t, router, mediaTypeJSON, "bafkqaaa")
 		require.Equal(t, 400, resp.StatusCode)
 	})
 
@@ -158,7 +254,7 @@ func TestPeers(t *testing.T) {
 
 		_, pid := makePeerID(t)
 		router := &mockContentRouter{}
-		resp := makeRequest(t, router, mediaTypeJSON, b58.Encode([]byte(pid)))
+		resp := makeGetRequest(t, router, mediaTypeJSON, b58.Encode([]byte(pid)))
 		require.Equal(t, 400, resp.StatusCode)
 	})
 
@@ -184,7 +280,7 @@ func TestPeers(t *testing.T) {
 		router := &mockContentRouter{}
 		router.On("FindPeers", mock.Anything, pid, 20).Return(results, nil)
 
-		resp := makeRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String())
+		resp := makeGetRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String())
 		require.Equal(t, 200, resp.StatusCode)
 
 		header := resp.Header.Get("Content-Type")
@@ -219,7 +315,7 @@ func TestPeers(t *testing.T) {
 		router := &mockContentRouter{}
 		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
 
-		resp := makeRequest(t, router, mediaTypeNDJSON, peer.ToCid(pid).String())
+		resp := makeGetRequest(t, router, mediaTypeNDJSON, peer.ToCid(pid).String())
 		require.Equal(t, 200, resp.StatusCode)
 
 		header := resp.Header.Get("Content-Type")
@@ -230,6 +326,88 @@ func TestPeers(t *testing.T) {
 
 		expectedBody := `{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-bitswap","transport-foo"],"Schema":"peer"}` + "\n" + `{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-foo"],"Schema":"peer"}` + "\n"
 		require.Equal(t, expectedBody, string(body))
+	})
+
+	sk1, pid1 := makePeerID(t)
+	sk2, pid2 := makePeerID(t)
+
+	runPutTest := func(t *testing.T, contentType string, expectedBody string) {
+		t.Parallel()
+
+		rec1 := &types.AnnouncementRecord{
+			Schema: types.SchemaAnnouncement,
+			Payload: types.AnnouncementPayload{
+				Timestamp: time.Now().UTC(),
+				TTL:       time.Hour,
+				ID:        &pid1,
+				Protocols: []string{"transport-🌈"},
+			},
+		}
+		err := rec1.Sign(pid1, sk1)
+		require.NoError(t, err)
+
+		rec2 := &types.AnnouncementRecord{
+			Schema: types.SchemaAnnouncement,
+			Payload: types.AnnouncementPayload{
+				Timestamp: time.Now().UTC(),
+				TTL:       time.Hour,
+				ID:        &pid2,
+				Protocols: []string{"transport-🌈"},
+			},
+		}
+		err = rec2.Sign(pid2, sk2)
+		require.NoError(t, err)
+
+		req := tjson.AnnounceProvidersRequest{Providers: []types.Record{rec1, rec2}}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		router := &mockContentRouter{}
+		server := httptest.NewServer(Handler(router))
+		t.Cleanup(server.Close)
+
+		serverAddr := "http://" + server.Listener.Addr().String()
+
+		router.On("ProvidePeer", mock.Anything, &ProvidePeerRequest{
+			Timestamp: rec1.Payload.Timestamp,
+			TTL:       rec1.Payload.TTL,
+			ID:        pid1,
+			Addrs:     []multiaddr.Multiaddr{},
+			Protocols: rec1.Payload.Protocols,
+		}).Return(time.Hour, nil)
+
+		router.On("ProvidePeer", mock.Anything, &ProvidePeerRequest{
+			Timestamp: rec2.Payload.Timestamp,
+			TTL:       rec2.Payload.TTL,
+			ID:        pid2,
+			Addrs:     []multiaddr.Multiaddr{},
+			Protocols: rec2.Payload.Protocols,
+		}).Return(time.Minute, nil)
+
+		urlStr := serverAddr + "/routing/v1/peers"
+
+		httpReq, err := http.NewRequest(http.MethodPut, urlStr, bytes.NewReader(body))
+		require.NoError(t, err)
+		httpReq.Header.Set("Accept", contentType)
+
+		resp, err := http.DefaultClient.Do(httpReq)
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.StatusCode)
+		header := resp.Header.Get("Content-Type")
+		require.Equal(t, contentType, header)
+
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		require.Equal(t, expectedBody, string(body))
+	}
+
+	t.Run("PUT /routing/v1/peers (JSON Response)", func(t *testing.T) {
+		runPutTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement","Payload":{"Addrs":[],"ID":"`+pid1.String()+`","Protocols":[],"TTL":3600000}},{"Schema":"announcement","Payload":{"Addrs":[],"ID":"`+pid2.String()+`","Protocols":[],"TTL":60000}}]}`)
+	})
+
+	t.Run("PUT /routing/v1/peers (NDJSON Response)", func(t *testing.T) {
+		runPutTest(t, mediaTypeNDJSON, `{"Schema":"announcement","Payload":{"Addrs":[],"ID":"`+pid1.String()+`","Protocols":[],"TTL":3600000}}`+"\n"+`{"Schema":"announcement","Payload":{"Addrs":[],"ID":"`+pid2.String()+`","Protocols":[],"TTL":60000}}`+"\n")
 	})
 }
 
