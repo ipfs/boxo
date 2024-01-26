@@ -356,13 +356,32 @@ func (bsnet *impl) Start(r ...Receiver) {
 		bsnet.host.SetStreamHandler(proto, bsnet.handleNewStream)
 	}
 
+	// try to subscribe to libp2p events that indicate a change in connection state
+	// if this fails, continue as normal
+	err := bsnet.trySubscribePeerUpdates()
+	if err != nil {
+		log.Errorf("failed to subscribe to libp2p events: %s", err)
+	}
+
+	// listen for disconnects and start processing the events
+	bsnet.host.Network().Notify((*netNotifiee)(bsnet))
+	bsnet.connectEvtMgr.Start()
+}
+
+func (bsnet *impl) Stop() {
+	bsnet.connectEvtMgr.Stop()
+	bsnet.host.Network().StopNotify((*netNotifiee)(bsnet))
+	bsnet.cancel()
+}
+
+func (bsnet *impl) trySubscribePeerUpdates() error {
 	// first, subscribe to libp2p events that indicate a change in connection state
 	sub, err := bsnet.host.EventBus().Subscribe([]interface{}{
 		&event.EvtPeerProtocolsUpdated{},
 		&event.EvtPeerIdentificationCompleted{},
 	})
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -379,15 +398,7 @@ func (bsnet *impl) Start(r ...Receiver) {
 		}
 	}
 
-	// finally, listen for disconnects and start processing the events
-	bsnet.host.Network().Notify((*netNotifiee)(bsnet))
-	bsnet.connectEvtMgr.Start()
-}
-
-func (bsnet *impl) Stop() {
-	bsnet.connectEvtMgr.Stop()
-	bsnet.host.Network().StopNotify((*netNotifiee)(bsnet))
-	bsnet.cancel()
+	return nil
 }
 
 func (bsnet *impl) peerUpdatedSubscription(ctx context.Context, sub event.Subscription) {
