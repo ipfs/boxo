@@ -1,4 +1,5 @@
-//go:build darwin || linux || netbsd || openbsd || freebsd || dragonfly || js || wasip1
+//go:build darwin || linux || netbsd || openbsd || freebsd || dragonfly || (js && !wasm) || wasip1
+// +build darwin linux netbsd openbsd freebsd dragonfly js,!wasm wasip1
 
 package files
 
