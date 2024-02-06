@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ipfs/boxo/routing/http/internal/drjson"
 	"github.com/ipfs/boxo/util"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
-	"github.com/ipld/go-ipld-prime/codec/dagjson"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -51,9 +52,7 @@ type AnnouncementPayload struct {
 	Metadata  string
 }
 
-// MarshalJSON marshals the [AnnouncementPayload] into a canonical DAG-JSON
-// representation of the payload.
-func (ap AnnouncementPayload) MarshalJSON() ([]byte, error) {
+func (ap AnnouncementPayload) asDagCbor() ([]byte, error) {
 	m := make(map[string]ipld.Node)
 	var err error
 
@@ -112,7 +111,7 @@ func (ap AnnouncementPayload) MarshalJSON() ([]byte, error) {
 	// Encode it with the DAG-JSON encoder, which automatically sorts the fields
 	// in a deterministic manner.
 	var b bytes.Buffer
-	err = dagjson.Encode(nd, &b)
+	err = dagcbor.Encode(nd, &b)
 	if err != nil {
 		return nil, err
 	}
@@ -120,21 +119,43 @@ func (ap AnnouncementPayload) MarshalJSON() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
+type announcementPayloadHelper struct {
+	CID       string            `json:",omitempty"`
+	ID        *peer.ID          `json:",omitempty"`
+	Scope     AnnouncementScope `json:",omitempty"`
+	Timestamp string            `json:",omitempty"`
+	TTL       int64             `json:",omitempty"`
+	Addrs     []Multiaddr       `json:",omitempty"`
+	Protocols []string          `json:",omitempty"`
+	Metadata  string            `json:",omitempty"`
+}
+
+func (ap AnnouncementPayload) MarshalJSON() ([]byte, error) {
+	v := announcementPayloadHelper{
+		ID:        ap.ID,
+		Scope:     ap.Scope,
+		Addrs:     ap.Addrs,
+		Protocols: ap.Protocols,
+		Metadata:  ap.Metadata,
+	}
+
+	if ap.CID.Defined() {
+		v.CID = ap.CID.String()
+	}
+
+	if !ap.Timestamp.IsZero() {
+		v.Timestamp = util.FormatRFC3339(ap.Timestamp)
+	}
+
+	if ap.TTL != 0 {
+		v.TTL = ap.TTL.Milliseconds()
+	}
+
+	return drjson.MarshalJSONBytes(v)
+}
+
 func (ap *AnnouncementPayload) UnmarshalJSON(b []byte) error {
-	// TODO: this is the "simple" way of decoding the payload. I am assuming
-	// we want to encode everything using strings (except for TTL). If we decide
-	// to use DAG-JSON native types (e.g. Bytes), we have to convert this to IPLD code
-	// in order to convert things properly.
-	v := struct {
-		CID       string
-		Scope     AnnouncementScope
-		Timestamp string
-		TTL       int64
-		ID        *peer.ID
-		Addrs     []Multiaddr
-		Protocols []string
-		Metadata  string
-	}{}
+	v := announcementPayloadHelper{}
 	err := json.Unmarshal(b, &v)
 	if err != nil {
 		return err
@@ -173,74 +194,18 @@ func (ap *AnnouncementPayload) UnmarshalJSON(b []byte) error {
 
 // AnnouncementRecord is a [Record] of [SchemaAnnouncement].
 type AnnouncementRecord struct {
-	Schema     string
-	Error      string
-	Payload    AnnouncementPayload
-	RawPayload json.RawMessage
-	Signature  string
+	Schema    string
+	Error     string `json:",omitempty"`
+	Payload   AnnouncementPayload
+	Signature string `json:",omitempty"`
 }
 
 func (ar *AnnouncementRecord) GetSchema() string {
 	return ar.Schema
 }
 
-func (ar AnnouncementRecord) MarshalJSON() ([]byte, error) {
-	if ar.RawPayload == nil {
-		// This happens when [AnnouncementRecord] is used for response. In that
-		// case it is not signed. Therefore, the RawPayload is not yet set.
-		err := ar.setRawPayload()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	v := struct {
-		Schema    string
-		Error     string `json:"Error,omitempty"`
-		Payload   json.RawMessage
-		Signature string `json:"Signature,omitempty"`
-	}{
-		Schema:    ar.Schema,
-		Error:     ar.Error,
-		Payload:   ar.RawPayload,
-		Signature: ar.Signature,
-	}
-
-	return json.Marshal(v)
-}
-
-func (ar *AnnouncementRecord) UnmarshalJSON(b []byte) error {
-	// Unmarshal all known fields and assign them.
-	v := struct {
-		Schema    string
-		Error     string
-		Payload   json.RawMessage
-		Signature string
-	}{}
-	err := json.Unmarshal(b, &v)
-	if err != nil {
-		return err
-	}
-
-	ar.Schema = v.Schema
-	ar.Error = v.Error
-	ar.RawPayload = v.Payload
-	ar.Signature = v.Signature
-	return (&ar.Payload).UnmarshalJSON(ar.RawPayload)
-}
-
 func (ar AnnouncementRecord) IsSigned() bool {
 	return ar.Signature != ""
-}
-
-func (ar *AnnouncementRecord) setRawPayload() error {
-	bytes, err := ar.Payload.MarshalJSON()
-	if err != nil {
-		return err
-	}
-
-	ar.RawPayload = bytes
-	return nil
 }
 
 func (ar *AnnouncementRecord) Sign(peerID peer.ID, key crypto.PrivKey) error {
@@ -260,13 +225,13 @@ func (ar *AnnouncementRecord) Sign(peerID peer.ID, key crypto.PrivKey) error {
 		return errors.New("not the correct signing key")
 	}
 
-	err = ar.setRawPayload()
+	data, err := ar.Payload.asDagCbor()
 	if err != nil {
 		return err
 	}
 
 	dataForSig := []byte(announcementSignaturePrefix)
-	dataForSig = append(dataForSig, ar.RawPayload...)
+	dataForSig = append(dataForSig, data...)
 
 	rawSignature, err := key.Sign(dataForSig)
 	if err != nil {
@@ -291,13 +256,9 @@ func (ar *AnnouncementRecord) Verify() error {
 		return errors.New("peer ID must be specified")
 	}
 
-	// note that we only generate and set the payload if it hasn't already been set
-	// to allow for passing through the payload untouched if it is already provided
-	if ar.RawPayload == nil {
-		err := ar.setRawPayload()
-		if err != nil {
-			return err
-		}
+	data, err := ar.Payload.asDagCbor()
+	if err != nil {
+		return err
 	}
 
 	pk, err := ar.Payload.ID.ExtractPublicKey()
@@ -311,7 +272,7 @@ func (ar *AnnouncementRecord) Verify() error {
 	}
 
 	dataForSig := []byte(announcementSignaturePrefix)
-	dataForSig = append(dataForSig, ar.RawPayload...)
+	dataForSig = append(dataForSig, data...)
 
 	ok, err := pk.Verify(dataForSig, sigBytes)
 	if err != nil {
