@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
 	"mime"
 	"net/http"
@@ -42,26 +41,6 @@ var (
 	onlyASCII = regexp.MustCompile("[[:^ascii:]]")
 	noModtime = time.Unix(0, 0) // disables Last-Modified header if passed as modtime
 )
-
-// HTML-based redirect for errors which can be recovered from, but we want
-// to provide hint to people that they should fix things on their end.
-var redirectTemplate = template.Must(template.New("redirect").Parse(`<!DOCTYPE html>
-<html>
-	<head>
-		<meta charset="utf-8">
-		<meta http-equiv="refresh" content="10;url={{.RedirectURL}}" />
-		<link rel="canonical" href="{{.RedirectURL}}" />
-	</head>
-	<body>
-		<pre>{{.ErrorMsg}}</pre><pre>(if a redirect does not happen in 10 seconds, use "{{.SuggestedPath}}" instead)</pre>
-	</body>
-</html>`))
-
-type redirectTemplateData struct {
-	RedirectURL   string
-	SuggestedPath string
-	ErrorMsg      string
-}
 
 // handler is a HTTP handler that serves IPFS objects (accessible by default at /ipfs/<path>)
 // (it serves requests like GET /ipfs/QmVRzPKPzNtSrEzBFm2UZfxmPAgnaLke4DMcerbsGGSaFe/link)
@@ -903,21 +882,8 @@ func (i *handler) handleSuperfluousNamespace(w http.ResponseWriter, r *http.Requ
 		q, _ := url.ParseQuery(r.URL.RawQuery)
 		intendedURL = intendedURL + "?" + q.Encode()
 	}
-	// return HTTP 400 (Bad Request) with HTML error page that:
-	// - points at correct canonical path via <link> header
-	// - displays human-readable error
-	// - redirects to intendedURL after a short delay
 
-	w.WriteHeader(http.StatusBadRequest)
-	err = redirectTemplate.Execute(w, redirectTemplateData{
-		RedirectURL:   intendedURL,
-		SuggestedPath: intendedPath.String(),
-		ErrorMsg:      fmt.Sprintf("invalid path: %q should be %q", r.URL.Path, intendedPath.String()),
-	})
-	if err != nil {
-		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
-	}
-
+	http.Redirect(w, r, intendedURL, http.StatusMovedPermanently)
 	return true
 }
 
