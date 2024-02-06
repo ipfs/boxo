@@ -444,7 +444,6 @@ func TestClient_Provide(t *testing.T) {
 					Timestamp: clock.Now().UTC().Truncate(time.Millisecond),
 					TTL:       c.ttl,
 					Addrs:     drAddrsToAddrs(client.addrs),
-					Protocols: []string{},
 					ID:        client.peerID,
 				}).Return(c.routerAdvisoryTTL, c.routerErr)
 			}
@@ -712,7 +711,6 @@ func TestClient_ProvidePeer(t *testing.T) {
 				Timestamp: clock.Now().UTC().Truncate(time.Second),
 				TTL:       c.ttl,
 				Addrs:     drAddrsToAddrs(client.addrs),
-				Protocols: []string{},
 				ID:        client.peerID,
 			}).Return(c.routerAdvisoryTTL, c.routerErr)
 

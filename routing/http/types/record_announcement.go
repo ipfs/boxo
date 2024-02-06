@@ -19,7 +19,7 @@ import (
 )
 
 const SchemaAnnouncement = "announcement"
-const announcementSignaturePrefix = "PUT /routing/v1 announcement:"
+const announcementSignaturePrefix = "routing-record:"
 
 var _ Record = &AnnouncementRecord{}
 
@@ -57,12 +57,10 @@ func (ap AnnouncementPayload) MarshalJSON() ([]byte, error) {
 	m := make(map[string]ipld.Node)
 	var err error
 
-	// TODO: or goes empty? Affects signature.
 	if ap.CID.Defined() {
 		m["CID"] = basicnode.NewString(ap.CID.String())
 	}
 
-	// TODO: is scope not set when empty? Affects signature.
 	if ap.Scope != "" {
 		m["Scope"] = basicnode.NewString(string(ap.Scope))
 	}
@@ -83,24 +81,26 @@ func (ap AnnouncementPayload) MarshalJSON() ([]byte, error) {
 		m["Metadata"] = basicnode.NewString(ap.Metadata)
 	}
 
-	// TODO: or goes empty if len == 0? Affects signature.
-	addrs := []ipld.Node{}
-	for _, addr := range ap.Addrs {
-		addrs = append(addrs, basicnode.NewString(addr.String()))
-	}
-	m["Addrs"], err = makeIPLDList(addrs)
-	if err != nil {
-		return nil, err
+	if len(ap.Addrs) != 0 {
+		addrs := []ipld.Node{}
+		for _, addr := range ap.Addrs {
+			addrs = append(addrs, basicnode.NewString(addr.String()))
+		}
+		m["Addrs"], err = makeIPLDList(addrs)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	// TODO: or goes empty if len == 0? Affects signature.
-	protocols := []ipld.Node{}
-	for _, protocol := range ap.Protocols {
-		protocols = append(addrs, basicnode.NewString(protocol))
-	}
-	m["Protocols"], err = makeIPLDList(protocols)
-	if err != nil {
-		return nil, err
+	if len(ap.Protocols) != 0 {
+		protocols := []ipld.Node{}
+		for _, protocol := range ap.Protocols {
+			protocols = append(protocols, basicnode.NewString(protocol))
+		}
+		m["Protocols"], err = makeIPLDList(protocols)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Make final IPLD node.

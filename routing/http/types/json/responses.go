@@ -56,10 +56,10 @@ func (r *RecordsArray) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// AnnounceProvidersResponse is the result of a PUT Providers request.
+// AnnounceProvidersResponse is the result of a POST Providers request.
 type AnnounceProvidersResponse struct {
 	ProvideResults []*types.AnnouncementRecord
 }
 
-// AnnouncePeersResponse is the result of a PUT Peers request.
+// AnnouncePeersResponse is the result of a POST Peers request.
 type AnnouncePeersResponse = AnnounceProvidersResponse

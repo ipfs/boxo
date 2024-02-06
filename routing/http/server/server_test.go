@@ -204,7 +204,7 @@ func TestProviders(t *testing.T) {
 
 		urlStr := serverAddr + "/routing/v1/providers"
 
-		httpReq, err := http.NewRequest(http.MethodPut, urlStr, bytes.NewReader(body))
+		httpReq, err := http.NewRequest(http.MethodPost, urlStr, bytes.NewReader(body))
 		require.NoError(t, err)
 		httpReq.Header.Set("Accept", contentType)
 
@@ -220,12 +220,12 @@ func TestProviders(t *testing.T) {
 		require.Equal(t, expectedBody, string(body))
 	}
 
-	t.Run("PUT /routing/v1/providers (JSON Response)", func(t *testing.T) {
-		runPutTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement","Payload":{"Addrs":[],"CID":"`+cid1Str+`","ID":"`+pid1Str+`","Protocols":[],"TTL":3600000}},{"Schema":"announcement","Payload":{"Addrs":[],"CID":"`+cid1Str+`","ID":"`+pid2Str+`","Protocols":[],"TTL":60000}}]}`)
+	t.Run("POST /routing/v1/providers (JSON Response)", func(t *testing.T) {
+		runPutTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement","Payload":{"CID":"`+cid1Str+`","ID":"`+pid1Str+`","TTL":3600000}},{"Schema":"announcement","Payload":{"CID":"`+cid1Str+`","ID":"`+pid2Str+`","TTL":60000}}]}`)
 	})
 
-	t.Run("PUT /routing/v1/providers (NDJSON Response)", func(t *testing.T) {
-		runPutTest(t, mediaTypeNDJSON, `{"Schema":"announcement","Payload":{"Addrs":[],"CID":"`+cid1Str+`","ID":"`+pid1Str+`","Protocols":[],"TTL":3600000}}`+"\n"+`{"Schema":"announcement","Payload":{"Addrs":[],"CID":"`+cid1Str+`","ID":"`+pid2Str+`","Protocols":[],"TTL":60000}}`+"\n")
+	t.Run("POST /routing/v1/providers (NDJSON Response)", func(t *testing.T) {
+		runPutTest(t, mediaTypeNDJSON, `{"Schema":"announcement","Payload":{"CID":"`+cid1Str+`","ID":"`+pid1Str+`","TTL":3600000}}`+"\n"+`{"Schema":"announcement","Payload":{"CID":"`+cid1Str+`","ID":"`+pid2Str+`","TTL":60000}}`+"\n")
 	})
 }
 
@@ -358,7 +358,7 @@ func TestPeers(t *testing.T) {
 		err = rec2.Sign(pid2, sk2)
 		require.NoError(t, err)
 
-		req := tjson.AnnounceProvidersRequest{Providers: []types.Record{rec1, rec2}}
+		req := tjson.AnnouncePeersRequest{Peers: []types.Record{rec1, rec2}}
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
@@ -386,7 +386,7 @@ func TestPeers(t *testing.T) {
 
 		urlStr := serverAddr + "/routing/v1/peers"
 
-		httpReq, err := http.NewRequest(http.MethodPut, urlStr, bytes.NewReader(body))
+		httpReq, err := http.NewRequest(http.MethodPost, urlStr, bytes.NewReader(body))
 		require.NoError(t, err)
 		httpReq.Header.Set("Accept", contentType)
 
@@ -402,12 +402,12 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, expectedBody, string(body))
 	}
 
-	t.Run("PUT /routing/v1/peers (JSON Response)", func(t *testing.T) {
-		runPutTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement","Payload":{"Addrs":[],"ID":"`+pid1.String()+`","Protocols":[],"TTL":3600000}},{"Schema":"announcement","Payload":{"Addrs":[],"ID":"`+pid2.String()+`","Protocols":[],"TTL":60000}}]}`)
+	t.Run("POST /routing/v1/peers (JSON Response)", func(t *testing.T) {
+		runPutTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement","Payload":{"ID":"`+pid1.String()+`","TTL":3600000}},{"Schema":"announcement","Payload":{"ID":"`+pid2.String()+`","TTL":60000}}]}`)
 	})
 
-	t.Run("PUT /routing/v1/peers (NDJSON Response)", func(t *testing.T) {
-		runPutTest(t, mediaTypeNDJSON, `{"Schema":"announcement","Payload":{"Addrs":[],"ID":"`+pid1.String()+`","Protocols":[],"TTL":3600000}}`+"\n"+`{"Schema":"announcement","Payload":{"Addrs":[],"ID":"`+pid2.String()+`","Protocols":[],"TTL":60000}}`+"\n")
+	t.Run("POST /routing/v1/peers (NDJSON Response)", func(t *testing.T) {
+		runPutTest(t, mediaTypeNDJSON, `{"Schema":"announcement","Payload":{"ID":"`+pid1.String()+`","TTL":3600000}}`+"\n"+`{"Schema":"announcement","Payload":{"ID":"`+pid2.String()+`","TTL":60000}}`+"\n")
 	})
 }
 

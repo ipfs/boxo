@@ -298,7 +298,6 @@ func (c *Client) Provide(ctx context.Context, announcements ...types.Announcemen
 		records[i] = record
 	}
 
-	// TODO: trailing slash?
 	url := c.baseURL + "/routing/v1/providers"
 	req := jsontypes.AnnounceProvidersRequest{
 		Providers: records,
@@ -313,7 +312,7 @@ func (c *Client) provide(ctx context.Context, url string, req interface{}) (iter
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewBuffer(b))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(b))
 	if err != nil {
 		return nil, err
 	}
@@ -485,10 +484,9 @@ func (c *Client) ProvidePeer(ctx context.Context, ttl time.Duration, metadata []
 		c.afterSignCallback(record)
 	}
 
-	// TODO: trailing slash?
 	url := c.baseURL + "/routing/v1/peers"
 	req := jsontypes.AnnouncePeersRequest{
-		Providers: []types.Record{record},
+		Peers: []types.Record{record},
 	}
 
 	return c.provide(ctx, url, req)

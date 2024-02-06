@@ -40,9 +40,9 @@ const (
 var logger = logging.Logger("routing/http/server")
 
 const (
-	providePath       = "/routing/v1/providers" // TODO: with trailing slash?
+	providePath       = "/routing/v1/providers"
 	findProvidersPath = "/routing/v1/providers/{cid}"
-	providePeersPath  = "/routing/v1/peers" // TODO: with trailing slash?
+	providePeersPath  = "/routing/v1/peers"
 	findPeersPath     = "/routing/v1/peers/{peer-id}"
 	getIPNSPath       = "/routing/v1/ipns/{cid}"
 )
@@ -139,9 +139,9 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 
 	r := mux.NewRouter()
 	r.HandleFunc(findProvidersPath, server.findProviders).Methods(http.MethodGet)
-	r.HandleFunc(providePath, server.provide).Methods(http.MethodPut)
+	r.HandleFunc(providePath, server.provide).Methods(http.MethodPost)
 	r.HandleFunc(findPeersPath, server.findPeers).Methods(http.MethodGet)
-	r.HandleFunc(providePeersPath, server.providePeers).Methods(http.MethodPut)
+	r.HandleFunc(providePeersPath, server.providePeers).Methods(http.MethodPost)
 	r.HandleFunc(getIPNSPath, server.GetIPNS).Methods(http.MethodGet)
 	r.HandleFunc(getIPNSPath, server.PutIPNS).Methods(http.MethodPut)
 	return r
@@ -304,7 +304,7 @@ func (s *server) providePeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	responseIter := iter.Map[types.Record, *types.AnnouncementRecord](iter.FromSlice(req.Providers), func(t types.Record) *types.AnnouncementRecord {
+	responseIter := iter.Map[types.Record, *types.AnnouncementRecord](iter.FromSlice(req.Peers), func(t types.Record) *types.AnnouncementRecord {
 		resRecord := &types.AnnouncementRecord{
 			Schema: types.SchemaAnnouncement,
 		}
