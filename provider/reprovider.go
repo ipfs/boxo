@@ -60,6 +60,7 @@ type reprovider struct {
 	maxReprovideBatchSize uint
 
 	statLk                                    sync.Mutex
+	firstRun                                  time.Time
 	totalProvides, lastReprovideBatchSize     uint64
 	avgProvideDuration, lastReprovideDuration time.Duration
 
@@ -387,6 +388,7 @@ func (s *reprovider) run() {
 
 		// If reproviding is enabled (non-zero)
 		if s.reprovideInterval > 0 {
+			s.statLk.Lock()
 			reprovideTicker := time.NewTicker(s.reprovideInterval)
 			defer reprovideTicker.Stop()
 			reprovideCh = reprovideTicker.C
@@ -397,7 +399,13 @@ func (s *reprovider) run() {
 				defer initialReprovideTimer.Stop()
 
 				initialReprovideCh = initialReprovideTimer.C
+				s.firstRun = time.Now().Add(s.initalReprovideDelay)
+			} else {
+				fmt.Println("regular?")
+				s.firstRun = time.Now().Add(s.reprovideInterval)
 			}
+
+			s.statLk.Unlock()
 		}
 
 		for s.ctx.Err() == nil {
@@ -526,15 +534,31 @@ func (s *reprovider) shouldReprovide() bool {
 }
 
 type ReproviderStats struct {
+	LastRun, NextRun                          time.Time
 	TotalProvides, LastReprovideBatchSize     uint64
 	AvgProvideDuration, LastReprovideDuration time.Duration
 }
 
 // Stat returns various stats about this provider system
 func (s *reprovider) Stat() (ReproviderStats, error) {
+	lastRun, err := s.getLastReprovideTime()
+	if err != nil {
+		return ReproviderStats{}, err
+	}
+
 	s.statLk.Lock()
 	defer s.statLk.Unlock()
+
+	var nextRun time.Time
+	if lastRun.IsZero() {
+		nextRun = s.firstRun
+	} else {
+		nextRun = lastRun.Add(s.reprovideInterval)
+	}
+
 	return ReproviderStats{
+		LastRun:                lastRun,
+		NextRun:                nextRun,
 		TotalProvides:          s.totalProvides,
 		LastReprovideBatchSize: s.lastReprovideBatchSize,
 		AvgProvideDuration:     s.avgProvideDuration,
