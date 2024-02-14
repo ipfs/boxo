@@ -483,7 +483,7 @@ func ContextWithSession(ctx context.Context, bs BlockService) context.Context {
 	if grabSessionFromContext(ctx, bs) != nil {
 		return ctx
 	}
-	return EmbedSessionInContext(ctx, newSession(ctx, bs))
+	return EmbedSessionInContext(ctx, NewSession(ctx, bs))
 }
 
 // EmbedSessionInContext is like [ContextWithSession] but it allows to embed an existing session.
