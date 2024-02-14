@@ -16,7 +16,6 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `blockservice` now has `ContextWithSession` and `EmbedSessionInContext` functions, which allows to embed a session in a context. Future calls to `BlockGetter.GetBlock`, `BlockGetter.GetBlocks` and `NewSession` will use the session in the context.
 - `blockservice.NewWritethrough` deprecated function has been removed, instead you can do `blockservice.New(..., ..., WriteThrough())` like previously.
 - `gateway`: a new header configuration middleware has been added to replace the existing header configuration, which can be used more generically.
 - `namesys` now has a `WithMaxCacheTTL` option, which allows you to define a maximum TTL that will be used for caching IPNS entries.
