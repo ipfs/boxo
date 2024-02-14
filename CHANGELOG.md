@@ -20,6 +20,8 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+- 🛠 `blockservice`: reverted change in previous release where sessions had been introduced.
+
 ### Fixed
 
 ### Security
