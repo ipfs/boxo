@@ -36,9 +36,16 @@ func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limi
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
-func (m *mockContentRouter) Provide(ctx context.Context, req *server.ProvideRequest) (time.Duration, error) {
+func (m *mockContentRouter) Provide(ctx context.Context, req *types.AnnouncementRecord) (time.Duration, error) {
 	// Ensure timestamps within tests are within the millisecond.
-	req.Timestamp = req.Timestamp.Truncate(time.Millisecond)
+	req.Payload.Timestamp = req.Payload.Timestamp.Truncate(time.Millisecond)
+
+	// Signature must be always present, but not possible to test with the mock.
+	// We test it here and then empty it so that it matches what the mock expects.
+	if req.Signature == "" {
+		return 0, errors.New("signature not present")
+	}
+	req.Signature = ""
 
 	args := m.Called(ctx, req)
 	return args.Get(0).(time.Duration), args.Error(1)
@@ -49,9 +56,16 @@ func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit in
 	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
-func (m *mockContentRouter) ProvidePeer(ctx context.Context, req *server.ProvidePeerRequest) (time.Duration, error) {
+func (m *mockContentRouter) ProvidePeer(ctx context.Context, req *types.AnnouncementRecord) (time.Duration, error) {
 	// Ensure timestamps within tests are within the millisecond.
-	req.Timestamp = req.Timestamp.Truncate(time.Second)
+	req.Payload.Timestamp = req.Payload.Timestamp.Truncate(time.Second)
+
+	// Signature must be always present, but not possible to test with the mock.
+	// We test it here and then empty it so that it matches what the mock expects.
+	if req.Signature == "" {
+		return 0, errors.New("signature not present")
+	}
+	req.Signature = ""
 
 	args := m.Called(ctx, req)
 	return args.Get(0).(time.Duration), args.Error(1)
@@ -152,13 +166,6 @@ func makeCID() cid.Cid {
 	}
 	c := cid.NewCidV1(0, mh)
 	return c
-}
-
-func drAddrsToAddrs(drmas []types.Multiaddr) (addrs []multiaddr.Multiaddr) {
-	for _, a := range drmas {
-		addrs = append(addrs, a.Multiaddr)
-	}
-	return
 }
 
 func addrsToDRAddrs(addrs []multiaddr.Multiaddr) (drmas []types.Multiaddr) {
@@ -439,12 +446,15 @@ func TestClient_Provide(t *testing.T) {
 			}
 
 			for _, cid := range c.cids {
-				router.On("Provide", mock.Anything, &server.ProvideRequest{
-					CID:       cid,
-					Timestamp: clock.Now().UTC().Truncate(time.Millisecond),
-					TTL:       c.ttl,
-					Addrs:     drAddrsToAddrs(client.addrs),
-					ID:        client.peerID,
+				router.On("Provide", mock.Anything, &types.AnnouncementRecord{
+					Schema: types.SchemaAnnouncement,
+					Payload: types.AnnouncementPayload{
+						CID:       cid,
+						Timestamp: clock.Now().UTC().Truncate(time.Millisecond),
+						TTL:       c.ttl,
+						Addrs:     client.addrs,
+						ID:        &client.peerID,
+					},
 				}).Return(c.routerAdvisoryTTL, c.routerErr)
 			}
 
@@ -707,11 +717,14 @@ func TestClient_ProvidePeer(t *testing.T) {
 				}
 			}
 
-			router.On("ProvidePeer", mock.Anything, &server.ProvidePeerRequest{
-				Timestamp: clock.Now().UTC().Truncate(time.Second),
-				TTL:       c.ttl,
-				Addrs:     drAddrsToAddrs(client.addrs),
-				ID:        client.peerID,
+			router.On("ProvidePeer", mock.Anything, &types.AnnouncementRecord{
+				Schema: types.SchemaAnnouncement,
+				Payload: types.AnnouncementPayload{
+					Timestamp: clock.Now().UTC().Truncate(time.Second),
+					TTL:       c.ttl,
+					Addrs:     client.addrs,
+					ID:        &client.peerID,
+				},
 			}).Return(c.routerAdvisoryTTL, c.routerErr)
 
 			recs, err := client.ProvidePeer(ctx, c.ttl, nil)

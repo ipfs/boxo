@@ -22,7 +22,6 @@ import (
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/multiformats/go-multiaddr"
 
 	logging "github.com/ipfs/go-log/v2"
 )
@@ -57,17 +56,17 @@ type ContentRouter interface {
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
 	FindProviders(ctx context.Context, cid cid.Cid, limit int) (iter.ResultIter[types.Record], error)
 
-	// Provide stores the provided [ProvideRequest] record for CIDs. Can return
+	// Provide stores the provided [types.AnnouncementRecord] record for CIDs. Can return
 	// a different TTL than the provided.
-	Provide(ctx context.Context, req *ProvideRequest) (time.Duration, error)
+	Provide(ctx context.Context, req *types.AnnouncementRecord) (time.Duration, error)
 
 	// FindPeers searches for peers who have the provided [peer.ID].
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
 	FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[*types.PeerRecord], error)
 
-	// ProvidePeer stores the provided [ProvidePeerRequest] record for peers. Can
+	// ProvidePeer stores the provided [types.AnnouncementRecord] record for peers. Can
 	// return a different TTL than the provided.
-	ProvidePeer(ctx context.Context, req *ProvidePeerRequest) (time.Duration, error)
+	ProvidePeer(ctx context.Context, req *types.AnnouncementRecord) (time.Duration, error)
 
 	// GetIPNS searches for an [ipns.Record] for the given [ipns.Name].
 	GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
@@ -75,28 +74,6 @@ type ContentRouter interface {
 	// PutIPNS stores the provided [ipns.Record] for the given [ipns.Name].
 	// It is guaranteed that the record matches the provided name.
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
-}
-
-// ProvideRequest is a content provide request.
-type ProvideRequest struct {
-	CID       cid.Cid
-	Scope     types.AnnouncementScope
-	Timestamp time.Time
-	TTL       time.Duration
-	ID        peer.ID
-	Addrs     []multiaddr.Multiaddr
-	Protocols []string
-	Metadata  string
-}
-
-// ProvidePeerRequest is a peer provide request.
-type ProvidePeerRequest struct {
-	Timestamp time.Time
-	TTL       time.Duration
-	ID        peer.ID
-	Addrs     []multiaddr.Multiaddr
-	Protocols []string
-	Metadata  string
 }
 
 type Option func(s *server)
@@ -315,27 +292,14 @@ func (s *server) providePeers(w http.ResponseWriter, r *http.Request) {
 			return resRecord
 		}
 
-		req := &ProvidePeerRequest{
-			Timestamp: reqRecord.Payload.Timestamp,
-			TTL:       reqRecord.Payload.TTL,
-			ID:        *reqRecord.Payload.ID,
-			Addrs:     make([]multiaddr.Multiaddr, len(reqRecord.Payload.Addrs)),
-			Protocols: reqRecord.Payload.Protocols,
-			Metadata:  reqRecord.Payload.Metadata,
-		}
-
-		for i, addr := range reqRecord.Payload.Addrs {
-			req.Addrs[i] = addr.Multiaddr
-		}
-
-		ttl, err := s.svc.ProvidePeer(r.Context(), req)
+		ttl, err := s.svc.ProvidePeer(r.Context(), reqRecord)
 		if err != nil {
 			resRecord.Error = err.Error()
 			return resRecord
 		}
 
 		resRecord.Payload.TTL = ttl
-		resRecord.Payload.ID = &req.ID
+		resRecord.Payload.ID = reqRecord.Payload.ID
 		return resRecord
 	})
 
@@ -374,30 +338,15 @@ func (s *server) provide(w http.ResponseWriter, r *http.Request) {
 			return resRecord
 		}
 
-		req := &ProvideRequest{
-			CID:       reqRecord.Payload.CID,
-			Scope:     reqRecord.Payload.Scope,
-			Timestamp: reqRecord.Payload.Timestamp,
-			TTL:       reqRecord.Payload.TTL,
-			ID:        *reqRecord.Payload.ID,
-			Addrs:     make([]multiaddr.Multiaddr, len(reqRecord.Payload.Addrs)),
-			Protocols: reqRecord.Payload.Protocols,
-			Metadata:  reqRecord.Payload.Metadata,
-		}
-
-		for i, addr := range reqRecord.Payload.Addrs {
-			req.Addrs[i] = addr.Multiaddr
-		}
-
-		ttl, err := s.svc.Provide(r.Context(), req)
+		ttl, err := s.svc.Provide(r.Context(), reqRecord)
 		if err != nil {
 			resRecord.Error = err.Error()
 			return resRecord
 		}
 
 		resRecord.Payload.TTL = ttl
-		resRecord.Payload.CID = req.CID
-		resRecord.Payload.ID = &req.ID
+		resRecord.Payload.CID = reqRecord.Payload.CID
+		resRecord.Payload.ID = reqRecord.Payload.ID
 		return resRecord
 	})
 

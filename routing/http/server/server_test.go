@@ -20,7 +20,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	b58 "github.com/mr-tron/base58/base58"
-	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -184,23 +183,9 @@ func TestProviders(t *testing.T) {
 
 		serverAddr := "http://" + server.Listener.Addr().String()
 
-		router.On("Provide", mock.Anything, &ProvideRequest{
-			CID:       cid1,
-			Timestamp: rec1.Payload.Timestamp,
-			TTL:       rec1.Payload.TTL,
-			ID:        pid1,
-			Addrs:     []multiaddr.Multiaddr{},
-			Protocols: rec1.Payload.Protocols,
-		}).Return(time.Hour, nil)
+		router.On("Provide", mock.Anything, rec1).Return(time.Hour, nil)
 
-		router.On("Provide", mock.Anything, &ProvideRequest{
-			CID:       cid1,
-			Timestamp: rec2.Payload.Timestamp,
-			TTL:       rec2.Payload.TTL,
-			ID:        pid2,
-			Addrs:     []multiaddr.Multiaddr{},
-			Protocols: rec2.Payload.Protocols,
-		}).Return(time.Minute, nil)
+		router.On("Provide", mock.Anything, rec2).Return(time.Minute, nil)
 
 		urlStr := serverAddr + "/routing/v1/providers"
 
@@ -368,21 +353,9 @@ func TestPeers(t *testing.T) {
 
 		serverAddr := "http://" + server.Listener.Addr().String()
 
-		router.On("ProvidePeer", mock.Anything, &ProvidePeerRequest{
-			Timestamp: rec1.Payload.Timestamp,
-			TTL:       rec1.Payload.TTL,
-			ID:        pid1,
-			Addrs:     []multiaddr.Multiaddr{},
-			Protocols: rec1.Payload.Protocols,
-		}).Return(time.Hour, nil)
+		router.On("ProvidePeer", mock.Anything, rec1).Return(time.Hour, nil)
 
-		router.On("ProvidePeer", mock.Anything, &ProvidePeerRequest{
-			Timestamp: rec2.Payload.Timestamp,
-			TTL:       rec2.Payload.TTL,
-			ID:        pid2,
-			Addrs:     []multiaddr.Multiaddr{},
-			Protocols: rec2.Payload.Protocols,
-		}).Return(time.Minute, nil)
+		router.On("ProvidePeer", mock.Anything, rec2).Return(time.Minute, nil)
 
 		urlStr := serverAddr + "/routing/v1/peers"
 
@@ -545,7 +518,7 @@ func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limi
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
-func (m *mockContentRouter) Provide(ctx context.Context, req *ProvideRequest) (time.Duration, error) {
+func (m *mockContentRouter) Provide(ctx context.Context, req *types.AnnouncementRecord) (time.Duration, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(time.Duration), args.Error(1)
 }
@@ -555,7 +528,7 @@ func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit in
 	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
-func (m *mockContentRouter) ProvidePeer(ctx context.Context, req *ProvidePeerRequest) (time.Duration, error) {
+func (m *mockContentRouter) ProvidePeer(ctx context.Context, req *types.AnnouncementRecord) (time.Duration, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(time.Duration), args.Error(1)
 }
