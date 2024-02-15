@@ -77,14 +77,6 @@ type httpClient interface {
 
 type Option func(*Client) error
 
-func WithIdentity(identity crypto.PrivKey) Option {
-	return func(c *Client) error {
-		c.identity = identity
-		return nil
-	}
-}
-
-// WithHTTPClient sets a custom HTTP Client to be used with [Client].
 func WithHTTPClient(h httpClient) Option {
 	return func(c *Client) error {
 		c.httpClient = h
@@ -116,8 +108,15 @@ func WithUserAgent(ua string) Option {
 	}
 }
 
-func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr, protocols []string) Option {
+// WithProviderInfo configures the [Client] with the given provider information.
+// This is used by the methods [Client.Provide] and [Client.ProvidePeer] in order
+// to create and sign announcement records.
+//
+// You can still use [Client.ProvideRecords] and [Client.ProvidePeerRecords]
+// without this configuration. Then, you must provide already signed-records.
+func WithProviderInfo(identity crypto.PrivKey, peerID peer.ID, addrs []multiaddr.Multiaddr, protocols []string) Option {
 	return func(c *Client) error {
+		c.identity = identity
 		c.peerID = peerID
 		c.protocols = protocols
 		for _, a := range addrs {
@@ -256,6 +255,9 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
+// Provide publishes [types.AnnouncementRecord]s based on the given [types.AnnouncementRequests].
+// This records will be signed by your provided. Therefore, the [Client] must have been configured
+// with [WithProviderInfo].
 func (c *Client) Provide(ctx context.Context, announcements ...types.AnnouncementRequest) (iter.ResultIter[*types.AnnouncementRecord], error) {
 	if err := c.canProvide(); err != nil {
 		return nil, err
@@ -302,7 +304,24 @@ func (c *Client) Provide(ctx context.Context, announcements ...types.Announcemen
 	req := jsontypes.AnnounceProvidersRequest{
 		Providers: records,
 	}
+	return c.provide(ctx, url, req)
+}
 
+// ProvideRecords publishes the given [types.AnnouncementRecord]. An error will
+// be returned if the records aren't signed or valid.
+func (c *Client) ProvideRecords(ctx context.Context, records ...*types.AnnouncementRecord) (iter.ResultIter[*types.AnnouncementRecord], error) {
+	providerRecords := make([]types.Record, len(records))
+	for i, record := range records {
+		if err := record.Verify(); err != nil {
+			return nil, err
+		}
+		providerRecords[i] = records[i]
+	}
+
+	url := c.baseURL + "/routing/v1/providers"
+	req := jsontypes.AnnounceProvidersRequest{
+		Providers: providerRecords,
+	}
 	return c.provide(ctx, url, req)
 }
 
@@ -449,7 +468,8 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 	return &measuringIter[iter.Result[*types.PeerRecord]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
-// ProvidePeer provides information regarding your own peer, setup with [WithProviderInfo].
+// ProvidePeer publishes an [types.AnnouncementRecord] with the provider
+// information from your peer, configured with [WithProviderInfo].
 func (c *Client) ProvidePeer(ctx context.Context, ttl time.Duration, metadata []byte) (iter.ResultIter[*types.AnnouncementRecord], error) {
 	if err := c.canProvide(); err != nil {
 		return nil, err
@@ -458,7 +478,6 @@ func (c *Client) ProvidePeer(ctx context.Context, ttl time.Duration, metadata []
 	record := &types.AnnouncementRecord{
 		Schema: types.SchemaAnnouncement,
 		Payload: types.AnnouncementPayload{
-			// TODO: CID, Scope not present for /routing/v1/peers, right?
 			Timestamp: time.Now(),
 			TTL:       ttl,
 			ID:        &c.peerID,
@@ -489,6 +508,24 @@ func (c *Client) ProvidePeer(ctx context.Context, ttl time.Duration, metadata []
 		Peers: []types.Record{record},
 	}
 
+	return c.provide(ctx, url, req)
+}
+
+// ProvidePeerRecords publishes the given [types.AnnouncementRecord]. An error will
+// be returned if the records aren't signed or valid.
+func (c *Client) ProvidePeerRecords(ctx context.Context, records ...*types.AnnouncementRecord) (iter.ResultIter[*types.AnnouncementRecord], error) {
+	providerRecords := make([]types.Record, len(records))
+	for i, record := range records {
+		if err := record.Verify(); err != nil {
+			return nil, err
+		}
+		providerRecords[i] = records[i]
+	}
+
+	url := c.baseURL + "/routing/v1/peers"
+	req := jsontypes.AnnouncePeersRequest{
+		Peers: providerRecords,
+	}
 	return c.provide(ctx, url, req)
 }
 

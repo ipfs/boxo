@@ -210,7 +210,7 @@ func (ar AnnouncementRecord) IsSigned() bool {
 
 func (ar *AnnouncementRecord) Sign(peerID peer.ID, key crypto.PrivKey) error {
 	if ar.IsSigned() {
-		return errors.New("already signed")
+		return ar.Verify()
 	}
 
 	if key == nil {
