@@ -28,15 +28,8 @@ import (
 )
 
 var (
-	_                 contentrouter.Client = &Client{}
-	logger                                 = logging.Logger("routing/http/client")
-	defaultHTTPClient                      = &http.Client{
-		Transport: &ResponseBodyLimitedTransport{
-			RoundTripper: http.DefaultTransport,
-			LimitBytes:   1 << 20,
-			UserAgent:    defaultUserAgent,
-		},
-	}
+	_      contentrouter.Client = &Client{}
+	logger                      = logging.Logger("routing/http/client")
 )
 
 const (
@@ -67,6 +60,16 @@ var defaultUserAgent = moduleVersion()
 
 var _ contentrouter.Client = &Client{}
 
+func newDefaultHTTPClient(userAgent string) *http.Client {
+	return &http.Client{
+		Transport: &ResponseBodyLimitedTransport{
+			RoundTripper: http.DefaultTransport,
+			LimitBytes:   1 << 20,
+			UserAgent:    userAgent,
+		},
+	}
+}
+
 type httpClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -79,12 +82,18 @@ func WithIdentity(identity crypto.PrivKey) Option {
 	}
 }
 
+// WithHTTPClient sets a custom HTTP Client to be used with [Client]. If you use
+// this option, [WithUserAgent] will no longer work, as it is made to work with
+// the default HTTP Client.
 func WithHTTPClient(h httpClient) Option {
 	return func(c *Client) {
 		c.httpClient = h
 	}
 }
 
+// WithUserAgent sets a custom user agent to use with the HTTP Client. This will
+// only work if you use the default HTTP Client. If you use [WithHTTPClient], you
+// should set the user agent yourself.
 func WithUserAgent(ua string) Option {
 	return func(c *Client) {
 		if ua == "" {
@@ -122,7 +131,7 @@ func WithStreamResultsRequired() Option {
 func New(baseURL string, opts ...Option) (*Client, error) {
 	client := &Client{
 		baseURL:    baseURL,
-		httpClient: defaultHTTPClient,
+		httpClient: newDefaultHTTPClient(defaultUserAgent),
 		clock:      clock.New(),
 		accepts:    strings.Join([]string{mediaTypeNDJSON, mediaTypeJSON}, ","),
 	}
