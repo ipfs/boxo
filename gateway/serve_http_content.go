@@ -45,6 +45,12 @@ func headerGetExact(h http.Header, key string) string {
 // 5. Does not require the name to be passed in for content sniffing
 // 6. content may be nil for HEAD requests
 func httpServeContent(w http.ResponseWriter, r *http.Request, modtime time.Time, size int64, content io.Reader) {
+	if size < 0 {
+		// Should never happen but just to be sure
+		http.Error(w, "negative content size computed", http.StatusInternalServerError)
+		return
+	}
+
 	setLastModified(w, modtime)
 	done, rangeReq := checkPreconditions(w, r, modtime)
 	if done {
@@ -55,54 +61,61 @@ func httpServeContent(w http.ResponseWriter, r *http.Request, modtime time.Time,
 
 	// handle Content-Range header.
 	sendSize := size
-	if size >= 0 {
-		ranges, err := parseRange(rangeReq, size)
-		if err != nil {
-			if err == errNoOverlap {
-				w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", size))
-			}
-			http.Error(w, err.Error(), http.StatusRequestedRangeNotSatisfiable)
-			return
-		}
-		if sumRangesSize(ranges) > size {
-			// The total number of bytes in all the ranges
-			// is larger than the size of the file by
-			// itself, so this is probably an attack, or a
-			// dumb client. Ignore the range request.
+	ranges, err := parseRange(rangeReq, size)
+	switch err {
+	case nil:
+	case errNoOverlap:
+		if size == 0 {
+			// Some clients add a Range header to all requests to
+			// limit the size of the response. If the file is empty,
+			// ignore the range header and respond with a 200 rather
+			// than a 416.
 			ranges = nil
+			break
 		}
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", size))
+		fallthrough
+	default:
+		http.Error(w, err.Error(), http.StatusRequestedRangeNotSatisfiable)
+		return
+	}
+	if sumRangesSize(ranges) > size {
+		// The total number of bytes in all the ranges
+		// is larger than the size of the file by
+		// itself, so this is probably an attack, or a
+		// dumb client. Ignore the range request.
+		ranges = nil
+	}
 
-		// We only support a single range request, if more than one is submitted we just send back the first
-		if len(ranges) > 0 {
-			ra := ranges[0]
-			// RFC 7233, Section 4.1:
-			// "If a single part is being transferred, the server
-			// generating the 206 response MUST generate a
-			// Content-Range header field, describing what range
-			// of the selected representation is enclosed, and a
-			// payload consisting of the range.
-			// ...
-			// A server MUST NOT generate a multipart response to
-			// a request for a single range, since a client that
-			// does not request multiple parts might not support
-			// multipart responses."
+	// We only support a single range request, if more than one is submitted we just send back the first
+	if len(ranges) > 0 {
+		ra := ranges[0]
+		// RFC 7233, Section 4.1:
+		// "If a single part is being transferred, the server
+		// generating the 206 response MUST generate a
+		// Content-Range header field, describing what range
+		// of the selected representation is enclosed, and a
+		// payload consisting of the range.
+		// ...
+		// A server MUST NOT generate a multipart response to
+		// a request for a single range, since a client that
+		// does not request multiple parts might not support
+		// multipart responses."
 
-			sendSize = ra.length
-			code = http.StatusPartialContent
-			w.Header().Set("Content-Range", ra.contentRange(size))
-		}
+		sendSize = ra.length
+		code = http.StatusPartialContent
+		w.Header().Set("Content-Range", ra.contentRange(size))
+	}
 
-		w.Header().Set("Accept-Ranges", "bytes")
-		if w.Header().Get("Content-Encoding") == "" {
-			w.Header().Set("Content-Length", strconv.FormatInt(sendSize, 10))
-		}
+	w.Header().Set("Accept-Ranges", "bytes")
+	if w.Header().Get("Content-Encoding") == "" {
+		w.Header().Set("Content-Length", strconv.FormatInt(sendSize, 10))
 	}
 
 	w.WriteHeader(code)
 
 	if r.Method != "HEAD" {
-		var sendContent io.Reader = content
-		io.CopyN(w, sendContent, sendSize)
+		io.CopyN(w, content, sendSize)
 	}
 }
 

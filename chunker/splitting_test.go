@@ -23,6 +23,8 @@ func copyBuf(buf []byte) []byte {
 }
 
 func TestSizeSplitterOverAllocate(t *testing.T) {
+	t.Parallel()
+
 	max := 1000
 	r := bytes.NewReader(randBuf(t, max))
 	chunksize := int64(1024 * 256)
@@ -40,6 +42,7 @@ func TestSizeSplitterIsDeterministic(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	test := func() {
 		bufR := randBuf(t, 10000000) // crank this up to satisfy yourself.
@@ -75,6 +78,7 @@ func TestSizeSplitterFillsChunks(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	max := 10000000
 	b := randBuf(t, max)

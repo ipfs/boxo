@@ -232,19 +232,21 @@ func newTestServerAndNode(t *testing.T, ns mockNamesys, fixturesFile string) (*h
 
 func newTestServer(t *testing.T, backend IPFSBackend) *httptest.Server {
 	return newTestServerWithConfig(t, backend, Config{
-		Headers:               map[string][]string{},
 		DeserializedResponses: true,
 	})
 }
 
 func newTestServerWithConfig(t *testing.T, backend IPFSBackend, config Config) *httptest.Server {
-	AddAccessControlHeaders(config.Headers)
+	return newTestServerWithConfigAndHeaders(t, backend, config, map[string][]string{})
+}
 
+func newTestServerWithConfigAndHeaders(t *testing.T, backend IPFSBackend, config Config, headers map[string][]string) *httptest.Server {
 	handler := NewHandler(config, backend)
 	mux := http.NewServeMux()
 	mux.Handle("/ipfs/", handler)
 	mux.Handle("/ipns/", handler)
 	handler = NewHostnameHandler(config, backend, mux)
+	handler = NewHeaders(headers).ApplyCors().Wrap(handler)
 
 	ts := httptest.NewServer(handler)
 	t.Cleanup(func() { ts.Close() })

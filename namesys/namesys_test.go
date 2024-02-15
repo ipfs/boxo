@@ -146,20 +146,38 @@ func TestPublishWithTTL(t *testing.T) {
 		"pk":   record.PublicKeyValidator{},
 	})
 
-	ns, err := NewNameSystem(routing, WithDatastore(dst), WithCache(128))
-	require.NoError(t, err)
-
 	// CID is arbitrary.
 	p, err := path.NewPath("/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
 	require.NoError(t, err)
 
-	ttl := 1 * time.Second
-	eol := time.Now().Add(2 * time.Second)
+	ttl := 5 * time.Minute
+	eol := time.Now().Add(time.Hour)
 
-	err = ns.Publish(context.Background(), priv, p, PublishWithEOL(eol), PublishWithTTL(ttl))
-	require.NoError(t, err)
+	t.Run("Without MaxCacheTTL", func(t *testing.T) {
+		ns, err := NewNameSystem(routing, WithDatastore(dst), WithCache(128))
+		require.NoError(t, err)
 
-	entry, ok := ns.(*namesys).cache.Get(ipns.NameFromPeer(pid).String())
-	require.True(t, ok)
-	require.LessOrEqual(t, entry.cacheEOL.Sub(eol), 10*time.Millisecond)
+		err = ns.Publish(context.Background(), priv, p, PublishWithEOL(eol), PublishWithTTL(ttl))
+		require.NoError(t, err)
+
+		entry, ok := ns.(*namesys).cache.Get(ipns.NameFromPeer(pid).String())
+		require.True(t, ok)
+		require.Equal(t, ttl, entry.ttl)
+		require.LessOrEqual(t, time.Until(entry.cacheEOL), ttl)
+	})
+
+	t.Run("With MaxCacheTTL", func(t *testing.T) {
+		cacheTTL := 30 * time.Second
+
+		ns, err := NewNameSystem(routing, WithDatastore(dst), WithCache(128), WithMaxCacheTTL(cacheTTL))
+		require.NoError(t, err)
+
+		err = ns.Publish(context.Background(), priv, p, PublishWithEOL(eol), PublishWithTTL(ttl))
+		require.NoError(t, err)
+
+		entry, ok := ns.(*namesys).cache.Get(ipns.NameFromPeer(pid).String())
+		require.True(t, ok)
+		require.Equal(t, ttl, entry.ttl)
+		require.LessOrEqual(t, time.Until(entry.cacheEOL), cacheTTL)
+	})
 }

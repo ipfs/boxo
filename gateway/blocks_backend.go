@@ -508,6 +508,9 @@ func walkGatewaySimpleSelector(ctx context.Context, p path.ImmutablePath, params
 					return err
 				}
 				from = fileLength + entityRange.From
+				if from < 0 {
+					from = 0
+				}
 				foundFileLength = true
 			}
 
@@ -521,13 +524,15 @@ func walkGatewaySimpleSelector(ctx context.Context, p path.ImmutablePath, params
 			}
 
 			to := *entityRange.To
-			if (*entityRange.To) < 0 && !foundFileLength {
-				fileLength, err = f.Seek(0, io.SeekEnd)
-				if err != nil {
-					return err
+			if (*entityRange.To) < 0 {
+				if !foundFileLength {
+					fileLength, err = f.Seek(0, io.SeekEnd)
+					if err != nil {
+						return err
+					}
+					foundFileLength = true
 				}
 				to = fileLength + *entityRange.To
-				foundFileLength = true
 			}
 
 			numToRead := 1 + to - from
@@ -682,6 +687,12 @@ func (bb *BlocksBackend) IsCached(ctx context.Context, p path.Path) bool {
 
 	has, _ := bb.blockStore.Has(ctx, rp.RootCid())
 	return has
+}
+
+var _ WithContextHint = (*BlocksBackend)(nil)
+
+func (bb *BlocksBackend) WrapContextForRequest(ctx context.Context) context.Context {
+	return blockservice.ContextWithSession(ctx, bb.blockService)
 }
 
 func (bb *BlocksBackend) ResolvePath(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, error) {

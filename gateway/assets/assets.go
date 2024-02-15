@@ -8,6 +8,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/ipfs/boxo/path"
@@ -26,8 +27,35 @@ var (
 )
 
 func init() {
-	initAssetsHash()
-	initTemplates()
+	tmpls := [...]struct {
+		result     **template.Template
+		sourceFile string
+	}{
+		{&DirectoryTemplate, "directory.html"},
+		{&DagTemplate, "dag.html"},
+		{&ErrorTemplate, "error.html"},
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(tmpls))
+
+	for _, tmpl := range tmpls {
+		tmpl := tmpl
+		go func() {
+			defer wg.Done()
+			var err error
+			*tmpl.result, err = BuildTemplate(assets, tmpl.sourceFile)
+			if err != nil {
+				panic(err)
+			}
+		}()
+	}
+
+	initAssetsHash() // reuse the init thread instead of blocking on wg.Wait
+
+	// @Jorropo: this is still waiting because I was too lazy to break the API of this public package.
+	// It sounds better if we would use sync.Once and maybe start goroutines in init().
+	wg.Wait()
 }
 
 func initAssetsHash() {
@@ -54,28 +82,6 @@ func initAssetsHash() {
 	}
 
 	AssetHash = strconv.FormatUint(sum.Sum64(), 32)
-}
-
-func initTemplates() {
-	var err error
-
-	// Directory listing template
-	DirectoryTemplate, err = BuildTemplate(assets, "directory.html")
-	if err != nil {
-		panic(err)
-	}
-
-	// DAG Index template
-	DagTemplate, err = BuildTemplate(assets, "dag.html")
-	if err != nil {
-		panic(err)
-	}
-
-	// Error template
-	ErrorTemplate, err = BuildTemplate(assets, "error.html")
-	if err != nil {
-		panic(err)
-	}
 }
 
 type MenuItem struct {

@@ -16,7 +16,6 @@ func TestDagJsonCborPreview(t *testing.T) {
 	backend, root := newMockBackend(t, "fixtures.car")
 
 	ts := newTestServerWithConfig(t, backend, Config{
-		Headers:   map[string][]string{},
 		NoDNSLink: false,
 		PublicGateways: map[string]*PublicGateway{
 			"example.com": {

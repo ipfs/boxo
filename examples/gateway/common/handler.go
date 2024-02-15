@@ -12,10 +12,6 @@ import (
 
 func NewHandler(gwAPI gateway.IPFSBackend) http.Handler {
 	conf := gateway.Config{
-		// Initialize the headers. For this example, we do not add any special headers,
-		// only the required ones via gateway.AddAccessControlHeaders.
-		Headers: map[string][]string{},
-
 		// If you set DNSLink to point at the CID from CAR, you can load it!
 		NoDNSLink: false,
 
@@ -58,9 +54,6 @@ func NewHandler(gwAPI gateway.IPFSBackend) http.Handler {
 		},
 	}
 
-	// Add required access control headers to the configuration.
-	gateway.AddAccessControlHeaders(conf.Headers)
-
 	// Creates a mux to serve the gateway paths. This is not strictly necessary
 	// and gwHandler could be used directly. However, on the next step we also want
 	// to add prometheus metrics, hence needing the mux.
@@ -85,6 +78,10 @@ func NewHandler(gwAPI gateway.IPFSBackend) http.Handler {
 	// Then, wrap with the withConnect middleware. This is required since we use
 	// http.ServeMux which does not support CONNECT by default.
 	handler = withConnect(handler)
+
+	// Add headers middleware that applies any headers we define to all requests
+	// as well as a default CORS configuration.
+	handler = gateway.NewHeaders(nil).ApplyCors().Wrap(handler)
 
 	// Finally, wrap with the otelhttp handler. This will allow the tracing system
 	// to work and for correct propagation of tracing headers. This step is optional

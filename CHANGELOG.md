@@ -16,11 +16,31 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `blockservice` now has `ContextWithSession` and `EmbedSessionInContext` functions, which allows to embed a session in a context. Future calls to `BlockGetter.GetBlock`, `BlockGetter.GetBlocks` and `NewSession` will use the session in the context.
+- `blockservice.NewWritethrough` deprecated function has been removed, instead you can do `blockservice.New(..., ..., WriteThrough())` like previously.
+- `gateway`: a new header configuration middleware has been added to replace the existing header configuration, which can be used more generically.
+- `namesys` now has a `WithMaxCacheTTL` option, which allows you to define a maximum TTL that will be used for caching IPNS entries.
+
 ### Changed
 
 ### Removed
 
+### Fixed
+
+- 🛠 `boxo/gateway`: when making a trustless CAR request with the "entity-bytes" parameter, using a negative index greater than the underlying entity length could trigger reading more data than intended
+- 🛠 `boxo/gateway`: the header configuration `Config.Headers` and `AddAccessControlHeaders` has been replaced by the new middleware provided by `NewHeaders`.
+
 ### Security
+
+## [v0.17.0]
+
+### Added
+
+* 🛠 `pinning/pinner`: you can now give a custom name when pinning a CID. To reflect this, the `Pinner` has been adjusted. Note that calling `Pin` for the same CID with a different name will replace its current name by the newly given name.
+
+### Removed
+
+- 🛠 `tracing` `jaeger` exporter has been removed due to it's deprecation and removal from upstream, you should use `otlp` exporter instead. See the [docs](./docs/tracing.md) for an example.
 
 ## [v0.16.0]
 

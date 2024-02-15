@@ -352,8 +352,7 @@ func TestHeaders(t *testing.T) {
 		headers := map[string][]string{}
 		headers[headerACAO] = []string{expectedACAO}
 
-		ts := newTestServerWithConfig(t, backend, Config{
-			Headers: headers,
+		ts := newTestServerWithConfigAndHeaders(t, backend, Config{
 			PublicGateways: map[string]*PublicGateway{
 				"subgw.example.com": {
 					Paths:                 []string{"/ipfs", "/ipns"},
@@ -362,7 +361,7 @@ func TestHeaders(t *testing.T) {
 				},
 			},
 			DeserializedResponses: true,
-		})
+		}, headers)
 		t.Logf("test server url: %s", ts.URL)
 
 		testCORSPreflightRequest := func(t *testing.T, path, hostHeader string, requestOriginHeader string, code int) {
@@ -532,7 +531,6 @@ func TestRedirects(t *testing.T) {
 		backend.namesys["/ipns/example.com"] = newMockNamesysItem(path.FromCid(root), 0)
 
 		ts := newTestServerWithConfig(t, backend, Config{
-			Headers:   map[string][]string{},
 			NoDNSLink: false,
 			PublicGateways: map[string]*PublicGateway{
 				"example.com": {
@@ -579,6 +577,92 @@ func TestRedirects(t *testing.T) {
 		do(http.MethodGet)
 		do(http.MethodHead)
 	})
+
+	t.Run("Superfluous namespace", func(t *testing.T) {
+		t.Parallel()
+
+		backend, root := newMockBackend(t, "fixtures.car")
+		backend.namesys["/ipns/dnslink-gateway.com"] = newMockNamesysItem(path.FromCid(root), 0)
+		backend.namesys["/ipns/dnslink-website.com"] = newMockNamesysItem(path.FromCid(root), 0)
+
+		ts := newTestServerWithConfig(t, backend, Config{
+			NoDNSLink: false,
+			PublicGateways: map[string]*PublicGateway{
+				"dnslink-gateway.com": {
+					Paths:                 []string{"/ipfs", "/ipns"},
+					NoDNSLink:             false,
+					DeserializedResponses: true,
+				},
+				"dnslink-website.com": {
+					Paths:                 []string{},
+					NoDNSLink:             false,
+					DeserializedResponses: true,
+				},
+				"gateway.com": {
+					Paths:                 []string{"/ipfs"},
+					UseSubdomains:         false,
+					NoDNSLink:             true,
+					DeserializedResponses: true,
+				},
+				"subdomain-gateway.com": {
+					Paths:                 []string{"/ipfs", "/ipns"},
+					UseSubdomains:         true,
+					NoDNSLink:             true,
+					DeserializedResponses: true,
+				},
+			},
+			DeserializedResponses: true,
+		})
+
+		for _, test := range []struct {
+			host     string
+			path     string
+			status   int
+			location string
+		}{
+			// Barebones gateway
+			{"", "/ipfs/ipfs/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR", http.StatusMovedPermanently, "/ipfs/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR"},
+			{"", "/ipfs/ipns/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR", http.StatusMovedPermanently, "/ipns/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR"},
+			{"", "/ipfs/ipns/dnslink.com", http.StatusMovedPermanently, "/ipns/dnslink.com"},
+
+			// DNSLink Gateway with /ipfs and /ipns enabled
+			{"dnslink-gateway.com", "/ipfs/ipfs/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR", http.StatusMovedPermanently, "/ipfs/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR"},
+			{"dnslink-gateway.com", "/ipfs/ipns/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR", http.StatusMovedPermanently, "/ipns/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR"},
+			{"dnslink-gateway.com", "/ipfs/ipns/dnslink.com", http.StatusMovedPermanently, "/ipns/dnslink.com"},
+
+			// DNSLink Gateway without /ipfs and /ipns
+			{"dnslink-website.com", "/ipfs/ipfs/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR", http.StatusNotFound, ""},
+			{"dnslink-website.com", "/ipfs/ipns/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR", http.StatusNotFound, ""},
+			{"dnslink-website.com", "/ipfs/ipns/dnslink.com", http.StatusNotFound, ""},
+
+			// Public gateway
+			{"gateway.com", "/ipfs/ipfs/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR", http.StatusMovedPermanently, "/ipfs/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR"},
+			{"gateway.com", "/ipfs/ipns/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR", http.StatusMovedPermanently, "/ipns/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR"},
+			{"gateway.com", "/ipfs/ipns/dnslink.com", http.StatusMovedPermanently, "/ipns/dnslink.com"},
+
+			// Subdomain gateway
+			{"subdomain-gateway.com", "/ipfs/ipfs/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR", http.StatusMovedPermanently, "/ipfs/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR"},
+			{"subdomain-gateway.com", "/ipfs/ipns/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR", http.StatusMovedPermanently, "/ipns/QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR"},
+			{"subdomain-gateway.com", "/ipfs/ipns/dnslink.com", http.StatusMovedPermanently, "/ipns/dnslink.com"},
+		} {
+			testName := ts.URL + test.path
+			if test.host != "" {
+				testName += " " + test.host
+			}
+
+			t.Run(testName, func(t *testing.T) {
+				req := mustNewRequest(t, http.MethodGet, ts.URL+test.path, nil)
+				req.Header.Set("Accept", "text/html")
+				if test.host != "" {
+					req.Host = test.host
+				}
+				resp := mustDoWithoutRedirect(t, req)
+				defer resp.Body.Close()
+				require.Equal(t, test.status, resp.StatusCode)
+				require.Equal(t, test.location, resp.Header.Get("Location"))
+			})
+		}
+	})
 }
 
 func TestDeserializedResponses(t *testing.T) {
@@ -590,7 +674,6 @@ func TestDeserializedResponses(t *testing.T) {
 		backend, root := newMockBackend(t, "fixtures.car")
 
 		ts := newTestServerWithConfig(t, backend, Config{
-			Headers:   map[string][]string{},
 			NoDNSLink: false,
 			PublicGateways: map[string]*PublicGateway{
 				"trustless.com": {
@@ -670,7 +753,6 @@ func TestDeserializedResponses(t *testing.T) {
 		backend.namesys["/ipns/trusted.com"] = newMockNamesysItem(path.FromCid(root), 0)
 
 		ts := newTestServerWithConfig(t, backend, Config{
-			Headers:   map[string][]string{},
 			NoDNSLink: false,
 			PublicGateways: map[string]*PublicGateway{
 				"trustless.com": {

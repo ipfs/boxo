@@ -68,7 +68,7 @@ func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.H
 						return
 					}
 					if newURL != "" {
-						httpRedirectWithHeaders(w, r, newURL, http.StatusMovedPermanently, c.Headers)
+						http.Redirect(w, r, newURL, http.StatusMovedPermanently)
 						return
 					}
 				}
@@ -131,7 +131,7 @@ func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.H
 					if newURL != "" {
 						// Redirect to deterministic CID to ensure CID
 						// always gets the same Origin on the web
-						httpRedirectWithHeaders(w, r, newURL, http.StatusMovedPermanently, c.Headers)
+						http.Redirect(w, r, newURL, http.StatusMovedPermanently)
 						return
 					}
 				}
@@ -146,7 +146,7 @@ func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.H
 						}
 						if newURL != "" {
 							// Redirect to CID fixed inside of toSubdomainURL()
-							httpRedirectWithHeaders(w, r, newURL, http.StatusMovedPermanently, c.Headers)
+							http.Redirect(w, r, newURL, http.StatusMovedPermanently)
 							return
 						}
 					}
@@ -624,15 +624,4 @@ func (gws *hostnameGateways) knownSubdomainDetails(hostname string) (gw *PublicG
 	}
 	// no match
 	return nil, "", "", "", false
-}
-
-// httpRedirectWithHeaders applies custom headers before returning a redirect
-// response to ensure consistency during transition from path to subdomain
-// contexts.
-func httpRedirectWithHeaders(w http.ResponseWriter, r *http.Request, url string, code int, headers map[string][]string) {
-	// ensure things like CORS are applied to redirect responses
-	// (https://github.com/ipfs/kubo/issues/9983#issuecomment-1599673976)
-	addCustomHeaders(w, headers)
-
-	http.Redirect(w, r, url, code)
 }

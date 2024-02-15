@@ -27,8 +27,10 @@ const (
 )
 
 func runBothSubtests(t *testing.T, tfunc func(*testing.T, UseRawLeaves)) {
-	t.Run("leaves=ProtoBuf", func(t *testing.T) { tfunc(t, ProtoBufLeaves) })
-	t.Run("leaves=Raw", func(t *testing.T) { tfunc(t, RawLeaves) })
+	t.Parallel()
+
+	t.Run("leaves=ProtoBuf", func(t *testing.T) { t.Parallel(); tfunc(t, ProtoBufLeaves) })
+	t.Run("leaves=Raw", func(t *testing.T) { t.Parallel(); tfunc(t, RawLeaves) })
 }
 
 func buildTestDag(ds ipld.DAGService, spl chunker.Splitter, rawLeaves UseRawLeaves) (*merkledag.ProtoNode, error) {
@@ -611,6 +613,8 @@ func testMultipleAppends(t *testing.T, rawLeaves UseRawLeaves) {
 }
 
 func TestAppendSingleBytesToEmpty(t *testing.T) {
+	t.Parallel()
+
 	ds := mdtest.Mock()
 
 	data := []byte("AB")
