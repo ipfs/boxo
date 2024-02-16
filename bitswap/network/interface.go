@@ -49,7 +49,11 @@ type BitSwapNetwork interface {
 
 	Stats() Stats
 
-	Routing
+	// FindProvidersAsync returns a channel of providers for the given key.
+	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.ID
+
+	// Provide provides the key to the network.
+	Provide(context.Context, cid.Cid) error
 
 	Pinger
 }
