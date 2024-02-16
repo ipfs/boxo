@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/ipfs/boxo/bitswap/client/internal"
@@ -15,6 +16,8 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 )
 
@@ -25,6 +28,9 @@ var (
 
 const (
 	broadcastLiveWantsLimit = 64
+	// MAGIC: why ten ? we should keep searching until we find a couple of online peers
+	maxProviders         = 10
+	findProvidersTimeout = 10 * time.Second
 )
 
 // PeerManager keeps track of which sessions are interested in which peers
@@ -74,7 +80,7 @@ type SessionPeerManager interface {
 // ProviderFinder is used to find providers for a given key
 type ProviderFinder interface {
 	// FindProvidersAsync searches for peers that provide the given CID
-	FindProvidersAsync(ctx context.Context, k cid.Cid) <-chan peer.ID
+	FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.AddrInfo
 }
 
 // opType is the kind of operation that is being processed by the event loop
@@ -103,13 +109,12 @@ type op struct {
 // info to, and who to request blocks from.
 type Session struct {
 	// dependencies
-	ctx            context.Context
-	shutdown       func()
-	sm             SessionManager
-	pm             PeerManager
-	sprm           SessionPeerManager
-	providerFinder ProviderFinder // optional, nil when missing
-	sim            *bssim.SessionInterestManager
+	ctx      context.Context
+	shutdown func()
+	sm       SessionManager
+	pm       PeerManager
+	sprm     SessionPeerManager
+	sim      *bssim.SessionInterestManager
 
 	sw  sessionWants
 	sws sessionWantSender
@@ -131,7 +136,15 @@ type Session struct {
 	notif notifications.PubSub
 	id    uint64
 
-	self peer.ID
+	providerFinder ProviderFinder // optional, nil when missing
+	network        Connector
+}
+
+type Connector interface {
+	Self() peer.ID
+
+	// ConnectTo attempts to connect to the peer, using the passed addresses as a hint, they can be empty.
+	ConnectTo(context.Context, peer.AddrInfo) error
 }
 
 // New creates a new bitswap session whose lifetime is bounded by the
@@ -141,15 +154,15 @@ func New(
 	sm SessionManager,
 	id uint64,
 	sprm SessionPeerManager,
-	// providerFinder might be nil
-	providerFinder ProviderFinder,
 	sim *bssim.SessionInterestManager,
 	pm PeerManager,
 	bpm *bsbpm.BlockPresenceManager,
 	notif notifications.PubSub,
 	initialSearchDelay time.Duration,
 	periodicSearchDelay delay.D,
-	self peer.ID,
+	// providerFinder might be nil
+	providerFinder ProviderFinder,
+	network Connector,
 ) *Session {
 	ctx, cancel := context.WithCancel(ctx)
 	s := &Session{
@@ -160,7 +173,6 @@ func New(
 		sm:                  sm,
 		pm:                  pm,
 		sprm:                sprm,
-		providerFinder:      providerFinder,
 		sim:                 sim,
 		incoming:            make(chan op, 128),
 		latencyTrkr:         latencyTracker{},
@@ -169,7 +181,8 @@ func New(
 		id:                  id,
 		initialSearchDelay:  initialSearchDelay,
 		periodicSearchDelay: periodicSearchDelay,
-		self:                self,
+		providerFinder:      providerFinder,
+		network:             network,
 	}
 	s.sws = newSessionWantSender(id, pm, sprm, sm, bpm, s.onWantsSent, s.onPeersExhausted)
 
@@ -218,13 +231,13 @@ func (s *Session) logReceiveFrom(from peer.ID, interestedKs []cid.Cid, haves []c
 	}
 
 	for _, c := range interestedKs {
-		log.Debugw("Bitswap <- block", "local", s.self, "from", from, "cid", c, "session", s.id)
+		log.Debugw("Bitswap <- block", "local", s.network.Self(), "from", from, "cid", c, "session", s.id)
 	}
 	for _, c := range haves {
-		log.Debugw("Bitswap <- HAVE", "local", s.self, "from", from, "cid", c, "session", s.id)
+		log.Debugw("Bitswap <- HAVE", "local", s.network.Self(), "from", from, "cid", c, "session", s.id)
 	}
 	for _, c := range dontHaves {
-		log.Debugw("Bitswap <- DONT_HAVE", "local", s.self, "from", from, "cid", c, "session", s.id)
+		log.Debugw("Bitswap <- DONT_HAVE", "local", s.network.Self(), "from", from, "cid", c, "session", s.id)
 	}
 }
 
@@ -396,12 +409,68 @@ func (s *Session) findMorePeers(ctx context.Context, c cid.Cid) {
 		// ¯\_(ツ)_/¯
 		return
 	}
+
 	go func(k cid.Cid) {
-		for p := range s.providerFinder.FindProvidersAsync(ctx, k) {
-			// When a provider indicates that it has a cid, it's equivalent to
-			// the providing peer sending a HAVE
-			s.sws.Update(p, nil, []cid.Cid{c}, nil)
+		ctx, span := internal.StartSpan(ctx, "Session.findMorePeers")
+		defer span.End()
+		if span.IsRecording() {
+			span.SetAttributes(attribute.Stringer("cid", c))
 		}
+
+		ctx, cancel := context.WithTimeout(ctx, findProvidersTimeout)
+		defer cancel()
+
+		providers := s.providerFinder.FindProvidersAsync(ctx, k, maxProviders)
+		var wg sync.WaitGroup
+	providerLoop:
+		for {
+			select {
+			case p, ok := <-providers:
+				if !ok {
+					break providerLoop
+				}
+
+				if p.ID == s.network.Self() {
+					continue // ignore self as provider
+				}
+
+				wg.Add(1)
+				go func(p peer.AddrInfo) {
+					defer wg.Done()
+
+					ctx, span := internal.StartSpan(ctx, "Session.findMorePeers.ConnectTo")
+					defer span.End()
+					recording := span.IsRecording()
+					if recording {
+						maddrs := make([]string, len(p.Addrs))
+						for i, a := range p.Addrs {
+							maddrs[i] = a.String()
+						}
+
+						span.SetAttributes(
+							attribute.Stringer("peer", p.ID),
+							attribute.StringSlice("addrs", maddrs),
+						)
+					}
+
+					err := s.network.ConnectTo(ctx, p)
+					if err != nil {
+						if recording {
+							span.SetStatus(codes.Error, err.Error())
+						}
+						log.Debugf("failed to connect to provider %s: %s", p, err)
+						return
+					}
+
+					// When a provider indicates that it has a cid, it's equivalent to
+					// the providing peer sending a HAVE
+					s.sws.Update(p.ID, nil, []cid.Cid{c}, nil)
+				}(p)
+			case <-ctx.Done():
+				return
+			}
+		}
+		wg.Wait()
 	}(c)
 }
 
