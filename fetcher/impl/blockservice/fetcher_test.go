@@ -16,7 +16,6 @@ import (
 	"github.com/ipfs/boxo/fetcher/helpers"
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/fetcher/testutil"
-	mockrouting "github.com/ipfs/boxo/routing/mock"
 	blocks "github.com/ipfs/go-block-format"
 	delay "github.com/ipfs/go-ipfs-delay"
 	"github.com/ipld/go-ipld-prime"
@@ -38,7 +37,7 @@ func TestFetchIPLDPrimeNode(t *testing.T) {
 		})
 	}))
 
-	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0*time.Millisecond))
+	net := tn.VirtualNetwork(delay.Fixed(0 * time.Millisecond))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
 
@@ -87,7 +86,7 @@ func TestFetchIPLDGraph(t *testing.T) {
 		})
 	}))
 
-	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0*time.Millisecond))
+	net := tn.VirtualNetwork(delay.Fixed(0 * time.Millisecond))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
 
@@ -143,7 +142,7 @@ func TestFetchIPLDPath(t *testing.T) {
 		})
 	}))
 
-	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0*time.Millisecond))
+	net := tn.VirtualNetwork(delay.Fixed(0 * time.Millisecond))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
 
@@ -207,7 +206,7 @@ func TestHelpers(t *testing.T) {
 		})
 	}))
 
-	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0*time.Millisecond))
+	net := tn.VirtualNetwork(delay.Fixed(0 * time.Millisecond))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
 
@@ -321,7 +320,7 @@ func TestNodeReification(t *testing.T) {
 		na.AssembleEntry("link4").AssignLink(link4)
 	}))
 
-	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0*time.Millisecond))
+	net := tn.VirtualNetwork(delay.Fixed(0 * time.Millisecond))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
 

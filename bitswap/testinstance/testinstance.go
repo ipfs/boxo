@@ -49,12 +49,28 @@ func (g *InstanceGenerator) Close() error {
 
 // Next generates a new instance of bitswap + dependencies
 func (g *InstanceGenerator) Next() Instance {
+	return g.NextWithExtraOptions(nil)
+}
+
+// NextWithExtraOptions is like [Next] but it will callback with a fake identity and append extra options.
+// If extraOpts is nil, it will ignore it.
+func (g *InstanceGenerator) NextWithExtraOptions(extraOpts func(p tnet.Identity) ([]bsnet.NetOpt, []bitswap.Option)) Instance {
 	g.seq++
 	p, err := p2ptestutil.RandTestBogusIdentity()
 	if err != nil {
-		panic("FIXME") // TODO change signature
+		panic(err.Error()) // TODO change signature
 	}
-	return NewInstance(g.ctx, g.net, p, g.netOptions, g.bsOptions)
+
+	var extraNet []bsnet.NetOpt
+	var extraBitswap []bitswap.Option
+	if extraOpts != nil {
+		extraNet, extraBitswap = extraOpts(p)
+	}
+
+	return NewInstance(g.ctx, g.net, p,
+		append(g.netOptions[:len(g.netOptions):len(g.netOptions)], extraNet...),
+		append(g.bsOptions[:len(g.bsOptions):len(g.bsOptions)], extraBitswap...),
+	)
 }
 
 // Instances creates N test instances of bitswap + dependencies and connects
@@ -74,7 +90,7 @@ func ConnectInstances(instances []Instance) {
 	for i, inst := range instances {
 		for j := i + 1; j < len(instances); j++ {
 			oinst := instances[j]
-			err := inst.Adapter.ConnectTo(context.Background(), oinst.Peer)
+			err := inst.Adapter.ConnectTo(context.Background(), peer.AddrInfo{ID: oinst.Peer})
 			if err != nil {
 				panic(err.Error())
 			}

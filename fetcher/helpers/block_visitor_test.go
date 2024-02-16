@@ -11,7 +11,6 @@ import (
 	"github.com/ipfs/boxo/fetcher/helpers"
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/fetcher/testutil"
-	mockrouting "github.com/ipfs/boxo/routing/mock"
 	blocks "github.com/ipfs/go-block-format"
 	delay "github.com/ipfs/go-ipfs-delay"
 	"github.com/ipld/go-ipld-prime"
@@ -44,7 +43,7 @@ func TestFetchGraphToBlocks(t *testing.T) {
 		})
 	}))
 
-	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0*time.Millisecond))
+	net := tn.VirtualNetwork(delay.Fixed(0 * time.Millisecond))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
 
@@ -94,7 +93,7 @@ func TestFetchGraphToUniqueBlocks(t *testing.T) {
 		})
 	}))
 
-	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(0*time.Millisecond))
+	net := tn.VirtualNetwork(delay.Fixed(0 * time.Millisecond))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
 
