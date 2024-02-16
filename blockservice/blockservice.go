@@ -140,6 +140,11 @@ func New(bs blockstore.Blockstore, exchange exchange.Interface, opts ...Option) 
 
 // Blockstore returns the blockstore behind this blockservice.
 func (s *blockService) Blockstore() blockstore.Blockstore {
+	if s.provider != nil {
+		// FIXME: this is a hack remove once ipfs/boxo#567 is solved.
+		return providingBlockstore{s.blockstore, s.provider}
+	}
+
 	return s.blockstore
 }
 
@@ -275,7 +280,7 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 		return nil, err
 	}
 
-	blockstore := bs.Blockstore()
+	provider, blockstore := grabProviderAndBlockstoreFromBlockservice(bs)
 
 	block, err := blockstore.Get(ctx, c)
 	switch {
@@ -309,7 +314,7 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 			return nil, err
 		}
 	}
-	if provider := grabProviderFromBlockservice(bs); provider != nil {
+	if provider != nil {
 		err = provider.Provide(blk.Cid())
 		if err != nil {
 			return nil, err
@@ -360,7 +365,7 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 			ks = ks2
 		}
 
-		bs := blockservice.Blockstore()
+		provider, bs := grabProviderAndBlockstoreFromBlockservice(blockservice)
 
 		var misses []cid.Cid
 		for _, c := range ks {
@@ -388,7 +393,6 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 		}
 
 		ex := blockservice.Exchange()
-		provider := grabProviderFromBlockservice(blockservice)
 		var cache [1]blocks.Block // preallocate once for all iterations
 		for {
 			var b blocks.Block
@@ -515,10 +519,13 @@ func grabAllowlistFromBlockservice(bs BlockService) verifcid.Allowlist {
 	return verifcid.DefaultAllowlist
 }
 
-// grabProviderFromBlockservice can return nil if no provider is used.
-func grabProviderFromBlockservice(bs BlockService) provider.Provider {
-	if bbs, ok := bs.(ProvidingBlockService); ok {
-		return bbs.Provider()
+// grabProviderAndBlockstoreFromBlockservice can return nil if no provider is used.
+func grabProviderAndBlockstoreFromBlockservice(bs BlockService) (provider.Provider, blockstore.Blockstore) {
+	if bbs, ok := bs.(*blockService); ok {
+		return bbs.provider, bbs.blockstore
 	}
-	return nil
+	if bbs, ok := bs.(ProvidingBlockService); ok {
+		return bbs.Provider(), bbs.Blockstore()
+	}
+	return nil, bs.Blockstore()
 }
