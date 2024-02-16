@@ -13,6 +13,7 @@ import (
 
 	"github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/exchange"
+	"github.com/ipfs/boxo/provider"
 	"github.com/ipfs/boxo/verifcid"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -73,10 +74,21 @@ type BoundedBlockService interface {
 
 var _ BoundedBlockService = (*blockService)(nil)
 
+// ProvidingBlockService is a Blockservice which provides new blocks to a provider.
+type ProvidingBlockService interface {
+	BlockService
+
+	// Provider can return nil, then no provider is used.
+	Provider() provider.Provider
+}
+
+var _ ProvidingBlockService = (*blockService)(nil)
+
 type blockService struct {
 	allowlist  verifcid.Allowlist
 	blockstore blockstore.Blockstore
 	exchange   exchange.Interface
+	provider   provider.Provider
 	// If checkFirst is true then first check that a block doesn't
 	// already exist to avoid republishing the block on the exchange.
 	checkFirst bool
@@ -96,6 +108,13 @@ func WriteThrough() Option {
 func WithAllowlist(allowlist verifcid.Allowlist) Option {
 	return func(bs *blockService) {
 		bs.allowlist = allowlist
+	}
+}
+
+// WithProvider allows to advertise anything that is added through the blockservice.
+func WithProvider(prov provider.Provider) Option {
+	return func(bs *blockService) {
+		bs.provider = prov
 	}
 }
 
@@ -121,6 +140,11 @@ func New(bs blockstore.Blockstore, exchange exchange.Interface, opts ...Option) 
 
 // Blockstore returns the blockstore behind this blockservice.
 func (s *blockService) Blockstore() blockstore.Blockstore {
+	if s.provider != nil {
+		// FIXME: this is a hack remove once ipfs/boxo#567 is solved.
+		return providingBlockstore{s.blockstore, s.provider}
+	}
+
 	return s.blockstore
 }
 
@@ -131,6 +155,10 @@ func (s *blockService) Exchange() exchange.Interface {
 
 func (s *blockService) Allowlist() verifcid.Allowlist {
 	return s.allowlist
+}
+
+func (s *blockService) Provider() provider.Provider {
+	return s.provider
 }
 
 // NewSession creates a new session that allows for
@@ -168,6 +196,11 @@ func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 	if s.exchange != nil {
 		if err := s.exchange.NotifyNewBlocks(ctx, o); err != nil {
 			logger.Errorf("NotifyNewBlocks: %s", err.Error())
+		}
+	}
+	if s.provider != nil {
+		if err := s.provider.Provide(o.Cid()); err != nil {
+			logger.Errorf("Provide: %s", err.Error())
 		}
 	}
 
@@ -216,6 +249,14 @@ func (s *blockService) AddBlocks(ctx context.Context, bs []blocks.Block) error {
 			logger.Errorf("NotifyNewBlocks: %s", err.Error())
 		}
 	}
+	if s.provider != nil {
+		for _, o := range toput {
+			if err := s.provider.Provide(o.Cid()); err != nil {
+				logger.Errorf("Provide: %s", err.Error())
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -239,7 +280,7 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 		return nil, err
 	}
 
-	blockstore := bs.Blockstore()
+	provider, blockstore := grabProviderAndBlockstoreFromBlockservice(bs)
 
 	block, err := blockstore.Get(ctx, c)
 	switch {
@@ -269,6 +310,12 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 	}
 	if ex := bs.Exchange(); ex != nil {
 		err = ex.NotifyNewBlocks(ctx, blk)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if provider != nil {
+		err = provider.Provide(blk.Cid())
 		if err != nil {
 			return nil, err
 		}
@@ -318,7 +365,7 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 			ks = ks2
 		}
 
-		bs := blockservice.Blockstore()
+		provider, bs := grabProviderAndBlockstoreFromBlockservice(blockservice)
 
 		var misses []cid.Cid
 		for _, c := range ks {
@@ -375,6 +422,14 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 					return
 				}
 				cache[0] = nil // early gc
+			}
+
+			if provider != nil {
+				err = provider.Provide(b.Cid())
+				if err != nil {
+					logger.Errorf("could not tell the provider about new blocks: %s", err)
+					return
+				}
 			}
 
 			select {
@@ -462,4 +517,15 @@ func grabAllowlistFromBlockservice(bs BlockService) verifcid.Allowlist {
 		return bbs.Allowlist()
 	}
 	return verifcid.DefaultAllowlist
+}
+
+// grabProviderAndBlockstoreFromBlockservice can return nil if no provider is used.
+func grabProviderAndBlockstoreFromBlockservice(bs BlockService) (provider.Provider, blockstore.Blockstore) {
+	if bbs, ok := bs.(*blockService); ok {
+		return bbs.provider, bbs.blockstore
+	}
+	if bbs, ok := bs.(ProvidingBlockService); ok {
+		return bbs.Provider(), bbs.Blockstore()
+	}
+	return nil, bs.Blockstore()
 }

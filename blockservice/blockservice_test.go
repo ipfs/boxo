@@ -288,3 +288,104 @@ func TestAllowlist(t *testing.T) {
 	check(blockservice.GetBlock)
 	check(NewSession(ctx, blockservice).GetBlock)
 }
+
+type wrappedBlockservice struct {
+	BlockService
+}
+
+type mockProvider []cid.Cid
+
+func (p *mockProvider) Provide(c cid.Cid) error {
+	*p = append(*p, c)
+	return nil
+}
+
+func TestProviding(t *testing.T) {
+	t.Parallel()
+	a := assert.New(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	bgen := butil.NewBlockGenerator()
+	blocks := bgen.Blocks(12)
+
+	exchange := blockstore.NewBlockstore(ds.NewMapDatastore())
+
+	prov := mockProvider{}
+	blockservice := New(blockstore.NewBlockstore(ds.NewMapDatastore()), offline.Exchange(exchange), WithProvider(&prov))
+	var added []cid.Cid
+
+	// Adding one block provide it.
+	a.NoError(blockservice.AddBlock(ctx, blocks[0]))
+	added = append(added, blocks[0].Cid())
+	blocks = blocks[1:]
+
+	// Adding multiple blocks provide them.
+	a.NoError(blockservice.AddBlocks(ctx, blocks[0:2]))
+	added = append(added, blocks[0].Cid(), blocks[1].Cid())
+	blocks = blocks[2:]
+
+	// Downloading one block provide it.
+	a.NoError(exchange.Put(ctx, blocks[0]))
+	_, err := blockservice.GetBlock(ctx, blocks[0].Cid())
+	a.NoError(err)
+	added = append(added, blocks[0].Cid())
+	blocks = blocks[1:]
+
+	// Downloading multiple blocks provide them.
+	a.NoError(exchange.PutMany(ctx, blocks[0:2]))
+	cids := []cid.Cid{blocks[0].Cid(), blocks[1].Cid()}
+	var got []cid.Cid
+	for b := range blockservice.GetBlocks(ctx, cids) {
+		got = append(got, b.Cid())
+	}
+	added = append(added, cids...)
+	a.ElementsMatch(cids, got)
+	blocks = blocks[2:]
+
+	session := NewSession(ctx, blockservice)
+
+	// Downloading one block over a session provide it.
+	a.NoError(exchange.Put(ctx, blocks[0]))
+	_, err = session.GetBlock(ctx, blocks[0].Cid())
+	a.NoError(err)
+	added = append(added, blocks[0].Cid())
+	blocks = blocks[1:]
+
+	// Downloading multiple blocks over a session provide them.
+	a.NoError(exchange.PutMany(ctx, blocks[0:2]))
+	cids = []cid.Cid{blocks[0].Cid(), blocks[1].Cid()}
+	got = nil
+	for b := range session.GetBlocks(ctx, cids) {
+		got = append(got, b.Cid())
+	}
+	a.ElementsMatch(cids, got)
+	added = append(added, cids...)
+	blocks = blocks[2:]
+
+	// Test wrapping the blockservice like nopfs does.
+	session = NewSession(ctx, wrappedBlockservice{blockservice})
+
+	// Downloading one block over a wrapped blockservice session provide it.
+	a.NoError(exchange.Put(ctx, blocks[0]))
+	_, err = session.GetBlock(ctx, blocks[0].Cid())
+	a.NoError(err)
+	added = append(added, blocks[0].Cid())
+	blocks = blocks[1:]
+
+	// Downloading multiple blocks over a wrapped blockservice session provide them.
+	a.NoError(exchange.PutMany(ctx, blocks[0:2]))
+	cids = []cid.Cid{blocks[0].Cid(), blocks[1].Cid()}
+	got = nil
+	for b := range session.GetBlocks(ctx, cids) {
+		got = append(got, b.Cid())
+	}
+	a.ElementsMatch(cids, got)
+	added = append(added, cids...)
+	blocks = blocks[2:]
+
+	a.Empty(blocks)
+
+	a.ElementsMatch(added, []cid.Cid(prov))
+}

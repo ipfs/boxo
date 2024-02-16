@@ -43,10 +43,6 @@ func TaskWorkerCount(count int) Option {
 	return Option{server.TaskWorkerCount(count)}
 }
 
-func ProvideEnabled(enabled bool) Option {
-	return Option{server.ProvideEnabled(enabled)}
-}
-
 func SetSendDontHaves(send bool) Option {
 	return Option{server.SetSendDontHaves(send)}
 }
