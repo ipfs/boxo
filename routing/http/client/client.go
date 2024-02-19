@@ -74,55 +74,58 @@ type httpClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-type Option func(*Client)
+type Option func(*Client) error
 
 func WithIdentity(identity crypto.PrivKey) Option {
-	return func(c *Client) {
+	return func(c *Client) error {
 		c.identity = identity
+		return nil
 	}
 }
 
-// WithHTTPClient sets a custom HTTP Client to be used with [Client]. If you use
-// this option, [WithUserAgent] will no longer work, as it is made to work with
-// the default HTTP Client.
+// WithHTTPClient sets a custom HTTP Client to be used with [Client].
 func WithHTTPClient(h httpClient) Option {
-	return func(c *Client) {
+	return func(c *Client) error {
 		c.httpClient = h
+		return nil
 	}
 }
 
-// WithUserAgent sets a custom user agent to use with the HTTP Client. This will
-// only work if you use the default HTTP Client. If you use [WithHTTPClient], you
-// should set the user agent yourself.
+// WithUserAgent sets a custom user agent to use with the HTTP Client. This only
+// works if using a [http.Client] with a [ResponseBodyLimitedTransport] set as its
+// transport. Otherwise, an error will be returned.
 func WithUserAgent(ua string) Option {
-	return func(c *Client) {
+	return func(c *Client) error {
 		if ua == "" {
-			return
+			return errors.New("empty user agent")
 		}
 		httpClient, ok := c.httpClient.(*http.Client)
 		if !ok {
-			return
+			return errors.New("the http client of the Client must be a *http.Client")
 		}
 		transport, ok := httpClient.Transport.(*ResponseBodyLimitedTransport)
 		if !ok {
-			return
+			return errors.New("the transport of the http client of the Client must be a *ResponseBodyLimitedTransport")
 		}
 		transport.UserAgent = ua
+		return nil
 	}
 }
 
 func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
-	return func(c *Client) {
+	return func(c *Client) error {
 		c.peerID = peerID
 		for _, a := range addrs {
 			c.addrs = append(c.addrs, types.Multiaddr{Multiaddr: a})
 		}
+		return nil
 	}
 }
 
 func WithStreamResultsRequired() Option {
-	return func(c *Client) {
+	return func(c *Client) error {
 		c.accepts = mediaTypeNDJSON
+		return nil
 	}
 }
 
@@ -137,7 +140,10 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 	}
 
 	for _, opt := range opts {
-		opt(client)
+		err := opt(client)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if client.identity != nil && client.peerID.Size() != 0 && !client.peerID.MatchesPublicKey(client.identity.GetPublic()) {
