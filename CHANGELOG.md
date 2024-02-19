@@ -29,6 +29,7 @@ The following emojis are used to highlight certain changes:
 
 - 🛠 `boxo/gateway`: when making a trustless CAR request with the "entity-bytes" parameter, using a negative index greater than the underlying entity length could trigger reading more data than intended
 - 🛠 `boxo/gateway`: the header configuration `Config.Headers` and `AddAccessControlHeaders` has been replaced by the new middleware provided by `NewHeaders`.
+- 🛠 `routing/http/client`: the default HTTP client is no longer a global singleton. Therefore, using `WithUserAgent` won't modify the user agent of existing routing clients. This will also prevent potential race conditions. In addition, incompatible options will now return errors instead of silently failing.
 
 ### Security
 
