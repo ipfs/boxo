@@ -91,9 +91,12 @@ func WithHTTPClient(h httpClient) Option {
 	}
 }
 
-// WithUserAgent sets a custom user agent to use with the HTTP Client. This only
-// works if using a [http.Client] with a [ResponseBodyLimitedTransport] set as its
-// transport. Otherwise, an error will be returned.
+// WithUserAgent sets a custom user agent to use with the HTTP Client. This modifies
+// the underlying [http.Client]. Therefore, you should not use the same HTTP Client
+// with multiple routing clients.
+//
+// This only works if using a [http.Client] with a [ResponseBodyLimitedTransport]
+// set as its transport. Otherwise, an error will be returned.
 func WithUserAgent(ua string) Option {
 	return func(c *Client) error {
 		if ua == "" {
