@@ -28,15 +28,8 @@ import (
 )
 
 var (
-	_                 contentrouter.Client = &Client{}
-	logger                                 = logging.Logger("routing/http/client")
-	defaultHTTPClient                      = &http.Client{
-		Transport: &ResponseBodyLimitedTransport{
-			RoundTripper: http.DefaultTransport,
-			LimitBytes:   1 << 20,
-			UserAgent:    defaultUserAgent,
-		},
-	}
+	_      contentrouter.Client = &Client{}
+	logger                      = logging.Logger("routing/http/client")
 )
 
 const (
@@ -67,53 +60,75 @@ var defaultUserAgent = moduleVersion()
 
 var _ contentrouter.Client = &Client{}
 
+func newDefaultHTTPClient(userAgent string) *http.Client {
+	return &http.Client{
+		Transport: &ResponseBodyLimitedTransport{
+			RoundTripper: http.DefaultTransport,
+			LimitBytes:   1 << 20,
+			UserAgent:    userAgent,
+		},
+	}
+}
+
 type httpClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-type Option func(*Client)
+type Option func(*Client) error
 
 func WithIdentity(identity crypto.PrivKey) Option {
-	return func(c *Client) {
+	return func(c *Client) error {
 		c.identity = identity
+		return nil
 	}
 }
 
+// WithHTTPClient sets a custom HTTP Client to be used with [Client].
 func WithHTTPClient(h httpClient) Option {
-	return func(c *Client) {
+	return func(c *Client) error {
 		c.httpClient = h
+		return nil
 	}
 }
 
+// WithUserAgent sets a custom user agent to use with the HTTP Client. This modifies
+// the underlying [http.Client]. Therefore, you should not use the same HTTP Client
+// with multiple routing clients.
+//
+// This only works if using a [http.Client] with a [ResponseBodyLimitedTransport]
+// set as its transport. Otherwise, an error will be returned.
 func WithUserAgent(ua string) Option {
-	return func(c *Client) {
+	return func(c *Client) error {
 		if ua == "" {
-			return
+			return errors.New("empty user agent")
 		}
 		httpClient, ok := c.httpClient.(*http.Client)
 		if !ok {
-			return
+			return errors.New("the http client of the Client must be a *http.Client")
 		}
 		transport, ok := httpClient.Transport.(*ResponseBodyLimitedTransport)
 		if !ok {
-			return
+			return errors.New("the transport of the http client of the Client must be a *ResponseBodyLimitedTransport")
 		}
 		transport.UserAgent = ua
+		return nil
 	}
 }
 
 func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
-	return func(c *Client) {
+	return func(c *Client) error {
 		c.peerID = peerID
 		for _, a := range addrs {
 			c.addrs = append(c.addrs, types.Multiaddr{Multiaddr: a})
 		}
+		return nil
 	}
 }
 
 func WithStreamResultsRequired() Option {
-	return func(c *Client) {
+	return func(c *Client) error {
 		c.accepts = mediaTypeNDJSON
+		return nil
 	}
 }
 
@@ -122,13 +137,16 @@ func WithStreamResultsRequired() Option {
 func New(baseURL string, opts ...Option) (*Client, error) {
 	client := &Client{
 		baseURL:    baseURL,
-		httpClient: defaultHTTPClient,
+		httpClient: newDefaultHTTPClient(defaultUserAgent),
 		clock:      clock.New(),
 		accepts:    strings.Join([]string{mediaTypeNDJSON, mediaTypeJSON}, ","),
 	}
 
 	for _, opt := range opts {
-		opt(client)
+		err := opt(client)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if client.identity != nil && client.peerID.Size() != 0 && !client.peerID.MatchesPublicKey(client.identity.GetPublic()) {

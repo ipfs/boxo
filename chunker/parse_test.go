@@ -11,6 +11,8 @@ const (
 )
 
 func TestParseRabin(t *testing.T) {
+	t.Parallel()
+
 	r := bytes.NewReader(randBuf(t, 1000))
 
 	_, err := FromString(r, "rabin-18-25-32")
@@ -55,6 +57,8 @@ func TestParseRabin(t *testing.T) {
 }
 
 func TestParseSize(t *testing.T) {
+	t.Parallel()
+
 	r := bytes.NewReader(randBuf(t, 1000))
 
 	_, err := FromString(r, "size-0")

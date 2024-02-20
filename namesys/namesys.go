@@ -48,8 +48,9 @@ type namesys struct {
 	dnsResolver, ipnsResolver resolver
 	ipnsPublisher             Publisher
 
-	staticMap map[string]*cacheEntry
-	cache     *lru.Cache[string, cacheEntry]
+	staticMap   map[string]*cacheEntry
+	cache       *lru.Cache[string, cacheEntry]
+	maxCacheTTL *time.Duration
 }
 
 var _ NameSystem = &namesys{}
@@ -69,6 +70,20 @@ func WithCache(size int) Option {
 		}
 
 		ns.cache = cache
+		return nil
+	}
+}
+
+// WithMaxCacheTTL configures the maximum cache TTL. By default, if the cache is
+// enabled, the entry TTL will be used for caching. By setting this option, you
+// can limit how long that TTL is.
+//
+// For example, if you configure a maximum cache TTL of 1 minute:
+//   - Entry TTL is 5 minutes -> Cache TTL is 1 minute
+//   - Entry TTL is 30 seconds -> Cache TTL is 30 seconds
+func WithMaxCacheTTL(dur time.Duration) Option {
+	return func(n *namesys) error {
+		n.maxCacheTTL = &dur
 		return nil
 	}
 }

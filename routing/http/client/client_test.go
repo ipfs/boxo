@@ -109,11 +109,10 @@ func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option
 	server := httptest.NewServer(recordingHandler)
 	t.Cleanup(server.Close)
 	serverAddr := "http://" + server.Listener.Addr().String()
-	recordingHTTPClient := &recordingHTTPClient{httpClient: defaultHTTPClient}
+	recordingHTTPClient := &recordingHTTPClient{httpClient: newDefaultHTTPClient(testUserAgent)}
 	defaultClientOpts := []Option{
 		WithProviderInfo(peerID, addrs),
 		WithIdentity(identity),
-		WithUserAgent(testUserAgent),
 		WithHTTPClient(recordingHTTPClient),
 	}
 	c, err := New(serverAddr, append(defaultClientOpts, clientsOpts...)...)

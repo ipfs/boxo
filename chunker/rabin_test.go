@@ -11,6 +11,8 @@ import (
 )
 
 func TestRabinChunking(t *testing.T) {
+	t.Parallel()
+
 	data := make([]byte, 1024*1024*16)
 	n, err := util.NewTimeSeededRand().Read(data)
 	if n < len(data) {
@@ -67,6 +69,8 @@ func chunkData(t *testing.T, newC newSplitter, data []byte) map[string]blocks.Bl
 }
 
 func testReuse(t *testing.T, cr newSplitter) {
+	t.Parallel()
+
 	data := make([]byte, 1024*1024*16)
 	n, err := util.NewTimeSeededRand().Read(data)
 	if n < len(data) {

@@ -27,7 +27,7 @@ func TestWriteThroughWorks(t *testing.T) {
 	}
 	exchbstore := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	exch := offline.Exchange(exchbstore)
-	bserv := NewWriteThrough(bstore, exch)
+	bserv := New(bstore, exch, WriteThrough())
 	bgen := butil.NewBlockGenerator()
 
 	block := bgen.Next()
@@ -62,7 +62,7 @@ func TestExchangeWrite(t *testing.T) {
 		offline.Exchange(exchbstore),
 		0,
 	}
-	bserv := NewWriteThrough(bstore, exch)
+	bserv := New(bstore, exch, WriteThrough())
 	bgen := butil.NewBlockGenerator()
 
 	for name, fetcher := range map[string]BlockGetter{
@@ -136,7 +136,7 @@ func TestLazySessionInitialization(t *testing.T) {
 	session := offline.Exchange(bstore2)
 	exch := offline.Exchange(bstore3)
 	sessionExch := &fakeSessionExchange{Interface: exch, session: session}
-	bservSessEx := NewWriteThrough(bstore, sessionExch)
+	bservSessEx := New(bstore, sessionExch, WriteThrough())
 	bgen := butil.NewBlockGenerator()
 
 	block := bgen.Next()
@@ -234,7 +234,7 @@ func TestNilExchange(t *testing.T) {
 	block := bgen.Next()
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	bserv := NewWriteThrough(bs, nil)
+	bserv := New(bs, nil, WriteThrough())
 	sess := NewSession(ctx, bserv)
 	_, err := sess.GetBlock(ctx, block.Cid())
 	if !ipld.IsNotFound(err) {
@@ -287,4 +287,69 @@ func TestAllowlist(t *testing.T) {
 	blockservice := New(bs, nil, WithAllowlist(verifcid.NewAllowlist(map[uint64]bool{multihash.BLAKE3: true})))
 	check(blockservice.GetBlock)
 	check(NewSession(ctx, blockservice).GetBlock)
+}
+
+type fakeIsNewSessionCreateExchange struct {
+	ses                 exchange.Fetcher
+	newSessionWasCalled bool
+}
+
+var _ exchange.SessionExchange = (*fakeIsNewSessionCreateExchange)(nil)
+
+func (*fakeIsNewSessionCreateExchange) Close() error {
+	return nil
+}
+
+func (*fakeIsNewSessionCreateExchange) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
+	panic("should call on the session")
+}
+
+func (*fakeIsNewSessionCreateExchange) GetBlocks(context.Context, []cid.Cid) (<-chan blocks.Block, error) {
+	panic("should call on the session")
+}
+
+func (f *fakeIsNewSessionCreateExchange) NewSession(context.Context) exchange.Fetcher {
+	f.newSessionWasCalled = true
+	return f.ses
+}
+
+func (*fakeIsNewSessionCreateExchange) NotifyNewBlocks(context.Context, ...blocks.Block) error {
+	return nil
+}
+
+func TestContextSession(t *testing.T) {
+	t.Parallel()
+	a := assert.New(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	bgen := butil.NewBlockGenerator()
+	block1 := bgen.Next()
+	block2 := bgen.Next()
+
+	bs := blockstore.NewBlockstore(ds.NewMapDatastore())
+	a.NoError(bs.Put(ctx, block1))
+	a.NoError(bs.Put(ctx, block2))
+	sesEx := &fakeIsNewSessionCreateExchange{ses: offline.Exchange(bs)}
+
+	service := New(blockstore.NewBlockstore(ds.NewMapDatastore()), sesEx)
+
+	ctx = ContextWithSession(ctx, service)
+
+	b, err := service.GetBlock(ctx, block1.Cid())
+	a.NoError(err)
+	a.Equal(b.RawData(), block1.RawData())
+	a.True(sesEx.newSessionWasCalled, "new session from context should be created")
+	sesEx.newSessionWasCalled = false
+
+	bchan := service.GetBlocks(ctx, []cid.Cid{block2.Cid()})
+	a.Equal((<-bchan).RawData(), block2.RawData())
+	a.False(sesEx.newSessionWasCalled, "session should be reused in context")
+
+	a.Equal(
+		NewSession(ctx, service),
+		NewSession(ContextWithSession(ctx, service), service),
+		"session must be deduped in all invocations on the same context",
+	)
 }

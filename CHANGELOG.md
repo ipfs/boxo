@@ -20,7 +20,24 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+### Fixed
+
 ### Security
+
+## [v0.18.0]
+
+### Added
+
+- `blockservice` now has `ContextWithSession` and `EmbedSessionInContext` functions, which allows to embed a session in a context. Future calls to `BlockGetter.GetBlock`, `BlockGetter.GetBlocks` and `NewSession` will use the session in the context.
+- `blockservice.NewWritethrough` deprecated function has been removed, instead you can do `blockservice.New(..., ..., WriteThrough())` like previously.
+- `gateway`: a new header configuration middleware has been added to replace the existing header configuration, which can be used more generically.
+- `namesys` now has a `WithMaxCacheTTL` option, which allows you to define a maximum TTL that will be used for caching IPNS entries.
+
+### Fixed
+
+- 🛠 `boxo/gateway`: when making a trustless CAR request with the "entity-bytes" parameter, using a negative index greater than the underlying entity length could trigger reading more data than intended
+- 🛠 `boxo/gateway`: the header configuration `Config.Headers` and `AddAccessControlHeaders` has been replaced by the new middleware provided by `NewHeaders`.
+- 🛠 `routing/http/client`: the default HTTP client is no longer a global singleton. Therefore, using `WithUserAgent` won't modify the user agent of existing routing clients. This will also prevent potential race conditions. In addition, incompatible options will now return errors instead of silently failing.
 
 ## [v0.17.0]
 
@@ -47,7 +64,7 @@ The following emojis are used to highlight certain changes:
 ### Fixed
 
 * `boxo/gateway`
-  * a panic (which is recovered) could sporadically be triggered inside a CAR request, if the right [conditions were met](https://github.com/ipfs/boxo/pull/511). 
+  * a panic (which is recovered) could sporadically be triggered inside a CAR request, if the right [conditions were met](https://github.com/ipfs/boxo/pull/511).
   * no longer emits `http: superfluous response.WriteHeader` warnings when an error happens.
 
 ## [v0.15.0]
@@ -151,7 +168,7 @@ The following emojis are used to highlight certain changes:
 
 * 🛠 The `routing/http` package experienced following removals:
   * Server and client no longer support the experimental `Provide` method.
-    `ProvideBitswap` is still usable, but marked as deprecated. A protocol-agnostic 
+    `ProvideBitswap` is still usable, but marked as deprecated. A protocol-agnostic
     provide mechanism is being worked on in [IPIP-378](https://github.com/ipfs/specs/pull/378).
   * Server no longer exports `FindProvidersPath` and `ProvidePath`.
 

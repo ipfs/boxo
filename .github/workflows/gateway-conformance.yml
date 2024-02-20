@@ -16,18 +16,18 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.4
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.5
         with:
           output: fixtures
           merged: true
 
       # 2. Build the car-gateway
       - name: Setup Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
           go-version: 1.21.x
       - name: Checkout boxo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: boxo
       - name: Build car-gateway
@@ -40,7 +40,7 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests
-        uses: ipfs/gateway-conformance/.github/actions/test@v0.4
+        uses: ipfs/gateway-conformance/.github/actions/test@v0.5
         with:
           gateway-url: http://127.0.0.1:8040
           json: output.json
