@@ -19,8 +19,12 @@ import (
 	"github.com/multiformats/go-multibase"
 )
 
-const SchemaAnnouncement = "announcement"
-const announcementSignaturePrefix = "routing-record:"
+const (
+	SchemaAnnouncement         = "announcement"
+	SchemaAnnouncementResponse = "announcement-response"
+
+	announcementSignaturePrefix = "routing-record:"
+)
 
 var _ Record = &AnnouncementRecord{}
 
@@ -195,7 +199,6 @@ func (ap *AnnouncementPayload) UnmarshalJSON(b []byte) error {
 // AnnouncementRecord is a [Record] of [SchemaAnnouncement].
 type AnnouncementRecord struct {
 	Schema    string
-	Error     string `json:",omitempty"`
 	Payload   AnnouncementPayload
 	Signature string `json:",omitempty"`
 }
@@ -326,4 +329,48 @@ func makeIPLDMap(mp map[string]ipld.Node) (datamodel.Node, error) {
 	}
 
 	return nd.Build(), nil
+}
+
+var _ Record = &AnnouncementResponseRecord{}
+
+// AnnouncementRecord is a [Record] of [SchemaAnnouncementResponse].
+type AnnouncementResponseRecord struct {
+	Schema string
+	Error  string
+	TTL    time.Duration
+}
+
+func (ar *AnnouncementResponseRecord) GetSchema() string {
+	return ar.Schema
+}
+
+func (ar AnnouncementResponseRecord) MarshalJSON() ([]byte, error) {
+	v := struct {
+		Schema string
+		Error  string `json:",omitempty"`
+		TTL    int64  `json:",omitempty"`
+	}{
+		Schema: ar.Schema,
+		Error:  ar.Error,
+		TTL:    ar.TTL.Milliseconds(),
+	}
+
+	return drjson.MarshalJSONBytes(v)
+}
+
+func (ar *AnnouncementResponseRecord) UnmarshalJSON(b []byte) error {
+	v := struct {
+		Schema string
+		Error  string
+		TTL    int64
+	}{}
+	err := json.Unmarshal(b, &v)
+	if err != nil {
+		return err
+	}
+
+	ar.Schema = v.Schema
+	ar.Error = v.Error
+	ar.TTL = time.Duration(v.TTL) * time.Millisecond
+	return nil
 }

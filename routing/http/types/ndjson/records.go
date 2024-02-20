@@ -44,11 +44,11 @@ func NewRecordsIter(r io.Reader) iter.Iter[iter.Result[types.Record]] {
 	return iter.Map[iter.Result[types.UnknownRecord]](jsonIter, mapFn)
 }
 
-// NewAnnouncementRecordsIter returns an iterator that reads [types.AnnouncementRecord]
-// from the given [io.Reader]. Records with a different schema are ignored. To read all
-// records, use [NewRecordsIter] instead.
-func NewAnnouncementRecordsIter(r io.Reader) iter.Iter[iter.Result[*types.AnnouncementRecord]] {
-	return newFilteredRecords[*types.AnnouncementRecord](r, types.SchemaPeer)
+// NewAnnouncementResponseRecordsIter returns an iterator that reads
+// [types.AnnouncementResponseRecord] from the given [io.Reader]. Records with
+// a different schema are ignored. To read all records, use [NewRecordsIter] instead.
+func NewAnnouncementResponseRecordsIter(r io.Reader) iter.Iter[iter.Result[*types.AnnouncementResponseRecord]] {
+	return newFilteredRecords[*types.AnnouncementResponseRecord](r, types.SchemaPeer)
 }
 
 // NewPeerRecordsIter returns an iterator that reads [types.PeerRecord] from the given

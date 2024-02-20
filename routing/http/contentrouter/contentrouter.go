@@ -25,7 +25,7 @@ const ttl = 24 * time.Hour
 
 type Client interface {
 	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error)
-	Provide(ctx context.Context, announcements ...types.AnnouncementRequest) (iter.ResultIter[*types.AnnouncementRecord], error)
+	Provide(ctx context.Context, announcements ...types.AnnouncementRequest) (iter.ResultIter[*types.AnnouncementResponseRecord], error)
 	FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error)
 	GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error

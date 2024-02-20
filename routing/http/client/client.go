@@ -258,7 +258,7 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 // Provide publishes [types.AnnouncementRecord]s based on the given [types.AnnouncementRequests].
 // This records will be signed by your provided. Therefore, the [Client] must have been configured
 // with [WithProviderInfo].
-func (c *Client) Provide(ctx context.Context, announcements ...types.AnnouncementRequest) (iter.ResultIter[*types.AnnouncementRecord], error) {
+func (c *Client) Provide(ctx context.Context, announcements ...types.AnnouncementRequest) (iter.ResultIter[*types.AnnouncementResponseRecord], error) {
 	if err := c.canProvide(); err != nil {
 		return nil, err
 	}
@@ -309,7 +309,7 @@ func (c *Client) Provide(ctx context.Context, announcements ...types.Announcemen
 
 // ProvideRecords publishes the given [types.AnnouncementRecord]. An error will
 // be returned if the records aren't signed or valid.
-func (c *Client) ProvideRecords(ctx context.Context, records ...*types.AnnouncementRecord) (iter.ResultIter[*types.AnnouncementRecord], error) {
+func (c *Client) ProvideRecords(ctx context.Context, records ...*types.AnnouncementRecord) (iter.ResultIter[*types.AnnouncementResponseRecord], error) {
 	providerRecords := make([]types.Record, len(records))
 	for i, record := range records {
 		if err := record.Verify(); err != nil {
@@ -325,7 +325,7 @@ func (c *Client) ProvideRecords(ctx context.Context, records ...*types.Announcem
 	return c.provide(ctx, url, req)
 }
 
-func (c *Client) provide(ctx context.Context, url string, req interface{}) (iter.ResultIter[*types.AnnouncementRecord], error) {
+func (c *Client) provide(ctx context.Context, url string, req interface{}) (iter.ResultIter[*types.AnnouncementResponseRecord], error) {
 	b, err := drjson.MarshalJSONBytes(req)
 	if err != nil {
 		return nil, err
@@ -360,7 +360,7 @@ func (c *Client) provide(ctx context.Context, url string, req interface{}) (iter
 		}
 	}()
 
-	var it iter.ResultIter[*types.AnnouncementRecord]
+	var it iter.ResultIter[*types.AnnouncementResponseRecord]
 	switch mediaType {
 	case mediaTypeJSON:
 		parsedResp := &jsontypes.AnnouncePeersResponse{}
@@ -368,11 +368,11 @@ func (c *Client) provide(ctx context.Context, url string, req interface{}) (iter
 		if err != nil {
 			return nil, err
 		}
-		var sliceIt iter.Iter[*types.AnnouncementRecord] = iter.FromSlice(parsedResp.ProvideResults)
+		var sliceIt iter.Iter[*types.AnnouncementResponseRecord] = iter.FromSlice(parsedResp.ProvideResults)
 		it = iter.ToResultIter(sliceIt)
 	case mediaTypeNDJSON:
 		skipBodyClose = true
-		it = ndjson.NewAnnouncementRecordsIter(resp.Body)
+		it = ndjson.NewAnnouncementResponseRecordsIter(resp.Body)
 	default:
 		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
 		return nil, errors.New("unknown content type")
@@ -470,7 +470,7 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 
 // ProvidePeer publishes an [types.AnnouncementRecord] with the provider
 // information from your peer, configured with [WithProviderInfo].
-func (c *Client) ProvidePeer(ctx context.Context, ttl time.Duration, metadata []byte) (iter.ResultIter[*types.AnnouncementRecord], error) {
+func (c *Client) ProvidePeer(ctx context.Context, ttl time.Duration, metadata []byte) (iter.ResultIter[*types.AnnouncementResponseRecord], error) {
 	if err := c.canProvide(); err != nil {
 		return nil, err
 	}
@@ -513,7 +513,7 @@ func (c *Client) ProvidePeer(ctx context.Context, ttl time.Duration, metadata []
 
 // ProvidePeerRecords publishes the given [types.AnnouncementRecord]. An error will
 // be returned if the records aren't signed or valid.
-func (c *Client) ProvidePeerRecords(ctx context.Context, records ...*types.AnnouncementRecord) (iter.ResultIter[*types.AnnouncementRecord], error) {
+func (c *Client) ProvidePeerRecords(ctx context.Context, records ...*types.AnnouncementRecord) (iter.ResultIter[*types.AnnouncementResponseRecord], error) {
 	providerRecords := make([]types.Record, len(records))
 	for i, record := range records {
 		if err := record.Verify(); err != nil {

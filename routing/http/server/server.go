@@ -281,9 +281,9 @@ func (s *server) providePeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	responseIter := iter.Map[types.Record, *types.AnnouncementRecord](iter.FromSlice(req.Peers), func(t types.Record) *types.AnnouncementRecord {
-		resRecord := &types.AnnouncementRecord{
-			Schema: types.SchemaAnnouncement,
+	responseIter := iter.Map[types.Record, *types.AnnouncementResponseRecord](iter.FromSlice(req.Peers), func(t types.Record) *types.AnnouncementResponseRecord {
+		resRecord := &types.AnnouncementResponseRecord{
+			Schema: types.SchemaAnnouncementResponse,
 		}
 
 		reqRecord, err := s.provideCheckAnnouncement("Provide", t)
@@ -298,8 +298,7 @@ func (s *server) providePeers(w http.ResponseWriter, r *http.Request) {
 			return resRecord
 		}
 
-		resRecord.Payload.TTL = ttl
-		resRecord.Payload.ID = reqRecord.Payload.ID
+		resRecord.TTL = ttl
 		return resRecord
 	})
 
@@ -310,10 +309,10 @@ func (s *server) providePeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if mediaType == mediaTypeNDJSON {
-		writeResultsIterNDJSON[*types.AnnouncementRecord](w, iter.ToResultIter[*types.AnnouncementRecord](responseIter))
+		writeResultsIterNDJSON[*types.AnnouncementResponseRecord](w, iter.ToResultIter[*types.AnnouncementResponseRecord](responseIter))
 	} else {
 		writeJSONResult(w, "ProvidePeers", jsontypes.AnnouncePeersResponse{
-			ProvideResults: iter.ReadAll[*types.AnnouncementRecord](responseIter),
+			ProvideResults: iter.ReadAll[*types.AnnouncementResponseRecord](responseIter),
 		})
 	}
 }
@@ -327,9 +326,9 @@ func (s *server) provide(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	responseIter := iter.Map[types.Record, *types.AnnouncementRecord](iter.FromSlice(req.Providers), func(t types.Record) *types.AnnouncementRecord {
-		resRecord := &types.AnnouncementRecord{
-			Schema: types.SchemaAnnouncement,
+	responseIter := iter.Map[types.Record, *types.AnnouncementResponseRecord](iter.FromSlice(req.Providers), func(t types.Record) *types.AnnouncementResponseRecord {
+		resRecord := &types.AnnouncementResponseRecord{
+			Schema: types.SchemaAnnouncementResponse,
 		}
 
 		reqRecord, err := s.provideCheckAnnouncement("Provide", t)
@@ -344,9 +343,7 @@ func (s *server) provide(w http.ResponseWriter, r *http.Request) {
 			return resRecord
 		}
 
-		resRecord.Payload.TTL = ttl
-		resRecord.Payload.CID = reqRecord.Payload.CID
-		resRecord.Payload.ID = reqRecord.Payload.ID
+		resRecord.TTL = ttl
 		return resRecord
 	})
 
@@ -357,10 +354,10 @@ func (s *server) provide(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if mediaType == mediaTypeNDJSON {
-		writeResultsIterNDJSON[*types.AnnouncementRecord](w, iter.ToResultIter[*types.AnnouncementRecord](responseIter))
+		writeResultsIterNDJSON[*types.AnnouncementResponseRecord](w, iter.ToResultIter[*types.AnnouncementResponseRecord](responseIter))
 	} else {
 		writeJSONResult(w, "Provide", jsontypes.AnnounceProvidersResponse{
-			ProvideResults: iter.ReadAll[*types.AnnouncementRecord](responseIter),
+			ProvideResults: iter.ReadAll[*types.AnnouncementResponseRecord](responseIter),
 		})
 	}
 }

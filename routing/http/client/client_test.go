@@ -484,7 +484,7 @@ func TestClient_Provide(t *testing.T) {
 				require.Empty(t, results[0].Error)
 			}
 
-			assert.Equal(t, c.expAdvisoryTTL, results[0].Payload.TTL)
+			assert.Equal(t, c.expAdvisoryTTL, results[0].TTL)
 		})
 	}
 }
@@ -753,7 +753,7 @@ func TestClient_ProvidePeer(t *testing.T) {
 				require.Empty(t, results[0].Error)
 			}
 
-			assert.Equal(t, c.expAdvisoryTTL, results[0].Payload.TTL)
+			assert.Equal(t, c.expAdvisoryTTL, results[0].TTL)
 		})
 	}
 }

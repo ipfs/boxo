@@ -48,6 +48,13 @@ func (r *RecordsArray) UnmarshalJSON(b []byte) error {
 				return err
 			}
 			*r = append(*r, &prov)
+		case types.SchemaAnnouncementResponse:
+			var prov types.AnnouncementResponseRecord
+			err := json.Unmarshal(provBytes, &prov)
+			if err != nil {
+				return err
+			}
+			*r = append(*r, &prov)
 		default:
 			*r = append(*r, &readProv)
 		}
@@ -58,7 +65,7 @@ func (r *RecordsArray) UnmarshalJSON(b []byte) error {
 
 // AnnounceProvidersResponse is the result of a POST Providers request.
 type AnnounceProvidersResponse struct {
-	ProvideResults []*types.AnnouncementRecord
+	ProvideResults []*types.AnnouncementResponseRecord
 }
 
 // AnnouncePeersResponse is the result of a POST Peers request.

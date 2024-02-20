@@ -27,9 +27,9 @@ func (m *mockClient) FindProviders(ctx context.Context, key cid.Cid) (iter.Resul
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
-func (m *mockClient) Provide(ctx context.Context, announcements ...types.AnnouncementRequest) (iter.ResultIter[*types.AnnouncementRecord], error) {
+func (m *mockClient) Provide(ctx context.Context, announcements ...types.AnnouncementRequest) (iter.ResultIter[*types.AnnouncementResponseRecord], error) {
 	args := m.Called(ctx, announcements)
-	return args.Get(0).(iter.ResultIter[*types.AnnouncementRecord]), args.Error(1)
+	return args.Get(0).(iter.ResultIter[*types.AnnouncementResponseRecord]), args.Error(1)
 }
 
 func (m *mockClient) FindPeers(ctx context.Context, pid peer.ID) (iter.ResultIter[*types.PeerRecord], error) {
@@ -76,10 +76,10 @@ func TestProvide(t *testing.T) {
 			crc := NewContentRoutingClient(client)
 
 			if !c.expNotProvided {
-				res := []*types.AnnouncementRecord{
-					{Payload: types.AnnouncementPayload{TTL: time.Minute}},
+				res := []*types.AnnouncementResponseRecord{
+					{TTL: time.Minute},
 				}
-				client.On("Provide", ctx, []types.AnnouncementRequest{{CID: key, TTL: ttl}}).Return(iter.ToResultIter[*types.AnnouncementRecord](iter.FromSlice(res)), nil)
+				client.On("Provide", ctx, []types.AnnouncementRequest{{CID: key, TTL: ttl}}).Return(iter.ToResultIter[*types.AnnouncementResponseRecord](iter.FromSlice(res)), nil)
 			}
 
 			err := crc.Provide(ctx, key, c.announce)
@@ -101,10 +101,10 @@ func TestProvideMany(t *testing.T) {
 	ctx := context.Background()
 	client := &mockClient{}
 	crc := NewContentRoutingClient(client)
-	res := []*types.AnnouncementRecord{
-		{Payload: types.AnnouncementPayload{TTL: time.Minute}},
+	res := []*types.AnnouncementResponseRecord{
+		{TTL: time.Minute},
 	}
-	client.On("Provide", ctx, makeBatchAnnouncements(cids, ttl)).Return(iter.ToResultIter[*types.AnnouncementRecord](iter.FromSlice(res)), nil)
+	client.On("Provide", ctx, makeBatchAnnouncements(cids, ttl)).Return(iter.ToResultIter[*types.AnnouncementResponseRecord](iter.FromSlice(res)), nil)
 	err := crc.ProvideMany(ctx, mhs)
 	require.NoError(t, err)
 }

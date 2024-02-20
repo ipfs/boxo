@@ -206,11 +206,11 @@ func TestProviders(t *testing.T) {
 	}
 
 	t.Run("POST /routing/v1/providers (JSON Response)", func(t *testing.T) {
-		runPutTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement","Payload":{"CID":"`+cid1Str+`","ID":"`+pid1Str+`","TTL":3600000}},{"Schema":"announcement","Payload":{"CID":"`+cid1Str+`","ID":"`+pid2Str+`","TTL":60000}}]}`)
+		runPutTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement-response","TTL":3600000},{"Schema":"announcement-response","TTL":60000}]}`)
 	})
 
 	t.Run("POST /routing/v1/providers (NDJSON Response)", func(t *testing.T) {
-		runPutTest(t, mediaTypeNDJSON, `{"Schema":"announcement","Payload":{"CID":"`+cid1Str+`","ID":"`+pid1Str+`","TTL":3600000}}`+"\n"+`{"Schema":"announcement","Payload":{"CID":"`+cid1Str+`","ID":"`+pid2Str+`","TTL":60000}}`+"\n")
+		runPutTest(t, mediaTypeNDJSON, `{"Schema":"announcement-response","TTL":3600000}`+"\n"+`{"Schema":"announcement-response","TTL":60000}`+"\n")
 	})
 }
 
@@ -376,11 +376,11 @@ func TestPeers(t *testing.T) {
 	}
 
 	t.Run("POST /routing/v1/peers (JSON Response)", func(t *testing.T) {
-		runPutTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement","Payload":{"ID":"`+pid1.String()+`","TTL":3600000}},{"Schema":"announcement","Payload":{"ID":"`+pid2.String()+`","TTL":60000}}]}`)
+		runPutTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement-response","TTL":3600000},{"Schema":"announcement-response","TTL":60000}]}`)
 	})
 
 	t.Run("POST /routing/v1/peers (NDJSON Response)", func(t *testing.T) {
-		runPutTest(t, mediaTypeNDJSON, `{"Schema":"announcement","Payload":{"ID":"`+pid1.String()+`","TTL":3600000}}`+"\n"+`{"Schema":"announcement","Payload":{"ID":"`+pid2.String()+`","TTL":60000}}`+"\n")
+		runPutTest(t, mediaTypeNDJSON, `{"Schema":"announcement-response","TTL":3600000}`+"\n"+`{"Schema":"announcement-response","TTL":60000}`+"\n")
 	})
 }
 
