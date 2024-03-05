@@ -242,16 +242,21 @@ func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.Result
 func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	pidStr := mux.Vars(r)["peer-id"]
 
-	// pidStr must be in CIDv1 format. Therefore, use [cid.Decode]. We can't use
-	// [peer.Decode] because that would allow other formats to pass through.
+	// While specification states that peer-id is expected to be in CIDv1 format, reality
+	// is the clients will often learn legacy PeerID string from other sources,
+	// and try to use it.
+	// See https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation
+	// We are liberal in inputs here, and uplift legacy PeerID to CID if necessary.
+	// Rationale: it is better to fix this common mistake than to error and break peer routing.
 	cid, err := cid.Decode(pidStr)
 	if err != nil {
-		if pid, err := peer.Decode(pidStr); err == nil {
-			writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("the value is a peer ID, try using its CID representation: %s", peer.ToCid(pid).String()))
+		// check if input is peer ID in legacy format
+		if pid, err2 := peer.Decode(pidStr); err2 == nil {
+			cid = peer.ToCid(pid)
 		} else {
-			writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse peer ID: %w", err))
+			writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse peer ID as libp2p-key CID: %w", err))
+			return
 		}
-		return
 	}
 
 	pid, err := peer.FromCid(cid)
