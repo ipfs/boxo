@@ -462,8 +462,16 @@ func (s *server) PutIPNS(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func writeJSONResult(w http.ResponseWriter, method string, val any) {
+func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length() int }) {
 	w.Header().Add("Content-Type", mediaTypeJSON)
+
+	if val.Length() > 0 {
+		// There's results, cache for 5 minutes
+		w.Header().Set("Cache-Control", "max-age=900, public")
+	} else {
+		// There weren't results, cache for 15 seconds
+		w.Header().Set("Cache-Control", "max-age=15, public")
+	}
 
 	// keep the marshaling separate from the writing, so we can distinguish bugs (which surface as 500)
 	// from transient network issues (which surface as transport errors)
@@ -500,19 +508,26 @@ func writeResultsIterNDJSON[T any](w http.ResponseWriter, resultIter iter.Result
 	defer resultIter.Close()
 
 	w.Header().Set("Content-Type", mediaTypeNDJSON)
-	w.WriteHeader(http.StatusOK)
 
+	hasResults := false
 	for resultIter.Next() {
 		res := resultIter.Val()
 		if res.Err != nil {
 			logger.Errorw("ndjson iterator error", "Error", res.Err)
 			return
 		}
+
 		// don't use an encoder because we can't easily differentiate writer errors from encoding errors
 		b, err := drjson.MarshalJSONBytes(res.Val)
 		if err != nil {
 			logger.Errorw("ndjson marshal error", "Error", err)
 			return
+		}
+
+		if !hasResults {
+			// There's results, cache for 5 minutes
+			w.Header().Set("Cache-Control", "max-age=900, public")
+			hasResults = true
 		}
 
 		_, err = w.Write(b)
@@ -530,5 +545,10 @@ func writeResultsIterNDJSON[T any](w http.ResponseWriter, resultIter iter.Result
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
+	}
+
+	if !hasResults {
+		// There weren't results, cache for 15 seconds
+		w.Header().Set("Cache-Control", "max-age=15, public")
 	}
 }

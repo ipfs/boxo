@@ -79,25 +79,31 @@ func TestProviders(t *testing.T) {
 	cid, err := cid.Decode(cidStr)
 	require.NoError(t, err)
 
-	runTest := func(t *testing.T, contentType string, expectedStream bool, expectedBody string) {
+	runTest := func(t *testing.T, contentType string, empty bool, expectedStream bool, expectedBody string) {
 		t.Parallel()
 
-		results := iter.FromSlice([]iter.Result[types.Record]{
-			{Val: &types.PeerRecord{
-				Schema:    types.SchemaPeer,
-				ID:        &pid,
-				Protocols: []string{"transport-bitswap"},
-				Addrs:     []types.Multiaddr{},
-			}},
-			//lint:ignore SA1019 // ignore staticcheck
-			{Val: &types.BitswapRecord{
+		var results *iter.SliceIter[iter.Result[types.Record]]
+
+		if empty {
+			results = iter.FromSlice([]iter.Result[types.Record]{})
+		} else {
+			results = iter.FromSlice([]iter.Result[types.Record]{
+				{Val: &types.PeerRecord{
+					Schema:    types.SchemaPeer,
+					ID:        &pid,
+					Protocols: []string{"transport-bitswap"},
+					Addrs:     []types.Multiaddr{},
+				}},
 				//lint:ignore SA1019 // ignore staticcheck
-				Schema:   types.SchemaBitswap,
-				ID:       &pid2,
-				Protocol: "transport-bitswap",
-				Addrs:    []types.Multiaddr{},
-			}}},
-		)
+				{Val: &types.BitswapRecord{
+					//lint:ignore SA1019 // ignore staticcheck
+					Schema:   types.SchemaBitswap,
+					ID:       &pid2,
+					Protocol: "transport-bitswap",
+					Addrs:    []types.Multiaddr{},
+				}}},
+			)
+		}
 
 		router := &mockContentRouter{}
 		server := httptest.NewServer(Handler(router))
@@ -117,8 +123,14 @@ func TestProviders(t *testing.T) {
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		require.Equal(t, 200, resp.StatusCode)
-		header := resp.Header.Get("Content-Type")
-		require.Equal(t, contentType, header)
+
+		require.Equal(t, contentType, resp.Header.Get("Content-Type"))
+
+		if empty {
+			require.Equal(t, "max-age=15, public", resp.Header.Get("Cache-Control"))
+		} else {
+			require.Equal(t, "max-age=900, public", resp.Header.Get("Cache-Control"))
+		}
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -127,11 +139,19 @@ func TestProviders(t *testing.T) {
 	}
 
 	t.Run("JSON Response", func(t *testing.T) {
-		runTest(t, mediaTypeJSON, false, `{"Providers":[{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"},{"Schema":"bitswap","Protocol":"transport-bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"}]}`)
+		runTest(t, mediaTypeJSON, false, false, `{"Providers":[{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"},{"Schema":"bitswap","Protocol":"transport-bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"}]}`)
+	})
+
+	t.Run("Empty JSON Response", func(t *testing.T) {
+		runTest(t, mediaTypeJSON, true, false, `{"Providers":null}`)
 	})
 
 	t.Run("NDJSON Response", func(t *testing.T) {
-		runTest(t, mediaTypeNDJSON, true, `{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n"+`{"Schema":"bitswap","Protocol":"transport-bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"}`+"\n")
+		runTest(t, mediaTypeNDJSON, false, true, `{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n"+`{"Schema":"bitswap","Protocol":"transport-bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"}`+"\n")
+	})
+
+	t.Run("Empty NDJSON Response", func(t *testing.T) {
+		runTest(t, mediaTypeNDJSON, true, true, "")
 	})
 }
 
@@ -155,7 +175,23 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 400, resp.StatusCode)
 	})
 
-	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body (JSON)", func(t *testing.T) {
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (No Results, JSON)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makePeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+
+		router := &mockContentRouter{}
+		router.On("FindPeers", mock.Anything, pid, 20).Return(results, nil)
+
+		resp := makeRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String())
+		require.Equal(t, 200, resp.StatusCode)
+
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "max-age=15, public", resp.Header.Get("Cache-Control"))
+	})
+
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (JSON)", func(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
@@ -181,8 +217,8 @@ func TestPeers(t *testing.T) {
 		resp := makeRequest(t, router, mediaTypeJSON, libp2pKeyCID)
 		require.Equal(t, 200, resp.StatusCode)
 
-		header := resp.Header.Get("Content-Type")
-		require.Equal(t, mediaTypeJSON, header)
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "max-age=900, public", resp.Header.Get("Cache-Control"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -191,7 +227,23 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, expectedBody, string(body))
 	})
 
-	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body (NDJSON)", func(t *testing.T) {
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (No Results, NDJSON)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makePeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+
+		router := &mockContentRouter{}
+		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
+
+		resp := makeRequest(t, router, mediaTypeNDJSON, peer.ToCid(pid).String())
+		require.Equal(t, 200, resp.StatusCode)
+
+		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "max-age=15, public", resp.Header.Get("Cache-Control"))
+	})
+
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (NDJSON)", func(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
@@ -217,8 +269,8 @@ func TestPeers(t *testing.T) {
 		resp := makeRequest(t, router, mediaTypeNDJSON, libp2pKeyCID)
 		require.Equal(t, 200, resp.StatusCode)
 
-		header := resp.Header.Get("Content-Type")
-		require.Equal(t, mediaTypeNDJSON, header)
+		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "max-age=900, public", resp.Header.Get("Cache-Control"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
