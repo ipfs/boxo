@@ -129,7 +129,7 @@ func TestProviders(t *testing.T) {
 		if empty {
 			require.Equal(t, "max-age=15, public", resp.Header.Get("Cache-Control"))
 		} else {
-			require.Equal(t, "max-age=900, public", resp.Header.Get("Cache-Control"))
+			require.Equal(t, "max-age=300, public", resp.Header.Get("Cache-Control"))
 		}
 
 		body, err := io.ReadAll(resp.Body)
@@ -218,7 +218,7 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
-		require.Equal(t, "max-age=900, public", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "max-age=300, public", resp.Header.Get("Cache-Control"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -270,7 +270,7 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
-		require.Equal(t, "max-age=900, public", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "max-age=300, public", resp.Header.Get("Cache-Control"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)

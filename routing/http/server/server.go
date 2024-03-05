@@ -467,7 +467,7 @@ func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length
 
 	if val.Length() > 0 {
 		// There's results, cache for 5 minutes
-		w.Header().Set("Cache-Control", "max-age=900, public")
+		w.Header().Set("Cache-Control", "max-age=300, public")
 	} else {
 		// There weren't results, cache for 15 seconds
 		w.Header().Set("Cache-Control", "max-age=15, public")
@@ -526,7 +526,7 @@ func writeResultsIterNDJSON[T any](w http.ResponseWriter, resultIter iter.Result
 
 		if !hasResults {
 			// There's results, cache for 5 minutes
-			w.Header().Set("Cache-Control", "max-age=900, public")
+			w.Header().Set("Cache-Control", "max-age=300, public")
 			hasResults = true
 		}
 

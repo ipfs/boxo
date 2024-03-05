@@ -16,7 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-* `routing/http/server` now adds `Cache-Control` HTTP header to GET requests: 15 seconds for empty responses, or 15 minutes for responses with providers.
+* `routing/http/server` now adds `Cache-Control` HTTP header to GET requests: 15 seconds for empty responses, or 5 minutes for responses with providers.
 
 ### Changed
 
