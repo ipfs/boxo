@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
-	"time"
 
 	"github.com/ipfs/boxo/blockservice"
 	blockstore "github.com/ipfs/boxo/blockstore"
@@ -18,7 +16,6 @@ import (
 	"github.com/ipfs/boxo/ipld/merkledag"
 	ufile "github.com/ipfs/boxo/ipld/unixfs/file"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
-	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/namesys"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
@@ -38,7 +35,6 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/ipld/go-ipld-prime/traversal/selector"
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
-	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	"github.com/libp2p/go-libp2p/core/routing"
 	mc "github.com/multiformats/go-multicodec"
 
@@ -51,14 +47,11 @@ import (
 
 // BlocksBackend is an [IPFSBackend] implementation based on a [blockservice.BlockService].
 type BlocksBackend struct {
+	baseBackend
 	blockStore   blockstore.Blockstore
 	blockService blockservice.BlockService
 	dagService   format.DAGService
 	resolver     resolver.Resolver
-
-	// Optional routing system to handle /ipns addresses.
-	namesys namesys.NameSystem
-	routing routing.ValueStore
 }
 
 var _ IPFSBackend = (*BlocksBackend)(nil)
@@ -108,47 +101,28 @@ func NewBlocksBackend(blockService blockservice.BlockService, opts ...BlocksBack
 	// Setup the DAG services, which use the CAR block store.
 	dagService := merkledag.NewDAGService(blockService)
 
-	// Setup a name system so that we are able to resolve /ipns links.
-	var (
-		ns namesys.NameSystem
-		vs routing.ValueStore
-		r  resolver.Resolver
-	)
-
-	vs = compiledOptions.vs
-	if vs == nil {
-		vs = routinghelpers.Null{}
-	}
-
-	ns = compiledOptions.ns
-	if ns == nil {
-		dns, err := NewDNSResolver(nil, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		ns, err = namesys.NewNameSystem(vs, namesys.WithDNSResolver(dns))
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	r = compiledOptions.r
+	// Setup the [resolver.Resolver] if not provided.
+	r := compiledOptions.r
 	if r == nil {
-		// Setup the UnixFS resolver.
 		fetcherCfg := bsfetcher.NewFetcherConfig(blockService)
 		fetcherCfg.PrototypeChooser = dagpb.AddSupportToChooser(bsfetcher.DefaultPrototypeChooser)
 		fetcher := fetcherCfg.WithReifier(unixfsnode.Reify)
 		r = resolver.NewBasicResolver(fetcher)
 	}
 
+	// Setup the [baseBackend] which takes care of some shared functionality, such
+	// as resolving /ipns links.
+	baseBackend, err := newBaseBackend(compiledOptions.vs, compiledOptions.ns)
+	if err != nil {
+		return nil, err
+	}
+
 	return &BlocksBackend{
+		baseBackend:  baseBackend,
 		blockStore:   blockService.Blockstore(),
 		blockService: blockService,
 		dagService:   dagService,
 		resolver:     r,
-		routing:      vs,
-		namesys:      ns,
 	}, nil
 }
 
@@ -630,55 +604,6 @@ func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.Immu
 	return pathRoots, lastPath, remainder, nil
 }
 
-func (bb *BlocksBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, time.Duration, time.Time, error) {
-	switch p.Namespace() {
-	case path.IPNSNamespace:
-		res, err := namesys.Resolve(ctx, bb.namesys, p)
-		if err != nil {
-			return path.ImmutablePath{}, 0, time.Time{}, err
-		}
-		ip, err := path.NewImmutablePath(res.Path)
-		if err != nil {
-			return path.ImmutablePath{}, 0, time.Time{}, err
-		}
-		return ip, res.TTL, res.LastMod, nil
-	case path.IPFSNamespace:
-		ip, err := path.NewImmutablePath(p)
-		return ip, 0, time.Time{}, err
-	default:
-		return path.ImmutablePath{}, 0, time.Time{}, NewErrorStatusCode(fmt.Errorf("unsupported path namespace: %s", p.Namespace()), http.StatusNotImplemented)
-	}
-}
-
-func (bb *BlocksBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
-	if bb.routing == nil {
-		return nil, NewErrorStatusCode(errors.New("IPNS Record responses are not supported by this gateway"), http.StatusNotImplemented)
-	}
-
-	name, err := ipns.NameFromCid(c)
-	if err != nil {
-		return nil, NewErrorStatusCode(err, http.StatusBadRequest)
-	}
-
-	return bb.routing.GetValue(ctx, string(name.RoutingKey()))
-}
-
-func (bb *BlocksBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (path.Path, error) {
-	if bb.namesys != nil {
-		p, err := path.NewPath("/ipns/" + hostname)
-		if err != nil {
-			return nil, err
-		}
-		res, err := bb.namesys.Resolve(ctx, p, namesys.ResolveWithDepth(1))
-		if err == namesys.ErrResolveRecursion {
-			err = nil
-		}
-		return res.Path, err
-	}
-
-	return nil, NewErrorStatusCode(errors.New("not implemented"), http.StatusNotImplemented)
-}
-
 func (bb *BlocksBackend) IsCached(ctx context.Context, p path.Path) bool {
 	rp, _, err := bb.resolvePath(ctx, p)
 	if err != nil {
@@ -711,11 +636,10 @@ func (bb *BlocksBackend) ResolvePath(ctx context.Context, path path.ImmutablePat
 func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.ImmutablePath, []string, error) {
 	var err error
 	if p.Namespace() == path.IPNSNamespace {
-		res, err := namesys.Resolve(ctx, bb.namesys, p)
+		p, _, _, err = bb.baseBackend.ResolveMutable(ctx, p)
 		if err != nil {
 			return path.ImmutablePath{}, nil, err
 		}
-		p = res.Path
 	}
 
 	if p.Namespace() != path.IPFSNamespace {
