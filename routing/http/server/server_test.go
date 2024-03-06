@@ -47,6 +47,7 @@ func TestHeaders(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode)
 	header := resp.Header.Get("Content-Type")
 	require.Equal(t, mediaTypeJSON, header)
+	require.Equal(t, "Accept", resp.Header.Get("Vary"))
 
 	resp, err = http.Get(serverAddr + "/routing/v1/providers/" + "BAD_CID")
 	require.NoError(t, err)
@@ -125,6 +126,7 @@ func TestProviders(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, contentType, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
 
 		if empty {
 			require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
@@ -190,6 +192,7 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
 		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 		require.Equal(t, time.Now().UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
 	})
@@ -221,6 +224,7 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
 		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 		require.Equal(t, time.Now().UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
 
@@ -244,6 +248,7 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
 		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 		require.Equal(t, time.Now().UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
 	})
@@ -275,6 +280,7 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
 		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 
 		body, err := io.ReadAll(resp.Body)
@@ -311,6 +317,7 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		header := resp.Header.Get("Content-Type")
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
 		require.Equal(t, mediaTypeJSON, header)
 
 		body, err := io.ReadAll(resp.Body)
@@ -347,6 +354,7 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		header := resp.Header.Get("Content-Type")
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
 		require.Equal(t, mediaTypeNDJSON, header)
 
 		body, err := io.ReadAll(resp.Body)
@@ -413,6 +421,7 @@ func TestIPNS(t *testing.T) {
 			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String())
 			require.Equal(t, 200, resp.StatusCode)
 			require.Equal(t, mediaTypeIPNSRecord, resp.Header.Get("Content-Type"))
+			require.Equal(t, "Accept", resp.Header.Get("Vary"))
 			require.NotEmpty(t, resp.Header.Get("Etag"))
 			require.Equal(t, now.UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
 

@@ -420,6 +420,7 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Etag", fmt.Sprintf(`"%x"`, xxhash.Sum64(rawRecord)))
 	w.Header().Set("Content-Type", mediaTypeIPNSRecord)
+	w.Header().Add("Vary", "Accept")
 	w.Write(rawRecord)
 }
 
@@ -487,6 +488,7 @@ func setCacheControl(w http.ResponseWriter, maxAge int, stale int) {
 
 func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length() int }) {
 	w.Header().Add("Content-Type", mediaTypeJSON)
+	w.Header().Add("Vary", "Accept")
 
 	if val.Length() > 0 {
 		setCacheControl(w, maxAgeWithResults, maxStale)
@@ -530,6 +532,7 @@ func writeResultsIterNDJSON[T any](w http.ResponseWriter, resultIter iter.Result
 	defer resultIter.Close()
 
 	w.Header().Set("Content-Type", mediaTypeNDJSON)
+	w.Header().Add("Vary", "Accept")
 	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 
 	hasResults := false
