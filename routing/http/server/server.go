@@ -9,7 +9,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -419,8 +418,7 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 
-	recordEtag := strconv.FormatUint(xxhash.Sum64(rawRecord), 32)
-	w.Header().Set("Etag", recordEtag)
+	w.Header().Set("Etag", fmt.Sprintf(`"%x"`, xxhash.Sum64(rawRecord)))
 	w.Header().Set("Content-Type", mediaTypeIPNSRecord)
 	w.Write(rawRecord)
 }
