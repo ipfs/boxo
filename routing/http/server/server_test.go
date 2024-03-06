@@ -127,10 +127,12 @@ func TestProviders(t *testing.T) {
 		require.Equal(t, contentType, resp.Header.Get("Content-Type"))
 
 		if empty {
-			require.Equal(t, "max-age=15, public", resp.Header.Get("Cache-Control"))
+			require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 		} else {
-			require.Equal(t, "max-age=300, public", resp.Header.Get("Cache-Control"))
+			require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 		}
+		// 'Last-Modified' is expected to be present and match current time
+		require.Equal(t, time.Now().UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -188,7 +190,8 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
-		require.Equal(t, "max-age=15, public", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, time.Now().UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
 	})
 
 	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (JSON)", func(t *testing.T) {
@@ -218,7 +221,8 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
-		require.Equal(t, "max-age=300, public", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, time.Now().UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -240,7 +244,8 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
-		require.Equal(t, "max-age=15, public", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, time.Now().UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
 	})
 
 	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (NDJSON)", func(t *testing.T) {
@@ -270,7 +275,7 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
-		require.Equal(t, "max-age=300, public", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -358,10 +363,8 @@ func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
 	return sk, ipns.NameFromPeer(pid)
 }
 
-func makeIPNSRecord(t *testing.T, cid cid.Cid, sk crypto.PrivKey, opts ...ipns.Option) (*ipns.Record, []byte) {
+func makeIPNSRecord(t *testing.T, cid cid.Cid, eol time.Time, ttl time.Duration, sk crypto.PrivKey, opts ...ipns.Option) (*ipns.Record, []byte) {
 	path := path.FromCid(cid)
-	eol := time.Now().Add(time.Hour * 48)
-	ttl := time.Second * 20
 
 	record, err := ipns.NewRecord(sk, path, 1, eol, ttl, opts...)
 	require.NoError(t, err)
@@ -391,7 +394,10 @@ func TestIPNS(t *testing.T) {
 
 	runWithRecordOptions := func(t *testing.T, opts ...ipns.Option) {
 		sk, name1 := makeName(t)
-		record1, rawRecord1 := makeIPNSRecord(t, cid1, sk)
+		now := time.Now()
+		eol := now.Add(24 * time.Hour * 7) // record valid for a week
+		ttl := 42 * time.Second            // distinct TTL
+		record1, rawRecord1 := makeIPNSRecord(t, cid1, eol, ttl, sk)
 
 		_, name2 := makeName(t)
 
@@ -408,7 +414,13 @@ func TestIPNS(t *testing.T) {
 			require.Equal(t, 200, resp.StatusCode)
 			require.Equal(t, mediaTypeIPNSRecord, resp.Header.Get("Content-Type"))
 			require.NotEmpty(t, resp.Header.Get("Etag"))
-			require.Equal(t, "max-age=20", resp.Header.Get("Cache-Control"))
+			require.Equal(t, now.UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
+
+			// expected "stale" values are int(eol.Sub(now).Seconds())
+			require.Equal(t, "public, max-age=42, stale-while-revalidate=604799, stale-if-error=604799", resp.Header.Get("Cache-Control"))
+
+			// 'Expires' on IPNS result is expected to match EOL of IPNS Record with ValidityType=0
+			require.Equal(t, eol.UTC().Format(http.TimeFormat), resp.Header.Get("Expires"))
 
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
