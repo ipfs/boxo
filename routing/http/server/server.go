@@ -406,7 +406,7 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 	if validityType, err := record.ValidityType(); err == nil && validityType == ipns.ValidityEOL {
 		if validity, err := record.Validity(); err == nil {
 			w.Header().Set("Expires", validity.UTC().Format(http.TimeFormat))
-			remainingValidity = int(validity.Sub(time.Now()).Seconds())
+			remainingValidity = int(time.Until(validity).Seconds())
 		}
 	} else {
 		remainingValidity = int(ipns.DefaultRecordLifetime.Seconds())

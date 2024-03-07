@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"testing"
 	"time"
 
@@ -65,6 +67,13 @@ func makePeerID(t *testing.T) (crypto.PrivKey, peer.ID) {
 	require.NoError(t, err)
 
 	return sk, pid
+}
+
+func requireCloseToNow(t *testing.T, lastModified string) {
+	// inspecting fields like 'Last-Modified'  is prone to one-off errors, we test with 1m buffer
+	lastModifiedTime, err := time.Parse(http.TimeFormat, lastModified)
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now(), lastModifiedTime, 1*time.Minute)
 }
 
 func TestProviders(t *testing.T) {
@@ -133,8 +142,7 @@ func TestProviders(t *testing.T) {
 		} else {
 			require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 		}
-		// 'Last-Modified' is expected to be present and match current time
-		require.Equal(t, time.Now().UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -194,7 +202,8 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
 		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
-		require.Equal(t, time.Now().UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
+
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 	})
 
 	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (JSON)", func(t *testing.T) {
@@ -226,7 +235,8 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
 		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
-		require.Equal(t, time.Now().UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
+
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -250,7 +260,8 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
 		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
-		require.Equal(t, time.Now().UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
+
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 	})
 
 	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (NDJSON)", func(t *testing.T) {
@@ -407,6 +418,14 @@ func TestIPNS(t *testing.T) {
 		ttl := 42 * time.Second            // distinct TTL
 		record1, rawRecord1 := makeIPNSRecord(t, cid1, eol, ttl, sk)
 
+		stringToDuration := func(s string) time.Duration {
+			seconds, err := strconv.Atoi(s)
+			if err != nil {
+				return 0
+			}
+			return time.Duration(seconds) * time.Second
+		}
+
 		_, name2 := makeName(t)
 
 		t.Run("GET /routing/v1/ipns/{cid-peer-id} returns 200", func(t *testing.T) {
@@ -423,10 +442,20 @@ func TestIPNS(t *testing.T) {
 			require.Equal(t, mediaTypeIPNSRecord, resp.Header.Get("Content-Type"))
 			require.Equal(t, "Accept", resp.Header.Get("Vary"))
 			require.NotEmpty(t, resp.Header.Get("Etag"))
-			require.Equal(t, now.UTC().Format(http.TimeFormat), resp.Header.Get("Last-Modified"))
 
-			// expected "stale" values are int(eol.Sub(now).Seconds())
-			require.Equal(t, "public, max-age=42, stale-while-revalidate=604799, stale-if-error=604799", resp.Header.Get("Cache-Control"))
+			requireCloseToNow(t, resp.Header.Get("Last-Modified"))
+
+			require.Contains(t, resp.Header.Get("Cache-Control"), "public, max-age=42")
+
+			// expected "stale" values are int(time.Until(eol).Seconds())
+			// but running test on slow machine may  be off by a few seconds
+			// and we need to assert with some room for drift (1 minute just to not break any CI)
+			re := regexp.MustCompile(`(?:^|,\s*)(max-age|stale-while-revalidate|stale-if-error)=(\d+)`)
+			matches := re.FindAllStringSubmatch(resp.Header.Get("Cache-Control"), -1)
+			staleWhileRevalidate := stringToDuration(matches[1][2])
+			staleWhileError := stringToDuration(matches[2][2])
+			require.WithinDuration(t, eol, time.Now().Add(staleWhileRevalidate), 1*time.Minute)
+			require.WithinDuration(t, eol, time.Now().Add(staleWhileError), 1*time.Minute)
 
 			// 'Expires' on IPNS result is expected to match EOL of IPNS Record with ValidityType=0
 			require.Equal(t, eol.UTC().Format(http.TimeFormat), resp.Header.Get("Expires"))
