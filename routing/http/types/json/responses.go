@@ -11,9 +11,17 @@ type ProvidersResponse struct {
 	Providers RecordsArray
 }
 
+func (r ProvidersResponse) Length() int {
+	return len(r.Providers)
+}
+
 // PeersResponse is the result of a GET Peers request.
 type PeersResponse struct {
 	Peers []*types.PeerRecord
+}
+
+func (r PeersResponse) Length() int {
+	return len(r.Peers)
 }
 
 // RecordsArray is an array of [types.Record]
@@ -63,6 +71,10 @@ func (r *RecordsArray) UnmarshalJSON(b []byte) error {
 // [IPIP-378]: https://github.com/ipfs/specs/pull/378
 type WriteProvidersResponse struct {
 	ProvideResults []types.Record
+}
+
+func (r WriteProvidersResponse) Length() int {
+	return len(r.ProvideResults)
 }
 
 func (r *WriteProvidersResponse) UnmarshalJSON(b []byte) error {

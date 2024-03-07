@@ -9,7 +9,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -402,15 +401,26 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ttl, err := record.TTL(); err == nil {
-		w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", int(ttl.Seconds())))
+	var remainingValidity int
+	// Include 'Expires' header with time when signature expiration happens
+	if validityType, err := record.ValidityType(); err == nil && validityType == ipns.ValidityEOL {
+		if validity, err := record.Validity(); err == nil {
+			w.Header().Set("Expires", validity.UTC().Format(http.TimeFormat))
+			remainingValidity = int(time.Until(validity).Seconds())
+		}
 	} else {
-		w.Header().Set("Cache-Control", "max-age=60")
+		remainingValidity = int(ipns.DefaultRecordLifetime.Seconds())
 	}
+	if ttl, err := record.TTL(); err == nil {
+		setCacheControl(w, int(ttl.Seconds()), remainingValidity)
+	} else {
+		setCacheControl(w, int(ipns.DefaultRecordTTL.Seconds()), remainingValidity)
+	}
+	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 
-	recordEtag := strconv.FormatUint(xxhash.Sum64(rawRecord), 32)
-	w.Header().Set("Etag", recordEtag)
+	w.Header().Set("Etag", fmt.Sprintf(`"%x"`, xxhash.Sum64(rawRecord)))
 	w.Header().Set("Content-Type", mediaTypeIPNSRecord)
+	w.Header().Add("Vary", "Accept")
 	w.Write(rawRecord)
 }
 
@@ -462,8 +472,30 @@ func (s *server) PutIPNS(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func writeJSONResult(w http.ResponseWriter, method string, val any) {
+var (
+	// Rule-of-thumb Cache-Control policy is to work well with caching proxies and load balancers.
+	// If there are any results, cache on the client for longer, and hint any in-between caches to
+	// serve cached result and upddate cache in background as long we have
+	// result that is within Amino DHT expiration window
+	maxAgeWithResults    = int((5 * time.Minute).Seconds())  // cache >0 results for longer
+	maxAgeWithoutResults = int((15 * time.Second).Seconds()) // cache no results briefly
+	maxStale             = int((48 * time.Hour).Seconds())   // allow stale results as long within Amino DHT  Expiration window
+)
+
+func setCacheControl(w http.ResponseWriter, maxAge int, stale int) {
+	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d, stale-while-revalidate=%d, stale-if-error=%d", maxAge, stale, stale))
+}
+
+func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length() int }) {
 	w.Header().Add("Content-Type", mediaTypeJSON)
+	w.Header().Add("Vary", "Accept")
+
+	if val.Length() > 0 {
+		setCacheControl(w, maxAgeWithResults, maxStale)
+	} else {
+		setCacheControl(w, maxAgeWithoutResults, maxStale)
+	}
+	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 
 	// keep the marshaling separate from the writing, so we can distinguish bugs (which surface as 500)
 	// from transient network issues (which surface as transport errors)
@@ -500,19 +532,28 @@ func writeResultsIterNDJSON[T any](w http.ResponseWriter, resultIter iter.Result
 	defer resultIter.Close()
 
 	w.Header().Set("Content-Type", mediaTypeNDJSON)
-	w.WriteHeader(http.StatusOK)
+	w.Header().Add("Vary", "Accept")
+	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 
+	hasResults := false
 	for resultIter.Next() {
 		res := resultIter.Val()
 		if res.Err != nil {
 			logger.Errorw("ndjson iterator error", "Error", res.Err)
 			return
 		}
+
 		// don't use an encoder because we can't easily differentiate writer errors from encoding errors
 		b, err := drjson.MarshalJSONBytes(res.Val)
 		if err != nil {
 			logger.Errorw("ndjson marshal error", "Error", err)
 			return
+		}
+
+		if !hasResults {
+			hasResults = true
+			// There's results, cache useful result for longer
+			setCacheControl(w, maxAgeWithResults, maxStale)
 		}
 
 		_, err = w.Write(b)
@@ -530,5 +571,10 @@ func writeResultsIterNDJSON[T any](w http.ResponseWriter, resultIter iter.Result
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
+	}
+
+	if !hasResults {
+		// There weren't results, cache for shorter
+		setCacheControl(w, maxAgeWithoutResults, maxStale)
 	}
 }
