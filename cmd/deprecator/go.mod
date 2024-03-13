@@ -2,7 +2,6 @@ module github.com/ipfs/boxo/cmd/deprecator
 
 go 1.21
 
-
 require (
 	github.com/dave/dst v0.27.2
 	github.com/urfave/cli/v2 v2.25.3
