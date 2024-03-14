@@ -20,6 +20,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+* `go` version changed to 1.21
+
 ### Removed
 
 ### Fixed
