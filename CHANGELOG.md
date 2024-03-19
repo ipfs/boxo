@@ -16,16 +16,18 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- ✨ `routing/http`: delegated content and peer routing ([IPIP-378](https://github.com/ipfs/specs/pull/378)) has been implemented. This includes the following additions:
+* ✨ `routing/http`: delegated content and peer routing ([IPIP-378](https://github.com/ipfs/specs/pull/378)) has been implemented. This includes the following additions:
   - `client`: now includes `Provide` and `ProvidePeer` methods, which can be used to provide signed records for content routing and peer routing.
   - `types`: types related to the Announcement schema record have been added. A `types/iter.Filter` utility has also been added if you want to filter on top of an iterator.
+* `routing/http/server` now adds `Cache-Control` HTTP header to GET requests: 15 seconds for empty responses, or 5 minutes for responses with providers.
 
 ### Changed
 
-- ✨🛠 `routing/http`: delegated content and peer routing ([IPIP-378](https://github.com/ipfs/specs/pull/378)) has been implemented. This includes the following changes:
+* ✨🛠 `routing/http`: delegated content and peer routing ([IPIP-378](https://github.com/ipfs/specs/pull/378)) has been implemented. This includes the following changes:
   - `client`: `WithProviderInfo` now accepts a third parameter, `protocols`, whose value is used when providing the peer.
   - `contentrouter`: the `Client` interface has been updated to reflect the changes made to the client, that is, replacing the `ProvideBitswap` method by the generic `Provide` method.
   - `server`: the `ContentRouter` interface now includes a `Provide` and a `ProvidePeer` functions.
+* `go` version changed to 1.21
 
 ### Removed
 

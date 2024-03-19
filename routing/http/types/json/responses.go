@@ -11,9 +11,17 @@ type ProvidersResponse struct {
 	Providers RecordsArray
 }
 
+func (r ProvidersResponse) Length() int {
+	return len(r.Providers)
+}
+
 // PeersResponse is the result of a GET Peers request.
 type PeersResponse struct {
 	Peers []*types.PeerRecord
+}
+
+func (r PeersResponse) Length() int {
+	return len(r.Peers)
 }
 
 // RecordsArray is an array of [types.Record]
@@ -66,6 +74,10 @@ func (r *RecordsArray) UnmarshalJSON(b []byte) error {
 // AnnounceProvidersResponse is the result of a POST Providers request.
 type AnnounceProvidersResponse struct {
 	ProvideResults []*types.AnnouncementResponseRecord
+}
+
+func (r AnnounceProvidersResponse) Length() int {
+	return len(r.ProvideResults)
 }
 
 // AnnouncePeersResponse is the result of a POST Peers request.
