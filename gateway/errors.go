@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
 	"github.com/ipfs/go-cid"
+	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/schema"
 )
@@ -223,6 +224,10 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 // the wrong type, etc.), rather than issues with just finding and retrieving the data.
 func isErrNotFound(err error) bool {
 	if errors.Is(err, &resolver.ErrNoLink{}) || errors.Is(err, schema.ErrNoSuchField{}) {
+		return true
+	}
+
+	if ipld.IsNotFound(err) {
 		return true
 	}
 
