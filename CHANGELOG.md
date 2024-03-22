@@ -17,6 +17,7 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 * `routing/http/server` now adds `Cache-Control` HTTP header to GET requests: 15 seconds for empty responses, or 5 minutes for responses with providers.
+* `gateway` now supports optional `Ipfs-Path-Affinity` hints from [IPIP-462](https://github.com/ipfs/specs/pull/462).
 
 ### Changed
 
