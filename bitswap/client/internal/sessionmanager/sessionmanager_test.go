@@ -66,10 +66,10 @@ type fakePeerManager struct {
 	cancels []cid.Cid
 }
 
-func (*fakePeerManager) RegisterSession(peer.ID, bspm.Session)                    {}
-func (*fakePeerManager) UnregisterSession(uint64)                                 {}
-func (*fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) {}
-func (*fakePeerManager) BroadcastWantHaves(context.Context, []cid.Cid)            {}
+func (*fakePeerManager) RegisterSession(peer.ID, bspm.Session)                          {}
+func (*fakePeerManager) UnregisterSession(uint64)                                       {}
+func (*fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) error { return nil }
+func (*fakePeerManager) BroadcastWantHaves(context.Context, []cid.Cid)                  {}
 func (fpm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid) {
 	fpm.lk.Lock()
 	defer fpm.lk.Unlock()
