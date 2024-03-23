@@ -140,16 +140,6 @@ func (s *blockService) Allowlist() verifcid.Allowlist {
 // directly.
 // Sessions are lazily setup, this is cheap.
 func NewSession(ctx context.Context, bs BlockService) *Session {
-	ses := grabSessionFromContext(ctx, bs)
-	if ses != nil {
-		return ses
-	}
-
-	return newSession(ctx, bs)
-}
-
-// newSession is like [NewSession] but it does not attempt to reuse session from the existing context.
-func newSession(ctx context.Context, bs BlockService) *Session {
 	return &Session{bs: bs, sesctx: ctx}
 }
 
@@ -232,10 +222,6 @@ func (s *blockService) AddBlocks(ctx context.Context, bs []blocks.Block) error {
 // GetBlock retrieves a particular block from the service,
 // Getting it from the datastore using the key (hash).
 func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	if ses := grabSessionFromContext(ctx, s); ses != nil {
-		return ses.GetBlock(ctx, c)
-	}
-
 	ctx, span := internal.StartSpan(ctx, "blockService.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
 	defer span.End()
 
@@ -295,10 +281,6 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 // the returned channel.
 // NB: No guarantees are made about order.
 func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
-	if ses := grabSessionFromContext(ctx, s); ses != nil {
-		return ses.GetBlocks(ctx, ks)
-	}
-
 	ctx, span := internal.StartSpan(ctx, "blockService.GetBlocks")
 	defer span.End()
 
@@ -473,43 +455,6 @@ func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Blo
 }
 
 var _ BlockGetter = (*Session)(nil)
-
-// ContextWithSession is a helper which creates a context with an embded session,
-// future calls to [BlockGetter.GetBlock], [BlockGetter.GetBlocks] and [NewSession] with the same [BlockService]
-// will be redirected to this same session instead.
-// Sessions are lazily setup, this is cheap.
-// It wont make a new session if one exists already in the context.
-func ContextWithSession(ctx context.Context, bs BlockService) context.Context {
-	if grabSessionFromContext(ctx, bs) != nil {
-		return ctx
-	}
-	return EmbedSessionInContext(ctx, newSession(ctx, bs))
-}
-
-// EmbedSessionInContext is like [ContextWithSession] but it allows to embed an existing session.
-func EmbedSessionInContext(ctx context.Context, ses *Session) context.Context {
-	// use ses.bs as a key, so if multiple blockservices use embeded sessions it gets dispatched to the matching blockservice.
-	return context.WithValue(ctx, ses.bs, ses)
-}
-
-// grabSessionFromContext returns nil if the session was not found
-// This is a private API on purposes, I dislike when consumers tradeoff compiletime typesafety with runtime typesafety,
-// if this API is public it is too easy to forget to pass a [BlockService] or [Session] object around in your app.
-// By having this private we allow consumers to follow the trace of where the blockservice is passed and used.
-func grabSessionFromContext(ctx context.Context, bs BlockService) *Session {
-	s := ctx.Value(bs)
-	if s == nil {
-		return nil
-	}
-
-	ss, ok := s.(*Session)
-	if !ok {
-		// idk what to do here, that kinda sucks, giveup
-		return nil
-	}
-
-	return ss
-}
 
 // grabAllowlistFromBlockservice never returns nil
 func grabAllowlistFromBlockservice(bs BlockService) verifcid.Allowlist {

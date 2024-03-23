@@ -24,6 +24,8 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+- 🛠 `blockservice`: reverted change in previous release where sessions had been introduced.
+
 ### Fixed
 
 - 🛠️`routing/http/server`: delegated peer routing endpoint now supports both [PeerID string notaitons from libp2p specs](https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation).
