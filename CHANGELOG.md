@@ -14,6 +14,8 @@ The following emojis are used to highlight certain changes:
 
 ## [Unreleased]
 
+* ❔ Allows redirects of URLs by query parameter (in addition to path). A `_redirects` file containing `/from type=:type /to/:type.html 200` will respond to a request of `/from?type=thing` with `/to/thing.html`.
+
 ### Added
 
 * `routing/http/server` now adds `Cache-Control` HTTP header to GET requests: 15 seconds for empty responses, or 5 minutes for responses with providers.
