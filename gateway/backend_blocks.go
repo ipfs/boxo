@@ -37,6 +37,7 @@ import (
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/libp2p/go-libp2p/core/routing"
 	mc "github.com/multiformats/go-multicodec"
+	"github.com/prometheus/client_golang/prometheus"
 
 	// Ensure basic codecs are registered.
 	_ "github.com/ipld/go-ipld-prime/codec/cbor"
@@ -57,9 +58,10 @@ type BlocksBackend struct {
 var _ IPFSBackend = (*BlocksBackend)(nil)
 
 type blocksBackendOptions struct {
-	ns namesys.NameSystem
-	vs routing.ValueStore
-	r  resolver.Resolver
+	ns           namesys.NameSystem
+	vs           routing.ValueStore
+	r            resolver.Resolver
+	promRegistry prometheus.Registerer
 }
 
 // WithNameSystem sets the name system to use with the [BlocksBackend]. If not set
@@ -84,6 +86,14 @@ func WithValueStore(vs routing.ValueStore) BlocksBackendOption {
 func WithResolver(r resolver.Resolver) BlocksBackendOption {
 	return func(opts *blocksBackendOptions) error {
 		opts.r = r
+		return nil
+	}
+}
+
+// WithPrometheusRegistry sets the registry to use for metrics collection.
+func WithPrometheusRegistry(reg prometheus.Registerer) BlocksBackendOption {
+	return func(opts *blocksBackendOptions) error {
+		opts.promRegistry = reg
 		return nil
 	}
 }
