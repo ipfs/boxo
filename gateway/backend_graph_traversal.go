@@ -156,8 +156,8 @@ func getLinksystem(fn getBlock) *ipld.LinkSystem {
 	return &lsys
 }
 
-// walkGatewaySimpleSelector walks the subgraph described by the path and terminal element parameters
-func walkGatewaySimpleSelector(ctx context.Context, terminalBlk blocks.Block, dagScope DagScope, entityRange *DagByteRange, lsys *ipld.LinkSystem) error {
+// walkGatewaySimpleSelector2 walks the subgraph described by the path and terminal element parameters
+func walkGatewaySimpleSelector2(ctx context.Context, terminalBlk blocks.Block, dagScope DagScope, entityRange *DagByteRange, lsys *ipld.LinkSystem) error {
 	lctx := ipld.LinkContext{Ctx: ctx}
 	var err error
 

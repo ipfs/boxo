@@ -1194,7 +1194,7 @@ func (api *GraphGateway) GetCAR(ctx context.Context, path path.ImmutablePath, pa
 				blockBuffer = nil
 			}
 
-			err = walkGatewaySimpleSelector(ctx, terminalBlk, params.Scope, params.Range, l)
+			err = walkGatewaySimpleSelector2(ctx, terminalBlk, params.Scope, params.Range, l)
 			if err != nil {
 				return err
 			}
