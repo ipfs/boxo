@@ -351,9 +351,17 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 		unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
 		lsys.StorageReadOpener = blockOpener(ctx, blockGetter)
 
+		// First resolve the path since we always need to.
+		lastCid, remainder, err := pathResolver.ResolveToLastNode(ctx, p)
+		if err != nil {
+			// io.PipeWriter.CloseWithError always returns nil.
+			_ = w.CloseWithError(err)
+			return
+		}
+
 		// TODO: support selectors passed as request param: https://github.com/ipfs/kubo/issues/8769
 		// TODO: this is very slow if blocks are remote due to linear traversal. Do we need deterministic traversals here?
-		carWriteErr := walkGatewaySimpleSelector(ctx, p, params, &lsys, pathResolver)
+		carWriteErr := walkGatewaySimpleSelector(ctx, lastCid, nil, remainder, params, &lsys)
 
 		// io.PipeWriter.CloseWithError always returns nil.
 		_ = w.CloseWithError(carWriteErr)
@@ -363,29 +371,49 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 }
 
 // walkGatewaySimpleSelector walks the subgraph described by the path and terminal element parameters
-func walkGatewaySimpleSelector(ctx context.Context, p path.ImmutablePath, params CarParams, lsys *ipld.LinkSystem, pathResolver resolver.Resolver) error {
-	// First resolve the path since we always need to.
-	lastCid, remainder, err := pathResolver.ResolveToLastNode(ctx, p)
-	if err != nil {
-		return err
-	}
-
+func walkGatewaySimpleSelector(ctx context.Context, lastCid cid.Cid, terminalBlk blocks.Block, remainder []string, params CarParams, lsys *ipld.LinkSystem) error {
 	lctx := ipld.LinkContext{Ctx: ctx}
 	pathTerminalCidLink := cidlink.Link{Cid: lastCid}
 
 	// If the scope is the block, now we only need to retrieve the root block of the last element of the path.
 	if params.Scope == DagScopeBlock {
-		_, err = lsys.LoadRaw(lctx, pathTerminalCidLink)
+		_, err := lsys.LoadRaw(lctx, pathTerminalCidLink)
 		return err
+	}
+
+	pc := dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
+		if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
+			return tlnkNd.LinkTargetNodePrototype(), nil
+		}
+		return basicnode.Prototype.Any, nil
+	})
+
+	np, err := pc(pathTerminalCidLink, lctx)
+	if err != nil {
+		return err
+	}
+
+	var lastCidNode datamodel.Node
+	if terminalBlk != nil {
+		decoder, err := lsys.DecoderChooser(pathTerminalCidLink)
+		if err != nil {
+			return err
+		}
+		nb := np.NewBuilder()
+		blockData := terminalBlk.RawData()
+		if err := decoder(nb, bytes.NewReader(blockData)); err != nil {
+			return err
+		}
+		lastCidNode = nb.Build()
+	} else {
+		lastCidNode, err = lsys.Load(lctx, pathTerminalCidLink, np)
+		if err != nil {
+			return err
+		}
 	}
 
 	// If we're asking for everything then give it
 	if params.Scope == DagScopeAll {
-		lastCidNode, err := lsys.Load(lctx, pathTerminalCidLink, basicnode.Prototype.Any)
-		if err != nil {
-			return err
-		}
-
 		sel, err := selector.ParseSelector(selectorparse.CommonSelector_ExploreAllRecursively)
 		if err != nil {
 			return err
@@ -411,23 +439,6 @@ func walkGatewaySimpleSelector(ctx context.Context, p path.ImmutablePath, params
 	// From now on, dag-scope=entity!
 	// Since we need more of the graph load it to figure out what we have
 	// This includes determining if the terminal node is UnixFS or not
-	pc := dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
-		if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
-			return tlnkNd.LinkTargetNodePrototype(), nil
-		}
-		return basicnode.Prototype.Any, nil
-	})
-
-	np, err := pc(pathTerminalCidLink, lctx)
-	if err != nil {
-		return err
-	}
-
-	lastCidNode, err := lsys.Load(lctx, pathTerminalCidLink, np)
-	if err != nil {
-		return err
-	}
-
 	if pbn, ok := lastCidNode.(dagpb.PBNode); !ok {
 		// If it's not valid dag-pb then we're done
 		return nil

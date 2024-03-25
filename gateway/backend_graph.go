@@ -317,28 +317,11 @@ func resolvePathToLastWithRoots(ctx context.Context, fpath ipfspath.ImmutablePat
 	return cids[:len(cids)-1], cids[len(cids)-1], nil, nil, nil
 }
 
-func contentMetadataFromRootsAndRemainder(p ipfspath.Path, pathRoots []cid.Cid, terminalCid cid.Cid, remainder []string) (ContentPathMetadata, error) {
-	var rootCid cid.Cid
-	if len(pathRoots) > 0 {
-		rootCid = pathRoots[0]
-	} else {
-		rootCid = terminalCid
-	}
-
-	p, err := path.Join(path.FromCid(rootCid), remainder...)
-	if err != nil {
-		return ContentPathMetadata{}, err
-	}
-
-	imPath, err := path.NewImmutablePath(p)
-	if err != nil {
-		return ContentPathMetadata{}, err
-	}
-
+func contentMetadataFromRootsAndRemainder(p ipfspath.ImmutablePath, pathRoots []cid.Cid, remainder []string) (ContentPathMetadata, error) {
 	md := ContentPathMetadata{
 		PathSegmentRoots:     pathRoots,
 		LastSegmentRemainder: remainder,
-		LastSegment:          imPath,
+		LastSegment:          p,
 	}
 	return md, nil
 }
@@ -409,7 +392,6 @@ func (api *GraphGateway) Get(ctx context.Context, path path.ImmutablePath, byteR
 	}
 
 	return md, resp, nil
-
 }
 
 // loadTerminalEntity returns either a [*GetResponse], [*backpressuredFile], or [*backpressuredHAMTDirIterNoRecursion]
@@ -799,7 +781,8 @@ func fetchWithPartialRetries[T any](ctx context.Context, path path.ImmutablePath
 				if err != nil {
 					return err
 				}
-				md, err := contentMetadataFromRootsAndRemainder(p, pathRootCids, terminalCid, remainder)
+
+				md, err := contentMetadataFromRootsAndRemainder(p, pathRootCids, remainder)
 				if err != nil {
 					return err
 				}
@@ -925,7 +908,7 @@ func (api *GraphGateway) GetBlock(ctx context.Context, path path.ImmutablePath) 
 			}
 		}
 
-		md, err = contentMetadataFromRootsAndRemainder(p, pathRoots, terminalCid, remainder)
+		md, err = contentMetadataFromRootsAndRemainder(p, pathRoots, remainder)
 		if err != nil {
 			return err
 		}
@@ -968,7 +951,7 @@ func (api *GraphGateway) Head(ctx context.Context, path path.ImmutablePath) (Con
 			return err
 		}
 
-		md, err = contentMetadataFromRootsAndRemainder(p, pathRoots, terminalCid, remainder)
+		md, err = contentMetadataFromRootsAndRemainder(p, pathRoots, remainder)
 		if err != nil {
 			return err
 		}
@@ -1100,12 +1083,12 @@ func (api *GraphGateway) ResolvePath(ctx context.Context, path path.ImmutablePat
 		// First resolve the path since we always need to.
 		// FIXME(HACDIAS): p := ipfspath.FromString(path.String())
 		p := path
-		pathRoots, terminalCid, remainder, _, err := resolvePathToLastWithRoots(ctx, p, lsys)
+		pathRoots, _, remainder, _, err := resolvePathToLastWithRoots(ctx, p, lsys)
 		if err != nil {
 			return err
 		}
 
-		md, err = contentMetadataFromRootsAndRemainder(p, pathRoots, terminalCid, remainder)
+		md, err = contentMetadataFromRootsAndRemainder(p, pathRoots, remainder)
 
 		return err
 	})
@@ -1194,7 +1177,9 @@ func (api *GraphGateway) GetCAR(ctx context.Context, path path.ImmutablePath, pa
 				blockBuffer = nil
 			}
 
-			err = walkGatewaySimpleSelector2(ctx, terminalBlk, params.Scope, params.Range, l)
+			params.Duplicates = DuplicateBlocksIncluded
+			err = walkGatewaySimpleSelector(ctx, terminalBlk.Cid(), terminalBlk, []string{}, params, l)
+			// err = walkGatewaySimpleSelector2(ctx, terminalBlk, params.Scope, params.Range, l)
 			if err != nil {
 				return err
 			}
