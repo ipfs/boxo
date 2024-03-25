@@ -37,6 +37,7 @@ import (
 	selectorparse "github.com/ipld/go-ipld-prime/traversal/selector/parse"
 	"github.com/libp2p/go-libp2p/core/routing"
 	mc "github.com/multiformats/go-multicodec"
+	"github.com/prometheus/client_golang/prometheus"
 
 	// Ensure basic codecs are registered.
 	_ "github.com/ipld/go-ipld-prime/codec/cbor"
@@ -57,9 +58,10 @@ type BlocksBackend struct {
 var _ IPFSBackend = (*BlocksBackend)(nil)
 
 type blocksBackendOptions struct {
-	ns namesys.NameSystem
-	vs routing.ValueStore
-	r  resolver.Resolver
+	ns           namesys.NameSystem
+	vs           routing.ValueStore
+	r            resolver.Resolver
+	promRegistry prometheus.Registerer
 }
 
 // WithNameSystem sets the name system to use with the [BlocksBackend]. If not set
@@ -84,6 +86,14 @@ func WithValueStore(vs routing.ValueStore) BlocksBackendOption {
 func WithResolver(r resolver.Resolver) BlocksBackendOption {
 	return func(opts *blocksBackendOptions) error {
 		opts.r = r
+		return nil
+	}
+}
+
+// WithPrometheusRegistry sets the registry to use for metrics collection.
+func WithPrometheusRegistry(reg prometheus.Registerer) BlocksBackendOption {
+	return func(opts *blocksBackendOptions) error {
+		opts.promRegistry = reg
 		return nil
 	}
 }
@@ -343,7 +353,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 
 		// TODO: support selectors passed as request param: https://github.com/ipfs/kubo/issues/8769
 		// TODO: this is very slow if blocks are remote due to linear traversal. Do we need deterministic traversals here?
-		carWriteErr := walkGatewaySimpleSelector(ctx, p, params, &lsys, pathResolver)
+		carWriteErr := walkGatewaySimpleSelectorGraph(ctx, p, params, &lsys, pathResolver)
 
 		// io.PipeWriter.CloseWithError always returns nil.
 		_ = w.CloseWithError(carWriteErr)
@@ -352,8 +362,9 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 	return pathMetadata, r, nil
 }
 
-// walkGatewaySimpleSelector walks the subgraph described by the path and terminal element parameters
-func walkGatewaySimpleSelector(ctx context.Context, p path.ImmutablePath, params CarParams, lsys *ipld.LinkSystem, pathResolver resolver.Resolver) error {
+// FIXME(hacdias) fix this and reuse walkGatewaySimpleSelector
+// walkGatewaySimpleSelectorGraph walks the subgraph described by the path and terminal element parameters
+func walkGatewaySimpleSelectorGraph(ctx context.Context, p path.ImmutablePath, params CarParams, lsys *ipld.LinkSystem, pathResolver resolver.Resolver) error {
 	// First resolve the path since we always need to.
 	lastCid, remainder, err := pathResolver.ResolveToLastNode(ctx, p)
 	if err != nil {
