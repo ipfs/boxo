@@ -233,6 +233,8 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	i.handlePathAffinityHints(w, r, contentPath, logger)
+
 	// Detect when explicit Accept header or ?format parameter are present
 	responseFormat, formatParams, err := customResponseFormat(r)
 	if err != nil {
@@ -752,7 +754,7 @@ func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request,
 }
 
 // Detect 'Cache-Control: only-if-cached' in request and return data if it is already in the local datastore.
-// https://github.com/ipfs/specs/blob/main/http-gateways/PATH_GATEWAY.md#cache-control-request-header
+// https://specs.ipfs.tech/http-gateways/path-gateway/#cache-control-request-header
 func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, contentPath path.Path) bool {
 	if r.Header.Get("Cache-Control") == "only-if-cached" {
 		if !i.backend.IsCached(r.Context(), contentPath) {
@@ -885,6 +887,103 @@ func (i *handler) handleSuperfluousNamespace(w http.ResponseWriter, r *http.Requ
 
 	http.Redirect(w, r, intendedURL, http.StatusMovedPermanently)
 	return true
+}
+
+// Detect 'Ipfs-Path-Affinity' (IPIP-462) headers in request and use values as a content
+// routing hints if passed paths are not already in the local datastore.
+// These optional hints are mostly useful for trustless block requests.
+// See https://github.com/ipfs/specs/pull/462
+func (i *handler) handlePathAffinityHints(w http.ResponseWriter, r *http.Request, contentPath path.Path, logger *zap.SugaredLogger) {
+	headerName := "Ipfs-Path-Affinity"
+	// Skip if no header
+	if r.Header.Get(headerName) == "" {
+		return
+	}
+	// Skip if contentPath is already locally cached
+	if i.backend.IsCached(r.Context(), contentPath) {
+		return
+	}
+	// Check canonical header name
+	// NOTE: we don't use r.Header.Get() because client can send this header more than once
+	headerValues := r.Header[headerName]
+	// If not found, try lowercase version.
+	// NOTE: this is done manually because direct key access does not come with canonicalization, like Header.Get() does
+	if len(headerValues) == 0 {
+		headerValues = r.Header[strings.ToLower(headerName)]
+	}
+
+	// Limit the headerValues to the first 3 items (abuse protection)
+	if len(headerValues) > 3 {
+		headerValues = headerValues[:3]
+	}
+
+	// Process affinity hints
+	for _, headerValue := range headerValues {
+		// Non-ascii paths are percent-encoded.
+		// Decode if the value starts with %2F (percent-encoded '/')
+		if strings.HasPrefix(headerValue, "%2F") {
+			decodedValue, err := url.PathUnescape(headerValue)
+			if err != nil {
+				logger.Debugw("skipping invalid Ipfs-Path-Affinity hint", "error", err)
+				continue
+			}
+			headerValue = decodedValue
+		}
+		// Confirm it is a valid content path
+		affinityPath, err := path.NewPath(headerValue)
+		if err != nil {
+			logger.Debugw("skipping invalid Ipfs-Path-Affinity hint", "error", err)
+			continue
+		}
+
+		// Skip duplicated work if immutable affinity hint is a subset of requested immutable contentPath
+		// (protect against broken clients that use affinity incorrectly)
+		if !contentPath.Mutable() && !affinityPath.Mutable() && strings.HasPrefix(contentPath.String(), affinityPath.String()) {
+			logger.Debugw("skipping redundant Ipfs-Path-Affinity hint", "affinity", affinityPath)
+			continue
+		}
+
+		// Process hint in background without blocking response logic for contentPath
+		go func(contentPath path.Path, affinityPath path.Path, logger *zap.SugaredLogger) {
+			var immutableAffinityPath path.ImmutablePath
+			logger.Debugw("async processing of Ipfs-Path-Affinity hint", "affinity", affinityPath)
+			if affinityPath.Mutable() {
+				// Skip work if mutable affinity hint is a subset of mutable contentPath
+				if contentPath.Mutable() && strings.HasPrefix(contentPath.String(), affinityPath.String()) {
+					logger.Debugw("skipping redundant Ipfs-Path-Affinity hint", "affinity", affinityPath)
+					return
+				}
+				immutableAffinityPath, _, _, err = i.backend.ResolveMutable(r.Context(), affinityPath)
+				if err != nil {
+					logger.Debugw("error while resolving mutable Ipfs-Path-Affinity hint", "affinity", affinityPath, "error", err)
+					return
+				}
+			} else {
+				ipath, ok := affinityPath.(path.ImmutablePath)
+				if !ok {
+					return
+				}
+				immutableAffinityPath = ipath
+			}
+			// Skip if affinity path is already cached
+			if !i.backend.IsCached(r.Context(), immutableAffinityPath) {
+				// The intention of below code is to asynchronously preconnect
+				// gateway with providers of the affinityPath in
+				// Ipfs-Path-Affinity hint. Once connected, these peers can be
+				// asked directly (via mechanism like bitswap) for blocks
+				// related to main request for contentPath, and retrieve them,
+				// even when no other routing system had them announced. If
+				// original contentPath was received and returned to HTTP
+				// client before below get is done, the work is cancelled.
+
+				logger.Debugw("started async search for providers of Ipfs-Path-Affinity hint", "affinity", affinityPath)
+				_, _, err = i.backend.GetBlock(r.Context(), immutableAffinityPath)
+				logger.Debugw("ended async search for providers of Ipfs-Path-Affinity hint", "affinity", affinityPath, "error", err)
+			} else {
+				logger.Debugw("skipping Ipfs-Path-Affinity hint due to data being locally cached", "affinity", affinityPath)
+			}
+		}(contentPath, affinityPath, logger)
+	}
 }
 
 // getTemplateGlobalData returns the global data necessary by most templates.
