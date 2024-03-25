@@ -17,6 +17,7 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 * `routing/http/server` now adds `Cache-Control` HTTP header to GET requests: 15 seconds for empty responses, or 5 minutes for responses with providers.
+* `gateway` now includes `NewRemoteBlocksBackend` which allows you to create a gateway backend that uses one or multiple other gateways as backend. These gateways must support RAW block requests, as well as IPNS Record requests. With this, we also introduced a `NewCacheBlockStore`, `NewCachedDNS`, `NewRemoteBlockstore` and `NewRemoteValueStore`. 
 
 ### Changed
 
