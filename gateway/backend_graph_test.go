@@ -155,7 +155,7 @@ func TestGraphBackendTar(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL}, NewCachedDNS(dnsCacheRefreshInterval))
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
 	require.NoError(t, err)
 
 	p := path.FromCid(cid.MustParse("bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi"))
@@ -322,7 +322,7 @@ func TestGraphBackendTarAtEndOfPath(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL}, NewCachedDNS(dnsCacheRefreshInterval))
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
 	require.NoError(t, err)
 
 	p, err := path.Join(path.FromCid(cid.MustParse("bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi")), "hamtDir")
@@ -481,7 +481,7 @@ func TestGraphBackendGetFile(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL}, NewCachedDNS(dnsCacheRefreshInterval))
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
 	require.NoError(t, err)
 
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
@@ -582,7 +582,7 @@ func TestGraphBackendGetFileRangeRequest(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL}, NewCachedDNS(dnsCacheRefreshInterval))
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
 	require.NoError(t, err)
 
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
@@ -689,7 +689,7 @@ func TestGraphBackendGetFileWithBadBlockReturned(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL}, NewCachedDNS(dnsCacheRefreshInterval))
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
 	require.NoError(t, err)
 
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
@@ -792,7 +792,7 @@ func TestGraphBackendGetHAMTDirectory(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL}, NewCachedDNS(dnsCacheRefreshInterval))
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
 	require.NoError(t, err)
 
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
@@ -898,7 +898,7 @@ func TestGraphBackendGetCAR(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL}, NewCachedDNS(dnsCacheRefreshInterval))
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
 	require.NoError(t, err)
 
 	p := path.FromCid(cid.MustParse("bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi"))
@@ -946,7 +946,7 @@ func TestGraphBackendGetCAR(t *testing.T) {
 
 func TestGraphBackendPassthroughErrors(t *testing.T) {
 	t.Run("PathTraversalError", func(t *testing.T) {
-		pathTraversalTest := func(t *testing.T, traversal func(ctx context.Context, p path.ImmutablePath, backend *GraphGateway) error) {
+		pathTraversalTest := func(t *testing.T, traversal func(ctx context.Context, p path.ImmutablePath, backend *GraphBackend) error) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -998,7 +998,7 @@ func TestGraphBackendPassthroughErrors(t *testing.T) {
 			bogusErr := NewErrorStatusCode(fmt.Errorf("this is a test error"), 418)
 
 			clientRequestNum := 0
-			backend, err := NewGraphGatewayBackend(&retryFetcher{
+			backend, err := NewGraphBackend(&retryFetcher{
 				inner: &fetcherWrapper{fn: func(ctx context.Context, path string, cb DataCallback) error {
 					clientRequestNum++
 					if clientRequestNum > 2 {
@@ -1019,13 +1019,13 @@ func TestGraphBackendPassthroughErrors(t *testing.T) {
 			t.Fatal("error did not pass through")
 		}
 		t.Run("Block", func(t *testing.T) {
-			pathTraversalTest(t, func(ctx context.Context, p path.ImmutablePath, backend *GraphGateway) error {
+			pathTraversalTest(t, func(ctx context.Context, p path.ImmutablePath, backend *GraphBackend) error {
 				_, _, err := backend.GetBlock(ctx, p)
 				return err
 			})
 		})
 		t.Run("File", func(t *testing.T) {
-			pathTraversalTest(t, func(ctx context.Context, p path.ImmutablePath, backend *GraphGateway) error {
+			pathTraversalTest(t, func(ctx context.Context, p path.ImmutablePath, backend *GraphBackend) error {
 				_, _, err := backend.Get(ctx, p)
 				return err
 			})

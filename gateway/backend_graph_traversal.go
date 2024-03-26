@@ -25,7 +25,7 @@ type getBlock func(ctx context.Context, cid cid.Cid) (blocks.Block, error)
 
 var ErrNilBlock = ErrInvalidResponse{Message: "received a nil block with no error"}
 
-func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *GraphGatewayMetrics) (getBlock, error) {
+func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *GraphBackendMetrics) (getBlock, error) {
 	cr, err := car.NewCarReaderWithOptions(reader, car.WithErrorOnEmptyRoots(false))
 	if err != nil {
 		return nil, err
