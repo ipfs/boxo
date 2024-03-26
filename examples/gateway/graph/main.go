@@ -33,7 +33,7 @@ func main() {
 	}
 
 	// Creates the gateway with the remote graph backend.
-	backend, err := gateway.NewGraphGatewayBackend(carFetcher)
+	backend, err := gateway.NewGraphBackend(carFetcher)
 	if err != nil {
 		log.Fatal(err)
 	}
