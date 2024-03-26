@@ -29,4 +29,5 @@ Once you have your example finished, do not forget to run `go mod tidy` and addi
 - [Fetching a UnixFS file by CID](./unixfs-file-cid)
 - [Gateway backed by a CAR file](./gateway/car)
 - [Gateway backed by a remote blockstore and IPNS resolver](./gateway/proxy)
+- [Gateway backed by a remote Trustless Gateway](./gateway/graph)
 - [Delegated Routing V1 Command Line Client](./routing/delegated-routing-client/)

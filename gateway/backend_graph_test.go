@@ -153,7 +153,7 @@ func TestTar(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := newRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
 	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
 	if err != nil {
@@ -343,7 +343,7 @@ func TestTarAtEndOfPath(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := newRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
 	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
 	if err != nil {
@@ -528,7 +528,7 @@ func TestGetFile(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := newRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
 	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
 	if err != nil {
@@ -646,7 +646,7 @@ func TestGetFileRangeRequest(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := newRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
 	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
 	if err != nil {
@@ -776,7 +776,7 @@ func TestGetFileWithBadBlockReturned(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := newRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
 	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
 	if err != nil {
@@ -896,7 +896,7 @@ func TestGetHAMTDirectory(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := newRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
 	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
 	if err != nil {
@@ -1008,7 +1008,7 @@ func TestGetCAR(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := newRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
 	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
 	if err != nil {
@@ -1112,7 +1112,7 @@ func TestPassthroughErrors(t *testing.T) {
 			}))
 			defer s.Close()
 
-			bs, err := newRemoteCarFetcher([]string{s.URL})
+			bs, err := NewRemoteCarFetcher([]string{s.URL})
 			require.NoError(t, err)
 
 			p, err := path.NewPath("/ipfs/bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi/hamtDir/exampleA")

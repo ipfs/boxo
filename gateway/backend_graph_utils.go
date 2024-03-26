@@ -81,7 +81,7 @@ type remoteCarFetcher struct {
 	rand       *rand.Rand
 }
 
-func newRemoteCarFetcher(gatewayURL []string) (CarFetcher, error) {
+func NewRemoteCarFetcher(gatewayURL []string) (CarFetcher, error) {
 	if len(gatewayURL) == 0 {
 		return nil, errors.New("missing gateway URLs to which to proxy")
 	}
