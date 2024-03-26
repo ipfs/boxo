@@ -14,12 +14,14 @@ import (
 	"github.com/ipfs/go-cid"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	"github.com/libp2p/go-libp2p/core/routing"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type backendOptions struct {
-	ns namesys.NameSystem
-	vs routing.ValueStore
-	r  resolver.Resolver
+	ns           namesys.NameSystem
+	vs           routing.ValueStore
+	r            resolver.Resolver
+	promRegistry prometheus.Registerer
 }
 
 // WithNameSystem sets the name system to use with the different backends. If not set
@@ -44,6 +46,14 @@ func WithValueStore(vs routing.ValueStore) BackendOption {
 func WithResolver(r resolver.Resolver) BackendOption {
 	return func(opts *backendOptions) error {
 		opts.r = r
+		return nil
+	}
+}
+
+// WithPrometheusRegistry sets the registry to use with [GraphBackend].
+func WithPrometheusRegistry(reg prometheus.Registerer) BackendOption {
+	return func(opts *backendOptions) error {
+		opts.promRegistry = reg
 		return nil
 	}
 }
