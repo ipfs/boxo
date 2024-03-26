@@ -11,8 +11,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gateway-conformance:
+  gateway-conformance-car:
     runs-on: ubuntu-latest
+    name: Gateway Conformance (CAR Gateway)
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
@@ -37,6 +38,69 @@ jobs:
       # 3. Start the car-gateway
       - name: Start car-gateway
         run: boxo/examples/gateway/car/car-gateway -c fixtures/fixtures.car -p 8040 &
+
+      # 4. Run the gateway-conformance tests
+      - name: Run gateway-conformance tests
+        uses: ipfs/gateway-conformance/.github/actions/test@v0.5
+        with:
+          gateway-url: http://127.0.0.1:8040
+          json: output.json
+          xml: output.xml
+          html: output.html
+          markdown: output.md
+          subdomain-url: http://example.net
+          specs: -trustless-ipns-gateway,-path-ipns-gateway,-subdomain-ipns-gateway,-dnslink-gateway
+          args: -skip 'TestGatewayCar/GET_response_for_application/vnd.ipld.car/Header_Content-Length'
+
+      # 5. Upload the results
+      - name: Upload MD summary
+        if: failure() || success()
+        run: cat output.md >> $GITHUB_STEP_SUMMARY
+      - name: Upload HTML report
+        if: failure() || success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: gateway-conformance.html
+          path: output.html
+      - name: Upload JSON report
+        if: failure() || success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: gateway-conformance.json
+          path: output.json
+
+  gateway-conformance-graph:
+    runs-on: ubuntu-latest
+    name: Gateway Conformance (Graph Gateway)
+    steps:
+      # 1. Download the gateway-conformance fixtures
+      - name: Download gateway-conformance fixtures
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.5
+        with:
+          output: fixtures
+          merged: true
+
+      # 2. Build the graph-gateway
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.21.x
+      - name: Checkout boxo
+        uses: actions/checkout@v4
+        with:
+          path: boxo
+      - name: Build car-gateway
+        run: go build -o car-gateway
+        working-directory: boxo/examples/gateway/car
+      - name: Build graph-gateway
+        run: go build -o graph-gateway
+        working-directory: boxo/examples/gateway/graph
+
+      # 3. Start the car-gateway and the graph-gateway
+      - name: Start car-gateway
+        run: boxo/examples/gateway/car/car-gateway -c fixtures/fixtures.car -p 8030 &
+      - name: Start graph-gateway
+        run: boxo/examples/gateway/graph/graph-gateway -g http://127.0.0.1:8030 -p 8040 &
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests
