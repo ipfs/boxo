@@ -3,6 +3,7 @@ package provider
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"runtime"
 	"strconv"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	dssync "github.com/ipfs/go-datastore/sync"
 	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type allFeatures interface {
@@ -219,5 +221,111 @@ func TestOfflineRecordsThenOnlineRepublish(t *testing.T) {
 	}
 	if !bytes.Equal(prov.keys[0], someHash) {
 		t.Fatalf("keys are not equal expected %v, got %v", someHash, prov.keys[0])
+	}
+}
+
+func newMockKeyChanFunc(cids []cid.Cid) KeyChanFunc {
+	return func(ctx context.Context) (<-chan cid.Cid, error) {
+		outCh := make(chan cid.Cid)
+
+		go func() {
+			defer close(outCh)
+			for _, c := range cids {
+				select {
+				case <-ctx.Done():
+					return
+				case outCh <- c:
+				}
+			}
+		}()
+
+		return outCh, nil
+	}
+}
+
+func makeCIDs(n int) []cid.Cid {
+	cids := make([]cid.Cid, n)
+	for i := 0; i < n; i++ {
+		buf := make([]byte, 63)
+		_, err := rand.Read(buf)
+		if err != nil {
+			panic(err)
+		}
+		data, err := mh.Encode(buf, mh.SHA2_256)
+		if err != nil {
+			panic(err)
+		}
+		cids[i] = cid.NewCidV1(0, data)
+	}
+
+	return cids
+}
+
+func TestNewPrioritizedProvider(t *testing.T) {
+	cids := makeCIDs(6)
+
+	testCases := []struct {
+		name     string
+		given    [][]cid.Cid
+		expected []cid.Cid
+	}{
+		{
+			name: "basic test",
+			given: [][]cid.Cid{
+				cids[:3],
+				cids[3:],
+			},
+			expected: cids,
+		},
+		{
+			name: "basic test inverted",
+			given: [][]cid.Cid{
+				cids[3:],
+				cids[:3],
+			},
+			expected: append(cids[3:], cids[:3]...),
+		},
+		{
+			name: "no repeated",
+			given: [][]cid.Cid{
+				cids[3:],
+				cids[3:],
+				cids[3:],
+				cids[3:],
+			},
+			expected: cids[3:],
+		},
+		{
+			name: "no repeated intercalated",
+			given: [][]cid.Cid{
+				{cids[0], cids[1], cids[0]},
+				{cids[2], cids[4], cids[5]},
+				{cids[0], cids[3], cids[5]},
+			},
+			expected: []cid.Cid{cids[0], cids[1], cids[2], cids[4], cids[5], cids[3]},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fns := []KeyChanFunc{}
+
+			for _, arr := range tc.given {
+				fns = append(fns, newMockKeyChanFunc(arr))
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			stream := NewPrioritizedProvider(fns...)
+			ch, err := stream(ctx)
+			require.NoError(t, err)
+
+			received := []cid.Cid{}
+			for c := range ch {
+				received = append(received, c)
+			}
+			require.Equal(t, tc.expected, received)
+		})
 	}
 }

@@ -17,6 +17,7 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 * `routing/http/server` now adds `Cache-Control` HTTP header to GET requests: 15 seconds for empty responses, or 5 minutes for responses with providers.
+* `provider` now exports a `NewPrioritizedProvider`, which can be used to prioritize certain providers while ignoring duplicates.
 
 ### Changed
 
