@@ -84,13 +84,13 @@ func TestGatewayErrorRetryAfter(t *testing.T) {
 	)
 
 	// Test unwrapped
-	convertedErr = GatewayError(originalErr)
+	convertedErr = blockstoreErrToGatewayErr(originalErr)
 	ok := errors.As(convertedErr, &gatewayErr)
 	assert.True(t, ok)
 	assert.EqualValues(t, originalErr.retryAfter, gatewayErr.RetryAfter)
 
 	// Test wrapped.
-	convertedErr = GatewayError(fmt.Errorf("wrapped error: %w", originalErr))
+	convertedErr = blockstoreErrToGatewayErr(fmt.Errorf("wrapped error: %w", originalErr))
 	ok = errors.As(convertedErr, &gatewayErr)
 	assert.True(t, ok)
 	assert.EqualValues(t, originalErr.retryAfter, gatewayErr.RetryAfter)

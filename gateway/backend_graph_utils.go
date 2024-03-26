@@ -45,9 +45,9 @@ func carParamsToString(params CarParams) string {
 	return paramsBuilder.String()
 }
 
-// GatewayError translates underlying blockstore error into one that gateway code will return as HTTP 502 or 504
+// blockstoreErrToGatewayErr translates underlying blockstore error into one that gateway code will return as HTTP 502 or 504
 // it also makes sure Retry-After hint from remote blockstore will be passed to HTTP client, if present.
-func GatewayError(err error) error {
+func blockstoreErrToGatewayErr(err error) error {
 	if errors.Is(err, &ErrorStatusCode{}) ||
 		errors.Is(err, &ErrorRetryAfter{}) {
 		// already correct error
@@ -56,7 +56,6 @@ func GatewayError(err error) error {
 
 	// All timeouts should produce 504 Gateway Timeout
 	if errors.Is(err, context.DeadlineExceeded) ||
-		// errors.Is(err, caboose.ErrTimeout) ||
 		// Unfortunately this is not an exported type so we have to check for the content.
 		strings.Contains(err.Error(), "Client.Timeout exceeded") {
 		return fmt.Errorf("%w: %s", ErrGatewayTimeout, err.Error())

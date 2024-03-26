@@ -15,7 +15,6 @@ import (
 	"github.com/ipfs/boxo/ipld/merkledag"
 	"github.com/ipfs/boxo/ipld/unixfs"
 	"github.com/ipfs/boxo/path"
-	ipfspath "github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -39,28 +38,7 @@ import (
 
 const GetBlockTimeout = time.Second * 60
 
-// type DataCallback = func(resource string, reader io.Reader) error
-// TODO: Don't use a caboose type, perhaps ask them to use a type alias instead of a type
-// type DataCallback = caboose.DataCallback
 type DataCallback func(resource string, reader io.Reader) error
-
-// TODO: Don't use a caboose type
-// type ErrPartialResponse = caboose.ErrPartialResponse
-
-// ErrPartialResponse can be returned from a DataCallback to indicate that some of the requested resource
-// was successfully fetched, and that instead of retrying the full resource, that there are
-// one or more more specific resources that should be fetched (via StillNeed) to complete the request.
-type ErrPartialResponse struct {
-	error
-	StillNeed []string
-}
-
-func (epr ErrPartialResponse) Error() string {
-	if epr.error != nil {
-		return fmt.Sprintf("partial response: %s", epr.error.Error())
-	}
-	return "caboose received a partial response"
-}
 
 var ErrFetcherUnexpectedEOF = fmt.Errorf("failed to fetch IPLD data")
 
@@ -203,15 +181,15 @@ func (api *GraphGateway) fetchCAR(ctx context.Context, path path.ImmutablePath, 
 	if ipldError != nil {
 		fetchErr = ipldError
 	} else if fetchErr != nil {
-		fetchErr = GatewayError(fetchErr)
+		fetchErr = blockstoreErrToGatewayErr(fetchErr)
 	}
 
 	return fetchErr
 }
 
 // resolvePathWithRootsAndBlock takes a path and linksystem and returns the set of non-terminal cids, the terminal cid, the remainder, and the block corresponding to the terminal cid
-func resolvePathWithRootsAndBlock(ctx context.Context, fpath ipfspath.ImmutablePath, unixFSLsys *ipld.LinkSystem) ([]cid.Cid, cid.Cid, []string, blocks.Block, error) {
-	pathRootCids, terminalCid, remainder, terminalBlk, err := resolvePathToLastWithRoots(ctx, fpath, unixFSLsys)
+func resolvePathWithRootsAndBlock(ctx context.Context, p path.ImmutablePath, unixFSLsys *ipld.LinkSystem) ([]cid.Cid, cid.Cid, []string, blocks.Block, error) {
+	pathRootCids, terminalCid, remainder, terminalBlk, err := resolvePathToLastWithRoots(ctx, p, unixFSLsys)
 	if err != nil {
 		return nil, cid.Undef, nil, nil, err
 	}
@@ -236,18 +214,17 @@ func resolvePathWithRootsAndBlock(ctx context.Context, fpath ipfspath.ImmutableP
 // the remainder pathing, the last block loaded, and the last node loaded.
 //
 // Note: the block returned will be nil if the terminal element is a link or the path is just a CID
-func resolvePathToLastWithRoots(ctx context.Context, fpath ipfspath.ImmutablePath, unixFSLsys *ipld.LinkSystem) ([]cid.Cid, cid.Cid, []string, blocks.Block, error) {
-	c, p := fpath.RootCid(), fpath.Segments()[2:]
-
-	if len(p) == 0 {
-		return nil, c, nil, nil, nil
+func resolvePathToLastWithRoots(ctx context.Context, p path.ImmutablePath, unixFSLsys *ipld.LinkSystem) ([]cid.Cid, cid.Cid, []string, blocks.Block, error) {
+	root, segments := p.RootCid(), p.Segments()[2:]
+	if len(segments) == 0 {
+		return nil, root, nil, nil, nil
 	}
 
 	unixFSLsys.NodeReifier = unixfsnode.Reify
 	defer func() { unixFSLsys.NodeReifier = nil }()
 
 	var cids []cid.Cid
-	cids = append(cids, c)
+	cids = append(cids, root)
 
 	pc := dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
 		if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
@@ -274,13 +251,13 @@ func resolvePathToLastWithRoots(ctx context.Context, fpath ipfspath.ImmutablePat
 		return blk, nd, nil
 	}
 
-	nextBlk, nextNd, err := loadNode(ctx, c)
+	nextBlk, nextNd, err := loadNode(ctx, root)
 	if err != nil {
 		return nil, cid.Undef, nil, nil, err
 	}
 
 	depth := 0
-	for i, elem := range p {
+	for i, elem := range segments {
 		nextNd, err = nextNd.LookupBySegment(ipld.ParsePathSegment(elem))
 		if err != nil {
 			return nil, cid.Undef, nil, nil, err
@@ -297,7 +274,7 @@ func resolvePathToLastWithRoots(ctx context.Context, fpath ipfspath.ImmutablePat
 			}
 			cids = append(cids, cidLnk.Cid)
 
-			if i < len(p)-1 {
+			if i < len(segments)-1 {
 				nextBlk, nextNd, err = loadNode(ctx, cidLnk.Cid)
 				if err != nil {
 					return nil, cid.Undef, nil, nil, err
@@ -311,13 +288,13 @@ func resolvePathToLastWithRoots(ctx context.Context, fpath ipfspath.ImmutablePat
 	// if last node is not a link, just return it's cid, add path to remainder and return
 	if nextNd.Kind() != ipld.Kind_Link {
 		// return the cid and the remainder of the path
-		return cids[:len(cids)-1], cids[len(cids)-1], p[len(p)-depth:], nextBlk, nil
+		return cids[:len(cids)-1], cids[len(cids)-1], segments[len(segments)-depth:], nextBlk, nil
 	}
 
 	return cids[:len(cids)-1], cids[len(cids)-1], nil, nil, nil
 }
 
-func contentMetadataFromRootsAndRemainder(p ipfspath.ImmutablePath, pathRoots []cid.Cid, remainder []string) (ContentPathMetadata, error) {
+func contentMetadataFromRootsAndRemainder(p path.ImmutablePath, pathRoots []cid.Cid, remainder []string) (ContentPathMetadata, error) {
 	md := ContentPathMetadata{
 		PathSegmentRoots:     pathRoots,
 		LastSegmentRemainder: remainder,
@@ -723,7 +700,7 @@ type nextReq struct {
 	params CarParams
 }
 
-func fetchWithPartialRetries[T any](ctx context.Context, path path.ImmutablePath, initialParams CarParams, resolveTerminalElementFn loadTerminalElement[T], metrics *GraphGatewayMetrics, fetchCAR fetchCarFn) (ContentPathMetadata, T, error) {
+func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, initialParams CarParams, resolveTerminalElementFn loadTerminalElement[T], metrics *GraphGatewayMetrics, fetchCAR fetchCarFn) (ContentPathMetadata, T, error) {
 	var zeroReturnType T
 
 	terminalPathElementCh := make(chan terminalPathType[T], 1)
@@ -752,11 +729,9 @@ func fetchWithPartialRetries[T any](ctx context.Context, path path.ImmutablePath
 			}
 		}
 
-		// FIXME(HACDIAS): p := ipfspath.FromString(path.String())
-		p := path
 		params := initialParams
 
-		err := fetchCAR(cctx, path, params, func(resource string, reader io.Reader) error {
+		err := fetchCAR(cctx, p, params, func(resource string, reader io.Reader) error {
 			gb, err := carToLinearBlockGetter(cctx, reader, metrics)
 			if err != nil {
 				return err
@@ -828,14 +803,12 @@ func fetchWithPartialRetries[T any](ctx context.Context, path path.ImmutablePath
 				return closeErr
 			case req := <-sendRequest:
 				// set path and params for next iteration
-				p = ipfspath.FromCid(req.c)
-				// FIXME(hacdias)
-				imPath := p
+				p = path.FromCid(req.c)
 				if err != nil {
 					return err
 				}
 				params = req.params
-				remainderUrl := contentPathToCarUrl(imPath, params).String()
+				remainderUrl := contentPathToCarUrl(p, params).String()
 				return ErrPartialResponse{StillNeed: []string{remainderUrl}}
 			case <-cctx.Done():
 				return cctx.Err()
@@ -875,15 +848,13 @@ func fetchWithPartialRetries[T any](ctx context.Context, path path.ImmutablePath
 	}
 }
 
-func (api *GraphGateway) GetBlock(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.File, error) {
+func (api *GraphGateway) GetBlock(ctx context.Context, p path.ImmutablePath) (ContentPathMetadata, files.File, error) {
 	api.metrics.carParamsMetric.With(prometheus.Labels{"dagScope": "block", "entityRanges": "0"}).Inc()
-	// FIXME(HACDIAS): p := ipfspath.FromString(path.String())
-	p := path
 
 	var md ContentPathMetadata
 	var f files.File
 	// TODO: if path is `/ipfs/cid`, we should use ?format=raw
-	err := api.fetchCAR(ctx, path, CarParams{Scope: DagScopeBlock}, func(resource string, reader io.Reader) error {
+	err := api.fetchCAR(ctx, p, CarParams{Scope: DagScopeBlock}, func(resource string, reader io.Reader) error {
 		gb, err := carToLinearBlockGetter(ctx, reader, api.metrics)
 		if err != nil {
 			return err
@@ -924,21 +895,18 @@ func (api *GraphGateway) GetBlock(ctx context.Context, path path.ImmutablePath) 
 	return md, f, nil
 }
 
-func (api *GraphGateway) Head(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
+func (api *GraphGateway) Head(ctx context.Context, p path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	api.metrics.carParamsMetric.With(prometheus.Labels{"dagScope": "entity", "entityRanges": "1"}).Inc()
 
 	// TODO:  we probably want to move this either to boxo, or at least to loadRequestIntoSharedBlockstoreAndBlocksGateway
 	api.metrics.bytesRangeStartMetric.Observe(0)
 	api.metrics.bytesRangeSizeMetric.Observe(3071)
 
-	// FIXME(HACDIAS): p := ipfspath.FromString(path.String())
-	p := path
-
 	var md ContentPathMetadata
 	var n *HeadResponse
 	// TODO: fallback to dynamic fetches in case we haven't requested enough data
 	rangeTo := int64(3071)
-	err := api.fetchCAR(ctx, path, CarParams{Scope: DagScopeEntity, Range: &DagByteRange{From: 0, To: &rangeTo}}, func(resource string, reader io.Reader) error {
+	err := api.fetchCAR(ctx, p, CarParams{Scope: DagScopeEntity, Range: &DagByteRange{From: 0, To: &rangeTo}}, func(resource string, reader io.Reader) error {
 		gb, err := carToLinearBlockGetter(ctx, reader, api.metrics)
 		if err != nil {
 			return err
@@ -1069,11 +1037,11 @@ func (api *GraphGateway) Head(ctx context.Context, path path.ImmutablePath) (Con
 	return md, n, nil
 }
 
-func (api *GraphGateway) ResolvePath(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, error) {
+func (api *GraphGateway) ResolvePath(ctx context.Context, p path.ImmutablePath) (ContentPathMetadata, error) {
 	api.metrics.carParamsMetric.With(prometheus.Labels{"dagScope": "block", "entityRanges": "0"}).Inc()
 
 	var md ContentPathMetadata
-	err := api.fetchCAR(ctx, path, CarParams{Scope: DagScopeBlock}, func(resource string, reader io.Reader) error {
+	err := api.fetchCAR(ctx, p, CarParams{Scope: DagScopeBlock}, func(resource string, reader io.Reader) error {
 		gb, err := carToLinearBlockGetter(ctx, reader, api.metrics)
 		if err != nil {
 			return err
@@ -1081,8 +1049,6 @@ func (api *GraphGateway) ResolvePath(ctx context.Context, path path.ImmutablePat
 		lsys := getLinksystem(gb)
 
 		// First resolve the path since we always need to.
-		// FIXME(HACDIAS): p := ipfspath.FromString(path.String())
-		p := path
 		pathRoots, _, remainder, _, err := resolvePathToLastWithRoots(ctx, p, lsys)
 		if err != nil {
 			return err
@@ -1100,18 +1066,16 @@ func (api *GraphGateway) ResolvePath(ctx context.Context, path path.ImmutablePat
 	return md, nil
 }
 
-func (api *GraphGateway) GetCAR(ctx context.Context, path path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+func (api *GraphGateway) GetCAR(ctx context.Context, p path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	numRanges := "0"
 	if params.Range != nil {
 		numRanges = "1"
 	}
 	api.metrics.carParamsMetric.With(prometheus.Labels{"dagScope": string(params.Scope), "entityRanges": numRanges}).Inc()
-	rootCid, err := getRootCid(path)
+	rootCid, err := getRootCid(p)
 	if err != nil {
 		return ContentPathMetadata{}, nil, err
 	}
-	// FIXME(HACDIAS): p := ipfspath.FromString(path.String())
-	p := path
 
 	switch params.Order {
 	case DagOrderUnspecified, DagOrderUnknown, DagOrderDFS:
@@ -1124,7 +1088,7 @@ func (api *GraphGateway) GetCAR(ctx context.Context, path path.ImmutablePath, pa
 		numBlocksSent := 0
 		var cw storage.WritableCar
 		var blockBuffer []blocks.Block
-		err = api.fetchCAR(ctx, path, params, func(resource string, reader io.Reader) error {
+		err = api.fetchCAR(ctx, p, params, func(resource string, reader io.Reader) error {
 			numBlocksThisCall := 0
 			gb, err := carToLinearBlockGetter(ctx, reader, api.metrics)
 			if err != nil {
@@ -1190,9 +1154,8 @@ func (api *GraphGateway) GetCAR(ctx context.Context, path path.ImmutablePath, pa
 	}()
 
 	return ContentPathMetadata{
-		// PathSegmentRoots: []cid.Cid{rootCid},
-		PathSegmentRoots: nil, // FIXME(hacdias): originala bove
-		LastSegment:      ipfspath.FromCid(rootCid),
+		PathSegmentRoots: []cid.Cid{rootCid},
+		LastSegment:      path.FromCid(rootCid),
 		ContentType:      "",
 	}, r, nil
 }
