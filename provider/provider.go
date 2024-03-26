@@ -113,3 +113,48 @@ func pinSet(ctx context.Context, pinning pin.Pinner, fetchConfig fetcher.Factory
 
 	return set, nil
 }
+
+func NewPrioritizedProvider(streams ...KeyChanFunc) KeyChanFunc {
+	return func(ctx context.Context) (<-chan cid.Cid, error) {
+		outCh := make(chan cid.Cid)
+
+		go func() {
+			defer close(outCh)
+			has := map[string]bool{}
+
+			for _, stream := range streams {
+				ch, err := stream(ctx)
+				if err != nil {
+					log.Warnf("error in prioritized strategy: %w", err)
+				} else {
+				L:
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case c, ok := <-ch:
+							if !ok {
+								break L
+							}
+
+							// Likely faster than c.String()
+							str := string(c.Bytes())
+							if _, ok := has[str]; ok {
+								continue
+							}
+
+							select {
+							case <-ctx.Done():
+								return
+							case outCh <- c:
+								has[str] = true
+							}
+						}
+					}
+				}
+			}
+		}()
+
+		return outCh, nil
+	}
+}
