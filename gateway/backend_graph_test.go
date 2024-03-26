@@ -29,7 +29,7 @@ import (
 //go:embed testdata/directory-with-multilayer-hamt-and-multiblock-files.car
 var dirWithMultiblockHAMTandFiles []byte
 
-func TestTar(t *testing.T) {
+func TestGraphBackendTar(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -155,32 +155,21 @@ func TestTar(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
-	if err != nil {
-		t.Fatal(err)
-	}
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	require.NoError(t, err)
 
 	p := path.FromCid(cid.MustParse("bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi"))
 	_, nd, err := backend.GetAll(ctx, p)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	assertNextEntryNameEquals := func(t *testing.T, dirIter files.DirIterator, expectedName string) {
 		t.Helper()
-		if !dirIter.Next() {
-			iterErr := dirIter.Err()
-			t.Fatalf("expected entry, but errored with %s", iterErr.Error())
-		}
-		if expectedName != dirIter.Name() {
-			t.Fatalf("expected %s, got %s", expectedName, dirIter.Name())
-		}
+		require.True(t, dirIter.Next(), dirIter.Err())
+		require.Equal(t, expectedName, dirIter.Name())
 	}
 
 	robs, err := carbs.NewReadOnly(bytes.NewReader(dirWithMultiblockHAMTandFiles), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	dsrv := merkledag.NewDAGService(blockservice.New(robs, offline.Exchange(robs)))
 	assertFileEqual := func(t *testing.T, expectedCidString string, receivedFile files.File) {
@@ -188,25 +177,15 @@ func TestTar(t *testing.T) {
 
 		expected := cid.MustParse(expectedCidString)
 		receivedFileData, err := io.ReadAll(receivedFile)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		nd, err := dsrv.Get(ctx, expected)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		expectedFile, err := unixfile.NewUnixfsFile(ctx, dsrv, nd)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		expectedFileData, err := io.ReadAll(expectedFile.(files.File))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(expectedFileData, receivedFileData) {
-			t.Fatalf("expected %s, got %s", string(expectedFileData), string(receivedFileData))
-		}
+		require.NoError(t, err)
+		require.True(t, bytes.Equal(expectedFileData, receivedFileData))
 	}
 
 	rootDirIter := nd.(files.Directory).Entries()
@@ -234,12 +213,10 @@ func TestTar(t *testing.T) {
 	assertNextEntryNameEquals(t, hamtDirIter, "exampleA")
 	assertFileEqual(t, "bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa", hamtDirIter.Node().(files.File))
 
-	if rootDirIter.Next() || basicDirIter.Next() || hamtDirIter.Next() {
-		t.Fatal("expected directories to be fully enumerated")
-	}
+	require.False(t, rootDirIter.Next() || basicDirIter.Next() || hamtDirIter.Next())
 }
 
-func TestTarAtEndOfPath(t *testing.T) {
+func TestGraphBackendTarAtEndOfPath(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -345,40 +322,26 @@ func TestTarAtEndOfPath(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
-	if err != nil {
-		t.Fatal(err)
-	}
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	require.NoError(t, err)
 
 	p, err := path.Join(path.FromCid(cid.MustParse("bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi")), "hamtDir")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	imPath, err := path.NewImmutablePath(p)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	_, nd, err := backend.GetAll(ctx, imPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	assertNextEntryNameEquals := func(t *testing.T, dirIter files.DirIterator, expectedName string) {
 		t.Helper()
-		if !dirIter.Next() {
-			t.Fatal("expected entry")
-		}
-		if expectedName != dirIter.Name() {
-			t.Fatalf("expected %s, got %s", expectedName, dirIter.Name())
-		}
+		require.True(t, dirIter.Next())
+		require.Equal(t, expectedName, dirIter.Name())
 	}
 
 	robs, err := carbs.NewReadOnly(bytes.NewReader(dirWithMultiblockHAMTandFiles), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	dsrv := merkledag.NewDAGService(blockservice.New(robs, offline.Exchange(robs)))
 	assertFileEqual := func(t *testing.T, expectedCidString string, receivedFile files.File) {
@@ -386,25 +349,15 @@ func TestTarAtEndOfPath(t *testing.T) {
 
 		expected := cid.MustParse(expectedCidString)
 		receivedFileData, err := io.ReadAll(receivedFile)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		nd, err := dsrv.Get(ctx, expected)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		expectedFile, err := unixfile.NewUnixfsFile(ctx, dsrv, nd)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		expectedFileData, err := io.ReadAll(expectedFile.(files.File))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(expectedFileData, receivedFileData) {
-			t.Fatalf("expected %s, got %s", string(expectedFileData), string(receivedFileData))
-		}
+		require.NoError(t, err)
+		require.True(t, bytes.Equal(expectedFileData, receivedFileData))
 	}
 
 	hamtDirIter := nd.(files.Directory).Entries()
@@ -421,9 +374,7 @@ func TestTarAtEndOfPath(t *testing.T) {
 	assertNextEntryNameEquals(t, hamtDirIter, "exampleA")
 	assertFileEqual(t, "bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa", hamtDirIter.Node().(files.File))
 
-	if hamtDirIter.Next() {
-		t.Fatal("expected directories to be fully enumerated")
-	}
+	require.False(t, hamtDirIter.Next())
 }
 
 func sendBlocks(ctx context.Context, carFixture []byte, writer io.Writer, cidStrList []string) error {
@@ -451,7 +402,7 @@ func sendBlocks(ctx context.Context, carFixture []byte, writer io.Writer, cidStr
 	return nil
 }
 
-func TestGetFile(t *testing.T) {
+func TestGraphBackendGetFile(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -530,50 +481,33 @@ func TestGetFile(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
-	if err != nil {
-		t.Fatal(err)
-	}
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	require.NoError(t, err)
 
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
 	defer trustedGatewayServer.Close()
 
 	resp, err := http.Get(trustedGatewayServer.URL + "/ipfs/bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi/hamtDir/exampleA")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	robs, err := carbs.NewReadOnly(bytes.NewReader(dirWithMultiblockHAMTandFiles), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	dsrv := merkledag.NewDAGService(blockservice.New(robs, offline.Exchange(robs)))
 	fileRootNd, err := dsrv.Get(ctx, cid.MustParse("bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	uio, err := unixfile.NewUnixfsFile(ctx, dsrv, fileRootNd)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f := uio.(files.File)
 	expectedFileData, err := io.ReadAll(f)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(data, expectedFileData) {
-		t.Fatalf("expected %s, got %s", string(expectedFileData), string(data))
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(data, expectedFileData))
 }
 
-func TestGetFileRangeRequest(t *testing.T) {
+func TestGraphBackendGetFileRangeRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -648,64 +582,41 @@ func TestGetFileRangeRequest(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
-	if err != nil {
-		t.Fatal(err)
-	}
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	require.NoError(t, err)
 
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
 	defer trustedGatewayServer.Close()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", trustedGatewayServer.URL+"/ipfs/bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	startIndex := 256
 	endIndex := 750
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", startIndex, endIndex))
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	robs, err := carbs.NewReadOnly(bytes.NewReader(dirWithMultiblockHAMTandFiles), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	dsrv := merkledag.NewDAGService(blockservice.New(robs, offline.Exchange(robs)))
 	fileRootNd, err := dsrv.Get(ctx, cid.MustParse("bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	uio, err := unixfile.NewUnixfsFile(ctx, dsrv, fileRootNd)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f := uio.(files.File)
-	if _, err := f.Seek(int64(startIndex), io.SeekStart); err != nil {
-		t.Fatal(err)
-	}
+	_, err = f.Seek(int64(startIndex), io.SeekStart)
+	require.NoError(t, err)
 	expectedFileData, err := io.ReadAll(io.LimitReader(f, int64(endIndex)-int64(startIndex)+1))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(data, expectedFileData) {
-		t.Fatalf("expected %s, got %s", string(expectedFileData), string(data))
-	}
-
-	if requestNum != 4 {
-		t.Fatalf("expected exactly 4 requests, got %d", requestNum)
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(data, expectedFileData))
+	require.Equal(t, 4, requestNum)
 }
 
-func TestGetFileWithBadBlockReturned(t *testing.T) {
+func TestGraphBackendGetFileWithBadBlockReturned(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -778,50 +689,33 @@ func TestGetFileWithBadBlockReturned(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
-	if err != nil {
-		t.Fatal(err)
-	}
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	require.NoError(t, err)
 
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
 	defer trustedGatewayServer.Close()
 
 	resp, err := http.Get(trustedGatewayServer.URL + "/ipfs/bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	robs, err := carbs.NewReadOnly(bytes.NewReader(dirWithMultiblockHAMTandFiles), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	dsrv := merkledag.NewDAGService(blockservice.New(robs, offline.Exchange(robs)))
 	fileRootNd, err := dsrv.Get(ctx, cid.MustParse("bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	uio, err := unixfile.NewUnixfsFile(ctx, dsrv, fileRootNd)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f := uio.(files.File)
 	expectedFileData, err := io.ReadAll(f)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(data, expectedFileData) {
-		t.Fatalf("expected %s, got %s", string(expectedFileData), string(data))
-	}
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(data, expectedFileData))
 }
 
-func TestGetHAMTDirectory(t *testing.T) {
+func TestGraphBackendGetHAMTDirectory(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -898,23 +792,17 @@ func TestGetHAMTDirectory(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
-	if err != nil {
-		t.Fatal(err)
-	}
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	require.NoError(t, err)
 
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
 	defer trustedGatewayServer.Close()
 
 	resp, err := http.Get(trustedGatewayServer.URL + "/ipfs/bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi/hamtDir/")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	if strings.Count(string(data), ">exampleD-hamt-collide-exampleB-seed-364<") == 1 &&
 		strings.Count(string(data), ">exampleC-hamt-collide-exampleA-seed-52<") == 1 &&
@@ -925,7 +813,7 @@ func TestGetHAMTDirectory(t *testing.T) {
 	t.Fatal("directory does not contain the expected links")
 }
 
-func TestGetCAR(t *testing.T) {
+func TestGraphBackendGetCAR(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -1010,28 +898,20 @@ func TestGetCAR(t *testing.T) {
 
 	bs, err := NewRemoteCarFetcher([]string{s.URL})
 	require.NoError(t, err)
-	backend, err := NewGraphGatewayBackend(&retryFetcher{inner: bs.(CarFetcher), allowedRetries: 3, retriesRemaining: 3})
-	if err != nil {
-		t.Fatal(err)
-	}
+	backend, err := NewGraphBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	require.NoError(t, err)
 
 	p := path.FromCid(cid.MustParse("bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi"))
 	var carReader io.Reader
 	_, carReader, err = backend.GetCAR(ctx, p, CarParams{Scope: DagScopeAll})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	carBytes, err := io.ReadAll(carReader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	carReader = bytes.NewReader(carBytes)
 
 	blkReader, err := carv2.NewBlockReader(carReader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	responseCarBlock := []string{
 		"bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi", // root dir
@@ -1057,22 +937,16 @@ func TestGetCAR(t *testing.T) {
 	for i := 0; i < len(responseCarBlock); i++ {
 		expectedCid := cid.MustParse(responseCarBlock[i])
 		blk, err := blkReader.Next()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !blk.Cid().Equals(expectedCid) {
-			t.Fatalf("expected cid %s, got %s", expectedCid, blk.Cid())
-		}
+		require.NoError(t, err)
+		require.True(t, blk.Cid().Equals(expectedCid))
 	}
 	_, err = blkReader.Next()
-	if !errors.Is(err, io.EOF) {
-		t.Fatal("expected an EOF")
-	}
+	require.ErrorIs(t, err, io.EOF)
 }
 
-func TestPassthroughErrors(t *testing.T) {
+func TestGraphBackendPassthroughErrors(t *testing.T) {
 	t.Run("PathTraversalError", func(t *testing.T) {
-		pathTraversalTest := func(t *testing.T, traversal func(ctx context.Context, p path.ImmutablePath, backend *GraphGateway) error) {
+		pathTraversalTest := func(t *testing.T, traversal func(ctx context.Context, p path.ImmutablePath, backend *GraphBackend) error) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -1116,30 +990,24 @@ func TestPassthroughErrors(t *testing.T) {
 			require.NoError(t, err)
 
 			p, err := path.NewPath("/ipfs/bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi/hamtDir/exampleA")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			imPath, err := path.NewImmutablePath(p)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			bogusErr := NewErrorStatusCode(fmt.Errorf("this is a test error"), 418)
 
 			clientRequestNum := 0
-			backend, err := NewGraphGatewayBackend(&retryFetcher{
+			backend, err := NewGraphBackend(&retryFetcher{
 				inner: &fetcherWrapper{fn: func(ctx context.Context, path string, cb DataCallback) error {
 					clientRequestNum++
 					if clientRequestNum > 2 {
 						return bogusErr
 					}
-					return bs.(CarFetcher).Fetch(ctx, path, cb)
+					return bs.Fetch(ctx, path, cb)
 				}},
 				allowedRetries: 3, retriesRemaining: 3})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			err = traversal(ctx, imPath, backend)
 			parsedErr := &ErrorStatusCode{}
@@ -1151,13 +1019,13 @@ func TestPassthroughErrors(t *testing.T) {
 			t.Fatal("error did not pass through")
 		}
 		t.Run("Block", func(t *testing.T) {
-			pathTraversalTest(t, func(ctx context.Context, p path.ImmutablePath, backend *GraphGateway) error {
+			pathTraversalTest(t, func(ctx context.Context, p path.ImmutablePath, backend *GraphBackend) error {
 				_, _, err := backend.GetBlock(ctx, p)
 				return err
 			})
 		})
 		t.Run("File", func(t *testing.T) {
-			pathTraversalTest(t, func(ctx context.Context, p path.ImmutablePath, backend *GraphGateway) error {
+			pathTraversalTest(t, func(ctx context.Context, p path.ImmutablePath, backend *GraphBackend) error {
 				_, _, err := backend.Get(ctx, p)
 				return err
 			})

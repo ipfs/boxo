@@ -23,21 +23,9 @@ import (
 
 type getBlock func(ctx context.Context, cid cid.Cid) (blocks.Block, error)
 
-// ErrInvalidResponse can be returned from a DataCallback to indicate that the data provided for the
-// requested resource was explicitly 'incorrect' - that blocks not in the requested dag, or non-car-conforming
-// data was returned.
-type ErrInvalidResponse struct {
-	Message string
-}
-
-func (e ErrInvalidResponse) Error() string {
-	return e.Message
-}
-
-// var ErrNilBlock = caboose.ErrInvalidResponse{Message: "received a nil block with no error"}
 var ErrNilBlock = ErrInvalidResponse{Message: "received a nil block with no error"}
 
-func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *GraphGatewayMetrics) (getBlock, error) {
+func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *GraphBackendMetrics) (getBlock, error) {
 	cr, err := car.NewCarReaderWithOptions(reader, car.WithErrorOnEmptyRoots(false))
 	if err != nil {
 		return nil, err
@@ -104,7 +92,7 @@ func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *Grap
 			if !ok || errors.Is(blkRead.err, io.EOF) {
 				return nil, io.ErrUnexpectedEOF
 			}
-			return nil, GatewayError(blkRead.err)
+			return nil, blockstoreErrToGatewayErr(blkRead.err)
 		}
 		if blkRead.block != nil {
 			metrics.carBlocksFetchedMetric.Inc()

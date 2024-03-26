@@ -27,13 +27,13 @@ func main() {
 	}
 	defer (func() { _ = tp.Shutdown(ctx) })()
 
-	carFetcher, err := gateway.NewRemoteCarFetcher([]string{*gatewayUrlPtr}, nil)
+	carFetcher, err := gateway.NewRemoteCarFetcher([]string{*gatewayUrlPtr})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Creates the gateway with the remote graph backend.
-	backend, err := gateway.NewGraphGatewayBackend(carFetcher)
+	backend, err := gateway.NewGraphBackend(carFetcher)
 	if err != nil {
 		log.Fatal(err)
 	}

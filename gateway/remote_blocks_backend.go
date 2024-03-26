@@ -20,7 +20,7 @@ const getBlockTimeout = time.Second * 60
 // If you want to create a more custom [BlocksBackend] with only remote IPNS
 // Record resolution, or only remote block fetching, we recommend using
 // [NewBlocksBackend] directly.
-func NewRemoteBlocksBackend(gatewayURL []string, opts ...BlocksBackendOption) (*BlocksBackend, error) {
+func NewRemoteBlocksBackend(gatewayURL []string, opts ...BackendOption) (*BlocksBackend, error) {
 	blockStore, err := NewRemoteBlockstore(gatewayURL)
 	if err != nil {
 		return nil, err
