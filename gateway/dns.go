@@ -95,6 +95,9 @@ func NewDNSResolver(resolvers map[string]string, dohOpts ...doh.Option) (*madns.
 	return madns.NewResolver(opts...)
 }
 
+// How often should we check for successful updates to cached entries
+const dnsCacheRefreshInterval = 5 * time.Minute
+
 // CachedDNS implements [http.Transport.DialContext], allowing to cache DNS
 // requests for a specified amount of time.
 type CachedDNS struct {
