@@ -445,6 +445,8 @@ func TestIPNS(t *testing.T) {
 
 			requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 
+			require.Contains(t, resp.Header.Get("Content-Disposition"), `attachment; filename="`+name1.String()+`.ipns-record"`)
+
 			require.Contains(t, resp.Header.Get("Cache-Control"), "public, max-age=42")
 
 			// expected "stale" values are int(time.Until(eol).Seconds())

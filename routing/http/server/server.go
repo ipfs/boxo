@@ -22,6 +22,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multibase"
 
 	logging "github.com/ipfs/go-log/v2"
 )
@@ -370,8 +371,14 @@ func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIte
 }
 
 func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
-	if !strings.Contains(r.Header.Get("Accept"), mediaTypeIPNSRecord) {
-		writeErr(w, "GetIPNS", http.StatusNotAcceptable, errors.New("content type in 'Accept' header is missing or not supported"))
+	acceptHdrValue := r.Header.Get("Accept")
+	// When 'Accept' header is missing, default to 'application/vnd.ipfs.ipns-record'
+	// (improved UX, similar to how we default to JSON response for /providers and /peers)
+	if len(acceptHdrValue) == 0 {
+		acceptHdrValue = mediaTypeIPNSRecord
+	}
+	if !strings.Contains(acceptHdrValue, mediaTypeIPNSRecord) {
+		writeErr(w, "GetIPNS", http.StatusNotAcceptable, errors.New("content type in 'Accept' header is not supported, retry with 'application/vnd.ipfs.ipns-record'"))
 		return
 	}
 
@@ -420,6 +427,11 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Etag", fmt.Sprintf(`"%x"`, xxhash.Sum64(rawRecord)))
 	w.Header().Set("Content-Type", mediaTypeIPNSRecord)
+
+	// Content-Disposition is not required, but improves UX by assigning a meaningful filename when opening URL in a web browser
+	if filename, err := cid.StringOfBase(multibase.Base36); err == nil {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.ipns-record\"", filename))
+	}
 	w.Header().Add("Vary", "Accept")
 	w.Write(rawRecord)
 }
