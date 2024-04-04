@@ -114,44 +114,56 @@ func pinSet(ctx context.Context, pinning pin.Pinner, fetchConfig fetcher.Factory
 	return set, nil
 }
 
-func NewPrioritizedProvider(streams ...KeyChanFunc) KeyChanFunc {
+func NewPrioritizedProvider(priorityCids KeyChanFunc, otherCids KeyChanFunc) KeyChanFunc {
 	return func(ctx context.Context) (<-chan cid.Cid, error) {
 		outCh := make(chan cid.Cid)
 
 		go func() {
 			defer close(outCh)
-			has := map[string]bool{}
+			visited := map[string]struct{}{}
 
-			for _, stream := range streams {
+			handleStream := func(stream KeyChanFunc, markVisited bool) error {
 				ch, err := stream(ctx)
 				if err != nil {
-					log.Warnf("error in prioritized strategy: %w", err)
-				} else {
-				L:
-					for {
+					return err
+				}
+
+				for {
+					select {
+					case <-ctx.Done():
+						return nil
+					case c, ok := <-ch:
+						if !ok {
+							return nil
+						}
+
+						// Likely faster than c.String()
+						str := string(c.Bytes())
+						if _, ok := visited[str]; ok {
+							continue
+						}
+
 						select {
 						case <-ctx.Done():
-							return
-						case c, ok := <-ch:
-							if !ok {
-								break L
-							}
-
-							// Likely faster than c.String()
-							str := string(c.Bytes())
-							if _, ok := has[str]; ok {
-								continue
-							}
-
-							select {
-							case <-ctx.Done():
-								return
-							case outCh <- c:
-								has[str] = true
+							return nil
+						case outCh <- c:
+							if markVisited {
+								visited[str] = struct{}{}
 							}
 						}
 					}
 				}
+			}
+
+			err := handleStream(priorityCids, true)
+			if err != nil {
+				log.Warnf("error in prioritized strategy while handling priority CIDs: %w", err)
+				return
+			}
+
+			err = handleStream(otherCids, false)
+			if err != nil {
+				log.Warnf("error in prioritized strategy while handling other CIDs: %w", err)
 			}
 		}()
 

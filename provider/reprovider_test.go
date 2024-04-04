@@ -266,58 +266,42 @@ func TestNewPrioritizedProvider(t *testing.T) {
 
 	testCases := []struct {
 		name     string
-		given    [][]cid.Cid
+		priority []cid.Cid
+		all      []cid.Cid
 		expected []cid.Cid
 	}{
 		{
-			name: "basic test",
-			given: [][]cid.Cid{
-				cids[:3],
-				cids[3:],
-			},
+			name:     "basic test",
+			priority: cids[:3],
+			all:      cids[3:],
 			expected: cids,
 		},
 		{
-			name: "basic test inverted",
-			given: [][]cid.Cid{
-				cids[3:],
-				cids[:3],
-			},
+			name:     "basic test inverted",
+			priority: cids[3:],
+			all:      cids[:3],
 			expected: append(cids[3:], cids[:3]...),
 		},
 		{
-			name: "no repeated",
-			given: [][]cid.Cid{
-				cids[3:],
-				cids[3:],
-				cids[3:],
-				cids[3:],
-			},
+			name:     "no repeated",
+			priority: cids[3:],
+			all:      cids[3:],
 			expected: cids[3:],
 		},
 		{
-			name: "no repeated intercalated",
-			given: [][]cid.Cid{
-				{cids[0], cids[1], cids[0]},
-				{cids[2], cids[4], cids[5]},
-				{cids[0], cids[3], cids[5]},
-			},
-			expected: []cid.Cid{cids[0], cids[1], cids[2], cids[4], cids[5], cids[3]},
+			name:     "no repeated intercalated",
+			priority: []cid.Cid{cids[0], cids[1], cids[0]},
+			all:      []cid.Cid{cids[2], cids[4], cids[5]},
+			expected: []cid.Cid{cids[0], cids[1], cids[2], cids[4], cids[5]},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			fns := []KeyChanFunc{}
-
-			for _, arr := range tc.given {
-				fns = append(fns, newMockKeyChanFunc(arr))
-			}
-
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			stream := NewPrioritizedProvider(fns...)
+			stream := NewPrioritizedProvider(newMockKeyChanFunc(tc.priority), newMockKeyChanFunc(tc.all))
 			ch, err := stream(ctx)
 			require.NoError(t, err)
 
