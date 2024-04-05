@@ -374,7 +374,7 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 	acceptHdrValue := r.Header.Get("Accept")
 	// When 'Accept' header is missing, default to 'application/vnd.ipfs.ipns-record'
 	// (improved UX, similar to how we default to JSON response for /providers and /peers)
-	if len(acceptHdrValue) == 0 {
+	if len(acceptHdrValue) == 0 || strings.Contains(acceptHdrValue, mediaTypeWildcard) {
 		acceptHdrValue = mediaTypeIPNSRecord
 	}
 	if !strings.Contains(acceptHdrValue, mediaTypeIPNSRecord) {
