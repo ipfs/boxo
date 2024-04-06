@@ -689,12 +689,6 @@ func (bb *BlocksBackend) IsCached(ctx context.Context, p path.Path) bool {
 	return has
 }
 
-var _ WithContextHint = (*BlocksBackend)(nil)
-
-func (bb *BlocksBackend) WrapContextForRequest(ctx context.Context) context.Context {
-	return blockservice.ContextWithSession(ctx, bb.blockService)
-}
-
 func (bb *BlocksBackend) ResolvePath(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, error) {
 	roots, lastSeg, remainder, err := bb.getPathRoots(ctx, path)
 	if err != nil {
