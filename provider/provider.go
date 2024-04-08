@@ -71,43 +71,55 @@ func NewPinnedProvider(onlyRoots bool, pinning pin.Pinner, fetchConfig fetcher.F
 }
 
 func pinSet(ctx context.Context, pinning pin.Pinner, fetchConfig fetcher.Factory, onlyRoots bool) (*cidutil.StreamingSet, error) {
-	// FIXME: Listing all pins code is duplicated thrice, twice in Kubo and here, maybe more.
-	// If this were a method of the [pin.Pinner] life would be easier.
 	set := cidutil.NewStreamingSet()
+	recursivePins := cidutil.NewSet()
 
 	go func() {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		defer close(set.New)
 
-		for sc := range pinning.DirectKeys(ctx, false) {
-			if sc.Err != nil {
-				logR.Errorf("reprovide direct pins: %s", sc.Err)
-				return
-			}
-			set.Visitor(ctx)(sc.Pin.Key)
-		}
-
-		session := fetchConfig.NewSession(ctx)
+		// 1. Recursive keys
 		for sc := range pinning.RecursiveKeys(ctx, false) {
 			if sc.Err != nil {
 				logR.Errorf("reprovide recursive pins: %s", sc.Err)
 				return
 			}
-			set.Visitor(ctx)(sc.Pin.Key)
 			if !onlyRoots {
-				err := fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: sc.Pin.Key}, func(res fetcher.FetchResult) error {
-					clink, ok := res.LastBlockLink.(cidlink.Link)
-					if ok {
-						set.Visitor(ctx)(clink.Cid)
-					}
-					return nil
-				})
-				if err != nil {
-					logR.Errorf("reprovide indirect pins: %s", err)
-					return
-				}
+				// Save some bytes.
+				_ = recursivePins.Visit(sc.Pin.Key)
 			}
+			_ = set.Visitor(ctx)(sc.Pin.Key)
+		}
+
+		// 2. Direct pins
+		for sc := range pinning.DirectKeys(ctx, false) {
+			if sc.Err != nil {
+				logR.Errorf("reprovide direct pins: %s", sc.Err)
+				return
+			}
+			_ = set.Visitor(ctx)(sc.Pin.Key)
+		}
+
+		if onlyRoots {
+			return
+		}
+
+		// 3. Go through recursive pins to fetch remaining blocks if we want more
+		// than just roots.
+		session := fetchConfig.NewSession(ctx)
+		err := recursivePins.ForEach(func(c cid.Cid) error {
+			return fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: c}, func(res fetcher.FetchResult) error {
+				clink, ok := res.LastBlockLink.(cidlink.Link)
+				if ok {
+					_ = set.Visitor(ctx)(clink.Cid)
+				}
+				return nil
+			})
+		})
+		if err != nil {
+			logR.Errorf("reprovide direct pins: %s", err)
+			return
 		}
 	}()
 
@@ -120,7 +132,7 @@ func NewPrioritizedProvider(priorityCids KeyChanFunc, otherCids KeyChanFunc) Key
 
 		go func() {
 			defer close(outCh)
-			visited := map[string]struct{}{}
+			visited := cidutil.NewSet()
 
 			handleStream := func(stream KeyChanFunc, markVisited bool) error {
 				ch, err := stream(ctx)
@@ -137,11 +149,7 @@ func NewPrioritizedProvider(priorityCids KeyChanFunc, otherCids KeyChanFunc) Key
 							return nil
 						}
 
-						// Bytes of the multihash of the CID as key. Major routing systems
-						// in use are multihash based. Advertising 2 CIDs with the same
-						// multihash would not be very useful.
-						str := string(c.Hash())
-						if _, ok := visited[str]; ok {
+						if visited.Has(c) {
 							continue
 						}
 
@@ -150,7 +158,7 @@ func NewPrioritizedProvider(priorityCids KeyChanFunc, otherCids KeyChanFunc) Key
 							return nil
 						case outCh <- c:
 							if markVisited {
-								visited[str] = struct{}{}
+								_ = visited.Visit(c)
 							}
 						}
 					}
