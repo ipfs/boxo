@@ -289,7 +289,7 @@ func TestNewPrioritizedProvider(t *testing.T) {
 			expected: cids[3:],
 		},
 		{
-			name:     "no repeated intercalated",
+			name:     "no repeated if duplicates in the prioritized channel",
 			priority: []cid.Cid{cids[0], cids[1], cids[0]},
 			all:      []cid.Cid{cids[2], cids[4], cids[5]},
 			expected: []cid.Cid{cids[0], cids[1], cids[2], cids[4], cids[5]},
