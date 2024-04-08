@@ -137,8 +137,10 @@ func NewPrioritizedProvider(priorityCids KeyChanFunc, otherCids KeyChanFunc) Key
 							return nil
 						}
 
-						// Likely faster than c.String()
-						str := string(c.Bytes())
+						// Bytes of the multihash of the CID as key. Major routing systems
+						// in use are multihash based. Advertising 2 CIDs with the same
+						// multihash would not be very useful.
+						str := string(c.Hash())
 						if _, ok := visited[str]; ok {
 							continue
 						}
