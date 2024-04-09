@@ -79,6 +79,14 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 	return Option{client.SetSimulateDontHavesOnTimeout(send)}
 }
 
+func WithBlockReceivedNotifier(brn client.BlockReceivedNotifier) Option {
+	return Option{client.WithBlockReceivedNotifier(brn)}
+}
+
+func WithoutDuplicatedBlockStats() Option {
+	return Option{client.WithoutDuplicatedBlockStats()}
+}
+
 func WithTracer(tap tracer.Tracer) Option {
 	// Only trace the server, both receive the same messages anyway
 	return Option{

@@ -7,6 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,6 +50,7 @@ func TestHeaders(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode)
 	header := resp.Header.Get("Content-Type")
 	require.Equal(t, mediaTypeJSON, header)
+	require.Equal(t, "Accept", resp.Header.Get("Vary"))
 
 	resp, err = http.Get(serverAddr + "/routing/v1/providers/" + "BAD_CID")
 	require.NoError(t, err)
@@ -66,6 +70,13 @@ func makePeerID(t *testing.T) (crypto.PrivKey, peer.ID) {
 	return sk, pid
 }
 
+func requireCloseToNow(t *testing.T, lastModified string) {
+	// inspecting fields like 'Last-Modified'  is prone to one-off errors, we test with 1m buffer
+	lastModifiedTime, err := time.Parse(http.TimeFormat, lastModified)
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now(), lastModifiedTime, 1*time.Minute)
+}
+
 func TestProviders(t *testing.T) {
 	pidStr := "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn"
 	pid2Str := "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"
@@ -79,25 +90,31 @@ func TestProviders(t *testing.T) {
 	cid, err := cid.Decode(cidStr)
 	require.NoError(t, err)
 
-	runTest := func(t *testing.T, contentType string, expectedStream bool, expectedBody string) {
+	runTest := func(t *testing.T, contentType string, empty bool, expectedStream bool, expectedBody string) {
 		t.Parallel()
 
-		results := iter.FromSlice([]iter.Result[types.Record]{
-			{Val: &types.PeerRecord{
-				Schema:    types.SchemaPeer,
-				ID:        &pid,
-				Protocols: []string{"transport-bitswap"},
-				Addrs:     []types.Multiaddr{},
-			}},
-			//lint:ignore SA1019 // ignore staticcheck
-			{Val: &types.BitswapRecord{
+		var results *iter.SliceIter[iter.Result[types.Record]]
+
+		if empty {
+			results = iter.FromSlice([]iter.Result[types.Record]{})
+		} else {
+			results = iter.FromSlice([]iter.Result[types.Record]{
+				{Val: &types.PeerRecord{
+					Schema:    types.SchemaPeer,
+					ID:        &pid,
+					Protocols: []string{"transport-bitswap"},
+					Addrs:     []types.Multiaddr{},
+				}},
 				//lint:ignore SA1019 // ignore staticcheck
-				Schema:   types.SchemaBitswap,
-				ID:       &pid2,
-				Protocol: "transport-bitswap",
-				Addrs:    []types.Multiaddr{},
-			}}},
-		)
+				{Val: &types.BitswapRecord{
+					//lint:ignore SA1019 // ignore staticcheck
+					Schema:   types.SchemaBitswap,
+					ID:       &pid2,
+					Protocol: "transport-bitswap",
+					Addrs:    []types.Multiaddr{},
+				}}},
+			)
+		}
 
 		router := &mockContentRouter{}
 		server := httptest.NewServer(Handler(router))
@@ -112,13 +129,28 @@ func TestProviders(t *testing.T) {
 
 		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 		require.NoError(t, err)
-		req.Header.Set("Accept", contentType)
+
+		if contentType == "" || strings.Contains(contentType, mediaTypeWildcard) {
+			// When no Accept header is provided with request
+			// we default expected response to  JSON
+			contentType = mediaTypeJSON
+		} else {
+			req.Header.Set("Accept", contentType)
+		}
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		require.Equal(t, 200, resp.StatusCode)
-		header := resp.Header.Get("Content-Type")
-		require.Equal(t, contentType, header)
+
+		require.Equal(t, contentType, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
+
+		if empty {
+			require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		} else {
+			require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		}
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -127,11 +159,29 @@ func TestProviders(t *testing.T) {
 	}
 
 	t.Run("JSON Response", func(t *testing.T) {
-		runTest(t, mediaTypeJSON, false, `{"Providers":[{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"},{"Schema":"bitswap","Protocol":"transport-bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"}]}`)
+		runTest(t, mediaTypeJSON, false, false, `{"Providers":[{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"},{"Schema":"bitswap","Protocol":"transport-bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"}]}`)
+	})
+
+	t.Run("Empty JSON Response", func(t *testing.T) {
+		runTest(t, mediaTypeJSON, true, false, `{"Providers":null}`)
+	})
+
+	t.Run("Wildcard Accept header defaults to JSON Response", func(t *testing.T) {
+		accept := "text/html,*/*"
+		runTest(t, accept, true, false, `{"Providers":null}`)
+	})
+
+	t.Run("Missing Accept header defaults to JSON Response", func(t *testing.T) {
+		accept := ""
+		runTest(t, accept, true, false, `{"Providers":null}`)
 	})
 
 	t.Run("NDJSON Response", func(t *testing.T) {
-		runTest(t, mediaTypeNDJSON, true, `{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n"+`{"Schema":"bitswap","Protocol":"transport-bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"}`+"\n")
+		runTest(t, mediaTypeNDJSON, false, true, `{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n"+`{"Schema":"bitswap","Protocol":"transport-bitswap","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz"}`+"\n")
+	})
+
+	t.Run("Empty NDJSON Response", func(t *testing.T) {
+		runTest(t, mediaTypeNDJSON, true, true, "")
 	})
 }
 
@@ -141,13 +191,15 @@ func TestPeers(t *testing.T) {
 		t.Cleanup(server.Close)
 		req, err := http.NewRequest(http.MethodGet, "http://"+server.Listener.Addr().String()+"/routing/v1/peers/"+arg, nil)
 		require.NoError(t, err)
-		req.Header.Set("Accept", contentType)
+		if contentType != "" {
+			req.Header.Set("Accept", contentType)
+		}
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		return resp
 	}
 
-	t.Run("GET /routing/v1/peers/{non-peer-cid} returns 400", func(t *testing.T) {
+	t.Run("GET /routing/v1/peers/{non-peer-valid-cid} returns 400", func(t *testing.T) {
 		t.Parallel()
 
 		router := &mockContentRouter{}
@@ -155,16 +207,62 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 400, resp.StatusCode)
 	})
 
-	t.Run("GET /routing/v1/peers/{base58-peer-id} returns 400", func(t *testing.T) {
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (No Results, explicit JSON)", func(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+
 		router := &mockContentRouter{}
-		resp := makeRequest(t, router, mediaTypeJSON, b58.Encode([]byte(pid)))
-		require.Equal(t, 400, resp.StatusCode)
+		router.On("FindPeers", mock.Anything, pid, 20).Return(results, nil)
+
+		resp := makeRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String())
+		require.Equal(t, 200, resp.StatusCode)
+
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
+		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 	})
 
-	t.Run("GET /routing/v1/peers/{cid-peer-id} returns 200 with correct body (JSON)", func(t *testing.T) {
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (No Results, implicit JSON, wildcard Accept header)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makePeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+
+		router := &mockContentRouter{}
+		router.On("FindPeers", mock.Anything, pid, 20).Return(results, nil)
+
+		// Simulate request with Accept header that includes wildcard match
+		resp := makeRequest(t, router, "text/html,*/*", peer.ToCid(pid).String())
+
+		// Expect response to default to application/json
+		require.Equal(t, 200, resp.StatusCode)
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+
+	})
+
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (No Results, implicit JSON, no Accept header)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makePeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+
+		router := &mockContentRouter{}
+		router.On("FindPeers", mock.Anything, pid, 20).Return(results, nil)
+
+		// Simulate request without Accept header
+		resp := makeRequest(t, router, "", peer.ToCid(pid).String())
+
+		// Expect response to default to application/json
+		require.Equal(t, 200, resp.StatusCode)
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+
+	})
+
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (JSON)", func(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
@@ -186,11 +284,15 @@ func TestPeers(t *testing.T) {
 		router := &mockContentRouter{}
 		router.On("FindPeers", mock.Anything, pid, 20).Return(results, nil)
 
-		resp := makeRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String())
+		libp2pKeyCID := peer.ToCid(pid).String()
+		resp := makeRequest(t, router, mediaTypeJSON, libp2pKeyCID)
 		require.Equal(t, 200, resp.StatusCode)
 
-		header := resp.Header.Get("Content-Type")
-		require.Equal(t, mediaTypeJSON, header)
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -199,7 +301,26 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, expectedBody, string(body))
 	})
 
-	t.Run("GET /routing/v1/peers/{cid-peer-id} returns 200 with correct body (NDJSON)", func(t *testing.T) {
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (No Results, NDJSON)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makePeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+
+		router := &mockContentRouter{}
+		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
+
+		resp := makeRequest(t, router, mediaTypeNDJSON, peer.ToCid(pid).String())
+		require.Equal(t, 200, resp.StatusCode)
+
+		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
+		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
+	})
+
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (NDJSON)", func(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
@@ -221,10 +342,86 @@ func TestPeers(t *testing.T) {
 		router := &mockContentRouter{}
 		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
 
-		resp := makeRequest(t, router, mediaTypeNDJSON, peer.ToCid(pid).String())
+		libp2pKeyCID := peer.ToCid(pid).String()
+		resp := makeRequest(t, router, mediaTypeNDJSON, libp2pKeyCID)
+		require.Equal(t, 200, resp.StatusCode)
+
+		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		expectedBody := `{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-bitswap","transport-foo"],"Schema":"peer"}` + "\n" + `{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-foo"],"Schema":"peer"}` + "\n"
+		require.Equal(t, expectedBody, string(body))
+	})
+
+	t.Run("GET /routing/v1/peers/{legacy-base58-peer-id} returns 200 with correct body (JSON)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makePeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid,
+				Protocols: []string{"transport-bitswap", "transport-foo"},
+				Addrs:     []types.Multiaddr{},
+			}},
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid,
+				Protocols: []string{"transport-foo"},
+				Addrs:     []types.Multiaddr{},
+			}},
+		})
+
+		router := &mockContentRouter{}
+		router.On("FindPeers", mock.Anything, pid, 20).Return(results, nil)
+
+		legacyPeerID := b58.Encode([]byte(pid))
+		resp := makeRequest(t, router, mediaTypeJSON, legacyPeerID)
 		require.Equal(t, 200, resp.StatusCode)
 
 		header := resp.Header.Get("Content-Type")
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
+		require.Equal(t, mediaTypeJSON, header)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		expectedBody := `{"Peers":[{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-bitswap","transport-foo"],"Schema":"peer"},{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-foo"],"Schema":"peer"}]}`
+		require.Equal(t, expectedBody, string(body))
+	})
+
+	t.Run("GET /routing/v1/peers/{legacy-base58-peer-id} returns 200 with correct body (NDJSON)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makePeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid,
+				Protocols: []string{"transport-bitswap", "transport-foo"},
+				Addrs:     []types.Multiaddr{},
+			}},
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid,
+				Protocols: []string{"transport-foo"},
+				Addrs:     []types.Multiaddr{},
+			}},
+		})
+
+		router := &mockContentRouter{}
+		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
+
+		legacyPeerID := b58.Encode([]byte(pid))
+		resp := makeRequest(t, router, mediaTypeNDJSON, legacyPeerID)
+		require.Equal(t, 200, resp.StatusCode)
+
+		header := resp.Header.Get("Content-Type")
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
 		require.Equal(t, mediaTypeNDJSON, header)
 
 		body, err := io.ReadAll(resp.Body)
@@ -233,6 +430,7 @@ func TestPeers(t *testing.T) {
 		expectedBody := `{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-bitswap","transport-foo"],"Schema":"peer"}` + "\n" + `{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-foo"],"Schema":"peer"}` + "\n"
 		require.Equal(t, expectedBody, string(body))
 	})
+
 }
 
 func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
@@ -240,10 +438,8 @@ func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
 	return sk, ipns.NameFromPeer(pid)
 }
 
-func makeIPNSRecord(t *testing.T, cid cid.Cid, sk crypto.PrivKey, opts ...ipns.Option) (*ipns.Record, []byte) {
+func makeIPNSRecord(t *testing.T, cid cid.Cid, eol time.Time, ttl time.Duration, sk crypto.PrivKey, opts ...ipns.Option) (*ipns.Record, []byte) {
 	path := path.FromCid(cid)
-	eol := time.Now().Add(time.Hour * 48)
-	ttl := time.Second * 20
 
 	record, err := ipns.NewRecord(sk, path, 1, eol, ttl, opts...)
 	require.NoError(t, err)
@@ -258,14 +454,16 @@ func TestIPNS(t *testing.T) {
 	cid1, err := cid.Decode("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
 	require.NoError(t, err)
 
-	makeRequest := func(t *testing.T, router *mockContentRouter, path string) *http.Response {
+	makeRequest := func(t *testing.T, router *mockContentRouter, path string, accept string) *http.Response {
 		server := httptest.NewServer(Handler(router))
 		t.Cleanup(server.Close)
 		serverAddr := "http://" + server.Listener.Addr().String()
 		urlStr := serverAddr + path
 		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 		require.NoError(t, err)
-		req.Header.Set("Accept", mediaTypeIPNSRecord)
+		if accept != "" {
+			req.Header.Set("Accept", accept)
+		}
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		return resp
@@ -273,11 +471,22 @@ func TestIPNS(t *testing.T) {
 
 	runWithRecordOptions := func(t *testing.T, opts ...ipns.Option) {
 		sk, name1 := makeName(t)
-		record1, rawRecord1 := makeIPNSRecord(t, cid1, sk)
+		now := time.Now()
+		eol := now.Add(24 * time.Hour * 7) // record valid for a week
+		ttl := 42 * time.Second            // distinct TTL
+		record1, rawRecord1 := makeIPNSRecord(t, cid1, eol, ttl, sk)
+
+		stringToDuration := func(s string) time.Duration {
+			seconds, err := strconv.Atoi(s)
+			if err != nil {
+				return 0
+			}
+			return time.Duration(seconds) * time.Second
+		}
 
 		_, name2 := makeName(t)
 
-		t.Run("GET /routing/v1/ipns/{cid-peer-id} returns 200", func(t *testing.T) {
+		t.Run("GET /routing/v1/ipns/{cid-peer-id} returns 200 (explicit Accept header)", func(t *testing.T) {
 			t.Parallel()
 
 			rec, err := ipns.UnmarshalRecord(rawRecord1)
@@ -286,12 +495,77 @@ func TestIPNS(t *testing.T) {
 			router := &mockContentRouter{}
 			router.On("GetIPNS", mock.Anything, name1).Return(rec, nil)
 
-			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String())
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String(), mediaTypeIPNSRecord)
 			require.Equal(t, 200, resp.StatusCode)
 			require.Equal(t, mediaTypeIPNSRecord, resp.Header.Get("Content-Type"))
+			require.Equal(t, "Accept", resp.Header.Get("Vary"))
 			require.NotEmpty(t, resp.Header.Get("Etag"))
-			require.Equal(t, "max-age=20", resp.Header.Get("Cache-Control"))
 
+			requireCloseToNow(t, resp.Header.Get("Last-Modified"))
+
+			require.Contains(t, resp.Header.Get("Content-Disposition"), `attachment; filename="`+name1.String()+`.ipns-record"`)
+
+			require.Contains(t, resp.Header.Get("Cache-Control"), "public, max-age=42")
+
+			// expected "stale" values are int(time.Until(eol).Seconds())
+			// but running test on slow machine may  be off by a few seconds
+			// and we need to assert with some room for drift (1 minute just to not break any CI)
+			re := regexp.MustCompile(`(?:^|,\s*)(max-age|stale-while-revalidate|stale-if-error)=(\d+)`)
+			matches := re.FindAllStringSubmatch(resp.Header.Get("Cache-Control"), -1)
+			staleWhileRevalidate := stringToDuration(matches[1][2])
+			staleWhileError := stringToDuration(matches[2][2])
+			require.WithinDuration(t, eol, time.Now().Add(staleWhileRevalidate), 1*time.Minute)
+			require.WithinDuration(t, eol, time.Now().Add(staleWhileError), 1*time.Minute)
+
+			// 'Expires' on IPNS result is expected to match EOL of IPNS Record with ValidityType=0
+			require.Equal(t, eol.UTC().Format(http.TimeFormat), resp.Header.Get("Expires"))
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, body, rawRecord1)
+		})
+
+		t.Run("GET /routing/v1/ipns/{cid-peer-id} returns 200 (Accept header missing)", func(t *testing.T) {
+			t.Parallel()
+
+			rec, err := ipns.UnmarshalRecord(rawRecord1)
+			require.NoError(t, err)
+
+			router := &mockContentRouter{}
+			router.On("GetIPNS", mock.Anything, name1).Return(rec, nil)
+
+			// Simulate request without explicit Accept header
+			noAccept := ""
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String(), noAccept)
+
+			// Expect application/vnd.ipfs.ipns-record in response
+			require.Equal(t, 200, resp.StatusCode)
+			require.Equal(t, mediaTypeIPNSRecord, resp.Header.Get("Content-Type"))
+
+			// Confirm body matches  expected bytes
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, body, rawRecord1)
+		})
+
+		t.Run("GET /routing/v1/ipns/{cid-peer-id} returns 200 (Accept header with wildcard)", func(t *testing.T) {
+			t.Parallel()
+
+			rec, err := ipns.UnmarshalRecord(rawRecord1)
+			require.NoError(t, err)
+
+			router := &mockContentRouter{}
+			router.On("GetIPNS", mock.Anything, name1).Return(rec, nil)
+
+			// Simulate request with wildcard Accept header
+			wcAccept := "text/html,*/*"
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String(), wcAccept)
+
+			// Expect application/vnd.ipfs.ipns-record in response
+			require.Equal(t, 200, resp.StatusCode)
+			require.Equal(t, mediaTypeIPNSRecord, resp.Header.Get("Content-Type"))
+
+			// Confirm body matches  expected bytes
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 			require.Equal(t, body, rawRecord1)
@@ -301,7 +575,7 @@ func TestIPNS(t *testing.T) {
 			t.Parallel()
 
 			router := &mockContentRouter{}
-			resp := makeRequest(t, router, "/routing/v1/ipns/"+cid1.String())
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+cid1.String(), mediaTypeIPNSRecord)
 			require.Equal(t, 400, resp.StatusCode)
 		})
 
@@ -309,7 +583,7 @@ func TestIPNS(t *testing.T) {
 			t.Parallel()
 
 			router := &mockContentRouter{}
-			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.Peer().String())
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.Peer().String(), mediaTypeIPNSRecord)
 			require.Equal(t, 400, resp.StatusCode)
 		})
 

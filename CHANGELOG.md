@@ -24,6 +24,25 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
+## [v0.19.0]
+
+### Added
+
+* `routing/http/server` now adds `Cache-Control` HTTP header to GET requests: 15 seconds for empty responses, or 5 minutes for responses with providers.
+* `routing/http/server` the `/ipns` endpoint is more friendly to users opening URL in web browsers: returns `Content-Disposition` header and defaults to `application/vnd.ipfs.ipns-record` response when `Accept` is missing.
+* `provider`:
+  * Exports a `NewPrioritizedProvider`, which can be used to prioritize certain providers while ignoring duplicates.
+  * 🛠️ `NewPinnedProvider` now prioritizes root blocks, even if `onlyRoots` is set to `false`.
+
+### Changed
+
+* `go` version changed to 1.21
+
+### Fixed
+
+- 🛠️`routing/http/server`: delegated peer routing endpoint now supports both [PeerID string notaitons from libp2p specs](https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation).
+- `bitswap`: add missing client `WithBlockReceivedNotifier` and `WithoutDuplicatedBlockStats` options to the exchange.
+
 ## [v0.18.0]
 
 ### Added
