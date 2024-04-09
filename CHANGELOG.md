@@ -16,6 +16,18 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [v0.19.0]
+
+### Added
+
 * `routing/http/server` now adds `Cache-Control` HTTP header to GET requests: 15 seconds for empty responses, or 5 minutes for responses with providers.
 * `routing/http/server` the `/ipns` endpoint is more friendly to users opening URL in web browsers: returns `Content-Disposition` header and defaults to `application/vnd.ipfs.ipns-record` response when `Accept` is missing.
 * `provider`:
@@ -26,14 +38,10 @@ The following emojis are used to highlight certain changes:
 
 * `go` version changed to 1.21
 
-### Removed
-
 ### Fixed
 
 - 🛠️`routing/http/server`: delegated peer routing endpoint now supports both [PeerID string notaitons from libp2p specs](https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation).
 - `bitswap`: add missing client `WithBlockReceivedNotifier` and `WithoutDuplicatedBlockStats` options to the exchange.
-
-### Security
 
 ## [v0.18.0]
 
