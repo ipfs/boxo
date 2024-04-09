@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
+// TODO: make this configurable via BlocksBackendOption
 const getBlockTimeout = time.Second * 60
 
 // NewRemoteBlocksBackend creates a new [BlocksBackend] instance backed by one
