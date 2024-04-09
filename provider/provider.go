@@ -118,7 +118,7 @@ func pinSet(ctx context.Context, pinning pin.Pinner, fetchConfig fetcher.Factory
 			})
 		})
 		if err != nil {
-			logR.Errorf("reprovide direct pins: %s", err)
+			logR.Errorf("reprovide indirect pins: %s", err)
 			return
 		}
 	}()
