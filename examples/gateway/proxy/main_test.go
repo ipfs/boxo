@@ -21,7 +21,7 @@ const (
 )
 
 func newProxyGateway(t *testing.T, rs *httptest.Server) *httptest.Server {
-	backend, err := gateway.NewRemoteBlocksBackend([]string{rs.URL}, nil)
+	backend, err := gateway.NewRemoteBlocksBackend([]string{rs.URL})
 	require.NoError(t, err)
 	handler := common.NewHandler(backend)
 	ts := httptest.NewServer(handler)

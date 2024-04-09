@@ -28,7 +28,7 @@ func main() {
 	defer (func() { _ = tp.Shutdown(ctx) })()
 
 	// Creates the gateway with the remote block store backend.
-	backend, err := gateway.NewRemoteBlocksBackend([]string{*gatewayUrlPtr}, nil)
+	backend, err := gateway.NewRemoteBlocksBackend([]string{*gatewayUrlPtr})
 	if err != nil {
 		log.Fatal(err)
 	}
