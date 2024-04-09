@@ -18,6 +18,9 @@ The following emojis are used to highlight certain changes:
 
 * `routing/http/server` now adds `Cache-Control` HTTP header to GET requests: 15 seconds for empty responses, or 5 minutes for responses with providers.
 * `routing/http/server` the `/ipns` endpoint is more friendly to users opening URL in web browsers: returns `Content-Disposition` header and defaults to `application/vnd.ipfs.ipns-record` response when `Accept` is missing.
+* `provider`:
+  * Exports a `NewPrioritizedProvider`, which can be used to prioritize certain providers while ignoring duplicates.
+  * 🛠️ `NewPinnedProvider` now prioritizes root blocks, even if `onlyRoots` is set to `false`.
 
 ### Changed
 
