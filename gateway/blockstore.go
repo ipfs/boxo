@@ -155,14 +155,14 @@ type remoteBlockstore struct {
 // specification for more details.
 //
 // [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
-func NewRemoteBlockstore(gatewayURL []string, cdns *CachedDNS) (blockstore.Blockstore, error) {
+func NewRemoteBlockstore(gatewayURL []string) (blockstore.Blockstore, error) {
 	if len(gatewayURL) == 0 {
 		return nil, errors.New("missing gateway URLs to which to proxy")
 	}
 
 	return &remoteBlockstore{
 		gatewayURL: gatewayURL,
-		httpClient: newRemoteHTTPClient(cdns),
+		httpClient: newRemoteHTTPClient(),
 		rand:       rand.New(rand.NewSource(time.Now().Unix())),
 		// Enables block validation by default. Important since we are
 		// proxying block requests to untrusted gateways.

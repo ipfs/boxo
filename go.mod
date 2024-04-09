@@ -54,7 +54,6 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/polydawn/refmt v0.89.0
 	github.com/prometheus/client_golang v1.18.0
-	github.com/rs/dnscache v0.0.0-20230804202142-fc85eb664529
 	github.com/samber/lo v1.39.0
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/stretchr/testify v1.8.4

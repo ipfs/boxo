@@ -25,14 +25,14 @@ type remoteValueStore struct {
 // specification for more details.
 //
 // [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
-func NewRemoteValueStore(gatewayURL []string, cdns *CachedDNS) (routing.ValueStore, error) {
+func NewRemoteValueStore(gatewayURL []string) (routing.ValueStore, error) {
 	if len(gatewayURL) == 0 {
 		return nil, errors.New("missing gateway URLs to which to proxy")
 	}
 
 	return &remoteValueStore{
 		gatewayURL: gatewayURL,
-		httpClient: newRemoteHTTPClient(cdns),
+		httpClient: newRemoteHTTPClient(),
 		rand:       rand.New(rand.NewSource(time.Now().Unix())),
 	}, nil
 }

@@ -19,13 +19,13 @@ const getBlockTimeout = time.Second * 60
 // If you want to create a more custom [BlocksBackend] with only remote IPNS
 // Record resolution, or only remote block fetching, we recommend using
 // [NewBlocksBackend] directly.
-func NewRemoteBlocksBackend(gatewayURL []string, cdns *CachedDNS, opts ...BlocksBackendOption) (*BlocksBackend, error) {
-	blockStore, err := NewRemoteBlockstore(gatewayURL, cdns)
+func NewRemoteBlocksBackend(gatewayURL []string, opts ...BlocksBackendOption) (*BlocksBackend, error) {
+	blockStore, err := NewRemoteBlockstore(gatewayURL)
 	if err != nil {
 		return nil, err
 	}
 
-	valueStore, err := NewRemoteValueStore(gatewayURL, cdns)
+	valueStore, err := NewRemoteValueStore(gatewayURL)
 	if err != nil {
 		return nil, err
 	}
@@ -36,17 +36,13 @@ func NewRemoteBlocksBackend(gatewayURL []string, cdns *CachedDNS, opts ...Blocks
 
 // newRemoteHTTPClient creates a new [http.Client] that is optimized for retrieving
 // multiple blocks from a single gateway concurrently.
-func newRemoteHTTPClient(cdns *CachedDNS) *http.Client {
+func newRemoteHTTPClient() *http.Client {
 	transport := &http.Transport{
 		MaxIdleConns:        1000,
 		MaxConnsPerHost:     100,
 		MaxIdleConnsPerHost: 100,
 		IdleConnTimeout:     90 * time.Second,
 		ForceAttemptHTTP2:   true,
-	}
-
-	if cdns != nil {
-		transport.DialContext = cdns.DialContext
 	}
 
 	return &http.Client{
