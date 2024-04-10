@@ -75,10 +75,10 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 		return false
 	}
 
-	return i.renderCodec(ctx, w, r, rq, blockSize, data)
+	return i.renderCodec(ctx, w, r, rq, blockSize, data, false)
 }
 
-func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData, blockSize int64, blockData io.ReadSeekCloser) bool {
+func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData, blockSize int64, blockData io.ReadSeekCloser, isRangeRequest bool) bool {
 	resolvedPath := rq.pathMetadata.LastSegment
 	ctx, span := spanTrace(ctx, "Handler.RenderCodec", trace.WithAttributes(attribute.String("path", resolvedPath.String()), attribute.String("requestedContentType", rq.responseFormat)))
 	defer span.End()
@@ -124,7 +124,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 		download := r.URL.Query().Get("download") == "true"
 
 		if isDAG && acceptsHTML && !download {
-			return i.serveCodecHTML(ctx, w, r, blockCid, blockData, resolvedPath, rq.contentPath)
+			return i.serveCodecHTML(ctx, w, r, blockCid, blockData, resolvedPath, rq.contentPath, isRangeRequest)
 		} else {
 			// This covers CIDs with codec 'json' and 'cbor' as those do not have
 			// an explicit requested content type.
@@ -156,7 +156,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	return i.serveCodecConverted(ctx, w, r, blockCid, blockData, rq.contentPath, toCodec, modtime, rq.begin)
 }
 
-func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.Reader, resolvedPath path.ImmutablePath, contentPath path.Path) bool {
+func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *http.Request, blockCid cid.Cid, blockData io.Reader, resolvedPath path.ImmutablePath, contentPath path.Path, isRangeRequest bool) bool {
 	// WithHostname may have constructed an IPFS (or IPNS) path using the Host header.
 	// In this case, we need the original path for constructing the redirect.
 	requestURI, err := url.ParseRequestURI(r.RequestURI)
@@ -201,7 +201,7 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 		CID:        resolvedPath.RootCid().String(),
 		CodecName:  cidCodec.String(),
 		CodecHex:   fmt.Sprintf("0x%x", uint64(cidCodec)),
-		Node:       parseNode(blockCid, blockData),
+		Node:       i.parseNode(ctx, blockCid, blockData, isRangeRequest),
 	})
 	if err != nil {
 		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
@@ -213,7 +213,7 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 // parseNode does a best effort attempt to parse this request's block such that
 // a preview can be displayed in the gateway. If something fails along the way,
 // returns nil, therefore not displaying the preview.
-func parseNode(blockCid cid.Cid, blockData io.Reader) *assets.ParsedNode {
+func (i *handler) parseNode(ctx context.Context, blockCid cid.Cid, blockData io.Reader, tryGetBlockIfFailed bool) *assets.ParsedNode {
 	codec := blockCid.Prefix().Codec
 	decoder, err := multicodec.LookupDecoder(codec)
 	if err != nil {
@@ -222,6 +222,18 @@ func parseNode(blockCid cid.Cid, blockData io.Reader) *assets.ParsedNode {
 
 	nodeBuilder := basicnode.Prototype.Any.NewBuilder()
 	err = decoder(nodeBuilder, blockData)
+	if err != nil && tryGetBlockIfFailed {
+		// It is possible we don't have the whole data for this block, e.g.,
+		// if range request is made from a browser where we want to display HTML.
+		// This does one attempt of fetching the data.
+		_, blockData, err = i.backend.GetBlock(ctx, path.FromCid(blockCid))
+		if err != nil {
+			return nil
+		}
+
+		nodeBuilder = basicnode.Prototype.Any.NewBuilder()
+		err = decoder(nodeBuilder, blockData)
+	}
 	if err != nil {
 		return nil
 	}
