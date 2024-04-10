@@ -1123,17 +1123,31 @@ func (api *CarBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params 
 			}
 			l := getLinksystem(teeBlock)
 
+			var isNotFound bool
+
 			// First resolve the path since we always need to.
 			md, terminalBlk, err := resolvePathWithRootsAndBlock(ctx, p, l)
 			if err != nil {
-				return err
+				if isErrNotFound(err) {
+					isNotFound = true
+				} else {
+					return err
+				}
 			}
+
 			if len(md.LastSegmentRemainder) > 0 {
 				return nil
 			}
 
 			if cw == nil {
-				cw, err = storage.NewWritable(w, []cid.Cid{md.LastSegment.RootCid()}, carv2.WriteAsCarV1(true), carv2.AllowDuplicatePuts(params.Duplicates.Bool()))
+				var roots []cid.Cid
+				if isNotFound {
+					roots = emptyRoot
+				} else {
+					roots = []cid.Cid{md.LastSegment.RootCid()}
+				}
+
+				cw, err = storage.NewWritable(w, roots, carv2.WriteAsCarV1(true), carv2.AllowDuplicatePuts(params.Duplicates.Bool()))
 				if err != nil {
 					// io.PipeWriter.CloseWithError always returns nil.
 					_ = w.CloseWithError(err)
@@ -1149,12 +1163,14 @@ func (api *CarBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params 
 				blockBuffer = nil
 			}
 
-			params.Duplicates = DuplicateBlocksIncluded
-			err = walkGatewaySimpleSelector(ctx, terminalBlk.Cid(), terminalBlk, []string{}, params, l)
-			// err = walkGatewaySimpleSelector2(ctx, terminalBlk, params.Scope, params.Range, l)
-			if err != nil {
-				return err
+			if !isNotFound {
+				params.Duplicates = DuplicateBlocksIncluded
+				err = walkGatewaySimpleSelector(ctx, terminalBlk.Cid(), terminalBlk, []string{}, params, l)
+				if err != nil {
+					return err
+				}
 			}
+
 			return nil
 		})
 

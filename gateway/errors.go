@@ -13,6 +13,7 @@ import (
 	"github.com/ipfs/boxo/path/resolver"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/schema"
 )
 
 var (
@@ -210,7 +211,7 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 // isErrNotFound returns true for IPLD errors that should return 4xx errors (e.g. the path doesn't exist, the data is
 // the wrong type, etc.), rather than issues with just finding and retrieving the data.
 func isErrNotFound(err error) bool {
-	if errors.Is(err, &resolver.ErrNoLink{}) {
+	if errors.Is(err, &resolver.ErrNoLink{}) || errors.Is(err, schema.ErrNoSuchField{}) {
 		return true
 	}
 
