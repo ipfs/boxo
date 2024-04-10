@@ -50,7 +50,7 @@ func WithResolver(r resolver.Resolver) BackendOption {
 	}
 }
 
-// WithPrometheusRegistry sets the registry to use with [GraphBackend].
+// WithPrometheusRegistry sets the registry to use with [CarBackend].
 func WithPrometheusRegistry(reg prometheus.Registerer) BackendOption {
 	return func(opts *backendOptions) error {
 		opts.promRegistry = reg

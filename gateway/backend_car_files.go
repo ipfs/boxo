@@ -21,7 +21,7 @@ import (
 	"github.com/multiformats/go-multicodec"
 )
 
-type AwaitCloser interface {
+type awaitCloser interface {
 	AwaitClose() <-chan error
 }
 
@@ -107,7 +107,7 @@ func (b *backpressuredFile) Seek(offset int64, whence int) (int64, error) {
 }
 
 var _ files.File = (*backpressuredFile)(nil)
-var _ AwaitCloser = (*backpressuredFile)(nil)
+var _ awaitCloser = (*backpressuredFile)(nil)
 
 type singleUseDirectory struct {
 	dirIter files.DirIterator
@@ -133,7 +133,7 @@ func (b *singleUseDirectory) Entries() files.DirIterator {
 }
 
 var _ files.Directory = (*singleUseDirectory)(nil)
-var _ AwaitCloser = (*singleUseDirectory)(nil)
+var _ awaitCloser = (*singleUseDirectory)(nil)
 
 type backpressuredFlatDirIter struct {
 	linksItr *dagpb.PBLinks__Itr

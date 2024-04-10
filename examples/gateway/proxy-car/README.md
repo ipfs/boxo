@@ -1,4 +1,4 @@
-# Gateway as Proxy for Trustless Remote Backend
+# Gateway as Proxy for Trustless CAR Remote Backend
 
 This is an example of building a Gateway that uses `application/vnd.ipld.car`
 responses from another gateway acting as a remote Trustless Gateway and IPNS resolver.
@@ -6,7 +6,7 @@ responses from another gateway acting as a remote Trustless Gateway and IPNS res
 ## Build
 
 ```bash
-> go build -o graph-proxy
+> go build -o gateway
 ```
 
 ## Usage
@@ -15,7 +15,7 @@ First, you need a compliant gateway that supports both [CAR requests](https://ww
 types. Once you have it, run the proxy gateway with its address as the host parameter:
 
 ```
-./graph-proxy -g https://ipfs.io -p 8040
+./gateway -g https://ipfs.io -p 8040
 ```
 
 ### Subdomain gateway

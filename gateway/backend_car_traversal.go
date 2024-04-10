@@ -25,7 +25,7 @@ type getBlock func(ctx context.Context, cid cid.Cid) (blocks.Block, error)
 
 var ErrNilBlock = ErrInvalidResponse{Message: "received a nil block with no error"}
 
-func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *GraphBackendMetrics) (getBlock, error) {
+func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *CarBackendMetrics) (getBlock, error) {
 	cr, err := car.NewCarReaderWithOptions(reader, car.WithErrorOnEmptyRoots(false))
 	if err != nil {
 		return nil, err
@@ -73,9 +73,9 @@ func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *Grap
 		// initially set a higher timeout here so that if there's an initial timeout error we get it from the car reader.
 		var t *time.Timer
 		if isFirstBlock {
-			t = time.NewTimer(GetBlockTimeout * 2)
+			t = time.NewTimer(getBlockTimeout * 2)
 		} else {
-			t = time.NewTimer(GetBlockTimeout)
+			t = time.NewTimer(getBlockTimeout)
 		}
 		var blkRead blockRead
 		var ok bool
@@ -84,7 +84,7 @@ func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *Grap
 			if !t.Stop() {
 				<-t.C
 			}
-			t.Reset(GetBlockTimeout)
+			t.Reset(getBlockTimeout)
 		case <-t.C:
 			return nil, ErrGatewayTimeout
 		}

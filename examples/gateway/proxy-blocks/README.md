@@ -18,7 +18,7 @@ gateway using `?format=ipns-record`. In addition, DNSLink lookups are done local
 ## Build
 
 ```bash
-> go build -o verifying-proxy
+> go build -o gateway
 ```
 
 ## Usage
@@ -28,7 +28,7 @@ types. Once you have it, run the proxy gateway with its address as the host para
 
 
 ```
-./verifying-proxy -g https://ipfs.io -p 8040
+./gateway -g https://ipfs.io -p 8040
 ```
 
 ### Subdomain gateway

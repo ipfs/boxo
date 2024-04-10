@@ -8,7 +8,6 @@ import (
 	"io"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/ipfs/boxo/files"
@@ -36,26 +35,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const GetBlockTimeout = time.Second * 60
+var ErrFetcherUnexpectedEOF = fmt.Errorf("failed to fetch IPLD data")
 
 type DataCallback func(resource string, reader io.Reader) error
-
-var ErrFetcherUnexpectedEOF = fmt.Errorf("failed to fetch IPLD data")
 
 type CarFetcher interface {
 	Fetch(ctx context.Context, path string, cb DataCallback) error
 }
 
-type GraphBackend struct {
+type CarBackend struct {
 	baseBackend
 	fetcher CarFetcher
-
-	pc traversal.LinkTargetNodePrototypeChooser
-
-	metrics *GraphBackendMetrics
+	pc      traversal.LinkTargetNodePrototypeChooser
+	metrics *CarBackendMetrics
 }
 
-type GraphBackendMetrics struct {
+type CarBackendMetrics struct {
 	contextAlreadyCancelledMetric prometheus.Counter
 	carFetchAttemptMetric         prometheus.Counter
 	carBlocksFetchedMetric        prometheus.Counter
@@ -65,7 +60,7 @@ type GraphBackendMetrics struct {
 	bytesRangeSizeMetric  prometheus.Histogram
 }
 
-func NewGraphBackend(f CarFetcher, opts ...BackendOption) (*GraphBackend, error) {
+func NewCarBackend(f CarFetcher, opts ...BackendOption) (*CarBackend, error) {
 	var compiledOptions backendOptions
 	for _, o := range opts {
 		if err := o(&compiledOptions); err != nil {
@@ -85,10 +80,10 @@ func NewGraphBackend(f CarFetcher, opts ...BackendOption) (*GraphBackend, error)
 		promReg = compiledOptions.promRegistry
 	}
 
-	return &GraphBackend{
+	return &CarBackend{
 		baseBackend: baseBackend,
 		fetcher:     f,
-		metrics:     registerGraphBackendMetrics(promReg),
+		metrics:     registerCarBackendMetrics(promReg),
 		pc: dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
 			if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
 				return tlnkNd.LinkTargetNodePrototype(), nil
@@ -98,8 +93,8 @@ func NewGraphBackend(f CarFetcher, opts ...BackendOption) (*GraphBackend, error)
 	}, nil
 }
 
-func registerGraphBackendMetrics(promReg prometheus.Registerer) *GraphBackendMetrics {
-	// How many CAR Fetch attempts we had? Need this to calculate % of various graph request types.
+func registerCarBackendMetrics(promReg prometheus.Registerer) *CarBackendMetrics {
+	// How many CAR Fetch attempts we had? Need this to calculate % of various car request types.
 	// We only count attempts here, because success/failure with/without retries are provided by caboose:
 	// - ipfs_caboose_fetch_duration_car_success_count
 	// - ipfs_caboose_fetch_duration_car_failure_count
@@ -107,7 +102,7 @@ func registerGraphBackendMetrics(promReg prometheus.Registerer) *GraphBackendMet
 	// - ipfs_caboose_fetch_duration_car_peer_failure_count
 	carFetchAttemptMetric := prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "ipfs",
-		Subsystem: "gw_graph_backend",
+		Subsystem: "gw_car_backend",
 		Name:      "car_fetch_attempts",
 		Help:      "The number of times a CAR fetch was attempted by IPFSBackend.",
 	})
@@ -115,7 +110,7 @@ func registerGraphBackendMetrics(promReg prometheus.Registerer) *GraphBackendMet
 
 	contextAlreadyCancelledMetric := prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "ipfs",
-		Subsystem: "gw_graph_backend",
+		Subsystem: "gw_car_backend",
 		Name:      "car_fetch_context_already_cancelled",
 		Help:      "The number of times context is already cancelled when a CAR fetch was attempted by IPFSBackend.",
 	})
@@ -125,7 +120,7 @@ func registerGraphBackendMetrics(promReg prometheus.Registerer) *GraphBackendMet
 	// Need this as a baseline to reason about error ratio vs raw_block_recovery_attempts.
 	carBlocksFetchedMetric := prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "ipfs",
-		Subsystem: "gw_graph_backend",
+		Subsystem: "gw_car_backend",
 		Name:      "car_blocks_fetched",
 		Help:      "The number of blocks successfully read via CAR fetch.",
 	})
@@ -133,7 +128,7 @@ func registerGraphBackendMetrics(promReg prometheus.Registerer) *GraphBackendMet
 
 	carParamsMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "ipfs",
-		Subsystem: "gw_graph_backend",
+		Subsystem: "gw_car_backend",
 		Name:      "car_fetch_params",
 		Help:      "How many times specific CAR parameter was used during CAR data fetch.",
 	}, []string{"dagScope", "entityRanges"}) // we use 'ranges' instead of 'bytes' here because we only count the number of ranges present
@@ -141,7 +136,7 @@ func registerGraphBackendMetrics(promReg prometheus.Registerer) *GraphBackendMet
 
 	bytesRangeStartMetric := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "ipfs",
-		Subsystem: "gw_graph_backend",
+		Subsystem: "gw_car_backend",
 		Name:      "range_request_start",
 		Help:      "Tracks where did the range request start.",
 		Buckets:   prometheus.ExponentialBuckets(1024, 2, 24), // 1024 bytes to 8 GiB
@@ -150,14 +145,14 @@ func registerGraphBackendMetrics(promReg prometheus.Registerer) *GraphBackendMet
 
 	bytesRangeSizeMetric := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "ipfs",
-		Subsystem: "gw_graph_backend",
+		Subsystem: "gw_car_backend",
 		Name:      "range_request_size",
 		Help:      "Tracks the size of range requests.",
 		Buckets:   prometheus.ExponentialBuckets(256*1024, 2, 10), // From 256KiB to 100MiB
 	})
 	promReg.MustRegister(bytesRangeSizeMetric)
 
-	return &GraphBackendMetrics{
+	return &CarBackendMetrics{
 		contextAlreadyCancelledMetric,
 		carFetchAttemptMetric,
 		carBlocksFetchedMetric,
@@ -167,7 +162,7 @@ func registerGraphBackendMetrics(promReg prometheus.Registerer) *GraphBackendMet
 	}
 }
 
-func (api *GraphBackend) fetchCAR(ctx context.Context, path path.ImmutablePath, params CarParams, cb DataCallback) error {
+func (api *CarBackend) fetchCAR(ctx context.Context, path path.ImmutablePath, params CarParams, cb DataCallback) error {
 	urlWithoutHost := contentPathToCarUrl(path, params).String()
 
 	api.metrics.carFetchAttemptMetric.Inc()
@@ -305,7 +300,7 @@ func contentMetadataFromRootsAndRemainder(p path.ImmutablePath, pathRoots []cid.
 
 var errNotUnixFS = fmt.Errorf("data was not unixfs")
 
-func (api *GraphBackend) Get(ctx context.Context, path path.ImmutablePath, byteRanges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
+func (api *CarBackend) Get(ctx context.Context, path path.ImmutablePath, byteRanges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
 	rangeCount := len(byteRanges)
 	api.metrics.carParamsMetric.With(prometheus.Labels{"dagScope": "entity", "entityRanges": strconv.Itoa(rangeCount)}).Inc()
 
@@ -679,9 +674,9 @@ func (it *backpressuredHAMTDirIterNoRecursion) Err() error {
 	return it.err
 }
 
-var _ AwaitCloser = (*backpressuredHAMTDirIterNoRecursion)(nil)
+var _ awaitCloser = (*backpressuredHAMTDirIterNoRecursion)(nil)
 
-func (api *GraphBackend) GetAll(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.Node, error) {
+func (api *CarBackend) GetAll(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.Node, error) {
 	api.metrics.carParamsMetric.With(prometheus.Labels{"dagScope": "all", "entityRanges": "0"}).Inc()
 	return fetchWithPartialRetries(ctx, path, CarParams{Scope: DagScopeAll}, loadTerminalUnixFSElementWithRecursiveDirectories, api.metrics, api.fetchCAR)
 }
@@ -700,7 +695,7 @@ type nextReq struct {
 	params CarParams
 }
 
-func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, initialParams CarParams, resolveTerminalElementFn loadTerminalElement[T], metrics *GraphBackendMetrics, fetchCAR fetchCarFn) (ContentPathMetadata, T, error) {
+func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, initialParams CarParams, resolveTerminalElementFn loadTerminalElement[T], metrics *CarBackendMetrics, fetchCAR fetchCarFn) (ContentPathMetadata, T, error) {
 	var zeroReturnType T
 
 	terminalPathElementCh := make(chan terminalPathType[T], 1)
@@ -780,7 +775,7 @@ func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, i
 					return err
 				}
 
-				ndAc, ok := any(nd).(AwaitCloser)
+				ndAc, ok := any(nd).(awaitCloser)
 				if !ok {
 					terminalPathElementCh <- terminalPathType[T]{
 						resp: nd,
@@ -848,7 +843,7 @@ func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, i
 	}
 }
 
-func (api *GraphBackend) GetBlock(ctx context.Context, p path.ImmutablePath) (ContentPathMetadata, files.File, error) {
+func (api *CarBackend) GetBlock(ctx context.Context, p path.ImmutablePath) (ContentPathMetadata, files.File, error) {
 	api.metrics.carParamsMetric.With(prometheus.Labels{"dagScope": "block", "entityRanges": "0"}).Inc()
 
 	var md ContentPathMetadata
@@ -895,7 +890,7 @@ func (api *GraphBackend) GetBlock(ctx context.Context, p path.ImmutablePath) (Co
 	return md, f, nil
 }
 
-func (api *GraphBackend) Head(ctx context.Context, p path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
+func (api *CarBackend) Head(ctx context.Context, p path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
 	api.metrics.carParamsMetric.With(prometheus.Labels{"dagScope": "entity", "entityRanges": "1"}).Inc()
 
 	// TODO:  we probably want to move this either to boxo, or at least to loadRequestIntoSharedBlockstoreAndBlocksGateway
@@ -1037,7 +1032,7 @@ func (api *GraphBackend) Head(ctx context.Context, p path.ImmutablePath) (Conten
 	return md, n, nil
 }
 
-func (api *GraphBackend) ResolvePath(ctx context.Context, p path.ImmutablePath) (ContentPathMetadata, error) {
+func (api *CarBackend) ResolvePath(ctx context.Context, p path.ImmutablePath) (ContentPathMetadata, error) {
 	api.metrics.carParamsMetric.With(prometheus.Labels{"dagScope": "block", "entityRanges": "0"}).Inc()
 
 	var md ContentPathMetadata
@@ -1066,7 +1061,7 @@ func (api *GraphBackend) ResolvePath(ctx context.Context, p path.ImmutablePath) 
 	return md, nil
 }
 
-func (api *GraphBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+func (api *CarBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	numRanges := "0"
 	if params.Range != nil {
 		numRanges = "1"
@@ -1175,11 +1170,11 @@ func getRootCid(imPath path.ImmutablePath) (cid.Cid, error) {
 	return rootCid, nil
 }
 
-func (api *GraphBackend) IsCached(ctx context.Context, path path.Path) bool {
+func (api *CarBackend) IsCached(ctx context.Context, path path.Path) bool {
 	return false
 }
 
-var _ IPFSBackend = (*GraphBackend)(nil)
+var _ IPFSBackend = (*CarBackend)(nil)
 
 func checkRetryableError(e *error, fn func() error) error {
 	err := fn()

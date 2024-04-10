@@ -7,7 +7,7 @@ Addressable aRchive that contains blocks.
 ## Build
 
 ```bash
-> go build -o car-gateway
+> go build -o gateway
 ```
 
 ## Usage
@@ -23,7 +23,7 @@ Then, you can start the gateway with:
 
 
 ```
-./car-gateway -c data.car -p 8040
+./gateway -c data.car -p 8040
 ```
 
 ### Subdomain gateway

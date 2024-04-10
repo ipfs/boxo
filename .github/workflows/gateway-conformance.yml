@@ -11,9 +11,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gateway-conformance-car:
+  gateway-conformance-car-file:
     runs-on: ubuntu-latest
-    name: Gateway Conformance (CAR Gateway)
+    name: Gateway Conformance (CAR File Gateway)
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
@@ -22,7 +22,7 @@ jobs:
           output: fixtures
           merged: true
 
-      # 2. Build the car-gateway
+      # 2. Build the gateway binary
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
@@ -32,12 +32,12 @@ jobs:
         with:
           path: boxo
       - name: Build car-gateway
-        run: go build -o car-gateway
-        working-directory: boxo/examples/gateway/car
+        run: go build -o gateway
+        working-directory: boxo/examples/gateway/car-file
 
-      # 3. Start the car-gateway
+      # 3. Start the gateway binary
       - name: Start car-gateway
-        run: boxo/examples/gateway/car/car-gateway -c fixtures/fixtures.car -p 8040 &
+        run: boxo/examples/gateway/car-file/gateway -c fixtures/fixtures.car -p 8040 &
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests
@@ -69,9 +69,9 @@ jobs:
           name: gateway-conformance.json
           path: output.json
 
-  gateway-conformance-graph:
+  gateway-conformance-remote-car:
     runs-on: ubuntu-latest
-    name: Gateway Conformance (Graph Gateway)
+    name: Gateway Conformance (Remote CAR Gateway)
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
@@ -80,7 +80,7 @@ jobs:
           output: fixtures
           merged: true
 
-      # 2. Build the graph-gateway
+      # 2. Build the gateway binaries
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
@@ -90,17 +90,17 @@ jobs:
         with:
           path: boxo
       - name: Build car-gateway
-        run: go build -o car-gateway
-        working-directory: boxo/examples/gateway/car
-      - name: Build graph-gateway
-        run: go build -o graph-gateway
-        working-directory: boxo/examples/gateway/graph
+        run: go build -o gateway
+        working-directory: boxo/examples/gateway/car-file
+      - name: Build proxy-car-gateway
+        run: go build -o gateway
+        working-directory: boxo/examples/gateway/proxy-car
 
-      # 3. Start the car-gateway and the graph-gateway
+      # 3. Start the gateway binaries
       - name: Start car-gateway
-        run: boxo/examples/gateway/car/car-gateway -c fixtures/fixtures.car -p 8030 &
-      - name: Start graph-gateway
-        run: boxo/examples/gateway/graph/graph-gateway -g http://127.0.0.1:8030 -p 8040 &
+        run: boxo/examples/gateway/car-file/gateway -c fixtures/fixtures.car -p 8030 &
+      - name: Start proxy-car-gateway
+        run: boxo/examples/gateway/proxy-car/gateway -g http://127.0.0.1:8030 -p 8040 &
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests
