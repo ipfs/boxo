@@ -183,36 +183,41 @@ func (api *CarBackend) fetchCAR(ctx context.Context, path path.ImmutablePath, pa
 }
 
 // resolvePathWithRootsAndBlock takes a path and linksystem and returns the set of non-terminal cids, the terminal cid, the remainder, and the block corresponding to the terminal cid
-func resolvePathWithRootsAndBlock(ctx context.Context, p path.ImmutablePath, unixFSLsys *ipld.LinkSystem) ([]cid.Cid, cid.Cid, []string, blocks.Block, error) {
-	pathRootCids, terminalCid, remainder, terminalBlk, err := resolvePathToLastWithRoots(ctx, p, unixFSLsys)
+func resolvePathWithRootsAndBlock(ctx context.Context, p path.ImmutablePath, unixFSLsys *ipld.LinkSystem) (ContentPathMetadata, blocks.Block, error) {
+	md, terminalBlk, err := resolvePathToLastWithRoots(ctx, p, unixFSLsys)
 	if err != nil {
-		return nil, cid.Undef, nil, nil, err
+		return ContentPathMetadata{}, nil, err
 	}
+
+	terminalCid := md.LastSegment.RootCid()
 
 	if terminalBlk == nil {
 		lctx := ipld.LinkContext{Ctx: ctx}
 		lnk := cidlink.Link{Cid: terminalCid}
 		blockData, err := unixFSLsys.LoadRaw(lctx, lnk)
 		if err != nil {
-			return nil, cid.Undef, nil, nil, err
+			return ContentPathMetadata{}, nil, err
 		}
 		terminalBlk, err = blocks.NewBlockWithCid(blockData, terminalCid)
 		if err != nil {
-			return nil, cid.Undef, nil, nil, err
+			return ContentPathMetadata{}, nil, err
 		}
 	}
 
-	return pathRootCids, terminalCid, remainder, terminalBlk, err
+	return md, terminalBlk, err
 }
 
 // resolvePathToLastWithRoots takes a path and linksystem and returns the set of non-terminal cids, the terminal cid,
 // the remainder pathing, the last block loaded, and the last node loaded.
 //
 // Note: the block returned will be nil if the terminal element is a link or the path is just a CID
-func resolvePathToLastWithRoots(ctx context.Context, p path.ImmutablePath, unixFSLsys *ipld.LinkSystem) ([]cid.Cid, cid.Cid, []string, blocks.Block, error) {
+func resolvePathToLastWithRoots(ctx context.Context, p path.ImmutablePath, unixFSLsys *ipld.LinkSystem) (ContentPathMetadata, blocks.Block, error) {
 	root, segments := p.RootCid(), p.Segments()[2:]
 	if len(segments) == 0 {
-		return nil, root, nil, nil, nil
+		return ContentPathMetadata{
+			PathSegmentRoots: []cid.Cid{},
+			LastSegment:      p,
+		}, nil, nil
 	}
 
 	unixFSLsys.NodeReifier = unixfsnode.Reify
@@ -248,31 +253,31 @@ func resolvePathToLastWithRoots(ctx context.Context, p path.ImmutablePath, unixF
 
 	nextBlk, nextNd, err := loadNode(ctx, root)
 	if err != nil {
-		return nil, cid.Undef, nil, nil, err
+		return ContentPathMetadata{}, nil, err
 	}
 
 	depth := 0
 	for i, elem := range segments {
 		nextNd, err = nextNd.LookupBySegment(ipld.ParsePathSegment(elem))
 		if err != nil {
-			return nil, cid.Undef, nil, nil, err
+			return ContentPathMetadata{}, nil, err
 		}
 		if nextNd.Kind() == ipld.Kind_Link {
 			depth = 0
 			lnk, err := nextNd.AsLink()
 			if err != nil {
-				return nil, cid.Undef, nil, nil, err
+				return ContentPathMetadata{}, nil, err
 			}
 			cidLnk, ok := lnk.(cidlink.Link)
 			if !ok {
-				return nil, cid.Undef, nil, nil, fmt.Errorf("link is not a cidlink: %v", cidLnk)
+				return ContentPathMetadata{}, nil, fmt.Errorf("link is not a cidlink: %v", cidLnk)
 			}
 			cids = append(cids, cidLnk.Cid)
 
 			if i < len(segments)-1 {
 				nextBlk, nextNd, err = loadNode(ctx, cidLnk.Cid)
 				if err != nil {
-					return nil, cid.Undef, nil, nil, err
+					return ContentPathMetadata{}, nil, err
 				}
 			}
 		} else {
@@ -282,18 +287,38 @@ func resolvePathToLastWithRoots(ctx context.Context, p path.ImmutablePath, unixF
 
 	// if last node is not a link, just return it's cid, add path to remainder and return
 	if nextNd.Kind() != ipld.Kind_Link {
+		md, err := contentMetadataFromRootsAndRemainder(cids, segments[len(segments)-depth:])
+		if err != nil {
+			return ContentPathMetadata{}, nil, err
+		}
+
 		// return the cid and the remainder of the path
-		return cids[:len(cids)-1], cids[len(cids)-1], segments[len(segments)-depth:], nextBlk, nil
+		return md, nextBlk, nil
 	}
 
-	return cids[:len(cids)-1], cids[len(cids)-1], nil, nil, nil
+	md, err := contentMetadataFromRootsAndRemainder(cids, nil)
+	return md, nil, err
 }
 
-func contentMetadataFromRootsAndRemainder(p path.ImmutablePath, pathRoots []cid.Cid, remainder []string) (ContentPathMetadata, error) {
+func contentMetadataFromRootsAndRemainder(roots []cid.Cid, remainder []string) (ContentPathMetadata, error) {
+	if len(roots) == 0 {
+		return ContentPathMetadata{}, errors.New("invalid pathRoots given with length 0")
+	}
+
+	p, err := path.Join(path.FromCid(roots[len(roots)-1]), remainder...)
+	if err != nil {
+		return ContentPathMetadata{}, err
+	}
+
+	imPath, err := path.NewImmutablePath(p)
+	if err != nil {
+		return ContentPathMetadata{}, err
+	}
+
 	md := ContentPathMetadata{
-		PathSegmentRoots:     pathRoots,
+		PathSegmentRoots:     roots[:len(roots)-1],
 		LastSegmentRemainder: remainder,
-		LastSegment:          p,
+		LastSegment:          imPath,
 	}
 	return md, nil
 }
@@ -735,7 +760,7 @@ func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, i
 			lsys := getLinksystem(gb)
 
 			if hasSentAsyncData {
-				_, _, _, _, err = resolvePathToLastWithRoots(cctx, p, lsys)
+				_, _, err = resolvePathToLastWithRoots(cctx, p, lsys)
 				if err != nil {
 					return err
 				}
@@ -747,17 +772,12 @@ func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, i
 				}
 			} else {
 				// First resolve the path since we always need to.
-				pathRootCids, terminalCid, remainder, terminalBlk, err := resolvePathWithRootsAndBlock(cctx, p, lsys)
+				md, terminalBlk, err := resolvePathWithRootsAndBlock(cctx, p, lsys)
 				if err != nil {
 					return err
 				}
 
-				md, err := contentMetadataFromRootsAndRemainder(p, pathRootCids, remainder)
-				if err != nil {
-					return err
-				}
-
-				if len(remainder) > 0 {
+				if len(md.LastSegmentRemainder) > 0 {
 					terminalPathElementCh <- terminalPathType[T]{err: errNotUnixFS}
 					return nil
 				}
@@ -769,6 +789,8 @@ func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, i
 						return ctx.Err()
 					}
 				}
+
+				terminalCid := md.LastSegment.RootCid()
 
 				nd, err := resolveTerminalElementFn(cctx, terminalCid, terminalBlk, lsys, params, getLsys)
 				if err != nil {
@@ -857,7 +879,8 @@ func (api *CarBackend) GetBlock(ctx context.Context, p path.ImmutablePath) (Cont
 		lsys := getLinksystem(gb)
 
 		// First resolve the path since we always need to.
-		pathRoots, terminalCid, remainder, terminalBlk, err := resolvePathToLastWithRoots(ctx, p, lsys)
+		var terminalBlk blocks.Block
+		md, terminalBlk, err = resolvePathToLastWithRoots(ctx, p, lsys)
 		if err != nil {
 			return err
 		}
@@ -867,16 +890,11 @@ func (api *CarBackend) GetBlock(ctx context.Context, p path.ImmutablePath) (Cont
 			blockData = terminalBlk.RawData()
 		} else {
 			lctx := ipld.LinkContext{Ctx: ctx}
-			lnk := cidlink.Link{Cid: terminalCid}
+			lnk := cidlink.Link{Cid: md.LastSegment.RootCid()}
 			blockData, err = lsys.LoadRaw(lctx, lnk)
 			if err != nil {
 				return err
 			}
-		}
-
-		md, err = contentMetadataFromRootsAndRemainder(p, pathRoots, remainder)
-		if err != nil {
-			return err
 		}
 
 		f = files.NewBytesFile(blockData)
@@ -909,16 +927,13 @@ func (api *CarBackend) Head(ctx context.Context, p path.ImmutablePath) (ContentP
 		lsys := getLinksystem(gb)
 
 		// First resolve the path since we always need to.
-		pathRoots, terminalCid, remainder, terminalBlk, err := resolvePathWithRootsAndBlock(ctx, p, lsys)
+		var terminalBlk blocks.Block
+		md, terminalBlk, err = resolvePathWithRootsAndBlock(ctx, p, lsys)
 		if err != nil {
 			return err
 		}
 
-		md, err = contentMetadataFromRootsAndRemainder(p, pathRoots, remainder)
-		if err != nil {
-			return err
-		}
-
+		terminalCid := md.LastSegment.RootCid()
 		lctx := ipld.LinkContext{Ctx: ctx}
 		pathTerminalCidLink := cidlink.Link{Cid: terminalCid}
 
@@ -926,7 +941,7 @@ func (api *CarBackend) Head(ctx context.Context, p path.ImmutablePath) (ContentP
 		dataBytes := terminalBlk.RawData()
 
 		// It's not UnixFS if there is a remainder or it's not dag-pb
-		if len(remainder) > 0 || terminalCid.Type() != uint64(multicodec.DagPb) {
+		if len(md.LastSegmentRemainder) > 0 || terminalCid.Type() != uint64(multicodec.DagPb) {
 			n = NewHeadResponseForFile(files.NewBytesFile(dataBytes), int64(len(dataBytes)))
 			return nil
 		}
@@ -1044,12 +1059,10 @@ func (api *CarBackend) ResolvePath(ctx context.Context, p path.ImmutablePath) (C
 		lsys := getLinksystem(gb)
 
 		// First resolve the path since we always need to.
-		pathRoots, _, remainder, _, err := resolvePathToLastWithRoots(ctx, p, lsys)
+		md, _, err = resolvePathToLastWithRoots(ctx, p, lsys)
 		if err != nil {
 			return err
 		}
-
-		md, err = contentMetadataFromRootsAndRemainder(p, pathRoots, remainder)
 
 		return err
 	})
@@ -1111,16 +1124,16 @@ func (api *CarBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params 
 			l := getLinksystem(teeBlock)
 
 			// First resolve the path since we always need to.
-			_, terminalCid, remainder, terminalBlk, err := resolvePathWithRootsAndBlock(ctx, p, l)
+			md, terminalBlk, err := resolvePathWithRootsAndBlock(ctx, p, l)
 			if err != nil {
 				return err
 			}
-			if len(remainder) > 0 {
+			if len(md.LastSegmentRemainder) > 0 {
 				return nil
 			}
 
 			if cw == nil {
-				cw, err = storage.NewWritable(w, []cid.Cid{terminalCid}, carv2.WriteAsCarV1(true), carv2.AllowDuplicatePuts(params.Duplicates.Bool()))
+				cw, err = storage.NewWritable(w, []cid.Cid{md.LastSegment.RootCid()}, carv2.WriteAsCarV1(true), carv2.AllowDuplicatePuts(params.Duplicates.Bool()))
 				if err != nil {
 					// io.PipeWriter.CloseWithError always returns nil.
 					_ = w.CloseWithError(err)
