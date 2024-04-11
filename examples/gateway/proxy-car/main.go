@@ -21,7 +21,7 @@ func main() {
 
 	// Setups up tracing. This is optional and only required if the implementer
 	// wants to be able to enable tracing.
-	tp, err := common.SetupTracing(ctx, "Graph Gateway Example")
+	tp, err := common.SetupTracing(ctx, "CAR Gateway Example")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Creates the gateway with the remote graph backend.
+	// Creates the gateway with the remote car (IPIP-402) backend.
 	backend, err := gateway.NewCarBackend(carFetcher)
 	if err != nil {
 		log.Fatal(err)

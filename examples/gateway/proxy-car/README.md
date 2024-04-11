@@ -3,6 +3,8 @@
 This is an example of building a Gateway that uses `application/vnd.ipld.car`
 responses from another gateway acting as a remote Trustless Gateway and IPNS resolver.
 
+**NOTE:** the CAR backend MUST implement [IPIP-0402: Partial CAR Support on Trustless Gateways](https://specs.ipfs.tech/ipips/ipip-0402/)
+
 ## Build
 
 ```bash
@@ -15,7 +17,7 @@ First, you need a compliant gateway that supports both [CAR requests](https://ww
 types. Once you have it, run the proxy gateway with its address as the host parameter:
 
 ```
-./gateway -g https://ipfs.io -p 8040
+./gateway -g https://trustless-gateway.link -p 8040
 ```
 
 ### Subdomain gateway

@@ -28,7 +28,7 @@ types. Once you have it, run the proxy gateway with its address as the host para
 
 
 ```
-./gateway -g https://ipfs.io -p 8040
+./gateway -g https://trustless-gateway.link -p 8040
 ```
 
 ### Subdomain gateway
