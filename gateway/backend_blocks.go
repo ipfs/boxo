@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
 	"github.com/ipfs/boxo/blockservice"
 	blockstore "github.com/ipfs/boxo/blockstore"
+	"github.com/ipfs/boxo/exchange/offline"
 	"github.com/ipfs/boxo/fetcher"
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/files"
@@ -54,6 +56,7 @@ type BlocksBackend struct {
 
 var _ IPFSBackend = (*BlocksBackend)(nil)
 
+// NewBlocksBackend creates a new [BlocksBackend] backed by a [blockservice.BlockService].
 func NewBlocksBackend(blockService blockservice.BlockService, opts ...BackendOption) (*BlocksBackend, error) {
 	var compiledOptions backendOptions
 	for _, o := range opts {
@@ -88,6 +91,26 @@ func NewBlocksBackend(blockService blockservice.BlockService, opts ...BackendOpt
 		dagService:   dagService,
 		resolver:     r,
 	}, nil
+}
+
+// NewRemoteBlocksBackend creates a new [BlocksBackend] backed by one or more
+// gateways. These gateways must support RAW block requests and IPNS Record
+// requests. See [NewRemoteBlockstore] and [NewRemoteValueStore] for more details.
+//
+// To create a more custom [BlocksBackend], please use [NewBlocksBackend] directly.
+func NewRemoteBlocksBackend(gatewayURL []string, httpClient *http.Client, opts ...BackendOption) (*BlocksBackend, error) {
+	blockStore, err := NewRemoteBlockstore(gatewayURL, httpClient)
+	if err != nil {
+		return nil, err
+	}
+
+	valueStore, err := NewRemoteValueStore(gatewayURL, httpClient)
+	if err != nil {
+		return nil, err
+	}
+
+	blockService := blockservice.New(blockStore, offline.Exchange(blockStore))
+	return NewBlocksBackend(blockService, append(opts, WithValueStore(valueStore))...)
 }
 
 func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {

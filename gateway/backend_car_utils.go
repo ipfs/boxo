@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"math/rand"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -71,61 +68,4 @@ func blockstoreErrToGatewayErr(err error) error {
 
 	// everything else returns 502 Bad Gateway
 	return fmt.Errorf("%w: %s", ErrBadGateway, err.Error())
-}
-
-type remoteCarFetcher struct {
-	httpClient *http.Client
-	gatewayURL []string
-	validate   bool
-	rand       *rand.Rand
-}
-
-func NewRemoteCarFetcher(gatewayURL []string) (CarFetcher, error) {
-	if len(gatewayURL) == 0 {
-		return nil, errors.New("missing gateway URLs to which to proxy")
-	}
-
-	return &remoteCarFetcher{
-		gatewayURL: gatewayURL,
-		httpClient: newRemoteHTTPClient(),
-		// Enables block validation by default. Important since we are
-		// proxying block requests to an untrusted gateway.
-		validate: true,
-		rand:     rand.New(rand.NewSource(time.Now().Unix())),
-	}, nil
-}
-
-func (ps *remoteCarFetcher) Fetch(ctx context.Context, path string, cb DataCallback) error {
-	urlStr := fmt.Sprintf("%s%s", ps.getRandomGatewayURL(), path)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
-	if err != nil {
-		return err
-	}
-	log.Debugw("car fetch", "url", req.URL)
-	req.Header.Set("Accept", "application/vnd.ipld.car;order=dfs;dups=y")
-	resp, err := ps.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		errData, err := io.ReadAll(resp.Body)
-		if err != nil {
-			err = fmt.Errorf("could not read error message: %w", err)
-		} else {
-			err = fmt.Errorf("%q", string(errData))
-		}
-		return fmt.Errorf("http error from car gateway: %s: %w", resp.Status, err)
-	}
-
-	err = cb(path, resp.Body)
-	if err != nil {
-		resp.Body.Close()
-		return err
-	}
-	return resp.Body.Close()
-}
-
-func (ps *remoteCarFetcher) getRandomGatewayURL() string {
-	return ps.gatewayURL[ps.rand.Intn(len(ps.gatewayURL))]
 }

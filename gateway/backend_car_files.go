@@ -7,11 +7,14 @@ import (
 	"io"
 
 	"github.com/ipfs/boxo/files"
+	"github.com/ipfs/boxo/ipld/unixfs"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-unixfsnode"
 	ufsData "github.com/ipfs/go-unixfsnode/data"
 	"github.com/ipfs/go-unixfsnode/hamt"
+	ufsiter "github.com/ipfs/go-unixfsnode/iter"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -368,6 +371,167 @@ func (it *backpressuredHAMTDirIter) Err() error {
 }
 
 var _ files.DirIterator = (*backpressuredHAMTDirIter)(nil)
+
+type backpressuredHAMTDirIterNoRecursion struct {
+	dagSize  uint64
+	linksItr ipld.MapIterator
+	dirCid   cid.Cid
+
+	lsys    *ipld.LinkSystem
+	getLsys lsysGetter
+	ctx     context.Context
+
+	curLnk       unixfs.LinkResult
+	curProcessed int
+
+	closed    chan error
+	hasClosed bool
+	err       error
+}
+
+func (it *backpressuredHAMTDirIterNoRecursion) AwaitClose() <-chan error {
+	return it.closed
+}
+
+func (it *backpressuredHAMTDirIterNoRecursion) Link() unixfs.LinkResult {
+	return it.curLnk
+}
+
+func (it *backpressuredHAMTDirIterNoRecursion) Next() bool {
+	defer func() {
+		if it.linksItr.Done() || it.err != nil {
+			if !it.hasClosed {
+				it.hasClosed = true
+				close(it.closed)
+			}
+		}
+	}()
+
+	if it.err != nil {
+		return false
+	}
+
+	iter := it.linksItr
+	if iter.Done() {
+		return false
+	}
+
+	/*
+		Since there is no way to make a graph request for part of a HAMT during errors we can either fill in the HAMT with
+		block requests, or we can re-request the HAMT and skip over the parts we already have.
+
+		Here we choose the latter, however in the event of a re-request we request the entity rather than the entire DAG as
+		a compromise between more requests and over-fetching data.
+	*/
+
+	var err error
+	for {
+		if it.ctx.Err() != nil {
+			it.err = it.ctx.Err()
+			return false
+		}
+
+		retry, processedErr := isRetryableError(err)
+		if !retry {
+			it.err = processedErr
+			return false
+		}
+
+		var nd ipld.Node
+		if err != nil {
+			var lsys *ipld.LinkSystem
+			lsys, err = it.getLsys(it.ctx, it.dirCid, CarParams{Scope: DagScopeEntity})
+			if err != nil {
+				continue
+			}
+
+			_, pbn, ufsFieldData, _, ufsBaseErr := loadUnixFSBase(it.ctx, it.dirCid, nil, lsys)
+			if ufsBaseErr != nil {
+				err = ufsBaseErr
+				continue
+			}
+
+			nd, err = hamt.NewUnixFSHAMTShard(it.ctx, pbn, ufsFieldData, lsys)
+			if err != nil {
+				err = fmt.Errorf("could not reify sharded directory: %w", err)
+				continue
+			}
+
+			iter = nd.MapIterator()
+			for i := 0; i < it.curProcessed; i++ {
+				_, _, err = iter.Next()
+				if err != nil {
+					continue
+				}
+			}
+
+			it.linksItr = iter
+		}
+
+		var k, v ipld.Node
+		k, v, err = iter.Next()
+		if err != nil {
+			retry, processedErr = isRetryableError(err)
+			if retry {
+				err = processedErr
+				continue
+			}
+			it.err = processedErr
+			return false
+		}
+
+		var name string
+		name, err = k.AsString()
+		if err != nil {
+			it.err = err
+			return false
+		}
+
+		var lnk ipld.Link
+		lnk, err = v.AsLink()
+		if err != nil {
+			it.err = err
+			return false
+		}
+
+		cl, ok := lnk.(cidlink.Link)
+		if !ok {
+			it.err = fmt.Errorf("link not a cidlink")
+			return false
+		}
+
+		c := cl.Cid
+
+		pbLnk, ok := v.(*ufsiter.IterLink)
+		if !ok {
+			it.err = fmt.Errorf("HAMT value is not a dag-pb link")
+			return false
+		}
+
+		cumulativeDagSize := uint64(0)
+		if pbLnk.Substrate.Tsize.Exists() {
+			cumulativeDagSize = uint64(pbLnk.Substrate.Tsize.Must().Int())
+		}
+
+		it.curLnk = unixfs.LinkResult{
+			Link: &format.Link{
+				Name: name,
+				Size: cumulativeDagSize,
+				Cid:  c,
+			},
+		}
+		it.curProcessed++
+		break
+	}
+
+	return true
+}
+
+func (it *backpressuredHAMTDirIterNoRecursion) Err() error {
+	return it.err
+}
+
+var _ awaitCloser = (*backpressuredHAMTDirIterNoRecursion)(nil)
 
 /*
 1. Run traversal to get the top-level response

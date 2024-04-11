@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/ipfs/boxo/files"
@@ -20,8 +22,6 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-unixfsnode"
 	ufsData "github.com/ipfs/go-unixfsnode/data"
-	"github.com/ipfs/go-unixfsnode/hamt"
-	ufsiter "github.com/ipfs/go-unixfsnode/iter"
 	carv2 "github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
 	dagpb "github.com/ipld/go-codec-dagpb"
@@ -37,17 +37,12 @@ import (
 
 var ErrFetcherUnexpectedEOF = fmt.Errorf("failed to fetch IPLD data")
 
-type DataCallback func(resource string, reader io.Reader) error
-
-type CarFetcher interface {
-	Fetch(ctx context.Context, path string, cb DataCallback) error
-}
-
 type CarBackend struct {
 	baseBackend
-	fetcher CarFetcher
-	pc      traversal.LinkTargetNodePrototypeChooser
-	metrics *CarBackendMetrics
+	fetcher         CarFetcher
+	pc              traversal.LinkTargetNodePrototypeChooser
+	metrics         *CarBackendMetrics
+	getBlockTimeout time.Duration
 }
 
 type CarBackendMetrics struct {
@@ -60,8 +55,11 @@ type CarBackendMetrics struct {
 	bytesRangeSizeMetric  prometheus.Histogram
 }
 
+// NewCarBackend returns an [IPFSBackend] backed by a [CarFetcher].
 func NewCarBackend(f CarFetcher, opts ...BackendOption) (*CarBackend, error) {
-	var compiledOptions backendOptions
+	compiledOptions := backendOptions{
+		getBlockTimeout: DefaultGetBlockTimeout,
+	}
 	for _, o := range opts {
 		if err := o(&compiledOptions); err != nil {
 			return nil, err
@@ -81,9 +79,10 @@ func NewCarBackend(f CarFetcher, opts ...BackendOption) (*CarBackend, error) {
 	}
 
 	return &CarBackend{
-		baseBackend: baseBackend,
-		fetcher:     f,
-		metrics:     registerCarBackendMetrics(promReg),
+		baseBackend:     baseBackend,
+		fetcher:         f,
+		metrics:         registerCarBackendMetrics(promReg),
+		getBlockTimeout: compiledOptions.getBlockTimeout,
 		pc: dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
 			if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
 				return tlnkNd.LinkTargetNodePrototype(), nil
@@ -91,6 +90,30 @@ func NewCarBackend(f CarFetcher, opts ...BackendOption) (*CarBackend, error) {
 			return basicnode.Prototype.Any, nil
 		}),
 	}, nil
+}
+
+// NewRemoteCarBackend creates a new [CarBackend] instance backed by one or more
+// gateways. These gateways must support partial CAR requests, as described in
+// [IPIP-402], as well as IPNS Record requests. See [NewRemoteCarFetcher] and
+// [NewRemoteValueStore] for more details.
+//
+// If you want to create a more custom [CarBackend] with only remote IPNS Record
+// resolution, or only remote CAR fetching, we recommend using [NewCarBackend]
+// directly.
+//
+// [IPIP-402]: https://specs.ipfs.tech/ipips/ipip-0402/
+func NewRemoteCarBackend(gatewayURL []string, httpClient *http.Client, opts ...BackendOption) (*CarBackend, error) {
+	carFetcher, err := NewRemoteCarFetcher(gatewayURL, httpClient)
+	if err != nil {
+		return nil, err
+	}
+
+	valueStore, err := NewRemoteValueStore(gatewayURL, httpClient)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewCarBackend(carFetcher, append(opts, WithValueStore(valueStore))...)
 }
 
 func registerCarBackendMetrics(promReg prometheus.Registerer) *CarBackendMetrics {
@@ -351,7 +374,7 @@ func (api *CarBackend) Get(ctx context.Context, path path.ImmutablePath, byteRan
 		}
 	}
 
-	md, terminalElem, err := fetchWithPartialRetries(ctx, path, carParams, loadTerminalEntity, api.metrics, api.fetchCAR)
+	md, terminalElem, err := fetchWithPartialRetries(ctx, path, carParams, loadTerminalEntity, api.metrics, api.fetchCAR, api.getBlockTimeout)
 	if err != nil {
 		return ContentPathMetadata{}, nil, err
 	}
@@ -540,170 +563,9 @@ func loadTerminalEntity(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *
 	}
 }
 
-type backpressuredHAMTDirIterNoRecursion struct {
-	dagSize  uint64
-	linksItr ipld.MapIterator
-	dirCid   cid.Cid
-
-	lsys    *ipld.LinkSystem
-	getLsys lsysGetter
-	ctx     context.Context
-
-	curLnk       unixfs.LinkResult
-	curProcessed int
-
-	closed    chan error
-	hasClosed bool
-	err       error
-}
-
-func (it *backpressuredHAMTDirIterNoRecursion) AwaitClose() <-chan error {
-	return it.closed
-}
-
-func (it *backpressuredHAMTDirIterNoRecursion) Link() unixfs.LinkResult {
-	return it.curLnk
-}
-
-func (it *backpressuredHAMTDirIterNoRecursion) Next() bool {
-	defer func() {
-		if it.linksItr.Done() || it.err != nil {
-			if !it.hasClosed {
-				it.hasClosed = true
-				close(it.closed)
-			}
-		}
-	}()
-
-	if it.err != nil {
-		return false
-	}
-
-	iter := it.linksItr
-	if iter.Done() {
-		return false
-	}
-
-	/*
-		Since there is no way to make a graph request for part of a HAMT during errors we can either fill in the HAMT with
-		block requests, or we can re-request the HAMT and skip over the parts we already have.
-
-		Here we choose the latter, however in the event of a re-request we request the entity rather than the entire DAG as
-		a compromise between more requests and over-fetching data.
-	*/
-
-	var err error
-	for {
-		if it.ctx.Err() != nil {
-			it.err = it.ctx.Err()
-			return false
-		}
-
-		retry, processedErr := isRetryableError(err)
-		if !retry {
-			it.err = processedErr
-			return false
-		}
-
-		var nd ipld.Node
-		if err != nil {
-			var lsys *ipld.LinkSystem
-			lsys, err = it.getLsys(it.ctx, it.dirCid, CarParams{Scope: DagScopeEntity})
-			if err != nil {
-				continue
-			}
-
-			_, pbn, ufsFieldData, _, ufsBaseErr := loadUnixFSBase(it.ctx, it.dirCid, nil, lsys)
-			if ufsBaseErr != nil {
-				err = ufsBaseErr
-				continue
-			}
-
-			nd, err = hamt.NewUnixFSHAMTShard(it.ctx, pbn, ufsFieldData, lsys)
-			if err != nil {
-				err = fmt.Errorf("could not reify sharded directory: %w", err)
-				continue
-			}
-
-			iter = nd.MapIterator()
-			for i := 0; i < it.curProcessed; i++ {
-				_, _, err = iter.Next()
-				if err != nil {
-					continue
-				}
-			}
-
-			it.linksItr = iter
-		}
-
-		var k, v ipld.Node
-		k, v, err = iter.Next()
-		if err != nil {
-			retry, processedErr = isRetryableError(err)
-			if retry {
-				err = processedErr
-				continue
-			}
-			it.err = processedErr
-			return false
-		}
-
-		var name string
-		name, err = k.AsString()
-		if err != nil {
-			it.err = err
-			return false
-		}
-
-		var lnk ipld.Link
-		lnk, err = v.AsLink()
-		if err != nil {
-			it.err = err
-			return false
-		}
-
-		cl, ok := lnk.(cidlink.Link)
-		if !ok {
-			it.err = fmt.Errorf("link not a cidlink")
-			return false
-		}
-
-		c := cl.Cid
-
-		pbLnk, ok := v.(*ufsiter.IterLink)
-		if !ok {
-			it.err = fmt.Errorf("HAMT value is not a dag-pb link")
-			return false
-		}
-
-		cumulativeDagSize := uint64(0)
-		if pbLnk.Substrate.Tsize.Exists() {
-			cumulativeDagSize = uint64(pbLnk.Substrate.Tsize.Must().Int())
-		}
-
-		it.curLnk = unixfs.LinkResult{
-			Link: &format.Link{
-				Name: name,
-				Size: cumulativeDagSize,
-				Cid:  c,
-			},
-		}
-		it.curProcessed++
-		break
-	}
-
-	return true
-}
-
-func (it *backpressuredHAMTDirIterNoRecursion) Err() error {
-	return it.err
-}
-
-var _ awaitCloser = (*backpressuredHAMTDirIterNoRecursion)(nil)
-
 func (api *CarBackend) GetAll(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.Node, error) {
 	api.metrics.carParamsMetric.With(prometheus.Labels{"dagScope": "all", "entityRanges": "0"}).Inc()
-	return fetchWithPartialRetries(ctx, path, CarParams{Scope: DagScopeAll}, loadTerminalUnixFSElementWithRecursiveDirectories, api.metrics, api.fetchCAR)
+	return fetchWithPartialRetries(ctx, path, CarParams{Scope: DagScopeAll}, loadTerminalUnixFSElementWithRecursiveDirectories, api.metrics, api.fetchCAR, api.getBlockTimeout)
 }
 
 type loadTerminalElement[T any] func(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *ipld.LinkSystem, params CarParams, getLsys lsysGetter) (T, error)
@@ -720,7 +582,7 @@ type nextReq struct {
 	params CarParams
 }
 
-func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, initialParams CarParams, resolveTerminalElementFn loadTerminalElement[T], metrics *CarBackendMetrics, fetchCAR fetchCarFn) (ContentPathMetadata, T, error) {
+func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, initialParams CarParams, resolveTerminalElementFn loadTerminalElement[T], metrics *CarBackendMetrics, fetchCAR fetchCarFn, timeout time.Duration) (ContentPathMetadata, T, error) {
 	var zeroReturnType T
 
 	terminalPathElementCh := make(chan terminalPathType[T], 1)
@@ -752,12 +614,12 @@ func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, i
 		params := initialParams
 
 		err := fetchCAR(cctx, p, params, func(resource string, reader io.Reader) error {
-			gb, err := carToLinearBlockGetter(cctx, reader, metrics)
+			gb, err := carToLinearBlockGetter(cctx, reader, timeout, metrics)
 			if err != nil {
 				return err
 			}
 
-			lsys := getLinksystem(gb)
+			lsys := getCarLinksystem(gb)
 
 			if hasSentAsyncData {
 				_, _, err = resolvePathToLastWithRoots(cctx, p, lsys)
@@ -838,7 +700,7 @@ func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, i
 		}
 
 		if err != nil {
-			lsys := getLinksystem(func(ctx context.Context, cid cid.Cid) (blocks.Block, error) {
+			lsys := getCarLinksystem(func(ctx context.Context, cid cid.Cid) (blocks.Block, error) {
 				return nil, multierror.Append(ErrFetcherUnexpectedEOF, format.ErrNotFound{Cid: cid})
 			})
 			for {
@@ -872,11 +734,11 @@ func (api *CarBackend) GetBlock(ctx context.Context, p path.ImmutablePath) (Cont
 	var f files.File
 	// TODO: if path is `/ipfs/cid`, we should use ?format=raw
 	err := api.fetchCAR(ctx, p, CarParams{Scope: DagScopeBlock}, func(resource string, reader io.Reader) error {
-		gb, err := carToLinearBlockGetter(ctx, reader, api.metrics)
+		gb, err := carToLinearBlockGetter(ctx, reader, api.getBlockTimeout, api.metrics)
 		if err != nil {
 			return err
 		}
-		lsys := getLinksystem(gb)
+		lsys := getCarLinksystem(gb)
 
 		// First resolve the path since we always need to.
 		var terminalBlk blocks.Block
@@ -920,11 +782,11 @@ func (api *CarBackend) Head(ctx context.Context, p path.ImmutablePath) (ContentP
 	// TODO: fallback to dynamic fetches in case we haven't requested enough data
 	rangeTo := int64(3071)
 	err := api.fetchCAR(ctx, p, CarParams{Scope: DagScopeEntity, Range: &DagByteRange{From: 0, To: &rangeTo}}, func(resource string, reader io.Reader) error {
-		gb, err := carToLinearBlockGetter(ctx, reader, api.metrics)
+		gb, err := carToLinearBlockGetter(ctx, reader, api.getBlockTimeout, api.metrics)
 		if err != nil {
 			return err
 		}
-		lsys := getLinksystem(gb)
+		lsys := getCarLinksystem(gb)
 
 		// First resolve the path since we always need to.
 		var terminalBlk blocks.Block
@@ -1052,11 +914,11 @@ func (api *CarBackend) ResolvePath(ctx context.Context, p path.ImmutablePath) (C
 
 	var md ContentPathMetadata
 	err := api.fetchCAR(ctx, p, CarParams{Scope: DagScopeBlock}, func(resource string, reader io.Reader) error {
-		gb, err := carToLinearBlockGetter(ctx, reader, api.metrics)
+		gb, err := carToLinearBlockGetter(ctx, reader, api.getBlockTimeout, api.metrics)
 		if err != nil {
 			return err
 		}
-		lsys := getLinksystem(gb)
+		lsys := getCarLinksystem(gb)
 
 		// First resolve the path since we always need to.
 		md, _, err = resolvePathToLastWithRoots(ctx, p, lsys)
@@ -1098,7 +960,7 @@ func (api *CarBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params 
 		var blockBuffer []blocks.Block
 		err = api.fetchCAR(ctx, p, params, func(resource string, reader io.Reader) error {
 			numBlocksThisCall := 0
-			gb, err := carToLinearBlockGetter(ctx, reader, api.metrics)
+			gb, err := carToLinearBlockGetter(ctx, reader, api.getBlockTimeout, api.metrics)
 			if err != nil {
 				return err
 			}
@@ -1121,7 +983,7 @@ func (api *CarBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params 
 				numBlocksThisCall++
 				return blk, nil
 			}
-			l := getLinksystem(teeBlock)
+			l := getCarLinksystem(teeBlock)
 
 			var isNotFound bool
 

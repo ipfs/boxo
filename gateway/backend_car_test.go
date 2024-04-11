@@ -153,9 +153,13 @@ func TestCarBackendTar(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := NewRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL}, nil)
 	require.NoError(t, err)
-	backend, err := NewCarBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+
+	fetcher, err := NewRetryCarFetcher(bs, 3)
+	require.NoError(t, err)
+
+	backend, err := NewCarBackend(fetcher)
 	require.NoError(t, err)
 
 	p := path.FromCid(cid.MustParse("bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi"))
@@ -320,9 +324,12 @@ func TestCarBackendTarAtEndOfPath(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := NewRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL}, nil)
 	require.NoError(t, err)
-	backend, err := NewCarBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	fetcher, err := NewRetryCarFetcher(bs, 3)
+	require.NoError(t, err)
+
+	backend, err := NewCarBackend(fetcher)
 	require.NoError(t, err)
 
 	p, err := path.Join(path.FromCid(cid.MustParse("bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi")), "hamtDir")
@@ -479,9 +486,12 @@ func TestCarBackendGetFile(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := NewRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL}, nil)
 	require.NoError(t, err)
-	backend, err := NewCarBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	fetcher, err := NewRetryCarFetcher(bs, 3)
+	require.NoError(t, err)
+
+	backend, err := NewCarBackend(fetcher)
 	require.NoError(t, err)
 
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
@@ -580,9 +590,12 @@ func TestCarBackendGetFileRangeRequest(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := NewRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL}, nil)
 	require.NoError(t, err)
-	backend, err := NewCarBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	fetcher, err := NewRetryCarFetcher(bs, 3)
+	require.NoError(t, err)
+
+	backend, err := NewCarBackend(fetcher)
 	require.NoError(t, err)
 
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
@@ -687,9 +700,12 @@ func TestCarBackendGetFileWithBadBlockReturned(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := NewRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL}, nil)
 	require.NoError(t, err)
-	backend, err := NewCarBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	fetcher, err := NewRetryCarFetcher(bs, 3)
+	require.NoError(t, err)
+
+	backend, err := NewCarBackend(fetcher)
 	require.NoError(t, err)
 
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
@@ -789,9 +805,12 @@ func TestCarBackendGetHAMTDirectory(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := NewRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL}, nil)
 	require.NoError(t, err)
-	backend, err := NewCarBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	fetcher, err := NewRetryCarFetcher(bs, 3)
+	require.NoError(t, err)
+
+	backend, err := NewCarBackend(fetcher)
 	require.NoError(t, err)
 
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
@@ -895,9 +914,12 @@ func TestCarBackendGetCAR(t *testing.T) {
 	}))
 	defer s.Close()
 
-	bs, err := NewRemoteCarFetcher([]string{s.URL})
+	bs, err := NewRemoteCarFetcher([]string{s.URL}, nil)
 	require.NoError(t, err)
-	backend, err := NewCarBackend(&retryFetcher{inner: bs, allowedRetries: 3, retriesRemaining: 3})
+	fetcher, err := NewRetryCarFetcher(bs, 3)
+	require.NoError(t, err)
+
+	backend, err := NewCarBackend(fetcher)
 	require.NoError(t, err)
 
 	p := path.FromCid(cid.MustParse("bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi"))
@@ -985,7 +1007,7 @@ func TestCarBackendPassthroughErrors(t *testing.T) {
 			}))
 			defer s.Close()
 
-			bs, err := NewRemoteCarFetcher([]string{s.URL})
+			bs, err := NewRemoteCarFetcher([]string{s.URL}, nil)
 			require.NoError(t, err)
 
 			p, err := path.NewPath("/ipfs/bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi/hamtDir/exampleA")
@@ -997,15 +1019,17 @@ func TestCarBackendPassthroughErrors(t *testing.T) {
 			bogusErr := NewErrorStatusCode(fmt.Errorf("this is a test error"), 418)
 
 			clientRequestNum := 0
-			backend, err := NewCarBackend(&retryFetcher{
-				inner: &fetcherWrapper{fn: func(ctx context.Context, path string, cb DataCallback) error {
-					clientRequestNum++
-					if clientRequestNum > 2 {
-						return bogusErr
-					}
-					return bs.Fetch(ctx, path, cb)
-				}},
-				allowedRetries: 3, retriesRemaining: 3})
+
+			fetcher, err := NewRetryCarFetcher(&fetcherWrapper{fn: func(ctx context.Context, path string, cb DataCallback) error {
+				clientRequestNum++
+				if clientRequestNum > 2 {
+					return bogusErr
+				}
+				return bs.Fetch(ctx, path, cb)
+			}}, 3)
+			require.NoError(t, err)
+
+			backend, err := NewCarBackend(fetcher)
 			require.NoError(t, err)
 
 			err = traversal(ctx, imPath, backend)
@@ -1039,38 +1063,3 @@ type fetcherWrapper struct {
 func (w *fetcherWrapper) Fetch(ctx context.Context, path string, cb DataCallback) error {
 	return w.fn(ctx, path, cb)
 }
-
-type retryFetcher struct {
-	inner            CarFetcher
-	allowedRetries   int
-	retriesRemaining int
-}
-
-func (r *retryFetcher) Fetch(ctx context.Context, path string, cb DataCallback) error {
-	err := r.inner.Fetch(ctx, path, cb)
-	if err == nil {
-		return nil
-	}
-
-	if r.retriesRemaining > 0 {
-		r.retriesRemaining--
-	} else {
-		return fmt.Errorf("retry fetcher out of retries: %w", err)
-	}
-
-	switch t := err.(type) {
-	case ErrPartialResponse:
-		if len(t.StillNeed) > 1 {
-			panic("only a single request at a time supported")
-		}
-
-		// Mimicking the Caboose logic reset the number of retries for partials
-		r.retriesRemaining = r.allowedRetries
-
-		return r.Fetch(ctx, t.StillNeed[0], cb)
-	default:
-		return r.Fetch(ctx, path, cb)
-	}
-}
-
-var _ CarFetcher = (*retryFetcher)(nil)

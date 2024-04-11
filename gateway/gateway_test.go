@@ -20,7 +20,7 @@ import (
 )
 
 func TestGatewayGet(t *testing.T) {
-	ts, backend, root := newTestServerAndNode(t, nil, "fixtures.car")
+	ts, backend, root := newTestServerAndNode(t, "fixtures.car")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -96,7 +96,7 @@ func TestGatewayGet(t *testing.T) {
 func TestHeaders(t *testing.T) {
 	t.Parallel()
 
-	ts, backend, root := newTestServerAndNode(t, nil, "headers-test.car")
+	ts, backend, root := newTestServerAndNode(t, "headers-test.car")
 
 	var (
 		rootCID = "bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky"
@@ -121,7 +121,7 @@ func TestHeaders(t *testing.T) {
 	t.Run("Cache-Control uses TTL for /ipns/ when it is known", func(t *testing.T) {
 		t.Parallel()
 
-		ts, backend, root := newTestServerAndNode(t, nil, "ipns-hostname-redirects.car")
+		ts, backend, root := newTestServerAndNode(t, "ipns-hostname-redirects.car")
 		backend.namesys["/ipns/example.net"] = newMockNamesysItem(path.FromCid(root), time.Second*30)
 		backend.namesys["/ipns/example.com"] = newMockNamesysItem(path.FromCid(root), time.Second*55)
 		backend.namesys["/ipns/unknown.com"] = newMockNamesysItem(path.FromCid(root), 0)
@@ -420,7 +420,7 @@ func TestHeaders(t *testing.T) {
 }
 
 func TestGoGetSupport(t *testing.T) {
-	ts, _, root := newTestServerAndNode(t, nil, "fixtures.car")
+	ts, _, root := newTestServerAndNode(t, "fixtures.car")
 
 	// mimic go-get
 	req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+root.String()+"?go-get=1", nil)
@@ -432,7 +432,7 @@ func TestRedirects(t *testing.T) {
 	t.Parallel()
 
 	t.Run("IPNS Base58 Multihash Redirect", func(t *testing.T) {
-		ts, _, _ := newTestServerAndNode(t, nil, "fixtures.car")
+		ts, _, _ := newTestServerAndNode(t, "fixtures.car")
 
 		t.Run("ED25519 Base58-encoded key", func(t *testing.T) {
 			t.Parallel()
@@ -453,7 +453,7 @@ func TestRedirects(t *testing.T) {
 
 	t.Run("URI Query Redirects", func(t *testing.T) {
 		t.Parallel()
-		ts, _, _ := newTestServerAndNode(t, mockNamesys{}, "fixtures.car")
+		ts, _, _ := newTestServerAndNode(t, "fixtures.car")
 
 		cid := "QmbWqxBEKC3P8tqsKc98xmWNzrzDtRLMiMPL8wBuTGsMnR"
 		for _, test := range []struct {
@@ -492,7 +492,7 @@ func TestRedirects(t *testing.T) {
 	t.Run("IPNS Hostname Redirects", func(t *testing.T) {
 		t.Parallel()
 
-		ts, backend, root := newTestServerAndNode(t, nil, "ipns-hostname-redirects.car")
+		ts, backend, root := newTestServerAndNode(t, "ipns-hostname-redirects.car")
 		backend.namesys["/ipns/example.net"] = newMockNamesysItem(path.FromCid(root), 0)
 
 		// make request to directory containing index.html
@@ -555,9 +555,11 @@ func TestRedirects(t *testing.T) {
 
 			// Check statuses and body.
 			require.Equal(t, http.StatusOK, res.StatusCode)
-			body, err := io.ReadAll(res.Body)
-			require.NoError(t, err)
-			require.Equal(t, "hello world\n", string(body))
+			if method != http.MethodHead {
+				body, err := io.ReadAll(res.Body)
+				require.NoError(t, err)
+				require.Equal(t, "hello world\n", string(body))
+			}
 
 			// Check Etag.
 			etag := res.Header.Get("Etag")
@@ -948,7 +950,7 @@ func TestPanicStatusCode(t *testing.T) {
 
 func TestBrowserErrorHTML(t *testing.T) {
 	t.Parallel()
-	ts, _, root := newTestServerAndNode(t, nil, "fixtures.car")
+	ts, _, root := newTestServerAndNode(t, "fixtures.car")
 
 	t.Run("plain error if request does not have Accept: text/html", func(t *testing.T) {
 		t.Parallel()

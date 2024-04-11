@@ -27,13 +27,8 @@ func main() {
 	}
 	defer (func() { _ = tp.Shutdown(ctx) })()
 
-	carFetcher, err := gateway.NewRemoteCarFetcher([]string{*gatewayUrlPtr})
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	// Creates the gateway with the remote car (IPIP-402) backend.
-	backend, err := gateway.NewCarBackend(carFetcher)
+	backend, err := gateway.NewRemoteCarBackend([]string{*gatewayUrlPtr}, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

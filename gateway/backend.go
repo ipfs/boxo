@@ -15,13 +15,17 @@ import (
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type backendOptions struct {
-	ns           namesys.NameSystem
-	vs           routing.ValueStore
-	r            resolver.Resolver
-	promRegistry prometheus.Registerer
+	ns namesys.NameSystem
+	vs routing.ValueStore
+	r  resolver.Resolver
+
+	// Only used by [CarBackend]:
+	promRegistry    prometheus.Registerer
+	getBlockTimeout time.Duration
 }
 
 // WithNameSystem sets the name system to use with the different backends. If not set
@@ -54,6 +58,18 @@ func WithResolver(r resolver.Resolver) BackendOption {
 func WithPrometheusRegistry(reg prometheus.Registerer) BackendOption {
 	return func(opts *backendOptions) error {
 		opts.promRegistry = reg
+		return nil
+	}
+}
+
+const DefaultGetBlockTimeout = time.Second * 60
+
+// WithGetBlockTimeout sets a custom timeout when getting blocks from the
+// [CarFetcher] to use with [CarBackend]. By default, [DefaultGetBlockTimeout]
+// is used.
+func WithGetBlockTimeout(dur time.Duration) BackendOption {
+	return func(opts *backendOptions) error {
+		opts.getBlockTimeout = dur
 		return nil
 	}
 }
@@ -137,4 +153,21 @@ func (bb *baseBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (p
 	}
 
 	return nil, NewErrorStatusCode(errors.New("not implemented"), http.StatusNotImplemented)
+}
+
+// newRemoteHTTPClient creates a new [http.Client] that is optimized for retrieving
+// multiple blocks from a single gateway concurrently.
+func newRemoteHTTPClient() *http.Client {
+	transport := &http.Transport{
+		MaxIdleConns:        1000,
+		MaxConnsPerHost:     100,
+		MaxIdleConnsPerHost: 100,
+		IdleConnTimeout:     90 * time.Second,
+		ForceAttemptHTTP2:   true,
+	}
+
+	return &http.Client{
+		Timeout:   DefaultGetBlockTimeout,
+		Transport: otelhttp.NewTransport(transport),
+	}
 }

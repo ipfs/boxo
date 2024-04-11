@@ -23,9 +23,9 @@ import (
 
 type getBlock func(ctx context.Context, cid cid.Cid) (blocks.Block, error)
 
-var ErrNilBlock = ErrInvalidResponse{Message: "received a nil block with no error"}
+var errNilBlock = ErrInvalidResponse{Message: "received a nil block with no error"}
 
-func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *CarBackendMetrics) (getBlock, error) {
+func carToLinearBlockGetter(ctx context.Context, reader io.Reader, timeout time.Duration, metrics *CarBackendMetrics) (getBlock, error) {
 	cr, err := car.NewCarReaderWithOptions(reader, car.WithErrorOnEmptyRoots(false))
 	if err != nil {
 		return nil, err
@@ -73,9 +73,9 @@ func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *CarB
 		// initially set a higher timeout here so that if there's an initial timeout error we get it from the car reader.
 		var t *time.Timer
 		if isFirstBlock {
-			t = time.NewTimer(getBlockTimeout * 2)
+			t = time.NewTimer(timeout * 2)
 		} else {
-			t = time.NewTimer(getBlockTimeout)
+			t = time.NewTimer(timeout)
 		}
 		var blkRead blockRead
 		var ok bool
@@ -84,7 +84,7 @@ func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *CarB
 			if !t.Stop() {
 				<-t.C
 			}
-			t.Reset(getBlockTimeout)
+			t.Reset(timeout)
 		case <-t.C:
 			return nil, ErrGatewayTimeout
 		}
@@ -101,7 +101,7 @@ func carToLinearBlockGetter(ctx context.Context, reader io.Reader, metrics *CarB
 			}
 			return blkRead.block, nil
 		}
-		return nil, ErrNilBlock
+		return nil, errNilBlock
 	}, nil
 }
 
@@ -121,7 +121,7 @@ func extractIdentityMultihashCIDContents(k cid.Cid) (bool, []byte) {
 	return true, dmh.Digest
 }
 
-func getLinksystem(fn getBlock) *ipld.LinkSystem {
+func getCarLinksystem(fn getBlock) *ipld.LinkSystem {
 	lsys := cidlink.DefaultLinkSystem()
 	lsys.StorageReadOpener = func(linkContext linking.LinkContext, link datamodel.Link) (io.Reader, error) {
 		c := link.(cidlink.Link).Cid
