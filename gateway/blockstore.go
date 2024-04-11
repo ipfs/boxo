@@ -158,10 +158,11 @@ type remoteBlockstore struct {
 }
 
 // NewRemoteBlockstore creates a new [blockstore.Blockstore] that is backed by one
-// or more gateways that support RAW block requests. See the [Trustless Gateway]
+// or more gateways that support [RAW block] requests. See the [Trustless Gateway]
 // specification for more details. You can optionally pass your own [http.Client].
 //
 // [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
+// [RAW block]: https://www.iana.org/assignments/media-types/application/vnd.ipld.raw
 func NewRemoteBlockstore(gatewayURL []string, httpClient *http.Client) (blockstore.Blockstore, error) {
 	if len(gatewayURL) == 0 {
 		return nil, errors.New("missing gateway URLs to which to proxy")

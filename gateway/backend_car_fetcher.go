@@ -29,9 +29,10 @@ type remoteCarFetcher struct {
 }
 
 // NewRemoteCarFetcher returns a [CarFetcher] that is backed by one or more gateways
-// that support partial CAR requests, as described in [IPIP-402]. You can optionally
+// that support partial [CAR requests], as described in [IPIP-402]. You can optionally
 // pass your own [http.Client].
 //
+// [CAR requests]: https://www.iana.org/assignments/media-types/application/vnd.ipld.car
 // [IPIP-402]: https://specs.ipfs.tech/ipips/ipip-0402
 func NewRemoteCarFetcher(gatewayURL []string, httpClient *http.Client) (CarFetcher, error) {
 	if len(gatewayURL) == 0 {
