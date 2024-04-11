@@ -185,14 +185,12 @@ func registerCarBackendMetrics(promReg prometheus.Registerer) *CarBackendMetrics
 	}
 }
 
-func (api *CarBackend) fetchCAR(ctx context.Context, path path.ImmutablePath, params CarParams, cb DataCallback) error {
-	urlWithoutHost := contentPathToCarUrl(path, params).String()
-
+func (api *CarBackend) fetchCAR(ctx context.Context, p path.ImmutablePath, params CarParams, cb DataCallback) error {
 	api.metrics.carFetchAttemptMetric.Inc()
 	var ipldError error
-	fetchErr := api.fetcher.Fetch(ctx, urlWithoutHost, func(resource string, reader io.Reader) error {
+	fetchErr := api.fetcher.Fetch(ctx, p, params, func(p path.ImmutablePath, reader io.Reader) error {
 		return checkRetryableError(&ipldError, func() error {
-			return cb(resource, reader)
+			return cb(p, reader)
 		})
 	})
 
@@ -613,7 +611,7 @@ func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, i
 
 		params := initialParams
 
-		err := fetchCAR(cctx, p, params, func(resource string, reader io.Reader) error {
+		err := fetchCAR(cctx, p, params, func(_ path.ImmutablePath, reader io.Reader) error {
 			gb, err := carToLinearBlockGetter(cctx, reader, timeout, metrics)
 			if err != nil {
 				return err
@@ -687,8 +685,7 @@ func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, i
 					return err
 				}
 				params = req.params
-				remainderUrl := contentPathToCarUrl(p, params).String()
-				return ErrPartialResponse{StillNeed: []string{remainderUrl}}
+				return ErrPartialResponse{StillNeed: []CarResource{{Path: p, Params: params}}}
 			case <-cctx.Done():
 				return cctx.Err()
 			}
@@ -733,7 +730,7 @@ func (api *CarBackend) GetBlock(ctx context.Context, p path.ImmutablePath) (Cont
 	var md ContentPathMetadata
 	var f files.File
 	// TODO: if path is `/ipfs/cid`, we should use ?format=raw
-	err := api.fetchCAR(ctx, p, CarParams{Scope: DagScopeBlock}, func(resource string, reader io.Reader) error {
+	err := api.fetchCAR(ctx, p, CarParams{Scope: DagScopeBlock}, func(_ path.ImmutablePath, reader io.Reader) error {
 		gb, err := carToLinearBlockGetter(ctx, reader, api.getBlockTimeout, api.metrics)
 		if err != nil {
 			return err
@@ -781,7 +778,7 @@ func (api *CarBackend) Head(ctx context.Context, p path.ImmutablePath) (ContentP
 	var n *HeadResponse
 	// TODO: fallback to dynamic fetches in case we haven't requested enough data
 	rangeTo := int64(3071)
-	err := api.fetchCAR(ctx, p, CarParams{Scope: DagScopeEntity, Range: &DagByteRange{From: 0, To: &rangeTo}}, func(resource string, reader io.Reader) error {
+	err := api.fetchCAR(ctx, p, CarParams{Scope: DagScopeEntity, Range: &DagByteRange{From: 0, To: &rangeTo}}, func(_ path.ImmutablePath, reader io.Reader) error {
 		gb, err := carToLinearBlockGetter(ctx, reader, api.getBlockTimeout, api.metrics)
 		if err != nil {
 			return err
@@ -913,7 +910,7 @@ func (api *CarBackend) ResolvePath(ctx context.Context, p path.ImmutablePath) (C
 	api.metrics.carParamsMetric.With(prometheus.Labels{"dagScope": "block", "entityRanges": "0"}).Inc()
 
 	var md ContentPathMetadata
-	err := api.fetchCAR(ctx, p, CarParams{Scope: DagScopeBlock}, func(resource string, reader io.Reader) error {
+	err := api.fetchCAR(ctx, p, CarParams{Scope: DagScopeBlock}, func(_ path.ImmutablePath, reader io.Reader) error {
 		gb, err := carToLinearBlockGetter(ctx, reader, api.getBlockTimeout, api.metrics)
 		if err != nil {
 			return err
@@ -958,7 +955,7 @@ func (api *CarBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params 
 		numBlocksSent := 0
 		var cw storage.WritableCar
 		var blockBuffer []blocks.Block
-		err = api.fetchCAR(ctx, p, params, func(resource string, reader io.Reader) error {
+		err = api.fetchCAR(ctx, p, params, func(_ path.ImmutablePath, reader io.Reader) error {
 			numBlocksThisCall := 0
 			gb, err := carToLinearBlockGetter(ctx, reader, api.getBlockTimeout, api.metrics)
 			if err != nil {
@@ -1119,4 +1116,32 @@ func isRetryableError(err error) (bool, error) {
 			return true, initialErr
 		}
 	}
+}
+
+// blockstoreErrToGatewayErr translates underlying blockstore error into one that gateway code will return as HTTP 502 or 504
+// it also makes sure Retry-After hint from remote blockstore will be passed to HTTP client, if present.
+func blockstoreErrToGatewayErr(err error) error {
+	if errors.Is(err, &ErrorStatusCode{}) ||
+		errors.Is(err, &ErrorRetryAfter{}) {
+		// already correct error
+		return err
+	}
+
+	// All timeouts should produce 504 Gateway Timeout
+	if errors.Is(err, context.DeadlineExceeded) ||
+		// Unfortunately this is not an exported type so we have to check for the content.
+		strings.Contains(err.Error(), "Client.Timeout exceeded") {
+		return fmt.Errorf("%w: %s", ErrGatewayTimeout, err.Error())
+	}
+
+	// (Saturn) errors that support the RetryAfter interface need to be converted
+	// to the correct gateway error, such that the HTTP header is set.
+	for v := err; v != nil; v = errors.Unwrap(v) {
+		if r, ok := v.(interface{ RetryAfter() time.Duration }); ok {
+			return NewErrorRetryAfter(err, r.RetryAfter())
+		}
+	}
+
+	// everything else returns 502 Bad Gateway
+	return fmt.Errorf("%w: %s", ErrBadGateway, err.Error())
 }

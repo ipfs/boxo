@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/gateway/assets"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -144,7 +145,12 @@ func (e ErrInvalidResponse) Error() string {
 // one or more more specific resources that should be fetched (via StillNeed) to complete the request.
 type ErrPartialResponse struct {
 	error
-	StillNeed []string
+	StillNeed []CarResource
+}
+
+type CarResource struct {
+	Path   path.ImmutablePath
+	Params CarParams
 }
 
 func (epr ErrPartialResponse) Error() string {

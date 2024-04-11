@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	_ "embed"
 
@@ -23,6 +24,7 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	carbs "github.com/ipld/go-car/v2/blockstore"
 	"github.com/ipld/go-car/v2/storage"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1020,12 +1022,12 @@ func TestCarBackendPassthroughErrors(t *testing.T) {
 
 			clientRequestNum := 0
 
-			fetcher, err := NewRetryCarFetcher(&fetcherWrapper{fn: func(ctx context.Context, path string, cb DataCallback) error {
+			fetcher, err := NewRetryCarFetcher(&fetcherWrapper{fn: func(ctx context.Context, path path.ImmutablePath, params CarParams, cb DataCallback) error {
 				clientRequestNum++
 				if clientRequestNum > 2 {
 					return bogusErr
 				}
-				return bs.Fetch(ctx, path, cb)
+				return bs.Fetch(ctx, path, params, cb)
 			}}, 3)
 			require.NoError(t, err)
 
@@ -1057,9 +1059,42 @@ func TestCarBackendPassthroughErrors(t *testing.T) {
 }
 
 type fetcherWrapper struct {
-	fn func(ctx context.Context, path string, cb DataCallback) error
+	fn func(ctx context.Context, path path.ImmutablePath, params CarParams, cb DataCallback) error
 }
 
-func (w *fetcherWrapper) Fetch(ctx context.Context, path string, cb DataCallback) error {
-	return w.fn(ctx, path, cb)
+func (w *fetcherWrapper) Fetch(ctx context.Context, path path.ImmutablePath, params CarParams, cb DataCallback) error {
+	return w.fn(ctx, path, params, cb)
+}
+
+type testErr struct {
+	message    string
+	retryAfter time.Duration
+}
+
+func (e *testErr) Error() string {
+	return e.message
+}
+
+func (e *testErr) RetryAfter() time.Duration {
+	return e.retryAfter
+}
+
+func TestGatewayErrorRetryAfter(t *testing.T) {
+	originalErr := &testErr{message: "test", retryAfter: time.Minute}
+	var (
+		convertedErr error
+		gatewayErr   *ErrorRetryAfter
+	)
+
+	// Test unwrapped
+	convertedErr = blockstoreErrToGatewayErr(originalErr)
+	ok := errors.As(convertedErr, &gatewayErr)
+	assert.True(t, ok)
+	assert.EqualValues(t, originalErr.retryAfter, gatewayErr.RetryAfter)
+
+	// Test wrapped.
+	convertedErr = blockstoreErrToGatewayErr(fmt.Errorf("wrapped error: %w", originalErr))
+	ok = errors.As(convertedErr, &gatewayErr)
+	assert.True(t, ok)
+	assert.EqualValues(t, originalErr.retryAfter, gatewayErr.RetryAfter)
 }
