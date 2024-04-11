@@ -50,7 +50,6 @@ jobs:
           markdown: output.md
           subdomain-url: http://example.net
           specs: -trustless-ipns-gateway,-path-ipns-gateway,-subdomain-ipns-gateway,-dnslink-gateway
-          args: -skip 'TestGatewayCar/GET_response_for_application/vnd.ipld.car/Header_Content-Length'
 
       # 5. Upload the results
       - name: Upload MD summary
@@ -113,7 +112,7 @@ jobs:
           markdown: output.md
           subdomain-url: http://example.net
           specs: -trustless-ipns-gateway,-path-ipns-gateway,-subdomain-ipns-gateway,-dnslink-gateway
-          args: -skip 'TestGatewayCar/GET_response_for_application/vnd.ipld.car/Header_Content-Length'
+          args: -skip 'TestGatewayCache/.*_for_/ipfs/_with_only-if-cached_succeeds_when_in_local_datastore'
 
       # 5. Upload the results
       - name: Upload MD summary
