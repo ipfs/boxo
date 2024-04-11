@@ -112,7 +112,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 			dataToRender = dataAsReadSeekCloser
 		}
 
-		return i.renderCodec(r.Context(), w, r, rq, blockSize, dataToRender, len(ranges) > 0)
+		return i.renderCodec(r.Context(), w, r, rq, blockSize, dataToRender)
 	default:
 		rq.logger.Debugw("serving unixfs", "path", rq.contentPath)
 		ctx, span := spanTrace(ctx, "Handler.ServeUnixFS", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
