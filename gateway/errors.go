@@ -129,9 +129,10 @@ func (e *ErrorStatusCode) Unwrap() error {
 	return e.Err
 }
 
-// ErrInvalidResponse can be returned from a [DataCallback] to indicate that the data provided for the
-// requested resource was explicitly 'incorrect' - that blocks not in the requested dag, or non-car-conforming
-// data was returned.
+// ErrInvalidResponse can be returned from a [DataCallback] to indicate that
+// the data provided for the requested resource was explicitly 'incorrect',
+// for example, when received blocks did not belong to the requested dag,
+// or non-car-conforming data was returned.
 type ErrInvalidResponse struct {
 	Message string
 }
@@ -143,6 +144,10 @@ func (e ErrInvalidResponse) Error() string {
 // ErrPartialResponse can be returned from a [DataCallback] to indicate that some of the requested resource
 // was successfully fetched, and that instead of retrying the full resource, that there are
 // one or more more specific resources that should be fetched (via StillNeed) to complete the request.
+//
+// This primitive allows for resume mechanism that is useful when a big CAR
+// stream gets truncated due to network error, HTTP middleware timeout, etc,
+// but some useful blocks were received and should not be fetched again.
 type ErrPartialResponse struct {
 	error
 	StillNeed []CarResource
@@ -157,7 +162,7 @@ func (epr ErrPartialResponse) Error() string {
 	if epr.error != nil {
 		return fmt.Sprintf("partial response: %s", epr.error.Error())
 	}
-	return "caboose received a partial response"
+	return "received a partial CAR response from the backend"
 }
 
 func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defaultCode int) {

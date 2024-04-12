@@ -165,7 +165,7 @@ type remoteBlockstore struct {
 // [RAW block]: https://www.iana.org/assignments/media-types/application/vnd.ipld.raw
 func NewRemoteBlockstore(gatewayURL []string, httpClient *http.Client) (blockstore.Blockstore, error) {
 	if len(gatewayURL) == 0 {
-		return nil, errors.New("missing gateway URLs to which to proxy")
+		return nil, errors.New("missing remote block backend URL")
 	}
 
 	if httpClient == nil {
@@ -197,7 +197,7 @@ func (ps *remoteBlockstore) fetch(ctx context.Context, c cid.Cid) (blocks.Block,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http error from block gateway: %s", resp.Status)
+		return nil, fmt.Errorf("http error from remote block backend: %s", resp.Status)
 	}
 
 	rb, err := io.ReadAll(resp.Body)
