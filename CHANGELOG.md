@@ -26,6 +26,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+* `routing/http/server` now returns 404 Status Not Found when no records can be found.
+
 ### Security
 
 ## [v0.19.0]

@@ -20,6 +20,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	b58 "github.com/mr-tron/base58/base58"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -140,7 +141,11 @@ func TestProviders(t *testing.T) {
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		require.Equal(t, 200, resp.StatusCode)
+		if empty {
+			require.Equal(t, 404, resp.StatusCode)
+		} else {
+			require.Equal(t, 200, resp.StatusCode)
+		}
 
 		require.Equal(t, contentType, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
@@ -183,6 +188,22 @@ func TestProviders(t *testing.T) {
 	t.Run("Empty NDJSON Response", func(t *testing.T) {
 		runTest(t, mediaTypeNDJSON, true, true, "")
 	})
+
+	t.Run("404 when router returns routing.ErrNotFound", func(t *testing.T) {
+		t.Parallel()
+		router := &mockContentRouter{}
+		server := httptest.NewServer(Handler(router))
+		t.Cleanup(server.Close)
+		serverAddr := "http://" + server.Listener.Addr().String()
+		router.On("FindProviders", mock.Anything, cid, DefaultRecordsLimit).Return(nil, routing.ErrNotFound)
+
+		req, err := http.NewRequest(http.MethodGet, serverAddr+"/routing/v1/providers/"+cidStr, nil)
+		require.NoError(t, err)
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, 404, resp.StatusCode)
+	})
 }
 
 func TestPeers(t *testing.T) {
@@ -207,7 +228,7 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, 400, resp.StatusCode)
 	})
 
-	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (No Results, explicit JSON)", func(t *testing.T) {
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 404 with correct body and headers (No Results, explicit JSON)", func(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
@@ -217,7 +238,7 @@ func TestPeers(t *testing.T) {
 		router.On("FindPeers", mock.Anything, pid, 20).Return(results, nil)
 
 		resp := makeRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String())
-		require.Equal(t, 200, resp.StatusCode)
+		require.Equal(t, 404, resp.StatusCode)
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
@@ -226,7 +247,7 @@ func TestPeers(t *testing.T) {
 		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 	})
 
-	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (No Results, implicit JSON, wildcard Accept header)", func(t *testing.T) {
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 404 with correct body and headers (No Results, implicit JSON, wildcard Accept header)", func(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
@@ -239,12 +260,12 @@ func TestPeers(t *testing.T) {
 		resp := makeRequest(t, router, "text/html,*/*", peer.ToCid(pid).String())
 
 		// Expect response to default to application/json
-		require.Equal(t, 200, resp.StatusCode)
+		require.Equal(t, 404, resp.StatusCode)
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 
 	})
 
-	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (No Results, implicit JSON, no Accept header)", func(t *testing.T) {
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 404 with correct body and headers (No Results, implicit JSON, no Accept header)", func(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
@@ -257,9 +278,24 @@ func TestPeers(t *testing.T) {
 		resp := makeRequest(t, router, "", peer.ToCid(pid).String())
 
 		// Expect response to default to application/json
-		require.Equal(t, 200, resp.StatusCode)
+		require.Equal(t, 404, resp.StatusCode)
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+	})
 
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 404 when router returns routing.ErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makePeerID(t)
+
+		router := &mockContentRouter{}
+		router.On("FindPeers", mock.Anything, pid, 20).Return(nil, routing.ErrNotFound)
+
+		// Simulate request without Accept header
+		resp := makeRequest(t, router, "", peer.ToCid(pid).String())
+
+		// Expect response to default to application/json
+		require.Equal(t, 404, resp.StatusCode)
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 	})
 
 	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (JSON)", func(t *testing.T) {
@@ -301,7 +337,7 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, expectedBody, string(body))
 	})
 
-	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (No Results, NDJSON)", func(t *testing.T) {
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 404 with correct body and headers (No Results, NDJSON)", func(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makePeerID(t)
@@ -311,7 +347,7 @@ func TestPeers(t *testing.T) {
 		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
 
 		resp := makeRequest(t, router, mediaTypeNDJSON, peer.ToCid(pid).String())
-		require.Equal(t, 200, resp.StatusCode)
+		require.Equal(t, 404, resp.StatusCode)
 
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
@@ -587,6 +623,20 @@ func TestIPNS(t *testing.T) {
 			require.Equal(t, 400, resp.StatusCode)
 		})
 
+		t.Run("GET /routing/v1/ipns/{cid-peer-id} returns 404 (no record found)", func(t *testing.T) {
+			t.Parallel()
+
+			router := &mockContentRouter{}
+			router.On("GetIPNS", mock.Anything, name1).Return(nil, routing.ErrNotFound)
+
+			// Simulate request without explicit Accept header
+			noAccept := ""
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String(), noAccept)
+
+			// Expect application/vnd.ipfs.ipns-record in response
+			require.Equal(t, 404, resp.StatusCode)
+		})
+
 		t.Run("PUT /routing/v1/ipns/{cid-peer-id} returns 200", func(t *testing.T) {
 			t.Parallel()
 
@@ -640,7 +690,11 @@ type mockContentRouter struct{ mock.Mock }
 
 func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limit int) (iter.ResultIter[types.Record], error) {
 	args := m.Called(ctx, key, limit)
-	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
+	a := args.Get(0)
+	if a == nil {
+		return nil, args.Error(1)
+	}
+	return a.(iter.ResultIter[types.Record]), args.Error(1)
 }
 
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error) {
@@ -650,12 +704,20 @@ func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *BitswapWrit
 
 func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[*types.PeerRecord], error) {
 	args := m.Called(ctx, pid, limit)
-	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
+	a := args.Get(0)
+	if a == nil {
+		return nil, args.Error(1)
+	}
+	return a.(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
 func (m *mockContentRouter) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
-	return args.Get(0).(*ipns.Record), args.Error(1)
+	a := args.Get(0)
+	if a == nil {
+		return nil, args.Error(1)
+	}
+	return a.(*ipns.Record), args.Error(1)
 }
 
 func (m *mockContentRouter) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {

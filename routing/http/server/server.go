@@ -21,6 +21,7 @@ import (
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 
@@ -214,8 +215,13 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 
 	provIter, err := s.svc.FindProviders(httpReq.Context(), cid, recordsLimit)
 	if err != nil {
-		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-		return
+		if errors.Is(err, routing.ErrNotFound) {
+			// handlerFunc takes care of setting the 404 and necessary headers
+			provIter = iter.FromSlice([]iter.Result[types.Record]{})
+		} else {
+			writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+			return
+		}
 	}
 
 	handlerFunc(w, provIter)
@@ -286,8 +292,13 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 
 	provIter, err := s.svc.FindPeers(r.Context(), pid, recordsLimit)
 	if err != nil {
-		writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-		return
+		if errors.Is(err, routing.ErrNotFound) {
+			// handlerFunc takes care of setting the 404 and necessary headers
+			provIter = iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+		} else {
+			writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+			return
+		}
 	}
 
 	handlerFunc(w, provIter)
@@ -398,8 +409,13 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 
 	record, err := s.svc.GetIPNS(r.Context(), name)
 	if err != nil {
-		writeErr(w, "GetIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-		return
+		if errors.Is(err, routing.ErrNotFound) {
+			writeErr(w, "GetIPNS", http.StatusNotFound, fmt.Errorf("delegate error: %w", err))
+			return
+		} else {
+			writeErr(w, "GetIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+			return
+		}
 	}
 
 	rawRecord, err := ipns.MarshalRecord(record)
@@ -517,6 +533,12 @@ func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length
 		return
 	}
 
+	if val.Length() > 0 {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusNotFound)
+	}
+
 	_, err = io.Copy(w, bytes.NewBuffer(b))
 	if err != nil {
 		logErr("Provide", "writing response body", err)
@@ -586,7 +608,8 @@ func writeResultsIterNDJSON[T any](w http.ResponseWriter, resultIter iter.Result
 	}
 
 	if !hasResults {
-		// There weren't results, cache for shorter
+		// There weren't results, cache for shorter and send 404
 		setCacheControl(w, maxAgeWithoutResults, maxStale)
+		w.WriteHeader(http.StatusNotFound)
 	}
 }
