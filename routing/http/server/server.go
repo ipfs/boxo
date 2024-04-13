@@ -546,6 +546,10 @@ func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length
 }
 
 func writeErr(w http.ResponseWriter, method string, statusCode int, cause error) {
+	if errors.Is(cause, routing.ErrNotFound) {
+		setCacheControl(w, maxAgeWithoutResults, maxStale)
+	}
+
 	w.WriteHeader(statusCode)
 	causeStr := cause.Error()
 	if len(causeStr) > 1024 {
