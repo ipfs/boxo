@@ -34,10 +34,17 @@ var _ blockstore.Blockstore = (*cacheBlockStore)(nil)
 // NewCacheBlockStore creates a new [blockstore.Blockstore] that caches blocks
 // in memory using a two queue cache. It can be useful, for example, when paired
 // with a proxy blockstore (see [NewRemoteBlockstore]).
-func NewCacheBlockStore(size int) (blockstore.Blockstore, error) {
+//
+// If the given [prometheus.Registerer] is nil, a new one will be created using
+// [prometheus.NewRegistry].
+func NewCacheBlockStore(size int, reg prometheus.Registerer) (blockstore.Blockstore, error) {
 	c, err := lru.New2Q[string, []byte](size)
 	if err != nil {
 		return nil, err
+	}
+
+	if reg == nil {
+		reg = prometheus.NewRegistry()
 	}
 
 	cacheHitsMetric := prometheus.NewCounter(prometheus.CounterOpts{
@@ -54,12 +61,12 @@ func NewCacheBlockStore(size int) (blockstore.Blockstore, error) {
 		Help:      "The number of global block cache requests.",
 	})
 
-	err = prometheus.Register(cacheHitsMetric)
+	err = reg.Register(cacheHitsMetric)
 	if err != nil {
 		return nil, err
 	}
 
-	err = prometheus.Register(cacheRequestsMetric)
+	err = reg.Register(cacheRequestsMetric)
 	if err != nil {
 		return nil, err
 	}
@@ -151,18 +158,23 @@ type remoteBlockstore struct {
 }
 
 // NewRemoteBlockstore creates a new [blockstore.Blockstore] that is backed by one
-// or more gateways that support RAW block requests. See the [Trustless Gateway]
-// specification for more details.
+// or more gateways that support [RAW block] requests. See the [Trustless Gateway]
+// specification for more details. You can optionally pass your own [http.Client].
 //
 // [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
-func NewRemoteBlockstore(gatewayURL []string) (blockstore.Blockstore, error) {
+// [RAW block]: https://www.iana.org/assignments/media-types/application/vnd.ipld.raw
+func NewRemoteBlockstore(gatewayURL []string, httpClient *http.Client) (blockstore.Blockstore, error) {
 	if len(gatewayURL) == 0 {
-		return nil, errors.New("missing gateway URLs to which to proxy")
+		return nil, errors.New("missing remote block backend URL")
+	}
+
+	if httpClient == nil {
+		httpClient = newRemoteHTTPClient()
 	}
 
 	return &remoteBlockstore{
 		gatewayURL: gatewayURL,
-		httpClient: newRemoteHTTPClient(),
+		httpClient: httpClient,
 		rand:       rand.New(rand.NewSource(time.Now().Unix())),
 		// Enables block validation by default. Important since we are
 		// proxying block requests to untrusted gateways.
@@ -185,7 +197,7 @@ func (ps *remoteBlockstore) fetch(ctx context.Context, c cid.Cid) (blocks.Block,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http error from block gateway: %s", resp.Status)
+		return nil, fmt.Errorf("http error from remote block backend: %s", resp.Status)
 	}
 
 	rb, err := io.ReadAll(resp.Body)

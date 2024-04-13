@@ -1,17 +1,23 @@
 name: Gateway Conformance
+# This workflow runs https://github.com/ipfs/gateway-conformance
+# against different backend implementations of boxo/gateway
 
 on:
   push:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  gateway-conformance:
+  # This test uses a static CAR file as a local blockstore,
+  # allowing us to test conformance against BlocksBackend (gateway/backend_blocks.go)
+  # which is used by implementations like Kubo
+  local-block-backend:
     runs-on: ubuntu-latest
     steps:
       # 1. Download the gateway-conformance fixtures
@@ -21,22 +27,23 @@ jobs:
           output: fixtures
           merged: true
 
-      # 2. Build the car-gateway
-      - name: Setup Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: 1.21.x
+      # 2. Build the gateway binary
       - name: Checkout boxo
         uses: actions/checkout@v4
         with:
           path: boxo
-      - name: Build car-gateway
-        run: go build -o car-gateway
-        working-directory: boxo/examples/gateway/car
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'boxo/examples/go.mod'
+          cache-dependency-path: "boxo/**/*.sum"
+      - name: Build test-gateway
+        run: go build -o test-gateway
+        working-directory: boxo/examples/gateway/car-file
 
-      # 3. Start the car-gateway
-      - name: Start car-gateway
-        run: boxo/examples/gateway/car/car-gateway -c fixtures/fixtures.car -p 8040 &
+      # 3. Start the gateway binary
+      - name: Start test-gateway
+        run: boxo/examples/gateway/car-file/test-gateway -c fixtures/fixtures.car -p 8040 &
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests
@@ -49,7 +56,6 @@ jobs:
           markdown: output.md
           subdomain-url: http://example.net
           specs: -trustless-ipns-gateway,-path-ipns-gateway,-subdomain-ipns-gateway,-dnslink-gateway
-          args: -skip 'TestGatewayCar/GET_response_for_application/vnd.ipld.car/Header_Content-Length'
 
       # 5. Upload the results
       - name: Upload MD summary
@@ -57,13 +63,149 @@ jobs:
         run: cat output.md >> $GITHUB_STEP_SUMMARY
       - name: Upload HTML report
         if: failure() || success()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: gateway-conformance.html
+          name: gateway-conformance_local-block-backend.html
           path: output.html
       - name: Upload JSON report
         if: failure() || success()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: gateway-conformance.json
+          name: gateway-conformance_local-block-backend.json
+          path: output.json
+
+  # This test uses remote block gateway (?format=raw) as a remote blockstore,
+  # allowing us to test conformance against RemoteBlocksBackend
+  # (gateway/backend_blocks.go) which is used by implementations like
+  # rainbow configured to use with remote block backend
+  # Ref. https://specs.ipfs.tech/http-gateways/trustless-gateway/#block-responses-application-vnd-ipld-raw
+  remote-block-backend:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Download the gateway-conformance fixtures
+      - name: Download gateway-conformance fixtures
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.5
+        with:
+          output: fixtures
+          merged: true
+
+      # 2. Build the gateway binaries
+      - name: Checkout boxo
+        uses: actions/checkout@v4
+        with:
+          path: boxo
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'boxo/examples/go.mod'
+          cache-dependency-path: "boxo/**/*.sum"
+      - name: Build remote-block-backend # it will act as a trustless CAR gateway
+        run: go build -o remote-block-backend
+        working-directory: boxo/examples/gateway/car-file
+      - name: Build test-gateway # this one will be used for tests, it will use previous one as its remote block backend
+        run: go build -o test-gateway
+        working-directory: boxo/examples/gateway/proxy-blocks
+
+      # 3. Start the gateway binaries
+      - name: Start remote HTTP backend that serves application/vnd.ipld.raw
+        run: boxo/examples/gateway/car-file/remote-block-backend -c fixtures/fixtures.car -p 8030 & # this endpoint will respond to application/vnd.ipld.car requests
+      - name: Start gateway that uses the remote block backend
+        run: boxo/examples/gateway/proxy-blocks/test-gateway -g http://127.0.0.1:8030 -p 8040 &
+
+      # 4. Run the gateway-conformance tests
+      - name: Run gateway-conformance tests
+        uses: ipfs/gateway-conformance/.github/actions/test@v0.5
+        with:
+          gateway-url: http://127.0.0.1:8040 # we test gateway that is backed by a remote block gateway
+          json: output.json
+          xml: output.xml
+          html: output.html
+          markdown: output.md
+          subdomain-url: http://example.net
+          specs: -trustless-ipns-gateway,-path-ipns-gateway,-subdomain-ipns-gateway,-dnslink-gateway
+          args: -skip 'TestGatewayCache/.*_for_%2Fipfs%2F_with_only-if-cached_succeeds_when_in_local_datastore'
+
+      # 5. Upload the results
+      - name: Upload MD summary
+        if: failure() || success()
+        run: cat output.md >> $GITHUB_STEP_SUMMARY
+      - name: Upload HTML report
+        if: failure() || success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-conformance_remote-block-backend.html
+          path: output.html
+      - name: Upload JSON report
+        if: failure() || success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-conformance_remote-block-backend.json
+          path: output.json
+
+  # This test uses remote CAR gateway (?format=car, IPIP-402)
+  # allowing us to test conformance against remote CarFetcher backend.
+  # (gateway/backend_car_fetcher.go) which is used by implementations like
+  # rainbow configured to use with remote car backend
+  # Ref. https://specs.ipfs.tech/http-gateways/trustless-gateway/#car-responses-application-vnd-ipld-car
+  remote-car-backend:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Download the gateway-conformance fixtures
+      - name: Download gateway-conformance fixtures
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.5
+        with:
+          output: fixtures
+          merged: true
+
+      # 2. Build the gateway binaries
+      - name: Checkout boxo
+        uses: actions/checkout@v4
+        with:
+          path: boxo
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'boxo/examples/go.mod'
+          cache-dependency-path: "boxo/**/*.sum"
+      - name: Build remote-car-backend # it will act as a trustless CAR gateway
+        run: go build -o remote-car-backend
+        working-directory: boxo/examples/gateway/car-file
+      - name: Build test-gateway # this one will be used for tests, it will use previous one as its remote CAR backend
+        run: go build -o test-gateway
+        working-directory: boxo/examples/gateway/proxy-car
+
+      # 3. Start the gateway binaries
+      - name: Start remote HTTP backend that serves application/vnd.ipld.car (IPIP-402)
+        run: boxo/examples/gateway/car-file/remote-car-backend -c fixtures/fixtures.car -p 8030 & # this endpoint will respond to application/vnd.ipld.raw requests
+      - name: Start gateway that uses the remote CAR backend
+        run: boxo/examples/gateway/proxy-car/test-gateway -g http://127.0.0.1:8030 -p 8040 &
+
+      # 4. Run the gateway-conformance tests
+      - name: Run gateway-conformance tests
+        uses: ipfs/gateway-conformance/.github/actions/test@v0.5
+        with:
+          gateway-url: http://127.0.0.1:8040 # we test gateway that is backed by a remote car gateway
+          json: output.json
+          xml: output.xml
+          html: output.html
+          markdown: output.md
+          subdomain-url: http://example.net
+          specs: -trustless-ipns-gateway,-path-ipns-gateway,-subdomain-ipns-gateway,-dnslink-gateway
+          args: -skip 'TestGatewayCache/.*_for_%2Fipfs%2F_with_only-if-cached_succeeds_when_in_local_datastore'
+
+      # 5. Upload the results
+      - name: Upload MD summary
+        if: failure() || success()
+        run: cat output.md >> $GITHUB_STEP_SUMMARY
+      - name: Upload HTML report
+        if: failure() || success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-conformance_remote-car-backend.html
+          path: output.html
+      - name: Upload JSON report
+        if: failure() || success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-conformance_remote-car-backend.json
           path: output.json

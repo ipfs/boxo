@@ -20,19 +20,23 @@ type remoteValueStore struct {
 	rand       *rand.Rand
 }
 
-// NewRemoteValueStore creates a new [routing.ValueStore] that is backed by one
-// or more gateways that support IPNS Record requests. See the [Trustless Gateway]
-// specification for more details.
+// NewRemoteValueStore creates a new [routing.ValueStore] backed by one or more
+// gateways that support IPNS Record requests. See the [Trustless Gateway]
+// specification for more details. You can optionally pass your own [http.Client].
 //
 // [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
-func NewRemoteValueStore(gatewayURL []string) (routing.ValueStore, error) {
+func NewRemoteValueStore(gatewayURL []string, httpClient *http.Client) (routing.ValueStore, error) {
 	if len(gatewayURL) == 0 {
 		return nil, errors.New("missing gateway URLs to which to proxy")
 	}
 
+	if httpClient == nil {
+		httpClient = newRemoteHTTPClient()
+	}
+
 	return &remoteValueStore{
 		gatewayURL: gatewayURL,
-		httpClient: newRemoteHTTPClient(),
+		httpClient: httpClient,
 		rand:       rand.New(rand.NewSource(time.Now().Unix())),
 	}, nil
 }
