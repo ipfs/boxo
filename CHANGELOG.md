@@ -16,10 +16,12 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+* ✨ `gateway` has new backend possibilities:
+  * `NewRemoteBlocksBackend` allows you to create a gateway backend that uses one or multiple other gateways as backend. These gateways must support RAW block requests (`application/vnd.ipld.raw`), as well as IPNS Record requests (`application/vnd.ipfs.ipns-record`). With this, we also introduced `NewCacheBlockStore`, `NewRemoteBlockstore` and `NewRemoteValueStore`.
+  * `NewRemoteCarBackend` allows you to create a gateway backend that uses one or multiple Trustless Gateways as backend. These gateways must support CAR requests (`application/vnd.ipld.car`), as well as the extensions describe in [IPIP-402](https://specs.ipfs.tech/ipips/ipip-0402/). With this, we also introduced `NewCarBackend`, `NewRemoteCarFetcher` and `NewRetryCarFetcher`.
 * ✨ `routing/http`: delegated content and peer routing ([IPIP-378](https://github.com/ipfs/specs/pull/378)) has been implemented. This includes the following additions:
   - `client`: now includes `Provide` and `ProvidePeer` methods, which can be used to provide signed records for content routing and peer routing.
   - `types`: types related to the Announcement schema record have been added. A `types/iter.Filter` utility has also been added if you want to filter on top of an iterator.
-* `routing/http/server` now adds `Cache-Control` HTTP header to GET requests: 15 seconds for empty responses, or 5 minutes for responses with providers.
 
 ### Changed
 
@@ -27,7 +29,6 @@ The following emojis are used to highlight certain changes:
   - `client`: `WithProviderInfo` now accepts a third parameter, `protocols`, whose value is used when providing the peer.
   - `contentrouter`: the `Client` interface has been updated to reflect the changes made to the client, that is, replacing the `ProvideBitswap` method by the generic `Provide` method.
   - `server`: the `ContentRouter` interface now includes a `Provide` and a `ProvidePeer` functions.
-* `go` version changed to 1.21
 
 ### Removed
 
@@ -38,9 +39,28 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-- 🛠️`routing/http/server`: delegated peer routing endpoint now supports both [PeerID string notaitons from libp2p specs](https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation).
+* `routing/http/server` now returns 404 Status Not Found when no records can be found.
 
 ### Security
+
+## [v0.19.0]
+
+### Added
+
+* `routing/http/server` now adds `Cache-Control` HTTP header to GET requests: 15 seconds for empty responses, or 5 minutes for responses with providers.
+* `routing/http/server` the `/ipns` endpoint is more friendly to users opening URL in web browsers: returns `Content-Disposition` header and defaults to `application/vnd.ipfs.ipns-record` response when `Accept` is missing.
+* `provider`:
+  * Exports a `NewPrioritizedProvider`, which can be used to prioritize certain providers while ignoring duplicates.
+  * 🛠️ `NewPinnedProvider` now prioritizes root blocks, even if `onlyRoots` is set to `false`.
+
+### Changed
+
+* `go` version changed to 1.21
+
+### Fixed
+
+- 🛠️`routing/http/server`: delegated peer routing endpoint now supports both [PeerID string notaitons from libp2p specs](https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation).
+- `bitswap`: add missing client `WithBlockReceivedNotifier` and `WithoutDuplicatedBlockStats` options to the exchange.
 
 ## [v0.18.0]
 

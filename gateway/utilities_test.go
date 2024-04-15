@@ -27,7 +27,7 @@ import (
 )
 
 func mustNewRequest(t *testing.T, method string, path string, body io.Reader) *http.Request {
-	r, err := http.NewRequest(http.MethodGet, path, body)
+	r, err := http.NewRequest(method, path, body)
 	require.NoError(t, err)
 	return r
 }
@@ -224,7 +224,7 @@ func (mb *mockBackend) resolvePathNoRootsReturned(ctx context.Context, ip path.P
 	return md.LastSegment, nil
 }
 
-func newTestServerAndNode(t *testing.T, ns mockNamesys, fixturesFile string) (*httptest.Server, *mockBackend, cid.Cid) {
+func newTestServerAndNode(t *testing.T, fixturesFile string) (*httptest.Server, *mockBackend, cid.Cid) {
 	backend, root := newMockBackend(t, fixturesFile)
 	ts := newTestServer(t, backend)
 	return ts, backend, root

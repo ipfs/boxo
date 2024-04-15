@@ -2,6 +2,7 @@ package ipns
 
 import (
 	"bytes"
+	"crypto/rand"
 	"testing"
 	"time"
 
@@ -30,8 +31,7 @@ func init() {
 }
 
 func mustKeyPair(t *testing.T, typ int) (ic.PrivKey, ic.PubKey, Name) {
-	sr := util.NewTimeSeededRand()
-	sk, pk, err := ic.GenerateKeyPairWithReader(typ, 2048, sr)
+	sk, pk, err := ic.GenerateKeyPairWithReader(typ, 2048, rand.Reader)
 	require.NoError(t, err)
 
 	pid, err := peer.IDFromPublicKey(pk)

@@ -21,6 +21,8 @@ import (
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
+	"github.com/multiformats/go-multibase"
 
 	logging "github.com/ipfs/go-log/v2"
 )
@@ -197,8 +199,13 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 
 	provIter, err := s.svc.FindProviders(httpReq.Context(), cid, recordsLimit)
 	if err != nil {
-		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-		return
+		if errors.Is(err, routing.ErrNotFound) {
+			// handlerFunc takes care of setting the 404 and necessary headers
+			provIter = iter.FromSlice([]iter.Result[types.Record]{})
+		} else {
+			writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+			return
+		}
 	}
 
 	handlerFunc(w, provIter)
@@ -269,8 +276,13 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 
 	provIter, err := s.svc.FindPeers(r.Context(), pid, recordsLimit)
 	if err != nil {
-		writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-		return
+		if errors.Is(err, routing.ErrNotFound) {
+			// handlerFunc takes care of setting the 404 and necessary headers
+			provIter = iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+		} else {
+			writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+			return
+		}
 	}
 
 	handlerFunc(w, provIter)
@@ -403,8 +415,14 @@ func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIte
 }
 
 func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
-	if !strings.Contains(r.Header.Get("Accept"), mediaTypeIPNSRecord) {
-		writeErr(w, "GetIPNS", http.StatusNotAcceptable, errors.New("content type in 'Accept' header is missing or not supported"))
+	acceptHdrValue := r.Header.Get("Accept")
+	// When 'Accept' header is missing, default to 'application/vnd.ipfs.ipns-record'
+	// (improved UX, similar to how we default to JSON response for /providers and /peers)
+	if len(acceptHdrValue) == 0 || strings.Contains(acceptHdrValue, mediaTypeWildcard) {
+		acceptHdrValue = mediaTypeIPNSRecord
+	}
+	if !strings.Contains(acceptHdrValue, mediaTypeIPNSRecord) {
+		writeErr(w, "GetIPNS", http.StatusNotAcceptable, errors.New("content type in 'Accept' header is not supported, retry with 'application/vnd.ipfs.ipns-record'"))
 		return
 	}
 
@@ -424,8 +442,13 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 
 	record, err := s.svc.GetIPNS(r.Context(), name)
 	if err != nil {
-		writeErr(w, "GetIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-		return
+		if errors.Is(err, routing.ErrNotFound) {
+			writeErr(w, "GetIPNS", http.StatusNotFound, fmt.Errorf("delegate error: %w", err))
+			return
+		} else {
+			writeErr(w, "GetIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+			return
+		}
 	}
 
 	rawRecord, err := ipns.MarshalRecord(record)
@@ -453,6 +476,11 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Etag", fmt.Sprintf(`"%x"`, xxhash.Sum64(rawRecord)))
 	w.Header().Set("Content-Type", mediaTypeIPNSRecord)
+
+	// Content-Disposition is not required, but improves UX by assigning a meaningful filename when opening URL in a web browser
+	if filename, err := cid.StringOfBase(multibase.Base36); err == nil {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.ipns-record\"", filename))
+	}
 	w.Header().Add("Vary", "Accept")
 	w.Write(rawRecord)
 }
@@ -538,6 +566,12 @@ func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length
 		return
 	}
 
+	if val.Length() > 0 {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusNotFound)
+	}
+
 	_, err = io.Copy(w, bytes.NewBuffer(b))
 	if err != nil {
 		logErr("Provide", "writing response body", err)
@@ -545,6 +579,10 @@ func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length
 }
 
 func writeErr(w http.ResponseWriter, method string, statusCode int, cause error) {
+	if errors.Is(cause, routing.ErrNotFound) {
+		setCacheControl(w, maxAgeWithoutResults, maxStale)
+	}
+
 	w.WriteHeader(statusCode)
 	causeStr := cause.Error()
 	if len(causeStr) > 1024 {
@@ -607,7 +645,8 @@ func writeResultsIterNDJSON[T any](w http.ResponseWriter, resultIter iter.Result
 	}
 
 	if !hasResults {
-		// There weren't results, cache for shorter
+		// There weren't results, cache for shorter and send 404
 		setCacheControl(w, maxAgeWithoutResults, maxStale)
+		w.WriteHeader(http.StatusNotFound)
 	}
 }

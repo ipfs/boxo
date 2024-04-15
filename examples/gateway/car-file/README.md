@@ -1,13 +1,16 @@
-# HTTP Gateway backed by a CAR File
+# HTTP Gateway backed by a CAR File as BlocksBackend
 
 This is an example that shows how to build a Gateway backed by the contents of
 a CAR file. A [CAR file](https://ipld.io/specs/transport/car/) is a Content
 Addressable aRchive that contains blocks.
 
+The `main.go` sets up a `blockService` backed by a static CAR file,
+and then uses it to initialize `gateway.NewBlocksBackend(blockService)`.
+
 ## Build
 
 ```bash
-> go build -o car-gateway
+> go build -o gateway
 ```
 
 ## Usage
@@ -23,7 +26,7 @@ Then, you can start the gateway with:
 
 
 ```
-./car-gateway -c data.car -p 8040
+./gateway -c data.car -p 8040
 ```
 
 ### Subdomain gateway
