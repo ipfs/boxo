@@ -417,6 +417,79 @@ func TestHeaders(t *testing.T) {
 			testCORSPreflightRequest(t, "/", cid+".ipfs.subgw.example.com", "https://other.example.net", http.StatusOK)
 		})
 	})
+
+	t.Run("Content-Location is set when possible", func(t *testing.T) {
+		backend, root := newMockBackend(t, "fixtures.car")
+		backend.namesys["/ipns/dnslink-gateway.com"] = newMockNamesysItem(path.FromCid(root), 0)
+
+		ts := newTestServerWithConfig(t, backend, Config{
+			NoDNSLink: false,
+			PublicGateways: map[string]*PublicGateway{
+				"dnslink-gateway.com": {
+					Paths:                 []string{},
+					NoDNSLink:             false,
+					DeserializedResponses: true,
+				},
+				"subdomain-gateway.com": {
+					Paths:                 []string{"/ipfs", "/ipns"},
+					UseSubdomains:         true,
+					NoDNSLink:             true,
+					DeserializedResponses: true,
+				},
+			},
+			DeserializedResponses: true,
+		})
+
+		runTest := func(name, path, accept, host, expectedContentPath string) {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				req := mustNewRequest(t, http.MethodGet, ts.URL+path, nil)
+
+				if accept != "" {
+					req.Header.Set("Accept", accept)
+				}
+
+				if host != "" {
+					req.Host = host
+				}
+
+				resp := mustDoWithoutRedirect(t, req)
+				defer resp.Body.Close()
+
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+
+				require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+				require.Equal(t, expectedContentPath, resp.Header.Get("Content-Location"))
+			})
+		}
+
+		contentPath := path.FromCid(root).String() + "/empty-dir/"
+		subdomainGatewayHost := root.String() + ".ipfs.subdomain-gateway.com"
+		dnslinkGatewayHost := "dnslink-gateway.com"
+
+		runTest("Regular gateway with default format", contentPath, "", "", "")
+		runTest("Regular gateway with Accept: application/vnd.ipld.car has no Content-Location", contentPath, "application/vnd.ipld.car;version=1;order=dfs;dups=n", "", "")
+		runTest("Regular gateway with ?dag-scope=entity&format=car", contentPath+"?dag-scope=entity&format=car", "", "", contentPath+"?dag-scope=entity&format=car")
+		runTest("Subdomain gateway with default format", "/empty-dir/", "", subdomainGatewayHost, "")
+		runTest("DNSLink gateway with default format", "/empty-dir/", "", dnslinkGatewayHost, "")
+
+		for responseFormat, formatParam := range responseFormatToFormatParam {
+			if responseFormat == ipnsRecordResponseFormat {
+				continue
+			}
+
+			runTest("Regular gateway with Accept: "+responseFormat, contentPath, responseFormat, "", contentPath+"?format="+formatParam)
+			runTest("Regular gateway with ?format="+formatParam, contentPath+"?format="+formatParam, "", "", contentPath+"?format="+formatParam)
+
+			runTest("Subdomain gateway with Accept: "+responseFormat, "/empty-dir/", responseFormat, subdomainGatewayHost, "/empty-dir/?format="+formatParam)
+			runTest("Subdomain gateway with ?format="+formatParam, "/empty-dir/?format="+formatParam, "", subdomainGatewayHost, "/empty-dir/?format="+formatParam)
+
+			runTest("DNSLink gateway with Accept: "+responseFormat, "/empty-dir/", responseFormat, dnslinkGatewayHost, "/empty-dir/?format="+formatParam)
+			runTest("DNSLink gateway with ?format="+formatParam, "/empty-dir/?format="+formatParam, "", dnslinkGatewayHost, "/empty-dir/?format="+formatParam)
+		}
+	})
 }
 
 func TestGoGetSupport(t *testing.T) {

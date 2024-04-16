@@ -28,6 +28,9 @@ func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.H
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer panicHandler(w)
 
+		ctx := context.WithValue(r.Context(), OriginalPathKey, r.URL.Path)
+		r = r.WithContext(ctx)
+
 		// First check for protocol handler redirects.
 		if handleProtocolHandlerRedirect(w, r, &c) {
 			return
