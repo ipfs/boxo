@@ -19,6 +19,7 @@ The following emojis are used to highlight certain changes:
 * ✨ `gateway` has new backend possibilities:
   * `NewRemoteBlocksBackend` allows you to create a gateway backend that uses one or multiple other gateways as backend. These gateways must support RAW block requests (`application/vnd.ipld.raw`), as well as IPNS Record requests (`application/vnd.ipfs.ipns-record`). With this, we also introduced `NewCacheBlockStore`, `NewRemoteBlockstore` and `NewRemoteValueStore`.
   * `NewRemoteCarBackend` allows you to create a gateway backend that uses one or multiple Trustless Gateways as backend. These gateways must support CAR requests (`application/vnd.ipld.car`), as well as the extensions describe in [IPIP-402](https://specs.ipfs.tech/ipips/ipip-0402/). With this, we also introduced `NewCarBackend`, `NewRemoteCarFetcher` and `NewRetryCarFetcher`.
+* `gateway` now sets the [`Content-Location`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Location) header for requests with non-default content format, as a result of content negotiation. This allows generic and misconfigured HTTP caches to store Deserialized, CAR and Block responses separately, under distinct cache keys.
 
 ### Changed
 
