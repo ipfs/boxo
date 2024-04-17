@@ -440,7 +440,7 @@ func TestHeaders(t *testing.T) {
 			DeserializedResponses: true,
 		})
 
-		runTest := func(name, path, accept, host, expectedContentPath string) {
+		runTest := func(name, path, accept, host, expectedContentLocationHdr string) {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
 
@@ -461,7 +461,7 @@ func TestHeaders(t *testing.T) {
 				require.NoError(t, err)
 
 				require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
-				require.Equal(t, expectedContentPath, resp.Header.Get("Content-Location"))
+				require.Equal(t, expectedContentLocationHdr, resp.Header.Get("Content-Location"))
 			})
 		}
 
@@ -490,6 +490,8 @@ func TestHeaders(t *testing.T) {
 			runTest("DNSLink gateway with Accept: "+responseFormat, "/empty-dir/", responseFormat, dnslinkGatewayHost, "/empty-dir/?format="+formatParam)
 			runTest("DNSLink gateway with ?format="+formatParam, "/empty-dir/?format="+formatParam, "", dnslinkGatewayHost, "")
 		}
+
+		runTest("Accept: application/vnd.ipld.car overrides ?format=raw in Content-Location", contentPath+"?format=raw", "application/vnd.ipld.car", "", contentPath+"?format=car")
 	})
 }
 
