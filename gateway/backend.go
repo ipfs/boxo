@@ -21,7 +21,9 @@ import (
 type backendOptions struct {
 	ns namesys.NameSystem
 	vs routing.ValueStore
-	r  resolver.Resolver
+
+	// Only used by [BlocksBackend]:
+	r resolver.Resolver
 
 	// Only used by [CarBackend]:
 	promRegistry    prometheus.Registerer
@@ -46,7 +48,7 @@ func WithValueStore(vs routing.ValueStore) BackendOption {
 	}
 }
 
-// WithResolver sets the [resolver.Resolver] to use with the different backends.
+// WithResolver sets the [resolver.Resolver] to use with [BlocksBackend].
 func WithResolver(r resolver.Resolver) BackendOption {
 	return func(opts *backendOptions) error {
 		opts.r = r
