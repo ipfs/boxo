@@ -471,7 +471,8 @@ func TestHeaders(t *testing.T) {
 
 		runTest("Regular gateway with default format", contentPath, "", "", "")
 		runTest("Regular gateway with Accept: application/vnd.ipld.car has no Content-Location", contentPath, "application/vnd.ipld.car;version=1;order=dfs;dups=n", "", "")
-		runTest("Regular gateway with ?dag-scope=entity&format=car", contentPath+"?dag-scope=entity&format=car", "", "", contentPath+"?dag-scope=entity&format=car")
+		runTest("Regular gateway with ?dag-scope=entity&format=car", contentPath+"?dag-scope=entity&format=car", "", "", "")
+		runTest("Regular gateway preserves query parameters", contentPath+"?a=b&c=d", dagCborResponseFormat, "", contentPath+"?a=b&c=d&format=dag-cbor")
 		runTest("Subdomain gateway with default format", "/empty-dir/", "", subdomainGatewayHost, "")
 		runTest("DNSLink gateway with default format", "/empty-dir/", "", dnslinkGatewayHost, "")
 
@@ -481,13 +482,13 @@ func TestHeaders(t *testing.T) {
 			}
 
 			runTest("Regular gateway with Accept: "+responseFormat, contentPath, responseFormat, "", contentPath+"?format="+formatParam)
-			runTest("Regular gateway with ?format="+formatParam, contentPath+"?format="+formatParam, "", "", contentPath+"?format="+formatParam)
+			runTest("Regular gateway with ?format="+formatParam, contentPath+"?format="+formatParam, "", "", "")
 
 			runTest("Subdomain gateway with Accept: "+responseFormat, "/empty-dir/", responseFormat, subdomainGatewayHost, "/empty-dir/?format="+formatParam)
-			runTest("Subdomain gateway with ?format="+formatParam, "/empty-dir/?format="+formatParam, "", subdomainGatewayHost, "/empty-dir/?format="+formatParam)
+			runTest("Subdomain gateway with ?format="+formatParam, "/empty-dir/?format="+formatParam, "", subdomainGatewayHost, "")
 
 			runTest("DNSLink gateway with Accept: "+responseFormat, "/empty-dir/", responseFormat, dnslinkGatewayHost, "/empty-dir/?format="+formatParam)
-			runTest("DNSLink gateway with ?format="+formatParam, "/empty-dir/?format="+formatParam, "", dnslinkGatewayHost, "/empty-dir/?format="+formatParam)
+			runTest("DNSLink gateway with ?format="+formatParam, "/empty-dir/?format="+formatParam, "", dnslinkGatewayHost, "")
 		}
 	})
 }

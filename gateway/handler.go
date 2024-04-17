@@ -652,7 +652,9 @@ func customResponseFormat(r *http.Request) (mediaType string, params map[string]
 // correct caching of such format requests when the format is passed via the
 // Accept header, for example.
 func addContentLocation(r *http.Request, w http.ResponseWriter, rq *requestData) {
-	if rq.responseFormat == "" {
+	// Skip Content-Location if no explicit format was requested via the HTTP
+	// Accept header, or if it was requested via URL query parameter.
+	if rq.responseFormat == "" || r.URL.Query().Get("format") != "" {
 		return
 	}
 
@@ -669,12 +671,10 @@ func addContentLocation(r *http.Request, w http.ResponseWriter, rq *requestData)
 		path = p
 	}
 
-	// Copy known query parameters.
+	// Copy all existing query parameters.
 	query := url.Values{}
-	for _, param := range []string{carRangeBytesKey, carTerminalElementTypeKey, "filename", "download"} {
-		if v := r.URL.Query().Get(param); v != "" {
-			query.Set(param, v)
-		}
+	for k, v := range r.URL.Query() {
+		query[k] = v
 	}
 	query.Set("format", param)
 
