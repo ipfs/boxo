@@ -658,14 +658,7 @@ func addContentLocation(r *http.Request, w http.ResponseWriter, rq *requestData)
 		return
 	}
 
-	// Response format parameters, such as 'dups' and 'order' for CAR requests
-	// cannot be translated into the URL. Therefore, we cannot add a 'Content-Location'
-	// header.
-	if len(rq.responseParams) != 0 {
-		return
-	}
-
-	param := responseFormatToFormatParam[rq.responseFormat]
+	format := responseFormatToFormatParam[rq.responseFormat]
 	path := r.URL.Path
 	if p, ok := r.Context().Value(OriginalPathKey).(string); ok {
 		path = p
@@ -676,7 +669,12 @@ func addContentLocation(r *http.Request, w http.ResponseWriter, rq *requestData)
 	for k, v := range r.URL.Query() {
 		query[k] = v
 	}
-	query.Set("format", param)
+	query.Set("format", format)
+
+	// Set response params as query elements.
+	for k, v := range rq.responseParams {
+		query.Set(format+"-"+k, v)
+	}
 
 	w.Header().Set("Content-Location", path+"?"+query.Encode())
 }

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/ipfs/boxo/path"
@@ -81,19 +82,22 @@ func TestCarParams(t *testing.T) {
 		// from the value read from Accept header
 		tests := []struct {
 			acceptHeader       string
+			params             url.Values
 			expectedOrder      DagOrder
 			expectedDuplicates DuplicateBlocksPolicy
 		}{
-			{"application/vnd.ipld.car; order=dfs; dups=y", DagOrderDFS, DuplicateBlocksIncluded},
-			{"application/vnd.ipld.car; order=unk; dups=n", DagOrderUnknown, DuplicateBlocksExcluded},
-			{"application/vnd.ipld.car; order=unk", DagOrderUnknown, DuplicateBlocksExcluded},
-			{"application/vnd.ipld.car; dups=y", DagOrderDFS, DuplicateBlocksIncluded},
-			{"application/vnd.ipld.car; dups=n", DagOrderDFS, DuplicateBlocksExcluded},
-			{"application/vnd.ipld.car", DagOrderDFS, DuplicateBlocksExcluded},
-			{"application/vnd.ipld.car;version=1;order=dfs;dups=y", DagOrderDFS, DuplicateBlocksIncluded},
+			{"application/vnd.ipld.car; order=dfs; dups=y", nil, DagOrderDFS, DuplicateBlocksIncluded},
+			{"application/vnd.ipld.car; order=unk; dups=n", nil, DagOrderUnknown, DuplicateBlocksExcluded},
+			{"application/vnd.ipld.car; order=unk", nil, DagOrderUnknown, DuplicateBlocksExcluded},
+			{"application/vnd.ipld.car; dups=y", nil, DagOrderDFS, DuplicateBlocksIncluded},
+			{"application/vnd.ipld.car; dups=n", nil, DagOrderDFS, DuplicateBlocksExcluded},
+			{"application/vnd.ipld.car", nil, DagOrderDFS, DuplicateBlocksExcluded},
+			{"application/vnd.ipld.car;version=1;order=dfs;dups=y", nil, DagOrderDFS, DuplicateBlocksIncluded},
+			{"application/vnd.ipld.car;version=1;order=dfs;dups=y", url.Values{"car-order": []string{"unk"}}, DagOrderDFS, DuplicateBlocksIncluded},
+			{"application/vnd.ipld.car;version=1;dups=y", url.Values{"car-order": []string{"unk"}}, DagOrderUnknown, DuplicateBlocksIncluded},
 		}
 		for _, test := range tests {
-			r := mustNewRequest(t, http.MethodGet, "http://example.com/", nil)
+			r := mustNewRequest(t, http.MethodGet, "http://example.com/?"+test.params.Encode(), nil)
 			r.Header.Set("Accept", test.acceptHeader)
 
 			mediaType, formatParams, err := customResponseFormat(r)
