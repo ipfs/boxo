@@ -168,6 +168,8 @@ type Engine struct {
 
 	sendDontHaves bool
 
+	notifyNewBlocks bool
+
 	self peer.ID
 
 	// metrics gauge for total pending tasks across all workers
@@ -294,6 +296,15 @@ func WithSetSendDontHave(send bool) Option {
 	}
 }
 
+// WithNotifyNewBlocks sets or not whether to notify peers when receiving a block.
+// By default, it is true. This can be useful if you want the server to only
+// reply if it has a block at the moment it receives a message, and not later.
+func WithNotifyNewBlocks(notify bool) Option {
+	return func(e *Engine) {
+		e.notifyNewBlocks = notify
+	}
+}
+
 // wrapTaskComparator wraps a TaskComparator so it can be used as a QueueTaskComparator
 func wrapTaskComparator(tc TaskComparator) peertask.QueueTaskComparator {
 	return func(a, b *peertask.QueueTask) bool {
@@ -358,6 +369,7 @@ func newEngine(
 		maxBlockSizeReplaceHasWithBlock: maxReplaceSize,
 		taskWorkerCount:                 defaults.BitswapEngineTaskWorkerCount,
 		sendDontHaves:                   true,
+		notifyNewBlocks:                 true,
 		self:                            self,
 		peerLedger:                      newPeerLedger(),
 		pendingGauge:                    bmetrics.PendingEngineGauge(ctx),
@@ -858,7 +870,7 @@ func (e *Engine) ReceivedBlocks(from peer.ID, blks []blocks.Block) {
 // NotifyNewBlocks is called when new blocks becomes available locally, and in particular when the caller of bitswap
 // decide to store those blocks and make them available on the network.
 func (e *Engine) NotifyNewBlocks(blks []blocks.Block) {
-	if len(blks) == 0 {
+	if !e.notifyNewBlocks || len(blks) == 0 {
 		return
 	}
 

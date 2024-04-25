@@ -161,6 +161,14 @@ func WithScoreLedger(scoreLedger decision.ScoreLedger) Option {
 	}
 }
 
+// WithNotifyNewBlocks configures the engine with [decision.WithNotifyNewBlocks].
+func WithNotifyNewBlocks(notify bool) Option {
+	o := decision.WithNotifyNewBlocks(notify)
+	return func(bs *Server) {
+		bs.engineOptions = append(bs.engineOptions, o)
+	}
+}
+
 // LedgerForPeer returns aggregated data about blocks swapped and communication
 // with a given peer.
 func (bs *Server) LedgerForPeer(p peer.ID) *decision.Receipt {

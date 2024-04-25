@@ -51,6 +51,10 @@ func SetSendDontHaves(send bool) Option {
 	return Option{server.SetSendDontHaves(send)}
 }
 
+func WithNotifyNewBlocks(notify bool) Option {
+	return Option{server.WithNotifyNewBlocks(notify)}
+}
+
 func WithPeerBlockRequestFilter(pbrf server.PeerBlockRequestFilter) Option {
 	return Option{server.WithPeerBlockRequestFilter(pbrf)}
 }
