@@ -55,6 +55,10 @@ func WithNotifyNewBlocks(notify bool) Option {
 	return Option{server.WithNotifyNewBlocks(notify)}
 }
 
+func WithNoPeerLedger() Option {
+	return Option{server.WithNoPeerLedger()}
+}
+
 func WithPeerBlockRequestFilter(pbrf server.PeerBlockRequestFilter) Option {
 	return Option{server.WithPeerBlockRequestFilter(pbrf)}
 }

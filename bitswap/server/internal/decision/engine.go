@@ -149,6 +149,8 @@ type Engine struct {
 
 	lock sync.RWMutex // protects the fields immediately below
 
+	noPeerLedger bool
+
 	// peerLedger saves which peers are waiting for a Cid
 	peerLedger *peerLedger
 
@@ -302,6 +304,15 @@ func WithSetSendDontHave(send bool) Option {
 func WithNotifyNewBlocks(notify bool) Option {
 	return func(e *Engine) {
 		e.notifyNewBlocks = notify
+	}
+}
+
+// WithNoPeerLedger disables the usage of a peer ledger to track want lists. This
+// means that this engine will not keep track of the CIDs that peers wanted in
+// the past.
+func WithNoPeerLedger() Option {
+	return func(e *Engine) {
+		e.noPeerLedger = true
 	}
 }
 
@@ -711,7 +722,10 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 			continue
 		}
 
-		e.peerLedger.Wants(p, entry.Entry)
+		if !e.noPeerLedger {
+			e.peerLedger.Wants(p, entry.Entry)
+		}
+
 		filteredWants = append(filteredWants, entry)
 	}
 	clear := wants[len(filteredWants):]
