@@ -123,6 +123,42 @@ type ScoreLedger interface {
 	Stop()
 }
 
+type PeerEntry struct {
+	Peer     peer.ID
+	Priority int32
+	WantType pb.Message_Wantlist_WantType
+}
+
+// PeerLedger is an external ledger dealing with peers and their want lists.
+type PeerLedger interface {
+	// Wants informs the ledger that [peer.ID] wants [wl.Entry].
+	Wants(p peer.ID, e wl.Entry)
+
+	// CancelWant returns true if the [cid.Cid] is present in the wantlist of [peer.ID].
+	CancelWant(p peer.ID, k cid.Cid) bool
+
+	// CancelWantWithType will not cancel WantBlock if we sent a HAVE message.
+	CancelWantWithType(p peer.ID, k cid.Cid, typ pb.Message_Wantlist_WantType)
+
+	// Peers returns all peers that want [cid.Cid].
+	Peers(k cid.Cid) []PeerEntry
+
+	// CollectPeerIDs returns all peers that the ledger has an active session with.
+	CollectPeerIDs() []peer.ID
+
+	// WantlistSizeForPeer returns the size of the wantlist for [peer.ID].
+	WantlistSizeForPeer(p peer.ID) int
+
+	// WantlistForPeer returns the wantlist for [peer.ID].
+	WantlistForPeer(p peer.ID) []wl.Entry
+
+	// ClearPeerWantlist clears the wantlist for [peer.ID].
+	ClearPeerWantlist(p peer.ID)
+
+	// PeerDisconnected informs the ledger that [peer.ID] is no longer connected.
+	PeerDisconnected(p peer.ID)
+}
+
 // Engine manages sending requested blocks to peers.
 type Engine struct {
 	// peerRequestQueue is a priority queue of requests received from peers.
@@ -149,10 +185,8 @@ type Engine struct {
 
 	lock sync.RWMutex // protects the fields immediately below
 
-	noPeerLedger bool
-
 	// peerLedger saves which peers are waiting for a Cid
-	peerLedger *peerLedger
+	peerLedger PeerLedger
 
 	// an external ledger dealing with peer scores
 	scoreLedger ScoreLedger
@@ -169,8 +203,6 @@ type Engine struct {
 	maxBlockSizeReplaceHasWithBlock int
 
 	sendDontHaves bool
-
-	notifyNewBlocks bool
 
 	self peer.ID
 
@@ -244,6 +276,13 @@ func WithScoreLedger(scoreledger ScoreLedger) Option {
 	}
 }
 
+// WithPeerLedger sets a custom [PeerLedger] to be used with this [Engine].
+func WithPeerLedger(peerLedger PeerLedger) Option {
+	return func(e *Engine) {
+		e.peerLedger = peerLedger
+	}
+}
+
 // WithBlockstoreWorkerCount sets the number of worker threads used for
 // blockstore operations in the decision engine
 func WithBlockstoreWorkerCount(count int) Option {
@@ -295,24 +334,6 @@ func WithMaxCidSize(n uint) Option {
 func WithSetSendDontHave(send bool) Option {
 	return func(e *Engine) {
 		e.sendDontHaves = send
-	}
-}
-
-// WithNotifyNewBlocks sets or not whether to notify peers when receiving a block.
-// By default, it is true. This can be useful if you want the server to only
-// reply if it has a block at the moment it receives a message, and not later.
-func WithNotifyNewBlocks(notify bool) Option {
-	return func(e *Engine) {
-		e.notifyNewBlocks = notify
-	}
-}
-
-// WithNoPeerLedger disables the usage of a peer ledger to track want lists. This
-// means that this engine will not keep track of the CIDs that peers wanted in
-// the past.
-func WithNoPeerLedger() Option {
-	return func(e *Engine) {
-		e.noPeerLedger = true
 	}
 }
 
@@ -380,9 +401,8 @@ func newEngine(
 		maxBlockSizeReplaceHasWithBlock: maxReplaceSize,
 		taskWorkerCount:                 defaults.BitswapEngineTaskWorkerCount,
 		sendDontHaves:                   true,
-		notifyNewBlocks:                 true,
 		self:                            self,
-		peerLedger:                      newPeerLedger(),
+		peerLedger:                      NewDefaultPeerLedger(),
 		pendingGauge:                    bmetrics.PendingEngineGauge(ctx),
 		activeGauge:                     bmetrics.ActiveEngineGauge(ctx),
 		targetMessageSize:               defaultTargetMessageSize,
@@ -722,10 +742,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 			continue
 		}
 
-		if !e.noPeerLedger {
-			e.peerLedger.Wants(p, entry.Entry)
-		}
-
+		e.peerLedger.Wants(p, entry.Entry)
 		filteredWants = append(filteredWants, entry)
 	}
 	clear := wants[len(filteredWants):]
@@ -884,7 +901,7 @@ func (e *Engine) ReceivedBlocks(from peer.ID, blks []blocks.Block) {
 // NotifyNewBlocks is called when new blocks becomes available locally, and in particular when the caller of bitswap
 // decide to store those blocks and make them available on the network.
 func (e *Engine) NotifyNewBlocks(blks []blocks.Block) {
-	if !e.notifyNewBlocks || len(blks) == 0 {
+	if len(blks) == 0 {
 		return
 	}
 

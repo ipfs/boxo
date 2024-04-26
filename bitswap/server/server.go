@@ -161,17 +161,9 @@ func WithScoreLedger(scoreLedger decision.ScoreLedger) Option {
 	}
 }
 
-// WithNotifyNewBlocks configures the engine with [decision.WithNotifyNewBlocks].
-func WithNotifyNewBlocks(notify bool) Option {
-	o := decision.WithNotifyNewBlocks(notify)
-	return func(bs *Server) {
-		bs.engineOptions = append(bs.engineOptions, o)
-	}
-}
-
-// WithNoPeerLedger configures the engine with [decision.WithNoPeerLedger].
-func WithNoPeerLedger() Option {
-	o := decision.WithNoPeerLedger()
+// WithPeerLedger configures the engine with a custom [decision.PeerLedger].
+func WithPeerLedger(peerLedger decision.PeerLedger) Option {
+	o := decision.WithPeerLedger(peerLedger)
 	return func(bs *Server) {
 		bs.engineOptions = append(bs.engineOptions, o)
 	}

@@ -51,20 +51,16 @@ func SetSendDontHaves(send bool) Option {
 	return Option{server.SetSendDontHaves(send)}
 }
 
-func WithNotifyNewBlocks(notify bool) Option {
-	return Option{server.WithNotifyNewBlocks(notify)}
-}
-
-func WithNoPeerLedger() Option {
-	return Option{server.WithNoPeerLedger()}
-}
-
 func WithPeerBlockRequestFilter(pbrf server.PeerBlockRequestFilter) Option {
 	return Option{server.WithPeerBlockRequestFilter(pbrf)}
 }
 
 func WithScoreLedger(scoreLedger server.ScoreLedger) Option {
 	return Option{server.WithScoreLedger(scoreLedger)}
+}
+
+func WithPeerLedger(peerLedger server.PeerLedger) Option {
+	return Option{server.WithPeerLedger(peerLedger)}
 }
 
 func WithTargetMessageSize(tms int) Option {
