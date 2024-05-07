@@ -227,7 +227,7 @@ func TestProviders(t *testing.T) {
 		err = rec2.Sign(pid2, sk2)
 		require.NoError(t, err)
 
-		req := tjson.AnnounceProvidersRequest{Providers: []types.Record{rec1, rec2}}
+		req := tjson.AnnounceProvidersRequest{Providers: []*types.AnnouncementRecord{rec1, rec2}}
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
@@ -575,7 +575,7 @@ func TestPeers(t *testing.T) {
 		err = rec2.Sign(pid2, sk2)
 		require.NoError(t, err)
 
-		req := tjson.AnnouncePeersRequest{Peers: []types.Record{rec1, rec2}}
+		req := tjson.AnnouncePeersRequest{Peers: []*types.AnnouncementRecord{rec1, rec2}}
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 

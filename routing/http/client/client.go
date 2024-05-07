@@ -264,7 +264,7 @@ func (c *Client) Provide(ctx context.Context, announcements ...types.Announcemen
 	}
 
 	now := c.clock.Now()
-	records := make([]types.Record, len(announcements))
+	records := make([]*types.AnnouncementRecord, len(announcements))
 
 	for i, announcement := range announcements {
 		record := &types.AnnouncementRecord{
@@ -310,7 +310,7 @@ func (c *Client) Provide(ctx context.Context, announcements ...types.Announcemen
 // ProvideRecords publishes the given [types.AnnouncementRecord]. An error will
 // be returned if the records aren't signed or valid.
 func (c *Client) ProvideRecords(ctx context.Context, records ...*types.AnnouncementRecord) (iter.ResultIter[*types.AnnouncementResponseRecord], error) {
-	providerRecords := make([]types.Record, len(records))
+	providerRecords := make([]*types.AnnouncementRecord, len(records))
 	for i, record := range records {
 		if err := record.Verify(); err != nil {
 			return nil, err
@@ -505,7 +505,7 @@ func (c *Client) ProvidePeer(ctx context.Context, ttl time.Duration, metadata []
 
 	url := c.baseURL + "/routing/v1/peers"
 	req := jsontypes.AnnouncePeersRequest{
-		Peers: []types.Record{record},
+		Peers: []*types.AnnouncementRecord{record},
 	}
 
 	return c.provide(ctx, url, req)
@@ -514,7 +514,7 @@ func (c *Client) ProvidePeer(ctx context.Context, ttl time.Duration, metadata []
 // ProvidePeerRecords publishes the given [types.AnnouncementRecord]. An error will
 // be returned if the records aren't signed or valid.
 func (c *Client) ProvidePeerRecords(ctx context.Context, records ...*types.AnnouncementRecord) (iter.ResultIter[*types.AnnouncementResponseRecord], error) {
-	providerRecords := make([]types.Record, len(records))
+	providerRecords := make([]*types.AnnouncementRecord, len(records))
 	for i, record := range records {
 		if err := record.Verify(); err != nil {
 			return nil, err

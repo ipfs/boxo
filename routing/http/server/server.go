@@ -19,6 +19,7 @@ import (
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
+	"github.com/ipfs/boxo/routing/http/types/ndjson"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
@@ -289,26 +290,37 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) providePeers(w http.ResponseWriter, r *http.Request) {
-	req := jsontypes.AnnouncePeersRequest{}
-	err := json.NewDecoder(r.Body).Decode(&req)
-	_ = r.Body.Close()
-	if err != nil {
-		writeErr(w, "ProvidePeers", http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
-		return
+	var requestIter iter.ResultIter[*types.AnnouncementRecord]
+	if r.Header.Get("Content-Type") == mediaTypeNDJSON {
+		requestIter = ndjson.NewAnnouncementRecordsIter(r.Body)
+	} else {
+		req := jsontypes.AnnouncePeersRequest{}
+		err := json.NewDecoder(r.Body).Decode(&req)
+		_ = r.Body.Close()
+		if err != nil {
+			writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
+			return
+		}
+		requestIter = iter.ToResultIter(iter.FromSlice(req.Peers))
 	}
 
-	responseIter := iter.Map[types.Record, *types.AnnouncementResponseRecord](iter.FromSlice(req.Peers), func(t types.Record) *types.AnnouncementResponseRecord {
+	responseIter := iter.Map(requestIter, func(t iter.Result[*types.AnnouncementRecord]) *types.AnnouncementResponseRecord {
 		resRecord := &types.AnnouncementResponseRecord{
 			Schema: types.SchemaAnnouncementResponse,
 		}
 
-		reqRecord, err := s.provideCheckAnnouncement("Provide", t)
-		if err != nil {
-			resRecord.Error = err.Error()
+		if t.Err != nil {
+			resRecord.Error = t.Err.Error()
 			return resRecord
 		}
 
-		ttl, err := s.svc.ProvidePeer(r.Context(), reqRecord)
+		err := t.Val.Verify()
+		if err != nil {
+			resRecord.Error = fmt.Sprintf("Provide: signature verification failed: %s", err)
+			return resRecord
+		}
+
+		ttl, err := s.svc.ProvidePeer(r.Context(), t.Val)
 		if err != nil {
 			resRecord.Error = err.Error()
 			return resRecord
@@ -325,35 +337,46 @@ func (s *server) providePeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if mediaType == mediaTypeNDJSON {
-		writeResultsIterNDJSON[*types.AnnouncementResponseRecord](w, iter.ToResultIter[*types.AnnouncementResponseRecord](responseIter))
+		writeResultsIterNDJSON(w, iter.ToResultIter(responseIter))
 	} else {
 		writeJSONResult(w, "ProvidePeers", jsontypes.AnnouncePeersResponse{
-			ProvideResults: iter.ReadAll[*types.AnnouncementResponseRecord](responseIter),
+			ProvideResults: iter.ReadAll(responseIter),
 		})
 	}
 }
 
 func (s *server) provide(w http.ResponseWriter, r *http.Request) {
-	req := jsontypes.AnnounceProvidersRequest{}
-	err := json.NewDecoder(r.Body).Decode(&req)
-	_ = r.Body.Close()
-	if err != nil {
-		writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
-		return
+	var requestIter iter.ResultIter[*types.AnnouncementRecord]
+	if r.Header.Get("Content-Type") == mediaTypeNDJSON {
+		requestIter = ndjson.NewAnnouncementRecordsIter(r.Body)
+	} else {
+		req := jsontypes.AnnounceProvidersRequest{}
+		err := json.NewDecoder(r.Body).Decode(&req)
+		_ = r.Body.Close()
+		if err != nil {
+			writeErr(w, "Provide", http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
+			return
+		}
+		requestIter = iter.ToResultIter(iter.FromSlice(req.Providers))
 	}
 
-	responseIter := iter.Map[types.Record, *types.AnnouncementResponseRecord](iter.FromSlice(req.Providers), func(t types.Record) *types.AnnouncementResponseRecord {
+	responseIter := iter.Map(requestIter, func(t iter.Result[*types.AnnouncementRecord]) *types.AnnouncementResponseRecord {
 		resRecord := &types.AnnouncementResponseRecord{
 			Schema: types.SchemaAnnouncementResponse,
 		}
 
-		reqRecord, err := s.provideCheckAnnouncement("Provide", t)
-		if err != nil {
-			resRecord.Error = err.Error()
+		if t.Err != nil {
+			resRecord.Error = t.Err.Error()
 			return resRecord
 		}
 
-		ttl, err := s.svc.Provide(r.Context(), reqRecord)
+		err := t.Val.Verify()
+		if err != nil {
+			resRecord.Error = fmt.Sprintf("Provide: signature verification failed: %s", err)
+			return resRecord
+		}
+
+		ttl, err := s.svc.Provide(r.Context(), t.Val)
 		if err != nil {
 			resRecord.Error = err.Error()
 			return resRecord
@@ -370,30 +393,12 @@ func (s *server) provide(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if mediaType == mediaTypeNDJSON {
-		writeResultsIterNDJSON[*types.AnnouncementResponseRecord](w, iter.ToResultIter[*types.AnnouncementResponseRecord](responseIter))
+		writeResultsIterNDJSON(w, iter.ToResultIter(responseIter))
 	} else {
 		writeJSONResult(w, "Provide", jsontypes.AnnounceProvidersResponse{
-			ProvideResults: iter.ReadAll[*types.AnnouncementResponseRecord](responseIter),
+			ProvideResults: iter.ReadAll(responseIter),
 		})
 	}
-}
-
-func (s *server) provideCheckAnnouncement(method string, r types.Record) (*types.AnnouncementRecord, error) {
-	if r.GetSchema() != types.SchemaAnnouncement {
-		return nil, fmt.Errorf("%s: invalid schema %s", method, r.GetSchema())
-	}
-
-	rec, ok := r.(*types.AnnouncementRecord)
-	if !ok {
-		return nil, fmt.Errorf("%s: invalid type", method)
-	}
-
-	err := rec.Verify()
-	if err != nil {
-		return nil, fmt.Errorf("%s: signature verification failed: %w", method, err)
-	}
-
-	return rec, nil
 }
 
 func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord]) {
