@@ -59,6 +59,10 @@ func WithScoreLedger(scoreLedger server.ScoreLedger) Option {
 	return Option{server.WithScoreLedger(scoreLedger)}
 }
 
+func WithPeerLedger(peerLedger server.PeerLedger) Option {
+	return Option{server.WithPeerLedger(peerLedger)}
+}
+
 func WithTargetMessageSize(tms int) Option {
 	return Option{server.WithTargetMessageSize(tms)}
 }
