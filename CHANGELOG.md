@@ -22,10 +22,23 @@ The following emojis are used to highlight certain changes:
 * `gateway` now sets the [`Content-Location`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Location) header for requests with non-default content format, as a result of content negotiation. This allows generic and misconfigured HTTP caches to store Deserialized, CAR and Block responses separately, under distinct cache keys.
 * `gateway` now supports `car-dups`, `car-order` and `car-version` as query parameters in addition to the `application/vnd.ipld.car` parameters sent via `Accept` header. The parameters in the `Accept` header have always priority, but including them in URL simplifies HTTP caching and allows use in `Content-Location` header on CAR responses to maximize interoperability with wide array of HTTP caches.
 * `bitswap/server` now allows to override the default peer ledger with `WithPeerLedger`.
+* ✨ `routing/http`: delegated content and peer routing ([IPIP-378](https://github.com/ipfs/specs/pull/378)) has been implemented. This includes the following additions:
+  - `client`: now includes `Provide` and `ProvidePeer` methods, which can be used to provide signed records for content routing and peer routing.
+  - `types`: types related to the Announcement schema record have been added. A `types/iter.Filter` utility has also been added if you want to filter on top of an iterator.
  
 ### Changed
 
+* ✨🛠 `routing/http`: delegated content and peer routing ([IPIP-378](https://github.com/ipfs/specs/pull/378)) has been implemented. This includes the following changes:
+  - `client`: `WithProviderInfo` now accepts a third parameter, `protocols`, whose value is used when providing the peer.
+  - `contentrouter`: the `Client` interface has been updated to reflect the changes made to the client, that is, replacing the `ProvideBitswap` method by the generic `Provide` method.
+  - `server`: the `ContentRouter` interface now includes a `Provide` and a `ProvidePeer` functions.
+
 ### Removed
+
+- ✨🛠 `routing/http`: delegated content and peer routing ([IPIP-378](https://github.com/ipfs/specs/pull/378)) has been implemented. This includes the following removals:
+  - Deprecated Bitswap-schema related types and functions have been removed (e.g. `ProvideBitswap`, `BitswapRecord`, `SchemaBitswap`, `WriteProvidersRequest`, `WriteProvidersResponse`).
+  - `server`: `ContentRouter` no longer includes `ProvideBitswap`
+  - `contentrouter`: the content router adaptor no longer supports the previously deprecated Bitswap schema.
 
 ### Fixed
 

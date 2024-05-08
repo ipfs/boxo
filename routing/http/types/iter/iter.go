@@ -29,7 +29,7 @@ type Result[T any] struct {
 }
 
 // ToResultIter returns an iterator that wraps each value in a Result.
-func ToResultIter[T any](iter Iter[T]) Iter[Result[T]] {
+func ToResultIter[T any](iter Iter[T]) ResultIter[T] {
 	return Map(iter, func(t T) Result[T] {
 		return Result[T]{Val: t}
 	})

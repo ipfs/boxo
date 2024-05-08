@@ -49,10 +49,15 @@ func (r *RecordsArray) UnmarshalJSON(b []byte) error {
 				return err
 			}
 			*r = append(*r, &prov)
-		//lint:ignore SA1019 // ignore staticcheck
-		case types.SchemaBitswap:
-			//lint:ignore SA1019 // ignore staticcheck
-			var prov types.BitswapRecord
+		case types.SchemaAnnouncement:
+			var prov types.AnnouncementRecord
+			err := json.Unmarshal(provBytes, &prov)
+			if err != nil {
+				return err
+			}
+			*r = append(*r, &prov)
+		case types.SchemaAnnouncementResponse:
+			var prov types.AnnouncementResponseRecord
 			err := json.Unmarshal(provBytes, &prov)
 			if err != nil {
 				return err
@@ -66,45 +71,14 @@ func (r *RecordsArray) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
-//
-// [IPIP-378]: https://github.com/ipfs/specs/pull/378
-type WriteProvidersResponse struct {
-	ProvideResults []types.Record
+// AnnounceProvidersResponse is the result of a POST Providers request.
+type AnnounceProvidersResponse struct {
+	ProvideResults []*types.AnnouncementResponseRecord
 }
 
-func (r WriteProvidersResponse) Length() int {
+func (r AnnounceProvidersResponse) Length() int {
 	return len(r.ProvideResults)
 }
 
-func (r *WriteProvidersResponse) UnmarshalJSON(b []byte) error {
-	var tempWPR struct{ ProvideResults []json.RawMessage }
-	err := json.Unmarshal(b, &tempWPR)
-	if err != nil {
-		return err
-	}
-
-	for _, provBytes := range tempWPR.ProvideResults {
-		var rawProv types.UnknownRecord
-		err := json.Unmarshal(provBytes, &rawProv)
-		if err != nil {
-			return err
-		}
-
-		switch rawProv.Schema {
-		//lint:ignore SA1019 // ignore staticcheck
-		case types.SchemaBitswap:
-			//lint:ignore SA1019 // ignore staticcheck
-			var prov types.WriteBitswapRecordResponse
-			err := json.Unmarshal(rawProv.Bytes, &prov)
-			if err != nil {
-				return err
-			}
-			r.ProvideResults = append(r.ProvideResults, &prov)
-		default:
-			r.ProvideResults = append(r.ProvideResults, &rawProv)
-		}
-	}
-
-	return nil
-}
+// AnnouncePeersResponse is the result of a POST Peers request.
+type AnnouncePeersResponse = AnnounceProvidersResponse
