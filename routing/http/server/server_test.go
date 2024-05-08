@@ -198,7 +198,7 @@ func TestProviders(t *testing.T) {
 		runGetTest(t, mediaTypeNDJSON, true, true, "")
 	})
 
-	runPutTest := func(t *testing.T, contentType string, expectedBody string) {
+	runPostTest := func(t *testing.T, contentType string, expectedBody string) {
 		t.Parallel()
 
 		rec1 := &types.AnnouncementRecord{
@@ -260,11 +260,11 @@ func TestProviders(t *testing.T) {
 	}
 
 	t.Run("POST /routing/v1/providers (JSON Response)", func(t *testing.T) {
-		runPutTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement-response","TTL":3600000},{"Schema":"announcement-response","TTL":60000}]}`)
+		runPostTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement-response","TTL":3600000},{"Schema":"announcement-response","TTL":60000}]}`)
 	})
 
 	t.Run("POST /routing/v1/providers (NDJSON Response)", func(t *testing.T) {
-		runPutTest(t, mediaTypeNDJSON, `{"Schema":"announcement-response","TTL":3600000}`+"\n"+`{"Schema":"announcement-response","TTL":60000}`+"\n")
+		runPostTest(t, mediaTypeNDJSON, `{"Schema":"announcement-response","TTL":3600000}`+"\n"+`{"Schema":"announcement-response","TTL":60000}`+"\n")
 	})
 
 	t.Run("404 when router returns routing.ErrNotFound", func(t *testing.T) {
@@ -548,7 +548,7 @@ func TestPeers(t *testing.T) {
 	sk1, pid1 := makePeerID(t)
 	sk2, pid2 := makePeerID(t)
 
-	runPutTest := func(t *testing.T, contentType string, expectedBody string) {
+	runPostTest := func(t *testing.T, contentType string, expectedBody string) {
 		t.Parallel()
 
 		rec1 := &types.AnnouncementRecord{
@@ -608,11 +608,11 @@ func TestPeers(t *testing.T) {
 	}
 
 	t.Run("POST /routing/v1/peers (JSON Response)", func(t *testing.T) {
-		runPutTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement-response","TTL":3600000},{"Schema":"announcement-response","TTL":60000}]}`)
+		runPostTest(t, mediaTypeJSON, `{"ProvideResults":[{"Schema":"announcement-response","TTL":3600000},{"Schema":"announcement-response","TTL":60000}]}`)
 	})
 
 	t.Run("POST /routing/v1/peers (NDJSON Response)", func(t *testing.T) {
-		runPutTest(t, mediaTypeNDJSON, `{"Schema":"announcement-response","TTL":3600000}`+"\n"+`{"Schema":"announcement-response","TTL":60000}`+"\n")
+		runPostTest(t, mediaTypeNDJSON, `{"Schema":"announcement-response","TTL":3600000}`+"\n"+`{"Schema":"announcement-response","TTL":60000}`+"\n")
 	})
 }
 
