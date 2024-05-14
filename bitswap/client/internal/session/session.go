@@ -15,6 +15,7 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -304,32 +305,44 @@ func (s *Session) run(ctx context.Context) {
 	for {
 		select {
 		case oper := <-s.incoming:
+			var opCtx context.Context
+			var span trace.Span
 			switch oper.op {
 			case opReceive:
 				// Received blocks
+				opCtx, span = internal.StartSpan(ctx, "Session.ReceiveOp")
 				s.handleReceive(oper.keys)
 			case opWant:
 				// Client wants blocks
-				s.wantBlocks(ctx, oper.keys)
+				opCtx, span = internal.StartSpan(ctx, "Session.WantOp")
+				s.wantBlocks(opCtx, oper.keys)
 			case opCancel:
 				// Wants were cancelled
+				opCtx, span = internal.StartSpan(ctx, "Session.WantCancelOp")
 				s.sw.CancelPending(oper.keys)
 				s.sws.Cancel(oper.keys)
 			case opWantsSent:
 				// Wants were sent to a peer
+				opCtx, span = internal.StartSpan(ctx, "Session.WantsSentOp")
 				s.sw.WantsSent(oper.keys)
 			case opBroadcast:
 				// Broadcast want-haves to all peers
-				s.broadcast(ctx, oper.keys)
+				opCtx, span = internal.StartSpan(ctx, "Session.BroadcastOp")
+				s.broadcast(opCtx, oper.keys)
 			default:
 				panic("unhandled operation")
 			}
+			span.End()
 		case <-s.idleTick.C:
 			// The session hasn't received blocks for a while, broadcast
+			ctx, span := internal.StartSpan(ctx, "Session.IdleBroadcast")
 			s.broadcast(ctx, nil)
+			span.End()
 		case <-s.periodicSearchTimer.C:
 			// Periodically search for a random live want
+			ctx, span := internal.StartSpan(ctx, "Session.PeriodicSearch")
 			s.handlePeriodicSearch(ctx)
+			span.End()
 		case baseTickDelay := <-s.tickDelayReqs:
 			// Set the base tick delay
 			s.baseTickDelay = baseTickDelay
@@ -392,9 +405,12 @@ func (s *Session) handlePeriodicSearch(ctx context.Context) {
 // providers for the given Cid
 func (s *Session) findMorePeers(ctx context.Context, c cid.Cid) {
 	go func(k cid.Cid) {
+		ctx, span := internal.StartSpan(ctx, "Session.FindMorePeers")
+		defer span.End()
 		for p := range s.providerFinder.FindProvidersAsync(ctx, k) {
 			// When a provider indicates that it has a cid, it's equivalent to
 			// the providing peer sending a HAVE
+			span.AddEvent("FoundPeer")
 			s.sws.Update(p, nil, []cid.Cid{c}, nil)
 		}
 	}(c)
