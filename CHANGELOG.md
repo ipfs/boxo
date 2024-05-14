@@ -30,6 +30,7 @@ The following emojis are used to highlight certain changes:
 ### Fixed
 
 * `routing/http/server` now returns 404 Status Not Found when no records can be found.
+* `routing/http/server` now supports legacy RSA PeerIDs encoded as Base58 Multihash
 
 ### Security
 
