@@ -254,20 +254,26 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	// See https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation
 	// We are liberal in inputs here, and uplift legacy PeerID to CID if necessary.
 	// Rationale: it is better to fix this common mistake than to error and break peer routing.
-	cid, err := cid.Decode(pidStr)
+
+	// Attempt to parse PeerID
+	pid, err := peer.Decode(pidStr)
+
 	if err != nil {
-		// check if input is peer ID in legacy format
-		if pid, err2 := peer.Decode(pidStr); err2 == nil {
-			cid = peer.ToCid(pid)
-		} else {
-			writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse peer ID as libp2p-key CID: %w", err))
-			return
+		// Retry by parsing PeerID as CID, then setting codec to libp2p-key
+		// and turning that back to PeerID.
+		// This is necessary to make sure legacy keys like:
+		// - RSA QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N
+		// - ED25519 12D3KooWD3eckifWpRn9wQpMG9R9hX3sD158z7EqHWmweQAJU5SA
+		// are parsed correctly.
+		pidAsCid, err2 := cid.Decode(pidStr)
+		if err2 == nil {
+			pidAsCid = cid.NewCidV1(cid.Libp2pKey, pidAsCid.Hash())
+			pid, err = peer.FromCid(pidAsCid)
 		}
 	}
 
-	pid, err := peer.FromCid(cid)
 	if err != nil {
-		writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse peer ID: %w", err))
+		writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse PeerID %q: %w", pidStr, err))
 		return
 	}
 
