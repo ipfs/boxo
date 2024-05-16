@@ -13,12 +13,12 @@ require (
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.3
 	github.com/multiformats/go-multiaddr v0.12.3
 	github.com/multiformats/go-multicodec v0.9.0
-	github.com/prometheus/client_golang v1.19.0
+	github.com/prometheus/client_golang v1.19.1
 	github.com/stretchr/testify v1.9.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.50.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.51.0
 	go.opentelemetry.io/contrib/propagators/autoprop v0.46.1
-	go.opentelemetry.io/otel v1.25.0
-	go.opentelemetry.io/otel/sdk v1.25.0
+	go.opentelemetry.io/otel v1.26.0
+	go.opentelemetry.io/otel/sdk v1.26.0
 )
 
 require (
@@ -100,7 +100,7 @@ require (
 	github.com/libp2p/go-yamux/v4 v4.0.1 // indirect
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/miekg/dns v1.1.58 // indirect
+	github.com/miekg/dns v1.1.59 // indirect
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b // indirect
 	github.com/mikioh/tcpopt v0.0.0-20190314235656-172688c1accc // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
@@ -142,13 +142,13 @@ require (
 	go.opentelemetry.io/contrib/propagators/b3 v1.21.1 // indirect
 	go.opentelemetry.io/contrib/propagators/jaeger v1.21.1 // indirect
 	go.opentelemetry.io/contrib/propagators/ot v1.21.1 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.25.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.25.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.25.0 // indirect
-	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.25.0 // indirect
-	go.opentelemetry.io/otel/exporters/zipkin v1.25.0 // indirect
-	go.opentelemetry.io/otel/metric v1.25.0 // indirect
-	go.opentelemetry.io/otel/trace v1.25.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.26.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.26.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.26.0 // indirect
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.26.0 // indirect
+	go.opentelemetry.io/otel/exporters/zipkin v1.26.0 // indirect
+	go.opentelemetry.io/otel/metric v1.26.0 // indirect
+	go.opentelemetry.io/otel/trace v1.26.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.2.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/dig v1.17.1 // indirect
@@ -161,7 +161,7 @@ require (
 	golang.org/x/mod v0.17.0 // indirect
 	golang.org/x/net v0.24.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
-	golang.org/x/sys v0.19.0 // indirect
+	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/tools v0.20.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
@@ -169,7 +169,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20240412170617-26222e5d3d56 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240412170617-26222e5d3d56 // indirect
 	google.golang.org/grpc v1.63.2 // indirect
-	google.golang.org/protobuf v1.33.0 // indirect
+	google.golang.org/protobuf v1.34.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.2.2 // indirect
 )

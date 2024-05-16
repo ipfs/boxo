@@ -44,7 +44,7 @@ require (
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.3
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/libp2p/go-msgio v0.3.0
-	github.com/miekg/dns v1.1.58
+	github.com/miekg/dns v1.1.59
 	github.com/mr-tron/base58 v1.2.0
 	github.com/multiformats/go-base32 v0.1.0
 	github.com/multiformats/go-multiaddr v0.12.3
@@ -55,28 +55,28 @@ require (
 	github.com/multiformats/go-multistream v0.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/polydawn/refmt v0.89.0
-	github.com/prometheus/client_golang v1.19.0
+	github.com/prometheus/client_golang v1.19.1
 	github.com/samber/lo v1.39.0
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/stretchr/testify v1.9.0
 	github.com/whyrusleeping/base32 v0.0.0-20170828182744-c30ac30633cc
 	github.com/whyrusleeping/chunker v0.0.0-20181014151217-fe64bd25879f
 	go.opencensus.io v0.24.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.50.0
-	go.opentelemetry.io/otel v1.25.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.25.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.25.0
-	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.25.0
-	go.opentelemetry.io/otel/exporters/zipkin v1.25.0
-	go.opentelemetry.io/otel/sdk v1.25.0
-	go.opentelemetry.io/otel/trace v1.25.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.51.0
+	go.opentelemetry.io/otel v1.26.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.26.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.26.0
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.26.0
+	go.opentelemetry.io/otel/exporters/zipkin v1.26.0
+	go.opentelemetry.io/otel/sdk v1.26.0
+	go.opentelemetry.io/otel/trace v1.26.0
 	go.uber.org/atomic v1.11.0
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/oauth2 v0.19.0
+	golang.org/x/oauth2 v0.20.0
 	golang.org/x/sync v0.7.0
-	golang.org/x/sys v0.19.0
-	google.golang.org/protobuf v1.33.0
+	golang.org/x/sys v0.20.0
+	google.golang.org/protobuf v1.34.1
 )
 
 require (
@@ -157,8 +157,8 @@ require (
 	github.com/whyrusleeping/cbor v0.0.0-20171005072247-63513f603b11 // indirect
 	github.com/whyrusleeping/cbor-gen v0.1.0 // indirect
 	github.com/whyrusleeping/go-keyspace v0.0.0-20160322163242-5b898ac5add1 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.25.0 // indirect
-	go.opentelemetry.io/otel/metric v1.25.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.26.0 // indirect
+	go.opentelemetry.io/otel/metric v1.26.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.2.0 // indirect
 	go.uber.org/dig v1.17.1 // indirect
 	go.uber.org/fx v1.20.1 // indirect
