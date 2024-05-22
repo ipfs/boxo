@@ -99,6 +99,30 @@ func WithoutDuplicatedBlockStats() Option {
 	}
 }
 
+// WithFindProvidersTimeout sets the maximum duration of a query to search for additional providers
+// Experimental
+func WithFindProvidersTimeout(duration time.Duration) Option {
+	return func(bs *Client) {
+		bs.pqmFindProviderTimeout = duration
+	}
+}
+
+// WithMaxProvidersPerQuery sets the maximum number of providers to look for in a given query
+// Experimental
+func WithMaxProvidersPerQuery(n int) Option {
+	return func(bs *Client) {
+		bs.pqmMaxProviders = n
+	}
+}
+
+// WithMaxInProcessProviderRequests sets the maximum number of provider requests that can be done in parallel.
+// Experimental
+func WithMaxInProcessProviderRequests(n int) Option {
+	return func(bs *Client) {
+		bs.pqmMaxInProcessRequests = n
+	}
+}
+
 type BlockReceivedNotifier interface {
 	// ReceivedBlocks notifies the decision engine that a peer is well-behaving
 	// and gave us useful data, potentially increasing its score and making us
@@ -205,6 +229,10 @@ type Client struct {
 
 	// the provider query manager manages requests to find providers
 	pqm *bspqm.ProviderQueryManager
+	// provider query manager options
+	pqmFindProviderTimeout  time.Duration
+	pqmMaxInProcessRequests int
+	pqmMaxProviders         int
 
 	// network delivers messages on behalf of the session
 	network bsnet.BitSwapNetwork

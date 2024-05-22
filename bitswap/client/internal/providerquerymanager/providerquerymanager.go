@@ -16,9 +16,9 @@ import (
 var log = logging.Logger("bitswap")
 
 const (
-	maxProviders         = 10
-	maxInProcessRequests = 6
-	defaultTimeout       = 10 * time.Second
+	defaultMaxProviders         = 10
+	defaultMaxInProcessRequests = 6
+	defaultTimeout              = 10 * time.Second
 )
 
 type inProgressRequestStatus struct {
@@ -82,17 +82,40 @@ type ProviderQueryManager struct {
 	providerRequestsProcessing   chan *findProviderRequest
 	incomingFindProviderRequests chan *findProviderRequest
 
-	findProviderTimeout time.Duration
-	timeoutMutex        sync.RWMutex
+	findProviderTimeout  time.Duration
+	maxInProcessRequests int
+	maxProviders         int
+
+	timeoutMutex sync.RWMutex
 
 	// do not touch outside the run loop
 	inProgressRequestStatuses map[cid.Cid]*inProgressRequestStatus
 }
 
+type Options func(*ProviderQueryManager)
+
+func WithFindProviderTimeout(d time.Duration) Options {
+	return func(m *ProviderQueryManager) {
+		m.findProviderTimeout = d
+	}
+}
+
+func WithMaxInProcessRequests(n int) Options {
+	return func(m *ProviderQueryManager) {
+		m.maxInProcessRequests = n
+	}
+}
+
+func WithMaxProviders(n int) Options {
+	return func(m *ProviderQueryManager) {
+		m.maxProviders = n
+	}
+}
+
 // New initializes a new ProviderQueryManager for a given context and a given
 // network provider.
-func New(ctx context.Context, network ProviderQueryNetwork) *ProviderQueryManager {
-	return &ProviderQueryManager{
+func New(ctx context.Context, network ProviderQueryNetwork, opts ...Options) *ProviderQueryManager {
+	m := &ProviderQueryManager{
 		ctx:                          ctx,
 		network:                      network,
 		providerQueryMessages:        make(chan providerQueryMessage, 16),
@@ -100,7 +123,15 @@ func New(ctx context.Context, network ProviderQueryNetwork) *ProviderQueryManage
 		incomingFindProviderRequests: make(chan *findProviderRequest),
 		inProgressRequestStatuses:    make(map[cid.Cid]*inProgressRequestStatus),
 		findProviderTimeout:          defaultTimeout,
+		maxInProcessRequests:         defaultMaxInProcessRequests,
+		maxProviders:                 defaultMaxProviders,
 	}
+
+	for _, o := range opts {
+		o(m)
+	}
+
+	return m
 }
 
 // Startup starts processing for the ProviderQueryManager.
@@ -332,7 +363,7 @@ func (pqm *ProviderQueryManager) run() {
 	defer pqm.cleanupInProcessRequests()
 
 	go pqm.providerRequestBufferWorker()
-	for i := 0; i < maxInProcessRequests; i++ {
+	for i := 0; i < defaultMaxInProcessRequests; i++ {
 		go pqm.findProviderWorker()
 	}
 

@@ -258,28 +258,28 @@ func TestRateLimitingRequests(t *testing.T) {
 	providerQueryManager := New(ctx, fpn)
 	providerQueryManager.Startup()
 
-	keys := testutil.GenerateCids(maxInProcessRequests + 1)
+	keys := testutil.GenerateCids(defaultMaxInProcessRequests + 1)
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	var requestChannels []<-chan peer.ID
-	for i := 0; i < maxInProcessRequests+1; i++ {
+	for i := 0; i < defaultMaxInProcessRequests+1; i++ {
 		requestChannels = append(requestChannels, providerQueryManager.FindProvidersAsync(sessionCtx, keys[i]))
 	}
 	time.Sleep(20 * time.Millisecond)
 	fpn.queriesMadeMutex.Lock()
-	if fpn.liveQueries != maxInProcessRequests {
+	if fpn.liveQueries != defaultMaxInProcessRequests {
 		t.Logf("Queries made: %d\n", fpn.liveQueries)
 		t.Fatal("Did not limit parallel requests to rate limit")
 	}
 	fpn.queriesMadeMutex.Unlock()
-	for i := 0; i < maxInProcessRequests+1; i++ {
+	for i := 0; i < defaultMaxInProcessRequests+1; i++ {
 		for range requestChannels[i] {
 		}
 	}
 
 	fpn.queriesMadeMutex.Lock()
 	defer fpn.queriesMadeMutex.Unlock()
-	if fpn.queriesMade != maxInProcessRequests+1 {
+	if fpn.queriesMade != defaultMaxInProcessRequests+1 {
 		t.Logf("Queries made: %d\n", fpn.queriesMade)
 		t.Fatal("Did not make all separate requests")
 	}
