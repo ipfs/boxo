@@ -452,7 +452,7 @@ func (nn *netNotifiee) impl() *impl {
 
 func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
 	// ignore transient connections
-	if v.Stat().Transient {
+	if v.Stat().Limited {
 		return
 	}
 
