@@ -11,17 +11,17 @@ import (
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	"github.com/ipfs/boxo/bitswap/network/internal"
 
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	peerstore "github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	msgio "github.com/libp2p/go-msgio"
+	"github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
 )
@@ -452,7 +452,7 @@ func (nn *netNotifiee) impl() *impl {
 
 func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
 	// ignore transient connections
-	if v.Stat().Transient {
+	if v.Stat().Limited {
 		return
 	}
 
