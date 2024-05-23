@@ -23,7 +23,7 @@ func main() {
 	gatewayUrlPtr := flag.String("g", "https://trustless-gateway.link", "trustless gateway to download the CAR file from")
 	userAgentPtr := flag.String("u", "", "user agent to use during the HTTP requests")
 	outputPtr := flag.String("o", "out", "output path to store the fetched path")
-	limitPtr := flag.Int64("l", 0, "file size limit for the gateway download")
+	limitPtr := flag.Int64("l", 0, "file size limit for the gateway download (bytes)")
 	flag.Parse()
 
 	ipfsPath := flag.Arg(0)
