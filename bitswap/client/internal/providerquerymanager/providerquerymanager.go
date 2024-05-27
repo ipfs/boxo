@@ -378,8 +378,8 @@ func (npqm *newProvideQueryMessage) debugMessage() string {
 func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[npqm.k]
 	if !ok {
-
-		ctx, cancelFn := context.WithCancel(pqm.ctx)
+		// used the passed in context to FindProvidersAsync for this call
+		ctx, cancelFn := context.WithCancel(npqm.ctx)
 		requestStatus = &inProgressRequestStatus{
 			listeners: make(map[chan peer.ID]struct{}),
 			ctx:       ctx,
