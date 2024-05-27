@@ -10,9 +10,9 @@ import (
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
-	host "github.com/libp2p/go-libp2p/core/host"
-	peer "github.com/libp2p/go-libp2p/core/peer"
-	routing "github.com/libp2p/go-libp2p/core/routing"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ipfs/boxo/ipns"
@@ -20,7 +20,7 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 
-	keystore "github.com/ipfs/boxo/keystore"
+	"github.com/ipfs/boxo/keystore"
 	"github.com/ipfs/boxo/namesys"
 	. "github.com/ipfs/boxo/namesys/republisher"
 )
@@ -40,7 +40,7 @@ func getMockNode(t *testing.T, ctx context.Context) *mockNode {
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	var idht *dht.IpfsDHT
 	h, err := libp2p.New(
-		libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"),
+		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"),
 		libp2p.Routing(func(h host.Host) (routing.PeerRouting, error) {
 			rt, err := dht.New(ctx, h, dht.Mode(dht.ModeServer))
 			idht = rt

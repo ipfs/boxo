@@ -12,7 +12,7 @@ import (
 
 func TestIPNSHostnameBacklinks(t *testing.T) {
 	// Test if directory listing on DNSLink Websites have correct backlinks.
-	ts, backend, root := newTestServerAndNode(t, nil, "dir-special-chars.car")
+	ts, backend, root := newTestServerAndNode(t, "dir-special-chars.car")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

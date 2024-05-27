@@ -405,6 +405,11 @@ const (
 	// [Subdomain Gateway]: https://specs.ipfs.tech/http-gateways/subdomain-gateway/
 	SubdomainHostnameKey RequestContextKey = "subdomain-hostname"
 
-	// ContentPathKey is the key for the original [http.Request] URL Path, as an [ipath.Path].
+	// OriginalPathKey is the key for the original [http.Request] [url.URL.Path],
+	// as a string. This is the original path of the request, before [NewHostnameHandler].
+	OriginalPathKey RequestContextKey = "original-path-key"
+
+	// ContentPathKey is the key for the content [path.Path] of the current request.
+	// This already accounts with changes made with [NewHostnameHandler].
 	ContentPathKey RequestContextKey = "content-path"
 )

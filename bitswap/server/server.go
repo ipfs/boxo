@@ -161,6 +161,14 @@ func WithScoreLedger(scoreLedger decision.ScoreLedger) Option {
 	}
 }
 
+// WithPeerLedger configures the engine with a custom [decision.PeerLedger].
+func WithPeerLedger(peerLedger decision.PeerLedger) Option {
+	o := decision.WithPeerLedger(peerLedger)
+	return func(bs *Server) {
+		bs.engineOptions = append(bs.engineOptions, o)
+	}
+}
+
 // LedgerForPeer returns aggregated data about blocks swapped and communication
 // with a given peer.
 func (bs *Server) LedgerForPeer(p peer.ID) *decision.Receipt {

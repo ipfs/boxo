@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/gateway/assets"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/schema"
 )
 
 var (
@@ -127,6 +129,42 @@ func (e *ErrorStatusCode) Unwrap() error {
 	return e.Err
 }
 
+// ErrInvalidResponse can be returned from a [DataCallback] to indicate that
+// the data provided for the requested resource was explicitly 'incorrect',
+// for example, when received blocks did not belong to the requested dag,
+// or non-car-conforming data was returned.
+type ErrInvalidResponse struct {
+	Message string
+}
+
+func (e ErrInvalidResponse) Error() string {
+	return e.Message
+}
+
+// ErrPartialResponse can be returned from a [DataCallback] to indicate that some of the requested resource
+// was successfully fetched, and that instead of retrying the full resource, that there are
+// one or more more specific resources that should be fetched (via StillNeed) to complete the request.
+//
+// This primitive allows for resume mechanism that is useful when a big CAR
+// stream gets truncated due to network error, HTTP middleware timeout, etc,
+// but some useful blocks were received and should not be fetched again.
+type ErrPartialResponse struct {
+	error
+	StillNeed []CarResource
+}
+
+type CarResource struct {
+	Path   path.ImmutablePath
+	Params CarParams
+}
+
+func (epr ErrPartialResponse) Error() string {
+	if epr.error != nil {
+		return fmt.Sprintf("partial response: %s", epr.error.Error())
+	}
+	return "received a partial CAR response from the backend"
+}
+
 func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defaultCode int) {
 	code := defaultCode
 
@@ -184,7 +222,7 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 // isErrNotFound returns true for IPLD errors that should return 4xx errors (e.g. the path doesn't exist, the data is
 // the wrong type, etc.), rather than issues with just finding and retrieving the data.
 func isErrNotFound(err error) bool {
-	if errors.Is(err, &resolver.ErrNoLink{}) {
+	if errors.Is(err, &resolver.ErrNoLink{}) || errors.Is(err, schema.ErrNoSuchField{}) {
 		return true
 	}
 

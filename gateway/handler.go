@@ -259,6 +259,8 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		responseParams: formatParams,
 	}
 
+	addContentLocation(r, w, rq)
+
 	// IPNS Record response format can be handled now, since (1) it needs the
 	// non-resolved mutable path, and (2) has custom If-None-Match header handling
 	// due to custom ETag.
@@ -586,6 +588,27 @@ const (
 	ipnsRecordResponseFormat = "application/vnd.ipfs.ipns-record"
 )
 
+var (
+	formatParamToResponseFormat = map[string]string{
+		"raw":         rawResponseFormat,
+		"car":         carResponseFormat,
+		"tar":         tarResponseFormat,
+		"json":        jsonResponseFormat,
+		"cbor":        cborResponseFormat,
+		"dag-json":    dagJsonResponseFormat,
+		"dag-cbor":    dagCborResponseFormat,
+		"ipns-record": ipnsRecordResponseFormat,
+	}
+
+	responseFormatToFormatParam = map[string]string{}
+)
+
+func init() {
+	for k, v := range formatParamToResponseFormat {
+		responseFormatToFormatParam[v] = k
+	}
+}
+
 // return explicit response format if specified in request as query parameter or via Accept HTTP header
 func customResponseFormat(r *http.Request) (mediaType string, params map[string]string, err error) {
 	// First, inspect Accept header, as it may not only include content type, but also optional parameters.
@@ -615,29 +638,54 @@ func customResponseFormat(r *http.Request) (mediaType string, params map[string]
 
 	// If no Accept header, translate query param to a content type, if present.
 	if formatParam := r.URL.Query().Get("format"); formatParam != "" {
-		switch formatParam {
-		case "raw":
-			return rawResponseFormat, nil, nil
-		case "car":
-			return carResponseFormat, nil, nil
-		case "tar":
-			return tarResponseFormat, nil, nil
-		case "json":
-			return jsonResponseFormat, nil, nil
-		case "cbor":
-			return cborResponseFormat, nil, nil
-		case "dag-json":
-			return dagJsonResponseFormat, nil, nil
-		case "dag-cbor":
-			return dagCborResponseFormat, nil, nil
-		case "ipns-record":
-			return ipnsRecordResponseFormat, nil, nil
+		if responseFormat, ok := formatParamToResponseFormat[formatParam]; ok {
+			return responseFormat, nil, nil
 		}
 	}
 
 	// If none of special-cased content types is found, return empty string
 	// to indicate default, implicit UnixFS response should be prepared
 	return "", nil, nil
+}
+
+// Add 'Content-Location' headers for non-default response formats. This allows
+// correct caching of such format requests when the format is passed via the
+// Accept header, for example.
+func addContentLocation(r *http.Request, w http.ResponseWriter, rq *requestData) {
+	// Skip Content-Location if no explicit format was requested
+	// via Accept HTTP header or ?format URL param
+	if rq.responseFormat == "" {
+		return
+	}
+
+	format := responseFormatToFormatParam[rq.responseFormat]
+
+	// Skip Content-Location if there is no conflict between
+	// 'format' in URL and value in 'Accept' header.
+	// If both are present and don't match, we continue and generate
+	// Content-Location to ensure value from Accept overrides 'format' from URL.
+	if urlFormat := r.URL.Query().Get("format"); urlFormat != "" && urlFormat == format {
+		return
+	}
+
+	path := r.URL.Path
+	if p, ok := r.Context().Value(OriginalPathKey).(string); ok {
+		path = p
+	}
+
+	// Copy all existing query parameters.
+	query := url.Values{}
+	for k, v := range r.URL.Query() {
+		query[k] = v
+	}
+	query.Set("format", format)
+
+	// Set response params as query elements.
+	for k, v := range rq.responseParams {
+		query.Set(format+"-"+k, v)
+	}
+
+	w.Header().Set("Content-Location", path+"?"+query.Encode())
 }
 
 // returns unquoted path with all special characters revealed as \u codes

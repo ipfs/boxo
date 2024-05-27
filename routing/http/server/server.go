@@ -21,6 +21,7 @@ import (
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 
@@ -214,8 +215,13 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 
 	provIter, err := s.svc.FindProviders(httpReq.Context(), cid, recordsLimit)
 	if err != nil {
-		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-		return
+		if errors.Is(err, routing.ErrNotFound) {
+			// handlerFunc takes care of setting the 404 and necessary headers
+			provIter = iter.FromSlice([]iter.Result[types.Record]{})
+		} else {
+			writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+			return
+		}
 	}
 
 	handlerFunc(w, provIter)
@@ -248,20 +254,26 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	// See https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation
 	// We are liberal in inputs here, and uplift legacy PeerID to CID if necessary.
 	// Rationale: it is better to fix this common mistake than to error and break peer routing.
-	cid, err := cid.Decode(pidStr)
+
+	// Attempt to parse PeerID
+	pid, err := peer.Decode(pidStr)
+
 	if err != nil {
-		// check if input is peer ID in legacy format
-		if pid, err2 := peer.Decode(pidStr); err2 == nil {
-			cid = peer.ToCid(pid)
-		} else {
-			writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse peer ID as libp2p-key CID: %w", err))
-			return
+		// Retry by parsing PeerID as CID, then setting codec to libp2p-key
+		// and turning that back to PeerID.
+		// This is necessary to make sure legacy keys like:
+		// - RSA QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N
+		// - ED25519 12D3KooWD3eckifWpRn9wQpMG9R9hX3sD158z7EqHWmweQAJU5SA
+		// are parsed correctly.
+		pidAsCid, err2 := cid.Decode(pidStr)
+		if err2 == nil {
+			pidAsCid = cid.NewCidV1(cid.Libp2pKey, pidAsCid.Hash())
+			pid, err = peer.FromCid(pidAsCid)
 		}
 	}
 
-	pid, err := peer.FromCid(cid)
 	if err != nil {
-		writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse peer ID: %w", err))
+		writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse PeerID %q: %w", pidStr, err))
 		return
 	}
 
@@ -286,8 +298,13 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 
 	provIter, err := s.svc.FindPeers(r.Context(), pid, recordsLimit)
 	if err != nil {
-		writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-		return
+		if errors.Is(err, routing.ErrNotFound) {
+			// handlerFunc takes care of setting the 404 and necessary headers
+			provIter = iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+		} else {
+			writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+			return
+		}
 	}
 
 	handlerFunc(w, provIter)
@@ -398,8 +415,13 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 
 	record, err := s.svc.GetIPNS(r.Context(), name)
 	if err != nil {
-		writeErr(w, "GetIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
-		return
+		if errors.Is(err, routing.ErrNotFound) {
+			writeErr(w, "GetIPNS", http.StatusNotFound, fmt.Errorf("delegate error: %w", err))
+			return
+		} else {
+			writeErr(w, "GetIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+			return
+		}
 	}
 
 	rawRecord, err := ipns.MarshalRecord(record)
@@ -517,6 +539,12 @@ func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length
 		return
 	}
 
+	if val.Length() > 0 {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusNotFound)
+	}
+
 	_, err = io.Copy(w, bytes.NewBuffer(b))
 	if err != nil {
 		logErr("Provide", "writing response body", err)
@@ -524,6 +552,10 @@ func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length
 }
 
 func writeErr(w http.ResponseWriter, method string, statusCode int, cause error) {
+	if errors.Is(cause, routing.ErrNotFound) {
+		setCacheControl(w, maxAgeWithoutResults, maxStale)
+	}
+
 	w.WriteHeader(statusCode)
 	causeStr := cause.Error()
 	if len(causeStr) > 1024 {
@@ -586,7 +618,8 @@ func writeResultsIterNDJSON[T any](w http.ResponseWriter, resultIter iter.Result
 	}
 
 	if !hasResults {
-		// There weren't results, cache for shorter
+		// There weren't results, cache for shorter and send 404
 		setCacheControl(w, maxAgeWithoutResults, maxStale)
+		w.WriteHeader(http.StatusNotFound)
 	}
 }

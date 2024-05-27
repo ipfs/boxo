@@ -121,11 +121,9 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 			i.unixfsDirIndexGetMetric.WithLabelValues(originalContentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 		}
 		return success
-	}
-
-	if isErrNotFound(err) {
+	} else if isErrNotFound(err) {
 		rq.logger.Debugw("no index.html; noop", "path", idxPath)
-	} else if err != nil {
+	} else {
 		i.webError(w, r, err, http.StatusInternalServerError)
 		return false
 	}
