@@ -214,7 +214,7 @@ func (c *contentRouter) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInf
 		}, nil
 	}
 
-	return peer.AddrInfo{}, err
+	return peer.AddrInfo{}, routing.ErrNotFound
 }
 
 func (c *contentRouter) PutValue(ctx context.Context, key string, data []byte, opts ...routing.Option) error {

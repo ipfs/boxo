@@ -199,6 +199,20 @@ func TestFindPeer(t *testing.T) {
 	require.Equal(t, peer.ID, p1)
 }
 
+func TestFindPeerNoPeer(t *testing.T) {
+	ctx := context.Background()
+	client := &mockClient{}
+	crc := NewContentRoutingClient(client)
+
+	p1 := peer.ID("peer1")
+	aisIter := iter.ToResultIter[*types.PeerRecord](iter.FromSlice([]*types.PeerRecord{}))
+
+	client.On("FindPeers", ctx, p1).Return(aisIter, nil)
+
+	_, err := crc.FindPeer(ctx, p1)
+	require.ErrorIs(t, err, routing.ErrNotFound)
+}
+
 func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
 	sk, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	require.NoError(t, err)
