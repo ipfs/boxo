@@ -14,6 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -187,6 +188,7 @@ func TestFindPeer(t *testing.T) {
 		{
 			Schema:    types.SchemaPeer,
 			ID:        &p1,
+			Addrs:     []types.Multiaddr{{Multiaddr: multiaddr.StringCast("/ip4/1.2.3.4/tcp/1234")}},
 			Protocols: []string{"transport-bitswap"},
 		},
 	}
@@ -194,9 +196,30 @@ func TestFindPeer(t *testing.T) {
 
 	client.On("FindPeers", ctx, p1).Return(aisIter, nil)
 
-	peer, err := crc.FindPeer(ctx, p1)
+	p, err := crc.FindPeer(ctx, p1)
 	require.NoError(t, err)
-	require.Equal(t, peer.ID, p1)
+	require.Equal(t, p.ID, p1)
+}
+
+func TestFindPeerNoAddresses(t *testing.T) {
+	ctx := context.Background()
+	client := &mockClient{}
+	crc := NewContentRoutingClient(client)
+
+	p1 := peer.ID("peer1")
+	ais := []*types.PeerRecord{
+		{
+			Schema:    types.SchemaPeer,
+			ID:        &p1,
+			Protocols: []string{"transport-bitswap"},
+		},
+	}
+	aisIter := iter.ToResultIter[*types.PeerRecord](iter.FromSlice(ais))
+
+	client.On("FindPeers", ctx, p1).Return(aisIter, nil)
+
+	_, err := crc.FindPeer(ctx, p1)
+	require.ErrorIs(t, err, routing.ErrNotFound)
 }
 
 func TestFindPeerWrongPeer(t *testing.T) {

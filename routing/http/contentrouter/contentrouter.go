@@ -214,6 +214,11 @@ func (c *contentRouter) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInf
 			addrs = append(addrs, a.Multiaddr)
 		}
 
+		// If there are no addresses there's nothing of value to return
+		if len(addrs) == 0 {
+			continue
+		}
+
 		return peer.AddrInfo{
 			ID:    pid,
 			Addrs: addrs,
