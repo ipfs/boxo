@@ -203,13 +203,19 @@ func (c *contentRouter) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInf
 			logger.Warnw("error iterating peer responses: %s", res.Err)
 			continue
 		}
+
+		if *res.Val.ID != pid {
+			logger.Warnw("searched for peerID %s, got response for %s:", pid, *res.Val.ID)
+			continue
+		}
+
 		var addrs []multiaddr.Multiaddr
 		for _, a := range res.Val.Addrs {
 			addrs = append(addrs, a.Multiaddr)
 		}
 
 		return peer.AddrInfo{
-			ID:    *res.Val.ID,
+			ID:    pid,
 			Addrs: addrs,
 		}, nil
 	}
