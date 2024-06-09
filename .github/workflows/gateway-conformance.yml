@@ -22,7 +22,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.5
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@7b222e6a73b82f05651aec3824ef139628198949 # TODO: switch to v0.6
         with:
           output: fixtures
           merged: true
@@ -47,15 +47,15 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests
-        uses: ipfs/gateway-conformance/.github/actions/test@v0.5
+        uses: ipfs/gateway-conformance/.github/actions/test@7b222e6a73b82f05651aec3824ef139628198949 # TODO: switch to v0.6
         with:
           gateway-url: http://127.0.0.1:8040
+          subdomain-url: http://example.net:8040
+          specs: -trustless-ipns-gateway,-path-ipns-gateway,-subdomain-ipns-gateway,-dnslink-gateway
           json: output.json
           xml: output.xml
           html: output.html
           markdown: output.md
-          subdomain-url: http://example.net
-          specs: -trustless-ipns-gateway,-path-ipns-gateway,-subdomain-ipns-gateway,-dnslink-gateway
 
       # 5. Upload the results
       - name: Upload MD summary
@@ -84,7 +84,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.5
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@7b222e6a73b82f05651aec3824ef139628198949 # TODO: switch to v0.6
         with:
           output: fixtures
           merged: true
@@ -114,16 +114,16 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests
-        uses: ipfs/gateway-conformance/.github/actions/test@v0.5
+        uses: ipfs/gateway-conformance/.github/actions/test@7b222e6a73b82f05651aec3824ef139628198949 # TODO: switch to v0.6
         with:
           gateway-url: http://127.0.0.1:8040 # we test gateway that is backed by a remote block gateway
+          subdomain-url: http://example.net:8040
+          specs: -trustless-ipns-gateway,-path-ipns-gateway,-subdomain-ipns-gateway,-dnslink-gateway
+          args: -skip 'TestGatewayCache/.*_for_%2Fipfs%2F_with_only-if-cached_succeeds_when_in_local_datastore'
           json: output.json
           xml: output.xml
           html: output.html
           markdown: output.md
-          subdomain-url: http://example.net
-          specs: -trustless-ipns-gateway,-path-ipns-gateway,-subdomain-ipns-gateway,-dnslink-gateway
-          args: -skip 'TestGatewayCache/.*_for_%2Fipfs%2F_with_only-if-cached_succeeds_when_in_local_datastore'
 
       # 5. Upload the results
       - name: Upload MD summary
@@ -152,7 +152,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.5
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@7b222e6a73b82f05651aec3824ef139628198949 # TODO: switch to v0.6
         with:
           output: fixtures
           merged: true
@@ -182,16 +182,16 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests
-        uses: ipfs/gateway-conformance/.github/actions/test@v0.5
+        uses: ipfs/gateway-conformance/.github/actions/test@7b222e6a73b82f05651aec3824ef139628198949 # TODO: switch to v0.6
         with:
           gateway-url: http://127.0.0.1:8040 # we test gateway that is backed by a remote car gateway
+          subdomain-url: http://example.net:8040
+          specs: -trustless-ipns-gateway,-path-ipns-gateway,-subdomain-ipns-gateway,-dnslink-gateway
+          args: -skip 'TestGatewayCache/.*_for_%2Fipfs%2F_with_only-if-cached_succeeds_when_in_local_datastore'
           json: output.json
           xml: output.xml
           html: output.html
           markdown: output.md
-          subdomain-url: http://example.net
-          specs: -trustless-ipns-gateway,-path-ipns-gateway,-subdomain-ipns-gateway,-dnslink-gateway
-          args: -skip 'TestGatewayCache/.*_for_%2Fipfs%2F_with_only-if-cached_succeeds_when_in_local_datastore'
 
       # 5. Upload the results
       - name: Upload MD summary
