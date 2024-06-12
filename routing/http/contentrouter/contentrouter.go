@@ -113,7 +113,7 @@ func (c *contentRouter) Ready() bool {
 
 // readProviderResponses reads peer records (and bitswap records for legacy
 // compatibility) from the iterator into the given channel.
-func readProviderResponses(iter iter.ResultIter[types.Record], ch chan<- peer.AddrInfo) {
+func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Record], ch chan<- peer.AddrInfo) {
 	defer close(ch)
 	defer iter.Close()
 	for iter.Next() {
@@ -140,10 +140,14 @@ func readProviderResponses(iter iter.ResultIter[types.Record], ch chan<- peer.Ad
 				addrs = append(addrs, a.Multiaddr)
 			}
 
-			ch <- peer.AddrInfo{
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- peer.AddrInfo{
 				ID:    *result.ID,
-				Addrs: addrs,
+				Addrs: addrs}:
 			}
+
 		//lint:ignore SA1019 // ignore staticcheck
 		case types.SchemaBitswap:
 			//lint:ignore SA1019 // ignore staticcheck
@@ -162,9 +166,12 @@ func readProviderResponses(iter iter.ResultIter[types.Record], ch chan<- peer.Ad
 				addrs = append(addrs, a.Multiaddr)
 			}
 
-			ch <- peer.AddrInfo{
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- peer.AddrInfo{
 				ID:    *result.ID,
-				Addrs: addrs,
+				Addrs: addrs}:
 			}
 		}
 	}
@@ -179,7 +186,7 @@ func (c *contentRouter) FindProvidersAsync(ctx context.Context, key cid.Cid, num
 		return ch
 	}
 	ch := make(chan peer.AddrInfo)
-	go readProviderResponses(resultsIter, ch)
+	go readProviderResponses(ctx, resultsIter, ch)
 	return ch
 }
 
