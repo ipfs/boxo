@@ -24,6 +24,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `routing/http/contentrouter` The `FindPeer` now returns `routing.ErrNotFound` when no addresses are found
+
 ### Security
 
 ## [v0.20.0]
