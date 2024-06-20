@@ -119,7 +119,7 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 	for iter.Next() {
 		res := iter.Val()
 		if res.Err != nil {
-			logger.Warnw("error iterating provider responses: %s", res.Err)
+			logger.Warnf("error iterating provider responses: %s", res.Err)
 			continue
 		}
 		v := res.Val
@@ -200,12 +200,12 @@ func (c *contentRouter) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInf
 	for iter.Next() {
 		res := iter.Val()
 		if res.Err != nil {
-			logger.Warnw("error iterating peer responses: %s", res.Err)
+			logger.Warnf("error iterating peer responses: %s", res.Err)
 			continue
 		}
 
 		if *res.Val.ID != pid {
-			logger.Warnw("searched for peerID %s, got response for %s:", pid, *res.Val.ID)
+			logger.Warnf("searched for peerID %s, got response for %s:", pid, *res.Val.ID)
 			continue
 		}
 
