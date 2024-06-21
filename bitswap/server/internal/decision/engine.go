@@ -4,7 +4,6 @@ package decision
 import (
 	"context"
 	"fmt"
-	"math/bits"
 	"sync"
 	"time"
 
@@ -134,7 +133,7 @@ type PeerLedger interface {
 	// Wants informs the ledger that [peer.ID] wants [wl.Entry].
 	Wants(p peer.ID, e wl.Entry)
 
-	// CancelWant returns true if the [cid.Cid] is present in the wantlist of [peer.ID].
+	// CancelWant returns true if the [cid.Cid] was removed from the wantlist of [peer.ID].
 	CancelWant(p peer.ID, k cid.Cid) bool
 
 	// CancelWantWithType will not cancel WantBlock if we sent a HAVE message.
@@ -702,38 +701,72 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		e.peerLedger.ClearPeerWantlist(p)
 	}
 
-	s := uint(e.peerLedger.WantlistSizeForPeer(p))
-	if wouldBe := s + uint(len(wants)); wouldBe > e.maxQueuedWantlistEntriesPerPeer {
-		log.Debugw("wantlist overflow", "local", e.self, "remote", p, "would be", wouldBe)
-		// truncate wantlist to avoid overflow
-		available, o := bits.Sub(e.maxQueuedWantlistEntriesPerPeer, s, 0)
-		if o != 0 {
-			available = 0
+	if len(wants) != 0 {
+		filteredWants := wants[:0] // shift inplace
+		for _, entry := range wants {
+			if entry.Cid.Prefix().MhType == mh.IDENTITY {
+				// This is a truely broken client, let's kill the connection.
+				e.lock.Unlock()
+				log.Warnw("peer wants an identity CID", "local", e.self, "remote", p)
+				return true
+			}
+			if e.maxCidSize != 0 && uint(entry.Cid.ByteLen()) > e.maxCidSize {
+				// Ignore requests about CIDs that big.
+				continue
+			}
+			filteredWants = append(filteredWants, entry)
+			if len(filteredWants) == int(e.maxQueuedWantlistEntriesPerPeer) {
+				// filteredWants at limit, ignore remaining wants from request.
+				log.Debugw("requested wants exceeds max wantlist size", "local", e.self, "remote", p, "ignoring", len(wants)-len(filteredWants))
+				break
+			}
 		}
-		wants = wants[:available]
+		wants = wants[len(filteredWants):]
+		for i := range wants {
+			wants[i] = bsmsg.Entry{} // early GC
+		}
+		wants = filteredWants
+
+		// Ensure sufficient space for new wants.
+		s := e.peerLedger.WantlistSizeForPeer(p)
+		available := int(e.maxQueuedWantlistEntriesPerPeer) - s
+		if len(wants) > available {
+			needSpace := len(wants) - available
+			log.Debugw("wantlist overflow", "local", e.self, "remote", p, "would be", s+len(wants), "canceling", needSpace)
+			// Cancel any wants that are being requested again. This makes room
+			// for new wants and minimizes that existing wants to cancel that
+			// are not in the new request.
+			for _, entry := range wants {
+				if e.peerLedger.CancelWant(p, entry.Cid) {
+					e.peerRequestQueue.Remove(entry.Cid, p)
+					needSpace--
+					if needSpace == 0 {
+						break
+					}
+				}
+			}
+			// Cancel additional wants, that are not being replaced, to make
+			// room for new wants.
+			if needSpace != 0 {
+				wl := e.peerLedger.WantlistForPeer(p)
+				for i := range wl {
+					entCid := wl[i].Cid
+					if e.peerLedger.CancelWant(p, entCid) {
+						e.peerRequestQueue.Remove(entCid, p)
+						needSpace--
+						if needSpace == 0 {
+							break
+						}
+					}
+				}
+			}
+		}
+
+		for _, entry := range wants {
+			e.peerLedger.Wants(p, entry.Entry)
+		}
 	}
 
-	filteredWants := wants[:0] // shift inplace
-
-	for _, entry := range wants {
-		if entry.Cid.Prefix().MhType == mh.IDENTITY {
-			// This is a truely broken client, let's kill the connection.
-			e.lock.Unlock()
-			log.Warnw("peer wants an identity CID", "local", e.self, "remote", p)
-			return true
-		}
-		if e.maxCidSize != 0 && uint(entry.Cid.ByteLen()) > e.maxCidSize {
-			// Ignore requests about CIDs that big.
-			continue
-		}
-
-		e.peerLedger.Wants(p, entry.Entry)
-		filteredWants = append(filteredWants, entry)
-	}
-	// Clear truncated entries - early GC.
-	clear(wants[len(filteredWants):])
-
-	wants = filteredWants
 	for _, entry := range cancels {
 		c := entry.Cid
 		if c.Prefix().MhType == mh.IDENTITY {
