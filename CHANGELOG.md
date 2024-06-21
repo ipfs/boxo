@@ -39,6 +39,9 @@ The following emojis are used to highlight certain changes:
 
 - `routing/http`: the `FindPeer` now returns `routing.ErrNotFound` when no addresses are found
 - `routing/http`: the `FindProvidersAsync` no longer causes a goroutine buildup
+- bitswap wantlist overflow handling now selects newer entries when truncating wantlist. This fix prevents the retained portion of the wantlist from filling up with CIDs that the server does not have.
+
+### Security
 
 ## [v0.20.0]
 

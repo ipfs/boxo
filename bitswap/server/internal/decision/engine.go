@@ -4,7 +4,6 @@ package decision
 import (
 	"context"
 	"fmt"
-	"math/bits"
 	"sync"
 	"time"
 
@@ -717,20 +716,18 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		e.peerLedger.ClearPeerWantlist(p)
 	}
 
-	s := uint(e.peerLedger.WantlistSizeForPeer(p))
-	if wouldBe := s + uint(len(wants)); wouldBe > e.maxQueuedWantlistEntriesPerPeer {
-		log.Debugw("wantlist overflow", "local", e.self, "remote", p, "would be", wouldBe)
-		// truncate wantlist to avoid overflow
-		available, o := bits.Sub(e.maxQueuedWantlistEntriesPerPeer, s, 0)
-		if o != 0 {
-			available = 0
-		}
-		wants = wants[:available]
+	var skipWants int
+	s := e.peerLedger.WantlistSizeForPeer(p)
+	available := int(e.maxQueuedWantlistEntriesPerPeer) - s
+	if len(wants) > available {
+		log.Debugw("wantlist overflow", "local", e.self, "remote", p, "would be", s+len(wants))
+		// truncate-left wantlist to avoid overflow
+		skipWants = len(wants) - available
 	}
 
 	filteredWants := wants[:0] // shift inplace
 
-	for _, entry := range wants {
+	for _, entry := range wants[skipWants:] {
 		if entry.Cid.Prefix().MhType == mh.IDENTITY {
 			// This is a truely broken client, let's kill the connection.
 			e.lock.Unlock()

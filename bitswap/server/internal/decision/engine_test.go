@@ -1733,3 +1733,36 @@ func TestKillConnectionForInlineCid(t *testing.T) {
 		t.Fatal("connection was not killed when receiving inline in cancel")
 	}
 }
+
+func TestWantlistOverflow(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const limit = 32
+	warsaw := newTestEngine(ctx, "warsaw", WithMaxQueuedWantlistEntriesPerPeer(limit))
+	riga := newTestEngine(ctx, "riga")
+
+	m := message.New(false)
+	for i := 0; i < 2*limit; i++ {
+		m.AddEntry(blocks.NewBlock([]byte(fmt.Sprint(i))).Cid(), 0, pb.Message_Wantlist_Block, true)
+	}
+	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+
+	if warsaw.Peer == riga.Peer {
+		t.Fatal("Sanity Check: Peers have same Key!")
+	}
+
+	wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+	if len(wl) != limit {
+		t.Fatal("wantlist does not match limit", len(wl))
+	}
+
+	firstEnt := wl[0]
+
+	m.AddEntry(blocks.NewBlock([]byte(fmt.Sprint(2*limit+1))).Cid(), 0, pb.Message_Wantlist_Block, true)
+	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+	wl = warsaw.Engine.WantlistForPeer(riga.Peer)
+	if wl[0].Cid == firstEnt.Cid {
+		t.Fatal("First entry in wantlist should be different")
+	}
+}
