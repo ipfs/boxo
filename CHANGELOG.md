@@ -24,6 +24,22 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
+## [v0.21.0]
+
+### Changed
+
+- `boxo/gateway` is now tested against [gateway-conformance v6](https://github.com/ipfs/gateway-conformance/releases/tag/v0.6.0)
+- `bitswap/client` supports additional tracing 
+
+### Removed
+
+* 🛠 `routing/none` removed `ConstructNilRouting`, if you need this functionality you can use the Null Router from [go-libp2p-routing-helpers](https://github.com/libp2p/go-libp2p-routing-helpers).
+
+### Fixed
+
+- `routing/http`: the `FindPeer` now returns `routing.ErrNotFound` when no addresses are found
+- `routing/http`: the `FindProvidersAsync` no longer causes a goroutine buildup
+
 ## [v0.20.0]
 
 ### Added
