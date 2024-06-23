@@ -42,13 +42,14 @@ func (l *DefaultPeerLedger) CancelWant(p peer.ID, k cid.Cid) bool {
 	if !ok {
 		return false
 	}
+	_, had := wants[k]
 	delete(wants, k)
 	if len(wants) == 0 {
 		delete(l.peers, p)
 	}
 
 	l.removePeerFromCid(p, k)
-	return true
+	return had
 }
 
 func (l *DefaultPeerLedger) CancelWantWithType(p peer.ID, k cid.Cid, typ pb.Message_Wantlist_WantType) {

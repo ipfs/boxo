@@ -253,17 +253,21 @@ func (m *impl) Empty() bool {
 }
 
 func (m *impl) Wantlist() []Entry {
-	out := make([]Entry, 0, len(m.wantlist))
+	out := make([]Entry, len(m.wantlist))
+	var i int
 	for _, e := range m.wantlist {
-		out = append(out, *e)
+		out[i] = *e
+		i++
 	}
 	return out
 }
 
 func (m *impl) Blocks() []blocks.Block {
-	bs := make([]blocks.Block, 0, len(m.blocks))
+	bs := make([]blocks.Block, len(m.blocks))
+	var i int
 	for _, block := range m.blocks {
-		bs = append(bs, block)
+		bs[i] = block
+		i++
 	}
 	return bs
 }
