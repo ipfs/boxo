@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `boxo/gateway` now returns 404 Status Not Found instead of 500 when the requested data cannot be found, without a fallback on bitswap or similar restriction.
+
 ### Security
 
 ## [v0.21.0]

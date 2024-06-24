@@ -924,7 +924,7 @@ func TestErrorBubblingFromBackend(t *testing.T) {
 		})
 	}
 
-	testError("500 Not Found from IPLD", &ipld.ErrNotFound{}, http.StatusInternalServerError)
+	testError("404 Not Found from IPLD", &ipld.ErrNotFound{}, http.StatusNotFound)
 	testError("404 Not Found from path resolver", &resolver.ErrNoLink{}, http.StatusNotFound)
 	testError("502 Bad Gateway", ErrBadGateway, http.StatusBadGateway)
 	testError("504 Gateway Timeout", ErrGatewayTimeout, http.StatusGatewayTimeout)
