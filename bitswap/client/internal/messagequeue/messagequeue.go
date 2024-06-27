@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	log   = logging.Logger("bitswap")
+	log   = logging.Logger("bs:msgqueue")
 	sflog = log.Desugar()
 )
 
