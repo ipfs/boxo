@@ -18,8 +18,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- `bitswap/server` minor memory use improvements
- 
+- `bitswap/server` minor memory use and performance improvements
+
 ### Removed
 
 ### Fixed

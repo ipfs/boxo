@@ -837,7 +837,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	return false
 }
 
-// Split the want-have / want-block entries from the cancel and deny entries.
+// Split the want-havek entries from the cancel and deny entries.
 func (e *Engine) splitWantsCancelsDenials(p peer.ID, entries []bsmsg.Entry) ([]bsmsg.Entry, []bsmsg.Entry, []bsmsg.Entry) {
 	if len(entries) == 0 {
 		return nil, nil, nil
