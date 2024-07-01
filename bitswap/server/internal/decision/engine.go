@@ -675,6 +675,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 
 	if m.Empty() {
 		log.Infof("received empty message from %s", p)
+		return false
 	}
 
 	newWorkExists := false
