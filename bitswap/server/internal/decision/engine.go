@@ -671,8 +671,6 @@ func (e *Engine) Peers() []peer.ID {
 // request queue (this is later popped off by the workerTasks). Returns true
 // if the connection to the server must be closed.
 func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwapMessage) bool {
-	entries := m.Wantlist() // creates copy; safe to modify
-
 	if m.Empty() {
 		log.Infof("received empty message from %s", p)
 		return false
@@ -685,7 +683,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		}
 	}()
 
-	wants, cancels, denials := e.splitWantsCancelsDenials(p, entries)
+	wants, cancels, denials := e.splitWantsCancelsDenials(p, m)
 
 	// Get block sizes
 	wantKs := cid.NewSet()
@@ -838,7 +836,8 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 }
 
 // Split the want-havek entries from the cancel and deny entries.
-func (e *Engine) splitWantsCancelsDenials(p peer.ID, entries []bsmsg.Entry) ([]bsmsg.Entry, []bsmsg.Entry, []bsmsg.Entry) {
+func (e *Engine) splitWantsCancelsDenials(p peer.ID, m bsmsg.BitSwapMessage) ([]bsmsg.Entry, []bsmsg.Entry, []bsmsg.Entry) {
+	entries := m.Wantlist() // creates copy; safe to modify
 	if len(entries) == 0 {
 		return nil, nil, nil
 	}
