@@ -741,7 +741,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 			if e.peerLedger.CancelWant(p, entCid) {
 				e.peerRequestQueue.Remove(entCid, p)
 			}
-			e.peerLedger.Wants(p, entry.Entry, int(e.maxQueuedWantlistEntriesPerPeer))
+			e.peerLedger.Wants(p, entry.Entry, 0)
 			wants = append(wants, entry)
 		}
 	}
@@ -834,50 +834,6 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	}
 	return false
 }
-
-/*
-
-		// Ensure sufficient space for new wants.
-		s := e.peerLedger.WantlistSizeForPeer(p)
-		available := int(e.maxQueuedWantlistEntriesPerPeer) - s
-		if len(wants) > available {
-			needSpace := len(wants) - available
-			log.Debugw("wantlist overflow", "local", e.self, "remote", p, "would be", s+len(wants), "canceling", needSpace)
-			// Cancel any wants that are being requested again. This makes room
-			// for new wants and minimizes that existing wants to cancel that
-			// are not in the new request.
-			for _, entry := range wants {
-				if e.peerLedger.CancelWant(p, entry.Cid) {
-					e.peerRequestQueue.Remove(entry.Cid, p)
-					needSpace--
-					if needSpace == 0 {
-						break
-					}
-				}
-			}
-			// Cancel additional wants, that are not being replaced, to make
-			// room for new wants.
-			if needSpace != 0 {
-				wl := e.peerLedger.WantlistForPeer(p)
-				for i := range wl {
-					entCid := wl[i].Cid
-					if e.peerLedger.CancelWant(p, entCid) {
-						e.peerRequestQueue.Remove(entCid, p)
-						needSpace--
-						if needSpace == 0 {
-							break
-						}
-					}
-				}
-			}
-		}
-
-		for _, entry := range wants {
-			e.peerLedger.Wants(p, entry.Entry)
-		}
-	}
-
-*/
 
 // Split the want-havek entries from the cancel and deny entries.
 func (e *Engine) splitWantsCancelsDenials(p peer.ID, m bsmsg.BitSwapMessage) ([]bsmsg.Entry, []bsmsg.Entry, []bsmsg.Entry, error) {
