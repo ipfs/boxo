@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
+	wl "github.com/ipfs/boxo/bitswap/client/wantlist"
 	"github.com/ipfs/boxo/bitswap/internal/testutil"
 	message "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
@@ -1739,55 +1740,91 @@ func TestWantlistOverflow(t *testing.T) {
 	defer cancel()
 
 	const limit = 32
+
 	warsaw := newTestEngine(ctx, "warsaw", WithMaxQueuedWantlistEntriesPerPeer(limit))
 	riga := newTestEngine(ctx, "riga")
-
-	m := message.New(false)
-	for i := 0; i < limit+(limit/2); i++ {
-		m.AddEntry(blocks.NewBlock([]byte(fmt.Sprint(i))).Cid(), 0, pb.Message_Wantlist_Block, true)
-	}
-	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
-
 	if warsaw.Peer == riga.Peer {
 		t.Fatal("Sanity Check: Peers have same Key!")
 	}
 
-	// Check that the wantlist is at the size limit, and limit/2 wants ignored.
+	var blockNum int
+	m := message.New(false)
+	for blockNum < limit {
+		m.AddEntry(blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid(), 1, pb.Message_Wantlist_Block, true)
+		blockNum++
+	}
+	lowPrioCids := make([]cid.Cid, 0, 5)
+	for blockNum < cap(lowPrioCids) {
+		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		blockNum++
+		m.AddEntry(c, 0, pb.Message_Wantlist_Block, true)
+		lowPrioCids = append(lowPrioCids, c)
+	}
+	highPrioCids := make([]cid.Cid, 0, 5)
+	for blockNum < cap(highPrioCids) {
+		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		blockNum++
+		m.AddEntry(c, 10, pb.Message_Wantlist_Block, true)
+		lowPrioCids = append(highPrioCids, c)
+	}
+	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+
+	// Check that the wantlist is at the size limit.
 	wl := warsaw.Engine.WantlistForPeer(riga.Peer)
 	if len(wl) != limit {
-		t.Fatal("wantlist does not match limit", len(wl))
+		t.Fatal("wantlist size", len(wl), "does not match limit", limit)
+	}
+
+	// Check that low priority entries not on wantlist.
+	for _, c := range lowPrioCids {
+		if findCid(c, wl) {
+			t.Fatal("low priority entry should not be on wantlist")
+		}
+	}
+	// Check that high priority entries are all on wantlist.
+	for _, c := range highPrioCids {
+		if !findCid(c, wl) {
+			t.Fatal("expected high priority entry on wantlist")
+		}
 	}
 
 	m = message.New(false)
-	blockCids := make([]cid.Cid, limit/2+4)
-	for i := 0; i < limit/2+4; i++ {
-		c := blocks.NewBlock([]byte(fmt.Sprint(i + limit))).Cid()
+
+	lowPrioCids = lowPrioCids[:0]
+	for blockNum < cap(lowPrioCids) {
+		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		blockNum++
 		m.AddEntry(c, 0, pb.Message_Wantlist_Block, true)
-		blockCids[i] = c
+		lowPrioCids = append(lowPrioCids, c)
+	}
+	highPrioCids = highPrioCids[:0]
+	for blockNum < cap(highPrioCids) {
+		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		blockNum++
+		m.AddEntry(c, 10, pb.Message_Wantlist_Block, true)
+		lowPrioCids = append(highPrioCids, c)
 	}
 	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
-	wl = warsaw.Engine.WantlistForPeer(riga.Peer)
 
-	// Check that wantlist is still at size limit.
-	if len(wl) != limit {
-		t.Fatalf("wantlist size %d does not match limit %d", len(wl), limit)
-	}
-
-	// Check that all new blocks are in wantlist.
-	var missing int
-	for _, c := range blockCids {
-		var found bool
-		for i := range wl {
-			if wl[i].Cid == c {
-				found = true
-				break
-			}
-		}
-		if !found {
-			missing++
+	// Check that low priority entries not on wantlist.
+	for _, c := range lowPrioCids {
+		if findCid(c, wl) {
+			t.Fatal("low priority entry should not be on wantlist")
 		}
 	}
-	if missing != 0 {
-		t.Fatalf("Missing %d new wants expected in wantlist", missing)
+	// Check that high priority entries are all on wantlist.
+	for _, c := range highPrioCids {
+		if !findCid(c, wl) {
+			t.Fatal("expected high priority entry on wantlist")
+		}
 	}
+}
+
+func findCid(c cid.Cid, wantList []wl.Entry) bool {
+	for i := range wantList {
+		if wantList[i].Cid == c {
+			return true
+		}
+	}
+	return false
 }

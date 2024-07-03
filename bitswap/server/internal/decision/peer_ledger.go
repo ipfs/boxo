@@ -21,11 +21,18 @@ func NewDefaultPeerLedger() *DefaultPeerLedger {
 	}
 }
 
-func (l *DefaultPeerLedger) Wants(p peer.ID, e wl.Entry) {
+// Wants adds an entry to the peer ledger. If adding the entry would make the
+// peer ledger exceed the size limit, then the entry is not added and false is
+// returned.
+func (l *DefaultPeerLedger) Wants(p peer.ID, e wl.Entry, limit int) bool {
 	cids, ok := l.peers[p]
 	if !ok {
 		cids = make(map[cid.Cid]entry)
 		l.peers[p] = cids
+	} else if len(cids) == limit {
+		if _, ok = cids[e.Cid]; !ok {
+			return false // cannot add to peer ledger
+		}
 	}
 	cids[e.Cid] = entry{e.Priority, e.WantType}
 
@@ -35,6 +42,8 @@ func (l *DefaultPeerLedger) Wants(p peer.ID, e wl.Entry) {
 		l.cids[e.Cid] = m
 	}
 	m[p] = entry{e.Priority, e.WantType}
+
+	return true
 }
 
 func (l *DefaultPeerLedger) CancelWant(p peer.ID, k cid.Cid) bool {
