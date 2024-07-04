@@ -2,7 +2,7 @@
 
 This example shows how to download a UnixFS file or directory from a gateway that implements
 [application/vnd.ipld.car](https://www.iana.org/assignments/media-types/application/vnd.ipld.car)
-responses of the [Trustles Gateway](https://specs.ipfs.tech/http-gateways/trustless-gateway/)
+responses of the [Trustless Gateway](https://specs.ipfs.tech/http-gateways/trustless-gateway/)
 specification, in a trustless, verifiable manner.
 
 It relies on [IPIP-402](https://specs.ipfs.tech/ipips/ipip-0402/) to retrieve
