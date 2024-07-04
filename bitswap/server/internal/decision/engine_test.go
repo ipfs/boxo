@@ -1741,31 +1741,48 @@ func TestWantlistOverflow(t *testing.T) {
 
 	const limit = 32
 
-	warsaw := newTestEngine(ctx, "warsaw", WithMaxQueuedWantlistEntriesPerPeer(limit))
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+
+	var blockNum int
+	m := message.New(false)
+	for blockNum < limit {
+		block := blocks.NewBlock([]byte(fmt.Sprint(blockNum)))
+		if err := bs.Put(context.Background(), block); err != nil {
+			t.Fatal(err)
+		}
+		m.AddEntry(block.Cid(), 1, pb.Message_Wantlist_Block, true)
+		blockNum++
+	}
+
+	fpt := &fakePeerTagger{}
+	e := newEngineForTesting(ctx, bs, fpt, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4), WithMaxQueuedWantlistEntriesPerPeer(limit))
+	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
+	warsaw := engineSet{
+		Peer:       peer.ID("warsaw"),
+		PeerTagger: fpt,
+		Blockstore: bs,
+		Engine:     e,
+	}
+
+	//warsaw := newTestEngine(ctx, "warsaw", WithMaxQueuedWantlistEntriesPerPeer(limit))
 	riga := newTestEngine(ctx, "riga")
 	if warsaw.Peer == riga.Peer {
 		t.Fatal("Sanity Check: Peers have same Key!")
 	}
 
-	var blockNum int
-	m := message.New(false)
-	for blockNum < limit {
-		m.AddEntry(blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid(), 1, pb.Message_Wantlist_Block, true)
-		blockNum++
-	}
-	lowPrioCids := make([]cid.Cid, 0, 5)
-	for blockNum < cap(lowPrioCids) {
+	lowPrioCids := make([]cid.Cid, 5)
+	for i := 0; i < cap(lowPrioCids); i++ {
 		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
 		blockNum++
 		m.AddEntry(c, 0, pb.Message_Wantlist_Block, true)
-		lowPrioCids = append(lowPrioCids, c)
+		lowPrioCids[i] = c
 	}
-	highPrioCids := make([]cid.Cid, 0, 5)
-	for blockNum < cap(highPrioCids) {
+	highPrioCids := make([]cid.Cid, 5)
+	for i := 0; i < cap(highPrioCids); i++ {
 		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
 		blockNum++
 		m.AddEntry(c, 10, pb.Message_Wantlist_Block, true)
-		lowPrioCids = append(highPrioCids, c)
+		highPrioCids[i] = c
 	}
 	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
 
@@ -1788,35 +1805,53 @@ func TestWantlistOverflow(t *testing.T) {
 		}
 	}
 
+	// These 7 new wants should overflow and 5 ot them should replace existing
+	// wants that do not have blocks.
 	m = message.New(false)
-
-	lowPrioCids = lowPrioCids[:0]
-	for blockNum < cap(lowPrioCids) {
+	blockCids := make([]cid.Cid, 7)
+	for i := 0; i < cap(blockCids); i++ {
 		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
 		blockNum++
 		m.AddEntry(c, 0, pb.Message_Wantlist_Block, true)
-		lowPrioCids = append(lowPrioCids, c)
-	}
-	highPrioCids = highPrioCids[:0]
-	for blockNum < cap(highPrioCids) {
-		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
-		blockNum++
-		m.AddEntry(c, 10, pb.Message_Wantlist_Block, true)
-		lowPrioCids = append(highPrioCids, c)
+		blockCids[i] = c
 	}
 	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+	wl = warsaw.Engine.WantlistForPeer(riga.Peer)
+	if len(wl) != limit {
+		t.Fatal("wantlist size", len(wl), "does not match limit", limit)
+	}
 
-	// Check that low priority entries not on wantlist.
-	for _, c := range lowPrioCids {
+	var findCount int
+	for _, c := range blockCids {
 		if findCid(c, wl) {
-			t.Fatal("low priority entry should not be on wantlist")
+			findCount++
 		}
 	}
-	// Check that high priority entries are all on wantlist.
-	for _, c := range highPrioCids {
-		if !findCid(c, wl) {
-			t.Fatal("expected high priority entry on wantlist")
+	if findCount != len(highPrioCids) {
+		t.Fatal("expected", len(highPrioCids), "of the new blocks, found", findCount)
+	}
+
+	// These 7 new wants should overflow and all 7 ot them should replace
+	// existing wants, 5 that do not have blocks, and 2 that have blocks but
+	// are lower priority.
+	m = message.New(false)
+	for i := 0; i < cap(blockCids); i++ {
+		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		blockNum++
+		m.AddEntry(c, 11, pb.Message_Wantlist_Block, true)
+		blockCids[i] = c
+	}
+	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+	wl = warsaw.Engine.WantlistForPeer(riga.Peer)
+
+	findCount = 0
+	for _, c := range blockCids {
+		if findCid(c, wl) {
+			findCount++
 		}
+	}
+	if findCount != len(blockCids) {
+		t.Fatal("expected", len(blockCids), "of the new blocks, found", findCount)
 	}
 }
 

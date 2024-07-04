@@ -718,32 +718,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	}
 
 	if len(overflow) != 0 {
-		// Sort wl and overflow from least to most important.
-		peerWants := e.peerLedger.WantlistForPeer(p)
-		slices.SortFunc(peerWants, func(a, b wl.Entry) int {
-			return cmp.Compare(a.Priority, b.Priority)
-		})
-		slices.SortFunc(overflow, func(a, b bsmsg.Entry) int {
-			return cmp.Compare(a.Entry.Priority, b.Entry.Priority)
-		})
-
-		// Put overflow wants onto the request queue by replacing entries that
-		// have the same or lower priority.
-		var replace int
-		for _, entry := range overflow {
-			if entry.Entry.Priority <= peerWants[replace].Priority {
-				// Everything in peerWants is equal or more improtant, so this
-				// overflow entry cannot replace any existing wants.
-				continue
-			}
-			entCid := peerWants[replace].Cid
-			replace++
-			if e.peerLedger.CancelWant(p, entCid) {
-				e.peerRequestQueue.Remove(entCid, p)
-			}
-			e.peerLedger.Wants(p, entry.Entry, 0)
-			wants = append(wants, entry)
-		}
+		wants = e.handleOverflow(ctx, p, wants, overflow)
 	}
 
 	for _, entry := range cancels {
@@ -763,12 +738,6 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		// Only add the task to the queue if the requester wants a DONT_HAVE
 		if e.sendDontHaves && entry.SendDontHave {
 			c := entry.Cid
-
-			isWantBlock := false
-			if entry.WantType == pb.Message_Wantlist_Block {
-				isWantBlock = true
-			}
-
 			activeEntries = append(activeEntries, peertask.Task{
 				Topic:    c,
 				Priority: int(entry.Priority),
@@ -776,7 +745,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 				Data: &taskData{
 					BlockSize:    0,
 					HaveBlock:    false,
-					IsWantBlock:  isWantBlock,
+					IsWantBlock:  entry.WantType == pb.Message_Wantlist_Block,
 					SendDontHave: entry.SendDontHave,
 				},
 			})
@@ -833,6 +802,77 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		e.signalNewWork()
 	}
 	return false
+}
+
+// handleOverflow processes incoming wants that could not be addded to the peer
+// ledger without exceeding the peer want limit. These are handled by trying to
+// make room by canceling existing wants for which there is no block. If this
+// does not make sufficient room, then any lower priority wants that have
+// blocks are canceled.
+func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, wants, overflow []bsmsg.Entry) []bsmsg.Entry {
+	existingWants := e.peerLedger.WantlistForPeer(p)
+	// Sort wl and overflow from least to most important.
+	slices.SortFunc(existingWants, func(a, b wl.Entry) int {
+		return cmp.Compare(a.Priority, b.Priority)
+	})
+	slices.SortFunc(overflow, func(a, b bsmsg.Entry) int {
+		return cmp.Compare(a.Entry.Priority, b.Entry.Priority)
+	})
+
+	queuedWantKs := cid.NewSet()
+	for _, entry := range existingWants {
+		queuedWantKs.Add(entry.Cid)
+	}
+	queuedBlockSizes, err := e.bsm.getBlockSizes(ctx, queuedWantKs.Keys())
+	if err != nil {
+		log.Info("aborting overflow processing", err)
+		return wants
+	}
+
+	// Remove entries for blocks that are not present to make room for overflow.
+	var removed []int
+	for i, w := range existingWants {
+		if _, found := queuedBlockSizes[w.Cid]; !found {
+			// Cancel lowest priority dont-have.
+			if e.peerLedger.CancelWant(p, w.Cid) {
+				e.peerRequestQueue.Remove(w.Cid, p)
+			}
+			removed = append(removed, i)
+			// Add highest priority overflow.
+			lastOver := overflow[len(overflow)-1]
+			overflow = overflow[:len(overflow)-1]
+			e.peerLedger.Wants(p, lastOver.Entry, 0)
+			wants = append(wants, lastOver)
+			if len(overflow) == 0 {
+				break
+			}
+		}
+	}
+
+	// Not enough dont-haves removed. Replace existing entries, that are a
+	// lower priority, with overflow entries.
+	var replace int
+	for _, overflowEnt := range overflow {
+		// Do not compare with removed existingWants entry.
+		for len(removed) != 0 && replace == removed[0] {
+			replace++
+			removed = removed[1:]
+		}
+		if overflowEnt.Entry.Priority <= existingWants[replace].Priority {
+			// Everything in existingWants is equal or more improtant, so this
+			// overflow entry cannot replace any existing wants.
+			continue
+		}
+		entCid := existingWants[replace].Cid
+		replace++
+		if e.peerLedger.CancelWant(p, entCid) {
+			e.peerRequestQueue.Remove(entCid, p)
+		}
+		e.peerLedger.Wants(p, overflowEnt.Entry, 0)
+		wants = append(wants, overflowEnt)
+	}
+
+	return wants
 }
 
 // Split the want-havek entries from the cancel and deny entries.
