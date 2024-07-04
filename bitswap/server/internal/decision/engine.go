@@ -316,8 +316,11 @@ func WithMaxOutstandingBytesPerPeer(count int) Option {
 	}
 }
 
-// WithMaxQueuedWantlistEntriesPerPeer limits how much individual entries each peer is allowed to send.
-// If a peer send us more than this we will truncate newest entries.
+// WithMaxQueuedWantlistEntriesPerPeer limits how many individual entries each
+// peer is allowed to send. If a peer sends more than this, then the lowest
+// priority entries are truncated to this limit. If there is insufficient space
+// to enqueue new entries, then older existing wants with no associated blocks,
+// and lower priority wants, are canceled to make room for the new wants.
 func WithMaxQueuedWantlistEntriesPerPeer(count uint) Option {
 	return func(e *Engine) {
 		e.maxQueuedWantlistEntriesPerPeer = count
