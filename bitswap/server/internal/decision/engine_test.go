@@ -1764,7 +1764,6 @@ func TestWantlistOverflow(t *testing.T) {
 		Engine:     e,
 	}
 
-	//warsaw := newTestEngine(ctx, "warsaw", WithMaxQueuedWantlistEntriesPerPeer(limit))
 	riga := newTestEngine(ctx, "riga")
 	if warsaw.Peer == riga.Peer {
 		t.Fatal("Sanity Check: Peers have same Key!")
@@ -1805,7 +1804,7 @@ func TestWantlistOverflow(t *testing.T) {
 		}
 	}
 
-	// These 7 new wants should overflow and 5 ot them should replace existing
+	// These 7 new wants should overflow and 5 of them should replace existing
 	// wants that do not have blocks.
 	m = message.New(false)
 	blockCids := make([]cid.Cid, 7)

@@ -133,7 +133,7 @@ type PeerEntry struct {
 // PeerLedger is an external ledger dealing with peers and their want lists.
 type PeerLedger interface {
 	// Wants informs the ledger that [peer.ID] wants [wl.Entry].
-	Wants(p peer.ID, e wl.Entry, limit int) bool
+	Wants(p peer.ID, e wl.Entry) bool
 
 	// CancelWant returns true if the [cid.Cid] was removed from the wantlist of [peer.ID].
 	CancelWant(p peer.ID, k cid.Cid) bool
@@ -406,7 +406,6 @@ func newEngine(
 		taskWorkerCount:                 defaults.BitswapEngineTaskWorkerCount,
 		sendDontHaves:                   true,
 		self:                            self,
-		peerLedger:                      NewDefaultPeerLedger(),
 		pendingGauge:                    bmetrics.PendingEngineGauge(ctx),
 		activeGauge:                     bmetrics.ActiveEngineGauge(ctx),
 		targetMessageSize:               defaultTargetMessageSize,
@@ -418,6 +417,11 @@ func newEngine(
 
 	for _, opt := range opts {
 		opt(e)
+	}
+
+	// If peerLedger was not set by option, then create a default instance.
+	if e.peerLedger == nil {
+		e.peerLedger = NewDefaultPeerLedger(e.maxQueuedWantlistEntriesPerPeer)
 	}
 
 	e.bsm = newBlockstoreManager(bs, e.bstoreWorkerCount, bmetrics.PendingBlocksGauge(ctx), bmetrics.ActiveBlocksGauge(ctx))
@@ -687,6 +691,20 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		return true
 	}
 
+	// If there is a possibility of overflow, sort the wantlist to make sure
+	// the highest priority items are put into the free space.
+	freeSpace := int(e.maxQueuedWantlistEntriesPerPeer) - e.peerLedger.WantlistSizeForPeer(p)
+	if len(wants) > freeSpace {
+		// Sort incoming wants from most to least important.
+		slices.SortFunc(wants, func(a, b bsmsg.Entry) int {
+			return cmp.Compare(b.Entry.Priority, a.Entry.Priority)
+		})
+		// Do not take more wants that can be handled.
+		if len(wants) > int(e.maxQueuedWantlistEntriesPerPeer) {
+			wants = wants[:int(e.maxQueuedWantlistEntriesPerPeer)]
+		}
+	}
+
 	// Get block sizes
 	wantKs := cid.NewSet()
 	for _, entry := range wants {
@@ -708,7 +726,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	if len(wants) != 0 {
 		filteredWants := wants[:0] // shift inplace
 		for _, entry := range wants {
-			if !e.peerLedger.Wants(p, entry.Entry, int(e.maxQueuedWantlistEntriesPerPeer)) {
+			if !e.peerLedger.Wants(p, entry.Entry) {
 				// Cannot add entry because it would exceed size limit.
 				overflow = append(overflow, entry)
 				continue
@@ -721,7 +739,8 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	}
 
 	if len(overflow) != 0 {
-		wants = e.handleOverflow(ctx, p, wants, overflow)
+		// Overflow is already sorted, so no need to do it here.
+		wants = e.handleOverflow(ctx, p, overflow, wants)
 	}
 
 	for _, entry := range cancels {
@@ -812,14 +831,17 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 // make room by canceling existing wants for which there is no block. If this
 // does not make sufficient room, then any lower priority wants that have
 // blocks are canceled.
-func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, wants, overflow []bsmsg.Entry) []bsmsg.Entry {
+//
+// This assumes that overflow is already sorted from most to least important.
+//
+// Important: handleOverflwo must be called e.lock is locked.
+func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, overflow, wants []bsmsg.Entry) []bsmsg.Entry {
 	existingWants := e.peerLedger.WantlistForPeer(p)
-	// Sort wl and overflow from least to most important.
+
+	// Sort wl from least to most important, to try to replace lowest priority
+	// items first.
 	slices.SortFunc(existingWants, func(a, b wl.Entry) int {
-		return cmp.Compare(a.Priority, b.Priority)
-	})
-	slices.SortFunc(overflow, func(a, b bsmsg.Entry) int {
-		return cmp.Compare(a.Entry.Priority, b.Entry.Priority)
+		return cmp.Compare(b.Priority, a.Priority)
 	})
 
 	queuedWantKs := cid.NewSet()
@@ -841,19 +863,20 @@ func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, wants, overflow 
 				e.peerRequestQueue.Remove(w.Cid, p)
 			}
 			removed = append(removed, i)
-			// Add highest priority overflow.
-			lastOver := overflow[len(overflow)-1]
-			overflow = overflow[:len(overflow)-1]
-			e.peerLedger.Wants(p, lastOver.Entry, 0)
-			wants = append(wants, lastOver)
+			// Pop hoghest priority overflow.
+			firstOver := overflow[0]
+			overflow = overflow[1:]
+			// Add highest priority overflow to wants.
+			e.peerLedger.Wants(p, firstOver.Entry)
+			wants = append(wants, firstOver)
 			if len(overflow) == 0 {
-				break
+				return wants
 			}
 		}
 	}
 
-	// Not enough dont-haves removed. Replace existing entries, that are a
-	// lower priority, with overflow entries.
+	// Replace existing entries, that are a lower priority, with overflow
+	// entries.
 	var replace int
 	for _, overflowEnt := range overflow {
 		// Do not compare with removed existingWants entry.
@@ -861,17 +884,17 @@ func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, wants, overflow 
 			replace++
 			removed = removed[1:]
 		}
-		if overflowEnt.Entry.Priority <= existingWants[replace].Priority {
-			// Everything in existingWants is equal or more improtant, so this
-			// overflow entry cannot replace any existing wants.
-			continue
+		if overflowEnt.Entry.Priority < existingWants[replace].Priority {
+			// All overflow entries have too low of priority to replace any
+			// existing wants.
+			break
 		}
 		entCid := existingWants[replace].Cid
 		replace++
 		if e.peerLedger.CancelWant(p, entCid) {
 			e.peerRequestQueue.Remove(entCid, p)
 		}
-		e.peerLedger.Wants(p, overflowEnt.Entry, 0)
+		e.peerLedger.Wants(p, overflowEnt.Entry)
 		wants = append(wants, overflowEnt)
 	}
 
@@ -921,15 +944,6 @@ func (e *Engine) splitWantsCancelsDenials(p peer.ID, m bsmsg.BitSwapMessage) ([]
 
 	if len(wants) == 0 {
 		wants = nil
-	}
-
-	// Do not take more wants that can be handled.
-	if len(wants) > int(e.maxQueuedWantlistEntriesPerPeer) {
-		// Keep the highest priority wants.
-		slices.SortFunc(wants, func(a, b bsmsg.Entry) int {
-			return cmp.Compare(b.Entry.Priority, a.Entry.Priority)
-		})
-		wants = wants[:int(e.maxQueuedWantlistEntriesPerPeer)]
 	}
 
 	// Clear truncated entries.
