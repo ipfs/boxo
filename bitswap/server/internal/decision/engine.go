@@ -691,18 +691,9 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		return true
 	}
 
-	// If there is a possibility of overflow, sort the wantlist to make sure
-	// the highest priority items are put into the free space.
-	freeSpace := int(e.maxQueuedWantlistEntriesPerPeer) - e.peerLedger.WantlistSizeForPeer(p)
-	if len(wants) > freeSpace {
-		// Sort incoming wants from most to least important.
-		slices.SortFunc(wants, func(a, b bsmsg.Entry) int {
-			return cmp.Compare(b.Entry.Priority, a.Entry.Priority)
-		})
-		// Do not take more wants that can be handled.
-		if len(wants) > int(e.maxQueuedWantlistEntriesPerPeer) {
-			wants = wants[:int(e.maxQueuedWantlistEntriesPerPeer)]
-		}
+	// Do not take more wants that can be handled.
+	if len(wants) > int(e.maxQueuedWantlistEntriesPerPeer) {
+		wants = wants[:int(e.maxQueuedWantlistEntriesPerPeer)]
 	}
 
 	// Get block sizes
@@ -739,7 +730,6 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	}
 
 	if len(overflow) != 0 {
-		// Overflow is already sorted, so no need to do it here.
 		wants = e.handleOverflow(ctx, p, overflow, wants)
 	}
 
@@ -832,14 +822,15 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 // does not make sufficient room, then any lower priority wants that have
 // blocks are canceled.
 //
-// This assumes that overflow is already sorted from most to least important.
-//
 // Important: handleOverflwo must be called e.lock is locked.
 func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, overflow, wants []bsmsg.Entry) []bsmsg.Entry {
+	// Sort overflow from most to least important.
+	slices.SortFunc(overflow, func(a, b bsmsg.Entry) int {
+		return cmp.Compare(b.Entry.Priority, a.Entry.Priority)
+	})
+	// Sort existing wants from least to most important, to try to replace
+	// lowest priority items first.
 	existingWants := e.peerLedger.WantlistForPeer(p)
-
-	// Sort wl from least to most important, to try to replace lowest priority
-	// items first.
 	slices.SortFunc(existingWants, func(a, b wl.Entry) int {
 		return cmp.Compare(b.Priority, a.Priority)
 	})

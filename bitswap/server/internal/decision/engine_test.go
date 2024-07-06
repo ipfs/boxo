@@ -1743,14 +1743,18 @@ func TestWantlistOverflow(t *testing.T) {
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 
+	origCids := make([]cid.Cid, limit)
 	var blockNum int
 	m := message.New(false)
 	for blockNum < limit {
 		block := blocks.NewBlock([]byte(fmt.Sprint(blockNum)))
-		if err := bs.Put(context.Background(), block); err != nil {
-			t.Fatal(err)
+		if blockNum != 0 { // do not put first block in blockstore.
+			if err := bs.Put(context.Background(), block); err != nil {
+				t.Fatal(err)
+			}
 		}
 		m.AddEntry(block.Cid(), 1, pb.Message_Wantlist_Block, true)
+		origCids[blockNum] = block.Cid()
 		blockNum++
 	}
 
@@ -1763,12 +1767,20 @@ func TestWantlistOverflow(t *testing.T) {
 		Blockstore: bs,
 		Engine:     e,
 	}
-
 	riga := newTestEngine(ctx, "riga")
 	if warsaw.Peer == riga.Peer {
 		t.Fatal("Sanity Check: Peers have same Key!")
 	}
 
+	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+	// Check that the wantlist is at the size limit.
+	wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+	if len(wl) != limit {
+		t.Fatal("wantlist size", len(wl), "does not match limit", limit)
+	}
+	t.Log("Senr message with", limit, "medium-priority wants and", limit-1, "have blocks present")
+
+	m = message.New(false)
 	lowPrioCids := make([]cid.Cid, 5)
 	for i := 0; i < cap(lowPrioCids); i++ {
 		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
@@ -1776,6 +1788,25 @@ func TestWantlistOverflow(t *testing.T) {
 		m.AddEntry(c, 0, pb.Message_Wantlist_Block, true)
 		lowPrioCids[i] = c
 	}
+	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+	wl = warsaw.Engine.WantlistForPeer(riga.Peer)
+	if len(wl) != limit {
+		t.Fatal("wantlist size", len(wl), "does not match limit", limit)
+	}
+	// Check that one low priority entry is on the wantlist, since there is one
+	// existing entry without a blocks and none at a lower priority.
+	var count int
+	for _, c := range lowPrioCids {
+		if findCid(c, wl) {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatal("Expected 1 low priority entry on wantlist, found", count)
+	}
+	t.Log("Sent message with", len(lowPrioCids), "low-priority wants. One accepted as replacement for existig want without block.")
+
+	m = message.New(false)
 	highPrioCids := make([]cid.Cid, 5)
 	for i := 0; i < cap(highPrioCids); i++ {
 		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
@@ -1784,30 +1815,24 @@ func TestWantlistOverflow(t *testing.T) {
 		highPrioCids[i] = c
 	}
 	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
-
-	// Check that the wantlist is at the size limit.
-	wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+	wl = warsaw.Engine.WantlistForPeer(riga.Peer)
 	if len(wl) != limit {
 		t.Fatal("wantlist size", len(wl), "does not match limit", limit)
 	}
-
-	// Check that low priority entries not on wantlist.
-	for _, c := range lowPrioCids {
-		if findCid(c, wl) {
-			t.Fatal("low priority entry should not be on wantlist")
-		}
-	}
-	// Check that high priority entries are all on wantlist.
+	// Check that all high priority entries are all on wantlist, since there
+	// were existing entries with lower priority.
 	for _, c := range highPrioCids {
 		if !findCid(c, wl) {
 			t.Fatal("expected high priority entry on wantlist")
 		}
 	}
+	t.Log("Sent message with", len(highPrioCids), "high-priority wants. All accepted replacing wants without block or low priority.")
 
-	// These 7 new wants should overflow and 5 of them should replace existing
-	// wants that do not have blocks.
+	// These new wants should overflow and some of them should replace existing
+	// wants that do not have blocks (the high-priority weants from the
+	// previous message).
 	m = message.New(false)
-	blockCids := make([]cid.Cid, 7)
+	blockCids := make([]cid.Cid, len(highPrioCids)+2)
 	for i := 0; i < cap(blockCids); i++ {
 		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
 		blockNum++
@@ -1820,38 +1845,32 @@ func TestWantlistOverflow(t *testing.T) {
 		t.Fatal("wantlist size", len(wl), "does not match limit", limit)
 	}
 
-	var findCount int
+	count = 0
 	for _, c := range blockCids {
 		if findCid(c, wl) {
-			findCount++
+			count++
 		}
 	}
-	if findCount != len(highPrioCids) {
-		t.Fatal("expected", len(highPrioCids), "of the new blocks, found", findCount)
+	if count != len(highPrioCids) {
+		t.Fatal("expected", len(highPrioCids), "of the new blocks, found", count)
 	}
+	t.Log("Sent message with", len(blockCids), "low-priority wants.", count, "accepted replacing wants without blocks from previous message")
 
-	// These 7 new wants should overflow and all 7 ot them should replace
-	// existing wants, 5 that do not have blocks, and 2 that have blocks but
-	// are lower priority.
+	// Send the original wants. Some should replace the existing wants that do
+	// not have blocks associated, and the rest should overwrite the existing
+	// ones.
 	m = message.New(false)
-	for i := 0; i < cap(blockCids); i++ {
-		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
-		blockNum++
-		m.AddEntry(c, 11, pb.Message_Wantlist_Block, true)
-		blockCids[i] = c
+	for _, c := range origCids {
+		m.AddEntry(c, 0, pb.Message_Wantlist_Block, true)
 	}
 	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
 	wl = warsaw.Engine.WantlistForPeer(riga.Peer)
-
-	findCount = 0
-	for _, c := range blockCids {
-		if findCid(c, wl) {
-			findCount++
+	for _, c := range origCids {
+		if !findCid(c, wl) {
+			t.Fatal("missing low-priority original wants to overwrite existing")
 		}
 	}
-	if findCount != len(blockCids) {
-		t.Fatal("expected", len(blockCids), "of the new blocks, found", findCount)
-	}
+	t.Log("Sent message with", len(origCids), "original wants at low priority. All accepted overwriting existing wants.")
 }
 
 func findCid(c cid.Cid, wantList []wl.Entry) bool {
