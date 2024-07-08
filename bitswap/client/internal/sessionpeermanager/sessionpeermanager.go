@@ -9,7 +9,7 @@ import (
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
-var log = logging.Logger("bs:sprmgr")
+var log = logging.Logger("bitswap/client/sesspeermgr")
 
 const (
 	// Connection Manager tag value for session peers. Indicates to connection

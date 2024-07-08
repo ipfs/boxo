@@ -26,7 +26,7 @@ import (
 	"github.com/multiformats/go-multistream"
 )
 
-var log = logging.Logger("bitswap_network")
+var log = logging.Logger("bitswap/network")
 
 var connectTimeout = time.Second * 5
 
