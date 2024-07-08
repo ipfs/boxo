@@ -691,11 +691,6 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		return true
 	}
 
-	// Do not take more wants that can be handled.
-	if len(wants) > int(e.maxQueuedWantlistEntriesPerPeer) {
-		wants = wants[:int(e.maxQueuedWantlistEntriesPerPeer)]
-	}
-
 	// Get block sizes
 	wantKs := cid.NewSet()
 	for _, entry := range wants {
@@ -730,6 +725,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	}
 
 	if len(overflow) != 0 {
+		log.Infow("handling wantlist overflow", "local", e.self, "from", p, "wantlistSize", len(wants), "overflowSize", len(overflow))
 		wants = e.handleOverflow(ctx, p, overflow, wants)
 	}
 
@@ -930,7 +926,10 @@ func (e *Engine) splitWantsCancelsDenials(p peer.ID, m bsmsg.BitSwapMessage) ([]
 			continue
 		}
 
-		wants = append(wants, et)
+		// Do not take more wants that can be handled.
+		if len(wants) < int(e.maxQueuedWantlistEntriesPerPeer) {
+			wants = append(wants, et)
+		}
 	}
 
 	if len(wants) == 0 {
