@@ -1735,6 +1735,91 @@ func TestKillConnectionForInlineCid(t *testing.T) {
 	}
 }
 
+func TestWantlistBlocked(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const limit = 32
+
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+
+	// Generate a set of blocks that the server has.
+	haveCids := make([]cid.Cid, limit)
+	var blockNum int
+	for blockNum < limit {
+		block := blocks.NewBlock([]byte(fmt.Sprint(blockNum)))
+		if blockNum != 0 { // do not put first block in blockstore.
+			if err := bs.Put(context.Background(), block); err != nil {
+				t.Fatal(err)
+			}
+		}
+		haveCids[blockNum] = block.Cid()
+		blockNum++
+	}
+
+	fpt := &fakePeerTagger{}
+	e := newEngineForTesting(ctx, bs, fpt, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4), WithMaxQueuedWantlistEntriesPerPeer(limit))
+	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
+	warsaw := engineSet{
+		Peer:       peer.ID("warsaw"),
+		PeerTagger: fpt,
+		Blockstore: bs,
+		Engine:     e,
+	}
+	riga := newTestEngine(ctx, "riga")
+	if warsaw.Peer == riga.Peer {
+		t.Fatal("Sanity Check: Peers have same Key!")
+	}
+
+	m := message.New(false)
+	dontHaveCids := make([]cid.Cid, limit)
+	for i := 0; i < limit; i++ {
+		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		blockNum++
+		m.AddEntry(c, 1, pb.Message_Wantlist_Block, true)
+		dontHaveCids[i] = c
+	}
+	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+	wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+	// Check that all the dontHave wants are on the wantlist.
+	for _, c := range dontHaveCids {
+		if !findCid(c, wl) {
+			t.Fatal("Expected all dontHaveCids to be on wantlist")
+		}
+	}
+	t.Log("All", len(wl), "dont-have CIDs are on wantlist")
+
+	m = message.New(false)
+	for _, c := range haveCids {
+		m.AddEntry(c, 1, pb.Message_Wantlist_Block, true)
+	}
+	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+	wl = warsaw.Engine.WantlistForPeer(riga.Peer)
+	// Check that all the dontHave wants are on the wantlist.
+	for _, c := range haveCids {
+		if !findCid(c, wl) {
+			t.Fatal("Missing expected want. Expected all haveCids to be on wantlist")
+		}
+	}
+	t.Log("All", len(wl), "new have CIDs are now on wantlist")
+
+	m = message.New(false)
+	for i := 0; i < limit; i++ {
+		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		blockNum++
+		m.AddEntry(c, 1, pb.Message_Wantlist_Block, true)
+		dontHaveCids[i] = c
+	}
+	warsaw.Engine.MessageReceived(ctx, riga.Peer, m)
+	// Check that all the new dontHave wants are not on the wantlist.
+	for _, c := range dontHaveCids {
+		if findCid(c, wl) {
+			t.Fatal("No new dontHaveCids should be on wantlist")
+		}
+	}
+	t.Log("All", len(wl), "new dont-have CIDs are not on wantlist")
+}
+
 func TestWantlistOverflow(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
