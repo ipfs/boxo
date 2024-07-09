@@ -13,7 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var log = logging.Logger("bitswap")
+var log = logging.Logger("bitswap/client/provqrymgr")
 
 const (
 	maxProviders         = 10

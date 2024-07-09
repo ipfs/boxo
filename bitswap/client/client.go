@@ -38,7 +38,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var log = logging.Logger("bitswap-client")
+var log = logging.Logger("bitswap/client")
 
 // Option defines the functional option type that can be used to configure
 // bitswap instances

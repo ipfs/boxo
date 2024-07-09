@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	log   = logging.Logger("bitswap")
+	log   = logging.Logger("bitswap/client/msgq")
 	sflog = log.Desugar()
 )
 

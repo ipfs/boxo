@@ -13,7 +13,7 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
-var log = logging.Logger("bitswap")
+var log = logging.Logger("bitswap/client/getter")
 
 // GetBlocksFunc is any function that can take an array of CIDs and return a
 // channel of incoming blocks.
