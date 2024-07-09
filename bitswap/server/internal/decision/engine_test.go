@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
 	message "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
 	blockstore "github.com/ipfs/boxo/blockstore"
@@ -22,6 +21,7 @@ import (
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
+	"github.com/ipfs/go-test/random"
 	process "github.com/jbenet/goprocess"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	libp2ptest "github.com/libp2p/go-libp2p/core/test"
@@ -221,8 +221,8 @@ func TestOutboxClosedWhenEngineClosed(t *testing.T) {
 }
 
 func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
-	alphabet := "abcdefghijklmnopqrstuvwxyz"
-	vowels := "aeiou"
+	const alphabet = "abcdefghijklmnopqrstuvwxyz"
+	const vowels = "aeiou"
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	for _, letter := range strings.Split(alphabet, "") {
@@ -561,7 +561,7 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 }
 
 func TestPartnerWantHaveWantBlockActive(t *testing.T) {
-	alphabet := "abcdefghijklmnopqrstuvwxyz"
+	const alphabet = "abcdefghijklmnopqrstuvwxyz"
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	for _, letter := range strings.Split(alphabet, "") {
@@ -903,7 +903,7 @@ func TestSendReceivedBlocksToPeersThatWantThem(t *testing.T) {
 	e := newEngineForTesting(ctx, bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 
-	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
+	blks := random.BlocksOfSize(4, 8*1024)
 	msg := message.New(false)
 	msg.AddEntry(blks[0].Cid(), 4, pb.Message_Wantlist_Have, false)
 	msg.AddEntry(blks[1].Cid(), 3, pb.Message_Wantlist_Have, false)
@@ -949,7 +949,7 @@ func TestSendDontHave(t *testing.T) {
 	e := newEngineForTesting(ctx, bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 
-	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
+	blks := random.BlocksOfSize(4, 8*1024)
 	msg := message.New(false)
 	msg.AddEntry(blks[0].Cid(), 4, pb.Message_Wantlist_Have, false)
 	msg.AddEntry(blks[1].Cid(), 3, pb.Message_Wantlist_Have, true)
@@ -1015,7 +1015,7 @@ func TestWantlistForPeer(t *testing.T) {
 	e := newEngineForTesting(ctx, bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
 	e.StartWorkers(ctx, process.WithTeardown(func() error { return nil }))
 
-	blks := testutil.GenerateBlocksOfSize(4, 8*1024)
+	blks := random.BlocksOfSize(4, 8*1024)
 	msg := message.New(false)
 	msg.AddEntry(blks[0].Cid(), 2, pb.Message_Wantlist_Have, false)
 	msg.AddEntry(blks[1].Cid(), 3, pb.Message_Wantlist_Have, false)
@@ -1454,7 +1454,7 @@ func TestTaggingPeers(t *testing.T) {
 }
 
 func TestTaggingUseful(t *testing.T) {
-	peerSampleIntervalHalf := 10 * time.Millisecond
+	const peerSampleIntervalHalf = 10 * time.Millisecond
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

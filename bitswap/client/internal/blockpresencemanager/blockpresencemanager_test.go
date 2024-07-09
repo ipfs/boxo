@@ -3,9 +3,10 @@ package blockpresencemanager
 import (
 	"testing"
 
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-test/random"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -18,69 +19,45 @@ const (
 func TestBlockPresenceManager(t *testing.T) {
 	bpm := New()
 
-	p := testutil.GeneratePeers(1)[0]
-	cids := testutil.GenerateCids(2)
+	p := random.Peers(1)[0]
+	cids := random.Cids(2)
 	c0 := cids[0]
 	c1 := cids[1]
 
 	// Nothing stored yet, both PeerHasBlock and PeerDoesNotHaveBlock should
 	// return false
-	if bpm.PeerHasBlock(p, c0) {
-		t.Fatal(expHasFalseMsg)
-	}
-	if bpm.PeerDoesNotHaveBlock(p, c0) {
-		t.Fatal(expDoesNotHaveFalseMsg)
-	}
+	require.False(t, bpm.PeerHasBlock(p, c0), expHasFalseMsg)
+	require.False(t, bpm.PeerDoesNotHaveBlock(p, c0), expDoesNotHaveFalseMsg)
 
 	// HAVE cid0 / DONT_HAVE cid1
 	bpm.ReceiveFrom(p, []cid.Cid{c0}, []cid.Cid{c1})
 
 	// Peer has received HAVE for cid0
-	if !bpm.PeerHasBlock(p, c0) {
-		t.Fatal(expHasTrueMsg)
-	}
-	if bpm.PeerDoesNotHaveBlock(p, c0) {
-		t.Fatal(expDoesNotHaveFalseMsg)
-	}
+	require.True(t, bpm.PeerHasBlock(p, c0), expHasTrueMsg)
+	require.False(t, bpm.PeerDoesNotHaveBlock(p, c0), expDoesNotHaveFalseMsg)
 
 	// Peer has received DONT_HAVE for cid1
-	if !bpm.PeerDoesNotHaveBlock(p, c1) {
-		t.Fatal(expDoesNotHaveTrueMsg)
-	}
-	if bpm.PeerHasBlock(p, c1) {
-		t.Fatal(expHasFalseMsg)
-	}
+	require.True(t, bpm.PeerDoesNotHaveBlock(p, c1), expDoesNotHaveTrueMsg)
+	require.False(t, bpm.PeerHasBlock(p, c1), expHasFalseMsg)
 
 	// HAVE cid1 / DONT_HAVE cid0
 	bpm.ReceiveFrom(p, []cid.Cid{c1}, []cid.Cid{c0})
 
 	// DONT_HAVE cid0 should NOT over-write earlier HAVE cid0
-	if bpm.PeerDoesNotHaveBlock(p, c0) {
-		t.Fatal(expDoesNotHaveFalseMsg)
-	}
-	if !bpm.PeerHasBlock(p, c0) {
-		t.Fatal(expHasTrueMsg)
-	}
+	require.False(t, bpm.PeerDoesNotHaveBlock(p, c0), expDoesNotHaveFalseMsg)
+	require.True(t, bpm.PeerHasBlock(p, c0), expHasTrueMsg)
 
 	// HAVE cid1 should over-write earlier DONT_HAVE cid1
-	if !bpm.PeerHasBlock(p, c1) {
-		t.Fatal(expHasTrueMsg)
-	}
-	if bpm.PeerDoesNotHaveBlock(p, c1) {
-		t.Fatal(expDoesNotHaveFalseMsg)
-	}
+	require.True(t, bpm.PeerHasBlock(p, c1), expHasTrueMsg)
+	require.False(t, bpm.PeerDoesNotHaveBlock(p, c1), expDoesNotHaveFalseMsg)
 
 	// Remove cid0
 	bpm.RemoveKeys([]cid.Cid{c0})
 
 	// Nothing stored, both PeerHasBlock and PeerDoesNotHaveBlock should
 	// return false
-	if bpm.PeerHasBlock(p, c0) {
-		t.Fatal(expHasFalseMsg)
-	}
-	if bpm.PeerDoesNotHaveBlock(p, c0) {
-		t.Fatal(expDoesNotHaveFalseMsg)
-	}
+	require.False(t, bpm.PeerHasBlock(p, c0), expHasFalseMsg)
+	require.False(t, bpm.PeerDoesNotHaveBlock(p, c0), expDoesNotHaveFalseMsg)
 
 	// Remove cid1
 	bpm.RemoveKeys([]cid.Cid{c1})
@@ -119,10 +96,10 @@ func TestBlockPresenceManager(t *testing.T) {
 func TestAddRemoveMulti(t *testing.T) {
 	bpm := New()
 
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	p0 := peers[0]
 	p1 := peers[1]
-	cids := testutil.GenerateCids(3)
+	cids := random.Cids(3)
 	c0 := cids[0]
 	c1 := cids[1]
 	c2 := cids[2]
@@ -136,78 +113,46 @@ func TestAddRemoveMulti(t *testing.T) {
 	// - HAVE cid0
 	// - HAVE cid1
 	// - DONT_HAVE cid2
-	if !bpm.PeerHasBlock(p0, c0) {
-		t.Fatal(expHasTrueMsg)
-	}
-	if !bpm.PeerHasBlock(p0, c1) {
-		t.Fatal(expHasTrueMsg)
-	}
-	if !bpm.PeerDoesNotHaveBlock(p0, c2) {
-		t.Fatal(expDoesNotHaveTrueMsg)
-	}
+	require.True(t, bpm.PeerHasBlock(p0, c0), expHasTrueMsg)
+	require.True(t, bpm.PeerHasBlock(p0, c1), expHasTrueMsg)
+	require.True(t, bpm.PeerDoesNotHaveBlock(p0, c2), expDoesNotHaveTrueMsg)
 
 	// Peer 1 should end up with
 	// - HAVE cid1
 	// - HAVE cid2
 	// - DONT_HAVE cid0
-	if !bpm.PeerHasBlock(p1, c1) {
-		t.Fatal(expHasTrueMsg)
-	}
-	if !bpm.PeerHasBlock(p1, c2) {
-		t.Fatal(expHasTrueMsg)
-	}
-	if !bpm.PeerDoesNotHaveBlock(p1, c0) {
-		t.Fatal(expDoesNotHaveTrueMsg)
-	}
+	require.True(t, bpm.PeerHasBlock(p1, c1), expHasTrueMsg)
+	require.True(t, bpm.PeerHasBlock(p1, c2), expHasTrueMsg)
+	require.True(t, bpm.PeerDoesNotHaveBlock(p1, c0), expDoesNotHaveTrueMsg)
 
 	// Remove cid1 and cid2. Should end up with
 	// Peer 0: HAVE cid0
 	// Peer 1: DONT_HAVE cid0
 	bpm.RemoveKeys([]cid.Cid{c1, c2})
-	if !bpm.PeerHasBlock(p0, c0) {
-		t.Fatal(expHasTrueMsg)
-	}
-	if !bpm.PeerDoesNotHaveBlock(p1, c0) {
-		t.Fatal(expDoesNotHaveTrueMsg)
-	}
+	require.True(t, bpm.PeerHasBlock(p0, c0), expHasTrueMsg)
+	require.True(t, bpm.PeerDoesNotHaveBlock(p1, c0), expDoesNotHaveTrueMsg)
 
 	// The other keys should have been cleared, so both HasBlock() and
 	// DoesNotHaveBlock() should return false
-	if bpm.PeerHasBlock(p0, c1) {
-		t.Fatal(expHasFalseMsg)
-	}
-	if bpm.PeerDoesNotHaveBlock(p0, c1) {
-		t.Fatal(expDoesNotHaveFalseMsg)
-	}
-	if bpm.PeerHasBlock(p0, c2) {
-		t.Fatal(expHasFalseMsg)
-	}
-	if bpm.PeerDoesNotHaveBlock(p0, c2) {
-		t.Fatal(expDoesNotHaveFalseMsg)
-	}
-	if bpm.PeerHasBlock(p1, c1) {
-		t.Fatal(expHasFalseMsg)
-	}
-	if bpm.PeerDoesNotHaveBlock(p1, c1) {
-		t.Fatal(expDoesNotHaveFalseMsg)
-	}
-	if bpm.PeerHasBlock(p1, c2) {
-		t.Fatal(expHasFalseMsg)
-	}
-	if bpm.PeerDoesNotHaveBlock(p1, c2) {
-		t.Fatal(expDoesNotHaveFalseMsg)
-	}
+	require.False(t, bpm.PeerHasBlock(p0, c1), expHasFalseMsg)
+	require.False(t, bpm.PeerDoesNotHaveBlock(p0, c1), expDoesNotHaveFalseMsg)
+	require.False(t, bpm.PeerHasBlock(p0, c2), expHasFalseMsg)
+	require.False(t, bpm.PeerDoesNotHaveBlock(p0, c2), expDoesNotHaveFalseMsg)
+	require.False(t, bpm.PeerHasBlock(p1, c1), expHasFalseMsg)
+	require.False(t, bpm.PeerDoesNotHaveBlock(p1, c1), expDoesNotHaveFalseMsg)
+	require.False(t, bpm.PeerHasBlock(p1, c2), expHasFalseMsg)
+	require.False(t, bpm.PeerDoesNotHaveBlock(p1, c2), expDoesNotHaveFalseMsg)
 }
 
 func TestAllPeersDoNotHaveBlock(t *testing.T) {
 	bpm := New()
 
-	peers := testutil.GeneratePeers(3)
+	peers := random.Peers(3)
 	p0 := peers[0]
 	p1 := peers[1]
 	p2 := peers[2]
 
-	cids := testutil.GenerateCids(3)
+	cids := random.Cids(3)
 	c0 := cids[0]
 	c1 := cids[1]
 	c2 := cids[2]
@@ -248,11 +193,7 @@ func TestAllPeersDoNotHaveBlock(t *testing.T) {
 	}
 
 	for i, tc := range testcases {
-		if !testutil.MatchKeysIgnoreOrder(
-			bpm.AllPeersDoNotHaveBlock(tc.peers, tc.ks),
-			tc.exp,
-		) {
-			t.Fatalf("test case %d failed: expected matching keys", i)
-		}
+		require.ElementsMatchf(t, bpm.AllPeersDoNotHaveBlock(tc.peers, tc.ks), tc.exp,
+			"test case %d failed: expected matching keys", i)
 	}
 }

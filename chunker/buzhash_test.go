@@ -5,13 +5,13 @@ import (
 	"io"
 	"testing"
 
-	util "github.com/ipfs/boxo/util"
+	random "github.com/ipfs/go-test/random"
 )
 
 func testBuzhashChunking(t *testing.T, buf []byte) (chunkCount int) {
 	t.Parallel()
 
-	n, err := util.NewTimeSeededRand().Read(buf)
+	n, err := random.NewRand().Read(buf)
 	if n < len(buf) {
 		t.Fatalf("expected %d bytes, got %d", len(buf), n)
 	}

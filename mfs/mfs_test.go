@@ -25,7 +25,7 @@ import (
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	importer "github.com/ipfs/boxo/ipld/unixfs/importer"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
-	u "github.com/ipfs/boxo/util"
+	"github.com/ipfs/go-test/random"
 
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
@@ -46,7 +46,7 @@ func getDagserv(t testing.TB) ipld.DAGService {
 }
 
 func getRandFile(t *testing.T, ds ipld.DAGService, size int64) ipld.Node {
-	r := io.LimitReader(u.NewTimeSeededRand(), size)
+	r := io.LimitReader(random.NewRand(), size)
 	return fileNodeFromReader(t, ds, r)
 }
 

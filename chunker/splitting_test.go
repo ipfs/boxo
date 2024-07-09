@@ -5,12 +5,12 @@ import (
 	"io"
 	"testing"
 
-	u "github.com/ipfs/boxo/util"
+	"github.com/ipfs/go-test/random"
 )
 
 func randBuf(t *testing.T, size int) []byte {
 	buf := make([]byte, size)
-	if _, err := u.NewTimeSeededRand().Read(buf); err != nil {
+	if _, err := random.NewRand().Read(buf); err != nil {
 		t.Fatal("failed to read enough randomness")
 	}
 	return buf
@@ -25,7 +25,7 @@ func copyBuf(buf []byte) []byte {
 func TestSizeSplitterOverAllocate(t *testing.T) {
 	t.Parallel()
 
-	max := 1000
+	const max = 1000
 	r := bytes.NewReader(randBuf(t, max))
 	chunksize := int64(1024 * 256)
 	splitter := NewSizeSplitter(r, chunksize)
@@ -80,10 +80,10 @@ func TestSizeSplitterFillsChunks(t *testing.T) {
 	}
 	t.Parallel()
 
-	max := 10000000
+	const max = 10000000
 	b := randBuf(t, max)
 	r := &clipReader{r: bytes.NewReader(b), size: 4000}
-	chunksize := int64(1024 * 256)
+	const chunksize = 1024 * 256
 	c, _ := Chan(NewSizeSplitter(r, chunksize))
 
 	sofar := 0
@@ -98,7 +98,7 @@ func TestSizeSplitterFillsChunks(t *testing.T) {
 		copy(whole[sofar:], chunk)
 
 		sofar += len(chunk)
-		if sofar != max && len(chunk) < int(chunksize) {
+		if sofar != max && len(chunk) < chunksize {
 			t.Fatal("sizesplitter split at a smaller size")
 		}
 	}

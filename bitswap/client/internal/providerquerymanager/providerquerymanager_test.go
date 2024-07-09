@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-test/random"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -58,7 +58,7 @@ func (fpn *fakeProviderNetwork) FindProvidersAsync(ctx context.Context, k cid.Ci
 }
 
 func TestNormalSimultaneousFetch(t *testing.T) {
-	peers := testutil.GeneratePeers(10)
+	peers := random.Peers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
 		delay:      1 * time.Millisecond,
@@ -66,7 +66,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	ctx := context.Background()
 	providerQueryManager := New(ctx, fpn)
 	providerQueryManager.Startup()
-	keys := testutil.GenerateCids(2)
+	keys := random.Cids(2)
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -95,7 +95,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 }
 
 func TestDedupingProviderRequests(t *testing.T) {
-	peers := testutil.GeneratePeers(10)
+	peers := random.Peers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
 		delay:      1 * time.Millisecond,
@@ -103,7 +103,7 @@ func TestDedupingProviderRequests(t *testing.T) {
 	ctx := context.Background()
 	providerQueryManager := New(ctx, fpn)
 	providerQueryManager.Startup()
-	key := testutil.GenerateCids(1)[0]
+	key := random.Cids(1)[0]
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -135,7 +135,7 @@ func TestDedupingProviderRequests(t *testing.T) {
 }
 
 func TestCancelOneRequestDoesNotTerminateAnother(t *testing.T) {
-	peers := testutil.GeneratePeers(10)
+	peers := random.Peers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
 		delay:      1 * time.Millisecond,
@@ -144,7 +144,7 @@ func TestCancelOneRequestDoesNotTerminateAnother(t *testing.T) {
 	providerQueryManager := New(ctx, fpn)
 	providerQueryManager.Startup()
 
-	key := testutil.GenerateCids(1)[0]
+	key := random.Cids(1)[0]
 
 	// first session will cancel before done
 	firstSessionCtx, firstCancel := context.WithTimeout(ctx, 3*time.Millisecond)
@@ -179,7 +179,7 @@ func TestCancelOneRequestDoesNotTerminateAnother(t *testing.T) {
 }
 
 func TestCancelManagerExitsGracefully(t *testing.T) {
-	peers := testutil.GeneratePeers(10)
+	peers := random.Peers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
 		delay:      1 * time.Millisecond,
@@ -190,7 +190,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	providerQueryManager := New(managerCtx, fpn)
 	providerQueryManager.Startup()
 
-	key := testutil.GenerateCids(1)[0]
+	key := random.Cids(1)[0]
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
 	defer cancel()
@@ -214,7 +214,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 }
 
 func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
-	peers := testutil.GeneratePeers(10)
+	peers := random.Peers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound:   peers,
 		connectError: errors.New("not able to connect"),
@@ -224,7 +224,7 @@ func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
 	providerQueryManager := New(ctx, fpn)
 	providerQueryManager.Startup()
 
-	key := testutil.GenerateCids(1)[0]
+	key := random.Cids(1)[0]
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
 	defer cancel()
@@ -247,7 +247,7 @@ func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
 }
 
 func TestRateLimitingRequests(t *testing.T) {
-	peers := testutil.GeneratePeers(10)
+	peers := random.Peers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
 		delay:      5 * time.Millisecond,
@@ -258,7 +258,7 @@ func TestRateLimitingRequests(t *testing.T) {
 	providerQueryManager := New(ctx, fpn)
 	providerQueryManager.Startup()
 
-	keys := testutil.GenerateCids(maxInProcessRequests + 1)
+	keys := random.Cids(maxInProcessRequests + 1)
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	var requestChannels []<-chan peer.ID
@@ -286,7 +286,7 @@ func TestRateLimitingRequests(t *testing.T) {
 }
 
 func TestFindProviderTimeout(t *testing.T) {
-	peers := testutil.GeneratePeers(10)
+	peers := random.Peers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
 		delay:      10 * time.Millisecond,
@@ -295,7 +295,7 @@ func TestFindProviderTimeout(t *testing.T) {
 	providerQueryManager := New(ctx, fpn)
 	providerQueryManager.Startup()
 	providerQueryManager.SetFindProviderTimeout(2 * time.Millisecond)
-	keys := testutil.GenerateCids(1)
+	keys := random.Cids(1)
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -310,7 +310,7 @@ func TestFindProviderTimeout(t *testing.T) {
 }
 
 func TestFindProviderPreCanceled(t *testing.T) {
-	peers := testutil.GeneratePeers(10)
+	peers := random.Peers(10)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
 		delay:      1 * time.Millisecond,
@@ -319,7 +319,7 @@ func TestFindProviderPreCanceled(t *testing.T) {
 	providerQueryManager := New(ctx, fpn)
 	providerQueryManager.Startup()
 	providerQueryManager.SetFindProviderTimeout(100 * time.Millisecond)
-	keys := testutil.GenerateCids(1)
+	keys := random.Cids(1)
 
 	sessionCtx, cancel := context.WithCancel(ctx)
 	cancel()
@@ -335,7 +335,7 @@ func TestFindProviderPreCanceled(t *testing.T) {
 }
 
 func TestCancelFindProvidersAfterCompletion(t *testing.T) {
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	fpn := &fakeProviderNetwork{
 		peersFound: peers,
 		delay:      1 * time.Millisecond,
@@ -344,7 +344,7 @@ func TestCancelFindProvidersAfterCompletion(t *testing.T) {
 	providerQueryManager := New(ctx, fpn)
 	providerQueryManager.Startup()
 	providerQueryManager.SetFindProviderTimeout(100 * time.Millisecond)
-	keys := testutil.GenerateCids(1)
+	keys := random.Cids(1)
 
 	sessionCtx, cancel := context.WithCancel(ctx)
 	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[0])

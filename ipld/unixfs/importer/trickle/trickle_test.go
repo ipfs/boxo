@@ -15,8 +15,8 @@ import (
 	chunker "github.com/ipfs/boxo/chunker"
 	merkledag "github.com/ipfs/boxo/ipld/merkledag"
 	mdtest "github.com/ipfs/boxo/ipld/merkledag/test"
-	u "github.com/ipfs/boxo/util"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-test/random"
 )
 
 type UseRawLeaves bool
@@ -90,7 +90,7 @@ func dup(b []byte) []byte {
 
 func testFileConsistency(t *testing.T, bs chunker.SplitterGen, nbytes int, rawLeaves UseRawLeaves) {
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -120,9 +120,10 @@ func TestBuilderConsistency(t *testing.T) {
 }
 
 func testBuilderConsistency(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := 100000
+	const nbytes = 100000
 	buf := new(bytes.Buffer)
-	io.CopyN(buf, u.NewTimeSeededRand(), int64(nbytes))
+	io.CopyN(buf, random.NewRand(), int64(nbytes))
+
 	should := dup(buf.Bytes())
 	dagserv := mdtest.Mock()
 	nd, err := buildTestDag(dagserv, chunker.DefaultSplitter(buf), rawLeaves)
@@ -163,9 +164,9 @@ func TestIndirectBlocks(t *testing.T) {
 
 func testIndirectBlocks(t *testing.T, rawLeaves UseRawLeaves) {
 	splitter := chunker.SizeSplitterGen(512)
-	nbytes := 1024 * 1024
+	const nbytes = 1024 * 1024
 	buf := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(buf)
+	random.NewRand().Read(buf)
 
 	read := bytes.NewReader(buf)
 
@@ -195,9 +196,9 @@ func TestSeekingBasic(t *testing.T) {
 }
 
 func testSeekingBasic(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(10 * 1024)
+	const nbytes = 10 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -236,9 +237,9 @@ func TestSeekToBegin(t *testing.T) {
 }
 
 func testSeekToBegin(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(10 * 1024)
+	const nbytes = 10 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -284,9 +285,9 @@ func TestSeekToAlmostBegin(t *testing.T) {
 }
 
 func testSeekToAlmostBegin(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(10 * 1024)
+	const nbytes = 10 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -332,9 +333,9 @@ func TestSeekEnd(t *testing.T) {
 }
 
 func testSeekEnd(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(50 * 1024)
+	const nbytes = 50 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -362,9 +363,9 @@ func TestSeekEndSingleBlockFile(t *testing.T) {
 }
 
 func testSeekEndSingleBlockFile(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(100)
+	const nbytes = 100
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -392,9 +393,9 @@ func TestSeekingStress(t *testing.T) {
 }
 
 func testSeekingStress(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(1024 * 1024)
+	const nbytes = 1024 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -440,9 +441,9 @@ func TestSeekingConsistency(t *testing.T) {
 }
 
 func testSeekingConsistency(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(128 * 1024)
+	const nbytes = 128 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -458,7 +459,7 @@ func testSeekingConsistency(t *testing.T, rawLeaves UseRawLeaves) {
 
 	out := make([]byte, nbytes)
 
-	for coff := nbytes - 4096; coff >= 0; coff -= 4096 {
+	for coff := int64(nbytes - 4096); coff >= 0; coff -= 4096 {
 		t.Log(coff)
 		n, err := rs.Seek(coff, io.SeekStart)
 		if err != nil {
@@ -487,9 +488,9 @@ func TestAppend(t *testing.T) {
 }
 
 func testAppend(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(128 * 1024)
+	const nbytes = 128 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	// Reader for half the bytes
 	read := bytes.NewReader(should[:nbytes/2])
@@ -554,9 +555,9 @@ func testMultipleAppends(t *testing.T, rawLeaves UseRawLeaves) {
 	ds := mdtest.Mock()
 
 	// TODO: fix small size appends and make this number bigger
-	nbytes := int64(1000)
+	const nbytes = 1000
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(nil)
 	nd, err := buildTestDag(ds, chunker.NewSizeSplitter(read, 500), rawLeaves)
