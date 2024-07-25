@@ -78,6 +78,20 @@ type ProviderFinder interface {
 	FindProvidersAsync(ctx context.Context, k cid.Cid) <-chan peer.ID
 }
 
+// StandardProviderFinder is used to find providers for a given key
+type StandardProviderFinder interface {
+	// FindProvidersAsync searches for peers that provide the given CID
+	FindProvidersAsync(ctx context.Context, k cid.Cid, count int) <-chan peer.ID
+}
+
+type FindAllProviders struct {
+	Router StandardProviderFinder
+}
+
+func (r FindAllProviders) FindProvidersAsync(ctx context.Context, k cid.Cid) <-chan peer.ID {
+	return r.Router.FindProvidersAsync(ctx, k, 0)
+}
+
 // opType is the kind of operation that is being processed by the event loop
 type opType int
 
