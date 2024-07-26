@@ -19,10 +19,13 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - `bitswap/server` minor memory use and performance improvements
+- `bitswap` unify logger names to use uniform format bitswap/path/pkgname
 
 ### Removed
 
 ### Fixed
+
+- `bitswap/client` fix memory leak in BlockPresenceManager due to unlimited map growth.
 
 ### Security
 

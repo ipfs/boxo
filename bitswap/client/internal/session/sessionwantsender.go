@@ -455,6 +455,7 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 		go func() {
 			for p := range prunePeers {
 				// Peer doesn't have anything we want, so remove it
+				sws.bpm.RemovePeer(p)
 				log.Infof("peer %s sent too many dont haves, removing from session %d", p, sws.ID())
 				sws.SignalAvailability(p, false)
 			}

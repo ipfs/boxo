@@ -61,7 +61,7 @@ import (
 // whatever it sees fit to produce desired outcomes (get wanted keys
 // quickly, maintain good relationships with peers, etc).
 
-var log = logging.Logger("engine")
+var log = logging.Logger("bitswap/server/decision")
 
 const (
 	// outboxChanBuffer must be 0 to prevent stale messages from being sent
