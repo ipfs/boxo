@@ -16,9 +16,9 @@ import (
 var log = logging.Logger("routing/provqrymgr")
 
 const (
-	maxProviders         = 10
-	maxInProcessRequests = 6
-	defaultTimeout       = 10 * time.Second
+	maxProviders                = 10
+	defaultMaxInProcessRequests = 6
+	defaultTimeout              = 10 * time.Second
 )
 
 type inProgressRequestStatus struct {
@@ -85,6 +85,8 @@ type ProviderQueryManager struct {
 	findProviderTimeout time.Duration
 	timeoutMutex        sync.RWMutex
 
+	maxInProcessRequests int
+
 	// do not touch outside the run loop
 	inProgressRequestStatuses map[cid.Cid]*inProgressRequestStatus
 }
@@ -94,6 +96,14 @@ type Option func(*ProviderQueryManager) error
 func WithMaxTimeout(timeout time.Duration) Option {
 	return func(mgr *ProviderQueryManager) error {
 		mgr.findProviderTimeout = timeout
+		return nil
+	}
+}
+
+// WithMaxInProcessRequests is the maximum number of requests that can be processed in parallel
+func WithMaxInProcessRequests(count int) Option {
+	return func(mgr *ProviderQueryManager) error {
+		mgr.maxInProcessRequests = count
 		return nil
 	}
 }
@@ -109,6 +119,7 @@ func New(ctx context.Context, network ProviderQueryNetwork, opts ...Option) (*Pr
 		incomingFindProviderRequests: make(chan *findProviderRequest),
 		inProgressRequestStatuses:    make(map[cid.Cid]*inProgressRequestStatus),
 		findProviderTimeout:          defaultTimeout,
+		maxInProcessRequests:         defaultMaxInProcessRequests,
 	}
 
 	for _, o := range opts {
@@ -351,7 +362,7 @@ func (pqm *ProviderQueryManager) run() {
 	defer pqm.cleanupInProcessRequests()
 
 	go pqm.providerRequestBufferWorker()
-	for i := 0; i < maxInProcessRequests; i++ {
+	for i := 0; i < pqm.maxInProcessRequests; i++ {
 		go pqm.findProviderWorker()
 	}
 
