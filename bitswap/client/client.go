@@ -170,7 +170,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 	var defaultQueryManager *rpqm.ProviderQueryManager
 	if bs.useDefaultLookupManagement {
 		var err error
-		defaultQueryManager, err = rpqm.New(ctx, network)
+		defaultQueryManager, err = rpqm.New(ctx, network, rpqm.WithMaxProviders(10))
 		if err != nil {
 			// Should not be possible to hit this
 			panic(err)

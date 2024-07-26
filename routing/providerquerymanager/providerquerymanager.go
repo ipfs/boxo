@@ -16,8 +16,8 @@ import (
 var log = logging.Logger("routing/provqrymgr")
 
 const (
-	maxProviders                = 10
 	defaultMaxInProcessRequests = 6
+	defaultMaxProviders         = 0
 	defaultTimeout              = 10 * time.Second
 )
 
@@ -85,6 +85,7 @@ type ProviderQueryManager struct {
 	findProviderTimeout time.Duration
 	timeoutMutex        sync.RWMutex
 
+	maxProviders         int
 	maxInProcessRequests int
 
 	// do not touch outside the run loop
@@ -108,6 +109,14 @@ func WithMaxInProcessRequests(count int) Option {
 	}
 }
 
+// WithMaxProviders is the maximum number of providers that will be looked up per query
+func WithMaxProviders(count int) Option {
+	return func(mgr *ProviderQueryManager) error {
+		mgr.maxProviders = count
+		return nil
+	}
+}
+
 // New initializes a new ProviderQueryManager for a given context and a given
 // network provider.
 func New(ctx context.Context, network ProviderQueryNetwork, opts ...Option) (*ProviderQueryManager, error) {
@@ -120,6 +129,7 @@ func New(ctx context.Context, network ProviderQueryNetwork, opts ...Option) (*Pr
 		inProgressRequestStatuses:    make(map[cid.Cid]*inProgressRequestStatus),
 		findProviderTimeout:          defaultTimeout,
 		maxInProcessRequests:         defaultMaxInProcessRequests,
+		maxProviders:                 defaultMaxProviders,
 	}
 
 	for _, o := range opts {
@@ -275,7 +285,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 			pqm.timeoutMutex.RUnlock()
 			span := trace.SpanFromContext(findProviderCtx)
 			span.AddEvent("StartFindProvidersAsync")
-			providers := pqm.network.FindProvidersAsync(findProviderCtx, k, maxProviders)
+			providers := pqm.network.FindProvidersAsync(findProviderCtx, k, pqm.maxProviders)
 			wg := &sync.WaitGroup{}
 			for p := range providers {
 				wg.Add(1)
