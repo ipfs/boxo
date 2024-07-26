@@ -11,7 +11,7 @@ import (
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
-var log = logging.Logger("bs:peermgr")
+var log = logging.Logger("bitswap/client/peermgr")
 
 // PeerQueue provides a queue of messages to be sent for a single peer.
 type PeerQueue interface {
