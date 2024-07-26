@@ -13,7 +13,6 @@ import (
 	bsmq "github.com/ipfs/boxo/bitswap/client/internal/messagequeue"
 	"github.com/ipfs/boxo/bitswap/client/internal/notifications"
 	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
-	bspqm "github.com/ipfs/boxo/bitswap/client/internal/providerquerymanager"
 	bssession "github.com/ipfs/boxo/bitswap/client/internal/session"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
 	bssm "github.com/ipfs/boxo/bitswap/client/internal/sessionmanager"
@@ -26,6 +25,7 @@ import (
 	"github.com/ipfs/boxo/bitswap/tracer"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	exchange "github.com/ipfs/boxo/exchange"
+	rpqm "github.com/ipfs/boxo/routing/providerquerymanager"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
@@ -167,9 +167,9 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 	pm := bspm.New(ctx, peerQueueFactory, network.Self())
 
 	var provFinder bssession.ProviderFinder
-	var defaultQueryManager *bspqm.ProviderQueryManager
+	var defaultQueryManager *rpqm.ProviderQueryManager
 	if bs.useDefaultLookupManagement {
-		defaultQueryManager = bspqm.New(ctx, network)
+		defaultQueryManager = rpqm.New(ctx, network)
 		provFinder = defaultQueryManager
 	} else {
 		provFinder = &bssession.FindAllProviders{Router: network}

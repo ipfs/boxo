@@ -5,15 +5,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ipfs/boxo/bitswap/client/internal"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
-var log = logging.Logger("bitswap/client/provqrymgr")
+var log = logging.Logger("routing/provqrymgr")
 
 const (
 	maxProviders         = 10
@@ -125,7 +125,7 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 	inProgressRequestChan := make(chan inProgressRequest)
 
 	var span trace.Span
-	sessionCtx, span = internal.StartSpan(sessionCtx, "ProviderQueryManager.FindProvidersAsync", trace.WithAttributes(attribute.Stringer("cid", k)))
+	sessionCtx, span = otel.Tracer("").Start(sessionCtx, "ProviderQueryManager.FindProvidersAsync", trace.WithAttributes(attribute.Stringer("cid", k)))
 
 	select {
 	case pqm.providerQueryMessages <- &newProvideQueryMessage{
