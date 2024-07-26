@@ -20,6 +20,7 @@ The following emojis are used to highlight certain changes:
 
 - `bitswap/server` minor memory use and performance improvements
 - `bitswap` unify logger names to use uniform format bitswap/path/pkgname
+- `gateway` now always returns meaningful cache-control headers for generated HTML listings of UnixFS directories
 
 ### Removed
 
