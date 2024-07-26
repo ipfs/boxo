@@ -89,10 +89,19 @@ type ProviderQueryManager struct {
 	inProgressRequestStatuses map[cid.Cid]*inProgressRequestStatus
 }
 
+type Option func(*ProviderQueryManager) error
+
+func WithMaxTimeout(timeout time.Duration) Option {
+	return func(mgr *ProviderQueryManager) error {
+		mgr.findProviderTimeout = timeout
+		return nil
+	}
+}
+
 // New initializes a new ProviderQueryManager for a given context and a given
 // network provider.
-func New(ctx context.Context, network ProviderQueryNetwork) *ProviderQueryManager {
-	return &ProviderQueryManager{
+func New(ctx context.Context, network ProviderQueryNetwork, opts ...Option) (*ProviderQueryManager, error) {
+	pqm := &ProviderQueryManager{
 		ctx:                          ctx,
 		network:                      network,
 		providerQueryMessages:        make(chan providerQueryMessage, 16),
@@ -101,6 +110,14 @@ func New(ctx context.Context, network ProviderQueryNetwork) *ProviderQueryManage
 		inProgressRequestStatuses:    make(map[cid.Cid]*inProgressRequestStatus),
 		findProviderTimeout:          defaultTimeout,
 	}
+
+	for _, o := range opts {
+		if err := o(pqm); err != nil {
+			return nil, err
+		}
+	}
+
+	return pqm, nil
 }
 
 // Startup starts processing for the ProviderQueryManager.

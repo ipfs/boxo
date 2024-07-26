@@ -169,7 +169,12 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 	var provFinder bssession.ProviderFinder
 	var defaultQueryManager *rpqm.ProviderQueryManager
 	if bs.useDefaultLookupManagement {
-		defaultQueryManager = rpqm.New(ctx, network)
+		var err error
+		defaultQueryManager, err = rpqm.New(ctx, network)
+		if err != nil {
+			// Should not be possible to hit this
+			panic(err)
+		}
 		provFinder = defaultQueryManager
 	} else {
 		provFinder = &bssession.FindAllProviders{Router: network}
