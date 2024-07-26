@@ -25,6 +25,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `bitswap/client` fix memory leak in BlockPresenceManager due to unlimited map growth.
+
 ### Security
 
 ## [v0.21.0]
