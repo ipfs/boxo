@@ -302,7 +302,7 @@ func TestFindProviderTimeout(t *testing.T) {
 	ctx := context.Background()
 	providerQueryManager := mustNotErr(New(ctx, fpn))
 	providerQueryManager.Startup()
-	providerQueryManager.SetFindProviderTimeout(2 * time.Millisecond)
+	providerQueryManager.setFindProviderTimeout(2 * time.Millisecond)
 	keys := generateCids(1)
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -326,7 +326,7 @@ func TestFindProviderPreCanceled(t *testing.T) {
 	ctx := context.Background()
 	providerQueryManager := mustNotErr(New(ctx, fpn))
 	providerQueryManager.Startup()
-	providerQueryManager.SetFindProviderTimeout(100 * time.Millisecond)
+	providerQueryManager.setFindProviderTimeout(100 * time.Millisecond)
 	keys := generateCids(1)
 
 	sessionCtx, cancel := context.WithCancel(ctx)
@@ -351,7 +351,7 @@ func TestCancelFindProvidersAfterCompletion(t *testing.T) {
 	ctx := context.Background()
 	providerQueryManager := mustNotErr(New(ctx, fpn))
 	providerQueryManager.Startup()
-	providerQueryManager.SetFindProviderTimeout(100 * time.Millisecond)
+	providerQueryManager.setFindProviderTimeout(100 * time.Millisecond)
 	keys := generateCids(1)
 
 	sessionCtx, cancel := context.WithCancel(ctx)

@@ -141,8 +141,8 @@ type inProgressRequest struct {
 	incoming       chan peer.ID
 }
 
-// SetFindProviderTimeout changes the timeout for finding providers
-func (pqm *ProviderQueryManager) SetFindProviderTimeout(findProviderTimeout time.Duration) {
+// setFindProviderTimeout changes the timeout for finding providers
+func (pqm *ProviderQueryManager) setFindProviderTimeout(findProviderTimeout time.Duration) {
 	pqm.timeoutMutex.Lock()
 	pqm.findProviderTimeout = findProviderTimeout
 	pqm.timeoutMutex.Unlock()
