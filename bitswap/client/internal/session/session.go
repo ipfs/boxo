@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/ipfs/boxo/bitswap/client/internal"
@@ -10,11 +11,13 @@ import (
 	notifications "github.com/ipfs/boxo/bitswap/client/internal/notifications"
 	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
+	bsnet "github.com/ipfs/boxo/bitswap/network"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
@@ -78,18 +81,39 @@ type ProviderFinder interface {
 	FindProvidersAsync(ctx context.Context, k cid.Cid) <-chan peer.ID
 }
 
-// StandardProviderFinder is used to find providers for a given key
-type StandardProviderFinder interface {
-	// FindProvidersAsync searches for peers that provide the given CID
-	FindProvidersAsync(ctx context.Context, k cid.Cid, count int) <-chan peer.ID
-}
-
 type FindAllProviders struct {
-	Router StandardProviderFinder
+	Router bsnet.BitSwapNetwork
 }
 
 func (r FindAllProviders) FindProvidersAsync(ctx context.Context, k cid.Cid) <-chan peer.ID {
-	return r.Router.FindProvidersAsync(ctx, k, 0)
+	ctx, span := internal.StartSpan(ctx, "FindAllProviders.FindProvidersAsync", trace.WithAttributes(attribute.Stringer("cid", k)))
+	providers := r.Router.FindProvidersAsync(ctx, k, 0)
+	provCh := make(chan peer.ID)
+	wg := &sync.WaitGroup{}
+	for p := range providers {
+		wg.Add(1)
+		go func(p peer.ID) {
+			defer wg.Done()
+			span.AddEvent("FoundProvider", trace.WithAttributes(attribute.Stringer("peer", p)))
+			err := r.Router.ConnectTo(ctx, p)
+			if err != nil {
+				span.RecordError(err, trace.WithAttributes(attribute.Stringer("peer", p)))
+				log.Debugf("failed to connect to provider %s: %s", p, err)
+				return
+			}
+			span.AddEvent("ConnectedToProvider", trace.WithAttributes(attribute.Stringer("peer", p)))
+			select {
+			case provCh <- p:
+			case <-ctx.Done():
+				return
+			}
+		}(p)
+	}
+	go func() {
+		wg.Wait()
+		close(provCh)
+	}()
+	return provCh
 }
 
 // opType is the kind of operation that is being processed by the event loop

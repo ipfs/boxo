@@ -99,3 +99,11 @@ func WithTracer(tap tracer.Tracer) Option {
 		}),
 	}
 }
+
+func WithClientOption(opt client.Option) Option {
+	return Option{opt}
+}
+
+func WithServerOption(opt server.Option) Option {
+	return Option{opt}
+}
