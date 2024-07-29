@@ -140,7 +140,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	if rq.ttl > 0 {
 		// Use known TTL from IPNS Record or DNSLink TXT Record
 		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d, stale-while-revalidate=2678400", int(rq.ttl.Seconds())))
-	} else {
+	} else if !rq.contentPath.Mutable() {
 		// Cache for 1 week, serve stale cache for up to a month
 		// (style of generated HTML may change, should not be cached forever)
 		w.Header().Set("Cache-Control", "public, max-age=604800, stale-while-revalidate=2678400")
