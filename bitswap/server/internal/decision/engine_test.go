@@ -1863,7 +1863,7 @@ func TestWantlistOverflow(t *testing.T) {
 	if len(wl) != limit {
 		t.Fatal("wantlist size", len(wl), "does not match limit", limit)
 	}
-	t.Log("Senr message with", limit, "medium-priority wants and", limit-1, "have blocks present")
+	t.Log("Sent message with", limit, "medium-priority wants and", limit-1, "have blocks present")
 
 	m = message.New(false)
 	lowPrioCids := make([]cid.Cid, 5)
