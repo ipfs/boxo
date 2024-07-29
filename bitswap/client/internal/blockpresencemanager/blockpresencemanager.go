@@ -122,7 +122,7 @@ func (bpm *BlockPresenceManager) RemoveKeys(ks []cid.Cid) {
 	}
 }
 
-// RemovePeers removes the given peer from every cid key in the presence map.
+// RemovePeer removes the given peer from every cid key in the presence map.
 func (bpm *BlockPresenceManager) RemovePeer(p peer.ID) {
 	bpm.Lock()
 	defer bpm.Unlock()
