@@ -9,7 +9,7 @@ for the `OTEL_TRACES_EXPORTER` environment variables. Therefore, we provide some
 helper functions under [`boxo/tracing`](../tracing/) to support these.
 
 In this document, we document the quirks of our custom support for the `OTEL_TRACES_EXPORTER`,
-as well as examples on how to use tracing, create traceable headers, and how
+as well as examples of how to use tracing, create traceable headers, and how
 to use the Jaeger UI. The [Gateway examples](../examples/gateway/) fully support Tracing.
 
 - [Environment Variables](#environment-variables)

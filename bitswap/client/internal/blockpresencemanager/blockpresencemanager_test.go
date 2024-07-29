@@ -93,6 +93,27 @@ func TestBlockPresenceManager(t *testing.T) {
 	if bpm.PeerDoesNotHaveBlock(p, c1) {
 		t.Fatal(expDoesNotHaveFalseMsg)
 	}
+
+	bpm.ReceiveFrom(p, []cid.Cid{c0}, []cid.Cid{c1})
+	if !bpm.PeerHasBlock(p, c0) {
+		t.Fatal(expHasTrueMsg)
+	}
+	if !bpm.PeerDoesNotHaveBlock(p, c1) {
+		t.Fatal(expDoesNotHaveTrueMsg)
+	}
+	bpm.RemovePeer(p)
+	if bpm.PeerHasBlock(p, c0) {
+		t.Fatal(expHasFalseMsg)
+	}
+	if bpm.PeerDoesNotHaveBlock(p, c0) {
+		t.Fatal(expDoesNotHaveFalseMsg)
+	}
+	if bpm.PeerHasBlock(p, c1) {
+		t.Fatal(expHasFalseMsg)
+	}
+	if bpm.PeerDoesNotHaveBlock(p, c1) {
+		t.Fatal(expDoesNotHaveFalseMsg)
+	}
 }
 
 func TestAddRemoveMulti(t *testing.T) {
