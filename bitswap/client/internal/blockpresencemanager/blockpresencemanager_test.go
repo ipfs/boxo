@@ -64,33 +64,18 @@ func TestBlockPresenceManager(t *testing.T) {
 
 	// Nothing stored, both PeerHasBlock and PeerDoesNotHaveBlock should
 	// return false
-	if bpm.PeerHasBlock(p, c1) {
-		t.Fatal(expHasFalseMsg)
-	}
-	if bpm.PeerDoesNotHaveBlock(p, c1) {
-		t.Fatal(expDoesNotHaveFalseMsg)
-	}
+	require.False(t, bpm.PeerHasBlock(p, c1), expHasFalseMsg)
+	require.False(t, bpm.PeerDoesNotHaveBlock(p, c1), expDoesNotHaveFalseMsg)
 
 	bpm.ReceiveFrom(p, []cid.Cid{c0}, []cid.Cid{c1})
-	if !bpm.PeerHasBlock(p, c0) {
-		t.Fatal(expHasTrueMsg)
-	}
-	if !bpm.PeerDoesNotHaveBlock(p, c1) {
-		t.Fatal(expDoesNotHaveTrueMsg)
-	}
+	require.True(t, bpm.PeerHasBlock(p, c0), expHasTrueMsg)
+	require.True(t, bpm.PeerDoesNotHaveBlock(p, c1), expDoesNotHaveTrueMsg)
+
 	bpm.RemovePeer(p)
-	if bpm.PeerHasBlock(p, c0) {
-		t.Fatal(expHasFalseMsg)
-	}
-	if bpm.PeerDoesNotHaveBlock(p, c0) {
-		t.Fatal(expDoesNotHaveFalseMsg)
-	}
-	if bpm.PeerHasBlock(p, c1) {
-		t.Fatal(expHasFalseMsg)
-	}
-	if bpm.PeerDoesNotHaveBlock(p, c1) {
-		t.Fatal(expDoesNotHaveFalseMsg)
-	}
+	require.False(t, bpm.PeerHasBlock(p, c0), expHasFalseMsg)
+	require.False(t, bpm.PeerDoesNotHaveBlock(p, c0), expDoesNotHaveFalseMsg)
+	require.False(t, bpm.PeerHasBlock(p, c1), expHasFalseMsg)
+	require.False(t, bpm.PeerDoesNotHaveBlock(p, c1), expDoesNotHaveFalseMsg)
 }
 
 func TestAddRemoveMulti(t *testing.T) {
