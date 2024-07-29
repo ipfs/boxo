@@ -136,9 +136,14 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	dirEtag := getDirListingEtag(resolvedPath.RootCid())
 	w.Header().Set("Etag", dirEtag)
 
-	// Add TTL if known.
+	// Set Cache-Control
 	if rq.ttl > 0 {
-		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(rq.ttl.Seconds())))
+		// Use known TTL from IPNS Record or DNSLink TXT Record
+		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d, stale-while-revalidate=2678400", int(rq.ttl.Seconds())))
+	} else if !rq.contentPath.Mutable() {
+		// Cache for 1 week, serve stale cache for up to a month
+		// (style of generated HTML may change, should not be cached forever)
+		w.Header().Set("Cache-Control", "public, max-age=604800, stale-while-revalidate=2678400")
 	}
 
 	if r.Method == http.MethodHead {
