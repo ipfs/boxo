@@ -133,6 +133,8 @@ type PeerEntry struct {
 // PeerLedger is an external ledger dealing with peers and their want lists.
 type PeerLedger interface {
 	// Wants informs the ledger that [peer.ID] wants [wl.Entry].
+	// If peer ledger exceed internal limit, then the entry is not added
+	// and false is returned.
 	Wants(p peer.ID, e wl.Entry) bool
 
 	// CancelWant returns true if the [cid.Cid] was removed from the wantlist of [peer.ID].
