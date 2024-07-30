@@ -5,20 +5,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ipfs/boxo/bitswap/client/internal"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
-var log = logging.Logger("bitswap/client/provqrymgr")
+var log = logging.Logger("routing/provqrymgr")
 
 const (
-	maxProviders         = 10
-	maxInProcessRequests = 6
-	defaultTimeout       = 10 * time.Second
+	defaultMaxInProcessRequests = 6
+	defaultMaxProviders         = 0
+	defaultTimeout              = 10 * time.Second
 )
 
 type inProgressRequestStatus struct {
@@ -85,14 +85,42 @@ type ProviderQueryManager struct {
 	findProviderTimeout time.Duration
 	timeoutMutex        sync.RWMutex
 
+	maxProviders         int
+	maxInProcessRequests int
+
 	// do not touch outside the run loop
 	inProgressRequestStatuses map[cid.Cid]*inProgressRequestStatus
 }
 
+type Option func(*ProviderQueryManager) error
+
+func WithMaxTimeout(timeout time.Duration) Option {
+	return func(mgr *ProviderQueryManager) error {
+		mgr.findProviderTimeout = timeout
+		return nil
+	}
+}
+
+// WithMaxInProcessRequests is the maximum number of requests that can be processed in parallel
+func WithMaxInProcessRequests(count int) Option {
+	return func(mgr *ProviderQueryManager) error {
+		mgr.maxInProcessRequests = count
+		return nil
+	}
+}
+
+// WithMaxProviders is the maximum number of providers that will be looked up per query
+func WithMaxProviders(count int) Option {
+	return func(mgr *ProviderQueryManager) error {
+		mgr.maxProviders = count
+		return nil
+	}
+}
+
 // New initializes a new ProviderQueryManager for a given context and a given
 // network provider.
-func New(ctx context.Context, network ProviderQueryNetwork) *ProviderQueryManager {
-	return &ProviderQueryManager{
+func New(ctx context.Context, network ProviderQueryNetwork, opts ...Option) (*ProviderQueryManager, error) {
+	pqm := &ProviderQueryManager{
 		ctx:                          ctx,
 		network:                      network,
 		providerQueryMessages:        make(chan providerQueryMessage, 16),
@@ -100,7 +128,17 @@ func New(ctx context.Context, network ProviderQueryNetwork) *ProviderQueryManage
 		incomingFindProviderRequests: make(chan *findProviderRequest),
 		inProgressRequestStatuses:    make(map[cid.Cid]*inProgressRequestStatus),
 		findProviderTimeout:          defaultTimeout,
+		maxInProcessRequests:         defaultMaxInProcessRequests,
+		maxProviders:                 defaultMaxProviders,
 	}
+
+	for _, o := range opts {
+		if err := o(pqm); err != nil {
+			return nil, err
+		}
+	}
+
+	return pqm, nil
 }
 
 // Startup starts processing for the ProviderQueryManager.
@@ -113,8 +151,8 @@ type inProgressRequest struct {
 	incoming       chan peer.ID
 }
 
-// SetFindProviderTimeout changes the timeout for finding providers
-func (pqm *ProviderQueryManager) SetFindProviderTimeout(findProviderTimeout time.Duration) {
+// setFindProviderTimeout changes the timeout for finding providers
+func (pqm *ProviderQueryManager) setFindProviderTimeout(findProviderTimeout time.Duration) {
 	pqm.timeoutMutex.Lock()
 	pqm.findProviderTimeout = findProviderTimeout
 	pqm.timeoutMutex.Unlock()
@@ -125,8 +163,7 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 	inProgressRequestChan := make(chan inProgressRequest)
 
 	var span trace.Span
-	sessionCtx, span = internal.StartSpan(sessionCtx, "ProviderQueryManager.FindProvidersAsync", trace.WithAttributes(attribute.Stringer("cid", k)))
-	defer span.End()
+	sessionCtx, span = otel.Tracer("").Start(sessionCtx, "ProviderQueryManager.FindProvidersAsync", trace.WithAttributes(attribute.Stringer("cid", k)))
 
 	select {
 	case pqm.providerQueryMessages <- &newProvideQueryMessage{
@@ -137,6 +174,7 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 	case <-pqm.ctx.Done():
 		ch := make(chan peer.ID)
 		close(ch)
+		span.End()
 		return ch
 	case <-sessionCtx.Done():
 		ch := make(chan peer.ID)
@@ -152,14 +190,15 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 	case <-pqm.ctx.Done():
 		ch := make(chan peer.ID)
 		close(ch)
+		span.End()
 		return ch
 	case receivedInProgressRequest = <-inProgressRequestChan:
 	}
 
-	return pqm.receiveProviders(sessionCtx, k, receivedInProgressRequest)
+	return pqm.receiveProviders(sessionCtx, k, receivedInProgressRequest, func() { span.End() })
 }
 
-func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k cid.Cid, receivedInProgressRequest inProgressRequest) <-chan peer.ID {
+func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k cid.Cid, receivedInProgressRequest inProgressRequest, onCloseFn func()) <-chan peer.ID {
 	// maintains an unbuffered queue for incoming providers for given request for a given session
 	// essentially, as a provider comes in, for a given CID, we want to immediately broadcast to all
 	// sessions that queried that CID, without worrying about whether the client code is actually
@@ -171,6 +210,7 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 
 	go func() {
 		defer close(returnedProviders)
+		defer onCloseFn()
 		outgoingProviders := func() chan<- peer.ID {
 			if len(receivedProviders) == 0 {
 				return nil
@@ -245,7 +285,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 			pqm.timeoutMutex.RUnlock()
 			span := trace.SpanFromContext(findProviderCtx)
 			span.AddEvent("StartFindProvidersAsync")
-			providers := pqm.network.FindProvidersAsync(findProviderCtx, k, maxProviders)
+			providers := pqm.network.FindProvidersAsync(findProviderCtx, k, pqm.maxProviders)
 			wg := &sync.WaitGroup{}
 			for p := range providers {
 				wg.Add(1)
@@ -332,7 +372,7 @@ func (pqm *ProviderQueryManager) run() {
 	defer pqm.cleanupInProcessRequests()
 
 	go pqm.providerRequestBufferWorker()
-	for i := 0; i < maxInProcessRequests; i++ {
+	for i := 0; i < pqm.maxInProcessRequests; i++ {
 		go pqm.findProviderWorker()
 	}
 

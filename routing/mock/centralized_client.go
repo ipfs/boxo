@@ -51,7 +51,7 @@ func (c *client) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-c
 	go func() {
 		defer close(out)
 		for i, p := range c.server.Providers(k) {
-			if max <= i {
+			if max > 0 && max <= i {
 				return
 			}
 			select {

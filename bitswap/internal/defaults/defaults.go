@@ -37,4 +37,6 @@ const (
 	// RebroadcastDelay is the default delay to trigger broadcast of
 	// random CIDs in the wantlist.
 	RebroadcastDelay = time.Minute
+
+	WithDefaultLookupManagement = true
 )
