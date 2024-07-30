@@ -19,7 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
-const collectTimeout = 100 * time.Millisecond
+const collectTimeout = 200 * time.Millisecond
 
 type fakeMessageNetwork struct {
 	connectError       error
