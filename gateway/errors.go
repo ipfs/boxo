@@ -186,10 +186,10 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 	switch {
 	case errors.Is(err, &cid.ErrInvalidCid{}):
 		code = http.StatusBadRequest
-	case isErrNotFound(err):
-		code = http.StatusNotFound
 	case isErrContentBlocked(err):
 		code = http.StatusGone
+	case isErrNotFound(err):
+		code = http.StatusNotFound
 	case errors.Is(err, context.DeadlineExceeded):
 		code = http.StatusGatewayTimeout
 	}
