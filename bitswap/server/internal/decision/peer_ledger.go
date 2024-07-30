@@ -12,20 +12,31 @@ type DefaultPeerLedger struct {
 	// these two maps are inversions of each other
 	peers map[peer.ID]map[cid.Cid]entry
 	cids  map[cid.Cid]map[peer.ID]entry
+	// value 0 mean no limit
+	maxEntriesPerPeer int
 }
 
-func NewDefaultPeerLedger() *DefaultPeerLedger {
+func NewDefaultPeerLedger(maxEntriesPerPeer uint) *DefaultPeerLedger {
 	return &DefaultPeerLedger{
 		peers: make(map[peer.ID]map[cid.Cid]entry),
 		cids:  make(map[cid.Cid]map[peer.ID]entry),
+
+		maxEntriesPerPeer: int(maxEntriesPerPeer),
 	}
 }
 
-func (l *DefaultPeerLedger) Wants(p peer.ID, e wl.Entry) {
+// Wants adds an entry to the peer ledger. If adding the entry would make the
+// peer ledger exceed the maxEntriesPerPeer limit, then the entry is not added
+// and false is returned.
+func (l *DefaultPeerLedger) Wants(p peer.ID, e wl.Entry) bool {
 	cids, ok := l.peers[p]
 	if !ok {
 		cids = make(map[cid.Cid]entry)
 		l.peers[p] = cids
+	} else if l.maxEntriesPerPeer != 0 && len(cids) == l.maxEntriesPerPeer {
+		if _, ok = cids[e.Cid]; !ok {
+			return false // cannot add to peer ledger
+		}
 	}
 	cids[e.Cid] = entry{e.Priority, e.WantType}
 
@@ -35,6 +46,8 @@ func (l *DefaultPeerLedger) Wants(p peer.ID, e wl.Entry) {
 		l.cids[e.Cid] = m
 	}
 	m[p] = entry{e.Priority, e.WantType}
+
+	return true
 }
 
 func (l *DefaultPeerLedger) CancelWant(p peer.ID, k cid.Cid) bool {
@@ -42,13 +55,14 @@ func (l *DefaultPeerLedger) CancelWant(p peer.ID, k cid.Cid) bool {
 	if !ok {
 		return false
 	}
+	_, had := wants[k]
 	delete(wants, k)
 	if len(wants) == 0 {
 		delete(l.peers, p)
 	}
 
 	l.removePeerFromCid(p, k)
-	return true
+	return had
 }
 
 func (l *DefaultPeerLedger) CancelWantWithType(p peer.ID, k cid.Cid, typ pb.Message_Wantlist_WantType) {

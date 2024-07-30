@@ -3,7 +3,7 @@
 # requested to review draft pull requests.
 
 # Deafult
-* @ipfs/kubo-maintainers 
+* @ipfs/kubo-maintainers
 
 # HTTP Gateway
-gateway/  @lidel @hacdias
+gateway/  @lidel
