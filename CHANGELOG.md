@@ -26,7 +26,7 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-- `boxo/gateway` now returns 404 Status Not Found instead of 500 when the requested data cannot be found, without a fallback on bitswap or similar restriction.
+- `boxo/gateway` now correctly returns 404 Status Not Found instead of 500 when the requested content cannot be found due to offline exchange, gateway running in no-fetch (non-recursive) mode, or a similar restriction that only serves a specific set of CIDs.
 - `bitswap/client` fix memory leak in BlockPresenceManager due to unlimited map growth.
 
 ### Security
