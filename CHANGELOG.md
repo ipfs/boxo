@@ -36,7 +36,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - `boxo/gateway` is now tested against [gateway-conformance v6](https://github.com/ipfs/gateway-conformance/releases/tag/v0.6.0)
-- `bitswap/client` supports additional tracing 
+- `bitswap/client` supports additional tracing
 
 ### Removed
 
@@ -46,6 +46,7 @@ The following emojis are used to highlight certain changes:
 
 - `routing/http`: the `FindPeer` now returns `routing.ErrNotFound` when no addresses are found
 - `routing/http`: the `FindProvidersAsync` no longer causes a goroutine buildup
+- `bitswap`: wantlist overflow handling now cancels existing entries to make room for newer entries. This fix prevents the wantlist from filling up with CIDs that the server does not have.
 
 ## [v0.20.0]
 
