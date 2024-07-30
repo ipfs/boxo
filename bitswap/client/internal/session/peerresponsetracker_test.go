@@ -4,12 +4,12 @@ import (
 	"math"
 	"testing"
 
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
+	"github.com/ipfs/go-test/random"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
 func TestPeerResponseTrackerInit(t *testing.T) {
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	prt := newPeerResponseTracker()
 
 	if prt.choose([]peer.ID{}) != "" {
@@ -25,7 +25,7 @@ func TestPeerResponseTrackerInit(t *testing.T) {
 }
 
 func TestPeerResponseTrackerProbabilityUnknownPeers(t *testing.T) {
-	peers := testutil.GeneratePeers(4)
+	peers := random.Peers(4)
 	prt := newPeerResponseTracker()
 
 	choices := []int{0, 0, 0, 0}
@@ -54,7 +54,7 @@ func TestPeerResponseTrackerProbabilityUnknownPeers(t *testing.T) {
 }
 
 func TestPeerResponseTrackerProbabilityOneKnownOneUnknownPeer(t *testing.T) {
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	prt := newPeerResponseTracker()
 
 	prt.receivedBlockFrom(peers[0])
@@ -79,7 +79,7 @@ func TestPeerResponseTrackerProbabilityOneKnownOneUnknownPeer(t *testing.T) {
 }
 
 func TestPeerResponseTrackerProbabilityProportional(t *testing.T) {
-	peers := testutil.GeneratePeers(3)
+	peers := random.Peers(3)
 	prt := newPeerResponseTracker()
 
 	probabilities := []float64{0.1, 0.6, 0.3}

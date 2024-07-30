@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -16,6 +15,7 @@ import (
 	ds_sync "github.com/ipfs/go-datastore/sync"
 	delay "github.com/ipfs/go-ipfs-delay"
 	"github.com/ipfs/go-metrics-interface"
+	"github.com/ipfs/go-test/random"
 )
 
 func newBlockstoreManagerForTesting(
@@ -40,7 +40,7 @@ func TestBlockstoreManagerNotFoundKey(t *testing.T) {
 
 	bsm := newBlockstoreManagerForTesting(t, ctx, bstore, 5)
 
-	cids := testutil.GenerateCids(4)
+	cids := random.Cids(4)
 	sizes, err := bsm.getBlockSizes(ctx, cids)
 	if err != nil {
 		t.Fatal(err)
@@ -158,11 +158,11 @@ func TestBlockstoreManagerConcurrency(t *testing.T) {
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
 	bstore := blockstore.NewBlockstore(ds_sync.MutexWrap(dstore))
 
-	workerCount := 5
+	const workerCount = 5
 	bsm := newBlockstoreManagerForTesting(t, ctx, bstore, workerCount)
 
-	blkSize := int64(8 * 1024)
-	blks := testutil.GenerateBlocksOfSize(32, blkSize)
+	const blkSize = 8 * 1024
+	blks := random.BlocksOfSize(32, blkSize)
 	var ks []cid.Cid
 	for _, b := range blks {
 		ks = append(ks, b.Cid())
@@ -195,14 +195,14 @@ func TestBlockstoreManagerConcurrency(t *testing.T) {
 
 func TestBlockstoreManagerClose(t *testing.T) {
 	ctx := context.Background()
-	delayTime := 20 * time.Millisecond
+	const delayTime = 20 * time.Millisecond
 	bsdelay := delay.Fixed(delayTime)
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
 	bstore := blockstore.NewBlockstore(ds_sync.MutexWrap(dstore))
 
 	bsm := newBlockstoreManagerForTesting(t, ctx, bstore, 3)
 
-	blks := testutil.GenerateBlocksOfSize(10, 1024)
+	blks := random.BlocksOfSize(10, 1024)
 	var ks []cid.Cid
 	for _, b := range blks {
 		ks = append(ks, b.Cid())
@@ -227,7 +227,7 @@ func TestBlockstoreManagerClose(t *testing.T) {
 }
 
 func TestBlockstoreManagerCtxDone(t *testing.T) {
-	delayTime := 20 * time.Millisecond
+	const delayTime = 20 * time.Millisecond
 	bsdelay := delay.Fixed(delayTime)
 
 	underlyingDstore := ds_sync.MutexWrap(ds.NewMapDatastore())
@@ -238,7 +238,7 @@ func TestBlockstoreManagerCtxDone(t *testing.T) {
 	ctx := context.Background()
 	bsm := newBlockstoreManagerForTesting(t, ctx, bstore, 3)
 
-	blks := testutil.GenerateBlocksOfSize(100, 128)
+	blks := random.BlocksOfSize(100, 128)
 	var ks []cid.Cid
 	for _, b := range blks {
 		ks = append(ks, b.Cid())

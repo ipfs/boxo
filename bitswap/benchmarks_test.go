@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-test/random"
 	protocol "github.com/libp2p/go-libp2p/core/protocol"
 
 	"github.com/ipfs/boxo/bitswap"
@@ -169,8 +169,8 @@ func BenchmarkFetchFromOldBitswap(b *testing.B) {
 			testinstance.ConnectInstances(instances)
 
 			// Generate blocks, with a smaller root block
-			rootBlock := testutil.GenerateBlocksOfSize(1, rootBlockSize)
-			blocks := testutil.GenerateBlocksOfSize(bch.blockCount, stdBlockSize)
+			rootBlock := random.BlocksOfSize(1, rootBlockSize)
+			blocks := random.BlocksOfSize(bch.blockCount, stdBlockSize)
 			blocks[0] = rootBlock[0]
 
 			// Run the distribution
@@ -300,7 +300,7 @@ func BenchmarkDatacenterMultiLeechMultiSeed(b *testing.B) {
 			defer ig.Close()
 
 			instances := ig.Instances(numnodes)
-			blocks := testutil.GenerateBlocksOfSize(numblks, blockSize)
+			blocks := random.BlocksOfSize(numblks, int(blockSize))
 			runDistributionMulti(b, instances[:3], instances[3:], blocks, bstoreLatency, df, ff)
 		}
 	})
@@ -317,8 +317,8 @@ func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, b
 		ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 
 		instances := ig.Instances(numnodes)
-		rootBlock := testutil.GenerateBlocksOfSize(1, rootBlockSize)
-		blocks := testutil.GenerateBlocksOfSize(numblks, stdBlockSize)
+		rootBlock := random.BlocksOfSize(1, rootBlockSize)
+		blocks := random.BlocksOfSize(numblks, stdBlockSize)
 		blocks[0] = rootBlock[0]
 		runDistribution(b, instances, blocks, bstoreLatency, df, ff)
 		ig.Close()
@@ -333,8 +333,8 @@ func subtestDistributeAndFetchRateLimited(b *testing.B, numnodes, numblks int, d
 		defer ig.Close()
 
 		instances := ig.Instances(numnodes)
-		rootBlock := testutil.GenerateBlocksOfSize(1, rootBlockSize)
-		blocks := testutil.GenerateBlocksOfSize(numblks, blockSize)
+		rootBlock := random.BlocksOfSize(1, rootBlockSize)
+		blocks := random.BlocksOfSize(numblks, int(blockSize))
 		blocks[0] = rootBlock[0]
 		runDistribution(b, instances, blocks, bstoreLatency, df, ff)
 	}

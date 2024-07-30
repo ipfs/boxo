@@ -3,12 +3,12 @@ package session
 import (
 	"testing"
 
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestSendWantBlocksTracker(t *testing.T) {
-	peers := testutil.GeneratePeers(2)
-	cids := testutil.GenerateCids(2)
+	peers := random.Peers(2)
+	cids := random.Cids(2)
 	swbt := newSentWantBlocksTracker()
 
 	if swbt.haveSentWantBlockTo(peers[0], cids[0]) {

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-test/random"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
@@ -73,8 +73,8 @@ func (tr *timeoutRecorder) clear() {
 }
 
 func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
-	firstks := testutil.GenerateCids(2)
-	secondks := append(firstks, testutil.GenerateCids(3)...)
+	firstks := random.Cids(2)
+	secondks := append(firstks, random.Cids(3)...)
 	latency := time.Millisecond * 20
 	latMultiplier := 2
 	expProcessTime := 5 * time.Millisecond
@@ -129,7 +129,7 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 }
 
 func TestDontHaveTimeoutMgrCancel(t *testing.T) {
-	ks := testutil.GenerateCids(3)
+	ks := random.Cids(3)
 	latency := time.Millisecond * 10
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
@@ -165,7 +165,7 @@ func TestDontHaveTimeoutMgrCancel(t *testing.T) {
 }
 
 func TestDontHaveTimeoutWantCancelWant(t *testing.T) {
-	ks := testutil.GenerateCids(3)
+	ks := random.Cids(3)
 	latency := time.Millisecond * 20
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
@@ -218,7 +218,7 @@ func TestDontHaveTimeoutWantCancelWant(t *testing.T) {
 }
 
 func TestDontHaveTimeoutRepeatedAddPending(t *testing.T) {
-	ks := testutil.GenerateCids(10)
+	ks := random.Cids(10)
 	latency := time.Millisecond * 5
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
@@ -251,7 +251,7 @@ func TestDontHaveTimeoutRepeatedAddPending(t *testing.T) {
 }
 
 func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
-	ks := testutil.GenerateCids(2)
+	ks := random.Cids(2)
 	latency := time.Millisecond * 40
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
@@ -300,7 +300,7 @@ func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
 }
 
 func TestDontHaveTimeoutMgrMessageLatencyMax(t *testing.T) {
-	ks := testutil.GenerateCids(2)
+	ks := random.Cids(2)
 	clock := clock.NewMock()
 	pinged := make(chan struct{})
 	pc := &mockPeerConn{latency: time.Second, clock: clock, pinged: pinged}
@@ -333,7 +333,7 @@ func TestDontHaveTimeoutMgrMessageLatencyMax(t *testing.T) {
 }
 
 func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
-	ks := testutil.GenerateCids(2)
+	ks := random.Cids(2)
 	latency := time.Millisecond * 1
 	latMultiplier := 2
 	expProcessTime := 2 * time.Millisecond
@@ -374,7 +374,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 }
 
 func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
-	ks := testutil.GenerateCids(2)
+	ks := random.Cids(2)
 	latency := time.Millisecond * 200
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
@@ -414,7 +414,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 }
 
 func TestDontHaveTimeoutNoTimeoutAfterShutdown(t *testing.T) {
-	ks := testutil.GenerateCids(2)
+	ks := random.Cids(2)
 	latency := time.Millisecond * 10
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)

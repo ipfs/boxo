@@ -9,9 +9,10 @@ import (
 	bsbpm "github.com/ipfs/boxo/bitswap/client/internal/blockpresencemanager"
 	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
 	bsspm "github.com/ipfs/boxo/bitswap/client/internal/sessionpeermanager"
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-test/random"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/stretchr/testify/require"
 )
 
 type sentWants struct {
@@ -98,7 +99,8 @@ func (pm *mockPeerManager) waitNextWants() map[peer.ID]*sentWants {
 
 	pm.lk.Lock()
 	defer pm.lk.Unlock()
-	nw := make(map[peer.ID]*sentWants)
+
+	nw := make(map[peer.ID]*sentWants, len(pm.peerSends))
 	for p, sentWants := range pm.peerSends {
 		nw[p] = sentWants
 	}
@@ -108,10 +110,7 @@ func (pm *mockPeerManager) waitNextWants() map[peer.ID]*sentWants {
 func (pm *mockPeerManager) clearWants() {
 	pm.lk.Lock()
 	defer pm.lk.Unlock()
-
-	for p := range pm.peerSends {
-		delete(pm.peerSends, p)
-	}
+	clear(pm.peerSends)
 }
 
 type exhaustedPeers struct {
@@ -141,10 +140,10 @@ func (ep *exhaustedPeers) exhausted() []cid.Cid {
 }
 
 func TestSendWants(t *testing.T) {
-	cids := testutil.GenerateCids(4)
-	peers := testutil.GeneratePeers(1)
+	cids := random.Cids(4)
+	peers := random.Peers(1)
 	peerA := peers[0]
-	sid := uint64(1)
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -168,23 +167,17 @@ func TestSendWants(t *testing.T) {
 	// Should have sent
 	// peerA: want-block cid0, cid1
 	sw, ok := peerSends[peerA]
-	if !ok {
-		t.Fatal("Nothing sent to peer")
-	}
-	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocksKeys(), blkCids0) {
-		t.Fatal("Wrong keys")
-	}
-	if len(sw.wantHavesKeys()) > 0 {
-		t.Fatal("Expecting no want-haves")
-	}
+	require.True(t, ok, "Nothing sent to peer")
+	require.ElementsMatch(t, sw.wantBlocksKeys(), blkCids0, "Wrong keys")
+	require.Empty(t, sw.wantHavesKeys(), "Expecting no want-haves")
 }
 
 func TestSendsWantBlockToOnePeerOnly(t *testing.T) {
-	cids := testutil.GenerateCids(4)
-	peers := testutil.GeneratePeers(2)
+	cids := random.Cids(4)
+	peers := random.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
-	sid := uint64(1)
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -208,12 +201,8 @@ func TestSendsWantBlockToOnePeerOnly(t *testing.T) {
 	// Should have sent
 	// peerA: want-block cid0, cid1
 	sw, ok := peerSends[peerA]
-	if !ok {
-		t.Fatal("Nothing sent to peer")
-	}
-	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocksKeys(), blkCids0) {
-		t.Fatal("Wrong keys")
-	}
+	require.True(t, ok, "Nothing sent to peer")
+	require.ElementsMatch(t, sw.wantBlocksKeys(), blkCids0, "Wrong keys")
 
 	// Clear wants (makes keeping track of what's been sent easier)
 	pm.clearWants()
@@ -228,23 +217,17 @@ func TestSendsWantBlockToOnePeerOnly(t *testing.T) {
 	// peerB. Should have sent
 	// peerB: want-have cid0, cid1
 	sw, ok = peerSends[peerB]
-	if !ok {
-		t.Fatal("Nothing sent to peer")
-	}
-	if sw.wantBlocks.Len() > 0 {
-		t.Fatal("Expecting no want-blocks")
-	}
-	if !testutil.MatchKeysIgnoreOrder(sw.wantHavesKeys(), blkCids0) {
-		t.Fatal("Wrong keys")
-	}
+	require.True(t, ok, "Nothing sent to peer")
+	require.Zero(t, sw.wantBlocks.Len(), "Expecting no want-blocks")
+	require.ElementsMatch(t, sw.wantHavesKeys(), blkCids0, "Wrong keys")
 }
 
 func TestReceiveBlock(t *testing.T) {
-	cids := testutil.GenerateCids(2)
-	peers := testutil.GeneratePeers(2)
+	cids := random.Cids(2)
+	peers := random.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
-	sid := uint64(1)
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -267,12 +250,8 @@ func TestReceiveBlock(t *testing.T) {
 	// Should have sent
 	// peerA: want-block cid0, cid1
 	sw, ok := peerSends[peerA]
-	if !ok {
-		t.Fatal("Nothing sent to peer")
-	}
-	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocksKeys(), cids) {
-		t.Fatal("Wrong keys")
-	}
+	require.True(t, ok, "Nothing sent to peer")
+	require.ElementsMatch(t, sw.wantBlocksKeys(), cids, "Wrong keys")
 
 	// Clear wants (makes keeping track of what's been sent easier)
 	pm.clearWants()
@@ -292,9 +271,7 @@ func TestReceiveBlock(t *testing.T) {
 	// (should not have sent want-block for cid0 because block0 has already
 	// been received)
 	sw, ok = peerSends[peerB]
-	if !ok {
-		t.Fatal("Nothing sent to peer")
-	}
+	require.True(t, ok, "Nothing sent to peer")
 	wb := sw.wantBlocksKeys()
 	if len(wb) != 1 || !wb[0].Equals(cids[1]) {
 		t.Fatal("Wrong keys", wb)
@@ -302,8 +279,8 @@ func TestReceiveBlock(t *testing.T) {
 }
 
 func TestCancelWants(t *testing.T) {
-	cids := testutil.GenerateCids(4)
-	sid := uint64(1)
+	cids := random.Cids(4)
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -330,17 +307,15 @@ func TestCancelWants(t *testing.T) {
 
 	// Should have sent cancels for cid0, cid2
 	sent := swc.cancelled()
-	if !testutil.MatchKeysIgnoreOrder(sent, cancelCids) {
-		t.Fatal("Wrong keys")
-	}
+	require.ElementsMatch(t, sent, cancelCids, "Wrong keys")
 }
 
 func TestRegisterSessionWithPeerManager(t *testing.T) {
-	cids := testutil.GenerateCids(2)
-	peers := testutil.GeneratePeers(2)
+	cids := random.Cids(2)
+	peers := random.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
-	sid := uint64(1)
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -359,9 +334,7 @@ func TestRegisterSessionWithPeerManager(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Expect session to have been registered with PeerManager
-	if !pm.has(peerA, sid) {
-		t.Fatal("Expected HAVE to register session with PeerManager")
-	}
+	require.True(t, pm.has(peerA, sid), "Expected HAVE to register session with PeerManager")
 
 	// peerB: block cid1
 	spm.Update(peerB, cids[1:], nil, nil)
@@ -370,18 +343,16 @@ func TestRegisterSessionWithPeerManager(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Expect session to have been registered with PeerManager
-	if !pm.has(peerB, sid) {
-		t.Fatal("Expected HAVE to register session with PeerManager")
-	}
+	require.True(t, pm.has(peerB, sid), "Expected HAVE to register session with PeerManager")
 }
 
 func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
-	cids := testutil.GenerateCids(2)
-	peers := testutil.GeneratePeers(3)
+	cids := random.Cids(2)
+	peers := random.Peers(3)
 	peerA := peers[0]
 	peerB := peers[1]
 	peerC := peers[2]
-	sid := uint64(1)
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpt := newFakePeerTagger()
 	fpm := bsspm.New(1, fpt)
@@ -432,11 +403,11 @@ func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
 }
 
 func TestPeerUnavailable(t *testing.T) {
-	cids := testutil.GenerateCids(2)
-	peers := testutil.GeneratePeers(2)
+	cids := random.Cids(2)
+	peers := random.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
-	sid := uint64(1)
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -459,12 +430,8 @@ func TestPeerUnavailable(t *testing.T) {
 	// Should have sent
 	// peerA: want-block cid0, cid1
 	sw, ok := peerSends[peerA]
-	if !ok {
-		t.Fatal("Nothing sent to peer")
-	}
-	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocksKeys(), cids) {
-		t.Fatal("Wrong keys")
-	}
+	require.True(t, ok, "Nothing sent to peer")
+	require.ElementsMatch(t, sw.wantBlocksKeys(), cids, "Wrong keys")
 
 	// Clear wants (makes keeping track of what's been sent easier)
 	pm.clearWants()
@@ -490,20 +457,16 @@ func TestPeerUnavailable(t *testing.T) {
 
 	// Should now have sent want-block cid0, cid1 to peerB
 	sw, ok = peerSends[peerB]
-	if !ok {
-		t.Fatal("Nothing sent to peer")
-	}
-	if !testutil.MatchKeysIgnoreOrder(sw.wantBlocksKeys(), cids) {
-		t.Fatal("Wrong keys")
-	}
+	require.True(t, ok, "Nothing sent to peer")
+	require.ElementsMatch(t, sw.wantBlocksKeys(), cids, "Wrong keys")
 }
 
 func TestPeersExhausted(t *testing.T) {
-	cids := testutil.GenerateCids(3)
-	peers := testutil.GeneratePeers(2)
+	cids := random.Cids(3)
+	peers := random.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
-	sid := uint64(1)
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -531,9 +494,7 @@ func TestPeersExhausted(t *testing.T) {
 
 	// All available peers (peer A) have sent us a DONT_HAVE for cid1,
 	// so expect that onPeersExhausted() will be called with cid1
-	if !testutil.MatchKeysIgnoreOrder(ep.exhausted(), []cid.Cid{cids[1]}) {
-		t.Fatal("Wrong keys")
-	}
+	require.ElementsMatch(t, ep.exhausted(), []cid.Cid{cids[1]}, "Wrong keys")
 
 	// Clear exhausted cids
 	ep.clear()
@@ -566,9 +527,7 @@ func TestPeersExhausted(t *testing.T) {
 
 	// All available peers (peer A and peer B) have sent us a DONT_HAVE for
 	// cid2, so expect that onPeersExhausted() will be called with cid2
-	if !testutil.MatchKeysIgnoreOrder(ep.exhausted(), []cid.Cid{cids[2]}) {
-		t.Fatal("Wrong keys")
-	}
+	require.ElementsMatch(t, ep.exhausted(), []cid.Cid{cids[2]}, "Wrong keys")
 }
 
 // Tests that when
@@ -576,11 +535,11 @@ func TestPeersExhausted(t *testing.T) {
 // - the remaining peer becomes unavailable
 // onPeersExhausted should be sent for that CID
 func TestPeersExhaustedLastWaitingPeerUnavailable(t *testing.T) {
-	cids := testutil.GenerateCids(2)
-	peers := testutil.GeneratePeers(2)
+	cids := random.Cids(2)
+	peers := random.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
-	sid := uint64(1)
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -617,19 +576,17 @@ func TestPeersExhaustedLastWaitingPeerUnavailable(t *testing.T) {
 
 	// All remaining peers (peer A) have sent us a DONT_HAVE for cid1,
 	// so expect that onPeersExhausted() will be called with cid1
-	if !testutil.MatchKeysIgnoreOrder(ep.exhausted(), []cid.Cid{cids[1]}) {
-		t.Fatal("Wrong keys")
-	}
+	require.ElementsMatch(t, ep.exhausted(), []cid.Cid{cids[1]}, "Wrong keys")
 }
 
 // Tests that when all the peers are removed from the session
 // onPeersExhausted should be called with all outstanding CIDs
 func TestPeersExhaustedAllPeersUnavailable(t *testing.T) {
-	cids := testutil.GenerateCids(3)
-	peers := testutil.GeneratePeers(2)
+	cids := random.Cids(3)
+	peers := random.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
-	sid := uint64(1)
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -661,15 +618,13 @@ func TestPeersExhaustedAllPeersUnavailable(t *testing.T) {
 
 	// Expect that onPeersExhausted() will be called with all cids for blocks
 	// that have not been received
-	if !testutil.MatchKeysIgnoreOrder(ep.exhausted(), []cid.Cid{cids[1], cids[2]}) {
-		t.Fatal("Wrong keys")
-	}
+	require.ElementsMatch(t, ep.exhausted(), []cid.Cid{cids[1], cids[2]}, "Wrong keys")
 }
 
 func TestConsecutiveDontHaveLimit(t *testing.T) {
-	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
-	p := testutil.GeneratePeers(1)[0]
-	sid := uint64(1)
+	cids := random.Cids(peerDontHaveLimit + 10)
+	p := random.Peers(1)[0]
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -691,9 +646,7 @@ func TestConsecutiveDontHaveLimit(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Peer should be available
-	if has := fpm.HasPeer(p); !has {
-		t.Fatal("Expected peer to be available")
-	}
+	require.True(t, fpm.HasPeer(p), "Expected peer to be available")
 
 	// Receive DONT_HAVEs from peer that do not exceed limit
 	for _, c := range cids[1:peerDontHaveLimit] {
@@ -705,9 +658,7 @@ func TestConsecutiveDontHaveLimit(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 
 	// Peer should be available
-	if has := fpm.HasPeer(p); !has {
-		t.Fatal("Expected peer to be available")
-	}
+	require.True(t, fpm.HasPeer(p), "Expected peer to be available")
 
 	// Receive DONT_HAVEs from peer that exceed limit
 	for _, c := range cids[peerDontHaveLimit:] {
@@ -719,15 +670,13 @@ func TestConsecutiveDontHaveLimit(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 
 	// Session should remove peer
-	if has := fpm.HasPeer(p); has {
-		t.Fatal("Expected peer not to be available")
-	}
+	require.False(t, fpm.HasPeer(p), "Expected peer not to be available")
 }
 
 func TestConsecutiveDontHaveLimitInterrupted(t *testing.T) {
-	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
-	p := testutil.GeneratePeers(1)[0]
-	sid := uint64(1)
+	cids := random.Cids(peerDontHaveLimit + 10)
+	p := random.Peers(1)[0]
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -749,9 +698,7 @@ func TestConsecutiveDontHaveLimitInterrupted(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 
 	// Peer should be available
-	if has := fpm.HasPeer(p); !has {
-		t.Fatal("Expected peer to be available")
-	}
+	require.True(t, fpm.HasPeer(p), "Expected peer to be available")
 
 	// Receive DONT_HAVE then HAVE then DONT_HAVE from peer,
 	// where consecutive DONT_HAVEs would have exceeded limit
@@ -776,15 +723,13 @@ func TestConsecutiveDontHaveLimitInterrupted(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 
 	// Peer should be available
-	if has := fpm.HasPeer(p); !has {
-		t.Fatal("Expected peer to be available")
-	}
+	require.True(t, fpm.HasPeer(p), "Expected peer to be available")
 }
 
 func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
-	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
-	p := testutil.GeneratePeers(1)[0]
-	sid := uint64(1)
+	cids := random.Cids(peerDontHaveLimit + 10)
+	p := random.Peers(1)[0]
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -806,9 +751,7 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 
 	// Peer should be available
-	if has := fpm.HasPeer(p); !has {
-		t.Fatal("Expected peer to be available")
-	}
+	require.True(t, fpm.HasPeer(p), "Expected peer to be available")
 
 	// Receive DONT_HAVEs from peer that exceed limit
 	for _, c := range cids[1 : peerDontHaveLimit+2] {
@@ -820,9 +763,7 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Session should remove peer
-	if has := fpm.HasPeer(p); has {
-		t.Fatal("Expected peer not to be available")
-	}
+	require.False(t, fpm.HasPeer(p), "Expected peer not to be available")
 
 	// Receive a HAVE from peer (adds it back into the session)
 	bpm.ReceiveFrom(p, cids[:1], []cid.Cid{})
@@ -832,11 +773,9 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Peer should be available
-	if has := fpm.HasPeer(p); !has {
-		t.Fatal("Expected peer to be available")
-	}
+	require.True(t, fpm.HasPeer(p), "Expected peer to be available")
 
-	cids2 := testutil.GenerateCids(peerDontHaveLimit + 10)
+	cids2 := random.Cids(peerDontHaveLimit + 10)
 
 	// Receive DONT_HAVEs from peer that don't exceed limit
 	for _, c := range cids2[1:peerDontHaveLimit] {
@@ -848,9 +787,7 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Peer should be available
-	if has := fpm.HasPeer(p); !has {
-		t.Fatal("Expected peer to be available")
-	}
+	require.True(t, fpm.HasPeer(p), "Expected peer to be available")
 
 	// Receive DONT_HAVEs from peer that exceed limit
 	for _, c := range cids2[peerDontHaveLimit:] {
@@ -862,15 +799,13 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Session should remove peer
-	if has := fpm.HasPeer(p); has {
-		t.Fatal("Expected peer not to be available")
-	}
+	require.False(t, fpm.HasPeer(p), "Expected peer not to be available")
 }
 
 func TestConsecutiveDontHaveDontRemoveIfHasWantedBlock(t *testing.T) {
-	cids := testutil.GenerateCids(peerDontHaveLimit + 10)
-	p := testutil.GeneratePeers(1)[0]
-	sid := uint64(1)
+	cids := random.Cids(peerDontHaveLimit + 10)
+	p := random.Peers(1)[0]
+	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
 	swc := newMockSessionMgr()
@@ -893,9 +828,7 @@ func TestConsecutiveDontHaveDontRemoveIfHasWantedBlock(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Peer should be available
-	if has := fpm.HasPeer(p); !has {
-		t.Fatal("Expected peer to be available")
-	}
+	require.True(t, fpm.HasPeer(p), "Expected peer to be available")
 
 	// Receive DONT_HAVEs from peer that exceed limit
 	for _, c := range cids[1 : peerDontHaveLimit+5] {
@@ -908,7 +841,5 @@ func TestConsecutiveDontHaveDontRemoveIfHasWantedBlock(t *testing.T) {
 
 	// Peer should still be available because it has a block that we want.
 	// (We received a HAVE for cid 0 but didn't yet receive the block)
-	if has := fpm.HasPeer(p); !has {
-		t.Fatal("Expected peer to be available")
-	}
+	require.True(t, fpm.HasPeer(p), "Expected peer to be available")
 }

@@ -14,8 +14,8 @@ import (
 	chunker "github.com/ipfs/boxo/chunker"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	mdtest "github.com/ipfs/boxo/ipld/merkledag/test"
-	u "github.com/ipfs/boxo/util"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-test/random"
 )
 
 // TODO: extract these tests and more as a generic layout test suite
@@ -41,7 +41,7 @@ func buildTestDag(ds ipld.DAGService, spl chunker.Splitter) (*dag.ProtoNode, err
 
 func getTestDag(t *testing.T, ds ipld.DAGService, size int64, blksize int64) (*dag.ProtoNode, []byte) {
 	data := make([]byte, size)
-	u.NewTimeSeededRand().Read(data)
+	random.NewRand().Read(data)
 	r := bytes.NewReader(data)
 
 	nd, err := buildTestDag(ds, chunker.NewSizeSplitter(r, blksize))
