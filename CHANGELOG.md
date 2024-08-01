@@ -22,6 +22,7 @@ The following emojis are used to highlight certain changes:
 - `bitswap` unify logger names to use uniform format bitswap/path/pkgname
 - `gateway` now always returns meaningful cache-control headers for generated HTML listings of UnixFS directories
 - generate random test data using `ipfs/go-test` instead of internal util code
+- Reduce overall memory use by chunker by reducing heap fragmentation
 
 ### Removed
 

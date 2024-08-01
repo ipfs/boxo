@@ -14,10 +14,6 @@ import (
 
 var log = logging.Logger("chunk")
 
-// Maximum allowed chunk over-allocation without re-allocating a buffer of the
-// exact size needed to hold data.
-const maxOverAllocBytes = 1024
-
 // A Splitter reads bytes from a Reader and creates "chunks" (byte slices)
 // that can be used to build DAG nodes.
 type Splitter interface {
