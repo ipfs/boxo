@@ -5,6 +5,7 @@
 package chunk
 
 import (
+	"errors"
 	"io"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -12,6 +13,10 @@ import (
 )
 
 var log = logging.Logger("chunk")
+
+// Maximum allowed chunk over-allocation without re-allocating a buffer of the
+// exact size needed to hold data.
+const maxOverAllocBytes = 1024
 
 // A Splitter reads bytes from a Reader and creates "chunks" (byte slices)
 // that can be used to build DAG nodes.
@@ -81,19 +86,28 @@ func (ss *sizeSplitterv2) NextBytes() ([]byte, error) {
 
 	full := pool.Get(int(ss.size))
 	n, err := io.ReadFull(ss.r, full)
-	switch err {
-	case io.ErrUnexpectedEOF:
-		ss.err = io.EOF
-		small := make([]byte, n)
-		copy(small, full)
-		pool.Put(full)
-		return small, nil
-	case nil:
-		return full, nil
-	default:
+	if err != nil {
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			ss.err = io.EOF
+			// Do not return an emty buffer.
+			if n == 0 {
+				pool.Put(full)
+				return nil, nil
+			}
+			// If reallocating from pool would save space.
+			if n <= (cap(full) >> 1) {
+				small := pool.Get(n)
+				copy(small, full)
+				pool.Put(full)
+				return small, nil
+			}
+			// Use overallocated chunk.
+			return full[:n], nil
+		}
 		pool.Put(full)
 		return nil, err
 	}
+	return full, nil
 }
 
 // Reader returns the io.Reader associated to this Splitter.
