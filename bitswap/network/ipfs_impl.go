@@ -28,7 +28,7 @@ import (
 
 var log = logging.Logger("bitswap/network")
 
-var connectTimeout = time.Second * 5
+var connectTimeout = time.Second * 10
 
 var (
 	maxSendTimeout = 2 * time.Minute
