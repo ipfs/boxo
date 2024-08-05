@@ -34,7 +34,7 @@ func TestSizeSplitterOverAllocate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cap(chunk)-len(chunk) > cap(chunk)/2 {
+	if cap(chunk)-len(chunk) > maxOverAllocBytes {
 		t.Fatal("chunk capacity too large")
 	}
 }
@@ -160,8 +160,6 @@ type sizeSplitterNoPool struct {
 }
 
 func (ss *sizeSplitterNoPool) NextBytes() ([]byte, error) {
-	const maxOverAllocBytes = 512
-
 	if ss.err != nil {
 		return nil, ss.err
 	}
@@ -173,9 +171,6 @@ func (ss *sizeSplitterNoPool) NextBytes() ([]byte, error) {
 			ss.err = io.EOF
 			if n == 0 {
 				return nil, nil
-			}
-			if cap(full)-n < maxOverAllocBytes {
-				return full[:n], nil
 			}
 			small := make([]byte, n)
 			copy(small, full)

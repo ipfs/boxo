@@ -7,12 +7,17 @@ package chunk
 import (
 	"errors"
 	"io"
+	"math/bits"
 
 	logging "github.com/ipfs/go-log/v2"
 	pool "github.com/libp2p/go-buffer-pool"
 )
 
 var log = logging.Logger("chunk")
+
+// maxOverAllocBytes is the maximum unused space a chunk can have without being
+// reallocated to a smaller size to fit the data.
+const maxOverAllocBytes = 1024
 
 // A Splitter reads bytes from a Reader and creates "chunks" (byte slices)
 // that can be used to build DAG nodes.
@@ -85,25 +90,38 @@ func (ss *sizeSplitterv2) NextBytes() ([]byte, error) {
 	if err != nil {
 		if errors.Is(err, io.ErrUnexpectedEOF) {
 			ss.err = io.EOF
-			// Do not return an emty buffer.
-			if n == 0 {
-				pool.Put(full)
-				return nil, nil
-			}
-			// If reallocating from pool would save space.
-			if n <= (cap(full) >> 1) {
-				small := pool.Get(n)
-				copy(small, full)
-				pool.Put(full)
-				return small, nil
-			}
-			// Use overallocated chunk.
-			return full[:n], nil
+			return reallocChunk(full, n), nil
 		}
 		pool.Put(full)
 		return nil, err
 	}
 	return full, nil
+}
+
+func reallocChunk(full []byte, n int) []byte {
+	// Do not return an empty buffer.
+	if n == 0 {
+		pool.Put(full)
+		return nil
+	}
+
+	// If chunk is close enough to fully used.
+	if cap(full)-n <= maxOverAllocBytes {
+		return full[:n]
+	}
+
+	var small []byte
+	// If reallocating to the nearest power of two saves space without leaving
+	// too much unused space.
+	powTwoSize := 1 << bits.Len32(uint32(n-1))
+	if powTwoSize-n <= maxOverAllocBytes {
+		small = make([]byte, n, powTwoSize)
+	} else {
+		small = make([]byte, n)
+	}
+	copy(small, full)
+	pool.Put(full)
+	return small
 }
 
 // Reader returns the io.Reader associated to this Splitter.
