@@ -34,7 +34,7 @@ func (w *TarWriter) writeDir(f Directory, fpath string) error {
 
 	it := f.Entries()
 	for it.Next() {
-		if err := w.WriteNode(it.Node(), path.Join(fpath, it.Name())); err != nil {
+		if err := w.WriteFile(it.Node(), path.Join(fpath, it.Name())); err != nil {
 			return err
 		}
 	}
@@ -78,8 +78,8 @@ func validateTarFilePath(baseDir, fpath string) bool {
 	return true
 }
 
-// WriteNode adds a node to the archive.
-func (w *TarWriter) WriteNode(nd Node, fpath string) error {
+// WriteFile adds a node to the archive.
+func (w *TarWriter) WriteFile(nd Node, fpath string) error {
 	if !w.baseDirSet {
 		w.baseDirSet = true // Use a variable for this as baseDir may be an empty string.
 		w.baseDir = fpath

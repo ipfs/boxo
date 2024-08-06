@@ -30,7 +30,7 @@ func TestTarWriter(t *testing.T) {
 
 	go func() {
 		defer tw.Close()
-		if err := tw.WriteNode(tf, ""); err != nil {
+		if err := tw.WriteFile(tf, ""); err != nil {
 			t.Error(err)
 		}
 	}()
@@ -116,7 +116,7 @@ func TestTarWriterRelativePathInsideRoot(t *testing.T) {
 	}
 
 	defer tw.Close()
-	if err = tw.WriteNode(tf, ""); err != nil {
+	if err = tw.WriteFile(tf, ""); err != nil {
 		t.Error(err)
 	}
 }
@@ -137,7 +137,7 @@ func TestTarWriterFailsFileOutsideRoot(t *testing.T) {
 	}
 
 	defer tw.Close()
-	if err = tw.WriteNode(tf, ""); !errors.Is(err, ErrUnixFSPathOutsideRoot) {
+	if err = tw.WriteFile(tf, ""); !errors.Is(err, ErrUnixFSPathOutsideRoot) {
 		t.Errorf("unexpected error, wanted: %v; got: %v", ErrUnixFSPathOutsideRoot, err)
 	}
 }
@@ -158,7 +158,7 @@ func TestTarWriterFailsFileOutsideRootWithBaseDir(t *testing.T) {
 	}
 
 	defer tw.Close()
-	if err = tw.WriteNode(tf, "test.tar"); !errors.Is(err, ErrUnixFSPathOutsideRoot) {
+	if err = tw.WriteFile(tf, "test.tar"); !errors.Is(err, ErrUnixFSPathOutsideRoot) {
 		t.Errorf("unexpected error, wanted: %v; got: %v", ErrUnixFSPathOutsideRoot, err)
 	}
 }
