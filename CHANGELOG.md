@@ -18,6 +18,16 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+### Removed
+
+### Fixed
+
+### Security
+
+## [v0.22.0]
+
+### Changed
+
 - `go-libp2p` dependency updated to [v0.36 (release notes)](https://github.com/libp2p/go-libp2p/releases/tag/v0.36.1)
 - `bitswap/server` minor memory use and performance improvements
 - `bitswap` unify logger names to use uniform format bitswap/path/pkgname
@@ -26,13 +36,14 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+- `util` logic for generating random test data moved to [`ipfs/go-test/random`](https://github.com/ipfs/go-test)
+
 ### Fixed
 
 - `boxo/gateway` now correctly returns 404 Status Not Found instead of 500 when the requested content cannot be found due to offline exchange, gateway running in no-fetch (non-recursive) mode, or a similar restriction that only serves a specific set of CIDs.
 - `bitswap/client` fix memory leak in BlockPresenceManager due to unlimited map growth.
 - `bitswap/network` fixed race condition when a timeout occurred before hole punching completed while establishing a first-time stream to a peer behind a NAT
-
-### Security
+- `bitswap`: wantlist overflow handling now cancels existing entries to make room for newer entries. This fix prevents the wantlist from filling up with CIDs that the server does not have.
 
 ## [v0.21.0]
 
@@ -49,7 +60,6 @@ The following emojis are used to highlight certain changes:
 
 - `routing/http`: the `FindPeer` now returns `routing.ErrNotFound` when no addresses are found
 - `routing/http`: the `FindProvidersAsync` no longer causes a goroutine buildup
-- `bitswap`: wantlist overflow handling now cancels existing entries to make room for newer entries. This fix prevents the wantlist from filling up with CIDs that the server does not have.
 
 ## [v0.20.0]
 
