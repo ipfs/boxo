@@ -3,11 +3,12 @@ package peermanager
 import (
 	"context"
 	"math/rand"
+	"slices"
 	"testing"
 	"time"
 
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-test/random"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -83,7 +84,7 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 	msgs := make(chan msg, 16)
 	peerQueueFactory := makePeerQueueFactory(msgs)
 
-	tp := testutil.GeneratePeers(6)
+	tp := random.Peers(6)
 	self, peer1, peer2, peer3, peer4, peer5 := tp[0], tp[1], tp[2], tp[3], tp[4], tp[5]
 	peerManager := New(ctx, peerQueueFactory, self)
 
@@ -93,14 +94,14 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 
 	connectedPeers := peerManager.ConnectedPeers()
 
-	if !testutil.ContainsPeer(connectedPeers, peer1) ||
-		!testutil.ContainsPeer(connectedPeers, peer2) ||
-		!testutil.ContainsPeer(connectedPeers, peer3) {
+	if !slices.Contains(connectedPeers, peer1) ||
+		!slices.Contains(connectedPeers, peer2) ||
+		!slices.Contains(connectedPeers, peer3) {
 		t.Fatal("Peers not connected that should be connected")
 	}
 
-	if testutil.ContainsPeer(connectedPeers, peer4) ||
-		testutil.ContainsPeer(connectedPeers, peer5) {
+	if slices.Contains(connectedPeers, peer4) ||
+		slices.Contains(connectedPeers, peer5) {
 		t.Fatal("Peers connected that shouldn't be connected")
 	}
 
@@ -108,7 +109,7 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 	peerManager.Disconnected(peer1)
 	connectedPeers = peerManager.ConnectedPeers()
 
-	if testutil.ContainsPeer(connectedPeers, peer1) {
+	if slices.Contains(connectedPeers, peer1) {
 		t.Fatal("Peer should have been disconnected but was not")
 	}
 
@@ -116,7 +117,7 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 	peerManager.Connected(peer1)
 	connectedPeers = peerManager.ConnectedPeers()
 
-	if !testutil.ContainsPeer(connectedPeers, peer1) {
+	if !slices.Contains(connectedPeers, peer1) {
 		t.Fatal("Peer should have been connected but was not")
 	}
 }
@@ -126,11 +127,11 @@ func TestBroadcastOnConnect(t *testing.T) {
 	defer cancel()
 	msgs := make(chan msg, 16)
 	peerQueueFactory := makePeerQueueFactory(msgs)
-	tp := testutil.GeneratePeers(2)
+	tp := random.Peers(2)
 	self, peer1 := tp[0], tp[1]
 	peerManager := New(ctx, peerQueueFactory, self)
 
-	cids := testutil.GenerateCids(2)
+	cids := random.Cids(2)
 	peerManager.BroadcastWantHaves(ctx, cids)
 
 	// Connect with two broadcast wants for first peer
@@ -147,11 +148,11 @@ func TestBroadcastWantHaves(t *testing.T) {
 	defer cancel()
 	msgs := make(chan msg, 16)
 	peerQueueFactory := makePeerQueueFactory(msgs)
-	tp := testutil.GeneratePeers(3)
+	tp := random.Peers(3)
 	self, peer1, peer2 := tp[0], tp[1], tp[2]
 	peerManager := New(ctx, peerQueueFactory, self)
 
-	cids := testutil.GenerateCids(3)
+	cids := random.Cids(3)
 
 	// Broadcast the first two.
 	peerManager.BroadcastWantHaves(ctx, cids[:2])
@@ -188,10 +189,10 @@ func TestSendWants(t *testing.T) {
 	defer cancel()
 	msgs := make(chan msg, 16)
 	peerQueueFactory := makePeerQueueFactory(msgs)
-	tp := testutil.GeneratePeers(2)
+	tp := random.Peers(2)
 	self, peer1 := tp[0], tp[1]
 	peerManager := New(ctx, peerQueueFactory, self)
-	cids := testutil.GenerateCids(4)
+	cids := random.Cids(4)
 
 	peerManager.Connected(peer1)
 	peerManager.SendWants(ctx, peer1, []cid.Cid{cids[0]}, []cid.Cid{cids[2]})
@@ -222,10 +223,10 @@ func TestSendCancels(t *testing.T) {
 	defer cancel()
 	msgs := make(chan msg, 16)
 	peerQueueFactory := makePeerQueueFactory(msgs)
-	tp := testutil.GeneratePeers(3)
+	tp := random.Peers(3)
 	self, peer1, peer2 := tp[0], tp[1], tp[2]
 	peerManager := New(ctx, peerQueueFactory, self)
-	cids := testutil.GenerateCids(4)
+	cids := random.Cids(4)
 
 	// Connect to peer1 and peer2
 	peerManager.Connected(peer1)
@@ -283,7 +284,7 @@ func TestSessionRegistration(t *testing.T) {
 	msgs := make(chan msg, 16)
 	peerQueueFactory := makePeerQueueFactory(msgs)
 
-	tp := testutil.GeneratePeers(3)
+	tp := random.Peers(3)
 	self, p1, p2 := tp[0], tp[1], tp[2]
 	peerManager := New(ctx, peerQueueFactory, self)
 
@@ -343,8 +344,8 @@ func BenchmarkPeerManager(b *testing.B) {
 		return &benchPeerQueue{}
 	}
 
-	self := testutil.GeneratePeers(1)[0]
-	peers := testutil.GeneratePeers(500)
+	self := random.Peers(1)[0]
+	peers := random.Peers(500)
 	peerManager := New(ctx, peerQueueFactory, self)
 
 	// Create a bunch of connections
@@ -364,11 +365,11 @@ func BenchmarkPeerManager(b *testing.B) {
 		// Alternately add either a few wants or many broadcast wants
 		r := rand.Intn(8)
 		if r == 0 {
-			wants := testutil.GenerateCids(10)
+			wants := random.Cids(10)
 			peerManager.SendWants(ctx, peers[i], wants[:2], wants[2:])
 			wanted = append(wanted, wants...)
 		} else if r == 1 {
-			wants := testutil.GenerateCids(30)
+			wants := random.Cids(30)
 			peerManager.BroadcastWantHaves(ctx, wants)
 			wanted = append(wanted, wants...)
 		} else {

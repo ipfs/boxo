@@ -85,7 +85,7 @@ Boxo includes high-quality components useful for interacting with IPFS protocols
 - Interacting with public and private IPFS networks
 - Working with content-addressed data
 
-Boxo aims to provide a cohesive interface into these components. Note that not all of the underlying components necessarily reside in this respository.
+Boxo aims to provide a cohesive interface into these components. Note that not all of the underlying components necessarily reside in this repository.
 
 ### Does Boxo == IPFS?
 

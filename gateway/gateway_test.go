@@ -130,9 +130,9 @@ func TestHeaders(t *testing.T) {
 			path         string
 			cacheControl string
 		}{
-			{"/ipns/example.net/", "public, max-age=30"},                 // As generated directory listing
-			{"/ipns/example.com/", "public, max-age=55"},                 // As generated directory listing (different)
-			{"/ipns/unknown.com/", ""},                                   // As generated directory listing (unknown)
+			{"/ipns/example.net/", "public, max-age=30, stale-while-revalidate=2678400"}, // As generated directory listing
+			{"/ipns/example.com/", "public, max-age=55, stale-while-revalidate=2678400"}, // As generated directory listing (different)
+			{"/ipns/unknown.com/", ""},                                   // As generated directory listing (unknown TTL)
 			{"/ipns/example.net/foo/", "public, max-age=30"},             // As index.html directory listing
 			{"/ipns/example.net/foo/index.html", "public, max-age=30"},   // As deserialized UnixFS file
 			{"/ipns/example.net/?format=raw", "public, max-age=30"},      // As Raw block
@@ -924,7 +924,7 @@ func TestErrorBubblingFromBackend(t *testing.T) {
 		})
 	}
 
-	testError("500 Not Found from IPLD", &ipld.ErrNotFound{}, http.StatusInternalServerError)
+	testError("404 Not Found from IPLD", &ipld.ErrNotFound{}, http.StatusNotFound)
 	testError("404 Not Found from path resolver", &resolver.ErrNoLink{}, http.StatusNotFound)
 	testError("502 Bad Gateway", ErrBadGateway, http.StatusBadGateway)
 	testError("504 Gateway Timeout", ErrGatewayTimeout, http.StatusGatewayTimeout)

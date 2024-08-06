@@ -7,19 +7,17 @@ import (
 	"testing"
 
 	dag "github.com/ipfs/boxo/ipld/merkledag"
+	"github.com/ipfs/boxo/ipld/unixfs"
 	h "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
 	trickle "github.com/ipfs/boxo/ipld/unixfs/importer/trickle"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 	testu "github.com/ipfs/boxo/ipld/unixfs/test"
-
-	"github.com/ipfs/boxo/ipld/unixfs"
-	u "github.com/ipfs/boxo/util"
+	"github.com/ipfs/go-test/random"
 )
 
 func testModWrite(t *testing.T, beg, size uint64, orig []byte, dm *DagModifier, opts testu.NodeOpts) []byte {
 	newdata := make([]byte, size)
-	r := u.NewTimeSeededRand()
-	r.Read(newdata)
+	random.NewRand().Read(newdata)
 
 	if size+beg > uint64(len(orig)) {
 		orig = append(orig, make([]byte, (size+beg)-uint64(len(orig)))...)
@@ -135,7 +133,7 @@ func testDagModifierBasic(t *testing.T, opts testu.NodeOpts) {
 		t.Fatal(err)
 	}
 
-	expected := uint64(50000 + 3500 + 3000)
+	const expected = uint64(50000 + 3500 + 3000)
 	if size != expected {
 		t.Fatalf("Final reported size is incorrect [%d != %d]", size, expected)
 	}
@@ -161,7 +159,7 @@ func testMultiWrite(t *testing.T, opts testu.NodeOpts) {
 	}
 
 	data := make([]byte, 4000)
-	u.NewTimeSeededRand().Read(data)
+	random.NewRand().Read(data)
 
 	for i := 0; i < len(data); i++ {
 		n, err := dagmod.WriteAt(data[i:i+1], int64(i))
@@ -205,7 +203,7 @@ func testMultiWriteAndFlush(t *testing.T, opts testu.NodeOpts) {
 	}
 
 	data := make([]byte, 20)
-	u.NewTimeSeededRand().Read(data)
+	random.NewRand().Read(data)
 
 	for i := 0; i < len(data); i++ {
 		n, err := dagmod.WriteAt(data[i:i+1], int64(i))
@@ -244,7 +242,7 @@ func testWriteNewFile(t *testing.T, opts testu.NodeOpts) {
 	}
 
 	towrite := make([]byte, 2000)
-	u.NewTimeSeededRand().Read(towrite)
+	random.NewRand().Read(towrite)
 
 	nw, err := dagmod.Write(towrite)
 	if err != nil {
@@ -277,7 +275,7 @@ func testMultiWriteCoal(t *testing.T, opts testu.NodeOpts) {
 	}
 
 	data := make([]byte, 1000)
-	u.NewTimeSeededRand().Read(data)
+	random.NewRand().Read(data)
 
 	for i := 0; i < len(data); i++ {
 		n, err := dagmod.WriteAt(data[:i+1], 0)
@@ -313,11 +311,11 @@ func testLargeWriteChunks(t *testing.T, opts testu.NodeOpts) {
 		dagmod.RawLeaves = true
 	}
 
-	wrsize := 1000
-	datasize := 10000000
+	const wrsize = 1000
+	const datasize = 10000000
 	data := make([]byte, datasize)
 
-	u.NewTimeSeededRand().Read(data)
+	random.NewRand().Read(data)
 
 	for i := 0; i < datasize/wrsize; i++ {
 		n, err := dagmod.WriteAt(data[i*wrsize:(i+1)*wrsize], int64(i*wrsize))
@@ -532,7 +530,7 @@ func testSparseWrite(t *testing.T, opts testu.NodeOpts) {
 	}
 
 	buf := make([]byte, 5000)
-	u.NewTimeSeededRand().Read(buf[2500:])
+	random.NewRand().Read(buf[2500:])
 
 	wrote, err := dagmod.WriteAt(buf[2500:], 2500)
 	if err != nil {
@@ -577,7 +575,7 @@ func testSeekPastEndWrite(t *testing.T, opts testu.NodeOpts) {
 	}
 
 	buf := make([]byte, 5000)
-	u.NewTimeSeededRand().Read(buf[2500:])
+	random.NewRand().Read(buf[2500:])
 
 	nseek, err := dagmod.Seek(2500, io.SeekStart)
 	if err != nil {
@@ -841,7 +839,7 @@ func BenchmarkDagmodWrite(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wrsize := 4096
+	const wrsize = 4096
 
 	dagmod, err := NewDagModifier(ctx, n, dserv, testu.SizeSplitterGen(512))
 	if err != nil {
@@ -849,7 +847,7 @@ func BenchmarkDagmodWrite(b *testing.B) {
 	}
 
 	buf := make([]byte, b.N*wrsize)
-	u.NewTimeSeededRand().Read(buf)
+	random.NewRand().Read(buf)
 	b.StartTimer()
 	b.SetBytes(int64(wrsize))
 	for i := 0; i < b.N; i++ {

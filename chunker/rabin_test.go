@@ -6,15 +6,15 @@ import (
 	"io"
 	"testing"
 
-	util "github.com/ipfs/boxo/util"
 	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestRabinChunking(t *testing.T) {
 	t.Parallel()
 
 	data := make([]byte, 1024*1024*16)
-	n, err := util.NewTimeSeededRand().Read(data)
+	n, err := random.NewRand().Read(data)
 	if n < len(data) {
 		t.Fatalf("expected %d bytes, got %d", len(data), n)
 	}
@@ -72,7 +72,7 @@ func testReuse(t *testing.T, cr newSplitter) {
 	t.Parallel()
 
 	data := make([]byte, 1024*1024*16)
-	n, err := util.NewTimeSeededRand().Read(data)
+	n, err := random.NewRand().Read(data)
 	if n < len(data) {
 		t.Fatalf("expected %d bytes, got %d", len(data), n)
 	}

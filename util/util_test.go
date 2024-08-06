@@ -3,6 +3,8 @@ package util
 import (
 	"bytes"
 	"testing"
+
+	"github.com/ipfs/go-test/random"
 )
 
 func TestXOR(t *testing.T) {
@@ -33,9 +35,9 @@ func TestXOR(t *testing.T) {
 }
 
 func BenchmarkHash256K(b *testing.B) {
-	buf := make([]byte, 256*1024)
-	NewTimeSeededRand().Read(buf)
-	b.SetBytes(int64(256 * 1024))
+	const size = 256 * 1024
+	buf := random.Bytes(size)
+	b.SetBytes(size)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		Hash(buf)
@@ -43,9 +45,9 @@ func BenchmarkHash256K(b *testing.B) {
 }
 
 func BenchmarkHash512K(b *testing.B) {
-	buf := make([]byte, 512*1024)
-	NewTimeSeededRand().Read(buf)
-	b.SetBytes(int64(512 * 1024))
+	const size = 512 * 1024
+	buf := random.Bytes(size)
+	b.SetBytes(size)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		Hash(buf)
@@ -53,9 +55,9 @@ func BenchmarkHash512K(b *testing.B) {
 }
 
 func BenchmarkHash1M(b *testing.B) {
-	buf := make([]byte, 1024*1024)
-	NewTimeSeededRand().Read(buf)
-	b.SetBytes(int64(1024 * 1024))
+	const size = 1024 * 1024
+	buf := random.Bytes(size)
+	b.SetBytes(size)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		Hash(buf)

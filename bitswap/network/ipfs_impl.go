@@ -26,9 +26,7 @@ import (
 	"github.com/multiformats/go-multistream"
 )
 
-var log = logging.Logger("bitswap_network")
-
-var connectTimeout = time.Second * 5
+var log = logging.Logger("bitswap/network")
 
 var (
 	maxSendTimeout = 2 * time.Minute
@@ -323,10 +321,7 @@ func (bsnet *impl) SendMessage(
 	p peer.ID,
 	outgoing bsmsg.BitSwapMessage,
 ) error {
-	tctx, cancel := context.WithTimeout(ctx, connectTimeout)
-	defer cancel()
-
-	s, err := bsnet.newStreamToPeer(tctx, p)
+	s, err := bsnet.newStreamToPeer(ctx, p)
 	if err != nil {
 		return err
 	}

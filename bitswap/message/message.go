@@ -182,15 +182,9 @@ func (m *impl) Clone() BitSwapMessage {
 // Reset the values in the message back to defaults, so it can be reused
 func (m *impl) Reset(full bool) {
 	m.full = full
-	for k := range m.wantlist {
-		delete(m.wantlist, k)
-	}
-	for k := range m.blocks {
-		delete(m.blocks, k)
-	}
-	for k := range m.blockPresences {
-		delete(m.blockPresences, k)
-	}
+	clear(m.wantlist)
+	clear(m.blocks)
+	clear(m.blockPresences)
 	m.pendingBytes = 0
 }
 
@@ -253,25 +247,31 @@ func (m *impl) Empty() bool {
 }
 
 func (m *impl) Wantlist() []Entry {
-	out := make([]Entry, 0, len(m.wantlist))
+	out := make([]Entry, len(m.wantlist))
+	var i int
 	for _, e := range m.wantlist {
-		out = append(out, *e)
+		out[i] = *e
+		i++
 	}
 	return out
 }
 
 func (m *impl) Blocks() []blocks.Block {
-	bs := make([]blocks.Block, 0, len(m.blocks))
+	bs := make([]blocks.Block, len(m.blocks))
+	var i int
 	for _, block := range m.blocks {
-		bs = append(bs, block)
+		bs[i] = block
+		i++
 	}
 	return bs
 }
 
 func (m *impl) BlockPresences() []BlockPresence {
-	bps := make([]BlockPresence, 0, len(m.blockPresences))
+	bps := make([]BlockPresence, len(m.blockPresences))
+	var i int
 	for c, t := range m.blockPresences {
-		bps = append(bps, BlockPresence{c, t})
+		bps[i] = BlockPresence{c, t}
+		i++
 	}
 	return bps
 }

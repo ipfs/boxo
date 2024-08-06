@@ -29,7 +29,7 @@ import (
 var provideKeysBufferSize = 2048
 
 var (
-	log   = logging.Logger("bitswap-server")
+	log   = logging.Logger("bitswap/server")
 	sflog = log.Desugar()
 )
 

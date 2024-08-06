@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -11,12 +12,14 @@ import (
 	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
 	bsspm "github.com/ipfs/boxo/bitswap/client/internal/sessionpeermanager"
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
 	"github.com/ipfs/boxo/internal/test"
+	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	delay "github.com/ipfs/go-ipfs-delay"
+	"github.com/ipfs/go-test/random"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/stretchr/testify/require"
 )
 
 type mockSessionMgr struct {
@@ -159,7 +162,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New()
 	defer notif.Shutdown()
-	id := testutil.GenerateSessionID()
+	id := random.SequenceNext()
 	sm := newMockSessionMgr()
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
 	blockGenerator := blocksutil.NewBlockGenerator()
@@ -179,34 +182,29 @@ func TestSessionGetBlocks(t *testing.T) {
 
 	// Should have registered session's interest in blocks
 	intSes := sim.FilterSessionInterested(id, cids)
-	if !testutil.MatchKeysIgnoreOrder(intSes[0], cids) {
-		t.Fatal("did not register session interest in blocks")
-	}
+	require.ElementsMatch(t, intSes[0], cids, "did not register session interest in blocks")
 
 	// Should have sent out broadcast request for wants
-	if len(receivedWantReq.cids) != broadcastLiveWantsLimit {
-		t.Fatal("did not enqueue correct initial number of wants")
-	}
+	require.Len(t, receivedWantReq.cids, broadcastLiveWantsLimit, "did not enqueue correct initial number of wants")
 
 	// Simulate receiving HAVEs from several peers
-	peers := testutil.GeneratePeers(5)
+	peers := random.Peers(5)
 	for i, p := range peers {
-		blk := blks[testutil.IndexOf(blks, receivedWantReq.cids[i])]
+		blkIndex := slices.IndexFunc(blks, func(blk blocks.Block) bool {
+			return blk.Cid() == receivedWantReq.cids[i]
+		})
+		blk := blks[blkIndex]
 		session.ReceiveFrom(p, []cid.Cid{}, []cid.Cid{blk.Cid()}, []cid.Cid{})
 	}
 
 	time.Sleep(10 * time.Millisecond)
 
 	// Verify new peers were recorded
-	if !testutil.MatchPeersIgnoreOrder(fspm.Peers(), peers) {
-		t.Fatal("peers not recorded by the peer manager")
-	}
+	require.ElementsMatch(t, fspm.Peers(), peers, "peers not recorded by the peer manager")
 
 	// Verify session still wants received blocks
 	_, unwanted := sim.SplitWantedUnwanted(blks)
-	if len(unwanted) > 0 {
-		t.Fatal("all blocks should still be wanted")
-	}
+	require.Empty(t, unwanted, "all blocks should still be wanted")
 
 	// Simulate receiving DONT_HAVE for a CID
 	session.ReceiveFrom(peers[0], []cid.Cid{}, []cid.Cid{}, []cid.Cid{blks[0].Cid()})
@@ -215,9 +213,7 @@ func TestSessionGetBlocks(t *testing.T) {
 
 	// Verify session still wants received blocks
 	_, unwanted = sim.SplitWantedUnwanted(blks)
-	if len(unwanted) > 0 {
-		t.Fatal("all blocks should still be wanted")
-	}
+	require.Empty(t, unwanted, "all blocks should still be wanted")
 
 	// Simulate receiving block for a CID
 	session.ReceiveFrom(peers[1], []cid.Cid{blks[0].Cid()}, []cid.Cid{}, []cid.Cid{})
@@ -226,12 +222,9 @@ func TestSessionGetBlocks(t *testing.T) {
 
 	// Verify session no longer wants received block
 	wanted, unwanted := sim.SplitWantedUnwanted(blks)
-	if len(unwanted) != 1 || !unwanted[0].Cid().Equals(blks[0].Cid()) {
-		t.Fatal("session wants block that has already been received")
-	}
-	if len(wanted) != len(blks)-1 {
-		t.Fatal("session wants incorrect number of blocks")
-	}
+	require.Len(t, unwanted, 1)
+	require.True(t, unwanted[0].Cid().Equals(blks[0].Cid()), "session wants block that has already been received")
+	require.Len(t, wanted, len(blks)-1, "session wants incorrect number of blocks")
 
 	// Shut down session
 	cancel()
@@ -239,9 +232,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Verify session was removed
-	if !sm.removeSessionCalled() {
-		t.Fatal("expected session to be removed")
-	}
+	require.True(t, sm.removeSessionCalled(), "expected session to be removed")
 }
 
 func TestSessionFindMorePeers(t *testing.T) {
@@ -254,7 +245,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New()
 	defer notif.Shutdown()
-	id := testutil.GenerateSessionID()
+	id := random.SequenceNext()
 	sm := newMockSessionMgr()
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
 	session.SetBaseTickDelay(200 * time.Microsecond)
@@ -265,9 +256,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 		cids = append(cids, block.Cid())
 	}
 	_, err := session.GetBlocks(ctx, cids)
-	if err != nil {
-		t.Fatal("error getting blocks")
-	}
+	require.NoError(t, err, "error getting blocks")
 
 	// The session should initially broadcast want-haves
 	select {
@@ -280,7 +269,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 	time.Sleep(20 * time.Millisecond) // need to make sure some latency registers
 	// or there will be no tick set -- time precision on Windows in go is in the
 	// millisecond range
-	p := testutil.GeneratePeers(1)[0]
+	p := random.Peers(1)[0]
 
 	blk := blks[0]
 	session.ReceiveFrom(p, []cid.Cid{blk.Cid()}, []cid.Cid{}, []cid.Cid{})
@@ -302,9 +291,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 		// Make sure the first block is not included because it has already
 		// been received
 		for _, c := range receivedWantReq.cids {
-			if c.Equals(cids[0]) {
-				t.Fatal("should not braodcast block that was already received")
-			}
+			require.False(t, c.Equals(cids[0]), "should not braodcast block that was already received")
 		}
 	case <-ctx.Done():
 		t.Fatal("Never rebroadcast want list")
@@ -329,7 +316,7 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New()
 	defer notif.Shutdown()
-	id := testutil.GenerateSessionID()
+	id := random.SequenceNext()
 	sm := newMockSessionMgr()
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
 	blockGenerator := blocksutil.NewBlockGenerator()
@@ -339,17 +326,13 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 		cids = append(cids, block.Cid())
 	}
 	_, err := session.GetBlocks(ctx, cids)
-	if err != nil {
-		t.Fatal("error getting blocks")
-	}
+	require.NoError(t, err, "error getting blocks")
 
 	// Wait for initial want request
 	receivedWantReq := <-fpm.wantReqs
 
 	// Should have sent out broadcast request for wants
-	if len(receivedWantReq.cids) != broadcastLiveWantsLimit {
-		t.Fatal("did not enqueue correct initial number of wants")
-	}
+	require.Len(t, receivedWantReq.cids, broadcastLiveWantsLimit, "did not enqueue correct initial number of wants")
 
 	// Signal that all peers have send DONT_HAVE for two of the wants
 	session.onPeersExhausted(cids[len(cids)-2:])
@@ -358,9 +341,7 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 	receivedWantReq = <-fpm.wantReqs
 
 	// Should have sent out broadcast request for wants
-	if len(receivedWantReq.cids) != 2 {
-		t.Fatal("did not enqueue correct initial number of wants")
-	}
+	require.Len(t, receivedWantReq.cids, 2, "did not enqueue correct initial number of wants")
 }
 
 func TestSessionFailingToGetFirstBlock(t *testing.T) {
@@ -375,7 +356,7 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New()
 	defer notif.Shutdown()
-	id := testutil.GenerateSessionID()
+	id := random.SequenceNext()
 	sm := newMockSessionMgr()
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, 10*time.Millisecond, delay.Fixed(100*time.Millisecond), "")
 	blockGenerator := blocksutil.NewBlockGenerator()
@@ -386,9 +367,7 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	}
 	startTick := time.Now()
 	_, err := session.GetBlocks(ctx, cids)
-	if err != nil {
-		t.Fatal("error getting blocks")
-	}
+	require.NoError(t, err, "error getting blocks")
 
 	// The session should initially broadcast want-haves
 	select {
@@ -410,7 +389,9 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	// Wait for a request to find more peers to occur
 	select {
 	case k := <-fpf.findMorePeersRequested:
-		if testutil.IndexOf(blks, k) == -1 {
+		if !slices.ContainsFunc(blks, func(blk blocks.Block) bool {
+			return blk.Cid() == k
+		}) {
 			t.Fatal("did not rebroadcast an active want")
 		}
 	case <-ctx.Done():
@@ -472,7 +453,9 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	// Wait for rebroadcast to occur
 	select {
 	case k := <-fpf.findMorePeersRequested:
-		if testutil.IndexOf(blks, k) == -1 {
+		if !slices.ContainsFunc(blks, func(blk blocks.Block) bool {
+			return blk.Cid() == k
+		}) {
 			t.Fatal("did not rebroadcast an active want")
 		}
 	case <-ctx.Done():
@@ -488,7 +471,7 @@ func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New()
 	defer notif.Shutdown()
-	id := testutil.GenerateSessionID()
+	id := random.SequenceNext()
 	sm := newMockSessionMgr()
 
 	// Create a new session with its own context
@@ -505,9 +488,7 @@ func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
 	defer getcancel()
 
 	getBlocksCh, err := session.GetBlocks(getctx, []cid.Cid{blks[0].Cid()})
-	if err != nil {
-		t.Fatal("error getting blocks")
-	}
+	require.NoError(t, err, "error getting blocks")
 
 	// Cancel the session context
 	sesscancel()
@@ -515,9 +496,7 @@ func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
 	// Expect the GetBlocks() channel to be closed
 	select {
 	case _, ok := <-getBlocksCh:
-		if ok {
-			t.Fatal("expected channel to be closed but was not closed")
-		}
+		require.False(t, ok, "expected channel to be closed but was not closed")
 	case <-timerCtx.Done():
 		t.Fatal("expected channel to be closed before timeout")
 	}
@@ -525,9 +504,7 @@ func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Expect RemoveSession to be called
-	if !sm.removeSessionCalled() {
-		t.Fatal("expected onShutdown to be called")
-	}
+	require.True(t, sm.removeSessionCalled(), "expected onShutdown to be called")
 }
 
 func TestSessionOnShutdownCalled(t *testing.T) {
@@ -538,7 +515,7 @@ func TestSessionOnShutdownCalled(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New()
 	defer notif.Shutdown()
-	id := testutil.GenerateSessionID()
+	id := random.SequenceNext()
 	sm := newMockSessionMgr()
 
 	// Create a new session with its own context
@@ -552,9 +529,7 @@ func TestSessionOnShutdownCalled(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Expect RemoveSession to be called
-	if !sm.removeSessionCalled() {
-		t.Fatal("expected onShutdown to be called")
-	}
+	require.True(t, sm.removeSessionCalled(), "expected onShutdown to be called")
 }
 
 func TestSessionReceiveMessageAfterCtxCancel(t *testing.T) {
@@ -567,7 +542,7 @@ func TestSessionReceiveMessageAfterCtxCancel(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New()
 	defer notif.Shutdown()
-	id := testutil.GenerateSessionID()
+	id := random.SequenceNext()
 	sm := newMockSessionMgr()
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
 	blockGenerator := blocksutil.NewBlockGenerator()
@@ -575,9 +550,7 @@ func TestSessionReceiveMessageAfterCtxCancel(t *testing.T) {
 	cids := []cid.Cid{blks[0].Cid(), blks[1].Cid()}
 
 	_, err := session.GetBlocks(ctx, cids)
-	if err != nil {
-		t.Fatal("error getting blocks")
-	}
+	require.NoError(t, err, "error getting blocks")
 
 	// Wait for initial want request
 	<-fpm.wantReqs
@@ -586,7 +559,7 @@ func TestSessionReceiveMessageAfterCtxCancel(t *testing.T) {
 	cancelCtx()
 
 	// Simulate receiving block for a CID
-	peer := testutil.GeneratePeers(1)[0]
+	peer := random.Peers(1)[0]
 	session.ReceiveFrom(peer, []cid.Cid{blks[0].Cid()}, []cid.Cid{}, []cid.Cid{})
 
 	time.Sleep(5 * time.Millisecond)

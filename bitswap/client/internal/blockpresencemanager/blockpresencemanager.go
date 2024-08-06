@@ -15,9 +15,7 @@ type BlockPresenceManager struct {
 }
 
 func New() *BlockPresenceManager {
-	return &BlockPresenceManager{
-		presence: make(map[cid.Cid]map[peer.ID]bool),
-	}
+	return &BlockPresenceManager{}
 }
 
 // ReceiveFrom is called when a peer sends us information about which blocks
@@ -25,6 +23,10 @@ func New() *BlockPresenceManager {
 func (bpm *BlockPresenceManager) ReceiveFrom(p peer.ID, haves []cid.Cid, dontHaves []cid.Cid) {
 	bpm.Lock()
 	defer bpm.Unlock()
+
+	if bpm.presence == nil {
+		bpm.presence = make(map[cid.Cid]map[peer.ID]bool)
+	}
 
 	for _, c := range haves {
 		bpm.updateBlockPresence(p, c, true)
@@ -75,6 +77,10 @@ func (bpm *BlockPresenceManager) AllPeersDoNotHaveBlock(peers []peer.ID, ks []ci
 	bpm.RLock()
 	defer bpm.RUnlock()
 
+	if len(bpm.presence) == 0 {
+		return nil
+	}
+
 	var res []cid.Cid
 	for _, c := range ks {
 		if bpm.allDontHave(peers, c) {
@@ -88,6 +94,9 @@ func (bpm *BlockPresenceManager) allDontHave(peers []peer.ID, c cid.Cid) bool {
 	// Check if we know anything about the cid's block presence
 	ps, cok := bpm.presence[c]
 	if !cok {
+		return false
+	}
+	if len(ps) == 0 {
 		return false
 	}
 
@@ -107,6 +116,25 @@ func (bpm *BlockPresenceManager) RemoveKeys(ks []cid.Cid) {
 
 	for _, c := range ks {
 		delete(bpm.presence, c)
+	}
+	if len(bpm.presence) == 0 {
+		bpm.presence = nil
+	}
+}
+
+// RemovePeer removes the given peer from every cid key in the presence map.
+func (bpm *BlockPresenceManager) RemovePeer(p peer.ID) {
+	bpm.Lock()
+	defer bpm.Unlock()
+
+	for c, pm := range bpm.presence {
+		delete(pm, p)
+		if len(pm) == 0 {
+			delete(bpm.presence, c)
+		}
+	}
+	if len(bpm.presence) == 0 {
+		bpm.presence = nil
 	}
 }
 

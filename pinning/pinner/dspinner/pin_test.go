@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"path"
 	"testing"
 	"time"
@@ -22,12 +21,10 @@ import (
 
 	blockstore "github.com/ipfs/boxo/blockstore"
 	offline "github.com/ipfs/boxo/exchange/offline"
-	util "github.com/ipfs/boxo/util"
+	"github.com/ipfs/go-test/random"
 
 	ipfspin "github.com/ipfs/boxo/pinning/pinner"
 )
-
-var rand = util.NewTimeSeededRand()
 
 type fakeLogger struct {
 	logging.StandardLogger
@@ -44,13 +41,8 @@ func (f *fakeLogger) Errorf(format string, args ...interface{}) {
 
 func randNode() (*mdag.ProtoNode, cid.Cid) {
 	nd := new(mdag.ProtoNode)
-	nd.SetData(make([]byte, 32))
-	_, err := io.ReadFull(rand, nd.Data())
-	if err != nil {
-		panic(err)
-	}
-	k := nd.Cid()
-	return nd, k
+	nd.SetData(random.Bytes(32))
+	return nd, nd.Cid()
 }
 
 func assertPinned(t *testing.T, p ipfspin.Pinner, c cid.Cid, failmsg string) {

@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	log   = logging.Logger("bs:sess")
+	log   = logging.Logger("bitswap/session")
 	sflog = log.Desugar()
 )
 
