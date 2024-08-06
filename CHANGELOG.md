@@ -18,7 +18,7 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- `go-libp2p` dependency updated to [v0.36 (release notes)](https://github.com/libp2p/go-libp2p/releases/tag/v0.36.0)
+- `go-libp2p` dependency updated to [v0.36 (release notes)](https://github.com/libp2p/go-libp2p/releases/tag/v0.36.1)
 - `bitswap/server` minor memory use and performance improvements
 - `bitswap` unify logger names to use uniform format bitswap/path/pkgname
 - `gateway` now always returns meaningful cache-control headers for generated HTML listings of UnixFS directories
@@ -30,6 +30,7 @@ The following emojis are used to highlight certain changes:
 
 - `boxo/gateway` now correctly returns 404 Status Not Found instead of 500 when the requested content cannot be found due to offline exchange, gateway running in no-fetch (non-recursive) mode, or a similar restriction that only serves a specific set of CIDs.
 - `bitswap/client` fix memory leak in BlockPresenceManager due to unlimited map growth.
+- `bitswap/network` fixed race condition when a timeout occurred before hole punching completed while establishing a first-time stream to a peer behind a NAT
 
 ### Security
 
