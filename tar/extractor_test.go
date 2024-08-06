@@ -377,9 +377,9 @@ func TestSymlinkWithModTime(t *testing.T) {
 	}
 
 	entries := []tarEntry{
-		&dirTarEntry{path: "root", mtime: add5()},
+		&dirTarEntry{path: "root"},
 		&symlinkTarEntry{target: "child", path: "root/a", mtime: add5()},
-		&dirTarEntry{path: "root/child", mtime: add5()},
+		&dirTarEntry{path: "root/child"},
 		&fileTarEntry{path: "root/child/file1", buf: []byte("data")},
 		&symlinkTarEntry{target: "child/file1", path: "root/file1-sl", mtime: add5()},
 	}

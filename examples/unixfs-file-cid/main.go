@@ -215,7 +215,7 @@ func runClient(ctx context.Context, h host.Host, c cid.Cid, targetPeer string) (
 		return nil, err
 	}
 
-	unixFSNode, err := unixfile.NewUnixfsFile(ctx, dserv, nd)
+	unixFSNode, err := unixfile.NewUnixfsFile(ctx, dserv, nd, nil)
 	if err != nil {
 		return nil, err
 	}
