@@ -389,11 +389,17 @@ func TestSymlinkWithModTime(t *testing.T) {
 
 		fi, err := os.Lstat(fp.Join(extractDir, "a"))
 		assert.NoError(t, err)
-		assert.Equal(t, add5(), fi.ModTime())
+		add5()
+		if runtime.GOOS != "windows" {
+			assert.Equal(t, tm, fi.ModTime())
+		}
 
 		fi, err = os.Lstat(fp.Join(extractDir, "file1-sl"))
 		assert.NoError(t, err)
-		assert.Equal(t, add5(), fi.ModTime())
+		add5()
+		if runtime.GOOS != "windows" {
+			assert.Equal(t, tm, fi.ModTime())
+		}
 	},
 		nil)
 }

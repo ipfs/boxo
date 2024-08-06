@@ -150,7 +150,7 @@ func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, range
 	}
 
 	// This code path covers full graph, single file/directory, and range requests
-	f, err := ufile.NewUnixfsFile(ctx, bb.dagService, nd, nil)
+	f, err := ufile.NewUnixfsFile(ctx, bb.dagService, nd)
 	// Note: there is an assumption here that non-UnixFS dag-pb should not be returned which is currently valid
 	if err != nil {
 		return md, nil, err
@@ -197,7 +197,7 @@ func (bb *BlocksBackend) GetAll(ctx context.Context, path path.ImmutablePath) (C
 	}
 
 	// This code path covers full graph, single file/directory, and range requests
-	n, err := ufile.NewUnixfsFile(ctx, bb.dagService, nd, nil)
+	n, err := ufile.NewUnixfsFile(ctx, bb.dagService, nd)
 	if err != nil {
 		return md, nil, err
 	}
@@ -226,7 +226,7 @@ func (bb *BlocksBackend) Head(ctx context.Context, path path.ImmutablePath) (Con
 
 	// TODO: We're not handling non-UnixFS dag-pb. There's a bit of a discrepancy
 	// between what we want from a HEAD request and a Resolve request here and we're using this for both
-	fileNode, err := ufile.NewUnixfsFile(ctx, bb.dagService, nd, nil)
+	fileNode, err := ufile.NewUnixfsFile(ctx, bb.dagService, nd)
 	if err != nil {
 		return ContentPathMetadata{}, nil, err
 	}

@@ -81,7 +81,7 @@ func (it *ufsIterator) Next() bool {
 	}
 
 	it.curName = l.Name
-	it.curFile, it.err = NewUnixfsFile(it.ctx, it.dserv, nd, nil)
+	it.curFile, it.err = NewUnixfsFile(it.ctx, it.dserv, nd)
 	return it.err == nil
 }
 
@@ -183,7 +183,11 @@ func newUnixfsDir(ctx context.Context, dserv ipld.DAGService, nd *dag.ProtoNode,
 	}, nil
 }
 
-func NewUnixfsFile(ctx context.Context, dserv ipld.DAGService, nd ipld.Node, stat os.FileInfo) (files.Node, error) {
+func NewUnixfsFile(ctx context.Context, dserv ipld.DAGService, nd ipld.Node) (files.Node, error) {
+	return NewUnixfsFileWithStat(ctx, dserv, nd, nil)
+}
+
+func NewUnixfsFileWithStat(ctx context.Context, dserv ipld.DAGService, nd ipld.Node, stat os.FileInfo) (files.Node, error) {
 	switch dn := nd.(type) {
 	case *dag.ProtoNode:
 		fsn, err := ft.FSNodeFromBytes(dn.Data())
