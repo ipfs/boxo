@@ -3,8 +3,13 @@ package files
 import (
 	"bytes"
 	"io"
+	"io/fs"
 	"mime/multipart"
+	"net/textproto"
+	"path"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -12,7 +17,12 @@ import (
 var text = "Some text! :)"
 
 func newBytesFileWithPath(abspath string, b []byte) File {
-	return &ReaderFile{abspath, bytesReaderCloser{bytes.NewReader(b)}, nil, int64(len(b))}
+	return &ReaderFile{
+		abspath: abspath,
+		reader:  bytesReaderCloser{bytes.NewReader(b)},
+		stat:    &mockFileInfo{name: path.Base(abspath), mode: 0754, mtime: time.Unix(1604320500, 55555)},
+		fsize:   int64(len(b)),
+	}
 }
 
 func makeMultiFileReader(t *testing.T, binaryFileName, rawAbsPath bool) (string, *MultiFileReader) {
@@ -53,6 +63,9 @@ func runMultiFileReaderToMultiFileTest(t *testing.T, binaryFileName, rawAbsPath,
 
 	require.True(t, it.Next())
 	require.Equal(t, "beep.txt", it.Name())
+	n := it.Node()
+	require.Equal(t, fs.FileMode(0754), n.Mode(), "unexpected file mode")
+	require.Equal(t, time.Unix(1604320500, 55555), n.ModTime(), "unexpected last modification time")
 	require.True(t, it.Next())
 	require.Equal(t, "boop", it.Name())
 	require.NotNil(t, DirFromEntry(it))
@@ -103,12 +116,20 @@ func TestMultiFileReaderToMultiFile(t *testing.T) {
 
 func getTestMultiFileReader(t *testing.T) *MultiFileReader {
 	sf := NewMapDirectory(map[string]Node{
-		"file.txt": NewBytesFile([]byte(text)),
+		"file.txt": NewReaderStatFile(
+			strings.NewReader(text),
+			&mockFileInfo{name: "file.txt", mode: 0, mtime: time.Time{}}),
 		"boop": NewMapDirectory(map[string]Node{
-			"a.txt": NewBytesFile([]byte("bleep")),
-			"b.txt": NewBytesFile([]byte("bloop")),
+			"a.txt": NewReaderStatFile(
+				strings.NewReader("bleep"),
+				&mockFileInfo{name: "a.txt", mode: 0744, mtime: time.Time{}}),
+			"b.txt": NewReaderStatFile(
+				strings.NewReader("bloop"),
+				&mockFileInfo{name: "b.txt", mode: 0666, mtime: time.Unix(1604320500, 0)}),
 		}),
-		"beep.txt": NewBytesFile([]byte("beep")),
+		"beep.txt": NewReaderStatFile(
+			strings.NewReader("beep"),
+			&mockFileInfo{name: "beep.txt", mode: 0754, mtime: time.Unix(1604320500, 55555)}),
 	})
 
 	// testing output by reading it with the go stdlib "mime/multipart" Reader
@@ -241,4 +262,26 @@ func TestCommonPrefix(t *testing.T) {
 			kind: TDirEnd,
 		},
 	})
+}
+
+func TestContentDispositonEncoding(t *testing.T) {
+	testContentDispositionEncoding(t, false, "£ẞǑǓÆ æ ♫♬",
+		"attachment; filename=\"%C2%A3%E1%BA%9E%C7%91%C7%93%C3%86+%C3%A6+%E2%99%AB%E2%99%AC\"")
+	testContentDispositionEncoding(t, true, "£ẞǑǓÆ æ ♫♬",
+		"form-data; name=\"file\"; filename=\"%C2%A3%E1%BA%9E%C7%91%C7%93%C3%86+%C3%A6+%E2%99%AB%E2%99%AC\"")
+}
+
+func testContentDispositionEncoding(t *testing.T, form bool, filename string, expected string) {
+	sf := NewMapDirectory(map[string]Node{"": NewBytesFile([]byte(""))})
+	mfr := NewMultiFileReader(sf, form, false)
+	if _, err := mfr.Read(nil); err != nil {
+		t.Fatal("MultiFileReader.Read failed")
+	}
+
+	header := make(textproto.MIMEHeader)
+	mfr.addContentDisposition(header, filename)
+	v := header.Get(contentDispositionHeader)
+	if v != expected {
+		t.Fatalf("content-disposition did not match:\nExpected: %s\nActual  : %s", expected, v)
+	}
 }

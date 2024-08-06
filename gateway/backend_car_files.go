@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"time"
 
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/ipld/unixfs"
@@ -48,6 +50,14 @@ func (b *backpressuredFile) AwaitClose() <-chan error {
 func (b *backpressuredFile) Close() error {
 	close(b.closed)
 	return nil
+}
+
+func (b *backpressuredFile) Mode() os.FileMode {
+	panic("not implemented")
+}
+
+func (b *backpressuredFile) ModTime() time.Time {
+	panic("not implemented")
 }
 
 func (b *backpressuredFile) Size() (int64, error) {
@@ -124,6 +134,14 @@ func (b *singleUseDirectory) AwaitClose() <-chan error {
 func (b *singleUseDirectory) Close() error {
 	close(b.closed)
 	return nil
+}
+
+func (b *singleUseDirectory) Mode() os.FileMode {
+	panic("not implemented")
+}
+
+func (b *singleUseDirectory) ModTime() time.Time {
+	panic("not implemented")
 }
 
 func (b *singleUseDirectory) Size() (int64, error) {

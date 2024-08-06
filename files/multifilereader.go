@@ -8,6 +8,8 @@ import (
 	"net/textproto"
 	"net/url"
 	"path"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -89,18 +91,12 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 
 		// handle starting a new file part
 		if !mfr.closed {
-
 			mfr.currentFile = entry.Node()
 
 			// write the boundary and headers
 			header := make(textproto.MIMEHeader)
-			filename := url.QueryEscape(path.Join(path.Join(mfr.path...), entry.Name()))
-			dispositionPrefix := "attachment"
-			if mfr.form {
-				dispositionPrefix = "form-data; name=\"file\""
-			}
-
-			header.Set("Content-Disposition", fmt.Sprintf("%s; filename=\"%s\"", dispositionPrefix, filename))
+			filename := path.Join(path.Join(mfr.path...), entry.Name())
+			mfr.addContentDisposition(header, filename)
 
 			var contentType string
 
@@ -119,7 +115,7 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 				return 0, ErrNotSupported
 			}
 
-			header.Set("Content-Type", contentType)
+			header.Set(contentTypeHeader, contentType)
 			if rf, ok := entry.Node().(FileInfo); ok {
 				if mfr.rawAbsPath {
 					// Legacy compatibility with old servers.
@@ -155,6 +151,36 @@ func (mfr *MultiFileReader) Read(buf []byte) (written int, err error) {
 
 	mfr.currentFile = nil
 	return written, nil
+}
+
+func (mfr *MultiFileReader) addContentDisposition(header textproto.MIMEHeader, filename string) {
+	sb := &strings.Builder{}
+	params := url.Values{}
+
+	if mode := mfr.currentFile.Mode(); mode != 0 {
+		params.Add("mode", "0"+strconv.FormatUint(uint64(mode), 8))
+	}
+	if mtime := mfr.currentFile.ModTime(); !mtime.IsZero() {
+		params.Add("mtime", strconv.FormatInt(mtime.Unix(), 10))
+		if n := mtime.Nanosecond(); n > 0 {
+			params.Add("mtime-nsecs", strconv.FormatInt(int64(n), 10))
+		}
+	}
+
+	sb.Grow(120)
+	if mfr.form {
+		sb.WriteString("form-data; name=\"file")
+		if len(params) > 0 {
+			fmt.Fprintf(sb, "?%s", params.Encode())
+		}
+		sb.WriteString("\"")
+	} else {
+		sb.WriteString("attachment")
+	}
+
+	fmt.Fprintf(sb, "; filename=\"%s\"", url.QueryEscape(filename))
+
+	header.Set(contentDispositionHeader, sb.String())
 }
 
 // Boundary returns the boundary string to be used to separate files in the multipart data

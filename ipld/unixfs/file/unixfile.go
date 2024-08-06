@@ -3,6 +3,8 @@ package unixfile
 import (
 	"context"
 	"errors"
+	"os"
+	"time"
 
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
@@ -21,6 +23,7 @@ type ufsDirectory struct {
 	dserv ipld.DAGService
 	dir   uio.Directory
 	size  int64
+	stat  os.FileInfo
 }
 
 type ufsIterator struct {
@@ -78,7 +81,7 @@ func (it *ufsIterator) Next() bool {
 	}
 
 	it.curName = l.Name
-	it.curFile, it.err = NewUnixfsFile(it.ctx, it.dserv, nd)
+	it.curFile, it.err = NewUnixfsFile(it.ctx, it.dserv, nd, nil)
 	return it.err == nil
 }
 
@@ -118,19 +121,48 @@ func (d *ufsDirectory) Entries() files.DirIterator {
 	}
 }
 
+func (d *ufsDirectory) Mode() os.FileMode {
+	if d.stat == nil {
+		return 0
+	}
+	return d.stat.Mode()
+}
+
+func (d *ufsDirectory) ModTime() time.Time {
+	if d.stat == nil {
+		return time.Time{}
+	}
+	return d.stat.ModTime()
+}
+
 func (d *ufsDirectory) Size() (int64, error) {
 	return d.size, nil
 }
 
 type ufsFile struct {
 	uio.DagReader
+	stat os.FileInfo
+}
+
+func (f *ufsFile) Mode() os.FileMode {
+	if f.stat == nil {
+		return 0
+	}
+	return f.stat.Mode()
+}
+
+func (f *ufsFile) ModTime() time.Time {
+	if f.stat == nil {
+		return time.Time{}
+	}
+	return f.stat.ModTime()
 }
 
 func (f *ufsFile) Size() (int64, error) {
 	return int64(f.DagReader.Size()), nil
 }
 
-func newUnixfsDir(ctx context.Context, dserv ipld.DAGService, nd *dag.ProtoNode) (files.Directory, error) {
+func newUnixfsDir(ctx context.Context, dserv ipld.DAGService, nd *dag.ProtoNode, stat os.FileInfo) (files.Directory, error) {
 	dir, err := uio.NewDirectoryFromNode(dserv, nd)
 	if err != nil {
 		return nil, err
@@ -147,10 +179,11 @@ func newUnixfsDir(ctx context.Context, dserv ipld.DAGService, nd *dag.ProtoNode)
 
 		dir:  dir,
 		size: int64(size),
+		stat: stat,
 	}, nil
 }
 
-func NewUnixfsFile(ctx context.Context, dserv ipld.DAGService, nd ipld.Node) (files.Node, error) {
+func NewUnixfsFile(ctx context.Context, dserv ipld.DAGService, nd ipld.Node, stat os.FileInfo) (files.Node, error) {
 	switch dn := nd.(type) {
 	case *dag.ProtoNode:
 		fsn, err := ft.FSNodeFromBytes(dn.Data())
@@ -158,10 +191,10 @@ func NewUnixfsFile(ctx context.Context, dserv ipld.DAGService, nd ipld.Node) (fi
 			return nil, err
 		}
 		if fsn.IsDir() {
-			return newUnixfsDir(ctx, dserv, dn)
+			return newUnixfsDir(ctx, dserv, dn, stat)
 		}
 		if fsn.Type() == ft.TSymlink {
-			return files.NewLinkFile(string(fsn.Data()), nil), nil
+			return files.NewLinkFile(string(fsn.Data()), stat), nil
 		}
 
 	case *dag.RawNode:

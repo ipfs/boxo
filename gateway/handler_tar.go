@@ -61,7 +61,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
 	// The TAR has a top-level directory (or file) named by the CID.
-	if err := tarw.WriteFile(file, rootCid.String()); err != nil {
+	if err := tarw.WriteNode(file, rootCid.String()); err != nil {
 		// Update fail metric
 		i.tarStreamFailMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 

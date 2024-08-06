@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	fp "path/filepath"
+	"runtime"
 	"strings"
+	"time"
 )
 
 var (
@@ -26,11 +28,14 @@ var (
 // `cp`. In particular, the name of the extracted file/symlink will match the extraction path. If the extraction path
 // is a directory then it will extract into the directory using its original name.
 //
+// If an associated mode and last modification time was stored in the archive it is restored.
+//
 // Overwriting: Extraction of files and symlinks will result in overwriting the existing objects with the same name
 // when possible (i.e. other files, symlinks, and empty directories).
 type Extractor struct {
-	Path     string
-	Progress func(int64) int64
+	Path            string
+	Progress        func(int64) int64
+	deferredUpdates []deferredUpdate
 }
 
 // Extract extracts a tar file to the file system. See the Extractor for more information on the limitations on the
@@ -42,8 +47,6 @@ func (te *Extractor) Extract(reader io.Reader) error {
 
 	tarReader := tar.NewReader(reader)
 
-	var firstObjectWasDir bool
-
 	header, err := tarReader.Next()
 	if err != nil && err != io.EOF {
 		return err
@@ -51,6 +54,20 @@ func (te *Extractor) Extract(reader io.Reader) error {
 	if header == nil || err == io.EOF {
 		return errors.New("empty tar file")
 	}
+
+	te.deferredUpdates = make([]deferredUpdate, 0, 80)
+	doUpdates := func() error {
+		for i := len(te.deferredUpdates) - 1; i >= 0; i-- {
+			m := te.deferredUpdates[i]
+			err := updateMeta(m.path, m.mode, m.mtime)
+			if err != nil {
+				return err
+			}
+		}
+		te.deferredUpdates = nil
+		return nil
+	}
+	defer func() { err = doUpdates() }()
 
 	// Specially handle the first entry assuming it is a single root object (e.g. root directory, single file,
 	// or single symlink)
@@ -71,6 +88,8 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		return err
 	}
 
+	var firstObjectWasDir bool
+
 	// If the last element in the rootOutputPath (which is passed by the user) is a symlink do not follow it
 	// this makes it easier for users to reason about where files are getting extracted to even when the tar is not
 	// from a trusted source
@@ -83,6 +102,9 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		// if this is the root directory, use it as the output path for remaining files
 		firstObjectWasDir = true
 		if err := te.extractDir(rootOutputPath); err != nil {
+			return err
+		}
+		if err := te.deferUpdate(rootOutputPath, header); err != nil {
 			return err
 		}
 	case tar.TypeReg, tar.TypeSymlink:
@@ -115,6 +137,9 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		// If an object with the target name already exists overwrite it
 		if header.Typeflag == tar.TypeReg {
 			if err := te.extractFile(outputPath, tarReader); err != nil {
+				return err
+			}
+			if err := updateMeta(outputPath, header.Mode, header.ModTime); err != nil {
 				return err
 			}
 		} else if err := te.extractSymlink(outputPath, header); err != nil {
@@ -173,8 +198,14 @@ func (te *Extractor) Extract(reader io.Reader) error {
 			if err := te.extractDir(outputPath); err != nil {
 				return err
 			}
+			if err := te.deferUpdate(outputPath, header); err != nil {
+				return err
+			}
 		case tar.TypeReg:
 			if err := te.extractFile(outputPath, tarReader); err != nil {
+				return err
+			}
+			if err := updateMeta(outputPath, header.Mode, header.ModTime); err != nil {
 				return err
 			}
 		case tar.TypeSymlink:
@@ -268,16 +299,28 @@ func (te *Extractor) extractDir(path string) error {
 }
 
 func (te *Extractor) extractSymlink(path string, h *tar.Header) error {
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+	err := os.Remove(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
-	return os.Symlink(h.Linkname, path)
+	err = os.Symlink(h.Linkname, path)
+	if err != nil {
+		return err
+	}
+
+	switch runtime.GOOS {
+	case "linux", "freebsd", "netbsd", "openbsd", "dragonfly":
+		return updateModTime(path, h.ModTime)
+	default:
+		return nil
+	}
 }
 
 func (te *Extractor) extractFile(path string, r *tar.Reader) error {
 	// Attempt removing the target so we can overwrite files, symlinks and empty directories
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+	err := os.Remove(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
@@ -288,17 +331,17 @@ func (te *Extractor) extractFile(path string, r *tar.Reader) error {
 	if err != nil {
 		return err
 	}
-	if err := copyWithProgress(tmpfile, r, te.Progress); err != nil {
+	if err = copyWithProgress(tmpfile, r, te.Progress); err != nil {
 		_ = tmpfile.Close()
 		_ = os.Remove(tmpfile.Name())
 		return err
 	}
-	if err := tmpfile.Close(); err != nil {
+	if err = tmpfile.Close(); err != nil {
 		_ = os.Remove(tmpfile.Name())
 		return err
 	}
 
-	if err := os.Rename(tmpfile.Name(), path); err != nil {
+	if err = os.Rename(tmpfile.Name(), path); err != nil {
 		_ = os.Remove(tmpfile.Name())
 		return err
 	}
@@ -326,4 +369,71 @@ func copyWithProgress(to io.Writer, from io.Reader, cb func(int64) int64) error 
 			return err
 		}
 	}
+}
+
+type deferredUpdate struct {
+	path  string
+	mode  int64
+	mtime time.Time
+}
+
+func (te *Extractor) deferUpdate(path string, header *tar.Header) error {
+	if header.Mode == 0 && header.ModTime.IsZero() {
+		return nil
+	}
+
+	prefix := func() string {
+		for i := len(path) - 1; i >= 0; i-- {
+			if path[i] == '/' {
+				return path[:i]
+			}
+		}
+		return path
+	}
+
+	n := len(te.deferredUpdates)
+	if n > 0 && len(path) < len(te.deferredUpdates[n-1].path) {
+		// if possible, apply the previous deferral
+		m := te.deferredUpdates[n-1]
+		if strings.HasPrefix(m.path, prefix()) {
+			err := updateMeta(m.path, m.mode, m.mtime)
+			if err != nil {
+				return err
+			}
+			te.deferredUpdates = te.deferredUpdates[:n-1]
+		}
+	}
+
+	te.deferredUpdates = append(te.deferredUpdates, deferredUpdate{
+		path:  path,
+		mode:  header.Mode,
+		mtime: header.ModTime,
+	})
+
+	return nil
+}
+
+func updateMeta(path string, mode int64, mtime time.Time) error {
+	if err := updateModTime(path, mtime); err != nil {
+		return err
+	}
+	return updateFileMode(path, mode)
+}
+
+// updateFileMode sets the unix mode of the filesystem object referenced by path
+func updateFileMode(path string, mode int64) error {
+	if err := updateMode(path, mode); err != nil {
+		return fmt.Errorf("[%v] failed to update file mode on '%s'", err, path)
+	}
+	return nil
+}
+
+// updateModTime sets the last access and modification time of the target filesystem
+// object to the given time.
+// When the given path references a symlink, if supported the symlink is updated.
+func updateModTime(path string, mtime time.Time) error {
+	if err := updateMtime(path, mtime); err != nil {
+		return fmt.Errorf("[%v] failed to update last modification time on '%s'", err, path)
+	}
+	return nil
 }
