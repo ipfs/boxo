@@ -18,20 +18,29 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- `go-libp2p` dependency updated to [v0.36 (release notes)](https://github.com/libp2p/go-libp2p/releases/tag/v0.36.0)
-- `bitswap/server` minor memory use and performance improvements
-- `bitswap` unify logger names to use uniform format bitswap/path/pkgname
-- `gateway` now always returns meaningful cache-control headers for generated HTML listings of UnixFS directories
-- generate random test data using `ipfs/go-test` instead of internal util code
-
 ### Removed
 
 ### Fixed
 
-- `boxo/gateway` now correctly returns 404 Status Not Found instead of 500 when the requested content cannot be found due to offline exchange, gateway running in no-fetch (non-recursive) mode, or a similar restriction that only serves a specific set of CIDs.
-- `bitswap/client` fix memory leak in BlockPresenceManager due to unlimited map growth.
-
 ### Security
+
+## [v0.22.0]
+
+### Changed
+
+- `go-libp2p` dependency updated to [v0.36 (release notes)](https://github.com/libp2p/go-libp2p/releases/tag/v0.36.1)
+- `bitswap/server` minor memory use and performance improvements [#634](https://github.com/ipfs/boxo/pull/634)
+- `bitswap` unify logger names to use uniform format bitswap/path/pkgname [#637](https://github.com/ipfs/boxo/pull/637)
+- `gateway` now always returns meaningful cache-control headers for generated HTML listings of UnixFS directories [#643](https://github.com/ipfs/boxo/pull/643)
+- `util` generate random test data using `ipfs/go-test` instead of internal util code [#638](https://github.com/ipfs/boxo/pull/638)
+- `bitswap/server` `PeerLedger.Wants` now returns `bool` (interface change from `Wants(p peer.ID, e wl.Entry)` to `Wants(p peer.ID, e wl.Entry) bool`) [#629](https://github.com/ipfs/boxo/pull/629)
+
+### Fixed
+
+- `boxo/gateway` now correctly returns 404 Status Not Found instead of 500 when the requested content cannot be found due to offline exchange, gateway running in no-fetch (non-recursive) mode, or a similar restriction that only serves a specific set of CIDs. [#630](https://github.com/ipfs/boxo/pull/630)
+- `bitswap/client` fix memory leak in BlockPresenceManager due to unlimited map growth. [#636](https://github.com/ipfs/boxo/pull/636)
+- `bitswap/network` fixed race condition when a timeout occurred before hole punching completed while establishing a first-time stream to a peer behind a NAT [#651](https://github.com/ipfs/boxo/pull/651)
+- `bitswap`: wantlist overflow handling now cancels existing entries to make room for newer entries. This fix prevents the wantlist from filling up with CIDs that the server does not have. [#629](https://github.com/ipfs/boxo/pull/629)
 
 ## [v0.21.0]
 
@@ -48,7 +57,6 @@ The following emojis are used to highlight certain changes:
 
 - `routing/http`: the `FindPeer` now returns `routing.ErrNotFound` when no addresses are found
 - `routing/http`: the `FindProvidersAsync` no longer causes a goroutine buildup
-- `bitswap`: wantlist overflow handling now cancels existing entries to make room for newer entries. This fix prevents the wantlist from filling up with CIDs that the server does not have.
 
 ## [v0.20.0]
 
