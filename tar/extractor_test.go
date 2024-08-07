@@ -496,8 +496,9 @@ func TestLastElementOverwrite(t *testing.T) {
 			&fileTarEntry{path: "root/symlink", buf: []byte("overwrite content")},
 		},
 		func(t *testing.T, extractDir string) {
-			// Check that outside-ref still exists but has not been
-			// overwritten or truncated (still size the same).
+			// Check that outside-ref still exists but has not been overwritten
+			// or truncated (still size the same). The symlink itself have been
+			// overwritten by the extracted file.
 			info, err := os.Stat(fp.Join(extractDir, "..", "outside-ref"))
 			assert.NoError(t, err)
 

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	fp "path/filepath"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -83,7 +83,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 	rootName := header.Name
 
 	// Get the platform-specific output path
-	rootOutputPath := fp.Clean(te.Path)
+	rootOutputPath := filepath.Clean(te.Path)
 	if err := validatePlatformPath(rootOutputPath); err != nil {
 		return err
 	}
@@ -131,7 +131,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 			}
 
 			// If the output path directory exists then put the file/symlink into the directory.
-			outputPath = fp.Join(rootOutputPath, rootName)
+			outputPath = filepath.Join(rootOutputPath, rootName)
 		}
 
 		// If an object with the target name already exists overwrite it
@@ -142,7 +142,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 			if err := updateMeta(outputPath, header.Mode, header.ModTime); err != nil {
 				return err
 			}
-		} else if err := te.extractSymlink(outputPath, header); err != nil {
+		} else if err := te.extractSymlink(outputPath, rootOutputPath, header); err != nil {
 			return err
 		}
 	default:
@@ -183,11 +183,11 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		// This check should already be covered by previous validation, but may catch bugs that slip through.
 		// Checks if the relative path matches or exceeds the root
 		// We check for matching because the outputPath function strips the original root
-		rel, err := fp.Rel(rootOutputPath, outputPath)
+		rel, err := filepath.Rel(rootOutputPath, outputPath)
 		if err != nil || rel == "." {
 			return errInvalidRootMultipleRoots
 		}
-		for _, e := range strings.Split(fp.ToSlash(rel), "/") {
+		for _, e := range strings.Split(filepath.ToSlash(rel), "/") {
 			if e == ".." {
 				return errors.New("relative path contains '..'")
 			}
@@ -209,7 +209,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 				return err
 			}
 		case tar.TypeSymlink:
-			if err := te.extractSymlink(outputPath, header); err != nil {
+			if err := te.extractSymlink(outputPath, rootOutputPath, header); err != nil {
 				return err
 			}
 		default:
@@ -257,7 +257,7 @@ func (te *Extractor) outputPath(basePlatformPath, relativeTarPath string) (strin
 		if err := validatePathComponent(e); err != nil {
 			return "", err
 		}
-		platformPath = fp.Join(platformPath, e)
+		platformPath = filepath.Join(platformPath, e)
 
 		// Last element is not checked since it will be removed (if it exists) by any of the extraction functions.
 		// For more details see:
@@ -290,20 +290,25 @@ func (te *Extractor) extractDir(path string) error {
 		return err
 	}
 
-	if stat, err := os.Lstat(path); err != nil {
+	stat, err := os.Lstat(path)
+	if err != nil {
 		return err
-	} else if !stat.IsDir() {
+	}
+	if !stat.IsDir() {
 		return errExtractedDirToSymlink
 	}
 	return nil
 }
 
-func (te *Extractor) extractSymlink(path string, h *tar.Header) error {
+func (te *Extractor) extractSymlink(path, rootPath string, h *tar.Header) error {
 	err := os.Remove(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
+	// Before extracting a file or other symlink, the old path is removed to
+	// prevent a simlink being created that causes a subsequent extraction to
+	// escape the root.
 	err = os.Symlink(h.Linkname, path)
 	if err != nil {
 		return err
@@ -324,9 +329,10 @@ func (te *Extractor) extractFile(path string, r *tar.Reader) error {
 		return err
 	}
 
-	// Create a temporary file in the target directory and then rename the temporary file to the target to better deal
-	// with races on the file system.
-	base := fp.Dir(path)
+	// Create a temporary file in the target directory and then rename the
+	// temporary file to the target to better deal with races on the file
+	// system.
+	base := filepath.Dir(path)
 	tmpfile, err := os.CreateTemp(base, "")
 	if err != nil {
 		return err
