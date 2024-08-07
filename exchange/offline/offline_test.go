@@ -9,8 +9,10 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	ds_sync "github.com/ipfs/go-datastore/sync"
-	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
+	"github.com/ipfs/go-test/random"
 )
+
+const blockSize = 4
 
 func TestBlockReturnsErr(t *testing.T) {
 	off := Exchange(bstore())
@@ -25,9 +27,8 @@ func TestBlockReturnsErr(t *testing.T) {
 func TestGetBlocks(t *testing.T) {
 	store := bstore()
 	ex := Exchange(store)
-	g := blocksutil.NewBlockGenerator()
 
-	expected := g.Blocks(2)
+	expected := random.BlocksOfSize(2, blockSize)
 
 	for _, b := range expected {
 		if err := store.Put(context.Background(), b); err != nil {

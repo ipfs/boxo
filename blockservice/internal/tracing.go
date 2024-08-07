@@ -13,5 +13,5 @@ func StartSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) 
 
 // outline logic so the string concatenation can be inlined and executed at compile time
 func startSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return otel.Tracer("go-blockservice").Start(ctx, name, opts...)
+	return otel.Tracer("blockservice").Start(ctx, name, opts...)
 }

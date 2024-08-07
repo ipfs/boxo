@@ -499,7 +499,7 @@ func (bs *Client) IsOnline() bool {
 // block requests in a row. The session returned will have it's own GetBlocks
 // method, but the session will use the fact that the requests are related to
 // be more efficient in its requests to peers. If you are using a session
-// from go-blockservice, it will create a bitswap session automatically.
+// from blockservice, it will create a bitswap session automatically.
 func (bs *Client) NewSession(ctx context.Context) exchange.Fetcher {
 	ctx, span := internal.StartSpan(ctx, "NewSession")
 	defer span.End()
