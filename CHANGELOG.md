@@ -33,6 +33,7 @@ The following emojis are used to highlight certain changes:
 - `bitswap` unify logger names to use uniform format bitswap/path/pkgname [#637](https://github.com/ipfs/boxo/pull/637)
 - `gateway` now always returns meaningful cache-control headers for generated HTML listings of UnixFS directories [#643](https://github.com/ipfs/boxo/pull/643)
 - `util` generate random test data using `ipfs/go-test` instead of internal util code [#638](https://github.com/ipfs/boxo/pull/638)
+- `bitswap/server` `PeerLedger.Wants` now returns `bool` (interface change from `Wants(p peer.ID, e wl.Entry)` to `Wants(p peer.ID, e wl.Entry) bool`) [#629](https://github.com/ipfs/boxo/pull/629)
 
 ### Fixed
 
