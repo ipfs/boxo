@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-var ErrUnixFSPathOutsideRoot = errors.New("relative UnixFS paths outside the root are now allowed, use CAR instead")
+var ErrUnixFSPathOutsideRoot = errors.New("relative UnixFS paths outside the root are not allowed, use CAR instead")
 
 type TarWriter struct {
 	TarW       *tar.Writer
