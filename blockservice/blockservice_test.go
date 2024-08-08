@@ -12,11 +12,13 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
-	butil "github.com/ipfs/go-ipfs-blocksutil"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-test/random"
 	"github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
 )
+
+const blockSize = 4
 
 func TestWriteThroughWorks(t *testing.T) {
 	t.Parallel()
@@ -28,9 +30,8 @@ func TestWriteThroughWorks(t *testing.T) {
 	exchbstore := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	exch := offline.Exchange(exchbstore)
 	bserv := New(bstore, exch, WriteThrough())
-	bgen := butil.NewBlockGenerator()
 
-	block := bgen.Next()
+	block := random.BlocksOfSize(1, blockSize)[0]
 
 	t.Logf("PutCounter: %d", bstore.PutCounter)
 	err := bserv.AddBlock(context.Background(), block)
@@ -63,7 +64,6 @@ func TestExchangeWrite(t *testing.T) {
 		0,
 	}
 	bserv := New(bstore, exch, WriteThrough())
-	bgen := butil.NewBlockGenerator()
 
 	for name, fetcher := range map[string]BlockGetter{
 		"blockservice": bserv,
@@ -71,7 +71,8 @@ func TestExchangeWrite(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			// GetBlock
-			block := bgen.Next()
+			blks := random.BlocksOfSize(3, blockSize)
+			block := blks[0]
 			err := exchbstore.Put(context.Background(), block)
 			if err != nil {
 				t.Fatal(err)
@@ -91,12 +92,12 @@ func TestExchangeWrite(t *testing.T) {
 			}
 
 			// GetBlocks
-			b1 := bgen.Next()
+			b1 := blks[1]
 			err = exchbstore.Put(context.Background(), b1)
 			if err != nil {
 				t.Fatal(err)
 			}
-			b2 := bgen.Next()
+			b2 := blks[2]
 			err = exchbstore.Put(context.Background(), b2)
 			if err != nil {
 				t.Fatal(err)
@@ -137,14 +138,14 @@ func TestLazySessionInitialization(t *testing.T) {
 	exch := offline.Exchange(bstore3)
 	sessionExch := &fakeSessionExchange{Interface: exch, session: session}
 	bservSessEx := New(bstore, sessionExch, WriteThrough())
-	bgen := butil.NewBlockGenerator()
+	blks := random.BlocksOfSize(2, blockSize)
 
-	block := bgen.Next()
+	block := blks[0]
 	err := bstore.Put(ctx, block)
 	if err != nil {
 		t.Fatal(err)
 	}
-	block2 := bgen.Next()
+	block2 := blks[1]
 	err = bstore2.Put(ctx, block2)
 	if err != nil {
 		t.Fatal(err)
@@ -230,8 +231,7 @@ func TestNilExchange(t *testing.T) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	bgen := butil.NewBlockGenerator()
-	block := bgen.Next()
+	block := random.BlocksOfSize(1, blockSize)[0]
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	bserv := New(bs, nil, WriteThrough())
@@ -261,8 +261,7 @@ func TestAllowlist(t *testing.T) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	bgen := butil.NewBlockGenerator()
-	block := bgen.Next()
+	block := random.BlocksOfSize(1, blockSize)[0]
 
 	data := []byte("this is some blake3 block")
 	mh, err := multihash.Sum(data, multihash.BLAKE3, -1)
@@ -324,9 +323,9 @@ func TestContextSession(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	bgen := butil.NewBlockGenerator()
-	block1 := bgen.Next()
-	block2 := bgen.Next()
+	blks := random.BlocksOfSize(2, blockSize)
+	block1 := blks[0]
+	block2 := blks[1]
 
 	bs := blockstore.NewBlockstore(ds.NewMapDatastore())
 	a.NoError(bs.Put(ctx, block1))

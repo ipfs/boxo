@@ -9,16 +9,16 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
-	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
+	"github.com/ipfs/go-test/random"
 )
 
-var blockGenerator = blocksutil.NewBlockGenerator()
+const blockSize = 4
 
 func makeCids(n int) []cid.Cid {
-	cids := make([]cid.Cid, 0, n)
+	blks := random.BlocksOfSize(n, blockSize)
+	cids := make([]cid.Cid, n)
 	for i := 0; i < n; i++ {
-		c := blockGenerator.Next().Cid()
-		cids = append(cids, c)
+		cids[i] = blks[i].Cid()
 	}
 	return cids
 }
