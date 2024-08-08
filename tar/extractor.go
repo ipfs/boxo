@@ -20,26 +20,31 @@ var (
 
 // Extractor is used for extracting tar files to a filesystem.
 //
-// The Extractor can only extract tar files containing files, directories and symlinks. Additionally, the tar files must
-// either have a single file, or symlink in them, or must have all of its objects inside of a single root directory
-// object.
+// The Extractor can only extract tar files containing files, directories and
+// symlinks. Additionally, the tar files must either have a single file, or
+// symlink in them, or must have all of its objects inside of a single root
+// directory object.
 //
-// If the tar file contains a single file/symlink then it will try and extract it with semantics similar to Linux's
-// `cp`. In particular, the name of the extracted file/symlink will match the extraction path. If the extraction path
-// is a directory then it will extract into the directory using its original name.
+// If the tar file contains a single file/symlink then it will try and extract
+// it with semantics similar to Linux's `cp`. In particular, the name of the
+// extracted file/symlink will match the extraction path. If the extraction
+// path is a directory then it will extract into the directory using its
+// original name.
 //
-// If an associated mode and last modification time was stored in the archive it is restored.
+// If an associated mode and last modification time was stored in the archive
+// it is restored.
 //
-// Overwriting: Extraction of files and symlinks will result in overwriting the existing objects with the same name
-// when possible (i.e. other files, symlinks, and empty directories).
+// Overwriting: Extraction of files and symlinks will result in overwriting the
+// existing objects with the same name when possible (i.e. other files,
+// symlinks, and empty directories).
 type Extractor struct {
 	Path            string
 	Progress        func(int64) int64
 	deferredUpdates []deferredUpdate
 }
 
-// Extract extracts a tar file to the file system. See the Extractor for more information on the limitations on the
-// tar files that can be extracted.
+// Extract extracts a tar file to the file system. See the Extractor for more
+// information on the limitations on the tar files that can be extracted.
 func (te *Extractor) Extract(reader io.Reader) error {
 	if isNullDevice(te.Path) {
 		return nil
@@ -69,10 +74,11 @@ func (te *Extractor) Extract(reader io.Reader) error {
 	}
 	defer func() { err = doUpdates() }()
 
-	// Specially handle the first entry assuming it is a single root object (e.g. root directory, single file,
-	// or single symlink)
+	// Specially handle the first entry assuming it is a single root object
+	// (e.g. root directory, single file, or single symlink).
 
-	// track what the root tar path is so we can ensure that all other entries are below the root
+	// track what the root tar path is so we can ensure that all other entries
+	// are below the root.
 	if strings.Contains(header.Name, "/") {
 		return fmt.Errorf("root name contains multiple components : %q : %w", header.Name, errInvalidRoot)
 	}
@@ -82,7 +88,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 	}
 	rootName := header.Name
 
-	// Get the platform-specific output path
+	// Get the platform-specific output path.
 	rootOutputPath := filepath.Clean(te.Path)
 	if err := validatePlatformPath(rootOutputPath); err != nil {
 		return err
@@ -90,16 +96,20 @@ func (te *Extractor) Extract(reader io.Reader) error {
 
 	var firstObjectWasDir bool
 
-	// If the last element in the rootOutputPath (which is passed by the user) is a symlink do not follow it
-	// this makes it easier for users to reason about where files are getting extracted to even when the tar is not
-	// from a trusted source
+	// If the last element in the rootOutputPath (which is passed by the user)
+	// is a symlink do not follow it this makes it easier for users to reason
+	// about where files are getting extracted to even when the tar is not from
+	// a trusted source
 	//
-	// For example, if the user extracts a mutable link to a tar file (http://sometimesbad.tld/t.tar) and situationally
-	// it contains a folder, file, or symlink the outputs could hop around the user's file system. This is especially
-	// annoying since we allow symlinks to point anywhere a user might want them to.
+	// For example, if the user extracts a mutable link to a tar file
+	// (http://sometimesbad.tld/t.tar) and situationally it contains a folder,
+	// file, or symlink the outputs could hop around the user's file system.
+	// This is especially annoying since we allow symlinks to point anywhere a
+	// user might want them to.
 	switch header.Typeflag {
 	case tar.TypeDir:
-		// if this is the root directory, use it as the output path for remaining files
+		// if this is the root directory, use it as the output path for
+		// remaining files.
 		firstObjectWasDir = true
 		if err := te.extractDir(rootOutputPath); err != nil {
 			return err
@@ -108,9 +118,9 @@ func (te *Extractor) Extract(reader io.Reader) error {
 			return err
 		}
 	case tar.TypeReg, tar.TypeSymlink:
-		// Check if the output path already exists, so we know whether we should
-		// create our output with that name, or if we should put the output inside
-		// a preexisting directory
+		// Check if the output path already exists, so we know whether we
+		// should create our output with that name, or if we should put the
+		// output inside a preexisting directory.
 
 		rootIsExistingDirectory := false
 		// We do not follow links here
@@ -123,18 +133,20 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		}
 
 		outputPath := rootOutputPath
-		// If the root is a directory which already exists then put the file/symlink in the directory
+		// If the root is a directory which already exists then put the
+		// file/symlink in the directory.
 		if rootIsExistingDirectory {
-			// make sure the root has a valid name
+			// make sure the root has a valid name.
 			if err := validatePathComponent(rootName); err != nil {
 				return err
 			}
 
-			// If the output path directory exists then put the file/symlink into the directory.
+			// If the output path directory exists then put the file/symlink
+			// into the directory.
 			outputPath = filepath.Join(rootOutputPath, rootName)
 		}
 
-		// If an object with the target name already exists overwrite it
+		// If an object with the target name already exists overwrite it.
 		if header.Typeflag == tar.TypeReg {
 			if err := te.extractFile(outputPath, tarReader); err != nil {
 				return err
@@ -149,7 +161,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 		return fmt.Errorf("unrecognized tar header type: %d", header.Typeflag)
 	}
 
-	// files come recursively in order
+	// files come recursively in order.
 	for {
 		header, err := tarReader.Next()
 		if err != nil && err != io.EOF {
@@ -159,12 +171,13 @@ func (te *Extractor) Extract(reader io.Reader) error {
 			break
 		}
 
-		// Make sure that we only have a single root element
+		// Make sure that we only have a single root element.
 		if !firstObjectWasDir {
 			return fmt.Errorf("the root was not a directory and the tar has multiple entries: %w", errInvalidRoot)
 		}
 
-		// validate the path to remove paths we refuse to work with and make it easier to reason about
+		// validate the path in order to remove paths we refuse to work with
+		// and make it easier to reason about.
 		if err := validateTarPath(header.Name); err != nil {
 			return err
 		}
@@ -180,9 +193,10 @@ func (te *Extractor) Extract(reader io.Reader) error {
 			return err
 		}
 
-		// This check should already be covered by previous validation, but may catch bugs that slip through.
-		// Checks if the relative path matches or exceeds the root
-		// We check for matching because the outputPath function strips the original root
+		// This check should already be covered by previous validation, but may
+		// catch bugs that slip through. Checks if the relative path matches or
+		// exceeds the root We check for matching because the outputPath
+		// function strips the original root
 		rel, err := filepath.Rel(rootOutputPath, outputPath)
 		if err != nil || rel == "." {
 			return errInvalidRootMultipleRoots
@@ -219,7 +233,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 	return nil
 }
 
-// validateTarPath returns an error if the path has problematic characters
+// validateTarPath returns an error if the path has problematic characters.
 func validateTarPath(tarPath string) error {
 	if len(tarPath) == 0 {
 		return errors.New("path is empty")
@@ -239,8 +253,9 @@ func validateTarPath(tarPath string) error {
 	return nil
 }
 
-// getRelativePath returns the relative path between rootTarPath and tarPath. Assumes both paths have been cleaned.
-// Will error if the tarPath is not below the rootTarPath.
+// getRelativePath returns the relative path between rootTarPath and tarPath.
+// Assumes both paths have been cleaned. Will error if the tarPath is not below
+// the rootTarPath.
 func getRelativePath(rootName, tarPath string) (string, error) {
 	if !strings.HasPrefix(tarPath, rootName+"/") {
 		return "", errInvalidRootMultipleRoots
@@ -248,7 +263,8 @@ func getRelativePath(rootName, tarPath string) (string, error) {
 	return tarPath[len(rootName)+1:], nil
 }
 
-// outputPath returns the directory path at which to place the file relativeTarPath. Assumes relativeTarPath is cleaned.
+// outputPath returns the directory path at which to place the file
+// relativeTarPath. Assumes relativeTarPath is cleaned.
 func (te *Extractor) outputPath(basePlatformPath, relativeTarPath string) (string, error) {
 	elems := strings.Split(relativeTarPath, "/")
 
@@ -259,8 +275,8 @@ func (te *Extractor) outputPath(basePlatformPath, relativeTarPath string) (strin
 		}
 		platformPath = filepath.Join(platformPath, e)
 
-		// Last element is not checked since it will be removed (if it exists) by any of the extraction functions.
-		// For more details see:
+		// Last element is not checked since it will be removed (if it exists)
+		// by any of the extraction functions. For more details see:
 		// https://github.com/libarchive/libarchive/blob/0fd2ed25d78e9f4505de5dcb6208c6c0ff8d2edb/libarchive/archive_write_disk_posix.c#L2810
 		if i == len(elems)-1 {
 			break
@@ -309,6 +325,10 @@ func (te *Extractor) extractSymlink(path, rootPath string, h *tar.Header) error 
 	// Before extracting a file or other symlink, the old path is removed to
 	// prevent a simlink being created that causes a subsequent extraction to
 	// escape the root.
+	//
+	// Each element of the path of the symlink being extracted is evaluated to
+	// ensure that there is not a symlink at any point in the path. This is
+	// done in outputPath.
 	err = os.Symlink(h.Linkname, path)
 	if err != nil {
 		return err
@@ -323,7 +343,8 @@ func (te *Extractor) extractSymlink(path, rootPath string, h *tar.Header) error 
 }
 
 func (te *Extractor) extractFile(path string, r *tar.Reader) error {
-	// Attempt removing the target so we can overwrite files, symlinks and empty directories
+	// Attempt removing the target so we can overwrite files, symlinks and
+	// empty directories.
 	err := os.Remove(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -399,7 +420,7 @@ func (te *Extractor) deferUpdate(path string, header *tar.Header) error {
 
 	n := len(te.deferredUpdates)
 	if n > 0 && len(path) < len(te.deferredUpdates[n-1].path) {
-		// if possible, apply the previous deferral
+		// if possible, apply the previous deferral.
 		m := te.deferredUpdates[n-1]
 		if strings.HasPrefix(m.path, prefix()) {
 			err := updateMeta(m.path, m.mode, m.mtime)
@@ -426,7 +447,7 @@ func updateMeta(path string, mode int64, mtime time.Time) error {
 	return updateFileMode(path, mode)
 }
 
-// updateFileMode sets the unix mode of the filesystem object referenced by path
+// updateFileMode sets the unix mode of the filesystem object referenced by path.
 func updateFileMode(path string, mode int64) error {
 	if err := updateMode(path, mode); err != nil {
 		return fmt.Errorf("[%v] failed to update file mode on '%s'", err, path)
@@ -434,9 +455,9 @@ func updateFileMode(path string, mode int64) error {
 	return nil
 }
 
-// updateModTime sets the last access and modification time of the target filesystem
-// object to the given time.
-// When the given path references a symlink, if supported the symlink is updated.
+// updateModTime sets the last access and modification time of the target
+// filesystem object to the given time. When the given path references a
+// symlink, if supported, the symlink is updated.
 func updateModTime(path string, mtime time.Time) error {
 	if err := updateMtime(path, mtime); err != nil {
 		return fmt.Errorf("[%v] failed to update last modification time on '%s'", err, path)
