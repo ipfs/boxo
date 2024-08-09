@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- support UnixFS 1.5 file mode and modification times
+
 ### Changed
 
 ### Removed

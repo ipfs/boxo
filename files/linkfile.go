@@ -3,19 +3,39 @@ package files
 import (
 	"os"
 	"strings"
+	"time"
 )
 
 type Symlink struct {
 	Target string
 
-	stat   os.FileInfo
+	mtime  time.Time
 	reader strings.Reader
 }
 
 func NewLinkFile(target string, stat os.FileInfo) File {
-	lf := &Symlink{Target: target, stat: stat}
+	mtime := time.Time{}
+	if stat != nil {
+		mtime = stat.ModTime()
+	}
+	return NewSymlinkFile(target, mtime)
+}
+
+func NewSymlinkFile(target string, mtime time.Time) File {
+	lf := &Symlink{
+		Target: target,
+		mtime:  mtime,
+	}
 	lf.reader.Reset(lf.Target)
 	return lf
+}
+
+func (lf *Symlink) Mode() os.FileMode {
+	return os.ModeSymlink | os.ModePerm
+}
+
+func (lf *Symlink) ModTime() time.Time {
+	return lf.mtime
 }
 
 func (lf *Symlink) Close() error {

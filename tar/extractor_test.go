@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/boxo/files"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -50,10 +51,33 @@ func TestSingleFile(t *testing.T) {
 	fileData := "file data"
 
 	testTarExtraction(t, nil, []tarEntry{
-		&fileTarEntry{fileName, []byte(fileData)},
+		&fileTarEntry{path: fileName, buf: []byte(fileData)},
 	},
 		func(t *testing.T, extractDir string) {
 			f, err := os.Open(fp.Join(extractDir, fileName))
+			assert.NoError(t, err)
+			data, err := io.ReadAll(f)
+			assert.NoError(t, err)
+			assert.Equal(t, fileData, string(data))
+			assert.NoError(t, f.Close())
+		},
+		nil,
+	)
+}
+
+func TestSingleFileWithMeta(t *testing.T) {
+	fileName := "file2..ext"
+	fileData := "file2 data"
+	mode := 0654
+	mtime := time.Now().Round(time.Second)
+
+	testTarExtraction(t, nil, []tarEntry{
+		&fileTarEntry{path: fileName, buf: []byte(fileData), mode: mode, mtime: mtime},
+	},
+		func(t *testing.T, extractDir string) {
+			path := fp.Join(extractDir, fileName)
+			testMeta(t, path, mode, mtime)
+			f, err := os.Open(path)
 			assert.NoError(t, err)
 			data, err := io.ReadAll(f)
 			assert.NoError(t, err)
@@ -68,9 +92,33 @@ func TestSingleDirectory(t *testing.T) {
 	dirName := "dir..sfx"
 
 	testTarExtraction(t, nil, []tarEntry{
-		&dirTarEntry{dirName},
+		&dirTarEntry{path: dirName},
 	},
 		func(t *testing.T, extractDir string) {
+			f, err := os.Open(extractDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			objs, err := f.Readdir(1)
+			if err == io.EOF && len(objs) == 0 {
+				return
+			}
+			t.Fatalf("expected an empty directory")
+		},
+		nil,
+	)
+}
+
+func TestSingleDirectoryWithMeta(t *testing.T) {
+	dirName := "dir2..sfx"
+	mode := 0765
+	mtime := time.Now().Round(time.Second)
+
+	testTarExtraction(t, nil, []tarEntry{
+		&dirTarEntry{path: dirName, mode: mode, mtime: mtime},
+	},
+		func(t *testing.T, extractDir string) {
+			testMeta(t, extractDir, mode, mtime)
 			f, err := os.Open(extractDir)
 			if err != nil {
 				t.Fatal(err)
@@ -90,8 +138,8 @@ func TestDirectoryFollowSymlinkToNothing(t *testing.T) {
 	childName := "child"
 
 	entries := []tarEntry{
-		&dirTarEntry{dirName},
-		&dirTarEntry{dirName + "/" + childName},
+		&dirTarEntry{path: dirName},
+		&dirTarEntry{path: dirName + "/" + childName},
 	}
 
 	testTarExtraction(t, func(t *testing.T, rootDir string) {
@@ -109,8 +157,8 @@ func TestDirectoryFollowSymlinkToFile(t *testing.T) {
 	childName := "child"
 
 	entries := []tarEntry{
-		&dirTarEntry{dirName},
-		&dirTarEntry{dirName + "/" + childName},
+		&dirTarEntry{path: dirName},
+		&dirTarEntry{path: dirName + "/" + childName},
 	}
 
 	testTarExtraction(t, func(t *testing.T, rootDir string) {
@@ -132,8 +180,8 @@ func TestDirectoryFollowSymlinkToDirectory(t *testing.T) {
 	childName := "child"
 
 	entries := []tarEntry{
-		&dirTarEntry{dirName},
-		&dirTarEntry{dirName + "/" + childName},
+		&dirTarEntry{path: dirName},
+		&dirTarEntry{path: dirName + "/" + childName},
 	}
 
 	testTarExtraction(t, func(t *testing.T, rootDir string) {
@@ -159,7 +207,7 @@ func TestSingleSymlink(t *testing.T) {
 	symlinkName := "symlink"
 
 	testTarExtraction(t, nil, []tarEntry{
-		&symlinkTarEntry{targetName, symlinkName},
+		&symlinkTarEntry{target: targetName, path: symlinkName},
 	}, func(t *testing.T, extractDir string) {
 		symlinkPath := fp.Join(extractDir, symlinkName)
 		fi, err := os.Lstat(symlinkPath)
@@ -177,37 +225,37 @@ func TestSingleSymlink(t *testing.T) {
 
 func TestMultipleRoots(t *testing.T) {
 	testTarExtraction(t, nil, []tarEntry{
-		&dirTarEntry{"root"},
-		&dirTarEntry{"sibling"},
+		&dirTarEntry{path: "root"},
+		&dirTarEntry{path: "sibling"},
 	}, nil, errInvalidRoot)
 }
 
 func TestMultipleRootsNested(t *testing.T) {
 	testTarExtraction(t, nil, []tarEntry{
-		&dirTarEntry{"root/child1"},
-		&dirTarEntry{"root/child2"},
+		&dirTarEntry{path: "root/child1"},
+		&dirTarEntry{path: "root/child2"},
 	}, nil, errInvalidRoot)
 }
 
 func TestOutOfOrderRoot(t *testing.T) {
 	testTarExtraction(t, nil, []tarEntry{
-		&dirTarEntry{"root/child"},
-		&dirTarEntry{"root"},
+		&dirTarEntry{path: "root/child"},
+		&dirTarEntry{path: "root"},
 	}, nil, errInvalidRoot)
 }
 
 func TestOutOfOrder(t *testing.T) {
 	testTarExtraction(t, nil, []tarEntry{
-		&dirTarEntry{"root/child/grandchild"},
-		&dirTarEntry{"root/child"},
+		&dirTarEntry{path: "root/child/grandchild"},
+		&dirTarEntry{path: "root/child"},
 	}, nil, errInvalidRoot)
 }
 
 func TestNestedDirectories(t *testing.T) {
 	testTarExtraction(t, nil, []tarEntry{
-		&dirTarEntry{"root"},
-		&dirTarEntry{"root/child"},
-		&dirTarEntry{"root/child/grandchild"},
+		&dirTarEntry{path: "root"},
+		&dirTarEntry{path: "root/child"},
+		&dirTarEntry{path: "root/child/grandchild"},
 	}, func(t *testing.T, extractDir string) {
 		walkIndex := 0
 		err := fp.Walk(extractDir,
@@ -234,17 +282,165 @@ func TestNestedDirectories(t *testing.T) {
 
 func TestRootDirectoryHasSubpath(t *testing.T) {
 	testTarExtraction(t, nil, []tarEntry{
-		&dirTarEntry{"root/child"},
-		&dirTarEntry{"root/child/grandchild"},
+		&dirTarEntry{path: "root/child"},
+		&dirTarEntry{path: "root/child/grandchild"},
 	}, nil, errInvalidRoot)
 }
 
 func TestFilesAndFolders(t *testing.T) {
 	testTarExtraction(t, nil, []tarEntry{
-		&dirTarEntry{"root"},
-		&dirTarEntry{"root/childdir"},
-		&fileTarEntry{"root/childdir/file1", []byte("some data")},
+		&dirTarEntry{path: "root"},
+		&dirTarEntry{path: "root/childdir"},
+		&fileTarEntry{path: "root/childdir/file1", buf: []byte("some data")},
 	}, nil, nil)
+}
+
+func TestFilesAndFoldersWithMetadata(t *testing.T) {
+	tm := time.Unix(660000000, 0)
+
+	entries := []tarEntry{
+		&dirTarEntry{path: "root", mtime: tm.Add(5 * time.Second)},
+		&dirTarEntry{path: "root/childdir", mode: 03775},
+		&fileTarEntry{path: "root/childdir/file1", buf: []byte("some data"), mode: 04744,
+			mtime: tm.Add(10 * time.Second)},
+		&fileTarEntry{path: "root/childdir/file2", buf: []byte("some data"), mode: 0560,
+			mtime: tm.Add(10 * time.Second)},
+		&fileTarEntry{path: "root/childdir/file3", buf: []byte("some data"), mode: 06540,
+			mtime: tm.Add(10 * time.Second)},
+	}
+
+	testTarExtraction(t, nil, entries, func(t *testing.T, extractDir string) {
+		walkIndex := 0
+		err := fp.Walk(extractDir,
+			func(path string, fi os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				switch walkIndex {
+				case 0: // root
+					assert.Equal(t, tm.Add(5*time.Second), fi.ModTime())
+				case 1: // childdir
+					if runtime.GOOS != "windows" {
+						assert.Equal(t, 0775, int(fi.Mode()&0xFFF))
+						assert.Equal(t, os.ModeSetgid, fi.Mode()&os.ModeSetgid)
+						assert.Equal(t, os.ModeSticky, fi.Mode()&os.ModeSticky)
+					} else {
+						assert.Equal(t, 0777, int(fi.Mode()&0xFFF))
+					}
+				case 2: // file1
+					assert.Equal(t, tm.Add(10*time.Second), fi.ModTime())
+					if runtime.GOOS != "windows" {
+						assert.Equal(t, 0744, int(fi.Mode()&0xFFF))
+						assert.Equal(t, os.ModeSetuid, fi.Mode()&os.ModeSetuid)
+					} else {
+						assert.Equal(t, 0666, int(fi.Mode()&0xFFF))
+					}
+				case 3: // file2
+					assert.Equal(t, tm.Add(10*time.Second), fi.ModTime())
+					if runtime.GOOS != "windows" {
+						assert.Equal(t, 0560, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0, int(fi.Mode()&os.ModeSetuid))
+					} else {
+						assert.Equal(t, 0666, int(fi.Mode()&0xFFF))
+					}
+				case 4: // file3
+					assert.Equal(t, tm.Add(10*time.Second), fi.ModTime())
+					if runtime.GOOS != "windows" {
+						assert.Equal(t, 0540, int(fi.Mode()&0xFFF))
+						assert.Equal(t, os.ModeSetgid, fi.Mode()&os.ModeSetgid)
+						assert.Equal(t, os.ModeSetuid, fi.Mode()&os.ModeSetuid)
+					} else {
+						assert.Equal(t, 0444, int(fi.Mode()&0xFFF))
+					}
+				default:
+					assert.Fail(t, "has more than 5 entries", path)
+				}
+				walkIndex++
+				return nil
+			})
+		assert.NoError(t, err)
+	},
+		nil)
+}
+
+func TestSymlinkWithModTime(t *testing.T) {
+	if !symlinksEnabled {
+		t.Skip("symlinks disabled on this platform", symlinksEnabledErr)
+	}
+	if runtime.GOOS == "darwin" {
+		t.Skip("changing symlink modification time is not currently supported on darwin")
+	}
+	tm := time.Unix(660000000, 0)
+	add5 := func() time.Time {
+		tm = tm.Add(5 * time.Second)
+		return tm
+	}
+
+	entries := []tarEntry{
+		&dirTarEntry{path: "root"},
+		&symlinkTarEntry{target: "child", path: "root/a", mtime: add5()},
+		&dirTarEntry{path: "root/child"},
+		&fileTarEntry{path: "root/child/file1", buf: []byte("data")},
+		&symlinkTarEntry{target: "child/file1", path: "root/file1-sl", mtime: add5()},
+	}
+
+	testTarExtraction(t, nil, entries, func(t *testing.T, extractDir string) {
+		tm = time.Unix(660000000, 0)
+
+		fi, err := os.Lstat(fp.Join(extractDir, "a"))
+		assert.NoError(t, err)
+		add5()
+		if runtime.GOOS != "windows" {
+			assert.Equal(t, tm, fi.ModTime())
+		}
+
+		fi, err = os.Lstat(fp.Join(extractDir, "file1-sl"))
+		assert.NoError(t, err)
+		add5()
+		if runtime.GOOS != "windows" {
+			assert.Equal(t, tm, fi.ModTime())
+		}
+	},
+		nil)
+}
+
+func TestDeferredUpdate(t *testing.T) {
+	tm := time.Unix(660000000, 0)
+	add5 := func() time.Time {
+		tm = tm.Add(5 * time.Second)
+		return tm
+	}
+
+	// must be in lexical order
+	entries := []tarEntry{
+		&dirTarEntry{path: "root", mtime: add5()},
+		&dirTarEntry{path: "root/a", mtime: add5()},
+		&dirTarEntry{path: "root/a/beta", mtime: add5(), mode: 0500},
+		&dirTarEntry{path: "root/a/beta/centauri", mtime: add5()},
+		&dirTarEntry{path: "root/a/beta/lima", mtime: add5()},
+		&dirTarEntry{path: "root/a/beta/papa", mtime: add5()},
+		&dirTarEntry{path: "root/a/beta/xanadu", mtime: add5()},
+		&dirTarEntry{path: "root/a/beta/z", mtime: add5()},
+		&dirTarEntry{path: "root/a/delta", mtime: add5()},
+		&dirTarEntry{path: "root/iota", mtime: add5()},
+		&dirTarEntry{path: "root/q", mtime: add5()},
+	}
+
+	testTarExtraction(t, nil, entries, func(t *testing.T, extractDir string) {
+		tm = time.Unix(660000000, 0)
+		err := fp.Walk(extractDir,
+			func(path string, fi os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+
+				assert.Equal(t, add5(), fi.ModTime())
+				return nil
+			})
+		assert.NoError(t, err)
+	},
+		nil)
+
 }
 
 func TestInternalSymlinkTraverse(t *testing.T) {
@@ -254,10 +450,10 @@ func TestInternalSymlinkTraverse(t *testing.T) {
 	testTarExtraction(t, nil, []tarEntry{
 		// FIXME: We are ignoring the first element in the path check so
 		//  we add a directory at the start to bypass this.
-		&dirTarEntry{"root"},
-		&dirTarEntry{"root/child"},
-		&symlinkTarEntry{"child", "root/symlink-dir"},
-		&fileTarEntry{"root/symlink-dir/file", []byte("file")},
+		&dirTarEntry{path: "root"},
+		&dirTarEntry{path: "root/child"},
+		&symlinkTarEntry{target: "child", path: "root/symlink-dir"},
+		&fileTarEntry{path: "root/symlink-dir/file", buf: []byte("file")},
 	},
 		nil,
 		errTraverseSymlink,
@@ -271,9 +467,9 @@ func TestExternalSymlinkTraverse(t *testing.T) {
 	testTarExtraction(t, nil, []tarEntry{
 		// FIXME: We are ignoring the first element in the path check so
 		//  we add a directory at the start to bypass this.
-		&dirTarEntry{"inner"},
-		&symlinkTarEntry{"..", "inner/symlink-dir"},
-		&fileTarEntry{"inner/symlink-dir/file", []byte("overwrite content")},
+		&dirTarEntry{path: "inner"},
+		&symlinkTarEntry{target: "..", path: "inner/symlink-dir"},
+		&fileTarEntry{path: "inner/symlink-dir/file", buf: []byte("overwrite content")},
 	},
 		nil,
 		errTraverseSymlink,
@@ -295,13 +491,14 @@ func TestLastElementOverwrite(t *testing.T) {
 		assert.Equal(t, len(originalData), n)
 	},
 		[]tarEntry{
-			&dirTarEntry{"root"},
-			&symlinkTarEntry{"../outside-ref", "root/symlink"},
-			&fileTarEntry{"root/symlink", []byte("overwrite content")},
+			&dirTarEntry{path: "root"},
+			&symlinkTarEntry{target: "../outside-ref", path: "root/symlink"},
+			&fileTarEntry{path: "root/symlink", buf: []byte("overwrite content")},
 		},
 		func(t *testing.T, extractDir string) {
-			// Check that outside-ref still exists but has not been
-			// overwritten or truncated (still size the same).
+			// Check that outside-ref still exists but has not been overwritten
+			// or truncated (still size the same). The symlink itself have been
+			// overwritten by the extracted file.
 			info, err := os.Stat(fp.Join(extractDir, "..", "outside-ref"))
 			assert.NoError(t, err)
 
@@ -325,18 +522,12 @@ func testTarExtraction(t *testing.T, setup func(t *testing.T, rootDir string), t
 	err = os.MkdirAll(extractDir, 0o755)
 	assert.NoError(t, err)
 
-	// Generated TAR file.
-	tarFilename := fp.Join(rootDir, "generated.tar")
-	tarFile, err := os.Create(tarFilename)
-	assert.NoError(t, err)
-	defer tarFile.Close()
-	tw := tar.NewWriter(tarFile)
-	defer tw.Close()
-
 	if setup != nil {
 		setup(t, rootDir)
 	}
 
+	// Generated TAR file.
+	tarFilename := fp.Join(rootDir, "generated.tar")
 	writeTarFile(t, tarFilename, tarEntries)
 
 	testExtract(t, tarFilename, extractDir, extractError)
@@ -356,6 +547,23 @@ func testExtract(t *testing.T, tarFile string, extractDir string, expectedError 
 	err = extractor.Extract(tarReader)
 
 	assert.ErrorIs(t, err, expectedError)
+}
+
+func testMeta(t *testing.T, path string, mode int, now time.Time) {
+	fi, err := os.Lstat(path)
+	assert.NoError(t, err)
+	m := files.ModePermsToUnixPerms(fi.Mode())
+	if runtime.GOOS == "windows" {
+		if fi.IsDir() {
+			mode = 0777
+		} else if mode&0220 != 0 {
+			mode = 0666
+		} else if mode&0440 != 0 {
+			mode = 0444
+		}
+	}
+	assert.Equal(t, mode, int(m))
+	assert.Equal(t, now.Unix(), fi.ModTime().Unix())
 }
 
 // Based on the `writeXXXHeader` family of functions in
@@ -385,16 +593,19 @@ var (
 )
 
 type fileTarEntry struct {
-	path string
-	buf  []byte
+	path  string
+	buf   []byte
+	mode  int
+	mtime time.Time
 }
 
 func (e *fileTarEntry) write(tw *tar.Writer) error {
-	if err := writeFileHeader(tw, e.path, uint64(len(e.buf))); err != nil {
+	err := writeFileHeader(tw, e.path, uint64(len(e.buf)), e.mode, e.mtime)
+	if err != nil {
 		return err
 	}
 
-	if _, err := io.Copy(tw, bytes.NewReader(e.buf)); err != nil {
+	if _, err = io.Copy(tw, bytes.NewReader(e.buf)); err != nil {
 		return err
 	}
 
@@ -402,34 +613,35 @@ func (e *fileTarEntry) write(tw *tar.Writer) error {
 	return nil
 }
 
-func writeFileHeader(w *tar.Writer, fpath string, size uint64) error {
+func writeFileHeader(w *tar.Writer, fpath string, size uint64, mode int, mtime time.Time) error {
 	return w.WriteHeader(&tar.Header{
 		Name:     fpath,
 		Size:     int64(size),
 		Typeflag: tar.TypeReg,
-		Mode:     0o644,
-		ModTime:  time.Now(),
-		// TODO: set mode, dates, etc. when added to unixFS
+		Mode:     int64(mode),
+		ModTime:  mtime,
 	})
 }
 
 type dirTarEntry struct {
-	path string
+	path  string
+	mode  int
+	mtime time.Time
 }
 
 func (e *dirTarEntry) write(tw *tar.Writer) error {
 	return tw.WriteHeader(&tar.Header{
 		Name:     e.path,
 		Typeflag: tar.TypeDir,
-		Mode:     0o777,
-		ModTime:  time.Now(),
-		// TODO: set mode, dates, etc. when added to unixFS
+		Mode:     int64(e.mode),
+		ModTime:  e.mtime,
 	})
 }
 
 type symlinkTarEntry struct {
 	target string
 	path   string
+	mtime  time.Time
 }
 
 func (e *symlinkTarEntry) write(w *tar.Writer) error {
@@ -437,6 +649,7 @@ func (e *symlinkTarEntry) write(w *tar.Writer) error {
 		Name:     e.path,
 		Linkname: e.target,
 		Mode:     0o777,
+		ModTime:  e.mtime,
 		Typeflag: tar.TypeSymlink,
 	})
 }

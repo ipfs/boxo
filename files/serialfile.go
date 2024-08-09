@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // serialFile implements Node, and reads from a path on the OS filesystem.
@@ -162,6 +163,14 @@ func (f *serialFile) Size() (int64, error) {
 	})
 
 	return du, err
+}
+
+func (f *serialFile) Mode() os.FileMode {
+	return f.stat.Mode()
+}
+
+func (f *serialFile) ModTime() time.Time {
+	return f.stat.ModTime()
 }
 
 var (
