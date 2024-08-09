@@ -15,11 +15,13 @@ import (
 	mockrouting "github.com/ipfs/boxo/routing/mock"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	delay "github.com/ipfs/go-ipfs-delay"
+	"github.com/ipfs/go-test/random"
 	tu "github.com/libp2p/go-libp2p-testing/etc"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
+
+const blockSize = 4
 
 func getVirtualNetwork() tn.Network {
 	// FIXME: the tests are really sensitive to the network delay. fix them to work
@@ -46,9 +48,8 @@ func TestBasicSessions(t *testing.T) {
 	vnet := getVirtualNetwork()
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
-	bgen := blocksutil.NewBlockGenerator()
 
-	block := bgen.Next()
+	block := random.BlocksOfSize(1, blockSize)[0]
 	inst := ig.Instances(2)
 
 	a := inst[0]
@@ -113,12 +114,11 @@ func TestSessionBetweenPeers(t *testing.T) {
 	vnet := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(time.Millisecond))
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, []bitswap.Option{bitswap.SetSimulateDontHavesOnTimeout(false)})
 	defer ig.Close()
-	bgen := blocksutil.NewBlockGenerator()
 
 	inst := ig.Instances(10)
 
 	// Add 101 blocks to Peer A
-	blks := bgen.Blocks(101)
+	blks := random.BlocksOfSize(101, blockSize)
 	if err := inst[0].Blockstore().PutMany(ctx, blks); err != nil {
 		t.Fatal(err)
 	}
@@ -173,12 +173,11 @@ func TestSessionSplitFetch(t *testing.T) {
 	vnet := getVirtualNetwork()
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
-	bgen := blocksutil.NewBlockGenerator()
 
 	inst := ig.Instances(11)
 
 	// Add 10 distinct blocks to each of 10 peers
-	blks := bgen.Blocks(100)
+	blks := random.BlocksOfSize(100, blockSize)
 	for i := 0; i < 10; i++ {
 		if err := inst[i].Blockstore().PutMany(ctx, blks[i*10:(i+1)*10]); err != nil {
 			t.Fatal(err)
@@ -217,12 +216,11 @@ func TestFetchNotConnected(t *testing.T) {
 	vnet := getVirtualNetwork()
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, []bitswap.Option{bitswap.ProviderSearchDelay(10 * time.Millisecond)})
 	defer ig.Close()
-	bgen := blocksutil.NewBlockGenerator()
 
 	other := ig.Next()
 
 	// Provide 10 blocks on Peer A
-	blks := bgen.Blocks(10)
+	blks := random.BlocksOfSize(10, blockSize)
 	for _, block := range blks {
 		addBlock(t, ctx, other, block)
 	}
@@ -263,14 +261,13 @@ func TestFetchAfterDisconnect(t *testing.T) {
 		bitswap.RebroadcastDelay(delay.Fixed(15 * time.Millisecond)),
 	})
 	defer ig.Close()
-	bgen := blocksutil.NewBlockGenerator()
 
 	inst := ig.Instances(2)
 	peerA := inst[0]
 	peerB := inst[1]
 
 	// Provide 5 blocks on Peer A
-	blks := bgen.Blocks(10)
+	blks := random.BlocksOfSize(10, blockSize)
 	var cids []cid.Cid
 	for _, blk := range blks {
 		cids = append(cids, blk.Cid())
@@ -338,9 +335,8 @@ func TestInterestCacheOverflow(t *testing.T) {
 	vnet := getVirtualNetwork()
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
-	bgen := blocksutil.NewBlockGenerator()
 
-	blks := bgen.Blocks(2049)
+	blks := random.BlocksOfSize(2049, blockSize)
 	inst := ig.Instances(2)
 
 	a := inst[0]
@@ -388,9 +384,8 @@ func TestPutAfterSessionCacheEvict(t *testing.T) {
 	vnet := getVirtualNetwork()
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
-	bgen := blocksutil.NewBlockGenerator()
 
-	blks := bgen.Blocks(2500)
+	blks := random.BlocksOfSize(2500, blockSize)
 	inst := ig.Instances(1)
 
 	a := inst[0]
@@ -426,9 +421,8 @@ func TestMultipleSessions(t *testing.T) {
 	vnet := getVirtualNetwork()
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
-	bgen := blocksutil.NewBlockGenerator()
 
-	blk := bgen.Blocks(1)[0]
+	blk := random.BlocksOfSize(1, blockSize)[0]
 	inst := ig.Instances(2)
 
 	a := inst[0]
@@ -467,9 +461,8 @@ func TestWantlistClearsOnCancel(t *testing.T) {
 	vnet := getVirtualNetwork()
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
-	bgen := blocksutil.NewBlockGenerator()
 
-	blks := bgen.Blocks(10)
+	blks := random.BlocksOfSize(10, blockSize)
 	var cids []cid.Cid
 	for _, blk := range blks {
 		cids = append(cids, blk.Cid())

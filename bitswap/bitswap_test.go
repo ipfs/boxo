@@ -19,13 +19,15 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	detectrace "github.com/ipfs/go-detect-race"
-	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	delay "github.com/ipfs/go-ipfs-delay"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-test/random"
 	tu "github.com/libp2p/go-libp2p-testing/etc"
 	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
+
+const blockSize = 4
 
 func isCI() bool {
 	// https://github.blog/changelog/2020-04-15-github-actions-sets-the-ci-environment-variable-to-true/
@@ -52,9 +54,7 @@ func TestClose(t *testing.T) {
 	vnet := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(vnet, nil, nil)
 	defer ig.Close()
-	bgen := blocksutil.NewBlockGenerator()
-
-	block := bgen.Next()
+	block := random.BlocksOfSize(1, blockSize)[0]
 	bitswap := ig.Next()
 
 	bitswap.Exchange.Close()
@@ -187,7 +187,6 @@ func TestUnwantedBlockNotAdded(t *testing.T) {
 func TestPendingBlockAdded(t *testing.T) {
 	ctx := context.Background()
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
-	bg := blocksutil.NewBlockGenerator()
 	sessionBroadcastWantCapacity := 4
 
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
@@ -202,7 +201,7 @@ func TestPendingBlockAdded(t *testing.T) {
 	// Request enough blocks to exceed the session's broadcast want list
 	// capacity (by one block). The session will put the remaining block
 	// into the "tofetch" queue
-	blks := bg.Blocks(sessionBroadcastWantCapacity + 1)
+	blks := random.BlocksOfSize(sessionBroadcastWantCapacity+1, blockSize)
 	ks := make([]cid.Cid, 0, len(blks))
 	for _, b := range blks {
 		ks = append(ks, b.Cid())
@@ -285,10 +284,9 @@ func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
 		bitswap.MaxOutstandingBytesPerPeer(1 << 20),
 	})
 	defer ig.Close()
-	bg := blocksutil.NewBlockGenerator()
 
 	instances := ig.Instances(numInstances)
-	blocks := bg.Blocks(numBlocks)
+	blocks := random.BlocksOfSize(numBlocks, blockSize)
 
 	t.Log("Give the blocks to the first instance")
 
@@ -338,7 +336,6 @@ func TestSendToWantingPeer(t *testing.T) {
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
-	bg := blocksutil.NewBlockGenerator()
 
 	peers := ig.Instances(2)
 	peerA := peers[0]
@@ -349,7 +346,7 @@ func TestSendToWantingPeer(t *testing.T) {
 
 	waitTime := time.Second * 5
 
-	alpha := bg.Next()
+	alpha := random.BlocksOfSize(1, blockSize)[0]
 	// peerA requests and waits for block alpha
 	ctx, cancel := context.WithTimeout(context.Background(), waitTime)
 	defer cancel()
@@ -409,12 +406,11 @@ func TestBasicBitswap(t *testing.T) {
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
-	bg := blocksutil.NewBlockGenerator()
 
 	t.Log("Test a one node trying to get one block from another")
 
 	instances := ig.Instances(3)
-	blocks := bg.Blocks(1)
+	blocks := random.BlocksOfSize(1, blockSize)
 
 	// First peer has block
 	addBlock(t, context.Background(), instances[0], blocks[0])
@@ -481,12 +477,11 @@ func TestDoubleGet(t *testing.T) {
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
-	bg := blocksutil.NewBlockGenerator()
 
 	t.Log("Test a one node trying to get one block from another")
 
 	instances := ig.Instances(2)
-	blocks := bg.Blocks(1)
+	blocks := random.BlocksOfSize(1, blockSize)
 
 	// NOTE: A race condition can happen here where these GetBlocks requests go
 	// through before the peers even get connected. This is okay, bitswap
@@ -546,12 +541,11 @@ func TestWantlistCleanup(t *testing.T) {
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
-	bg := blocksutil.NewBlockGenerator()
 
 	instances := ig.Instances(2)
 	instance := instances[0]
 	bswap := instance.Exchange
-	blocks := bg.Blocks(20)
+	blocks := random.BlocksOfSize(20, blockSize)
 
 	var keys []cid.Cid
 	for _, b := range blocks {
@@ -668,12 +662,11 @@ func TestBitswapLedgerOneWay(t *testing.T) {
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
-	bg := blocksutil.NewBlockGenerator()
 
 	t.Log("Test ledgers match when one peer sends block to another")
 
 	instances := ig.Instances(2)
-	blocks := bg.Blocks(1)
+	blocks := random.BlocksOfSize(1, blockSize)
 	addBlock(t, context.Background(), instances[0], blocks[0])
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
@@ -693,12 +686,12 @@ func TestBitswapLedgerOneWay(t *testing.T) {
 	}
 
 	// check that receipts have intended values
-	ratest := newReceipt(1, 0, 1)
+	ratest := newReceipt(blockSize, 0, 1)
 	err = assertLedgerEqual(ratest, ra)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rbtest := newReceipt(0, 1, 1)
+	rbtest := newReceipt(0, blockSize, 1)
 	err = assertLedgerEqual(rbtest, rb)
 	if err != nil {
 		t.Fatal(err)
@@ -717,12 +710,11 @@ func TestBitswapLedgerTwoWay(t *testing.T) {
 	net := tn.VirtualNetwork(mockrouting.NewServer(), delay.Fixed(kNetworkDelay))
 	ig := testinstance.NewTestInstanceGenerator(net, nil, nil)
 	defer ig.Close()
-	bg := blocksutil.NewBlockGenerator()
 
 	t.Log("Test ledgers match when two peers send one block to each other")
 
 	instances := ig.Instances(2)
-	blocks := bg.Blocks(2)
+	blocks := random.BlocksOfSize(2, blockSize)
 	addBlock(t, context.Background(), instances[0], blocks[0])
 	addBlock(t, context.Background(), instances[1], blocks[1])
 
@@ -750,7 +742,7 @@ func TestBitswapLedgerTwoWay(t *testing.T) {
 	}
 
 	// check that receipts have intended values
-	rtest := newReceipt(1, 1, 2)
+	rtest := newReceipt(blockSize, blockSize, 2)
 	err = assertLedgerEqual(rtest, ra)
 	if err != nil {
 		t.Fatal(err)
