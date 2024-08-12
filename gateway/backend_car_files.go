@@ -137,11 +137,11 @@ func (b *singleUseDirectory) Close() error {
 }
 
 func (b *singleUseDirectory) Mode() os.FileMode {
-	panic("not implemented")
+	return 0
 }
 
 func (b *singleUseDirectory) ModTime() time.Time {
-	panic("not implemented")
+	return time.Time{}
 }
 
 func (b *singleUseDirectory) Size() (int64, error) {
