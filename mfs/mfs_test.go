@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"os"
 	gopath "path"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -511,7 +512,19 @@ func TestMfsFile(t *testing.T) {
 	fi := fsn.(*File)
 
 	if fi.Type() != TFile {
-		t.Fatal("some is seriously wrong here")
+		t.Fatal("something is seriously wrong here")
+	}
+
+	if m, err := fi.Mode(); err != nil {
+		t.Fatal("failed to get file mode: ", err)
+	} else if m != 0 {
+		t.Fatal("mode should not be set on a new file")
+	}
+
+	if ts, err := fi.ModTime(); err != nil {
+		t.Fatal("failed to get file mtime: ", err)
+	} else if !ts.IsZero() {
+		t.Fatal("modification time should not be set on a new file")
 	}
 
 	wfd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
@@ -615,10 +628,167 @@ func TestMfsFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if ts, err := fi.ModTime(); err != nil {
+		t.Fatal("failed to get file mtime: ", err)
+	} else if !ts.IsZero() {
+		t.Fatal("file with unset modification time should not update modification time")
+	}
+
 	// make sure we can get node. TODO: verify it later
 	_, err = fi.GetNode()
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMfsModeAndModTime(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ds, rt := setupRoot(ctx, t)
+	rootdir := rt.GetDirectory()
+	nd := getRandFile(t, ds, 1000)
+
+	err := rootdir.AddChild("file", nd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fsn, err := rootdir.Child("file")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fi := fsn.(*File)
+
+	if fi.Type() != TFile {
+		t.Fatal("something is seriously wrong here")
+	}
+
+	var mode os.FileMode
+	ts, _ := time.Now(), time.Time{}
+
+	// can set mode
+	if err = fi.SetMode(0644); err == nil {
+		if mode, err = fi.Mode(); mode != 0644 {
+			t.Fatal("failed to get correct mode of file")
+		}
+	}
+	if err != nil {
+		t.Fatal("failed to check file mode: ", err)
+	}
+
+	// can set last modification time
+	if err = fi.SetModTime(ts); err == nil {
+		ts2, err := fi.ModTime()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ts2.Equal(ts) {
+			t.Fatal("failed to get correct modification time of file")
+		}
+	}
+	if err != nil {
+		t.Fatal("failed to check file modification time: ", err)
+	}
+
+	// test modification time update after write (on closing file)
+	if runtime.GOOS == "windows" {
+		time.Sleep(3 * time.Second) // for os with low-res mod time.
+	}
+	wfd, err := fi.Open(Flags{Read: false, Write: true, Sync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = wfd.Write([]byte("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wfd.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts2, err := fi.ModTime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ts2.After(ts) {
+		t.Fatal("modification time should be updated after file write")
+	}
+
+	// writeAt
+	ts = ts2
+	if runtime.GOOS == "windows" {
+		time.Sleep(3 * time.Second) // for os with low-res mod time.
+	}
+	wfd, err = fi.Open(Flags{Read: false, Write: true, Sync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = wfd.WriteAt([]byte("test"), 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wfd.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts2, err = fi.ModTime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ts2.After(ts) {
+		t.Fatal("modification time should be updated after file writeAt")
+	}
+
+	// truncate (shrink)
+	ts = ts2
+	if runtime.GOOS == "windows" {
+		time.Sleep(3 * time.Second) // for os with low-res mod time.
+	}
+	wfd, err = fi.Open(Flags{Read: false, Write: true, Sync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wfd.Truncate(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wfd.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts2, err = fi.ModTime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ts2.After(ts) {
+		t.Fatal("modification time should be updated after file truncate (shrink)")
+	}
+
+	// truncate (expand)
+	ts = ts2
+	if runtime.GOOS == "windows" {
+		time.Sleep(3 * time.Second) // for os with low-res mod time.
+	}
+	wfd, err = fi.Open(Flags{Read: false, Write: true, Sync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wfd.Truncate(1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = wfd.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts2, err = fi.ModTime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ts2.After(ts) {
+		t.Fatal("modification time should be updated after file truncate (expand)")
 	}
 }
 

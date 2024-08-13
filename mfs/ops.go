@@ -7,6 +7,7 @@ import (
 	"os"
 	gopath "path"
 	"strings"
+	"time"
 
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -122,6 +123,8 @@ type MkdirOpts struct {
 	Mkparents  bool
 	Flush      bool
 	CidBuilder cid.Builder
+	Mode       os.FileMode
+	ModTime    time.Time
 }
 
 // Mkdir creates a directory at 'path' under the directory 'd', creating
@@ -171,7 +174,7 @@ func Mkdir(r *Root, pth string, opts MkdirOpts) error {
 		cur = next
 	}
 
-	final, err := cur.Mkdir(parts[len(parts)-1])
+	final, err := cur.MkdirWithOpts(parts[len(parts)-1], opts)
 	if err != nil {
 		if !opts.Mkparents || err != os.ErrExist || final == nil {
 			return err
@@ -242,4 +245,22 @@ func FlushPath(ctx context.Context, rt *Root, pth string) (ipld.Node, error) {
 
 	rt.repub.WaitPub(ctx)
 	return nd.GetNode()
+}
+
+func Chmod(rt *Root, pth string, mode os.FileMode) error {
+	nd, err := Lookup(rt, pth)
+	if err != nil {
+		return err
+	}
+
+	return nd.SetMode(mode)
+}
+
+func Touch(rt *Root, pth string, ts time.Time) error {
+	nd, err := Lookup(rt, pth)
+	if err != nil {
+		return err
+	}
+
+	return nd.SetModTime(ts)
 }

@@ -41,8 +41,6 @@ type Directory struct {
 	// UnixFS directory implementation used for creating,
 	// reading and editing directories.
 	unixfsDir uio.Directory
-
-	modTime time.Time
 }
 
 // NewDirectory constructs a new MFS directory.
@@ -64,7 +62,6 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 		ctx:          ctx,
 		unixfsDir:    db,
 		entriesCache: make(map[string]FSNode),
-		modTime:      time.Now(),
 	}, nil
 }
 
@@ -134,8 +131,6 @@ func (d *Directory) updateChild(c child) error {
 	if err != nil {
 		return err
 	}
-
-	d.modTime = time.Now()
 
 	return nil
 }
@@ -292,6 +287,10 @@ func (d *Directory) ForEachEntry(ctx context.Context, f func(NodeListing) error)
 }
 
 func (d *Directory) Mkdir(name string) (*Directory, error) {
+	return d.MkdirWithOpts(name, MkdirOpts{})
+}
+
+func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
@@ -307,7 +306,7 @@ func (d *Directory) Mkdir(name string) (*Directory, error) {
 		}
 	}
 
-	ndir := ft.EmptyDirNode()
+	ndir := ft.EmptyDirNodeWithStat(opts.Mode, opts.ModTime)
 	ndir.SetCidBuilder(d.GetCidBuilder())
 
 	err = d.dagService.Add(d.ctx, ndir)
@@ -367,7 +366,6 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 		return err
 	}
 
-	d.modTime = time.Now()
 	return nil
 }
 
@@ -426,4 +424,69 @@ func (d *Directory) GetNode() (ipld.Node, error) {
 	}
 
 	return nd.Copy(), err
+}
+
+func (d *Directory) SetMode(mode os.FileMode) error {
+	nd, err := d.GetNode()
+	if err != nil {
+		return err
+	}
+
+	fsn, err := ft.ExtractFSNode(nd)
+	if err != nil {
+		return err
+	}
+
+	fsn.SetMode(mode)
+	data, err := fsn.GetBytes()
+	if err != nil {
+		return err
+	}
+
+	return d.setNodeData(data, nd.Links())
+}
+
+func (d *Directory) SetModTime(ts time.Time) error {
+	nd, err := d.GetNode()
+	if err != nil {
+		return err
+	}
+
+	fsn, err := ft.ExtractFSNode(nd)
+	if err != nil {
+		return err
+	}
+
+	fsn.SetModTime(ts)
+	data, err := fsn.GetBytes()
+	if err != nil {
+		return err
+	}
+
+	return d.setNodeData(data, nd.Links())
+}
+
+func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
+	nd := dag.NodeWithData(data)
+	nd.SetLinks(links)
+
+	err := d.dagService.Add(d.ctx, nd)
+	if err != nil {
+		return err
+	}
+
+	err = d.parent.updateChildEntry(child{d.name, nd})
+	if err != nil {
+		return err
+	}
+
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	db, err := uio.NewDirectoryFromNode(d.dagService, nd)
+	if err != nil {
+		return err
+	}
+	d.unixfsDir = db
+
+	return nil
 }
