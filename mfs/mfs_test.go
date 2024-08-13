@@ -718,6 +718,9 @@ func TestMfsModeAndModTime(t *testing.T) {
 
 	// writeAt
 	ts = ts2
+	if runtime.GOOS == "windows" {
+		time.Sleep(3 * time.Second) // for os with low-res mod time.
+	}
 	wfd, err = fi.Open(Flags{Read: false, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
@@ -740,6 +743,9 @@ func TestMfsModeAndModTime(t *testing.T) {
 
 	// truncate (shrink)
 	ts = ts2
+	if runtime.GOOS == "windows" {
+		time.Sleep(3 * time.Second) // for os with low-res mod time.
+	}
 	wfd, err = fi.Open(Flags{Read: false, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
@@ -762,6 +768,9 @@ func TestMfsModeAndModTime(t *testing.T) {
 
 	// truncate (expand)
 	ts = ts2
+	if runtime.GOOS == "windows" {
+		time.Sleep(3 * time.Second) // for os with low-res mod time.
+	}
 	wfd, err = fi.Open(Flags{Read: false, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
