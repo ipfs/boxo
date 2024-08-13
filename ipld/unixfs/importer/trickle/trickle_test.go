@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	mrand "math/rand"
+	"runtime"
 	"testing"
 	"time"
 
@@ -678,14 +679,17 @@ func TestAppendWithModTime(t *testing.T) {
 	const nbytes = 128 * 1024
 
 	timestamp := time.Now()
-	ds := mdtest.Mock()
 	buf := random.Bytes(nbytes)
 
 	nd := new(merkledag.ProtoNode)
 	nd.SetData(ft.FilePBDataWithStat(buf[:nbytes/2], nbytes/2, 0, timestamp))
 
+	if runtime.GOOS == "windows" {
+		time.Sleep(3 * time.Second) // for os with low-res mod time.
+	}
+
 	dbp := &h.DagBuilderParams{
-		Dagserv:  ds,
+		Dagserv:  mdtest.Mock(),
 		Maxlinks: h.DefaultLinksPerBlock,
 	}
 
@@ -710,12 +714,15 @@ func TestAppendWithModTime(t *testing.T) {
 
 func TestAppendToEmptyWithModTime(t *testing.T) {
 	timestamp := time.Now()
-	ds := mdtest.Mock()
 	nd := new(merkledag.ProtoNode)
 	nd.SetData(ft.FilePBDataWithStat(nil, 0, 0, timestamp))
 
+	if runtime.GOOS == "windows" {
+		time.Sleep(3 * time.Second) // for os with low-res mod time.
+	}
+
 	dbp := &h.DagBuilderParams{
-		Dagserv:  ds,
+		Dagserv:  mdtest.Mock(),
 		Maxlinks: h.DefaultLinksPerBlock,
 	}
 
