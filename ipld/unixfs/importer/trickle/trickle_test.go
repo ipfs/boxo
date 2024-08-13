@@ -7,6 +7,7 @@ import (
 	"io"
 	mrand "math/rand"
 	"testing"
+	"time"
 
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	h "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
@@ -40,6 +41,10 @@ func buildTestDag(ds ipld.DAGService, spl chunker.Splitter, rawLeaves UseRawLeav
 		RawLeaves: bool(rawLeaves),
 	}
 
+	return buildTestDagWithParams(ds, spl, dbp)
+}
+
+func buildTestDagWithParams(ds ipld.DAGService, spl chunker.Splitter, dbp h.DagBuilderParams) (*merkledag.ProtoNode, error) {
 	db, err := dbp.New(spl)
 	if err != nil {
 		return nil, err
@@ -59,7 +64,7 @@ func buildTestDag(ds ipld.DAGService, spl chunker.Splitter, rawLeaves UseRawLeav
 		Getter:      ds,
 		Direct:      dbp.Maxlinks,
 		LayerRepeat: depthRepeat,
-		RawLeaves:   bool(rawLeaves),
+		RawLeaves:   dbp.RawLeaves,
 	})
 }
 
@@ -666,5 +671,107 @@ func TestAppendSingleBytesToEmpty(t *testing.T) {
 	err = arrComp(out, data)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAppendWithModTime(t *testing.T) {
+	const nbytes = 128 * 1024
+
+	timestamp := time.Now()
+	ds := mdtest.Mock()
+	buf := random.Bytes(nbytes)
+
+	nd := new(merkledag.ProtoNode)
+	nd.SetData(ft.FilePBDataWithStat(buf[:nbytes/2], nbytes/2, 0, timestamp))
+
+	dbp := &h.DagBuilderParams{
+		Dagserv:  ds,
+		Maxlinks: h.DefaultLinksPerBlock,
+	}
+
+	r := bytes.NewReader(buf[nbytes/2:])
+	db, err := dbp.New(chunker.NewSizeSplitter(r, 500))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nd2, err := Append(context.Background(), nd, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fsn, _ := ft.ExtractFSNode(nd2)
+
+	if !fsn.ModTime().After(timestamp) {
+		t.Errorf("expected modification time to be updated")
+	}
+
+}
+
+func TestAppendToEmptyWithModTime(t *testing.T) {
+	timestamp := time.Now()
+	ds := mdtest.Mock()
+	nd := new(merkledag.ProtoNode)
+	nd.SetData(ft.FilePBDataWithStat(nil, 0, 0, timestamp))
+
+	dbp := &h.DagBuilderParams{
+		Dagserv:  ds,
+		Maxlinks: h.DefaultLinksPerBlock,
+	}
+
+	db, err := dbp.New(chunker.DefaultSplitter(bytes.NewReader([]byte("test"))))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nd2, err := Append(context.Background(), nd, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fsn, _ := ft.ExtractFSNode(nd2)
+
+	if !fsn.ModTime().After(timestamp) {
+		t.Errorf("expected modification time to be updated")
+	}
+}
+
+func TestMetadata(t *testing.T) {
+	runBothSubtests(t, testMetadata)
+}
+
+func testMetadata(t *testing.T, rawLeaves UseRawLeaves) {
+	const nbytes = 3 * chunker.DefaultBlockSize
+	buf := new(bytes.Buffer)
+	_, err := io.CopyN(buf, random.NewRand(), nbytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dagserv := mdtest.Mock()
+	dbp := h.DagBuilderParams{
+		Dagserv:     dagserv,
+		Maxlinks:    h.DefaultLinksPerBlock,
+		RawLeaves:   bool(rawLeaves),
+		FileMode:    0522,
+		FileModTime: time.Unix(1638111600, 76552),
+	}
+
+	nd, err := buildTestDagWithParams(dagserv, chunker.DefaultSplitter(buf), dbp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dr, err := uio.NewDagReader(context.Background(), nd, dagserv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !dr.ModTime().Equal(dbp.FileModTime) {
+		t.Errorf("got modtime %v, wanted %v", dr.ModTime(), dbp.FileModTime)
+	}
+
+	if dr.Mode() != dbp.FileMode {
+		t.Errorf("got filemode %o, wanted %o", dr.Mode(), dbp.FileMode)
 	}
 }

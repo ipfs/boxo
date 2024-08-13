@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"time"
 
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	help "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
@@ -258,6 +259,9 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (cid.Cid, error) {
 			}
 
 			// Update newly written node..
+			if !fsn.ModTime().IsZero() {
+				fsn.SetModTime(time.Now())
+			}
 			b, err := fsn.GetBytes()
 			if err != nil {
 				return cid.Cid{}, err
@@ -527,8 +531,17 @@ func (dm *DagModifier) dagTruncate(ctx context.Context, n ipld.Node, size uint64
 			if err != nil {
 				return nil, err
 			}
-			nd.SetData(ft.WrapData(fsn.Data()[:size]))
-			return nd, nil
+
+			fsn.SetData(fsn.Data()[:size])
+			if !fsn.ModTime().IsZero() {
+				fsn.SetModTime(time.Now())
+			}
+			data, err := fsn.GetBytes()
+			if err != nil {
+				return nil, err
+			}
+
+			return mdag.NodeWithData(data), nil
 		case *mdag.RawNode:
 			return mdag.NewRawNodeWPrefix(nd.RawData()[:size], nd.Cid().Prefix())
 		}
