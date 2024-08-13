@@ -665,7 +665,7 @@ func TestMfsModeAndModTime(t *testing.T) {
 	}
 
 	var mode os.FileMode
-	ts, ts2 := time.Now(), time.Time{}
+	ts, _ := time.Now(), time.Time{}
 
 	// can set mode
 	if err = fi.SetMode(0644); err == nil {
@@ -679,7 +679,11 @@ func TestMfsModeAndModTime(t *testing.T) {
 
 	// can set last modification time
 	if err = fi.SetModTime(ts); err == nil {
-		if ts2, err = fi.ModTime(); !ts2.Equal(ts) {
+		ts2, err := fi.ModTime()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ts2.Equal(ts) {
 			t.Fatal("failed to get correct modification time of file")
 		}
 	}
@@ -700,7 +704,7 @@ func TestMfsModeAndModTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts2, err = fi.ModTime()
+	ts2, err := fi.ModTime()
 	if err != nil {
 		t.Fatal(err)
 	}
