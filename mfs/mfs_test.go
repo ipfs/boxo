@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"os"
 	gopath "path"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -692,6 +693,9 @@ func TestMfsModeAndModTime(t *testing.T) {
 	}
 
 	// test modification time update after write (on closing file)
+	if runtime.GOOS == "windows" {
+		time.Sleep(3 * time.Second) // for os with low-res mod time.
+	}
 	wfd, err := fi.Open(Flags{Read: false, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
