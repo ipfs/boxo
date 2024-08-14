@@ -1,4 +1,4 @@
-package tar
+package files
 
 import (
 	"os"
@@ -10,22 +10,21 @@ import (
 // bits are currently unused.
 //
 // Use mode 0400 for a read-only file and 0600 for a readable+writable file.
-func updateMode(path string, mode int64) error {
-	if mode != 0 {
-		// read+write if owner, group or world writeable
-		if mode&0222 != 0 {
-			return os.Chmod(path, 0600)
-		}
-		// otherwise read-only
-		return os.Chmod(path, 0400)
+func updateMode(path string, mode os.FileMode) error {
+	if mode == 0 {
+		return nil
 	}
-
-	return nil
+	// read+write if owner, group or world writeable
+	if mode&0222 != 0 {
+		return os.Chmod(path, 0600)
+	}
+	// otherwise read-only
+	return os.Chmod(path, 0400)
 }
 
 func updateMtime(path string, mtime time.Time) error {
-	if !mtime.IsZero() {
-		return os.Chtimes(path, mtime, mtime)
+	if mtime.IsZero() {
+		return nil
 	}
-	return nil
+	return os.Chtimes(path, mtime, mtime)
 }

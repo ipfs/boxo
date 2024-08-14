@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/ipfs/boxo/files"
 )
 
 var (
@@ -64,7 +66,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 	doUpdates := func() error {
 		for i := len(te.deferredUpdates) - 1; i >= 0; i-- {
 			m := te.deferredUpdates[i]
-			err := updateMeta(m.path, m.mode, m.mtime)
+			err := files.UpdateMetaUnix(m.path, uint32(m.mode), m.mtime)
 			if err != nil {
 				return err
 			}
@@ -151,7 +153,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 			if err := te.extractFile(outputPath, tarReader); err != nil {
 				return err
 			}
-			if err := updateMeta(outputPath, header.Mode, header.ModTime); err != nil {
+			if err := files.UpdateMetaUnix(outputPath, uint32(header.Mode), header.ModTime); err != nil {
 				return err
 			}
 		} else if err := te.extractSymlink(outputPath, rootOutputPath, header); err != nil {
@@ -219,7 +221,7 @@ func (te *Extractor) Extract(reader io.Reader) error {
 			if err := te.extractFile(outputPath, tarReader); err != nil {
 				return err
 			}
-			if err := updateMeta(outputPath, header.Mode, header.ModTime); err != nil {
+			if err := files.UpdateMetaUnix(outputPath, uint32(header.Mode), header.ModTime); err != nil {
 				return err
 			}
 		case tar.TypeSymlink:
@@ -336,7 +338,7 @@ func (te *Extractor) extractSymlink(path, rootPath string, h *tar.Header) error 
 
 	switch runtime.GOOS {
 	case "linux", "freebsd", "netbsd", "openbsd", "dragonfly":
-		return updateModTime(path, h.ModTime)
+		return files.UpdateModTime(path, h.ModTime)
 	default:
 		return nil
 	}
@@ -423,7 +425,7 @@ func (te *Extractor) deferUpdate(path string, header *tar.Header) error {
 		// if possible, apply the previous deferral.
 		m := te.deferredUpdates[n-1]
 		if strings.HasPrefix(m.path, prefix()) {
-			err := updateMeta(m.path, m.mode, m.mtime)
+			err := files.UpdateMetaUnix(m.path, uint32(m.mode), m.mtime)
 			if err != nil {
 				return err
 			}
@@ -437,30 +439,5 @@ func (te *Extractor) deferUpdate(path string, header *tar.Header) error {
 		mtime: header.ModTime,
 	})
 
-	return nil
-}
-
-func updateMeta(path string, mode int64, mtime time.Time) error {
-	if err := updateModTime(path, mtime); err != nil {
-		return err
-	}
-	return updateFileMode(path, mode)
-}
-
-// updateFileMode sets the unix mode of the filesystem object referenced by path.
-func updateFileMode(path string, mode int64) error {
-	if err := updateMode(path, mode); err != nil {
-		return fmt.Errorf("[%v] failed to update file mode on '%s'", err, path)
-	}
-	return nil
-}
-
-// updateModTime sets the last access and modification time of the target
-// filesystem object to the given time. When the given path references a
-// symlink, if supported, the symlink is updated.
-func updateModTime(path string, mtime time.Time) error {
-	if err := updateMtime(path, mtime); err != nil {
-		return fmt.Errorf("[%v] failed to update last modification time on '%s'", err, path)
-	}
 	return nil
 }
