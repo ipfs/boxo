@@ -410,18 +410,25 @@ func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath 
 		}
 
 		if lastMod.IsZero() {
-			// Otherwise, we set Last-Modified to the current time to leverage caching heuristics
+			// If no lastMod, set Last-Modified to the current time to leverage caching heuristics
 			// built into modern browsers: https://github.com/ipfs/kubo/pull/8074#pullrequestreview-645196768
 			modtime = time.Now()
 		} else {
+			// set Last-Modified to a meaningful value e.g. one read from dag-pb (UnixFS 1.5, mtime field)
+			// or the last time DNSLink / IPNS Record was modified / resoved or cache
 			modtime = lastMod
 		}
+
 	} else {
 		w.Header().Set("Cache-Control", immutableCacheControl)
-		modtime = noModtime // disable Last-Modified
 
-		// TODO: consider setting Last-Modified if UnixFS V1.5 ever gets released
-		// with metadata: https://github.com/ipfs/kubo/issues/6920
+		if lastMod.IsZero() {
+			// (noop) skip Last-Modified on immutable response
+			modtime = noModtime
+		} else {
+			// set Last-Modified to value read from dag-pb (UnixFS 1.5, mtime field)
+			modtime = lastMod
+		}
 	}
 
 	return modtime
