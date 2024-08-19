@@ -18,10 +18,11 @@ var (
 type Node interface {
 	io.Closer
 
-	// Mode returns the file's mode.
+	// Mode returns the mode.
+	// Optional, if unknown/unspecified returns zero.
 	Mode() os.FileMode
 
-	// ModTime returns the file's last modification time. If the last
+	// ModTime returns the last modification time. If the last
 	// modification time is unknown/unspecified ModTime returns zero.
 	ModTime() (mtime time.Time)
 
