@@ -1,9 +1,9 @@
 module github.com/ipfs/boxo/examples
 
-go 1.22
+go 1.21
 
 require (
-	github.com/ipfs/boxo v0.19.0
+	github.com/ipfs/boxo v0.22.0
 	github.com/ipfs/go-block-format v0.2.0
 	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-datastore v0.6.0
