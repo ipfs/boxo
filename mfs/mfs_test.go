@@ -792,6 +792,82 @@ func TestMfsModeAndModTime(t *testing.T) {
 	}
 }
 
+func TestMfsRawNodeSetModeAndMtime(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	_, rt := setupRoot(ctx, t)
+	rootdir := rt.GetDirectory()
+
+	// Create raw-node file.
+	nd := dag.NewRawNode(random.Bytes(256))
+	_, err := ft.ExtractFSNode(nd)
+	if !errors.Is(err, ft.ErrNotProtoNode) {
+		t.Fatal("Expected non-proto node")
+	}
+
+	err = rootdir.AddChild("file", nd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fsn, err := rootdir.Child("file")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fi := fsn.(*File)
+	if fi.Type() != TFile {
+		t.Fatal("something is seriously wrong here")
+	}
+
+	// Check for expected error when getting mode and mtime.
+	_, err = fi.Mode()
+	if !errors.Is(err, ft.ErrNotProtoNode) {
+		t.Fatal("Expected non-proto node")
+	}
+	_, err = fi.ModTime()
+	if !errors.Is(err, ft.ErrNotProtoNode) {
+		t.Fatal("Expected non-proto node")
+	}
+
+	// Set and check mode.
+	err = fi.SetMode(0644)
+	if err != nil {
+		t.Fatalf("failed to set file mode: %s", err)
+	}
+	mode, err := fi.Mode()
+	if err != nil {
+		t.Fatalf("failed to check file mode: %s", err)
+	}
+	if mode != 0644 {
+		t.Fatal("failed to get correct mode of file, got", mode.String())
+	}
+
+	// Mtime should still be unset.
+	mtime, err := fi.ModTime()
+	if err != nil {
+		t.Fatalf("failed to get file modification time: %s", err)
+	}
+	if !mtime.IsZero() {
+		t.Fatalf("expected mtime to be unset")
+	}
+
+	// Set and check mtime.
+	now := time.Now()
+	err = fi.SetModTime(now)
+	if err != nil {
+		t.Fatalf("failed to set file modification time: %s", err)
+	}
+	mtime, err = fi.ModTime()
+	if err != nil {
+		t.Fatalf("failed to get file modification time: %s", err)
+	}
+	if !mtime.Equal(now) {
+		t.Fatal("failed to get correct modification time of file")
+	}
+}
+
 func TestMfsDirListNames(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
