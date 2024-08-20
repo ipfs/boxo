@@ -185,14 +185,14 @@ func (fi *File) Mode() (os.FileMode, error) {
 	defer fi.nodeLock.RUnlock()
 
 	nd, err := fi.GetNode()
-	if err == nil {
-		fsn, err := ft.ExtractFSNode(nd)
-		if err == nil {
-			return fsn.Mode() & 0xFFF, nil
-		}
+	if err != nil {
+		return 0, err
 	}
-
-	return 0, err
+	fsn, err := ft.ExtractFSNode(nd)
+	if err != nil {
+		return 0, err
+	}
+	return fsn.Mode() & 0xFFF, nil
 }
 
 func (fi *File) SetMode(mode os.FileMode) error {
@@ -203,6 +203,11 @@ func (fi *File) SetMode(mode os.FileMode) error {
 
 	fsn, err := ft.ExtractFSNode(nd)
 	if err != nil {
+		if errors.Is(err, ft.ErrNotProtoNode) {
+			// Wrap raw node in protonode.
+			data := nd.RawData()
+			return fi.setNodeData(ft.FilePBDataWithStat(data, uint64(len(data)), mode, time.Time{}))
+		}
 		return err
 	}
 
@@ -221,14 +226,14 @@ func (fi *File) ModTime() (time.Time, error) {
 	defer fi.nodeLock.RUnlock()
 
 	nd, err := fi.GetNode()
-	if err == nil {
-		fsn, err := ft.ExtractFSNode(nd)
-		if err == nil {
-			return fsn.ModTime(), nil
-		}
+	if err != nil {
+		return time.Time{}, err
 	}
-
-	return time.Time{}, err
+	fsn, err := ft.ExtractFSNode(nd)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return fsn.ModTime(), nil
 }
 
 // SetModTime sets the files' last modification time
@@ -240,6 +245,11 @@ func (fi *File) SetModTime(ts time.Time) error {
 
 	fsn, err := ft.ExtractFSNode(nd)
 	if err != nil {
+		if errors.Is(err, ft.ErrNotProtoNode) {
+			// Wrap raw node in protonode.
+			data := nd.RawData()
+			return fi.setNodeData(ft.FilePBDataWithStat(data, uint64(len(data)), 0, ts))
+		}
 		return err
 	}
 

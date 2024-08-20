@@ -36,6 +36,7 @@ const (
 // Common errors
 var (
 	ErrMalformedFileFormat = errors.New("malformed data in file format")
+	ErrNotProtoNode        = errors.New("expected a ProtoNode as internal node")
 	ErrUnrecognizedType    = errors.New("unrecognized node type")
 )
 
@@ -544,7 +545,7 @@ func ReadUnixFSNodeData(node ipld.Node) (data []byte, err error) {
 func ExtractFSNode(node ipld.Node) (*FSNode, error) {
 	protoNode, ok := node.(*dag.ProtoNode)
 	if !ok {
-		return nil, errors.New("expected a ProtoNode as internal node")
+		return nil, ErrNotProtoNode
 	}
 
 	fsNode, err := FSNodeFromBytes(protoNode.Data())
