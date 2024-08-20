@@ -8,9 +8,11 @@ import (
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
+	"github.com/ipfs/go-test/random"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
+
+const blockSize = 4
 
 func TestDuplicates(t *testing.T) {
 	var zero peer.ID // this test doesn't check the peer id
@@ -152,13 +154,12 @@ func TestCarryOnWhenDeadlineExpires(t *testing.T) {
 func TestDoesNotDeadLockIfContextCancelledBeforePublish(t *testing.T) {
 	var zero peer.ID // this test doesn't check the peer id
 
-	g := blocksutil.NewBlockGenerator()
 	ctx, cancel := context.WithCancel(context.Background())
 	n := New()
 	defer n.Shutdown()
 
 	t.Log("generate a large number of blocks. exceed default buffer")
-	bs := g.Blocks(1000)
+	bs := random.BlocksOfSize(1000, blockSize)
 	ks := func() []cid.Cid {
 		var keys []cid.Cid
 		for _, b := range bs {

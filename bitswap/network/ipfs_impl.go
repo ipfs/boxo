@@ -28,8 +28,6 @@ import (
 
 var log = logging.Logger("bitswap/network")
 
-var connectTimeout = time.Second * 5
-
 var (
 	maxSendTimeout = 2 * time.Minute
 	minSendTimeout = 10 * time.Second
@@ -323,10 +321,7 @@ func (bsnet *impl) SendMessage(
 	p peer.ID,
 	outgoing bsmsg.BitSwapMessage,
 ) error {
-	tctx, cancel := context.WithTimeout(ctx, connectTimeout)
-	defer cancel()
-
-	s, err := bsnet.newStreamToPeer(tctx, p)
+	s, err := bsnet.newStreamToPeer(ctx, p)
 	if err != nil {
 		return err
 	}

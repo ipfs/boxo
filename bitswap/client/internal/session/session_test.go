@@ -15,12 +15,13 @@ import (
 	"github.com/ipfs/boxo/internal/test"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
 	delay "github.com/ipfs/go-ipfs-delay"
 	"github.com/ipfs/go-test/random"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
+
+const blockSize = 4
 
 type mockSessionMgr struct {
 	lk            sync.Mutex
@@ -165,8 +166,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	id := random.SequenceNext()
 	sm := newMockSessionMgr()
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
-	blockGenerator := blocksutil.NewBlockGenerator()
-	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
+	blks := random.BlocksOfSize(broadcastLiveWantsLimit*2, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
@@ -249,8 +249,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 	sm := newMockSessionMgr()
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
 	session.SetBaseTickDelay(200 * time.Microsecond)
-	blockGenerator := blocksutil.NewBlockGenerator()
-	blks := blockGenerator.Blocks(broadcastLiveWantsLimit * 2)
+	blks := random.BlocksOfSize(broadcastLiveWantsLimit*2, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
@@ -319,8 +318,7 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 	id := random.SequenceNext()
 	sm := newMockSessionMgr()
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
-	blockGenerator := blocksutil.NewBlockGenerator()
-	blks := blockGenerator.Blocks(broadcastLiveWantsLimit + 5)
+	blks := random.BlocksOfSize(broadcastLiveWantsLimit+5, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
@@ -359,8 +357,7 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	id := random.SequenceNext()
 	sm := newMockSessionMgr()
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, 10*time.Millisecond, delay.Fixed(100*time.Millisecond), "")
-	blockGenerator := blocksutil.NewBlockGenerator()
-	blks := blockGenerator.Blocks(4)
+	blks := random.BlocksOfSize(4, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
@@ -482,8 +479,7 @@ func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
 	defer timerCancel()
 
 	// Request a block with a new context
-	blockGenerator := blocksutil.NewBlockGenerator()
-	blks := blockGenerator.Blocks(1)
+	blks := random.BlocksOfSize(1, blockSize)
 	getctx, getcancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer getcancel()
 
@@ -545,8 +541,7 @@ func TestSessionReceiveMessageAfterCtxCancel(t *testing.T) {
 	id := random.SequenceNext()
 	sm := newMockSessionMgr()
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
-	blockGenerator := blocksutil.NewBlockGenerator()
-	blks := blockGenerator.Blocks(2)
+	blks := random.BlocksOfSize(2, blockSize)
 	cids := []cid.Cid{blks[0].Cid(), blks[1].Cid()}
 
 	_, err := session.GetBlocks(ctx, cids)
