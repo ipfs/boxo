@@ -20,6 +20,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `chunker` refactored to reduce overall memory use by reducing heap fragmentation [#649](https://github.com/ipfs/boxo/pull/649)
+
 ### Removed
 
 ### Fixed
