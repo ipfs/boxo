@@ -20,6 +20,7 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- updated Go in `go.mod` to 1.22
 - `chunker` refactored to reduce overall memory use by reducing heap fragmentation [#649](https://github.com/ipfs/boxo/pull/649)
 
 ### Removed
