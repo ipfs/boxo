@@ -531,7 +531,7 @@ func lastModifiedMatch(ifModifiedSinceHeader string, lastModified time.Time) boo
 		return false
 	}
 	// ignoring fractional seconds (as HTTP dates don't include fractional seconds)
-	return lastModified.Truncate(time.Second).After(ifModifiedSinceTime)
+	return !lastModified.Truncate(time.Second).After(ifModifiedSinceTime)
 }
 
 // etagMatch evaluates if we can respond with HTTP 304 Not Modified

@@ -93,72 +93,6 @@ func TestGatewayGet(t *testing.T) {
 	}
 }
 
-// Testing a DAG with (optional) UnixFS1.5 modification time
-func TestHeadersUnixFSModeModTime(t *testing.T) {
-	t.Parallel()
-
-	ts, _, root := newTestServerAndNode(t, "unixfs-dir-with-mode-mtime.car")
-	var (
-		rootCID  = root.String() // "bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky"
-		filePath = "/ipfs/" + rootCID + "/file1"
-		dirPath  = "/ipfs/" + rootCID + "/dir1/"
-	)
-
-	t.Run("If-Modified-Since matching UnixFS 1.5 modtime returns Not Modified", func(t *testing.T) {
-		test := func(responseFormat string, path string, entityType string, supported bool) {
-			t.Run(fmt.Sprintf("%s/%s support=%t", responseFormat, entityType, supported), func(t *testing.T) {
-				// Make regular request and read Last-Modified
-				url := ts.URL + path
-				req := mustNewRequest(t, http.MethodGet, url, nil)
-				req.Header.Add("Accept", responseFormat)
-				res := mustDoWithoutRedirect(t, req)
-				_, err := io.Copy(io.Discard, res.Body)
-				require.NoError(t, err)
-				defer res.Body.Close()
-				require.Equal(t, http.StatusOK, res.StatusCode)
-				lastModified := res.Header.Get("Last-Modified")
-				if supported {
-					assert.NotEmpty(t, lastModified)
-				} else {
-					assert.Empty(t, lastModified)
-				}
-
-				// Make second request with If-Modified-Since and value read from response to first request
-				req = mustNewRequest(t, http.MethodGet, url, nil)
-				req.Header.Add("Accept", responseFormat)
-				req.Header.Add("If-Modified-Since", lastModified)
-				res = mustDoWithoutRedirect(t, req)
-				_, err = io.Copy(io.Discard, res.Body)
-				require.NoError(t, err)
-				defer res.Body.Close()
-				if supported {
-					assert.Equal(t, http.StatusNotModified, res.StatusCode)
-				} else {
-					assert.Equal(t, http.StatusOK, res.StatusCode)
-				}
-			})
-		}
-
-		file, dir := "file", "directory"
-		// supported on file-based web responses
-		test("", filePath, file, true)
-		test("text/html", filePath, file, true)
-
-		// not supported on other formats
-		// we may implement support for If-Modified-Since for below request types
-		// if users raise the need, but If-None-Match is way better
-		test(carResponseFormat, filePath, file, false)
-		test(rawResponseFormat, filePath, file, false)
-		test(tarResponseFormat, filePath, file, false)
-
-		test("", dirPath, dir, false)
-		test("text/html", dirPath, dir, false)
-		test(carResponseFormat, dirPath, dir, false)
-		test(rawResponseFormat, dirPath, dir, false)
-		test(tarResponseFormat, dirPath, dir, false)
-	})
-}
-
 func TestHeaders(t *testing.T) {
 	t.Parallel()
 
@@ -612,6 +546,112 @@ func TestHeaders(t *testing.T) {
 		}
 
 		runTest("Accept: application/vnd.ipld.car overrides ?format=raw in Content-Location", contentPath+"?format=raw", "application/vnd.ipld.car", "", contentPath+"?format=car")
+	})
+}
+
+// Testing a DAG with (optional) UnixFS1.5 modification time
+func TestHeadersUnixFSModeModTime(t *testing.T) {
+	t.Parallel()
+
+	ts, _, root := newTestServerAndNode(t, "unixfs-dir-with-mode-mtime.car")
+	var (
+		rootCID  = root.String() // "bafybeidbcy4u6y55gsemlubd64zk53xoxs73ifd6rieejxcr7xy46mjvky"
+		filePath = "/ipfs/" + rootCID + "/file1"
+		dirPath  = "/ipfs/" + rootCID + "/dir1/"
+	)
+
+	t.Run("If-Modified-Since matching UnixFS 1.5 modtime returns Not Modified", func(t *testing.T) {
+		test := func(responseFormat string, path string, entityType string, supported bool) {
+			t.Run(fmt.Sprintf("%s/%s support=%t", responseFormat, entityType, supported), func(t *testing.T) {
+				// Make regular request and read Last-Modified
+				url := ts.URL + path
+				req := mustNewRequest(t, http.MethodGet, url, nil)
+				req.Header.Add("Accept", responseFormat)
+				res := mustDoWithoutRedirect(t, req)
+				_, err := io.Copy(io.Discard, res.Body)
+				require.NoError(t, err)
+				defer res.Body.Close()
+				require.Equal(t, http.StatusOK, res.StatusCode)
+				lastModified := res.Header.Get("Last-Modified")
+				if supported {
+					assert.NotEmpty(t, lastModified)
+				} else {
+					assert.Empty(t, lastModified)
+					lastModified = "Mon, 13 Jun 2022 22:18:32 GMT" // manually set value for use in next steps
+				}
+
+				ifModifiedSinceTime, err := time.Parse(time.RFC1123, lastModified)
+				require.NoError(t, err)
+				oneHourBefore := ifModifiedSinceTime.Add(-1 * time.Hour).Truncate(time.Second)
+				oneHourAfter := ifModifiedSinceTime.Add(1 * time.Hour).Truncate(time.Second)
+				oneHourBeforeStr := oneHourBefore.Format(time.RFC1123)
+				oneHourAfterStr := oneHourAfter.Format(time.RFC1123)
+				lastModifiedStr := ifModifiedSinceTime.Format(time.RFC1123)
+
+				// Make second request with If-Modified-Since and value read from response to first request
+				req = mustNewRequest(t, http.MethodGet, url, nil)
+				req.Header.Add("Accept", responseFormat)
+				req.Header.Add("If-Modified-Since", lastModifiedStr)
+				res = mustDoWithoutRedirect(t, req)
+				_, err = io.Copy(io.Discard, res.Body)
+				require.NoError(t, err)
+				defer res.Body.Close()
+				if supported {
+					// 304 on exact match, can skip body
+					assert.Equal(t, http.StatusNotModified, res.StatusCode)
+				} else {
+					assert.Equal(t, http.StatusOK, res.StatusCode)
+				}
+
+				// Make third request with If-Modified-Since 1h before value read from response to first request
+				// and expect HTTP 200
+				req = mustNewRequest(t, http.MethodGet, url, nil)
+				req.Header.Add("Accept", responseFormat)
+				req.Header.Add("If-Modified-Since", oneHourBeforeStr)
+				res = mustDoWithoutRedirect(t, req)
+				_, err = io.Copy(io.Discard, res.Body)
+				require.NoError(t, err)
+				defer res.Body.Close()
+				// always return 200 with body because mtime from unixfs is after value from If-Modified-Since
+				// so it counts as an update
+				assert.Equal(t, http.StatusOK, res.StatusCode)
+
+				// Make third request with If-Modified-Since 1h after value read from response to first request
+				// and expect HTTP 200
+				req = mustNewRequest(t, http.MethodGet, url, nil)
+				req.Header.Add("Accept", responseFormat)
+				req.Header.Add("If-Modified-Since", oneHourAfterStr)
+				res = mustDoWithoutRedirect(t, req)
+				_, err = io.Copy(io.Discard, res.Body)
+				require.NoError(t, err)
+				defer res.Body.Close()
+				if supported {
+					// 304 because mtime from unixfs is before value from If-Modified-Since
+					// so no update, can skip body
+					assert.Equal(t, http.StatusNotModified, res.StatusCode)
+				} else {
+					assert.Equal(t, http.StatusOK, res.StatusCode)
+				}
+			})
+		}
+
+		file, dir := "file", "directory"
+		// supported on file-based web responses
+		test("", filePath, file, true)
+		test("text/html", filePath, file, true)
+
+		// not supported on other formats
+		// we may implement support for If-Modified-Since for below request types
+		// if users raise the need, but If-None-Match is way better
+		test(carResponseFormat, filePath, file, false)
+		test(rawResponseFormat, filePath, file, false)
+		test(tarResponseFormat, filePath, file, false)
+
+		test("", dirPath, dir, false)
+		test("text/html", dirPath, dir, false)
+		test(carResponseFormat, dirPath, dir, false)
+		test(rawResponseFormat, dirPath, dir, false)
+		test(tarResponseFormat, dirPath, dir, false)
 	})
 }
 
