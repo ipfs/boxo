@@ -40,7 +40,7 @@ import (
 	"github.com/ipfs/boxo/files"
 )
 
-const exampleBinaryName = "unixfs-file-cid"
+const exampleBinaryName = "bitswap-transfer"
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
