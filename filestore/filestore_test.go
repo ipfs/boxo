@@ -18,14 +18,14 @@ import (
 
 var bg = context.Background()
 
-func newTestFilestore(t *testing.T) (string, *Filestore) {
+func newTestFilestore(t *testing.T, option ...Option) (string, *Filestore) {
 	mds := ds.NewMapDatastore()
 
 	testdir, err := os.MkdirTemp("", "filestore-test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	fm := NewFileManager(mds, testdir)
+	fm := NewFileManager(mds, testdir, option...)
 	fm.AllowFiles = true
 
 	bs := blockstore.NewBlockstore(mds)
@@ -48,62 +48,74 @@ func makeFile(dir string, data []byte) (string, error) {
 }
 
 func TestBasicFilestore(t *testing.T) {
-	dir, fs := newTestFilestore(t)
-
-	buf := make([]byte, 1000)
-	rand.Read(buf)
-
-	fname, err := makeFile(dir, buf)
-	if err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name    string
+		options []Option
+	}{
+		{"default", nil},
+		{"mmap", []Option{WithMMapReader()}},
 	}
 
-	var cids []cid.Cid
-	for i := 0; i < 100; i++ {
-		n := &posinfo.FilestoreNode{
-			PosInfo: &posinfo.PosInfo{
-				FullPath: fname,
-				Offset:   uint64(i * 10),
-			},
-			Node: dag.NewRawNode(buf[i*10 : (i+1)*10]),
-		}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir, fs := newTestFilestore(t, c.options...)
 
-		err := fs.Put(bg, n)
-		if err != nil {
-			t.Fatal(err)
-		}
-		cids = append(cids, n.Node.Cid())
-	}
+			buf := make([]byte, 1000)
+			rand.Read(buf)
 
-	for i, c := range cids {
-		blk, err := fs.Get(bg, c)
-		if err != nil {
-			t.Fatal(err)
-		}
+			fname, err := makeFile(dir, buf)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		if !bytes.Equal(blk.RawData(), buf[i*10:(i+1)*10]) {
-			t.Fatal("data didnt match on the way out")
-		}
-	}
+			var cids []cid.Cid
+			for i := 0; i < 100; i++ {
+				n := &posinfo.FilestoreNode{
+					PosInfo: &posinfo.PosInfo{
+						FullPath: fname,
+						Offset:   uint64(i * 10),
+					},
+					Node: dag.NewRawNode(buf[i*10 : (i+1)*10]),
+				}
 
-	kch, err := fs.AllKeysChan(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+				err := fs.Put(bg, n)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cids = append(cids, n.Node.Cid())
+			}
 
-	out := make(map[string]struct{})
-	for c := range kch {
-		out[c.KeyString()] = struct{}{}
-	}
+			for i, c := range cids {
+				blk, err := fs.Get(bg, c)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-	if len(out) != len(cids) {
-		t.Fatal("mismatch in number of entries")
-	}
+				if !bytes.Equal(blk.RawData(), buf[i*10:(i+1)*10]) {
+					t.Fatal("data didnt match on the way out")
+				}
+			}
 
-	for _, c := range cids {
-		if _, ok := out[c.KeyString()]; !ok {
-			t.Fatal("missing cid: ", c)
-		}
+			kch, err := fs.AllKeysChan(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			out := make(map[string]struct{})
+			for c := range kch {
+				out[c.KeyString()] = struct{}{}
+			}
+
+			if len(out) != len(cids) {
+				t.Fatal("mismatch in number of entries")
+			}
+
+			for _, c := range cids {
+				if _, ok := out[c.KeyString()]; !ok {
+					t.Fatal("missing cid: ", c)
+				}
+			}
+		})
 	}
 }
 
