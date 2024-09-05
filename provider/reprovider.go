@@ -231,9 +231,9 @@ func (s *reprovider) run() {
 
 		// setup stopped timers
 		maxCollectionDurationTimer := time.NewTimer(time.Hour)
+		maxCollectionDurationTimer.Stop()
 		pauseDetectTimer := time.NewTimer(time.Hour)
-		stopAndEmptyTimer(maxCollectionDurationTimer)
-		stopAndEmptyTimer(pauseDetectTimer)
+		pauseDetectTimer.Stop()
 
 		// make sure timers are cleaned up
 		defer maxCollectionDurationTimer.Stop()
@@ -418,8 +418,9 @@ func (s *reprovider) run() {
 	}()
 }
 
+// TODO: When go 1.23+ is required, replace this with t.Stop().
 func stopAndEmptyTimer(t *time.Timer) {
-	if !t.Stop() {
+	if !t.Stop() && cap(t.C) == 1 {
 		<-t.C
 	}
 }

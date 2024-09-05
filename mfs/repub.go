@@ -98,14 +98,10 @@ func (rp *Republisher) Update(c cid.Cid) {
 //
 // Note: If a publish fails, we retry repeatedly every TimeoutRetry.
 func (rp *Republisher) Run(lastPublished cid.Cid) {
-	quick := time.NewTimer(0)
-	if !quick.Stop() {
-		<-quick.C
-	}
-	longer := time.NewTimer(0)
-	if !longer.Stop() {
-		<-longer.C
-	}
+	quick := time.NewTimer(time.Hour)
+	quick.Stop()
+	longer := time.NewTimer(time.Hour)
+	longer.Stop()
 
 	var toPublish cid.Cid
 	for rp.ctx.Err() == nil {
@@ -156,15 +152,19 @@ func (rp *Republisher) Run(lastPublished cid.Cid) {
 		//    idiom as these timers may not be running.
 
 		quick.Stop()
-		select {
-		case <-quick.C:
-		default:
-		}
-
 		longer.Stop()
-		select {
-		case <-longer.C:
-		default:
+
+		// If using go < 1.23, clear timer channel after Stop.
+		if cap(quick.C) == 1 {
+			select {
+			case <-quick.C:
+			default:
+			}
+
+			select {
+			case <-longer.C:
+			default:
+			}
 		}
 
 		// 2. If we have a value to publish, publish it now.

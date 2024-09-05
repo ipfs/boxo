@@ -81,7 +81,7 @@ func carToLinearBlockGetter(ctx context.Context, reader io.Reader, timeout time.
 		var ok bool
 		select {
 		case blkRead, ok = <-blkCh:
-			if !t.Stop() {
+			if cap(t.C) == 1 && !t.Stop() {
 				<-t.C
 			}
 			t.Reset(timeout)
