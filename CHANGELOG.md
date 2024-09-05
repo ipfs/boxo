@@ -22,6 +22,7 @@ The following emojis are used to highlight certain changes:
 
 - `chunker` refactored to reduce overall memory use by reducing heap fragmentation [#649](https://github.com/ipfs/boxo/pull/649)
 - `gateway` deserialized responses will have `Last-Modified` set to value from optional UnixFS 1.5 modification time field (if present in DAG) and a matching `If-Modified-Since` will return `304 Not Modified` (UnixFS 1.5 files only) [#659](https://github.com/ipfs/boxo/pull/659)
+- `bitswap/server` minor performance improvements in concurrent operations
 
 ### Removed
 
