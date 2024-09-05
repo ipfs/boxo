@@ -27,6 +27,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- Handle timers appropriately for go 1.23 while still being compatible with previous versions.
+
 ### Security
 
 ## [v0.22.0]
