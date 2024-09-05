@@ -156,11 +156,13 @@ The code coverage of this repo is not currently representative of the actual tes
 
 ### Help
 
-If you have questions, feel free to open an issue. You can also find the Boxo maintainers in [Filecoin Slack](https://filecoin.io/slack/) at #Boxo-maintainers.  (If you would like to engage via IPFS Discord or ipfs.io Matrix, please drop into the #ipfs-implementers channel/room or file an issue, and we'll get bridging from #Boxo-maintainers to these other chat platforms.)
+If you suspect a bug or have technical questions, feel free to open an issue. 
+
+For regular support, try [Community chat](https://docs.ipfs.tech/community/#chat)'s `#ipfs-implementers` room or [help/boxo at IPFS discussion forums](https://discuss.ipfs.tech/c/help/boxo/51).
 
 ### What is the response time for issues or PRs filed?
 
-New issues and PRs to this repo are usually looked at on a weekly basis as part of [Kubo triage](https://pl-strflt.notion.site/Kubo-Issue-Triage-Notes-7d4983e8cf294e07b3cc51b0c60ede9a). However, the response time may vary.
+New issues and PRs to this repo are usually looked at on a weekly basis as part of [Shipyard's GO Triage triage](https://ipshipyard.notion.site/IPFS-Go-Triage-Boxo-Kubo-Rainbow-0ddee6b7f28d412da7dabe4f9107c29a). However, the response time may vary.
 
 ### What are some projects that depend on this project?
 
@@ -168,10 +170,9 @@ The exhaustive list is https://github.com/ipfs/boxo/network/dependents. Some not
 
 1. [Kubo](https://github.com/ipfs/kubo), an IPFS implementation in Go
 2. [Lotus](https://github.com/filecoin-project/lotus), a Filecoin implementation in Go
-6. [rainbow](https://github.com/ipfs/rainbow), a specialized IPFS gateway
-4. [ipfs-check](https://github.com/ipfs-shipyard/ipfs-check), checks IPFS data availability
-5. [someguy](https://github.com/ipfs-shipyard/someguy), a dedicated Delegated Routing V1 server and client
-3. [Bifrost Gateway](https://github.com/ipfs/bifrost-gateway), a dedicated IPFS Gateway daemon backed by a remote datastore
+3. [rainbow](https://github.com/ipfs/rainbow), a specialized IPFS gateway
+4. [ipfs-check](https://github.com/ipfs/ipfs-check), checks IPFS data availability
+5. [someguy](https://github.com/ipfs/someguy), a dedicated Delegated Routing V1 server and client
 
 ### Governance and Access
 
