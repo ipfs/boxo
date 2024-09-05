@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"time"
 )
 
 var (
@@ -16,6 +17,14 @@ var (
 // Node is a common interface for files, directories and other special files
 type Node interface {
 	io.Closer
+
+	// Mode returns the mode.
+	// Optional, if unknown/unspecified returns zero.
+	Mode() os.FileMode
+
+	// ModTime returns the last modification time. If the last
+	// modification time is unknown/unspecified ModTime returns zero.
+	ModTime() (mtime time.Time)
 
 	// Size returns size of this file (if this file is a directory, total size of
 	// all files stored in the tree should be returned). Some implementations may

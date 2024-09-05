@@ -6,10 +6,12 @@ package unixfs
 import (
 	"errors"
 	"fmt"
+	"os"
+	"time"
 
 	proto "github.com/gogo/protobuf/proto"
+	files "github.com/ipfs/boxo/files"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
-
 	pb "github.com/ipfs/boxo/ipld/unixfs/pb"
 	ipld "github.com/ipfs/go-ipld-format"
 )
@@ -34,6 +36,7 @@ const (
 // Common errors
 var (
 	ErrMalformedFileFormat = errors.New("malformed data in file format")
+	ErrNotProtoNode        = errors.New("expected a ProtoNode as internal node")
 	ErrUnrecognizedType    = errors.New("unrecognized node type")
 )
 
@@ -69,6 +72,22 @@ func FilePBData(data []byte, totalsize uint64) []byte {
 	return data
 }
 
+func FilePBDataWithStat(data []byte, totalsize uint64, mode os.FileMode, mtime time.Time) []byte {
+	pbfile := new(pb.Data)
+	typ := pb.Data_File
+	pbfile.Type = &typ
+	pbfile.Data = data
+	pbfile.Filesize = proto.Uint64(totalsize)
+
+	pbDataAddStat(pbfile, mode, mtime)
+
+	data, err := proto.Marshal(pbfile)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
 // FolderPBData returns Bytes that represent a Directory.
 func FolderPBData() []byte {
 	pbfile := new(pb.Data)
@@ -81,6 +100,36 @@ func FolderPBData() []byte {
 		panic(err)
 	}
 	return data
+}
+
+func FolderPBDataWithStat(mode os.FileMode, mtime time.Time) []byte {
+	pbfile := new(pb.Data)
+	typ := pb.Data_Directory
+	pbfile.Type = &typ
+
+	pbDataAddStat(pbfile, mode, mtime)
+
+	data, err := proto.Marshal(pbfile)
+	if err != nil {
+		//this really shouldnt happen, i promise
+		panic(err)
+	}
+	return data
+}
+
+func pbDataAddStat(data *pb.Data, mode os.FileMode, mtime time.Time) {
+	if mode != 0 {
+		data.Mode = proto.Uint32(files.ModePermsToUnixPerms(mode))
+	}
+	if !mtime.IsZero() {
+		data.Mtime = &pb.IPFSTimestamp{
+			Seconds: proto.Int64(mtime.Unix()),
+		}
+
+		if nanos := uint32(mtime.Nanosecond()); nanos > 0 {
+			data.Mtime.Nanos = &nanos
+		}
+	}
 }
 
 // WrapData marshals raw bytes into a `Data_Raw` type protobuf message.
@@ -303,6 +352,93 @@ func (n *FSNode) IsDir() bool {
 	}
 }
 
+// Mode returns the optionally stored file permissions
+func (n *FSNode) Mode() (m os.FileMode) {
+	perms := n.format.GetMode() & 0xFFF
+	if perms != 0 {
+		m = files.UnixPermsToModePerms(perms)
+		switch n.Type() {
+		case pb.Data_Directory, pb.Data_HAMTShard:
+			m |= os.ModeDir
+		case pb.Data_Symlink:
+			m |= os.ModeSymlink
+		}
+	}
+	return m
+}
+
+// SetMode stores the given mode permissions, or nullifies stored permissions
+// if none were provided and there are no extended bits set.
+func (n *FSNode) SetMode(m os.FileMode) {
+	n.SetModeFromUnixPermissions(files.ModePermsToUnixPerms(m))
+}
+
+// SetModeFromUnixPermissions stores the given unix permissions, or nullifies stored permissions
+// if none were provided and there are no extended bits set.
+func (n *FSNode) SetModeFromUnixPermissions(unixPerms uint32) {
+	// preserve existing most significant 20 bits
+	newMode := (n.format.GetMode() & 0xFFFFF000) | (unixPerms & 0xFFF)
+
+	if unixPerms == 0 {
+		if newMode&0xFFFFF000 == 0 {
+			n.format.Mode = nil
+			return
+		}
+	}
+	n.format.Mode = &newMode
+}
+
+// ExtendedMode returns the 20 bits of extended file mode
+func (n *FSNode) ExtendedMode() uint32 {
+	return (n.format.GetMode() & 0xFFFFF000) >> 12
+}
+
+// SetExtendedMode stores the 20 bits of extended file mode, only the first
+// 20 bits of the `mode` argument are used, the remaining 12 bits are ignored.
+func (n *FSNode) SetExtendedMode(mode uint32) {
+	newMode := (mode << 12) | (0xFFF & n.format.GetMode())
+	if newMode == 0 {
+		n.format.Mode = nil
+	} else {
+		n.format.Mode = &newMode
+	}
+}
+
+// ModTime returns the stored last modified timestamp if available.
+func (n *FSNode) ModTime() time.Time {
+	ts := n.format.GetMtime()
+	if ts == nil || ts.Seconds == nil {
+		return time.Time{}
+	}
+	if ts.Nanos == nil {
+		return time.Unix(*ts.Seconds, 0)
+	}
+	if *ts.Nanos < 1 || *ts.Nanos > 999999999 {
+		return time.Time{}
+	}
+
+	return time.Unix(*ts.Seconds, int64(*ts.Nanos))
+}
+
+// SetModTime stores the given last modified timestamp, otherwise nullifies stored timestamp.
+func (n *FSNode) SetModTime(ts time.Time) {
+	if ts.IsZero() {
+		n.format.Mtime = nil
+		return
+	}
+
+	if n.format.Mtime == nil {
+		n.format.Mtime = &pb.IPFSTimestamp{}
+	}
+
+	n.format.Mtime.Seconds = proto.Int64(ts.Unix())
+	if ts.Nanosecond() > 0 {
+		n.format.Mtime.Nanos = proto.Uint32(uint32(ts.Nanosecond()))
+	} else {
+		n.format.Mtime.Nanos = nil
+	}
+}
+
 // Metadata is used to store additional FSNode information.
 type Metadata struct {
 	MimeType string
@@ -360,6 +496,10 @@ func EmptyDirNode() *dag.ProtoNode {
 	return dag.NodeWithData(FolderPBData())
 }
 
+func EmptyDirNodeWithStat(mode os.FileMode, mtime time.Time) *dag.ProtoNode {
+	return dag.NodeWithData(FolderPBDataWithStat(mode, mtime))
+}
+
 // EmptyFileNode creates an empty file Protonode.
 func EmptyFileNode() *dag.ProtoNode {
 	return dag.NodeWithData(FilePBData(nil, 0))
@@ -405,7 +545,7 @@ func ReadUnixFSNodeData(node ipld.Node) (data []byte, err error) {
 func ExtractFSNode(node ipld.Node) (*FSNode, error) {
 	protoNode, ok := node.(*dag.ProtoNode)
 	if !ok {
-		return nil, errors.New("expected a ProtoNode as internal node")
+		return nil, ErrNotProtoNode
 	}
 
 	fsNode, err := FSNodeFromBytes(protoNode.Data())

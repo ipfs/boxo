@@ -33,7 +33,7 @@ jobs:
       - name: Replace boxo in Kubo go.mod
         run: |
           go mod edit -replace=github.com/ipfs/boxo=../boxo
-          go mod tidy
+          make mod_tidy
           cat go.mod
         working-directory: kubo
       - name: Install sharness dependencies

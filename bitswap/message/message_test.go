@@ -6,15 +6,13 @@ import (
 
 	"github.com/ipfs/boxo/bitswap/client/wantlist"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
-	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
-
-	u "github.com/ipfs/boxo/util"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-test/random"
 )
 
 func mkFakeCid(s string) cid.Cid {
-	return cid.NewCidV0(u.Hash([]byte(s)))
+	return random.Cids(1)[0]
 }
 
 func TestAppendWanted(t *testing.T) {
@@ -290,8 +288,7 @@ func TestAddWantlistEntry(t *testing.T) {
 }
 
 func TestEntrySize(t *testing.T) {
-	blockGenerator := blocksutil.NewBlockGenerator()
-	c := blockGenerator.Next().Cid()
+	c := random.BlocksOfSize(1, 4)[0].Cid()
 	e := Entry{
 		Entry: wantlist.Entry{
 			Cid:      c,

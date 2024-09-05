@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"time"
 
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
 	unixfs "github.com/ipfs/boxo/ipld/unixfs"
@@ -29,6 +31,8 @@ var (
 type DagReader interface {
 	ReadSeekCloser
 	Size() uint64
+	Mode() os.FileMode
+	ModTime() time.Time
 	CtxReadFull(context.Context, []byte) (int, error)
 }
 
@@ -44,6 +48,8 @@ type ReadSeekCloser interface {
 // the given node, using the passed in DAGService for data retrieval.
 func NewDagReader(ctx context.Context, n ipld.Node, serv ipld.NodeGetter) (DagReader, error) {
 	var size uint64
+	var mode os.FileMode
+	var modTime time.Time
 
 	switch n := n.(type) {
 	case *mdag.RawNode:
@@ -54,6 +60,9 @@ func NewDagReader(ctx context.Context, n ipld.Node, serv ipld.NodeGetter) (DagRe
 		if err != nil {
 			return nil, err
 		}
+
+		mode = fsNode.Mode()
+		modTime = fsNode.ModTime()
 
 		switch fsNode.Type() {
 		case unixfs.TFile, unixfs.TRaw:
@@ -93,6 +102,8 @@ func NewDagReader(ctx context.Context, n ipld.Node, serv ipld.NodeGetter) (DagRe
 		cancel:    cancel,
 		serv:      serv,
 		size:      size,
+		mode:      mode,
+		modTime:   modTime,
 		rootNode:  n,
 		dagWalker: ipld.NewWalker(ctxWithCancel, ipld.NewNavigableIPLDNode(n, serv)),
 	}, nil
@@ -129,7 +140,19 @@ type dagReader struct {
 
 	// Passed to the `dagWalker` that will use it to request nodes.
 	// TODO: Revisit name.
-	serv ipld.NodeGetter
+	serv    ipld.NodeGetter
+	mode    os.FileMode
+	modTime time.Time
+}
+
+// Mode returns the UnixFS file mode or 0 if not set.
+func (dr *dagReader) Mode() os.FileMode {
+	return dr.mode
+}
+
+// ModTime returns the UnixFS file last modification time if set.
+func (dr *dagReader) ModTime() time.Time {
+	return dr.modTime
 }
 
 // Size returns the total size of the data from the DAG structured file.

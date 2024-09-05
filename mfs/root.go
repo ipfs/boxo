@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	dag "github.com/ipfs/boxo/ipld/merkledag"
@@ -73,6 +74,8 @@ type FSNode interface {
 
 	Flush() error
 	Type() NodeType
+	SetModTime(ts time.Time) error
+	SetMode(mode os.FileMode) error
 }
 
 // IsDir checks whether the FSNode is dir type
