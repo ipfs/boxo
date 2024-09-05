@@ -52,7 +52,7 @@ At least as of 2023-06-08, changelog test is manually copied from [the changelog
 ### Related Work
 Below are links of related/adjacent work that has informed some of the decisions in this document:
 1. https://github.com/ipfs/boxo/issues/170
-2. https://pl-strflt.notion.site/Kubo-Release-Process-5a5d066264704009a28a79cff93062c4
+2. https://ipshipyard.notion.site/Kubo-Release-Process-6dba4f5755c9458ab5685eeb28173778
 3. https://github.com/ipfs/kubo/blob/master/docs/RELEASE_ISSUE_TEMPLATE.md
 
 ## Release Process

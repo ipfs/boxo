@@ -16,20 +16,27 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `files`, `ipld/unixfs`, `mfs` and `tar` now support optional UnixFS 1.5 mode and modification time metadata
-
 ### Changed
-
-- updated Go in `go.mod` to 1.22
-- `chunker` refactored to reduce overall memory use by reducing heap fragmentation [#649](https://github.com/ipfs/boxo/pull/649)
-- `gateway` deserialized responses will have `Last-Modified` set to value from optional UnixFS 1.5 modification time field (if present in DAG) and a matching `If-Modified-Since` will return `304 Not Modified` (UnixFS 1.5 files only) [#659](https://github.com/ipfs/boxo/pull/659)
-- `bitswap/server` minor performance improvements in concurrent operations
 
 ### Removed
 
 ### Fixed
 
 ### Security
+
+## [v0.23.0]
+
+### Added
+
+- `files`, `ipld/unixfs`, `mfs` and `tar` now support optional UnixFS 1.5 mode and modification time metadata [#653](https://github.com/ipfs/boxo/pull/653)
+- `gateway` deserialized responses will have `Last-Modified` set to value from optional UnixFS 1.5 modification time field (if present in DAG) and a matching `If-Modified-Since` will return `304 Not Modified` (UnixFS 1.5 files only) [#659](https://github.com/ipfs/boxo/pull/659)
+
+### Changed
+
+- updated Go in `go.mod` to 1.22 [#661](https://github.com/ipfs/boxo/pull/661)
+- `chunker` refactored to reduce overall memory use by reducing heap fragmentation [#649](https://github.com/ipfs/boxo/pull/649)
+- `bitswap/server` minor performance improvements in concurrent operations [#666](https://github.com/ipfs/boxo/pull/666)
+- removed dependency on go-ipfs-blocksutil [#656](https://github.com/ipfs/boxo/pull/656)
 
 ## [v0.22.0]
 
