@@ -73,7 +73,7 @@ Below are links of related/adjacent work that has informed some of the decisions
 - [ ] Ensure Boxo tests are passing
 - [ ] Ensure Kubo tests are passing
   - [ ] Go to Kubo dir and run `go get github.com/ipfs/boxo@<commit_hash>` using the commit hash of the `release-vX.Y.Z` branch
-  - [ ] Run `go mod tidy` in repo root and in `docs/examples/kubo-as-a-library`
+  - [ ] Run `make mod_tidy` in repo root (to apply `go mod tidy` to code, tests, and examples)
   - [ ] Commit the changes and open a draft PR in Kubo
   - [ ] Name the PR "Upgrade to Boxo vX.Y.Z"
   - [ ] Paste a link to the Kubo PR in the Boxo PR, so reviewers can verify the Kubo test run
