@@ -1,4 +1,4 @@
-# Downloading a UnixFS file
+# Transfering UnixFS file with Bitswap
 
 This is an example that quickly shows how to use IPFS tooling to move around a file.
 
@@ -13,18 +13,18 @@ In client mode, it will start up, connect to the server, request the data needed
 From the `boxo/examples` directory run the following:
 
 ```
-> cd unixfs-file-cid/
+> cd bitswap-transfer/
 > go build
 ```
 
 ## Usage
 
 ```
-> ./unixfs-file-cid
+> ./bitswap-transfer
 2023/01/30 21:34:11 I am /ip4/127.0.0.1/tcp/53935/p2p/QmUtp8xEVgWC5dNPthF2g37eVvCdrqY1FPxLxXZoKkPbdp
 2023/01/30 21:34:11 hosting UnixFS file with CID: bafybeiecq2irw4fl5vunnxo6cegoutv4de63h7n27tekkjtak3jrvrzzhe
 2023/01/30 21:34:11 listening for inbound connections and Bitswap requests
-2023/01/30 21:34:11 Now run "./unixfs-file-cid -d /ip4/127.0.0.1/tcp/53935/p2p/QmUtp8xEVgWC5dNPthF2g37eVvCdrqY1FPxLxXZoKkPbdp" on a different terminal
+2023/01/30 21:34:11 Now run "./bitswap-transfer -d /ip4/127.0.0.1/tcp/53935/p2p/QmUtp8xEVgWC5dNPthF2g37eVvCdrqY1FPxLxXZoKkPbdp" on a different terminal
 ```
 
 The IPFS server hosting the data over libp2p will print out its `Multiaddress`, which indicates how it can be reached (ip4+tcp) and its randomly generated ID (`QmUtp8xEV...`)
@@ -32,7 +32,7 @@ The IPFS server hosting the data over libp2p will print out its `Multiaddress`, 
 Now, launch another node that talks to the hosting node:
 
 ```
-> ./unixfs-file-cid -d /ip4/127.0.0.1/tcp/53935/p2p/QmUtp8xEVgWC5dNPthF2g37eVvCdrqY1FPxLxXZoKkPbdp
+> ./bitswap-transfer -d /ip4/127.0.0.1/tcp/53935/p2p/QmUtp8xEVgWC5dNPthF2g37eVvCdrqY1FPxLxXZoKkPbdp
 ```
 
 The IPFS client will then download the file from the server peer and let you know that it's been received.
