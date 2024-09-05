@@ -34,6 +34,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - updated Go in `go.mod` to 1.22 [#661](https://github.com/ipfs/boxo/pull/661)
+- updated go-libp2p to [v0.36.3](https://github.com/libp2p/go-libp2p/releases/tag/v0.36.3)
 - `chunker` refactored to reduce overall memory use by reducing heap fragmentation [#649](https://github.com/ipfs/boxo/pull/649)
 - `bitswap/server` minor performance improvements in concurrent operations [#666](https://github.com/ipfs/boxo/pull/666)
 - removed dependency on go-ipfs-blocksutil [#656](https://github.com/ipfs/boxo/pull/656)
