@@ -231,9 +231,9 @@ func (s *reprovider) run() {
 
 		// setup stopped timers
 		maxCollectionDurationTimer := time.NewTimer(time.Hour)
-		maxCollectionDurationTimer.Stop()
 		pauseDetectTimer := time.NewTimer(time.Hour)
-		pauseDetectTimer.Stop()
+		stopAndEmptyTimer(maxCollectionDurationTimer)
+		stopAndEmptyTimer(pauseDetectTimer)
 
 		// make sure timers are cleaned up
 		defer maxCollectionDurationTimer.Stop()
