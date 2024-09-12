@@ -280,14 +280,27 @@ func TestApplyFilters(t *testing.T) {
 			expected: &types.PeerRecord{
 				ID: &pid,
 				Addrs: []types.Multiaddr{
-					mustMultiaddr(t, "/ip4/127.0.0.1/tcp/4001"),
-					mustMultiaddr(t, "/ip4/127.0.0.1/udp/4001/quic-v1"),
-					mustMultiaddr(t, "/ip4/127.0.0.1/tcp/4001/ws"),
-					mustMultiaddr(t, "/ip4/102.101.1.1/tcp/4001/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
-					mustMultiaddr(t, "/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
+					mustMultiaddr(t, "/ip4/127.0.0.1/udp/4001/webrtc-direct/certhash/uEiCZqN653gMqxrWNmYuNg7Emwb-wvtsuzGE3XD6rypViZA"),
 					mustMultiaddr(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
 				},
 				Protocols: []string{"transport-ipfs-gateway-http"},
+			},
+		},
+		{
+			name: "Unknown protocol filter",
+			provider: &types.PeerRecord{
+				ID: &pid,
+				Addrs: []types.Multiaddr{
+					mustMultiaddr(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
+				},
+			},
+			filterAddrs:     []string{},
+			filterProtocols: []string{"unknown"},
+			expected: &types.PeerRecord{
+				ID: &pid,
+				Addrs: []types.Multiaddr{
+					mustMultiaddr(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
+				},
 			},
 		},
 	}

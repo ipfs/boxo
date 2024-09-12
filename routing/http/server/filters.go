@@ -128,9 +128,7 @@ func applyProtocolFilter(peerProtocols []string, filterProtocols []string) bool 
 		return true
 	}
 
-	for _, filter := range filterProtocols {
-		filterProtocol := strings.TrimPrefix(filter, "!")
-
+	for _, filterProtocol := range filterProtocols {
 		if filterProtocol == "unknown" && len(peerProtocols) == 0 {
 			return true
 		}
