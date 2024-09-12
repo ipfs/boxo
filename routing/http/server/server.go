@@ -194,6 +194,11 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		return
 	}
 
+	// Parse query parameters
+	query := httpReq.URL.Query()
+	filterAddrs := parseFilter(query.Get("filter-addrs"))
+	filterProtocols := parseFilter(query.Get("filter-protocols"))
+
 	mediaType, err := s.detectResponseType(httpReq)
 	if err != nil {
 		writeErr(w, "FindProviders", http.StatusBadRequest, err)
@@ -201,7 +206,7 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 	}
 
 	var (
-		handlerFunc  func(w http.ResponseWriter, provIter iter.ResultIter[types.Record])
+		handlerFunc  func(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string)
 		recordsLimit int
 	)
 
@@ -224,10 +229,10 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		}
 	}
 
-	handlerFunc(w, provIter)
+	handlerFunc(w, provIter, filterAddrs, filterProtocols)
 }
 
-func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record]) {
+func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) {
 	defer provIter.Close()
 
 	providers, err := iter.ReadAllResults(provIter)
@@ -236,13 +241,78 @@ func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIt
 		return
 	}
 
+	filteredProviders := filterProviders(providers, filterAddrs, filterProtocols)
+
 	writeJSONResult(w, "FindProviders", jsontypes.ProvidersResponse{
-		Providers: providers,
+		Providers: filteredProviders,
 	})
 }
+func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) {
+	defer provIter.Close()
 
-func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record]) {
-	writeResultsIterNDJSON(w, provIter)
+	w.Header().Set("Content-Type", mediaTypeNDJSON)
+	w.Header().Add("Vary", "Accept")
+	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+
+	hasResults := false
+	for provIter.Next() {
+		res := provIter.Val()
+		if res.Err != nil {
+			logger.Errorw("ndjson iterator error", "Error", res.Err)
+			return
+		}
+
+		// handle filtering per record as we iterate
+		if len(filterAddrs) > 0 || len(filterProtocols) > 0 {
+			switch v := res.Val.(type) {
+			case *types.PeerRecord:
+				record := applyFilters(v, filterAddrs, filterProtocols)
+				if record == nil {
+					// if the record is nil, we skip it
+					continue
+				}
+				res.Val = record
+			default:
+				logger.Warn("unexpected type for res.Val, expected types.PeerRecord")
+				continue
+			}
+		}
+
+		// don't use an encoder because we can't easily differentiate writer errors from encoding errors
+		b, err := drjson.MarshalJSONBytes(res.Val)
+		if err != nil {
+			logger.Errorw("ndjson marshal error", "Error", err)
+			return
+		}
+
+		if !hasResults {
+			hasResults = true
+			// There's results, cache useful result for longer
+			setCacheControl(w, maxAgeWithResults, maxStale)
+		}
+
+		_, err = w.Write(b)
+		if err != nil {
+			logger.Warn("ndjson write error", "Error", err)
+			return
+		}
+
+		_, err = w.Write([]byte{'\n'})
+		if err != nil {
+			logger.Warn("ndjson write error", "Error", err)
+			return
+		}
+
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	if !hasResults {
+		// There weren't results, cache for shorter and send 404
+		setCacheControl(w, maxAgeWithoutResults, maxStale)
+		w.WriteHeader(http.StatusNotFound)
+	}
 }
 
 func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
@@ -572,7 +642,7 @@ func logErr(method, msg string, err error) {
 	logger.Infow(msg, "Method", method, "Error", err)
 }
 
-func writeResultsIterNDJSON[T any](w http.ResponseWriter, resultIter iter.ResultIter[T]) {
+func writeResultsIterNDJSON[T types.Record](w http.ResponseWriter, resultIter iter.ResultIter[T]) {
 	defer resultIter.Close()
 
 	w.Header().Set("Content-Type", mediaTypeNDJSON)
