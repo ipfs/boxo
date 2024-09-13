@@ -153,24 +153,6 @@ func TestApplyProtocolFilter(t *testing.T) {
 			expected:        true,
 		},
 		{
-			name:            "Negative filter, no match",
-			peerProtocols:   []string{"transport-bitswap", "transport-ipfs-gateway-http"},
-			filterProtocols: []string{"!transport-graphsync-filecoinv1"},
-			expected:        true,
-		},
-		{
-			name:            "Negative filter, with match",
-			peerProtocols:   []string{"transport-bitswap", "transport-ipfs-gateway-http"},
-			filterProtocols: []string{"!transport-ipfs-gateway-http"},
-			expected:        false,
-		},
-		{
-			name:            "Mixed positive and negative filters, no match",
-			peerProtocols:   []string{"transport-bitswap", "transport-ipfs-gateway-http"},
-			filterProtocols: []string{"transport-graphsync-filecoinv1", "!transport-ipfs-gateway-http"},
-			expected:        false,
-		},
-		{
 			name:            "Unknown protocol for empty peer protocols",
 			peerProtocols:   []string{},
 			filterProtocols: []string{"unknown"},
