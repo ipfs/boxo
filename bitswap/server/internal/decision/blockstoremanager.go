@@ -121,6 +121,42 @@ func (bsm *blockstoreManager) getBlockSizes(ctx context.Context, ks []cid.Cid) (
 	return res, nil
 }
 
+func (bsm *blockstoreManager) hasBlocks(ctx context.Context, ks []cid.Cid) (map[cid.Cid]struct{}, error) {
+	if len(ks) == 0 {
+		return nil, nil
+	}
+	hasBlocks := make([]bool, len(ks))
+
+	var count atomic.Int32
+	err := bsm.jobPerKey(ctx, ks, func(i int, c cid.Cid) {
+		has, err := bsm.bs.Has(ctx, c)
+		if err != nil {
+			// Note: this isn't a fatal error. We shouldn't abort the request
+			log.Errorf("blockstore.GetSize(%s) error: %s", c, err)
+			return
+		}
+		if has {
+			hasBlocks[i] = true
+			count.Add(1)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	results := count.Load()
+	if results == 0 {
+		return nil, nil
+	}
+
+	res := make(map[cid.Cid]struct{}, results)
+	for i, ok := range hasBlocks {
+		if ok {
+			res[ks[i]] = struct{}{}
+		}
+	}
+	return res, nil
+}
+
 func (bsm *blockstoreManager) getBlocks(ctx context.Context, ks []cid.Cid) (map[cid.Cid]blocks.Block, error) {
 	if len(ks) == 0 {
 		return nil, nil

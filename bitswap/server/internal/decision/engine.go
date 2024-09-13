@@ -689,15 +689,35 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		return true
 	}
 
+	noReplace := e.maxBlockSizeReplaceHasWithBlock == 0
+
 	// Get block sizes for unique CIDs.
-	wantKs := cid.NewSet()
+	wantKs := make([]cid.Cid, 0, len(wants))
+	var haveKs []cid.Cid
 	for _, entry := range wants {
-		wantKs.Add(entry.Cid)
+		if noReplace && entry.WantType == pb.Message_Wantlist_Have {
+			haveKs = append(haveKs, entry.Cid)
+		} else {
+			wantKs = append(wantKs, entry.Cid)
+		}
 	}
-	blockSizes, err := e.bsm.getBlockSizes(ctx, wantKs.Keys())
+	blockSizes, err := e.bsm.getBlockSizes(ctx, wantKs)
 	if err != nil {
 		log.Info("aborting message processing", err)
 		return false
+	}
+	if len(haveKs) != 0 {
+		hasBlocks, err := e.bsm.hasBlocks(ctx, haveKs)
+		if err != nil {
+			log.Info("aborting message processing", err)
+			return false
+		}
+		if blockSizes == nil {
+			blockSizes = make(map[cid.Cid]int, len(hasBlocks))
+		}
+		for blkCid := range hasBlocks {
+			blockSizes[blkCid] = 0
+		}
 	}
 
 	e.lock.Lock()
@@ -707,20 +727,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	}
 
 	var overflow []bsmsg.Entry
-	if len(wants) != 0 {
-		filteredWants := wants[:0] // shift inplace
-		for _, entry := range wants {
-			if !e.peerLedger.Wants(p, entry.Entry) {
-				// Cannot add entry because it would exceed size limit.
-				overflow = append(overflow, entry)
-				continue
-			}
-			filteredWants = append(filteredWants, entry)
-		}
-		// Clear truncated entries - early GC.
-		clear(wants[len(filteredWants):])
-		wants = filteredWants
-	}
+	wants, overflow = e.filterOverflow(p, wants, overflow)
 
 	if len(overflow) != 0 {
 		log.Infow("handling wantlist overflow", "local", e.self, "from", p, "wantlistSize", len(wants), "overflowSize", len(overflow))
@@ -764,7 +771,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		sendDontHave(entry)
 	}
 
-	// For each want-have / want-block
+	// For each want-block
 	for _, entry := range wants {
 		c := entry.Cid
 		blockSize, found := blockSizes[c]
@@ -776,7 +783,10 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 			continue
 		}
 		// The block was found, add it to the queue
-		isWantBlock := e.sendAsBlock(entry.WantType, blockSize)
+
+		// Check if this is a want-block or a have-block that can be converted
+		// to a want-block.
+		isWantBlock := blockSize != 0 && e.sendAsBlock(entry.WantType, blockSize)
 
 		log.Debugw("Bitswap engine: block found", "local", e.self, "from", p, "cid", c, "isWantBlock", isWantBlock)
 
@@ -808,6 +818,25 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		e.signalNewWork()
 	}
 	return false
+}
+
+func (e *Engine) filterOverflow(p peer.ID, wants, overflow []bsmsg.Entry) ([]bsmsg.Entry, []bsmsg.Entry) {
+	if len(wants) == 0 {
+		return wants, overflow
+	}
+
+	filteredWants := wants[:0] // shift inplace
+	for _, entry := range wants {
+		if !e.peerLedger.Wants(p, entry.Entry) {
+			// Cannot add entry because it would exceed size limit.
+			overflow = append(overflow, entry)
+			continue
+		}
+		filteredWants = append(filteredWants, entry)
+	}
+	// Clear truncated entries - early GC.
+	clear(wants[len(filteredWants):])
+	return filteredWants, overflow
 }
 
 // handleOverflow processes incoming wants that could not be addded to the peer
@@ -913,15 +942,15 @@ func (e *Engine) splitWantsCancelsDenials(p peer.ID, m bsmsg.BitSwapMessage) ([]
 			continue
 		}
 
+		if e.peerBlockRequestFilter != nil && !e.peerBlockRequestFilter(p, c) {
+			denials = append(denials, et)
+			continue
+		}
+
 		if et.WantType == pb.Message_Wantlist_Have {
 			log.Debugw("Bitswap engine <- want-have", "local", e.self, "from", p, "cid", c)
 		} else {
 			log.Debugw("Bitswap engine <- want-block", "local", e.self, "from", p, "cid", c)
-		}
-
-		if e.peerBlockRequestFilter != nil && !e.peerBlockRequestFilter(p, c) {
-			denials = append(denials, et)
-			continue
 		}
 
 		// Do not take more wants that can be handled.
@@ -1057,8 +1086,7 @@ func (e *Engine) PeerDisconnected(p peer.ID) {
 // If the want is a want-have, and it's below a certain size, send the full
 // block (instead of sending a HAVE)
 func (e *Engine) sendAsBlock(wantType pb.Message_Wantlist_WantType, blockSize int) bool {
-	isWantBlock := wantType == pb.Message_Wantlist_Block
-	return isWantBlock || blockSize <= e.maxBlockSizeReplaceHasWithBlock
+	return wantType == pb.Message_Wantlist_Block || blockSize <= e.maxBlockSizeReplaceHasWithBlock
 }
 
 func (e *Engine) numBytesSentTo(p peer.ID) uint64 {
