@@ -71,6 +71,14 @@ func WithTaskComparator(comparator server.TaskComparator) Option {
 	return Option{server.WithTaskComparator(comparator)}
 }
 
+// WithReplaceHasWithBlockMaxSize sets the maximum size of a block in bytes up
+// to which we will replace a want-have with a want-block. Setting a size of 0
+// disables this want-have replacement and means that block sizes are not read
+// for want-have requests.
+func WithReplaceHasWithBlockMaxSize(maxSize int) Option {
+	return Option{server.WithReplaceHasWithBlockMaxSize(maxSize)}
+}
+
 func ProviderSearchDelay(newProvSearchDelay time.Duration) Option {
 	return Option{client.ProviderSearchDelay(newProvSearchDelay)}
 }

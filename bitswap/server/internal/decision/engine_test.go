@@ -191,14 +191,8 @@ func newEngineForTesting(
 	maxReplaceSize int,
 	opts ...Option,
 ) *Engine {
-	return newEngine(
-		ctx,
-		bs,
-		peerTagger,
-		self,
-		maxReplaceSize,
-		opts...,
-	)
+	opts = append(opts, WithReplaceHasWithBlockMaxSize(maxReplaceSize))
+	return NewEngine(ctx, bs, peerTagger, self, opts...)
 }
 
 func TestOutboxClosedWhenEngineClosed(t *testing.T) {

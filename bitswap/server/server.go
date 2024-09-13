@@ -251,6 +251,19 @@ func HasBlockBufferSize(count int) Option {
 	}
 }
 
+// WithReplaceHasWithBlockMaxSize sets the maximum size of a block in bytes up
+// to which we will replace a want-have with a want-block. Setting a size of 0
+// disables this want-have replacement and means that block sizes are not read
+// for want-have requests.
+func WithReplaceHasWithBlockMaxSize(maxSize int) Option {
+	if maxSize < 0 {
+		maxSize = 0
+	}
+	return func(bs *Server) {
+		bs.engineOptions = append(bs.engineOptions, decision.WithReplaceHasWithBlockMaxSize(maxSize))
+	}
+}
+
 // WantlistForPeer returns the currently understood list of blocks requested by a
 // given peer.
 func (bs *Server) WantlistForPeer(p peer.ID) []cid.Cid {

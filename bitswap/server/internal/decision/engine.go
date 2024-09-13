@@ -78,9 +78,9 @@ const (
 	// on their behalf.
 	queuedTagWeight = 10
 
-	// maxBlockSizeReplaceHasWithBlock is the maximum size of the block in
-	// bytes up to which we will replace a want-have with a want-block
-	maxBlockSizeReplaceHasWithBlock = 1024
+	// defaultReplaceHasWithBlockMaxSize is the default maximum size of the
+	// block in bytes up to which we will replace a want-have with a want-block
+	defaultReplaceHasWithBlockMaxSize = 1024
 )
 
 // Envelope contains a message for a Peer.
@@ -202,9 +202,9 @@ type Engine struct {
 
 	targetMessageSize int
 
-	// maxBlockSizeReplaceHasWithBlock is the maximum size of the block in
+	// replaceHasWithBlockMaxSize is the maximum size of the block in
 	// bytes up to which we will replace a want-have with a want-block
-	maxBlockSizeReplaceHasWithBlock int
+	replaceHasWithBlockMaxSize int
 
 	sendDontHaves bool
 
@@ -343,6 +343,14 @@ func WithSetSendDontHave(send bool) Option {
 	}
 }
 
+// WithReplaceHasWithBlockMaxSize sets the maximum size of a block in bytes up
+// to which we will replace a want-have with a want-block.
+func WithReplaceHasWithBlockMaxSize(maxSize int) Option {
+	return func(e *Engine) {
+		e.replaceHasWithBlockMaxSize = maxSize
+	}
+}
+
 // wrapTaskComparator wraps a TaskComparator so it can be used as a QueueTaskComparator
 func wrapTaskComparator(tc TaskComparator) peertask.QueueTaskComparator {
 	return func(a, b *peertask.QueueTask) bool {
@@ -369,31 +377,13 @@ func wrapTaskComparator(tc TaskComparator) peertask.QueueTaskComparator {
 }
 
 // NewEngine creates a new block sending engine for the given block store.
-// maxOutstandingBytesPerPeer hints to the peer task queue not to give a peer more tasks if it has some maximum
-// work already outstanding.
+// maxOutstandingBytesPerPeer hints to the peer task queue not to give a peer
+// more tasks if it has some maximum work already outstanding.
 func NewEngine(
 	ctx context.Context,
 	bs bstore.Blockstore,
 	peerTagger PeerTagger,
 	self peer.ID,
-	opts ...Option,
-) *Engine {
-	return newEngine(
-		ctx,
-		bs,
-		peerTagger,
-		self,
-		maxBlockSizeReplaceHasWithBlock,
-		opts...,
-	)
-}
-
-func newEngine(
-	ctx context.Context,
-	bs bstore.Blockstore,
-	peerTagger PeerTagger,
-	self peer.ID,
-	maxReplaceSize int,
 	opts ...Option,
 ) *Engine {
 	e := &Engine{
@@ -404,7 +394,7 @@ func newEngine(
 		outbox:                          make(chan (<-chan *Envelope), outboxChanBuffer),
 		workSignal:                      make(chan struct{}, 1),
 		ticker:                          time.NewTicker(time.Millisecond * 100),
-		maxBlockSizeReplaceHasWithBlock: maxReplaceSize,
+		replaceHasWithBlockMaxSize:      defaultReplaceHasWithBlockMaxSize,
 		taskWorkerCount:                 defaults.BitswapEngineTaskWorkerCount,
 		sendDontHaves:                   true,
 		self:                            self,
@@ -689,7 +679,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		return true
 	}
 
-	noReplace := e.maxBlockSizeReplaceHasWithBlock == 0
+	noReplace := e.replaceHasWithBlockMaxSize == 0
 
 	// Get block sizes for unique CIDs.
 	wantKs := make([]cid.Cid, 0, len(wants))
@@ -1086,7 +1076,7 @@ func (e *Engine) PeerDisconnected(p peer.ID) {
 // If the want is a want-have, and it's below a certain size, send the full
 // block (instead of sending a HAVE)
 func (e *Engine) sendAsBlock(wantType pb.Message_Wantlist_WantType, blockSize int) bool {
-	return wantType == pb.Message_Wantlist_Block || blockSize <= e.maxBlockSizeReplaceHasWithBlock
+	return wantType == pb.Message_Wantlist_Block || blockSize <= e.replaceHasWithBlockMaxSize
 }
 
 func (e *Engine) numBytesSentTo(p peer.ID) uint64 {
