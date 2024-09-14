@@ -435,6 +435,12 @@ func NewEngine(
 
 	e.peerRequestQueue = peertaskqueue.New(peerTaskQueueOpts...)
 
+	if e.replaceHasWithBlockMaxSize == 0 {
+		log.Info("Replace WantHave with WantBlock is disabled")
+	} else {
+		log.Infow("Replace WantHave with WantBlock is enabled", "maxSize", e.replaceHasWithBlockMaxSize)
+	}
+
 	return e
 }
 
