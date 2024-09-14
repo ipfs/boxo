@@ -702,11 +702,14 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 			log.Info("aborting message processing", err)
 			return false
 		}
-		if blockSizes == nil {
-			blockSizes = make(map[cid.Cid]int, len(hasBlocks))
-		}
-		for blkCid := range hasBlocks {
-			blockSizes[blkCid] = 0
+		if len(hasBlocks) != 0 {
+			if blockSizes == nil {
+				blockSizes = make(map[cid.Cid]int, len(hasBlocks))
+			}
+			for blkCid := range hasBlocks {
+				blockSizes[blkCid] = 0
+				fmt.Println("   block cid:", blkCid)
+			}
 		}
 	}
 
