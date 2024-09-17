@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -150,7 +151,17 @@ func TestProviders(t *testing.T) {
 			limit = DefaultStreamingRecordsLimit
 		}
 		router.On("FindProviders", mock.Anything, cid, limit).Return(results, nil)
-		urlStr := serverAddr + "/routing/v1/providers/" + cidStr + "?filter-addrs=" + filterAddrs + "&filter-protocols=" + filterProtocols
+
+		urlStr := fmt.Sprintf("%s/routing/v1/providers/%s", serverAddr, cidStr)
+		if filterAddrs != "" || filterProtocols != "" {
+			urlStr += "?"
+			if filterAddrs != "" {
+				urlStr = fmt.Sprintf("%s&filter-addrs=%s", urlStr, filterAddrs)
+			}
+			if filterProtocols != "" {
+				urlStr = fmt.Sprintf("%s&filter-protocols=%s", urlStr, filterProtocols)
+			}
+		}
 
 		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 		require.NoError(t, err)

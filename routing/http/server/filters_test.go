@@ -159,7 +159,6 @@ func TestApplyProtocolFilter(t *testing.T) {
 			expected:        true,
 		},
 		{
-			// TODO: Does this case make sense?
 			name:            "Unknown protocol for non-empty peer protocols",
 			peerProtocols:   []string{"transport-bitswap"},
 			filterProtocols: []string{"unknown"},
