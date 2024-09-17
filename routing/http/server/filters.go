@@ -134,9 +134,10 @@ func applyProtocolFilter(peerProtocols []string, filterProtocols []string) bool 
 		}
 
 		for _, peerProtocol := range peerProtocols {
-			if peerProtocol == filterProtocol {
+			if strings.EqualFold(peerProtocol, filterProtocol) {
 				return true
 			}
+
 		}
 	}
 	return false
