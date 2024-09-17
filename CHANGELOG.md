@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- Added address and protocol filtering to the delegated routing server [IPIP-484](https://github.com/ipfs/specs/pull/484)
+
 ### Changed
 
 ### Removed
