@@ -36,7 +36,7 @@ type FileManager struct {
 	AllowUrls  bool
 	ds         ds.Batching
 	root       string
-	readerFact func(path string) (FileReader, error)
+	makeReader func(path string) (FileReader, error)
 }
 
 // CorruptReferenceError implements the error interface.
@@ -61,7 +61,7 @@ func (c CorruptReferenceError) Error() string {
 // CreateFileMapping on Windows) avoids this issue.
 func WithMMapReader() Option {
 	return func(f *FileManager) {
-		f.readerFact = newMmapReader
+		f.makeReader = newMmapReader
 	}
 }
 
@@ -72,7 +72,7 @@ func NewFileManager(ds ds.Batching, root string, options ...Option) *FileManager
 	f := &FileManager{
 		ds:         dsns.Wrap(ds, FilestorePrefix),
 		root:       root,
-		readerFact: newStdReader,
+		makeReader: newStdReader,
 	}
 
 	for _, option := range options {
@@ -199,7 +199,7 @@ func (f *FileManager) readFileDataObj(m mh.Multihash, d *pb.DataObj) ([]byte, er
 	p := filepath.FromSlash(d.GetFilePath())
 	abspath := filepath.Join(f.root, p)
 
-	fi, err := f.readerFact(abspath)
+	fi, err := f.makeReader(abspath)
 	if os.IsNotExist(err) {
 		return nil, &CorruptReferenceError{StatusFileNotFound, err}
 	} else if err != nil {
