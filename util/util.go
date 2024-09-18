@@ -3,6 +3,7 @@
 package util
 
 import (
+	"crypto/subtle"
 	"errors"
 	"io"
 	"math/rand"
@@ -53,57 +54,26 @@ func ExpandPathnames(paths []string) ([]string, error) {
 	return out, nil
 }
 
-type randGen struct {
-	rand.Rand
-}
-
 // NewTimeSeededRand returns a random bytes reader
 // which has been initialized with the current time.
+//
+// Deprecated: use github.com/ipfs/go-test/random instead.
 func NewTimeSeededRand() io.Reader {
-	src := rand.NewSource(time.Now().UnixNano())
-	return &randGen{
-		Rand: *rand.New(src),
-	}
+	return NewSeededRand(time.Now().UnixNano())
 }
 
 // NewSeededRand returns a random bytes reader
 // initialized with the given seed.
+//
+// Deprecated: use github.com/ipfs/go-test/random instead.
 func NewSeededRand(seed int64) io.Reader {
-	src := rand.NewSource(seed)
-	return &randGen{
-		Rand: *rand.New(src),
-	}
-}
-
-func (r *randGen) Read(p []byte) (n int, err error) {
-	for i := 0; i < len(p); i++ {
-		p[i] = byte(r.Rand.Intn(255))
-	}
-	return len(p), nil
+	return rand.New(rand.NewSource(seed))
 }
 
 // GetenvBool is the way to check an env var as a boolean
 func GetenvBool(name string) bool {
 	v := strings.ToLower(os.Getenv(name))
 	return v == "true" || v == "t" || v == "1"
-}
-
-// MultiErr is a util to return multiple errors
-type MultiErr []error
-
-func (m MultiErr) Error() string {
-	if len(m) == 0 {
-		return "no errors"
-	}
-
-	s := "Multiple errors: "
-	for i, e := range m {
-		if i != 0 {
-			s += ", "
-		}
-		s += e.Error()
-	}
-	return s
 }
 
 // Partition splits a subject 3 parts: prefix, separator, suffix.
@@ -150,9 +120,9 @@ func IsValidHash(s string) bool {
 
 // XOR takes two byte slices, XORs them together, returns the resulting slice.
 func XOR(a, b []byte) []byte {
+	_ = b[len(a)-1] // keeping same behaviour as previously but this looks like a bug
+
 	c := make([]byte, len(a))
-	for i := 0; i < len(a); i++ {
-		c[i] = a[i] ^ b[i]
-	}
+	subtle.XORBytes(c, a, b)
 	return c
 }

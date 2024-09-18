@@ -28,6 +28,9 @@ func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.H
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer panicHandler(w)
 
+		ctx := context.WithValue(r.Context(), OriginalPathKey, r.URL.Path)
+		r = r.WithContext(ctx)
+
 		// First check for protocol handler redirects.
 		if handleProtocolHandlerRedirect(w, r, &c) {
 			return
@@ -165,15 +168,32 @@ func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.H
 				// can be loaded from a subdomain gateway with a wildcard
 				// TLS cert if represented as a single DNS label:
 				// https://my-v--long-example-com.ipns.dweb.link
-				if ns == "ipns" && !strings.Contains(rootID, ".") {
-					// if there is no TXT recordfor rootID
-					if !hasDNSLinkRecord(r.Context(), backend, rootID) {
-						// my-v--long-example-com → my.v-long.example.com
-						dnslinkFQDN := toDNSLinkFQDN(rootID)
-						if hasDNSLinkRecord(r.Context(), backend, dnslinkFQDN) {
-							// update path prefix to use real FQDN with DNSLink
-							pathPrefix = "/ipns/" + dnslinkFQDN
-						}
+				if ns == "ipns" && !strings.Contains(rootID, ".") && strings.Contains(rootID, "-") {
+					// If there are no '.' but '-' is present in rootID, we most
+					// likely have an inlined DNSLink (like my-v--long-example-com)
+
+					// We un-inline and check for DNSLink presence on domain with '.'
+					// first to minimize the amount of DNS lookups:
+					// my-v--long-example-com → my.v-long.example.com
+					dnslinkFQDN := UninlineDNSLink(rootID)
+
+					// Does _dnslink.my.v-long.example.com exist?
+					if hasDNSLinkRecord(r.Context(), backend, dnslinkFQDN) {
+						// Un-inlined DNS name has a valid DNSLink record.
+						// Update path prefix to use un-inlined FQDN in gateway processing.
+						pathPrefix = "/ipns/" + dnslinkFQDN // → /ipns/my.v-long.example.com
+
+					} else if !hasDNSLinkRecord(r.Context(), backend, rootID) {
+						// Inspected _dnslink.my-v--long-example-com as a
+						// fallback, but it had no DNSLink record either.
+
+						// At this point it is more likely the un-inlined
+						// dnslinkFQDN is what the end user wanted to load, so
+						// we switch to that. This ensures the error message
+						// about missing DNSLink will use the un-inlined FQDN,
+						// and not the inlined one.
+						pathPrefix = "/ipns/" + dnslinkFQDN
+
 					}
 				}
 			}
@@ -201,7 +221,6 @@ func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.H
 
 		// else, treat it as an old school gateway, I guess.
 		next.ServeHTTP(w, r)
-
 	})
 }
 
@@ -301,28 +320,65 @@ func isHTTPSRequest(r *http.Request) bool {
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Proto
 	xproto := r.Header.Get("X-Forwarded-Proto")
 	// Is request a native TLS (not used atm, but future-proofing)
-	// or a proxied HTTPS (eg. go-ipfs behind nginx at a public gw)?
+	// or a proxied HTTPS (eg. Kubo behind nginx at a public gw)?
 	return r.URL.Scheme == "https" || xproto == "https"
 }
 
 // Converts a FQDN to DNS-safe representation that fits in 63 characters:
 // my.v-long.example.com → my-v--long-example-com
-func toDNSLinkDNSLabel(fqdn string) (dnsLabel string, err error) {
+// InlineDNSLink implements specification from https://specs.ipfs.tech/http-gateways/subdomain-gateway/#host-request-header
+func InlineDNSLink(fqdn string) (dnsLabel string, err error) {
+	/* What follows is an optimized version this three-liner:
 	dnsLabel = strings.ReplaceAll(fqdn, "-", "--")
 	dnsLabel = strings.ReplaceAll(dnsLabel, ".", "-")
 	if len(dnsLabel) > dnsLabelMaxLength {
 		return "", fmt.Errorf("DNSLink representation incompatible with DNS label length limit of 63: %s", dnsLabel)
 	}
 	return dnsLabel, nil
+	*/
+	result := make([]byte, 0, len(fqdn))
+	for i := 0; i < len(fqdn); i++ {
+		char := fqdn[i]
+		if char == '-' {
+			result = append(result, '-', '-')
+		} else if char == '.' {
+			result = append(result, '-')
+		} else {
+			result = append(result, char)
+		}
+	}
+	if len(result) > dnsLabelMaxLength {
+		return "", fmt.Errorf("inlined DNSLink incompatible with DNS label length limit of 63: %q", result)
+	}
+	return string(result), nil
 }
 
 // Converts a DNS-safe representation of DNSLink FQDN to real FQDN:
 // my-v--long-example-com → my.v-long.example.com
-func toDNSLinkFQDN(dnsLabel string) (fqdn string) {
+// UninlineDNSLink implements specification from https://specs.ipfs.tech/http-gateways/subdomain-gateway/#host-request-header
+func UninlineDNSLink(dnsLabel string) (fqdn string) {
+	/* What follows is an optimized version this three-liner:
 	fqdn = strings.ReplaceAll(dnsLabel, "--", "@") // @ placeholder is unused in DNS labels
 	fqdn = strings.ReplaceAll(fqdn, "-", ".")
 	fqdn = strings.ReplaceAll(fqdn, "@", "-")
 	return fqdn
+	*/
+	result := make([]byte, 0, len(dnsLabel))
+	for i := 0; i < len(dnsLabel); i++ {
+		if dnsLabel[i] == '-' {
+			if i+1 < len(dnsLabel) && dnsLabel[i+1] == '-' {
+				// Handle '--' by appending a single '-'
+				result = append(result, '-')
+				i++
+			} else {
+				// Handle single '-' by appending '.'
+				result = append(result, '.')
+			}
+		} else {
+			result = append(result, dnsLabel[i])
+		}
+	}
+	return string(result)
 }
 
 // Converts a hostname/path to a subdomain-based URL, if applicable.
@@ -397,27 +453,40 @@ func toSubdomainURL(hostname, path string, r *http.Request, inlineDNSLink bool, 
 		}
 	} else { // rootID is not a CID
 
-		// Check if rootID is a FQDN with DNSLink and convert it to TLS-safe
-		// representation that fits in a single DNS label.  We support this so
-		// loading DNSLink names over TLS "just works" on public HTTP gateways
-		// that pass 'https' in X-Forwarded-Proto to go-ipfs.
-		//
-		// Rationale can be found under "Option C"
-		// at: https://github.com/ipfs/in-web-browsers/issues/169
-		//
-		// TLDR is:
-		// /ipns/my.v-long.example.com
-		// can be loaded from a subdomain gateway with a wildcard TLS cert if
-		// represented as a single DNS label:
-		// https://my-v--long-example-com.ipns.dweb.link
+		// If rootID is an inlined notation of a FQDN with DNSLink we need to
+		// un-inline it first, to make it work in contexts where subdomain
+		// identifier is used on a path (/ipns/my-v--long-example-com)
+		// e.g. when ipfs-companion extension passes value from subdomain gateway
+		// for further normalization: https://github.com/ipfs/ipfs-companion/issues/1278#issuecomment-1724550623
+		if ns == "ipns" && !strings.Contains(rootID, ".") && strings.Contains(rootID, "-") {
+			dnsLinkFqdn := UninlineDNSLink(rootID) // my-v--long-example-com → my.v-long.example.com
+			if hasDNSLinkRecord(r.Context(), backend, dnsLinkFqdn) {
+				// update path prefix to use real FQDN with DNSLink
+				rootID = dnsLinkFqdn
+			}
+		}
+
 		if (inlineDNSLink || isHTTPS) && ns == "ipns" && strings.Contains(rootID, ".") {
+			// If rootID is a FQDN with DNSLink we need to inline it to make it TLS-safe
+			// representation that fits in a single DNS label.  We support this so
+			// loading DNSLink names over TLS "just works" on public HTTP gateways
+			// that pass 'https' in X-Forwarded-Proto to Kubo.
+			//
+			// Rationale can be found under "Option C"
+			// at: https://github.com/ipfs/in-web-browsers/issues/169
+			//
+			// TLDR is:
+			// /ipns/my.v-long.example.com
+			// can be loaded from a subdomain gateway with a wildcard TLS cert if
+			// represented as a single DNS label:
+			// https://my-v--long-example-com.ipns.dweb.link
 			if hasDNSLinkRecord(r.Context(), backend, rootID) {
 				// my.v-long.example.com → my-v--long-example-com
-				dnsLabel, err := toDNSLinkDNSLabel(rootID)
+				dnsLabel, err := InlineDNSLink(rootID)
 				if err != nil {
 					return "", err
 				}
-				// update path prefix to use real FQDN with DNSLink
+				// update path prefix to use inlined FQDN with DNSLink as a single DNS label
 				rootID = dnsLabel
 			}
 		} else if ns == "ipfs" {

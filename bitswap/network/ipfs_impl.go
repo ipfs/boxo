@@ -11,29 +11,29 @@ import (
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	"github.com/ipfs/boxo/bitswap/network/internal"
 
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	peerstore "github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	msgio "github.com/libp2p/go-msgio"
+	"github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
 )
 
-var log = logging.Logger("bitswap_network")
+var log = logging.Logger("bitswap/network")
 
-var connectTimeout = time.Second * 5
-
-var maxSendTimeout = 2 * time.Minute
-var minSendTimeout = 10 * time.Second
-var sendLatency = 2 * time.Second
-var minSendRate = (100 * 1000) / 8 // 100kbit/s
+var (
+	maxSendTimeout = 2 * time.Minute
+	minSendTimeout = 10 * time.Second
+	sendLatency    = 2 * time.Second
+	minSendRate    = (100 * 1000) / 8 // 100kbit/s
+)
 
 // NewFromIpfsHost returns a BitSwapNetwork supported by underlying IPFS host.
 func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) BitSwapNetwork {
@@ -284,7 +284,6 @@ func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *Messag
 		_, err := sender.Connect(ctx)
 		return err
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -320,12 +319,9 @@ func sendTimeout(size int) time.Duration {
 func (bsnet *impl) SendMessage(
 	ctx context.Context,
 	p peer.ID,
-	outgoing bsmsg.BitSwapMessage) error {
-
-	tctx, cancel := context.WithTimeout(ctx, connectTimeout)
-	defer cancel()
-
-	s, err := bsnet.newStreamToPeer(tctx, p)
+	outgoing bsmsg.BitSwapMessage,
+) error {
+	s, err := bsnet.newStreamToPeer(ctx, p)
 	if err != nil {
 		return err
 	}
@@ -357,7 +353,6 @@ func (bsnet *impl) Start(r ...Receiver) {
 	}
 	bsnet.host.Network().Notify((*netNotifiee)(bsnet))
 	bsnet.connectEvtMgr.Start()
-
 }
 
 func (bsnet *impl) Stop() {
@@ -452,12 +447,13 @@ func (nn *netNotifiee) impl() *impl {
 
 func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
 	// ignore transient connections
-	if v.Stat().Transient {
+	if v.Stat().Limited {
 		return
 	}
 
 	nn.impl().connectEvtMgr.Connected(v.RemotePeer())
 }
+
 func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
 	// Only record a "disconnect" when we actually disconnect.
 	if n.Connectedness(v.RemotePeer()) == network.Connected {

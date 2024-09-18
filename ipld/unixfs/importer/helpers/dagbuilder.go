@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"time"
 
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 
@@ -23,13 +24,15 @@ var ErrMissingFsRef = errors.New("missing file path or URL, can't create filesto
 // DagBuilderHelper wraps together a bunch of objects needed to
 // efficiently create unixfs dag trees
 type DagBuilderHelper struct {
-	dserv      ipld.DAGService
-	spl        chunker.Splitter
-	recvdErr   error
-	rawLeaves  bool
-	nextData   []byte // the next item to return.
-	maxlinks   int
-	cidBuilder cid.Builder
+	dserv       ipld.DAGService
+	spl         chunker.Splitter
+	recvdErr    error
+	rawLeaves   bool
+	nextData    []byte // the next item to return.
+	maxlinks    int
+	cidBuilder  cid.Builder
+	fileMode    os.FileMode
+	fileModTime time.Time
 
 	// Filestore support variables.
 	// ----------------------------
@@ -62,6 +65,12 @@ type DagBuilderParams struct {
 	// DAGService to write blocks to (required)
 	Dagserv ipld.DAGService
 
+	// The unixfs file mode
+	FileMode os.FileMode
+
+	// The unixfs last modified time
+	FileModTime time.Time
+
 	// NoCopy signals to the chunker that it should track fileinfo for
 	// filestore adds
 	NoCopy bool
@@ -71,11 +80,13 @@ type DagBuilderParams struct {
 // chunker.Splitter as data source.
 func (dbp *DagBuilderParams) New(spl chunker.Splitter) (*DagBuilderHelper, error) {
 	db := &DagBuilderHelper{
-		dserv:      dbp.Dagserv,
-		spl:        spl,
-		rawLeaves:  dbp.RawLeaves,
-		cidBuilder: dbp.CidBuilder,
-		maxlinks:   dbp.Maxlinks,
+		dserv:       dbp.Dagserv,
+		spl:         spl,
+		rawLeaves:   dbp.RawLeaves,
+		cidBuilder:  dbp.CidBuilder,
+		maxlinks:    dbp.Maxlinks,
+		fileMode:    dbp.FileMode,
+		fileModTime: dbp.FileModTime,
 	}
 	if fi, ok := spl.Reader().(files.FileInfo); dbp.NoCopy && ok {
 		db.fullPath = fi.AbsPath()
@@ -138,9 +149,9 @@ func (db *DagBuilderHelper) GetCidBuilder() cid.Builder {
 	return db.cidBuilder
 }
 
-// NewLeafNode creates a leaf node filled with data.  If rawLeaves is
-// defined then a raw leaf will be returned.  Otherwise, it will create
-// and return `FSNodeOverDag` with `fsNodeType`.
+// NewLeafNode creates a leaf node filled with data. If rawLeaves is defined
+// then a raw leaf will be returned. Otherwise, it will create and return
+// `FSNodeOverDag` with `fsNodeType`.
 func (db *DagBuilderHelper) NewLeafNode(data []byte, fsNodeType pb.Data_DataType) (ipld.Node, error) {
 	if len(data) > BlockSizeLimit {
 		return nil, ErrSizeLimitExceeded
@@ -161,6 +172,7 @@ func (db *DagBuilderHelper) NewLeafNode(data []byte, fsNodeType pb.Data_DataType
 	// Encapsulate the data in UnixFS node (instead of a raw node).
 	fsNodeOverDag := db.NewFSNodeOverDag(fsNodeType)
 	fsNodeOverDag.SetFileData(data)
+
 	node, err := fsNodeOverDag.Commit()
 	if err != nil {
 		return nil, err
@@ -172,12 +184,12 @@ func (db *DagBuilderHelper) NewLeafNode(data []byte, fsNodeType pb.Data_DataType
 	return node, nil
 }
 
-// FillNodeLayer will add datanodes as children to the give node until
+// FillNodeLayer will add data-nodes as children to the given node until
 // it is full in this layer or no more data.
-// NOTE: This function creates raw data nodes so it only works
+//
+// NOTE: This function creates raw data nodes, so it only works
 // for the `trickle.Layout`.
 func (db *DagBuilderHelper) FillNodeLayer(node *FSNodeOverDag) error {
-
 	// while we have room AND we're not done
 	for node.NumChildren() < db.maxlinks && !db.Done() {
 		child, childFileSize, err := db.NewLeafDataNode(ft.TRaw)
@@ -266,6 +278,34 @@ func (db *DagBuilderHelper) Maxlinks() int {
 	return db.maxlinks
 }
 
+// HasFileAttributes will return false if Filestore is being used,
+// otherwise returns true if a file mode or last modification time is set.
+func (db *DagBuilderHelper) HasFileAttributes() bool {
+	return db.fullPath == "" && (db.fileMode != 0 || !db.fileModTime.IsZero())
+}
+
+// SetFileAttributes stores file attributes present in the `DagBuilderHelper`
+// into the associated `ft.FSNode`.
+func (db *DagBuilderHelper) SetFileAttributes(n ipld.Node) error {
+	if pn, ok := n.(*dag.ProtoNode); ok {
+		fsn, err := ft.FSNodeFromBytes(pn.Data())
+		if err != nil {
+			return err
+		}
+		fsn.SetModTime(db.fileModTime)
+		fsn.SetMode(db.fileMode)
+
+		d, err := fsn.GetBytes()
+		if err != nil {
+			return err
+		}
+
+		pn.SetData(d)
+	}
+
+	return nil
+}
+
 // FSNodeOverDag encapsulates an `unixfs.FSNode` that will be stored in a
 // `dag.ProtoNode`. Instead of just having a single `ipld.Node` that
 // would need to be constantly (un)packed to access and modify its
@@ -289,7 +329,7 @@ type FSNodeOverDag struct {
 }
 
 // NewFSNodeOverDag creates a new `dag.ProtoNode` and `ft.FSNode`
-// decoupled from one onther (and will continue in that way until
+// decoupled from one anonther (and will continue in that way until
 // `Commit` is called), with `fsNodeType` specifying the type of
 // the UnixFS layer node (either `File` or `Raw`).
 func (db *DagBuilderHelper) NewFSNodeOverDag(fsNodeType pb.Data_DataType) *FSNodeOverDag {
@@ -373,6 +413,26 @@ func (n *FSNodeOverDag) FileSize() uint64 {
 // node (internal nodes don't carry data, just file sizes).
 func (n *FSNodeOverDag) SetFileData(fileData []byte) {
 	n.file.SetData(fileData)
+}
+
+// SetMode sets the file mode of the associated `ft.FSNode`.
+func (n *FSNodeOverDag) SetMode(mode os.FileMode) {
+	n.file.SetMode(mode)
+}
+
+// SetModTime sets the file modification time of the associated `ft.FSNode`.
+func (n *FSNodeOverDag) SetModTime(ts time.Time) {
+	n.file.SetModTime(ts)
+}
+
+// Mode returns the file mode of the associated `ft.FSNode`
+func (n *FSNodeOverDag) Mode() os.FileMode {
+	return n.file.Mode()
+}
+
+// ModTime returns the last modification time of the associated `ft.FSNode`
+func (n *FSNodeOverDag) ModTime() time.Time {
+	return n.file.ModTime()
 }
 
 // GetDagNode fills out the proper formatting for the FSNodeOverDag node

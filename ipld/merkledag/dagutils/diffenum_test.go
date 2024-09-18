@@ -2,6 +2,7 @@ package dagutils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -111,7 +112,7 @@ func TestNameMatching(t *testing.T) {
 
 	diff := getLinkDiff(nds["a1"], nds["a2"])
 	if len(diff) != 1 {
-		t.Fatal(fmt.Errorf("node diff didn't match by name"))
+		t.Fatal(errors.New("node diff didn't match by name"))
 	}
 }
 
@@ -120,10 +121,10 @@ func TestNameMatching2(t *testing.T) {
 
 	diff := getLinkDiff(nds["a1"], nds["a2"])
 	if len(diff) != 2 {
-		t.Fatal(fmt.Errorf("incorrect number of link diff elements"))
+		t.Fatal(errors.New("incorrect number of link diff elements"))
 	}
 	if !(diff[0].bef.Equals(nds["a1"].Links()[0].Cid) && diff[0].aft.Equals(nds["a2"].Links()[0].Cid)) {
-		t.Fatal(fmt.Errorf("node diff didn't match by name"))
+		t.Fatal(errors.New("node diff didn't match by name"))
 	}
 }
 
@@ -185,7 +186,7 @@ func (gl *getLogger) GetMany(ctx context.Context, cids []cid.Cid) <-chan *ipld.N
 
 func assertCidList(a, b []cid.Cid) error {
 	if len(a) != len(b) {
-		return fmt.Errorf("got different number of cids than expected")
+		return errors.New("got different number of cids than expected")
 	}
 	for i, c := range a {
 		if !c.Equals(b[i]) {
@@ -219,7 +220,6 @@ func TestDiffEnumFail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 }
 
 func TestDiffEnumRecurse(t *testing.T) {

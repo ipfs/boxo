@@ -69,8 +69,8 @@ type SessionManager struct {
 
 // New creates a new SessionManager.
 func New(ctx context.Context, sessionFactory SessionFactory, sessionInterestManager *bssim.SessionInterestManager, peerManagerFactory PeerManagerFactory,
-	blockPresenceManager *bsbpm.BlockPresenceManager, peerManager bssession.PeerManager, notif notifications.PubSub, self peer.ID) *SessionManager {
-
+	blockPresenceManager *bsbpm.BlockPresenceManager, peerManager bssession.PeerManager, notif notifications.PubSub, self peer.ID,
+) *SessionManager {
 	return &SessionManager{
 		ctx:                    ctx,
 		sessionFactory:         sessionFactory,
@@ -88,7 +88,8 @@ func New(ctx context.Context, sessionFactory SessionFactory, sessionInterestMana
 // session manager.
 func (sm *SessionManager) NewSession(ctx context.Context,
 	provSearchDelay time.Duration,
-	rebroadcastDelay delay.D) exchange.Fetcher {
+	rebroadcastDelay delay.D,
+) exchange.Fetcher {
 	id := sm.GetNextSessionID()
 
 	ctx, span := internal.StartSpan(ctx, "SessionManager.NewSession", trace.WithAttributes(attribute.String("ID", strconv.FormatUint(id, 10))))

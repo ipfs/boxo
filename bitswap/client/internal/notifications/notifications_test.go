@@ -6,14 +6,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/boxo/internal/test"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
+	"github.com/ipfs/go-test/random"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
+const blockSize = 4
+
 func TestDuplicates(t *testing.T) {
-	test.Flaky(t)
+	var zero peer.ID // this test doesn't check the peer id
 
 	b1 := blocks.NewBlock([]byte("1"))
 	b2 := blocks.NewBlock([]byte("2"))
@@ -22,16 +24,16 @@ func TestDuplicates(t *testing.T) {
 	defer n.Shutdown()
 	ch := n.Subscribe(context.Background(), b1.Cid(), b2.Cid())
 
-	n.Publish(b1)
+	n.Publish(zero, b1)
 	blockRecvd, ok := <-ch
 	if !ok {
 		t.Fail()
 	}
 	assertBlocksEqual(t, b1, blockRecvd)
 
-	n.Publish(b1) // ignored duplicate
+	n.Publish(zero, b1) // ignored duplicate
 
-	n.Publish(b2)
+	n.Publish(zero, b2)
 	blockRecvd, ok = <-ch
 	if !ok {
 		t.Fail()
@@ -40,7 +42,7 @@ func TestDuplicates(t *testing.T) {
 }
 
 func TestPublishSubscribe(t *testing.T) {
-	test.Flaky(t)
+	var zero peer.ID // this test doesn't check the peer id
 
 	blockSent := blocks.NewBlock([]byte("Greetings from The Interval"))
 
@@ -48,18 +50,17 @@ func TestPublishSubscribe(t *testing.T) {
 	defer n.Shutdown()
 	ch := n.Subscribe(context.Background(), blockSent.Cid())
 
-	n.Publish(blockSent)
+	n.Publish(zero, blockSent)
 	blockRecvd, ok := <-ch
 	if !ok {
 		t.Fail()
 	}
 
 	assertBlocksEqual(t, blockRecvd, blockSent)
-
 }
 
 func TestSubscribeMany(t *testing.T) {
-	test.Flaky(t)
+	var zero peer.ID // this test doesn't check the peer id
 
 	e1 := blocks.NewBlock([]byte("1"))
 	e2 := blocks.NewBlock([]byte("2"))
@@ -68,14 +69,14 @@ func TestSubscribeMany(t *testing.T) {
 	defer n.Shutdown()
 	ch := n.Subscribe(context.Background(), e1.Cid(), e2.Cid())
 
-	n.Publish(e1)
+	n.Publish(zero, e1)
 	r1, ok := <-ch
 	if !ok {
 		t.Fatal("didn't receive first expected block")
 	}
 	assertBlocksEqual(t, e1, r1)
 
-	n.Publish(e2)
+	n.Publish(zero, e2)
 	r2, ok := <-ch
 	if !ok {
 		t.Fatal("didn't receive second expected block")
@@ -86,7 +87,7 @@ func TestSubscribeMany(t *testing.T) {
 // TestDuplicateSubscribe tests a scenario where a given block
 // would be requested twice at the same time.
 func TestDuplicateSubscribe(t *testing.T) {
-	test.Flaky(t)
+	var zero peer.ID // this test doesn't check the peer id
 
 	e1 := blocks.NewBlock([]byte("1"))
 
@@ -95,7 +96,7 @@ func TestDuplicateSubscribe(t *testing.T) {
 	ch1 := n.Subscribe(context.Background(), e1.Cid())
 	ch2 := n.Subscribe(context.Background(), e1.Cid())
 
-	n.Publish(e1)
+	n.Publish(zero, e1)
 	r1, ok := <-ch1
 	if !ok {
 		t.Fatal("didn't receive first expected block")
@@ -110,8 +111,6 @@ func TestDuplicateSubscribe(t *testing.T) {
 }
 
 func TestShutdownBeforeUnsubscribe(t *testing.T) {
-	test.Flaky(t)
-
 	e1 := blocks.NewBlock([]byte("1"))
 
 	n := New()
@@ -131,8 +130,6 @@ func TestShutdownBeforeUnsubscribe(t *testing.T) {
 }
 
 func TestSubscribeIsANoopWhenCalledWithNoKeys(t *testing.T) {
-	test.Flaky(t)
-
 	n := New()
 	defer n.Shutdown()
 	ch := n.Subscribe(context.Background()) // no keys provided
@@ -142,8 +139,6 @@ func TestSubscribeIsANoopWhenCalledWithNoKeys(t *testing.T) {
 }
 
 func TestCarryOnWhenDeadlineExpires(t *testing.T) {
-	test.Flaky(t)
-
 	impossibleDeadline := time.Nanosecond
 	fastExpiringCtx, cancel := context.WithTimeout(context.Background(), impossibleDeadline)
 	defer cancel()
@@ -157,15 +152,14 @@ func TestCarryOnWhenDeadlineExpires(t *testing.T) {
 }
 
 func TestDoesNotDeadLockIfContextCancelledBeforePublish(t *testing.T) {
-	test.Flaky(t)
+	var zero peer.ID // this test doesn't check the peer id
 
-	g := blocksutil.NewBlockGenerator()
 	ctx, cancel := context.WithCancel(context.Background())
 	n := New()
 	defer n.Shutdown()
 
 	t.Log("generate a large number of blocks. exceed default buffer")
-	bs := g.Blocks(1000)
+	bs := random.BlocksOfSize(1000, blockSize)
 	ks := func() []cid.Cid {
 		var keys []cid.Cid
 		for _, b := range bs {
@@ -179,7 +173,7 @@ func TestDoesNotDeadLockIfContextCancelledBeforePublish(t *testing.T) {
 	t.Log("cancel context before any blocks published")
 	cancel()
 	for _, b := range bs {
-		n.Publish(b)
+		n.Publish(zero, b)
 	}
 
 	t.Log("publishing the large number of blocks to the ignored channel must not deadlock")

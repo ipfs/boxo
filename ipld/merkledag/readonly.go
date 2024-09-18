@@ -1,13 +1,13 @@
 package merkledag
 
 import (
-	"fmt"
+	"errors"
 
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
 // ErrReadOnly is used when a read-only datastructure is written to.
-var ErrReadOnly = fmt.Errorf("cannot write to readonly DAGService")
+var ErrReadOnly = errors.New("cannot write to readonly DAGService")
 
 // NewReadOnlyDagService takes a NodeGetter, and returns a full DAGService
 // implementation that returns ErrReadOnly when its 'write' methods are

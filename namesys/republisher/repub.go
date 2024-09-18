@@ -7,12 +7,12 @@ import (
 	"errors"
 	"time"
 
-	keystore "github.com/ipfs/boxo/keystore"
+	"github.com/ipfs/boxo/keystore"
 	"github.com/ipfs/boxo/namesys"
-	"github.com/ipfs/boxo/path"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
-	opts "github.com/ipfs/boxo/coreiface/options/namesys"
 	"github.com/ipfs/boxo/ipns"
 	ds "github.com/ipfs/go-datastore"
 	logging "github.com/ipfs/go-log/v2"
@@ -22,24 +22,27 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-var errNoEntry = errors.New("no previous entry")
+var (
+	errNoEntry = errors.New("no previous entry")
+	log        = logging.Logger("ipns/repub")
+)
 
-var log = logging.Logger("ipns-repub")
+const (
+	// DefaultRebroadcastInterval is the default interval at which we rebroadcast IPNS records
+	DefaultRebroadcastInterval = time.Hour * 4
 
-// DefaultRebroadcastInterval is the default interval at which we rebroadcast IPNS records
-var DefaultRebroadcastInterval = time.Hour * 4
+	// InitialRebroadcastDelay is the delay before first broadcasting IPNS records on start
+	InitialRebroadcastDelay = time.Minute * 1
 
-// InitialRebroadcastDelay is the delay before first broadcasting IPNS records on start
-var InitialRebroadcastDelay = time.Minute * 1
+	// FailureRetryInterval is the interval at which we retry IPNS records broadcasts (when they fail)
+	FailureRetryInterval = time.Minute * 5
 
-// FailureRetryInterval is the interval at which we retry IPNS records broadcasts (when they fail)
-var FailureRetryInterval = time.Minute * 5
-
-// DefaultRecordLifetime is the default lifetime for IPNS records
-const DefaultRecordLifetime = time.Hour * 24
+	// DefaultRecordLifetime is the default lifetime for IPNS records
+	DefaultRecordLifetime = ipns.DefaultRecordLifetime
+)
 
 // Republisher facilitates the regular publishing of all the IPNS records
-// associated to keys in a Keystore.
+// associated to keys in a [keystore.Keystore].
 type Republisher struct {
 	ns   namesys.Publisher
 	ds   ds.Datastore
@@ -52,7 +55,7 @@ type Republisher struct {
 	RecordLifetime time.Duration
 }
 
-// NewRepublisher creates a new Republisher
+// NewRepublisher creates a new [Republisher] from the given options.
 func NewRepublisher(ns namesys.Publisher, ds ds.Datastore, self ic.PrivKey, ks keystore.Keystore) *Republisher {
 	return &Republisher{
 		ns:             ns,
@@ -64,8 +67,7 @@ func NewRepublisher(ns namesys.Publisher, ds ds.Datastore, self ic.PrivKey, ks k
 	}
 }
 
-// Run starts the republisher facility. It can be stopped by stopping the
-// provided proc.
+// Run starts the republisher facility. It can be stopped by stopping the provided proc.
 func (rp *Republisher) Run(proc goprocess.Process) {
 	timer := time.NewTimer(InitialRebroadcastDelay)
 	defer timer.Stop()
@@ -93,7 +95,7 @@ func (rp *Republisher) Run(proc goprocess.Process) {
 func (rp *Republisher) republishEntries(p goprocess.Process) error {
 	ctx, cancel := context.WithCancel(gpctx.OnClosingContext(p))
 	defer cancel()
-	ctx, span := namesys.StartSpan(ctx, "Republisher.RepublishEntries")
+	ctx, span := startSpan(ctx, "Republisher.RepublishEntries")
 	defer span.End()
 
 	// TODO: Use rp.ipns.ListPublished(). We can't currently *do* that
@@ -127,7 +129,7 @@ func (rp *Republisher) republishEntries(p goprocess.Process) error {
 }
 
 func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) error {
-	ctx, span := namesys.StartSpan(ctx, "Republisher.RepublishEntry")
+	ctx, span := startSpan(ctx, "Republisher.RepublishEntry")
 	defer span.End()
 	id, err := peer.IDFromPrivateKey(priv)
 	if err != nil {
@@ -138,7 +140,7 @@ func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) erro
 	log.Debugf("republishing ipns entry for %s", id)
 
 	// Look for it locally only
-	rec, err := rp.getLastIPNSRecord(ctx, id)
+	rec, err := rp.getLastIPNSRecord(ctx, ipns.NameFromPeer(id))
 	if err != nil {
 		if err == errNoEntry {
 			span.SetAttributes(attribute.Bool("NoEntry", true))
@@ -165,14 +167,14 @@ func (rp *Republisher) republishEntry(ctx context.Context, priv ic.PrivKey) erro
 	if prevEol.After(eol) {
 		eol = prevEol
 	}
-	err = rp.ns.Publish(ctx, priv, path.Path(p.String()), opts.PublishWithEOL(eol))
+	err = rp.ns.Publish(ctx, priv, p, namesys.PublishWithEOL(eol))
 	span.RecordError(err)
 	return err
 }
 
-func (rp *Republisher) getLastIPNSRecord(ctx context.Context, id peer.ID) (*ipns.Record, error) {
+func (rp *Republisher) getLastIPNSRecord(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	// Look for it locally only
-	val, err := rp.ds.Get(ctx, namesys.IpnsDsKey(id))
+	val, err := rp.ds.Get(ctx, namesys.IpnsDsKey(name))
 	switch err {
 	case nil:
 	case ds.ErrNotFound:
@@ -182,4 +184,10 @@ func (rp *Republisher) getLastIPNSRecord(ctx context.Context, id peer.ID) (*ipns
 	}
 
 	return ipns.UnmarshalRecord(val)
+}
+
+var tracer = otel.Tracer("boxo/namesys/republisher")
+
+func startSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	return tracer.Start(ctx, "Namesys."+name)
 }

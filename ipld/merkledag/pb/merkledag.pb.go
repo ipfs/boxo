@@ -26,9 +26,11 @@ Do *not regenerate this file.
 `
 
 // Reference imports to suppress errors if they are not otherwise used.
-var _ = proto.Marshal
-var _ = fmt.Errorf
-var _ = math.Inf
+var (
+	_ = proto.Marshal
+	_ = fmt.Errorf
+	_ = math.Inf
+)
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the proto package it is being compiled against.
@@ -54,9 +56,11 @@ func (*PBLink) ProtoMessage() {}
 func (*PBLink) Descriptor() ([]byte, []int) {
 	return fileDescriptor_10837cc3557cec00, []int{0}
 }
+
 func (m *PBLink) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
+
 func (m *PBLink) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
 		return xxx_messageInfo_PBLink.Marshal(b, m, deterministic)
@@ -69,12 +73,15 @@ func (m *PBLink) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
+
 func (m *PBLink) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_PBLink.Merge(m, src)
 }
+
 func (m *PBLink) XXX_Size() int {
 	return m.Size()
 }
+
 func (m *PBLink) XXX_DiscardUnknown() {
 	xxx_messageInfo_PBLink.DiscardUnknown(m)
 }
@@ -118,9 +125,11 @@ func (*PBNode) ProtoMessage() {}
 func (*PBNode) Descriptor() ([]byte, []int) {
 	return fileDescriptor_10837cc3557cec00, []int{1}
 }
+
 func (m *PBNode) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
+
 func (m *PBNode) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
 		return xxx_messageInfo_PBNode.Marshal(b, m, deterministic)
@@ -133,12 +142,15 @@ func (m *PBNode) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
+
 func (m *PBNode) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_PBNode.Merge(m, src)
 }
+
 func (m *PBNode) XXX_Size() int {
 	return m.Size()
 }
+
 func (m *PBNode) XXX_DiscardUnknown() {
 	xxx_messageInfo_PBNode.DiscardUnknown(m)
 }
@@ -236,6 +248,7 @@ func (pbLink *PBLink) VerboseEqual(that interface{}) error {
 	}
 	return nil
 }
+
 func (pbLink *PBLink) Equal(that interface{}) bool {
 	if that == nil {
 		return pbLink == nil
@@ -281,6 +294,7 @@ func (pbLink *PBLink) Equal(that interface{}) bool {
 	}
 	return true
 }
+
 func (pbLink *PBNode) VerboseEqual(that interface{}) error {
 	if that == nil {
 		if pbLink == nil {
@@ -358,6 +372,7 @@ func (pbNode *PBNode) Equal(that interface{}) bool {
 	}
 	return true
 }
+
 func (pbLink *PBLink) GoString() string {
 	if pbLink == nil {
 		return "nil"
@@ -379,6 +394,7 @@ func (pbLink *PBLink) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
+
 func (pbNode *PBNode) GoString() string {
 	if pbNode == nil {
 		return "nil"
@@ -397,6 +413,7 @@ func (pbNode *PBNode) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
+
 func valueToGoStringMerkledag(v interface{}, typ string) string {
 	rv := reflect.ValueOf(v)
 	if rv.IsNil() {
@@ -405,6 +422,7 @@ func valueToGoStringMerkledag(v interface{}, typ string) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("func(v %v) *%v { return &v } ( %#v )", typ, typ, pv)
 }
+
 func (m *PBLink) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -510,6 +528,7 @@ func encodeVarintMerkledag(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
+
 func NewPopulatedPBLink(r randyMerkledag, easy bool) *PBLink {
 	this := &PBLink{}
 	if r.Intn(5) != 0 {
@@ -573,6 +592,7 @@ func randUTF8RuneMerkledag(r randyMerkledag) rune {
 	}
 	return rune(ru + 61)
 }
+
 func randStringMerkledag(r randyMerkledag) string {
 	v6 := r.Intn(100)
 	tmps := make([]rune, v6)
@@ -581,6 +601,7 @@ func randStringMerkledag(r randyMerkledag) string {
 	}
 	return string(tmps)
 }
+
 func randUnrecognizedMerkledag(r randyMerkledag, maxFieldNumber int) (dAtA []byte) {
 	l := r.Intn(5)
 	for i := 0; i < l; i++ {
@@ -593,6 +614,7 @@ func randUnrecognizedMerkledag(r randyMerkledag, maxFieldNumber int) (dAtA []byt
 	}
 	return dAtA
 }
+
 func randFieldMerkledag(dAtA []byte, r randyMerkledag, fieldNumber int, wire int) []byte {
 	key := uint32(fieldNumber)<<3 | uint32(wire)
 	switch wire {
@@ -619,6 +641,7 @@ func randFieldMerkledag(dAtA []byte, r randyMerkledag, fieldNumber int, wire int
 	}
 	return dAtA
 }
+
 func encodeVarintPopulateMerkledag(dAtA []byte, v uint64) []byte {
 	for v >= 1<<7 {
 		dAtA = append(dAtA, uint8(uint64(v)&0x7f|0x80))
@@ -627,6 +650,7 @@ func encodeVarintPopulateMerkledag(dAtA []byte, v uint64) []byte {
 	dAtA = append(dAtA, uint8(v))
 	return dAtA
 }
+
 func (m *PBLink) Size() (n int) {
 	if m == nil {
 		return 0
@@ -675,11 +699,13 @@ func (m *PBNode) Size() (n int) {
 func sovMerkledag(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
+
 func (pbLink *PBLink) String() string {
 	if pbLink == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&PBLink{`,
+	s := strings.Join([]string{
+		`&PBLink{`,
 		`Hash:` + valueToStringMerkledag(pbLink.Hash) + `,`,
 		`Name:` + valueToStringMerkledag(pbLink.Name) + `,`,
 		`Tsize:` + valueToStringMerkledag(pbLink.Tsize) + `,`,
@@ -688,6 +714,7 @@ func (pbLink *PBLink) String() string {
 	}, "")
 	return s
 }
+
 func (pbNode *PBNode) String() string {
 	if pbNode == nil {
 		return "nil"
@@ -697,7 +724,8 @@ func (pbNode *PBNode) String() string {
 		repeatedStringForLinks += strings.Replace(f.String(), "PBLink", "PBLink", 1) + ","
 	}
 	repeatedStringForLinks += "}"
-	s := strings.Join([]string{`&PBNode{`,
+	s := strings.Join([]string{
+		`&PBNode{`,
 		`Data:` + valueToStringMerkledag(pbNode.Data) + `,`,
 		`Links:` + repeatedStringForLinks + `,`,
 		`XXX_unrecognized:` + fmt.Sprintf("%v", pbNode.XXX_unrecognized) + `,`,
@@ -705,6 +733,7 @@ func (pbNode *PBNode) String() string {
 	}, "")
 	return s
 }
+
 func valueToStringMerkledag(v interface{}) string {
 	rv := reflect.ValueOf(v)
 	if rv.IsNil() {
@@ -713,6 +742,7 @@ func valueToStringMerkledag(v interface{}) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("*%v", pv)
 }
+
 func (m *PBLink) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -854,6 +884,7 @@ func (m *PBLink) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+
 func (m *PBNode) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -976,6 +1007,7 @@ func (m *PBNode) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+
 func skipMerkledag(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0

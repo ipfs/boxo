@@ -3,7 +3,7 @@ package merkledag
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 
 	bserv "github.com/ipfs/boxo/blockservice"
@@ -56,7 +56,7 @@ type dagService struct {
 // Add adds a node to the dagService, storing the block in the BlockService
 func (n *dagService) Add(ctx context.Context, nd format.Node) error {
 	if n == nil { // FIXME remove this assertion. protect with constructor invariant
-		return fmt.Errorf("dagService is nil")
+		return errors.New("dagService is nil")
 	}
 
 	return n.Blocks.AddBlock(ctx, nd)
@@ -73,7 +73,7 @@ func (n *dagService) AddMany(ctx context.Context, nds []format.Node) error {
 // Get retrieves a node from the dagService, fetching the block in the BlockService
 func (n *dagService) Get(ctx context.Context, c cid.Cid) (format.Node, error) {
 	if n == nil {
-		return nil, fmt.Errorf("dagService is nil")
+		return nil, errors.New("dagService is nil")
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -140,7 +140,6 @@ type sesGetter struct {
 // Get gets a single node from the DAG.
 func (sg *sesGetter) Get(ctx context.Context, c cid.Cid) (format.Node, error) {
 	blk, err := sg.bs.GetBlock(ctx, c)
-
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +254,7 @@ func getNodesFromBG(ctx context.Context, bs bserv.BlockGetter, keys []cid.Cid, d
 			case b, ok := <-blocks:
 				if !ok {
 					if count != len(keys) {
-						out <- &format.NodeOption{Err: fmt.Errorf("failed to fetch all nodes")}
+						out <- &format.NodeOption{Err: errors.New("failed to fetch all nodes")}
 					}
 					return
 				}
@@ -583,7 +582,9 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 	}
 }
 
-var _ format.LinkGetter = &dagService{}
-var _ format.NodeGetter = &dagService{}
-var _ format.NodeGetter = &sesGetter{}
-var _ format.DAGService = &dagService{}
+var (
+	_ format.LinkGetter = &dagService{}
+	_ format.NodeGetter = &dagService{}
+	_ format.NodeGetter = &sesGetter{}
+	_ format.DAGService = &dagService{}
+)

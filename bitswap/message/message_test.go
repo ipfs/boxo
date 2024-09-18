@@ -6,15 +6,13 @@ import (
 
 	"github.com/ipfs/boxo/bitswap/client/wantlist"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
-	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
-
-	u "github.com/ipfs/boxo/util"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-test/random"
 )
 
 func mkFakeCid(s string) cid.Cid {
-	return cid.NewCidV0(u.Hash([]byte(s)))
+	return random.Cids(1)[0]
 }
 
 func TestAppendWanted(t *testing.T) {
@@ -47,7 +45,6 @@ func TestNewMessageFromProto(t *testing.T) {
 }
 
 func TestAppendBlock(t *testing.T) {
-
 	strs := make([]string, 2)
 	strs = append(strs, "Celeritas")
 	strs = append(strs, "Incendia")
@@ -78,7 +75,6 @@ func TestWantlist(t *testing.T) {
 	for _, k := range exported {
 		present := false
 		for _, s := range keystrs {
-
 			if s.Equals(k.Cid) {
 				present = true
 			}
@@ -135,7 +131,6 @@ func TestToNetFromNetPreservesWantList(t *testing.T) {
 }
 
 func TestToAndFromNetMessage(t *testing.T) {
-
 	original := New(true)
 	original.AddBlock(blocks.NewBlock([]byte("W")))
 	original.AddBlock(blocks.NewBlock([]byte("E")))
@@ -293,8 +288,7 @@ func TestAddWantlistEntry(t *testing.T) {
 }
 
 func TestEntrySize(t *testing.T) {
-	blockGenerator := blocksutil.NewBlockGenerator()
-	c := blockGenerator.Next().Cid()
+	c := random.BlocksOfSize(1, 4)[0].Cid()
 	e := Entry{
 		Entry: wantlist.Entry{
 			Cid:      c,

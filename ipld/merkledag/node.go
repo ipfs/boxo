@@ -21,16 +21,18 @@ import (
 
 // Common errors
 var (
-	ErrNotProtobuf  = fmt.Errorf("expected protobuf dag node")
-	ErrNotRawNode   = fmt.Errorf("expected raw bytes node")
-	ErrLinkNotFound = fmt.Errorf("no link by that name")
+	ErrNotProtobuf  = errors.New("expected protobuf dag node")
+	ErrNotRawNode   = errors.New("expected raw bytes node")
+	ErrLinkNotFound = errors.New("no link by that name")
 )
 
 var log = logging.Logger("merkledag")
 
 // for testing custom CidBuilders
-var zeros [256]byte
-var zeroCid = mustZeroCid()
+var (
+	zeros   [256]byte
+	zeroCid = mustZeroCid()
+)
 
 type immutableProtoNode struct {
 	encoded []byte
@@ -518,7 +520,7 @@ func (n *ProtoNode) Resolve(path []string) (interface{}, []string, error) {
 // and the path without the consumed element.
 func (n *ProtoNode) ResolveLink(path []string) (*format.Link, []string, error) {
 	if len(path) == 0 {
-		return nil, nil, fmt.Errorf("end of path, no more links to resolve")
+		return nil, nil, errors.New("end of path, no more links to resolve")
 	}
 
 	lnk, err := n.GetNodeLink(path[0])

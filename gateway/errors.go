@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/gateway/assets"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	"github.com/ipld/go-ipld-prime/schema"
 )
 
 var (
@@ -53,7 +55,7 @@ func (e *ErrorRetryAfter) Error() string {
 		text = e.Err.Error()
 	}
 	if e.RetryAfter != 0 {
-		text += fmt.Sprintf(", retry after %s", e.humanizedRoundSeconds())
+		text += ", retry after " + e.humanizedRoundSeconds()
 	}
 	return text
 }
@@ -128,6 +130,42 @@ func (e *ErrorStatusCode) Unwrap() error {
 	return e.Err
 }
 
+// ErrInvalidResponse can be returned from a [DataCallback] to indicate that
+// the data provided for the requested resource was explicitly 'incorrect',
+// for example, when received blocks did not belong to the requested dag,
+// or non-car-conforming data was returned.
+type ErrInvalidResponse struct {
+	Message string
+}
+
+func (e ErrInvalidResponse) Error() string {
+	return e.Message
+}
+
+// ErrPartialResponse can be returned from a [DataCallback] to indicate that some of the requested resource
+// was successfully fetched, and that instead of retrying the full resource, that there are
+// one or more more specific resources that should be fetched (via StillNeed) to complete the request.
+//
+// This primitive allows for resume mechanism that is useful when a big CAR
+// stream gets truncated due to network error, HTTP middleware timeout, etc,
+// but some useful blocks were received and should not be fetched again.
+type ErrPartialResponse struct {
+	error
+	StillNeed []CarResource
+}
+
+type CarResource struct {
+	Path   path.ImmutablePath
+	Params CarParams
+}
+
+func (epr ErrPartialResponse) Error() string {
+	if epr.error != nil {
+		return fmt.Sprintf("partial response: %s", epr.error.Error())
+	}
+	return "received a partial CAR response from the backend"
+}
+
 func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defaultCode int) {
 	code := defaultCode
 
@@ -148,6 +186,8 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 	switch {
 	case errors.Is(err, &cid.ErrInvalidCid{}):
 		code = http.StatusBadRequest
+	case isErrContentBlocked(err):
+		code = http.StatusGone
 	case isErrNotFound(err):
 		code = http.StatusNotFound
 	case errors.Is(err, context.DeadlineExceeded):
@@ -160,11 +200,11 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 		code = gwErr.StatusCode
 	}
 
-	acceptsHTML := strings.Contains(r.Header.Get("Accept"), "text/html")
+	acceptsHTML := !c.DisableHTMLErrors && strings.Contains(r.Header.Get("Accept"), "text/html")
 	if acceptsHTML {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(code)
-		_ = assets.ErrorTemplate.Execute(w, assets.ErrorTemplateData{
+		err = assets.ErrorTemplate.Execute(w, assets.ErrorTemplateData{
 			GlobalData: assets.GlobalData{
 				Menu: c.Menu,
 			},
@@ -172,12 +212,21 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 			StatusText: http.StatusText(code),
 			Error:      err.Error(),
 		})
+		if err != nil {
+			_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
+		}
 	} else {
 		http.Error(w, err.Error(), code)
 	}
 }
 
+// isErrNotFound returns true for IPLD errors that should return 4xx errors (e.g. the path doesn't exist, the data is
+// the wrong type, etc.), rather than issues with just finding and retrieving the data.
 func isErrNotFound(err error) bool {
+	if errors.Is(err, &resolver.ErrNoLink{}) || errors.Is(err, schema.ErrNoSuchField{}) {
+		return true
+	}
+
 	if ipld.IsNotFound(err) {
 		return true
 	}
@@ -185,12 +234,7 @@ func isErrNotFound(err error) bool {
 	// Checks if err is of a type that does not implement the .Is interface and
 	// cannot be directly compared to. Therefore, errors.Is cannot be used.
 	for {
-		_, ok := err.(resolver.ErrNoLink)
-		if ok {
-			return true
-		}
-
-		_, ok = err.(datamodel.ErrWrongKind)
+		_, ok := err.(datamodel.ErrWrongKind)
 		if ok {
 			return true
 		}
@@ -205,4 +249,11 @@ func isErrNotFound(err error) bool {
 			return false
 		}
 	}
+}
+
+// isErrContentBlocked returns true for content filtering system errors
+func isErrContentBlocked(err error) bool {
+	// TODO: we match error message to avoid pulling nopfs as a dependency
+	// Ref. https://github.com/ipfs-shipyard/nopfs/blob/cde3b5ba964c13e977f4a95f3bd8ca7d7710fbda/status.go#L87-L89
+	return strings.Contains(err.Error(), "blocked and cannot be provided")
 }

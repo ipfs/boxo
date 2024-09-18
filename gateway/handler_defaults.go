@@ -4,135 +4,168 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/textproto"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/ipfs/boxo/files"
 	mc "github.com/multiformats/go-multicodec"
 
-	ipath "github.com/ipfs/boxo/coreiface/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 )
 
-func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *http.Request, maybeResolvedImPath ImmutablePath, immutableContentPath ImmutablePath, contentPath ipath.Path, begin time.Time, requestedContentType string, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "Handler.ServeDefaults", trace.WithAttributes(attribute.String("path", contentPath.String())))
+func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeDefaults", trace.WithAttributes(attribute.String("path", rq.contentPath.String())))
 	defer span.End()
 
 	var (
-		pathMetadata           ContentPathMetadata
-		bytesResponse          files.File
-		isDirectoryHeadRequest bool
-		directoryMetadata      *directoryMetadata
-		err                    error
-		ranges                 []ByteRange
+		pathMetadata ContentPathMetadata
+		err          error
+		ranges       []ByteRange
+		headResp     *HeadResponse
+		getResp      *GetResponse
 	)
 
 	switch r.Method {
 	case http.MethodHead:
-		var data files.Node
-		pathMetadata, data, err = i.backend.Head(ctx, maybeResolvedImPath)
-		if !i.handleRequestErrors(w, r, contentPath, err) {
-			return false
+		pathMetadata, headResp, err = i.backend.Head(ctx, rq.mostlyResolvedPath())
+		if err != nil {
+			if isWebRequest(rq.responseFormat) {
+				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, rq.mostlyResolvedPath(), rq.immutablePath, rq.contentPath, err, rq.logger)
+				if !continueProcessing {
+					return false
+				}
+				pathMetadata, headResp, err = i.backend.Head(ctx, forwardedPath)
+				if err != nil {
+					err = fmt.Errorf("failed to resolve %s: %w", debugStr(rq.contentPath.String()), err)
+					i.webError(w, r, err, http.StatusInternalServerError)
+					return false
+				}
+			} else {
+				if !i.handleRequestErrors(w, r, rq.contentPath, err) {
+					return false
+				}
+			}
 		}
-		defer data.Close()
-		if _, ok := data.(files.Directory); ok {
-			isDirectoryHeadRequest = true
-		} else if f, ok := data.(files.File); ok {
-			bytesResponse = f
-		} else {
-			i.webError(w, r, fmt.Errorf("unsupported response type"), http.StatusInternalServerError)
-			return false
-		}
+		defer headResp.Close()
 	case http.MethodGet:
 		rangeHeader := r.Header.Get("Range")
 		if rangeHeader != "" {
 			// TODO: Add tests for range parsing
-			ranges, err = parseRange(rangeHeader)
+			ranges, err = parseRangeWithoutLength(rangeHeader)
 			if err != nil {
 				i.webError(w, r, fmt.Errorf("invalid range request: %w", err), http.StatusBadRequest)
 				return false
 			}
 		}
 
-		var getResp *GetResponse
 		// TODO: passing only resolved path here, instead of contentPath is
 		// harming content routing. Knowing original immutableContentPath will
-		// allow backend to find  providers for parents, even when internal
+		// allow backend to find providers for parents, even when internal
 		// CIDs are not announced, and will provide better key for caching
 		// related DAGs.
-		pathMetadata, getResp, err = i.backend.Get(ctx, maybeResolvedImPath, ranges...)
+		pathMetadata, getResp, err = i.backend.Get(ctx, rq.mostlyResolvedPath(), ranges...)
 		if err != nil {
-			if isWebRequest(requestedContentType) {
-				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, maybeResolvedImPath, immutableContentPath, contentPath, err, logger)
+			if isWebRequest(rq.responseFormat) {
+				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, rq.mostlyResolvedPath(), rq.immutablePath, rq.contentPath, err, rq.logger)
 				if !continueProcessing {
 					return false
 				}
 				pathMetadata, getResp, err = i.backend.Get(ctx, forwardedPath, ranges...)
 				if err != nil {
-					err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
+					err = fmt.Errorf("failed to resolve %s: %w", debugStr(rq.contentPath.String()), err)
 					i.webError(w, r, err, http.StatusInternalServerError)
 					return false
 				}
 			} else {
-				if !i.handleRequestErrors(w, r, contentPath, err) {
+				if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 					return false
 				}
 			}
 		}
-		if getResp.bytes != nil {
-			bytesResponse = getResp.bytes
-			defer bytesResponse.Close()
-		} else {
-			directoryMetadata = getResp.directoryMetadata
-		}
-
+		defer getResp.Close()
 	default:
 		// This shouldn't be possible to reach which is why it is a 500 rather than 4XX error
-		i.webError(w, r, fmt.Errorf("invalid method: cannot use this HTTP method with the given request"), http.StatusInternalServerError)
+		i.webError(w, r, errors.New("invalid method: cannot use this HTTP method with the given request"), http.StatusInternalServerError)
 		return false
 	}
 
-	// TODO: check if we have a bug when maybeResolvedImPath is resolved and i.setIpfsRootsHeader works with pathMetadata returned by Get(maybeResolvedImPath)
-	setIpfsRootsHeader(w, pathMetadata)
+	setIpfsRootsHeader(w, rq, &pathMetadata)
+
+	// On deserialized responses, we prefer Last-Modified from pathMetadata
+	// (mtime in UnixFS 1.5 DAG). This also applies to /ipns/, because value
+	// from dag-pb, if present, is more meaningful than lastMod inferred from
+	// namesys.
+	if !pathMetadata.ModTime.IsZero() {
+		rq.lastMod = pathMetadata.ModTime
+	}
 
 	resolvedPath := pathMetadata.LastSegment
-	switch mc.Code(resolvedPath.Cid().Prefix().Codec) {
+	switch mc.Code(resolvedPath.RootCid().Prefix().Codec) {
 	case mc.Json, mc.DagJson, mc.Cbor, mc.DagCbor:
-		if bytesResponse == nil { // This should never happen
-			i.webError(w, r, fmt.Errorf("decoding error: data not usable as a file"), http.StatusInternalServerError)
-			return false
+		rq.logger.Debugw("serving codec", "path", rq.contentPath)
+		var blockSize int64
+		var dataToRender io.ReadSeekCloser
+		if headResp != nil {
+			blockSize = headResp.bytesSize
+			dataToRender = nil
+		} else {
+			blockSize = getResp.bytesSize
+			dataAsReadSeekCloser, ok := getResp.bytes.(io.ReadSeekCloser)
+			if !ok {
+				i.webError(w, r, errors.New("expected returned non-UnixFS data to be seekable"), http.StatusInternalServerError)
+			}
+			dataToRender = dataAsReadSeekCloser
 		}
-		logger.Debugw("serving codec", "path", contentPath)
-		return i.renderCodec(r.Context(), w, r, resolvedPath, bytesResponse, contentPath, begin, requestedContentType)
+
+		return i.renderCodec(r.Context(), w, r, rq, blockSize, dataToRender)
 	default:
-		logger.Debugw("serving unixfs", "path", contentPath)
+		rq.logger.Debugw("serving unixfs", "path", rq.contentPath)
 		ctx, span := spanTrace(ctx, "Handler.ServeUnixFS", trace.WithAttributes(attribute.String("path", resolvedPath.String())))
 		defer span.End()
 
-		// Handling Unixfs file
-		if bytesResponse != nil {
-			logger.Debugw("serving unixfs file", "path", contentPath)
-			return i.serveFile(ctx, w, r, resolvedPath, contentPath, bytesResponse, pathMetadata.ContentType, begin)
+		// Handle UnixFS HEAD requests
+		if headResp != nil {
+			if headResp.isFile {
+				rq.logger.Debugw("serving unixfs file", "path", rq.contentPath)
+				return i.serveFile(ctx, w, r, resolvedPath, rq, headResp.bytesSize, headResp.startingBytes, false, true, pathMetadata.ContentType)
+			} else if headResp.isSymLink {
+				rq.logger.Debugw("serving unixfs file", "path", rq.contentPath)
+				return i.serveFile(ctx, w, r, resolvedPath, rq, headResp.bytesSize, nil, true, true, pathMetadata.ContentType)
+			} else if headResp.isDir {
+				rq.logger.Debugw("serving unixfs directory", "path", rq.contentPath)
+				return i.serveDirectory(ctx, w, r, resolvedPath, rq, true, nil, ranges)
+			}
+		} else {
+			if getResp.bytes != nil {
+				rq.logger.Debugw("serving unixfs file", "path", rq.contentPath)
+				rangeRequestStartsAtZero := true
+				if len(ranges) > 0 {
+					ra := ranges[0]
+					if ra.From != 0 {
+						rangeRequestStartsAtZero = false
+					}
+				}
+				return i.serveFile(ctx, w, r, resolvedPath, rq, getResp.bytesSize, getResp.bytes, false, rangeRequestStartsAtZero, pathMetadata.ContentType)
+			} else if getResp.symlink != nil {
+				rq.logger.Debugw("serving unixfs file", "path", rq.contentPath)
+				// Note: this ignores range requests against symlinks
+				return i.serveFile(ctx, w, r, resolvedPath, rq, getResp.bytesSize, getResp.symlink, true, true, pathMetadata.ContentType)
+			} else if getResp.directoryMetadata != nil {
+				rq.logger.Debugw("serving unixfs directory", "path", rq.contentPath)
+				return i.serveDirectory(ctx, w, r, resolvedPath, rq, false, getResp.directoryMetadata, ranges)
+			}
 		}
 
-		// Handling Unixfs directory
-		if directoryMetadata != nil || isDirectoryHeadRequest {
-			logger.Debugw("serving unixfs directory", "path", contentPath)
-			return i.serveDirectory(ctx, w, r, resolvedPath, contentPath, isDirectoryHeadRequest, directoryMetadata, ranges, begin, logger)
-		}
-
-		i.webError(w, r, fmt.Errorf("unsupported UnixFS type"), http.StatusInternalServerError)
+		i.webError(w, r, errors.New("unsupported UnixFS type"), http.StatusInternalServerError)
 		return false
 	}
 }
 
-// parseRange parses a Range header string as per RFC 7233.
-func parseRange(s string) ([]ByteRange, error) {
+// parseRangeWithoutLength parses a Range header string as per RFC 7233.
+func parseRangeWithoutLength(s string) ([]ByteRange, error) {
 	if s == "" {
 		return nil, nil // header not present
 	}

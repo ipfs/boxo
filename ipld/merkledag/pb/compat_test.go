@@ -8,14 +8,16 @@ import (
 	"testing"
 )
 
-var dataZero []byte = make([]byte, 0)
-var dataSome []byte = []byte{0, 1, 2, 3, 4}
-var cidBytes []byte = []byte{1, 85, 0, 5, 0, 1, 2, 3, 4}
-var zeroName string = ""
-var someName string = "some name"
-var zeroTsize uint64 = 0
-var someTsize uint64 = 1010
-var largeTsize uint64 = 9007199254740991 // JavaScript Number.MAX_SAFE_INTEGER
+var (
+	dataZero   []byte = make([]byte, 0)
+	dataSome   []byte = []byte{0, 1, 2, 3, 4}
+	cidBytes   []byte = []byte{1, 85, 0, 5, 0, 1, 2, 3, 4}
+	zeroName   string = ""
+	someName   string = "some name"
+	zeroTsize  uint64 = 0
+	someTsize  uint64 = 1010
+	largeTsize uint64 = 9007199254740991 // JavaScript Number.MAX_SAFE_INTEGER
+)
 
 type testCase struct {
 	name          string

@@ -2,8 +2,10 @@ package mfs
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"os"
 	"sync"
+	"time"
 
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
@@ -68,7 +70,7 @@ func (fi *File) Open(flags Flags) (_ FileDescriptor, _retErr error) {
 			}
 		}()
 	} else {
-		return nil, fmt.Errorf("file opened for neither reading nor writing")
+		return nil, errors.New("file opened for neither reading nor writing")
 	}
 
 	fi.nodeLock.RLock()
@@ -88,9 +90,9 @@ func (fi *File) Open(flags Flags) (_ FileDescriptor, _retErr error) {
 
 		switch fsn.Type() {
 		default:
-			return nil, fmt.Errorf("unsupported fsnode type for 'file'")
+			return nil, errors.New("unsupported fsnode type for 'file'")
 		case ft.TSymlink:
-			return nil, fmt.Errorf("symlinks not yet supported")
+			return nil, errors.New("symlinks not yet supported")
 		case ft.TFile, ft.TRaw:
 			// OK case
 		}
@@ -133,7 +135,7 @@ func (fi *File) Size() (int64, error) {
 	case *dag.RawNode:
 		return int64(len(nd.RawData())), nil
 	default:
-		return 0, fmt.Errorf("unrecognized node type in mfs/file.Size()")
+		return 0, errors.New("unrecognized node type in mfs/file.Size()")
 	}
 }
 
@@ -176,4 +178,102 @@ func (fi *File) Sync() error {
 // Type returns the type FSNode this is
 func (fi *File) Type() NodeType {
 	return TFile
+}
+
+func (fi *File) Mode() (os.FileMode, error) {
+	fi.nodeLock.RLock()
+	defer fi.nodeLock.RUnlock()
+
+	nd, err := fi.GetNode()
+	if err != nil {
+		return 0, err
+	}
+	fsn, err := ft.ExtractFSNode(nd)
+	if err != nil {
+		return 0, err
+	}
+	return fsn.Mode() & 0xFFF, nil
+}
+
+func (fi *File) SetMode(mode os.FileMode) error {
+	nd, err := fi.GetNode()
+	if err != nil {
+		return err
+	}
+
+	fsn, err := ft.ExtractFSNode(nd)
+	if err != nil {
+		if errors.Is(err, ft.ErrNotProtoNode) {
+			// Wrap raw node in protonode.
+			data := nd.RawData()
+			return fi.setNodeData(ft.FilePBDataWithStat(data, uint64(len(data)), mode, time.Time{}))
+		}
+		return err
+	}
+
+	fsn.SetMode(mode)
+	data, err := fsn.GetBytes()
+	if err != nil {
+		return err
+	}
+
+	return fi.setNodeData(data)
+}
+
+// ModTime returns the files' last modification time
+func (fi *File) ModTime() (time.Time, error) {
+	fi.nodeLock.RLock()
+	defer fi.nodeLock.RUnlock()
+
+	nd, err := fi.GetNode()
+	if err != nil {
+		return time.Time{}, err
+	}
+	fsn, err := ft.ExtractFSNode(nd)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return fsn.ModTime(), nil
+}
+
+// SetModTime sets the files' last modification time
+func (fi *File) SetModTime(ts time.Time) error {
+	nd, err := fi.GetNode()
+	if err != nil {
+		return err
+	}
+
+	fsn, err := ft.ExtractFSNode(nd)
+	if err != nil {
+		if errors.Is(err, ft.ErrNotProtoNode) {
+			// Wrap raw node in protonode.
+			data := nd.RawData()
+			return fi.setNodeData(ft.FilePBDataWithStat(data, uint64(len(data)), 0, ts))
+		}
+		return err
+	}
+
+	fsn.SetModTime(ts)
+	data, err := fsn.GetBytes()
+	if err != nil {
+		return err
+	}
+
+	return fi.setNodeData(data)
+}
+
+func (fi *File) setNodeData(data []byte) error {
+	nd := dag.NodeWithData(data)
+	err := fi.inode.dagService.Add(context.TODO(), nd)
+	if err != nil {
+		return err
+	}
+
+	fi.nodeLock.Lock()
+	defer fi.nodeLock.Unlock()
+	fi.node = nd
+	parent := fi.inode.parent
+	name := fi.inode.name
+
+	return parent.updateChildEntry(child{name, fi.node})
 }

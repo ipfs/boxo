@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestEmptyWantInfo(t *testing.T) {
@@ -15,7 +15,7 @@ func TestEmptyWantInfo(t *testing.T) {
 }
 
 func TestSetPeerBlockPresence(t *testing.T) {
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	wp := newWantInfo(newPeerResponseTracker())
 
 	wp.setPeerBlockPresence(peers[0], BPUnknown)
@@ -35,7 +35,7 @@ func TestSetPeerBlockPresence(t *testing.T) {
 }
 
 func TestSetPeerBlockPresenceBestLower(t *testing.T) {
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	wp := newWantInfo(newPeerResponseTracker())
 
 	wp.setPeerBlockPresence(peers[0], BPHave)
@@ -55,7 +55,7 @@ func TestSetPeerBlockPresenceBestLower(t *testing.T) {
 }
 
 func TestRemoveThenSetDontHave(t *testing.T) {
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	wp := newWantInfo(newPeerResponseTracker())
 
 	wp.setPeerBlockPresence(peers[0], BPUnknown)

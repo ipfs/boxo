@@ -5,25 +5,24 @@ import (
 	"net/http"
 	"time"
 
-	ipath "github.com/ipfs/boxo/coreiface/path"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // serveRawBlock returns bytes behind a raw block
-func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time) bool {
-	ctx, span := spanTrace(ctx, "Handler.ServeRawBlock", trace.WithAttributes(attribute.String("path", imPath.String())))
+func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeRawBlock", trace.WithAttributes(attribute.String("path", rq.immutablePath.String())))
 	defer span.End()
 
-	pathMetadata, data, err := i.backend.GetBlock(ctx, imPath)
-	if !i.handleRequestErrors(w, r, contentPath, err) {
+	pathMetadata, data, err := i.backend.GetBlock(ctx, rq.mostlyResolvedPath())
+	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 		return false
 	}
 	defer data.Close()
 
-	setIpfsRootsHeader(w, pathMetadata)
+	setIpfsRootsHeader(w, rq, &pathMetadata)
 
-	blockCid := pathMetadata.LastSegment.Cid()
+	blockCid := pathMetadata.LastSegment.RootCid()
 
 	// Set Content-Disposition
 	var name string
@@ -35,17 +34,27 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	setContentDispositionHeader(w, name, "attachment")
 
 	// Set remaining headers
-	modtime := addCacheControlHeaders(w, r, contentPath, blockCid, rawResponseFormat)
+	modtime := addCacheControlHeaders(w, r, rq.contentPath, rq.ttl, rq.lastMod, blockCid, rawResponseFormat)
 	w.Header().Set("Content-Type", rawResponseFormat)
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
 
+	sz, err := data.Size()
+	if err != nil {
+		i.handleRequestErrors(w, r, rq.contentPath, err)
+		return false
+	}
+
+	if !i.seekToStartOfFirstRange(w, r, data) {
+		return false
+	}
+
 	// ServeContent will take care of
 	// If-None-Match+Etag, Content-Length and range requests
-	_, dataSent, _ := serveContent(w, r, name, modtime, data)
+	_, dataSent, _ := serveContent(w, r, modtime, sz, data)
 
 	if dataSent {
 		// Update metrics
-		i.rawBlockGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		i.rawBlockGetMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 	}
 
 	return dataSent

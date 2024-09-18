@@ -2,12 +2,16 @@ package internal
 
 import (
 	"context"
-	"fmt"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 )
 
 func StartSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return otel.Tracer("go-bitswap").Start(ctx, fmt.Sprintf("Bitswap.%s", name), opts...)
+	return startSpan(ctx, "Bitswap.Client."+name, opts...)
+}
+
+// outline logic so the string concatenation can be inlined and executed at compile time
+func startSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	return otel.Tracer("go-bitswap").Start(ctx, name, opts...)
 }

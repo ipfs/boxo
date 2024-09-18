@@ -3,6 +3,8 @@ package unixfile
 import (
 	"context"
 	"errors"
+	"os"
+	"time"
 
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
@@ -21,6 +23,8 @@ type ufsDirectory struct {
 	dserv ipld.DAGService
 	dir   uio.Directory
 	size  int64
+	mode  os.FileMode
+	mtime time.Time
 }
 
 type ufsIterator struct {
@@ -118,12 +122,28 @@ func (d *ufsDirectory) Entries() files.DirIterator {
 	}
 }
 
+func (d *ufsDirectory) Mode() os.FileMode {
+	return d.mode
+}
+
+func (d *ufsDirectory) ModTime() time.Time {
+	return d.mtime
+}
+
 func (d *ufsDirectory) Size() (int64, error) {
 	return d.size, nil
 }
 
 type ufsFile struct {
 	uio.DagReader
+}
+
+func (f *ufsFile) Mode() os.FileMode {
+	return f.DagReader.Mode()
+}
+
+func (f *ufsFile) ModTime() time.Time {
+	return f.DagReader.ModTime()
 }
 
 func (f *ufsFile) Size() (int64, error) {
@@ -141,12 +161,19 @@ func newUnixfsDir(ctx context.Context, dserv ipld.DAGService, nd *dag.ProtoNode)
 		return nil, err
 	}
 
+	fsn, err := ft.FSNodeFromBytes(nd.Data())
+	if err != nil {
+		return nil, err
+	}
+
 	return &ufsDirectory{
 		ctx:   ctx,
 		dserv: dserv,
 
-		dir:  dir,
-		size: int64(size),
+		dir:   dir,
+		size:  int64(size),
+		mode:  fsn.Mode(),
+		mtime: fsn.ModTime(),
 	}, nil
 }
 
@@ -157,11 +184,12 @@ func NewUnixfsFile(ctx context.Context, dserv ipld.DAGService, nd ipld.Node) (fi
 		if err != nil {
 			return nil, err
 		}
+
 		if fsn.IsDir() {
 			return newUnixfsDir(ctx, dserv, dn)
 		}
 		if fsn.Type() == ft.TSymlink {
-			return files.NewLinkFile(string(fsn.Data()), nil), nil
+			return files.NewSymlinkFile(string(fsn.Data()), fsn.ModTime()), nil
 		}
 
 	case *dag.RawNode:
@@ -179,5 +207,7 @@ func NewUnixfsFile(ctx context.Context, dserv ipld.DAGService, nd ipld.Node) (fi
 	}, nil
 }
 
-var _ files.Directory = &ufsDirectory{}
-var _ files.File = &ufsFile{}
+var (
+	_ files.Directory = &ufsDirectory{}
+	_ files.File      = &ufsFile{}
+)

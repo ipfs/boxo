@@ -126,8 +126,8 @@ func (n *network) SendMessage(
 	ctx context.Context,
 	from peer.ID,
 	to peer.ID,
-	mes bsmsg.BitSwapMessage) error {
-
+	mes bsmsg.BitSwapMessage,
+) error {
 	mes = mes.Clone()
 
 	n.mu.Lock()
@@ -213,6 +213,7 @@ func (nc *networkClient) PeerConnected(p peer.ID) {
 		v.PeerConnected(p)
 	}
 }
+
 func (nc *networkClient) PeerDisconnected(p peer.ID) {
 	for _, v := range nc.receivers {
 		v.PeerDisconnected(p)
@@ -236,7 +237,8 @@ func (nc *networkClient) Latency(p peer.ID) time.Duration {
 func (nc *networkClient) SendMessage(
 	ctx context.Context,
 	to peer.ID,
-	message bsmsg.BitSwapMessage) error {
+	message bsmsg.BitSwapMessage,
+) error {
 	if err := nc.network.SendMessage(ctx, nc.local, to, message); err != nil {
 		return err
 	}

@@ -18,8 +18,10 @@ import (
 	"go.uber.org/zap"
 )
 
-var log = logging.Logger("bitswap")
-var sflog = log.Desugar()
+var (
+	log   = logging.Logger("bitswap/client/msgq")
+	sflog = log.Desugar()
+)
 
 const (
 	defaultRebroadcastInterval = 30 * time.Second
@@ -240,8 +242,8 @@ func newMessageQueue(
 	maxValidLatency time.Duration,
 	dhTimeoutMgr DontHaveTimeoutManager,
 	clock clock.Clock,
-	events chan messageEvent) *MessageQueue {
-
+	events chan messageEvent,
+) *MessageQueue {
 	ctx, cancel := context.WithCancel(ctx)
 	return &MessageQueue{
 		ctx:                 ctx,

@@ -5,13 +5,8 @@ package client
 import (
 	"context"
 	"errors"
-
 	"sync"
 	"time"
-
-	delay "github.com/ipfs/go-ipfs-delay"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 
 	bsbpm "github.com/ipfs/boxo/bitswap/client/internal/blockpresencemanager"
 	bsgetter "github.com/ipfs/boxo/bitswap/client/internal/getter"
@@ -33,27 +28,37 @@ import (
 	exchange "github.com/ipfs/boxo/exchange"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
 	process "github.com/jbenet/goprocess"
 	procctx "github.com/jbenet/goprocess/context"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
-var log = logging.Logger("bitswap-client")
+var log = logging.Logger("bitswap/client")
 
 // Option defines the functional option type that can be used to configure
 // bitswap instances
 type Option func(*Client)
 
-// ProviderSearchDelay overwrites the global provider search delay
+// ProviderSearchDelay sets the initial dely before triggering a provider
+// search to find more peers and broadcast the want list. It also partially
+// controls re-broadcasts delay when the session idles (does not receive any
+// blocks), but these have back-off logic to increase the interval. See
+// [defaults.ProvSearchDelay] for the default.
 func ProviderSearchDelay(newProvSearchDelay time.Duration) Option {
 	return func(bs *Client) {
 		bs.provSearchDelay = newProvSearchDelay
 	}
 }
 
-// RebroadcastDelay overwrites the global provider rebroadcast delay
+// RebroadcastDelay sets a custom delay for periodic search of a random want.
+// When the value ellapses, a random CID from the wantlist is chosen and the
+// client attempts to find more peers for it and sends them the single want.
+// [defaults.RebroadcastDelay] for the default.
 func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
 	return func(bs *Client) {
 		bs.rebroadcastDelay = newRebroadcastDelay
@@ -78,6 +83,19 @@ func WithTracer(tap tracer.Tracer) Option {
 func WithBlockReceivedNotifier(brn BlockReceivedNotifier) Option {
 	return func(bs *Client) {
 		bs.blockReceivedNotifier = brn
+	}
+}
+
+// WithoutDuplicatedBlockStats disable collecting counts of duplicated blocks
+// received. This counter requires triggering a blockstore.Has() call for
+// every block received by launching goroutines in parallel. In the worst case
+// (no caching/blooms etc), this is an expensive call for the datastore to
+// answer. In a normal case (caching), this has the power of evicting a
+// different block from intermediary caches. In the best case, it doesn't
+// affect performance. Use if this stat is not relevant.
+func WithoutDuplicatedBlockStats() Option {
+	return func(bs *Client) {
+		bs.skipDuplicatedBlocksStats = true
 	}
 }
 
@@ -134,7 +152,8 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		notif notifications.PubSub,
 		provSearchDelay time.Duration,
 		rebroadcastDelay delay.D,
-		self peer.ID) bssm.Session {
+		self peer.ID,
+	) bssm.Session {
 		return bssession.New(sessctx, sessmgr, id, spm, pqm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
@@ -156,7 +175,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		dupMetric:                  bmetrics.DupHist(ctx),
 		allMetric:                  bmetrics.AllHist(ctx),
 		provSearchDelay:            defaults.ProvSearchDelay,
-		rebroadcastDelay:           delay.Fixed(time.Minute),
+		rebroadcastDelay:           delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout: true,
 	}
 
@@ -227,6 +246,9 @@ type Client struct {
 
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
+
+	// dupMetric will stay at 0
+	skipDuplicatedBlocksStats bool
 }
 
 type counters struct {
@@ -239,6 +261,7 @@ type counters struct {
 
 // GetBlock attempts to retrieve a particular block from peers within the
 // deadline enforced by the context.
+// It returns a [github.com/ipfs/boxo/bitswap/client/traceability.Block] assertable [blocks.Block].
 func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error) {
 	ctx, span := internal.StartSpan(ctx, "GetBlock", trace.WithAttributes(attribute.String("Key", k.String())))
 	defer span.End()
@@ -248,6 +271,7 @@ func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
 // GetBlocks returns a channel where the caller may receive blocks that
 // correspond to the provided |keys|. Returns an error if BitSwap is unable to
 // begin this request within the deadline enforced by the context.
+// It returns a [github.com/ipfs/boxo/bitswap/client/traceability.Block] assertable [blocks.Block].
 //
 // NB: Your request remains open until the context expires. To conserve
 // resources, provide a context with a reasonably short deadline (ie. not one
@@ -284,7 +308,8 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 	// Publish the block to any Bitswap clients that had requested blocks.
 	// (the sessions use this pubsub mechanism to inform clients of incoming
 	// blocks)
-	bs.notif.Publish(blks...)
+	var zero peer.ID
+	bs.notif.Publish(zero, blks...)
 
 	return nil
 }
@@ -325,7 +350,7 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	// (the sessions use this pubsub mechanism to inform clients of incoming
 	// blocks)
 	for _, b := range wanted {
-		bs.notif.Publish(b)
+		bs.notif.Publish(from, b)
 	}
 
 	for _, b := range wanted {
@@ -371,14 +396,17 @@ func (bs *Client) updateReceiveCounters(blocks []blocks.Block) {
 	// Check which blocks are in the datastore
 	// (Note: any errors from the blockstore are simply logged out in
 	// blockstoreHas())
-	blocksHas := bs.blockstoreHas(blocks)
+	var blocksHas []bool
+	if !bs.skipDuplicatedBlocksStats {
+		blocksHas = bs.blockstoreHas(blocks)
+	}
 
 	bs.counterLk.Lock()
 	defer bs.counterLk.Unlock()
 
 	// Do some accounting for each block
 	for i, b := range blocks {
-		has := blocksHas[i]
+		has := (blocksHas != nil) && blocksHas[i]
 
 		blkLen := len(b.RawData())
 		bs.allMetric.Observe(float64(blkLen))
@@ -471,7 +499,7 @@ func (bs *Client) IsOnline() bool {
 // block requests in a row. The session returned will have it's own GetBlocks
 // method, but the session will use the fact that the requests are related to
 // be more efficient in its requests to peers. If you are using a session
-// from go-blockservice, it will create a bitswap session automatically.
+// from blockservice, it will create a bitswap session automatically.
 func (bs *Client) NewSession(ctx context.Context) exchange.Fetcher {
 	ctx, span := internal.StartSpan(ctx, "NewSession")
 	defer span.End()

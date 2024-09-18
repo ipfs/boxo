@@ -28,8 +28,10 @@ import (
 
 var provideKeysBufferSize = 2048
 
-var log = logging.Logger("bitswap-server")
-var sflog = log.Desugar()
+var (
+	log   = logging.Logger("bitswap/server")
+	sflog = log.Desugar()
+)
 
 const provideWorkerMax = 6
 
@@ -154,6 +156,14 @@ func WithTaskComparator(comparator decision.TaskComparator) Option {
 // Configures the engine to use the given score decision logic.
 func WithScoreLedger(scoreLedger decision.ScoreLedger) Option {
 	o := decision.WithScoreLedger(scoreLedger)
+	return func(bs *Server) {
+		bs.engineOptions = append(bs.engineOptions, o)
+	}
+}
+
+// WithPeerLedger configures the engine with a custom [decision.PeerLedger].
+func WithPeerLedger(peerLedger decision.PeerLedger) Option {
+	o := decision.WithPeerLedger(peerLedger)
 	return func(bs *Server) {
 		bs.engineOptions = append(bs.engineOptions, o)
 	}
@@ -396,7 +406,7 @@ func (bs *Server) Stat() (Stat, error) {
 	peers := bs.engine.Peers()
 	peersStr := make([]string, len(peers))
 	for i, p := range peers {
-		peersStr[i] = p.Pretty()
+		peersStr[i] = p.String()
 	}
 	sort.Strings(peersStr)
 	s.Peers = peersStr
@@ -545,11 +555,12 @@ func (*Server) ReceiveError(err error) {
 	log.Infof("Bitswap Client ReceiveError: %s", err)
 	// TODO log the network error
 	// TODO bubble the network error up to the parent context/error logger
-
 }
+
 func (bs *Server) PeerConnected(p peer.ID) {
 	bs.engine.PeerConnected(p)
 }
+
 func (bs *Server) PeerDisconnected(p peer.ID) {
 	bs.engine.PeerDisconnected(p)
 }

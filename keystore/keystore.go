@@ -1,12 +1,11 @@
 package keystore
 
 import (
-	"fmt"
+	"encoding/base32"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"encoding/base32"
 
 	logging "github.com/ipfs/go-log/v2"
 	ci "github.com/libp2p/go-libp2p/core/crypto"
@@ -32,10 +31,10 @@ type Keystore interface {
 }
 
 // ErrNoSuchKey is an error message returned when no key of a given name was found.
-var ErrNoSuchKey = fmt.Errorf("no key by the given name was found")
+var ErrNoSuchKey = errors.New("no key by the given name was found")
 
 // ErrKeyExists is an error message returned when a key already exists
-var ErrKeyExists = fmt.Errorf("key by that name already exists, refusing to overwrite")
+var ErrKeyExists = errors.New("key by that name already exists, refusing to overwrite")
 
 const keyFilenamePrefix = "key_"
 
@@ -46,7 +45,7 @@ type FSKeystore struct {
 
 // NewFSKeystore returns a new filesystem-backed keystore.
 func NewFSKeystore(dir string) (*FSKeystore, error) {
-	err := os.Mkdir(dir, 0700)
+	err := os.Mkdir(dir, 0o700)
 	switch {
 	case os.IsExist(err):
 	case err == nil:
@@ -87,7 +86,7 @@ func (ks *FSKeystore) Put(name string, k ci.PrivKey) error {
 
 	kp := filepath.Join(ks.dir, name)
 
-	fi, err := os.OpenFile(kp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0400)
+	fi, err := os.OpenFile(kp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o400)
 	if err != nil {
 		if os.IsExist(err) {
 			err = ErrKeyExists
@@ -162,7 +161,7 @@ func (ks *FSKeystore) List() ([]string, error) {
 
 func encode(name string) (string, error) {
 	if name == "" {
-		return "", fmt.Errorf("key name must be at least one character")
+		return "", errors.New("key name must be at least one character")
 	}
 
 	encodedName := codec.EncodeToString([]byte(name))
@@ -173,7 +172,7 @@ func encode(name string) (string, error) {
 
 func decode(name string) (string, error) {
 	if !strings.HasPrefix(name, keyFilenamePrefix) {
-		return "", fmt.Errorf("key's filename has unexpected format")
+		return "", errors.New("key's filename has unexpected format")
 	}
 
 	nameWithoutPrefix := strings.ToUpper(name[len(keyFilenamePrefix):])

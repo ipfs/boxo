@@ -3,188 +3,213 @@ package path
 
 import (
 	"fmt"
-	"path"
+	gopath "path"
 	"strings"
 
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 )
 
-// A Path represents an ipfs content path:
-//   - <cid>/path/to/file
-//   - /ipfs/<cid>
-//   - /ipns/<cid>/path/to/folder
-//   - etc
-type Path string
+const (
+	IPFSNamespace = "ipfs"
+	IPNSNamespace = "ipns"
+	IPLDNamespace = "ipld"
+)
 
-// ^^^
-// TODO: debate making this a private struct wrapped in a public interface
-// would allow us to control creation, and cache segments.
+// Path is a generic, valid, and well-formed path. A valid path is shaped as follows:
+//
+//	/{namespace}/{root}[/remaining/path]
+//
+// Where:
+//
+//  1. Namespace is "ipfs", "ipld", or "ipns".
+//  2. If namespace is "ipfs" or "ipld", "root" must be a valid [cid.Cid].
+//  3. If namespace is "ipns", "root" may be a [ipns.Name] or a [DNSLink] FQDN.
+//
+// [DNSLink]: https://dnslink.dev/
+type Path interface {
+	// String returns the path as a string.
+	String() string
 
-// FromString safely converts a string type to a Path type.
-func FromString(s string) Path {
-	return Path(s)
+	// Namespace returns the first component of the path. For example, the namespace
+	// of "/ipfs/bafy" is "ipfs".
+	Namespace() string
+
+	// Mutable returns false if the data under this path's namespace is guaranteed to not change.
+	Mutable() bool
+
+	// Segments returns the different elements of a path delimited by a forward
+	// slash ("/"). The returned array must not contain any empty segments, and
+	// must have a length of at least two: the first element must be the namespace,
+	// and the second must be root.
+	//
+	// Examples:
+	// 		- "/ipld/bafkqaaa" returns ["ipld", "bafkqaaa"]
+	// 		- "/ipfs/bafkqaaa/a/b/" returns ["ipfs", "bafkqaaa", "a", "b"]
+	// 		- "/ipns/dnslink.net" returns ["ipns", "dnslink.net"]
+	Segments() []string
 }
 
-// FromCid safely converts a cid.Cid type to a Path type.
-func FromCid(c cid.Cid) Path {
-	return Path("/ipfs/" + c.String())
+var _ Path = path{}
+
+type path struct {
+	str       string
+	namespace string
 }
 
-// Segments returns the different elements of a path
-// (elements are delimited by a /).
-func (p Path) Segments() []string {
-	cleaned := path.Clean(string(p))
-	segments := strings.Split(cleaned, "/")
+func (p path) String() string {
+	return p.str
+}
 
-	// Ignore leading slash
-	if len(segments[0]) == 0 {
-		segments = segments[1:]
+func (p path) Namespace() string {
+	return p.namespace
+}
+
+func (p path) Mutable() bool {
+	return p.Namespace() != IPFSNamespace && p.Namespace() != IPLDNamespace
+}
+
+func (p path) Segments() []string {
+	return StringToSegments(p.str)
+}
+
+// ImmutablePath is a [Path] which is guaranteed to have an immutable [Namespace].
+type ImmutablePath struct {
+	path    Path
+	rootCid cid.Cid
+}
+
+var _ Path = ImmutablePath{}
+
+func NewImmutablePath(p Path) (ImmutablePath, error) {
+	if p.Mutable() {
+		return ImmutablePath{}, &ErrInvalidPath{err: ErrExpectedImmutable, path: p.String()}
 	}
 
-	return segments
-}
-
-// String converts a path to string.
-func (p Path) String() string {
-	return string(p)
-}
-
-// IsJustAKey returns true if the path is of the form <key> or /ipfs/<key>, or
-// /ipld/<key>
-func (p Path) IsJustAKey() bool {
-	parts := p.Segments()
-	return len(parts) == 2 && (parts[0] == "ipfs" || parts[0] == "ipld")
-}
-
-// PopLastSegment returns a new Path without its final segment, and the final
-// segment, separately. If there is no more to pop (the path is just a key),
-// the original path is returned.
-func (p Path) PopLastSegment() (Path, string, error) {
-
-	if p.IsJustAKey() {
-		return p, "", nil
-	}
-
-	segs := p.Segments()
-	newPath, err := ParsePath("/" + strings.Join(segs[:len(segs)-1], "/"))
+	segments := p.Segments()
+	cid, err := cid.Decode(segments[1])
 	if err != nil {
-		return "", "", err
+		return ImmutablePath{}, &ErrInvalidPath{err: err, path: p.String()}
 	}
 
-	return newPath, segs[len(segs)-1], nil
+	return ImmutablePath{path: p, rootCid: cid}, nil
 }
 
-// FromSegments returns a path given its different segments.
-func FromSegments(prefix string, seg ...string) (Path, error) {
-	return ParsePath(prefix + strings.Join(seg, "/"))
+func (ip ImmutablePath) String() string {
+	return ip.path.String()
 }
 
-// ParsePath returns a well-formed ipfs Path.
-// The returned path will always be prefixed with /ipfs/ or /ipns/.
-// The prefix will be added if not present in the given string.
-// This function will return an error when the given string is
-// not a valid ipfs path.
-func ParsePath(txt string) (Path, error) {
-	parts := strings.Split(txt, "/")
-	if len(parts) == 1 {
-		kp, err := ParseCidToPath(txt)
-		if err == nil {
-			return kp, nil
-		}
+func (ip ImmutablePath) Namespace() string {
+	return ip.path.Namespace()
+}
+
+func (ip ImmutablePath) Mutable() bool {
+	return false
+}
+
+func (ip ImmutablePath) Segments() []string {
+	return ip.path.Segments()
+}
+
+func (ip ImmutablePath) RootCid() cid.Cid {
+	return ip.rootCid
+}
+
+// FromCid returns a new "/ipfs" path with the provided CID.
+func FromCid(cid cid.Cid) ImmutablePath {
+	return ImmutablePath{
+		path: path{
+			str:       fmt.Sprintf("/%s/%s", IPFSNamespace, cid.String()),
+			namespace: IPFSNamespace,
+		},
+		rootCid: cid,
+	}
+}
+
+// NewPath takes the given string and returns a well-formed and sanitized [Path].
+// The given string is cleaned through [gopath.Clean], but preserving the final
+// trailing slash. This function returns an error when the given string is not
+// a valid content path.
+func NewPath(str string) (Path, error) {
+	segments := StringToSegments(str)
+
+	// Shortest valid path is "/{namespace}/{root}". That yields at least two
+	// segments: ["{namespace}" "{root}"]. Therefore, here we check if the original
+	// string begins with "/" (any path must), if we have at least two segments, and if
+	// the root is non-empty. The namespace is checked further below.
+	if !strings.HasPrefix(str, "/") || len(segments) < 2 || segments[1] == "" {
+		return nil, &ErrInvalidPath{err: ErrInsufficientComponents, path: str}
 	}
 
-	// if the path doesnt begin with a '/'
-	// we expect this to start with a hash, and be an 'ipfs' path
-	if parts[0] != "" {
-		if _, err := decodeCid(parts[0]); err != nil {
-			return "", &ErrInvalidPath{error: err, path: txt}
-		}
-		// The case when the path starts with hash without a protocol prefix
-		return Path("/ipfs/" + txt), nil
+	cleaned := SegmentsToString(segments...)
+	if strings.HasSuffix(str, "/") {
+		// Do not forget to preserve the trailing slash!
+		cleaned += "/"
 	}
 
-	if len(parts) < 3 {
-		return "", &ErrInvalidPath{error: fmt.Errorf("invalid ipfs path"), path: txt}
-	}
-
-	//TODO: make this smarter
-	switch parts[1] {
-	case "ipfs", "ipld":
-		if parts[2] == "" {
-			return "", &ErrInvalidPath{error: fmt.Errorf("not enough path components"), path: txt}
-		}
-		// Validate Cid.
-		_, err := decodeCid(parts[2])
+	switch segments[0] {
+	case IPFSNamespace, IPLDNamespace:
+		cid, err := cid.Decode(segments[1])
 		if err != nil {
-			return "", &ErrInvalidPath{error: fmt.Errorf("invalid CID: %w", err), path: txt}
+			return nil, &ErrInvalidPath{err: err, path: str}
 		}
+
+		return ImmutablePath{
+			path: path{
+				str:       cleaned,
+				namespace: segments[0],
+			},
+			rootCid: cid,
+		}, nil
 	case "ipns":
-		if parts[2] == "" {
-			return "", &ErrInvalidPath{error: fmt.Errorf("not enough path components"), path: txt}
-		}
+		return path{
+			str:       cleaned,
+			namespace: segments[0],
+		}, nil
 	default:
-		return "", &ErrInvalidPath{error: fmt.Errorf("unknown namespace %q", parts[1]), path: txt}
+		return nil, &ErrInvalidPath{err: fmt.Errorf("%w: %q", ErrUnknownNamespace, segments[0]), path: str}
 	}
-
-	return Path(txt), nil
 }
 
-// ParseCidToPath takes a CID in string form and returns a valid ipfs Path.
-func ParseCidToPath(txt string) (Path, error) {
-	if txt == "" {
-		return "", &ErrInvalidPath{error: fmt.Errorf("empty"), path: txt}
-	}
-
-	c, err := decodeCid(txt)
-	if err != nil {
-		return "", &ErrInvalidPath{error: err, path: txt}
-	}
-
-	return FromCid(c), nil
+// NewPathFromSegments creates a new [Path] from the provided segments. This
+// function simply calls [NewPath] internally with the segments concatenated
+// using a forward slash "/" as separator. Please see [Path.Segments] for more
+// information about how segments must be structured.
+func NewPathFromSegments(segments ...string) (Path, error) {
+	return NewPath(SegmentsToString(segments...))
 }
 
-// IsValid checks if a path is a valid ipfs Path.
-func (p *Path) IsValid() error {
-	_, err := ParsePath(p.String())
-	return err
+// Join joins a [Path] with certain segments and returns a new [Path].
+func Join(p Path, segments ...string) (Path, error) {
+	s := p.Segments()
+	s = append(s, segments...)
+	return NewPathFromSegments(s...)
 }
 
-// Join joins strings slices using /
-func Join(pths []string) string {
-	return strings.Join(pths, "/")
+// SegmentsToString converts an array of segments into a string. The returned string
+// will always be prefixed with a "/" if there are any segments. For example, if the
+// given segments array is ["foo", "bar"], the returned value will be "/foo/bar".
+// Given an empty array, an empty string is returned.
+func SegmentsToString(segments ...string) string {
+	str := strings.Join(segments, "/")
+	if str != "" {
+		str = "/" + str
+	}
+	return str
 }
 
-// SplitList splits strings usings /
-func SplitList(pth string) []string {
-	return strings.Split(pth, "/")
-}
-
-// SplitAbsPath clean up and split fpath. It extracts the first component (which
-// must be a Multihash) and return it separately.
-func SplitAbsPath(fpath Path) (cid.Cid, []string, error) {
-	parts := fpath.Segments()
-	if parts[0] == "ipfs" || parts[0] == "ipld" {
-		parts = parts[1:]
+// StringToSegments converts a string into an array of segments. This function follows
+// the rules of [Path.Segments]: the path is first cleaned through [gopath.Clean] and
+// no empty segments are returned.
+func StringToSegments(str string) []string {
+	str = gopath.Clean(str)
+	if str == "." {
+		return nil
 	}
-
-	// if nothing, bail.
-	if len(parts) == 0 {
-		return cid.Cid{}, nil, &ErrInvalidPath{error: fmt.Errorf("empty"), path: string(fpath)}
+	// Trim slashes from beginning and end, such that we do not return empty segments.
+	str = strings.TrimSuffix(str, "/")
+	str = strings.TrimPrefix(str, "/")
+	if str == "" {
+		return nil
 	}
-
-	c, err := decodeCid(parts[0])
-	// first element in the path is a cid
-	if err != nil {
-		return cid.Cid{}, nil, &ErrInvalidPath{error: fmt.Errorf("invalid CID: %w", err), path: string(fpath)}
-	}
-
-	return c, parts[1:], nil
-}
-
-func decodeCid(cstr string) (cid.Cid, error) {
-	c, err := cid.Decode(cstr)
-	if err != nil && len(cstr) == 46 && cstr[:2] == "qm" { // https://github.com/ipfs/go-ipfs/issues/7792
-		return cid.Cid{}, fmt.Errorf("%v (possible lowercased CIDv0; consider converting to a case-agnostic CIDv1, such as base32)", err)
-	}
-	return c, err
+	return strings.Split(str, "/")
 }

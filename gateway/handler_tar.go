@@ -6,34 +6,32 @@ import (
 	"net/http"
 	"time"
 
-	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/files"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 )
 
 var unixEpochTime = time.Unix(0, 0)
 
-func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, imPath ImmutablePath, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "Handler.ServeTAR", trace.WithAttributes(attribute.String("path", imPath.String())))
+func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeTAR", trace.WithAttributes(attribute.String("path", rq.immutablePath.String())))
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Get Unixfs file (or directory)
-	pathMetadata, file, err := i.backend.GetAll(ctx, imPath)
-	if !i.handleRequestErrors(w, r, contentPath, err) {
+	pathMetadata, file, err := i.backend.GetAll(ctx, rq.mostlyResolvedPath())
+	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 		return false
 	}
 	defer file.Close()
 
-	setIpfsRootsHeader(w, pathMetadata)
-	rootCid := pathMetadata.LastSegment.Cid()
+	setIpfsRootsHeader(w, rq, &pathMetadata)
+	rootCid := pathMetadata.LastSegment.RootCid()
 
 	// Set Cache-Control and read optional Last-Modified time
-	modtime := addCacheControlHeaders(w, r, contentPath, rootCid, tarResponseFormat)
+	modtime := addCacheControlHeaders(w, r, rq.contentPath, rq.ttl, rq.lastMod, rootCid, tarResponseFormat)
 
 	// Set Content-Disposition
 	var name string
@@ -65,7 +63,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	// The TAR has a top-level directory (or file) named by the CID.
 	if err := tarw.WriteFile(file, rootCid.String()); err != nil {
 		// Update fail metric
-		i.tarStreamFailMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		i.tarStreamFailMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 
 		w.Header().Set("X-Stream-Error", err.Error())
 		// Trailer headers do not work in web browsers
@@ -79,6 +77,6 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 
 	// Update metrics
-	i.tarStreamGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+	i.tarStreamGetMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 	return true
 }

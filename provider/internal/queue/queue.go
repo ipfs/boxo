@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -64,7 +65,7 @@ func (q *Queue) Enqueue(cid cid.Cid) error {
 	case q.enqueue <- cid:
 		return nil
 	case <-q.ctx.Done():
-		return fmt.Errorf("failed to enqueue CID: shutting down")
+		return errors.New("failed to enqueue CID: shutting down")
 	}
 }
 
@@ -130,7 +131,6 @@ func (q *Queue) worker() {
 			}
 		case dequeue <- c:
 			err := q.ds.Delete(q.ctx, k)
-
 			if err != nil {
 				log.Errorf("Failed to delete queued cid %s with key %s: %s", c, k, err)
 				continue

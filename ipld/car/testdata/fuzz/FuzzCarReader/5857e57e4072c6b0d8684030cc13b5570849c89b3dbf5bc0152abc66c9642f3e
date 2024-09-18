@@ -1,2 +1,0 @@
-go test fuzz v1
-[]byte(":\xa2eroots\x81\xd80X%\x00\x0100 00000000000000000000000000000000gversion\x01\x010")

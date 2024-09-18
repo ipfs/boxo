@@ -1,4 +1,4 @@
-//go:build darwin || linux || netbsd || openbsd
+//go:build darwin || linux || netbsd || openbsd || freebsd || dragonfly || js || wasip1
 
 package files
 

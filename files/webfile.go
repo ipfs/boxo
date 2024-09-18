@@ -7,7 +7,15 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
+	"time"
 )
+
+// the HTTP Response header that provides the last modified timestamp
+const LastModifiedHeaderName = "Last-Modified"
+
+// the HTTP Response header that provides the unix file mode
+const FileModeHeaderName = "File-Mode"
 
 // WebFile is an implementation of File which reads it
 // from a Web URL (http). A GET request will be performed
@@ -16,6 +24,16 @@ type WebFile struct {
 	body          io.ReadCloser
 	url           *url.URL
 	contentLength int64
+	mode          os.FileMode
+	mtime         time.Time
+}
+
+func (wf *WebFile) Mode() os.FileMode {
+	return wf.mode
+}
+
+func (wf *WebFile) ModTime() time.Time {
+	return wf.mtime
 }
 
 // NewWebFile creates a WebFile with the given URL, which
@@ -38,8 +56,24 @@ func (wf *WebFile) start() error {
 		}
 		wf.body = resp.Body
 		wf.contentLength = resp.ContentLength
+		wf.getResponseMetaData(resp)
 	}
 	return nil
+}
+
+func (wf *WebFile) getResponseMetaData(resp *http.Response) {
+	ts := resp.Header.Get(LastModifiedHeaderName)
+	if ts != "" {
+		if mtime, err := time.Parse(time.RFC1123, ts); err == nil {
+			wf.mtime = mtime
+		}
+	}
+	md := resp.Header.Get(FileModeHeaderName)
+	if md != "" {
+		if mode, err := strconv.ParseInt(md, 8, 32); err == nil {
+			wf.mode = os.FileMode(mode)
+		}
+	}
 }
 
 // Read reads the File from it's web location. On the first
@@ -85,5 +119,7 @@ func (wf *WebFile) Stat() os.FileInfo {
 	return nil
 }
 
-var _ File = &WebFile{}
-var _ FileInfo = &WebFile{}
+var (
+	_ File     = &WebFile{}
+	_ FileInfo = &WebFile{}
+)

@@ -16,9 +16,9 @@ jobs:
         shell: bash
     steps:
       - name: Setup Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
-          go-version: 1.19.1
+          go-version: 1.22.x
       - name: Checkout boxo
         uses: actions/checkout@v3
         with:
@@ -30,14 +30,10 @@ jobs:
           path: kubo
       - name: Install Missing Tools
         run: sudo apt install -y socat net-tools fish libxml2-utils
-      - name: Restore Go Cache
-        uses: protocol/cache-go-action@v1
-        with:
-          name: ${{ github.job }}
       - name: Replace boxo in Kubo go.mod
         run: |
           go mod edit -replace=github.com/ipfs/boxo=../boxo
-          go mod tidy
+          make mod_tidy
           cat go.mod
         working-directory: kubo
       - name: Install sharness dependencies

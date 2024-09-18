@@ -1,6 +1,7 @@
 package merkledag
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -75,6 +76,7 @@ func fromImmutableNode(encoded *immutableProtoNode) *ProtoNode {
 	// serialized form needs to be stable, until we start mutating the ProtoNode
 	return n
 }
+
 func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
 	links := n.Links()
 	nd, err := qp.BuildMap(dagpb.Type.PBNode, 2, func(ma ipld.MapAssembler) {
@@ -198,7 +200,7 @@ func DecodeProtobuf(encoded []byte) (*ProtoNode, error) {
 func DecodeProtobufBlock(b blocks.Block) (format.Node, error) {
 	c := b.Cid()
 	if c.Type() != cid.DagProtobuf {
-		return nil, fmt.Errorf("this function can only decode protobuf nodes")
+		return nil, errors.New("this function can only decode protobuf nodes")
 	}
 
 	decnd, err := DecodeProtobuf(b.RawData())

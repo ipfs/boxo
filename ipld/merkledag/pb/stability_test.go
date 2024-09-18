@@ -20,5 +20,4 @@ func TestStability(t *testing.T) {
 		t.Logf("%q", d)
 		t.Fatal("protobuf not stable")
 	}
-
 }

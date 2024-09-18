@@ -5,11 +5,13 @@ import (
 	"io"
 	"testing"
 
-	util "github.com/ipfs/boxo/util"
+	random "github.com/ipfs/go-test/random"
 )
 
 func testBuzhashChunking(t *testing.T, buf []byte) (chunkCount int) {
-	n, err := util.NewTimeSeededRand().Read(buf)
+	t.Parallel()
+
+	n, err := random.NewRand().Read(buf)
 	if n < len(buf) {
 		t.Fatalf("expected %d bytes, got %d", len(buf), n)
 	}
@@ -88,4 +90,14 @@ func TestBuzhashBitsHashBias(t *testing.T) {
 			t.Errorf("Bit balance in position %d broken, %d ones", i, c)
 		}
 	}
+}
+
+func FuzzBuzhashChunking(f *testing.F) {
+	f.Add(make([]byte, 1024*1024*16))
+	f.Fuzz(func(t *testing.T, b []byte) {
+		if len(b) < buzMin {
+			return
+		}
+		testBuzhashChunking(t, b)
+	})
 }

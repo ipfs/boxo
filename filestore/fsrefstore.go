@@ -205,8 +205,10 @@ func (f *FileManager) readFileDataObj(m mh.Multihash, d *pb.DataObj) ([]byte, er
 	}
 
 	if !origCid.Equals(outcid) {
-		return nil, &CorruptReferenceError{StatusFileChanged,
-			fmt.Errorf("data in file did not match. %s offset %d", d.GetFilePath(), d.GetOffset())}
+		return nil, &CorruptReferenceError{
+			StatusFileChanged,
+			fmt.Errorf("data in file did not match. %s offset %d", d.GetFilePath(), d.GetOffset()),
+		}
 	}
 
 	return outbuf, nil
@@ -230,8 +232,10 @@ func (f *FileManager) readURLDataObj(ctx context.Context, m mh.Multihash, d *pb.
 		return nil, &CorruptReferenceError{StatusFileError, err}
 	}
 	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusPartialContent {
-		return nil, &CorruptReferenceError{StatusFileError,
-			fmt.Errorf("expected HTTP 200 or 206 got %d", res.StatusCode)}
+		return nil, &CorruptReferenceError{
+			StatusFileError,
+			fmt.Errorf("expected HTTP 200 or 206 got %d", res.StatusCode),
+		}
 	}
 
 	outbuf := make([]byte, d.GetSize_())
@@ -252,8 +256,10 @@ func (f *FileManager) readURLDataObj(ctx context.Context, m mh.Multihash, d *pb.
 	}
 
 	if !origCid.Equals(outcid) {
-		return nil, &CorruptReferenceError{StatusFileChanged,
-			fmt.Errorf("data in file did not match. %s offset %d", d.GetFilePath(), d.GetOffset())}
+		return nil, &CorruptReferenceError{
+			StatusFileChanged,
+			fmt.Errorf("data in file did not match. %s offset %d", d.GetFilePath(), d.GetOffset()),
+		}
 	}
 
 	return outbuf, nil

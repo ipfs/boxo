@@ -22,8 +22,10 @@ import (
 
 var logger = logging.Logger("filestore")
 
-var ErrFilestoreNotEnabled = errors.New("filestore is not enabled, see https://git.io/vNItf")
-var ErrUrlstoreNotEnabled = errors.New("urlstore is not enabled")
+var (
+	ErrFilestoreNotEnabled = errors.New("filestore is not enabled, see https://git.io/vNItf")
+	ErrUrlstoreNotEnabled  = errors.New("urlstore is not enabled")
+)
 
 // Filestore implements a Blockstore by combining a standard Blockstore
 // to store regular blocks and a special Blockstore called

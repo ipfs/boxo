@@ -12,6 +12,7 @@ type Time struct{ time.Time }
 func (t *Time) MarshalJSON() ([]byte, error) {
 	return drjson.MarshalJSONBytes(t.Time.UnixMilli())
 }
+
 func (t *Time) UnmarshalJSON(b []byte) error {
 	var timestamp int64
 	err := json.Unmarshal(b, &timestamp)

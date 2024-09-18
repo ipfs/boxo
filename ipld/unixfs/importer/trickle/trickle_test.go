@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	mrand "math/rand"
+	"runtime"
 	"testing"
+	"time"
 
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	h "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
@@ -15,8 +17,8 @@ import (
 	chunker "github.com/ipfs/boxo/chunker"
 	merkledag "github.com/ipfs/boxo/ipld/merkledag"
 	mdtest "github.com/ipfs/boxo/ipld/merkledag/test"
-	u "github.com/ipfs/boxo/util"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-test/random"
 )
 
 type UseRawLeaves bool
@@ -27,8 +29,10 @@ const (
 )
 
 func runBothSubtests(t *testing.T, tfunc func(*testing.T, UseRawLeaves)) {
-	t.Run("leaves=ProtoBuf", func(t *testing.T) { tfunc(t, ProtoBufLeaves) })
-	t.Run("leaves=Raw", func(t *testing.T) { tfunc(t, RawLeaves) })
+	t.Parallel()
+
+	t.Run("leaves=ProtoBuf", func(t *testing.T) { t.Parallel(); tfunc(t, ProtoBufLeaves) })
+	t.Run("leaves=Raw", func(t *testing.T) { t.Parallel(); tfunc(t, RawLeaves) })
 }
 
 func buildTestDag(ds ipld.DAGService, spl chunker.Splitter, rawLeaves UseRawLeaves) (*merkledag.ProtoNode, error) {
@@ -38,6 +42,10 @@ func buildTestDag(ds ipld.DAGService, spl chunker.Splitter, rawLeaves UseRawLeav
 		RawLeaves: bool(rawLeaves),
 	}
 
+	return buildTestDagWithParams(ds, spl, dbp)
+}
+
+func buildTestDagWithParams(ds ipld.DAGService, spl chunker.Splitter, dbp h.DagBuilderParams) (*merkledag.ProtoNode, error) {
 	db, err := dbp.New(spl)
 	if err != nil {
 		return nil, err
@@ -57,7 +65,7 @@ func buildTestDag(ds ipld.DAGService, spl chunker.Splitter, rawLeaves UseRawLeav
 		Getter:      ds,
 		Direct:      dbp.Maxlinks,
 		LayerRepeat: depthRepeat,
-		RawLeaves:   bool(rawLeaves),
+		RawLeaves:   dbp.RawLeaves,
 	})
 }
 
@@ -88,7 +96,7 @@ func dup(b []byte) []byte {
 
 func testFileConsistency(t *testing.T, bs chunker.SplitterGen, nbytes int, rawLeaves UseRawLeaves) {
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -118,9 +126,10 @@ func TestBuilderConsistency(t *testing.T) {
 }
 
 func testBuilderConsistency(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := 100000
+	const nbytes = 100000
 	buf := new(bytes.Buffer)
-	io.CopyN(buf, u.NewTimeSeededRand(), int64(nbytes))
+	io.CopyN(buf, random.NewRand(), int64(nbytes))
+
 	should := dup(buf.Bytes())
 	dagserv := mdtest.Mock()
 	nd, err := buildTestDag(dagserv, chunker.DefaultSplitter(buf), rawLeaves)
@@ -161,9 +170,9 @@ func TestIndirectBlocks(t *testing.T) {
 
 func testIndirectBlocks(t *testing.T, rawLeaves UseRawLeaves) {
 	splitter := chunker.SizeSplitterGen(512)
-	nbytes := 1024 * 1024
+	const nbytes = 1024 * 1024
 	buf := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(buf)
+	random.NewRand().Read(buf)
 
 	read := bytes.NewReader(buf)
 
@@ -193,9 +202,9 @@ func TestSeekingBasic(t *testing.T) {
 }
 
 func testSeekingBasic(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(10 * 1024)
+	const nbytes = 10 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -234,9 +243,9 @@ func TestSeekToBegin(t *testing.T) {
 }
 
 func testSeekToBegin(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(10 * 1024)
+	const nbytes = 10 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -282,9 +291,9 @@ func TestSeekToAlmostBegin(t *testing.T) {
 }
 
 func testSeekToAlmostBegin(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(10 * 1024)
+	const nbytes = 10 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -330,9 +339,9 @@ func TestSeekEnd(t *testing.T) {
 }
 
 func testSeekEnd(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(50 * 1024)
+	const nbytes = 50 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -360,9 +369,9 @@ func TestSeekEndSingleBlockFile(t *testing.T) {
 }
 
 func testSeekEndSingleBlockFile(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(100)
+	const nbytes = 100
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -390,9 +399,9 @@ func TestSeekingStress(t *testing.T) {
 }
 
 func testSeekingStress(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(1024 * 1024)
+	const nbytes = 1024 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -431,7 +440,6 @@ func testSeekingStress(t *testing.T, rawLeaves UseRawLeaves) {
 			t.Fatal(err)
 		}
 	}
-
 }
 
 func TestSeekingConsistency(t *testing.T) {
@@ -439,9 +447,9 @@ func TestSeekingConsistency(t *testing.T) {
 }
 
 func testSeekingConsistency(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(128 * 1024)
+	const nbytes = 128 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -457,7 +465,7 @@ func testSeekingConsistency(t *testing.T, rawLeaves UseRawLeaves) {
 
 	out := make([]byte, nbytes)
 
-	for coff := nbytes - 4096; coff >= 0; coff -= 4096 {
+	for coff := int64(nbytes - 4096); coff >= 0; coff -= 4096 {
 		t.Log(coff)
 		n, err := rs.Seek(coff, io.SeekStart)
 		if err != nil {
@@ -486,9 +494,9 @@ func TestAppend(t *testing.T) {
 }
 
 func testAppend(t *testing.T, rawLeaves UseRawLeaves) {
-	nbytes := int64(128 * 1024)
+	const nbytes = 128 * 1024
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	// Reader for half the bytes
 	read := bytes.NewReader(should[:nbytes/2])
@@ -553,9 +561,9 @@ func testMultipleAppends(t *testing.T, rawLeaves UseRawLeaves) {
 	ds := mdtest.Mock()
 
 	// TODO: fix small size appends and make this number bigger
-	nbytes := int64(1000)
+	const nbytes = 1000
 	should := make([]byte, nbytes)
-	u.NewTimeSeededRand().Read(should)
+	random.NewRand().Read(should)
 
 	read := bytes.NewReader(nil)
 	nd, err := buildTestDag(ds, chunker.NewSizeSplitter(read, 500), rawLeaves)
@@ -612,6 +620,8 @@ func testMultipleAppends(t *testing.T, rawLeaves UseRawLeaves) {
 }
 
 func TestAppendSingleBytesToEmpty(t *testing.T) {
+	t.Parallel()
+
 	ds := mdtest.Mock()
 
 	data := []byte("AB")
@@ -662,5 +672,113 @@ func TestAppendSingleBytesToEmpty(t *testing.T) {
 	err = arrComp(out, data)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAppendWithModTime(t *testing.T) {
+	const nbytes = 128 * 1024
+
+	timestamp := time.Now()
+	buf := random.Bytes(nbytes)
+
+	nd := new(merkledag.ProtoNode)
+	nd.SetData(ft.FilePBDataWithStat(buf[:nbytes/2], nbytes/2, 0, timestamp))
+
+	if runtime.GOOS == "windows" {
+		time.Sleep(3 * time.Second) // for os with low-res mod time.
+	}
+
+	dbp := &h.DagBuilderParams{
+		Dagserv:  mdtest.Mock(),
+		Maxlinks: h.DefaultLinksPerBlock,
+	}
+
+	r := bytes.NewReader(buf[nbytes/2:])
+	db, err := dbp.New(chunker.NewSizeSplitter(r, 500))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nd2, err := Append(context.Background(), nd, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fsn, _ := ft.ExtractFSNode(nd2)
+
+	if !fsn.ModTime().After(timestamp) {
+		t.Errorf("expected modification time to be updated")
+	}
+
+}
+
+func TestAppendToEmptyWithModTime(t *testing.T) {
+	timestamp := time.Now()
+	nd := new(merkledag.ProtoNode)
+	nd.SetData(ft.FilePBDataWithStat(nil, 0, 0, timestamp))
+
+	if runtime.GOOS == "windows" {
+		time.Sleep(3 * time.Second) // for os with low-res mod time.
+	}
+
+	dbp := &h.DagBuilderParams{
+		Dagserv:  mdtest.Mock(),
+		Maxlinks: h.DefaultLinksPerBlock,
+	}
+
+	db, err := dbp.New(chunker.DefaultSplitter(bytes.NewReader([]byte("test"))))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nd2, err := Append(context.Background(), nd, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fsn, _ := ft.ExtractFSNode(nd2)
+
+	if !fsn.ModTime().After(timestamp) {
+		t.Errorf("expected modification time to be updated")
+	}
+}
+
+func TestMetadata(t *testing.T) {
+	runBothSubtests(t, testMetadata)
+}
+
+func testMetadata(t *testing.T, rawLeaves UseRawLeaves) {
+	const nbytes = 3 * chunker.DefaultBlockSize
+	buf := new(bytes.Buffer)
+	_, err := io.CopyN(buf, random.NewRand(), nbytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dagserv := mdtest.Mock()
+	dbp := h.DagBuilderParams{
+		Dagserv:     dagserv,
+		Maxlinks:    h.DefaultLinksPerBlock,
+		RawLeaves:   bool(rawLeaves),
+		FileMode:    0522,
+		FileModTime: time.Unix(1638111600, 76552),
+	}
+
+	nd, err := buildTestDagWithParams(dagserv, chunker.DefaultSplitter(buf), dbp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dr, err := uio.NewDagReader(context.Background(), nd, dagserv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !dr.ModTime().Equal(dbp.FileModTime) {
+		t.Errorf("got modtime %v, wanted %v", dr.ModTime(), dbp.FileModTime)
+	}
+
+	if dr.Mode() != dbp.FileMode {
+		t.Errorf("got filemode %o, wanted %o", dr.Mode(), dbp.FileMode)
 	}
 }

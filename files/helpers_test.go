@@ -2,7 +2,9 @@ package files
 
 import (
 	"io"
+	"os"
 	"testing"
+	"time"
 )
 
 type Kind int
@@ -18,6 +20,8 @@ type Event struct {
 	kind  Kind
 	name  string
 	value string
+	mode  os.FileMode
+	mtime time.Time
 }
 
 func CheckDir(t *testing.T, dir Directory, expected []Event) {
@@ -48,6 +52,14 @@ func CheckDir(t *testing.T, dir Directory, expected []Event) {
 
 			if it.Name() != next.name {
 				t.Fatalf("[%d] expected filename to be %q", i, next.name)
+			}
+
+			if next.mode != 0 && it.Node().Mode()&os.ModePerm != next.mode {
+				t.Fatalf("[%d] expected mode for '%s' to be %O, got %O", i, it.Name(), next.mode, it.Node().Mode())
+			}
+
+			if !next.mtime.IsZero() && !it.Node().ModTime().Equal(next.mtime) {
+				t.Fatalf("[%d] expected modification time for '%s' to be %q", i, it.Name(), next.mtime)
 			}
 
 			switch next.kind {

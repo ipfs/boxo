@@ -2,6 +2,7 @@ package keystore
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -140,7 +141,6 @@ func TestKeystoreBasics(t *testing.T) {
 
 func TestInvalidKeyFiles(t *testing.T) {
 	tdir, err := os.MkdirTemp("", "keystore-test")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,12 +164,12 @@ func TestInvalidKeyFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = os.WriteFile(filepath.Join(ks.dir, encodedName), bytes, 0644)
+	err = os.WriteFile(filepath.Join(ks.dir, encodedName), bytes, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = os.WriteFile(filepath.Join(ks.dir, "z.invalid"), bytes, 0644)
+	err = os.WriteFile(filepath.Join(ks.dir, "z.invalid"), bytes, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func assertGetKey(ks Keystore, name string, exp ci.PrivKey) error {
 	}
 
 	if !outK.Equals(exp) {
-		return fmt.Errorf("key we got out didn't match expectation")
+		return errors.New("key we got out didn't match expectation")
 	}
 
 	return nil
@@ -259,12 +259,12 @@ func assertDirContents(dir string, exp []string) error {
 	sort.Strings(names)
 	sort.Strings(exp)
 	if len(names) != len(exp) {
-		return fmt.Errorf("directory had wrong number of entries in it")
+		return errors.New("directory had wrong number of entries in it")
 	}
 
 	for i, v := range names {
 		if v != exp[i] {
-			return fmt.Errorf("had wrong entry in directory")
+			return errors.New("had wrong entry in directory")
 		}
 	}
 	return nil

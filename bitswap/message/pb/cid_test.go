@@ -11,7 +11,7 @@ import (
 )
 
 func TestCID(t *testing.T) {
-	var expected = [...]byte{
+	expected := [...]byte{
 		10, 34, 18, 32, 195, 171,
 		143, 241, 55, 32, 232, 173,
 		144, 71, 221, 57, 70, 107,

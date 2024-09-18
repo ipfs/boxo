@@ -1,7 +1,7 @@
 package hamt
 
 import (
-	"fmt"
+	"errors"
 	"math/bits"
 
 	"github.com/ipfs/boxo/ipld/unixfs/internal"
@@ -33,7 +33,7 @@ func mkmask(n int) byte {
 // error if there aren't enough bits.
 func (hb *hashBits) Next(i int) (int, error) {
 	if hb.consumed+i > len(hb.b)*8 {
-		return 0, fmt.Errorf("sharded directory too deep")
+		return 0, errors.New("sharded directory too deep")
 	}
 	return hb.next(i), nil
 }
@@ -64,11 +64,11 @@ func (hb *hashBits) next(i int) int {
 
 func Logtwo(v int) (int, error) {
 	if v <= 0 {
-		return 0, fmt.Errorf("hamt size should be a power of two")
+		return 0, errors.New("hamt size should be a power of two")
 	}
 	lg2 := bits.TrailingZeros(uint(v))
 	if 1<<uint(lg2) != v {
-		return 0, fmt.Errorf("hamt size should be a power of two")
+		return 0, errors.New("hamt size should be a power of two")
 	}
 	return lg2, nil
 }

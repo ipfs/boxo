@@ -71,7 +71,6 @@ func TestResponseBodyLimitedTransport(t *testing.T) {
 			} else {
 				assert.Contains(t, err.Error(), c.expErr)
 			}
-
 		})
 	}
 }

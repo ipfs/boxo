@@ -4,8 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
-	"github.com/ipfs/boxo/internal/test"
+	"github.com/ipfs/go-test/random"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -79,9 +78,7 @@ func (fpt *fakePeerTagger) isProtected(p peer.ID) bool {
 }
 
 func TestAddPeers(t *testing.T) {
-	test.Flaky(t)
-
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	spm := New(1, &fakePeerTagger{})
 
 	isNew := spm.AddPeer(peers[0])
@@ -101,9 +98,7 @@ func TestAddPeers(t *testing.T) {
 }
 
 func TestRemovePeers(t *testing.T) {
-	test.Flaky(t)
-
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	spm := New(1, &fakePeerTagger{})
 
 	existed := spm.RemovePeer(peers[0])
@@ -129,9 +124,7 @@ func TestRemovePeers(t *testing.T) {
 }
 
 func TestHasPeers(t *testing.T) {
-	test.Flaky(t)
-
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	spm := New(1, &fakePeerTagger{})
 
 	if spm.HasPeers() {
@@ -160,9 +153,7 @@ func TestHasPeers(t *testing.T) {
 }
 
 func TestHasPeer(t *testing.T) {
-	test.Flaky(t)
-
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	spm := New(1, &fakePeerTagger{})
 
 	if spm.HasPeer(peers[0]) {
@@ -190,9 +181,7 @@ func TestHasPeer(t *testing.T) {
 }
 
 func TestPeers(t *testing.T) {
-	test.Flaky(t)
-
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	spm := New(1, &fakePeerTagger{})
 
 	if len(spm.Peers()) > 0 {
@@ -216,9 +205,7 @@ func TestPeers(t *testing.T) {
 }
 
 func TestPeersDiscovered(t *testing.T) {
-	test.Flaky(t)
-
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	spm := New(1, &fakePeerTagger{})
 
 	if spm.PeersDiscovered() {
@@ -237,9 +224,7 @@ func TestPeersDiscovered(t *testing.T) {
 }
 
 func TestPeerTagging(t *testing.T) {
-	test.Flaky(t)
-
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	fpt := &fakePeerTagger{}
 	spm := New(1, fpt)
 
@@ -265,9 +250,7 @@ func TestPeerTagging(t *testing.T) {
 }
 
 func TestProtectConnection(t *testing.T) {
-	test.Flaky(t)
-
-	peers := testutil.GeneratePeers(1)
+	peers := random.Peers(1)
 	peerA := peers[0]
 	fpt := newFakePeerTagger()
 	spm := New(1, fpt)
@@ -293,9 +276,7 @@ func TestProtectConnection(t *testing.T) {
 }
 
 func TestShutdown(t *testing.T) {
-	test.Flaky(t)
-
-	peers := testutil.GeneratePeers(2)
+	peers := random.Peers(2)
 	fpt := newFakePeerTagger()
 	spm := New(1, fpt)
 

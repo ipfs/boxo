@@ -39,7 +39,7 @@ var DefaultConfig = Config{
 		"github.com/ipfs/go-ipfs-routing":                "github.com/ipfs/boxo/routing",
 		"github.com/ipfs/go-ipfs-exchange-interface":     "github.com/ipfs/boxo/exchange",
 		"github.com/ipfs/go-merkledag":                   "github.com/ipfs/boxo/ipld/merkledag",
-		"github.com/ipld/go-car":                         "github.com/ipfs/boxo/ipld/car",
+		"github.com/boxo/ipld/car":                       "github.com/ipld/go-car",
 
 		// Pre Boxo rename
 		"github.com/ipfs/go-libipfs/gateway":               "github.com/ipfs/boxo/gateway",

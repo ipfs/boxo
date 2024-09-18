@@ -59,6 +59,10 @@ func WithScoreLedger(scoreLedger server.ScoreLedger) Option {
 	return Option{server.WithScoreLedger(scoreLedger)}
 }
 
+func WithPeerLedger(peerLedger server.PeerLedger) Option {
+	return Option{server.WithPeerLedger(peerLedger)}
+}
+
 func WithTargetMessageSize(tms int) Option {
 	return Option{server.WithTargetMessageSize(tms)}
 }
@@ -77,6 +81,14 @@ func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
 
 func SetSimulateDontHavesOnTimeout(send bool) Option {
 	return Option{client.SetSimulateDontHavesOnTimeout(send)}
+}
+
+func WithBlockReceivedNotifier(brn client.BlockReceivedNotifier) Option {
+	return Option{client.WithBlockReceivedNotifier(brn)}
+}
+
+func WithoutDuplicatedBlockStats() Option {
+	return Option{client.WithoutDuplicatedBlockStats()}
 }
 
 func WithTracer(tap tracer.Tracer) Option {

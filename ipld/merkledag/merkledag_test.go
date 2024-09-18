@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -22,10 +23,10 @@ import (
 	bserv "github.com/ipfs/boxo/blockservice"
 	bstest "github.com/ipfs/boxo/blockservice/test"
 	offline "github.com/ipfs/boxo/exchange/offline"
-	u "github.com/ipfs/boxo/util"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-test/random"
 	prime "github.com/ipld/go-ipld-prime"
 	mh "github.com/multiformats/go-multihash"
 )
@@ -263,7 +264,6 @@ func TestLinkChecking(t *testing.T) {
 }
 
 func TestNode(t *testing.T) {
-
 	n1 := NodeWithData([]byte("beep"))
 	n2 := NodeWithData([]byte("boop"))
 	n3 := NodeWithData([]byte("beep boop"))
@@ -353,7 +353,7 @@ func (devZero) Read(b []byte) (int, error) {
 }
 
 func TestBatchFetch(t *testing.T) {
-	read := io.LimitReader(u.NewTimeSeededRand(), 1024*32)
+	read := io.LimitReader(random.NewRand(), 1024*32)
 	runBatchFetchTest(t, read)
 }
 
@@ -513,7 +513,7 @@ func TestFetchGraph(t *testing.T) {
 		dservs = append(dservs, NewDAGService(bsi))
 	}
 
-	read := io.LimitReader(u.NewTimeSeededRand(), 1024*32)
+	read := io.LimitReader(random.NewRand(), 1024*32)
 	root := makeTestDAG(t, read, dservs[0])
 
 	err := FetchGraph(context.TODO(), root.Cid(), dservs[1])
@@ -572,7 +572,6 @@ func TestFetchGraphWithDepthLimit(t *testing.T) {
 				return true
 			}
 			return false
-
 		}
 
 		err = WalkDepth(context.Background(), offlineDS.GetLinks, root.Cid(), visitF)
@@ -596,7 +595,7 @@ func TestWalk(t *testing.T) {
 	bsi := bstest.Mocks(1)
 	ds := NewDAGService(bsi[0])
 
-	read := io.LimitReader(u.NewTimeSeededRand(), 1024*1024)
+	read := io.LimitReader(random.NewRand(), 1024*1024)
 	root := makeTestDAG(t, read, ds)
 
 	set := cid.NewSet()
@@ -756,7 +755,6 @@ func TestGetRawNodes(t *testing.T) {
 }
 
 func TestProtoNodeResolve(t *testing.T) {
-
 	nd := new(ProtoNode)
 	nd.SetLinks([]*ipld.Link{{Name: "foo", Cid: someCid}})
 
@@ -1223,7 +1221,7 @@ func mkNodeWithChildren(getChild func() *ProtoNode, width int) *ProtoNode {
 
 	for i := 0; i < width; i++ {
 		c := getChild()
-		if err := cur.AddNodeLink(fmt.Sprint(i), c); err != nil {
+		if err := cur.AddNodeLink(strconv.Itoa(i), c); err != nil {
 			panic(err)
 		}
 	}

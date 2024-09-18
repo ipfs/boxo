@@ -24,6 +24,7 @@ package hamt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -143,11 +144,11 @@ func NewHamtFromDag(dserv ipld.DAGService, nd ipld.Node) (*Shard, error) {
 	}
 
 	if fsn.Type() != format.THAMTShard {
-		return nil, fmt.Errorf("node was not a dir shard")
+		return nil, errors.New("node was not a dir shard")
 	}
 
 	if fsn.HashType() != HashMurmur3 {
-		return nil, fmt.Errorf("only murmur3 supported as hash function")
+		return nil, errors.New("only murmur3 supported as hash function")
 	}
 
 	size := int(fsn.Fanout())
@@ -458,7 +459,7 @@ func (ds *Shard) walkChildren(processLinkValues func(formattedLink *ipld.Link) e
 			case shardLink:
 				res.cids = append(res.cids, lnk.Cid)
 			default:
-				return nil, fmt.Errorf("unsupported shard link type")
+				return nil, errors.New("unsupported shard link type")
 			}
 
 		} else {
@@ -942,11 +943,11 @@ func (s *childer) each(ctx context.Context, cb func(*Shard) error) error {
 
 func (s *childer) check(sliceIndex int) error {
 	if sliceIndex >= len(s.children) || sliceIndex < 0 {
-		return fmt.Errorf("invalid index passed to operate children (likely corrupt bitfield)")
+		return errors.New("invalid index passed to operate children (likely corrupt bitfield)")
 	}
 
 	if len(s.children) != len(s.links) {
-		return fmt.Errorf("inconsistent lengths between children array and Links array")
+		return errors.New("inconsistent lengths between children array and Links array")
 	}
 
 	return nil

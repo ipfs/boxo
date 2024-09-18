@@ -21,7 +21,7 @@ func testBloomCached(ctx context.Context, bs Blockstore) (*bloomcache, error) {
 		ctx = context.Background()
 	}
 	opts := DefaultCacheOpts()
-	opts.HasARCCacheSize = 0
+	opts.HasTwoQueueCacheSize = 0
 	bbs, err := CachedBlockstore(ctx, bs, opts)
 	if err == nil {
 		return bbs.(*bloomcache), nil
@@ -93,6 +93,7 @@ func TestReturnsErrorWhenSizeNegative(t *testing.T) {
 		t.Fail()
 	}
 }
+
 func TestHasIsBloomCached(t *testing.T) {
 	cd := &callbackDatastore{f: func() {}, ds: ds.NewMapDatastore()}
 	bs := NewBlockstore(syncds.MutexWrap(cd))

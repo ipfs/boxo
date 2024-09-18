@@ -1,6 +1,7 @@
 package files
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -57,7 +58,7 @@ func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
 		if c != "" {
 			continue
 		}
-		if err := os.MkdirAll(path, 0777); err != nil {
+		if err := os.MkdirAll(path, 0o777); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -67,7 +68,7 @@ func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
 		if c == "" {
 			continue
 		}
-		if err := os.WriteFile(path, []byte(c), 0666); err != nil {
+		if err := os.WriteFile(path, []byte(c), 0o666); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -125,22 +126,22 @@ testInputs:
 		// root node.
 		if path == "" {
 			if rootFound {
-				return fmt.Errorf("found root twice")
+				return errors.New("found root twice")
 			}
 			if sf != nd {
-				return fmt.Errorf("wrong root")
+				return errors.New("wrong root")
 			}
 			rootFound = true
 			return nil
 		}
 		actualPaths = append(actualPaths, path)
 		if !hidden && isFullPathHidden(path) {
-			return fmt.Errorf("found a hidden file")
+			return errors.New("found a hidden file")
 		}
 		components := filepath.SplitList(path)
 		for i := range components {
 			if fileFilter.Rules.MatchesPath(filepath.Join(components[:i+1]...)) {
-				return fmt.Errorf("found a file that should be excluded")
+				return errors.New("found a file that should be excluded")
 			}
 		}
 
@@ -152,7 +153,7 @@ testInputs:
 
 		switch nd := nd.(type) {
 		case *Symlink:
-			return fmt.Errorf("didn't expect a symlink")
+			return errors.New("didn't expect a symlink")
 		case Directory:
 			if data != "" {
 				return fmt.Errorf("expected a directory at %q", path)

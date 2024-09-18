@@ -12,7 +12,7 @@ import (
 type CacheOpts struct {
 	HasBloomFilterSize   int // 1 byte
 	HasBloomFilterHashes int // No size, 7 is usually best, consult bloom papers
-	HasARCCacheSize      int // 32 bytes
+	HasTwoQueueCacheSize int // 32 bytes
 }
 
 // DefaultCacheOpts returns a CacheOpts initialized with default values.
@@ -20,20 +20,21 @@ func DefaultCacheOpts() CacheOpts {
 	return CacheOpts{
 		HasBloomFilterSize:   512 << 10,
 		HasBloomFilterHashes: 7,
-		HasARCCacheSize:      64 << 10,
+		HasTwoQueueCacheSize: 64 << 10,
 	}
 }
 
-// CachedBlockstore returns a blockstore wrapped in an ARCCache and
+// CachedBlockstore returns a blockstore wrapped in an TwoQueueCache and
 // then in a bloom filter cache, if the options indicate it.
 func CachedBlockstore(
 	ctx context.Context,
 	bs Blockstore,
-	opts CacheOpts) (cbs Blockstore, err error) {
+	opts CacheOpts,
+) (cbs Blockstore, err error) {
 	cbs = bs
 
 	if opts.HasBloomFilterSize < 0 || opts.HasBloomFilterHashes < 0 ||
-		opts.HasARCCacheSize < 0 {
+		opts.HasTwoQueueCacheSize < 0 {
 		return nil, errors.New("all options for cache need to be greater than zero")
 	}
 
@@ -43,8 +44,8 @@ func CachedBlockstore(
 
 	ctx = metrics.CtxSubScope(ctx, "bs.cache")
 
-	if opts.HasARCCacheSize > 0 {
-		cbs, err = newARCCachedBS(ctx, cbs, opts.HasARCCacheSize)
+	if opts.HasTwoQueueCacheSize > 0 {
+		cbs, err = newTwoQueueCachedBS(ctx, cbs, opts.HasTwoQueueCacheSize)
 	}
 	if opts.HasBloomFilterSize != 0 {
 		// *8 because of bytes to bits conversion

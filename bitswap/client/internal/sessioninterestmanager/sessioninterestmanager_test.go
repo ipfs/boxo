@@ -3,18 +3,15 @@ package sessioninterestmanager
 import (
 	"testing"
 
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
-	"github.com/ipfs/boxo/internal/test"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestEmpty(t *testing.T) {
-	test.Flaky(t)
-
 	sim := New()
 
-	ses := uint64(1)
-	cids := testutil.GenerateCids(2)
+	const ses = 1
+	cids := random.Cids(2)
 	res := sim.FilterSessionInterested(ses, cids)
 	if len(res) != 1 || len(res[0]) > 0 {
 		t.Fatal("Expected no interest")
@@ -25,14 +22,12 @@ func TestEmpty(t *testing.T) {
 }
 
 func TestBasic(t *testing.T) {
-	test.Flaky(t)
-
 	sim := New()
 
-	ses1 := uint64(1)
-	ses2 := uint64(2)
-	cids1 := testutil.GenerateCids(2)
-	cids2 := append(testutil.GenerateCids(1), cids1[1])
+	const ses1 = 1
+	const ses2 = 2
+	cids1 := random.Cids(2)
+	cids2 := append(random.Cids(1), cids1[1])
 	sim.RecordSessionInterest(ses1, cids1)
 
 	res := sim.FilterSessionInterested(ses1, cids1)
@@ -62,12 +57,10 @@ func TestBasic(t *testing.T) {
 }
 
 func TestInterestedSessions(t *testing.T) {
-	test.Flaky(t)
-
 	sim := New()
 
-	ses := uint64(1)
-	cids := testutil.GenerateCids(3)
+	const ses = 1
+	cids := random.Cids(3)
 	sim.RecordSessionInterest(ses, cids[0:2])
 
 	if len(sim.InterestedSessions(cids, []cid.Cid{}, []cid.Cid{})) != 1 {
@@ -91,14 +84,12 @@ func TestInterestedSessions(t *testing.T) {
 }
 
 func TestRemoveSession(t *testing.T) {
-	test.Flaky(t)
-
 	sim := New()
 
-	ses1 := uint64(1)
-	ses2 := uint64(2)
-	cids1 := testutil.GenerateCids(2)
-	cids2 := append(testutil.GenerateCids(1), cids1[1])
+	const ses1 = 1
+	const ses2 = 2
+	cids1 := random.Cids(2)
+	cids2 := append(random.Cids(1), cids1[1])
 	sim.RecordSessionInterest(ses1, cids1)
 	sim.RecordSessionInterest(ses2, cids2)
 	sim.RemoveSession(ses1)
@@ -121,14 +112,12 @@ func TestRemoveSession(t *testing.T) {
 }
 
 func TestRemoveSessionInterested(t *testing.T) {
-	test.Flaky(t)
-
 	sim := New()
 
-	ses1 := uint64(1)
-	ses2 := uint64(2)
-	cids1 := testutil.GenerateCids(2)
-	cids2 := append(testutil.GenerateCids(1), cids1[1])
+	const ses1 = uint64(1)
+	const ses2 = uint64(2)
+	cids1 := random.Cids(2)
+	cids2 := append(random.Cids(1), cids1[1])
 	sim.RecordSessionInterest(ses1, cids1)
 	sim.RecordSessionInterest(ses2, cids2)
 
@@ -159,12 +148,10 @@ func TestRemoveSessionInterested(t *testing.T) {
 }
 
 func TestSplitWantedUnwanted(t *testing.T) {
-	test.Flaky(t)
-
-	blks := testutil.GenerateBlocksOfSize(3, 1024)
+	blks := random.BlocksOfSize(3, 1024)
 	sim := New()
-	ses1 := uint64(1)
-	ses2 := uint64(2)
+	const ses1 = 1
+	const ses2 = 2
 
 	var cids []cid.Cid
 	for _, b := range blks {

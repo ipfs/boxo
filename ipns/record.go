@@ -85,12 +85,12 @@ func MarshalRecord(rec *Record) ([]byte, error) {
 func (rec *Record) Value() (path.Path, error) {
 	value, err := rec.getBytesValue(cborValueKey)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	p := path.FromString(string(value))
-	if err := p.IsValid(); err != nil {
-		return "", multierr.Combine(ErrInvalidPath, err)
+	p, err := path.NewPath(string(value))
+	if err != nil {
+		return nil, multierr.Combine(ErrInvalidPath, err)
 	}
 
 	return p, nil
@@ -259,7 +259,7 @@ func NewRecord(sk ic.PrivKey, value path.Path, seq uint64, eol time.Time, ttl ti
 	}
 
 	if options.v1Compatibility {
-		pb.Value = []byte(value)
+		pb.Value = []byte(value.String())
 		typ := ipns_pb.IpnsRecord_EOL
 		pb.ValidityType = &typ
 		pb.Sequence = &seq
@@ -306,7 +306,7 @@ func createNode(value path.Path, seq uint64, eol time.Time, ttl time.Duration) (
 	m := make(map[string]ipld.Node)
 	var keys []string
 
-	m[cborValueKey] = basicnode.NewBytes([]byte(value))
+	m[cborValueKey] = basicnode.NewBytes([]byte(value.String()))
 	keys = append(keys, cborValueKey)
 
 	m[cborValidityKey] = basicnode.NewBytes([]byte(util.FormatRFC3339(eol)))

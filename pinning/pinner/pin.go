@@ -4,6 +4,7 @@ package pin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	cid "github.com/ipfs/go-cid"
@@ -76,7 +77,7 @@ func StringToMode(s string) (Mode, bool) {
 }
 
 // ErrNotPinned is returned when trying to unpin items that are not pinned.
-var ErrNotPinned = fmt.Errorf("not pinned or pinned indirectly")
+var ErrNotPinned = errors.New("not pinned or pinned indirectly")
 
 // A Pinner provides the necessary methods to keep track of Nodes which are
 // to be kept locally, according to a pin mode. In practice, a Pinner is in
@@ -93,8 +94,9 @@ type Pinner interface {
 
 	// Pin the given node, optionally recursively.
 	// Pin will make sure that the given node and its children if recursive is set
-	// are stored locally.
-	Pin(ctx context.Context, node ipld.Node, recursive bool) error
+	// are stored locally. Pinning with a different name for an already existing
+	// pin must replace the existing name.
+	Pin(ctx context.Context, node ipld.Node, recursive bool, name string) error
 
 	// Unpin the given cid. If recursive is true, removes either a recursive or
 	// a direct pin. If recursive is false, only removes a direct pin.
@@ -113,20 +115,20 @@ type Pinner interface {
 	// PinWithMode is for manually editing the pin structure. Use with
 	// care! If used improperly, garbage collection may not be
 	// successful.
-	PinWithMode(context.Context, cid.Cid, Mode) error
+	PinWithMode(context.Context, cid.Cid, Mode, string) error
 
 	// Flush writes the pin state to the backing datastore
 	Flush(ctx context.Context) error
 
 	// DirectKeys returns all directly pinned cids
-	DirectKeys(ctx context.Context) <-chan StreamedCid
+	DirectKeys(ctx context.Context, detailed bool) <-chan StreamedPin
 
 	// RecursiveKeys returns all recursively pinned cids
-	RecursiveKeys(ctx context.Context) <-chan StreamedCid
+	RecursiveKeys(ctx context.Context, detailed bool) <-chan StreamedPin
 
 	// InternalPins returns all cids kept pinned for the internal state of the
 	// pinner
-	InternalPins(ctx context.Context) <-chan StreamedCid
+	InternalPins(ctx context.Context, detailed bool) <-chan StreamedPin
 }
 
 // Pinned represents CID which has been pinned with a pinning strategy.
@@ -136,6 +138,7 @@ type Pinner interface {
 type Pinned struct {
 	Key  cid.Cid
 	Mode Mode
+	Name string
 	Via  cid.Cid
 }
 
@@ -153,12 +156,12 @@ func (p Pinned) String() string {
 		return fmt.Sprintf("pinned via %s", p.Via)
 	default:
 		modeStr, _ := ModeToString(p.Mode)
-		return fmt.Sprintf("pinned: %s", modeStr)
+		return "pinned: " + modeStr
 	}
 }
 
-// StreamedCid encapsulate a Cid and an error for a function to return a channel of Cids.
-type StreamedCid struct {
-	C   cid.Cid
+// StreamedPin encapsulate a [Pin] and an error for a function to return a channel of [Pin]s.
+type StreamedPin struct {
+	Pin Pinned
 	Err error
 }

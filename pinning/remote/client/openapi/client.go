@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -168,8 +169,8 @@ func (c *APIClient) prepareRequest(
 	formParams url.Values,
 	formFileName string,
 	fileName string,
-	fileBytes []byte) (localVarRequest *http.Request, err error) {
-
+	fileBytes []byte,
+) (localVarRequest *http.Request, err error) {
 	var body *bytes.Buffer
 
 	// Detect postBody type and post.
@@ -223,7 +224,7 @@ func (c *APIClient) prepareRequest(
 		headerParams["Content-Type"] = w.FormDataContentType()
 
 		// Set Content-Length
-		headerParams["Content-Length"] = fmt.Sprintf("%d", body.Len())
+		headerParams["Content-Length"] = strconv.Itoa(body.Len())
 		w.Close()
 	}
 
@@ -234,7 +235,7 @@ func (c *APIClient) prepareRequest(
 		body = &bytes.Buffer{}
 		body.WriteString(formParams.Encode())
 		// Set Content-Length
-		headerParams["Content-Length"] = fmt.Sprintf("%d", body.Len())
+		headerParams["Content-Length"] = strconv.Itoa(body.Len())
 	}
 
 	// Setup path and query parameters

@@ -78,8 +78,10 @@ type bloomcache struct {
 	total metrics.Counter
 }
 
-var _ Blockstore = (*bloomcache)(nil)
-var _ Viewer = (*bloomcache)(nil)
+var (
+	_ Blockstore = (*bloomcache)(nil)
+	_ Viewer     = (*bloomcache)(nil)
+)
 
 func (b *bloomcache) BloomActive() bool {
 	return atomic.LoadInt32(&b.active) != 0

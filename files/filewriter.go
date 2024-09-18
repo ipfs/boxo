@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 )
 
-var ErrInvalidDirectoryEntry = errors.New("invalid directory entry name")
-var ErrPathExistsOverwrite = errors.New("path already exists and overwriting is not allowed")
+var (
+	ErrInvalidDirectoryEntry = errors.New("invalid directory entry name")
+	ErrPathExistsOverwrite   = errors.New("path already exists and overwriting is not allowed")
+)
 
 // WriteTo writes the given node to the local filesystem at fpath.
 func WriteTo(nd Node, fpath string) error {
@@ -33,7 +35,7 @@ func WriteTo(nd Node, fpath string) error {
 		}
 		return nil
 	case Directory:
-		err := os.Mkdir(fpath, 0777)
+		err := os.Mkdir(fpath, 0o777)
 		if err != nil {
 			return err
 		}

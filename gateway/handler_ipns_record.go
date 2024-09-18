@@ -10,25 +10,24 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
-	ipath "github.com/ipfs/boxo/coreiface/path"
 	"github.com/ipfs/boxo/ipns"
+	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 )
 
-func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r *http.Request, contentPath ipath.Path, begin time.Time, logger *zap.SugaredLogger) bool {
-	ctx, span := spanTrace(ctx, "Handler.ServeIPNSRecord", trace.WithAttributes(attribute.String("path", contentPath.String())))
+func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData) bool {
+	ctx, span := spanTrace(ctx, "Handler.ServeIPNSRecord", trace.WithAttributes(attribute.String("path", rq.contentPath.String())))
 	defer span.End()
 
-	if contentPath.Namespace() != "ipns" {
-		err := fmt.Errorf("%s is not an IPNS link", contentPath.String())
+	if rq.contentPath.Namespace() != path.IPNSNamespace {
+		err := fmt.Errorf("%s is not an IPNS link", rq.contentPath.String())
 		i.webError(w, r, err, http.StatusBadRequest)
 		return false
 	}
 
-	key := contentPath.String()
+	key := rq.contentPath.String()
 	key = strings.TrimSuffix(key, "/")
 	key = strings.TrimPrefix(key, "/ipns/")
 	if strings.Count(key, "/") != 0 {
@@ -90,7 +89,7 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 	_, err = w.Write(rawRecord)
 	if err == nil {
 		// Update metrics
-		i.ipnsRecordGetMetric.WithLabelValues(contentPath.Namespace()).Observe(time.Since(begin).Seconds())
+		i.ipnsRecordGetMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
 		return true
 	}
 

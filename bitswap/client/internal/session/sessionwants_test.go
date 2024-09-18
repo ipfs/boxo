@@ -3,14 +3,11 @@ package session
 import (
 	"testing"
 
-	"github.com/ipfs/boxo/bitswap/internal/testutil"
-	"github.com/ipfs/boxo/internal/test"
 	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-test/random"
 )
 
 func TestEmptySessionWants(t *testing.T) {
-	test.Flaky(t)
-
 	sw := newSessionWants(broadcastLiveWantsLimit)
 
 	// Expect these functions to return nothing on a new sessionWants
@@ -32,11 +29,9 @@ func TestEmptySessionWants(t *testing.T) {
 }
 
 func TestSessionWants(t *testing.T) {
-	test.Flaky(t)
-
 	sw := newSessionWants(5)
-	cids := testutil.GenerateCids(10)
-	others := testutil.GenerateCids(1)
+	cids := random.Cids(10)
+	others := random.Cids(1)
 
 	// Add 10 new wants
 	//  toFetch    Live
@@ -115,10 +110,8 @@ func TestSessionWants(t *testing.T) {
 }
 
 func TestPrepareBroadcast(t *testing.T) {
-	test.Flaky(t)
-
 	sw := newSessionWants(3)
-	cids := testutil.GenerateCids(10)
+	cids := random.Cids(10)
 
 	// Add 6 new wants
 	//  toFetch    Live
@@ -177,10 +170,8 @@ func TestPrepareBroadcast(t *testing.T) {
 
 // Test that even after GC broadcast returns correct wants
 func TestPrepareBroadcastAfterGC(t *testing.T) {
-	test.Flaky(t)
-
 	sw := newSessionWants(5)
-	cids := testutil.GenerateCids(liveWantsOrderGCLimit * 2)
+	cids := random.Cids(liveWantsOrderGCLimit * 2)
 
 	sw.BlocksRequested(cids)
 

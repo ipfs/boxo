@@ -80,7 +80,7 @@ func Validate(rec *Record, pk ic.PubKey) error {
 // TODO: Most of this function could probably be replaced with codegen
 func validateCborDataMatchesPbData(entry *ipns_pb.IpnsRecord) error {
 	if len(entry.GetData()) == 0 {
-		return fmt.Errorf("record data is missing")
+		return errors.New("record data is missing")
 	}
 
 	ndbuilder := basicnode.Prototype__Map{}.NewBuilder()

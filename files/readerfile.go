@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // ReaderFile is a implementation of File created from an `io.Reader`.
@@ -13,8 +14,21 @@ type ReaderFile struct {
 	abspath string
 	reader  io.ReadCloser
 	stat    os.FileInfo
+	fsize   int64
+}
 
-	fsize int64
+func (f *ReaderFile) Mode() os.FileMode {
+	if f.stat == nil {
+		return 0
+	}
+	return f.stat.Mode()
+}
+
+func (f *ReaderFile) ModTime() time.Time {
+	if f.stat == nil {
+		return time.Time{}
+	}
+	return f.stat.ModTime()
 }
 
 func NewBytesFile(b []byte) File {
@@ -30,6 +44,10 @@ type bytesReaderCloser struct {
 
 func (b bytesReaderCloser) Close() error {
 	return nil
+}
+
+func NewBytesStatFile(b []byte, stat os.FileInfo) File {
+	return NewReaderStatFile(bytes.NewReader(b), stat)
 }
 
 func NewReaderFile(reader io.Reader) File {
@@ -88,5 +106,7 @@ func (f *ReaderFile) Seek(offset int64, whence int) (int64, error) {
 	return 0, ErrNotSupported
 }
 
-var _ File = &ReaderFile{}
-var _ FileInfo = &ReaderFile{}
+var (
+	_ File     = &ReaderFile{}
+	_ FileInfo = &ReaderFile{}
+)

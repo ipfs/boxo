@@ -2,6 +2,7 @@ package network_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -12,10 +13,9 @@ import (
 	bsnet "github.com/ipfs/boxo/bitswap/network"
 	"github.com/ipfs/boxo/bitswap/network/internal"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
-	"github.com/ipfs/boxo/internal/test"
 	mockrouting "github.com/ipfs/boxo/routing/mock"
 	ds "github.com/ipfs/go-datastore"
-	blocksutil "github.com/ipfs/go-ipfs-blocksutil"
+	"github.com/ipfs/go-test/random"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -47,7 +47,8 @@ func newReceiver() *receiver {
 func (r *receiver) ReceiveMessage(
 	ctx context.Context,
 	sender peer.ID,
-	incoming bsmsg.BitSwapMessage) {
+	incoming bsmsg.BitSwapMessage,
+) {
 	r.lastSender = sender
 	r.lastMessage = incoming
 	select {
@@ -69,7 +70,7 @@ func (r *receiver) PeerDisconnected(p peer.ID) {
 	r.connectionEvent <- false
 }
 
-var errMockNetErr = fmt.Errorf("network err")
+var errMockNetErr = errors.New("network err")
 
 type ErrStream struct {
 	network.Stream
@@ -163,8 +164,6 @@ func (eh *ErrHost) setTimeoutState(timingOut bool) {
 }
 
 func TestMessageSendAndReceive(t *testing.T) {
-	test.Flaky(t)
-
 	// create network
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -216,9 +215,10 @@ func TestMessageSendAndReceive(t *testing.T) {
 	if _, ok := r2.peers[p1.ID()]; !ok {
 		t.Fatal("did to connect to correct peer")
 	}
-	blockGenerator := blocksutil.NewBlockGenerator()
-	block1 := blockGenerator.Next()
-	block2 := blockGenerator.Next()
+	randBlocks := random.BlocksOfSize(2, 4)
+	block1 := randBlocks[0]
+	block2 := randBlocks[1]
+
 	sent := bsmsg.New(false)
 	sent.AddEntry(block1.Cid(), 1, pb.Message_Wantlist_Block, true)
 	sent.AddBlock(block2)
@@ -324,8 +324,7 @@ func prepareNetwork(t *testing.T, ctx context.Context, p1 tnet.Identity, r1 *rec
 		t.Fatal(err)
 	}
 
-	blockGenerator := blocksutil.NewBlockGenerator()
-	block1 := blockGenerator.Next()
+	block1 := random.BlocksOfSize(1, 4)[0]
 	msg := bsmsg.New(false)
 	msg.AddEntry(block1.Cid(), 1, pb.Message_Wantlist_Block, true)
 
@@ -333,8 +332,6 @@ func prepareNetwork(t *testing.T, ctx context.Context, p1 tnet.Identity, r1 *rec
 }
 
 func TestMessageResendAfterError(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -381,8 +378,6 @@ func TestMessageResendAfterError(t *testing.T) {
 }
 
 func TestMessageSendTimeout(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -424,8 +419,6 @@ func TestMessageSendTimeout(t *testing.T) {
 }
 
 func TestMessageSendNotSupportedResponse(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -458,8 +451,6 @@ func TestMessageSendNotSupportedResponse(t *testing.T) {
 }
 
 func TestSupportsHave(t *testing.T) {
-	test.Flaky(t)
-
 	ctx := context.Background()
 	mn := mocknet.New()
 	defer mn.Close()
@@ -674,8 +665,6 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 }
 
 func TestNetworkCounters(t *testing.T) {
-	test.Flaky(t)
-
 	for n := 0; n < 11; n++ {
 		testNetworkCounters(t, 10-n, n)
 	}

@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/ipfs/go-ipfs-delay"
+	delay "github.com/ipfs/go-ipfs-delay"
 )
 
 var sharedRNG = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -27,7 +27,8 @@ func InternetLatencyDelayGenerator(
 	percentMedium float64,
 	percentLarge float64,
 	std time.Duration,
-	rng *rand.Rand) delay.Generator {
+	rng *rand.Rand,
+) delay.Generator {
 	if rng == nil {
 		rng = sharedRNG
 	}

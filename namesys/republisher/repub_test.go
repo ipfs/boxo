@@ -10,24 +10,24 @@ import (
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
-	host "github.com/libp2p/go-libp2p/core/host"
-	peer "github.com/libp2p/go-libp2p/core/peer"
-	routing "github.com/libp2p/go-libp2p/core/routing"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
+	"github.com/stretchr/testify/require"
 
-	opts "github.com/ipfs/boxo/coreiface/options/namesys"
 	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 
-	keystore "github.com/ipfs/boxo/keystore"
+	"github.com/ipfs/boxo/keystore"
 	"github.com/ipfs/boxo/namesys"
 	. "github.com/ipfs/boxo/namesys/republisher"
 )
 
 type mockNode struct {
 	h        host.Host
-	id       string
+	id       peer.ID
 	privKey  ic.PrivKey
 	store    ds.Batching
 	dht      *dht.IpfsDHT
@@ -40,20 +40,18 @@ func getMockNode(t *testing.T, ctx context.Context) *mockNode {
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	var idht *dht.IpfsDHT
 	h, err := libp2p.New(
-		libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"),
+		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"),
 		libp2p.Routing(func(h host.Host) (routing.PeerRouting, error) {
 			rt, err := dht.New(ctx, h, dht.Mode(dht.ModeServer))
 			idht = rt
 			return rt, err
 		}),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	return &mockNode{
 		h:        h,
-		id:       h.ID().Pretty(),
+		id:       h.ID(),
 		privKey:  h.Peerstore().PrivKey(h.ID()),
 		store:    dstore,
 		dht:      idht,
@@ -72,9 +70,7 @@ func TestRepublish(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		n := getMockNode(t, ctx)
 		ns, err := namesys.NewNameSystem(n.dht, namesys.WithDatastore(n.store))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		nsystems = append(nsystems, ns)
 		nodes = append(nodes, n)
@@ -83,17 +79,18 @@ func TestRepublish(t *testing.T) {
 	pinfo := host.InfoFromHost(nodes[0].h)
 
 	for _, n := range nodes[1:] {
-		if err := n.h.Connect(ctx, *pinfo); err != nil {
-			t.Fatal(err)
-		}
+		err := n.h.Connect(ctx, *pinfo)
+		require.NoError(t, err)
 	}
 
 	// have one node publish a record that is valid for 1 second
 	publisher := nodes[3]
 
-	p := path.FromString("/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn") // does not need to be valid
-	rp := namesys.NewIpnsPublisher(publisher.dht, publisher.store)
-	name := "/ipns/" + publisher.id
+	p, err := path.NewPath("/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn") // does not need to be valid
+	require.NoError(t, err)
+
+	rp := namesys.NewIPNSPublisher(publisher.dht, publisher.store)
+	name := ipns.NameFromPeer(publisher.id).AsPath()
 
 	// Retry in case the record expires before we can fetch it. This can
 	// happen when running the test on a slow machine.
@@ -101,10 +98,8 @@ func TestRepublish(t *testing.T) {
 	timeout := time.Second
 	for {
 		expiration = time.Now().Add(time.Second)
-		err := rp.Publish(ctx, publisher.privKey, p, opts.PublishWithEOL(expiration))
-		if err != nil {
-			t.Fatal(err)
-		}
+		err := rp.Publish(ctx, publisher.privKey, p, namesys.PublishWithEOL(expiration))
+		require.NoError(t, err)
 
 		err = verifyResolution(nsystems, name, p)
 		if err == nil {
@@ -120,9 +115,8 @@ func TestRepublish(t *testing.T) {
 
 	// Now wait a second, the records will be invalid and we should fail to resolve
 	time.Sleep(timeout)
-	if err := verifyResolutionFails(nsystems, name); err != nil {
-		t.Fatal(err)
-	}
+	err = verifyResolutionFails(nsystems, name)
+	require.NoError(t, err)
 
 	// The republishers that are contained within the nodes have their timeout set
 	// to 12 hours. Instead of trying to tweak those, we're just going to pretend
@@ -138,9 +132,8 @@ func TestRepublish(t *testing.T) {
 	time.Sleep(time.Second * 2)
 
 	// we should be able to resolve them now
-	if err := verifyResolution(nsystems, name, p); err != nil {
-		t.Fatal(err)
-	}
+	err = verifyResolution(nsystems, name, p)
+	require.NoError(t, err)
 }
 
 func TestLongEOLRepublish(t *testing.T) {
@@ -154,9 +147,7 @@ func TestLongEOLRepublish(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		n := getMockNode(t, ctx)
 		ns, err := namesys.NewNameSystem(n.dht, namesys.WithDatastore(n.store))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		nsystems = append(nsystems, ns)
 		nodes = append(nodes, n)
@@ -165,27 +156,24 @@ func TestLongEOLRepublish(t *testing.T) {
 	pinfo := host.InfoFromHost(nodes[0].h)
 
 	for _, n := range nodes[1:] {
-		if err := n.h.Connect(ctx, *pinfo); err != nil {
-			t.Fatal(err)
-		}
+		err := n.h.Connect(ctx, *pinfo)
+		require.NoError(t, err)
 	}
 
 	// have one node publish a record that is valid for 1 second
 	publisher := nodes[3]
-	p := path.FromString("/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn") // does not need to be valid
-	rp := namesys.NewIpnsPublisher(publisher.dht, publisher.store)
-	name := "/ipns/" + publisher.id
+	p, err := path.NewPath("/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
+	require.NoError(t, err)
+
+	rp := namesys.NewIPNSPublisher(publisher.dht, publisher.store)
+	name := ipns.NameFromPeer(publisher.id).AsPath()
 
 	expiration := time.Now().Add(time.Hour)
-	err := rp.Publish(ctx, publisher.privKey, p, opts.PublishWithEOL(expiration))
-	if err != nil {
-		t.Fatal(err)
-	}
+	err = rp.Publish(ctx, publisher.privKey, p, namesys.PublishWithEOL(expiration))
+	require.NoError(t, err)
 
 	err = verifyResolution(nsystems, name, p)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// The republishers that are contained within the nodes have their timeout set
 	// to 12 hours. Instead of trying to tweak those, we're just going to pretend
@@ -201,28 +189,19 @@ func TestLongEOLRepublish(t *testing.T) {
 	time.Sleep(time.Second * 2)
 
 	err = verifyResolution(nsystems, name, p)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	rec, err := getLastIPNSRecord(ctx, publisher.store, publisher.h.ID())
-	if err != nil {
-		t.Fatal(err)
-	}
+	rec, err := getLastIPNSRecord(ctx, publisher.store, ipns.NameFromPeer(publisher.h.ID()))
+	require.NoError(t, err)
 
 	finalEol, err := rec.Validity()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !finalEol.Equal(expiration) {
-		t.Fatal("expiration time modified")
-	}
+	require.NoError(t, err)
+	require.Equal(t, expiration.UTC(), finalEol.UTC())
 }
 
-func getLastIPNSRecord(ctx context.Context, dstore ds.Datastore, id peer.ID) (*ipns.Record, error) {
+func getLastIPNSRecord(ctx context.Context, dstore ds.Datastore, name ipns.Name) (*ipns.Record, error) {
 	// Look for it locally only
-	val, err := dstore.Get(ctx, namesys.IpnsDsKey(id))
+	val, err := dstore.Get(ctx, namesys.IpnsDsKey(name))
 	if err != nil {
 		return nil, err
 	}
@@ -230,23 +209,23 @@ func getLastIPNSRecord(ctx context.Context, dstore ds.Datastore, id peer.ID) (*i
 	return ipns.UnmarshalRecord(val)
 }
 
-func verifyResolution(nsystems []namesys.NameSystem, key string, exp path.Path) error {
+func verifyResolution(nsystems []namesys.NameSystem, key path.Path, exp path.Path) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	for _, n := range nsystems {
-		val, err := n.Resolve(ctx, key)
+		res, err := n.Resolve(ctx, key)
 		if err != nil {
 			return err
 		}
 
-		if val != exp {
+		if res.Path.String() != exp.String() {
 			return errors.New("resolved wrong record")
 		}
 	}
 	return nil
 }
 
-func verifyResolutionFails(nsystems []namesys.NameSystem, key string) error {
+func verifyResolutionFails(nsystems []namesys.NameSystem, key path.Path) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	for _, n := range nsystems {
