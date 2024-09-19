@@ -750,7 +750,7 @@ func TestHamtBadSize(t *testing.T) {
 	}
 }
 
-func TestHamtNilChildren(t *testing.T) {
+func TestHamtNilLinkAndShard(t *testing.T) {
 	shard, err := NewShard(nil, 1024)
 	if err != nil {
 		t.Fatal(err)
