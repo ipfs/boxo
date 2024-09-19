@@ -432,8 +432,8 @@ type listCidsAndShards struct {
 func (ds *Shard) walkChildren(processLinkValues func(formattedLink *ipld.Link) error) (*listCidsAndShards, error) {
 	res := &listCidsAndShards{}
 
-	for i := range ds.childer.children {
-		if nextShard := ds.childer.child(i); nextShard == nil {
+	for i, nextShard := range ds.childer.children {
+		if nextShard == nil {
 			lnk := ds.childer.link(i)
 			if lnk == nil {
 				log.Warnf("internal HAMT error: both link and shard nil at pos %d, dumping shard: %+v", i, *ds)
@@ -461,7 +461,6 @@ func (ds *Shard) walkChildren(processLinkValues func(formattedLink *ipld.Link) e
 			default:
 				return nil, errors.New("unsupported shard link type")
 			}
-
 		} else {
 			if nextShard.val != nil {
 				formattedLink := &ipld.Link{
