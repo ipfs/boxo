@@ -422,11 +422,6 @@ func (s *blockService) Close() error {
 	return s.exchange.Close()
 }
 
-type notifier interface {
-	NotifyNewBlock(context.Context, blocks.Block) error
-	NotifyNewBlocks(context.Context, ...blocks.Block) error
-}
-
 // Session is a helper type to provide higher level access to bitswap sessions
 type Session struct {
 	createSession sync.Once
