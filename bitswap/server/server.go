@@ -251,16 +251,16 @@ func HasBlockBufferSize(count int) Option {
 	}
 }
 
-// WithReplaceHasWithBlockMaxSize sets the maximum size of a block in bytes up
-// to which we will replace a want-have with a want-block. Setting a size of 0
-// disables this want-have replacement and means that block sizes are not read
-// for want-have requests.
-func WithReplaceHasWithBlockMaxSize(maxSize int) Option {
-	if maxSize < 0 {
-		maxSize = 0
+// WithWantHaveReplaceSize sets the maximum size of a block in bytes up to
+// which to replace a WantHave with a WantBlock. Setting to 0 disables this
+// WantHave replacement and means that block sizes are not read when processing
+// WantHave requests.
+func WithWantHaveReplaceSize(size int) Option {
+	if size < 0 {
+		size = 0
 	}
 	return func(bs *Server) {
-		bs.engineOptions = append(bs.engineOptions, decision.WithReplaceHasWithBlockMaxSize(maxSize))
+		bs.engineOptions = append(bs.engineOptions, decision.WithWantHaveReplaceSize(size))
 	}
 }
 

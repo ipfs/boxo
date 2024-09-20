@@ -78,9 +78,9 @@ const (
 	// on their behalf.
 	queuedTagWeight = 10
 
-	// defaultReplaceHasWithBlockMaxSize is the default maximum size of the
-	// block in bytes up to which we will replace a want-have with a want-block
-	defaultReplaceHasWithBlockMaxSize = 1024
+	// defaultWantHave ReplaceSize is the default maximum size of the block in
+	// bytes up to which we will replace a WantHave with a WantBlock response.
+	defaultWantHaveReplaceSize = 1024
 )
 
 // Envelope contains a message for a Peer.
@@ -202,9 +202,9 @@ type Engine struct {
 
 	targetMessageSize int
 
-	// replaceHasWithBlockMaxSize is the maximum size of the block in
-	// bytes up to which we will replace a want-have with a want-block
-	replaceHasWithBlockMaxSize int
+	// wantHaveReplaceSize is the maximum size of the block in bytes up to
+	// which to replace a WantHave with a WantBlock.
+	wantHaveReplaceSize int
 
 	sendDontHaves bool
 
@@ -343,11 +343,11 @@ func WithSetSendDontHave(send bool) Option {
 	}
 }
 
-// WithReplaceHasWithBlockMaxSize sets the maximum size of a block in bytes up
-// to which we will replace a want-have with a want-block.
-func WithReplaceHasWithBlockMaxSize(maxSize int) Option {
+// WithWantHaveReplaceSize sets the maximum size of a block in bytes up to
+// which to replace a WantHave with a WantBlock response.
+func WithWantHaveReplaceSize(size int) Option {
 	return func(e *Engine) {
-		e.replaceHasWithBlockMaxSize = maxSize
+		e.wantHaveReplaceSize = size
 	}
 }
 
@@ -394,7 +394,7 @@ func NewEngine(
 		outbox:                          make(chan (<-chan *Envelope), outboxChanBuffer),
 		workSignal:                      make(chan struct{}, 1),
 		ticker:                          time.NewTicker(time.Millisecond * 100),
-		replaceHasWithBlockMaxSize:      defaultReplaceHasWithBlockMaxSize,
+		wantHaveReplaceSize:             defaultWantHaveReplaceSize,
 		taskWorkerCount:                 defaults.BitswapEngineTaskWorkerCount,
 		sendDontHaves:                   true,
 		self:                            self,
@@ -435,10 +435,10 @@ func NewEngine(
 
 	e.peerRequestQueue = peertaskqueue.New(peerTaskQueueOpts...)
 
-	if e.replaceHasWithBlockMaxSize == 0 {
+	if e.wantHaveReplaceSize == 0 {
 		log.Info("Replace WantHave with WantBlock is disabled")
 	} else {
-		log.Infow("Replace WantHave with WantBlock is enabled", "maxSize", e.replaceHasWithBlockMaxSize)
+		log.Infow("Replace WantHave with WantBlock is enabled", "maxSize", e.wantHaveReplaceSize)
 	}
 
 	return e
@@ -685,7 +685,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		return true
 	}
 
-	noReplace := e.replaceHasWithBlockMaxSize == 0
+	noReplace := e.wantHaveReplaceSize == 0
 
 	// Get block sizes for unique CIDs.
 	wantKs := make([]cid.Cid, 0, len(wants))
@@ -1084,7 +1084,7 @@ func (e *Engine) PeerDisconnected(p peer.ID) {
 // If the want is a want-have, and it's below a certain size, send the full
 // block (instead of sending a HAVE)
 func (e *Engine) sendAsBlock(wantType pb.Message_Wantlist_WantType, blockSize int) bool {
-	return wantType == pb.Message_Wantlist_Block || blockSize <= e.replaceHasWithBlockMaxSize
+	return wantType == pb.Message_Wantlist_Block || blockSize <= e.wantHaveReplaceSize
 }
 
 func (e *Engine) numBytesSentTo(p peer.ID) uint64 {

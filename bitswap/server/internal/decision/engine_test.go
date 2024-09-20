@@ -188,10 +188,10 @@ func newEngineForTesting(
 	bs blockstore.Blockstore,
 	peerTagger PeerTagger,
 	self peer.ID,
-	maxReplaceSize int,
+	wantHaveReplaceSize int,
 	opts ...Option,
 ) *Engine {
-	opts = append(opts, WithReplaceHasWithBlockMaxSize(maxReplaceSize))
+	opts = append(opts, WithWantHaveReplaceSize(wantHaveReplaceSize))
 	return NewEngine(ctx, bs, peerTagger, self, opts...)
 }
 

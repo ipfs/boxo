@@ -17,7 +17,7 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 * `boxo/bitswap/server`:
-  * A new `WithReplaceHasWithBlockMaxSize(n)` option can be used with `bitswap.New`. It sets the maximum size of a block in bytes up to which we will replace a want-have with a want-block. Setting a size of 0 disables this want-have replacement and means that block sizes are not read for want-have requests.
+  * A new `WithWantHaveReplaceSize(n)` option can be used with `bitswap.New`. It sets the maximum size of a block in bytes up to which the bitswap server will replace a WantHave with a WantBlock response. Setting this to 0 disables this WantHave replacement and means that block sizes are not read when processing WantHave requests.
 
 ### Changed
 
