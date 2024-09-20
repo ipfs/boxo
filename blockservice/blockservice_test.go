@@ -317,6 +317,10 @@ func (f *fakeIsNewSessionCreateExchange) NewSession(context.Context) exchange.Fe
 	return f.ses
 }
 
+func (*fakeIsNewSessionCreateExchange) NotifyNewBlock(context.Context, blocks.Block) error {
+	return nil
+}
+
 func (*fakeIsNewSessionCreateExchange) NotifyNewBlocks(context.Context, ...blocks.Block) error {
 	return nil
 }
