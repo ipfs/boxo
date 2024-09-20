@@ -714,7 +714,6 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 			}
 			for blkCid := range hasBlocks {
 				blockSizes[blkCid] = 0
-				fmt.Println("   block cid:", blkCid)
 			}
 		}
 	}
