@@ -394,7 +394,19 @@ func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[
 	})
 
 	filteredIter := applyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
-	peers, err := iter.ReadAllResults(filteredIter)
+
+	// Convert Record back to PeerRecord 🙃
+	finalIter := iter.Map(filteredIter, func(v iter.Result[types.Record]) iter.Result[*types.PeerRecord] {
+		if v.Err != nil || v.Val == nil {
+			return iter.Result[*types.PeerRecord]{Err: v.Err}
+		}
+
+		var record *types.PeerRecord = v.Val.(*types.PeerRecord)
+		return iter.Result[*types.PeerRecord]{Val: record}
+	})
+
+	peers, err := iter.ReadAllResults(finalIter)
+
 	if err != nil {
 		writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
