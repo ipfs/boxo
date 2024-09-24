@@ -1,11 +1,13 @@
 package server
 
 import (
+	"errors"
 	"reflect"
 	"slices"
 	"strings"
 
 	"github.com/ipfs/boxo/routing/http/types"
+	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -18,18 +20,68 @@ func parseFilter(param string) []string {
 	return strings.Split(strings.ToLower(param), ",")
 }
 
-func filterProviders(providers []types.Record, filterAddrs, filterProtocols []string) []types.Record {
+// applyFiltersToIter applies the filters to the given iterator and returns a new iterator.
+func applyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) iter.ResultIter[types.Record] {
+	mappedIter := iter.Map(recordsIter, func(v iter.Result[types.Record]) iter.Result[types.Record] {
+		if v.Err != nil || v.Val == nil {
+			return v
+		}
+
+		switch v.Val.GetSchema() {
+		case types.SchemaPeer:
+			record, ok := v.Val.(*types.PeerRecord)
+			if !ok {
+				logger.Errorw("problem casting find providers record", "Schema", v.Val.GetSchema(), "Type", reflect.TypeOf(v).String())
+				// TODO: Do we want to let failed type assertions to pass through?
+				return v
+			}
+
+			record = applyFilters(record, filterAddrs, filterProtocols)
+			if record == nil {
+				return iter.Result[types.Record]{Err: errors.New("record is nil")}
+			}
+			v.Val = record
+
+		//lint:ignore SA1019 // ignore staticcheck
+		case types.SchemaBitswap:
+			//lint:ignore SA1019 // ignore staticcheck
+			record, ok := v.Val.(*types.BitswapRecord)
+			if !ok {
+				logger.Errorw("problem casting find providers record", "Schema", v.Val.GetSchema(), "Type", reflect.TypeOf(v).String())
+				// TODO: Do we want to let failed type assertions to pass through?
+				return v
+			}
+			peerRecord := types.FromBitswapRecord(record)
+			peerRecord = applyFilters(peerRecord, filterAddrs, filterProtocols)
+			if peerRecord == nil {
+				return iter.Result[types.Record]{Err: errors.New("record is nil")}
+			}
+			v.Val = peerRecord
+		}
+		return v
+	})
+
+	// filter out nil results and errors
+	filteredIter := iter.Filter(mappedIter, func(v iter.Result[types.Record]) bool {
+		return v.Err == nil && v.Val != nil
+	})
+
+	return filteredIter
+}
+
+func filterRecords(records []types.Record, filterAddrs, filterProtocols []string) []types.Record {
 	if len(filterAddrs) == 0 && len(filterProtocols) == 0 {
-		return providers
+		return records
 	}
 
-	filtered := make([]types.Record, 0, len(providers))
+	filtered := make([]types.Record, 0, len(records))
 
-	for _, provider := range providers {
-		if schema := provider.GetSchema(); schema == types.SchemaPeer {
-			peer, ok := provider.(*types.PeerRecord)
+	for _, record := range records {
+		// TODO: Handle SchemaBitswap
+		if schema := record.GetSchema(); schema == types.SchemaPeer {
+			peer, ok := record.(*types.PeerRecord)
 			if !ok {
-				logger.Errorw("problem casting find providers result", "Schema", provider.GetSchema(), "Type", reflect.TypeOf(provider).String())
+				logger.Errorw("problem casting find providers result", "Schema", record.GetSchema(), "Type", reflect.TypeOf(record).String())
 				// if the type assertion fails, we exlude record from results
 				continue
 			}
@@ -42,7 +94,7 @@ func filterProviders(providers []types.Record, filterAddrs, filterProtocols []st
 
 		} else {
 			// Will we ever encounter the SchemaBitswap type? Evidence seems to suggest that no longer
-			logger.Errorw("encountered unknown provider schema", "Schema", provider.GetSchema(), "Type", reflect.TypeOf(provider).String())
+			logger.Errorw("encountered unknown provider schema", "Schema", record.GetSchema(), "Type", reflect.TypeOf(record).String())
 		}
 	}
 	return filtered
@@ -51,6 +103,10 @@ func filterProviders(providers []types.Record, filterAddrs, filterProtocols []st
 // Applies the filters. Returns nil if the provider does not pass the protocols filter
 // The address filter is more complicated because it potentially modifies the Addrs slice.
 func applyFilters(provider *types.PeerRecord, filterAddrs, filterProtocols []string) *types.PeerRecord {
+	if len(filterAddrs) == 0 && len(filterProtocols) == 0 {
+		return provider
+	}
+
 	if !applyProtocolFilter(provider.Protocols, filterProtocols) {
 		// If the provider doesn't match any of the passed protocols, the provider is omitted from the response.
 		return nil

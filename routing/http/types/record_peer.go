@@ -79,3 +79,12 @@ func (pr PeerRecord) MarshalJSON() ([]byte, error) {
 
 	return drjson.MarshalJSONBytes(m)
 }
+
+func FromBitswapRecord(br *BitswapRecord) *PeerRecord {
+	return &PeerRecord{
+		Schema:    SchemaPeer,
+		ID:        br.ID,
+		Addrs:     br.Addrs,
+		Protocols: []string{br.Protocol},
+	}
+}
