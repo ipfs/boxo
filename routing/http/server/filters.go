@@ -69,6 +69,7 @@ func applyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, 
 	return filteredIter
 }
 
+//lint:ignore U1000 // ignore unused
 func filterRecords(records []types.Record, filterAddrs, filterProtocols []string) []types.Record {
 	if len(filterAddrs) == 0 && len(filterProtocols) == 0 {
 		return records
