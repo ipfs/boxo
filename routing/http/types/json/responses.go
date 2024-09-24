@@ -17,7 +17,7 @@ func (r ProvidersResponse) Length() int {
 
 // PeersResponse is the result of a GET Peers request.
 type PeersResponse struct {
-	Peers []*types.PeerRecord
+	Peers []types.Record
 }
 
 func (r PeersResponse) Length() int {
