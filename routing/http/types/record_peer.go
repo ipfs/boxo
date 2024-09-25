@@ -86,5 +86,6 @@ func FromBitswapRecord(br *BitswapRecord) *PeerRecord {
 		ID:        br.ID,
 		Addrs:     br.Addrs,
 		Protocols: []string{br.Protocol},
+		Extra:     map[string]json.RawMessage{},
 	}
 }
