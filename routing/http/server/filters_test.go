@@ -60,7 +60,7 @@ func TestApplyAddrFilter(t *testing.T) {
 		{
 			name:          "Exclude TCP",
 			filterAddrs:   []string{"!tcp"},
-			expectedAddrs: []types.Multiaddr{},
+			expectedAddrs: []types.Multiaddr{{Multiaddr: addr2}, {Multiaddr: addr5}, {Multiaddr: addr6}, {Multiaddr: addr8}},
 		},
 		{
 			name:          "Include WebTransport and exclude p2p-circuit",
@@ -85,7 +85,7 @@ func TestApplyAddrFilter(t *testing.T) {
 		{
 			name:          "Multiple negative filters",
 			filterAddrs:   []string{"!tcp", "!ws"},
-			expectedAddrs: []types.Multiaddr{},
+			expectedAddrs: []types.Multiaddr{{Multiaddr: addr2}, {Multiaddr: addr5}, {Multiaddr: addr6}, {Multiaddr: addr8}},
 		},
 	}
 

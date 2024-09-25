@@ -129,43 +129,49 @@ func applyFilters(provider *types.PeerRecord, filterAddrs, filterProtocols []str
 }
 
 // If there are only negative filters, no addresses will be included in the result. The function will return an empty list.
-// For an address to be included, it must pass all negative filters AND match at least one positive filter.
+// For an address to be included, it must pass all negative filters
 func applyAddrFilter(addrs []types.Multiaddr, filterAddrsQuery []string) []types.Multiaddr {
 	if len(filterAddrsQuery) == 0 {
 		return addrs
 	}
 
 	var filteredAddrs []types.Multiaddr
+	var positiveFilters, negativeFilters []multiaddr.Protocol
+
+	// Separate positive and negative filters
+	for _, filter := range filterAddrsQuery {
+		if strings.HasPrefix(filter, "!") {
+			negativeFilters = append(negativeFilters, multiaddr.ProtocolWithName(filter[1:]))
+		} else {
+			positiveFilters = append(positiveFilters, multiaddr.ProtocolWithName(filter))
+		}
+	}
 
 	for _, addr := range addrs {
 		protocols := addr.Protocols()
-		includeAddr := true
 
-		// First, check all negative filters
-		for _, filter := range filterAddrsQuery {
-			if strings.HasPrefix(filter, "!") {
-				protocolFromFilter := multiaddr.ProtocolWithName(filter[1:])
-				if containsProtocol(protocols, protocolFromFilter) {
-					includeAddr = false
-					break
-				}
-			}
+		// Check negative filters
+		if containsAny(protocols, negativeFilters) {
+			continue
 		}
 
-		// If the address passed all negative filters, check positive filters
-		if includeAddr {
-			for _, filter := range filterAddrsQuery {
-				if !strings.HasPrefix(filter, "!") {
-					protocolFromFilter := multiaddr.ProtocolWithName(filter)
-					if containsProtocol(protocols, protocolFromFilter) {
-						filteredAddrs = append(filteredAddrs, addr)
-						break
-					}
-				}
-			}
+		// If no positive filters or matches a positive filter, include the address
+		if len(positiveFilters) == 0 || containsAny(protocols, positiveFilters) {
+			filteredAddrs = append(filteredAddrs, addr)
 		}
 	}
+
 	return filteredAddrs
+}
+
+// Helper function to check if protocols contain any of the filters
+func containsAny(protocols []multiaddr.Protocol, filters []multiaddr.Protocol) bool {
+	for _, filter := range filters {
+		if containsProtocol(protocols, filter) {
+			return true
+		}
+	}
+	return false
 }
 
 func containsProtocol(protos []multiaddr.Protocol, proto multiaddr.Protocol) bool {
