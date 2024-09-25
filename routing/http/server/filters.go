@@ -1,7 +1,6 @@
 package server
 
 import (
-	"errors"
 	"reflect"
 	"slices"
 	"strings"
@@ -38,7 +37,7 @@ func applyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, 
 
 			record = applyFilters(record, filterAddrs, filterProtocols)
 			if record == nil {
-				return iter.Result[types.Record]{Err: errors.New("record is nil")}
+				return iter.Result[types.Record]{}
 			}
 			v.Val = record
 
@@ -54,7 +53,7 @@ func applyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, 
 			peerRecord := types.FromBitswapRecord(record)
 			peerRecord = applyFilters(peerRecord, filterAddrs, filterProtocols)
 			if peerRecord == nil {
-				return iter.Result[types.Record]{Err: errors.New("record is nil")}
+				return iter.Result[types.Record]{}
 			}
 			v.Val = peerRecord
 		}
