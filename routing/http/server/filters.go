@@ -20,6 +20,14 @@ func parseFilter(param string) []string {
 }
 
 // applyFiltersToIter applies the filters to the given iterator and returns a new iterator.
+//
+// The function iterates over the input iterator, applying the specified filters to each record.
+// It supports both positive and negative filters for both addresses and protocols.
+//
+// Parameters:
+// - recordsIter: An iterator of types.Record to be filtered.
+// - filterAddrs: A slice of strings representing the address filter criteria.
+// - filterProtocols: A slice of strings representing the protocol filter criteria.
 func applyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) iter.ResultIter[types.Record] {
 	mappedIter := iter.Map(recordsIter, func(v iter.Result[types.Record]) iter.Result[types.Record] {
 		if v.Err != nil || v.Val == nil {
@@ -128,8 +136,23 @@ func applyFilters(provider *types.PeerRecord, filterAddrs, filterProtocols []str
 	return provider
 }
 
-// If there are only negative filters, no addresses will be included in the result. The function will return an empty list.
-// For an address to be included, it must pass all negative filters
+// applyAddrFilter filters a list of multiaddresses based on the provided filter query.
+//
+// Parameters:
+// - addrs: A slice of types.Multiaddr to be filtered.
+// - filterAddrsQuery: A slice of strings representing the filter criteria.
+//
+// The function supports both positive and negative filters:
+// - Positive filters (e.g., "tcp", "udp") include addresses that match the specified protocols.
+// - Negative filters (e.g., "!tcp", "!udp") exclude addresses that match the specified protocols.
+//
+// If no filters are provided, the original list of addresses is returned unchanged.
+// If only negative filters are provided, addresses not matching any negative filter are included.
+// If positive filters are provided, only addresses matching at least one positive filter (and no negative filters) are included.
+// If both positive and negative filters are provided, the address must match at least one positive filter and no negative filters to be included.
+//
+// Returns:
+// A new slice of types.Multiaddr containing only the addresses that pass the filter criteria.
 func applyAddrFilter(addrs []types.Multiaddr, filterAddrsQuery []string) []types.Multiaddr {
 	if len(filterAddrsQuery) == 0 {
 		return addrs

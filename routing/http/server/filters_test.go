@@ -63,6 +63,11 @@ func TestApplyAddrFilter(t *testing.T) {
 			expectedAddrs: []types.Multiaddr{{Multiaddr: addr2}, {Multiaddr: addr5}, {Multiaddr: addr6}, {Multiaddr: addr8}},
 		},
 		{
+			name:          "Filter TCP addresses that don't have WebSocket and p2p-circuit",
+			filterAddrs:   []string{"tcp", "!ws", "!wss", "!p2p-circuit"},
+			expectedAddrs: []types.Multiaddr{{Multiaddr: addr1}},
+		},
+		{
 			name:          "Include WebTransport and exclude p2p-circuit",
 			filterAddrs:   []string{"webtransport", "!p2p-circuit"},
 			expectedAddrs: []types.Multiaddr{{Multiaddr: addr8}},
