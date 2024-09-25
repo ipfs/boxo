@@ -121,7 +121,7 @@ func TestApplyAddrFilter(t *testing.T) {
 	}
 }
 
-func TestApplyProtocolFilter(t *testing.T) {
+func TestProtocolsAllowed(t *testing.T) {
 	testCases := []struct {
 		name            string
 		peerProtocols   []string
@@ -174,7 +174,7 @@ func TestApplyProtocolFilter(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := applyProtocolFilter(tc.peerProtocols, tc.filterProtocols)
+			result := protocolsAllowed(tc.peerProtocols, tc.filterProtocols)
 			assert.Equal(t, tc.expected, result, "Unexpected result for test case: %s", tc.name)
 		})
 	}

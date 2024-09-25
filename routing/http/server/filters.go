@@ -107,7 +107,7 @@ func applyFilters(provider *types.PeerRecord, filterAddrs, filterProtocols []str
 		return provider
 	}
 
-	if !applyProtocolFilter(provider.Protocols, filterProtocols) {
+	if !protocolsAllowed(provider.Protocols, filterProtocols) {
 		// If the provider doesn't match any of the passed protocols, the provider is omitted from the response.
 		return nil
 	}
@@ -177,7 +177,8 @@ func containsProtocol(protos []multiaddr.Protocol, proto multiaddr.Protocol) boo
 	return false
 }
 
-func applyProtocolFilter(peerProtocols []string, filterProtocols []string) bool {
+// protocolsAllowed returns true if the peerProtocols are allowed by the filter protocols.
+func protocolsAllowed(peerProtocols []string, filterProtocols []string) bool {
 	if len(filterProtocols) == 0 {
 		// If no filter is passed, do not filter
 		return true
