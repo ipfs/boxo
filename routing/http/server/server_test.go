@@ -268,10 +268,21 @@ func TestProviders(t *testing.T) {
 }
 
 func TestPeers(t *testing.T) {
-	makeRequest := func(t *testing.T, router *mockContentRouter, contentType, arg string) *http.Response {
+	makeRequest := func(t *testing.T, router *mockContentRouter, contentType, arg, filterAddrs, filterProtocols string) *http.Response {
 		server := httptest.NewServer(Handler(router))
 		t.Cleanup(server.Close)
-		req, err := http.NewRequest(http.MethodGet, "http://"+server.Listener.Addr().String()+"/routing/v1/peers/"+arg, nil)
+
+		urlStr := fmt.Sprintf("http://%s/routing/v1/peers/%s", server.Listener.Addr().String(), arg)
+		if filterAddrs != "" || filterProtocols != "" {
+			urlStr += "?"
+			if filterAddrs != "" {
+				urlStr = fmt.Sprintf("%s&filter-addrs=%s", urlStr, filterAddrs)
+			}
+			if filterProtocols != "" {
+				urlStr = fmt.Sprintf("%s&filter-protocols=%s", urlStr, filterProtocols)
+			}
+		}
+		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 		require.NoError(t, err)
 		if contentType != "" {
 			req.Header.Set("Accept", contentType)
@@ -285,7 +296,7 @@ func TestPeers(t *testing.T) {
 		t.Parallel()
 
 		router := &mockContentRouter{}
-		resp := makeRequest(t, router, mediaTypeJSON, "nonpeerid")
+		resp := makeRequest(t, router, mediaTypeJSON, "nonpeerid", "", "")
 		require.Equal(t, 400, resp.StatusCode)
 	})
 
@@ -298,7 +309,7 @@ func TestPeers(t *testing.T) {
 		router := &mockContentRouter{}
 		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(results, nil)
 
-		resp := makeRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String())
+		resp := makeRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String(), "", "")
 		require.Equal(t, 404, resp.StatusCode)
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
@@ -318,7 +329,7 @@ func TestPeers(t *testing.T) {
 		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(results, nil)
 
 		// Simulate request with Accept header that includes wildcard match
-		resp := makeRequest(t, router, "text/html,*/*", peer.ToCid(pid).String())
+		resp := makeRequest(t, router, "text/html,*/*", peer.ToCid(pid).String(), "", "")
 
 		// Expect response to default to application/json
 		require.Equal(t, 404, resp.StatusCode)
@@ -336,7 +347,7 @@ func TestPeers(t *testing.T) {
 		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(results, nil)
 
 		// Simulate request without Accept header
-		resp := makeRequest(t, router, "", peer.ToCid(pid).String())
+		resp := makeRequest(t, router, "", peer.ToCid(pid).String(), "", "")
 
 		// Expect response to default to application/json
 		require.Equal(t, 404, resp.StatusCode)
@@ -352,7 +363,7 @@ func TestPeers(t *testing.T) {
 		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(nil, routing.ErrNotFound)
 
 		// Simulate request without Accept header
-		resp := makeRequest(t, router, "", peer.ToCid(pid).String())
+		resp := makeRequest(t, router, "", peer.ToCid(pid).String(), "", "")
 
 		// Expect response to default to application/json
 		require.Equal(t, 404, resp.StatusCode)
@@ -382,7 +393,7 @@ func TestPeers(t *testing.T) {
 		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(results, nil)
 
 		libp2pKeyCID := peer.ToCid(pid).String()
-		resp := makeRequest(t, router, mediaTypeJSON, libp2pKeyCID)
+		resp := makeRequest(t, router, mediaTypeJSON, libp2pKeyCID, "", "")
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
@@ -398,6 +409,110 @@ func TestPeers(t *testing.T) {
 		require.Equal(t, expectedBody, string(body))
 	})
 
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (JSON) with filter-addrs", func(t *testing.T) {
+		t.Parallel()
+
+		addr1, _ := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/4001")
+		addr2, _ := multiaddr.NewMultiaddr("/ip4/127.0.0.1/udp/4001/quic-v1")
+		addr3, _ := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/4001/ws")
+		addr4, _ := multiaddr.NewMultiaddr("/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit")
+		addr5, _ := multiaddr.NewMultiaddr("/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu")
+		_, pid := makeEd25519PeerID(t)
+		_, pid2 := makeEd25519PeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid,
+				Protocols: []string{"transport-bitswap", "transport-foo"},
+				Addrs: []types.Multiaddr{
+					{Multiaddr: addr1},
+					{Multiaddr: addr2},
+					{Multiaddr: addr3},
+					{Multiaddr: addr4},
+				},
+			}},
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid2,
+				Protocols: []string{"transport-foo"},
+				Addrs: []types.Multiaddr{
+					{Multiaddr: addr5},
+				},
+			}},
+		})
+
+		router := &mockContentRouter{}
+		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(results, nil)
+
+		libp2pKeyCID := peer.ToCid(pid).String()
+		resp := makeRequest(t, router, mediaTypeJSON, libp2pKeyCID, "tcp", "")
+		require.Equal(t, 200, resp.StatusCode)
+
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		expectedBody := `{"Peers":[{"Addrs":["/ip4/127.0.0.1/tcp/4001","/ip4/127.0.0.1/tcp/4001/ws"],"ID":"` + pid.String() + `","Protocols":["transport-bitswap","transport-foo"],"Schema":"peer"}]}`
+		require.Equal(t, expectedBody, string(body))
+	})
+
+	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (JSON) with filter-protocols", func(t *testing.T) {
+		t.Parallel()
+
+		addr1, _ := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/4001")
+		addr2, _ := multiaddr.NewMultiaddr("/ip4/127.0.0.1/udp/4001/quic-v1")
+		addr3, _ := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/4001/ws")
+		addr4, _ := multiaddr.NewMultiaddr("/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit")
+		addr5, _ := multiaddr.NewMultiaddr("/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu")
+		_, pid := makeEd25519PeerID(t)
+		_, pid2 := makeEd25519PeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid,
+				Protocols: []string{"transport-bitswap", "transport-foo"},
+				Addrs: []types.Multiaddr{
+					{Multiaddr: addr1},
+					{Multiaddr: addr2},
+					{Multiaddr: addr3},
+					{Multiaddr: addr4},
+				},
+			}},
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid2,
+				Protocols: []string{"transport-foo"},
+				Addrs: []types.Multiaddr{
+					{Multiaddr: addr5},
+				},
+			}},
+		})
+
+		router := &mockContentRouter{}
+		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(results, nil)
+
+		libp2pKeyCID := peer.ToCid(pid).String()
+		resp := makeRequest(t, router, mediaTypeJSON, libp2pKeyCID, "", "transport-bitswap")
+		require.Equal(t, 200, resp.StatusCode)
+
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		expectedBody := `{"Peers":[{"Addrs":["/ip4/127.0.0.1/tcp/4001","/ip4/127.0.0.1/udp/4001/quic-v1","/ip4/127.0.0.1/tcp/4001/ws","/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"],"ID":"` + pid.String() + `","Protocols":["transport-bitswap","transport-foo"],"Schema":"peer"}]}`
+		require.Equal(t, expectedBody, string(body))
+	})
+
 	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 404 with correct body and headers (No Results, NDJSON)", func(t *testing.T) {
 		t.Parallel()
 
@@ -407,7 +522,7 @@ func TestPeers(t *testing.T) {
 		router := &mockContentRouter{}
 		router.On("FindPeers", mock.Anything, pid, DefaultStreamingRecordsLimit).Return(results, nil)
 
-		resp := makeRequest(t, router, mediaTypeNDJSON, peer.ToCid(pid).String())
+		resp := makeRequest(t, router, mediaTypeNDJSON, peer.ToCid(pid).String(), "", "")
 		require.Equal(t, 404, resp.StatusCode)
 
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
@@ -440,7 +555,7 @@ func TestPeers(t *testing.T) {
 		router.On("FindPeers", mock.Anything, pid, DefaultStreamingRecordsLimit).Return(results, nil)
 
 		libp2pKeyCID := peer.ToCid(pid).String()
-		resp := makeRequest(t, router, mediaTypeNDJSON, libp2pKeyCID)
+		resp := makeRequest(t, router, mediaTypeNDJSON, libp2pKeyCID, "", "")
 		require.Equal(t, 200, resp.StatusCode)
 
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
@@ -502,7 +617,7 @@ func TestPeers(t *testing.T) {
 			router := &mockContentRouter{}
 			router.On("FindPeers", mock.Anything, pid, DefaultStreamingRecordsLimit).Return(iter.FromSlice(results), nil)
 
-			resp := makeRequest(t, router, mediaTypeNDJSON, peerIDStr)
+			resp := makeRequest(t, router, mediaTypeNDJSON, peerIDStr, "", "")
 			require.Equal(t, 200, resp.StatusCode)
 
 			require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
@@ -522,7 +637,7 @@ func TestPeers(t *testing.T) {
 			router := &mockContentRouter{}
 			router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(iter.FromSlice(results), nil)
 
-			resp := makeRequest(t, router, mediaTypeJSON, peerIDStr)
+			resp := makeRequest(t, router, mediaTypeJSON, peerIDStr, "", "")
 			require.Equal(t, 200, resp.StatusCode)
 
 			require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
