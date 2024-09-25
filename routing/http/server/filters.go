@@ -136,7 +136,7 @@ func applyAddrFilter(addrs []types.Multiaddr, filterAddrsQuery []string) []types
 		return addrs
 	}
 
-	filteredAddrs := make([]types.Multiaddr, 0, len(addrs))
+	var filteredAddrs []types.Multiaddr
 
 	for _, addr := range addrs {
 		protocols := addr.Protocols()
@@ -145,8 +145,7 @@ func applyAddrFilter(addrs []types.Multiaddr, filterAddrsQuery []string) []types
 		// First, check all negative filters
 		for _, filter := range filterAddrsQuery {
 			if strings.HasPrefix(filter, "!") {
-				protocolStringFromFilter := strings.TrimPrefix(filter, "!")
-				protocolFromFilter := multiaddr.ProtocolWithName(protocolStringFromFilter)
+				protocolFromFilter := multiaddr.ProtocolWithName(filter[1:])
 				if containsProtocol(protocols, protocolFromFilter) {
 					includeAddr = false
 					break
