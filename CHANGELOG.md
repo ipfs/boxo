@@ -23,6 +23,7 @@ The following emojis are used to highlight certain changes:
 ### Removed
 
 ### Fixed
+= `unixfs/hamt` Log error instead of panic if both link and shard are nil [#393](https://github.com/ipfs/boxo/pull/393)
 
 ### Security
 
