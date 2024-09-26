@@ -132,7 +132,7 @@ func (bsm *blockstoreManager) hasBlocks(ctx context.Context, ks []cid.Cid) (map[
 		has, err := bsm.bs.Has(ctx, c)
 		if err != nil {
 			// Note: this isn't a fatal error. We shouldn't abort the request
-			log.Errorf("blockstore.GetSize(%s) error: %s", c, err)
+			log.Errorf("blockstore.Has(%c) error: %s", c, err)
 			return
 		}
 		if has {
