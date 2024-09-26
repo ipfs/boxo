@@ -268,7 +268,8 @@ func HasBlockBufferSize(count int) Option {
 //     block size checks, potentially reducing infrastructure costs if possession checks
 //     are less expensive than full reads.
 //
-// The default implicit behavior is unspecified and may change in future releases.
+// It defaults to [defaults.DefaultWantHaveReplaceSize]
+// and the value may change in future releases.
 //
 // Use this option to set explicit behavior to balance between network
 // efficiency, server performance, and potential storage cost optimizations

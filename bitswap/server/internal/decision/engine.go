@@ -77,10 +77,6 @@ const (
 	// queuedTagWeight is the default weight for peers that have work queued
 	// on their behalf.
 	queuedTagWeight = 10
-
-	// defaultWantHave ReplaceSize is the default maximum size of the block in
-	// bytes up to which we will replace a WantHave with a WantBlock response.
-	defaultWantHaveReplaceSize = 1024
 )
 
 // Envelope contains a message for a Peer.
@@ -394,7 +390,7 @@ func NewEngine(
 		outbox:                          make(chan (<-chan *Envelope), outboxChanBuffer),
 		workSignal:                      make(chan struct{}, 1),
 		ticker:                          time.NewTicker(time.Millisecond * 100),
-		wantHaveReplaceSize:             defaultWantHaveReplaceSize,
+		wantHaveReplaceSize:             defaults.DefaultWantHaveReplaceSize,
 		taskWorkerCount:                 defaults.BitswapEngineTaskWorkerCount,
 		sendDontHaves:                   true,
 		self:                            self,
