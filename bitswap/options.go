@@ -73,8 +73,7 @@ func WithTaskComparator(comparator server.TaskComparator) Option {
 
 // WithWantHaveReplaceSize sets the maximum size of a block in bytes up to
 // which the bitswap server will replace a WantHave with a WantBlock response.
-// Setting this to 0 disables this WantHave replacement and means that block
-// sizes are not read when processing WantHave requests.
+// See [server.WithWantHaveReplaceSize] for details.
 func WithWantHaveReplaceSize(size int) Option {
 	return Option{server.WithWantHaveReplaceSize(size)}
 }
