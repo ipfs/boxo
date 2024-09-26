@@ -170,6 +170,24 @@ func TestProtocolsAllowed(t *testing.T) {
 			expected:        false,
 		},
 		{
+			name:            "Unknown or specific protocol for matching non-empty peer protocols",
+			peerProtocols:   []string{"transport-bitswap"},
+			filterProtocols: []string{"unknown", "transport-bitswap", "transport-ipfs-gateway-http"},
+			expected:        true,
+		},
+		{
+			name:            "Unknown or specific protocol for matching empty peer protocols",
+			peerProtocols:   []string{},
+			filterProtocols: []string{"unknown", "transport-bitswap", "transport-ipfs-gateway-http"},
+			expected:        true,
+		},
+		{
+			name:            "Unknown or specific protocol for not matching non-empty peer protocols",
+			peerProtocols:   []string{"transport-graphsync-filecoinv1"},
+			filterProtocols: []string{"unknown", "transport-bitswap", "transport-ipfs-gateway-http"},
+			expected:        false,
+		},
+		{
 			name:            "Case insensitive match",
 			peerProtocols:   []string{"TRANSPORT-BITSWAP", "Transport-IPFS-Gateway-HTTP"},
 			filterProtocols: []string{"transport-bitswap"},
