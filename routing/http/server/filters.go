@@ -39,8 +39,8 @@ func applyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, 
 			record, ok := v.Val.(*types.PeerRecord)
 			if !ok {
 				logger.Errorw("problem casting find providers record", "Schema", v.Val.GetSchema(), "Type", reflect.TypeOf(v).String())
-				// TODO: Do we want to let failed type assertions to pass through?
-				return v
+				// drop failed type assertion
+				return iter.Result[types.Record]{}
 			}
 
 			record = applyFilters(record, filterAddrs, filterProtocols)
@@ -55,8 +55,8 @@ func applyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, 
 			record, ok := v.Val.(*types.BitswapRecord)
 			if !ok {
 				logger.Errorw("problem casting find providers record", "Schema", v.Val.GetSchema(), "Type", reflect.TypeOf(v).String())
-				// TODO: Do we want to let failed type assertions to pass through?
-				return v
+				// drop failed type assertion
+				return iter.Result[types.Record]{}
 			}
 			peerRecord := types.FromBitswapRecord(record)
 			peerRecord = applyFilters(peerRecord, filterAddrs, filterProtocols)
@@ -74,38 +74,6 @@ func applyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, 
 	})
 
 	return filteredIter
-}
-
-//lint:ignore U1000 // ignore unused
-func filterRecords(records []types.Record, filterAddrs, filterProtocols []string) []types.Record {
-	if len(filterAddrs) == 0 && len(filterProtocols) == 0 {
-		return records
-	}
-
-	filtered := make([]types.Record, 0, len(records))
-
-	for _, record := range records {
-		// TODO: Handle SchemaBitswap
-		if schema := record.GetSchema(); schema == types.SchemaPeer {
-			peer, ok := record.(*types.PeerRecord)
-			if !ok {
-				logger.Errorw("problem casting find providers result", "Schema", record.GetSchema(), "Type", reflect.TypeOf(record).String())
-				// if the type assertion fails, we exlude record from results
-				continue
-			}
-
-			record := applyFilters(peer, filterAddrs, filterProtocols)
-
-			if record != nil {
-				filtered = append(filtered, record)
-			}
-
-		} else {
-			// Will we ever encounter the SchemaBitswap type? Evidence seems to suggest that no longer
-			logger.Errorw("encountered unknown provider schema", "Schema", record.GetSchema(), "Type", reflect.TypeOf(record).String())
-		}
-	}
-	return filtered
 }
 
 // Applies the filters. Returns nil if the provider does not pass the protocols filter
