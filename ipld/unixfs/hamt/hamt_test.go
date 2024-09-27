@@ -749,3 +749,24 @@ func TestHamtBadSize(t *testing.T) {
 		}
 	}
 }
+
+func TestHamtNilLinkAndShard(t *testing.T) {
+	shard, err := NewShard(nil, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shard.childer = shard.childer.makeChilder(nil, []*ipld.Link{nil})
+	nextShard, err := shard.walkChildren(func(_ *ipld.Link) error {
+		t.Fatal("processLinkValues function should not have been called")
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err.Error() != "internal HAMT error: both link and shard nil, check log" {
+		t.Fatal("did not get expected error")
+	}
+	if nextShard != nil {
+		t.Fatal("nextShard should be nil")
+	}
+}

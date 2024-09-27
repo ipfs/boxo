@@ -194,6 +194,11 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		return
 	}
 
+	// Parse query parameters
+	query := httpReq.URL.Query()
+	filterAddrs := parseFilter(query.Get("filter-addrs"))
+	filterProtocols := parseFilter(query.Get("filter-protocols"))
+
 	mediaType, err := s.detectResponseType(httpReq)
 	if err != nil {
 		writeErr(w, "FindProviders", http.StatusBadRequest, err)
@@ -201,7 +206,7 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 	}
 
 	var (
-		handlerFunc  func(w http.ResponseWriter, provIter iter.ResultIter[types.Record])
+		handlerFunc  func(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string)
 		recordsLimit int
 	)
 
@@ -224,13 +229,14 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		}
 	}
 
-	handlerFunc(w, provIter)
+	handlerFunc(w, provIter, filterAddrs, filterProtocols)
 }
 
-func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record]) {
+func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) {
 	defer provIter.Close()
 
-	providers, err := iter.ReadAllResults(provIter)
+	filteredIter := applyFiltersToIter(provIter, filterAddrs, filterProtocols)
+	providers, err := iter.ReadAllResults(filteredIter)
 	if err != nil {
 		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
@@ -240,9 +246,10 @@ func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIt
 		Providers: providers,
 	})
 }
+func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) {
+	filteredIter := applyFiltersToIter(provIter, filterAddrs, filterProtocols)
 
-func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record]) {
-	writeResultsIterNDJSON(w, provIter)
+	writeResultsIterNDJSON(w, filteredIter)
 }
 
 func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
@@ -277,6 +284,10 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	query := r.URL.Query()
+	filterAddrs := parseFilter(query.Get("filter-addrs"))
+	filterProtocols := parseFilter(query.Get("filter-protocols"))
+
 	mediaType, err := s.detectResponseType(r)
 	if err != nil {
 		writeErr(w, "FindPeers", http.StatusBadRequest, err)
@@ -284,7 +295,7 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		handlerFunc  func(w http.ResponseWriter, provIter iter.ResultIter[*types.PeerRecord])
+		handlerFunc  func(w http.ResponseWriter, provIter iter.ResultIter[*types.PeerRecord], filterAddrs, filterProtocols []string)
 		recordsLimit int
 	)
 
@@ -307,7 +318,7 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	handlerFunc(w, provIter)
+	handlerFunc(w, provIter, filterAddrs, filterProtocols)
 }
 
 func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
@@ -369,10 +380,33 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 	writeJSONResult(w, "Provide", resp)
 }
 
-func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord]) {
+func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord], filterAddrs, filterProtocols []string) {
 	defer peersIter.Close()
 
-	peers, err := iter.ReadAllResults(peersIter)
+	// Convert PeerRecord to Record so that we can reuse the filtering logic from findProviders
+	mappedIter := iter.Map(peersIter, func(v iter.Result[*types.PeerRecord]) iter.Result[types.Record] {
+		if v.Err != nil || v.Val == nil {
+			return iter.Result[types.Record]{Err: v.Err}
+		}
+
+		var record types.Record = v.Val
+		return iter.Result[types.Record]{Val: record}
+	})
+
+	filteredIter := applyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
+
+	// Convert Record back to PeerRecord 🙃
+	finalIter := iter.Map(filteredIter, func(v iter.Result[types.Record]) iter.Result[*types.PeerRecord] {
+		if v.Err != nil || v.Val == nil {
+			return iter.Result[*types.PeerRecord]{Err: v.Err}
+		}
+
+		var record *types.PeerRecord = v.Val.(*types.PeerRecord)
+		return iter.Result[*types.PeerRecord]{Val: record}
+	})
+
+	peers, err := iter.ReadAllResults(finalIter)
+
 	if err != nil {
 		writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
@@ -383,8 +417,19 @@ func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[
 	})
 }
 
-func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord]) {
-	writeResultsIterNDJSON(w, peersIter)
+func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord], filterAddrs, filterProtocols []string) {
+	// Convert PeerRecord to Record so that we can reuse the filtering logic from findProviders
+	mappedIter := iter.Map(peersIter, func(v iter.Result[*types.PeerRecord]) iter.Result[types.Record] {
+		if v.Err != nil || v.Val == nil {
+			return iter.Result[types.Record]{Err: v.Err}
+		}
+
+		var record types.Record = v.Val
+		return iter.Result[types.Record]{Val: record}
+	})
+
+	filteredIter := applyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
+	writeResultsIterNDJSON(w, filteredIter)
 }
 
 func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
@@ -572,7 +617,7 @@ func logErr(method, msg string, err error) {
 	logger.Infow(msg, "Method", method, "Error", err)
 }
 
-func writeResultsIterNDJSON[T any](w http.ResponseWriter, resultIter iter.ResultIter[T]) {
+func writeResultsIterNDJSON[T types.Record](w http.ResponseWriter, resultIter iter.ResultIter[T]) {
 	defer resultIter.Close()
 
 	w.Header().Set("Content-Type", mediaTypeNDJSON)

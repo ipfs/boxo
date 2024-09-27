@@ -228,9 +228,7 @@ func TestClient_FindProviders(t *testing.T) {
 	}
 
 	bitswapRecord := makeBitswapRecord()
-	bitswapProviders := []iter.Result[types.Record]{
-		{Val: &bitswapRecord},
-	}
+	peerRecordFromBitswapRecord := types.FromBitswapRecord(&bitswapRecord)
 
 	cases := []struct {
 		name                    string
@@ -254,8 +252,8 @@ func TestClient_FindProviders(t *testing.T) {
 		},
 		{
 			name:                 "happy case (with deprecated bitswap schema)",
-			routerResult:         bitswapProviders,
-			expResult:            bitswapProviders,
+			routerResult:         []iter.Result[types.Record]{{Val: &bitswapRecord}},
+			expResult:            []iter.Result[types.Record]{{Val: peerRecordFromBitswapRecord}},
 			expStreamingResponse: true,
 		},
 		{
