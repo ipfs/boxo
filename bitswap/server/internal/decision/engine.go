@@ -977,8 +977,9 @@ func (e *Engine) ReceivedBlocks(from peer.ID, blks []blocks.Block) {
 	}
 }
 
-// NotifyNewBlocks is called when new blocks becomes available locally, and in particular when the caller of bitswap
-// decide to store those blocks and make them available on the network.
+// NotifyNewBlocks is called when new blocks become available locally, and in
+// particular when the caller of bitswap decides to store those blocks and make
+// them available on the network.
 func (e *Engine) NotifyNewBlocks(blks []blocks.Block) {
 	if len(blks) == 0 {
 		return
