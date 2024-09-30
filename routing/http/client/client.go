@@ -9,12 +9,14 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/benbjohnson/clock"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/routing/http/contentrouter"
+	"github.com/ipfs/boxo/routing/http/filters"
 	"github.com/ipfs/boxo/routing/http/internal/drjson"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
@@ -52,6 +54,12 @@ type Client struct {
 	// for testing, e.g., testing the server with a mangled signature.
 	//lint:ignore SA1019 // ignore staticcheck
 	afterSignCallback func(req *types.WriteBitswapRecord)
+
+	// disableLocalFiltering is used to disable local filtering of the results
+	// should be disabled for delegated routing servers that already implement filtering
+	disableLocalFiltering bool
+	protocolFilter        []string
+	addrFilter            []string
 }
 
 // defaultUserAgent is used as a fallback to inform HTTP server which library
@@ -79,6 +87,33 @@ type Option func(*Client) error
 func WithIdentity(identity crypto.PrivKey) Option {
 	return func(c *Client) error {
 		c.identity = identity
+		return nil
+	}
+}
+
+func WithDisabledLocalFiltering() Option {
+	return func(c *Client) error {
+		c.disableLocalFiltering = true
+		return nil
+	}
+}
+
+// TODO: add a test for this (making sure it adds to the url and that it filter on client)
+func WithProtocolFilter(protocolFilter []string) Option {
+	return func(c *Client) error {
+		// order the protocols alphabetically for cache key consistency since this will be added to the request URL
+		sort.Strings(protocolFilter)
+		c.protocolFilter = protocolFilter
+		return nil
+	}
+}
+
+// TODO: add a test for this (making sure it adds to the url)
+func WithAddrFilter(addrFilter []string) Option {
+	// order the protocols alphabetically for cache key consistency since this will be added to the request URL
+	return func(c *Client) error {
+		sort.Strings(addrFilter)
+		c.addrFilter = addrFilter
 		return nil
 	}
 }
@@ -184,7 +219,18 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 	// TODO test measurements
 	m := newMeasurement("FindProviders")
 
-	url := c.baseURL + "/routing/v1/providers/" + key.String()
+	url := fmt.Sprintf("%s/routing/v1/providers/%s", c.baseURL, key.String())
+
+	if c.protocolFilter != nil || c.addrFilter != nil {
+		url += "?"
+		if c.protocolFilter != nil {
+			url = fmt.Sprintf("%sfilter-protocols=%s", url, strings.Join(c.protocolFilter, ","))
+		}
+		if c.addrFilter != nil {
+			url = fmt.Sprintf("%s&filter-addrs=%s", url, strings.Join(c.addrFilter, ","))
+		}
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -243,9 +289,15 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 		err = json.NewDecoder(resp.Body).Decode(parsedResp)
 		var sliceIt iter.Iter[types.Record] = iter.FromSlice(parsedResp.Providers)
 		it = iter.ToResultIter(sliceIt)
+		if !c.disableLocalFiltering {
+			it = filters.ApplyFiltersToIter(it, c.addrFilter, c.protocolFilter)
+		}
 	case mediaTypeNDJSON:
 		skipBodyClose = true
 		it = ndjson.NewRecordsIter(resp.Body)
+		if !c.disableLocalFiltering {
+			it = filters.ApplyFiltersToIter(it, c.addrFilter, c.protocolFilter)
+		}
 	default:
 		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
 		return nil, errors.New("unknown content type")

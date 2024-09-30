@@ -1,4 +1,4 @@
-package server
+package filters
 
 import (
 	"reflect"
@@ -7,12 +7,15 @@ import (
 
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/multiformats/go-multiaddr"
 )
 
-// filters implements IPIP-0484
+var logger = logging.Logger("routing/http/filters")
 
-func parseFilter(param string) []string {
+// Package filters implements IPIP-0484
+
+func ParseFilter(param string) []string {
 	if param == "" {
 		return nil
 	}
@@ -28,7 +31,7 @@ func parseFilter(param string) []string {
 // - recordsIter: An iterator of types.Record to be filtered.
 // - filterAddrs: A slice of strings representing the address filter criteria.
 // - filterProtocols: A slice of strings representing the protocol filter criteria.
-func applyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) iter.ResultIter[types.Record] {
+func ApplyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) iter.ResultIter[types.Record] {
 	mappedIter := iter.Map(recordsIter, func(v iter.Result[types.Record]) iter.Result[types.Record] {
 		if v.Err != nil || v.Val == nil {
 			return v

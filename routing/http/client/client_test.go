@@ -158,12 +158,12 @@ func addrsToDRAddrs(addrs []multiaddr.Multiaddr) (drmas []types.Multiaddr) {
 	return
 }
 
-func makePeerRecord() types.PeerRecord {
+func makePeerRecord(protocols []string) types.PeerRecord {
 	peerID, addrs, _ := makeProviderAndIdentity()
 	return types.PeerRecord{
 		Schema:    types.SchemaPeer,
 		ID:        &peerID,
-		Protocols: []string{"transport-bitswap"},
+		Protocols: protocols,
 		Addrs:     addrsToDRAddrs(addrs),
 		Extra:     map[string]json.RawMessage{},
 	}
@@ -196,7 +196,7 @@ func makeProviderAndIdentity() (peer.ID, []multiaddr.Multiaddr, crypto.PrivKey) 
 		panic(err)
 	}
 
-	ma2, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/tcp/4002")
+	ma2, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/udp/4002")
 	if err != nil {
 		panic(err)
 	}
@@ -222,9 +222,11 @@ func (e *osErrContains) errContains(t *testing.T, err error) {
 }
 
 func TestClient_FindProviders(t *testing.T) {
-	peerRecord := makePeerRecord()
+	bitswapPeerRecord := makePeerRecord([]string{"transport-bitswap"})
+	httpPeerRecord := makePeerRecord([]string{"transport-ipfs-gateway-http"})
 	peerProviders := []iter.Result[types.Record]{
-		{Val: &peerRecord},
+		{Val: &bitswapPeerRecord},
+		{Val: &httpPeerRecord},
 	}
 
 	bitswapRecord := makeBitswapRecord()
@@ -238,6 +240,7 @@ func TestClient_FindProviders(t *testing.T) {
 		routerErr               error
 		clientRequiresStreaming bool
 		serverStreamingDisabled bool
+		filterProtocols         []string
 
 		expErrContains       osErrContains
 		expResult            []iter.Result[types.Record]
@@ -248,6 +251,13 @@ func TestClient_FindProviders(t *testing.T) {
 			name:                 "happy case",
 			routerResult:         peerProviders,
 			expResult:            peerProviders,
+			expStreamingResponse: true,
+		},
+		{
+			name:                 "happy case with protocol filter",
+			filterProtocols:      []string{"transport-bitswap"},
+			routerResult:         peerProviders,
+			expResult:            []iter.Result[types.Record]{{Val: &bitswapPeerRecord}},
 			expStreamingResponse: true,
 		},
 		{
@@ -303,6 +313,10 @@ func TestClient_FindProviders(t *testing.T) {
 				onReqReceived = append(onReqReceived, func(r *http.Request) {
 					assert.Equal(t, mediaTypeNDJSON, r.Header.Get("Accept"))
 				})
+			}
+
+			if c.filterProtocols != nil {
+				clientOpts = append(clientOpts, WithProtocolFilter(c.filterProtocols))
 			}
 
 			if c.expStreamingResponse {
@@ -482,7 +496,7 @@ func TestClient_Provide(t *testing.T) {
 }
 
 func TestClient_FindPeers(t *testing.T) {
-	peerRecord := makePeerRecord()
+	peerRecord := makePeerRecord([]string{"transport-bitswap"})
 	peerRecords := []iter.Result[*types.PeerRecord]{
 		{Val: &peerRecord},
 	}
