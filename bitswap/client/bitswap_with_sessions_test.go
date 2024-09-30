@@ -39,6 +39,10 @@ func addBlock(t *testing.T, ctx context.Context, inst testinstance.Instance, blk
 	if err != nil {
 		t.Fatal(err)
 	}
+	err = inst.Adapter.Provide(ctx, blk.Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestBasicSessions(t *testing.T) {

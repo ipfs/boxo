@@ -13,6 +13,7 @@ import (
 
 	"github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/exchange"
+	"github.com/ipfs/boxo/provider"
 	"github.com/ipfs/boxo/verifcid"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -73,10 +74,21 @@ type BoundedBlockService interface {
 
 var _ BoundedBlockService = (*blockService)(nil)
 
+// ProvidingBlockService is a Blockservice which provides new blocks to a provider.
+type ProvidingBlockService interface {
+	BlockService
+
+	// Provider can return nil, then no provider is used.
+	Provider() provider.Provider
+}
+
+var _ ProvidingBlockService = (*blockService)(nil)
+
 type blockService struct {
 	allowlist  verifcid.Allowlist
 	blockstore blockstore.Blockstore
 	exchange   exchange.Interface
+	provider   provider.Provider
 	// If checkFirst is true then first check that a block doesn't
 	// already exist to avoid republishing the block on the exchange.
 	checkFirst bool
@@ -96,6 +108,13 @@ func WriteThrough() Option {
 func WithAllowlist(allowlist verifcid.Allowlist) Option {
 	return func(bs *blockService) {
 		bs.allowlist = allowlist
+	}
+}
+
+// WithProvider allows to advertise anything that is added through the blockservice.
+func WithProvider(prov provider.Provider) Option {
+	return func(bs *blockService) {
+		bs.provider = prov
 	}
 }
 
@@ -121,6 +140,11 @@ func New(bs blockstore.Blockstore, exchange exchange.Interface, opts ...Option) 
 
 // Blockstore returns the blockstore behind this blockservice.
 func (s *blockService) Blockstore() blockstore.Blockstore {
+	if s.provider != nil {
+		// FIXME: this is a hack remove once ipfs/boxo#567 is solved.
+		return providingBlockstore{s.blockstore, s.provider}
+	}
+
 	return s.blockstore
 }
 
@@ -133,23 +157,13 @@ func (s *blockService) Allowlist() verifcid.Allowlist {
 	return s.allowlist
 }
 
-// NewSession creates a new session that allows for
-// controlled exchange of wantlists to decrease the bandwidth overhead.
-// If the current exchange is a SessionExchange, a new exchange
-// session will be created. Otherwise, the current exchange will be used
-// directly.
-// Sessions are lazily setup, this is cheap.
-func NewSession(ctx context.Context, bs BlockService) *Session {
-	ses := grabSessionFromContext(ctx, bs)
-	if ses != nil {
-		return ses
-	}
-
-	return newSession(ctx, bs)
+func (s *blockService) Provider() provider.Provider {
+	return s.provider
 }
 
-// newSession is like [NewSession] but it does not attempt to reuse session from the existing context.
-func newSession(ctx context.Context, bs BlockService) *Session {
+// NewSession creates a new session that allows for controlled exchange of
+// wantlists to decrease the bandwidth overhead.
+func NewSession(ctx context.Context, bs BlockService) *Session {
 	return &Session{bs: bs, sesctx: ctx}
 }
 
@@ -169,7 +183,7 @@ func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 		}
 	}
 
-	if err := s.blockstore.Put(ctx, o); err != nil {
+	if err = s.blockstore.Put(ctx, o); err != nil {
 		return err
 	}
 
@@ -178,6 +192,11 @@ func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 	if s.exchange != nil {
 		if err := s.exchange.NotifyNewBlocks(ctx, o); err != nil {
 			logger.Errorf("NotifyNewBlocks: %s", err.Error())
+		}
+	}
+	if s.provider != nil {
+		if err := s.provider.Provide(o.Cid()); err != nil {
+			logger.Errorf("Provide: %s", err.Error())
 		}
 	}
 
@@ -226,16 +245,19 @@ func (s *blockService) AddBlocks(ctx context.Context, bs []blocks.Block) error {
 			logger.Errorf("NotifyNewBlocks: %s", err.Error())
 		}
 	}
+	if s.provider != nil {
+		for _, o := range toput {
+			if err := s.provider.Provide(o.Cid()); err != nil {
+				logger.Errorf("Provide: %s", err.Error())
+			}
+		}
+	}
 	return nil
 }
 
 // GetBlock retrieves a particular block from the service,
 // Getting it from the datastore using the key (hash).
 func (s *blockService) GetBlock(ctx context.Context, c cid.Cid) (blocks.Block, error) {
-	if ses := grabSessionFromContext(ctx, s); ses != nil {
-		return ses.GetBlock(ctx, c)
-	}
-
 	ctx, span := internal.StartSpan(ctx, "blockService.GetBlock", trace.WithAttributes(attribute.Stringer("CID", c)))
 	defer span.End()
 
@@ -253,7 +275,7 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 		return nil, err
 	}
 
-	blockstore := bs.Blockstore()
+	provider, blockstore := grabProviderAndBlockstoreFromBlockservice(bs)
 
 	block, err := blockstore.Get(ctx, c)
 	switch {
@@ -287,6 +309,12 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 			return nil, err
 		}
 	}
+	if provider != nil {
+		err = provider.Provide(blk.Cid())
+		if err != nil {
+			return nil, err
+		}
+	}
 	logger.Debugf("BlockService.BlockFetched %s", c)
 	return blk, nil
 }
@@ -295,10 +323,6 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 // the returned channel.
 // NB: No guarantees are made about order.
 func (s *blockService) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Block {
-	if ses := grabSessionFromContext(ctx, s); ses != nil {
-		return ses.GetBlocks(ctx, ks)
-	}
-
 	ctx, span := internal.StartSpan(ctx, "blockService.GetBlocks")
 	defer span.End()
 
@@ -336,7 +360,7 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 			ks = ks2
 		}
 
-		bs := blockservice.Blockstore()
+		provider, bs := grabProviderAndBlockstoreFromBlockservice(blockservice)
 
 		var misses []cid.Cid
 		for _, c := range ks {
@@ -393,6 +417,14 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 					return
 				}
 				cache[0] = nil // early gc
+			}
+
+			if provider != nil {
+				err = provider.Provide(b.Cid())
+				if err != nil {
+					logger.Errorf("could not tell the provider about new blocks: %s", err)
+					return
+				}
 			}
 
 			select {
@@ -474,47 +506,21 @@ func (s *Session) GetBlocks(ctx context.Context, ks []cid.Cid) <-chan blocks.Blo
 
 var _ BlockGetter = (*Session)(nil)
 
-// ContextWithSession is a helper which creates a context with an embded session,
-// future calls to [BlockGetter.GetBlock], [BlockGetter.GetBlocks] and [NewSession] with the same [BlockService]
-// will be redirected to this same session instead.
-// Sessions are lazily setup, this is cheap.
-// It wont make a new session if one exists already in the context.
-func ContextWithSession(ctx context.Context, bs BlockService) context.Context {
-	if grabSessionFromContext(ctx, bs) != nil {
-		return ctx
-	}
-	return EmbedSessionInContext(ctx, newSession(ctx, bs))
-}
-
-// EmbedSessionInContext is like [ContextWithSession] but it allows to embed an existing session.
-func EmbedSessionInContext(ctx context.Context, ses *Session) context.Context {
-	// use ses.bs as a key, so if multiple blockservices use embeded sessions it gets dispatched to the matching blockservice.
-	return context.WithValue(ctx, ses.bs, ses)
-}
-
-// grabSessionFromContext returns nil if the session was not found
-// This is a private API on purposes, I dislike when consumers tradeoff compiletime typesafety with runtime typesafety,
-// if this API is public it is too easy to forget to pass a [BlockService] or [Session] object around in your app.
-// By having this private we allow consumers to follow the trace of where the blockservice is passed and used.
-func grabSessionFromContext(ctx context.Context, bs BlockService) *Session {
-	s := ctx.Value(bs)
-	if s == nil {
-		return nil
-	}
-
-	ss, ok := s.(*Session)
-	if !ok {
-		// idk what to do here, that kinda sucks, giveup
-		return nil
-	}
-
-	return ss
-}
-
 // grabAllowlistFromBlockservice never returns nil
 func grabAllowlistFromBlockservice(bs BlockService) verifcid.Allowlist {
 	if bbs, ok := bs.(BoundedBlockService); ok {
 		return bbs.Allowlist()
 	}
 	return verifcid.DefaultAllowlist
+}
+
+// grabProviderAndBlockstoreFromBlockservice can return nil if no provider is used.
+func grabProviderAndBlockstoreFromBlockservice(bs BlockService) (provider.Provider, blockstore.Blockstore) {
+	if bbs, ok := bs.(*blockService); ok {
+		return bbs.provider, bbs.blockstore
+	}
+	if bbs, ok := bs.(ProvidingBlockService); ok {
+		return bbs.Provider(), bbs.Blockstore()
+	}
+	return nil, bs.Blockstore()
 }
