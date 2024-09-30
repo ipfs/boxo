@@ -288,67 +288,102 @@ func TestAllowlist(t *testing.T) {
 	check(NewSession(ctx, blockservice).GetBlock)
 }
 
-type fakeIsNewSessionCreateExchange struct {
-	ses                 exchange.Fetcher
-	newSessionWasCalled bool
+type wrappedBlockservice struct {
+	BlockService
 }
 
-var _ exchange.SessionExchange = (*fakeIsNewSessionCreateExchange)(nil)
+type mockProvider []cid.Cid
 
-func (*fakeIsNewSessionCreateExchange) Close() error {
+func (p *mockProvider) Provide(c cid.Cid) error {
+	*p = append(*p, c)
 	return nil
 }
 
-func (*fakeIsNewSessionCreateExchange) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
-	panic("should call on the session")
-}
-
-func (*fakeIsNewSessionCreateExchange) GetBlocks(context.Context, []cid.Cid) (<-chan blocks.Block, error) {
-	panic("should call on the session")
-}
-
-func (f *fakeIsNewSessionCreateExchange) NewSession(context.Context) exchange.Fetcher {
-	f.newSessionWasCalled = true
-	return f.ses
-}
-
-func (*fakeIsNewSessionCreateExchange) NotifyNewBlocks(context.Context, ...blocks.Block) error {
-	return nil
-}
-
-func TestContextSession(t *testing.T) {
+func TestProviding(t *testing.T) {
 	t.Parallel()
 	a := assert.New(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	blks := random.BlocksOfSize(2, blockSize)
-	block1 := blks[0]
-	block2 := blks[1]
+	blocks := random.BlocksOfSize(12, blockSize)
 
-	bs := blockstore.NewBlockstore(ds.NewMapDatastore())
-	a.NoError(bs.Put(ctx, block1))
-	a.NoError(bs.Put(ctx, block2))
-	sesEx := &fakeIsNewSessionCreateExchange{ses: offline.Exchange(bs)}
+	exchange := blockstore.NewBlockstore(ds.NewMapDatastore())
 
-	service := New(blockstore.NewBlockstore(ds.NewMapDatastore()), sesEx)
+	prov := mockProvider{}
+	blockservice := New(blockstore.NewBlockstore(ds.NewMapDatastore()), offline.Exchange(exchange), WithProvider(&prov))
+	var added []cid.Cid
 
-	ctx = ContextWithSession(ctx, service)
+	// Adding one block provide it.
+	a.NoError(blockservice.AddBlock(ctx, blocks[0]))
+	added = append(added, blocks[0].Cid())
+	blocks = blocks[1:]
 
-	b, err := service.GetBlock(ctx, block1.Cid())
+	// Adding multiple blocks provide them.
+	a.NoError(blockservice.AddBlocks(ctx, blocks[0:2]))
+	added = append(added, blocks[0].Cid(), blocks[1].Cid())
+	blocks = blocks[2:]
+
+	// Downloading one block provide it.
+	a.NoError(exchange.Put(ctx, blocks[0]))
+	_, err := blockservice.GetBlock(ctx, blocks[0].Cid())
 	a.NoError(err)
-	a.Equal(b.RawData(), block1.RawData())
-	a.True(sesEx.newSessionWasCalled, "new session from context should be created")
-	sesEx.newSessionWasCalled = false
+	added = append(added, blocks[0].Cid())
+	blocks = blocks[1:]
 
-	bchan := service.GetBlocks(ctx, []cid.Cid{block2.Cid()})
-	a.Equal((<-bchan).RawData(), block2.RawData())
-	a.False(sesEx.newSessionWasCalled, "session should be reused in context")
+	// Downloading multiple blocks provide them.
+	a.NoError(exchange.PutMany(ctx, blocks[0:2]))
+	cids := []cid.Cid{blocks[0].Cid(), blocks[1].Cid()}
+	var got []cid.Cid
+	for b := range blockservice.GetBlocks(ctx, cids) {
+		got = append(got, b.Cid())
+	}
+	added = append(added, cids...)
+	a.ElementsMatch(cids, got)
+	blocks = blocks[2:]
 
-	a.Equal(
-		NewSession(ctx, service),
-		NewSession(ContextWithSession(ctx, service), service),
-		"session must be deduped in all invocations on the same context",
-	)
+	session := NewSession(ctx, blockservice)
+
+	// Downloading one block over a session provide it.
+	a.NoError(exchange.Put(ctx, blocks[0]))
+	_, err = session.GetBlock(ctx, blocks[0].Cid())
+	a.NoError(err)
+	added = append(added, blocks[0].Cid())
+	blocks = blocks[1:]
+
+	// Downloading multiple blocks over a session provide them.
+	a.NoError(exchange.PutMany(ctx, blocks[0:2]))
+	cids = []cid.Cid{blocks[0].Cid(), blocks[1].Cid()}
+	got = nil
+	for b := range session.GetBlocks(ctx, cids) {
+		got = append(got, b.Cid())
+	}
+	a.ElementsMatch(cids, got)
+	added = append(added, cids...)
+	blocks = blocks[2:]
+
+	// Test wrapping the blockservice like nopfs does.
+	session = NewSession(ctx, wrappedBlockservice{blockservice})
+
+	// Downloading one block over a wrapped blockservice session provide it.
+	a.NoError(exchange.Put(ctx, blocks[0]))
+	_, err = session.GetBlock(ctx, blocks[0].Cid())
+	a.NoError(err)
+	added = append(added, blocks[0].Cid())
+	blocks = blocks[1:]
+
+	// Downloading multiple blocks over a wrapped blockservice session provide them.
+	a.NoError(exchange.PutMany(ctx, blocks[0:2]))
+	cids = []cid.Cid{blocks[0].Cid(), blocks[1].Cid()}
+	got = nil
+	for b := range session.GetBlocks(ctx, cids) {
+		got = append(got, b.Cid())
+	}
+	a.ElementsMatch(cids, got)
+	added = append(added, cids...)
+	blocks = blocks[2:]
+
+	a.Empty(blocks)
+
+	a.ElementsMatch(added, []cid.Cid(prov))
 }
