@@ -9,7 +9,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"path"
+	gourl "net/url"
 	"sort"
 	"strings"
 	"time"
@@ -223,7 +223,10 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 	// TODO test measurements
 	m := newMeasurement("FindProviders")
 
-	url := path.Join(c.baseURL, "routing/v1/providers", key.String())
+	url, err := gourl.JoinPath(c.baseURL, "routing/v1/providers", key.String())
+	if err != nil {
+		return nil, err
+	}
 	url = filters.AddFiltersToURL(url, c.protocolFilter, c.addrFilter)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -401,7 +404,10 @@ func (c *Client) provideSignedBitswapRecord(ctx context.Context, bswp *types.Wri
 func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error) {
 	m := newMeasurement("FindPeers")
 
-	url := path.Join(c.baseURL, "routing/v1/peers", peer.ToCid(pid).String())
+	url, err := gourl.JoinPath(c.baseURL, "routing/v1/peers", peer.ToCid(pid).String())
+	if err != nil {
+		return nil, err
+	}
 	url = filters.AddFiltersToURL(url, c.protocolFilter, c.addrFilter)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
