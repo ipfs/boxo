@@ -100,6 +100,30 @@ func ApplyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, 
 	return filteredIter
 }
 
+func ApplyFiltersToPeerRecordIter(peerRecordIter iter.ResultIter[*types.PeerRecord], filterAddrs, filterProtocols []string) iter.ResultIter[*types.PeerRecord] {
+	// Convert PeerRecord to Record so that we can reuse the filtering logic from findProviders
+	mappedIter := iter.Map(peerRecordIter, func(v iter.Result[*types.PeerRecord]) iter.Result[types.Record] {
+		if v.Err != nil || v.Val == nil {
+			return iter.Result[types.Record]{Err: v.Err}
+		}
+
+		var record types.Record = v.Val
+		return iter.Result[types.Record]{Val: record}
+	})
+
+	filteredIter := ApplyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
+
+	// Convert Record back to PeerRecord 🙃
+	return iter.Map(filteredIter, func(v iter.Result[types.Record]) iter.Result[*types.PeerRecord] {
+		if v.Err != nil || v.Val == nil {
+			return iter.Result[*types.PeerRecord]{Err: v.Err}
+		}
+
+		var record *types.PeerRecord = v.Val.(*types.PeerRecord)
+		return iter.Result[*types.PeerRecord]{Val: record}
+	})
+}
+
 // Applies the filters. Returns nil if the provider does not pass the protocols filter
 // The address filter is more complicated because it potentially modifies the Addrs slice.
 func applyFilters(provider *types.PeerRecord, filterAddrs, filterProtocols []string) *types.PeerRecord {

@@ -56,7 +56,6 @@ type Client struct {
 	afterSignCallback func(req *types.WriteBitswapRecord)
 
 	// disableLocalFiltering is used to disable local filtering of the results
-	// should be disabled for delegated routing servers that already implement filtering
 	disableLocalFiltering bool
 	protocolFilter        []string
 	addrFilter            []string
@@ -91,6 +90,8 @@ func WithIdentity(identity crypto.PrivKey) Option {
 	}
 }
 
+// WithDisabledLocalFiltering disables local filtering of the results.
+// This should be used for delegated routing servers that already implement filtering
 func WithDisabledLocalFiltering() Option {
 	return func(c *Client) error {
 		c.disableLocalFiltering = true
@@ -98,19 +99,21 @@ func WithDisabledLocalFiltering() Option {
 	}
 }
 
-// TODO: add a test for this (making sure it adds to the url and that it filter on client)
+// WithProtocolFilter adds a protocol filter to the client.
+// The protocol filter is added to the request URL.
+// The protocols are ordered alphabetically for cache key (url) consistency
 func WithProtocolFilter(protocolFilter []string) Option {
 	return func(c *Client) error {
-		// order the protocols alphabetically for cache key consistency since this will be added to the request URL
 		sort.Strings(protocolFilter)
 		c.protocolFilter = protocolFilter
 		return nil
 	}
 }
 
-// TODO: add a test for this (making sure it adds to the url)
+// WithAddrFilter adds an address filter to the client.
+// The address filter is added to the request URL.
+// The addresses are ordered alphabetically for cache key (url) consistency
 func WithAddrFilter(addrFilter []string) Option {
-	// order the protocols alphabetically for cache key consistency since this will be added to the request URL
 	return func(c *Client) error {
 		sort.Strings(addrFilter)
 		c.addrFilter = addrFilter
@@ -280,18 +283,16 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 		err = json.NewDecoder(resp.Body).Decode(parsedResp)
 		var sliceIt iter.Iter[types.Record] = iter.FromSlice(parsedResp.Providers)
 		it = iter.ToResultIter(sliceIt)
-		if !c.disableLocalFiltering {
-			it = filters.ApplyFiltersToIter(it, c.addrFilter, c.protocolFilter)
-		}
 	case mediaTypeNDJSON:
 		skipBodyClose = true
 		it = ndjson.NewRecordsIter(resp.Body)
-		if !c.disableLocalFiltering {
-			it = filters.ApplyFiltersToIter(it, c.addrFilter, c.protocolFilter)
-		}
 	default:
 		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
 		return nil, errors.New("unknown content type")
+	}
+
+	if !c.disableLocalFiltering {
+		it = filters.ApplyFiltersToIter(it, c.addrFilter, c.protocolFilter)
 	}
 
 	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
@@ -399,7 +400,9 @@ func (c *Client) provideSignedBitswapRecord(ctx context.Context, bswp *types.Wri
 func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error) {
 	m := newMeasurement("FindPeers")
 
-	url := c.baseURL + "/routing/v1/peers/" + peer.ToCid(pid).String()
+	url := fmt.Sprintf("%s/routing/v1/peers/%s", c.baseURL, peer.ToCid(pid).String())
+	url = filters.AddFiltersToURL(url, c.protocolFilter, c.addrFilter)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -464,6 +467,10 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 	default:
 		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
 		return nil, errors.New("unknown content type")
+	}
+
+	if !c.disableLocalFiltering {
+		it = filters.ApplyFiltersToPeerRecordIter(it, c.addrFilter, c.protocolFilter)
 	}
 
 	return &measuringIter[iter.Result[*types.PeerRecord]]{Iter: it, ctx: ctx, m: m}, nil
