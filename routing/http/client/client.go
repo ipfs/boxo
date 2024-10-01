@@ -92,9 +92,9 @@ func WithIdentity(identity crypto.PrivKey) Option {
 
 // WithDisabledLocalFiltering disables local filtering of the results.
 // This should be used for delegated routing servers that already implement filtering
-func WithDisabledLocalFiltering() Option {
+func WithDisabledLocalFiltering(val bool) Option {
 	return func(c *Client) error {
-		c.disableLocalFiltering = true
+		c.disableLocalFiltering = val
 		return nil
 	}
 }
