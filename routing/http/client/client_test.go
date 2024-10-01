@@ -49,7 +49,8 @@ func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit in
 
 func (m *mockContentRouter) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
-	return args.Get(0).(*ipns.Record), args.Error(1)
+	rec, _ := args.Get(0).(*ipns.Record)
+	return rec, args.Error(1)
 }
 
 func (m *mockContentRouter) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
