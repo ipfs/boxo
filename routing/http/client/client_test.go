@@ -496,11 +496,13 @@ func TestClient_Provide(t *testing.T) {
 }
 
 func TestClient_FindPeers(t *testing.T) {
-	peerRecord := makePeerRecord([]string{"transport-bitswap"})
+	peerRecord1 := makePeerRecord([]string{"transport-bitswap"})
+	peerRecord2 := makePeerRecord([]string{"transport-ipfs-gateway-http"})
 	peerRecords := []iter.Result[*types.PeerRecord]{
-		{Val: &peerRecord},
+		{Val: &peerRecord1},
+		{Val: &peerRecord2},
 	}
-	pid := *peerRecord.ID
+	pid := *peerRecord1.ID
 
 	cases := []struct {
 		name                    string
@@ -510,6 +512,7 @@ func TestClient_FindPeers(t *testing.T) {
 		routerErr               error
 		clientRequiresStreaming bool
 		serverStreamingDisabled bool
+		filterProtocols         []string
 
 		expErrContains       osErrContains
 		expResult            []iter.Result[*types.PeerRecord]
@@ -520,6 +523,13 @@ func TestClient_FindPeers(t *testing.T) {
 			name:                 "happy case",
 			routerResult:         peerRecords,
 			expResult:            peerRecords,
+			expStreamingResponse: true,
+		},
+		{
+			name:                 "happy case with protocol filter",
+			filterProtocols:      []string{"transport-bitswap"},
+			routerResult:         peerRecords,
+			expResult:            []iter.Result[*types.PeerRecord]{{Val: &peerRecord1}},
 			expStreamingResponse: true,
 		},
 		{
@@ -556,12 +566,10 @@ func TestClient_FindPeers(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			var (
-				clientOpts     []Option
-				serverOpts     []server.Option
-				onRespReceived []func(*http.Response)
-				onReqReceived  []func(*http.Request)
-			)
+			var clientOpts []Option
+			var serverOpts []server.Option
+			var onRespReceived []func(*http.Response)
+			var onReqReceived []func(*http.Request)
 
 			if c.serverStreamingDisabled {
 				serverOpts = append(serverOpts, server.WithStreamingResultsDisabled())
@@ -572,6 +580,10 @@ func TestClient_FindPeers(t *testing.T) {
 				onReqReceived = append(onReqReceived, func(r *http.Request) {
 					assert.Equal(t, mediaTypeNDJSON, r.Header.Get("Accept"))
 				})
+			}
+
+			if c.filterProtocols != nil {
+				clientOpts = append(clientOpts, WithProtocolFilter(c.filterProtocols))
 			}
 
 			if c.expStreamingResponse {
@@ -617,7 +629,7 @@ func TestClient_FindPeers(t *testing.T) {
 			resultIter, err := client.FindPeers(ctx, pid)
 			c.expErrContains.errContains(t, err)
 
-			results := iter.ReadAll[iter.Result[*types.PeerRecord]](resultIter)
+			results := iter.ReadAll(resultIter)
 			assert.Equal(t, c.expResult, results)
 		})
 	}
