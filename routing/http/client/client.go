@@ -220,16 +220,7 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 	m := newMeasurement("FindProviders")
 
 	url := fmt.Sprintf("%s/routing/v1/providers/%s", c.baseURL, key.String())
-
-	if c.protocolFilter != nil || c.addrFilter != nil {
-		url += "?"
-		if c.protocolFilter != nil {
-			url = fmt.Sprintf("%sfilter-protocols=%s", url, strings.Join(c.protocolFilter, ","))
-		}
-		if c.addrFilter != nil {
-			url = fmt.Sprintf("%s&filter-addrs=%s", url, strings.Join(c.addrFilter, ","))
-		}
-	}
+	url = filters.AddFiltersToURL(url, c.protocolFilter, c.addrFilter)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

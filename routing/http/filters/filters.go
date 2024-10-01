@@ -1,6 +1,7 @@
 package filters
 
 import (
+	"net/url"
 	"reflect"
 	"slices"
 	"strings"
@@ -20,6 +21,26 @@ func ParseFilter(param string) []string {
 		return nil
 	}
 	return strings.Split(strings.ToLower(param), ",")
+}
+
+func AddFiltersToURL(baseURL string, protocolFilter, addrFilter []string) string {
+	parsedURL, err := url.Parse(baseURL)
+	if err != nil {
+		return baseURL
+	}
+
+	query := parsedURL.Query()
+
+	if len(protocolFilter) > 0 {
+		query.Set("filter-protocols", strings.Join(protocolFilter, ","))
+	}
+
+	if len(addrFilter) > 0 {
+		query.Set("filter-addrs", strings.Join(addrFilter, ","))
+	}
+
+	parsedURL.RawQuery = query.Encode()
+	return parsedURL.String()
 }
 
 // applyFiltersToIter applies the filters to the given iterator and returns a new iterator.
