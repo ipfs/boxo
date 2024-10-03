@@ -98,29 +98,22 @@ func TestBlockstoreManager(t *testing.T) {
 		cids = append(cids, b.Cid())
 	}
 
-	sizes, err := bsm.getBlockSizes(ctx, cids)
+	hasBlocks, err := bsm.hasBlocks(ctx, cids)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sizes) != len(blks)-1 {
+	if len(hasBlocks) != len(blks)-1 {
 		t.Fatal("Wrong response length")
 	}
-
 	for _, c := range cids {
-		expSize := len(exp[c].RawData())
-		size, ok := sizes[c]
-
-		// Only the last key should be missing
+		_, ok := hasBlocks[c]
 		if c.Equals(cids[len(cids)-1]) {
 			if ok {
 				t.Fatal("Non-existent block should not be in sizes map")
 			}
 		} else {
 			if !ok {
-				t.Fatal("Block should be in sizes map")
-			}
-			if size != expSize {
-				t.Fatal("Block has wrong size")
+				t.Fatal("Block should be in hasBlocks")
 			}
 		}
 	}
