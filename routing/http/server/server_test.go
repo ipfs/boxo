@@ -16,6 +16,7 @@ import (
 
 	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
+	"github.com/ipfs/boxo/routing/http/filters"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
@@ -153,15 +154,7 @@ func TestProviders(t *testing.T) {
 		router.On("FindProviders", mock.Anything, cid, limit).Return(results, nil)
 
 		urlStr := fmt.Sprintf("%s/routing/v1/providers/%s", serverAddr, cidStr)
-		if filterAddrs != "" || filterProtocols != "" {
-			urlStr += "?"
-			if filterAddrs != "" {
-				urlStr = fmt.Sprintf("%s&filter-addrs=%s", urlStr, filterAddrs)
-			}
-			if filterProtocols != "" {
-				urlStr = fmt.Sprintf("%s&filter-protocols=%s", urlStr, filterProtocols)
-			}
-		}
+		urlStr = filters.AddFiltersToURL(urlStr, strings.Split(filterProtocols, ","), strings.Split(filterAddrs, ","))
 
 		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 		require.NoError(t, err)
@@ -273,15 +266,8 @@ func TestPeers(t *testing.T) {
 		t.Cleanup(server.Close)
 
 		urlStr := fmt.Sprintf("http://%s/routing/v1/peers/%s", server.Listener.Addr().String(), arg)
-		if filterAddrs != "" || filterProtocols != "" {
-			urlStr += "?"
-			if filterAddrs != "" {
-				urlStr = fmt.Sprintf("%s&filter-addrs=%s", urlStr, filterAddrs)
-			}
-			if filterProtocols != "" {
-				urlStr = fmt.Sprintf("%s&filter-protocols=%s", urlStr, filterProtocols)
-			}
-		}
+		urlStr = filters.AddFiltersToURL(urlStr, strings.Split(filterProtocols, ","), strings.Split(filterAddrs, ","))
+
 		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 		require.NoError(t, err)
 		if contentType != "" {

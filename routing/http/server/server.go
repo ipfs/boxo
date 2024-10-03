@@ -15,6 +15,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/gorilla/mux"
 	"github.com/ipfs/boxo/ipns"
+	"github.com/ipfs/boxo/routing/http/filters"
 	"github.com/ipfs/boxo/routing/http/internal/drjson"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
@@ -196,8 +197,8 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 
 	// Parse query parameters
 	query := httpReq.URL.Query()
-	filterAddrs := parseFilter(query.Get("filter-addrs"))
-	filterProtocols := parseFilter(query.Get("filter-protocols"))
+	filterAddrs := filters.ParseFilter(query.Get("filter-addrs"))
+	filterProtocols := filters.ParseFilter(query.Get("filter-protocols"))
 
 	mediaType, err := s.detectResponseType(httpReq)
 	if err != nil {
@@ -235,7 +236,7 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) {
 	defer provIter.Close()
 
-	filteredIter := applyFiltersToIter(provIter, filterAddrs, filterProtocols)
+	filteredIter := filters.ApplyFiltersToIter(provIter, filterAddrs, filterProtocols)
 	providers, err := iter.ReadAllResults(filteredIter)
 	if err != nil {
 		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
@@ -247,7 +248,7 @@ func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIt
 	})
 }
 func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) {
-	filteredIter := applyFiltersToIter(provIter, filterAddrs, filterProtocols)
+	filteredIter := filters.ApplyFiltersToIter(provIter, filterAddrs, filterProtocols)
 
 	writeResultsIterNDJSON(w, filteredIter)
 }
@@ -285,8 +286,8 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := r.URL.Query()
-	filterAddrs := parseFilter(query.Get("filter-addrs"))
-	filterProtocols := parseFilter(query.Get("filter-protocols"))
+	filterAddrs := filters.ParseFilter(query.Get("filter-addrs"))
+	filterProtocols := filters.ParseFilter(query.Get("filter-protocols"))
 
 	mediaType, err := s.detectResponseType(r)
 	if err != nil {
@@ -383,29 +384,9 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord], filterAddrs, filterProtocols []string) {
 	defer peersIter.Close()
 
-	// Convert PeerRecord to Record so that we can reuse the filtering logic from findProviders
-	mappedIter := iter.Map(peersIter, func(v iter.Result[*types.PeerRecord]) iter.Result[types.Record] {
-		if v.Err != nil || v.Val == nil {
-			return iter.Result[types.Record]{Err: v.Err}
-		}
+	peersIter = filters.ApplyFiltersToPeerRecordIter(peersIter, filterAddrs, filterProtocols)
 
-		var record types.Record = v.Val
-		return iter.Result[types.Record]{Val: record}
-	})
-
-	filteredIter := applyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
-
-	// Convert Record back to PeerRecord 🙃
-	finalIter := iter.Map(filteredIter, func(v iter.Result[types.Record]) iter.Result[*types.PeerRecord] {
-		if v.Err != nil || v.Val == nil {
-			return iter.Result[*types.PeerRecord]{Err: v.Err}
-		}
-
-		var record *types.PeerRecord = v.Val.(*types.PeerRecord)
-		return iter.Result[*types.PeerRecord]{Val: record}
-	})
-
-	peers, err := iter.ReadAllResults(finalIter)
+	peers, err := iter.ReadAllResults(peersIter)
 
 	if err != nil {
 		writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
@@ -428,7 +409,7 @@ func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIte
 		return iter.Result[types.Record]{Val: record}
 	})
 
-	filteredIter := applyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
+	filteredIter := filters.ApplyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
 	writeResultsIterNDJSON(w, filteredIter)
 }
 

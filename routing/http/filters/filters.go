@@ -1,22 +1,46 @@
-package server
+package filters
 
 import (
+	"net/url"
 	"reflect"
 	"slices"
 	"strings"
 
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/multiformats/go-multiaddr"
 )
 
-// filters implements IPIP-0484
+var logger = logging.Logger("routing/http/filters")
 
-func parseFilter(param string) []string {
+// Package filters implements IPIP-0484
+
+func ParseFilter(param string) []string {
 	if param == "" {
 		return nil
 	}
 	return strings.Split(strings.ToLower(param), ",")
+}
+
+func AddFiltersToURL(baseURL string, protocolFilter, addrFilter []string) string {
+	parsedURL, err := url.Parse(baseURL)
+	if err != nil {
+		return baseURL
+	}
+
+	query := parsedURL.Query()
+
+	if len(protocolFilter) > 0 {
+		query.Set("filter-protocols", strings.Join(protocolFilter, ","))
+	}
+
+	if len(addrFilter) > 0 {
+		query.Set("filter-addrs", strings.Join(addrFilter, ","))
+	}
+
+	parsedURL.RawQuery = query.Encode()
+	return parsedURL.String()
 }
 
 // applyFiltersToIter applies the filters to the given iterator and returns a new iterator.
@@ -28,7 +52,7 @@ func parseFilter(param string) []string {
 // - recordsIter: An iterator of types.Record to be filtered.
 // - filterAddrs: A slice of strings representing the address filter criteria.
 // - filterProtocols: A slice of strings representing the protocol filter criteria.
-func applyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) iter.ResultIter[types.Record] {
+func ApplyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) iter.ResultIter[types.Record] {
 	mappedIter := iter.Map(recordsIter, func(v iter.Result[types.Record]) iter.Result[types.Record] {
 		if v.Err != nil || v.Val == nil {
 			return v
@@ -74,6 +98,30 @@ func applyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, 
 	})
 
 	return filteredIter
+}
+
+func ApplyFiltersToPeerRecordIter(peerRecordIter iter.ResultIter[*types.PeerRecord], filterAddrs, filterProtocols []string) iter.ResultIter[*types.PeerRecord] {
+	// Convert PeerRecord to Record so that we can reuse the filtering logic from findProviders
+	mappedIter := iter.Map(peerRecordIter, func(v iter.Result[*types.PeerRecord]) iter.Result[types.Record] {
+		if v.Err != nil || v.Val == nil {
+			return iter.Result[types.Record]{Err: v.Err}
+		}
+
+		var record types.Record = v.Val
+		return iter.Result[types.Record]{Val: record}
+	})
+
+	filteredIter := ApplyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
+
+	// Convert Record back to PeerRecord 🙃
+	return iter.Map(filteredIter, func(v iter.Result[types.Record]) iter.Result[*types.PeerRecord] {
+		if v.Err != nil || v.Val == nil {
+			return iter.Result[*types.PeerRecord]{Err: v.Err}
+		}
+
+		var record *types.PeerRecord = v.Val.(*types.PeerRecord)
+		return iter.Result[*types.PeerRecord]{Val: record}
+	})
 }
 
 // Applies the filters. Returns nil if the provider does not pass the protocols filter
