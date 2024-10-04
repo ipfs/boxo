@@ -274,8 +274,8 @@ github.com/libp2p/go-doh-resolver v0.4.0 h1:gUBa1f1XsPwtpE1du0O+nnZCUqtG7oYi7Bb+
 github.com/libp2p/go-doh-resolver v0.4.0/go.mod h1:v1/jwsFusgsWIGX/c6vCRrnJ60x7bhTiq/fs2qt0cAg=
 github.com/libp2p/go-flow-metrics v0.1.0 h1:0iPhMI8PskQwzh57jB9WxIuIOQ0r+15PChFGkx3Q3WM=
 github.com/libp2p/go-flow-metrics v0.1.0/go.mod h1:4Xi8MX8wj5aWNDAZttg6UPmc0ZrnFNsMtpsYUClFtro=
-github.com/libp2p/go-libp2p v0.36.4 h1:ZaKyKSHBFbzs6CnAYMhaMc5QgV1UoCN+9WXrg8SEwI4=
-github.com/libp2p/go-libp2p v0.36.4/go.mod h1:4Y5vFyCUiJuluEPmpnKYf6WFx5ViKPUYs/ixe9ANFZ8=
+github.com/libp2p/go-libp2p v0.36.5 h1:DoABsaHO0VXwH6pwCs2F6XKAXWYjFMO4HFBoVxTnF9g=
+github.com/libp2p/go-libp2p v0.36.5/go.mod h1:CpszAtXxHYOcyvB7K8rSHgnNlh21eKjYbEfLoMerbEI=
 github.com/libp2p/go-libp2p-asn-util v0.4.1 h1:xqL7++IKD9TBFMgnLPZR6/6iYhawHKHl950SO9L6n94=
 github.com/libp2p/go-libp2p-asn-util v0.4.1/go.mod h1:d/NI6XZ9qxw67b4e+NgpQexCIiFYJjErASrYW4PFDN8=
 github.com/libp2p/go-libp2p-kad-dht v0.25.2 h1:FOIk9gHoe4YRWXTu8SY9Z1d0RILol0TrtApsMDPjAVQ=
