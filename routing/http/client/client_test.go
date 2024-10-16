@@ -223,11 +223,22 @@ func (e *osErrContains) errContains(t *testing.T, err error) {
 }
 
 func TestClient_FindProviders(t *testing.T) {
+	unknownPeerRecord := makePeerRecord([]string{})
 	bitswapPeerRecord := makePeerRecord([]string{"transport-bitswap"})
 	httpPeerRecord := makePeerRecord([]string{"transport-ipfs-gateway-http"})
+	fooPeerRecord := makePeerRecord([]string{"transport-foo"})
+
 	peerProviders := []iter.Result[types.Record]{
+		{Val: &unknownPeerRecord},
 		{Val: &bitswapPeerRecord},
 		{Val: &httpPeerRecord},
+		{Val: &fooPeerRecord},
+	}
+
+	// DefaultProtocolFilter
+	defaultFilterPeerProviders := []iter.Result[types.Record]{
+		{Val: &unknownPeerRecord},
+		{Val: &bitswapPeerRecord},
 	}
 
 	bitswapRecord := makeBitswapRecord()
@@ -249,16 +260,23 @@ func TestClient_FindProviders(t *testing.T) {
 		expJSONResponse      bool
 	}{
 		{
-			name:                 "happy case",
+			name:                 "happy case with DefaultProtocolFilter",
+			routerResult:         peerProviders,
+			expResult:            defaultFilterPeerProviders,
+			expStreamingResponse: true,
+		},
+		{
+			name:                 "pass through with protocol filter disabled",
+			filterProtocols:      []string{},
 			routerResult:         peerProviders,
 			expResult:            peerProviders,
 			expStreamingResponse: true,
 		},
 		{
-			name:                 "happy case with protocol filter",
-			filterProtocols:      []string{"transport-bitswap"},
+			name:                 "happy case with custom protocol filter",
+			filterProtocols:      []string{"transport-foo"},
 			routerResult:         peerProviders,
-			expResult:            []iter.Result[types.Record]{{Val: &bitswapPeerRecord}},
+			expResult:            []iter.Result[types.Record]{{Val: &fooPeerRecord}},
 			expStreamingResponse: true,
 		},
 		{
@@ -270,7 +288,7 @@ func TestClient_FindProviders(t *testing.T) {
 		{
 			name:                    "server doesn't support streaming",
 			routerResult:            peerProviders,
-			expResult:               peerProviders,
+			expResult:               defaultFilterPeerProviders,
 			serverStreamingDisabled: true,
 			expJSONResponse:         true,
 		},
@@ -497,13 +515,25 @@ func TestClient_Provide(t *testing.T) {
 }
 
 func TestClient_FindPeers(t *testing.T) {
-	peerRecord1 := makePeerRecord([]string{"transport-bitswap"})
-	peerRecord2 := makePeerRecord([]string{"transport-ipfs-gateway-http"})
+	unknownPeerRecord := makePeerRecord([]string{})
+	bitswapPeerRecord := makePeerRecord([]string{"transport-bitswap"})
+	httpPeerRecord := makePeerRecord([]string{"transport-ipfs-gateway-http"})
+	fooPeerRecord := makePeerRecord([]string{"transport-foo"})
+
 	peerRecords := []iter.Result[*types.PeerRecord]{
-		{Val: &peerRecord1},
-		{Val: &peerRecord2},
+		{Val: &unknownPeerRecord},
+		{Val: &bitswapPeerRecord},
+		{Val: &httpPeerRecord},
+		{Val: &fooPeerRecord},
 	}
-	pid := *peerRecord1.ID
+
+	// DefaultProtocolFilter
+	defaultFilterPeerRecords := []iter.Result[*types.PeerRecord]{
+		{Val: &unknownPeerRecord},
+		{Val: &bitswapPeerRecord},
+	}
+
+	pid := *bitswapPeerRecord.ID
 
 	cases := []struct {
 		name                    string
@@ -521,22 +551,29 @@ func TestClient_FindPeers(t *testing.T) {
 		expJSONResponse      bool
 	}{
 		{
-			name:                 "happy case",
+			name:                 "happy case with DefaultProtocolFilter",
+			routerResult:         peerRecords,
+			expResult:            defaultFilterPeerRecords,
+			expStreamingResponse: true,
+		},
+		{
+			name:                 "pass through with protocol filter disabled",
+			filterProtocols:      []string{},
 			routerResult:         peerRecords,
 			expResult:            peerRecords,
 			expStreamingResponse: true,
 		},
 		{
-			name:                 "happy case with protocol filter",
-			filterProtocols:      []string{"transport-bitswap"},
+			name:                 "happy case with custom protocol filter",
+			filterProtocols:      []string{"transport-foo"},
 			routerResult:         peerRecords,
-			expResult:            []iter.Result[*types.PeerRecord]{{Val: &peerRecord1}},
+			expResult:            []iter.Result[*types.PeerRecord]{{Val: &fooPeerRecord}},
 			expStreamingResponse: true,
 		},
 		{
 			name:                    "server doesn't support streaming",
 			routerResult:            peerRecords,
-			expResult:               peerRecords,
+			expResult:               defaultFilterPeerRecords,
 			serverStreamingDisabled: true,
 			expJSONResponse:         true,
 		},

@@ -25,7 +25,8 @@ func TestFindProviders(t *testing.T) {
 		if r.URL.Path == "/routing/v1/providers/"+cidStr {
 			w.Header().Set("Content-Type", "application/x-ndjson")
 			w.Write([]byte(`{"Schema":"peer","ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Addrs":["/ip4/111.222.222.111/tcp/5734"],"Protocols":["transport-bitswap"]}` + "\n"))
-			w.Write([]byte(`{"Schema":"peer","ID":"12D3KooWB6RAWgcmHAP7TGEGK7utV2ZuqSzX1DNjRa97TtJ7139n","Addrs":["/ip4/127.0.0.1/tcp/5734"],"Protocols":["transport-horse"]}` + "\n"))
+			w.Write([]byte(`{"Schema":"peer","ID":"12D3KooWS6BmwfQEZcRqCHCBbDL2DF5a6F7dZnbPFkwmZCuLEK5f","Addrs":["/ip4/127.0.0.1/tcp/6434"],"Protocols":["horse"]}` + "\n")) // this one will be skipped by DefaultProtocolFilter
+			w.Write([]byte(`{"Schema":"peer","ID":"12D3KooWB6RAWgcmHAP7TGEGK7utV2ZuqSzX1DNjRa97TtJ7139n","Addrs":["/ip4/127.0.0.1/tcp/5734"],"Protocols":[]}` + "\n"))
 		}
 	}))
 	t.Cleanup(ts.Close)
@@ -33,7 +34,7 @@ func TestFindProviders(t *testing.T) {
 	out := &bytes.Buffer{}
 	err := run(out, ts.URL, cidStr, "", "", 1)
 	assert.Contains(t, out.String(), "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn\n\tProtocols: [transport-bitswap]\n\tAddresses: [/ip4/111.222.222.111/tcp/5734]\n")
-	assert.Contains(t, out.String(), "12D3KooWB6RAWgcmHAP7TGEGK7utV2ZuqSzX1DNjRa97TtJ7139n\n\tProtocols: [transport-horse]\n\tAddresses: [/ip4/127.0.0.1/tcp/5734]\n")
+	assert.Contains(t, out.String(), "12D3KooWB6RAWgcmHAP7TGEGK7utV2ZuqSzX1DNjRa97TtJ7139n\n\tProtocols: []\n\tAddresses: [/ip4/127.0.0.1/tcp/5734]\n")
 	assert.NoError(t, err)
 }
 
