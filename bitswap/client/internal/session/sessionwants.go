@@ -148,6 +148,7 @@ func (sw *sessionWants) PrepareBroadcast() []cid.Cid {
 func (sw *sessionWants) CancelPending(keys []cid.Cid) {
 	for _, k := range keys {
 		sw.toFetch.Remove(k)
+		delete(sw.liveWants, k)
 	}
 }
 
