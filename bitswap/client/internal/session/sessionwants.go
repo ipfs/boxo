@@ -56,9 +56,13 @@ func (sw *sessionWants) GetNextWants() []cid.Cid {
 	// limit)
 	currentLiveCount := len(sw.liveWants)
 	toAdd := sw.broadcastLimit - currentLiveCount
+	liveSize := min(toAdd, sw.toFetch.Len())
+	if liveSize == 0 {
+		return nil
+	}
 
-	var live []cid.Cid
-	for ; toAdd > 0 && sw.toFetch.Len() > 0; toAdd-- {
+	live := make([]cid.Cid, 0, liveSize)
+	for ; toAdd != 0 && sw.toFetch.Len() != 0; toAdd-- {
 		c := sw.toFetch.Pop()
 		live = append(live, c)
 		sw.liveWantsOrder = append(sw.liveWantsOrder, c)
@@ -117,6 +121,7 @@ func (sw *sessionWants) BlocksReceived(ks []cid.Cid) ([]cid.Cid, time.Duration) 
 				cleaned = append(cleaned, c)
 			}
 		}
+		clear(sw.liveWantsOrder[len(cleaned):]) // GC cleared items
 		sw.liveWantsOrder = cleaned
 	}
 
@@ -127,7 +132,7 @@ func (sw *sessionWants) BlocksReceived(ks []cid.Cid) ([]cid.Cid, time.Duration) 
 // live want CIDs up to the broadcast limit.
 func (sw *sessionWants) PrepareBroadcast() []cid.Cid {
 	now := time.Now()
-	live := make([]cid.Cid, 0, len(sw.liveWants))
+	live := make([]cid.Cid, 0, min(len(sw.liveWants), sw.broadcastLimit))
 	for _, c := range sw.liveWantsOrder {
 		if _, ok := sw.liveWants[c]; ok {
 			// No response was received for the want, so reset the sent time
@@ -154,9 +159,11 @@ func (sw *sessionWants) CancelPending(keys []cid.Cid) {
 
 // LiveWants returns a list of live wants
 func (sw *sessionWants) LiveWants() []cid.Cid {
-	live := make([]cid.Cid, 0, len(sw.liveWants))
+	live := make([]cid.Cid, len(sw.liveWants))
+	var i int
 	for c := range sw.liveWants {
-		live = append(live, c)
+		live[i] = c
+		i++
 	}
 
 	return live
@@ -181,7 +188,7 @@ func (sw *sessionWants) RandomLiveWant() cid.Cid {
 
 // Has live wants indicates if there are any live wants
 func (sw *sessionWants) HasLiveWants() bool {
-	return len(sw.liveWants) > 0
+	return len(sw.liveWants) != 0
 }
 
 // Indicates whether the want is in either of the fetch or live queues
