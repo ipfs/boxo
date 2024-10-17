@@ -62,7 +62,7 @@ func (sw *sessionWants) GetNextWants() []cid.Cid {
 	}
 
 	live := make([]cid.Cid, 0, liveSize)
-	for ; toAdd != 0 && sw.toFetch.Len() != 0; toAdd-- {
+	for ; toAdd > 0 && sw.toFetch.Len() > 0; toAdd-- {
 		c := sw.toFetch.Pop()
 		live = append(live, c)
 		sw.liveWantsOrder = append(sw.liveWantsOrder, c)
