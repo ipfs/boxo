@@ -161,8 +161,7 @@ func (sws *sessionWantSender) Cancel(ks []cid.Cid) {
 // Update is called when the session receives a message with incoming blocks
 // or HAVE / DONT_HAVE
 func (sws *sessionWantSender) Update(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
-	hasUpdate := len(ks) > 0 || len(haves) > 0 || len(dontHaves) > 0
-	if !hasUpdate {
+	if len(ks) == 0 && len(haves) == 0 && len(dontHaves) == 0 {
 		return
 	}
 
@@ -270,7 +269,7 @@ func (sws *sessionWantSender) onChange(changes []change) {
 		if chng.update.from != "" {
 			// If the update includes blocks or haves, treat it as signaling that
 			// the peer is available
-			if len(chng.update.ks) > 0 || len(chng.update.haves) > 0 {
+			if len(chng.update.ks) != 0 || len(chng.update.haves) != 0 {
 				p := chng.update.from
 				availability[p] = true
 
@@ -296,7 +295,7 @@ func (sws *sessionWantSender) onChange(changes []change) {
 	sws.checkForExhaustedWants(dontHaves, newlyUnavailable)
 
 	// If there are any cancels, send them
-	if len(cancels) > 0 {
+	if len(cancels) != 0 {
 		sws.canceller.CancelSessionWants(sws.sessionID, cancels)
 	}
 
@@ -349,8 +348,7 @@ func (sws *sessionWantSender) trackWant(c cid.Cid) {
 	}
 
 	// Create the want info
-	wi := newWantInfo(sws.peerRspTrkr)
-	sws.wants[c] = wi
+	sws.wants[c] = newWantInfo(sws.peerRspTrkr)
 
 	// For each available peer, register any information we know about
 	// whether the peer has the block
@@ -451,7 +449,7 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 			}
 		}
 	}
-	if len(prunePeers) > 0 {
+	if len(prunePeers) != 0 {
 		go func() {
 			for p := range prunePeers {
 				// Peer doesn't have anything we want, so remove it
@@ -479,11 +477,13 @@ func (sws *sessionWantSender) checkForExhaustedWants(dontHaves []cid.Cid, newlyU
 
 	// If a peer just became unavailable, then we need to check all wants
 	// (because it may be the last peer who hadn't sent a DONT_HAVE for a CID)
-	if len(newlyUnavailable) > 0 {
+	if len(newlyUnavailable) != 0 {
 		// Collect all pending wants
 		wants = make([]cid.Cid, len(sws.wants))
+		var i int
 		for c := range sws.wants {
-			wants = append(wants, c)
+			wants[i] = c
+			i++
 		}
 
 		// If the last available peer in the session has become unavailable
@@ -496,7 +496,7 @@ func (sws *sessionWantSender) checkForExhaustedWants(dontHaves []cid.Cid, newlyU
 
 	// If all available peers for a cid sent a DONT_HAVE, signal to the session
 	// that we've exhausted available peers
-	if len(wants) > 0 {
+	if len(wants) != 0 {
 		exhausted := sws.bpm.AllPeersDoNotHaveBlock(sws.spm.Peers(), wants)
 		sws.processExhaustedWants(exhausted)
 	}
@@ -506,7 +506,7 @@ func (sws *sessionWantSender) checkForExhaustedWants(dontHaves []cid.Cid, newlyU
 // already been marked as exhausted are passed to onPeersExhausted()
 func (sws *sessionWantSender) processExhaustedWants(exhausted []cid.Cid) {
 	newlyExhausted := sws.newlyExhausted(exhausted)
-	if len(newlyExhausted) > 0 {
+	if len(newlyExhausted) != 0 {
 		sws.onPeersExhausted(newlyExhausted)
 	}
 }
