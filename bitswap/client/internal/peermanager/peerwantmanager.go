@@ -1,8 +1,8 @@
 package peermanager
 
 import (
-	"bytes"
 	"fmt"
+	"strings"
 
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p/core/peer"
@@ -452,7 +452,7 @@ func (pwm *peerWantManager) getWants() []cid.Cid {
 }
 
 func (pwm *peerWantManager) String() string {
-	var b bytes.Buffer
+	var b strings.Builder
 	for p, ws := range pwm.peerWants {
 		b.WriteString(fmt.Sprintf("Peer %s: %d want-have / %d want-block:\n", p, ws.wantHaves.Len(), ws.wantBlocks.Len()))
 		for _, c := range ws.wantHaves.Keys() {
