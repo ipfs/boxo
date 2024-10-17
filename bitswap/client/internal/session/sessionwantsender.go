@@ -269,7 +269,7 @@ func (sws *sessionWantSender) onChange(changes []change) {
 		if chng.update.from != "" {
 			// If the update includes blocks or haves, treat it as signaling that
 			// the peer is available
-			if len(chng.update.ks) != 0 || len(chng.update.haves) != 0 {
+			if len(chng.update.ks) > 0 || len(chng.update.haves) > 0 {
 				p := chng.update.from
 				availability[p] = true
 
@@ -295,7 +295,7 @@ func (sws *sessionWantSender) onChange(changes []change) {
 	sws.checkForExhaustedWants(dontHaves, newlyUnavailable)
 
 	// If there are any cancels, send them
-	if len(cancels) != 0 {
+	if len(cancels) > 0 {
 		sws.canceller.CancelSessionWants(sws.sessionID, cancels)
 	}
 
@@ -449,7 +449,7 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 			}
 		}
 	}
-	if len(prunePeers) != 0 {
+	if len(prunePeers) > 0 {
 		go func() {
 			for p := range prunePeers {
 				// Peer doesn't have anything we want, so remove it
@@ -477,13 +477,11 @@ func (sws *sessionWantSender) checkForExhaustedWants(dontHaves []cid.Cid, newlyU
 
 	// If a peer just became unavailable, then we need to check all wants
 	// (because it may be the last peer who hadn't sent a DONT_HAVE for a CID)
-	if len(newlyUnavailable) != 0 {
+	if len(newlyUnavailable) > 0 {
 		// Collect all pending wants
-		wants = make([]cid.Cid, len(sws.wants))
-		var i int
+		wants = make([]cid.Cid, 0, len(sws.wants))
 		for c := range sws.wants {
-			wants[i] = c
-			i++
+			wants = append(wants, c)
 		}
 
 		// If the last available peer in the session has become unavailable
@@ -496,7 +494,7 @@ func (sws *sessionWantSender) checkForExhaustedWants(dontHaves []cid.Cid, newlyU
 
 	// If all available peers for a cid sent a DONT_HAVE, signal to the session
 	// that we've exhausted available peers
-	if len(wants) != 0 {
+	if len(wants) > 0 {
 		exhausted := sws.bpm.AllPeersDoNotHaveBlock(sws.spm.Peers(), wants)
 		sws.processExhaustedWants(exhausted)
 	}
@@ -506,7 +504,7 @@ func (sws *sessionWantSender) checkForExhaustedWants(dontHaves []cid.Cid, newlyU
 // already been marked as exhausted are passed to onPeersExhausted()
 func (sws *sessionWantSender) processExhaustedWants(exhausted []cid.Cid) {
 	newlyExhausted := sws.newlyExhausted(exhausted)
-	if len(newlyExhausted) != 0 {
+	if len(newlyExhausted) > 0 {
 		sws.onPeersExhausted(newlyExhausted)
 	}
 }

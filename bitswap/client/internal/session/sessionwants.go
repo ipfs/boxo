@@ -159,11 +159,9 @@ func (sw *sessionWants) CancelPending(keys []cid.Cid) {
 
 // LiveWants returns a list of live wants
 func (sw *sessionWants) LiveWants() []cid.Cid {
-	live := make([]cid.Cid, len(sw.liveWants))
-	var i int
+	live := make([]cid.Cid, 0, len(sw.liveWants))
 	for c := range sw.liveWants {
-		live[i] = c
-		i++
+		live = append(live, c)
 	}
 
 	return live
@@ -188,7 +186,7 @@ func (sw *sessionWants) RandomLiveWant() cid.Cid {
 
 // Has live wants indicates if there are any live wants
 func (sw *sessionWants) HasLiveWants() bool {
-	return len(sw.liveWants) != 0
+	return len(sw.liveWants) > 0
 }
 
 // Indicates whether the want is in either of the fetch or live queues
