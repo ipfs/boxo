@@ -35,6 +35,7 @@ jobs:
           go clean -cache
           go mod edit -replace=github.com/ipfs/boxo=../boxo
           make mod_tidy
+          make clean
           cat go.mod
         working-directory: kubo
       - name: Install sharness dependencies
