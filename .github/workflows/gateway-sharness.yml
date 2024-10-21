@@ -35,11 +35,11 @@ jobs:
           go clean -cache
           go mod edit -replace=github.com/ipfs/boxo=../boxo
           make mod_tidy
-          make clean
-          cat go.mod
         working-directory: kubo
       - name: Install sharness dependencies
-        run: make test_sharness_deps
+        run: |
+          find . -name go.mod -execdir go mod tidy \;
+          make test_sharness_deps
         working-directory: kubo
       - name: Run Kubo Sharness Tests
         run: find . -maxdepth 1 -name "*gateway*.sh" -print0 | xargs -0 -I {} bash -c "echo {}; {}"
