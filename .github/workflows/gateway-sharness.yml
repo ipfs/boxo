@@ -32,7 +32,6 @@ jobs:
         run: sudo apt install -y socat net-tools fish libxml2-utils
       - name: Replace boxo in Kubo go.mod
         run: |
-          go clean -cache
           go mod edit -replace=github.com/ipfs/boxo=../boxo
           make mod_tidy
         working-directory: kubo
