@@ -12,9 +12,19 @@ The following emojis are used to highlight certain changes:
 * 🛠 - BREAKING CHANGE.  Action is required if you use this functionality.
 * ✨ - Noteworthy change to be aware of.
 
-## [v0.24.1]
+## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [v0.24.1]
 
 ### Changed
 
@@ -23,15 +33,11 @@ The following emojis are used to highlight certain changes:
 - updated dependencies [#693](https://github.com/ipfs/boxo/pull/693)
 - update `go-libp2p-kad-dht` to [v0.27.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.27.0)
 
-### Removed
-
 ### Fixed
 
 - `routing/http/client`: optional address and protocol filter parameters from [IPIP-484](https://github.com/ipfs/specs/pull/484) use human-readable `,` instead of `%2C`. [#688](https://github.com/ipfs/boxo/pull/688)
 - `bitswap/client` Cleanup live wants when wants are canceled. This prevents live wants from continuing to get rebroadcasted even after the wants are canceled. [#690](https://github.com/ipfs/boxo/pull/690)
 - Fix problem adding invalid CID to exhausted wants list resulting in possible performance issue. [#692](https://github.com/ipfs/boxo/pull/692)
-
-### Security
 
 ## [v0.24.0]
 
