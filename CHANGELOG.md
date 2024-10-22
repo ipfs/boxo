@@ -12,13 +12,15 @@ The following emojis are used to highlight certain changes:
 * 🛠 - BREAKING CHANGE.  Action is required if you use this functionality.
 * ✨ - Noteworthy change to be aware of.
 
-## [Unreleased]
+## [v0.24.1]
 
 ### Added
 
 ### Changed
 
 - `routing/http/client`: creating delegated routing client with `New` now defaults to querying delegated routing server with `DefaultProtocolFilter`  ([IPIP-484](https://github.com/ipfs/specs/pull/484)) [#689](https://github.com/ipfs/boxo/pull/689)
+- updated go-libp2p to [v0.36.5](https://github.com/libp2p/go-libp2p/releases/tag/v0.36.5)
+- updteed dependencies [#693](https://github.com/ipfs/boxo/pull/693)
 
 ### Removed
 
