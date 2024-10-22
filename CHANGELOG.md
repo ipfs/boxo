@@ -18,18 +18,26 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- `routing/http/client`: creating delegated routing client with `New` now defaults to querying delegated routing server with `DefaultProtocolFilter`  ([IPIP-484](https://github.com/ipfs/specs/pull/484)) [#689](https://github.com/ipfs/boxo/pull/689)
-- update `go-libp2p-kad-dht` to [v0.27.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.27.0)
-
 ### Removed
+
+### Fixed
+
+### Security
+
+## [v0.24.1]
+
+### Changed
+
+- `routing/http/client`: creating delegated routing client with `New` now defaults to querying delegated routing server with `DefaultProtocolFilter`  ([IPIP-484](https://github.com/ipfs/specs/pull/484)) [#689](https://github.com/ipfs/boxo/pull/689)
+- updated go-libp2p to [v0.36.5](https://github.com/libp2p/go-libp2p/releases/tag/v0.36.5)
+- updated dependencies [#693](https://github.com/ipfs/boxo/pull/693)
+- update `go-libp2p-kad-dht` to [v0.27.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.27.0)
 
 ### Fixed
 
 - `routing/http/client`: optional address and protocol filter parameters from [IPIP-484](https://github.com/ipfs/specs/pull/484) use human-readable `,` instead of `%2C`. [#688](https://github.com/ipfs/boxo/pull/688)
 - `bitswap/client` Cleanup live wants when wants are canceled. This prevents live wants from continuing to get rebroadcasted even after the wants are canceled. [#690](https://github.com/ipfs/boxo/pull/690)
 - Fix problem adding invalid CID to exhausted wants list resulting in possible performance issue. [#692](https://github.com/ipfs/boxo/pull/692)
-
-### Security
 
 ## [v0.24.0]
 
