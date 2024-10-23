@@ -2,8 +2,6 @@ module github.com/ipfs/boxo
 
 go 1.22.0
 
-toolchain go1.23.2
-
 require (
 	github.com/alecthomas/units v0.0.0-20231202071711-9a357b53e9c9
 	github.com/benbjohnson/clock v1.3.5
