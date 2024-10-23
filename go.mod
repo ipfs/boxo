@@ -2,7 +2,7 @@ module github.com/ipfs/boxo
 
 go 1.22.0
 
-toolchain go1.23.2
+toolchain go1.22.8
 
 require (
 	github.com/alecthomas/units v0.0.0-20231202071711-9a357b53e9c9
