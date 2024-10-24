@@ -51,7 +51,7 @@ type timeoutRecorder struct {
 	lk         sync.Mutex
 }
 
-func (tr *timeoutRecorder) onTimeout(tks []cid.Cid) {
+func (tr *timeoutRecorder) onTimeout(tks []cid.Cid, _ time.Duration) {
 	tr.lk.Lock()
 	defer tr.lk.Unlock()
 
@@ -84,8 +84,10 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
 	timeoutsTriggered := make(chan struct{})
-	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
+	cfg := defaultDontHaveTimeoutConfig()
+	cfg.PingLatencyMultiplier = latMultiplier
+	cfg.MaxExpectedWantProcessTime = expProcessTime
+	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout, cfg, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 	<-pinged
@@ -139,8 +141,10 @@ func TestDontHaveTimeoutMgrCancel(t *testing.T) {
 	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
 	timeoutsTriggered := make(chan struct{})
-	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
+	cfg := defaultDontHaveTimeoutConfig()
+	cfg.PingLatencyMultiplier = latMultiplier
+	cfg.MaxExpectedWantProcessTime = expProcessTime
+	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout, cfg, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 	<-pinged
@@ -176,8 +180,10 @@ func TestDontHaveTimeoutWantCancelWant(t *testing.T) {
 	tr := timeoutRecorder{}
 	timeoutsTriggered := make(chan struct{})
 
-	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
+	cfg := defaultDontHaveTimeoutConfig()
+	cfg.PingLatencyMultiplier = latMultiplier
+	cfg.MaxExpectedWantProcessTime = expProcessTime
+	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout, cfg, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 	<-pinged
@@ -228,8 +234,10 @@ func TestDontHaveTimeoutRepeatedAddPending(t *testing.T) {
 	tr := timeoutRecorder{}
 	timeoutsTriggered := make(chan struct{})
 
-	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
+	cfg := defaultDontHaveTimeoutConfig()
+	cfg.PingLatencyMultiplier = latMultiplier
+	cfg.MaxExpectedWantProcessTime = expProcessTime
+	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout, cfg, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 	<-pinged
@@ -262,8 +270,11 @@ func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
 	tr := timeoutRecorder{}
 	timeoutsTriggered := make(chan struct{})
 
-	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, maxTimeout, latMultiplier, msgLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
+	cfg := defaultDontHaveTimeoutConfig()
+	cfg.PingLatencyMultiplier = latMultiplier
+	cfg.MessageLatencyMultiplier = msgLatencyMultiplier
+	cfg.MaxExpectedWantProcessTime = expProcessTime
+	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout, cfg, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 	<-pinged
@@ -309,8 +320,10 @@ func TestDontHaveTimeoutMgrMessageLatencyMax(t *testing.T) {
 	testMaxTimeout := time.Millisecond * 10
 	timeoutsTriggered := make(chan struct{})
 
-	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, testMaxTimeout, pingLatencyMultiplier, msgLatencyMultiplier, maxExpectedWantProcessTime, clock, timeoutsTriggered)
+	cfg := defaultDontHaveTimeoutConfig()
+	cfg.MessageLatencyMultiplier = msgLatencyMultiplier
+	cfg.MaxTimeout = testMaxTimeout
+	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout, cfg, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 	<-pinged
@@ -345,8 +358,11 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged, err: errors.New("ping error")}
 	timeoutsTriggered := make(chan struct{})
 
-	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		defaultTimeout, dontHaveTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
+	cfg := defaultDontHaveTimeoutConfig()
+	cfg.DontHaveTimeout = defaultTimeout
+	cfg.PingLatencyMultiplier = latMultiplier
+	cfg.MaxExpectedWantProcessTime = expProcessTime
+	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout, cfg, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 	<-pinged
@@ -385,8 +401,11 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 	tr := timeoutRecorder{}
 	timeoutsTriggered := make(chan struct{})
 
-	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		defaultTimeout, dontHaveTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
+	cfg := defaultDontHaveTimeoutConfig()
+	cfg.DontHaveTimeout = defaultTimeout
+	cfg.PingLatencyMultiplier = latMultiplier
+	cfg.MaxExpectedWantProcessTime = expProcessTime
+	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout, cfg, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 	<-pinged
@@ -424,8 +443,10 @@ func TestDontHaveTimeoutNoTimeoutAfterShutdown(t *testing.T) {
 	tr := timeoutRecorder{}
 	timeoutsTriggered := make(chan struct{})
 
-	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout,
-		dontHaveTimeout, maxTimeout, latMultiplier, messageLatencyMultiplier, expProcessTime, clock, timeoutsTriggered)
+	cfg := defaultDontHaveTimeoutConfig()
+	cfg.PingLatencyMultiplier = latMultiplier
+	cfg.MaxExpectedWantProcessTime = expProcessTime
+	dhtm := newDontHaveTimeoutMgrWithParams(pc, tr.onTimeout, cfg, clock, timeoutsTriggered)
 	dhtm.Start()
 	defer dhtm.Shutdown()
 	<-pinged
