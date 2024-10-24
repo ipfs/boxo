@@ -57,7 +57,7 @@ func (sw *sessionWants) GetNextWants() []cid.Cid {
 	currentLiveCount := len(sw.liveWants)
 	toAdd := sw.broadcastLimit - currentLiveCount
 	liveSize := min(toAdd, sw.toFetch.Len())
-	if liveSize == 0 {
+	if liveSize <= 0 {
 		return nil
 	}
 
