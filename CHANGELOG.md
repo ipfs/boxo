@@ -18,7 +18,7 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- updated go-libp2p to [v0.37.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.37.0)
+- updated to go-libp2p to [v0.37.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.37.0)
 
 ### Removed
 
