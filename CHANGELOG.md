@@ -24,6 +24,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- Fix panic if current live count is greater than broadcast limit [#702](https://github.com/ipfs/boxo/pull/702)
+ 
 ### Security
 
 ## [v0.24.1]
