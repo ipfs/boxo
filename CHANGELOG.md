@@ -18,15 +18,21 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- updated to go-libp2p to [v0.37.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.37.0)
-
 ### Removed
 
 ### Fixed
 
-- Fix panic if current live count is greater than broadcast limit [#702](https://github.com/ipfs/boxo/pull/702)
- 
 ### Security
+
+## [v0.24.2]
+
+### Changed
+
+- updated to go-libp2p to [v0.37.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.37.0)
+
+### Fixed
+
+- Fix panic if current live count is greater than broadcast limit [#702](https://github.com/ipfs/boxo/pull/702)
 
 ## [v0.24.1]
 
