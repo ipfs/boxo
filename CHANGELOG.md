@@ -28,6 +28,17 @@ The following emojis are used to highlight certain changes:
  
 ### Security
 
+## [v0.24.2]
+
+### Changed
+
+- updated to go-libp2p to [v0.37.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.37.0)
+- `ipns/pb`: removed use of deprecated `Exporter` (SA1019, [golang/protobuf#1640](https://github.com/golang/protobuf/issues/1640), [9a7055](https://github.com/ipfs/boxo/pull/699/commits/9a7055e444527d5aad3187503a1b84bcae44f7b9))
+
+### Fixed
+
+- `bitswap/client`: fix panic if current live count is greater than broadcast limit [#702](https://github.com/ipfs/boxo/pull/702)
+
 ## [v0.24.1]
 
 ### Changed
