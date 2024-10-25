@@ -168,7 +168,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	peerID := random.Peers(1)[0]
-	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
+	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb, defaultDontHaveTimeoutConfig())
 	bcstwh := random.Cids(10)
 
 	messageQueue.Startup()
@@ -206,7 +206,7 @@ func TestSendingMessagesDeduped(t *testing.T) {
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	peerID := random.Peers(1)[0]
-	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
+	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb, defaultDontHaveTimeoutConfig())
 	wantHaves := random.Cids(10)
 	wantBlocks := random.Cids(10)
 
@@ -227,7 +227,7 @@ func TestSendingMessagesPartialDupe(t *testing.T) {
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	peerID := random.Peers(1)[0]
-	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
+	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb, defaultDontHaveTimeoutConfig())
 	wantHaves := random.Cids(10)
 	wantBlocks := random.Cids(10)
 
@@ -248,7 +248,7 @@ func TestSendingMessagesPriority(t *testing.T) {
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	peerID := random.Peers(1)[0]
-	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
+	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb, defaultDontHaveTimeoutConfig())
 	wantHaves1 := random.Cids(5)
 	wantHaves2 := random.Cids(5)
 	wantHaves := append(wantHaves1, wantHaves2...)
@@ -315,7 +315,7 @@ func TestCancelOverridesPendingWants(t *testing.T) {
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	peerID := random.Peers(1)[0]
-	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
+	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb, defaultDontHaveTimeoutConfig())
 
 	wantHaves := random.Cids(2)
 	wantBlocks := random.Cids(2)
@@ -365,7 +365,7 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	peerID := random.Peers(1)[0]
-	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
+	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb, defaultDontHaveTimeoutConfig())
 
 	cids := random.Cids(3)
 	wantBlocks := cids[:1]
@@ -549,7 +549,7 @@ func TestSendToPeerThatDoesntSupportHave(t *testing.T) {
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	peerID := random.Peers(1)[0]
 
-	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
+	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb, defaultDontHaveTimeoutConfig())
 	messageQueue.Startup()
 
 	// If the remote peer doesn't support HAVE / DONT_HAVE messages
