@@ -18,6 +18,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- No longer using `github.com/jbenet/goprocess` to avoid requiring in dependents.
+
 ### Removed
 
 ### Fixed
