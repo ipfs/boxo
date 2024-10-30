@@ -452,13 +452,14 @@ func (bs *Client) ReceiveError(err error) {
 }
 
 // Close is called to shutdown the Client
-func (bs *Client) Close() {
+func (bs *Client) Close() error {
 	bs.closeOnce.Do(func() {
 		close(bs.closing)
 		bs.sm.Shutdown()
 		bs.cancel()
 		bs.notif.Shutdown()
 	})
+	return nil
 }
 
 // GetWantlist returns the current local wantlist (both want-blocks and
