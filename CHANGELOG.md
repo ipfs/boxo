@@ -22,9 +22,17 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-- `bitswap/client` no longer logs `"Received provider X for cid Y not requested` to ERROR level, moved to DEBUG [#771](https://github.com/ipfs/boxo/pull/711)
-
 ### Security
+
+## [v0.24.3]
+
+### Changed
+
+- `go.mod` updates
+
+### Fixed
+
+- `bitswap/client` no longer logs `"Received provider X for cid Y not requested` to ERROR level, moved to DEBUG [#771](https://github.com/ipfs/boxo/pull/711)
 
 ## [v0.24.2]
 
