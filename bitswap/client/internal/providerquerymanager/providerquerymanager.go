@@ -3,8 +3,10 @@ package providerquerymanager
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/gammazero/deque"
 	"github.com/ipfs/boxo/bitswap/client/internal"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
@@ -82,8 +84,7 @@ type ProviderQueryManager struct {
 	providerRequestsProcessing   chan *findProviderRequest
 	incomingFindProviderRequests chan *findProviderRequest
 
-	findProviderTimeout time.Duration
-	timeoutMutex        sync.RWMutex
+	findProviderTimeout atomic.Int64
 
 	// do not touch outside the run loop
 	inProgressRequestStatuses map[cid.Cid]*inProgressRequestStatus
@@ -92,15 +93,15 @@ type ProviderQueryManager struct {
 // New initializes a new ProviderQueryManager for a given context and a given
 // network provider.
 func New(ctx context.Context, network ProviderQueryNetwork) *ProviderQueryManager {
-	return &ProviderQueryManager{
+	pqm := &ProviderQueryManager{
 		ctx:                          ctx,
 		network:                      network,
 		providerQueryMessages:        make(chan providerQueryMessage, 16),
 		providerRequestsProcessing:   make(chan *findProviderRequest),
 		incomingFindProviderRequests: make(chan *findProviderRequest),
-		inProgressRequestStatuses:    make(map[cid.Cid]*inProgressRequestStatus),
-		findProviderTimeout:          defaultTimeout,
 	}
+	pqm.SetFindProviderTimeout(defaultTimeout)
+	return pqm
 }
 
 // Startup starts processing for the ProviderQueryManager.
@@ -115,9 +116,7 @@ type inProgressRequest struct {
 
 // SetFindProviderTimeout changes the timeout for finding providers
 func (pqm *ProviderQueryManager) SetFindProviderTimeout(findProviderTimeout time.Duration) {
-	pqm.timeoutMutex.Lock()
-	pqm.findProviderTimeout = findProviderTimeout
-	pqm.timeoutMutex.Unlock()
+	pqm.findProviderTimeout.Store(int64(findProviderTimeout))
 }
 
 // FindProvidersAsync finds providers for the given block.
@@ -167,25 +166,28 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 	// reading from the returned channel -- so that the broadcast never blocks
 	// based on: https://medium.com/capital-one-tech/building-an-unbounded-channel-in-go-789e175cd2cd
 	returnedProviders := make(chan peer.ID)
-	receivedProviders := append([]peer.ID(nil), receivedInProgressRequest.providersSoFar[0:]...)
+	receivedProviders := deque.New[peer.ID]()
+	for _, pid := range receivedInProgressRequest.providersSoFar {
+		receivedProviders.PushBack(pid)
+	}
 	incomingProviders := receivedInProgressRequest.incoming
 
 	go func() {
 		defer close(returnedProviders)
 		defer onCloseFn()
 		outgoingProviders := func() chan<- peer.ID {
-			if len(receivedProviders) == 0 {
+			if receivedProviders.Len() == 0 {
 				return nil
 			}
 			return returnedProviders
 		}
 		nextProvider := func() peer.ID {
-			if len(receivedProviders) == 0 {
+			if receivedProviders.Len() == 0 {
 				return ""
 			}
-			return receivedProviders[0]
+			return receivedProviders.Front()
 		}
-		for len(receivedProviders) > 0 || incomingProviders != nil {
+		for receivedProviders.Len() > 0 || incomingProviders != nil {
 			select {
 			case <-pqm.ctx.Done():
 				return
@@ -198,10 +200,10 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 				if !ok {
 					incomingProviders = nil
 				} else {
-					receivedProviders = append(receivedProviders, provider)
+					receivedProviders.PushBack(provider)
 				}
 			case outgoingProviders() <- nextProvider():
-				receivedProviders = receivedProviders[1:]
+				receivedProviders.PopFront()
 			}
 		}
 	}()
@@ -241,10 +243,8 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 				return
 			}
 			k := fpr.k
-			log.Debugf("Beginning Find Provider Request for cid: %s", k.String())
-			pqm.timeoutMutex.RLock()
-			findProviderCtx, cancel := context.WithTimeout(fpr.ctx, pqm.findProviderTimeout)
-			pqm.timeoutMutex.RUnlock()
+			log.Debugw("Beginning Find Provider request", "cid", k.String())
+			findProviderCtx, cancel := context.WithTimeout(fpr.ctx, time.Duration(pqm.findProviderTimeout.Load()))
 			span := trace.SpanFromContext(findProviderCtx)
 			span.AddEvent("StartFindProvidersAsync")
 			providers := pqm.network.FindProvidersAsync(findProviderCtx, k, maxProviders)
@@ -257,7 +257,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 					err := pqm.network.ConnectTo(findProviderCtx, p)
 					if err != nil {
 						span.RecordError(err, trace.WithAttributes(attribute.Stringer("peer", p)))
-						log.Debugf("failed to connect to provider %s: %s", p, err)
+						log.Debugw("failed to connect to provider", "err", err, "peerID", p)
 						return
 					}
 					span.AddEvent("ConnectedToProvider", trace.WithAttributes(attribute.Stringer("peer", p)))
@@ -292,15 +292,15 @@ func (pqm *ProviderQueryManager) providerRequestBufferWorker() {
 	// buffer for incoming provider queries and dispatches to the find
 	// provider workers as they become available
 	// based on: https://medium.com/capital-one-tech/building-an-unbounded-channel-in-go-789e175cd2cd
-	var providerQueryRequestBuffer []*findProviderRequest
+	providerQueryRequestBuffer := deque.New[*findProviderRequest]()
 	nextProviderQuery := func() *findProviderRequest {
-		if len(providerQueryRequestBuffer) == 0 {
+		if providerQueryRequestBuffer.Len() == 0 {
 			return nil
 		}
-		return providerQueryRequestBuffer[0]
+		return providerQueryRequestBuffer.Front()
 	}
 	outgoingRequests := func() chan<- *findProviderRequest {
-		if len(providerQueryRequestBuffer) == 0 {
+		if providerQueryRequestBuffer.Len() == 0 {
 			return nil
 		}
 		return pqm.providerRequestsProcessing
@@ -312,9 +312,9 @@ func (pqm *ProviderQueryManager) providerRequestBufferWorker() {
 			if !ok {
 				return
 			}
-			providerQueryRequestBuffer = append(providerQueryRequestBuffer, incomingRequest)
+			providerQueryRequestBuffer.PushBack(incomingRequest)
 		case outgoingRequests() <- nextProviderQuery():
-			providerQueryRequestBuffer = providerQueryRequestBuffer[1:]
+			providerQueryRequestBuffer.PopFront()
 		case <-pqm.ctx.Done():
 			return
 		}
@@ -350,14 +350,14 @@ func (pqm *ProviderQueryManager) run() {
 }
 
 func (rpm *receivedProviderMessage) debugMessage() {
-	log.Debugf("Received provider (%s) (%s)", rpm.p, rpm.k)
+	log.Debugw("Received provider", "peerID", rpm.p, "cid", rpm.k)
 	trace.SpanFromContext(rpm.ctx).AddEvent("ReceivedProvider", trace.WithAttributes(attribute.Stringer("provider", rpm.p), attribute.Stringer("cid", rpm.k)))
 }
 
 func (rpm *receivedProviderMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[rpm.k]
 	if !ok {
-		log.Debugf("Received provider (%s) for cid (%s) not requested", rpm.p.String(), rpm.k.String())
+		log.Debugw("Received provider not requested", "peerID", rpm.p.String(), "cid", rpm.k.String())
 		return
 	}
 	requestStatus.providersSoFar = append(requestStatus.providersSoFar, rpm.p)
@@ -371,7 +371,7 @@ func (rpm *receivedProviderMessage) handle(pqm *ProviderQueryManager) {
 }
 
 func (fpqm *finishedProviderQueryMessage) debugMessage() {
-	log.Debugf("Finished Provider Query on cid: %s", fpqm.k)
+	log.Debugw("Finished Provider Query", "cid", fpqm.k)
 	trace.SpanFromContext(fpqm.ctx).AddEvent("FinishedProviderQuery", trace.WithAttributes(attribute.Stringer("cid", fpqm.k)))
 }
 
@@ -385,18 +385,20 @@ func (fpqm *finishedProviderQueryMessage) handle(pqm *ProviderQueryManager) {
 		close(listener)
 	}
 	delete(pqm.inProgressRequestStatuses, fpqm.k)
+	if len(pqm.inProgressRequestStatuses) == 0 {
+		pqm.inProgressRequestStatuses = nil
+	}
 	requestStatus.cancelFn()
 }
 
 func (npqm *newProvideQueryMessage) debugMessage() {
-	log.Debugf("New Provider Query on cid: %s", npqm.k)
+	log.Debugw("New Provider Query", "cid", npqm.k)
 	trace.SpanFromContext(npqm.ctx).AddEvent("NewProvideQuery", trace.WithAttributes(attribute.Stringer("cid", npqm.k)))
 }
 
 func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[npqm.k]
 	if !ok {
-
 		ctx, cancelFn := context.WithCancel(pqm.ctx)
 		span := trace.SpanFromContext(npqm.ctx)
 		span.AddEvent("NewQuery", trace.WithAttributes(attribute.Stringer("cid", npqm.k)))
@@ -408,6 +410,9 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 			cancelFn:  cancelFn,
 		}
 
+		if pqm.inProgressRequestStatuses == nil {
+			pqm.inProgressRequestStatuses = make(map[cid.Cid]*inProgressRequestStatus)
+		}
 		pqm.inProgressRequestStatuses[npqm.k] = requestStatus
 
 		select {
@@ -433,7 +438,7 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 }
 
 func (crm *cancelRequestMessage) debugMessage() {
-	log.Debugf("Cancel provider query on cid: %s", crm.k)
+	log.Debugw("Cancel provider query", "cid", crm.k)
 	trace.SpanFromContext(crm.ctx).AddEvent("CancelRequest", trace.WithAttributes(attribute.Stringer("cid", crm.k)))
 }
 
@@ -452,6 +457,9 @@ func (crm *cancelRequestMessage) handle(pqm *ProviderQueryManager) {
 	close(crm.incomingProviders)
 	if len(requestStatus.listeners) == 0 {
 		delete(pqm.inProgressRequestStatuses, crm.k)
+		if len(pqm.inProgressRequestStatuses) == 0 {
+			pqm.inProgressRequestStatuses = nil
+		}
 		requestStatus.cancelFn()
 	}
 }
