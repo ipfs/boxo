@@ -131,7 +131,7 @@ func (sim *SessionInterestManager) FilterSessionInterested(ses uint64, ksets ...
 		// For each key in the list
 		for _, c := range ks {
 			// If there is a session that's interested, add the key to the set
-			if _, ok := sim.wants[c][ses]; ok {
+			if wanted, ok := sim.wants[c][ses]; ok && wanted {
 				has = append(has, c)
 			}
 		}
