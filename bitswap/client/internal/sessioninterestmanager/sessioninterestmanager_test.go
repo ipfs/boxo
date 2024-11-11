@@ -83,6 +83,20 @@ func TestInterestedSessions(t *testing.T) {
 	}
 }
 
+func TestRemoveSessionWants(t *testing.T) {
+	sim := New()
+
+	const ses = 1
+	cids := random.Cids(3)
+	sim.RecordSessionInterest(ses, cids[0:2])
+	sim.RemoveSessionWants(ses, cids)
+	res := sim.FilterSessionInterested(ses, cids)
+
+	if len(res) > 0 {
+		t.Fatal("wants have not been removed")
+	}
+}
+
 func TestRemoveSession(t *testing.T) {
 	sim := New()
 
