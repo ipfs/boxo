@@ -122,6 +122,13 @@ func WithStreamingRecordsLimit(limit int) Option {
 	}
 }
 
+// WithMiddleware allows you to add a middleware to the delegate routing server.
+func WithMiddleware(middleware func(http.Handler) http.Handler) Option {
+	return func(s *server) {
+		s.middleware = middleware
+	}
+}
+
 func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	server := &server{
 		svc:                   svc,
@@ -134,6 +141,7 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	}
 
 	r := mux.NewRouter()
+	r.Use(server.middleware)
 	r.HandleFunc(findProvidersPath, server.findProviders).Methods(http.MethodGet)
 	r.HandleFunc(providePath, server.provide).Methods(http.MethodPut)
 	r.HandleFunc(findPeersPath, server.findPeers).Methods(http.MethodGet)
@@ -147,6 +155,7 @@ type server struct {
 	disableNDJSON         bool
 	recordsLimit          int
 	streamingRecordsLimit int
+	middleware            func(http.Handler) http.Handler
 }
 
 func (s *server) detectResponseType(r *http.Request) (string, error) {
