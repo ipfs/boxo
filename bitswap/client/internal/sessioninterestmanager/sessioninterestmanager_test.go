@@ -1,6 +1,7 @@
 package sessioninterestmanager
 
 import (
+	"fmt"
 	"testing"
 
 	cid "github.com/ipfs/go-cid"
@@ -92,7 +93,8 @@ func TestRemoveSessionWants(t *testing.T) {
 	sim.RemoveSessionWants(ses, cids)
 	res := sim.FilterSessionInterested(ses, cids)
 
-	if len(res) > 0 {
+	if len(res[0]) > 0 {
+		fmt.Println(res)
 		t.Fatal("wants have not been removed")
 	}
 }
