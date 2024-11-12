@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `routing/http/server`: added `WithMiddleware` option to allow adding http middleware to the delegate routing server for things like metrics, logging, etc.
+
 ### Changed
 
 ### Removed

@@ -141,7 +141,9 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	}
 
 	r := mux.NewRouter()
-	r.Use(server.middleware)
+	if server.middleware != nil {
+		r.Use(server.middleware)
+	}
 	r.HandleFunc(findProvidersPath, server.findProviders).Methods(http.MethodGet)
 	r.HandleFunc(providePath, server.provide).Methods(http.MethodPut)
 	r.HandleFunc(findPeersPath, server.findPeers).Methods(http.MethodGet)
