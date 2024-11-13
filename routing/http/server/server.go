@@ -150,9 +150,10 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	// Create middleware with prometheus recorder
 	mdlw := middleware.New(middleware.Config{
 		Recorder: metrics.NewRecorder(metrics.Config{
-			Registry:        server.promRegistry,
-			Prefix:          "delegated_routing",
-			DurationBuckets: []float64{0.05, 0.1, 0.5, 1, 5, 10, 20, 30, 50, 60},
+			Registry: server.promRegistry,
+			Prefix:   "delegated_routing",
+
+			DurationBuckets: []float64{0.1, 0.5, 1, 2, 5, 8, 10, 20, 30},
 		}),
 	})
 
