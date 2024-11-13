@@ -143,6 +143,10 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 		opt(server)
 	}
 
+	if server.promRegistry == nil {
+		server.promRegistry = prometheus.NewRegistry()
+	}
+
 	// Create middleware with prometheus recorder
 	mdlw := middleware.New(middleware.Config{
 		Recorder: metrics.NewRecorder(metrics.Config{
