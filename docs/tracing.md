@@ -134,6 +134,6 @@ the complete trace of this request.
 [Open Telemetry]: https://opentelemetry.io/
 [opentelemetry-go]: https://github.com/open-telemetry/opentelemetry-go
 [Trace Context]: https://www.w3.org/TR/trace-context
-[OpenTelemetry Environment Variable Specification]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/sdk-environment-variables.md
+[OpenTelemetry Environment Variable Specification]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/configuration/sdk-environment-variables.md
 [OpenTelemetry Protocol Exporter]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md
 [Jaeger UI]: https://github.com/jaegertracing/jaeger-ui
