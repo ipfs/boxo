@@ -25,8 +25,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
+	"github.com/prometheus/client_golang/prometheus"
 
 	logging "github.com/ipfs/go-log/v2"
+	metrics "github.com/slok/go-http-metrics/metrics/prometheus"
+	"github.com/slok/go-http-metrics/middleware"
+	middlewarestd "github.com/slok/go-http-metrics/middleware/std"
 )
 
 const (
@@ -133,12 +137,23 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 		opt(server)
 	}
 
+	// Create middleware with prometheus recorder
+	mdlw := middleware.New(middleware.Config{
+		Recorder: metrics.NewRecorder(metrics.Config{
+			Registry:        prometheus.DefaultRegisterer,
+			Prefix:          "delegated_routing",
+			DurationBuckets: []float64{0.05, 0.1, 0.5, 1, 5, 10, 20, 30, 50, 60},
+		}),
+	})
+
 	r := mux.NewRouter()
-	r.HandleFunc(findProvidersPath, server.findProviders).Methods(http.MethodGet)
-	r.HandleFunc(providePath, server.provide).Methods(http.MethodPut)
-	r.HandleFunc(findPeersPath, server.findPeers).Methods(http.MethodGet)
-	r.HandleFunc(GetIPNSPath, server.GetIPNS).Methods(http.MethodGet)
-	r.HandleFunc(GetIPNSPath, server.PutIPNS).Methods(http.MethodPut)
+	// Wrap each handler with the metrics middleware
+	r.Handle(findProvidersPath, middlewarestd.Handler(findProvidersPath, mdlw, http.HandlerFunc(server.findProviders))).Methods(http.MethodGet)
+	r.Handle(providePath, middlewarestd.Handler(providePath, mdlw, http.HandlerFunc(server.provide))).Methods(http.MethodPut)
+	r.Handle(findPeersPath, middlewarestd.Handler(findPeersPath, mdlw, http.HandlerFunc(server.findPeers))).Methods(http.MethodGet)
+	r.Handle(GetIPNSPath, middlewarestd.Handler(GetIPNSPath, mdlw, http.HandlerFunc(server.GetIPNS))).Methods(http.MethodGet)
+	r.Handle(GetIPNSPath, middlewarestd.Handler(GetIPNSPath, mdlw, http.HandlerFunc(server.PutIPNS))).Methods(http.MethodPut)
+
 	return r
 }
 
