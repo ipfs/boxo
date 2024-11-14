@@ -261,7 +261,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 					span.AddEvent("ConnectedToProvider", trace.WithAttributes(attribute.Stringer("peer", p)))
 					select {
 					case pqm.providerQueryMessages <- &receivedProviderMessage{
-						ctx: findProviderCtx,
+						ctx: fpr.ctx,
 						k:   k,
 						p:   p,
 					}:
@@ -274,7 +274,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 			cancel()
 			select {
 			case pqm.providerQueryMessages <- &finishedProviderQueryMessage{
-				ctx: findProviderCtx,
+				ctx: fpr.ctx,
 				k:   k,
 			}:
 			case <-pqm.ctx.Done():
