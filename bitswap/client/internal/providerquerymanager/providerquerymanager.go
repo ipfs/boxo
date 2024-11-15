@@ -166,7 +166,8 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 	// reading from the returned channel -- so that the broadcast never blocks
 	// based on: https://medium.com/capital-one-tech/building-an-unbounded-channel-in-go-789e175cd2cd
 	returnedProviders := make(chan peer.ID)
-	receivedProviders := deque.New[peer.ID]()
+	var receivedProviders deque.Deque[peer.ID]
+	receivedProviders.Grow(len(receivedInProgressRequest.providersSoFar))
 	for _, pid := range receivedInProgressRequest.providersSoFar {
 		receivedProviders.PushBack(pid)
 	}
@@ -292,7 +293,7 @@ func (pqm *ProviderQueryManager) providerRequestBufferWorker() {
 	// buffer for incoming provider queries and dispatches to the find
 	// provider workers as they become available
 	// based on: https://medium.com/capital-one-tech/building-an-unbounded-channel-in-go-789e175cd2cd
-	providerQueryRequestBuffer := deque.New[*findProviderRequest]()
+	var providerQueryRequestBuffer deque.Deque[*findProviderRequest]
 	nextProviderQuery := func() *findProviderRequest {
 		if providerQueryRequestBuffer.Len() == 0 {
 			return nil
