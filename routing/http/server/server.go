@@ -151,7 +151,7 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	mdlw := middleware.New(middleware.Config{
 		Recorder: metrics.NewRecorder(metrics.Config{
 			Registry: server.promRegistry,
-			Prefix:   "delegated_routing",
+			Prefix:   "delegated_routing_server",
 
 			DurationBuckets: []float64{0.1, 0.5, 1, 2, 5, 8, 10, 20, 30},
 		}),
