@@ -31,8 +31,6 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
-	process "github.com/jbenet/goprocess"
-	procctx "github.com/jbenet/goprocess/context"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -117,10 +115,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 	// exclusively. We should probably find another way to share logging data
 	ctx, cancelFunc := context.WithCancel(parent)
 
-	px := process.WithTeardown(func() error {
-		return nil
-	})
-
 	// onDontHaveTimeout is called when a want-block is sent to a peer that
 	// has an old version of Bitswap that doesn't support DONT_HAVE messages,
 	// or when no response is received within a timeout.
@@ -165,9 +159,9 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 	bs = &Client{
 		blockstore:                 bstore,
 		network:                    network,
-		process:                    px,
+		cancel:                     cancelFunc,
+		closing:                    make(chan struct{}),
 		pm:                         pm,
-		pqm:                        pqm,
 		sm:                         sm,
 		sim:                        sim,
 		notif:                      notif,
@@ -184,17 +178,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		option(bs)
 	}
 
-	bs.pqm.Startup()
-
-	// bind the context and process.
-	// do it over here to avoid closing before all setup is done.
-	go func() {
-		<-px.Closing() // process closes first
-		sm.Shutdown()
-		cancelFunc()
-		notif.Shutdown()
-	}()
-	procctx.CloseAfterContext(px, ctx) // parent cancelled first
+	pqm.Startup()
 
 	return bs
 }
@@ -202,9 +186,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 // Client instances implement the bitswap protocol.
 type Client struct {
 	pm *bspm.PeerManager
-
-	// the provider query manager manages requests to find providers
-	pqm *bspqm.ProviderQueryManager
 
 	// network delivers messages on behalf of the session
 	network bsnet.BitSwapNetwork
@@ -216,7 +197,9 @@ type Client struct {
 	// manages channels of outgoing blocks for sessions
 	notif notifications.PubSub
 
-	process process.Process
+	cancel    context.CancelFunc
+	closing   chan struct{}
+	closeOnce sync.Once
 
 	// Counters for various statistics
 	counterLk sync.Mutex
@@ -291,7 +274,7 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 	defer span.End()
 
 	select {
-	case <-bs.process.Closing():
+	case <-bs.closing:
 		return errors.New("bitswap is closed")
 	default:
 	}
@@ -314,10 +297,10 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 	return nil
 }
 
-// receiveBlocksFrom process blocks received from the network
+// receiveBlocksFrom processes blocks received from the network
 func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []blocks.Block, haves []cid.Cid, dontHaves []cid.Cid) error {
 	select {
-	case <-bs.process.Closing():
+	case <-bs.closing:
 		return errors.New("bitswap is closed")
 	default:
 	}
@@ -470,7 +453,13 @@ func (bs *Client) ReceiveError(err error) {
 
 // Close is called to shutdown the Client
 func (bs *Client) Close() error {
-	return bs.process.Close()
+	bs.closeOnce.Do(func() {
+		close(bs.closing)
+		bs.sm.Shutdown()
+		bs.cancel()
+		bs.notif.Shutdown()
+	})
+	return nil
 }
 
 // GetWantlist returns the current local wantlist (both want-blocks and

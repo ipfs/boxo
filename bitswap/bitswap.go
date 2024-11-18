@@ -136,10 +136,9 @@ func (bs *Bitswap) Stat() (*Stat, error) {
 
 func (bs *Bitswap) Close() error {
 	bs.net.Stop()
-	return multierr.Combine(
-		bs.Client.Close(),
-		bs.Server.Close(),
-	)
+	bs.Client.Close()
+	bs.Server.Close()
+	return nil
 }
 
 func (bs *Bitswap) WantlistForPeer(p peer.ID) []cid.Cid {

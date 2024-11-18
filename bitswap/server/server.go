@@ -20,7 +20,6 @@ import (
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
-	process "github.com/jbenet/goprocess"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
 )
@@ -52,7 +51,12 @@ type Server struct {
 	// the total number of simultaneous threads sending outgoing messages
 	taskWorkerCount int
 
-	process process.Process
+	// Cancel stops the server
+	cancel    context.CancelFunc
+	closing   chan struct{}
+	closeOnce sync.Once
+	// waitWorkers waits for all worker goroutines to exit.
+	waitWorkers sync.WaitGroup
 
 	// Extra options to pass to the decision manager
 	engineOptions []decision.Option
@@ -61,20 +65,16 @@ type Server struct {
 func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Server {
 	ctx, cancel := context.WithCancel(ctx)
 
-	px := process.WithTeardown(func() error {
-		return nil
-	})
-	go func() {
-		<-px.Closing() // process closes first
-		cancel()
-	}()
-
 	s := &Server{
-		sentHistogram:     bmetrics.SentHist(ctx),
-		sendTimeHistogram: bmetrics.SendTimeHist(ctx),
-		taskWorkerCount:   defaults.BitswapTaskWorkerCount,
-		network:           network,
-		process:           px,
+		sentHistogram:      bmetrics.SentHist(ctx),
+		sendTimeHistogram:  bmetrics.SendTimeHist(ctx),
+		taskWorkerCount:    defaults.BitswapTaskWorkerCount,
+		network:            network,
+		cancel:             cancel,
+		closing:            make(chan struct{}),
+		provideEnabled:     true,
+		hasBlockBufferSize: defaults.HasBlockBufferSize,
+		provideKeys:        make(chan cid.Cid, provideKeysBufferSize),
 	}
 
 	for _, o := range options {
@@ -82,7 +82,6 @@ func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Bl
 	}
 
 	s.engine = decision.NewEngine(
-		ctx,
 		bstore,
 		network.ConnectionManager(),
 		network.Self(),
@@ -90,7 +89,7 @@ func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Bl
 	)
 	s.engineOptions = nil
 
-	s.startWorkers(ctx, px)
+	s.startWorkers(ctx)
 
 	return s
 }
@@ -255,21 +254,20 @@ func (bs *Server) WantlistForPeer(p peer.ID) []cid.Cid {
 	return out
 }
 
-func (bs *Server) startWorkers(ctx context.Context, px process.Process) {
-	bs.engine.StartWorkers(ctx, px)
-
+func (bs *Server) startWorkers(ctx context.Context) {
 	// Start up workers to handle requests from other nodes for the data on this node
+	bs.waitWorkers.Add(bs.taskWorkerCount)
 	for i := 0; i < bs.taskWorkerCount; i++ {
 		i := i
-		px.Go(func(px process.Process) {
-			bs.taskWorker(ctx, i)
-		})
+		go bs.taskWorker(ctx, i)
 	}
 }
 
 func (bs *Server) taskWorker(ctx context.Context, id int) {
-	defer log.Debug("bitswap task worker shutting down...")
+	defer bs.waitWorkers.Done()
+
 	log := log.With("ID", id)
+	defer log.Debug("bitswap task worker shutting down...")
 	for {
 		log.Debug("Bitswap.TaskWorker.Loop")
 		select {
@@ -291,8 +289,7 @@ func (bs *Server) taskWorker(ctx context.Context, id int) {
 				}
 				bs.sendBlocks(ctx, envelope)
 
-				dur := time.Since(start)
-				bs.sendTimeHistogram.Observe(dur.Seconds())
+				bs.sendTimeHistogram.Observe(time.Since(start).Seconds())
 
 			case <-ctx.Done():
 				return
@@ -400,7 +397,7 @@ func (bs *Server) Stat() (Stat, error) {
 // that those blocks are available in the blockstore before calling this function.
 func (bs *Server) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error {
 	select {
-	case <-bs.process.Closing():
+	case <-bs.closing:
 		return errors.New("bitswap is closed")
 	default:
 	}
@@ -447,7 +444,13 @@ func (bs *Server) PeerDisconnected(p peer.ID) {
 	bs.engine.PeerDisconnected(p)
 }
 
-// Close is called to shutdown the Client
-func (bs *Server) Close() error {
-	return bs.process.Close()
+// Close is called to shutdown the Server. Returns when all workers and
+// decision engine have finished. Safe to calling multiple times/concurrently.
+func (bs *Server) Close() {
+	bs.closeOnce.Do(func() {
+		close(bs.closing)
+		bs.cancel()
+	})
+	bs.engine.Close()
+	bs.waitWorkers.Wait()
 }

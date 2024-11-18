@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jbenet/goprocess"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -125,8 +124,8 @@ func TestRepublish(t *testing.T) {
 	repub.Interval = time.Second
 	repub.RecordLifetime = time.Second * 5
 
-	proc := goprocess.Go(repub.Run)
-	defer proc.Close()
+	stop := repub.Run()
+	defer stop()
 
 	// now wait a couple seconds for it to fire
 	time.Sleep(time.Second * 2)
@@ -182,8 +181,8 @@ func TestLongEOLRepublish(t *testing.T) {
 	repub.Interval = time.Millisecond * 500
 	repub.RecordLifetime = time.Second
 
-	proc := goprocess.Go(repub.Run)
-	defer proc.Close()
+	stop := repub.Run()
+	defer stop()
 
 	// now wait a couple seconds for it to fire a few times
 	time.Sleep(time.Second * 2)

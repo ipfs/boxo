@@ -16,17 +16,69 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+- No longer using `github.com/jbenet/goprocess` to avoid requiring in dependents.
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [v0.24.3]
+
+### Changed
+
+- `go.mod` updates
+
+### Fixed
+
+- `bitswap/client` no longer logs `"Received provider X for cid Y not requested` to ERROR level, moved to DEBUG [#771](https://github.com/ipfs/boxo/pull/711)
+
+## [v0.24.2]
+
+### Changed
+
+- updated to go-libp2p to [v0.37.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.37.0)
+- `ipns/pb`: removed use of deprecated `Exporter` (SA1019, [golang/protobuf#1640](https://github.com/golang/protobuf/issues/1640), [9a7055](https://github.com/ipfs/boxo/pull/699/commits/9a7055e444527d5aad3187503a1b84bcae44f7b9))
+
+### Fixed
+
+- `bitswap/client`: fix panic if current live count is greater than broadcast limit [#702](https://github.com/ipfs/boxo/pull/702)
+
+## [v0.24.1]
+
+### Changed
+
+- `routing/http/client`: creating delegated routing client with `New` now defaults to querying delegated routing server with `DefaultProtocolFilter`  ([IPIP-484](https://github.com/ipfs/specs/pull/484)) [#689](https://github.com/ipfs/boxo/pull/689)
+- updated go-libp2p to [v0.36.5](https://github.com/libp2p/go-libp2p/releases/tag/v0.36.5)
+- updated dependencies [#693](https://github.com/ipfs/boxo/pull/693)
+- update `go-libp2p-kad-dht` to [v0.27.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.27.0)
+
+### Fixed
+
+- `routing/http/client`: optional address and protocol filter parameters from [IPIP-484](https://github.com/ipfs/specs/pull/484) use human-readable `,` instead of `%2C`. [#688](https://github.com/ipfs/boxo/pull/688)
+- `bitswap/client` Cleanup live wants when wants are canceled. This prevents live wants from continuing to get rebroadcasted even after the wants are canceled. [#690](https://github.com/ipfs/boxo/pull/690)
+- Fix problem adding invalid CID to exhausted wants list resulting in possible performance issue. [#692](https://github.com/ipfs/boxo/pull/692)
+
+## [v0.24.0]
+
+### Added
+
 * `boxo/bitswap/server`:
   * A new [`WithWantHaveReplaceSize(n)`](https://pkg.go.dev/github.com/ipfs/boxo/bitswap/server/#WithWantHaveReplaceSize) option can be used with `bitswap.New` to fine-tune cost-vs-performance. It sets the maximum size of a block in bytes up to which the bitswap server will replace a WantHave with a WantBlock response. Setting this to 0 disables this WantHave replacement and means that block sizes are not read when processing WantHave requests. [#672](https://github.com/ipfs/boxo/pull/672)
-- `routing/http`: added support for address and protocol filtering to the delegated routing server ([IPIP-484](https://github.com/ipfs/specs/pull/484)) [#671](https://github.com/ipfs/boxo/pull/671)
-- `blockservice` now have a `WithProvider` option, this allows to recreate the behavior of advertising added blocks the bitswap server used to do.
+* `routing/http`:
+  * added support for address and protocol filtering to the delegated routing server ([IPIP-484](https://github.com/ipfs/specs/pull/484)) [#671](https://github.com/ipfs/boxo/pull/671) [#678](https://github.com/ipfs/boxo/pull/678)
+  * added support for address and protocol filtering to the delegated routing client ([IPIP-484](https://github.com/ipfs/specs/pull/484)) [#678](https://github.com/ipfs/boxo/pull/678). To add filtering to the client, use the [`WithFilterAddrs`](https://pkg.go.dev/github.com/ipfs/boxo/routing/http/client#WithFilterAddrs) and [`WithFilterProtocols`](https://pkg.go.dev/github.com/ipfs/boxo/routing/http/client#WithFilterProtocols) options when creating the client.Client-side filtering for servers that don't support filtering is enabled by default. To disable it, use the [`disableLocalFiltering`](https://pkg.go.dev/github.com/ipfs/boxo/routing/http/client#disableLocalFiltering) option when creating the client.
 
 ### Changed
 
 ### Removed
 
 ### Fixed
-= `unixfs/hamt` Log error instead of panic if both link and shard are nil [#393](https://github.com/ipfs/boxo/pull/393)
+
+- `unixfs/hamt` Log error instead of panic if both link and shard are nil [#393](https://github.com/ipfs/boxo/pull/393)
 
 ### Security
 

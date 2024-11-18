@@ -1,4 +1,4 @@
-package server
+package filters
 
 import (
 	"testing"
@@ -9,6 +9,59 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAddFiltersToURL(t *testing.T) {
+	testCases := []struct {
+		name           string
+		baseURL        string
+		protocolFilter []string
+		addrFilter     []string
+		expected       string
+	}{
+		{
+			name:           "No filters",
+			baseURL:        "https://example.com/routing/v1/providers/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",
+			protocolFilter: nil,
+			addrFilter:     nil,
+			expected:       "https://example.com/routing/v1/providers/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",
+		},
+		{
+			name:           "Only protocol filter",
+			baseURL:        "https://example.com/routing/v1/providers/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",
+			protocolFilter: []string{"transport-bitswap", "transport-ipfs-gateway-http"},
+			addrFilter:     nil,
+			expected:       "https://example.com/routing/v1/providers/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?filter-protocols=transport-bitswap,transport-ipfs-gateway-http",
+		},
+		{
+			name:           "Only addr filter",
+			baseURL:        "https://example.com/routing/v1/providers/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",
+			protocolFilter: nil,
+			addrFilter:     []string{"ip4", "ip6"},
+			expected:       "https://example.com/routing/v1/providers/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?filter-addrs=ip4,ip6",
+		},
+		{
+			name:           "Both filters",
+			baseURL:        "https://example.com/routing/v1/providers/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",
+			protocolFilter: []string{"transport-bitswap", "transport-graphsync-filecoinv1"},
+			addrFilter:     []string{"ip4", "ip6"},
+			expected:       "https://example.com/routing/v1/providers/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?filter-addrs=ip4,ip6&filter-protocols=transport-bitswap,transport-graphsync-filecoinv1",
+		},
+		{
+			name:           "URL with existing query parameters",
+			baseURL:        "https://example.com/routing/v1/providers/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?existing=param",
+			protocolFilter: []string{"transport-bitswap"},
+			addrFilter:     []string{"ip4"},
+			expected:       "https://example.com/routing/v1/providers/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi?existing=param&filter-addrs=ip4&filter-protocols=transport-bitswap",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := AddFiltersToURL(tc.baseURL, tc.protocolFilter, tc.addrFilter)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
 
 func TestApplyAddrFilter(t *testing.T) {
 	// Create some test multiaddrs
