@@ -17,6 +17,7 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `routing/http/server`: added Prometheus instrumentation to http delegated routing endpoints.
+- `routing/http/server`: added configurable routing timeout (`DefaultRoutingTimeout` being 30s) to prevent indefinite hangs during content/peer routing. Set custom duration via `WithRoutingTimeout`.
 
 ### Changed
 
