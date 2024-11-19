@@ -22,6 +22,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - No longer using `github.com/jbenet/goprocess` to avoid requiring in dependents.
+- `routing/http/server`: changed default Prometheus buckets for response size and duration to match real world data.
 
 ### Removed
 
