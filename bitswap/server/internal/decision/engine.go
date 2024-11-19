@@ -378,12 +378,13 @@ func wrapTaskComparator(tc TaskComparator) peertask.QueueTaskComparator {
 // maxOutstandingBytesPerPeer hints to the peer task queue not to give a peer
 // more tasks if it has some maximum work already outstanding.
 func NewEngine(
+	ctx context.Context,
 	bs bstore.Blockstore,
 	peerTagger PeerTagger,
 	self peer.ID,
 	opts ...Option,
 ) *Engine {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 
 	e := &Engine{
 		scoreLedger:                     NewDefaultScoreLedger(),
