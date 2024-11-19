@@ -188,7 +188,7 @@ func newEngineForTesting(
 	opts ...Option,
 ) *Engine {
 	opts = append(opts, WithWantHaveReplaceSize(wantHaveReplaceSize))
-	return NewEngine(bs, peerTagger, self, opts...)
+	return NewEngine(context.Background(), bs, peerTagger, self, opts...)
 }
 
 func TestOutboxClosedWhenEngineClosed(t *testing.T) {
