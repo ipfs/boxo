@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `routing/http/server`: added Prometheus instrumentation to http delegated routing endpoints.
+
 ### Changed
 
 - No longer using `github.com/jbenet/goprocess` to avoid requiring in dependents.
