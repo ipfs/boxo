@@ -386,7 +386,10 @@ func (bs *Server) sendBlocks(ctx context.Context, env *decision.Envelope) {
 	defer env.Sent()
 
 	err := bs.network.SendMessage(ctx, env.Peer, env.Message)
-	if err != nil {
+	if streamErr := (bsnet.ErrNewStream{}); errors.As(err, &streamErr) {
+		log.Warnw("failed to open new stream to peer", "peer", env.Peer, "error", streamErr.Err)
+		return
+	} else if err != nil {
 		log.Debugw("failed to send blocks message",
 			"peer", env.Peer,
 			"error", err,

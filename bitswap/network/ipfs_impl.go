@@ -319,6 +319,14 @@ func sendTimeout(size int) time.Duration {
 	return timeout
 }
 
+type ErrNewStream struct {
+	Err error
+}
+
+func (e ErrNewStream) Error() string {
+	return fmt.Sprintf("failed to open new stream: %s", e.Err)
+}
+
 func (bsnet *impl) SendMessage(
 	ctx context.Context,
 	p peer.ID,
@@ -326,7 +334,7 @@ func (bsnet *impl) SendMessage(
 ) error {
 	s, err := bsnet.newStreamToPeer(ctx, p)
 	if err != nil {
-		return err
+		return ErrNewStream{Err: err}
 	}
 
 	timeout := sendTimeout(outgoing.Size())
