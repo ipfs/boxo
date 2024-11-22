@@ -17,6 +17,7 @@ type clientConfig struct {
 	tracer                     tracer.Tracer
 
 	// ProviderQueryManager options.
+	findProviderTimeout time.Duration
 	maxConcurrentFinds  int
 	maxProvidersPerFind int
 }
@@ -89,6 +90,12 @@ func WithBlockReceivedNotifier(brn BlockReceivedNotifier) Option {
 func WithoutDuplicatedBlockStats() Option {
 	return func(c *clientConfig) {
 		c.skipDuplicatedBlocksStats = true
+	}
+}
+
+func WithFindProviderTimeout(to time.Duration) Option {
+	return func(c *clientConfig) {
+		c.findProviderTimeout = to
 	}
 }
 
