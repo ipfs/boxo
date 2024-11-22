@@ -76,8 +76,8 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 	bpm := bsbpm.New()
 	pm := bspm.New(ctx, peerQueueFactory, network.Self())
 	pqm := bspqm.New(ctx, network,
-		bspqm.WithMaxProvidersPerFind(opts.pqmMaxProvidersPerFind),
-		bspqm.WithMaxInProcessRequests(opts.pqmMaxInProcessRequests))
+		bspqm.WithMaxConcurrentFinds(opts.pqmMaxConcurrentFinds),
+		bspqm.WithMaxProvidersPerFind(opts.pqmMaxProvidersPerFind))
 
 	sessionFactory := func(
 		sessctx context.Context,

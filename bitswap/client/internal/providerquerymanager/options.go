@@ -1,26 +1,35 @@
 package providerquerymanager
 
 const (
-	defaultMaxProvidersPerFind  = 10
-	defaultMaxInProcessRequests = 6
+	defaultMaxConcurrentFinds  = 16
+	defaultMaxProvidersPerFind = 10
 )
 
 type config struct {
-	maxProvidersPerFind  int
-	maxInProcessRequests int
+	maxConcurrentFinds  int
+	maxProvidersPerFind int
 }
 
 type Option func(*config)
 
 func getOpts(opts []Option) config {
 	cfg := config{
-		maxProvidersPerFind:  defaultMaxProvidersPerFind,
-		maxInProcessRequests: defaultMaxInProcessRequests,
+		maxConcurrentFinds:  defaultMaxConcurrentFinds,
+		maxProvidersPerFind: defaultMaxProvidersPerFind,
 	}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 	return cfg
+}
+
+func WithMaxConcurrentFinds(n int) Option {
+	return func(c *config) {
+		if n == 0 {
+			n = defaultMaxConcurrentFinds
+		}
+		c.maxConcurrentFinds = n
+	}
 }
 
 func WithMaxProvidersPerFind(n int) Option {
@@ -29,14 +38,5 @@ func WithMaxProvidersPerFind(n int) Option {
 			n = defaultMaxProvidersPerFind
 		}
 		c.maxProvidersPerFind = n
-	}
-}
-
-func WithMaxInProcessRequests(n int) Option {
-	return func(c *config) {
-		if n == 0 {
-			n = defaultMaxInProcessRequests
-		}
-		c.maxInProcessRequests = n
 	}
 }

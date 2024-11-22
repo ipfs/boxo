@@ -234,7 +234,7 @@ func (pqm *ProviderQueryManager) cancelProviderRequest(ctx context.Context, k ci
 
 func (pqm *ProviderQueryManager) findProviderWorker() {
 	// findProviderWorker just cycles through incoming provider queries one at
-	// a time. There are maxInProcessRequests of these workers running
+	// a time. There are pqm.opts.maxConcurrentFinds of these workers running
 	// concurrently to let requests go in parallel but keep them rate limited.
 	maxProviders := pqm.opts.maxProvidersPerFind
 	for {
@@ -314,8 +314,8 @@ func (pqm *ProviderQueryManager) run() {
 		}()
 	}()
 
-	wg.Add(pqm.opts.maxInProcessRequests)
-	for i := 0; i < pqm.opts.maxInProcessRequests; i++ {
+	wg.Add(pqm.opts.maxConcurrentFinds)
+	for i := 0; i < pqm.opts.maxConcurrentFinds; i++ {
 		go func() {
 			pqm.findProviderWorker()
 			wg.Done()
