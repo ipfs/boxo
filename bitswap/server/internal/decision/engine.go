@@ -64,8 +64,6 @@ import (
 var log = logging.Logger("bitswap/server/decision")
 
 const (
-	// outboxChanBuffer must be 0 to prevent stale messages from being sent
-	outboxChanBuffer = 0
 	// targetMessageSize is the ideal size of the batched payload. We try to
 	// pop this much data off the request queue, but it may be a little more
 	// or less depending on what's in the queue.
@@ -76,6 +74,9 @@ const (
 	// queuedTagWeight is the default weight for peers that have work queued
 	// on their behalf.
 	queuedTagWeight = 10
+
+	// Interval at which peers in the PeerTaskQueue are incrementally unfrozen.
+	unfreezePeerInterval = 100 * time.Millisecond
 )
 
 // Envelope contains a message for a Peer.
@@ -391,9 +392,9 @@ func NewEngine(
 		bstoreWorkerCount:               defaults.BitswapEngineBlockstoreWorkerCount,
 		maxOutstandingBytesPerPeer:      defaults.BitswapMaxOutstandingBytesPerPeer,
 		peerTagger:                      peerTagger,
-		outbox:                          make(chan (<-chan *Envelope), outboxChanBuffer),
+		outbox:                          make(chan (<-chan *Envelope)),
 		workSignal:                      make(chan struct{}, 1),
-		ticker:                          time.NewTicker(time.Millisecond * 100),
+		ticker:                          time.NewTicker(unfreezePeerInterval),
 		wantHaveReplaceSize:             defaults.DefaultWantHaveReplaceSize,
 		taskWorkerCount:                 defaults.BitswapEngineTaskWorkerCount,
 		sendDontHaves:                   true,
