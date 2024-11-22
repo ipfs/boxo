@@ -17,8 +17,8 @@ type clientConfig struct {
 	tracer                     tracer.Tracer
 
 	// ProviderQueryManager options.
-	pqmMaxConcurrentFinds  int
-	pqmMaxProvidersPerFind int
+	maxConcurrentFinds  int
+	maxProvidersPerFind int
 }
 
 // Option defines the functional option type that can be used to configure
@@ -92,14 +92,14 @@ func WithoutDuplicatedBlockStats() Option {
 	}
 }
 
-func WithPQMMaxConcurrentFinds(n int) Option {
+func WithMaxConcurrentFinds(n int) Option {
 	return func(c *clientConfig) {
-		c.pqmMaxConcurrentFinds = n
+		c.maxConcurrentFinds = n
 	}
 }
 
-func WithPQMMaxProvidersPerFind(n int) Option {
+func WithMaxProvidersPerFind(n int) Option {
 	return func(c *clientConfig) {
-		c.pqmMaxProvidersPerFind = n
+		c.maxProvidersPerFind = n
 	}
 }
