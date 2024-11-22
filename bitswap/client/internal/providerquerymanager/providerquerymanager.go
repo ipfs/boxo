@@ -99,7 +99,7 @@ func New(ctx context.Context, network ProviderQueryNetwork, options ...Option) *
 		providerQueryMessages: make(chan providerQueryMessage),
 		opts:                  getOpts(options),
 	}
-	pqm.SetFindProviderTimeout(defaultTimeout)
+	pqm.SetFindProviderTimeout(pqm.opts.findProviderTimeout)
 	return pqm
 }
 
@@ -113,9 +113,14 @@ type inProgressRequest struct {
 	incoming       chan peer.ID
 }
 
-// SetFindProviderTimeout changes the timeout for finding providers
-func (pqm *ProviderQueryManager) SetFindProviderTimeout(findProviderTimeout time.Duration) {
-	pqm.findProviderTimeout.Store(int64(findProviderTimeout))
+// SetFindProviderTimeout changes the timeout for finding providers. Setting a
+// value of 0 resets to the value configures when this ProviderQueryManager was
+// created.
+func (pqm *ProviderQueryManager) SetFindProviderTimeout(timeout time.Duration) {
+	if timeout == 0 {
+		timeout = pqm.opts.findProviderTimeout
+	}
+	pqm.findProviderTimeout.Store(int64(timeout))
 }
 
 // FindProvidersAsync finds providers for the given block.
