@@ -258,6 +258,7 @@ func TestRateLimitingRequests(t *testing.T) {
 	providerQueryManager := New(ctx, fpn)
 	providerQueryManager.Startup()
 
+	maxInProcessRequests := providerQueryManager.opts.maxInProcessRequests
 	keys := random.Cids(maxInProcessRequests + 1)
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
