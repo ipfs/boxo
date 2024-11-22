@@ -19,7 +19,6 @@ import (
 	bssm "github.com/ipfs/boxo/bitswap/client/internal/sessionmanager"
 	bsspm "github.com/ipfs/boxo/bitswap/client/internal/sessionpeermanager"
 	"github.com/ipfs/boxo/bitswap/internal"
-	"github.com/ipfs/boxo/bitswap/internal/defaults"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	bmetrics "github.com/ipfs/boxo/bitswap/metrics"
 	bsnet "github.com/ipfs/boxo/bitswap/network"
@@ -37,65 +36,6 @@ import (
 )
 
 var log = logging.Logger("bitswap/client")
-
-// Option defines the functional option type that can be used to configure
-// bitswap instances
-type Option func(*Client)
-
-// ProviderSearchDelay sets the initial dely before triggering a provider
-// search to find more peers and broadcast the want list. It also partially
-// controls re-broadcasts delay when the session idles (does not receive any
-// blocks), but these have back-off logic to increase the interval. See
-// [defaults.ProvSearchDelay] for the default.
-func ProviderSearchDelay(newProvSearchDelay time.Duration) Option {
-	return func(bs *Client) {
-		bs.provSearchDelay = newProvSearchDelay
-	}
-}
-
-// RebroadcastDelay sets a custom delay for periodic search of a random want.
-// When the value ellapses, a random CID from the wantlist is chosen and the
-// client attempts to find more peers for it and sends them the single want.
-// [defaults.RebroadcastDelay] for the default.
-func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
-	return func(bs *Client) {
-		bs.rebroadcastDelay = newRebroadcastDelay
-	}
-}
-
-func SetSimulateDontHavesOnTimeout(send bool) Option {
-	return func(bs *Client) {
-		bs.simulateDontHavesOnTimeout = send
-	}
-}
-
-// Configures the Client to use given tracer.
-// This provides methods to access all messages sent and received by the Client.
-// This interface can be used to implement various statistics (this is original intent).
-func WithTracer(tap tracer.Tracer) Option {
-	return func(bs *Client) {
-		bs.tracer = tap
-	}
-}
-
-func WithBlockReceivedNotifier(brn BlockReceivedNotifier) Option {
-	return func(bs *Client) {
-		bs.blockReceivedNotifier = brn
-	}
-}
-
-// WithoutDuplicatedBlockStats disable collecting counts of duplicated blocks
-// received. This counter requires triggering a blockstore.Has() call for
-// every block received by launching goroutines in parallel. In the worst case
-// (no caching/blooms etc), this is an expensive call for the datastore to
-// answer. In a normal case (caching), this has the power of evicting a
-// different block from intermediary caches. In the best case, it doesn't
-// affect performance. Use if this stat is not relevant.
-func WithoutDuplicatedBlockStats() Option {
-	return func(bs *Client) {
-		bs.skipDuplicatedBlocksStats = true
-	}
-}
 
 type BlockReceivedNotifier interface {
 	// ReceivedBlocks notifies the decision engine that a peer is well-behaving
@@ -130,10 +70,14 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		return bsmq.New(ctx, p, network, onDontHaveTimeout)
 	}
 
+	opts := getOpts(options)
+
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := bspm.New(ctx, peerQueueFactory, network.Self())
-	pqm := bspqm.New(ctx, network)
+	pqm := bspqm.New(ctx, network,
+		bspqm.WithMaxProvidersPerFind(opts.pqmMaxProvidersPerFind),
+		bspqm.WithMaxInProcessRequests(opts.pqmMaxInProcessRequests))
 
 	sessionFactory := func(
 		sessctx context.Context,
@@ -168,14 +112,11 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		counters:                   new(counters),
 		dupMetric:                  bmetrics.DupHist(ctx),
 		allMetric:                  bmetrics.AllHist(ctx),
-		provSearchDelay:            defaults.ProvSearchDelay,
-		rebroadcastDelay:           delay.Fixed(defaults.RebroadcastDelay),
-		simulateDontHavesOnTimeout: true,
-	}
-
-	// apply functional options before starting and running bitswap
-	for _, option := range options {
-		option(bs)
+		provSearchDelay:            opts.provSearchDelay,
+		rebroadcastDelay:           opts.rebroadcastDelay,
+		blockReceivedNotifier:      opts.blockReceivedNotifier,
+		simulateDontHavesOnTimeout: opts.simulateDontHavesOnTimeout,
+		tracer:                     opts.tracer,
 	}
 
 	pqm.Startup()
