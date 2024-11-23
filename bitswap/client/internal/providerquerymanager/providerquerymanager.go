@@ -18,10 +18,6 @@ import (
 
 var log = logging.Logger("bitswap/client/provqrymgr")
 
-const (
-	defaultTimeout = 10 * time.Second
-)
-
 type inProgressRequestStatus struct {
 	ctx            context.Context
 	cancelFn       func()
