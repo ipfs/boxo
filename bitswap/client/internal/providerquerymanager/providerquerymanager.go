@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gammazero/channelqueue"
+	"github.com/gammazero/chanqueue"
 	"github.com/gammazero/deque"
 	"github.com/ipfs/boxo/bitswap/client/internal"
 	"github.com/ipfs/go-cid"
@@ -76,7 +76,7 @@ type ProviderQueryManager struct {
 	ctx                        context.Context
 	network                    ProviderQueryNetwork
 	providerQueryMessages      chan providerQueryMessage
-	providerRequestsProcessing *channelqueue.ChannelQueue[*findProviderRequest]
+	providerRequestsProcessing *chanqueue.ChanQueue[*findProviderRequest]
 
 	findProviderTimeout atomic.Int64
 
@@ -304,10 +304,10 @@ func (pqm *ProviderQueryManager) run() {
 	defer pqm.cleanupInProcessRequests()
 
 	var wg sync.WaitGroup
-	pqm.providerRequestsProcessing = channelqueue.New[*findProviderRequest](-1)
+	pqm.providerRequestsProcessing = chanqueue.New[*findProviderRequest]()
 	defer func() {
 		pqm.providerRequestsProcessing.Close()
-		// Afers workers done, close and drain channelqueue.
+		// Afers workers done, close and drain ChanQueue.
 		go func() {
 			wg.Wait()
 			for range pqm.providerRequestsProcessing.Out() {
