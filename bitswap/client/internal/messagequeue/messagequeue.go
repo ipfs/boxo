@@ -406,8 +406,10 @@ func (mq *MessageQueue) SetRebroadcastInterval(delay time.Duration) {
 
 // Startup starts the processing of messages and rebroadcasting.
 func (mq *MessageQueue) Startup() {
+	const checksPerInterval = 2
+
 	mq.rebroadcastIntervalLk.Lock()
-	mq.rebroadcastTimer = mq.clock.Timer(mq.rebroadcastInterval)
+	mq.rebroadcastTimer = mq.clock.Timer(mq.rebroadcastInterval / checksPerInterval)
 	mq.rebroadcastIntervalLk.Unlock()
 	go mq.runQueue()
 }
@@ -504,6 +506,10 @@ func (mq *MessageQueue) rebroadcastWantlist() {
 func (mq *MessageQueue) transferRebroadcastWants() int {
 	mq.wllock.Lock()
 	defer mq.wllock.Unlock()
+
+	if mq.bcstWants.sent.Len() == 0 && mq.peerWants.sent.Len() == 0 {
+		return 0
+	}
 
 	mq.rebroadcastIntervalLk.Lock()
 	rebroadcastInterval := mq.rebroadcastInterval
