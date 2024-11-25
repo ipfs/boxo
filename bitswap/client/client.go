@@ -13,7 +13,6 @@ import (
 	bsmq "github.com/ipfs/boxo/bitswap/client/internal/messagequeue"
 	"github.com/ipfs/boxo/bitswap/client/internal/notifications"
 	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
-	bspqm "github.com/ipfs/boxo/bitswap/client/internal/providerquerymanager"
 	bssession "github.com/ipfs/boxo/bitswap/client/internal/session"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
 	bssm "github.com/ipfs/boxo/bitswap/client/internal/sessionmanager"
@@ -26,6 +25,7 @@ import (
 	"github.com/ipfs/boxo/bitswap/tracer"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	exchange "github.com/ipfs/boxo/exchange"
+	rpqm "github.com/ipfs/boxo/routing/providerquerymanager"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
@@ -97,6 +97,19 @@ func WithoutDuplicatedBlockStats() Option {
 	}
 }
 
+// WithDefaultProviderQueryManager indicates wether we should use a the
+// default ProviderQueryManager, a wrapper of the content Router which
+// provides bounded paralelism and limits for these lookups. The
+// ProviderQueryManager setup by default uses maxInProcessRequests = 6 and
+// maxProviders = 10.  To use a custom ProviderQueryManager, set to false and
+// wrap directly the content router provided with the WithContentRouting()
+// option. Only takes effect if WithContentRouting is set.
+func WithDefaultProviderQueryManager(defaultProviderQueryManager bool) Option {
+	return func(bs *Client) {
+		bs.defaultProviderQueryManager = defaultProviderQueryManager
+	}
+}
+
 type BlockReceivedNotifier interface {
 	// ReceivedBlocks notifies the decision engine that a peer is well-behaving
 	// and gave us useful data, potentially increasing its score and making us
@@ -104,8 +117,16 @@ type BlockReceivedNotifier interface {
 	ReceivedBlocks(peer.ID, []blocks.Block)
 }
 
+// ProviderFinder is a subset of
+// https://pkg.go.dev/github.com/libp2p/go-libp2p@v0.37.0/core/routing#ContentRouting
+type ProviderFinder interface {
+	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.AddrInfo
+}
+
 // New initializes a Bitswap client that runs until client.Close is called.
-func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Client {
+// The Content providerFinder paramteter can be nil to disable content-routing
+// lookups for content (rely only on bitswap for discovery).
+func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ProviderFinder, bstore blockstore.Blockstore, options ...Option) *Client {
 	// important to use provided parent context (since it may include important
 	// loggable data). It's probably not a good idea to allow bitswap to be
 	// coupled to the concerns of the ipfs daemon in this way.
@@ -115,11 +136,30 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 	// exclusively. We should probably find another way to share logging data
 	ctx, cancelFunc := context.WithCancel(parent)
 
+	bs := &Client{
+		network:                     network,
+		providerFinder:              providerFinder,
+		blockstore:                  bstore,
+		cancel:                      cancelFunc,
+		closing:                     make(chan struct{}),
+		counters:                    new(counters),
+		dupMetric:                   bmetrics.DupHist(ctx),
+		allMetric:                   bmetrics.AllHist(ctx),
+		provSearchDelay:             defaults.ProvSearchDelay,
+		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
+		simulateDontHavesOnTimeout:  true,
+		defaultProviderQueryManager: true,
+	}
+
+	// apply functional options before starting and running bitswap
+	for _, option := range options {
+		option(bs)
+	}
+
 	// onDontHaveTimeout is called when a want-block is sent to a peer that
 	// has an old version of Bitswap that doesn't support DONT_HAVE messages,
 	// or when no response is received within a timeout.
 	var sm *bssm.SessionManager
-	var bs *Client
 	onDontHaveTimeout := func(p peer.ID, dontHaves []cid.Cid) {
 		// Simulate a message arriving with DONT_HAVEs
 		if bs.simulateDontHavesOnTimeout {
@@ -133,7 +173,17 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := bspm.New(ctx, peerQueueFactory, network.Self())
-	pqm := bspqm.New(ctx, network)
+
+	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
+		// network can do dialing.
+		pqm, err := rpqm.New(ctx, network, bs.providerFinder, rpqm.WithMaxProviders(10))
+		if err != nil {
+			// Should not be possible to hit this
+			panic(err)
+		}
+		pqm.Startup()
+		bs.pqm = pqm
+	}
 
 	sessionFactory := func(
 		sessctx context.Context,
@@ -148,6 +198,14 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 		rebroadcastDelay delay.D,
 		self peer.ID,
 	) bssm.Session {
+		// careful when bs.pqm is nil. Since we are type-casting it
+		// into session.ProviderFinder when passing it, it will become
+		// not nil. Related:
+		// https://groups.google.com/g/golang-nuts/c/wnH302gBa4I?pli=1
+		var pqm bssession.ProviderFinder
+		if bs.pqm != nil {
+			pqm = bs.pqm
+		}
 		return bssession.New(sessctx, sessmgr, id, spm, pqm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
@@ -156,29 +214,10 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 	notif := notifications.New()
 	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
 
-	bs = &Client{
-		blockstore:                 bstore,
-		network:                    network,
-		cancel:                     cancelFunc,
-		closing:                    make(chan struct{}),
-		pm:                         pm,
-		sm:                         sm,
-		sim:                        sim,
-		notif:                      notif,
-		counters:                   new(counters),
-		dupMetric:                  bmetrics.DupHist(ctx),
-		allMetric:                  bmetrics.AllHist(ctx),
-		provSearchDelay:            defaults.ProvSearchDelay,
-		rebroadcastDelay:           delay.Fixed(defaults.RebroadcastDelay),
-		simulateDontHavesOnTimeout: true,
-	}
-
-	// apply functional options before starting and running bitswap
-	for _, option := range options {
-		option(bs)
-	}
-
-	pqm.Startup()
+	bs.sm = sm
+	bs.notif = notif
+	bs.pm = pm
+	bs.sim = sim
 
 	return bs
 }
@@ -186,6 +225,12 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore
 // Client instances implement the bitswap protocol.
 type Client struct {
 	pm *bspm.PeerManager
+
+	providerFinder ProviderFinder
+
+	// the provider query manager manages requests to find providers
+	pqm                         *rpqm.ProviderQueryManager
+	defaultProviderQueryManager bool
 
 	// network delivers messages on behalf of the session
 	network bsnet.BitSwapNetwork

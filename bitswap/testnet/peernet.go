@@ -5,9 +5,6 @@ import (
 
 	bsnet "github.com/ipfs/boxo/bitswap/network"
 
-	mockrouting "github.com/ipfs/boxo/routing/mock"
-	ds "github.com/ipfs/go-datastore"
-
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/peer"
 	mockpeernet "github.com/libp2p/go-libp2p/p2p/net/mock"
@@ -15,12 +12,11 @@ import (
 
 type peernet struct {
 	mockpeernet.Mocknet
-	routingserver mockrouting.Server
 }
 
 // StreamNet is a testnet that uses libp2p's MockNet
-func StreamNet(ctx context.Context, net mockpeernet.Mocknet, rs mockrouting.Server) (Network, error) {
-	return &peernet{net, rs}, nil
+func StreamNet(ctx context.Context, net mockpeernet.Mocknet) (Network, error) {
+	return &peernet{net}, nil
 }
 
 func (pn *peernet) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) bsnet.BitSwapNetwork {
@@ -28,8 +24,8 @@ func (pn *peernet) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) bsnet.BitSwapN
 	if err != nil {
 		panic(err.Error())
 	}
-	routing := pn.routingserver.ClientWithDatastore(context.TODO(), p, ds.NewMapDatastore())
-	return bsnet.NewFromIpfsHost(client, routing, opts...)
+
+	return bsnet.NewFromIpfsHost(client, opts...)
 }
 
 func (pn *peernet) HasPeer(p peer.ID) bool {

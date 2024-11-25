@@ -39,7 +39,7 @@ func (rs *s) Announce(p peer.AddrInfo, c cid.Cid) error {
 	rs.lock.Lock()
 	defer rs.lock.Unlock()
 
-	k := c.KeyString()
+	k := c.Hash().String()
 
 	_, ok := rs.providers[k]
 	if !ok {
@@ -54,16 +54,16 @@ func (rs *s) Announce(p peer.AddrInfo, c cid.Cid) error {
 
 func (rs *s) Providers(c cid.Cid) []peer.AddrInfo {
 	rs.delayConf.Query.Wait() // before locking
-
 	rs.lock.RLock()
 	defer rs.lock.RUnlock()
-	k := c.KeyString()
+	k := c.Hash().String()
 
 	var ret []peer.AddrInfo
 	records, ok := rs.providers[k]
 	if !ok {
 		return ret
 	}
+
 	for _, r := range records {
 		if time.Since(r.Created) > rs.delayConf.ValueVisibility.Get() {
 			ret = append(ret, r.Peer)
@@ -74,7 +74,6 @@ func (rs *s) Providers(c cid.Cid) []peer.AddrInfo {
 		j := rand.Intn(i + 1)
 		ret[i], ret[j] = ret[j], ret[i]
 	}
-
 	return ret
 }
 

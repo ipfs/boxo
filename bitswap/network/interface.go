@@ -40,7 +40,7 @@ type BitSwapNetwork interface {
 	// Stop stops the network service.
 	Stop()
 
-	ConnectTo(context.Context, peer.ID) error
+	Connect(context.Context, peer.AddrInfo) error
 	DisconnectFrom(context.Context, peer.ID) error
 
 	NewMessageSender(context.Context, peer.ID, *MessageSenderOpts) (MessageSender, error)
@@ -48,8 +48,6 @@ type BitSwapNetwork interface {
 	ConnectionManager() connmgr.ConnManager
 
 	Stats() Stats
-
-	Routing
 
 	Pinger
 }
@@ -88,7 +86,7 @@ type Receiver interface {
 // network.
 type Routing interface {
 	// FindProvidersAsync returns a channel of providers for the given key.
-	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.ID
+	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.AddrInfo
 
 	// Provide provides the key to the network.
 	Provide(context.Context, cid.Cid) error
