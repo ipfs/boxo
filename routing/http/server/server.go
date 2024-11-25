@@ -25,8 +25,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
+	"github.com/prometheus/client_golang/prometheus"
 
 	logging "github.com/ipfs/go-log/v2"
+	metrics "github.com/slok/go-http-metrics/metrics/prometheus"
+	"github.com/slok/go-http-metrics/middleware"
+	middlewarestd "github.com/slok/go-http-metrics/middleware/std"
 )
 
 const (
@@ -37,6 +41,7 @@ const (
 
 	DefaultRecordsLimit          = 20
 	DefaultStreamingRecordsLimit = 0
+	DefaultRoutingTimeout        = 30 * time.Second
 )
 
 var logger = logging.Logger("routing/http/server")
@@ -122,23 +127,52 @@ func WithStreamingRecordsLimit(limit int) Option {
 	}
 }
 
+func WithPrometheusRegistry(reg prometheus.Registerer) Option {
+	return func(s *server) {
+		s.promRegistry = reg
+	}
+}
+
+func WithRoutingTimeout(timeout time.Duration) Option {
+	return func(s *server) {
+		s.routingTimeout = timeout
+	}
+}
+
 func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	server := &server{
 		svc:                   svc,
 		recordsLimit:          DefaultRecordsLimit,
 		streamingRecordsLimit: DefaultStreamingRecordsLimit,
+		routingTimeout:        DefaultRoutingTimeout,
 	}
 
 	for _, opt := range opts {
 		opt(server)
 	}
 
+	if server.promRegistry == nil {
+		server.promRegistry = prometheus.NewRegistry()
+	}
+
+	// Create middleware with prometheus recorder
+	mdlw := middleware.New(middleware.Config{
+		Recorder: metrics.NewRecorder(metrics.Config{
+			Registry:        server.promRegistry,
+			Prefix:          "delegated_routing_server",
+			SizeBuckets:     prometheus.ExponentialBuckets(100, 4, 8), // [100 400 1600 6400 25600 102400 409600 1.6384e+06]
+			DurationBuckets: []float64{0.1, 0.5, 1, 2, 5, 8, 10, 20, 30},
+		}),
+	})
+
 	r := mux.NewRouter()
-	r.HandleFunc(findProvidersPath, server.findProviders).Methods(http.MethodGet)
-	r.HandleFunc(providePath, server.provide).Methods(http.MethodPut)
-	r.HandleFunc(findPeersPath, server.findPeers).Methods(http.MethodGet)
-	r.HandleFunc(GetIPNSPath, server.GetIPNS).Methods(http.MethodGet)
-	r.HandleFunc(GetIPNSPath, server.PutIPNS).Methods(http.MethodPut)
+	// Wrap each handler with the metrics middleware
+	r.Handle(findProvidersPath, middlewarestd.Handler(findProvidersPath, mdlw, http.HandlerFunc(server.findProviders))).Methods(http.MethodGet)
+	r.Handle(providePath, middlewarestd.Handler(providePath, mdlw, http.HandlerFunc(server.provide))).Methods(http.MethodPut)
+	r.Handle(findPeersPath, middlewarestd.Handler(findPeersPath, mdlw, http.HandlerFunc(server.findPeers))).Methods(http.MethodGet)
+	r.Handle(GetIPNSPath, middlewarestd.Handler(GetIPNSPath, mdlw, http.HandlerFunc(server.GetIPNS))).Methods(http.MethodGet)
+	r.Handle(GetIPNSPath, middlewarestd.Handler(GetIPNSPath, mdlw, http.HandlerFunc(server.PutIPNS))).Methods(http.MethodPut)
+
 	return r
 }
 
@@ -147,6 +181,8 @@ type server struct {
 	disableNDJSON         bool
 	recordsLimit          int
 	streamingRecordsLimit int
+	promRegistry          prometheus.Registerer
+	routingTimeout        time.Duration
 }
 
 func (s *server) detectResponseType(r *http.Request) (string, error) {
@@ -219,7 +255,10 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		recordsLimit = s.recordsLimit
 	}
 
-	provIter, err := s.svc.FindProviders(httpReq.Context(), cid, recordsLimit)
+	ctx, cancel := context.WithTimeout(httpReq.Context(), s.routingTimeout)
+	defer cancel()
+
+	provIter, err := s.svc.FindProviders(ctx, cid, recordsLimit)
 	if err != nil {
 		if errors.Is(err, routing.ErrNotFound) {
 			// handlerFunc takes care of setting the 404 and necessary headers
@@ -308,7 +347,11 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 		recordsLimit = s.recordsLimit
 	}
 
-	provIter, err := s.svc.FindPeers(r.Context(), pid, recordsLimit)
+	// Add timeout to the routing operation
+	ctx, cancel := context.WithTimeout(r.Context(), s.routingTimeout)
+	defer cancel()
+
+	provIter, err := s.svc.FindPeers(ctx, pid, recordsLimit)
 	if err != nil {
 		if errors.Is(err, routing.ErrNotFound) {
 			// handlerFunc takes care of setting the 404 and necessary headers
@@ -439,7 +482,10 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	record, err := s.svc.GetIPNS(r.Context(), name)
+	ctx, cancel := context.WithTimeout(r.Context(), s.routingTimeout)
+	defer cancel()
+
+	record, err := s.svc.GetIPNS(ctx, name)
 	if err != nil {
 		if errors.Is(err, routing.ErrNotFound) {
 			writeErr(w, "GetIPNS", http.StatusNotFound, fmt.Errorf("delegate error: %w", err))
@@ -523,7 +569,10 @@ func (s *server) PutIPNS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.svc.PutIPNS(r.Context(), name, record)
+	ctx, cancel := context.WithTimeout(r.Context(), s.routingTimeout)
+	defer cancel()
+
+	err = s.svc.PutIPNS(ctx, name, record)
 	if err != nil {
 		writeErr(w, "PutIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
