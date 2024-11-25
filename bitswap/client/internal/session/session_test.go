@@ -116,7 +116,7 @@ func newFakeProviderFinder() *fakeProviderFinder {
 	}
 }
 
-func (fpf *fakeProviderFinder) FindProvidersAsync(ctx context.Context, k cid.Cid) <-chan peer.ID {
+func (fpf *fakeProviderFinder) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.AddrInfo {
 	go func() {
 		select {
 		case fpf.findMorePeersRequested <- k:
@@ -124,7 +124,7 @@ func (fpf *fakeProviderFinder) FindProvidersAsync(ctx context.Context, k cid.Cid
 		}
 	}()
 
-	return make(chan peer.ID)
+	return make(chan peer.AddrInfo)
 }
 
 type wantReq struct {
