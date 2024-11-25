@@ -92,10 +92,9 @@ type MessageQueue struct {
 	priority  int32
 
 	// Dont touch any of these variables outside of run loop
-	sender                bsnet.MessageSender
-	rebroadcastIntervalLk sync.Mutex
-	rebroadcastInterval   time.Duration
-	rebroadcastTimer      *clock.Timer
+	sender              bsnet.MessageSender
+	rebroadcastInterval time.Duration
+	rebroadcastNow      chan struct{}
 	// For performance reasons we just clear out the fields of the message
 	// instead of creating a new one every time.
 	msg bsmsg.BitSwapMessage
@@ -275,6 +274,7 @@ func newMessageQueue(
 		outgoingWork:        make(chan time.Time, 1),
 		responses:           make(chan []cid.Cid, 8),
 		rebroadcastInterval: defaultRebroadcastInterval,
+		rebroadcastNow:      make(chan struct{}),
 		sendErrorBackoff:    sendErrorBackoff,
 		maxValidLatency:     maxValidLatency,
 		priority:            maxPriority,
@@ -394,23 +394,15 @@ func (mq *MessageQueue) ResponseReceived(ks []cid.Cid) {
 	}
 }
 
-// SetRebroadcastInterval sets a new interval on which to rebroadcast the full wantlist
-func (mq *MessageQueue) SetRebroadcastInterval(delay time.Duration) {
-	mq.rebroadcastIntervalLk.Lock()
-	mq.rebroadcastInterval = delay
-	if mq.rebroadcastTimer != nil {
-		mq.rebroadcastTimer.Reset(delay)
+func (mq *MessageQueue) RebroadcastNow() {
+	select {
+	case mq.rebroadcastNow <- struct{}{}:
+	case <-mq.ctx.Done():
 	}
-	mq.rebroadcastIntervalLk.Unlock()
 }
 
 // Startup starts the processing of messages and rebroadcasting.
 func (mq *MessageQueue) Startup() {
-	const checksPerInterval = 2
-
-	mq.rebroadcastIntervalLk.Lock()
-	mq.rebroadcastTimer = mq.clock.Timer(mq.rebroadcastInterval / checksPerInterval)
-	mq.rebroadcastIntervalLk.Unlock()
 	go mq.runQueue()
 }
 
@@ -440,10 +432,16 @@ func (mq *MessageQueue) runQueue() {
 		<-scheduleWork.C
 	}
 
+	rebroadcastTimer := mq.clock.Timer(mq.rebroadcastInterval)
+	defer rebroadcastTimer.Stop()
+
 	var workScheduled time.Time
 	for {
 		select {
-		case <-mq.rebroadcastTimer.C:
+		case <-rebroadcastTimer.C:
+			mq.rebroadcastWantlist()
+			rebroadcastTimer.Reset(mq.rebroadcastInterval)
+		case <-mq.rebroadcastNow:
 			mq.rebroadcastWantlist()
 
 		case when := <-mq.outgoingWork:
@@ -490,10 +488,6 @@ func (mq *MessageQueue) runQueue() {
 
 // Periodically resend the list of wants to the peer
 func (mq *MessageQueue) rebroadcastWantlist() {
-	mq.rebroadcastIntervalLk.Lock()
-	mq.rebroadcastTimer.Reset(mq.rebroadcastInterval)
-	mq.rebroadcastIntervalLk.Unlock()
-
 	// If some wants were transferred from the rebroadcast list
 	if toRebroadcast := mq.transferRebroadcastWants(); toRebroadcast > 0 {
 		// Send them out
