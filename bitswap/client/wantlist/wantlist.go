@@ -130,13 +130,3 @@ func (w *Wantlist) Entries() []Entry {
 	w.cached = es
 	return es[0:len(es):len(es)]
 }
-
-// Absorb all the entries in other into this want list
-func (w *Wantlist) Absorb(other *Wantlist) {
-	// Invalidate the cache up-front to avoid doing any work trying to keep it up-to-date.
-	w.cached = nil
-
-	for _, e := range other.Entries() {
-		w.Add(e.Cid, e.Priority, e.WantType)
-	}
-}
