@@ -51,7 +51,7 @@ const (
 // MessageNetwork is any network that can connect peers and generate a message
 // sender.
 type MessageNetwork interface {
-	ConnectTo(context.Context, peer.ID) error
+	Connect(context.Context, peer.AddrInfo) error
 	NewMessageSender(context.Context, peer.ID, *bsnet.MessageSenderOpts) (bsnet.MessageSender, error)
 	Latency(peer.ID) time.Duration
 	Ping(context.Context, peer.ID) ping.Result

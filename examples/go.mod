@@ -12,7 +12,6 @@ require (
 	github.com/ipld/go-car/v2 v2.14.2
 	github.com/ipld/go-ipld-prime v0.21.0
 	github.com/libp2p/go-libp2p v0.37.0
-	github.com/libp2p/go-libp2p-routing-helpers v0.7.4
 	github.com/multiformats/go-multiaddr v0.13.0
 	github.com/multiformats/go-multicodec v0.9.0
 	github.com/prometheus/client_golang v1.20.5
@@ -95,6 +94,7 @@ require (
 	github.com/libp2p/go-libp2p-kad-dht v0.27.0 // indirect
 	github.com/libp2p/go-libp2p-kbucket v0.6.4 // indirect
 	github.com/libp2p/go-libp2p-record v0.2.0 // indirect
+	github.com/libp2p/go-libp2p-routing-helpers v0.7.4 // indirect
 	github.com/libp2p/go-msgio v0.3.0 // indirect
 	github.com/libp2p/go-nat v0.2.0 // indirect
 	github.com/libp2p/go-netroute v0.2.1 // indirect
