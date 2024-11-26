@@ -490,9 +490,9 @@ func (mq *MessageQueue) runQueue() {
 }
 
 // Periodically resend the list of wants to the peer
-func (mq *MessageQueue) rebroadcastWantlist(doNow bool) {
+func (mq *MessageQueue) rebroadcastWantlist(immediate bool) {
 	// If some wants were transferred from the rebroadcast list
-	if toRebroadcast := mq.transferRebroadcastWants(doNow); toRebroadcast > 0 {
+	if toRebroadcast := mq.transferRebroadcastWants(immediate); toRebroadcast > 0 {
 		// Send them out
 		mq.sendMessage()
 		log.Infow("Rebroadcasting wants", "amount", toRebroadcast, "peer", mq.p)
@@ -500,7 +500,7 @@ func (mq *MessageQueue) rebroadcastWantlist(doNow bool) {
 }
 
 // Transfer wants from the rebroadcast lists into the pending lists.
-func (mq *MessageQueue) transferRebroadcastWants(doNow bool) int {
+func (mq *MessageQueue) transferRebroadcastWants(immediate bool) int {
 	mq.wllock.Lock()
 	defer mq.wllock.Unlock()
 
@@ -509,7 +509,7 @@ func (mq *MessageQueue) transferRebroadcastWants(doNow bool) int {
 	}
 
 	interval := rebroadcastInterval
-	if doNow {
+	if immediate {
 		interval = 0
 	}
 	now := mq.clock.Now()
