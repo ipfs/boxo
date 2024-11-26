@@ -19,7 +19,7 @@ import (
 var log = logging.Logger("routing/provqrymgr")
 
 const (
-	defaultMaxInProcessRequests = 6
+	defaultMaxInProcessRequests = 16
 	defaultMaxProviders         = 0
 	defaultTimeout              = 10 * time.Second
 )
