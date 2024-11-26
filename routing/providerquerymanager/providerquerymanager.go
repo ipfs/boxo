@@ -108,7 +108,9 @@ func WithMaxTimeout(timeout time.Duration) Option {
 	}
 }
 
-// WithMaxInProcessRequests is the maximum number of requests that can be processed in parallel
+// WithMaxInProcessRequests is the maximum number of requests that can be
+// processed in parallel. If this is 0, then the number is unlimited. Default
+// is defaultMaxInProcessRequests.
 func WithMaxInProcessRequests(count int) Option {
 	return func(mgr *ProviderQueryManager) error {
 		mgr.maxInProcessRequests = count
@@ -117,7 +119,7 @@ func WithMaxInProcessRequests(count int) Option {
 }
 
 // WithMaxProviders is the maximum number of providers that will be looked up
-// per query.  We only return providers that we can connect to. Defaults to 0,
+// per query. We only return providers that we can connect to. Defaults to 0,
 // which means unbounded.
 func WithMaxProviders(count int) Option {
 	return func(mgr *ProviderQueryManager) error {
@@ -304,25 +306,42 @@ func (pqm *ProviderQueryManager) cancelProviderRequest(ctx context.Context, k ci
 	}
 }
 
+// findProviderWorker cycles through incoming provider queries one at a time.
 func (pqm *ProviderQueryManager) findProviderWorker() {
-	// findProviderWorker just cycles through incoming provider queries one
-	// at a time. We have six of these workers running at once
-	// to let requests go in parallel but keep them rate limited
-	for {
-		select {
-		case fpr, ok := <-pqm.providerRequestsProcessing.Out():
-			if !ok {
+	var findSem chan struct{}
+	// If limiting the number of concurrent requests, create a counting
+	// semaphore to enforce this limit.
+	if pqm.maxInProcessRequests > 0 {
+		findSem = make(chan struct{}, pqm.maxInProcessRequests)
+	}
+
+	// Read find provider requests until channel is closed. The channl is
+	// closed as soon as pqm.ctx is canceled, so there is no need to select on
+	// that context here.
+	for fpr := range pqm.providerRequestsProcessing.Out() {
+		if findSem != nil {
+			select {
+			case findSem <- struct{}{}:
+			case <-pqm.ctx.Done():
 				return
 			}
-			k := fpr.k
+		}
+
+		go func(ctx context.Context, k cid.Cid) {
+			if findSem != nil {
+				defer func() {
+					<-findSem
+				}()
+			}
+
 			log.Debugf("Beginning Find Provider Request for cid: %s", k.String())
-			findProviderCtx, cancel := context.WithTimeout(fpr.ctx, pqm.findProviderTimeout)
+			findProviderCtx, cancel := context.WithTimeout(ctx, pqm.findProviderTimeout)
 			span := trace.SpanFromContext(findProviderCtx)
 			span.AddEvent("StartFindProvidersAsync")
-			// We set count == 0. We will cancel the query
-			// manually once we have enough.  This assumes the
-			// ContentDiscovery implementation does that, which a
-			// requirement per the libp2p/core/routing interface.
+			// We set count == 0. We will cancel the query manually once we
+			// have enough. This assumes the ContentDiscovery
+			// implementation does that, which a requirement per the
+			// libp2p/core/routing interface.
 			providers := pqm.router.FindProvidersAsync(findProviderCtx, k, 0)
 			wg := &sync.WaitGroup{}
 			for p := range providers {
@@ -339,7 +358,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 					span.AddEvent("ConnectedToProvider", trace.WithAttributes(attribute.Stringer("peer", p.ID)))
 					select {
 					case pqm.providerQueryMessages <- &receivedProviderMessage{
-						ctx: fpr.ctx,
+						ctx: ctx,
 						k:   k,
 						p:   p,
 					}:
@@ -352,14 +371,12 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 			cancel()
 			select {
 			case pqm.providerQueryMessages <- &finishedProviderQueryMessage{
-				ctx: fpr.ctx,
+				ctx: ctx,
 				k:   k,
 			}:
 			case <-pqm.ctx.Done():
 			}
-		case <-pqm.ctx.Done():
-			return
-		}
+		}(fpr.ctx, fpr.k)
 	}
 }
 
@@ -378,9 +395,7 @@ func (pqm *ProviderQueryManager) run() {
 	pqm.providerRequestsProcessing = chanqueue.New[*findProviderRequest]()
 	defer pqm.providerRequestsProcessing.Shutdown()
 
-	for i := 0; i < pqm.maxInProcessRequests; i++ {
-		go pqm.findProviderWorker()
-	}
+	go pqm.findProviderWorker()
 
 	for {
 		select {

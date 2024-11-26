@@ -263,6 +263,8 @@ func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
 }
 
 func TestRateLimitingRequests(t *testing.T) {
+	const maxInProcessRequests = 6
+
 	peers := random.Peers(10)
 	fpd := &fakeProviderDialer{}
 	fpn := &fakeProviderDiscovery{
@@ -272,31 +274,73 @@ func TestRateLimitingRequests(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	providerQueryManager := mustNotErr(New(ctx, fpd, fpn))
+	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxInProcessRequests(maxInProcessRequests)))
 	providerQueryManager.Startup()
 
-	keys := random.Cids(providerQueryManager.maxInProcessRequests + 1)
+	keys := random.Cids(maxInProcessRequests + 1)
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	var requestChannels []<-chan peer.AddrInfo
-	for i := 0; i < providerQueryManager.maxInProcessRequests+1; i++ {
+	for i := 0; i < maxInProcessRequests+1; i++ {
 		requestChannels = append(requestChannels, providerQueryManager.FindProvidersAsync(sessionCtx, keys[i], 0))
 	}
 	time.Sleep(20 * time.Millisecond)
 	fpn.queriesMadeMutex.Lock()
-	if fpn.liveQueries != providerQueryManager.maxInProcessRequests {
+	if fpn.liveQueries != maxInProcessRequests {
 		t.Logf("Queries made: %d\n", fpn.liveQueries)
 		t.Fatal("Did not limit parallel requests to rate limit")
 	}
 	fpn.queriesMadeMutex.Unlock()
-	for i := 0; i < providerQueryManager.maxInProcessRequests+1; i++ {
+	for i := 0; i < maxInProcessRequests+1; i++ {
 		for range requestChannels[i] {
 		}
 	}
 
 	fpn.queriesMadeMutex.Lock()
 	defer fpn.queriesMadeMutex.Unlock()
-	if fpn.queriesMade != providerQueryManager.maxInProcessRequests+1 {
+	if fpn.queriesMade != maxInProcessRequests+1 {
+		t.Logf("Queries made: %d\n", fpn.queriesMade)
+		t.Fatal("Did not make all separate requests")
+	}
+}
+
+func TestUnlimitedRequests(t *testing.T) {
+	const inProcessRequests = 11
+
+	peers := random.Peers(10)
+	fpd := &fakeProviderDialer{}
+	fpn := &fakeProviderDiscovery{
+		peersFound: peers,
+		delay:      5 * time.Millisecond,
+	}
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxInProcessRequests(0)))
+	providerQueryManager.Startup()
+
+	keys := random.Cids(inProcessRequests)
+	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var requestChannels []<-chan peer.AddrInfo
+	for i := 0; i < inProcessRequests; i++ {
+		requestChannels = append(requestChannels, providerQueryManager.FindProvidersAsync(sessionCtx, keys[i], 0))
+	}
+	time.Sleep(20 * time.Millisecond)
+	fpn.queriesMadeMutex.Lock()
+	if fpn.liveQueries != inProcessRequests {
+		t.Logf("Queries made: %d\n", fpn.liveQueries)
+		t.Fatal("Parallel requests appear to be rate limited")
+	}
+	fpn.queriesMadeMutex.Unlock()
+	for i := 0; i < inProcessRequests; i++ {
+		for range requestChannels[i] {
+		}
+	}
+
+	fpn.queriesMadeMutex.Lock()
+	defer fpn.queriesMadeMutex.Unlock()
+	if fpn.queriesMade != inProcessRequests {
 		t.Logf("Queries made: %d\n", fpn.queriesMade)
 		t.Fatal("Did not make all separate requests")
 	}
