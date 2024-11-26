@@ -32,7 +32,6 @@ import (
 	unixfile "github.com/ipfs/boxo/ipld/unixfs/file"
 	"github.com/ipfs/boxo/ipld/unixfs/importer/balanced"
 	uih "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
-	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
 
 	bsclient "github.com/ipfs/boxo/bitswap/client"
 	bsnet "github.com/ipfs/boxo/bitswap/network"
@@ -178,15 +177,15 @@ func startDataServer(ctx context.Context, h host.Host) (cid.Cid, *bsserver.Serve
 
 	// Start listening on the Bitswap protocol
 	// For this example we're not leveraging any content routing (DHT, IPNI, delegated routing requests, etc.) as we know the peer we are fetching from
-	n := bsnet.NewFromIpfsHost(h, routinghelpers.Null{})
+	n := bsnet.NewFromIpfsHost(h)
 	bswap := bsserver.New(ctx, n, bs)
 	n.Start(bswap)
 	return nd.Cid(), bswap, nil
 }
 
 func runClient(ctx context.Context, h host.Host, c cid.Cid, targetPeer string) ([]byte, error) {
-	n := bsnet.NewFromIpfsHost(h, routinghelpers.Null{})
-	bswap := bsclient.New(ctx, n, blockstore.NewBlockstore(datastore.NewNullDatastore()))
+	n := bsnet.NewFromIpfsHost(h)
+	bswap := bsclient.New(ctx, n, nil, blockstore.NewBlockstore(datastore.NewNullDatastore()))
 	n.Start(bswap)
 	defer bswap.Close()
 
