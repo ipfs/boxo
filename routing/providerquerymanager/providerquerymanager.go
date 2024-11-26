@@ -130,14 +130,13 @@ func WithMaxProviders(count int) Option {
 // network provider.
 func New(ctx context.Context, dialer ProviderQueryDialer, router ProviderQueryRouter, opts ...Option) (*ProviderQueryManager, error) {
 	pqm := &ProviderQueryManager{
-		ctx:                       ctx,
-		dialer:                    dialer,
-		router:                    router,
-		providerQueryMessages:     make(chan providerQueryMessage),
-		inProgressRequestStatuses: make(map[cid.Cid]*inProgressRequestStatus),
-		findProviderTimeout:       defaultTimeout,
-		maxInProcessRequests:      defaultMaxInProcessRequests,
-		maxProviders:              defaultMaxProviders,
+		ctx:                   ctx,
+		dialer:                dialer,
+		router:                router,
+		providerQueryMessages: make(chan providerQueryMessage),
+		findProviderTimeout:   defaultTimeout,
+		maxInProcessRequests:  defaultMaxInProcessRequests,
+		maxProviders:          defaultMaxProviders,
 	}
 
 	for _, o := range opts {
@@ -435,6 +434,9 @@ func (fpqm *finishedProviderQueryMessage) handle(pqm *ProviderQueryManager) {
 		close(listener)
 	}
 	delete(pqm.inProgressRequestStatuses, fpqm.k)
+	if len(pqm.inProgressRequestStatuses) == 0 {
+		pqm.inProgressRequestStatuses = nil
+	}
 	requestStatus.cancelFn()
 }
 
@@ -446,7 +448,6 @@ func (npqm *newProvideQueryMessage) debugMessage() {
 func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[npqm.k]
 	if !ok {
-
 		ctx, cancelFn := context.WithCancel(pqm.ctx)
 		span := trace.SpanFromContext(npqm.ctx)
 		span.AddEvent("NewQuery", trace.WithAttributes(attribute.Stringer("cid", npqm.k)))
@@ -458,6 +459,9 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 			cancelFn:  cancelFn,
 		}
 
+		if pqm.inProgressRequestStatuses == nil {
+			pqm.inProgressRequestStatuses = make(map[cid.Cid]*inProgressRequestStatus)
+		}
 		pqm.inProgressRequestStatuses[npqm.k] = requestStatus
 
 		select {
@@ -502,6 +506,9 @@ func (crm *cancelRequestMessage) handle(pqm *ProviderQueryManager) {
 	close(crm.incomingProviders)
 	if len(requestStatus.listeners) == 0 {
 		delete(pqm.inProgressRequestStatuses, crm.k)
+		if len(pqm.inProgressRequestStatuses) == 0 {
+			pqm.inProgressRequestStatuses = nil
+		}
 		requestStatus.cancelFn()
 	}
 }
