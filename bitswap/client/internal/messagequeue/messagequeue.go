@@ -24,28 +24,30 @@ var (
 )
 
 const (
-	defaultRebroadcastInterval = 30 * time.Second
-	// maxRetries is the number of times to attempt to send a message before
-	// giving up
-	maxRetries  = 3
-	sendTimeout = 30 * time.Second
 	// maxMessageSize is the maximum message size in bytes
 	maxMessageSize = 1024 * 1024 * 2
-	// sendErrorBackoff is the time to wait before retrying to connect after
-	// an error when trying to send a message
-	sendErrorBackoff = 100 * time.Millisecond
 	// maxPriority is the max priority as defined by the bitswap protocol
 	maxPriority = math.MaxInt32
-	// sendMessageDebounce is the debounce duration when calling sendMessage()
-	sendMessageDebounce = time.Millisecond
-	// when we reach sendMessageCutoff wants/cancels, we'll send the message immediately.
-	sendMessageCutoff = 256
-	// when we debounce for more than sendMessageMaxDelay, we'll send the
-	// message immediately.
-	sendMessageMaxDelay = 20 * time.Millisecond
+	// maxRetries is the number of times to attempt to send a message before
+	// giving up
+	maxRetries = 3
 	// The maximum amount of time in which to accept a response as being valid
 	// for latency calculation (as opposed to discarding it as an outlier)
 	maxValidLatency = 30 * time.Second
+	// rebroadcastInterval is the minimum amount of time that must elapse before
+	// resending wants to a peer
+	rebroadcastInterval = 30 * time.Second
+	// sendErrorBackoff is the time to wait before retrying to connect after
+	// an error when trying to send a message
+	sendErrorBackoff = 100 * time.Millisecond
+	// when we reach sendMessageCutoff wants/cancels, we'll send the message immediately.
+	sendMessageCutoff = 256
+	// sendMessageDebounce is the debounce duration when calling sendMessage()
+	sendMessageDebounce = time.Millisecond
+	// when we debounce for more than sendMessageMaxDelay, we'll send the
+	// message immediately.
+	sendMessageMaxDelay = 20 * time.Millisecond
+	sendTimeout         = 30 * time.Second
 )
 
 // MessageNetwork is any network that can connect peers and generate a message
@@ -92,10 +94,8 @@ type MessageQueue struct {
 	priority  int32
 
 	// Dont touch any of these variables outside of run loop
-	sender                bsnet.MessageSender
-	rebroadcastIntervalLk sync.Mutex
-	rebroadcastInterval   time.Duration
-	rebroadcastTimer      *clock.Timer
+	sender         bsnet.MessageSender
+	rebroadcastNow chan struct{}
 	// For performance reasons we just clear out the fields of the message
 	// instead of creating a new one every time.
 	msg bsmsg.BitSwapMessage
@@ -263,21 +263,21 @@ func newMessageQueue(
 ) *MessageQueue {
 	ctx, cancel := context.WithCancel(ctx)
 	return &MessageQueue{
-		ctx:                 ctx,
-		shutdown:            cancel,
-		p:                   p,
-		network:             network,
-		dhTimeoutMgr:        dhTimeoutMgr,
-		maxMessageSize:      maxMsgSize,
-		bcstWants:           newRecallWantList(),
-		peerWants:           newRecallWantList(),
-		cancels:             cid.NewSet(),
-		outgoingWork:        make(chan time.Time, 1),
-		responses:           make(chan []cid.Cid, 8),
-		rebroadcastInterval: defaultRebroadcastInterval,
-		sendErrorBackoff:    sendErrorBackoff,
-		maxValidLatency:     maxValidLatency,
-		priority:            maxPriority,
+		ctx:              ctx,
+		shutdown:         cancel,
+		p:                p,
+		network:          network,
+		dhTimeoutMgr:     dhTimeoutMgr,
+		maxMessageSize:   maxMsgSize,
+		bcstWants:        newRecallWantList(),
+		peerWants:        newRecallWantList(),
+		cancels:          cid.NewSet(),
+		outgoingWork:     make(chan time.Time, 1),
+		responses:        make(chan []cid.Cid, 8),
+		rebroadcastNow:   make(chan struct{}),
+		sendErrorBackoff: sendErrorBackoff,
+		maxValidLatency:  maxValidLatency,
+		priority:         maxPriority,
 		// For performance reasons we just clear out the fields of the message
 		// after using it, instead of creating a new one every time.
 		msg:    bsmsg.New(false),
@@ -394,23 +394,15 @@ func (mq *MessageQueue) ResponseReceived(ks []cid.Cid) {
 	}
 }
 
-// SetRebroadcastInterval sets a new interval on which to rebroadcast the full wantlist
-func (mq *MessageQueue) SetRebroadcastInterval(delay time.Duration) {
-	mq.rebroadcastIntervalLk.Lock()
-	mq.rebroadcastInterval = delay
-	if mq.rebroadcastTimer != nil {
-		mq.rebroadcastTimer.Reset(delay)
+func (mq *MessageQueue) RebroadcastNow() {
+	select {
+	case mq.rebroadcastNow <- struct{}{}:
+	case <-mq.ctx.Done():
 	}
-	mq.rebroadcastIntervalLk.Unlock()
 }
 
 // Startup starts the processing of messages and rebroadcasting.
 func (mq *MessageQueue) Startup() {
-	const checksPerInterval = 2
-
-	mq.rebroadcastIntervalLk.Lock()
-	mq.rebroadcastTimer = mq.clock.Timer(mq.rebroadcastInterval / checksPerInterval)
-	mq.rebroadcastIntervalLk.Unlock()
 	go mq.runQueue()
 }
 
@@ -430,6 +422,8 @@ func (mq *MessageQueue) onShutdown() {
 }
 
 func (mq *MessageQueue) runQueue() {
+	const runRebroadcastsInterval = rebroadcastInterval / 2
+
 	defer mq.onShutdown()
 
 	// Create a timer for debouncing scheduled work.
@@ -440,11 +434,18 @@ func (mq *MessageQueue) runQueue() {
 		<-scheduleWork.C
 	}
 
+	rebroadcastTimer := mq.clock.Timer(runRebroadcastsInterval)
+	defer rebroadcastTimer.Stop()
+
 	var workScheduled time.Time
 	for {
 		select {
-		case <-mq.rebroadcastTimer.C:
-			mq.rebroadcastWantlist()
+		case now := <-rebroadcastTimer.C:
+			mq.rebroadcastWantlist(now, rebroadcastInterval)
+			rebroadcastTimer.Reset(runRebroadcastsInterval)
+
+		case <-mq.rebroadcastNow:
+			mq.rebroadcastWantlist(mq.clock.Now(), 0)
 
 		case when := <-mq.outgoingWork:
 			// If we have work scheduled, cancel the timer. If we
@@ -489,37 +490,18 @@ func (mq *MessageQueue) runQueue() {
 }
 
 // Periodically resend the list of wants to the peer
-func (mq *MessageQueue) rebroadcastWantlist() {
-	mq.rebroadcastIntervalLk.Lock()
-	mq.rebroadcastTimer.Reset(mq.rebroadcastInterval)
-	mq.rebroadcastIntervalLk.Unlock()
+func (mq *MessageQueue) rebroadcastWantlist(now time.Time, interval time.Duration) {
+	mq.wllock.Lock()
+	// Transfer wants from the rebroadcast lists into the pending lists.
+	toRebroadcast := mq.bcstWants.Refresh(now, interval) + mq.peerWants.Refresh(now, interval)
+	mq.wllock.Unlock()
 
 	// If some wants were transferred from the rebroadcast list
-	if toRebroadcast := mq.transferRebroadcastWants(); toRebroadcast > 0 {
+	if toRebroadcast > 0 {
 		// Send them out
 		mq.sendMessage()
 		log.Infow("Rebroadcasting wants", "amount", toRebroadcast, "peer", mq.p)
 	}
-}
-
-// Transfer wants from the rebroadcast lists into the pending lists.
-func (mq *MessageQueue) transferRebroadcastWants() int {
-	mq.wllock.Lock()
-	defer mq.wllock.Unlock()
-
-	if mq.bcstWants.sent.Len() == 0 && mq.peerWants.sent.Len() == 0 {
-		return 0
-	}
-
-	mq.rebroadcastIntervalLk.Lock()
-	rebroadcastInterval := mq.rebroadcastInterval
-	mq.rebroadcastIntervalLk.Unlock()
-
-	now := mq.clock.Now()
-	// Transfer sent wants into pending wants lists
-	transferred := mq.bcstWants.Refresh(now, rebroadcastInterval)
-	transferred += mq.peerWants.Refresh(now, rebroadcastInterval)
-	return transferred
 }
 
 func (mq *MessageQueue) signalWorkReady() {

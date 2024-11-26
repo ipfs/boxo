@@ -432,9 +432,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 		t.Fatal("wrong number of wants")
 	}
 
-	// Tell message queue to rebroadcast after 5ms, then wait 8ms
-	messageQueue.SetRebroadcastInterval(5 * time.Millisecond)
-	clock.Add(8 * time.Millisecond)
+	messageQueue.RebroadcastNow()
 	message = <-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
@@ -443,10 +441,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 		t.Fatal("did not rebroadcast all wants")
 	}
 
-	// Tell message queue to rebroadcast after a long time (so it doesn't
-	// interfere with the next message collection), then send out some
-	// regular wants and collect them
-	messageQueue.SetRebroadcastInterval(1 * time.Second)
+	// Send out some regular wants and collect them
 	messageQueue.AddWants(wantBlocks, wantHaves)
 	expectEvent(t, events, messageQueued)
 	clock.Add(10 * time.Millisecond)
@@ -464,9 +459,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 	default:
 	}
 
-	// Tell message queue to rebroadcast after 10ms, then wait 15ms
-	messageQueue.SetRebroadcastInterval(10 * time.Millisecond)
-	clock.Add(15 * time.Millisecond)
+	messageQueue.RebroadcastNow()
 	message = <-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
@@ -477,7 +470,6 @@ func TestWantlistRebroadcast(t *testing.T) {
 	}
 
 	// Cancel some of the wants
-	messageQueue.SetRebroadcastInterval(1 * time.Second)
 	cancels := append([]cid.Cid{bcstwh[0]}, wantHaves[0], wantBlocks[0])
 	messageQueue.AddCancels(cancels)
 	expectEvent(t, events, messageQueued)
@@ -501,9 +493,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 		}
 	}
 
-	// Tell message queue to rebroadcast after 10ms, then wait 15ms
-	messageQueue.SetRebroadcastInterval(10 * time.Millisecond)
-	clock.Add(15 * time.Millisecond)
+	messageQueue.RebroadcastNow()
 	message = <-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
