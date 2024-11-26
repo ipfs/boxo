@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gammazero/chanqueue"
+	"github.com/gammazero/deque"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
@@ -205,32 +206,36 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 }
 
 func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k cid.Cid, max int, receivedInProgressRequest inProgressRequest, onCloseFn func()) <-chan peer.AddrInfo {
-	// maintains an unbuffered queue for incoming providers for given request for a given session
-	// essentially, as a provider comes in, for a given CID, we want to immediately broadcast to all
-	// sessions that queried that CID, without worrying about whether the client code is actually
-	// reading from the returned channel -- so that the broadcast never blocks
-	// based on: https://medium.com/capital-one-tech/building-an-unbounded-channel-in-go-789e175cd2cd
+	// maintains an unbuffered queue for incoming providers for given request
+	// for a given session. Eessentially, as a provider comes in, for a given
+	// CID, immediately broadcast to all sessions that queried that CID,
+	// without worrying about whether the client code is actually reading from
+	// the returned channel -- so that the broadcast never blocks.
 	returnedProviders := make(chan peer.AddrInfo)
-	receivedProviders := append([]peer.AddrInfo(nil), receivedInProgressRequest.providersSoFar[0:]...)
+	var receivedProviders deque.Deque[peer.AddrInfo]
+	receivedProviders.Grow(len(receivedInProgressRequest.providersSoFar))
+	for _, addrInfo := range receivedInProgressRequest.providersSoFar {
+		receivedProviders.PushBack(addrInfo)
+	}
 	incomingProviders := receivedInProgressRequest.incoming
 
 	// count how many providers we received from our workers etc.
 	// these providers should be peers we managed to connect to.
-	total := len(receivedProviders)
+	total := receivedProviders.Len()
 	go func() {
 		defer close(returnedProviders)
 		defer onCloseFn()
 		outgoingProviders := func() chan<- peer.AddrInfo {
-			if len(receivedProviders) == 0 {
+			if receivedProviders.Len() == 0 {
 				return nil
 			}
 			return returnedProviders
 		}
 		nextProvider := func() peer.AddrInfo {
-			if len(receivedProviders) == 0 {
+			if receivedProviders.Len() == 0 {
 				return peer.AddrInfo{}
 			}
-			return receivedProviders[0]
+			return receivedProviders.Front()
 		}
 
 		stopWhenMaxReached := func() {
@@ -247,7 +252,7 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 		// need.
 		stopWhenMaxReached()
 
-		for len(receivedProviders) > 0 || incomingProviders != nil {
+		for receivedProviders.Len() > 0 || incomingProviders != nil {
 			select {
 			case <-pqm.ctx.Done():
 				return
@@ -260,7 +265,7 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 				if !ok {
 					incomingProviders = nil
 				} else {
-					receivedProviders = append(receivedProviders, provider)
+					receivedProviders.PushBack(provider)
 					total++
 					stopWhenMaxReached()
 					// we do not return, we will loop on
@@ -270,7 +275,7 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 					// via returnedProviders
 				}
 			case outgoingProviders() <- nextProvider():
-				receivedProviders = receivedProviders[1:]
+				receivedProviders.PopFront()
 			}
 		}
 	}()
