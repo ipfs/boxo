@@ -90,7 +90,6 @@ type ProviderQueryManager struct {
 	providerRequestsProcessing *chanqueue.ChanQueue[*findProviderRequest]
 
 	findProviderTimeout time.Duration
-	timeoutMutex        sync.RWMutex
 
 	maxProviders         int
 	maxInProcessRequests int
@@ -156,13 +155,6 @@ func (pqm *ProviderQueryManager) Startup() {
 type inProgressRequest struct {
 	providersSoFar []peer.AddrInfo
 	incoming       chan peer.AddrInfo
-}
-
-// setFindProviderTimeout changes the timeout for finding providers
-func (pqm *ProviderQueryManager) setFindProviderTimeout(findProviderTimeout time.Duration) {
-	pqm.timeoutMutex.Lock()
-	pqm.findProviderTimeout = findProviderTimeout
-	pqm.timeoutMutex.Unlock()
 }
 
 // FindProvidersAsync finds providers for the given block. The max parameter
@@ -319,9 +311,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 			}
 			k := fpr.k
 			log.Debugf("Beginning Find Provider Request for cid: %s", k.String())
-			pqm.timeoutMutex.RLock()
 			findProviderCtx, cancel := context.WithTimeout(fpr.ctx, pqm.findProviderTimeout)
-			pqm.timeoutMutex.RUnlock()
 			span := trace.SpanFromContext(findProviderCtx)
 			span.AddEvent("StartFindProvidersAsync")
 			// We set count == 0. We will cancel the query

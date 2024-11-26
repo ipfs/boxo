@@ -310,9 +310,8 @@ func TestFindProviderTimeout(t *testing.T) {
 		delay:      10 * time.Millisecond,
 	}
 	ctx := context.Background()
-	providerQueryManager := mustNotErr(New(ctx, fpd, fpn))
+	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxTimeout(2*time.Millisecond)))
 	providerQueryManager.Startup()
-	providerQueryManager.setFindProviderTimeout(2 * time.Millisecond)
 	keys := random.Cids(1)
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -335,9 +334,8 @@ func TestFindProviderPreCanceled(t *testing.T) {
 		delay:      1 * time.Millisecond,
 	}
 	ctx := context.Background()
-	providerQueryManager := mustNotErr(New(ctx, fpd, fpn))
+	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxTimeout(100*time.Millisecond)))
 	providerQueryManager.Startup()
-	providerQueryManager.setFindProviderTimeout(100 * time.Millisecond)
 	keys := random.Cids(1)
 
 	sessionCtx, cancel := context.WithCancel(ctx)
@@ -361,9 +359,8 @@ func TestCancelFindProvidersAfterCompletion(t *testing.T) {
 		delay:      1 * time.Millisecond,
 	}
 	ctx := context.Background()
-	providerQueryManager := mustNotErr(New(ctx, fpd, fpn))
+	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxTimeout(100*time.Millisecond)))
 	providerQueryManager.Startup()
-	providerQueryManager.setFindProviderTimeout(100 * time.Millisecond)
 	keys := random.Cids(1)
 
 	sessionCtx, cancel := context.WithCancel(ctx)
@@ -395,9 +392,8 @@ func TestLimitedProviders(t *testing.T) {
 		delay:      1 * time.Millisecond,
 	}
 	ctx := context.Background()
-	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxProviders(max)))
+	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxProviders(max), WithMaxTimeout(100*time.Millisecond)))
 	providerQueryManager.Startup()
-	providerQueryManager.setFindProviderTimeout(100 * time.Millisecond)
 	keys := random.Cids(1)
 
 	providersChan := providerQueryManager.FindProvidersAsync(ctx, keys[0], 0)
