@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gammazero/chanqueue"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
@@ -82,12 +83,11 @@ type cancelRequestMessage struct {
 // - ensure two findprovider calls for the same block don't run concurrently
 // - manage timeouts
 type ProviderQueryManager struct {
-	ctx                          context.Context
-	dialer                       ProviderQueryDialer
-	router                       ProviderQueryRouter
-	providerQueryMessages        chan providerQueryMessage
-	providerRequestsProcessing   chan *findProviderRequest
-	incomingFindProviderRequests chan *findProviderRequest
+	ctx                        context.Context
+	dialer                     ProviderQueryDialer
+	router                     ProviderQueryRouter
+	providerQueryMessages      chan providerQueryMessage
+	providerRequestsProcessing *chanqueue.ChanQueue[*findProviderRequest]
 
 	findProviderTimeout time.Duration
 	timeoutMutex        sync.RWMutex
@@ -130,16 +130,14 @@ func WithMaxProviders(count int) Option {
 // network provider.
 func New(ctx context.Context, dialer ProviderQueryDialer, router ProviderQueryRouter, opts ...Option) (*ProviderQueryManager, error) {
 	pqm := &ProviderQueryManager{
-		ctx:                          ctx,
-		dialer:                       dialer,
-		router:                       router,
-		providerQueryMessages:        make(chan providerQueryMessage, 16),
-		providerRequestsProcessing:   make(chan *findProviderRequest),
-		incomingFindProviderRequests: make(chan *findProviderRequest),
-		inProgressRequestStatuses:    make(map[cid.Cid]*inProgressRequestStatus),
-		findProviderTimeout:          defaultTimeout,
-		maxInProcessRequests:         defaultMaxInProcessRequests,
-		maxProviders:                 defaultMaxProviders,
+		ctx:                       ctx,
+		dialer:                    dialer,
+		router:                    router,
+		providerQueryMessages:     make(chan providerQueryMessage),
+		inProgressRequestStatuses: make(map[cid.Cid]*inProgressRequestStatus),
+		findProviderTimeout:       defaultTimeout,
+		maxInProcessRequests:      defaultMaxInProcessRequests,
+		maxProviders:              defaultMaxProviders,
 	}
 
 	for _, o := range opts {
@@ -316,7 +314,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 	// to let requests go in parallel but keep them rate limited
 	for {
 		select {
-		case fpr, ok := <-pqm.providerRequestsProcessing:
+		case fpr, ok := <-pqm.providerRequestsProcessing.Out():
 			if !ok {
 				return
 			}
@@ -371,40 +369,6 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 	}
 }
 
-func (pqm *ProviderQueryManager) providerRequestBufferWorker() {
-	// the provider request buffer worker just maintains an unbounded
-	// buffer for incoming provider queries and dispatches to the find
-	// provider workers as they become available
-	// based on: https://medium.com/capital-one-tech/building-an-unbounded-channel-in-go-789e175cd2cd
-	var providerQueryRequestBuffer []*findProviderRequest
-	nextProviderQuery := func() *findProviderRequest {
-		if len(providerQueryRequestBuffer) == 0 {
-			return nil
-		}
-		return providerQueryRequestBuffer[0]
-	}
-	outgoingRequests := func() chan<- *findProviderRequest {
-		if len(providerQueryRequestBuffer) == 0 {
-			return nil
-		}
-		return pqm.providerRequestsProcessing
-	}
-
-	for {
-		select {
-		case incomingRequest, ok := <-pqm.incomingFindProviderRequests:
-			if !ok {
-				return
-			}
-			providerQueryRequestBuffer = append(providerQueryRequestBuffer, incomingRequest)
-		case outgoingRequests() <- nextProviderQuery():
-			providerQueryRequestBuffer = providerQueryRequestBuffer[1:]
-		case <-pqm.ctx.Done():
-			return
-		}
-	}
-}
-
 func (pqm *ProviderQueryManager) cleanupInProcessRequests() {
 	for _, requestStatus := range pqm.inProgressRequestStatuses {
 		for listener := range requestStatus.listeners {
@@ -417,7 +381,9 @@ func (pqm *ProviderQueryManager) cleanupInProcessRequests() {
 func (pqm *ProviderQueryManager) run() {
 	defer pqm.cleanupInProcessRequests()
 
-	go pqm.providerRequestBufferWorker()
+	pqm.providerRequestsProcessing = chanqueue.New[*findProviderRequest]()
+	defer pqm.providerRequestsProcessing.Shutdown()
+
 	for i := 0; i < pqm.maxInProcessRequests; i++ {
 		go pqm.findProviderWorker()
 	}
@@ -495,7 +461,7 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 		pqm.inProgressRequestStatuses[npqm.k] = requestStatus
 
 		select {
-		case pqm.incomingFindProviderRequests <- &findProviderRequest{
+		case pqm.providerRequestsProcessing.In() <- &findProviderRequest{
 			k:   npqm.k,
 			ctx: ctx,
 		}:
