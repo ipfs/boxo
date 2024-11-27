@@ -46,7 +46,7 @@ It includes the original `pin` object, along with the current `status` and globa
 
 ### Creating a new pin object
 The user sends a `Pin` object to `POST /pins` and receives a `PinStatus` response:
-- `requestid` in `PinStatus` is the identifier of the pin operation, which can can be used for checking status, and removing the pin in the future
+- `requestid` in `PinStatus` is the identifier of the pin operation, which can be used for checking status, and removing the pin in the future
 - `status` in `PinStatus` indicates the current state of a pin
 
 ### Checking status of in-progress pinning
