@@ -110,7 +110,7 @@ func WithMaxTimeout(timeout time.Duration) Option {
 
 // WithMaxInProcessRequests is the maximum number of requests that can be
 // processed in parallel. If this is 0, then the number is unlimited. Default
-// is defaultMaxInProcessRequests.
+// is defaultMaxInProcessRequests (16).
 func WithMaxInProcessRequests(count int) Option {
 	return func(mgr *ProviderQueryManager) error {
 		mgr.maxInProcessRequests = count
