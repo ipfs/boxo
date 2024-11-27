@@ -152,7 +152,7 @@ type pinResults = openapi.PinResults
 //		processPin(r)
 //	}
 //	return <-lsErr
-func (c *Client) Ls2(ctx contDext.Context, res chan<- PinStatusGetter, opts ...LsOption) (err error) {
+func (c *Client) Ls2(ctx context.Context, res chan<- PinStatusGetter, opts ...LsOption) (err error) {
 	settings := new(lsSettings)
 	for _, o := range opts {
 		if err = o(settings); err != nil {
@@ -220,7 +220,7 @@ func (c *Client) Ls(ctx context.Context, opts ...LsOption) (<-chan PinStatusGett
 }
 
 func (c *Client) LsSync(ctx context.Context, opts ...LsOption) ([]PinStatusGetter, error) {
-	resCh, errs := c.Ls(ctx, opts...)
+	resCh, errCh := c.Ls(ctx, opts...)
 
 	var res []PinStatusGetter
 	for r := range resCh {
