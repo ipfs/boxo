@@ -209,7 +209,7 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 
 func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k cid.Cid, max int, receivedInProgressRequest inProgressRequest, onCloseFn func()) <-chan peer.AddrInfo {
 	// maintains an unbuffered queue for incoming providers for given request
-	// for a given session. Eessentially, as a provider comes in, for a given
+	// for a given session. Essentially, as a provider comes in, for a given
 	// CID, immediately broadcast to all sessions that queried that CID,
 	// without worrying about whether the client code is actually reading from
 	// the returned channel -- so that the broadcast never blocks.
