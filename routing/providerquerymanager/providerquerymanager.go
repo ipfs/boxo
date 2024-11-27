@@ -186,6 +186,10 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 		close(ch)
 		span.End()
 		return ch
+	case <-sessionCtx.Done():
+		ch := make(chan peer.AddrInfo)
+		close(ch)
+		return ch
 	}
 
 	// DO NOT select on sessionCtx. We only want to abort here if we're
