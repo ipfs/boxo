@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap/zapcore"
 )
 
 var log = logging.Logger("routing/provqrymgr")
@@ -487,7 +488,9 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 		}
 	} else {
 		trace.SpanFromContext(npqm.ctx).AddEvent("JoinQuery", trace.WithAttributes(attribute.Stringer("cid", npqm.k)))
-		log.Debugf("Joined existing query for cid %s which now has %d queries in progress", npqm.k, len(requestStatus.listeners)+1)
+		if log.Level().Enabled(zapcore.DebugLevel) {
+			log.Debugf("Joined existing query for cid %s which now has %d queries in progress", npqm.k, len(requestStatus.listeners)+1)
+		}
 	}
 	inProgressChan := make(chan peer.AddrInfo)
 	requestStatus.listeners[inProgressChan] = struct{}{}
