@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap/zapcore"
 )
 
 var log = logging.Logger("routing/provqrymgr")
@@ -463,6 +464,13 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 		span.AddEvent("NewQuery", trace.WithAttributes(attribute.Stringer("cid", npqm.k)))
 		ctx = trace.ContextWithSpan(ctx, span)
 
+		// Use context derived from pqm.ctx here, and not the context from the
+		// request (npqm.ctx), because this inProgressRequestStatus applies to
+		// all in-progress requests for the CID (npqm.k).
+		//
+		// For tracing, this means that only the span from the first
+		// request-in-progress for a CID is used, even if there are multiple
+		// requests for the same CID.
 		requestStatus = &inProgressRequestStatus{
 			listeners: make(map[chan peer.AddrInfo]struct{}),
 			ctx:       ctx,
@@ -484,6 +492,9 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 		}
 	} else {
 		trace.SpanFromContext(npqm.ctx).AddEvent("JoinQuery", trace.WithAttributes(attribute.Stringer("cid", npqm.k)))
+		if log.Level().Enabled(zapcore.DebugLevel) {
+			log.Debugf("Joined existing query for cid %s which now has %d queries in progress", npqm.k, len(requestStatus.listeners)+1)
+		}
 	}
 	inProgressChan := make(chan peer.AddrInfo)
 	requestStatus.listeners[inProgressChan] = struct{}{}
