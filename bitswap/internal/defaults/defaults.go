@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	// these requests take at _least_ two minutes at the moment.
-	ProvideTimeout  = time.Minute * 3
+	// ProvSearchDelay specifies how long to wait before we start
+	// broadcasting outstanding wants for the first time.
 	ProvSearchDelay = time.Second
 
 	// Number of concurrent workers in decision engine that process requests to the blockstore
