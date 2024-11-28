@@ -202,11 +202,13 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 		// into session.ProviderFinder when passing it, it will become
 		// not nil. Related:
 		// https://groups.google.com/g/golang-nuts/c/wnH302gBa4I?pli=1
-		var pqm bssession.ProviderFinder
+		var sessionProvFinder bssession.ProviderFinder
 		if bs.pqm != nil {
-			pqm = bs.pqm
+			sessionProvFinder = bs.pqm
+		} else if providerFinder != nil {
+			sessionProvFinder = providerFinder
 		}
-		return bssession.New(sessctx, sessmgr, id, spm, pqm, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
+		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
 		return bsspm.New(id, network.ConnectionManager())
