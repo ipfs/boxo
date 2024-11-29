@@ -54,7 +54,7 @@ Default: `"grpc"`
 
 ### `Zipkin Exporter`
 
-See [Zipkin Exporter](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/sdk-environment-variables.md#zipkin-exporter).
+See [Zipkin Exporter](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/configuration/sdk-environment-variables.md#zipkin-exporter).
 
 ### `File Exporter`
 
@@ -66,7 +66,7 @@ Default: `"$PWD/traces.json"`
 
 ### `OTEL_PROPAGATORS`
 
-See [General SDK Configuration](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/sdk-environment-variables.md#general-sdk-configuration).
+See [General SDK Configuration](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/configuration/sdk-environment-variables.md#general-sdk-configuration).
 
 ## Using Jaeger UI
 
