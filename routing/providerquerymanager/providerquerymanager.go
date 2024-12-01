@@ -85,7 +85,8 @@ type cancelRequestMessage struct {
 // - ensure two findprovider calls for the same block don't run concurrently
 // - manage timeouts
 type ProviderQueryManager struct {
-	ctx                        context.Context
+	closeOnce                  sync.Once
+	closing                    chan struct{}
 	dialer                     ProviderQueryDialer
 	router                     ProviderQueryRouter
 	providerQueryMessages      chan providerQueryMessage
@@ -133,9 +134,9 @@ func WithMaxProviders(count int) Option {
 
 // New initializes a new ProviderQueryManager for a given context and a given
 // network provider.
-func New(ctx context.Context, dialer ProviderQueryDialer, router ProviderQueryRouter, opts ...Option) (*ProviderQueryManager, error) {
+func New(dialer ProviderQueryDialer, router ProviderQueryRouter, opts ...Option) (*ProviderQueryManager, error) {
 	pqm := &ProviderQueryManager{
-		ctx:                   ctx,
+		closing:               make(chan struct{}),
 		dialer:                dialer,
 		router:                router,
 		providerQueryMessages: make(chan providerQueryMessage),
@@ -153,6 +154,12 @@ func New(ctx context.Context, dialer ProviderQueryDialer, router ProviderQueryRo
 	go pqm.run()
 
 	return pqm, nil
+}
+
+func (pqm *ProviderQueryManager) Close() {
+	pqm.closeOnce.Do(func() {
+		close(pqm.closing)
+	})
 }
 
 type inProgressRequest struct {
@@ -180,7 +187,7 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 		k:                     k,
 		inProgressRequestChan: inProgressRequestChan,
 	}:
-	case <-pqm.ctx.Done():
+	case <-pqm.closing:
 		ch := make(chan peer.AddrInfo)
 		close(ch)
 		span.End()
@@ -196,7 +203,7 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 	// get to receiveProviders.
 	var receivedInProgressRequest inProgressRequest
 	select {
-	case <-pqm.ctx.Done():
+	case <-pqm.closing:
 		ch := make(chan peer.AddrInfo)
 		close(ch)
 		span.End()
@@ -256,7 +263,7 @@ func (pqm *ProviderQueryManager) receiveProviders(sessionCtx context.Context, k 
 
 		for receivedProviders.Len() > 0 || incomingProviders != nil {
 			select {
-			case <-pqm.ctx.Done():
+			case <-pqm.closing:
 				return
 			case <-sessionCtx.Done():
 				if incomingProviders != nil {
@@ -300,7 +307,7 @@ func (pqm *ProviderQueryManager) cancelProviderRequest(ctx context.Context, k ci
 			if !ok {
 				return
 			}
-		case <-pqm.ctx.Done():
+		case <-pqm.closing:
 			return
 		}
 	}
@@ -316,13 +323,13 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 	}
 
 	// Read find provider requests until channel is closed. The channel is
-	// closed as soon as pqm.ctx is canceled, so there is no need to select on
-	// that context here.
+	// closed as soon as pqm.Close is called, so there is no need to select on
+	// any other channel to detect shutdown.
 	for fpr := range pqm.providerRequestsProcessing.Out() {
 		if findSem != nil {
 			select {
 			case findSem <- struct{}{}:
-			case <-pqm.ctx.Done():
+			case <-pqm.closing:
 				return
 			}
 		}
@@ -362,7 +369,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 						k:   k,
 						p:   p,
 					}:
-					case <-pqm.ctx.Done():
+					case <-pqm.closing:
 						return
 					}
 				}(p)
@@ -374,7 +381,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 				ctx: ctx,
 				k:   k,
 			}:
-			case <-pqm.ctx.Done():
+			case <-pqm.closing:
 			}
 		}(fpr.ctx, fpr.k)
 	}
@@ -402,7 +409,7 @@ func (pqm *ProviderQueryManager) run() {
 		case nextMessage := <-pqm.providerQueryMessages:
 			nextMessage.debugMessage()
 			nextMessage.handle(pqm)
-		case <-pqm.ctx.Done():
+		case <-pqm.closing:
 			return
 		}
 	}
@@ -423,7 +430,7 @@ func (rpm *receivedProviderMessage) handle(pqm *ProviderQueryManager) {
 	for listener := range requestStatus.listeners {
 		select {
 		case listener <- rpm.p:
-		case <-pqm.ctx.Done():
+		case <-pqm.closing:
 			return
 		}
 	}
@@ -458,12 +465,12 @@ func (npqm *newProvideQueryMessage) debugMessage() {
 func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 	requestStatus, ok := pqm.inProgressRequestStatuses[npqm.k]
 	if !ok {
-		ctx, cancelFn := context.WithCancel(pqm.ctx)
+		ctx, cancelFn := context.WithCancel(context.Background())
 		span := trace.SpanFromContext(npqm.ctx)
 		span.AddEvent("NewQuery", trace.WithAttributes(attribute.Stringer("cid", npqm.k)))
 		ctx = trace.ContextWithSpan(ctx, span)
 
-		// Use context derived from pqm.ctx here, and not the context from the
+		// Use context derived from background here, and not the context from the
 		// request (npqm.ctx), because this inProgressRequestStatus applies to
 		// all in-progress requests for the CID (npqm.k).
 		//
@@ -486,7 +493,7 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 			k:   npqm.k,
 			ctx: ctx,
 		}:
-		case <-pqm.ctx.Done():
+		case <-pqm.closing:
 			return
 		}
 	} else {
@@ -502,7 +509,7 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 		providersSoFar: requestStatus.providersSoFar,
 		incoming:       inProgressChan,
 	}:
-	case <-pqm.ctx.Done():
+	case <-pqm.closing:
 	}
 }
 
