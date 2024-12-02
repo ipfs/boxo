@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -152,14 +153,25 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	}
 
 	if server.promRegistry == nil {
-		server.promRegistry = prometheus.NewRegistry()
+		server.promRegistry = prometheus.DefaultRegisterer
+	}
+
+	// Workaround due to https://github.com/slok/go-http-metrics
+	// using egistry.MustRegister internally.
+	// In production there will be only one handler, however we append counter
+	// to ensure duplicate metric registration will not panic in parallel tests
+	// when global prometheus.DefaultRegisterer is used.
+	metricsPrefix := "delegated_routing_server"
+	c := handlerCount.Add(1)
+	if c > 1 {
+		metricsPrefix = fmt.Sprintf("%s_%d", metricsPrefix, c)
 	}
 
 	// Create middleware with prometheus recorder
 	mdlw := middleware.New(middleware.Config{
 		Recorder: metrics.NewRecorder(metrics.Config{
 			Registry:        server.promRegistry,
-			Prefix:          "delegated_routing_server",
+			Prefix:          metricsPrefix,
 			SizeBuckets:     prometheus.ExponentialBuckets(100, 4, 8), // [100 400 1600 6400 25600 102400 409600 1.6384e+06]
 			DurationBuckets: []float64{0.1, 0.5, 1, 2, 5, 8, 10, 20, 30},
 		}),
@@ -175,6 +187,8 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 
 	return r
 }
+
+var handlerCount atomic.Int32
 
 type server struct {
 	svc                   ContentRouter

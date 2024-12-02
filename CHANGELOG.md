@@ -49,7 +49,7 @@ The following emojis are used to highlight certain changes:
 
   - The above is only necessary if content routing is needed. Otherwise:
 
-```
+```go
 	// Create network: no contentRouter anymore
 	bswapnet := network.NewFromIpfsHost(host)
 	// Create Bitswap: a new "discovery" parameter set to nil (disable content discovery)
@@ -64,6 +64,8 @@ The following emojis are used to highlight certain changes:
 
 - `routing/http/server`: added built-in Prometheus instrumentation to http delegated `/routing/v1/` endpoints, with custom buckets for response size and duration to match real world data observed at [the `delegated-ipfs.dev` instance](https://docs.ipfs.tech/concepts/public-utilities/#delegated-routing). [#718](https://github.com/ipfs/boxo/pull/718) [#724](https://github.com/ipfs/boxo/pull/724)
 - `routing/http/server`: added configurable routing timeout (`DefaultRoutingTimeout` being 30s) to prevent indefinite hangs during content/peer routing. Set custom duration via `WithRoutingTimeout`. [#720](https://github.com/ipfs/boxo/pull/720)
+- `routing/http/server`: exposes Prometheus metrics on `prometheus.DefaultRegisterer` and a custom one can be provided via `WithPrometheusRegistry` [#722](https://github.com/ipfs/boxo/pull/722)
+- `gateway`: `NewCacheBlockStore` and `NewCarBackend` will use `prometheus.DefaultRegisterer` when a custom one is not specified via `WithPrometheusRegistry` [#722](https://github.com/ipfs/boxo/pull/722)
 
 ### Changed
 

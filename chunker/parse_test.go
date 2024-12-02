@@ -17,7 +17,7 @@ func TestParseRabin(t *testing.T) {
 
 	_, err := FromString(r, "rabin-18-25-32")
 	if err != nil {
-		t.Errorf(err.Error())
+		t.Error(err.Error())
 	}
 
 	_, err = FromString(r, "rabin-15-23-31")

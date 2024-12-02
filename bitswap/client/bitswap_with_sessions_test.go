@@ -8,11 +8,13 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/bitswap"
+	"github.com/ipfs/boxo/bitswap/client"
 	"github.com/ipfs/boxo/bitswap/client/internal/session"
 	"github.com/ipfs/boxo/bitswap/client/traceability"
 	testinstance "github.com/ipfs/boxo/bitswap/testinstance"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
 	mockrouting "github.com/ipfs/boxo/routing/mock"
+	"github.com/ipfs/boxo/routing/providerquerymanager"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
@@ -110,6 +112,62 @@ func assertBlockListsFrom(from peer.ID, got, exp []blocks.Block) error {
 		}
 	}
 	return nil
+}
+
+// TestCustomProviderQueryManager tests that nothing breaks if we use a custom
+// PQM when creating bitswap.
+func TestCustomProviderQueryManager(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	vnet := getVirtualNetwork()
+	router := mockrouting.NewServer()
+	ig := testinstance.NewTestInstanceGenerator(vnet, router, nil, nil)
+	defer ig.Close()
+
+	block := random.BlocksOfSize(1, blockSize)[0]
+	a := ig.Next()
+	b := ig.Next()
+
+	// Replace bitswap in instance a with our customized one.
+	pqm, err := providerquerymanager.New(ctx, a.Adapter, router.Client(a.Identity))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pqm.Startup()
+	bs := bitswap.New(ctx, a.Adapter, pqm, a.Blockstore,
+		bitswap.WithClientOption(client.WithDefaultProviderQueryManager(false)))
+	a.Exchange.Close() // close old to be sure.
+	a.Exchange = bs
+	// Connect instances only after bitswap exists.
+	testinstance.ConnectInstances([]testinstance.Instance{a, b})
+
+	// Add a block to Peer B
+	if err := b.Blockstore.Put(ctx, block); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a session on Peer A
+	sesa := a.Exchange.NewSession(ctx)
+
+	// Get the block
+	blkout, err := sesa.GetBlock(ctx, block.Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !blkout.Cid().Equals(block.Cid()) {
+		t.Fatal("got wrong block")
+	}
+
+	traceBlock, ok := blkout.(traceability.Block)
+	if !ok {
+		t.Fatal("did not get tracable block")
+	}
+
+	if traceBlock.From != b.Identity.ID() {
+		t.Fatal("should have received block from peer B, did not")
+	}
 }
 
 func TestSessionBetweenPeers(t *testing.T) {

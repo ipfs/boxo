@@ -28,7 +28,7 @@ func SetupTracing(ctx context.Context, serviceName string) (*trace.TracerProvide
 	// using autoprop.NewTextMapPropagator, we ensure the value of the environmental
 	// variable OTEL_PROPAGATORS is respected, if set. By default, Trace Context
 	// and Baggage are used. More details on:
-	// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/sdk-environment-variables.md
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/configuration/sdk-environment-variables.md
 	otel.SetTextMapPropagator(autoprop.NewTextMapPropagator())
 
 	return tp, nil
