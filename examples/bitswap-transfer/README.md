@@ -1,4 +1,4 @@
-# Transfering UnixFS file with Bitswap
+# Transferring UnixFS file with Bitswap
 
 This is an example that quickly shows how to use IPFS tooling to move around a file.
 
