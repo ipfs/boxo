@@ -102,6 +102,8 @@ type ProviderQueryManager struct {
 
 type Option func(*ProviderQueryManager) error
 
+// WithMaxTimeout sets the limit on the amount of time to spend waiting for the
+// maximum number of providers from a find request.
 func WithMaxTimeout(timeout time.Duration) Option {
 	return func(mgr *ProviderQueryManager) error {
 		mgr.findProviderTimeout = timeout
@@ -316,7 +318,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 		findSem = make(chan struct{}, pqm.maxInProcessRequests)
 	}
 
-	// Read find provider requests until channel is closed. The channl is
+	// Read find provider requests until channel is closed. The channel is
 	// closed as soon as pqm.ctx is canceled, so there is no need to select on
 	// that context here.
 	for fpr := range pqm.providerRequestsProcessing.Out() {
