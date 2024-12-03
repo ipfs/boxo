@@ -98,12 +98,13 @@ func WithoutDuplicatedBlockStats() Option {
 }
 
 // WithDefaultProviderQueryManager indicates whether to use the default
-// ProviderQueryManager as a wrapper of the content Router. The
+// ProviderQueryManager as a wrapper of the content Router. The default bitswap
 // ProviderQueryManager provides bounded parallelism and limits for these
-// lookups. The ProviderQueryManager setup by default uses the options:
+// lookups. The bitswap default ProviderQueryManager uses these options, which
+// may be more conservative than the ProviderQueryManager defaults:
 //
 //   - WithMaxInProcessRequests(16)
-//   - WithMaxProviders(0)
+//   - WithMaxProviders(10)
 //   - WithMaxTimeout(10 *time.Second)
 //
 // To use a custom ProviderQueryManager, set to false and wrap directly the
@@ -181,7 +182,10 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
-		pqm, err := rpqm.New(ctx, network, bs.providerFinder)
+		pqm, err := rpqm.New(ctx, network, bs.providerFinder,
+			rpqm.WithMaxInProcessRequests(16),
+			rpqm.WithMaxProviders(10),
+			rpqm.WithMaxTimeout(10*time.Second))
 		if err != nil {
 			// Should not be possible to hit this
 			panic(err)
