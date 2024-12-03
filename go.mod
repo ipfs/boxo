@@ -41,7 +41,7 @@ require (
 	github.com/ipld/go-ipld-prime v0.21.0
 	github.com/libp2p/go-buffer-pool v0.1.0
 	github.com/libp2p/go-doh-resolver v0.4.0
-	github.com/libp2p/go-libp2p v0.37.0
+	github.com/libp2p/go-libp2p v0.37.2
 	github.com/libp2p/go-libp2p-kad-dht v0.27.0
 	github.com/libp2p/go-libp2p-record v0.2.0
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.4
@@ -51,11 +51,11 @@ require (
 	github.com/mr-tron/base58 v1.2.0
 	github.com/multiformats/go-base32 v0.1.0
 	github.com/multiformats/go-multiaddr v0.13.0
-	github.com/multiformats/go-multiaddr-dns v0.4.0
+	github.com/multiformats/go-multiaddr-dns v0.4.1
 	github.com/multiformats/go-multibase v0.2.0
 	github.com/multiformats/go-multicodec v0.9.0
 	github.com/multiformats/go-multihash v0.2.3
-	github.com/multiformats/go-multistream v0.5.0
+	github.com/multiformats/go-multistream v0.6.0
 	github.com/polydawn/refmt v0.89.0
 	github.com/prometheus/client_golang v1.20.5
 	github.com/samber/lo v1.47.0
@@ -168,7 +168,7 @@ require (
 	github.com/prometheus/common v0.60.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
-	github.com/quic-go/quic-go v0.48.1 // indirect
+	github.com/quic-go/quic-go v0.48.2 // indirect
 	github.com/quic-go/webtransport-go v0.8.1-0.20241018022711-4ac2c9250e66 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
