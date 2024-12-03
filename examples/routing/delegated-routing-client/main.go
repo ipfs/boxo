@@ -26,31 +26,32 @@ func main() {
 	namePtr := flag.String("ipns", "", "ipns name to retrieve record for")
 	flag.Parse()
 
-	if err := run(os.Stdout, *gatewayUrlPtr, *cidPtr, *pidPtr, *namePtr, *timeoutPtr); err != nil {
+	timeout := time.Duration(*timeoutPtr) * time.Second
+	if err := run(os.Stdout, *gatewayUrlPtr, *cidPtr, *pidPtr, *namePtr, timeout); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(w io.Writer, gatewayURL, cidStr, pidStr, nameStr string, timeoutSeconds int) error {
+func run(w io.Writer, gatewayURL, cidStr, pidStr, nameStr string, timeout time.Duration) error {
 	// Creates a new Delegated Routing V1 client.
 	client, err := client.New(gatewayURL)
 	if err != nil {
 		return err
 	}
 
-	timeout := time.Duration(timeoutSeconds) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	if cidStr != "" {
 		return findProviders(w, ctx, client, cidStr)
-	} else if pidStr != "" {
-		return findPeers(w, ctx, client, pidStr)
-	} else if nameStr != "" {
-		return findIPNS(w, ctx, client, nameStr)
-	} else {
-		return errors.New("cid or peer must be provided")
 	}
+	if pidStr != "" {
+		return findPeers(w, ctx, client, pidStr)
+	}
+	if nameStr != "" {
+		return findIPNS(w, ctx, client, nameStr)
+	}
+	return errors.New("cid or peer must be provided")
 }
 
 func findProviders(w io.Writer, ctx context.Context, client *client.Client, cidStr string) error {

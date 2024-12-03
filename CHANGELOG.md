@@ -73,6 +73,8 @@ The following emojis are used to highlight certain changes:
 - `routing/http/client`: creating delegated routing client with `New` now defaults to querying delegated routing server with `DefaultProtocolFilter`  ([IPIP-484](https://github.com/ipfs/specs/pull/484)) [#689](https://github.com/ipfs/boxo/pull/689)
 - `bitswap/client`: Wait at lease one broadcast interval before resending wants to a peer. Check for peers to rebroadcast to more often than one broadcast interval.
 - No longer using `github.com/jbenet/goprocess` to avoid requiring in dependents. [#710](https://github.com/ipfs/boxo/pull/710)
+- `pinning/remote/client`: Refactor remote pinning `Ls` to take results channel instead of returning one. The previous `Ls` behavior is implemented by the GoLs function, which creates the channels, starts the goroutine that calls Ls, and returns the channels to the caller [#738](https://github.com/ipfs/boxo/pull/738)
+- updated to go-libp2p to [v0.37.2](https://github.com/libp2p/go-libp2p/releases/tag/v0.37.2)
 
 ### Removed
 
