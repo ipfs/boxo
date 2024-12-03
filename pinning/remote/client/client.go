@@ -137,7 +137,7 @@ func (pinLsOpts) LsMeta(meta map[string]string) LsOption {
 
 type pinResults = openapi.PinResults
 
-// Ls2 writes pin statuses to the PinStatusGetter channel. The channel is
+// Ls writes pin statuses to the PinStatusGetter channel. The channel is
 // closed when there are no more pins. If an error occurs or ctx is canceled,
 // then the channel is closed and an error is returned.
 //
@@ -146,13 +146,13 @@ type pinResults = openapi.PinResults
 //	res := make(chan PinStatusGetter, 1)
 //	lsErr := make(chan error, 1)
 //	go func() {
-//		lsErr <- c.Ls2(ctx, res, opts...)
+//		lsErr <- c.Ls(ctx, res, opts...)
 //	}()
 //	for r := range res {
 //		processPin(r)
 //	}
 //	return <-lsErr
-func (c *Client) Ls2(ctx context.Context, res chan<- PinStatusGetter, opts ...LsOption) (err error) {
+func (c *Client) Ls(ctx context.Context, res chan<- PinStatusGetter, opts ...LsOption) (err error) {
 	settings := new(lsSettings)
 	for _, o := range opts {
 		if err = o(settings); err != nil {
@@ -208,19 +208,21 @@ func (c *Client) Ls2(ctx context.Context, res chan<- PinStatusGetter, opts ...Ls
 	return nil
 }
 
-func (c *Client) Ls(ctx context.Context, opts ...LsOption) (<-chan PinStatusGetter, <-chan error) {
-	res := make(chan PinStatusGetter, 1)
+// GoLs creates the results and error channels, starts the goroutine that calls
+// Ls, and returns the channels to the caller.
+func (c *Client) GoLs(ctx context.Context, opts ...LsOption) (<-chan PinStatusGetter, <-chan error) {
+	res := make(chan PinStatusGetter)
 	errs := make(chan error, 1)
 
 	go func() {
-		errs <- c.Ls2(ctx, res, opts...)
+		errs <- c.Ls(ctx, res, opts...)
 	}()
 
 	return res, errs
 }
 
 func (c *Client) LsSync(ctx context.Context, opts ...LsOption) ([]PinStatusGetter, error) {
-	resCh, errCh := c.Ls(ctx, opts...)
+	resCh, errCh := c.GoLs(ctx, opts...)
 
 	var res []PinStatusGetter
 	for r := range resCh {
