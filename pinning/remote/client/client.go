@@ -193,7 +193,7 @@ func (c *Client) Ls(ctx context.Context, res chan<- PinStatusGetter, opts ...LsO
 		batchSize := len(results)
 		if int(pinRes.Count) == batchSize {
 			// no more batches
-			break
+			return nil
 		}
 
 		// Better DX/UX for cases like https://github.com/application-research/estuary/issues/124
@@ -204,8 +204,6 @@ func (c *Client) Ls(ctx context.Context, res chan<- PinStatusGetter, opts ...LsO
 		oldestResult := results[batchSize-1]
 		settings.before = &oldestResult.Created
 	}
-
-	return nil
 }
 
 // GoLs creates the results and error channels, starts the goroutine that calls
