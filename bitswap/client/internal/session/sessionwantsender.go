@@ -513,7 +513,7 @@ func (sws *sessionWantSender) processExhaustedWants(exhausted []cid.Cid) {
 type wantSets struct {
 	wantBlocks *cid.Set
 	wantHaves  *cid.Set
-	result     error
+	err        error
 }
 
 type allWants map[peer.ID]*wantSets
@@ -569,7 +569,7 @@ func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.ID) {
 	for c, wi := range sws.wants {
 		if wi.bestPeer != "" && wi.sentTo == "" {
 			// check if a want block was successfully sent to the best peer
-			if toSend.forPeer(wi.bestPeer).result == nil {
+			if toSend.forPeer(wi.bestPeer).err == nil {
 				// Record that we are sending a want-block for this want to the peer
 				sws.setWantSentTo(c, wi.bestPeer)
 			}
@@ -592,16 +592,16 @@ func (sws *sessionWantSender) sendWants(sends allWants) {
 		// precedence over want-haves.
 		wblks := snd.wantBlocks.Keys()
 		whaves := snd.wantHaves.Keys()
-		snd.result = sws.pm.SendWants(sws.ctx, p, wblks, whaves)
-
-		// only update state if the wants really sent
-		if snd.result == nil {
-			// Inform the session that we've sent the wants
-			sws.onSend(p, wblks, whaves)
-
-			// Record which peers we send want-block to
-			sws.swbt.addSentWantBlocksTo(p, wblks)
+		snd.err = sws.pm.SendWants(sws.ctx, p, wblks, whaves)
+		if snd.err != nil {
+			// Do not update state if the wants not sent.
+			continue
 		}
+		// Inform the session that we've sent the wants
+		sws.onSend(p, wblks, whaves)
+
+		// Record which peers we send want-block to
+		sws.swbt.addSentWantBlocksTo(p, wblks)
 	}
 }
 

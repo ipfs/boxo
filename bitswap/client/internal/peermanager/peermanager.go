@@ -149,7 +149,7 @@ func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []ci
 	defer pm.pqLk.Unlock()
 
 	if _, ok := pm.peerQueues[p]; !ok {
-		return fmt.Errorf("No peer queue for %s", p)
+		return fmt.Errorf("no peer queue for %s", p)
 	}
 	pm.pwm.sendWants(p, wantBlocks, wantHaves)
 	return nil
