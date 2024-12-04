@@ -134,7 +134,6 @@ func TestCustomProviderQueryManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pqm.Startup()
 	bs := bitswap.New(ctx, a.Adapter, pqm, a.Blockstore,
 		bitswap.WithClientOption(client.WithDefaultProviderQueryManager(false)))
 	a.Exchange.Close() // close old to be sure.

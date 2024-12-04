@@ -150,12 +150,9 @@ func New(ctx context.Context, dialer ProviderQueryDialer, router ProviderQueryRo
 		}
 	}
 
-	return pqm, nil
-}
-
-// Startup starts processing for the ProviderQueryManager.
-func (pqm *ProviderQueryManager) Startup() {
 	go pqm.run()
+
+	return pqm, nil
 }
 
 type inProgressRequest struct {
