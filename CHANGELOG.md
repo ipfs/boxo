@@ -80,6 +80,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- Do not erroneously update the state of sent wants when a send a peer disconnected and the send did not happen. [#452](https://github.com/ipfs/boxo/pull/452)
+
 ### Security
 
 ## [v0.24.3]
