@@ -2,7 +2,6 @@ package peermanager
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	logging "github.com/ipfs/go-log/v2"
@@ -144,15 +143,15 @@ func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.C
 
 // SendWants sends the given want-blocks and want-haves to the given peer.
 // It filters out wants that have previously been sent to the peer.
-func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) error {
+func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
 	if _, ok := pm.peerQueues[p]; !ok {
-		return fmt.Errorf("no peer queue for %s", p)
+		return false
 	}
 	pm.pwm.sendWants(p, wantBlocks, wantHaves)
-	return nil
+	return true
 }
 
 // SendCancels sends cancels for the given keys to all peers who had previously
