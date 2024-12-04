@@ -415,6 +415,7 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	// Tick should take longer
 	consecutiveTickLength := time.Since(startTick)
 	if firstTickLength > consecutiveTickLength {
+		t.Log("prev tick:", firstTickLength, "this tick:", consecutiveTickLength)
 		t.Fatal("Should have increased tick length after first consecutive tick")
 	}
 
@@ -432,7 +433,8 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	// Tick should take longer
 	secondConsecutiveTickLength := time.Since(startTick)
 	if consecutiveTickLength > secondConsecutiveTickLength {
-		t.Fatal("Should have increased tick length after first consecutive tick")
+		t.Log("prev tick:", consecutiveTickLength, "this tick:", secondConsecutiveTickLength)
+		t.Fatal("Should have increased tick length after previous consecutive tick")
 	}
 
 	// Should not have tried to find peers on consecutive ticks
