@@ -12,7 +12,6 @@ import (
 	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
 	bsspm "github.com/ipfs/boxo/bitswap/client/internal/sessionpeermanager"
-	"github.com/ipfs/boxo/internal/test"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
@@ -155,8 +154,6 @@ func (pm *fakePeerManager) BroadcastWantHaves(ctx context.Context, cids []cid.Ci
 func (pm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid) {}
 
 func TestSessionGetBlocks(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	fpm := newFakePeerManager()
 	fspm := newFakeSessionPeerManager()
@@ -175,9 +172,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	}
 
 	_, err := session.GetBlocks(ctx, cids)
-	if err != nil {
-		t.Fatal("error getting blocks")
-	}
+	require.NoError(t, err, "error getting blocks")
 
 	// Wait for initial want request
 	receivedWantReq := <-fpm.wantReqs
@@ -345,8 +340,6 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 }
 
 func TestSessionFailingToGetFirstBlock(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	fpm := newFakePeerManager()
