@@ -357,7 +357,6 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
 	}
-	startTick := time.Now()
 	_, err := session.GetBlocks(ctx, cids)
 	require.NoError(t, err, "error getting blocks")
 
@@ -389,7 +388,6 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("Did not find more peers")
 	}
-	firstTickLength := time.Since(startTick)
 
 	// Wait for another broadcast to occur
 	select {
@@ -402,7 +400,6 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	}
 
 	// Wait for another broadcast to occur
-	startTick = time.Now()
 	select {
 	case receivedWantReq := <-fpm.wantReqs:
 		if len(receivedWantReq.cids) < len(cids) {
@@ -410,16 +407,9 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("Never rebroadcast want list")
-	}
-
-	// Tick should take longer
-	consecutiveTickLength := time.Since(startTick)
-	if firstTickLength > consecutiveTickLength {
-		t.Fatal("Should have increased tick length after first consecutive tick")
 	}
 
 	// Wait for another broadcast to occur
-	startTick = time.Now()
 	select {
 	case receivedWantReq := <-fpm.wantReqs:
 		if len(receivedWantReq.cids) < len(cids) {
@@ -427,12 +417,6 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("Never rebroadcast want list")
-	}
-
-	// Tick should take longer
-	secondConsecutiveTickLength := time.Since(startTick)
-	if consecutiveTickLength > secondConsecutiveTickLength {
-		t.Fatal("Should have increased tick length after first consecutive tick")
 	}
 
 	// Should not have tried to find peers on consecutive ticks

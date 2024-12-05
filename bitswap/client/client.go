@@ -190,7 +190,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 			// Should not be possible to hit this
 			panic(err)
 		}
-		pqm.Startup()
 		bs.pqm = pqm
 	}
 

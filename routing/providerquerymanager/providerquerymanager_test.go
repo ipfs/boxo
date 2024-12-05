@@ -76,7 +76,6 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	}
 	ctx := context.Background()
 	providerQueryManager := mustNotErr(New(ctx, fpd, fpn))
-	providerQueryManager.Startup()
 	keys := random.Cids(2)
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -114,7 +113,6 @@ func TestDedupingProviderRequests(t *testing.T) {
 	}
 	ctx := context.Background()
 	providerQueryManager := mustNotErr(New(ctx, fpd, fpn))
-	providerQueryManager.Startup()
 	key := random.Cids(1)[0]
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -155,7 +153,6 @@ func TestCancelOneRequestDoesNotTerminateAnother(t *testing.T) {
 	}
 	ctx := context.Background()
 	providerQueryManager := mustNotErr(New(ctx, fpd, fpn))
-	providerQueryManager.Startup()
 
 	key := random.Cids(1)[0]
 
@@ -202,7 +199,6 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	managerCtx, managerCancel := context.WithTimeout(ctx, 5*time.Millisecond)
 	defer managerCancel()
 	providerQueryManager := mustNotErr(New(managerCtx, fpd, fpn))
-	providerQueryManager.Startup()
 
 	key := random.Cids(1)[0]
 
@@ -238,7 +234,6 @@ func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
 	}
 	ctx := context.Background()
 	providerQueryManager := mustNotErr(New(ctx, fpd, fpn))
-	providerQueryManager.Startup()
 
 	key := random.Cids(1)[0]
 
@@ -275,7 +270,6 @@ func TestRateLimitingRequests(t *testing.T) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxInProcessRequests(maxInProcessRequests)))
-	providerQueryManager.Startup()
 
 	keys := random.Cids(maxInProcessRequests + 1)
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -317,7 +311,6 @@ func TestUnlimitedRequests(t *testing.T) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxInProcessRequests(0)))
-	providerQueryManager.Startup()
 
 	keys := random.Cids(inProcessRequests)
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -355,7 +348,6 @@ func TestFindProviderTimeout(t *testing.T) {
 	}
 	ctx := context.Background()
 	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxTimeout(2*time.Millisecond)))
-	providerQueryManager.Startup()
 	keys := random.Cids(1)
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -379,7 +371,6 @@ func TestFindProviderPreCanceled(t *testing.T) {
 	}
 	ctx := context.Background()
 	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxTimeout(100*time.Millisecond)))
-	providerQueryManager.Startup()
 	keys := random.Cids(1)
 
 	sessionCtx, cancel := context.WithCancel(ctx)
@@ -404,7 +395,6 @@ func TestCancelFindProvidersAfterCompletion(t *testing.T) {
 	}
 	ctx := context.Background()
 	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxTimeout(100*time.Millisecond)))
-	providerQueryManager.Startup()
 	keys := random.Cids(1)
 
 	sessionCtx, cancel := context.WithCancel(ctx)
@@ -437,7 +427,6 @@ func TestLimitedProviders(t *testing.T) {
 	}
 	ctx := context.Background()
 	providerQueryManager := mustNotErr(New(ctx, fpd, fpn, WithMaxProviders(max), WithMaxTimeout(100*time.Millisecond)))
-	providerQueryManager.Startup()
 	keys := random.Cids(1)
 
 	providersChan := providerQueryManager.FindProvidersAsync(ctx, keys[0], 0)
