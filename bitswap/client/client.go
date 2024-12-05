@@ -8,15 +8,6 @@ import (
 	"sync"
 	"time"
 
-	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-cid"
-	delay "github.com/ipfs/go-ipfs-delay"
-	logging "github.com/ipfs/go-log/v2"
-	"github.com/ipfs/go-metrics-interface"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	bsbpm "github.com/ipfs/boxo/bitswap/client/internal/blockpresencemanager"
 	bsgetter "github.com/ipfs/boxo/bitswap/client/internal/getter"
 	bsmq "github.com/ipfs/boxo/bitswap/client/internal/messagequeue"
@@ -35,6 +26,14 @@ import (
 	blockstore "github.com/ipfs/boxo/blockstore"
 	exchange "github.com/ipfs/boxo/exchange"
 	rpqm "github.com/ipfs/boxo/routing/providerquerymanager"
+	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-cid"
+	delay "github.com/ipfs/go-ipfs-delay"
+	logging "github.com/ipfs/go-log/v2"
+	"github.com/ipfs/go-metrics-interface"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var log = logging.Logger("bitswap/client")

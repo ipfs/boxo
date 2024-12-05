@@ -8,13 +8,6 @@ import (
 	"sync"
 	"time"
 
-	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-cid"
-	logging "github.com/ipfs/go-log/v2"
-	"github.com/ipfs/go-metrics-interface"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"go.uber.org/zap"
-
 	"github.com/ipfs/boxo/bitswap/internal/defaults"
 	"github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
@@ -23,6 +16,12 @@ import (
 	"github.com/ipfs/boxo/bitswap/server/internal/decision"
 	"github.com/ipfs/boxo/bitswap/tracer"
 	blockstore "github.com/ipfs/boxo/blockstore"
+	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-cid"
+	logging "github.com/ipfs/go-log/v2"
+	"github.com/ipfs/go-metrics-interface"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"go.uber.org/zap"
 )
 
 var (
