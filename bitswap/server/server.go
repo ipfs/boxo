@@ -72,6 +72,9 @@ func NewWithAutoStart(parent context.Context, network bsnet.BitSwapNetwork, bsto
 	return server
 }
 
+// New creates a new BitSwap server without starting it on the network.
+// IMPORTANT: You must call network.Start(server) before using this server,
+// or it will silently fail to receive requests. Consider using NewWithAutoStart instead.
 func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Server {
 	ctx, cancel := context.WithCancel(ctx)
 
