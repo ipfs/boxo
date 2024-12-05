@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/gammazero/deque"
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
@@ -167,10 +168,10 @@ func bfsTraverse(root State, t *traversal) error {
 		return err
 	}
 
-	var q queue
-	q.enq(root)
-	for q.len() > 0 {
-		curr := q.deq()
+	var q deque.Deque[State]
+	q.PushBack(root)
+	for q.Len() > 0 {
+		curr := q.PopFront()
 		if curr.Node == nil {
 			return errors.New("failed to dequeue though queue not empty")
 		}
@@ -189,32 +190,11 @@ func bfsTraverse(root State, t *traversal) error {
 				continue
 			}
 
-			q.enq(State{
+			q.PushBack(State{
 				Node:  node,
 				Depth: curr.Depth + 1,
 			})
 		}
 	}
 	return nil
-}
-
-type queue struct {
-	s []State
-}
-
-func (q *queue) enq(n State) {
-	q.s = append(q.s, n)
-}
-
-func (q *queue) deq() State {
-	if len(q.s) < 1 {
-		return State{}
-	}
-	n := q.s[0]
-	q.s = q.s[1:]
-	return n
-}
-
-func (q *queue) len() int {
-	return len(q.s)
 }

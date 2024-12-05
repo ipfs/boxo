@@ -40,7 +40,7 @@ func wait(t *testing.T, c *connectEventManager) {
 	require.Eventually(t, func() bool {
 		c.lk.RLock()
 		defer c.lk.RUnlock()
-		return len(c.changeQueue) == 0
+		return c.changeQueue.Len() == 0
 	}, time.Second, time.Millisecond, "connection event manager never processed events")
 }
 
