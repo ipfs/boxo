@@ -62,6 +62,18 @@ type Server struct {
 	engineOptions []decision.Option
 }
 
+// NewWithAutoStart creates a new BitSwap server and automatically starts it on the network.
+// This is the recommended way to create a standalone BitSwap server.
+func NewWithAutoStart(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Server {
+	server := New(parent, network, bstore, options...)
+	network.Start(server)
+
+	return server
+}
+
+// New creates a new BitSwap server without starting it on the network.
+// IMPORTANT: You must call network.Start(server) before using this server,
+// or it will silently fail to receive requests. Consider using NewWithAutoStart instead.
 func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Server {
 	ctx, cancel := context.WithCancel(ctx)
 

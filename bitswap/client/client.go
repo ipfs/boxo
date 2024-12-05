@@ -129,9 +129,21 @@ type ProviderFinder interface {
 	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.AddrInfo
 }
 
+// NewWithAutoStart creates a new BitSwap client and automatically starts it on the network.
+// This is the recommended way to create a standalone BitSwap client.
+func NewWithAutoStart(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ProviderFinder, bstore blockstore.Blockstore, options ...Option) *Client {
+	client := New(parent, network, providerFinder, bstore, options...)
+	network.Start(client)
+
+	return client
+}
+
 // New initializes a Bitswap client that runs until client.Close is called.
 // The Content providerFinder paramteter can be nil to disable content-routing
 // lookups for content (rely only on bitswap for discovery).
+//
+// IMPORTANT: You must call network.Start(client) before using this client, or it will silently fail to receive responses.
+// Consider using NewWithAutoStart instead.
 func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ProviderFinder, bstore blockstore.Blockstore, options ...Option) *Client {
 	// important to use provided parent context (since it may include important
 	// loggable data). It's probably not a good idea to allow bitswap to be
