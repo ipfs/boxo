@@ -8,6 +8,13 @@ import (
 	"sync"
 	"time"
 
+	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-cid"
+	logging "github.com/ipfs/go-log/v2"
+	"github.com/ipfs/go-metrics-interface"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"go.uber.org/zap"
+
 	"github.com/ipfs/boxo/bitswap/internal/defaults"
 	"github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
@@ -16,12 +23,6 @@ import (
 	"github.com/ipfs/boxo/bitswap/server/internal/decision"
 	"github.com/ipfs/boxo/bitswap/tracer"
 	blockstore "github.com/ipfs/boxo/blockstore"
-	blocks "github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-cid"
-	logging "github.com/ipfs/go-log/v2"
-	"github.com/ipfs/go-metrics-interface"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"go.uber.org/zap"
 )
 
 var (
@@ -60,6 +61,15 @@ type Server struct {
 
 	// Extra options to pass to the decision manager
 	engineOptions []decision.Option
+}
+
+// NewWithAutoStart creates a new BitSwap server and automatically starts it on the network.
+// This is the recommended way to create a standalone BitSwap server.
+func NewWithAutoStart(parent context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Server {
+	server := New(parent, network, bstore, options...)
+	network.Start(server)
+
+	return server
 }
 
 func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Server {
