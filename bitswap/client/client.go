@@ -182,7 +182,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
-		pqm, err := rpqm.New(ctx, network, bs.providerFinder,
+		pqm, err := rpqm.New(network, bs.providerFinder,
 			rpqm.WithMaxInProcessRequests(16),
 			rpqm.WithMaxProviders(10),
 			rpqm.WithMaxTimeout(10*time.Second))
@@ -512,6 +512,9 @@ func (bs *Client) Close() error {
 		close(bs.closing)
 		bs.sm.Shutdown()
 		bs.cancel()
+		if bs.pqm != nil {
+			bs.pqm.Close()
+		}
 		bs.notif.Shutdown()
 	})
 	return nil
