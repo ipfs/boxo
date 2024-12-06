@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
+	"github.com/gammazero/deque"
 	cid "github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
@@ -79,7 +80,7 @@ type dontHaveTimeoutMgr struct {
 	// wants that are active (waiting for a response or timeout)
 	activeWants map[cid.Cid]*pendingWant
 	// queue of wants, from oldest to newest
-	wantQueue []*pendingWant
+	wantQueue deque.Deque[*pendingWant]
 	// time to wait for a response (depends on latency)
 	timeout time.Duration
 	// ewma of message latency (time from message sent to response received)
@@ -222,15 +223,15 @@ func (dhtm *dontHaveTimeoutMgr) measurePingLatency() {
 // checkForTimeouts checks pending wants to see if any are over the timeout.
 // Note: this function should only be called within the lock.
 func (dhtm *dontHaveTimeoutMgr) checkForTimeouts() {
-	if len(dhtm.wantQueue) == 0 {
+	if dhtm.wantQueue.Len() == 0 {
 		return
 	}
 
 	// Figure out which of the blocks that were wanted were not received
 	// within the timeout
 	expired := make([]cid.Cid, 0, len(dhtm.activeWants))
-	for len(dhtm.wantQueue) > 0 {
-		pw := dhtm.wantQueue[0]
+	for dhtm.wantQueue.Len() > 0 {
+		pw := dhtm.wantQueue.Front()
 
 		// If the want is still active
 		if pw.active {
@@ -247,7 +248,7 @@ func (dhtm *dontHaveTimeoutMgr) checkForTimeouts() {
 		}
 
 		// Remove expired or cancelled wants from the want queue
-		dhtm.wantQueue = dhtm.wantQueue[1:]
+		dhtm.wantQueue.PopFront()
 	}
 
 	// Fire the timeout event for the expired wants
@@ -255,7 +256,7 @@ func (dhtm *dontHaveTimeoutMgr) checkForTimeouts() {
 		go dhtm.fireTimeout(expired)
 	}
 
-	if len(dhtm.wantQueue) == 0 {
+	if dhtm.wantQueue.Len() == 0 {
 		return
 	}
 
@@ -266,7 +267,7 @@ func (dhtm *dontHaveTimeoutMgr) checkForTimeouts() {
 
 	// Schedule the next check for the moment when the oldest pending want will
 	// timeout
-	oldestStart := dhtm.wantQueue[0].sent
+	oldestStart := dhtm.wantQueue.Front().sent
 	until := oldestStart.Add(dhtm.timeout).Sub(dhtm.clock.Now())
 	if dhtm.checkForTimeoutsTimer == nil {
 		dhtm.checkForTimeoutsTimer = dhtm.clock.Timer(until)
@@ -313,7 +314,7 @@ func (dhtm *dontHaveTimeoutMgr) AddPending(ks []cid.Cid) {
 				active: true,
 			}
 			dhtm.activeWants[c] = &pw
-			dhtm.wantQueue = append(dhtm.wantQueue, &pw)
+			dhtm.wantQueue.PushBack(&pw)
 		}
 	}
 

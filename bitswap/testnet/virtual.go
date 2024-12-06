@@ -8,11 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gammazero/deque"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	bsnet "github.com/ipfs/boxo/bitswap/network"
-
 	delay "github.com/ipfs/go-ipfs-delay"
-
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -75,7 +74,7 @@ type message struct {
 // for
 type receiverQueue struct {
 	receiver *networkClient
-	queue    []*message
+	queue    deque.Deque[*message]
 	active   bool
 	lk       sync.Mutex
 }
@@ -346,7 +345,7 @@ func (nc *networkClient) DisconnectFrom(_ context.Context, p peer.ID) error {
 func (rq *receiverQueue) enqueue(m *message) {
 	rq.lk.Lock()
 	defer rq.lk.Unlock()
-	rq.queue = append(rq.queue, m)
+	rq.queue.PushBack(m)
 	if !rq.active {
 		rq.active = true
 		go rq.process()
@@ -354,29 +353,29 @@ func (rq *receiverQueue) enqueue(m *message) {
 }
 
 func (rq *receiverQueue) Swap(i, j int) {
-	rq.queue[i], rq.queue[j] = rq.queue[j], rq.queue[i]
+	rq.queue.Swap(i, j)
 }
 
 func (rq *receiverQueue) Len() int {
-	return len(rq.queue)
+	return rq.queue.Len()
 }
 
 func (rq *receiverQueue) Less(i, j int) bool {
-	return rq.queue[i].shouldSend.UnixNano() < rq.queue[j].shouldSend.UnixNano()
+	return rq.queue.At(i).shouldSend.UnixNano() < rq.queue.At(j).shouldSend.UnixNano()
 }
 
 func (rq *receiverQueue) process() {
 	for {
 		rq.lk.Lock()
-		sort.Sort(rq)
-		if len(rq.queue) == 0 {
+		if rq.queue.Len() == 0 {
 			rq.active = false
 			rq.lk.Unlock()
 			return
 		}
-		m := rq.queue[0]
+		sort.Sort(rq)
+		m := rq.queue.Front()
 		if time.Until(m.shouldSend).Seconds() < 0.1 {
-			rq.queue = rq.queue[1:]
+			rq.queue.PopFront()
 			rq.lk.Unlock()
 			time.Sleep(time.Until(m.shouldSend))
 			atomic.AddUint64(&rq.receiver.stats.MessagesRecvd, 1)
