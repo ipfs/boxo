@@ -142,8 +142,10 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMess
 
 // Perform a function with multiple attempts, and a timeout
 func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func() error) error {
-	// Try to call the function repeatedly
 	var err error
+	var timer *time.Timer
+
+	// Try to call the function repeatedly
 	for i := 0; i < s.opts.MaxRetries; i++ {
 		if err = fn(); err == nil {
 			// Attempt was successful
@@ -174,8 +176,12 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func() error)
 			return err
 		}
 
-		timer := time.NewTimer(s.opts.SendErrorBackoff)
-		defer timer.Stop()
+		if timer == nil {
+			timer = time.NewTimer(s.opts.SendErrorBackoff)
+			defer timer.Stop()
+		} else {
+			timer.Reset(s.opts.SendErrorBackoff)
+		}
 
 		select {
 		case <-ctx.Done():
