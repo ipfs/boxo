@@ -26,52 +26,6 @@ The following emojis are used to highlight certain changes:
 
 ## [v0.25.0]
 
-- `bitswap`, `routing`, `exchange` ([#641](https://github.com/ipfs/boxo/pull/641)):
-  - ✨ Bitswap is no longer in charge of providing blocks to the newtork: providing functionality is now handled by a `exchange/providing.Exchange`, meant to be used with `provider.System` so that all provides follow the same rules (multiple parts of the code where handling provides) before.
-  - 🛠 `bitswap/client/internal/providerquerymanager` has been moved to `routing/providerquerymanager` where it belongs. In order to keep compatibility, Bitswap now receives a `routing.ContentDiscovery` parameter which implements `FindProvidersAsync(...)` and uses it to create a `providerquerymanager` with the default settings as before. Custom settings can be used by using a custom `providerquerymanager` to manually wrap a `ContentDiscovery` object and pass that in as `ContentDiscovery` on initialization while setting `bitswap.WithDefaultProviderQueryManager(false)` (to avoid re-wrapping it again).
-  - The renovated `providedQueryManager` will trigger lookups until it manages to connect to `MaxProviders`. Before it would lookup at most `MaxInProcessRequests*MaxProviders` and connection failures may have limited the actual number of providers found.
-  - 🛠 We have aligned our routing-related interfaces with the libp2p [`routing`](https://pkg.go.dev/github.com/libp2p/go-libp2p/core/routing#ContentRouting) ones, including in the `reprovider.System`.
-  - In order to obtain exactly the same behaviour as before (i.e. particularly ensuring that new blocks are still provided), what was done like:
-
-```go
-	bswapnet := network.NewFromIpfsHost(host, contentRouter)
-	bswap := bitswap.New(p.ctx, bswapnet, blockstore)
-	bserv = blockservice.New(blockstore, bswap)
-```
-  - becomes:
-
-```go
-	// Create network: no contentRouter anymore
-	bswapnet := network.NewFromIpfsHost(host)
-	// Create Bitswap: a new "discovery" parameter, usually the "contentRouter"
-	// which does both discovery and providing.
-	bswap := bitswap.New(p.ctx, bswapnet, discovery, blockstore)
-	// A provider system that handles concurrent provides etc. "contentProvider"
-	// is usually the "contentRouter" which does both discovery and providing.
-	// "contentProvider" could be used directly without wrapping, but it is recommended
-	// to do so to provide more efficiently.
-	provider := provider.New(datastore, provider.Online(contentProvider)
-	// A wrapped providing exchange using the previous exchange and the provider.
-	exch := providing.New(bswap, provider)
-
-	// Finally the blockservice
-	bserv := blockservice.New(blockstore, exch)
-	...
-```
-
-  - The above is only necessary if content routing is needed. Otherwise:
-
-```go
-	// Create network: no contentRouter anymore
-	bswapnet := network.NewFromIpfsHost(host)
-	// Create Bitswap: a new "discovery" parameter set to nil (disable content discovery)
-	bswap := bitswap.New(p.ctx, bswapnet, nil, blockstore)
-	// Finally the blockservice
-	bserv := blockservice.New(blockstore, exch)
-```
-
-
-
 ### Added
 
 - `routing/http/server`: added built-in Prometheus instrumentation to http delegated `/routing/v1/` endpoints, with custom buckets for response size and duration to match real world data observed at [the `delegated-ipfs.dev` instance](https://docs.ipfs.tech/concepts/public-utilities/#delegated-routing). [#718](https://github.com/ipfs/boxo/pull/718) [#724](https://github.com/ipfs/boxo/pull/724)
@@ -84,19 +38,58 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `bitswap`, `routing`, `exchange` ([#641](https://github.com/ipfs/boxo/pull/641)):
+  - ✨ Bitswap is no longer in charge of providing blocks to the newtork: providing functionality is now handled by a `exchange/providing.Exchange`, meant to be used with `provider.System` so that all provides follow the same rules (multiple parts of the code where handling provides) before.
+  - 🛠 `bitswap/client/internal/providerquerymanager` has been moved to `routing/providerquerymanager` where it belongs. In order to keep compatibility, Bitswap now receives a `routing.ContentDiscovery` parameter which implements `FindProvidersAsync(...)` and uses it to create a `providerquerymanager` with the default settings as before. Custom settings can be used by using a custom `providerquerymanager` to manually wrap a `ContentDiscovery` object and pass that in as `ContentDiscovery` on initialization while setting `bitswap.WithDefaultProviderQueryManager(false)` (to avoid re-wrapping it again).
+  - The renovated `providedQueryManager` will trigger lookups until it manages to connect to `MaxProviders`. Before it would lookup at most `MaxInProcessRequests*MaxProviders` and connection failures may have limited the actual number of providers found.
+  - 🛠 We have aligned our routing-related interfaces with the libp2p [`routing`](https://pkg.go.dev/github.com/libp2p/go-libp2p/core/routing#ContentRouting) ones, including in the `reprovider.System`.
+  - In order to obtain exactly the same behaviour as before (i.e. particularly ensuring that new blocks are still provided), what was done like:
+
+	```go
+		bswapnet := network.NewFromIpfsHost(host, contentRouter)
+		bswap := bitswap.New(p.ctx, bswapnet, blockstore)
+		bserv = blockservice.New(blockstore, bswap)
+	```
+  - becomes:
+
+	```go
+		// Create network: no contentRouter anymore
+		bswapnet := network.NewFromIpfsHost(host)
+		// Create Bitswap: a new "discovery" parameter, usually the "contentRouter"
+		// which does both discovery and providing.
+		bswap := bitswap.New(p.ctx, bswapnet, discovery, blockstore)
+		// A provider system that handles concurrent provides etc. "contentProvider"
+		// is usually the "contentRouter" which does both discovery and providing.
+		// "contentProvider" could be used directly without wrapping, but it is recommended
+		// to do so to provide more efficiently.
+		provider := provider.New(datastore, provider.Online(contentProvider)
+		// A wrapped providing exchange using the previous exchange and the provider.
+		exch := providing.New(bswap, provider)
+	
+		// Finally the blockservice
+		bserv := blockservice.New(blockstore, exch)
+		...
+	```
+
+  - The above is only necessary if content routing is needed. Otherwise:
+
+	```go
+		// Create network: no contentRouter anymore
+		bswapnet := network.NewFromIpfsHost(host)
+		// Create Bitswap: a new "discovery" parameter set to nil (disable content discovery)
+		bswap := bitswap.New(p.ctx, bswapnet, nil, blockstore)
+		// Finally the blockservice
+		bserv := blockservice.New(blockstore, exch)
+	```
 - `routing/http/client`: creating delegated routing client with `New` now defaults to querying delegated routing server with `DefaultProtocolFilter`  ([IPIP-484](https://github.com/ipfs/specs/pull/484)) [#689](https://github.com/ipfs/boxo/pull/689)
 - `bitswap/client`: Wait at lease one broadcast interval before resending wants to a peer. Check for peers to rebroadcast to more often than one broadcast interval.
 - No longer using `github.com/jbenet/goprocess` to avoid requiring in dependents. [#710](https://github.com/ipfs/boxo/pull/710)
 - `pinning/remote/client`: Refactor remote pinning `Ls` to take results channel instead of returning one. The previous `Ls` behavior is implemented by the GoLs function, which creates the channels, starts the goroutine that calls Ls, and returns the channels to the caller [#738](https://github.com/ipfs/boxo/pull/738)
 - updated to go-libp2p to [v0.37.2](https://github.com/libp2p/go-libp2p/releases/tag/v0.37.2)
 
-### Removed
-
 ### Fixed
 
 - Do not erroneously update the state of sent wants when a send a peer disconnected and the send did not happen. [#452](https://github.com/ipfs/boxo/pull/452)
-
-### Security
 
 ## [v0.24.3]
 
