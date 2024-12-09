@@ -81,7 +81,7 @@ func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Bl
 	s.engine = decision.NewEngine(
 		ctx,
 		bstore,
-		network.ConnectionManager(),
+		network,
 		network.Self(),
 		s.engineOptions...,
 	)

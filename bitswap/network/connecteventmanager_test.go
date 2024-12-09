@@ -36,7 +36,7 @@ func (cl *mockConnListener) PeerDisconnected(p peer.ID) {
 	cl.events = append(cl.events, mockConnEvent{connected: false, peer: p})
 }
 
-func wait(t *testing.T, c *connectEventManager) {
+func wait(t *testing.T, c *ConnectEventManager) {
 	require.Eventually(t, func() bool {
 		c.lk.RLock()
 		defer c.lk.RUnlock()
@@ -47,7 +47,7 @@ func wait(t *testing.T, c *connectEventManager) {
 func TestConnectEventManagerConnectDisconnect(t *testing.T) {
 	connListener := newMockConnListener()
 	peers := random.Peers(2)
-	cem := newConnectEventManager(connListener)
+	cem := NewConnectEventManager(connListener)
 	cem.Start()
 	t.Cleanup(cem.Stop)
 
@@ -86,7 +86,7 @@ func TestConnectEventManagerConnectDisconnect(t *testing.T) {
 func TestConnectEventManagerMarkUnresponsive(t *testing.T) {
 	connListener := newMockConnListener()
 	p := random.Peers(1)[0]
-	cem := newConnectEventManager(connListener)
+	cem := NewConnectEventManager(connListener)
 	cem.Start()
 	t.Cleanup(cem.Stop)
 
@@ -135,7 +135,7 @@ func TestConnectEventManagerMarkUnresponsive(t *testing.T) {
 func TestConnectEventManagerDisconnectAfterMarkUnresponsive(t *testing.T) {
 	connListener := newMockConnListener()
 	p := random.Peers(1)[0]
-	cem := newConnectEventManager(connListener)
+	cem := NewConnectEventManager(connListener)
 	cem.Start()
 	t.Cleanup(cem.Stop)
 
