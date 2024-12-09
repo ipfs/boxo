@@ -173,7 +173,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 		}
 	}
 	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
-		return bsmq.New(ctx, network.Self(), p, network, onDontHaveTimeout)
+		return bsmq.New(ctx, p, network, onDontHaveTimeout)
 	}
 
 	sim := bssim.New()

@@ -57,6 +57,7 @@ type MessageNetwork interface {
 	NewMessageSender(context.Context, peer.ID, *bsnet.MessageSenderOpts) (bsnet.MessageSender, error)
 	Latency(peer.ID) time.Duration
 	Ping(context.Context, peer.ID) ping.Result
+	Self() peer.ID
 }
 
 // MessageQueue implements queue of want messages to send to peers.
@@ -64,7 +65,6 @@ type MessageQueue struct {
 	ctx          context.Context
 	shutdown     func()
 	p            peer.ID
-	self         peer.ID
 	network      MessageNetwork
 	dhTimeoutMgr DontHaveTimeoutManager
 
@@ -231,14 +231,14 @@ type DontHaveTimeoutManager interface {
 }
 
 // New creates a new MessageQueue.
-func New(ctx context.Context, self, p peer.ID, network MessageNetwork, onDontHaveTimeout OnDontHaveTimeout) *MessageQueue {
+func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeout OnDontHaveTimeout) *MessageQueue {
 	onTimeout := func(ks []cid.Cid) {
 		log.Infow("Bitswap: timeout waiting for blocks", "cids", ks, "peer", p)
 		onDontHaveTimeout(p, ks)
 	}
 	clock := clock.New()
 	dhTimeoutMgr := newDontHaveTimeoutMgr(newPeerConnection(p, network), onTimeout, clock)
-	return newMessageQueue(ctx, self, p, network, maxMessageSize, sendErrorBackoff, maxValidLatency, dhTimeoutMgr, clock, nil)
+	return newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff, maxValidLatency, dhTimeoutMgr, clock, nil)
 }
 
 type messageEvent int
@@ -252,7 +252,6 @@ const (
 // This constructor is used by the tests
 func newMessageQueue(
 	ctx context.Context,
-	self peer.ID,
 	p peer.ID,
 	network MessageNetwork,
 	maxMsgSize int,
@@ -266,7 +265,6 @@ func newMessageQueue(
 	return &MessageQueue{
 		ctx:              ctx,
 		shutdown:         cancel,
-		self:             self,
 		p:                p,
 		network:          network,
 		dhTimeoutMgr:     dhTimeoutMgr,
@@ -649,7 +647,7 @@ func (mq *MessageQueue) logOutgoingMessage(wantlist []bsmsg.Entry) {
 		return
 	}
 
-	self := mq.self
+	self := mq.network.Self()
 	for _, e := range wantlist {
 		if e.Cancel {
 			if e.WantType == pb.Message_Wantlist_Have {
