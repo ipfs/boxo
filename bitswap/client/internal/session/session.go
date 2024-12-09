@@ -38,7 +38,7 @@ type PeerManager interface {
 	// interested in a peer's connection state
 	UnregisterSession(uint64)
 	// SendWants tells the PeerManager to send wants to the given peer
-	SendWants(ctx context.Context, peerId peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid)
+	SendWants(ctx context.Context, peerId peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool
 	// BroadcastWantHaves sends want-haves to all connected peers (used for
 	// session discovery)
 	BroadcastWantHaves(context.Context, []cid.Cid)
@@ -75,7 +75,7 @@ type SessionPeerManager interface {
 // ProviderFinder is used to find providers for a given key
 type ProviderFinder interface {
 	// FindProvidersAsync searches for peers that provide the given CID
-	FindProvidersAsync(ctx context.Context, k cid.Cid) <-chan peer.ID
+	FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.AddrInfo
 }
 
 // opType is the kind of operation that is being processed by the event loop
@@ -403,14 +403,18 @@ func (s *Session) handlePeriodicSearch(ctx context.Context) {
 // findMorePeers attempts to find more peers for a session by searching for
 // providers for the given Cid
 func (s *Session) findMorePeers(ctx context.Context, c cid.Cid) {
+	// noop when provider finder is disabled
+	if s.providerFinder == nil {
+		return
+	}
 	go func(k cid.Cid) {
 		ctx, span := internal.StartSpan(ctx, "Session.FindMorePeers")
 		defer span.End()
-		for p := range s.providerFinder.FindProvidersAsync(ctx, k) {
+		for p := range s.providerFinder.FindProvidersAsync(ctx, k, 0) {
 			// When a provider indicates that it has a cid, it's equivalent to
 			// the providing peer sending a HAVE
 			span.AddEvent("FoundPeer")
-			s.sws.Update(p, nil, []cid.Cid{c}, nil)
+			s.sws.Update(p.ID, nil, []cid.Cid{c}, nil)
 		}
 	}(c)
 }

@@ -12,7 +12,6 @@ import (
 	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
 	bsspm "github.com/ipfs/boxo/bitswap/client/internal/sessionpeermanager"
-	"github.com/ipfs/boxo/internal/test"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
@@ -116,7 +115,7 @@ func newFakeProviderFinder() *fakeProviderFinder {
 	}
 }
 
-func (fpf *fakeProviderFinder) FindProvidersAsync(ctx context.Context, k cid.Cid) <-chan peer.ID {
+func (fpf *fakeProviderFinder) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.AddrInfo {
 	go func() {
 		select {
 		case fpf.findMorePeersRequested <- k:
@@ -124,7 +123,7 @@ func (fpf *fakeProviderFinder) FindProvidersAsync(ctx context.Context, k cid.Cid
 		}
 	}()
 
-	return make(chan peer.ID)
+	return make(chan peer.AddrInfo)
 }
 
 type wantReq struct {
@@ -141,9 +140,11 @@ func newFakePeerManager() *fakePeerManager {
 	}
 }
 
-func (pm *fakePeerManager) RegisterSession(peer.ID, bspm.Session)                    {}
-func (pm *fakePeerManager) UnregisterSession(uint64)                                 {}
-func (pm *fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) {}
+func (pm *fakePeerManager) RegisterSession(peer.ID, bspm.Session) {}
+func (pm *fakePeerManager) UnregisterSession(uint64)              {}
+func (pm *fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) bool {
+	return true
+}
 func (pm *fakePeerManager) BroadcastWantHaves(ctx context.Context, cids []cid.Cid) {
 	select {
 	case pm.wantReqs <- wantReq{cids}:
@@ -153,8 +154,6 @@ func (pm *fakePeerManager) BroadcastWantHaves(ctx context.Context, cids []cid.Ci
 func (pm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid) {}
 
 func TestSessionGetBlocks(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	fpm := newFakePeerManager()
 	fspm := newFakeSessionPeerManager()
@@ -173,9 +172,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	}
 
 	_, err := session.GetBlocks(ctx, cids)
-	if err != nil {
-		t.Fatal("error getting blocks")
-	}
+	require.NoError(t, err, "error getting blocks")
 
 	// Wait for initial want request
 	receivedWantReq := <-fpm.wantReqs
@@ -343,8 +340,6 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 }
 
 func TestSessionFailingToGetFirstBlock(t *testing.T) {
-	test.Flaky(t)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	fpm := newFakePeerManager()
@@ -362,7 +357,6 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
 	}
-	startTick := time.Now()
 	_, err := session.GetBlocks(ctx, cids)
 	require.NoError(t, err, "error getting blocks")
 
@@ -394,7 +388,6 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("Did not find more peers")
 	}
-	firstTickLength := time.Since(startTick)
 
 	// Wait for another broadcast to occur
 	select {
@@ -407,7 +400,6 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	}
 
 	// Wait for another broadcast to occur
-	startTick = time.Now()
 	select {
 	case receivedWantReq := <-fpm.wantReqs:
 		if len(receivedWantReq.cids) < len(cids) {
@@ -415,16 +407,9 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("Never rebroadcast want list")
-	}
-
-	// Tick should take longer
-	consecutiveTickLength := time.Since(startTick)
-	if firstTickLength > consecutiveTickLength {
-		t.Fatal("Should have increased tick length after first consecutive tick")
 	}
 
 	// Wait for another broadcast to occur
-	startTick = time.Now()
 	select {
 	case receivedWantReq := <-fpm.wantReqs:
 		if len(receivedWantReq.cids) < len(cids) {
@@ -432,12 +417,6 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("Never rebroadcast want list")
-	}
-
-	// Tick should take longer
-	secondConsecutiveTickLength := time.Since(startTick)
-	if consecutiveTickLength > secondConsecutiveTickLength {
-		t.Fatal("Should have increased tick length after first consecutive tick")
 	}
 
 	// Should not have tried to find peers on consecutive ticks

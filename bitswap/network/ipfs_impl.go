@@ -11,15 +11,12 @@ import (
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	"github.com/ipfs/boxo/bitswap/network/internal"
 
-	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
-	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-msgio"
 	ma "github.com/multiformats/go-multiaddr"
@@ -36,12 +33,11 @@ var (
 )
 
 // NewFromIpfsHost returns a BitSwapNetwork supported by underlying IPFS host.
-func NewFromIpfsHost(host host.Host, r routing.ContentRouting, opts ...NetOpt) BitSwapNetwork {
+func NewFromIpfsHost(host host.Host, opts ...NetOpt) BitSwapNetwork {
 	s := processSettings(opts...)
 
 	bitswapNetwork := impl{
-		host:    host,
-		routing: r,
+		host: host,
 
 		protocolBitswapNoVers:  s.ProtocolPrefix + ProtocolBitswapNoVers,
 		protocolBitswapOneZero: s.ProtocolPrefix + ProtocolBitswapOneZero,
@@ -73,7 +69,6 @@ type impl struct {
 	stats Stats
 
 	host          host.Host
-	routing       routing.ContentRouting
 	connectEvtMgr *connectEventManager
 
 	protocolBitswapNoVers  protocol.ID
@@ -104,7 +99,7 @@ func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, erro
 	tctx, cancel := context.WithTimeout(ctx, s.opts.SendTimeout)
 	defer cancel()
 
-	if err := s.bsnet.ConnectTo(tctx, s.to); err != nil {
+	if err := s.bsnet.Connect(ctx, peer.AddrInfo{ID: s.to}); err != nil {
 		return nil, err
 	}
 
@@ -147,8 +142,10 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMess
 
 // Perform a function with multiple attempts, and a timeout
 func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func() error) error {
-	// Try to call the function repeatedly
 	var err error
+	var timer *time.Timer
+
+	// Try to call the function repeatedly
 	for i := 0; i < s.opts.MaxRetries; i++ {
 		if err = fn(); err == nil {
 			// Attempt was successful
@@ -179,8 +176,12 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func() error)
 			return err
 		}
 
-		timer := time.NewTimer(s.opts.SendErrorBackoff)
-		defer timer.Stop()
+		if timer == nil {
+			timer = time.NewTimer(s.opts.SendErrorBackoff)
+			defer timer.Stop()
+		} else {
+			timer.Reset(s.opts.SendErrorBackoff)
+		}
 
 		select {
 		case <-ctx.Done():
@@ -363,38 +364,15 @@ func (bsnet *impl) Stop() {
 	bsnet.host.Network().StopNotify((*netNotifiee)(bsnet))
 }
 
-func (bsnet *impl) ConnectTo(ctx context.Context, p peer.ID) error {
-	return bsnet.host.Connect(ctx, peer.AddrInfo{ID: p})
+func (bsnet *impl) Connect(ctx context.Context, p peer.AddrInfo) error {
+	if p.ID == bsnet.host.ID() {
+		return nil
+	}
+	return bsnet.host.Connect(ctx, p)
 }
 
 func (bsnet *impl) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	return bsnet.host.Network().ClosePeer(p)
-}
-
-// FindProvidersAsync returns a channel of providers for the given key.
-func (bsnet *impl) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.ID {
-	out := make(chan peer.ID, max)
-	go func() {
-		defer close(out)
-		providers := bsnet.routing.FindProvidersAsync(ctx, k, max)
-		for info := range providers {
-			if info.ID == bsnet.host.ID() {
-				continue // ignore self as provider
-			}
-			bsnet.host.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.TempAddrTTL)
-			select {
-			case <-ctx.Done():
-				return
-			case out <- info.ID:
-			}
-		}
-	}()
-	return out
-}
-
-// Provide provides the key to the network
-func (bsnet *impl) Provide(ctx context.Context, k cid.Cid) error {
-	return bsnet.routing.Provide(ctx, k, true)
 }
 
 // handleNewStream receives a new stream from the network.

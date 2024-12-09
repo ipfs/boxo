@@ -8,6 +8,7 @@ import (
 	bsnet "github.com/ipfs/boxo/bitswap/network"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
 	blockstore "github.com/ipfs/boxo/blockstore"
+	mockrouting "github.com/ipfs/boxo/routing/mock"
 	ds "github.com/ipfs/go-datastore"
 	delayed "github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"
@@ -15,11 +16,12 @@ import (
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 )
 
 // NewTestInstanceGenerator generates a new InstanceGenerator for the given
 // testnet
-func NewTestInstanceGenerator(net tn.Network, netOptions []bsnet.NetOpt, bsOptions []bitswap.Option) InstanceGenerator {
+func NewTestInstanceGenerator(net tn.Network, routing mockrouting.Server, netOptions []bsnet.NetOpt, bsOptions []bitswap.Option) InstanceGenerator {
 	ctx, cancel := context.WithCancel(context.Background())
 	return InstanceGenerator{
 		net:        net,
@@ -28,6 +30,7 @@ func NewTestInstanceGenerator(net tn.Network, netOptions []bsnet.NetOpt, bsOptio
 		cancel:     cancel,
 		bsOptions:  bsOptions,
 		netOptions: netOptions,
+		routing:    routing,
 	}
 }
 
@@ -39,6 +42,7 @@ type InstanceGenerator struct {
 	cancel     context.CancelFunc
 	bsOptions  []bitswap.Option
 	netOptions []bsnet.NetOpt
+	routing    mockrouting.Server
 }
 
 // Close closes the clobal context, shutting down all test instances
@@ -54,7 +58,7 @@ func (g *InstanceGenerator) Next() Instance {
 	if err != nil {
 		panic("FIXME") // TODO change signature
 	}
-	return NewInstance(g.ctx, g.net, p, g.netOptions, g.bsOptions)
+	return NewInstance(g.ctx, g.net, g.routing.Client(p), p, g.netOptions, g.bsOptions)
 }
 
 // Instances creates N test instances of bitswap + dependencies and connects
@@ -74,7 +78,7 @@ func ConnectInstances(instances []Instance) {
 	for i, inst := range instances {
 		for j := i + 1; j < len(instances); j++ {
 			oinst := instances[j]
-			err := inst.Adapter.ConnectTo(context.Background(), oinst.Peer)
+			err := inst.Adapter.Connect(context.Background(), peer.AddrInfo{ID: oinst.Identity.ID()})
 			if err != nil {
 				panic(err.Error())
 			}
@@ -84,16 +88,13 @@ func ConnectInstances(instances []Instance) {
 
 // Instance is a test instance of bitswap + dependencies for integration testing
 type Instance struct {
-	Peer            peer.ID
+	Identity        tnet.Identity
+	Datastore       ds.Batching
 	Exchange        *bitswap.Bitswap
-	blockstore      blockstore.Blockstore
+	Blockstore      blockstore.Blockstore
 	Adapter         bsnet.BitSwapNetwork
+	Routing         routing.Routing
 	blockstoreDelay delay.D
-}
-
-// Blockstore returns the block store for this test instance
-func (i *Instance) Blockstore() blockstore.Blockstore {
-	return i.blockstore
 }
 
 // SetBlockstoreLatency customizes the artificial delay on receiving blocks
@@ -107,26 +108,28 @@ func (i *Instance) SetBlockstoreLatency(t time.Duration) time.Duration {
 // NB: It's easy make mistakes by providing the same peer ID to two different
 // instances. To safeguard, use the InstanceGenerator to generate instances. It's
 // just a much better idea.
-func NewInstance(ctx context.Context, net tn.Network, p tnet.Identity, netOptions []bsnet.NetOpt, bsOptions []bitswap.Option) Instance {
+func NewInstance(ctx context.Context, net tn.Network, router routing.Routing, p tnet.Identity, netOptions []bsnet.NetOpt, bsOptions []bitswap.Option) Instance {
 	bsdelay := delay.Fixed(0)
 
 	adapter := net.Adapter(p, netOptions...)
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
 
+	ds := ds_sync.MutexWrap(dstore)
 	bstore, err := blockstore.CachedBlockstore(ctx,
-		blockstore.NewBlockstore(ds_sync.MutexWrap(dstore)),
+		blockstore.NewBlockstore(ds),
 		blockstore.DefaultCacheOpts())
 	if err != nil {
 		panic(err.Error()) // FIXME perhaps change signature and return error.
 	}
 
-	bs := bitswap.New(ctx, adapter, bstore, bsOptions...)
-
+	bs := bitswap.New(ctx, adapter, router, bstore, bsOptions...)
 	return Instance{
+		Datastore:       ds,
 		Adapter:         adapter,
-		Peer:            p.ID(),
+		Identity:        p,
 		Exchange:        bs,
-		blockstore:      bstore,
+		Routing:         router,
+		Blockstore:      bstore,
 		blockstoreDelay: bsdelay,
 	}
 }

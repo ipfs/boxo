@@ -12,6 +12,8 @@ require (
 	github.com/cskr/pubsub v1.0.2
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gabriel-vasile/mimetype v1.4.6
+	github.com/gammazero/chanqueue v1.0.0
+	github.com/gammazero/deque v1.0.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
@@ -37,10 +39,9 @@ require (
 	github.com/ipld/go-car/v2 v2.14.2
 	github.com/ipld/go-codec-dagpb v1.6.0
 	github.com/ipld/go-ipld-prime v0.21.0
-	github.com/jbenet/goprocess v0.1.4
 	github.com/libp2p/go-buffer-pool v0.1.0
 	github.com/libp2p/go-doh-resolver v0.4.0
-	github.com/libp2p/go-libp2p v0.37.0
+	github.com/libp2p/go-libp2p v0.37.2
 	github.com/libp2p/go-libp2p-kad-dht v0.27.0
 	github.com/libp2p/go-libp2p-record v0.2.0
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.4
@@ -50,14 +51,15 @@ require (
 	github.com/mr-tron/base58 v1.2.0
 	github.com/multiformats/go-base32 v0.1.0
 	github.com/multiformats/go-multiaddr v0.13.0
-	github.com/multiformats/go-multiaddr-dns v0.4.0
+	github.com/multiformats/go-multiaddr-dns v0.4.1
 	github.com/multiformats/go-multibase v0.2.0
 	github.com/multiformats/go-multicodec v0.9.0
 	github.com/multiformats/go-multihash v0.2.3
-	github.com/multiformats/go-multistream v0.5.0
+	github.com/multiformats/go-multistream v0.6.0
 	github.com/polydawn/refmt v0.89.0
 	github.com/prometheus/client_golang v1.20.5
 	github.com/samber/lo v1.47.0
+	github.com/slok/go-http-metrics v0.12.0
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/stretchr/testify v1.9.0
 	github.com/whyrusleeping/base32 v0.0.0-20170828182744-c30ac30633cc
@@ -73,6 +75,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.31.0
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.0
+	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
 	golang.org/x/oauth2 v0.23.0
 	golang.org/x/sync v0.8.0
 	golang.org/x/sys v0.26.0
@@ -97,7 +100,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
-	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20241017200806-017d972448fc // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20190430165422-3e4dfb77656c // indirect
@@ -118,6 +120,7 @@ require (
 	github.com/ipfs/go-verifcid v0.0.3 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
+	github.com/jbenet/goprocess v0.1.4 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/koron/go-ssdp v0.0.4 // indirect
@@ -166,7 +169,7 @@ require (
 	github.com/prometheus/common v0.60.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
-	github.com/quic-go/quic-go v0.48.1 // indirect
+	github.com/quic-go/quic-go v0.48.2 // indirect
 	github.com/quic-go/webtransport-go v0.8.1-0.20241018022711-4ac2c9250e66 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
@@ -183,7 +186,6 @@ require (
 	go.uber.org/fx v1.23.0 // indirect
 	go.uber.org/mock v0.5.0 // indirect
 	golang.org/x/crypto v0.28.0 // indirect
-	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c // indirect
 	golang.org/x/mod v0.21.0 // indirect
 	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/text v0.19.0 // indirect
