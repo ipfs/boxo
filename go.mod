@@ -57,6 +57,7 @@ require (
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.6.0
 	github.com/polydawn/refmt v0.89.0
+	github.com/prometheus-community/pro-bing v0.5.0
 	github.com/prometheus/client_golang v1.20.5
 	github.com/samber/lo v1.47.0
 	github.com/slok/go-http-metrics v0.12.0
@@ -77,8 +78,8 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
 	golang.org/x/oauth2 v0.23.0
-	golang.org/x/sync v0.8.0
-	golang.org/x/sys v0.26.0
+	golang.org/x/sync v0.9.0
+	golang.org/x/sys v0.27.0
 	google.golang.org/protobuf v1.35.1
 )
 
@@ -185,10 +186,10 @@ require (
 	go.uber.org/dig v1.18.0 // indirect
 	go.uber.org/fx v1.23.0 // indirect
 	go.uber.org/mock v0.5.0 // indirect
-	golang.org/x/crypto v0.28.0 // indirect
+	golang.org/x/crypto v0.29.0 // indirect
 	golang.org/x/mod v0.21.0 // indirect
-	golang.org/x/net v0.30.0 // indirect
-	golang.org/x/text v0.19.0 // indirect
+	golang.org/x/net v0.31.0 // indirect
+	golang.org/x/text v0.20.0 // indirect
 	golang.org/x/tools v0.26.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	gonum.org/v1/gonum v0.15.0 // indirect

@@ -9,10 +9,10 @@ import (
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
-	"github.com/ipfs/boxo/bitswap/network/internal"
+	iface "github.com/ipfs/boxo/bitswap/network"
+	"github.com/ipfs/boxo/bitswap/network/bsnet/internal"
 
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -33,7 +33,7 @@ var (
 )
 
 // NewFromIpfsHost returns a BitSwapNetwork supported by underlying IPFS host.
-func NewFromIpfsHost(host host.Host, opts ...NetOpt) BitSwapNetwork {
+func NewFromIpfsHost(host host.Host, opts ...NetOpt) iface.BitSwapNetwork {
 	s := processSettings(opts...)
 
 	bitswapNetwork := impl{
@@ -66,7 +66,7 @@ func processSettings(opts ...NetOpt) Settings {
 type impl struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
-	stats Stats
+	stats iface.Stats
 
 	host          host.Host
 	connectEvtMgr *connectEventManager
@@ -79,7 +79,7 @@ type impl struct {
 	supportedProtocols []protocol.ID
 
 	// inbound messages from the network are forwarded to the receiver
-	receivers []Receiver
+	receivers []iface.Receiver
 }
 
 type streamMessageSender struct {
@@ -87,7 +87,7 @@ type streamMessageSender struct {
 	stream    network.Stream
 	connected bool
 	bsnet     *impl
-	opts      *MessageSenderOpts
+	opts      *iface.MessageSenderOpts
 }
 
 // Open a stream to the remote peer
@@ -275,7 +275,7 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 	return nil
 }
 
-func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *MessageSenderOpts) (MessageSender, error) {
+func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *iface.MessageSenderOpts) (iface.MessageSender, error) {
 	opts = setDefaultOpts(opts)
 
 	sender := &streamMessageSender{
@@ -295,7 +295,7 @@ func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *Messag
 	return sender, nil
 }
 
-func setDefaultOpts(opts *MessageSenderOpts) *MessageSenderOpts {
+func setDefaultOpts(opts *iface.MessageSenderOpts) *iface.MessageSenderOpts {
 	copy := *opts
 	if opts.MaxRetries == 0 {
 		copy.MaxRetries = 3
@@ -343,7 +343,7 @@ func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stre
 	return bsnet.host.NewStream(ctx, p, bsnet.supportedProtocols...)
 }
 
-func (bsnet *impl) Start(r ...Receiver) {
+func (bsnet *impl) Start(r ...iface.Receiver) {
 	bsnet.receivers = r
 	{
 		connectionListeners := make([]ConnectionListener, len(r))
@@ -409,12 +409,36 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 	}
 }
 
-func (bsnet *impl) ConnectionManager() connmgr.ConnManager {
-	return bsnet.host.ConnManager()
+func (bsnet *impl) TagPeer(p peer.ID, tag string, w int) {
+	if bsnet.host == nil {
+		return
+	}
+	bsnet.host.ConnManager().TagPeer(p, tag, w)
 }
 
-func (bsnet *impl) Stats() Stats {
-	return Stats{
+func (bsnet *impl) UntagPeer(p peer.ID, tag string) {
+	if bsnet.host == nil {
+		return
+	}
+	bsnet.host.ConnManager().UntagPeer(p, tag)
+}
+
+func (bsnet *impl) Protect(p peer.ID, tag string) {
+	if bsnet.host == nil {
+		return
+	}
+	bsnet.host.ConnManager().Protect(p, tag)
+}
+
+func (bsnet *impl) Unprotect(p peer.ID, tag string) bool {
+	if bsnet.host == nil {
+		return false
+	}
+	return bsnet.host.ConnManager().Unprotect(p, tag)
+}
+
+func (bsnet *impl) Stats() iface.Stats {
+	return iface.Stats{
 		MessagesRecvd: atomic.LoadUint64(&bsnet.stats.MessagesRecvd),
 		MessagesSent:  atomic.LoadUint64(&bsnet.stats.MessagesSent),
 	}

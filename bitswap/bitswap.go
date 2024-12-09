@@ -16,6 +16,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	"go.uber.org/multierr"
@@ -54,6 +55,7 @@ type Bitswap struct {
 
 	tracer tracer.Tracer
 	net    network.BitSwapNetwork
+	host   host.Host
 }
 
 func New(ctx context.Context, net network.BitSwapNetwork, providerFinder client.ProviderFinder, bstore blockstore.Blockstore, options ...Option) *Bitswap {
@@ -142,7 +144,7 @@ func (bs *Bitswap) Close() error {
 }
 
 func (bs *Bitswap) WantlistForPeer(p peer.ID) []cid.Cid {
-	if p == bs.net.Self() {
+	if p == bs.host.ID() {
 		return bs.Client.GetWantlist()
 	}
 	return bs.Server.WantlistForPeer(p)
