@@ -20,7 +20,7 @@ func New() *BlockPresenceManager {
 
 // ReceiveFrom is called when a peer sends us information about which blocks
 // it has and does not have
-func (bpm *BlockPresenceManager) ReceiveFrom(p peer.ID, haves []cid.Cid, dontHaves []cid.Cid) {
+func (bpm *BlockPresenceManager) ReceiveFrom(p peer.AddrInfo, haves []cid.Cid, dontHaves []cid.Cid) {
 	bpm.Lock()
 	defer bpm.Unlock()
 
@@ -29,10 +29,10 @@ func (bpm *BlockPresenceManager) ReceiveFrom(p peer.ID, haves []cid.Cid, dontHav
 	}
 
 	for _, c := range haves {
-		bpm.updateBlockPresence(p, c, true)
+		bpm.updateBlockPresence(p.ID, c, true)
 	}
 	for _, c := range dontHaves {
-		bpm.updateBlockPresence(p, c, false)
+		bpm.updateBlockPresence(p.ID, c, false)
 	}
 }
 
@@ -73,7 +73,7 @@ func (bpm *BlockPresenceManager) PeerDoesNotHaveBlock(p peer.ID, c cid.Cid) bool
 // for a key.
 // This allows us to know if we've exhausted all possibilities of finding
 // the key with the peers we know about.
-func (bpm *BlockPresenceManager) AllPeersDoNotHaveBlock(peers []peer.ID, ks []cid.Cid) []cid.Cid {
+func (bpm *BlockPresenceManager) AllPeersDoNotHaveBlock(peers []peer.AddrInfo, ks []cid.Cid) []cid.Cid {
 	bpm.RLock()
 	defer bpm.RUnlock()
 
@@ -90,7 +90,7 @@ func (bpm *BlockPresenceManager) AllPeersDoNotHaveBlock(peers []peer.ID, ks []ci
 	return res
 }
 
-func (bpm *BlockPresenceManager) allDontHave(peers []peer.ID, c cid.Cid) bool {
+func (bpm *BlockPresenceManager) allDontHave(peers []peer.AddrInfo, c cid.Cid) bool {
 	// Check if we know anything about the cid's block presence
 	ps, cok := bpm.presence[c]
 	if !cok {
@@ -102,7 +102,7 @@ func (bpm *BlockPresenceManager) allDontHave(peers []peer.ID, c cid.Cid) bool {
 
 	// Check if we explicitly know that all the given peers do not have the cid
 	for _, p := range peers {
-		if has, pok := ps[p]; !pok || has {
+		if has, pok := ps[p.ID]; !pok || has {
 			return false
 		}
 	}

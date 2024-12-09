@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/ipfs/boxo/bitswap/client/internal"
@@ -33,12 +34,12 @@ const (
 type PeerManager interface {
 	// RegisterSession tells the PeerManager that the session is interested
 	// in a peer's connection state
-	RegisterSession(peer.ID, bspm.Session)
+	RegisterSession(peer.AddrInfo, bspm.Session)
 	// UnregisterSession tells the PeerManager that the session is no longer
 	// interested in a peer's connection state
 	UnregisterSession(uint64)
 	// SendWants tells the PeerManager to send wants to the given peer
-	SendWants(ctx context.Context, peerId peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool
+	SendWants(ctx context.Context, peerinfo peer.AddrInfo, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool
 	// BroadcastWantHaves sends want-haves to all connected peers (used for
 	// session discovery)
 	BroadcastWantHaves(context.Context, []cid.Cid)
@@ -61,15 +62,15 @@ type SessionPeerManager interface {
 	// Shutdown the SessionPeerManager
 	Shutdown()
 	// Adds a peer to the session, returning true if the peer is new
-	AddPeer(peer.ID) bool
+	AddPeer(peer.AddrInfo) bool
 	// Removes a peer from the session, returning true if the peer existed
-	RemovePeer(peer.ID) bool
+	RemovePeer(peer.AddrInfo) bool
 	// All peers in the session
-	Peers() []peer.ID
+	Peers() []peer.AddrInfo
 	// Whether there are any peers in the session
 	HasPeers() bool
 	// Protect connection from being pruned by the connection manager
-	ProtectConnection(peer.ID)
+	ProtectConnection(peer.AddrInfo)
 }
 
 // ProviderFinder is used to find providers for a given key
@@ -187,7 +188,7 @@ func (s *Session) Shutdown() {
 }
 
 // ReceiveFrom receives incoming blocks from the given peer.
-func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
+func (s *Session) ReceiveFrom(from peer.AddrInfo, ks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
 	// The SessionManager tells each Session about all keys that it may be
 	// interested in. Here the Session filters the keys to the ones that this
 	// particular Session is interested in.
@@ -211,7 +212,7 @@ func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontH
 	}
 }
 
-func (s *Session) logReceiveFrom(from peer.ID, interestedKs []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
+func (s *Session) logReceiveFrom(from peer.AddrInfo, interestedKs []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
 	// Save some CPU cycles if log level is higher than debug
 	if ce := sflog.Check(zap.DebugLevel, "Bitswap <- rcv message"); ce == nil {
 		return
@@ -411,10 +412,11 @@ func (s *Session) findMorePeers(ctx context.Context, c cid.Cid) {
 		ctx, span := internal.StartSpan(ctx, "Session.FindMorePeers")
 		defer span.End()
 		for p := range s.providerFinder.FindProvidersAsync(ctx, k, 0) {
+			fmt.Println(p)
 			// When a provider indicates that it has a cid, it's equivalent to
 			// the providing peer sending a HAVE
 			span.AddEvent("FoundPeer")
-			s.sws.Update(p.ID, nil, []cid.Cid{c}, nil)
+			s.sws.Update(p, nil, []cid.Cid{c}, nil)
 		}
 	}(c)
 }

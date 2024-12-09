@@ -157,13 +157,13 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 
 // sendWants only sends the peer the want-blocks and want-haves that have not
 // already been sent to it.
-func (pwm *peerWantManager) sendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) {
+func (pwm *peerWantManager) sendWants(p peer.AddrInfo, wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 
 	// Get the existing want-blocks and want-haves for the peer
-	pws, ok := pwm.peerWants[p]
+	pws, ok := pwm.peerWants[p.ID]
 	if !ok {
 		// In practice this should never happen
-		log.Errorf("sendWants() called with peer %s but peer not found in peerWantManager", string(p))
+		log.Errorf("sendWants() called with peer %s but peer not found in peerWantManager", string(p.ID))
 		return
 	}
 
@@ -195,7 +195,7 @@ func (pwm *peerWantManager) sendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves
 		fltWantBlks = append(fltWantBlks, c)
 
 		// Update the reverse index
-		pwm.reverseIndexAdd(c, p)
+		pwm.reverseIndexAdd(c, p.ID)
 	}
 
 	fltWantHvs := make([]cid.Cid, 0, len(wantHaves))
@@ -223,7 +223,7 @@ func (pwm *peerWantManager) sendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves
 			fltWantHvs = append(fltWantHvs, c)
 
 			// Update the reverse index
-			pwm.reverseIndexAdd(c, p)
+			pwm.reverseIndexAdd(c, p.ID)
 		}
 	}
 

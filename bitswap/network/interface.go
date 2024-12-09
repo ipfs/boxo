@@ -5,34 +5,19 @@ import (
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
-	"github.com/ipfs/boxo/bitswap/network/internal"
 
 	cid "github.com/ipfs/go-cid"
 
-	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
-var (
-	// ProtocolBitswapNoVers is equivalent to the legacy bitswap protocol
-	ProtocolBitswapNoVers = internal.ProtocolBitswapNoVers
-	// ProtocolBitswapOneZero is the prefix for the legacy bitswap protocol
-	ProtocolBitswapOneZero = internal.ProtocolBitswapOneZero
-	// ProtocolBitswapOneOne is the prefix for version 1.1.0
-	ProtocolBitswapOneOne = internal.ProtocolBitswapOneOne
-	// ProtocolBitswap is the current version of the bitswap protocol: 1.2.0
-	ProtocolBitswap = internal.ProtocolBitswap
-)
-
 // BitSwapNetwork provides network connectivity for BitSwap sessions.
 type BitSwapNetwork interface {
-	Self() peer.ID
-
 	// SendMessage sends a BitSwap message to a peer.
 	SendMessage(
 		context.Context,
-		peer.ID,
+		peer.AddrInfo,
 		bsmsg.BitSwapMessage) error
 
 	// Start registers the Reciver and starts handling new messages, connectivity events, etc.
@@ -43,13 +28,15 @@ type BitSwapNetwork interface {
 	Connect(context.Context, peer.AddrInfo) error
 	DisconnectFrom(context.Context, peer.ID) error
 
-	NewMessageSender(context.Context, peer.ID, *MessageSenderOpts) (MessageSender, error)
-
-	ConnectionManager() connmgr.ConnManager
+	NewMessageSender(context.Context, peer.AddrInfo, *MessageSenderOpts) (MessageSender, error)
 
 	Stats() Stats
 
 	Pinger
+	TagPeer(peer.AddrInfo, string, int)
+	UntagPeer(peer.AddrInfo, string)
+	Protect(peer.AddrInfo, string)
+	Unprotect(peer.AddrInfo, string) bool
 }
 
 // MessageSender is an interface for sending a series of messages over the bitswap
@@ -72,14 +59,14 @@ type MessageSenderOpts struct {
 type Receiver interface {
 	ReceiveMessage(
 		ctx context.Context,
-		sender peer.ID,
+		sender peer.AddrInfo,
 		incoming bsmsg.BitSwapMessage)
 
 	ReceiveError(error)
 
 	// Connected/Disconnected warns bitswap about peer connections.
-	PeerConnected(peer.ID)
-	PeerDisconnected(peer.ID)
+	PeerConnected(peer.AddrInfo)
+	PeerDisconnected(peer.AddrInfo)
 }
 
 // Routing is an interface to providing and finding providers on a bitswap
@@ -95,9 +82,9 @@ type Routing interface {
 // Pinger is an interface to ping a peer and get the average latency of all pings
 type Pinger interface {
 	// Ping a peer
-	Ping(context.Context, peer.ID) ping.Result
+	Ping(context.Context, peer.AddrInfo) ping.Result
 	// Get the average latency of all pings
-	Latency(peer.ID) time.Duration
+	Latency(peer.AddrInfo) time.Duration
 }
 
 // Stats is a container for statistics about the bitswap network

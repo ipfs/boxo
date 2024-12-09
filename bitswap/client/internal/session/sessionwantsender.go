@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 
 	bsbpm "github.com/ipfs/boxo/bitswap/client/internal/blockpresencemanager"
 
@@ -30,6 +31,11 @@ const (
 	BPHave
 )
 
+type BlockPresenceInfo struct {
+	info peer.AddrInfo
+	bp   BlockPresence
+}
+
 // SessionWantsCanceller provides a method to cancel wants
 type SessionWantsCanceller interface {
 	// Cancel wants for this session
@@ -39,7 +45,7 @@ type SessionWantsCanceller interface {
 // update encapsulates a message received by the session
 type update struct {
 	// Which peer sent the update
-	from peer.ID
+	from peer.AddrInfo
 	// cids of blocks received
 	ks []cid.Cid
 	// HAVE message
@@ -50,7 +56,7 @@ type update struct {
 
 // peerAvailability indicates a peer's connection state
 type peerAvailability struct {
-	target    peer.ID
+	target    peer.AddrInfo
 	available bool
 }
 
@@ -160,7 +166,7 @@ func (sws *sessionWantSender) Cancel(ks []cid.Cid) {
 
 // Update is called when the session receives a message with incoming blocks
 // or HAVE / DONT_HAVE
-func (sws *sessionWantSender) Update(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
+func (sws *sessionWantSender) Update(from peer.AddrInfo, ks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
 	if len(ks) == 0 && len(haves) == 0 && len(dontHaves) == 0 {
 		return
 	}
@@ -172,7 +178,7 @@ func (sws *sessionWantSender) Update(from peer.ID, ks []cid.Cid, haves []cid.Cid
 
 // SignalAvailability is called by the PeerManager to signal that a peer has
 // connected / disconnected
-func (sws *sessionWantSender) SignalAvailability(p peer.ID, isAvailable bool) {
+func (sws *sessionWantSender) SignalAvailability(p peer.AddrInfo, isAvailable bool) {
 	availability := peerAvailability{p, isAvailable}
 	// Add the change in a non-blocking manner to avoid the possibility of a
 	// deadlock
@@ -250,7 +256,7 @@ func (sws *sessionWantSender) onChange(changes []change) {
 	changes = sws.collectChanges(changes)
 
 	// Apply each change
-	availability := make(map[peer.ID]bool, len(changes))
+	availability := make(map[peer.ID]peerAvailability, len(changes))
 	cancels := make([]cid.Cid, 0)
 	var updates []update
 	for _, chng := range changes {
@@ -265,13 +271,17 @@ func (sws *sessionWantSender) onChange(changes []change) {
 			cancels = append(cancels, c)
 		}
 
+		fmt.Println(chng.update.from)
 		// Consolidate updates and changes to availability
-		if chng.update.from != "" {
+		if chng.update.from.ID != "" {
 			// If the update includes blocks or haves, treat it as signaling that
 			// the peer is available
 			if len(chng.update.ks) > 0 || len(chng.update.haves) > 0 {
 				p := chng.update.from
-				availability[p] = true
+				availability[p.ID] = peerAvailability{
+					available: true,
+					target:    p,
+				}
 
 				// Register with the PeerManager
 				sws.pm.RegisterSession(p, sws)
@@ -279,8 +289,8 @@ func (sws *sessionWantSender) onChange(changes []change) {
 
 			updates = append(updates, chng.update)
 		}
-		if chng.availability.target != "" {
-			availability[chng.availability.target] = chng.availability.available
+		if chng.availability.target.ID != "" {
+			availability[chng.availability.target.ID] = chng.availability
 		}
 	}
 
@@ -310,28 +320,28 @@ func (sws *sessionWantSender) onChange(changes []change) {
 // It returns the peers that have become
 // - newly available
 // - newly unavailable
-func (sws *sessionWantSender) processAvailability(availability map[peer.ID]bool) (avail []peer.ID, unavail []peer.ID) {
-	var newlyAvailable []peer.ID
-	var newlyUnavailable []peer.ID
-	for p, isNowAvailable := range availability {
+func (sws *sessionWantSender) processAvailability(availability map[peer.ID]peerAvailability) (avail []peer.AddrInfo, unavail []peer.AddrInfo) {
+	var newlyAvailable []peer.AddrInfo
+	var newlyUnavailable []peer.AddrInfo
+	for p, info := range availability {
 		stateChange := false
-		if isNowAvailable {
-			isNewPeer := sws.spm.AddPeer(p)
+		if info.available {
+			isNewPeer := sws.spm.AddPeer(info.target)
 			if isNewPeer {
 				stateChange = true
-				newlyAvailable = append(newlyAvailable, p)
+				newlyAvailable = append(newlyAvailable, info.target)
 			}
 		} else {
-			wasAvailable := sws.spm.RemovePeer(p)
+			wasAvailable := sws.spm.RemovePeer(info.target)
 			if wasAvailable {
 				stateChange = true
-				newlyUnavailable = append(newlyUnavailable, p)
+				newlyUnavailable = append(newlyUnavailable, info.target)
 			}
 		}
 
 		// If the state has changed
 		if stateChange {
-			sws.updateWantsPeerAvailability(p, isNowAvailable)
+			sws.updateWantsPeerAvailability(info.target, info.available)
 			// Reset the count of consecutive DONT_HAVEs received from the
 			// peer
 			delete(sws.peerConsecutiveDontHaves, p)
@@ -383,20 +393,20 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 				// manager
 				sws.spm.ProtectConnection(upd.from)
 			}
-			delete(sws.peerConsecutiveDontHaves, upd.from)
+			delete(sws.peerConsecutiveDontHaves, upd.from.ID)
 		}
 	}
 
 	// Process received DONT_HAVEs
 	dontHaves := cid.NewSet()
-	prunePeers := make(map[peer.ID]struct{})
+	prunePeers := make(map[peer.ID]peer.AddrInfo)
 	for _, upd := range updates {
 		for _, c := range upd.dontHaves {
 			// Track the number of consecutive DONT_HAVEs each peer receives
-			if sws.peerConsecutiveDontHaves[upd.from] == peerDontHaveLimit {
-				prunePeers[upd.from] = struct{}{}
+			if sws.peerConsecutiveDontHaves[upd.from.ID] == peerDontHaveLimit {
+				prunePeers[upd.from.ID] = upd.from
 			} else {
-				sws.peerConsecutiveDontHaves[upd.from]++
+				sws.peerConsecutiveDontHaves[upd.from.ID]++
 			}
 
 			// If we already received a block for the want, there's no need to
@@ -412,11 +422,11 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 
 			// Check if the DONT_HAVE is in response to a want-block
 			// (could also be in response to want-have)
-			if sws.swbt.haveSentWantBlockTo(upd.from, c) {
+			if sws.swbt.haveSentWantBlockTo(upd.from.ID, c) {
 				// If we were waiting for a response from this peer, clear
 				// sentTo so that we can send the want to another peer
-				if sentTo, ok := sws.getWantSentTo(c); ok && sentTo == upd.from {
-					sws.setWantSentTo(c, "")
+				if sentTo, ok := sws.getWantSentTo(c); ok && sentTo.ID == upd.from.ID {
+					sws.setWantSentTo(c, peer.AddrInfo{})
 				}
 			}
 		}
@@ -432,8 +442,8 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 			}
 
 			// Clear the consecutive DONT_HAVE count for the peer
-			delete(sws.peerConsecutiveDontHaves, upd.from)
-			delete(prunePeers, upd.from)
+			delete(sws.peerConsecutiveDontHaves, upd.from.ID)
+			delete(prunePeers, upd.from.ID)
 		}
 	}
 
@@ -451,11 +461,11 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 	}
 	if len(prunePeers) > 0 {
 		go func() {
-			for p := range prunePeers {
+			for p, pinfo := range prunePeers {
 				// Peer doesn't have anything we want, so remove it
 				sws.bpm.RemovePeer(p)
 				log.Infof("peer %s sent too many dont haves, removing from session %d", p, sws.ID())
-				sws.SignalAvailability(p, false)
+				sws.SignalAvailability(pinfo, false)
 			}
 		}()
 	}
@@ -465,7 +475,7 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 
 // checkForExhaustedWants checks if there are any wants for which all peers
 // have sent a DONT_HAVE. We call these "exhausted" wants.
-func (sws *sessionWantSender) checkForExhaustedWants(dontHaves []cid.Cid, newlyUnavailable []peer.ID) {
+func (sws *sessionWantSender) checkForExhaustedWants(dontHaves []cid.Cid, newlyUnavailable []peer.AddrInfo) {
 	// If there are no new DONT_HAVEs, and no peers became unavailable, then
 	// we don't need to check for exhausted wants
 	if len(dontHaves) == 0 && len(newlyUnavailable) == 0 {
@@ -511,6 +521,7 @@ func (sws *sessionWantSender) processExhaustedWants(exhausted []cid.Cid) {
 
 // convenience structs for passing around want-blocks and want-haves for a peer
 type wantSets struct {
+	pinfo      peer.AddrInfo
 	wantBlocks *cid.Set
 	wantHaves  *cid.Set
 	sent       bool
@@ -518,19 +529,20 @@ type wantSets struct {
 
 type allWants map[peer.ID]*wantSets
 
-func (aw allWants) forPeer(p peer.ID) *wantSets {
-	if _, ok := aw[p]; !ok {
-		aw[p] = &wantSets{
+func (aw allWants) forPeer(p peer.AddrInfo) *wantSets {
+	if _, ok := aw[p.ID]; !ok {
+		aw[p.ID] = &wantSets{
+			pinfo:      p,
 			wantBlocks: cid.NewSet(),
 			wantHaves:  cid.NewSet(),
 		}
 	}
-	return aw[p]
+	return aw[p.ID]
 }
 
 // sendNextWants sends wants to peers according to the latest information
 // about which peers have / dont have blocks
-func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.ID) {
+func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.AddrInfo) {
 	toSend := make(allWants)
 
 	for c, wi := range sws.wants {
@@ -541,13 +553,13 @@ func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.ID) {
 
 		// We already sent a want-block to a peer and haven't yet received a
 		// response yet
-		if wi.sentTo != "" {
+		if wi.sentTo.ID != "" {
 			continue
 		}
 
 		// All the peers have indicated that they don't have the block
 		// corresponding to this want, so we must wait to discover more peers
-		if wi.bestPeer == "" {
+		if wi.bestPeer.ID == "" {
 			// TODO: work this out in real time instead of using bestP?
 			continue
 		}
@@ -557,7 +569,7 @@ func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.ID) {
 
 		// Send a want-have to each other peer
 		for _, op := range sws.spm.Peers() {
-			if op != wi.bestPeer {
+			if op.ID != wi.bestPeer.ID {
 				toSend.forPeer(op).wantHaves.Add(c)
 			}
 		}
@@ -592,7 +604,7 @@ func (sws *sessionWantSender) sendWants(sends allWants) {
 		// precedence over want-haves.
 		wblks := snd.wantBlocks.Keys()
 		whaves := snd.wantHaves.Keys()
-		snd.sent = sws.pm.SendWants(sws.ctx, p, wblks, whaves)
+		snd.sent = sws.pm.SendWants(sws.ctx, snd.pinfo, wblks, whaves)
 		if !snd.sent {
 			// Do not update state if the wants not sent.
 			continue
@@ -645,7 +657,7 @@ func (sws *sessionWantSender) removeWant(c cid.Cid) *wantInfo {
 
 // updateWantsPeerAvailability is called when the availability changes for a
 // peer. It updates all the wants accordingly.
-func (sws *sessionWantSender) updateWantsPeerAvailability(p peer.ID, isNowAvailable bool) {
+func (sws *sessionWantSender) updateWantsPeerAvailability(p peer.AddrInfo, isNowAvailable bool) {
 	for c, wi := range sws.wants {
 		if isNowAvailable {
 			sws.updateWantBlockPresence(c, p)
@@ -657,7 +669,7 @@ func (sws *sessionWantSender) updateWantsPeerAvailability(p peer.ID, isNowAvaila
 
 // updateWantBlockPresence is called when a HAVE / DONT_HAVE is received for the given
 // want / peer
-func (sws *sessionWantSender) updateWantBlockPresence(c cid.Cid, p peer.ID) {
+func (sws *sessionWantSender) updateWantBlockPresence(c cid.Cid, p peer.AddrInfo) {
 	wi, ok := sws.wants[c]
 	if !ok {
 		return
@@ -666,25 +678,25 @@ func (sws *sessionWantSender) updateWantBlockPresence(c cid.Cid, p peer.ID) {
 	// If the peer sent us a HAVE or DONT_HAVE for the cid, adjust the
 	// block presence for the peer / cid combination
 	switch {
-	case sws.bpm.PeerHasBlock(p, c):
-		wi.setPeerBlockPresence(p, BPHave)
-	case sws.bpm.PeerDoesNotHaveBlock(p, c):
-		wi.setPeerBlockPresence(p, BPDontHave)
+	case sws.bpm.PeerHasBlock(p.ID, c):
+		wi.setPeerBlockPresence(p.ID, BlockPresenceInfo{info: p, bp: BPHave})
+	case sws.bpm.PeerDoesNotHaveBlock(p.ID, c):
+		wi.setPeerBlockPresence(p.ID, BlockPresenceInfo{info: p, bp: BPDontHave})
 	default:
-		wi.setPeerBlockPresence(p, BPUnknown)
+		wi.setPeerBlockPresence(p.ID, BlockPresenceInfo{info: p, bp: BPUnknown})
 	}
 }
 
 // Which peer was the want sent to
-func (sws *sessionWantSender) getWantSentTo(c cid.Cid) (peer.ID, bool) {
+func (sws *sessionWantSender) getWantSentTo(c cid.Cid) (peer.AddrInfo, bool) {
 	if wi, ok := sws.wants[c]; ok {
 		return wi.sentTo, true
 	}
-	return "", false
+	return peer.AddrInfo{}, false
 }
 
 // Record which peer the want was sent to
-func (sws *sessionWantSender) setWantSentTo(c cid.Cid, p peer.ID) {
+func (sws *sessionWantSender) setWantSentTo(c cid.Cid, p peer.AddrInfo) {
 	if wi, ok := sws.wants[c]; ok {
 		wi.sentTo = p
 	}
@@ -693,11 +705,11 @@ func (sws *sessionWantSender) setWantSentTo(c cid.Cid, p peer.ID) {
 // wantInfo keeps track of the information for a want
 type wantInfo struct {
 	// Tracks HAVE / DONT_HAVE sent to us for the want by each peer
-	blockPresence map[peer.ID]BlockPresence
+	blockPresence map[peer.ID]BlockPresenceInfo
 	// The peer that we've sent a want-block to (cleared when we get a response)
-	sentTo peer.ID
+	sentTo peer.AddrInfo
 	// The "best" peer to send the want to next
-	bestPeer peer.ID
+	bestPeer peer.AddrInfo
 	// Keeps track of how many hits / misses each peer has sent us for wants
 	// in the session
 	peerRspTrkr *peerResponseTracker
@@ -708,32 +720,32 @@ type wantInfo struct {
 // func newWantInfo(prt *peerResponseTracker, c cid.Cid, startIndex int) *wantInfo {
 func newWantInfo(prt *peerResponseTracker) *wantInfo {
 	return &wantInfo{
-		blockPresence: make(map[peer.ID]BlockPresence),
+		blockPresence: make(map[peer.ID]BlockPresenceInfo),
 		peerRspTrkr:   prt,
 		exhausted:     false,
 	}
 }
 
 // setPeerBlockPresence sets the block presence for the given peer
-func (wi *wantInfo) setPeerBlockPresence(p peer.ID, bp BlockPresence) {
+func (wi *wantInfo) setPeerBlockPresence(p peer.ID, bp BlockPresenceInfo) {
 	wi.blockPresence[p] = bp
 	wi.calculateBestPeer()
 
 	// If a peer informed us that it has a block then make sure the want is no
 	// longer flagged as exhausted (exhausted means no peers have the block)
-	if bp == BPHave {
+	if bp.bp == BPHave {
 		wi.exhausted = false
 	}
 }
 
 // removePeer deletes the given peer from the want info
-func (wi *wantInfo) removePeer(p peer.ID) {
+func (wi *wantInfo) removePeer(p peer.AddrInfo) {
 	// If we were waiting to hear back from the peer that is being removed,
 	// clear the sentTo field so we no longer wait
-	if p == wi.sentTo {
-		wi.sentTo = ""
+	if p.ID == wi.sentTo.ID {
+		wi.sentTo.ID = ""
 	}
-	delete(wi.blockPresence, p)
+	delete(wi.blockPresence, p.ID)
 	wi.calculateBestPeer()
 }
 
@@ -741,24 +753,24 @@ func (wi *wantInfo) removePeer(p peer.ID) {
 func (wi *wantInfo) calculateBestPeer() {
 	// Recalculate the best peer
 	bestBP := BPDontHave
-	bestPeer := peer.ID("")
+	bestPeer := peer.AddrInfo{}
 
 	// Find the peer with the best block presence, recording how many peers
 	// share the block presence
 	countWithBest := 0
-	for p, bp := range wi.blockPresence {
-		if bp > bestBP {
-			bestBP = bp
-			bestPeer = p
+	for _, bpinfo := range wi.blockPresence {
+		if bpinfo.bp > bestBP {
+			bestBP = bpinfo.bp
+			bestPeer = bpinfo.info
 			countWithBest = 1
-		} else if bp == bestBP {
+		} else if bpinfo.bp == bestBP {
 			countWithBest++
 		}
 	}
 	wi.bestPeer = bestPeer
 
 	// If no peer has a block presence better than DONT_HAVE, bail out
-	if bestPeer == "" {
+	if bestPeer.ID == "" {
 		return
 	}
 
@@ -769,10 +781,10 @@ func (wi *wantInfo) calculateBestPeer() {
 
 	// There were multiple peers with the best block presence, so choose one of
 	// them to be the best
-	var peersWithBest []peer.ID
-	for p, bp := range wi.blockPresence {
-		if bp == bestBP {
-			peersWithBest = append(peersWithBest, p)
+	var peersWithBest []peer.AddrInfo
+	for _, bpinfo := range wi.blockPresence {
+		if bpinfo.bp == bestBP {
+			peersWithBest = append(peersWithBest, bpinfo.info)
 		}
 	}
 	wi.bestPeer = wi.peerRspTrkr.choose(peersWithBest)

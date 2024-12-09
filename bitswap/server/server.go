@@ -20,6 +20,7 @@ import (
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
 )
@@ -40,6 +41,7 @@ type Server struct {
 
 	// network delivers messages on behalf of the session
 	network bsnet.BitSwapNetwork
+	host    host.Host
 
 	// External statistics interface
 	tracer tracer.Tracer
@@ -62,7 +64,7 @@ type Server struct {
 	engineOptions []decision.Option
 }
 
-func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Server {
+func New(ctx context.Context, h host.Host, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Server {
 	ctx, cancel := context.WithCancel(ctx)
 
 	s := &Server{
@@ -70,6 +72,7 @@ func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Bl
 		sendTimeHistogram: bmetrics.SendTimeHist(ctx),
 		taskWorkerCount:   defaults.BitswapTaskWorkerCount,
 		network:           network,
+		host:              h,
 		cancel:            cancel,
 		closing:           make(chan struct{}),
 	}
@@ -81,8 +84,8 @@ func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Bl
 	s.engine = decision.NewEngine(
 		ctx,
 		bstore,
-		network.ConnectionManager(),
-		network.Self(),
+		h.ConnManager(),
+		h.ID(),
 		s.engineOptions...,
 	)
 	s.engineOptions = nil
@@ -303,7 +306,7 @@ func (bs *Server) logOutgoingBlocks(env *decision.Envelope) {
 		return
 	}
 
-	self := bs.network.Self()
+	self := bs.host.ID()
 
 	for _, blockPresence := range env.Message.BlockPresences() {
 		c := blockPresence.Cid
@@ -342,7 +345,7 @@ func (bs *Server) sendBlocks(ctx context.Context, env *decision.Envelope) {
 	// throughout the network stack
 	defer env.Sent()
 
-	err := bs.network.SendMessage(ctx, env.Peer, env.Message)
+	err := bs.network.SendMessage(ctx, peer.AddrInfo{ID: env.Peer}, env.Message)
 	if err != nil {
 		log.Debugw("failed to send blocks message",
 			"peer", env.Peer,

@@ -3,13 +3,12 @@ package network
 import (
 	"sync"
 
-	"github.com/gammazero/deque"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type ConnectionListener interface {
-	PeerConnected(peer.ID)
-	PeerDisconnected(peer.ID)
+	PeerConnected(peer.AddrInfo)
+	PeerDisconnected(peer.AddrInfo)
 }
 
 type state byte
@@ -26,12 +25,13 @@ type connectEventManager struct {
 	cond          sync.Cond
 	peers         map[peer.ID]*peerState
 
-	changeQueue deque.Deque[peer.ID]
+	changeQueue []peer.AddrInfo
 	stop        bool
 	done        chan struct{}
 }
 
 type peerState struct {
+	info               peer.AddrInfo
 	newState, curState state
 	pending            bool
 }
@@ -59,24 +59,24 @@ func (c *connectEventManager) Stop() {
 	<-c.done
 }
 
-func (c *connectEventManager) getState(p peer.ID) state {
-	if state, ok := c.peers[p]; ok {
+func (c *connectEventManager) getState(p peer.AddrInfo) state {
+	if state, ok := c.peers[p.ID]; ok {
 		return state.newState
-	} else {
-		return stateDisconnected
 	}
+	return stateDisconnected
 }
 
-func (c *connectEventManager) setState(p peer.ID, newState state) {
-	state, ok := c.peers[p]
+func (c *connectEventManager) setState(p peer.AddrInfo, newState state) {
+	state, ok := c.peers[p.ID]
 	if !ok {
 		state = new(peerState)
-		c.peers[p] = state
+		state.info = p
+		c.peers[p.ID] = state
 	}
 	state.newState = newState
 	if !state.pending && state.newState != state.curState {
 		state.pending = true
-		c.changeQueue.PushBack(p)
+		c.changeQueue = append(c.changeQueue, p)
 		c.cond.Broadcast()
 	}
 }
@@ -84,7 +84,7 @@ func (c *connectEventManager) setState(p peer.ID, newState state) {
 // Waits for a change to be enqueued, or for the event manager to be stopped. Returns false if the
 // connect event manager has been stopped.
 func (c *connectEventManager) waitChange() bool {
-	for !c.stop && c.changeQueue.Len() == 0 {
+	for !c.stop && len(c.changeQueue) == 0 {
 		c.cond.Wait()
 	}
 	return !c.stop
@@ -96,9 +96,11 @@ func (c *connectEventManager) worker() {
 	defer close(c.done)
 
 	for c.waitChange() {
-		pid := c.changeQueue.PopFront()
+		p := c.changeQueue[0]
+		c.changeQueue[0].ID = peer.ID("") // free the peer ID (slicing won't do that)
+		c.changeQueue = c.changeQueue[1:]
 
-		state, ok := c.peers[pid]
+		state, ok := c.peers[p.ID]
 		// If we've disconnected and forgotten, continue.
 		if !ok {
 			// This shouldn't be possible because _this_ thread is responsible for
@@ -122,7 +124,7 @@ func (c *connectEventManager) worker() {
 
 		switch state.newState {
 		case stateDisconnected:
-			delete(c.peers, pid)
+			delete(c.peers, p.ID)
 			fallthrough
 		case stateUnresponsive:
 			// Only trigger a disconnect event if the peer was responsive.
@@ -130,14 +132,14 @@ func (c *connectEventManager) worker() {
 			if oldState == stateResponsive {
 				c.lk.Unlock()
 				for _, v := range c.connListeners {
-					v.PeerDisconnected(pid)
+					v.PeerDisconnected(p)
 				}
 				c.lk.Lock()
 			}
 		case stateResponsive:
 			c.lk.Unlock()
 			for _, v := range c.connListeners {
-				v.PeerConnected(pid)
+				v.PeerConnected(p)
 			}
 			c.lk.Lock()
 		}
@@ -145,7 +147,7 @@ func (c *connectEventManager) worker() {
 }
 
 // Called whenever we receive a new connection. May be called many times.
-func (c *connectEventManager) Connected(p peer.ID) {
+func (c *connectEventManager) Connected(p peer.AddrInfo) {
 	c.lk.Lock()
 	defer c.lk.Unlock()
 
@@ -158,7 +160,7 @@ func (c *connectEventManager) Connected(p peer.ID) {
 }
 
 // Called when we drop the final connection to a peer.
-func (c *connectEventManager) Disconnected(p peer.ID) {
+func (c *connectEventManager) Disconnected(p peer.AddrInfo) {
 	c.lk.Lock()
 	defer c.lk.Unlock()
 
@@ -172,7 +174,7 @@ func (c *connectEventManager) Disconnected(p peer.ID) {
 }
 
 // Called whenever a peer is unresponsive.
-func (c *connectEventManager) MarkUnresponsive(p peer.ID) {
+func (c *connectEventManager) MarkUnresponsive(p peer.AddrInfo) {
 	c.lk.Lock()
 	defer c.lk.Unlock()
 
@@ -191,7 +193,7 @@ func (c *connectEventManager) MarkUnresponsive(p peer.ID) {
 // - When not connected, we ignore this call. Unfortunately, a peer may disconnect before we process
 //
 //	the "on message" event, so we can't treat this as evidence of a connection.
-func (c *connectEventManager) OnMessage(p peer.ID) {
+func (c *connectEventManager) OnMessage(p peer.AddrInfo) {
 	c.lk.RLock()
 	unresponsive := c.getState(p) == stateUnresponsive
 	c.lk.RUnlock()

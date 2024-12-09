@@ -2,6 +2,7 @@ package messagequeue
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -54,17 +55,17 @@ const (
 // sender.
 type MessageNetwork interface {
 	Connect(context.Context, peer.AddrInfo) error
-	NewMessageSender(context.Context, peer.ID, *bsnet.MessageSenderOpts) (bsnet.MessageSender, error)
-	Latency(peer.ID) time.Duration
-	Ping(context.Context, peer.ID) ping.Result
-	Self() peer.ID
+	NewMessageSender(context.Context, peer.AddrInfo, *bsnet.MessageSenderOpts) (bsnet.MessageSender, error)
+	Latency(peer.AddrInfo) time.Duration
+	Ping(context.Context, peer.AddrInfo) ping.Result
 }
 
 // MessageQueue implements queue of want messages to send to peers.
 type MessageQueue struct {
 	ctx          context.Context
 	shutdown     func()
-	p            peer.ID
+	p            peer.AddrInfo
+	self         peer.ID
 	network      MessageNetwork
 	dhTimeoutMgr DontHaveTimeoutManager
 
@@ -193,11 +194,11 @@ func (r *recallWantlist) Refresh(now time.Time, interval time.Duration) int {
 }
 
 type peerConn struct {
-	p       peer.ID
+	p       peer.AddrInfo
 	network MessageNetwork
 }
 
-func newPeerConnection(p peer.ID, network MessageNetwork) *peerConn {
+func newPeerConnection(p peer.AddrInfo, network MessageNetwork) *peerConn {
 	return &peerConn{p, network}
 }
 
@@ -211,7 +212,7 @@ func (pc *peerConn) Latency() time.Duration {
 
 // Fires when a timeout occurs waiting for a response from a peer running an
 // older version of Bitswap that doesn't support DONT_HAVE messages.
-type OnDontHaveTimeout func(peer.ID, []cid.Cid)
+type OnDontHaveTimeout func(peer.AddrInfo, []cid.Cid)
 
 // DontHaveTimeoutManager pings a peer to estimate latency so it can set a reasonable
 // upper bound on when to consider a DONT_HAVE request as timed out (when connected to
@@ -231,7 +232,7 @@ type DontHaveTimeoutManager interface {
 }
 
 // New creates a new MessageQueue.
-func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeout OnDontHaveTimeout) *MessageQueue {
+func New(ctx context.Context, self peer.ID, p peer.AddrInfo, network MessageNetwork, onDontHaveTimeout OnDontHaveTimeout) *MessageQueue {
 	onTimeout := func(ks []cid.Cid) {
 		log.Infow("Bitswap: timeout waiting for blocks", "cids", ks, "peer", p)
 		onDontHaveTimeout(p, ks)
@@ -252,7 +253,7 @@ const (
 // This constructor is used by the tests
 func newMessageQueue(
 	ctx context.Context,
-	p peer.ID,
+	p peer.AddrInfo,
 	network MessageNetwork,
 	maxMsgSize int,
 	sendErrorBackoff time.Duration,
@@ -518,6 +519,7 @@ func (mq *MessageQueue) sendIfReady() {
 }
 
 func (mq *MessageQueue) sendMessage() {
+	fmt.Println("sendMessage", mq.p)
 	sender, err := mq.initializeSender()
 	if err != nil {
 		// If we fail to initialize the sender, the networking layer will
@@ -647,7 +649,7 @@ func (mq *MessageQueue) logOutgoingMessage(wantlist []bsmsg.Entry) {
 		return
 	}
 
-	self := mq.network.Self()
+	self := mq.self
 	for _, e := range wantlist {
 		if e.Cancel {
 			if e.WantType == pb.Message_Wantlist_Have {

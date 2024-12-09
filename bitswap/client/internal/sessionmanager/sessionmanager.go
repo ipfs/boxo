@@ -24,7 +24,7 @@ import (
 type Session interface {
 	exchange.Fetcher
 	ID() uint64
-	ReceiveFrom(peer.ID, []cid.Cid, []cid.Cid, []cid.Cid)
+	ReceiveFrom(peer.AddrInfo, []cid.Cid, []cid.Cid, []cid.Cid)
 	Shutdown()
 }
 
@@ -153,7 +153,7 @@ func (sm *SessionManager) GetNextSessionID() uint64 {
 }
 
 // ReceiveFrom is called when a new message is received
-func (sm *SessionManager) ReceiveFrom(ctx context.Context, p peer.ID, blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
+func (sm *SessionManager) ReceiveFrom(ctx context.Context, p peer.AddrInfo, blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
 	// Record block presence for HAVE / DONT_HAVE
 	sm.blockPresenceManager.ReceiveFrom(p, haves, dontHaves)
 

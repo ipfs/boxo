@@ -1,4 +1,4 @@
-// Package bitswap implements the IPFS exchange interface with the BitSwap
+// Package client implements the IPFS exchange interface with the BitSwap
 // bilateral exchange protocol.
 package client
 
@@ -31,6 +31,7 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -132,7 +133,7 @@ type ProviderFinder interface {
 // New initializes a Bitswap client that runs until client.Close is called.
 // The Content providerFinder paramteter can be nil to disable content-routing
 // lookups for content (rely only on bitswap for discovery).
-func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ProviderFinder, bstore blockstore.Blockstore, options ...Option) *Client {
+func New(parent context.Context, self host.Host, network bsnet.BitSwapNetwork, providerFinder ProviderFinder, bstore blockstore.Blockstore, options ...Option) *Client {
 	// important to use provided parent context (since it may include important
 	// loggable data). It's probably not a good idea to allow bitswap to be
 	// coupled to the concerns of the ipfs daemon in this way.
@@ -143,6 +144,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 	ctx, cancelFunc := context.WithCancel(parent)
 
 	bs := &Client{
+		host:                        self,
 		network:                     network,
 		providerFinder:              providerFinder,
 		blockstore:                  bstore,
@@ -166,19 +168,19 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 	// has an old version of Bitswap that doesn't support DONT_HAVE messages,
 	// or when no response is received within a timeout.
 	var sm *bssm.SessionManager
-	onDontHaveTimeout := func(p peer.ID, dontHaves []cid.Cid) {
+	onDontHaveTimeout := func(p peer.AddrInfo, dontHaves []cid.Cid) {
 		// Simulate a message arriving with DONT_HAVEs
 		if bs.simulateDontHavesOnTimeout {
 			sm.ReceiveFrom(ctx, p, nil, nil, dontHaves)
 		}
 	}
-	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
-		return bsmq.New(ctx, p, network, onDontHaveTimeout)
+	peerQueueFactory := func(ctx context.Context, p peer.AddrInfo) bspm.PeerQueue {
+		return bsmq.New(ctx, bs.host.ID(), p, network, onDontHaveTimeout)
 	}
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
-	pm := bspm.New(ctx, peerQueueFactory, network.Self())
+	pm := bspm.New(ctx, peerQueueFactory)
 
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
@@ -219,10 +221,10 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
-		return bsspm.New(id, network.ConnectionManager())
+		return bsspm.New(id, network)
 	}
 	notif := notifications.New()
-	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
+	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, bs.host.ID())
 
 	bs.sm = sm
 	bs.notif = notif
@@ -242,6 +244,7 @@ type Client struct {
 	pqm                         *rpqm.ProviderQueryManager
 	defaultProviderQueryManager bool
 
+	host host.Host
 	// network delivers messages on behalf of the session
 	network bsnet.BitSwapNetwork
 
@@ -341,7 +344,7 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 
 	// Send all block keys (including duplicates) to any sessions that want them.
 	// (The duplicates are needed by sessions for accounting purposes)
-	bs.sm.ReceiveFrom(ctx, "", blkCids, nil, nil)
+	bs.sm.ReceiveFrom(ctx, peer.AddrInfo{}, blkCids, nil, nil)
 
 	// Publish the block to any Bitswap clients that had requested blocks.
 	// (the sessions use this pubsub mechanism to inform clients of incoming
@@ -353,7 +356,7 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 }
 
 // receiveBlocksFrom processes blocks received from the network
-func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []blocks.Block, haves []cid.Cid, dontHaves []cid.Cid) error {
+func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.AddrInfo, blks []blocks.Block, haves []cid.Cid, dontHaves []cid.Cid) error {
 	select {
 	case <-bs.closing:
 		return errors.New("bitswap is closed")
@@ -375,20 +378,20 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	combined = append(combined, allKs...)
 	combined = append(combined, haves...)
 	combined = append(combined, dontHaves...)
-	bs.pm.ResponseReceived(from, combined)
+	bs.pm.ResponseReceived(from.ID, combined)
 
 	// Send all block keys (including duplicates) to any sessions that want them for accounting purpose.
 	bs.sm.ReceiveFrom(ctx, from, allKs, haves, dontHaves)
 
 	if bs.blockReceivedNotifier != nil {
-		bs.blockReceivedNotifier.ReceivedBlocks(from, wanted)
+		bs.blockReceivedNotifier.ReceivedBlocks(from.ID, wanted)
 	}
 
 	// Publish the block to any Bitswap clients that had requested blocks.
 	// (the sessions use this pubsub mechanism to inform clients of incoming
 	// blocks)
 	for _, b := range wanted {
-		bs.notif.Publish(from, b)
+		bs.notif.Publish(from.ID, b)
 	}
 
 	for _, b := range wanted {
@@ -400,13 +403,13 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 
 // ReceiveMessage is called by the network interface when a new message is
 // received.
-func (bs *Client) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg.BitSwapMessage) {
+func (bs *Client) ReceiveMessage(ctx context.Context, p peer.AddrInfo, incoming bsmsg.BitSwapMessage) {
 	bs.counterLk.Lock()
 	bs.counters.messagesRecvd++
 	bs.counterLk.Unlock()
 
 	if bs.tracer != nil {
-		bs.tracer.MessageReceived(p, incoming)
+		bs.tracer.MessageReceived(p.ID, incoming)
 	}
 
 	iblocks := incoming.Blocks()
@@ -488,13 +491,13 @@ func (bs *Client) blockstoreHas(blks []blocks.Block) []bool {
 
 // PeerConnected is called by the network interface
 // when a peer initiates a new connection to bitswap.
-func (bs *Client) PeerConnected(p peer.ID) {
+func (bs *Client) PeerConnected(p peer.AddrInfo) {
 	bs.pm.Connected(p)
 }
 
 // PeerDisconnected is called by the network interface when a peer
 // closes a connection
-func (bs *Client) PeerDisconnected(p peer.ID) {
+func (bs *Client) PeerDisconnected(p peer.AddrInfo) {
 	bs.pm.Disconnected(p)
 }
 

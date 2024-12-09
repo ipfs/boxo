@@ -9,10 +9,10 @@ import (
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
-	"github.com/ipfs/boxo/bitswap/network/internal"
+	"github.com/ipfs/boxo/bitswap/network/bsnet/internal"
 
+	iface "github.com/ipfs/boxo/bitswap/network"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -33,7 +33,7 @@ var (
 )
 
 // NewFromIpfsHost returns a BitSwapNetwork supported by underlying IPFS host.
-func NewFromIpfsHost(host host.Host, opts ...NetOpt) BitSwapNetwork {
+func NewFromIpfsHost(host host.Host, opts ...NetOpt) iface.BitSwapNetwork {
 	s := processSettings(opts...)
 
 	bitswapNetwork := impl{
@@ -66,7 +66,7 @@ func processSettings(opts ...NetOpt) Settings {
 type impl struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
-	stats Stats
+	stats iface.Stats
 
 	host          host.Host
 	connectEvtMgr *connectEventManager
@@ -79,15 +79,15 @@ type impl struct {
 	supportedProtocols []protocol.ID
 
 	// inbound messages from the network are forwarded to the receiver
-	receivers []Receiver
+	receivers []iface.Receiver
 }
 
 type streamMessageSender struct {
-	to        peer.ID
+	to        peer.AddrInfo
 	stream    network.Stream
 	connected bool
 	bsnet     *impl
-	opts      *MessageSenderOpts
+	opts      *iface.MessageSenderOpts
 }
 
 // Open a stream to the remote peer
@@ -99,7 +99,7 @@ func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, erro
 	tctx, cancel := context.WithTimeout(ctx, s.opts.SendTimeout)
 	defer cancel()
 
-	if err := s.bsnet.Connect(ctx, peer.AddrInfo{ID: s.to}); err != nil {
+	if err := s.bsnet.Connect(ctx, s.to); err != nil {
 		return nil, err
 	}
 
@@ -142,10 +142,8 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMess
 
 // Perform a function with multiple attempts, and a timeout
 func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func() error) error {
-	var err error
-	var timer *time.Timer
-
 	// Try to call the function repeatedly
+	var err error
 	for i := 0; i < s.opts.MaxRetries; i++ {
 		if err = fn(); err == nil {
 			// Attempt was successful
@@ -176,12 +174,8 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func() error)
 			return err
 		}
 
-		if timer == nil {
-			timer = time.NewTimer(s.opts.SendErrorBackoff)
-			defer timer.Stop()
-		} else {
-			timer.Reset(s.opts.SendErrorBackoff)
-		}
+		timer := time.NewTimer(s.opts.SendErrorBackoff)
+		defer timer.Stop()
 
 		select {
 		case <-ctx.Done():
@@ -215,19 +209,15 @@ func (s *streamMessageSender) send(ctx context.Context, msg bsmsg.BitSwapMessage
 	return nil
 }
 
-func (bsnet *impl) Self() peer.ID {
-	return bsnet.host.ID()
-}
-
-func (bsnet *impl) Ping(ctx context.Context, p peer.ID) ping.Result {
+func (bsnet *impl) Ping(ctx context.Context, p peer.AddrInfo) ping.Result {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	res := <-ping.Ping(ctx, bsnet.host, p)
+	res := <-ping.Ping(ctx, bsnet.host, p.ID)
 	return res
 }
 
-func (bsnet *impl) Latency(p peer.ID) time.Duration {
-	return bsnet.host.Peerstore().LatencyEWMA(p)
+func (bsnet *impl) Latency(p peer.AddrInfo) time.Duration {
+	return bsnet.host.Peerstore().LatencyEWMA(p.ID)
 }
 
 // Indicates whether the given protocol supports HAVE / DONT_HAVE messages
@@ -275,7 +265,7 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 	return nil
 }
 
-func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *MessageSenderOpts) (MessageSender, error) {
+func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.AddrInfo, opts *iface.MessageSenderOpts) (iface.MessageSender, error) {
 	opts = setDefaultOpts(opts)
 
 	sender := &streamMessageSender{
@@ -295,7 +285,7 @@ func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *Messag
 	return sender, nil
 }
 
-func setDefaultOpts(opts *MessageSenderOpts) *MessageSenderOpts {
+func setDefaultOpts(opts *iface.MessageSenderOpts) *iface.MessageSenderOpts {
 	copy := *opts
 	if opts.MaxRetries == 0 {
 		copy.MaxRetries = 3
@@ -322,7 +312,7 @@ func sendTimeout(size int) time.Duration {
 
 func (bsnet *impl) SendMessage(
 	ctx context.Context,
-	p peer.ID,
+	p peer.AddrInfo,
 	outgoing bsmsg.BitSwapMessage,
 ) error {
 	s, err := bsnet.newStreamToPeer(ctx, p)
@@ -339,11 +329,11 @@ func (bsnet *impl) SendMessage(
 	return s.Close()
 }
 
-func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stream, error) {
-	return bsnet.host.NewStream(ctx, p, bsnet.supportedProtocols...)
+func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.AddrInfo) (network.Stream, error) {
+	return bsnet.host.NewStream(ctx, p.ID, bsnet.supportedProtocols...)
 }
 
-func (bsnet *impl) Start(r ...Receiver) {
+func (bsnet *impl) Start(r ...iface.Receiver) {
 	bsnet.receivers = r
 	{
 		connectionListeners := make([]ConnectionListener, len(r))
@@ -398,10 +388,14 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 			return
 		}
 
-		p := s.Conn().RemotePeer()
+		rpid := s.Conn().RemotePeer()
+		p := peer.AddrInfo{
+			ID:    rpid,
+			Addrs: bsnet.host.Peerstore().Addrs(rpid),
+		}
 		ctx := context.Background()
 		log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())
-		bsnet.connectEvtMgr.OnMessage(s.Conn().RemotePeer())
+		bsnet.connectEvtMgr.OnMessage(p)
 		atomic.AddUint64(&bsnet.stats.MessagesRecvd, 1)
 		for _, v := range bsnet.receivers {
 			v.ReceiveMessage(ctx, p, received)
@@ -409,12 +403,24 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 	}
 }
 
-func (bsnet *impl) ConnectionManager() connmgr.ConnManager {
-	return bsnet.host.ConnManager()
+func (bsnet *impl) TagPeer(p peer.AddrInfo, tag string, w int) {
+	bsnet.host.ConnManager().TagPeer(p.ID, tag, w)
 }
 
-func (bsnet *impl) Stats() Stats {
-	return Stats{
+func (bsnet *impl) UntagPeer(p peer.AddrInfo, tag string) {
+	bsnet.host.ConnManager().UntagPeer(p.ID, tag)
+}
+
+func (bsnet *impl) Protect(p peer.AddrInfo, tag string) {
+	bsnet.host.ConnManager().Protect(p.ID, tag)
+}
+
+func (bsnet *impl) Unprotect(p peer.AddrInfo, tag string) bool {
+	return bsnet.host.ConnManager().Unprotect(p.ID, tag)
+}
+
+func (bsnet *impl) Stats() iface.Stats {
+	return iface.Stats{
 		MessagesRecvd: atomic.LoadUint64(&bsnet.stats.MessagesRecvd),
 		MessagesSent:  atomic.LoadUint64(&bsnet.stats.MessagesSent),
 	}
@@ -432,7 +438,12 @@ func (nn *netNotifiee) Connected(n network.Network, v network.Conn) {
 		return
 	}
 
-	nn.impl().connectEvtMgr.Connected(v.RemotePeer())
+	rpid := v.RemotePeer()
+	p := peer.AddrInfo{
+		ID:    rpid,
+		Addrs: nn.impl().host.Peerstore().Addrs(rpid),
+	}
+	nn.impl().connectEvtMgr.Connected(p)
 }
 
 func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
@@ -441,7 +452,12 @@ func (nn *netNotifiee) Disconnected(n network.Network, v network.Conn) {
 		return
 	}
 
-	nn.impl().connectEvtMgr.Disconnected(v.RemotePeer())
+	rpid := v.RemotePeer()
+	p := peer.AddrInfo{
+		ID:    rpid,
+		Addrs: nn.impl().host.Peerstore().Addrs(rpid),
+	}
+	nn.impl().connectEvtMgr.Disconnected(p)
 }
 func (nn *netNotifiee) OpenedStream(n network.Network, s network.Stream) {}
 func (nn *netNotifiee) ClosedStream(n network.Network, v network.Stream) {}

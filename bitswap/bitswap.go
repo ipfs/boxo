@@ -16,6 +16,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	"go.uber.org/multierr"
@@ -35,10 +36,10 @@ type bitswap interface {
 	LedgerForPeer(p peer.ID) *server.Receipt
 	NewSession(ctx context.Context) exchange.Fetcher
 	NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error
-	PeerConnected(p peer.ID)
-	PeerDisconnected(p peer.ID)
+	PeerConnected(p peer.AddrInfo)
+	PeerDisconnected(p peer.AddrInfo)
 	ReceiveError(err error)
-	ReceiveMessage(ctx context.Context, p peer.ID, incoming message.BitSwapMessage)
+	ReceiveMessage(ctx context.Context, p peer.AddrInfo, incoming message.BitSwapMessage)
 	Stat() (*Stat, error)
 	WantlistForPeer(p peer.ID) []cid.Cid
 }
@@ -54,11 +55,13 @@ type Bitswap struct {
 
 	tracer tracer.Tracer
 	net    network.BitSwapNetwork
+	host   host.Host
 }
 
-func New(ctx context.Context, net network.BitSwapNetwork, providerFinder client.ProviderFinder, bstore blockstore.Blockstore, options ...Option) *Bitswap {
+func New(ctx context.Context, host host.Host, net network.BitSwapNetwork, providerFinder client.ProviderFinder, bstore blockstore.Blockstore, options ...Option) *Bitswap {
 	bs := &Bitswap{
-		net: net,
+		net:  net,
+		host: host,
 	}
 
 	var serverOptions []server.Option
@@ -85,8 +88,8 @@ func New(ctx context.Context, net network.BitSwapNetwork, providerFinder client.
 
 	ctx = metrics.CtxSubScope(ctx, "bitswap")
 
-	bs.Server = server.New(ctx, net, bstore, serverOptions...)
-	bs.Client = client.New(ctx, net, providerFinder, bstore, append(clientOptions, client.WithBlockReceivedNotifier(bs.Server))...)
+	bs.Server = server.New(ctx, host, net, bstore, serverOptions...)
+	bs.Client = client.New(ctx, host, net, providerFinder, bstore, append(clientOptions, client.WithBlockReceivedNotifier(bs.Server))...)
 	net.Start(bs) // use the polyfill receiver to log received errors and trace messages only once
 
 	return bs
@@ -142,20 +145,20 @@ func (bs *Bitswap) Close() error {
 }
 
 func (bs *Bitswap) WantlistForPeer(p peer.ID) []cid.Cid {
-	if p == bs.net.Self() {
+	if p == bs.host.ID() {
 		return bs.Client.GetWantlist()
 	}
 	return bs.Server.WantlistForPeer(p)
 }
 
-func (bs *Bitswap) PeerConnected(p peer.ID) {
+func (bs *Bitswap) PeerConnected(p peer.AddrInfo) {
 	bs.Client.PeerConnected(p)
-	bs.Server.PeerConnected(p)
+	bs.Server.PeerConnected(p.ID)
 }
 
-func (bs *Bitswap) PeerDisconnected(p peer.ID) {
+func (bs *Bitswap) PeerDisconnected(p peer.AddrInfo) {
 	bs.Client.PeerDisconnected(p)
-	bs.Server.PeerDisconnected(p)
+	bs.Server.PeerDisconnected(p.ID)
 }
 
 func (bs *Bitswap) ReceiveError(err error) {
@@ -164,11 +167,11 @@ func (bs *Bitswap) ReceiveError(err error) {
 	// TODO bubble the network error up to the parent context/error logger
 }
 
-func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.BitSwapMessage) {
+func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.AddrInfo, incoming message.BitSwapMessage) {
 	if bs.tracer != nil {
-		bs.tracer.MessageReceived(p, incoming)
+		bs.tracer.MessageReceived(p.ID, incoming)
 	}
 
 	bs.Client.ReceiveMessage(ctx, p, incoming)
-	bs.Server.ReceiveMessage(ctx, p, incoming)
+	bs.Server.ReceiveMessage(ctx, p.ID, incoming)
 }

@@ -19,10 +19,10 @@ const (
 
 // PeerTagger is an interface for tagging peers with metadata
 type PeerTagger interface {
-	TagPeer(peer.ID, string, int)
-	UntagPeer(p peer.ID, tag string)
-	Protect(peer.ID, string)
-	Unprotect(peer.ID, string) bool
+	TagPeer(peer.AddrInfo, string, int)
+	UntagPeer(peer.AddrInfo, string)
+	Protect(peer.AddrInfo, string)
+	Unprotect(peer.AddrInfo, string) bool
 }
 
 // SessionPeerManager keeps track of peers for a session, and takes care of
@@ -33,7 +33,7 @@ type SessionPeerManager struct {
 
 	id              uint64
 	plk             sync.RWMutex
-	peers           map[peer.ID]struct{}
+	peers           map[peer.ID]peer.AddrInfo
 	peersDiscovered bool
 }
 
@@ -43,22 +43,22 @@ func New(id uint64, tagger PeerTagger) *SessionPeerManager {
 		id:     id,
 		tag:    fmt.Sprint("bs-ses-", id),
 		tagger: tagger,
-		peers:  make(map[peer.ID]struct{}),
+		peers:  make(map[peer.ID]peer.AddrInfo),
 	}
 }
 
 // AddPeer adds the peer to the SessionPeerManager.
 // Returns true if the peer is a new peer, false if it already existed.
-func (spm *SessionPeerManager) AddPeer(p peer.ID) bool {
+func (spm *SessionPeerManager) AddPeer(p peer.AddrInfo) bool {
 	spm.plk.Lock()
 	defer spm.plk.Unlock()
 
 	// Check if the peer is a new peer
-	if _, ok := spm.peers[p]; ok {
+	if _, ok := spm.peers[p.ID]; ok {
 		return false
 	}
 
-	spm.peers[p] = struct{}{}
+	spm.peers[p.ID] = p
 	spm.peersDiscovered = true
 
 	// Tag the peer with the ConnectionManager so it doesn't discard the
@@ -70,11 +70,11 @@ func (spm *SessionPeerManager) AddPeer(p peer.ID) bool {
 }
 
 // Protect connection to this peer from being pruned by the connection manager
-func (spm *SessionPeerManager) ProtectConnection(p peer.ID) {
+func (spm *SessionPeerManager) ProtectConnection(p peer.AddrInfo) {
 	spm.plk.Lock()
 	defer spm.plk.Unlock()
 
-	if _, ok := spm.peers[p]; !ok {
+	if _, ok := spm.peers[p.ID]; !ok {
 		return
 	}
 
@@ -83,15 +83,15 @@ func (spm *SessionPeerManager) ProtectConnection(p peer.ID) {
 
 // RemovePeer removes the peer from the SessionPeerManager.
 // Returns true if the peer was removed, false if it did not exist.
-func (spm *SessionPeerManager) RemovePeer(p peer.ID) bool {
+func (spm *SessionPeerManager) RemovePeer(p peer.AddrInfo) bool {
 	spm.plk.Lock()
 	defer spm.plk.Unlock()
 
-	if _, ok := spm.peers[p]; !ok {
+	if _, ok := spm.peers[p.ID]; !ok {
 		return false
 	}
 
-	delete(spm.peers, p)
+	delete(spm.peers, p.ID)
 	spm.tagger.UntagPeer(p, spm.tag)
 	spm.tagger.Unprotect(p, spm.tag)
 
@@ -109,13 +109,13 @@ func (spm *SessionPeerManager) PeersDiscovered() bool {
 	return spm.peersDiscovered
 }
 
-func (spm *SessionPeerManager) Peers() []peer.ID {
+func (spm *SessionPeerManager) Peers() []peer.AddrInfo {
 	spm.plk.RLock()
 	defer spm.plk.RUnlock()
 
-	peers := make([]peer.ID, 0, len(spm.peers))
-	for p := range spm.peers {
-		peers = append(peers, p)
+	peers := make([]peer.AddrInfo, 0, len(spm.peers))
+	for _, info := range spm.peers {
+		peers = append(peers, info)
 	}
 
 	return peers
@@ -143,8 +143,8 @@ func (spm *SessionPeerManager) Shutdown() {
 
 	// Untag the peers with the ConnectionManager so that it can release
 	// connections to those peers
-	for p := range spm.peers {
-		spm.tagger.UntagPeer(p, spm.tag)
-		spm.tagger.Unprotect(p, spm.tag)
+	for _, info := range spm.peers {
+		spm.tagger.UntagPeer(info, spm.tag)
+		spm.tagger.Unprotect(info, spm.tag)
 	}
 }
