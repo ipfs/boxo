@@ -38,6 +38,8 @@ import (
 
 var log = logging.Logger("bitswap/client")
 
+type DontHaveTimeoutConfig = bsmq.DontHaveTimeoutConfig
+
 // Option defines the functional option type that can be used to configure
 // bitswap instances
 type Option func(*Client)
@@ -66,6 +68,12 @@ func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
 func SetSimulateDontHavesOnTimeout(send bool) Option {
 	return func(bs *Client) {
 		bs.simulateDontHavesOnTimeout = send
+	}
+}
+
+func WithDontHaveTimeoutConfig(cfg *DontHaveTimeoutConfig) Option {
+	return func(bs *Client) {
+		bs.dontHaveTimeoutConfig = cfg
 	}
 }
 
@@ -173,7 +181,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 		}
 	}
 	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
-		return bsmq.New(ctx, p, network, onDontHaveTimeout)
+		return bsmq.New(ctx, p, network, onDontHaveTimeout, bs.dontHaveTimeoutConfig)
 	}
 
 	sim := bssim.New()
@@ -284,6 +292,7 @@ type Client struct {
 
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
+	dontHaveTimeoutConfig      *DontHaveTimeoutConfig
 
 	// dupMetric will stay at 0
 	skipDuplicatedBlocksStats bool
