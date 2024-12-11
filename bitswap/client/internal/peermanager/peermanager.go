@@ -2,7 +2,9 @@ package peermanager
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"time"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
@@ -53,7 +55,7 @@ type PeerManager struct {
 func New(ctx context.Context, createPeerQueue PeerQueueFactory, self peer.ID) *PeerManager {
 	wantGauge := metrics.NewCtx(ctx, "wantlist_total", "Number of items in wantlist.").Gauge()
 	wantBlockGauge := metrics.NewCtx(ctx, "want_blocks_total", "Number of want-blocks in wantlist.").Gauge()
-	return &PeerManager{
+	pm := &PeerManager{
 		peerQueues:      make(map[peer.ID]PeerQueue),
 		pwm:             newPeerWantManager(wantGauge, wantBlockGauge),
 		createPeerQueue: createPeerQueue,
@@ -63,6 +65,23 @@ func New(ctx context.Context, createPeerQueue PeerQueueFactory, self peer.ID) *P
 		sessions:     make(map[uint64]Session),
 		peerSessions: make(map[peer.ID]map[uint64]struct{}),
 	}
+
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		for {
+			select {
+			case <-ctx.Done():
+				fmt.Println("peer manager context cancelled")
+				return
+			case <-t.C:
+			}
+			pm.pqLk.RLock()
+			fmt.Println("peer manager size: ", len(pm.peerQueues))
+			fmt.Println("peer want maanger size: ", len(pm.pwm.peerWants))
+			pm.pqLk.RUnlock()
+		}
+	}()
+	return pm
 }
 
 func (pm *PeerManager) AvailablePeers() []peer.ID {
