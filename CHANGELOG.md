@@ -18,6 +18,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+* 🛠 `blockstore` and `blockservice`'s `WriteThrough()` option now takes an "enabled" parameter: `WriteThrough(enabled bool)`.
+
 ### Removed
 
 ### Fixed
