@@ -30,7 +30,7 @@ func TestExchange(t *testing.T) {
 	provExchange := New(i.Exchange, prov)
 	// write-through so that we notify when re-adding block
 	bs := blockservice.New(i.Blockstore, provExchange,
-		blockservice.WriteThrough())
+		blockservice.WriteThrough(true))
 	block := random.BlocksOfSize(1, 10)[0]
 	// put it on the blockstore of the first instance
 	err = i.Blockstore.Put(ctx, block)
