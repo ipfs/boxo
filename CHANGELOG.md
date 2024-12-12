@@ -16,6 +16,11 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `bitswap/client/messagequeue`: Expose `DontHaveTimeoutConfig` to hold configuration values for dontHaveTimeoutMgr
+  - Provide function DefaultDontHaveTimeoutConfig to return a DontHaveTimeoutConfig populated with default values
+  - Bitswap client New has new option for caller to supply a DontHaveTimeoutConfig
+  - If the required onHaveTimeout function is nil, then disable the dontaHaveTimeoutMgr
+
 ### Changed
 
 ### Removed
@@ -65,7 +70,7 @@ The following emojis are used to highlight certain changes:
 		provider := provider.New(datastore, provider.Online(contentProvider)
 		// A wrapped providing exchange using the previous exchange and the provider.
 		exch := providing.New(bswap, provider)
-	
+
 		// Finally the blockservice
 		bserv := blockservice.New(blockstore, exch)
 		...

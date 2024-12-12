@@ -69,6 +69,12 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 	}
 }
 
+func WithDontHaveTimeoutConfig(cfg *bsmq.DontHaveTimeoutConfig) Option {
+	return func(bs *Client) {
+		bs.dontHaveTimeoutConfig = cfg
+	}
+}
+
 // Configures the Client to use given tracer.
 // This provides methods to access all messages sent and received by the Client.
 // This interface can be used to implement various statistics (this is original intent).
@@ -173,8 +179,9 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 		}
 	}
 	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
-		return bsmq.New(ctx, p, network, onDontHaveTimeout)
+		return bsmq.New(ctx, p, network, onDontHaveTimeout, bsmq.WithDontHaveTimeoutConfig(bs.dontHaveTimeoutConfig))
 	}
+	bs.dontHaveTimeoutConfig = nil
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
@@ -284,6 +291,7 @@ type Client struct {
 
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
+	dontHaveTimeoutConfig      *bsmq.DontHaveTimeoutConfig
 
 	// dupMetric will stay at 0
 	skipDuplicatedBlocksStats bool
