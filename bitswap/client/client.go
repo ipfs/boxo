@@ -171,10 +171,16 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 	// onDontHaveTimeout is called when a want-block is sent to a peer that
 	// has an old version of Bitswap that doesn't support DONT_HAVE messages,
 	// or when no response is received within a timeout.
+	//
+	// When set to nil (when bs.simulateDontHavesOnTimeout is false), then
+	// disable the dontHaveTimoutMgr and do not simulate DONT_HAVE messages on
+	// timeout.
+	var onDontHaveTimeout func(peer.ID, []cid.Cid)
+
 	var sm *bssm.SessionManager
-	onDontHaveTimeout := func(p peer.ID, dontHaves []cid.Cid) {
+	if bs.simulateDontHavesOnTimeout {
 		// Simulate a message arriving with DONT_HAVEs
-		if bs.simulateDontHavesOnTimeout {
+		onDontHaveTimeout = func(p peer.ID, dontHaves []cid.Cid) {
 			sm.ReceiveFrom(ctx, p, nil, nil, dontHaves)
 		}
 	}
