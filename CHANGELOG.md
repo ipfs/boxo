@@ -33,6 +33,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+* `mfs`: directory cache is now cleared every time the directory node is read, somewhat limiting unbounded growth and time to sync it to the underlying unixfs.
+
 ### Security
 
 ## [v0.25.0]

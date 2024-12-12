@@ -99,10 +99,11 @@ func (d *Directory) localUpdate(c child) (*dag.ProtoNode, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	err := d.updateChild(c)
+	err := d.unixfsDir.AddChild(d.ctx, c.Name, c.Node)
 	if err != nil {
 		return nil, err
 	}
+
 	// TODO: Clearly define how are we propagating changes to lower layers
 	// like UnixFS.
 
@@ -125,29 +126,8 @@ func (d *Directory) localUpdate(c child) (*dag.ProtoNode, error) {
 	// TODO: Why do we need a copy?
 }
 
-// Update child entry in the underlying UnixFS directory.
-func (d *Directory) updateChild(c child) error {
-	err := d.unixfsDir.AddChild(d.ctx, c.Name, c.Node)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (d *Directory) Type() NodeType {
 	return TDir
-}
-
-// childNode returns a FSNode under this directory by the given name if it exists.
-// it does *not* check the cached dirs and files
-func (d *Directory) childNode(name string) (FSNode, error) {
-	nd, err := d.childFromDag(name)
-	if err != nil {
-		return nil, err
-	}
-
-	return d.cacheNode(name, nd)
 }
 
 // cacheNode caches a node into d.childDirs or d.files and returns the FSNode.
@@ -219,7 +199,12 @@ func (d *Directory) childUnsync(name string) (FSNode, error) {
 		return entry, nil
 	}
 
-	return d.childNode(name)
+	nd, err := d.childFromDag(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return d.cacheNode(name, nd)
 }
 
 type NodeListing struct {
@@ -361,29 +346,24 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 		return err
 	}
 
-	err = d.unixfsDir.AddChild(d.ctx, name, nd)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return d.unixfsDir.AddChild(d.ctx, name, nd)
 }
 
-func (d *Directory) sync() error {
+func (d *Directory) syncCache(clean bool) error {
 	for name, entry := range d.entriesCache {
 		nd, err := entry.GetNode()
 		if err != nil {
 			return err
 		}
 
-		err = d.updateChild(child{name, nd})
+		err = d.unixfsDir.AddChild(d.ctx, name, nd)
 		if err != nil {
 			return err
 		}
 	}
-
-	// TODO: Should we clean the cache here?
-
+	if clean {
+		d.entriesCache = make(map[string]FSNode)
+	}
 	return nil
 }
 
@@ -408,7 +388,7 @@ func (d *Directory) GetNode() (ipld.Node, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	err := d.sync()
+	err := d.syncCache(true)
 	if err != nil {
 		return nil, err
 	}
