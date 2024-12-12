@@ -23,6 +23,14 @@ var (
 	ErrDirExists         = errors.New("directory already has entry by that name")
 )
 
+var (
+	// maxCacheSize controls how often to sync directory entries.  we
+	// cannot let the cache grow unbounded in memory, not only because of
+	// memory usage, but also because syncing the cache on very large
+	// folders may start taking minutes.
+	maxCacheSize = 500 // sync when reached
+)
+
 // TODO: There's too much functionality associated with this structure,
 // let's organize it (and if possible extract part of it elsewhere)
 // and document the main features of `Directory` here.
@@ -61,7 +69,7 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 		},
 		ctx:          ctx,
 		unixfsDir:    db,
-		entriesCache: make(map[string]FSNode),
+		entriesCache: make(map[string]FSNode, maxCacheSize),
 	}, nil
 }
 
@@ -167,6 +175,7 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 			}
 
 			d.entriesCache[name] = ndir
+			d.syncIfCacheFull(true)
 			return ndir, nil
 		case ft.TFile, ft.TRaw, ft.TSymlink:
 			nfi, err := NewFile(name, nd, d, d.dagService)
@@ -174,6 +183,7 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 				return nil, err
 			}
 			d.entriesCache[name] = nfi
+			d.syncIfCacheFull(true)
 			return nfi, nil
 		case ft.TMetadata:
 			return nil, ErrNotYetImplemented
@@ -186,6 +196,7 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 			return nil, err
 		}
 		d.entriesCache[name] = nfi
+		d.syncIfCacheFull(true)
 		return nfi, nil
 	default:
 		return nil, errors.New("unrecognized node type in cache node")
@@ -369,7 +380,13 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 	return nil
 }
 
-func (d *Directory) sync() error {
+func (d *Directory) syncIfCacheFull(clean bool) {
+	if len(d.entriesCache) >= maxCacheSize {
+		d.syncCache(clean)
+	}
+}
+
+func (d *Directory) syncCache(clean bool) error {
 	for name, entry := range d.entriesCache {
 		nd, err := entry.GetNode()
 		if err != nil {
@@ -382,7 +399,9 @@ func (d *Directory) sync() error {
 		}
 	}
 
-	// TODO: Should we clean the cache here?
+	if clean {
+		d.entriesCache = make(map[string]FSNode, maxCacheSize+1)
+	}
 
 	return nil
 }
@@ -408,7 +427,7 @@ func (d *Directory) GetNode() (ipld.Node, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	err := d.sync()
+	err := d.syncCache(false)
 	if err != nil {
 		return nil, err
 	}
