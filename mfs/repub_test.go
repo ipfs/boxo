@@ -7,6 +7,7 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	ci "github.com/libp2p/go-libp2p-testing/ci"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRepublisher(t *testing.T) {
@@ -14,12 +15,14 @@ func TestRepublisher(t *testing.T) {
 		t.Skip("dont run timing tests in CI")
 	}
 
-	ctx := context.TODO()
-
 	pub := make(chan struct{})
 
 	pf := func(ctx context.Context, c cid.Cid) error {
-		pub <- struct{}{}
+		select {
+		case pub <- struct{}{}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 		return nil
 	}
 
@@ -29,8 +32,7 @@ func TestRepublisher(t *testing.T) {
 	tshort := time.Millisecond * 50
 	tlong := time.Second / 2
 
-	rp := NewRepublisher(ctx, pf, tshort, tlong)
-	go rp.Run(cid.Undef)
+	rp := NewRepublisher(pf, tshort, tlong, cid.Undef)
 
 	rp.Update(testCid1)
 
@@ -41,16 +43,17 @@ func TestRepublisher(t *testing.T) {
 	case <-pub:
 	}
 
-	cctx, cancel := context.WithCancel(context.Background())
-
+	stopUpdates := make(chan struct{})
 	go func() {
+		timer := time.NewTimer(time.Hour)
+		defer timer.Stop()
 		for {
 			rp.Update(testCid2)
-			time.Sleep(time.Millisecond * 10)
+			timer.Reset(time.Millisecond * 10)
 			select {
-			case <-cctx.Done():
+			case <-timer.C:
+			case <-stopUpdates:
 				return
-			default:
 			}
 		}
 	}()
@@ -66,10 +69,33 @@ func TestRepublisher(t *testing.T) {
 		t.Fatal("waited too long for pub!")
 	}
 
-	cancel()
+	close(stopUpdates)
 
-	err := rp.Close()
-	if err != nil {
-		t.Fatal(err)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	// Check that republishing update does not call pubfunc again
+	rp.Update(testCid2)
+	err := rp.WaitPub(context.Background())
+	require.NoError(t, err)
+	select {
+	case <-pub:
+		t.Fatal("pub func called again with repeated update")
+	case <-time.After(tlong * 2):
 	}
+
+	// Check that waitpub times out when blocked pubfunc is called
+	rp.Update(testCid1)
+	err = rp.WaitPub(ctx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	// Unblock pubfunc.
+	<-pub
+
+	err = rp.Close()
+	require.NoError(t, err)
+
+	// Check that additional call to Close is OK after republisher stopped.
+	err = rp.Close()
+	require.NoError(t, err)
 }
