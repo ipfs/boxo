@@ -12,24 +12,31 @@ import (
 )
 
 type DontHaveTimeoutConfig struct {
+	// OnDontHaveTimeout is the function called when DontHaveTimeout hits.
 	OnDontHaveTimeout func([]cid.Cid)
+
 	// DontHaveTimeout is used to simulate a DONT_HAVE when communicating with
 	// a peer whose Bitswap client doesn't support the DONT_HAVE response,
 	// or when the peer takes too long to respond.
 	// If the peer doesn't respond to a want-block within the timeout, the
 	// local node assumes that the peer doesn't have the block.
 	DontHaveTimeout time.Duration
+
 	// MaxExpectedWantProcessTime is the maximum amount of time we expect a
 	// peer takes to process a want and initiate sending a response to us
 	MaxExpectedWantProcessTime time.Duration
-	// maxTimeout is the maximum allowed timeout, regardless of latency
+
+	// MaxTimeout is the maximum allowed timeout, regardless of latency
 	MaxTimeout time.Duration
+
 	// PingLatencyMultiplier is multiplied by the average ping time to
 	// get an upper bound on how long we expect to wait for a peer's response
 	// to arrive
 	PingLatencyMultiplier int
+
 	// MessageLatencyAlpha is the alpha supplied to the message latency EWMA
 	MessageLatencyAlpha float64
+
 	// MessageLatencyMultiplier gives a margin for error. The timeout is calculated as
 	// MessageLatencyMultiplier * message latency
 	MessageLatencyMultiplier int
@@ -37,6 +44,7 @@ type DontHaveTimeoutConfig struct {
 	// timeoutsSignal used for testing -- caller-provided channel to signals
 	// when a dont have timeout was triggered.
 	timeoutsSignal chan<- struct{}
+
 	// clock is a mockable time api used for testing.
 	clock clock.Clock
 }

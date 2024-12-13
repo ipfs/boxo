@@ -16,10 +16,11 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `bitswap/client/messagequeue`: Expose `DontHaveTimeoutConfig` to hold configuration values for dontHaveTimeoutMgr
-  - Provide function DefaultDontHaveTimeoutConfig to return a DontHaveTimeoutConfig populated with default values
-  - Bitswap client New has new option for caller to supply a DontHaveTimeoutConfig
-  - If the required onHaveTimeout function is nil, then disable the dontaHaveTimeoutMgr
+- `bitswap/client`: Improved timeout configuration for block requests
+  - Exposed `DontHaveTimeoutConfig` to hold configuration values for `dontHaveTimeoutMgr` which controls how long to wait for requested block, and if timeout should emit a synthetic DontHave response
+  - Added `DefaultDontHaveTimeoutConfig()` to return a `DontHaveTimeoutConfig` populated with default values
+  - Added optional `WithDontHaveTimeoutConfig` to allow passing a custom `DontHaveTimeoutConfig`
+  - If `DontHaveTimeoutConfig.onDontHaveTimeout` is `nil`, then `dontaHaveTimeoutMgr` is disabled and synthetic DontHave won't be emitted on timeout
 
 ### Changed
 
