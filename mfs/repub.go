@@ -111,6 +111,11 @@ func (rp *Republisher) Update(c cid.Cid) {
 // duration. The `quick` timer allows publishing sooner if there are no more
 // updates available.
 //
+// In other words, the quick timeout means there are no more values to put into
+// the "batch", so do update. The long timeout means there are that the "batch"
+// is full, so do update, even though there are still values (no quick timeout
+// yet) arriving.
+//
 // If a publish fails, retry repeatedly every `longer` timeout.
 func (rp *Republisher) run(ctx context.Context, timeoutShort, timeoutLong time.Duration, lastPublished cid.Cid) {
 	defer close(rp.stopped)
@@ -141,7 +146,7 @@ func (rp *Republisher) run(ctx context.Context, timeoutShort, timeoutLong time.D
 				break
 			}
 
-			// If mot already waiting to publish something, reset the long
+			// If not already waiting to publish something, reset the long
 			// timeout.
 			if !toPublish.Defined() {
 				longer.Reset(timeoutLong)
