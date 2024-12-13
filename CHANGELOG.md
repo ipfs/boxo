@@ -16,11 +16,20 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `bitswap/client`: Improved timeout configuration for block requests
+  - Exposed `DontHaveTimeoutConfig` to hold configuration values for `dontHaveTimeoutMgr` which controls how long to wait for requested block before emitting a synthetic DontHave response
+  - Added `DefaultDontHaveTimeoutConfig()` to return a `DontHaveTimeoutConfig` populated with default values
+  - Added optional `WithDontHaveTimeoutConfig` to allow passing a custom `DontHaveTimeoutConfig`
+  - Setting `SetSendDontHaves(false)` works the same as before. Behind the scenes, it will disable `dontHaveTimeoutMgr` by passing a `nil` `onDontHaveTimeout` to `newDontHaveTimeoutMgr`.
+
+
 ### Changed
 
 * 🛠 `blockstore` and `blockservice`'s `WriteThrough()` option now takes an "enabled" parameter: `WriteThrough(enabled bool)`.
 
 ### Removed
+
+
 
 ### Fixed
 
@@ -67,7 +76,7 @@ The following emojis are used to highlight certain changes:
 		provider := provider.New(datastore, provider.Online(contentProvider)
 		// A wrapped providing exchange using the previous exchange and the provider.
 		exch := providing.New(bswap, provider)
-	
+
 		// Finally the blockservice
 		bserv := blockservice.New(blockstore, exch)
 		...
