@@ -12,9 +12,6 @@ import (
 )
 
 type DontHaveTimeoutConfig struct {
-	// OnDontHaveTimeout is the function called when DontHaveTimeout hits.
-	OnDontHaveTimeout func([]cid.Cid)
-
 	// DontHaveTimeout is used to simulate a DONT_HAVE when communicating with
 	// a peer whose Bitswap client doesn't support the DONT_HAVE response,
 	// or when the peer takes too long to respond.
@@ -47,10 +44,6 @@ type DontHaveTimeoutConfig struct {
 
 	// clock is a mockable time api used for testing.
 	clock clock.Clock
-}
-
-func (c *DontHaveTimeoutConfig) Enabled() bool {
-	return c.OnDontHaveTimeout != nil
 }
 
 func DefaultDontHaveTimeoutConfig() *DontHaveTimeoutConfig {
