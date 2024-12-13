@@ -198,7 +198,7 @@ func TestOfflineRecordsThenOnlineRepublish(t *testing.T) {
 	sys, err := New(ds)
 	assert.NoError(t, err)
 
-	err = sys.Provide(c)
+	err = sys.Provide(context.Background(), c, true)
 	assert.NoError(t, err)
 
 	err = sys.Close()

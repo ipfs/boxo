@@ -1,9 +1,12 @@
 package session
 
-import cid "github.com/ipfs/go-cid"
+import (
+	"github.com/gammazero/deque"
+	cid "github.com/ipfs/go-cid"
+)
 
 type cidQueue struct {
-	elems []cid.Cid
+	elems deque.Deque[cid.Cid]
 	eset  *cid.Set
 }
 
@@ -13,12 +16,11 @@ func newCidQueue() *cidQueue {
 
 func (cq *cidQueue) Pop() cid.Cid {
 	for {
-		if len(cq.elems) == 0 {
+		if cq.elems.Len() == 0 {
 			return cid.Cid{}
 		}
 
-		out := cq.elems[0]
-		cq.elems = cq.elems[1:]
+		out := cq.elems.PopFront()
 
 		if cq.eset.Has(out) {
 			cq.eset.Remove(out)
@@ -29,24 +31,30 @@ func (cq *cidQueue) Pop() cid.Cid {
 
 func (cq *cidQueue) Cids() []cid.Cid {
 	// Lazily delete from the list any cids that were removed from the set
-	if len(cq.elems) > cq.eset.Len() {
-		i := 0
-		for _, c := range cq.elems {
+	if cq.elems.Len() > cq.eset.Len() {
+		for i := 0; i < cq.elems.Len(); i++ {
+			c := cq.elems.PopFront()
 			if cq.eset.Has(c) {
-				cq.elems[i] = c
-				i++
+				cq.elems.PushBack(c)
 			}
 		}
-		cq.elems = cq.elems[:i]
+	}
+
+	if cq.elems.Len() == 0 {
+		return nil
 	}
 
 	// Make a copy of the cids
-	return append([]cid.Cid{}, cq.elems...)
+	cids := make([]cid.Cid, cq.elems.Len())
+	for i := 0; i < cq.elems.Len(); i++ {
+		cids[i] = cq.elems.At(i)
+	}
+	return cids
 }
 
 func (cq *cidQueue) Push(c cid.Cid) {
 	if cq.eset.Visit(c) {
-		cq.elems = append(cq.elems, c)
+		cq.elems.PushBack(c)
 	}
 }
 

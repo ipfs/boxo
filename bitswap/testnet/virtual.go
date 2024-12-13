@@ -8,30 +8,25 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gammazero/deque"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	bsnet "github.com/ipfs/boxo/bitswap/network"
-
-	mockrouting "github.com/ipfs/boxo/routing/mock"
-	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
-
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/peer"
 	protocol "github.com/libp2p/go-libp2p/core/protocol"
-	"github.com/libp2p/go-libp2p/core/routing"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
 // VirtualNetwork generates a new testnet instance - a fake network that
 // is used to simulate sending messages.
-func VirtualNetwork(rs mockrouting.Server, d delay.D) Network {
+func VirtualNetwork(d delay.D) Network {
 	return &network{
 		latencies:          make(map[peer.ID]map[peer.ID]time.Duration),
 		clients:            make(map[peer.ID]*receiverQueue),
 		delay:              d,
-		routingserver:      rs,
 		isRateLimited:      false,
 		rateLimitGenerator: nil,
 		conns:              make(map[string]struct{}),
@@ -45,13 +40,12 @@ type RateLimitGenerator interface {
 
 // RateLimitedVirtualNetwork generates a testnet instance where nodes are rate
 // limited in the upload/download speed.
-func RateLimitedVirtualNetwork(rs mockrouting.Server, d delay.D, rateLimitGenerator RateLimitGenerator) Network {
+func RateLimitedVirtualNetwork(d delay.D, rateLimitGenerator RateLimitGenerator) Network {
 	return &network{
 		latencies:          make(map[peer.ID]map[peer.ID]time.Duration),
 		rateLimiters:       make(map[peer.ID]map[peer.ID]*mocknet.RateLimiter),
 		clients:            make(map[peer.ID]*receiverQueue),
 		delay:              d,
-		routingserver:      rs,
 		isRateLimited:      true,
 		rateLimitGenerator: rateLimitGenerator,
 		conns:              make(map[string]struct{}),
@@ -63,7 +57,6 @@ type network struct {
 	latencies          map[peer.ID]map[peer.ID]time.Duration
 	rateLimiters       map[peer.ID]map[peer.ID]*mocknet.RateLimiter
 	clients            map[peer.ID]*receiverQueue
-	routingserver      mockrouting.Server
 	delay              delay.D
 	isRateLimited      bool
 	rateLimitGenerator RateLimitGenerator
@@ -81,7 +74,7 @@ type message struct {
 // for
 type receiverQueue struct {
 	receiver *networkClient
-	queue    []*message
+	queue    deque.Deque[*message]
 	active   bool
 	lk       sync.Mutex
 }
@@ -105,7 +98,6 @@ func (n *network) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) bsnet.BitSwapNe
 	client := &networkClient{
 		local:              p.ID(),
 		network:            n,
-		routing:            n.routingserver.Client(p),
 		supportedProtocols: s.SupportedProtocols,
 	}
 	n.clients[p.ID()] = &receiverQueue{receiver: client}
@@ -192,7 +184,6 @@ type networkClient struct {
 	local              peer.ID
 	receivers          []bsnet.Receiver
 	network            *network
-	routing            routing.Routing
 	supportedProtocols []protocol.ID
 }
 
@@ -253,27 +244,6 @@ func (nc *networkClient) Stats() bsnet.Stats {
 	}
 }
 
-// FindProvidersAsync returns a channel of providers for the given key.
-func (nc *networkClient) FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.ID {
-	// NB: this function duplicates the AddrInfo -> ID transformation in the
-	// bitswap network adapter. Not to worry. This network client will be
-	// deprecated once the ipfsnet.Mock is added. The code below is only
-	// temporary.
-
-	out := make(chan peer.ID)
-	go func() {
-		defer close(out)
-		providers := nc.routing.FindProvidersAsync(ctx, k, max)
-		for info := range providers {
-			select {
-			case <-ctx.Done():
-			case out <- info.ID:
-			}
-		}
-	}()
-	return out
-}
-
 func (nc *networkClient) ConnectionManager() connmgr.ConnManager {
 	return &connmgr.NullConnMgr{}
 }
@@ -322,11 +292,6 @@ func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID, opts *
 	}, nil
 }
 
-// Provide provides the key to the network.
-func (nc *networkClient) Provide(ctx context.Context, k cid.Cid) error {
-	return nc.routing.Provide(ctx, k, true)
-}
-
 func (nc *networkClient) Start(r ...bsnet.Receiver) {
 	nc.receivers = r
 }
@@ -334,15 +299,15 @@ func (nc *networkClient) Start(r ...bsnet.Receiver) {
 func (nc *networkClient) Stop() {
 }
 
-func (nc *networkClient) ConnectTo(_ context.Context, p peer.ID) error {
+func (nc *networkClient) Connect(_ context.Context, p peer.AddrInfo) error {
 	nc.network.mu.Lock()
-	otherClient, ok := nc.network.clients[p]
+	otherClient, ok := nc.network.clients[p.ID]
 	if !ok {
 		nc.network.mu.Unlock()
 		return errors.New("no such peer in network")
 	}
 
-	tag := tagForPeers(nc.local, p)
+	tag := tagForPeers(nc.local, p.ID)
 	if _, ok := nc.network.conns[tag]; ok {
 		nc.network.mu.Unlock()
 		// log.Warning("ALREADY CONNECTED TO PEER (is this a reconnect? test lib needs fixing)")
@@ -352,7 +317,7 @@ func (nc *networkClient) ConnectTo(_ context.Context, p peer.ID) error {
 	nc.network.mu.Unlock()
 
 	otherClient.receiver.PeerConnected(nc.local)
-	nc.PeerConnected(p)
+	nc.PeerConnected(p.ID)
 	return nil
 }
 
@@ -380,7 +345,7 @@ func (nc *networkClient) DisconnectFrom(_ context.Context, p peer.ID) error {
 func (rq *receiverQueue) enqueue(m *message) {
 	rq.lk.Lock()
 	defer rq.lk.Unlock()
-	rq.queue = append(rq.queue, m)
+	rq.queue.PushBack(m)
 	if !rq.active {
 		rq.active = true
 		go rq.process()
@@ -388,29 +353,29 @@ func (rq *receiverQueue) enqueue(m *message) {
 }
 
 func (rq *receiverQueue) Swap(i, j int) {
-	rq.queue[i], rq.queue[j] = rq.queue[j], rq.queue[i]
+	rq.queue.Swap(i, j)
 }
 
 func (rq *receiverQueue) Len() int {
-	return len(rq.queue)
+	return rq.queue.Len()
 }
 
 func (rq *receiverQueue) Less(i, j int) bool {
-	return rq.queue[i].shouldSend.UnixNano() < rq.queue[j].shouldSend.UnixNano()
+	return rq.queue.At(i).shouldSend.UnixNano() < rq.queue.At(j).shouldSend.UnixNano()
 }
 
 func (rq *receiverQueue) process() {
 	for {
 		rq.lk.Lock()
-		sort.Sort(rq)
-		if len(rq.queue) == 0 {
+		if rq.queue.Len() == 0 {
 			rq.active = false
 			rq.lk.Unlock()
 			return
 		}
-		m := rq.queue[0]
+		sort.Sort(rq)
+		m := rq.queue.Front()
 		if time.Until(m.shouldSend).Seconds() < 0.1 {
-			rq.queue = rq.queue[1:]
+			rq.queue.PopFront()
 			rq.lk.Unlock()
 			time.Sleep(time.Until(m.shouldSend))
 			atomic.AddUint64(&rq.receiver.stats.MessagesRecvd, 1)

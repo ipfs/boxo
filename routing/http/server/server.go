@@ -10,11 +10,13 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/gorilla/mux"
 	"github.com/ipfs/boxo/ipns"
+	"github.com/ipfs/boxo/routing/http/filters"
 	"github.com/ipfs/boxo/routing/http/internal/drjson"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
@@ -24,8 +26,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
+	"github.com/prometheus/client_golang/prometheus"
 
 	logging "github.com/ipfs/go-log/v2"
+	metrics "github.com/slok/go-http-metrics/metrics/prometheus"
+	"github.com/slok/go-http-metrics/middleware"
+	middlewarestd "github.com/slok/go-http-metrics/middleware/std"
 )
 
 const (
@@ -36,6 +42,7 @@ const (
 
 	DefaultRecordsLimit          = 20
 	DefaultStreamingRecordsLimit = 0
+	DefaultRoutingTimeout        = 30 * time.Second
 )
 
 var logger = logging.Logger("routing/http/server")
@@ -121,31 +128,75 @@ func WithStreamingRecordsLimit(limit int) Option {
 	}
 }
 
+func WithPrometheusRegistry(reg prometheus.Registerer) Option {
+	return func(s *server) {
+		s.promRegistry = reg
+	}
+}
+
+func WithRoutingTimeout(timeout time.Duration) Option {
+	return func(s *server) {
+		s.routingTimeout = timeout
+	}
+}
+
 func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	server := &server{
 		svc:                   svc,
 		recordsLimit:          DefaultRecordsLimit,
 		streamingRecordsLimit: DefaultStreamingRecordsLimit,
+		routingTimeout:        DefaultRoutingTimeout,
 	}
 
 	for _, opt := range opts {
 		opt(server)
 	}
 
+	if server.promRegistry == nil {
+		server.promRegistry = prometheus.DefaultRegisterer
+	}
+
+	// Workaround due to https://github.com/slok/go-http-metrics
+	// using egistry.MustRegister internally.
+	// In production there will be only one handler, however we append counter
+	// to ensure duplicate metric registration will not panic in parallel tests
+	// when global prometheus.DefaultRegisterer is used.
+	metricsPrefix := "delegated_routing_server"
+	c := handlerCount.Add(1)
+	if c > 1 {
+		metricsPrefix = fmt.Sprintf("%s_%d", metricsPrefix, c)
+	}
+
+	// Create middleware with prometheus recorder
+	mdlw := middleware.New(middleware.Config{
+		Recorder: metrics.NewRecorder(metrics.Config{
+			Registry:        server.promRegistry,
+			Prefix:          metricsPrefix,
+			SizeBuckets:     prometheus.ExponentialBuckets(100, 4, 8), // [100 400 1600 6400 25600 102400 409600 1.6384e+06]
+			DurationBuckets: []float64{0.1, 0.5, 1, 2, 5, 8, 10, 20, 30},
+		}),
+	})
+
 	r := mux.NewRouter()
-	r.HandleFunc(findProvidersPath, server.findProviders).Methods(http.MethodGet)
-	r.HandleFunc(providePath, server.provide).Methods(http.MethodPut)
-	r.HandleFunc(findPeersPath, server.findPeers).Methods(http.MethodGet)
-	r.HandleFunc(GetIPNSPath, server.GetIPNS).Methods(http.MethodGet)
-	r.HandleFunc(GetIPNSPath, server.PutIPNS).Methods(http.MethodPut)
+	// Wrap each handler with the metrics middleware
+	r.Handle(findProvidersPath, middlewarestd.Handler(findProvidersPath, mdlw, http.HandlerFunc(server.findProviders))).Methods(http.MethodGet)
+	r.Handle(providePath, middlewarestd.Handler(providePath, mdlw, http.HandlerFunc(server.provide))).Methods(http.MethodPut)
+	r.Handle(findPeersPath, middlewarestd.Handler(findPeersPath, mdlw, http.HandlerFunc(server.findPeers))).Methods(http.MethodGet)
+	r.Handle(GetIPNSPath, middlewarestd.Handler(GetIPNSPath, mdlw, http.HandlerFunc(server.GetIPNS))).Methods(http.MethodGet)
+	r.Handle(GetIPNSPath, middlewarestd.Handler(GetIPNSPath, mdlw, http.HandlerFunc(server.PutIPNS))).Methods(http.MethodPut)
+
 	return r
 }
+
+var handlerCount atomic.Int32
 
 type server struct {
 	svc                   ContentRouter
 	disableNDJSON         bool
 	recordsLimit          int
 	streamingRecordsLimit int
+	promRegistry          prometheus.Registerer
+	routingTimeout        time.Duration
 }
 
 func (s *server) detectResponseType(r *http.Request) (string, error) {
@@ -196,8 +247,8 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 
 	// Parse query parameters
 	query := httpReq.URL.Query()
-	filterAddrs := parseFilter(query.Get("filter-addrs"))
-	filterProtocols := parseFilter(query.Get("filter-protocols"))
+	filterAddrs := filters.ParseFilter(query.Get("filter-addrs"))
+	filterProtocols := filters.ParseFilter(query.Get("filter-protocols"))
 
 	mediaType, err := s.detectResponseType(httpReq)
 	if err != nil {
@@ -218,7 +269,10 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		recordsLimit = s.recordsLimit
 	}
 
-	provIter, err := s.svc.FindProviders(httpReq.Context(), cid, recordsLimit)
+	ctx, cancel := context.WithTimeout(httpReq.Context(), s.routingTimeout)
+	defer cancel()
+
+	provIter, err := s.svc.FindProviders(ctx, cid, recordsLimit)
 	if err != nil {
 		if errors.Is(err, routing.ErrNotFound) {
 			// handlerFunc takes care of setting the 404 and necessary headers
@@ -235,7 +289,7 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) {
 	defer provIter.Close()
 
-	filteredIter := applyFiltersToIter(provIter, filterAddrs, filterProtocols)
+	filteredIter := filters.ApplyFiltersToIter(provIter, filterAddrs, filterProtocols)
 	providers, err := iter.ReadAllResults(filteredIter)
 	if err != nil {
 		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
@@ -247,7 +301,7 @@ func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIt
 	})
 }
 func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) {
-	filteredIter := applyFiltersToIter(provIter, filterAddrs, filterProtocols)
+	filteredIter := filters.ApplyFiltersToIter(provIter, filterAddrs, filterProtocols)
 
 	writeResultsIterNDJSON(w, filteredIter)
 }
@@ -285,8 +339,8 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := r.URL.Query()
-	filterAddrs := parseFilter(query.Get("filter-addrs"))
-	filterProtocols := parseFilter(query.Get("filter-protocols"))
+	filterAddrs := filters.ParseFilter(query.Get("filter-addrs"))
+	filterProtocols := filters.ParseFilter(query.Get("filter-protocols"))
 
 	mediaType, err := s.detectResponseType(r)
 	if err != nil {
@@ -307,7 +361,11 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 		recordsLimit = s.recordsLimit
 	}
 
-	provIter, err := s.svc.FindPeers(r.Context(), pid, recordsLimit)
+	// Add timeout to the routing operation
+	ctx, cancel := context.WithTimeout(r.Context(), s.routingTimeout)
+	defer cancel()
+
+	provIter, err := s.svc.FindPeers(ctx, pid, recordsLimit)
 	if err != nil {
 		if errors.Is(err, routing.ErrNotFound) {
 			// handlerFunc takes care of setting the 404 and necessary headers
@@ -383,29 +441,9 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord], filterAddrs, filterProtocols []string) {
 	defer peersIter.Close()
 
-	// Convert PeerRecord to Record so that we can reuse the filtering logic from findProviders
-	mappedIter := iter.Map(peersIter, func(v iter.Result[*types.PeerRecord]) iter.Result[types.Record] {
-		if v.Err != nil || v.Val == nil {
-			return iter.Result[types.Record]{Err: v.Err}
-		}
+	peersIter = filters.ApplyFiltersToPeerRecordIter(peersIter, filterAddrs, filterProtocols)
 
-		var record types.Record = v.Val
-		return iter.Result[types.Record]{Val: record}
-	})
-
-	filteredIter := applyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
-
-	// Convert Record back to PeerRecord 🙃
-	finalIter := iter.Map(filteredIter, func(v iter.Result[types.Record]) iter.Result[*types.PeerRecord] {
-		if v.Err != nil || v.Val == nil {
-			return iter.Result[*types.PeerRecord]{Err: v.Err}
-		}
-
-		var record *types.PeerRecord = v.Val.(*types.PeerRecord)
-		return iter.Result[*types.PeerRecord]{Val: record}
-	})
-
-	peers, err := iter.ReadAllResults(finalIter)
+	peers, err := iter.ReadAllResults(peersIter)
 
 	if err != nil {
 		writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
@@ -428,7 +466,7 @@ func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIte
 		return iter.Result[types.Record]{Val: record}
 	})
 
-	filteredIter := applyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
+	filteredIter := filters.ApplyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
 	writeResultsIterNDJSON(w, filteredIter)
 }
 
@@ -458,7 +496,10 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	record, err := s.svc.GetIPNS(r.Context(), name)
+	ctx, cancel := context.WithTimeout(r.Context(), s.routingTimeout)
+	defer cancel()
+
+	record, err := s.svc.GetIPNS(ctx, name)
 	if err != nil {
 		if errors.Is(err, routing.ErrNotFound) {
 			writeErr(w, "GetIPNS", http.StatusNotFound, fmt.Errorf("delegate error: %w", err))
@@ -542,7 +583,10 @@ func (s *server) PutIPNS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.svc.PutIPNS(r.Context(), name, record)
+	ctx, cancel := context.WithTimeout(r.Context(), s.routingTimeout)
+	defer cancel()
+
+	err = s.svc.PutIPNS(ctx, name, record)
 	if err != nil {
 		writeErr(w, "PutIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return

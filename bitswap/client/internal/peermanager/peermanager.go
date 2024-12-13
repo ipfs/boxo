@@ -42,7 +42,7 @@ type PeerManager struct {
 	createPeerQueue PeerQueueFactory
 	ctx             context.Context
 
-	psLk         sync.RWMutex
+	psLk         sync.Mutex
 	sessions     map[uint64]Session
 	peerSessions map[peer.ID]map[uint64]struct{}
 
@@ -143,13 +143,15 @@ func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.C
 
 // SendWants sends the given want-blocks and want-haves to the given peer.
 // It filters out wants that have previously been sent to the peer.
-func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) {
+func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
-	if _, ok := pm.peerQueues[p]; ok {
-		pm.pwm.sendWants(p, wantBlocks, wantHaves)
+	if _, ok := pm.peerQueues[p]; !ok {
+		return false
 	}
+	pm.pwm.sendWants(p, wantBlocks, wantHaves)
+	return true
 }
 
 // SendCancels sends cancels for the given keys to all peers who had previously

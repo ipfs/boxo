@@ -49,7 +49,8 @@ func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit in
 
 func (m *mockContentRouter) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
-	return args.Get(0).(*ipns.Record), args.Error(1)
+	rec, _ := args.Get(0).(*ipns.Record)
+	return rec, args.Error(1)
 }
 
 func (m *mockContentRouter) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
@@ -158,12 +159,12 @@ func addrsToDRAddrs(addrs []multiaddr.Multiaddr) (drmas []types.Multiaddr) {
 	return
 }
 
-func makePeerRecord() types.PeerRecord {
+func makePeerRecord(protocols []string) types.PeerRecord {
 	peerID, addrs, _ := makeProviderAndIdentity()
 	return types.PeerRecord{
 		Schema:    types.SchemaPeer,
 		ID:        &peerID,
-		Protocols: []string{"transport-bitswap"},
+		Protocols: protocols,
 		Addrs:     addrsToDRAddrs(addrs),
 		Extra:     map[string]json.RawMessage{},
 	}
@@ -196,7 +197,7 @@ func makeProviderAndIdentity() (peer.ID, []multiaddr.Multiaddr, crypto.PrivKey) 
 		panic(err)
 	}
 
-	ma2, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/tcp/4002")
+	ma2, err := multiaddr.NewMultiaddr("/ip4/0.0.0.0/udp/4002")
 	if err != nil {
 		panic(err)
 	}
@@ -222,9 +223,22 @@ func (e *osErrContains) errContains(t *testing.T, err error) {
 }
 
 func TestClient_FindProviders(t *testing.T) {
-	peerRecord := makePeerRecord()
+	unknownPeerRecord := makePeerRecord([]string{})
+	bitswapPeerRecord := makePeerRecord([]string{"transport-bitswap"})
+	httpPeerRecord := makePeerRecord([]string{"transport-ipfs-gateway-http"})
+	fooPeerRecord := makePeerRecord([]string{"transport-foo"})
+
 	peerProviders := []iter.Result[types.Record]{
-		{Val: &peerRecord},
+		{Val: &unknownPeerRecord},
+		{Val: &bitswapPeerRecord},
+		{Val: &httpPeerRecord},
+		{Val: &fooPeerRecord},
+	}
+
+	// DefaultProtocolFilter
+	defaultFilterPeerProviders := []iter.Result[types.Record]{
+		{Val: &unknownPeerRecord},
+		{Val: &bitswapPeerRecord},
 	}
 
 	bitswapRecord := makeBitswapRecord()
@@ -238,6 +252,7 @@ func TestClient_FindProviders(t *testing.T) {
 		routerErr               error
 		clientRequiresStreaming bool
 		serverStreamingDisabled bool
+		filterProtocols         []string
 
 		expErrContains       osErrContains
 		expResult            []iter.Result[types.Record]
@@ -245,9 +260,23 @@ func TestClient_FindProviders(t *testing.T) {
 		expJSONResponse      bool
 	}{
 		{
-			name:                 "happy case",
+			name:                 "happy case with DefaultProtocolFilter",
+			routerResult:         peerProviders,
+			expResult:            defaultFilterPeerProviders,
+			expStreamingResponse: true,
+		},
+		{
+			name:                 "pass through with protocol filter disabled",
+			filterProtocols:      []string{},
 			routerResult:         peerProviders,
 			expResult:            peerProviders,
+			expStreamingResponse: true,
+		},
+		{
+			name:                 "happy case with custom protocol filter",
+			filterProtocols:      []string{"transport-foo"},
+			routerResult:         peerProviders,
+			expResult:            []iter.Result[types.Record]{{Val: &fooPeerRecord}},
 			expStreamingResponse: true,
 		},
 		{
@@ -259,7 +288,7 @@ func TestClient_FindProviders(t *testing.T) {
 		{
 			name:                    "server doesn't support streaming",
 			routerResult:            peerProviders,
-			expResult:               peerProviders,
+			expResult:               defaultFilterPeerProviders,
 			serverStreamingDisabled: true,
 			expJSONResponse:         true,
 		},
@@ -303,6 +332,10 @@ func TestClient_FindProviders(t *testing.T) {
 				onReqReceived = append(onReqReceived, func(r *http.Request) {
 					assert.Equal(t, mediaTypeNDJSON, r.Header.Get("Accept"))
 				})
+			}
+
+			if c.filterProtocols != nil {
+				clientOpts = append(clientOpts, WithProtocolFilter(c.filterProtocols))
 			}
 
 			if c.expStreamingResponse {
@@ -482,11 +515,25 @@ func TestClient_Provide(t *testing.T) {
 }
 
 func TestClient_FindPeers(t *testing.T) {
-	peerRecord := makePeerRecord()
+	unknownPeerRecord := makePeerRecord([]string{})
+	bitswapPeerRecord := makePeerRecord([]string{"transport-bitswap"})
+	httpPeerRecord := makePeerRecord([]string{"transport-ipfs-gateway-http"})
+	fooPeerRecord := makePeerRecord([]string{"transport-foo"})
+
 	peerRecords := []iter.Result[*types.PeerRecord]{
-		{Val: &peerRecord},
+		{Val: &unknownPeerRecord},
+		{Val: &bitswapPeerRecord},
+		{Val: &httpPeerRecord},
+		{Val: &fooPeerRecord},
 	}
-	pid := *peerRecord.ID
+
+	// DefaultProtocolFilter
+	defaultFilterPeerRecords := []iter.Result[*types.PeerRecord]{
+		{Val: &unknownPeerRecord},
+		{Val: &bitswapPeerRecord},
+	}
+
+	pid := *bitswapPeerRecord.ID
 
 	cases := []struct {
 		name                    string
@@ -496,6 +543,7 @@ func TestClient_FindPeers(t *testing.T) {
 		routerErr               error
 		clientRequiresStreaming bool
 		serverStreamingDisabled bool
+		filterProtocols         []string
 
 		expErrContains       osErrContains
 		expResult            []iter.Result[*types.PeerRecord]
@@ -503,15 +551,29 @@ func TestClient_FindPeers(t *testing.T) {
 		expJSONResponse      bool
 	}{
 		{
-			name:                 "happy case",
+			name:                 "happy case with DefaultProtocolFilter",
+			routerResult:         peerRecords,
+			expResult:            defaultFilterPeerRecords,
+			expStreamingResponse: true,
+		},
+		{
+			name:                 "pass through with protocol filter disabled",
+			filterProtocols:      []string{},
 			routerResult:         peerRecords,
 			expResult:            peerRecords,
 			expStreamingResponse: true,
 		},
 		{
+			name:                 "happy case with custom protocol filter",
+			filterProtocols:      []string{"transport-foo"},
+			routerResult:         peerRecords,
+			expResult:            []iter.Result[*types.PeerRecord]{{Val: &fooPeerRecord}},
+			expStreamingResponse: true,
+		},
+		{
 			name:                    "server doesn't support streaming",
 			routerResult:            peerRecords,
-			expResult:               peerRecords,
+			expResult:               defaultFilterPeerRecords,
 			serverStreamingDisabled: true,
 			expJSONResponse:         true,
 		},
@@ -542,12 +604,10 @@ func TestClient_FindPeers(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			var (
-				clientOpts     []Option
-				serverOpts     []server.Option
-				onRespReceived []func(*http.Response)
-				onReqReceived  []func(*http.Request)
-			)
+			var clientOpts []Option
+			var serverOpts []server.Option
+			var onRespReceived []func(*http.Response)
+			var onReqReceived []func(*http.Request)
 
 			if c.serverStreamingDisabled {
 				serverOpts = append(serverOpts, server.WithStreamingResultsDisabled())
@@ -558,6 +618,10 @@ func TestClient_FindPeers(t *testing.T) {
 				onReqReceived = append(onReqReceived, func(r *http.Request) {
 					assert.Equal(t, mediaTypeNDJSON, r.Header.Get("Accept"))
 				})
+			}
+
+			if c.filterProtocols != nil {
+				clientOpts = append(clientOpts, WithProtocolFilter(c.filterProtocols))
 			}
 
 			if c.expStreamingResponse {
@@ -603,7 +667,7 @@ func TestClient_FindPeers(t *testing.T) {
 			resultIter, err := client.FindPeers(ctx, pid)
 			c.expErrContains.errContains(t, err)
 
-			results := iter.ReadAll[iter.Result[*types.PeerRecord]](resultIter)
+			results := iter.ReadAll(resultIter)
 			assert.Equal(t, c.expResult, results)
 		})
 	}
