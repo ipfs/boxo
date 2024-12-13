@@ -69,6 +69,12 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 	}
 }
 
+func WithDontHaveTimeoutConfig(cfg *bsmq.DontHaveTimeoutConfig) Option {
+	return func(bs *Client) {
+		bs.dontHaveTimeoutConfig = cfg
+	}
+}
+
 // Configures the Client to use given tracer.
 // This provides methods to access all messages sent and received by the Client.
 // This interface can be used to implement various statistics (this is original intent).
@@ -165,16 +171,23 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 	// onDontHaveTimeout is called when a want-block is sent to a peer that
 	// has an old version of Bitswap that doesn't support DONT_HAVE messages,
 	// or when no response is received within a timeout.
+	//
+	// When set to nil (when bs.simulateDontHavesOnTimeout is false), then
+	// disable the dontHaveTimoutMgr and do not simulate DONT_HAVE messages on
+	// timeout.
+	var onDontHaveTimeout func(peer.ID, []cid.Cid)
+
 	var sm *bssm.SessionManager
-	onDontHaveTimeout := func(p peer.ID, dontHaves []cid.Cid) {
+	if bs.simulateDontHavesOnTimeout {
 		// Simulate a message arriving with DONT_HAVEs
-		if bs.simulateDontHavesOnTimeout {
+		onDontHaveTimeout = func(p peer.ID, dontHaves []cid.Cid) {
 			sm.ReceiveFrom(ctx, p, nil, nil, dontHaves)
 		}
 	}
 	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
-		return bsmq.New(ctx, p, network, onDontHaveTimeout)
+		return bsmq.New(ctx, p, network, onDontHaveTimeout, bsmq.WithDontHaveTimeoutConfig(bs.dontHaveTimeoutConfig))
 	}
+	bs.dontHaveTimeoutConfig = nil
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
@@ -284,6 +297,7 @@ type Client struct {
 
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
+	dontHaveTimeoutConfig      *bsmq.DontHaveTimeoutConfig
 
 	// dupMetric will stay at 0
 	skipDuplicatedBlocksStats bool

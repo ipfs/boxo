@@ -104,7 +104,7 @@ type MessageQueue struct {
 	clock clock.Clock
 
 	// Used to track things that happen asynchronously -- used only in test
-	events chan messageEvent
+	events chan<- messageEvent
 }
 
 // recallWantlist keeps a list of pending wants and a list of sent wants
@@ -230,15 +230,37 @@ type DontHaveTimeoutManager interface {
 	UpdateMessageLatency(time.Duration)
 }
 
-// New creates a new MessageQueue.
-func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeout OnDontHaveTimeout) *MessageQueue {
-	onTimeout := func(ks []cid.Cid) {
-		log.Infow("Bitswap: timeout waiting for blocks", "cids", ks, "peer", p)
-		onDontHaveTimeout(p, ks)
+type optsConfig struct {
+	dhtConfig *DontHaveTimeoutConfig
+}
+
+type option func(*optsConfig)
+
+func WithDontHaveTimeoutConfig(dhtConfig *DontHaveTimeoutConfig) option {
+	return func(cfg *optsConfig) {
+		cfg.dhtConfig = dhtConfig
 	}
-	clock := clock.New()
-	dhTimeoutMgr := newDontHaveTimeoutMgr(newPeerConnection(p, network), onTimeout, clock)
-	return newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff, maxValidLatency, dhTimeoutMgr, clock, nil)
+}
+
+// New creates a new MessageQueue.
+//
+// If onDontHaveTimeout is nil, then the dontHaveTimeoutMrg is disabled.
+func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeout OnDontHaveTimeout, options ...option) *MessageQueue {
+	var opts optsConfig
+	for _, o := range options {
+		o(&opts)
+	}
+
+	var onTimeout func([]cid.Cid, time.Duration)
+	var dhTimeoutMgr DontHaveTimeoutManager
+	if onDontHaveTimeout != nil {
+		onTimeout = func(ks []cid.Cid, timeout time.Duration) {
+			log.Infow("Bitswap: timeout waiting for blocks", "timeout", timeout.String(), "cids", ks, "peer", p)
+			onDontHaveTimeout(p, ks)
+		}
+		dhTimeoutMgr = newDontHaveTimeoutMgr(newPeerConnection(p, network), onTimeout, opts.dhtConfig)
+	}
+	return newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff, maxValidLatency, dhTimeoutMgr, nil, nil)
 }
 
 type messageEvent int
@@ -258,9 +280,12 @@ func newMessageQueue(
 	sendErrorBackoff time.Duration,
 	maxValidLatency time.Duration,
 	dhTimeoutMgr DontHaveTimeoutManager,
-	clock clock.Clock,
-	events chan messageEvent,
+	clk clock.Clock,
+	events chan<- messageEvent,
 ) *MessageQueue {
+	if clk == nil {
+		clk = clock.New()
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	return &MessageQueue{
 		ctx:              ctx,
@@ -281,7 +306,7 @@ func newMessageQueue(
 		// For performance reasons we just clear out the fields of the message
 		// after using it, instead of creating a new one every time.
 		msg:    bsmsg.New(false),
-		clock:  clock,
+		clock:  clk,
 		events: events,
 	}
 }
@@ -345,7 +370,9 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 	}
 
 	// Cancel any outstanding DONT_HAVE timers
-	mq.dhTimeoutMgr.CancelPending(cancelKs)
+	if mq.dhTimeoutMgr != nil {
+		mq.dhTimeoutMgr.CancelPending(cancelKs)
+	}
 
 	mq.wllock.Lock()
 
@@ -412,8 +439,10 @@ func (mq *MessageQueue) Shutdown() {
 }
 
 func (mq *MessageQueue) onShutdown() {
-	// Shut down the DONT_HAVE timeout manager
-	mq.dhTimeoutMgr.Shutdown()
+	if mq.dhTimeoutMgr != nil {
+		// Shut down the DONT_HAVE timeout manager
+		mq.dhTimeoutMgr.Shutdown()
+	}
 
 	// Reset the streamMessageSender
 	if mq.sender != nil {
@@ -527,9 +556,11 @@ func (mq *MessageQueue) sendMessage() {
 		return
 	}
 
-	// Make sure the DONT_HAVE timeout manager has started
-	// Note: Start is idempotent
-	mq.dhTimeoutMgr.Start()
+	if mq.dhTimeoutMgr != nil {
+		// Make sure the DONT_HAVE timeout manager has started
+		// Note: Start is idempotent
+		mq.dhTimeoutMgr.Start()
+	}
 
 	// Convert want lists to a Bitswap Message
 	message, onSent := mq.extractOutgoingMessage(mq.sender.SupportsHave())
@@ -589,8 +620,10 @@ func (mq *MessageQueue) simulateDontHaveWithTimeout(wantlist []bsmsg.Entry) {
 
 	mq.wllock.Unlock()
 
-	// Add wants to DONT_HAVE timeout manager
-	mq.dhTimeoutMgr.AddPending(wants)
+	if mq.dhTimeoutMgr != nil {
+		// Add wants to DONT_HAVE timeout manager
+		mq.dhTimeoutMgr.AddPending(wants)
+	}
 }
 
 // handleResponse is called when a response is received from the peer,
@@ -632,7 +665,7 @@ func (mq *MessageQueue) handleResponse(ks []cid.Cid) {
 
 	mq.wllock.Unlock()
 
-	if !earliest.IsZero() {
+	if !earliest.IsZero() && mq.dhTimeoutMgr != nil {
 		// Inform the timeout manager of the calculated latency
 		mq.dhTimeoutMgr.UpdateMessageLatency(now.Sub(earliest))
 	}
