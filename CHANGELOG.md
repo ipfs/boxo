@@ -15,6 +15,7 @@ The following emojis are used to highlight certain changes:
 ## [Unreleased]
 
 ### Added
+🛠 - New non variadic `NotifyNewBlock` function. This changes the `blockservice.Interface`. The new function avoids allocating a slice on each call when called with one block.
 
 - `bitswap/client`: Improved timeout configuration for block requests
   - Exposed `DontHaveTimeoutConfig` to hold configuration values for `dontHaveTimeoutMgr` which controls how long to wait for requested block before emitting a synthetic DontHave response

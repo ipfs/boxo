@@ -92,6 +92,13 @@ func New(ctx context.Context, net network.BitSwapNetwork, providerFinder client.
 	return bs
 }
 
+func (bs *Bitswap) NotifyNewBlock(ctx context.Context, blk blocks.Block) error {
+	return multierr.Combine(
+		bs.Client.NotifyNewBlock(ctx, blk),
+		bs.Server.NotifyNewBlock(ctx, blk),
+	)
+}
+
 func (bs *Bitswap) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error {
 	return multierr.Combine(
 		bs.Client.NotifyNewBlocks(ctx, blks...),
