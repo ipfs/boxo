@@ -121,9 +121,9 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 // ks is the set of blocks, HAVEs and DONT_HAVEs in the message
 // Note that this is just used to calculate latency.
 func (pm *PeerManager) ResponseReceived(p peer.ID, ks []cid.Cid) {
-	pm.pqLk.Lock()
+	pm.pqLk.RLock()
 	pq, ok := pm.peerQueues[p]
-	pm.pqLk.Unlock()
+	pm.pqLk.RUnlock()
 
 	if ok {
 		pq.ResponseReceived(ks)
