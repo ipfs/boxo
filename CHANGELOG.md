@@ -33,7 +33,7 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-* `mfs`: directory cache is now cleared every time the directory node is read, somewhat limiting unbounded growth and time to sync it to the underlying unixfs.
+* `mfs`: directory cache is now cleared on Flush(), liberating the memory used by the otherwise ever-growing cache. References to directories and sub-directories should be renewed after flushing.
 
 ### Security
 

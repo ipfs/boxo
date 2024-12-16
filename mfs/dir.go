@@ -323,7 +323,7 @@ func (d *Directory) Unlink(name string) error {
 }
 
 func (d *Directory) Flush() error {
-	nd, err := d.GetNode()
+	nd, err := d.getNode(true)
 	if err != nil {
 		return err
 	}
@@ -349,7 +349,7 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 	return d.unixfsDir.AddChild(d.ctx, name, nd)
 }
 
-func (d *Directory) syncCache(clean bool) error {
+func (d *Directory) cacheSync(clean bool) error {
 	for name, entry := range d.entriesCache {
 		nd, err := entry.GetNode()
 		if err != nil {
@@ -385,10 +385,14 @@ func (d *Directory) Path() string {
 }
 
 func (d *Directory) GetNode() (ipld.Node, error) {
+	return d.getNode(false)
+}
+
+func (d *Directory) getNode(cacheClean bool) (ipld.Node, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	err := d.syncCache(true)
+	err := d.cacheSync(cacheClean)
 	if err != nil {
 		return nil, err
 	}
