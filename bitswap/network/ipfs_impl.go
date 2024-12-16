@@ -134,6 +134,11 @@ func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, erro
 	if err != nil {
 		return nil, err
 	}
+	if withCtx, ok := stream.Conn().(HasContext); ok {
+		context.AfterFunc(withCtx.Context(), func() {
+			s.stream.Store(nil)
+		})
+	}
 
 	s.stream.Store(stream)
 	return stream, nil
