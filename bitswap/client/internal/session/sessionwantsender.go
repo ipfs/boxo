@@ -220,12 +220,7 @@ func (sws *sessionWantSender) addChangeNonBlocking(c change) {
 	case sws.changes <- c:
 	default:
 		// changes channel is full, so add change in a go routine instead
-		go func() {
-			select {
-			case sws.changes <- c:
-			case <-sws.ctx.Done():
-			}
-		}()
+		go sws.addChange(c)
 	}
 }
 
