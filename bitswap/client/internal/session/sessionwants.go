@@ -82,6 +82,7 @@ func (sw *sessionWants) WantsSent(ks []cid.Cid) {
 			sw.liveWants[c] = now
 		}
 	}
+	sw.toFetch.GC()
 }
 
 // BlocksReceived removes received block CIDs from the live wants list and
@@ -111,6 +112,7 @@ func (sw *sessionWants) BlocksReceived(ks []cid.Cid) ([]cid.Cid, time.Duration) 
 			sw.toFetch.Remove(c)
 		}
 	}
+	sw.toFetch.GC()
 
 	// If the live wants ordering array is a long way out of sync with the
 	// live wants map, clean up the ordering array
@@ -155,6 +157,7 @@ func (sw *sessionWants) CancelPending(keys []cid.Cid) {
 		sw.toFetch.Remove(k)
 		delete(sw.liveWants, k)
 	}
+	sw.toFetch.GC()
 }
 
 // LiveWants returns a list of live wants

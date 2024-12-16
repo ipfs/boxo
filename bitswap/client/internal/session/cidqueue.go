@@ -31,14 +31,7 @@ func (cq *cidQueue) Pop() cid.Cid {
 
 func (cq *cidQueue) Cids() []cid.Cid {
 	// Lazily delete from the list any cids that were removed from the set
-	if cq.elems.Len() > cq.eset.Len() {
-		for i := 0; i < cq.elems.Len(); i++ {
-			c := cq.elems.PopFront()
-			if cq.eset.Has(c) {
-				cq.elems.PushBack(c)
-			}
-		}
-	}
+	cq.GC()
 
 	if cq.elems.Len() == 0 {
 		return nil
@@ -68,4 +61,15 @@ func (cq *cidQueue) Has(c cid.Cid) bool {
 
 func (cq *cidQueue) Len() int {
 	return cq.eset.Len()
+}
+
+func (cq *cidQueue) GC() {
+	if cq.elems.Len() > cq.eset.Len() {
+		for i := 0; i < cq.elems.Len(); i++ {
+			c := cq.elems.PopFront()
+			if cq.eset.Has(c) {
+				cq.elems.PushBack(c)
+			}
+		}
+	}
 }
