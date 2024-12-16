@@ -94,8 +94,6 @@ type sessionWantSender struct {
 	wants map[cid.Cid]*wantInfo
 	// Keeps track of how many consecutive DONT_HAVEs a peer has sent
 	peerConsecutiveDontHaves map[peer.ID]int
-	// Tracks which peers we have send want-block to
-	swbt *sentWantBlocksTracker
 	// Tracks the number of blocks each peer sent us
 	peerRspTrkr *peerResponseTracker
 	// Sends wants to peers
@@ -124,7 +122,6 @@ func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager, ca
 		changes:                  make(chan change, changesBufferSize),
 		wants:                    make(map[cid.Cid]*wantInfo),
 		peerConsecutiveDontHaves: make(map[peer.ID]int),
-		swbt:                     newSentWantBlocksTracker(),
 		peerRspTrkr:              newPeerResponseTracker(),
 
 		pm:               pm,
@@ -405,14 +402,10 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 			// Update the block presence for the peer
 			sws.updateWantBlockPresence(c, upd.from)
 
-			// Check if the DONT_HAVE is in response to a want-block
-			// (could also be in response to want-have)
-			if sws.swbt.haveSentWantBlockTo(upd.from, c) {
-				// If we were waiting for a response from this peer, clear
-				// sentTo so that we can send the want to another peer
-				if sentTo, ok := sws.getWantSentTo(c); ok && sentTo == upd.from {
-					sws.setWantSentTo(c, "")
-				}
+			// If we were waiting for a response from this peer, clear
+			// sentTo so that we can send the want to another peer
+			if sentTo, ok := sws.getWantSentTo(c); ok && sentTo == upd.from {
+				sws.setWantSentTo(c, "")
 			}
 		}
 	}
@@ -576,11 +569,6 @@ func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.ID) {
 func (sws *sessionWantSender) sendWants(sends allWants) {
 	// For each peer we're sending a request to
 	for p, snd := range sends {
-		// Piggyback some other want-haves onto the request to the peer
-		for _, c := range sws.getPiggybackWantHaves(p, snd.wantBlocks) {
-			snd.wantHaves.Add(c)
-		}
-
 		// Send the wants to the peer.
 		// Note that the PeerManager ensures that we don't sent duplicate
 		// want-haves / want-blocks to a peer, and that want-blocks take
@@ -594,24 +582,7 @@ func (sws *sessionWantSender) sendWants(sends allWants) {
 		}
 		// Inform the session that we've sent the wants
 		sws.onSend(p, wblks, whaves)
-
-		// Record which peers we send want-block to
-		sws.swbt.addSentWantBlocksTo(p, wblks)
 	}
-}
-
-// getPiggybackWantHaves gets the want-haves that should be piggybacked onto
-// a request that we are making to send want-blocks to a peer
-func (sws *sessionWantSender) getPiggybackWantHaves(p peer.ID, wantBlocks *cid.Set) []cid.Cid {
-	var whs []cid.Cid
-	for c := range sws.wants {
-		// Don't send want-have if we're already sending a want-block
-		// (or have previously)
-		if !wantBlocks.Has(c) && !sws.swbt.haveSentWantBlockTo(p, c) {
-			whs = append(whs, c)
-		}
-	}
-	return whs
 }
 
 // newlyExhausted filters the list of keys for wants that have not already
