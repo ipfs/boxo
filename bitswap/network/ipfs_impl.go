@@ -83,17 +83,21 @@ type impl struct {
 }
 
 type streamMessageSender struct {
-	to        peer.ID
-	stream    network.Stream
-	connected bool
-	bsnet     *impl
-	opts      *MessageSenderOpts
+	to     peer.ID
+	stream network.Stream
+	bsnet  *impl
+	opts   *MessageSenderOpts
+}
+
+type HasContext interface {
+	Context() context.Context
 }
 
 // Open a stream to the remote peer
 func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, error) {
-	if s.connected {
-		return s.stream, nil
+	stream := s.stream
+	if stream != nil {
+		return stream, nil
 	}
 
 	tctx, cancel := context.WithTimeout(ctx, s.opts.SendTimeout)
@@ -109,15 +113,15 @@ func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, erro
 	}
 
 	s.stream = stream
-	s.connected = true
-	return s.stream, nil
+	return stream, nil
 }
 
 // Reset the stream
 func (s *streamMessageSender) Reset() error {
-	if s.stream != nil {
-		err := s.stream.Reset()
-		s.connected = false
+	stream := s.stream
+	if stream != nil {
+		err := stream.Reset()
+		s.stream = nil
 		return err
 	}
 	return nil
@@ -125,12 +129,22 @@ func (s *streamMessageSender) Reset() error {
 
 // Close the stream
 func (s *streamMessageSender) Close() error {
-	return s.stream.Close()
+	stream := s.stream
+	if stream != nil {
+		err := stream.Close()
+		s.stream = nil
+		return err
+	}
+	return nil
 }
 
 // Indicates whether the peer supports HAVE / DONT_HAVE messages
 func (s *streamMessageSender) SupportsHave() bool {
-	return s.bsnet.SupportsHave(s.stream.Protocol())
+	stream := s.stream
+	if stream == nil {
+		return false
+	}
+	return s.bsnet.SupportsHave(stream.Protocol())
 }
 
 // Send a message to the peer, attempting multiple times
