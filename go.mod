@@ -6,11 +6,11 @@ toolchain go1.22.8
 
 require (
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
-	github.com/benbjohnson/clock v1.3.5
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/crackcomm/go-gitignore v0.0.0-20241020182519-7843d2ba8fdf
 	github.com/cskr/pubsub v1.0.2
 	github.com/dustin/go-humanize v1.0.1
+	github.com/filecoin-project/go-clock v0.1.0
 	github.com/gabriel-vasile/mimetype v1.4.6
 	github.com/gammazero/chanqueue v1.0.0
 	github.com/gammazero/deque v1.0.0
@@ -84,6 +84,7 @@ require (
 
 require (
 	github.com/Jorropo/jsync v1.0.1 // indirect
+	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/containerd/cgroups v1.1.0 // indirect

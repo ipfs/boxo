@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/routing/http/contentrouter"
 	"github.com/ipfs/boxo/routing/http/filters"

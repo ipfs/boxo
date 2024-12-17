@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	wl "github.com/ipfs/boxo/bitswap/client/wantlist"
 	message "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
