@@ -375,10 +375,10 @@ func (s *Session) broadcast(ctx context.Context, wants []cid.Cid) {
 		log.Debugw("FindMorePeers", "session", s.id, "cid", wants[0], "pending", len(wants))
 		s.findMorePeers(ctx, wants[0])
 	}
-	s.resetIdleTick()
 
 	// If we have live wants record a consecutive tick
 	if s.sw.HasLiveWants() {
+		s.resetIdleTick() // call before incrementing s.consecutiveTicks
 		s.consecutiveTicks++
 	}
 }
@@ -455,7 +455,10 @@ func (s *Session) handleReceive(ks []cid.Cid) {
 	// that have occurred since the last new block
 	s.consecutiveTicks = 0
 
-	s.resetIdleTick()
+	// Reset rebroadcast timer if there are still outstanding wants.
+	if s.sw.HasLiveWants() {
+		s.resetIdleTick()
+	}
 }
 
 // wantBlocks is called when blocks are requested by the client

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/http/server"

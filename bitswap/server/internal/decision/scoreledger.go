@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
