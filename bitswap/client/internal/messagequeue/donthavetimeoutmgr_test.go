@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-test/random"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
