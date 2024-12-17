@@ -111,6 +111,10 @@ func (bpm *BlockPresenceManager) allDontHave(peers []peer.ID, c cid.Cid) bool {
 
 // RemoveKeys cleans up the given keys from the block presence map
 func (bpm *BlockPresenceManager) RemoveKeys(ks []cid.Cid) {
+	if len(ks) == 0 {
+		return
+	}
+
 	bpm.Lock()
 	defer bpm.Unlock()
 
