@@ -42,7 +42,7 @@ type PeerManager struct {
 	createPeerQueue PeerQueueFactory
 	ctx             context.Context
 
-	psLk         sync.Mutex
+	psLk         sync.RWMutex
 	sessions     map[uint64]Session
 	peerSessions map[peer.ID]map[uint64]struct{}
 
@@ -121,9 +121,9 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 // ks is the set of blocks, HAVEs and DONT_HAVEs in the message
 // Note that this is just used to calculate latency.
 func (pm *PeerManager) ResponseReceived(p peer.ID, ks []cid.Cid) {
-	pm.pqLk.Lock()
+	pm.pqLk.RLock()
 	pq, ok := pm.peerQueues[p]
-	pm.pqLk.Unlock()
+	pm.pqLk.RUnlock()
 
 	if ok {
 		pq.ResponseReceived(ks)
@@ -233,8 +233,8 @@ func (pm *PeerManager) UnregisterSession(ses uint64) {
 // signalAvailability is called when a peer's connectivity changes.
 // It informs interested sessions.
 func (pm *PeerManager) signalAvailability(p peer.ID, isConnected bool) {
-	pm.psLk.Lock()
-	defer pm.psLk.Unlock()
+	pm.psLk.RLock()
+	defer pm.psLk.RUnlock()
 
 	sesIds, ok := pm.peerSessions[p]
 	if !ok {
