@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	"github.com/gammazero/deque"
 	cid "github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"

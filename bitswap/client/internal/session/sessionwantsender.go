@@ -318,14 +318,15 @@ func (sws *sessionWantSender) processAvailability(availability map[peer.ID]bool)
 			if wasAvailable {
 				stateChange = true
 				newlyUnavailable = append(newlyUnavailable, p)
+				// Remove count of first responses from peer.
+				sws.peerRspTrkr.remove(p)
 			}
 		}
 
 		// If the state has changed
 		if stateChange {
 			sws.updateWantsPeerAvailability(p, isNowAvailable)
-			// Reset the count of consecutive DONT_HAVEs received from the
-			// peer
+			// Reset count of consecutive DONT_HAVEs received from the peer.
 			delete(sws.peerConsecutiveDontHaves, p)
 		}
 	}
