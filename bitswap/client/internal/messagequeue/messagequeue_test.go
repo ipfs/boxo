@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
 	bsnet "github.com/ipfs/boxo/bitswap/network"

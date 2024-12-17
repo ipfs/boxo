@@ -26,6 +26,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 * 🛠 `blockstore` and `blockservice`'s `WriteThrough()` option now takes an "enabled" parameter: `WriteThrough(enabled bool)`.
+* Replaced unmaintained mock time implementation uses in tests: [from](github.com/benbjohnson/clock) => [to](github.com/filecoin-project/go-clock)
 
 ### Removed
 
