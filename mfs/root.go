@@ -170,16 +170,7 @@ func (kr *Root) Flush() error {
 func (kr *Root) FlushMemFree(ctx context.Context) error {
 	dir := kr.GetDirectory()
 
-	if err := dir.Flush(); err != nil {
-		return err
-	}
-
-	dir.lock.Lock()
-	defer dir.lock.Unlock()
-
-	clear(dir.entriesCache)
-
-	return nil
+	return dir.Flush()
 }
 
 // updateChildEntry implements the `parent` interface, and signals
