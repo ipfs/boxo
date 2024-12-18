@@ -27,9 +27,9 @@ The following emojis are used to highlight certain changes:
 
 * 🛠 `blockstore` and `blockservice`'s `WriteThrough()` option now takes an "enabled" parameter: `WriteThrough(enabled bool)`.
 * Replaced unmaintained mock time implementation uses in tests: [from](github.com/benbjohnson/clock) => [to](github.com/filecoin-project/go-clock)
+* `bitswap/client`: if a libp2p connection has a context, use `context.AfterFunc` to cleanup the connection.
 
 ### Removed
-
 
 
 ### Fixed
