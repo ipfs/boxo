@@ -82,32 +82,9 @@ type impl struct {
 	receivers []Receiver
 }
 
-// interfaceWrapper is concrete type that wraps an interface. Necessary because
-// atomic.Value needs the same type and can not Store(nil). This indirection
-// allows us to store nil.
-type interfaceWrapper[T any] struct {
-	t T
-}
-type atomicInterface[T any] struct {
-	iface atomic.Value
-}
-
-func (a *atomicInterface[T]) Load() T {
-	var v T
-	x := a.iface.Load()
-	if x != nil {
-		return x.(interfaceWrapper[T]).t
-	}
-	return v
-}
-
-func (a *atomicInterface[T]) Store(v T) {
-	a.iface.Store(interfaceWrapper[T]{v})
-}
-
 type streamMessageSender struct {
 	to     peer.ID
-	stream atomicInterface[network.Stream]
+	stream network.Stream
 	bsnet  *impl
 	opts   *MessageSenderOpts
 }
@@ -118,7 +95,7 @@ type HasContext interface {
 
 // Open a stream to the remote peer
 func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, error) {
-	stream := s.stream.Load()
+	stream := s.stream
 	if stream != nil {
 		return stream, nil
 	}
@@ -135,16 +112,16 @@ func (s *streamMessageSender) Connect(ctx context.Context) (network.Stream, erro
 		return nil, err
 	}
 
-	s.stream.Store(stream)
+	s.stream = stream
 	return stream, nil
 }
 
 // Reset the stream
 func (s *streamMessageSender) Reset() error {
-	stream := s.stream.Load()
+	stream := s.stream
 	if stream != nil {
 		err := stream.Reset()
-		s.stream.Store(nil)
+		s.stream = nil
 		return err
 	}
 	return nil
@@ -152,10 +129,10 @@ func (s *streamMessageSender) Reset() error {
 
 // Close the stream
 func (s *streamMessageSender) Close() error {
-	stream := s.stream.Load()
+	stream := s.stream
 	if stream != nil {
 		err := stream.Close()
-		s.stream.Store(nil)
+		s.stream = nil
 		return err
 	}
 	return nil
@@ -163,7 +140,7 @@ func (s *streamMessageSender) Close() error {
 
 // Indicates whether the peer supports HAVE / DONT_HAVE messages
 func (s *streamMessageSender) SupportsHave() bool {
-	stream := s.stream.Load()
+	stream := s.stream
 	if stream == nil {
 		return false
 	}
