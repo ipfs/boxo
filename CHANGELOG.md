@@ -16,12 +16,24 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.25.0]
+
+### Added
+
 - `bitswap/client`: Improved timeout configuration for block requests
   - Exposed `DontHaveTimeoutConfig` to hold configuration values for `dontHaveTimeoutMgr` which controls how long to wait for requested block before emitting a synthetic DontHave response
   - Added `DefaultDontHaveTimeoutConfig()` to return a `DontHaveTimeoutConfig` populated with default values
   - Added optional `WithDontHaveTimeoutConfig` to allow passing a custom `DontHaveTimeoutConfig`
   - Setting `SetSendDontHaves(false)` works the same as before. Behind the scenes, it will disable `dontHaveTimeoutMgr` by passing a `nil` `onDontHaveTimeout` to `newDontHaveTimeoutMgr`.
-
 
 ### Changed
 
@@ -31,15 +43,10 @@ The following emojis are used to highlight certain changes:
 - `bitswap/client`: if a libp2p connection has a context, use `context.AfterFunc` to cleanup the connection.
 - upgrade to `go-libp2p-kad-dht` [v0.28.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.28.1)
 
-
-### Removed
-
-
 ### Fixed
 
 * `mfs`: directory cache is now cleared on Flush(), liberating the memory used by the otherwise ever-growing cache. References to directories and sub-directories should be renewed after flushing.
 
-### Security
 
 ## [v0.25.0]
 
