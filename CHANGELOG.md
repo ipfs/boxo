@@ -51,16 +51,16 @@ The following emojis are used to highlight certain changes:
 - `gateway`: `NewCacheBlockStore` and `NewCarBackend` will use `prometheus.DefaultRegisterer` when a custom one is not specified via `WithPrometheusRegistry` [#722](https://github.com/ipfs/boxo/pull/722)
 - `filestore`: added opt-in `WithMMapReader` option to `FileManager` to enable memory-mapped file reads [#665](https://github.com/ipfs/boxo/pull/665)
 - `bitswap/routing` `ProviderQueryManager` does not require calling `Startup` separate from `New`. [#741](https://github.com/ipfs/boxo/pull/741)
-- `bitswap/routing` ProviderQueryManager does not use liftcycle context.
+- `bitswap/routing` ProviderQueryManager does not use lifecycle context.
 
 ### Changed
 
 - `bitswap`, `routing`, `exchange` ([#641](https://github.com/ipfs/boxo/pull/641)):
-  - ✨ Bitswap is no longer in charge of providing blocks to the newtork: providing functionality is now handled by a `exchange/providing.Exchange`, meant to be used with `provider.System` so that all provides follow the same rules (multiple parts of the code where handling provides) before.
+  - ✨ Bitswap is no longer in charge of providing blocks to the network: providing functionality is now handled by a `exchange/providing.Exchange`, meant to be used with `provider.System` so that all provides follow the same rules (multiple parts of the code where handling provides) before.
   - 🛠 `bitswap/client/internal/providerquerymanager` has been moved to `routing/providerquerymanager` where it belongs. In order to keep compatibility, Bitswap now receives a `routing.ContentDiscovery` parameter which implements `FindProvidersAsync(...)` and uses it to create a `providerquerymanager` with the default settings as before. Custom settings can be used by using a custom `providerquerymanager` to manually wrap a `ContentDiscovery` object and pass that in as `ContentDiscovery` on initialization while setting `bitswap.WithDefaultProviderQueryManager(false)` (to avoid re-wrapping it again).
   - The renovated `providedQueryManager` will trigger lookups until it manages to connect to `MaxProviders`. Before it would lookup at most `MaxInProcessRequests*MaxProviders` and connection failures may have limited the actual number of providers found.
   - 🛠 We have aligned our routing-related interfaces with the libp2p [`routing`](https://pkg.go.dev/github.com/libp2p/go-libp2p/core/routing#ContentRouting) ones, including in the `reprovider.System`.
-  - In order to obtain exactly the same behaviour as before (i.e. particularly ensuring that new blocks are still provided), what was done like:
+  - In order to obtain exactly the same behavior as before (i.e. particularly ensuring that new blocks are still provided), what was done like:
 
 	```go
 		bswapnet := network.NewFromIpfsHost(host, contentRouter)
@@ -247,7 +247,7 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-- 🛠️`routing/http/server`: delegated peer routing endpoint now supports both [PeerID string notaitons from libp2p specs](https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation).
+- 🛠️`routing/http/server`: delegated peer routing endpoint now supports both [Peer ID string notations from libp2p specs](https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation).
 - `bitswap`: add missing client `WithBlockReceivedNotifier` and `WithoutDuplicatedBlockStats` options to the exchange.
 
 ## [v0.18.0]

@@ -109,7 +109,7 @@ type DefaultScoreLedger struct {
 	scorePeer ScorePeerFunc
 	// is closed on Close
 	closing chan struct{}
-	// protects the fields immediatly below
+	// protects the fields immediately below
 	lock sync.RWMutex
 	// ledgerMap lists score ledgers by their partner key.
 	ledgerMap map[peer.ID]*scoreledger
