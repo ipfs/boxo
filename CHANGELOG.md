@@ -42,10 +42,14 @@ The following emojis are used to highlight certain changes:
 - `bitswap/client`: if a libp2p connection has a context, use `context.AfterFunc` to cleanup the connection.
 - upgrade to `go-libp2p-kad-dht` [v0.28.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.28.1)
 - upgrade to `go-libp2p` [v0.38.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.38.1)
+- blockstore/blockservice: change option to `WriteThrough(enabled bool)` [#749](https://github.com/ipfs/boxo/pull/749)
+- `mfs`: improve mfs republisher [#754](https://github.com/ipfs/boxo/pull/754)
 
 ### Fixed
 
-* `mfs`: directory cache is now cleared on Flush(), liberating the memory used by the otherwise ever-growing cache. References to directories and sub-directories should be renewed after flushing.
+- `mfs`: directory cache is now cleared on Flush(), liberating the memory used by the otherwise ever-growing cache. References to directories and sub-directories should be renewed after flushing.
+- `bitswap/client`: Fix leak due to cid queue never getting cleaned up [#756](https://github.com/ipfs/boxo/pull/756)
+- `bitswap`: Drop stream references on Close/Reset [760](https://github.com/ipfs/boxo/pull/760)
 
 
 ## [v0.25.0]
