@@ -25,11 +25,14 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-* 🛠 `blockstore` and `blockservice`'s `WriteThrough()` option now takes an "enabled" parameter: `WriteThrough(enabled bool)`.
-* Replaced unmaintained mock time implementation uses in tests: [from](github.com/benbjohnson/clock) => [to](github.com/filecoin-project/go-clock)
+- 🛠 `blockstore` and `blockservice`'s `WriteThrough()` option now takes an "enabled" parameter: `WriteThrough(enabled bool)`.
+- Replaced unmaintained mock time implementation uses in tests: [from](github.com/benbjohnson/clock) => [to](github.com/filecoin-project/go-clock)
+- upgrade to go-libp2p [v0.38.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.38.1)
+- `bitswap/client`: if a libp2p connection has a context, use `context.AfterFunc` to cleanup the connection.
+- upgrade to `go-libp2p-kad-dht` [v0.28.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.28.1)
+
 
 ### Removed
-
 
 
 ### Fixed
