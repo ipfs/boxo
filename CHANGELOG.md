@@ -25,7 +25,7 @@ The following emojis are used to highlight certain changes:
 ### Security
 
 
-## [v0.25.0]
+## [v0.26.0]
 
 ### Added
 
@@ -42,6 +42,7 @@ The following emojis are used to highlight certain changes:
 - upgrade to go-libp2p [v0.38.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.38.1)
 - `bitswap/client`: if a libp2p connection has a context, use `context.AfterFunc` to cleanup the connection.
 - upgrade to `go-libp2p-kad-dht` [v0.28.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.28.1)
+- upgrade to `go-libp2p` [v0.38.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.38.1)
 
 ### Fixed
 
