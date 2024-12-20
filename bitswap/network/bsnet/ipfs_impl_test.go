@@ -1,4 +1,4 @@
-package network_test
+package bsnet_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
 	bsnet "github.com/ipfs/boxo/bitswap/network"
-	"github.com/ipfs/boxo/bitswap/network/internal"
+	"github.com/ipfs/boxo/bitswap/network/bsnet/internal"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
 	"github.com/ipfs/go-test/random"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
