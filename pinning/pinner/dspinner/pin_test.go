@@ -995,7 +995,7 @@ func BenchmarkLoad(b *testing.B) {
 	})
 }
 
-// BenchmarkNthPins shows the time it takes to create/save 1 pin when a number
+// BenchmarkNthPin shows the time it takes to create/save 1 pin when a number
 // of other pins already exist.  Each run in the series shows performance for
 // creating a pin in a larger number of existing pins.
 func BenchmarkNthPin(b *testing.B) {
