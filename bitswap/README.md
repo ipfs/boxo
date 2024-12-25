@@ -23,7 +23,7 @@ contain wantlists or blocks.
 
 A node sends a wantlist to tell peers which blocks it wants. When a node receives
 a wantlist it should check which blocks it has from the wantlist, and consider
-sending the matching blocks to the requestor.
+sending the matching blocks to the requester.
 
 When a node receives blocks that it asked for, the node should send out a
 notification called a 'Cancel' to tell its peers that the node no longer
