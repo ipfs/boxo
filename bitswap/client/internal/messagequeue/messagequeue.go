@@ -597,7 +597,7 @@ func (mq *MessageQueue) sendMessage() {
 	}
 }
 
-// If want-block times out, simulate a DONT_HAVE reponse.
+// If want-block times out, simulate a DONT_HAVE response.
 // This is necessary when making requests to peers running an older version of
 // Bitswap that doesn't support the DONT_HAVE response, and is also useful to
 // mitigate getting blocked by a peer that takes a long time to respond.
