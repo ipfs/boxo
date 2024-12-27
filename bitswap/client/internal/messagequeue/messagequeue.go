@@ -93,7 +93,7 @@ type MessageQueue struct {
 	cancels   *cid.Set
 	priority  int32
 
-	// Dont touch any of these variables outside of run loop
+	// Don't touch any of these variables outside of run loop
 	sender         bsnet.MessageSender
 	rebroadcastNow chan struct{}
 	// For performance reasons we just clear out the fields of the message
@@ -160,7 +160,7 @@ func (r *recallWantlist) MarkSent(e bswl.Entry) bool {
 
 // SentAt records the time at which a want was sent
 func (r *recallWantlist) SentAt(c cid.Cid, at time.Time) {
-	// The want may have been cancelled in the interim
+	// The want may have been canceled in the interim
 	if _, ok := r.sent.Contains(c); ok {
 		if _, ok := r.sentAt[c]; !ok {
 			r.sentAt[c] = at
@@ -222,7 +222,7 @@ type DontHaveTimeoutManager interface {
 	// Shutdown the manager (Shutdown is final, manager cannot be restarted)
 	Shutdown()
 	// AddPending adds the wants as pending a response. If the are not
-	// cancelled before the timeout, the OnDontHaveTimeout method will be called.
+	// canceled before the timeout, the OnDontHaveTimeout method will be called.
 	AddPending([]cid.Cid)
 	// CancelPending removes the wants
 	CancelPending([]cid.Cid)
@@ -597,7 +597,7 @@ func (mq *MessageQueue) sendMessage() {
 	}
 }
 
-// If want-block times out, simulate a DONT_HAVE reponse.
+// If want-block times out, simulate a DONT_HAVE response.
 // This is necessary when making requests to peers running an older version of
 // Bitswap that doesn't support the DONT_HAVE response, and is also useful to
 // mitigate getting blocked by a peer that takes a long time to respond.
@@ -847,13 +847,13 @@ FINISH:
 		defer mq.wllock.Unlock()
 
 		for _, e := range peerEntries[:sentPeerEntries] {
-			if e.Cid.Defined() { // Check if want was cancelled in the interim
+			if e.Cid.Defined() { // Check if want was canceled in the interim
 				mq.peerWants.SentAt(e.Cid, now)
 			}
 		}
 
 		for _, e := range bcstEntries[:sentBcstEntries] {
-			if e.Cid.Defined() { // Check if want was cancelled in the interim
+			if e.Cid.Defined() { // Check if want was canceled in the interim
 				mq.bcstWants.SentAt(e.Cid, now)
 			}
 		}
