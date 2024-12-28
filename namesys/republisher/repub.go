@@ -196,5 +196,5 @@ func (rp *Republisher) getLastIPNSRecord(ctx context.Context, name ipns.Name) (*
 var tracer = otel.Tracer("boxo/namesys/republisher")
 
 func startSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return tracer.Start(ctx, "Namesys."+name)
+	return tracer.Start(ctx, "Namesys."+name, opts...)
 }
