@@ -50,7 +50,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 				suffix = suffix + "?" + r.URL.RawQuery
 			}
 			// /ipfs/cid/foo?bar must be redirected to /ipfs/cid/foo/?bar
-			redirectURL := originalURLPath + suffix
+			redirectURL := requestURI.EscapedPath() + suffix
 			rq.logger.Debugw("directory location moved permanently", "status", http.StatusMovedPermanently)
 			http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
 			return true
