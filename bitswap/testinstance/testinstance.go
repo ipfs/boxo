@@ -5,7 +5,8 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/bitswap"
-	bsnet "github.com/ipfs/boxo/bitswap/network"
+	iface "github.com/ipfs/boxo/bitswap/network"
+	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	mockrouting "github.com/ipfs/boxo/routing/mock"
@@ -92,7 +93,7 @@ type Instance struct {
 	Datastore       ds.Batching
 	Exchange        *bitswap.Bitswap
 	Blockstore      blockstore.Blockstore
-	Adapter         bsnet.BitSwapNetwork
+	Adapter         iface.BitSwapNetwork
 	Routing         routing.Routing
 	blockstoreDelay delay.D
 }
