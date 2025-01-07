@@ -907,11 +907,12 @@ func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, c *Co
 			return true
 		}
 
-		redirectURL := url.JoinPath("/", u.Scheme, u.Host, u.Path)
+		path := u.EscapedPath()
 		if u.RawQuery != "" { // preserve query if present
-			redirectURL += "?" + u.RawQuery
+			path += "?" + url.PathEscape(u.RawQuery)
 		}
 
+		redirectURL := gopath.Join("/", u.Scheme, u.Host, path)
 		http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
 		return true
 	}
