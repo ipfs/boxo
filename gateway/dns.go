@@ -11,7 +11,7 @@ import (
 
 var defaultResolvers = map[string]string{
 	"eth.":    "https://resolver.cloudflare-eth.com/dns-query",
-	"crypto.": "https://resolver.cloudflare-eth.com/dns-query",
+	"crypto.": "https://resolver.unstoppable.io/dns-query",
 }
 
 func newResolver(url string, opts ...doh.Option) (madns.BasicResolver, error) {
