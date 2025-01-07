@@ -10,7 +10,7 @@ import (
 )
 
 var defaultResolvers = map[string]string{
-	"eth.":    "https://resolver.cloudflare-eth.com/dns-query",
+	"eth.":    "https://dns.eth.limo/dns-query",
 	"crypto.": "https://resolver.cloudflare-eth.com/dns-query",
 }
 
