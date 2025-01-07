@@ -906,12 +906,12 @@ func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, c *Co
 			webError(w, r, c, fmt.Errorf("uri query parameter scheme must be ipfs or ipns: %w", err), http.StatusBadRequest)
 			return true
 		}
-		path := u.Path
+
+		redirectURL := url.JoinPath("/", u.Scheme, u.Host, u.Path)
 		if u.RawQuery != "" { // preserve query if present
-			path = path + "?" + u.RawQuery
+			redirectURL += "?" + u.RawQuery
 		}
 
-		redirectURL := gopath.Join("/", u.Scheme, u.Host, path)
 		http.Redirect(w, r, redirectURL, http.StatusMovedPermanently)
 		return true
 	}
