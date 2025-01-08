@@ -23,7 +23,7 @@ func TestAddNewDNSResolver(t *testing.T) {
 	defer l.Close()
 
 	dnslinkName := "dnslink-test.foobar"
-	dnslinkValue := "/ipfs/bafkqaaa"
+	dnslinkValue := "dnslink=/ipfs/bafkqaaa"
 
 	go func() {
 		_ = http.Serve(l, http.HandlerFunc(dnslinkServerHandlerFunc(t, dnslinkName, dnslinkValue)))
@@ -51,7 +51,7 @@ func TestOverrideDNSDefaults(t *testing.T) {
 	defer l.Close()
 
 	dnslinkName := "dnslink-test.eth"
-	dnslinkValue := "/ipfs/bafkqaaa"
+	dnslinkValue := "dnslink=/ipfs/bafkqaaa"
 
 	go func() {
 		_ = http.Serve(l, http.HandlerFunc(dnslinkServerHandlerFunc(t, dnslinkName, dnslinkValue)))
