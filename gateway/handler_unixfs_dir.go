@@ -51,7 +51,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 			}
 			// Re-escape path instead of reusing RawPath to avod mix of lawer
 			// and upper hex that may come from RawPath.
-			if strings.IndexRune(requestURI.RawPath, '%') != -1 {
+			if strings.ContainsRune(requestURI.RawPath, '%') {
 				requestURI.RawPath = ""
 			}
 			// /ipfs/cid/foo?bar must be redirected to /ipfs/cid/foo/?bar
