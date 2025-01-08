@@ -18,9 +18,14 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `gateway` The default DNSLink resolver for `.eth` TLD changed to `https://dns.eth.limo/dns-query` [#781](https://github.com/ipfs/boxo/pull/781)
+
 ### Removed
 
 ### Fixed
+
+- `gateway` Fix redirect URLs for subdirectories with characters that need escaping. [#779](https://github.com/ipfs/boxo/pull/779)
+- `gateway` The default DNSLink resolver for `.crypto` TLD changed to `https://resolver.unstoppable.io/dns-query` [#782](https://github.com/ipfs/boxo/pull/782)
 
 ### Security
 
