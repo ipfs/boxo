@@ -15,8 +15,8 @@ var defaultResolvers = map[string]string{
 }
 
 func newResolver(url string, opts ...doh.Option) (madns.BasicResolver, error) {
-	if !strings.HasPrefix(url, "https://") {
-		return nil, fmt.Errorf("invalid resolver url: %s", url)
+	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
+		return nil, fmt.Errorf("invalid DoH resolver URL: %s", url)
 	}
 
 	return doh.NewResolver(url, opts...)
