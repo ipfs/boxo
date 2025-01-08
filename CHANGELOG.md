@@ -17,6 +17,7 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 ### Changed
+- Do not send CANCEL to peer that block was received from, as this is redundant. [#784](https://github.com/ipfs/boxo/pull/784)
 
 ### Removed
 
