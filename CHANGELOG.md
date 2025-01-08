@@ -25,6 +25,7 @@ The following emojis are used to highlight certain changes:
 ### Fixed
 
 - `gateway` Fix redirect URLs for subdirectories with characters that need escaping. [#779](https://github.com/ipfs/boxo/pull/779)
+- `gateway` The default DNSLink resolver for `.crypto` TLD changed to `https://resolver.unstoppable.io/dns-query` [#782](https://github.com/ipfs/boxo/pull/782)
 
 ### Security
 
