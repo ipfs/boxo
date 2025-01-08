@@ -47,7 +47,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 			suffix := "/"
 			// preserve query parameters
 			if r.URL.RawQuery != "" {
-				suffix = suffix + "?" + r.URL.RawQuery
+				suffix = suffix + "?" + url.PathEscape(r.URL.RawQuery)
 			}
 			// /ipfs/cid/foo?bar must be redirected to /ipfs/cid/foo/?bar
 			redirectURL := requestURI.EscapedPath() + suffix

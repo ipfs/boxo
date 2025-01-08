@@ -65,7 +65,7 @@ func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.H
 					// Yes, redirect if applicable
 					// Example: dweb.link/ipfs/{cid} → {cid}.ipfs.dweb.link
 					useInlinedDNSLink := gw.InlineDNSLink
-					newURL, err := toSubdomainURL(host, r.URL.EscapedPath(), r, useInlinedDNSLink, backend)
+					newURL, err := toSubdomainURL(host, r.URL.Path, r, useInlinedDNSLink, backend)
 					if err != nil {
 						webError(w, r, &c, err, http.StatusBadRequest)
 						return
@@ -126,7 +126,7 @@ func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.H
 				}
 				if !strings.HasPrefix(r.Host, dnsCID) {
 					dnsPrefix := "/" + ns + "/" + dnsCID
-					newURL, err := toSubdomainURL(gwHostname, dnsPrefix+r.URL.EscapedPath(), r, useInlinedDNSLink, backend)
+					newURL, err := toSubdomainURL(gwHostname, dnsPrefix+r.URL.Path, r, useInlinedDNSLink, backend)
 					if err != nil {
 						webError(w, r, &c, err, http.StatusBadRequest)
 						return
@@ -142,7 +142,7 @@ func NewHostnameHandler(c Config, backend IPFSBackend, next http.Handler) http.H
 				// Do we need to fix multicodec in PeerID represented as CIDv1?
 				if isPeerIDNamespace(ns) {
 					if rootCID.Type() != cid.Libp2pKey {
-						newURL, err := toSubdomainURL(gwHostname, pathPrefix+r.URL.EscapedPath(), r, useInlinedDNSLink, backend)
+						newURL, err := toSubdomainURL(gwHostname, pathPrefix+r.URL.Path, r, useInlinedDNSLink, backend)
 						if err != nil {
 							webError(w, r, &c, err, http.StatusBadRequest)
 							return
