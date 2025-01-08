@@ -990,7 +990,7 @@ func (i *handler) handleSuperfluousNamespace(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Attempt to fix the superflous namespace
-	intendedPath, err := path.NewPath(strings.TrimPrefix(r.URL.Path, "/ipfs"))
+	intendedPath, err := path.NewPath(strings.TrimPrefix(r.URL.EscapedPath(), "/ipfs"))
 	if err != nil {
 		i.webError(w, r, fmt.Errorf("invalid ipfs path: %w", err), http.StatusBadRequest)
 		return true
