@@ -1,4 +1,4 @@
-//go:generate protoc -I=pb --go_out=pb pb/record.proto
+//go:generate protoc -I=pb --go_out=paths=source_relative:pb pb/record.proto
 package ipns
 
 import (
