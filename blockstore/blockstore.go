@@ -336,6 +336,14 @@ func (u *unlocker) Unlock(_ context.Context) {
 	u.unlock = nil // ensure its not called twice
 }
 
+type runlocker struct {
+	unlock func()
+}
+
+func (ru *runlocker) Unlock(_ context.Context) {
+	ru.unlock()
+}
+
 func (bs *gclocker) GCLock(_ context.Context) Unlocker {
 	atomic.AddInt32(&bs.gcreq, 1)
 	bs.lk.Lock()
@@ -345,7 +353,7 @@ func (bs *gclocker) GCLock(_ context.Context) Unlocker {
 
 func (bs *gclocker) PinLock(_ context.Context) Unlocker {
 	bs.lk.RLock()
-	return &unlocker{bs.lk.RUnlock}
+	return &runlocker{bs.lk.RUnlock}
 }
 
 func (bs *gclocker) GCRequested(_ context.Context) bool {
