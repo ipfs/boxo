@@ -916,7 +916,7 @@ func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, overflow, wants 
 	return wants
 }
 
-// Split the want-havek entries from the cancel and deny entries.
+// Split the want, cancel, and deny entries.
 func (e *Engine) splitWantsCancelsDenials(p peer.ID, m bsmsg.BitSwapMessage) ([]bsmsg.Entry, []bsmsg.Entry, []bsmsg.Entry, error) {
 	entries := m.Wantlist() // creates copy; safe to modify
 	if len(entries) == 0 {

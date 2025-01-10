@@ -29,7 +29,7 @@ var (
 type Directory struct {
 	inode
 
-	// Internal cache with added entries to the directory, its cotents
+	// Internal cache with added entries to the directory, its contents
 	// are synched with the underlying `unixfsDir` node in `sync()`.
 	entriesCache map[string]FSNode
 
