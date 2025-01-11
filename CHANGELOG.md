@@ -15,6 +15,7 @@ The following emojis are used to highlight certain changes:
 ## [Unreleased]
 
 ### Added
+🛠 - New non variadic `NotifyNewBlock` function. This changes the `blockservice.Interface`. The new function avoids allocating a slice on each call when called with one block.
 
 - `gateway` Support for custom DNSLink / DoH resolvers on `localhost` to simplify integration with non-ICANN DNS systems [#645](https://github.com/ipfs/boxo/pull/645)
 
