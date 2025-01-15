@@ -70,9 +70,8 @@ func (rt *router) Connect(ctx context.Context, p peer.AddrInfo) error {
 	htaddrs, _ := SplitHTTPAddrs(p)
 	if len(htaddrs.Addrs) > 0 {
 		return rt.HTTP.Connect(ctx, p)
-	} else {
-		return rt.Bitswap.Connect(ctx, p)
 	}
+	return rt.Bitswap.Connect(ctx, p)
 }
 
 func (rt *router) DisconnectFrom(ctx context.Context, p peer.ID) error {

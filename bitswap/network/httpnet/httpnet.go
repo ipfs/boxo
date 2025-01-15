@@ -47,7 +47,7 @@ var (
 // Option allows to configure the Network.
 type Option func(net *httpnet)
 
-// WithUserAgents sets the user agent when making requests.
+// WithUserAgent sets the user agent when making requests.
 func WithUserAgent(agent string) Option {
 	return func(net *httpnet) {
 		net.userAgent = agent
@@ -92,6 +92,17 @@ func WithInsecureSkipVerify(b bool) Option {
 	}
 }
 
+// WithAllowlist sets the hostnames that we are allowed to connect to via
+// HTTP.
+func WithAllowlist(hosts []string) Option {
+	return func(net *httpnet) {
+		net.allowlist = make(map[string]struct{})
+		for _, h := range hosts {
+			net.allowlist[h] = struct{}{}
+		}
+	}
+}
+
 type httpnet struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
@@ -117,6 +128,7 @@ type httpnet struct {
 	maxIdleConns       int
 	supportsHave       bool
 	insecureSkipVerify bool
+	allowlist          map[string]struct{}
 }
 
 // New returns a BitSwapNetwork supported by underlying IPFS host.
@@ -284,9 +296,26 @@ func (ht *httpnet) Connect(ctx context.Context, p peer.AddrInfo) error {
 	if len(htaddrs.Addrs) == 0 {
 		return ErrNoHTTPAddresses
 	}
-	ht.host.Peerstore().AddAddrs(p.ID, htaddrs.Addrs, peerstore.PermanentAddrTTL)
 
 	urls := network.ExtractURLsFromPeer(htaddrs)
+	if len(ht.allowlist) > 0 {
+		var filteredURLs []*url.URL
+		for _, u := range urls {
+			host, _, err := net.SplitHostPort(u.Host)
+			if err != nil {
+				return err
+			}
+			if _, ok := ht.allowlist[host]; !ok {
+				filteredURLs = append(filteredURLs, u)
+			}
+		}
+		urls = filteredURLs
+	}
+	// if filteredURLs == 0 nothing will happen below and we will return
+	// an error.
+
+	ht.host.Peerstore().AddAddrs(p.ID, htaddrs.Addrs, peerstore.PermanentAddrTTL)
+
 	rand.Shuffle(len(urls), func(i, j int) {
 		urls[i], urls[j] = urls[j], urls[i]
 	})
