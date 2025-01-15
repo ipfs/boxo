@@ -156,12 +156,12 @@ func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []ci
 
 // SendCancels sends cancels for the given keys to all peers who had previously
 // received a want for those keys.
-func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid) {
+func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid, excludePeer peer.ID) {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
 	// Send a CANCEL to each peer that has been sent a want-block or want-have
-	pm.pwm.sendCancels(cancelKs)
+	pm.pwm.sendCancels(cancelKs, excludePeer)
 }
 
 // CurrentWants returns the list of pending wants (both want-haves and want-blocks).

@@ -78,9 +78,9 @@ func (pm *mockPeerManager) has(p peer.ID, sid uint64) bool {
 	return false
 }
 
-func (*mockPeerManager) UnregisterSession(uint64)                      {}
-func (*mockPeerManager) BroadcastWantHaves(context.Context, []cid.Cid) {}
-func (*mockPeerManager) SendCancels(context.Context, []cid.Cid)        {}
+func (*mockPeerManager) UnregisterSession(uint64)                        {}
+func (*mockPeerManager) BroadcastWantHaves(context.Context, []cid.Cid)   {}
+func (*mockPeerManager) SendCancels(context.Context, []cid.Cid, peer.ID) {}
 
 func (pm *mockPeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
 	pm.lk.Lock()
