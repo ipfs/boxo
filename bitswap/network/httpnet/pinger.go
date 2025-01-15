@@ -3,6 +3,7 @@ package httpnet
 import (
 	"context"
 	"net"
+	"net/url"
 	"sync"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	probing "github.com/prometheus-community/pro-bing"
+	"go.uber.org/multierr"
 )
 
 // pinger pings connected hosts on regular intervals
@@ -45,43 +47,64 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 		}
 	}
 
-	// log.Debugf("Ping: %s", p)
+	results := make(chan ping.Result, len(urls))
+	for _, u := range urls {
+		go func(u *url.URL) {
+			// Remove port from url.
+			host, _, err := net.SplitHostPort(urls[0].Host)
+			if err != nil {
+				results <- ping.Result{
+					Error: err,
+				}
+			}
 
-	// FIXME: we always ping the first url
+			pinger, err := probing.NewPinger(host)
+			if err != nil {
+				log.Debug("pinger error ", err)
+				results <- ping.Result{
+					Error: err,
+				}
+			}
+			pinger.Count = 1
 
-	// Remove port from url.
-	host, _, err := net.SplitHostPort(urls[0].Host)
-	if err != nil {
+			err = pinger.RunWithContext(ctx)
+			if err != nil {
+				log.Debug("ping error ", err)
+				results <- ping.Result{
+					Error: err,
+				}
+			}
+
+			results <- ping.Result{
+				RTT: pinger.Statistics().AvgRtt,
+			}
+		}(u)
+	}
+
+	var result ping.Result
+	var errors error
+	for i := 0; i < len(urls); i++ {
+		r := <-results
+		if r.Error != nil {
+			errors = multierr.Append(errors, r.Error)
+			continue
+		}
+		result.RTT += r.RTT
+	}
+	close(results)
+
+	lenErrors := len(multierr.Errors(errors))
+	// if all urls failed return that, otherwise ignore.
+	if lenErrors == len(urls) {
 		return ping.Result{
-			Error: err,
+			Error: errors,
 		}
 	}
+	result.RTT = result.RTT / time.Duration(len(urls)-lenErrors)
 
-	pinger, err := probing.NewPinger(host)
-	if err != nil {
-		log.Debug("pinger error ", err)
-		return ping.Result{
-			Error: err,
-		}
-	}
-	pinger.Count = 1
-
-	err = pinger.RunWithContext(ctx)
-	if err != nil {
-		log.Debug("ping error ", err)
-		return ping.Result{
-			Error: err,
-		}
-	}
-	lat := pinger.Statistics().AvgRtt
-	pngr.recordLatency(p, lat)
-	//log.Debugf("ping latency %s %s", p, lat)
-
-	return ping.Result{
-		RTT:   lat,
-		Error: nil,
-	}
-
+	//log.Debugf("ping latency %s %s", p, result.RTT)
+	pngr.recordLatency(p, result.RTT)
+	return result
 }
 
 // latency returns the recorded latency for the given peer.
