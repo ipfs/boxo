@@ -8,6 +8,8 @@ import (
 
 var durationHistogramBuckets = []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 240, 480, 960, 1920}
 
+var blockSizesHistogramBuckets = []float64{1, 128 << 10, 256 << 10, 512 << 10, 1024 << 10, 2048 << 10, 4092 << 10}
+
 type ctxKeyT string
 
 var ctxKey ctxKeyT = ctxKeyT(imetrics.CtxScopeKey)
@@ -68,6 +70,10 @@ func requestTime(ctx context.Context) imetrics.Histogram {
 	return imetrics.NewCtx(ctx, "httpnet_request_duration_seconds", "Histogram of request durations").Histogram(durationHistogramBuckets)
 }
 
+func responseSize(ctx context.Context) imetrics.Histogram {
+	return imetrics.NewCtx(ctx, "httpnet_response_bytes", "Histogram of http response sizes").Histogram(blockSizesHistogramBuckets)
+}
+
 type metrics struct {
 	RequestsInFlight                 imetrics.Gauge
 	RequestsTotal                    imetrics.Counter
@@ -83,6 +89,7 @@ type metrics struct {
 	StatusInternalServerError        imetrics.Counter
 	StatusOthers                     imetrics.Counter
 	RequestTime                      imetrics.Histogram
+	ResponseSize                     imetrics.Histogram
 }
 
 func newMetrics() *metrics {
@@ -103,6 +110,7 @@ func newMetrics() *metrics {
 		StatusInternalServerError:        statusInternalServerError(ctx),
 		StatusOthers:                     statusOthers(ctx),
 		RequestTime:                      requestTime(ctx),
+		ResponseSize:                     responseSize(ctx),
 	}
 }
 
