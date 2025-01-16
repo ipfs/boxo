@@ -245,7 +245,7 @@ func TestPWMSendCancels(t *testing.T) {
 
 	// Cancel 1 want-block and 1 want-have that were sent to p0
 	clearSent(peerQueues)
-	pwm.sendCancels([]cid.Cid{wb1[0], wh1[0]})
+	pwm.sendCancels([]cid.Cid{wb1[0], wh1[0]}, "")
 	// Should cancel the want-block and want-have
 	require.Empty(t, pq1.cancels, "Expected no cancels sent to p1")
 	require.ElementsMatch(t, pq0.cancels, []cid.Cid{wb1[0], wh1[0]}, "Expected 2 cids to be cancelled")
@@ -255,7 +255,7 @@ func TestPWMSendCancels(t *testing.T) {
 	// Cancel everything
 	clearSent(peerQueues)
 	allCids := append(allwb, allwh...)
-	pwm.sendCancels(allCids)
+	pwm.sendCancels(allCids, "")
 	// Should cancel the remaining want-blocks and want-haves for p0
 	require.ElementsMatch(t, pq0.cancels, []cid.Cid{wb1[1], wh1[1]}, "Expected un-cancelled cids to be cancelled")
 
@@ -312,7 +312,7 @@ func TestStats(t *testing.T) {
 	// Cancel 1 want-block that was sent to p0
 	// and 1 want-block that was not sent
 	cids5 := random.Cids(1)
-	pwm.sendCancels(append(cids5, cids[0]))
+	pwm.sendCancels(append(cids5, cids[0]), "")
 
 	require.Equal(t, 7, g.count, "Expected 7 wants")
 	require.Equal(t, 3, wbg.count, "Expected 3 want-blocks")
@@ -332,7 +332,7 @@ func TestStats(t *testing.T) {
 	require.Zero(t, wbg.count, "Expected 0 want-blocks")
 
 	// Cancel one remaining broadcast want-have
-	pwm.sendCancels(cids2[:1])
+	pwm.sendCancels(cids2[:1], "")
 	require.Equal(t, 2, g.count, "Expected 2 wants")
 	require.Zero(t, wbg.count, "Expected 0 want-blocks")
 }
@@ -362,7 +362,7 @@ func TestStatsOverlappingWantBlockWantHave(t *testing.T) {
 	require.Equal(t, 4, wbg.count, "Expected 4 want-blocks")
 
 	// Cancel 1 of each group of cids
-	pwm.sendCancels([]cid.Cid{cids[0], cids2[0]})
+	pwm.sendCancels([]cid.Cid{cids[0], cids2[0]}, "")
 
 	require.Equal(t, 2, g.count, "Expected 2 wants")
 	require.Equal(t, 2, wbg.count, "Expected 2 want-blocks")

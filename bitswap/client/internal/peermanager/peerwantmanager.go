@@ -233,7 +233,7 @@ func (pwm *peerWantManager) sendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves
 
 // sendCancels sends a cancel to each peer to which a corresponding want was
 // sent
-func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
+func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid, excludePeer peer.ID) {
 	if len(cancelKs) == 0 {
 		return
 	}
@@ -298,6 +298,7 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 				cancelPeers[p] = struct{}{}
 			}
 		}
+		delete(cancelPeers, excludePeer)
 		for p := range cancelPeers {
 			pws, ok := pwm.peerWants[p]
 			if !ok {
