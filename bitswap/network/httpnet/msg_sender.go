@@ -207,9 +207,13 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 	log.Debugf("%s %q", method, req.URL)
 	atomic.AddUint64(&sender.ht.stats.MessagesSent, 1)
+	reqStart := time.Now()
+	sender.ht.metrics.RequestsInFlight.Inc()
 	resp, err := sender.ht.client.Do(req)
 	if err != nil {
 		err = fmt.Errorf("error making request to %q: %w", req.URL, err)
+		sender.ht.metrics.RequestsFailure.Inc()
+		sender.ht.metrics.RequestsInFlight.Dec()
 		log.Debug(err)
 		// Something prevents us from making a request.  We cannot
 		// dial, or setup the connection perhaps.  This counts as
@@ -241,13 +245,22 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	if err != nil {
 		// treat this as server error
 		err = fmt.Errorf("error reading body from %q: %w", req.URL, err)
+		sender.ht.metrics.RequestsBodyFailure.Inc()
+		sender.ht.metrics.RequestsInFlight.Dec()
 		log.Debug(err)
 		return &senderError{
 			Type: typeServer,
 			Err:  err,
 		}
 	}
+	reqDuration := time.Since(reqStart)
+
+	sender.ht.metrics.RequestsInFlight.Dec()
+	sender.ht.metrics.RequestTime.Observe(float64(reqDuration) / float64(time.Second))
+	sender.ht.metrics.updateStatusCounter(resp.StatusCode)
+
 	sender.ht.connEvtMgr.OnMessage(sender.peer)
+
 	switch resp.StatusCode {
 	// Valid responses signaling unavailability of the
 	// content.
