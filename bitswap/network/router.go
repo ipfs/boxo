@@ -19,6 +19,18 @@ type router struct {
 
 // New returns a BitSwapNetwork supported by underlying IPFS host.
 func New(pstore peerstore.Peerstore, bitswap BitSwapNetwork, http BitSwapNetwork) BitSwapNetwork {
+	if bitswap == nil && http == nil {
+		panic("bad exchange network router initialization: need bitswap or http")
+	}
+
+	if http == nil {
+		return bitswap
+	}
+
+	if bitswap == nil {
+		return http
+	}
+
 	return &router{
 		Bitswap: bitswap,
 		HTTP:    http,
