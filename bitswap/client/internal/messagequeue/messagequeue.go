@@ -318,7 +318,6 @@ func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 	}
 
 	mq.wllock.Lock()
-	defer mq.wllock.Unlock()
 
 	for _, c := range wantHaves {
 		mq.bcstWants.Add(c, mq.priority, pb.Message_Wantlist_Have)
@@ -328,6 +327,8 @@ func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 		// for the cid
 		mq.cancels.Remove(c)
 	}
+
+	mq.wllock.Unlock()
 
 	// Schedule a message send
 	mq.signalWorkReady()
@@ -340,7 +341,6 @@ func (mq *MessageQueue) AddWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 	}
 
 	mq.wllock.Lock()
-	defer mq.wllock.Unlock()
 
 	for _, c := range wantHaves {
 		mq.peerWants.Add(c, mq.priority, pb.Message_Wantlist_Have)
@@ -358,6 +358,8 @@ func (mq *MessageQueue) AddWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 		// for the cid
 		mq.cancels.Remove(c)
 	}
+
+	mq.wllock.Unlock()
 
 	// Schedule a message send
 	mq.signalWorkReady()
@@ -844,7 +846,6 @@ FINISH:
 		now := mq.clock.Now()
 
 		mq.wllock.Lock()
-		defer mq.wllock.Unlock()
 
 		for _, e := range peerEntries[:sentPeerEntries] {
 			if e.Cid.Defined() { // Check if want was canceled in the interim
@@ -857,6 +858,9 @@ FINISH:
 				mq.bcstWants.SentAt(e.Cid, now)
 			}
 		}
+
+		mq.wllock.Unlock()
+
 		if mq.events != nil {
 			mq.events <- messageFinishedSending
 		}
