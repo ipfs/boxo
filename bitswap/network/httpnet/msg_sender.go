@@ -254,7 +254,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		}
 	}
 	reqDuration := time.Since(reqStart)
-
+	sender.ht.metrics.ResponseSize.Observe(float64(len(body)))
 	sender.ht.metrics.RequestsInFlight.Dec()
 	sender.ht.metrics.RequestTime.Observe(float64(reqDuration) / float64(time.Second))
 	sender.ht.metrics.updateStatusCounter(resp.StatusCode)
