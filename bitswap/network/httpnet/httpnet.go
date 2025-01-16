@@ -129,6 +129,8 @@ type httpnet struct {
 	supportsHave       bool
 	insecureSkipVerify bool
 	allowlist          map[string]struct{}
+
+	metrics *metrics
 }
 
 // New returns a BitSwapNetwork supported by underlying IPFS host.
@@ -143,6 +145,7 @@ func New(host host.Host, opts ...Option) *httpnet {
 		maxIdleConns:       DefaultMaxIdleConns,
 		supportsHave:       DefaultSupportsHave,
 		insecureSkipVerify: DefaultInsecureSkipVerify,
+		metrics:            newMetrics(),
 	}
 
 	for _, opt := range opts {
