@@ -2,7 +2,6 @@ package httpnet
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -60,7 +59,6 @@ func (rc *requestTracker) requestContext(ctx context.Context, c cid.Cid) context
 // cancelRequest cancels all contexts obtained via requestContext for the
 // given CID.
 func (rc *requestTracker) cancelRequest(c cid.Cid) {
-	fmt.Println("cancel", c)
 	rc.mux.Lock()
 	defer rc.mux.Unlock()
 	t, ok := rc.timers[c]
