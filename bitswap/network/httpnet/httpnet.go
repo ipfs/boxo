@@ -192,7 +192,7 @@ func New(host host.Host, opts ...Option) *httpnet {
 // received. It also starts the connection event manager. Start must be called
 // before using the Network.
 func (ht *httpnet) Start(receivers ...network.Receiver) {
-	fmt.Println("START HTTP NET")
+	log.Info("httpnet: HTTP retrieval system started")
 	ht.receivers = receivers
 	connectionListeners := make([]network.ConnectionListener, len(receivers))
 	for i, v := range receivers {
