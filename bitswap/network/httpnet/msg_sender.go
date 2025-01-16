@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
@@ -205,6 +206,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	}
 
 	log.Debugf("%s %q", method, req.URL)
+	atomic.AddUint64(&sender.ht.stats.MessagesSent, 1)
 	resp, err := sender.ht.client.Do(req)
 	if err != nil {
 		err = fmt.Errorf("error making request to %q: %w", req.URL, err)
@@ -286,6 +288,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			}
 		}
 		bsresp.AddBlock(b)
+		atomic.AddUint64(&sender.ht.stats.MessagesRecvd, 1)
 		return nil
 	// For any other code, we assume we must temporally
 	// backoff from the URL. Includes all 500, Retry-later
