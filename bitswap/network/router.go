@@ -32,8 +32,9 @@ func New(pstore peerstore.Peerstore, bitswap BitSwapNetwork, http BitSwapNetwork
 	}
 
 	return &router{
-		Bitswap: bitswap,
-		HTTP:    http,
+		Peerstore: pstore,
+		Bitswap:   bitswap,
+		HTTP:      http,
 	}
 }
 
