@@ -26,54 +26,37 @@ func init() {
 }
 
 type wli interface {
-	Contains(cid.Cid) (Entry, bool)
+	Get(cid.Cid) (Entry, bool)
+	Has(cid.Cid) bool
 }
 
 func assertHasCid(t *testing.T, w wli, c cid.Cid) {
-	e, ok := w.Contains(c)
-	if !ok {
-		t.Fatal("expected to have ", c)
-	}
-	if !e.Cid.Equals(c) {
-		t.Fatal("returned entry had wrong cid value")
-	}
+	e, ok := w.Get(c)
+	require.True(t, ok)
+	require.Equal(t, c, e.Cid)
 }
 
 func TestBasicWantlist(t *testing.T) {
 	wl := New()
 
-	if !wl.Add(testcids[0], 5, pb.Message_Wantlist_Block) {
-		t.Fatal("expected true")
-	}
+	require.True(t, wl.Add(testcids[0], 5, pb.Message_Wantlist_Block))
 	assertHasCid(t, wl, testcids[0])
-	if !wl.Add(testcids[1], 4, pb.Message_Wantlist_Block) {
-		t.Fatal("expected true")
-	}
+	require.True(t, wl.Add(testcids[1], 4, pb.Message_Wantlist_Block))
 	assertHasCid(t, wl, testcids[0])
 	assertHasCid(t, wl, testcids[1])
 
-	if wl.Len() != 2 {
-		t.Fatal("should have had two items")
-	}
+	require.Equal(t, 2, wl.Len())
 
-	if wl.Add(testcids[1], 4, pb.Message_Wantlist_Block) {
-		t.Fatal("add shouldnt report success on second add")
-	}
+	require.False(t, wl.Add(testcids[1], 4, pb.Message_Wantlist_Block), "add should not report success on second add")
 	assertHasCid(t, wl, testcids[0])
 	assertHasCid(t, wl, testcids[1])
 
-	if wl.Len() != 2 {
-		t.Fatal("should have had two items")
-	}
+	require.Equal(t, 2, wl.Len())
 
-	if !wl.RemoveType(testcids[0], pb.Message_Wantlist_Block) {
-		t.Fatal("should have gotten true")
-	}
+	require.True(t, wl.RemoveType(testcids[0], pb.Message_Wantlist_Block))
 
 	assertHasCid(t, wl, testcids[1])
-	if _, has := wl.Contains(testcids[0]); has {
-		t.Fatal("shouldnt have this cid")
-	}
+	require.False(t, wl.Has(testcids[0]), "should not have this cid")
 }
 
 func TestAddHaveThenBlock(t *testing.T) {
@@ -82,13 +65,9 @@ func TestAddHaveThenBlock(t *testing.T) {
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Have)
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Block)
 
-	e, ok := wl.Contains(testcids[0])
-	if !ok {
-		t.Fatal("expected to have ", testcids[0])
-	}
-	if e.WantType != pb.Message_Wantlist_Block {
-		t.Fatal("expected to be ", pb.Message_Wantlist_Block)
-	}
+	e, ok := wl.Get(testcids[0])
+	require.True(t, ok)
+	require.Equal(t, pb.Message_Wantlist_Block, e.WantType)
 }
 
 func TestAddBlockThenHave(t *testing.T) {
@@ -97,13 +76,9 @@ func TestAddBlockThenHave(t *testing.T) {
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Block)
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Have)
 
-	e, ok := wl.Contains(testcids[0])
-	if !ok {
-		t.Fatal("expected to have ", testcids[0])
-	}
-	if e.WantType != pb.Message_Wantlist_Block {
-		t.Fatal("expected to be ", pb.Message_Wantlist_Block)
-	}
+	e, ok := wl.Get(testcids[0])
+	require.True(t, ok)
+	require.Equal(t, pb.Message_Wantlist_Block, e.WantType)
 }
 
 func TestAddHaveThenRemoveBlock(t *testing.T) {
@@ -112,10 +87,7 @@ func TestAddHaveThenRemoveBlock(t *testing.T) {
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Have)
 	wl.RemoveType(testcids[0], pb.Message_Wantlist_Block)
 
-	_, ok := wl.Contains(testcids[0])
-	if ok {
-		t.Fatal("expected not to have ", testcids[0])
-	}
+	require.False(t, wl.Has(testcids[0]))
 }
 
 func TestAddBlockThenRemoveHave(t *testing.T) {
@@ -124,13 +96,9 @@ func TestAddBlockThenRemoveHave(t *testing.T) {
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Block)
 	wl.RemoveType(testcids[0], pb.Message_Wantlist_Have)
 
-	e, ok := wl.Contains(testcids[0])
-	if !ok {
-		t.Fatal("expected to have ", testcids[0])
-	}
-	if e.WantType != pb.Message_Wantlist_Block {
-		t.Fatal("expected to be ", pb.Message_Wantlist_Block)
-	}
+	e, ok := wl.Get(testcids[0])
+	require.True(t, ok)
+	require.Equal(t, pb.Message_Wantlist_Block, e.WantType)
 }
 
 func TestAddHaveThenRemoveAny(t *testing.T) {
@@ -139,10 +107,7 @@ func TestAddHaveThenRemoveAny(t *testing.T) {
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Have)
 	wl.Remove(testcids[0])
 
-	_, ok := wl.Contains(testcids[0])
-	if ok {
-		t.Fatal("expected not to have ", testcids[0])
-	}
+	require.False(t, wl.Has(testcids[0]))
 }
 
 func TestAddBlockThenRemoveAny(t *testing.T) {
@@ -151,10 +116,7 @@ func TestAddBlockThenRemoveAny(t *testing.T) {
 	wl.Add(testcids[0], 5, pb.Message_Wantlist_Block)
 	wl.Remove(testcids[0])
 
-	_, ok := wl.Contains(testcids[0])
-	if ok {
-		t.Fatal("expected not to have ", testcids[0])
-	}
+	require.False(t, wl.Has(testcids[0]))
 }
 
 func TestSortEntries(t *testing.T) {
