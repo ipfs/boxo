@@ -317,8 +317,6 @@ func (ht *httpnet) Connect(ctx context.Context, p peer.AddrInfo) error {
 	// if filteredURLs == 0 nothing will happen below and we will return
 	// an error.
 
-	ht.host.Peerstore().AddAddrs(p.ID, htaddrs.Addrs, peerstore.PermanentAddrTTL)
-
 	rand.Shuffle(len(urls), func(i, j int) {
 		urls[i], urls[j] = urls[j], urls[i]
 	})
@@ -344,6 +342,7 @@ func (ht *httpnet) Connect(ctx context.Context, p peer.AddrInfo) error {
 			}
 			continue
 		}
+		ht.host.Peerstore().AddAddrs(p.ID, htaddrs.Addrs, peerstore.PermanentAddrTTL)
 		ht.connEvtMgr.Connected(p.ID)
 		ht.pinger.startPinging(p.ID)
 
@@ -357,11 +356,13 @@ func (ht *httpnet) Connect(ctx context.Context, p peer.AddrInfo) error {
 }
 
 // DisconnectFrom marks this peer as Disconnected in the connection event
-// manager and stops collecting latency by pinging it regularly.
+// manager, stops pinging for latency measurements and removes it from the
+// peerstore.
 func (ht *httpnet) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	// this kills all ongoing requests which is more or less equivalent.
 	ht.connEvtMgr.Disconnected(p)
 	ht.pinger.stopPinging(p)
+	ht.host.Peerstore().ClearAddrs(p)
 	return nil
 }
 
@@ -416,8 +417,6 @@ func (ht *httpnet) buildRequest(ctx context.Context, pid peer.ID, u *url.URL, me
 // given message to the given peer over HTTP.
 // An error is returned of the peer has no known HTTP endpoints.
 func (ht *httpnet) NewMessageSender(ctx context.Context, p peer.ID, opts *network.MessageSenderOpts) (network.MessageSender, error) {
-	log.Debugf("NewMessageSender: %s", p)
-
 	// cooldowns made by other senders between now and SendMsg will not be
 	// taken into account since we access that info here only. From that
 	// point, we only react to cooldowns/errors received by this message
@@ -437,6 +436,7 @@ func (ht *httpnet) NewMessageSender(ctx context.Context, p peer.ID, opts *networ
 		return nil, ErrNoHTTPAddresses
 	}
 
+	log.Debugf("NewMessageSender: %s", p)
 	senderOpts := setSenderOpts(opts)
 
 	return &httpMsgSender{

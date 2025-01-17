@@ -80,11 +80,12 @@ func (rt *router) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwapM
 // Connect attempts to connect to a peer. It prioritizes HTTP connections over
 // bitswap.
 func (rt *router) Connect(ctx context.Context, p peer.AddrInfo) error {
-	htaddrs, _ := SplitHTTPAddrs(p)
-	if len(htaddrs.Addrs) > 0 {
-		return rt.HTTP.Connect(ctx, p)
+	htaddrs, bsaddrs := SplitHTTPAddrs(p)
+	err := rt.HTTP.Connect(ctx, htaddrs)
+	if err != nil {
+		return rt.Bitswap.Connect(ctx, bsaddrs)
 	}
-	return rt.Bitswap.Connect(ctx, p)
+	return nil
 }
 
 func (rt *router) DisconnectFrom(ctx context.Context, p peer.ID) error {
@@ -104,8 +105,10 @@ func (rt *router) Stats() Stats {
 }
 
 // NewMessageSender returns a MessageSender using the HTTP network when HTTP
-// addresses are knwon, and bitswap otherwise.
+// addresses are known, and bitswap otherwise.
 func (rt *router) NewMessageSender(ctx context.Context, p peer.ID, opts *MessageSenderOpts) (MessageSender, error) {
+	// IF we did not manage to connect to any HTTP address beforehand, we
+	// should not have them in the peerstore.
 	pi := rt.Peerstore.PeerInfo(p)
 	htaddrs, _ := SplitHTTPAddrs(pi)
 	if len(htaddrs.Addrs) > 0 {
