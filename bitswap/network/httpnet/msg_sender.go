@@ -205,7 +205,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		}
 	}
 
-	log.Debugf("%s %q", method, req.URL)
+	log.Debugf("%d/%d (%d) %s %q", u.clientErrors, u.serverErrors, sender.opts.MaxRetries, method, req.URL)
 	atomic.AddUint64(&sender.ht.stats.MessagesSent, 1)
 	reqStart := time.Now()
 	sender.ht.metrics.RequestsInFlight.Inc()
