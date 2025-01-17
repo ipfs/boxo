@@ -195,10 +195,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
-		pqm, err := rpqm.New(network, bs.providerFinder,
-			rpqm.WithMaxInProcessRequests(8),
-			rpqm.WithMaxProviders(10),
-			rpqm.WithMaxTimeout(10*time.Second))
+		pqm, err := rpqm.New(network, bs.providerFinder, rpqm.WithMaxProviders(10))
 		if err != nil {
 			// Should not be possible to hit this
 			panic(err)
