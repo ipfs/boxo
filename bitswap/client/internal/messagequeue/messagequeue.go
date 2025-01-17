@@ -134,15 +134,15 @@ func (r *recallWantlist) Add(c cid.Cid, priority int32, wtype pb.Message_Wantlis
 func (r *recallWantlist) Remove(c cid.Cid) {
 	r.pending.Remove(c)
 	r.sent.Remove(c)
-	delete(r.sentAt, c)
+	r.ClearSentAt(c)
 }
 
 // Remove wants by type from both the pending list and the list of sent wants
 func (r *recallWantlist) RemoveType(c cid.Cid, wtype pb.Message_Wantlist_WantType) {
 	r.pending.RemoveType(c, wtype)
 	r.sent.RemoveType(c, wtype)
-	if _, ok := r.sent.Contains(c); !ok {
-		delete(r.sentAt, c)
+	if !r.sent.Has(c) {
+		r.ClearSentAt(c)
 	}
 }
 
@@ -161,7 +161,7 @@ func (r *recallWantlist) MarkSent(e bswl.Entry) bool {
 // SentAt records the time at which a want was sent
 func (r *recallWantlist) SentAt(c cid.Cid, at time.Time) {
 	// The want may have been canceled in the interim
-	if _, ok := r.sent.Contains(c); ok {
+	if r.sent.Has(c) {
 		if _, ok := r.sentAt[c]; !ok {
 			r.sentAt[c] = at
 		}
@@ -181,10 +181,11 @@ func (r *recallWantlist) ClearSentAt(c cid.Cid) {
 func (r *recallWantlist) Refresh(now time.Time, interval time.Duration) int {
 	var refreshed int
 	for _, want := range r.sent.Entries() {
-		sentAt, ok := r.sentAt[want.Cid]
+		wantCid := want.Cid
+		sentAt, ok := r.sentAt[wantCid]
 		if ok && now.Sub(sentAt) >= interval {
-			r.pending.Add(want.Cid, want.Priority, want.WantType)
-			r.sent.Remove(want.Cid)
+			r.sent.Remove(wantCid)
+			r.pending.Add(wantCid, want.Priority, want.WantType)
 			refreshed++
 		}
 	}
@@ -383,8 +384,8 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 	// Remove keys from broadcast and peer wants, and add to cancels
 	for _, c := range cancelKs {
 		// Check if a want for the key was sent
-		_, wasSentBcst := mq.bcstWants.sent.Contains(c)
-		_, wasSentPeer := mq.peerWants.sent.Contains(c)
+		wasSentBcst := mq.bcstWants.sent.Has(c)
+		wasSentPeer := mq.peerWants.sent.Has(c)
 
 		// Remove the want from tracking wantlists
 		mq.bcstWants.Remove(c)
@@ -614,7 +615,7 @@ func (mq *MessageQueue) simulateDontHaveWithTimeout(wantlist []bsmsg.Entry) {
 			// Unlikely, but just in case check that the block hasn't been
 			// received in the interim
 			c := entry.Cid
-			if _, ok := mq.peerWants.sent.Contains(c); ok {
+			if mq.peerWants.sent.Has(c) {
 				wants = append(wants, c)
 			}
 		}
