@@ -345,8 +345,6 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 		return nil
 	}
 
-	log.Debugf("SendMsg: %s. Wantlist: %d.", sender.peer, len(wantlist))
-
 	go func() {
 		for range sender.closing {
 			cancel()
