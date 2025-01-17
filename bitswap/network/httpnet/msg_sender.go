@@ -32,6 +32,8 @@ var (
 	// same endpoint after failure. It is overriden by Retry-After
 	// headers and must be at least 50ms.
 	DefaultSendErrorBackoff = time.Second
+
+	defaultMaxClientErrors = 1
 )
 
 func setSenderOpts(opts *network.MessageSenderOpts) network.MessageSenderOpts {
@@ -87,10 +89,10 @@ type httpMsgSender struct {
 func (sender *httpMsgSender) sortURLS() {
 	slices.SortFunc(sender.urls, func(a, b *senderURL) int {
 		// urls without exhausted retries come first
-		if a.clientErrors > sender.opts.MaxRetries || a.serverErrors > sender.opts.MaxRetries {
+		if a.clientErrors >= defaultMaxClientErrors || a.serverErrors >= sender.opts.MaxRetries {
 			return 1 // a > b
 		}
-		if b.clientErrors >= sender.opts.MaxRetries || b.clientErrors > sender.opts.MaxRetries {
+		if b.clientErrors >= defaultMaxClientErrors || b.clientErrors >= sender.opts.MaxRetries {
 			return -1 // a < b
 		}
 
@@ -112,11 +114,11 @@ func (sender *httpMsgSender) sortURLS() {
 func (sender *httpMsgSender) bestURL() (*senderURL, error) {
 	sender.sortURLS()
 	first := sender.urls[0]
-	if first.clientErrors > sender.opts.MaxRetries {
+	if first.clientErrors >= defaultMaxClientErrors {
 		return nil, nil
 	}
 
-	if first.serverErrors > sender.opts.MaxRetries {
+	if first.serverErrors >= sender.opts.MaxRetries {
 		return nil, errors.New("urls exceeded server errors")
 	}
 
@@ -205,7 +207,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		}
 	}
 
-	log.Debugf("%d/%d (%d) %s %q", u.clientErrors, u.serverErrors, sender.opts.MaxRetries, method, req.URL)
+	log.Debugf("%d/%d %d/%d %s %q", u.clientErrors, defaultMaxClientErrors, u.serverErrors, sender.opts.MaxRetries, method, req.URL)
 	atomic.AddUint64(&sender.ht.stats.MessagesSent, 1)
 	reqStart := time.Now()
 	sender.ht.metrics.RequestsInFlight.Inc()
