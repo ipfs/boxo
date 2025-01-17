@@ -109,7 +109,7 @@ func WithoutDuplicatedBlockStats() Option {
 // lookups. The bitswap default ProviderQueryManager uses these options, which
 // may be more conservative than the ProviderQueryManager defaults:
 //
-//   - WithMaxInProcessRequests(16)
+//   - WithMaxInProcessRequests(8)
 //   - WithMaxProviders(10)
 //   - WithMaxTimeout(10 *time.Second)
 //
@@ -196,7 +196,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
 		pqm, err := rpqm.New(network, bs.providerFinder,
-			rpqm.WithMaxInProcessRequests(16),
+			rpqm.WithMaxInProcessRequests(8),
 			rpqm.WithMaxProviders(10),
 			rpqm.WithMaxTimeout(10*time.Second))
 		if err != nil {
