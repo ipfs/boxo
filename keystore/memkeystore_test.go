@@ -1,7 +1,7 @@
 package keystore
 
 import (
-	"sort"
+	"slices"
 	"testing"
 )
 
@@ -37,7 +37,7 @@ func TestMemKeyStoreBasics(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sort.Strings(l)
+	slices.Sort(l)
 	if l[0] != "bar" || l[1] != "foo" {
 		t.Fatal("wrong entries listed")
 	}

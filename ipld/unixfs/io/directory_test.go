@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -438,9 +438,9 @@ func getAllLinksSortedByName(d Directory) ([]*ipld.Link, error) {
 	return entries, nil
 }
 
-func sortLinksByName(l []*ipld.Link) {
-	sort.SliceStable(l, func(i, j int) bool {
-		return strings.Compare(l[i].Name, l[j].Name) == -1 // FIXME: Is this correct?
+func sortLinksByName(links []*ipld.Link) {
+	slices.SortStableFunc(links, func(a, b *ipld.Link) int {
+		return strings.Compare(a.Name, b.Name)
 	})
 }
 

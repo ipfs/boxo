@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"testing"
 
 	ci "github.com/libp2p/go-libp2p/core/crypto"
@@ -60,7 +60,7 @@ func TestKeystoreBasics(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sort.Strings(l)
+	slices.Sort(l)
 	if l[0] != "bar" || l[1] != "foo" {
 		t.Fatal("wrong entries listed")
 	}
@@ -179,7 +179,7 @@ func TestInvalidKeyFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sort.Strings(l)
+	slices.Sort(l)
 	if len(l) != 1 {
 		t.Fatal("wrong entry count")
 	}
@@ -256,8 +256,8 @@ func assertDirContents(dir string, exp []string) error {
 		names = append(names, decodedName)
 	}
 
-	sort.Strings(names)
-	sort.Strings(exp)
+	slices.Sort(names)
+	slices.Sort(exp)
 	if len(names) != len(exp) {
 		return errors.New("directory had wrong number of entries in it")
 	}

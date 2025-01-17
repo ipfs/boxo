@@ -3,7 +3,8 @@
 package wantlist
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
 
@@ -33,12 +34,6 @@ func NewRefEntry(c cid.Cid, p int32) Entry {
 		WantType: pb.Message_Wantlist_Block,
 	}
 }
-
-type entrySlice []Entry
-
-func (es entrySlice) Len() int           { return len(es) }
-func (es entrySlice) Swap(i, j int)      { es[i], es[j] = es[j], es[i] }
-func (es entrySlice) Less(i, j int) bool { return es[i].Priority > es[j].Priority }
 
 // New generates a new raw Wantlist
 func New() *Wantlist {
@@ -125,7 +120,9 @@ func (w *Wantlist) Entries() []Entry {
 	for _, e := range w.set {
 		es = append(es, e)
 	}
-	sort.Sort(entrySlice(es))
+	slices.SortFunc(es, func(a, b Entry) int {
+		return cmp.Compare(b.Priority, a.Priority)
+	})
 	w.cached = es
 	return es[0:len(es):len(es)]
 }
