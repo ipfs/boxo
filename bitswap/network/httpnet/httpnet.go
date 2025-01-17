@@ -308,7 +308,7 @@ func (ht *httpnet) Connect(ctx context.Context, p peer.AddrInfo) error {
 			if err != nil {
 				return err
 			}
-			if _, ok := ht.allowlist[host]; !ok {
+			if _, ok := ht.allowlist[host]; ok {
 				filteredURLs = append(filteredURLs, u)
 			}
 		}
