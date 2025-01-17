@@ -125,32 +125,32 @@ func newRecallWantList() recallWantlist {
 	}
 }
 
-// Add want to the pending list
-func (r *recallWantlist) Add(c cid.Cid, priority int32, wtype pb.Message_Wantlist_WantType) {
+// add want to the pending list
+func (r *recallWantlist) add(c cid.Cid, priority int32, wtype pb.Message_Wantlist_WantType) {
 	r.pending.Add(c, priority, wtype)
 }
 
-// Remove wants from both the pending list and the list of sent wants
-func (r *recallWantlist) Remove(c cid.Cid) {
+// remove wants from both the pending list and the list of sent wants
+func (r *recallWantlist) remove(c cid.Cid) {
 	r.pending.Remove(c)
 	r.sent.Remove(c)
-	r.ClearSentAt(c)
+	delete(r.sentAt, c)
 }
 
-// Remove wants by type from both the pending list and the list of sent wants
-func (r *recallWantlist) RemoveType(c cid.Cid, wtype pb.Message_Wantlist_WantType) {
+// remove wants by type from both the pending list and the list of sent wants
+func (r *recallWantlist) removeType(c cid.Cid, wtype pb.Message_Wantlist_WantType) {
 	r.pending.RemoveType(c, wtype)
 	r.sent.RemoveType(c, wtype)
 	if !r.sent.Has(c) {
-		r.ClearSentAt(c)
+		delete(r.sentAt, c)
 	}
 }
 
-// MarkSent moves the want from the pending to the sent list
+// markSent moves the want from the pending to the sent list
 //
 // Returns true if the want was marked as sent. Returns false if the want wasn't
 // pending.
-func (r *recallWantlist) MarkSent(e bswl.Entry) bool {
+func (r *recallWantlist) markSent(e bswl.Entry) bool {
 	if !r.pending.RemoveType(e.Cid, e.WantType) {
 		return false
 	}
@@ -158,8 +158,8 @@ func (r *recallWantlist) MarkSent(e bswl.Entry) bool {
 	return true
 }
 
-// SentAt records the time at which a want was sent
-func (r *recallWantlist) SentAt(c cid.Cid, at time.Time) {
+// setSentAt records the time at which a want was sent
+func (r *recallWantlist) setSentAt(c cid.Cid, at time.Time) {
 	// The want may have been canceled in the interim
 	if r.sent.Has(c) {
 		if _, ok := r.sentAt[c]; !ok {
@@ -168,17 +168,17 @@ func (r *recallWantlist) SentAt(c cid.Cid, at time.Time) {
 	}
 }
 
-// ClearSentAt clears out the record of the time a want was sent.
+// clearSentAt clears out the record of the time a want was sent.
 // We clear the sent at time when we receive a response for a key as we
 // only need the first response for latency measurement.
-func (r *recallWantlist) ClearSentAt(c cid.Cid) {
+func (r *recallWantlist) clearSentAt(c cid.Cid) {
 	delete(r.sentAt, c)
 }
 
-// Refresh moves wants from the sent list back to the pending list.
+// refresh moves wants from the sent list back to the pending list.
 // If a want has been sent for longer than the interval, it is moved back to the pending list.
 // Returns the number of wants that were refreshed.
-func (r *recallWantlist) Refresh(now time.Time, interval time.Duration) int {
+func (r *recallWantlist) refresh(now time.Time, interval time.Duration) int {
 	var refreshed int
 	for _, want := range r.sent.Entries() {
 		wantCid := want.Cid
@@ -321,7 +321,7 @@ func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 	mq.wllock.Lock()
 
 	for _, c := range wantHaves {
-		mq.bcstWants.Add(c, mq.priority, pb.Message_Wantlist_Have)
+		mq.bcstWants.add(c, mq.priority, pb.Message_Wantlist_Have)
 		mq.priority--
 
 		// We're adding a want-have for the cid, so clear any pending cancel
@@ -344,7 +344,7 @@ func (mq *MessageQueue) AddWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 	mq.wllock.Lock()
 
 	for _, c := range wantHaves {
-		mq.peerWants.Add(c, mq.priority, pb.Message_Wantlist_Have)
+		mq.peerWants.add(c, mq.priority, pb.Message_Wantlist_Have)
 		mq.priority--
 
 		// We're adding a want-have for the cid, so clear any pending cancel
@@ -352,7 +352,7 @@ func (mq *MessageQueue) AddWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 		mq.cancels.Remove(c)
 	}
 	for _, c := range wantBlocks {
-		mq.peerWants.Add(c, mq.priority, pb.Message_Wantlist_Block)
+		mq.peerWants.add(c, mq.priority, pb.Message_Wantlist_Block)
 		mq.priority--
 
 		// We're adding a want-block for the cid, so clear any pending cancel
@@ -388,8 +388,8 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 		wasSentPeer := mq.peerWants.sent.Has(c)
 
 		// Remove the want from tracking wantlists
-		mq.bcstWants.Remove(c)
-		mq.peerWants.Remove(c)
+		mq.bcstWants.remove(c)
+		mq.peerWants.remove(c)
 
 		// Only send a cancel if a want was sent
 		if wasSentBcst || wasSentPeer {
@@ -525,7 +525,7 @@ func (mq *MessageQueue) runQueue() {
 func (mq *MessageQueue) rebroadcastWantlist(now time.Time, interval time.Duration) {
 	mq.wllock.Lock()
 	// Transfer wants from the rebroadcast lists into the pending lists.
-	toRebroadcast := mq.bcstWants.Refresh(now, interval) + mq.peerWants.Refresh(now, interval)
+	toRebroadcast := mq.bcstWants.refresh(now, interval) + mq.peerWants.refresh(now, interval)
 	mq.wllock.Unlock()
 
 	// If some wants were transferred from the rebroadcast list
@@ -653,7 +653,7 @@ func (mq *MessageQueue) handleResponse(ks []cid.Cid) {
 			if (earliest.IsZero() || at.Before(earliest)) && now.Sub(at) < mq.maxValidLatency {
 				earliest = at
 			}
-			mq.bcstWants.ClearSentAt(c)
+			mq.bcstWants.clearSentAt(c)
 		}
 		if at, ok := mq.peerWants.sentAt[c]; ok {
 			if (earliest.IsZero() || at.Before(earliest)) && now.Sub(at) < mq.maxValidLatency {
@@ -662,7 +662,7 @@ func (mq *MessageQueue) handleResponse(ks []cid.Cid) {
 			// Clear out the sent time for the CID because we only want to
 			// record the latency between the request and the first response
 			// for that CID (not subsequent responses)
-			mq.peerWants.ClearSentAt(c)
+			mq.peerWants.clearSentAt(c)
 		}
 	}
 
@@ -753,7 +753,7 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 		// place if possible.
 		for _, e := range peerEntries {
 			if e.WantType == pb.Message_Wantlist_Have {
-				mq.peerWants.RemoveType(e.Cid, pb.Message_Wantlist_Have)
+				mq.peerWants.removeType(e.Cid, pb.Message_Wantlist_Have)
 			} else {
 				filteredPeerEntries = append(filteredPeerEntries, e)
 			}
@@ -818,7 +818,7 @@ FINISH:
 	// message that we've decided to cancel at the last minute.
 	mq.wllock.Lock()
 	for i, e := range peerEntries[:sentPeerEntries] {
-		if !mq.peerWants.MarkSent(e) {
+		if !mq.peerWants.markSent(e) {
 			// It changed.
 			mq.msg.Remove(e.Cid)
 			peerEntries[i].Cid = cid.Undef
@@ -826,7 +826,7 @@ FINISH:
 	}
 
 	for i, e := range bcstEntries[:sentBcstEntries] {
-		if !mq.bcstWants.MarkSent(e) {
+		if !mq.bcstWants.markSent(e) {
 			mq.msg.Remove(e.Cid)
 			bcstEntries[i].Cid = cid.Undef
 		}
@@ -850,13 +850,13 @@ FINISH:
 
 		for _, e := range peerEntries[:sentPeerEntries] {
 			if e.Cid.Defined() { // Check if want was canceled in the interim
-				mq.peerWants.SentAt(e.Cid, now)
+				mq.peerWants.setSentAt(e.Cid, now)
 			}
 		}
 
 		for _, e := range bcstEntries[:sentBcstEntries] {
 			if e.Cid.Defined() { // Check if want was canceled in the interim
-				mq.bcstWants.SentAt(e.Cid, now)
+				mq.bcstWants.setSentAt(e.Cid, now)
 			}
 		}
 
