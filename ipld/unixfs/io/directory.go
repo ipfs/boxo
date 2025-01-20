@@ -489,7 +489,7 @@ func (d *HAMTDirectory) needsToSwitchToBasicDir(ctx context.Context, name string
 // until we either reach a value above the threshold (in that case no need
 // to keep counting) or an error occurs (like the context being canceled
 // if we take too much time fetching the necessary shards).
-func (d *HAMTDirectory) sizeBelowThreshold(ctx context.Context, sizeChange int) (below bool, err error) {
+func (d *HAMTDirectory) sizeBelowThreshold(ctx context.Context, sizeChange int) (bool, error) {
 	if HAMTShardingSize == 0 {
 		panic("asked to compute HAMT size with HAMTShardingSize option off (0)")
 	}
@@ -497,22 +497,35 @@ func (d *HAMTDirectory) sizeBelowThreshold(ctx context.Context, sizeChange int) 
 	// We don't necessarily compute the full size of *all* shards as we might
 	// end early if we already know we're above the threshold or run out of time.
 	partialSize := 0
+	var err error
+	below := true
 
 	// We stop the enumeration once we have enough information and exit this function.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for linkResult := range d.EnumLinksAsync(ctx) {
+	linkResults := d.EnumLinksAsync(ctx)
+	for linkResult := range linkResults {
 		if linkResult.Err != nil {
-			return false, linkResult.Err
+			below = false
+			err = linkResult.Err
+			break
 		}
 
 		partialSize += linksize.LinkSizeFunction(linkResult.Link.Name, linkResult.Link.Cid)
 		if partialSize+sizeChange >= HAMTShardingSize {
 			// We have already fetched enough shards to assert we are
 			//  above the threshold, so no need to keep fetching.
-			return false, nil
+			below = false
+			break
 		}
+	}
+
+	if !below {
+		cancel()
+		for range linkResults {
+		}
+		return false, err
 	}
 
 	// We enumerated *all* links in all shards and didn't reach the threshold.
