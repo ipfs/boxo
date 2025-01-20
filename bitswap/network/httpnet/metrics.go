@@ -10,10 +10,6 @@ var durationHistogramBuckets = []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 
 
 var blockSizesHistogramBuckets = []float64{1, 128 << 10, 256 << 10, 512 << 10, 1024 << 10, 2048 << 10, 4092 << 10}
 
-type ctxKeyT string
-
-var ctxKey ctxKeyT = ctxKeyT(imetrics.CtxScopeKey)
-
 func requestsInFlight(ctx context.Context) imetrics.Gauge {
 	return imetrics.NewCtx(ctx, "requests_in_flight", "Current number of in-flight requests").Gauge()
 }
