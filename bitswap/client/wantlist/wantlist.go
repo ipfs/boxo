@@ -71,14 +71,8 @@ func (w *Wantlist) Add(c cid.Cid, priority int32, wantType pb.Message_Wantlist_W
 }
 
 // Remove removes the given cid from the wantlist.
-func (w *Wantlist) Remove(c cid.Cid) bool {
-	_, ok := w.set[c]
-	if !ok {
-		return false
-	}
-
+func (w *Wantlist) Remove(c cid.Cid) {
 	w.delete(c)
-	return true
 }
 
 // Remove removes the given cid from the wantlist, respecting the type:
@@ -108,9 +102,14 @@ func (w *Wantlist) put(c cid.Cid, e Entry) {
 	w.set[c] = e
 }
 
-// Contains returns the entry, if present, for the given CID, plus whether it
-// was present.
-func (w *Wantlist) Contains(c cid.Cid) (Entry, bool) {
+func (w *Wantlist) Has(c cid.Cid) bool {
+	_, ok := w.set[c]
+	return ok
+}
+
+// Get returns the entry, if present, for the given CID, plus whether it was
+// present.
+func (w *Wantlist) Get(c cid.Cid) (Entry, bool) {
 	e, ok := w.set[c]
 	return e, ok
 }

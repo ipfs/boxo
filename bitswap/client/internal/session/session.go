@@ -43,7 +43,7 @@ type PeerManager interface {
 	// session discovery)
 	BroadcastWantHaves(context.Context, []cid.Cid)
 	// SendCancels tells the PeerManager to send cancels to all peers
-	SendCancels(context.Context, []cid.Cid)
+	SendCancels(context.Context, []cid.Cid, peer.ID)
 }
 
 // SessionManager manages all the sessions
