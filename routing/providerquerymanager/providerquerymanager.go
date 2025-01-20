@@ -20,9 +20,15 @@ import (
 var log = logging.Logger("routing/provqrymgr")
 
 const (
-	defaultMaxInProcessRequests = 16
-	defaultMaxProviders         = 0
-	defaultTimeout              = 10 * time.Second
+	// DefaultMaxInProcessRequests is the default maximum number of requests
+	// that are processed concurrently. A value of 0 means unlimited.
+	DefaultMaxInProcessRequests = 8
+	// DefaultMaxProviders is the default maximum number of providers that are
+	// looked up per find request. 0 value means unlimited.
+	DefaultMaxProviders = 0
+	// DefaultTimeout is the limit on the amount of time to spend waiting for
+	// the maximum number of providers from a find request.
+	DefaultTimeout = 10 * time.Second
 )
 
 type inProgressRequestStatus struct {
@@ -112,9 +118,9 @@ func WithMaxTimeout(timeout time.Duration) Option {
 	}
 }
 
-// WithMaxInProcessRequests is the maximum number of requests that can be
-// processed in parallel. If this is 0, then the number is unlimited. Default
-// is defaultMaxInProcessRequests (16).
+// WithMaxInProcessRequests sets maximum number of requests that are processed
+// concurrently. A value of 0 means unlimited. Default is
+// DefaultMaxInProcessRequests.
 func WithMaxInProcessRequests(count int) Option {
 	return func(mgr *ProviderQueryManager) error {
 		mgr.maxInProcessRequests = count
@@ -122,9 +128,9 @@ func WithMaxInProcessRequests(count int) Option {
 	}
 }
 
-// WithMaxProviders is the maximum number of providers that will be looked up
-// per query. We only return providers that we can connect to. Defaults to 0,
-// which means unbounded.
+// WithMaxProviders sets the maximum number of providers that are looked up per
+// find request. Only providers that we can connect to are returned. Defaults
+// to 0, which means unlimited.
 func WithMaxProviders(count int) Option {
 	return func(mgr *ProviderQueryManager) error {
 		mgr.maxProviders = count
@@ -140,9 +146,9 @@ func New(dialer ProviderQueryDialer, router ProviderQueryRouter, opts ...Option)
 		dialer:                dialer,
 		router:                router,
 		providerQueryMessages: make(chan providerQueryMessage),
-		findProviderTimeout:   defaultTimeout,
-		maxInProcessRequests:  defaultMaxInProcessRequests,
-		maxProviders:          defaultMaxProviders,
+		findProviderTimeout:   DefaultTimeout,
+		maxInProcessRequests:  DefaultMaxInProcessRequests,
+		maxProviders:          DefaultMaxProviders,
 	}
 
 	for _, o := range opts {
