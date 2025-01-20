@@ -31,6 +31,7 @@ The following emojis are used to highlight certain changes:
 
 - `gateway` Fix redirect URLs for subdirectories with characters that need escaping. [#779](https://github.com/ipfs/boxo/pull/779)
 - `ipns` Fix `ipns` protobuf namespace conflicts by using full package name `github.com/ipfs/boxo/ipns/pb/record.proto` instead of the generic `record.proto` [#794](https://github.com/ipfs/boxo/pull/794)
+- `unixfs` Fix possible crash when modifying directory [#798](https://github.com/ipfs/boxo/pull/798)
 
 ### Security
 
