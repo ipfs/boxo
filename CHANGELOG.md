@@ -16,25 +16,35 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.27.0]
+
+### Added
+
 - `gateway` Support for custom DNSLink / DoH resolvers on `localhost` to simplify integration with non-ICANN DNS systems [#645](https://github.com/ipfs/boxo/pull/645)
 
 ### Changed
-- Do not send CANCEL to peer that block was received from, as this is redundant. [#784](https://github.com/ipfs/boxo/pull/784)
 
-- `gateway` The default DNSLink resolver for `.eth` TLD changed to `https://dns.eth.limo/dns-query` [#781](https://github.com/ipfs/boxo/pull/781)
-- `gateway` The default DNSLink resolver for `.crypto` TLD changed to `https://resolver.unstoppable.io/dns-query` [#782](https://github.com/ipfs/boxo/pull/782)
+- `bitswap/client`: Do not send CANCEL to peer that block was received from, as this is redundant. [#784](https://github.com/ipfs/boxo/pull/784)
+- `gateway`: The default DNSLink resolver for `.eth` TLD changed to `https://dns.eth.limo/dns-query` [#781](https://github.com/ipfs/boxo/pull/781)
+- `gateway`: The default DNSLink resolver for `.crypto` TLD changed to `https://resolver.unstoppable.io/dns-query` [#782](https://github.com/ipfs/boxo/pull/782)
 - upgrade to `go-libp2p-kad-dht` [v0.28.2](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.28.2)
+- `bitswap/client`: reduce lock scope in messagequeue: lock only needed sections [#787](https://github.com/ipfs/boxo/pull/787)
 - upgrade to `go-libp2p` [v0.38.2](https://github.com/libp2p/go-libp2p/releases/tag/v0.38.2)
-
-### Removed
 
 ### Fixed
 
 - `gateway` Fix redirect URLs for subdirectories with characters that need escaping. [#779](https://github.com/ipfs/boxo/pull/779)
 - `ipns` Fix `ipns` protobuf namespace conflicts by using full package name `github.com/ipfs/boxo/ipns/pb/record.proto` instead of the generic `record.proto` [#794](https://github.com/ipfs/boxo/pull/794)
 - `unixfs` Fix possible crash when modifying directory [#798](https://github.com/ipfs/boxo/pull/798)
-
-### Security
 
 
 ## [v0.26.0]
