@@ -32,6 +32,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -127,16 +128,10 @@ type BlockReceivedNotifier interface {
 	ReceivedBlocks(peer.ID, []blocks.Block)
 }
 
-// ProviderFinder is a subset of
-// https://pkg.go.dev/github.com/libp2p/go-libp2p@v0.37.0/core/routing#ContentRouting
-type ProviderFinder interface {
-	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.AddrInfo
-}
-
 // New initializes a Bitswap client that runs until client.Close is called.
 // The Content providerFinder paramteter can be nil to disable content-routing
 // lookups for content (rely only on bitswap for discovery).
-func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ProviderFinder, bstore blockstore.Blockstore, options ...Option) *Client {
+func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder routing.ContentDiscovery, bstore blockstore.Blockstore, options ...Option) *Client {
 	// important to use provided parent context (since it may include important
 	// loggable data). It's probably not a good idea to allow bitswap to be
 	// coupled to the concerns of the ipfs daemon in this way.
@@ -216,10 +211,10 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 		self peer.ID,
 	) bssm.Session {
 		// careful when bs.pqm is nil. Since we are type-casting it
-		// into session.ProviderFinder when passing it, it will become
+		// into routing.ContentDiscovery when passing it, it will become
 		// not nil. Related:
 		// https://groups.google.com/g/golang-nuts/c/wnH302gBa4I?pli=1
-		var sessionProvFinder bssession.ProviderFinder
+		var sessionProvFinder routing.ContentDiscovery
 		if bs.pqm != nil {
 			sessionProvFinder = bs.pqm
 		} else if providerFinder != nil {
@@ -245,7 +240,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 type Client struct {
 	pm *bspm.PeerManager
 
-	providerFinder ProviderFinder
+	providerFinder routing.ContentDiscovery
 
 	// the provider query manager manages requests to find providers
 	pqm                         *rpqm.ProviderQueryManager

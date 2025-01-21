@@ -10,6 +10,7 @@ import (
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	swarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -47,12 +48,6 @@ type findProviderRequest struct {
 // libp2p.Host
 type ProviderQueryDialer interface {
 	Connect(context.Context, peer.AddrInfo) error
-}
-
-// ProviderQueryRouter is an interface for finding providers. Usually a libp2p
-// ContentRouter.
-type ProviderQueryRouter interface {
-	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.AddrInfo
 }
 
 type providerQueryMessage interface {
@@ -94,7 +89,7 @@ type ProviderQueryManager struct {
 	closeOnce                  sync.Once
 	closing                    chan struct{}
 	dialer                     ProviderQueryDialer
-	router                     ProviderQueryRouter
+	router                     routing.ContentDiscovery
 	providerQueryMessages      chan providerQueryMessage
 	providerRequestsProcessing *chanqueue.ChanQueue[*findProviderRequest]
 
@@ -140,7 +135,7 @@ func WithMaxProviders(count int) Option {
 
 // New initializes a new ProviderQueryManager for a given context and a given
 // network provider.
-func New(dialer ProviderQueryDialer, router ProviderQueryRouter, opts ...Option) (*ProviderQueryManager, error) {
+func New(dialer ProviderQueryDialer, router routing.ContentDiscovery, opts ...Option) (*ProviderQueryManager, error) {
 	pqm := &ProviderQueryManager{
 		closing:               make(chan struct{}),
 		dialer:                dialer,
