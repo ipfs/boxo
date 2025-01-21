@@ -12,7 +12,7 @@ import (
 	"os"
 	gopath "path"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -117,8 +117,8 @@ func assertDirAtPath(root *Directory, pth string, children []string) error {
 		names = append(names, d.Name)
 	}
 
-	sort.Strings(children)
-	sort.Strings(names)
+	slices.Sort(children)
+	slices.Sort(names)
 	if !compStrArrs(children, names) {
 		return errors.New("directories children did not match")
 	}
@@ -259,7 +259,7 @@ func TestMkdir(t *testing.T) {
 	rootdir := rt.GetDirectory()
 
 	dirsToMake := []string{"a", "B", "foo", "bar", "cats", "fish"}
-	sort.Strings(dirsToMake) // sort for easy comparing later
+	slices.Sort(dirsToMake) // sort for easy comparing later
 
 	for _, d := range dirsToMake {
 		_, err := rootdir.Mkdir(d)

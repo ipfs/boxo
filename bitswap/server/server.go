@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -383,7 +383,7 @@ func (bs *Server) Stat() (Stat, error) {
 	for i, p := range peers {
 		peersStr[i] = p.String()
 	}
-	sort.Strings(peersStr)
+	slices.Sort(peersStr)
 	s.Peers = peersStr
 
 	return s, nil

@@ -15,6 +15,7 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
@@ -43,7 +44,7 @@ type PeerManager interface {
 	// session discovery)
 	BroadcastWantHaves(context.Context, []cid.Cid)
 	// SendCancels tells the PeerManager to send cancels to all peers
-	SendCancels(context.Context, []cid.Cid)
+	SendCancels(context.Context, []cid.Cid, peer.ID)
 }
 
 // SessionManager manages all the sessions
@@ -70,12 +71,6 @@ type SessionPeerManager interface {
 	HasPeers() bool
 	// Protect connection from being pruned by the connection manager
 	ProtectConnection(peer.ID)
-}
-
-// ProviderFinder is used to find providers for a given key
-type ProviderFinder interface {
-	// FindProvidersAsync searches for peers that provide the given CID
-	FindProvidersAsync(ctx context.Context, k cid.Cid, max int) <-chan peer.AddrInfo
 }
 
 // opType is the kind of operation that is being processed by the event loop
@@ -109,7 +104,7 @@ type Session struct {
 	sm             SessionManager
 	pm             PeerManager
 	sprm           SessionPeerManager
-	providerFinder ProviderFinder
+	providerFinder routing.ContentDiscovery
 	sim            *bssim.SessionInterestManager
 
 	sw  sessionWants
@@ -142,7 +137,7 @@ func New(
 	sm SessionManager,
 	id uint64,
 	sprm SessionPeerManager,
-	providerFinder ProviderFinder,
+	providerFinder routing.ContentDiscovery,
 	sim *bssim.SessionInterestManager,
 	pm PeerManager,
 	bpm *bsbpm.BlockPresenceManager,

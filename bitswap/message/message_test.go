@@ -2,6 +2,7 @@ package message
 
 import (
 	"bytes"
+	"slices"
 	"testing"
 
 	"github.com/ipfs/boxo/bitswap/client/wantlist"
@@ -58,7 +59,7 @@ func TestAppendBlock(t *testing.T) {
 	// assert strings are in proto message
 	for _, blockbytes := range m.ToProtoV0().GetBlocks() {
 		s := bytes.NewBuffer(blockbytes).String()
-		if !contains(strs, s) {
+		if !slices.Contains(strs, s) {
 			t.Fail()
 		}
 	}
@@ -162,15 +163,6 @@ func TestToAndFromNetMessage(t *testing.T) {
 func wantlistContains(wantlist *pb.Message_Wantlist, c cid.Cid) bool {
 	for _, e := range wantlist.GetEntries() {
 		if e.Block.Cid.Defined() && c.Equals(e.Block.Cid) {
-			return true
-		}
-	}
-	return false
-}
-
-func contains(strs []string, x string) bool {
-	for _, s := range strs {
-		if s == x {
 			return true
 		}
 	}
