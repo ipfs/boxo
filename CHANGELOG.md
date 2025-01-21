@@ -16,6 +16,19 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.27.0]
+
+### Added
+
 - `gateway` Support for custom DNSLink / DoH resolvers on `localhost` to simplify integration with non-ICANN DNS systems [#645](https://github.com/ipfs/boxo/pull/645)
 
 ### Changed
@@ -26,15 +39,11 @@ The following emojis are used to highlight certain changes:
 - upgrade to `go-libp2p-kad-dht` [v0.28.2](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.28.2)
 - upgrade to `go-libp2p` [v0.38.2](https://github.com/libp2p/go-libp2p/releases/tag/v0.38.2)
 
-### Removed
-
 ### Fixed
 
 - `gateway` Fix redirect URLs for subdirectories with characters that need escaping. [#779](https://github.com/ipfs/boxo/pull/779)
 - `ipns` Fix `ipns` protobuf namespace conflicts by using full package name `github.com/ipfs/boxo/ipns/pb/record.proto` instead of the generic `record.proto` [#794](https://github.com/ipfs/boxo/pull/794)
 - `unixfs` Fix possible crash when modifying directory [#798](https://github.com/ipfs/boxo/pull/798)
-
-### Security
 
 
 ## [v0.26.0]
