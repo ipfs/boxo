@@ -71,7 +71,7 @@ func main() {
 						return err
 					}
 
-					fmt.Printf("\n\n")
+					fmt.Println()
 
 					if !force {
 						p, err := os.Getwd()
