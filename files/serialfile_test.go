@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -96,7 +96,7 @@ testInputs:
 		}
 	}
 
-	sort.Strings(expectedPaths)
+	slices.Sort(expectedPaths)
 
 	stat, err := os.Stat(tmppath)
 	if err != nil {
