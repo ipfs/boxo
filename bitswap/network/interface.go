@@ -11,6 +11,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
@@ -85,8 +86,7 @@ type Receiver interface {
 // Routing is an interface to providing and finding providers on a bitswap
 // network.
 type Routing interface {
-	// FindProvidersAsync returns a channel of providers for the given key.
-	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.AddrInfo
+	routing.ContentDiscovery
 
 	// Provide provides the key to the network.
 	Provide(context.Context, cid.Cid) error
