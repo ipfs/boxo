@@ -57,7 +57,6 @@ func (w *Wantlist) Add(c cid.Cid, priority int32, wantType pb.Message_Wantlist_W
 	}
 
 	w.put(c, Entry{
-		Cid:      c,
 		Priority: priority,
 		WantType: wantType,
 	})
@@ -106,6 +105,7 @@ func (w *Wantlist) Has(c cid.Cid) bool {
 // present.
 func (w *Wantlist) Get(c cid.Cid) (Entry, bool) {
 	e, ok := w.set[c]
+	e.Cid = c
 	return e, ok
 }
 
@@ -117,7 +117,8 @@ func (w *Wantlist) Entries() []Entry {
 		return w.cached
 	}
 	es := make([]Entry, 0, len(w.set))
-	for _, e := range w.set {
+	for c, e := range w.set {
+		e.Cid = c
 		es = append(es, e)
 	}
 	slices.SortFunc(es, func(a, b Entry) int {
