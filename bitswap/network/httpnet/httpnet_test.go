@@ -97,7 +97,7 @@ func mockNet(t *testing.T) mocknet.Mocknet {
 	return mocknet.New()
 }
 
-func mockHTTPNet(t *testing.T, recv network.Receiver, opts ...Option) (*httpnet, mocknet.Mocknet) {
+func mockNetwork(t *testing.T, recv network.Receiver, opts ...Option) (*Network, mocknet.Mocknet) {
 	t.Helper()
 
 	mn := mockNet(t)
@@ -109,7 +109,7 @@ func mockHTTPNet(t *testing.T, recv network.Receiver, opts ...Option) (*httpnet,
 	opts = append(opts, WithInsecureSkipVerify(true))
 	htnet := New(h, opts...)
 	htnet.Start(recv)
-	return htnet, mn
+	return htnet.(*Network), mn
 }
 
 func makeBlocks(t *testing.T, start, end int) []blocks.Block {
@@ -261,7 +261,7 @@ func associateServerToPeer(t *testing.T, srv *httptest.Server, h, remote host.Ho
 
 func TestBestURL(t *testing.T) {
 	ctx := context.Background()
-	htnet, mn := mockHTTPNet(t, mockReceiver(t))
+	htnet, mn := mockNetwork(t, mockReceiver(t))
 	peer, err := mn.GenPeer()
 	if err != nil {
 		t.Fatal(err)
@@ -363,7 +363,7 @@ func TestBestURL(t *testing.T) {
 func TestSendMessage(t *testing.T) {
 	ctx := context.Background()
 	recv := mockReceiver(t)
-	htnet, mn := mockHTTPNet(t, recv)
+	htnet, mn := mockNetwork(t, recv)
 	peer, err := mn.GenPeer()
 	if err != nil {
 		t.Fatal(err)
@@ -391,7 +391,7 @@ func TestSendMessage(t *testing.T) {
 func TestSendMessageWithFailingServer(t *testing.T) {
 	ctx := context.Background()
 	recv := mockReceiver(t)
-	htnet, mn := mockHTTPNet(t, recv)
+	htnet, mn := mockNetwork(t, recv)
 	peer, err := mn.GenPeer()
 	if err != nil {
 		t.Fatal(err)
@@ -424,7 +424,7 @@ func TestSendMessageWithFailingServer(t *testing.T) {
 func TestSendMessageWithPartialResponse(t *testing.T) {
 	ctx := context.Background()
 	recv := mockReceiver(t)
-	htnet, mn := mockHTTPNet(t, recv)
+	htnet, mn := mockNetwork(t, recv)
 	peer, err := mn.GenPeer()
 	if err != nil {
 		t.Fatal(err)
@@ -459,7 +459,7 @@ func TestSendMessageWithPartialResponse(t *testing.T) {
 func TestSendMessageSendHavesAndDontHaves(t *testing.T) {
 	ctx := context.Background()
 	recv := mockReceiver(t)
-	htnet, mn := mockHTTPNet(t, recv,
+	htnet, mn := mockNetwork(t, recv,
 		WithSupportsHave(true),
 	)
 	peer, err := mn.GenPeer()
@@ -495,7 +495,7 @@ func TestSendMessageSendHavesAndDontHaves(t *testing.T) {
 func TestSendCancels(t *testing.T) {
 	ctx := context.Background()
 	recv := mockReceiver(t)
-	htnet, mn := mockHTTPNet(t, recv,
+	htnet, mn := mockNetwork(t, recv,
 		WithSupportsHave(true),
 	)
 	peer, err := mn.GenPeer()
@@ -546,7 +546,7 @@ func TestSendCancels(t *testing.T) {
 func TestBackOff(t *testing.T) {
 	ctx := context.Background()
 	recv := mockReceiver(t)
-	htnet, mn := mockHTTPNet(t, recv)
+	htnet, mn := mockNetwork(t, recv)
 
 	// 1 server associated to two peers.
 	// so that it has the same url.

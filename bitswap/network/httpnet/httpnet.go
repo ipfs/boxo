@@ -32,7 +32,7 @@ var log = logging.Logger("httpnet")
 var ErrNoHTTPAddresses = errors.New("AddrInfo does not contain any valid HTTP addresses")
 var ErrNoSuccess = errors.New("none of the peer HTTP endpoints responded successfully to request")
 
-var _ network.BitSwapNetwork = (*httpnet)(nil)
+var _ network.BitSwapNetwork = (*Network)(nil)
 
 // Defaults for the different options
 var (
@@ -45,32 +45,32 @@ var (
 )
 
 // Option allows to configure the Network.
-type Option func(net *httpnet)
+type Option func(net *Network)
 
 // WithUserAgent sets the user agent when making requests.
 func WithUserAgent(agent string) Option {
-	return func(net *httpnet) {
+	return func(net *Network) {
 		net.userAgent = agent
 	}
 }
 
 // WithMaxBlockSize sets the maximum size of an HTTP response (block).
 func WithMaxBlockSize(size int64) Option {
-	return func(net *httpnet) {
+	return func(net *Network) {
 		net.maxBlockSize = size
 	}
 }
 
 // WithIdleConnTimeout sets how long to keep connections before closing them.
 func WithIdleConnTimeout(t time.Duration) Option {
-	return func(net *httpnet) {
+	return func(net *Network) {
 		net.idleConnTimeout = t
 	}
 }
 
 // WithMaxIdleConns sets how many idle connections we can have.
 func WithMaxIdleConns(n int) Option {
-	return func(net *httpnet) {
+	return func(net *Network) {
 		net.maxIdleConns = n
 	}
 }
@@ -79,7 +79,7 @@ func WithMaxIdleConns(n int) Option {
 // messages (i.e. to the MessageQueue). Have messages trigger HEAD HTTP
 // requests. Not all HTTP-endpoints may know how to handle a HEAD request.
 func WithSupportsHave(b bool) Option {
-	return func(net *httpnet) {
+	return func(net *Network) {
 		net.supportsHave = b
 	}
 }
@@ -87,7 +87,7 @@ func WithSupportsHave(b bool) Option {
 // WithInsecureSkipVerify allows making HTTPS connections to test servers.
 // Use for testing.
 func WithInsecureSkipVerify(b bool) Option {
-	return func(net *httpnet) {
+	return func(net *Network) {
 		net.insecureSkipVerify = b
 	}
 }
@@ -95,7 +95,7 @@ func WithInsecureSkipVerify(b bool) Option {
 // WithAllowlist sets the hostnames that we are allowed to connect to via
 // HTTP.
 func WithAllowlist(hosts []string) Option {
-	return func(net *httpnet) {
+	return func(net *Network) {
 		net.allowlist = make(map[string]struct{})
 		for _, h := range hosts {
 			net.allowlist[h] = struct{}{}
@@ -103,7 +103,7 @@ func WithAllowlist(hosts []string) Option {
 	}
 }
 
-type httpnet struct {
+type Network struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
 	stats network.Stats
@@ -134,8 +134,8 @@ type httpnet struct {
 }
 
 // New returns a BitSwapNetwork supported by underlying IPFS host.
-func New(host host.Host, opts ...Option) *httpnet {
-	htnet := &httpnet{
+func New(host host.Host, opts ...Option) network.BitSwapNetwork {
+	htnet := &Network{
 		host:               host,
 		pinger:             newPinger(host),
 		cooldownURLs:       make(map[string]time.Time),
@@ -191,7 +191,7 @@ func New(host host.Host, opts ...Option) *httpnet {
 // Start sets up the given receivers to be notified when message responses are
 // received. It also starts the connection event manager. Start must be called
 // before using the Network.
-func (ht *httpnet) Start(receivers ...network.Receiver) {
+func (ht *Network) Start(receivers ...network.Receiver) {
 	log.Infof("httpnet: HTTP retrieval system started with allowlist: %s", ht.allowlist)
 	ht.receivers = receivers
 	connectionListeners := make([]network.ConnectionListener, len(receivers))
@@ -205,34 +205,34 @@ func (ht *httpnet) Start(receivers ...network.Receiver) {
 
 // Stop stops the connect event manager associated with this network.
 // Other methods should no longer be used after calling Stop().
-func (ht *httpnet) Stop() {
+func (ht *Network) Stop() {
 	ht.connEvtMgr.Stop()
 }
 
 // Ping triggers a ping to the given peer and returns the latency.
-func (ht *httpnet) Ping(ctx context.Context, p peer.ID) ping.Result {
+func (ht *Network) Ping(ctx context.Context, p peer.ID) ping.Result {
 	return ht.pinger.ping(ctx, p)
 
 }
 
 // Latency returns the EWMA latency for the given peer.
-func (ht *httpnet) Latency(p peer.ID) time.Duration {
+func (ht *Network) Latency(p peer.ID) time.Duration {
 	return ht.pinger.latency(p)
 }
 
-func (ht *httpnet) setCooldown(u *url.URL, t time.Time) {
+func (ht *Network) setCooldown(u *url.URL, t time.Time) {
 	ht.cooldownURLsLock.Lock()
 	ht.cooldownURLs[u.String()] = t
 	ht.cooldownURLsLock.Unlock()
 }
 
-func (ht *httpnet) removeCooldown(u *url.URL) {
+func (ht *Network) removeCooldown(u *url.URL) {
 	ht.cooldownURLsLock.Lock()
 	delete(ht.cooldownURLs, u.String())
 	ht.cooldownURLsLock.Unlock()
 }
 
-func (ht *httpnet) senderURLs(p peer.ID) []*senderURL {
+func (ht *Network) senderURLs(p peer.ID) []*senderURL {
 	pi := ht.host.Peerstore().PeerInfo(p)
 	urls := network.ExtractURLsFromPeer(pi)
 	if len(urls) == 0 {
@@ -263,7 +263,7 @@ func (ht *httpnet) senderURLs(p peer.ID) []*senderURL {
 
 // SendMessage sends the given message to the given peer. It uses
 // NewMessageSender under the hood, with default options.
-func (ht *httpnet) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwapMessage) error {
+func (ht *Network) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwapMessage) error {
 
 	if len(msg.Wantlist()) == 0 {
 		return nil
@@ -282,7 +282,7 @@ func (ht *httpnet) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwap
 }
 
 // Self returns the local peer ID.
-func (ht *httpnet) Self() peer.ID {
+func (ht *Network) Self() peer.ID {
 	return ht.host.ID()
 }
 
@@ -294,7 +294,7 @@ func (ht *httpnet) Self() peer.ID {
 // connection success and marks this peer as "connected", setting it up to
 // handle messages and make requests. The peer will be pinged regularly to
 // collect latency measurements until DisconnectFrom() is called.
-func (ht *httpnet) Connect(ctx context.Context, p peer.AddrInfo) error {
+func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 	htaddrs, _ := network.SplitHTTPAddrs(p)
 	if len(htaddrs.Addrs) == 0 {
 		return ErrNoHTTPAddresses
@@ -358,7 +358,7 @@ func (ht *httpnet) Connect(ctx context.Context, p peer.AddrInfo) error {
 // DisconnectFrom marks this peer as Disconnected in the connection event
 // manager, stops pinging for latency measurements and removes it from the
 // peerstore.
-func (ht *httpnet) DisconnectFrom(ctx context.Context, p peer.ID) error {
+func (ht *Network) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	// this kills all ongoing requests which is more or less equivalent.
 	ht.connEvtMgr.Disconnected(p)
 	ht.pinger.stopPinging(p)
@@ -369,20 +369,20 @@ func (ht *httpnet) DisconnectFrom(ctx context.Context, p peer.ID) error {
 // ** We have no way of protecting a connection from our side other than using
 // it so that it does not idle and gets closed.
 
-func (ht *httpnet) TagPeer(p peer.ID, tag string, w int) {
+func (ht *Network) TagPeer(p peer.ID, tag string, w int) {
 }
-func (ht *httpnet) UntagPeer(p peer.ID, tag string) {
+func (ht *Network) UntagPeer(p peer.ID, tag string) {
 }
 
-func (ht *httpnet) Protect(p peer.ID, tag string) {
+func (ht *Network) Protect(p peer.ID, tag string) {
 }
-func (ht *httpnet) Unprotect(p peer.ID, tag string) bool {
+func (ht *Network) Unprotect(p peer.ID, tag string) bool {
 	return false
 }
 
 // Stats returns message counts for this peer. Each message sent is an HTTP
 // requests. Each message received is an HTTP response.
-func (ht *httpnet) Stats() network.Stats {
+func (ht *Network) Stats() network.Stats {
 	return network.Stats{
 		MessagesRecvd: atomic.LoadUint64(&ht.stats.MessagesRecvd),
 		MessagesSent:  atomic.LoadUint64(&ht.stats.MessagesSent),
@@ -390,7 +390,7 @@ func (ht *httpnet) Stats() network.Stats {
 }
 
 // buildRequests sets up common settings for making a requests.
-func (ht *httpnet) buildRequest(ctx context.Context, pid peer.ID, u *url.URL, method string, cid string) (*http.Request, error) {
+func (ht *Network) buildRequest(ctx context.Context, pid peer.ID, u *url.URL, method string, cid string) (*http.Request, error) {
 	// copy url
 	sendURL, _ := url.Parse(u.String())
 	sendURL.RawQuery = "format=raw"
@@ -416,7 +416,7 @@ func (ht *httpnet) buildRequest(ctx context.Context, pid peer.ID, u *url.URL, me
 // NewMessageSender returns a MessageSender implementation which sends the
 // given message to the given peer over HTTP.
 // An error is returned of the peer has no known HTTP endpoints.
-func (ht *httpnet) NewMessageSender(ctx context.Context, p peer.ID, opts *network.MessageSenderOpts) (network.MessageSender, error) {
+func (ht *Network) NewMessageSender(ctx context.Context, p peer.ID, opts *network.MessageSenderOpts) (network.MessageSender, error) {
 	// cooldowns made by other senders between now and SendMsg will not be
 	// taken into account since we access that info here only. From that
 	// point, we only react to cooldowns/errors received by this message
@@ -452,7 +452,7 @@ func (ht *httpnet) NewMessageSender(ctx context.Context, p peer.ID, opts *networ
 // defaultUserAgent returns a useful user agent version string allowing us to
 // identify requests coming from official releases of this module vs forks.
 func defaultUserAgent() (ua string) {
-	p := reflect.ValueOf(httpnet{}).Type().PkgPath()
+	p := reflect.ValueOf(Network{}).Type().PkgPath()
 	// we have monorepo, so stripping the remainder
 	importPath := strings.TrimSuffix(p, "/bitswap/network/httpnet")
 
