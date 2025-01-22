@@ -281,7 +281,7 @@ func TestSendCancelsExclude(t *testing.T) {
 	// Clear messages
 	collectMessages(msgs, 2*time.Millisecond)
 
-	// Send cancels for 1 want-block and 1 want-have, excluding peer1.
+	// Send cancels for 1 want-block and 1 want-have
 	peerManager.SendCancels(ctx, []cid.Cid{cids[0], cids[2]}, peer1)
 	collected := collectMessages(msgs, 2*time.Millisecond)
 
@@ -292,15 +292,15 @@ func TestSendCancelsExclude(t *testing.T) {
 		t.Fatal("Expected no cancels to be sent to excluded peer")
 	}
 
-	// Send cancels for all cids. Expect cancels for the 1 remaining sid that
-	// was not previously canceled.
+	// Send cancels for all cids
 	peerManager.SendCancels(ctx, cids, "")
 	collected = collectMessages(msgs, 2*time.Millisecond)
+
 	if _, ok := collected[peer2]; ok {
 		t.Fatal("Expected no cancels to be sent to peer that was not sent messages")
 	}
-	if len(collected[peer1].cancels) != 1 {
-		t.Fatalf("Expected cancel to be sent for 1 want-blocks, got %d", len(collected[peer1].cancels))
+	if len(collected[peer1].cancels) != 3 {
+		t.Fatal("Expected cancel to be sent for want-blocks")
 	}
 }
 
