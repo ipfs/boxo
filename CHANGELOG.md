@@ -24,6 +24,12 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
+## [v0.27.1]
+
+### Fixed
+
+- `bitswap/client`: Fixed fix sending cancels when excluding peer [#805](https://github.com/ipfs/boxo/pull/805)
+
 
 ## [v0.27.0]
 
