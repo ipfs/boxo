@@ -5,12 +5,11 @@ import (
 	"errors"
 	"os"
 
-	"github.com/ipfs/boxo/ipld/unixfs/hamt"
-	"github.com/ipfs/boxo/ipld/unixfs/private/linksize"
-
 	"github.com/alecthomas/units"
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
 	format "github.com/ipfs/boxo/ipld/unixfs"
+	"github.com/ipfs/boxo/ipld/unixfs/hamt"
+	"github.com/ipfs/boxo/ipld/unixfs/private/linksize"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
@@ -48,7 +47,7 @@ type Directory interface {
 	ForEachLink(context.Context, func(*ipld.Link) error) error
 
 	// EnumLinksAsync returns a channel which will receive Links in the directory
-	// as they are enumerated, where order is not gauranteed
+	// as they are enumerated, where order is not guaranteed
 	EnumLinksAsync(context.Context) <-chan format.LinkResult
 
 	// Links returns the all the links in the directory node.
@@ -242,7 +241,7 @@ func (d *BasicDirectory) addLinkChild(ctx context.Context, name string, link *ip
 }
 
 // EnumLinksAsync returns a channel which will receive Links in the directory
-// as they are enumerated, where order is not gauranteed
+// as they are enumerated, where order is not guaranteed
 func (d *BasicDirectory) EnumLinksAsync(ctx context.Context) <-chan format.LinkResult {
 	linkResults := make(chan format.LinkResult)
 	go func() {
@@ -368,7 +367,7 @@ func (d *HAMTDirectory) ForEachLink(ctx context.Context, f func(*ipld.Link) erro
 }
 
 // EnumLinksAsync returns a channel which will receive Links in the directory
-// as they are enumerated, where order is not gauranteed
+// as they are enumerated, where order is not guaranteed
 func (d *HAMTDirectory) EnumLinksAsync(ctx context.Context) <-chan format.LinkResult {
 	return d.shard.EnumLinksAsync(ctx)
 }

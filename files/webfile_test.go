@@ -13,7 +13,7 @@ import (
 
 func TestWebFile(t *testing.T) {
 	const content = "Hello world!"
-	const mode = 0644
+	const mode = 0o644
 	mtime := time.Unix(16043205005, 0)
 
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

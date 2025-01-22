@@ -14,9 +14,9 @@ func TestTarWriter(t *testing.T) {
 		"boop": NewMapStatDirectory(map[string]Node{
 			"a.txt": NewBytesFile([]byte("bleep")),
 			"b.txt": NewBytesFile([]byte("bloop")),
-		}, &mockFileInfo{name: "", mode: 0750, mtime: time.Unix(6600000000, 0)}),
+		}, &mockFileInfo{name: "", mode: 0o750, mtime: time.Unix(6600000000, 0)}),
 		"beep.txt": NewBytesStatFile([]byte("beep"),
-			&mockFileInfo{name: "beep.txt", size: 4, mode: 0766, mtime: time.Unix(1604320500, 54321)}),
+			&mockFileInfo{name: "beep.txt", size: 4, mode: 0o766, mtime: time.Unix(1604320500, 54321)}),
 		"boop-sl": NewSymlinkFile("boop", time.Unix(6600050000, 0)),
 	})
 
@@ -64,36 +64,36 @@ func TestTarWriter(t *testing.T) {
 	if cur, err = tr.Next(); err != nil {
 		t.Fatal(err)
 	}
-	checkHeader("", tar.TypeDir, 0, 0755, time.Time{})
+	checkHeader("", tar.TypeDir, 0, 0o755, time.Time{})
 
 	if cur, err = tr.Next(); err != nil {
 		t.Fatal(err)
 	}
-	checkHeader("beep.txt", tar.TypeReg, 4, 0766, time.Unix(1604320500, 54321))
+	checkHeader("beep.txt", tar.TypeReg, 4, 0o766, time.Unix(1604320500, 54321))
 
 	if cur, err = tr.Next(); err != nil {
 		t.Fatal(err)
 	}
-	checkHeader("boop", tar.TypeDir, 0, 0750, time.Unix(6600000000, 0))
+	checkHeader("boop", tar.TypeDir, 0, 0o750, time.Unix(6600000000, 0))
 
 	if cur, err = tr.Next(); err != nil {
 		t.Fatal(err)
 	}
-	checkHeader("boop/a.txt", tar.TypeReg, 5, 0644, time.Time{})
+	checkHeader("boop/a.txt", tar.TypeReg, 5, 0o644, time.Time{})
 
 	if cur, err = tr.Next(); err != nil {
 		t.Fatal(err)
 	}
-	checkHeader("boop/b.txt", tar.TypeReg, 5, 0644, time.Time{})
+	checkHeader("boop/b.txt", tar.TypeReg, 5, 0o644, time.Time{})
 
 	if cur, err = tr.Next(); err != nil {
 		t.Fatal(err)
 	}
-	checkHeader("boop-sl", tar.TypeSymlink, 0, 0777, time.Unix(6600050000, 0))
+	checkHeader("boop-sl", tar.TypeSymlink, 0, 0o777, time.Unix(6600050000, 0))
 	if cur, err = tr.Next(); err != nil {
 		t.Fatal(err)
 	}
-	checkHeader("file.txt", tar.TypeReg, 13, 0644, time.Time{})
+	checkHeader("file.txt", tar.TypeReg, 13, 0o644, time.Time{})
 
 	if cur, err = tr.Next(); err != io.EOF {
 		t.Fatal(err)

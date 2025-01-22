@@ -3,9 +3,8 @@ package verifcid
 import (
 	"testing"
 
-	mh "github.com/multiformats/go-multihash"
-
 	"github.com/ipfs/go-cid"
+	mh "github.com/multiformats/go-multihash"
 )
 
 func TestDefaultAllowList(t *testing.T) {

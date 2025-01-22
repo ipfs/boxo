@@ -145,6 +145,7 @@ func (pm *fakePeerManager) UnregisterSession(uint64)              {}
 func (pm *fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) bool {
 	return true
 }
+
 func (pm *fakePeerManager) BroadcastWantHaves(ctx context.Context, cids []cid.Cid) {
 	select {
 	case pm.wantReqs <- wantReq{cids}:
@@ -287,7 +288,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 		// Make sure the first block is not included because it has already
 		// been received
 		for _, c := range receivedWantReq.cids {
-			require.False(t, c.Equals(cids[0]), "should not braodcast block that was already received")
+			require.False(t, c.Equals(cids[0]), "should not broadcast block that was already received")
 		}
 	case <-ctx.Done():
 		t.Fatal("Never rebroadcast want list")

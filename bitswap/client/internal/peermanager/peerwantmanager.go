@@ -158,7 +158,6 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 // sendWants only sends the peer the want-blocks and want-haves that have not
 // already been sent to it.
 func (pwm *peerWantManager) sendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) {
-
 	// Get the existing want-blocks and want-haves for the peer
 	pws, ok := pwm.peerWants[p]
 	if !ok {
