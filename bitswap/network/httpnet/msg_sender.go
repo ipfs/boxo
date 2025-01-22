@@ -92,7 +92,7 @@ func (sender *httpMsgSender) sortURLS() {
 		if a.clientErrors >= defaultMaxClientErrors || a.serverErrors >= sender.opts.MaxRetries {
 			return 1 // a > b
 		}
-		if b.clientErrors >= defaultMaxClientErrors || b.clientErrors >= sender.opts.MaxRetries {
+		if b.clientErrors >= defaultMaxClientErrors || b.serverErrors >= sender.opts.MaxRetries {
 			return -1 // a < b
 		}
 
