@@ -72,7 +72,7 @@ type senderURL struct {
 type httpMsgSender struct {
 	peer      peer.ID
 	urls      []*senderURL
-	ht        *httpnet
+	ht        *Network
 	opts      network.MessageSenderOpts
 	closing   chan struct{}
 	closeOnce sync.Once
