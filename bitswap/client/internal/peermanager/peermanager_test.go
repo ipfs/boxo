@@ -239,7 +239,7 @@ func TestSendCancels(t *testing.T) {
 	collectMessages(msgs, 2*time.Millisecond)
 
 	// Send cancels for 1 want-block and 1 want-have
-	peerManager.SendCancels(ctx, []cid.Cid{cids[0], cids[2]}, "")
+	peerManager.SendCancels(ctx, []cid.Cid{cids[0], cids[2]})
 	collected := collectMessages(msgs, 2*time.Millisecond)
 
 	if _, ok := collected[peer2]; ok {
@@ -250,7 +250,7 @@ func TestSendCancels(t *testing.T) {
 	}
 
 	// Send cancels for all cids
-	peerManager.SendCancels(ctx, cids, "")
+	peerManager.SendCancels(ctx, cids)
 	collected = collectMessages(msgs, 2*time.Millisecond)
 
 	if _, ok := collected[peer2]; ok {
@@ -258,49 +258,6 @@ func TestSendCancels(t *testing.T) {
 	}
 	if len(collected[peer1].cancels) != 1 {
 		t.Fatal("Expected cancel to be sent for remaining want-block")
-	}
-}
-
-func TestSendCancelsExclude(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	msgs := make(chan msg, 16)
-	peerQueueFactory := makePeerQueueFactory(msgs)
-	tp := random.Peers(3)
-	self, peer1, peer2 := tp[0], tp[1], tp[2]
-	peerManager := New(ctx, peerQueueFactory, self)
-	cids := random.Cids(4)
-
-	// Connect to peer1 and peer2
-	peerManager.Connected(peer1)
-	peerManager.Connected(peer2)
-
-	// Send 2 want-blocks and 1 want-have to peer1
-	peerManager.SendWants(ctx, peer1, []cid.Cid{cids[0], cids[1]}, []cid.Cid{cids[2]})
-
-	// Clear messages
-	collectMessages(msgs, 2*time.Millisecond)
-
-	// Send cancels for 1 want-block and 1 want-have
-	peerManager.SendCancels(ctx, []cid.Cid{cids[0], cids[2]}, peer1)
-	collected := collectMessages(msgs, 2*time.Millisecond)
-
-	if _, ok := collected[peer2]; ok {
-		t.Fatal("Expected no cancels to be sent to peer that was not sent messages")
-	}
-	if len(collected[peer1].cancels) != 0 {
-		t.Fatal("Expected no cancels to be sent to excluded peer")
-	}
-
-	// Send cancels for all cids
-	peerManager.SendCancels(ctx, cids, "")
-	collected = collectMessages(msgs, 2*time.Millisecond)
-
-	if _, ok := collected[peer2]; ok {
-		t.Fatal("Expected no cancels to be sent to peer that was not sent messages")
-	}
-	if len(collected[peer1].cancels) != 3 {
-		t.Fatal("Expected cancel to be sent for want-blocks")
 	}
 }
 
@@ -419,7 +376,7 @@ func BenchmarkPeerManager(b *testing.B) {
 			limit := len(wanted) / 10
 			cancel := wanted[:limit]
 			wanted = wanted[limit:]
-			peerManager.SendCancels(ctx, cancel, "")
+			peerManager.SendCancels(ctx, cancel)
 		}
 	}
 }

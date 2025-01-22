@@ -70,7 +70,7 @@ func (*fakePeerManager) RegisterSession(peer.ID, bspm.Session)                  
 func (*fakePeerManager) UnregisterSession(uint64)                                      {}
 func (*fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) bool { return true }
 func (*fakePeerManager) BroadcastWantHaves(context.Context, []cid.Cid)                 {}
-func (fpm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid, excludePeer peer.ID) {
+func (fpm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid) {
 	fpm.lk.Lock()
 	defer fpm.lk.Unlock()
 	fpm.cancels = append(fpm.cancels, cancels...)

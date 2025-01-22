@@ -173,7 +173,7 @@ func (sm *SessionManager) ReceiveFrom(ctx context.Context, p peer.ID, blks []cid
 	}
 
 	// Send CANCEL to all peers with want-have / want-block
-	sm.peerManager.SendCancels(ctx, blks, p)
+	sm.peerManager.SendCancels(ctx, blks)
 }
 
 // CancelSessionWants is called when a session cancels wants because a call to
@@ -193,5 +193,5 @@ func (sm *SessionManager) cancelWants(wants []cid.Cid) {
 	// Send CANCEL to all peers for blocks that no session is interested in
 	// anymore.
 	// Note: use bitswap context because session context may already be Done.
-	sm.peerManager.SendCancels(sm.ctx, wants, "")
+	sm.peerManager.SendCancels(sm.ctx, wants)
 }
