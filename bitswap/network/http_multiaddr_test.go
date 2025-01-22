@@ -13,6 +13,7 @@ func TestExtractHTTPAddress(t *testing.T) {
 		name      string
 		maStr     string
 		want      *url.URL
+		sni       string
 		expectErr bool
 	}{
 		{
@@ -75,6 +76,25 @@ func TestExtractHTTPAddress(t *testing.T) {
 			},
 			expectErr: false,
 		},
+		{
+			name:  "tls/http multiaddress without sni",
+			maStr: "/ip4/127.0.0.1/tcp/8080/tls/http",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "127.0.0.1:8080",
+			},
+			expectErr: false,
+		},
+		{
+			name:  "tls/http with sni",
+			maStr: "/dns4/example.com/tcp/443/tls/sni/example2.com/http",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "example.com:443",
+			},
+			sni:       "example2.com",
+			expectErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -87,15 +107,15 @@ func TestExtractHTTPAddress(t *testing.T) {
 				return
 			}
 
-			got, err := ExtractHTTPAddress(ma)
+			got, sni, err := ExtractHTTPAddress(ma)
 			if (err != nil) != tt.expectErr {
 				t.Errorf("got: %s", got)
 				t.Errorf("ExtractHTTPAddress() error = %v, wantErr %v", err, tt.expectErr)
 				return
 			}
 
-			if tt.want != nil && (got == nil || got.String() != tt.want.String()) {
-				t.Errorf("ExtractHTTPAddress() = %v, want %v", got, tt.want)
+			if tt.want != nil && (got == nil || got.String() != tt.want.String() || tt.sni != sni) {
+				t.Errorf("ExtractHTTPAddress() = %v (%s), want %v (%s)", got, sni, tt.want, tt.sni)
 			}
 		})
 	}
