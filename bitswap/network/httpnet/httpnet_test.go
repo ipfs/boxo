@@ -287,7 +287,7 @@ func TestBestURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	var urls []*url.URL
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 8; i++ {
 		baseurl.Host = fmt.Sprintf("127.0.0.1:%d", 1000+i)
 		u, _ := url.Parse(baseurl.String())
 		urls = append(urls, u)
@@ -310,26 +310,38 @@ func TestBestURL(t *testing.T) {
 		{
 			url:          urls[2],
 			cooldown:     time.Time{},
-			clientErrors: 2,
-			serverErrors: 2,
+			clientErrors: 0,
+			serverErrors: 3,
 		},
 		{
 			url:          urls[3],
 			cooldown:     time.Time{},
-			clientErrors: 2,
-			serverErrors: 1,
+			clientErrors: 0,
+			serverErrors: 2,
 		},
 		{
 			url:          urls[4],
 			cooldown:     time.Time{},
-			clientErrors: 1,
-			serverErrors: 2,
+			clientErrors: 0,
+			serverErrors: 1,
 		},
 		{
 			url:          urls[5],
 			cooldown:     time.Time{},
 			clientErrors: 0,
 			serverErrors: 20,
+		},
+		{
+			url:          urls[6],
+			cooldown:     time.Time{},
+			clientErrors: 2,
+			serverErrors: 0,
+		},
+		{
+			url:          urls[7],
+			cooldown:     now.Add(2 * time.Second),
+			clientErrors: 0,
+			serverErrors: 0,
 		},
 	}
 	ms.urls = surls
@@ -338,11 +350,13 @@ func TestBestURL(t *testing.T) {
 
 	expected := []string{
 		urls[4].String(), // no cooldown, min client errors
-		urls[3].String(), // min server errors
-		urls[2].String(), // no timeout
-		urls[1].String(), // min server
-		urls[0].String(),
-		urls[5].String(), // maxed errors
+		urls[3].String(), // less server errors
+		urls[2].String(), // no timeout, less server errors
+		urls[1].String(), // min server errors with timeout
+		urls[0].String(), // shortest timeout with errors
+		urls[7].String(), // longest timeout but fine
+		urls[5].String(), // maxed server errors
+		urls[6].String(), // maxed client errors
 	}
 
 	for i, u := range ms.urls {
@@ -351,7 +365,7 @@ func TestBestURL(t *testing.T) {
 		}
 	}
 
-	ms.urls = ms.urls[5:]
+	ms.urls = ms.urls[6:]
 
 	_, err = ms.bestURL()
 	if err == nil {
