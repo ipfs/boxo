@@ -233,7 +233,7 @@ func (pwm *peerWantManager) sendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves
 
 // sendCancels sends a cancel to each peer to which a corresponding want was
 // sent
-func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid, excludePeer peer.ID) {
+func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 	if len(cancelKs) == 0 {
 		return
 	}
@@ -257,15 +257,8 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid, excludePeer peer.ID)
 
 	// Send cancels to a particular peer
 	send := func(p peer.ID, pws *peerWant) {
-		noSend := p == excludePeer
-
-		var toCancel []cid.Cid
-
-		// If peer is not excluded, then send broadcast cancels to this peer.
-		if !noSend {
-			// Start from the broadcast cancels
-			toCancel = broadcastCancels
-		}
+		// Start from the broadcast cancels
+		toCancel := broadcastCancels
 
 		// For each key to be cancelled
 		for _, c := range cancelKs {
@@ -278,9 +271,9 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid, excludePeer peer.ID)
 			pws.wantBlocks.Remove(c)
 			pws.wantHaves.Remove(c)
 
-			// If peer is not excluded and this a broadcast want is not already
-			// added it to the peer cancels, then add the cancel.
-			if !noSend && !pwm.broadcastWants.Has(c) {
+			// If it's a broadcast want, we've already added it to
+			// the peer cancels.
+			if !pwm.broadcastWants.Has(c) {
 				toCancel = append(toCancel, c)
 			}
 		}
