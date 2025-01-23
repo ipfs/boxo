@@ -29,7 +29,7 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-- `bitswap/client`: Reverted attempt to sending cancels with excluding peer. There were additional problems with wantlist accounting that made the attempted change unsafe, so it was reverted. [#809](https://github.com/ipfs/boxo/pull/809)
+- `bitswap/client`: Reverted attempt to send cancels with excluded peer due to additional issues with wantlist accounting [#809](https://github.com/ipfs/boxo/pull/809)
 
 
 ## [v0.27.1]
