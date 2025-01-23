@@ -24,6 +24,14 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
+
+## [v0.27.2]
+
+### Fixed
+
+- `bitswap/client`: Reverted attempt to sending cancels with excluding peer. There were additional problems with wantlist accounting that made the attempted change unsafe, so it was reverted. [#809](https://github.com/ipfs/boxo/pull/809)
+
+
 ## [v0.27.1]
 
 ### Fixed
