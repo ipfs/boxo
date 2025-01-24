@@ -163,21 +163,6 @@ func (err *senderError) Error() string {
 // processed. tryURL returns an error so that it can be decided what to do next:
 // i.e. retry, or move to next item in wantlist, or abort completely.
 func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsmsg.Entry, bsresp bsmsg.BitSwapMessage) *senderError {
-	// shorthand used below
-	handleCooldown := func(cooldown time.Duration) {
-		if !u.cooldown.IsZero() && cooldown == 0 {
-			u.cooldown = time.Time{}
-			sender.ht.removeCooldown(u.url)
-			return
-		}
-
-		if cooldown > 0 {
-			coold := time.Now().Add(cooldown)
-			u.cooldown = coold
-			sender.ht.setCooldown(u.url, coold)
-		}
-	}
-
 	// sleep whatever needed
 	if dl := u.cooldown; !dl.IsZero() {
 		time.Sleep(time.Until(dl))
@@ -274,7 +259,9 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		err := fmt.Errorf("%s %q -> %d: %q", req.Method, req.URL, resp.StatusCode, string(body))
 		log.Error(err)
 		// clear cooldowns since we got a proper reply
-		handleCooldown(0)
+		if !u.cooldown.IsZero() {
+			sender.ht.cooldownTracker.remove(req.URL.Host)
+		}
 		if entry.SendDontHave {
 			bsresp.AddDontHave(entry.Cid)
 		}
@@ -284,7 +271,10 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			Err:  err,
 		}
 	case http.StatusOK: // \(^°^)/
-		handleCooldown(0)
+		// clear cooldowns since we got a proper reply
+		if !u.cooldown.IsZero() {
+			sender.ht.cooldownTracker.remove(req.URL.Host)
+		}
 		log.Debugf("%q -> %d (%d bytes)", req.URL, resp.StatusCode, len(body))
 
 		if req.Method == "HEAD" {
@@ -315,12 +305,14 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	default:
 		err := fmt.Errorf("%q -> %d: %s", req.URL, resp.StatusCode, string(body))
 		log.Error(err)
-		cooldownPeriod := sender.opts.SendErrorBackoff
 		retryAfter := resp.Header.Get("Retry-After")
-		if d := parseRetryAfter(retryAfter); d > 0 {
-			cooldownPeriod = d
+		cooldownUntil, ok := parseRetryAfter(retryAfter)
+		if ok {
+			sender.ht.cooldownTracker.setByDate(req.URL.Host, cooldownUntil)
+		} else {
+			sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
 		}
-		handleCooldown(cooldownPeriod)
+
 		return &senderError{
 			Type: typeServer,
 			Err:  err,
@@ -363,7 +355,7 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 		}
 	}
 
-	bsresp := msg.Clone()
+	bsresp := bsmsg.New(false)
 	var err error
 
 	// obtain contexts for all the entries in the wantlits.
@@ -480,24 +472,22 @@ func (sender *httpMsgSender) SupportsHave() bool {
 
 // parseRetryAfter returns how many seconds the Retry-After header header
 // wants us to wait.
-func parseRetryAfter(ra string) time.Duration {
+func parseRetryAfter(ra string) (time.Time, bool) {
 	if len(ra) == 0 {
-		return 0
+		return time.Time{}, false
 	}
-	var d time.Duration
 	secs, err := strconv.ParseInt(ra, 10, 64)
 	if err != nil {
 		date, err := time.Parse(time.RFC1123, ra)
 		if err != nil {
-			return 0
+			return time.Time{}, false
 		}
-		d = time.Until(date)
-	} else {
-		d = time.Duration(secs) * time.Second
+		return date, true
 	}
 
-	if d < 0 {
-		d = 0
+	if secs <= 0 {
+		return time.Time{}, false
 	}
-	return d
+
+	return time.Now().Add(time.Duration(secs) * time.Second), true
 }

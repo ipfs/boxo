@@ -14,7 +14,6 @@ import (
 	"reflect"
 	"runtime/debug"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -42,6 +41,7 @@ var (
 	DefaultMaxIdleConns                     = 100
 	DefaultSupportsHave                     = false
 	DefaultInsecureSkipVerify               = false
+	DefaultMaxBackoff                       = time.Minute
 )
 
 // Option allows to configure the Network.
@@ -110,16 +110,12 @@ type Network struct {
 
 	host   host.Host
 	client *http.Client
-	//dialer *dialer
 
-	// inbound messages from the network are forwarded to the receiver
-	receivers      []network.Receiver
-	connEvtMgr     *network.ConnectEventManager
-	pinger         *pinger
-	requestTracker *requestTracker
-
-	cooldownURLsLock sync.RWMutex
-	cooldownURLs     map[string]time.Time
+	receivers       []network.Receiver
+	connEvtMgr      *network.ConnectEventManager
+	pinger          *pinger
+	requestTracker  *requestTracker
+	cooldownTracker *cooldownTracker
 
 	// options
 	userAgent          string
@@ -138,7 +134,6 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	htnet := &Network{
 		host:               host,
 		pinger:             newPinger(host),
-		cooldownURLs:       make(map[string]time.Time),
 		userAgent:          defaultUserAgent(),
 		maxBlockSize:       DefaultMaxBlockSize,
 		idleConnTimeout:    DefaultIdleConnTimeout,
@@ -154,6 +149,9 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 
 	reqTracker := newRequestTracker(htnet.idleConnTimeout * 2)
 	htnet.requestTracker = reqTracker
+
+	cooldownTracker := newCooldownTracker(DefaultMaxBackoff)
+	htnet.cooldownTracker = cooldownTracker
 
 	netdialer := &net.Dialer{
 		// FIXME: interaction between keep-alive  and
@@ -220,45 +218,13 @@ func (ht *Network) Latency(p peer.ID) time.Duration {
 	return ht.pinger.latency(p)
 }
 
-func (ht *Network) setCooldown(u *url.URL, t time.Time) {
-	ht.cooldownURLsLock.Lock()
-	ht.cooldownURLs[u.String()] = t
-	ht.cooldownURLsLock.Unlock()
-}
-
-func (ht *Network) removeCooldown(u *url.URL) {
-	ht.cooldownURLsLock.Lock()
-	delete(ht.cooldownURLs, u.String())
-	ht.cooldownURLsLock.Unlock()
-}
-
 func (ht *Network) senderURLs(p peer.ID) []*senderURL {
 	pi := ht.host.Peerstore().PeerInfo(p)
 	urls := network.ExtractURLsFromPeer(pi)
 	if len(urls) == 0 {
 		return nil
 	}
-
-	senderURLs := make([]*senderURL, len(urls))
-	timeNow := time.Now()
-	ht.cooldownURLsLock.RLock()
-	{
-
-		for i, u := range urls {
-			var cooldown time.Time
-			urlstr := u.String()
-			dl, ok := ht.cooldownURLs[urlstr]
-			if ok && timeNow.Before(dl) {
-				cooldown = dl
-			}
-			senderURLs[i] = &senderURL{
-				url:      u,
-				cooldown: cooldown,
-			}
-		}
-	}
-	ht.cooldownURLsLock.RUnlock()
-	return senderURLs
+	return ht.cooldownTracker.fillSenderURLs(urls)
 }
 
 // SendMessage sends the given message to the given peer. It uses
