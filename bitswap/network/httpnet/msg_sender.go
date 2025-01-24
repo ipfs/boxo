@@ -24,9 +24,9 @@ var (
 	// DefaultMaxRetries specifies how many requests to make to available
 	// HTTP endpoints in case of failure.
 	DefaultMaxRetries = 1
-	// DefaultSendTimeout specifies how long each individual HTTP
-	// request's life is.
-	DefaultSendTimeout = 15 * time.Second
+	// DefaultSendTimeout specifies sending each individual HTTP
+	// request can take.
+	DefaultSendTimeout = 5 * time.Second
 	// SendErrorBackoff specifies how long to wait between retries to the
 	// same endpoint after failure. It is overriden by Retry-After
 	// headers and must be at least 50ms.
@@ -61,9 +61,10 @@ func setSenderOpts(opts *network.MessageSenderOpts) network.MessageSenderOpts {
 // senderURL wraps url with information about cooldowns and errors.
 type senderURL struct {
 	network.ParsedURL
-	cooldown     time.Time
-	clientErrors int
-	serverErrors int
+	cooldown         time.Time
+	clientErrors     int
+	serverErrors     int
+	retryLaterErrors int
 }
 
 // httpMsgSender implements a network.MessageSender.
@@ -144,6 +145,8 @@ const (
 	typeServer senderErrorType = 2
 	// Usually errors due to cancelled contexts or timeouts.
 	typeContext senderErrorType = 3
+	// Errors due to 429 and 503 (retry later)
+	typeRetryLater senderErrorType = 4
 )
 
 // senderError attatches type to a regular error. Implements the Error interface.
@@ -183,6 +186,8 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		panic("unknown bitswap entry type")
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, sender.opts.SendTimeout)
+	defer cancel()
 	req, err := sender.ht.buildRequest(ctx, sender.peer, u.ParsedURL, method, entry.Cid.String())
 	if err != nil {
 		return &senderError{
@@ -294,14 +299,8 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		bsresp.AddBlock(b)
 		atomic.AddUint64(&sender.ht.stats.MessagesRecvd, 1)
 		return nil
-	// For any other code, we assume we must temporally
-	// backoff from the URL. Includes all 500, Retry-later
-	// errors.
-	// * 409 - Too many requests
-	// * 503 - Service Unavailable
-	// Tolerance for server errors per url is low. If after waiting etc.
-	// it fails MaxRetries, we will fully disconnect.
-	default:
+	case http.StatusTooManyRequests,
+		http.StatusServiceUnavailable:
 		err := fmt.Errorf("%q -> %d: %s", req.URL, resp.StatusCode, string(body))
 		log.Error(err)
 		retryAfter := resp.Header.Get("Retry-After")
@@ -311,7 +310,19 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		} else {
 			sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
 		}
+		return &senderError{
+			Type: typeRetryLater,
+			Err:  err,
+		}
 
+	// For any other code, we assume we must temporally
+	// backoff from the URL per the options.
+	// Tolerance for server errors per url is low. If after waiting etc.
+	// it fails MaxRetries, we will fully disconnect.
+	default:
+		err := fmt.Errorf("%q -> %d: %s", req.URL, resp.StatusCode, string(body))
+		log.Error(err)
+		sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
 		return &senderError{
 			Type: typeServer,
 			Err:  err,
@@ -418,6 +429,21 @@ WANTLIST_LOOP:
 				// cancellations, in which case we move to
 				// next block.
 				break URL_LOOP // cont. with next block
+			case typeRetryLater:
+				// This error signals that the server
+				// specifically indicated that it is
+				// overloaded.  We are going to retry 3 times
+				// and then increase the serverError count.
+				// Retries happen following the cooldown
+				// period. When multiple urls, retries may
+				// happen on a different url.
+				u.retryLaterErrors++
+				if u.retryLaterErrors%3 == 0 {
+					u.retryLaterErrors = 0
+					u.serverErrors++
+				}
+				continue
+
 			default:
 				panic("unknown sender error type")
 			}
