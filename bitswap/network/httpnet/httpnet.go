@@ -286,9 +286,9 @@ func (ht *Network) Self() peer.ID {
 	return ht.host.ID()
 }
 
-// Connect attempts setting up an HTTP connection to the given peer.  The
-// given AddrInfo must include at least one HTTP endpoint for the peer.  HTTP
-// URLs in AddrInfo will be tried by making an HTTP GET request to
+// Connect attempts setting up an HTTP connection to the given peer. The given
+// AddrInfo must include at least one HTTP endpoint for the peer. HTTP URLs in
+// AddrInfo will be tried by making an HTTP GET request to
 // "ipfs/bafyaabakaieac", which is the CID for an empty directory (inlined).
 // Any completed request, regardless of the HTTP response, is considered a
 // connection success and marks this peer as "connected", setting it up to
@@ -333,13 +333,18 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 		}
 
 		log.Debugf("connect request to %s", req.URL)
-		_, err = ht.client.Do(req)
+		resp, err := ht.client.Do(req)
 		if err != nil {
 			log.Debugf("connect error %s", err)
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				// abort when context cancelled
 				return ctxErr
 			}
+			continue
+		}
+		if resp.StatusCode >= 500 { // 5xx
+			// We made a proper request and got a 5xx back.
+			// We cannot consider this a successful connection.
 			continue
 		}
 		ht.host.Peerstore().AddAddrs(p.ID, htaddrs.Addrs, peerstore.PermanentAddrTTL)
