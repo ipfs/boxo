@@ -35,13 +35,14 @@ var _ network.BitSwapNetwork = (*Network)(nil)
 
 // Defaults for the different options
 var (
-	DefaultMaxBlockSize       int64         = 2 << 20            // 2MiB.
-	DefaultUserAgent                        = defaultUserAgent() // Usually will result in a "boxo@commitID"
-	DefaultIdleConnTimeout    time.Duration = 60 * time.Second
-	DefaultMaxIdleConns                     = 100
-	DefaultSupportsHave                     = false
-	DefaultInsecureSkipVerify               = false
-	DefaultMaxBackoff                       = time.Minute
+	DefaultMaxBlockSize          int64 = 2 << 20            // 2MiB.
+	DefaultUserAgent                   = defaultUserAgent() // Usually will result in a "boxo@commitID"
+	DefaultIdleConnTimeout             = 30 * time.Second
+	DefaultResponseHeaderTimeout       = 10 * time.Second
+	DefaultMaxIdleConns                = 50
+	DefaultSupportsHave                = false
+	DefaultInsecureSkipVerify          = false
+	DefaultMaxBackoff                  = time.Minute
 )
 
 // Option allows to configure the Network.
@@ -61,14 +62,25 @@ func WithMaxBlockSize(size int64) Option {
 	}
 }
 
-// WithIdleConnTimeout sets how long to keep connections before closing them.
+// WithIdleConnTimeout sets how long to keep connections alive before closing
+// them when no requests happen.
 func WithIdleConnTimeout(t time.Duration) Option {
 	return func(net *Network) {
 		net.idleConnTimeout = t
 	}
 }
 
-// WithMaxIdleConns sets how many idle connections we can have.
+// WithResponseHeaderTimeout sets how long to wait for a response to start
+// arriving. It is the time given to the provider to find and start sending
+// the block. It does not affect the time it takes to download the request body.
+func WithResponseHeaderTimeout(t time.Duration) Option {
+	return func(net *Network) {
+		net.responseHeaderTimeout = t
+	}
+}
+
+// WithMaxIdleConns sets how many keep-alive connections we can have where no
+// requests are happening.
 func WithMaxIdleConns(n int) Option {
 	return func(net *Network) {
 		net.maxIdleConns = n
@@ -118,13 +130,14 @@ type Network struct {
 	cooldownTracker *cooldownTracker
 
 	// options
-	userAgent          string
-	maxBlockSize       int64
-	idleConnTimeout    time.Duration
-	maxIdleConns       int
-	supportsHave       bool
-	insecureSkipVerify bool
-	allowlist          map[string]struct{}
+	userAgent             string
+	maxBlockSize          int64
+	idleConnTimeout       time.Duration
+	responseHeaderTimeout time.Duration
+	maxIdleConns          int
+	supportsHave          bool
+	insecureSkipVerify    bool
+	allowlist             map[string]struct{}
 
 	metrics *metrics
 }
@@ -132,15 +145,16 @@ type Network struct {
 // New returns a BitSwapNetwork supported by underlying IPFS host.
 func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	htnet := &Network{
-		host:               host,
-		pinger:             newPinger(host),
-		userAgent:          defaultUserAgent(),
-		maxBlockSize:       DefaultMaxBlockSize,
-		idleConnTimeout:    DefaultIdleConnTimeout,
-		maxIdleConns:       DefaultMaxIdleConns,
-		supportsHave:       DefaultSupportsHave,
-		insecureSkipVerify: DefaultInsecureSkipVerify,
-		metrics:            newMetrics(),
+		host:                  host,
+		pinger:                newPinger(host),
+		userAgent:             defaultUserAgent(),
+		maxBlockSize:          DefaultMaxBlockSize,
+		idleConnTimeout:       DefaultIdleConnTimeout,
+		responseHeaderTimeout: DefaultResponseHeaderTimeout,
+		maxIdleConns:          DefaultMaxIdleConns,
+		supportsHave:          DefaultSupportsHave,
+		insecureSkipVerify:    DefaultInsecureSkipVerify,
+		metrics:               newMetrics(),
 	}
 
 	for _, opt := range opts {
@@ -154,32 +168,52 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	htnet.cooldownTracker = cooldownTracker
 
 	netdialer := &net.Dialer{
-		// FIXME: interaction between keep-alive  and
-		// IdleConnTimeout?
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
+		// Timeout for connects to complete.
+		Timeout: 5 * time.Second,
+		// KeepAlive config for sending probes for an active
+		// connection.
+		KeepAliveConfig: net.KeepAliveConfig{
+			Enable:   true,
+			Idle:     15 * time.Second, // default
+			Interval: 15 * time.Second, // default
+			Count:    2,                // default would be 9
+		},
+	}
+
+	// Re: wasm: see
+	// https://cs.opensource.google/go/go/+/266626211e40d1f2c3a34fa4cd2023f5310cbd7d
+	// In wasm builds custom Dialer gets ignored. DefaultTransport makes
+	// sure it sets DialContext to nil for wasm builds as to not break the
+	// "contract". Probably makes no difference in the end, but we do the
+	// same, just in case.
+	dialCtx := netdialer.DialContext
+	if http.DefaultTransport.(*http.Transport).DialContext == nil {
+		dialCtx = nil
 	}
 
 	tlsCfg := &tls.Config{
 		InsecureSkipVerify: htnet.insecureSkipVerify,
-		// Needed since we use a custom TLSDialer
-		NextProtos: []string{"h2"},
 	}
 
 	t := &http.Transport{
-		TLSClientConfig: tlsCfg,
-		Proxy:           http.ProxyFromEnvironment,
-		DialContext:     netdialer.DialContext, // maybe breaks wasm
-		//DialTLSContext:        dialer.DialTLSContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          htnet.maxIdleConns,
-		IdleConnTimeout:       htnet.idleConnTimeout,
-		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig:   tlsCfg,
+		Proxy:             http.ProxyFromEnvironment,
+		DialContext:       dialCtx,
+		ForceAttemptHTTP2: true,
+		// MaxIdleConns: how many keep-alive conns can we have without
+		// requests.
+		MaxIdleConns: htnet.maxIdleConns,
+		// IdleConnTimeout: how long can a keep-alive connection stay
+		// around without requests.
+		IdleConnTimeout:        htnet.idleConnTimeout,
+		ResponseHeaderTimeout:  htnet.responseHeaderTimeout,
+		ExpectContinueTimeout:  1 * time.Second,
+		MaxResponseHeaderBytes: 2 << 10,  // 2KiB
+		ReadBufferSize:         64 << 10, // 64KiB. Default is 4KiB and most blocks will be larger.
 	}
-	htransport := newTransport(t)
 
 	c := &http.Client{
-		Transport: htransport,
+		Transport: newTransport(t),
 	}
 	htnet.client = c
 
