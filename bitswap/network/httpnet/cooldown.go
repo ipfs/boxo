@@ -22,7 +22,7 @@ func newCooldownTracker(maxBackoff time.Duration) *cooldownTracker {
 
 func (ct *cooldownTracker) setByDate(host string, t time.Time) {
 	latestDate := time.Now().Add(ct.maxBackoff)
-	if latestDate.After(t) {
+	if t.After(latestDate) {
 		t = latestDate
 	}
 	ct.urlsLock.Lock()
