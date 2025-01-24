@@ -61,6 +61,27 @@ type MessageNetwork interface {
 }
 
 // MessageQueue implements queue of want messages to send to peers.
+//
+// There is a MessageQueue for each peer. Each MessageQueue keeps want lists
+// and CIDs to cancel:
+//
+//   - sent/pending peer wants + sent times
+//   - sent/pending broadcast wants + sent times
+//   - cancel CIDs
+//
+// As different messages are added, existing messages already present may be
+// changed or removed. For example, adding a cancel to the queue for some CIDs
+// will also remove any pending wants for those same CIDs. Adding a want will
+// remove a cancel for that CID. If a want already exists then only the type
+// and priority may be adjusted for that same want, so that duplicate messages
+// are not sent.
+//
+// Periodically, on a schedule determined by the peer's response latency, the
+// current set of messages (wants and cancels) is sent to the peer. The time
+// that wants are sent is recorded. When a response to a want message is
+// received, the elapsed time since the request was sent is recorded in the
+// message queue. If there are a sufficient number of updates to send, a
+// bitswap message is sent immediately.
 type MessageQueue struct {
 	ctx          context.Context
 	shutdown     func()
