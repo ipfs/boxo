@@ -340,8 +340,12 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 	}
 
 	go func() {
-		for range sender.closing {
+		select {
+		case <-sender.closing:
 			cancel()
+			return
+		case <-ctx.Done():
+			return
 		}
 	}()
 
