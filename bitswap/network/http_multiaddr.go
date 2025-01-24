@@ -8,9 +8,16 @@ import (
 	"github.com/multiformats/go-multiaddr"
 )
 
+// ParsedURL contains the result of parsing an "http" transport multiaddress.
+// SNI is set when the multiaddress specifies an SNI value.
+type ParsedURL struct {
+	URL *url.URL
+	SNI string
+}
+
 // ExtractHTTPAddress extracts the HTTP schema+host+port from a multiaddress
 // and returns a *url.URL and an SNI string if present.
-func ExtractHTTPAddress(ma multiaddr.Multiaddr) (*url.URL, string, error) {
+func ExtractHTTPAddress(ma multiaddr.Multiaddr) (ParsedURL, error) {
 	components := ma.Protocols()
 	var host, port, schema, sni string
 	var tls bool
@@ -20,13 +27,13 @@ func ExtractHTTPAddress(ma multiaddr.Multiaddr) (*url.URL, string, error) {
 		case "dns", "dns4", "dns6", "ip4", "ip6":
 			hostVal, err := ma.ValueForProtocol(comp.Code)
 			if err != nil {
-				return nil, "", fmt.Errorf("failed to extract host: %w", err)
+				return ParsedURL{}, fmt.Errorf("failed to extract host: %w", err)
 			}
 			host = hostVal
 		case "tcp", "udp":
 			portVal, err := ma.ValueForProtocol(comp.Code)
 			if err != nil {
-				return nil, "", fmt.Errorf("failed to extract port: %w", err)
+				return ParsedURL{}, fmt.Errorf("failed to extract port: %w", err)
 			}
 			port = portVal
 		case "tls":
@@ -41,37 +48,40 @@ func ExtractHTTPAddress(ma multiaddr.Multiaddr) (*url.URL, string, error) {
 		case "sni":
 			sniVal, err := ma.ValueForProtocol(comp.Code)
 			if err != nil {
-				return nil, "", fmt.Errorf("failed to extract SNI: %w", err)
+				return ParsedURL{}, fmt.Errorf("failed to extract SNI: %w", err)
 			}
 			sni = sniVal
 		}
 	}
 
 	if host == "" || port == "" || schema == "" {
-		return nil, "", fmt.Errorf("multiaddress is missing required components (host/port/schema)")
+		return ParsedURL{}, fmt.Errorf("multiaddress is missing required components (host/port/schema)")
 	}
 
 	// Construct the URL object
 	address := fmt.Sprintf("%s://%s:%s", schema, host, port)
 	parsedURL, err := url.Parse(address)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to parse URL: %w", err)
+		return ParsedURL{}, fmt.Errorf("failed to parse URL: %w", err)
 	}
 
-	return parsedURL, sni, nil
+	return ParsedURL{
+		URL: parsedURL,
+		SNI: sni,
+	}, nil
 }
 
 // ExtractURLsFromPeer extracts all HTTP schema+host+port addresses as *url.URL from a peer.AddrInfo object.
-func ExtractURLsFromPeer(info peer.AddrInfo) []*url.URL {
-	var addresses []*url.URL
+func ExtractURLsFromPeer(info peer.AddrInfo) []ParsedURL {
+	var addresses []ParsedURL
 
 	for _, addr := range info.Addrs {
-		httpAddress, _, err := ExtractHTTPAddress(addr)
+		purl, err := ExtractHTTPAddress(addr)
 		if err != nil {
 			// Skip invalid or non-HTTP addresses but continue with others
 			continue
 		}
-		addresses = append(addresses, httpAddress)
+		addresses = append(addresses, purl)
 	}
 
 	return addresses

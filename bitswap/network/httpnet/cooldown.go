@@ -1,9 +1,10 @@
 package httpnet
 
 import (
-	"net/url"
 	"sync"
 	"time"
+
+	"github.com/ipfs/boxo/bitswap/network"
 )
 
 type cooldownTracker struct {
@@ -11,13 +12,42 @@ type cooldownTracker struct {
 
 	urlsLock sync.RWMutex
 	urls     map[string]time.Time
+
+	stop chan struct{}
 }
 
 func newCooldownTracker(maxBackoff time.Duration) *cooldownTracker {
-	return &cooldownTracker{
+	ct := &cooldownTracker{
 		maxBackoff: maxBackoff,
 		urls:       make(map[string]time.Time),
+		stop:       make(chan struct{}),
 	}
+
+	go ct.cleaner()
+	return ct
+}
+
+// every minute clean expired cooldowns.
+func (ct *cooldownTracker) cleaner() {
+	tick := time.NewTicker(time.Minute)
+	for {
+		select {
+		case <-ct.stop:
+			return
+		case now := <-tick.C:
+			ct.urlsLock.Lock()
+			for host, dl := range ct.urls {
+				if dl.Before(now) {
+					delete(ct.urls, host)
+				}
+			}
+			ct.urlsLock.Unlock()
+		}
+	}
+}
+
+func (ct *cooldownTracker) stopCleaner() {
+	close(ct.stop)
 }
 
 func (ct *cooldownTracker) setByDate(host string, t time.Time) {
@@ -45,7 +75,7 @@ func (ct *cooldownTracker) remove(host string) {
 	ct.urlsLock.Unlock()
 }
 
-func (ct *cooldownTracker) fillSenderURLs(urls []*url.URL) []*senderURL {
+func (ct *cooldownTracker) fillSenderURLs(urls []network.ParsedURL) []*senderURL {
 	now := time.Now()
 	surls := make([]*senderURL, len(urls))
 	ct.urlsLock.RLock()
@@ -53,19 +83,13 @@ func (ct *cooldownTracker) fillSenderURLs(urls []*url.URL) []*senderURL {
 
 		for i, u := range urls {
 			var cooldown time.Time
-			dl, ok := ct.urls[u.Host]
-			if ok {
-				if now.Before(dl) {
-					cooldown = dl
-				} else {
-					// TODO: remove if we add a cleaning
-					// thread.
-					delete(ct.urls, u.Host)
-				}
+			dl, ok := ct.urls[u.URL.Host]
+			if ok && now.Before(dl) {
+				cooldown = dl
 			}
 			surls[i] = &senderURL{
-				url:      u,
-				cooldown: cooldown,
+				ParsedURL: u,
+				cooldown:  cooldown,
 			}
 		}
 	}

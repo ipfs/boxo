@@ -51,7 +51,7 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 	for _, u := range urls {
 		go func(u *url.URL) {
 			// Remove port from url.
-			host, _, err := net.SplitHostPort(urls[0].Host)
+			host, _, err := net.SplitHostPort(u.Host)
 			if err != nil {
 				results <- ping.Result{
 					Error: err,
@@ -78,7 +78,7 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 			results <- ping.Result{
 				RTT: pinger.Statistics().AvgRtt,
 			}
-		}(u)
+		}(u.URL)
 	}
 
 	var result ping.Result

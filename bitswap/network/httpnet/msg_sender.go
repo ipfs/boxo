@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"slices"
 	"strconv"
 	"sync"
@@ -61,7 +60,7 @@ func setSenderOpts(opts *network.MessageSenderOpts) network.MessageSenderOpts {
 
 // senderURL wraps url with information about cooldowns and errors.
 type senderURL struct {
-	url          *url.URL
+	network.ParsedURL
 	cooldown     time.Time
 	clientErrors int
 	serverErrors int
@@ -184,7 +183,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		panic("unknown bitswap entry type")
 	}
 
-	req, err := sender.ht.buildRequest(ctx, sender.peer, u.url, method, entry.Cid.String())
+	req, err := sender.ht.buildRequest(ctx, sender.peer, u.ParsedURL, method, entry.Cid.String())
 	if err != nil {
 		return &senderError{
 			Type: typeFatal,
