@@ -118,19 +118,51 @@ func (rt *router) NewMessageSender(ctx context.Context, p peer.ID, opts *Message
 }
 
 func (rt *router) TagPeer(p peer.ID, tag string, w int) {
-	rt.HTTP.TagPeer(p, tag, w)
+	// tag once only if they are the same.
+	if rt.HTTP.Self() == rt.Bitswap.Self() {
+		rt.HTTP.TagPeer(p, tag, w)
+		return
+	}
+
+	pi := rt.Peerstore.PeerInfo(p)
+	htaddrs, _ := SplitHTTPAddrs(pi)
+	if len(htaddrs.Addrs) > 0 {
+		rt.HTTP.TagPeer(p, tag, w)
+		return
+	}
 	rt.Bitswap.TagPeer(p, tag, w)
 }
 
 func (rt *router) UntagPeer(p peer.ID, tag string) {
-	rt.HTTP.UntagPeer(p, tag)
+	// tag once only if they are the same.
+	if rt.HTTP.Self() == rt.Bitswap.Self() {
+		rt.HTTP.UntagPeer(p, tag)
+		return
+	}
+
+	pi := rt.Peerstore.PeerInfo(p)
+	htaddrs, _ := SplitHTTPAddrs(pi)
+	if len(htaddrs.Addrs) > 0 {
+		rt.HTTP.UntagPeer(p, tag)
+		return
+	}
 	rt.Bitswap.UntagPeer(p, tag)
 }
 
 func (rt *router) Protect(p peer.ID, tag string) {
-	rt.HTTP.Protect(p, tag)
+	pi := rt.Peerstore.PeerInfo(p)
+	htaddrs, _ := SplitHTTPAddrs(pi)
+	if len(htaddrs.Addrs) > 0 {
+		rt.HTTP.Protect(p, tag)
+		return
+	}
 	rt.Bitswap.Protect(p, tag)
 }
 func (rt *router) Unprotect(p peer.ID, tag string) bool {
-	return rt.HTTP.Unprotect(p, tag) || rt.Bitswap.Unprotect(p, tag)
+	pi := rt.Peerstore.PeerInfo(p)
+	htaddrs, _ := SplitHTTPAddrs(pi)
+	if len(htaddrs.Addrs) > 0 {
+		return rt.HTTP.Unprotect(p, tag)
+	}
+	return rt.Bitswap.Unprotect(p, tag)
 }

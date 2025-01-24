@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -24,6 +23,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/multiformats/go-multiaddr"
 )
 
 var log = logging.Logger("httpnet")
@@ -35,14 +35,16 @@ var _ network.BitSwapNetwork = (*Network)(nil)
 
 // Defaults for the different options
 var (
-	DefaultMaxBlockSize          int64 = 2 << 20            // 2MiB.
-	DefaultUserAgent                   = defaultUserAgent() // Usually will result in a "boxo@commitID"
-	DefaultIdleConnTimeout             = 30 * time.Second
-	DefaultResponseHeaderTimeout       = 10 * time.Second
-	DefaultMaxIdleConns                = 50
-	DefaultSupportsHave                = false
-	DefaultInsecureSkipVerify          = false
-	DefaultMaxBackoff                  = time.Minute
+	DefaultMaxBlockSize            int64 = 2 << 20            // 2MiB.
+	DefaultUserAgent                     = defaultUserAgent() // Usually will result in a "boxo@commitID"
+	DefaultDialTimeout                   = 3 * time.Second
+	DefaultIdleConnTimeout               = 30 * time.Second
+	DefaultResponseHeaderTimeout         = 10 * time.Second
+	DefaultMaxIdleConns                  = 50
+	DefaultSupportsHave                  = false
+	DefaultInsecureSkipVerify            = false
+	DefaultMaxBackoff                    = time.Minute
+	DefaultMaxHTTPAddressesPerPeer       = 10
 )
 
 // Option allows to configure the Network.
@@ -59,6 +61,13 @@ func WithUserAgent(agent string) Option {
 func WithMaxBlockSize(size int64) Option {
 	return func(net *Network) {
 		net.maxBlockSize = size
+	}
+}
+
+// WithDialTimeout sets the maximum time to wait for a connection to be set up.
+func WithDialTimeout(t time.Duration) Option {
+	return func(net *Network) {
+		net.dialTimeout = t
 	}
 }
 
@@ -115,6 +124,14 @@ func WithAllowlist(hosts []string) Option {
 	}
 }
 
+// WithMaxHTTPAddressesPerPeer limits how many http addresses we attempt to
+// connect to per peer.
+func WithMaxHTTPAddressesPerPeer(max int) Option {
+	return func(net *Network) {
+		net.maxHTTPAddressesPerPeer = max
+	}
+}
+
 type Network struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
@@ -130,14 +147,16 @@ type Network struct {
 	cooldownTracker *cooldownTracker
 
 	// options
-	userAgent             string
-	maxBlockSize          int64
-	idleConnTimeout       time.Duration
-	responseHeaderTimeout time.Duration
-	maxIdleConns          int
-	supportsHave          bool
-	insecureSkipVerify    bool
-	allowlist             map[string]struct{}
+	userAgent               string
+	maxBlockSize            int64
+	dialTimeout             time.Duration
+	idleConnTimeout         time.Duration
+	responseHeaderTimeout   time.Duration
+	maxIdleConns            int
+	supportsHave            bool
+	insecureSkipVerify      bool
+	maxHTTPAddressesPerPeer int
+	allowlist               map[string]struct{}
 
 	metrics *metrics
 }
@@ -145,16 +164,18 @@ type Network struct {
 // New returns a BitSwapNetwork supported by underlying IPFS host.
 func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	htnet := &Network{
-		host:                  host,
-		pinger:                newPinger(host),
-		userAgent:             defaultUserAgent(),
-		maxBlockSize:          DefaultMaxBlockSize,
-		idleConnTimeout:       DefaultIdleConnTimeout,
-		responseHeaderTimeout: DefaultResponseHeaderTimeout,
-		maxIdleConns:          DefaultMaxIdleConns,
-		supportsHave:          DefaultSupportsHave,
-		insecureSkipVerify:    DefaultInsecureSkipVerify,
-		metrics:               newMetrics(),
+		host:                    host,
+		pinger:                  newPinger(host),
+		userAgent:               defaultUserAgent(),
+		maxBlockSize:            DefaultMaxBlockSize,
+		dialTimeout:             DefaultDialTimeout,
+		idleConnTimeout:         DefaultIdleConnTimeout,
+		responseHeaderTimeout:   DefaultResponseHeaderTimeout,
+		maxIdleConns:            DefaultMaxIdleConns,
+		supportsHave:            DefaultSupportsHave,
+		insecureSkipVerify:      DefaultInsecureSkipVerify,
+		maxHTTPAddressesPerPeer: DefaultMaxHTTPAddressesPerPeer,
+		metrics:                 newMetrics(),
 	}
 
 	for _, opt := range opts {
@@ -169,7 +190,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 
 	netdialer := &net.Dialer{
 		// Timeout for connects to complete.
-		Timeout: 5 * time.Second,
+		Timeout: htnet.dialTimeout,
 		// KeepAlive config for sending probes for an active
 		// connection.
 		KeepAliveConfig: net.KeepAliveConfig{
@@ -239,6 +260,7 @@ func (ht *Network) Start(receivers ...network.Receiver) {
 // Other methods should no longer be used after calling Stop().
 func (ht *Network) Stop() {
 	ht.connEvtMgr.Stop()
+	ht.cooldownTracker.stopCleaner()
 }
 
 // Ping triggers a ping to the given peer and returns the latency.
@@ -300,32 +322,39 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 		return ErrNoHTTPAddresses
 	}
 
+	// avoid funny things like someone adding 100 broken urls to a peer.
+	htaddrs.Addrs = htaddrs.Addrs[0:ht.maxHTTPAddressesPerPeer]
+
 	urls := network.ExtractURLsFromPeer(htaddrs)
 	if len(ht.allowlist) > 0 {
-		var filteredURLs []*url.URL
-		for _, u := range urls {
-			host, _, err := net.SplitHostPort(u.Host)
+		var filteredURLs []network.ParsedURL
+		var filteredAddrs []multiaddr.Multiaddr
+		for i, u := range urls {
+			host, _, err := net.SplitHostPort(u.URL.Host)
 			if err != nil {
 				return err
 			}
 			if _, ok := ht.allowlist[host]; ok {
 				filteredURLs = append(filteredURLs, u)
+				filteredAddrs = append(filteredAddrs, htaddrs.Addrs[i])
 			}
 		}
 		urls = filteredURLs
+		htaddrs.Addrs = filteredAddrs
 	}
-	// if filteredURLs == 0 nothing will happen below and we will return
-	// an error.
+	// if len(filteredURLs == 0) nothing will happen below and we will return
+	// an error below.
 
-	rand.Shuffle(len(urls), func(i, j int) {
-		urls[i], urls[j] = urls[j], urls[i]
-	})
-
-	// We will know try to talk to this peer by making an HTTP request.
-	// This allows re-using the connection that we are about to open next
-	// time with the client. The dialer callbacks will call peer.Connected()
+	// We will know try to talk to this peer by making HTTP requests to its urls
+	// and recording which ones work.
+	// This allows re-using the connections that we are about to open next
+	// time with the client. We call peer.Connected()
 	// on success.
-	for _, u := range urls {
+	//
+	// TODO: Decide whether we want to connect to all, or just try until
+	// we find a working one.
+	var workingAddrs []multiaddr.Multiaddr
+	for i, u := range urls {
 		req, err := ht.buildRequest(ctx, p.ID, u, "GET", "bafyaabakaieac")
 		if err != nil {
 			log.Debug(err)
@@ -344,17 +373,21 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 		}
 		if resp.StatusCode >= 500 { // 5xx
 			// We made a proper request and got a 5xx back.
-			// We cannot consider this a successful connection.
+			// We cannot consider this a working connection.
 			continue
 		}
-		ht.host.Peerstore().AddAddrs(p.ID, htaddrs.Addrs, peerstore.PermanentAddrTTL)
+		workingAddrs = append(workingAddrs, htaddrs.Addrs[i])
+	}
+
+	if len(workingAddrs) > 0 {
+		ht.host.Peerstore().AddAddrs(p.ID, workingAddrs, peerstore.PermanentAddrTTL)
 		ht.connEvtMgr.Connected(p.ID)
 		ht.pinger.startPinging(p.ID)
 
+		// We "connected"
 		return nil
-		// otherwise keep trying other urls. We don't care about the
-		// http status code as long as the request succeeded.
 	}
+
 	err := fmt.Errorf("%w: %s", ErrNoSuccess, p.ID)
 	log.Debug(err)
 	return err
@@ -365,24 +398,45 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 // peerstore.
 func (ht *Network) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	// this kills all ongoing requests which is more or less equivalent.
-	ht.connEvtMgr.Disconnected(p)
-	ht.pinger.stopPinging(p)
+	pi := ht.host.Peerstore().PeerInfo(p)
+	_, bsaddrs := network.SplitHTTPAddrs(pi)
 	ht.host.Peerstore().ClearAddrs(p)
+	if len(bsaddrs.Addrs) == 0 {
+		ht.connEvtMgr.Disconnected(p)
+	} else { // re-add bitswap addresses
+		// unfortunately we cannot maintain ttl info
+		ht.host.Peerstore().SetAddrs(p, bsaddrs.Addrs, peerstore.TempAddrTTL)
+	}
+	ht.pinger.stopPinging(p)
+
+	// coolDownTracker: we leave untouched. We want to keep
+	// ongoing cooldowns there in case we reconnect to this peer.
+
 	return nil
 }
 
-// ** We have no way of protecting a connection from our side other than using
-// it so that it does not idle and gets closed.
-
+// TagPeer uses the host's ConnManager to tag a peer.
 func (ht *Network) TagPeer(p peer.ID, tag string, w int) {
-}
-func (ht *Network) UntagPeer(p peer.ID, tag string) {
+	ht.host.ConnManager().TagPeer(p, tag, w)
 }
 
+// UntagPeer uses the host's ConnManager to untag a peer.
+func (ht *Network) UntagPeer(p peer.ID, tag string) {
+	ht.host.ConnManager().UntagPeer(p, tag)
+}
+
+// Protect does nothing. The purpose of Protect is to mantain connections as
+// long as they are used. But our connections are already maintained as long
+// as they are, and closed when not.
 func (ht *Network) Protect(p peer.ID, tag string) {
 }
+
+// Unprotect does nothing. The purpose of Unprotect is to be able to close
+// connections when they are no longer relevant. Our connections are already
+// closed when they are not used. It returns always true as technically our
+// connections are potentially still protected as long as they are used.
 func (ht *Network) Unprotect(p peer.ID, tag string) bool {
-	return false
+	return true
 }
 
 // Stats returns message counts for this peer. Each message sent is an HTTP
@@ -395,9 +449,9 @@ func (ht *Network) Stats() network.Stats {
 }
 
 // buildRequests sets up common settings for making a requests.
-func (ht *Network) buildRequest(ctx context.Context, pid peer.ID, u *url.URL, method string, cid string) (*http.Request, error) {
+func (ht *Network) buildRequest(ctx context.Context, pid peer.ID, u network.ParsedURL, method string, cid string) (*http.Request, error) {
 	// copy url
-	sendURL, _ := url.Parse(u.String())
+	sendURL, _ := url.Parse(u.URL.String())
 	sendURL.RawQuery = "format=raw"
 	sendURL.Path += "/ipfs/" + cid
 
@@ -414,6 +468,9 @@ func (ht *Network) buildRequest(ctx context.Context, pid peer.ID, u *url.URL, me
 	headers := make(http.Header)
 	headers.Add("Accept", "application/vnd.ipld.raw")
 	headers.Add("User-Agent", ht.userAgent)
+	if u.SNI != "" {
+		headers.Add("Host", u.SNI)
+	}
 	req.Header = headers
 	return req, nil
 }
