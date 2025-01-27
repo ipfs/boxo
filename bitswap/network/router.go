@@ -31,6 +31,10 @@ func New(pstore peerstore.Peerstore, bitswap BitSwapNetwork, http BitSwapNetwork
 		return http
 	}
 
+	if http.Self() != bitswap.Self() {
+		panic("http and bitswap network report different peer IDs")
+	}
+
 	return &router{
 		Peerstore: pstore,
 		Bitswap:   bitswap,
@@ -48,8 +52,13 @@ func (rt *router) Stop() {
 	rt.HTTP.Stop()
 }
 
-// Should be the same for both
+// Self returns the peer ID of the network.
 func (rt *router) Self() peer.ID {
+	// Self is used on the bitswap server,
+	// and on the client on the message queue
+	// and session manager.
+	// We ensure during initialization that we are using
+	// the same host for both networks.
 	return rt.Bitswap.Self()
 }
 
@@ -72,8 +81,22 @@ func (rt *router) Latency(p peer.ID) time.Duration {
 }
 
 func (rt *router) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwapMessage) error {
-	// SendMessage is only used by bitswap server so we send a bitswap
-	// message.
+	// SendMessage is only used by bitswap server on sendBlocks(). We
+	// should not be passing a router to the bitswap server but we try to
+	// make our best.
+
+	// If the message has blocks, send it via bitswap.
+	if len(msg.Blocks()) > 0 {
+		return rt.Bitswap.SendMessage(ctx, p, msg)
+	}
+
+	// Otherwise, assume it's a wantlist. Follow usual prioritization
+	// of HTTP when possible.
+	pi := rt.Peerstore.PeerInfo(p)
+	htaddrs, _ := SplitHTTPAddrs(pi)
+	if len(htaddrs.Addrs) > 0 {
+		return rt.HTTP.SendMessage(ctx, p, msg)
+	}
 	return rt.Bitswap.SendMessage(ctx, p, msg)
 }
 
