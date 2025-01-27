@@ -43,7 +43,7 @@ const (
 	// when we reach sendMessageCutoff wants/cancels, we'll send the message immediately.
 	sendMessageCutoff = 256
 	// wait this long before sending next message
-	sendMessageDelay = 2 * time.Second
+	sendMessageDelay = time.Second
 	sendTimeout      = 30 * time.Second
 )
 
@@ -542,38 +542,48 @@ func (mq *MessageQueue) sendMessage() {
 		mq.dhTimeoutMgr.Start()
 	}
 
-	// Convert want lists to a Bitswap Message
-	message, onSent := mq.extractOutgoingMessage(mq.sender.SupportsHave())
+	supportsHave := mq.sender.SupportsHave()
 
 	// After processing the message, clear out its fields to save memory
 	defer mq.msg.Reset(false)
 
-	if message.Empty() {
-		return
-	}
+	for {
+		// Convert want lists to a Bitswap Message
+		message, onSent := mq.extractOutgoingMessage(supportsHave)
+		if message.Empty() {
+			return
+		}
 
-	wantlist := message.Wantlist()
-	mq.logOutgoingMessage(wantlist)
+		wantlist := message.Wantlist()
+		mq.logOutgoingMessage(wantlist)
 
-	if err := sender.SendMsg(mq.ctx, message); err != nil {
-		// If the message couldn't be sent, the networking layer will
-		// emit a Disconnect event and the MessageQueue will get cleaned up
-		log.Infof("Could not send message to peer %s: %s", mq.p, err)
-		mq.Shutdown()
-		return
-	}
+		if err = sender.SendMsg(mq.ctx, message); err != nil {
+			// If the message couldn't be sent, the networking layer will
+			// emit a Disconnect event and the MessageQueue will get cleaned up
+			log.Infof("Could not send message to peer %s: %s", mq.p, err)
+			mq.Shutdown()
+			return
+		}
 
-	// Record sent time so as to calculate message latency
-	onSent()
+		// Record sent time so as to calculate message latency
+		onSent()
 
-	// Set a timer to wait for responses
-	mq.simulateDontHaveWithTimeout(wantlist)
+		// Set a timer to wait for responses
+		mq.simulateDontHaveWithTimeout(wantlist)
 
-	// If the message was too big and only a subset of wants could be
-	// sent, schedule sending the rest of the wants in the next
-	// iteration of the event loop.
-	if mq.hasPendingWork() {
-		mq.signalWorkReady()
+		// If the message was too big and only a subset of wants could be sent,
+		// send more if the the workcount is above the cutoff. Otherwise,
+		// schedule sending the rest of the wants in the next iteration of the
+		// event loop.
+		pendingWork := mq.pendingWorkCount()
+		if pendingWork < sendMessageCutoff {
+			if pendingWork > 0 {
+				mq.signalWorkReady()
+			}
+			return
+		}
+
+		mq.msg.Reset(false)
 	}
 }
 

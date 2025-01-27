@@ -637,8 +637,8 @@ func TestResponseReceived(t *testing.T) {
 
 	// Add some wants
 	messageQueue.AddWants(cids[:5], nil)
-	expectEvent(t, events, messageQueued)
 	clock.Add(sendMessageDelay)
+	expectEvent(t, events, messageQueued)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
@@ -647,6 +647,7 @@ func TestResponseReceived(t *testing.T) {
 
 	// Add some wants and wait another 10ms
 	messageQueue.AddWants(cids[5:8], nil)
+	clock.Add(sendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	clock.Add(10 * time.Millisecond)
 	<-messagesSent
@@ -663,8 +664,8 @@ func TestResponseReceived(t *testing.T) {
 	}
 	// Elapsed time should be between when the first want was sent and the
 	// response received (about 20ms)
-	if upds[0] != 20*time.Millisecond {
-		t.Fatal("expected latency to be time since oldest message sent")
+	if upds[0] != sendMessageDelay+20*time.Millisecond {
+		t.Fatalf("expected latency to be time since oldest message sent, was %s", upds[0].String())
 	}
 }
 
@@ -731,8 +732,8 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 
 	// Add some wants and wait 20ms
 	messageQueue.AddWants(cids[:2], nil)
-	expectEvent(t, events, messageQueued)
 	clock.Add(sendMessageDelay)
+	expectEvent(t, events, messageQueued)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
@@ -741,12 +742,12 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 	// Add some more wants and wait long enough that the first wants will be
 	// outside the maximum valid latency, but the second wants will be inside
 	messageQueue.AddWants(cids[2:], nil)
-	expectEvent(t, events, messageQueued)
 	clock.Add(sendMessageDelay)
+	expectEvent(t, events, messageQueued)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
-	clock.Add(maxValLatency - 10*time.Millisecond + sendMessageDelay)
+	clock.Add(maxValLatency - 10*time.Millisecond)
 	// Receive a response for the wants
 	messageQueue.ResponseReceived(cids)
 
@@ -755,7 +756,7 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 	expectEvent(t, events, latenciesRecorded)
 	upds := dhtm.latencyUpdates()
 	if len(upds) != 1 {
-		t.Fatal("expected one latency update")
+		t.Fatalf("expected one latency update, got %d", len(upds))
 	}
 	// Elapsed time should not include outliers
 	if upds[0] > maxValLatency {
