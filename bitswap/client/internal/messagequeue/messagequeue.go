@@ -43,10 +43,10 @@ const (
 	// when we reach sendMessageCutoff wants/cancels, we'll send the message immediately.
 	sendMessageCutoff = 256
 	// sendMessageDebounce is the debounce duration when calling sendMessage()
-	sendMessageDebounce = time.Millisecond
+	sendMessageDebounce = 500 * time.Millisecond
 	// when we debounce for more than sendMessageMaxDelay, we'll send the
 	// message immediately.
-	sendMessageMaxDelay = 20 * time.Millisecond
+	sendMessageMaxDelay = 2 * time.Second //20 * time.Millisecond
 	sendTimeout         = 30 * time.Second
 )
 
