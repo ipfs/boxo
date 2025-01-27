@@ -183,19 +183,6 @@ func (rp *Republisher) run(ctx context.Context, timeoutShort, timeoutLong time.D
 		quick.Stop()
 		longer.Stop()
 
-		// Do not use the `if !t.Stop() { ... }` idiom as these timers may not
-		// be running.
-		//
-		// TODO: remove after go1.23 required.
-		select {
-		case <-quick.C:
-		default:
-		}
-		select {
-		case <-longer.C:
-		default:
-		}
-
 		// 2. If there is a value to publish then publish it now.
 		if toPublish.Defined() {
 			err := rp.pubfunc(ctx, toPublish)
