@@ -42,12 +42,9 @@ const (
 	sendErrorBackoff = 100 * time.Millisecond
 	// when we reach sendMessageCutoff wants/cancels, we'll send the message immediately.
 	sendMessageCutoff = 256
-	// sendMessageDebounce is the debounce duration when calling sendMessage()
-	sendMessageDebounce = 500 * time.Millisecond
-	// when we debounce for more than sendMessageMaxDelay, we'll send the
-	// message immediately.
-	sendMessageMaxDelay = 2 * time.Second //20 * time.Millisecond
-	sendTimeout         = 30 * time.Second
+	// wait this long before sending next message
+	sendMessageDelay = 2 * time.Second
+	sendTimeout      = 30 * time.Second
 )
 
 // MessageNetwork is any network that can connect peers and generate a message
@@ -81,7 +78,7 @@ type MessageQueue struct {
 	maxValidLatency time.Duration
 
 	// Signals that there are outgoing wants / cancels ready to be processed
-	outgoingWork chan time.Time
+	outgoingWork chan struct{}
 
 	// Channel of CIDs of blocks / HAVEs / DONT_HAVEs received from the peer
 	responses chan []cid.Cid
@@ -298,7 +295,7 @@ func newMessageQueue(
 		bcstWants:        newRecallWantList(),
 		peerWants:        newRecallWantList(),
 		cancels:          cid.NewSet(),
-		outgoingWork:     make(chan time.Time, 1),
+		outgoingWork:     make(chan struct{}, 1),
 		responses:        make(chan []cid.Cid, 8),
 		rebroadcastNow:   make(chan struct{}),
 		sendErrorBackoff: sendErrorBackoff,
@@ -466,10 +463,11 @@ func (mq *MessageQueue) runQueue() {
 		<-scheduleWork.C
 	}
 
+	hasWorkChan := mq.outgoingWork
+
 	rebroadcastTimer := mq.clock.Timer(runRebroadcastsInterval)
 	defer rebroadcastTimer.Stop()
 
-	var workScheduled time.Time
 	for {
 		select {
 		case now := <-rebroadcastTimer.C:
@@ -479,37 +477,16 @@ func (mq *MessageQueue) runQueue() {
 		case <-mq.rebroadcastNow:
 			mq.rebroadcastWantlist(mq.clock.Now(), 0)
 
-		case when := <-mq.outgoingWork:
-			// If we have work scheduled, cancel the timer. If we
-			// don't, record when the work was scheduled.
-			// We send the time on the channel so we accurately
-			// track delay.
-			if workScheduled.IsZero() {
-				workScheduled = when
-			} else if !scheduleWork.Stop() {
-				// Need to drain the timer if Stop() returns false
-				<-scheduleWork.C
+		case <-hasWorkChan:
+			if mq.events != nil {
+				mq.events <- messageQueued
 			}
-
-			// If we have too many updates and/or we've waited too
-			// long, send immediately.
-			if mq.pendingWorkCount() > sendMessageCutoff ||
-				mq.clock.Since(workScheduled) >= sendMessageMaxDelay {
-				mq.sendIfReady()
-				workScheduled = time.Time{}
-			} else {
-				// Otherwise, extend the timer.
-				scheduleWork.Reset(sendMessageDebounce)
-				if mq.events != nil {
-					mq.events <- messageQueued
-				}
-			}
+			mq.sendIfReady()
+			hasWorkChan = nil
+			scheduleWork.Reset(sendMessageDelay)
 
 		case <-scheduleWork.C:
-			// We have work scheduled and haven't seen any updates
-			// in sendMessageDebounce. Send immediately.
-			workScheduled = time.Time{}
-			mq.sendIfReady()
+			hasWorkChan = mq.outgoingWork
 
 		case res := <-mq.responses:
 			// We received a response from the peer, calculate latency
@@ -538,7 +515,7 @@ func (mq *MessageQueue) rebroadcastWantlist(now time.Time, interval time.Duratio
 
 func (mq *MessageQueue) signalWorkReady() {
 	select {
-	case mq.outgoingWork <- mq.clock.Now():
+	case mq.outgoingWork <- struct{}{}:
 	default:
 	}
 }

@@ -19,7 +19,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
-const collectTimeout = 200 * time.Millisecond
+const collectTimeout = 2500 * time.Millisecond
 
 type fakeMessageNetwork struct {
 	connectError       error
@@ -155,6 +155,7 @@ func totalEntriesLength(messages [][]bsmsg.Entry) int {
 }
 
 func expectEvent(t *testing.T, events <-chan messageEvent, expectedEvent messageEvent) {
+	t.Helper()
 	evt := <-events
 	if evt != expectedEvent {
 		t.Fatal("message not queued")
@@ -413,7 +414,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 	peerID := random.Peers(1)[0]
 	dhtm := &fakeDontHaveTimeoutMgr{}
 	clock := clock.NewMock()
-	events := make(chan messageEvent)
+	events := make(chan messageEvent, 1)
 	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, clock, events)
 	bcstwh := random.Cids(10)
 	wantHaves := random.Cids(10)
@@ -422,8 +423,8 @@ func TestWantlistRebroadcast(t *testing.T) {
 	// Add some broadcast want-haves
 	messageQueue.Startup()
 	messageQueue.AddBroadcastWantHaves(bcstwh)
+	clock.Add(sendMessageDelay)
 	expectEvent(t, events, messageQueued)
-	clock.Add(sendMessageDebounce)
 	message := <-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
@@ -443,6 +444,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 
 	// Send out some regular wants and collect them
 	messageQueue.AddWants(wantBlocks, wantHaves)
+	clock.Add(sendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	clock.Add(10 * time.Millisecond)
 	message = <-messagesSent
@@ -472,6 +474,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 	// Cancel some of the wants
 	cancels := append([]cid.Cid{bcstwh[0]}, wantHaves[0], wantBlocks[0])
 	messageQueue.AddCancels(cancels)
+	clock.Add(sendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	clock.Add(10 * time.Millisecond)
 	message = <-messagesSent
@@ -635,7 +638,7 @@ func TestResponseReceived(t *testing.T) {
 	// Add some wants
 	messageQueue.AddWants(cids[:5], nil)
 	expectEvent(t, events, messageQueued)
-	clock.Add(sendMessageDebounce)
+	clock.Add(sendMessageDelay)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
@@ -729,7 +732,7 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 	// Add some wants and wait 20ms
 	messageQueue.AddWants(cids[:2], nil)
 	expectEvent(t, events, messageQueued)
-	clock.Add(sendMessageDebounce)
+	clock.Add(sendMessageDelay)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
@@ -739,11 +742,11 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 	// outside the maximum valid latency, but the second wants will be inside
 	messageQueue.AddWants(cids[2:], nil)
 	expectEvent(t, events, messageQueued)
-	clock.Add(sendMessageDebounce)
+	clock.Add(sendMessageDelay)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
-	clock.Add(maxValLatency - 10*time.Millisecond + sendMessageDebounce)
+	clock.Add(maxValLatency - 10*time.Millisecond + sendMessageDelay)
 	// Receive a response for the wants
 	messageQueue.ResponseReceived(cids)
 
