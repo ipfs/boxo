@@ -32,6 +32,9 @@ var (
 	// headers and must be at least 50ms.
 	DefaultSendErrorBackoff = time.Second
 
+	// how many errors we tolerate before we give up making requests for a
+	// block, when the error is client-side: 404, 401 etc. It makes no
+	// sense to retry such requests, therefore 1.
 	defaultMaxClientErrors = 1
 )
 
@@ -114,6 +117,10 @@ func (sender *httpMsgSender) sortURLS() {
 func (sender *httpMsgSender) bestURL() (*senderURL, error) {
 	sender.sortURLS()
 	first := sender.urls[0]
+
+	// A nil URL and no error signals that we don't need to abort, but
+	// cannot keep retrying the same. client errors will be reset for next
+	// block in the wantlist.
 	if first.clientErrors >= defaultMaxClientErrors {
 		return nil, nil
 	}
@@ -126,6 +133,7 @@ func (sender *httpMsgSender) bestURL() (*senderURL, error) {
 }
 
 // resetClientErrors sets all clientErrors on urls to 0.
+// It is called every time we move to the next item in a wantlist.
 func (sender *httpMsgSender) resetClientErrors() {
 	for i := range sender.urls {
 		sender.urls[i].clientErrors = 0
@@ -188,7 +196,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 	ctx, cancel := context.WithTimeout(ctx, sender.opts.SendTimeout)
 	defer cancel()
-	req, err := sender.ht.buildRequest(ctx, sender.peer, u.ParsedURL, method, entry.Cid.String())
+	req, err := sender.ht.buildRequest(ctx, u.ParsedURL, method, entry.Cid.String())
 	if err != nil {
 		return &senderError{
 			Type: typeFatal,
@@ -221,10 +229,6 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		}
 
 		return serr
-	}
-
-	if resp.Proto != "HTTP/2.0" {
-		log.Warnf("%s://%q is not using HTTP/2 (%s)", req.URL.Scheme, req.URL.Host, resp.Proto)
 	}
 
 	limReader := &io.LimitedReader{
@@ -301,7 +305,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		return nil
 	case http.StatusTooManyRequests,
 		http.StatusServiceUnavailable:
-		err := fmt.Errorf("%q -> %d: %s", req.URL, resp.StatusCode, string(body))
+		err := fmt.Errorf("%q -> %d: %q", req.URL, resp.StatusCode, string(body))
 		log.Error(err)
 		retryAfter := resp.Header.Get("Retry-After")
 		cooldownUntil, ok := parseRetryAfter(retryAfter)
@@ -320,7 +324,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	// Tolerance for server errors per url is low. If after waiting etc.
 	// it fails MaxRetries, we will fully disconnect.
 	default:
-		err := fmt.Errorf("%q -> %d: %s", req.URL, resp.StatusCode, string(body))
+		err := fmt.Errorf("%q -> %d: %q", req.URL, resp.StatusCode, string(body))
 		log.Error(err)
 		sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
 		return &senderError{
@@ -376,11 +380,17 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 	// This allows us to react when cancels arrive to wantlists
 	// that we are going through.
 	entryCtxs := make([]context.Context, len(wantlist))
+	entryCancels := make([]context.CancelFunc, len(wantlist))
+	nop := func() {}
 	for i, entry := range wantlist {
 		if entry.Cancel {
 			entryCtxs[i] = ctx
+			entryCancels[i] = nop
 		}
-		entryCtxs[i] = sender.ht.requestTracker.requestContext(ctx, entry.Cid)
+		// The TTL here is just for auto-cleaning the request context
+		// from the request tracker. It is set in a way that ensure that the request
+		// has run
+		entryCtxs[i], entryCancels[i] = sender.ht.requestTracker.requestContext(ctx, entry.Cid)
 	}
 
 WANTLIST_LOOP:
@@ -399,8 +409,12 @@ WANTLIST_LOOP:
 			// we disconnect this peer
 			// and avoid it for the time being.
 			if err != nil {
-				defer sender.ht.DisconnectFrom(ctx, sender.peer)
-				break WANTLIST_LOOP
+				// notify new blocks before disconnecting. As
+				// disconnecting may trigger cleanups or
+				// something.
+				sender.notifyReceivers(bsresp)
+				sender.ht.DisconnectFrom(ctx, sender.peer)
+				return nil
 			}
 
 			// we move to next block, no good urls
@@ -452,44 +466,45 @@ WANTLIST_LOOP:
 		sender.resetClientErrors()
 	}
 
-	lb := len(bsresp.Blocks())
-	lh := len(bsresp.Haves())
-	ldh := len(bsresp.DontHaves())
-	if lb+lh+ldh > 0 {
-		// send what we got ReceiveMessage and return
-		go func(receivers []network.Receiver, p peer.ID, msg bsmsg.BitSwapMessage) {
-			// TODO: do not hang if closing
-			for i, recv := range receivers {
-				log.Debugf("ReceiveMessage from %s#%d. Blocks: %d. Haves: %d", p, i, lb, lh)
-				recv.ReceiveMessage(
-					context.Background(), // todo: which context?
-					p,
-					msg,
-				)
-			}
-		}(sender.ht.receivers, sender.peer, bsresp)
-	} else {
-		// If we did not manage to obtain anything, log errors
-		sendErrors(err)
+	// clean up request tracker
+	for _, cancel := range entryCancels {
+		cancel()
 	}
+	sender.ht.requestTracker.cleanEmptyRequests(wantlist)
+
+	go sender.notifyReceivers(bsresp)
+	// This just logs errors apparently.
+	sendErrors(err)
 
 	// We never return error. Whatever happened, we will be cooling down
 	// urls etc. but we don't need to disconnect or report that "peer is
-	// down" for the moment.
-	// TODO: improve logic?
+	// down" for the moment, as we disconnect manually on error.
 	return nil
 }
 
-// Close closes the message sender, aborting any ongoing operations.
-func (sender *httpMsgSender) Close() error {
-	sender.closeOnce.Do(func() {
-		close(sender.closing)
-	})
-	return nil
+func (sender *httpMsgSender) notifyReceivers(bsresp bsmsg.BitSwapMessage) {
+	lb := len(bsresp.Blocks())
+	lh := len(bsresp.Haves())
+	ldh := len(bsresp.DontHaves())
+	if lb+lh+ldh == 0 { // nothing to do
+		return
+	}
+
+	for i, recv := range sender.ht.receivers {
+		log.Debugf("ReceiveMessage from %s#%d. Blocks: %d. Haves: %d", sender.peer, i, lb, lh)
+		recv.ReceiveMessage(
+			context.Background(), // todo: which context?
+			sender.peer,
+			bsresp,
+		)
+	}
 }
 
 // Reset resets the sender (currently noop)
 func (sender *httpMsgSender) Reset() error {
+	sender.closeOnce.Do(func() {
+		close(sender.closing)
+	})
 	return nil
 }
 

@@ -24,8 +24,5 @@ func (t *transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if err != nil {
 		return resp, err
 	}
-	if resp.Proto != http2proto {
-		log.Warnf("%s://%s is not using HTTP/2	(%s)", r.URL.Scheme, r.URL.Host, resp.Proto)
-	}
 	return resp, err
 }
