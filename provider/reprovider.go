@@ -62,6 +62,7 @@ type reprovider struct {
 	statLk                                    sync.Mutex
 	totalProvides, lastReprovideBatchSize     uint64
 	avgProvideDuration, lastReprovideDuration time.Duration
+	lastRun                                   time.Time
 
 	throughputCallback ThroughputCallback
 	// throughputProvideCurrentCount counts how many provides has been done since the last call to throughputCallback
@@ -357,6 +358,7 @@ func (s *reprovider) run() {
 			s.statLk.Lock()
 			s.avgProvideDuration = time.Duration((totalProvideTime + dur) / (time.Duration(s.totalProvides) + time.Duration(len(keys))))
 			s.totalProvides += uint64(len(keys))
+			s.lastRun = time.Now()
 
 			log.Debugf("finished providing of %d keys. It took %v with an average of %v per provide", len(keys), dur, recentAvgProvideDuration)
 
@@ -539,6 +541,7 @@ func (s *reprovider) shouldReprovide() bool {
 type ReproviderStats struct {
 	TotalProvides, LastReprovideBatchSize     uint64
 	AvgProvideDuration, LastReprovideDuration time.Duration
+	LastRun, NextRun                          time.Time
 }
 
 // Stat returns various stats about this provider system
@@ -550,6 +553,8 @@ func (s *reprovider) Stat() (ReproviderStats, error) {
 		LastReprovideBatchSize: s.lastReprovideBatchSize,
 		AvgProvideDuration:     s.avgProvideDuration,
 		LastReprovideDuration:  s.lastReprovideDuration,
+		LastRun:                s.lastRun,
+		NextRun:                s.lastRun.Add(DefaultReproviderInterval),
 	}, nil
 }
 
