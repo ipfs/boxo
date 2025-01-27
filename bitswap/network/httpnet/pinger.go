@@ -2,8 +2,8 @@ package httpnet
 
 import (
 	"context"
-	"net"
-	"net/url"
+	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -11,14 +11,16 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	probing "github.com/prometheus-community/pro-bing"
 	"go.uber.org/multierr"
 )
 
 // pinger pings connected hosts on regular intervals
 // and tracks their latency.
 type pinger struct {
-	host host.Host
+	host      host.Host
+	pingCid   string
+	userAgent string
+	client    *http.Client
 
 	latenciesLock sync.RWMutex
 	latencies     map[peer.ID]time.Duration
@@ -27,9 +29,11 @@ type pinger struct {
 	pings     map[peer.ID]context.CancelFunc
 }
 
-func newPinger(h host.Host) *pinger {
+func newPinger(h host.Host, client *http.Client, pingCid, userAgent string) *pinger {
 	return &pinger{
 		host:      h,
+		pingCid:   pingCid,
+		userAgent: userAgent,
 		latencies: make(map[peer.ID]time.Duration),
 		pings:     make(map[peer.ID]context.CancelFunc),
 	}
@@ -49,36 +53,33 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 
 	results := make(chan ping.Result, len(urls))
 	for _, u := range urls {
-		go func(u *url.URL) {
-			// Remove port from url.
-			host, _, err := net.SplitHostPort(u.Host)
+		go func(u network.ParsedURL) {
+			req, err := buildRequest(ctx, u, "GET", pngr.pingCid, pngr.userAgent)
 			if err != nil {
-				results <- ping.Result{
-					Error: err,
-				}
+				log.Debug(err)
+				results <- ping.Result{Error: err}
+				return
 			}
 
-			pinger, err := probing.NewPinger(host)
+			log.Debugf("ping request to %s", req.URL)
+			start := time.Now()
+			resp, err := pngr.client.Do(req)
 			if err != nil {
-				log.Debug("pinger error ", err)
-				results <- ping.Result{
-					Error: err,
-				}
+				results <- ping.Result{Error: err}
+				return
 			}
-			pinger.Count = 1
 
-			err = pinger.RunWithContext(ctx)
-			if err != nil {
-				log.Debug("ping error ", err)
-				results <- ping.Result{
-					Error: err,
-				}
+			if resp.StatusCode >= 300 { // non-success
+				err := fmt.Errorf("ping request to %q returned %d", req.URL, resp.StatusCode)
+				log.Error(err)
+				results <- ping.Result{Error: err}
+				return
 			}
 
 			results <- ping.Result{
-				RTT: pinger.Statistics().AvgRtt,
+				RTT: time.Since(start),
 			}
-		}(u.URL)
+		}(u)
 	}
 
 	var result ping.Result

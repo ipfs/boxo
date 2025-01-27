@@ -107,15 +107,15 @@ func TestExtractHTTPAddress(t *testing.T) {
 				return
 			}
 
-			got, sni, err := ExtractHTTPAddress(ma)
+			got, err := ExtractHTTPAddress(ma)
 			if (err != nil) != tt.expectErr {
-				t.Errorf("got: %s", got)
+				t.Errorf("got: %s", got.URL)
 				t.Errorf("ExtractHTTPAddress() error = %v, wantErr %v", err, tt.expectErr)
 				return
 			}
 
-			if tt.want != nil && (got == nil || got.String() != tt.want.String() || tt.sni != sni) {
-				t.Errorf("ExtractHTTPAddress() = %v (%s), want %v (%s)", got, sni, tt.want, tt.sni)
+			if tt.want != nil && (got.URL == nil || got.URL.String() != tt.want.String() || tt.sni != got.SNI) {
+				t.Errorf("ExtractHTTPAddress() = %v (%s), want %v (%s)", got.URL, got.SNI, tt.want, tt.sni)
 			}
 		})
 	}
@@ -178,7 +178,7 @@ func TestExtractHTTPAddressesFromPeer(t *testing.T) {
 
 			// Compare URLs
 			for i := range got {
-				if got[i].String() != tt.want[i].String() {
+				if got[i].URL.String() != tt.want[i].String() {
 					t.Errorf("ExtractHTTPAddressesFromPeer() URL at index %d = %v, want %v", i, got[i], tt.want[i])
 				}
 			}
