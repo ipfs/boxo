@@ -47,6 +47,8 @@ var (
 	DefaultMaxHTTPAddressesPerPeer       = 10
 )
 
+var pingCid = "bafkqaaa" // identity CID
+
 // Option allows to configure the Network.
 type Option func(net *Network)
 
@@ -182,7 +184,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		opt(htnet)
 	}
 
-	reqTracker := newRequestTracker(htnet.idleConnTimeout * 2)
+	reqTracker := newRequestTracker()
 	htnet.requestTracker = reqTracker
 
 	cooldownTracker := newCooldownTracker(DefaultMaxBackoff)
@@ -299,7 +301,6 @@ func (ht *Network) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwap
 	if err != nil {
 		return err
 	}
-	defer sender.Close()
 	return sender.SendMsg(ctx, msg)
 }
 
@@ -350,12 +351,9 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 	// This allows re-using the connections that we are about to open next
 	// time with the client. We call peer.Connected()
 	// on success.
-	//
-	// TODO: Decide whether we want to connect to all, or just try until
-	// we find a working one.
 	var workingAddrs []multiaddr.Multiaddr
 	for i, u := range urls {
-		req, err := ht.buildRequest(ctx, p.ID, u, "GET", "bafyaabakaieac")
+		req, err := ht.buildRequest(ctx, u, "GET", pingCid)
 		if err != nil {
 			log.Debug(err)
 			return err
@@ -371,6 +369,11 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 			}
 			continue
 		}
+
+		if resp.Proto != "HTTP/2.0" {
+			log.Warnf("%s://%q is not using HTTP/2 (%s)", req.URL.Scheme, req.URL.Host, resp.Proto)
+		}
+
 		if resp.StatusCode >= 500 { // 5xx
 			// We made a proper request and got a 5xx back.
 			// We cannot consider this a working connection.
@@ -449,7 +452,7 @@ func (ht *Network) Stats() network.Stats {
 }
 
 // buildRequests sets up common settings for making a requests.
-func (ht *Network) buildRequest(ctx context.Context, pid peer.ID, u network.ParsedURL, method string, cid string) (*http.Request, error) {
+func (ht *Network) buildRequest(ctx context.Context, u network.ParsedURL, method string, cid string) (*http.Request, error) {
 	// copy url
 	sendURL, _ := url.Parse(u.URL.String())
 	sendURL.RawQuery = "format=raw"

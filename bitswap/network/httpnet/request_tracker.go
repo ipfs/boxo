@@ -3,72 +3,108 @@ package httpnet
 import (
 	"context"
 	"sync"
-	"time"
 
+	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	"github.com/ipfs/go-cid"
 )
 
 // requestTracker tracks requests to CIDs so that we can cancel all ongoing
 // requests a single CID.
 type requestTracker struct {
-	clearTimeout time.Duration
-
-	mux     sync.Mutex
-	timers  map[cid.Cid]*time.Timer
-	cancels map[cid.Cid][]context.CancelFunc
+	mux  sync.Mutex
+	ctxs map[cid.Cid]*ctxMap
 }
 
-// newRequestTracker creates a new requestTracker with the given clearTimeout.
-// All tracked requests to a given CID are cancelled after the given timeout.
-// Normally, tracking should be cancelled using cancelRequest, but this serves
-// as a way of cleaning up when that has not happened. The timers are reset when
-// a new request to a CID happens.
-func newRequestTracker(clearTimeout time.Duration) *requestTracker {
+type ctxMap struct {
+	mux sync.RWMutex
+	m   map[context.Context]context.CancelFunc
+}
+
+// newRequestTracker creates a new requestTracker.  A request tracker provides
+// a context for a CID-request. All contexts for a given CID can be
+// cancelled at once with cancelRequest().
+func newRequestTracker() *requestTracker {
 	return &requestTracker{
-		clearTimeout: clearTimeout,
-		timers:       make(map[cid.Cid]*time.Timer),
-		cancels:      make(map[cid.Cid][]context.CancelFunc),
+		ctxs: make(map[cid.Cid]*ctxMap),
 	}
 }
 
 // requestContext returns a new context to make a request for a cid. The
-// context will be cancelled if cancelRequest() is called for the same CID.
-func (rc *requestTracker) requestContext(ctx context.Context, c cid.Cid) context.Context {
-	cctx, cancel := context.WithCancel(ctx)
+// context will be cancelled if cancelRequest() is called for the same
+// CID.
+func (rc *requestTracker) requestContext(ctx context.Context, c cid.Cid) (context.Context, context.CancelFunc) {
+	var cidCtxs *ctxMap
+	var ok bool
 	rc.mux.Lock()
-	defer rc.mux.Unlock()
-	if rc.cancels == nil {
-		rc.cancels = make(map[cid.Cid][]context.CancelFunc)
-		rc.timers = make(map[cid.Cid]*time.Timer)
+	{
+		cidCtxs, ok = rc.ctxs[c]
+		if !ok {
+			cidCtxs = &ctxMap{m: make(map[context.Context]context.CancelFunc)}
+			rc.ctxs[c] = cidCtxs
+		}
 	}
+	rc.mux.Unlock()
 
-	cancels, ok := rc.cancels[c]
-	if !ok {
-		rc.cancels[c] = []context.CancelFunc{cancel}
-		rc.timers[c] = time.AfterFunc(rc.clearTimeout, func() {
-			rc.cancelRequest(c)
-		})
-		return cctx
+	// derive the context we will return
+	rCtx, rCancel := context.WithCancel(ctx)
+
+	// store it
+	cidCtxs.mux.Lock()
+	{
+		cidCtxs.m[rCtx] = rCancel
 	}
-	rc.cancels[c] = append(cancels, cancel)
-	rc.timers[c].Reset(rc.clearTimeout)
-
-	return cctx
+	cidCtxs.mux.Unlock()
+	// Special cancel function to clean up entry
+	return rCtx, func() {
+		rCancel()
+		cidCtxs.mux.Lock()
+		delete(cidCtxs.m, rCtx)
+		cidCtxs.mux.Unlock()
+	}
 }
 
 // cancelRequest cancels all contexts obtained via requestContext for the
 // given CID.
 func (rc *requestTracker) cancelRequest(c cid.Cid) {
+	var cidCtxs *ctxMap
+	var ok bool
 	rc.mux.Lock()
-	defer rc.mux.Unlock()
-	t, ok := rc.timers[c]
-	if ok {
-		t.Stop()
+	{
+		cidCtxs, ok = rc.ctxs[c]
+		delete(rc.ctxs, c)
+	}
+	rc.mux.Unlock()
+
+	if !ok {
+		return
 	}
 
-	for _, cancel := range rc.cancels[c] {
-		cancel()
+	cidCtxs.mux.Lock()
+	{
+		for _, cancel := range cidCtxs.m {
+			cancel()
+		}
 	}
-	delete(rc.cancels, c)
-	delete(rc.timers, c)
+	cidCtxs.mux.Unlock()
+}
+
+// cleanEmptyRequests uses a single lock to perform tracker-cleanup for a
+// given list wantlist when no contexts for the entry CID exist.
+func (rc *requestTracker) cleanEmptyRequests(wantlist []bsmsg.Entry) {
+	rc.mux.Lock()
+	{
+		for _, e := range wantlist {
+			cidCtxs, ok := rc.ctxs[e.Cid]
+			if !ok {
+				continue
+			}
+			cidCtxs.mux.RLock()
+			if len(cidCtxs.m) == 0 {
+				delete(rc.ctxs, e.Cid)
+			}
+			cidCtxs.mux.RUnlock()
+
+		}
+	}
+	rc.mux.Unlock()
 }

@@ -155,17 +155,6 @@ func (s *streamMessageSender) Reset() error {
 	return nil
 }
 
-// Close the stream
-func (s *streamMessageSender) Close() error {
-	stream := s.stream.Load()
-	if stream != nil {
-		err := stream.Close()
-		s.stream.Store(nil)
-		return err
-	}
-	return nil
-}
-
 // Indicates whether the peer supports HAVE / DONT_HAVE messages
 func (s *streamMessageSender) SupportsHave() bool {
 	stream := s.stream.Load()

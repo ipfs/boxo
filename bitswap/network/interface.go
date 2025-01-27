@@ -50,7 +50,6 @@ type PeerTagger interface {
 // network
 type MessageSender interface {
 	SendMsg(context.Context, bsmsg.BitSwapMessage) error
-	Close() error
 	Reset() error
 	// Indicates whether the remote peer supports HAVE / DONT_HAVE messages
 	SupportsHave() bool
