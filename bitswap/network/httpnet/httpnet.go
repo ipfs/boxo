@@ -193,15 +193,17 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 
 	netdialer := &net.Dialer{
 		// Timeout for connects to complete.
-		Timeout: htnet.dialTimeout,
-		// KeepAlive config for sending probes for an active
-		// connection.
-		KeepAliveConfig: net.KeepAliveConfig{
-			Enable:   true,
-			Idle:     15 * time.Second, // default
-			Interval: 15 * time.Second, // default
-			Count:    2,                // default would be 9
-		},
+		Timeout:   htnet.dialTimeout,
+		KeepAlive: 15 * time.Second,
+		// TODO for go1.23
+		// // KeepAlive config for sending probes for an active
+		// // connection.
+		// KeepAliveConfig: net.KeepAliveConfig{
+		// 	Enable:   true,
+		// 	Idle:     15 * time.Second, // default
+		// 	Interval: 15 * time.Second, // default
+		// 	Count:    2,                // default would be 9
+		// },
 	}
 
 	// Re: wasm: see
