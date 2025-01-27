@@ -2,7 +2,7 @@ module github.com/ipfs/boxo
 
 go 1.23
 
-toolchain go1.23.4
+toolchain go1.23.5
 
 require (
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
