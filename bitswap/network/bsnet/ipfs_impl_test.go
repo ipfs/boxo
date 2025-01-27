@@ -108,6 +108,14 @@ func (es *ErrStream) Close() error {
 	return es.Stream.Close()
 }
 
+func (es *ErrStream) Reset() error {
+	es.lk.Lock()
+	es.closed = true
+	es.lk.Unlock()
+
+	return es.Stream.Reset()
+}
+
 func (eh *ErrHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	eh.lk.Lock()
 	defer eh.lk.Unlock()
