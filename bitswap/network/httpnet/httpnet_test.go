@@ -296,49 +296,65 @@ func TestBestURL(t *testing.T) {
 	now := time.Now()
 	surls := []*senderURL{
 		{
-			url:          urls[0],
+			ParsedURL: network.ParsedURL{
+				URL: urls[0],
+			},
 			cooldown:     now.Add(time.Second),
 			clientErrors: 0,
 			serverErrors: 2,
 		},
 		{
-			url:          urls[1],
+			ParsedURL: network.ParsedURL{
+				URL: urls[1],
+			},
 			cooldown:     now.Add(time.Second),
 			clientErrors: 0,
 			serverErrors: 1,
 		},
 		{
-			url:          urls[2],
+			ParsedURL: network.ParsedURL{
+				URL: urls[2],
+			},
 			cooldown:     time.Time{},
 			clientErrors: 0,
 			serverErrors: 3,
 		},
 		{
-			url:          urls[3],
+			ParsedURL: network.ParsedURL{
+				URL: urls[3],
+			},
 			cooldown:     time.Time{},
 			clientErrors: 0,
 			serverErrors: 2,
 		},
 		{
-			url:          urls[4],
+			ParsedURL: network.ParsedURL{
+				URL: urls[4],
+			},
 			cooldown:     time.Time{},
 			clientErrors: 0,
 			serverErrors: 1,
 		},
 		{
-			url:          urls[5],
+			ParsedURL: network.ParsedURL{
+				URL: urls[5],
+			},
 			cooldown:     time.Time{},
 			clientErrors: 0,
 			serverErrors: 20,
 		},
 		{
-			url:          urls[6],
+			ParsedURL: network.ParsedURL{
+				URL: urls[6],
+			},
 			cooldown:     time.Time{},
 			clientErrors: 2,
 			serverErrors: 0,
 		},
 		{
-			url:          urls[7],
+			ParsedURL: network.ParsedURL{
+				URL: urls[7],
+			},
 			cooldown:     now.Add(2 * time.Second),
 			clientErrors: 0,
 			serverErrors: 0,
@@ -360,8 +376,8 @@ func TestBestURL(t *testing.T) {
 	}
 
 	for i, u := range ms.urls {
-		if u.url.String() != expected[i] {
-			t.Error("wrong url order", i, u.url)
+		if u.URL.String() != expected[i] {
+			t.Error("wrong url order", i, u.URL)
 		}
 	}
 

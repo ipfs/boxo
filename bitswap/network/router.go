@@ -8,7 +8,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	"go.uber.org/multierr"
 )
 
 type router struct {
@@ -112,10 +111,18 @@ func (rt *router) Connect(ctx context.Context, p peer.AddrInfo) error {
 }
 
 func (rt *router) DisconnectFrom(ctx context.Context, p peer.ID) error {
-	return multierr.Combine(
-		rt.HTTP.DisconnectFrom(ctx, p),
-		rt.Bitswap.DisconnectFrom(ctx, p),
-	)
+	// DisconnectFrom is only called from bitswap.Server, on failures
+	// receiving a bitswap message.  Normally, if HTTP is prioritized, we
+	// should not have requested anything over bitswap, so this should not
+	// happen.
+	//
+	// Still, follow prioritization rule.
+	pi := rt.Peerstore.PeerInfo(p)
+	htaddrs, _ := SplitHTTPAddrs(pi)
+	if len(htaddrs.Addrs) > 0 {
+		return rt.HTTP.DisconnectFrom(ctx, p)
+	}
+	return rt.Bitswap.DisconnectFrom(ctx, p)
 }
 
 func (rt *router) Stats() Stats {

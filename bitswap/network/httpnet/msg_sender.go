@@ -196,7 +196,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 	ctx, cancel := context.WithTimeout(ctx, sender.opts.SendTimeout)
 	defer cancel()
-	req, err := sender.ht.buildRequest(ctx, u.ParsedURL, method, entry.Cid.String())
+	req, err := buildRequest(ctx, u.ParsedURL, method, entry.Cid.String(), sender.ht.userAgent)
 	if err != nil {
 		return &senderError{
 			Type: typeFatal,
@@ -386,11 +386,9 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 		if entry.Cancel {
 			entryCtxs[i] = ctx
 			entryCancels[i] = nop
+		} else {
+			entryCtxs[i], entryCancels[i] = sender.ht.requestTracker.requestContext(ctx, entry.Cid)
 		}
-		// The TTL here is just for auto-cleaning the request context
-		// from the request tracker. It is set in a way that ensure that the request
-		// has run
-		entryCtxs[i], entryCancels[i] = sender.ht.requestTracker.requestContext(ctx, entry.Cid)
 	}
 
 WANTLIST_LOOP:

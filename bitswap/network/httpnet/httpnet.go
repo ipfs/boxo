@@ -49,6 +49,8 @@ var (
 
 var pingCid = "bafkqaaa" // identity CID
 
+const http2proto = "HTTP/2.0"
+
 // Option allows to configure the Network.
 type Option func(net *Network)
 
@@ -167,7 +169,6 @@ type Network struct {
 func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	htnet := &Network{
 		host:                    host,
-		pinger:                  newPinger(host),
 		userAgent:               defaultUserAgent(),
 		maxBlockSize:            DefaultMaxBlockSize,
 		dialTimeout:             DefaultDialTimeout,
@@ -236,9 +237,12 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	}
 
 	c := &http.Client{
-		Transport: newTransport(t),
+		Transport: t,
 	}
 	htnet.client = c
+
+	pinger := newPinger(host, htnet.client, pingCid, htnet.userAgent)
+	htnet.pinger = pinger
 
 	return htnet
 }
@@ -353,7 +357,7 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 	// on success.
 	var workingAddrs []multiaddr.Multiaddr
 	for i, u := range urls {
-		req, err := ht.buildRequest(ctx, u, "GET", pingCid)
+		req, err := buildRequest(ctx, u, "GET", pingCid, ht.userAgent)
 		if err != nil {
 			log.Debug(err)
 			return err
@@ -370,7 +374,7 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 			continue
 		}
 
-		if resp.Proto != "HTTP/2.0" {
+		if resp.Proto != http2proto {
 			log.Warnf("%s://%q is not using HTTP/2 (%s)", req.URL.Scheme, req.URL.Host, resp.Proto)
 		}
 
@@ -452,7 +456,7 @@ func (ht *Network) Stats() network.Stats {
 }
 
 // buildRequests sets up common settings for making a requests.
-func (ht *Network) buildRequest(ctx context.Context, u network.ParsedURL, method string, cid string) (*http.Request, error) {
+func buildRequest(ctx context.Context, u network.ParsedURL, method string, cid string, userAgent string) (*http.Request, error) {
 	// copy url
 	sendURL, _ := url.Parse(u.URL.String())
 	sendURL.RawQuery = "format=raw"
@@ -470,7 +474,7 @@ func (ht *Network) buildRequest(ctx context.Context, u network.ParsedURL, method
 
 	headers := make(http.Header)
 	headers.Add("Accept", "application/vnd.ipld.raw")
-	headers.Add("User-Agent", ht.userAgent)
+	headers.Add("User-Agent", userAgent)
 	if u.SNI != "" {
 		headers.Add("Host", u.SNI)
 	}
