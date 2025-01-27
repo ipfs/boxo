@@ -1,8 +1,8 @@
 module github.com/ipfs/boxo
 
-go 1.22.0
+go 1.23
 
-toolchain go1.22.8
+toolchain go1.23.4
 
 require (
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
@@ -57,7 +57,6 @@ require (
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.6.0
 	github.com/polydawn/refmt v0.89.0
-	github.com/prometheus-community/pro-bing v0.5.0
 	github.com/prometheus/client_golang v1.20.5
 	github.com/samber/lo v1.47.0
 	github.com/slok/go-http-metrics v0.12.0

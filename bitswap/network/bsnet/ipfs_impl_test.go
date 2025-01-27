@@ -346,7 +346,7 @@ func TestMessageResendAfterError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ms.Close()
+	defer ms.Reset()
 
 	// Return an error from the networking layer the next time we try to send
 	// a message
@@ -391,7 +391,7 @@ func TestMessageSendTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ms.Close()
+	defer ms.Reset()
 
 	// Return a DeadlineExceeded error from the networking layer the next time we try to
 	// send a message
@@ -431,7 +431,7 @@ func TestMessageSendNotSupportedResponse(t *testing.T) {
 		SendErrorBackoff: 100 * time.Millisecond,
 	})
 	if err == nil {
-		ms.Close()
+		ms.Reset()
 		t.Fatal("Expected ErrNotSupported")
 	}
 
@@ -487,7 +487,7 @@ func TestSupportsHave(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer senderCurrent.Close()
+			defer senderCurrent.Reset()
 
 			if senderCurrent.SupportsHave() != tc.expSupportsHave {
 				t.Fatal("Expected sender HAVE message support", tc.proto, tc.expSupportsHave)
@@ -537,7 +537,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer ms.Close()
+		defer ms.Reset()
 		for n := 0; n < n2; n++ {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			err = ms.SendMsg(ctx, msg)
@@ -562,7 +562,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 			}
 			cancel()
 		}
-		ms.Close()
+		ms.Reset()
 	}
 
 	// Wait until all streams are closed and MessagesRecvd counters
