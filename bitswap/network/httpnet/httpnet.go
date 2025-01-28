@@ -367,7 +367,7 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 			return err
 		}
 
-		log.Debugf("connect request to %s", req.URL)
+		log.Debugf("connect request to %q", req.URL)
 		resp, err := ht.client.Do(req)
 		if err != nil {
 			log.Debugf("connect error %s", err)
@@ -383,6 +383,7 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 		}
 
 		if resp.StatusCode >= 500 { // 5xx
+			log.Debugf("connect error %q %d", req.URL, resp.StatusCode)
 			// We made a proper request and got a 5xx back.
 			// We cannot consider this a working connection.
 			continue
