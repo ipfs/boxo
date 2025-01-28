@@ -34,6 +34,8 @@ func newPinger(h host.Host, client *http.Client, pingCid, userAgent string) *pin
 		host:      h,
 		pingCid:   pingCid,
 		userAgent: userAgent,
+		client:    client,
+
 		latencies: make(map[peer.ID]time.Duration),
 		pings:     make(map[peer.ID]context.CancelFunc),
 	}
