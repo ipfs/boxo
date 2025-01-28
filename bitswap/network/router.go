@@ -42,6 +42,10 @@ func New(pstore peerstore.Peerstore, bitswap BitSwapNetwork, http BitSwapNetwork
 }
 
 func (rt *router) Start(receivers ...Receiver) {
+	// This creates two connectionEventManagers. A connection manager has
+	// the power to remove a peer from everywhere on a Disconnect() event,
+	// so we need to be careful so that the Bitswap connection manager
+	// does not step in when we are using HTTP and vice-versa.
 	rt.Bitswap.Start(receivers...)
 	rt.HTTP.Start(receivers...)
 }
@@ -100,9 +104,14 @@ func (rt *router) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwapM
 }
 
 // Connect attempts to connect to a peer. It prioritizes HTTP connections over
-// bitswap.
+// bitswap, but does a bitswap connect if HTTP Connect fails (i.e. when there
+// are no HTTP addresses.
 func (rt *router) Connect(ctx context.Context, p peer.AddrInfo) error {
 	htaddrs, bsaddrs := SplitHTTPAddrs(p)
+	if len(htaddrs.Addrs) == 0 {
+		return rt.Bitswap.Connect(ctx, bsaddrs)
+	}
+
 	err := rt.HTTP.Connect(ctx, htaddrs)
 	if err != nil {
 		return rt.Bitswap.Connect(ctx, bsaddrs)
@@ -112,17 +121,16 @@ func (rt *router) Connect(ctx context.Context, p peer.AddrInfo) error {
 
 func (rt *router) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	// DisconnectFrom is only called from bitswap.Server, on failures
-	// receiving a bitswap message.  Normally, if HTTP is prioritized, we
-	// should not have requested anything over bitswap, so this should not
-	// happen.
+	// receiving a bitswap message. On HTTP, we don't "disconnect" unless
+	// there are retrieval failures, which we handle internally.
 	//
-	// Still, follow prioritization rule.
+	// Result: only disconnect bitswap, when there are bitswap addresses
+	// involved.
 	pi := rt.Peerstore.PeerInfo(p)
-	htaddrs, _ := SplitHTTPAddrs(pi)
-	if len(htaddrs.Addrs) > 0 {
-		return rt.HTTP.DisconnectFrom(ctx, p)
+	_, bsaddrs := SplitHTTPAddrs(pi)
+	if len(bsaddrs.Addrs) > 0 {
+		return rt.Bitswap.DisconnectFrom(ctx, p)
 	}
-	return rt.Bitswap.DisconnectFrom(ctx, p)
 }
 
 func (rt *router) Stats() Stats {
