@@ -367,7 +367,7 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 			return err
 		}
 
-		log.Debugf("connect request to %q", req.URL)
+		log.Debugf("connect request to $s %q", p.ID, req.URL)
 		resp, err := ht.client.Do(req)
 		if err != nil {
 			log.Debugf("connect error %s", err)
@@ -383,7 +383,7 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 		}
 
 		if resp.StatusCode >= 500 { // 5xx
-			log.Debugf("connect error %q %d", req.URL, resp.StatusCode)
+			log.Debugf("connect error %d <- %s %q", resp.StatusCode, p.ID, req.URL)
 			// We made a proper request and got a 5xx back.
 			// We cannot consider this a working connection.
 			continue
@@ -395,12 +395,12 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 		ht.host.Peerstore().AddAddrs(p.ID, workingAddrs, peerstore.PermanentAddrTTL)
 		ht.connEvtMgr.Connected(p.ID)
 		ht.pinger.startPinging(p.ID)
-
+		log.Debug("connect success to %s", p.ID)
 		// We "connected"
 		return nil
 	}
 
-	err := fmt.Errorf("%w: %s", ErrNoSuccess, p.ID)
+	err := fmt.Errorf("connect failure to %s: %w", p.ID, ErrNoSuccess)
 	log.Debug(err)
 	return err
 }
