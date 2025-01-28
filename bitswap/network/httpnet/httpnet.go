@@ -330,7 +330,9 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 	}
 
 	// avoid funny things like someone adding 100 broken urls to a peer.
-	htaddrs.Addrs = htaddrs.Addrs[0:ht.maxHTTPAddressesPerPeer]
+	if len(htaddrs.Addrs) > ht.maxHTTPAddressesPerPeer {
+		htaddrs.Addrs = htaddrs.Addrs[0:ht.maxHTTPAddressesPerPeer]
+	}
 
 	urls := network.ExtractURLsFromPeer(htaddrs)
 	if len(ht.allowlist) > 0 {
@@ -406,11 +408,12 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 // manager, stops pinging for latency measurements and removes it from the
 // peerstore.
 func (ht *Network) DisconnectFrom(ctx context.Context, p peer.ID) error {
-	// this kills all ongoing requests which is more or less equivalent.
 	pi := ht.host.Peerstore().PeerInfo(p)
 	_, bsaddrs := network.SplitHTTPAddrs(pi)
 	ht.host.Peerstore().ClearAddrs(p)
 	if len(bsaddrs.Addrs) == 0 {
+		// this should always be the case unless we have been
+		// contacted via bitswap...
 		ht.connEvtMgr.Disconnected(p)
 	} else { // re-add bitswap addresses
 		// unfortunately we cannot maintain ttl info
