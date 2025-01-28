@@ -32,6 +32,8 @@ import (
 var log = logging.Logger("boxo/gateway")
 
 const (
+	defaultResponseTimeout = 30 * time.Second
+
 	ipfsPathPrefix        = "/ipfs/"
 	ipnsPathPrefix        = ipns.NamespacePrefix
 	immutableCacheControl = "public, max-age=29030400, immutable"
@@ -68,7 +70,17 @@ type handler struct {
 //
 // [IPFS HTTP Gateway]: https://specs.ipfs.tech/http-gateways/
 func NewHandler(c Config, backend IPFSBackend) http.Handler {
-	return newHandlerWithMetrics(&c, backend)
+	handler := newHandlerWithMetrics(&c, backend)
+
+	timeout := c.ResponseWriteTimeout
+	switch timeout {
+	case 0:
+		timeout = defaultResponseTimeout
+	case -1:
+		return handler
+	}
+
+	return http.TimeoutHandler(handler, timeout, "")
 }
 
 // serveContent replies to the request using the content in the provided Reader
