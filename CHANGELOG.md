@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `gateway`: Configurable write timeout [#818](https://github.com/ipfs/boxo/pull/818)
+
 ### Changed
 
 ### Removed
