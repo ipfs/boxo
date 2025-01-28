@@ -131,6 +131,7 @@ func (rt *router) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	if len(bsaddrs.Addrs) > 0 {
 		return rt.Bitswap.DisconnectFrom(ctx, p)
 	}
+	return nil
 }
 
 func (rt *router) Stats() Stats {
