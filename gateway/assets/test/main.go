@@ -10,16 +10,15 @@ import (
 
 	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-ipld-prime/multicodec"
-	"github.com/ipld/go-ipld-prime/node/basicnode"
-	mc "github.com/multiformats/go-multicodec"
-
 	// Ensure basic codecs are registered.
 	_ "github.com/ipld/go-ipld-prime/codec/cbor"
 	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
 	_ "github.com/ipld/go-ipld-prime/codec/dagjson"
 	_ "github.com/ipld/go-ipld-prime/codec/json"
 	_ "github.com/ipld/go-ipld-prime/codec/raw"
+	"github.com/ipld/go-ipld-prime/multicodec"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
+	mc "github.com/multiformats/go-multicodec"
 )
 
 //go:embed dag/*.block

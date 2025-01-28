@@ -26,12 +26,11 @@ import (
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	importer "github.com/ipfs/boxo/ipld/unixfs/importer"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
-	"github.com/ipfs/go-test/random"
-
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-test/random"
 )
 
 func emptyDirNode() *dag.ProtoNode {
@@ -669,8 +668,8 @@ func TestMfsModeAndModTime(t *testing.T) {
 	ts, _ := time.Now(), time.Time{}
 
 	// can set mode
-	if err = fi.SetMode(0644); err == nil {
-		if mode, err = fi.Mode(); mode != 0644 {
+	if err = fi.SetMode(0o644); err == nil {
+		if mode, err = fi.Mode(); mode != 0o644 {
 			t.Fatal("failed to get correct mode of file")
 		}
 	}
@@ -832,7 +831,7 @@ func TestMfsRawNodeSetModeAndMtime(t *testing.T) {
 	}
 
 	// Set and check mode.
-	err = fi.SetMode(0644)
+	err = fi.SetMode(0o644)
 	if err != nil {
 		t.Fatalf("failed to set file mode: %s", err)
 	}
@@ -840,7 +839,7 @@ func TestMfsRawNodeSetModeAndMtime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to check file mode: %s", err)
 	}
-	if mode != 0644 {
+	if mode != 0o644 {
 		t.Fatal("failed to get correct mode of file, got", mode.String())
 	}
 
@@ -1807,7 +1806,7 @@ func FuzzMkdirAndWriteConcurrently(f *testing.F) {
 
 		_, err = wfd.Write(filecontent)
 		if err != nil {
-			t.Logf("error writting to file from filepath %s: %s", filepath, err)
+			t.Logf("error writing to file from filepath %s: %s", filepath, err)
 		}
 	})
 }

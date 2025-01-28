@@ -7,14 +7,12 @@ import (
 
 	"github.com/ipfs/boxo/bitswap/client/wantlist"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
-
+	u "github.com/ipfs/boxo/util"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	pool "github.com/libp2p/go-buffer-pool"
-	msgio "github.com/libp2p/go-msgio"
-
-	u "github.com/ipfs/boxo/util"
 	"github.com/libp2p/go-libp2p/core/network"
+	msgio "github.com/libp2p/go-msgio"
 )
 
 // BitSwapMessage is the basic interface for interacting building, encoding,
@@ -116,7 +114,7 @@ func (e *Entry) Size() int {
 func (e *Entry) ToPB() pb.Message_Wantlist_Entry {
 	return pb.Message_Wantlist_Entry{
 		Block:        pb.Cid{Cid: e.Cid},
-		Priority:     int32(e.Priority),
+		Priority:     e.Priority,
 		Cancel:       e.Cancel,
 		WantType:     e.WantType,
 		SendDontHave: e.SendDontHave,

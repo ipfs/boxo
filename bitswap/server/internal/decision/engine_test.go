@@ -912,8 +912,7 @@ func TestSendReceivedBlocksToPeersThatWantThem(t *testing.T) {
 	_, env = getNextEnvelope(e, next, 5*time.Millisecond)
 	if env == nil {
 		t.Fatal("expected envelope")
-	}
-	if env.Peer != partner {
+	} else if env.Peer != partner {
 		t.Fatal("expected message to peer")
 	}
 	sentBlk := env.Message.Blocks()
@@ -947,8 +946,7 @@ func TestSendDontHave(t *testing.T) {
 	next, env := getNextEnvelope(e, next, 10*time.Millisecond)
 	if env == nil {
 		t.Fatal("expected envelope")
-	}
-	if env.Peer != partner {
+	} else if env.Peer != partner {
 		t.Fatal("expected message to peer")
 	}
 	if len(env.Message.Blocks()) > 0 {
@@ -978,8 +976,7 @@ func TestSendDontHave(t *testing.T) {
 	_, env = getNextEnvelope(e, next, 10*time.Millisecond)
 	if env == nil {
 		t.Fatal("expected envelope")
-	}
-	if env.Peer != partner {
+	} else if env.Peer != partner {
 		t.Fatal("expected message to peer")
 	}
 	if len(env.Message.Blocks()) != 2 {

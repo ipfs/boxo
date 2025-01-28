@@ -8,7 +8,6 @@ import (
 	"time"
 
 	. "github.com/ipfs/boxo/blockservice"
-
 	blockstore "github.com/ipfs/boxo/blockstore"
 	offline "github.com/ipfs/boxo/exchange/offline"
 	u "github.com/ipfs/boxo/util"

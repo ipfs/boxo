@@ -55,6 +55,7 @@ type Client struct {
 
 	// Called immediately after signing a provide request. It is used
 	// for testing, e.g., testing the server with a mangled signature.
+	//nolint:staticcheck
 	//lint:ignore SA1019 // ignore staticcheck
 	afterSignCallback func(req *types.WriteBitswapRecord)
 
@@ -353,8 +354,10 @@ func (c *Client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 
 // ProvideAsync makes a provide request to a delegated router
 //
+//nolint:staticcheck
 //lint:ignore SA1019 // ignore staticcheck
 func (c *Client) provideSignedBitswapRecord(ctx context.Context, bswp *types.WriteBitswapRecord) (time.Duration, error) {
+	//nolint:staticcheck
 	//lint:ignore SA1019 // ignore staticcheck
 	req := jsontypes.WriteProvidersRequest{Providers: []types.Record{bswp}}
 

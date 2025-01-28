@@ -9,12 +9,11 @@ import (
 	"testing"
 	"time"
 
-	h "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
-	uio "github.com/ipfs/boxo/ipld/unixfs/io"
-
 	chunker "github.com/ipfs/boxo/chunker"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	mdtest "github.com/ipfs/boxo/ipld/merkledag/test"
+	h "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
+	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-test/random"
 )
@@ -361,7 +360,7 @@ func testMetadata(t *testing.T, buf *bytes.Buffer) {
 	dbp := h.DagBuilderParams{
 		Dagserv:     dagserv,
 		Maxlinks:    h.DefaultLinksPerBlock,
-		FileMode:    0522,
+		FileMode:    0o522,
 		FileModTime: time.Unix(1638111600, 76552),
 	}
 

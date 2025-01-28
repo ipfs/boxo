@@ -6,17 +6,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ipfs/boxo/path"
-	"github.com/stretchr/testify/require"
-
 	dshelp "github.com/ipfs/boxo/datastore/dshelp"
 	"github.com/ipfs/boxo/ipns"
+	"github.com/ipfs/boxo/path"
 	mockrouting "github.com/ipfs/boxo/routing/mock"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	testutil "github.com/libp2p/go-libp2p-testing/net"
 	ci "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIPNSPublisher(t *testing.T) {
