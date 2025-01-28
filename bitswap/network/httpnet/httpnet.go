@@ -367,7 +367,7 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 			return err
 		}
 
-		log.Debugf("connect request to $s %q", p.ID, req.URL)
+		log.Debugf("connect request to %s %q", p.ID, req.URL)
 		resp, err := ht.client.Do(req)
 		if err != nil {
 			log.Debugf("connect error %s", err)
