@@ -41,7 +41,7 @@ var (
 	DefaultIdleConnTimeout               = 30 * time.Second
 	DefaultResponseHeaderTimeout         = 10 * time.Second
 	DefaultMaxIdleConns                  = 50
-	DefaultSupportsHave                  = false
+	DefaultSupportsHave                  = true
 	DefaultInsecureSkipVerify            = false
 	DefaultMaxBackoff                    = time.Minute
 	DefaultMaxHTTPAddressesPerPeer       = 10
