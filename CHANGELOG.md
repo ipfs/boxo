@@ -25,6 +25,13 @@ The following emojis are used to highlight certain changes:
 ### Security
 
 
+## [v0.27.3]
+
+### Added
+
+- `provider` Added LastRun and NextRun stats to the Reprovider. [#815](https://github.com/ipfs/boxo/pull/815)
+
+
 ## [v0.27.2]
 
 ### Fixed
