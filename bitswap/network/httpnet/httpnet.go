@@ -395,7 +395,7 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 		ht.host.Peerstore().AddAddrs(p.ID, workingAddrs, peerstore.PermanentAddrTTL)
 		ht.connEvtMgr.Connected(p.ID)
 		ht.pinger.startPinging(p.ID)
-		log.Debug("connect success to %s", p.ID)
+		log.Debugf("connect success to %s", p.ID)
 		// We "connected"
 		return nil
 	}
