@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-clock"
+	"github.com/gammazero/chanqueue"
 	bswl "github.com/ipfs/boxo/bitswap/client/wantlist"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
@@ -105,6 +106,8 @@ type MessageQueue struct {
 
 	// Used to track things that happen asynchronously -- used only in test
 	events chan<- messageEvent
+
+	requests *chanqueue.ChanQueue[func() bool]
 }
 
 // recallWantlist keeps a list of pending wants and a list of sent wants
@@ -309,6 +312,8 @@ func newMessageQueue(
 		msg:    bsmsg.New(false),
 		clock:  clk,
 		events: events,
+
+		requests: chanqueue.New[func() bool](),
 	}
 }
 
@@ -318,6 +323,12 @@ func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 		return
 	}
 
+	mq.requests.In() <- func() bool {
+		return mq.addBroadcastWantHaves(wantHaves)
+	}
+}
+
+func (mq *MessageQueue) addBroadcastWantHaves(wantHaves []cid.Cid) bool {
 	mq.wllock.Lock()
 
 	for _, c := range wantHaves {
@@ -332,7 +343,7 @@ func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 	mq.wllock.Unlock()
 
 	// Schedule a message send
-	mq.signalWorkReady()
+	return true
 }
 
 // Add want-haves and want-blocks for the peer for this message queue.
@@ -341,6 +352,12 @@ func (mq *MessageQueue) AddWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 		return
 	}
 
+	mq.requests.In() <- func() bool {
+		return mq.addWants(wantBlocks, wantHaves)
+	}
+}
+
+func (mq *MessageQueue) addWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
 	mq.wllock.Lock()
 
 	for _, c := range wantHaves {
@@ -363,7 +380,7 @@ func (mq *MessageQueue) AddWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 	mq.wllock.Unlock()
 
 	// Schedule a message send
-	mq.signalWorkReady()
+	return true
 }
 
 // Add cancel messages for the given keys.
@@ -372,14 +389,20 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 		return
 	}
 
+	mq.requests.In() <- func() bool {
+		return mq.addCancels(cancelKs)
+	}
+}
+
+func (mq *MessageQueue) addCancels(cancelKs []cid.Cid) bool {
 	// Cancel any outstanding DONT_HAVE timers
 	if mq.dhTimeoutMgr != nil {
 		mq.dhTimeoutMgr.CancelPending(cancelKs)
 	}
 
-	mq.wllock.Lock()
+	var workReady bool
 
-	workReady := false
+	mq.wllock.Lock()
 
 	// Remove keys from broadcast and peer wants, and add to cancels
 	for _, c := range cancelKs {
@@ -400,12 +423,8 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 
 	mq.wllock.Unlock()
 
-	// Unlock first to be nice to the scheduler.
-
 	// Schedule a message send
-	if workReady {
-		mq.signalWorkReady()
-	}
+	return workReady
 }
 
 // ResponseReceived is called when a message is received from the network.
@@ -439,6 +458,7 @@ func (mq *MessageQueue) Startup() {
 // Shutdown stops the processing of messages for a message queue.
 func (mq *MessageQueue) Shutdown() {
 	mq.shutdown()
+	mq.requests.Shutdown()
 }
 
 func (mq *MessageQueue) onShutdown() {
@@ -470,7 +490,13 @@ func (mq *MessageQueue) runQueue() {
 	defer rebroadcastTimer.Stop()
 
 	var workScheduled time.Time
+	var when time.Time
+
+	requests := mq.requests.Out()
+
 	for {
+		var newWork bool
+
 		select {
 		case now := <-rebroadcastTimer.C:
 			mq.rebroadcastWantlist(now, rebroadcastInterval)
@@ -479,7 +505,30 @@ func (mq *MessageQueue) runQueue() {
 		case <-mq.rebroadcastNow:
 			mq.rebroadcastWantlist(mq.clock.Now(), 0)
 
-		case when := <-mq.outgoingWork:
+		case when = <-mq.outgoingWork:
+			newWork = true
+
+		case <-scheduleWork.C:
+			// We have work scheduled and haven't seen any updates
+			// in sendMessageDebounce. Send immediately.
+			workScheduled = time.Time{}
+			mq.sendIfReady()
+
+		case req := <-requests:
+			newWork = req()
+			if newWork {
+				when = mq.clock.Now()
+			}
+
+		case res := <-mq.responses:
+			// We received a response from the peer, calculate latency
+			mq.handleResponse(res)
+
+		case <-mq.ctx.Done():
+			return
+		}
+
+		if newWork {
 			// If we have work scheduled, cancel the timer. If we
 			// don't, record when the work was scheduled.
 			// We send the time on the channel so we accurately
@@ -504,19 +553,6 @@ func (mq *MessageQueue) runQueue() {
 					mq.events <- messageQueued
 				}
 			}
-
-		case <-scheduleWork.C:
-			// We have work scheduled and haven't seen any updates
-			// in sendMessageDebounce. Send immediately.
-			workScheduled = time.Time{}
-			mq.sendIfReady()
-
-		case res := <-mq.responses:
-			// We received a response from the peer, calculate latency
-			mq.handleResponse(res)
-
-		case <-mq.ctx.Done():
-			return
 		}
 	}
 }
