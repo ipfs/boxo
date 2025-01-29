@@ -503,7 +503,10 @@ func (mq *MessageQueue) runQueue() {
 			workScheduled = time.Time{}
 			newWork = mq.sendIfReady()
 
-		case req := <-requests:
+		case req, ok := <-requests:
+			if !ok {
+				return
+			}
 			newWork = req()
 
 		case res := <-mq.responses:
