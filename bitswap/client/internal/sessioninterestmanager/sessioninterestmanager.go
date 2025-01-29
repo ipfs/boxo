@@ -175,3 +175,26 @@ func (sim *SessionInterestManager) InterestedSessions(keySets ...[]cid.Cid) []ui
 	}
 	return ses
 }
+
+// Filters only the keys that are wanted by at least one session
+func (sim *SessionInterestManager) FilterInterests(keySets ...[]cid.Cid) [][]cid.Cid {
+	sim.lk.RLock()
+	defer sim.lk.RUnlock()
+
+	result := make([][]cid.Cid, len(keySets))
+	// For each set of keys
+	for i, ks := range keySets {
+		// The set of keys that at least one session is interested in
+		wanted := make([]cid.Cid, 0, len(ks))
+
+		// For each key in the set
+		for _, c := range ks {
+			// If there are any sessions interested in this key
+			if _, ok := sim.wants[c]; ok {
+				wanted = append(wanted, c)
+			}
+		}
+		result[i] = wanted
+	}
+	return result
+}
