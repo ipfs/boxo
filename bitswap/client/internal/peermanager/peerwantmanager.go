@@ -283,58 +283,51 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 		}
 	}
 
+	clearWantsForCID := func(c cid.Cid) {
+		peerCnts := peerCounts[c]
+		// If there were any peers that had a pending want-block for the key
+		if peerCnts.wantBlock > 0 {
+			// Decrement the want-block gauge
+			pwm.wantBlockGauge.Dec()
+		}
+		// If there was a peer that had a pending want or it was a broadcast want
+		if peerCnts.wanted() {
+			// Decrement the total wants gauge
+			pwm.wantGauge.Dec()
+		}
+		delete(pwm.wantPeers, c)
+	}
+
 	if len(broadcastCancels) > 0 {
 		// If a broadcast want is being cancelled, send the cancel to all
 		// peers
 		for p, pws := range pwm.peerWants {
 			send(p, pws)
 		}
+
+		// Remove cancelled broadcast wants
+		for _, c := range broadcastCancels {
+			pwm.broadcastWants.Remove(c)
+		}
+
+		for _, c := range cancelKs {
+			clearWantsForCID(c)
+		}
 	} else {
 		// Only send cancels to peers that received a corresponding want
-		cancelPeers := make(map[peer.ID]struct{}, len(pwm.wantPeers[cancelKs[0]]))
 		for _, c := range cancelKs {
 			for p := range pwm.wantPeers[c] {
-				cancelPeers[p] = struct{}{}
-			}
-		}
-		for p := range cancelPeers {
-			pws, ok := pwm.peerWants[p]
-			if !ok {
-				// Should never happen but check just in case
-				log.Errorf("sendCancels - peerWantManager index missing peer %s", p)
-				continue
+				pws, ok := pwm.peerWants[p]
+				if !ok {
+					// Should never happen but check just in case
+					log.Errorf("sendCancels - peerWantManager index missing peer %s", p)
+					continue
+				}
+				send(p, pws)
 			}
 
-			send(p, pws)
+			clearWantsForCID(c)
 		}
-	}
-
-	// Decrement the wants gauges
-	for _, c := range cancelKs {
-		peerCnts := peerCounts[c]
-
-		// If there were any peers that had a pending want-block for the key
-		if peerCnts.wantBlock > 0 {
-			// Decrement the want-block gauge
-			pwm.wantBlockGauge.Dec()
-		}
-
-		// If there was a peer that had a pending want or it was a broadcast want
-		if peerCnts.wanted() {
-			// Decrement the total wants gauge
-			pwm.wantGauge.Dec()
-		}
-	}
-
-	// Remove cancelled broadcast wants
-	for _, c := range broadcastCancels {
-		pwm.broadcastWants.Remove(c)
-	}
-
-	// Batch-remove the reverse-index. There's no need to clear this index
-	// peer-by-peer.
-	for _, c := range cancelKs {
-		delete(pwm.wantPeers, c)
 	}
 }
 
