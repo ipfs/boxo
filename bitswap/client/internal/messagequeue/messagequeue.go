@@ -451,7 +451,6 @@ func (mq *MessageQueue) Startup() {
 // Shutdown stops the processing of messages for a message queue.
 func (mq *MessageQueue) Shutdown() {
 	mq.shutdown()
-	mq.requests.Shutdown()
 }
 
 func (mq *MessageQueue) onShutdown() {
