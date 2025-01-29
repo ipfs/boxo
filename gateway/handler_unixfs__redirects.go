@@ -20,7 +20,7 @@ import (
 //
 // When a path under requested CID does not exist, Gateway will check if a `_redirects` file exists
 // underneath the root CID of the path, and apply rules defined there.
-// See sepcification introduced in: https://github.com/ipfs/specs/pull/290
+// See specification introduced in: https://github.com/ipfs/specs/pull/290
 //
 // Scenario 1:
 // If a path exists, we always return the `path.Resolved` corresponding to that path, regardless of the existence of a `_redirects` file.
