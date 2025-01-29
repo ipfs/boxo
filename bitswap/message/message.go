@@ -18,6 +18,7 @@ import (
 // BitSwapMessage is the basic interface for interacting building, encoding,
 // and decoding messages sent on the BitSwap protocol.
 type BitSwapMessage interface {
+	FillWantlist([]Entry) []Entry
 	// Wantlist returns a slice of unique keys that represent data wanted by
 	// the sender.
 	Wantlist() []Entry
@@ -242,6 +243,18 @@ func (m *impl) Full() bool {
 
 func (m *impl) Empty() bool {
 	return len(m.blocks) == 0 && len(m.wantlist) == 0 && len(m.blockPresences) == 0
+}
+
+func (m *impl) FillWantlist(out []Entry) []Entry {
+	if cap(out) < len(m.wantlist) {
+		out = make([]Entry, len(m.wantlist))
+	}
+	var i int
+	for _, e := range m.wantlist {
+		out[i] = *e
+		i++
+	}
+	return out
 }
 
 func (m *impl) Wantlist() []Entry {

@@ -481,7 +481,7 @@ func (mq *MessageQueue) runQueue() {
 			if mq.events != nil {
 				mq.events <- messageQueued
 			}
-			mq.sendIfReady()
+			mq.sendMessage()
 			hasWorkChan = nil
 			scheduleWork.Reset(sendMessageDelay)
 
@@ -520,12 +520,6 @@ func (mq *MessageQueue) signalWorkReady() {
 	}
 }
 
-func (mq *MessageQueue) sendIfReady() {
-	if mq.hasPendingWork() {
-		mq.sendMessage()
-	}
-}
-
 func (mq *MessageQueue) sendMessage() {
 	sender, err := mq.initializeSender()
 	if err != nil {
@@ -547,6 +541,8 @@ func (mq *MessageQueue) sendMessage() {
 	// After processing the message, clear out its fields to save memory
 	defer mq.msg.Reset(false)
 
+	var wantlist []bsmsg.Entry
+
 	for {
 		// Convert want lists to a Bitswap Message
 		message, onSent := mq.extractOutgoingMessage(supportsHave)
@@ -554,7 +550,7 @@ func (mq *MessageQueue) sendMessage() {
 			return
 		}
 
-		wantlist := message.Wantlist()
+		wantlist = message.FillWantlist(wantlist)
 		mq.logOutgoingMessage(wantlist)
 
 		if err = sender.SendMsg(mq.ctx, message); err != nil {
