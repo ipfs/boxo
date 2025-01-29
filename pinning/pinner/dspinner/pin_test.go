@@ -9,21 +9,18 @@ import (
 	"time"
 
 	bs "github.com/ipfs/boxo/blockservice"
+	blockstore "github.com/ipfs/boxo/blockstore"
+	offline "github.com/ipfs/boxo/exchange/offline"
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
-	"github.com/stretchr/testify/require"
-
+	ipfspin "github.com/ipfs/boxo/pinning/pinner"
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
 	dssync "github.com/ipfs/go-datastore/sync"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
-
-	blockstore "github.com/ipfs/boxo/blockstore"
-	offline "github.com/ipfs/boxo/exchange/offline"
 	"github.com/ipfs/go-test/random"
-
-	ipfspin "github.com/ipfs/boxo/pinning/pinner"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeLogger struct {

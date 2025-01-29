@@ -10,7 +10,6 @@ import (
 
 	mdtest "github.com/ipfs/boxo/ipld/merkledag/test"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
-
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
@@ -139,9 +138,9 @@ func executeOpSet(t *testing.T, ds ipld.DAGService, width int, ops []testOp) (*S
 }
 
 func genOpSet(seed int64, keep, temp []string) []testOp {
-	tempset := make(map[string]struct{}, len(temp))
+	tempSet := make(map[string]struct{}, len(temp))
 	for _, s := range temp {
-		tempset[s] = struct{}{}
+		tempSet[s] = struct{}{}
 	}
 
 	allnames := append(keep, temp...)
@@ -167,7 +166,7 @@ func genOpSet(seed int64, keep, temp []string) []testOp {
 				Val: next,
 			})
 
-			if _, ok := tempset[next]; ok {
+			if _, ok := tempSet[next]; ok {
 				todel = append(todel, next)
 			}
 		} else {

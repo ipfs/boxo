@@ -23,9 +23,9 @@ func TestToSubdomainURL(t *testing.T) {
 
 	backend.namesys["/ipns/dnslink.long-name.example.com"] = newMockNamesysItem(path.FromCid(testCID), 0)
 	backend.namesys["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = newMockNamesysItem(path.FromCid(testCID), 0)
-	httpRequest := httptest.NewRequest("GET", "http://127.0.0.1:8080", nil)
-	httpsRequest := httptest.NewRequest("GET", "https://https-request-stub.example.com", nil)
-	httpsProxiedRequest := httptest.NewRequest("GET", "http://proxied-https-request-stub.example.com", nil)
+	httpRequest := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080", nil)
+	httpsRequest := httptest.NewRequest(http.MethodGet, "https://https-request-stub.example.com", nil)
+	httpsProxiedRequest := httptest.NewRequest(http.MethodGet, "http://proxied-https-request-stub.example.com", nil)
 	httpsProxiedRequest.Header.Set("X-Forwarded-Proto", "https")
 
 	for _, test := range []struct {
@@ -118,13 +118,13 @@ func TestToDNSLinkFQDN(t *testing.T) {
 
 func TestIsHTTPSRequest(t *testing.T) {
 	t.Parallel()
-	httpRequest := httptest.NewRequest("GET", "http://127.0.0.1:8080", nil)
-	httpsRequest := httptest.NewRequest("GET", "https://https-request-stub.example.com", nil)
-	httpsProxiedRequest := httptest.NewRequest("GET", "http://proxied-https-request-stub.example.com", nil)
+	httpRequest := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080", nil)
+	httpsRequest := httptest.NewRequest(http.MethodGet, "https://https-request-stub.example.com", nil)
+	httpsProxiedRequest := httptest.NewRequest(http.MethodGet, "http://proxied-https-request-stub.example.com", nil)
 	httpsProxiedRequest.Header.Set("X-Forwarded-Proto", "https")
-	httpProxiedRequest := httptest.NewRequest("GET", "http://proxied-http-request-stub.example.com", nil)
+	httpProxiedRequest := httptest.NewRequest(http.MethodGet, "http://proxied-http-request-stub.example.com", nil)
 	httpProxiedRequest.Header.Set("X-Forwarded-Proto", "http")
-	oddballRequest := httptest.NewRequest("GET", "foo://127.0.0.1:8080", nil)
+	oddballRequest := httptest.NewRequest(http.MethodGet, "foo://127.0.0.1:8080", nil)
 	for _, test := range []struct {
 		in  *http.Request
 		out bool
@@ -313,12 +313,14 @@ func TestKnownSubdomainDetails(t *testing.T) {
 	}
 }
 
-const testInlinedDNSLinkA = "example-com"
-const testInlinedDNSLinkB = "docs-ipfs-tech"
-const testInlinedDNSLinkC = "en-wikipedia--on--ipfs-org"
-const testDNSLinkA = "example.com"
-const testDNSLinkB = "docs.ipfs.tech"
-const testDNSLinkC = "en.wikipedia-on-ipfs.org"
+const (
+	testInlinedDNSLinkA = "example-com"
+	testInlinedDNSLinkB = "docs-ipfs-tech"
+	testInlinedDNSLinkC = "en-wikipedia--on--ipfs-org"
+	testDNSLinkA        = "example.com"
+	testDNSLinkB        = "docs.ipfs.tech"
+	testDNSLinkC        = "en.wikipedia-on-ipfs.org"
+)
 
 func inlineDNSLinkSimple(fqdn string) (dnsLabel string, err error) {
 	dnsLabel = strings.ReplaceAll(fqdn, "-", "--")
@@ -328,6 +330,7 @@ func inlineDNSLinkSimple(fqdn string) (dnsLabel string, err error) {
 	}
 	return dnsLabel, nil
 }
+
 func uninlineDNSLinkSimple(dnsLabel string) (fqdn string) {
 	fqdn = strings.ReplaceAll(dnsLabel, "--", "@") // @ placeholder is unused in DNS labels
 	fqdn = strings.ReplaceAll(fqdn, "-", ".")
@@ -342,6 +345,7 @@ func BenchmarkUninlineDNSLinkSimple(b *testing.B) {
 		_ = uninlineDNSLinkSimple(testInlinedDNSLinkC)
 	}
 }
+
 func BenchmarkUninlineDNSLink(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = UninlineDNSLink(testInlinedDNSLinkA)
@@ -357,6 +361,7 @@ func BenchmarkInlineDNSLinkSimple(b *testing.B) {
 		_, _ = inlineDNSLinkSimple(testDNSLinkC)
 	}
 }
+
 func BenchmarkInlineDNSLink(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _ = InlineDNSLink(testDNSLinkA)

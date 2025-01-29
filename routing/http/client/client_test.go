@@ -18,7 +18,6 @@ import (
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
-
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -36,6 +35,7 @@ func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limi
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
+//nolint:staticcheck
 //lint:ignore SA1019 // ignore staticcheck
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.BitswapWriteProvideRequest) (time.Duration, error) {
 	args := m.Called(ctx, req)
@@ -170,6 +170,7 @@ func makePeerRecord(protocols []string) types.PeerRecord {
 	}
 }
 
+//nolint:staticcheck
 //lint:ignore SA1019 // ignore staticcheck
 func makeBitswapRecord() types.BitswapRecord {
 	peerID, addrs, _ := makeProviderAndIdentity()
@@ -312,7 +313,7 @@ func TestClient_FindProviders(t *testing.T) {
 			},
 		},
 		{
-			name:           "returns no providers if the HTTP server returns a 404 respones",
+			name:           "returns no providers if the HTTP server returns a 404 response",
 			httpStatusCode: 404,
 			expResult:      nil,
 		},
@@ -471,6 +472,7 @@ func TestClient_Provide(t *testing.T) {
 				deps.server.Close()
 			}
 			if c.mangleSignature {
+				//nolint:staticcheck
 				//lint:ignore SA1019 // ignore staticcheck
 				client.afterSignCallback = func(req *types.WriteBitswapRecord) {
 					mh, err := multihash.Encode([]byte("boom"), multihash.SHA2_256)
@@ -482,6 +484,7 @@ func TestClient_Provide(t *testing.T) {
 				}
 			}
 
+			//nolint:staticcheck
 			//lint:ignore SA1019 // ignore staticcheck
 			expectedProvReq := &server.BitswapWriteProvideRequest{
 				Keys:        c.cids,
@@ -597,7 +600,7 @@ func TestClient_FindPeers(t *testing.T) {
 			},
 		},
 		{
-			name:           "returns no providers if the HTTP server returns a 404 respones",
+			name:           "returns no providers if the HTTP server returns a 404 response",
 			httpStatusCode: 404,
 			expResult:      nil,
 		},

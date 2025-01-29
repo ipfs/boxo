@@ -145,7 +145,7 @@ func TestContentTypeFromCarParams(t *testing.T) {
 
 	// below ensures buildContentTypeFromCarParams produces correct Content-Type
 	// at this point we do not do any inferring, it happens in buildCarParams instead
-	// and tests of *Unspecified here are just present for completenes and to guard
+	// and tests of *Unspecified here are just present for completes and to guard
 	// against regressions between refactors
 	tests := []struct {
 		params CarParams

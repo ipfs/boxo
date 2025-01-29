@@ -408,7 +408,7 @@ func (bs *Server) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 
 func (bs *Server) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.BitSwapMessage) {
 	// This call records changes to wantlists, blocks received,
-	// and number of bytes transfered.
+	// and number of bytes transferred.
 	mustKillConnection := bs.engine.MessageReceived(ctx, p, incoming)
 	if mustKillConnection {
 		bs.network.DisconnectFrom(ctx, p)
@@ -422,7 +422,7 @@ func (bs *Server) ReceiveMessage(ctx context.Context, p peer.ID, incoming messag
 }
 
 // ReceivedBlocks notify the decision engine that a peer is well behaving
-// and gave us usefull data, potentially increasing it's score and making us
+// and gave us useful data, potentially increasing it's score and making us
 // send them more data in exchange.
 func (bs *Server) ReceivedBlocks(from peer.ID, blks []blocks.Block) {
 	bs.engine.ReceivedBlocks(from, blks)

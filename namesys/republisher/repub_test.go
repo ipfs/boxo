@@ -6,6 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ipfs/boxo/ipns"
+	"github.com/ipfs/boxo/keystore"
+	"github.com/ipfs/boxo/namesys"
+	. "github.com/ipfs/boxo/namesys/republisher"
+	"github.com/ipfs/boxo/path"
+	ds "github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -13,15 +20,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/stretchr/testify/require"
-
-	"github.com/ipfs/boxo/ipns"
-	"github.com/ipfs/boxo/path"
-	ds "github.com/ipfs/go-datastore"
-	dssync "github.com/ipfs/go-datastore/sync"
-
-	"github.com/ipfs/boxo/keystore"
-	"github.com/ipfs/boxo/namesys"
-	. "github.com/ipfs/boxo/namesys/republisher"
 )
 
 type mockNode struct {

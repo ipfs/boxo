@@ -8,15 +8,12 @@ import (
 	"math"
 	"testing"
 
-	"github.com/ipfs/boxo/ipld/unixfs/internal"
-
 	mdtest "github.com/ipfs/boxo/ipld/merkledag/test"
-	"github.com/stretchr/testify/assert"
-
 	"github.com/ipfs/boxo/ipld/unixfs"
 	"github.com/ipfs/boxo/ipld/unixfs/hamt"
-
+	"github.com/ipfs/boxo/ipld/unixfs/internal"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/stretchr/testify/assert"
 )
 
 // CreateCompleteHAMT creates a HAMT the following properties:

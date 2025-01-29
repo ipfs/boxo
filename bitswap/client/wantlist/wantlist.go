@@ -7,7 +7,6 @@ import (
 	"slices"
 
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
-
 	cid "github.com/ipfs/go-cid"
 )
 
