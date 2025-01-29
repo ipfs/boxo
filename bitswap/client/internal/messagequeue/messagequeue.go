@@ -3,7 +3,6 @@ package messagequeue
 import (
 	"context"
 	"math"
-	"sync"
 	"time"
 
 	"github.com/filecoin-project/go-clock"
@@ -81,14 +80,10 @@ type MessageQueue struct {
 	// for latency calculation
 	maxValidLatency time.Duration
 
-	// Signals that there are outgoing wants / cancels ready to be processed
-	outgoingWork chan time.Time
-
 	// Channel of CIDs of blocks / HAVEs / DONT_HAVEs received from the peer
 	responses chan []cid.Cid
 
 	// Take lock whenever any of these variables are modified
-	wllock    sync.Mutex
 	bcstWants recallWantlist
 	peerWants recallWantlist
 	cancels   *cid.Set
@@ -301,7 +296,6 @@ func newMessageQueue(
 		bcstWants:        newRecallWantList(),
 		peerWants:        newRecallWantList(),
 		cancels:          cid.NewSet(),
-		outgoingWork:     make(chan time.Time, 1),
 		responses:        make(chan []cid.Cid, 8),
 		rebroadcastNow:   make(chan struct{}),
 		sendErrorBackoff: sendErrorBackoff,
@@ -323,14 +317,15 @@ func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 		return
 	}
 
+	wantHavesCopy := make([]cid.Cid, len(wantHaves))
+	copy(wantHavesCopy, wantHaves)
+
 	mq.requests.In() <- func() bool {
-		return mq.addBroadcastWantHaves(wantHaves)
+		return mq.addBroadcastWantHaves(wantHavesCopy)
 	}
 }
 
 func (mq *MessageQueue) addBroadcastWantHaves(wantHaves []cid.Cid) bool {
-	mq.wllock.Lock()
-
 	for _, c := range wantHaves {
 		mq.bcstWants.add(c, mq.priority, pb.Message_Wantlist_Have)
 		mq.priority--
@@ -339,8 +334,6 @@ func (mq *MessageQueue) addBroadcastWantHaves(wantHaves []cid.Cid) bool {
 		// for the cid
 		mq.cancels.Remove(c)
 	}
-
-	mq.wllock.Unlock()
 
 	// Schedule a message send
 	return true
@@ -352,14 +345,18 @@ func (mq *MessageQueue) AddWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 		return
 	}
 
+	wantBlocksCopy := make([]cid.Cid, len(wantBlocks))
+	copy(wantBlocksCopy, wantBlocks)
+
+	wantHavesCopy := make([]cid.Cid, len(wantHaves))
+	copy(wantHavesCopy, wantHaves)
+
 	mq.requests.In() <- func() bool {
-		return mq.addWants(wantBlocks, wantHaves)
+		return mq.addWants(wantBlocksCopy, wantHavesCopy)
 	}
 }
 
 func (mq *MessageQueue) addWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
-	mq.wllock.Lock()
-
 	for _, c := range wantHaves {
 		mq.peerWants.add(c, mq.priority, pb.Message_Wantlist_Have)
 		mq.priority--
@@ -377,8 +374,6 @@ func (mq *MessageQueue) addWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) bool
 		mq.cancels.Remove(c)
 	}
 
-	mq.wllock.Unlock()
-
 	// Schedule a message send
 	return true
 }
@@ -389,8 +384,10 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 		return
 	}
 
+	ks := make([]cid.Cid, len(cancelKs))
+	copy(ks, cancelKs)
 	mq.requests.In() <- func() bool {
-		return mq.addCancels(cancelKs)
+		return mq.addCancels(ks)
 	}
 }
 
@@ -401,8 +398,6 @@ func (mq *MessageQueue) addCancels(cancelKs []cid.Cid) bool {
 	}
 
 	var workReady bool
-
-	mq.wllock.Lock()
 
 	// Remove keys from broadcast and peer wants, and add to cancels
 	for _, c := range cancelKs {
@@ -420,8 +415,6 @@ func (mq *MessageQueue) addCancels(cancelKs []cid.Cid) bool {
 			workReady = true
 		}
 	}
-
-	mq.wllock.Unlock()
 
 	// Schedule a message send
 	return workReady
@@ -490,7 +483,6 @@ func (mq *MessageQueue) runQueue() {
 	defer rebroadcastTimer.Stop()
 
 	var workScheduled time.Time
-	var when time.Time
 
 	requests := mq.requests.Out()
 
@@ -499,26 +491,20 @@ func (mq *MessageQueue) runQueue() {
 
 		select {
 		case now := <-rebroadcastTimer.C:
-			mq.rebroadcastWantlist(now, rebroadcastInterval)
+			newWork = mq.rebroadcastWantlist(now, rebroadcastInterval)
 			rebroadcastTimer.Reset(runRebroadcastsInterval)
 
 		case <-mq.rebroadcastNow:
 			mq.rebroadcastWantlist(mq.clock.Now(), 0)
 
-		case when = <-mq.outgoingWork:
-			newWork = true
-
 		case <-scheduleWork.C:
 			// We have work scheduled and haven't seen any updates
 			// in sendMessageDebounce. Send immediately.
 			workScheduled = time.Time{}
-			mq.sendIfReady()
+			newWork = mq.sendIfReady()
 
 		case req := <-requests:
 			newWork = req()
-			if newWork {
-				when = mq.clock.Now()
-			}
 
 		case res := <-mq.responses:
 			// We received a response from the peer, calculate latency
@@ -534,7 +520,7 @@ func (mq *MessageQueue) runQueue() {
 			// We send the time on the channel so we accurately
 			// track delay.
 			if workScheduled.IsZero() {
-				workScheduled = when
+				workScheduled = mq.clock.Now()
 			} else if !scheduleWork.Stop() {
 				// Need to drain the timer if Stop() returns false
 				<-scheduleWork.C
@@ -558,41 +544,34 @@ func (mq *MessageQueue) runQueue() {
 }
 
 // Periodically resend the list of wants to the peer
-func (mq *MessageQueue) rebroadcastWantlist(now time.Time, interval time.Duration) {
-	mq.wllock.Lock()
+func (mq *MessageQueue) rebroadcastWantlist(now time.Time, interval time.Duration) bool {
 	// Transfer wants from the rebroadcast lists into the pending lists.
 	toRebroadcast := mq.bcstWants.refresh(now, interval) + mq.peerWants.refresh(now, interval)
-	mq.wllock.Unlock()
 
 	// If some wants were transferred from the rebroadcast list
 	if toRebroadcast > 0 {
-		// Send them out
-		mq.sendMessage()
 		log.Infow("Rebroadcasting wants", "amount", toRebroadcast, "peer", mq.p)
+		// Send them out
+		return mq.sendMessage()
 	}
+	return false
 }
 
-func (mq *MessageQueue) signalWorkReady() {
-	select {
-	case mq.outgoingWork <- mq.clock.Now():
-	default:
+func (mq *MessageQueue) sendIfReady() bool {
+	if !mq.hasPendingWork() {
+		return false
 	}
+	return mq.sendMessage()
 }
 
-func (mq *MessageQueue) sendIfReady() {
-	if mq.hasPendingWork() {
-		mq.sendMessage()
-	}
-}
-
-func (mq *MessageQueue) sendMessage() {
+func (mq *MessageQueue) sendMessage() bool {
 	sender, err := mq.initializeSender()
 	if err != nil {
 		// If we fail to initialize the sender, the networking layer will
 		// emit a Disconnect event and the MessageQueue will get cleaned up
 		log.Infof("Could not open message sender to peer %s: %s", mq.p, err)
 		mq.Shutdown()
-		return
+		return false
 	}
 
 	if mq.dhTimeoutMgr != nil {
@@ -608,7 +587,7 @@ func (mq *MessageQueue) sendMessage() {
 	defer mq.msg.Reset(false)
 
 	if message.Empty() {
-		return
+		return false
 	}
 
 	wantlist := message.Wantlist()
@@ -619,7 +598,7 @@ func (mq *MessageQueue) sendMessage() {
 		// emit a Disconnect event and the MessageQueue will get cleaned up
 		log.Infof("Could not send message to peer %s: %s", mq.p, err)
 		mq.Shutdown()
-		return
+		return false
 	}
 
 	// Record sent time so as to calculate message latency
@@ -631,9 +610,7 @@ func (mq *MessageQueue) sendMessage() {
 	// If the message was too big and only a subset of wants could be
 	// sent, schedule sending the rest of the wants in the next
 	// iteration of the event loop.
-	if mq.hasPendingWork() {
-		mq.signalWorkReady()
-	}
+	return mq.hasPendingWork()
 }
 
 // If want-block times out, simulate a DONT_HAVE response.
@@ -643,8 +620,6 @@ func (mq *MessageQueue) sendMessage() {
 func (mq *MessageQueue) simulateDontHaveWithTimeout(wantlist []bsmsg.Entry) {
 	// Get the CID of each want-block that expects a DONT_HAVE response
 	wants := make([]cid.Cid, 0, len(wantlist))
-
-	mq.wllock.Lock()
 
 	for _, entry := range wantlist {
 		if entry.WantType == pb.Message_Wantlist_Block && entry.SendDontHave {
@@ -657,8 +632,6 @@ func (mq *MessageQueue) simulateDontHaveWithTimeout(wantlist []bsmsg.Entry) {
 		}
 	}
 
-	mq.wllock.Unlock()
-
 	if mq.dhTimeoutMgr != nil {
 		// Add wants to DONT_HAVE timeout manager
 		mq.dhTimeoutMgr.AddPending(wants)
@@ -670,8 +643,6 @@ func (mq *MessageQueue) simulateDontHaveWithTimeout(wantlist []bsmsg.Entry) {
 func (mq *MessageQueue) handleResponse(ks []cid.Cid) {
 	now := mq.clock.Now()
 	earliest := time.Time{}
-
-	mq.wllock.Lock()
 
 	// Check if the keys in the response correspond to any request that was
 	// sent to the peer.
@@ -701,8 +672,6 @@ func (mq *MessageQueue) handleResponse(ks []cid.Cid) {
 			mq.peerWants.clearSentAt(c)
 		}
 	}
-
-	mq.wllock.Unlock()
 
 	if !earliest.IsZero() && mq.dhTimeoutMgr != nil {
 		// Inform the timeout manager of the calculated latency
@@ -764,16 +733,12 @@ func (mq *MessageQueue) hasPendingWork() bool {
 
 // The amount of work that is waiting to be processed
 func (mq *MessageQueue) pendingWorkCount() int {
-	mq.wllock.Lock()
-	defer mq.wllock.Unlock()
-
 	return mq.bcstWants.pending.Len() + mq.peerWants.pending.Len() + mq.cancels.Len()
 }
 
 // Convert the lists of wants into a Bitswap message
 func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwapMessage, func()) {
 	// Get broadcast and regular wantlist entries.
-	mq.wllock.Lock()
 	peerEntries := mq.peerWants.pending.Entries()
 	bcstEntries := mq.bcstWants.pending.Entries()
 	cancels := mq.cancels.Keys()
@@ -796,7 +761,6 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 		}
 		peerEntries = filteredPeerEntries
 	}
-	mq.wllock.Unlock()
 
 	// We prioritize cancels, then regular wants, then broadcast wants.
 
@@ -852,7 +816,6 @@ FINISH:
 
 	// Finally, re-take the lock, mark sent and remove any entries from our
 	// message that we've decided to cancel at the last minute.
-	mq.wllock.Lock()
 	for i, e := range peerEntries[:sentPeerEntries] {
 		if !mq.peerWants.markSent(e) {
 			// It changed.
@@ -875,14 +838,11 @@ FINISH:
 			mq.cancels.Remove(c)
 		}
 	}
-	mq.wllock.Unlock()
 
 	// When the message has been sent, record the time at which each want was
 	// sent so we can calculate message latency
 	onSent := func() {
 		now := mq.clock.Now()
-
-		mq.wllock.Lock()
 
 		for _, e := range peerEntries[:sentPeerEntries] {
 			if e.Cid.Defined() { // Check if want was canceled in the interim
@@ -895,8 +855,6 @@ FINISH:
 				mq.bcstWants.setSentAt(e.Cid, now)
 			}
 		}
-
-		mq.wllock.Unlock()
 
 		if mq.events != nil {
 			mq.events <- messageFinishedSending
