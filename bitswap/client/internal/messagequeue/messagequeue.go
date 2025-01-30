@@ -734,11 +734,6 @@ func (mq *MessageQueue) logOutgoingMessage(wantlist []bsmsg.Entry) {
 	}
 }
 
-// Whether there is work to be processed
-func (mq *MessageQueue) hasPendingWork() bool {
-	return mq.pendingWorkCount() > 0
-}
-
 // The amount of work that is waiting to be processed
 func (mq *MessageQueue) pendingWorkCount() int {
 	mq.wllock.Lock()
