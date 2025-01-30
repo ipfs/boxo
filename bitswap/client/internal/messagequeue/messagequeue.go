@@ -463,11 +463,6 @@ func (mq *MessageQueue) runQueue() {
 
 	defer mq.onShutdown()
 
-	peers := peerCount.Load()
-	delay := time.Duration(peers) * msPerPeer
-	delay = max(minSendMessageDelay, min(maxSendMessageDelay, delay))
-	log.Errorw("Setting send delay", "delay", delay.String(), "peerCount", peers)
-
 	// Create a timer for debouncing scheduled work.
 	scheduleWork := mq.clock.Timer(0)
 	if !scheduleWork.Stop() {
@@ -498,8 +493,7 @@ func (mq *MessageQueue) runQueue() {
 			mq.sendMessage()
 			hasWorkChan = nil
 
-			peers = peerCount.Load()
-			delay = time.Duration(peers) * msPerPeer
+			delay := time.Duration(peerCount.Load()) * msPerPeer
 			delay = max(minSendMessageDelay, min(maxSendMessageDelay, delay))
 			scheduleWork.Reset(delay)
 
