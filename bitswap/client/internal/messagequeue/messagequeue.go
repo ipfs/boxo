@@ -4,10 +4,10 @@ import (
 	"context"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/filecoin-project/go-clock"
-	"github.com/ipfs/boxo/bitswap/client/internal/messagequeue/ravg"
 	bswl "github.com/ipfs/boxo/bitswap/client/wantlist"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
@@ -48,6 +48,8 @@ const (
 	maxSendMessageDelay = 200 * time.Millisecond
 	sendTimeout         = 30 * time.Second
 )
+
+var peerCount atomic.Int64
 
 // MessageNetwork is any network that can connect peers and generate a message
 // sender.
@@ -455,7 +457,8 @@ func (mq *MessageQueue) onShutdown() {
 func (mq *MessageQueue) runQueue() {
 	const runRebroadcastsInterval = rebroadcastInterval / 2
 
-	avg := ravg.New[int](10)
+	peerCount.Add(1)
+	defer peerCount.Add(-1)
 
 	defer mq.onShutdown()
 
@@ -486,12 +489,10 @@ func (mq *MessageQueue) runQueue() {
 				mq.events <- messageQueued
 			}
 
-			avg.Put(mq.pendingWorkCount())
-			mean := avg.Mean()
-			delay := time.Duration(mean) * time.Millisecond / 8
-			delay = min(delay, maxSendMessageDelay)
-			delay = max(delay, minSendMessageDelay)
-			log.Errorw("Setting send delay", "delay", delay.String(), "avgCount", mean)
+			peers := peerCount.Load()
+			delay := time.Duration(peers) * time.Millisecond / 8
+			delay = max(minSendMessageDelay, min(maxSendMessageDelay, delay))
+			log.Errorw("Setting send delay", "delay", delay.String(), "peerCount", peers)
 
 			mq.sendMessage()
 			hasWorkChan = nil

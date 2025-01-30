@@ -212,6 +212,7 @@ func TestSendingMessagesDeduped(t *testing.T) {
 	wantBlocks := random.Cids(10)
 
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 	messageQueue.AddWants(wantBlocks, wantHaves)
 	messageQueue.AddWants(wantBlocks, wantHaves)
 	messages := collectMessages(ctx, t, messagesSent, collectTimeout)
@@ -233,6 +234,7 @@ func TestSendingMessagesPartialDupe(t *testing.T) {
 	wantBlocks := random.Cids(10)
 
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 	messageQueue.AddWants(wantBlocks[:8], wantHaves[:8])
 	messageQueue.AddWants(wantBlocks[3:], wantHaves[3:])
 	messages := collectMessages(ctx, t, messagesSent, 5*collectTimeout)
@@ -258,6 +260,7 @@ func TestSendingMessagesPriority(t *testing.T) {
 	wantBlocks := append(wantBlocks1, wantBlocks2...)
 
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 	messageQueue.AddWants(wantBlocks1, wantHaves1)
 	messageQueue.AddWants(wantBlocks2, wantHaves2)
 	messages := collectMessages(ctx, t, messagesSent, 5*collectTimeout)
@@ -323,6 +326,7 @@ func TestCancelOverridesPendingWants(t *testing.T) {
 	cancels := []cid.Cid{wantBlocks[0], wantHaves[0]}
 
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 	messageQueue.AddWants(wantBlocks, wantHaves)
 	messageQueue.AddCancels(cancels)
 	messages := collectMessages(ctx, t, messagesSent, collectTimeout)
@@ -373,6 +377,7 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 	wantHaves := cids[1:]
 
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 
 	// Add 1 want-block and 2 want-haves
 	messageQueue.AddWants(wantBlocks, wantHaves)
@@ -422,6 +427,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 
 	// Add some broadcast want-haves
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 	messageQueue.AddBroadcastWantHaves(bcstwh)
 	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
@@ -520,6 +526,7 @@ func TestSendingLargeMessages(t *testing.T) {
 	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMsgSize, sendErrorBackoff, maxValidLatency, dhtm, clock.New(), nil)
 
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 	messageQueue.AddWants(wantBlocks, []cid.Cid{})
 	messages := collectMessages(ctx, t, messagesSent, 5*collectTimeout)
 
@@ -544,6 +551,7 @@ func TestSendToPeerThatDoesntSupportHave(t *testing.T) {
 
 	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 
 	// If the remote peer doesn't support HAVE / DONT_HAVE messages
 	// - want-blocks should be sent normally
@@ -599,6 +607,7 @@ func TestSendToPeerThatDoesntSupportHaveMonitorsTimeouts(t *testing.T) {
 	dhtm := &fakeDontHaveTimeoutMgr{}
 	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, clock.New(), nil)
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 
 	wbs := random.Cids(10)
 	messageQueue.AddWants(wbs, nil)
@@ -632,6 +641,7 @@ func TestResponseReceived(t *testing.T) {
 	events := make(chan messageEvent)
 	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, clock, events)
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 
 	cids := random.Cids(10)
 
@@ -680,6 +690,7 @@ func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
 	dhtm := &fakeDontHaveTimeoutMgr{}
 	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, clock.New(), nil)
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 
 	cids := random.Cids(2)
 
@@ -727,6 +738,7 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 	events := make(chan messageEvent)
 	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValLatency, dhtm, clock, events)
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 
 	cids := random.Cids(4)
 
