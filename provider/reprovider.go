@@ -58,6 +58,7 @@ type reprovider struct {
 	noReprovideInFlight chan struct{}
 
 	maxReprovideBatchSize uint
+	acceleratedDHTClient  bool
 
 	statLk                                    sync.Mutex
 	totalProvides, lastReprovideBatchSize     uint64
@@ -157,6 +158,13 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 func Allowlist(allowlist verifcid.Allowlist) Option {
 	return func(system *reprovider) error {
 		system.allowlist = allowlist
+		return nil
+	}
+}
+
+func AcceleratedDHTClient(v bool) Option {
+	return func(system *reprovider) error {
+		system.acceleratedDHTClient = v
 		return nil
 	}
 }
@@ -358,7 +366,9 @@ func (s *reprovider) run() {
 			s.statLk.Lock()
 			s.avgProvideDuration = (totalProvideTime + dur) / (time.Duration(s.totalProvides) + time.Duration(len(keys)))
 			s.totalProvides += uint64(len(keys))
-			s.lastRun = time.Now()
+			if s.acceleratedDHTClient {
+				s.lastRun = time.Now()
+			}
 
 			log.Debugf("finished providing of %d keys. It took %v with an average of %v per provide", len(keys), dur, recentAvgProvideDuration)
 
