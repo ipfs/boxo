@@ -97,6 +97,7 @@ type ProviderQueryManager struct {
 
 	maxProviders         int
 	maxInProcessRequests int
+	ignorePeers          map[peer.ID]struct{}
 
 	// do not touch outside the run loop
 	inProgressRequestStatuses map[cid.Cid]*inProgressRequestStatus
@@ -129,6 +130,17 @@ func WithMaxInProcessRequests(count int) Option {
 func WithMaxProviders(count int) Option {
 	return func(mgr *ProviderQueryManager) error {
 		mgr.maxProviders = count
+		return nil
+	}
+}
+
+// WithIgnoreProviders will ignore provider records from the given peers.
+func WithIgnoreProviders(peers ...peer.ID) Option {
+	return func(mgr *ProviderQueryManager) error {
+		mgr.ignorePeers = make(map[peer.ID]struct{})
+		for _, p := range peers {
+			mgr.ignorePeers[p] = struct{}{}
+		}
 		return nil
 	}
 }
@@ -356,6 +368,12 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 				wg.Add(1)
 				go func(p peer.AddrInfo) {
 					defer wg.Done()
+
+					// Ignore providers when configured.
+					if _, ok := pqm.ignorePeers[p.ID]; ok {
+						return
+					}
+
 					span.AddEvent("FoundProvider", trace.WithAttributes(attribute.Stringer("peer", p.ID)))
 					err := pqm.dialer.Connect(findProviderCtx, p)
 					if err != nil && err != swarm.ErrDialToSelf {
