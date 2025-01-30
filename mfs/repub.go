@@ -76,7 +76,7 @@ func (rp *Republisher) Close() error {
 		// Shutdown the publisher.
 		rp.cancel()
 	})
-	// Wait for pblisher to stop and then return.
+	// Wait for publisher to stop and then return.
 	<-rp.stopped
 	return err
 }

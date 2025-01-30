@@ -6,18 +6,17 @@ import (
 	"sync"
 	"time"
 
-	cid "github.com/ipfs/go-cid"
-	delay "github.com/ipfs/go-ipfs-delay"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/ipfs/boxo/bitswap/client/internal"
 	bsbpm "github.com/ipfs/boxo/bitswap/client/internal/blockpresencemanager"
 	notifications "github.com/ipfs/boxo/bitswap/client/internal/notifications"
 	bssession "github.com/ipfs/boxo/bitswap/client/internal/session"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
 	exchange "github.com/ipfs/boxo/exchange"
+	cid "github.com/ipfs/go-cid"
+	delay "github.com/ipfs/go-ipfs-delay"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Session is a session that is managed by the session manager

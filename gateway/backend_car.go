@@ -571,8 +571,10 @@ func (api *CarBackend) GetAll(ctx context.Context, path path.ImmutablePath) (Con
 	return fetchWithPartialRetries(ctx, path, CarParams{Scope: DagScopeAll}, loadTerminalUnixFSElementWithRecursiveDirectories, api.metrics, api.fetchCAR, api.getBlockTimeout)
 }
 
-type loadTerminalElement[T any] func(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *ipld.LinkSystem, params CarParams, getLsys lsysGetter) (T, error)
-type fetchCarFn = func(ctx context.Context, path path.ImmutablePath, params CarParams, cb DataCallback) error
+type (
+	loadTerminalElement[T any] func(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *ipld.LinkSystem, params CarParams, getLsys lsysGetter) (T, error)
+	fetchCarFn                 = func(ctx context.Context, path path.ImmutablePath, params CarParams, cb DataCallback) error
+)
 
 type terminalPathType[T any] struct {
 	resp T
@@ -764,7 +766,6 @@ func (api *CarBackend) GetBlock(ctx context.Context, p path.ImmutablePath) (Cont
 		f = files.NewBytesFile(blockData)
 		return nil
 	})
-
 	if err != nil {
 		return ContentPathMetadata{}, nil, err
 	}
@@ -903,7 +904,6 @@ func (api *CarBackend) Head(ctx context.Context, p path.ImmutablePath) (ContentP
 		}
 		return nil
 	})
-
 	if err != nil {
 		return ContentPathMetadata{}, nil, err
 	}
@@ -930,7 +930,6 @@ func (api *CarBackend) ResolvePath(ctx context.Context, p path.ImmutablePath) (C
 
 		return err
 	})
-
 	if err != nil {
 		return ContentPathMetadata{}, err
 	}

@@ -136,6 +136,7 @@ func TestFindProvidersAsync(t *testing.T) {
 			ID:        &p1,
 			Protocols: []string{"transport-bitswap"},
 		},
+		//nolint:staticcheck
 		//lint:ignore SA1019 // ignore staticcheck
 		&types.BitswapRecord{
 			//lint:ignore SA1019 // ignore staticcheck

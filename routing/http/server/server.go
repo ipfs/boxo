@@ -22,13 +22,12 @@ import (
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/go-cid"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 	"github.com/prometheus/client_golang/prometheus"
-
-	logging "github.com/ipfs/go-log/v2"
 	metrics "github.com/slok/go-http-metrics/metrics/prometheus"
 	"github.com/slok/go-http-metrics/middleware"
 	middlewarestd "github.com/slok/go-http-metrics/middleware/std"
@@ -300,6 +299,7 @@ func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIt
 		Providers: providers,
 	})
 }
+
 func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) {
 	filteredIter := filters.ApplyFiltersToIter(provIter, filterAddrs, filterProtocols)
 
@@ -318,7 +318,6 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 
 	// Attempt to parse PeerID
 	pid, err := peer.Decode(pidStr)
-
 	if err != nil {
 		// Retry by parsing PeerID as CID, then setting codec to libp2p-key
 		// and turning that back to PeerID.
@@ -380,6 +379,7 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
+	//nolint:staticcheck
 	//lint:ignore SA1019 // ignore staticcheck
 	req := jsontypes.WriteProvidersRequest{}
 	err := json.NewDecoder(httpReq.Body).Decode(&req)
@@ -389,11 +389,13 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 		return
 	}
 
+	//nolint:staticcheck
 	//lint:ignore SA1019 // ignore staticcheck
 	resp := jsontypes.WriteProvidersResponse{}
 
 	for i, prov := range req.Providers {
 		switch v := prov.(type) {
+		//nolint:staticcheck
 		//lint:ignore SA1019 // ignore staticcheck
 		case *types.WriteBitswapRecord:
 			err := v.Verify()
@@ -444,7 +446,6 @@ func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[
 	peersIter = filters.ApplyFiltersToPeerRecordIter(peersIter, filterAddrs, filterProtocols)
 
 	peers, err := iter.ReadAllResults(peersIter)
-
 	if err != nil {
 		writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return

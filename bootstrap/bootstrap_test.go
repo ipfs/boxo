@@ -125,7 +125,6 @@ func TestNoTempPeersLoadAndSave(t *testing.T) {
 
 	time.Sleep(4 * period)
 	bootstrapper.Close()
-
 }
 
 func assertPanics(t *testing.T, name string, f func()) {

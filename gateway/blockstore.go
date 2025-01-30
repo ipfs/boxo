@@ -10,14 +10,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ipfs/go-cid"
-	format "github.com/ipfs/go-ipld-format"
-
+	lru "github.com/hashicorp/golang-lru/v2"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/util"
 	blocks "github.com/ipfs/go-block-format"
-
-	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/ipfs/go-cid"
+	format "github.com/ipfs/go-ipld-format"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap/zapcore"
 )

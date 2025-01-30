@@ -356,7 +356,7 @@ func (s *reprovider) run() {
 			recentAvgProvideDuration := dur / time.Duration(len(keys))
 
 			s.statLk.Lock()
-			s.avgProvideDuration = time.Duration((totalProvideTime + dur) / (time.Duration(s.totalProvides) + time.Duration(len(keys))))
+			s.avgProvideDuration = (totalProvideTime + dur) / (time.Duration(s.totalProvides) + time.Duration(len(keys)))
 			s.totalProvides += uint64(len(keys))
 			s.lastRun = time.Now()
 

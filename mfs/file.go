@@ -7,11 +7,10 @@ import (
 	"sync"
 	"time"
 
+	chunker "github.com/ipfs/boxo/chunker"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	mod "github.com/ipfs/boxo/ipld/unixfs/mod"
-
-	chunker "github.com/ipfs/boxo/chunker"
 	ipld "github.com/ipfs/go-ipld-format"
 )
 

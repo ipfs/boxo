@@ -178,8 +178,10 @@ func (b *ipfsBackendWithMetrics) GetDNSLinkRecord(ctx context.Context, fqdn stri
 	return p, err
 }
 
-var _ IPFSBackend = (*ipfsBackendWithMetrics)(nil)
-var _ WithContextHint = (*ipfsBackendWithMetrics)(nil)
+var (
+	_ IPFSBackend     = (*ipfsBackendWithMetrics)(nil)
+	_ WithContextHint = (*ipfsBackendWithMetrics)(nil)
+)
 
 func (b *ipfsBackendWithMetrics) WrapContextForRequest(ctx context.Context) context.Context {
 	if withCtxWrap, ok := b.backend.(WithContextHint); ok {
