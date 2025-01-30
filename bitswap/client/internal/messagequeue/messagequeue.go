@@ -47,7 +47,7 @@ const (
 	sendTimeout = 30 * time.Second
 
 	defaultPerPeerDelay = time.Millisecond / 8
-	maxSendMessageDelay = 200 * time.Millisecond
+	maxSendMessageDelay = 500 * time.Millisecond
 	minSendMessageDelay = 20 * time.Millisecond
 )
 
