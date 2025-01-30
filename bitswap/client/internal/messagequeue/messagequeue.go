@@ -46,7 +46,7 @@ const (
 	// wait this long before sending next message
 	sendTimeout = 30 * time.Second
 
-	defaultPerPeerDelay = time.Millisecond / 16
+	defaultPerPeerDelay = time.Millisecond / 10
 	maxSendMessageDelay = 200 * time.Millisecond
 	minSendMessageDelay = 20 * time.Millisecond
 )
@@ -249,8 +249,11 @@ func WithDontHaveTimeoutConfig(dhtConfig *DontHaveTimeoutConfig) option {
 	}
 }
 
-func WithDelayPerPeer(perPeerDelay time.Duration) option {
+func WithPerPeerSendDelay(perPeerDelay time.Duration) option {
 	return func(cfg *optsConfig) {
+		if perPeerDelay == 0 {
+			perPeerDelay = defaultPerPeerDelay
+		}
 		cfg.perPeerDelay = perPeerDelay
 	}
 }
