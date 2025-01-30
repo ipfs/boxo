@@ -47,7 +47,7 @@ const (
 	sendTimeout = 30 * time.Second
 
 	defaultPerPeerDelay = time.Millisecond / 8
-	maxSendMessageDelay = 500 * time.Millisecond
+	maxSendMessageDelay = time.Second
 	minSendMessageDelay = 20 * time.Millisecond
 )
 
@@ -396,9 +396,9 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 		mq.dhTimeoutMgr.CancelPending(cancelKs)
 	}
 
-	mq.wllock.Lock()
+	var workReady bool
 
-	workReady := false
+	mq.wllock.Lock()
 
 	// Remove keys from broadcast and peer wants, and add to cancels
 	for _, c := range cancelKs {
