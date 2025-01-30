@@ -44,9 +44,11 @@ const (
 	// when we reach sendMessageCutoff wants/cancels, we'll send the message immediately.
 	sendMessageCutoff = 256
 	// wait this long before sending next message
-	minSendMessageDelay = 20 * time.Millisecond
+	sendTimeout = 30 * time.Second
+
+	defaultPerPeerDelay = time.Millisecond / 16
 	maxSendMessageDelay = 200 * time.Millisecond
-	sendTimeout         = 30 * time.Second
+	minSendMessageDelay = 20 * time.Millisecond
 )
 
 var peerCount atomic.Int64
@@ -106,6 +108,8 @@ type MessageQueue struct {
 
 	// Used to track things that happen asynchronously -- used only in test
 	events chan<- messageEvent
+
+	perPeerDelay time.Duration
 }
 
 // recallWantlist keeps a list of pending wants and a list of sent wants
@@ -233,7 +237,8 @@ type DontHaveTimeoutManager interface {
 }
 
 type optsConfig struct {
-	dhtConfig *DontHaveTimeoutConfig
+	dhtConfig    *DontHaveTimeoutConfig
+	perPeerDelay time.Duration
 }
 
 type option func(*optsConfig)
@@ -244,11 +249,19 @@ func WithDontHaveTimeoutConfig(dhtConfig *DontHaveTimeoutConfig) option {
 	}
 }
 
+func WithDelayPerPeer(perPeerDelay time.Duration) option {
+	return func(cfg *optsConfig) {
+		cfg.perPeerDelay = perPeerDelay
+	}
+}
+
 // New creates a new MessageQueue.
 //
 // If onDontHaveTimeout is nil, then the dontHaveTimeoutMrg is disabled.
 func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeout OnDontHaveTimeout, options ...option) *MessageQueue {
-	var opts optsConfig
+	opts := optsConfig{
+		perPeerDelay: defaultPerPeerDelay,
+	}
 	for _, o := range options {
 		o(&opts)
 	}
@@ -262,7 +275,9 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeo
 		}
 		dhTimeoutMgr = newDontHaveTimeoutMgr(newPeerConnection(p, network), onTimeout, opts.dhtConfig)
 	}
-	return newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff, maxValidLatency, dhTimeoutMgr, nil, nil)
+	mq := newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff, maxValidLatency, dhTimeoutMgr, nil, nil)
+	mq.perPeerDelay = opts.perPeerDelay
+	return mq
 }
 
 type messageEvent int
@@ -456,7 +471,6 @@ func (mq *MessageQueue) onShutdown() {
 
 func (mq *MessageQueue) runQueue() {
 	const runRebroadcastsInterval = rebroadcastInterval / 2
-	const msPerPeer = time.Millisecond / 16
 
 	peerCount.Add(1)
 	defer peerCount.Add(-1)
@@ -471,6 +485,7 @@ func (mq *MessageQueue) runQueue() {
 		<-scheduleWork.C
 	}
 
+	perPeerDelay := mq.perPeerDelay
 	hasWorkChan := mq.outgoingWork
 
 	rebroadcastTimer := mq.clock.Timer(runRebroadcastsInterval)
@@ -493,7 +508,7 @@ func (mq *MessageQueue) runQueue() {
 			mq.sendMessage()
 			hasWorkChan = nil
 
-			delay := time.Duration(peerCount.Load()) * msPerPeer
+			delay := time.Duration(peerCount.Load()) * perPeerDelay
 			delay = max(minSendMessageDelay, min(maxSendMessageDelay, delay))
 			scheduleWork.Reset(delay)
 
