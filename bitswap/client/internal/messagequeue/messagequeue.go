@@ -456,11 +456,17 @@ func (mq *MessageQueue) onShutdown() {
 
 func (mq *MessageQueue) runQueue() {
 	const runRebroadcastsInterval = rebroadcastInterval / 2
+	const msPerPeer = time.Millisecond / 16
 
 	peerCount.Add(1)
 	defer peerCount.Add(-1)
 
 	defer mq.onShutdown()
+
+	peers := peerCount.Load()
+	delay := time.Duration(peers) * msPerPeer
+	delay = max(minSendMessageDelay, min(maxSendMessageDelay, delay))
+	log.Errorw("Setting send delay", "delay", delay.String(), "peerCount", peers)
 
 	// Create a timer for debouncing scheduled work.
 	scheduleWork := mq.clock.Timer(0)
@@ -489,13 +495,12 @@ func (mq *MessageQueue) runQueue() {
 				mq.events <- messageQueued
 			}
 
-			peers := peerCount.Load()
-			delay := time.Duration(peers) * time.Millisecond / 8
-			delay = max(minSendMessageDelay, min(maxSendMessageDelay, delay))
-			log.Errorw("Setting send delay", "delay", delay.String(), "peerCount", peers)
-
 			mq.sendMessage()
 			hasWorkChan = nil
+
+			peers = peerCount.Load()
+			delay = time.Duration(peers) * msPerPeer
+			delay = max(minSendMessageDelay, min(maxSendMessageDelay, delay))
 			scheduleWork.Reset(delay)
 
 		case <-scheduleWork.C:
