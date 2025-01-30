@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-clock"
+	"github.com/ipfs/boxo/bitswap/client/internal/messagequeue/ravg"
 	bswl "github.com/ipfs/boxo/bitswap/client/wantlist"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
@@ -43,8 +44,9 @@ const (
 	// when we reach sendMessageCutoff wants/cancels, we'll send the message immediately.
 	sendMessageCutoff = 256
 	// wait this long before sending next message
-	sendMessageDelay = 20 * time.Millisecond
-	sendTimeout      = 30 * time.Second
+	minSendMessageDelay = 20 * time.Millisecond
+	maxSendMessageDelay = 200 * time.Millisecond
+	sendTimeout         = 30 * time.Second
 )
 
 // MessageNetwork is any network that can connect peers and generate a message
@@ -453,6 +455,8 @@ func (mq *MessageQueue) onShutdown() {
 func (mq *MessageQueue) runQueue() {
 	const runRebroadcastsInterval = rebroadcastInterval / 2
 
+	avg := ravg.New[int](10)
+
 	defer mq.onShutdown()
 
 	// Create a timer for debouncing scheduled work.
@@ -481,9 +485,17 @@ func (mq *MessageQueue) runQueue() {
 			if mq.events != nil {
 				mq.events <- messageQueued
 			}
+
+			avg.Put(mq.pendingWorkCount())
+			mean := avg.Mean()
+			delay := time.Duration(mean) * time.Millisecond / 8
+			delay = min(delay, maxSendMessageDelay)
+			delay = max(delay, minSendMessageDelay)
+			log.Errorw("Setting send delay", "delay", delay.String(), "avgCount", mean)
+
 			mq.sendMessage()
 			hasWorkChan = nil
-			scheduleWork.Reset(sendMessageDelay)
+			scheduleWork.Reset(delay)
 
 		case <-scheduleWork.C:
 			hasWorkChan = mq.outgoingWork

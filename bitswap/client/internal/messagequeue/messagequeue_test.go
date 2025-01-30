@@ -423,7 +423,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 	// Add some broadcast want-haves
 	messageQueue.Startup()
 	messageQueue.AddBroadcastWantHaves(bcstwh)
-	clock.Add(sendMessageDelay)
+	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	message := <-messagesSent
 	expectEvent(t, events, messageFinishedSending)
@@ -444,7 +444,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 
 	// Send out some regular wants and collect them
 	messageQueue.AddWants(wantBlocks, wantHaves)
-	clock.Add(sendMessageDelay)
+	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	clock.Add(10 * time.Millisecond)
 	message = <-messagesSent
@@ -474,7 +474,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 	// Cancel some of the wants
 	cancels := append([]cid.Cid{bcstwh[0]}, wantHaves[0], wantBlocks[0])
 	messageQueue.AddCancels(cancels)
-	clock.Add(sendMessageDelay)
+	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	clock.Add(10 * time.Millisecond)
 	message = <-messagesSent
@@ -637,7 +637,7 @@ func TestResponseReceived(t *testing.T) {
 
 	// Add some wants
 	messageQueue.AddWants(cids[:5], nil)
-	clock.Add(sendMessageDelay)
+	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
@@ -647,7 +647,7 @@ func TestResponseReceived(t *testing.T) {
 
 	// Add some wants and wait another 10ms
 	messageQueue.AddWants(cids[5:8], nil)
-	clock.Add(sendMessageDelay)
+	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	clock.Add(10 * time.Millisecond)
 	<-messagesSent
@@ -664,7 +664,7 @@ func TestResponseReceived(t *testing.T) {
 	}
 	// Elapsed time should be between when the first want was sent and the
 	// response received (about 20ms)
-	if upds[0] != sendMessageDelay+20*time.Millisecond {
+	if upds[0] != maxSendMessageDelay+20*time.Millisecond {
 		t.Fatalf("expected latency to be time since oldest message sent, was %s", upds[0].String())
 	}
 }
@@ -732,7 +732,7 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 
 	// Add some wants and wait 20ms
 	messageQueue.AddWants(cids[:2], nil)
-	clock.Add(sendMessageDelay)
+	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
@@ -742,7 +742,7 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 	// Add some more wants and wait long enough that the first wants will be
 	// outside the maximum valid latency, but the second wants will be inside
 	messageQueue.AddWants(cids[2:], nil)
-	clock.Add(sendMessageDelay)
+	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
