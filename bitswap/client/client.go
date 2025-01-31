@@ -76,12 +76,12 @@ func WithDontHaveTimeoutConfig(cfg *bsmq.DontHaveTimeoutConfig) Option {
 	}
 }
 
-// WithPerPeerWantSendDelay determines how long to wait, based on the number of
+// WithPerPeerSendDelay determines how long to wait, based on the number of
 // peers, for wants to accumulate before sending a bitswap message to peers. A
 // value of 0 uses bitswap messagequeue default.
-func WithPerPeerWantSendDelay(delay time.Duration) Option {
+func WithPerPeerSendDelay(delay time.Duration) Option {
 	return func(bs *Client) {
-		bs.perPeerWantSendDelay = delay
+		bs.perPeerSendDelay = delay
 	}
 }
 
@@ -189,7 +189,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
 		return bsmq.New(ctx, p, network, onDontHaveTimeout,
 			bsmq.WithDontHaveTimeoutConfig(bs.dontHaveTimeoutConfig),
-			bsmq.WithPerPeerSendDelay(bs.perPeerWantSendDelay))
+			bsmq.WithPerPeerSendDelay(bs.perPeerSendDelay))
 	}
 	bs.dontHaveTimeoutConfig = nil
 
@@ -304,7 +304,7 @@ type Client struct {
 	// dupMetric will stay at 0
 	skipDuplicatedBlocksStats bool
 
-	perPeerWantSendDelay time.Duration
+	perPeerSendDelay time.Duration
 }
 
 type counters struct {
