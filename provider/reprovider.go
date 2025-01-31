@@ -58,7 +58,6 @@ type reprovider struct {
 	noReprovideInFlight chan struct{}
 
 	maxReprovideBatchSize uint
-	acceleratedDHTClient  bool
 
 	statLk                                    sync.Mutex
 	totalProvides, lastReprovideBatchSize     uint64
@@ -158,13 +157,6 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 func Allowlist(allowlist verifcid.Allowlist) Option {
 	return func(system *reprovider) error {
 		system.allowlist = allowlist
-		return nil
-	}
-}
-
-func AcceleratedDHTClient(v bool) Option {
-	return func(system *reprovider) error {
-		system.acceleratedDHTClient = v
 		return nil
 	}
 }
@@ -366,15 +358,13 @@ func (s *reprovider) run() {
 			s.statLk.Lock()
 			s.avgProvideDuration = (totalProvideTime + dur) / (time.Duration(s.totalProvides) + time.Duration(len(keys)))
 			s.totalProvides += uint64(len(keys))
-			if s.acceleratedDHTClient {
-				s.lastRun = time.Now()
-			}
 
 			log.Debugf("finished providing of %d keys. It took %v with an average of %v per provide", len(keys), dur, recentAvgProvideDuration)
 
 			if performedReprovide {
 				s.lastReprovideBatchSize = uint64(len(keys))
 				s.lastReprovideDuration = dur
+				s.lastRun = time.Now()
 
 				s.statLk.Unlock()
 
@@ -549,9 +539,9 @@ func (s *reprovider) shouldReprovide() bool {
 }
 
 type ReproviderStats struct {
-	TotalProvides, LastReprovideBatchSize     uint64
-	AvgProvideDuration, LastReprovideDuration time.Duration
-	LastRun, NextRun                          time.Time
+	TotalProvides, LastReprovideBatchSize                        uint64
+	ReprovideInterval, AvgProvideDuration, LastReprovideDuration time.Duration
+	LastRun                                                      time.Time
 }
 
 // Stat returns various stats about this provider system
@@ -561,10 +551,10 @@ func (s *reprovider) Stat() (ReproviderStats, error) {
 	return ReproviderStats{
 		TotalProvides:          s.totalProvides,
 		LastReprovideBatchSize: s.lastReprovideBatchSize,
+		ReprovideInterval:      s.reprovideInterval,
 		AvgProvideDuration:     s.avgProvideDuration,
 		LastReprovideDuration:  s.lastReprovideDuration,
 		LastRun:                s.lastRun,
-		NextRun:                s.lastRun.Add(DefaultReproviderInterval),
 	}, nil
 }
 

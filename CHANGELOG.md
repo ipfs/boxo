@@ -29,7 +29,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `provider`: Added `LastRun` and `NextRun` stats to the Reprovider [#815](https://github.com/ipfs/boxo/pull/815)
+- `provider`: Added `ReprovideInterval` and `LastRun` stats to the Reprovider [#815](https://github.com/ipfs/boxo/pull/815)
 
 
 ## [v0.27.2]
