@@ -10,7 +10,6 @@ import (
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	"github.com/ipfs/boxo/bitswap/network/internal"
-
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/host"

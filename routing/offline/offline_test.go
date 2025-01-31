@@ -7,10 +7,8 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
-
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/core/test"
-
 	mh "github.com/multiformats/go-multihash"
 )
 

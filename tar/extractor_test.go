@@ -68,7 +68,7 @@ func TestSingleFile(t *testing.T) {
 func TestSingleFileWithMeta(t *testing.T) {
 	fileName := "file2..ext"
 	fileData := "file2 data"
-	mode := 0654
+	mode := 0o654
 	mtime := time.Now().Round(time.Second)
 
 	testTarExtraction(t, nil, []tarEntry{
@@ -111,7 +111,7 @@ func TestSingleDirectory(t *testing.T) {
 
 func TestSingleDirectoryWithMeta(t *testing.T) {
 	dirName := "dir2..sfx"
-	mode := 0765
+	mode := 0o765
 	mtime := time.Now().Round(time.Second)
 
 	testTarExtraction(t, nil, []tarEntry{
@@ -300,13 +300,19 @@ func TestFilesAndFoldersWithMetadata(t *testing.T) {
 
 	entries := []tarEntry{
 		&dirTarEntry{path: "root", mtime: tm.Add(5 * time.Second)},
-		&dirTarEntry{path: "root/childdir", mode: 03775},
-		&fileTarEntry{path: "root/childdir/file1", buf: []byte("some data"), mode: 04744,
-			mtime: tm.Add(10 * time.Second)},
-		&fileTarEntry{path: "root/childdir/file2", buf: []byte("some data"), mode: 0560,
-			mtime: tm.Add(10 * time.Second)},
-		&fileTarEntry{path: "root/childdir/file3", buf: []byte("some data"), mode: 06540,
-			mtime: tm.Add(10 * time.Second)},
+		&dirTarEntry{path: "root/childdir", mode: 0o3775},
+		&fileTarEntry{
+			path: "root/childdir/file1", buf: []byte("some data"), mode: 0o4744,
+			mtime: tm.Add(10 * time.Second),
+		},
+		&fileTarEntry{
+			path: "root/childdir/file2", buf: []byte("some data"), mode: 0o560,
+			mtime: tm.Add(10 * time.Second),
+		},
+		&fileTarEntry{
+			path: "root/childdir/file3", buf: []byte("some data"), mode: 0o6540,
+			mtime: tm.Add(10 * time.Second),
+		},
 	}
 
 	testTarExtraction(t, nil, entries, func(t *testing.T, extractDir string) {
@@ -321,36 +327,36 @@ func TestFilesAndFoldersWithMetadata(t *testing.T) {
 					assert.Equal(t, tm.Add(5*time.Second), fi.ModTime())
 				case 1: // childdir
 					if runtime.GOOS != "windows" {
-						assert.Equal(t, 0775, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o775, int(fi.Mode()&0xFFF))
 						assert.Equal(t, os.ModeSetgid, fi.Mode()&os.ModeSetgid)
 						assert.Equal(t, os.ModeSticky, fi.Mode()&os.ModeSticky)
 					} else {
-						assert.Equal(t, 0777, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o777, int(fi.Mode()&0xFFF))
 					}
 				case 2: // file1
 					assert.Equal(t, tm.Add(10*time.Second), fi.ModTime())
 					if runtime.GOOS != "windows" {
-						assert.Equal(t, 0744, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o744, int(fi.Mode()&0xFFF))
 						assert.Equal(t, os.ModeSetuid, fi.Mode()&os.ModeSetuid)
 					} else {
-						assert.Equal(t, 0666, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o666, int(fi.Mode()&0xFFF))
 					}
 				case 3: // file2
 					assert.Equal(t, tm.Add(10*time.Second), fi.ModTime())
 					if runtime.GOOS != "windows" {
-						assert.Equal(t, 0560, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o560, int(fi.Mode()&0xFFF))
 						assert.Equal(t, 0, int(fi.Mode()&os.ModeSetuid))
 					} else {
-						assert.Equal(t, 0666, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o666, int(fi.Mode()&0xFFF))
 					}
 				case 4: // file3
 					assert.Equal(t, tm.Add(10*time.Second), fi.ModTime())
 					if runtime.GOOS != "windows" {
-						assert.Equal(t, 0540, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o540, int(fi.Mode()&0xFFF))
 						assert.Equal(t, os.ModeSetgid, fi.Mode()&os.ModeSetgid)
 						assert.Equal(t, os.ModeSetuid, fi.Mode()&os.ModeSetuid)
 					} else {
-						assert.Equal(t, 0444, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o444, int(fi.Mode()&0xFFF))
 					}
 				default:
 					assert.Fail(t, "has more than 5 entries", path)
@@ -415,7 +421,7 @@ func TestDeferredUpdate(t *testing.T) {
 	entries := []tarEntry{
 		&dirTarEntry{path: "root", mtime: add5()},
 		&dirTarEntry{path: "root/a", mtime: add5()},
-		&dirTarEntry{path: "root/a/beta", mtime: add5(), mode: 0500},
+		&dirTarEntry{path: "root/a/beta", mtime: add5(), mode: 0o500},
 		&dirTarEntry{path: "root/a/beta/centauri", mtime: add5()},
 		&dirTarEntry{path: "root/a/beta/lima", mtime: add5()},
 		&dirTarEntry{path: "root/a/beta/papa", mtime: add5()},
@@ -440,7 +446,6 @@ func TestDeferredUpdate(t *testing.T) {
 		assert.NoError(t, err)
 	},
 		nil)
-
 }
 
 func TestInternalSymlinkTraverse(t *testing.T) {
@@ -555,11 +560,11 @@ func testMeta(t *testing.T, path string, mode int, now time.Time) {
 	m := files.ModePermsToUnixPerms(fi.Mode())
 	if runtime.GOOS == "windows" {
 		if fi.IsDir() {
-			mode = 0777
-		} else if mode&0220 != 0 {
-			mode = 0666
-		} else if mode&0440 != 0 {
-			mode = 0444
+			mode = 0o777
+		} else if mode&0o220 != 0 {
+			mode = 0o666
+		} else if mode&0o440 != 0 {
+			mode = 0o444
 		}
 	}
 	assert.Equal(t, mode, int(m))

@@ -20,7 +20,7 @@ func newBytesFileWithPath(abspath string, b []byte) File {
 	return &ReaderFile{
 		abspath: abspath,
 		reader:  bytesReaderCloser{bytes.NewReader(b)},
-		stat:    &mockFileInfo{name: path.Base(abspath), mode: 0754, mtime: time.Unix(1604320500, 55555)},
+		stat:    &mockFileInfo{name: path.Base(abspath), mode: 0o754, mtime: time.Unix(1604320500, 55555)},
 		fsize:   int64(len(b)),
 	}
 }
@@ -64,7 +64,7 @@ func runMultiFileReaderToMultiFileTest(t *testing.T, binaryFileName, rawAbsPath,
 	require.True(t, it.Next())
 	require.Equal(t, "beep.txt", it.Name())
 	n := it.Node()
-	require.Equal(t, fs.FileMode(0754), n.Mode(), "unexpected file mode")
+	require.Equal(t, fs.FileMode(0o754), n.Mode(), "unexpected file mode")
 	require.Equal(t, time.Unix(1604320500, 55555), n.ModTime(), "unexpected last modification time")
 	require.True(t, it.Next())
 	require.Equal(t, "boop", it.Name())
@@ -122,14 +122,14 @@ func getTestMultiFileReader(t *testing.T) *MultiFileReader {
 		"boop": NewMapDirectory(map[string]Node{
 			"a.txt": NewReaderStatFile(
 				strings.NewReader("bleep"),
-				&mockFileInfo{name: "a.txt", mode: 0744, mtime: time.Time{}}),
+				&mockFileInfo{name: "a.txt", mode: 0o744, mtime: time.Time{}}),
 			"b.txt": NewReaderStatFile(
 				strings.NewReader("bloop"),
-				&mockFileInfo{name: "b.txt", mode: 0666, mtime: time.Unix(1604320500, 0)}),
+				&mockFileInfo{name: "b.txt", mode: 0o666, mtime: time.Unix(1604320500, 0)}),
 		}),
 		"beep.txt": NewReaderStatFile(
 			strings.NewReader("beep"),
-			&mockFileInfo{name: "beep.txt", mode: 0754, mtime: time.Unix(1604320500, 55555)}),
+			&mockFileInfo{name: "beep.txt", mode: 0o754, mtime: time.Unix(1604320500, 55555)}),
 	})
 
 	// testing output by reading it with the go stdlib "mime/multipart" Reader

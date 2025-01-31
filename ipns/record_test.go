@@ -18,9 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var (
-	testPath path.Path
-)
+var testPath path.Path
 
 func init() {
 	var err error

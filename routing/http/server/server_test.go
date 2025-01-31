@@ -39,8 +39,8 @@ func TestHeaders(t *testing.T) {
 		{Val: &types.PeerRecord{
 			Schema:    types.SchemaPeer,
 			Protocols: []string{"transport-bitswap"},
-		}}},
-	)
+		}},
+	})
 
 	c := "baeabep4vu3ceru7nerjjbk37sxb7wmftteve4hcosmyolsbsiubw2vr6pqzj6mw7kv6tbn6nqkkldnklbjgm5tzbi4hkpkled4xlcr7xz4bq"
 	cb, err := cid.Decode(c)
@@ -320,7 +320,6 @@ func TestPeers(t *testing.T) {
 		// Expect response to default to application/json
 		require.Equal(t, 404, resp.StatusCode)
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
-
 	})
 
 	t.Run("GET /routing/v1/peers/{cid-libp2p-key-peer-id} returns 404 with correct body and headers (No Results, implicit JSON, no Accept header)", func(t *testing.T) {
@@ -637,7 +636,6 @@ func TestPeers(t *testing.T) {
 			require.Equal(t, expectedBody, string(body))
 		})
 	}
-
 }
 
 func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {

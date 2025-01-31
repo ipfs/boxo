@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ipfs/go-cid"
-	ipld "github.com/ipfs/go-ipld-format"
-
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	mdtest "github.com/ipfs/boxo/ipld/merkledag/test"
+	"github.com/ipfs/go-cid"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 func buildNode(name string, desc map[string]ndesc, out map[string]ipld.Node) ipld.Node {

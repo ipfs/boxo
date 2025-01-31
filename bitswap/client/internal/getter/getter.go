@@ -6,11 +6,10 @@ import (
 
 	"github.com/ipfs/boxo/bitswap/client/internal"
 	notifications "github.com/ipfs/boxo/bitswap/client/internal/notifications"
-	logging "github.com/ipfs/go-log/v2"
-
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
+	logging "github.com/ipfs/go-log/v2"
 )
 
 var log = logging.Logger("bitswap/client/getter")

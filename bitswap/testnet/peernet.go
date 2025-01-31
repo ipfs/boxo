@@ -4,7 +4,6 @@ import (
 	"context"
 
 	bsnet "github.com/ipfs/boxo/bitswap/network"
-
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/peer"
 	mockpeernet "github.com/libp2p/go-libp2p/p2p/net/mock"
