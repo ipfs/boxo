@@ -120,10 +120,11 @@ func (sim *SessionInterestManager) FilterSessionInterested(ses uint64, ksets ...
 // When bitswap receives blocks it calls SplitWantedUnwanted() to discard
 // unwanted blocks
 func (sim *SessionInterestManager) SplitWantedUnwanted(blks []blocks.Block) ([]blocks.Block, []blocks.Block) {
-	sim.lk.RLock()
-
 	// Get the wanted block keys as a set
 	wantedKs := cid.NewSet()
+
+	sim.lk.RLock()
+
 	for _, b := range blks {
 		c := b.Cid()
 		// For each session that wants the key.
@@ -139,7 +140,7 @@ func (sim *SessionInterestManager) SplitWantedUnwanted(blks []blocks.Block) ([]b
 
 	// Separate the blocks into wanted and unwanted
 	wantedBlks := make([]blocks.Block, 0, len(blks))
-	notWantedBlks := make([]blocks.Block, 0)
+	var notWantedBlks []blocks.Block
 	for _, b := range blks {
 		if wantedKs.Has(b.Cid()) {
 			wantedBlks = append(wantedBlks, b)
@@ -176,12 +177,17 @@ func (sim *SessionInterestManager) InterestedSessions(keySets ...[]cid.Cid) []ui
 	return ses
 }
 
-// Filters only the keys that are wanted by at least one session
+// Filters only the keys that are wanted by at least one session.
+//
+// IMPORTANT: FilterInterests filters the given Cid slices in place, modifying
+// their contents. If the caller needs to preserve a copy of the lists it
+// should make a copy before calling FilterInterests.
 func (sim *SessionInterestManager) FilterInterests(keySets ...[]cid.Cid) [][]cid.Cid {
+	result := keySets[:0]
+
 	sim.lk.RLock()
 	defer sim.lk.RUnlock()
 
-	result := keySets[:0]
 	// For each set of keys
 	for _, ks := range keySets {
 		// The set of keys wanted by at least one session
