@@ -121,7 +121,7 @@ func TestRemoveSessionInterested(t *testing.T) {
 	sim.RecordSessionInterest(ses1, cids1)
 	sim.RecordSessionInterest(ses2, cids2)
 
-	res := sim.RemoveSessionInterested(ses1, []cid.Cid{cids1[0]})
+	res := sim.RemoveSessionWants(ses1, []cid.Cid{cids1[0]})
 	if len(res) != 1 {
 		t.Fatal("Expected no interested sessions left")
 	}
@@ -131,7 +131,7 @@ func TestRemoveSessionInterested(t *testing.T) {
 		t.Fatal("Expected ses1 still interested in one cid")
 	}
 
-	res = sim.RemoveSessionInterested(ses1, cids1)
+	res = sim.RemoveSessionWants(ses1, cids1)
 	if len(res) != 0 {
 		t.Fatal("Expected ses2 to be interested in one cid")
 	}
