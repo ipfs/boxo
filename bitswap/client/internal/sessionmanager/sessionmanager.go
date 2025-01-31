@@ -153,7 +153,7 @@ func (sm *SessionManager) GetNextSessionID() uint64 {
 
 // ReceiveFrom is called when a new message is received
 func (sm *SessionManager) ReceiveFrom(ctx context.Context, p peer.ID, blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
-	// Keep only the keys that at least one session is interested in
+	// Keep only the keys that at least one session wants
 	keys := sm.sessionInterestManager.FilterInterests(blks, haves, dontHaves)
 	blks = keys[0]
 	haves = keys[1]

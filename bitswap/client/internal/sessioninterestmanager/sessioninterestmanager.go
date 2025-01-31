@@ -183,18 +183,18 @@ func (sim *SessionInterestManager) FilterInterests(keySets ...[]cid.Cid) [][]cid
 
 	result := keySets[:0]
 	// For each set of keys
-	for i, ks := range keySets {
-		// The set of keys that at least one session is interested in
+	for _, ks := range keySets {
+		// The set of keys wanted by at least one session
 		wanted := ks[:0]
 
 		// For each key in the set
 		for _, c := range ks {
-			// If there are any sessions interested in this key
+			// If any session wants the key
 			if _, ok := sim.wants[c]; ok {
 				wanted = append(wanted, c)
 			}
 		}
-		result = appent(result, wanted)
+		result = append(result, wanted)
 	}
 	return result
 }
