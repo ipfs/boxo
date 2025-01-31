@@ -237,25 +237,20 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 		return
 	}
 
-	// Record how many peers have a pending want-block and want-have for each
-	// key to be cancelled
+	// Track cancellation state: peerCounts tracks per-CID want counts across
+	// peers, while broadcastCancels collects CIDs wants that were broadcasted
+	// and need cancellation across all peers
 	peerCounts := make(map[cid.Cid]wantPeerCnts, len(cancelKs))
-	for _, c := range cancelKs {
-		peerCounts[c] = pwm.wantPeerCounts(c)
-	}
-
-	// Create a buffer to use for filtering cancels per peer, with the
-	// broadcast wants at the front of the buffer (broadcast wants are sent to
-	// all peers)
 	broadcastCancels := make([]cid.Cid, 0, len(cancelKs))
 	for _, c := range cancelKs {
-		if pwm.broadcastWants.Has(c) {
+		peerCounts[c] = pwm.wantPeerCounts(c)
+		if peerCounts[c].isBroadcast {
 			broadcastCancels = append(broadcastCancels, c)
 		}
 	}
 
 	// Send cancels to a particular peer
-	send := func(p peer.ID, pws *peerWant) {
+	send := func(pws *peerWant) {
 		// Start from the broadcast cancels
 		toCancel := broadcastCancels
 
@@ -301,8 +296,8 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 	if len(broadcastCancels) > 0 {
 		// If a broadcast want is being cancelled, send the cancel to all
 		// peers
-		for p, pws := range pwm.peerWants {
-			send(p, pws)
+		for _, pws := range pwm.peerWants {
+			send(pws)
 		}
 
 		// Remove cancelled broadcast wants
@@ -323,7 +318,7 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 					log.Errorf("sendCancels - peerWantManager index missing peer %s", p)
 					continue
 				}
-				send(p, pws)
+				send(pws)
 			}
 
 			clearWantsForCID(c)
