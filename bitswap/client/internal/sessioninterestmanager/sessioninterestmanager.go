@@ -127,9 +127,8 @@ func (sim *SessionInterestManager) SplitWantedUnwanted(blks []blocks.Block) ([]b
 	wantedKs := cid.NewSet()
 	for _, b := range blks {
 		c := b.Cid()
-		// For each session that is interested in the key
+		// For each session that wants the key.
 		for ses := range sim.wants[c] {
-			// If the session wants the key (rather than just being interested)
 			if _, ok := sim.wants[c][ses]; ok {
 				// Add the key to the set
 				wantedKs.Add(c)
