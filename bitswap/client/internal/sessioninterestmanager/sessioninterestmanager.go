@@ -10,21 +10,14 @@ import (
 // SessionInterestManager records the CIDs that each session is interested in.
 type SessionInterestManager struct {
 	lk    sync.RWMutex
-	wants map[cid.Cid]map[uint64]bool
+	wants map[cid.Cid]map[uint64]struct{}
 }
 
 // New initializes a new SessionInterestManager.
 func New() *SessionInterestManager {
 	return &SessionInterestManager{
-		// Map of cids -> sessions -> bool
-		//
-		// The boolean indicates whether the session still wants the block
-		// or is just interested in receiving messages about it.
-		//
-		// Note that once the block is received the session no longer wants
-		// the block, but still wants to receive messages from peers who have
-		// the block as they may have other blocks the session is interested in.
-		wants: make(map[cid.Cid]map[uint64]bool),
+		// Map of cids -> set of sessions that want this cid
+		wants: make(map[cid.Cid]map[uint64]struct{}),
 	}
 }
 
@@ -38,9 +31,9 @@ func (sim *SessionInterestManager) RecordSessionInterest(ses uint64, ks []cid.Ci
 	for _, c := range ks {
 		// Record that the session wants the blocks
 		if want, ok := sim.wants[c]; ok {
-			want[ses] = true
+			want[ses] = struct{}{}
 		} else {
-			sim.wants[c] = map[uint64]bool{ses: true}
+			sim.wants[c] = map[uint64]struct{}{ses: {}}
 		}
 	}
 }
@@ -72,23 +65,7 @@ func (sim *SessionInterestManager) RemoveSession(ses uint64) []cid.Cid {
 }
 
 // When the session receives blocks, it calls RemoveSessionWants().
-func (sim *SessionInterestManager) RemoveSessionWants(ses uint64, ks []cid.Cid) {
-	sim.lk.Lock()
-	defer sim.lk.Unlock()
-
-	// For each key
-	for _, c := range ks {
-		// If the session wanted the block
-		if wanted, ok := sim.wants[c][ses]; ok && wanted {
-			// Mark the block as unwanted
-			sim.wants[c][ses] = false
-		}
-	}
-}
-
-// When a request is cancelled, the session calls RemoveSessionInterested().
-// Returns the keys that no session is interested in any more.
-func (sim *SessionInterestManager) RemoveSessionInterested(ses uint64, ks []cid.Cid) []cid.Cid {
+func (sim *SessionInterestManager) RemoveSessionWants(ses uint64, ks []cid.Cid) []cid.Cid {
 	sim.lk.Lock()
 	defer sim.lk.Unlock()
 
@@ -149,10 +126,9 @@ func (sim *SessionInterestManager) SplitWantedUnwanted(blks []blocks.Block) ([]b
 	wantedKs := cid.NewSet()
 	for _, b := range blks {
 		c := b.Cid()
-		// For each session that is interested in the key
+		// For each session that wants the key.
 		for ses := range sim.wants[c] {
-			// If the session wants the key (rather than just being interested)
-			if wanted, ok := sim.wants[c][ses]; ok && wanted {
+			if _, ok := sim.wants[c][ses]; ok {
 				// Add the key to the set
 				wantedKs.Add(c)
 			}
