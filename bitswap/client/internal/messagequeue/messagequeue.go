@@ -16,13 +16,10 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
-var (
-	log   = logging.Logger("bitswap/client/msgq")
-	sflog = log.Desugar()
-)
+var log = logging.Logger("bitswap/client/msgq")
 
 const (
 	// maxMessageSize is the maximum message size in bytes
@@ -692,7 +689,7 @@ func (mq *MessageQueue) handleResponse(ks []cid.Cid) {
 
 func (mq *MessageQueue) logOutgoingMessage(wantlist []bsmsg.Entry) {
 	// Save some CPU cycles and allocations if log level is higher than debug
-	if ce := sflog.Check(zap.DebugLevel, "sent message"); ce == nil {
+	if !log.Level().Enabled(zapcore.DebugLevel) {
 		return
 	}
 
