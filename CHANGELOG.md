@@ -22,6 +22,9 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+`bitswap/client`: Fix runaway goroutine creation under high load. Under high load conditions, goroutines are created faster than they can complete and the more goroutines creates the slower them complete. This creates a positive feedback cycle that ends in OOM. The fix dynamically adjusts message send scheduling to avoid the runaway condition. [#817](https://github.com/ipfs/boxo/pull/817)
+
+
 ### Security
 
 
