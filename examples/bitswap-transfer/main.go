@@ -34,7 +34,7 @@ import (
 	uih "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
 
 	bsclient "github.com/ipfs/boxo/bitswap/client"
-	bsnet "github.com/ipfs/boxo/bitswap/network"
+	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
 	bsserver "github.com/ipfs/boxo/bitswap/server"
 	"github.com/ipfs/boxo/files"
 )
