@@ -151,8 +151,17 @@ func (sm *SessionManager) GetNextSessionID() uint64 {
 	return sm.sessID
 }
 
-// ReceiveFrom is called when a new message is received
+// ReceiveFrom is called when a new message is received.
+//
+// IMPORTANT: ReceiveFrom filters the given Cid slices in place, modifying
+// their contents. If the caller needs to preserve a copy of the lists it
+// should make a copy before calling ReceiveFrom.
 func (sm *SessionManager) ReceiveFrom(ctx context.Context, p peer.ID, blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
+	// Keep only the keys that at least one session wants
+	keys := sm.sessionInterestManager.FilterInterests(blks, haves, dontHaves)
+	blks = keys[0]
+	haves = keys[1]
+	dontHaves = keys[2]
 	// Record block presence for HAVE / DONT_HAVE
 	sm.blockPresenceManager.ReceiveFrom(p, haves, dontHaves)
 
