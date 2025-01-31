@@ -264,10 +264,7 @@ func (bs *Server) startWorkers(ctx context.Context) {
 func (bs *Server) taskWorker(ctx context.Context, id int) {
 	defer bs.waitWorkers.Done()
 
-	log := log.With("ID", id)
-	defer log.Debug("bitswap task worker shutting down...")
 	for {
-		log.Debug("Bitswap.TaskWorker.Loop")
 		select {
 		case nextEnvelope := <-bs.engine.Outbox():
 			select {
