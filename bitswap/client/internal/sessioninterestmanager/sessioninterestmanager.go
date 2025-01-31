@@ -181,11 +181,11 @@ func (sim *SessionInterestManager) FilterInterests(keySets ...[]cid.Cid) [][]cid
 	sim.lk.RLock()
 	defer sim.lk.RUnlock()
 
-	result := make([][]cid.Cid, len(keySets))
+	result := keySets[:0]
 	// For each set of keys
 	for i, ks := range keySets {
 		// The set of keys that at least one session is interested in
-		wanted := make([]cid.Cid, 0, len(ks))
+		wanted := ks[:0]
 
 		// For each key in the set
 		for _, c := range ks {
@@ -194,7 +194,7 @@ func (sim *SessionInterestManager) FilterInterests(keySets ...[]cid.Cid) [][]cid
 				wanted = append(wanted, c)
 			}
 		}
-		result[i] = wanted
+		result = appent(result, wanted)
 	}
 	return result
 }
