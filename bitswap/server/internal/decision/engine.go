@@ -248,7 +248,7 @@ type TaskInfo struct {
 type TaskComparator func(ta, tb *TaskInfo) bool
 
 // PeerBlockRequestFilter is used to accept / deny requests for a CID coming from a PeerID
-// It should return true if the request should be fullfilled.
+// It should return true if the request should be fulfilled.
 type PeerBlockRequestFilter func(p peer.ID, c cid.Cid) bool
 
 type Option func(*Engine)
@@ -683,7 +683,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 
 	wants, cancels, denials, err := e.splitWantsCancelsDenials(p, m)
 	if err != nil {
-		// This is a truely broken client, let's kill the connection.
+		// This is a truly broken client, let's kill the connection.
 		log.Warnw(err.Error(), "local", e.self, "remote", p)
 		return true
 	}

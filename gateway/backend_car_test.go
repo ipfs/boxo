@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
@@ -11,8 +12,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	_ "embed"
 
 	"github.com/ipfs/boxo/blockservice"
 	"github.com/ipfs/boxo/exchange/offline"
@@ -603,7 +602,7 @@ func TestCarBackendGetFileRangeRequest(t *testing.T) {
 	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
 	defer trustedGatewayServer.Close()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", trustedGatewayServer.URL+"/ipfs/bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, trustedGatewayServer.URL+"/ipfs/bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa", nil)
 	require.NoError(t, err)
 	startIndex := 256
 	endIndex := 750

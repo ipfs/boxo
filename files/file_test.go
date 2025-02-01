@@ -53,7 +53,7 @@ func TestReaderFiles(t *testing.T) {
 
 func TestReaderFileStat(t *testing.T) {
 	reader := strings.NewReader("beep boop")
-	mode := os.FileMode(0754)
+	mode := os.FileMode(0o754)
 	mtime := time.Date(2020, 11, 2, 12, 27, 35, 55555, time.UTC)
 	stat := &mockFileInfo{name: "test", mode: mode, mtime: mtime}
 
@@ -217,13 +217,13 @@ implicit file2
 			kind:  TFile,
 			name:  "£ẞǑǓÆ æ ♫♬",
 			value: "beep",
-			mode:  0754,
+			mode:  0o754,
 			mtime: time.Unix(1604320500, 55555),
 		},
 		{
 			kind:  TDirStart,
 			name:  "dir1",
-			mode:  0755,
+			mode:  0o755,
 			mtime: time.Unix(1604320500, 0),
 		},
 		{
@@ -235,19 +235,19 @@ implicit file2
 			kind:  TFile,
 			name:  "nested2",
 			value: "some content",
-			mode:  0600,
+			mode:  0o600,
 		},
 		{
 			kind:  TSymlink,
 			name:  "simlynk",
 			value: "anotherfile",
-			mode:  0777,
+			mode:  0o777,
 		},
 		{
 			kind:  TSymlink,
 			name:  "simlynk2",
 			value: "anotherfile",
-			mode:  0777,
+			mode:  0o777,
 			mtime: time.Unix(1604320500, 0),
 		},
 		{
@@ -265,7 +265,7 @@ implicit file2
 			kind:  TFile,
 			name:  "deep_implicit",
 			value: "implicit file1",
-			mode:  0644,
+			mode:  0o644,
 		},
 		{
 			kind: TDirEnd,
@@ -274,7 +274,7 @@ implicit file2
 			kind:  TFile,
 			name:  "shallow_implicit",
 			value: "implicit file2",
-			mode:  0755,
+			mode:  0o755,
 			mtime: time.Unix(1604320500, 0),
 		},
 		{

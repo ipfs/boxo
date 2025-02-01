@@ -3,9 +3,8 @@ package gateway
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/ipfs/boxo/path"
+	"github.com/stretchr/testify/require"
 )
 
 func TestContentPathToCarUrl(t *testing.T) {

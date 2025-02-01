@@ -35,6 +35,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/routing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap/zapcore"
 )
 
 var log = logging.Logger("bitswap/client")
@@ -73,6 +74,15 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 func WithDontHaveTimeoutConfig(cfg *bsmq.DontHaveTimeoutConfig) Option {
 	return func(bs *Client) {
 		bs.dontHaveTimeoutConfig = cfg
+	}
+}
+
+// WithPerPeerSendDelay determines how long to wait, based on the number of
+// peers, for wants to accumulate before sending a bitswap message to peers. A
+// value of 0 uses bitswap messagequeue default.
+func WithPerPeerSendDelay(delay time.Duration) Option {
+	return func(bs *Client) {
+		bs.perPeerSendDelay = delay
 	}
 }
 
@@ -178,7 +188,9 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		}
 	}
 	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
-		return bsmq.New(ctx, p, network, onDontHaveTimeout, bsmq.WithDontHaveTimeoutConfig(bs.dontHaveTimeoutConfig))
+		return bsmq.New(ctx, p, network, onDontHaveTimeout,
+			bsmq.WithDontHaveTimeoutConfig(bs.dontHaveTimeoutConfig),
+			bsmq.WithPerPeerSendDelay(bs.perPeerSendDelay))
 	}
 	bs.dontHaveTimeoutConfig = nil
 
@@ -292,6 +304,8 @@ type Client struct {
 
 	// dupMetric will stay at 0
 	skipDuplicatedBlocksStats bool
+
+	perPeerSendDelay time.Duration
 }
 
 type counters struct {
@@ -366,8 +380,10 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	}
 
 	wanted, notWanted := bs.sim.SplitWantedUnwanted(blks)
-	for _, b := range notWanted {
-		log.Debugf("[recv] block not in wantlist; cid=%s, peer=%s", b.Cid(), from)
+	if log.Level().Enabled(zapcore.DebugLevel) {
+		for _, b := range notWanted {
+			log.Debugf("[recv] block not in wantlist; cid=%s, peer=%s", b.Cid(), from)
+		}
 	}
 
 	allKs := make([]cid.Cid, 0, len(blks))
@@ -396,10 +412,6 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 		bs.notif.Publish(from, b)
 	}
 
-	for _, b := range wanted {
-		log.Debugw("Bitswap.GetBlockRequest.End", "cid", b.Cid())
-	}
-
 	return nil
 }
 
@@ -418,8 +430,10 @@ func (bs *Client) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg.
 
 	if len(iblocks) > 0 {
 		bs.updateReceiveCounters(iblocks)
-		for _, b := range iblocks {
-			log.Debugf("[recv] block; cid=%s, peer=%s", b.Cid(), p)
+		if log.Level().Enabled(zapcore.DebugLevel) {
+			for _, b := range iblocks {
+				log.Debugf("[recv] block; cid=%s, peer=%s", b.Cid(), p)
+			}
 		}
 	}
 
