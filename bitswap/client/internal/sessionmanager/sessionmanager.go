@@ -157,7 +157,9 @@ func (sm *SessionManager) GetNextSessionID() uint64 {
 // their contents. If the caller needs to preserve a copy of the lists it
 // should make a copy before calling ReceiveFrom.
 func (sm *SessionManager) ReceiveFrom(ctx context.Context, p peer.ID, blks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
-	// Send CANCEL to all peers with want-have / want-block
+	// Send CANCEL to all peers with want-have / want-block. This needs to be
+	// done before filtering out CIDs that peers are no longer interested in,
+	// to ensure they are removed from PeerManager and PeerQueue want lists.
 	sm.peerManager.SendCancels(ctx, blks)
 
 	// Keep only the keys that at least one session wants
