@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- Fix memory leak due to not cleaning up wantlists [#829](https://github.com/ipfs/boxo/pull/829)
+
 ### Security
 
 
