@@ -1,6 +1,7 @@
 package httpnet
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -231,6 +232,12 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		return serr
 	}
 
+	// Record request size
+	var buf bytes.Buffer
+	req.Write(&buf)
+	sender.ht.metrics.RequestsSentBytes.Add(float64((&buf).Len()))
+
+	// Handle responses
 	limReader := &io.LimitedReader{
 		R: resp.Body,
 		N: sender.ht.maxBlockSize,
@@ -248,10 +255,18 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			Err:  err,
 		}
 	}
-	reqDuration := time.Since(reqStart)
-	sender.ht.metrics.ResponseSize.Observe(float64(len(body)))
+
+	// Calculate full response size with headers and everything.
+	// So this is comparable to bitswap message response sizes.
+	resp.Body = nil
+	var respBuf bytes.Buffer
+	resp.Write(&respBuf)
+	respLen := (&respBuf).Len() + len(body)
+
+	sender.ht.metrics.ResponseSizes.Observe(float64(respLen))
+	sender.ht.metrics.ResponseTotalBytes.Add(float64(respLen))
 	sender.ht.metrics.RequestsInFlight.Dec()
-	sender.ht.metrics.RequestTime.Observe(float64(reqDuration) / float64(time.Second))
+	sender.ht.metrics.RequestTime.Observe(float64(time.Since(reqStart)) / float64(time.Second))
 	sender.ht.metrics.updateStatusCounter(resp.StatusCode)
 
 	sender.ht.connEvtMgr.OnMessage(sender.peer)
@@ -352,6 +367,14 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 	if len(wantlist) == 0 {
 		return nil
 	}
+
+	// Keep metrics of wantlists sent and how long it took
+	sender.ht.metrics.WantlistsTotal.Inc()
+	sender.ht.metrics.WantlistsItemsTotal.Add(float64(len(wantlist)))
+	now := time.Now()
+	defer func() {
+		sender.ht.metrics.WantlistsSeconds.Add(float64(time.Since(now)) / float64(time.Second))
+	}()
 
 	go func() {
 		select {
