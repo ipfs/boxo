@@ -180,11 +180,14 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	}
 
 	var method string
+	reqStart := time.Now()
 
 	switch {
 	case entry.Cancel:
 		// log.Debugf("received cancel entry for %s: %s", u.url, entry.Cid)
 		sender.ht.requestTracker.cancelRequest(entry.Cid)
+		sender.ht.metrics.updateStatusCounter(0)
+		sender.ht.metrics.RequestTime.Observe(float64(time.Since(reqStart)) / float64(time.Second))
 		return nil // cont with next block
 
 	case entry.WantType == pb.Message_Wantlist_Block:
@@ -207,7 +210,6 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 	log.Debugf("%d/%d %d/%d %s %q", u.clientErrors, defaultMaxClientErrors, u.serverErrors, sender.opts.MaxRetries, method, req.URL)
 	atomic.AddUint64(&sender.ht.stats.MessagesSent, 1)
-	reqStart := time.Now()
 	sender.ht.metrics.RequestsInFlight.Inc()
 	resp, err := sender.ht.client.Do(req)
 	if err != nil {
