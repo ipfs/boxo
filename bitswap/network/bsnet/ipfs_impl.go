@@ -175,7 +175,7 @@ func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMess
 		s.bsnet.metrics.WantlistsItemsTotal.Add(float64(n))
 		now := time.Now()
 		defer func() {
-			s.bsnet.metrics.WantlistsSeconds.Add(float64(time.Since(now)) / float64(time.Second))
+			s.bsnet.metrics.WantlistsSeconds.Observe(float64(time.Since(now)) / float64(time.Second))
 		}()
 	}
 
@@ -443,7 +443,6 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 		}
 
 		bsnet.metrics.ResponseSizes.Observe(float64(size))
-		bsnet.metrics.ResponseTotalBytes.Add(float64(size))
 		p := s.Conn().RemotePeer()
 		ctx := context.Background()
 		log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())
