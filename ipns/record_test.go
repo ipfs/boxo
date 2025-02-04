@@ -9,6 +9,7 @@ import (
 	ipns_pb "github.com/ipfs/boxo/ipns/pb"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/util"
+	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -40,6 +41,13 @@ func mustKeyPair(t *testing.T, typ int) (ic.PrivKey, ic.PubKey, Name) {
 
 func mustNewRecord(t *testing.T, sk ic.PrivKey, value path.Path, seq uint64, eol time.Time, ttl time.Duration, opts ...Option) *Record {
 	rec, err := NewRecord(sk, value, seq, eol, ttl, opts...)
+	require.NoError(t, err)
+	require.NoError(t, Validate(rec, sk.GetPublic()))
+	return rec
+}
+
+func mustNewRawRecord(t *testing.T, sk ic.PrivKey, value []byte, seq uint64, eol time.Time, ttl time.Duration, opts ...Option) *Record {
+	rec, err := newRecord(sk, value, seq, eol, ttl, opts...)
 	require.NoError(t, err)
 	require.NoError(t, Validate(rec, sk.GetPublic()))
 	return rec
@@ -259,6 +267,12 @@ func TestCBORDataSerialization(t *testing.T) {
 func TestUnmarshal(t *testing.T) {
 	t.Parallel()
 
+	sk, _, _ := mustKeyPair(t, ic.Ed25519)
+
+	seq := uint64(0)
+	eol := time.Now().Add(time.Hour)
+	ttl := time.Minute * 10
+
 	t.Run("Errors on invalid bytes", func(t *testing.T) {
 		_, err := UnmarshalRecord([]byte("blah blah blah"))
 		require.ErrorIs(t, err, ErrInvalidRecord)
@@ -286,5 +300,66 @@ func TestUnmarshal(t *testing.T) {
 		require.NoError(t, err)
 		_, err = UnmarshalRecord(data)
 		require.ErrorIs(t, err, ErrInvalidRecord)
+	})
+
+	t.Run("Errors on bad binary Value() unable to represent as a Path (interop)", func(t *testing.T) {
+		t.Parallel()
+
+		// create record with non-empty byte value that is not []byte CID nor a string with /ipfs/cid content path
+		rawByteValue := []byte{0x4A, 0x1B, 0x3C, 0x8D, 0x2E}
+		rec := mustNewRawRecord(t, sk, rawByteValue, seq, eol, ttl)
+
+		// confirm raw record has same bytes
+		require.Equal(t, rawByteValue, rec.pb.GetValue())
+		cborValue, err := rec.getBytesValue(cborValueKey)
+		require.NoError(t, err)
+		require.Equal(t, rawByteValue, cborValue)
+
+		// confirm rec.Value() returns error
+		recPath, err := rec.Value()
+		require.ErrorIs(t, err, ErrInvalidPath)
+		require.Empty(t, recPath)
+	})
+
+	t.Run("Reads record with empty Value() as zero-length identity CID (interop)", func(t *testing.T) {
+		t.Parallel()
+
+		// create record with empty byte value
+		rawByteValue := []byte{}
+		rec := mustNewRawRecord(t, sk, rawByteValue, seq, eol, ttl)
+
+		// confirm raw record has empty (0-length []byte) Value
+		require.Empty(t, rec.pb.GetValue())
+		cborValue, err := rec.getBytesValue(cborValueKey)
+		require.NoError(t, err)
+		require.Empty(t, cborValue)
+
+		// confirm rec.Value() returns NooPath for interop
+		recPath, err := rec.Value()
+		require.NoError(t, err)
+		require.Equal(t, NoopValue, recPath.String())
+	})
+
+	t.Run("Reads record with a []byte CID as Value() (interop)", func(t *testing.T) {
+		t.Parallel()
+
+		// create record with a valid CID in binary form
+		// instead of /ipfs/cid string
+		// (we need to support this because this was allowed since <2018)
+		testCid := "bafkqablimvwgy3y"
+		rawCidValue := cid.MustParse(testCid).Bytes()
+
+		rec := mustNewRawRecord(t, sk, rawCidValue, seq, eol, ttl)
+
+		// confirm raw record has same bytes
+		require.Equal(t, rawCidValue, rec.pb.GetValue())
+		cborValue, err := rec.getBytesValue(cborValueKey)
+		require.NoError(t, err)
+		require.Equal(t, rawCidValue, cborValue)
+
+		// confirm rec.Value() returns path for raw CID
+		recPath, err := rec.Value()
+		require.NoError(t, err)
+		require.Equal(t, "/ipfs/"+testCid, recPath.String())
 	})
 }
