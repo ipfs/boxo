@@ -179,9 +179,6 @@ func (sm *SessionManager) ReceiveFrom(ctx context.Context, p peer.ID, blks []cid
 			sess.ReceiveFrom(p, blks, haves, dontHaves)
 		}
 	}
-
-	// Send CANCEL to all peers with want-have / want-block
-	sm.peerManager.SendCancels(ctx, blks)
 }
 
 // CancelSessionWants is called when a session cancels wants because a call to

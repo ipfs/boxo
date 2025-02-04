@@ -45,6 +45,7 @@ func (fs *fakeSession) ReceiveFrom(p peer.ID, ks []cid.Cid, wantBlocks []cid.Cid
 	fs.ks = append(fs.ks, ks...)
 	fs.wantBlocks = append(fs.wantBlocks, wantBlocks...)
 	fs.wantHaves = append(fs.wantHaves, wantHaves...)
+	fs.sm.CancelSessionWants(fs.id, ks)
 }
 
 func (fs *fakeSession) Shutdown() {
@@ -132,13 +133,6 @@ func TestReceiveFrom(t *testing.T) {
 	sim.RecordSessionInterest(firstSession.ID(), []cid.Cid{block.Cid()})
 	sim.RecordSessionInterest(thirdSession.ID(), []cid.Cid{block.Cid()})
 
-	sm.ReceiveFrom(ctx, p, []cid.Cid{block.Cid()}, []cid.Cid{}, []cid.Cid{})
-	if len(firstSession.ks) == 0 ||
-		len(secondSession.ks) > 0 ||
-		len(thirdSession.ks) == 0 {
-		t.Fatal("should have received blocks but didn't")
-	}
-
 	sm.ReceiveFrom(ctx, p, []cid.Cid{}, []cid.Cid{block.Cid()}, []cid.Cid{})
 	if len(firstSession.wantBlocks) == 0 ||
 		len(secondSession.wantBlocks) > 0 ||
@@ -151,6 +145,13 @@ func TestReceiveFrom(t *testing.T) {
 		len(secondSession.wantHaves) > 0 ||
 		len(thirdSession.wantHaves) == 0 {
 		t.Fatal("should have received want-haves but didn't")
+	}
+
+	sm.ReceiveFrom(ctx, p, []cid.Cid{block.Cid()}, []cid.Cid{}, []cid.Cid{})
+	if len(firstSession.ks) == 0 ||
+		len(secondSession.ks) > 0 ||
+		len(thirdSession.ks) == 0 {
+		t.Fatal("should have received blocks but didn't")
 	}
 
 	require.Len(t, pm.cancelled(), 1, "should have sent cancel for received blocks")

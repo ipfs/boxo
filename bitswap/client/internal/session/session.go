@@ -437,9 +437,9 @@ func (s *Session) handleReceive(ks []cid.Cid) {
 	// Record latency
 	s.latencyTrkr.receiveUpdate(len(wanted), totalLatency)
 
-	// Inform the SessionInterestManager that this session is no longer
-	// expecting to receive the wanted keys
-	s.sim.RemoveSessionWants(s.id, wanted)
+	// Inform the SessionManager that this session is no longer expecting to
+	// receive the wanted keys, since we now have them
+	s.sm.CancelSessionWants(s.id, wanted)
 
 	s.idleTick.Stop()
 
