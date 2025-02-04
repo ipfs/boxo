@@ -370,6 +370,7 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 	// Keep metrics of wantlists sent and how long it took
 	sender.ht.metrics.WantlistsTotal.Inc()
 	sender.ht.metrics.WantlistsItemsTotal.Add(float64(len(wantlist)))
+	log.Debugf("sending wantlist: %s (%d items)", sender.peer, len(wantlist))
 	now := time.Now()
 	defer func() {
 		sender.ht.metrics.WantlistsSeconds.Observe(float64(time.Since(now)) / float64(time.Second))
