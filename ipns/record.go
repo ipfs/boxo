@@ -85,8 +85,10 @@ func MarshalRecord(rec *Record) ([]byte, error) {
 	return proto.Marshal(rec.pb)
 }
 
-// Value returns the [path.Path] that is embedded in this IPNS Record. If the
-// path is invalid, an [ErrInvalidPath] is returned.
+// Value returns the [path.Path] that is embedded in this IPNS Record.
+// If the path is invalid, an error is returned.
+// If the value is a binary CID, it is converted to a [path.Path].
+// If the value is empty, a [NoopValue] is used instead.
 func (rec *Record) Value() (path.Path, error) {
 	value, err := rec.getBytesValue(cborValueKey)
 	if err != nil {
@@ -101,7 +103,7 @@ func (rec *Record) Value() (path.Path, error) {
 	}
 
 	// parse as a string with content path
-	if len(value) > 0 && value[0] == '/' {
+	if value[0] == '/' {
 		p, err := path.NewPath(string(value))
 		if err != nil {
 			return nil, multierr.Combine(ErrInvalidPath, err)
