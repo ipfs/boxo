@@ -264,7 +264,6 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	respLen := (&respBuf).Len() + len(body)
 
 	sender.ht.metrics.ResponseSizes.Observe(float64(respLen))
-	sender.ht.metrics.ResponseTotalBytes.Add(float64(respLen))
 	sender.ht.metrics.RequestsInFlight.Dec()
 	sender.ht.metrics.RequestTime.Observe(float64(time.Since(reqStart)) / float64(time.Second))
 	sender.ht.metrics.updateStatusCounter(resp.StatusCode)
@@ -373,7 +372,7 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 	sender.ht.metrics.WantlistsItemsTotal.Add(float64(len(wantlist)))
 	now := time.Now()
 	defer func() {
-		sender.ht.metrics.WantlistsSeconds.Add(float64(time.Since(now)) / float64(time.Second))
+		sender.ht.metrics.WantlistsSeconds.Observe(float64(time.Since(now)) / float64(time.Second))
 	}()
 
 	go func() {
