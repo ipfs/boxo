@@ -71,7 +71,7 @@ func ExtractHTTPAddress(ma multiaddr.Multiaddr) (ParsedURL, error) {
 	}, nil
 }
 
-// ExtractURLsFromPeer extracts all HTTP schema+host+port addresses as *url.URL from a peer.AddrInfo object.
+// ExtractURLsFromPeer extracts all HTTP schema+host+port addresses as ParsedURL from a peer.AddrInfo object.
 func ExtractURLsFromPeer(info peer.AddrInfo) []ParsedURL {
 	var addresses []ParsedURL
 

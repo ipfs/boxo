@@ -324,6 +324,18 @@ func (ht *Network) Self() peer.ID {
 // handle messages and make requests. The peer will be pinged regularly to
 // collect latency measurements until DisconnectFrom() is called.
 func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
+	existingPeerAddrs := ht.host.Peerstore().Addrs(p.ID)
+	existingPeerURLs := network.ExtractURLsFromPeer(peer.AddrInfo{
+		ID:    p.ID,
+		Addrs: existingPeerAddrs,
+	})
+	if len(existingPeerURLs) > 0 {
+		// assume already connected FIXME: issues when different
+		// provider records contain different HTTP urls for the same
+		// peer. Hope no one does that.
+		return nil
+	}
+
 	htaddrs, _ := network.SplitHTTPAddrs(p)
 	if len(htaddrs.Addrs) == 0 {
 		return ErrNoHTTPAddresses
