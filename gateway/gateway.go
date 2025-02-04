@@ -48,6 +48,11 @@ type Config struct {
 	// directory listings, DAG previews and errors. These will be displayed to the
 	// right of "About IPFS" and "Install IPFS".
 	Menu []assets.MenuItem
+
+	// ResponseWriteTimeout is the maximum duration the gateway will wait for a
+	// response to be written before returning a 503 Service Unavailable error.
+	// An unset or zero value uses the default timeout. -1 means no timeout.
+	ResponseWriteTimeout time.Duration
 }
 
 // PublicGateway is the specification of an IPFS Public Gateway.
