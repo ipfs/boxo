@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/bitswap"
-	bsnet "github.com/ipfs/boxo/bitswap/network"
+	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
 	testinstance "github.com/ipfs/boxo/bitswap/testinstance"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
 	mockrouting "github.com/ipfs/boxo/routing/mock"

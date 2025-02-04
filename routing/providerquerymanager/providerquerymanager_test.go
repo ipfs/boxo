@@ -436,3 +436,26 @@ func TestLimitedProviders(t *testing.T) {
 		t.Fatal("returned more providers than requested")
 	}
 }
+
+func TestIgnorePeers(t *testing.T) {
+	peers := random.Peers(5)
+	fpd := &fakeProviderDialer{}
+	fpn := &fakeProviderDiscovery{
+		peersFound: peers,
+	}
+
+	providerQueryManager := mustNotErr(New(fpd, fpn,
+		WithIgnoreProviders(peers[0:4]...),
+	))
+	defer providerQueryManager.Close()
+	keys := random.Cids(1)
+
+	providersChan := providerQueryManager.FindProvidersAsync(context.Background(), keys[0], 0)
+	total := 0
+	for range providersChan {
+		total++
+	}
+	if total != 1 {
+		t.Fatal("did not ignore 4 of the peers")
+	}
+}
