@@ -45,6 +45,8 @@ func NewFromIpfsHost(host host.Host, opts ...NetOpt) iface.BitSwapNetwork {
 		protocolBitswap:        s.ProtocolPrefix + ProtocolBitswap,
 
 		supportedProtocols: s.SupportedProtocols,
+
+		metrics: newMetrics(),
 	}
 
 	return &bitswapNetwork
@@ -80,6 +82,8 @@ type impl struct {
 
 	// inbound messages from the network are forwarded to the receiver
 	receivers []iface.Receiver
+
+	metrics *metrics
 }
 
 // interfaceWrapper is concrete type that wraps an interface. Necessary because
@@ -166,6 +170,15 @@ func (s *streamMessageSender) SupportsHave() bool {
 
 // Send a message to the peer, attempting multiple times
 func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessage) error {
+	if n := len(msg.Wantlist()); n > 0 {
+		s.bsnet.metrics.WantlistsTotal.Inc()
+		s.bsnet.metrics.WantlistsItemsTotal.Add(float64(n))
+		now := time.Now()
+		defer func() {
+			s.bsnet.metrics.WantlistsSeconds.Add(float64(time.Since(now)) / float64(time.Second))
+		}()
+	}
+
 	return s.multiAttempt(ctx, func() error {
 		return s.send(ctx, msg)
 	})
@@ -417,7 +430,7 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 
 	reader := msgio.NewVarintReaderSize(s, network.MessageSizeMax)
 	for {
-		received, err := bsmsg.FromMsgReader(reader)
+		received, size, err := bsmsg.FromMsgReader(reader)
 		if err != nil {
 			if err != io.EOF {
 				_ = s.Reset()
@@ -429,6 +442,8 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 			return
 		}
 
+		bsnet.metrics.ResponseSizes.Observe(float64(size))
+		bsnet.metrics.ResponseTotalBytes.Add(float64(size))
 		p := s.Conn().RemotePeer()
 		ctx := context.Background()
 		log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())

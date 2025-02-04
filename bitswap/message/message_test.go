@@ -116,7 +116,7 @@ func TestToNetFromNetPreservesWantList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	copied, err := FromNet(buf)
+	copied, _, err := FromNet(buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestToAndFromNetMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m2, err := FromNet(buf)
+	m2, _, err := FromNet(buf)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,8 +22,36 @@ func requestsFailure(ctx context.Context) imetrics.Counter {
 	return imetrics.NewCtx(ctx, "requests_failure", "Failed (no response, dial error etc) requests count").Counter()
 }
 
+func requestSentBytes(ctx context.Context) imetrics.Counter {
+	return imetrics.NewCtx(ctx, "request_sent_bytes", "Total bytes sent on requests").Counter()
+}
+
+func requestTime(ctx context.Context) imetrics.Histogram {
+	return imetrics.NewCtx(ctx, "request_duration_seconds", "Histogram of request durations").Histogram(durationHistogramBuckets)
+}
+
 func requestsBodyFailure(ctx context.Context) imetrics.Counter {
 	return imetrics.NewCtx(ctx, "requests_body_failure", "Failure count when reading response body").Counter()
+}
+
+func responseSizes(ctx context.Context) imetrics.Histogram {
+	return imetrics.NewCtx(ctx, "response_bytes", "Histogram of http response sizes").Histogram(blockSizesHistogramBuckets)
+}
+
+func responseTotalBytes(ctx context.Context) imetrics.Counter {
+	return imetrics.NewCtx(ctx, "response_total_bytes", "Accumulated response bytes").Counter()
+}
+
+func wantlistsTotal(ctx context.Context) imetrics.Counter {
+	return imetrics.NewCtx(ctx, "wantlists_total", "Total number of wantlists sent").Counter()
+}
+
+func wantlistsItemsTotal(ctx context.Context) imetrics.Counter {
+	return imetrics.NewCtx(ctx, "wantlists_items_total", "Total number of elements in sent wantlists").Counter()
+}
+
+func wantlistsSeconds(ctx context.Context) imetrics.Counter {
+	return imetrics.NewCtx(ctx, "wantlists_seconds", "Number of seconds spent sending wantlists").Counter()
 }
 
 func statusNotFound(ctx context.Context) imetrics.Counter {
@@ -62,18 +90,16 @@ func statusOthers(ctx context.Context) imetrics.Counter {
 	return imetrics.NewCtx(ctx, "status_others", "Request count with other status codes").Counter()
 }
 
-func requestTime(ctx context.Context) imetrics.Histogram {
-	return imetrics.NewCtx(ctx, "request_duration_seconds", "Histogram of request durations").Histogram(durationHistogramBuckets)
-}
-
-func responseSize(ctx context.Context) imetrics.Histogram {
-	return imetrics.NewCtx(ctx, "response_bytes", "Histogram of http response sizes").Histogram(blockSizesHistogramBuckets)
-}
-
 type metrics struct {
 	RequestsInFlight                 imetrics.Gauge
 	RequestsTotal                    imetrics.Counter
 	RequestsFailure                  imetrics.Counter
+	RequestsSentBytes                imetrics.Counter
+	WantlistsTotal                   imetrics.Counter
+	WantlistsItemsTotal              imetrics.Counter
+	WantlistsSeconds                 imetrics.Counter
+	ResponseSizes                    imetrics.Histogram
+	ResponseTotalBytes               imetrics.Counter
 	RequestsBodyFailure              imetrics.Counter
 	StatusNotFound                   imetrics.Counter
 	StatusGone                       imetrics.Counter
@@ -85,7 +111,6 @@ type metrics struct {
 	StatusInternalServerError        imetrics.Counter
 	StatusOthers                     imetrics.Counter
 	RequestTime                      imetrics.Histogram
-	ResponseSize                     imetrics.Histogram
 }
 
 func newMetrics() *metrics {
@@ -94,8 +119,14 @@ func newMetrics() *metrics {
 	return &metrics{
 		RequestsInFlight:                 requestsInFlight(ctx),
 		RequestsTotal:                    requestsTotal(ctx),
+		RequestsSentBytes:                requestSentBytes(ctx),
 		RequestsFailure:                  requestsFailure(ctx),
 		RequestsBodyFailure:              requestsBodyFailure(ctx),
+		WantlistsTotal:                   wantlistsTotal(ctx),
+		WantlistsItemsTotal:              wantlistsItemsTotal(ctx),
+		WantlistsSeconds:                 wantlistsSeconds(ctx),
+		ResponseSizes:                    responseSizes(ctx),
+		ResponseTotalBytes:               responseTotalBytes(ctx),
 		StatusNotFound:                   statusNotFound(ctx),
 		StatusGone:                       statusGone(ctx),
 		StatusForbidden:                  statusForbidden(ctx),
@@ -106,7 +137,6 @@ func newMetrics() *metrics {
 		StatusInternalServerError:        statusInternalServerError(ctx),
 		StatusOthers:                     statusOthers(ctx),
 		RequestTime:                      requestTime(ctx),
-		ResponseSize:                     responseSize(ctx),
 	}
 }
 
