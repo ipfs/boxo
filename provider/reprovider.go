@@ -42,6 +42,7 @@ type reprovider struct {
 	ctx     context.Context
 	close   context.CancelFunc
 	closewg sync.WaitGroup
+	mu      sync.Mutex
 
 	reprovideInterval        time.Duration
 	initalReprovideDelay     time.Duration
@@ -469,6 +470,12 @@ func (s *reprovider) reprovide(ctx context.Context, force bool) error {
 	if !s.shouldReprovide() && !force {
 		return nil
 	}
+
+	ok := s.mu.TryLock()
+	if !ok {
+		return fmt.Errorf("instance of reprovide already running")
+	}
+	defer s.mu.Unlock()
 
 	kch, err := s.keyProvider(ctx)
 	if err != nil {

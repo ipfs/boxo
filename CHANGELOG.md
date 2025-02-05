@@ -18,6 +18,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `provider`: Prevent multiple instances of reprovider.Reprovide() from running at the same time.
+
 ### Removed
 
 ### Fixed
