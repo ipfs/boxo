@@ -287,7 +287,7 @@ func TestBestURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	var urls []*url.URL
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 4; i++ {
 		baseurl.Host = fmt.Sprintf("127.0.0.1:%d", 1000+i)
 		u, _ := url.Parse(baseurl.String())
 		urls = append(urls, u)
@@ -299,91 +299,53 @@ func TestBestURL(t *testing.T) {
 			ParsedURL: network.ParsedURL{
 				URL: urls[0],
 			},
-			cooldown:     now.Add(time.Second),
-			clientErrors: 0,
-			serverErrors: 2,
 		},
 		{
 			ParsedURL: network.ParsedURL{
 				URL: urls[1],
 			},
-			cooldown:     now.Add(time.Second),
-			clientErrors: 0,
-			serverErrors: 1,
 		},
 		{
 			ParsedURL: network.ParsedURL{
 				URL: urls[2],
 			},
-			cooldown:     time.Time{},
-			clientErrors: 0,
-			serverErrors: 3,
 		},
 		{
 			ParsedURL: network.ParsedURL{
 				URL: urls[3],
 			},
-			cooldown:     time.Time{},
-			clientErrors: 0,
-			serverErrors: 2,
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[4],
-			},
-			cooldown:     time.Time{},
-			clientErrors: 0,
-			serverErrors: 1,
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[5],
-			},
-			cooldown:     time.Time{},
-			clientErrors: 0,
-			serverErrors: 20,
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[6],
-			},
-			cooldown:     time.Time{},
-			clientErrors: 2,
-			serverErrors: 0,
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[7],
-			},
-			cooldown:     now.Add(2 * time.Second),
-			clientErrors: 0,
-			serverErrors: 0,
 		},
 	}
+
+	surls[0].cooldown.Store(now.Add(time.Second))
+	surls[0].serverErrors.Store(6)
+	surls[1].cooldown.Store(now.Add(time.Second))
+	surls[1].serverErrors.Store(1)
+	surls[2].cooldown.Store(time.Time{})
+	surls[2].serverErrors.Store(3)
+	surls[3].cooldown.Store(time.Time{})
+	surls[3].serverErrors.Store(2)
+
 	ms.urls = surls
 
-	ms.sortURLS()
+	sortedUrls := ms.sortURLS()
 
 	expected := []string{
-		urls[4].String(), // no cooldown, min client errors
-		urls[3].String(), // less server errors
-		urls[2].String(), // no timeout, less server errors
-		urls[1].String(), // min server errors with timeout
-		urls[0].String(), // shortest timeout with errors
-		urls[7].String(), // longest timeout but fine
-		urls[5].String(), // maxed server errors
-		urls[6].String(), // maxed client errors
+		urls[3].String(),
+		urls[2].String(),
+		urls[1].String(),
+		urls[0].String(),
 	}
 
-	for i, u := range ms.urls {
+	for i, u := range sortedUrls {
 		if u.URL.String() != expected[i] {
 			t.Error("wrong url order", i, u.URL)
 		}
 	}
 
-	ms.urls = ms.urls[6:]
+	ms.urls = sortedUrls[3:]
 
-	_, err = ms.bestURL()
+	_, err = ms.bestURL(nil)
 	if err == nil {
 		t.Fatal("expected error since only urls failed too many times")
 	}

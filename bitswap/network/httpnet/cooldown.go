@@ -89,8 +89,9 @@ func (ct *cooldownTracker) fillSenderURLs(urls []network.ParsedURL) []*senderURL
 			}
 			surls[i] = &senderURL{
 				ParsedURL: u,
-				cooldown:  cooldown,
 			}
+			surls[i].cooldown.Store(cooldown)
+
 		}
 	}
 	ct.urlsLock.RUnlock()

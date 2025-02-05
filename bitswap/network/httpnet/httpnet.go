@@ -13,11 +13,13 @@ import (
 	"reflect"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	"github.com/ipfs/boxo/bitswap/network"
+	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -45,6 +47,7 @@ var (
 	DefaultInsecureSkipVerify            = false
 	DefaultMaxBackoff                    = time.Minute
 	DefaultMaxHTTPAddressesPerPeer       = 10
+	DefaultHTTPWorkers                   = 64
 )
 
 var pingCid = "bafkqaaa" // identity CID
@@ -136,6 +139,13 @@ func WithMaxHTTPAddressesPerPeer(max int) Option {
 	}
 }
 
+// WithHTTPWorkers controls how many HTTP requests can be done concurrently.
+func WithHTTPWorkers(n int) Option {
+	return func(net *Network) {
+		net.httpWorkers = n
+	}
+}
+
 type Network struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
@@ -144,6 +154,8 @@ type Network struct {
 	host   host.Host
 	client *http.Client
 
+	closeOnce       sync.Once
+	closing         chan struct{}
 	receivers       []network.Receiver
 	connEvtMgr      *network.ConnectEventManager
 	pinger          *pinger
@@ -160,15 +172,31 @@ type Network struct {
 	supportsHave            bool
 	insecureSkipVerify      bool
 	maxHTTPAddressesPerPeer int
+	httpWorkers             int
 	allowlist               map[string]struct{}
 
-	metrics *metrics
+	metrics      *metrics
+	httpRequests chan httpRequestInfo
+}
+
+type httpRequestInfo struct {
+	ctx    context.Context
+	sender *httpMsgSender
+	entry  bsmsg.Entry
+	result chan<- httpResult
+}
+
+type httpResult struct {
+	entry bsmsg.Entry
+	block blocks.Block
+	err   *senderError
 }
 
 // New returns a BitSwapNetwork supported by underlying IPFS host.
 func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	htnet := &Network{
 		host:                    host,
+		closing:                 make(chan struct{}),
 		userAgent:               defaultUserAgent(),
 		maxBlockSize:            DefaultMaxBlockSize,
 		dialTimeout:             DefaultDialTimeout,
@@ -178,7 +206,9 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		supportsHave:            DefaultSupportsHave,
 		insecureSkipVerify:      DefaultInsecureSkipVerify,
 		maxHTTPAddressesPerPeer: DefaultMaxHTTPAddressesPerPeer,
+		httpWorkers:             DefaultHTTPWorkers,
 		metrics:                 newMetrics(),
+		httpRequests:            make(chan httpRequestInfo),
 	}
 
 	for _, opt := range opts {
@@ -246,6 +276,10 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	pinger := newPinger(host, htnet.client, pingCid, htnet.userAgent)
 	htnet.pinger = pinger
 
+	for i := 0; i < htnet.httpWorkers; i++ {
+		go htnet.httpWorker(i)
+	}
+
 	return htnet
 }
 
@@ -269,6 +303,9 @@ func (ht *Network) Start(receivers ...network.Receiver) {
 func (ht *Network) Stop() {
 	ht.connEvtMgr.Stop()
 	ht.cooldownTracker.stopCleaner()
+	ht.closeOnce.Do(func() {
+		close(ht.closing)
+	})
 }
 
 // Ping triggers a ping to the given peer and returns the latency.
@@ -470,6 +507,90 @@ func (ht *Network) Stats() network.Stats {
 	return network.Stats{
 		MessagesRecvd: atomic.LoadUint64(&ht.stats.MessagesRecvd),
 		MessagesSent:  atomic.LoadUint64(&ht.stats.MessagesSent),
+	}
+}
+
+func (ht *Network) httpWorker(i int) {
+	for {
+		select {
+		case <-ht.closing:
+			return
+		case reqInfo := <-ht.httpRequests:
+			retryLaterErrors := 0
+			var urlIgnore []*senderURL
+			for {
+				// bestURL
+				u, err := reqInfo.sender.bestURL(urlIgnore)
+				if err != nil {
+					reqInfo.result <- httpResult{
+						entry: reqInfo.entry,
+						err: &senderError{
+							Type: typeFatal,
+							Err:  err,
+						},
+					}
+					break // stop retry loop
+				}
+
+				// no urls to retry left.
+				if u == nil {
+					reqInfo.result <- httpResult{
+						entry: reqInfo.entry,
+						err: &senderError{
+							Type: typeClient,
+							Err:  nil,
+						},
+					}
+					break // stop retry loop
+				}
+
+				b, serr := reqInfo.sender.tryURL(
+					reqInfo.ctx,
+					u,
+					reqInfo.entry,
+				)
+
+				result := httpResult{
+					entry: reqInfo.entry,
+					block: b,
+					err:   serr,
+				}
+
+				if serr != nil {
+					switch serr.Type {
+					case typeRetryLater:
+						// This error signals that the server
+						// specifically indicated that it is
+						// overloaded. We are going to retry 3 times
+						// and then consider it a  serverError.
+						// Retries happen following the cooldown
+						// period. When multiple urls, retries may
+						// happen on a different url.
+						retryLaterErrors++
+						if retryLaterErrors%3 == 0 {
+							result.err.Type = typeServer
+							u.serverErrors.Add(1)
+						}
+						continue // retry request again
+					case typeClient:
+						urlIgnore = append(urlIgnore, u)
+						continue // retry again ignoring current url
+					case typeContext:
+					case typeFatal:
+						log.Error(err)
+					case typeServer:
+						u.serverErrors.Add(1)
+						continue // retry until bestURL forces abort
+
+					default:
+						panic("unknown sender error type")
+					}
+				}
+
+				reqInfo.result <- result
+				break // exit retry loop
+			}
+		}
 	}
 }
 

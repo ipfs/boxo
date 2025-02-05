@@ -32,11 +32,6 @@ var (
 	// same endpoint after failure. It is overriden by Retry-After
 	// headers and must be at least 50ms.
 	DefaultSendErrorBackoff = time.Second
-
-	// how many errors we tolerate before we give up making requests for a
-	// block, when the error is client-side: 404, 401 etc. It makes no
-	// sense to retry such requests, therefore 1.
-	defaultMaxClientErrors = 1
 )
 
 func setSenderOpts(opts *network.MessageSenderOpts) network.MessageSenderOpts {
@@ -65,10 +60,8 @@ func setSenderOpts(opts *network.MessageSenderOpts) network.MessageSenderOpts {
 // senderURL wraps url with information about cooldowns and errors.
 type senderURL struct {
 	network.ParsedURL
-	cooldown         time.Time
-	clientErrors     int
-	serverErrors     int
-	retryLaterErrors int
+	cooldown     atomic.Value
+	serverErrors atomic.Int64
 }
 
 // httpMsgSender implements a network.MessageSender.
@@ -87,58 +80,71 @@ type httpMsgSender struct {
 // sortURLS sorts the sender urls as follows:
 //   - urls with exhausted retries go to the end
 //   - urls are sorted by cooldown (shorter first)
-//   - same, or no cooldown, are sorted by number of client errors
-//   - if same number of client errors, sorted by number
-//     of server errors.
-func (sender *httpMsgSender) sortURLS() {
-	slices.SortFunc(sender.urls, func(a, b *senderURL) int {
+//   - same, or no cooldown, are sorted by number of server errors
+func (sender *httpMsgSender) sortURLS() []*senderURL {
+	if len(sender.urls) <= 1 {
+		return sender.urls
+	}
+
+	// sender.urls must be read-only as multiple workers
+	// attempt to sort it.
+	urlCopy := make([]*senderURL, len(sender.urls), len(sender.urls))
+	for i, u := range sender.urls {
+		urlCopy[i] = u
+	}
+
+	slices.SortFunc(urlCopy, func(a, b *senderURL) int {
 		// urls without exhausted retries come first
-		if a.clientErrors >= defaultMaxClientErrors || a.serverErrors >= sender.opts.MaxRetries {
+		serverErrorsA := a.serverErrors.Load()
+		serverErrorsB := b.serverErrors.Load()
+		if serverErrorsA >= int64(sender.opts.MaxRetries) {
 			return 1 // a > b
 		}
-		if b.clientErrors >= defaultMaxClientErrors || b.serverErrors >= sender.opts.MaxRetries {
+		if serverErrorsB >= int64(sender.opts.MaxRetries) {
 			return -1 // a < b
 		}
 
-		dlComp := a.cooldown.Compare(b.cooldown)
+		cooldownA := a.cooldown.Load().(time.Time)
+		cooldownB := b.cooldown.Load().(time.Time)
+		dlComp := cooldownA.Compare(cooldownB)
 		if dlComp != 0 {
 			return dlComp
 		}
 
-		if a.clientErrors == b.clientErrors {
-			return a.serverErrors - b.serverErrors
-		}
-
-		return a.clientErrors - b.clientErrors
+		return int(serverErrorsA - serverErrorsB)
 	})
+	return urlCopy
 }
 
-// bestURL calls sortURLS are returns the first one of the list.
-// If the url has exhausted client or server retries, it errors.
-func (sender *httpMsgSender) bestURL() (*senderURL, error) {
-	sender.sortURLS()
-	first := sender.urls[0]
+// bestURL calls sortURLS are returns the first one of the list that is not in
+// the ignore list. The returned senderURL can be nil when no valid URL was
+// found (i.e. there are valid urls but they are also in the ignore list).
+// An error is only returned when all urls have exceeded maxRetries (abort).
+func (sender *httpMsgSender) bestURL(ignore []*senderURL) (*senderURL, error) {
+	urls := sender.sortURLS()
 
-	// A nil URL and no error signals that we don't need to abort, but
-	// cannot keep retrying the same. client errors will be reset for next
-	// block in the wantlist.
-	if first.clientErrors >= defaultMaxClientErrors {
+	ignoreMap := make(map[*senderURL]struct{}, len(ignore))
+	for _, ig := range ignore {
+		ignoreMap[ig] = struct{}{}
+	}
+
+	var first *senderURL
+	for _, u := range urls {
+		if _, ok := ignoreMap[u]; !ok {
+			first = u
+			break
+		}
+	}
+
+	if first == nil {
 		return nil, nil
 	}
 
-	if first.serverErrors >= sender.opts.MaxRetries {
+	if first.serverErrors.Load() >= int64(sender.opts.MaxRetries) {
 		return nil, errors.New("urls exceeded server errors")
 	}
 
 	return first, nil
-}
-
-// resetClientErrors sets all clientErrors on urls to 0.
-// It is called every time we move to the next item in a wantlist.
-func (sender *httpMsgSender) resetClientErrors() {
-	for i := range sender.urls {
-		sender.urls[i].clientErrors = 0
-	}
 }
 
 // sendErrorType explains why a request failed.
@@ -165,7 +171,7 @@ type senderError struct {
 }
 
 // Error returns the underlying error message.
-func (err *senderError) Error() string {
+func (err senderError) Error() string {
 	return err.Err.Error()
 }
 
@@ -173,23 +179,15 @@ func (err *senderError) Error() string {
 // Blocks, Haves etc. are recorded in the given response. cancellations are
 // processed. tryURL returns an error so that it can be decided what to do next:
 // i.e. retry, or move to next item in wantlist, or abort completely.
-func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsmsg.Entry, bsresp bsmsg.BitSwapMessage) *senderError {
+func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsmsg.Entry) (blocks.Block, *senderError) {
 	// sleep whatever needed
-	if dl := u.cooldown; !dl.IsZero() {
+	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
 		time.Sleep(time.Until(dl))
 	}
 
 	var method string
-	reqStart := time.Now()
 
 	switch {
-	case entry.Cancel:
-		// log.Debugf("received cancel entry for %s: %s", u.url, entry.Cid)
-		sender.ht.requestTracker.cancelRequest(entry.Cid)
-		sender.ht.metrics.updateStatusCounter(0)
-		sender.ht.metrics.RequestTime.Observe(float64(time.Since(reqStart)) / float64(time.Second))
-		return nil // cont with next block
-
 	case entry.WantType == pb.Message_Wantlist_Block:
 		method = "GET"
 	case entry.WantType == pb.Message_Wantlist_Have:
@@ -202,13 +200,13 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	defer cancel()
 	req, err := buildRequest(ctx, u.ParsedURL, method, entry.Cid.String(), sender.ht.userAgent)
 	if err != nil {
-		return &senderError{
+		return nil, &senderError{
 			Type: typeFatal,
 			Err:  err,
 		}
 	}
 
-	log.Debugf("%d/%d %d/%d %s %q", u.clientErrors, defaultMaxClientErrors, u.serverErrors, sender.opts.MaxRetries, method, req.URL)
+	log.Debugf("d/%d %s %q", u.serverErrors, sender.opts.MaxRetries, method, req.URL)
 	atomic.AddUint64(&sender.ht.stats.MessagesSent, 1)
 	sender.ht.metrics.RequestsInFlight.Inc()
 	resp, err := sender.ht.client.Do(req)
@@ -231,7 +229,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			serr.Type = typeContext // cont. with next block.
 		}
 
-		return serr
+		return nil, serr
 	}
 
 	// Record request size
@@ -252,7 +250,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		sender.ht.metrics.RequestsBodyFailure.Inc()
 		sender.ht.metrics.RequestsInFlight.Dec()
 		log.Debug(err)
-		return &senderError{
+		return nil, &senderError{
 			Type: typeServer,
 			Err:  err,
 		}
@@ -267,10 +265,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 	sender.ht.metrics.ResponseSizes.Observe(float64(respLen))
 	sender.ht.metrics.RequestsInFlight.Dec()
-	sender.ht.metrics.RequestTime.Observe(float64(time.Since(reqStart)) / float64(time.Second))
 	sender.ht.metrics.updateStatusCounter(resp.StatusCode)
-
-	sender.ht.connEvtMgr.OnMessage(sender.peer)
 
 	switch resp.StatusCode {
 	// Valid responses signaling unavailability of the
@@ -283,27 +278,25 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		err := fmt.Errorf("%s %q -> %d: %q", req.Method, req.URL, resp.StatusCode, string(body))
 		log.Error(err)
 		// clear cooldowns since we got a proper reply
-		if !u.cooldown.IsZero() {
+		if !u.cooldown.Load().(time.Time).IsZero() {
 			sender.ht.cooldownTracker.remove(req.URL.Host)
-		}
-		if entry.SendDontHave {
-			bsresp.AddDontHave(entry.Cid)
+			u.cooldown.Store(time.Time{})
 		}
 		// We should not fail more than maxRetries for each block.
-		return &senderError{
+		return nil, &senderError{
 			Type: typeClient,
 			Err:  err,
 		}
 	case http.StatusOK: // \(^°^)/
 		// clear cooldowns since we got a proper reply
-		if !u.cooldown.IsZero() {
+		if !u.cooldown.Load().(time.Time).IsZero() {
 			sender.ht.cooldownTracker.remove(req.URL.Host)
+			u.cooldown.Store(time.Time{})
 		}
 		log.Debugf("%q -> %d (%d bytes)", req.URL, resp.StatusCode, len(body))
 
 		if req.Method == "HEAD" {
-			bsresp.AddHave(entry.Cid)
-			return nil
+			return nil, nil
 		}
 		// GET
 		b, err := blocks.NewBlockWithCid(body, entry.Cid)
@@ -311,14 +304,13 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			log.Error("block received for cid %s does not match!", entry.Cid)
 			// avoid entertaining servers that send us wrong data
 			// too much.
-			return &senderError{
+			return nil, &senderError{
 				Type: typeServer,
 				Err:  err,
 			}
 		}
-		bsresp.AddBlock(b)
 		atomic.AddUint64(&sender.ht.stats.MessagesRecvd, 1)
-		return nil
+		return b, nil
 	case http.StatusTooManyRequests,
 		http.StatusServiceUnavailable:
 		err := fmt.Errorf("%q -> %d: %q", req.URL, resp.StatusCode, string(body))
@@ -327,10 +319,12 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		cooldownUntil, ok := parseRetryAfter(retryAfter)
 		if ok {
 			sender.ht.cooldownTracker.setByDate(req.URL.Host, cooldownUntil)
+			u.cooldown.Store(cooldownUntil)
 		} else {
 			sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
+			u.cooldown.Store(time.Now().Add(sender.opts.SendErrorBackoff))
 		}
-		return &senderError{
+		return nil, &senderError{
 			Type: typeRetryLater,
 			Err:  err,
 		}
@@ -343,7 +337,8 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		err := fmt.Errorf("%q -> %d: %q", req.URL, resp.StatusCode, string(body))
 		log.Error(err)
 		sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
-		return &senderError{
+		u.cooldown.Store(time.Now().Add(sender.opts.SendErrorBackoff))
+		return nil, &senderError{
 			Type: typeServer,
 			Err:  err,
 		}
@@ -416,77 +411,78 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 		}
 	}
 
+	var wgRequests sync.WaitGroup
+	resultsCollector := make(chan httpResult, len(wantlist))
+
 WANTLIST_LOOP:
 	for i, entry := range wantlist {
-	URL_LOOP:
-		for {
-			// our context cancelled so we must abort.
-			if ctx.Err() != nil {
-				err = ctx.Err()
-				break WANTLIST_LOOP
-			}
+		reqStart := time.Now()
 
-			u, err := sender.bestURL()
-			// must abort
-			// possibly server errors maxed
-			// we disconnect this peer
-			// and avoid it for the time being.
-			if err != nil {
-				// notify new blocks before disconnecting. As
-				// disconnecting may trigger cleanups or
-				// something.
-				sender.notifyReceivers(bsresp)
-				sender.ht.DisconnectFrom(ctx, sender.peer)
-				return nil
-			}
-
-			// we move to next block, no good urls
-			// possibly client-errors maxed.
-			if u == nil {
-				break
-			}
-
-			serr := sender.tryURL(entryCtxs[i], u, entry, bsresp)
-			if serr == nil {
-				break // cont. with next block
-			}
-
-			switch serr.Type {
-			case typeFatal:
-				log.Error(err)
-				break WANTLIST_LOOP // full abort
-			case typeClient:
-				u.clientErrors++
-				continue // retry until bestURL forces moving to next block
-			case typeServer:
-				u.serverErrors++
-				continue // retry until bestURL forces moving to next block
-			case typeContext:
-				// context error probably results from
-				// cancellations, in which case we move to
-				// next block.
-				break URL_LOOP // cont. with next block
-			case typeRetryLater:
-				// This error signals that the server
-				// specifically indicated that it is
-				// overloaded.  We are going to retry 3 times
-				// and then increase the serverError count.
-				// Retries happen following the cooldown
-				// period. When multiple urls, retries may
-				// happen on a different url.
-				u.retryLaterErrors++
-				if u.retryLaterErrors%3 == 0 {
-					u.retryLaterErrors = 0
-					u.serverErrors++
-				}
-				continue
-
-			default:
-				panic("unknown sender error type")
-			}
+		if entry.Cancel {
+			sender.ht.requestTracker.cancelRequest(entry.Cid)
+			sender.ht.metrics.updateStatusCounter(0)
+			sender.ht.metrics.RequestTime.Observe(float64(time.Since(reqStart)) / float64(time.Second))
 		}
-		// client errors cleared for every new block
-		sender.resetClientErrors()
+		// shortcut cancel entries
+
+		resultCh := make(chan httpResult, 1)
+
+		reqInfo := httpRequestInfo{
+			ctx:    entryCtxs[i],
+			sender: sender,
+			entry:  entry,
+			result: resultCh,
+		}
+
+		select {
+		case <-ctx.Done():
+			// our context cancelled so we must abort.
+			err = ctx.Err()
+			break WANTLIST_LOOP
+		case sender.ht.httpRequests <- reqInfo:
+			wgRequests.Add(1)
+			go func(start time.Time) {
+				defer wgRequests.Done()
+				result := <-resultCh
+				close(resultCh)
+				resultsCollector <- result
+				sender.ht.metrics.RequestTime.Observe(float64(time.Since(start)) / float64(time.Second))
+			}(reqStart)
+		}
+	}
+
+	go func() {
+		wgRequests.Wait()
+		close(resultsCollector)
+	}()
+
+COLLECT_RESULTS:
+	for result := range resultsCollector {
+		entry := result.entry
+		if result.err == nil {
+			sender.ht.connEvtMgr.OnMessage(sender.peer)
+
+			if entry.WantType == pb.Message_Wantlist_Block {
+				bsresp.AddBlock(result.block)
+			} else {
+				bsresp.AddHave(entry.Cid)
+			}
+			continue
+		}
+
+		// error handling
+		switch result.err.Type {
+		case typeFatal:
+			break COLLECT_RESULTS // cancel all requests
+		case typeClient:
+			if entry.SendDontHave {
+				bsresp.AddDontHave(entry.Cid)
+			}
+		case typeContext: // ignore and move on
+		case typeServer: // should not be returned as retried until fatal
+		default:
+			panic("unexpected returned error type")
+		}
 	}
 
 	// clean up request tracker
