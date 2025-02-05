@@ -18,7 +18,7 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- `provider`: Prevent multiple instances of reprovider.Reprovide() from running at the same time.
+- `provider`: Prevent multiple instances of reprovider.Reprovide() from running at the same time. [#834](https://github.com/ipfs/boxo/pull/834)
 
 ### Removed
 
