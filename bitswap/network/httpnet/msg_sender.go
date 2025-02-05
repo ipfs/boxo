@@ -88,10 +88,8 @@ func (sender *httpMsgSender) sortURLS() []*senderURL {
 
 	// sender.urls must be read-only as multiple workers
 	// attempt to sort it.
-	urlCopy := make([]*senderURL, len(sender.urls), len(sender.urls))
-	for i, u := range sender.urls {
-		urlCopy[i] = u
-	}
+	urlCopy := make([]*senderURL, len(sender.urls))
+	copy(urlCopy, sender.urls)
 
 	slices.SortFunc(urlCopy, func(a, b *senderURL) int {
 		// urls without exhausted retries come first
@@ -206,7 +204,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		}
 	}
 
-	log.Debugf("d/%d %s %q", u.serverErrors, sender.opts.MaxRetries, method, req.URL)
+	log.Debugf("%d/%d %s %q", u.serverErrors.Load(), sender.opts.MaxRetries, method, req.URL)
 	atomic.AddUint64(&sender.ht.stats.MessagesSent, 1)
 	sender.ht.metrics.RequestsInFlight.Inc()
 	resp, err := sender.ht.client.Do(req)
@@ -473,6 +471,9 @@ COLLECT_RESULTS:
 		// error handling
 		switch result.err.Type {
 		case typeFatal:
+			log.Error("Disconnecting from %s: %w", sender.peer, result.err)
+			sender.ht.DisconnectFrom(ctx, sender.peer)
+			err = result.err
 			break COLLECT_RESULTS // cancel all requests
 		case typeClient:
 			if entry.SendDontHave {
