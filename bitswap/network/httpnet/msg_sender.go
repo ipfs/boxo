@@ -291,7 +291,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			sender.ht.cooldownTracker.remove(req.URL.Host)
 			u.cooldown.Store(time.Time{})
 		}
-		log.Debugf("%q -> %d (%d bytes)", req.URL, resp.StatusCode, len(body))
+		log.Debugf("%s %q -> %d (%d bytes)", req.Method, req.URL, resp.StatusCode, len(body))
 
 		if req.Method == "HEAD" {
 			return nil, nil
@@ -466,7 +466,7 @@ WANTLIST_LOOP:
 			// error handling
 			switch result.err.Type {
 			case typeFatal:
-				log.Errorf("Disconnecting from %s: %w", sender.peer, result.err)
+				log.Errorf("Disconnecting from %s: %w", sender.peer, result.err.Err)
 				sender.ht.DisconnectFrom(ctx, sender.peer)
 				err = result.err
 				break COLLECT_RESULTS // cancel all requests

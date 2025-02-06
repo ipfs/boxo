@@ -79,6 +79,7 @@ func (rc *requestTracker) cancelRequest(c cid.Cid) {
 		return
 	}
 
+	log.Debugf("cancelling all requests for %s", c)
 	cidCtxs.mux.Lock()
 	{
 		for _, cancel := range cidCtxs.m {
