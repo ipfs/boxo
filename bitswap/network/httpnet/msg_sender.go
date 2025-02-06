@@ -353,9 +353,6 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 	// URL errors in a bad way (connection, 500s), we continue checking
 	// with the next available one.
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	// unless we have a wantlist, we bailout.
 	wantlist := msg.Wantlist()
 	if len(wantlist) == 0 {
@@ -371,16 +368,6 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 		sender.ht.metrics.WantlistsSeconds.Observe(float64(time.Since(now)) / float64(time.Second))
 	}()
 
-	go func() {
-		select {
-		case <-sender.closing:
-			cancel()
-			return
-		case <-ctx.Done():
-			return
-		}
-	}()
-
 	// This is mostly a cosmetic action since the bitswap.Client is just
 	// logging the errors.
 	sendErrors := func(err error) {
@@ -391,12 +378,13 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 		}
 	}
 
-	bsresp := bsmsg.New(false)
 	var err error
 
-	// obtain contexts for all the entries in the wantlits.
-	// This allows us to react when cancels arrive to wantlists
-	// that we are going through.
+	// obtain contexts for all the entries in the wantlits.  This allows
+	// us to react when cancels arrive to wantlists that we are going
+	// through.  We use a Background context because requests will be
+	// ongoing when we return and the parent context is cancelled.
+	parentCtx := context.Background()
 	entryCtxs := make([]context.Context, len(wantlist))
 	entryCancels := make([]context.CancelFunc, len(wantlist))
 	nop := func() {}
@@ -405,7 +393,7 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 			entryCtxs[i] = ctx
 			entryCancels[i] = nop
 		} else {
-			entryCtxs[i], entryCancels[i] = sender.ht.requestTracker.requestContext(ctx, entry.Cid)
+			entryCtxs[i], entryCancels[i] = sender.ht.requestTracker.requestContext(parentCtx, entry.Cid)
 		}
 	}
 
@@ -454,51 +442,60 @@ WANTLIST_LOOP:
 		close(resultsCollector)
 	}()
 
-COLLECT_RESULTS:
-	for result := range resultsCollector {
-		entry := result.entry
-		if result.err == nil {
-			sender.ht.connEvtMgr.OnMessage(sender.peer)
+	// We are finished sending. Like bitswap/bsnet, we return.
+	// Receiving results is async and we leave a goroutine taking care of
+	// that.
+	go func() {
+		bsresp := bsmsg.New(false)
 
-			if entry.WantType == pb.Message_Wantlist_Block {
-				bsresp.AddBlock(result.block)
-			} else {
-				bsresp.AddHave(entry.Cid)
+	COLLECT_RESULTS:
+		for result := range resultsCollector {
+			entry := result.entry
+
+			if result.err == nil {
+				sender.ht.connEvtMgr.OnMessage(sender.peer)
+
+				if entry.WantType == pb.Message_Wantlist_Block {
+					bsresp.AddBlock(result.block)
+				} else {
+					bsresp.AddHave(entry.Cid)
+				}
+				continue
 			}
-			continue
+
+			// error handling
+			switch result.err.Type {
+			case typeFatal:
+				log.Errorf("Disconnecting from %s: %w", sender.peer, result.err)
+				sender.ht.DisconnectFrom(ctx, sender.peer)
+				err = result.err
+				break COLLECT_RESULTS // cancel all requests
+			case typeClient:
+				if entry.SendDontHave {
+					bsresp.AddDontHave(entry.Cid)
+				}
+			case typeContext: // ignore and move on
+			case typeServer: // should not be returned as retried until fatal
+			default:
+				panic("unexpected returned error type")
+			}
 		}
 
-		// error handling
-		switch result.err.Type {
-		case typeFatal:
-			log.Error("Disconnecting from %s: %w", sender.peer, result.err)
-			sender.ht.DisconnectFrom(ctx, sender.peer)
-			err = result.err
-			break COLLECT_RESULTS // cancel all requests
-		case typeClient:
-			if entry.SendDontHave {
-				bsresp.AddDontHave(entry.Cid)
-			}
-		case typeContext: // ignore and move on
-		case typeServer: // should not be returned as retried until fatal
-		default:
-			panic("unexpected returned error type")
+		// We return a special "cancel" function that we need to call
+		// explicitally. This cleans up our request-tracker.
+		for _, cancel := range entryCancels {
+			cancel()
 		}
-	}
+		sender.ht.requestTracker.cleanEmptyRequests(wantlist)
+		sender.notifyReceivers(bsresp)
+		// This just logs errors apparently.
+		sendErrors(err)
+	}()
 
-	// clean up request tracker
-	for _, cancel := range entryCancels {
-		cancel()
-	}
-	sender.ht.requestTracker.cleanEmptyRequests(wantlist)
-
-	go sender.notifyReceivers(bsresp)
-	// This just logs errors apparently.
-	sendErrors(err)
-
-	// We never return error. Whatever happened, we will be cooling down
-	// urls etc. but we don't need to disconnect or report that "peer is
-	// down" for the moment, as we disconnect manually on error.
+	// We never return error once we started sending. Whatever happened,
+	// we will be cooling down urls etc. but we don't need to disconnect
+	// or report that "peer is down" for the moment, as we disconnect
+	// manually on error.
 	return nil
 }
 
@@ -548,7 +545,6 @@ func parseRetryAfter(ra string) (time.Time, bool) {
 		}
 		return date, true
 	}
-
 	if secs <= 0 {
 		return time.Time{}, false
 	}

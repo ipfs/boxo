@@ -574,6 +574,9 @@ func TestBackOff(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// give time for the request to be handled.
+	time.Sleep(time.Second)
+
 	nms2, err := htnet.NewMessageSender(ctx, peer2.ID(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -586,8 +589,7 @@ func TestBackOff(t *testing.T) {
 	}
 	recv.wait()
 	timeSince := time.Since(now)
-
-	if timeSince < 5*time.Second {
+	if timeSince < 4*time.Second { // We already slept 1 second before retry
 		t.Fatal("backoff should have made request wait for more than 5 seconds")
 	}
 	t.Logf("waited for %s seconds", timeSince)
