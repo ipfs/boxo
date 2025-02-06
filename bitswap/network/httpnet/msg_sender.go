@@ -404,12 +404,12 @@ WANTLIST_LOOP:
 	for i, entry := range wantlist {
 		reqStart := time.Now()
 
-		if entry.Cancel {
+		if entry.Cancel { // shortcut cancel entries.
 			sender.ht.requestTracker.cancelRequest(entry.Cid)
 			sender.ht.metrics.updateStatusCounter(0)
 			sender.ht.metrics.RequestTime.Observe(float64(time.Since(reqStart)) / float64(time.Second))
+			continue
 		}
-		// shortcut cancel entries
 
 		resultCh := make(chan httpResult, 1)
 
