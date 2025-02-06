@@ -501,37 +501,46 @@ func TestSendCancels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msrv2 := makeServer(t, 0, 1)
+	msrv2 := makeServer(t, 0, 2)
 	associateServerToPeer(t, msrv2, htnet.host, peer2)
 
-	wl := makeCids(t, 0, 1)
-	msg := makeWantsMessage(append(wl, slowCid))
-	msg2 := msg.Clone()
-	msg2.Reset(true)
-	msg2.Cancel(slowCid)
+	wl := makeCids(t, 0, 2)
+	msg := makeWantsMessage([]cid.Cid{backoffCid})
+	msg2 := makeWantsMessage(wl)
+	msg2.Cancel(backoffCid)
+	msg3 := msg2.Clone()
+	msg3.Reset(true)
+	msg3.Cancel(wl[0])
+	msg3.Cancel(wl[1])
 
-	go func() {
-		// send message to peer1
-		err := htnet.SendMessage(ctx, peer.ID(), msg)
-		if err != nil {
-			t.Error(err)
-		}
-	}()
-	time.Sleep(1 * time.Second)
+	// send message to peer1 with backoff CID
+	err = htnet.SendMessage(ctx, peer.ID(), msg)
+	if err != nil {
+		t.Error(err)
+	}
 
-	// send cancel to peer2, should abort all ongoing requests for that
-	// cid.
-	err = htnet.SendMessage(ctx, peer2.ID(), msg2)
+	// wait for response to arrive and retry to trigger
+	time.Sleep(time.Second)
+
+	// we are now sleeping. Send a cancel for the backoff cid
+	// and request two other cids.
+	err = htnet.SendMessage(ctx, peer.ID(), msg2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(time.Second)
+
+	// the two other CIDs are waiting on cooldown
+	// now cancel them.
+	err = htnet.SendMessage(ctx, peer2.ID(), msg3)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	err = recv.wait()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(recv.donthaves) > 0 {
-		t.Fatal("request aborted, don't haves should not have been sent")
+	if err == nil {
+		t.Fatal("we should not have received anything")
 	}
 }
 

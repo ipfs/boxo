@@ -180,6 +180,7 @@ func (err senderError) Error() string {
 func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsmsg.Entry) (blocks.Block, *senderError) {
 	// sleep whatever needed
 	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
+		log.Debugf("sleeping on %s", u.URL)
 		time.Sleep(time.Until(dl))
 	}
 
@@ -194,7 +195,18 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		panic("unknown bitswap entry type")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, sender.opts.SendTimeout)
+	// We do not abort ongoing requests.  This is known to cause "http2:
+	// server sent GOAWAY and closed the connection" Losing a connection
+	// is worse than downloading some extra bytes.  We do abort if the
+	// context WAS already cancelled before making the request.
+	if err := ctx.Err(); err != nil {
+		return nil, &senderError{
+			Type: typeContext,
+			Err:  err,
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), sender.opts.SendTimeout)
 	defer cancel()
 	req, err := buildRequest(ctx, u.ParsedURL, method, entry.Cid.String(), sender.ht.userAgent)
 	if err != nil {

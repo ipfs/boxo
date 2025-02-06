@@ -331,7 +331,6 @@ func (ht *Network) senderURLs(p peer.ID) []*senderURL {
 // SendMessage sends the given message to the given peer. It uses
 // NewMessageSender under the hood, with default options.
 func (ht *Network) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwapMessage) error {
-
 	if len(msg.Wantlist()) == 0 {
 		return nil
 	}
