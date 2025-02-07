@@ -9,11 +9,11 @@ import (
 	"os"
 	"time"
 
-	proto "github.com/gogo/protobuf/proto"
 	files "github.com/ipfs/boxo/files"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	pb "github.com/ipfs/boxo/ipld/unixfs/pb"
 	ipld "github.com/ipfs/go-ipld-format"
+	"google.golang.org/protobuf/proto"
 )
 
 // A LinkResult for any parallel enumeration of links
