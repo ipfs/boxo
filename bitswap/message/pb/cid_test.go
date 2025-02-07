@@ -1,12 +1,12 @@
-package bitswap_message_pb_test
+package pb
 
 import (
 	"bytes"
 	"testing"
 
-	pb "github.com/ipfs/boxo/bitswap/message/pb"
 	u "github.com/ipfs/boxo/util"
 	"github.com/ipfs/go-cid"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestCID(t *testing.T) {
@@ -20,8 +20,8 @@ func TestCID(t *testing.T) {
 	}
 
 	c := cid.NewCidV0(u.Hash([]byte("foobar")))
-	msg := pb.Message_BlockPresence{Cid: pb.Cid{Cid: c}}
-	actual, err := msg.Marshal()
+	msg := Message_BlockPresence{Cid: c.Bytes()}
+	actual, err := proto.Marshal(&msg)
 	if err != nil {
 		t.Fatal(err)
 	}
