@@ -508,11 +508,12 @@ func write(w io.Writer, m *pb.Message) error {
 
 	n := binary.PutUvarint(buf, uint64(size))
 
-	b, err := proto.Marshal(m)
+	opts := proto.MarshalOptions{}
+	written, err := opts.MarshalAppend(buf[:n], m)
 	if err != nil {
 		return err
 	}
-	n += copy(buf[n:], b)
+	n += len(written)
 
 	_, err = w.Write(buf[:n])
 	return err
