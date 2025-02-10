@@ -9,7 +9,7 @@ import (
 )
 
 // requestTracker tracks requests to CIDs so that we can cancel all ongoing
-// requests a single CID.
+// requests to a single CID.
 type requestTracker struct {
 	mux  sync.Mutex
 	ctxs map[cid.Cid]*ctxMap

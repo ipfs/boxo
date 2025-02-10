@@ -11,7 +11,7 @@ var durationHistogramBuckets = []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 
 var blockSizesHistogramBuckets = []float64{1, 128 << 10, 256 << 10, 512 << 10, 1024 << 10, 2048 << 10, 4092 << 10}
 
 func responseSizes(ctx context.Context) imetrics.Histogram {
-	return imetrics.NewCtx(ctx, "response_bytes", "Histogram of http response sizes").Histogram(blockSizesHistogramBuckets)
+	return imetrics.NewCtx(ctx, "response_bytes", "Histogram of bitswap response sizes").Histogram(blockSizesHistogramBuckets)
 }
 
 func wantlistsTotal(ctx context.Context) imetrics.Counter {

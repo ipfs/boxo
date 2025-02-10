@@ -200,6 +200,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	// is worse than downloading some extra bytes.  We do abort if the
 	// context WAS already cancelled before making the request.
 	if err := ctx.Err(); err != nil {
+		log.Debugf("aborted before sending: %s %q", method, u.ParsedURL.URL)
 		return nil, &senderError{
 			Type: typeContext,
 			Err:  err,
@@ -419,7 +420,11 @@ WANTLIST_LOOP:
 		if entry.Cancel { // shortcut cancel entries.
 			sender.ht.requestTracker.cancelRequest(entry.Cid)
 			sender.ht.metrics.updateStatusCounter(0)
-			sender.ht.metrics.RequestTime.Observe(float64(time.Since(reqStart)) / float64(time.Second))
+			// Do not observe request time for cancel requests as
+			// they cost us nothing, so it is unfair to compare
+			// against bsnet requests-time.
+			// sender.ht.metrics.RequestTime.Observe(float64(time.Since(reqStart))
+			// / float64(time.Second))
 			continue
 		}
 
