@@ -28,6 +28,7 @@ import (
 	"github.com/ipfs/go-test/random"
 	prime "github.com/ipld/go-ipld-prime"
 	mh "github.com/multiformats/go-multihash"
+	"google.golang.org/protobuf/proto"
 )
 
 var someCid cid.Cid = func() cid.Cid {
@@ -662,7 +663,7 @@ func TestUnmarshalFailure(t *testing.T) {
 
 	// now with a bad link
 	pbn := &mdpb.PBNode{Links: []*mdpb.PBLink{{Hash: []byte("not a multihash")}}}
-	badlink, err := pbn.Marshal()
+	badlink, err := proto.Marshal(pbn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -949,7 +950,7 @@ func TestLinkSorting(t *testing.T) {
 			{Hash: ccccBlk.Cid().Bytes(), Name: &cccc},
 		},
 	}
-	byts, err := pbn.Marshal()
+	byts, err := proto.Marshal(pbn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1093,7 +1094,7 @@ func TestLinkSorting(t *testing.T) {
 			t.Fatal(err)
 		}
 		rtPBNode := node.GetPBNode()
-		rtByts, err := rtPBNode.Marshal()
+		rtByts, err := proto.Marshal(rtPBNode)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -19,6 +19,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - upgrade to `go-libp2p` [v0.39.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.39.0)
+- move `ipld/unixfs` from gogo protobuf [#841](https://github.com/ipfs/boxo/pull/841)
 
 ### Removed
 
