@@ -41,7 +41,7 @@ func TestNewMessageFromProto(t *testing.T) {
 	if !wantlistContains(protoMessage.Wantlist, str) {
 		t.Fail()
 	}
-	m, err := newMessageFromProto(*protoMessage)
+	m, err := newMessageFromProto(protoMessage)
 	if err != nil {
 		t.Fatal(err)
 	}

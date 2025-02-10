@@ -189,7 +189,7 @@ func (m *impl) Reset(full bool) {
 
 var errCidMissing = errors.New("missing cid")
 
-func newMessageFromProto(pbm pb.Message) (BitSwapMessage, error) {
+func newMessageFromProto(pbm *pb.Message) (BitSwapMessage, error) {
 	m := newMsg(pbm.Wantlist.Full)
 	for _, e := range pbm.Wantlist.Entries {
 		if len(e.Block) == 0 {
@@ -428,8 +428,8 @@ func FromMsgReader(r msgio.Reader) (BitSwapMessage, error) {
 		return nil, err
 	}
 
-	var pb pb.Message
-	err = proto.Unmarshal(msg, &pb)
+	pb := new(pb.Message)
+	err = proto.Unmarshal(msg, pb)
 	r.ReleaseMsg(msg)
 	if err != nil {
 		return nil, err
