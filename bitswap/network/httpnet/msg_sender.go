@@ -542,10 +542,15 @@ func (sender *httpMsgSender) Reset() error {
 	return nil
 }
 
-// SupportsHave can advertise whether we would like to support HAVE entries
-// (they trigger HEAD requests).
+// SupportsHave indicates whether the peer answers to HEAD requests.
+// This has been probed during Connect().
 func (sender *httpMsgSender) SupportsHave() bool {
-	return sender.ht.supportsHave
+	v, err := sender.ht.host.Peerstore().Get(sender.peer, peerstoreSupportsHeadKey)
+	if err != nil {
+		return false
+	}
+	b, ok := v.(bool)
+	return ok && b
 }
 
 // parseRetryAfter returns how many seconds the Retry-After header header

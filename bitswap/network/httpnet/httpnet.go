@@ -43,7 +43,6 @@ var (
 	DefaultIdleConnTimeout               = 30 * time.Second
 	DefaultResponseHeaderTimeout         = 10 * time.Second
 	DefaultMaxIdleConns                  = 50
-	DefaultSupportsHave                  = true
 	DefaultInsecureSkipVerify            = false
 	DefaultMaxBackoff                    = time.Minute
 	DefaultMaxHTTPAddressesPerPeer       = 10
@@ -53,6 +52,8 @@ var (
 var pingCid = "bafkqaaa" // identity CID
 
 const http2proto = "HTTP/2.0"
+
+const peerstoreSupportsHeadKey = "http-retrieval-head-support"
 
 // Option allows to configure the Network.
 type Option func(net *Network)
@@ -100,15 +101,6 @@ func WithResponseHeaderTimeout(t time.Duration) Option {
 func WithMaxIdleConns(n int) Option {
 	return func(net *Network) {
 		net.maxIdleConns = n
-	}
-}
-
-// WithSupportsHave specifies whether want to expose that we can handle Have
-// messages (i.e. to the MessageQueue). Have messages trigger HEAD HTTP
-// requests. Not all HTTP-endpoints may know how to handle a HEAD request.
-func WithSupportsHave(b bool) Option {
-	return func(net *Network) {
-		net.supportsHave = b
 	}
 }
 
@@ -169,7 +161,6 @@ type Network struct {
 	idleConnTimeout         time.Duration
 	responseHeaderTimeout   time.Duration
 	maxIdleConns            int
-	supportsHave            bool
 	insecureSkipVerify      bool
 	maxHTTPAddressesPerPeer int
 	httpWorkers             int
@@ -203,7 +194,6 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		idleConnTimeout:         DefaultIdleConnTimeout,
 		responseHeaderTimeout:   DefaultResponseHeaderTimeout,
 		maxIdleConns:            DefaultMaxIdleConns,
-		supportsHave:            DefaultSupportsHave,
 		insecureSkipVerify:      DefaultInsecureSkipVerify,
 		maxHTTPAddressesPerPeer: DefaultMaxHTTPAddressesPerPeer,
 		httpWorkers:             DefaultHTTPWorkers,
@@ -408,42 +398,37 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 	// time with the client. We call peer.Connected()
 	// on success.
 	var workingAddrs []multiaddr.Multiaddr
+	supportsHead := true
 	for i, u := range urls {
-		req, err := buildRequest(ctx, u, "GET", pingCid, ht.userAgent)
+		err := ht.connect(ctx, p.ID, u, "GET")
 		if err != nil {
-			log.Debug(err)
-			return err
-		}
-
-		log.Debugf("connect request to %s %q", p.ID, req.URL)
-		resp, err := ht.client.Do(req)
-		if err != nil {
-			log.Debugf("connect error %s", err)
+			// abort if context cancelled
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				// abort when context cancelled
 				return ctxErr
 			}
 			continue
 		}
-
-		if resp.Proto != http2proto {
-			log.Warnf("%s://%q is not using HTTP/2 (%s)", req.URL.Scheme, req.URL.Host, resp.Proto)
+		// GET works. Does HEAD work though?
+		err = ht.connect(ctx, p.ID, u, "HEAD")
+		if err != nil {
+			// abort if context cancelled
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			supportsHead = false
 		}
 
-		if resp.StatusCode >= 500 { // 5xx
-			log.Debugf("connect error %d <- %s %q", resp.StatusCode, p.ID, req.URL)
-			// We made a proper request and got a 5xx back.
-			// We cannot consider this a working connection.
-			continue
-		}
 		workingAddrs = append(workingAddrs, htaddrs.Addrs[i])
 	}
 
 	if len(workingAddrs) > 0 {
 		ht.host.Peerstore().AddAddrs(p.ID, workingAddrs, peerstore.PermanentAddrTTL)
+		// ignoring error
+		_ = ht.host.Peerstore().Put(p.ID, peerstoreSupportsHeadKey, supportsHead)
+
 		ht.connEvtMgr.Connected(p.ID)
 		ht.pinger.startPinging(p.ID)
-		log.Debugf("connect success to %s", p.ID)
+		log.Debugf("connect success to %s (supports HEAD: %t)", p.ID, supportsHead)
 		// We "connected"
 		return nil
 	}
@@ -451,6 +436,32 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 	err := fmt.Errorf("connect failure to %s: %w", p.ID, ErrNoSuccess)
 	log.Debug(err)
 	return err
+}
+
+func (ht *Network) connect(ctx context.Context, p peer.ID, u network.ParsedURL, method string) error {
+	req, err := buildRequest(ctx, u, method, pingCid, ht.userAgent)
+	if err != nil {
+		log.Debug(err)
+		return err
+	}
+
+	log.Debugf("connect request to %s %s %q", p, method, req.URL)
+	resp, err := ht.client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if resp.Proto != http2proto {
+		log.Warnf("%s://%q is not using HTTP/2 (%s)", req.URL.Scheme, req.URL.Host, resp.Proto)
+	}
+
+	if resp.StatusCode >= 500 { // 5xx
+		log.Debugf("connect error: %d <- %q (%s)", resp.StatusCode, req.URL, p)
+		// We made a proper request and got a 5xx back.
+		// We cannot consider this a working connection.
+		return err
+	}
+	return nil
 }
 
 // DisconnectFrom marks this peer as Disconnected in the connection event

@@ -190,6 +190,11 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if cidstr == pingCid {
+		rw.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if c.Equals(errorCid) {
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
@@ -451,9 +456,7 @@ func TestSendMessageWithPartialResponse(t *testing.T) {
 func TestSendMessageSendHavesAndDontHaves(t *testing.T) {
 	ctx := context.Background()
 	recv := mockReceiver(t)
-	htnet, mn := mockNetwork(t, recv,
-		WithSupportsHave(true),
-	)
+	htnet, mn := mockNetwork(t, recv)
 	peer, err := mn.GenPeer()
 	if err != nil {
 		t.Fatal(err)
@@ -487,9 +490,7 @@ func TestSendMessageSendHavesAndDontHaves(t *testing.T) {
 func TestSendCancels(t *testing.T) {
 	ctx := context.Background()
 	recv := mockReceiver(t)
-	htnet, mn := mockNetwork(t, recv,
-		WithSupportsHave(true),
-	)
+	htnet, mn := mockNetwork(t, recv)
 	peer, err := mn.GenPeer()
 	if err != nil {
 		t.Fatal(err)
