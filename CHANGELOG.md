@@ -19,6 +19,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - `provider`: Prevent multiple instances of reprovider.Reprovide() from running at the same time. [#834](https://github.com/ipfs/boxo/pull/834)
+- upgrade to `go-libp2p` [v0.39.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.39.0)
 
 ### Removed
 
