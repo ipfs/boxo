@@ -390,26 +390,6 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 		htaddrs.Addrs = filteredAddrs
 	}
 
-	urls := network.ExtractURLsFromPeer(htaddrs)
-
-	// allowlist
-	if len(ht.allowlist) > 0 {
-		var filteredURLs []network.ParsedURL
-		var filteredAddrs []multiaddr.Multiaddr
-		for i, u := range urls {
-			host, _, err := net.SplitHostPort(u.URL.Host)
-			if err != nil {
-				return err
-			}
-			if _, ok := ht.allowlist[host]; ok {
-				filteredURLs = append(filteredURLs, u)
-				filteredAddrs = append(filteredAddrs, htaddrs.Addrs[i])
-			}
-		}
-		urls = filteredURLs
-		htaddrs.Addrs = filteredAddrs
-	}
-
 	// if len(filteredURLs == 0) nothing will happen below and we will return
 	// an error below.
 
