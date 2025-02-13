@@ -389,6 +389,27 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 		urls = filteredURLs
 		htaddrs.Addrs = filteredAddrs
 	}
+
+	urls := network.ExtractURLsFromPeer(htaddrs)
+
+	// allowlist
+	if len(ht.allowlist) > 0 {
+		var filteredURLs []network.ParsedURL
+		var filteredAddrs []multiaddr.Multiaddr
+		for i, u := range urls {
+			host, _, err := net.SplitHostPort(u.URL.Host)
+			if err != nil {
+				return err
+			}
+			if _, ok := ht.allowlist[host]; ok {
+				filteredURLs = append(filteredURLs, u)
+				filteredAddrs = append(filteredAddrs, htaddrs.Addrs[i])
+			}
+		}
+		urls = filteredURLs
+		htaddrs.Addrs = filteredAddrs
+	}
+
 	// if len(filteredURLs == 0) nothing will happen below and we will return
 	// an error below.
 
@@ -451,8 +472,14 @@ func (ht *Network) connect(ctx context.Context, p peer.ID, u network.ParsedURL, 
 		return err
 	}
 
-	if resp.Proto != http2proto {
-		log.Warnf("%s://%q is not using HTTP/2 (%s)", req.URL.Scheme, req.URL.Host, resp.Proto)
+	// For HTTP, the address can only be a LAN IP as otherwise it would have
+	// been filtered out before.
+	// So IF it is HTTPS and not http2, we abort because we don't want
+	// requests to non-local hosts without http2.
+	if u.URL.Scheme == "https" && resp.Proto != http2proto {
+		err = fmt.Errorf("%s://%q is not using HTTP/2 (%s)", req.URL.Scheme, req.URL.Host, resp.Proto)
+		log.Warn(err)
+		return err
 	}
 
 	if resp.StatusCode >= 500 { // 5xx

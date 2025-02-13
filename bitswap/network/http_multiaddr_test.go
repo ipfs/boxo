@@ -23,7 +23,7 @@ func TestExtractHTTPAddress(t *testing.T) {
 				Scheme: "http",
 				Host:   "example.com:8080",
 			},
-			expectErr: false,
+			expectErr: true,
 		},
 		{
 			name:  "Valid HTTPS multiaddress with DNS",
@@ -138,10 +138,6 @@ func TestExtractHTTPAddressesFromPeer(t *testing.T) {
 				},
 			},
 			want: []*url.URL{
-				{
-					Scheme: "http",
-					Host:   "example.com:8080",
-				},
 				{
 					Scheme: "http",
 					Host:   "127.0.0.1:8081",

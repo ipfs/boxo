@@ -2,6 +2,7 @@ package network
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -60,15 +61,27 @@ func ExtractHTTPAddress(ma multiaddr.Multiaddr) (ParsedURL, error) {
 
 	// Construct the URL object
 	address := fmt.Sprintf("%s://%s:%s", schema, host, port)
-	parsedURL, err := url.Parse(address)
+	pURL, err := url.Parse(address)
 	if err != nil {
 		return ParsedURL{}, fmt.Errorf("failed to parse URL: %w", err)
 	}
 
-	return ParsedURL{
-		URL: parsedURL,
+	parsedURL := ParsedURL{
+		URL: pURL,
 		SNI: sni,
-	}, nil
+	}
+
+	// Error on addresses which are not https nor local
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if schema != "https" && !(ip.IsLoopback() || ip.IsPrivate()) {
+			return parsedURL, fmt.Errorf("multiaddress is not a TLS endpoint nor a local or private IP address")
+		}
+	} else if schema != "https" {
+		return parsedURL, fmt.Errorf("multiaddress is not a TLS endpoint nor a local or private IP address")
+	}
+
+	return parsedURL, nil
 }
 
 // ExtractURLsFromPeer extracts all HTTP schema+host+port addresses as ParsedURL from a peer.AddrInfo object.
