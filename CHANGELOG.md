@@ -34,6 +34,7 @@ The following emojis are used to highlight certain changes:
 
 - Fix memory leaks due to not cleaning up wantlists [#829](https://github.com/ipfs/boxo/pull/829), [#833](https://github.com/ipfs/boxo/pull/833)
 - `ipns`: Improved interop with legacy clients by restoring support for `[]byte` CID in `Value` field. `Value()` will convert it to a valid `path.Path`. Empty `Value()` will produce `NoopPath` (`/ipfs/bafkqaaa`) to avoid breaking existing code that expects a valid record to always produce a valid content path. [#830](https://github.com/ipfs/boxo/pull/830)
+- `gateway/blocks-backend`: Removed IPLD decoding in GetBlock funciton in gateway's BlocksBackend. Now it's querying the blockService directly instead of dagService. [#845](https://github.com/ipfs/boxo/pull/845)
 
 
 ## [v0.27.3]
