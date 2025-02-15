@@ -410,13 +410,12 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 		}
 	}
 
-	var wgRequests sync.WaitGroup
 	resultsCollector := make(chan httpResult, len(wantlist))
+
+	totalSent := 0
 
 WANTLIST_LOOP:
 	for i, entry := range wantlist {
-		reqStart := time.Now()
-
 		if entry.Cancel { // shortcut cancel entries.
 			sender.ht.requestTracker.cancelRequest(entry.Cid)
 			sender.ht.metrics.updateStatusCounter(0)
@@ -428,13 +427,12 @@ WANTLIST_LOOP:
 			continue
 		}
 
-		resultCh := make(chan httpResult, 1)
-
 		reqInfo := httpRequestInfo{
-			ctx:    entryCtxs[i],
-			sender: sender,
-			entry:  entry,
-			result: resultCh,
+			ctx:       entryCtxs[i],
+			sender:    sender,
+			entry:     entry,
+			result:    resultsCollector,
+			startTime: time.Now(),
 		}
 
 		select {
@@ -443,31 +441,22 @@ WANTLIST_LOOP:
 			err = ctx.Err()
 			break WANTLIST_LOOP
 		case sender.ht.httpRequests <- reqInfo:
-			wgRequests.Add(1)
-			go func(start time.Time) {
-				defer wgRequests.Done()
-				result := <-resultCh
-				close(resultCh)
-				resultsCollector <- result
-				sender.ht.metrics.RequestTime.Observe(float64(time.Since(start)) / float64(time.Second))
-			}(reqStart)
+			totalSent++
 		}
 	}
-
-	go func() {
-		wgRequests.Wait()
-		close(resultsCollector)
-	}()
 
 	// We are finished sending. Like bitswap/bsnet, we return.
 	// Receiving results is async and we leave a goroutine taking care of
 	// that.
 	go func() {
 		bsresp := bsmsg.New(false)
+		totalResponses := 0
 
-	COLLECT_RESULTS:
 		for result := range resultsCollector {
-			entry := result.entry
+			// Record total request time.
+			sender.ht.metrics.RequestTime.Observe(float64(time.Since(result.info.startTime)) / float64(time.Second))
+
+			entry := result.info.entry
 
 			if result.err == nil {
 				sender.ht.connEvtMgr.OnMessage(sender.peer)
@@ -477,24 +466,32 @@ WANTLIST_LOOP:
 				} else {
 					bsresp.AddHave(entry.Cid)
 				}
-				continue
-			}
+			} else {
 
-			// error handling
-			switch result.err.Type {
-			case typeFatal:
-				log.Errorf("Disconnecting from %s: %w", sender.peer, result.err.Err)
-				sender.ht.DisconnectFrom(ctx, sender.peer)
-				err = result.err
-				break COLLECT_RESULTS // cancel all requests
-			case typeClient:
-				if entry.SendDontHave {
-					bsresp.AddDontHave(entry.Cid)
+				// error handling
+				switch result.err.Type {
+				case typeFatal:
+					log.Errorf("Disconnecting from %s: %w", sender.peer, result.err.Err)
+					sender.ht.DisconnectFrom(ctx, sender.peer)
+					err = result.err
+					// continue processing responses as workers
+					// might have done other requests in parallel
+				case typeClient:
+					if entry.SendDontHave {
+						bsresp.AddDontHave(entry.Cid)
+					}
+				case typeContext: // ignore and move on
+				case typeServer: // should not be returned as retried until fatal
+				default:
+					panic("unexpected returned error type")
 				}
-			case typeContext: // ignore and move on
-			case typeServer: // should not be returned as retried until fatal
-			default:
-				panic("unexpected returned error type")
+			}
+			// Leave loop when we read all what we
+			// expected.
+			totalResponses++
+			if totalResponses >= totalSent {
+				close(resultsCollector)
+				break
 			}
 		}
 

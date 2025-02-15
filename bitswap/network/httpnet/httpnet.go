@@ -175,14 +175,15 @@ type Network struct {
 }
 
 type httpRequestInfo struct {
-	ctx    context.Context
-	sender *httpMsgSender
-	entry  bsmsg.Entry
-	result chan<- httpResult
+	ctx       context.Context
+	sender    *httpMsgSender
+	entry     bsmsg.Entry
+	result    chan<- httpResult
+	startTime time.Time
 }
 
 type httpResult struct {
-	entry bsmsg.Entry
+	info  httpRequestInfo
 	block blocks.Block
 	err   *senderError
 }
@@ -544,7 +545,7 @@ func (ht *Network) httpWorker(i int) {
 				u, err := reqInfo.sender.bestURL(urlIgnore)
 				if err != nil {
 					reqInfo.result <- httpResult{
-						entry: reqInfo.entry,
+						info: reqInfo,
 						err: &senderError{
 							Type: typeFatal,
 							Err:  err,
@@ -556,7 +557,7 @@ func (ht *Network) httpWorker(i int) {
 				// no urls to retry left.
 				if u == nil {
 					reqInfo.result <- httpResult{
-						entry: reqInfo.entry,
+						info: reqInfo,
 						err: &senderError{
 							Type: typeClient,
 							Err:  nil,
@@ -572,7 +573,7 @@ func (ht *Network) httpWorker(i int) {
 				)
 
 				result := httpResult{
-					entry: reqInfo.entry,
+					info:  reqInfo,
 					block: b,
 					err:   serr,
 				}
