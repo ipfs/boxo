@@ -233,10 +233,10 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		// and Disconnect() the peer when no urls work.
 		serr := &senderError{
 			Type: typeServer,
-			Err:  ctx.Err(),
+			Err:  err,
 		}
 
-		if ctx.Err() != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			serr.Type = typeContext // cont. with next block.
 		}
 

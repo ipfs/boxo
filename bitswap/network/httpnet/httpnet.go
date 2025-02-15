@@ -408,8 +408,8 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 		err := ht.connect(ctx, p.ID, u, "GET")
 		if err != nil {
 			// abort if context cancelled
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return ctxErr
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
 			}
 			continue
 		}
