@@ -18,6 +18,7 @@ import (
 	"github.com/ipfs/boxo/bitswap/network"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 )
 
 // MessageSender option defaults.
@@ -542,7 +543,11 @@ func (sender *httpMsgSender) Reset() error {
 // SupportsHave indicates whether the peer answers to HEAD requests.
 // This has been probed during Connect().
 func (sender *httpMsgSender) SupportsHave() bool {
-	v, err := sender.ht.host.Peerstore().Get(sender.peer, peerstoreSupportsHeadKey)
+	return supportsHave(sender.ht.host.Peerstore(), sender.peer)
+}
+
+func supportsHave(pstore peerstore.Peerstore, p peer.ID) bool {
+	v, err := pstore.Get(p, peerstoreSupportsHeadKey)
 	if err != nil {
 		return false
 	}

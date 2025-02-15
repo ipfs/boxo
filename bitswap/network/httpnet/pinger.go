@@ -53,10 +53,15 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 		}
 	}
 
+	method := "GET"
+	if supportsHave(pngr.host.Peerstore(), p) {
+		method = "HEAD"
+	}
+
 	results := make(chan ping.Result, len(urls))
 	for _, u := range urls {
 		go func(u network.ParsedURL) {
-			req, err := buildRequest(ctx, u, "GET", pngr.pingCid, pngr.userAgent)
+			req, err := buildRequest(ctx, u, method, pngr.pingCid, pngr.userAgent)
 			if err != nil {
 				log.Debug(err)
 				results <- ping.Result{Error: err}
