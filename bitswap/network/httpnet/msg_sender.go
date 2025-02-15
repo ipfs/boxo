@@ -21,7 +21,7 @@ import (
 )
 
 // MessageSender option defaults.
-var (
+const (
 	// DefaultMaxRetries specifies how many requests to make to available
 	// HTTP endpoints in case of failure.
 	DefaultMaxRetries = 1
