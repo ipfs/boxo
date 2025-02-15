@@ -349,7 +349,7 @@ func (ht *Network) Self() peer.ID {
 // Connect attempts setting up an HTTP connection to the given peer. The given
 // AddrInfo must include at least one HTTP endpoint for the peer. HTTP URLs in
 // AddrInfo will be tried by making an HTTP GET request to
-// "ipfs/bafyaabakaieac", which is the CID for an empty directory (inlined).
+// "ipfs/bafyqaaa", which is the CID for an empty raw block (inlined).
 // Any completed request, regardless of the HTTP response, is considered a
 // connection success and marks this peer as "connected", setting it up to
 // handle messages and make requests. The peer will be pinged regularly to
