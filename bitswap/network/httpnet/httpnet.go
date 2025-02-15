@@ -35,10 +35,14 @@ var ErrNoSuccess = errors.New("none of the peer HTTP endpoints responded success
 
 var _ network.BitSwapNetwork = (*Network)(nil)
 
-// Defaults for the different options
 var (
-	DefaultMaxBlockSize            int64 = 2 << 20            // 2MiB.
-	DefaultUserAgent                     = defaultUserAgent() // Usually will result in a "boxo@commitID"
+	// DefaultUserAgent is sent as a header in all requests.
+	DefaultUserAgent = defaultUserAgent() // Usually will result in a "boxo@commitID"
+)
+
+// Defaults for the configurable options.
+const (
+	DefaultMaxBlockSize            int64 = 2 << 20 // 2MiB.
 	DefaultDialTimeout                   = 3 * time.Second
 	DefaultIdleConnTimeout               = 30 * time.Second
 	DefaultResponseHeaderTimeout         = 10 * time.Second
