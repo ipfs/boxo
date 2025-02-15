@@ -524,7 +524,7 @@ func (sender *httpMsgSender) notifyReceivers(bsresp bsmsg.BitSwapMessage) {
 	for i, recv := range sender.ht.receivers {
 		log.Debugf("ReceiveMessage from %s#%d. Blocks: %d. Haves: %d", sender.peer, i, lb, lh)
 		recv.ReceiveMessage(
-			context.Background(), // todo: which context?
+			context.Background(),
 			sender.peer,
 			bsresp,
 		)
