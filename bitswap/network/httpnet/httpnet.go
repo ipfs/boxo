@@ -259,7 +259,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		ResponseHeaderTimeout:  htnet.responseHeaderTimeout,
 		ExpectContinueTimeout:  1 * time.Second,
 		MaxResponseHeaderBytes: 2 << 10,  // 2KiB
-		ReadBufferSize:         64 << 10, // 64KiB. Default is 4KiB and most blocks will be larger.
+		ReadBufferSize:         16 << 10, // 16KiB. Default is 4KiB. 16KiB is max TLS buffer size.
 	}
 
 	c := &http.Client{
