@@ -23,9 +23,37 @@ func TestExtractHTTPAddress(t *testing.T) {
 				Scheme: "http",
 				Host:   "example.com:8080",
 			},
-			expectErr: true,
+			expectErr: true, // error due to non-local address and no TLS.
 		},
 		{
+			name:  "Valid HTTPS multiaddress with DNS4",
+			maStr: "/dns4/example.com/tcp/443/https",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "example.com:443",
+			},
+			expectErr: false,
+		},
+		{
+			name:  "Valid HTTPS multiaddress with DNS6",
+			maStr: "/dns6/example.com/tcp/443/https",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "example.com:443",
+			},
+			expectErr: false,
+		},
+		{
+			name:  "Valid HTTPS multiaddress with DNS",
+			maStr: "/dns/example.com/tcp/443/https",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "example.com:443",
+			},
+			expectErr: false,
+		},
+		{
+
 			name:  "Valid HTTPS multiaddress with DNS",
 			maStr: "/dns4/example.com/tcp/443/https",
 			want: &url.URL{
@@ -38,7 +66,7 @@ func TestExtractHTTPAddress(t *testing.T) {
 			name:      "Valid WSS multiaddress with DNS",
 			maStr:     "/dns4/example.com/tcp/443/wss",
 			want:      nil,
-			expectErr: true,
+			expectErr: true, // error due to wss: we need HTTPs
 		},
 		{
 			name:  "Valid HTTP multiaddress with IP4",

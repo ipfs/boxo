@@ -47,6 +47,7 @@ func ExtractHTTPAddress(ma multiaddr.Multiaddr) (ParsedURL, error) {
 		case "https":
 			schema = "https"
 		case "sni":
+			schema = "https"
 			sniVal, err := ma.ValueForProtocol(comp.Code)
 			if err != nil {
 				return ParsedURL{}, fmt.Errorf("failed to extract SNI: %w", err)
