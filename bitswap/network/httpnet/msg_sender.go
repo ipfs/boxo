@@ -173,7 +173,7 @@ func (err senderError) Error() string {
 	return err.Err.Error()
 }
 
-// tryURL attemps to make a requests to the given URL using the given entry.
+// tryURL attemps to make a request to the given URL using the given entry.
 // Blocks, Haves etc. are recorded in the given response. cancellations are
 // processed. tryURL returns an error so that it can be decided what to do next:
 // i.e. retry, or move to next item in wantlist, or abort completely.
