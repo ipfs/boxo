@@ -43,7 +43,7 @@ var (
 // Defaults for the configurable options.
 const (
 	DefaultMaxBlockSize            int64 = 2 << 20 // 2MiB: https://specs.ipfs.tech/bitswap-protocol/#block-sizes
-	DefaultDialTimeout                   = 3 * time.Second
+	DefaultDialTimeout                   = 5 * time.Second
 	DefaultIdleConnTimeout               = 30 * time.Second
 	DefaultResponseHeaderTimeout         = 10 * time.Second
 	DefaultMaxIdleConns                  = 50
