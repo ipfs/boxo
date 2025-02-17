@@ -16,12 +16,15 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `bitswap/client`: Add `DontHaveTimeoutConfig` type alias and `func DontHaveTimeoutConfig()` to expose config defined in internal package.
+
 ### Changed
 
 - `provider`: Prevent multiple instances of reprovider.Reprovide() from running at the same time. [#834](https://github.com/ipfs/boxo/pull/834)
 - upgrade to `go-libp2p` [v0.39.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.39.1)
 - upgrade to `go-libp2p-kad-dht` [v0.29.0](github.com/libp2p/go-libp2p-kad-dht v0.29.0)
 - move bitswap and filestore away from gogo protobuf [#839](https://github.com/ipfs/boxo/pull/839)
+- updated Go in `go.mod` to 1.23 [#848](https://github.com/ipfs/boxo/pull/848)
 
 **Note: This release contains changes to protocol buffer library code. If you depend on deterministic CIDs then please double-check,, before upgrading, that this release does not generate different CIDs.**
 

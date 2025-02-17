@@ -40,6 +40,12 @@ import (
 
 var log = logging.Logger("bitswap/client")
 
+type DontHaveTimeoutConfig = bsmq.DontHaveTimeoutConfig
+
+func DefaultDontHaveTimeoutConfig() *DontHaveTimeoutConfig {
+	return bsmq.DefaultDontHaveTimeoutConfig()
+}
+
 // Option defines the functional option type that can be used to configure
 // bitswap instances
 type Option func(*Client)
@@ -71,7 +77,7 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 	}
 }
 
-func WithDontHaveTimeoutConfig(cfg *bsmq.DontHaveTimeoutConfig) Option {
+func WithDontHaveTimeoutConfig(cfg *DontHaveTimeoutConfig) Option {
 	return func(bs *Client) {
 		bs.dontHaveTimeoutConfig = cfg
 	}
@@ -300,7 +306,7 @@ type Client struct {
 
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
-	dontHaveTimeoutConfig      *bsmq.DontHaveTimeoutConfig
+	dontHaveTimeoutConfig      *DontHaveTimeoutConfig
 
 	// dupMetric will stay at 0
 	skipDuplicatedBlocksStats bool
