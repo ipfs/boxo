@@ -13,6 +13,7 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	legacy "github.com/ipfs/go-ipld-legacy"
 	dagpb "github.com/ipld/go-codec-dagpb"
+
 	// blank import is used to register the IPLD raw codec
 	_ "github.com/ipld/go-ipld-prime/codec/raw"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"

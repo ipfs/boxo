@@ -8,6 +8,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
+
 	// used to make sure we have dagcbor encoding
 	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
