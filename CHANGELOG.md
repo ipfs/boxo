@@ -16,10 +16,15 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `bitswap/client`: Add `DontHaveTimeoutConfig` type alias and `func DontHaveTimeoutConfig()` to expose config defined in internal package.
+
 ### Changed
 
 - upgrade to `go-libp2p` [v0.39.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.39.0)
 - move `ipld/unixfs` from gogo protobuf [#840](https://github.com/ipfs/boxo/pull/840)
+- `provider`: Prevent multiple instances of reprovider.Reprovide() from running at the same time. [#834](https://github.com/ipfs/boxo/pull/834)
+- upgrade to `go-libp2p` [v0.39.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.39.1)
+- updated Go in `go.mod` to 1.23 [#848](https://github.com/ipfs/boxo/pull/848)
 
 ### Removed
 
