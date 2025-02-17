@@ -10,6 +10,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-test/random"
+	"google.golang.org/protobuf/proto"
 )
 
 func mkFakeCid(s string) cid.Cid {
@@ -21,26 +22,31 @@ func TestAppendWanted(t *testing.T) {
 	m := New(true)
 	m.AddEntry(str, 1, pb.Message_Wantlist_Block, true)
 
-	if !wantlistContains(&m.ToProtoV0().Wantlist, str) {
+	if !wantlistContains(m.ToProtoV0().Wantlist, str) {
 		t.Fail()
 	}
 }
 
 func TestNewMessageFromProto(t *testing.T) {
 	str := mkFakeCid("a_key")
-	protoMessage := new(pb.Message)
-	protoMessage.Wantlist.Entries = []pb.Message_Wantlist_Entry{
-		{Block: pb.Cid{Cid: str}},
+
+	protoMessage := &pb.Message{
+		Wantlist: &pb.Message_Wantlist{
+			Entries: []*pb.Message_Wantlist_Entry{
+				{Block: str.Bytes()},
+			},
+		},
 	}
-	if !wantlistContains(&protoMessage.Wantlist, str) {
+
+	if !wantlistContains(protoMessage.Wantlist, str) {
 		t.Fail()
 	}
-	m, err := newMessageFromProto(*protoMessage)
+	m, err := newMessageFromProto(protoMessage)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !wantlistContains(&m.ToProtoV0().Wantlist, str) {
+	if !wantlistContains(m.ToProtoV0().Wantlist, str) {
 		t.Fail()
 	}
 }
@@ -92,7 +98,7 @@ func TestCopyProtoByValue(t *testing.T) {
 	m := New(true)
 	protoBeforeAppend := m.ToProtoV0()
 	m.AddEntry(str, 1, pb.Message_Wantlist_Block, true)
-	if wantlistContains(&protoBeforeAppend.Wantlist, str) {
+	if wantlistContains(protoBeforeAppend.Wantlist, str) {
 		t.Fail()
 	}
 }
@@ -162,7 +168,8 @@ func TestToAndFromNetMessage(t *testing.T) {
 
 func wantlistContains(wantlist *pb.Message_Wantlist, c cid.Cid) bool {
 	for _, e := range wantlist.GetEntries() {
-		if e.Block.Cid.Defined() && c.Equals(e.Block.Cid) {
+		blkCid, err := cid.Cast(e.Block)
+		if err == nil && blkCid.Defined() && c.Equals(blkCid) {
 			return true
 		}
 	}
@@ -291,7 +298,7 @@ func TestEntrySize(t *testing.T) {
 		Cancel:       false,
 	}
 	epb := e.ToPB()
-	if e.Size() != epb.Size() {
-		t.Fatal("entry size calculation incorrect", e.Size(), epb.Size())
+	if e.Size() != proto.Size(epb) {
+		t.Fatal("entry size calculation incorrect", e.Size(), proto.Size(epb))
 	}
 }
