@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	proto "github.com/gogo/protobuf/proto"
 	pb "github.com/ipfs/boxo/ipld/unixfs/pb"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestFSNode(t *testing.T) {
