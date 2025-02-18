@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package boxo.ipld.unixfs.pb;
+package ipfs.boxo.ipld.unixfs.pb;
 
 option go_package = "github.com/ipfs/boxo/ipld/unixfs/pb";
 

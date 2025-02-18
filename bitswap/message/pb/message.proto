@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package boxo.bitswap.message.v1.pb;
+package ipfs.boxo.bitswap.message.v1.pb;
 
 option go_package = "github.com/ipfs/boxo/bitswap/message/pb";
 
