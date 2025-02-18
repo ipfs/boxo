@@ -318,7 +318,6 @@ func TestSendingMessagesPriority(t *testing.T) {
 }
 
 func TestCancelOverridesPendingWants(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
