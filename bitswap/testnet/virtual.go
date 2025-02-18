@@ -18,6 +18,7 @@ import (
 	protocol "github.com/libp2p/go-libp2p/core/protocol"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"google.golang.org/protobuf/proto"
 )
 
 // VirtualNetwork generates a new testnet instance - a fake network that
@@ -151,7 +152,7 @@ func (n *network) SendMessage(
 			rateLimiters[to] = rateLimiter
 		}
 
-		size := mes.ToProtoV1().Size()
+		size := proto.Size(mes.ToProtoV1())
 		bandwidthDelay = rateLimiter.Limit(size)
 	} else {
 		bandwidthDelay = 0
