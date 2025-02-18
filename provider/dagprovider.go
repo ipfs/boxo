@@ -14,20 +14,17 @@ import (
 // NewDAGProvider returns a provider that traverses a DAG from a root CID
 func NewDAGProvider(root cid.Cid, fetchConfig fetcher.Factory) KeyChanFunc {
 	return func(ctx context.Context) (<-chan cid.Cid, error) {
-		if root.String() == "" {
+		if root == cid.Undef {
 			return nil, fmt.Errorf("root CID cannot be empty")
-		}
-		if fetchConfig == nil {
-			return nil, fmt.Errorf("fetcher config cannot be nil")
 		}
 
 		outCh := make(chan cid.Cid)
+		set := cidutil.NewStreamingSet()
 
 		go func() {
-			defer close(outCh)
-			set := cidutil.NewStreamingSet()
-			session := fetchConfig.NewSession(ctx)
+			defer close(set.New)
 
+			session := fetchConfig.NewSession(ctx)
 			err := fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: root}, func(res fetcher.FetchResult) error {
 				clink, ok := res.LastBlockLink.(cidlink.Link)
 				if !ok {
@@ -43,7 +40,10 @@ func NewDAGProvider(root cid.Cid, fetchConfig fetcher.Factory) KeyChanFunc {
 				log.Errorf("dag traversal error: %s", err)
 				return
 			}
+		}()
 
+		go func() {
+			defer close(outCh)
 			for c := range set.New {
 				select {
 				case <-ctx.Done():
