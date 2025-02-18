@@ -33,42 +33,89 @@ type mockFetcher struct {
 
 func (m *mockFetcher) BlockMatchingOfType(ctx context.Context, root ipldp.Link, selector ipldp.Node, _ ipldp.NodePrototype, cb fetcher.FetchCallback) error {
 	logger.Println("Starting BlockMatchingOfType")
-	cidLnk, ok := root.(cidlink.Link)
-	if !ok {
-		return fmt.Errorf("expected CID link")
-	}
 
-	blk, err := m.bs.GetBlock(ctx, cidLnk.Cid)
-	if err != nil {
-		return err
-	}
+	visited := make(map[string]bool)
+	processed := 0
 
-	// Process root
-	err = cb(fetcher.FetchResult{
-		Node:          basicnode.NewString(string(blk.RawData())),
-		LastBlockLink: root,
-	})
-	if err != nil {
-		return err
-	}
+	var traverse func(ipldp.Link) error
+	traverse = func(link ipldp.Link) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 
-	// Get and process children
-	if protoNode, ok := blk.(*merkledag.ProtoNode); ok {
-		for _, link := range protoNode.Links() {
-			childBlk, err := m.bs.GetBlock(ctx, link.Cid)
+		cidLnk, ok := link.(cidlink.Link)
+		if !ok {
+			return fmt.Errorf("expected CID link")
+		}
+
+		cidStr := cidLnk.Cid.String()
+		if visited[cidStr] {
+			logger.Printf("Already visited CID: %s", cidStr)
+			return nil
+		}
+
+		// Add select for context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			blk, err := m.bs.GetBlock(ctx, cidLnk.Cid)
 			if err != nil {
-				continue
-			}
-			err = cb(fetcher.FetchResult{
-				Node:          basicnode.NewString(string(childBlk.RawData())),
-				LastBlockLink: cidlink.Link{Cid: link.Cid},
-			})
-			if err != nil {
+				logger.Printf("Error getting block %s: %s", cidStr, err)
 				return err
 			}
+
+			visited[cidStr] = true
+			processed++
+			logger.Printf("Processing CID %s (%d processed)", cidStr, processed)
+
+			// Add select for callback
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+				err = cb(fetcher.FetchResult{
+					Node:          basicnode.NewString(string(blk.RawData())),
+					LastBlockLink: link,
+				})
+				if err != nil {
+					logger.Printf("Callback error for CID %s: %s", cidStr, err)
+					return err
+				}
+			}
+
+			if protoNode, ok := blk.(*merkledag.ProtoNode); ok {
+				links := protoNode.Links()
+				logger.Printf("Found %d links in CID %s", len(links), cidStr)
+
+				for i, link := range links {
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					default:
+						logger.Printf("Traversing child %d/%d of CID %s: %s",
+							i+1, len(links), cidStr, link.Cid)
+
+						if err := traverse(cidlink.Link{Cid: link.Cid}); err != nil {
+							return err
+						}
+					}
+				}
+			}
 		}
+
+		return nil
 	}
-	logger.Println("OKKKK")
+
+	err := traverse(root)
+	if err != nil {
+		logger.Printf("Traversal error: %s", err)
+		return err
+	}
+
+	logger.Printf("Completed DAG traversal, processed %d CIDs", processed)
 	return nil
 }
 
@@ -113,6 +160,10 @@ func TestNewDAGProvider(t *testing.T) {
 	// Generate a DAG with fanout=2, depth=3
 	root, expectedCids, err := dagGen.MakeDagBlock(bsrv.AddBlock, 2, 3)
 	require.NoError(t, err)
+	t.Logf("Created DAG with root %s and %d expected CIDs", root, len(expectedCids))
+	for i, c := range expectedCids {
+		t.Logf("Expected CID %d: %s", i+1, c)
+	}
 
 	// Create mock fetcher using our root blockservice
 	fetcherFactory := &mockFetcherFactory{blockService: bsrv}
@@ -125,8 +176,11 @@ func TestNewDAGProvider(t *testing.T) {
 	// collect all the CIDs from the provider
 	var collectedCids []cid.Cid
 	for c := range cidChan {
+		t.Logf("Collected CID: %s", c)
 		collectedCids = append(collectedCids, c)
 	}
+
+	t.Logf("Collected %d CIDs", len(collectedCids))
 
 	// Verify - Got all the CIDs
 	require.Equal(t, len(expectedCids), len(collectedCids), "number of collected CIDs should match the expected number")
