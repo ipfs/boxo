@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package github.com.boxo.ipld.merkledag.pb;
+package ipfs.boxo.ipld.merkledag.pb;
 
 option go_package = "github.com/ipfs/boxo/ipld/merkledag/pb";
 
