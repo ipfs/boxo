@@ -117,7 +117,8 @@ func WithInsecureSkipVerify(b bool) Option {
 }
 
 // WithAllowlist sets the hostnames that we are allowed to connect to via
-// HTTP.
+// HTTP. Additionally, http response status metrics are tagged for each of
+// these hosts.
 func WithAllowlist(hosts []string) Option {
 	return func(net *Network) {
 		net.allowlist = make(map[string]struct{})
