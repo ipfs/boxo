@@ -94,7 +94,7 @@ func newMetrics(endpoints map[string]struct{}) *metrics {
 func (m *metrics) updateStatusCounter(method string, statusCode int, host string) {
 	m.RequestsTotal.Inc()
 	if _, ok := m.trackedEndpoints[host]; !ok {
-		host = ""
+		host = "other"
 	}
 
 	var statusStr string
