@@ -581,16 +581,19 @@ func (ht *Network) httpWorker(i int) {
 				if serr != nil {
 					switch serr.Type {
 					case typeRetryLater:
-						// This error signals that the server
-						// specifically indicated that it is
-						// overloaded. We are going to retry 3 times
-						// and then consider it a  serverError.
-						// Retries happen following the cooldown
-						// period. When multiple urls, retries may
+						// This error signals that we
+						// should retry but if things
+						// keep failing we consider it
+						// a serverError. When
+						// multiple urls, retries may
 						// happen on a different url.
 						retryLaterErrors++
-						if retryLaterErrors%3 == 0 {
+						if retryLaterErrors%2 == 0 {
+							// we retried same CID 2 times. No luck.
+							// Increase server errors.
+							// Start ignoring urls.
 							result.err.Type = typeServer
+							urlIgnore = append(urlIgnore, u)
 							u.serverErrors.Add(1)
 						}
 						continue // retry request again

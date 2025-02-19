@@ -294,7 +294,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			sender.ht.cooldownTracker.remove(req.URL.Host)
 			u.cooldown.Store(time.Time{})
 		}
-		// We should not fail more than maxRetries for each block.
+
 		return nil, &senderError{
 			Type: typeClient,
 			Err:  err,
@@ -323,19 +323,41 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		}
 		atomic.AddUint64(&sender.ht.stats.MessagesRecvd, 1)
 		return b, nil
+
 	case http.StatusTooManyRequests,
-		http.StatusServiceUnavailable:
+		http.StatusServiceUnavailable,
+		http.StatusBadGateway,
+		http.StatusGatewayTimeout:
+		// See path-gateway spec. All these codes SHOULD return
+		// Retry-After. They are used to signal that a block cannot
+		// be fetched too, not only fatal server issues, which poses a
+		// difficult overlap. Current approach treats these errors as
+		// non fatal if they don't happen repeteadly:
+		// - By default we disconnect on server errors: MaxRetries = 1.
+		// - First try errors. We add default backoff if non specified.
+		// - Retry same CID. If it fails again, count that as server
+		//   error and avoid retrying on that url.
+		// - If we have no more urls to try, will move to next cid.
+		// - If we hit the MaxRetries for all urls, abort all.
+
+		// In practice, our wantlists should be 1/3 elements. It
+		// doesn't make sense to tolerate 5 server errors for 3
+		// requests as we will repeteadly hit broken servers that way.
+		// It is always better if endpoints keep these errors for
+		// server issues, and simply return 404 when they cannot find
+		// the content but everything else is fine.
 		err := fmt.Errorf("%q -> %d: %q", req.URL, resp.StatusCode, string(body))
 		log.Error(err)
 		retryAfter := resp.Header.Get("Retry-After")
 		cooldownUntil, ok := parseRetryAfter(retryAfter)
-		if ok {
+		if ok { // it means we should retry, so we will retry.
 			sender.ht.cooldownTracker.setByDate(req.URL.Host, cooldownUntil)
 			u.cooldown.Store(cooldownUntil)
 		} else {
 			sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
 			u.cooldown.Store(time.Now().Add(sender.opts.SendErrorBackoff))
 		}
+
 		return nil, &senderError{
 			Type: typeRetryLater,
 			Err:  err,
