@@ -2,6 +2,7 @@ package httpnet
 
 import (
 	"context"
+	"strconv"
 
 	imetrics "github.com/ipfs/go-metrics-interface"
 )
@@ -50,110 +51,60 @@ func wantlistsSeconds(ctx context.Context) imetrics.Histogram {
 	return imetrics.NewCtx(ctx, "wantlists_seconds", "Number of seconds spent sending wantlists").Histogram(durationHistogramBuckets)
 }
 
-func statusNotFound(ctx context.Context) imetrics.Counter {
-	return imetrics.NewCtx(ctx, "status_404", "Request count with NotFound status").Counter()
-}
-
-func statusGone(ctx context.Context) imetrics.Counter {
-	return imetrics.NewCtx(ctx, "status_410", "Request count with Gone status").Counter()
-}
-
-func statusForbidden(ctx context.Context) imetrics.Counter {
-	return imetrics.NewCtx(ctx, "status_403", "Request count with Forbidden status").Counter()
-}
-
-func statusUnavailableForLegalReasons(ctx context.Context) imetrics.Counter {
-	return imetrics.NewCtx(ctx, "status_451", "Request count with Unavailable For Legal Reasons status").Counter()
-}
-
-func statusOK(ctx context.Context) imetrics.Counter {
-	return imetrics.NewCtx(ctx, "status_200", "Request count with OK status").Counter()
-}
-
-func statusTooManyRequests(ctx context.Context) imetrics.Counter {
-	return imetrics.NewCtx(ctx, "status_429", "Request count with Too Many Requests status").Counter()
-}
-
-func statusServiceUnavailable(ctx context.Context) imetrics.Counter {
-	return imetrics.NewCtx(ctx, "status_503", "Request count with Service Unavailable status").Counter()
-}
-
-func statusInternalServerError(ctx context.Context) imetrics.Counter {
-	return imetrics.NewCtx(ctx, "status_500", "Request count with Internal Server Error status").Counter()
-}
-
-func statusOthers(ctx context.Context) imetrics.Counter {
-	return imetrics.NewCtx(ctx, "status_others", "Request count with other status codes").Counter()
+func status(ctx context.Context) imetrics.CounterVec {
+	return imetrics.NewCtx(ctx, "status", "Request status count").CounterVec([]string{"method", "status", "host"})
 }
 
 type metrics struct {
-	RequestsInFlight                 imetrics.Gauge
-	RequestsTotal                    imetrics.Counter
-	RequestsFailure                  imetrics.Counter
-	RequestsSentBytes                imetrics.Counter
-	WantlistsTotal                   imetrics.Counter
-	WantlistsItemsTotal              imetrics.Counter
-	WantlistsSeconds                 imetrics.Histogram
-	ResponseSizes                    imetrics.Histogram
-	RequestsBodyFailure              imetrics.Counter
-	StatusNotFound                   imetrics.Counter
-	StatusGone                       imetrics.Counter
-	StatusForbidden                  imetrics.Counter
-	StatusUnavailableForLegalReasons imetrics.Counter
-	StatusOK                         imetrics.Counter
-	StatusTooManyRequests            imetrics.Counter
-	StatusServiceUnavailable         imetrics.Counter
-	StatusInternalServerError        imetrics.Counter
-	StatusOthers                     imetrics.Counter
-	RequestTime                      imetrics.Histogram
+	trackedEndpoints map[string]struct{}
+
+	RequestsInFlight    imetrics.Gauge
+	RequestsTotal       imetrics.Counter
+	RequestsFailure     imetrics.Counter
+	RequestsSentBytes   imetrics.Counter
+	WantlistsTotal      imetrics.Counter
+	WantlistsItemsTotal imetrics.Counter
+	WantlistsSeconds    imetrics.Histogram
+	ResponseSizes       imetrics.Histogram
+	RequestsBodyFailure imetrics.Counter
+	Status              imetrics.CounterVec
+	RequestTime         imetrics.Histogram
 }
 
-func newMetrics() *metrics {
+func newMetrics(endpoints map[string]struct{}) *metrics {
 	ctx := imetrics.CtxScope(context.Background(), "exchange_httpnet")
 
 	return &metrics{
-		RequestsInFlight:                 requestsInFlight(ctx),
-		RequestsTotal:                    requestsTotal(ctx),
-		RequestsSentBytes:                requestSentBytes(ctx),
-		RequestsFailure:                  requestsFailure(ctx),
-		RequestsBodyFailure:              requestsBodyFailure(ctx),
-		WantlistsTotal:                   wantlistsTotal(ctx),
-		WantlistsItemsTotal:              wantlistsItemsTotal(ctx),
-		WantlistsSeconds:                 wantlistsSeconds(ctx),
-		ResponseSizes:                    responseSizes(ctx),
-		StatusNotFound:                   statusNotFound(ctx),
-		StatusGone:                       statusGone(ctx),
-		StatusForbidden:                  statusForbidden(ctx),
-		StatusUnavailableForLegalReasons: statusUnavailableForLegalReasons(ctx),
-		StatusOK:                         statusOK(ctx),
-		StatusTooManyRequests:            statusTooManyRequests(ctx),
-		StatusServiceUnavailable:         statusServiceUnavailable(ctx),
-		StatusInternalServerError:        statusInternalServerError(ctx),
-		StatusOthers:                     statusOthers(ctx),
-		RequestTime:                      requestTime(ctx),
+		trackedEndpoints:    endpoints,
+		RequestsInFlight:    requestsInFlight(ctx),
+		RequestsTotal:       requestsTotal(ctx),
+		RequestsSentBytes:   requestSentBytes(ctx),
+		RequestsFailure:     requestsFailure(ctx),
+		RequestsBodyFailure: requestsBodyFailure(ctx),
+		WantlistsTotal:      wantlistsTotal(ctx),
+		WantlistsItemsTotal: wantlistsItemsTotal(ctx),
+		WantlistsSeconds:    wantlistsSeconds(ctx),
+		ResponseSizes:       responseSizes(ctx),
+		// labels: method, status, host
+		Status:      status(ctx),
+		RequestTime: requestTime(ctx),
 	}
 }
 
-func (m *metrics) updateStatusCounter(statusCode int) {
+func (m *metrics) updateStatusCounter(method string, statusCode int, host string) {
 	m.RequestsTotal.Inc()
-	switch statusCode {
-	case 404:
-		m.StatusNotFound.Inc()
-	case 410:
-		m.StatusGone.Inc()
-	case 403:
-		m.StatusForbidden.Inc()
-	case 451:
-		m.StatusUnavailableForLegalReasons.Inc()
-	case 200:
-		m.StatusOK.Inc()
-	case 429:
-		m.StatusTooManyRequests.Inc()
-	case 503:
-		m.StatusServiceUnavailable.Inc()
-	case 500:
-		m.StatusInternalServerError.Inc()
-	default:
-		m.StatusOthers.Inc()
+	if _, ok := m.trackedEndpoints[host]; !ok {
+		host = ""
 	}
+
+	var statusStr string
+
+	switch statusCode {
+	case 200, 400, 403, 404, 410, 429, 451, 500, 502, 504:
+		statusStr = strconv.Itoa(statusCode)
+	default:
+		statusStr = "other"
+	}
+
+	m.Status.WithLabelValues(method, statusStr, host).Inc()
 }

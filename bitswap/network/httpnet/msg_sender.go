@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -277,7 +278,8 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 	sender.ht.metrics.ResponseSizes.Observe(float64(respLen))
 	sender.ht.metrics.RequestsInFlight.Dec()
-	sender.ht.metrics.updateStatusCounter(resp.StatusCode)
+	host, _, _ := net.SplitHostPort(u.URL.Host)
+	sender.ht.metrics.updateStatusCounter(req.Method, resp.StatusCode, host)
 
 	switch resp.StatusCode {
 	// Valid responses signaling unavailability of the
@@ -441,7 +443,7 @@ WANTLIST_LOOP:
 	for i, entry := range wantlist {
 		if entry.Cancel { // shortcut cancel entries.
 			sender.ht.requestTracker.cancelRequest(entry.Cid)
-			sender.ht.metrics.updateStatusCounter(0)
+			sender.ht.metrics.updateStatusCounter("CANCEL", 0, "")
 			// Do not observe request time for cancel requests as
 			// they cost us nothing, so it is unfair to compare
 			// against bsnet requests-time.

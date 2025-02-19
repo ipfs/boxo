@@ -202,13 +202,14 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		insecureSkipVerify:      DefaultInsecureSkipVerify,
 		maxHTTPAddressesPerPeer: DefaultMaxHTTPAddressesPerPeer,
 		httpWorkers:             DefaultHTTPWorkers,
-		metrics:                 newMetrics(),
 		httpRequests:            make(chan httpRequestInfo),
 	}
 
 	for _, opt := range opts {
 		opt(htnet)
 	}
+
+	htnet.metrics = newMetrics(htnet.allowlist)
 
 	reqTracker := newRequestTracker()
 	htnet.requestTracker = reqTracker
@@ -282,7 +283,11 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 // received. It also starts the connection event manager. Start must be called
 // before using the Network.
 func (ht *Network) Start(receivers ...network.Receiver) {
-	log.Infof("httpnet: HTTP retrieval system started with allowlist: %s", ht.allowlist)
+	allowlist := make([]string, 0, len(ht.allowlist))
+	for k := range ht.allowlist {
+		allowlist = append(allowlist, k)
+	}
+	log.Infof("httpnet: HTTP retrieval system started with allowlist: %s", strings.Join(allowlist, ","))
 	ht.receivers = receivers
 	connectionListeners := make([]network.ConnectionListener, len(receivers))
 	for i, v := range receivers {
