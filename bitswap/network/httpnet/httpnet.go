@@ -473,13 +473,15 @@ func (ht *Network) connect(ctx context.Context, p peer.ID, u network.ParsedURL, 
 		return err
 	}
 
-	if resp.StatusCode >= 500 { // 5xx
-		log.Debugf("connect error: %d <- %q (%s)", resp.StatusCode, req.URL, p)
-		// We made a proper request and got a 5xx back.
-		// We cannot consider this a working connection.
-		return err
+	// probe success
+	if resp.StatusCode == 200 || resp.StatusCode == 204 {
+		return nil
 	}
-	return nil
+
+	log.Debugf("connect error: %d <- %q (%s)", resp.StatusCode, req.URL, p)
+	// We made a proper request and got a 5xx back.
+	// We cannot consider this a working connection.
+	return errors.New("response status code is not 200")
 }
 
 // DisconnectFrom marks this peer as Disconnected in the connection event
