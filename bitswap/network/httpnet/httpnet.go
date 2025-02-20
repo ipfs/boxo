@@ -473,8 +473,9 @@ func (ht *Network) connect(ctx context.Context, p peer.ID, u network.ParsedURL, 
 		return err
 	}
 
-	// probe success
-	if resp.StatusCode == 200 || resp.StatusCode == 204 {
+	// probe success.
+	// FIXME: Storacha returns 410 for our probe.
+	if resp.StatusCode == 200 || resp.StatusCode == 204 || resp.StatusCode == 410 {
 		return nil
 	}
 
