@@ -481,6 +481,10 @@ WANTLIST_LOOP:
 		}
 	}
 
+	if totalSent == 0 {
+		return nil
+	}
+
 	// We are finished sending. Like bitswap/bsnet, we return.
 	// Receiving results is async and we leave a goroutine taking care of
 	// that.
