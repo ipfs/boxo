@@ -416,26 +416,30 @@ func BlockPresenceSize(c cid.Cid) int {
 }
 
 // FromNet generates a new BitswapMessage from incoming data on an io.Reader.
-func FromNet(r io.Reader) (BitSwapMessage, error) {
+func FromNet(r io.Reader) (BitSwapMessage, int, error) {
 	reader := msgio.NewVarintReaderSize(r, network.MessageSizeMax)
 	return FromMsgReader(reader)
 }
 
 // FromPBReader generates a new Bitswap message from a protobuf reader.
-func FromMsgReader(r msgio.Reader) (BitSwapMessage, error) {
+func FromMsgReader(r msgio.Reader) (BitSwapMessage, int, error) {
 	msg, err := r.ReadMsg()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	pb := new(pb.Message)
 	err = proto.Unmarshal(msg, pb)
 	r.ReleaseMsg(msg)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return newMessageFromProto(pb)
+	m, err := newMessageFromProto(pb)
+	if err != nil {
+		return nil, 0, err
+	}
+	return m, len(msg), nil
 }
 
 func (m *impl) ToProtoV0() *pb.Message {

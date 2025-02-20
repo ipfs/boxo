@@ -10,7 +10,8 @@ import (
 
 	"github.com/gammazero/deque"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
-	bsnet "github.com/ipfs/boxo/bitswap/network"
+	iface "github.com/ipfs/boxo/bitswap/network"
+	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
 	delay "github.com/ipfs/go-ipfs-delay"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -80,7 +81,7 @@ type receiverQueue struct {
 	lk       sync.Mutex
 }
 
-func (n *network) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) bsnet.BitSwapNetwork {
+func (n *network) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) iface.BitSwapNetwork {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -176,14 +177,14 @@ func (n *network) SendMessage(
 	return nil
 }
 
-var _ bsnet.Receiver = (*networkClient)(nil)
+var _ iface.Receiver = (*networkClient)(nil)
 
 type networkClient struct {
 	// These need to be at the top of the struct (allocated on the heap) for alignment on 32bit platforms.
-	stats bsnet.Stats
+	stats iface.Stats
 
 	local              peer.ID
-	receivers          []bsnet.Receiver
+	receivers          []iface.Receiver
 	network            *network
 	supportedProtocols []protocol.ID
 }
@@ -238,8 +239,8 @@ func (nc *networkClient) SendMessage(
 	return nil
 }
 
-func (nc *networkClient) Stats() bsnet.Stats {
-	return bsnet.Stats{
+func (nc *networkClient) Stats() iface.Stats {
+	return iface.Stats{
 		MessagesRecvd: atomic.LoadUint64(&nc.stats.MessagesRecvd),
 		MessagesSent:  atomic.LoadUint64(&nc.stats.MessagesSent),
 	}
@@ -284,7 +285,7 @@ func (mp *messagePasser) SupportsHave() bool {
 	return false
 }
 
-func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID, opts *bsnet.MessageSenderOpts) (bsnet.MessageSender, error) {
+func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID, opts *iface.MessageSenderOpts) (iface.MessageSender, error) {
 	return &messagePasser{
 		net:    nc,
 		target: p,
@@ -293,7 +294,7 @@ func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID, opts *
 	}, nil
 }
 
-func (nc *networkClient) Start(r ...bsnet.Receiver) {
+func (nc *networkClient) Start(r ...iface.Receiver) {
 	nc.receivers = r
 }
 
@@ -341,6 +342,19 @@ func (nc *networkClient) DisconnectFrom(_ context.Context, p peer.ID) error {
 	otherClient.receiver.PeerDisconnected(nc.local)
 	nc.PeerDisconnected(p)
 	return nil
+}
+
+func (bsnet *networkClient) TagPeer(p peer.ID, tag string, w int) {
+}
+
+func (bsnet *networkClient) UntagPeer(p peer.ID, tag string) {
+}
+
+func (bsnet *networkClient) Protect(p peer.ID, tag string) {
+}
+
+func (bsnet *networkClient) Unprotect(p peer.ID, tag string) bool {
+	return false
 }
 
 func (rq *receiverQueue) enqueue(m *message) {

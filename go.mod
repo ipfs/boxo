@@ -28,7 +28,7 @@ require (
 	github.com/ipfs/go-ipld-format v0.6.0
 	github.com/ipfs/go-ipld-legacy v0.2.1
 	github.com/ipfs/go-log/v2 v2.5.1
-	github.com/ipfs/go-metrics-interface v0.0.1
+	github.com/ipfs/go-metrics-interface v0.3.0
 	github.com/ipfs/go-peertaskqueue v0.8.2
 	github.com/ipfs/go-test v0.0.4
 	github.com/ipfs/go-unixfsnode v1.9.2
@@ -54,7 +54,7 @@ require (
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.6.0
 	github.com/polydawn/refmt v0.89.0
-	github.com/prometheus/client_golang v1.20.5
+	github.com/prometheus/client_golang v1.21.0
 	github.com/samber/lo v1.47.0
 	github.com/slok/go-http-metrics v0.12.0
 	github.com/spaolacci/murmur3 v1.1.0

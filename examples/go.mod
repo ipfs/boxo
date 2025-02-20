@@ -12,7 +12,7 @@ require (
 	github.com/libp2p/go-libp2p v0.40.0
 	github.com/multiformats/go-multiaddr v0.14.0
 	github.com/multiformats/go-multicodec v0.9.0
-	github.com/prometheus/client_golang v1.20.5
+	github.com/prometheus/client_golang v1.21.0
 	github.com/stretchr/testify v1.10.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.56.0
 	go.opentelemetry.io/contrib/propagators/autoprop v0.46.1
@@ -75,7 +75,7 @@ require (
 	github.com/ipfs/go-log v1.0.5 // indirect
 	github.com/ipfs/go-log/v2 v2.5.1 // indirect
 	github.com/ipfs/go-merkledag v0.11.0 // indirect
-	github.com/ipfs/go-metrics-interface v0.0.1 // indirect
+	github.com/ipfs/go-metrics-interface v0.3.0 // indirect
 	github.com/ipfs/go-peertaskqueue v0.8.2 // indirect
 	github.com/ipfs/go-unixfsnode v1.9.2 // indirect
 	github.com/ipfs/go-verifcid v0.0.3 // indirect

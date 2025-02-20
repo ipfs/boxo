@@ -1,4 +1,4 @@
-package network_test
+package bsnet_test
 
 import (
 	"context"
@@ -10,13 +10,14 @@ import (
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
-	bsnet "github.com/ipfs/boxo/bitswap/network"
-	"github.com/ipfs/boxo/bitswap/network/internal"
+	network "github.com/ipfs/boxo/bitswap/network"
+	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
+	"github.com/ipfs/boxo/bitswap/network/bsnet/internal"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
 	"github.com/ipfs/go-test/random"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/network"
+	p2pnet "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
@@ -30,7 +31,7 @@ type receiver struct {
 	connectionEvent chan bool
 	lastMessage     bsmsg.BitSwapMessage
 	lastSender      peer.ID
-	listener        network.Notifiee
+	listener        p2pnet.Notifiee
 }
 
 func newReceiver() *receiver {
@@ -71,7 +72,7 @@ func (r *receiver) PeerDisconnected(p peer.ID) {
 var errMockNetErr = errors.New("network err")
 
 type ErrStream struct {
-	network.Stream
+	p2pnet.Stream
 	lk        sync.Mutex
 	err       error
 	timingOut bool
@@ -107,6 +108,14 @@ func (es *ErrStream) Close() error {
 	return es.Stream.Close()
 }
 
+func (es *ErrStream) Reset() error {
+	es.lk.Lock()
+	es.closed = true
+	es.lk.Unlock()
+
+	return es.Stream.Reset()
+}
+
 func (eh *ErrHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	eh.lk.Lock()
 	defer eh.lk.Unlock()
@@ -120,7 +129,7 @@ func (eh *ErrHost) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	return eh.Host.Connect(ctx, pi)
 }
 
-func (eh *ErrHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID) (network.Stream, error) {
+func (eh *ErrHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID) (p2pnet.Stream, error) {
 	eh.lk.Lock()
 	defer eh.lk.Unlock()
 
@@ -268,7 +277,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	}
 }
 
-func prepareNetwork(t *testing.T, ctx context.Context, p1 tnet.Identity, r1 *receiver, p2 tnet.Identity, r2 *receiver) (*ErrHost, bsnet.BitSwapNetwork, *ErrHost, bsnet.BitSwapNetwork, bsmsg.BitSwapMessage) {
+func prepareNetwork(t *testing.T, ctx context.Context, p1 tnet.Identity, r1 *receiver, p2 tnet.Identity, r2 *receiver) (*ErrHost, network.BitSwapNetwork, *ErrHost, network.BitSwapNetwork, bsmsg.BitSwapMessage) {
 	// create network
 	mn := mocknet.New()
 	defer mn.Close()
@@ -337,7 +346,7 @@ func TestMessageResendAfterError(t *testing.T) {
 	eh, bsnet1, _, _, msg := prepareNetwork(t, ctx, p1, r1, p2, r2)
 
 	testSendErrorBackoff := 100 * time.Millisecond
-	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{
+	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &network.MessageSenderOpts{
 		MaxRetries:       3,
 		SendTimeout:      100 * time.Millisecond,
 		SendErrorBackoff: testSendErrorBackoff,
@@ -345,7 +354,7 @@ func TestMessageResendAfterError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ms.Close()
+	defer ms.Reset()
 
 	// Return an error from the networking layer the next time we try to send
 	// a message
@@ -382,7 +391,7 @@ func TestMessageSendTimeout(t *testing.T) {
 
 	eh, bsnet1, _, _, msg := prepareNetwork(t, ctx, p1, r1, p2, r2)
 
-	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{
+	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &network.MessageSenderOpts{
 		MaxRetries:       3,
 		SendTimeout:      100 * time.Millisecond,
 		SendErrorBackoff: 100 * time.Millisecond,
@@ -390,7 +399,7 @@ func TestMessageSendTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ms.Close()
+	defer ms.Reset()
 
 	// Return a DeadlineExceeded error from the networking layer the next time we try to
 	// send a message
@@ -424,13 +433,13 @@ func TestMessageSendNotSupportedResponse(t *testing.T) {
 	eh, bsnet1, _, _, _ := prepareNetwork(t, ctx, p1, r1, p2, r2)
 
 	eh.setError(multistream.ErrNotSupported[protocol.ID]{})
-	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{
+	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &network.MessageSenderOpts{
 		MaxRetries:       3,
 		SendTimeout:      100 * time.Millisecond,
 		SendErrorBackoff: 100 * time.Millisecond,
 	})
 	if err == nil {
-		ms.Close()
+		ms.Reset()
 		t.Fatal("Expected ErrNotSupported")
 	}
 
@@ -482,11 +491,11 @@ func TestSupportsHave(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			senderCurrent, err := bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{})
+			senderCurrent, err := bsnet1.NewMessageSender(ctx, p2.ID(), &network.MessageSenderOpts{})
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer senderCurrent.Close()
+			defer senderCurrent.Reset()
 
 			if senderCurrent.SupportsHave() != tc.expSupportsHave {
 				t.Fatal("Expected sender HAVE message support", tc.proto, tc.expSupportsHave)
@@ -532,11 +541,11 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 	}
 
 	if n2 > 0 {
-		ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &bsnet.MessageSenderOpts{})
+		ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &network.MessageSenderOpts{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer ms.Close()
+		defer ms.Reset()
 		for n := 0; n < n2; n++ {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			err = ms.SendMsg(ctx, msg)
@@ -561,7 +570,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 			}
 			cancel()
 		}
-		ms.Close()
+		ms.Reset()
 	}
 
 	// Wait until all streams are closed and MessagesRecvd counters
