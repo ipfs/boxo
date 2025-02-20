@@ -290,7 +290,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		http.StatusUnavailableForLegalReasons:
 
 		err := fmt.Errorf("%s %q -> %d: %q", req.Method, req.URL, resp.StatusCode, string(body))
-		log.Error(err)
+		log.Debug(err)
 		// clear cooldowns since we got a proper reply
 		if !u.cooldown.Load().(time.Time).IsZero() {
 			sender.ht.cooldownTracker.remove(req.URL.Host)
@@ -364,6 +364,19 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			Type: typeRetryLater,
 			Err:  err,
 		}
+
+	case http.StatusInternalServerError:
+		// special handling because of error seen in the wild
+		// because some implementation does it this way
+		if string(body) == "ipld: could not find node" {
+			err := fmt.Errorf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
+			log.Warn(err)
+			return nil, &senderError{
+				Type: typeClient,
+				Err:  err,
+			}
+		}
+		fallthrough // otherwise assume error
 
 	// For any other code, we assume we must temporally
 	// backoff from the URL per the options.
@@ -496,7 +509,7 @@ WANTLIST_LOOP:
 				// error handling
 				switch result.err.Type {
 				case typeFatal:
-					log.Errorf("Disconnecting from %s: %w", sender.peer, result.err.Err)
+					log.Errorf("Disconnecting from %s: %s", sender.peer, result.err.Err)
 					sender.ht.DisconnectFrom(ctx, sender.peer)
 					err = result.err
 					// continue processing responses as workers
