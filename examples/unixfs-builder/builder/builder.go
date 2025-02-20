@@ -28,6 +28,21 @@ type Builder struct {
 	root        cid.Cid
 	size        int64
 	directories map[string]*dag.ProtoNode
+	onProgress  ProgressFunc
+}
+
+func (b *Builder) Root() cid.Cid {
+	return b.root
+}
+
+func (b *Builder) WithProgress(fn ProgressFunc) {
+	b.onProgress = fn
+}
+
+func (b *Builder) reportProgress(p Progress) {
+	if b.onProgress != nil {
+		b.onProgress(p)
+	}
 }
 
 // NewBuilder creates a new UnixFS builder with the given options
@@ -98,7 +113,6 @@ func (b *Builder) addFileToDirectory(ctx context.Context, dirPath string, fileNa
 	return nil
 }
 
-// createDirectory creates a new directory node
 // createDirectory creates a new directory node
 func (b *Builder) createDirectory(ctx context.Context, dirPath string) (*dag.ProtoNode, error) {
 	if b.opts.DirSharding {
@@ -184,6 +198,51 @@ func (b *Builder) createChunker(r io.Reader) chunker.Splitter {
 	}
 }
 
+// func (b *Builder) AddFile(ctx context.Context, path string) error {
+// 	file, err := os.Open(path)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to open file: %w", err)
+// 	}
+// 	defer file.Close()
+
+// 	// Get file info for metadata
+// 	info, err := file.Stat()
+// 	if err != nil {
+// 		return fmt.Errorf("failed to stat file: %w", err)
+// 	}
+
+// 	// Create a chunker based on options
+// 	chunker := b.createChunker(file)
+
+// 	// Create UnixFS DAG params
+// 	params := helpers.DagBuilderParams{
+// 		Maxlinks:   helpers.DefaultLinksPerBlock,
+// 		RawLeaves:  true,
+// 		CidBuilder: cid.V1Builder{Codec: cid.DagProtobuf, MhType: b.opts.HashFunc},
+// 		Dagserv:    b.dagService,
+// 	}
+
+// 	// Create DAG builder
+// 	db, err := params.New(chunker)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to create DAG builder: %w", err)
+// 	}
+
+// 	// Build balanced DAG
+// 	node, err := balanced.Layout(db)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to build DAG: %w", err)
+// 	}
+
+// 	// Store the root CID
+// 	b.root = node.Cid()
+// 	b.size = info.Size()
+
+// 	return nil
+// }
+
+// File: examples/unixfs-builder/builder/builder.go
+
 func (b *Builder) AddFile(ctx context.Context, path string) error {
 	file, err := os.Open(path)
 	if err != nil {
@@ -197,9 +256,6 @@ func (b *Builder) AddFile(ctx context.Context, path string) error {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	// Create a chunker based on options
-	chunker := b.createChunker(file)
-
 	// Create UnixFS DAG params
 	params := helpers.DagBuilderParams{
 		Maxlinks:   helpers.DefaultLinksPerBlock,
@@ -208,10 +264,30 @@ func (b *Builder) AddFile(ctx context.Context, path string) error {
 		Dagserv:    b.dagService,
 	}
 
+	// Create a chunker based on options
+	var fsChunker chunker.Splitter
+	switch b.opts.Chunker {
+	case "rabin":
+		fsChunker = chunker.NewRabin(file, uint64(b.opts.ChunkSize))
+	default: // "size"
+		fsChunker = chunker.NewSizeSplitter(file, b.opts.ChunkSize)
+	}
+
 	// Create DAG builder
-	db, err := params.New(chunker)
+	db, err := params.New(fsChunker)
 	if err != nil {
 		return fmt.Errorf("failed to create DAG builder: %w", err)
+	}
+
+	// Create UnixFS node with file metadata
+	fsNode := ft.NewFSNode(ft.TFile)
+	if b.opts.PreserveTime {
+		fsNode.SetModTime(info.ModTime())
+	}
+
+	// Set mode if requested
+	if b.opts.PreserveMode {
+		fsNode.SetMode(info.Mode())
 	}
 
 	// Build balanced DAG
@@ -223,6 +299,11 @@ func (b *Builder) AddFile(ctx context.Context, path string) error {
 	// Store the root CID
 	b.root = node.Cid()
 	b.size = info.Size()
+
+	// Store the node in the DAG service
+	if err := b.dagService.Add(ctx, node); err != nil {
+		return fmt.Errorf("failed to add node to DAG service: %w", err)
+	}
 
 	return nil
 }
