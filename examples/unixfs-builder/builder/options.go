@@ -20,6 +20,9 @@ type Options struct {
 	// PreserveTime if true, keeps original mtime metadata
 	PreserveTime bool
 
+	// PreserveMode if true, keeps original file mode (permissions)
+	PreserveMode bool
+
 	// DirSharding enables HAMT-based directory sharding for large directories
 	DirSharding bool
 }
