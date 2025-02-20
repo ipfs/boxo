@@ -269,6 +269,16 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		}
 	}
 
+	// special cases in response handling. Happens here to simplify
+	// metrics/handling below.
+	statusCode := resp.StatusCode
+	// 1) Observed that some gateway implementation returns 500 instead of
+	// 404.
+	if statusCode == 500 && string(body) == "ipld: could not find node" {
+		log.Warnf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
+		statusCode = 404
+	}
+
 	// Calculate full response size with headers and everything.
 	// So this is comparable to bitswap message response sizes.
 	resp.Body = nil
@@ -279,9 +289,10 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	sender.ht.metrics.ResponseSizes.Observe(float64(respLen))
 	sender.ht.metrics.RequestsInFlight.Dec()
 	host, _, _ := net.SplitHostPort(u.URL.Host)
-	sender.ht.metrics.updateStatusCounter(req.Method, resp.StatusCode, host)
+	// updateStatusCounter
+	sender.ht.metrics.updateStatusCounter(req.Method, statusCode, host)
 
-	switch resp.StatusCode {
+	switch statusCode {
 	// Valid responses signaling unavailability of the
 	// content.
 	case http.StatusNotFound,
@@ -289,7 +300,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		http.StatusForbidden,
 		http.StatusUnavailableForLegalReasons:
 
-		err := fmt.Errorf("%s %q -> %d: %q", req.Method, req.URL, resp.StatusCode, string(body))
+		err := fmt.Errorf("%s %q -> %d: %q", req.Method, req.URL, statusCode, string(body))
 		log.Debug(err)
 		// clear cooldowns since we got a proper reply
 		if !u.cooldown.Load().(time.Time).IsZero() {
@@ -307,7 +318,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			sender.ht.cooldownTracker.remove(req.URL.Host)
 			u.cooldown.Store(time.Time{})
 		}
-		log.Debugf("%s %q -> %d (%d bytes)", req.Method, req.URL, resp.StatusCode, len(body))
+		log.Debugf("%s %q -> %d (%d bytes)", req.Method, req.URL, statusCode, len(body))
 
 		if req.Method == "HEAD" {
 			return nil, nil
@@ -348,7 +359,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		// It is always better if endpoints keep these errors for
 		// server issues, and simply return 404 when they cannot find
 		// the content but everything else is fine.
-		err := fmt.Errorf("%q -> %d: %q", req.URL, resp.StatusCode, string(body))
+		err := fmt.Errorf("%q -> %d: %q", req.URL, statusCode, string(body))
 		log.Error(err)
 		retryAfter := resp.Header.Get("Retry-After")
 		cooldownUntil, ok := parseRetryAfter(retryAfter)
@@ -365,25 +376,12 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			Err:  err,
 		}
 
-	case http.StatusInternalServerError:
-		// special handling because of error seen in the wild
-		// because some implementation does it this way
-		if string(body) == "ipld: could not find node" {
-			err := fmt.Errorf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
-			log.Warn(err)
-			return nil, &senderError{
-				Type: typeClient,
-				Err:  err,
-			}
-		}
-		fallthrough // otherwise assume error
-
 	// For any other code, we assume we must temporally
 	// backoff from the URL per the options.
 	// Tolerance for server errors per url is low. If after waiting etc.
 	// it fails MaxRetries, we will fully disconnect.
 	default:
-		err := fmt.Errorf("%q -> %d: %q", req.URL, resp.StatusCode, string(body))
+		err := fmt.Errorf("%q -> %d: %q", req.URL, statusCode, string(body))
 		log.Error(err)
 		sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
 		u.cooldown.Store(time.Now().Add(sender.opts.SendErrorBackoff))
