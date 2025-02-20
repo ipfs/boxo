@@ -16,14 +16,26 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.27.4]
+
+### Added
+
 - `bitswap/client`: Add `DontHaveTimeoutConfig` type alias and `func DontHaveTimeoutConfig()` to expose config defined in internal package.
 
 ### Changed
 
-- upgrade to `go-libp2p` [v0.39.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.39.0)
 - move `ipld/unixfs` from gogo protobuf [#841](https://github.com/ipfs/boxo/pull/841)
 - `provider`: Prevent multiple instances of reprovider.Reprovide() from running at the same time. [#834](https://github.com/ipfs/boxo/pull/834)
-- upgrade to `go-libp2p` [v0.39.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.39.1)
+- upgrade to `go-libp2p` [v0.40.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.40.0)
 - upgrade to `go-libp2p-kad-dht` [v0.29.0](github.com/libp2p/go-libp2p-kad-dht v0.29.0)
 - move bitswap and filestore away from gogo protobuf [#839](https://github.com/ipfs/boxo/pull/839)
 - updated Go in `go.mod` to 1.23 [#848](https://github.com/ipfs/boxo/pull/848)
