@@ -111,7 +111,19 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	// Wait until after the expected timeout
 	clock.Add(20 * time.Millisecond)
 
-	<-timeoutsTriggered
+	canRetry := true
+
+retry:
+	select {
+	case <-timeoutsTriggered:
+	case <-time.After(2 * time.Second):
+		if canRetry {
+			canRetry = false
+			clock.Add(10 * time.Millisecond)
+			goto retry
+		}
+		t.Fatal("timed out waiting for timeouts")
+	}
 
 	// At this stage first set of keys should have timed out
 	if tr.timedOutCount() != len(firstks) {
