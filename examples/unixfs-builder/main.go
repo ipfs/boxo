@@ -35,6 +35,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Add progress reporting
+	b.WithProgress(func(p builder.Progress) {
+		switch p.Operation {
+		case "file":
+			fmt.Printf("Adding file: %s (%s)\n", p.Path,
+				builder.HumanReadableSize(p.TotalBytes))
+		case "chunk":
+			percent := float64(p.BytesProcessed) / float64(p.TotalBytes) * 100
+			fmt.Printf("\rProgress: %.1f%% (%s/%s)", percent,
+				builder.HumanReadableSize(p.BytesProcessed),
+				builder.HumanReadableSize(p.TotalBytes))
+		case "directory":
+			fmt.Printf("Adding directory: %s\n", p.Path)
+		}
+	})
+
 	// Get the target path
 	path := flag.Arg(0)
 
