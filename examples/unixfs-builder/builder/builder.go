@@ -3,9 +3,7 @@ package builder
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
-	"path"
 	"path/filepath"
 
 	"github.com/ipfs/boxo/blockservice"
@@ -188,61 +186,6 @@ func (b *Builder) createDirectory(ctx context.Context, dirPath string) (*dag.Pro
 	return dir, nil
 }
 
-// createChunker creates a chunker based on builder options
-func (b *Builder) createChunker(r io.Reader) chunker.Splitter {
-	switch b.opts.Chunker {
-	case "rabin":
-		return chunker.NewRabin(r, uint64(b.opts.ChunkSize))
-	default: // "size"
-		return chunker.NewSizeSplitter(r, int64(b.opts.ChunkSize))
-	}
-}
-
-// func (b *Builder) AddFile(ctx context.Context, path string) error {
-// 	file, err := os.Open(path)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to open file: %w", err)
-// 	}
-// 	defer file.Close()
-
-// 	// Get file info for metadata
-// 	info, err := file.Stat()
-// 	if err != nil {
-// 		return fmt.Errorf("failed to stat file: %w", err)
-// 	}
-
-// 	// Create a chunker based on options
-// 	chunker := b.createChunker(file)
-
-// 	// Create UnixFS DAG params
-// 	params := helpers.DagBuilderParams{
-// 		Maxlinks:   helpers.DefaultLinksPerBlock,
-// 		RawLeaves:  true,
-// 		CidBuilder: cid.V1Builder{Codec: cid.DagProtobuf, MhType: b.opts.HashFunc},
-// 		Dagserv:    b.dagService,
-// 	}
-
-// 	// Create DAG builder
-// 	db, err := params.New(chunker)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to create DAG builder: %w", err)
-// 	}
-
-// 	// Build balanced DAG
-// 	node, err := balanced.Layout(db)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to build DAG: %w", err)
-// 	}
-
-// 	// Store the root CID
-// 	b.root = node.Cid()
-// 	b.size = info.Size()
-
-// 	return nil
-// }
-
-// File: examples/unixfs-builder/builder/builder.go
-
 func (b *Builder) AddFile(ctx context.Context, path string) error {
 	file, err := os.Open(path)
 	if err != nil {
@@ -256,10 +199,17 @@ func (b *Builder) AddFile(ctx context.Context, path string) error {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
 
+	// Progress report
+	b.reportProgress(Progress{
+		Path:       path,
+		TotalBytes: info.Size(),
+		Operation:  "file",
+	})
+
 	// Create UnixFS DAG params
 	params := helpers.DagBuilderParams{
 		Maxlinks:   helpers.DefaultLinksPerBlock,
-		RawLeaves:  true,
+		RawLeaves:  false,
 		CidBuilder: cid.V1Builder{Codec: cid.DagProtobuf, MhType: b.opts.HashFunc},
 		Dagserv:    b.dagService,
 	}
@@ -279,86 +229,132 @@ func (b *Builder) AddFile(ctx context.Context, path string) error {
 		return fmt.Errorf("failed to create DAG builder: %w", err)
 	}
 
-	// Create UnixFS node with file metadata
-	fsNode := ft.NewFSNode(ft.TFile)
-	if b.opts.PreserveTime {
-		fsNode.SetModTime(info.ModTime())
-	}
-
-	// Set mode if requested
-	if b.opts.PreserveMode {
-		fsNode.SetMode(info.Mode())
-	}
-
-	// Build balanced DAG
 	node, err := balanced.Layout(db)
 	if err != nil {
 		return fmt.Errorf("failed to build DAG: %w", err)
 	}
 
-	// Store the root CID
-	b.root = node.Cid()
-	b.size = info.Size()
-
-	// Store the node in the DAG service
-	if err := b.dagService.Add(ctx, node); err != nil {
-		return fmt.Errorf("failed to add node to DAG service: %w", err)
+	protoNode, ok := node.(*dag.ProtoNode)
+	if !ok {
+		return fmt.Errorf("expected ProtoNode, got %T", node)
 	}
 
-	return nil
+	// Create UnixFS node with file metadata
+	fsNode := ft.NewFSNode(ft.TFile)
+	if b.opts.PreserveTime {
+		fsNode.SetModTime(info.ModTime())
+	}
+	if b.opts.PreserveMode {
+		fsNode.SetMode(info.Mode())
+	}
+
+	// Set the UnixFS data in the ProtoNode
+	data, err := fsNode.GetBytes()
+	if err != nil {
+		return err
+	}
+	protoNode.SetData(data)
+
+	b.root = protoNode.Cid()
+	b.size = info.Size()
+
+	// Report completion
+	b.reportProgress(Progress{
+		Path:           path,
+		BytesProcessed: info.Size(),
+		TotalBytes:     info.Size(),
+		Operation:      "chunk",
+	})
+
+	return b.dagService.Add(ctx, protoNode)
 }
 
 // AddDirectory adds a directory and its contents to the UnixFS DAG
+// func (b *Builder) AddDirectory(ctx context.Context, dirPath string) error {
+// 	// Track the root directory
+// 	rootDir, err := b.createDirectory(ctx, dirPath)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	b.directories[dirPath] = rootDir
+
+// 	// Walk through the directory
+// 	err = filepath.Walk(dirPath, func(filePath string, info os.FileInfo, err error) error {
+// 		if err != nil {
+// 			return err
+// 		}
+
+// 		// Get relative path from root directory
+// 		relPath, err := filepath.Rel(dirPath, filePath)
+// 		if err != nil {
+// 			return fmt.Errorf("failed to get relative path: %w", err)
+// 		}
+
+// 		if info.IsDir() {
+// 			// Create directory node if it doesn't exist
+// 			if _, exists := b.directories[filePath]; !exists {
+// 				dirNode, err := b.createDirectory(ctx, filePath)
+// 				if err != nil {
+// 					return err
+// 				}
+// 				b.directories[filePath] = dirNode
+// 			}
+// 			return nil
+// 		}
+
+// 		// Add file and get its node
+// 		if err := b.AddFile(ctx, filePath); err != nil {
+// 			return fmt.Errorf("failed to add file %s: %w", relPath, err)
+// 		}
+
+// 		// Add file to its parent directory
+// 		parentDir := path.Dir(filePath)
+// 		fileName := path.Base(filePath)
+// 		fileNode, err := b.dagService.Get(ctx, b.root)
+// 		if err != nil {
+// 			return err
+// 		}
+
+// 		if err := b.addFileToDirectory(ctx, parentDir, fileName, fileNode.(*dag.ProtoNode)); err != nil {
+// 			return fmt.Errorf("failed to add file to directory: %w", err)
+// 		}
+
+// 		fmt.Printf("Added %s\n", relPath)
+// 		return nil
+// 	})
+
+// 	if err != nil {
+// 		return err
+// 	}
+
+//		// Set root to the root directory
+//		b.root = b.directories[dirPath].Cid()
+//		return nil
+//	}
 func (b *Builder) AddDirectory(ctx context.Context, dirPath string) error {
-	// Track the root directory
+	// Report start of directory processing
+	b.reportProgress(Progress{
+		Path:      dirPath,
+		Operation: "directory",
+	})
+
 	rootDir, err := b.createDirectory(ctx, dirPath)
 	if err != nil {
 		return err
 	}
 	b.directories[dirPath] = rootDir
 
-	// Walk through the directory
 	err = filepath.Walk(dirPath, func(filePath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// Get relative path from root directory
-		relPath, err := filepath.Rel(dirPath, filePath)
-		if err != nil {
-			return fmt.Errorf("failed to get relative path: %w", err)
-		}
-
-		if info.IsDir() {
-			// Create directory node if it doesn't exist
-			if _, exists := b.directories[filePath]; !exists {
-				dirNode, err := b.createDirectory(ctx, filePath)
-				if err != nil {
-					return err
-				}
-				b.directories[filePath] = dirNode
+		if !info.IsDir() {
+			if err := b.AddFile(ctx, filePath); err != nil {
+				return fmt.Errorf("failed to add file %s: %w", filePath, err)
 			}
-			return nil
 		}
 
-		// Add file and get its node
-		if err := b.AddFile(ctx, filePath); err != nil {
-			return fmt.Errorf("failed to add file %s: %w", relPath, err)
-		}
-
-		// Add file to its parent directory
-		parentDir := path.Dir(filePath)
-		fileName := path.Base(filePath)
-		fileNode, err := b.dagService.Get(ctx, b.root)
-		if err != nil {
-			return err
-		}
-
-		if err := b.addFileToDirectory(ctx, parentDir, fileName, fileNode.(*dag.ProtoNode)); err != nil {
-			return fmt.Errorf("failed to add file to directory: %w", err)
-		}
-
-		fmt.Printf("Added %s\n", relPath)
 		return nil
 	})
 
@@ -366,7 +362,6 @@ func (b *Builder) AddDirectory(ctx context.Context, dirPath string) error {
 		return err
 	}
 
-	// Set root to the root directory
 	b.root = b.directories[dirPath].Cid()
 	return nil
 }
