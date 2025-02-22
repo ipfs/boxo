@@ -1125,6 +1125,12 @@ func isRetryableError(err error) (bool, error) {
 // blockstoreErrToGatewayErr translates underlying blockstore error into one that gateway code will return as HTTP 502 or 504
 // it also makes sure Retry-After hint from remote blockstore will be passed to HTTP client, if present.
 func blockstoreErrToGatewayErr(err error) error {
+	// Check for blocked content error first
+	var blocked *ErrorContentBlocked
+	if errors.As(err, &blocked) {
+		return err
+	}
+
 	if errors.Is(err, &ErrorStatusCode{}) ||
 		errors.Is(err, &ErrorRetryAfter{}) {
 		// already correct error
