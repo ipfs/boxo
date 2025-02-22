@@ -36,6 +36,12 @@ type ErrorRetryAfter struct {
 	RetryAfter time.Duration
 }
 
+// ErrorContentBlocked represents an error when content is blocked due to filtering
+type ErrorContentBlocked struct {
+	Err        error
+	StatusCode int
+}
+
 func NewErrorRetryAfter(err error, retryAfter time.Duration) *ErrorRetryAfter {
 	if err == nil {
 		err = ErrServiceUnavailable
@@ -46,6 +52,18 @@ func NewErrorRetryAfter(err error, retryAfter time.Duration) *ErrorRetryAfter {
 	return &ErrorRetryAfter{
 		RetryAfter: retryAfter,
 		Err:        err,
+	}
+}
+
+func NewErrorContentBlocked(err error, statusCode int) *ErrorContentBlocked {
+	// Will default to Error:451 if no status code is provided
+	if statusCode != http.StatusGone && statusCode != http.StatusUnavailableForLegalReasons {
+		statusCode = http.StatusUnavailableForLegalReasons // 451 by default
+	}
+
+	return &ErrorContentBlocked{
+		Err:        err,
+		StatusCode: statusCode,
 	}
 }
 
@@ -67,6 +85,26 @@ func (e *ErrorRetryAfter) Unwrap() error {
 func (e *ErrorRetryAfter) Is(err error) bool {
 	switch err.(type) {
 	case *ErrorRetryAfter:
+		return true
+	default:
+		return false
+	}
+}
+
+func (e *ErrorContentBlocked) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("content blocked: %s", e.Err.Error())
+	}
+	return "content blocked and cannot be provided"
+}
+
+func (e *ErrorContentBlocked) Unwrap() error {
+	return e.Err
+}
+
+func (e *ErrorContentBlocked) Is(err error) bool {
+	switch err.(type) {
+	case *ErrorContentBlocked:
 		return true
 	default:
 		return false
@@ -187,7 +225,12 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 	case errors.Is(err, &cid.ErrInvalidCid{}):
 		code = http.StatusBadRequest
 	case isErrContentBlocked(err):
-		code = http.StatusGone
+		var blocked *ErrorContentBlocked
+		if errors.As(err, &blocked) {
+			code = blocked.StatusCode
+		} else {
+			code = http.StatusUnavailableForLegalReasons // Default to 451
+		}
 	case isErrNotFound(err):
 		code = http.StatusNotFound
 	case errors.Is(err, context.DeadlineExceeded):
@@ -255,5 +298,6 @@ func isErrNotFound(err error) bool {
 func isErrContentBlocked(err error) bool {
 	// TODO: we match error message to avoid pulling nopfs as a dependency
 	// Ref. https://github.com/ipfs-shipyard/nopfs/blob/cde3b5ba964c13e977f4a95f3bd8ca7d7710fbda/status.go#L87-L89
-	return strings.Contains(err.Error(), "blocked and cannot be provided")
+	var blocked *ErrorContentBlocked
+	return errors.As(err, &blocked)
 }
