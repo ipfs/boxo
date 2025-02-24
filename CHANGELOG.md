@@ -25,7 +25,7 @@ The following emojis are used to highlight certain changes:
 ### Security
 
 
-## [v0.27.4]
+## [v0.28.0]
 
 ### Added
 
