@@ -2,13 +2,10 @@ package httpnet
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
 	"github.com/ipfs/boxo/bitswap/network"
-	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"go.uber.org/multierr"
@@ -17,10 +14,7 @@ import (
 // pinger pings connected hosts on regular intervals
 // and tracks their latency.
 type pinger struct {
-	host      host.Host
-	pingCid   string
-	userAgent string
-	client    *http.Client
+	ht *Network
 
 	latenciesLock sync.RWMutex
 	latencies     map[peer.ID]time.Duration
@@ -29,13 +23,9 @@ type pinger struct {
 	pings     map[peer.ID]context.CancelFunc
 }
 
-func newPinger(h host.Host, client *http.Client, pingCid, userAgent string) *pinger {
+func newPinger(ht *Network, pingCid string) *pinger {
 	return &pinger{
-		host:      h,
-		pingCid:   pingCid,
-		userAgent: userAgent,
-		client:    client,
-
+		ht:        ht,
 		latencies: make(map[peer.ID]time.Duration),
 		pings:     make(map[peer.ID]context.CancelFunc),
 	}
@@ -45,7 +35,7 @@ func newPinger(h host.Host, client *http.Client, pingCid, userAgent string) *pin
 // returns the result with the latency for this peer. The result is also
 // recorded.
 func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
-	pi := pngr.host.Peerstore().PeerInfo(p)
+	pi := pngr.ht.host.Peerstore().PeerInfo(p)
 	urls := network.ExtractURLsFromPeer(pi)
 	if len(urls) == 0 {
 		return ping.Result{
@@ -54,35 +44,20 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 	}
 
 	method := "GET"
-	if supportsHave(pngr.host.Peerstore(), p) {
+	if supportsHave(pngr.ht.host.Peerstore(), p) {
 		method = "HEAD"
 	}
 
 	results := make(chan ping.Result, len(urls))
 	for _, u := range urls {
 		go func(u network.ParsedURL) {
-			req, err := buildRequest(ctx, u, method, pngr.pingCid, pngr.userAgent)
+			start := time.Now()
+			err := pngr.ht.connect(ctx, p, u, method)
 			if err != nil {
 				log.Debug(err)
 				results <- ping.Result{Error: err}
 				return
 			}
-
-			log.Debugf("ping request to %s", req.URL)
-			start := time.Now()
-			resp, err := pngr.client.Do(req)
-			if err != nil {
-				results <- ping.Result{Error: err}
-				return
-			}
-
-			if resp.StatusCode >= 300 { // non-success
-				err := fmt.Errorf("ping request to %q returned %d", req.URL, resp.StatusCode)
-				log.Error(err)
-				results <- ping.Result{Error: err}
-				return
-			}
-
 			results <- ping.Result{
 				RTT: time.Since(start),
 			}

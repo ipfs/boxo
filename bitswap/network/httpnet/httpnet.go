@@ -270,7 +270,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	}
 	htnet.client = c
 
-	pinger := newPinger(host, htnet.client, pingCid, htnet.userAgent)
+	pinger := newPinger(htnet, pingCid)
 	htnet.pinger = pinger
 
 	for i := 0; i < htnet.httpWorkers; i++ {
