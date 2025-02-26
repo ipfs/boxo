@@ -809,7 +809,7 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 			wantType = pb.Message_Wantlist_Block
 		}
 
-		msgSize += mq.msg.AddEntry(e.Cid, e.Priority, wantType, true)
+		msgSize += mq.msg.AddEntry(e.Cid, e.Priority, wantType, false)
 		sentBcstEntries++
 
 		if msgSize >= mq.maxMessageSize {
