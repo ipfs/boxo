@@ -16,14 +16,26 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.28.0]
+
+### Added
+
 - `bitswap/client`: Add `DontHaveTimeoutConfig` type alias and `func DontHaveTimeoutConfig()` to expose config defined in internal package.
 
 ### Changed
 
-- upgrade to `go-libp2p` [v0.39.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.39.0)
 - move `ipld/unixfs` from gogo protobuf [#841](https://github.com/ipfs/boxo/pull/841)
 - `provider`: Prevent multiple instances of reprovider.Reprovide() from running at the same time. [#834](https://github.com/ipfs/boxo/pull/834)
-- upgrade to `go-libp2p` [v0.39.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.39.1)
+- upgrade to `go-libp2p` [v0.40.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.40.0)
 - upgrade to `go-libp2p-kad-dht` [v0.29.0](github.com/libp2p/go-libp2p-kad-dht v0.29.0)
 - move bitswap and filestore away from gogo protobuf [#839](https://github.com/ipfs/boxo/pull/839)
 - updated Go in `go.mod` to 1.23 [#848](https://github.com/ipfs/boxo/pull/848)
@@ -43,6 +55,7 @@ The following emojis are used to highlight certain changes:
 
 - Fix memory leaks due to not cleaning up wantlists [#829](https://github.com/ipfs/boxo/pull/829), [#833](https://github.com/ipfs/boxo/pull/833)
 - `ipns`: Improved interop with legacy clients by restoring support for `[]byte` CID in `Value` field. `Value()` will convert it to a valid `path.Path`. Empty `Value()` will produce `NoopPath` (`/ipfs/bafkqaaa`) to avoid breaking existing code that expects a valid record to always produce a valid content path. [#830](https://github.com/ipfs/boxo/pull/830)
+- `gateway/blocks-backend`: Removed IPLD decoding in GetBlock funciton in gateway's BlocksBackend. Now it's querying the blockService directly instead of dagService. [#845](https://github.com/ipfs/boxo/pull/845)
 
 
 ## [v0.27.3]

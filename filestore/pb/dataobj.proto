@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package github.com.boxo.filestore.pb;
+package ipfs.boxo.filestore.pb;
 
 option go_package = "github.com/ipfs/boxo/filestore/pb";
 

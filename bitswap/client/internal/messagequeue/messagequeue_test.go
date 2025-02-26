@@ -133,6 +133,7 @@ func collectMessages(ctx context.Context,
 	messagesSent <-chan []bsmsg.Entry,
 	timeout time.Duration,
 ) [][]bsmsg.Entry {
+	t.Helper()
 	var messagesReceived [][]bsmsg.Entry
 	timeoutctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -317,7 +318,6 @@ func TestSendingMessagesPriority(t *testing.T) {
 }
 
 func TestCancelOverridesPendingWants(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -400,7 +400,7 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 
 	messages = collectMessages(ctx, t, messagesSent, collectTimeout)
 	if totalEntriesLength(messages) != 3 {
-		t.Fatal("Wrong message count", totalEntriesLength(messages))
+		t.Fatalf("Wrong message count, expected 3 got %d", totalEntriesLength(messages))
 	}
 
 	// Should send 1 want-block and 2 cancels
