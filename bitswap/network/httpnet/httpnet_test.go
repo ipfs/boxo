@@ -57,8 +57,8 @@ func (recv *mockRecv) ReceiveMessage(ctx context.Context, sender peer.ID, incomi
 	recv.waitCh <- struct{}{}
 }
 
-func (recv *mockRecv) wait() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func (recv *mockRecv) wait(seconds time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), seconds*time.Second)
 	defer cancel()
 	select {
 	case <-ctx.Done():
@@ -376,7 +376,7 @@ func TestSendMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recv.wait()
+	recv.wait(5)
 
 	for _, c := range wl {
 		if _, ok := recv.blocks[c]; !ok {
@@ -406,7 +406,7 @@ func TestSendMessageWithFailingServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = recv.wait()
+	err = recv.wait(5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestSendMessageWithPartialResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recv.wait()
+	recv.wait(5)
 
 	for _, c := range wl[5:10] {
 		if _, ok := recv.blocks[c]; !ok {
@@ -472,7 +472,7 @@ func TestSendMessageSendHavesAndDontHaves(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recv.wait()
+	recv.wait(5)
 
 	for _, c := range wl[0:5] {
 		if _, ok := recv.haves[c]; !ok {
@@ -484,64 +484,6 @@ func TestSendMessageSendHavesAndDontHaves(t *testing.T) {
 		if _, ok := recv.donthaves[c]; !ok {
 			t.Error("dont_have was not received")
 		}
-	}
-}
-
-func TestSendCancels(t *testing.T) {
-	ctx := context.Background()
-	recv := mockReceiver(t)
-	htnet, mn := mockNetwork(t, recv)
-	peer, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal(err)
-	}
-	msrv := makeServer(t, 0, 1)
-	associateServerToPeer(t, msrv, htnet.host, peer)
-
-	peer2, err := mn.GenPeer()
-	if err != nil {
-		t.Fatal(err)
-	}
-	msrv2 := makeServer(t, 0, 2)
-	associateServerToPeer(t, msrv2, htnet.host, peer2)
-
-	wl := makeCids(t, 0, 2)
-	msg := makeWantsMessage([]cid.Cid{backoffCid})
-	msg2 := makeWantsMessage(wl)
-	msg2.Cancel(backoffCid)
-	msg3 := msg2.Clone()
-	msg3.Reset(true)
-	msg3.Cancel(wl[0])
-	msg3.Cancel(wl[1])
-
-	// send message to peer1 with backoff CID
-	err = htnet.SendMessage(ctx, peer.ID(), msg)
-	if err != nil {
-		t.Error(err)
-	}
-
-	// wait for response to arrive and retry to trigger
-	time.Sleep(time.Second)
-
-	// we are now sleeping. Send a cancel for the backoff cid
-	// and request two other cids.
-	err = htnet.SendMessage(ctx, peer.ID(), msg2)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	time.Sleep(time.Second)
-
-	// the two other CIDs are waiting on cooldown
-	// now cancel them.
-	err = htnet.SendMessage(ctx, peer2.ID(), msg3)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = recv.wait()
-	if err == nil {
-		t.Fatal("we should not have received anything")
 	}
 }
 
@@ -584,24 +526,20 @@ func TestBackOff(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// give time for the request to be handled.
-	time.Sleep(time.Second)
-
 	nms2, err := htnet.NewMessageSender(ctx, peer2.ID(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	now := time.Now()
 	err = nms2.SendMsg(ctx, msg2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	recv.wait()
-	timeSince := time.Since(now)
-	if timeSince < 4*time.Second { // We already slept 1 second before retry
-		t.Fatal("backoff should have made request wait for more than 5 seconds")
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Logf("waited for %s seconds", timeSince)
 
+	if len(recv.blocks) > 0 || len(recv.donthaves) > 0 {
+		t.Error("no blocks should have been received while on backoff")
+	}
 }

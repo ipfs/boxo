@@ -182,8 +182,10 @@ func (err senderError) Error() string {
 func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsmsg.Entry) (blocks.Block, *senderError) {
 	// sleep whatever needed
 	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
-		log.Debugf("sleeping on %s", u.URL)
-		time.Sleep(time.Until(dl))
+		return nil, &senderError{
+			Type: typeRetryLater,
+			Err:  fmt.Errorf("%q is in cooldown period", u.URL),
+		}
 	}
 
 	var method string
@@ -275,7 +277,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	// 1) Observed that some gateway implementation returns 500 instead of
 	// 404.
 	if statusCode == 500 && string(body) == "ipld: could not find node" {
-		log.Warnf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
+		log.Debugf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
 		statusCode = 404
 	}
 
