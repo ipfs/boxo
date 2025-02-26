@@ -807,6 +807,8 @@ func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwap
 		// send a want-block instead
 		if !supportsHave {
 			wantType = pb.Message_Wantlist_Block
+		} else {
+			wantType = pb.Message_Wantlist_Have
 		}
 
 		msgSize += mq.msg.AddEntry(e.Cid, e.Priority, wantType, false)
