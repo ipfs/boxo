@@ -408,14 +408,15 @@ func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessa
 
 	// unless we have a wantlist, we bailout.
 	wantlist := msg.Wantlist()
-	if len(wantlist) == 0 {
+	lenWantlist := len(wantlist)
+	if lenWantlist == 0 {
 		return nil
 	}
 
 	// Keep metrics of wantlists sent and how long it took
 	sender.ht.metrics.WantlistsTotal.Inc()
-	sender.ht.metrics.WantlistsItemsTotal.Add(float64(len(wantlist)))
-	log.Debugf("sending wantlist: %s (%d items)", sender.peer, len(wantlist))
+	sender.ht.metrics.WantlistsItemsTotal.Add(float64(lenWantlist))
+	log.Debugf("sending wantlist: %s (%d items)", sender.peer, lenWantlist)
 	now := time.Now()
 	defer func() {
 		sender.ht.metrics.WantlistsSeconds.Observe(float64(time.Since(now)) / float64(time.Second))
@@ -466,6 +467,7 @@ WANTLIST_LOOP:
 			// / float64(time.Second))
 			continue
 		}
+		log.Debugf("wantlist msg %d/%d: %s %s %s", i, lenWantlist, sender.peer, entry.Cid, entry.WantType)
 
 		reqInfo := httpRequestInfo{
 			ctx:       entryCtxs[i],
