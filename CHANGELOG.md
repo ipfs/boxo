@@ -14,6 +14,13 @@ The following emojis are used to highlight certain changes:
 
 ## [Unreleased]
 
+- ✨ `httpnet`: Transparent HTTP-block retrieval support over Trustless Gateways [#747]((https://github.com/ipfs/boxo/pull/747):
+  - Complements Bitswap as a block-retrieval mechanism, implementing `bitswap/network`.
+  - Understands peers found in provider records with `/.../http` endpoints (trustless gateway).
+  - Treats them as "Bitswap" peers, except instead of using Bitswap it makes HTTP/2 requests to discover (`HEAD`) and retrieve (`GET`) individual blocks (`?format=raw`).
+  - A `bitswap/network` proxy implementation allows co-existance with standard `bitswap/network/bsnet`.
+  - `httpnet` is not enabled by default. Upstream implementations may use it by modifying how they create the Bitswap network and initialize bitswap.
+
 ### Added
 
 ### Changed
