@@ -588,12 +588,16 @@ func (sender *httpMsgSender) SupportsHave() bool {
 }
 
 func supportsHave(pstore peerstore.Peerstore, p peer.ID) bool {
+	var haveSupport bool
 	v, err := pstore.Get(p, peerstoreSupportsHeadKey)
 	if err != nil {
-		return false
+		haveSupport = false
+	} else {
+		b, ok := v.(bool)
+		haveSupport = ok && b
 	}
-	b, ok := v.(bool)
-	return ok && b
+	log.Debugf("supportsHave: %s %t", p, haveSupport)
+	return haveSupport
 }
 
 // parseRetryAfter returns how many seconds the Retry-After header header
