@@ -467,7 +467,7 @@ WANTLIST_LOOP:
 			// / float64(time.Second))
 			continue
 		}
-		log.Debugf("wantlist msg %d/%d: %s %s %s", i, lenWantlist, sender.peer, entry.Cid, entry.WantType)
+		log.Debugf("wantlist msg %d/%d: %s %s %s DH:%t", i, lenWantlist, sender.peer, entry.Cid, entry.WantType, entry.SendDontHave)
 
 		reqInfo := httpRequestInfo{
 			ctx:       entryCtxs[i],
