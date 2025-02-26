@@ -1,4 +1,4 @@
-// Package bitswap implements the IPFS exchange interface with the BitSwap
+// Package client implements the IPFS exchange interface with the BitSwap
 // bilateral exchange protocol.
 package client
 
@@ -202,7 +202,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
-	pm := bspm.New(ctx, peerQueueFactory, network.Self())
+	pm := bspm.New(ctx, peerQueueFactory)
 
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
@@ -241,7 +241,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
-		return bsspm.New(id, network.ConnectionManager())
+		return bsspm.New(id, network)
 	}
 	notif := notifications.New()
 	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())

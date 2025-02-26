@@ -1,4 +1,4 @@
-package network
+package bsnet
 
 import (
 	"context"
@@ -9,9 +9,10 @@ import (
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
-	"github.com/ipfs/boxo/bitswap/network/internal"
+	iface "github.com/ipfs/boxo/bitswap/network"
+	"github.com/ipfs/boxo/bitswap/network/bsnet/internal"
+
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p/core/connmgr"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -22,7 +23,7 @@ import (
 	"github.com/multiformats/go-multistream"
 )
 
-var log = logging.Logger("bitswap/network")
+var log = logging.Logger("bitswap/bsnet")
 
 var (
 	maxSendTimeout = 2 * time.Minute
@@ -32,7 +33,7 @@ var (
 )
 
 // NewFromIpfsHost returns a BitSwapNetwork supported by underlying IPFS host.
-func NewFromIpfsHost(host host.Host, opts ...NetOpt) BitSwapNetwork {
+func NewFromIpfsHost(host host.Host, opts ...NetOpt) iface.BitSwapNetwork {
 	s := processSettings(opts...)
 
 	bitswapNetwork := impl{
@@ -44,6 +45,8 @@ func NewFromIpfsHost(host host.Host, opts ...NetOpt) BitSwapNetwork {
 		protocolBitswap:        s.ProtocolPrefix + ProtocolBitswap,
 
 		supportedProtocols: s.SupportedProtocols,
+
+		metrics: newMetrics(),
 	}
 
 	return &bitswapNetwork
@@ -65,10 +68,10 @@ func processSettings(opts ...NetOpt) Settings {
 type impl struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
-	stats Stats
+	stats iface.Stats
 
 	host          host.Host
-	connectEvtMgr *connectEventManager
+	connectEvtMgr *iface.ConnectEventManager
 
 	protocolBitswapNoVers  protocol.ID
 	protocolBitswapOneZero protocol.ID
@@ -78,7 +81,9 @@ type impl struct {
 	supportedProtocols []protocol.ID
 
 	// inbound messages from the network are forwarded to the receiver
-	receivers []Receiver
+	receivers []iface.Receiver
+
+	metrics *metrics
 }
 
 // interfaceWrapper is concrete type that wraps an interface. Necessary because
@@ -108,7 +113,7 @@ type streamMessageSender struct {
 	to     peer.ID
 	stream atomicInterface[network.Stream]
 	bsnet  *impl
-	opts   *MessageSenderOpts
+	opts   *iface.MessageSenderOpts
 }
 
 type HasContext interface {
@@ -154,17 +159,6 @@ func (s *streamMessageSender) Reset() error {
 	return nil
 }
 
-// Close the stream
-func (s *streamMessageSender) Close() error {
-	stream := s.stream.Load()
-	if stream != nil {
-		err := stream.Close()
-		s.stream.Store(nil)
-		return err
-	}
-	return nil
-}
-
 // Indicates whether the peer supports HAVE / DONT_HAVE messages
 func (s *streamMessageSender) SupportsHave() bool {
 	stream := s.stream.Load()
@@ -176,6 +170,15 @@ func (s *streamMessageSender) SupportsHave() bool {
 
 // Send a message to the peer, attempting multiple times
 func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessage) error {
+	if n := len(msg.Wantlist()); n > 0 {
+		s.bsnet.metrics.WantlistsTotal.Inc()
+		s.bsnet.metrics.WantlistsItemsTotal.Add(float64(n))
+		now := time.Now()
+		defer func() {
+			s.bsnet.metrics.WantlistsSeconds.Observe(float64(time.Since(now)) / float64(time.Second))
+		}()
+	}
+
 	return s.multiAttempt(ctx, func() error {
 		return s.send(ctx, msg)
 	})
@@ -316,7 +319,7 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 	return nil
 }
 
-func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *MessageSenderOpts) (MessageSender, error) {
+func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *iface.MessageSenderOpts) (iface.MessageSender, error) {
 	opts = setDefaultOpts(opts)
 
 	sender := &streamMessageSender{
@@ -336,7 +339,7 @@ func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *Messag
 	return sender, nil
 }
 
-func setDefaultOpts(opts *MessageSenderOpts) *MessageSenderOpts {
+func setDefaultOpts(opts *iface.MessageSenderOpts) *iface.MessageSenderOpts {
 	copy := *opts
 	if opts.MaxRetries == 0 {
 		copy.MaxRetries = 3
@@ -384,14 +387,14 @@ func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stre
 	return bsnet.host.NewStream(ctx, p, bsnet.supportedProtocols...)
 }
 
-func (bsnet *impl) Start(r ...Receiver) {
+func (bsnet *impl) Start(r ...iface.Receiver) {
 	bsnet.receivers = r
 	{
-		connectionListeners := make([]ConnectionListener, len(r))
+		connectionListeners := make([]iface.ConnectionListener, len(r))
 		for i, v := range r {
 			connectionListeners[i] = v
 		}
-		bsnet.connectEvtMgr = newConnectEventManager(connectionListeners...)
+		bsnet.connectEvtMgr = iface.NewConnectEventManager(connectionListeners...)
 	}
 	for _, proto := range bsnet.supportedProtocols {
 		bsnet.host.SetStreamHandler(proto, bsnet.handleNewStream)
@@ -427,7 +430,7 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 
 	reader := msgio.NewVarintReaderSize(s, network.MessageSizeMax)
 	for {
-		received, err := bsmsg.FromMsgReader(reader)
+		received, size, err := bsmsg.FromMsgReader(reader)
 		if err != nil {
 			if err != io.EOF {
 				_ = s.Reset()
@@ -439,6 +442,7 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 			return
 		}
 
+		bsnet.metrics.ResponseSizes.Observe(float64(size))
 		p := s.Conn().RemotePeer()
 		ctx := context.Background()
 		log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())
@@ -450,12 +454,36 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 	}
 }
 
-func (bsnet *impl) ConnectionManager() connmgr.ConnManager {
-	return bsnet.host.ConnManager()
+func (bsnet *impl) TagPeer(p peer.ID, tag string, w int) {
+	if bsnet.host == nil {
+		return
+	}
+	bsnet.host.ConnManager().TagPeer(p, tag, w)
 }
 
-func (bsnet *impl) Stats() Stats {
-	return Stats{
+func (bsnet *impl) UntagPeer(p peer.ID, tag string) {
+	if bsnet.host == nil {
+		return
+	}
+	bsnet.host.ConnManager().UntagPeer(p, tag)
+}
+
+func (bsnet *impl) Protect(p peer.ID, tag string) {
+	if bsnet.host == nil {
+		return
+	}
+	bsnet.host.ConnManager().Protect(p, tag)
+}
+
+func (bsnet *impl) Unprotect(p peer.ID, tag string) bool {
+	if bsnet.host == nil {
+		return false
+	}
+	return bsnet.host.ConnManager().Unprotect(p, tag)
+}
+
+func (bsnet *impl) Stats() iface.Stats {
+	return iface.Stats{
 		MessagesRecvd: atomic.LoadUint64(&bsnet.stats.MessagesRecvd),
 		MessagesSent:  atomic.LoadUint64(&bsnet.stats.MessagesSent),
 	}
