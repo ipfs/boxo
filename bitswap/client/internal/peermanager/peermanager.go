@@ -85,12 +85,12 @@ func (pm *PeerManager) ConnectedPeers() []peer.ID {
 // of wants.
 func (pm *PeerManager) Connected(p peer.ID) {
 	pm.pqLk.Lock()
-	defer pm.pqLk.Unlock()
 
 	pq := pm.getOrCreate(p)
-
 	// Inform the peer want manager that there's a new peer
 	pm.pwm.addPeer(pq, p)
+
+	pm.pqLk.Unlock()
 
 	// Inform the sessions that the peer has connected
 	pm.signalAvailability(p, true)
@@ -99,21 +99,22 @@ func (pm *PeerManager) Connected(p peer.ID) {
 // Disconnected is called to remove a peer from the pool.
 func (pm *PeerManager) Disconnected(p peer.ID) {
 	pm.pqLk.Lock()
-	defer pm.pqLk.Unlock()
 
 	pq, ok := pm.peerQueues[p]
-
 	if !ok {
+		pm.pqLk.Unlock()
 		return
 	}
+	// Clean up the peer
+	delete(pm.peerQueues, p)
+	pm.pwm.removePeer(p)
+
+	pm.pqLk.Unlock()
 
 	// Inform the sessions that the peer has disconnected
 	pm.signalAvailability(p, false)
 
-	// Clean up the peer
-	delete(pm.peerQueues, p)
 	pq.Shutdown()
-	pm.pwm.removePeer(p)
 }
 
 // ResponseReceived is called when a message is received from the network.
