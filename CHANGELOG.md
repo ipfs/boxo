@@ -25,6 +25,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `ipns`: The `DefaultRecordTTL` changed from `1h` to `5m` [#859](https://github.com/ipfs/boxo/pull/859)
+
 ### Removed
 
 ### Fixed
