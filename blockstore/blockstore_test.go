@@ -230,9 +230,26 @@ func TestAllKeysRespectsContext(t *testing.T) {
 
 	var results dsq.Results
 	resultsmu := make(chan struct{})
+
 	resultChan := make(chan dsq.Result)
 	d.SetFunc(func(q dsq.Query) (dsq.Results, error) {
-		results = dsq.ResultsWithChan(q, resultChan)
+		results = dsq.ResultsWithContext(q, func(ctx context.Context, out chan<- dsq.Result) {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case r, more := <-resultChan:
+					if !more {
+						return
+					}
+					select {
+					case out <- r:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		})
 		resultsmu <- struct{}{}
 		return results, nil
 	})
@@ -245,9 +262,7 @@ func TestAllKeysRespectsContext(t *testing.T) {
 	select {
 	case <-done:
 		t.Fatal("sync is wrong")
-	case <-results.Process().Closing():
-		t.Fatal("should not be closing")
-	case <-results.Process().Closed():
+	case <-results.Done():
 		t.Fatal("should not be closed")
 	default:
 	}
@@ -255,8 +270,8 @@ func TestAllKeysRespectsContext(t *testing.T) {
 	e := dsq.Entry{Key: BlockPrefix.ChildString("foo").String()}
 	resultChan <- dsq.Result{Entry: e} // let it go.
 	close(resultChan)
-	<-done                       // should be done now.
-	<-results.Process().Closed() // should be closed now
+	<-done           // should be done now.
+	<-results.Done() // should be closed now
 
 	// print any errors
 	for err := range errors {
