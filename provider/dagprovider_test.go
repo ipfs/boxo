@@ -8,40 +8,65 @@ import (
 	"github.com/ipfs/boxo/blockservice"
 	"github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/exchange/offline"
+	"github.com/ipfs/boxo/fetcher"
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/ipld/merkledag"
 	mdutils "github.com/ipfs/boxo/ipld/merkledag/test"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
+	format "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-unixfsnode"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/stretchr/testify/require"
 )
 
-func makeDAGProvider(t *testing.T, ctx context.Context) (KeyChanFunc, []cid.Cid) {
+type dagProviderHelper struct {
+	Datastore      datastore.Datastore
+	Blockstore     blockstore.Blockstore
+	BlockService   blockservice.BlockService
+	FetcherFactory fetcher.Factory
+	DAGService     format.DAGService
+	KeyChanF       KeyChanFunc
+	Cids           []cid.Cid
+}
+
+func makeDAGProvider(t *testing.T, ctx context.Context, fanout, depth uint) *dagProviderHelper {
 	t.Helper()
 
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 	bs := blockstore.NewBlockstore(ds)
 	bserv := blockservice.New(bs, offline.Exchange(bs))
 	ipldFetcher := bsfetcher.NewFetcherConfig(bserv)
+	ipldFetcher.SkipNotFound = true
 	ipldFetcher.PrototypeChooser = dagpb.AddSupportToChooser(bsfetcher.DefaultPrototypeChooser)
 	unixFSFetcher := ipldFetcher.WithReifier(unixfsnode.Reify)
+
 	dserv := merkledag.NewDAGService(bserv)
 	daggen := mdutils.NewDAGGenerator()
 
-	root, allCids, err := daggen.MakeDagNode(dserv.Add, 5, 2)
+	root, allCids, err := daggen.MakeDagNode(dserv.Add, fanout, depth)
 	require.NoError(t, err)
-	t.Logf("Generated %d CIDs", len(allCids))
+	t.Logf("Generated %d CIDs. Root: %s", len(allCids), root)
 
 	keyChanF := NewDAGProvider(root, unixFSFetcher)
-	return keyChanF, allCids
+	return &dagProviderHelper{
+		Datastore:      ds,
+		Blockstore:     bs,
+		BlockService:   bserv,
+		FetcherFactory: unixFSFetcher,
+		DAGService:     dserv,
+		KeyChanF:       keyChanF,
+		Cids:           allCids,
+	}
 }
 
 func TestNewDAGProvider(t *testing.T) {
 	ctx := context.Background()
-	keyChanF, allCids := makeDAGProvider(t, ctx)
+	dph := makeDAGProvider(t, ctx, 5, 2)
+	keyChanF := dph.KeyChanF
+	allCids := dph.Cids
+
 	cidMap := make(map[cid.Cid]struct{})
 	cidCh, err := keyChanF(ctx)
 	require.NoError(t, err)
@@ -62,7 +87,8 @@ func TestNewDAGProvider(t *testing.T) {
 
 func TestNewDAGProviderCtxCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	keyChanF, _ := makeDAGProvider(t, ctx)
+	dph := makeDAGProvider(t, ctx, 5, 2)
+	keyChanF := dph.KeyChanF
 	cidMap := make(map[cid.Cid]struct{})
 	cidCh, err := keyChanF(ctx)
 	require.NoError(t, err)
@@ -85,4 +111,39 @@ func TestNewDAGProviderCtxCancel(t *testing.T) {
 
 	t.Logf("Collected %d CIDs", len(cidMap))
 	require.Equal(t, 3, len(cidMap), "number of traversed CIDs when cancelling the context should be 3")
+}
+
+func TestNewDAGProviderMissingBlocks(t *testing.T) {
+	ctx := context.Background()
+	dph := makeDAGProvider(t, ctx, 1, 10)
+	keyChanF := dph.KeyChanF
+	allCids := dph.Cids
+
+	// Remove a block from the blockstore.
+	// since we have a single deep branch of 10 items, we will only be able
+	// to visit 0, 1 and 2
+	err := dph.Blockstore.DeleteBlock(ctx, allCids[3])
+	require.NoError(t, err)
+
+	cidMap := make(map[cid.Cid]struct{})
+	cidCh, err := keyChanF(ctx)
+	require.NoError(t, err)
+
+	for c := range cidCh {
+		cidMap[c] = struct{}{}
+	}
+
+	t.Logf("Collected %d CIDs", len(cidMap))
+
+	for _, c := range allCids[0:3] {
+		if _, ok := cidMap[c]; !ok {
+			t.Errorf("%s should have been traversed", c)
+		}
+	}
+
+	for _, c := range allCids[3:] {
+		if _, ok := cidMap[c]; ok {
+			t.Errorf("%s should not have been traversed", c)
+		}
+	}
 }
