@@ -239,7 +239,7 @@ func getCarRootCidAndLastSegment(imPath path.ImmutablePath) (cid.Cid, string, er
 		lastSegment = lastSegment[i+1:]
 	}
 
-	return rootCid, lastSegment, err
+	return rootCid, lastSegment, nil
 }
 
 func getCarEtag(imPath path.ImmutablePath, params CarParams, rootCid cid.Cid) string {
