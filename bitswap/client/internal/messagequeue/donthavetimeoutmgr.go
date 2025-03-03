@@ -25,7 +25,8 @@ type DontHaveTimeoutConfig struct {
 
 	// MaxTimeout is the maximum allowed timeout, regardless of latency
 	MaxTimeout time.Duration
-
+	// MinTimeout is the minimum allowed timeout, regardless of latency
+	MinTimeout time.Duration
 	// PingLatencyMultiplier is multiplied by the average ping time to
 	// get an upper bound on how long we expect to wait for a peer's response
 	// to arrive
@@ -363,6 +364,8 @@ func (dhtm *dontHaveTimeoutMgr) calculateTimeoutFromPingLatency(latency time.Dur
 	timeout := dhtm.config.MaxExpectedWantProcessTime + time.Duration(dhtm.config.PingLatencyMultiplier)*latency
 	if timeout > dhtm.config.MaxTimeout {
 		timeout = dhtm.config.MaxTimeout
+	} else if timeout < dhtm.config.MinTimeout {
+		timeout = dhtm.config.MinTimeout
 	}
 	return timeout
 }
@@ -372,6 +375,8 @@ func (dhtm *dontHaveTimeoutMgr) calculateTimeoutFromMessageLatency() time.Durati
 	timeout := dhtm.messageLatency.latency * time.Duration(dhtm.config.MessageLatencyMultiplier)
 	if timeout > dhtm.config.MaxTimeout {
 		timeout = dhtm.config.MaxTimeout
+	} else if timeout < dhtm.config.MinTimeout {
+		timeout = dhtm.config.MinTimeout
 	}
 	return timeout
 }
