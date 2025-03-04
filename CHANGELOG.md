@@ -14,6 +14,7 @@ The following emojis are used to highlight certain changes:
 
 ## [Unreleased]
 
+- feat(bitswap/client): MinTimeout for DontHaveTimeoutConfig [#865](https://github.com/ipfs/boxo/pull/865)
 - ✨ `httpnet`: Transparent HTTP-block retrieval support over Trustless Gateways [#747]((https://github.com/ipfs/boxo/pull/747):
   - Complements Bitswap as a block-retrieval mechanism, implementing `bitswap/network`.
   - Understands peers found in provider records with `/.../http` endpoints (trustless gateway).
