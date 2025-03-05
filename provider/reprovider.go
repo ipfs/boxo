@@ -383,7 +383,7 @@ func (s *reprovider) run() {
 
 			s.throughputDurationSum += dur
 			s.throughputProvideCurrentCount += uint(len(keys))
-			if s.throughputCallback != nil && s.throughputProvideCurrentCount >= s.throughputMinimumProvides {
+			if s.throughputCallback != nil && s.reprovideInterval > 0 && s.throughputProvideCurrentCount >= s.throughputMinimumProvides {
 				if more := s.throughputCallback(performedReprovide, complete, s.throughputProvideCurrentCount, s.throughputDurationSum); !more {
 					s.throughputCallback = nil
 				}
