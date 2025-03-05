@@ -18,6 +18,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `provider` don't call the reprovide throughput callback function when reprovides are disabled [#871](https://github.com/ipfs/boxo/pull/871) 
+
 ### Removed
 
 ### Fixed
