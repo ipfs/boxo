@@ -14,6 +14,21 @@ The following emojis are used to highlight certain changes:
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.29.0]
+
+### Added
+
 - feat(bitswap/client): MinTimeout for DontHaveTimeoutConfig [#865](https://github.com/ipfs/boxo/pull/865)
 - ✨ `httpnet`: Transparent HTTP-block retrieval support over Trustless Gateways [#747]((https://github.com/ipfs/boxo/pull/747):
   - Complements Bitswap as a block-retrieval mechanism, implementing `bitswap/network`.
@@ -22,17 +37,17 @@ The following emojis are used to highlight certain changes:
   - A `bitswap/network` proxy implementation allows co-existance with standard `bitswap/network/bsnet`.
   - `httpnet` is not enabled by default. Upstream implementations may use it by modifying how they create the Bitswap network and initialize bitswap.
 
-### Added
-
 ### Changed
 
 - `ipns`: The `DefaultRecordTTL` changed from `1h` to `5m` [#859](https://github.com/ipfs/boxo/pull/859)
+- upgrade to `go-libp2p` [v0.41.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.41.0)
+- upgrade to `go-libp2p-kad-dht` [v0.30.2](github.com/libp2p/go-libp2p-kad-dht v0.30.2)
+- upgrade to `go-datastore` [v0.8.2](https://github.com/ipfs/go-datastore/releases/tag/v0.8.2) - includes API updates and removes go-process
+- `bitswap/client` reduce lock scope of PeerManageer to help performance [#860](https://github.com/ipfs/boxo/pull/860)
 
 ### Removed
 
-### Fixed
-
-### Security
+- Removed dependency on `github.com/hashicorp/go-multierror` so that boxo only depends on one multi-error package, `go.uber.org/multierr`. [#867](https://github.com/ipfs/boxo/pull/867)
 
 
 ## [v0.28.0]
@@ -76,12 +91,12 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
-- `bitswap/cllient`: Remove unused tracking of CID for interested sessions. [#821](https://github.com/ipfs/boxo/pull/821)
+- `bitswap/client`: Remove unused tracking of CID for interested sessions. [#821](https://github.com/ipfs/boxo/pull/821)
 
 ### Fixed
 
 - `bitswap/client`: Fix runaway goroutine creation under high load. Under high load conditions, goroutines are created faster than they can complete and the more goroutines creates the slower them complete. This creates a positive feedback cycle that ends in OOM. The fix dynamically adjusts message send scheduling to avoid the runaway condition. [#817](https://github.com/ipfs/boxo/pull/817)
-- `bitswap/cllient`: Fix resource leak caused by recording the presence of blocks that no session cares about. [#822](https://github.com/ipfs/boxo/pull/822)
+- `bitswap/client`: Fix resource leak caused by recording the presence of blocks that no session cares about. [#822](https://github.com/ipfs/boxo/pull/822)
 
 
 ## [v0.27.2]

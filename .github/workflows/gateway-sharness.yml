@@ -28,7 +28,6 @@ jobs:
         with:
           repository: ipfs/kubo
           path: kubo
-          ref: datastore-no-goprocess
       - name: Install Missing Tools
         run: sudo apt install -y socat net-tools fish libxml2-utils
       - name: Replace boxo in Kubo go.mod
