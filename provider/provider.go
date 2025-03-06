@@ -9,7 +9,7 @@ package provider
 import (
 	"context"
 
-	"github.com/gammazero/deque"
+	"github.com/gammazero/chanqueue"
 	blocks "github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/fetcher"
 	fetcherhelpers "github.com/ipfs/boxo/fetcher/helpers"
@@ -89,30 +89,8 @@ func NewBufferedProvider(pinsF KeyChanFunc) KeyChanFunc {
 		if err != nil {
 			return nil, err
 		}
-
-		// Use very efficient queue implementation for storing the cids.
-		queue := new(deque.Deque[cid.Cid])
-		queue.SetBaseCap(1024)
-
-		for c := range pins {
-			queue.PushBack(c)
-		}
-
-		outCh := make(chan cid.Cid) // channel for the consumer.
-
-		go func() {
-			defer close(outCh)
-			for queue.Len() != 0 {
-				c := queue.PopFront()
-				select {
-				case <-ctx.Done():
-					return
-				case outCh <- c:
-				}
-			}
-		}()
-
-		return outCh, nil
+		queue := chanqueue.New(chanqueue.WithInputRdOnly[cid.Cid](pins))
+		return queue.Out(), nil
 	}
 }
 

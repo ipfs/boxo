@@ -81,6 +81,10 @@ github.com/gabriel-vasile/mimetype v1.4.6 h1:3+PzJTKLkvgjeTbts6msPJt4DixhT4YtFNf
 github.com/gabriel-vasile/mimetype v1.4.6/go.mod h1:JX1qVKqZd40hUPpAfiNTe0Sne7hdfKSbOqqmkq8GCXc=
 github.com/gammazero/chanqueue v1.0.0 h1:FER/sMailGFA3DDvFooEkipAMU+3c9Bg3bheloPSz6o=
 github.com/gammazero/chanqueue v1.0.0/go.mod h1:fMwpwEiuUgpab0sH4VHiVcEoji1pSi+EIzeG4TPeKPc=
+github.com/gammazero/chanqueue v1.0.1-0.20250306152227-b425ff8b8683 h1:+nnxc368nAYENgZ7WbGTidgikkaP/QHwugm+Fr1e0rc=
+github.com/gammazero/chanqueue v1.0.1-0.20250306152227-b425ff8b8683/go.mod h1:fMwpwEiuUgpab0sH4VHiVcEoji1pSi+EIzeG4TPeKPc=
+github.com/gammazero/chanqueue v1.0.1-0.20250306152916-bd63ce7f2303 h1:ER/IBe5Z02eXkEZwuk1H7BKp73k/NHvsR0lWWDx4cIE=
+github.com/gammazero/chanqueue v1.0.1-0.20250306152916-bd63ce7f2303/go.mod h1:fMwpwEiuUgpab0sH4VHiVcEoji1pSi+EIzeG4TPeKPc=
 github.com/gammazero/deque v1.0.0 h1:LTmimT8H7bXkkCy6gZX7zNLtkbz4NdS2z8LZuor3j34=
 github.com/gammazero/deque v1.0.0/go.mod h1:iflpYvtGfM3U8S8j+sZEKIak3SAKYpA5/SQewgfXDKo=
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=
