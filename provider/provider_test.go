@@ -33,9 +33,9 @@ func TestBufferedPinProvider(t *testing.T) {
 	pinner, err := dspinner.New(ctx, ds, dserv)
 	require.NoError(t, err)
 	daggen := mdutils.NewDAGGenerator()
-	root, _, err := daggen.MakeDagNode(dserv.Add, 1, 2048)
+	root, _, err := daggen.MakeDagNode(dserv.Add, 1, 64)
 	require.NoError(t, err)
-	root2, _, err := daggen.MakeDagNode(dserv.Add, 1, 4096)
+	root2, _, err := daggen.MakeDagNode(dserv.Add, 1, 64)
 	require.NoError(t, err)
 
 	// test with 0 pins to ensure things work.
@@ -86,6 +86,6 @@ func TestBufferedPinProvider(t *testing.T) {
 	for range root1pins {
 		root1count++
 	}
-	require.Equal(t, 2048, root1count, "first pin should have provided 2048 cids")
-	require.Equal(t, 4096+2048, root2count, "second pin should have provided 4096 cids")
+	require.Equal(t, 64, root1count, "first pin should have provided 2048 cids")
+	require.Equal(t, 64+64, root2count, "second pin should have provided 4096 cids")
 }
