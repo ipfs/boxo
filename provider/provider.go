@@ -1,8 +1,15 @@
+// Package provider provides interfaces and tooling for (Re)providers.
+//
+// This includes methods to provide streams of CIDs (i.e. from pinned
+// merkledags, from blockstores, from single dags etc.). These methods can be
+// used for other purposes, but are usually fed to the Reprovider to announce
+// CIDs.
 package provider
 
 import (
 	"context"
 
+	"github.com/gammazero/deque"
 	blocks "github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/fetcher"
 	fetcherhelpers "github.com/ipfs/boxo/fetcher/helpers"
@@ -46,7 +53,8 @@ func NewBlockstoreProvider(bstore blocks.Blockstore) KeyChanFunc {
 	}
 }
 
-// NewPinnedProvider returns provider supplying pinned keys
+// NewPinnedProvider returns a KeyChanFunc supplying pinned keys. The Provider
+// will block when writing to the channel and there are no readers.
 func NewPinnedProvider(onlyRoots bool, pinning pin.Pinner, fetchConfig fetcher.Factory) KeyChanFunc {
 	return func(ctx context.Context) (<-chan cid.Cid, error) {
 		set, err := pinSet(ctx, pinning, fetchConfig, onlyRoots)
@@ -58,6 +66,44 @@ func NewPinnedProvider(onlyRoots bool, pinning pin.Pinner, fetchConfig fetcher.F
 		go func() {
 			defer close(outCh)
 			for c := range set.New {
+				select {
+				case <-ctx.Done():
+					return
+				case outCh <- c:
+				}
+			}
+		}()
+
+		return outCh, nil
+	}
+}
+
+// NewBufferedProvider returns a KeyChanFunc supplying keys from a given
+// KeyChanFunction, but buffering all the keys in memory first until they are
+// read.  This allows the underlying KeyChanFunc to finish listing pins as
+// soon as possible releasing any resources, locks, at the expense of memory
+// usage.
+func NewBufferedProvider(pinsF KeyChanFunc) KeyChanFunc {
+	return func(ctx context.Context) (<-chan cid.Cid, error) {
+		pins, err := pinsF(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		// Use very efficient queue implementation for storing the cids.
+		queue := new(deque.Deque[cid.Cid])
+		queue.SetBaseCap(1024)
+
+		for c := range pins {
+			queue.PushBack(c)
+		}
+
+		outCh := make(chan cid.Cid) // channel for the consumer.
+
+		go func() {
+			defer close(outCh)
+			for queue.Len() != 0 {
+				c := queue.PopFront()
 				select {
 				case <-ctx.Done():
 					return
