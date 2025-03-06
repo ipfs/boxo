@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/ipfs/boxo/blockservice"
 	"github.com/ipfs/boxo/blockstore"
@@ -58,6 +59,10 @@ func TestBufferedPinProvider(t *testing.T) {
 	root1pins, err := keyChanF(ctx)
 	require.NoError(t, err)
 
+	// Give time to buffer all the results as this is happening in the
+	// background.
+	time.Sleep(200 * time.Millisecond)
+
 	// If the previous query was blocking the pinset under a read-lock,
 	// we would not be able to write a second pin:
 	err = pinner.PinWithMode(ctx, root2, ipinner.Recursive, "test")
@@ -81,6 +86,6 @@ func TestBufferedPinProvider(t *testing.T) {
 	for range root1pins {
 		root1count++
 	}
-	require.Equal(t, root1count, 2048, "first pin should have provided 2048 cids")
-	require.Equal(t, root2count, 4096+2048, "second pin should have provided 4096 cids")
+	require.Equal(t, 2048, root1count, "first pin should have provided 2048 cids")
+	require.Equal(t, 4096+2048, root2count, "second pin should have provided 4096 cids")
 }

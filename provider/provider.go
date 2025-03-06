@@ -9,7 +9,7 @@ package provider
 import (
 	"context"
 
-	"github.com/gammazero/deque"
+	"github.com/gammazero/chanqueue"
 	blocks "github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/fetcher"
 	fetcherhelpers "github.com/ipfs/boxo/fetcher/helpers"
@@ -79,10 +79,10 @@ func NewPinnedProvider(onlyRoots bool, pinning pin.Pinner, fetchConfig fetcher.F
 }
 
 // NewBufferedProvider returns a KeyChanFunc supplying keys from a given
-// KeyChanFunction, but buffering all the keys in memory first until they are
-// read.  This allows the underlying KeyChanFunc to finish listing pins as
-// soon as possible releasing any resources, locks, at the expense of memory
-// usage.
+// KeyChanFunction, but buffering keys in memory if we can read them faster
+// they are consumed.  This allows the underlying KeyChanFunc to finish
+// listing pins as soon as possible releasing any resources, locks, at the
+// expense of memory usage.
 func NewBufferedProvider(pinsF KeyChanFunc) KeyChanFunc {
 	return func(ctx context.Context) (<-chan cid.Cid, error) {
 		pins, err := pinsF(ctx)
@@ -90,35 +90,17 @@ func NewBufferedProvider(pinsF KeyChanFunc) KeyChanFunc {
 			return nil, err
 		}
 
-		// Use very efficient queue implementation for storing the cids.
-		queue := new(deque.Deque[cid.Cid])
-		queue.SetBaseCap(1024)
-
-		totalCids := 0
-		for c := range pins {
-			queue.PushBack(c)
-			totalCids++
-		}
-
-		outCh := make(chan cid.Cid) // channel for the consumer.
+		queue := chanqueue.New[cid.Cid]()
 
 		go func() {
-			defer close(outCh)
-			for {
-				if totalCids == 0 {
-					return
-				}
-				c := queue.PopFront()
-				select {
-				case <-ctx.Done():
-					return
-				case outCh <- c:
-					totalCids--
-				}
+			in := queue.In()
+			defer close(in)
+			for c := range pins {
+				in <- c
 			}
 		}()
 
-		return outCh, nil
+		return queue.Out(), nil
 	}
 }
 
