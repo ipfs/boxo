@@ -2,7 +2,7 @@
 
 This is an example that shows how to build a Gateway backed by the contents of
 a CAR file. A [CAR file](https://ipld.io/specs/transport/car/) is a Content
-Addressable aRchive that contains blocks.
+Addressable Archive that contains blocks.
 
 The `main.go` sets up a `blockService` backed by a static CAR file,
 and then uses it to initialize `gateway.NewBlocksBackend(blockService)`.
@@ -16,7 +16,7 @@ and then uses it to initialize `gateway.NewBlocksBackend(blockService)`.
 ## Usage
 
 First of all, you will need some content stored as a CAR file. You can easily
-export your favorite website, or content, using:
+export your favorite website or content, using:
 
 ```
 ipfs dag export <CID> > data.car
