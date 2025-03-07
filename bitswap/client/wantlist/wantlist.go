@@ -12,10 +12,15 @@ import (
 
 // Wantlist is a raw list of wanted blocks and their priorities
 type Wantlist struct {
-	set map[cid.Cid]Entry
+	set map[cid.Cid]entry
 
 	// Re-computing this can get expensive so we memoize it.
 	cached []Entry
+}
+
+type entry struct {
+	Priority int32
+	WantType pb.Message_Wantlist_WantType
 }
 
 // Entry is an entry in a want list, consisting of a cid and its priority
@@ -37,7 +42,7 @@ func NewRefEntry(c cid.Cid, p int32) Entry {
 // New generates a new raw Wantlist
 func New() *Wantlist {
 	return &Wantlist{
-		set: make(map[cid.Cid]Entry),
+		set: make(map[cid.Cid]entry),
 	}
 }
 
@@ -55,8 +60,7 @@ func (w *Wantlist) Add(c cid.Cid, priority int32, wantType pb.Message_Wantlist_W
 		return false
 	}
 
-	w.put(c, Entry{
-		Cid:      c,
+	w.put(c, entry{
 		Priority: priority,
 		WantType: wantType,
 	})
@@ -91,7 +95,7 @@ func (w *Wantlist) delete(c cid.Cid) {
 	w.cached = nil
 }
 
-func (w *Wantlist) put(c cid.Cid, e Entry) {
+func (w *Wantlist) put(c cid.Cid, e entry) {
 	w.cached = nil
 	w.set[c] = e
 }
@@ -105,7 +109,11 @@ func (w *Wantlist) Has(c cid.Cid) bool {
 // present.
 func (w *Wantlist) Get(c cid.Cid) (Entry, bool) {
 	e, ok := w.set[c]
-	return e, ok
+	return Entry{
+		Cid:      c,
+		Priority: e.Priority,
+		WantType: e.WantType,
+	}, ok
 }
 
 // Entries returns all wantlist entries for a want list, sorted by priority.
@@ -116,8 +124,12 @@ func (w *Wantlist) Entries() []Entry {
 		return w.cached
 	}
 	es := make([]Entry, 0, len(w.set))
-	for _, e := range w.set {
-		es = append(es, e)
+	for c, e := range w.set {
+		es = append(es, Entry{
+			Cid:      c,
+			Priority: e.Priority,
+			WantType: e.WantType,
+		})
 	}
 	slices.SortFunc(es, func(a, b Entry) int {
 		return cmp.Compare(b.Priority, a.Priority)
