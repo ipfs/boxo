@@ -10,7 +10,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/filecoin-project/go-clock v0.1.0
 	github.com/gabriel-vasile/mimetype v1.4.6
-	github.com/gammazero/chanqueue v1.0.0
+	github.com/gammazero/chanqueue v1.1.0
 	github.com/gammazero/deque v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1

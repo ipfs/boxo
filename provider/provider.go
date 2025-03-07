@@ -90,16 +90,7 @@ func NewBufferedProvider(pinsF KeyChanFunc) KeyChanFunc {
 			return nil, err
 		}
 
-		queue := chanqueue.New[cid.Cid]()
-
-		go func() {
-			in := queue.In()
-			defer close(in)
-			for c := range pins {
-				in <- c
-			}
-		}()
-
+		queue := chanqueue.New(chanqueue.WithInputRdOnly[cid.Cid](pins))
 		return queue.Out(), nil
 	}
 }
