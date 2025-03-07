@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/rand"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,22 +21,29 @@ type msg struct {
 }
 
 type mockPeerQueue struct {
-	p    peer.ID
-	msgs chan msg
+	p      peer.ID
+	msgs   chan msg
+	wllock sync.Mutex
 }
 
 func (fp *mockPeerQueue) Startup()  {}
 func (fp *mockPeerQueue) Shutdown() {}
 
 func (fp *mockPeerQueue) AddBroadcastWantHaves(whs []cid.Cid) {
+	fp.wllock.Lock()
+	defer fp.wllock.Unlock()
 	fp.msgs <- msg{fp.p, nil, whs, nil}
 }
 
 func (fp *mockPeerQueue) AddWants(wbs []cid.Cid, whs []cid.Cid) {
+	fp.wllock.Lock()
+	defer fp.wllock.Unlock()
 	fp.msgs <- msg{fp.p, wbs, whs, nil}
 }
 
 func (fp *mockPeerQueue) AddCancels(cs []cid.Cid) {
+	fp.wllock.Lock()
+	defer fp.wllock.Unlock()
 	fp.msgs <- msg{fp.p, nil, nil, cs}
 }
 

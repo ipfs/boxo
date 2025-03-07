@@ -276,7 +276,8 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) *sync.WaitGroup {
 	// Send cancels to a particular peer
 	send := func(pws *peerWant) {
 		// Start from the broadcast cancels
-		toCancel := broadcastCancels
+		toCancel := make([]cid.Cid, len(broadcastCancels))
+		copy(toCancel, broadcastCancels)
 
 		// For each key to be cancelled
 		for _, c := range cancelKs {

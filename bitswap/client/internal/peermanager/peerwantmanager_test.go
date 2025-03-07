@@ -31,6 +31,8 @@ type mockPQ struct {
 }
 
 func (mpq *mockPQ) clear() {
+	mpq.wllock.Lock()
+	defer mpq.wllock.Unlock()
 	mpq.bcst = nil
 	mpq.wbs = nil
 	mpq.whs = nil
