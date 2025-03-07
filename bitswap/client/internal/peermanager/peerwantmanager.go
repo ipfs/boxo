@@ -3,6 +3,7 @@ package peermanager
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p/core/peer"
@@ -56,9 +57,11 @@ func newPeerWantManager(wantGauge Gauge, wantBlockGauge Gauge) *peerWantManager 
 
 // addPeer adds a peer whose wants we need to keep track of. It sends the
 // current list of broadcast wants to the peer.
-func (pwm *peerWantManager) addPeer(peerQueue PeerQueue, p peer.ID) {
+func (pwm *peerWantManager) addPeer(peerQueue PeerQueue, p peer.ID) *sync.WaitGroup {
+	wg := new(sync.WaitGroup)
+
 	if _, ok := pwm.peerWants[p]; ok {
-		return
+		return wg
 	}
 
 	pwm.peerWants[p] = &peerWant{
@@ -70,8 +73,13 @@ func (pwm *peerWantManager) addPeer(peerQueue PeerQueue, p peer.ID) {
 	// Broadcast any live want-haves to the newly connected peer
 	if pwm.broadcastWants.Len() > 0 {
 		wants := pwm.broadcastWants.Keys()
-		peerQueue.AddBroadcastWantHaves(wants)
+		wg.Add(1)
+		func(cids []cid.Cid) {
+			peerQueue.AddBroadcastWantHaves(cids)
+			wg.Done()
+		}(wants)
 	}
+	return wg
 }
 
 // RemovePeer removes a peer and its associated wants from tracking
@@ -115,7 +123,7 @@ func (pwm *peerWantManager) removePeer(p peer.ID) {
 }
 
 // broadcastWantHaves sends want-haves to any peers that have not yet been sent them.
-func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
+func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) *sync.WaitGroup {
 	unsent := make([]cid.Cid, 0, len(wantHaves))
 	for _, c := range wantHaves {
 		if pwm.broadcastWants.Has(c) {
@@ -132,16 +140,15 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 		}
 	}
 
-	if len(unsent) == 0 {
-		return
-	}
+	wg := new(sync.WaitGroup)
 
-	// Allocate a single buffer to filter broadcast wants for each peer
-	bcstWantsBuffer := make([]cid.Cid, 0, len(unsent))
+	if len(unsent) == 0 {
+		return wg
+	}
 
 	// Send broadcast wants to each peer
 	for _, pws := range pwm.peerWants {
-		peerUnsent := bcstWantsBuffer[:0]
+		var peerUnsent []cid.Cid
 		for _, c := range unsent {
 			// If we've already sent a want to this peer, skip them.
 			if !pws.wantBlocks.Has(c) && !pws.wantHaves.Has(c) {
@@ -150,20 +157,30 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 		}
 
 		if len(peerUnsent) > 0 {
-			pws.peerQueue.AddBroadcastWantHaves(peerUnsent)
+			// Update peer's MessageQueue async to return sooner and release
+			// PeerManager mutex.
+			wg.Add(1)
+			go func(cids []cid.Cid) {
+				pws.peerQueue.AddBroadcastWantHaves(cids)
+				wg.Done()
+			}(peerUnsent)
 		}
 	}
+
+	return wg
 }
 
 // sendWants only sends the peer the want-blocks and want-haves that have not
 // already been sent to it.
-func (pwm *peerWantManager) sendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) {
+func (pwm *peerWantManager) sendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) *sync.WaitGroup {
+	wg := new(sync.WaitGroup)
+
 	// Get the existing want-blocks and want-haves for the peer
 	pws, ok := pwm.peerWants[p]
 	if !ok {
 		// In practice this should never happen
 		log.Errorf("sendWants() called with peer %s but peer not found in peerWantManager", string(p))
-		return
+		return wg
 	}
 
 	fltWantBlks := make([]cid.Cid, 0, len(wantBlocks))
@@ -226,15 +243,22 @@ func (pwm *peerWantManager) sendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves
 		}
 	}
 
-	// Send the want-blocks and want-haves to the peer
-	pws.peerQueue.AddWants(fltWantBlks, fltWantHvs)
+	wg.Add(1)
+	go func() {
+		// Send the want-blocks and want-haves to the peer
+		pws.peerQueue.AddWants(fltWantBlks, fltWantHvs)
+		wg.Done()
+	}()
+	return wg
 }
 
 // sendCancels sends a cancel to each peer to which a corresponding want was
 // sent
-func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
+func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) *sync.WaitGroup {
+	wg := new(sync.WaitGroup)
+
 	if len(cancelKs) == 0 {
-		return
+		return wg
 	}
 
 	// Track cancellation state: peerCounts tracks per-CID want counts across
@@ -252,7 +276,8 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 	// Send cancels to a particular peer
 	send := func(pws *peerWant) {
 		// Start from the broadcast cancels
-		toCancel := broadcastCancels
+		toCancel := make([]cid.Cid, len(broadcastCancels))
+		copy(toCancel, broadcastCancels)
 
 		// For each key to be cancelled
 		for _, c := range cancelKs {
@@ -274,7 +299,11 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 
 		// Send cancels to the peer
 		if len(toCancel) > 0 {
-			pws.peerQueue.AddCancels(toCancel)
+			wg.Add(1)
+			go func(cids []cid.Cid) {
+				pws.peerQueue.AddCancels(cids)
+				wg.Done()
+			}(toCancel)
 		}
 	}
 
@@ -324,6 +353,7 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 			clearWantsForCID(c)
 		}
 	}
+	return wg
 }
 
 // wantPeerCnts stores the number of peers that have pending wants for a CID
