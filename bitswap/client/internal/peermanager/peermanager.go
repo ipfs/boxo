@@ -133,9 +133,9 @@ func (pm *PeerManager) ResponseReceived(p peer.ID, ks []cid.Cid) {
 // the peer.
 func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.Cid) {
 	pm.pqLk.Lock()
-	defer pm.pqLk.Unlock()
-
-	pm.pwm.broadcastWantHaves(wantHaves)
+	wg := pm.pwm.broadcastWantHaves(wantHaves)
+	pm.pqLk.Unlock()
+	wg.Wait()
 }
 
 // SendWants sends the given want-blocks and want-haves to the given peer.

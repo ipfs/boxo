@@ -83,7 +83,8 @@ func TestPWMBroadcastWantHaves(t *testing.T) {
 	}
 
 	// Broadcast 2 cids to 2 peers
-	pwm.broadcastWantHaves(cids)
+	wg := pwm.broadcastWantHaves(cids)
+	wg.Wait()
 	for _, pqi := range peerQueues {
 		pq := pqi.(*mockPQ)
 		require.Len(t, pq.bcst, 2, "Expected 2 want-haves")
@@ -92,7 +93,8 @@ func TestPWMBroadcastWantHaves(t *testing.T) {
 
 	// Broadcasting same cids should have no effect
 	clearSent(peerQueues)
-	pwm.broadcastWantHaves(cids)
+	wg = pwm.broadcastWantHaves(cids)
+	wg.Wait()
 	for _, pqi := range peerQueues {
 		pq := pqi.(*mockPQ)
 		require.Len(t, pq.bcst, 0, "Expected 0 want-haves")
@@ -100,7 +102,8 @@ func TestPWMBroadcastWantHaves(t *testing.T) {
 
 	// Broadcast 2 other cids
 	clearSent(peerQueues)
-	pwm.broadcastWantHaves(cids2)
+	wg = pwm.broadcastWantHaves(cids2)
+	wg.Wait()
 	for _, pqi := range peerQueues {
 		pq := pqi.(*mockPQ)
 		require.Len(t, pq.bcst, 2, "Expected 2 want-haves")
@@ -109,7 +112,8 @@ func TestPWMBroadcastWantHaves(t *testing.T) {
 
 	// Broadcast mix of old and new cids
 	clearSent(peerQueues)
-	pwm.broadcastWantHaves(append(cids, cids3...))
+	wg = pwm.broadcastWantHaves(append(cids, cids3...))
+	wg.Wait()
 	for _, pqi := range peerQueues {
 		pq := pqi.(*mockPQ)
 		require.Len(t, pq.bcst, 2, "Expected 2 want-haves")
@@ -125,7 +129,8 @@ func TestPWMBroadcastWantHaves(t *testing.T) {
 	p1 := peers[1]
 	pwm.sendWants(p0, wantBlocks, []cid.Cid{})
 
-	pwm.broadcastWantHaves(cids4)
+	wg = pwm.broadcastWantHaves(cids4)
+	wg.Wait()
 	pq0 := peerQueues[p0].(*mockPQ)
 	// only broadcast 2 / 4 want-haves
 	require.Len(t, pq0.bcst, 2, "Expected 2 want-haves")
@@ -148,7 +153,8 @@ func TestPWMBroadcastWantHaves(t *testing.T) {
 	require.ElementsMatch(t, pq2.bcst, allCids, "Expected all cids to be broadcast")
 
 	clearSent(peerQueues)
-	pwm.broadcastWantHaves(allCids)
+	wg = pwm.broadcastWantHaves(allCids)
+	wg.Wait()
 	require.Empty(t, pq2.bcst, "did not expect to have CIDs to broadcast")
 }
 

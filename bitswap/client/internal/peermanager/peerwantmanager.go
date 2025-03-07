@@ -3,6 +3,7 @@ package peermanager
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p/core/peer"
@@ -115,7 +116,7 @@ func (pwm *peerWantManager) removePeer(p peer.ID) {
 }
 
 // broadcastWantHaves sends want-haves to any peers that have not yet been sent them.
-func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
+func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) *sync.WaitGroup {
 	unsent := make([]cid.Cid, 0, len(wantHaves))
 	for _, c := range wantHaves {
 		if pwm.broadcastWants.Has(c) {
@@ -132,16 +133,15 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 		}
 	}
 
-	if len(unsent) == 0 {
-		return
-	}
+	wg := new(sync.WaitGroup)
 
-	// Allocate a single buffer to filter broadcast wants for each peer
-	bcstWantsBuffer := make([]cid.Cid, 0, len(unsent))
+	if len(unsent) == 0 {
+		return wg
+	}
 
 	// Send broadcast wants to each peer
 	for _, pws := range pwm.peerWants {
-		peerUnsent := bcstWantsBuffer[:0]
+		var peerUnsent []cid.Cid
 		for _, c := range unsent {
 			// If we've already sent a want to this peer, skip them.
 			if !pws.wantBlocks.Has(c) && !pws.wantHaves.Has(c) {
@@ -150,9 +150,17 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 		}
 
 		if len(peerUnsent) > 0 {
-			pws.peerQueue.AddBroadcastWantHaves(peerUnsent)
+			// Update peer's MessageQueue async to return sooner and release
+			// PeerManager mutex.
+			wg.Add(1)
+			go func(cids []cid.Cid) {
+				pws.peerQueue.AddBroadcastWantHaves(cids)
+				wg.Done()
+			}(peerUnsent)
 		}
 	}
+
+	return wg
 }
 
 // sendWants only sends the peer the want-blocks and want-haves that have not
