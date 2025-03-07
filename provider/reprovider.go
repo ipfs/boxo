@@ -44,6 +44,8 @@ type reprovider struct {
 	closewg sync.WaitGroup
 	mu      sync.Mutex
 
+	// reprovideInterval is the time between 2 reprovides. A value of 0 means
+	// that no automatic reprovide will be performed.
 	reprovideInterval        time.Duration
 	initalReprovideDelay     time.Duration
 	initialReprovideDelaySet bool
@@ -533,6 +535,9 @@ func (s *reprovider) getLastReprovideTime() (time.Time, error) {
 }
 
 func (s *reprovider) shouldReprovide() bool {
+	if s.reprovideInterval == 0 {
+		return false
+	}
 	t, err := s.getLastReprovideTime()
 	if err != nil {
 		log.Debugf("getting last reprovide time failed: %s", err)
