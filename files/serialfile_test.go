@@ -23,11 +23,7 @@ func TestSerialFile(t *testing.T) {
 }
 
 func testSerialFile(t *testing.T, hidden, withIgnoreRules bool) {
-	tmppath, err := os.MkdirTemp("", "files-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmppath)
+	tmppath := t.TempDir()
 
 	testInputs := map[string]string{
 		"1":                          "Some text!\n",

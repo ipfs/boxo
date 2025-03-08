@@ -19,15 +19,11 @@ func TestWriteTo(t *testing.T) {
 			"a": NewBytesFile([]byte("foobar")),
 		}),
 	})
-	tmppath, err := os.MkdirTemp("", "files-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmppath)
+	tmppath := t.TempDir()
 
 	path := filepath.Join(tmppath, "output")
 
-	err = WriteTo(sf, path)
+	err := WriteTo(sf, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,9 +74,7 @@ func TestWriteTo(t *testing.T) {
 }
 
 func TestDontAllowOverwrite(t *testing.T) {
-	tmppath, err := os.MkdirTemp("", "files-test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tmppath)
+	tmppath := t.TempDir()
 
 	path := filepath.Join(tmppath, "output")
 
