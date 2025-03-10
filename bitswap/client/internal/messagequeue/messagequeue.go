@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-clock"
+	"github.com/gammazero/chanqueue"
 	bswl "github.com/ipfs/boxo/bitswap/client/wantlist"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
@@ -107,6 +108,8 @@ type MessageQueue struct {
 	events chan<- messageEvent
 
 	perPeerDelay time.Duration
+
+	requests *chanqueue.ChanQueue[func()]
 }
 
 // recallWantlist keeps a list of pending wants and a list of sent wants
@@ -325,7 +328,17 @@ func newMessageQueue(
 		msg:    bsmsg.New(false),
 		clock:  clk,
 		events: events,
+
+		requests: chanqueue.New[func()](),
 	}
+}
+
+func (mq *MessageQueue) Sync() <-chan struct{} {
+	done := make(chan struct{})
+	mq.requests.In() <- func() {
+		close(done)
+	}
+	return done
 }
 
 // Add want-haves that are part of a broadcast to all connected peers
@@ -334,21 +347,23 @@ func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 		return
 	}
 
-	mq.wllock.Lock()
+	mq.requests.In() <- func() {
+		mq.wllock.Lock()
 
-	for _, c := range wantHaves {
-		mq.bcstWants.add(c, mq.priority, pb.Message_Wantlist_Have)
-		mq.priority--
+		for _, c := range wantHaves {
+			mq.bcstWants.add(c, mq.priority, pb.Message_Wantlist_Have)
+			mq.priority--
 
-		// We're adding a want-have for the cid, so clear any pending cancel
-		// for the cid
-		mq.cancels.Remove(c)
+			// We're adding a want-have for the cid, so clear any pending cancel
+			// for the cid
+			mq.cancels.Remove(c)
+		}
+
+		mq.wllock.Unlock()
+
+		// Schedule a message send
+		mq.signalWorkReady()
 	}
-
-	mq.wllock.Unlock()
-
-	// Schedule a message send
-	mq.signalWorkReady()
 }
 
 // Add want-haves and want-blocks for the peer for this message queue.
@@ -357,29 +372,31 @@ func (mq *MessageQueue) AddWants(wantBlocks []cid.Cid, wantHaves []cid.Cid) {
 		return
 	}
 
-	mq.wllock.Lock()
+	mq.requests.In() <- func() {
+		mq.wllock.Lock()
 
-	for _, c := range wantHaves {
-		mq.peerWants.add(c, mq.priority, pb.Message_Wantlist_Have)
-		mq.priority--
+		for _, c := range wantHaves {
+			mq.peerWants.add(c, mq.priority, pb.Message_Wantlist_Have)
+			mq.priority--
 
-		// We're adding a want-have for the cid, so clear any pending cancel
-		// for the cid
-		mq.cancels.Remove(c)
+			// We're adding a want-have for the cid, so clear any pending cancel
+			// for the cid
+			mq.cancels.Remove(c)
+		}
+		for _, c := range wantBlocks {
+			mq.peerWants.add(c, mq.priority, pb.Message_Wantlist_Block)
+			mq.priority--
+
+			// We're adding a want-block for the cid, so clear any pending cancel
+			// for the cid
+			mq.cancels.Remove(c)
+		}
+
+		mq.wllock.Unlock()
+
+		// Schedule a message send
+		mq.signalWorkReady()
 	}
-	for _, c := range wantBlocks {
-		mq.peerWants.add(c, mq.priority, pb.Message_Wantlist_Block)
-		mq.priority--
-
-		// We're adding a want-block for the cid, so clear any pending cancel
-		// for the cid
-		mq.cancels.Remove(c)
-	}
-
-	mq.wllock.Unlock()
-
-	// Schedule a message send
-	mq.signalWorkReady()
 }
 
 // Add cancel messages for the given keys.
@@ -388,39 +405,42 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 		return
 	}
 
-	// Cancel any outstanding DONT_HAVE timers
-	if mq.dhTimeoutMgr != nil {
-		mq.dhTimeoutMgr.CancelPending(cancelKs)
-	}
+	mq.requests.In() <- func() {
 
-	var workReady bool
-
-	mq.wllock.Lock()
-
-	// Remove keys from broadcast and peer wants, and add to cancels
-	for _, c := range cancelKs {
-		// Check if a want for the key was sent
-		wasSentBcst := mq.bcstWants.sent.Has(c)
-		wasSentPeer := mq.peerWants.sent.Has(c)
-
-		// Remove the want from tracking wantlists
-		mq.bcstWants.remove(c)
-		mq.peerWants.remove(c)
-
-		// Only send a cancel if a want was sent
-		if wasSentBcst || wasSentPeer {
-			mq.cancels.Add(c)
-			workReady = true
+		// Cancel any outstanding DONT_HAVE timers
+		if mq.dhTimeoutMgr != nil {
+			mq.dhTimeoutMgr.CancelPending(cancelKs)
 		}
-	}
 
-	mq.wllock.Unlock()
+		var workReady bool
 
-	// Unlock first to be nice to the scheduler.
+		mq.wllock.Lock()
 
-	// Schedule a message send
-	if workReady {
-		mq.signalWorkReady()
+		// Remove keys from broadcast and peer wants, and add to cancels
+		for _, c := range cancelKs {
+			// Check if a want for the key was sent
+			wasSentBcst := mq.bcstWants.sent.Has(c)
+			wasSentPeer := mq.peerWants.sent.Has(c)
+
+			// Remove the want from tracking wantlists
+			mq.bcstWants.remove(c)
+			mq.peerWants.remove(c)
+
+			// Only send a cancel if a want was sent
+			if wasSentBcst || wasSentPeer {
+				mq.cancels.Add(c)
+				workReady = true
+			}
+		}
+
+		mq.wllock.Unlock()
+
+		// Unlock first to be nice to the scheduler.
+
+		// Schedule a message send
+		if workReady {
+			mq.signalWorkReady()
+		}
 	}
 }
 
@@ -450,10 +470,12 @@ func (mq *MessageQueue) RebroadcastNow() {
 // Startup starts the processing of messages and rebroadcasting.
 func (mq *MessageQueue) Startup() {
 	go mq.runQueue()
+	go mq.runRequests()
 }
 
 // Shutdown stops the processing of messages for a message queue.
 func (mq *MessageQueue) Shutdown() {
+	mq.requests.Shutdown()
 	mq.shutdown()
 }
 
@@ -469,6 +491,13 @@ func (mq *MessageQueue) onShutdown() {
 	}
 }
 
+func (mq *MessageQueue) runRequests() {
+	reqs := mq.requests.Out()
+	for f := range reqs {
+		f()
+	}
+}
+
 func (mq *MessageQueue) runQueue() {
 	const runRebroadcastsInterval = rebroadcastInterval / 2
 
@@ -478,15 +507,10 @@ func (mq *MessageQueue) runQueue() {
 	defer mq.onShutdown()
 
 	// Create a timer for debouncing scheduled work.
-	scheduleWork := mq.clock.Timer(0)
-	if !scheduleWork.Stop() {
-		// Need to drain the timer if Stop() returns false
-		// See: https://golang.org/pkg/time/#Timer.Stop
-		<-scheduleWork.C
-	}
+	scheduleWork := mq.clock.Timer(minSendMessageDelay)
 
 	perPeerDelay := mq.perPeerDelay
-	hasWorkChan := mq.outgoingWork
+	var hasWorkChan chan struct{}
 
 	rebroadcastTimer := mq.clock.Timer(runRebroadcastsInterval)
 	defer rebroadcastTimer.Stop()

@@ -85,10 +85,8 @@ func (pm *PeerManager) Connected(p peer.ID) {
 
 	pq := pm.getOrCreate(p)
 	// Inform the peer want manager that there's a new peer
-	wg := pm.pwm.addPeer(pq, p)
+	pm.pwm.addPeer(pq, p)
 	pm.pqLk.Unlock()
-
-	wg.Wait()
 
 	// Inform the sessions that the peer has connected
 	pm.signalAvailability(p, true)
@@ -134,23 +132,19 @@ func (pm *PeerManager) ResponseReceived(p peer.ID, ks []cid.Cid) {
 // the peer.
 func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.Cid) {
 	pm.pqLk.Lock()
-	wg := pm.pwm.broadcastWantHaves(wantHaves)
-	pm.pqLk.Unlock()
-	wg.Wait()
+	defer pm.pqLk.Unlock()
+	pm.pwm.broadcastWantHaves(wantHaves)
 }
 
 // SendWants sends the given want-blocks and want-haves to the given peer.
 // It filters out wants that have previously been sent to the peer.
 func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
 	pm.pqLk.Lock()
+	defer pm.pqLk.Unlock()
 	if _, ok := pm.peerQueues[p]; !ok {
-		pm.pqLk.Unlock()
 		return false
 	}
-	wg := pm.pwm.sendWants(p, wantBlocks, wantHaves)
-	pm.pqLk.Unlock()
-
-	wg.Wait()
+	pm.pwm.sendWants(p, wantBlocks, wantHaves)
 	return true
 }
 
@@ -162,11 +156,10 @@ func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid) {
 	}
 
 	pm.pqLk.Lock()
-	// Send a CANCEL to each peer that has been sent a want-block or want-have
-	wg := pm.pwm.sendCancels(cancelKs)
-	pm.pqLk.Unlock()
+	defer pm.pqLk.Unlock()
 
-	wg.Wait()
+	// Send a CANCEL to each peer that has been sent a want-block or want-have
+	pm.pwm.sendCancels(cancelKs)
 }
 
 // CurrentWants returns the list of pending wants (both want-haves and want-blocks).

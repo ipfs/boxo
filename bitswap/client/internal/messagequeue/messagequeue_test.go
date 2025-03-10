@@ -175,6 +175,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	bcstwh := random.Cids(10)
 
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 	messageQueue.AddBroadcastWantHaves(bcstwh)
 	messages := collectMessages(ctx, t, messagesSent, collectTimeout)
 	if len(messages) != 1 {
@@ -318,6 +319,7 @@ func TestSendingMessagesPriority(t *testing.T) {
 }
 
 func TestCancelOverridesPendingWants(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -377,13 +379,12 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	peerID := random.Peers(1)[0]
 	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
+	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 
 	cids := random.Cids(3)
 	wantBlocks := cids[:1]
 	wantHaves := cids[1:]
-
-	messageQueue.Startup()
-	defer messageQueue.Shutdown()
 
 	// Add 1 want-block and 2 want-haves
 	messageQueue.AddWants(wantBlocks, wantHaves)
@@ -417,7 +418,7 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 }
 
 func TestWantlistRebroadcast(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -737,7 +738,6 @@ func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
 }
 
 func TestResponseReceivedDiscardsOutliers(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -819,6 +819,7 @@ func BenchmarkMessageQueue(b *testing.B) {
 
 		messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, clock.New(), nil)
 		messageQueue.Startup()
+		defer messageQueue.Shutdown()
 
 		go func() {
 			for {
