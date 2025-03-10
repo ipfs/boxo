@@ -121,9 +121,20 @@ func WithInsecureSkipVerify(b bool) Option {
 // these hosts.
 func WithAllowlist(hosts []string) Option {
 	return func(net *Network) {
+		log.Infof("HTTP retrieval allowlist: %s", strings.Join(hosts, ", "))
 		net.allowlist = make(map[string]struct{})
 		for _, h := range hosts {
 			net.allowlist[h] = struct{}{}
+		}
+	}
+}
+
+func WithDenylist(hosts []string) Option {
+	return func(net *Network) {
+		log.Infof("HTTP retrieval denylist: %s", strings.Join(hosts, ", "))
+		net.denylist = make(map[string]struct{})
+		for _, h := range hosts {
+			net.denylist[h] = struct{}{}
 		}
 	}
 }
@@ -170,6 +181,7 @@ type Network struct {
 	maxHTTPAddressesPerPeer int
 	httpWorkers             int
 	allowlist               map[string]struct{}
+	denylist                map[string]struct{}
 
 	metrics      *metrics
 	httpRequests chan httpRequestInfo
@@ -210,6 +222,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		opt(htnet)
 	}
 
+	// TODO: take allowlist into account!
 	htnet.metrics = newMetrics(htnet.allowlist)
 
 	reqTracker := newRequestTracker()
@@ -284,11 +297,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 // received. It also starts the connection event manager. Start must be called
 // before using the Network.
 func (ht *Network) Start(receivers ...network.Receiver) {
-	allowlist := make([]string, 0, len(ht.allowlist))
-	for k := range ht.allowlist {
-		allowlist = append(allowlist, k)
-	}
-	log.Infof("httpnet: HTTP retrieval system started with allowlist: %s", strings.Join(allowlist, ","))
+	log.Info("HTTP raw block retrieval system started")
 	ht.receivers = receivers
 	connectionListeners := make([]network.ConnectionListener, len(receivers))
 	for i, v := range receivers {
@@ -384,22 +393,28 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 	}
 
 	urls := network.ExtractURLsFromPeer(htaddrs)
-	if len(ht.allowlist) > 0 {
-		var filteredURLs []network.ParsedURL
-		var filteredAddrs []multiaddr.Multiaddr
-		for i, u := range urls {
-			host, _, err := net.SplitHostPort(u.URL.Host)
-			if err != nil {
-				return err
-			}
-			if _, ok := ht.allowlist[host]; ok {
-				filteredURLs = append(filteredURLs, u)
-				filteredAddrs = append(filteredAddrs, htaddrs.Addrs[i])
-			}
+
+	var filteredURLs []network.ParsedURL
+	var filteredAddrs []multiaddr.Multiaddr
+	for i, u := range urls {
+		host, _, err := net.SplitHostPort(u.URL.Host)
+		if err != nil {
+			return err
 		}
-		urls = filteredURLs
-		htaddrs.Addrs = filteredAddrs
+
+		_, allowed := ht.allowlist[host]
+		_, denied := ht.denylist[host]
+		// Filter out if allowlist is enabled and it is not allowed,
+		// OR if host is in denylist.
+		remove := (len(ht.allowlist) > 0 && !allowed) || denied
+
+		if !remove {
+			filteredURLs = append(filteredURLs, u)
+			filteredAddrs = append(filteredAddrs, htaddrs.Addrs[i])
+		}
 	}
+	urls = filteredURLs
+	htaddrs.Addrs = filteredAddrs
 
 	// if len(filteredURLs == 0) nothing will happen below and we will return
 	// an error below.
