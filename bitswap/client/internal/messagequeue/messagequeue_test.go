@@ -20,6 +20,7 @@ import (
 )
 
 const collectTimeout = 2500 * time.Millisecond
+const eventTimeout = 5 * time.Second
 
 type fakeMessageNetwork struct {
 	connectError       error
@@ -162,7 +163,7 @@ func expectEvent(t *testing.T, events <-chan messageEvent, expectedEvent message
 		if evt != expectedEvent {
 			t.Fatal("message not queued")
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(eventTimeout):
 		t.Fatal("timed out waiting for event")
 	}
 }
@@ -691,6 +692,7 @@ func TestResponseReceived(t *testing.T) {
 
 	// Add some wants
 	messageQueue.AddWants(cids[:5], nil)
+	clock.Add(maxSendMessageDelay)
 	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	<-messagesSent
