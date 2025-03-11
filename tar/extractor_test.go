@@ -517,17 +517,15 @@ func TestLastElementOverwrite(t *testing.T) {
 const tarOutRoot = "tar-out-root"
 
 func testTarExtraction(t *testing.T, setup func(t *testing.T, rootDir string), tarEntries []tarEntry, check func(t *testing.T, extractDir string), extractError error) {
-	var err error
-
 	// Directory structure.
 	// FIXME: We can't easily work on a MemFS since we would need to replace
 	//  all the `os` calls in the extractor so using a temporary dir.
 	rootDir := t.TempDir()
-	defer chmodRecursive(t, rootDir)
-
-	assert.NoError(t, err)
+	t.Cleanup(func() {
+		chmodRecursive(t, rootDir)
+	})
 	extractDir := fp.Join(rootDir, tarOutRoot)
-	err = os.MkdirAll(extractDir, 0o755)
+	err := os.MkdirAll(extractDir, 0o755)
 	assert.NoError(t, err)
 
 	if setup != nil {
@@ -559,8 +557,6 @@ func chmodRecursive(t *testing.T, path string) {
 }
 
 func testExtract(t *testing.T, tarFile string, extractDir string, expectedError error) {
-	var err error
-
 	tarReader, err := os.Open(tarFile)
 	assert.NoError(t, err)
 
