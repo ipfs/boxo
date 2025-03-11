@@ -247,6 +247,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 		return nil, serr
 	}
+	defer resp.Body.Close()
 
 	// Record request size
 	var buf bytes.Buffer
