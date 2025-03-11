@@ -20,10 +20,7 @@ var bg = context.Background()
 func newTestFilestore(t *testing.T, option ...Option) (string, *Filestore) {
 	mds := ds.NewMapDatastore()
 
-	testdir, err := os.MkdirTemp("", "filestore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	testdir := t.TempDir()
 	fm := NewFileManager(mds, testdir, option...)
 	fm.AllowFiles = true
 

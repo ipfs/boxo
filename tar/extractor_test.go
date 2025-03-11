@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	fp "path/filepath"
 	"runtime"
@@ -521,7 +522,9 @@ func testTarExtraction(t *testing.T, setup func(t *testing.T, rootDir string), t
 	// Directory structure.
 	// FIXME: We can't easily work on a MemFS since we would need to replace
 	//  all the `os` calls in the extractor so using a temporary dir.
-	rootDir, err := os.MkdirTemp("", "tar-extraction-test")
+	rootDir := t.TempDir()
+	defer chmodRecursive(t, rootDir)
+
 	assert.NoError(t, err)
 	extractDir := fp.Join(rootDir, tarOutRoot)
 	err = os.MkdirAll(extractDir, 0o755)
@@ -539,6 +542,19 @@ func testTarExtraction(t *testing.T, setup func(t *testing.T, rootDir string), t
 
 	if check != nil {
 		check(t, extractDir)
+	}
+}
+
+func chmodRecursive(t *testing.T, path string) {
+	t.Helper()
+	err := fp.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chmod(path, fs.FileMode(0700))
+	})
+	if err != nil {
+		t.Log("ERROR:", err)
 	}
 }
 
