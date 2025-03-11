@@ -20,10 +20,7 @@ var bg = context.Background()
 func newTestFilestore(t *testing.T, option ...Option) (string, *Filestore) {
 	mds := ds.NewMapDatastore()
 
-	testdir, err := os.MkdirTemp("", "filestore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	testdir := t.TempDir()
 	fm := NewFileManager(mds, testdir, option...)
 	fm.AllowFiles = true
 
@@ -32,18 +29,22 @@ func newTestFilestore(t *testing.T, option ...Option) (string, *Filestore) {
 	return testdir, fstore
 }
 
-func makeFile(dir string, data []byte) (string, error) {
+func makeFile(t *testing.T, dir string, data []byte) string {
+	t.Helper()
 	f, err := os.CreateTemp(dir, "file")
 	if err != nil {
-		return "", err
+		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		f.Close()
+	})
 
 	_, err = f.Write(data)
 	if err != nil {
-		return "", err
+		t.Fatal(err)
 	}
 
-	return f.Name(), nil
+	return f.Name()
 }
 
 func TestBasicFilestore(t *testing.T) {
@@ -62,10 +63,7 @@ func TestBasicFilestore(t *testing.T) {
 			buf := make([]byte, 1000)
 			rand.Read(buf)
 
-			fname, err := makeFile(dir, buf)
-			if err != nil {
-				t.Fatal(err)
-			}
+			fname := makeFile(t, dir, buf)
 
 			var cids []cid.Cid
 			for i := 0; i < 100; i++ {
@@ -122,10 +120,7 @@ func randomFileAdd(t *testing.T, fs *Filestore, dir string, size int) (string, [
 	buf := make([]byte, size)
 	rand.Read(buf)
 
-	fname, err := makeFile(dir, buf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fname := makeFile(t, dir, buf)
 
 	var out []cid.Cid
 	for i := 0; i < size/10; i++ {
