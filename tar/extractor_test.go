@@ -500,6 +500,9 @@ func TestLastElementOverwrite(t *testing.T) {
 		// This file will reside outside of the extraction directory root.
 		f, err := os.Create(fp.Join(rootDir, "outside-ref"))
 		assert.NoError(t, err)
+		t.Cleanup(func() {
+			f.Close()
+		})
 		n, err := f.WriteString(originalData)
 		assert.NoError(t, err)
 		assert.Equal(t, len(originalData), n)
