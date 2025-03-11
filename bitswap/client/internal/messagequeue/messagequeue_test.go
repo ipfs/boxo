@@ -157,9 +157,13 @@ func totalEntriesLength(messages [][]bsmsg.Entry) int {
 
 func expectEvent(t *testing.T, events <-chan messageEvent, expectedEvent messageEvent) {
 	t.Helper()
-	evt := <-events
-	if evt != expectedEvent {
-		t.Fatal("message not queued")
+	select {
+	case evt := <-events:
+		if evt != expectedEvent {
+			t.Fatal("message not queued")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for event")
 	}
 }
 
@@ -418,7 +422,7 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 }
 
 func TestWantlistRebroadcast(t *testing.T) {
-	//t.Parallel()
+	t.Parallel()
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -438,6 +442,8 @@ func TestWantlistRebroadcast(t *testing.T) {
 	defer messageQueue.Shutdown()
 
 	messageQueue.AddBroadcastWantHaves(bcstwh)
+	// May sometimes never receive event unless two clock advances are done.
+	clock.Add(maxSendMessageDelay)
 	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	var message []bsmsg.Entry
@@ -764,6 +770,7 @@ func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
 }
 
 func TestResponseReceivedDiscardsOutliers(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -783,6 +790,7 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 
 	// Add some wants and wait 20ms
 	messageQueue.AddWants(cids[:2], nil)
+	clock.Add(maxSendMessageDelay)
 	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	<-messagesSent
