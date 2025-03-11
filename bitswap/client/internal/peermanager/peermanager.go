@@ -95,17 +95,15 @@ func (pm *PeerManager) Connected(p peer.ID) {
 // Disconnected is called to remove a peer from the pool.
 func (pm *PeerManager) Disconnected(p peer.ID) {
 	pm.pqLk.Lock()
+	defer pm.pqLk.Unlock()
 
 	pq, ok := pm.peerQueues[p]
 	if !ok {
-		pm.pqLk.Unlock()
 		return
 	}
 	// Clean up the peer
 	delete(pm.peerQueues, p)
 	pm.pwm.removePeer(p)
-
-	pm.pqLk.Unlock()
 
 	// Inform the sessions that the peer has disconnected
 	pm.signalAvailability(p, false)

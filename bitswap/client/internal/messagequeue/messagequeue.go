@@ -64,7 +64,7 @@ type MessageNetwork interface {
 // MessageQueue implements queue of want messages to send to peers.
 type MessageQueue struct {
 	ctx          context.Context
-	shutdown     func()
+	shutdown     context.CancelFunc
 	p            peer.ID
 	network      MessageNetwork
 	dhTimeoutMgr DontHaveTimeoutManager
@@ -475,8 +475,8 @@ func (mq *MessageQueue) Startup() {
 
 // Shutdown stops the processing of messages for a message queue.
 func (mq *MessageQueue) Shutdown() {
-	mq.requests.Shutdown()
 	mq.shutdown()
+	mq.requests.Shutdown()
 }
 
 func (mq *MessageQueue) onShutdown() {
