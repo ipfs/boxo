@@ -57,10 +57,12 @@ func TestSingleFile(t *testing.T) {
 		func(t *testing.T, extractDir string) {
 			f, err := os.Open(fp.Join(extractDir, fileName))
 			assert.NoError(t, err)
+			t.Cleanup(func() {
+				assert.NoError(t, f.Close())
+			})
 			data, err := io.ReadAll(f)
 			assert.NoError(t, err)
 			assert.Equal(t, fileData, string(data))
-			assert.NoError(t, f.Close())
 		},
 		nil,
 	)
@@ -80,10 +82,12 @@ func TestSingleFileWithMeta(t *testing.T) {
 			testMeta(t, path, mode, mtime)
 			f, err := os.Open(path)
 			assert.NoError(t, err)
+			t.Cleanup(func() {
+				assert.NoError(t, f.Close())
+			})
 			data, err := io.ReadAll(f)
 			assert.NoError(t, err)
 			assert.Equal(t, fileData, string(data))
-			assert.NoError(t, f.Close())
 		},
 		nil,
 	)
@@ -97,9 +101,10 @@ func TestSingleDirectory(t *testing.T) {
 	},
 		func(t *testing.T, extractDir string) {
 			f, err := os.Open(extractDir)
-			if err != nil {
-				t.Fatal(err)
-			}
+			assert.NoError(t, err)
+			t.Cleanup(func() {
+				f.Close()
+			})
 			objs, err := f.Readdir(1)
 			if err == io.EOF && len(objs) == 0 {
 				return
@@ -124,6 +129,9 @@ func TestSingleDirectoryWithMeta(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			t.Cleanup(func() {
+				f.Close()
+			})
 			objs, err := f.Readdir(1)
 			if err == io.EOF && len(objs) == 0 {
 				return
