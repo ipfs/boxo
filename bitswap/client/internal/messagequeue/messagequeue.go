@@ -476,7 +476,7 @@ func (mq *MessageQueue) Startup() {
 // Shutdown stops the processing of messages for a message queue.
 func (mq *MessageQueue) Shutdown() {
 	mq.shutdown()
-	mq.requests.Shutdown()
+	mq.requests.Close()
 }
 
 func (mq *MessageQueue) onShutdown() {
@@ -489,6 +489,10 @@ func (mq *MessageQueue) onShutdown() {
 	if mq.sender != nil {
 		_ = mq.sender.Reset()
 	}
+	go func() {
+		for range mq.requests.Out() {
+		}
+	}()
 }
 
 func (mq *MessageQueue) runRequests() {
@@ -577,7 +581,7 @@ func (mq *MessageQueue) sendMessage() {
 		// If we fail to initialize the sender, the networking layer will
 		// emit a Disconnect event and the MessageQueue will get cleaned up
 		log.Infof("Could not open message sender to peer %s: %s", mq.p, err)
-		mq.Shutdown()
+		mq.shutdown()
 		return
 	}
 
@@ -608,7 +612,7 @@ func (mq *MessageQueue) sendMessage() {
 			// If the message couldn't be sent, the networking layer will
 			// emit a Disconnect event and the MessageQueue will get cleaned up
 			log.Infof("Could not send message to peer %s: %s", mq.p, err)
-			mq.Shutdown()
+			mq.shutdown()
 			return
 		}
 
