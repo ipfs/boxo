@@ -254,9 +254,39 @@ func isDomainNameAndNotPeerID(hostname string) bool {
 	return ok
 }
 
+// isLocalIPAddress returns true if the host is a local IP address (e.g., 127.0.0.1, ::1)
+func isLocalIPAddress(host string) bool {
+	// Strip port if present
+	host = stripPort(host)
+	
+	// Check for IPv4 localhost
+	if host == "127.0.0.1" {
+		return true
+	}
+	
+	// Check for IPv6 localhost
+	if host == "::1" || host == "0:0:0:0:0:0:0:1" {
+		return true
+	}
+	
+	// Parse as IP address
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	
+	// Check if it's a loopback address
+	return ip.IsLoopback()
+}
+
 // hasDNSLinkRecord returns if a DNS TXT record exists for the provided host.
 func hasDNSLinkRecord(ctx context.Context, backend IPFSBackend, host string) bool {
 	dnslinkName := stripPort(host)
+	
+	// Skip DNSLink lookup for local IP addresses
+	if isLocalIPAddress(dnslinkName) {
+		return false
+	}
 
 	if !isDomainNameAndNotPeerID(dnslinkName) {
 		return false

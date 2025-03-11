@@ -369,3 +369,59 @@ func BenchmarkInlineDNSLink(b *testing.B) {
 		_, _ = InlineDNSLink(testDNSLinkC)
 	}
 }
+
+// Test function for isLocalIPAddress
+func TestIsLocalIPAddress(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		host string
+		out  bool
+	}{
+		{"127.0.0.1", true},       // IPv4 loopback address
+		{"::1", true},             // IPv6 loopback address, short form
+		{"0:0:0:0:0:0:0:1", true}, // IPv6 loopback address, full form
+		{"127.0.0.1:8080", true},  // IPv4 loopback address with port
+		{"[::1]:8080", true},      // IPv6 loopback address with port
+	} {
+		t.Run(test.host, func(t *testing.T) {
+			out := isLocalIPAddress(test.host)
+			require.Equal(t, test.out, out)
+		})
+	}
+}
+
+// Test function for hasDNSLinkRecord with local IP addresses
+func TestHasDNSLinkRecordWithLocalIP(t *testing.T) {
+	t.Parallel()
+
+	// Create test environment
+	backend, _ := newMockBackend(t, "fixtures.car")
+	// Add some DNSLink records to mock backend
+	testCID2, _ := cid.Decode("QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
+	backend.namesys["/ipns/example.com"] = newMockNamesysItem(path.FromCid(testCID2), 0)
+
+	ctx := httptest.NewRequest(http.MethodGet, "http://example.com", nil).Context()
+
+	// Test local IP addresses
+	localIPs := []string{
+		"127.0.0.1",
+		"127.0.0.1:8080",
+		"::1",
+		"[::1]:8080",
+		"0:0:0:0:0:0:0:1",
+	}
+
+	for _, ip := range localIPs {
+		t.Run(ip, func(t *testing.T) {
+			// For local IP addresses, hasDNSLinkRecord should always return false
+			result := hasDNSLinkRecord(ctx, backend, ip)
+			require.False(t, result, "Local IP %s should not attempt DNSLink lookup", ip)
+		})
+	}
+
+	// Test valid domain name
+	t.Run("example.com", func(t *testing.T) {
+		result := hasDNSLinkRecord(ctx, backend, "example.com")
+		require.True(t, result, "example.com should have a valid DNSLink record")
+	})
+}
