@@ -24,6 +24,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `bitswap/client`: Fix unintentional ignoring `DontHaveTimeoutConfig` [#872](https://github.com/ipfs/boxo/pull/872)
+
 ### Security
 
 

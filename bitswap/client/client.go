@@ -198,7 +198,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 			bsmq.WithDontHaveTimeoutConfig(bs.dontHaveTimeoutConfig),
 			bsmq.WithPerPeerSendDelay(bs.perPeerSendDelay))
 	}
-	bs.dontHaveTimeoutConfig = nil
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
