@@ -559,6 +559,7 @@ func chmodRecursive(t *testing.T, path string) {
 func testExtract(t *testing.T, tarFile string, extractDir string, expectedError error) {
 	tarReader, err := os.Open(tarFile)
 	assert.NoError(t, err)
+	defer tarReader.Close()
 
 	extractor := &Extractor{Path: extractDir}
 	err = extractor.Extract(tarReader)
