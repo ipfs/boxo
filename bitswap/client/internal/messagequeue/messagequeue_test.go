@@ -436,10 +436,16 @@ func TestWantlistRebroadcast(t *testing.T) {
 	// Add some broadcast want-haves
 	messageQueue.Startup()
 	defer messageQueue.Shutdown()
+
 	messageQueue.AddBroadcastWantHaves(bcstwh)
 	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
-	message := <-messagesSent
+	var message []bsmsg.Entry
+	select {
+	case message = <-messagesSent:
+	case <-time.After(2 * maxSendMessageDelay):
+		t.Fatal("timed out waiting for messages sent")
+	}
 	expectEvent(t, events, messageFinishedSending)
 
 	// All broadcast want-haves should have been sent
@@ -448,7 +454,11 @@ func TestWantlistRebroadcast(t *testing.T) {
 	}
 
 	messageQueue.RebroadcastNow()
-	message = <-messagesSent
+	select {
+	case message = <-messagesSent:
+	case <-time.After(2 * maxSendMessageDelay):
+		t.Fatal("timed out waiting for messages sent")
+	}
 	expectEvent(t, events, messageFinishedSending)
 
 	// All the want-haves should have been rebroadcast
@@ -461,7 +471,11 @@ func TestWantlistRebroadcast(t *testing.T) {
 	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	clock.Add(10 * time.Millisecond)
-	message = <-messagesSent
+	select {
+	case message = <-messagesSent:
+	case <-time.After(2 * maxSendMessageDelay):
+		t.Fatal("timed out waiting for messages sent")
+	}
 	expectEvent(t, events, messageFinishedSending)
 
 	// All new wants should have been sent
@@ -476,7 +490,11 @@ func TestWantlistRebroadcast(t *testing.T) {
 	}
 
 	messageQueue.RebroadcastNow()
-	message = <-messagesSent
+	select {
+	case message = <-messagesSent:
+	case <-time.After(2 * maxSendMessageDelay):
+		t.Fatal("timed out waiting for messages sent")
+	}
 	expectEvent(t, events, messageFinishedSending)
 
 	// Both original and new wants should have been rebroadcast
@@ -491,7 +509,11 @@ func TestWantlistRebroadcast(t *testing.T) {
 	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	clock.Add(10 * time.Millisecond)
-	message = <-messagesSent
+	select {
+	case message = <-messagesSent:
+	case <-time.After(2 * maxSendMessageDelay):
+		t.Fatal("timed out waiting for messages sent")
+	}
 	expectEvent(t, events, messageFinishedSending)
 
 	select {
@@ -511,7 +533,11 @@ func TestWantlistRebroadcast(t *testing.T) {
 	}
 
 	messageQueue.RebroadcastNow()
-	message = <-messagesSent
+	select {
+	case message = <-messagesSent:
+	case <-time.After(2 * maxSendMessageDelay):
+		t.Fatal("timed out waiting for messages sent")
+	}
 	expectEvent(t, events, messageFinishedSending)
 
 	if len(message) != totalWants-len(cancels) {
