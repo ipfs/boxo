@@ -116,9 +116,9 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 // Note that this is just used to calculate latency.
 func (pm *PeerManager) ResponseReceived(p peer.ID, ks []cid.Cid) {
 	pm.pqLk.RLock()
-	pq, ok := pm.peerQueues[p]
-	pm.pqLk.RUnlock()
+	defer pm.pqLk.RUnlock()
 
+	pq, ok := pm.peerQueues[p]
 	if ok {
 		pq.ResponseReceived(ks)
 	}
