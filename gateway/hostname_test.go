@@ -369,3 +369,41 @@ func BenchmarkInlineDNSLink(b *testing.B) {
 		_, _ = InlineDNSLink(testDNSLinkC)
 	}
 }
+
+// Test function for hasDNSLinkRecord with local IP addresses
+func TestHasDNSLinkRecordWithLocalIP(t *testing.T) {
+	t.Parallel()
+
+	// Create test environment
+	backend, _ := newMockBackend(t, "fixtures.car")
+	// Add some DNSLink records to mock backend
+	testCID2, _ := cid.Decode("QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
+	backend.namesys["/ipns/example.com"] = newMockNamesysItem(path.FromCid(testCID2), 0)
+
+	ctx := httptest.NewRequest(http.MethodGet, "http://example.com", nil).Context()
+
+	// Test local IP addresses
+	localIPs := []string{
+		"127.0.0.1",
+		"8.8.8.8",
+		"192.168.100.22:8080",
+		"::1",
+		"[::1]:8080",
+		"0:0:0:0:0:0:0:1",
+		"fe80::a89c:baff:fece:8c94",
+	}
+
+	for _, ip := range localIPs {
+		t.Run(ip, func(t *testing.T) {
+			// For local IP addresses, hasDNSLinkRecord should always return false
+			result := hasDNSLinkRecord(ctx, backend, ip)
+			require.False(t, result, "Local IP %s should not attempt DNSLink lookup", ip)
+		})
+	}
+
+	// Test valid domain name
+	t.Run("example.com", func(t *testing.T) {
+		result := hasDNSLinkRecord(ctx, backend, "example.com")
+		require.True(t, result, "example.com should have a valid DNSLink record")
+	})
+}

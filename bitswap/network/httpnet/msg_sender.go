@@ -247,6 +247,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 		return nil, serr
 	}
+	defer resp.Body.Close()
 
 	// Record request size
 	var buf bytes.Buffer
@@ -302,7 +303,12 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	case http.StatusNotFound,
 		http.StatusGone,
 		http.StatusForbidden,
-		http.StatusUnavailableForLegalReasons:
+		http.StatusUnavailableForLegalReasons,
+		http.StatusMovedPermanently,
+		http.StatusFound,
+		http.StatusSeeOther,
+		http.StatusTemporaryRedirect,
+		http.StatusPermanentRedirect:
 
 		err := fmt.Errorf("%s %q -> %d: %q", req.Method, req.URL, statusCode, string(body))
 		log.Debug(err)

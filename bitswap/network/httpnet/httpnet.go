@@ -267,6 +267,12 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 
 	c := &http.Client{
 		Transport: t,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// we do not follow redirects. Providers should keep
+			// announcements up to
+			// date. https://github.com/boxo/issues/862.
+			return http.ErrUseLastResponse
+		},
 	}
 	htnet.client = c
 
