@@ -121,7 +121,7 @@ func TestReceiveFrom(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "", 0)
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
@@ -174,7 +174,7 @@ func TestReceiveBlocksWhenManagerShutdown(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "", 0)
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
@@ -216,7 +216,7 @@ func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "", 0)
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
@@ -260,9 +260,10 @@ func TestSessionLimit(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
 
-	sessionsLimit = 5
+	sessionsLimit := 5
+	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "", sessionsLimit)
+
 	for i := 0; i < sessionsLimit+1; i++ {
 		ses, err := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute))
 		if i == sessionsLimit {
@@ -295,7 +296,7 @@ func TestShutdown(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "", 0)
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))

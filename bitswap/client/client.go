@@ -5,6 +5,9 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -37,6 +40,28 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap/zapcore"
 )
+
+const (
+	defaultSessionsLimit = 2048
+	envLimitVar          = "BS_CLIENT_SESSIONS_LIMIT"
+)
+
+var sessionsLimit int
+
+func init() {
+	sessionsLimit = defaultSessionsLimit
+	envLimit := os.Getenv(envLimitVar)
+	if envLimit != "" {
+		limit, err := strconv.Atoi(envLimit)
+		if err != nil {
+			panic(fmt.Sprintf("bad value for %s: %q", envLimitVar, envLimit))
+		}
+		if limit < 0 {
+			panic(fmt.Sprintf("value of %s must be 0 or greater", envLimitVar))
+		}
+		sessionsLimit = limit
+	}
+}
 
 var log = logging.Logger("bitswap/client")
 
@@ -139,6 +164,12 @@ func WithDefaultProviderQueryManager(defaultProviderQueryManager bool) Option {
 	}
 }
 
+func WithSessionsLimit(limit int) Option {
+	return func(bs *Client) {
+		bs.sessionsLimit = limit
+	}
+}
+
 type BlockReceivedNotifier interface {
 	// ReceivedBlocks notifies the decision engine that a peer is well-behaving
 	// and gave us useful data, potentially increasing its score and making us
@@ -172,7 +203,10 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout:  true,
 		defaultProviderQueryManager: true,
+		sessionsLimit:               sessionsLimit,
 	}
+
+	log.Infof("bitswap client sessions limit: %d", bs.sessionsLimit)
 
 	// apply functional options before starting and running bitswap
 	for _, option := range options {
@@ -245,7 +279,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		return bsspm.New(id, network)
 	}
 	notif := notifications.New()
-	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
+	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self(), bs.sessionsLimit)
 
 	bs.sm = sm
 	bs.notif = notif
@@ -313,6 +347,7 @@ type Client struct {
 	skipDuplicatedBlocksStats bool
 
 	perPeerSendDelay time.Duration
+	sessionsLimit    int
 }
 
 type counters struct {
