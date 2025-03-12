@@ -333,14 +333,6 @@ func newMessageQueue(
 	}
 }
 
-func (mq *MessageQueue) Sync() <-chan struct{} {
-	done := make(chan struct{})
-	mq.requests.In() <- func() {
-		close(done)
-	}
-	return done
-}
-
 // Add want-haves that are part of a broadcast to all connected peers
 func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 	if len(wantHaves) == 0 {
