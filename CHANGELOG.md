@@ -22,8 +22,7 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-- `gateway`: Skip DNSLink lookup for local IP addresses to avoid unnecessary DNS queries
-
+- `gateway`: Skip DNSLink lookup for IP addresses to avoid unnecessary DNS queries [#880](https://github.com/ipfs/boxo/pull/880)
 - `bitswap/client`: Fix unintentional ignoring `DontHaveTimeoutConfig` [#872](https://github.com/ipfs/boxo/pull/872)
 
 ### Security

@@ -370,26 +370,6 @@ func BenchmarkInlineDNSLink(b *testing.B) {
 	}
 }
 
-// Test function for isLocalIPAddress
-func TestIsLocalIPAddress(t *testing.T) {
-	t.Parallel()
-	for _, test := range []struct {
-		host string
-		out  bool
-	}{
-		{"127.0.0.1", true},       // IPv4 loopback address
-		{"::1", true},             // IPv6 loopback address, short form
-		{"0:0:0:0:0:0:0:1", true}, // IPv6 loopback address, full form
-		{"127.0.0.1:8080", true},  // IPv4 loopback address with port
-		{"[::1]:8080", true},      // IPv6 loopback address with port
-	} {
-		t.Run(test.host, func(t *testing.T) {
-			out := isLocalIPAddress(test.host)
-			require.Equal(t, test.out, out)
-		})
-	}
-}
-
 // Test function for hasDNSLinkRecord with local IP addresses
 func TestHasDNSLinkRecordWithLocalIP(t *testing.T) {
 	t.Parallel()
@@ -405,10 +385,12 @@ func TestHasDNSLinkRecordWithLocalIP(t *testing.T) {
 	// Test local IP addresses
 	localIPs := []string{
 		"127.0.0.1",
-		"127.0.0.1:8080",
+		"8.8.8.8",
+		"192.168.100.22:8080",
 		"::1",
 		"[::1]:8080",
 		"0:0:0:0:0:0:0:1",
+		"fe80::a89c:baff:fece:8c94",
 	}
 
 	for _, ip := range localIPs {
