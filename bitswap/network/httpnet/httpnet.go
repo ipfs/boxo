@@ -32,6 +32,7 @@ var log = logging.Logger("httpnet")
 
 var ErrNoHTTPAddresses = errors.New("AddrInfo does not contain any valid HTTP addresses")
 var ErrNoSuccess = errors.New("none of the peer HTTP endpoints responded successfully to request")
+var ErrNotConnected = errors.New("no HTTP connection has been setup to this peer")
 
 var _ network.BitSwapNetwork = (*Network)(nil)
 
@@ -369,65 +370,69 @@ func (ht *Network) Self() peer.ID {
 // connection success and marks this peer as "connected", setting it up to
 // handle messages and make requests. The peer will be pinged regularly to
 // collect latency measurements until DisconnectFrom() is called.
-func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
-	existingPeerAddrs := ht.host.Peerstore().Addrs(p.ID)
-	existingPeerURLs := network.ExtractURLsFromPeer(peer.AddrInfo{
-		ID:    p.ID,
-		Addrs: existingPeerAddrs,
-	})
-	if len(existingPeerURLs) > 0 {
-		// assume already connected FIXME: issues when different
-		// provider records contain different HTTP urls for the same
-		// peer. Hope no one does that.
+func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
+	// Connect is called when finding provider records. We should avoid
+	// reconnecting all the time. We should avoid re-testing broken
+	// addresses all the time as well. For this reason we assume that if
+	// we are connected to an HTTP, the working urls we added the first
+	// time are correct, and we will only re-do the effort when we are not
+	// connected.
+	p := pi.ID
+	connected := ht.pinger.isPinging(p)
+	if connected {
 		return nil
 	}
 
-	htaddrs, _ := network.SplitHTTPAddrs(p)
-	if len(htaddrs.Addrs) == 0 {
-		return ErrNoHTTPAddresses
-	}
+	urls := network.ExtractURLsFromPeer(pi)
 
-	// avoid funny things like someone adding 100 broken urls to a peer.
-	if len(htaddrs.Addrs) > ht.maxHTTPAddressesPerPeer {
-		htaddrs.Addrs = htaddrs.Addrs[0:ht.maxHTTPAddressesPerPeer]
-	}
-
-	urls := network.ExtractURLsFromPeer(htaddrs)
-
+	// Filter addresses based on allow and denylists
 	var filteredURLs []network.ParsedURL
-	var filteredAddrs []multiaddr.Multiaddr
-	for i, u := range urls {
+	for _, u := range urls {
 		host, _, err := net.SplitHostPort(u.URL.Host)
 		if err != nil {
 			return err
 		}
 
-		_, allowed := ht.allowlist[host]
-		_, denied := ht.denylist[host]
 		// Filter out if allowlist is enabled and it is not allowed,
 		// OR if host is in denylist.
-		remove := (len(ht.allowlist) > 0 && !allowed) || denied
-
-		if !remove {
+		_, inAllowlist := ht.allowlist[host]
+		allowed := (len(ht.allowlist) == 0) || inAllowlist
+		_, denied := ht.denylist[host]
+		if allowed && !denied {
 			filteredURLs = append(filteredURLs, u)
-			filteredAddrs = append(filteredAddrs, htaddrs.Addrs[i])
 		}
 	}
 	urls = filteredURLs
-	htaddrs.Addrs = filteredAddrs
+	if len(urls) == 0 {
+		return ErrNoHTTPAddresses
+	}
+	if len(urls) > ht.maxHTTPAddressesPerPeer {
+		urls = urls[0:ht.maxHTTPAddressesPerPeer]
+	}
 
-	// if len(filteredURLs == 0) nothing will happen below and we will return
-	// an error below.
-
-	// We will know try to talk to this peer by making HTTP requests to its urls
-	// and recording which ones work.
-	// This allows re-using the connections that we are about to open next
-	// time with the client. We call peer.Connected()
-	// on success.
+	// Try to talk to the peer by making HTTP requests to its urls and
+	// recording which ones work. This allows re-using the connections
+	// that we are about to open next time with the client. We call
+	// peer.Connected() on success.
 	var workingAddrs []multiaddr.Multiaddr
 	supportsHead := true
-	for i, u := range urls {
-		err := ht.connect(ctx, p.ID, u, "GET")
+	for _, u := range urls {
+		// If head works we assume GET works too.
+		err := ht.connectToURL(ctx, pi.ID, u, "HEAD")
+		if err != nil {
+			// abort if context cancelled
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+		} else {
+			workingAddrs = append(workingAddrs, u.Multiaddress)
+			continue
+		}
+
+		// HEAD did not work. Try GET.
+		supportsHead = false
+
+		err = ht.connectToURL(ctx, pi.ID, u, "GET")
 		if err != nil {
 			// abort if context cancelled
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -435,37 +440,33 @@ func (ht *Network) Connect(ctx context.Context, p peer.AddrInfo) error {
 			}
 			continue
 		}
-		// GET works. Does HEAD work though?
-		err = ht.connect(ctx, p.ID, u, "HEAD")
-		if err != nil {
-			// abort if context cancelled
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return ctxErr
-			}
-			supportsHead = false
-		}
-
-		workingAddrs = append(workingAddrs, htaddrs.Addrs[i])
+		workingAddrs = append(workingAddrs, u.Multiaddress)
 	}
 
-	if len(workingAddrs) > 0 {
-		ht.host.Peerstore().AddAddrs(p.ID, workingAddrs, peerstore.PermanentAddrTTL)
-		// ignoring error
-		_ = ht.host.Peerstore().Put(p.ID, peerstoreSupportsHeadKey, supportsHead)
-
-		ht.connEvtMgr.Connected(p.ID)
-		ht.pinger.startPinging(p.ID)
-		log.Debugf("connect success to %s (supports HEAD: %t)", p.ID, supportsHead)
-		// We "connected"
-		return nil
+	// if we have 0 new, valid urls (or not space for them) and not
+	// connected already, error if we are connected, ignore.
+	if len(workingAddrs) == 0 {
+		err := fmt.Errorf("connect failure to %s: %w", p, ErrNoSuccess)
+		log.Debug(err)
+		return err
 	}
 
-	err := fmt.Errorf("connect failure to %s: %w", p.ID, ErrNoSuccess)
-	log.Debug(err)
-	return err
+	// We have some working urls!
+
+	// Add the working addresses to the peerstore. Clean the others.
+	ht.host.Peerstore().ClearAddrs(p)
+	ht.host.Peerstore().AddAddrs(p, workingAddrs, peerstore.PermanentAddrTTL)
+	// Record whether HEAD test passed for all urls - ignoring error
+	_ = ht.host.Peerstore().Put(pi.ID, peerstoreSupportsHeadKey, supportsHead)
+
+	ht.connEvtMgr.Connected(p)
+	ht.pinger.startPinging(p)
+	log.Debugf("connect success to %s (supports HEAD: %t)", p, supportsHead)
+	// We "connected"
+	return nil
 }
 
-func (ht *Network) connect(ctx context.Context, p peer.ID, u network.ParsedURL, method string) error {
+func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.ParsedURL, method string) error {
 	req, err := buildRequest(ctx, u, method, pingCid, ht.userAgent)
 	if err != nil {
 		log.Debug(err)
@@ -688,6 +689,16 @@ func (ht *Network) NewMessageSender(ctx context.Context, p peer.ID, opts *networ
 	//
 	// This way we minimize lock contention around the cooldown map, with
 	// one read access per message sender only.
+
+	// Error when we have not called Connect() for this peer. Use the
+	// pinger as proxy for this information, since we should be pinging
+	// peers that we have connected to and we stop pinging them on
+	// disconnect.
+	if !ht.pinger.isPinging(p) {
+		return nil, ErrNotConnected
+	}
+
+	// Check that we have HTTP urls.
 	urls := ht.senderURLs(p)
 	if len(urls) == 0 {
 		return nil, ErrNoHTTPAddresses
