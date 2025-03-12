@@ -46,6 +46,8 @@ func DefaultDontHaveTimeoutConfig() *DontHaveTimeoutConfig {
 	return bsmq.DefaultDontHaveTimeoutConfig()
 }
 
+var ErrSessionsLimit = bssm.ErrSessionsLimit
+
 // Option defines the functional option type that can be used to configure
 // bitswap instances
 type Option func(*Client)
@@ -341,7 +343,10 @@ func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
 func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error) {
 	ctx, span := internal.StartSpan(ctx, "GetBlocks", trace.WithAttributes(attribute.Int("NumKeys", len(keys))))
 	defer span.End()
-	session := bs.sm.NewSession(ctx, bs.provSearchDelay, bs.rebroadcastDelay)
+	session, err := bs.sm.NewSession(ctx, bs.provSearchDelay, bs.rebroadcastDelay)
+	if err != nil {
+		return nil, err
+	}
 	return session.GetBlocks(ctx, keys)
 }
 
@@ -571,7 +576,7 @@ func (bs *Client) IsOnline() bool {
 // method, but the session will use the fact that the requests are related to
 // be more efficient in its requests to peers. If you are using a session
 // from blockservice, it will create a bitswap session automatically.
-func (bs *Client) NewSession(ctx context.Context) exchange.Fetcher {
+func (bs *Client) NewSession(ctx context.Context) (exchange.Fetcher, error) {
 	ctx, span := internal.StartSpan(ctx, "NewSession")
 	defer span.End()
 	return bs.sm.NewSession(ctx, bs.provSearchDelay, bs.rebroadcastDelay)

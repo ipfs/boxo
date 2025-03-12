@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	bsclient "github.com/ipfs/boxo/bitswap/client"
 	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
@@ -827,6 +828,12 @@ func isWebRequest(responseFormat string) bool {
 func (i *handler) handleRequestErrors(w http.ResponseWriter, r *http.Request, contentPath path.Path, err error) bool {
 	if err == nil {
 		return true
+	}
+	if errors.Is(err, bsclient.ErrSessionsLimit) {
+		log.Errorw("bitswap client error", "err", err)
+		w.Header().Set("Retry-After", "60")
+		i.webError(w, r, err, http.StatusServiceUnavailable)
+		return false
 	}
 	err = fmt.Errorf("failed to resolve %s: %w", debugStr(contentPath.String()), err)
 	i.webError(w, r, err, http.StatusInternalServerError)

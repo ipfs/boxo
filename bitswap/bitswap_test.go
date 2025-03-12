@@ -138,7 +138,10 @@ func TestDoesNotProvideWhenConfiguredNotTo(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
 	defer cancel()
 
-	ns := wantsBlock.Exchange.NewSession(ctx)
+	ns, err := wantsBlock.Exchange.NewSession(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	received, err := ns.GetBlock(ctx, block.Cid())
 	if received != nil {

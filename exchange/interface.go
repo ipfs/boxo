@@ -36,5 +36,5 @@ type SessionExchange interface {
 	// NewSession generates a new exchange session. You should use this, rather
 	// that calling GetBlocks, any time you intend to do several related calls
 	// in a row. The exchange can leverage that to be more efficient.
-	NewSession(context.Context) Fetcher
+	NewSession(context.Context) (Fetcher, error)
 }

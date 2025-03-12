@@ -2,6 +2,9 @@ package sessionmanager
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -18,6 +21,26 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
+
+const (
+	defaultSessionsLimit = 1024
+	envLimitVar          = "BS_CLIENT_SESSIONS_LIMIT"
+)
+
+var sessionsLimit int
+var ErrSessionsLimit = errors.New("maximum number of bitswap client sessions reached")
+
+func init() {
+	sessionsLimit = defaultSessionsLimit
+	envLimit := os.Getenv(envLimitVar)
+	if envLimit != "" {
+		limit, err := strconv.Atoi(envLimit)
+		if err != nil {
+			panic(fmt.Sprintf("bad value for %s: %q", envLimitVar, envLimit))
+		}
+		sessionsLimit = limit
+	}
+}
 
 // Session is a session that is managed by the session manager
 type Session interface {
@@ -88,7 +111,7 @@ func New(ctx context.Context, sessionFactory SessionFactory, sessionInterestMana
 func (sm *SessionManager) NewSession(ctx context.Context,
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D,
-) exchange.Fetcher {
+) (exchange.Fetcher, error) {
 	id := sm.GetNextSessionID()
 
 	ctx, span := internal.StartSpan(ctx, "SessionManager.NewSession", trace.WithAttributes(attribute.String("ID", strconv.FormatUint(id, 10))))
@@ -98,12 +121,15 @@ func (sm *SessionManager) NewSession(ctx context.Context,
 	session := sm.sessionFactory(ctx, sm, id, pm, sm.sessionInterestManager, sm.peerManager, sm.blockPresenceManager, sm.notif, provSearchDelay, rebroadcastDelay, sm.self)
 
 	sm.sessLk.Lock()
+	defer sm.sessLk.Unlock()
+
 	if sm.sessions != nil { // check if SessionManager was shutdown
+		if len(sm.sessions) >= sessionsLimit {
+			return nil, ErrSessionsLimit
+		}
 		sm.sessions[id] = session
 	}
-	sm.sessLk.Unlock()
-
-	return session
+	return session, nil
 }
 
 func (sm *SessionManager) Shutdown() {
