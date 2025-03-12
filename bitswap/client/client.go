@@ -46,23 +46,6 @@ const (
 	envLimitVar          = "BS_CLIENT_SESSIONS_LIMIT"
 )
 
-var sessionsLimit int
-
-func init() {
-	sessionsLimit = defaultSessionsLimit
-	envLimit := os.Getenv(envLimitVar)
-	if envLimit != "" {
-		limit, err := strconv.Atoi(envLimit)
-		if err != nil {
-			panic(fmt.Sprintf("bad value for %s: %q", envLimitVar, envLimit))
-		}
-		if limit < 0 {
-			panic(fmt.Sprintf("value of %s must be 0 or greater", envLimitVar))
-		}
-		sessionsLimit = limit
-	}
-}
-
 var log = logging.Logger("bitswap/client")
 
 type DontHaveTimeoutConfig = bsmq.DontHaveTimeoutConfig
@@ -177,6 +160,21 @@ type BlockReceivedNotifier interface {
 	ReceivedBlocks(peer.ID, []blocks.Block)
 }
 
+func getSessionsLimitFromEnv() int {
+	envLimit := os.Getenv(envLimitVar)
+	if envLimit == "" {
+		return defaultSessionsLimit
+	}
+	limit, err := strconv.Atoi(envLimit)
+	if err != nil {
+		panic(fmt.Sprintf("bad value for %s: %q", envLimitVar, envLimit))
+	}
+	if limit < 0 {
+		panic(fmt.Sprintf("value of %s must be 0 or greater", envLimitVar))
+	}
+	return limit
+}
+
 // New initializes a Bitswap client that runs until client.Close is called.
 // The Content providerFinder paramteter can be nil to disable content-routing
 // lookups for content (rely only on bitswap for discovery).
@@ -203,15 +201,15 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout:  true,
 		defaultProviderQueryManager: true,
-		sessionsLimit:               sessionsLimit,
+		sessionsLimit:               getSessionsLimitFromEnv(),
 	}
-
-	log.Infof("bitswap client sessions limit: %d", bs.sessionsLimit)
 
 	// apply functional options before starting and running bitswap
 	for _, option := range options {
 		option(bs)
 	}
+
+	log.Infof("bitswap client sessions limit: %d", bs.sessionsLimit)
 
 	// onDontHaveTimeout is called when a want-block is sent to a peer that
 	// has an old version of Bitswap that doesn't support DONT_HAVE messages,
