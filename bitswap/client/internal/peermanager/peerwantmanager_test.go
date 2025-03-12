@@ -223,7 +223,6 @@ func TestPWMSendWants(t *testing.T) {
 }
 
 func TestPWMSendCancels(t *testing.T) {
-	t.Skip()
 	pwm := newPeerWantManager(&gauge{}, &gauge{})
 
 	peers := random.Peers(2)
