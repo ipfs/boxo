@@ -18,6 +18,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- fix(`provider`): don't reprovide if `reprovideInterval` is set to 0 [#871](https://github.com/ipfs/boxo/pull/871) 
+
 ### Removed
 
 ### Fixed
