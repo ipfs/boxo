@@ -21,10 +21,7 @@ func privKeyOrFatal(t *testing.T) ci.PrivKey {
 }
 
 func TestKeystoreBasics(t *testing.T) {
-	tdir, err := os.MkdirTemp("", "keystore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	tdir := t.TempDir()
 
 	ks, err := NewFSKeystore(tdir)
 	if err != nil {
@@ -140,12 +137,7 @@ func TestKeystoreBasics(t *testing.T) {
 }
 
 func TestInvalidKeyFiles(t *testing.T) {
-	tdir, err := os.MkdirTemp("", "keystore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer os.RemoveAll(tdir)
+	tdir := t.TempDir()
 
 	ks, err := NewFSKeystore(tdir)
 	if err != nil {
@@ -198,10 +190,7 @@ func TestInvalidKeyFiles(t *testing.T) {
 }
 
 func TestNonExistingKey(t *testing.T) {
-	tdir, err := os.MkdirTemp("", "keystore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	tdir := t.TempDir()
 
 	ks, err := NewFSKeystore(tdir)
 	if err != nil {
