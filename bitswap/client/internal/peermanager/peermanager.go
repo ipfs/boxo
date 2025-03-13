@@ -3,6 +3,7 @@ package peermanager
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
@@ -44,6 +45,9 @@ type PeerManager struct {
 	psLk         sync.RWMutex
 	sessions     map[uint64]Session
 	peerSessions map[peer.ID]map[uint64]struct{}
+
+	maxRequestsInProgress int32
+	requestsInProgress    atomic.Int32
 }
 
 // New creates a new PeerManager, given a context and a peerQueueFactory.
@@ -58,6 +62,8 @@ func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
 
 		sessions:     make(map[uint64]Session),
 		peerSessions: make(map[peer.ID]map[uint64]struct{}),
+
+		maxRequestsInProgress: 1024,
 	}
 }
 
@@ -118,10 +124,14 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 // ks is the set of blocks, HAVEs and DONT_HAVEs in the message
 // Note that this is just used to calculate latency.
 func (pm *PeerManager) ResponseReceived(p peer.ID, ks []cid.Cid) {
+	if pm.maxRequestsInProgress != 0 {
+		pm.requestsInProgress.Add(1)
+		defer pm.requestsInProgress.Add(-1)
+	}
 	pm.pqLk.RLock()
-	pq, ok := pm.peerQueues[p]
-	pm.pqLk.RUnlock()
+	defer pm.pqLk.RUnlock()
 
+	pq, ok := pm.peerQueues[p]
 	if ok {
 		pq.ResponseReceived(ks)
 	}
@@ -132,6 +142,15 @@ func (pm *PeerManager) ResponseReceived(p peer.ID, ks []cid.Cid) {
 // For each peer it filters out want-haves that have previously been sent to
 // the peer.
 func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.Cid) {
+	if pm.maxRequestsInProgress != 0 {
+		if pm.requestsInProgress.Load() >= pm.maxRequestsInProgress {
+			log.Error("no boradcast: too many bitswap client requests in progress")
+			return
+		}
+		pm.requestsInProgress.Add(1)
+		defer pm.requestsInProgress.Add(-1)
+	}
+
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
@@ -141,12 +160,24 @@ func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.C
 // SendWants sends the given want-blocks and want-haves to the given peer.
 // It filters out wants that have previously been sent to the peer.
 func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
+	if pm.maxRequestsInProgress != 0 {
+		/*
+			if pm.requestsInProgress.Load() >= pm.maxRequestsInProgress {
+				log.Error("no send: too many bitswap client requests in progress")
+				return false
+			}
+		*/
+		pm.requestsInProgress.Add(1)
+		defer pm.requestsInProgress.Add(-1)
+	}
+
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
 	if _, ok := pm.peerQueues[p]; !ok {
 		return false
 	}
+
 	pm.pwm.sendWants(p, wantBlocks, wantHaves)
 	return true
 }
@@ -154,6 +185,11 @@ func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []ci
 // SendCancels sends cancels for the given keys to all peers who had previously
 // received a want for those keys.
 func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid) {
+	if pm.maxRequestsInProgress != 0 {
+		pm.requestsInProgress.Add(1)
+		defer pm.requestsInProgress.Add(-1)
+	}
+
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
@@ -163,6 +199,11 @@ func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid) {
 
 // CurrentWants returns the list of pending wants (both want-haves and want-blocks).
 func (pm *PeerManager) CurrentWants() []cid.Cid {
+	if pm.maxRequestsInProgress != 0 {
+		pm.requestsInProgress.Add(1)
+		defer pm.requestsInProgress.Add(-1)
+	}
+
 	pm.pqLk.RLock()
 	defer pm.pqLk.RUnlock()
 
@@ -171,6 +212,11 @@ func (pm *PeerManager) CurrentWants() []cid.Cid {
 
 // CurrentWantBlocks returns the list of pending want-blocks
 func (pm *PeerManager) CurrentWantBlocks() []cid.Cid {
+	if pm.maxRequestsInProgress != 0 {
+		pm.requestsInProgress.Add(1)
+		defer pm.requestsInProgress.Add(-1)
+	}
+
 	pm.pqLk.RLock()
 	defer pm.pqLk.RUnlock()
 
@@ -179,6 +225,11 @@ func (pm *PeerManager) CurrentWantBlocks() []cid.Cid {
 
 // CurrentWantHaves returns the list of pending want-haves
 func (pm *PeerManager) CurrentWantHaves() []cid.Cid {
+	if pm.maxRequestsInProgress != 0 {
+		pm.requestsInProgress.Add(1)
+		defer pm.requestsInProgress.Add(-1)
+	}
+
 	pm.pqLk.RLock()
 	defer pm.pqLk.RUnlock()
 
