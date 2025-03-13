@@ -11,9 +11,7 @@ import (
 )
 
 func TestWriteToInvalidPaths(t *testing.T) {
-	tmppath, err := os.MkdirTemp("", "files-test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tmppath)
+	tmppath := t.TempDir()
 
 	path := filepath.Join(tmppath, "output")
 

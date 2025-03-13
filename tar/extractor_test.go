@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	fp "path/filepath"
 	"runtime"
@@ -56,10 +57,12 @@ func TestSingleFile(t *testing.T) {
 		func(t *testing.T, extractDir string) {
 			f, err := os.Open(fp.Join(extractDir, fileName))
 			assert.NoError(t, err)
+			t.Cleanup(func() {
+				assert.NoError(t, f.Close())
+			})
 			data, err := io.ReadAll(f)
 			assert.NoError(t, err)
 			assert.Equal(t, fileData, string(data))
-			assert.NoError(t, f.Close())
 		},
 		nil,
 	)
@@ -79,10 +82,12 @@ func TestSingleFileWithMeta(t *testing.T) {
 			testMeta(t, path, mode, mtime)
 			f, err := os.Open(path)
 			assert.NoError(t, err)
+			t.Cleanup(func() {
+				assert.NoError(t, f.Close())
+			})
 			data, err := io.ReadAll(f)
 			assert.NoError(t, err)
 			assert.Equal(t, fileData, string(data))
-			assert.NoError(t, f.Close())
 		},
 		nil,
 	)
@@ -96,9 +101,10 @@ func TestSingleDirectory(t *testing.T) {
 	},
 		func(t *testing.T, extractDir string) {
 			f, err := os.Open(extractDir)
-			if err != nil {
-				t.Fatal(err)
-			}
+			assert.NoError(t, err)
+			t.Cleanup(func() {
+				f.Close()
+			})
 			objs, err := f.Readdir(1)
 			if err == io.EOF && len(objs) == 0 {
 				return
@@ -123,6 +129,9 @@ func TestSingleDirectoryWithMeta(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			t.Cleanup(func() {
+				f.Close()
+			})
 			objs, err := f.Readdir(1)
 			if err == io.EOF && len(objs) == 0 {
 				return
@@ -491,6 +500,9 @@ func TestLastElementOverwrite(t *testing.T) {
 		// This file will reside outside of the extraction directory root.
 		f, err := os.Create(fp.Join(rootDir, "outside-ref"))
 		assert.NoError(t, err)
+		t.Cleanup(func() {
+			f.Close()
+		})
 		n, err := f.WriteString(originalData)
 		assert.NoError(t, err)
 		assert.Equal(t, len(originalData), n)
@@ -516,15 +528,15 @@ func TestLastElementOverwrite(t *testing.T) {
 const tarOutRoot = "tar-out-root"
 
 func testTarExtraction(t *testing.T, setup func(t *testing.T, rootDir string), tarEntries []tarEntry, check func(t *testing.T, extractDir string), extractError error) {
-	var err error
-
 	// Directory structure.
 	// FIXME: We can't easily work on a MemFS since we would need to replace
 	//  all the `os` calls in the extractor so using a temporary dir.
-	rootDir, err := os.MkdirTemp("", "tar-extraction-test")
-	assert.NoError(t, err)
+	rootDir := t.TempDir()
+	t.Cleanup(func() {
+		chmodRecursive(t, rootDir)
+	})
 	extractDir := fp.Join(rootDir, tarOutRoot)
-	err = os.MkdirAll(extractDir, 0o755)
+	err := os.MkdirAll(extractDir, 0o755)
 	assert.NoError(t, err)
 
 	if setup != nil {
@@ -542,11 +554,23 @@ func testTarExtraction(t *testing.T, setup func(t *testing.T, rootDir string), t
 	}
 }
 
-func testExtract(t *testing.T, tarFile string, extractDir string, expectedError error) {
-	var err error
+func chmodRecursive(t *testing.T, path string) {
+	t.Helper()
+	err := fp.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chmod(path, fs.FileMode(0700))
+	})
+	if err != nil {
+		t.Log("ERROR:", err)
+	}
+}
 
+func testExtract(t *testing.T, tarFile string, extractDir string, expectedError error) {
 	tarReader, err := os.Open(tarFile)
 	assert.NoError(t, err)
+	defer tarReader.Close()
 
 	extractor := &Extractor{Path: extractDir}
 	err = extractor.Extract(tarReader)

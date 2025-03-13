@@ -258,6 +258,11 @@ func isDomainNameAndNotPeerID(hostname string) bool {
 func hasDNSLinkRecord(ctx context.Context, backend IPFSBackend, host string) bool {
 	dnslinkName := stripPort(host)
 
+	// Skip DNSLink lookup for IP addresses
+	if net.ParseIP(dnslinkName) != nil {
+		return false
+	}
+
 	if !isDomainNameAndNotPeerID(dnslinkName) {
 		return false
 	}
