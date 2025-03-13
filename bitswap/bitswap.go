@@ -32,7 +32,7 @@ type bitswap interface {
 	GetWantlist() []cid.Cid
 	IsOnline() bool
 	LedgerForPeer(p peer.ID) *server.Receipt
-	NewSession(ctx context.Context) exchange.Fetcher
+	NewSession(ctx context.Context) (exchange.Fetcher, error)
 	NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error
 	PeerConnected(p peer.ID)
 	PeerDisconnected(p peer.ID)

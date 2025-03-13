@@ -217,11 +217,11 @@ type fakeSessionExchange struct {
 	session exchange.Fetcher
 }
 
-func (fe *fakeSessionExchange) NewSession(ctx context.Context) exchange.Fetcher {
+func (fe *fakeSessionExchange) NewSession(ctx context.Context) (exchange.Fetcher, error) {
 	if ctx == nil {
 		panic("nil context")
 	}
-	return fe.session
+	return fe.session, nil
 }
 
 func TestNilExchange(t *testing.T) {
@@ -307,9 +307,9 @@ func (*fakeIsNewSessionCreateExchange) GetBlocks(context.Context, []cid.Cid) (<-
 	panic("should call on the session")
 }
 
-func (f *fakeIsNewSessionCreateExchange) NewSession(context.Context) exchange.Fetcher {
+func (f *fakeIsNewSessionCreateExchange) NewSession(context.Context) (exchange.Fetcher, error) {
 	f.newSessionWasCalled = true
-	return f.ses
+	return f.ses, nil
 }
 
 func (*fakeIsNewSessionCreateExchange) NotifyNewBlocks(context.Context, ...blocks.Block) error {

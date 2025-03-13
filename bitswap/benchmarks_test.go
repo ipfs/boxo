@@ -499,7 +499,10 @@ func onePeerPerBlock(b *testing.B, provs []testinstance.Instance, blks []blocks.
 }
 
 func oneAtATime(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
-	ses := bs.NewSession(context.Background())
+	ses, err := bs.NewSession(context.Background())
+	if err != nil {
+		b.Fatal(err)
+	}
 	for _, c := range ks {
 		_, err := ses.GetBlock(context.Background(), c)
 		if err != nil {
@@ -511,7 +514,10 @@ func oneAtATime(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
 
 // fetch data in batches, 10 at a time
 func batchFetchBy10(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
-	ses := bs.NewSession(context.Background())
+	ses, err := bs.NewSession(context.Background())
+	if err != nil {
+		b.Fatal(err)
+	}
 	for i := 0; i < len(ks); i += 10 {
 		out, err := ses.GetBlocks(context.Background(), ks[i:i+10])
 		if err != nil {
@@ -524,7 +530,10 @@ func batchFetchBy10(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
 
 // fetch each block at the same time concurrently
 func fetchAllConcurrent(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
-	ses := bs.NewSession(context.Background())
+	ses, err := bs.NewSession(context.Background())
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	var wg sync.WaitGroup
 	for _, c := range ks {
@@ -541,7 +550,10 @@ func fetchAllConcurrent(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
 }
 
 func batchFetchAll(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
-	ses := bs.NewSession(context.Background())
+	ses, err := bs.NewSession(context.Background())
+	if err != nil {
+		b.Fatal(err)
+	}
 	out, err := ses.GetBlocks(context.Background(), ks)
 	if err != nil {
 		b.Fatal(err)
@@ -552,8 +564,11 @@ func batchFetchAll(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
 
 // simulates the fetch pattern of trying to sync a unixfs file graph as fast as possible
 func unixfsFileFetch(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
-	ses := bs.NewSession(context.Background())
-	_, err := ses.GetBlock(context.Background(), ks[0])
+	ses, err := bs.NewSession(context.Background())
+	if err != nil {
+		b.Fatal(err)
+	}
+	_, err = ses.GetBlock(context.Background(), ks[0])
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -574,8 +589,11 @@ func unixfsFileFetch(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
 }
 
 func unixfsFileFetchLarge(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
-	ses := bs.NewSession(context.Background())
-	_, err := ses.GetBlock(context.Background(), ks[0])
+	ses, err := bs.NewSession(context.Background())
+	if err != nil {
+		b.Fatal(err)
+	}
+	_, err = ses.GetBlock(context.Background(), ks[0])
 	if err != nil {
 		b.Fatal(err)
 	}

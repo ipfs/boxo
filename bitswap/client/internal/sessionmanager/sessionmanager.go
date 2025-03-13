@@ -2,6 +2,7 @@ package sessionmanager
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"time"
@@ -18,6 +19,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
+
+var ErrSessionsLimit = errors.New("maximum number of bitswap client sessions reached")
 
 // Session is a session that is managed by the session manager
 type Session interface {
@@ -58,6 +61,8 @@ type SessionManager struct {
 	// Sessions
 	sessLk   sync.Mutex
 	sessions map[uint64]Session
+	// sessionsLimit is the maximum number of sessions, 0 means no limit.
+	sessionsLimit int
 
 	// Session Index
 	sessIDLk sync.Mutex
@@ -68,7 +73,7 @@ type SessionManager struct {
 
 // New creates a new SessionManager.
 func New(ctx context.Context, sessionFactory SessionFactory, sessionInterestManager *bssim.SessionInterestManager, peerManagerFactory PeerManagerFactory,
-	blockPresenceManager *bsbpm.BlockPresenceManager, peerManager bssession.PeerManager, notif notifications.PubSub, self peer.ID,
+	blockPresenceManager *bsbpm.BlockPresenceManager, peerManager bssession.PeerManager, notif notifications.PubSub, self peer.ID, sessionsLimit int,
 ) *SessionManager {
 	return &SessionManager{
 		ctx:                    ctx,
@@ -80,6 +85,7 @@ func New(ctx context.Context, sessionFactory SessionFactory, sessionInterestMana
 		notif:                  notif,
 		sessions:               make(map[uint64]Session),
 		self:                   self,
+		sessionsLimit:          sessionsLimit,
 	}
 }
 
@@ -88,7 +94,7 @@ func New(ctx context.Context, sessionFactory SessionFactory, sessionInterestMana
 func (sm *SessionManager) NewSession(ctx context.Context,
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D,
-) exchange.Fetcher {
+) (exchange.Fetcher, error) {
 	id := sm.GetNextSessionID()
 
 	ctx, span := internal.StartSpan(ctx, "SessionManager.NewSession", trace.WithAttributes(attribute.String("ID", strconv.FormatUint(id, 10))))
@@ -98,12 +104,15 @@ func (sm *SessionManager) NewSession(ctx context.Context,
 	session := sm.sessionFactory(ctx, sm, id, pm, sm.sessionInterestManager, sm.peerManager, sm.blockPresenceManager, sm.notif, provSearchDelay, rebroadcastDelay, sm.self)
 
 	sm.sessLk.Lock()
+	defer sm.sessLk.Unlock()
+
 	if sm.sessions != nil { // check if SessionManager was shutdown
+		if sm.sessionsLimit != 0 && len(sm.sessions) >= sm.sessionsLimit {
+			return nil, ErrSessionsLimit
+		}
 		sm.sessions[id] = session
 	}
-	sm.sessLk.Unlock()
-
-	return session
+	return session, nil
 }
 
 func (sm *SessionManager) Shutdown() {
