@@ -41,6 +41,10 @@ The following emojis are used to highlight certain changes:
   - Treats them as "Bitswap" peers, except instead of using Bitswap it makes HTTP/2 requests to discover (`HEAD`) and retrieve (`GET`) individual blocks (`?format=raw`).
   - A `bitswap/network` proxy implementation allows co-existance with standard `bitswap/network/bsnet`.
   - `httpnet` is not enabled by default. Upstream implementations may use it by modifying how they create the Bitswap network and initialize bitswap.
+- `provider` module includes some new functionality:
+  - a `KeyChanFunc` that traverses DAGs from a given root (`NewDAGProvider`).
+  - a `KeyChanFunc` that buffers all the CIDs in memory from another `KeyChanFunc` (`NewBufferedProvider`).
+- `fetcher/impl/blockservice`: new option `SkipNotFound` for the IPLD fetcher. It will skip not found nodes when traversing the DAG. This allows offline traversal of DAGs when using, for example, an offline blockservice.
 
 ### Changed
 
