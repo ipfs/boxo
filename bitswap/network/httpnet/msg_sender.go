@@ -181,7 +181,6 @@ func (err senderError) Error() string {
 // processed. tryURL returns an error so that it can be decided what to do next:
 // i.e. retry, or move to next item in wantlist, or abort completely.
 func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsmsg.Entry) (blocks.Block, *senderError) {
-	// sleep whatever needed
 	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
 		return nil, &senderError{
 			Type: typeRetryLater,
@@ -519,7 +518,6 @@ WANTLIST_LOOP:
 					bsresp.AddHave(entry.Cid)
 				}
 			} else {
-
 				// error handling
 				switch result.err.Type {
 				case typeFatal:

@@ -19,7 +19,7 @@ type pinger struct {
 	latenciesLock sync.RWMutex
 	latencies     map[peer.ID]time.Duration
 
-	pingsLock sync.Mutex
+	pingsLock sync.RWMutex
 	pings     map[peer.ID]context.CancelFunc
 }
 
@@ -52,7 +52,7 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 	for _, u := range urls {
 		go func(u network.ParsedURL) {
 			start := time.Now()
-			err := pngr.ht.connect(ctx, p, u, method)
+			err := pngr.ht.connectToURL(ctx, p, u, method)
 			if err != nil {
 				log.Debug(err)
 				results <- ping.Result{Error: err}
@@ -161,4 +161,12 @@ func (pngr *pinger) stopPinging(p peer.ID) {
 	delete(pngr.latencies, p)
 	pngr.latenciesLock.Unlock()
 
+}
+
+func (pngr *pinger) isPinging(p peer.ID) bool {
+	pngr.pingsLock.RLock()
+	defer pngr.pingsLock.RUnlock()
+
+	_, ok := pngr.pings[p]
+	return ok
 }
