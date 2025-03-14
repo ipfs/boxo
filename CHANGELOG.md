@@ -18,16 +18,25 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- fix(`provider`): don't reprovide if `reprovideInterval` is set to 0 [#871](https://github.com/ipfs/boxo/pull/871) 
-
 ### Removed
 
 ### Fixed
 
+### Security
+
+
+## [v0.29.0]
+
+### Changed
+
+- `bitswap/httpnet`: do not follow redirects [#878](https://github.com/ipfs/boxo/pull/878)
+- `provider`: provider helper that buffers results to fix issues with slow re-providing [#870](https://github.com/ipfs/boxo/pull/870)
+
+### Fixed
+
+- fix(`provider`): don't reprovide if `reprovideInterval` is set to 0 [#871](https://github.com/ipfs/boxo/pull/871)
 - `gateway`: Skip DNSLink lookup for IP addresses to avoid unnecessary DNS queries [#880](https://github.com/ipfs/boxo/pull/880)
 - `bitswap/client`: Fix unintentional ignoring `DontHaveTimeoutConfig` [#872](https://github.com/ipfs/boxo/pull/872)
-
-### Security
 
 
 ## [v0.29.0]
