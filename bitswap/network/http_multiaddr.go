@@ -12,8 +12,9 @@ import (
 // ParsedURL contains the result of parsing an "http" transport multiaddress.
 // SNI is set when the multiaddress specifies an SNI value.
 type ParsedURL struct {
-	URL *url.URL
-	SNI string
+	Multiaddress multiaddr.Multiaddr
+	URL          *url.URL
+	SNI          string
 }
 
 // ExtractHTTPAddress extracts the HTTP schema+host+port from a multiaddress
@@ -68,8 +69,9 @@ func ExtractHTTPAddress(ma multiaddr.Multiaddr) (ParsedURL, error) {
 	}
 
 	parsedURL := ParsedURL{
-		URL: pURL,
-		SNI: sni,
+		Multiaddress: ma,
+		URL:          pURL,
+		SNI:          sni,
 	}
 
 	// Error on addresses which are not https nor local

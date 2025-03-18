@@ -146,14 +146,19 @@ func (rt *router) Stats() Stats {
 // NewMessageSender returns a MessageSender using the HTTP network when HTTP
 // addresses are known, and bitswap otherwise.
 func (rt *router) NewMessageSender(ctx context.Context, p peer.ID, opts *MessageSenderOpts) (MessageSender, error) {
-	// IF we did not manage to connect to any HTTP address beforehand, we
-	// should not have them in the peerstore.
-	pi := rt.Peerstore.PeerInfo(p)
-	htaddrs, _ := SplitHTTPAddrs(pi)
-	if len(htaddrs.Addrs) > 0 {
-		return rt.HTTP.NewMessageSender(ctx, p, opts)
+	// There seem to be cases when we have HTTP addresses in the peerstore
+	// even though we have not connected to the peer via HTTP before. This
+	// can then bypass allowlists etc.  HTTP.NewMessageSender() checks if
+	// the peer is known to HTTP or errors.
+	// We switch to bitswap in that case.
+
+	// Note that NewMessageSender extracts Addrs from the peerstore so we
+	// don't have to do it here as well.
+	ms, err := rt.HTTP.NewMessageSender(ctx, p, opts)
+	if err != nil {
+		return rt.Bitswap.NewMessageSender(ctx, p, opts)
 	}
-	return rt.Bitswap.NewMessageSender(ctx, p, opts)
+	return ms, nil
 }
 
 func (rt *router) TagPeer(p peer.ID, tag string, w int) {
