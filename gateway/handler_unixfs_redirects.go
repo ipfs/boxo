@@ -171,7 +171,12 @@ func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Reques
 
 			// Or redirect
 			if rule.Status >= 301 && rule.Status <= 308 {
-				http.Redirect(w, r, rule.To, rule.Status)
+				redirectURL := rule.To
+				// preserve query parameters from original request
+				if r.URL.RawQuery != "" {
+					redirectURL = redirectURL + "?" + r.URL.RawQuery
+				}
+				http.Redirect(w, r, redirectURL, rule.Status)
 				return true, "", nil
 			}
 		}
