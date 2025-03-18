@@ -449,12 +449,9 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		workingAddrs = append(workingAddrs, u.Multiaddress)
 	}
 
-	// if we have 0 new, valid urls (or not space for them) and not
-	// connected already, error if we are connected, ignore.
+	// Bail out if no working urls found.
 	if len(workingAddrs) == 0 {
-		err := fmt.Errorf("connect failure to %s: %w", p, ErrNoSuccess)
-		log.Debug(err)
-		return err
+		return fmt.Errorf("connect failure to %s: %w", p, ErrNoSuccess)
 	}
 
 	// We have some working urls!
