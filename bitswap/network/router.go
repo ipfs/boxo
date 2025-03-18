@@ -148,7 +148,7 @@ func (rt *router) Stats() Stats {
 func (rt *router) NewMessageSender(ctx context.Context, p peer.ID, opts *MessageSenderOpts) (MessageSender, error) {
 	// There seem to be cases when we have HTTP addresses in the peerstore
 	// even though we have not connected to the peer via HTTP before. This
-	// can then bypass allowlists etc.  HTTP.NewMessageSender() checks the
+	// can then bypass allowlists etc.  HTTP.NewMessageSender() checks if
 	// the peer is known to HTTP or errors.
 	// We switch to bitswap in that case.
 
