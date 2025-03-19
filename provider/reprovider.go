@@ -424,7 +424,7 @@ func (s *reprovider) run() {
 				return
 			}
 
-			err := s.reprovide(s.ctx, false)
+			err := s.reprovide(context.Background(), false)
 
 			// only log if we've hit an actual error, otherwise just tell the client we're shutting down
 			if s.ctx.Err() == nil && err != nil {
