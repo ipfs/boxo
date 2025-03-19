@@ -51,7 +51,6 @@ func NewQueue(ds datastore.Datastore) *Queue {
 	q := &Queue{
 		ds:      namespace.Wrap(ds, datastore.NewKey("/queue")),
 		dequeue: make(chan cid.Cid),
-		//enqueue: make(chan cid.Cid, 1024),
 		enqueue: chanqueue.New(chanqueue.WithCapacity[cid.Cid](inputBufferSize)),
 		close:   cancel,
 		closed:  make(chan struct{}),
