@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	gopath "path"
 	"strconv"
 	"strings"
@@ -172,9 +173,23 @@ func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Reques
 			// Or redirect
 			if rule.Status >= 301 && rule.Status <= 308 {
 				redirectURL := rule.To
-				// preserve query parameters from original request
+				// Preserve query parameters from the original request if they exist
 				if r.URL.RawQuery != "" {
-					redirectURL = redirectURL + "?" + r.URL.RawQuery
+					u, err := url.Parse(rule.To)
+					if err != nil {
+						return false, "", err
+					}
+					// Merge original query parameters into target
+					originalQuery, _ := url.ParseQuery(r.URL.RawQuery)
+					targetQuery := u.Query()
+					for key, values := range originalQuery {
+						for _, value := range values {
+							targetQuery.Add(key, value)
+						}
+					}
+					// Set the merged query parameters back
+					u.RawQuery = targetQuery.Encode()
+					redirectURL = u.String()
 				}
 				http.Redirect(w, r, redirectURL, rule.Status)
 				return true, "", nil
