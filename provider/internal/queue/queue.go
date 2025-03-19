@@ -37,7 +37,6 @@ const (
 type Queue struct {
 	// used to differentiate queues in datastore
 	// e.g. provider vs reprovider
-	ctx       context.Context
 	ds        datastore.Datastore // Must be threadsafe
 	dequeue   chan cid.Cid
 	enqueue   *chanqueue.ChanQueue[cid.Cid] // in-memory queue to buffer input
