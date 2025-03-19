@@ -2,7 +2,6 @@ package queue
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"sync"
@@ -19,7 +18,7 @@ import (
 var log = logging.Logger("provider.queue")
 
 const (
-	// Number of input CIDs to buffer without blocking.
+	// Number of input CIDs to buffer without blocking. If <= 1, then use channel.
 	inputBufferSize = 65536
 	// Time for Close to wait to finish writing CIDs to datastore.
 	shutdownTimeout = 5 * time.Second
@@ -39,7 +38,8 @@ type Queue struct {
 	// e.g. provider vs reprovider
 	ds        datastore.Datastore // Must be threadsafe
 	dequeue   chan cid.Cid
-	enqueue   *chanqueue.ChanQueue[cid.Cid] // in-memory queue to buffer input
+	enqueue   chan cid.Cid
+	inBuf     *chanqueue.ChanQueue[cid.Cid] // in-memory queue to buffer input
 	close     context.CancelFunc
 	closed    chan struct{}
 	closeOnce sync.Once
@@ -51,10 +51,19 @@ func NewQueue(ds datastore.Datastore) *Queue {
 	q := &Queue{
 		ds:      namespace.Wrap(ds, datastore.NewKey("/queue")),
 		dequeue: make(chan cid.Cid),
-		enqueue: chanqueue.New(chanqueue.WithCapacity[cid.Cid](inputBufferSize)),
 		close:   cancel,
 		closed:  make(chan struct{}),
 	}
+	if inputBufferSize > 1 {
+		q.enqueue = make(chan cid.Cid)
+		q.inBuf = chanqueue.New(
+			chanqueue.WithInput(q.enqueue),
+			chanqueue.WithCapacity[cid.Cid](inputBufferSize),
+		)
+	} else {
+		q.enqueue = make(chan cid.Cid, inputBufferSize)
+	}
+
 	go q.worker(ctx)
 	return q
 }
@@ -64,7 +73,7 @@ func (q *Queue) Close() error {
 	var err error
 	q.closeOnce.Do(func() {
 		// Close input queue and wait for worker to finish reading it.
-		q.enqueue.Close()
+		close(q.enqueue)
 		select {
 		case <-q.closed:
 		case <-time.After(shutdownTimeout):
@@ -84,7 +93,7 @@ func (q *Queue) Enqueue(cid cid.Cid) (err error) {
 			err = errors.New("failed to enqueue CID: shutting down")
 		}
 	}()
-	q.enqueue.In() <- cid
+	q.enqueue <- cid
 	return
 }
 
@@ -96,11 +105,18 @@ func (q *Queue) Dequeue() <-chan cid.Cid {
 // worker run dequeues and enqueues when available.
 func (q *Queue) worker(ctx context.Context) {
 	defer close(q.closed)
-	defer q.enqueue.Shutdown()
 
 	var k datastore.Key = datastore.Key{}
 	var c cid.Cid = cid.Undef
+	var cstr string
 	var counter uint64
+
+	var readInBuf <-chan cid.Cid
+	if q.inBuf != nil {
+		readInBuf = q.inBuf.Out()
+	} else {
+		readInBuf = q.enqueue
+	}
 
 	for {
 		if c == cid.Undef {
@@ -121,6 +137,7 @@ func (q *Queue) worker(ctx context.Context) {
 					continue
 				}
 			} // else queue is empty
+			cstr = c.String()
 		}
 
 		// If c != cid.Undef set dequeue and attempt write, otherwise wait for enqueue
@@ -130,24 +147,22 @@ func (q *Queue) worker(ctx context.Context) {
 		}
 
 		select {
-		case toQueue, ok := <-q.enqueue.Out():
+		case toQueue, ok := <-readInBuf:
 			if !ok {
 				return
 			}
-			// Add unique suffix to key path to allow multiple entries with the
-			// same sequence.
-			toQueueBytes := toQueue.Bytes()
-			sfx := base64.RawURLEncoding.EncodeToString(toQueueBytes[len(toQueueBytes)-6:])
-			nextKey := datastore.NewKey(fmt.Sprintf("%020d/%s", counter, sfx))
+			// Add suffix to key path to allow multiple entries with same sequence.
+			nextKey := datastore.NewKey(fmt.Sprintf("%020d/%s", counter, cstr))
 			counter++
 
 			if c == cid.Undef {
 				// fast path, skip rereading the datastore if we don't have anything in hand yet
 				c = toQueue
 				k = nextKey
+				cstr = c.String()
 			}
 
-			if err := q.ds.Put(ctx, nextKey, toQueueBytes); err != nil {
+			if err := q.ds.Put(ctx, nextKey, toQueue.Bytes()); err != nil {
 				log.Errorf("Failed to enqueue cid: %s", err)
 				continue
 			}
@@ -159,6 +174,10 @@ func (q *Queue) worker(ctx context.Context) {
 			}
 			c = cid.Undef
 		case <-ctx.Done():
+			if q.inBuf != nil {
+				for range readInBuf {
+				}
+			}
 			return
 		}
 	}
