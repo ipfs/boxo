@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	iface "github.com/ipfs/boxo/bitswap"
-	"github.com/ipfs/boxo/bitswap/bsnet/internal"
+	iface "github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap/bitswap/internal"
 	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
 
 	logging "github.com/ipfs/go-log/v2"

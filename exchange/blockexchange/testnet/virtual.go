@@ -10,8 +10,8 @@ import (
 
 	"github.com/gammazero/deque"
 	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
-	iface "github.com/ipfs/boxo/bitswap"
-	bsnet "github.com/ipfs/boxo/bitswap/bsnet"
+	iface "github.com/ipfs/boxo/swap"
+	bsnet "github.com/ipfs/boxo/swap/bitswap"
 	delay "github.com/ipfs/go-ipfs-delay"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/connmgr"

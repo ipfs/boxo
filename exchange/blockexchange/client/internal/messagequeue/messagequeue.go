@@ -11,7 +11,7 @@ import (
 	bswl "github.com/ipfs/boxo/exchange/blockexchange/client/wantlist"
 	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
 	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
-	bsnet "github.com/ipfs/boxo/bitswap"
+	bsnet "github.com/ipfs/boxo/swap"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"

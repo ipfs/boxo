@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
-	bsnet "github.com/ipfs/boxo/bitswap"
+	bsnet "github.com/ipfs/boxo/swap"
 	blocks "github.com/ipfs/go-block-format"
 	delay "github.com/ipfs/go-ipfs-delay"
 	tnet "github.com/libp2p/go-libp2p-testing/net"

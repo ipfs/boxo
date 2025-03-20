@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	network "github.com/ipfs/boxo/bitswap"
+	network "github.com/ipfs/boxo/swap"
 )
 
 type cooldownTracker struct {

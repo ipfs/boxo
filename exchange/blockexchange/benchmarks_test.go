@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	bsnet "github.com/ipfs/boxo/bitswap/bsnet"
+	bsnet "github.com/ipfs/boxo/swap/bitswap"
 	"github.com/ipfs/boxo/exchange/blockexchange"
 	testinstance "github.com/ipfs/boxo/exchange/blockexchange/testinstance"
 	tn "github.com/ipfs/boxo/exchange/blockexchange/testnet"

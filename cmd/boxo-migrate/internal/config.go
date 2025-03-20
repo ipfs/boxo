@@ -13,7 +13,7 @@ type Config struct {
 
 var DefaultConfig = Config{
 	ImportPaths: map[string]string{
-		"github.com/ipfs/go-bitswap":                     "github.com/ipfs/boxo/bitswap",
+		"github.com/ipfs/go-bitswap":                     "github.com/ipfs/boxo/swap",
 		"github.com/ipfs/go-ipfs-files":                  "github.com/ipfs/boxo/files",
 		"github.com/ipfs/tar-utils":                      "github.com/ipfs/boxo/tar",
 		"github.com/ipfs/interface-go-ipfs-core":         "github.com/ipfs/boxo/coreiface",
@@ -43,7 +43,7 @@ var DefaultConfig = Config{
 
 		// Pre Boxo rename
 		"github.com/ipfs/go-libipfs/gateway":               "github.com/ipfs/boxo/gateway",
-		"github.com/ipfs/go-libipfs/bitswap":               "github.com/ipfs/boxo/bitswap",
+		"github.com/ipfs/go-libipfs/bitswap":               "github.com/ipfs/boxo/swap",
 		"github.com/ipfs/go-libipfs/files":                 "github.com/ipfs/boxo/files",
 		"github.com/ipfs/go-libipfs/tar":                   "github.com/ipfs/boxo/tar",
 		"github.com/ipfs/go-libipfs/coreiface":             "github.com/ipfs/boxo/coreiface",

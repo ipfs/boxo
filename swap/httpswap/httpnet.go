@@ -17,7 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	network "github.com/ipfs/boxo/bitswap"
+	network "github.com/ipfs/boxo/swap"
 	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
 	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log/v2"

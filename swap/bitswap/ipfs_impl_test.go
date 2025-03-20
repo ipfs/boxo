@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	network "github.com/ipfs/boxo/bitswap"
-	bsnet "github.com/ipfs/boxo/bitswap/bsnet"
-	"github.com/ipfs/boxo/bitswap/bsnet/internal"
+	network "github.com/ipfs/boxo/swap"
+	bsnet "github.com/ipfs/boxo/swap/bitswap"
+	"github.com/ipfs/boxo/swap/bitswap/internal"
 	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
 	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
 	tn "github.com/ipfs/boxo/exchange/blockexchange/testnet"

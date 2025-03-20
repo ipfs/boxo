@@ -3,8 +3,8 @@ package bitswap
 import (
 	"context"
 
-	iface "github.com/ipfs/boxo/bitswap"
-	bsnet "github.com/ipfs/boxo/bitswap/bsnet"
+	iface "github.com/ipfs/boxo/swap"
+	bsnet "github.com/ipfs/boxo/swap/bitswap"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/peer"
 	mockpeernet "github.com/libp2p/go-libp2p/p2p/net/mock"

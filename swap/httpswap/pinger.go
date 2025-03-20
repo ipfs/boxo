@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	network "github.com/ipfs/boxo/bitswap"
+	network "github.com/ipfs/boxo/swap"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"go.uber.org/multierr"

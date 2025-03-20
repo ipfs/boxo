@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	iface "github.com/ipfs/boxo/bitswap"
-	bsnet "github.com/ipfs/boxo/bitswap/bsnet"
+	iface "github.com/ipfs/boxo/swap"
+	bsnet "github.com/ipfs/boxo/swap/bitswap"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/exchange/blockexchange"
 	tn "github.com/ipfs/boxo/exchange/blockexchange/testnet"

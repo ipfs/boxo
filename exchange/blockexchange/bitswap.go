@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	network "github.com/ipfs/boxo/bitswap"
+	network "github.com/ipfs/boxo/swap"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	exchange "github.com/ipfs/boxo/exchange"
 	"github.com/ipfs/boxo/exchange/blockexchange/client"

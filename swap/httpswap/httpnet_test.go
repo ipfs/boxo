@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	network "github.com/ipfs/boxo/bitswap"
+	network "github.com/ipfs/boxo/swap"
 	"github.com/ipfs/boxo/blockstore"
 	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
 	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"

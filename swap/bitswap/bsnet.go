@@ -1,6 +1,6 @@
 package bsnet
 
-import "github.com/ipfs/boxo/bitswap/bsnet/internal"
+import "github.com/ipfs/boxo/swap/bitswap/internal"
 
 var (
 	// ProtocolBitswapNoVers is equivalent to the legacy bitswap protocol

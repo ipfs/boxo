@@ -12,7 +12,7 @@ import (
 	"github.com/ipfs/boxo/exchange/blockexchange/message"
 	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
 	bmetrics "github.com/ipfs/boxo/exchange/blockexchange/metrics"
-	bsnet "github.com/ipfs/boxo/bitswap"
+	bsnet "github.com/ipfs/boxo/swap"
 	"github.com/ipfs/boxo/exchange/blockexchange/server/internal/decision"
 	"github.com/ipfs/boxo/exchange/blockexchange/tracer"
 	blockstore "github.com/ipfs/boxo/blockstore"

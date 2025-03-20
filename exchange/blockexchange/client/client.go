@@ -21,7 +21,7 @@ import (
 	"github.com/ipfs/boxo/exchange/blockexchange/internal/defaults"
 	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
 	bmetrics "github.com/ipfs/boxo/exchange/blockexchange/metrics"
-	bsnet "github.com/ipfs/boxo/bitswap"
+	bsnet "github.com/ipfs/boxo/swap"
 	"github.com/ipfs/boxo/exchange/blockexchange/tracer"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	exchange "github.com/ipfs/boxo/exchange"
