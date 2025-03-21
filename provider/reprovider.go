@@ -240,6 +240,7 @@ func (s *reprovider) run() {
 
 	s.closewg.Add(1)
 	go func() {
+		// provider/reprovider worker
 		defer s.closewg.Done()
 
 		m := make(map[cid.Cid]struct{})
@@ -267,9 +268,10 @@ func (s *reprovider) run() {
 			}
 		}
 
+		var performedReprovide, complete bool
 		for {
-			performedReprovide := false
-			complete := false
+			performedReprovide = false
+			complete = false
 
 			batchSize := s.maxReprovideBatchSize
 			if s.throughputCallback != nil && s.throughputMinimumProvides < batchSize {
@@ -395,25 +397,28 @@ func (s *reprovider) run() {
 		}
 	}()
 
+	// don't start reprovide scheduling if reprovides are disabled (reprovideInterval == 0)
+	if s.reprovideInterval == 0 {
+		return
+	}
+
 	s.closewg.Add(1)
 	go func() {
+		// reprovides scheduling worker
 		defer s.closewg.Done()
 
 		var initialReprovideCh, reprovideCh <-chan time.Time
 
-		// If reproviding is enabled (non-zero)
-		if s.reprovideInterval > 0 {
-			reprovideTicker := time.NewTicker(s.reprovideInterval)
-			defer reprovideTicker.Stop()
-			reprovideCh = reprovideTicker.C
+		reprovideTicker := time.NewTicker(s.reprovideInterval)
+		defer reprovideTicker.Stop()
+		reprovideCh = reprovideTicker.C
 
-			// if there is a non-zero initial reprovide time that was set in the initializer or if the fallback has been
-			if s.initialReprovideDelaySet {
-				initialReprovideTimer := time.NewTimer(s.initalReprovideDelay)
-				defer initialReprovideTimer.Stop()
+		// if there is a non-zero initial reprovide time that was set in the initializer or if the fallback has been
+		if s.initialReprovideDelaySet {
+			initialReprovideTimer := time.NewTimer(s.initalReprovideDelay)
+			defer initialReprovideTimer.Stop()
 
-				initialReprovideCh = initialReprovideTimer.C
-			}
+			initialReprovideCh = initialReprovideTimer.C
 		}
 
 		for s.ctx.Err() == nil {
