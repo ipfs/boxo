@@ -17,6 +17,10 @@ type Option struct {
 	v interface{}
 }
 
+func (o *Option) Set(v interface{}) {
+	o.v = v
+}
+
 func EngineBlockstoreWorkerCount(count int) Option {
 	return Option{server.EngineBlockstoreWorkerCount(count)}
 }
