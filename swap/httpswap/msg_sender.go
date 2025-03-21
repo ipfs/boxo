@@ -1,4 +1,4 @@
-package httpnet
+package httpswap
 
 import (
 	"bytes"

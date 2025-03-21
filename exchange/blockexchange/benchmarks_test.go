@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	bsnet "github.com/ipfs/boxo/swap/bitswap"
 	"github.com/ipfs/boxo/exchange/blockexchange"
 	testinstance "github.com/ipfs/boxo/exchange/blockexchange/testinstance"
 	tn "github.com/ipfs/boxo/exchange/blockexchange/testnet"
 	mockrouting "github.com/ipfs/boxo/routing/mock"
+	bsnet "github.com/ipfs/boxo/swap/bitswap"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"

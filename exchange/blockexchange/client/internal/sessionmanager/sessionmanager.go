@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
+	exchange "github.com/ipfs/boxo/exchange"
 	"github.com/ipfs/boxo/exchange/blockexchange/client/internal"
 	bsbpm "github.com/ipfs/boxo/exchange/blockexchange/client/internal/blockpresencemanager"
 	notifications "github.com/ipfs/boxo/exchange/blockexchange/client/internal/notifications"
 	bssession "github.com/ipfs/boxo/exchange/blockexchange/client/internal/session"
 	bssim "github.com/ipfs/boxo/exchange/blockexchange/client/internal/sessioninterestmanager"
-	exchange "github.com/ipfs/boxo/exchange"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 	peer "github.com/libp2p/go-libp2p/core/peer"

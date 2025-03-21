@@ -1,6 +1,6 @@
-// Package httpnet implements an Exchange network that sends and receives
-// Exchange messages from peers' HTTP endpoints.
-package httpnet
+// Package httpswap implements an swap network that sends and receives
+// messages from peers' HTTP endpoints.
+package httpswap
 
 import (
 	"context"
