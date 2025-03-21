@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	testinstance "github.com/ipfs/boxo/bitswap/testinstance"
-	tn "github.com/ipfs/boxo/bitswap/testnet"
 	"github.com/ipfs/boxo/blockservice"
+	testinstance "github.com/ipfs/boxo/exchange/blockexchange/testinstance"
+	tn "github.com/ipfs/boxo/exchange/blockexchange/testnet"
 	"github.com/ipfs/boxo/fetcher"
 	"github.com/ipfs/boxo/fetcher/helpers"
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"

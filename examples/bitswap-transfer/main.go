@@ -33,10 +33,10 @@ import (
 	"github.com/ipfs/boxo/ipld/unixfs/importer/balanced"
 	uih "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
 
-	bsclient "github.com/ipfs/boxo/bitswap/client"
-	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
-	bsserver "github.com/ipfs/boxo/bitswap/server"
+	bsclient "github.com/ipfs/boxo/exchange/blockexchange/client"
+	bsserver "github.com/ipfs/boxo/exchange/blockexchange/server"
 	"github.com/ipfs/boxo/files"
+	bsnet "github.com/ipfs/boxo/swap/bitswap"
 )
 
 const exampleBinaryName = "bitswap-transfer"

@@ -1,16 +1,15 @@
 package server
 
-import (
-	"github.com/ipfs/boxo/bitswap/server/internal/decision"
-)
+import "github.com/ipfs/boxo/exchange/blockexchange/server"
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange/server
 type (
-	Receipt                = decision.Receipt
-	PeerBlockRequestFilter = decision.PeerBlockRequestFilter
-	TaskComparator         = decision.TaskComparator
-	TaskInfo               = decision.TaskInfo
-	ScoreLedger            = decision.ScoreLedger
-	ScorePeerFunc          = decision.ScorePeerFunc
-	PeerLedger             = decision.PeerLedger
-	PeerEntry              = decision.PeerEntry
+	Receipt                = server.Receipt
+	PeerBlockRequestFilter = server.PeerBlockRequestFilter
+	TaskComparator         = server.TaskComparator
+	TaskInfo               = server.TaskInfo
+	ScoreLedger            = server.ScoreLedger
+	ScorePeerFunc          = server.ScorePeerFunc
+	PeerLedger             = server.PeerLedger
+	PeerEntry              = server.PeerEntry
 )
