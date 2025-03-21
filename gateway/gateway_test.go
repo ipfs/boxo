@@ -816,6 +816,141 @@ func TestRedirects(t *testing.T) {
 		do(http.MethodHead)
 	})
 
+	t.Run("_redirects file redirect preserves both static and dynamic query parameters", func(t *testing.T) {
+		t.Parallel()
+
+		backend, root := newMockBackend(t, "redirects-query-params.car")
+		backend.namesys["/ipns/example.org"] = newMockNamesysItem(path.FromCid(root), 0)
+
+		ts := newTestServerWithConfig(t, backend, Config{
+			NoDNSLink: false,
+			PublicGateways: map[string]*PublicGateway{
+				"example.org": {
+					UseSubdomains:         true,
+					DeserializedResponses: true,
+				},
+			},
+			DeserializedResponses: true,
+		})
+
+		// Request for missing page with some dynamic parameters
+		missingPageURL := ts.URL + "/source1/source-file?dynamic-query1=dynamic-value1&dynamic-query2=dynamic-value2"
+
+		// Expected response is redirect URL that preserves both static and dynamic parameters
+		expectedTargetURL := "/target-file?dynamic-query1=dynamic-value1&dynamic-query2=dynamic-value2&static-query1=static-val1&static-query2=static-val2"
+
+		do := func(method string) {
+			// Make initial request to non-existing page that should return redirect that contains both query params from original request AND target URL in _redirects file.
+			req := mustNewRequest(t, method, missingPageURL, nil)
+			req.Header.Add("Accept", "text/html")
+			req.Host = "example.org"
+
+			res := mustDoWithoutRedirect(t, req)
+			defer res.Body.Close()
+
+			// Status code should match 301 from _redirects catch-all rule
+			require.Equal(t, http.StatusMovedPermanently, res.StatusCode)
+
+			// Check Redirect target contains all query parameters
+			redirectURL := res.Header.Get("Location")
+			require.Equal(t, expectedTargetURL, redirectURL)
+
+		}
+
+		do(http.MethodGet)
+		do(http.MethodHead)
+	})
+
+	t.Run("_redirects file redirect supports named placeholders as query parameters", func(t *testing.T) {
+		t.Parallel()
+
+		backend, root := newMockBackend(t, "redirects-query-params.car")
+		backend.namesys["/ipns/example.org"] = newMockNamesysItem(path.FromCid(root), 0)
+
+		ts := newTestServerWithConfig(t, backend, Config{
+			NoDNSLink: false,
+			PublicGateways: map[string]*PublicGateway{
+				"example.org": {
+					UseSubdomains:         true,
+					DeserializedResponses: true,
+				},
+			},
+			DeserializedResponses: true,
+		})
+
+		// Request for missing page under path that has named placeholders and some dynamic parameters
+		missingPageURL := ts.URL + "/source2/codeA/nameA?dynamic-query1=dynamic-value1&dynamic-query2=dynamic-value2"
+
+		// Expected response is redirect URL that preserves both named and dynamic parameters
+		expectedTargetURL := "/target-file?code=codeA&dynamic-query1=dynamic-value1&dynamic-query2=dynamic-value2&name=nameA"
+
+		do := func(method string) {
+			// Make initial request to non-existing page that should return redirect that contains both query params from original request AND target URL in _redirects file.
+			req := mustNewRequest(t, method, missingPageURL, nil)
+			req.Header.Add("Accept", "text/html")
+			req.Host = "example.org"
+
+			res := mustDoWithoutRedirect(t, req)
+			defer res.Body.Close()
+
+			// Status code should match 301 from _redirects catch-all rule
+			require.Equal(t, http.StatusMovedPermanently, res.StatusCode)
+
+			// Check Redirect target contains all query parameters
+			redirectURL := res.Header.Get("Location")
+			require.Equal(t, expectedTargetURL, redirectURL)
+
+		}
+
+		do(http.MethodGet)
+		do(http.MethodHead)
+	})
+
+	t.Run("_redirects file redirect supports catch-all splat with dynamic query parameters", func(t *testing.T) {
+		t.Parallel()
+
+		backend, root := newMockBackend(t, "redirects-query-params.car")
+		backend.namesys["/ipns/example.org"] = newMockNamesysItem(path.FromCid(root), 0)
+
+		ts := newTestServerWithConfig(t, backend, Config{
+			NoDNSLink: false,
+			PublicGateways: map[string]*PublicGateway{
+				"example.org": {
+					UseSubdomains:         true,
+					DeserializedResponses: true,
+				},
+			},
+			DeserializedResponses: true,
+		})
+
+		// Request for missing page under path that is a catch-all splat (incl. some dynamic parameters)
+		missingPageURL := ts.URL + "/source3/this/is/catch-all/splat-with?dynamic-query1=dynamic-value1&dynamic-query2=dynamic-value2"
+
+		// Expected response is redirect URL to a different server that preserves entire splat, including dynamic query parameters
+		expectedTargetURL := "https://example.net/target3/this/is/catch-all/splat-with?dynamic-query1=dynamic-value1&dynamic-query2=dynamic-value2"
+
+		do := func(method string) {
+			// Make initial request to non-existing page that should return redirect that contains both query params from original request AND target URL in _redirects file.
+			req := mustNewRequest(t, method, missingPageURL, nil)
+			req.Header.Add("Accept", "text/html")
+			req.Host = "example.org"
+
+			res := mustDoWithoutRedirect(t, req)
+			defer res.Body.Close()
+
+			// Status code should match 301 from _redirects catch-all rule
+			require.Equal(t, http.StatusMovedPermanently, res.StatusCode)
+
+			// Check Redirect target contains all query parameters
+			redirectURL := res.Header.Get("Location")
+			require.Equal(t, expectedTargetURL, redirectURL)
+
+		}
+
+		do(http.MethodGet)
+		do(http.MethodHead)
+	})
+
 	t.Run("Superfluous namespace", func(t *testing.T) {
 		t.Parallel()
 
