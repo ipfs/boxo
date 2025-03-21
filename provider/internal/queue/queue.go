@@ -18,7 +18,7 @@ import (
 var log = logging.Logger("provider.queue")
 
 const (
-	// Number of input CIDs to buffer without blocking. If <= 1, then use channel.
+	// Number of input CIDs to buffer without blocking.
 	inputBufferSize = 65536
 	// Time for Close to wait to finish writing CIDs to datastore.
 	shutdownTimeout = 5 * time.Second
@@ -47,24 +47,32 @@ type Queue struct {
 
 // NewQueue creates a queue for cids
 func NewQueue(ds datastore.Datastore) *Queue {
-	ctx, cancel := context.WithCancel(context.Background())
+	dequeue := make(chan cid.Cid)
+	enqueue := make(chan cid.Cid)
+
 	q := &Queue{
-		ds:      namespace.Wrap(ds, datastore.NewKey("/queue")),
-		dequeue: make(chan cid.Cid),
-		close:   cancel,
-		closed:  make(chan struct{}),
+		dequeue: dequeue,
+		enqueue: enqueue,
 	}
-	if inputBufferSize > 1 {
-		q.enqueue = make(chan cid.Cid)
+
+	if ds == nil {
 		q.inBuf = chanqueue.New(
-			chanqueue.WithInput(q.enqueue),
+			chanqueue.WithInput(enqueue),
+			chanqueue.WithOutput(dequeue),
 			chanqueue.WithCapacity[cid.Cid](inputBufferSize),
 		)
 	} else {
-		q.enqueue = make(chan cid.Cid, inputBufferSize)
+		ctx, cancel := context.WithCancel(context.Background())
+		q.close = cancel
+		q.inBuf = chanqueue.New(
+			chanqueue.WithInput(enqueue),
+			chanqueue.WithCapacity[cid.Cid](inputBufferSize),
+		)
+		q.ds = namespace.Wrap(ds, datastore.NewKey("/queue"))
+		q.closed = make(chan struct{})
+		go q.worker(ctx)
 	}
 
-	go q.worker(ctx)
 	return q
 }
 
@@ -73,15 +81,19 @@ func (q *Queue) Close() error {
 	var err error
 	q.closeOnce.Do(func() {
 		// Close input queue and wait for worker to finish reading it.
-		close(q.enqueue)
-		select {
-		case <-q.closed:
-		case <-time.After(shutdownTimeout):
-			q.close() // force immediate shutdown
-			<-q.closed
-			err = fmt.Errorf("provider queue: %d cids not written to datastore", q.inBuf.Len())
+		if q.ds == nil {
+			q.inBuf.Shutdown()
+		} else {
+			q.inBuf.Close()
+			select {
+			case <-q.closed:
+			case <-time.After(shutdownTimeout):
+				q.close() // force immediate shutdown
+				<-q.closed
+				err = fmt.Errorf("provider queue: %d cids not written to datastore", q.inBuf.Len())
+			}
+			close(q.dequeue) // no more output from this queue
 		}
-		close(q.dequeue) // no more output from this queue
 	})
 	return err
 }
@@ -112,11 +124,7 @@ func (q *Queue) worker(ctx context.Context) {
 	var counter uint64
 
 	var readInBuf <-chan cid.Cid
-	if q.inBuf != nil {
-		readInBuf = q.inBuf.Out()
-	} else {
-		readInBuf = q.enqueue
-	}
+	readInBuf = q.inBuf.Out()
 
 	for {
 		if c == cid.Undef {
