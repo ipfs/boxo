@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strconv"
 	"sync"
 	"time"
 
@@ -54,8 +53,7 @@ type reprovider struct {
 	rsys        Provide
 	keyProvider KeyChanFunc
 
-	q  *queue.Queue
-	ds datastore.Batching
+	q *queue.Queue
 
 	reprovideCh         chan cid.Cid
 	noReprovideInFlight chan struct{}
@@ -95,10 +93,7 @@ type Ready interface {
 // BatchProvidingSystem instances
 type Option func(system *reprovider) error
 
-var (
-	lastReprovideKey = datastore.NewKey("/reprovide/lastreprovide")
-	DefaultKeyPrefix = datastore.NewKey("/provider")
-)
+var DefaultKeyPrefix = datastore.NewKey("/provider")
 
 // New creates a new [System]. By default it is offline, that means it will
 // enqueue tasks in ds.
@@ -137,8 +132,7 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 		}
 	}
 
-	s.ds = namespace.Wrap(ds, s.keyPrefix)
-	s.q = queue.NewQueue(s.ds)
+	s.q = queue.NewQueue(namespace.Wrap(ds, s.keyPrefix))
 
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options
@@ -240,6 +234,7 @@ func (s *reprovider) run() {
 
 	s.closewg.Add(1)
 	go func() {
+		// provider/reprovider worker
 		defer s.closewg.Done()
 
 		m := make(map[cid.Cid]struct{})
@@ -247,8 +242,8 @@ func (s *reprovider) run() {
 		// setup stopped timers
 		maxCollectionDurationTimer := time.NewTimer(time.Hour)
 		pauseDetectTimer := time.NewTimer(time.Hour)
-		stopAndEmptyTimer(maxCollectionDurationTimer)
-		stopAndEmptyTimer(pauseDetectTimer)
+		maxCollectionDurationTimer.Stop()
+		pauseDetectTimer.Stop()
 
 		// make sure timers are cleaned up
 		defer maxCollectionDurationTimer.Stop()
@@ -259,22 +254,22 @@ func (s *reprovider) run() {
 			if firstProvide {
 				// after receiving the first provider start up the timers
 				maxCollectionDurationTimer.Reset(maxCollectionDuration)
-				pauseDetectTimer.Reset(pauseDetectionThreshold)
 			} else {
 				// otherwise just do a full restart of the pause timer
-				stopAndEmptyTimer(pauseDetectTimer)
-				pauseDetectTimer.Reset(pauseDetectionThreshold)
+				pauseDetectTimer.Stop()
 			}
+			pauseDetectTimer.Reset(pauseDetectionThreshold)
 		}
 
-		for {
-			performedReprovide := false
-			complete := false
+		batchSize := s.maxReprovideBatchSize
+		if s.throughputCallback != nil && s.throughputMinimumProvides < batchSize {
+			batchSize = s.throughputMinimumProvides
+		}
 
-			batchSize := s.maxReprovideBatchSize
-			if s.throughputCallback != nil && s.throughputMinimumProvides < batchSize {
-				batchSize = s.throughputMinimumProvides
-			}
+		var performedReprovide, complete bool
+		for {
+			performedReprovide = false
+			complete = false
 
 			// at the start of every loop the maxCollectionDurationTimer and pauseDetectTimer should be already be
 			// stopped and have empty channels
@@ -294,22 +289,22 @@ func (s *reprovider) run() {
 					performedReprovide = true
 				case <-pauseDetectTimer.C:
 					// if this timer has fired then the max collection timer has started so let's stop and empty it
-					stopAndEmptyTimer(maxCollectionDurationTimer)
+					maxCollectionDurationTimer.Stop()
 					complete = true
-					goto AfterLoop
+					goto ProcessBatch
 				case <-maxCollectionDurationTimer.C:
 					// if this timer has fired then the pause timer has started so let's stop and empty it
-					stopAndEmptyTimer(pauseDetectTimer)
-					goto AfterLoop
+					pauseDetectTimer.Stop()
+					goto ProcessBatch
 				case <-s.ctx.Done():
 					return
 				case noReprovideInFlight <- struct{}{}:
 					// if no reprovide is in flight get consumer asking for reprovides unstuck
 				}
 			}
-			stopAndEmptyTimer(pauseDetectTimer)
-			stopAndEmptyTimer(maxCollectionDurationTimer)
-		AfterLoop:
+			pauseDetectTimer.Stop()
+			maxCollectionDurationTimer.Stop()
+		ProcessBatch:
 
 			if len(m) == 0 {
 				continue
@@ -368,20 +363,8 @@ func (s *reprovider) run() {
 				s.lastReprovideBatchSize = uint64(len(keys))
 				s.lastReprovideDuration = dur
 				s.lastRun = time.Now()
-
-				s.statLk.Unlock()
-
-				// Don't hold the lock while writing to disk, consumers don't need to wait on IO to read thoses fields.
-
-				if err := s.ds.Put(s.ctx, lastReprovideKey, storeTime(time.Now())); err != nil {
-					log.Errorf("could not store last reprovide time: %v", err)
-				}
-				if err := s.ds.Sync(s.ctx, lastReprovideKey); err != nil {
-					log.Errorf("could not perform sync of last reprovide time: %v", err)
-				}
-			} else {
-				s.statLk.Unlock()
 			}
+			s.statLk.Unlock()
 
 			s.throughputDurationSum += dur
 			s.throughputProvideCurrentCount += uint(len(keys))
@@ -395,25 +378,28 @@ func (s *reprovider) run() {
 		}
 	}()
 
+	// don't start reprovide scheduling if reprovides are disabled (reprovideInterval == 0)
+	if s.reprovideInterval == 0 {
+		return
+	}
+
 	s.closewg.Add(1)
 	go func() {
+		// reprovides scheduling worker
 		defer s.closewg.Done()
 
 		var initialReprovideCh, reprovideCh <-chan time.Time
 
-		// If reproviding is enabled (non-zero)
-		if s.reprovideInterval > 0 {
-			reprovideTicker := time.NewTicker(s.reprovideInterval)
-			defer reprovideTicker.Stop()
-			reprovideCh = reprovideTicker.C
+		reprovideTicker := time.NewTicker(s.reprovideInterval)
+		defer reprovideTicker.Stop()
+		reprovideCh = reprovideTicker.C
 
-			// if there is a non-zero initial reprovide time that was set in the initializer or if the fallback has been
-			if s.initialReprovideDelaySet {
-				initialReprovideTimer := time.NewTimer(s.initalReprovideDelay)
-				defer initialReprovideTimer.Stop()
+		// if there is a non-zero initial reprovide time that was set in the initializer or if the fallback has been
+		if s.initialReprovideDelaySet {
+			initialReprovideTimer := time.NewTimer(s.initalReprovideDelay)
+			defer initialReprovideTimer.Stop()
 
-				initialReprovideCh = initialReprovideTimer.C
-			}
+			initialReprovideCh = initialReprovideTimer.C
 		}
 
 		for s.ctx.Err() == nil {
@@ -424,7 +410,7 @@ func (s *reprovider) run() {
 				return
 			}
 
-			err := s.reprovide(s.ctx, false)
+			err := s.Reprovide(context.Background())
 
 			// only log if we've hit an actual error, otherwise just tell the client we're shutting down
 			if s.ctx.Err() == nil && err != nil {
@@ -432,25 +418,6 @@ func (s *reprovider) run() {
 			}
 		}
 	}()
-}
-
-func stopAndEmptyTimer(t *time.Timer) {
-	if !t.Stop() {
-		<-t.C
-	}
-}
-
-func storeTime(t time.Time) []byte {
-	val := []byte(strconv.FormatInt(t.UnixNano(), 10))
-	return val
-}
-
-func parseTime(b []byte) (time.Time, error) {
-	tns, err := strconv.ParseInt(string(b), 10, 64)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return time.Unix(0, tns), nil
 }
 
 func (s *reprovider) Close() error {
@@ -465,14 +432,6 @@ func (s *reprovider) Provide(ctx context.Context, cid cid.Cid, announce bool) er
 }
 
 func (s *reprovider) Reprovide(ctx context.Context) error {
-	return s.reprovide(ctx, true)
-}
-
-func (s *reprovider) reprovide(ctx context.Context, force bool) error {
-	if !s.shouldReprovide() && !force {
-		return nil
-	}
-
 	ok := s.mu.TryLock()
 	if !ok {
 		return fmt.Errorf("instance of reprovide already running")
@@ -515,39 +474,6 @@ reprovideCidLoop:
 	case <-s.ctx.Done():
 		return errors.New("failed to reprovide: shutting down")
 	}
-}
-
-func (s *reprovider) getLastReprovideTime() (time.Time, error) {
-	val, err := s.ds.Get(s.ctx, lastReprovideKey)
-	if errors.Is(err, datastore.ErrNotFound) {
-		return time.Time{}, nil
-	}
-	if err != nil {
-		return time.Time{}, errors.New("could not get last reprovide time")
-	}
-
-	t, err := parseTime(val)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("could not decode last reprovide time, got %q", string(val))
-	}
-
-	return t, nil
-}
-
-func (s *reprovider) shouldReprovide() bool {
-	if s.reprovideInterval == 0 {
-		return false
-	}
-	t, err := s.getLastReprovideTime()
-	if err != nil {
-		log.Debugf("getting last reprovide time failed: %s", err)
-		return false
-	}
-
-	if time.Since(t) < s.reprovideInterval {
-		return false
-	}
-	return true
 }
 
 type ReproviderStats struct {
