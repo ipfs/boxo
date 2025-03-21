@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strconv"
 	"sync"
 	"time"
 
@@ -54,8 +53,7 @@ type reprovider struct {
 	rsys        Provide
 	keyProvider KeyChanFunc
 
-	q  *queue.Queue
-	ds datastore.Batching
+	q *queue.Queue
 
 	reprovideCh         chan cid.Cid
 	noReprovideInFlight chan struct{}
@@ -95,10 +93,7 @@ type Ready interface {
 // BatchProvidingSystem instances
 type Option func(system *reprovider) error
 
-var (
-	lastReprovideKey = datastore.NewKey("/reprovide/lastreprovide")
-	DefaultKeyPrefix = datastore.NewKey("/provider")
-)
+var DefaultKeyPrefix = datastore.NewKey("/provider")
 
 // New creates a new [System]. By default it is offline, that means it will
 // enqueue tasks in ds.
@@ -137,8 +132,7 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 		}
 	}
 
-	s.ds = namespace.Wrap(ds, s.keyPrefix)
-	s.q = queue.NewQueue(s.ds)
+	s.q = queue.NewQueue(namespace.Wrap(ds, s.keyPrefix))
 
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options
@@ -260,23 +254,22 @@ func (s *reprovider) run() {
 			if firstProvide {
 				// after receiving the first provider start up the timers
 				maxCollectionDurationTimer.Reset(maxCollectionDuration)
-				pauseDetectTimer.Reset(pauseDetectionThreshold)
 			} else {
 				// otherwise just do a full restart of the pause timer
 				stopAndEmptyTimer(pauseDetectTimer)
-				pauseDetectTimer.Reset(pauseDetectionThreshold)
 			}
+			pauseDetectTimer.Reset(pauseDetectionThreshold)
+		}
+
+		batchSize := s.maxReprovideBatchSize
+		if s.throughputCallback != nil && s.throughputMinimumProvides < batchSize {
+			batchSize = s.throughputMinimumProvides
 		}
 
 		var performedReprovide, complete bool
 		for {
 			performedReprovide = false
 			complete = false
-
-			batchSize := s.maxReprovideBatchSize
-			if s.throughputCallback != nil && s.throughputMinimumProvides < batchSize {
-				batchSize = s.throughputMinimumProvides
-			}
 
 			// at the start of every loop the maxCollectionDurationTimer and pauseDetectTimer should be already be
 			// stopped and have empty channels
@@ -298,11 +291,11 @@ func (s *reprovider) run() {
 					// if this timer has fired then the max collection timer has started so let's stop and empty it
 					stopAndEmptyTimer(maxCollectionDurationTimer)
 					complete = true
-					goto AfterLoop
+					goto ProcessBatch
 				case <-maxCollectionDurationTimer.C:
 					// if this timer has fired then the pause timer has started so let's stop and empty it
 					stopAndEmptyTimer(pauseDetectTimer)
-					goto AfterLoop
+					goto ProcessBatch
 				case <-s.ctx.Done():
 					return
 				case noReprovideInFlight <- struct{}{}:
@@ -311,7 +304,7 @@ func (s *reprovider) run() {
 			}
 			stopAndEmptyTimer(pauseDetectTimer)
 			stopAndEmptyTimer(maxCollectionDurationTimer)
-		AfterLoop:
+		ProcessBatch:
 
 			if len(m) == 0 {
 				continue
@@ -370,20 +363,8 @@ func (s *reprovider) run() {
 				s.lastReprovideBatchSize = uint64(len(keys))
 				s.lastReprovideDuration = dur
 				s.lastRun = time.Now()
-
-				s.statLk.Unlock()
-
-				// Don't hold the lock while writing to disk, consumers don't need to wait on IO to read thoses fields.
-
-				if err := s.ds.Put(s.ctx, lastReprovideKey, storeTime(time.Now())); err != nil {
-					log.Errorf("could not store last reprovide time: %v", err)
-				}
-				if err := s.ds.Sync(s.ctx, lastReprovideKey); err != nil {
-					log.Errorf("could not perform sync of last reprovide time: %v", err)
-				}
-			} else {
-				s.statLk.Unlock()
 			}
+			s.statLk.Unlock()
 
 			s.throughputDurationSum += dur
 			s.throughputProvideCurrentCount += uint(len(keys))
@@ -443,19 +424,6 @@ func stopAndEmptyTimer(t *time.Timer) {
 	if !t.Stop() {
 		<-t.C
 	}
-}
-
-func storeTime(t time.Time) []byte {
-	val := []byte(strconv.FormatInt(t.UnixNano(), 10))
-	return val
-}
-
-func parseTime(b []byte) (time.Time, error) {
-	tns, err := strconv.ParseInt(string(b), 10, 64)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return time.Unix(0, tns), nil
 }
 
 func (s *reprovider) Close() error {
