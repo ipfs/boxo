@@ -36,7 +36,6 @@ func TestBasicOperation(t *testing.T) {
 
 	cids := random.Cids(10)
 	for _, c := range cids {
-		//t.Log(c.String())
 		queue.Enqueue(c)
 	}
 

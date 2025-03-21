@@ -79,7 +79,7 @@ func (q *Queue) Close() error {
 		case <-time.After(shutdownTimeout):
 			q.close() // force immediate shutdown
 			<-q.closed
-			err = errors.New("provider queue: some cids not written to datastore")
+			err = fmt.Errorf("provider queue: %d cids not written to datastore", q.inBuf.Len())
 		}
 		close(q.dequeue) // no more output from this queue
 	})
