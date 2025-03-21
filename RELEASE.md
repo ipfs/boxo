@@ -81,7 +81,7 @@ Below are links of related/adjacent work that has informed some of the decisions
 - [ ] Add a commit in `release-vX.Y.Z` bumping the version in `version.json` to `vX.Y.Z`
 - [ ] Add a "release" label to the Boxo PR
 - [ ] Check for warnings from gorelease
-  - [ ] Ensure any warnings of breaking changed, such as moved packages, are properly documented.
+  - [ ] Ensure any warnings of breaking changes, such as moved packages, are properly documented.
 - [ ] After the release checker creates a draft release, copy-paste the changelog into the draft
 - [ ] Wait for approval from another Boxo maintainer
 - [ ] Merge the PR into `main`, _using "Create a Merge Commit"_, and do not delete the `release-vX.Y.X` branch
