@@ -242,8 +242,8 @@ func (s *reprovider) run() {
 		// setup stopped timers
 		maxCollectionDurationTimer := time.NewTimer(time.Hour)
 		pauseDetectTimer := time.NewTimer(time.Hour)
-		stopAndEmptyTimer(maxCollectionDurationTimer)
-		stopAndEmptyTimer(pauseDetectTimer)
+		maxCollectionDurationTimer.Stop()
+		pauseDetectTimer.Stop()
 
 		// make sure timers are cleaned up
 		defer maxCollectionDurationTimer.Stop()
@@ -256,7 +256,7 @@ func (s *reprovider) run() {
 				maxCollectionDurationTimer.Reset(maxCollectionDuration)
 			} else {
 				// otherwise just do a full restart of the pause timer
-				stopAndEmptyTimer(pauseDetectTimer)
+				pauseDetectTimer.Stop()
 			}
 			pauseDetectTimer.Reset(pauseDetectionThreshold)
 		}
@@ -289,12 +289,12 @@ func (s *reprovider) run() {
 					performedReprovide = true
 				case <-pauseDetectTimer.C:
 					// if this timer has fired then the max collection timer has started so let's stop and empty it
-					stopAndEmptyTimer(maxCollectionDurationTimer)
+					maxCollectionDurationTimer.Stop()
 					complete = true
 					goto ProcessBatch
 				case <-maxCollectionDurationTimer.C:
 					// if this timer has fired then the pause timer has started so let's stop and empty it
-					stopAndEmptyTimer(pauseDetectTimer)
+					pauseDetectTimer.Stop()
 					goto ProcessBatch
 				case <-s.ctx.Done():
 					return
@@ -302,8 +302,8 @@ func (s *reprovider) run() {
 					// if no reprovide is in flight get consumer asking for reprovides unstuck
 				}
 			}
-			stopAndEmptyTimer(pauseDetectTimer)
-			stopAndEmptyTimer(maxCollectionDurationTimer)
+			pauseDetectTimer.Stop()
+			maxCollectionDurationTimer.Stop()
 		ProcessBatch:
 
 			if len(m) == 0 {
@@ -410,7 +410,7 @@ func (s *reprovider) run() {
 				return
 			}
 
-			err := s.Reprovide(s.ctx)
+			err := s.Reprovide(context.Background())
 
 			// only log if we've hit an actual error, otherwise just tell the client we're shutting down
 			if s.ctx.Err() == nil && err != nil {
@@ -418,12 +418,6 @@ func (s *reprovider) run() {
 			}
 		}
 	}()
-}
-
-func stopAndEmptyTimer(t *time.Timer) {
-	if !t.Stop() {
-		<-t.C
-	}
 }
 
 func (s *reprovider) Close() error {
