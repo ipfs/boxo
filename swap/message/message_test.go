@@ -5,8 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/ipfs/boxo/exchange/blockexchange/client/wantlist"
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-test/random"
@@ -183,20 +182,20 @@ func TestDuplicates(t *testing.T) {
 	msg.AddEntry(b.Cid(), 1, pb.Message_Wantlist_Block, true)
 	msg.AddEntry(b.Cid(), 1, pb.Message_Wantlist_Block, true)
 	if len(msg.Wantlist()) != 1 {
-		t.Fatal("Duplicate in BitSwapMessage")
+		t.Fatal("Duplicate in Wantlist")
 	}
 
 	msg.AddBlock(b)
 	msg.AddBlock(b)
 	if len(msg.Blocks()) != 1 {
-		t.Fatal("Duplicate in BitSwapMessage")
+		t.Fatal("Duplicate in Wantlist")
 	}
 
 	b2 := blocks.NewBlock([]byte("bar"))
 	msg.AddBlockPresence(b2.Cid(), pb.Message_Have)
 	msg.AddBlockPresence(b2.Cid(), pb.Message_Have)
 	if len(msg.Haves()) != 1 {
-		t.Fatal("Duplicate in BitSwapMessage")
+		t.Fatal("Duplicate in Wantlist")
 	}
 }
 
@@ -243,7 +242,7 @@ func TestAddWantlistEntry(t *testing.T) {
 	msg.AddEntry(b.Cid(), 2, pb.Message_Wantlist_Block, true)
 	entries := msg.Wantlist()
 	if len(entries) != 1 {
-		t.Fatal("Duplicate in BitSwapMessage")
+		t.Fatal("Duplicate in Wantlist")
 	}
 	e := entries[0]
 	if e.WantType != pb.Message_Wantlist_Block {
@@ -289,11 +288,9 @@ func TestAddWantlistEntry(t *testing.T) {
 func TestEntrySize(t *testing.T) {
 	c := random.BlocksOfSize(1, 4)[0].Cid()
 	e := Entry{
-		Entry: wantlist.Entry{
-			Cid:      c,
-			Priority: 10,
-			WantType: pb.Message_Wantlist_Have,
-		},
+		Cid:          c,
+		Priority:     10,
+		WantType:     pb.Message_Wantlist_Have,
 		SendDontHave: true,
 		Cancel:       false,
 	}

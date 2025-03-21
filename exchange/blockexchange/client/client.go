@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	blockstore "github.com/ipfs/boxo/blockstore"
+	exchange "github.com/ipfs/boxo/exchange"
 	bsbpm "github.com/ipfs/boxo/exchange/blockexchange/client/internal/blockpresencemanager"
 	bsgetter "github.com/ipfs/boxo/exchange/blockexchange/client/internal/getter"
 	bsmq "github.com/ipfs/boxo/exchange/blockexchange/client/internal/messagequeue"
@@ -19,13 +21,11 @@ import (
 	bsspm "github.com/ipfs/boxo/exchange/blockexchange/client/internal/sessionpeermanager"
 	"github.com/ipfs/boxo/exchange/blockexchange/internal"
 	"github.com/ipfs/boxo/exchange/blockexchange/internal/defaults"
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
 	bmetrics "github.com/ipfs/boxo/exchange/blockexchange/metrics"
-	bsnet "github.com/ipfs/boxo/swap"
 	"github.com/ipfs/boxo/exchange/blockexchange/tracer"
-	blockstore "github.com/ipfs/boxo/blockstore"
-	exchange "github.com/ipfs/boxo/exchange"
 	rpqm "github.com/ipfs/boxo/routing/providerquerymanager"
+	"github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap/message"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
@@ -147,7 +147,7 @@ type BlockReceivedNotifier interface {
 // New initializes a Bitswap client that runs until client.Close is called.
 // The Content providerFinder paramteter can be nil to disable content-routing
 // lookups for content (rely only on bitswap for discovery).
-func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder routing.ContentDiscovery, bstore blockstore.Blockstore, options ...Option) *Client {
+func New(parent context.Context, network swap.Network, providerFinder routing.ContentDiscovery, bstore blockstore.Blockstore, options ...Option) *Client {
 	// important to use provided parent context (since it may include important
 	// loggable data). It's probably not a good idea to allow bitswap to be
 	// coupled to the concerns of the ipfs daemon in this way.
@@ -264,7 +264,7 @@ type Client struct {
 	defaultProviderQueryManager bool
 
 	// network delivers messages on behalf of the session
-	network bsnet.BitSwapNetwork
+	network swap.Network
 
 	// blockstore is the local database
 	// NB: ensure threadsafety
@@ -422,7 +422,7 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 
 // ReceiveMessage is called by the network interface when a new message is
 // received.
-func (bs *Client) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg.BitSwapMessage) {
+func (bs *Client) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.Wantlist) {
 	bs.counterLk.Lock()
 	bs.counters.messagesRecvd++
 	bs.counterLk.Unlock()

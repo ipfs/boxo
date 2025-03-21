@@ -3,7 +3,7 @@ package bitswap
 import (
 	"context"
 
-	iface "github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap"
 	bsnet "github.com/ipfs/boxo/swap/bitswap"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -19,7 +19,7 @@ func StreamNet(ctx context.Context, net mockpeernet.Mocknet) (Network, error) {
 	return &peernet{net}, nil
 }
 
-func (pn *peernet) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) iface.BitSwapNetwork {
+func (pn *peernet) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) swap.Network {
 	client, err := pn.Mocknet.AddPeer(p.PrivateKey(), p.Address())
 	if err != nil {
 		panic(err.Error())

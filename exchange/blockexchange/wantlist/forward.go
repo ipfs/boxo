@@ -2,12 +2,13 @@ package wantlist
 
 import (
 	"github.com/ipfs/boxo/exchange/blockexchange/client/wantlist"
+	"github.com/ipfs/boxo/swap/message"
 	"github.com/ipfs/go-cid"
 )
 
 type (
 	// Deprecated: use wantlist.Entry instead
-	Entry = wantlist.Entry
+	Entry = message.Entry
 	// Deprecated: use wantlist.Wantlist instead
 	Wantlist = wantlist.Wantlist
 )

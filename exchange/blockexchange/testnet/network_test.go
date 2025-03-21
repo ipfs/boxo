@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
 	bsnet "github.com/ipfs/boxo/swap"
+	swapmsg "github.com/ipfs/boxo/swap/message"
 	blocks "github.com/ipfs/go-block-format"
 	delay "github.com/ipfs/go-ipfs-delay"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
@@ -28,9 +28,9 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 	responder.Start(lambda(func(
 		ctx context.Context,
 		fromWaiter peer.ID,
-		msgFromWaiter bsmsg.BitSwapMessage,
+		msgFromWaiter swapmsg.Wantlist,
 	) {
-		msgToWaiter := bsmsg.New(true)
+		msgToWaiter := swapmsg.New(true)
 		msgToWaiter.AddBlock(blocks.NewBlock([]byte(expectedStr)))
 		err := waiter.SendMessage(ctx, fromWaiter, msgToWaiter)
 		if err != nil {
@@ -42,7 +42,7 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 	waiter.Start(lambda(func(
 		ctx context.Context,
 		fromResponder peer.ID,
-		msgFromResponder bsmsg.BitSwapMessage,
+		msgFromResponder swapmsg.Wantlist,
 	) {
 		// TODO assert that this came from the correct peer and that the message contents are as expected
 		ok := false
@@ -59,7 +59,7 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 	}))
 	t.Cleanup(waiter.Stop)
 
-	messageSentAsync := bsmsg.New(true)
+	messageSentAsync := swapmsg.New(true)
 	messageSentAsync.AddBlock(blocks.NewBlock([]byte("data")))
 	errSending := waiter.SendMessage(
 		context.Background(), responderPeer.ID(), messageSentAsync)
@@ -71,7 +71,7 @@ func TestSendMessageAsyncButWaitForResponse(t *testing.T) {
 }
 
 type receiverFunc func(ctx context.Context, p peer.ID,
-	incoming bsmsg.BitSwapMessage)
+	incoming swapmsg.Wantlist)
 
 // lambda returns a Receiver instance given a receiver function
 func lambda(f receiverFunc) bsnet.Receiver {
@@ -81,11 +81,11 @@ func lambda(f receiverFunc) bsnet.Receiver {
 }
 
 type lambdaImpl struct {
-	f func(ctx context.Context, p peer.ID, incoming bsmsg.BitSwapMessage)
+	f func(ctx context.Context, p peer.ID, incoming swapmsg.Wantlist)
 }
 
 func (lam *lambdaImpl) ReceiveMessage(ctx context.Context,
-	p peer.ID, incoming bsmsg.BitSwapMessage,
+	p peer.ID, incoming swapmsg.Wantlist,
 ) {
 	lam.f(ctx, p, incoming)
 }

@@ -5,8 +5,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/ipfs/boxo/exchange/blockexchange/client/wantlist"
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	u "github.com/ipfs/boxo/util"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
@@ -16,9 +15,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// BitSwapMessage is the basic interface for interacting building, encoding,
-// and decoding messages sent on the BitSwap protocol.
-type BitSwapMessage interface {
+// Wantlist is the basic interface for interacting building, encoding,
+// and decoding messages sent on swap protocols.
+type Wantlist interface {
 	FillWantlist([]Entry) []Entry
 	// Wantlist returns a slice of unique keys that represent data wanted by
 	// the sender.
@@ -75,13 +74,13 @@ type BitSwapMessage interface {
 	Reset(bool)
 
 	// Clone the message fields
-	Clone() BitSwapMessage
+	Clone() Wantlist
 }
 
 // Exportable is an interface for structures than can be
-// encoded in a bitswap protobuf.
+// encoded in a message protobuf.
 type Exportable interface {
-	// Note that older Bitswap versions use a different wire format, so we need
+	// Note that older Message versions use a different wire format, so we need
 	// to convert the message to the appropriate format depending on which
 	// version of the protocol the remote peer supports.
 	ToProtoV0() *pb.Message
@@ -96,12 +95,14 @@ type BlockPresence struct {
 	Type pb.Message_BlockPresenceType
 }
 
-// Entry is a wantlist entry in a Bitswap message, with flags indicating
+// Entry is a wantlist entry in a Message message, with flags indicating
 // - whether message is a cancel
 // - whether requester wants a DONT_HAVE message
 // - whether requester wants a HAVE message (instead of the block)
 type Entry struct {
-	wantlist.Entry
+	Cid          cid.Cid
+	Priority     int32
+	WantType     pb.Message_Wantlist_WantType
 	Cancel       bool
 	SendDontHave bool
 }
@@ -129,11 +130,9 @@ func maxEntrySize() int {
 
 	c := cid.NewCidV0(u.Hash([]byte("cid")))
 	e := Entry{
-		Entry: wantlist.Entry{
-			Cid:      c,
-			Priority: maxInt32,
-			WantType: pb.Message_Wantlist_Have,
-		},
+		Cid:          c,
+		Priority:     maxInt32,
+		WantType:     pb.Message_Wantlist_Have,
 		SendDontHave: true, // true takes up more space than false
 		Cancel:       true,
 	}
@@ -148,8 +147,8 @@ type impl struct {
 	pendingBytes   int32
 }
 
-// New returns a new, empty bitswap message
-func New(full bool) BitSwapMessage {
+// New returns a new, empty Wantlist message
+func New(full bool) Wantlist {
 	return newMsg(full)
 }
 
@@ -163,7 +162,7 @@ func newMsg(full bool) *impl {
 }
 
 // Clone the message fields
-func (m *impl) Clone() BitSwapMessage {
+func (m *impl) Clone() Wantlist {
 	msg := newMsg(m.full)
 	for k := range m.wantlist {
 		msg.wantlist[k] = m.wantlist[k]
@@ -189,7 +188,7 @@ func (m *impl) Reset(full bool) {
 
 var errCidMissing = errors.New("missing cid")
 
-func newMessageFromProto(pbm *pb.Message) (BitSwapMessage, error) {
+func newMessageFromProto(pbm *pb.Message) (Wantlist, error) {
 	m := newMsg(pbm.Wantlist.Full)
 	for _, e := range pbm.Wantlist.Entries {
 		if len(e.Block) == 0 {
@@ -360,11 +359,9 @@ func (m *impl) addEntry(c cid.Cid, priority int32, cancel bool, wantType pb.Mess
 	}
 
 	e = &Entry{
-		Entry: wantlist.Entry{
-			Cid:      c,
-			Priority: priority,
-			WantType: wantType,
-		},
+		Cid:          c,
+		Priority:     priority,
+		WantType:     wantType,
 		SendDontHave: sendDontHave,
 		Cancel:       cancel,
 	}
@@ -415,14 +412,14 @@ func BlockPresenceSize(c cid.Cid) int {
 	})
 }
 
-// FromNet generates a new BitswapMessage from incoming data on an io.Reader.
-func FromNet(r io.Reader) (BitSwapMessage, int, error) {
+// FromNet generates a new Wantlist from incoming data on an io.Reader.
+func FromNet(r io.Reader) (Wantlist, int, error) {
 	reader := msgio.NewVarintReaderSize(r, network.MessageSizeMax)
 	return FromMsgReader(reader)
 }
 
-// FromPBReader generates a new Bitswap message from a protobuf reader.
-func FromMsgReader(r msgio.Reader) (BitSwapMessage, int, error) {
+// FromPBReader generates a new Wantlist message from a protobuf reader.
+func FromMsgReader(r msgio.Reader) (Wantlist, int, error) {
 	msg, err := r.ReadMsg()
 	if err != nil {
 		return nil, 0, err

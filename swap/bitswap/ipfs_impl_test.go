@@ -1,4 +1,4 @@
-package bsnet_test
+package bitswap_test
 
 import (
 	"context"
@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	network "github.com/ipfs/boxo/swap"
+	tn "github.com/ipfs/boxo/exchange/blockexchange/testnet"
+	"github.com/ipfs/boxo/swap"
 	bsnet "github.com/ipfs/boxo/swap/bitswap"
 	"github.com/ipfs/boxo/swap/bitswap/internal"
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
-	tn "github.com/ipfs/boxo/exchange/blockexchange/testnet"
+	"github.com/ipfs/boxo/swap/message"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	"github.com/ipfs/go-test/random"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -29,7 +29,7 @@ type receiver struct {
 	peers           map[peer.ID]struct{}
 	messageReceived chan struct{}
 	connectionEvent chan bool
-	lastMessage     bsmsg.BitSwapMessage
+	lastMessage     message.Wantlist
 	lastSender      peer.ID
 	listener        p2pnet.Notifiee
 }
@@ -46,7 +46,7 @@ func newReceiver() *receiver {
 func (r *receiver) ReceiveMessage(
 	ctx context.Context,
 	sender peer.ID,
-	incoming bsmsg.BitSwapMessage,
+	incoming message.Wantlist,
 ) {
 	r.lastSender = sender
 	r.lastMessage = incoming
@@ -225,7 +225,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	block1 := randBlocks[0]
 	block2 := randBlocks[1]
 
-	sent := bsmsg.New(false)
+	sent := message.New(false)
 	sent.AddEntry(block1.Cid(), 1, pb.Message_Wantlist_Block, true)
 	sent.AddBlock(block2)
 
@@ -277,7 +277,7 @@ func TestMessageSendAndReceive(t *testing.T) {
 	}
 }
 
-func prepareNetwork(t *testing.T, ctx context.Context, p1 tnet.Identity, r1 *receiver, p2 tnet.Identity, r2 *receiver) (*ErrHost, network.BitSwapNetwork, *ErrHost, network.BitSwapNetwork, bsmsg.BitSwapMessage) {
+func prepareNetwork(t *testing.T, ctx context.Context, p1 tnet.Identity, r1 *receiver, p2 tnet.Identity, r2 *receiver) (*ErrHost, swap.Network, *ErrHost, swap.Network, message.Wantlist) {
 	// create network
 	mn := mocknet.New()
 	defer mn.Close()
@@ -328,7 +328,7 @@ func prepareNetwork(t *testing.T, ctx context.Context, p1 tnet.Identity, r1 *rec
 	}
 
 	block1 := random.BlocksOfSize(1, 4)[0]
-	msg := bsmsg.New(false)
+	msg := message.New(false)
 	msg.AddEntry(block1.Cid(), 1, pb.Message_Wantlist_Block, true)
 
 	return eh1, bsnet1, eh2, bsnet2, msg
@@ -346,7 +346,7 @@ func TestMessageResendAfterError(t *testing.T) {
 	eh, bsnet1, _, _, msg := prepareNetwork(t, ctx, p1, r1, p2, r2)
 
 	testSendErrorBackoff := 100 * time.Millisecond
-	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &network.MessageSenderOpts{
+	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &swap.MessageSenderOpts{
 		MaxRetries:       3,
 		SendTimeout:      100 * time.Millisecond,
 		SendErrorBackoff: testSendErrorBackoff,
@@ -391,7 +391,7 @@ func TestMessageSendTimeout(t *testing.T) {
 
 	eh, bsnet1, _, _, msg := prepareNetwork(t, ctx, p1, r1, p2, r2)
 
-	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &network.MessageSenderOpts{
+	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &swap.MessageSenderOpts{
 		MaxRetries:       3,
 		SendTimeout:      100 * time.Millisecond,
 		SendErrorBackoff: 100 * time.Millisecond,
@@ -433,7 +433,7 @@ func TestMessageSendNotSupportedResponse(t *testing.T) {
 	eh, bsnet1, _, _, _ := prepareNetwork(t, ctx, p1, r1, p2, r2)
 
 	eh.setError(multistream.ErrNotSupported[protocol.ID]{})
-	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &network.MessageSenderOpts{
+	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &swap.MessageSenderOpts{
 		MaxRetries:       3,
 		SendTimeout:      100 * time.Millisecond,
 		SendErrorBackoff: 100 * time.Millisecond,
@@ -491,7 +491,7 @@ func TestSupportsHave(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			senderCurrent, err := bsnet1.NewMessageSender(ctx, p2.ID(), &network.MessageSenderOpts{})
+			senderCurrent, err := bsnet1.NewMessageSender(ctx, p2.ID(), &swap.MessageSenderOpts{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -541,7 +541,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 	}
 
 	if n2 > 0 {
-		ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &network.MessageSenderOpts{})
+		ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &swap.MessageSenderOpts{})
 		if err != nil {
 			t.Fatal(err)
 		}

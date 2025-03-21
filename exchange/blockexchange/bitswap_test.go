@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/exchange/blockexchange"
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
 	"github.com/ipfs/boxo/exchange/blockexchange/server"
 	testinstance "github.com/ipfs/boxo/exchange/blockexchange/testinstance"
 	tn "github.com/ipfs/boxo/exchange/blockexchange/testnet"
 	mockrouting "github.com/ipfs/boxo/routing/mock"
+	"github.com/ipfs/boxo/swap/message"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	detectrace "github.com/ipfs/go-detect-race"
@@ -155,7 +155,7 @@ func TestDoesNotProvideWhenConfiguredNotTo(t *testing.T) {
 func TestUnwantedBlockNotAdded(t *testing.T) {
 	net := tn.VirtualNetwork(delay.Fixed(kNetworkDelay))
 	block := blocks.NewBlock([]byte("block"))
-	bsMessage := bsmsg.New(true)
+	bsMessage := message.New(true)
 	bsMessage.AddBlock(block)
 
 	router := mockrouting.NewServer()
@@ -221,7 +221,7 @@ func TestPendingBlockAdded(t *testing.T) {
 
 	// Simulate receiving a message which contains the block in the "tofetch" queue
 	lastBlock := blks[len(blks)-1]
-	bsMessage := bsmsg.New(true)
+	bsMessage := message.New(true)
 	bsMessage.AddBlock(lastBlock)
 	unknownPeer := peer.ID("QmUHfvCQrzyR6vFXmeyCptfCWedfcmfa12V6UuziDtrw23")
 	instance.Exchange.ReceiveMessage(oneSecCtx, unknownPeer, bsMessage)

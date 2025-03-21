@@ -9,9 +9,9 @@ import (
 
 	"github.com/filecoin-project/go-clock"
 	bswl "github.com/ipfs/boxo/exchange/blockexchange/client/wantlist"
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
 	bsnet "github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap/message"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
@@ -98,7 +98,7 @@ type MessageQueue struct {
 	rebroadcastNow chan struct{}
 	// For performance reasons we just clear out the fields of the message
 	// instead of creating a new one every time.
-	msg bsmsg.BitSwapMessage
+	msg message.Wantlist
 
 	// For simulating time -- uses mock in test
 	clock clock.Clock
@@ -152,7 +152,7 @@ func (r *recallWantlist) removeType(c cid.Cid, wtype pb.Message_Wantlist_WantTyp
 //
 // Returns true if the want was marked as sent. Returns false if the want wasn't
 // pending.
-func (r *recallWantlist) markSent(e bswl.Entry) bool {
+func (r *recallWantlist) markSent(e message.Entry) bool {
 	if !r.pending.RemoveType(e.Cid, e.WantType) {
 		return false
 	}
@@ -322,7 +322,7 @@ func newMessageQueue(
 		priority:         maxPriority,
 		// For performance reasons we just clear out the fields of the message
 		// after using it, instead of creating a new one every time.
-		msg:    bsmsg.New(false),
+		msg:    message.New(false),
 		clock:  clk,
 		events: events,
 	}
@@ -568,7 +568,7 @@ func (mq *MessageQueue) sendMessage() {
 	// After processing the message, clear out its fields to save memory
 	defer mq.msg.Reset(false)
 
-	var wantlist []bsmsg.Entry
+	var wantlist []message.Entry
 
 	for {
 		// Convert want lists to a Bitswap Message
@@ -614,7 +614,7 @@ func (mq *MessageQueue) sendMessage() {
 // This is necessary when making requests to peers running an older version of
 // Bitswap that doesn't support the DONT_HAVE response, and is also useful to
 // mitigate getting blocked by a peer that takes a long time to respond.
-func (mq *MessageQueue) simulateDontHaveWithTimeout(wantlist []bsmsg.Entry) {
+func (mq *MessageQueue) simulateDontHaveWithTimeout(wantlist []message.Entry) {
 	// Get the CID of each want-block that expects a DONT_HAVE response
 	wants := make([]cid.Cid, 0, len(wantlist))
 
@@ -687,7 +687,7 @@ func (mq *MessageQueue) handleResponse(ks []cid.Cid) {
 	}
 }
 
-func (mq *MessageQueue) logOutgoingMessage(wantlist []bsmsg.Entry) {
+func (mq *MessageQueue) logOutgoingMessage(wantlist []message.Entry) {
 	// Save some CPU cycles and allocations if log level is higher than debug
 	if !log.Level().Enabled(zapcore.DebugLevel) {
 		return
@@ -740,7 +740,7 @@ func (mq *MessageQueue) pendingWorkCount() int {
 }
 
 // Convert the lists of wants into a Bitswap message
-func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (bsmsg.BitSwapMessage, func()) {
+func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (message.Wantlist, func()) {
 	// Get broadcast and regular wantlist entries.
 	mq.wllock.Lock()
 	peerEntries := mq.peerWants.pending.Entries()

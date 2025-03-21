@@ -3,7 +3,8 @@ package wantlist
 import (
 	"testing"
 
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
+	"github.com/ipfs/boxo/swap/message"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	cid "github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +27,7 @@ func init() {
 }
 
 type wli interface {
-	Get(cid.Cid) (Entry, bool)
+	Get(cid.Cid) (message.Entry, bool)
 	Has(cid.Cid) bool
 }
 

@@ -6,28 +6,22 @@ import (
 	"cmp"
 	"slices"
 
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
+	"github.com/ipfs/boxo/swap/message"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	cid "github.com/ipfs/go-cid"
 )
 
 // Wantlist is a raw list of wanted blocks and their priorities
 type Wantlist struct {
-	set map[cid.Cid]Entry
+	set map[cid.Cid]message.Entry
 
 	// Re-computing this can get expensive so we memoize it.
-	cached []Entry
-}
-
-// Entry is an entry in a want list, consisting of a cid and its priority
-type Entry struct {
-	Cid      cid.Cid
-	Priority int32
-	WantType pb.Message_Wantlist_WantType
+	cached []message.Entry
 }
 
 // NewRefEntry creates a new reference tracked wantlist entry.
-func NewRefEntry(c cid.Cid, p int32) Entry {
-	return Entry{
+func NewRefEntry(c cid.Cid, p int32) message.Entry {
+	return message.Entry{
 		Cid:      c,
 		Priority: p,
 		WantType: pb.Message_Wantlist_Block,
@@ -37,7 +31,7 @@ func NewRefEntry(c cid.Cid, p int32) Entry {
 // New generates a new raw Wantlist
 func New() *Wantlist {
 	return &Wantlist{
-		set: make(map[cid.Cid]Entry),
+		set: make(map[cid.Cid]message.Entry),
 	}
 }
 
@@ -55,7 +49,7 @@ func (w *Wantlist) Add(c cid.Cid, priority int32, wantType pb.Message_Wantlist_W
 		return false
 	}
 
-	w.put(c, Entry{
+	w.put(c, message.Entry{
 		Cid:      c,
 		Priority: priority,
 		WantType: wantType,
@@ -91,7 +85,7 @@ func (w *Wantlist) delete(c cid.Cid) {
 	w.cached = nil
 }
 
-func (w *Wantlist) put(c cid.Cid, e Entry) {
+func (w *Wantlist) put(c cid.Cid, e message.Entry) {
 	w.cached = nil
 	w.set[c] = e
 }
@@ -103,7 +97,7 @@ func (w *Wantlist) Has(c cid.Cid) bool {
 
 // Get returns the entry, if present, for the given CID, plus whether it was
 // present.
-func (w *Wantlist) Get(c cid.Cid) (Entry, bool) {
+func (w *Wantlist) Get(c cid.Cid) (message.Entry, bool) {
 	e, ok := w.set[c]
 	return e, ok
 }
@@ -111,15 +105,15 @@ func (w *Wantlist) Get(c cid.Cid) (Entry, bool) {
 // Entries returns all wantlist entries for a want list, sorted by priority.
 //
 // DO NOT MODIFY. The returned list is cached.
-func (w *Wantlist) Entries() []Entry {
+func (w *Wantlist) Entries() []message.Entry {
 	if w.cached != nil {
 		return w.cached
 	}
-	es := make([]Entry, 0, len(w.set))
+	es := make([]message.Entry, 0, len(w.set))
 	for _, e := range w.set {
 		es = append(es, e)
 	}
-	slices.SortFunc(es, func(a, b Entry) int {
+	slices.SortFunc(es, func(a, b message.Entry) int {
 		return cmp.Compare(b.Priority, a.Priority)
 	})
 	w.cached = es

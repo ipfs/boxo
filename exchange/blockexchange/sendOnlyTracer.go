@@ -1,13 +1,13 @@
 package blockexchange
 
 import (
-	"github.com/ipfs/boxo/exchange/blockexchange/message"
 	"github.com/ipfs/boxo/exchange/blockexchange/tracer"
+	"github.com/ipfs/boxo/swap/message"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type sendOnlyTracer interface {
-	MessageSent(peer.ID, message.BitSwapMessage)
+	MessageSent(peer.ID, message.Wantlist)
 }
 
 var _ tracer.Tracer = nopReceiveTracer{}
@@ -17,4 +17,4 @@ type nopReceiveTracer struct {
 	sendOnlyTracer
 }
 
-func (nopReceiveTracer) MessageReceived(peer.ID, message.BitSwapMessage) {}
+func (nopReceiveTracer) MessageReceived(peer.ID, message.Wantlist) {}

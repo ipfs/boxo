@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/gammazero/deque"
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
-	iface "github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap"
 	bsnet "github.com/ipfs/boxo/swap/bitswap"
+	swapmsg "github.com/ipfs/boxo/swap/message"
 	delay "github.com/ipfs/go-ipfs-delay"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/connmgr"
@@ -67,7 +67,7 @@ type network struct {
 
 type message struct {
 	from       peer.ID
-	msg        bsmsg.BitSwapMessage
+	msg        swapmsg.Wantlist
 	shouldSend time.Time
 }
 
@@ -81,7 +81,7 @@ type receiverQueue struct {
 	lk       sync.Mutex
 }
 
-func (n *network) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) iface.BitSwapNetwork {
+func (n *network) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) swap.Network {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -120,7 +120,7 @@ func (n *network) SendMessage(
 	ctx context.Context,
 	from peer.ID,
 	to peer.ID,
-	mes bsmsg.BitSwapMessage,
+	mes swapmsg.Wantlist,
 ) error {
 	mes = mes.Clone()
 
@@ -177,19 +177,19 @@ func (n *network) SendMessage(
 	return nil
 }
 
-var _ iface.Receiver = (*networkClient)(nil)
+var _ swap.Receiver = (*networkClient)(nil)
 
 type networkClient struct {
 	// These need to be at the top of the struct (allocated on the heap) for alignment on 32bit platforms.
-	stats iface.Stats
+	stats swap.Stats
 
 	local              peer.ID
-	receivers          []iface.Receiver
+	receivers          []swap.Receiver
 	network            *network
 	supportedProtocols []protocol.ID
 }
 
-func (nc *networkClient) ReceiveMessage(ctx context.Context, sender peer.ID, incoming bsmsg.BitSwapMessage) {
+func (nc *networkClient) ReceiveMessage(ctx context.Context, sender peer.ID, incoming swapmsg.Wantlist) {
 	for _, v := range nc.receivers {
 		v.ReceiveMessage(ctx, sender, incoming)
 	}
@@ -230,7 +230,7 @@ func (nc *networkClient) Latency(p peer.ID) time.Duration {
 func (nc *networkClient) SendMessage(
 	ctx context.Context,
 	to peer.ID,
-	message bsmsg.BitSwapMessage,
+	message swapmsg.Wantlist,
 ) error {
 	if err := nc.network.SendMessage(ctx, nc.local, to, message); err != nil {
 		return err
@@ -239,8 +239,8 @@ func (nc *networkClient) SendMessage(
 	return nil
 }
 
-func (nc *networkClient) Stats() iface.Stats {
-	return iface.Stats{
+func (nc *networkClient) Stats() swap.Stats {
+	return swap.Stats{
 		MessagesRecvd: atomic.LoadUint64(&nc.stats.MessagesRecvd),
 		MessagesSent:  atomic.LoadUint64(&nc.stats.MessagesSent),
 	}
@@ -257,7 +257,7 @@ type messagePasser struct {
 	ctx    context.Context
 }
 
-func (mp *messagePasser) SendMsg(ctx context.Context, m bsmsg.BitSwapMessage) error {
+func (mp *messagePasser) SendMsg(ctx context.Context, m swapmsg.Wantlist) error {
 	return mp.net.SendMessage(ctx, mp.target, m)
 }
 
@@ -285,7 +285,7 @@ func (mp *messagePasser) SupportsHave() bool {
 	return false
 }
 
-func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID, opts *iface.MessageSenderOpts) (iface.MessageSender, error) {
+func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID, opts *swap.MessageSenderOpts) (swap.MessageSender, error) {
 	return &messagePasser{
 		net:    nc,
 		target: p,
@@ -294,7 +294,7 @@ func (nc *networkClient) NewMessageSender(ctx context.Context, p peer.ID, opts *
 	}, nil
 }
 
-func (nc *networkClient) Start(r ...iface.Receiver) {
+func (nc *networkClient) Start(r ...swap.Receiver) {
 	nc.receivers = r
 }
 

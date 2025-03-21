@@ -17,8 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	network "github.com/ipfs/boxo/swap"
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
+	"github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap/message"
 	blocks "github.com/ipfs/go-block-format"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -34,7 +34,7 @@ var ErrNoHTTPAddresses = errors.New("AddrInfo does not contain any valid HTTP ad
 var ErrNoSuccess = errors.New("none of the peer HTTP endpoints responded successfully to request")
 var ErrNotConnected = errors.New("no HTTP connection has been setup to this peer")
 
-var _ network.BitSwapNetwork = (*Network)(nil)
+var _ swap.Network = (*Network)(nil)
 
 var (
 	// DefaultUserAgent is sent as a header in all requests.
@@ -158,15 +158,15 @@ func WithHTTPWorkers(n int) Option {
 type Network struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
-	stats network.Stats
+	stats swap.Stats
 
 	host   host.Host
 	client *http.Client
 
 	closeOnce       sync.Once
 	closing         chan struct{}
-	receivers       []network.Receiver
-	connEvtMgr      *network.ConnectEventManager
+	receivers       []swap.Receiver
+	connEvtMgr      *swap.ConnectEventManager
 	pinger          *pinger
 	requestTracker  *requestTracker
 	cooldownTracker *cooldownTracker
@@ -191,7 +191,7 @@ type Network struct {
 type httpRequestInfo struct {
 	ctx       context.Context
 	sender    *httpMsgSender
-	entry     bsmsg.Entry
+	entry     message.Entry
 	result    chan<- httpResult
 	startTime time.Time
 }
@@ -203,7 +203,7 @@ type httpResult struct {
 }
 
 // New returns a BitSwapNetwork supported by underlying IPFS host.
-func New(host host.Host, opts ...Option) network.BitSwapNetwork {
+func New(host host.Host, opts ...Option) swap.Network {
 	htnet := &Network{
 		host:                    host,
 		closing:                 make(chan struct{}),
@@ -303,14 +303,14 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 // Start sets up the given receivers to be notified when message responses are
 // received. It also starts the connection event manager. Start must be called
 // before using the Network.
-func (ht *Network) Start(receivers ...network.Receiver) {
+func (ht *Network) Start(receivers ...swap.Receiver) {
 	log.Info("HTTP raw block retrieval system started")
 	ht.receivers = receivers
-	connectionListeners := make([]network.ConnectionListener, len(receivers))
+	connectionListeners := make([]swap.ConnectionListener, len(receivers))
 	for i, v := range receivers {
 		connectionListeners[i] = v
 	}
-	ht.connEvtMgr = network.NewConnectEventManager(connectionListeners...)
+	ht.connEvtMgr = swap.NewConnectEventManager(connectionListeners...)
 
 	ht.connEvtMgr.Start()
 }
@@ -338,7 +338,7 @@ func (ht *Network) Latency(p peer.ID) time.Duration {
 
 func (ht *Network) senderURLs(p peer.ID) []*senderURL {
 	pi := ht.host.Peerstore().PeerInfo(p)
-	urls := network.ExtractURLsFromPeer(pi)
+	urls := swap.ExtractURLsFromPeer(pi)
 	if len(urls) == 0 {
 		return nil
 	}
@@ -347,7 +347,7 @@ func (ht *Network) senderURLs(p peer.ID) []*senderURL {
 
 // SendMessage sends the given message to the given peer. It uses
 // NewMessageSender under the hood, with default options.
-func (ht *Network) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwapMessage) error {
+func (ht *Network) SendMessage(ctx context.Context, p peer.ID, msg message.Wantlist) error {
 	if len(msg.Wantlist()) == 0 {
 		return nil
 	}
@@ -389,10 +389,10 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		return nil
 	}
 
-	urls := network.ExtractURLsFromPeer(pi)
+	urls := swap.ExtractURLsFromPeer(pi)
 
 	// Filter addresses based on allow and denylists
-	var filteredURLs []network.ParsedURL
+	var filteredURLs []swap.ParsedURL
 	for _, u := range urls {
 		host, _, err := net.SplitHostPort(u.URL.Host)
 		if err != nil {
@@ -469,7 +469,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	return nil
 }
 
-func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.ParsedURL, method string) error {
+func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u swap.ParsedURL, method string) error {
 	req, err := buildRequest(ctx, u, method, pingCid, ht.userAgent)
 	if err != nil {
 		log.Debug(err)
@@ -509,7 +509,7 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 // peerstore.
 func (ht *Network) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	pi := ht.host.Peerstore().PeerInfo(p)
-	_, bsaddrs := network.SplitHTTPAddrs(pi)
+	_, bsaddrs := swap.SplitHTTPAddrs(pi)
 	ht.host.Peerstore().ClearAddrs(p)
 	if len(bsaddrs.Addrs) == 0 {
 		// this should always be the case unless we have been
@@ -553,8 +553,8 @@ func (ht *Network) Unprotect(p peer.ID, tag string) bool {
 
 // Stats returns message counts for this peer. Each message sent is an HTTP
 // requests. Each message received is an HTTP response.
-func (ht *Network) Stats() network.Stats {
-	return network.Stats{
+func (ht *Network) Stats() swap.Stats {
+	return swap.Stats{
 		MessagesRecvd: atomic.LoadUint64(&ht.stats.MessagesRecvd),
 		MessagesSent:  atomic.LoadUint64(&ht.stats.MessagesSent),
 	}
@@ -648,7 +648,7 @@ func (ht *Network) httpWorker(i int) {
 }
 
 // buildRequests sets up common settings for making a requests.
-func buildRequest(ctx context.Context, u network.ParsedURL, method string, cid string, userAgent string) (*http.Request, error) {
+func buildRequest(ctx context.Context, u swap.ParsedURL, method string, cid string, userAgent string) (*http.Request, error) {
 	// copy url
 	sendURL, _ := url.Parse(u.URL.String())
 	sendURL.RawQuery = "format=raw"
@@ -677,7 +677,7 @@ func buildRequest(ctx context.Context, u network.ParsedURL, method string, cid s
 // NewMessageSender returns a MessageSender implementation which sends the
 // given message to the given peer over HTTP.
 // An error is returned of the peer has no known HTTP endpoints.
-func (ht *Network) NewMessageSender(ctx context.Context, p peer.ID, opts *network.MessageSenderOpts) (network.MessageSender, error) {
+func (ht *Network) NewMessageSender(ctx context.Context, p peer.ID, opts *swap.MessageSenderOpts) (swap.MessageSender, error) {
 	// cooldowns made by other senders between now and SendMsg will not be
 	// taken into account since we access that info here only. From that
 	// point, we only react to cooldowns/errors received by this message

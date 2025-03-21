@@ -14,10 +14,9 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-clock"
-	wl "github.com/ipfs/boxo/exchange/blockexchange/client/wantlist"
-	message "github.com/ipfs/boxo/exchange/blockexchange/message"
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
 	blockstore "github.com/ipfs/boxo/blockstore"
+	message "github.com/ipfs/boxo/swap/message"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
@@ -1927,7 +1926,7 @@ func TestWantlistOverflow(t *testing.T) {
 	t.Log("Sent message with", len(origCids), "original wants at low priority. All accepted overwriting existing wants.")
 }
 
-func findCid(c cid.Cid, wantList []wl.Entry) bool {
+func findCid(c cid.Cid, wantList []message.Entry) bool {
 	for i := range wantList {
 		if wantList[i].Cid == c {
 			return true

@@ -1,23 +1,25 @@
-package bitswap
+package swap
 
 import (
 	"context"
 	"time"
 
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
+	"github.com/ipfs/boxo/swap/message"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
 type router struct {
-	Bitswap   BitSwapNetwork
-	HTTP      BitSwapNetwork
+	Bitswap   Network
+	HTTP      Network
 	Peerstore peerstore.Peerstore
 }
 
-// New returns a BitSwapNetwork supported by underlying IPFS host.
-func New(pstore peerstore.Peerstore, bitswap BitSwapNetwork, http BitSwapNetwork) BitSwapNetwork {
+// NewBitswapAndHTTPRouter returns a Network supported by underlying IPFS host
+// that routes messages over Bitswap or HTTP swap networks based on known
+// multiaddresses with some failover functionality.
+func NewBitswapAndHTTPRouter(pstore peerstore.Peerstore, bitswap Network, http Network) Network {
 	if bitswap == nil && http == nil {
 		panic("bad exchange network router initialization: need bitswap or http")
 	}
@@ -83,9 +85,9 @@ func (rt *router) Latency(p peer.ID) time.Duration {
 	return rt.Bitswap.Latency(p)
 }
 
-func (rt *router) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwapMessage) error {
-	// SendMessage is only used by bitswap server on sendBlocks(). We
-	// should not be passing a router to the bitswap server but we try to
+func (rt *router) SendMessage(ctx context.Context, p peer.ID, msg message.Wantlist) error {
+	// SendMessage is only used by blockexchange server on sendBlocks(). We
+	// should not be passing a router to the blockexchange server but we try to
 	// make our best.
 
 	// If the message has blocks, send it via bitswap.

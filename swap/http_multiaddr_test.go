@@ -1,4 +1,4 @@
-package bitswap
+package swap
 
 import (
 	"net/url"

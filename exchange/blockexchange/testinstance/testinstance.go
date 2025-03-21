@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	iface "github.com/ipfs/boxo/swap"
-	bsnet "github.com/ipfs/boxo/swap/bitswap"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/exchange/blockexchange"
 	tn "github.com/ipfs/boxo/exchange/blockexchange/testnet"
 	mockrouting "github.com/ipfs/boxo/routing/mock"
+	"github.com/ipfs/boxo/swap"
+	bsnet "github.com/ipfs/boxo/swap/bitswap"
 	ds "github.com/ipfs/go-datastore"
 	delayed "github.com/ipfs/go-datastore/delayed"
 	ds_sync "github.com/ipfs/go-datastore/sync"
@@ -93,7 +93,7 @@ type Instance struct {
 	Datastore       ds.Batching
 	Exchange        *blockexchange.Bitswap
 	Blockstore      blockstore.Blockstore
-	Adapter         iface.BitSwapNetwork
+	Adapter         swap.Network
 	Routing         routing.Routing
 	blockstoreDelay delay.D
 }

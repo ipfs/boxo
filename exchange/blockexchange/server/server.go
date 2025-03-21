@@ -8,14 +8,14 @@ import (
 	"sync"
 	"time"
 
+	blockstore "github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/exchange/blockexchange/internal/defaults"
-	"github.com/ipfs/boxo/exchange/blockexchange/message"
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
 	bmetrics "github.com/ipfs/boxo/exchange/blockexchange/metrics"
-	bsnet "github.com/ipfs/boxo/swap"
 	"github.com/ipfs/boxo/exchange/blockexchange/server/internal/decision"
 	"github.com/ipfs/boxo/exchange/blockexchange/tracer"
-	blockstore "github.com/ipfs/boxo/blockstore"
+	"github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap/message"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
@@ -39,7 +39,7 @@ type Server struct {
 	engine *decision.Engine
 
 	// network delivers messages on behalf of the session
-	network bsnet.BitSwapNetwork
+	network swap.Network
 
 	// External statistics interface
 	tracer tracer.Tracer
@@ -62,7 +62,7 @@ type Server struct {
 	engineOptions []decision.Option
 }
 
-func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Blockstore, options ...Option) *Server {
+func New(ctx context.Context, network swap.Network, bstore blockstore.Blockstore, options ...Option) *Server {
 	ctx, cancel := context.WithCancel(ctx)
 
 	s := &Server{
@@ -403,7 +403,7 @@ func (bs *Server) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 	return nil
 }
 
-func (bs *Server) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.BitSwapMessage) {
+func (bs *Server) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.Wantlist) {
 	// This call records changes to wantlists, blocks received,
 	// and number of bytes transferred.
 	mustKillConnection := bs.engine.MessageReceived(ctx, p, incoming)

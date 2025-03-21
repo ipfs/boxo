@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/filecoin-project/go-clock"
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
-	bsnet "github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap/message"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-test/random"
 	peer "github.com/libp2p/go-libp2p/core/peer"
@@ -24,14 +24,14 @@ const collectTimeout = 2500 * time.Millisecond
 type fakeMessageNetwork struct {
 	connectError       error
 	messageSenderError error
-	messageSender      bsnet.MessageSender
+	messageSender      swap.MessageSender
 }
 
 func (fmn *fakeMessageNetwork) Connect(context.Context, peer.AddrInfo) error {
 	return fmn.connectError
 }
 
-func (fmn *fakeMessageNetwork) NewMessageSender(context.Context, peer.ID, *bsnet.MessageSenderOpts) (bsnet.MessageSender, error) {
+func (fmn *fakeMessageNetwork) NewMessageSender(context.Context, peer.ID, *swap.MessageSenderOpts) (swap.MessageSender, error) {
 	if fmn.messageSenderError == nil {
 		return fmn.messageSender, nil
 	}
@@ -101,12 +101,12 @@ func (fp *fakeDontHaveTimeoutMgr) pendingCount() int {
 type fakeMessageSender struct {
 	lk           sync.Mutex
 	reset        chan<- struct{}
-	messagesSent chan<- []bsmsg.Entry
+	messagesSent chan<- []message.Entry
 	supportsHave bool
 }
 
 func newFakeMessageSender(reset chan<- struct{},
-	messagesSent chan<- []bsmsg.Entry, supportsHave bool,
+	messagesSent chan<- []message.Entry, supportsHave bool,
 ) *fakeMessageSender {
 	return &fakeMessageSender{
 		reset:        reset,
@@ -115,7 +115,7 @@ func newFakeMessageSender(reset chan<- struct{},
 	}
 }
 
-func (fms *fakeMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessage) error {
+func (fms *fakeMessageSender) SendMsg(ctx context.Context, msg message.Wantlist) error {
 	fms.lk.Lock()
 	defer fms.lk.Unlock()
 
@@ -130,11 +130,11 @@ func mockTimeoutCb(peer.ID, []cid.Cid) {}
 
 func collectMessages(ctx context.Context,
 	t *testing.T,
-	messagesSent <-chan []bsmsg.Entry,
+	messagesSent <-chan []message.Entry,
 	timeout time.Duration,
-) [][]bsmsg.Entry {
+) [][]message.Entry {
 	t.Helper()
-	var messagesReceived [][]bsmsg.Entry
+	var messagesReceived [][]message.Entry
 	timeoutctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	for {
@@ -147,7 +147,7 @@ func collectMessages(ctx context.Context,
 	}
 }
 
-func totalEntriesLength(messages [][]bsmsg.Entry) int {
+func totalEntriesLength(messages [][]message.Entry) int {
 	totalLength := 0
 	for _, m := range messages {
 		totalLength += len(m)
@@ -166,7 +166,7 @@ func expectEvent(t *testing.T, events <-chan messageEvent, expectedEvent message
 func TestStartupAndShutdown(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -205,7 +205,7 @@ func TestStartupAndShutdown(t *testing.T) {
 func TestSendingMessagesDeduped(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -228,7 +228,7 @@ func TestSendingMessagesDeduped(t *testing.T) {
 func TestSendingMessagesPartialDupe(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -251,7 +251,7 @@ func TestSendingMessagesPartialDupe(t *testing.T) {
 func TestSendingMessagesPriority(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -273,7 +273,7 @@ func TestSendingMessagesPriority(t *testing.T) {
 	if totalEntriesLength(messages) != len(wantHaves)+len(wantBlocks) {
 		t.Fatal("wrong number of wants")
 	}
-	byCid := make(map[cid.Cid]bsmsg.Entry)
+	byCid := make(map[cid.Cid]message.Entry)
 	for _, entry := range messages[0] {
 		byCid[entry.Cid] = entry
 	}
@@ -319,7 +319,7 @@ func TestSendingMessagesPriority(t *testing.T) {
 
 func TestCancelOverridesPendingWants(t *testing.T) {
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -371,7 +371,7 @@ func TestCancelOverridesPendingWants(t *testing.T) {
 func TestWantOverridesPendingCancels(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -419,7 +419,7 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 func TestWantlistRebroadcast(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -521,7 +521,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 func TestSendingLargeMessages(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -552,7 +552,7 @@ func TestSendingLargeMessages(t *testing.T) {
 func TestSendToPeerThatDoesntSupportHave(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, false)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -608,7 +608,7 @@ func TestSendToPeerThatDoesntSupportHave(t *testing.T) {
 func TestSendToPeerThatDoesntSupportHaveMonitorsTimeouts(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, false)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -641,7 +641,7 @@ func TestSendToPeerThatDoesntSupportHaveMonitorsTimeouts(t *testing.T) {
 func TestResponseReceived(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, false)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -693,7 +693,7 @@ func TestResponseReceived(t *testing.T) {
 func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, false)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -739,7 +739,7 @@ func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
 func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
+	messagesSent := make(chan []message.Entry)
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, false)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
@@ -789,7 +789,7 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 	}
 }
 
-func filterWantTypes(wantlist []bsmsg.Entry) ([]cid.Cid, []cid.Cid, []cid.Cid) {
+func filterWantTypes(wantlist []message.Entry) ([]cid.Cid, []cid.Cid, []cid.Cid) {
 	var wbs []cid.Cid
 	var whs []cid.Cid
 	var cls []cid.Cid
@@ -810,7 +810,7 @@ func BenchmarkMessageQueue(b *testing.B) {
 	ctx := context.Background()
 
 	createQueue := func() *MessageQueue {
-		messagesSent := make(chan []bsmsg.Entry)
+		messagesSent := make(chan []message.Entry)
 		resetChan := make(chan struct{}, 1)
 		fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 		fakenet := &fakeMessageNetwork{nil, nil, fakeSender}

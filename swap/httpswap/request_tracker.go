@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
+	"github.com/ipfs/boxo/swap/message"
 	"github.com/ipfs/go-cid"
 )
 
@@ -91,7 +91,7 @@ func (rc *requestTracker) cancelRequest(c cid.Cid) {
 
 // cleanEmptyRequests uses a single lock to perform tracker-cleanup for a
 // given list wantlist when no contexts for the entry CID exist.
-func (rc *requestTracker) cleanEmptyRequests(wantlist []bsmsg.Entry) {
+func (rc *requestTracker) cleanEmptyRequests(wantlist []message.Entry) {
 	rc.mux.Lock()
 	{
 		for _, e := range wantlist {

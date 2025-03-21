@@ -1,25 +1,23 @@
-package bitswap
+// Package swap provides common interfaces for block-swapping protocols.
+package swap
 
 import (
 	"context"
 	"time"
 
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
-
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/boxo/swap/message"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
-// BitSwapNetwork provides network connectivity for BitSwap sessions.
-type BitSwapNetwork interface {
-	// SendMessage sends a BitSwap message to a peer.
+// Network defines the the base interface for block swap implementations.
+type Network interface {
+	// SendMessage sends a Wantlist message to a peer.
 	SendMessage(
 		context.Context,
 		peer.ID,
-		bsmsg.BitSwapMessage) error
+		message.Wantlist) error
 
 	// Start registers the Reciver and starts handling new messages, connectivity events, etc.
 	Start(...Receiver)
@@ -46,10 +44,10 @@ type PeerTagger interface {
 	Unprotect(peer.ID, string) bool
 }
 
-// MessageSender is an interface for sending a series of messages over the bitswap
-// network
+// MessageSender is an interface for sending a series of messages over a swap
+// network.
 type MessageSender interface {
-	SendMsg(context.Context, bsmsg.BitSwapMessage) error
+	SendMsg(context.Context, message.Wantlist) error
 	Reset() error
 	// Indicates whether the remote peer supports HAVE / DONT_HAVE messages
 	SupportsHave() bool
@@ -61,27 +59,18 @@ type MessageSenderOpts struct {
 	SendErrorBackoff time.Duration
 }
 
-// Receiver is an interface that can receive messages from the BitSwapNetwork.
+// Receiver is an interface that can receive messages from the Network.
 type Receiver interface {
 	ReceiveMessage(
 		ctx context.Context,
 		sender peer.ID,
-		incoming bsmsg.BitSwapMessage)
+		incoming message.Wantlist)
 
 	ReceiveError(error)
 
 	// Connected/Disconnected warns bitswap about peer connections.
 	PeerConnected(peer.ID)
 	PeerDisconnected(peer.ID)
-}
-
-// Routing is an interface to providing and finding providers on a bitswap
-// network.
-type Routing interface {
-	routing.ContentDiscovery
-
-	// Provide provides the key to the network.
-	Provide(context.Context, cid.Cid) error
 }
 
 // Pinger is an interface to ping a peer and get the average latency of all pings

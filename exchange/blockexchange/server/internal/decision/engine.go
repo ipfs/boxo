@@ -12,12 +12,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	wl "github.com/ipfs/boxo/exchange/blockexchange/client/wantlist"
-	"github.com/ipfs/boxo/exchange/blockexchange/internal/defaults"
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
-	bmetrics "github.com/ipfs/boxo/exchange/blockexchange/metrics"
 	bstore "github.com/ipfs/boxo/blockstore"
+	"github.com/ipfs/boxo/exchange/blockexchange/internal/defaults"
+	bmetrics "github.com/ipfs/boxo/exchange/blockexchange/metrics"
+	"github.com/ipfs/boxo/swap/message"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
@@ -84,7 +83,7 @@ type Envelope struct {
 	Peer peer.ID
 
 	// Message is the payload.
-	Message bsmsg.BitSwapMessage
+	Message message.Wantlist
 
 	// A callback to notify the decision queue that the task is complete
 	Sent func()
@@ -128,10 +127,10 @@ type PeerEntry struct {
 
 // PeerLedger is an external ledger dealing with peers and their want lists.
 type PeerLedger interface {
-	// Wants informs the ledger that [peer.ID] wants [wl.Entry].
+	// Wants informs the ledger that [peer.ID] wants [message.Entry].
 	// If peer ledger exceed internal limit, then the entry is not added
 	// and false is returned.
-	Wants(p peer.ID, e wl.Entry) bool
+	Wants(p peer.ID, e message.Entry) bool
 
 	// CancelWant returns true if the [cid.Cid] was removed from the wantlist of [peer.ID].
 	CancelWant(p peer.ID, k cid.Cid) bool
@@ -149,7 +148,7 @@ type PeerLedger interface {
 	WantlistSizeForPeer(p peer.ID) int
 
 	// WantlistForPeer returns the wantlist for [peer.ID].
-	WantlistForPeer(p peer.ID) []wl.Entry
+	WantlistForPeer(p peer.ID) []message.Entry
 
 	// ClearPeerWantlist clears the wantlist for [peer.ID].
 	ClearPeerWantlist(p peer.ID)
@@ -514,7 +513,7 @@ func (e *Engine) onPeerRemoved(p peer.ID) {
 }
 
 // WantlistForPeer returns the list of keys that the given peer has asked for
-func (e *Engine) WantlistForPeer(p peer.ID) []wl.Entry {
+func (e *Engine) WantlistForPeer(p peer.ID) []message.Entry {
 	e.lock.RLock()
 	defer e.lock.RUnlock()
 
@@ -587,7 +586,7 @@ func (e *Engine) nextEnvelope(ctx context.Context) (*Envelope, error) {
 		}
 
 		// Create a new message
-		msg := bsmsg.New(false)
+		msg := message.New(false)
 
 		log.Debugw("Bitswap process tasks", "local", e.self, "taskCount", len(nextTasks))
 
@@ -675,7 +674,7 @@ func (e *Engine) Peers() []peer.ID {
 // For each item in the wantlist, add a want-have or want-block entry to the
 // request queue (this is later popped off by the workerTasks). Returns true
 // if the connection to the server must be closed.
-func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwapMessage) bool {
+func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m message.Wantlist) bool {
 	if m.Empty() {
 		log.Infof("received empty message from %s", p)
 		return false
@@ -727,7 +726,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		e.peerLedger.ClearPeerWantlist(p)
 	}
 
-	var overflow []bsmsg.Entry
+	var overflow []message.Entry
 	wants, overflow = e.filterOverflow(p, wants, overflow)
 
 	if len(overflow) != 0 {
@@ -748,14 +747,14 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	var activeEntries []peertask.Task
 
 	// Cancel a block operation
-	sendDontHave := func(entry bsmsg.Entry) {
+	sendDontHave := func(entry message.Entry) {
 		// Only add the task to the queue if the requester wants a DONT_HAVE
 		if e.sendDontHaves && entry.SendDontHave {
 			c := entry.Cid
 			activeEntries = append(activeEntries, peertask.Task{
 				Topic:    c,
 				Priority: int(entry.Priority),
-				Work:     bsmsg.BlockPresenceSize(c),
+				Work:     message.BlockPresenceSize(c),
 				Data: &taskData{
 					BlockSize:    0,
 					HaveBlock:    false,
@@ -797,7 +796,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 		// a block presence entry.
 		entrySize := blockSize
 		if !isWantBlock {
-			entrySize = bsmsg.BlockPresenceSize(c)
+			entrySize = message.BlockPresenceSize(c)
 		}
 		activeEntries = append(activeEntries, peertask.Task{
 			Topic:    c,
@@ -821,14 +820,14 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 	return false
 }
 
-func (e *Engine) filterOverflow(p peer.ID, wants, overflow []bsmsg.Entry) ([]bsmsg.Entry, []bsmsg.Entry) {
+func (e *Engine) filterOverflow(p peer.ID, wants, overflow []message.Entry) ([]message.Entry, []message.Entry) {
 	if len(wants) == 0 {
 		return wants, overflow
 	}
 
 	filteredWants := wants[:0] // shift inplace
 	for _, entry := range wants {
-		if !e.peerLedger.Wants(p, entry.Entry) {
+		if !e.peerLedger.Wants(p, entry) {
 			// Cannot add entry because it would exceed size limit.
 			overflow = append(overflow, entry)
 			continue
@@ -847,15 +846,15 @@ func (e *Engine) filterOverflow(p peer.ID, wants, overflow []bsmsg.Entry) ([]bsm
 // blocks are canceled.
 //
 // Important: handleOverflwo must be called e.lock is locked.
-func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, overflow, wants []bsmsg.Entry) []bsmsg.Entry {
+func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, overflow, wants []message.Entry) []message.Entry {
 	// Sort overflow from most to least important.
-	slices.SortFunc(overflow, func(a, b bsmsg.Entry) int {
-		return cmp.Compare(b.Entry.Priority, a.Entry.Priority)
+	slices.SortFunc(overflow, func(a, b message.Entry) int {
+		return cmp.Compare(b.Priority, a.Priority)
 	})
 	// Sort existing wants from least to most important, to try to replace
 	// lowest priority items first.
 	existingWants := e.peerLedger.WantlistForPeer(p)
-	slices.SortFunc(existingWants, func(a, b wl.Entry) int {
+	slices.SortFunc(existingWants, func(a, b message.Entry) int {
 		return cmp.Compare(b.Priority, a.Priority)
 	})
 
@@ -882,7 +881,7 @@ func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, overflow, wants 
 			firstOver := overflow[0]
 			overflow = overflow[1:]
 			// Add highest priority overflow to wants.
-			e.peerLedger.Wants(p, firstOver.Entry)
+			e.peerLedger.Wants(p, firstOver)
 			wants = append(wants, firstOver)
 			if len(overflow) == 0 {
 				return wants
@@ -899,7 +898,7 @@ func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, overflow, wants 
 			replace++
 			removed = removed[1:]
 		}
-		if overflowEnt.Entry.Priority < existingWants[replace].Priority {
+		if overflowEnt.Priority < existingWants[replace].Priority {
 			// All overflow entries have too low of priority to replace any
 			// existing wants.
 			break
@@ -909,7 +908,7 @@ func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, overflow, wants 
 		if e.peerLedger.CancelWant(p, entCid) {
 			e.peerRequestQueue.Remove(entCid, p)
 		}
-		e.peerLedger.Wants(p, overflowEnt.Entry)
+		e.peerLedger.Wants(p, overflowEnt)
 		wants = append(wants, overflowEnt)
 	}
 
@@ -917,7 +916,7 @@ func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, overflow, wants 
 }
 
 // Split the want, cancel, and deny entries.
-func (e *Engine) splitWantsCancelsDenials(p peer.ID, m bsmsg.BitSwapMessage) ([]bsmsg.Entry, []bsmsg.Entry, []bsmsg.Entry, error) {
+func (e *Engine) splitWantsCancelsDenials(p peer.ID, m message.Wantlist) ([]message.Entry, []message.Entry, []message.Entry, error) {
 	entries := m.Wantlist() // creates copy; safe to modify
 	if len(entries) == 0 {
 		return nil, nil, nil, nil
@@ -926,7 +925,7 @@ func (e *Engine) splitWantsCancelsDenials(p peer.ID, m bsmsg.BitSwapMessage) ([]
 	log.Debugw("Bitswap engine <- msg", "local", e.self, "from", p, "entryCount", len(entries))
 
 	wants := entries[:0] // shift in-place
-	var cancels, denials []bsmsg.Entry
+	var cancels, denials []message.Entry
 
 	for _, et := range entries {
 		c := et.Cid
@@ -1014,7 +1013,7 @@ func (e *Engine) NotifyNewBlocks(blks []blocks.Block) {
 
 			entrySize := blockSize
 			if !isWantBlock {
-				entrySize = bsmsg.BlockPresenceSize(k)
+				entrySize = message.BlockPresenceSize(k)
 			}
 
 			e.peerRequestQueue.PushTasksTruncated(e.maxQueuedWantlistEntriesPerPeer, entry.Peer, peertask.Task{
@@ -1045,7 +1044,7 @@ func (e *Engine) NotifyNewBlocks(blks []blocks.Block) {
 
 // MessageSent is called when a message has successfully been sent out, to record
 // changes.
-func (e *Engine) MessageSent(p peer.ID, m bsmsg.BitSwapMessage) {
+func (e *Engine) MessageSent(p peer.ID, m message.Wantlist) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 

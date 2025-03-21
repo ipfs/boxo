@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	network "github.com/ipfs/boxo/swap"
 	"github.com/ipfs/boxo/blockstore"
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
+	network "github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap/message"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
@@ -40,7 +40,7 @@ type mockRecv struct {
 	waitCh    chan struct{}
 }
 
-func (recv *mockRecv) ReceiveMessage(ctx context.Context, sender peer.ID, incoming bsmsg.BitSwapMessage) {
+func (recv *mockRecv) ReceiveMessage(ctx context.Context, sender peer.ID, incoming message.Wantlist) {
 	for _, b := range incoming.Blocks() {
 		recv.blocks[b.Cid()] = struct{}{}
 	}
@@ -132,8 +132,8 @@ func makeCids(t *testing.T, start, end int) []cid.Cid {
 	return cids
 }
 
-func makeMessage(wantlist []cid.Cid, wantType pb.Message_Wantlist_WantType, sendDontHave bool) bsmsg.BitSwapMessage {
-	msg := bsmsg.New(true)
+func makeMessage(wantlist []cid.Cid, wantType pb.Message_Wantlist_WantType, sendDontHave bool) message.Wantlist {
+	msg := message.New(true)
 	for _, c := range wantlist {
 		msg.AddEntry(
 			c,
@@ -146,11 +146,11 @@ func makeMessage(wantlist []cid.Cid, wantType pb.Message_Wantlist_WantType, send
 	return msg
 }
 
-func makeWantsMessage(wantlist []cid.Cid) bsmsg.BitSwapMessage {
+func makeWantsMessage(wantlist []cid.Cid) message.Wantlist {
 	return makeMessage(wantlist, pb.Message_Wantlist_Block, true)
 }
 
-func makeHavesMessage(wantlist []cid.Cid) bsmsg.BitSwapMessage {
+func makeHavesMessage(wantlist []cid.Cid) message.Wantlist {
 	return makeMessage(wantlist, pb.Message_Wantlist_Have, true)
 }
 

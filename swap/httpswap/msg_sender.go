@@ -15,9 +15,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	network "github.com/ipfs/boxo/swap"
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
+	"github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap/message"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
@@ -37,8 +37,8 @@ const (
 	DefaultSendErrorBackoff = time.Second
 )
 
-func setSenderOpts(opts *network.MessageSenderOpts) network.MessageSenderOpts {
-	defopts := network.MessageSenderOpts{
+func setSenderOpts(opts *swap.MessageSenderOpts) swap.MessageSenderOpts {
+	defopts := swap.MessageSenderOpts{
 		MaxRetries:       DefaultMaxRetries,
 		SendTimeout:      DefaultSendTimeout,
 		SendErrorBackoff: DefaultSendErrorBackoff,
@@ -62,18 +62,18 @@ func setSenderOpts(opts *network.MessageSenderOpts) network.MessageSenderOpts {
 
 // senderURL wraps url with information about cooldowns and errors.
 type senderURL struct {
-	network.ParsedURL
+	swap.ParsedURL
 	cooldown     atomic.Value
 	serverErrors atomic.Int64
 }
 
-// httpMsgSender implements a network.MessageSender.
+// httpMsgSender implements a swap.MessageSender.
 // For NewMessageSender see func (ht *httpnet) NewMessageSender(...)
 type httpMsgSender struct {
 	peer      peer.ID
 	urls      []*senderURL
 	ht        *Network
-	opts      network.MessageSenderOpts
+	opts      swap.MessageSenderOpts
 	closing   chan struct{}
 	closeOnce sync.Once
 }
@@ -180,7 +180,7 @@ func (err senderError) Error() string {
 // Blocks, Haves etc. are recorded in the given response. cancellations are
 // processed. tryURL returns an error so that it can be decided what to do next:
 // i.e. retry, or move to next item in wantlist, or abort completely.
-func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsmsg.Entry) (blocks.Block, *senderError) {
+func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry message.Entry) (blocks.Block, *senderError) {
 	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
 		return nil, &senderError{
 			Type: typeRetryLater,
@@ -404,7 +404,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 // SendMsg performs an http request for the wanted cids per the msg's
 // Wantlist. It reads the response and records it in a reponse BitswapMessage
 // which is forwarded to the receivers (in a separate goroutine).
-func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessage) error {
+func (sender *httpMsgSender) SendMsg(ctx context.Context, msg message.Wantlist) error {
 	// SendMsg gets called from MessageQueue and returning an error
 	// results in a MessageQueue shutdown. Errors are only returned when
 	// we are unable to obtain a single valid Block/Has response. When a
@@ -500,7 +500,7 @@ WANTLIST_LOOP:
 	// Receiving results is async and we leave a goroutine taking care of
 	// that.
 	go func() {
-		bsresp := bsmsg.New(false)
+		bsresp := message.New(false)
 		totalResponses := 0
 
 		for result := range resultsCollector {
@@ -563,7 +563,7 @@ WANTLIST_LOOP:
 	return nil
 }
 
-func (sender *httpMsgSender) notifyReceivers(bsresp bsmsg.BitSwapMessage) {
+func (sender *httpMsgSender) notifyReceivers(bsresp message.Wantlist) {
 	lb := len(bsresp.Blocks())
 	lh := len(bsresp.Haves())
 	ldh := len(bsresp.DontHaves())

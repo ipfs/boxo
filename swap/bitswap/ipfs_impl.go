@@ -1,4 +1,4 @@
-package bsnet
+package bitswap
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	iface "github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap"
 	"github.com/ipfs/boxo/swap/bitswap/internal"
-	bsmsg "github.com/ipfs/boxo/exchange/blockexchange/message"
+	"github.com/ipfs/boxo/swap/message"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -33,7 +33,7 @@ var (
 )
 
 // NewFromIpfsHost returns a BitSwapNetwork supported by underlying IPFS host.
-func NewFromIpfsHost(host host.Host, opts ...NetOpt) iface.BitSwapNetwork {
+func NewFromIpfsHost(host host.Host, opts ...NetOpt) swap.Network {
 	s := processSettings(opts...)
 
 	bitswapNetwork := impl{
@@ -68,10 +68,10 @@ func processSettings(opts ...NetOpt) Settings {
 type impl struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
-	stats iface.Stats
+	stats swap.Stats
 
 	host          host.Host
-	connectEvtMgr *iface.ConnectEventManager
+	connectEvtMgr *swap.ConnectEventManager
 
 	protocolBitswapNoVers  protocol.ID
 	protocolBitswapOneZero protocol.ID
@@ -81,7 +81,7 @@ type impl struct {
 	supportedProtocols []protocol.ID
 
 	// inbound messages from the network are forwarded to the receiver
-	receivers []iface.Receiver
+	receivers []swap.Receiver
 
 	metrics *metrics
 }
@@ -113,7 +113,7 @@ type streamMessageSender struct {
 	to     peer.ID
 	stream atomicInterface[network.Stream]
 	bsnet  *impl
-	opts   *iface.MessageSenderOpts
+	opts   *swap.MessageSenderOpts
 }
 
 type HasContext interface {
@@ -169,7 +169,7 @@ func (s *streamMessageSender) SupportsHave() bool {
 }
 
 // Send a message to the peer, attempting multiple times
-func (s *streamMessageSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessage) error {
+func (s *streamMessageSender) SendMsg(ctx context.Context, msg message.Wantlist) error {
 	if n := len(msg.Wantlist()); n > 0 {
 		s.bsnet.metrics.WantlistsTotal.Inc()
 		s.bsnet.metrics.WantlistsItemsTotal.Add(float64(n))
@@ -239,7 +239,7 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func() error)
 }
 
 // Send a message to the peer
-func (s *streamMessageSender) send(ctx context.Context, msg bsmsg.BitSwapMessage) error {
+func (s *streamMessageSender) send(ctx context.Context, msg message.Wantlist) error {
 	start := time.Now()
 	stream, err := s.Connect(ctx)
 	if err != nil {
@@ -283,7 +283,7 @@ func (bsnet *impl) SupportsHave(proto protocol.ID) bool {
 	return true
 }
 
-func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.BitSwapMessage, timeout time.Duration) error {
+func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg message.Wantlist, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	if dl, ok := ctx.Deadline(); ok && dl.Before(deadline) {
 		deadline = dl
@@ -319,7 +319,7 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 	return nil
 }
 
-func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *iface.MessageSenderOpts) (iface.MessageSender, error) {
+func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *swap.MessageSenderOpts) (swap.MessageSender, error) {
 	opts = setDefaultOpts(opts)
 
 	sender := &streamMessageSender{
@@ -339,7 +339,7 @@ func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *iface.
 	return sender, nil
 }
 
-func setDefaultOpts(opts *iface.MessageSenderOpts) *iface.MessageSenderOpts {
+func setDefaultOpts(opts *swap.MessageSenderOpts) *swap.MessageSenderOpts {
 	copy := *opts
 	if opts.MaxRetries == 0 {
 		copy.MaxRetries = 3
@@ -367,7 +367,7 @@ func sendTimeout(size int) time.Duration {
 func (bsnet *impl) SendMessage(
 	ctx context.Context,
 	p peer.ID,
-	outgoing bsmsg.BitSwapMessage,
+	outgoing message.Wantlist,
 ) error {
 	s, err := bsnet.newStreamToPeer(ctx, p)
 	if err != nil {
@@ -387,14 +387,14 @@ func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (network.Stre
 	return bsnet.host.NewStream(ctx, p, bsnet.supportedProtocols...)
 }
 
-func (bsnet *impl) Start(r ...iface.Receiver) {
+func (bsnet *impl) Start(r ...swap.Receiver) {
 	bsnet.receivers = r
 	{
-		connectionListeners := make([]iface.ConnectionListener, len(r))
+		connectionListeners := make([]swap.ConnectionListener, len(r))
 		for i, v := range r {
 			connectionListeners[i] = v
 		}
-		bsnet.connectEvtMgr = iface.NewConnectEventManager(connectionListeners...)
+		bsnet.connectEvtMgr = swap.NewConnectEventManager(connectionListeners...)
 	}
 	for _, proto := range bsnet.supportedProtocols {
 		bsnet.host.SetStreamHandler(proto, bsnet.handleNewStream)
@@ -430,7 +430,7 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 
 	reader := msgio.NewVarintReaderSize(s, network.MessageSizeMax)
 	for {
-		received, size, err := bsmsg.FromMsgReader(reader)
+		received, size, err := message.FromMsgReader(reader)
 		if err != nil {
 			if err != io.EOF {
 				_ = s.Reset()
@@ -482,8 +482,8 @@ func (bsnet *impl) Unprotect(p peer.ID, tag string) bool {
 	return bsnet.host.ConnManager().Unprotect(p, tag)
 }
 
-func (bsnet *impl) Stats() iface.Stats {
-	return iface.Stats{
+func (bsnet *impl) Stats() swap.Stats {
+	return swap.Stats{
 		MessagesRecvd: atomic.LoadUint64(&bsnet.stats.MessagesRecvd),
 		MessagesSent:  atomic.LoadUint64(&bsnet.stats.MessagesSent),
 	}

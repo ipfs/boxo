@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	network "github.com/ipfs/boxo/swap"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	exchange "github.com/ipfs/boxo/exchange"
 	"github.com/ipfs/boxo/exchange/blockexchange/client"
-	"github.com/ipfs/boxo/exchange/blockexchange/message"
 	"github.com/ipfs/boxo/exchange/blockexchange/server"
 	"github.com/ipfs/boxo/exchange/blockexchange/tracer"
+	"github.com/ipfs/boxo/swap"
+	"github.com/ipfs/boxo/swap/message"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
@@ -37,7 +37,7 @@ type bitswap interface {
 	PeerConnected(p peer.ID)
 	PeerDisconnected(p peer.ID)
 	ReceiveError(err error)
-	ReceiveMessage(ctx context.Context, p peer.ID, incoming message.BitSwapMessage)
+	ReceiveMessage(ctx context.Context, p peer.ID, incoming message.Wantlist)
 	Stat() (*Stat, error)
 	WantlistForPeer(p peer.ID) []cid.Cid
 }
@@ -52,10 +52,10 @@ type Bitswap struct {
 	*server.Server
 
 	tracer tracer.Tracer
-	net    network.BitSwapNetwork
+	net    swap.Network
 }
 
-func New(ctx context.Context, net network.BitSwapNetwork, providerFinder routing.ContentDiscovery, bstore blockstore.Blockstore, options ...Option) *Bitswap {
+func New(ctx context.Context, net swap.Network, providerFinder routing.ContentDiscovery, bstore blockstore.Blockstore, options ...Option) *Bitswap {
 	bs := &Bitswap{
 		net: net,
 	}
@@ -163,7 +163,7 @@ func (bs *Bitswap) ReceiveError(err error) {
 	// TODO bubble the network error up to the parent context/error logger
 }
 
-func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.BitSwapMessage) {
+func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.Wantlist) {
 	if bs.tracer != nil {
 		bs.tracer.MessageReceived(p, incoming)
 	}

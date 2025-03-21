@@ -1,8 +1,8 @@
 package decision
 
 import (
-	wl "github.com/ipfs/boxo/exchange/blockexchange/client/wantlist"
-	pb "github.com/ipfs/boxo/exchange/blockexchange/message/pb"
+	"github.com/ipfs/boxo/swap/message"
+	pb "github.com/ipfs/boxo/swap/message/pb"
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
@@ -27,7 +27,7 @@ func NewDefaultPeerLedger(maxEntriesPerPeer uint) *DefaultPeerLedger {
 // Wants adds an entry to the peer ledger. If adding the entry would make the
 // peer ledger exceed the maxEntriesPerPeer limit, then the entry is not added
 // and false is returned.
-func (l *DefaultPeerLedger) Wants(p peer.ID, e wl.Entry) bool {
+func (l *DefaultPeerLedger) Wants(p peer.ID, e message.Entry) bool {
 	cids, ok := l.peers[p]
 	if !ok {
 		cids = make(map[cid.Cid]entry)
@@ -129,15 +129,15 @@ func (l *DefaultPeerLedger) WantlistSizeForPeer(p peer.ID) int {
 	return len(l.peers[p])
 }
 
-func (l *DefaultPeerLedger) WantlistForPeer(p peer.ID) []wl.Entry {
+func (l *DefaultPeerLedger) WantlistForPeer(p peer.ID) []message.Entry {
 	cids, ok := l.peers[p]
 	if !ok {
 		return nil
 	}
 
-	entries := make([]wl.Entry, 0, len(l.cids))
+	entries := make([]message.Entry, 0, len(l.cids))
 	for c, e := range cids {
-		entries = append(entries, wl.Entry{
+		entries = append(entries, message.Entry{
 			Cid:      c,
 			Priority: e.Priority,
 			WantType: e.WantType,
