@@ -429,7 +429,7 @@ func (s *reprovider) run() {
 				return
 			}
 
-			err := s.reprovide(s.ctx, false)
+			err := s.Reprovide(s.ctx)
 
 			// only log if we've hit an actual error, otherwise just tell the client we're shutting down
 			if s.ctx.Err() == nil && err != nil {
@@ -470,14 +470,6 @@ func (s *reprovider) Provide(ctx context.Context, cid cid.Cid, announce bool) er
 }
 
 func (s *reprovider) Reprovide(ctx context.Context) error {
-	return s.reprovide(ctx, true)
-}
-
-func (s *reprovider) reprovide(ctx context.Context, force bool) error {
-	if !s.shouldReprovide() && !force {
-		return nil
-	}
-
 	ok := s.mu.TryLock()
 	if !ok {
 		return fmt.Errorf("instance of reprovide already running")
@@ -520,39 +512,6 @@ reprovideCidLoop:
 	case <-s.ctx.Done():
 		return errors.New("failed to reprovide: shutting down")
 	}
-}
-
-func (s *reprovider) getLastReprovideTime() (time.Time, error) {
-	val, err := s.ds.Get(s.ctx, lastReprovideKey)
-	if errors.Is(err, datastore.ErrNotFound) {
-		return time.Time{}, nil
-	}
-	if err != nil {
-		return time.Time{}, errors.New("could not get last reprovide time")
-	}
-
-	t, err := parseTime(val)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("could not decode last reprovide time, got %q", string(val))
-	}
-
-	return t, nil
-}
-
-func (s *reprovider) shouldReprovide() bool {
-	if s.reprovideInterval == 0 {
-		return false
-	}
-	t, err := s.getLastReprovideTime()
-	if err != nil {
-		log.Debugf("getting last reprovide time failed: %s", err)
-		return false
-	}
-
-	if time.Since(t) < s.reprovideInterval {
-		return false
-	}
-	return true
 }
 
 type ReproviderStats struct {
