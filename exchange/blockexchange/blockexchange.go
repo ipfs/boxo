@@ -22,32 +22,11 @@ import (
 
 var log = logging.Logger("bitswap")
 
-// old interface we are targeting
-type bitswap interface {
-	Close() error
-	GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
-	GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error)
-	GetWantBlocks() []cid.Cid
-	GetWantHaves() []cid.Cid
-	GetWantlist() []cid.Cid
-	IsOnline() bool
-	LedgerForPeer(p peer.ID) *server.Receipt
-	NewSession(ctx context.Context) exchange.Fetcher
-	NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error
-	PeerConnected(p peer.ID)
-	PeerDisconnected(p peer.ID)
-	ReceiveError(err error)
-	ReceiveMessage(ctx context.Context, p peer.ID, incoming message.Wantlist)
-	Stat() (*Stat, error)
-	WantlistForPeer(p peer.ID) []cid.Cid
-}
-
 var (
-	_ exchange.SessionExchange = (*Bitswap)(nil)
-	_ bitswap                  = (*Bitswap)(nil)
+	_ exchange.SessionExchange = (*BlockExchange)(nil)
 )
 
-type Bitswap struct {
+type BlockExchange struct {
 	*client.Client
 	*server.Server
 
@@ -55,8 +34,8 @@ type Bitswap struct {
 	net    swap.Network
 }
 
-func New(ctx context.Context, net swap.Network, providerFinder routing.ContentDiscovery, bstore blockstore.Blockstore, options ...Option) *Bitswap {
-	bs := &Bitswap{
+func New(ctx context.Context, net swap.Network, providerFinder routing.ContentDiscovery, bstore blockstore.Blockstore, options ...Option) *BlockExchange {
+	bs := &BlockExchange{
 		net: net,
 	}
 
@@ -72,7 +51,7 @@ func New(ctx context.Context, net swap.Network, providerFinder routing.ContentDi
 		case option:
 			typedOption(bs)
 		default:
-			panic(fmt.Errorf("unknown option type passed to bitswap.New, got: %T, %v; expected: %T, %T or %T", typedOption, typedOption, server.Option(nil), client.Option(nil), option(nil)))
+			panic(fmt.Errorf("unknown option type passed to blockExchange.New, got: %T, %v; expected: %T, %T or %T", typedOption, typedOption, server.Option(nil), client.Option(nil), option(nil)))
 		}
 	}
 
@@ -91,7 +70,7 @@ func New(ctx context.Context, net swap.Network, providerFinder routing.ContentDi
 	return bs
 }
 
-func (bs *Bitswap) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error {
+func (bs *BlockExchange) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error {
 	return multierr.Combine(
 		bs.Client.NotifyNewBlocks(ctx, blks...),
 		bs.Server.NotifyNewBlocks(ctx, blks...),
@@ -110,7 +89,7 @@ type Stat struct {
 	DataSent         uint64
 }
 
-func (bs *Bitswap) Stat() (*Stat, error) {
+func (bs *BlockExchange) Stat() (*Stat, error) {
 	cs, err := bs.Client.Stat()
 	if err != nil {
 		return nil, err
@@ -133,37 +112,37 @@ func (bs *Bitswap) Stat() (*Stat, error) {
 	}, nil
 }
 
-func (bs *Bitswap) Close() error {
+func (bs *BlockExchange) Close() error {
 	bs.net.Stop()
 	bs.Client.Close()
 	bs.Server.Close()
 	return nil
 }
 
-func (bs *Bitswap) WantlistForPeer(p peer.ID) []cid.Cid {
+func (bs *BlockExchange) WantlistForPeer(p peer.ID) []cid.Cid {
 	if p == bs.net.Self() {
 		return bs.Client.GetWantlist()
 	}
 	return bs.Server.WantlistForPeer(p)
 }
 
-func (bs *Bitswap) PeerConnected(p peer.ID) {
+func (bs *BlockExchange) PeerConnected(p peer.ID) {
 	bs.Client.PeerConnected(p)
 	bs.Server.PeerConnected(p)
 }
 
-func (bs *Bitswap) PeerDisconnected(p peer.ID) {
+func (bs *BlockExchange) PeerDisconnected(p peer.ID) {
 	bs.Client.PeerDisconnected(p)
 	bs.Server.PeerDisconnected(p)
 }
 
-func (bs *Bitswap) ReceiveError(err error) {
-	log.Infof("Bitswap Client ReceiveError: %s", err)
+func (bs *BlockExchange) ReceiveError(err error) {
+	log.Infof("BlockExchange Client ReceiveError: %s", err)
 	// TODO log the network error
 	// TODO bubble the network error up to the parent context/error logger
 }
 
-func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.Wantlist) {
+func (bs *BlockExchange) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.Wantlist) {
 	if bs.tracer != nil {
 		bs.tracer.MessageReceived(p, incoming)
 	}

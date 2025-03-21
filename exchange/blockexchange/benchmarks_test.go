@@ -24,7 +24,7 @@ import (
 	protocol "github.com/libp2p/go-libp2p/core/protocol"
 )
 
-type fetchFunc func(b *testing.B, bs *blockexchange.Bitswap, ks []cid.Cid)
+type fetchFunc func(b *testing.B, bs *blockexchange.BlockExchange, ks []cid.Cid)
 
 type distFunc func(b *testing.B, provs []testinstance.Instance, blocks []blocks.Block)
 
@@ -498,7 +498,7 @@ func onePeerPerBlock(b *testing.B, provs []testinstance.Instance, blks []blocks.
 	}
 }
 
-func oneAtATime(b *testing.B, bs *blockexchange.Bitswap, ks []cid.Cid) {
+func oneAtATime(b *testing.B, bs *blockexchange.BlockExchange, ks []cid.Cid) {
 	ses := bs.NewSession(context.Background())
 	for _, c := range ks {
 		_, err := ses.GetBlock(context.Background(), c)
@@ -510,7 +510,7 @@ func oneAtATime(b *testing.B, bs *blockexchange.Bitswap, ks []cid.Cid) {
 }
 
 // fetch data in batches, 10 at a time
-func batchFetchBy10(b *testing.B, bs *blockexchange.Bitswap, ks []cid.Cid) {
+func batchFetchBy10(b *testing.B, bs *blockexchange.BlockExchange, ks []cid.Cid) {
 	ses := bs.NewSession(context.Background())
 	for i := 0; i < len(ks); i += 10 {
 		out, err := ses.GetBlocks(context.Background(), ks[i:i+10])
@@ -523,7 +523,7 @@ func batchFetchBy10(b *testing.B, bs *blockexchange.Bitswap, ks []cid.Cid) {
 }
 
 // fetch each block at the same time concurrently
-func fetchAllConcurrent(b *testing.B, bs *blockexchange.Bitswap, ks []cid.Cid) {
+func fetchAllConcurrent(b *testing.B, bs *blockexchange.BlockExchange, ks []cid.Cid) {
 	ses := bs.NewSession(context.Background())
 
 	var wg sync.WaitGroup
@@ -540,7 +540,7 @@ func fetchAllConcurrent(b *testing.B, bs *blockexchange.Bitswap, ks []cid.Cid) {
 	wg.Wait()
 }
 
-func batchFetchAll(b *testing.B, bs *blockexchange.Bitswap, ks []cid.Cid) {
+func batchFetchAll(b *testing.B, bs *blockexchange.BlockExchange, ks []cid.Cid) {
 	ses := bs.NewSession(context.Background())
 	out, err := ses.GetBlocks(context.Background(), ks)
 	if err != nil {
@@ -551,7 +551,7 @@ func batchFetchAll(b *testing.B, bs *blockexchange.Bitswap, ks []cid.Cid) {
 }
 
 // simulates the fetch pattern of trying to sync a unixfs file graph as fast as possible
-func unixfsFileFetch(b *testing.B, bs *blockexchange.Bitswap, ks []cid.Cid) {
+func unixfsFileFetch(b *testing.B, bs *blockexchange.BlockExchange, ks []cid.Cid) {
 	ses := bs.NewSession(context.Background())
 	_, err := ses.GetBlock(context.Background(), ks[0])
 	if err != nil {
@@ -573,7 +573,7 @@ func unixfsFileFetch(b *testing.B, bs *blockexchange.Bitswap, ks []cid.Cid) {
 	}
 }
 
-func unixfsFileFetchLarge(b *testing.B, bs *blockexchange.Bitswap, ks []cid.Cid) {
+func unixfsFileFetchLarge(b *testing.B, bs *blockexchange.BlockExchange, ks []cid.Cid) {
 	ses := bs.NewSession(context.Background())
 	_, err := ses.GetBlock(context.Background(), ks[0])
 	if err != nil {

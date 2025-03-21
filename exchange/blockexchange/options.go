@@ -9,9 +9,9 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 )
 
-type option func(*Bitswap)
+type option func(*BlockExchange)
 
-// Option is interface{} of server.Option or client.Option or func(*Bitswap)
+// Option is interface{} of server.Option or client.Option or func(*BlockExchange)
 // wrapped in a struct to gain strong type checking.
 type Option struct {
 	v interface{}
@@ -97,7 +97,7 @@ func WithoutDuplicatedBlockStats() Option {
 func WithTracer(tap tracer.Tracer) Option {
 	// Only trace the server, both receive the same messages anyway
 	return Option{
-		option(func(bs *Bitswap) {
+		option(func(bs *BlockExchange) {
 			bs.tracer = tap
 		}),
 	}

@@ -47,7 +47,7 @@ func DefaultDontHaveTimeoutConfig() *DontHaveTimeoutConfig {
 }
 
 // Option defines the functional option type that can be used to configure
-// bitswap instances
+// blockExchange instances
 type Option func(*Client)
 
 // ProviderSearchDelay sets the initial dely before triggering a provider
@@ -84,8 +84,8 @@ func WithDontHaveTimeoutConfig(cfg *DontHaveTimeoutConfig) Option {
 }
 
 // WithPerPeerSendDelay determines how long to wait, based on the number of
-// peers, for wants to accumulate before sending a bitswap message to peers. A
-// value of 0 uses bitswap messagequeue default.
+// peers, for wants to accumulate before sending a swap message to peers. A
+// value of 0 uses BlockExchange messagequeue default.
 func WithPerPeerSendDelay(delay time.Duration) Option {
 	return func(bs *Client) {
 		bs.perPeerSendDelay = delay
@@ -121,12 +121,12 @@ func WithoutDuplicatedBlockStats() Option {
 }
 
 // WithDefaultProviderQueryManager indicates whether to use the default
-// ProviderQueryManager as a wrapper of the content Router. The default bitswap
+// ProviderQueryManager as a wrapper of the content Router. The default blockExchange
 // ProviderQueryManager provides bounded parallelism and limits for these
-// lookups. The bitswap default ProviderQueryManager uses these options, which
+// lookups. The blockExchange default ProviderQueryManager uses these options, which
 // may be more conservative than the ProviderQueryManager defaults:
 //
-//   - WithMaxProviders(defaults.BitswapClientDefaultMaxProviders)
+//   - WithMaxProviders(defaults.BlockExchangeClientDefaultMaxProviders)
 //
 // To use a custom ProviderQueryManager, set to false and wrap directly the
 // content router provided with the WithContentRouting() option. Only takes
@@ -144,15 +144,15 @@ type BlockReceivedNotifier interface {
 	ReceivedBlocks(peer.ID, []blocks.Block)
 }
 
-// New initializes a Bitswap client that runs until client.Close is called.
+// New initializes a BlockExchange client that runs until client.Close is called.
 // The Content providerFinder paramteter can be nil to disable content-routing
-// lookups for content (rely only on bitswap for discovery).
+// lookups for content (rely only on blockExchange for discovery).
 func New(parent context.Context, network swap.Network, providerFinder routing.ContentDiscovery, bstore blockstore.Blockstore, options ...Option) *Client {
 	// important to use provided parent context (since it may include important
-	// loggable data). It's probably not a good idea to allow bitswap to be
+	// loggable data). It's probably not a good idea to allow blockExchange to be
 	// coupled to the concerns of the ipfs daemon in this way.
 	//
-	// FIXME(btc) Now that bitswap manages itself using a process, it probably
+	// FIXME(btc) Now that blockExchange manages itself using a process, it probably
 	// shouldn't accept a context anymore. Clients should probably use Close()
 	// exclusively. We should probably find another way to share logging data
 	ctx, cancelFunc := context.WithCancel(parent)
@@ -172,7 +172,7 @@ func New(parent context.Context, network swap.Network, providerFinder routing.Co
 		defaultProviderQueryManager: true,
 	}
 
-	// apply functional options before starting and running bitswap
+	// apply functional options before starting and running blockExchange
 	for _, option := range options {
 		option(bs)
 	}
@@ -206,7 +206,7 @@ func New(parent context.Context, network swap.Network, providerFinder routing.Co
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
 		pqm, err := rpqm.New(network, bs.providerFinder,
-			rpqm.WithMaxProviders(defaults.BitswapClientDefaultMaxProviders))
+			rpqm.WithMaxProviders(defaults.BlockExchangeClientDefaultMaxProviders))
 		if err != nil {
 			// Should not be possible to hit this
 			panic(err)
@@ -253,7 +253,8 @@ func New(parent context.Context, network swap.Network, providerFinder routing.Co
 	return bs
 }
 
-// Client instances implement the bitswap protocol.
+// Client instances implement the Exchange interface: they can retrieve blocks
+// but not serve them.
 type Client struct {
 	pm *bspm.PeerManager
 
@@ -331,7 +332,7 @@ func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
 }
 
 // GetBlocks returns a channel where the caller may receive blocks that
-// correspond to the provided |keys|. Returns an error if BitSwap is unable to
+// correspond to the provided |keys|. Returns an error if BlockExchange is unable to
 // begin this request within the deadline enforced by the context.
 // It returns a [github.com/ipfs/boxo/exchange/blockexchange/client/traceability.Block] assertable [blocks.Block].
 //
@@ -345,8 +346,8 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 	return session.GetBlocks(ctx, keys)
 }
 
-// NotifyNewBlocks announces the existence of blocks to this bitswap service.
-// Bitswap itself doesn't store new blocks. It's the caller responsibility to ensure
+// NotifyNewBlocks announces the existence of blocks to this blockExchange service.
+// BlockExchange itself doesn't store new blocks. It's the caller responsibility to ensure
 // that those blocks are available in the blockstore before calling this function.
 func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error {
 	ctx, span := internal.StartSpan(ctx, "NotifyNewBlocks")
@@ -354,7 +355,7 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 
 	select {
 	case <-bs.closing:
-		return errors.New("bitswap is closed")
+		return errors.New("blockExchange is closed")
 	default:
 	}
 
@@ -367,7 +368,7 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 	// (The duplicates are needed by sessions for accounting purposes)
 	bs.sm.ReceiveFrom(ctx, "", blkCids, nil, nil)
 
-	// Publish the block to any Bitswap clients that had requested blocks.
+	// Publish the block to any BlockExchange clients that had requested blocks.
 	// (the sessions use this pubsub mechanism to inform clients of incoming
 	// blocks)
 	var zero peer.ID
@@ -380,7 +381,7 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []blocks.Block, haves []cid.Cid, dontHaves []cid.Cid) error {
 	select {
 	case <-bs.closing:
-		return errors.New("bitswap is closed")
+		return errors.New("blockExchange is closed")
 	default:
 	}
 
@@ -410,7 +411,7 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 		bs.blockReceivedNotifier.ReceivedBlocks(from, wanted)
 	}
 
-	// Publish the block to any Bitswap clients that had requested blocks.
+	// Publish the block to any BlockExchange clients that had requested blocks.
 	// (the sessions use this pubsub mechanism to inform clients of incoming
 	// blocks)
 	for _, b := range wanted {
@@ -510,22 +511,22 @@ func (bs *Client) blockstoreHas(blks []blocks.Block) []bool {
 	return res
 }
 
-// PeerConnected is called by the network interface
-// when a peer initiates a new connection to bitswap.
+// PeerConnected is called by the swap.Network
+// when a peer initiates a new connection.
 func (bs *Client) PeerConnected(p peer.ID) {
 	bs.pm.Connected(p)
 }
 
-// PeerDisconnected is called by the network interface when a peer
+// PeerDisconnected is called by the swap.Network when a peer
 // closes a connection
 func (bs *Client) PeerDisconnected(p peer.ID) {
 	bs.pm.Disconnected(p)
 }
 
-// ReceiveError is called by the network interface when an error happens
+// ReceiveError is called by the swap.Network when an error happens
 // at the network layer. Currently just logs error.
 func (bs *Client) ReceiveError(err error) {
-	log.Infof("Bitswap Client ReceiveError: %s", err)
+	log.Infof("BlockExchange Client ReceiveError: %s", err)
 	// TODO log the network error
 	// TODO bubble the network error up to the parent context/error logger
 }
@@ -565,12 +566,12 @@ func (bs *Client) IsOnline() bool {
 	return true
 }
 
-// NewSession generates a new Bitswap session. You should use this, rather
+// NewSession generates a new BlockExchange session. You should use this, rather
 // that calling Client.GetBlocks, any time you intend to do several related
 // block requests in a row. The session returned will have it's own GetBlocks
 // method, but the session will use the fact that the requests are related to
 // be more efficient in its requests to peers. If you are using a session
-// from blockservice, it will create a bitswap session automatically.
+// from blockservice, it will create a BlockExchange session automatically.
 func (bs *Client) NewSession(ctx context.Context) exchange.Fetcher {
 	ctx, span := internal.StartSpan(ctx, "NewSession")
 	defer span.End()

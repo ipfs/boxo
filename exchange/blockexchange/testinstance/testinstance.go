@@ -91,7 +91,7 @@ func ConnectInstances(instances []Instance) {
 type Instance struct {
 	Identity        tnet.Identity
 	Datastore       ds.Batching
-	Exchange        *blockexchange.Bitswap
+	Exchange        *blockexchange.BlockExchange
 	Blockstore      blockstore.Blockstore
 	Adapter         swap.Network
 	Routing         routing.Routing

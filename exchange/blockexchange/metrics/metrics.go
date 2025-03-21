@@ -22,11 +22,11 @@ func AllHist(ctx context.Context) metrics.Histogram {
 }
 
 func SentHist(ctx context.Context) metrics.Histogram {
-	return metrics.NewCtx(ctx, "sent_all_blocks_bytes", "Histogram of blocks sent by this bitswap").Histogram(metricsBuckets)
+	return metrics.NewCtx(ctx, "sent_all_blocks_bytes", "Histogram of blocks sent by this BlockExchange").Histogram(metricsBuckets)
 }
 
 func SendTimeHist(ctx context.Context) metrics.Histogram {
-	return metrics.NewCtx(ctx, "send_times", "Histogram of how long it takes to send messages in this bitswap").Histogram(timeMetricsBuckets)
+	return metrics.NewCtx(ctx, "send_times", "Histogram of how long it takes to send messages in this BlockExchange").Histogram(timeMetricsBuckets)
 }
 
 func PendingEngineGauge(ctx context.Context) metrics.Gauge {

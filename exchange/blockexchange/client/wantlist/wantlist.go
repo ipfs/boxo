@@ -1,4 +1,4 @@
-// Package wantlist implements an object for bitswap that contains the keys
+// Package wantlist implements a Wantlist object that contains the keys
 // that a given peer wants.
 package wantlist
 

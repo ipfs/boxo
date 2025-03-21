@@ -68,7 +68,7 @@ func New(ctx context.Context, network swap.Network, bstore blockstore.Blockstore
 	s := &Server{
 		sentHistogram:     bmetrics.SentHist(ctx),
 		sendTimeHistogram: bmetrics.SendTimeHist(ctx),
-		taskWorkerCount:   defaults.BitswapTaskWorkerCount,
+		taskWorkerCount:   defaults.BlockExchangeTaskWorkerCount,
 		network:           network,
 		cancel:            cancel,
 		closing:           make(chan struct{}),
@@ -211,7 +211,7 @@ func MaxCidSize(n uint) Option {
 }
 
 // WithWantHaveReplaceSize sets the maximum size of a block in bytes up to
-// which the bitswap server will replace a WantHave with a WantBlock response.
+// which the BlockExchange server will replace a WantHave with a WantBlock response.
 //
 // Behavior:
 //   - If size > 0: The server may send full blocks instead of just confirming possession
@@ -369,7 +369,7 @@ type Stat struct {
 	DataSent   uint64
 }
 
-// Stat returns aggregated statistics about bitswap operations
+// Stat returns aggregated statistics about BlockExchange operations
 func (bs *Server) Stat() (Stat, error) {
 	bs.counterLk.Lock()
 	s := bs.counters
@@ -386,14 +386,14 @@ func (bs *Server) Stat() (Stat, error) {
 	return s, nil
 }
 
-// NotifyNewBlocks announces the existence of blocks to this bitswap service. The
+// NotifyNewBlocks announces the existence of blocks to this BlockExchange service. The
 // service will potentially notify its peers.
-// Bitswap itself doesn't store new blocks. It's the caller responsibility to ensure
+// BlockExchange itself doesn't store new blocks. It's the caller responsibility to ensure
 // that those blocks are available in the blockstore before calling this function.
 func (bs *Server) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error {
 	select {
 	case <-bs.closing:
-		return errors.New("bitswap is closed")
+		return errors.New("BlockExchange is closed")
 	default:
 	}
 
@@ -426,7 +426,7 @@ func (bs *Server) ReceivedBlocks(from peer.ID, blks []blocks.Block) {
 }
 
 func (*Server) ReceiveError(err error) {
-	log.Infof("Bitswap Client ReceiveError: %s", err)
+	log.Infof("BlockExchange Server ReceiveError: %s", err)
 	// TODO log the network error
 	// TODO bubble the network error up to the parent context/error logger
 }

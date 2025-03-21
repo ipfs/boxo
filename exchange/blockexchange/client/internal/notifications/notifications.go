@@ -15,7 +15,7 @@ import (
 const bufferSize = 16
 
 // PubSub is a simple interface for publishing blocks and being able to subscribe
-// for cids. It's used internally by bitswap to decouple receiving blocks
+// for cids. It's used internally by BlockExchange to decouple receiving blocks
 // and actually providing them back to the GetBlocks caller.
 type PubSub interface {
 	Publish(from peer.ID, blocks ...blocks.Block)

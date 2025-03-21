@@ -270,7 +270,7 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeo
 	var dhTimeoutMgr DontHaveTimeoutManager
 	if onDontHaveTimeout != nil {
 		onTimeout = func(ks []cid.Cid, timeout time.Duration) {
-			log.Infow("Bitswap: timeout waiting for blocks", "timeout", timeout.String(), "cids", ks, "peer", p)
+			log.Infow("BlockExchange: timeout waiting for blocks", "timeout", timeout.String(), "cids", ks, "peer", p)
 			onDontHaveTimeout(p, ks)
 		}
 		dhTimeoutMgr = newDontHaveTimeoutMgr(newPeerConnection(p, network), onTimeout, opts.dhtConfig)
@@ -571,7 +571,7 @@ func (mq *MessageQueue) sendMessage() {
 	var wantlist []message.Entry
 
 	for {
-		// Convert want lists to a Bitswap Message
+		// Convert want lists to a Swap Message
 		message, onSent := mq.extractOutgoingMessage(supportsHave)
 		if message.Empty() {
 			return
@@ -739,7 +739,7 @@ func (mq *MessageQueue) pendingWorkCount() int {
 	return mq.bcstWants.pending.Len() + mq.peerWants.pending.Len() + mq.cancels.Len()
 }
 
-// Convert the lists of wants into a Bitswap message
+// Convert the lists of wants into a Swap message
 func (mq *MessageQueue) extractOutgoingMessage(supportsHave bool) (message.Wantlist, func()) {
 	// Get broadcast and regular wantlist entries.
 	mq.wllock.Lock()

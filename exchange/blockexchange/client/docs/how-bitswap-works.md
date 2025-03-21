@@ -1,33 +1,33 @@
-How Bitswap Works
+How BlockExchange Works
 =================
 
-When a client requests blocks, Bitswap sends the CID of those blocks to its peers as "wants". When Bitswap receives a "want" from a peer, it responds with the corresponding block.
+When a client requests blocks, BlockExchange sends the CID of those blocks to its peers as "wants". When BlockExchange receives a "want" from a peer, it responds with the corresponding block.
 
 ### Requesting Blocks
 
 #### Sessions
 
-Bitswap Sessions allow the client to make related requests to the same group of peers. For example typically requests to fetch all the blocks in a file would be made with a single session.
+BlockExchange Sessions allow the client to make related requests to the same group of peers. For example typically requests to fetch all the blocks in a file would be made with a single session.
 
 #### Discovery
 
-To discover which peers have a block, Bitswap broadcasts a `want-have` message to all peers it is connected to asking if they have the block.
+To discover which peers have a block, BlockExchange broadcasts a `want-have` message to all peers it is connected to asking if they have the block.
 
 Any peers that have the block respond with a `HAVE` message. They are added to the Session.
 
-If no connected peers have the block, Bitswap queries the DHT to find peers that have the block.
+If no connected peers have the block, BlockExchange queries the DHT to find peers that have the block.
 
 ### Wants
 
-When the client requests a block, Bitswap sends a `want-have` message with the block CID to all peers in the Session to ask who has the block.
+When the client requests a block, BlockExchange sends a `want-have` message with the block CID to all peers in the Session to ask who has the block.
 
-Bitswap simultaneously sends a `want-block` message to one of the peers in the Session to request the block. If the peer does not have the block, it responds with a `DONT_HAVE` message. In that case Bitswap selects another peer and sends the `want-block` to that peer.
+BlockExchange simultaneously sends a `want-block` message to one of the peers in the Session to request the block. If the peer does not have the block, it responds with a `DONT_HAVE` message. In that case BlockExchange selects another peer and sends the `want-block` to that peer.
 
-If no peers have the block, Bitswap broadcasts a `want-have` to all connected peers, and queries the DHT to find peers that have the block.
+If no peers have the block, BlockExchange broadcasts a `want-have` to all connected peers, and queries the DHT to find peers that have the block.
 
 #### Peer Selection
 
-Bitswap uses a probabilistic algorithm to select which peer to send `want-block` to, favouring peers that
+BlockExchange uses a probabilistic algorithm to select which peer to send `want-block` to, favouring peers that
 - sent `HAVE` for the block
 - were discovered as providers of the block in the DHT
 - were first to send blocks to previous session requests
@@ -36,39 +36,39 @@ The selection algorithm includes some randomness so as to allow peers that are d
 
 #### Periodic Search Widening
 
-Periodically the Bitswap Session selects a random CID from the list of "pending wants" (wants that have been sent but for which no block has been received). Bitswap broadcasts a `want-have` to all connected peers and queries the DHT for the CID.
+Periodically the BlockExchange Session selects a random CID from the list of "pending wants" (wants that have been sent but for which no block has been received). BlockExchange broadcasts a `want-have` to all connected peers and queries the DHT for the CID.
 
 ### Serving Blocks
 
 #### Processing Requests
 
-When Bitswap receives a `want-have` it checks if the block is in the local blockstore.
+When BlockExchange receives a `want-have` it checks if the block is in the local blockstore.
 
-If the block is in the local blockstore Bitswap responds with `HAVE`. If the block is small Bitswap sends the block itself instead of `HAVE`.
+If the block is in the local blockstore BlockExchange responds with `HAVE`. If the block is small BlockExchange sends the block itself instead of `HAVE`.
 
-If the block is not in the local blockstore, Bitswap checks the `send-dont-have` flag on the request. If `send-dont-have` is true, Bitswap sends `DONT_HAVE`. Otherwise it does not respond.
+If the block is not in the local blockstore, BlockExchange checks the `send-dont-have` flag on the request. If `send-dont-have` is true, BlockExchange sends `DONT_HAVE`. Otherwise it does not respond.
 
 #### Processing Incoming Blocks
 
-When Bitswap receives a block, it checks to see if any peers sent `want-have` or `want-block` for the block. If so it sends `HAVE` or the block itself to those peers.
+When BlockExchange receives a block, it checks to see if any peers sent `want-have` or `want-block` for the block. If so it sends `HAVE` or the block itself to those peers.
 
 #### Priority
 
-Bitswap keeps requests from each peer in separate queues, ordered by the priority specified in the request message.
+BlockExchange keeps requests from each peer in separate queues, ordered by the priority specified in the request message.
 
-To select which peer to send the next response to, Bitswap chooses the peer with the least amount of data in its send queue. That way it will tend to "keep peers busy" by always keeping some data in each peer's send queue.
+To select which peer to send the next response to, BlockExchange chooses the peer with the least amount of data in its send queue. That way it will tend to "keep peers busy" by always keeping some data in each peer's send queue.
 
 
 Implementation
 ==============
 
-![Bitswap Components](./go-bitswap.png)
+![BlockExchange Components](./go-bitswap.png)
 
-### Bitswap
+### BlockExchange
 
-The Bitswap class receives incoming messages and implements the Exchange API.
+The BlockExchange class receives incoming messages and implements the Exchange API.
 
-When a message is received, Bitswap
+When a message is received, BlockExchange
 - Records some statistics about the message
 - Informs the Engine of any new wants
   So that the Engine can send responses to the wants
@@ -77,7 +77,7 @@ When a message is received, Bitswap
 - Informs the SessionManager of received blocks, HAVEs and DONT_HAVEs
   So that the SessionManager can inform interested sessions
 
-When the client makes an API call, Bitswap creates a new Session and calls the corresponding method (eg `GetBlocks()`).
+When the client makes an API call, BlockExchange creates a new Session and calls the corresponding method (eg `GetBlocks()`).
 
 ### Sending Blocks
 
@@ -128,16 +128,11 @@ When a peer responds with `DONT_HAVE`, the Session sends `want-block` to the nex
 
 ### PeerManager
 
-The PeerManager creates a MessageQueue for each peer that connects to Bitswap. It remembers which `want-have` / `want-block` has been sent to each peer, and directs any new wants to the correct peer.
+The PeerManager creates a MessageQueue for each peer that connects to BlockExchange. It remembers which `want-have` / `want-block` has been sent to each peer, and directs any new wants to the correct peer.
 The MessageQueue groups together wants into a message, and sends the message to the peer. It monitors for timeouts and simulates a `DONT_HAVE` response if a peer takes too long to respond.
 
 ### Finding Providers
 
-When bitswap can't find a connected peer who already has the block it wants, it falls back to querying a content routing system (a DHT in IPFS's case) to try to locate a peer with the block.
+When BlockExchange can't find a connected peer who already has the block it wants, it falls back to querying a content routing system (a DHT in IPFS's case) to try to locate a peer with the block.
 
-Bitswap routes these requests through the ProviderQueryManager system, which rate-limits these requests and also deduplicates in-process requests.
-
-### Providing
-
-As a bitswap client receives blocks, by default it announces them on the provided content routing system (again, a DHT in most cases). This behaviour can be disabled by passing `bitswap.ProvideEnabled(false)` as a parameter when initializing Bitswap. IPFS currently has its own experimental provider system ([go-ipfs-provider](https://github.com/ipfs/go-ipfs-provider)) which will eventually replace Bitswap's system entirely.
-
+BlockExchange routes these requests through the ProviderQueryManager system, which rate-limits these requests and also deduplicates in-process requests.

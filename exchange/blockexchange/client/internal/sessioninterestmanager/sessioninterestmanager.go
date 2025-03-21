@@ -117,7 +117,7 @@ func (sim *SessionInterestManager) FilterSessionInterested(ses uint64, ksets ...
 	return kres
 }
 
-// When bitswap receives blocks it calls SplitWantedUnwanted() to discard
+// When BlockExchange receives blocks it calls SplitWantedUnwanted() to discard
 // unwanted blocks
 func (sim *SessionInterestManager) SplitWantedUnwanted(blks []blocks.Block) ([]blocks.Block, []blocks.Block) {
 	// Get the wanted block keys as a set

@@ -1,4 +1,4 @@
-// Package decision implements the decision engine for the bitswap service.
+// Package decision implements the decision engine for the BlockExchange server.
 package decision
 
 import (
@@ -60,7 +60,7 @@ import (
 // whatever it sees fit to produce desired outcomes (get wanted keys
 // quickly, maintain good relationships with peers, etc).
 
-var log = logging.Logger("bitswap/server/decision")
+var log = logging.Logger("BlockExchange/server/decision")
 
 const (
 	// outboxChanBuffer must be 0 to prevent stale messages from being sent
@@ -387,14 +387,14 @@ func NewEngine(
 
 	e := &Engine{
 		scoreLedger:                     NewDefaultScoreLedger(),
-		bstoreWorkerCount:               defaults.BitswapEngineBlockstoreWorkerCount,
-		maxOutstandingBytesPerPeer:      defaults.BitswapMaxOutstandingBytesPerPeer,
+		bstoreWorkerCount:               defaults.BlockExchangeEngineBlockstoreWorkerCount,
+		maxOutstandingBytesPerPeer:      defaults.BlockExchangeMaxOutstandingBytesPerPeer,
 		peerTagger:                      peerTagger,
 		outbox:                          make(chan (<-chan *Envelope), outboxChanBuffer),
 		workSignal:                      make(chan struct{}, 1),
 		ticker:                          time.NewTicker(time.Millisecond * 100),
 		wantHaveReplaceSize:             defaults.DefaultWantHaveReplaceSize,
-		taskWorkerCount:                 defaults.BitswapEngineTaskWorkerCount,
+		taskWorkerCount:                 defaults.BlockExchangeEngineTaskWorkerCount,
 		sendDontHaves:                   true,
 		self:                            self,
 		pendingGauge:                    bmetrics.PendingEngineGauge(ctx),
@@ -459,7 +459,7 @@ func (e *Engine) updateMetrics() {
 // for a block that is not in the blockstore. Either
 // - Send a DONT_HAVE message
 // - Simply don't respond
-// Older versions of Bitswap did not respond, so this allows us to simulate
+// Older versions of BlockExchange did not respond, so this allows us to simulate
 // those older versions for testing.
 func (e *Engine) SetSendDontHaves(send bool) {
 	e.sendDontHaves = send
@@ -526,7 +526,7 @@ func (e *Engine) LedgerForPeer(p peer.ID) *Receipt {
 }
 
 // Each taskWorker pulls items off the request queue up to the maximum size
-// and adds them to an envelope that is passed off to the bitswap workers,
+// and adds them to an envelope that is passed off to the BlockExchange workers,
 // which send the message to the network.
 func (e *Engine) taskWorker(ctx context.Context) {
 	defer e.waitWorkers.Done()
@@ -588,7 +588,7 @@ func (e *Engine) nextEnvelope(ctx context.Context) (*Envelope, error) {
 		// Create a new message
 		msg := message.New(false)
 
-		log.Debugw("Bitswap process tasks", "local", e.self, "taskCount", len(nextTasks))
+		log.Debugw("BlockExchange process tasks", "local", e.self, "taskCount", len(nextTasks))
 
 		// Amount of data in the request queue still waiting to be popped
 		msg.SetPendingBytes(int32(pendingBytes))
@@ -641,7 +641,7 @@ func (e *Engine) nextEnvelope(ctx context.Context) (*Envelope, error) {
 			continue
 		}
 
-		log.Debugw("Bitswap engine -> msg", "local", e.self, "to", p, "blockCount", len(msg.Blocks()), "presenceCount", len(msg.BlockPresences()), "size", msg.Size())
+		log.Debugw("BlockExchange engine -> msg", "local", e.self, "to", p, "blockCount", len(msg.Blocks()), "presenceCount", len(msg.BlockPresences()), "size", msg.Size())
 		return &Envelope{
 			Peer:    p,
 			Message: msg,
@@ -736,7 +736,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m message.Wantl
 
 	for _, entry := range cancels {
 		c := entry.Cid
-		log.Debugw("Bitswap engine <- cancel", "local", e.self, "from", p, "cid", c)
+		log.Debugw("BlockExchange engine <- cancel", "local", e.self, "from", p, "cid", c)
 		if e.peerLedger.CancelWant(p, c) {
 			e.peerRequestQueue.Remove(c, p)
 		}
@@ -767,7 +767,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m message.Wantl
 
 	// Deny access to blocks
 	for _, entry := range denials {
-		log.Debugw("Bitswap engine: block denied access", "local", e.self, "from", p, "cid", entry.Cid, "sendDontHave", entry.SendDontHave)
+		log.Debugw("BlockExchange engine: block denied access", "local", e.self, "from", p, "cid", entry.Cid, "sendDontHave", entry.SendDontHave)
 		sendDontHave(entry)
 	}
 
@@ -778,7 +778,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m message.Wantl
 
 		// If the block was not found
 		if !found {
-			log.Debugw("Bitswap engine: block not found", "local", e.self, "from", p, "cid", c, "sendDontHave", entry.SendDontHave)
+			log.Debugw("BlockExchange engine: block not found", "local", e.self, "from", p, "cid", c, "sendDontHave", entry.SendDontHave)
 			sendDontHave(entry)
 			continue
 		}
@@ -788,7 +788,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m message.Wantl
 		// to a want-block.
 		isWantBlock := blockSize != 0 && e.sendAsBlock(entry.WantType, blockSize)
 
-		log.Debugw("Bitswap engine: block found", "local", e.self, "from", p, "cid", c, "isWantBlock", isWantBlock)
+		log.Debugw("BlockExchange engine: block found", "local", e.self, "from", p, "cid", c, "isWantBlock", isWantBlock)
 
 		// entrySize is the amount of space the entry takes up in the
 		// message we send to the recipient. If we're sending a block, the
@@ -922,7 +922,7 @@ func (e *Engine) splitWantsCancelsDenials(p peer.ID, m message.Wantlist) ([]mess
 		return nil, nil, nil, nil
 	}
 
-	log.Debugw("Bitswap engine <- msg", "local", e.self, "from", p, "entryCount", len(entries))
+	log.Debugw("BlockExchange engine <- msg", "local", e.self, "from", p, "entryCount", len(entries))
 
 	wants := entries[:0] // shift in-place
 	var cancels, denials []message.Entry
@@ -948,9 +948,9 @@ func (e *Engine) splitWantsCancelsDenials(p peer.ID, m message.Wantlist) ([]mess
 		}
 
 		if et.WantType == pb.Message_Wantlist_Have {
-			log.Debugw("Bitswap engine <- want-have", "local", e.self, "from", p, "cid", c)
+			log.Debugw("BlockExchange engine <- want-have", "local", e.self, "from", p, "cid", c)
 		} else {
-			log.Debugw("Bitswap engine <- want-block", "local", e.self, "from", p, "cid", c)
+			log.Debugw("BlockExchange engine <- want-block", "local", e.self, "from", p, "cid", c)
 		}
 
 		// Do not take more wants that can be handled.
@@ -978,7 +978,7 @@ func (e *Engine) ReceivedBlocks(from peer.ID, blks []blocks.Block) {
 
 	// Record how many bytes were received in the ledger
 	for _, blk := range blks {
-		log.Debugw("Bitswap engine <- block", "local", e.self, "from", from, "cid", blk.Cid(), "size", len(blk.RawData()))
+		log.Debugw("BlockExchange engine <- block", "local", e.self, "from", from, "cid", blk.Cid(), "size", len(blk.RawData()))
 		e.scoreLedger.AddToReceivedBytes(from, len(blk.RawData()))
 	}
 }

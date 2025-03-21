@@ -64,7 +64,7 @@ func (spm *SessionPeerManager) AddPeer(p peer.ID) bool {
 	// connection
 	spm.tagger.TagPeer(p, spm.tag, sessionPeerTagValue)
 
-	log.Debugw("Bitswap: Added peer to session", "session", spm.id, "peer", p, "peerCount", len(spm.peers))
+	log.Debugw("BlockExchange: Added peer to session", "session", spm.id, "peer", p, "peerCount", len(spm.peers))
 	return true
 }
 
@@ -94,7 +94,7 @@ func (spm *SessionPeerManager) RemovePeer(p peer.ID) bool {
 	spm.tagger.UntagPeer(p, spm.tag)
 	spm.tagger.Unprotect(p, spm.tag)
 
-	log.Debugw("Bitswap: removed peer from session", "session", spm.id, "peer", p, "peerCount", len(spm.peers))
+	log.Debugw("BlockExchange: removed peer from session", "session", spm.id, "peer", p, "peerCount", len(spm.peers))
 	return true
 }
 

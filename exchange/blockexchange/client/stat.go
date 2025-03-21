@@ -4,7 +4,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 )
 
-// Stat is a struct that provides various statistics on bitswap operations
+// Stat is a struct that provides various statistics on BlockExchange operations
 type Stat struct {
 	Wantlist         []cid.Cid
 	BlocksReceived   uint64
@@ -14,7 +14,7 @@ type Stat struct {
 	MessagesReceived uint64
 }
 
-// Stat returns aggregated statistics about bitswap operations
+// Stat returns aggregated statistics about BlockExchange operations
 func (bs *Client) Stat() (st Stat, err error) {
 	bs.counterLk.Lock()
 	c := bs.counters

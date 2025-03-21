@@ -115,7 +115,7 @@ func assertBlockListsFrom(from peer.ID, got, exp []blocks.Block) error {
 }
 
 // TestCustomProviderQueryManager tests that nothing breaks if we use a custom
-// PQM when creating bitswap.
+// PQM when creating BlockExchange.
 func TestCustomProviderQueryManager(t *testing.T) {
 	vnet := getVirtualNetwork()
 	router := mockrouting.NewServer()
@@ -126,7 +126,7 @@ func TestCustomProviderQueryManager(t *testing.T) {
 	a := ig.Next()
 	b := ig.Next()
 
-	// Replace bitswap in instance a with our customized one.
+	// Replace BlockExchange in instance a with our customized one.
 	pqm, err := providerquerymanager.New(a.Adapter, router.Client(a.Identity))
 	if err != nil {
 		t.Fatal(err)
@@ -140,7 +140,7 @@ func TestCustomProviderQueryManager(t *testing.T) {
 		blockexchange.WithClientOption(client.WithDefaultProviderQueryManager(false)))
 	a.Exchange.Close() // close old to be sure.
 	a.Exchange = bs
-	// Connect instances only after bitswap exists.
+	// Connect instances only after BlockExchange exists.
 	testinstance.ConnectInstances([]testinstance.Instance{a, b})
 
 	// Add a block to Peer B
@@ -575,7 +575,7 @@ func TestDontHaveTimeoutConfig(t *testing.T) {
 
 	a := ig.Next()
 
-	// Replace bitswap in instance a with our customized one.
+	// Replace BlockExchange in instance a with our customized one.
 	pqm, err := providerquerymanager.New(a.Adapter, router.Client(a.Identity))
 	if err != nil {
 		t.Fatal(err)

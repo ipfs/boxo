@@ -91,8 +91,8 @@ type op struct {
 	keys []cid.Cid
 }
 
-// Session holds state for an individual bitswap transfer operation.
-// This allows bitswap to make smarter decisions about who to send wantlist
+// Session holds state for an individual BlockExchange transfer operation.
+// This allows BlockExchange to make smarter decisions about who to send wantlist
 // info to, and who to request blocks from.
 type Session struct {
 	// dependencies
@@ -127,7 +127,7 @@ type Session struct {
 	self peer.ID
 }
 
-// New creates a new bitswap session whose lifetime is bounded by the
+// New creates a new BlockExchange session whose lifetime is bounded by the
 // given context.
 func New(
 	ctx context.Context,
@@ -210,13 +210,13 @@ func (s *Session) logReceiveFrom(from peer.ID, interestedKs []cid.Cid, haves []c
 	}
 
 	for _, c := range interestedKs {
-		log.Debugw("Bitswap <- block", "local", s.self, "from", from, "cid", c, "session", s.id)
+		log.Debugw("BlockExchange <- block", "local", s.self, "from", from, "cid", c, "session", s.id)
 	}
 	for _, c := range haves {
-		log.Debugw("Bitswap <- HAVE", "local", s.self, "from", from, "cid", c, "session", s.id)
+		log.Debugw("BlockExchange <- HAVE", "local", s.self, "from", from, "cid", c, "session", s.id)
 	}
 	for _, c := range dontHaves {
-		log.Debugw("Bitswap <- DONT_HAVE", "local", s.self, "from", from, "cid", c, "session", s.id)
+		log.Debugw("BlockExchange <- DONT_HAVE", "local", s.self, "from", from, "cid", c, "session", s.id)
 	}
 }
 
