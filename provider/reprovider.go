@@ -57,6 +57,8 @@ type reprovider struct {
 	q  *queue.Queue
 	ds datastore.Batching
 
+	memOnlyQueue bool
+
 	reprovideCh         chan cid.Cid
 	noReprovideInFlight chan struct{}
 
@@ -138,7 +140,11 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 	}
 
 	s.ds = namespace.Wrap(ds, s.keyPrefix)
-	s.q = queue.NewQueue(s.ds)
+	if s.memOnlyQueue {
+		s.q = queue.NewQueue(nil)
+	} else {
+		s.q = queue.NewQueue(s.ds)
+	}
 
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options
