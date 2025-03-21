@@ -75,15 +75,23 @@ func TestReprovider(t *testing.T) {
 	t.Parallel()
 	t.Run("many", func(t *testing.T) {
 		t.Parallel()
-		testProvider(t, false)
+		testProvider(t, false, false)
 	})
 	t.Run("single", func(t *testing.T) {
 		t.Parallel()
-		testProvider(t, true)
+		testProvider(t, true, false)
 	})
 }
 
-func testProvider(t *testing.T, singleProvide bool) {
+func TestReproviderMemOnly(t *testing.T) {
+	t.Parallel()
+	t.Run("many", func(t *testing.T) {
+		t.Parallel()
+		testProvider(t, false, true)
+	})
+}
+
+func testProvider(t *testing.T, singleProvide, memOnlyQueue bool) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 
 	// It has to be so big because the combo of noisy CI runners + OSes that don't
@@ -110,7 +118,7 @@ func testProvider(t *testing.T, singleProvide bool) {
 
 	var keyWait sync.Mutex
 	keyWait.Lock()
-	batchSystem, err := New(ds, Online(provider), KeyProvider(func(ctx context.Context) (<-chan cid.Cid, error) {
+	batchSystem, err := New(ds, Online(provider), WithMemOnlyQueue(memOnlyQueue), KeyProvider(func(ctx context.Context) (<-chan cid.Cid, error) {
 		ch := make(chan cid.Cid)
 		go func() {
 			defer keyWait.Unlock()
