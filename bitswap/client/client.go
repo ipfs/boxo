@@ -5,6 +5,9 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -38,6 +41,11 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+const (
+	defaultSessionsLimit = 2048
+	envLimitVar          = "BS_CLIENT_SESSIONS_LIMIT"
+)
+
 var log = logging.Logger("bitswap/client")
 
 type DontHaveTimeoutConfig = bsmq.DontHaveTimeoutConfig
@@ -45,6 +53,8 @@ type DontHaveTimeoutConfig = bsmq.DontHaveTimeoutConfig
 func DefaultDontHaveTimeoutConfig() *DontHaveTimeoutConfig {
 	return bsmq.DefaultDontHaveTimeoutConfig()
 }
+
+var ErrSessionsLimit = bssm.ErrSessionsLimit
 
 // Option defines the functional option type that can be used to configure
 // bitswap instances
@@ -137,11 +147,32 @@ func WithDefaultProviderQueryManager(defaultProviderQueryManager bool) Option {
 	}
 }
 
+func WithSessionsLimit(limit int) Option {
+	return func(bs *Client) {
+		bs.sessionsLimit = limit
+	}
+}
+
 type BlockReceivedNotifier interface {
 	// ReceivedBlocks notifies the decision engine that a peer is well-behaving
 	// and gave us useful data, potentially increasing its score and making us
 	// send them more data in exchange.
 	ReceivedBlocks(peer.ID, []blocks.Block)
+}
+
+func getSessionsLimitFromEnv() int {
+	envLimit := os.Getenv(envLimitVar)
+	if envLimit == "" {
+		return defaultSessionsLimit
+	}
+	limit, err := strconv.Atoi(envLimit)
+	if err != nil {
+		panic(fmt.Sprintf("bad value for %s: %q", envLimitVar, envLimit))
+	}
+	if limit < 0 {
+		panic(fmt.Sprintf("value of %s must be 0 or greater", envLimitVar))
+	}
+	return limit
 }
 
 // New initializes a Bitswap client that runs until client.Close is called.
@@ -170,12 +201,15 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout:  true,
 		defaultProviderQueryManager: true,
+		sessionsLimit:               getSessionsLimitFromEnv(),
 	}
 
 	// apply functional options before starting and running bitswap
 	for _, option := range options {
 		option(bs)
 	}
+
+	log.Infof("bitswap client sessions limit: %d", bs.sessionsLimit)
 
 	// onDontHaveTimeout is called when a want-block is sent to a peer that
 	// has an old version of Bitswap that doesn't support DONT_HAVE messages,
@@ -243,7 +277,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		return bsspm.New(id, network)
 	}
 	notif := notifications.New()
-	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
+	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self(), bs.sessionsLimit)
 
 	bs.sm = sm
 	bs.notif = notif
@@ -311,6 +345,7 @@ type Client struct {
 	skipDuplicatedBlocksStats bool
 
 	perPeerSendDelay time.Duration
+	sessionsLimit    int
 }
 
 type counters struct {
@@ -341,7 +376,10 @@ func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
 func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error) {
 	ctx, span := internal.StartSpan(ctx, "GetBlocks", trace.WithAttributes(attribute.Int("NumKeys", len(keys))))
 	defer span.End()
-	session := bs.sm.NewSession(ctx, bs.provSearchDelay, bs.rebroadcastDelay)
+	session, err := bs.sm.NewSession(ctx, bs.provSearchDelay, bs.rebroadcastDelay)
+	if err != nil {
+		return nil, err
+	}
 	return session.GetBlocks(ctx, keys)
 }
 
@@ -571,7 +609,7 @@ func (bs *Client) IsOnline() bool {
 // method, but the session will use the fact that the requests are related to
 // be more efficient in its requests to peers. If you are using a session
 // from blockservice, it will create a bitswap session automatically.
-func (bs *Client) NewSession(ctx context.Context) exchange.Fetcher {
+func (bs *Client) NewSession(ctx context.Context) (exchange.Fetcher, error) {
 	ctx, span := internal.StartSpan(ctx, "NewSession")
 	defer span.End()
 	return bs.sm.NewSession(ctx, bs.provSearchDelay, bs.rebroadcastDelay)

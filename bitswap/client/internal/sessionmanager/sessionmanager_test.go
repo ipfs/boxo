@@ -121,14 +121,22 @@ func TestReceiveFrom(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "", 0)
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
 
-	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	secondSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	firstSes, err := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute))
+	require.NoError(t, err)
+	firstSession := firstSes.(*fakeSession)
+
+	secondSes, err := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute))
+	require.NoError(t, err)
+	secondSession := secondSes.(*fakeSession)
+
+	thirdSes, err := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute))
+	require.NoError(t, err)
+	thirdSession := thirdSes.(*fakeSession)
 
 	sim.RecordSessionInterest(firstSession.ID(), []cid.Cid{block.Cid()})
 	sim.RecordSessionInterest(thirdSession.ID(), []cid.Cid{block.Cid()})
@@ -166,14 +174,22 @@ func TestReceiveBlocksWhenManagerShutdown(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "", 0)
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
 
-	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	secondSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	firstSes, err := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute))
+	require.NoError(t, err)
+	firstSession := firstSes.(*fakeSession)
+
+	secondSes, err := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute))
+	require.NoError(t, err)
+	secondSession := secondSes.(*fakeSession)
+
+	thirdSes, err := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute))
+	require.NoError(t, err)
+	thirdSession := thirdSes.(*fakeSession)
 
 	sim.RecordSessionInterest(firstSession.ID(), []cid.Cid{block.Cid()})
 	sim.RecordSessionInterest(secondSession.ID(), []cid.Cid{block.Cid()})
@@ -200,15 +216,23 @@ func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "", 0)
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
 
-	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	firstSes, err := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute))
+	require.NoError(t, err)
+	firstSession := firstSes.(*fakeSession)
+
 	sessionCtx, sessionCancel := context.WithCancel(ctx)
-	secondSession := sm.NewSession(sessionCtx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	secondSes, err := sm.NewSession(sessionCtx, time.Second, delay.Fixed(time.Minute))
+	require.NoError(t, err)
+	secondSession := secondSes.(*fakeSession)
+
+	thirdSes, err := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute))
+	require.NoError(t, err)
+	thirdSession := thirdSes.(*fakeSession)
 
 	sim.RecordSessionInterest(firstSession.ID(), []cid.Cid{block.Cid()})
 	sim.RecordSessionInterest(secondSession.ID(), []cid.Cid{block.Cid()})
@@ -227,6 +251,42 @@ func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
 	}
 }
 
+func TestSessionLimit(t *testing.T) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	notif := notifications.New()
+	defer notif.Shutdown()
+	sim := bssim.New()
+	bpm := bsbpm.New()
+	pm := &fakePeerManager{}
+
+	sessionsLimit := 5
+	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "", sessionsLimit)
+
+	for i := 0; i < sessionsLimit+1; i++ {
+		ses, err := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute))
+		if i == sessionsLimit {
+			require.ErrorIs(t, err, ErrSessionsLimit)
+			break
+		}
+		require.NoError(t, err)
+		firstSession := ses.(*fakeSession)
+
+		//p := peer.ID(strconv.Itoa(123))
+		block := blocks.NewBlock([]byte("block"))
+		cids := []cid.Cid{block.Cid()}
+		//firstSession := firstSes.(*fakeSession)
+		sim.RecordSessionInterest(firstSession.ID(), cids)
+		//sm.ReceiveFrom(ctx, p, []cid.Cid{}, []cid.Cid{}, cids)
+	}
+
+	sm.Shutdown()
+
+	// wait for cleanup
+	time.Sleep(10 * time.Millisecond)
+}
+
 func TestShutdown(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -236,12 +296,14 @@ func TestShutdown(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "", 0)
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
 	cids := []cid.Cid{block.Cid()}
-	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	firstSes, err := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute))
+	require.NoError(t, err)
+	firstSession := firstSes.(*fakeSession)
 	sim.RecordSessionInterest(firstSession.ID(), cids)
 	sm.ReceiveFrom(ctx, p, []cid.Cid{}, []cid.Cid{}, cids)
 

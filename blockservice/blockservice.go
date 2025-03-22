@@ -448,7 +448,12 @@ func (s *Session) grabSession() exchange.Fetcher {
 		if !ok {
 			return
 		}
-		s.ses = sesEx.NewSession(s.sesctx)
+		newSes, err := sesEx.NewSession(s.sesctx)
+		if err != nil {
+			logger.Error(err)
+			return
+		}
+		s.ses = newSes
 	})
 
 	return s.ses
