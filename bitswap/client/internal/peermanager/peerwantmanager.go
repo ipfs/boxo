@@ -136,12 +136,9 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 		return
 	}
 
-	// Allocate a single buffer to filter broadcast wants for each peer
-	bcstWantsBuffer := make([]cid.Cid, 0, len(unsent))
-
 	// Send broadcast wants to each peer
 	for _, pws := range pwm.peerWants {
-		peerUnsent := bcstWantsBuffer[:0]
+		var peerUnsent []cid.Cid
 		for _, c := range unsent {
 			// If we've already sent a want to this peer, skip them.
 			if !pws.wantBlocks.Has(c) && !pws.wantHaves.Has(c) {
@@ -150,6 +147,8 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 		}
 
 		if len(peerUnsent) > 0 {
+			// Update peer's MessageQueue async to return sooner and release
+			// PeerManager mutex.
 			pws.peerQueue.AddBroadcastWantHaves(peerUnsent)
 		}
 	}
@@ -252,7 +251,8 @@ func (pwm *peerWantManager) sendCancels(cancelKs []cid.Cid) {
 	// Send cancels to a particular peer
 	send := func(pws *peerWant) {
 		// Start from the broadcast cancels
-		toCancel := broadcastCancels
+		toCancel := make([]cid.Cid, len(broadcastCancels))
+		copy(toCancel, broadcastCancels)
 
 		// For each key to be cancelled
 		for _, c := range cancelKs {
