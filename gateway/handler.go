@@ -83,6 +83,7 @@ func NewHandler(c Config, backend IPFSBackend) http.Handler {
 // 4. The Content-Type header must already be set
 func serveContent(w http.ResponseWriter, req *http.Request, modtime time.Time, size int64, content io.Reader) (int, bool, error) {
 	ew := &errRecordingResponseWriter{ResponseWriter: w}
+	w.Header().Set("Accept-Ranges", "bytes")
 	httpServeContent(ew, req, modtime, size, content)
 
 	// When we calculate some metrics we want a flag that lets us to ignore
