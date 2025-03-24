@@ -118,13 +118,13 @@ func (q *Queue) Dequeue() <-chan cid.Cid {
 func (q *Queue) worker(ctx context.Context) {
 	defer close(q.closed)
 
-	var k datastore.Key = datastore.Key{}
-	var c cid.Cid = cid.Undef
-	var cstr string
-	var counter uint64
-
-	var readInBuf <-chan cid.Cid
-	readInBuf = q.inBuf.Out()
+	var (
+		c       cid.Cid = cid.Undef
+		counter uint64
+		cstr    string
+		k       datastore.Key = datastore.Key{}
+	)
+	readInBuf := q.inBuf.Out()
 
 	for {
 		if c == cid.Undef {
