@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `gateway`: query parameters are now supported and preserved in redirects triggered by a [`_redirects`](https://specs.ipfs.tech/http-gateways/web-redirects-file/) file [#886](https://github.com/ipfs/boxo/pull/886)
+
 ### Security
 
 
@@ -58,6 +60,7 @@ The following emojis are used to highlight certain changes:
 - upgrade to `go-libp2p-kad-dht` [v0.30.2](github.com/libp2p/go-libp2p-kad-dht v0.30.2)
 - upgrade to `go-datastore` [v0.8.2](https://github.com/ipfs/go-datastore/releases/tag/v0.8.2) - includes API updates and removes go-process
 - `bitswap/client` reduce lock scope of PeerManageer to help performance [#860](https://github.com/ipfs/boxo/pull/860)
+- `NewFromIpfsHost()` and the rest of the `BitSwapNetwork` implementation has moved from `github.com/ipfs/boxo/bitswap/network` to `github.com/ipfs/boxo/bitswap/network/bsnet`.
 
 ### Removed
 
