@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"time"
 
 	"github.com/alecthomas/units"
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
@@ -69,6 +70,57 @@ type Directory interface {
 
 	// GetCidBuilder returns the CID Builder used.
 	GetCidBuilder() cid.Builder
+
+	// setMaxLinks sets the max width of the Directory.
+	setMaxLinks(n int)
+}
+
+type directoryWithOptions interface {
+	Directory
+	// setMaxLinks sets the max width of the Directory.
+	setMaxLinks(n int)
+	setStats(os.FileMode, time.Time)
+}
+
+type DirectoryOption func(directoryWithOptions)
+
+// WithMaxLinks stablishes the max number of links allowed for a directory:
+//
+// - On Dynamic directories using a BasicDirectory, it can trigger conversion
+// to HAMT when set and exceeded. The subsequent HAMT nodes will use MaxLinks
+// as ShardWidth. Conversion can happen too based on HAMTShardingSize.
+//
+// - On Dynamic directories using a HAMTDirectory, it can trigger conversion
+// to BasicDirectory when the number of links is below MaxLinks (and
+// HAMTShardingSize allows).
+//
+// - On Basic directories, it causes an error when adding more than MaxLinks
+// children.
+//
+// - On HAMT directories, it sets the ShardWidth, otherwise DefaultShardWidth
+// is used.
+//
+// HAMT directories require this value to be a power of 2 and a multiple of 8.
+// If it is not the case, it will not be used and DefaultHAMTWidth be used
+// instead.
+func WithMaxLinks(n int) DirectoryOption {
+	return func(d directoryWithOptions) {
+		d.setMaxLinks(n)
+	}
+}
+
+// WithCidBuilder sets the CidBuilder for new Directories.
+func WithCidBuilder(cb cid.Builder) DirectoryOption {
+	return func(d directoryWithOptions) {
+		d.SetCidBuilder(cb)
+	}
+}
+
+// WithStat can be used to set the empty directory node permissions.
+func WithStat(mode os.FileMode, mtime time.Time) DirectoryOption {
+	return func(d directoryWithOptions) {
+		d.setStats(mode, mtime)
+	}
 }
 
 // TODO: Evaluate removing `dserv` from this layer and providing it in MFS.
@@ -84,6 +136,12 @@ func init() {
 	linksize.LinkSizeFunction = productionLinkSize
 }
 
+var (
+	_ directoryWithOptions = (*DynamicDirectory)(nil)
+	_ directoryWithOptions = (*BasicDirectory)(nil)
+	_ directoryWithOptions = (*HAMTDirectory)(nil)
+)
+
 // BasicDirectory is the basic implementation of `Directory`. All the entries
 // are stored in a single node.
 type BasicDirectory struct {
@@ -96,6 +154,14 @@ type BasicDirectory struct {
 	// (We maintain this value up to date even if the HAMTShardingSize is off
 	// since potentially the option could be activated on the fly.)
 	estimatedSize int
+	totalLinks    int
+
+	// opts
+	// maxNumberOfLinks. If set, can trigger conversion to HAMT directory.
+	maxLinks   int
+	cidBuilder cid.Builder
+	mode       os.FileMode
+	mtime      time.Time
 }
 
 // HAMTDirectory is the HAMT implementation of `Directory`.
@@ -104,30 +170,107 @@ type HAMTDirectory struct {
 	shard *hamt.Shard
 	dserv ipld.DAGService
 
+	// opts
+	maxLinks   int
+	cidBuilder cid.Builder
+	mode       os.FileMode
+	mtime      time.Time
+
 	// Track the changes in size by the AddChild and RemoveChild calls
 	// for the HAMTShardingSize option.
 	sizeChange int
+	totalLinks int
 }
 
-func newEmptyBasicDirectory(dserv ipld.DAGService) *BasicDirectory {
-	return newBasicDirectoryFromNode(dserv, format.EmptyDirNode())
+// NewBasicDirectory creates an empty basic directory with the given options.
+func NewBasicDirectory(dserv ipld.DAGService, opts ...DirectoryOption) *BasicDirectory {
+	basicDir := new(BasicDirectory)
+	basicDir.dserv = dserv
+
+	for _, o := range opts {
+		o(basicDir)
+	}
+
+	var node *mdag.ProtoNode
+	if basicDir.mode > 0 {
+		node = format.EmptyDirNodeWithStat(basicDir.mode, basicDir.mtime)
+	} else {
+		node = format.EmptyDirNode()
+	}
+	basicDir.node = node
+	basicDir.node.SetCidBuilder(basicDir.cidBuilder)
+
+	// Scan node links (if any) to restore estimated size.
+	basicDir.computeEstimatedSizeAndTotalLinks()
+
+	return basicDir
 }
 
-func newBasicDirectoryFromNode(dserv ipld.DAGService, node *mdag.ProtoNode) *BasicDirectory {
+// NewBasicDirectoryFromNode creates a basic directory wrapping the given
+// ProtoNode.
+func NewBasicDirectoryFromNode(dserv ipld.DAGService, node *mdag.ProtoNode) *BasicDirectory {
 	basicDir := new(BasicDirectory)
 	basicDir.node = node
 	basicDir.dserv = dserv
 
 	// Scan node links (if any) to restore estimated size.
-	basicDir.computeEstimatedSize()
+	basicDir.computeEstimatedSizeAndTotalLinks()
 
 	return basicDir
 }
 
-// NewDirectory returns a Directory implemented by DynamicDirectory
-// containing a BasicDirectory that can be converted to a HAMTDirectory.
-func NewDirectory(dserv ipld.DAGService) Directory {
-	return &DynamicDirectory{newEmptyBasicDirectory(dserv)}
+// NewHAMTDirectory creates an empty HAMT directory with the given options.
+func NewHAMTDirectory(dserv ipld.DAGService, sizeChange int, opts ...DirectoryOption) (*HAMTDirectory, error) {
+	dir := new(HAMTDirectory)
+	dir.dserv = dserv
+	dir.sizeChange = sizeChange
+	dir.maxLinks = 0
+
+	for _, opt := range opts {
+		opt(dir)
+	}
+
+	shardWidth := DefaultShardWidth
+	if dir.maxLinks > 0 {
+		if !validShardWidth(dir.maxLinks) {
+			return nil, errors.New("MaxLinks must be a power of 2 and multiple of 8")
+		}
+		shardWidth = dir.maxLinks
+	}
+
+	shard, err := hamt.NewShard(dir.dserv, shardWidth)
+	if err != nil {
+		return nil, err
+	}
+
+	shard.SetCidBuilder(dir.cidBuilder)
+	dir.shard = shard
+
+	return dir, nil
+}
+
+// NewHAMTDirectoryFromNode creates a HAMT directory from the given node,
+// which must correspond to an existing HAMT.
+func NewHAMTDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (*HAMTDirectory, error) {
+	dir := new(HAMTDirectory)
+	dir.dserv = dserv
+	dir.sizeChange = 0
+
+	shard, err := hamt.NewHamtFromDag(dserv, node)
+	if err != nil {
+		return nil, err
+	}
+	dir.shard = shard
+	dir.totalLinks = len(node.Links())
+
+	return dir, nil
+}
+
+// NewDirectory returns a Directory implemented by DynamicDirectory containing
+// a BasicDirectory that automatically converts to a from a HAMTDirectory
+// based on HAMTShardingSize and MaxLinks (when set).
+func NewDirectory(dserv ipld.DAGService, opts ...DirectoryOption) Directory {
+	return &DynamicDirectory{NewBasicDirectory(dserv, opts...)}
 }
 
 // ErrNotADir implies that the given node was not a unixfs directory
@@ -148,23 +291,33 @@ func NewDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (Directory, err
 
 	switch fsNode.Type() {
 	case format.TDirectory:
-		return &DynamicDirectory{newBasicDirectoryFromNode(dserv, protoBufNode.Copy().(*mdag.ProtoNode))}, nil
+		return &DynamicDirectory{NewBasicDirectoryFromNode(dserv, protoBufNode.Copy().(*mdag.ProtoNode))}, nil
 	case format.THAMTShard:
-		shard, err := hamt.NewHamtFromDag(dserv, node)
+		hamtDir, err := NewHAMTDirectoryFromNode(dserv, node)
 		if err != nil {
 			return nil, err
 		}
-		return &DynamicDirectory{&HAMTDirectory{shard, dserv, 0}}, nil
+		return &DynamicDirectory{hamtDir}, nil
 	}
 
 	return nil, ErrNotADir
 }
 
-func (d *BasicDirectory) computeEstimatedSize() {
+func (d *BasicDirectory) setMaxLinks(n int) {
+	d.maxLinks = n
+}
+
+func (d *BasicDirectory) setStats(mode os.FileMode, mtime time.Time) {
+	d.mode = mode
+	d.mtime = mtime
+}
+
+func (d *BasicDirectory) computeEstimatedSizeAndTotalLinks() {
 	d.estimatedSize = 0
 	// err is just breaking the iteration and we always return nil
 	_ = d.ForEachLink(context.TODO(), func(l *ipld.Link) error {
 		d.addToEstimatedSize(l.Name, l.Cid)
+		d.totalLinks++
 		return nil
 	})
 	// ForEachLink will never fail traversing the BasicDirectory
@@ -181,13 +334,16 @@ func (d *BasicDirectory) removeFromEstimatedSize(name string, linkCid cid.Cid) {
 		// Something has gone very wrong. Log an error and recompute the
 		// size from scratch.
 		log.Error("BasicDirectory's estimatedSize went below 0")
-		d.computeEstimatedSize()
+		d.computeEstimatedSizeAndTotalLinks()
 	}
 }
 
 // SetCidBuilder implements the `Directory` interface.
 func (d *BasicDirectory) SetCidBuilder(builder cid.Builder) {
-	d.node.SetCidBuilder(builder)
+	d.cidBuilder = builder
+	if d.node != nil {
+		d.node.SetCidBuilder(builder)
+	}
 }
 
 // AddChild implements the `Directory` interface. It adds (or replaces)
@@ -219,7 +375,15 @@ func (d *BasicDirectory) needsToSwitchToHAMTDir(name string, nodeToAdd ipld.Node
 		operationSizeChange += linksize.LinkSizeFunction(name, nodeToAdd.Cid())
 	}
 
-	return d.estimatedSize+operationSizeChange >= HAMTShardingSize, nil
+	switchShardingSize := d.estimatedSize+operationSizeChange >= HAMTShardingSize
+	switchMaxLinks := false
+	// We should switch if we have reached maxLinks and a new link is being
+	// added and maxLinks is valid for shardWidth.
+	if nodeToAdd != nil && entryToRemove == nil && validShardWidth(d.maxLinks) &&
+		(d.totalLinks+1) > d.maxLinks {
+		switchMaxLinks = true
+	}
+	return switchShardingSize || switchMaxLinks, nil
 }
 
 // addLinkChild adds the link as an entry to this directory under the given
@@ -231,12 +395,20 @@ func (d *BasicDirectory) addLinkChild(ctx context.Context, name string, link *ip
 	if err != nil && err != os.ErrNotExist {
 		return err
 	}
+	if err == nil { // existed
+		d.totalLinks--
+	}
+
+	if d.maxLinks > 0 && d.totalLinks+1 > d.maxLinks {
+		return errors.New("BasicDirectory: cannot add child: maxLinks reached")
+	}
 
 	err = d.node.AddRawLink(name, link)
 	if err != nil {
 		return err
 	}
 	d.addToEstimatedSize(name, link.Cid)
+	d.totalLinks++
 	return nil
 }
 
@@ -304,6 +476,7 @@ func (d *BasicDirectory) RemoveChild(ctx context.Context, name string) error {
 
 	// The name actually existed so we should update the estimated size.
 	d.removeFromEstimatedSize(link.Name, link.Cid)
+	d.totalLinks--
 
 	return d.node.RemoveNodeLink(name)
 	// GetNodeLink didn't return ErrLinkNotFound so this won't fail with that
@@ -321,22 +494,18 @@ func (d *BasicDirectory) GetCidBuilder() cid.Builder {
 }
 
 // switchToSharding returns a HAMT implementation of this directory.
-func (d *BasicDirectory) switchToSharding(ctx context.Context) (*HAMTDirectory, error) {
-	hamtDir := new(HAMTDirectory)
-	hamtDir.dserv = d.dserv
-
-	shard, err := hamt.NewShard(d.dserv, DefaultShardWidth)
+func (d *BasicDirectory) switchToSharding(ctx context.Context, opts ...DirectoryOption) (*HAMTDirectory, error) {
+	hamtDir, err := NewHAMTDirectory(d.dserv, 0, opts...)
 	if err != nil {
 		return nil, err
 	}
-	shard.SetCidBuilder(d.node.CidBuilder())
-	hamtDir.shard = shard
 
 	for _, lnk := range d.node.Links() {
 		err = hamtDir.shard.SetLink(ctx, lnk.Name, lnk)
 		if err != nil {
 			return nil, err
 		}
+		hamtDir.totalLinks++
 	}
 
 	return hamtDir, nil
@@ -344,7 +513,19 @@ func (d *BasicDirectory) switchToSharding(ctx context.Context) (*HAMTDirectory, 
 
 // SetCidBuilder implements the `Directory` interface.
 func (d *HAMTDirectory) SetCidBuilder(builder cid.Builder) {
-	d.shard.SetCidBuilder(builder)
+	d.cidBuilder = builder
+	if d.shard != nil {
+		d.shard.SetCidBuilder(builder)
+	}
+}
+
+func (d *HAMTDirectory) setMaxLinks(maxLinks int) {
+	d.maxLinks = maxLinks
+}
+
+func (d *HAMTDirectory) setStats(mode os.FileMode, mtime time.Time) {
+	d.mode = mode
+	d.mtime = mtime
 }
 
 // AddChild implements the `Directory` interface.
@@ -358,6 +539,9 @@ func (d *HAMTDirectory) AddChild(ctx context.Context, name string, nd ipld.Node)
 		d.removeFromSizeChange(oldChild.Name, oldChild.Cid)
 	}
 	d.addToSizeChange(name, nd.Cid())
+	if oldChild == nil {
+		d.totalLinks++
+	}
 	return nil
 }
 
@@ -396,6 +580,7 @@ func (d *HAMTDirectory) RemoveChild(ctx context.Context, name string) error {
 
 	if oldChild != nil {
 		d.removeFromSizeChange(oldChild.Name, oldChild.Cid)
+		d.totalLinks--
 	}
 
 	return nil
@@ -412,9 +597,10 @@ func (d *HAMTDirectory) GetCidBuilder() cid.Builder {
 }
 
 // switchToBasic returns a BasicDirectory implementation of this directory.
-func (d *HAMTDirectory) switchToBasic(ctx context.Context) (*BasicDirectory, error) {
-	basicDir := newEmptyBasicDirectory(d.dserv)
-	basicDir.SetCidBuilder(d.GetCidBuilder())
+func (d *HAMTDirectory) switchToBasic(ctx context.Context, opts ...DirectoryOption) (*BasicDirectory, error) {
+	// needsToSwichToBasicDir checks d.maxLinks is appropiate. No check is
+	// performed here.
+	basicDir := NewBasicDirectory(d.dserv, opts...)
 
 	err := d.ForEachLink(ctx, func(lnk *ipld.Link) error {
 		err := basicDir.addLinkChild(ctx, lnk.Name, lnk)
@@ -472,14 +658,32 @@ func (d *HAMTDirectory) needsToSwitchToBasicDir(ctx context.Context, name string
 		operationSizeChange += linksize.LinkSizeFunction(name, nodeToAdd.Cid())
 	}
 
-	if d.sizeChange+operationSizeChange >= 0 {
-		// We won't have reduced the HAMT net size.
-		return false, nil
+	// We must switch if size and maxlinks are below threshold
+	canSwitchSize := false
+	// Directory size reduced, perhaps below limit.
+	if d.sizeChange+operationSizeChange < 0 {
+		canSwitchSize, err = d.sizeBelowThreshold(ctx, operationSizeChange)
+		if err != nil {
+			return false, err
+		}
 	}
 
-	// We have reduced the directory size, check if went below the
-	// HAMTShardingSize threshold to trigger a switch.
-	return d.sizeBelowThreshold(ctx, operationSizeChange)
+	canSwitchMaxLinks := true
+	if d.maxLinks > 0 {
+		total := d.totalLinks
+		if nodeToAdd != nil && entryToRemove == nil {
+			total++
+		} else if nodeToAdd == nil && entryToRemove != nil {
+			total--
+		}
+		if total > d.maxLinks {
+			// prevent switching as we would end up with too many links
+			canSwitchMaxLinks = false
+		}
+	}
+
+	return canSwitchSize && canSwitchMaxLinks, nil
+
 }
 
 // Evaluate directory size and a future sizeChange and check if it will be below
@@ -535,7 +739,7 @@ func (d *HAMTDirectory) sizeBelowThreshold(ctx context.Context, sizeChange int) 
 // to switch from BasicDirectory to HAMTDirectory and backwards based on
 // size.
 type DynamicDirectory struct {
-	Directory
+	directoryWithOptions
 }
 
 var _ Directory = (*DynamicDirectory)(nil)
@@ -543,7 +747,7 @@ var _ Directory = (*DynamicDirectory)(nil)
 // AddChild implements the `Directory` interface. We check when adding new entries
 // if we should switch to HAMTDirectory according to global option(s).
 func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.Node) error {
-	hamtDir, ok := d.Directory.(*HAMTDirectory)
+	hamtDir, ok := d.directoryWithOptions.(*HAMTDirectory)
 	if ok {
 		// We evaluate a switch in the HAMTDirectory case even for an AddChild
 		// as it may overwrite an existing entry and end up actually reducing
@@ -554,7 +758,7 @@ func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.No
 		}
 
 		if switchToBasic {
-			basicDir, err := hamtDir.switchToBasic(ctx)
+			basicDir, err := hamtDir.switchToBasic(ctx, WithMaxLinks(hamtDir.maxLinks), WithCidBuilder(hamtDir.GetCidBuilder()))
 			if err != nil {
 				return err
 			}
@@ -562,15 +766,15 @@ func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.No
 			if err != nil {
 				return err
 			}
-			d.Directory = basicDir
+			d.directoryWithOptions = basicDir
 			return nil
 		}
 
-		return d.Directory.AddChild(ctx, name, nd)
+		return d.directoryWithOptions.AddChild(ctx, name, nd)
 	}
 
 	// BasicDirectory
-	basicDir := d.Directory.(*BasicDirectory)
+	basicDir := d.directoryWithOptions.(*BasicDirectory)
 	switchToHAMT, err := basicDir.needsToSwitchToHAMTDir(name, nd)
 	if err != nil {
 		return err
@@ -578,7 +782,16 @@ func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.No
 	if !switchToHAMT {
 		return basicDir.AddChild(ctx, name, nd)
 	}
-	hamtDir, err = basicDir.switchToSharding(ctx)
+
+	maxLinks := DefaultShardWidth
+	// Verify that our maxLinks is usuable for ShardWidth (power of 2, multiple of 8)
+	if validShardWidth(basicDir.maxLinks) {
+		maxLinks = basicDir.maxLinks
+	} else if basicDir.maxLinks > 0 {
+		log.Warning("using DefaultShardWidth for HAMT directories. MaxLinks cannot be used as it is not a power of 2 and multiple of 8.")
+	}
+
+	hamtDir, err = basicDir.switchToSharding(ctx, WithMaxLinks(maxLinks), WithCidBuilder(basicDir.GetCidBuilder()))
 	if err != nil {
 		return err
 	}
@@ -586,7 +799,7 @@ func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.No
 	if err != nil {
 		return err
 	}
-	d.Directory = hamtDir
+	d.directoryWithOptions = hamtDir
 	return nil
 }
 
@@ -594,9 +807,9 @@ func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.No
 // a HAMTDirectory that might need to be downgraded to a BasicDirectory. The
 // upgrade path is in AddChild.
 func (d *DynamicDirectory) RemoveChild(ctx context.Context, name string) error {
-	hamtDir, ok := d.Directory.(*HAMTDirectory)
+	hamtDir, ok := d.directoryWithOptions.(*HAMTDirectory)
 	if !ok {
-		return d.Directory.RemoveChild(ctx, name)
+		return d.directoryWithOptions.RemoveChild(ctx, name)
 	}
 
 	switchToBasic, err := hamtDir.needsToSwitchToBasicDir(ctx, name, nil)
@@ -608,7 +821,8 @@ func (d *DynamicDirectory) RemoveChild(ctx context.Context, name string) error {
 		return hamtDir.RemoveChild(ctx, name)
 	}
 
-	basicDir, err := hamtDir.switchToBasic(ctx)
+	// We have not removed the element that violates MaxLinks, so we have to +1 the limit. We -1 below.
+	basicDir, err := hamtDir.switchToBasic(ctx, WithMaxLinks(hamtDir.maxLinks+1), WithCidBuilder(hamtDir.GetCidBuilder()))
 	if err != nil {
 		return err
 	}
@@ -616,6 +830,14 @@ func (d *DynamicDirectory) RemoveChild(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	d.Directory = basicDir
+
+	basicDir.setMaxLinks(hamtDir.maxLinks - 1)
+	d.directoryWithOptions = basicDir
 	return nil
+}
+
+// validShardWidth verifies that the given number is positive, a power of 2
+// and a multiple of 8.
+func validShardWidth(n int) bool {
+	return n > 0 && (n&(n-1)) == 0 && n%8 == 0
 }
