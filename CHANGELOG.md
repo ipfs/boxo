@@ -16,6 +16,12 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `ipld/unixfs/io/directory`: We have made some changes to unixfs directory tooling:
+  - We have exposed creator methods for new `BasicDirectory` and `HAMTDirectory`, that complement the existing `NewDirectory()` which creates dynamic directories.
+  - We have added `WithCidBuilder(...)` and `WithMaxLinks(...)` as options to these new methods so that empty directories can be initilized as wished from the get-go.
+  - `WithMaxLinks(...)` is a new option that allows to set a limit to the number of children that a directory DAG node can have. For details on what exactly it does for each of the directory types, please check the documentation.
+  - `WithStats(...)` is a new option that allows to set the Stat information for the new directory node.
+
 ### Changed
 
 - upgrade to `go-libp2p` [v0.41.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.41.1)
