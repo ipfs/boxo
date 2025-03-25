@@ -187,7 +187,8 @@ func DatastorePrefix(k datastore.Key) Option {
 	}
 }
 
-// MaxBatchSize limit how big each batch is.
+// MaxBatchSize limits how big each batch is.
+//
 // Some content routers like acceleratedDHTClient have sub linear scalling and
 // bigger sizes are thus faster per elements however smaller batch sizes can
 // limit memory usage spike.
@@ -198,11 +199,12 @@ func MaxBatchSize(n uint) Option {
 	}
 }
 
-// ThroughputReport will fire the callback synchronously once at least limit
-// multihashes have been advertised, it will then wait until a new set of at least
-// limit multihashes has been advertised.
-// While ThroughputReport is set batches will be at most minimumProvides big.
-// If it returns false it wont ever be called again.
+// ThroughputReport fires the callback synchronously once at least limit
+// multihashes have been advertised. It will then wait until a new set of at
+// least limit multihashes has been advertised.
+//
+// While ThroughputReport is set, batches will be at most minimumProvides big.
+// If it returns false it will not be called again.
 func ThroughputReport(f ThroughputCallback, minimumProvides uint) Option {
 	return func(system *reprovider) error {
 		system.throughputCallback = f
@@ -213,14 +215,13 @@ func ThroughputReport(f ThroughputCallback, minimumProvides uint) Option {
 
 type ThroughputCallback = func(reprovide bool, complete bool, totalKeysProvided uint, totalDuration time.Duration) (continueWatching bool)
 
-// Online will enable the router and make it send publishes online.
-// nil can be used to turn the router offline.
-// You can't register multiple providers, if this option is passed multiple times
-// it will error.
+// Online will enables the router and makes it send publishes online. A nil
+// value can be used to set the router offline. It is not possible to register
+// multiple providers. If this option is passed multiple times it will error.
 func Online(rsys Provide) Option {
 	return func(system *reprovider) error {
 		if system.rsys != nil {
-			return errors.New("trying to register two provider on the same reprovider")
+			return errors.New("trying to register two providers on the same reprovider")
 		}
 		system.rsys = rsys
 		return nil
@@ -258,12 +259,9 @@ func (s *reprovider) run() {
 		resetTimersAfterReceivingProvide := func() {
 			firstProvide := len(m) == 0
 			if firstProvide {
-				// after receiving the first provider start up the timers
+				// after receiving the first provider, start up the timers.
 				maxCollectionDurationTimer.Reset(maxCollectionDuration)
-			} else {
-				// otherwise just do a full restart of the pause timer
-				pauseDetectTimer.Stop()
-			}
+			} // otherwise just do a full restart of the pause timer
 			pauseDetectTimer.Reset(pauseDetectionThreshold)
 		}
 
@@ -277,8 +275,9 @@ func (s *reprovider) run() {
 			performedReprovide = false
 			complete = false
 
-			// at the start of every loop the maxCollectionDurationTimer and pauseDetectTimer should be already be
-			// stopped and have empty channels
+			// At the start of every loop the maxCollectionDurationTimer and
+			// pauseDetectTimer should already be stopped and have empty
+			// channels.
 			for uint(len(m)) < batchSize {
 				var noReprovideInFlight chan struct{}
 				if len(m) == 0 {
@@ -294,18 +293,18 @@ func (s *reprovider) run() {
 					m[c] = struct{}{}
 					performedReprovide = true
 				case <-pauseDetectTimer.C:
-					// if this timer has fired then the max collection timer has started so let's stop and empty it
+					// If this timer has fired then the max collection timer has started, so stop it.
 					maxCollectionDurationTimer.Stop()
 					complete = true
 					goto ProcessBatch
 				case <-maxCollectionDurationTimer.C:
-					// if this timer has fired then the pause timer has started so let's stop and empty it
+					// If this timer has fired then the pause timer has started, so stop it.
 					pauseDetectTimer.Stop()
 					goto ProcessBatch
 				case <-s.ctx.Done():
 					return
 				case noReprovideInFlight <- struct{}{}:
-					// if no reprovide is in flight get consumer asking for reprovides unstuck
+					// If no reprovide is in flight get consumer asking for reprovides unstuck.
 				}
 			}
 			pauseDetectTimer.Stop()
