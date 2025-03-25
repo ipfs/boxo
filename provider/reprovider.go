@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"sync"
 	"time"
 
@@ -53,7 +54,8 @@ type reprovider struct {
 	rsys        Provide
 	keyProvider KeyChanFunc
 
-	q *queue.Queue
+	q  *queue.Queue
+	ds datastore.Batching
 
 	reprovideCh         chan cid.Cid
 	noReprovideInFlight chan struct{}
@@ -93,7 +95,10 @@ type Ready interface {
 // BatchProvidingSystem instances
 type Option func(system *reprovider) error
 
-var DefaultKeyPrefix = datastore.NewKey("/provider")
+var (
+	lastReprovideKey = datastore.NewKey("/reprovide/lastreprovide")
+	DefaultKeyPrefix = datastore.NewKey("/provider")
+)
 
 // New creates a new [System]. By default it is offline, that means it will
 // enqueue tasks in ds.
@@ -132,7 +137,8 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 		}
 	}
 
-	s.q = queue.NewQueue(namespace.Wrap(ds, s.keyPrefix))
+	s.ds = namespace.Wrap(ds, s.keyPrefix)
+	s.q = queue.NewQueue(s.ds)
 
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options
@@ -363,8 +369,20 @@ func (s *reprovider) run() {
 				s.lastReprovideBatchSize = uint64(len(keys))
 				s.lastReprovideDuration = dur
 				s.lastRun = time.Now()
+
+				s.statLk.Unlock()
+				// Don't hold the lock while writing to disk, consumers don't need to wait on IO to read thoses fields.
+
+				// persist last reprovide time to disk to avoid unnecessary reprovides on restart
+				if err := s.ds.Put(s.ctx, lastReprovideKey, storeTime(s.lastRun)); err != nil {
+					log.Errorf("could not store last reprovide time: %v", err)
+				}
+				if err := s.ds.Sync(s.ctx, lastReprovideKey); err != nil {
+					log.Errorf("could not perform sync of last reprovide time: %v", err)
+				}
+			} else {
+				s.statLk.Unlock()
 			}
-			s.statLk.Unlock()
 
 			s.throughputDurationSum += dur
 			s.throughputProvideCurrentCount += uint(len(keys))
@@ -388,36 +406,50 @@ func (s *reprovider) run() {
 		// reprovides scheduling worker
 		defer s.closewg.Done()
 
-		var initialReprovideCh, reprovideCh <-chan time.Time
+		// read last reprovide time written to the datastore, and schedule the
+		// first reprovide to happen reprovideInterval after that
+		firstReprovideDelay := s.initalReprovideDelay
+		lastReprovide, err := s.getLastReprovideTime()
+		if err == nil && time.Since(lastReprovide) < s.reprovideInterval-s.initalReprovideDelay {
+			firstReprovideDelay = time.Until(lastReprovide.Add(s.reprovideInterval))
+		}
+		firstReprovideTimer := time.NewTimer(firstReprovideDelay)
 
-		reprovideTicker := time.NewTicker(s.reprovideInterval)
-		defer reprovideTicker.Stop()
-		reprovideCh = reprovideTicker.C
-
-		// if there is a non-zero initial reprovide time that was set in the initializer or if the fallback has been
-		if s.initialReprovideDelaySet {
-			initialReprovideTimer := time.NewTimer(s.initalReprovideDelay)
-			defer initialReprovideTimer.Stop()
-
-			initialReprovideCh = initialReprovideTimer.C
+		select {
+		case <-firstReprovideTimer.C:
+		case <-s.ctx.Done():
+			return
 		}
 
-		for s.ctx.Err() == nil {
-			select {
-			case <-initialReprovideCh:
-			case <-reprovideCh:
-			case <-s.ctx.Done():
-				return
-			}
+		// after the first reprovide, schedule periodical reprovides
+		nextReprovideTicker := time.NewTicker(s.reprovideInterval)
 
+		for s.ctx.Err() == nil {
 			err := s.Reprovide(context.Background())
 
-			// only log if we've hit an actual error, otherwise just tell the client we're shutting down
 			if s.ctx.Err() == nil && err != nil {
 				log.Errorf("failed to reprovide: %s", err)
 			}
+			select {
+			case <-nextReprovideTicker.C:
+			case <-s.ctx.Done():
+				return
+			}
 		}
 	}()
+}
+
+func storeTime(t time.Time) []byte {
+	val := []byte(strconv.FormatInt(t.UnixNano(), 10))
+	return val
+}
+
+func parseTime(b []byte) (time.Time, error) {
+	tns, err := strconv.ParseInt(string(b), 10, 64)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Unix(0, tns), nil
 }
 
 func (s *reprovider) Close() error {
@@ -474,6 +506,24 @@ reprovideCidLoop:
 	case <-s.ctx.Done():
 		return errors.New("failed to reprovide: shutting down")
 	}
+}
+
+// getLastReprovideTime gets the last time a reprovide was run from the datastore
+func (s *reprovider) getLastReprovideTime() (time.Time, error) {
+	val, err := s.ds.Get(s.ctx, lastReprovideKey)
+	if errors.Is(err, datastore.ErrNotFound) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, errors.New("could not get last reprovide time")
+	}
+
+	t, err := parseTime(val)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("could not decode last reprovide time, got %q", string(val))
+	}
+
+	return t, nil
 }
 
 type ReproviderStats struct {
