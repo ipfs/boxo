@@ -13,6 +13,8 @@ import (
 
 func assertOrdered(cids []cid.Cid, q *Queue, t *testing.T) {
 	t.Helper()
+
+	q.Sync()
 	for i, c := range cids {
 		select {
 		case dequeued, ok := <-q.dequeue:
@@ -32,26 +34,6 @@ func assertOrdered(cids []cid.Cid, q *Queue, t *testing.T) {
 func TestBasicOperation(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
 	queue := NewQueue(ds)
-	defer queue.Close()
-
-	cids := random.Cids(10)
-	for _, c := range cids {
-		queue.Enqueue(c)
-	}
-
-	assertOrdered(cids, queue, t)
-
-	err := queue.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = queue.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestBasicOperationNoDS(t *testing.T) {
-	queue := NewQueue(nil)
 	defer queue.Close()
 
 	cids := random.Cids(10)
