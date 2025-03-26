@@ -66,6 +66,24 @@ a:visited {
 	font-family: var(--monospace);
 }
 
+.copy-button {
+	color: #7f8491;
+	background-color: inherit;
+	border: 1px solid var(--dark-white);
+	;
+	border-radius: 2px;
+	padding: 1px 2px;
+	cursor: copy;
+}
+
+.copy-button:hover {
+	background-color: var(--light-white);
+}
+
+.copy-button:active {
+	color: #00b0e9;
+}
+
 #header {
 	align-items: center;
 	background: var(--navy);
