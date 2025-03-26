@@ -14,10 +14,9 @@ import (
 func assertOrdered(cids []cid.Cid, q *Queue, t *testing.T) {
 	t.Helper()
 
-	q.Sync()
 	for i, c := range cids {
 		select {
-		case dequeued, ok := <-q.dequeue:
+		case dequeued, ok := <-q.Dequeue():
 			if !ok {
 				t.Fatal("queue closed")
 			}

@@ -22,7 +22,7 @@ const (
 	batchCommitInterval = 5 * time.Second
 
 	// Number of input CIDs to buffer without blocking.
-	inputBufferSize = 1024 * 256
+	inputBufferSize = 1024 * 64
 	// Time for Close to wait to finish writing CIDs to datastore.
 	shutdownTimeout = 30 * time.Second
 )
@@ -41,7 +41,6 @@ type Queue struct {
 	// e.g. provider vs reprovider
 	ds        datastore.Batching
 	dequeue   chan cid.Cid
-	enqueue   chan cid.Cid
 	inBuf     *chanqueue.ChanQueue[cid.Cid] // in-memory queue to buffer input
 	close     context.CancelFunc
 	closed    chan struct{}
@@ -53,23 +52,17 @@ type Queue struct {
 
 // NewQueue creates a queue for cids
 func NewQueue(ds datastore.Batching) *Queue {
-	dequeue := make(chan cid.Cid)
-	enqueue := make(chan cid.Cid)
-
 	ctx, cancel := context.WithCancel(context.Background())
+
 	q := &Queue{
 		close:    cancel,
 		closed:   make(chan struct{}),
 		ds:       namespace.Wrap(ds, datastore.NewKey("/queue")),
-		dequeue:  dequeue,
-		enqueue:  enqueue,
+		dequeue:  make(chan cid.Cid),
+		inBuf:    chanqueue.New(chanqueue.WithCapacity[cid.Cid](inputBufferSize)),
 		syncDone: make(chan struct{}, 1),
 	}
 
-	q.inBuf = chanqueue.New(
-		chanqueue.WithInput(enqueue),
-		chanqueue.WithCapacity[cid.Cid](inputBufferSize),
-	)
 	go q.worker(ctx)
 
 	return q
@@ -111,7 +104,7 @@ func (q *Queue) Enqueue(cid cid.Cid) (err error) {
 			err = errors.New("failed to enqueue CID: shutting down")
 		}
 	}()
-	q.enqueue <- cid
+	q.inBuf.In() <- cid
 	return
 }
 
@@ -126,7 +119,7 @@ func (q *Queue) worker(ctx context.Context) {
 	defer q.inBuf.Shutdown()
 
 	var (
-		c       cid.Cid = cid.Undef
+		c       cid.Cid
 		counter uint64
 		cstr    string
 		k       datastore.Key = datastore.Key{}
@@ -152,8 +145,9 @@ func (q *Queue) worker(ctx context.Context) {
 	batchTicker := time.NewTicker(batchCommitInterval)
 	defer batchTicker.Stop()
 
+	var lastCid cid.Cid
+
 	for {
-		//fmt.Println("---> inbuf len:", q.inBuf.Len(), "batch count:", batchCount)
 		if c == cid.Undef {
 			head, err := q.getQueueHead(ctx)
 			if err != nil {
@@ -188,12 +182,15 @@ func (q *Queue) worker(ctx context.Context) {
 				return
 			}
 			if toQueue == cid.Undef {
-				if batchCount != 0 {
-					commit = true
-				}
+				commit = true
 				needSync = true
 				break
 			}
+			if toQueue == lastCid {
+				continue
+			}
+			lastCid = toQueue
+
 			// Add suffix to key path to allow multiple entries with same sequence.
 			nextKey := datastore.NewKey(fmt.Sprintf("%020d/%s", counter, cstr))
 			counter++
@@ -215,10 +212,22 @@ func (q *Queue) worker(ctx context.Context) {
 				commit = true
 			}
 		case <-batchTicker.C:
-			if batchCount != 0 && q.inBuf.Len() == 0 {
-				commit = true
-			}
+			commit = q.inBuf.Len() == 0
 		case dequeue <- c:
+			// CID may still be in uncommitted batch, so commit current batch first.
+			if batchCount != 0 {
+				if err = b.Commit(ctx); err != nil {
+					log.Errorf("Failed to write cid batch, stopping provider: %s", err)
+					return
+				}
+				b, err = q.ds.Batch(ctx)
+				if err != nil {
+					log.Errorf("Failed to create batch, stopping provider: %s", err)
+					return
+				}
+				batchCount = 0
+			}
+
 			// Do not batch delete. Delete must be committed immediately, otherwise the same head cid will be read from the datastore.
 			err := q.ds.Delete(ctx, k)
 			if err != nil {
@@ -231,25 +240,27 @@ func (q *Queue) worker(ctx context.Context) {
 		}
 
 		if commit {
-			if err = b.Commit(ctx); err != nil {
-				log.Errorf("Failed to write cid batch, stopping provider: %s", err)
-				return
+			if batchCount != 0 {
+				if err = b.Commit(ctx); err != nil {
+					log.Errorf("Failed to write cid batch, stopping provider: %s", err)
+					return
+				}
+				b, err = q.ds.Batch(ctx)
+				if err != nil {
+					log.Errorf("Failed to create batch, stopping provider: %s", err)
+					return
+				}
+				batchCount = 0
 			}
-			b, err = q.ds.Batch(ctx)
-			if err != nil {
-				log.Errorf("Failed to create batch, stopping provider: %s", err)
-				return
-			}
-			batchCount = 0
 			commit = false
-		}
 
-		if needSync {
-			needSync = false
-			select {
-			case q.syncDone <- struct{}{}:
-			case <-ctx.Done():
-				return
+			if needSync {
+				needSync = false
+				select {
+				case q.syncDone <- struct{}{}:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}
