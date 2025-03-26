@@ -1,5 +1,5 @@
 How BlockExchange Works
-=================
+=======================
 
 When a client requests blocks, BlockExchange sends the CID of those blocks to its peers as "wants". When BlockExchange receives a "want" from a peer, it responds with the corresponding block.
 
