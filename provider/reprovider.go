@@ -429,10 +429,12 @@ func (s *reprovider) run() {
 		// after the first reprovide, schedule periodical reprovides
 		nextReprovideTicker := time.NewTicker(s.reprovideInterval)
 
-		for s.ctx.Err() == nil {
+		for {
 			err := s.Reprovide(context.Background())
-
-			if s.ctx.Err() == nil && err != nil {
+			if err != nil {
+				if s.ctx.Err() != nil {
+					return
+				}
 				log.Errorf("failed to reprovide: %s", err)
 			}
 			select {
