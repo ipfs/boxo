@@ -18,7 +18,7 @@ import (
 var log = logging.Logger("provider.queue")
 
 const (
-	batchSize           = 1024
+	batchSize           = 16384
 	batchCommitInterval = 5 * time.Second
 
 	// Number of input CIDs to buffer without blocking.
@@ -118,21 +118,13 @@ func (q *Queue) worker(ctx context.Context) {
 	defer close(q.closed)
 	defer q.inBuf.Shutdown()
 
-	var (
-		c       cid.Cid
-		counter uint64
-		cstr    string
-		k       datastore.Key = datastore.Key{}
-	)
-	readInBuf := q.inBuf.Out()
-
-	var batchCount int
 	b, err := q.ds.Batch(ctx)
 	if err != nil {
 		log.Errorf("Failed to create batch, stopping provider: %s", err)
 		return
 	}
 
+	var batchCount int
 	defer func() {
 		if batchCount != 0 {
 			if err := b.Commit(ctx); err != nil {
@@ -142,10 +134,33 @@ func (q *Queue) worker(ctx context.Context) {
 		close(q.syncDone)
 	}()
 
+	refreshBatch := func(ctx context.Context) error {
+		if batchCount == 0 {
+			return nil
+		}
+		err := b.Commit(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to write cid batch: %w", err)
+		}
+		b, err = q.ds.Batch(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create batch: %w", err)
+		}
+		batchCount = 0
+		return nil
+	}
+
+	var (
+		counter    uint64
+		c, lastCid cid.Cid
+		cstr       string
+		k          datastore.Key = datastore.Key{}
+	)
+
+	readInBuf := q.inBuf.Out()
+
 	batchTicker := time.NewTicker(batchCommitInterval)
 	defer batchTicker.Stop()
-
-	var lastCid cid.Cid
 
 	for {
 		if c == cid.Undef {
@@ -203,7 +218,7 @@ func (q *Queue) worker(ctx context.Context) {
 			}
 
 			//if err := q.ds.Put(ctx, nextKey, toQueue.Bytes()); err != nil {
-			if err := b.Put(ctx, nextKey, toQueue.Bytes()); err != nil {
+			if err = b.Put(ctx, nextKey, toQueue.Bytes()); err != nil {
 				log.Errorf("Failed to batch cid: %s", err)
 				continue
 			}
@@ -216,21 +231,16 @@ func (q *Queue) worker(ctx context.Context) {
 		case dequeue <- c:
 			// CID may still be in uncommitted batch, so commit current batch first.
 			if batchCount != 0 {
-				if err = b.Commit(ctx); err != nil {
-					log.Errorf("Failed to write cid batch, stopping provider: %s", err)
+				if err = refreshBatch(ctx); err != nil {
+					if !errors.Is(err, context.Canceled) {
+						log.Errorf("%w, stopping provider", err)
+					}
 					return
 				}
-				b, err = q.ds.Batch(ctx)
-				if err != nil {
-					log.Errorf("Failed to create batch, stopping provider: %s", err)
-					return
-				}
-				batchCount = 0
 			}
 
 			// Do not batch delete. Delete must be committed immediately, otherwise the same head cid will be read from the datastore.
-			err := q.ds.Delete(ctx, k)
-			if err != nil {
+			if err = q.ds.Delete(ctx, k); err != nil {
 				log.Errorf("Failed to delete queued cid %s with key %s: %s", c, k, err)
 				continue
 			}
@@ -240,19 +250,14 @@ func (q *Queue) worker(ctx context.Context) {
 		}
 
 		if commit {
-			if batchCount != 0 {
-				if err = b.Commit(ctx); err != nil {
-					log.Errorf("Failed to write cid batch, stopping provider: %s", err)
-					return
-				}
-				b, err = q.ds.Batch(ctx)
-				if err != nil {
-					log.Errorf("Failed to create batch, stopping provider: %s", err)
-					return
-				}
-				batchCount = 0
-			}
 			commit = false
+
+			if err = refreshBatch(ctx); err != nil {
+				if !errors.Is(err, context.Canceled) {
+					log.Errorf("%w, stopping provider", err)
+				}
+				return
+			}
 
 			if needSync {
 				needSync = false
