@@ -223,25 +223,15 @@ func (q *Queue) worker(ctx context.Context) {
 		case <-batchTicker.C:
 			commit = q.inBuf.Len() == 0
 		case dequeue <- c:
-			// Commit current batch first so that if CID being read is still in
-			// the uncommitted batch, that CID is written and deleted from the
-			// datastore.
-			if batchCount != 0 {
-				if err = refreshBatch(ctx); err != nil {
-					if !errors.Is(err, context.Canceled) {
-						log.Errorf("%w, stopping provider", err)
-					}
-					return
-				}
-			}
-
-			// Do not batch delete. Delete must be committed immediately,
-			// otherwise the same head cid will be read from the datastore.
-			if err = q.ds.Delete(ctx, k); err != nil {
+			if err = b.Delete(ctx, k); err != nil {
 				log.Errorf("Failed to delete queued cid %s with key %s: %s", c, k, err)
 				continue
 			}
 			c = cid.Undef
+			batchCount++
+			// Delete (in batch) must be committed immediately, otherwise the
+			// same head cid will be read from the datastore.
+			commit = true
 		case <-ctx.Done():
 			return
 		}
