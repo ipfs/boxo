@@ -21,10 +21,11 @@ const (
 	batchSize           = 16384
 	batchCommitInterval = 5 * time.Second
 
-	// Number of input CIDs to buffer without blocking.
+	// Number of input CIDs to buffer without blocking. This capacity is only
+	// used when writing batches to the datastore takes some time.
 	inputBufferSize = 1024 * 64
 	// Time for Close to wait to finish writing CIDs to datastore.
-	shutdownTimeout = 30 * time.Second
+	shutdownTimeout = 20 * time.Second
 )
 
 // Queue provides a FIFO interface to the datastore for storing cids.
@@ -33,21 +34,17 @@ const (
 // in the queue when the node is brought back online depending on whether they
 // were fully written to the underlying datastore.
 //
-// Input to the queue is buffered in memory, up to inputBufferSize, to increase
-// the speed of data onboarding. This input buffer behaves as a channel with a
-// very large capacity.
+// Input to the queue is buffered in memory, up to inputBufferSize, to maintain
+// the speed at which input is consumed, even if persisting it to the datastore
+// becomes slow. This input buffer behaves as a channel with a dynamic
+// capacity.
 type Queue struct {
-	// used to differentiate queues in datastore
-	// e.g. provider vs reprovider
-	ds        datastore.Batching
-	dequeue   chan cid.Cid
-	inBuf     *chanqueue.ChanQueue[cid.Cid] // in-memory queue to buffer input
 	close     context.CancelFunc
 	closed    chan struct{}
 	closeOnce sync.Once
-
-	syncDone  chan struct{}
-	syncMutex sync.Mutex
+	dequeue   chan cid.Cid
+	ds        datastore.Batching
+	inBuf     *chanqueue.ChanQueue[cid.Cid]
 }
 
 // NewQueue creates a queue for cids
@@ -55,24 +52,16 @@ func NewQueue(ds datastore.Batching) *Queue {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	q := &Queue{
-		close:    cancel,
-		closed:   make(chan struct{}),
-		ds:       namespace.Wrap(ds, datastore.NewKey("/queue")),
-		dequeue:  make(chan cid.Cid),
-		inBuf:    chanqueue.New(chanqueue.WithCapacity[cid.Cid](inputBufferSize)),
-		syncDone: make(chan struct{}, 1),
+		close:   cancel,
+		closed:  make(chan struct{}),
+		dequeue: make(chan cid.Cid),
+		ds:      namespace.Wrap(ds, datastore.NewKey("/queue")),
+		inBuf:   chanqueue.New(chanqueue.WithCapacity[cid.Cid](inputBufferSize)),
 	}
 
 	go q.worker(ctx)
 
 	return q
-}
-
-func (q *Queue) Sync() {
-	q.syncMutex.Lock()
-	q.inBuf.In() <- cid.Undef
-	<-q.syncDone
-	q.syncMutex.Unlock()
 }
 
 // Close stops the queue
@@ -131,7 +120,6 @@ func (q *Queue) worker(ctx context.Context) {
 				log.Errorf("Failed to write cid batch: %s", err)
 			}
 		}
-		close(q.syncDone)
 	}()
 
 	refreshBatch := func(ctx context.Context) error {
@@ -153,6 +141,7 @@ func (q *Queue) worker(ctx context.Context) {
 	var (
 		counter    uint64
 		c, lastCid cid.Cid
+		commit     bool
 		cstr       string
 		k          datastore.Key = datastore.Key{}
 	)
@@ -180,26 +169,31 @@ func (q *Queue) worker(ctx context.Context) {
 					}
 					continue
 				}
-			} // else queue is empty
+			} else if batchCount != 0 {
+				// There were no queued CIDs in the datastore, but there were
+				// some waiting to be written. Write them and re-read from
+				// datastore.
+				if err = refreshBatch(ctx); err != nil {
+					if !errors.Is(err, context.Canceled) {
+						log.Errorf("%w, stopping provider", err)
+					}
+					return
+				}
+				continue
+			}
 			cstr = c.String()
 		}
 
-		// If c != cid.Undef set dequeue and attempt write, otherwise wait for enqueue
+		// If c != cid.Undef set dequeue and attempt write.
 		var dequeue chan cid.Cid
 		if c != cid.Undef {
 			dequeue = q.dequeue
 		}
-		var commit, needSync bool
 
 		select {
 		case toQueue, ok := <-readInBuf:
 			if !ok {
 				return
-			}
-			if toQueue == cid.Undef {
-				commit = true
-				needSync = true
-				break
 			}
 			if toQueue == lastCid {
 				continue
@@ -229,7 +223,9 @@ func (q *Queue) worker(ctx context.Context) {
 		case <-batchTicker.C:
 			commit = q.inBuf.Len() == 0
 		case dequeue <- c:
-			// CID may still be in uncommitted batch, so commit current batch first.
+			// Commit current batch first so that if CID being read is still in
+			// the uncommitted batch, that CID is written and deleted from the
+			// datastore.
 			if batchCount != 0 {
 				if err = refreshBatch(ctx); err != nil {
 					if !errors.Is(err, context.Canceled) {
@@ -239,7 +235,8 @@ func (q *Queue) worker(ctx context.Context) {
 				}
 			}
 
-			// Do not batch delete. Delete must be committed immediately, otherwise the same head cid will be read from the datastore.
+			// Do not batch delete. Delete must be committed immediately,
+			// otherwise the same head cid will be read from the datastore.
 			if err = q.ds.Delete(ctx, k); err != nil {
 				log.Errorf("Failed to delete queued cid %s with key %s: %s", c, k, err)
 				continue
@@ -257,15 +254,6 @@ func (q *Queue) worker(ctx context.Context) {
 					log.Errorf("%w, stopping provider", err)
 				}
 				return
-			}
-
-			if needSync {
-				needSync = false
-				select {
-				case q.syncDone <- struct{}{}:
-				case <-ctx.Done():
-					return
-				}
 			}
 		}
 	}
