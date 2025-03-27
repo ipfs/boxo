@@ -32,7 +32,7 @@ func assertOrdered(cids []cid.Cid, q *Queue, t *testing.T) {
 
 func TestBasicOperation(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	queue := NewQueue(ds)
+	queue := New(ds)
 	defer queue.Close()
 
 	cids := random.Cids(10)
@@ -53,7 +53,7 @@ func TestBasicOperation(t *testing.T) {
 
 func TestMangledData(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	queue := NewQueue(ds)
+	queue := New(ds)
 	defer queue.Close()
 
 	cids := random.Cids(10)
@@ -75,7 +75,7 @@ func TestMangledData(t *testing.T) {
 
 func TestInitialization(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	queue := NewQueue(ds)
+	queue := New(ds)
 	defer queue.Close()
 
 	cids := random.Cids(10)
@@ -91,7 +91,7 @@ func TestInitialization(t *testing.T) {
 	}
 
 	// make a new queue, same data
-	queue = NewQueue(ds)
+	queue = New(ds)
 	defer queue.Close()
 
 	assertOrdered(cids[5:], queue, t)
@@ -99,7 +99,7 @@ func TestInitialization(t *testing.T) {
 
 func TestInitializationWithManyCids(t *testing.T) {
 	ds := sync.MutexWrap(datastore.NewMapDatastore())
-	queue := NewQueue(ds)
+	queue := New(ds)
 	defer queue.Close()
 
 	cids := random.Cids(25)
@@ -113,7 +113,7 @@ func TestInitializationWithManyCids(t *testing.T) {
 	}
 
 	// make a new queue, same data
-	queue = NewQueue(ds)
+	queue = New(ds)
 	defer queue.Close()
 
 	assertOrdered(cids, queue, t)
