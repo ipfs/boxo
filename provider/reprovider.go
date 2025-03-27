@@ -138,7 +138,7 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 	}
 
 	s.ds = namespace.Wrap(ds, s.keyPrefix)
-	s.q = queue.NewQueue(s.ds)
+	s.q = queue.New(s.ds)
 
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options

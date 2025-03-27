@@ -47,8 +47,8 @@ type Queue struct {
 	inBuf     *chanqueue.ChanQueue[cid.Cid]
 }
 
-// NewQueue creates a queue for cids
-func NewQueue(ds datastore.Batching) *Queue {
+// New creates a queue for cids.
+func New(ds datastore.Batching) *Queue {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	q := &Queue{
@@ -64,7 +64,7 @@ func NewQueue(ds datastore.Batching) *Queue {
 	return q
 }
 
-// Close stops the queue
+// Close stops the queue.
 func (q *Queue) Close() error {
 	var err error
 	q.closeOnce.Do(func() {
@@ -86,7 +86,7 @@ func (q *Queue) Close() error {
 	return err
 }
 
-// Enqueue puts a cid in the queue
+// Enqueue puts a cid in the queue.
 func (q *Queue) Enqueue(cid cid.Cid) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
