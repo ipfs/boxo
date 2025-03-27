@@ -18,12 +18,12 @@ import (
 var log = logging.Logger("provider.queue")
 
 const (
-	batchSize           = 16384
+	batchSize           = 16 * 1024
 	batchCommitInterval = 5 * time.Second
 
 	// Number of input CIDs to buffer without blocking. This capacity is only
 	// used when writing batches to the datastore takes some time.
-	inputBufferSize = 1024 * 64
+	inputBufferSize = 64 * 1024
 	// Time for Close to wait to finish writing CIDs to datastore.
 	shutdownTimeout = 20 * time.Second
 )
