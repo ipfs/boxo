@@ -26,11 +26,16 @@ The following emojis are used to highlight certain changes:
 
 - `gateway`: query parameters are now supported and preserved in redirects triggered by a [`_redirects`](https://specs.ipfs.tech/http-gateways/web-redirects-file/) file [#886](https://github.com/ipfs/boxo/pull/886)
 - `provider`: adjusted first reprovide timing after node reboot [#890](https://github.com/ipfs/boxo/pull/890)
+- `provider`: added support for walking partial DAGs in offline mode [#847](https://github.com/ipfs/boxo/pull/847)
+  - a `KeyChanFunc` that traverses DAGs from a given root (`NewDAGProvider`).
+  - a `KeyChanFunc` that buffers all the CIDs in memory from another `KeyChanFunc` (`NewBufferedProvider`).
+  - `fetcher/impl/blockservice`: new option `SkipNotFound` for the IPLD fetcher. It will skip not found nodes when traversing the DAG. This allows offline traversal of DAGs when using, for example, an offline blockservice. [#847](https://github.com/ipfs/boxo/pull/847)
+  - This enables use case of providing lazy-loaded, partially local DAGs (like `ipfs files` in Kubo's MFS implementation)
 
 ### Security
 
 
-## [v0.29.0]
+## [v0.29.1]
 
 ### Changed
 
@@ -55,10 +60,6 @@ The following emojis are used to highlight certain changes:
   - Treats them as "Bitswap" peers, except instead of using Bitswap it makes HTTP/2 requests to discover (`HEAD`) and retrieve (`GET`) individual blocks (`?format=raw`).
   - A `bitswap/network` proxy implementation allows co-existance with standard `bitswap/network/bsnet`.
   - `httpnet` is not enabled by default. Upstream implementations may use it by modifying how they create the Bitswap network and initialize bitswap.
-- `provider` module includes some new functionality:
-  - a `KeyChanFunc` that traverses DAGs from a given root (`NewDAGProvider`).
-  - a `KeyChanFunc` that buffers all the CIDs in memory from another `KeyChanFunc` (`NewBufferedProvider`).
-- `fetcher/impl/blockservice`: new option `SkipNotFound` for the IPLD fetcher. It will skip not found nodes when traversing the DAG. This allows offline traversal of DAGs when using, for example, an offline blockservice.
 
 ### Changed
 
