@@ -75,6 +75,7 @@ func ExtractHTTPAddress(ma multiaddr.Multiaddr) (ParsedURL, error) {
 	}
 
 	// Error on addresses which are not https nor local
+	// TODO: should we support unencrypted HTTP/2 here?
 	ip := net.ParseIP(host)
 	if ip != nil {
 		if schema != "https" && !(ip.IsLoopback() || ip.IsPrivate()) {

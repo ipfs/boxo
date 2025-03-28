@@ -48,7 +48,9 @@ const (
 	DefaultIdleConnTimeout               = 30 * time.Second
 	DefaultResponseHeaderTimeout         = 10 * time.Second
 	DefaultMaxIdleConns                  = 50
+	DefaultMaxConnsPerHost               = 16
 	DefaultInsecureSkipVerify            = false
+	DefaultHTTP2Only                     = true
 	DefaultMaxBackoff                    = time.Minute
 	DefaultMaxHTTPAddressesPerPeer       = 10
 	DefaultHTTPWorkers                   = 64
@@ -109,11 +111,25 @@ func WithMaxIdleConns(n int) Option {
 	}
 }
 
+// WithMaxConnsPerHost sets the maximum number of connections to a single host.
+func WithMaxConnsPerHost(n int) Option {
+	return func(net *Network) {
+		net.maxConnsPerHost = n
+	}
+}
+
 // WithInsecureSkipVerify allows making HTTPS connections to test servers.
 // Use for testing.
 func WithInsecureSkipVerify(b bool) Option {
 	return func(net *Network) {
 		net.insecureSkipVerify = b
+	}
+}
+
+// WithHTTP2Only sets whether to use HTTP/2 only for connections.
+func WithHTTP2Only(b bool) Option {
+	return func(net *Network) {
+		net.http2Only = b
 	}
 }
 
@@ -178,7 +194,9 @@ type Network struct {
 	idleConnTimeout         time.Duration
 	responseHeaderTimeout   time.Duration
 	maxIdleConns            int
+	maxConnsPerHost         int
 	insecureSkipVerify      bool
+	http2Only               bool
 	maxHTTPAddressesPerPeer int
 	httpWorkers             int
 	allowlist               map[string]struct{}
@@ -213,7 +231,9 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		idleConnTimeout:         DefaultIdleConnTimeout,
 		responseHeaderTimeout:   DefaultResponseHeaderTimeout,
 		maxIdleConns:            DefaultMaxIdleConns,
+		maxConnsPerHost:         DefaultMaxConnsPerHost,
 		insecureSkipVerify:      DefaultInsecureSkipVerify,
+		http2Only:               DefaultHTTP2Only,
 		maxHTTPAddressesPerPeer: DefaultMaxHTTPAddressesPerPeer,
 		httpWorkers:             DefaultHTTPWorkers,
 		httpRequests:            make(chan httpRequestInfo),
@@ -269,7 +289,8 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		ForceAttemptHTTP2: true,
 		// MaxIdleConns: how many keep-alive conns can we have without
 		// requests.
-		MaxIdleConns: htnet.maxIdleConns,
+		MaxIdleConns:    htnet.maxIdleConns,
+		MaxConnsPerHost: htnet.maxConnsPerHost,
 		// IdleConnTimeout: how long can a keep-alive connection stay
 		// around without requests.
 		IdleConnTimeout:        htnet.idleConnTimeout,
@@ -278,6 +299,13 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		MaxResponseHeaderBytes: 2 << 10,  // 2KiB
 		ReadBufferSize:         16 << 10, // 16KiB. Default is 4KiB. 16KiB is max TLS buffer size.
 	}
+
+	t.Protocols = new(http.Protocols)
+	if htnet.http2Only {
+		t.Protocols.SetHTTP1(false)
+		t.Protocols.SetHTTP2(true)
+	}
+	t.Protocols.SetUnencryptedHTTP2(true)
 
 	c := &http.Client{
 		Transport: t,
@@ -482,14 +510,13 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 		return err
 	}
 
-	// For HTTP, the address can only be a LAN IP as otherwise it would have
-	// been filtered out before.
-	// So IF it is HTTPS and not http2, we abort because we don't want
-	// requests to non-local hosts without http2.
-	if u.URL.Scheme == "https" && resp.Proto != http2proto {
+	// If we enforced HTTP2 and it is not, abort.
+	if resp.Proto != http2proto {
 		err = fmt.Errorf("%s://%q is not using HTTP/2 (%s)", req.URL.Scheme, req.URL.Host, resp.Proto)
 		log.Warn(err)
-		return err
+		if ht.http2Only {
+			return err
+		}
 	}
 
 	// probe success.
