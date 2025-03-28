@@ -22,7 +22,6 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/peerstore"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -203,6 +202,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if c.Equals(backoffCid) {
 		rw.Header().Set("Retry-After", "5")
 		rw.WriteHeader(http.StatusTooManyRequests)
+		return
 	}
 
 	if c.Equals(slowCid) {
@@ -256,12 +256,22 @@ func srvMultiaddr(t *testing.T, srv *httptest.Server) multiaddr.Multiaddr {
 	return maddr.Encapsulate(httpma)
 }
 
-func associateServerToPeer(t *testing.T, srv *httptest.Server, h, remote host.Host) {
-	h.Peerstore().AddAddr(
-		remote.ID(),
-		srvMultiaddr(t, srv),
-		peerstore.PermanentAddrTTL,
+func connectToPeer(t *testing.T, ctx context.Context, htnet *Network, remote host.Host, srvs ...*httptest.Server) {
+	var addrs []multiaddr.Multiaddr
+	for _, srv := range srvs {
+		addrs = append(addrs, srvMultiaddr(t, srv))
+	}
+
+	err := htnet.Connect(
+		ctx,
+		peer.AddrInfo{
+			ID:    remote.ID(),
+			Addrs: addrs,
+		},
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestBestURL(t *testing.T) {
@@ -272,7 +282,7 @@ func TestBestURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	msrv := makeServer(t, 0, 0)
-	associateServerToPeer(t, msrv, htnet.host, peer)
+	connectToPeer(t, ctx, htnet, peer, msrv)
 
 	nms, err := htnet.NewMessageSender(
 		ctx,
@@ -366,7 +376,7 @@ func TestSendMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	msrv := makeServer(t, 0, 10)
-	associateServerToPeer(t, msrv, htnet.host, peer)
+	connectToPeer(t, ctx, htnet, peer, msrv)
 
 	wl := makeCids(t, 0, 10)
 	msg := makeWantsMessage(wl)
@@ -395,8 +405,7 @@ func TestSendMessageWithFailingServer(t *testing.T) {
 	}
 	msrv := makeServer(t, 0, 0)
 	msrv2 := makeServer(t, 0, 10)
-	associateServerToPeer(t, msrv, htnet.host, peer)
-	associateServerToPeer(t, msrv2, htnet.host, peer)
+	connectToPeer(t, ctx, htnet, peer, msrv, msrv2)
 
 	wl := makeCids(t, 0, 10)
 	msg := makeWantsMessage(wl)
@@ -427,7 +436,7 @@ func TestSendMessageWithPartialResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	msrv := makeServer(t, 5, 10)
-	associateServerToPeer(t, msrv, htnet.host, peer)
+	connectToPeer(t, ctx, htnet, peer, msrv)
 
 	wl := makeCids(t, 0, 10)
 	msg := makeWantsMessage(wl)
@@ -462,7 +471,7 @@ func TestSendMessageSendHavesAndDontHaves(t *testing.T) {
 		t.Fatal(err)
 	}
 	msrv := makeServer(t, 0, 5)
-	associateServerToPeer(t, msrv, htnet.host, peer)
+	connectToPeer(t, ctx, htnet, peer, msrv)
 
 	wl := makeCids(t, 0, 10)
 	msg := makeHavesMessage(wl)
@@ -497,6 +506,7 @@ func TestBackOff(t *testing.T) {
 	// We trigger backoff using peer1
 	// and the backoff should happen when making a
 	// request on peer2.
+	// The backoff means the blocks are recorded as "don't have".
 
 	peer, err := mn.GenPeer()
 	if err != nil {
@@ -509,8 +519,8 @@ func TestBackOff(t *testing.T) {
 	}
 
 	msrv := makeServer(t, 0, 1)
-	associateServerToPeer(t, msrv, htnet.host, peer)
-	associateServerToPeer(t, msrv, htnet.host, peer2)
+	connectToPeer(t, ctx, htnet, peer, msrv)
+	connectToPeer(t, ctx, htnet, peer2, msrv)
 
 	nms, err := htnet.NewMessageSender(ctx, peer.ID(), nil)
 	if err != nil {
@@ -526,6 +536,13 @@ func TestBackOff(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	recv.wait(1)
+	if len(recv.donthaves) == 0 {
+		t.Fatal("back off should have counted as DONT_HAVE")
+	}
+
+	// should produce a dont_have as well even though we have this cid.
+	// (because we are in backoff for the url-host).
 	nms2, err := htnet.NewMessageSender(ctx, peer2.ID(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -535,11 +552,10 @@ func TestBackOff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	if len(recv.blocks) > 0 || len(recv.donthaves) > 0 {
+	recv.wait(1)
+
+	if len(recv.donthaves) != 2 || (len(recv.blocks)+len(recv.haves)) > 0 {
 		t.Error("no blocks should have been received while on backoff")
 	}
 }
