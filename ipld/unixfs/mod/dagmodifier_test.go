@@ -8,7 +8,6 @@ import (
 
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	"github.com/ipfs/boxo/ipld/unixfs"
-	h "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
 	trickle "github.com/ipfs/boxo/ipld/unixfs/importer/trickle"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 	testu "github.com/ipfs/boxo/ipld/unixfs/test"
@@ -46,7 +45,7 @@ func verifyNode(t *testing.T, orig []byte, dm *DagModifier, opts testu.NodeOpts)
 
 	err = trickle.VerifyTrickleDagStructure(nd, trickle.VerifyParams{
 		Getter:      dm.dagserv,
-		Direct:      h.DefaultLinksPerBlock,
+		Direct:      dm.MaxLinks,
 		LayerRepeat: 4,
 		Prefix:      &opts.Prefix,
 		RawLeaves:   opts.RawLeavesUsed,
