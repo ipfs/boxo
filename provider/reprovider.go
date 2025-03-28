@@ -138,7 +138,7 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 	}
 
 	s.ds = namespace.Wrap(ds, s.keyPrefix)
-	s.q = queue.NewQueue(s.ds)
+	s.q = queue.New(s.ds)
 
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options
@@ -423,10 +423,12 @@ func (s *reprovider) run() {
 		// after the first reprovide, schedule periodical reprovides
 		nextReprovideTicker := time.NewTicker(s.reprovideInterval)
 
-		for s.ctx.Err() == nil {
+		for {
 			err := s.Reprovide(context.Background())
-
-			if s.ctx.Err() == nil && err != nil {
+			if err != nil {
+				if s.ctx.Err() != nil {
+					return
+				}
 				log.Errorf("failed to reprovide: %s", err)
 			}
 			select {
