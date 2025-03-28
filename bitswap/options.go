@@ -3,110 +3,142 @@ package bitswap
 import (
 	"time"
 
-	"github.com/ipfs/boxo/bitswap/client"
-	"github.com/ipfs/boxo/bitswap/server"
-	"github.com/ipfs/boxo/bitswap/tracer"
+	bsclient "github.com/ipfs/boxo/bitswap/client"
+	bsserver "github.com/ipfs/boxo/bitswap/server"
+	bstracer "github.com/ipfs/boxo/bitswap/tracer"
+	"github.com/ipfs/boxo/exchange/blockexchange"
+	"github.com/ipfs/boxo/exchange/blockexchange/client"
+	"github.com/ipfs/boxo/exchange/blockexchange/server"
+	"github.com/ipfs/boxo/exchange/blockexchange/tracer"
 	delay "github.com/ipfs/go-ipfs-delay"
 )
 
-type option func(*Bitswap)
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
+type Option blockexchange.Option
 
-// Option is interface{} of server.Option or client.Option or func(*Bitswap)
-// wrapped in a struct to gain strong type checking.
-type Option struct {
-	v interface{}
-}
-
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func EngineBlockstoreWorkerCount(count int) Option {
-	return Option{server.EngineBlockstoreWorkerCount(count)}
+	return Option(blockexchange.WithServerOption(server.EngineBlockstoreWorkerCount(count)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func EngineTaskWorkerCount(count int) Option {
-	return Option{server.EngineTaskWorkerCount(count)}
+	return Option(blockexchange.WithServerOption(server.EngineTaskWorkerCount(count)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func MaxOutstandingBytesPerPeer(count int) Option {
-	return Option{server.MaxOutstandingBytesPerPeer(count)}
+	return Option(blockexchange.WithServerOption(server.MaxOutstandingBytesPerPeer(count)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func MaxQueuedWantlistEntriesPerPeer(count uint) Option {
-	return Option{server.MaxQueuedWantlistEntriesPerPeer(count)}
+	return Option(blockexchange.WithServerOption(server.MaxQueuedWantlistEntriesPerPeer(count)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 // MaxCidSize only affects the server.
 // If it is 0 no limit is applied.
 func MaxCidSize(n uint) Option {
-	return Option{server.MaxCidSize(n)}
+	return Option(blockexchange.WithServerOption(server.MaxCidSize(n)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func TaskWorkerCount(count int) Option {
-	return Option{server.TaskWorkerCount(count)}
+	return Option(blockexchange.WithServerOption(server.TaskWorkerCount(count)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func SetSendDontHaves(send bool) Option {
-	return Option{server.SetSendDontHaves(send)}
+	return Option(blockexchange.WithServerOption(server.SetSendDontHaves(send)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func WithPeerBlockRequestFilter(pbrf server.PeerBlockRequestFilter) Option {
-	return Option{server.WithPeerBlockRequestFilter(pbrf)}
+	return Option(blockexchange.WithServerOption(server.WithPeerBlockRequestFilter(pbrf)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func WithScoreLedger(scoreLedger server.ScoreLedger) Option {
-	return Option{server.WithScoreLedger(scoreLedger)}
+	return Option(blockexchange.WithServerOption(server.WithScoreLedger(scoreLedger)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func WithPeerLedger(peerLedger server.PeerLedger) Option {
-	return Option{server.WithPeerLedger(peerLedger)}
+	return Option(blockexchange.WithServerOption(server.WithPeerLedger(peerLedger)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func WithTargetMessageSize(tms int) Option {
-	return Option{server.WithTargetMessageSize(tms)}
+	return Option(blockexchange.WithServerOption(server.WithTargetMessageSize(tms)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func WithTaskComparator(comparator server.TaskComparator) Option {
-	return Option{server.WithTaskComparator(comparator)}
+	return Option(blockexchange.WithServerOption(server.WithTaskComparator(comparator)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
+//
 // WithWantHaveReplaceSize sets the maximum size of a block in bytes up to
 // which the bitswap server will replace a WantHave with a WantBlock response.
 // See [server.WithWantHaveReplaceSize] for details.
 func WithWantHaveReplaceSize(size int) Option {
-	return Option{server.WithWantHaveReplaceSize(size)}
+	return Option(blockexchange.WithServerOption(server.WithWantHaveReplaceSize(size)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func ProviderSearchDelay(newProvSearchDelay time.Duration) Option {
-	return Option{client.ProviderSearchDelay(newProvSearchDelay)}
+	return Option(blockexchange.WithClientOption(client.ProviderSearchDelay(newProvSearchDelay)))
 }
 
-func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
-	return Option{client.RebroadcastDelay(newRebroadcastDelay)}
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
+func RebroadcastDelay(newRebroadcastDelay delay.D) blockexchange.Option {
+	return blockexchange.RebroadcastDelay(newRebroadcastDelay)
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func SetSimulateDontHavesOnTimeout(send bool) Option {
-	return Option{client.SetSimulateDontHavesOnTimeout(send)}
+	return Option(blockexchange.WithClientOption(client.SetSimulateDontHavesOnTimeout(send)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func WithBlockReceivedNotifier(brn client.BlockReceivedNotifier) Option {
-	return Option{client.WithBlockReceivedNotifier(brn)}
+	return Option(blockexchange.WithClientOption(client.WithBlockReceivedNotifier(brn)))
 }
 
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
 func WithoutDuplicatedBlockStats() Option {
-	return Option{client.WithoutDuplicatedBlockStats()}
+	return Option(blockexchange.WithClientOption(client.WithoutDuplicatedBlockStats()))
 }
 
-func WithTracer(tap tracer.Tracer) Option {
-	// Only trace the server, both receive the same messages anyway
-	return Option{
-		option(func(bs *Bitswap) {
-			bs.tracer = tap
-		}),
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
+func WithTracer(tap bstracer.Tracer) Option {
+	return Option(blockexchange.WithTracer(tracer.Tracer(tap)))
+}
+
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
+func WithClientOption(opt bsclient.Option) Option {
+	o := blockexchange.Option{}
+	o.Set(client.Option(opt))
+	return Option(o)
+}
+
+// Deprecated: use github.com/ipfs/boxo/exchange/blockexchange
+func WithServerOption(opt bsserver.Option) Option {
+	o := blockexchange.Option{}
+	o.Set(server.Option(opt))
+	return Option(o)
+}
+
+func convertOpts(in []Option) (out []blockexchange.Option) {
+	if in == nil {
+		return
 	}
-}
 
-func WithClientOption(opt client.Option) Option {
-	return Option{opt}
-}
-
-func WithServerOption(opt server.Option) Option {
-	return Option{opt}
+	out = make([]blockexchange.Option, len(in))
+	for i, o := range in {
+		out[i] = blockexchange.Option(o)
+	}
+	return
 }

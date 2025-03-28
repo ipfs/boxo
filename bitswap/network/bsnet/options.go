@@ -1,22 +1,34 @@
 package bsnet
 
-import "github.com/libp2p/go-libp2p/core/protocol"
+import (
+	"github.com/ipfs/boxo/swap/bitswap"
+	"github.com/libp2p/go-libp2p/core/protocol"
+)
 
-type NetOpt func(*Settings)
+// Deprecated: use github.com/ipfs/boxo/swap/bitswap
+type NetOpt bitswap.NetOpt
 
-type Settings struct {
-	ProtocolPrefix     protocol.ID
-	SupportedProtocols []protocol.ID
-}
+// Deprecated: use github.com/ipfs/boxo/swap/bitswap
+type Settings bitswap.Settings
 
+// Deprecated: use github.com/ipfs/boxo/swap/bitswap
 func Prefix(prefix protocol.ID) NetOpt {
-	return func(settings *Settings) {
-		settings.ProtocolPrefix = prefix
-	}
+	return NetOpt(bitswap.Prefix(prefix))
 }
 
+// Deprecated: use github.com/ipfs/boxo/swap/bitswap
 func SupportedProtocols(protos []protocol.ID) NetOpt {
-	return func(settings *Settings) {
-		settings.SupportedProtocols = protos
+	return NetOpt(bitswap.SupportedProtocols(protos))
+}
+
+func convertOpts(in []NetOpt) (out []bitswap.NetOpt) {
+	if in == nil {
+		return
 	}
+
+	out = make([]bitswap.NetOpt, len(in))
+	for i, o := range in {
+		out[i] = bitswap.NetOpt(o)
+	}
+	return
 }
