@@ -18,6 +18,9 @@ import (
 	"github.com/ipld/go-ipld-prime/schema"
 )
 
+// Configuration for HTTP status code (451 vs 410)
+var use451StatusCode = true // This should be set based on your configuration
+
 var (
 	ErrInternalServerError = NewErrorStatusCodeFromStatus(http.StatusInternalServerError)
 	ErrGatewayTimeout      = NewErrorStatusCodeFromStatus(http.StatusGatewayTimeout)
@@ -25,6 +28,22 @@ var (
 	ErrServiceUnavailable  = NewErrorStatusCodeFromStatus(http.StatusServiceUnavailable)
 	ErrTooManyRequests     = NewErrorStatusCodeFromStatus(http.StatusTooManyRequests)
 )
+
+// BlockedError indicates that content is blocked.
+type BlockedError struct {
+	Message string
+}
+
+func (e *BlockedError) Error() string {
+	return e.Message
+}
+
+func (e *BlockedError) StatusCode() int {
+	if use451StatusCode {
+		return http.StatusUnavailableForLegalReasons
+	}
+	return http.StatusGone
+}
 
 // ErrorRetryAfter wraps any error with "retry after" hint. When an error of this type
 // returned to the gateway handler by an [IPFSBackend], the retry after value will be
@@ -187,7 +206,7 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 	case errors.Is(err, &cid.ErrInvalidCid{}):
 		code = http.StatusBadRequest
 	case isErrContentBlocked(err):
-		code = http.StatusGone
+		code = err.(*BlockedError).StatusCode() // Use the status code from BlockedError
 	case isErrNotFound(err):
 		code = http.StatusNotFound
 	case errors.Is(err, context.DeadlineExceeded):
@@ -253,7 +272,6 @@ func isErrNotFound(err error) bool {
 
 // isErrContentBlocked returns true for content filtering system errors
 func isErrContentBlocked(err error) bool {
-	// TODO: we match error message to avoid pulling nopfs as a dependency
-	// Ref. https://github.com/ipfs-shipyard/nopfs/blob/cde3b5ba964c13e977f4a95f3bd8ca7d7710fbda/status.go#L87-L89
-	return strings.Contains(err.Error(), "blocked and cannot be provided")
+	_, ok := err.(*BlockedError)
+	return ok
 }
