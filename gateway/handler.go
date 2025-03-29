@@ -68,7 +68,9 @@ type handler struct {
 //
 // [IPFS HTTP Gateway]: https://specs.ipfs.tech/http-gateways/
 func NewHandler(c Config, backend IPFSBackend) http.Handler {
-	return newHandlerWithMetrics(&c, backend)
+	handler := newHandlerWithMetrics(&c, backend)
+	// Wrap the handler with a request limiter
+	return newRequestLimiter(handler, c.MaxRequestsInFlight)
 }
 
 // serveContent replies to the request using the content in the provided Reader
