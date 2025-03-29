@@ -1,6 +1,7 @@
 package peermanager
 
 import (
+	"sync"
 	"testing"
 
 	cid "github.com/ipfs/go-cid"
@@ -26,9 +27,12 @@ type mockPQ struct {
 	wbs     []cid.Cid
 	whs     []cid.Cid
 	cancels []cid.Cid
+	wllock  sync.Mutex
 }
 
 func (mpq *mockPQ) clear() {
+	mpq.wllock.Lock()
+	defer mpq.wllock.Unlock()
 	mpq.bcst = nil
 	mpq.wbs = nil
 	mpq.whs = nil
@@ -39,15 +43,21 @@ func (mpq *mockPQ) Startup()  {}
 func (mpq *mockPQ) Shutdown() {}
 
 func (mpq *mockPQ) AddBroadcastWantHaves(whs []cid.Cid) {
+	mpq.wllock.Lock()
+	defer mpq.wllock.Unlock()
 	mpq.bcst = append(mpq.bcst, whs...)
 }
 
 func (mpq *mockPQ) AddWants(wbs []cid.Cid, whs []cid.Cid) {
+	mpq.wllock.Lock()
+	defer mpq.wllock.Unlock()
 	mpq.wbs = append(mpq.wbs, wbs...)
 	mpq.whs = append(mpq.whs, whs...)
 }
 
 func (mpq *mockPQ) AddCancels(cs []cid.Cid) {
+	mpq.wllock.Lock()
+	defer mpq.wllock.Unlock()
 	mpq.cancels = append(mpq.cancels, cs...)
 }
 
