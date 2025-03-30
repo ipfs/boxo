@@ -18,11 +18,14 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- upgrade to `go-libp2p` [v0.41.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.41.1)
+
 ### Removed
 
 ### Fixed
 
 - `gateway`: query parameters are now supported and preserved in redirects triggered by a [`_redirects`](https://specs.ipfs.tech/http-gateways/web-redirects-file/) file [#886](https://github.com/ipfs/boxo/pull/886)
+- `provider`: adjusted first reprovide timing after node reboot [#890](https://github.com/ipfs/boxo/pull/890)
 
 ### Security
 
