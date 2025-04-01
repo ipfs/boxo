@@ -38,7 +38,7 @@ func NewDAGProvider(root cid.Cid, fetchConfig fetcher.Factory) KeyChanFunc {
 				return nil
 			})
 			if err != nil {
-				log.Errorf("dagprovider dag traversal error: %s", err)
+				log.Errorf("dagprovider dag traversal error from root %s: %s", root, err)
 				return
 			}
 		}()
