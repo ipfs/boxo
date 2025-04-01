@@ -69,19 +69,15 @@ func (q *Queue) Close() error {
 	var err error
 	q.closeOnce.Do(func() {
 		// Close input queue and wait for worker to finish reading it.
-		if q.ds == nil {
-			q.inBuf.Shutdown()
-		} else {
-			q.inBuf.Close()
-			select {
-			case <-q.closed:
-			case <-time.After(shutdownTimeout):
-				q.close() // force immediate shutdown
-				<-q.closed
-				err = fmt.Errorf("provider queue: %d cids not written to datastore", q.inBuf.Len())
-			}
-			close(q.dequeue) // no more output from this queue
+		q.inBuf.Close()
+		select {
+		case <-q.closed:
+		case <-time.After(shutdownTimeout):
+			q.close() // force immediate shutdown
+			<-q.closed
+			err = fmt.Errorf("provider queue: %d cids not written to datastore", q.inBuf.Len())
 		}
+		close(q.dequeue) // no more output from this queue
 	})
 	return err
 }
@@ -148,9 +144,6 @@ func (q *Queue) worker(ctx context.Context) {
 
 	readInBuf := q.inBuf.Out()
 
-	batchTicker := time.NewTicker(batchCommitInterval)
-	defer batchTicker.Stop()
-
 	for {
 		if c == cid.Undef {
 			head, err := q.getQueueHead(ctx)
@@ -211,7 +204,6 @@ func (q *Queue) worker(ctx context.Context) {
 				cstr = c.String()
 			}
 
-			//if err := q.ds.Put(ctx, nextKey, toQueue.Bytes()); err != nil {
 			if err = b.Put(ctx, nextKey, toQueue.Bytes()); err != nil {
 				log.Errorf("Failed to batch cid: %s", err)
 				continue
@@ -220,8 +212,6 @@ func (q *Queue) worker(ctx context.Context) {
 			if batchCount == batchSize {
 				commit = true
 			}
-		case <-batchTicker.C:
-			commit = q.inBuf.Len() == 0
 		case dequeue <- c:
 			if err = b.Delete(ctx, k); err != nil {
 				log.Errorf("Failed to delete queued cid %s with key %s: %s", c, k, err)
