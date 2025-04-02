@@ -28,7 +28,7 @@ const (
 	idleWriteTime = time.Minute
 	// shutdownTimeout is the duration that Close waits to finish writing CIDs
 	// to the datastore.
-	shutdownTimeout = 20 * time.Second
+	shutdownTimeout = 10 * time.Second
 )
 
 // Queue provides a FIFO interface to the datastore for storing cids.
@@ -272,7 +272,7 @@ func (q *Queue) getQueueHead(ctx context.Context) (*query.Entry, error) {
 func (q *Queue) commitInput(ctx context.Context, counter uint64, cids *deque.Deque[cid.Cid]) error {
 	b, err := q.ds.Batch(ctx)
 	if err != nil {
-		return fmt.Errorf("Failed to create batch: %w", err)
+		return fmt.Errorf("failed to create batch: %w", err)
 	}
 
 	cstr := makeCidString(cids.Front())
@@ -281,7 +281,7 @@ func (q *Queue) commitInput(ctx context.Context, counter uint64, cids *deque.Deq
 		c := cids.At(i)
 		key := datastore.NewKey(fmt.Sprintf("%020d/%s", counter, cstr))
 		if err = b.Put(ctx, key, c.Bytes()); err != nil {
-			log.Errorf("Failed to add cid for addition to batch: %s", err)
+			log.Errorw("Failed to add cid to batch", "err", err)
 			continue
 		}
 		counter++
@@ -289,7 +289,7 @@ func (q *Queue) commitInput(ctx context.Context, counter uint64, cids *deque.Deq
 	cids.Clear()
 
 	if err = b.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to write to datastore: %w", err)
+		return fmt.Errorf("failed to commit batch to datastore: %w", err)
 	}
 
 	return nil
