@@ -125,7 +125,7 @@ func (q *Queue) worker(ctx context.Context) {
 	defer func() {
 		if c != cid.Undef {
 			if err := q.ds.Put(ctx, k, c.Bytes()); err != nil {
-				log.Errorf("Failed to add cid for addition to batch: %s", err)
+				log.Errorw("Failed to write cid to datastore", "err", err)
 			}
 			counter++
 		}
@@ -156,22 +156,18 @@ func (q *Queue) worker(ctx context.Context) {
 			if !dsEmpty {
 				head, err := q.getQueueHead(ctx)
 				if err != nil {
-					log.Errorf("error querying for head of queue: %s, stopping provider", err)
+					log.Errorw("Error querying for head of queue, stopping provider", "err", err)
 					return
 				}
 				if head != nil {
 					k = datastore.NewKey(head.Key)
 					if err = q.ds.Delete(ctx, k); err != nil {
-						log.Errorf("Failed to delete queued cid %s with key %s: %s", c, k, err)
-						continue
+						log.Errorw("Error deleting queue entry, stopping provider", "err", err, "key", head.Key)
+						return
 					}
 					c, err = cid.Parse(head.Value)
 					if err != nil {
-						log.Warnf("error parsing queue entry cid with key (%s), removing it from queue: %s", head.Key, err)
-						if err = q.ds.Delete(ctx, k); err != nil {
-							log.Errorf("error deleting queue entry with key (%s), due to error (%s), stopping provider", head.Key, err)
-							return
-						}
+						log.Warnw("Error parsing queue entry cid, removing it from queue", "err", err, "key", head.Key)
 						continue
 					}
 				} else {
@@ -232,7 +228,7 @@ func (q *Queue) worker(ctx context.Context) {
 			err = q.commitInput(ctx, counter, &inBuf)
 			if err != nil {
 				if !errors.Is(err, context.Canceled) {
-					log.Errorf("%w, stopping provider", err)
+					log.Errorw("Error writing CIDs to datastore, stopping provider", "err", err)
 				}
 				return
 			}
