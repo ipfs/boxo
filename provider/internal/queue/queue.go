@@ -20,11 +20,12 @@ var log = logging.Logger("provider.queue")
 
 const (
 	// batchSize is the limit on number of CIDs kept in memory at which ther
-	// are all written to the datastore.o
+	// are all written to the datastore.
 	batchSize = 16 * 1024
-	// batchCommitInterval is the sime since the last batch commit to write all
-	// CIDs remaining in memory.
-	batchCommitInterval = 2 * time.Minute
+	// idleWriteTime is the amout of time to check if the queue has been idle
+	// (no input or output). If the queue has been idle since the last check,
+	// then write all buffered CIDs to the datastore.
+	idleWriteTime = time.Minute
 	// shutdownTimeout is the duration that Close waits to finish writing CIDs
 	// to the datastore.
 	shutdownTimeout = 20 * time.Second
@@ -36,10 +37,15 @@ const (
 // in the queue when the node is brought back online depending on whether they
 // were fully written to the underlying datastore.
 //
-// Input to the queue is buffered in memory, up to batchSize. When the input
-// buffer contains batchSize items, or when batchCommitInterval has elapsed
-// since the previous batch commit, the contents of the input buffer are
-// written to the datastore.
+// Input to the queue is buffered in memory. The contents of the buffer are
+// written to the datastore when the input buffer contains batchSize items, or
+// when idleWriteTime has elapsed since the previous batch write or dequeue. CIDs to
+// dequeue are read, in order, from the input buffer if there are none in the
+// datastore. Otherwise they are read from the datastore.
+//
+// If queued items are read from the input buffer before it reaches its limit,
+// then queued items can remain in memory. When the queue is closed, any
+// remaining items in memory are written to the datastore.
 type Queue struct {
 	close     context.CancelFunc
 	closed    chan error
@@ -144,11 +150,12 @@ func (q *Queue) worker(ctx context.Context) {
 		commit  bool
 		dsEmpty bool
 		err     error
+		idle    bool
 	)
 
 	readInBuf := q.enqueue
 
-	batchTimer := time.NewTimer(batchCommitInterval)
+	batchTimer := time.NewTimer(idleWriteTime)
 	defer batchTimer.Stop()
 
 	for {
@@ -193,6 +200,7 @@ func (q *Queue) worker(ctx context.Context) {
 			if !ok {
 				return
 			}
+			idle = false
 
 			if c == cid.Undef {
 				// Use this CID as the next output since there was nothing in
@@ -208,16 +216,21 @@ func (q *Queue) worker(ctx context.Context) {
 			}
 		case dequeue <- c:
 			c = cid.Undef
+			idle = false
 		case <-batchTimer.C:
-			if inBuf.Len() != 0 {
-				commit = true
-			} else {
-				batchTimer.Reset(batchCommitInterval)
-				if inBuf.Cap() > baseCap {
-					inBuf = deque.Deque[cid.Cid]{}
-					inBuf.SetBaseCap(baseCap)
+			if idle {
+				if inBuf.Len() != 0 {
+					commit = true
+				} else {
+					if inBuf.Cap() > baseCap {
+						inBuf = deque.Deque[cid.Cid]{}
+						inBuf.SetBaseCap(baseCap)
+					}
 				}
 			}
+			idle = true
+			batchTimer.Reset(idleWriteTime)
+
 		case <-ctx.Done():
 			return
 		}
@@ -234,7 +247,6 @@ func (q *Queue) worker(ctx context.Context) {
 			}
 			counter += uint64(n)
 			dsEmpty = false
-			batchTimer.Reset(batchCommitInterval)
 		}
 	}
 }
