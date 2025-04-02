@@ -90,13 +90,16 @@ func (q *Queue) Close() error {
 }
 
 // Enqueue puts a cid in the queue.
-func (q *Queue) Enqueue(cid cid.Cid) (err error) {
+func (q *Queue) Enqueue(c cid.Cid) (err error) {
+	if c == cid.Undef {
+		return
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			err = errors.New("failed to enqueue CID: shutting down")
 		}
 	}()
-	q.enqueue <- cid
+	q.enqueue <- c
 	return
 }
 
@@ -107,7 +110,10 @@ func (q *Queue) Dequeue() <-chan cid.Cid {
 
 func makeCidString(c cid.Cid) string {
 	data := c.Bytes()
-	return base64.RawURLEncoding.EncodeToString(data[len(data)-6:])
+	if len(data) > 4 {
+		data = data[len(data)-4:]
+	}
+	return base64.RawURLEncoding.EncodeToString(data)
 }
 
 func makeKey(c cid.Cid, counter uint64) datastore.Key {
