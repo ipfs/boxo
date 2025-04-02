@@ -2,12 +2,13 @@ package queue
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/gammazero/chanqueue"
+	"github.com/gammazero/deque"
 	cid "github.com/ipfs/go-cid"
 	datastore "github.com/ipfs/go-datastore"
 	namespace "github.com/ipfs/go-datastore/namespace"
@@ -18,33 +19,34 @@ import (
 var log = logging.Logger("provider.queue")
 
 const (
-	batchSize           = 16 * 1024
-	batchCommitInterval = 5 * time.Second
-
-	// Number of input CIDs to buffer without blocking. This capacity is only
-	// used when writing batches to the datastore takes some time.
-	inputBufferSize = 64 * 1024
-	// Time for Close to wait to finish writing CIDs to datastore.
+	// batchSize is the limit on number of CIDs kept in memory at which ther
+	// are all written to the datastore.o
+	batchSize = 16 * 1024
+	// batchCommitInterval is the sime since the last batch commit to write all
+	// CIDs remaining in memory.
+	batchCommitInterval = 2 * time.Minute
+	// shutdownTimeout is the duration that Close waits to finish writing CIDs
+	// to the datastore.
 	shutdownTimeout = 20 * time.Second
 )
 
 // Queue provides a FIFO interface to the datastore for storing cids.
 //
-// Cids in the process of being provided when a crash or shutdown occurs may be
+// CIDs in the process of being provided when a crash or shutdown occurs may be
 // in the queue when the node is brought back online depending on whether they
 // were fully written to the underlying datastore.
 //
-// Input to the queue is buffered in memory, up to inputBufferSize, to maintain
-// the speed at which input is consumed, even if persisting it to the datastore
-// becomes slow. This input buffer behaves as a channel with a dynamic
-// capacity.
+// Input to the queue is buffered in memory, up to batchSize. When the input
+// buffer contains batchSize items, or when batchCommitInterval has elapsed
+// since the previous batch commit, the contents of the input buffer are
+// written to the datastore.
 type Queue struct {
 	close     context.CancelFunc
-	closed    chan struct{}
+	closed    chan error
 	closeOnce sync.Once
 	dequeue   chan cid.Cid
 	ds        datastore.Batching
-	inBuf     *chanqueue.ChanQueue[cid.Cid]
+	enqueue   chan cid.Cid
 }
 
 // New creates a queue for cids.
@@ -53,10 +55,10 @@ func New(ds datastore.Batching) *Queue {
 
 	q := &Queue{
 		close:   cancel,
-		closed:  make(chan struct{}),
+		closed:  make(chan error, 1),
 		dequeue: make(chan cid.Cid),
 		ds:      namespace.Wrap(ds, datastore.NewKey("/queue")),
-		inBuf:   chanqueue.New(chanqueue.WithCapacity[cid.Cid](inputBufferSize)),
+		enqueue: make(chan cid.Cid),
 	}
 
 	go q.worker(ctx)
@@ -69,13 +71,12 @@ func (q *Queue) Close() error {
 	var err error
 	q.closeOnce.Do(func() {
 		// Close input queue and wait for worker to finish reading it.
-		q.inBuf.Close()
+		close(q.enqueue)
 		select {
 		case <-q.closed:
 		case <-time.After(shutdownTimeout):
 			q.close() // force immediate shutdown
-			<-q.closed
-			err = fmt.Errorf("provider queue: %d cids not written to datastore", q.inBuf.Len())
+			err = <-q.closed
 		}
 		close(q.dequeue) // no more output from this queue
 	})
@@ -89,7 +90,7 @@ func (q *Queue) Enqueue(cid cid.Cid) (err error) {
 			err = errors.New("failed to enqueue CID: shutting down")
 		}
 	}()
-	q.inBuf.In() <- cid
+	q.enqueue <- cid
 	return
 }
 
@@ -98,83 +99,91 @@ func (q *Queue) Dequeue() <-chan cid.Cid {
 	return q.dequeue
 }
 
+func makeCidString(c cid.Cid) string {
+	data := c.Bytes()
+	return base64.RawURLEncoding.EncodeToString(data[len(data)-6:])
+}
+
+func makeKey(c cid.Cid, counter uint64) datastore.Key {
+	return datastore.NewKey(fmt.Sprintf("%020d/%s", counter, makeCidString(c)))
+}
+
 // worker run dequeues and enqueues when available.
 func (q *Queue) worker(ctx context.Context) {
 	defer close(q.closed)
-	defer q.inBuf.Shutdown()
 
-	b, err := q.ds.Batch(ctx)
-	if err != nil {
-		log.Errorf("Failed to create batch, stopping provider: %s", err)
-		return
-	}
+	var (
+		c       cid.Cid
+		counter uint64
+		k       datastore.Key = datastore.Key{}
+		inBuf   deque.Deque[cid.Cid]
+	)
 
-	var batchCount int
+	const baseCap = 1024
+	inBuf.SetBaseCap(baseCap)
+
 	defer func() {
-		if batchCount != 0 {
-			if err := b.Commit(ctx); err != nil {
-				log.Errorf("Failed to write cid batch: %s", err)
+		if c != cid.Undef {
+			if err := q.ds.Put(ctx, k, c.Bytes()); err != nil {
+				log.Errorf("Failed to add cid for addition to batch: %s", err)
+			}
+			counter++
+		}
+		if inBuf.Len() != 0 {
+			err := q.commitInput(ctx, counter, &inBuf)
+			if err != nil && !errors.Is(err, context.Canceled) {
+				log.Error(err)
+				if inBuf.Len() != 0 {
+					q.closed <- fmt.Errorf("provider queue: %d cids not written to datastore", inBuf.Len())
+				}
 			}
 		}
 	}()
 
-	refreshBatch := func(ctx context.Context) error {
-		if batchCount == 0 {
-			return nil
-		}
-		err := b.Commit(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to write cid batch: %w", err)
-		}
-		b, err = q.ds.Batch(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to create batch: %w", err)
-		}
-		batchCount = 0
-		return nil
-	}
-
 	var (
-		counter    uint64
-		c, lastCid cid.Cid
-		commit     bool
-		cstr       string
-		k          datastore.Key = datastore.Key{}
+		commit  bool
+		dsEmpty bool
+		err     error
 	)
 
-	readInBuf := q.inBuf.Out()
+	readInBuf := q.enqueue
+
+	batchTimer := time.NewTimer(batchCommitInterval)
+	defer batchTimer.Stop()
 
 	for {
 		if c == cid.Undef {
-			head, err := q.getQueueHead(ctx)
-			if err != nil {
-				log.Errorf("error querying for head of queue: %s, stopping provider", err)
-				return
-			}
-			if head != nil {
-				k = datastore.NewKey(head.Key)
-				c, err = cid.Parse(head.Value)
+			if !dsEmpty {
+				head, err := q.getQueueHead(ctx)
 				if err != nil {
-					log.Warnf("error parsing queue entry cid with key (%s), removing it from queue: %s", head.Key, err)
-					if err = q.ds.Delete(ctx, k); err != nil {
-						log.Errorf("error deleting queue entry with key (%s), due to error (%s), stopping provider", head.Key, err)
-						return
-					}
-					continue
-				}
-			} else if batchCount != 0 {
-				// There were no queued CIDs in the datastore, but there were
-				// some waiting to be written. Write them and re-read from
-				// datastore.
-				if err = refreshBatch(ctx); err != nil {
-					if !errors.Is(err, context.Canceled) {
-						log.Errorf("%w, stopping provider", err)
-					}
+					log.Errorf("error querying for head of queue: %s, stopping provider", err)
 					return
 				}
-				continue
+				if head != nil {
+					k = datastore.NewKey(head.Key)
+					if err = q.ds.Delete(ctx, k); err != nil {
+						log.Errorf("Failed to delete queued cid %s with key %s: %s", c, k, err)
+						continue
+					}
+					c, err = cid.Parse(head.Value)
+					if err != nil {
+						log.Warnf("error parsing queue entry cid with key (%s), removing it from queue: %s", head.Key, err)
+						if err = q.ds.Delete(ctx, k); err != nil {
+							log.Errorf("error deleting queue entry with key (%s), due to error (%s), stopping provider", head.Key, err)
+							return
+						}
+						continue
+					}
+				} else {
+					dsEmpty = true
+				}
 			}
-			cstr = c.String()
+			if dsEmpty && inBuf.Len() != 0 {
+				// There were no queued CIDs in the datastore, so read one from
+				// the input buffer.
+				c = inBuf.PopFront()
+				k = makeKey(c, counter)
+			}
 		}
 
 		// If c != cid.Undef set dequeue and attempt write.
@@ -188,53 +197,48 @@ func (q *Queue) worker(ctx context.Context) {
 			if !ok {
 				return
 			}
-			if toQueue == lastCid {
-				continue
-			}
-			lastCid = toQueue
-
-			// Add suffix to key path to allow multiple entries with same sequence.
-			nextKey := datastore.NewKey(fmt.Sprintf("%020d/%s", counter, cstr))
-			counter++
 
 			if c == cid.Undef {
-				// fast path, skip rereading the datastore if we don't have anything in hand yet
+				// Use this CID as the next output since there was nothing in
+				// the datastore or buffer previously.
 				c = toQueue
-				k = nextKey
-				cstr = c.String()
-			}
-
-			if err = b.Put(ctx, nextKey, toQueue.Bytes()); err != nil {
-				log.Errorf("Failed to batch cid: %s", err)
+				k = makeKey(c, counter)
 				continue
 			}
-			batchCount++
-			if batchCount == batchSize {
+
+			inBuf.PushBack(toQueue)
+			if inBuf.Len() >= batchSize {
 				commit = true
 			}
 		case dequeue <- c:
-			if err = b.Delete(ctx, k); err != nil {
-				log.Errorf("Failed to delete queued cid %s with key %s: %s", c, k, err)
-				continue
-			}
 			c = cid.Undef
-			batchCount++
-			// Delete (in batch) must be committed immediately, otherwise the
-			// same head cid will be read from the datastore.
-			commit = true
+		case <-batchTimer.C:
+			if inBuf.Len() != 0 {
+				commit = true
+			} else {
+				batchTimer.Reset(batchCommitInterval)
+				if inBuf.Cap() > baseCap {
+					inBuf = deque.Deque[cid.Cid]{}
+					inBuf.SetBaseCap(baseCap)
+				}
+			}
 		case <-ctx.Done():
 			return
 		}
 
 		if commit {
 			commit = false
-
-			if err = refreshBatch(ctx); err != nil {
+			n := inBuf.Len()
+			err = q.commitInput(ctx, counter, &inBuf)
+			if err != nil {
 				if !errors.Is(err, context.Canceled) {
 					log.Errorf("%w, stopping provider", err)
 				}
 				return
 			}
+			counter += uint64(n)
+			dsEmpty = false
+			batchTimer.Reset(batchCommitInterval)
 		}
 	}
 }
@@ -255,4 +259,30 @@ func (q *Queue) getQueueHead(ctx context.Context) (*query.Entry, error) {
 	}
 
 	return &r.Entry, r.Error
+}
+
+func (q *Queue) commitInput(ctx context.Context, counter uint64, cids *deque.Deque[cid.Cid]) error {
+	b, err := q.ds.Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("Failed to create batch: %w", err)
+	}
+
+	cstr := makeCidString(cids.Front())
+	n := cids.Len()
+	for i := 0; i < n; i++ {
+		c := cids.At(i)
+		key := datastore.NewKey(fmt.Sprintf("%020d/%s", counter, cstr))
+		if err = b.Put(ctx, key, c.Bytes()); err != nil {
+			log.Errorf("Failed to add cid for addition to batch: %s", err)
+			continue
+		}
+		counter++
+	}
+	cids.Clear()
+
+	if err = b.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to write to datastore: %w", err)
+	}
+
+	return nil
 }
