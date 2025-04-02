@@ -147,7 +147,7 @@ func blockOpener(ctx context.Context, bs *blockservice.Session, offline bool) ip
 		blk, err := bs.GetBlock(ctx, cidLink.Cid)
 		if err != nil {
 			if format.IsNotFound(err) && offline {
-				return nil, traversal.SkipMe{}
+				return nil, fmt.Errorf("unable to find %s in local blockstore: %w", cidLink.Cid, traversal.SkipMe{})
 			}
 			return nil, err
 		}
