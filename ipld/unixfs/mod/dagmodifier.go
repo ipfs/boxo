@@ -46,6 +46,7 @@ type DagModifier struct {
 
 	Prefix    cid.Prefix
 	RawLeaves bool
+	MaxLinks  int
 
 	read uio.DagReader
 }
@@ -76,6 +77,7 @@ func NewDagModifier(ctx context.Context, from ipld.Node, serv ipld.DAGService, s
 		ctx:       ctx,
 		Prefix:    prefix,
 		RawLeaves: rawLeaves,
+		MaxLinks:  help.DefaultLinksPerBlock,
 	}, nil
 }
 
@@ -358,7 +360,7 @@ func (dm *DagModifier) appendData(nd ipld.Node, spl chunker.Splitter) (ipld.Node
 	case *mdag.ProtoNode, *mdag.RawNode:
 		dbp := &help.DagBuilderParams{
 			Dagserv:    dm.dagserv,
-			Maxlinks:   help.DefaultLinksPerBlock,
+			Maxlinks:   dm.MaxLinks,
 			CidBuilder: dm.Prefix,
 			RawLeaves:  dm.RawLeaves,
 		}
