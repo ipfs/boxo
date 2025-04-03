@@ -59,6 +59,7 @@
             <a class="ipfs-hash" translate="no" href={{ if $root.DNSLink }}"https://cid.ipfs.tech/#{{ .Hash | urlEscape}}" target="_blank" rel="noreferrer noopener"{{ else }}"{{ $root.GatewayURL }}/ipfs/{{ .Hash | urlEscape}}?filename={{ .Name | urlEscape }}"{{ end }}>
               {{- .ShortHash -}}
             </a>
+            <button class="copy-button" onclick="navigator.clipboard.writeText('{{ .Hash }}')">Copy</button>
             {{ end }}
           </div>
           <div class="nowrap" title="Cumulative size of IPFS DAG (data + metadata)">{{ .Size }}</div>
