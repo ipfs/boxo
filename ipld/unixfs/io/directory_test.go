@@ -625,6 +625,34 @@ func TestDynamicDirectoryWithMaxLinks(t *testing.T) {
 	}
 }
 
+// add a test that tests that validShardWidth(n) only returns true with positive numbers that are powers of 8 and multiples of 8.
+func TestValidShardWidth(t *testing.T) {
+	testCases := []struct {
+		width  int
+		expect bool
+	}{
+		{0, false},
+		{-1, false},
+		{1, false},
+		{2, false},
+		{4, false},
+		{8, true},
+		{16, true},
+		{32, true},
+		{64, true},
+		{512, true},
+		{1024, true},
+		{4096, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Width%d", tc.width), func(t *testing.T) {
+			result := validShardWidth(tc.width)
+			assert.Equal(t, tc.expect, result, "Expected %v for width %d", tc.expect, tc.width)
+		})
+	}
+}
+
 // countGetsDS is a DAG service that keeps track of the number of
 // unique CIDs fetched.
 type countGetsDS struct {
