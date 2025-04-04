@@ -119,8 +119,11 @@ func WithMaxLinks(n int) DirectoryOption {
 // 8. If it is not the case, it will not be used and DefaultHAMTWidth will be
 // used instead.
 func WithMaxHAMTFanout(n int) DirectoryOption {
-	if !validShardWidth(n) {
+	if n > 0 && !validShardWidth(n) {
 		log.Warnf("Invalid HAMTMaxFanout: %d. Using default (%d)", n, DefaultShardWidth)
+		n = DefaultShardWidth
+	}
+	if n == 0 {
 		n = DefaultShardWidth
 	}
 	return func(d directoryWithOptions) {
