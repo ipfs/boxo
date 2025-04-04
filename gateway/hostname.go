@@ -554,6 +554,14 @@ func prepareHostnameGateways(gateways map[string]*PublicGateway) *hostnameGatewa
 	}
 
 	for hostname, gw := range gateways {
+		// Validate that UseSubdomains is not enabled for IP addresses
+		if gw.UseSubdomains {
+			hostWithoutPort := stripPort(hostname)
+			if net.ParseIP(hostWithoutPort) != nil {
+				log.Warn("invalid gateway configuration: UseSubdomains cannot be enabled for IP address %s", hostname)
+				continue
+			}
+		}
 		if strings.Contains(hostname, "*") {
 			// from *.domain.tld, construct a regexp that match any direct subdomain
 			// of .domain.tld.
