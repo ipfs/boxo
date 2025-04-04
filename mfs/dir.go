@@ -64,6 +64,39 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 	}, nil
 }
 
+// NewEmptyDirectory creates an empty MFS directory with the given options.
+// The directory is added to the DAGService. To create a new MFS
+// root use NewEmptyRootFolder instead.
+func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ipld.DAGService, opts MkdirOpts) (*Directory, error) {
+	db := uio.NewDirectory(dserv,
+		uio.WithMaxLinks(opts.MaxLinks),
+		uio.WithMaxHAMTFanout(opts.MaxHAMTFanout),
+		uio.WithStat(opts.Mode, opts.ModTime),
+		uio.WithCidBuilder(opts.CidBuilder),
+	)
+
+	nd, err := db.GetNode()
+	if err != nil {
+		return nil, err
+	}
+
+	err = dserv.Add(ctx, nd)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Directory{
+		inode: inode{
+			name:       name,
+			parent:     parent,
+			dagService: dserv,
+		},
+		ctx:          ctx,
+		unixfsDir:    db,
+		entriesCache: make(map[string]FSNode),
+	}, nil
+}
+
 // GetCidBuilder gets the CID builder of the root node
 func (d *Directory) GetCidBuilder() cid.Builder {
 	return d.unixfsDir.GetCidBuilder()
@@ -144,6 +177,12 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 			if err != nil {
 				return nil, err
 			}
+
+			// these options are not persisted so they need to be
+			// inherited from the parent.
+			ndir.unixfsDir.SetMaxLinks(d.unixfsDir.GetMaxLinks())
+			ndir.unixfsDir.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
+			ndir.unixfsDir.SetCidBuilder(d.unixfsDir.GetCidBuilder())
 
 			d.entriesCache[name] = ndir
 			return ndir, nil
@@ -271,7 +310,11 @@ func (d *Directory) ForEachEntry(ctx context.Context, f func(NodeListing) error)
 }
 
 func (d *Directory) Mkdir(name string) (*Directory, error) {
-	return d.MkdirWithOpts(name, MkdirOpts{})
+	return d.MkdirWithOpts(name, MkdirOpts{
+		MaxLinks:      d.unixfsDir.GetMaxLinks(),
+		MaxHAMTFanout: d.unixfsDir.GetMaxHAMTFanout(),
+		CidBuilder:    d.unixfsDir.GetCidBuilder(),
+	})
 }
 
 func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, error) {
@@ -290,20 +333,17 @@ func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, erro
 		}
 	}
 
-	ndir := ft.EmptyDirNodeWithStat(opts.Mode, opts.ModTime)
-	ndir.SetCidBuilder(d.GetCidBuilder())
+	dirobj, err := NewEmptyDirectory(d.ctx, name, d, d.dagService, opts)
+	if err != nil {
+		return nil, err
+	}
 
-	err = d.dagService.Add(d.ctx, ndir)
+	ndir, err := dirobj.GetNode()
 	if err != nil {
 		return nil, err
 	}
 
 	err = d.unixfsDir.AddChild(d.ctx, name, ndir)
-	if err != nil {
-		return nil, err
-	}
-
-	dirobj, err := NewDirectory(d.ctx, name, ndir, d, d.dagService)
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +466,13 @@ func (d *Directory) SetMode(mode os.FileMode) error {
 		return err
 	}
 
-	return d.setNodeData(data, nd.Links())
+	err = d.setNodeData(data, nd.Links())
+	if err != nil {
+		return err
+	}
+
+	d.unixfsDir.SetStat(mode, time.Time{})
+	return nil
 }
 
 func (d *Directory) SetModTime(ts time.Time) error {
@@ -446,7 +492,12 @@ func (d *Directory) SetModTime(ts time.Time) error {
 		return err
 	}
 
-	return d.setNodeData(data, nd.Links())
+	err = d.setNodeData(data, nd.Links())
+	if err != nil {
+		return err
+	}
+	d.unixfsDir.SetStat(0, ts)
+	return nil
 }
 
 func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
@@ -469,6 +520,11 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 	if err != nil {
 		return err
 	}
+
+	// We need to carry our desired settings.
+	db.SetMaxLinks(d.unixfsDir.GetMaxLinks())
+	db.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
+	db.SetCidBuilder(d.unixfsDir.GetCidBuilder())
 	d.unixfsDir = db
 
 	return nil
