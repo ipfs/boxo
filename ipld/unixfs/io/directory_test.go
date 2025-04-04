@@ -205,12 +205,14 @@ func mockLinkSizeFunc(fixedSize int) func(linkName string, linkCid cid.Cid) int 
 }
 
 func checkBasicDirectory(t *testing.T, dir Directory, errorMessage string) {
+	t.Helper()
 	if _, ok := dir.(*DynamicDirectory).directoryWithOptions.(*BasicDirectory); !ok {
 		t.Fatal(errorMessage)
 	}
 }
 
 func checkHAMTDirectory(t *testing.T, dir Directory, errorMessage string) {
+	t.Helper()
 	if _, ok := dir.(*DynamicDirectory).directoryWithOptions.(*HAMTDirectory); !ok {
 		t.Fatal(errorMessage)
 	}
@@ -557,7 +559,7 @@ func TestHAMTDirectoryWithMaxLinks(t *testing.T) {
 	ds := mdtest.Mock()
 	ctx := context.Background()
 
-	dir, err := NewHAMTDirectory(ds, 0, WithMaxLinks(8))
+	dir, err := NewHAMTDirectory(ds, 0, WithMaxHAMTFanout(8))
 	require.NoError(t, err)
 
 	// Ensure we have at least 2 levels of HAMT by adding many nodes
@@ -587,7 +589,7 @@ func TestDynamicDirectoryWithMaxLinks(t *testing.T) {
 	ds := mdtest.Mock()
 	ctx := context.Background()
 
-	dir := NewDirectory(ds, WithMaxLinks(8))
+	dir := NewDirectory(ds, WithMaxLinks(8), WithMaxHAMTFanout(16))
 
 	for i := 0; i < 8; i++ {
 		child := ft.EmptyDirNode()
@@ -608,7 +610,7 @@ func TestDynamicDirectoryWithMaxLinks(t *testing.T) {
 	// Check that the directory root node has 8 links
 	dirnd, err := dir.GetNode()
 	require.NoError(t, err)
-	assert.Equal(t, 8, len(dirnd.Links()), "HAMT Directory root node should have 8 links")
+	assert.Equal(t, 16, len(dirnd.Links()), "HAMT Directory root node should have 16 links")
 
 	// Continue the code by removing 50 elements while checking that the underlying directory is a HAMT directory.
 	for i := 57; i >= 9; i-- {
