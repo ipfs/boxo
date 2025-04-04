@@ -120,11 +120,13 @@ func PutNode(r *Root, path string, nd ipld.Node) error {
 
 // MkdirOpts is used by Mkdir
 type MkdirOpts struct {
-	Mkparents  bool
-	Flush      bool
-	CidBuilder cid.Builder
-	Mode       os.FileMode
-	ModTime    time.Time
+	Mkparents     bool
+	Flush         bool
+	CidBuilder    cid.Builder
+	Mode          os.FileMode
+	ModTime       time.Time
+	MaxLinks      int
+	MaxHAMTFanout int
 }
 
 // Mkdir creates a directory at 'path' under the directory 'd', creating
@@ -152,15 +154,23 @@ func Mkdir(r *Root, pth string, opts MkdirOpts) error {
 	}
 
 	cur := r.GetDirectory()
+
+	// opts to make the parents leave MkParents and Flush as false.
+	parentsOpts := MkdirOpts{
+		CidBuilder:    opts.CidBuilder,
+		Mode:          opts.Mode,
+		ModTime:       opts.ModTime,
+		MaxLinks:      opts.MaxLinks,
+		MaxHAMTFanout: opts.MaxHAMTFanout,
+	}
+
 	for i, d := range parts[:len(parts)-1] {
 		fsn, err := cur.Child(d)
 		if err == os.ErrNotExist && opts.Mkparents {
-			mkd, err := cur.Mkdir(d)
+
+			mkd, err := cur.MkdirWithOpts(d, parentsOpts)
 			if err != nil {
 				return err
-			}
-			if opts.CidBuilder != nil {
-				mkd.SetCidBuilder(opts.CidBuilder)
 			}
 			fsn = mkd
 		} else if err != nil {
@@ -179,9 +189,6 @@ func Mkdir(r *Root, pth string, opts MkdirOpts) error {
 		if !opts.Mkparents || err != os.ErrExist || final == nil {
 			return err
 		}
-	}
-	if opts.CidBuilder != nil {
-		final.SetCidBuilder(opts.CidBuilder)
 	}
 
 	if opts.Flush {

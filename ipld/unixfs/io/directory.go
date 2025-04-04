@@ -71,20 +71,28 @@ type Directory interface {
 	// GetCidBuilder returns the CID Builder used.
 	GetCidBuilder() cid.Builder
 
-	// setMaxLinks sets the max width of the Directory.
-	setMaxLinks(n int)
+	// GetMaxLinks returns the configured value for MaxLinks.
+	GetMaxLinks() int
+
+	// SetMaxLinks sets the number of links for the directory. Used when converting
+	// between Basic and HAMT.
+	SetMaxLinks(n int)
+
+	// GetMaxHAMTFanout returns the configured value for MaxHAMTFanout.
+	GetMaxHAMTFanout() int
+
+	// SetMaxHAMTFanout sets the max width of shards when using a HAMT.
+	// It must be a power of 2 and multiple of 8. Used when converting
+	// between Basic and HAMT.
+	SetMaxHAMTFanout(n int)
+
+	// SetStat sets the stat information for the directory. Used when
+	// converting between Basic and HAMT.
+	SetStat(os.FileMode, time.Time)
 }
 
-type directoryWithOptions interface {
-	Directory
-	// setMaxLinks sets the max width of the Directory.
-	setMaxLinks(n int)
-	// used for hamt directories only
-	setHAMTMaxFanout(n int)
-	setStats(os.FileMode, time.Time)
-}
-
-type DirectoryOption func(directoryWithOptions)
+// A DirectoryOption can be used to initialize directories.
+type DirectoryOption func(d Directory)
 
 // WithMaxLinks stablishes the max number of links allowed for a Basic
 // directory or a Dynamic directory with an underlying Basic directory:
@@ -101,8 +109,8 @@ type DirectoryOption func(directoryWithOptions)
 // - On pure Basic directories, it causes an error when adding more than
 // MaxLinks children.
 func WithMaxLinks(n int) DirectoryOption {
-	return func(d directoryWithOptions) {
-		d.setMaxLinks(n)
+	return func(d Directory) {
+		d.SetMaxLinks(n)
 	}
 }
 
@@ -119,29 +127,22 @@ func WithMaxLinks(n int) DirectoryOption {
 // 8. If it is not the case, it will not be used and DefaultHAMTWidth will be
 // used instead.
 func WithMaxHAMTFanout(n int) DirectoryOption {
-	if n > 0 && !validShardWidth(n) {
-		log.Warnf("Invalid HAMTMaxFanout: %d. Using default (%d)", n, DefaultShardWidth)
-		n = DefaultShardWidth
-	}
-	if n == 0 {
-		n = DefaultShardWidth
-	}
-	return func(d directoryWithOptions) {
-		d.setHAMTMaxFanout(n)
+	return func(d Directory) {
+		d.SetMaxHAMTFanout(n)
 	}
 }
 
 // WithCidBuilder sets the CidBuilder for new Directories.
 func WithCidBuilder(cb cid.Builder) DirectoryOption {
-	return func(d directoryWithOptions) {
+	return func(d Directory) {
 		d.SetCidBuilder(cb)
 	}
 }
 
 // WithStat can be used to set the empty directory node permissions.
 func WithStat(mode os.FileMode, mtime time.Time) DirectoryOption {
-	return func(d directoryWithOptions) {
-		d.setStats(mode, mtime)
+	return func(d Directory) {
+		d.SetStat(mode, mtime)
 	}
 }
 
@@ -159,9 +160,9 @@ func init() {
 }
 
 var (
-	_ directoryWithOptions = (*DynamicDirectory)(nil)
-	_ directoryWithOptions = (*BasicDirectory)(nil)
-	_ directoryWithOptions = (*HAMTDirectory)(nil)
+	_ Directory = (*DynamicDirectory)(nil)
+	_ Directory = (*BasicDirectory)(nil)
+	_ Directory = (*HAMTDirectory)(nil)
 )
 
 // BasicDirectory is the basic implementation of `Directory`. All the entries
@@ -257,6 +258,7 @@ func NewHAMTDirectory(dserv ipld.DAGService, sizeChange int, opts ...DirectoryOp
 		opt(dir)
 	}
 
+	// FIXME: do shards not support mtime and mode?
 	shard, err := hamt.NewShard(dir.dserv, dir.maxHAMTFanout)
 	if err != nil {
 		return nil, err
@@ -322,17 +324,45 @@ func NewDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (Directory, err
 	return nil, ErrNotADir
 }
 
-func (d *BasicDirectory) setMaxLinks(n int) {
+// GetMaxLinks returns the configured MaxLinks.
+func (d *BasicDirectory) GetMaxLinks() int {
+	return d.maxLinks
+}
+
+// SetMaxLinks sets the maximum number of links for the Directory, but has no
+// side effects until new children are added (in which case the new limit
+// applies).
+func (d *BasicDirectory) SetMaxLinks(n int) {
 	d.maxLinks = n
 }
 
-func (d *BasicDirectory) setHAMTMaxFanout(n int) {
+// GetMaxLinks returns the configured HAMTFanout.
+func (d *BasicDirectory) GetMaxHAMTFanout() int {
+	return d.maxHAMTFanout
+}
+
+// SetMAXHAMTFanout has no relevance for BasicDirectories.
+func (d *BasicDirectory) SetMaxHAMTFanout(n int) {
+	if n > 0 && !validShardWidth(n) {
+		log.Warnf("Invalid HAMTMaxFanout: %d. Using default (%d)", n, DefaultShardWidth)
+		n = DefaultShardWidth
+	}
+	if n == 0 {
+		n = DefaultShardWidth
+	}
+
 	d.maxHAMTFanout = n
 }
 
-func (d *BasicDirectory) setStats(mode os.FileMode, mtime time.Time) {
-	d.mode = mode
-	d.mtime = mtime
+// SetStat has no effect and only exists to support dynamic directories. Use
+// WithStat when creating a new directory instead.
+func (d *BasicDirectory) SetStat(mode os.FileMode, mtime time.Time) {
+	if mode > 0 {
+		d.mode = mode
+	}
+	if !mtime.IsZero() {
+		d.mtime = mtime
+	}
 }
 
 func (d *BasicDirectory) computeEstimatedSizeAndTotalLinks() {
@@ -543,17 +573,44 @@ func (d *HAMTDirectory) SetCidBuilder(builder cid.Builder) {
 	}
 }
 
-func (d *HAMTDirectory) setMaxLinks(n int) {
+// GetMaxLinks returns the maxLinks value from a HAMTDirectory.
+func (d *HAMTDirectory) GetMaxLinks() int {
+	return d.maxLinks
+}
+
+// SetMaxLinks has no effect and only exists to support Dynamic directories.
+func (d *HAMTDirectory) SetMaxLinks(n int) {
 	d.maxLinks = n
 }
 
-func (d *HAMTDirectory) setHAMTMaxFanout(n int) {
+// GetMaxHAMTFanout returns the maxHAMTFanout value from a HAMTDirectory.
+func (d *HAMTDirectory) GetMaxHAMTFanout() int {
+	return d.maxHAMTFanout
+}
+
+// SetMaxHAMTFanout has no effect and only exists to support Dynamic
+// directories. Max fanout can be set during creation using
+// WithMaxHAMTFanout().
+func (d *HAMTDirectory) SetMaxHAMTFanout(n int) {
+	if n > 0 && !validShardWidth(n) {
+		log.Warnf("Invalid HAMTMaxFanout: %d. Using default (%d)", n, DefaultShardWidth)
+		n = DefaultShardWidth
+	}
+	if n == 0 {
+		n = DefaultShardWidth
+	}
+
 	d.maxHAMTFanout = n
 }
 
-func (d *HAMTDirectory) setStats(mode os.FileMode, mtime time.Time) {
-	d.mode = mode
-	d.mtime = mtime
+// SetStat has no effect and only exists to support Dynamic directories.
+func (d *HAMTDirectory) SetStat(mode os.FileMode, mtime time.Time) {
+	if mode > 0 {
+		d.mode = mode
+	}
+	if !mtime.IsZero() {
+		d.mtime = mtime
+	}
 }
 
 // AddChild implements the `Directory` interface.
@@ -768,15 +825,39 @@ func (d *HAMTDirectory) sizeBelowThreshold(ctx context.Context, sizeChange int) 
 // to switch from BasicDirectory to HAMTDirectory and backwards based on
 // size.
 type DynamicDirectory struct {
-	directoryWithOptions
+	Directory
 }
 
 var _ Directory = (*DynamicDirectory)(nil)
 
+// SetMaxLinks sets the maximum number of links for the underlying Basic
+// directory when used. This operation does not produce any side effects, but
+// the new value may trigger Basic-to-HAMT conversions when adding new
+// children to Basic directories, or HAMT-to-Basic conversion when operating
+// with HAMT directories.
+func (d *DynamicDirectory) SetMaxLinks(n int) {
+	d.Directory.SetMaxLinks(n)
+}
+
+// SetMaxHAMTFanout sets the maximum shard width for HAMT directories. This
+// operation does not produce any side effect and only takes effect on a
+// conversion from Basic to HAMT directory.
+func (d *DynamicDirectory) SetMaxHAMTFanout(n int) {
+	d.Directory.SetMaxHAMTFanout(n)
+}
+
+// SetStat sets stats information. This operation does not produce any side
+// effects. It is taken into account when converting from HAMT to basic
+// directory. Mode or mtime can be set independently by using zero for mtime
+// or mode respectively.
+func (d *DynamicDirectory) SetStat(mode os.FileMode, mtime time.Time) {
+	d.Directory.SetStat(mode, mtime)
+}
+
 // AddChild implements the `Directory` interface. We check when adding new entries
 // if we should switch to HAMTDirectory according to global option(s).
 func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.Node) error {
-	hamtDir, ok := d.directoryWithOptions.(*HAMTDirectory)
+	hamtDir, ok := d.Directory.(*HAMTDirectory)
 	if ok {
 		// We evaluate a switch in the HAMTDirectory case even for an AddChild
 		// as it may overwrite an existing entry and end up actually reducing
@@ -787,7 +868,12 @@ func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.No
 		}
 
 		if switchToBasic {
-			basicDir, err := hamtDir.switchToBasic(ctx, WithMaxLinks(hamtDir.maxLinks), WithMaxHAMTFanout(hamtDir.maxHAMTFanout), WithCidBuilder(hamtDir.GetCidBuilder()))
+			basicDir, err := hamtDir.switchToBasic(ctx,
+				WithMaxLinks(hamtDir.maxLinks),
+				WithMaxHAMTFanout(hamtDir.maxHAMTFanout),
+				WithCidBuilder(hamtDir.GetCidBuilder()),
+				WithStat(hamtDir.mode, hamtDir.mtime),
+			)
 			if err != nil {
 				return err
 			}
@@ -795,15 +881,15 @@ func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.No
 			if err != nil {
 				return err
 			}
-			d.directoryWithOptions = basicDir
+			d.Directory = basicDir
 			return nil
 		}
 
-		return d.directoryWithOptions.AddChild(ctx, name, nd)
+		return d.Directory.AddChild(ctx, name, nd)
 	}
 
 	// BasicDirectory
-	basicDir := d.directoryWithOptions.(*BasicDirectory)
+	basicDir := d.Directory.(*BasicDirectory)
 	switchToHAMT, err := basicDir.needsToSwitchToHAMTDir(name, nd)
 	if err != nil {
 		return err
@@ -826,7 +912,7 @@ func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.No
 	if err != nil {
 		return err
 	}
-	d.directoryWithOptions = hamtDir
+	d.Directory = hamtDir
 	return nil
 }
 
@@ -834,9 +920,9 @@ func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.No
 // a HAMTDirectory that might need to be downgraded to a BasicDirectory. The
 // upgrade path is in AddChild.
 func (d *DynamicDirectory) RemoveChild(ctx context.Context, name string) error {
-	hamtDir, ok := d.directoryWithOptions.(*HAMTDirectory)
+	hamtDir, ok := d.Directory.(*HAMTDirectory)
 	if !ok {
-		return d.directoryWithOptions.RemoveChild(ctx, name)
+		return d.Directory.RemoveChild(ctx, name)
 	}
 
 	switchToBasic, err := hamtDir.needsToSwitchToBasicDir(ctx, name, nil)
@@ -867,7 +953,7 @@ func (d *DynamicDirectory) RemoveChild(ctx context.Context, name string) error {
 	if maxLinks > 0 {
 		basicDir.maxLinks--
 	}
-	d.directoryWithOptions = basicDir
+	d.Directory = basicDir
 	return nil
 }
 
