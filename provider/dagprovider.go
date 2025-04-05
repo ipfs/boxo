@@ -12,6 +12,7 @@ import (
 )
 
 func NewDAGProvider(root cid.Cid, fetchConfig fetcher.Factory) KeyChanFunc {
+	fmt.Println("DAG provided loaded!!", root)
 	return func(ctx context.Context) (<-chan cid.Cid, error) {
 		if root == cid.Undef {
 			return nil, fmt.Errorf("root CID cannot be empty")
@@ -20,6 +21,7 @@ func NewDAGProvider(root cid.Cid, fetchConfig fetcher.Factory) KeyChanFunc {
 		set := cidutil.NewStreamingSet()
 
 		go func() {
+			fmt.Println("BlockAll", root)
 			defer close(set.New)
 			session := fetchConfig.NewSession(ctx)
 			err := fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: root}, func(res fetcher.FetchResult) error {
