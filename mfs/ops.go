@@ -158,8 +158,6 @@ func Mkdir(r *Root, pth string, opts MkdirOpts) error {
 	// opts to make the parents leave MkParents and Flush as false.
 	parentsOpts := MkdirOpts{
 		CidBuilder:    opts.CidBuilder,
-		Mode:          opts.Mode,
-		ModTime:       opts.ModTime,
 		MaxLinks:      opts.MaxLinks,
 		MaxHAMTFanout: opts.MaxHAMTFanout,
 	}
