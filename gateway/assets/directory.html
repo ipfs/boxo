@@ -25,6 +25,9 @@
         {{ if .Hash }}
         <div class="ipfs-hash" translate="no">
           {{- .Hash -}}
+          <div class="type-icon copy-button" title="Copy CID">
+            <div class="ipfs-copy" onclick="navigator.clipboard.writeText('{{ .Hash }}')">&nbsp;</div>
+          </div>
         </div>
         {{ end }}
       </div>
@@ -60,7 +63,7 @@
               <a class="ipfs-hash" translate="no" href={{ if $root.DNSLink }}"https://cid.ipfs.tech/#{{ .Hash | urlEscape}}" target="_blank" rel="noreferrer noopener"{{ else }}"{{ $root.GatewayURL }}/ipfs/{{ .Hash | urlEscape}}?filename={{ .Name | urlEscape }}"{{ end }}>
               {{- .ShortHash -}}
               </a>
-              <div class="type-icon copy-button" title="Copy Hash">
+              <div class="type-icon copy-button" title="Copy CID">
                 <div class="ipfs-copy" onclick="navigator.clipboard.writeText('{{ .Hash }}')">&nbsp;</div>
               </div>
             </div>

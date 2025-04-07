@@ -67,16 +67,16 @@ a:visited {
 }
 
 .copy-button {
-	display: inline-block;
-	height: 1.15em;
-}
-
-.copy-button:hover {
-	background-color: var(--light-white);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.15em;
+  transition: background-color 0.3s ease;
 }
 
 .copy-button:active {
-	background-color: var(--teal);
+  opacity: 0.25;
 }
 
 #header {
