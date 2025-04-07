@@ -186,7 +186,6 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 			// inherited from the parent.
 			ndir.unixfsDir.SetMaxLinks(d.unixfsDir.GetMaxLinks())
 			ndir.unixfsDir.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
-			ndir.unixfsDir.SetCidBuilder(d.unixfsDir.GetCidBuilder())
 
 			d.entriesCache[name] = ndir
 			return ndir, nil
@@ -317,7 +316,6 @@ func (d *Directory) Mkdir(name string) (*Directory, error) {
 	return d.MkdirWithOpts(name, MkdirOpts{
 		MaxLinks:      d.unixfsDir.GetMaxLinks(),
 		MaxHAMTFanout: d.unixfsDir.GetMaxHAMTFanout(),
-		CidBuilder:    d.unixfsDir.GetCidBuilder(),
 	})
 }
 
@@ -337,6 +335,10 @@ func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, erro
 		}
 	}
 
+	// hector: no idea why this option is overriden it must be to keep
+	// backwards compatibility. CidBuilder from the options is manually
+	// set in `Mkdir` (ops.go).
+	opts.CidBuilder = d.GetCidBuilder()
 	dirobj, err := NewEmptyDirectory(d.ctx, name, d, d.dagService, opts)
 	if err != nil {
 		return nil, err
@@ -528,7 +530,6 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 	// We need to carry our desired settings.
 	db.SetMaxLinks(d.unixfsDir.GetMaxLinks())
 	db.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
-	db.SetCidBuilder(d.unixfsDir.GetCidBuilder())
 	d.unixfsDir = db
 
 	return nil

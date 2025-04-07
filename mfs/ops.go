@@ -157,7 +157,6 @@ func Mkdir(r *Root, pth string, opts MkdirOpts) error {
 
 	// opts to make the parents leave MkParents and Flush as false.
 	parentsOpts := MkdirOpts{
-		CidBuilder:    opts.CidBuilder,
 		MaxLinks:      opts.MaxLinks,
 		MaxHAMTFanout: opts.MaxHAMTFanout,
 	}
@@ -169,6 +168,11 @@ func Mkdir(r *Root, pth string, opts MkdirOpts) error {
 			mkd, err := cur.MkdirWithOpts(d, parentsOpts)
 			if err != nil {
 				return err
+			}
+			// MkdirWithOps uses cur.GetCidBuilder regardless of
+			// the option. So we must set it manually.
+			if opts.CidBuilder != nil {
+				mkd.SetCidBuilder(opts.CidBuilder)
 			}
 			fsn = mkd
 		} else if err != nil {
