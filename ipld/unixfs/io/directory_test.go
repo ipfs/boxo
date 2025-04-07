@@ -206,14 +206,14 @@ func mockLinkSizeFunc(fixedSize int) func(linkName string, linkCid cid.Cid) int 
 
 func checkBasicDirectory(t *testing.T, dir Directory, errorMessage string) {
 	t.Helper()
-	if _, ok := dir.(*DynamicDirectory).directoryWithOptions.(*BasicDirectory); !ok {
+	if _, ok := dir.(*DynamicDirectory).Directory.(*BasicDirectory); !ok {
 		t.Fatal(errorMessage)
 	}
 }
 
 func checkHAMTDirectory(t *testing.T, dir Directory, errorMessage string) {
 	t.Helper()
-	if _, ok := dir.(*DynamicDirectory).directoryWithOptions.(*HAMTDirectory); !ok {
+	if _, ok := dir.(*DynamicDirectory).Directory.(*HAMTDirectory); !ok {
 		t.Fatal(errorMessage)
 	}
 }
