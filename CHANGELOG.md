@@ -18,9 +18,9 @@ The following emojis are used to highlight certain changes:
 
 - `ipld/unixfs/io/directory`: We have made some changes to unixfs directory tooling:
   - We have exposed creator methods for new `BasicDirectory` and `HAMTDirectory`, that complement the existing `NewDirectory()` which creates dynamic directories.
-  - We have added `WithCidBuilder(...)` and `WithMaxLinks(...)` as options to these new methods so that empty directories can be initilized as wished from the get-go.
-  - `WithMaxLinks(...)` is a new option that allows to set a limit to the number of children that a directory DAG node can have. For details on what exactly it does for each of the directory types, please check the documentation.
-  - `WithStats(...)` is a new option that allows to set the Stat information for the new directory node.
+  - We have added `WithCidBuilder(...)`, `WithMaxLinks(...)`, `WithMaxHAMTFanout(...)` and `WithStat(...)` as options to these new methods so that empty directories can be initilized as wished from the get-go.
+  - `WithMaxLinks(...)` and `WithMaxHAMTFanout(...)` are new options that allow to set a limit to the number of children that a directory DAG node can have. For details on what they exactly do for each of the directory type, please check the documentation.
+- `mfs` supports as well the new `MaxLinks` and `MaxHAMTFanout` options. They have been made part of the `MkdirOptions` object and the methods `NewEmptyDirectory()` and `NewEmptyRoot()` have been added to facilitate the initialization of MFS objects.
 
 ### Changed
 
