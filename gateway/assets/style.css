@@ -67,13 +67,8 @@ a:visited {
 }
 
 .copy-button {
-	color: #7f8491;
-	background-color: inherit;
-	border: 1px solid var(--dark-white);
-	;
-	border-radius: 2px;
-	padding: 1px 2px;
-	cursor: copy;
+	display: inline-block;
+	height: 1.15em;
 }
 
 .copy-button:hover {
@@ -81,7 +76,7 @@ a:visited {
 }
 
 .copy-button:active {
-	color: #00b0e9;
+	background-color: var(--teal);
 }
 
 #header {
