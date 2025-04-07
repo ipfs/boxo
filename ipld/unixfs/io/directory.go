@@ -219,7 +219,7 @@ func NewBasicDirectory(dserv ipld.DAGService, opts ...DirectoryOption) *BasicDir
 	}
 
 	var node *mdag.ProtoNode
-	if basicDir.mode > 0 {
+	if basicDir.mode > 0 || !basicDir.mtime.IsZero() {
 		node = format.EmptyDirNodeWithStat(basicDir.mode, basicDir.mtime)
 	} else {
 		node = format.EmptyDirNode()
