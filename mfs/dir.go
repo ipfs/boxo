@@ -335,9 +335,9 @@ func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, erro
 		}
 	}
 
-	// hector: no idea why this option is overriden it must be to keep
-	// backwards compatibility. CidBuilder from the options is manually
-	// set in `Mkdir` (ops.go).
+	// hector: no idea why this option is overriden, but it must be to
+	// keep backwards compatibility. CidBuilder from the options is
+	// manually set in `Mkdir` (ops.go) though.
 	opts.CidBuilder = d.GetCidBuilder()
 	dirobj, err := NewEmptyDirectory(d.ctx, name, d, d.dagService, opts)
 	if err != nil {

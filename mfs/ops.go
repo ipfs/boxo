@@ -193,6 +193,12 @@ func Mkdir(r *Root, pth string, opts MkdirOpts) error {
 		}
 	}
 
+	// Again, MkdirWithOpts ignores opts.CidBuilder so must be applied
+	// here.
+	if opts.CidBuilder != nil {
+		final.SetCidBuilder(opts.CidBuilder)
+	}
+
 	if opts.Flush {
 		err := final.Flush()
 		if err != nil {
