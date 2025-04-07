@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `ipld/unixfs`: DagModifier now allows specifying max DAG Width (`MaxLinks`) [#898](https://github.com/ipfs/boxo/pull/898)
+
 ### Changed
 
 - upgrade to `go-libp2p` [v0.41.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.41.1)
