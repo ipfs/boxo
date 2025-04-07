@@ -19,6 +19,8 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - upgrade to `go-libp2p` [v0.41.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.41.1)
+- `bitswap/network`: Add a new `requests_in_flight` metric gauge that measures how many bitswap streams are being written or read at a given time.
+- improve speed of data onboarding by batching/bufering provider queue writes [#888](https://github.com/ipfs/boxo/pull/888)
 
 ### Removed
 
