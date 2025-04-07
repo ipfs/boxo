@@ -208,7 +208,7 @@ type HAMTDirectory struct {
 }
 
 // NewBasicDirectory creates an empty basic directory with the given options.
-func NewBasicDirectory(dserv ipld.DAGService, opts ...DirectoryOption) *BasicDirectory {
+func NewBasicDirectory(dserv ipld.DAGService, opts ...DirectoryOption) (*BasicDirectory, error) {
 	basicDir := &BasicDirectory{
 		dserv:         dserv,
 		maxHAMTFanout: DefaultShardWidth,
@@ -225,12 +225,15 @@ func NewBasicDirectory(dserv ipld.DAGService, opts ...DirectoryOption) *BasicDir
 		node = format.EmptyDirNode()
 	}
 	basicDir.node = node
-	basicDir.node.SetCidBuilder(basicDir.cidBuilder)
+	err := basicDir.node.SetCidBuilder(basicDir.cidBuilder)
+	if err != nil {
+		return nil, err
+	}
 
 	// Scan node links (if any) to restore estimated size.
 	basicDir.computeEstimatedSizeAndTotalLinks()
 
-	return basicDir
+	return basicDir, nil
 }
 
 // NewBasicDirectoryFromNode creates a basic directory wrapping the given
@@ -290,8 +293,12 @@ func NewHAMTDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (*HAMTDirec
 // NewDirectory returns a Directory implemented by DynamicDirectory containing
 // a BasicDirectory that automatically converts to a from a HAMTDirectory
 // based on HAMTShardingSize, MaxLinks and MaxHAMTFanout (when set).
-func NewDirectory(dserv ipld.DAGService, opts ...DirectoryOption) Directory {
-	return &DynamicDirectory{NewBasicDirectory(dserv, opts...)}
+func NewDirectory(dserv ipld.DAGService, opts ...DirectoryOption) (Directory, error) {
+	bd, err := NewBasicDirectory(dserv, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &DynamicDirectory{bd}, nil
 }
 
 // ErrNotADir implies that the given node was not a unixfs directory
@@ -685,9 +692,12 @@ func (d *HAMTDirectory) GetCidBuilder() cid.Builder {
 func (d *HAMTDirectory) switchToBasic(ctx context.Context, opts ...DirectoryOption) (*BasicDirectory, error) {
 	// needsoSwichToBasicDir checks d.maxLinks is appropiate. No check is
 	// performed here.
-	basicDir := NewBasicDirectory(d.dserv, opts...)
+	basicDir, err := NewBasicDirectory(d.dserv, opts...)
+	if err != nil {
+		return nil, err
+	}
 
-	err := d.ForEachLink(ctx, func(lnk *ipld.Link) error {
+	err = d.ForEachLink(ctx, func(lnk *ipld.Link) error {
 		err := basicDir.addLinkChild(ctx, lnk.Name, lnk)
 		if err != nil {
 			return err

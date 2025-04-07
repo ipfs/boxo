@@ -37,7 +37,10 @@ func TestEmptyNode(t *testing.T) {
 
 func TestDirectoryGrowth(t *testing.T) {
 	ds := mdtest.Mock()
-	dir := NewDirectory(ds)
+	dir, err := NewDirectory(ds)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 
 	d := ft.EmptyDirNode()
@@ -52,7 +55,7 @@ func TestDirectoryGrowth(t *testing.T) {
 		}
 	}
 
-	_, err := dir.GetNode()
+	_, err = dir.GetNode()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,11 +94,14 @@ func TestDirectoryGrowth(t *testing.T) {
 
 func TestDuplicateAddDir(t *testing.T) {
 	ds := mdtest.Mock()
-	dir := NewDirectory(ds)
+	dir, err := NewDirectory(ds)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 	nd := ft.EmptyDirNode()
 
-	err := dir.AddChild(ctx, "test", nd)
+	err = dir.AddChild(ctx, "test", nd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +123,10 @@ func TestDuplicateAddDir(t *testing.T) {
 
 func TestBasicDirectory_estimatedSize(t *testing.T) {
 	ds := mdtest.Mock()
-	basicDir := NewBasicDirectory(ds)
+	basicDir, err := NewBasicDirectory(ds)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	testDirectorySizeEstimation(t, basicDir, ds, func(dir Directory) int {
 		return dir.(*BasicDirectory).estimatedSize
@@ -230,7 +239,7 @@ func TestProductionLinkSize(t *testing.T) {
 	assert.Equal(t, 48, productionLinkSize(link.Name, link.Cid))
 
 	ds := mdtest.Mock()
-	basicDir := NewBasicDirectory(ds)
+	basicDir, err := NewBasicDirectory(ds)
 	assert.NoError(t, err)
 	for i := 0; i < 10; i++ {
 		basicDir.AddChild(context.Background(), strconv.FormatUint(uint64(i), 10), ft.EmptyFileNode())
@@ -253,12 +262,14 @@ func TestDynamicDirectorySwitch(t *testing.T) {
 	defer func() { linksize.LinkSizeFunction = productionLinkSize }()
 
 	ds := mdtest.Mock()
-	dir := NewDirectory(ds)
+	dir, err := NewDirectory(ds)
+	require.NoError(t, err)
+
 	checkBasicDirectory(t, dir, "new dir is not BasicDirectory")
 
 	ctx := context.Background()
 	child := ft.EmptyDirNode()
-	err := ds.Add(ctx, child)
+	err = ds.Add(ctx, child)
 	assert.NoError(t, err)
 
 	err = dir.AddChild(ctx, "1", child)
@@ -291,15 +302,19 @@ func TestDynamicDirectorySwitch(t *testing.T) {
 
 func TestIntegrityOfDirectorySwitch(t *testing.T) {
 	ds := mdtest.Mock()
-	dir := NewDirectory(ds)
+	dir, err := NewDirectory(ds)
+	if err != nil {
+		t.Fatal(err)
+	}
 	checkBasicDirectory(t, dir, "new dir is not BasicDirectory")
 
 	ctx := context.Background()
 	child := ft.EmptyDirNode()
-	err := ds.Add(ctx, child)
+	err = ds.Add(ctx, child)
 	assert.NoError(t, err)
 
-	basicDir := NewBasicDirectory(ds)
+	basicDir, err := NewBasicDirectory(ds)
+	assert.NoError(t, err)
 	hamtDir, err := NewHAMTDirectory(ds, 0, WithMaxLinks(DefaultShardWidth))
 	assert.NoError(t, err)
 	for i := 0; i < 1000; i++ {
@@ -446,14 +461,15 @@ func sortLinksByName(links []*ipld.Link) {
 
 func TestDirBuilder(t *testing.T) {
 	ds := mdtest.Mock()
-	dir := NewDirectory(ds)
-	ctx := context.Background()
-
-	child := ft.EmptyDirNode()
-	err := ds.Add(ctx, child)
+	dir, err := NewDirectory(ds)
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx := context.Background()
+
+	child := ft.EmptyDirNode()
+	err = ds.Add(ctx, child)
+	require.NoError(t, err)
 
 	count := 5000
 
@@ -533,12 +549,13 @@ func TestBasicDirectoryWithMaxLinks(t *testing.T) {
 	ds := mdtest.Mock()
 	ctx := context.Background()
 
-	dir := NewBasicDirectory(ds, WithMaxLinks(2))
+	dir, err := NewBasicDirectory(ds, WithMaxLinks(2))
+	require.NoError(t, err)
 
 	child1 := ft.EmptyDirNode()
 	require.NoError(t, ds.Add(ctx, child1))
 
-	err := dir.AddChild(ctx, "entry1", child1)
+	err = dir.AddChild(ctx, "entry1", child1)
 	require.NoError(t, err)
 
 	child2 := ft.EmptyDirNode()
@@ -589,7 +606,10 @@ func TestDynamicDirectoryWithMaxLinks(t *testing.T) {
 	ds := mdtest.Mock()
 	ctx := context.Background()
 
-	dir := NewDirectory(ds, WithMaxLinks(8), WithMaxHAMTFanout(16))
+	dir, err := NewDirectory(ds, WithMaxLinks(8), WithMaxHAMTFanout(16))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for i := 0; i < 8; i++ {
 		child := ft.EmptyDirNode()

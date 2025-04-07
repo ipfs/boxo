@@ -68,12 +68,16 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 // The directory is added to the DAGService. To create a new MFS
 // root use NewEmptyRootFolder instead.
 func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ipld.DAGService, opts MkdirOpts) (*Directory, error) {
-	db := uio.NewDirectory(dserv,
+	db, err := uio.NewDirectory(dserv,
 		uio.WithMaxLinks(opts.MaxLinks),
 		uio.WithMaxHAMTFanout(opts.MaxHAMTFanout),
 		uio.WithStat(opts.Mode, opts.ModTime),
 		uio.WithCidBuilder(opts.CidBuilder),
 	)
+
+	if err != nil {
+		return nil, err
+	}
 
 	nd, err := db.GetNode()
 	if err != nil {
