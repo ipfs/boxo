@@ -26,7 +26,7 @@ The following emojis are used to highlight certain changes:
 
 - `gateway`: query parameters are now supported and preserved in redirects triggered by a [`_redirects`](https://specs.ipfs.tech/http-gateways/web-redirects-file/) file [#886](https://github.com/ipfs/boxo/pull/886)
 - `provider`: adjusted first reprovide timing after node reboot [#890](https://github.com/ipfs/boxo/pull/890)
-- `gateway`: validate against subdomains with IP addresses [#903](https://github.com/ipfs/boxo/pull/903)
+- `gateway`: validate configuration and warn when `UseSubdomains=true` is used with IP-based hostnames [#903](https://github.com/ipfs/boxo/pull/903)
 
 ### Security
 
