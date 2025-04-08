@@ -30,6 +30,7 @@ The following emojis are used to highlight certain changes:
 
 - `gateway`: query parameters are now supported and preserved in redirects triggered by a [`_redirects`](https://specs.ipfs.tech/http-gateways/web-redirects-file/) file [#886](https://github.com/ipfs/boxo/pull/886)
 - `provider`: adjusted first reprovide timing after node reboot [#890](https://github.com/ipfs/boxo/pull/890)
+- `gateway`: validate configuration and warn when `UseSubdomains=true` is used with IP-based hostnames [#903](https://github.com/ipfs/boxo/pull/903)
 
 ### Security
 
@@ -79,7 +80,6 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `bitswap/client`: Add `DontHaveTimeoutConfig` type alias and `func DontHaveTimeoutConfig()` to expose config defined in internal package.
-
 ### Changed
 
 - move `ipld/unixfs` from gogo protobuf [#841](https://github.com/ipfs/boxo/pull/841)
