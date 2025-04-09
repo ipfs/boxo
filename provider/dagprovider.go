@@ -9,10 +9,11 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-cidutil"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	"github.com/ipld/go-ipld-prime/traversal"
 )
 
 func NewDAGProvider(root cid.Cid, fetchConfig fetcher.Factory) KeyChanFunc {
-	fmt.Println("DAG provided loaded!!", root)
+	log.Debugw("DAG provider initialized", "root", root)
 	return func(ctx context.Context) (<-chan cid.Cid, error) {
 		if root == cid.Undef {
 			return nil, fmt.Errorf("root CID cannot be empty")
@@ -21,7 +22,7 @@ func NewDAGProvider(root cid.Cid, fetchConfig fetcher.Factory) KeyChanFunc {
 		set := cidutil.NewStreamingSet()
 
 		go func() {
-			fmt.Println("BlockAll", root)
+			log.Debugw("DAG provider starting the walk via BlockAll", "root", root)
 			defer close(set.New)
 			session := fetchConfig.NewSession(ctx)
 			err := fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: root}, func(res fetcher.FetchResult) error {
@@ -40,7 +41,11 @@ func NewDAGProvider(root cid.Cid, fetchConfig fetcher.Factory) KeyChanFunc {
 				return nil
 			})
 			if err != nil {
-				log.Errorf("dagprovider dag traversal error from root %s: %s", root, err)
+				if _, ok := err.(traversal.SkipMe); ok {
+					log.Warnw("dagprovider skipped further dag traversal", "root", root)
+				} else {
+					log.Errorf("dagprovider dag traversal error from root %s: %s", root, err)
+				}
 				return
 			}
 		}()
