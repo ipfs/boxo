@@ -254,16 +254,11 @@ func (s *reprovider) run() {
 		defer maxCollectionDurationTimer.Stop()
 		defer pauseDetectTimer.Stop()
 
-		batchSize := s.maxReprovideBatchSize
-		if s.throughputCallback != nil && s.throughputMinimumProvides < batchSize {
-			batchSize = s.throughputMinimumProvides
-		}
-
 		for {
 			// At the start of every loop the maxCollectionDurationTimer and
 			// pauseDetectTimer should already be stopped and have empty
 			// channels.
-			for uint(len(m)) < batchSize {
+			for uint(len(m)) < s.maxReprovideBatchSize {
 				select {
 				case c := <-provCh:
 					if len(m) == 0 {
