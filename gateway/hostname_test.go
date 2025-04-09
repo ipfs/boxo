@@ -407,3 +407,84 @@ func TestHasDNSLinkRecordWithLocalIP(t *testing.T) {
 		require.True(t, result, "example.com should have a valid DNSLink record")
 	})
 }
+
+func TestValidateSubdomainsForIP(t *testing.T) {
+	t.Parallel()
+
+	// Test cases
+	tests := []struct {
+		name          string
+		hostname      string
+		useSubdomains bool
+		shouldSkip    bool
+	}{
+		{
+			name:          "IP with subdomains enabled",
+			hostname:      "127.0.0.1:8080",
+			useSubdomains: true,
+			shouldSkip:    true,
+		},
+		{
+			name:          "IPv6 with subdomains enabled",
+			hostname:      "[::1]:8080",
+			useSubdomains: true,
+			shouldSkip:    true,
+		},
+		{
+			name:          "IP without port with subdomains enabled",
+			hostname:      "192.168.1.1",
+			useSubdomains: true,
+			shouldSkip:    true,
+		},
+		{
+			name:          "Domain with subdomains enabled",
+			hostname:      "example.com:8080",
+			useSubdomains: true,
+			shouldSkip:    false,
+		},
+		{
+			name:          "IP with subdomains disabled",
+			hostname:      "10.0.0.1:8080",
+			useSubdomains: false,
+			shouldSkip:    false,
+		},
+		{
+			name:          "IPv6 without port with subdomains enabled",
+			hostname:      "::1",
+			useSubdomains: true,
+			shouldSkip:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create test gateway config
+			gw := &PublicGateway{
+				UseSubdomains: tt.useSubdomains,
+			}
+
+			// Prepare gateways map
+			gateways := make(map[string]*PublicGateway)
+			gateways[tt.hostname] = gw
+
+			// Run the validation
+			validatedGateways := prepareHostnameGateways(gateways)
+
+			// Check if gateway was skipped by looking in both exact and wildcard maps
+			_, existsExact := validatedGateways.exact[tt.hostname]
+			existsWildcard := false
+			for re := range validatedGateways.wildcard {
+				if re.MatchString(tt.hostname) {
+					existsWildcard = true
+					break
+				}
+			}
+			exists := existsExact || existsWildcard
+			if tt.shouldSkip {
+				assert.False(t, exists, "Gateway with UseSubdomains=true should be skipped for IP address")
+			} else {
+				assert.True(t, exists, "Gateway should not be skipped")
+			}
+		})
+	}
+}

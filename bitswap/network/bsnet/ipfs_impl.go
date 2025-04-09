@@ -293,6 +293,9 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 		log.Warnf("error setting deadline: %s", err)
 	}
 
+	bsnet.metrics.RequestsInFlight.Inc()
+	defer bsnet.metrics.RequestsInFlight.Dec()
+
 	// Older Bitswap versions use a slightly different wire format so we need
 	// to convert the message to the appropriate format depending on the remote
 	// peer's Bitswap version.
@@ -422,6 +425,12 @@ func (bsnet *impl) DisconnectFrom(ctx context.Context, p peer.ID) error {
 // handleNewStream receives a new stream from the network.
 func (bsnet *impl) handleNewStream(s network.Stream) {
 	defer s.Close()
+
+	// In HTTPnet this metric measures sending the request and reading the
+	// response.
+	// In bitswap these are de-coupled, but we can measure them separately.
+	bsnet.metrics.RequestsInFlight.Inc()
+	defer bsnet.metrics.RequestsInFlight.Dec()
 
 	if len(bsnet.receivers) == 0 {
 		_ = s.Reset()
