@@ -286,6 +286,15 @@ func (s *reprovider) run() {
 
 				select {
 				case c := <-provCh:
+					// Prioritize newly provided keys
+					resetTimersAfterReceivingProvide()
+					m[c] = struct{}{}
+					continue
+				default:
+				}
+
+				select {
+				case c := <-provCh:
 					resetTimersAfterReceivingProvide()
 					m[c] = struct{}{}
 				case c := <-s.reprovideCh:
