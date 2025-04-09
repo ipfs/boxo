@@ -114,6 +114,7 @@ func testProvider(t *testing.T, singleProvide bool) {
 		ch := make(chan cid.Cid)
 		go func() {
 			defer keyWait.Unlock()
+			defer close(ch)
 			for _, k := range keysToProvide {
 				select {
 				case ch <- k:
