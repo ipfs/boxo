@@ -419,10 +419,10 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 		batchSize = s.throughputMinimumProvides
 	}
 
-	var cids []cid.Cid
+	cids := make([]cid.Cid, 0, min(batchSize, 1024))
 	allCidsProcessed := false
 	for !allCidsProcessed {
-		cids = make([]cid.Cid, 0, batchSize)
+		cids = cids[:0]
 		for range batchSize {
 			c, ok := <-kch
 			if !ok {
