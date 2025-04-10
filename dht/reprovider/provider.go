@@ -91,7 +91,7 @@ func (s reprovideSweeper) run() {
 		case <-timer.C:
 		}
 		s.scheduleLk.Lock()
-		cursor = nextLeaf(s.schedule, cursor.Key, s.order)
+		cursor = nextNonEmptyLeaf(s.schedule, cursor.Key, s.order)
 		s.scheduleLk.Unlock()
 
 		s.reprovideForPrefix(cursor.Key)
@@ -201,17 +201,23 @@ func (s reprovideSweeper) provideCidsToPeer(p peer.ID, cids []cid.Cid) {
 
 const maxPrefixSize = 30
 
-// same reprovide time for "0", "000000"
-// if just "0" and "1", "0" is provided at t=0, and "1" mid-cycle. Then if there are the prefixes "00" and "01", "00" is provided at the same time as "0" was, and "01" halfway between "00" and "1"
-// TODO: explain what this function does
+// reprovideTimeForPrefix calculates the scheduled time offset for reproviding
+// keys associated with a given prefix based on its bitstring prefix. The
+// function maps the given binary prefix to a fraction of the overall reprovide
+// interval (s.reprovideInterval), such that keys with prefixes closer to a
+// configured target s.order (in XOR distance) are scheduled earlier and those
+// further away later in the cycle.
 //
-// reprovideTimeForPrefix calculates the scheduled time offset for reproviding a key
-// based on its bitstring prefix. The function maps the given binary prefix to a fraction
-// of the overall reprovide interval (s.reprovideInterval), such that keys with prefixes
-// "closer" to a configured target order (s.order) are scheduled earlier in the cycle.
+// For any prefix of bit length n, the function generates 2^n distinct
+// reprovide times that evenly partition the entire reprovide interval. The
+// process first truncates s.order to n bits and then XORs it with the provided
+// prefix. The resulting binary string is converted to an integer,
+// corresponding to the index of the 2^n possible reprovide times to use for
+// the prefix.
 //
-// This method ensures a deterministic and evenly distributed reprovide schedule, where
-// the temporal position within the cycle is based on the binary representation of the key's prefix.
+// This method ensures a deterministic and evenly distributed reprovide
+// schedule, where the temporal position within the cycle is based on the
+// binary representation of the key's prefix.
 func (s reprovideSweeper) reprovideTimeForPrefix(prefix bitstr.Key) time.Duration {
 	if len(prefix) == 0 {
 		// Empty prefix: all reprovides occur at the beginning of the cycle.
@@ -289,11 +295,52 @@ func trieHasPrefixOfKey[K0 kad.Key[K0], K1 kad.Key[K1], D any](t *trie.Trie[K0, 
 	return false
 }
 
-func nextLeaf[K0 kad.Key[K0], K1 kad.Key[K1], D any](t *trie.Trie[K0, D], k K0, order K1) trie.Entry[K0, D] {
-	// TODO: implement me
+// nextNonEmptyLeaf returns the leaf right after the provided key `k` in the
+// trie according to the provided `order`.
+func nextNonEmptyLeaf[K0 kad.Key[K0], K1 kad.Key[K1], D any](t *trie.Trie[K0, D], k K0, order K1) trie.Entry[K0, D] {
+	return nextNonEmptyLeafAtDepth(t, k, order, 0, false)
+}
+
+func nextNonEmptyLeafAtDepth[K0 kad.Key[K0], K1 kad.Key[K1], D any](t *trie.Trie[K0, D], k K0, order K1, depth int, hitBottom bool) trie.Entry[K0, D] {
+	if hitBottom {
+		if t.IsNonEmptyLeaf() {
+			// Found the next non-empty leaf.
+			return trie.Entry[K0, D]{Key: *t.Key(), Data: t.Data()}
+		}
+		// Going down the trie, looking for next non-empty leaf according to order.
+		orderBit := int(order.Bit(depth))
+		return nextNonEmptyLeafAtDepth(t.Branch(orderBit), k, order, depth+1, true)
+	}
+
+	if t.IsLeaf() {
+		// We have reached the bottom of the trie at k or its closest leaf
+		if t.HasKey() {
+			cpl := k.CommonPrefixLength(*t.Key())
+			if cpl < k.BitLen() && cpl < order.BitLen() && order.Bit(cpl) == k.Bit(cpl) {
+				// k is closer to order than t.Key, so t.Key AFTER k, return it
+				return trie.Entry[K0, D]{Key: *t.Key(), Data: t.Data()}
+			}
+		}
+		return trie.Entry[K0, D]{}
+	}
+	kBit := int(k.Bit(depth))
+	// Recursive call until we hit the bottom of the trie.
+	nextLeaf := nextNonEmptyLeafAtDepth(t.Branch(kBit), k, order, depth+1, false)
+	if nextLeaf.Key.BitLen() > 0 {
+		// Branch has found the next leaf, return it.
+		return nextLeaf
+	}
+	orderBit := int(order.Bit(depth))
+	if kBit == orderBit || depth == 0 {
+		// Neighbor branch is up next, according to order.
+		return nextNonEmptyLeafAtDepth(t.Branch(1-kBit), k, order, depth+1, true)
+	}
+	// Next leaf not found, signal it to parent by returning an empty entry.
 	return trie.Entry[K0, D]{}
 }
 
+// allKeys returns a slice containing all keys in the trie `t` sorted according
+// to the provided `order`.
 func allKeys[K0 kad.Key[K0], K1 kad.Key[K1], D any](t *trie.Trie[K0, D], order K1) []trie.Entry[K0, D] {
 	return allKeysAtDepth(t, order, 0)
 }
