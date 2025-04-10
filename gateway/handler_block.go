@@ -37,6 +37,7 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 	modtime := addCacheControlHeaders(w, r, rq.contentPath, rq.ttl, rq.lastMod, blockCid, rawResponseFormat)
 	w.Header().Set("Content-Type", rawResponseFormat)
 	w.Header().Set("X-Content-Type-Options", "nosniff") // no funny business in the browsers :^)
+	w.Header().Set("Accept-Ranges", "bytes") // Add this line
 
 	sz, err := data.Size()
 	if err != nil {
