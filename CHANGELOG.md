@@ -16,22 +16,32 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `ipld/unixfs`: DagModifier now allows specifying max DAG Width (`MaxLinks`) [#898](https://github.com/ipfs/boxo/pull/898)
+- `ipld/unixfs`: `DagModifier` now allows specifying file DAG Width (`MaxLinks`) [#898](https://github.com/ipfs/boxo/pull/898)
+- `provider`: added support for walking partial DAGs in offline mode [#905](https://github.com/ipfs/boxo/pull/905)
+  - a `KeyChanFunc` that traverses DAGs from a given root (`NewDAGProvider`).
+  - a `KeyChanFunc` that buffers all the CIDs in memory from another `KeyChanFunc` (`NewBufferedProvider`).
+  - `fetcher/impl/blockservice`: new option `SkipNotFound` for the IPLD fetcher. It will skip not found nodes when traversing the DAG. This allows offline traversal of DAGs when using, for example, an offline blockservice.
+  - This enables use case of providing lazy-loaded, partially local DAGs (like `ipfs files` in Kubo's MFS implementation, see [kubo#10386](https://github.com/ipfs/kubo/issues/10386))
+- `gateway`: generated HTML with UnixFS directory listings now include a button for copying CIDs of child entities [#899](https://github.com/ipfs/boxo/pull/899)
 
 ### Changed
 
 - upgrade to `go-libp2p` [v0.41.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.41.1)
+- `bitswap/network`: Add a new `requests_in_flight` metric gauge that measures how many bitswap streams are being written or read at a given time.
+- improve speed of data onboarding by batching/bufering provider queue writes [#888](https://github.com/ipfs/boxo/pull/888)
 
 ### Removed
 
 ### Fixed
 
 - `gateway`: query parameters are now supported and preserved in redirects triggered by a [`_redirects`](https://specs.ipfs.tech/http-gateways/web-redirects-file/) file [#886](https://github.com/ipfs/boxo/pull/886)
+- `provider`: adjusted first reprovide timing after node reboot [#890](https://github.com/ipfs/boxo/pull/890)
+- `gateway`: validate configuration and warn when `UseSubdomains=true` is used with IP-based hostnames [#903](https://github.com/ipfs/boxo/pull/903)
 
 ### Security
 
 
-## [v0.29.0]
+## [v0.29.1]
 
 ### Changed
 
@@ -76,7 +86,6 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `bitswap/client`: Add `DontHaveTimeoutConfig` type alias and `func DontHaveTimeoutConfig()` to expose config defined in internal package.
-
 ### Changed
 
 - move `ipld/unixfs` from gogo protobuf [#841](https://github.com/ipfs/boxo/pull/841)
