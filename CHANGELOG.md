@@ -16,11 +16,20 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `ipld/unixfs/io/directory`: We have made some changes to unixfs directory tooling:
-  - We have exposed creator methods for new `BasicDirectory` and `HAMTDirectory`, that complement the existing `NewDirectory()` which creates dynamic directories.
-  - We have added `WithCidBuilder(...)`, `WithMaxLinks(...)`, `WithMaxHAMTFanout(...)` and `WithStat(...)` as options to these new methods so that empty directories can be initilized as wished from the get-go.
-  - `WithMaxLinks(...)` and `WithMaxHAMTFanout(...)` are new options that allow to set a limit to the number of children that a directory DAG node can have. For details on what they exactly do for each of the directory type, please check the documentation.
-- `mfs` supports as well the new `MaxLinks` and `MaxHAMTFanout` options. They have been made part of the `MkdirOptions` object and the methods `NewEmptyDirectory()` and `NewEmptyRoot()` have been added to facilitate the initialization of MFS objects.
+- Control over UnixFS DAG Width
+  - We have made some changes to allow setting custom max width of UnixFS DAGs. This enables users to produce DAGs that follow current and future community conventions (see the [related discussion](https://discuss.ipfs.tech/t/should-we-profile-cids/18507)).
+  - `ipld/unixfs`: `DagModifier` now allows specifying file DAG Width (`MaxLinks`) [#898](https://github.com/ipfs/boxo/pull/898)
+  - `ipld/unixfs/io/directory`: We have made some changes to unixfs directory tooling [#906](https://github.com/ipfs/boxo/pull/906)
+    - We have exposed creator methods for new `BasicDirectory` and `HAMTDirectory`, that complement the existing `NewDirectory()` which creates dynamic directories.
+    - We have added `WithCidBuilder(...)`, `WithMaxLinks(...)`, `WithMaxHAMTFanout(...)` and `WithStat(...)` as options to these new methods so that empty directories can be initilized as wished from the get-go.
+    - `WithMaxLinks(...)` and `WithMaxHAMTFanout(...)` are new options that allow to set a limit to the number of children that a directory DAG node can have. For details on what they exactly do for each of the directory type, please check the documentation.
+  - `mfs` supports as well the new `MaxLinks` and `MaxHAMTFanout` options. They have been made part of the `MkdirOptions` object and the methods `NewEmptyDirectory()` and `NewEmptyRoot()` have been added to facilitate the initialization of MFS objects. [#906](https://github.com/ipfs/boxo/pull/906)
+- `provider`: added support for walking partial DAGs in offline mode [#905](https://github.com/ipfs/boxo/pull/905)
+  - a `KeyChanFunc` that traverses DAGs from a given root (`NewDAGProvider`).
+  - a `KeyChanFunc` that buffers all the CIDs in memory from another `KeyChanFunc` (`NewBufferedProvider`).
+  - `fetcher/impl/blockservice`: new option `SkipNotFound` for the IPLD fetcher. It will skip not found nodes when traversing the DAG. This allows offline traversal of DAGs when using, for example, an offline blockservice.
+  - This enables use case of providing lazy-loaded, partially local DAGs (like `ipfs files` in Kubo's MFS implementation, see [kubo#10386](https://github.com/ipfs/kubo/issues/10386))
+- `gateway`: generated HTML with UnixFS directory listings now include a button for copying CIDs of child entities [#899](https://github.com/ipfs/boxo/pull/899)
 
 ### Changed
 
@@ -34,11 +43,12 @@ The following emojis are used to highlight certain changes:
 
 - `gateway`: query parameters are now supported and preserved in redirects triggered by a [`_redirects`](https://specs.ipfs.tech/http-gateways/web-redirects-file/) file [#886](https://github.com/ipfs/boxo/pull/886)
 - `provider`: adjusted first reprovide timing after node reboot [#890](https://github.com/ipfs/boxo/pull/890)
+- `gateway`: validate configuration and warn when `UseSubdomains=true` is used with IP-based hostnames [#903](https://github.com/ipfs/boxo/pull/903)
 
 ### Security
 
 
-## [v0.29.0]
+## [v0.29.1]
 
 ### Changed
 
@@ -83,7 +93,6 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `bitswap/client`: Add `DontHaveTimeoutConfig` type alias and `func DontHaveTimeoutConfig()` to expose config defined in internal package.
-
 ### Changed
 
 - move `ipld/unixfs` from gogo protobuf [#841](https://github.com/ipfs/boxo/pull/841)
