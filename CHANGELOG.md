@@ -15,6 +15,7 @@ The following emojis are used to highlight certain changes:
 ## [Unreleased]
 
 ### Added
+🛠 - New non variadic `NotifyNewBlock` function. This changes the `blockservice.Interface`. The new function avoids allocating a slice on each call when called with one block.
 
 - `provider`: added support for walking partial DAGs in offline mode [#905](https://github.com/ipfs/boxo/pull/905)
   - a `KeyChanFunc` that traverses DAGs from a given root (`NewDAGProvider`).
