@@ -290,9 +290,21 @@ func peerIDToBit256(id peer.ID) bit256.Key {
 	return bit256.NewKey(hash[:])
 }
 
+// trieHasPrefixOfKey checks if the trie contains a leave whose key is a prefix
+// (or a match) of the provided k
 func trieHasPrefixOfKey[K0 kad.Key[K0], K1 kad.Key[K1], D any](t *trie.Trie[K0, D], k K1) bool {
-	// TODO: returns true if any leaf of the trie is a prefix of k.
-	return false
+	return trieHasPrefixOfKeyAtDepth(t, k, 0)
+}
+
+func trieHasPrefixOfKeyAtDepth[K0 kad.Key[K0], K1 kad.Key[K1], D any](t *trie.Trie[K0, D], k K1, depth int) bool {
+	if t.IsLeaf() {
+		if !t.HasKey() {
+			return false
+		}
+		return key.CommonPrefixLength(*t.Key(), k) == (*t.Key()).BitLen()
+	}
+	b := int(k.Bit(depth))
+	return trieHasPrefixOfKeyAtDepth(t.Branch(b), k, depth+1)
 }
 
 // nextNonEmptyLeaf returns the leaf right after the provided key `k` in the
