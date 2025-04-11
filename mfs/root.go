@@ -136,6 +136,33 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 	return root, nil
 }
 
+// NewEmptyRoot creates an empty Root directory with the given directory
+// options. A replublisher is created if PubFunc is not nil.
+func NewEmptyRoot(parent context.Context, ds ipld.DAGService, pf PubFunc, opts MkdirOpts) (*Root, error) {
+	root := new(Root)
+
+	dir, err := NewEmptyDirectory(parent, "", root, ds, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Rather than "dir.GetNode()" because it is cheaper and we have no
+	// risks.
+	nd, err := dir.unixfsDir.GetNode()
+	if err != nil {
+		return nil, err
+	}
+
+	var repub *Republisher
+	if pf != nil {
+		repub = NewRepublisher(pf, repubQuick, repubLong, nd.Cid())
+	}
+
+	root.repub = repub
+	root.dir = dir
+	return root, nil
+}
+
 // GetDirectory returns the root directory.
 func (kr *Root) GetDirectory() *Directory {
 	return kr.dir
