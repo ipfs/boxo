@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"runtime"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -57,7 +58,7 @@ func (m *mockProvideMany) Ready() bool {
 func (m *mockProvideMany) GetKeys() (keys []mh.Multihash, calls uint) {
 	m.lk.Lock()
 	defer m.lk.Unlock()
-	return append([]mh.Multihash(nil), m.keys...), m.calls
+	return slices.Clone(m.keys), m.calls
 }
 
 var _ allFeatures = (*mockProvideMany)(nil)
@@ -73,17 +74,25 @@ type singleMockWrapper struct {
 
 func TestReprovider(t *testing.T) {
 	t.Parallel()
-	t.Run("many", func(t *testing.T) {
+	t.Run("single/batch", func(t *testing.T) {
 		t.Parallel()
-		testProvider(t, false)
+		testProvider(t, true, true)
 	})
-	t.Run("single", func(t *testing.T) {
+	t.Run("single/instant", func(t *testing.T) {
 		t.Parallel()
-		testProvider(t, true)
+		testProvider(t, true, false)
+	})
+	t.Run("many/batch", func(t *testing.T) {
+		t.Parallel()
+		testProvider(t, false, true)
+	})
+	t.Run("many/instant", func(t *testing.T) {
+		t.Parallel()
+		testProvider(t, false, false)
 	})
 }
 
-func testProvider(t *testing.T, singleProvide bool) {
+func testProvider(t *testing.T, singleProvide, batchProvides bool) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 
 	// It has to be so big because the combo of noisy CI runners + OSes that don't
@@ -110,7 +119,7 @@ func testProvider(t *testing.T, singleProvide bool) {
 
 	var keyWait sync.Mutex
 	keyWait.Lock()
-	batchSystem, err := New(ds, Online(provider), KeyProvider(func(ctx context.Context) (<-chan cid.Cid, error) {
+	batchSystem, err := New(ds, Online(provider), BatchProvides(batchProvides), KeyProvider(func(ctx context.Context) (<-chan cid.Cid, error) {
 		ch := make(chan cid.Cid)
 		go func() {
 			defer keyWait.Unlock()
@@ -138,7 +147,7 @@ func testProvider(t *testing.T, singleProvide bool) {
 			avg := d / time.Duration(n)
 
 			// windows's and darwin's schedulers and timers are too unreliable for this check
-			if runtime.GOOS != "windows" && runtime.GOOS != "darwin" && !(seventyFivePercent <= avg && avg <= hundredTwentyFivePercent) {
+			if runtime.GOOS != "windows" && runtime.GOOS != "darwin" && (seventyFivePercent > avg || avg > hundredTwentyFivePercent) {
 				t.Errorf("average computed duration is not within bounds, expected between %v and %v but got %v.", seventyFivePercent, hundredTwentyFivePercent, avg)
 			}
 			return false
@@ -172,7 +181,7 @@ func testProvider(t *testing.T, singleProvide bool) {
 		provMap[string(k)] = struct{}{}
 	}
 
-	for i := 0; i < numProvides; i++ {
+	for i := range numProvides {
 		h, err := mh.Sum([]byte(strconv.Itoa(i)), mh.SHA2_256, -1)
 		if err != nil {
 			panic(err)
@@ -246,7 +255,7 @@ func newMockKeyChanFunc(cids []cid.Cid) KeyChanFunc {
 
 func makeCIDs(n int) []cid.Cid {
 	cids := make([]cid.Cid, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		buf := make([]byte, 63)
 		_, err := rand.Read(buf)
 		if err != nil {

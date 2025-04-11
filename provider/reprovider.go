@@ -11,11 +11,14 @@ import (
 
 	"github.com/ipfs/boxo/provider/internal/queue"
 	"github.com/ipfs/boxo/verifcid"
+
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/multiformats/go-multihash"
+
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 const (
@@ -34,6 +37,19 @@ const (
 	// MAGIC: how long we are willing to collect providers for the batch after
 	// we receive the first one
 	maxCollectionDuration = time.Minute * 10
+
+	// MAGIC: default number of provide operations that can run concurrently.
+	// Note that each provide operation typically opens at least
+	// `replication_factor` connections to remote peers.
+	defaultProvideWorkerCount = 1 << 7
+
+	// MAGIC: The maximum number of cid entries stored in the instant provide
+	// cache, preventing repeated advertisement of duplicate cids.
+	defaultInstantProvideDeduplicatorCacheSize = 1 << 11
+
+	// MAGIC: Maximum duration during which no workers are available to provide a
+	// cid before a warning is triggered.
+	provideDelayWarnDuration = 15 * time.Second
 )
 
 var log = logging.Logger("provider.batched")
@@ -57,9 +73,10 @@ type reprovider struct {
 	q  *queue.Queue
 	ds datastore.Batching
 
-	reprovideCh chan cid.Cid
-
-	maxReprovideBatchSize uint
+	maxBatchSize               uint
+	batchProvides              bool
+	provideWorkerCount         uint
+	instantProvideDeduplicator *lru.Cache[cid.Cid, struct{}]
 
 	statLk                                      sync.Mutex
 	totalReprovides, lastReprovideBatchSize     uint64
@@ -108,15 +125,16 @@ var (
 // If provider casts to [Ready], it will wait until [Ready.Ready] is true.
 func New(ds datastore.Batching, opts ...Option) (System, error) {
 	s := &reprovider{
-		allowlist:             verifcid.DefaultAllowlist,
-		reprovideInterval:     DefaultReproviderInterval,
-		maxReprovideBatchSize: math.MaxUint,
-		keyPrefix:             DefaultKeyPrefix,
-		reprovideCh:           make(chan cid.Cid),
+		allowlist:          verifcid.DefaultAllowlist,
+		reprovideInterval:  DefaultReproviderInterval,
+		maxBatchSize:       math.MaxUint,
+		provideWorkerCount: defaultProvideWorkerCount,
+		keyPrefix:          DefaultKeyPrefix,
 	}
 
+	var err error
 	for _, o := range opts {
-		if err := o(s); err != nil {
+		if err = o(s); err != nil {
 			return nil, err
 		}
 	}
@@ -138,6 +156,13 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 	s.ds = namespace.Wrap(ds, s.keyPrefix)
 	s.q = queue.New(s.ds)
 
+	if !s.batchProvides {
+		s.instantProvideDeduplicator, err = lru.New[cid.Cid, struct{}](defaultInstantProvideDeduplicatorCacheSize)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options
 	ctx, cancel := context.WithCancel(context.Background())
@@ -146,7 +171,7 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 
 	if s.rsys != nil {
 		if _, ok := s.rsys.(ProvideMany); !ok {
-			s.maxReprovideBatchSize = 1
+			s.maxBatchSize = 1
 		}
 
 		s.run()
@@ -185,6 +210,49 @@ func DatastorePrefix(k datastore.Key) Option {
 	}
 }
 
+// ProvideWorkerCount configures the number of concurrent workers that handle
+// the initial provide of newly added CIDs. The maximum rate at which CIDs are
+// advertised is determined by dividing the number of workers by the provide
+// duration. Note that each provide typically opens connections to at least the
+// configured replication factor of peers.
+//
+// Setting ProvideWorkerCount to 0 enables an unbounded number of workers,
+// which can speed up provide operations under heavy load. Use this option
+// carefully, as it may cause the libp2p node to open a very high number of
+// connections to remote peers.
+//
+// This setting has no effect when batch providing is enabled.
+func ProvideWorkerCount(n uint) Option {
+	return func(system *reprovider) error {
+		system.provideWorkerCount = n
+		return nil
+	}
+}
+
+// BatchProvides enables batching of the provide operations for multiple CIDs.
+// When enabled, if several CIDs are added in rapid succession (i.e., if the
+// time gap between consecutive CIDs is less than the
+// `pauseDetectionThreshold`), they are aggregated and provided together as a
+// single batch. When the accelerated DHt client is enabled, it helps reduce
+// the number of connections the libp2p node must open when advertising the
+// CIDs.
+//
+// Additionally, the batching mechanism will trigger a provide operation after
+// `maxCollectionDuration` has elapsed, even if there hasn't been a gap of
+// `pauseDetectionThreshold` between consecutive CIDs.
+//
+// Only one batch can be provided at a time. Cids added during a provide
+// operation will not be advertised before the current operation is finished.
+//
+// This option provides a resource efficient alternative to instant provides,
+// but user must accept to wait before the initial provide.
+func BatchProvides(enable bool) Option {
+	return func(system *reprovider) error {
+		system.batchProvides = enable
+		return nil
+	}
+}
+
 // MaxBatchSize limits how big each batch is.
 //
 // Some content routers like acceleratedDHTClient have sub linear scalling and
@@ -192,7 +260,7 @@ func DatastorePrefix(k datastore.Key) Option {
 // limit memory usage spike.
 func MaxBatchSize(n uint) Option {
 	return func(system *reprovider) error {
-		system.maxReprovideBatchSize = n
+		system.maxBatchSize = n
 		return nil
 	}
 }
@@ -234,128 +302,208 @@ func initialReprovideDelay(duration time.Duration) Option {
 	}
 }
 
-func (s *reprovider) run() {
+func (s *reprovider) batchProvideWorker() {
+	defer s.closewg.Done()
 	provCh := s.q.Dequeue()
 
-	s.closewg.Add(1)
-	go func() {
-		// provider queue worker
-		defer s.closewg.Done()
+	m := make(map[cid.Cid]struct{})
 
-		m := make(map[cid.Cid]struct{})
+	// setup stopped timers
+	maxCollectionDurationTimer := time.NewTimer(time.Hour)
+	pauseDetectTimer := time.NewTimer(time.Hour)
+	maxCollectionDurationTimer.Stop()
+	pauseDetectTimer.Stop()
 
-		// setup stopped timers
-		maxCollectionDurationTimer := time.NewTimer(time.Hour)
-		pauseDetectTimer := time.NewTimer(time.Hour)
-		maxCollectionDurationTimer.Stop()
-		pauseDetectTimer.Stop()
+	// make sure timers are cleaned up
+	defer maxCollectionDurationTimer.Stop()
+	defer pauseDetectTimer.Stop()
 
-		// make sure timers are cleaned up
-		defer maxCollectionDurationTimer.Stop()
-		defer pauseDetectTimer.Stop()
-
-		for {
-			// At the start of every loop the maxCollectionDurationTimer and
-			// pauseDetectTimer should already be stopped and have empty
-			// channels.
-			for uint(len(m)) < s.maxReprovideBatchSize {
-				select {
-				case c := <-provCh:
-					if len(m) == 0 {
-						// After receiving the first provider, start up maxCollectionDurationTimer
-						maxCollectionDurationTimer.Reset(maxCollectionDuration)
-					}
-					pauseDetectTimer.Reset(pauseDetectionThreshold)
-					m[c] = struct{}{}
-				case <-pauseDetectTimer.C:
-					// If this timer has fired then the max collection timer has started, so stop it.
-					maxCollectionDurationTimer.Stop()
-					goto ProcessBatch
-				case <-maxCollectionDurationTimer.C:
-					// If this timer has fired then the pause timer has started, so stop it.
-					pauseDetectTimer.Stop()
-					goto ProcessBatch
-				case <-s.ctx.Done():
-					return
-				}
-			}
-
-			pauseDetectTimer.Stop()
-			maxCollectionDurationTimer.Stop()
-		ProcessBatch:
-			keys := make([]multihash.Multihash, 0, len(m))
-			for c := range m {
-				delete(m, c)
-				// hash security
-				if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
-					log.Errorf("insecure hash in reprovider, %s (%s)", c, err)
-					continue
-				}
-				keys = append(keys, c.Hash())
-			}
-
-			// in case after removing all the invalid CIDs there are no valid ones left
-			if len(keys) == 0 {
-				continue
-			}
-			s.waitUntilProvideSystemReady()
-
-			log.Debugf("starting provide of %d keys", len(keys))
-			start := time.Now()
-			err := doProvideMany(s.ctx, s.rsys, keys)
-			if err != nil {
-				log.Debugf("providing failed %v", err)
-				continue
-			}
-			dur := time.Since(start)
-			recentAvgProvideDuration := dur / time.Duration(len(keys))
-			log.Debugf("finished providing of %d keys. It took %v with an average of %v per provide", len(keys), dur, recentAvgProvideDuration)
-		}
-	}()
-
-	// don't start reprovide scheduling if reprovides are disabled (reprovideInterval == 0)
-	if s.reprovideInterval == 0 {
-		return
-	}
-
-	s.closewg.Add(1)
-	go func() {
-		// reprovides scheduling worker
-		defer s.closewg.Done()
-
-		// read last reprovide time written to the datastore, and schedule the
-		// first reprovide to happen reprovideInterval after that
-		firstReprovideDelay := s.initalReprovideDelay
-		lastReprovide, err := s.getLastReprovideTime()
-		if err == nil && time.Since(lastReprovide) < s.reprovideInterval-s.initalReprovideDelay {
-			firstReprovideDelay = time.Until(lastReprovide.Add(s.reprovideInterval))
-		}
-		firstReprovideTimer := time.NewTimer(firstReprovideDelay)
-
-		select {
-		case <-firstReprovideTimer.C:
-		case <-s.ctx.Done():
-			return
-		}
-
-		// after the first reprovide, schedule periodical reprovides
-		nextReprovideTicker := time.NewTicker(s.reprovideInterval)
-
-		for {
-			err := s.Reprovide(context.Background())
-			if err != nil {
-				if s.ctx.Err() != nil {
-					return
-				}
-				log.Errorf("failed to reprovide: %s", err)
-			}
+	for {
+		// At the start of every loop the maxCollectionDurationTimer and
+		// pauseDetectTimer should already be stopped and have empty
+		// channels.
+		for uint(len(m)) < s.maxBatchSize {
 			select {
-			case <-nextReprovideTicker.C:
+			case c := <-provCh:
+				if len(m) == 0 {
+					// After receiving the first provider, start up maxCollectionDurationTimer
+					maxCollectionDurationTimer.Reset(maxCollectionDuration)
+				}
+				pauseDetectTimer.Reset(pauseDetectionThreshold)
+				m[c] = struct{}{}
+			case <-pauseDetectTimer.C:
+				// If this timer has fired then the max collection timer has started, so stop it.
+				maxCollectionDurationTimer.Stop()
+				goto ProcessBatch
+			case <-maxCollectionDurationTimer.C:
+				// If this timer has fired then the pause timer has started, so stop it.
+				pauseDetectTimer.Stop()
+				goto ProcessBatch
 			case <-s.ctx.Done():
 				return
 			}
 		}
-	}()
+
+		pauseDetectTimer.Stop()
+		maxCollectionDurationTimer.Stop()
+	ProcessBatch:
+		keys := make([]multihash.Multihash, 0, len(m))
+		for c := range m {
+			delete(m, c)
+			// hash security
+			if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
+				log.Errorf("insecure hash in reprovider, %s (%s)", c, err)
+				continue
+			}
+			keys = append(keys, c.Hash())
+		}
+
+		// in case after removing all the invalid CIDs there are no valid ones left
+		if len(keys) == 0 {
+			continue
+		}
+		s.waitUntilProvideSystemReady()
+
+		log.Debugf("starting provide of %d keys", len(keys))
+		start := time.Now()
+		err := doProvideMany(s.ctx, s.rsys, keys)
+		if err != nil {
+			log.Debugf("providing failed %v", err)
+			continue
+		}
+		dur := time.Since(start)
+		recentAvgProvideDuration := dur / time.Duration(len(keys))
+		log.Debugf("finished providing of %d keys. It took %v with an average of %v per provide", len(keys), dur, recentAvgProvideDuration)
+	}
+}
+
+func (s *reprovider) instantProvideWorker() {
+	defer s.closewg.Done()
+	provCh := s.q.Dequeue()
+
+	provideFunc := func(ctx context.Context, c cid.Cid) {
+		if err := s.rsys.Provide(ctx, c, true); err != nil {
+			log.Errorf("failed to provide %s: %s", c, err)
+		}
+	}
+
+	var provideOperation func(context.Context, cid.Cid)
+	if s.provideWorkerCount == 0 {
+		// Unlimited workers
+		provideOperation = func(ctx context.Context, c cid.Cid) {
+			go provideFunc(ctx, c)
+		}
+	} else {
+		// Assign cid to workers pool
+		provideQueue := make(chan cid.Cid)
+		provideDelayTimer := time.NewTimer(provideDelayWarnDuration)
+		provideDelayTimer.Stop()
+		lateOnProvides := false
+
+		provideOperation = func(ctx context.Context, c cid.Cid) {
+			provideDelayTimer.Reset(provideDelayWarnDuration)
+			defer provideDelayTimer.Stop()
+			select {
+			case provideQueue <- c:
+				if lateOnProvides {
+					log.Warn("New provides are being processed again")
+				}
+				lateOnProvides = false
+			case <-provideDelayTimer.C:
+				if !lateOnProvides {
+					log.Warn("New provides are piling up in the queue, consider increasing the number of provide workers or enabling Batch Providing.")
+					lateOnProvides = true
+				}
+				select {
+				case provideQueue <- c:
+				case <-ctx.Done():
+				}
+			case <-ctx.Done():
+			}
+		}
+		// Start provide workers
+		for range s.provideWorkerCount {
+			go func(ctx context.Context) {
+				for {
+					select {
+					case c := <-provideQueue:
+						provideFunc(ctx, c)
+					case <-ctx.Done():
+						return
+					}
+				}
+			}(s.ctx)
+		}
+	}
+
+	for {
+		select {
+		case c := <-provCh:
+			if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
+				log.Errorf("insecure hash in reprovider, %s (%s)", c, err)
+				continue
+			}
+			// Deduplicate recently provided cids
+			if found, _ := s.instantProvideDeduplicator.ContainsOrAdd(c, struct{}{}); found {
+				continue
+			}
+			provideOperation(s.ctx, c)
+		case <-s.ctx.Done():
+			return
+		}
+	}
+}
+
+func (s *reprovider) reprovideSchedulingWorker() {
+	defer s.closewg.Done()
+
+	// read last reprovide time written to the datastore, and schedule the
+	// first reprovide to happen reprovideInterval after that
+	firstReprovideDelay := s.initalReprovideDelay
+	lastReprovide, err := s.getLastReprovideTime()
+	if err == nil && time.Since(lastReprovide) < s.reprovideInterval-s.initalReprovideDelay {
+		firstReprovideDelay = time.Until(lastReprovide.Add(s.reprovideInterval))
+	}
+	firstReprovideTimer := time.NewTimer(firstReprovideDelay)
+
+	select {
+	case <-firstReprovideTimer.C:
+	case <-s.ctx.Done():
+		return
+	}
+
+	// after the first reprovide, schedule periodical reprovides
+	nextReprovideTicker := time.NewTicker(s.reprovideInterval)
+
+	for {
+		err := s.Reprovide(context.Background())
+		if err != nil {
+			if s.ctx.Err() != nil {
+				return
+			}
+			log.Errorf("failed to reprovide: %s", err)
+		}
+		select {
+		case <-nextReprovideTicker.C:
+		case <-s.ctx.Done():
+			return
+		}
+	}
+}
+
+func (s *reprovider) run() {
+	s.closewg.Add(1)
+	if s.batchProvides {
+		go s.batchProvideWorker()
+	} else {
+		go s.instantProvideWorker()
+	}
+
+	// don't start reprovide scheduling if reprovides are disabled (reprovideInterval == 0)
+	if s.reprovideInterval > 0 {
+		s.closewg.Add(1)
+		go s.reprovideSchedulingWorker()
+	}
 }
 
 func (s *reprovider) waitUntilProvideSystemReady() {
@@ -409,7 +557,7 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 		return err
 	}
 
-	batchSize := s.maxReprovideBatchSize
+	batchSize := s.maxBatchSize
 	if s.throughputCallback != nil && s.throughputMinimumProvides < batchSize {
 		batchSize = s.throughputMinimumProvides
 	}
