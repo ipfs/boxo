@@ -17,8 +17,6 @@ import (
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/multiformats/go-multihash"
-
-	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 const (
@@ -42,10 +40,6 @@ const (
 	// Note that each provide operation typically opens at least
 	// `replication_factor` connections to remote peers.
 	defaultProvideWorkerCount = 1 << 7
-
-	// MAGIC: The maximum number of cid entries stored in the instant provide
-	// cache, preventing repeated advertisement of duplicate cids.
-	defaultInstantProvideDeduplicatorCacheSize = 1 << 11
 
 	// MAGIC: Maximum duration during which no workers are available to provide a
 	// cid before a warning is triggered.
@@ -73,10 +67,9 @@ type reprovider struct {
 	q  *queue.Queue
 	ds datastore.Batching
 
-	maxBatchSize               uint
-	batchProvides              bool
-	provideWorkerCount         uint
-	instantProvideDeduplicator *lru.Cache[cid.Cid, struct{}]
+	maxBatchSize       uint
+	batchProvides      bool
+	provideWorkerCount uint
 
 	statLk                                      sync.Mutex
 	totalReprovides, lastReprovideBatchSize     uint64
@@ -155,13 +148,6 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 
 	s.ds = namespace.Wrap(ds, s.keyPrefix)
 	s.q = queue.New(s.ds)
-
-	if !s.batchProvides {
-		s.instantProvideDeduplicator, err = lru.New[cid.Cid, struct{}](defaultInstantProvideDeduplicatorCacheSize)
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options
@@ -441,10 +427,6 @@ func (s *reprovider) instantProvideWorker() {
 		case c := <-provCh:
 			if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
 				log.Errorf("insecure hash in reprovider, %s (%s)", c, err)
-				continue
-			}
-			// Deduplicate recently provided cids
-			if found, _ := s.instantProvideDeduplicator.ContainsOrAdd(c, struct{}{}); found {
 				continue
 			}
 			provideOperation(s.ctx, c)
