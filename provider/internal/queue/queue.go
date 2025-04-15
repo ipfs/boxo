@@ -277,6 +277,7 @@ func (q *Queue) commitInput(ctx context.Context, counter uint64, cids *lru.Cache
 		return fmt.Errorf("failed to create batch: %w", err)
 	}
 
+	// TODO: don't clear the cache, but write cids that haven't been written before to the datastore
 	oldestCid, _, ok := cids.RemoveOldest()
 	cstr := makeCidString(oldestCid)
 	for c := oldestCid; ok; c, _, ok = cids.RemoveOldest() {
