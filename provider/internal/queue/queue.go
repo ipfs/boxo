@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gammazero/deque"
+	lru "github.com/hashicorp/golang-lru/v2"
 	cid "github.com/ipfs/go-cid"
 	datastore "github.com/ipfs/go-datastore"
 	namespace "github.com/ipfs/go-datastore/namespace"
@@ -28,7 +28,8 @@ const (
 	idleWriteTime = time.Minute
 	// shutdownTimeout is the duration that Close waits to finish writing CIDs
 	// to the datastore.
-	shutdownTimeout = 10 * time.Second
+	shutdownTimeout    = 10 * time.Second
+	internalBufferSize = 1024
 )
 
 // Queue provides a FIFO interface to the datastore for storing cids.
@@ -127,12 +128,10 @@ func (q *Queue) worker(ctx context.Context) {
 	var (
 		c       cid.Cid
 		counter uint64
-		k       datastore.Key = datastore.Key{}
-		inBuf   deque.Deque[cid.Cid]
 	)
 
-	const baseCap = 1024
-	inBuf.SetBaseCap(baseCap)
+	inBuf, _ := lru.New[cid.Cid, struct{}](internalBufferSize)
+	k := datastore.Key{}
 
 	defer func() {
 		if c != cid.Undef {
@@ -142,7 +141,7 @@ func (q *Queue) worker(ctx context.Context) {
 			counter++
 		}
 		if inBuf.Len() != 0 {
-			err := q.commitInput(ctx, counter, &inBuf)
+			err := q.commitInput(ctx, counter, inBuf)
 			if err != nil && !errors.Is(err, context.Canceled) {
 				log.Error(err)
 				if inBuf.Len() != 0 {
@@ -190,7 +189,7 @@ func (q *Queue) worker(ctx context.Context) {
 			if dsEmpty && inBuf.Len() != 0 {
 				// There were no queued CIDs in the datastore, so read one from
 				// the input buffer.
-				c = inBuf.PopFront()
+				c, _, _ = inBuf.RemoveOldest()
 				k = makeKey(c, counter)
 			}
 		}
@@ -216,7 +215,9 @@ func (q *Queue) worker(ctx context.Context) {
 				continue
 			}
 
-			inBuf.PushBack(toQueue)
+			if found, _ := inBuf.ContainsOrAdd(toQueue, struct{}{}); found {
+				continue
+			}
 			if inBuf.Len() >= batchSize {
 				commit = true
 			}
@@ -227,11 +228,6 @@ func (q *Queue) worker(ctx context.Context) {
 			if idle {
 				if inBuf.Len() != 0 {
 					commit = true
-				} else {
-					if inBuf.Cap() > baseCap {
-						inBuf = deque.Deque[cid.Cid]{}
-						inBuf.SetBaseCap(baseCap)
-					}
 				}
 			}
 			idle = true
@@ -244,7 +240,7 @@ func (q *Queue) worker(ctx context.Context) {
 		if commit {
 			commit = false
 			n := inBuf.Len()
-			err = q.commitInput(ctx, counter, &inBuf)
+			err = q.commitInput(ctx, counter, inBuf)
 			if err != nil {
 				if !errors.Is(err, context.Canceled) {
 					log.Errorw("Error writing CIDs to datastore, stopping provider", "err", err)
@@ -275,16 +271,15 @@ func (q *Queue) getQueueHead(ctx context.Context) (*query.Entry, error) {
 	return &r.Entry, r.Error
 }
 
-func (q *Queue) commitInput(ctx context.Context, counter uint64, cids *deque.Deque[cid.Cid]) error {
+func (q *Queue) commitInput(ctx context.Context, counter uint64, cids *lru.Cache[cid.Cid, struct{}]) error {
 	b, err := q.ds.Batch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create batch: %w", err)
 	}
 
-	cstr := makeCidString(cids.Front())
-	n := cids.Len()
-	for i := 0; i < n; i++ {
-		c := cids.At(i)
+	oldestCid, _, ok := cids.GetOldest()
+	cstr := makeCidString(oldestCid)
+	for c := oldestCid; ok; c, _, ok = cids.RemoveOldest() {
 		key := datastore.NewKey(fmt.Sprintf("%020d/%s", counter, cstr))
 		if err = b.Put(ctx, key, c.Bytes()); err != nil {
 			log.Errorw("Failed to add cid to batch", "err", err)
@@ -292,7 +287,6 @@ func (q *Queue) commitInput(ctx context.Context, counter uint64, cids *deque.Deq
 		}
 		counter++
 	}
-	cids.Clear()
 
 	if err = b.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit batch to datastore: %w", err)
