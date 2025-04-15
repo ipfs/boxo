@@ -137,7 +137,7 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 }
 
 // NewEmptyRoot creates an empty Root directory with the given directory
-// options. A replublisher is created if PubFunc is not nil.
+// options. A republisher is created if PubFunc is not nil.
 func NewEmptyRoot(parent context.Context, ds ipld.DAGService, pf PubFunc, opts MkdirOpts) (*Root, error) {
 	root := new(Root)
 
