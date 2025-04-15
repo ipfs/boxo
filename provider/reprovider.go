@@ -508,8 +508,12 @@ func (s *reprovider) run() {
 
 func (s *reprovider) waitUntilProvideSystemReady() {
 	if r, ok := s.rsys.(Ready); ok {
-		ticker := time.NewTicker(time.Minute)
+		var ticker *time.Ticker
 		for !r.Ready() {
+			if ticker == nil {
+				ticker = time.NewTicker(time.Minute)
+				defer ticker.Stop()
+			}
 			log.Debugf("reprovider system not ready")
 			select {
 			case <-ticker.C:
@@ -517,7 +521,6 @@ func (s *reprovider) waitUntilProvideSystemReady() {
 				return
 			}
 		}
-		ticker.Stop()
 	}
 }
 
