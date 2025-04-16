@@ -39,7 +39,7 @@ const (
 	// MAGIC: default number of provide operations that can run concurrently.
 	// Note that each provide operation typically opens at least
 	// `replication_factor` connections to remote peers.
-	defaultProvideWorkerCount = 1 << 7
+	defaultProvideWorkerCount = 64
 
 	// MAGIC: Maximum duration during which no workers are available to provide a
 	// cid before a warning is triggered.
@@ -68,7 +68,6 @@ type reprovider struct {
 	ds datastore.Batching
 
 	maxBatchSize       uint
-	batchProvides      bool
 	provideWorkerCount uint
 
 	statLk                                      sync.Mutex
@@ -215,30 +214,6 @@ func ProvideWorkerCount(n uint) Option {
 	}
 }
 
-// BatchProvides enables batching of the provide operations for multiple CIDs.
-// When enabled, if several CIDs are added in rapid succession (i.e., if the
-// time gap between consecutive CIDs is less than the
-// `pauseDetectionThreshold`), they are aggregated and provided together as a
-// single batch. When the accelerated DHt client is enabled, it helps reduce
-// the number of connections the libp2p node must open when advertising the
-// CIDs.
-//
-// Additionally, the batching mechanism will trigger a provide operation after
-// `maxCollectionDuration` has elapsed, even if there hasn't been a gap of
-// `pauseDetectionThreshold` between consecutive CIDs.
-//
-// Only one batch can be provided at a time. Cids added during a provide
-// operation will not be advertised before the current operation is finished.
-//
-// This option provides a resource efficient alternative to instant provides,
-// but user must accept to wait before the initial provide.
-func BatchProvides(enable bool) Option {
-	return func(system *reprovider) error {
-		system.batchProvides = enable
-		return nil
-	}
-}
-
 // MaxBatchSize limits how big each batch is.
 //
 // Some content routers like acceleratedDHTClient have sub linear scalling and
@@ -280,90 +255,7 @@ func Online(rsys Provide) Option {
 	}
 }
 
-func initialReprovideDelay(duration time.Duration) Option {
-	return func(system *reprovider) error {
-		system.initialReprovideDelaySet = true
-		system.initalReprovideDelay = duration
-		return nil
-	}
-}
-
-func (s *reprovider) batchProvideWorker() {
-	defer s.closewg.Done()
-	provCh := s.q.Dequeue()
-
-	m := make(map[cid.Cid]struct{})
-
-	// setup stopped timers
-	maxCollectionDurationTimer := time.NewTimer(time.Hour)
-	pauseDetectTimer := time.NewTimer(time.Hour)
-	maxCollectionDurationTimer.Stop()
-	pauseDetectTimer.Stop()
-
-	// make sure timers are cleaned up
-	defer maxCollectionDurationTimer.Stop()
-	defer pauseDetectTimer.Stop()
-
-	for {
-		// At the start of every loop the maxCollectionDurationTimer and
-		// pauseDetectTimer should already be stopped and have empty
-		// channels.
-		for uint(len(m)) < s.maxBatchSize {
-			select {
-			case c := <-provCh:
-				if len(m) == 0 {
-					// After receiving the first provider, start up maxCollectionDurationTimer
-					maxCollectionDurationTimer.Reset(maxCollectionDuration)
-				}
-				pauseDetectTimer.Reset(pauseDetectionThreshold)
-				m[c] = struct{}{}
-			case <-pauseDetectTimer.C:
-				// If this timer has fired then the max collection timer has started, so stop it.
-				maxCollectionDurationTimer.Stop()
-				goto ProcessBatch
-			case <-maxCollectionDurationTimer.C:
-				// If this timer has fired then the pause timer has started, so stop it.
-				pauseDetectTimer.Stop()
-				goto ProcessBatch
-			case <-s.ctx.Done():
-				return
-			}
-		}
-
-		pauseDetectTimer.Stop()
-		maxCollectionDurationTimer.Stop()
-	ProcessBatch:
-		keys := make([]multihash.Multihash, 0, len(m))
-		for c := range m {
-			delete(m, c)
-			// hash security
-			if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
-				log.Errorf("insecure hash in reprovider, %s (%s)", c, err)
-				continue
-			}
-			keys = append(keys, c.Hash())
-		}
-
-		// in case after removing all the invalid CIDs there are no valid ones left
-		if len(keys) == 0 {
-			continue
-		}
-		s.waitUntilProvideSystemReady()
-
-		log.Debugf("starting provide of %d keys", len(keys))
-		start := time.Now()
-		err := doProvideMany(s.ctx, s.rsys, keys)
-		if err != nil {
-			log.Debugf("providing failed %v", err)
-			continue
-		}
-		dur := time.Since(start)
-		recentAvgProvideDuration := dur / time.Duration(len(keys))
-		log.Debugf("finished providing of %d keys. It took %v with an average of %v per provide", len(keys), dur, recentAvgProvideDuration)
-	}
-}
-
-func (s *reprovider) instantProvideWorker() {
+func (s *reprovider) provideWorker() {
 	defer s.closewg.Done()
 	provCh := s.q.Dequeue()
 
@@ -475,11 +367,7 @@ func (s *reprovider) reprovideSchedulingWorker() {
 
 func (s *reprovider) run() {
 	s.closewg.Add(1)
-	if s.batchProvides {
-		go s.batchProvideWorker()
-	} else {
-		go s.instantProvideWorker()
-	}
+	go s.provideWorker()
 
 	// don't start reprovide scheduling if reprovides are disabled (reprovideInterval == 0)
 	if s.reprovideInterval > 0 {

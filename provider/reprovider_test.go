@@ -72,27 +72,27 @@ type singleMockWrapper struct {
 	allButMany
 }
 
+func initialReprovideDelay(duration time.Duration) Option {
+	return func(system *reprovider) error {
+		system.initialReprovideDelaySet = true
+		system.initalReprovideDelay = duration
+		return nil
+	}
+}
+
 func TestReprovider(t *testing.T) {
 	t.Parallel()
-	t.Run("single/batch", func(t *testing.T) {
+	t.Run("single", func(t *testing.T) {
 		t.Parallel()
-		testProvider(t, true, true)
+		testProvider(t, true)
 	})
-	t.Run("single/instant", func(t *testing.T) {
+	t.Run("many", func(t *testing.T) {
 		t.Parallel()
-		testProvider(t, true, false)
-	})
-	t.Run("many/batch", func(t *testing.T) {
-		t.Parallel()
-		testProvider(t, false, true)
-	})
-	t.Run("many/instant", func(t *testing.T) {
-		t.Parallel()
-		testProvider(t, false, false)
+		testProvider(t, false)
 	})
 }
 
-func testProvider(t *testing.T, singleProvide, batchProvides bool) {
+func testProvider(t *testing.T, singleProvide bool) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 
 	// It has to be so big because the combo of noisy CI runners + OSes that don't
@@ -119,7 +119,7 @@ func testProvider(t *testing.T, singleProvide, batchProvides bool) {
 
 	var keyWait sync.Mutex
 	keyWait.Lock()
-	batchSystem, err := New(ds, Online(provider), BatchProvides(batchProvides), KeyProvider(func(ctx context.Context) (<-chan cid.Cid, error) {
+	batchSystem, err := New(ds, Online(provider), KeyProvider(func(ctx context.Context) (<-chan cid.Cid, error) {
 		ch := make(chan cid.Cid)
 		go func() {
 			defer keyWait.Unlock()
