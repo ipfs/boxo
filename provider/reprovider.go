@@ -59,8 +59,8 @@ type reprovider struct {
 	q  *queue.Queue
 	ds datastore.Batching
 
-	maxBatchSize       uint
-	provideWorkerCount uint
+	maxReprovideBatchSize uint
+	provideWorkerCount    uint
 
 	statLk                                      sync.Mutex
 	totalReprovides, lastReprovideBatchSize     uint64
@@ -109,11 +109,11 @@ var (
 // If provider casts to [Ready], it will wait until [Ready.Ready] is true.
 func New(ds datastore.Batching, opts ...Option) (System, error) {
 	s := &reprovider{
-		allowlist:          verifcid.DefaultAllowlist,
-		reprovideInterval:  DefaultReproviderInterval,
-		maxBatchSize:       math.MaxUint,
-		provideWorkerCount: defaultProvideWorkerCount,
-		keyPrefix:          DefaultKeyPrefix,
+		allowlist:             verifcid.DefaultAllowlist,
+		reprovideInterval:     DefaultReproviderInterval,
+		maxReprovideBatchSize: math.MaxUint,
+		provideWorkerCount:    defaultProvideWorkerCount,
+		keyPrefix:             DefaultKeyPrefix,
 	}
 
 	var err error
@@ -148,7 +148,7 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 
 	if s.rsys != nil {
 		if _, ok := s.rsys.(ProvideMany); !ok {
-			s.maxBatchSize = 1
+			s.maxReprovideBatchSize = 1
 		}
 
 		s.run()
@@ -213,7 +213,7 @@ func ProvideWorkerCount(n uint) Option {
 // limit memory usage spike.
 func MaxBatchSize(n uint) Option {
 	return func(system *reprovider) error {
-		system.maxBatchSize = n
+		system.maxReprovideBatchSize = n
 		return nil
 	}
 }
@@ -422,7 +422,7 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 		return err
 	}
 
-	batchSize := s.maxBatchSize
+	batchSize := s.maxReprovideBatchSize
 	if s.throughputCallback != nil && s.throughputMinimumProvides < batchSize {
 		batchSize = s.throughputMinimumProvides
 	}
