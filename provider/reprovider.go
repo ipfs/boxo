@@ -197,11 +197,11 @@ func DatastorePrefix(k datastore.Key) Option {
 // which can speed up provide operations under heavy load. Use this option
 // carefully, as it may cause the libp2p node to open a very high number of
 // connections to remote peers.
-//
-// This setting has no effect when batch providing is enabled.
-func ProvideWorkerCount(n uint) Option {
+func ProvideWorkerCount(n int) Option {
 	return func(system *reprovider) error {
-		system.provideWorkerCount = n
+		if n > 0 {
+			system.provideWorkerCount = uint(n)
+		}
 		return nil
 	}
 }
