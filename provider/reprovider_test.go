@@ -159,7 +159,7 @@ func testProvider(t *testing.T, singleProvide bool) {
 	defer batchSystem.Close()
 
 	keyWait.Lock()
-	time.Sleep(pauseDetectionThreshold + time.Millisecond*50) // give it time to call provider after that
+	time.Sleep(time.Millisecond * 50) // give it time to call provider after that
 
 	keys, calls := orig.GetKeys()
 	if len(keys) != numProvides {
@@ -219,7 +219,7 @@ func TestOfflineRecordsThenOnlineRepublish(t *testing.T) {
 	sys, err = New(ds, Online(prov), initialReprovideDelay(0))
 	assert.NoError(t, err)
 
-	time.Sleep(pauseDetectionThreshold + time.Millisecond*10) // give it time to call provider after that
+	time.Sleep(time.Millisecond * 10) // give it time to call provider after that
 
 	err = sys.Close()
 	assert.NoError(t, err)

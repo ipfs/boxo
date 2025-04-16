@@ -28,14 +28,6 @@ const (
 	// might be just about to stop.
 	defaultInitialReprovideDelay = time.Minute
 
-	// MAGIC: how long we wait between the first provider we hear about and
-	// batching up the provides to send out
-	pauseDetectionThreshold = time.Millisecond * 500
-
-	// MAGIC: how long we are willing to collect providers for the batch after
-	// we receive the first one
-	maxCollectionDuration = time.Minute * 10
-
 	// MAGIC: default number of provide operations that can run concurrently.
 	// Note that each provide operation typically opens at least
 	// `replication_factor` connections to remote peers.
@@ -272,24 +264,24 @@ func (s *reprovider) provideWorker() {
 			go provideFunc(ctx, c)
 		}
 	} else {
-		// Assign cid to workers pool
 		provideQueue := make(chan cid.Cid)
 		provideDelayTimer := time.NewTimer(provideDelayWarnDuration)
 		provideDelayTimer.Stop()
 		lateOnProvides := false
 
+		// Assign cid to workers pool
 		provideOperation = func(ctx context.Context, c cid.Cid) {
 			provideDelayTimer.Reset(provideDelayWarnDuration)
 			defer provideDelayTimer.Stop()
 			select {
 			case provideQueue <- c:
 				if lateOnProvides {
-					log.Warn("New provides are being processed again")
+					log.Warn("New provides are being processed again.")
 				}
 				lateOnProvides = false
 			case <-provideDelayTimer.C:
 				if !lateOnProvides {
-					log.Warn("New provides are piling up in the queue, consider increasing the number of provide workers or enabling Batch Providing.")
+					log.Warn("New provides are piling up in the queue, consider increasing the number of provide workers.")
 					lateOnProvides = true
 				}
 				select {
