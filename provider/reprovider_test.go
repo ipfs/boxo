@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"runtime"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -57,7 +58,7 @@ func (m *mockProvideMany) Ready() bool {
 func (m *mockProvideMany) GetKeys() (keys []mh.Multihash, calls uint) {
 	m.lk.Lock()
 	defer m.lk.Unlock()
-	return append([]mh.Multihash(nil), m.keys...), m.calls
+	return slices.Clone(m.keys), m.calls
 }
 
 var _ allFeatures = (*mockProvideMany)(nil)
@@ -71,15 +72,23 @@ type singleMockWrapper struct {
 	allButMany
 }
 
+func initialReprovideDelay(duration time.Duration) Option {
+	return func(system *reprovider) error {
+		system.initialReprovideDelaySet = true
+		system.initalReprovideDelay = duration
+		return nil
+	}
+}
+
 func TestReprovider(t *testing.T) {
 	t.Parallel()
-	t.Run("many", func(t *testing.T) {
-		t.Parallel()
-		testProvider(t, false)
-	})
 	t.Run("single", func(t *testing.T) {
 		t.Parallel()
 		testProvider(t, true)
+	})
+	t.Run("many", func(t *testing.T) {
+		t.Parallel()
+		testProvider(t, false)
 	})
 }
 
@@ -114,6 +123,7 @@ func testProvider(t *testing.T, singleProvide bool) {
 		ch := make(chan cid.Cid)
 		go func() {
 			defer keyWait.Unlock()
+			defer close(ch)
 			for _, k := range keysToProvide {
 				select {
 				case ch <- k:
@@ -137,7 +147,7 @@ func testProvider(t *testing.T, singleProvide bool) {
 			avg := d / time.Duration(n)
 
 			// windows's and darwin's schedulers and timers are too unreliable for this check
-			if runtime.GOOS != "windows" && runtime.GOOS != "darwin" && !(seventyFivePercent <= avg && avg <= hundredTwentyFivePercent) {
+			if runtime.GOOS != "windows" && runtime.GOOS != "darwin" && (seventyFivePercent > avg || avg > hundredTwentyFivePercent) {
 				t.Errorf("average computed duration is not within bounds, expected between %v and %v but got %v.", seventyFivePercent, hundredTwentyFivePercent, avg)
 			}
 			return false
@@ -149,7 +159,7 @@ func testProvider(t *testing.T, singleProvide bool) {
 	defer batchSystem.Close()
 
 	keyWait.Lock()
-	time.Sleep(pauseDetectionThreshold + time.Millisecond*50) // give it time to call provider after that
+	time.Sleep(time.Millisecond * 50) // give it time to call provider after that
 
 	keys, calls := orig.GetKeys()
 	if len(keys) != numProvides {
@@ -171,7 +181,7 @@ func testProvider(t *testing.T, singleProvide bool) {
 		provMap[string(k)] = struct{}{}
 	}
 
-	for i := 0; i < numProvides; i++ {
+	for i := range numProvides {
 		h, err := mh.Sum([]byte(strconv.Itoa(i)), mh.SHA2_256, -1)
 		if err != nil {
 			panic(err)
@@ -209,7 +219,7 @@ func TestOfflineRecordsThenOnlineRepublish(t *testing.T) {
 	sys, err = New(ds, Online(prov), initialReprovideDelay(0))
 	assert.NoError(t, err)
 
-	time.Sleep(pauseDetectionThreshold + time.Millisecond*10) // give it time to call provider after that
+	time.Sleep(time.Millisecond * 10) // give it time to call provider after that
 
 	err = sys.Close()
 	assert.NoError(t, err)
@@ -245,7 +255,7 @@ func newMockKeyChanFunc(cids []cid.Cid) KeyChanFunc {
 
 func makeCIDs(n int) []cid.Cid {
 	cids := make([]cid.Cid, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		buf := make([]byte, 63)
 		_, err := rand.Read(buf)
 		if err != nil {
