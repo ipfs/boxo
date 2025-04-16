@@ -134,15 +134,12 @@ func (bs *Bitswap) Stat() (*Stat, error) {
 		// Server stats will be added conditionally
 	}
 
-	// Check if the server is enabled/initialized
-	if bs.serverEnabled {
-		// Server is enabled, get its stats
+	// Stats only available if server is enabled
+	if bs.Server != nil {
 		ss, err := bs.Server.Stat()
 		if err != nil {
-			// Return client stats along with the server error, or handle differently
 			return stat, fmt.Errorf("failed to get server stats: %w", err)
 		}
-		// Populate server-specific fields
 		stat.Peers = ss.Peers
 		stat.BlocksSent = ss.BlocksSent
 		stat.DataSent = ss.DataSent
@@ -154,7 +151,7 @@ func (bs *Bitswap) Stat() (*Stat, error) {
 func (bs *Bitswap) Close() error {
 	bs.net.Stop()
 	bs.Client.Close()
-	if bs.serverEnabled {
+	if bs.Server != nil {
 		bs.Server.Close()
 	}
 	return nil
@@ -169,14 +166,14 @@ func (bs *Bitswap) WantlistForPeer(p peer.ID) []cid.Cid {
 
 func (bs *Bitswap) PeerConnected(p peer.ID) {
 	bs.Client.PeerConnected(p)
-	if bs.serverEnabled {
+	if bs.Server != nil {
 		bs.Server.PeerConnected(p)
 	}
 }
 
 func (bs *Bitswap) PeerDisconnected(p peer.ID) {
 	bs.Client.PeerDisconnected(p)
-	if bs.serverEnabled {
+	if bs.Server != nil {
 		bs.Server.PeerDisconnected(p)
 	}
 }
@@ -193,7 +190,7 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming messa
 	}
 
 	bs.Client.ReceiveMessage(ctx, p, incoming)
-	if bs.serverEnabled {
+	if bs.Server != nil {
 		bs.Server.ReceiveMessage(ctx, p, incoming)
 	}
 }
