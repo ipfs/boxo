@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gammazero/deque"
+	lru "github.com/hashicorp/golang-lru/v2"
 	cid "github.com/ipfs/go-cid"
 	datastore "github.com/ipfs/go-datastore"
 	namespace "github.com/ipfs/go-datastore/namespace"
@@ -127,12 +128,13 @@ func (q *Queue) worker(ctx context.Context) {
 	var (
 		c       cid.Cid
 		counter uint64
-		k       datastore.Key = datastore.Key{}
 		inBuf   deque.Deque[cid.Cid]
 	)
 
 	const baseCap = 1024
 	inBuf.SetBaseCap(baseCap)
+	k := datastore.Key{}
+	dedupCache, _ := lru.New[cid.Cid, struct{}](baseCap)
 
 	defer func() {
 		if c != cid.Undef {
@@ -205,6 +207,9 @@ func (q *Queue) worker(ctx context.Context) {
 		case toQueue, ok := <-readInBuf:
 			if !ok {
 				return
+			}
+			if found, _ := dedupCache.ContainsOrAdd(toQueue, struct{}{}); found {
+				continue
 			}
 			idle = false
 
@@ -283,7 +288,7 @@ func (q *Queue) commitInput(ctx context.Context, counter uint64, cids *deque.Deq
 
 	cstr := makeCidString(cids.Front())
 	n := cids.Len()
-	for i := 0; i < n; i++ {
+	for i := range n {
 		c := cids.At(i)
 		key := datastore.NewKey(fmt.Sprintf("%020d/%s", counter, cstr))
 		if err = b.Put(ctx, key, c.Bytes()); err != nil {

@@ -118,3 +118,21 @@ func TestInitializationWithManyCids(t *testing.T) {
 
 	assertOrdered(cids, queue, t)
 }
+
+func TestDeduplicateCids(t *testing.T) {
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	queue := New(ds)
+	defer queue.Close()
+
+	cids := random.Cids(5)
+	queue.Enqueue(cids[0])
+	queue.Enqueue(cids[0])
+	queue.Enqueue(cids[1])
+	queue.Enqueue(cids[2])
+	queue.Enqueue(cids[1])
+	queue.Enqueue(cids[3])
+	queue.Enqueue(cids[0])
+	queue.Enqueue(cids[4])
+
+	assertOrdered(cids, queue, t)
+}
