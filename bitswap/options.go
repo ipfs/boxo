@@ -103,6 +103,14 @@ func WithTracer(tap tracer.Tracer) Option {
 	}
 }
 
+func WithServerEnabled(enabled bool) Option {
+	return Option{
+		option(func(bs *Bitswap) {
+			bs.serverEnabled = enabled
+		}),
+	}
+}
+
 func WithClientOption(opt client.Option) Option {
 	return Option{opt}
 }

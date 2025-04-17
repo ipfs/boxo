@@ -25,6 +25,7 @@ import (
 	tu "github.com/libp2p/go-libp2p-testing/etc"
 	p2ptestutil "github.com/libp2p/go-libp2p-testing/netutil"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/multiformats/go-multiaddr"
 )
 
 const blockSize = 4
@@ -830,5 +831,123 @@ func TestWithScoreLedger(t *testing.T) {
 	case <-tsl.closed:
 	case <-time.After(time.Second * 5):
 		t.Fatal("Expected the score ledger to be closed within 5s")
+	}
+}
+
+// TestWithServerDisabled tests that BitSwap can function properly with the server disabled.
+// In this mode, it should still be able to request and receive blocks from other peers,
+// but should not respond to requests from others.
+func TestWithServerDisabled(t *testing.T) {
+	net := tn.VirtualNetwork(delay.Fixed(kNetworkDelay))
+	block := blocks.NewBlock([]byte("block"))
+	router := mockrouting.NewServer()
+
+	// Create instance generator with default options
+	igWithServer := testinstance.NewTestInstanceGenerator(net, router, nil, nil)
+	defer igWithServer.Close()
+
+	// Create instance generator with server disabled
+	igNoServer := testinstance.NewTestInstanceGenerator(net, router, nil, []bitswap.Option{
+		bitswap.WithServerEnabled(false),
+	})
+	defer igNoServer.Close()
+
+	// Create two peers:
+	// - peerWithServer: has server enabled and has the block
+	// - peerNoServer: has server disabled
+	peerWithServer := igWithServer.Next()
+	peerNoServer := igNoServer.Next()
+
+	// We need to connect the peers so they can communicate
+	connectPeers(t, net, peerWithServer, peerNoServer)
+
+	// Add block to peerWithServer
+	addBlock(t, context.Background(), peerWithServer, block)
+
+	// Test 1: peerNoServer should be able to get a block from peerWithServer
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	receivedBlock, err := peerNoServer.Exchange.GetBlock(ctx, block.Cid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(block.RawData(), receivedBlock.RawData()) {
+		t.Fatal("Data doesn't match")
+	}
+
+	// Test 2: Now try the opposite - peerWithServer should NOT be able to get a block from peerNoServer
+	// because peerNoServer has server disabled and won't respond to requests
+	newBlock := blocks.NewBlock([]byte("newblock"))
+	addBlock(t, context.Background(), peerNoServer, newBlock)
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel2()
+	_, err = peerWithServer.Exchange.GetBlock(ctx2, newBlock.Cid())
+
+	// We expect this to fail with deadline exceeded because peerNoServer won't respond
+	if err != context.DeadlineExceeded {
+		t.Fatalf("Expected DeadlineExceeded error, got: %v", err)
+	}
+
+	// Test 3: Verify that Stat() returns correct values even with server disabled
+	noServerStat, err := peerNoServer.Exchange.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// With server disabled, we should still have valid client stats
+	if noServerStat.BlocksReceived != 1 {
+		t.Errorf("Expected BlocksReceived to be 1, got %d", noServerStat.BlocksReceived)
+	}
+	if noServerStat.DataReceived != uint64(len(block.RawData())) {
+		t.Errorf("Expected DataReceived to be %d, got %d", len(block.RawData()), noServerStat.DataReceived)
+	}
+
+	// With server disabled, server stats should be zero
+	if noServerStat.BlocksSent != 0 {
+		t.Errorf("Expected BlocksSent to be 0, got %d", noServerStat.BlocksSent)
+	}
+	if noServerStat.DataSent != 0 {
+		t.Errorf("Expected DataSent to be 0, got %d", noServerStat.DataSent)
+	}
+}
+
+// Helper function to connect two peers
+func connectPeers(t *testing.T, net tn.Network, a, b testinstance.Instance) {
+	t.Helper()
+	err := a.Adapter.Connect(context.Background(), peer.AddrInfo{
+		ID:    b.Identity.ID(),
+		Addrs: []multiaddr.Multiaddr{b.Identity.Address()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestServerDisabledNotifyNewBlocks tests that NotifyNewBlocks works correctly
+// when the server is disabled.
+func TestServerDisabledNotifyNewBlocks(t *testing.T) {
+	net := tn.VirtualNetwork(delay.Fixed(kNetworkDelay))
+	router := mockrouting.NewServer()
+
+	// Create instance with server disabled
+	ig := testinstance.NewTestInstanceGenerator(net, router, nil, []bitswap.Option{
+		bitswap.WithServerEnabled(false),
+	})
+	defer ig.Close()
+
+	instance := ig.Next()
+	block := blocks.NewBlock([]byte("test block"))
+
+	// Add block to blockstore
+	err := instance.Blockstore.Put(context.Background(), block)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Notify about new block - this should not cause errors even with server disabled
+	err = instance.Exchange.NotifyNewBlocks(context.Background(), block)
+	if err != nil {
+		t.Fatalf("NotifyNewBlocks failed with server disabled: %s", err)
 	}
 }
