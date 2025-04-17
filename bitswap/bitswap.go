@@ -96,7 +96,7 @@ func New(ctx context.Context, net network.BitSwapNetwork, providerFinder routing
 }
 
 func (bs *Bitswap) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error {
-	if bs.serverEnabled {
+	if bs.Server != nil {
 		return multierr.Combine(
 			bs.Client.NotifyNewBlocks(ctx, blks...),
 			bs.Server.NotifyNewBlocks(ctx, blks...),
