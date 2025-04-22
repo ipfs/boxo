@@ -247,6 +247,17 @@ func Online(rsys Provide) Option {
 	}
 }
 
+func (s *reprovider) run() {
+	s.closewg.Add(1)
+	go s.provideWorker()
+
+	// don't start reprovide scheduling if reprovides are disabled (reprovideInterval == 0)
+	if s.reprovideInterval > 0 {
+		s.closewg.Add(1)
+		go s.reprovideSchedulingWorker()
+	}
+}
+
 func (s *reprovider) provideWorker() {
 	defer s.closewg.Done()
 	provCh := s.q.Dequeue()
@@ -265,6 +276,7 @@ func (s *reprovider) provideWorker() {
 		}
 	} else {
 		provideQueue := make(chan cid.Cid)
+		defer close(provideQueue)
 		provideDelayTimer := time.NewTimer(provideDelayWarnDuration)
 		provideDelayTimer.Stop()
 		lateOnProvides := false
@@ -294,29 +306,19 @@ func (s *reprovider) provideWorker() {
 		// Start provide workers
 		for range s.provideWorkerCount {
 			go func(ctx context.Context) {
-				for {
-					select {
-					case c := <-provideQueue:
-						provideFunc(ctx, c)
-					case <-ctx.Done():
-						return
-					}
+				for c := range provideQueue {
+					provideFunc(ctx, c)
 				}
 			}(s.ctx)
 		}
 	}
 
-	for {
-		select {
-		case c := <-provCh:
-			if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
-				log.Errorf("insecure hash in reprovider, %s (%s)", c, err)
-				continue
-			}
-			provideOperation(s.ctx, c)
-		case <-s.ctx.Done():
-			return
+	for c := range provCh {
+		if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
+			log.Errorf("insecure hash in reprovider, %s (%s)", c, err)
+			continue
 		}
+		provideOperation(s.ctx, c)
 	}
 }
 
@@ -354,17 +356,6 @@ func (s *reprovider) reprovideSchedulingWorker() {
 		case <-s.ctx.Done():
 			return
 		}
-	}
-}
-
-func (s *reprovider) run() {
-	s.closewg.Add(1)
-	go s.provideWorker()
-
-	// don't start reprovide scheduling if reprovides are disabled (reprovideInterval == 0)
-	if s.reprovideInterval > 0 {
-		s.closewg.Add(1)
-		go s.reprovideSchedulingWorker()
 	}
 }
 
