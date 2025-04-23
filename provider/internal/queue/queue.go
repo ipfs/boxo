@@ -212,6 +212,8 @@ func (q *Queue) worker(ctx context.Context) {
 				return
 			}
 			if found, _ := dedupCache.ContainsOrAdd(toQueue, struct{}{}); found {
+				// update recentness in LRU cache
+				dedupCache.Add(toQueue, struct{}{})
 				continue
 			}
 			idle = false
