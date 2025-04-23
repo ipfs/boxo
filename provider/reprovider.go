@@ -418,17 +418,16 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 		batchSize = s.throughputMinimumProvides
 	}
 
-	cids := make([]cid.Cid, 0, min(batchSize, 1024))
+	cids := make(map[cid.Cid]struct{}, min(batchSize, 1024))
 	allCidsProcessed := false
 	for !allCidsProcessed {
-		cids = cids[:0]
 		for range batchSize {
 			c, ok := <-kch
 			if !ok {
 				allCidsProcessed = true
 				break
 			}
-			cids = append(cids, c)
+			cids[c] = struct{}{}
 		}
 		if err := ctx.Err(); err != nil {
 			return err
@@ -438,13 +437,14 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 		}
 
 		keys := make([]multihash.Multihash, 0, len(cids))
-		for _, c := range cids {
+		for c := range cids {
 			// hash security
 			if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
 				log.Errorf("insecure hash in reprovider, %s (%s)", c, err)
 				continue
 			}
 			keys = append(keys, c.Hash())
+			delete(cids, c)
 		}
 
 		// in case after removing all the invalid CIDs there are no valid ones left
