@@ -25,7 +25,7 @@ const (
 	batchSize = 16 * 1024
 	// dedupCacheSize is the size of the LRU cache used to deduplicate CIDs in
 	// the queue.
-	dedupCacheSize = 1024
+	dedupCacheSize = 2 * 1024
 	// idleWriteTime is the amout of time to check if the queue has been idle
 	// (no input or output). If the queue has been idle since the last check,
 	// then write all buffered CIDs to the datastore.
