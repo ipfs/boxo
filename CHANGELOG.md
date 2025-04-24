@@ -37,6 +37,7 @@ The following emojis are used to highlight certain changes:
 - `bitswap/network`: Add a new `requests_in_flight` metric gauge that measures how many bitswap streams are being written or read at a given time.
 - improve speed of data onboarding by batching/bufering provider queue writes [#888](https://github.com/ipfs/boxo/pull/888)
 - `provider`: providing queue is now independent from reprovides, speeding up initial provides [#907](https://github.com/ipfs/boxo/pull/907)
+- `provider/queue` deduplicates CIDs [#910](https://github.com/ipfs/boxo/pull/910)
 
 ### Removed
 
