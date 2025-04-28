@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gammazero/deque"
+	lru "github.com/hashicorp/golang-lru/v2"
 	cid "github.com/ipfs/go-cid"
 	datastore "github.com/ipfs/go-datastore"
 	namespace "github.com/ipfs/go-datastore/namespace"
@@ -22,6 +23,9 @@ const (
 	// batchSize is the limit on number of CIDs kept in memory at which ther
 	// are all written to the datastore.
 	batchSize = 16 * 1024
+	// dedupCacheSize is the size of the LRU cache used to deduplicate CIDs in
+	// the queue.
+	dedupCacheSize = 2 * 1024
 	// idleWriteTime is the amout of time to check if the queue has been idle
 	// (no input or output). If the queue has been idle since the last check,
 	// then write all buffered CIDs to the datastore.
@@ -127,12 +131,13 @@ func (q *Queue) worker(ctx context.Context) {
 	var (
 		c       cid.Cid
 		counter uint64
-		k       datastore.Key = datastore.Key{}
 		inBuf   deque.Deque[cid.Cid]
 	)
 
 	const baseCap = 1024
 	inBuf.SetBaseCap(baseCap)
+	k := datastore.Key{}
+	dedupCache, _ := lru.New[cid.Cid, struct{}](dedupCacheSize)
 
 	defer func() {
 		if c != cid.Undef {
@@ -205,6 +210,11 @@ func (q *Queue) worker(ctx context.Context) {
 		case toQueue, ok := <-readInBuf:
 			if !ok {
 				return
+			}
+			if found, _ := dedupCache.ContainsOrAdd(toQueue, struct{}{}); found {
+				// update recentness in LRU cache
+				dedupCache.Add(toQueue, struct{}{})
+				continue
 			}
 			idle = false
 
@@ -282,8 +292,7 @@ func (q *Queue) commitInput(ctx context.Context, counter uint64, cids *deque.Deq
 	}
 
 	cstr := makeCidString(cids.Front())
-	n := cids.Len()
-	for i := 0; i < n; i++ {
+	for i := range cids.Len() {
 		c := cids.At(i)
 		key := datastore.NewKey(fmt.Sprintf("%020d/%s", counter, cstr))
 		if err = b.Put(ctx, key, c.Bytes()); err != nil {

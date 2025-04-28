@@ -16,7 +16,14 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `ipld/unixfs`: `DagModifier` now allows specifying file DAG Width (`MaxLinks`) [#898](https://github.com/ipfs/boxo/pull/898)
+- Control over UnixFS DAG Width
+  - We have made some changes to allow setting custom max width of UnixFS DAGs. This enables users to produce DAGs that follow current and future community conventions (see the [related discussion](https://discuss.ipfs.tech/t/should-we-profile-cids/18507)).
+  - `ipld/unixfs`: `DagModifier` now allows specifying file DAG Width (`MaxLinks`) [#898](https://github.com/ipfs/boxo/pull/898)
+  - `ipld/unixfs/io/directory`: We have made some changes to unixfs directory tooling [#906](https://github.com/ipfs/boxo/pull/906)
+    - We have exposed creator methods for new `BasicDirectory` and `HAMTDirectory`, that complement the existing `NewDirectory()` which creates dynamic directories.
+    - We have added `WithCidBuilder(...)`, `WithMaxLinks(...)`, `WithMaxHAMTFanout(...)` and `WithStat(...)` as options to these new methods so that empty directories can be initilized as wished from the get-go.
+    - `WithMaxLinks(...)` and `WithMaxHAMTFanout(...)` are new options that allow to set a limit to the number of children that a directory DAG node can have. For details on what they exactly do for each of the directory type, please check the documentation.
+  - `mfs` supports as well the new `MaxLinks` and `MaxHAMTFanout` options. They have been made part of the `MkdirOptions` object and the methods `NewEmptyDirectory()` and `NewEmptyRoot()` have been added to facilitate the initialization of MFS objects. [#906](https://github.com/ipfs/boxo/pull/906)
 - `provider`: added support for walking partial DAGs in offline mode [#905](https://github.com/ipfs/boxo/pull/905)
   - a `KeyChanFunc` that traverses DAGs from a given root (`NewDAGProvider`).
   - a `KeyChanFunc` that buffers all the CIDs in memory from another `KeyChanFunc` (`NewBufferedProvider`).
@@ -29,6 +36,8 @@ The following emojis are used to highlight certain changes:
 - upgrade to `go-libp2p` [v0.41.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.41.1)
 - `bitswap/network`: Add a new `requests_in_flight` metric gauge that measures how many bitswap streams are being written or read at a given time.
 - improve speed of data onboarding by batching/bufering provider queue writes [#888](https://github.com/ipfs/boxo/pull/888)
+- `provider`: providing queue is now independent from reprovides, speeding up initial provides [#907](https://github.com/ipfs/boxo/pull/907)
+- `provider/queue` deduplicates CIDs [#910](https://github.com/ipfs/boxo/pull/910)
 
 ### Removed
 
