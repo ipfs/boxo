@@ -61,8 +61,6 @@ func New(ctx context.Context, net network.BitSwapNetwork, providerFinder routing
 		net: net,
 		serverEnabled: true,
 	}
-	// by default, iniitalize the server
-	bs.serverEnabled = true
 	var serverOptions []server.Option
 	var clientOptions []client.Option
 
