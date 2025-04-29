@@ -58,9 +58,10 @@ type Bitswap struct {
 
 func New(ctx context.Context, net network.BitSwapNetwork, providerFinder routing.ContentDiscovery, bstore blockstore.Blockstore, options ...Option) *Bitswap {
 	bs := &Bitswap{
-		net: net,
+		net:           net,
 		serverEnabled: true,
 	}
+
 	var serverOptions []server.Option
 	var clientOptions []client.Option
 
@@ -159,6 +160,9 @@ func (bs *Bitswap) Close() error {
 func (bs *Bitswap) WantlistForPeer(p peer.ID) []cid.Cid {
 	if p == bs.net.Self() {
 		return bs.Client.GetWantlist()
+	}
+	if bs.Server != nil {
+		return bs.Server.WantlistForPeer(p)
 	}
 	return nil
 }
