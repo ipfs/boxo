@@ -59,6 +59,7 @@ type Bitswap struct {
 func New(ctx context.Context, net network.BitSwapNetwork, providerFinder routing.ContentDiscovery, bstore blockstore.Blockstore, options ...Option) *Bitswap {
 	bs := &Bitswap{
 		net: net,
+		serverEnabled: true,
 	}
 	// by default, iniitalize the server
 	bs.serverEnabled = true
