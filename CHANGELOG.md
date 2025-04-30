@@ -30,6 +30,7 @@ The following emojis are used to highlight certain changes:
   - `fetcher/impl/blockservice`: new option `SkipNotFound` for the IPLD fetcher. It will skip not found nodes when traversing the DAG. This allows offline traversal of DAGs when using, for example, an offline blockservice.
   - This enables use case of providing lazy-loaded, partially local DAGs (like `ipfs files` in Kubo's MFS implementation, see [kubo#10386](https://github.com/ipfs/kubo/issues/10386))
 - `gateway`: generated HTML with UnixFS directory listings now include a button for copying CIDs of child entities [#899](https://github.com/ipfs/boxo/pull/899)
+- `bitswap/server`: Add ability to enable/disable bitswap server using `WithServerEnabled` bitswap option (#911)[https://github.com/ipfs/boxo/pull/911]
 
 ### Changed
 
