@@ -16,6 +16,19 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.30.0]
+
+### Added
+
 - Control over UnixFS DAG Width
   - We have made some changes to allow setting custom max width of UnixFS DAGs. This enables users to produce DAGs that follow current and future community conventions (see the [related discussion](https://discuss.ipfs.tech/t/should-we-profile-cids/18507)).
   - `ipld/unixfs`: `DagModifier` now allows specifying file DAG Width (`MaxLinks`) [#898](https://github.com/ipfs/boxo/pull/898)
@@ -38,17 +51,15 @@ The following emojis are used to highlight certain changes:
 - `bitswap/network`: Add a new `requests_in_flight` metric gauge that measures how many bitswap streams are being written or read at a given time.
 - improve speed of data onboarding by batching/bufering provider queue writes [#888](https://github.com/ipfs/boxo/pull/888)
 - `provider`: providing queue is now independent from reprovides, speeding up initial provides [#907](https://github.com/ipfs/boxo/pull/907)
+  - renamed `provider.ReproviderStats.TotalProvides` => `provider.ReproviderStats.TotalReprovides`
+  - renamed `provider.ReproviderStats.AvgProvideDuration` => `provider.ReproviderStats.AvgReprovideDuration`
 - `provider/queue` deduplicates CIDs [#910](https://github.com/ipfs/boxo/pull/910)
-
-### Removed
 
 ### Fixed
 
 - `gateway`: query parameters are now supported and preserved in redirects triggered by a [`_redirects`](https://specs.ipfs.tech/http-gateways/web-redirects-file/) file [#886](https://github.com/ipfs/boxo/pull/886)
 - `provider`: adjusted first reprovide timing after node reboot [#890](https://github.com/ipfs/boxo/pull/890)
 - `gateway`: validate configuration and warn when `UseSubdomains=true` is used with IP-based hostnames [#903](https://github.com/ipfs/boxo/pull/903)
-
-### Security
 
 
 ## [v0.29.1]
