@@ -55,15 +55,11 @@ The following emojis are used to highlight certain changes:
   - renamed `provider.ReproviderStats.AvgProvideDuration` => `provider.ReproviderStats.AvgReprovideDuration`
 - `provider/queue` deduplicates CIDs [#910](https://github.com/ipfs/boxo/pull/910)
 
-### Removed
-
 ### Fixed
 
 - `gateway`: query parameters are now supported and preserved in redirects triggered by a [`_redirects`](https://specs.ipfs.tech/http-gateways/web-redirects-file/) file [#886](https://github.com/ipfs/boxo/pull/886)
 - `provider`: adjusted first reprovide timing after node reboot [#890](https://github.com/ipfs/boxo/pull/890)
 - `gateway`: validate configuration and warn when `UseSubdomains=true` is used with IP-based hostnames [#903](https://github.com/ipfs/boxo/pull/903)
-
-### Security
 
 
 ## [v0.29.1]
