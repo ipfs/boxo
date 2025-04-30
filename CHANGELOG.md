@@ -16,6 +16,19 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.30.0]
+
+### Added
+
 - Control over UnixFS DAG Width
   - We have made some changes to allow setting custom max width of UnixFS DAGs. This enables users to produce DAGs that follow current and future community conventions (see the [related discussion](https://discuss.ipfs.tech/t/should-we-profile-cids/18507)).
   - `ipld/unixfs`: `DagModifier` now allows specifying file DAG Width (`MaxLinks`) [#898](https://github.com/ipfs/boxo/pull/898)
