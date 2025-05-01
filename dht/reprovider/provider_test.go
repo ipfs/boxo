@@ -119,3 +119,17 @@ func TestReprovideTimeForPrefixWithCustomOrder(t *testing.T) {
 	require.Equal(t, 10*time.Second, s.reprovideTimeForPrefix("0101"))
 	require.Equal(t, 15*time.Second, s.reprovideTimeForPrefix("0000"))
 }
+
+func TestKeyToBytes(t *testing.T) {
+	require.Equal(t, []byte{0b00000000}, keyToBytes(bitstr.Key("0")))
+	require.Equal(t, []byte{0b00000000}, keyToBytes(bitstr.Key("00000000")))
+	require.Equal(t, []byte{0b00000000, 0b00000000}, keyToBytes(bitstr.Key("000000000")))
+	require.Equal(t, []byte{0b00110000}, keyToBytes(bitstr.Key("0011")))
+	require.Equal(t, []byte{0b11111110}, keyToBytes(bitstr.Key("1111111")))
+}
+
+func TestShortestCoveredPrefix(t *testing.T) {
+	// TODO:
+}
+
+// TODO: Test that the peers returned by GetClosestPeers are sorted by distance to the requested key

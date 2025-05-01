@@ -3,12 +3,14 @@ package reprovider
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/ipfs/boxo/provider"
 	"github.com/ipfs/go-cid"
+	kbucket "github.com/libp2p/go-libp2p-kbucket"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multihash"
@@ -21,8 +23,8 @@ import (
 )
 
 var (
-	_ provider.Provider    = reprovideSweeper{}
-	_ provider.ProvideMany = reprovideSweeper{}
+	_ provider.Provider    = &reprovideSweeper{}
+	_ provider.ProvideMany = &reprovideSweeper{}
 )
 
 type KadRouter interface {
@@ -61,7 +63,7 @@ func NewReproviderSweeper(ctx context.Context, host host.Host, router KadRouter,
 	now func() time.Time, reprovideInterval, maxReprovideDelay time.Duration,
 ) provider.Provider {
 	// TODO:
-	return reprovideSweeper{
+	return &reprovideSweeper{
 		host:              host,
 		router:            router,
 		order:             peerIDToBit256(host.ID()),
@@ -76,7 +78,7 @@ func NewReproviderSweeper(ctx context.Context, host host.Host, router KadRouter,
 }
 
 // run is only called when the reprovider has its first CIDs to reprovide
-func (s reprovideSweeper) run() {
+func (s *reprovideSweeper) run() {
 	s.scheduleLk.Lock()
 	// we intentionally want to panic if s.schedule is empty
 	cursor := trie.Closest(s.schedule, bitstr.Key(key.BitString(s.order)), 1)[0]
@@ -112,8 +114,8 @@ type region struct {
 	cids   *trie.Trie[bit256.Key, cid.Cid]
 }
 
-// returned regions ordered according to `s.order`
-func (s reprovideSweeper) regionsFromPeers(peers []peer.ID) []region {
+// returned regions ordered according to s.order
+func (s *reprovideSweeper) regionsFromPeers(peers []peer.ID) []region {
 	peersTrie := trie.New[bit256.Key, peer.ID]()
 	for _, p := range peers {
 		k := peerIDToBit256(p)
@@ -133,24 +135,9 @@ func (s reprovideSweeper) regionsFromPeers(peers []peer.ID) []region {
 	return regions
 }
 
-// returns the list of all non-overlapping subtries of `t` having at least
-// `size` elements, sorted according to `order`. every element is included in
-// exactly one region.
-func extractMinimalRegions(t *trie.Trie[bit256.Key, peer.ID], path bitstr.Key, size int, order bit256.Key) []region {
-	if t.IsEmptyLeaf() {
-		return nil
-	}
-	if t.Branch(0).Size() >= size && t.Branch(1).Size() >= size {
-		b := int(order.Bit(len(path)))
-		return append(extractMinimalRegions(t.Branch(b), path+bitstr.Key(rune('0'+b)), size, order),
-			extractMinimalRegions(t.Branch(1-b), path+bitstr.Key(rune('1'-b)), size, order)...)
-	}
-	return []region{{prefix: path, peers: t}}
-}
-
-func (s reprovideSweeper) reprovideForPrefix(prefix bitstr.Key) {
+func (s *reprovideSweeper) reprovideForPrefix(prefix bitstr.Key) error {
 	peers, err := s.closestPeersToPrefix(prefix)
-	_ = err // TODO: handle me
+	_ = err // TODO: handle me, probably print warning that some peers may be missing, but go ahead anyway
 	regions := s.regionsFromPeers(peers)
 	// TODO: depending on number of regions, merge or split regions for next round
 	for _, r := range regions {
@@ -159,16 +146,93 @@ func (s reprovideSweeper) reprovideForPrefix(prefix bitstr.Key) {
 		// TODO: cids should be added to DHT provider store
 		// TODO: persist to datastore that region identified by prefix was reprovided `now`
 	}
+	return nil
 }
 
-func (s reprovideSweeper) closestPeersToPrefix(prefix bitstr.Key) ([]peer.ID, error) {
-	// TODO: should return AT LEAST all peers matching the prefix in the network,
-	// but if there are less than 20, also return the closest branches of the
-	// trie until there are more than 20 nodes.
-	return nil, nil
+// closestPeersToPrefix returns more than s.replicationFactor peers
+// corresponding to the branch of the network peers trie matching the provided
+// prefix. In the case there aren't enough peers matching the provided prefix,
+// it will find and return the closest peers to the prefix, even if they don't
+// exactly match it.
+// TODO: test this function!
+func (s *reprovideSweeper) closestPeersToPrefix(prefix bitstr.Key) ([]peer.ID, error) {
+	// Prepare result slice with enough space
+	allClosestPeers := make([]peer.ID, 0, 2*s.replicationFactor)
+
+	maxPrefixSearches := 64
+	nextPrefix := prefix
+	coveredPrefixesStack := []bitstr.Key{}
+
+	// Go down the trie to fully cover prefix.
+	for i := range maxPrefixSearches {
+		fullKey := s.firstFullKeyWithPrefix(nextPrefix)
+		closestPeers, err := s.closestPeersToKey(fullKey)
+		if err != nil {
+			// NOTE: maybe we don't want to return an err, we could have an err counter and only return err after 5 failures?
+			return allClosestPeers, err
+		}
+		coveredPrefix, coveredPeers := shortestCoveredPrefix(fullKey, closestPeers)
+		allClosestPeers = append(allClosestPeers, coveredPeers...)
+
+		coveredPrefixLen := len(coveredPrefix)
+		if i == 0 {
+			if coveredPrefixLen <= len(prefix) && coveredPrefix == prefix[:coveredPrefixLen] && len(allClosestPeers) > s.replicationFactor {
+				// Exit early if the prefix is fully covered at the first request and
+				// we have enough peers.
+				return allClosestPeers, nil
+			}
+		} else {
+			latestPrefix := coveredPrefixesStack[len(coveredPrefixesStack)-1]
+			for coveredPrefixLen <= len(latestPrefix) && coveredPrefix[:coveredPrefixLen-1] == latestPrefix[:coveredPrefixLen-1] {
+				// Pop latest prefix from stack, because current prefix is
+				// complementary.
+				// e.g latestPrefix=0010, currentPrefix=0011. latestPrefix is
+				// replaced by 001, unless 000 was also in the stack, etc.
+				coveredPrefixesStack = coveredPrefixesStack[:len(coveredPrefixesStack)-1]
+				coveredPrefix = coveredPrefix[:len(coveredPrefix)-1]
+
+				if len(coveredPrefixesStack) == 0 {
+					if len(allClosestPeers) > s.replicationFactor {
+						return allClosestPeers, nil
+					}
+					// Not enough peers -> add coveredPrefix to stack and continue.
+					break
+				}
+				latestPrefix = coveredPrefixesStack[len(coveredPrefixesStack)-1]
+			}
+		}
+		// Push coveredPrefix to stack
+		coveredPrefixesStack = append(coveredPrefixesStack, coveredPrefix)
+		// flip last bit of last covered prefix
+		nextPrefix = flipLastBit(coveredPrefixesStack[len(coveredPrefixesStack)-1])
+	}
+	return allClosestPeers, errors.New("closestPeersToPrefix needed more than maxPrefixSearches iterations") // TODO: handle error
 }
 
-func (s reprovideSweeper) regionReprovide(r region) {
+func (s *reprovideSweeper) firstFullKeyWithPrefix(k bitstr.Key) bitstr.Key {
+	kLen := k.BitLen()
+	if kLen > 256 {
+		panic("bitstr.Key: key length exceeds 256 bits")
+	}
+	return k + bitstr.Key(key.BitString(s.order))[kLen:]
+}
+
+// TODO: ideally stop depending on go-libp2p-kbucket. we would need to have preimage list in boxo, or elsewhere.
+func (s *reprovideSweeper) closestPeersToKey(k bitstr.Key) ([]peer.ID, error) {
+	// TODO: export func in go-libp2p-kbucket so that we don't need to build a rt
+	rt, err := kbucket.NewRoutingTable(0, keyToBytes(k), 0, nil, 0, nil)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: justify 15 (kubcket.maxCplForRefresh)
+	p, err := rt.GenRandPeerID(min(uint(k.BitLen()), 15))
+	if err != nil {
+		return nil, err
+	}
+	return s.router.GetClosestPeers(s.ctx, string(p))
+}
+
+func (s *reprovideSweeper) regionReprovide(r region) {
 	// assume all peers from region are reachable (we connected to them before)
 	// we don't try again on failure, skip all missing keys
 	cidsAllocations := s.cidsAllocationsToPeers(r)
@@ -178,7 +242,7 @@ func (s reprovideSweeper) regionReprovide(r region) {
 	}
 }
 
-func (s reprovideSweeper) cidsAllocationsToPeers(r region) map[peer.ID][]cid.Cid {
+func (s *reprovideSweeper) cidsAllocationsToPeers(r region) map[peer.ID][]cid.Cid {
 	// TODO: this is a very greedy approach, can be greatly optimized
 	keysPerPeer := make(map[peer.ID][]cid.Cid)
 	for _, cidEntry := range allKeys(r.cids, s.order) {
@@ -194,7 +258,7 @@ func (s reprovideSweeper) cidsAllocationsToPeers(r region) map[peer.ID][]cid.Cid
 	return keysPerPeer
 }
 
-func (s reprovideSweeper) provideCidsToPeer(p peer.ID, cids []cid.Cid) {
+func (s *reprovideSweeper) provideCidsToPeer(p peer.ID, cids []cid.Cid) {
 	// TODO: handle this with custom msgSender
 	// TODO: maybe allow "some" pipelining?
 }
@@ -218,7 +282,7 @@ const maxPrefixSize = 30
 // This method ensures a deterministic and evenly distributed reprovide
 // schedule, where the temporal position within the cycle is based on the
 // binary representation of the key's prefix.
-func (s reprovideSweeper) reprovideTimeForPrefix(prefix bitstr.Key) time.Duration {
+func (s *reprovideSweeper) reprovideTimeForPrefix(prefix bitstr.Key) time.Duration {
 	if len(prefix) == 0 {
 		// Empty prefix: all reprovides occur at the beginning of the cycle.
 		return 0
@@ -240,7 +304,7 @@ func (s reprovideSweeper) reprovideTimeForPrefix(prefix bitstr.Key) time.Duratio
 	return time.Duration(int64(s.reprovideInterval) * val / maxInt)
 }
 
-func (s reprovideSweeper) Provide(ctx context.Context, c cid.Cid, _ bool) error {
+func (s *reprovideSweeper) Provide(ctx context.Context, c cid.Cid, _ bool) error {
 	k := cidToBit256(c)
 	s.cidsLk.Lock()
 	if added := s.cids.Add(k, c); !added {
@@ -275,7 +339,7 @@ func (s reprovideSweeper) Provide(ctx context.Context, c cid.Cid, _ bool) error 
 	return nil
 }
 
-func (s reprovideSweeper) ProvideMany(ctx context.Context, keys []multihash.Multihash) error {
+func (s *reprovideSweeper) ProvideMany(ctx context.Context, keys []multihash.Multihash) error {
 	// TODO: implement me
 	return nil
 }
@@ -288,6 +352,58 @@ func cidToBit256(c cid.Cid) bit256.Key {
 func peerIDToBit256(id peer.ID) bit256.Key {
 	hash := sha256.Sum256([]byte(id))
 	return bit256.NewKey(hash[:])
+}
+
+// shortestCoveredPrefix takes as input the `requested` key and the list of
+// sorted closest peers to this key. It returns a prefix of `requested` that is
+// covered by these peers.
+//
+// If every peer shares the same CPL to `requested`, then no deeper zone is
+// covered, we learn that the adjacent sibling branch is empty. In this case we
+// return the prefix one bit deeper (`minCPL+1`) and an empty peer list.
+func shortestCoveredPrefix(requested bitstr.Key, peers []peer.ID) (bitstr.Key, []peer.ID) {
+	if len(peers) == 0 {
+		return requested, peers
+	}
+	minCpl := requested.BitLen()
+	coveredCpl := 0
+	lastCoveredPeerIndex := 0
+	for i, p := range peers {
+		cpl := key.CommonPrefixLength(requested, peerIDToBit256(p))
+		if cpl < minCpl {
+			coveredCpl = minCpl
+			lastCoveredPeerIndex = i
+			minCpl = cpl
+		}
+	}
+	if coveredCpl == requested.BitLen() {
+		// All provided peers share the same CPL with requested. Mark the
+		// neighboring branch as covered even though it is empty.
+		//
+		//              /\
+		//            /\
+		// minCpl-> /\
+		//        /   * -> all provided peers are here
+		//    requested
+		// no peers in this branch
+		return requested[:minCpl+1], []peer.ID{}
+	}
+	return requested[:coveredCpl], peers[:lastCoveredPeerIndex]
+}
+
+// returns the list of all non-overlapping subtries of `t` having at least
+// `size` elements, sorted according to `order`. every element is included in
+// exactly one region.
+func extractMinimalRegions(t *trie.Trie[bit256.Key, peer.ID], path bitstr.Key, size int, order bit256.Key) []region {
+	if t.IsEmptyLeaf() {
+		return nil
+	}
+	if t.Branch(0).Size() >= size && t.Branch(1).Size() >= size {
+		b := int(order.Bit(len(path)))
+		return append(extractMinimalRegions(t.Branch(b), path+bitstr.Key(rune('0'+b)), size, order),
+			extractMinimalRegions(t.Branch(1-b), path+bitstr.Key(rune('1'-b)), size, order)...)
+	}
+	return []region{{prefix: path, peers: t}}
 }
 
 // trieHasPrefixOfKey checks if the trie contains a leave whose key is a prefix
@@ -367,4 +483,21 @@ func allKeysAtDepth[K0 kad.Key[K0], K1 kad.Key[K1], D any](t *trie.Trie[K0, D], 
 	b := int(order.Bit(depth))
 	return append(allKeysAtDepth(t.Branch(b), order, depth+1),
 		allKeysAtDepth(t.Branch(1-b), order, depth+1)...)
+}
+
+func flipLastBit(k bitstr.Key) bitstr.Key {
+	l := len(k)
+	lastBit := k[l-1]
+	return k[:l-1] + bitstr.Key(rune('1'-lastBit))
+}
+
+func keyToBytes[K kad.Key[K]](k K) []byte {
+	// TODO: optimize to minimize allocations
+	b := make([]byte, (k.BitLen()+7)/8)
+	for i := range k.BitLen() {
+		if k.Bit(i) == 1 {
+			b[i/8] |= 1 << (7 - i%8)
+		}
+	}
+	return b
 }
