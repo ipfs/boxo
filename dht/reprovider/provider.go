@@ -44,13 +44,14 @@ type reprovideSweeper struct {
 
 	replicationFactor int
 	now               func() time.Time
+	cycleStart        time.Time
 	reprovideInterval time.Duration
 	maxReprovideDelay time.Duration
 
 	cids   *trie.Trie[bit256.Key, cid.Cid]
 	cidsLk *sync.Mutex
-	// TODO: if necessary make val a struct (region)
-	schedule   *trie.Trie[bitstr.Key, time.Duration] // time module reprovideInterval
+
+	schedule   *trie.Trie[bitstr.Key, time.Duration] // time modulo reprovideInterval
 	scheduleLk *sync.Mutex
 }
 
@@ -58,16 +59,18 @@ type reprovideSweeper struct {
 // * reprovideInterval
 // * maxReprovideDelay
 // * now (maybe not even an option)
+// * message sender
 
 func NewReproviderSweeper(ctx context.Context, host host.Host, router KadRouter,
 	now func() time.Time, reprovideInterval, maxReprovideDelay time.Duration,
 ) provider.Provider {
-	// TODO:
+	// TODO: options
 	return &reprovideSweeper{
 		host:              host,
 		router:            router,
 		order:             peerIDToBit256(host.ID()),
 		now:               now,
+		cycleStart:        now(),
 		reprovideInterval: reprovideInterval,
 		maxReprovideDelay: maxReprovideDelay,
 		cids:              trie.New[bit256.Key, cid.Cid](),
@@ -85,7 +88,6 @@ func (s *reprovideSweeper) run() {
 	s.scheduleLk.Unlock()
 
 	timer := time.NewTimer(cursor.Data)
-	cycleStart := s.now()
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -97,16 +99,18 @@ func (s *reprovideSweeper) run() {
 		s.scheduleLk.Unlock()
 
 		s.reprovideForPrefix(cursor.Key)
+		// TODO: for items in scheduleChan, read and add to schedule
 
-		timeElapsedInCycle := s.now().Sub(cycleStart) % s.reprovideInterval
-		nextReprovideDelay := cursor.Data - timeElapsedInCycle
+		nextReprovideDelay := cursor.Data - s.currentTimeOffset()
 		timer.Reset(nextReprovideDelay)
 
-		// TODO: add warning if reprovides are failing behind (unlikely, but better check)
+		// TODO: add warning if reprovides are falling behind (unlikely, but better check)
 	}
 }
 
-// TODO: merge & split regions
+func (s *reprovideSweeper) currentTimeOffset() time.Duration {
+	return s.now().Sub(s.cycleStart) % s.reprovideInterval
+}
 
 type region struct {
 	prefix bitstr.Key
@@ -124,7 +128,7 @@ func (s *reprovideSweeper) regionsFromPeers(peers []peer.ID) []region {
 	regions := extractMinimalRegions(peersTrie, "", s.replicationFactor, s.order)
 	s.cidsLk.Lock()
 	for i, r := range regions {
-		t := s.cids.Copy() // TODO: verify if copy is required
+		t := s.cids
 		// Navigate to the subtrie matching the prefix
 		for i := range r.prefix {
 			t = t.Branch(int(r.prefix.Bit(i)))
@@ -139,11 +143,11 @@ func (s *reprovideSweeper) reprovideForPrefix(prefix bitstr.Key) error {
 	peers, err := s.closestPeersToPrefix(prefix)
 	_ = err // TODO: handle me, probably print warning that some peers may be missing, but go ahead anyway
 	regions := s.regionsFromPeers(peers)
-	// TODO: depending on number of regions, merge or split regions for next round
 	for _, r := range regions {
+		// NOTE: allow parallelism here?
 		s.regionReprovide(r)
-		// TODO: schedule next reprovide occurence
-		// TODO: cids should be added to DHT provider store
+		s.addCidsToLocalProviderStore(r.cids)
+		s.scheduleNextReprovide(r.prefix, s.currentTimeOffset())
 		// TODO: persist to datastore that region identified by prefix was reprovided `now`
 	}
 	return nil
@@ -243,6 +247,9 @@ func (s *reprovideSweeper) regionReprovide(r region) {
 }
 
 func (s *reprovideSweeper) cidsAllocationsToPeers(r region) map[peer.ID][]cid.Cid {
+	// TODO: check if prefix longer than r.prefix was reprovided less than
+	// maxReprovideDelay ago, and if yes, don't reprovide these cids
+	//
 	// TODO: this is a very greedy approach, can be greatly optimized
 	keysPerPeer := make(map[peer.ID][]cid.Cid)
 	for _, cidEntry := range allKeys(r.cids, s.order) {
@@ -261,6 +268,26 @@ func (s *reprovideSweeper) cidsAllocationsToPeers(r region) map[peer.ID][]cid.Ci
 func (s *reprovideSweeper) provideCidsToPeer(p peer.ID, cids []cid.Cid) {
 	// TODO: handle this with custom msgSender
 	// TODO: maybe allow "some" pipelining?
+}
+
+func (s *reprovideSweeper) addCidsToLocalProviderStore(cids *trie.Trie[bit256.Key, cid.Cid]) {
+	for _, entry := range allKeys(cids, s.order) {
+		s.router.Provide(s.ctx, entry.Data, false)
+	}
+}
+
+// scheduleNextReprovide schedules the next reprovide for the given prefix, at
+// the earliest between the time offset associated with this prefix, and
+// reprovideInterval+maxReprovideDelay after the last reprovide, allowing a
+// maximum delay in the reprovide of a region to be at most maxReprovideDelay
+// when needed.
+func (s *reprovideSweeper) scheduleNextReprovide(prefix bitstr.Key, lastReprovide time.Duration) {
+	nextReprovideTime := min(s.reprovideTimeForPrefix(prefix), lastReprovide+s.reprovideInterval+s.maxReprovideDelay)
+
+	// TODO: use chan instead of mutex
+	s.scheduleLk.Lock()
+	s.schedule.Add(prefix, nextReprovideTime)
+	s.scheduleLk.Unlock()
 }
 
 const maxPrefixSize = 30
@@ -391,14 +418,14 @@ func shortestCoveredPrefix(requested bitstr.Key, peers []peer.ID) (bitstr.Key, [
 	return requested[:coveredCpl], peers[:lastCoveredPeerIndex]
 }
 
-// returns the list of all non-overlapping subtries of `t` having at least
+// returns the list of all non-overlapping subtries of `t` having more than
 // `size` elements, sorted according to `order`. every element is included in
 // exactly one region.
 func extractMinimalRegions(t *trie.Trie[bit256.Key, peer.ID], path bitstr.Key, size int, order bit256.Key) []region {
 	if t.IsEmptyLeaf() {
 		return nil
 	}
-	if t.Branch(0).Size() >= size && t.Branch(1).Size() >= size {
+	if t.Branch(0).Size() > size && t.Branch(1).Size() > size {
 		b := int(order.Bit(len(path)))
 		return append(extractMinimalRegions(t.Branch(b), path+bitstr.Key(rune('0'+b)), size, order),
 			extractMinimalRegions(t.Branch(1-b), path+bitstr.Key(rune('1'-b)), size, order)...)
@@ -491,13 +518,34 @@ func flipLastBit(k bitstr.Key) bitstr.Key {
 	return k[:l-1] + bitstr.Key(rune('1'-lastBit))
 }
 
+const initMask = (byte(1) << 7) // 0x80
+
+// keyToBytes converts a kad.Key to a byte slice. If the provided key has a
+// size that isn't a multiple of 8, right pad the resulting byte with 0s.
 func keyToBytes[K kad.Key[K]](k K) []byte {
-	// TODO: optimize to minimize allocations
-	b := make([]byte, (k.BitLen()+7)/8)
-	for i := range k.BitLen() {
+	bitLen := k.BitLen()
+	byteLen := (bitLen + 7) / 8
+	b := make([]byte, byteLen)
+
+	byteIndex := 0
+	mask := initMask
+	by := byte(0)
+
+	for i := range bitLen {
 		if k.Bit(i) == 1 {
-			b[i/8] |= 1 << (7 - i%8)
+			by |= mask
 		}
+		mask >>= 1
+
+		if mask == 0 {
+			b[byteIndex] = by
+			byteIndex++
+			by = 0
+			mask = initMask
+		}
+	}
+	if mask != initMask {
+		b[byteIndex] = by
 	}
 	return b
 }
