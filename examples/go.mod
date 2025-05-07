@@ -2,8 +2,6 @@ module github.com/ipfs/boxo/examples
 
 go 1.23.8
 
-toolchain go1.24.3
-
 require (
 	github.com/ipfs/boxo v0.30.0
 	github.com/ipfs/go-block-format v0.2.1
