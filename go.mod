@@ -1,6 +1,6 @@
 module github.com/ipfs/boxo
 
-go 1.23.0
+go 1.23.8
 
 require (
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
@@ -17,7 +17,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/ipfs/bbloom v0.0.4
 	github.com/ipfs/go-bitfield v1.1.0
-	github.com/ipfs/go-block-format v0.2.0
+	github.com/ipfs/go-block-format v0.2.1
 	github.com/ipfs/go-cid v0.5.0
 	github.com/ipfs/go-cidutil v0.1.0
 	github.com/ipfs/go-datastore v0.8.2
@@ -26,7 +26,7 @@ require (
 	github.com/ipfs/go-ipfs-redirects-file v0.1.2
 	github.com/ipfs/go-ipld-format v0.6.0
 	github.com/ipfs/go-ipld-legacy v0.2.1
-	github.com/ipfs/go-log/v2 v2.5.1
+	github.com/ipfs/go-log/v2 v2.6.0
 	github.com/ipfs/go-metrics-interface v0.3.0
 	github.com/ipfs/go-peertaskqueue v0.8.2
 	github.com/ipfs/go-test v0.2.1
@@ -74,7 +74,7 @@ require (
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
 	golang.org/x/oauth2 v0.25.0
 	golang.org/x/sync v0.13.0
-	golang.org/x/sys v0.32.0
+	golang.org/x/sys v0.33.0
 	google.golang.org/protobuf v1.36.6
 )
 

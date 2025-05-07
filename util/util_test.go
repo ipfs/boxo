@@ -2,9 +2,8 @@ package util
 
 import (
 	"bytes"
+	"math/rand"
 	"testing"
-
-	"github.com/ipfs/go-test/random"
 )
 
 func TestXOR(t *testing.T) {
@@ -36,7 +35,7 @@ func TestXOR(t *testing.T) {
 
 func BenchmarkHash256K(b *testing.B) {
 	const size = 256 * 1024
-	buf := random.Bytes(size)
+	buf := randomBytes(size)
 	b.SetBytes(size)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -46,7 +45,7 @@ func BenchmarkHash256K(b *testing.B) {
 
 func BenchmarkHash512K(b *testing.B) {
 	const size = 512 * 1024
-	buf := random.Bytes(size)
+	buf := randomBytes(size)
 	b.SetBytes(size)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -56,10 +55,17 @@ func BenchmarkHash512K(b *testing.B) {
 
 func BenchmarkHash1M(b *testing.B) {
 	const size = 1024 * 1024
-	buf := random.Bytes(size)
+	buf := randomBytes(size)
 	b.SetBytes(size)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		Hash(buf)
 	}
+}
+
+func randomBytes(n int) []byte {
+	data := make([]byte, n)
+	r := rand.New(rand.NewSource(int64(n)))
+	r.Read(data)
+	return data
 }
