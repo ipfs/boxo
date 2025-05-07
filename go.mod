@@ -24,7 +24,7 @@ require (
 	github.com/ipfs/go-detect-race v0.0.1
 	github.com/ipfs/go-ipfs-delay v0.0.1
 	github.com/ipfs/go-ipfs-redirects-file v0.1.2
-	github.com/ipfs/go-ipld-format v0.6.0
+	github.com/ipfs/go-ipld-format v0.6.1
 	github.com/ipfs/go-ipld-legacy v0.2.1
 	github.com/ipfs/go-log/v2 v2.6.0
 	github.com/ipfs/go-metrics-interface v0.3.0

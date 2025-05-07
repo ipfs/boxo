@@ -196,8 +196,8 @@ github.com/ipfs/go-ipfs-util v0.0.3 h1:2RFdGez6bu2ZlZdI+rWfIdbQb1KudQp3VGwPtdNCm
 github.com/ipfs/go-ipfs-util v0.0.3/go.mod h1:LHzG1a0Ig4G+iZ26UUOMjHd+lfM84LZCrn17xAKWBvs=
 github.com/ipfs/go-ipld-cbor v0.1.0 h1:dx0nS0kILVivGhfWuB6dUpMa/LAwElHPw1yOGYopoYs=
 github.com/ipfs/go-ipld-cbor v0.1.0/go.mod h1:U2aYlmVrJr2wsUBU67K4KgepApSZddGRDWBYR0H4sCk=
-github.com/ipfs/go-ipld-format v0.6.0 h1:VEJlA2kQ3LqFSIm5Vu6eIlSxD/Ze90xtc4Meten1F5U=
-github.com/ipfs/go-ipld-format v0.6.0/go.mod h1:g4QVMTn3marU3qXchwjpKPKgJv+zF+OlaKMyhJ4LHPg=
+github.com/ipfs/go-ipld-format v0.6.1 h1:lQLmBM/HHbrXvjIkrydRXkn+gc0DE5xO5fqelsCKYOQ=
+github.com/ipfs/go-ipld-format v0.6.1/go.mod h1:8TOH1Hj+LFyqM2PjSqI2/ZnyO0KlfhHbJLkbxFa61hs=
 github.com/ipfs/go-ipld-legacy v0.2.1 h1:mDFtrBpmU7b//LzLSypVrXsD8QxkEWxu5qVxN99/+tk=
 github.com/ipfs/go-ipld-legacy v0.2.1/go.mod h1:782MOUghNzMO2DER0FlBR94mllfdCJCkTtDtPM51otM=
 github.com/ipfs/go-log v1.0.5 h1:2dOuUCB1Z7uoczMWgAyDck5JLb72zHzrMnGnCNNbvY8=
