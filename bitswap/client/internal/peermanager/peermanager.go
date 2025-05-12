@@ -50,9 +50,10 @@ type PeerManager struct {
 func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
 	wantGauge := metrics.NewCtx(ctx, "wantlist_total", "Number of items in wantlist.").Gauge()
 	wantBlockGauge := metrics.NewCtx(ctx, "want_blocks_total", "Number of want-blocks in wantlist.").Gauge()
+	bcastGauge := metrics.NewCtx(ctx, "wanthave_broadcast", "Number of want-haves broadcast.").Gauge()
 	return &PeerManager{
 		peerQueues:      make(map[peer.ID]PeerQueue),
-		pwm:             newPeerWantManager(wantGauge, wantBlockGauge),
+		pwm:             newPeerWantManager(wantGauge, wantBlockGauge, bcastGauge),
 		createPeerQueue: createPeerQueue,
 		ctx:             ctx,
 
