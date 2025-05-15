@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/ipfs/boxo/bitswap/client/internal/messagequeue"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
@@ -14,7 +15,7 @@ var log = logging.Logger("bitswap/client/peermgr")
 
 // PeerQueue provides a queue of messages to be sent for a single peer.
 type PeerQueue interface {
-	AddBroadcastWantHaves([]cid.Cid) int
+	AddBroadcastWantHaves([]cid.Cid)
 	AddWants([]cid.Cid, []cid.Cid)
 	AddCancels([]cid.Cid)
 	ResponseReceived(ks []cid.Cid)
@@ -44,21 +45,24 @@ type PeerManager struct {
 	psLk         sync.RWMutex
 	sessions     map[uint64]Session
 	peerSessions map[peer.ID]map[uint64]struct{}
+
+	bcastGauge Gauge
 }
 
 // New creates a new PeerManager, given a context and a peerQueueFactory.
 func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
 	wantGauge := metrics.NewCtx(ctx, "wantlist_total", "Number of items in wantlist.").Gauge()
 	wantBlockGauge := metrics.NewCtx(ctx, "want_blocks_total", "Number of want-blocks in wantlist.").Gauge()
-	bcastGauge := metrics.NewCtx(ctx, "wanthaves_broadcast", "Number of want-haves broadcast.").Gauge()
 	return &PeerManager{
 		peerQueues:      make(map[peer.ID]PeerQueue),
-		pwm:             newPeerWantManager(wantGauge, wantBlockGauge, bcastGauge),
+		pwm:             newPeerWantManager(wantGauge, wantBlockGauge),
 		createPeerQueue: createPeerQueue,
 		ctx:             ctx,
 
 		sessions:     make(map[uint64]Session),
 		peerSessions: make(map[peer.ID]map[uint64]struct{}),
+
+		bcastGauge: metrics.NewCtx(ctx, "wanthaves_broadcast", "Number of want-haves broadcast.").Gauge(),
 	}
 }
 
@@ -190,6 +194,10 @@ func (pm *PeerManager) getOrCreate(p peer.ID) PeerQueue {
 	pq, ok := pm.peerQueues[p]
 	if !ok {
 		pq = pm.createPeerQueue(pm.ctx, p)
+		mq, ok := pq.(*messagequeue.MessageQueue)
+		if ok {
+			mq.BcastInc = pm.bcastGauge.Inc
+		}
 		pq.Startup()
 		pm.peerQueues[p] = pq
 	}

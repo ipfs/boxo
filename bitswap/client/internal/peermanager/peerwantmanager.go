@@ -30,7 +30,6 @@ type peerWantManager struct {
 	// broadcastWants tracks all the current broadcast wants.
 	broadcastWants *cid.Set
 
-	bcastGauge Gauge
 	// Keeps track of the number of active want-haves & want-blocks
 	wantGauge Gauge
 	// Keeps track of the number of active want-blocks
@@ -45,14 +44,13 @@ type peerWant struct {
 
 // New creates a new peerWantManager with a Gauge that keeps track of the
 // number of active want-blocks (ie sent but no response received)
-func newPeerWantManager(wantGauge, wantBlockGauge, bcastGauge Gauge) *peerWantManager {
+func newPeerWantManager(wantGauge, wantBlockGauge Gauge) *peerWantManager {
 	return &peerWantManager{
 		broadcastWants: cid.NewSet(),
 		peerWants:      make(map[peer.ID]*peerWant),
 		wantPeers:      make(map[cid.Cid]map[peer.ID]struct{}),
 		wantGauge:      wantGauge,
 		wantBlockGauge: wantBlockGauge,
-		bcastGauge:     bcastGauge,
 	}
 }
 
@@ -72,10 +70,7 @@ func (pwm *peerWantManager) addPeer(peerQueue PeerQueue, p peer.ID) {
 	// Broadcast any live want-haves to the newly connected peer
 	if pwm.broadcastWants.Len() > 0 {
 		wants := pwm.broadcastWants.Keys()
-		n := peerQueue.AddBroadcastWantHaves(wants)
-		for range n {
-			pwm.bcastGauge.Inc()
-		}
+		peerQueue.AddBroadcastWantHaves(wants)
 	}
 }
 
@@ -155,10 +150,7 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 		}
 
 		if len(peerUnsent) > 0 {
-			n := pws.peerQueue.AddBroadcastWantHaves(peerUnsent)
-			for range n {
-				pwm.bcastGauge.Inc()
-			}
+			pws.peerQueue.AddBroadcastWantHaves(peerUnsent)
 		}
 	}
 }
