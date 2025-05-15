@@ -27,8 +27,9 @@ type mockPeerQueue struct {
 func (fp *mockPeerQueue) Startup()  {}
 func (fp *mockPeerQueue) Shutdown() {}
 
-func (fp *mockPeerQueue) AddBroadcastWantHaves(whs []cid.Cid) {
+func (fp *mockPeerQueue) AddBroadcastWantHaves(whs []cid.Cid) int {
 	fp.msgs <- msg{fp.p, nil, whs, nil}
+	return len(whs)
 }
 
 func (fp *mockPeerQueue) AddWants(wbs []cid.Cid, whs []cid.Cid) {
@@ -329,10 +330,10 @@ type benchPeerQueue struct{}
 func (*benchPeerQueue) Startup()  {}
 func (*benchPeerQueue) Shutdown() {}
 
-func (*benchPeerQueue) AddBroadcastWantHaves(whs []cid.Cid)   {}
-func (*benchPeerQueue) AddWants(wbs []cid.Cid, whs []cid.Cid) {}
-func (*benchPeerQueue) AddCancels(cs []cid.Cid)               {}
-func (*benchPeerQueue) ResponseReceived(ks []cid.Cid)         {}
+func (*benchPeerQueue) AddBroadcastWantHaves(whs []cid.Cid) int { return len(whs) }
+func (*benchPeerQueue) AddWants(wbs []cid.Cid, whs []cid.Cid)   {}
+func (*benchPeerQueue) AddCancels(cs []cid.Cid)                 {}
+func (*benchPeerQueue) ResponseReceived(ks []cid.Cid)           {}
 
 // Simplistic benchmark to allow us to stress test
 func BenchmarkPeerManager(b *testing.B) {

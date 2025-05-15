@@ -72,7 +72,10 @@ func (pwm *peerWantManager) addPeer(peerQueue PeerQueue, p peer.ID) {
 	// Broadcast any live want-haves to the newly connected peer
 	if pwm.broadcastWants.Len() > 0 {
 		wants := pwm.broadcastWants.Keys()
-		peerQueue.AddBroadcastWantHaves(wants)
+		n := peerQueue.AddBroadcastWantHaves(wants)
+		for range n {
+			pwm.bcastGauge.Inc()
+		}
 	}
 }
 
@@ -127,8 +130,6 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 		pwm.broadcastWants.Add(c)
 		unsent = append(unsent, c)
 
-		pwm.bcastGauge.Inc()
-
 		// If no peer has a pending want for the key
 		if _, ok := pwm.wantPeers[c]; !ok {
 			// Increment the total wants gauge
@@ -154,7 +155,10 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 		}
 
 		if len(peerUnsent) > 0 {
-			pws.peerQueue.AddBroadcastWantHaves(peerUnsent)
+			n := pws.peerQueue.AddBroadcastWantHaves(peerUnsent)
+			for range n {
+				pwm.bcastGauge.Inc()
+			}
 		}
 	}
 }

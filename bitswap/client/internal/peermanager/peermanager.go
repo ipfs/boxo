@@ -14,7 +14,7 @@ var log = logging.Logger("bitswap/client/peermgr")
 
 // PeerQueue provides a queue of messages to be sent for a single peer.
 type PeerQueue interface {
-	AddBroadcastWantHaves([]cid.Cid)
+	AddBroadcastWantHaves([]cid.Cid) int
 	AddWants([]cid.Cid, []cid.Cid)
 	AddCancels([]cid.Cid)
 	ResponseReceived(ks []cid.Cid)
@@ -50,7 +50,7 @@ type PeerManager struct {
 func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
 	wantGauge := metrics.NewCtx(ctx, "wantlist_total", "Number of items in wantlist.").Gauge()
 	wantBlockGauge := metrics.NewCtx(ctx, "want_blocks_total", "Number of want-blocks in wantlist.").Gauge()
-	bcastGauge := metrics.NewCtx(ctx, "wanthave_broadcast", "Number of want-haves broadcast.").Gauge()
+	bcastGauge := metrics.NewCtx(ctx, "wanthaves_broadcast", "Number of want-haves broadcast.").Gauge()
 	return &PeerManager{
 		peerQueues:      make(map[peer.ID]PeerQueue),
 		pwm:             newPeerWantManager(wantGauge, wantBlockGauge, bcastGauge),
