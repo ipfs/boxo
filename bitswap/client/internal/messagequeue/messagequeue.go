@@ -331,13 +331,16 @@ func newMessageQueue(
 // Add want-haves that are part of a broadcast to all connected peers
 func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 	if len(wantHaves) == 0 {
-		return
+		return 0
 	}
 
+	var sendCount int
 	mq.wllock.Lock()
 
 	for _, c := range wantHaves {
-		mq.bcstWants.add(c, mq.priority, pb.Message_Wantlist_Have)
+		if mq.bcstWants.add(c, mq.priority, pb.Message_Wantlist_Have) {
+			sendCount++
+		}
 		mq.priority--
 
 		// We're adding a want-have for the cid, so clear any pending cancel
@@ -349,6 +352,8 @@ func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 
 	// Schedule a message send
 	mq.signalWorkReady()
+
+	return sendCount
 }
 
 // Add want-haves and want-blocks for the peer for this message queue.
