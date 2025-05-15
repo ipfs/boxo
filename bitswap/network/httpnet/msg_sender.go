@@ -502,6 +502,7 @@ WANTLIST_LOOP:
 	go func() {
 		bsresp := bsmsg.New(false)
 		totalResponses := 0
+		totalClientErrors := uint64(0)
 
 		for result := range resultsCollector {
 			// Record total request time.
@@ -521,12 +522,13 @@ WANTLIST_LOOP:
 				// error handling
 				switch result.err.Type {
 				case typeFatal:
-					log.Errorf("Disconnecting from %s: %s", sender.peer, result.err.Err)
+					log.Errorf("fatal error. Disconnecting from %s: %s", sender.peer, result.err.Err)
 					sender.ht.DisconnectFrom(ctx, sender.peer)
 					err = result.err
 					// continue processing responses as workers
 					// might have done other requests in parallel
 				case typeClient:
+					totalClientErrors++
 					if entry.SendDontHave {
 						bsresp.AddDontHave(entry.Cid)
 					}
@@ -543,6 +545,13 @@ WANTLIST_LOOP:
 				close(resultsCollector)
 				break
 			}
+		}
+
+		// if totalClientErrors == 0, count is reset.
+		if err := sender.ht.errorTracker.logErrors(sender.peer, totalClientErrors, sender.ht.maxDontHaveErrors); err != nil {
+			log.Debugf("too many client errors. Disconnecting from %s", sender.peer)
+			sender.ht.DisconnectFrom(ctx, sender.peer)
+
 		}
 
 		// We return a special "cancel" function that we need to call
