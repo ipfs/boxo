@@ -107,6 +107,8 @@ type MessageQueue struct {
 	events chan<- messageEvent
 
 	perPeerDelay time.Duration
+
+	BcastInc func()
 }
 
 // recallWantlist keeps a list of pending wants and a list of sent wants
@@ -331,16 +333,13 @@ func newMessageQueue(
 // Add want-haves that are part of a broadcast to all connected peers
 func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 	if len(wantHaves) == 0 {
-		return 0
+		return
 	}
 
-	var sendCount int
 	mq.wllock.Lock()
 
 	for _, c := range wantHaves {
-		if mq.bcstWants.add(c, mq.priority, pb.Message_Wantlist_Have) {
-			sendCount++
-		}
+		mq.bcstWants.add(c, mq.priority, pb.Message_Wantlist_Have)
 		mq.priority--
 
 		// We're adding a want-have for the cid, so clear any pending cancel
@@ -352,8 +351,6 @@ func (mq *MessageQueue) AddBroadcastWantHaves(wantHaves []cid.Cid) {
 
 	// Schedule a message send
 	mq.signalWorkReady()
-
-	return sendCount
 }
 
 // Add want-haves and want-blocks for the peer for this message queue.
@@ -867,6 +864,9 @@ FINISH:
 		for _, e := range bcstEntries[:sentBcstEntries] {
 			if e.Cid.Defined() { // Check if want was canceled in the interim
 				mq.bcstWants.setSentAt(e.Cid, now)
+				if mq.BcastInc != nil {
+					mq.BcastInc()
+				}
 			}
 		}
 

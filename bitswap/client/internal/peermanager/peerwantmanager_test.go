@@ -38,9 +38,8 @@ func (mpq *mockPQ) clear() {
 func (mpq *mockPQ) Startup()  {}
 func (mpq *mockPQ) Shutdown() {}
 
-func (mpq *mockPQ) AddBroadcastWantHaves(whs []cid.Cid) int {
+func (mpq *mockPQ) AddBroadcastWantHaves(whs []cid.Cid) {
 	mpq.bcst = append(mpq.bcst, whs...)
-	return len(whs)
 }
 
 func (mpq *mockPQ) AddWants(wbs []cid.Cid, whs []cid.Cid) {
@@ -62,13 +61,13 @@ func clearSent(pqs map[peer.ID]PeerQueue) {
 }
 
 func TestEmpty(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{}, &gauge{}, &gauge{})
+	pwm := newPeerWantManager(&gauge{}, &gauge{})
 	require.Empty(t, pwm.getWantBlocks())
 	require.Empty(t, pwm.getWantHaves())
 }
 
 func TestPWMBroadcastWantHaves(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{}, &gauge{}, &gauge{})
+	pwm := newPeerWantManager(&gauge{}, &gauge{})
 
 	peers := random.Peers(3)
 	cids := random.Cids(2)
@@ -154,7 +153,7 @@ func TestPWMBroadcastWantHaves(t *testing.T) {
 }
 
 func TestPWMSendWants(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{}, &gauge{}, &gauge{})
+	pwm := newPeerWantManager(&gauge{}, &gauge{})
 
 	peers := random.Peers(2)
 	p0 := peers[0]
@@ -214,7 +213,7 @@ func TestPWMSendWants(t *testing.T) {
 }
 
 func TestPWMSendCancels(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{}, &gauge{}, &gauge{})
+	pwm := newPeerWantManager(&gauge{}, &gauge{})
 
 	peers := random.Peers(2)
 	p0 := peers[0]
@@ -272,8 +271,7 @@ func TestPWMSendCancels(t *testing.T) {
 func TestStats(t *testing.T) {
 	g := &gauge{}
 	wbg := &gauge{}
-	bcg := &gauge{}
-	pwm := newPeerWantManager(g, wbg, bcg)
+	pwm := newPeerWantManager(g, wbg)
 
 	peers := random.Peers(2)
 	p0 := peers[0]
@@ -337,16 +335,12 @@ func TestStats(t *testing.T) {
 	pwm.sendCancels(cids2[:1])
 	require.Equal(t, 2, g.count, "Expected 2 wants")
 	require.Zero(t, wbg.count, "Expected 0 want-blocks")
-
-	// TODO: Check if this is correct
-	require.Equal(t, 5, bcg.count, "Expected 3 want-haves")
 }
 
 func TestStatsOverlappingWantBlockWantHave(t *testing.T) {
 	g := &gauge{}
 	wbg := &gauge{}
-	bcg := &gauge{}
-	pwm := newPeerWantManager(g, wbg, bcg)
+	pwm := newPeerWantManager(g, wbg)
 
 	peers := random.Peers(2)
 	p0 := peers[0]
@@ -377,8 +371,7 @@ func TestStatsOverlappingWantBlockWantHave(t *testing.T) {
 func TestStatsRemovePeerOverlappingWantBlockWantHave(t *testing.T) {
 	g := &gauge{}
 	wbg := &gauge{}
-	bcg := &gauge{}
-	pwm := newPeerWantManager(g, wbg, bcg)
+	pwm := newPeerWantManager(g, wbg)
 
 	peers := random.Peers(2)
 	p0 := peers[0]
