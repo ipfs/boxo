@@ -16,6 +16,13 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `bitswap/httpnet`: New option `WithMaxDontHaveErrors(int)` (defaults to 100)
+  will trigger disconnections from bitswap peers that cannot provide any of
+  the blocks that are requested for the given number of requests in a
+  row.. This is meant to limit bitswap HTTP-based optimistic requests for
+  blocks to discovered endpoints, which were before considered permanently
+  peered upon discovery.
+
 ### Changed
 
 ### Removed
