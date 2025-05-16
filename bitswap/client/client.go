@@ -166,6 +166,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		counters:                    new(counters),
 		dupMetric:                   bmetrics.DupHist(ctx),
 		allMetric:                   bmetrics.AllHist(ctx),
+		havesReceivedGauge:          bmetrics.HavesReceivedGauge(ctx),
 		provSearchDelay:             defaults.ProvSearchDelay,
 		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout:  true,
@@ -237,7 +238,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		} else if providerFinder != nil {
 			sessionProvFinder = providerFinder
 		}
-		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
+		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self, bs.havesReceivedGauge)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
 		return bsspm.New(id, network)
@@ -284,6 +285,8 @@ type Client struct {
 	// Metrics interface metrics
 	dupMetric metrics.Histogram
 	allMetric metrics.Histogram
+
+	havesReceivedGauge bspm.Gauge
 
 	// External statistics interface
 	tracer tracer.Tracer
