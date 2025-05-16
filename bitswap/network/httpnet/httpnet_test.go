@@ -30,18 +30,16 @@ import (
 var errorCid = cid.MustParse("bafkreiachshsblgr5kv3mzbgfgmvuhllwe2f6fasm6mykzwsi4l7odq464")   // "errorcid"
 var slowCid = cid.MustParse("bafkreidhph5i4jevaun4eqjxolqgn3rfpoknj35ocyos3on57iriwpaujm")    // "slowcid"
 var backoffCid = cid.MustParse("bafkreid6g5qrufgqj46djic7ntjnppaj5bg4urppjoyywrxwegvltrmqbu") // "backoff"
-var notFoundCid = cid.MustParse("bafkreid6g5qrufgqj46djic7ntjnppaj5bg4urppjoyywrxwegvltrmqbb")
 
 var _ network.Receiver = (*mockRecv)(nil)
 
 type mockRecv struct {
-	blocks    map[cid.Cid]struct{}
-	haves     map[cid.Cid]struct{}
-	donthaves map[cid.Cid]struct{}
-	waitCh    chan struct{}
-
-	peersConnected    map[peer.ID]struct{}
-	peersDisconnected map[peer.ID]struct{}
+	blocks             map[cid.Cid]struct{}
+	haves              map[cid.Cid]struct{}
+	donthaves          map[cid.Cid]struct{}
+	waitCh             chan struct{}
+	waitConnectedCh    chan struct{}
+	waitDisconnectedCh chan struct{}
 }
 
 func (recv *mockRecv) ReceiveMessage(ctx context.Context, sender peer.ID, incoming bsmsg.BitSwapMessage) {
@@ -60,8 +58,8 @@ func (recv *mockRecv) ReceiveMessage(ctx context.Context, sender peer.ID, incomi
 	recv.waitCh <- struct{}{}
 }
 
-func (recv *mockRecv) wait(seconds time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), seconds*time.Second)
+func (recv *mockRecv) wait(seconds int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(seconds)*time.Second)
 	defer cancel()
 	select {
 	case <-ctx.Done():
@@ -71,29 +69,49 @@ func (recv *mockRecv) wait(seconds time.Duration) error {
 	}
 }
 
+func (recv *mockRecv) waitConnected(seconds int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(seconds)*time.Second)
+	defer cancel()
+	select {
+	case <-ctx.Done():
+		return errors.New("receiver waited too long without receiving a connect event")
+	case <-recv.waitConnectedCh:
+		return nil
+	}
+}
+
+func (recv *mockRecv) waitDisconnected(seconds int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(seconds)*time.Second)
+	defer cancel()
+	select {
+	case <-ctx.Done():
+		return errors.New("receiver waited too long without receiving a disconnect event")
+	case <-recv.waitDisconnectedCh:
+		return nil
+	}
+}
+
 func (recv *mockRecv) ReceiveError(err error) {
 
 }
 
 func (recv *mockRecv) PeerConnected(p peer.ID) {
-	recv.peersConnected[p] = struct{}{}
-	delete(recv.peersDisconnected, p)
+	recv.waitConnectedCh <- struct{}{}
 }
 
 func (recv *mockRecv) PeerDisconnected(p peer.ID) {
-	recv.peersDisconnected[p] = struct{}{}
-	delete(recv.peersConnected, p)
+	recv.waitDisconnectedCh <- struct{}{}
 }
 
 func mockReceiver(t *testing.T) *mockRecv {
 	t.Helper()
 	return &mockRecv{
-		blocks:            make(map[cid.Cid]struct{}),
-		haves:             make(map[cid.Cid]struct{}),
-		donthaves:         make(map[cid.Cid]struct{}),
-		waitCh:            make(chan struct{}, 1),
-		peersConnected:    make(map[peer.ID]struct{}),
-		peersDisconnected: make(map[peer.ID]struct{}),
+		blocks:             make(map[cid.Cid]struct{}),
+		haves:              make(map[cid.Cid]struct{}),
+		donthaves:          make(map[cid.Cid]struct{}),
+		waitCh:             make(chan struct{}, 1),
+		waitConnectedCh:    make(chan struct{}, 1),
+		waitDisconnectedCh: make(chan struct{}, 1),
 	}
 
 }
@@ -582,26 +600,23 @@ func TestErrorTracking(t *testing.T) {
 	msrv := makeServer(t, 0, 0)
 	connectToPeer(t, ctx, htnet, peer, msrv)
 
-	// Wait for PeerConnected callback.
-	time.Sleep(100 * time.Millisecond)
+	err = recv.waitConnected(1)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	wl := makeCids(t, 0, 1)
 	msg := makeWantsMessage(wl)
-
-	if _, ok := recv.peersConnected[peer.ID()]; !ok {
-		t.Fatal("peer should be connected")
-	}
 
 	err = htnet.SendMessage(ctx, peer.ID(), msg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Wait for PeerDisconnected callback that won't happen.
-	time.Sleep(100 * time.Millisecond)
-
-	if _, ok := recv.peersConnected[peer.ID()]; !ok {
-		t.Fatal("peer should be connected")
+	recv.wait(1)
+	err = recv.waitDisconnected(1)
+	if err == nil { // we received a disconnect event
+		t.Fatal("disconnect event not expected")
 	}
 
 	// Threshold was 1. This will trigger a disconnection.
@@ -610,10 +625,9 @@ func TestErrorTracking(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Wait for PeerDisconnected callback that should happen.
-	time.Sleep(100 * time.Millisecond)
-
-	if _, ok := recv.peersDisconnected[peer.ID()]; !ok {
-		t.Fatal("peer should be disconnected")
+	recv.wait(1)
+	err = recv.waitDisconnected(1)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
