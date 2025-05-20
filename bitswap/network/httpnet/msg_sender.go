@@ -182,7 +182,7 @@ func (err senderError) Error() string {
 // i.e. retry, or move to next item in wantlist, or abort completely.
 func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsmsg.Entry) (blocks.Block, *senderError) {
 	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
-		return nil, &senderError{
+		return blocks.Block{}, &senderError{
 			Type: typeRetryLater,
 			Err:  fmt.Errorf("%q is in cooldown period", u.URL),
 		}
@@ -205,7 +205,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	// context WAS already cancelled before making the request.
 	if err := ctx.Err(); err != nil {
 		log.Debugf("aborted before sending: %s %q", method, u.ParsedURL.URL)
-		return nil, &senderError{
+		return blocks.Block{}, &senderError{
 			Type: typeContext,
 			Err:  err,
 		}
@@ -215,7 +215,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	defer cancel()
 	req, err := buildRequest(ctx, u.ParsedURL, method, entry.Cid.String(), sender.ht.userAgent)
 	if err != nil {
-		return nil, &senderError{
+		return blocks.Block{}, &senderError{
 			Type: typeFatal,
 			Err:  err,
 		}
@@ -244,7 +244,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			serr.Type = typeContext // cont. with next block.
 		}
 
-		return nil, serr
+		return blocks.Block{}, serr
 	}
 	defer resp.Body.Close()
 
@@ -266,7 +266,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		sender.ht.metrics.RequestsBodyFailure.Inc()
 		sender.ht.metrics.RequestsInFlight.Dec()
 		log.Debug(err)
-		return nil, &senderError{
+		return blocks.Block{}, &senderError{
 			Type: typeServer,
 			Err:  err,
 		}
@@ -317,7 +317,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			u.cooldown.Store(time.Time{})
 		}
 
-		return nil, &senderError{
+		return blocks.Block{}, &senderError{
 			Type: typeClient,
 			Err:  err,
 		}
@@ -330,7 +330,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		log.Debugf("%s %q -> %d (%d bytes)", req.Method, req.URL, statusCode, len(body))
 
 		if req.Method == "HEAD" {
-			return nil, nil
+			return blocks.Block{}, nil
 		}
 		// GET
 		b, err := blocks.NewBlockWithCid(body, entry.Cid)
@@ -338,7 +338,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			log.Error("block received for cid %s does not match!", entry.Cid)
 			// avoid entertaining servers that send us wrong data
 			// too much.
-			return nil, &senderError{
+			return blocks.Block{}, &senderError{
 				Type: typeServer,
 				Err:  err,
 			}
@@ -380,7 +380,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			u.cooldown.Store(time.Now().Add(sender.opts.SendErrorBackoff))
 		}
 
-		return nil, &senderError{
+		return blocks.Block{}, &senderError{
 			Type: typeRetryLater,
 			Err:  err,
 		}
@@ -394,7 +394,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		log.Error(err)
 		sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
 		u.cooldown.Store(time.Now().Add(sender.opts.SendErrorBackoff))
-		return nil, &senderError{
+		return blocks.Block{}, &senderError{
 			Type: typeServer,
 			Err:  err,
 		}

@@ -6,11 +6,14 @@ import (
 	"time"
 
 	pubsub "github.com/cskr/pubsub"
-	"github.com/ipfs/boxo/bitswap/client/traceability"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"go.uber.org/zap/zapcore"
 )
+
+var log = logging.Logger("bitswap/client/notify")
 
 const bufferSize = 16
 
@@ -31,6 +34,16 @@ func New() PubSub {
 	}
 }
 
+// notifyBlock is a block whose provenance is tracked.
+type notifyBlock struct {
+	blocks.Block
+
+	// from contains the peer id of the node who sent us the block.
+	// It will be the zero value if we did not downloaded this block from the
+	// network. (such as by getting the block from NotifyNewBlocks).
+	from peer.ID
+}
+
 type impl struct {
 	lk      sync.RWMutex
 	wrapped pubsub.PubSub
@@ -48,7 +61,7 @@ func (ps *impl) Publish(from peer.ID, blocks ...blocks.Block) {
 	}
 
 	for _, block := range blocks {
-		ps.wrapped.Pub(traceability.Block{Block: block, From: from}, block.Cid().KeyString())
+		ps.wrapped.Pub(notifyBlock{Block: block, from: from}, block.Cid().KeyString())
 	}
 }
 
@@ -87,7 +100,12 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 	default:
 	}
 
-	subscribe := time.Now()
+	logDebug := log.Level().Enabled(zapcore.DebugLevel)
+
+	var subscribe time.Time
+	if logDebug {
+		subscribe = time.Now()
+	}
 
 	// AddSubOnceEach listens for each key in the list, and closes the channel
 	// once all keys have been received
@@ -118,17 +136,19 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 				if !ok {
 					return
 				}
-				block, ok := val.(traceability.Block)
+				block, ok := val.(notifyBlock)
 				if !ok {
-					// FIXME: silently dropping errors wtf ?
-					return
+					panic("published item was not a notifyBlock")
 				}
-				block.Delay = time.Since(subscribe)
+
+				if logDebug {
+					log.Debugw("received block from peer", "cid", block.Cid(), "from", block.from.String(), "delay", time.Since(subscribe).String())
+				}
 
 				select {
 				case <-ctx.Done():
 					return
-				case blocksCh <- block: // continue
+				case blocksCh <- block.Block: // continue
 				case <-ps.closed:
 				}
 			}

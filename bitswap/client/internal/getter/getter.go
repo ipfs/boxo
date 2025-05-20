@@ -21,13 +21,13 @@ type GetBlocksFunc func(context.Context, []cid.Cid) (<-chan blocks.Block, error)
 // SyncGetBlock takes a block cid and an async function for getting several
 // blocks that returns a channel, and uses that function to return the
 // block synchronously.
-func SyncGetBlock(p context.Context, k cid.Cid, gb GetBlocksFunc) (blocks.Block, error) {
-	p, span := internal.StartSpan(p, "Getter.SyncGetBlock")
+func SyncGetBlock(ctx context.Context, k cid.Cid, gb GetBlocksFunc) (blocks.Block, error) {
+	ctx, span := internal.StartSpan(ctx, "Getter.SyncGetBlock")
 	defer span.End()
 
 	if !k.Defined() {
 		log.Error("undefined cid in GetBlock")
-		return nil, ipld.ErrNotFound{Cid: k}
+		return blocks.Block{}, ipld.ErrNotFound{Cid: k}
 	}
 
 	// Any async work initiated by this function must end when this function
@@ -36,27 +36,25 @@ func SyncGetBlock(p context.Context, k cid.Cid, gb GetBlocksFunc) (blocks.Block,
 	// functions called by this one. Otherwise those functions won't return
 	// when this context's cancel func is executed. This is difficult to
 	// enforce. May this comment keep you safe.
-	ctx, cancel := context.WithCancel(p)
+	promiseCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	promise, err := gb(ctx, []cid.Cid{k})
+	promise, err := gb(promiseCtx, []cid.Cid{k})
 	if err != nil {
-		return nil, err
+		return blocks.Block{}, err
 	}
 
 	select {
 	case block, ok := <-promise:
 		if !ok {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			default:
-				return nil, errors.New("promise channel was closed")
+			if ctx.Err() != nil {
+				return blocks.Block{}, ctx.Err()
 			}
+			return blocks.Block{}, errors.New("promise channel was closed")
 		}
 		return block, nil
-	case <-p.Done():
-		return nil, p.Err()
+	case <-ctx.Done():
+		return blocks.Block{}, ctx.Err()
 	}
 }
 
@@ -72,9 +70,10 @@ func AsyncGetBlocks(ctx context.Context, sessctx context.Context, keys []cid.Cid
 	ctx, span := internal.StartSpan(ctx, "Getter.AsyncGetBlocks")
 	defer span.End()
 
+	out := make(chan blocks.Block)
+
 	// If there are no keys supplied, just return a closed channel
 	if len(keys) == 0 {
-		out := make(chan blocks.Block)
 		close(out)
 		return out, nil
 	}
@@ -89,7 +88,6 @@ func AsyncGetBlocks(ctx context.Context, sessctx context.Context, keys []cid.Cid
 	// Send the want request for the keys to the network
 	want(ctx, keys)
 
-	out := make(chan blocks.Block)
 	go handleIncoming(ctx, sessctx, remaining, promise, out, cwants)
 	return out, nil
 }

@@ -1,16 +1,18 @@
 package client_test
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ipfs/boxo/bitswap"
 	"github.com/ipfs/boxo/bitswap/client"
 	"github.com/ipfs/boxo/bitswap/client/internal/session"
-	"github.com/ipfs/boxo/bitswap/client/traceability"
 	testinstance "github.com/ipfs/boxo/bitswap/testinstance"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
 	mockrouting "github.com/ipfs/boxo/routing/mock"
@@ -18,12 +20,21 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-test/random"
 	tu "github.com/libp2p/go-libp2p-testing/etc"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 const blockSize = 4
+
+func init() {
+	logCfg := logging.GetConfig()
+	logCfg.SubsystemLevels["bitswap/client/notify"] = logging.LevelDebug
+	logCfg.Stderr = false
+	logCfg.Stdout = false
+	logging.SetupLogging(logCfg)
+}
 
 func getVirtualNetwork() tn.Network {
 	// FIXME: the tests are really sensitive to the network delay. fix them to work
@@ -47,9 +58,61 @@ func addBlock(t *testing.T, ctx context.Context, inst testinstance.Instance, blk
 	}
 }
 
+func goReadLogLines(ctx context.Context, level logging.LogLevel) (<-chan string, <-chan error) {
+	lines := make(chan string, 10)
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- readLogLines(ctx, logging.LevelDebug, lines)
+		close(lines)
+		close(errCh)
+	}()
+
+	return lines, errCh
+}
+
+func readLogLines(ctx context.Context, level logging.LogLevel, lines chan<- string) error {
+	logReader := logging.NewPipeReader(logging.PipeLevel(level))
+
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		defer logReader.Close()
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-done:
+			return
+		}
+	}()
+
+	rdr := bufio.NewReader(logReader)
+
+	for {
+		// Read a line of log data and send it to the channel
+		line, err := rdr.ReadString('\n')
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return fmt.Errorf("error reading log message: %s", err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case lines <- line:
+		}
+	}
+}
+
 func TestBasicSessions(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+
+	lines, errCh := goReadLogLines(ctx, logging.LevelDebug)
 
 	vnet := getVirtualNetwork()
 	router := mockrouting.NewServer()
@@ -80,38 +143,44 @@ func TestBasicSessions(t *testing.T) {
 		t.Fatal("got wrong block")
 	}
 
-	traceBlock, ok := blkout.(traceability.Block)
-	if !ok {
-		t.Fatal("did not get tracable block")
-	}
-
-	if traceBlock.From != b.Identity.ID() {
-		t.Fatal("should have received block from peer B, did not")
-	}
+	findFromPeer(t, cancel, lines, errCh, b.Identity.ID())
 }
 
-func assertBlockListsFrom(from peer.ID, got, exp []blocks.Block) error {
+func assertBlockListsFrom(t *testing.T, from peer.ID, got, exp []blocks.Block, lines <-chan string, errCh <-chan error) {
+	t.Helper()
+
 	if len(got) != len(exp) {
-		return fmt.Errorf("got wrong number of blocks, %d != %d", len(got), len(exp))
+		t.Fatalf("got wrong number of blocks, %d != %d", len(got), len(exp))
 	}
 
+	peerStr := fmt.Sprintf("\"from\":\"%s\"", from)
 	h := cid.NewSet()
 	for _, b := range got {
 		h.Add(b.Cid())
-		traceableBlock, ok := b.(traceability.Block)
-		if !ok {
-			return fmt.Errorf("not a traceable block: %s", b.Cid())
+
+		found := false
+		for line := range lines {
+			if strings.Contains(line, "received block from peer") && strings.Contains(line, peerStr) {
+				found = true
+				break
+			}
 		}
-		if traceableBlock.From != from {
-			return fmt.Errorf("incorrect peer sent block, expect %s, got %s", from, traceableBlock.From)
+		select {
+		case err := <-errCh:
+			if err != nil {
+				t.Fatal(err)
+			}
+		default:
+		}
+		if !found {
+			t.Fatalf("did no get block from expected peer peer %s", from)
 		}
 	}
 	for _, b := range exp {
 		if !h.Has(b.Cid()) {
-			return fmt.Errorf("didnt have: %s", b.Cid())
+			t.Fatalf("didnt have: %s", b.Cid())
 		}
 	}
-	return nil
 }
 
 // TestCustomProviderQueryManager tests that nothing breaks if we use a custom
@@ -133,8 +202,10 @@ func TestCustomProviderQueryManager(t *testing.T) {
 	}
 	defer pqm.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	lines, errCh := goReadLogLines(ctx, logging.LevelDebug)
 
 	bs := bitswap.New(ctx, a.Adapter, pqm, a.Blockstore,
 		bitswap.WithClientOption(client.WithDefaultProviderQueryManager(false)))
@@ -161,19 +232,34 @@ func TestCustomProviderQueryManager(t *testing.T) {
 		t.Fatal("got wrong block")
 	}
 
-	traceBlock, ok := blkout.(traceability.Block)
-	if !ok {
-		t.Fatal("did not get tracable block")
-	}
+	findFromPeer(t, cancel, lines, errCh, b.Identity.ID())
+}
 
-	if traceBlock.From != b.Identity.ID() {
+func findFromPeer(t *testing.T, cancel context.CancelFunc, lines <-chan string, errCh <-chan error, peerID peer.ID) {
+	t.Helper()
+
+	var found bool
+	peerStr := fmt.Sprintf("\"from\":\"%s\"", peerID)
+	for line := range lines {
+		if strings.Contains(line, "received block from peer") && strings.Contains(line, peerStr) {
+			found = true
+			break
+		}
+	}
+	cancel() // stop reading log messages
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
+	}
+	if !found {
 		t.Fatal("should have received block from peer B, did not")
 	}
 }
 
 func TestSessionBetweenPeers(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+
+	lines, errCh := goReadLogLines(ctx, logging.LevelDebug)
 
 	vnet := tn.VirtualNetwork(delay.Fixed(time.Millisecond))
 	router := mockrouting.NewServer()
@@ -212,9 +298,12 @@ func TestSessionBetweenPeers(t *testing.T) {
 		for b := range ch {
 			got = append(got, b)
 		}
-		if err := assertBlockListsFrom(inst[0].Identity.ID(), got, blks[i*10:(i+1)*10]); err != nil {
-			t.Fatal(err)
-		}
+		assertBlockListsFrom(t, inst[0].Identity.ID(), got, blks[i*10:(i+1)*10], lines, errCh)
+	}
+	cancel()
+	err := <-errCh
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Uninvolved nodes should receive
@@ -232,8 +321,10 @@ func TestSessionBetweenPeers(t *testing.T) {
 }
 
 func TestSessionSplitFetch(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+
+	lines, errCh := goReadLogLines(ctx, logging.LevelDebug)
 
 	vnet := getVirtualNetwork()
 	router := mockrouting.NewServer()
@@ -269,15 +360,19 @@ func TestSessionSplitFetch(t *testing.T) {
 		for b := range ch {
 			got = append(got, b)
 		}
-		if err := assertBlockListsFrom(inst[i].Identity.ID(), got, blks[i*10:(i+1)*10]); err != nil {
-			t.Fatal(err)
-		}
+		assertBlockListsFrom(t, inst[i].Identity.ID(), got, blks[i*10:(i+1)*10], lines, errCh)
+	}
+	cancel()
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestFetchNotConnected(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
+
+	lines, errCh := goReadLogLines(ctx, logging.LevelDebug)
 
 	vnet := getVirtualNetwork()
 	router := mockrouting.NewServer()
@@ -312,7 +407,9 @@ func TestFetchNotConnected(t *testing.T) {
 	for b := range ch {
 		got = append(got, b)
 	}
-	if err := assertBlockListsFrom(other.Identity.ID(), got, blks); err != nil {
+	assertBlockListsFrom(t, other.Identity.ID(), got, blks, lines, errCh)
+	cancel()
+	if err = <-errCh; err != nil {
 		t.Fatal(err)
 	}
 }
@@ -320,6 +417,8 @@ func TestFetchNotConnected(t *testing.T) {
 func TestFetchAfterDisconnect(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	lines, errCh := goReadLogLines(ctx, logging.LevelDebug)
 
 	vnet := getVirtualNetwork()
 	router := mockrouting.NewServer()
@@ -361,9 +460,7 @@ func TestFetchAfterDisconnect(t *testing.T) {
 		got = append(got, b)
 	}
 
-	if err := assertBlockListsFrom(peerA.Identity.ID(), got, blks[:5]); err != nil {
-		t.Fatal(err)
-	}
+	assertBlockListsFrom(t, peerA.Identity.ID(), got, blks[:5], lines, errCh)
 
 	// Break connection
 	err = peerA.Adapter.DisconnectFrom(ctx, peerB.Identity.ID())
@@ -390,7 +487,10 @@ func TestFetchAfterDisconnect(t *testing.T) {
 		}
 	}
 
-	if err := assertBlockListsFrom(peerA.Identity.ID(), got, blks); err != nil {
+	assertBlockListsFrom(t, peerA.Identity.ID(), got[5:], blks[5:], lines, errCh)
+
+	cancel()
+	if err = <-errCh; err != nil {
 		t.Fatal(err)
 	}
 }

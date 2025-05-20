@@ -142,7 +142,7 @@ func TestDoesNotProvideWhenConfiguredNotTo(t *testing.T) {
 	ns := wantsBlock.Exchange.NewSession(ctx)
 
 	received, err := ns.GetBlock(ctx, block.Cid())
-	if received != nil {
+	if received.Cid() != cid.Undef {
 		t.Fatalf("Expected to find nothing, found %s", received)
 	}
 

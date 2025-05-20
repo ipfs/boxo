@@ -104,7 +104,7 @@ func TestHasRequestTriggersCache(t *testing.T) {
 func TestGetFillsCache(t *testing.T) {
 	c, _, cd := createStores(t)
 
-	if bl, err := c.Get(bg, exampleBlock.Cid()); bl != nil || err == nil {
+	if bl, err := c.Get(bg, exampleBlock.Cid()); bl.Cid() != cid.Undef || err == nil {
 		t.Fatal("block was found or there was no error")
 	}
 
@@ -141,7 +141,7 @@ func TestGetAndDeleteFalseShortCircuit(t *testing.T) {
 
 	trap("get hit datastore", cd, t)
 
-	if bl, err := c.Get(bg, exampleBlock.Cid()); bl != nil || !ipld.IsNotFound(err) {
+	if bl, err := c.Get(bg, exampleBlock.Cid()); bl.Cid() != cid.Undef || !ipld.IsNotFound(err) {
 		t.Fatal("get returned invalid result")
 	}
 
@@ -161,8 +161,8 @@ func TestInvalidKey(t *testing.T) {
 
 	bl, err := c.Get(bg, cid.Cid{})
 
-	if bl != nil {
-		t.Fatal("blocks should be nil")
+	if bl.Cid() != cid.Undef {
+		t.Fatal("blocks should be empty")
 	}
 	if err == nil {
 		t.Fatal("expected error")

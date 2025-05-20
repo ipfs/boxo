@@ -185,7 +185,7 @@ func (b *bloomcache) View(ctx context.Context, k cid.Cid, callback func([]byte) 
 
 func (b *bloomcache) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
 	if has, ok := b.hasCached(k); ok && !has {
-		return nil, ipld.ErrNotFound{Cid: k}
+		return blocks.Block{}, ipld.ErrNotFound{Cid: k}
 	}
 
 	return b.blockstore.Get(ctx, k)

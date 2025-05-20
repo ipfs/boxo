@@ -248,7 +248,7 @@ func (s *blockService) getExchangeFetcher() exchange.Fetcher {
 func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func() exchange.Fetcher) (blocks.Block, error) {
 	err := verifcid.ValidateCid(grabAllowlistFromBlockservice(bs), c) // hash security
 	if err != nil {
-		return nil, err
+		return blocks.Block{}, err
 	}
 
 	blockstore := bs.Blockstore()
@@ -260,29 +260,29 @@ func getBlock(ctx context.Context, c cid.Cid, bs BlockService, fetchFactory func
 	case ipld.IsNotFound(err):
 		break
 	default:
-		return nil, err
+		return blocks.Block{}, err
 	}
 
 	fetch := fetchFactory() // lazily create session if needed
 	if fetch == nil {
 		logger.Debug("BlockService GetBlock: Not found")
-		return nil, err
+		return blocks.Block{}, err
 	}
 
 	logger.Debug("BlockService: Searching")
 	blk, err := fetch.GetBlock(ctx, c)
 	if err != nil {
-		return nil, err
+		return blocks.Block{}, err
 	}
 	// also write in the blockstore for caching, inform the exchange that the block is available
 	err = blockstore.Put(ctx, blk)
 	if err != nil {
-		return nil, err
+		return blocks.Block{}, err
 	}
 	if ex := bs.Exchange(); ex != nil {
 		err = ex.NotifyNewBlocks(ctx, blk)
 		if err != nil {
-			return nil, err
+			return blocks.Block{}, err
 		}
 	}
 	logger.Debugf("BlockService.BlockFetched %s", c)
@@ -390,7 +390,7 @@ func getBlocks(ctx context.Context, ks []cid.Cid, blockservice BlockService, fet
 					logger.Errorf("could not tell the exchange about new blocks: %s", err)
 					return
 				}
-				cache[0] = nil // early gc
+				cache[0] = blocks.Block{} // early gc
 			}
 
 			select {

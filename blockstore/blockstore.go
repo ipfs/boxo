@@ -182,23 +182,23 @@ func (bs *blockstore) HashOnRead(enabled bool) {
 func (bs *blockstore) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
 	if !k.Defined() {
 		logger.Error("undefined cid in blockstore")
-		return nil, ipld.ErrNotFound{Cid: k}
+		return blocks.Block{}, ipld.ErrNotFound{Cid: k}
 	}
 	bdata, err := bs.datastore.Get(ctx, dshelp.MultihashToDsKey(k.Hash()))
 	if err == ds.ErrNotFound {
-		return nil, ipld.ErrNotFound{Cid: k}
+		return blocks.Block{}, ipld.ErrNotFound{Cid: k}
 	}
 	if err != nil {
-		return nil, err
+		return blocks.Block{}, err
 	}
 	if bs.rehash.Load() {
 		rbcid, err := k.Prefix().Sum(bdata)
 		if err != nil {
-			return nil, err
+			return blocks.Block{}, err
 		}
 
 		if !rbcid.Equals(k) {
-			return nil, ErrHashMismatch
+			return blocks.Block{}, ErrHashMismatch
 		}
 
 		return blocks.NewBlockWithCid(bdata, rbcid)

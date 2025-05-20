@@ -17,14 +17,14 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/ipfs/bbloom v0.0.4
 	github.com/ipfs/go-bitfield v1.1.0
-	github.com/ipfs/go-block-format v0.2.1
+	github.com/ipfs/go-block-format v0.2.2-0.20250502204103-e82c5339287f
 	github.com/ipfs/go-cid v0.5.0
 	github.com/ipfs/go-cidutil v0.1.0
 	github.com/ipfs/go-datastore v0.8.2
 	github.com/ipfs/go-detect-race v0.0.1
 	github.com/ipfs/go-ipfs-delay v0.0.1
 	github.com/ipfs/go-ipfs-redirects-file v0.1.2
-	github.com/ipfs/go-ipld-format v0.6.1
+	github.com/ipfs/go-ipld-format v0.6.2-0.20250520195044-e4a7062bda3b
 	github.com/ipfs/go-ipld-legacy v0.2.1
 	github.com/ipfs/go-log/v2 v2.6.0
 	github.com/ipfs/go-metrics-interface v0.3.0

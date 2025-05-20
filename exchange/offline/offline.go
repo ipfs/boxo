@@ -29,7 +29,7 @@ type offlineExchange struct {
 func (e *offlineExchange) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error) {
 	blk, err := e.bs.Get(ctx, k)
 	if ipld.IsNotFound(err) {
-		return nil, fmt.Errorf("block was not found locally (offline): %w", err)
+		return blocks.Block{}, fmt.Errorf("block was not found locally (offline): %w", err)
 	}
 	return blk, err
 }

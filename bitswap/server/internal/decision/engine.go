@@ -574,9 +574,9 @@ func (e *Engine) nextEnvelope(ctx context.Context) (*Envelope, error) {
 		}
 
 		for c, t := range blockTasks {
-			blk := blks[c]
+			blk, ok := blks[c]
 			// If the block was not found (it has been removed)
-			if blk == nil {
+			if !ok {
 				// If the client requested DONT_HAVE, add DONT_HAVE to the message
 				if t.SendDontHave {
 					msg.AddDontHave(c)

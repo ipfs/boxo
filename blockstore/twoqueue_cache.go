@@ -221,22 +221,26 @@ func (b *tqcache) View(ctx context.Context, k cid.Cid, callback func([]byte) err
 
 func (b *tqcache) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
 	if !k.Defined() {
-		return nil, ipld.ErrNotFound{Cid: k}
+		return blocks.Block{}, ipld.ErrNotFound{Cid: k}
 	}
 
 	key := cacheKey(k)
 
 	if has, _, ok := b.queryCache(key); ok && !has {
-		return nil, ipld.ErrNotFound{Cid: k}
+		return blocks.Block{}, ipld.ErrNotFound{Cid: k}
 	}
 
 	b.lock(key, false)
 	defer b.unlock(key, false)
 
 	bl, err := b.blockstore.Get(ctx, k)
-	if bl == nil && ipld.IsNotFound(err) {
-		b.cacheHave(key, false)
-	} else if bl != nil {
+	if err != nil {
+		if ipld.IsNotFound(err) {
+			b.cacheHave(key, false)
+		}
+		return blocks.Block{}, err
+	}
+	if bl.Cid() != cid.Undef {
 		b.cacheSize(key, len(bl.RawData()))
 	}
 	return bl, err

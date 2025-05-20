@@ -20,7 +20,7 @@ func TestGetWhenKeyNotPresent(t *testing.T) {
 	c := cid.NewCidV0(u.Hash([]byte("stuff")))
 	bl, err := bs.Get(bg, c)
 
-	if bl != nil {
+	if bl.Cid() != cid.Undef {
 		t.Error("nil block expected")
 	}
 	if err == nil {

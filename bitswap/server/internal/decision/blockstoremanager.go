@@ -186,9 +186,10 @@ func (bsm *blockstoreManager) getBlocks(ctx context.Context, ks []cid.Cid) (map[
 
 	res := make(map[cid.Cid]blocks.Block, results)
 	for i, blk := range blks {
-		if blk != nil {
-			res[ks[i]] = blk
+		if blk.Cid() == cid.Undef {
+			continue
 		}
+		res[ks[i]] = blk
 	}
 	return res, nil
 }

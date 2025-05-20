@@ -30,7 +30,7 @@ type fakeSession struct {
 }
 
 func (*fakeSession) GetBlock(context.Context, cid.Cid) (blocks.Block, error) {
-	return nil, nil
+	return blocks.Block{}, nil
 }
 
 func (*fakeSession) GetBlocks(context.Context, []cid.Cid) (<-chan blocks.Block, error) {
