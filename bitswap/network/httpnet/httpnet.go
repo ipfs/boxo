@@ -163,7 +163,7 @@ func WithHTTPWorkers(n int) Option {
 // be that pending requests will still happen. The HTTP connection might be
 // kept until it times-out per the IdleConnTimeout. Requests will resume if a
 // provider record is found causing us to "reconnect" to the peer.
-func WithMaxDontHaveErrors(threshold uint64) Option {
+func WithMaxDontHaveErrors(threshold int) Option {
 	return func(net *Network) {
 		net.maxDontHaveErrors = threshold
 	}
@@ -195,7 +195,7 @@ type Network struct {
 	maxIdleConns            int
 	insecureSkipVerify      bool
 	maxHTTPAddressesPerPeer int
-	maxDontHaveErrors       uint64
+	maxDontHaveErrors       int
 	httpWorkers             int
 	allowlist               map[string]struct{}
 	denylist                map[string]struct{}
@@ -484,7 +484,6 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 	ht.connEvtMgr.Connected(p)
 	ht.pinger.startPinging(p)
-	ht.errorTracker.startTracking(p)
 	log.Debugf("connect success to %s (supports HEAD: %t)", p, supportsHead)
 	// We "connected"
 	return nil

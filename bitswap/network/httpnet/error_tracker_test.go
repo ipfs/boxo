@@ -8,29 +8,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-func TestErrorTracker_StartTracking(t *testing.T) {
-	et := newErrorTracker(&Network{})
-	p := peer.ID("testpeer")
-
-	// Start tracking the peer
-	et.startTracking(p)
-
-	// Check if the error count is initialized to 0
-	count, ok := et.errors[p]
-	if !ok {
-		t.Errorf("Expected peer %s to be tracked but it was not", p)
-	}
-	if count.Load() != 0 {
-		t.Errorf("Expected initial error count for peer %s to be 0 but got %d", p, count.Load())
-	}
-}
-
 func TestErrorTracker_StopTracking(t *testing.T) {
 	et := newErrorTracker(&Network{})
 	p := peer.ID("testpeer")
-
-	// Start tracking the peer
-	et.startTracking(p)
 
 	// Stop tracking the peer
 	et.stopTracking(p)
@@ -45,9 +25,6 @@ func TestErrorTracker_LogErrors_Reset(t *testing.T) {
 	et := newErrorTracker(&Network{})
 	p := peer.ID("testpeer")
 
-	// Start tracking the peer
-	et.startTracking(p)
-
 	// Log some errors
 	err := et.logErrors(p, 5, 10)
 	if err != nil {
@@ -61,21 +38,15 @@ func TestErrorTracker_LogErrors_Reset(t *testing.T) {
 	}
 
 	// Check if the error count is reset to 0
-	count, ok := et.errors[p]
-	if !ok {
-		t.Errorf("Expected peer %s to be tracked but it was not", p)
-	}
-	if count.Load() != 0 {
-		t.Errorf("Expected error count for peer %s to be 0 after reset but got %d", p, count.Load())
+	count := et.errors[p]
+	if count != 0 {
+		t.Errorf("Expected error count for peer %s to be 0 after reset but got %d", p, count)
 	}
 }
 
 func TestErrorTracker_LogErrors_ThresholdCrossed(t *testing.T) {
 	et := newErrorTracker(&Network{})
 	p := peer.ID("testpeer")
-
-	// Start tracking the peer
-	et.startTracking(p)
 
 	// Log errors until threshold is crossed
 	err := et.logErrors(p, 11, 10)
@@ -88,19 +59,8 @@ func TestErrorTracker_LogErrors_ThresholdCrossed(t *testing.T) {
 	if !ok {
 		t.Errorf("Expected peer %s to be tracked but it was not", p)
 	}
-	if count.Load() != 11 {
-		t.Errorf("Expected error count for peer %s to be 10 after logging errors above threshold but got %d", p, count.Load())
-	}
-}
-
-func TestErrorTracker_LogErrors_UntrackedPeer(t *testing.T) {
-	et := newErrorTracker(&Network{})
-	p := peer.ID("testpeer")
-
-	// Log errors for an untracked peer
-	err := et.logErrors(p, 5, 10)
-	if err != nil {
-		t.Errorf("Expected no error when logging errors for an untracked peer but got %v", err)
+	if count != 11 {
+		t.Errorf("Expected error count for peer %s to be 10 after logging errors above threshold but got %d", p, count)
 	}
 }
 
@@ -109,12 +69,9 @@ func TestErrorTracker_ConcurrentAccess(t *testing.T) {
 	et := newErrorTracker(&Network{})
 	p := peer.ID("testpeer")
 
-	// Start tracking the peer
-	et.startTracking(p)
-
 	var wg sync.WaitGroup
 	numRoutines := 10
-	threshold := uint64(100)
+	threshold := 100
 
 	for i := 0; i < numRoutines; i++ {
 		wg.Add(1)
@@ -134,7 +91,7 @@ func TestErrorTracker_ConcurrentAccess(t *testing.T) {
 		t.Errorf("Expected peer %s to be tracked but it was not", p)
 	}
 	expectedCount := threshold
-	actualCount := count.Load()
+	actualCount := count
 	if actualCount != expectedCount {
 		t.Errorf("Expected error count for peer %s to be %d after concurrent logging but got %d", p, expectedCount, actualCount)
 	}

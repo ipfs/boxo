@@ -502,7 +502,7 @@ WANTLIST_LOOP:
 	go func() {
 		bsresp := bsmsg.New(false)
 		totalResponses := 0
-		totalClientErrors := uint64(0)
+		totalClientErrors := 0
 
 		for result := range resultsCollector {
 			// Record total request time.
