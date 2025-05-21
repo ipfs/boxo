@@ -339,8 +339,8 @@ func (ht *Network) Start(receivers ...network.Receiver) {
 // Other methods should no longer be used after calling Stop().
 func (ht *Network) Stop() {
 	ht.connEvtMgr.Stop()
-	ht.cooldownTracker.stopCleaner()
 	ht.closeOnce.Do(func() {
+		ht.cooldownTracker.stopCleaner()
 		close(ht.closing)
 	})
 }
