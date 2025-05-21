@@ -164,3 +164,8 @@ func (l *DefaultPeerLedger) PeerDisconnected(p peer.ID) {
 	l.ClearPeerWantlist(p)
 	delete(l.peers, p)
 }
+
+func (l *DefaultPeerLedger) HasPeer(p peer.ID) bool {
+	_, ok := l.peers[p]
+	return ok
+}
