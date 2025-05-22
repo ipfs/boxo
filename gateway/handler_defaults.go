@@ -185,7 +185,7 @@ func parseRangeWithoutLength(s string) ([]ByteRange, error) {
 		start, end = textproto.TrimString(start), textproto.TrimString(end)
 		var r ByteRange
 		if start == "" {
-			r.From = 0
+			r.To = nil
 			// If no start is specified, end specifies the
 			// range start relative to the end of the file,
 			// and we are dealing with <suffix-length>
@@ -198,9 +198,9 @@ func parseRangeWithoutLength(s string) ([]ByteRange, error) {
 			if i < 0 || err != nil {
 				return nil, errors.New("invalid range")
 			}
-			r.To = &i
+			r.From = -i
 		} else {
-			i, err := strconv.ParseUint(start, 10, 64)
+			i, err := strconv.ParseInt(start, 10, 64)
 			if err != nil {
 				return nil, errors.New("invalid range")
 			}
@@ -210,7 +210,7 @@ func parseRangeWithoutLength(s string) ([]ByteRange, error) {
 				r.To = nil
 			} else {
 				i, err := strconv.ParseInt(end, 10, 64)
-				if err != nil || i < 0 || r.From > uint64(i) {
+				if err != nil || i < 0 || r.From > i {
 					return nil, errors.New("invalid range")
 				}
 				r.To = &i
