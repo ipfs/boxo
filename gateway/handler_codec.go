@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -136,10 +137,8 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	// return raw block as-is, without conversion
 	skipCodecs, ok := contentTypeToRaw[rq.responseFormat]
 	if ok {
-		for _, skipCodec := range skipCodecs {
-			if skipCodec == cidCodec {
-				return i.serveCodecRaw(ctx, w, r, blockSize, blockData, rq.contentPath, modtime, rq.begin)
-			}
+		if slices.Contains(skipCodecs, cidCodec) {
+			return i.serveCodecRaw(ctx, w, r, blockSize, blockData, rq.contentPath, modtime, rq.begin)
 		}
 	}
 

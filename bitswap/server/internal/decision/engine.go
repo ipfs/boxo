@@ -156,6 +156,9 @@ type PeerLedger interface {
 
 	// PeerDisconnected informs the ledger that [peer.ID] is no longer connected.
 	PeerDisconnected(p peer.ID)
+
+	// HasPeer checks if the ledger has an active session with the given peer.
+	HasPeer(p peer.ID) bool
 }
 
 // Engine manages sending requested blocks to peers.
@@ -669,6 +672,12 @@ func (e *Engine) Peers() []peer.ID {
 	defer e.lock.RUnlock()
 
 	return e.peerLedger.CollectPeerIDs()
+}
+
+func (e *Engine) HasPeer(p peer.ID) bool {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+	return e.peerLedger.HasPeer(p)
 }
 
 // MessageReceived is called when a message is received from a remote peer.

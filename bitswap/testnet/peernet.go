@@ -2,6 +2,7 @@ package bitswap
 
 import (
 	"context"
+	"slices"
 
 	iface "github.com/ipfs/boxo/bitswap/network"
 	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
@@ -29,12 +30,7 @@ func (pn *peernet) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) iface.BitSwapN
 }
 
 func (pn *peernet) HasPeer(p peer.ID) bool {
-	for _, member := range pn.Mocknet.Peers() {
-		if p == member {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(pn.Mocknet.Peers(), p)
 }
 
 var _ Network = (*peernet)(nil)
