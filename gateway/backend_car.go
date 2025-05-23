@@ -363,7 +363,7 @@ func (api *CarBackend) Get(ctx context.Context, path path.ImmutablePath, byteRan
 	if rangeCount > 0 {
 		r := byteRanges[0]
 		carParams.Range = &DagByteRange{
-			From: int64(r.From),
+			From: r.From,
 		}
 
 		// TODO: move to boxo or to loadRequestIntoSharedBlockstoreAndBlocksGateway after we pass params in a humane way

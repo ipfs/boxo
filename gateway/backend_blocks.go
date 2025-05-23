@@ -141,7 +141,7 @@ func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, range
 		}
 
 		if rootCodec == uint64(mc.Raw) {
-			if err := seekToRangeStart(f, ra); err != nil {
+			if err := seekToRangeStart(f, ra, fileSize); err != nil {
 				return ContentPathMetadata{}, nil, err
 			}
 		}
@@ -182,7 +182,7 @@ func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, range
 			return ContentPathMetadata{}, nil, err
 		}
 
-		if err := seekToRangeStart(file, ra); err != nil {
+		if err := seekToRangeStart(file, ra, fileSize); err != nil {
 			return ContentPathMetadata{}, nil, err
 		}
 
