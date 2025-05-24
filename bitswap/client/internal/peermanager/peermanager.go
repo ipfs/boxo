@@ -86,7 +86,6 @@ func (pm *PeerManager) Connected(p peer.ID) {
 	pq := pm.getOrCreate(p)
 	// Inform the peer want manager that there's a new peer
 	pm.pwm.addPeer(pq, p)
-
 	pm.pqLk.Unlock()
 
 	// Inform the sessions that the peer has connected
@@ -119,9 +118,9 @@ func (pm *PeerManager) Disconnected(p peer.ID) {
 // Note that this is just used to calculate latency.
 func (pm *PeerManager) ResponseReceived(p peer.ID, ks []cid.Cid) {
 	pm.pqLk.RLock()
-	pq, ok := pm.peerQueues[p]
-	pm.pqLk.RUnlock()
+	defer pm.pqLk.RUnlock()
 
+	pq, ok := pm.peerQueues[p]
 	if ok {
 		pq.ResponseReceived(ks)
 	}
@@ -134,7 +133,6 @@ func (pm *PeerManager) ResponseReceived(p peer.ID, ks []cid.Cid) {
 func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.Cid) {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
-
 	pm.pwm.broadcastWantHaves(wantHaves)
 }
 
@@ -143,7 +141,6 @@ func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.C
 func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
-
 	if _, ok := pm.peerQueues[p]; !ok {
 		return false
 	}
@@ -154,6 +151,10 @@ func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []ci
 // SendCancels sends cancels for the given keys to all peers who had previously
 // received a want for those keys.
 func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid) {
+	if len(cancelKs) == 0 {
+		return
+	}
+
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 

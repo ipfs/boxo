@@ -20,6 +20,7 @@ import (
 )
 
 const collectTimeout = 2500 * time.Millisecond
+const eventTimeout = 5 * time.Second
 
 type fakeMessageNetwork struct {
 	connectError       error
@@ -157,9 +158,13 @@ func totalEntriesLength(messages [][]bsmsg.Entry) int {
 
 func expectEvent(t *testing.T, events <-chan messageEvent, expectedEvent messageEvent) {
 	t.Helper()
-	evt := <-events
-	if evt != expectedEvent {
-		t.Fatal("message not queued")
+	select {
+	case evt := <-events:
+		if evt != expectedEvent {
+			t.Fatal("message not queued")
+		}
+	case <-time.After(eventTimeout):
+		t.Fatal("timed out waiting for event")
 	}
 }
 
@@ -175,6 +180,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	bcstwh := random.Cids(10)
 
 	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 	messageQueue.AddBroadcastWantHaves(bcstwh)
 	messages := collectMessages(ctx, t, messagesSent, collectTimeout)
 	if len(messages) != 1 {
@@ -318,6 +324,7 @@ func TestSendingMessagesPriority(t *testing.T) {
 }
 
 func TestCancelOverridesPendingWants(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	messagesSent := make(chan []bsmsg.Entry)
 	resetChan := make(chan struct{}, 1)
@@ -377,13 +384,12 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	peerID := random.Peers(1)[0]
 	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
+	messageQueue.Startup()
+	defer messageQueue.Shutdown()
 
 	cids := random.Cids(3)
 	wantBlocks := cids[:1]
 	wantHaves := cids[1:]
-
-	messageQueue.Startup()
-	defer messageQueue.Shutdown()
 
 	// Add 1 want-block and 2 want-haves
 	messageQueue.AddWants(wantBlocks, wantHaves)
@@ -435,10 +441,18 @@ func TestWantlistRebroadcast(t *testing.T) {
 	// Add some broadcast want-haves
 	messageQueue.Startup()
 	defer messageQueue.Shutdown()
+
 	messageQueue.AddBroadcastWantHaves(bcstwh)
+	// May sometimes never receive event unless two clock advances are done.
+	clock.Add(maxSendMessageDelay)
 	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
-	message := <-messagesSent
+	var message []bsmsg.Entry
+	select {
+	case message = <-messagesSent:
+	case <-time.After(2 * maxSendMessageDelay):
+		t.Fatal("timed out waiting for messages sent")
+	}
 	expectEvent(t, events, messageFinishedSending)
 
 	// All broadcast want-haves should have been sent
@@ -447,7 +461,11 @@ func TestWantlistRebroadcast(t *testing.T) {
 	}
 
 	messageQueue.RebroadcastNow()
-	message = <-messagesSent
+	select {
+	case message = <-messagesSent:
+	case <-time.After(2 * maxSendMessageDelay):
+		t.Fatal("timed out waiting for messages sent")
+	}
 	expectEvent(t, events, messageFinishedSending)
 
 	// All the want-haves should have been rebroadcast
@@ -460,7 +478,11 @@ func TestWantlistRebroadcast(t *testing.T) {
 	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	clock.Add(10 * time.Millisecond)
-	message = <-messagesSent
+	select {
+	case message = <-messagesSent:
+	case <-time.After(2 * maxSendMessageDelay):
+		t.Fatal("timed out waiting for messages sent")
+	}
 	expectEvent(t, events, messageFinishedSending)
 
 	// All new wants should have been sent
@@ -475,7 +497,11 @@ func TestWantlistRebroadcast(t *testing.T) {
 	}
 
 	messageQueue.RebroadcastNow()
-	message = <-messagesSent
+	select {
+	case message = <-messagesSent:
+	case <-time.After(2 * maxSendMessageDelay):
+		t.Fatal("timed out waiting for messages sent")
+	}
 	expectEvent(t, events, messageFinishedSending)
 
 	// Both original and new wants should have been rebroadcast
@@ -490,7 +516,11 @@ func TestWantlistRebroadcast(t *testing.T) {
 	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	clock.Add(10 * time.Millisecond)
-	message = <-messagesSent
+	select {
+	case message = <-messagesSent:
+	case <-time.After(2 * maxSendMessageDelay):
+		t.Fatal("timed out waiting for messages sent")
+	}
 	expectEvent(t, events, messageFinishedSending)
 
 	select {
@@ -510,7 +540,11 @@ func TestWantlistRebroadcast(t *testing.T) {
 	}
 
 	messageQueue.RebroadcastNow()
-	message = <-messagesSent
+	select {
+	case message = <-messagesSent:
+	case <-time.After(2 * maxSendMessageDelay):
+		t.Fatal("timed out waiting for messages sent")
+	}
 	expectEvent(t, events, messageFinishedSending)
 
 	if len(message) != totalWants-len(cancels) {
@@ -659,6 +693,7 @@ func TestResponseReceived(t *testing.T) {
 	// Add some wants
 	messageQueue.AddWants(cids[:5], nil)
 	clock.Add(maxSendMessageDelay)
+	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
@@ -758,6 +793,7 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 	// Add some wants and wait 20ms
 	messageQueue.AddWants(cids[:2], nil)
 	clock.Add(maxSendMessageDelay)
+	clock.Add(maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
@@ -819,6 +855,7 @@ func BenchmarkMessageQueue(b *testing.B) {
 
 		messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, clock.New(), nil)
 		messageQueue.Startup()
+		defer messageQueue.Shutdown()
 
 		go func() {
 			for {
