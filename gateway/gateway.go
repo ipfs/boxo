@@ -48,6 +48,11 @@ type Config struct {
 	// directory listings, DAG previews and errors. These will be displayed to the
 	// right of "About IPFS" and "Install IPFS".
 	Menu []assets.MenuItem
+
+	// MaxRequestsInFlight limits the number of concurrent requests the gateway will process.
+	// When this limit is reached, new requests will receive a 503 Service Unavailable response
+	// with a Retry-After header. If set to 0 or a negative value, a default of 1024 will be used.
+	MaxRequestsInFlight int
 }
 
 // PublicGateway is the specification of an IPFS Public Gateway.
