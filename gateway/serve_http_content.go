@@ -112,6 +112,11 @@ func httpServeContent(w http.ResponseWriter, r *http.Request, modtime time.Time,
 		w.Header().Set("Content-Length", strconv.FormatInt(sendSize, 10))
 	}
 
+	if contentType := w.Header().Get("Content-Type"); contentType == "" {
+		// Ensure empty string is not returned as value
+		delete(w.Header(), "Content-Type")
+	}
+
 	w.WriteHeader(code)
 
 	if r.Method != http.MethodHead {
