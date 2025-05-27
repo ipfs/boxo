@@ -22,7 +22,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@789cfac0863dcb462a05b9d1b2e19aee37d77df2
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@0ac0eb5e0f0ca0b02043cd4b1656e6b562db611d
         with:
           output: fixtures
           merged: true
@@ -47,7 +47,7 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests
-        uses: ipfs/gateway-conformance/.github/actions/test@789cfac0863dcb462a05b9d1b2e19aee37d77df2
+        uses: ipfs/gateway-conformance/.github/actions/test@0ac0eb5e0f0ca0b02043cd4b1656e6b562db611d
         with:
           gateway-url: http://127.0.0.1:8040
           subdomain-url: http://example.net:8040
@@ -84,7 +84,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@789cfac0863dcb462a05b9d1b2e19aee37d77df2
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@0ac0eb5e0f0ca0b02043cd4b1656e6b562db611d
         with:
           output: fixtures
           merged: true
@@ -114,7 +114,7 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests
-        uses: ipfs/gateway-conformance/.github/actions/test@789cfac0863dcb462a05b9d1b2e19aee37d77df2
+        uses: ipfs/gateway-conformance/.github/actions/test@0ac0eb5e0f0ca0b02043cd4b1656e6b562db611d
         with:
           gateway-url: http://127.0.0.1:8040 # we test gateway that is backed by a remote block gateway
           subdomain-url: http://example.net:8040
@@ -152,7 +152,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@789cfac0863dcb462a05b9d1b2e19aee37d77df2
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@0ac0eb5e0f0ca0b02043cd4b1656e6b562db611d
         with:
           output: fixtures
           merged: true
@@ -182,7 +182,7 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests
-        uses: ipfs/gateway-conformance/.github/actions/test@789cfac0863dcb462a05b9d1b2e19aee37d77df2
+        uses: ipfs/gateway-conformance/.github/actions/test@0ac0eb5e0f0ca0b02043cd4b1656e6b562db611d
         with:
           gateway-url: http://127.0.0.1:8040 # we test gateway that is backed by a remote car gateway
           subdomain-url: http://example.net:8040
