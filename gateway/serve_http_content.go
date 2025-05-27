@@ -487,7 +487,7 @@ func seekToRangeStart(data io.Seeker, ra *ByteRange, size int64) error {
 			if ra.To != nil {
 				return fmt.Errorf("invalid range: negative start without a nil end")
 			}
-			start = size + ra.From - 1
+			start = size + ra.From
 			if start < 0 {
 				return fmt.Errorf("invalid range: negative start bigger than the file size")
 			}
