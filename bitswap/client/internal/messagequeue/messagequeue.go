@@ -426,6 +426,13 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 	}
 }
 
+func (mq *MessageQueue) HasMessage() bool {
+	mq.wllock.Lock()
+	defer mq.wllock.Unlock()
+
+	return mq.bcstWants.pending.Len() != 0 || mq.peerWants.pending.Len() != 0 || mq.cancels.Len() != 0
+}
+
 // ResponseReceived is called when a message is received from the network.
 // ks is the set of blocks, HAVEs and DONT_HAVEs in the message
 // Note that this is just used to calculate latency.

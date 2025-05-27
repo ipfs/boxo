@@ -51,6 +51,10 @@ func (mpq *mockPQ) AddCancels(cs []cid.Cid) {
 	mpq.cancels = append(mpq.cancels, cs...)
 }
 
+func (mpq *mockPQ) HasMessage() bool {
+	return len(mpq.wbs) != 0 || len(mpq.whs) != 0 || len(mpq.cancels) != 0
+}
+
 func (mpq *mockPQ) ResponseReceived(ks []cid.Cid) {
 }
 

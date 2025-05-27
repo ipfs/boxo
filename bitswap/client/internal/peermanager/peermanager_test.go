@@ -39,6 +39,10 @@ func (fp *mockPeerQueue) AddCancels(cs []cid.Cid) {
 	fp.msgs <- msg{fp.p, nil, nil, cs}
 }
 
+func (fp *mockPeerQueue) HasMessage() bool {
+	return true
+}
+
 func (fp *mockPeerQueue) ResponseReceived(ks []cid.Cid) {
 }
 
@@ -332,6 +336,7 @@ func (*benchPeerQueue) Shutdown() {}
 func (*benchPeerQueue) AddBroadcastWantHaves(whs []cid.Cid)   {}
 func (*benchPeerQueue) AddWants(wbs []cid.Cid, whs []cid.Cid) {}
 func (*benchPeerQueue) AddCancels(cs []cid.Cid)               {}
+func (*benchPeerQueue) HasMessage() bool                      { return true }
 func (*benchPeerQueue) ResponseReceived(ks []cid.Cid)         {}
 
 // Simplistic benchmark to allow us to stress test

@@ -162,19 +162,12 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 
 	// Send broadcast wants to each peer
 	for p, pws := range pwm.peerWants {
-		// Only broadcast to peer from which block(s) have been previously received.
-		if pwm.recvCounts[p] == 0 {
+		if pwm.skipBroadcast(p, pws.peerQueue) {
 			if bcastNonSenders == 0 {
-				if pwm.isRemotePeer(p) {
-					pwm.bcastSkipGauge.Inc()
-					continue
-				}
-				// Add to recv count for local peer to avoid isRemotePeer check
-				// next time.
-				pwm.recvCounts[p] = 1
-			} else {
-				bcastNonSenders--
+				pwm.bcastSkipGauge.Inc()
+				continue
 			}
+			bcastNonSenders--
 		}
 
 		peerUnsent := bcstWantsBuffer[:0]
@@ -191,21 +184,40 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 	}
 }
 
-func (pwm *peerWantManager) isRemotePeer(peerID peer.ID) bool {
-	if pwm.peerStore == nil {
+func (pwm *peerWantManager) skipBroadcast(peerID peer.ID, peerQueue PeerQueue) bool {
+	// Broadcast to peer from which block(s) have been previously received.
+	if pwm.recvCounts[peerID] != 0 {
 		return false
 	}
+	if pwm.peerStore == nil {
+		// no peerstore; assume peer is on local net.
+		return false
+	}
+	// Broadcast to peers on local network.
+	if pwm.isLocalPeer(peerID) {
+		// Add to local peer's recv count avoid next isLocalPeer check.
+		pwm.recvCounts[peerID] = 1
+		return false
+	}
+	// Broadcast to peers that have a pending message to piggyback on.
+	if peerQueue.HasMessage() {
+		return false
+	}
+	return true
+}
+
+func (pwm *peerWantManager) isLocalPeer(peerID peer.ID) bool {
 	if _, ok := pwm.remotePeers[peerID]; ok {
-		return true
+		return false
 	}
 	addrs := pwm.peerStore.Addrs(peerID)
 	for _, addr := range addrs {
 		if manet.IsPrivateAddr(addr) {
-			return false
+			return true
 		}
 	}
 	pwm.remotePeers[peerID] = struct{}{}
-	return true
+	return false
 }
 
 // sendWants only sends the peer the want-blocks and want-haves that have not

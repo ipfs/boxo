@@ -20,6 +20,7 @@ type PeerQueue interface {
 	AddWants([]cid.Cid, []cid.Cid)
 	AddCancels([]cid.Cid)
 	ResponseReceived(ks []cid.Cid)
+	HasMessage() bool
 	Startup()
 	Shutdown()
 }
