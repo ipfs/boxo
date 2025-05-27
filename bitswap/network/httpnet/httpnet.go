@@ -51,6 +51,7 @@ const (
 	DefaultInsecureSkipVerify            = false
 	DefaultMaxBackoff                    = time.Minute
 	DefaultMaxHTTPAddressesPerPeer       = 10
+	DefaultMaxDontHaveErrors             = 100
 	DefaultHTTPWorkers                   = 64
 )
 
@@ -155,6 +156,19 @@ func WithHTTPWorkers(n int) Option {
 	}
 }
 
+// WithMaxDontHaveErrors sets the maximum number of client errors that a peer
+// can cause in a row before we disconnect. For example, if set to 50, and a
+// peer returns 404 to 50 requests in a row, we will disconnect and signal the
+// upper layers to stop making requests to this peer and its endpoints. It may
+// be that pending requests will still happen. The HTTP connection might be
+// kept until it times-out per the IdleConnTimeout. Requests will resume if a
+// provider record is found causing us to "reconnect" to the peer.
+func WithMaxDontHaveErrors(threshold int) Option {
+	return func(net *Network) {
+		net.maxDontHaveErrors = threshold
+	}
+}
+
 type Network struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
@@ -168,6 +182,7 @@ type Network struct {
 	receivers       []network.Receiver
 	connEvtMgr      *network.ConnectEventManager
 	pinger          *pinger
+	errorTracker    *errorTracker
 	requestTracker  *requestTracker
 	cooldownTracker *cooldownTracker
 
@@ -180,6 +195,7 @@ type Network struct {
 	maxIdleConns            int
 	insecureSkipVerify      bool
 	maxHTTPAddressesPerPeer int
+	maxDontHaveErrors       int
 	httpWorkers             int
 	allowlist               map[string]struct{}
 	denylist                map[string]struct{}
@@ -215,6 +231,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		maxIdleConns:            DefaultMaxIdleConns,
 		insecureSkipVerify:      DefaultInsecureSkipVerify,
 		maxHTTPAddressesPerPeer: DefaultMaxHTTPAddressesPerPeer,
+		maxDontHaveErrors:       DefaultMaxDontHaveErrors,
 		httpWorkers:             DefaultHTTPWorkers,
 		httpRequests:            make(chan httpRequestInfo),
 	}
@@ -292,6 +309,9 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 
 	pinger := newPinger(htnet, pingCid)
 	htnet.pinger = pinger
+
+	et := newErrorTracker(htnet)
+	htnet.errorTracker = et
 
 	for i := 0; i < htnet.httpWorkers; i++ {
 		go htnet.httpWorker(i)
@@ -520,6 +540,7 @@ func (ht *Network) DisconnectFrom(ctx context.Context, p peer.ID) error {
 		ht.host.Peerstore().SetAddrs(p, bsaddrs.Addrs, peerstore.TempAddrTTL)
 	}
 	ht.pinger.stopPinging(p)
+	ht.errorTracker.stopTracking(p)
 
 	// coolDownTracker: we leave untouched. We want to keep
 	// ongoing cooldowns there in case we reconnect to this peer.
