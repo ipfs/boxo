@@ -86,7 +86,7 @@ func TestAddingAndRemovingPeers(t *testing.T) {
 
 	tp := random.Peers(6)
 	peer1, peer2, peer3, peer4, peer5 := tp[0], tp[1], tp[2], tp[3], tp[4]
-	peerManager := New(ctx, peerQueueFactory)
+	peerManager := New(ctx, peerQueueFactory, nil)
 
 	peerManager.Connected(peer1)
 	peerManager.Connected(peer2)
@@ -129,7 +129,7 @@ func TestBroadcastOnConnect(t *testing.T) {
 	peerQueueFactory := makePeerQueueFactory(msgs)
 	tp := random.Peers(2)
 	peer1 := tp[0]
-	peerManager := New(ctx, peerQueueFactory)
+	peerManager := New(ctx, peerQueueFactory, nil)
 
 	cids := random.Cids(2)
 	peerManager.BroadcastWantHaves(ctx, cids)
@@ -150,7 +150,7 @@ func TestBroadcastWantHaves(t *testing.T) {
 	peerQueueFactory := makePeerQueueFactory(msgs)
 	tp := random.Peers(3)
 	peer1, peer2 := tp[0], tp[1]
-	peerManager := New(ctx, peerQueueFactory)
+	peerManager := New(ctx, peerQueueFactory, nil)
 
 	cids := random.Cids(3)
 
@@ -191,7 +191,7 @@ func TestSendWants(t *testing.T) {
 	peerQueueFactory := makePeerQueueFactory(msgs)
 	tp := random.Peers(2)
 	peer1 := tp[0]
-	peerManager := New(ctx, peerQueueFactory)
+	peerManager := New(ctx, peerQueueFactory, nil)
 	cids := random.Cids(4)
 
 	peerManager.Connected(peer1)
@@ -225,7 +225,7 @@ func TestSendCancels(t *testing.T) {
 	peerQueueFactory := makePeerQueueFactory(msgs)
 	tp := random.Peers(3)
 	peer1, peer2 := tp[0], tp[1]
-	peerManager := New(ctx, peerQueueFactory)
+	peerManager := New(ctx, peerQueueFactory, nil)
 	cids := random.Cids(4)
 
 	// Connect to peer1 and peer2
@@ -286,7 +286,7 @@ func TestSessionRegistration(t *testing.T) {
 
 	tp := random.Peers(3)
 	p1, p2 := tp[0], tp[1]
-	peerManager := New(ctx, peerQueueFactory)
+	peerManager := New(ctx, peerQueueFactory, nil)
 
 	id := uint64(1)
 	s := newSess(id)
@@ -345,7 +345,7 @@ func BenchmarkPeerManager(b *testing.B) {
 	}
 
 	peers := random.Peers(500)
-	peerManager := New(ctx, peerQueueFactory)
+	peerManager := New(ctx, peerQueueFactory, nil)
 
 	// Create a bunch of connections
 	connected := 0

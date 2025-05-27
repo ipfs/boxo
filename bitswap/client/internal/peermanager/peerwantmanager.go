@@ -6,7 +6,13 @@ import (
 
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
+
+// broadcastNonSenders is the number of peers, that have not previously send
+// and blocks, that a broadcast gets sent to.
+var broadcastNonSenders = 1
 
 // Gauge can be used to keep track of a metric that increases and decreases
 // incrementally. It is used by the peerWantManager to track the number of
@@ -34,6 +40,12 @@ type peerWantManager struct {
 	wantGauge Gauge
 	// Keeps track of the number of active want-blocks
 	wantBlockGauge Gauge
+
+	bcastSkipGauge Gauge
+	peerStore      peerstore.Peerstore
+	// recvCounts counts how mand blocks have been reveived from a peer.
+	recvCounts  map[peer.ID]int
+	remotePeers map[peer.ID]struct{}
 }
 
 type peerWant struct {
@@ -44,13 +56,18 @@ type peerWant struct {
 
 // New creates a new peerWantManager with a Gauge that keeps track of the
 // number of active want-blocks (ie sent but no response received)
-func newPeerWantManager(wantGauge, wantBlockGauge Gauge) *peerWantManager {
+func newPeerWantManager(wantGauge, wantBlockGauge, bcastSkipGauge Gauge, peerStore peerstore.Peerstore) *peerWantManager {
 	return &peerWantManager{
 		broadcastWants: cid.NewSet(),
 		peerWants:      make(map[peer.ID]*peerWant),
 		wantPeers:      make(map[cid.Cid]map[peer.ID]struct{}),
 		wantGauge:      wantGauge,
 		wantBlockGauge: wantBlockGauge,
+
+		bcastSkipGauge: bcastSkipGauge,
+		peerStore:      peerStore,
+		recvCounts:     make(map[peer.ID]int),
+		remotePeers:    make(map[peer.ID]struct{}),
 	}
 }
 
@@ -112,6 +129,8 @@ func (pwm *peerWantManager) removePeer(p peer.ID) {
 	})
 
 	delete(pwm.peerWants, p)
+	delete(pwm.recvCounts, p)
+	delete(pwm.remotePeers, p)
 }
 
 // broadcastWantHaves sends want-haves to any peers that have not yet been sent them.
@@ -139,8 +158,25 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 	// Allocate a single buffer to filter broadcast wants for each peer
 	bcstWantsBuffer := make([]cid.Cid, 0, len(unsent))
 
+	bcastNonSenders := broadcastNonSenders
+
 	// Send broadcast wants to each peer
-	for _, pws := range pwm.peerWants {
+	for p, pws := range pwm.peerWants {
+		// Only broadcast to peer from which block(s) have been previously received.
+		if pwm.recvCounts[p] == 0 {
+			if bcastNonSenders == 0 {
+				if pwm.isRemotePeer(p) {
+					pwm.bcastSkipGauge.Inc()
+					continue
+				}
+				// Add to recv count for local peer to avoid isRemotePeer check
+				// next time.
+				pwm.recvCounts[p] = 1
+			} else {
+				bcastNonSenders--
+			}
+		}
+
 		peerUnsent := bcstWantsBuffer[:0]
 		for _, c := range unsent {
 			// If we've already sent a want to this peer, skip them.
@@ -153,6 +189,23 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 			pws.peerQueue.AddBroadcastWantHaves(peerUnsent)
 		}
 	}
+}
+
+func (pwm *peerWantManager) isRemotePeer(peerID peer.ID) bool {
+	if pwm.peerStore == nil {
+		return false
+	}
+	if _, ok := pwm.remotePeers[peerID]; ok {
+		return true
+	}
+	addrs := pwm.peerStore.Addrs(peerID)
+	for _, addr := range addrs {
+		if manet.IsPrivateAddr(addr) {
+			return false
+		}
+	}
+	pwm.remotePeers[peerID] = struct{}{}
+	return true
 }
 
 // sendWants only sends the peer the want-blocks and want-haves that have not
@@ -436,6 +489,10 @@ func (pwm *peerWantManager) getWants() []cid.Cid {
 	}
 
 	return res
+}
+
+func (pwm *peerWantManager) addBlocksReceivedCount(from peer.ID, n int) {
+	pwm.recvCounts[from]++
 }
 
 func (pwm *peerWantManager) String() string {

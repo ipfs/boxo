@@ -83,6 +83,10 @@ func (rt *router) Latency(p peer.ID) time.Duration {
 	return rt.Bitswap.Latency(p)
 }
 
+func (rt *router) GetPeerstore() peerstore.Peerstore {
+	return rt.Peerstore
+}
+
 func (rt *router) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwapMessage) error {
 	// SendMessage is only used by bitswap server on sendBlocks(). We
 	// should not be passing a router to the bitswap server but we try to

@@ -61,13 +61,13 @@ func clearSent(pqs map[peer.ID]PeerQueue) {
 }
 
 func TestEmpty(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{}, &gauge{})
+	pwm := newPeerWantManager(&gauge{}, &gauge{}, &gauge{}, nil)
 	require.Empty(t, pwm.getWantBlocks())
 	require.Empty(t, pwm.getWantHaves())
 }
 
 func TestPWMBroadcastWantHaves(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{}, &gauge{})
+	pwm := newPeerWantManager(&gauge{}, &gauge{}, &gauge{}, nil)
 
 	peers := random.Peers(3)
 	cids := random.Cids(2)
@@ -153,7 +153,7 @@ func TestPWMBroadcastWantHaves(t *testing.T) {
 }
 
 func TestPWMSendWants(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{}, &gauge{})
+	pwm := newPeerWantManager(&gauge{}, &gauge{}, &gauge{}, nil)
 
 	peers := random.Peers(2)
 	p0 := peers[0]
@@ -213,7 +213,7 @@ func TestPWMSendWants(t *testing.T) {
 }
 
 func TestPWMSendCancels(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{}, &gauge{})
+	pwm := newPeerWantManager(&gauge{}, &gauge{}, &gauge{}, nil)
 
 	peers := random.Peers(2)
 	p0 := peers[0]
@@ -271,7 +271,8 @@ func TestPWMSendCancels(t *testing.T) {
 func TestStats(t *testing.T) {
 	g := &gauge{}
 	wbg := &gauge{}
-	pwm := newPeerWantManager(g, wbg)
+	bsg := &gauge{}
+	pwm := newPeerWantManager(g, wbg, bsg, nil)
 
 	peers := random.Peers(2)
 	p0 := peers[0]
@@ -340,7 +341,8 @@ func TestStats(t *testing.T) {
 func TestStatsOverlappingWantBlockWantHave(t *testing.T) {
 	g := &gauge{}
 	wbg := &gauge{}
-	pwm := newPeerWantManager(g, wbg)
+	bsg := &gauge{}
+	pwm := newPeerWantManager(g, wbg, bsg, nil)
 
 	peers := random.Peers(2)
 	p0 := peers[0]
@@ -371,7 +373,8 @@ func TestStatsOverlappingWantBlockWantHave(t *testing.T) {
 func TestStatsRemovePeerOverlappingWantBlockWantHave(t *testing.T) {
 	g := &gauge{}
 	wbg := &gauge{}
-	pwm := newPeerWantManager(g, wbg)
+	bsg := &gauge{}
+	pwm := newPeerWantManager(g, wbg, bsg, nil)
 
 	peers := random.Peers(2)
 	p0 := peers[0]

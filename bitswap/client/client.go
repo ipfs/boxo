@@ -202,7 +202,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
-	pm := bspm.New(ctx, peerQueueFactory)
+	pm := bspm.New(ctx, peerQueueFactory, network.GetPeerstore())
 
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
@@ -419,6 +419,8 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	for _, b := range wanted {
 		bs.notif.Publish(from, b)
 	}
+
+	bs.pm.AddBlocksReceivedCount(from, len(wanted))
 
 	return nil
 }
