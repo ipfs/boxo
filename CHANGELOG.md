@@ -16,7 +16,19 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `bitswap/httpnet`: New option `WithMaxDontHaveErrors(int)` (defaults to 100)
+  will trigger disconnections from bitswap peers that cannot provide any of
+  the blocks that are requested for the given number of requests in a
+  row.. This is meant to limit bitswap HTTP-based optimistic requests for
+  blocks to discovered endpoints, which were before considered permanently
+  peered upon discovery.
+
 ### Changed
+
+- upgrade to `go-libp2p-kad-dht` [v0.33.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.33.1)
+- deprecated `WithPeerLedger` option for bitswap server. Will remove option in next release. See [issue #928](https://github.com/ipfs/boxo/issues/928)
+- gateway: update backend car traversal to use go-car/v2 [#925](https://github.com/ipfs/boxo/issues/925)
+  - This change may prohibit fetching DAGs from CAR files that have no roots.
 
 ### Removed
 

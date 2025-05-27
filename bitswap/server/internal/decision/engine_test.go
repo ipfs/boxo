@@ -172,12 +172,7 @@ func TestPeerIsAddedToPeersWhenMessageSent(t *testing.T) {
 }
 
 func peerIsPartner(p peer.ID, e *Engine) bool {
-	for _, partner := range e.Peers() {
-		if partner == p {
-			return true
-		}
-	}
-	return false
+	return e.HasPeer(p)
 }
 
 func newEngineForTesting(

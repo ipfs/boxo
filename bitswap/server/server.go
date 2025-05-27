@@ -131,6 +131,8 @@ func WithScoreLedger(scoreLedger decision.ScoreLedger) Option {
 }
 
 // WithPeerLedger configures the engine with a custom [decision.PeerLedger].
+//
+// Deprecated: This is no longer needed and will be removed.
 func WithPeerLedger(peerLedger decision.PeerLedger) Option {
 	o := decision.WithPeerLedger(peerLedger)
 	return func(bs *Server) {
