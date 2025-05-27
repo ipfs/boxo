@@ -281,6 +281,8 @@ func WithScoreLedger(scoreledger ScoreLedger) Option {
 }
 
 // WithPeerLedger sets a custom [PeerLedger] to be used with this [Engine].
+//
+// Deprecated: This is no longer needed and will be removed.
 func WithPeerLedger(peerLedger PeerLedger) Option {
 	return func(e *Engine) {
 		e.peerLedger = peerLedger

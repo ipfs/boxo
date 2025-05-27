@@ -26,6 +26,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - upgrade to `go-libp2p-kad-dht` [v0.33.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.33.1)
+- deprecated `WithPeerLedger` option for bitswap server. Will remove option in next release. See [issue #928](https://github.com/ipfs/boxo/issues/928)
 
 ### Removed
 

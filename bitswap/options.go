@@ -55,6 +55,7 @@ func WithScoreLedger(scoreLedger server.ScoreLedger) Option {
 	return Option{server.WithScoreLedger(scoreLedger)}
 }
 
+// Deprecated: This is no longer needed and will be removed.
 func WithPeerLedger(peerLedger server.PeerLedger) Option {
 	return Option{server.WithPeerLedger(peerLedger)}
 }
