@@ -1,6 +1,8 @@
 package traceability
 
 import (
+	"time"
+
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
@@ -13,4 +15,7 @@ type Block struct {
 	// It will be the zero value if we did not downloaded this block from the
 	// network. (such as by getting the block from NotifyNewBlocks).
 	From peer.ID
+	// Delay contains how long did we had to wait between when we started being
+	// intrested and when we actually got the block.
+	Delay time.Duration
 }
