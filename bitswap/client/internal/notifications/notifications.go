@@ -3,6 +3,7 @@ package notifications
 import (
 	"context"
 	"sync"
+	"time"
 
 	pubsub "github.com/cskr/pubsub"
 	"github.com/ipfs/boxo/bitswap/client/traceability"
@@ -86,6 +87,8 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 	default:
 	}
 
+	subscribe := time.Now()
+
 	// AddSubOnceEach listens for each key in the list, and closes the channel
 	// once all keys have been received
 	ps.wrapped.AddSubOnceEach(valuesCh, toStrings(keys)...)
@@ -120,6 +123,7 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 					// FIXME: silently dropping errors wtf ?
 					return
 				}
+				block.Delay = time.Since(subscribe)
 
 				select {
 				case <-ctx.Done():
