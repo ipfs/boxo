@@ -239,11 +239,11 @@ func (pm *PeerManager) UnregisterSession(ses uint64) {
 	delete(pm.sessions, ses)
 }
 
-func (pm *PeerManager) AddBlocksReceivedCount(from peer.ID, n int) {
+func (pm *PeerManager) MarkBroadcastTarget(from peer.ID) {
 	pm.psLk.Lock()
 	defer pm.psLk.Unlock()
 
-	pm.pwm.addBlocksReceivedCount(from, n)
+	pm.pwm.markBroadcastTarget(from)
 }
 
 // signalAvailability is called when a peer's connectivity changes.

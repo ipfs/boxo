@@ -387,7 +387,9 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	default:
 	}
 
-	bs.pm.AddBlocksReceivedCount(from, len(blks)+len(haves))
+	if len(blks) != 0 || len(haves) != 0 {
+		bs.pm.MarkBroadcastTarget(from)
+	}
 
 	wanted, notWanted := bs.sim.SplitWantedUnwanted(blks)
 	if log.Level().Enabled(zapcore.DebugLevel) {

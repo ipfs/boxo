@@ -43,9 +43,9 @@ type peerWantManager struct {
 
 	bcastSkipGauge Gauge
 	peerStore      peerstore.Peerstore
-	// recvCounts counts how mand blocks have been reveived from a peer.
-	recvCounts  map[peer.ID]int
-	remotePeers map[peer.ID]struct{}
+
+	bcastTargets map[peer.ID]struct{}
+	remotePeers  map[peer.ID]struct{}
 }
 
 type peerWant struct {
@@ -66,7 +66,7 @@ func newPeerWantManager(wantGauge, wantBlockGauge, bcastSkipGauge Gauge, peerSto
 
 		bcastSkipGauge: bcastSkipGauge,
 		peerStore:      peerStore,
-		recvCounts:     make(map[peer.ID]int),
+		bcastTargets:   make(map[peer.ID]struct{}),
 		remotePeers:    make(map[peer.ID]struct{}),
 	}
 }
@@ -129,7 +129,7 @@ func (pwm *peerWantManager) removePeer(p peer.ID) {
 	})
 
 	delete(pwm.peerWants, p)
-	delete(pwm.recvCounts, p)
+	delete(pwm.bcastTargets, p)
 	delete(pwm.remotePeers, p)
 }
 
@@ -186,7 +186,7 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 
 func (pwm *peerWantManager) skipBroadcast(peerID peer.ID, peerQueue PeerQueue) bool {
 	// Broadcast to peer from which block(s) have been previously received.
-	if pwm.recvCounts[peerID] != 0 {
+	if _, ok := pwm.bcastTargets[peerID]; ok {
 		return false
 	}
 	if pwm.peerStore == nil {
@@ -195,8 +195,8 @@ func (pwm *peerWantManager) skipBroadcast(peerID peer.ID, peerQueue PeerQueue) b
 	}
 	// Broadcast to peers on local network.
 	if pwm.isLocalPeer(peerID) {
-		// Add to local peer's recv count avoid next isLocalPeer check.
-		pwm.recvCounts[peerID] = 1
+		// Add local peer to broadcast targets to avoid next isLocalPeer check.
+		pwm.bcastTargets[peerID] = struct{}{}
 		return false
 	}
 	// Broadcast to peers that have a pending message to piggyback on.
@@ -503,8 +503,8 @@ func (pwm *peerWantManager) getWants() []cid.Cid {
 	return res
 }
 
-func (pwm *peerWantManager) addBlocksReceivedCount(from peer.ID, n int) {
-	pwm.recvCounts[from]++
+func (pwm *peerWantManager) markBroadcastTarget(from peer.ID) {
+	pwm.bcastTargets[from] = struct{}{}
 }
 
 func (pwm *peerWantManager) String() string {
