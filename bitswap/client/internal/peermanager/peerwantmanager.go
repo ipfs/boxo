@@ -11,9 +11,17 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-// broadcastNonSenders is the number of peers, that have not previously send
-// and blocks, that a broadcast gets sent to.
-var broadcastNonSenders = 1
+const (
+	// broadcastNonSenders is the number of peers, that have not previously
+	// send and blocks, that a broadcast gets sent to.
+	broadcastNonSenders = 1
+	// boradcastLocalNet specifies whether or not to broadcast to peers on the
+	// local network.
+	boradcastLocalNet = true
+	// broadcastPendingMessages specifies whether or not to broadcast to peers
+	// that have a pending message to piggyback on.
+	broadcastPendingMessages = false
+)
 
 // Gauge can be used to keep track of a metric that increases and decreases
 // incrementally. It is used by the peerWantManager to track the number of
@@ -203,13 +211,13 @@ func (pwm *peerWantManager) skipBroadcast(peerID peer.ID, peerQueue PeerQueue) b
 		return false
 	}
 	// Broadcast to peers on local network.
-	if pwm.isLocalPeer(peerID) {
+	if boradcastLocalNet && pwm.isLocalPeer(peerID) {
 		// Add local peer to broadcast targets to avoid next isLocalPeer check.
 		pwm.markBroadcastTarget(peerID)
 		return false
 	}
 	// Broadcast to peers that have a pending message to piggyback on.
-	if peerQueue.HasMessage() {
+	if broadcastPendingMessages && peerQueue.HasMessage() {
 		return false
 	}
 	return true
