@@ -442,13 +442,25 @@ func loadTerminalEntity(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *
 		}
 
 		f := files.NewBytesFile(blockData)
+		size := int64(len(blockData))
+		from := int64(0)
 		if params.Range != nil && params.Range.From != 0 {
-			if _, err := f.Seek(params.Range.From, io.SeekStart); err != nil {
+			from = params.Range.From
+			if from < 0 { // negative range from the end of file
+				if params.Range.To != nil {
+					return nil, fmt.Errorf("invalid car backend range: negative start without a nil end")
+				}
+				from = size + from
+				if from < 0 {
+					return nil, fmt.Errorf("invalid car backend range: negative start bigger than the file size")
+				}
+			}
+			if _, err := f.Seek(from, io.SeekStart); err != nil {
 				return nil, err
 			}
 		}
 
-		return NewGetResponseFromReader(f, int64(len(blockData))), nil
+		return NewGetResponseFromReader(f, size), nil
 	}
 
 	blockData, pbn, ufsFieldData, fieldNum, err := loadUnixFSBase(ctx, c, blk, lsys)
@@ -554,6 +566,15 @@ func loadTerminalEntity(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *
 		if params.Range != nil {
 			from = params.Range.From
 			byteRange = *params.Range
+			if from < 0 { // negative range from the end of file
+				if params.Range.To != nil {
+					return nil, fmt.Errorf("invalid car backend range: negative start without a nil end")
+				}
+				from = fileSize + from
+				if from < 0 {
+					return nil, fmt.Errorf("invalid car backend range: negative start bigger than the file size")
+				}
+			}
 		}
 		_, err = f.Seek(from, io.SeekStart)
 		if err != nil {
