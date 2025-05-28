@@ -45,7 +45,7 @@ type peerWantManager struct {
 	bcastSkipGauge Gauge
 	peerStore      peerstore.Peerstore
 
-	bcastMutex   sync.RWMutex
+	bcastMutex   sync.Mutex
 	bcastTargets map[peer.ID]struct{}
 	remotePeers  map[peer.ID]struct{}
 }
@@ -191,9 +191,9 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 
 func (pwm *peerWantManager) skipBroadcast(peerID peer.ID, peerQueue PeerQueue) bool {
 	// Broadcast to peer from which block(s) have been previously received.
-	pwm.bcastMutex.RLock()
+	pwm.bcastMutex.Lock()
 	_, ok := pwm.bcastTargets[peerID]
-	pwm.bcastMutex.RUnlock()
+	pwm.bcastMutex.Unlock()
 
 	if ok {
 		return false
