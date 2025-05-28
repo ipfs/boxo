@@ -16,6 +16,19 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.31.0]
+
+### Added
+
 - `bitswap/httpnet`: New option `WithMaxDontHaveErrors(int)` (defaults to 100)
   will trigger disconnections from bitswap peers that cannot provide any of
   the blocks that are requested for the given number of requests in a
@@ -29,12 +42,6 @@ The following emojis are used to highlight certain changes:
 - deprecated `WithPeerLedger` option for bitswap server. Will remove option in next release. See [issue #928](https://github.com/ipfs/boxo/issues/928)
 - gateway: update backend car traversal to use go-car/v2 [#925](https://github.com/ipfs/boxo/issues/925)
   - This change may prohibit fetching DAGs from CAR files that have no roots.
-
-### Removed
-
-### Fixed
-
-### Security
 
 
 ## [v0.30.0]
