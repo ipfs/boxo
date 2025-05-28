@@ -503,10 +503,6 @@ func (pwm *peerWantManager) getWants() []cid.Cid {
 	return res
 }
 
-func (pwm *peerWantManager) markBroadcastTarget(from peer.ID) {
-	pwm.bcastTargets[from] = struct{}{}
-}
-
 func (pwm *peerWantManager) String() string {
 	var b strings.Builder
 	for p, ws := range pwm.peerWants {

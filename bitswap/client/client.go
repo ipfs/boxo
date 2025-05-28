@@ -167,6 +167,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		dupMetric:                   bmetrics.DupHist(ctx),
 		allMetric:                   bmetrics.AllHist(ctx),
 		havesReceivedGauge:          bmetrics.HavesReceivedGauge(ctx),
+		uniqueBlocksReceivedGauge:   bmetrics.UniqueBlocksReceivedGauge(ctx),
 		provSearchDelay:             defaults.ProvSearchDelay,
 		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout:  true,
@@ -286,7 +287,8 @@ type Client struct {
 	dupMetric metrics.Histogram
 	allMetric metrics.Histogram
 
-	havesReceivedGauge bspm.Gauge
+	havesReceivedGauge        bspm.Gauge
+	uniqueBlocksReceivedGauge bspm.Gauge
 
 	// External statistics interface
 	tracer tracer.Tracer
@@ -490,6 +492,8 @@ func (bs *Client) updateReceiveCounters(blocks []blocks.Block) {
 		if has {
 			c.dupBlocksRecvd++
 			c.dupDataRecvd += uint64(blkLen)
+		} else {
+			bs.uniqueBlocksReceivedGauge.Inc()
 		}
 	}
 }

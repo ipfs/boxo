@@ -48,3 +48,7 @@ func ActiveBlocksGauge(ctx context.Context) metrics.Gauge {
 func HavesReceivedGauge(ctx context.Context) metrics.Gauge {
 	return metrics.NewCtx(ctx, "haves_received", "Number of have blocks received.").Gauge()
 }
+
+func UniqueBlocksReceivedGauge(ctx context.Context) metrics.Gauge {
+	return metrics.NewCtx(ctx, "unique_blocks_received", "Number of unique blocks received.").Gauge()
+}

@@ -243,7 +243,7 @@ func (pm *PeerManager) MarkBroadcastTarget(from peer.ID) {
 	pm.psLk.Lock()
 	defer pm.psLk.Unlock()
 
-	pm.pwm.markBroadcastTarget(from)
+	pm.pwm.bcastTargets[from] = struct{}{}
 }
 
 // signalAvailability is called when a peer's connectivity changes.
