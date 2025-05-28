@@ -387,6 +387,8 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	default:
 	}
 
+	bs.pm.AddBlocksReceivedCount(from, len(blks)+len(haves))
+
 	wanted, notWanted := bs.sim.SplitWantedUnwanted(blks)
 	if log.Level().Enabled(zapcore.DebugLevel) {
 		for _, b := range notWanted {
@@ -419,8 +421,6 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	for _, b := range wanted {
 		bs.notif.Publish(from, b)
 	}
-
-	bs.pm.AddBlocksReceivedCount(from, len(wanted))
 
 	return nil
 }
