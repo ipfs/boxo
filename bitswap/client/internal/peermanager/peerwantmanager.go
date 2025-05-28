@@ -3,6 +3,7 @@ package peermanager
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p/core/peer"
@@ -44,6 +45,7 @@ type peerWantManager struct {
 	bcastSkipGauge Gauge
 	peerStore      peerstore.Peerstore
 
+	bcastMutex   sync.RWMutex
 	bcastTargets map[peer.ID]struct{}
 	remotePeers  map[peer.ID]struct{}
 }
@@ -129,8 +131,11 @@ func (pwm *peerWantManager) removePeer(p peer.ID) {
 	})
 
 	delete(pwm.peerWants, p)
-	delete(pwm.bcastTargets, p)
 	delete(pwm.remotePeers, p)
+
+	pwm.bcastMutex.Lock()
+	delete(pwm.bcastTargets, p)
+	pwm.bcastMutex.Unlock()
 }
 
 // broadcastWantHaves sends want-haves to any peers that have not yet been sent them.
@@ -186,7 +191,11 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 
 func (pwm *peerWantManager) skipBroadcast(peerID peer.ID, peerQueue PeerQueue) bool {
 	// Broadcast to peer from which block(s) have been previously received.
-	if _, ok := pwm.bcastTargets[peerID]; ok {
+	pwm.bcastMutex.RLock()
+	_, ok := pwm.bcastTargets[peerID]
+	pwm.bcastMutex.RUnlock()
+
+	if ok {
 		return false
 	}
 	if pwm.peerStore == nil {
@@ -196,7 +205,7 @@ func (pwm *peerWantManager) skipBroadcast(peerID peer.ID, peerQueue PeerQueue) b
 	// Broadcast to peers on local network.
 	if pwm.isLocalPeer(peerID) {
 		// Add local peer to broadcast targets to avoid next isLocalPeer check.
-		pwm.bcastTargets[peerID] = struct{}{}
+		pwm.markBroadcastTarget(peerID)
 		return false
 	}
 	// Broadcast to peers that have a pending message to piggyback on.
@@ -204,6 +213,12 @@ func (pwm *peerWantManager) skipBroadcast(peerID peer.ID, peerQueue PeerQueue) b
 		return false
 	}
 	return true
+}
+
+func (pwm *peerWantManager) markBroadcastTarget(peerID peer.ID) {
+	pwm.bcastMutex.Lock()
+	pwm.bcastTargets[peerID] = struct{}{}
+	pwm.bcastMutex.Unlock()
 }
 
 func (pwm *peerWantManager) isLocalPeer(peerID peer.ID) bool {
