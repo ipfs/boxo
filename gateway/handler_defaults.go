@@ -52,7 +52,7 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 	case http.MethodGet:
 		rangeHeader := r.Header.Get("Range")
 		if rangeHeader != "" {
-			// TODO: Add tests for range parsing
+			// Note: proper tests for Range parsing live in https://github.com/ipfs/gateway-conformance
 			ranges, err = parseRangeWithoutLength(rangeHeader)
 			if err != nil {
 				i.webError(w, r, fmt.Errorf("invalid range request: %w", err), http.StatusBadRequest)
