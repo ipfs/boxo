@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+* Improvements to support WASM builds
+
 ### Security
 
 
