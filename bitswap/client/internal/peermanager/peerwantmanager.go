@@ -12,6 +12,8 @@ import (
 )
 
 const (
+	// boradcastLess enabled or disabled boradcast reduction logic.
+	broadcastLess = true
 	// broadcastNonSenders is the number of peers, that have not previously
 	// send and blocks, that a broadcast gets sent to.
 	broadcastNonSenders = 1
@@ -175,7 +177,7 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 
 	// Send broadcast wants to each peer
 	for p, pws := range pwm.peerWants {
-		if pwm.skipBroadcast(p, pws.peerQueue) {
+		if broadcastLess && pwm.skipBroadcast(p, pws.peerQueue) {
 			if bcastNonSenders == 0 {
 				pwm.bcastSkipGauge.Inc()
 				continue
