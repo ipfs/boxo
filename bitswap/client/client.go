@@ -166,6 +166,8 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		counters:                    new(counters),
 		dupMetric:                   bmetrics.DupHist(ctx),
 		allMetric:                   bmetrics.AllHist(ctx),
+		havesReceivedGauge:          bmetrics.HavesReceivedGauge(ctx),
+		uniqueBlocksReceivedGauge:   bmetrics.UniqueBlocksReceivedGauge(ctx),
 		provSearchDelay:             defaults.ProvSearchDelay,
 		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout:  true,
@@ -201,7 +203,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
-	pm := bspm.New(ctx, peerQueueFactory)
+	pm := bspm.New(ctx, peerQueueFactory, network.GetPeerstore())
 
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
@@ -237,7 +239,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		} else if providerFinder != nil {
 			sessionProvFinder = providerFinder
 		}
-		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
+		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self, bs.havesReceivedGauge)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
 		return bsspm.New(id, network)
@@ -284,6 +286,9 @@ type Client struct {
 	// Metrics interface metrics
 	dupMetric metrics.Histogram
 	allMetric metrics.Histogram
+
+	havesReceivedGauge        bspm.Gauge
+	uniqueBlocksReceivedGauge bspm.Gauge
 
 	// External statistics interface
 	tracer tracer.Tracer
@@ -382,6 +387,10 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	case <-bs.closing:
 		return errors.New("bitswap is closed")
 	default:
+	}
+
+	if len(blks) != 0 || len(haves) != 0 {
+		bs.pm.MarkBroadcastTarget(from)
 	}
 
 	wanted, notWanted := bs.sim.SplitWantedUnwanted(blks)
@@ -483,6 +492,8 @@ func (bs *Client) updateReceiveCounters(blocks []blocks.Block) {
 		if has {
 			c.dupBlocksRecvd++
 			c.dupDataRecvd += uint64(blkLen)
+		} else {
+			bs.uniqueBlocksReceivedGauge.Inc()
 		}
 	}
 }

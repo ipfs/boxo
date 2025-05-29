@@ -18,6 +18,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `bitswap/client`: Reduce bitswap broadcast volume by limiting broadcasts to peers that have previously responded as having wanted blocks and peers on local network.
+
 ### Removed
 
 - `bitswap/server` do not allow override of peer ledger with `WithPeerLedger` [#938](https://github.com/ipfs/boxo/pull/938)

@@ -44,3 +44,11 @@ func PendingBlocksGauge(ctx context.Context) metrics.Gauge {
 func ActiveBlocksGauge(ctx context.Context) metrics.Gauge {
 	return metrics.NewCtx(ctx, "active_block_tasks", "Total number of active blockstore tasks").Gauge()
 }
+
+func HavesReceivedGauge(ctx context.Context) metrics.Gauge {
+	return metrics.NewCtx(ctx, "haves_received", "Number of have blocks received.").Gauge()
+}
+
+func UniqueBlocksReceivedGauge(ctx context.Context) metrics.Gauge {
+	return metrics.NewCtx(ctx, "unique_blocks_received", "Number of unique blocks received.").Gauge()
+}
