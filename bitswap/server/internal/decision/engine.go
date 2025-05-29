@@ -120,47 +120,6 @@ type ScoreLedger interface {
 	Stop()
 }
 
-type PeerEntry struct {
-	Peer     peer.ID
-	Priority int32
-	WantType pb.Message_Wantlist_WantType
-}
-
-// PeerLedger is an external ledger dealing with peers and their want lists.
-type PeerLedger interface {
-	// Wants informs the ledger that [peer.ID] wants [wl.Entry].
-	// If peer ledger exceed internal limit, then the entry is not added
-	// and false is returned.
-	Wants(p peer.ID, e wl.Entry) bool
-
-	// CancelWant returns true if the [cid.Cid] was removed from the wantlist of [peer.ID].
-	CancelWant(p peer.ID, k cid.Cid) bool
-
-	// CancelWantWithType will not cancel WantBlock if we sent a HAVE message.
-	CancelWantWithType(p peer.ID, k cid.Cid, typ pb.Message_Wantlist_WantType)
-
-	// Peers returns all peers that want [cid.Cid].
-	Peers(k cid.Cid) []PeerEntry
-
-	// CollectPeerIDs returns all peers that the ledger has an active session with.
-	CollectPeerIDs() []peer.ID
-
-	// WantlistSizeForPeer returns the size of the wantlist for [peer.ID].
-	WantlistSizeForPeer(p peer.ID) int
-
-	// WantlistForPeer returns the wantlist for [peer.ID].
-	WantlistForPeer(p peer.ID) []wl.Entry
-
-	// ClearPeerWantlist clears the wantlist for [peer.ID].
-	ClearPeerWantlist(p peer.ID)
-
-	// PeerDisconnected informs the ledger that [peer.ID] is no longer connected.
-	PeerDisconnected(p peer.ID)
-
-	// HasPeer checks if the ledger has an active session with the given peer.
-	HasPeer(p peer.ID) bool
-}
-
 // Engine manages sending requested blocks to peers.
 type Engine struct {
 	// peerRequestQueue is a priority queue of requests received from peers.
@@ -188,7 +147,7 @@ type Engine struct {
 	lock sync.RWMutex // protects the fields immediately below
 
 	// peerLedger saves which peers are waiting for a Cid
-	peerLedger PeerLedger
+	peerLedger *peerLedger
 
 	// an external ledger dealing with peer scores
 	scoreLedger ScoreLedger
@@ -277,15 +236,6 @@ func WithTargetMessageSize(size int) Option {
 func WithScoreLedger(scoreledger ScoreLedger) Option {
 	return func(e *Engine) {
 		e.scoreLedger = scoreledger
-	}
-}
-
-// WithPeerLedger sets a custom [PeerLedger] to be used with this [Engine].
-//
-// Deprecated: This is no longer needed and will be removed.
-func WithPeerLedger(peerLedger PeerLedger) Option {
-	return func(e *Engine) {
-		e.peerLedger = peerLedger
 	}
 }
 
@@ -417,10 +367,7 @@ func NewEngine(
 		opt(e)
 	}
 
-	// If peerLedger was not set by option, then create a default instance.
-	if e.peerLedger == nil {
-		e.peerLedger = NewDefaultPeerLedger(e.maxQueuedWantlistEntriesPerPeer)
-	}
+	e.peerLedger = newPeerLedger(e.maxQueuedWantlistEntriesPerPeer)
 
 	e.bsm = newBlockstoreManager(bs, e.bstoreWorkerCount, bmetrics.PendingBlocksGauge(ctx), bmetrics.ActiveBlocksGauge(ctx))
 
