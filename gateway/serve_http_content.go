@@ -112,6 +112,11 @@ func httpServeContent(w http.ResponseWriter, r *http.Request, modtime time.Time,
 		w.Header().Set("Content-Length", strconv.FormatInt(sendSize, 10))
 	}
 
+	if contentType := w.Header().Get("Content-Type"); contentType == "" {
+		// Ensure empty string is not returned as value
+		delete(w.Header(), "Content-Type")
+	}
+
 	w.WriteHeader(code)
 
 	if r.Method != http.MethodHead {
@@ -455,7 +460,7 @@ func sumRangesSize(ranges []httpRange) (size int64) {
 }
 
 // seekToStartOfFirstRange seeks to the start of the first Range if the request is an HTTP Range Request
-func (i *handler) seekToStartOfFirstRange(w http.ResponseWriter, r *http.Request, data io.Seeker) bool {
+func (i *handler) seekToStartOfFirstRange(w http.ResponseWriter, r *http.Request, data io.Seeker, size int64) bool {
 	rangeHeader := r.Header.Get("Range")
 	if rangeHeader != "" {
 		ranges, err := parseRangeWithoutLength(rangeHeader)
@@ -465,7 +470,7 @@ func (i *handler) seekToStartOfFirstRange(w http.ResponseWriter, r *http.Request
 		}
 		if len(ranges) > 0 {
 			ra := &ranges[0]
-			err = seekToRangeStart(data, ra)
+			err = seekToRangeStart(data, ra, size)
 			if err != nil {
 				i.webError(w, r, fmt.Errorf("could not seek to location in range request: %w", err), http.StatusBadRequest)
 				return false
@@ -475,9 +480,21 @@ func (i *handler) seekToStartOfFirstRange(w http.ResponseWriter, r *http.Request
 	return true
 }
 
-func seekToRangeStart(data io.Seeker, ra *ByteRange) error {
+func seekToRangeStart(data io.Seeker, ra *ByteRange, size int64) error {
 	if ra != nil && ra.From != 0 {
-		if _, err := data.Seek(int64(ra.From), io.SeekStart); err != nil {
+		start := int64(0)
+		if ra.From < 0 {
+			if ra.To != nil {
+				return fmt.Errorf("invalid range: negative start without a nil end")
+			}
+			start = size + ra.From
+			if start < 0 {
+				return fmt.Errorf("invalid range: negative start bigger than the file size")
+			}
+		} else {
+			start = ra.From
+		}
+		if _, err := data.Seek(start, io.SeekStart); err != nil {
 			return err
 		}
 	}
