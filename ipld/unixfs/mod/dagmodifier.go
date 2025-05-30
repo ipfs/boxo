@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"time"
 
 	chunker "github.com/ipfs/boxo/chunker"
@@ -291,8 +293,22 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (cid.Cid, error) {
 			}
 
 			// copy remaining data
-			offsetPlusN := int(offset) + n
-			if offsetPlusN < len(origData) {
+
+			// calculate offsetPlusN in uint64 to avoid overflow in int
+			offsetPlusN := offset + uint64(n)
+
+			// check if offsetPlusN exceeds the maximum value of int to prevent overflow
+			// when converting to int for slice indexing. On 32-bit systems, math.MaxInt
+			// is 2^31-1 (~2.14 billion); on 64-bit systems, it’s 2^63-1. This ensures
+			// safe conversion for Go's slice indexing, which requires int.
+			// See: https://github.com/ipfs/boxo/security/code-scanning/7
+			if offsetPlusN > uint64(math.MaxInt) {
+				return cid.Cid{}, fmt.Errorf("offset %d exceeds max int", offsetPlusN)
+			}
+
+			// Convert to int for slice indexing and check against origData length
+			// to ensure we don’t access out-of-bounds data.
+			if int(offsetPlusN) < len(origData) {
 				copy(bytes[offsetPlusN:], origData[offsetPlusN:])
 			}
 
