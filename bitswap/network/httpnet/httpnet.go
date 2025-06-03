@@ -31,7 +31,7 @@ import (
 var log = logging.Logger("httpnet")
 
 var ErrNoHTTPAddresses = errors.New("AddrInfo does not contain any valid HTTP addresses")
-var ErrNoSuccess = errors.New("none of the peer HTTP endpoints responded successfully to request")
+var ErrNoSuccess = errors.New("connection failed to all HTTP endpoints")
 var ErrNotConnected = errors.New("no HTTP connection has been setup to this peer")
 
 var _ network.BitSwapNetwork = (*Network)(nil)
@@ -388,6 +388,19 @@ func (ht *Network) Self() peer.ID {
 	return ht.host.ID()
 }
 
+func connectError(errs map[*network.ParsedURL]error) error {
+	if len(errs) == 0 {
+		return ErrNoHTTPAddresses
+	}
+
+	finalErr := ErrNoSuccess
+	for u, err := range errs {
+		finalErr = fmt.Errorf("%w\n* [%s: %s]", finalErr, u.Multiaddress.String(), err)
+	}
+
+	return finalErr
+}
+
 // Connect attempts setting up an HTTP connection to the given peer. The given
 // AddrInfo must include at least one HTTP endpoint for the peer. HTTP URLs in
 // AddrInfo will be tried by making an HTTP GET request to
@@ -411,6 +424,8 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 	urls := network.ExtractURLsFromPeer(pi)
 
+	errsMap := make(map[*network.ParsedURL]error)
+
 	// Filter addresses based on allow and denylists
 	var filteredURLs []network.ParsedURL
 	for _, u := range urls {
@@ -426,11 +441,13 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		_, denied := ht.denylist[host]
 		if allowed && !denied {
 			filteredURLs = append(filteredURLs, u)
+		} else {
+			errsMap[&u] = errors.New("address not allowed per allow/denylist")
 		}
 	}
 	urls = filteredURLs
 	if len(urls) == 0 {
-		return ErrNoHTTPAddresses
+		return connectError(errsMap)
 	}
 	if len(urls) > ht.maxHTTPAddressesPerPeer {
 		urls = urls[0:ht.maxHTTPAddressesPerPeer]
@@ -446,9 +463,10 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		// If head works we assume GET works too.
 		err := ht.connectToURL(ctx, pi.ID, u, "HEAD")
 		if err != nil {
+			errsMap[&u] = err
 			// abort if context cancelled
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				return ctxErr
+				return connectError(errsMap)
 			}
 		} else {
 			workingAddrs = append(workingAddrs, u.Multiaddress)
@@ -460,9 +478,9 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 		err = ht.connectToURL(ctx, pi.ID, u, "GET")
 		if err != nil {
-			// abort if context cancelled
+			errsMap[&u] = err
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return err
+				return connectError(errsMap)
 			}
 			continue
 		}
@@ -471,7 +489,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 	// Bail out if no working urls found.
 	if len(workingAddrs) == 0 {
-		return fmt.Errorf("connect failure to %s: %w", p, ErrNoSuccess)
+		return connectError(errsMap)
 	}
 
 	// We have some working urls!

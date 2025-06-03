@@ -131,7 +131,9 @@ func mockNetwork(t *testing.T, recv network.Receiver, opts ...Option) (*Network,
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts = append(opts, WithInsecureSkipVerify(true))
+
+	// allow ovewrite of default options by prepending them
+	opts = append([]Option{WithInsecureSkipVerify(true)}, opts...)
 	htnet := New(h, opts...)
 	htnet.Start(recv)
 	return htnet.(*Network), mn
@@ -282,20 +284,25 @@ func srvMultiaddr(t *testing.T, srv *httptest.Server) multiaddr.Multiaddr {
 	return maddr.Encapsulate(httpma)
 }
 
-func connectToPeer(t *testing.T, ctx context.Context, htnet *Network, remote host.Host, srvs ...*httptest.Server) {
+func connectToPeer(t *testing.T, ctx context.Context, htnet *Network, remote host.Host, srvs ...*httptest.Server) error {
 	var addrs []multiaddr.Multiaddr
 	for _, srv := range srvs {
 		addrs = append(addrs, srvMultiaddr(t, srv))
 	}
 
-	err := htnet.Connect(
+	return htnet.Connect(
 		ctx,
 		peer.AddrInfo{
 			ID:    remote.ID(),
 			Addrs: addrs,
 		},
 	)
-	if err != nil {
+}
+
+func mustConnectToPeer(t *testing.T, ctx context.Context, htnet *Network, remote host.Host, srvs ...*httptest.Server) {
+	t.Helper()
+
+	if err := connectToPeer(t, ctx, htnet, remote, srvs...); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -308,7 +315,7 @@ func TestBestURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	msrv := makeServer(t, 0, 0)
-	connectToPeer(t, ctx, htnet, peer, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv)
 
 	nms, err := htnet.NewMessageSender(
 		ctx,
@@ -393,6 +400,48 @@ func TestBestURL(t *testing.T) {
 
 }
 
+func TestConnectErrors(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	msrv := makeServer(t, 0, 0)
+
+	htnet, mn := mockNetwork(t, recv,
+		WithInsecureSkipVerify(false),
+	)
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = connectToPeer(t, ctx, htnet, peer, msrv)
+	if err == nil {
+		t.Error("expected error")
+	}
+	t.Log(err)
+	if !strings.Contains(err.Error(), "failed to verify") {
+		t.Error("wrong error")
+	}
+
+	htnet2, mn2 := mockNetwork(t, recv,
+		WithDenylist([]string{"127.0.0.1"}),
+	)
+
+	peer2, err := mn2.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = connectToPeer(t, ctx, htnet2, peer2, msrv)
+	if err == nil {
+		t.Error("expected error")
+	}
+	t.Log(err)
+	if !strings.Contains(err.Error(), "denylist") {
+		t.Error("wrong error")
+	}
+
+}
+
 func TestSendMessage(t *testing.T) {
 	ctx := context.Background()
 	recv := mockReceiver(t)
@@ -402,7 +451,7 @@ func TestSendMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	msrv := makeServer(t, 0, 10)
-	connectToPeer(t, ctx, htnet, peer, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv)
 
 	wl := makeCids(t, 0, 10)
 	msg := makeWantsMessage(wl)
@@ -431,7 +480,7 @@ func TestSendMessageWithFailingServer(t *testing.T) {
 	}
 	msrv := makeServer(t, 0, 0)
 	msrv2 := makeServer(t, 0, 10)
-	connectToPeer(t, ctx, htnet, peer, msrv, msrv2)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv, msrv2)
 
 	wl := makeCids(t, 0, 10)
 	msg := makeWantsMessage(wl)
@@ -462,7 +511,7 @@ func TestSendMessageWithPartialResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	msrv := makeServer(t, 5, 10)
-	connectToPeer(t, ctx, htnet, peer, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv)
 
 	wl := makeCids(t, 0, 10)
 	msg := makeWantsMessage(wl)
@@ -497,7 +546,7 @@ func TestSendMessageSendHavesAndDontHaves(t *testing.T) {
 		t.Fatal(err)
 	}
 	msrv := makeServer(t, 0, 5)
-	connectToPeer(t, ctx, htnet, peer, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv)
 
 	wl := makeCids(t, 0, 10)
 	msg := makeHavesMessage(wl)
@@ -545,8 +594,8 @@ func TestBackOff(t *testing.T) {
 	}
 
 	msrv := makeServer(t, 0, 1)
-	connectToPeer(t, ctx, htnet, peer, msrv)
-	connectToPeer(t, ctx, htnet, peer2, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer2, msrv)
 
 	nms, err := htnet.NewMessageSender(ctx, peer.ID(), nil)
 	if err != nil {
@@ -598,7 +647,7 @@ func TestErrorTracking(t *testing.T) {
 	}
 
 	msrv := makeServer(t, 0, 0)
-	connectToPeer(t, ctx, htnet, peer, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv)
 
 	err = recv.waitConnected(1)
 	if err != nil {
