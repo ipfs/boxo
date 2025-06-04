@@ -52,3 +52,7 @@ func HavesReceivedGauge(ctx context.Context) metrics.Gauge {
 func UniqueBlocksReceivedGauge(ctx context.Context) metrics.Gauge {
 	return metrics.NewCtx(ctx, "unique_blocks_received", "Number of unique blocks received.").Gauge()
 }
+
+func BroadcastSkipGauge(ctx context.Context) metrics.Gauge {
+	return metrics.NewCtx(ctx, "bcast_skips_total", "Number of broadcasts to peers avoided.").Gauge()
+}

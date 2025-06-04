@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ipfs/boxo/bitswap"
+	"github.com/ipfs/boxo/bitswap/client"
 	iface "github.com/ipfs/boxo/bitswap/network"
 	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
 	tn "github.com/ipfs/boxo/bitswap/testnet"
@@ -23,6 +24,7 @@ import (
 // NewTestInstanceGenerator generates a new InstanceGenerator for the given
 // testnet
 func NewTestInstanceGenerator(net tn.Network, routing mockrouting.Server, netOptions []bsnet.NetOpt, bsOptions []bitswap.Option) InstanceGenerator {
+	bsOptions = append(bsOptions, bitswap.WithClientOption(client.WithBroadcastReduction(false)))
 	ctx, cancel := context.WithCancel(context.Background())
 	return InstanceGenerator{
 		net:        net,

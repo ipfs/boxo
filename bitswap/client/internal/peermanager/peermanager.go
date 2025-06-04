@@ -9,7 +9,6 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
 	peer "github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/peerstore"
 )
 
 var log = logging.Logger("bitswap/client/peermgr")
@@ -52,13 +51,13 @@ type PeerManager struct {
 }
 
 // New creates a new PeerManager, given a context and a peerQueueFactory.
-func New(ctx context.Context, createPeerQueue PeerQueueFactory, peerStore peerstore.Peerstore) *PeerManager {
+func New(ctx context.Context, createPeerQueue PeerQueueFactory, bcastConfig *BroadcastConfig) *PeerManager {
 	wantGauge := metrics.NewCtx(ctx, "wantlist_total", "Number of items in wantlist.").Gauge()
 	wantBlockGauge := metrics.NewCtx(ctx, "want_blocks_total", "Number of want-blocks in wantlist.").Gauge()
-	bcastSkipGauge := metrics.NewCtx(ctx, "bcast_skips_total", "Number of broadcasts to peers avoided.").Gauge()
+
 	return &PeerManager{
 		peerQueues:      make(map[peer.ID]PeerQueue),
-		pwm:             newPeerWantManager(wantGauge, wantBlockGauge, bcastSkipGauge, peerStore),
+		pwm:             newPeerWantManager(wantGauge, wantBlockGauge, bcastConfig),
 		createPeerQueue: createPeerQueue,
 		ctx:             ctx,
 

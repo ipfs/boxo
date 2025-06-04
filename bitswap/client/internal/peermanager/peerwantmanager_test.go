@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var bcastAlways *BroadcastConfig
+
 type gauge struct {
 	count int
 }
@@ -65,13 +67,13 @@ func clearSent(pqs map[peer.ID]PeerQueue) {
 }
 
 func TestEmpty(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{}, &gauge{}, &gauge{}, nil)
+	pwm := newPeerWantManager(&gauge{}, &gauge{}, bcastAlways)
 	require.Empty(t, pwm.getWantBlocks())
 	require.Empty(t, pwm.getWantHaves())
 }
 
 func TestPWMBroadcastWantHaves(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{}, &gauge{}, &gauge{}, nil)
+	pwm := newPeerWantManager(&gauge{}, &gauge{}, bcastAlways)
 
 	peers := random.Peers(3)
 	cids := random.Cids(2)
@@ -157,7 +159,7 @@ func TestPWMBroadcastWantHaves(t *testing.T) {
 }
 
 func TestPWMSendWants(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{}, &gauge{}, &gauge{}, nil)
+	pwm := newPeerWantManager(&gauge{}, &gauge{}, bcastAlways)
 
 	peers := random.Peers(2)
 	p0 := peers[0]
@@ -217,7 +219,7 @@ func TestPWMSendWants(t *testing.T) {
 }
 
 func TestPWMSendCancels(t *testing.T) {
-	pwm := newPeerWantManager(&gauge{}, &gauge{}, &gauge{}, nil)
+	pwm := newPeerWantManager(&gauge{}, &gauge{}, bcastAlways)
 
 	peers := random.Peers(2)
 	p0 := peers[0]
@@ -275,8 +277,7 @@ func TestPWMSendCancels(t *testing.T) {
 func TestStats(t *testing.T) {
 	g := &gauge{}
 	wbg := &gauge{}
-	bsg := &gauge{}
-	pwm := newPeerWantManager(g, wbg, bsg, nil)
+	pwm := newPeerWantManager(g, wbg, bcastAlways)
 
 	peers := random.Peers(2)
 	p0 := peers[0]
@@ -345,8 +346,7 @@ func TestStats(t *testing.T) {
 func TestStatsOverlappingWantBlockWantHave(t *testing.T) {
 	g := &gauge{}
 	wbg := &gauge{}
-	bsg := &gauge{}
-	pwm := newPeerWantManager(g, wbg, bsg, nil)
+	pwm := newPeerWantManager(g, wbg, bcastAlways)
 
 	peers := random.Peers(2)
 	p0 := peers[0]
@@ -377,8 +377,7 @@ func TestStatsOverlappingWantBlockWantHave(t *testing.T) {
 func TestStatsRemovePeerOverlappingWantBlockWantHave(t *testing.T) {
 	g := &gauge{}
 	wbg := &gauge{}
-	bsg := &gauge{}
-	pwm := newPeerWantManager(g, wbg, bsg, nil)
+	pwm := newPeerWantManager(g, wbg, bcastAlways)
 
 	peers := random.Peers(2)
 	p0 := peers[0]
