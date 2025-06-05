@@ -23,16 +23,18 @@ type Gauge interface {
 // default configuration and results in the minimum amount of broadcasts
 // without placing and hard limit on the number of broadcasts.
 type BroadcastConfig struct {
-	// LocalAlways is a Peerstore that is uses to determine if a peer is local
-	// and is so to always broadcast to it. If LocalAlways is nil, then remote
-	// and local peers are treated the same.
+	// LocalAlways is a Peerstore that is uses to determine if a peer is on the
+	// local network. If non nil, always boradcast to peers on the local
+	// network. If nil, apply broadcast reduction logic to peers on the local
+	// network the same as peers on other networks.
 	LocalAlways peerstore.Peerstore
-	// MaximumPeers is the hard limit on the number of peers to send broadcasts
-	// to. This applies even when AlwaysSend is true. A value of 0 means there
-	// is no limit.
-	MaximumPeers int
-	// SendSkipped is the number peers to broadcast to anyway, that
-	// otherwise would have been avoided by broadcase reduction logic.
+	// LimitPeers is the hard limit on the number of peers to send broadcasts
+	// to. A value of 0 means there is no limit.
+	LimitPeers int
+	// SendSkipped if the number peers to broadcast to anyway, that otherwise
+	// would have been skipped by broadcast reduction logic. Setting this to a
+	// non-zero value ensures at least this number of random peers receives a
+	// broadcast.
 	SendSkipped int
 	// SendWithPending, when true, sends broadcasts to peers that already have
 	// a pending message to send.
@@ -186,13 +188,13 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 	bcstWantsBuffer := make([]cid.Cid, 0, len(unsent))
 
 	var reduce bool
-	var bcastMaxPeers int
+	var bcastLimitPeers int
 	var sendSkipped int
 
 	// If broadcast reduction logic enabled.
 	if pwm.bcastConfig != nil {
 		reduce = true
-		bcastMaxPeers = pwm.bcastConfig.MaximumPeers
+		bcastLimitPeers = pwm.bcastConfig.LimitPeers
 		sendSkipped = pwm.bcastConfig.SendSkipped
 	}
 
@@ -218,9 +220,9 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 			pws.peerQueue.AddBroadcastWantHaves(peerUnsent)
 		}
 
-		if bcastMaxPeers > 0 {
-			bcastMaxPeers--
-			if bcastMaxPeers == 0 {
+		if bcastLimitPeers > 0 {
+			bcastLimitPeers--
+			if bcastLimitPeers == 0 {
 				break
 			}
 		}

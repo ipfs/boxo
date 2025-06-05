@@ -213,7 +213,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 	var bcastConfig *bspm.BroadcastConfig
 	if bs.bcastReduction {
 		bcastConfig = &bspm.BroadcastConfig{
-			MaximumPeers:    bs.bcastLimitPeers,
+			LimitPeers:      bs.bcastLimitPeers,
 			SendSkipped:     bs.bcastSendSkipped,
 			SendWithPending: bs.bcastSendWithPending,
 			SkipGauge:       bmetrics.BroadcastSkipGauge(ctx),
