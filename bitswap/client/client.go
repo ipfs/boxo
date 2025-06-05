@@ -137,6 +137,36 @@ func WithDefaultProviderQueryManager(defaultProviderQueryManager bool) Option {
 	}
 }
 
+func WithBroadcastReduction(enable bool) Option {
+	return func(bs *Client) {
+		bs.bcastReduction = enable
+	}
+}
+
+func WithBroadcastReduceLocal(enable bool) Option {
+	return func(bs *Client) {
+		bs.bcastReduceLocal = enable
+	}
+}
+
+func WithBroadcastSendSkipped(n int) Option {
+	return func(bs *Client) {
+		bs.bcastSendSkipped = n
+	}
+}
+
+func WithBroadcastLimitPeers(limit int) Option {
+	return func(bs *Client) {
+		bs.bcastLimitPeers = limit
+	}
+}
+
+func WithBroadcastSendWithPending(enable bool) Option {
+	return func(bs *Client) {
+		bs.bcastSendWithPending = enable
+	}
+}
+
 type BlockReceivedNotifier interface {
 	// ReceivedBlocks notifies the decision engine that a peer is well-behaving
 	// and gave us useful data, potentially increasing its score and making us
@@ -166,15 +196,31 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		counters:                    new(counters),
 		dupMetric:                   bmetrics.DupHist(ctx),
 		allMetric:                   bmetrics.AllHist(ctx),
+		havesReceivedGauge:          bmetrics.HavesReceivedGauge(ctx),
+		uniqueBlocksReceivedGauge:   bmetrics.UniqueBlocksReceivedGauge(ctx),
 		provSearchDelay:             defaults.ProvSearchDelay,
 		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout:  true,
 		defaultProviderQueryManager: true,
+		bcastReduction:              true,
 	}
 
 	// apply functional options before starting and running bitswap
 	for _, option := range options {
 		option(bs)
+	}
+
+	var bcastConfig *bspm.BroadcastConfig
+	if bs.bcastReduction {
+		bcastConfig = &bspm.BroadcastConfig{
+			LimitPeers:      bs.bcastLimitPeers,
+			SendSkipped:     bs.bcastSendSkipped,
+			SendWithPending: bs.bcastSendWithPending,
+			SkipGauge:       bmetrics.BroadcastSkipGauge(ctx),
+		}
+		if !bs.bcastReduceLocal {
+			bcastConfig.LocalAlways = network.GetPeerstore()
+		}
 	}
 
 	// onDontHaveTimeout is called when a want-block is sent to a peer that
@@ -201,7 +247,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
-	pm := bspm.New(ctx, peerQueueFactory)
+	pm := bspm.New(ctx, peerQueueFactory, bcastConfig)
 
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
@@ -237,7 +283,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		} else if providerFinder != nil {
 			sessionProvFinder = providerFinder
 		}
-		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
+		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self, bs.havesReceivedGauge)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
 		return bsspm.New(id, network)
@@ -285,6 +331,9 @@ type Client struct {
 	dupMetric metrics.Histogram
 	allMetric metrics.Histogram
 
+	havesReceivedGauge        bspm.Gauge
+	uniqueBlocksReceivedGauge bspm.Gauge
+
 	// External statistics interface
 	tracer tracer.Tracer
 
@@ -311,6 +360,12 @@ type Client struct {
 	skipDuplicatedBlocksStats bool
 
 	perPeerSendDelay time.Duration
+
+	bcastReduction       bool
+	bcastReduceLocal     bool
+	bcastLimitPeers      int
+	bcastSendSkipped     int
+	bcastSendWithPending bool
 }
 
 type counters struct {
@@ -382,6 +437,10 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	case <-bs.closing:
 		return errors.New("bitswap is closed")
 	default:
+	}
+
+	if len(blks) != 0 || len(haves) != 0 {
+		bs.pm.MarkBroadcastTarget(from)
 	}
 
 	wanted, notWanted := bs.sim.SplitWantedUnwanted(blks)
@@ -483,6 +542,8 @@ func (bs *Client) updateReceiveCounters(blocks []blocks.Block) {
 		if has {
 			c.dupBlocksRecvd++
 			c.dupDataRecvd += uint64(blkLen)
+		} else {
+			bs.uniqueBlocksReceivedGauge.Inc()
 		}
 	}
 }

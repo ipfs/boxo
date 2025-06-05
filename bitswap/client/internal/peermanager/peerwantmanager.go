@@ -3,9 +3,12 @@ package peermanager
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // Gauge can be used to keep track of a metric that increases and decreases
@@ -14,6 +17,31 @@ import (
 type Gauge interface {
 	Inc()
 	Dec()
+}
+
+// BroadcastConfig contains broadcast reduction settings. The zero-value is the
+// default configuration and results in the minimum amount of broadcasts
+// without placing and hard limit on the number of broadcasts.
+type BroadcastConfig struct {
+	// LocalAlways is a Peerstore that is uses to determine if a peer is on the
+	// local network. If non nil, always boradcast to peers on the local
+	// network. If nil, apply broadcast reduction logic to peers on the local
+	// network the same as peers on other networks.
+	LocalAlways peerstore.Peerstore
+	// LimitPeers is the hard limit on the number of peers to send broadcasts
+	// to. A value of 0 means there is no limit.
+	LimitPeers int
+	// SendSkipped if the number peers to broadcast to anyway, that otherwise
+	// would have been skipped by broadcast reduction logic. Setting this to a
+	// non-zero value ensures at least this number of random peers receives a
+	// broadcast.
+	SendSkipped int
+	// SendWithPending, when true, sends broadcasts to peers that already have
+	// a pending message to send.
+	SendWithPending bool
+	// SkipGauge overrides the Gauge that tracks the number of broadcasts
+	// skipped by broadcast reduction logic.
+	SkipGauge Gauge
 }
 
 // peerWantManager keeps track of which want-haves and want-blocks have been
@@ -34,6 +62,11 @@ type peerWantManager struct {
 	wantGauge Gauge
 	// Keeps track of the number of active want-blocks
 	wantBlockGauge Gauge
+
+	bcastConfig  *BroadcastConfig
+	bcastMutex   sync.Mutex
+	bcastTargets map[peer.ID]struct{}
+	remotePeers  map[peer.ID]struct{}
 }
 
 type peerWant struct {
@@ -44,14 +77,22 @@ type peerWant struct {
 
 // New creates a new peerWantManager with a Gauge that keeps track of the
 // number of active want-blocks (ie sent but no response received)
-func newPeerWantManager(wantGauge Gauge, wantBlockGauge Gauge) *peerWantManager {
-	return &peerWantManager{
+func newPeerWantManager(wantGauge, wantBlockGauge Gauge, bcastConfig *BroadcastConfig) *peerWantManager {
+	pwm := &peerWantManager{
 		broadcastWants: cid.NewSet(),
 		peerWants:      make(map[peer.ID]*peerWant),
 		wantPeers:      make(map[cid.Cid]map[peer.ID]struct{}),
 		wantGauge:      wantGauge,
 		wantBlockGauge: wantBlockGauge,
 	}
+
+	if bcastConfig != nil {
+		pwm.bcastConfig = bcastConfig
+		pwm.bcastTargets = make(map[peer.ID]struct{})
+		pwm.remotePeers = make(map[peer.ID]struct{})
+	}
+
+	return pwm
 }
 
 // addPeer adds a peer whose wants we need to keep track of. It sends the
@@ -112,6 +153,13 @@ func (pwm *peerWantManager) removePeer(p peer.ID) {
 	})
 
 	delete(pwm.peerWants, p)
+	delete(pwm.remotePeers, p)
+
+	if pwm.bcastTargets != nil {
+		pwm.bcastMutex.Lock()
+		delete(pwm.bcastTargets, p)
+		pwm.bcastMutex.Unlock()
+	}
 }
 
 // broadcastWantHaves sends want-haves to any peers that have not yet been sent them.
@@ -139,8 +187,27 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 	// Allocate a single buffer to filter broadcast wants for each peer
 	bcstWantsBuffer := make([]cid.Cid, 0, len(unsent))
 
+	var reduce bool
+	var bcastLimitPeers int
+	var sendSkipped int
+
+	// If broadcast reduction logic enabled.
+	if pwm.bcastConfig != nil {
+		reduce = true
+		bcastLimitPeers = pwm.bcastConfig.LimitPeers
+		sendSkipped = pwm.bcastConfig.SendSkipped
+	}
+
 	// Send broadcast wants to each peer
-	for _, pws := range pwm.peerWants {
+	for p, pws := range pwm.peerWants {
+		if reduce && pwm.skipBroadcast(p, pws.peerQueue) {
+			if sendSkipped == 0 {
+				pwm.bcastConfig.SkipGauge.Inc()
+				continue
+			}
+			sendSkipped--
+		}
+
 		peerUnsent := bcstWantsBuffer[:0]
 		for _, c := range unsent {
 			// If we've already sent a want to this peer, skip them.
@@ -152,7 +219,65 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 		if len(peerUnsent) > 0 {
 			pws.peerQueue.AddBroadcastWantHaves(peerUnsent)
 		}
+
+		if bcastLimitPeers > 0 {
+			bcastLimitPeers--
+			if bcastLimitPeers == 0 {
+				break
+			}
+		}
 	}
+}
+
+func (pwm *peerWantManager) skipBroadcast(peerID peer.ID, peerQueue PeerQueue) bool {
+	// Broadcast to peer from which block(s) have been previously received.
+	pwm.bcastMutex.Lock()
+	_, ok := pwm.bcastTargets[peerID]
+	pwm.bcastMutex.Unlock()
+	if ok {
+		return false
+	}
+
+	// Broadcast to peers on local network.
+	if pwm.isLocalPeer(peerID) {
+		// Add local peer to broadcast targets to avoid next isLocalPeer check.
+		pwm.bcastMutex.Lock()
+		pwm.bcastTargets[peerID] = struct{}{}
+		pwm.bcastMutex.Unlock()
+		return false
+	}
+
+	// Broadcast to peers that have a pending message to piggyback on.
+	if pwm.bcastConfig.SendWithPending && peerQueue.HasMessage() {
+		return false
+	}
+	return true
+}
+
+func (pwm *peerWantManager) markBroadcastTarget(peerID peer.ID) {
+	if pwm.bcastTargets == nil {
+		return
+	}
+	pwm.bcastMutex.Lock()
+	pwm.bcastTargets[peerID] = struct{}{}
+	pwm.bcastMutex.Unlock()
+}
+
+func (pwm *peerWantManager) isLocalPeer(peerID peer.ID) bool {
+	if pwm.bcastConfig.LocalAlways == nil {
+		return false
+	}
+	if _, ok := pwm.remotePeers[peerID]; ok {
+		return false
+	}
+	addrs := pwm.bcastConfig.LocalAlways.Addrs(peerID)
+	for _, addr := range addrs {
+		if manet.IsPrivateAddr(addr) {
+			return true
+		}
+	}
+	pwm.remotePeers[peerID] = struct{}{}
+	return false
 }
 
 // sendWants only sends the peer the want-blocks and want-haves that have not
