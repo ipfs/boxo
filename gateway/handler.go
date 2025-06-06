@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ipfs/boxo/gateway/assets"
@@ -68,7 +69,83 @@ type handler struct {
 //
 // [IPFS HTTP Gateway]: https://specs.ipfs.tech/http-gateways/
 func NewHandler(c Config, backend IPFSBackend) http.Handler {
-	return newHandlerWithMetrics(&c, backend)
+	handler := newHandlerWithMetrics(&c, backend)
+
+	// Use the configured timeout or fall back to a default value
+	timeout := c.ResponseWriteTimeout
+	if timeout == 0 {
+		timeout = 30 * time.Second // Default timeout of 30 seconds
+	}
+
+	// Apply the timeout middleware
+	return WithResponseWriteTimeout(handler, timeout)
+}
+
+// timeoutResponseWriter implements http.ResponseWriter with timeout control
+type timeoutResponseWriter struct {
+	http.ResponseWriter                    // Embedded standard response writer
+	timer               *time.Timer        // Timeout tracking mechanism
+	timeout             time.Duration      // Configured timeout duration
+	mu                  sync.Mutex         // Mutex for concurrent access protection
+	done                bool               // Completion state flag
+	requestCtx          context.Context    // Original request context
+	cancel              context.CancelFunc // Context cancellation handler
+}
+
+// Write implements io.Writer interface with timeout reset functionality
+func (w *timeoutResponseWriter) Write(data []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.done {
+		return 0, http.ErrHandlerTimeout
+	}
+
+	// Reset timer on successful write attempt
+	w.timer.Reset(w.timeout)
+	return w.ResponseWriter.Write(data)
+}
+
+// cancelRequest handles timeout termination sequence
+func (w *timeoutResponseWriter) cancelRequest() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if !w.done {
+		w.done = true
+		w.cancel() // Propagate context cancellation
+		w.ResponseWriter.WriteHeader(http.StatusGatewayTimeout)
+	}
+}
+
+// WithResponseWriteTimeout creates middleware for response write timeout handling
+func WithResponseWriteTimeout(next http.Handler, timeout time.Duration) http.Handler {
+	return http.HandlerFunc(func(origWriter http.ResponseWriter, r *http.Request) {
+		// Create derived context with cancellation capability
+		ctx, cancel := context.WithCancel(r.Context())
+
+		// Initialize enhanced response writer
+		tw := &timeoutResponseWriter{
+			ResponseWriter: origWriter,
+			timeout:        timeout,
+			timer:          time.NewTimer(timeout),
+			requestCtx:     ctx,
+			cancel:         cancel,
+		}
+		defer tw.timer.Stop() // Ensure timer resource cleanup
+
+		// Concurrent timeout monitor
+		go func() {
+			select {
+			case <-tw.timer.C: // Timeout expiration
+				tw.cancelRequest()
+			case <-ctx.Done(): // Normal completion
+			}
+		}()
+
+		// Execute handler chain with wrapped context
+		next.ServeHTTP(tw, r.WithContext(ctx))
+	})
 }
 
 // serveContent replies to the request using the content in the provided Reader
