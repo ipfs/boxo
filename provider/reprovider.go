@@ -367,7 +367,7 @@ func (s *reprovider) waitUntilProvideSystemReady() {
 				ticker = time.NewTicker(time.Minute)
 				defer ticker.Stop()
 			}
-			log.Debugf("reprovider system not ready")
+			log.Infof("reprovider system not ready, waiting 1m")
 			select {
 			case <-ticker.C:
 			case <-s.ctx.Done():
@@ -454,16 +454,16 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 
 		s.waitUntilProvideSystemReady()
 
-		log.Debugf("starting reprovide of %d keys", len(keys))
+		log.Infof("starting reprovide of %d keys", len(keys))
 		start := time.Now()
 		err := doProvideMany(s.ctx, s.rsys, keys)
 		if err != nil {
-			log.Debugf("reproviding failed %v", err)
+			log.Infof("reproviding failed %v", err)
 			continue
 		}
 		dur := time.Since(start)
 		recentAvgProvideDuration := dur / time.Duration(len(keys))
-		log.Debugf("finished reproviding %d keys. It took %v with an average of %v per provide", len(keys), dur, recentAvgProvideDuration)
+		log.Infof("finished reproviding %d keys. It took %v with an average of %v per provide", len(keys), dur, recentAvgProvideDuration)
 
 		totalProvideTime := time.Duration(s.totalReprovides) * s.avgReprovideDuration
 		s.statLk.Lock()
