@@ -415,7 +415,7 @@ func TestConnectErrors(t *testing.T) {
 
 	err = connectToPeer(t, ctx, htnet, peer, msrv)
 	if err == nil {
-		t.Error("expected error")
+		t.Fatal("expected error")
 	}
 	t.Log(err)
 	if !strings.Contains(err.Error(), "failed to verify") {
@@ -433,7 +433,7 @@ func TestConnectErrors(t *testing.T) {
 
 	err = connectToPeer(t, ctx, htnet2, peer2, msrv)
 	if err == nil {
-		t.Error("expected error")
+		t.Fatal("expected error")
 	}
 	t.Log(err)
 	if !strings.Contains(err.Error(), "denylist") {
