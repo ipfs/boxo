@@ -24,7 +24,9 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- Improvements to support WASM builds
 - `gateway`: Fixed suffix range-requests and updated tests to [gateway-conformance v0.8](https://github.com/ipfs/gateway-conformance/releases/tag/v0.8.0) [#922](https://github.com/ipfs/boxo/pull/922)
+
 
 ### Security
 
