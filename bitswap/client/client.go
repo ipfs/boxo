@@ -177,11 +177,11 @@ func WithBroadcastSendRandomPeers(n int) Option {
 	}
 }
 
-// SendWithPending, when true, sends broadcasts to any peers that already have
-// a pending message to send. Default is false. This sends broadcasts to many
-// more peers, but in a way that does not increase the number of separate
-// broadcast messages. There is still the increased cost of the recipients
-// having to process and respond to the broadcasts.
+// SendWithPending, if true, sends broadcasts to any peers that already have a
+// pending message to send. This sends broadcasts to many more peers, but in a
+// way that does not increase the number of separate broadcast messages. There
+// is still the increased cost of the recipients having to process and respond
+// to the broadcasts. Default is false.
 func WithBroadcastSendWithPending(enable bool) Option {
 	return func(bs *Client) {
 		bs.bcastSendWithPending = enable
