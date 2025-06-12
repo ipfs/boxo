@@ -23,21 +23,23 @@ type Gauge interface {
 // default configuration and results in the minimum amount of broadcasts
 // without placing and hard limit on the number of broadcasts.
 type BroadcastConfig struct {
-	// LocalAlways is a Peerstore that is used to determine if a peer is on the
-	// local network. If non nil, always broadcast to peers on the local
-	// network. If nil, apply broadcast reduction logic to peers on the local
-	// network the same as peers on other networks.
-	LocalAlways peerstore.Peerstore
 	// LimitPeers is the hard limit on the number of peers to send broadcasts
 	// to. A value of 0 means there is no limit.
 	LimitPeers int
-	// SendSkipped if the number peers to broadcast to anyway, that otherwise
-	// would have been skipped by broadcast reduction logic. Setting this to a
-	// non-zero value ensures at least this number of random peers receives a
-	// broadcast.
-	SendSkipped int
-	// SendWithPending, when true, sends broadcasts to peers that already have
-	// a pending message to send.
+	// SendLocalPeers is a Peerstore that, if not nil, is used to determine if
+	// peers are on the local network and to always broadcast to those peers.
+	// If nil, apply broadcast reduction logic to peers on the local network
+	// the same as peers on other networks.
+	SendLocalPeers peerstore.Peerstore
+	// SemdRandomPeers is the number of peers to broadcast to anyway, even
+	// though broadcast reduction logic has determined that they are not
+	// broadcast targets. Setting this to a non-zero value ensures at least
+	// this number of random peers receives a broadcast. This may be helpful in
+	// cases where peers that are not receiving broadcasts my have wanted
+	// blocks.
+	SendRandomPeers int
+	// SendWithPending, when true, sends broadcasts to any peers that already
+	// have a pending message to send.
 	SendWithPending bool
 	// SkipGauge overrides the Gauge that tracks the number of broadcasts
 	// skipped by broadcast reduction logic.
@@ -195,7 +197,7 @@ func (pwm *peerWantManager) broadcastWantHaves(wantHaves []cid.Cid) {
 	if pwm.bcastConfig != nil {
 		reduce = true
 		bcastLimitPeers = pwm.bcastConfig.LimitPeers
-		sendSkipped = pwm.bcastConfig.SendSkipped
+		sendSkipped = pwm.bcastConfig.SendRandomPeers
 	}
 
 	// Send broadcast wants to each peer
@@ -264,13 +266,13 @@ func (pwm *peerWantManager) markBroadcastTarget(peerID peer.ID) {
 }
 
 func (pwm *peerWantManager) isLocalPeer(peerID peer.ID) bool {
-	if pwm.bcastConfig.LocalAlways == nil {
+	if pwm.bcastConfig.SendLocalPeers == nil {
 		return false
 	}
 	if _, ok := pwm.remotePeers[peerID]; ok {
 		return false
 	}
-	addrs := pwm.bcastConfig.LocalAlways.Addrs(peerID)
+	addrs := pwm.bcastConfig.SendLocalPeers.Addrs(peerID)
 	for _, addr := range addrs {
 		if manet.IsPrivateAddr(addr) {
 			return true

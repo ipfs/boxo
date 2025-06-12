@@ -137,30 +137,51 @@ func WithDefaultProviderQueryManager(defaultProviderQueryManager bool) Option {
 	}
 }
 
+// WithBroadcastReductio enables or disables broadcast reduction logic. If
+// broadcast reduction logic is disabled, then the other WithBroadcast options
+// are ignored. Seting this to false restores previous broadcast behavior.
+// Default is false.
 func WithBroadcastReduction(enable bool) Option {
 	return func(bs *Client) {
 		bs.bcastReduction = enable
 	}
 }
 
-func WithBroadcastReduceLocal(enable bool) Option {
-	return func(bs *Client) {
-		bs.bcastReduceLocal = enable
-	}
-}
-
-func WithBroadcastSendSkipped(n int) Option {
-	return func(bs *Client) {
-		bs.bcastSendSkipped = n
-	}
-}
-
+// WithBroadcastLimitPeers sets a hard limit on the number of peers to send
+// broadcasts to. A value of 0 means there is no limit. Default is 0.
 func WithBroadcastLimitPeers(limit int) Option {
 	return func(bs *Client) {
 		bs.bcastLimitPeers = limit
 	}
 }
 
+// WithBroadcastReduceLocal enables or disables broadcast reduction for peers
+// on the local network. If false, always broadcast to peers on the local
+// network. If true, apply broadcast reduction logic to peers on the local
+// network the same as peers on other networks. Default is false.
+func WithBroadcastReduceLocal(enable bool) Option {
+	return func(bs *Client) {
+		bs.bcastReduceLocal = enable
+	}
+}
+
+// WithBroadcastSendRandomPeers sets the number of peers to broadcast to
+// anyway, even though broadcast reduction logic has determined that they are
+// not broadcast targets. Setting this to a non-zero value ensures at least
+// this number of random peers receives a broadcast. This may be helpful in
+// cases where peers that are not receiving broadcasts my have wanted blocks.
+// Default is 0.
+func WithBroadcastSendRandomPeers(n int) Option {
+	return func(bs *Client) {
+		bs.bcastSendRandomPeers = n
+	}
+}
+
+// SendWithPending, when true, sends broadcasts to any peers that already have
+// a pending message to send. Default is false. This sends broadcasts to many
+// more peers, but in a way that does not increase the number of separate
+// broadcast messages. There is still the increased cost of the recipients
+// having to process and respond to the broadcasts.
 func WithBroadcastSendWithPending(enable bool) Option {
 	return func(bs *Client) {
 		bs.bcastSendWithPending = enable
@@ -202,7 +223,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout:  true,
 		defaultProviderQueryManager: true,
-		bcastReduction:              true,
 	}
 
 	// apply functional options before starting and running bitswap
@@ -214,12 +234,12 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 	if bs.bcastReduction {
 		bcastConfig = &bspm.BroadcastConfig{
 			LimitPeers:      bs.bcastLimitPeers,
-			SendSkipped:     bs.bcastSendSkipped,
+			SendRandomPeers: bs.bcastSendRandomPeers,
 			SendWithPending: bs.bcastSendWithPending,
 			SkipGauge:       bmetrics.BroadcastSkipGauge(ctx),
 		}
 		if !bs.bcastReduceLocal {
-			bcastConfig.LocalAlways = network.GetPeerstore()
+			bcastConfig.SendLocalPeers = network.GetPeerstore()
 		}
 	}
 
@@ -364,7 +384,7 @@ type Client struct {
 	bcastReduction       bool
 	bcastReduceLocal     bool
 	bcastLimitPeers      int
-	bcastSendSkipped     int
+	bcastSendRandomPeers int
 	bcastSendWithPending bool
 }
 
