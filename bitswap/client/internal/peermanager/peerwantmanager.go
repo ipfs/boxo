@@ -274,7 +274,7 @@ func (pwm *peerWantManager) isLocalPeer(peerID peer.ID) bool {
 	}
 	addrs := pwm.bcastConfig.SendLocalPeers.Addrs(peerID)
 	for _, addr := range addrs {
-		if manet.IsPrivateAddr(addr) {
+		if manet.IsPrivateAddr(addr) || manet.IsIPLoopback(addr) {
 			return true
 		}
 	}
