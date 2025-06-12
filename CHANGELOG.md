@@ -19,6 +19,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - `bitswap/client`: Reduce bitswap broadcast volume by limiting broadcasts to peers that have previously responded as having wanted blocks and peers on local network. The following bitswap client options are available to configure the behavior of broadcast reduction:
+  - `WithBroadcastReduction` enables or disables broadcast reduction logic. If broadcast reduction logic is disabled, then the other WithBroadcast options are ignored. Setting this to false restores the previous broadcast behavior of sending broadcasts to all peers. Default is `false`.
   - `WithBroadcastLimitPeers` sets a hard limit on the number of peers to send broadcasts to. A value of 0 means there is no limit. Default is `0`.
   - `WithBroadcastReduceLocal` enables or disables broadcast reduction for peers on the local network. If false, always broadcast to peers on the local network. If true, apply broadcast reduction logic to peers on the local network the same as peers on other networks. Default is `false`.
   - `WithBroadcastSendRandomPeers` sets the number of peers to broadcast to anyway, even though broadcast reduction logic has determined that they are not broadcast targets. Setting this to a non-zero value ensures at least this number of random peers receives a broadcast. This may be helpful in cases where peers that are not receiving broadcasts my have wanted blocks. Default is `0`.

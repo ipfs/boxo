@@ -137,10 +137,10 @@ func WithDefaultProviderQueryManager(defaultProviderQueryManager bool) Option {
 	}
 }
 
-// WithBroadcastReductio enables or disables broadcast reduction logic. If
+// WithBroadcastReduction enables or disables broadcast reduction logic. If
 // broadcast reduction logic is disabled, then the other WithBroadcast options
-// are ignored. Seting this to false restores previous broadcast behavior.
-// Default is false.
+// are ignored. Setting this to false restores the previous broadcast behavior
+// of sending broadcasts to all peers. Default is false.
 func WithBroadcastReduction(enable bool) Option {
 	return func(bs *Client) {
 		bs.bcastReduction = enable
@@ -177,11 +177,11 @@ func WithBroadcastSendRandomPeers(n int) Option {
 	}
 }
 
-// WithBroadcastSendWithPending, if true, sends broadcasts to any peers that
-// already have a pending message to send. This sends broadcasts to many more
-// peers, but in a way that does not increase the number of separate broadcast
-// messages. There is still the increased cost of the recipients having to
-// process and respond to the broadcasts. Default is false.
+// WithBroadcastSendWithPending, if true, enables sending broadcasts to any
+// peers that already have a pending message to send. This sends broadcasts to
+// many more peers, but in a way that does not increase the number of separate
+// broadcast messages. There is still the increased cost of the recipients
+// having to process and respond to the broadcasts. Default is false.
 func WithBroadcastSendWithPending(enable bool) Option {
 	return func(bs *Client) {
 		bs.bcastSendWithPending = enable
