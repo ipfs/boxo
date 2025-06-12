@@ -31,7 +31,7 @@
 - [Consuming](#consuming)
   - [Getting started](#getting-started)
   - [Migrating to Boxo](#migrating-to-boxo)
-  - [What is the deprecation and breaking change policy?](#what-is-the-deprecation-and-breaking-change-policy)
+  - [Deprecations & Breaking Changes](#deprecations--breaking-changes)
 - [Development](#development)
   - [Should I add my IPFS component to Boxo?](#should-i-add-my-ipfs-component-to-boxo)
   - [Release Process](#release-process)
@@ -42,7 +42,7 @@
   - [What are some projects that depend on this project?](#what-are-some-projects-that-depend-on-this-project)
   - [Governance and Access](#governance-and-access)
   - [Why is this named "Boxo"?](#why-is-this-named-boxo)
-  - [Additional FAQs](#additional-faqs)
+  - [Additional Docs & FAQs](#additional-docs--faqs)
   - [License](#license)
 
 <!-- /TOC -->
