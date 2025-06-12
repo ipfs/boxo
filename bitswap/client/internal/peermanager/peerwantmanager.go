@@ -23,8 +23,8 @@ type Gauge interface {
 // default configuration and results in the minimum amount of broadcasts
 // without placing and hard limit on the number of broadcasts.
 type BroadcastConfig struct {
-	// LocalAlways is a Peerstore that is uses to determine if a peer is on the
-	// local network. If non nil, always boradcast to peers on the local
+	// LocalAlways is a Peerstore that is used to determine if a peer is on the
+	// local network. If non nil, always broadcast to peers on the local
 	// network. If nil, apply broadcast reduction logic to peers on the local
 	// network the same as peers on other networks.
 	LocalAlways peerstore.Peerstore
