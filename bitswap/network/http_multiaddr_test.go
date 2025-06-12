@@ -53,7 +53,6 @@ func TestExtractHTTPAddress(t *testing.T) {
 			expectErr: false,
 		},
 		{
-
 			name:  "Valid HTTPS multiaddress with DNS",
 			maStr: "/dns4/example.com/tcp/443/https",
 			want: &url.URL{

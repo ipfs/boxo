@@ -11,7 +11,6 @@ import (
 
 	"github.com/ipfs/boxo/provider/internal/queue"
 	"github.com/ipfs/boxo/verifcid"
-
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"

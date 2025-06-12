@@ -29,7 +29,6 @@ import (
 	"github.com/ipld/go-car/v2/storage"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	"github.com/ipld/go-ipld-prime"
-
 	// Ensure basic codecs are registered.
 	_ "github.com/ipld/go-ipld-prime/codec/cbor"
 	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"

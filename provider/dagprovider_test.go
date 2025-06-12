@@ -102,7 +102,6 @@ func TestNewDAGProviderCtxCancel(t *testing.T) {
 				time.Sleep(time.Second)
 			}
 		}
-
 	}()
 
 	time.Sleep(500 * time.Millisecond)

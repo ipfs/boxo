@@ -854,7 +854,6 @@ func TestRedirects(t *testing.T) {
 			// Check Redirect target contains all query parameters
 			redirectURL := res.Header.Get("Location")
 			require.Equal(t, expectedTargetURL, redirectURL)
-
 		}
 
 		do(http.MethodGet)
@@ -899,7 +898,6 @@ func TestRedirects(t *testing.T) {
 			// Check Redirect target contains all query parameters
 			redirectURL := res.Header.Get("Location")
 			require.Equal(t, expectedTargetURL, redirectURL)
-
 		}
 
 		do(http.MethodGet)
@@ -944,7 +942,6 @@ func TestRedirects(t *testing.T) {
 			// Check Redirect target contains all query parameters
 			redirectURL := res.Header.Get("Location")
 			require.Equal(t, expectedTargetURL, redirectURL)
-
 		}
 
 		do(http.MethodGet)

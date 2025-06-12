@@ -85,7 +85,7 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 	}
 	result.RTT = result.RTT / time.Duration(len(urls)-lenErrors)
 
-	//log.Debugf("ping latency %s %s", p, result.RTT)
+	// log.Debugf("ping latency %s %s", p, result.RTT)
 	pngr.recordLatency(p, result.RTT)
 	return result
 }
@@ -144,7 +144,6 @@ func (pngr *pinger) startPinging(p peer.ID) {
 			}
 		}
 	}(ctx, p)
-
 }
 
 func (pngr *pinger) stopPinging(p peer.ID) {
@@ -160,7 +159,6 @@ func (pngr *pinger) stopPinging(p peer.ID) {
 	pngr.latenciesLock.Lock()
 	delete(pngr.latencies, p)
 	pngr.latenciesLock.Unlock()
-
 }
 
 func (pngr *pinger) isPinging(p peer.ID) bool {

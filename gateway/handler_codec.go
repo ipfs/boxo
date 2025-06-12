@@ -14,7 +14,6 @@ import (
 	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
-
 	// Ensure basic codecs are registered.
 	_ "github.com/ipld/go-ipld-prime/codec/cbor"
 	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"

@@ -5,9 +5,7 @@ import (
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
-
 	cid "github.com/ipfs/go-cid"
-
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"

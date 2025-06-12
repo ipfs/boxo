@@ -690,7 +690,7 @@ func (d *HAMTDirectory) GetCidBuilder() cid.Builder {
 
 // switchToBasic returns a BasicDirectory implementation of this directory.
 func (d *HAMTDirectory) switchToBasic(ctx context.Context, opts ...DirectoryOption) (*BasicDirectory, error) {
-	// needsoSwichToBasicDir checks d.maxLinks is appropiate. No check is
+	// needsoSwichToBasicDir checks d.maxLinks is appropriate. No check is
 	// performed here.
 	basicDir, err := NewBasicDirectory(d.dserv, opts...)
 	if err != nil {
@@ -779,7 +779,6 @@ func (d *HAMTDirectory) needsToSwitchToBasicDir(ctx context.Context, name string
 	}
 
 	return canSwitchSize && canSwitchMaxLinks, nil
-
 }
 
 // Evaluate directory size and a future sizeChange and check if it will be below

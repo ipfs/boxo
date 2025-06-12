@@ -77,7 +77,7 @@ func TestErrorTracker_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < int(threshold)/numRoutines; j++ {
+			for j := 0; j < threshold/numRoutines; j++ {
 				et.logErrors(p, 1, threshold)
 			}
 		}()
