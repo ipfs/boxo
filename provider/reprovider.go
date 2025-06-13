@@ -11,6 +11,7 @@ import (
 
 	"github.com/ipfs/boxo/provider/internal/queue"
 	"github.com/ipfs/boxo/verifcid"
+	metrics "github.com/ipfs/go-metrics-interface"
 
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
@@ -67,6 +68,9 @@ type reprovider struct {
 	avgReprovideDuration, lastReprovideDuration time.Duration
 	lastRun                                     time.Time
 
+	provideCounter   metrics.Counter
+	reprovideCounter metrics.Counter
+
 	throughputCallback ThroughputCallback
 	// throughputProvideCurrentCount counts how many provides has been done since the last call to throughputCallback
 	throughputReprovideCurrentCount uint
@@ -114,6 +118,8 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 		maxReprovideBatchSize: math.MaxUint,
 		provideWorkerCount:    defaultProvideWorkerCount,
 		keyPrefix:             DefaultKeyPrefix,
+		provideCounter:        metrics.New("ipfs.boxo.provider.provideCount", "Number of provides since node is running").Counter(),
+		reprovideCounter:      metrics.New("ipfs.boxo.provider.reprovideCount", "Number of reprovides since node is running").Counter(),
 	}
 
 	var err error
@@ -265,6 +271,8 @@ func (s *reprovider) provideWorker() {
 	provideFunc := func(ctx context.Context, c cid.Cid) {
 		if err := s.rsys.Provide(ctx, c, true); err != nil {
 			log.Errorf("failed to provide %s: %s", c, err)
+		} else {
+			s.provideCounter.Inc()
 		}
 	}
 
@@ -473,6 +481,8 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 		s.lastReprovideDuration = dur
 		s.lastRun = time.Now()
 		s.statLk.Unlock()
+
+		s.reprovideCounter.Add(float64(len(keys)))
 
 		// persist last reprovide time to disk to avoid unnecessary reprovides on restart
 		if err := s.ds.Put(s.ctx, lastReprovideKey, storeTime(s.lastRun)); err != nil {
