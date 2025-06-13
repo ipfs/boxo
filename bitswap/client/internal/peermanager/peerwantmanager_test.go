@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var bcastAlways = BroadcastConfig{
-	EnableReduction: false,
+var bcastAlways = BroadcastControl{
+	Enable: false,
 }
 
 type gauge struct {
