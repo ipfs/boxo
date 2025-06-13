@@ -16,6 +16,11 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `provider` includes metrics on the number of keys provided so far
+(`ipfs.boxo.provider.provideCount`) and the number of keys reprovided so far
+(`ipfs.boxo.provider.reprovideCount`)
+[#944](https://github.com/ipfs/boxo/pull/944)
+
 ### Changed
 
 ### Removed
