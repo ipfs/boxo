@@ -18,6 +18,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `provider`: previously, the code in this module was logging to `reprovider.simple`, `provider.batched` and `provider.queue` facilities. They have now been consolidated in a single `provider` logging facility, along with some adjustments to logging levels and extra debug statements.
+
 ### Removed
 
 - `bitswap/server` do not allow override of peer ledger with `WithPeerLedger` [#938](https://github.com/ipfs/boxo/pull/938)

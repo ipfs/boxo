@@ -17,7 +17,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 )
 
-var log = logging.Logger("provider.queue")
+var log = logging.Logger("provider")
 
 const (
 	// batchSize is the limit on number of CIDs kept in memory at which ther
@@ -142,7 +142,7 @@ func (q *Queue) worker(ctx context.Context) {
 	defer func() {
 		if c != cid.Undef {
 			if err := q.ds.Put(ctx, k, c.Bytes()); err != nil {
-				log.Errorw("Failed to write cid to datastore", "err", err)
+				log.Errorw("provider queue: failed to write cid to datastore", "err", err)
 			}
 			counter++
 		}
@@ -174,18 +174,18 @@ func (q *Queue) worker(ctx context.Context) {
 			if !dsEmpty {
 				head, err := q.getQueueHead(ctx)
 				if err != nil {
-					log.Errorw("Error querying for head of queue, stopping provider", "err", err)
+					log.Errorw("provider queue: error querying for head of queue, stopping provider", "err", err)
 					return
 				}
 				if head != nil {
 					k = datastore.NewKey(head.Key)
 					if err = q.ds.Delete(ctx, k); err != nil {
-						log.Errorw("Error deleting queue entry, stopping provider", "err", err, "key", head.Key)
+						log.Errorw("provider queue: error deleting queue entry, stopping provider", "err", err, "key", head.Key)
 						return
 					}
 					c, err = cid.Parse(head.Value)
 					if err != nil {
-						log.Warnw("Error parsing queue entry cid, removing it from queue", "err", err, "key", head.Key)
+						log.Warnw("provider queue: error parsing queue entry cid, removing it from queue", "err", err, "key", head.Key)
 						continue
 					}
 				} else {
@@ -257,7 +257,7 @@ func (q *Queue) worker(ctx context.Context) {
 			err = q.commitInput(ctx, counter, &inBuf)
 			if err != nil {
 				if !errors.Is(err, context.Canceled) {
-					log.Errorw("Error writing CIDs to datastore, stopping provider", "err", err)
+					log.Errorw("provider queue: error writing CIDs to datastore, stopping provider", "err", err)
 				}
 				return
 			}
@@ -296,7 +296,7 @@ func (q *Queue) commitInput(ctx context.Context, counter uint64, cids *deque.Deq
 		c := cids.At(i)
 		key := datastore.NewKey(fmt.Sprintf("%020d/%s", counter, cstr))
 		if err = b.Put(ctx, key, c.Bytes()); err != nil {
-			log.Errorw("Failed to add cid to batch", "err", err)
+			log.Errorw("provider queue: failed to add cid to batch", "err", err)
 			continue
 		}
 		counter++

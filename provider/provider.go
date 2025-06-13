@@ -16,11 +16,8 @@ import (
 	pin "github.com/ipfs/boxo/pinning/pinner"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-cidutil"
-	logging "github.com/ipfs/go-log/v2"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 )
-
-var logR = logging.Logger("reprovider.simple")
 
 // Provider announces blocks to the network
 type Provider interface {
@@ -107,7 +104,7 @@ func pinSet(ctx context.Context, pinning pin.Pinner, fetchConfig fetcher.Factory
 		// 1. Recursive keys
 		for sc := range pinning.RecursiveKeys(ctx, false) {
 			if sc.Err != nil {
-				logR.Errorf("reprovide recursive pins: %s", sc.Err)
+				log.Errorf("reprovide recursive pins: %s", sc.Err)
 				return
 			}
 			if !onlyRoots {
@@ -120,7 +117,7 @@ func pinSet(ctx context.Context, pinning pin.Pinner, fetchConfig fetcher.Factory
 		// 2. Direct pins
 		for sc := range pinning.DirectKeys(ctx, false) {
 			if sc.Err != nil {
-				logR.Errorf("reprovide direct pins: %s", sc.Err)
+				log.Errorf("reprovide direct pins: %s", sc.Err)
 				return
 			}
 			_ = set.Visitor(ctx)(sc.Pin.Key)
@@ -143,7 +140,7 @@ func pinSet(ctx context.Context, pinning pin.Pinner, fetchConfig fetcher.Factory
 			})
 		})
 		if err != nil {
-			logR.Errorf("reprovide indirect pins: %s", err)
+			log.Errorf("reprovide indirect pins: %s", err)
 			return
 		}
 	}()
