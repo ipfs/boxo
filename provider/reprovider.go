@@ -263,6 +263,7 @@ func (s *reprovider) provideWorker() {
 	provCh := s.q.Dequeue()
 
 	provideFunc := func(ctx context.Context, c cid.Cid) {
+		log.Debugf("provider worker: providing %s", c)
 		if err := s.rsys.Provide(ctx, c, true); err != nil {
 			log.Errorf("failed to provide %s: %s", c, err)
 		}
@@ -458,7 +459,7 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 		start := time.Now()
 		err := doProvideMany(s.ctx, s.rsys, keys)
 		if err != nil {
-			log.Infof("reproviding failed %v", err)
+			log.Warnf("reproviding failed %v", err)
 			continue
 		}
 		dur := time.Since(start)
@@ -539,6 +540,7 @@ func doProvideMany(ctx context.Context, r Provide, keys []multihash.Multihash) e
 	}
 
 	for _, k := range keys {
+		log.Debugf("providing %s", k)
 		if err := r.Provide(ctx, cid.NewCidV1(cid.Raw, k), true); err != nil {
 			return err
 		}
