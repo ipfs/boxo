@@ -38,7 +38,7 @@ const (
 	provideDelayWarnDuration = 15 * time.Second
 )
 
-var log = logging.Logger("provider.batched")
+var log = logging.Logger("provider")
 
 type reprovider struct {
 	ctx     context.Context
