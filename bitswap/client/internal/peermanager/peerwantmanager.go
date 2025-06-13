@@ -32,8 +32,8 @@ type BroadcastConfig struct {
 	// to. A value of 0 means no broadcasts are sent. A value of -1 means there
 	// is no limit. Default is -1.
 	LimitPeers int
-	// ReduceAll, enables or disables broadcast reduction for peers on the
-	// local network and peers configured for peering. If false, than always
+	// ReduceAll enables or disables broadcast reduction for peers on the local
+	// network and peers configured for peering. If false, than always
 	// broadcast to peers on the local network and peers configured for
 	// peering. If true, apply broadcast reduction to all peers without special
 	// consideration for local and peering peers. Default is false.
