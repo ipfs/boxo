@@ -112,14 +112,15 @@ var (
 //
 // If provider casts to [Ready], it will wait until [Ready.Ready] is true.
 func New(ds datastore.Batching, opts ...Option) (System, error) {
+	ctx := metrics.CtxScope(context.Background(), "provider")
 	s := &reprovider{
 		allowlist:             verifcid.DefaultAllowlist,
 		reprovideInterval:     DefaultReproviderInterval,
 		maxReprovideBatchSize: math.MaxUint,
 		provideWorkerCount:    defaultProvideWorkerCount,
 		keyPrefix:             DefaultKeyPrefix,
-		provideCounter:        metrics.New("ipfs.boxo.provider.provideCount", "Number of provides since node is running").Counter(),
-		reprovideCounter:      metrics.New("ipfs.boxo.provider.reprovideCount", "Number of reprovides since node is running").Counter(),
+		provideCounter:        metrics.NewCtx(ctx, "reprovider_provide_count", "Number of provides since node is running").Counter(),
+		reprovideCounter:      metrics.NewCtx(ctx, "reprovider_reprovide_count", "Number of reprovides since node is running").Counter(),
 	}
 
 	var err error
