@@ -237,8 +237,11 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		option(bs)
 	}
 
-	if bs.bcastConfig.EnableReduction && bs.bcastConfig.NeedHost() {
-		bs.bcastConfig.Host = network.Host()
+	if bs.bcastConfig.EnableReduction {
+		if bs.bcastConfig.NeedHost() {
+			bs.bcastConfig.Host = network.Host()
+		}
+		bs.bcastConfig.SkipGauge = bmetrics.BroadcastSkipGauge(ctx)
 	}
 
 	// onDontHaveTimeout is called when a want-block is sent to a peer that
