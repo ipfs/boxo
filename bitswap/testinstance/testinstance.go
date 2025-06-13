@@ -23,7 +23,6 @@ import (
 // NewTestInstanceGenerator generates a new InstanceGenerator for the given
 // testnet
 func NewTestInstanceGenerator(net tn.Network, routing mockrouting.Server, netOptions []bsnet.NetOpt, bsOptions []bitswap.Option) InstanceGenerator {
-	bsOptions = append(bsOptions)
 	ctx, cancel := context.WithCancel(context.Background())
 	return InstanceGenerator{
 		net:        net,
