@@ -143,25 +143,27 @@ func WithDefaultProviderQueryManager(defaultProviderQueryManager bool) Option {
 // of sending broadcasts to all peers. Default is false.
 func WithBroadcastReduction(enable bool) Option {
 	return func(bs *Client) {
-		bs.bcastReduction = enable
+		bs.bcastConfig.EnableReduction = enable
 	}
 }
 
 // WithBroadcastLimitPeers sets a hard limit on the number of peers to send
-// broadcasts to. A value of 0 means there is no limit. Default is 0.
+// broadcasts to. A value of 0 means no broadcasts are sent. A value of -1
+// means there is no limit. Default is -1.
 func WithBroadcastLimitPeers(limit int) Option {
 	return func(bs *Client) {
-		bs.bcastLimitPeers = limit
+		bs.bcastConfig.LimitPeers = limit
 	}
 }
 
-// WithBroadcastReduceLocal enables or disables broadcast reduction for peers
-// on the local network. If false, always broadcast to peers on the local
-// network. If true, apply broadcast reduction logic to peers on the local
-// network the same as peers on other networks. Default is false.
-func WithBroadcastReduceLocal(enable bool) Option {
+// WithBroadcastReduceAll enables or disables broadcast reduction for peers on
+// the local network and peers configured for peering. If false, than always
+// broadcast to peers on the local network and peers configured for peering. If
+// true, apply broadcast reduction to all peers without special consideration
+// for local and peering peers. Default is false.
+func WithBroadcastReduceAll(enable bool) Option {
 	return func(bs *Client) {
-		bs.bcastReduceLocal = enable
+		bs.bcastConfig.ReduceAll = enable
 	}
 }
 
@@ -173,18 +175,19 @@ func WithBroadcastReduceLocal(enable bool) Option {
 // Default is 0.
 func WithBroadcastSendRandomPeers(n int) Option {
 	return func(bs *Client) {
-		bs.bcastSendRandomPeers = n
+		bs.bcastConfig.SendRandomPeers = n
 	}
 }
 
-// WithBroadcastSendWithPending, if true, enables sending broadcasts to any
-// peers that already have a pending message to send. This sends broadcasts to
-// many more peers, but in a way that does not increase the number of separate
-// broadcast messages. There is still the increased cost of the recipients
-// having to process and respond to the broadcasts. Default is false.
+// WithBroadcastSendWithPending, enables or disables sending broadcasts to any
+// peers that already have a pending message to send. When enabled, this sends
+// broadcasts to many more peers, but does so in a way that does not increase
+// the number of separate broadcast messages. There is still the increased cost
+// of the recipients having to process and respond to the broadcasts. Default
+// is false.
 func WithBroadcastSendWithPending(enable bool) Option {
 	return func(bs *Client) {
-		bs.bcastSendWithPending = enable
+		bs.bcastConfig.SendWithPending = enable
 	}
 }
 
@@ -223,6 +226,10 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout:  true,
 		defaultProviderQueryManager: true,
+
+		bcastConfig: bspm.BroadcastConfig{
+			LimitPeers: -1,
+		},
 	}
 
 	// apply functional options before starting and running bitswap
@@ -230,17 +237,8 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		option(bs)
 	}
 
-	var bcastConfig *bspm.BroadcastConfig
-	if bs.bcastReduction {
-		bcastConfig = &bspm.BroadcastConfig{
-			LimitPeers:      bs.bcastLimitPeers,
-			SendRandomPeers: bs.bcastSendRandomPeers,
-			SendWithPending: bs.bcastSendWithPending,
-			SkipGauge:       bmetrics.BroadcastSkipGauge(ctx),
-		}
-		if !bs.bcastReduceLocal {
-			bcastConfig.SendLocalPeers = network.GetPeerstore()
-		}
+	if bs.bcastConfig.EnableReduction && bs.bcastConfig.NeedHost() {
+		bs.bcastConfig.Host = network.Host()
 	}
 
 	// onDontHaveTimeout is called when a want-block is sent to a peer that
@@ -267,7 +265,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
-	pm := bspm.New(ctx, peerQueueFactory, bcastConfig)
+	pm := bspm.New(ctx, peerQueueFactory, bs.bcastConfig)
 
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
@@ -381,11 +379,8 @@ type Client struct {
 
 	perPeerSendDelay time.Duration
 
-	bcastReduction       bool
-	bcastReduceLocal     bool
-	bcastLimitPeers      int
-	bcastSendRandomPeers int
-	bcastSendWithPending bool
+	// Configuration for broadcast reduction.
+	bcastConfig bspm.BroadcastConfig
 }
 
 type counters struct {

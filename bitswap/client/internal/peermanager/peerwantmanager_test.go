@@ -9,7 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var bcastAlways *BroadcastConfig
+var bcastAlways = BroadcastConfig{
+	EnableReduction: false,
+}
 
 type gauge struct {
 	count int

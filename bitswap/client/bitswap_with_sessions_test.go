@@ -137,9 +137,7 @@ func TestCustomProviderQueryManager(t *testing.T) {
 	defer cancel()
 
 	bs := bitswap.New(ctx, a.Adapter, pqm, a.Blockstore,
-		bitswap.WithClientOption(client.WithDefaultProviderQueryManager(false)),
-		bitswap.WithClientOption(client.WithBroadcastReduction(false)),
-	)
+		bitswap.WithClientOption(client.WithDefaultProviderQueryManager(false)))
 	a.Exchange.Close() // close old to be sure.
 	a.Exchange = bs
 	// Connect instances only after bitswap exists.
@@ -588,9 +586,7 @@ func TestDontHaveTimeoutConfig(t *testing.T) {
 	defer cancel()
 
 	bs := bitswap.New(ctx, a.Adapter, pqm, a.Blockstore,
-		bitswap.WithClientOption(client.WithDontHaveTimeoutConfig(cfg)),
-		bitswap.WithClientOption(client.WithBroadcastReduction(false)),
-	)
+		bitswap.WithClientOption(client.WithDontHaveTimeoutConfig(cfg)))
 	a.Exchange.Close()
 	a.Exchange = bs
 
