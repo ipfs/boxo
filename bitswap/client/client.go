@@ -149,7 +149,7 @@ func WithBroadcastReduction(enable bool) Option {
 
 // WithBroadcastLimitPeers sets a hard limit on the number of peers to send
 // broadcasts to. A value of 0 means no broadcasts are sent. A value of -1
-// means there is no limit. Default is -1.
+// means there is no limit. Default is -1 (unlimited)
 func WithBroadcastLimitPeers(limit int) Option {
 	return func(bs *Client) {
 		bs.bcastConfig.LimitPeers = limit
