@@ -459,7 +459,7 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 		start := time.Now()
 		err := doProvideMany(s.ctx, s.rsys, keys)
 		if err != nil {
-			log.Warnf("reproviding failed %v", err)
+			log.Errorf("reproviding failed %v", err)
 			continue
 		}
 		dur := time.Since(start)
