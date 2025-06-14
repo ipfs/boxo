@@ -4,6 +4,7 @@ import (
 	"context"
 
 	bsbpm "github.com/ipfs/boxo/bitswap/client/internal/blockpresencemanager"
+	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
@@ -107,10 +108,12 @@ type sessionWantSender struct {
 	onSend onSendFn
 	// Called when all peers explicitly don't have a block
 	onPeersExhausted onPeersExhaustedFn
+	// Tracks number of haves received.
+	havesReceivedGauge bspm.Gauge
 }
 
 func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager, canceller SessionWantsCanceller,
-	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn,
+	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn, havesReceivedGauge bspm.Gauge,
 ) sessionWantSender {
 	ctx, cancel := context.WithCancel(context.Background())
 	sws := sessionWantSender{
@@ -129,6 +132,8 @@ func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager, ca
 		bpm:              bpm,
 		onSend:           onSend,
 		onPeersExhausted: onPeersExhausted,
+
+		havesReceivedGauge: havesReceivedGauge,
 	}
 
 	return sws
@@ -634,6 +639,9 @@ func (sws *sessionWantSender) updateWantBlockPresence(c cid.Cid, p peer.ID) {
 	switch {
 	case sws.bpm.PeerHasBlock(p, c):
 		wi.setPeerBlockPresence(p, BPHave)
+		if sws.havesReceivedGauge != nil {
+			sws.havesReceivedGauge.Inc()
+		}
 	case sws.bpm.PeerDoesNotHaveBlock(p, c):
 		wi.setPeerBlockPresence(p, BPDontHave)
 	default:

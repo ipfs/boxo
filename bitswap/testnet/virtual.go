@@ -15,6 +15,7 @@ import (
 	delay "github.com/ipfs/go-ipfs-delay"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/connmgr"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	protocol "github.com/libp2p/go-libp2p/core/protocol"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
@@ -225,6 +226,10 @@ func (nc *networkClient) Latency(p peer.ID) time.Duration {
 	nc.network.mu.Lock()
 	defer nc.network.mu.Unlock()
 	return nc.network.latencies[nc.local][p]
+}
+
+func (nc *networkClient) Host() host.Host {
+	return nil
 }
 
 func (nc *networkClient) SendMessage(
