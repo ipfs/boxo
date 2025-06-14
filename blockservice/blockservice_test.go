@@ -205,6 +205,11 @@ type notifyCountingExchange struct {
 	notifyCount int
 }
 
+func (n *notifyCountingExchange) NotifyNewBlock(ctx context.Context, blocks blocks.Block) error {
+	n.notifyCount++
+	return n.Interface.NotifyNewBlock(ctx, blocks)
+}
+
 func (n *notifyCountingExchange) NotifyNewBlocks(ctx context.Context, blocks ...blocks.Block) error {
 	n.notifyCount += len(blocks)
 	return n.Interface.NotifyNewBlocks(ctx, blocks...)
@@ -310,6 +315,10 @@ func (*fakeIsNewSessionCreateExchange) GetBlocks(context.Context, []cid.Cid) (<-
 func (f *fakeIsNewSessionCreateExchange) NewSession(context.Context) exchange.Fetcher {
 	f.newSessionWasCalled = true
 	return f.ses
+}
+
+func (*fakeIsNewSessionCreateExchange) NotifyNewBlock(context.Context, blocks.Block) error {
+	return nil
 }
 
 func (*fakeIsNewSessionCreateExchange) NotifyNewBlocks(context.Context, ...blocks.Block) error {
