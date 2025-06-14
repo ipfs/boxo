@@ -318,6 +318,10 @@ func (pwm *peerWantManager) isLocalPeer(peerID peer.ID) bool {
 		return false
 	}
 	addrs := peerStore.Addrs(peerID)
+	// Assume local if peer has no addresses.
+	if len(addrs) == 0 {
+		return true
+	}
 	for _, addr := range addrs {
 		if manet.IsPrivateAddr(addr) || manet.IsIPLoopback(addr) {
 			return true
