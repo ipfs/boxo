@@ -4,7 +4,6 @@ package client
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -436,7 +435,7 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 
 	select {
 	case <-bs.closing:
-		return errors.New("bitswap is closed")
+		return nil
 	default:
 	}
 
@@ -459,10 +458,10 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 }
 
 // receiveBlocksFrom processes blocks received from the network
-func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []blocks.Block, haves []cid.Cid, dontHaves []cid.Cid) error {
+func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []blocks.Block, haves []cid.Cid, dontHaves []cid.Cid) {
 	select {
 	case <-bs.closing:
-		return errors.New("bitswap is closed")
+		return
 	default:
 	}
 
@@ -502,8 +501,6 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	for _, b := range wanted {
 		bs.notif.Publish(from, b)
 	}
-
-	return nil
 }
 
 // ReceiveMessage is called by the network interface when a new message is
@@ -532,11 +529,7 @@ func (bs *Client) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg.
 	dontHaves := incoming.DontHaves()
 	if len(iblocks) > 0 || len(haves) > 0 || len(dontHaves) > 0 {
 		// Process blocks
-		err := bs.receiveBlocksFrom(ctx, p, iblocks, haves, dontHaves)
-		if err != nil {
-			log.Warnf("ReceiveMessage recvBlockFrom error: %s", err)
-			return
-		}
+		bs.receiveBlocksFrom(ctx, p, iblocks, haves, dontHaves)
 	}
 }
 

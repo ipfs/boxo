@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -385,7 +384,7 @@ func (bs *Server) Stat() (Stat, error) {
 func (bs *Server) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error {
 	select {
 	case <-bs.closing:
-		return errors.New("bitswap is closed")
+		return nil
 	default:
 	}
 
