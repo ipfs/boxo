@@ -5,6 +5,7 @@ import (
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -81,6 +82,13 @@ func (rt *router) Latency(p peer.ID) time.Duration {
 		return rt.HTTP.Latency(p)
 	}
 	return rt.Bitswap.Latency(p)
+}
+
+func (rt *router) Host() host.Host {
+	if rt.Bitswap == nil {
+		return rt.HTTP.Host()
+	}
+	return rt.Bitswap.Host()
 }
 
 func (rt *router) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwapMessage) error {
@@ -202,6 +210,7 @@ func (rt *router) Protect(p peer.ID, tag string) {
 	}
 	rt.Bitswap.Protect(p, tag)
 }
+
 func (rt *router) Unprotect(p peer.ID, tag string) bool {
 	pi := rt.Peerstore.PeerInfo(p)
 	htaddrs, _ := SplitHTTPAddrs(pi)

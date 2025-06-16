@@ -80,7 +80,6 @@ func (ct *cooldownTracker) fillSenderURLs(urls []network.ParsedURL) []*senderURL
 	surls := make([]*senderURL, len(urls))
 	ct.urlsLock.RLock()
 	{
-
 		for i, u := range urls {
 			var cooldown time.Time
 			dl, ok := ct.urls[u.URL.Host]
